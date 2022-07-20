@@ -152,6 +152,10 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 }
 
 func setClientUpgrade(mc *master.MasterClient, version string) (err error) {
+	if version == "test" {
+		os.Setenv("RELOAD_CLIENT", version)
+		return
+	}
 	NextVersion = version
 	defer func() {
 		if err != nil {

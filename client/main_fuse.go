@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"plugin"
+	"runtime"
 	"time"
 
 	"github.com/jacobsa/daemonize"
@@ -62,12 +63,17 @@ func main() {
 	fd := getFuseFd()
 	for {
 		time.Sleep(10 * time.Second)
-		if os.Getenv("RELOAD_CLIENT") != "1" {
+		reload := os.Getenv("RELOAD_CLIENT")
+		if reload != "1" && reload != "test" {
 			continue
 		}
 
 		clientState := stopClient()
 		plugin.Close(clientLib)
+		if reload == "test" {
+			runtime.GC()
+			time.Sleep(10 * time.Second)
+		}
 
 		handle, err = plugin.Open(clientLib)
 		if err != nil {

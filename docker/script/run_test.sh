@@ -234,6 +234,12 @@ wait_proc_done() {
     fi
 }
 
+reload_client() {
+    echo -n "run update libcfssdk.so test    ... "
+    curl "http://127.0.0.1:17410/set/clientUpgrade?version=test"
+    echo ""
+}
+
 run_unit_test() {
     echo "Running unit test"
     echo "************************";
@@ -353,6 +359,7 @@ add_rocksdb_mode_meta_partitions ; sleep 2
 show_cluster_info
 start_client ; sleep 2
 run_unit_test
+reload_client
 run_ltptest
 run_s3_test
 set_trash_days; sleep 310

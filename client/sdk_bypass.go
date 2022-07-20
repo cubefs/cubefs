@@ -2230,10 +2230,13 @@ func _cfs_chmod(id C.int64_t, path *C.char, mode C.mode_t, flags C.int) C.int {
 	}
 
 	err = c.setattr(nil, info, proto.AttrMode, uint32(mode), 0, 0, 0, 0)
-
 	if err != nil {
 		return errorToStatus(err)
 	}
+	fuseMode := uint32(mode) & uint32(0777)
+	info.Mode = info.Mode &^ uint32(0777) // clear rwx mode bit
+	info.Mode |= fuseMode
+	c.inodeCache.Put(info)
 	return statusOK
 }
 
@@ -2261,6 +2264,10 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 	if err != nil {
 		return errorToStatus(err)
 	}
+	fuseMode := uint32(mode) & uint32(0777)
+	info.Mode = info.Mode &^ uint32(0777) // clear rwx mode bit
+	info.Mode |= fuseMode
+	c.inodeCache.Put(info)
 	return statusOK
 }
 
@@ -2309,10 +2316,12 @@ func _cfs_chown(id C.int64_t, path *C.char, uid C.uid_t, gid C.gid_t, flags C.in
 	}
 
 	err = c.setattr(nil, info, proto.AttrUid|proto.AttrGid, 0, uint32(uid), uint32(gid), 0, 0)
-
 	if err != nil {
 		return errorToStatus(err)
 	}
+	info.Uid = uint32(uid)
+	info.Gid = uint32(gid)
+	c.inodeCache.Put(info)
 	return statusOK
 }
 
@@ -2337,10 +2346,12 @@ func cfs_fchown(id C.int64_t, fd C.int, uid C.uid_t, gid C.gid_t) C.int {
 	}
 
 	err = c.setattr(nil, info, proto.AttrUid|proto.AttrGid, 0, uint32(uid), uint32(gid), 0, 0)
-
 	if err != nil {
 		return errorToStatus(err)
 	}
+	info.Uid = uint32(uid)
+	info.Gid = uint32(gid)
+	c.inodeCache.Put(info)
 	return statusOK
 }
 
@@ -2405,10 +2416,13 @@ func cfs_utimens(id C.int64_t, path *C.char, times *C.struct_timespec, flags C.i
 		mtime = int64(mp.tv_sec)
 	}
 	err = c.setattr(nil, info, proto.AttrAccessTime|proto.AttrModifyTime, 0, 0, 0, mtime, atime)
-
 	if err != nil {
 		return errorToStatus(err)
 	}
+	info.AccessTime = time.Unix(atime, 0)
+	info.ModifyTime = time.Unix(mtime, 0)
+	c.inodeCache.Put(info)
+
 	return statusOK
 }
 
