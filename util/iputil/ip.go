@@ -140,3 +140,16 @@ func PingWithTimeout(addr string, count int, timeout time.Duration) (avgTime tim
 	stats := pinger.Statistics()
 	return stats.AvgRtt, nil
 }
+
+// GetRemoteRealIP will not ignore private ip
+func GetRemoteRealIP(r *http.Request) (ip string) {
+	xForwardedFor := r.Header.Get("X-Forwarded-For")
+	if ip = strings.TrimSpace(strings.Split(xForwardedFor, ",")[0]); ip != "" {
+		return
+	}
+	if ip = strings.TrimSpace(r.Header.Get("X-Real-Ip")); ip != "" {
+		return
+	}
+	ip = strings.Split(r.RemoteAddr, ":")[0]
+	return
+}

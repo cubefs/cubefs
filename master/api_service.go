@@ -290,8 +290,37 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
 
+func (m *Server) getDataNodeZoneNameOfRemoteAddr(r *http.Request) (dataNodeZoneName string) {
+	var (
+		dataNodeAddr string
+	)
+	remoteIP := iputil.GetRemoteRealIP(r)
+	if remoteIP == "" {
+		return
+	}
+	m.cluster.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNodeAddr = addr.(string)
+		return false
+	})
+	split := strings.Split(dataNodeAddr, ":")
+	if len(split) >= 2 {
+		node, err := m.cluster.dataNode(fmt.Sprintf("%v:%v", remoteIP, split[1]))
+		if err != nil {
+			log.LogInfof("action[getDataNodeZoneNameOfRemoteAddr] get dataNode remoteIP:%v dataNodePort:%v split:%v err:%v", remoteIP, split[1], split, err)
+			return
+		}
+		dataNodeZoneName = node.ZoneName
+	}
+	log.LogDebugf("action[getDataNodeZoneNameOfRemoteAddr] remoteIP:%v dataNodeAddrSplit:%v dataNodeZoneName:%v", remoteIP, split, dataNodeZoneName)
+	return
+}
+
 func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
+	var dataNodeZoneName string
 	vol := r.FormValue(nameKey)
+	if vol == "" { // the data/meta node will not report vol name
+		dataNodeZoneName = m.getDataNodeZoneNameOfRemoteAddr(r)
+	}
 	//m.cluster.loadClusterValue()
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	deleteLimitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
@@ -301,6 +330,11 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	metaNodeReadDirLimitNum := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReadDirLimitNum)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
+	if dataNodeZoneName != "" {
+		if zoneTaskLimit, ok := m.cluster.cfg.DataNodeRepairTaskCountZoneLimit[dataNodeZoneName]; ok {
+			repairTaskCount = zoneTaskLimit
+		}
+	}
 	cInfo := &proto.LimitInfo{
 		Cluster:                                m.cluster.Name,
 		MetaNodeDeleteBatchCount:               batchCount,
