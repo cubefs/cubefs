@@ -8,9 +8,9 @@ import (
 	"syscall"
 )
 
-func (s *ExtentStore)TinyExtentHolesAndAvaliSize(extentID uint64, offset int64) (holes []*proto.TinyExtentHole, extentAvaliSize uint64, err error) {
+func (s *ExtentStore) TinyExtentHolesAndAvaliSize(extentID uint64, offset int64) (holes []*proto.TinyExtentHole, extentAvaliSize uint64, err error) {
 	var (
-		e *Extent
+		e          *Extent
 		preAllSize uint64
 	)
 	if !IsTinyExtent(extentID) {
@@ -20,7 +20,7 @@ func (s *ExtentStore)TinyExtentHolesAndAvaliSize(extentID uint64, offset int64) 
 	if !exist {
 		return nil, 0, ExtentNotFoundError
 	}
-	if e, err = s.extentWithHeader(ei); err != nil {
+	if e, err = s.ExtentWithHeader(ei); err != nil {
 		return
 	}
 	defer func() {
@@ -46,8 +46,8 @@ func (s *ExtentStore)TinyExtentHolesAndAvaliSize(extentID uint64, offset int64) 
 		} else {
 			preAllSize += uint64(dataOffset - holeOffset)
 			hole := &proto.TinyExtentHole{
-				Size: uint64(dataOffset - holeOffset),
-				Offset: uint64(holeOffset),
+				Size:       uint64(dataOffset - holeOffset),
+				Offset:     uint64(holeOffset),
 				PreAllSize: preAllSize,
 			}
 			offset += dataOffset - holeOffset

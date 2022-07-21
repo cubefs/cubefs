@@ -392,7 +392,7 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 		err = ExtentNotFoundError
 		return
 	}
-	e, err = s.extentWithHeader(ei)
+	e, err = s.ExtentWithHeader(ei)
 	if err != nil {
 		return err
 	}
@@ -444,7 +444,7 @@ func IsTinyExtent(extentID uint64) bool {
 func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool) (crc uint32, err error) {
 	var e *Extent
 	ei, _ := s.getExtentInfoByExtentID(extentID)
-	if e, err = s.extentWithHeader(ei); err != nil {
+	if e, err = s.ExtentWithHeader(ei); err != nil {
 		return
 	}
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
@@ -483,7 +483,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	}
 	if IsTinyExtent(extentID) {
 		var e *Extent
-		if e, err = s.extentWithHeader(ei); err != nil {
+		if e, err = s.ExtentWithHeader(ei); err != nil {
 			return
 		}
 		return s.tinyDelete(e, offset, size)
@@ -871,7 +871,7 @@ func (s *ExtentStore) extent(extentID uint64) (e *Extent, err error) {
 	return
 }
 
-func (s *ExtentStore) extentWithHeader(ei *ExtentInfoBlock) (e *Extent, err error) {
+func (s *ExtentStore) ExtentWithHeader(ei *ExtentInfoBlock) (e *Extent, err error) {
 	var ok bool
 	if ei == nil {
 		err = ExtentNotFoundError
@@ -934,7 +934,7 @@ func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	var blockCnt int
 	bcs = make([]*BlockCrc, 0)
 	ei, _ := s.getExtentInfoByExtentID(extentID)
-	e, err := s.extentWithHeader(ei)
+	e, err := s.ExtentWithHeader(ei)
 	if err != nil {
 		return bcs, err
 	}
@@ -974,7 +974,7 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 	})
 	sort.Sort(ExtentInfoArr(needUpdateCrcExtents))
 	for _, ei := range needUpdateCrcExtents {
-		e, err := s.extentWithHeader(ei)
+		e, err := s.ExtentWithHeader(ei)
 		if err != nil || !ei.Loaded() {
 			continue
 		}
@@ -997,7 +997,7 @@ func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, dat
 		ei *ExtentInfoBlock
 	)
 	ei, _ = s.getExtentInfoByExtentID(extentID)
-	if e, err = s.extentWithHeader(ei); err != nil {
+	if e, err = s.ExtentWithHeader(ei); err != nil {
 		return nil
 	}
 
@@ -1017,7 +1017,7 @@ func (s *ExtentStore) TinyExtentGetFinfoSize(extentID uint64) (size uint64, err 
 		return 0, fmt.Errorf("unavali extent id (%v)", extentID)
 	}
 	ei, _ := s.getExtentInfoByExtentID(extentID)
-	if e, err = s.extentWithHeader(ei); err != nil {
+	if e, err = s.ExtentWithHeader(ei); err != nil {
 		return
 	}
 
@@ -1072,7 +1072,7 @@ func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newO
 		return 0, 0, fmt.Errorf("unavali extent(%v)", extentID)
 	}
 	ei, _ := s.getExtentInfoByExtentID(extentID)
-	if e, err = s.extentWithHeader(ei); err != nil {
+	if e, err = s.ExtentWithHeader(ei); err != nil {
 		return
 	}
 
@@ -1112,6 +1112,7 @@ func (s *ExtentStore) EvictExpiredCache() {
 
 func (s *ExtentStore) ForceEvictCache(ratio Ratio) {
 	s.cache.ForceEvict(ratio)
+	s.cache.FlushAllFD()
 }
 
 func (s *ExtentStore) PlaybackTinyDelete() (err error) {
@@ -1141,7 +1142,7 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 			continue
 		}
 		var e *Extent
-		if e, err = s.extentWithHeader(ei); err != nil {
+		if e, err = s.ExtentWithHeader(ei); err != nil {
 			return
 		}
 		if _, err = e.DeleteTiny(int64(offset), int64(size)); err != nil {
@@ -1153,7 +1154,7 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 
 func (s *ExtentStore) GetRealBlockCnt(extentID uint64) (block int64, err error) {
 	ei, _ := s.getExtentInfoByExtentID(extentID)
-	e, err := s.extentWithHeader(ei)
+	e, err := s.ExtentWithHeader(ei)
 	if err != nil {
 		return
 	}

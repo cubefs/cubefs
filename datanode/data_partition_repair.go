@@ -568,7 +568,15 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 	if err != nil {
 		return errors.Trace(err, "streamRepairExtent Watermark error")
 	}
+	//if the data size of extentinfo struct is not equal with the data size of extent struct,use the data size of extent struct
+	e, err := store.ExtentWithHeader(localExtentInfo)
+	if err != nil {
+		return errors.Trace(err, "streamRepairExtent extentWithHeader error")
+	}
 
+	if localExtentInfo[storage.Size] != uint64(e.Size()) {
+		localExtentInfo[storage.Size] = uint64(e.Size())
+	}
 	if localExtentInfo[storage.Size] >= remoteExtentInfo[storage.Size] {
 		return nil
 	}

@@ -624,9 +624,9 @@ func (d *Disk) forceEvictFileDescriptor() {
 	var count = atomic.LoadInt64(&d.fdCount)
 	log.LogDebugf("action[forceEvictFileDescriptor] disk(%v) current FD count(%v)",
 		d.Path, count)
-	if d.fdLimit.MaxFDLimit == 0 || uint64(count) <= d.fdLimit.MaxFDLimit {
-		return
-	}
+	//if d.fdLimit.MaxFDLimit == 0 || uint64(count) <= d.fdLimit.MaxFDLimit {
+	//	return
+	//}
 
 	d.RLock()
 	var partitions = make([]*DataPartition, 0, len(d.partitionMap))
