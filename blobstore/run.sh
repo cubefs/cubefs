@@ -1,7 +1,7 @@
 #!/bin/bash
 source ./init.sh
 
-# build blobstore and get consul kafka mongo
+# build blobstore and get consul kafka
 INIT
 
 if [ ! -d ./run/logs ];then
@@ -30,17 +30,6 @@ if [ ${num} -le 1 ];then
 	exit 1
 fi
 
-# start mongo
-mkdir -p ./mongo/db
-./bin/mongodb-linux-x86_64-rhel70-3.6.23/bin/mongod --dbpath ./mongo/db --logpath ./run/logs/mongod.log --fork
- # check mongo running
-sleep 1
-num=`ps -ef | egrep ./bin/mongodb | egrep -v "grep|vi|tail" | wc -l`
-if [ ${num} -lt 1 ];then
-	echo "Failed to start mongo."
-	exit 1
-fi
-
 # Start the clustermgr
 nohup ./bin/clustermgr -f ./cmd/clustermgr/clustermgr.conf >> ./run/logs/clustermgr.log  2>&1 &
 nohup ./bin/clustermgr -f ./cmd/clustermgr/clustermgr1.conf >> ./run/logs/clustermgr1.log  2>&1 &
@@ -65,8 +54,6 @@ fi
 echo "start proxy ok"
 
 # Start the scheduler
-# must ensure start mqproxy succeed and has mongodb
-# mongodb should create 'database.db_name' and 'task_archive_store_db_name'
 nohup ./bin/scheduler -f ./cmd/scheduler/scheduler.conf >> ./run/logs/scheduler.log 2>&1 &
 sleep 1
 num=`ps -ef | egrep ./bin/scheduler |  egrep -v "vi|tail|grep" | wc -l`

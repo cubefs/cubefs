@@ -2,7 +2,7 @@
 
 source ./init.sh
 
-# build blobstore and get consul kafka mongo
+# build blobstore and get consul kafka
 INIT
 
 docker build -t "blobstore:v1" -f Dockerfile .
