@@ -635,9 +635,11 @@ func (d *Disk) forceEvictFileDescriptor() {
 	}
 	d.RUnlock()
 	var ratio = storage.NewRatio(d.fdLimit.ForceEvictRatio)
+	var flushedCount int
 	for _, partition := range partitions {
 		partition.ForceEvictFileDescriptor(ratio)
+		flushedCount += partition.ForceFlushAllFD()
 	}
-	log.LogDebugf("action[forceEvictFileDescriptor] disk(%v) evicted FD count [%v -> %v]",
-		d.Path, count, atomic.LoadInt64(&d.fdCount))
+	log.LogDebugf("action[forceEvictFileDescriptor] disk(%v) evicted FD count [%v -> %v],flushed count(%v)",
+		d.Path, count, atomic.LoadInt64(&d.fdCount), flushedCount)
 }

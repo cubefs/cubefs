@@ -238,15 +238,17 @@ func (cache *ExtentCache) ForceEvict(ratio Ratio) {
 	}
 }
 
-func (cache *ExtentCache) FlushAllFD() {
+func (cache *ExtentCache) FlushAllFD() (cnt int) {
 	cache.lock.RLock()
 	for element := cache.extentList.Front(); element != nil; element = element.Next() {
 		extent := element.Value.(*Extent)
 		if extent.isOccurNewWrite {
+			cnt++
 			_ = extent.Flush()
 		}
 	}
 	cache.lock.RUnlock()
+	return
 }
 
 // Flush synchronizes the extent stored in the cache to the disk.

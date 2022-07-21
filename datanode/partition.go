@@ -134,7 +134,7 @@ type DataPartition struct {
 
 	persistMetadataSync chan struct{}
 
-	inRepairExtents map[uint64]struct{}
+	inRepairExtents  map[uint64]struct{}
 	inRepairExtentMu sync.Mutex
 }
 
@@ -264,7 +264,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		DataPartitionCreateType: dpCfg.CreationType,
 		monitorData:             statistics.InitMonitorData(statistics.ModelDataNode),
 		persistMetadataSync:     make(chan struct{}, 1),
-		inRepairExtents:		 make(map[uint64]struct{}),
+		inRepairExtents:         make(map[uint64]struct{}),
 	}
 	partition.replicasInit()
 
@@ -282,7 +282,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		return
 	}
 	rand.Seed(time.Now().UnixNano())
-	partition.FullSyncTinyDeleteTime = time.Now().Unix()+rand.Int63n(3600*24)
+	partition.FullSyncTinyDeleteTime = time.Now().Unix() + rand.Int63n(3600*24)
 	partition.lastSyncTinyDeleteTime = partition.FullSyncTinyDeleteTime
 	// Attach data partition to disk mapping
 	disk.AttachDataPartition(partition)
@@ -1099,4 +1099,8 @@ func (dp *DataPartition) EvictExpiredFileDescriptor() {
 
 func (dp *DataPartition) ForceEvictFileDescriptor(ratio storage.Ratio) {
 	dp.extentStore.ForceEvictCache(ratio)
+}
+
+func (dp *DataPartition) ForceFlushAllFD() (cnt int) {
+	return dp.extentStore.ForceFlushAllFD()
 }

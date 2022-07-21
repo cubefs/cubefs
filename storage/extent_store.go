@@ -1112,7 +1112,10 @@ func (s *ExtentStore) EvictExpiredCache() {
 
 func (s *ExtentStore) ForceEvictCache(ratio Ratio) {
 	s.cache.ForceEvict(ratio)
-	s.cache.FlushAllFD()
+}
+
+func (s *ExtentStore) ForceFlushAllFD() (cnt int) {
+	return s.cache.FlushAllFD()
 }
 
 func (s *ExtentStore) PlaybackTinyDelete() (err error) {
