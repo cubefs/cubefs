@@ -42,9 +42,8 @@ type Streamer struct {
 	idle      int // how long there is no new request
 	traversed int // how many times the streamer is traversed
 
-	extents     *ExtentCache
-	refreshLock sync.Mutex
-	once        sync.Once
+	extents *ExtentCache
+	once    sync.Once
 
 	handler      *ExtentHandler // current open handler
 	handlerMutex sync.Mutex
@@ -309,11 +308,9 @@ func (s *Streamer) UpdateExpiredExtentCache(ctx context.Context) {
 	if expireSecond <= 0 {
 		return
 	}
-	s.refreshLock.Lock()
 	if s.extents.IsExpired(expireSecond) {
 		s.GetExtents(ctx)
 	}
-	s.refreshLock.Unlock()
 }
 
 func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *Packet) (targetHosts []string, isErr bool) {

@@ -18,12 +18,14 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -418,6 +420,17 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	s.UpdateExpiredExtentCache(ctx)
 
 	read, hasHole, err = s.read(ctx, data, offset, size)
+	if err != nil && strings.Contains(err.Error(), storage.ExtentNotFoundError.Error()) {
+		if !s.extents.IsExpired(1) {
+			return
+		}
+		if err = s.GetExtents(ctx); err != nil {
+			return
+		}
+		read, hasHole, err = s.read(ctx, data, offset, size)
+		log.LogWarnf("Retry read after refresh extent keys: ino(%v) offset(%v) size(%v) result size(%v) hasHole(%v) err(%v)",
+			s.inode, offset, size, read, hasHole, err)
+	}
 	return
 }
 
