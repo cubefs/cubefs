@@ -39,6 +39,11 @@ if [[ $? -eq 0 ]]; then
     mv bin/cfs-client /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client;
     mv bin/libcfssdk.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfssdk.so;
     mv bin/libcfssdk_cshared.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfssdk_cshared.so;
+    mv bin/libcfsclient.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfsclient.so;
+    mv bin/libempty.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libempty.so;
+    if [ "${build_opt}"x = "test"x ]; then
+        mv bin/test-bypass /go/src/github.com/chubaofs/chubaofs/docker/bin/test-bypass;
+    fi
 else
     echo -e "\033[31mfail\033[0m";
     failed=1

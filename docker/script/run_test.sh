@@ -234,6 +234,12 @@ wait_proc_done() {
     fi
 }
 
+reload_client() {
+    echo -n "run update libcfssdk.so test    ... "
+    curl "http://127.0.0.1:17410/set/clientUpgrade?version=test"
+    echo ""
+}
+
 run_unit_test() {
     echo "Running unit test"
     echo "************************";
@@ -341,6 +347,11 @@ run_trash_test() {
    echo -e "\033[32mdone\033[0m"
 }
 
+run_bypass_client_test() {
+    echo "run bypass client test..."
+    LD_PRELOAD=/usr/lib64/libcfsclient.so CFS_CONFIG_PATH=/cfs/conf/bypass.ini CFS_MOUNT_POINT=/cfs/mnt /cfs/bin/test-bypass
+}
+
 init_cli
 check_cluster
 create_cluster_user
@@ -353,9 +364,11 @@ add_rocksdb_mode_meta_partitions ; sleep 2
 show_cluster_info
 start_client ; sleep 2
 run_unit_test
+reload_client
 run_ltptest
 run_s3_test
 set_trash_days; sleep 310
 run_trash_test; sleep 2
 stop_client ; sleep 20
+run_bypass_client_test
 delete_volume

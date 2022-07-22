@@ -2964,12 +2964,15 @@ static void *update_cfs_func(void* param) {
     while(1) {
         sleep(INTERVAL);
         reload = getenv("RELOAD_CLIENT");
-        if (reload == NULL || strcmp(reload, "1") != 0)
+        if (reload == NULL)
+            continue;
+        if (strcmp(reload, "1") != 0 && strcmp(reload, "test") != 0)
             continue;
 
         g_need_rwlock = true;
         pthread_rwlock_wrlock(&update_rwlock);
-        if (reload == NULL || strcmp(reload, "1") != 0) {
+        reload = getenv("RELOAD_CLIENT");
+        if (reload == NULL) {
             pthread_rwlock_unlock(&update_rwlock);
             continue;
         }
@@ -2990,6 +2993,9 @@ static void *update_cfs_func(void* param) {
 
         cfs_sdk_close();
         plugClose(old_handle);
+        if (strcmp(reload, "test") == 0)
+            sleep(10);
+
         setenv("LD_PRELOAD", envPtr, 1);
 
         void *handle = plugOpen("/usr/lib64/libcfssdk.so");
@@ -3008,8 +3014,10 @@ static void *update_cfs_func(void* param) {
         }
         free(client_state);
         g_cfs_client_id = new_client;
-        fprintf(stderr, "Finish to update client.\n");
         pthread_rwlock_unlock(&update_rwlock);
+        fprintf(stderr, "Finish to update client.\n");
+
+        unsetenv("RELOAD_CLIENT");
     }
     free(envPtr);
 }
