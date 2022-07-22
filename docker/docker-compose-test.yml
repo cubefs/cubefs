@@ -386,8 +386,11 @@ services:
         volumes:
             - ./bin:/cfs/bin:ro
             - ./bin/libcfssdk.so:/usr/lib64/libcfssdk.so:ro
+            - ./bin/libcfsclient.so:/usr/lib64/libcfsclient.so:ro
+            - ./bin/libempty.so:/usr/lib64/libempty.so:ro
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
+            - ./conf/bypass.ini:/cfs/conf/bypass.ini
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
             - ./script/run_test.sh:/cfs/script/start.sh

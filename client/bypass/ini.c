@@ -254,7 +254,7 @@ int ini_parse(const char* filename, ini_handler handler, void* user)
     FILE* file;
     int error;
 
-    void *handle = dlopen("/lib64/libc.so.6", RTLD_LAZY);
+    void *handle = dlopen("libc.so.6", RTLD_LAZY);
     if (!handle) {
         return -1;
     }
