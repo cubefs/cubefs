@@ -189,7 +189,7 @@ func (dbInfo *RocksDbInfo) interOpenDb(dir string) (err error) {
 	dbInfo.defReadOption  = gorocksdb.NewDefaultReadOptions()
 	dbInfo.defWriteOption = gorocksdb.NewDefaultWriteOptions()
 	dbInfo.defFlushOption = gorocksdb.NewDefaultFlushOptions()
-	dbInfo.defWriteOption.DisableWAL(true)
+	//dbInfo.defWriteOption.DisableWAL(true)
 	return nil
 }
 
