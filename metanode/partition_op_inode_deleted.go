@@ -314,9 +314,11 @@ func (mp *metaPartition) BatchGetDeletedInode(req *BatchGetDeletedInodeReq, p *P
 	return
 }
 
+//todo:
 func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 	ctx := context.Background()
 	fsmFunc := func(inodes []uint64) (err error) {
+		log.LogDebugf("[CleanExpiredDeletedINode], vol:%v, mp:%v, inodes:%v, inodeCnt:%v", mp.config.VolName, mp.config.PartitionId, inodes, len(inodes))
 		batchIno := make(FSMDeletedINodeBatch, 0, len(inodes))
 		for _, ino := range inodes {
 			fsmIno := new(FSMDeletedINode)
@@ -347,13 +349,19 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 	if mp.config.TrashRemainingDays > 0 {
 		expires = time.Now().AddDate(0, 0, 0-int(mp.config.TrashRemainingDays)).UnixNano() / 1000
 	}
-	log.LogDebugf("[CleanExpiredDeletedINode] vol: %v, expires: %v", mp.config.VolName, expires)
+	log.LogDebugf("[CleanExpiredDeletedINode] vol: %v, mp: %v, expires: %v", mp.config.VolName, mp.config.PartitionId, expires)
 
 	total := 0
 	defer log.LogDebugf("[CleanExpiredDeletedINode], cleaned %v until %v", total, expires)
 	batch := 128
 	inos := make([]uint64, 0, batch)
-	_ = mp.inodeDeletedTree.Range(nil, nil, func(data []byte) (bool, error) {
+	snap := mp.GetSnapShot()
+	if snap == nil {
+		err = fmt.Errorf("[CleanExpiredDeletedINode] mp(%v) tree snap is nil", mp.config.PartitionId)
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(DelInodeType, func(data []byte) (bool, error) {
 		_, ok := mp.IsLeader()
 		if !ok {
 			return false, errors.NewErrorf("not leader")
@@ -377,7 +385,7 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 
 		err = fsmFunc(inos)
 		if err != nil {
-			log.LogErrorf("[CleanExpiredDeletedINode], vol:%v, err: %v", mp.config.VolName, err.Error())
+			log.LogErrorf("[CleanExpiredDeletedINode], vol:%v, mp:%v, err: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
 			return false, err
 		}
 		total += batch
@@ -390,6 +398,10 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 		time.Sleep(1 * time.Second)
 		return true, nil
 	})
+	if err != nil {
+		log.LogErrorf("[CleanExpiredDeletedINode], vol:%v, mp:%v, err: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
+		return
+	}
 
 	_, ok := mp.IsLeader()
 	if !ok {
@@ -402,7 +414,7 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 
 	err = fsmFunc(inos)
 	if err != nil {
-		log.LogErrorf("[CleanExpiredDeletedINode], %v, err: %v", mp.config.VolName, err.Error())
+		log.LogErrorf("[CleanExpiredDeletedINode], vol: %v, mp: %v, err: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
 		return
 	}
 	total += len(inos)

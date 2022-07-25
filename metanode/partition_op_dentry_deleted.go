@@ -279,9 +279,11 @@ func (mp *metaPartition) readDeletedDir(req *ReadDeletedDirReq) (resp *ReadDelet
 	return
 }
 
+//todo:add test
 func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 	ctx := context.Background()
 	fsmFunc := func(dens DeletedDentryBatch) (err error) {
+		log.LogDebugf("[CleanExpiredDeletedDentry], vol:%v, mp:%v, deletedDentryCnt:%v", mp.config.VolName, mp.config.PartitionId, len(dens))
 		var data []byte
 		data, err = dens.Marshal()
 		if err != nil {
@@ -307,10 +309,16 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 	}
 
 	total := 0
-	defer log.LogInfof("[CleanExpiredDeletedDentry], vol: %v, cleaned %v until %v", mp.config.VolName, total, expires)
+	defer log.LogInfof("[CleanExpiredDeletedDentry], vol: %v, mp: %v, cleaned %v until %v", mp.config.VolName, mp.config.PartitionId, total, expires)
 	batch := 128
 	dens := make(DeletedDentryBatch, 0, batch)
-	_ = mp.dentryDeletedTree.Range(nil, nil, func(data []byte) (bool, error) {
+	snap := mp.GetSnapShot()
+	if snap == nil {
+		err = fmt.Errorf("[CleanExpiredDeletedDentry] mp(%v) tree snap is nil", mp.config.PartitionId)
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(DelDentryType, func(data []byte) (bool, error) {
 		_, ok := mp.IsLeader()
 		if !ok {
 			return false, nil
@@ -333,7 +341,7 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 
 		err = fsmFunc(dens)
 		if err != nil {
-			log.LogErrorf("[CleanExpiredDeletedDentry], vol: %v, err: %v", mp.config.VolName, err.Error())
+			log.LogErrorf("[CleanExpiredDeletedDentry], vol: %v, mp: %v, err: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
 			return false, err
 		}
 		total += batch
@@ -346,6 +354,10 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 		time.Sleep(1 * time.Second)
 		return true, nil
 	})
+	if err != nil {
+		log.LogErrorf("[CleanExpiredDeletedDentry], vol: %v, mp: %v, err: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
+		return
+	}
 
 	_, ok := mp.IsLeader()
 	if !ok {
@@ -358,7 +370,7 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 
 	err = fsmFunc(dens)
 	if err != nil {
-		log.LogErrorf("[CleanExpiredDeletedDentry], %v, err: %v", mp.config.VolName, err.Error())
+		log.LogErrorf("[CleanExpiredDeletedDentry], vol: %v, mp: %v, err: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
 		return
 	}
 	total += len(dens)
