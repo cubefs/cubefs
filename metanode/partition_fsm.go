@@ -204,7 +204,10 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			snap:       NewSnapshot(mp),
 		}
 		if sMsg.snap != nil {
-			mp.storeChan <- sMsg
+			select {
+			case mp.storeChan <- sMsg:
+			default:
+			}
 		}
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(dbWriteHandle, msg.V)
@@ -619,7 +622,10 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			snap:       NewSnapshot(mp),
 		}
 		if sMsg.snap != nil {
-			mp.storeChan <- sMsg
+			select {
+			case mp.storeChan <- sMsg:
+			default:
+			}
 		}
 		mp.extReset <- struct{}{}
 		log.LogInfof("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v),cursor(%v)", mp.config.PartitionId, mp.applyID, mp.config.Cursor)

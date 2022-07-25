@@ -198,7 +198,10 @@ func (mp *metaPartition) appendDelExtentsToDb() {
 			} else if extDeleteCursor != curDate {
 				log.LogInfof("Mp[%d] hour changed, notify sync to follower, old:%d, new:%d", mp.config.PartitionId, extDeleteCursor, curDate)
 				extDeleteCursor = curDate
-				mp.extDelCursor<- extDeleteCursor
+				select {
+				case mp.extDelCursor<- extDeleteCursor:
+				default:
+				}
 			}
 		case eks := <-mp.extDelCh:
 			key  := make( []byte, dbExtentKeySize)
@@ -249,7 +252,10 @@ func (mp *metaPartition) fsmSyncDelExtents(data []byte) {
 	}
 
 	if _, ok := mp.IsLeader(); !ok {
-		mp.extDelCursor <- extDeleteCursor
+		select {
+		case mp.extDelCursor<- extDeleteCursor:
+		default:
+		}
 	}
 	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, err count:%d finished", mp.config.PartitionId, extDeleteCursor, len(eks))
 	return

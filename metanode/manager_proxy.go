@@ -29,7 +29,7 @@ const (
 	ForceClosedConnect = true
 	NoClosedConnect    = false
 
-	ProxyReadTimeoutSec = 5 // Seconds of read timout
+	ProxyReadTimeoutSec = 2 // Seconds of read timout
 )
 
 // The proxy is used during the leader change. When a leader of a partition changes, the proxy forwards the request to

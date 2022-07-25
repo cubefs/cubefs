@@ -237,6 +237,6 @@ const (
 
 const (
 	RaftHangTimeOut       = 60
-	ProxyTryToLeaderRetryCnt = 3
+	ProxyTryToLeaderRetryCnt = 1
 )
 
