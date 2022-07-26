@@ -420,7 +420,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
 			}
 
-			if optTrashDays > -1 {
+			if optTrashDays > -1 && uint32(optTrashDays) != vv.TrashRemainingDays {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  TrashRemainingDays  : %v -> %v\n", vv.TrashRemainingDays, optTrashDays))
 				vv.TrashRemainingDays = uint32(optTrashDays)
@@ -517,7 +517,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume capacity [Unit: GB]")
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, 0, "Specify data partition replicas number")
 	cmd.Flags().IntVar(&optMpReplicas, CliFlagMpReplicas, 0, "Specify meta partition replicas number")
-	cmd.Flags().IntVar(&optTrashDays, CliFlagTrashDays, 0, "Specify trash remaining days")
+	cmd.Flags().IntVar(&optTrashDays, CliFlagTrashDays, -1, "Specify trash remaining days")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read from replica follower")
 	cmd.Flags().StringVar(&optNearRead, CliFlagEnableNearRead, "", "Enable read from ip near replica")
 	cmd.Flags().StringVar(&optForceROW, CliFlagEnableForceROW, "", "Enable only row instead of overwrite")
