@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/sdk/data"
 	"os"
 	"sort"
 	"strconv"
@@ -59,6 +60,8 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMigrateEc(client),
 		newStopMigratingByDataPartition(client),
 		newDataPartitionResetRecoverCmd(client),
+		newDataPartitionStopCmd(client),
+		newDataPartitionReloadCmd(client),
 	)
 	return cmd
 }
@@ -69,6 +72,8 @@ const (
 	cmdCheckCommitDataPartitionShort    = "Check the snapshot blocking by analyze commit id in data partitions"
 	cmdResetDataPartitionShort          = "Reset corrupt data partition"
 	cmdDataPartitionDecommissionShort   = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionStopShort           = "Stop a data partition progress in a safe way"
+	cmdDataPartitionReloadShort         = "Reload a data partition on disk"
 	cmdDataPartitionReplicateShort      = "Add a replication of the data partition on a new address"
 	cmdDataPartitionDeleteReplicaShort  = "Delete a replication of the data partition on a fixed address"
 	cmdDataPartitionAddLearnerShort     = "Add a learner of the data partition on a new address"
@@ -636,6 +641,120 @@ this action may lead to data loss, be careful to do this.`,
 	}
 	cmd.Flags().StringVar(&optManualResetAddrs, CliFlagAddress, "", "reset raft members according to the addr, split by ',' ")
 
+	return cmd
+}
+
+func newDataPartitionStopCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpStop + " [ADDRESS] [DATA PARTITION ID] ",
+		Short: cmdDataPartitionStopShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				dp          *proto.DataPartitionInfo
+				partitionID uint64
+				err         error
+			)
+			defer func() {
+				if err != nil {
+					stdout(err.Error())
+				}
+			}()
+			address := args[0]
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			dp, err = client.AdminAPI().GetDataPartition("", partitionID)
+			if err != nil {
+				return
+			}
+			var exist bool
+			for _, h := range dp.Hosts {
+				if h == address {
+					exist = true
+					break
+				}
+			}
+			if !exist {
+				err = fmt.Errorf("host[%v] not exist in hosts[%v]", address, dp.Hosts)
+				return
+			}
+			dHost := fmt.Sprintf("%v:%v", strings.Split(address, ":")[0], client.DataNodeProfPort)
+			dataClient := data.NewDataHttpClient(dHost, false)
+			err = dataClient.StopPartition(partitionID)
+			if err != nil {
+				return
+			}
+			fmt.Printf("stop partition: %v success\n", partitionID)
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionReloadCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpReload + " [ADDRESS] [DATA PARTITION ID] ",
+		Short: cmdDataPartitionReloadShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				dp          *proto.DataPartitionInfo
+				partitionID uint64
+				err         error
+			)
+			defer func() {
+				if err != nil {
+					stdout(err.Error())
+				}
+			}()
+			address := args[0]
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			dp, err = client.AdminAPI().GetDataPartition("", partitionID)
+			if err != nil {
+				return
+			}
+			var diskPath string
+			var exist bool
+			for _, r := range dp.Replicas {
+				if r.Addr == address {
+					exist = true
+					diskPath = r.DiskPath
+					break
+				}
+			}
+			if !exist {
+				err = fmt.Errorf("host[%v] not exist in hosts[%v]", address, dp.Hosts)
+				return
+			}
+			partitionPath := fmt.Sprintf("datapartition_%v_%v", partitionID, dp.Replicas[0].Total)
+
+			dHost := fmt.Sprintf("%v:%v", strings.Split(address, ":")[0], client.DataNodeProfPort)
+			dataClient := data.NewDataHttpClient(dHost, false)
+			err = dataClient.ReLoadPartition(partitionPath, diskPath)
+			if err != nil {
+				return
+			}
+			fmt.Printf("reload partition: %v success\n", partitionID)
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
 	return cmd
 }
 

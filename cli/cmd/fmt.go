@@ -948,44 +948,6 @@ func isEqualStrings(strs1, strs2 []string) bool {
 	return true
 }
 
-var tinyExtentTableRowPattern = "%-20v    %-20v    %-20v    %-20v    %-8v    %-10v    %-8v    %-20v"
-
-func formatTinyExtentTableHeader() string {
-	return fmt.Sprintf(tinyExtentTableRowPattern, "Address", "Disk", "IsLeader", "Size", "Block", "AvailSize", "HoleNum", "ModifyTime")
-}
-
-func formatTinyExtent(r *proto.DataReplica, extent *proto.ExtentInfoBlock, tinyHole *proto.DNTinyExtentInfo) string {
-	if extent == nil && tinyHole == nil {
-		return fmt.Sprintf(tinyExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, "NULL", "NULL", "NULL", "NULL",
-			"NULL")
-	}
-	if extent == nil {
-		return fmt.Sprintf(tinyExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, "NULL", tinyHole.BlocksNum, tinyHole.ExtentAvaliSize, len(tinyHole.Holes),
-			"NULL")
-	}
-	if tinyHole == nil {
-		return fmt.Sprintf(tinyExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, extent[proto.ExtentInfoSize], "NULL", "NULL", "NULL",
-			formatTime(int64(extent[proto.ExtentInfoModifyTime])))
-	}
-	return fmt.Sprintf(tinyExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, extent[proto.ExtentInfoSize], tinyHole.BlocksNum, tinyHole.ExtentAvaliSize, len(tinyHole.Holes),
-		formatTime(int64(extent[proto.ExtentInfoModifyTime])))
-}
-
-var normalExtentTableRowPattern = "%-20v    %-20v    %-20v    %-20v    %-20v     %-20v"
-
-func formatNormalExtentTableHeader() string {
-	return fmt.Sprintf(normalExtentTableRowPattern, "Address", "Disk", "IsLeader", "Size", "Crc", "ModifyTime")
-}
-
-func formatNormalExtent(r *proto.DataReplica, extent *proto.ExtentInfoBlock) string {
-	if extent == nil {
-		return fmt.Sprintf(normalExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, "NULL", "NULL", "NULL")
-	}
-
-	return fmt.Sprintf(normalExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, extent[proto.ExtentInfoSize], extent[proto.ExtentInfoCrc],
-		formatTime(int64(extent[proto.ExtentInfoModifyTime])))
-}
-
 var (
 	idcQueryTablePattern    = "%-16s	%-16s"
 	idcQueryDataTableHeader = fmt.Sprintf(idcQueryTablePattern, "Name", "Zones")
@@ -1150,3 +1112,36 @@ func formatCompactCheckFragView(volName string, mpId, inodeId uint64, extLength 
 	return fmt.Sprintf(checkFragViewTableRowPattern, volName, mpId, inodeId, extLength, ekAvgSize, inodeSize)
 }
 
+var tinyExtentTableRowPattern = "%-20v    %-20v    %-20v    %-20v    %-32v    %-8v    %-10v    %-8v   %-20v"
+
+func formatTinyExtentTableHeader() string {
+	return fmt.Sprintf(tinyExtentTableRowPattern, "Address", "Disk", "IsLeader", "Size", "MD5", "Block", "AvailSize", "HoleNum", "ModifyTime")
+}
+
+func formatTinyExtent(r *proto.DataReplica, extent *proto.ExtentInfoBlock, tinyHole *proto.DNTinyExtentInfo, md5Sum string) string {
+	if extent == nil && tinyHole == nil {
+		return fmt.Sprintf(tinyExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, "NULL", "NULL", "NULL", "NULL", "NULL",
+			"NULL")
+	}
+	if extent == nil {
+		return fmt.Sprintf(tinyExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, "NULL", md5Sum, tinyHole.BlocksNum, tinyHole.ExtentAvaliSize, len(tinyHole.Holes),
+			"NULL")
+	}
+	if tinyHole == nil {
+		return fmt.Sprintf(tinyExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, extent[proto.ExtentInfoSize], md5Sum, "NULL", "NULL", "NULL", formatTime(int64(extent[proto.ExtentInfoModifyTime])))
+	}
+	return fmt.Sprintf(tinyExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, extent[proto.ExtentInfoSize], md5Sum, tinyHole.BlocksNum, tinyHole.ExtentAvaliSize, len(tinyHole.Holes), formatTime(int64(extent[proto.ExtentInfoModifyTime])))
+}
+
+var normalExtentTableRowPattern = "%-20v    %-20v    %-20v    %-20v    %-20v     %-32v     %-20v"
+
+func formatNormalExtentTableHeader() string {
+	return fmt.Sprintf(normalExtentTableRowPattern, "Address", "Disk", "IsLeader", "Size", "Crc", "MD5", "ModifyTime")
+}
+
+func formatNormalExtent(r *proto.DataReplica, extent *proto.ExtentInfoBlock, md5Sum string) string {
+	if extent == nil {
+		return fmt.Sprintf(normalExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, "NULL", "NULL", "NULL", "NULL")
+	}
+	return fmt.Sprintf(normalExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, extent[proto.ExtentInfoSize], extent[proto.ExtentInfoCrc], md5Sum, formatTime(int64(extent[proto.ExtentInfoModifyTime])))
+}

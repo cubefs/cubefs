@@ -26,6 +26,8 @@ const (
 	CliOpSet               = "set"
 	CliOpDecommission      = "decommission"
 	CliOpDecommissionDisk  = "decommissionDisk"
+	CliOpStop              = "stop"
+	CliOpReload            = "reload"
 	CliOpDownloadZip       = "load"
 	CliOpMetaCompatibility = "meta"
 	CliOpFreeze            = "freeze"

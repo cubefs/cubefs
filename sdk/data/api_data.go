@@ -145,12 +145,39 @@ func (c *DataHttpClient) mergeRequestUrl(url string, params map[string]string) s
 	}
 	return url
 }
+
 func (c *DataHttpClient) RequestHttp(method, path string, param map[string]string) (respData []byte, err error) {
 	req := newAPIRequest(method, path)
 	for k, v := range param {
 		req.addParam(k, v)
 	}
 	return c.serveRequest(req)
+}
+
+func (dc *DataHttpClient) ComputeExtentMd5(partitionID, extentID, offset, size uint64) (md5 string, err error){
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[ComputeExtentMd5],pid:%v, extent:%v, offset:%v, size:%v, err:%v", partitionID, extentID, offset, size, err)
+		}
+		log.LogFlush()
+	}()
+	var buf []byte
+	req := newAPIRequest(http.MethodGet, "/computeExtentMd5")
+	req.addParam("id", strconv.FormatUint(partitionID, 10))
+	req.addParam("extent", strconv.FormatUint(extentID, 10))
+	req.addParam("offset", strconv.FormatUint(offset, 10))
+	req.addParam("size", strconv.FormatUint(size, 10))
+	res := struct {
+		PartitionID uint64 `json:"PartitionID"`
+		ExtentID    uint64 `json:"ExtentID"`
+		Md5Sum      string `json:"md5"`
+	}{}
+	buf, err = dc.serveRequest(req)
+	if err = json.Unmarshal(buf, &res); err != nil {
+		return
+	}
+	md5 = res.Md5Sum
+	return
 }
 
 //DataNode api
@@ -269,6 +296,7 @@ func (c *DataHttpClient) ReLoadPartition(partitionDirName, dirPath string) (err 
 	}
 	return
 }
+
 
 //repair agent
 func (c *DataHttpClient) RepairExtent(extent uint64, partitionPath string, partition uint64) (err error) {

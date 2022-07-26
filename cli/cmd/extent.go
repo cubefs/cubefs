@@ -35,6 +35,8 @@ const (
 	cmdExtentShort              = "Check extent consistency"
 	cmdExtentInfo               = "info [partition] [extent]"
 	cmdExtentInfoShort          = "show extent info"
+	cmdExtentRepair             = "repair [partition] [extent(split by `-`)] [host]"
+	cmdExtentRepairShort        = "repair extent"
 	cmdCheckReplicaUse          = "check-replica volumeName"
 	cmdCheckReplicaShort        = "Check replica consistency"
 	cmdCheckLengthUse           = "check-length volumeName"
@@ -51,8 +53,6 @@ const (
 	cmdCheckGarbageShort        = "Check garbage extents"
 	cmdCheckTinyExtentHoleUse   = "check-tiny-hole"
 	cmdCheckTinyExtentHoleShort = "Check tiny extents hole"
-	cmdExtentRepair             = "repair [partition] [extent] [host]"
-	cmdExtentRepairShort        = "repair extent"
 
 )
 
@@ -182,25 +182,27 @@ func newExtentGetCmd() *cobra.Command {
 			for _, r := range dp.Replicas {
 				dHost := fmt.Sprintf("%v:%v", strings.Split(r.Addr, ":")[0], client.DataNodeProfPort)
 				dataClient := data.NewDataHttpClient(dHost, false)
+
 				extent, err1 := dataClient.GetExtentInfo(partitionID, extentID)
 				if err1 != nil {
 					continue
 				}
+				md5Sum, _ := dataClient.ComputeExtentMd5(partitionID, extentID, 0, 0)
 				if storage.IsTinyExtent(extentID) {
 					extentHoles, _ := dataClient.GetExtentHoles(partitionID, extentID)
-					stdout("%v\n", formatTinyExtent(r, extent, extentHoles))
+					stdout("%v\n", formatTinyExtent(r, extent, extentHoles, md5Sum))
 				} else {
-					stdout("%v\n", formatNormalExtent(r, extent))
+					stdout("%v\n", formatNormalExtent(r, extent, md5Sum))
 				}
 
 			}
 		},
 	}
 	return cmd
-
 }
 
 func newExtentRepairCmd() *cobra.Command {
+	extentIDs := make([]uint64, 0)
 	var cmd = &cobra.Command{
 		Use:   cmdExtentRepair,
 		Short: cmdExtentRepairShort,
@@ -216,9 +218,15 @@ func newExtentRepairCmd() *cobra.Command {
 			if err != nil {
 				return
 			}
-			extentID, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
-				return
+			extentIDs = make([]uint64, 0)
+			extentStrs := strings.Split(args[1], "-")
+			for _, idStr := range extentStrs {
+				if eid, err1 := strconv.ParseUint(idStr, 10, 64); err1 != nil {
+					stdout("invalid extent id", err1)
+					return
+				} else {
+					extentIDs = append(extentIDs, eid)
+				}
 			}
 			host := args[2]
 			dp, err := client.AdminAPI().GetDataPartition("", partitionID)
@@ -242,11 +250,20 @@ func newExtentRepairCmd() *cobra.Command {
 			if err != nil {
 				return
 			}
-			err = dataClient.RepairExtent(extentID, partition.Path, partitionID)
-			if err != nil {
-				return
+			if len(extentIDs) == 1 {
+				err = dataClient.RepairExtent(extentIDs[0], partition.Path, partitionID)
+				if err != nil {
+					return
+				}
+				fmt.Printf("repair success: %v", extentIDs[0])
+			} else {
+				var extMap map[uint64]string
+				extMap, err = dataClient.RepairExtentBatch(args[1], partition.Path, partitionID)
+				if err != nil {
+					return
+				}
+				fmt.Printf("repair success: %v", extMap)
 			}
-			fmt.Printf("repair success")
 		},
 	}
 	return cmd
