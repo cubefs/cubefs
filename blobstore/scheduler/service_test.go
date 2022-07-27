@@ -287,22 +287,31 @@ func TestServiceAPI(t *testing.T) {
 		require.NoError(t, err)
 
 		// task detail
-		_, err = schedulerCli.BalanceTaskDetail(ctx, &api.TaskStatArgs{})
+		{
+			_, err = schedulerCli.DetailMigrateTask(ctx, nil)
+			require.Error(t, err)
+			_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{})
+			require.Error(t, err)
+			_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: "xxxxx", ID: "task_id"})
+			require.Error(t, err)
+			_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeBalance, ID: ""})
+			require.Error(t, err)
+		}
+		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeBalance, ID: "task-id"})
 		require.NoError(t, err)
-		_, err = schedulerCli.DiskRepairTaskDetail(ctx, &api.TaskStatArgs{})
+		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeDiskDrop, ID: "task-id"})
 		require.NoError(t, err)
-		_, err = schedulerCli.DiskDropTaskDetail(ctx, &api.TaskStatArgs{})
+		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeDiskRepair, ID: "task-id"})
 		require.NoError(t, err)
-		_, err = schedulerCli.ManualMigrateTaskDetail(ctx, &api.TaskStatArgs{})
+		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeManualMigrate, ID: "task-id"})
 		require.NoError(t, err)
-
-		_, err = schedulerCli.BalanceTaskDetail(ctx, &api.TaskStatArgs{})
+		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeBalance, ID: "err-task-id"})
 		require.Error(t, err)
-		_, err = schedulerCli.DiskRepairTaskDetail(ctx, &api.TaskStatArgs{})
+		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeDiskDrop, ID: "err-task-id"})
 		require.Error(t, err)
-		_, err = schedulerCli.DiskDropTaskDetail(ctx, &api.TaskStatArgs{})
+		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeDiskRepair, ID: "err-task-id"})
 		require.Error(t, err)
-		_, err = schedulerCli.ManualMigrateTaskDetail(ctx, &api.TaskStatArgs{})
+		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeManualMigrate, ID: "err-task-id"})
 		require.Error(t, err)
 	}
 }

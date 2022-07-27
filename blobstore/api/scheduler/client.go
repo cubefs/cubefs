@@ -39,12 +39,9 @@ const (
 	PathInspectAcquire       = "/inspect/acquire"
 	PathManualMigrateTaskAdd = "/manual/migrate/task/add"
 
-	PathBalanceTaskDetail       = "/balance/task/detail"
-	PathRepairTaskDetail        = "/repair/task/detail"
-	PathDropTaskDetail          = "/drop/task/detail"
-	PathManualMigrateTaskDetail = "/manual/migrate/task/detail"
-
-	PathUpdateVolume = "/update/vol"
+	PathTaskDetail    = "/task/detail"
+	PathTaskDetailURI = PathTaskDetail + "/:type/:id" // "/task/detail/:type/:id"
+	PathUpdateVolume  = "/update/vol"
 )
 
 var errNoServiceAvailable = errors.New("no service available")
@@ -61,10 +58,7 @@ type IScheduler interface {
 	CompleteInspect(ctx context.Context, args *CompleteInspectArgs) (err error)
 
 	// stats
-	DiskRepairTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error)
-	BalanceTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error)
-	DiskDropTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error)
-	ManualMigrateTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error)
+	DetailMigrateTask(ctx context.Context, args *MigrateTaskDetailArgs) (detail MigrateTaskDetail, err error)
 	Stats(ctx context.Context, host string) (ret TasksStat, err error)
 	LeaderStats(ctx context.Context) (ret TasksStat, err error)
 

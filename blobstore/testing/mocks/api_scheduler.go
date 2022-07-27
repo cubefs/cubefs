@@ -80,21 +80,6 @@ func (mr *MockISchedulerMockRecorder) AddManualMigrateTask(arg0, arg1 interface{
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddManualMigrateTask", reflect.TypeOf((*MockIScheduler)(nil).AddManualMigrateTask), arg0, arg1)
 }
 
-// BalanceTaskDetail mocks base method.
-func (m *MockIScheduler) BalanceTaskDetail(arg0 context.Context, arg1 *scheduler.TaskStatArgs) (scheduler.MigrateTaskDetail, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BalanceTaskDetail", arg0, arg1)
-	ret0, _ := ret[0].(scheduler.MigrateTaskDetail)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// BalanceTaskDetail indicates an expected call of BalanceTaskDetail.
-func (mr *MockISchedulerMockRecorder) BalanceTaskDetail(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BalanceTaskDetail", reflect.TypeOf((*MockIScheduler)(nil).BalanceTaskDetail), arg0, arg1)
-}
-
 // CancelTask mocks base method.
 func (m *MockIScheduler) CancelTask(arg0 context.Context, arg1 *scheduler.CancelTaskArgs) error {
 	m.ctrl.T.Helper()
@@ -137,34 +122,19 @@ func (mr *MockISchedulerMockRecorder) CompleteTask(arg0, arg1 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteTask", reflect.TypeOf((*MockIScheduler)(nil).CompleteTask), arg0, arg1)
 }
 
-// DiskDropTaskDetail mocks base method.
-func (m *MockIScheduler) DiskDropTaskDetail(arg0 context.Context, arg1 *scheduler.TaskStatArgs) (scheduler.MigrateTaskDetail, error) {
+// DetailMigrateTask mocks base method.
+func (m *MockIScheduler) DetailMigrateTask(arg0 context.Context, arg1 *scheduler.MigrateTaskDetailArgs) (scheduler.MigrateTaskDetail, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DiskDropTaskDetail", arg0, arg1)
+	ret := m.ctrl.Call(m, "DetailMigrateTask", arg0, arg1)
 	ret0, _ := ret[0].(scheduler.MigrateTaskDetail)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// DiskDropTaskDetail indicates an expected call of DiskDropTaskDetail.
-func (mr *MockISchedulerMockRecorder) DiskDropTaskDetail(arg0, arg1 interface{}) *gomock.Call {
+// DetailMigrateTask indicates an expected call of DetailMigrateTask.
+func (mr *MockISchedulerMockRecorder) DetailMigrateTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiskDropTaskDetail", reflect.TypeOf((*MockIScheduler)(nil).DiskDropTaskDetail), arg0, arg1)
-}
-
-// DiskRepairTaskDetail mocks base method.
-func (m *MockIScheduler) DiskRepairTaskDetail(arg0 context.Context, arg1 *scheduler.TaskStatArgs) (scheduler.MigrateTaskDetail, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DiskRepairTaskDetail", arg0, arg1)
-	ret0, _ := ret[0].(scheduler.MigrateTaskDetail)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// DiskRepairTaskDetail indicates an expected call of DiskRepairTaskDetail.
-func (mr *MockISchedulerMockRecorder) DiskRepairTaskDetail(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiskRepairTaskDetail", reflect.TypeOf((*MockIScheduler)(nil).DiskRepairTaskDetail), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetailMigrateTask", reflect.TypeOf((*MockIScheduler)(nil).DetailMigrateTask), arg0, arg1)
 }
 
 // LeaderStats mocks base method.
@@ -180,21 +150,6 @@ func (m *MockIScheduler) LeaderStats(arg0 context.Context) (scheduler.TasksStat,
 func (mr *MockISchedulerMockRecorder) LeaderStats(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LeaderStats", reflect.TypeOf((*MockIScheduler)(nil).LeaderStats), arg0)
-}
-
-// ManualMigrateTaskDetail mocks base method.
-func (m *MockIScheduler) ManualMigrateTaskDetail(arg0 context.Context, arg1 *scheduler.TaskStatArgs) (scheduler.MigrateTaskDetail, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ManualMigrateTaskDetail", arg0, arg1)
-	ret0, _ := ret[0].(scheduler.MigrateTaskDetail)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ManualMigrateTaskDetail indicates an expected call of ManualMigrateTaskDetail.
-func (mr *MockISchedulerMockRecorder) ManualMigrateTaskDetail(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ManualMigrateTaskDetail", reflect.TypeOf((*MockIScheduler)(nil).ManualMigrateTaskDetail), arg0, arg1)
 }
 
 // ReclaimTask mocks base method.

@@ -16,7 +16,9 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -179,14 +181,16 @@ func (c *client) AddManualMigrateTask(ctx context.Context, args *AddManualMigrat
 	})
 }
 
-// for task stat
-type TaskStatArgs struct {
-	TaskId string `json:"task_id"`
+// MigrateTaskDetailArgs migrate task detail args.
+type MigrateTaskDetailArgs struct {
+	Type proto.TaskType `json:"type"`
+	ID   string         `json:"id"`
 }
 
+// MigrateTaskDetail migrate task detail.
 type MigrateTaskDetail struct {
-	TaskInfo proto.MigrateTask    `json:"task_info"`
-	RunStats proto.TaskStatistics `json:"run_stats"`
+	Task proto.MigrateTask    `json:"task"`
+	Stat proto.TaskStatistics `json:"stat"`
 }
 
 type PerMinStats struct {
@@ -252,30 +256,14 @@ type TasksStat struct {
 	BlobDelete    *RunnerStat             `json:"blob_delete"`
 }
 
-func (c *client) DiskRepairTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error) {
+func (c *client) DetailMigrateTask(ctx context.Context, args *MigrateTaskDetailArgs) (detail MigrateTaskDetail, err error) {
+	if args == nil || !args.Type.Valid() {
+		err = errcode.ErrIllegalArguments
+		return
+	}
 	err = c.request(func(host string) error {
-		return c.PostWith(ctx, host+PathRepairTaskDetail, &ret, args)
-	})
-	return
-}
-
-func (c *client) BalanceTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error) {
-	err = c.request(func(host string) error {
-		return c.PostWith(ctx, host+PathBalanceTaskDetail, &ret, args)
-	})
-	return
-}
-
-func (c *client) DiskDropTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error) {
-	err = c.request(func(host string) error {
-		return c.PostWith(ctx, host+PathDropTaskDetail, &ret, args)
-	})
-	return
-}
-
-func (c *client) ManualMigrateTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error) {
-	err = c.request(func(host string) error {
-		return c.PostWith(ctx, host+PathManualMigrateTaskDetail, &ret, args)
+		path := fmt.Sprintf("%s%s/%s/%s", host, PathTaskDetail, args.Type, args.ID)
+		return c.GetWith(ctx, path, &detail)
 	})
 	return
 }
