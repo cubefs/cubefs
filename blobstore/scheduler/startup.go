@@ -355,7 +355,7 @@ func (svr *Service) Close() {
 // NewHandler returns app server handler
 func NewHandler(service *Service) *rpc.Router {
 	rpc.RegisterArgsParser(&api.AcquireArgs{}, "json")
-	rpc.RegisterArgsParser(&api.TaskStatArgs{}, "json")
+	rpc.RegisterArgsParser(&api.MigrateTaskDetailArgs{}, "json")
 
 	// rpc http svr interface
 	rpc.GET(api.PathTaskAcquire, service.HTTPTaskAcquire, rpc.OptArgsQuery())
@@ -370,11 +370,7 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.POST(api.PathTaskReport, service.HTTPTaskReport, rpc.OptArgsBody())
 	rpc.POST(api.PathTaskRenewal, service.HTTPTaskRenewal, rpc.OptArgsBody())
 
-	// TODO: merge details into only one uri
-	rpc.POST(api.PathBalanceTaskDetail, service.HTTPBalanceTaskDetail, rpc.OptArgsBody())
-	rpc.POST(api.PathRepairTaskDetail, service.HTTPRepairTaskDetail, rpc.OptArgsBody())
-	rpc.POST(api.PathDropTaskDetail, service.HTTPDropTaskDetail, rpc.OptArgsBody())
-	rpc.POST(api.PathManualMigrateTaskDetail, service.HTTPManualMigrateTaskDetail, rpc.OptArgsBody())
+	rpc.GET(api.PathTaskDetailURI, service.HTTPMigrateTaskDetail, rpc.OptArgsURI())
 	rpc.GET(api.PathStats, service.HTTPStats, rpc.OptArgsQuery())
 	rpc.GET(api.PathLeaderStats, service.HTTPStats, rpc.OptArgsQuery())
 

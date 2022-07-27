@@ -290,47 +290,33 @@ func (svr *Service) HTTPTaskReport(c *rpc.Context) {
 	c.Respond()
 }
 
-func respondTaskDetail(c *rpc.Context, mgr interface {
-	QueryTask(context.Context, string) (*api.MigrateTaskDetail, error)
-}) {
-	args := new(api.TaskStatArgs)
+// HTTPMigrateTaskDetail returns migrate task detail.
+func (svr *Service) HTTPMigrateTaskDetail(c *rpc.Context) {
+	args := new(api.MigrateTaskDetailArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
-
-	detail, err := mgr.QueryTask(c.Request.Context(), args.TaskId)
-	if err != nil {
-		c.RespondError(rpc.NewError(http.StatusNotFound, "NotFound", err))
-		return
-	}
-	c.RespondJSON(detail)
-}
-
-// HTTPBalanceTaskDetail returns balance task detail stats
-func (svr *Service) HTTPBalanceTaskDetail(c *rpc.Context) {
-	respondTaskDetail(c, svr.balanceMgr)
-}
-
-// HTTPDropTaskDetail returns disk drop task detail stats
-func (svr *Service) HTTPDropTaskDetail(c *rpc.Context) {
-	respondTaskDetail(c, svr.diskDropMgr)
-}
-
-// HTTPManualMigrateTaskDetail returns manual migrate task detail stats
-func (svr *Service) HTTPManualMigrateTaskDetail(c *rpc.Context) {
-	respondTaskDetail(c, svr.manualMigMgr)
-}
-
-// HTTPRepairTaskDetail returns repair task detail stats
-func (svr *Service) HTTPRepairTaskDetail(c *rpc.Context) {
-	args := new(api.TaskStatArgs)
-	if err := c.ParseArgs(args); err != nil {
-		c.RespondError(err)
+	if !args.Type.Valid() || args.ID == "" {
+		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
 
-	detail, err := svr.diskRepairMgr.QueryTask(c.Request.Context(), args.TaskId)
+	var mgr interface {
+		QueryTask(context.Context, string) (*api.MigrateTaskDetail, error)
+	}
+	switch args.Type {
+	case proto.TaskTypeBalance:
+		mgr = svr.balanceMgr
+	case proto.TaskTypeDiskDrop:
+		mgr = svr.diskDropMgr
+	case proto.TaskTypeDiskRepair:
+		mgr = svr.diskRepairMgr
+	case proto.TaskTypeManualMigrate:
+		mgr = svr.manualMigMgr
+	}
+
+	detail, err := mgr.QueryTask(c.Request.Context(), args.ID)
 	if err != nil {
 		c.RespondError(rpc.NewError(http.StatusNotFound, "NotFound", err))
 		return
