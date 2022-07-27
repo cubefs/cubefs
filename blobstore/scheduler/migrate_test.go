@@ -57,6 +57,7 @@ func newMigrateMgr(t *testing.T) *MigrateMgr {
 	migrateTbl := NewMockMigrateTaskTable(ctr)
 	volumeUpdater := NewMockVolumeUpdater(ctr)
 	conf := &MigrateConfig{
+		ClusterID: 0,
 		TaskCommonConfig: base.TaskCommonConfig{
 			PrepareQueueRetryDelayS: 0,
 			FinishQueueRetryDelayS:  0,
@@ -64,7 +65,7 @@ func newMigrateMgr(t *testing.T) *MigrateMgr {
 			WorkQueueSize:           3,
 		},
 	}
-	mgr := NewMigrateMgr(clusterMgr, volumeUpdater, taskSwitch, migrateTbl, conf, proto.TaskTypeBalance, 0)
+	mgr := NewMigrateMgr(clusterMgr, volumeUpdater, taskSwitch, migrateTbl, conf, proto.TaskTypeBalance)
 	mgr.SetLockFailHandleFunc(mgr.FinishTaskInAdvanceWhenLockFail)
 	return mgr
 }

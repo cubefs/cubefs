@@ -50,13 +50,13 @@ func newDiskRepairer(t *testing.T) *DiskRepairMgr {
 	clusterMgr := NewMockClusterMgrAPI(ctr)
 	taskSwitch := mocks.NewMockSwitcher(ctr)
 	repairTable := NewMockRepairTaskTable(ctr)
-	conf := &DiskRepairMgrCfg{
+	conf := &MigrateConfig{
 		TaskCommonConfig: base.TaskCommonConfig{
 			CollectTaskIntervalS: 1,
 			CheckTaskIntervalS:   1,
 		},
 	}
-	return NewRepairMgr(conf, taskSwitch, repairTable, clusterMgr)
+	return NewDiskRepairMgr(clusterMgr, taskSwitch, repairTable, conf)
 }
 
 func TestDiskRepairerLoad(t *testing.T) {

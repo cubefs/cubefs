@@ -59,20 +59,15 @@ type BalanceMgr struct {
 }
 
 // NewBalanceMgr returns balance manager
-func NewBalanceMgr(
-	clusterMgrCli client.ClusterMgrAPI,
-	volumeUpdater client.IVolumeUpdater,
-	taskSwitch taskswitch.ISwitcher,
-	clusterTopology IClusterTopology,
-	taskTbl db.IMigrateTaskTable,
-	conf *BalanceMgrConfig) *BalanceMgr {
+func NewBalanceMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater, taskSwitch taskswitch.ISwitcher,
+	clusterTopology IClusterTopology, taskTbl db.IMigrateTaskTable, conf *BalanceMgrConfig) *BalanceMgr {
 	mgr := &BalanceMgr{
 		clusterTopology: clusterTopology,
 		clusterMgrCli:   clusterMgrCli,
 		cfg:             conf,
 	}
 	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskTbl,
-		&conf.MigrateConfig, proto.TaskTypeBalance, conf.ClusterID)
+		&conf.MigrateConfig, proto.TaskTypeBalance)
 	mgr.IMigrator.SetLockFailHandleFunc(mgr.IMigrator.FinishTaskInAdvanceWhenLockFail)
 	return mgr
 }
@@ -181,7 +176,7 @@ func (mgr *BalanceMgr) genOneBalanceTask(ctx context.Context, diskInfo *client.D
 
 	span.Debugf("select balance volume unit; vuid[%d+, volume_id[%v]", vuid, vuid.Vid())
 	task := &proto.MigrateTask{
-		TaskID:       mgr.genUniqTaskID(vuid.Vid()),
+		TaskID:       base.GenTaskID("balance", vuid.Vid()),
 		TaskType:     proto.TaskTypeBalance,
 		State:        proto.MigrateStateInited,
 		SourceIDC:    diskInfo.Idc,
@@ -200,7 +195,9 @@ func (mgr *BalanceMgr) selectBalanceVunit(ctx context.Context, diskID proto.Disk
 		return
 	}
 
-	sortVunitByUsed(vunits)
+	sort.Slice(vunits, func(i, j int) bool {
+		return vunits[i].Used < vunits[j].Used
+	})
 
 	for i := range vunits {
 		volInfo, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, vunits[i].Vuid.Vid())
@@ -237,16 +234,6 @@ func (mgr *BalanceMgr) ClearFinishedTask() {
 
 	clearStates := []proto.MigrateState{proto.MigrateStateFinished, proto.MigrateStateFinishedInAdvance}
 	mgr.IMigrator.ClearTasksByStates(ctx, clearStates)
-}
-
-func (mgr *BalanceMgr) genUniqTaskID(vid proto.Vid) string {
-	return base.GenTaskID("balance", vid)
-}
-
-func sortVunitByUsed(vunits []*client.VunitInfoSimple) {
-	sort.Slice(vunits, func(i, j int) bool {
-		return vunits[i].Used < vunits[j].Used
-	})
 }
 
 func freeChunkCntMax(disks []*client.DiskInfoSimple) int64 {

@@ -38,14 +38,13 @@ func newDiskDroper(t *testing.T) *DiskDropMgr {
 	volumeUpdater := NewMockVolumeUpdater(ctr)
 	taskSwitch := mocks.NewMockSwitcher(ctr)
 	migrateTable := NewMockMigrateTaskTable(ctr)
-	conf := &DiskDropMgrConfig{}
 	c := closer.New()
 
 	migrater := NewMockMigrater(ctr)
 	migrater.EXPECT().StatQueueTaskCnt().AnyTimes().Return(0, 0, 0)
 	migrater.EXPECT().Close().AnyTimes().DoAndReturn(c.Close)
 	migrater.EXPECT().Done().AnyTimes().Return(c.Done())
-	mgr := NewDiskDropMgr(clusterMgr, volumeUpdater, taskSwitch, migrateTable, conf)
+	mgr := NewDiskDropMgr(clusterMgr, volumeUpdater, taskSwitch, migrateTable, &MigrateConfig{})
 	mgr.IMigrator = migrater
 	return mgr
 }

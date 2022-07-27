@@ -142,7 +142,7 @@ func (m *diskMigratingVuids) isMigratingDisk(diskID proto.DiskID) (ok bool) {
 
 // MigrateConfig migrate config
 type MigrateConfig struct {
-	ClusterID proto.ClusterID
+	ClusterID proto.ClusterID `json:"-"` // fill in config.go
 	base.TaskCommonConfig
 }
 
@@ -181,7 +181,6 @@ func NewMigrateMgr(
 	taskTbl db.IMigrateTaskTable,
 	conf *MigrateConfig,
 	taskType proto.TaskType,
-	clusterID proto.ClusterID,
 ) *MigrateMgr {
 	mgr := &MigrateMgr{
 		taskType:           taskType,
@@ -203,7 +202,7 @@ func NewMigrateMgr(
 		Closer: closer.New(),
 	}
 
-	mgr.taskStatsMgr = base.NewTaskStatsMgrAndRun(clusterID, taskType, mgr)
+	mgr.taskStatsMgr = base.NewTaskStatsMgrAndRun(conf.ClusterID, taskType, mgr)
 	return mgr
 }
 
