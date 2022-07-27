@@ -756,13 +756,13 @@ func (mgr *DiskRepairMgr) QueryTask(ctx context.Context, taskID string) (*api.Mi
 	if err != nil {
 		return detail, err
 	}
-	detail.TaskInfo = *taskInfo
+	detail.Task = *taskInfo
 
 	detailRunInfo, err := mgr.taskStatsMgr.QueryTaskDetail(taskID)
 	if err != nil {
 		return detail, nil
 	}
-	detail.RunStats = detailRunInfo.Statistics
+	detail.Stat = detailRunInfo.Statistics
 	return detail, nil
 }
 
