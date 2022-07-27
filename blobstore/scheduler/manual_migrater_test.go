@@ -34,7 +34,7 @@ func newManualMigrater(t *testing.T) *ManualMigrateMgr {
 	volumeUpdater := NewMockVolumeUpdater(ctr)
 	migrateTable := NewMockMigrateTaskTable(ctr)
 	migrater := NewMockMigrater(ctr)
-	mgr := NewManualMigrateMgr(clusterMgr, volumeUpdater, migrateTable, proto.ClusterID(1))
+	mgr := NewManualMigrateMgr(clusterMgr, volumeUpdater, migrateTable, &MigrateConfig{ClusterID: 1})
 	mgr.IMigrator = migrater
 	return mgr
 }

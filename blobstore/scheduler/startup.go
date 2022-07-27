@@ -164,29 +164,26 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 	topologyMgr := NewClusterTopologyMgr(clusterMgrCli, topoConf)
 
-	// new balance manager
+	// all migrate manager
 	balanceTaskSwitch, err := switchMgr.AddSwitch(taskswitch.BalanceSwitchName)
 	if err != nil {
-		panic("unexpect add task switch fail")
+		return nil, err
 	}
 	balanceMgr := NewBalanceMgr(clusterMgrCli, volumeUpdater, balanceTaskSwitch, topologyMgr, database.BalanceTable, &conf.Balance)
 
-	// new disk drop manager
 	diskDropTaskSwitch, err := switchMgr.AddSwitch(taskswitch.DiskDropSwitchName)
 	if err != nil {
-		panic("unexpect add task switch fail")
+		return nil, err
 	}
 	diskDropMgr := NewDiskDropMgr(clusterMgrCli, volumeUpdater, diskDropTaskSwitch, database.DiskDropTable, &conf.DiskDrop)
 
-	// new manual migrate manager
-	manualMigMgr := NewManualMigrateMgr(clusterMgrCli, volumeUpdater, database.ManualMigrateTable, conf.ClusterID)
-
-	// new disk repair manager
 	diskRepairTaskSwitch, err := switchMgr.AddSwitch(taskswitch.DiskRepairSwitchName)
 	if err != nil {
 		return nil, err
 	}
-	repairMgr := NewRepairMgr(&conf.DiskRepair, diskRepairTaskSwitch, database.RepairTaskTable, clusterMgrCli)
+	diskRepairMgr := NewDiskRepairMgr(clusterMgrCli, diskRepairTaskSwitch, database.RepairTaskTable, &conf.DiskRepair)
+
+	manualMigMgr := NewManualMigrateMgr(clusterMgrCli, volumeUpdater, database.ManualMigrateTable, &conf.ManualMigrate)
 
 	mqProxy := client.NewProxyClient(&conf.Proxy, cmapi.New(&conf.ClusterMgr), conf.ClusterID)
 	inspectorTaskSwitch, err := switchMgr.AddSwitch(taskswitch.VolumeInspectSwitchName)
@@ -202,7 +199,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 	svr.balanceMgr = balanceMgr
 	svr.diskDropMgr = diskDropMgr
 	svr.manualMigMgr = manualMigMgr
-	svr.diskRepairMgr = repairMgr
+	svr.diskRepairMgr = diskRepairMgr
 	svr.inspectMgr = inspectMgr
 	svr.archiveMgr = archiveMgr
 

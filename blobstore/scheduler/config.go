@@ -95,8 +95,9 @@ type Config struct {
 	Scheduler  rpc.Config        `json:"scheduler"`
 
 	Balance       BalanceMgrConfig    `json:"balance"`
-	DiskDrop      DiskDropMgrConfig   `json:"disk_drop"`
-	DiskRepair    DiskRepairMgrCfg    `json:"disk_repair"`
+	DiskDrop      MigrateConfig       `json:"disk_drop"`
+	DiskRepair    MigrateConfig       `json:"disk_repair"`
+	ManualMigrate MigrateConfig       `json:"manual_migrate"`
 	VolumeInspect VolumeInspectMgrCfg `json:"volume_inspect"`
 	Archive       ArchiveStoreConfig  `json:"archive"`
 
@@ -198,7 +199,8 @@ func (c *Config) fixConfig() (err error) {
 	c.fixKafkaConfig()
 	c.fixBalanceConfig()
 	c.fixDiskDropConfig()
-	c.fixRepairConfig()
+	c.fixDiskRepairConfig()
+	c.fixManualMigrateConfig()
 	c.fixInspectConfig()
 	c.fixShardRepairConfig()
 	c.fixBlobDeleteConfig()
@@ -244,11 +246,6 @@ func (c *Config) fixKafkaConfig() {
 	c.Kafka.BlobDelete.BrokerList = c.Kafka.BrokerList
 }
 
-func (c *Config) fixRepairConfig() {
-	c.DiskRepair.ClusterID = c.ClusterID
-	c.DiskRepair.CheckAndFix()
-}
-
 func (c *Config) fixBalanceConfig() {
 	c.Balance.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.Balance.BalanceDiskCntLimit, defaultBalanceDiskCntLimit)
@@ -260,6 +257,16 @@ func (c *Config) fixBalanceConfig() {
 func (c *Config) fixDiskDropConfig() {
 	c.DiskDrop.ClusterID = c.ClusterID
 	c.DiskDrop.CheckAndFix()
+}
+
+func (c *Config) fixDiskRepairConfig() {
+	c.DiskRepair.ClusterID = c.ClusterID
+	c.DiskRepair.CheckAndFix()
+}
+
+func (c *Config) fixManualMigrateConfig() {
+	c.ManualMigrate.ClusterID = c.ClusterID
+	c.ManualMigrate.CheckAndFix()
 }
 
 func (c *Config) fixInspectConfig() {

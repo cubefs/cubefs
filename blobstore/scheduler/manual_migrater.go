@@ -34,14 +34,12 @@ type ManualMigrateMgr struct {
 
 // NewManualMigrateMgr returns manual migrate manager
 func NewManualMigrateMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater,
-	taskTbl db.IMigrateTaskTable, clusterID proto.ClusterID) *ManualMigrateMgr {
+	taskTbl db.IMigrateTaskTable, conf *MigrateConfig) *ManualMigrateMgr {
 	mgr := &ManualMigrateMgr{
 		clusterMgrCli: clusterMgrCli,
 	}
-	cfg := defaultMigrateConfig(clusterID)
-
-	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskswitch.NewEnabledTaskSwitch(), taskTbl,
-		&cfg, proto.TaskTypeManualMigrate, clusterID)
+	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskswitch.NewEnabledTaskSwitch(),
+		taskTbl, conf, proto.TaskTypeManualMigrate)
 	mgr.IMigrator.SetLockFailHandleFunc(mgr.IMigrator.FinishTaskInAdvanceWhenLockFail)
 	return mgr
 }
@@ -63,7 +61,7 @@ func (mgr *ManualMigrateMgr) AddManualTask(ctx context.Context, vuid proto.Vuid,
 	}
 
 	task := &proto.MigrateTask{
-		TaskID:                  mgr.genUniqTaskID(vuid.Vid()),
+		TaskID:                  base.GenTaskID("manual_migrate", vuid.Vid()),
 		TaskType:                proto.TaskTypeManualMigrate,
 		State:                   proto.MigrateStateInited,
 		SourceIDC:               disk.Idc,
@@ -75,16 +73,4 @@ func (mgr *ManualMigrateMgr) AddManualTask(ctx context.Context, vuid proto.Vuid,
 
 	span.Debugf("add manual migrate task success: task_info[%+v]", task)
 	return nil
-}
-
-func (mgr *ManualMigrateMgr) genUniqTaskID(vid proto.Vid) string {
-	return base.GenTaskID("manual_migrate", vid)
-}
-
-func defaultMigrateConfig(clusterID proto.ClusterID) MigrateConfig {
-	cfg := MigrateConfig{
-		ClusterID: clusterID,
-	}
-	cfg.CheckAndFix()
-	return cfg
 }
