@@ -28,11 +28,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-// DiskDropMgrConfig disk drop manager config
-type DiskDropMgrConfig struct {
-	MigrateConfig
-}
-
 // DiskDropMgr disk drop manager
 type DiskDropMgr struct {
 	IMigrator
@@ -42,22 +37,18 @@ type DiskDropMgr struct {
 	droppingDiskID proto.DiskID
 	clusterMgrCli  client.ClusterMgrAPI
 	hasRevised     bool
-	cfg            *DiskDropMgrConfig
+
+	cfg *MigrateConfig
 }
 
 // NewDiskDropMgr returns disk drop manager
-func NewDiskDropMgr(
-	clusterMgrCli client.ClusterMgrAPI,
-	volumeUpdater client.IVolumeUpdater,
-	taskSwitch taskswitch.ISwitcher,
-	taskTbl db.IMigrateTaskTable,
-	conf *DiskDropMgrConfig) *DiskDropMgr {
+func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater,
+	taskSwitch taskswitch.ISwitcher, taskTbl db.IMigrateTaskTable, conf *MigrateConfig) *DiskDropMgr {
 	mgr := &DiskDropMgr{
 		clusterMgrCli: clusterMgrCli,
 		cfg:           conf,
 	}
-	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskTbl,
-		&conf.MigrateConfig, proto.TaskTypeDiskDrop, conf.ClusterID)
+	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskTbl, conf, proto.TaskTypeDiskDrop)
 	return mgr
 }
 

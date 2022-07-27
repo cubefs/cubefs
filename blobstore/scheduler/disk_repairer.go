@@ -34,17 +34,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-const (
-	prepareIntervalS = 1
-	finishIntervalS  = 5
-)
-
-// DiskRepairMgrCfg repair manager config
-type DiskRepairMgrCfg struct {
-	ClusterID proto.ClusterID `json:"cluster_id"`
-	base.TaskCommonConfig
-}
-
 // DiskRepairMgr repair task manager
 type DiskRepairMgr struct {
 	closer.Closer
@@ -68,12 +57,12 @@ type DiskRepairMgr struct {
 	taskStatsMgr      *base.TaskStatsMgr
 
 	hasRevised bool
-	cfg        *DiskRepairMgrCfg
+	cfg        *MigrateConfig
 }
 
-// NewRepairMgr returns repair manager
-func NewRepairMgr(cfg *DiskRepairMgrCfg, taskSwitch taskswitch.ISwitcher,
-	taskTbl db.IRepairTaskTable, cmCli client.ClusterMgrAPI) *DiskRepairMgr {
+// NewDiskRepairMgr returns repair manager
+func NewDiskRepairMgr(cmCli client.ClusterMgrAPI, taskSwitch taskswitch.ISwitcher,
+	taskTbl db.IRepairTaskTable, cfg *MigrateConfig) *DiskRepairMgr {
 	mgr := &DiskRepairMgr{
 		Closer:       closer.New(),
 		taskTbl:      taskTbl,
@@ -346,7 +335,7 @@ func (mgr *DiskRepairMgr) prepareTaskLoop() {
 
 		err := mgr.popTaskAndPrepare()
 		if err == base.ErrNoTaskInQueue {
-			time.Sleep(time.Duration(prepareIntervalS) * time.Second)
+			time.Sleep(time.Second)
 		}
 	}
 }
@@ -456,7 +445,7 @@ func (mgr *DiskRepairMgr) finishTaskLoop() {
 		mgr.WaitEnable()
 		err := mgr.popTaskAndFinish()
 		if err == base.ErrNoTaskInQueue {
-			time.Sleep(time.Duration(finishIntervalS) * time.Second)
+			time.Sleep(5 * time.Second)
 		}
 	}
 }
