@@ -186,7 +186,6 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
 func (dp *DataPartition) StartRaftLoggingSchedule() {
 	getAppliedIDTimer := time.NewTimer(time.Second * 1)
 	truncateRaftLogTimer := time.NewTimer(time.Minute * 10)
-	storeAppliedIDTimer := time.NewTimer(time.Second * 10)
 
 	log.LogDebugf("[startSchedule] hello DataPartition schedule")
 
@@ -196,7 +195,6 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			log.LogDebugf("[startSchedule] stop partition(%v)", dp.partitionID)
 			getAppliedIDTimer.Stop()
 			truncateRaftLogTimer.Stop()
-			storeAppliedIDTimer.Stop()
 			return
 
 		case extentID := <-dp.stopRaftC:
@@ -214,8 +212,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 				break
 			}
 			var (
-				minAppliedID, lastTruncateID, appliedID =
-					dp.minAppliedID, dp.lastTruncateID, atomic.LoadUint64(&dp.appliedID)
+				minAppliedID, lastTruncateID, appliedID = dp.minAppliedID, dp.lastTruncateID, atomic.LoadUint64(&dp.appliedID)
 			)
 			if appliedID >= minAppliedID && minAppliedID > lastTruncateID { // Has changed
 				if err := dp.storeAppliedID(appliedID); err != nil {
@@ -233,13 +230,6 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 				log.LogInfof("partition(%v) scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
-
-		case <-storeAppliedIDTimer.C:
-			if err := dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID)); err != nil {
-				err = errors.NewErrorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
-				log.LogErrorf(err.Error())
-			}
-			storeAppliedIDTimer.Reset(time.Second * 10)
 		}
 	}
 }

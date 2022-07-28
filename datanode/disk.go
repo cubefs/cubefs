@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"io/ioutil"
 	"path"
 	"regexp"
@@ -97,6 +98,7 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, fdLimit FDLimit, 
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduler()
+	d.startFlushFPScheduler()
 	return
 }
 
@@ -196,6 +198,31 @@ func (d *Disk) incReadErrCnt() {
 
 func (d *Disk) incWriteErrCnt() {
 	atomic.AddUint64(&d.WriteErrCnt, 1)
+}
+
+func (d *Disk) startFlushFPScheduler() {
+
+	go func() {
+		var (
+			forceFlushFDTicker = time.NewTicker(time.Second * 2)
+		)
+		defer func() {
+			forceFlushFDTicker.Stop()
+		}()
+		for {
+			select {
+			case <-forceFlushFDTicker.C:
+				d.RLock()
+				var partitions = make([]*DataPartition, 0, len(d.partitionMap))
+				for _, partition := range d.partitionMap {
+					partitions = append(partitions, partition)
+				}
+				d.RUnlock()
+				d.forceFlushFileDescriptor(partitions)
+				d.forceStoreApplyIDAndWalLog(partitions)
+			}
+		}
+	}()
 }
 
 func (d *Disk) startScheduler() {
@@ -624,10 +651,6 @@ func (d *Disk) forceEvictFileDescriptor() {
 	var count = atomic.LoadInt64(&d.fdCount)
 	log.LogDebugf("action[forceEvictFileDescriptor] disk(%v) current FD count(%v)",
 		d.Path, count)
-	//if d.fdLimit.MaxFDLimit == 0 || uint64(count) <= d.fdLimit.MaxFDLimit {
-	//	return
-	//}
-
 	d.RLock()
 	var partitions = make([]*DataPartition, 0, len(d.partitionMap))
 	for _, partition := range d.partitionMap {
@@ -635,11 +658,58 @@ func (d *Disk) forceEvictFileDescriptor() {
 	}
 	d.RUnlock()
 	var ratio = storage.NewRatio(d.fdLimit.ForceEvictRatio)
-	var flushedCount int
 	for _, partition := range partitions {
 		partition.ForceEvictFileDescriptor(ratio)
+	}
+	log.LogDebugf("action[forceEvictFileDescriptor] disk(%v) evicted FD count [%v -> %v]",
+		d.Path, count, atomic.LoadInt64(&d.fdCount))
+}
+
+func (d *Disk) forceFlushFileDescriptor(partitions []*DataPartition) {
+	var count = atomic.LoadInt64(&d.fdCount)
+	log.LogDebugf("action[forceFlushFileDescriptor] disk(%v) current FD count(%v) begin",
+		d.Path, count)
+	var flushedCount int
+	for _, partition := range partitions {
 		flushedCount += partition.ForceFlushAllFD()
 	}
-	log.LogDebugf("action[forceEvictFileDescriptor] disk(%v) evicted FD count [%v -> %v],flushed count(%v)",
-		d.Path, count, atomic.LoadInt64(&d.fdCount), flushedCount)
+	log.LogDebugf("action[forceFlushFileDescriptor] disk(%v),fd count(%v),flushed count(%v) end",
+		d.Path, count, flushedCount)
+}
+
+func (d *Disk) forceStoreApplyIDAndWalLog(partitions []*DataPartition) {
+	log.LogDebugf("action[forceStoreApplyIDAndWalLog] disk(%v) partition count(%v) begin",
+		d.Path, len(partitions))
+	pChan := make(chan *DataPartition, len(partitions))
+	for _, dp := range partitions {
+		pChan <- dp
+	}
+	wg := new(sync.WaitGroup)
+	var failedCount int64
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case dp := <-pChan:
+					if dp.raftPartition == nil || dp.appliedID == 0 {
+						return
+					}
+					if err := dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID)); err != nil {
+						err = errors.NewErrorf("[forceStoreApplyIDAndWalLog]: flush applyID failed, partition=%d: %v", dp.config.PartitionID, err.Error())
+						log.LogErrorf(err.Error())
+						atomic.AddInt64(&failedCount, 1)
+					}
+					dp.raftPartition.FlushWal()
+				default:
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(pChan)
+	log.LogDebugf("action[forceStoreApplyIDAndWalLog] disk(%v) partition count(%v),failed count(%v) end",
+		d.Path, len(partitions), atomic.LoadInt64(&failedCount))
 }

@@ -53,4 +53,6 @@ type Storage interface {
 	ApplySnapshot(meta proto.SnapshotMeta) error
 	// Close the storage.
 	Close()
+	//SyncLastLogFile commits the current contents of the file to stable storage
+	SyncLastLogFile() error
 }

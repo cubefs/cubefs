@@ -511,3 +511,13 @@ func (rs *RaftServer) reciveSnapshot(req *snapshotRequest) {
 	}
 	raft.reciveSnapshot(req)
 }
+
+func (rs *RaftServer) FlusdLastLogFile(id uint64) {
+	rs.mu.RLock()
+	raft, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if ok {
+		raft.syncLastLogFile(id)
+	}
+}

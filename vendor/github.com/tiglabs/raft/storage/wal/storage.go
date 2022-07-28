@@ -254,6 +254,13 @@ func (s *Storage) StoreHardState(st proto.HardState) error {
 	return nil
 }
 
+func (s *Storage) SyncLastLogFile() error {
+	if err := s.metafile.Sync(); err != nil {
+		return err
+	}
+	return s.ls.Sync()
+}
+
 // Truncate the log to index,  The index is inclusive.
 func (s *Storage) Truncate(index uint64) error {
 	if index <= s.truncIndex {
