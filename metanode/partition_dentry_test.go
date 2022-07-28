@@ -35,12 +35,7 @@ func createDentries(mp *metaPartition, parentId uint64, dentryCnt int, dentryMod
 
 //create dentries, and validate dentry info
 func CreateDentryInterTest01(t *testing.T, leader, follower *metaPartition) {
-	defer func() {
-		leader.inodeTree.Clear()
-		follower.inodeTree.Clear()
-		leader.dentryTree.Clear()
-		follower.dentryTree.Clear()
-	}()
+
 	t.Logf("run create dentry test 01")
 	parentID, err := createInode(uint32(os.ModeDir), 1000, 1000, leader)
 	if err != nil {
@@ -133,12 +128,6 @@ func CreateDentryInterTest02(t *testing.T, leader, follower *metaPartition) {
 }
 
 func CreateDentryInterTest03(t *testing.T, leader, follower *metaPartition) {
-	defer func() {
-		leader.inodeTree.Clear()
-		follower.inodeTree.Clear()
-		leader.dentryTree.Clear()
-		follower.dentryTree.Clear()
-	}()
 	parentID, err := createInode(uint32(os.ModeDir), 1000, 1000, leader)
 	if err != nil {
 		t.Fatal(err)
@@ -146,11 +135,11 @@ func CreateDentryInterTest03(t *testing.T, leader, follower *metaPartition) {
 	}
 	inode, _ := leader.inodeTree.Get(parentID)
 	inode.SetDeleteMark()
-	leader.inodeTree.Put(inode)
+	_ = inodePut(leader.inodeTree, inode)
 
 	inode, _ = follower.inodeTree.Get(parentID)
 	inode.SetDeleteMark()
-	follower.inodeTree.Put(inode)
+	_ = inodePut(follower.inodeTree, inode)
 
 	//create dentry with parent inode be marked delete
 	req := &proto.CreateDentryRequest{
@@ -169,12 +158,6 @@ func CreateDentryInterTest03(t *testing.T, leader, follower *metaPartition) {
 }
 
 func CreateDentryInterTest04(t *testing.T, leader, follower *metaPartition) {
-	defer func() {
-		leader.inodeTree.Clear()
-		follower.inodeTree.Clear()
-		leader.dentryTree.Clear()
-		follower.dentryTree.Clear()
-	}()
 	parentID, err := createInode(470, 1000, 1000, leader)
 	if err != nil {
 		t.Fatal(err)
@@ -198,12 +181,6 @@ func CreateDentryInterTest04(t *testing.T, leader, follower *metaPartition) {
 }
 
 func CreateDentryInterTest05(t *testing.T, leader, follower *metaPartition) {
-	defer func() {
-		leader.inodeTree.Clear()
-		follower.inodeTree.Clear()
-		leader.dentryTree.Clear()
-		follower.dentryTree.Clear()
-	}()
 	parentID, err := createInode(uint32(os.ModeDir), 1000, 1000, leader)
 	if err != nil {
 		t.Fatal(err)
@@ -270,12 +247,6 @@ func CreateDentryInterTest05(t *testing.T, leader, follower *metaPartition) {
 
 
 func CreateDentryInterTest06(t *testing.T, leader, follower *metaPartition) {
-	defer func() {
-		leader.inodeTree.Clear()
-		follower.inodeTree.Clear()
-		leader.dentryTree.Clear()
-		follower.dentryTree.Clear()
-	}()
 	//create parent inode
 	parentID, err := createInode(uint32(os.ModeDir), 1000, 1000, leader)
 	if err != nil {
@@ -312,7 +283,6 @@ func TestMetaPartition_CreateDentryCase01(t *testing.T) {
 	CreateDentryInterTest01(t, leader, follower)
 	releaseMp(leader, follower, dir)
 }
-
 
 func TestMetaPartition_CreateDentryCase02(t *testing.T) {
 	//leader is mem mode
@@ -1130,10 +1100,10 @@ func TestMetaPartition_CreateDentryWithSubmitErrorTest(t *testing.T) {
 	}
 	defer func() {
 		if memModeTestMp != nil {
-			releaseTestMetapartition(memModeTestMp)
+			releaseMetaPartition(memModeTestMp)
 		}
 		if rocksModeTestMp != nil {
-			releaseTestMetapartition(rocksModeTestMp)
+			releaseMetaPartition(rocksModeTestMp)
 		}
 	}()
 	_, _ = memModeTestMp.CursorReset(context.Background(), &proto.CursorResetRequest{

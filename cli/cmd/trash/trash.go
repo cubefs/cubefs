@@ -37,6 +37,7 @@ var (
 	gTrashEnv              *TrashEnv
 	forceFlag              = false
 	isRecursive            = false
+	isFormatAsJSON = false
 )
 
 type TrashEnv struct {
@@ -109,3 +110,4 @@ func initLog() (err error) {
 	}
 	return
 }
+

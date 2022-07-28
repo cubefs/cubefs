@@ -32,6 +32,12 @@ var (
 	count uint32 = 0
 )
 
+type RecoverResp struct {
+	Code uint32
+	Msg string
+	Num uint32
+}
+
 type RecoverDentry struct {
 	pid uint64
 	dd  *proto.DeletedDentry
@@ -55,24 +61,38 @@ func newFSRecoverCmd(client *master.MasterClient) *cobra.Command {
 			}
 		},
 	}
-	c.Flags().StringVarP(&vol, "vol", "v", "", "volume name")
+	c.Flags().StringVarP(&vol, "vol", "v", "", "volume Name")
 	c.MarkFlagRequired("vol")
 	c.Flags().BoolVarP(&isRecursive, "recursive", "r", false, "Recursively recover a directory")
 	c.Flags().BoolVarP(&forceFlag, "force", "f", false, "Force to recover a directory or file, "+
-		"which has more deleted records, that have name name, just different timestamps")
+		"which has more deleted records, that have Name Name, just different timestamps")
+	c.Flags().BoolVarP(&isFormatAsJSON, "json", "j", false, "output as json ")
 	return c
 }
 
 func recoverPath(pathStr string) (err error) {
 	defer func() {
+		var rsp RecoverResp
 		if err != nil {
 			msg := fmt.Sprintf("Failed to  recover path: [%v] from trash, recovered children: %v, err: %v", pathStr, count, err.Error())
-			fmt.Println(msg)
+			if !isFormatAsJSON {
+				fmt.Println(msg)
+			}
 			log.LogError(msg)
+			rsp.Code = 1
+			rsp.Msg = msg
+			rsp.Num = count
 		} else {
 			msg := fmt.Sprintf("Succ to  recover path: [%v] from trash, recovered children: %v", pathStr, count)
-			fmt.Println(msg)
+			if !isFormatAsJSON {
+				fmt.Println(msg)
+			}
 			log.LogDebug(msg)
+			rsp.Code = 0
+			rsp.Num = count
+		}
+		if isFormatAsJSON {
+			printAsJson(&rsp)
 		}
 	}()
 
@@ -84,7 +104,9 @@ func recoverPath(pathStr string) (err error) {
 	absPath := path.Clean(pathStr)
 	if absPath == "/" {
 		err = errors.New("not supported the root path")
-		fmt.Println(err.Error())
+		if !isFormatAsJSON {
+			fmt.Println(err.Error())
+		}
 		return
 	}
 
@@ -110,14 +132,14 @@ func doRecoverPath(parentID uint64, name string, dtime int64) (err error) {
 		startTime, endTime int64
 	)
 
-	log.LogDebugf("doRecover, isRecursive: %v, pid: %v, name: %v, start: %v, end: %v",
+	log.LogDebugf("doRecover, isRecursive: %v, pid: %v, Name: %v, start: %v, end: %v",
 		isRecursive, parentID, name, startTime, endTime)
 	defer func() {
 		if err != nil {
-			log.LogDebugf("==> doRecover, pid: %v, name: %v, start: %v, end:%v, err: %v",
+			log.LogDebugf("==> doRecover, pid: %v, Name: %v, start: %v, end:%v, err: %v",
 				parentID, name, startTime, endTime, err.Error())
 		} else {
-			log.LogDebugf("==> doRecover, pid: %v, name: %v, start: %v, end: %v",
+			log.LogDebugf("==> doRecover, pid: %v, Name: %v, start: %v, end: %v",
 				parentID, name, startTime, endTime)
 		}
 	}()
@@ -139,13 +161,15 @@ func doRecoverPath(parentID uint64, name string, dtime int64) (err error) {
 	var dens []*proto.DeletedDentry
 	dens, err = gTrashEnv.metaWrapper.LookupDeleted_ll(ctx, parentID, name, startTime, endTime)
 	if err != nil && err != syscall.ENOENT {
-		err = fmt.Errorf("failed to lookup deleted dentry, pid: %v, name: %v, starttime: %v, endtime: %v, err: %v",
+		err = fmt.Errorf("failed to lookup deleted dentry, pid: %v, Name: %v, starttime: %v, endtime: %v, err: %v",
 			parentID, name, startTime, endTime, err.Error())
 		return
 	} else if err == nil {
 		if len(dens) > 1 && !forceFlag {
 			msg := fmt.Sprintf("[%v] has multiple deleted records with different timestamps", name)
-			fmt.Println(msg)
+			if !isFormatAsJSON {
+				fmt.Println(msg)
+			}
 			log.LogError(msg)
 			err = errors.New(msg)
 			return
@@ -178,7 +202,7 @@ func doRecoverPath(parentID uint64, name string, dtime int64) (err error) {
 		)
 		ino, ftype, err = gTrashEnv.metaWrapper.Lookup_ll(ctx, parentID, name)
 		if err != nil {
-			err = fmt.Errorf("failed to lookup dentry, pid: %v, name: %v, err: %v",
+			err = fmt.Errorf("failed to lookup dentry, pid: %v, Name: %v, err: %v",
 				parentID, name, err.Error())
 			return
 		}
@@ -228,12 +252,14 @@ func recoverParentDir(p string) (ino uint64, err error) {
 			}
 			dentrys, err = gTrashEnv.metaWrapper.LookupDeleted_ll(ctx, ino, dir, startTime, endTime)
 			if err != nil {
-				log.LogErrorf("ino: %v, dir: %v, ts: %v, err: %v", ino, dir, math.MaxInt64, err.Error())
+				log.LogErrorf("ino: %v, dir: %v, TS: %v, err: %v", ino, dir, math.MaxInt64, err.Error())
 				return
 			}
 			if len(dentrys) > 1 {
 				msg := fmt.Sprintf("This directory[%v] has multiple deleted records with time stamps", dir)
-				fmt.Println(msg)
+				if !isFormatAsJSON {
+					fmt.Println(msg)
+				}
 				log.LogErrorf(msg)
 				err = errors.New(msg)
 				return
@@ -340,11 +366,11 @@ func recover(pid uint64, d *proto.DeletedDentry) (err error) {
 	}()
 	err = gTrashEnv.metaWrapper.RecoverDeletedInode(ctx, d.Inode)
 	if err == syscall.ENOENT {
-		log.LogWarnf("recover deleted inode for dentry: %v, pid: %v, err: %v", d, pid, err.Error())
+		log.LogWarnf("recover deleted INode for dentry: %v, pid: %v, err: %v", d, pid, err.Error())
 		err = nil
 		return
 	} else if err != nil {
-		err = fmt.Errorf("failed to recover deleted inode for dentry: %v, pid: %v, err: %v", d, pid, err.Error())
+		err = fmt.Errorf("failed to recover deleted INode for dentry: %v, pid: %v, err: %v", d, pid, err.Error())
 		return
 	}
 	err = gTrashEnv.metaWrapper.RecoverDeletedDentry(ctx, pid, d.Inode, d.Name, d.Timestamp)

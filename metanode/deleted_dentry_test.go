@@ -87,7 +87,7 @@ func TestDeletedDentry_Reset(t *testing.T) {
 		tree.ReplaceOrInsert(d, false)
 	}
 
-	count := 0
+	cnt := 0
 	go func() {
 		var item btree.Item
 		tree.Ascend(func(i BtreeItem) bool {
@@ -98,16 +98,16 @@ func TestDeletedDentry_Reset(t *testing.T) {
 			}
 			log.LogDebugf("item: %v", item.(*DeletedDentry))
 			fmt.Printf("item: %v\n", item.(*DeletedDentry))
-			count++
+			cnt++
 			return true
 		})
 		//t.Logf("last item: %v", item.(*DeletedDentry))
-		fmt.Printf("count: %v\n", count)
-		log.LogDebugf("count: %v\n", count)
+		fmt.Printf("count: %v\n", cnt)
+		log.LogDebugf("count: %v\n", cnt)
 	}()
 	//time.Sleep(3*time.Second)
 	//log.LogFlush()
-	t.Logf("count: %v", count)
+	t.Logf("count: %v", cnt)
 	//tree.Reset()
 }
 

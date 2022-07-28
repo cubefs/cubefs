@@ -58,8 +58,6 @@ func (t TreeType) String() string {
 
 var (
 	existsError    = fmt.Errorf("exists error")
-	notExistsError = fmt.Errorf("not exists error")
-	rocksdbError   = fmt.Errorf("rocksdb operation error")
 	baseInfoKey    = []byte{byte(BaseInfoType)}
 )
 
@@ -95,8 +93,12 @@ type Tree interface {
 	SetApplyID(index uint64)
 	GetApplyID() uint64
 	Flush() error
-	Clear() error
 	Execute(fn func(tree interface{}) interface{}) interface{}
+	CreateBatchWriteHandle() (interface{}, error)
+	CommitBatchWrite(handle interface{}, needCommitApplyID bool) error
+	CommitAndReleaseBatchWriteHandle(handle interface{}, needCommitApplyID bool) error
+	ReleaseBatchWriteHandle(handle interface{}) error
+	BatchWriteCount(handle interface{}) (int, error)
 	PersistBaseInfo() error
 	GetPersistentApplyID() uint64
 }
@@ -105,24 +107,25 @@ type InodeTree interface {
 	Tree
 	RefGet(ino uint64) (*Inode, error)
 	Get(ino uint64) (*Inode, error)
-	Put(inode *Inode) error
-	Update(inode *Inode) error
-	Create(inode *Inode, replace bool) error
-	Delete(ino uint64) (bool, error)
+	Put(dbHandle interface{}, inode *Inode) error
+	Update(dbHandle interface{}, inode *Inode) error
+	Create(dbHandle interface{}, inode *Inode, replace bool) (*Inode, bool, error)
+	Delete(dbHandle interface{}, ino uint64) (bool, error)
 	Range(start, end *Inode, cb func(v []byte) (bool, error)) error
 	Count() uint64
 	RealCount() uint64
 	MaxItem() *Inode
-	GetMaxInode() (uint64, error) //TODO: ANSJ
+	GetMaxInode() (uint64, error)
 }
 
 type DentryTree interface {
 	Tree
 	RefGet(ino uint64, name string) (*Dentry, error)
 	Get(pino uint64, name string) (*Dentry, error)
-	Put(dentry *Dentry) error
-	Create(dentry *Dentry, replace bool) error
-	Delete(pid uint64, name string) (bool, error)
+	Update(dbHandle interface{}, dentry *Dentry) error
+	Put(dbHandle interface{}, dentry *Dentry) error
+	Create(dbHandle interface{}, dentry *Dentry, replace bool) (*Dentry, bool, error)
+	Delete(dbHandle interface{}, pid uint64, name string) (bool, error)
 	Range(start, end *Dentry, cb func(v []byte) (bool, error)) error
 	RealCount() uint64
 	Count() uint64
@@ -132,10 +135,10 @@ type ExtendTree interface {
 	Tree
 	RefGet(ino uint64) (*Extend, error)
 	Get(ino uint64) (*Extend, error)
-	Put(extend *Extend) error
-	Update(extend *Extend) error
-	Create(ext *Extend, replace bool) error
-	Delete(ino uint64) (bool, error)
+	Put(dbHandle interface{}, extend *Extend) error
+	Update(dbHandle interface{}, extend *Extend) error
+	Create(dbHandle interface{}, ext *Extend, replace bool) (*Extend, bool, error)
+	Delete(dbHandle interface{}, ino uint64) (bool, error)
 	Range(start, end *Extend, cb func(v []byte) (bool, error)) error
 	RealCount() uint64
 	Count() uint64
@@ -145,10 +148,10 @@ type MultipartTree interface {
 	Tree
 	RefGet(key, id string) (*Multipart, error)
 	Get(key, id string) (*Multipart, error)
-	Put(mutipart *Multipart) error
-	Update(mutipart *Multipart) error
-	Create(mul *Multipart, replace bool) error
-	Delete(key, id string) (bool, error)
+	Put(dbHandle interface{}, mutipart *Multipart) error
+	Update(dbHandle interface{}, mutipart *Multipart) error
+	Create(dbHandle interface{}, mul *Multipart, replace bool) (*Multipart, bool, error)
+	Delete(dbHandle interface{}, key, id string) (bool, error)
 	Range(start, end *Multipart, cb func(v []byte) (bool, error)) error
 	RealCount() uint64
 	Count() uint64
@@ -159,9 +162,8 @@ type DeletedDentryTree interface {
 	Tree
 	RefGet(pino uint64, name string, timeStamp int64) (*DeletedDentry, error)
 	Get(pino uint64, name string, timeStamp int64) (*DeletedDentry, error)
-	//todo:lizhenzhen add item info to response
-	Create(delDentry *DeletedDentry, replace bool) error
-	Delete(pino uint64, name string, timeStamp int64) (bool, error)
+	Create(dbHandle interface{}, delDentry *DeletedDentry, replace bool) (*DeletedDentry, bool, error)
+	Delete(dbHandle interface{}, pino uint64, name string, timeStamp int64) (bool, error)
 	Range(start, end *DeletedDentry, cb func(v []byte) (bool, error)) error
 	RealCount() uint64
 	Count() uint64
@@ -171,11 +173,12 @@ type DeletedInodeTree interface {
 	Tree
 	RefGet(ino uint64) (*DeletedINode, error)
 	Get(ino uint64) (*DeletedINode, error)
-	Create(delIno *DeletedINode, replace bool) error
-	Delete(ino uint64) (bool, error)
+	Create(dbHandle interface{}, delIno *DeletedINode, replace bool) (*DeletedINode, bool, error)
+	Delete(dbHandle interface{}, ino uint64) (bool, error)
 	Range(start, end *DeletedINode, cb func(v []byte) (bool, error)) error
 	RealCount() uint64
 	Count() uint64
+	Update(dbHandle interface{}, delIno *DeletedINode) error
 }
 
 type MetaTree struct {

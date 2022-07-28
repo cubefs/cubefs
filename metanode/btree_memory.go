@@ -262,122 +262,119 @@ func (i *DeletedDentryBTree) Get(pino uint64, name string, timeStamp int64) (*De
 	return nil, nil
 }
 
-func (i *InodeBTree) Update(inode *Inode) error {
-	i.BTree.ReplaceOrInsert(inode, true)
+func (i *InodeBTree) Update(dbHandle interface{}, inode *Inode) error {
 	return nil
 }
 
 //put
-func (i *InodeBTree) Put(inode *Inode) error {
+func (i *InodeBTree) Put(dbHandle interface{}, inode *Inode) error {
 	i.BTree.ReplaceOrInsert(inode, true)
 	return nil
 }
-func (i *DentryBTree) Put(dentry *Dentry) error {
+func (i *DentryBTree) Update(dbHandle interface{}, dentry *Dentry) error {
+	return nil
+}
+func (i *DentryBTree) Put(dbHandle interface{}, dentry *Dentry) error {
 	i.BTree.ReplaceOrInsert(dentry, true)
 	return nil
 }
-func (i *ExtendBTree) Update(extend *Extend) error {
+func (i *ExtendBTree) Update(dbHandle interface{}, extend *Extend) error {
+	return nil
+}
+func (i *ExtendBTree) Put(dbHandle interface{}, extend *Extend) error {
 	i.BTree.ReplaceOrInsert(extend, true)
 	return nil
 }
-func (i *ExtendBTree) Put(extend *Extend) error {
-	i.BTree.ReplaceOrInsert(extend, true)
+func (i *MultipartBTree) Update(dbHandle interface{}, multipart *Multipart) error {
 	return nil
 }
-func (i *MultipartBTree) Update(multipart *Multipart) error {
+func (i *MultipartBTree) Put(dbHandle interface{}, multipart *Multipart) error {
 	i.BTree.ReplaceOrInsert(multipart, true)
 	return nil
 }
-func (i *MultipartBTree) Put(multipart *Multipart) error {
-	i.BTree.ReplaceOrInsert(multipart, true)
+func (i *DeletedInodeBTree) Update(dbHandle interface{}, delIno *DeletedINode) error {
 	return nil
 }
 
 //create
-func (i *InodeBTree) Create(inode *Inode, replace bool) error {
-	_, ok := i.BTree.ReplaceOrInsert(inode, replace)
-	if ok {
-		return nil
+func (i *InodeBTree) Create(dbHandle interface{}, inode *Inode, replace bool) (*Inode, bool, error) {
+	item, ok := i.BTree.ReplaceOrInsert(inode, replace)
+	if !ok {
+		return item.(*Inode), ok, nil
 	}
-	return existsError
+	return inode, ok, nil
 }
-func (i *DentryBTree) Create(dentry *Dentry, replace bool) error {
-	_, ok := i.BTree.ReplaceOrInsert(dentry, replace)
-	if ok {
-		return nil
+func (i *DentryBTree) Create(dbHandle interface{}, dentry *Dentry, replace bool) (*Dentry, bool, error) {
+	item, ok := i.BTree.ReplaceOrInsert(dentry, replace)
+	if !ok {
+		return item.(*Dentry), ok, nil
 	}
-	return existsError
+	return dentry, ok, nil
 }
-func (i *ExtendBTree) Create(extend *Extend, replace bool) error {
-	_, ok := i.BTree.ReplaceOrInsert(extend, replace)
-	if ok {
-		return nil
+func (i *ExtendBTree) Create(dbHandle interface{}, extend *Extend, replace bool) (*Extend, bool, error) {
+	item, ok := i.BTree.ReplaceOrInsert(extend, replace)
+	if !ok {
+		return item.(*Extend), ok, nil
 	}
-	return existsError
+	return extend, ok, nil
 }
-func (i *MultipartBTree) Create(mul *Multipart, replace bool) error {
-	_, ok := i.BTree.ReplaceOrInsert(mul, replace)
-	if ok {
-		return nil
+func (i *MultipartBTree) Create(dbHandle interface{}, mul *Multipart, replace bool) (*Multipart, bool, error) {
+	item, ok := i.BTree.ReplaceOrInsert(mul, replace)
+	if !ok {
+		return item.(*Multipart), ok, nil
 	}
-	return existsError
+	return mul, ok, nil
 }
-func (i *DeletedDentryBTree) Create(delDentry *DeletedDentry, replace bool) error {
-	_, ok := i.BTree.ReplaceOrInsert(delDentry, replace)
-	if ok {
-		return nil
+func (i *DeletedDentryBTree) Create(dbHandle interface{}, delDentry *DeletedDentry, replace bool) (*DeletedDentry, bool, error) {
+	item, ok := i.BTree.ReplaceOrInsert(delDentry, replace)
+	if !ok {
+		return item.(*DeletedDentry), ok, nil
 	}
-	return existsError
+	return delDentry, ok, nil
 }
-func (i *DeletedInodeBTree) Create(delInode *DeletedINode, replace bool) error {
-	_, ok := i.BTree.ReplaceOrInsert(delInode, replace)
-	if ok {
-		return nil
+func (i *DeletedInodeBTree) Create(dbHandle interface{}, delInode *DeletedINode, replace bool) (*DeletedINode, bool, error) {
+	item, ok := i.BTree.ReplaceOrInsert(delInode, replace)
+	if !ok {
+		return item.(*DeletedINode), ok, nil
 	}
-	return existsError
+	return delInode, ok, nil
 }
 
-func (i *InodeBTree) Delete(ino uint64) (bool, error) {
+func (i *InodeBTree) Delete(dbHandle interface{}, ino uint64) (bool, error) {
 	if v := i.BTree.Delete(&Inode{Inode: ino}); v == nil {
-		return false, notExistsError
-	} else {
-		return true, nil
+		return false, nil
 	}
+	return true, nil
 }
-func (i *DentryBTree) Delete(pid uint64, name string) (bool, error) {
+func (i *DentryBTree) Delete(dbHandle interface{}, pid uint64, name string) (bool, error) {
 	if v := i.BTree.Delete(&Dentry{ParentId: pid, Name: name}); v == nil {
-		return false, notExistsError
-	} else {
-		return true, nil
+		return false, nil
 	}
+	return true, nil
 }
-func (i *ExtendBTree) Delete(ino uint64) (bool, error) {
+func (i *ExtendBTree) Delete(dbHandle interface{}, ino uint64) (bool, error) {
 	if v := i.BTree.Delete(&Extend{inode: ino}); v == nil {
-		return false, notExistsError
-	} else {
-		return true, nil
+		return false, nil
 	}
+	return true, nil
 }
-func (i *MultipartBTree) Delete(key, id string) (bool, error) {
+func (i *MultipartBTree) Delete(dbHandle interface{}, key, id string) (bool, error) {
 	if mul := i.BTree.Delete(&Multipart{key: key, id: id}); mul == nil {
-		return false, notExistsError
-	} else {
-		return true, nil
+		return false, nil
 	}
+	return true, nil
 }
-func (i *DeletedDentryBTree) Delete(pid uint64, name string, timeStamp int64) (bool, error) {
+func (i *DeletedDentryBTree) Delete(dbHandle interface{}, pid uint64, name string, timeStamp int64) (bool, error) {
 	if dd := i.BTree.Delete(&DeletedDentry{Dentry: Dentry{ParentId: pid, Name: name}, Timestamp: timeStamp}); dd == nil {
-		return false, notExistsError
-	} else {
-		return true, nil
+		return false, nil
 	}
+	return true, nil
 }
-func (i *DeletedInodeBTree) Delete(ino uint64) (bool, error) {
+func (i *DeletedInodeBTree) Delete(dbHandle interface{}, ino uint64) (bool, error) {
 	if di := i.BTree.Delete(&DeletedINode{Inode: Inode{Inode: ino}}); di == nil {
-		return false, notExistsError
-	} else {
-		return true, nil
+		return false, nil
 	}
+	return true, nil
 }
 
 //range
@@ -703,11 +700,6 @@ func (i *BTree) Release() {
 	i.Reset()
 }
 
-func (i *BTree) Clear() error {
-	i.Release()
-	return nil
-}
-
 func (i *BTree) SetApplyID(index uint64) {
 }
 
@@ -723,8 +715,28 @@ func (i *BTree) PersistBaseInfo() error {
 	return nil
 }
 
+func (i *BTree) CreateBatchWriteHandle() (interface{}, error) {
+	return i, nil
+}
+
+func (i *BTree) CommitBatchWrite(handle interface{}, needCommitApplyID bool) error {
+	return nil
+}
+
+func (i *BTree) ReleaseBatchWriteHandle(handle interface{}) error {
+	return nil
+}
+
+func (i *BTree) BatchWriteCount(handle interface{}) (int, error) {
+	return 0, nil
+}
+
+func (i *BTree) CommitAndReleaseBatchWriteHandle(handle interface{}, needCommitApplyID bool) error {
+	return nil
+}
+
 func (i *BTree) Flush() error {
-	panic("implement me")
+	return nil
 }
 
 func (i *BTree) Count() uint64 {

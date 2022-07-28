@@ -230,6 +230,7 @@ type OpPartition interface {
 	GetSnapShot() (snap Snapshot)
 	ReleaseSnapShot(snap Snapshot)
 	IsRaftHang() bool
+	FreeInode(val []byte) error
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -937,12 +938,13 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 }
 
 // Return a new inode ID and update the offset.
-func (mp *metaPartition) isInoOutOfRange(inodeId uint64) (err error) {
+func (mp *metaPartition) isInoOutOfRange(inodeId uint64) (outOfRange bool, err error) {
 	end := atomic.LoadUint64(&mp.config.End)
 	if inodeId > end || inodeId < mp.config.Start {
+		outOfRange = true
 		err = fmt.Errorf("ino[%d] is out of range[%d, %d]", inodeId, mp.config.Start, end)
 	}
-	return err
+	return
 }
 
 // ChangeMember changes the raft member with the specified one.
@@ -1351,4 +1353,27 @@ func (mp *metaPartition) sendTryToLeaderReqToFollower(addr string) error {
 		return fmt.Errorf("error code:0x%X", packet.ResultCode)
 	}
 	return nil
+}
+
+func (mp *metaPartition) FreeInode(val []byte) (err error) {
+	var dbWriteHandle interface{}
+	dbWriteHandle, err = mp.inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		log.LogErrorf("[FreeInode] create batch write handle failed:%v", err)
+		return
+	}
+	defer func() {
+		_ = mp.inodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
+	}()
+
+	if err = mp.internalClean(dbWriteHandle, val); err != nil {
+		_ = mp.inodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
+		log.LogErrorf("[FreeInode] internal clean inode failed:%v", err)
+		return
+	}
+
+	if err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, false); err != nil {
+		log.LogErrorf("[FreeInode] commit batch write handle failed:%v", err)
+	}
+	return
 }

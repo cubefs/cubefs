@@ -107,7 +107,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		val    []byte
 	)
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -225,6 +225,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
 		return
 	}
+
 	if version == proto.OpInodeGetVersion1 && retMsg.Status == proto.OpInodeOutOfRange {
 		retMsg.Status = proto.OpNotExistErr
 	}
@@ -290,7 +291,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		val    []byte
 	)
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -338,7 +339,7 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 		val    []byte
 	)
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -429,7 +430,7 @@ func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 
 func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}

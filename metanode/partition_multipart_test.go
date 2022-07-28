@@ -146,12 +146,6 @@ func CreateMultipartInterTest01(t *testing.T, leader, follower *metaPartition) {
 		t.Errorf("create multiparts failed:%v", err)
 	}
 
-	defer func() {
-		//remove all multipart
-		_ = leader.multipartTree.Clear()
-		_ = follower.multipartTree.Clear()
-	}()
-
 	for _, multipart := range multiparts {
 		req := &proto.GetMultipartRequest{
 			Path: multipart.Path,
@@ -216,11 +210,6 @@ func AppendMultipartInterTest01(t *testing.T, leader, follower *metaPartition) {
 		t.Fatal(err)
 	}
 
-	defer func() {
-		_ = leader.multipartTree.Clear()
-		_ = follower.multipartTree.Clear()
-	}()
-
 	part := &proto.MultipartPartInfo{
 		ID:         0,
 		Inode:      1000,
@@ -282,10 +271,6 @@ func AppendMultipartInterTest02(t *testing.T, leader, follower *metaPartition) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		_ = leader.multipartTree.Clear()
-		_ = follower.multipartTree.Clear()
-	}()
 
 	part := &proto.MultipartPartInfo{
 		ID:         0,
@@ -392,11 +377,6 @@ func ListMultipartInterTest01(t *testing.T, leader, follower *metaPartition) {
 		return
 	}
 
-	defer func() {
-		_ = leader.multipartTree.Clear()
-		_ = follower.multipartTree.Clear()
-	}()
-
 	expectResult := make([]*proto.MultipartInfo, 0, 330)
 	for _, multipart := range multiparts {
 		if strings.HasPrefix(multipart.Path, "test/one") {
@@ -476,10 +456,6 @@ func ListMultipartInterTest02(t *testing.T, leader, follower *metaPartition) {
 		t.Fatal(err)
 		return
 	}
-	defer func() {
-		_ = leader.multipartTree.Clear()
-		_ = follower.multipartTree.Clear()
-	}()
 
 	expectResult := multiparts
 	sort.Slice(expectResult, func(i, j int) bool {
@@ -618,10 +594,6 @@ func RemoverMultipartInterTest(t *testing.T, leader, follower *metaPartition) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		_ = leader.multipartTree.Clear()
-		_ = follower.multipartTree.Clear()
-	}()
 
 	//remove
 	req := &proto.RemoveMultipartRequest{

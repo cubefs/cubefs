@@ -3,6 +3,8 @@ package metanode
 import (
 	"context"
 	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/sortedextent"
 	"os"
 	"reflect"
 	"testing"
@@ -66,7 +68,7 @@ func InitInodeTree(rocksTree *RocksTree) (memInodeTree, rocksInodeTree InodeTree
 	return
 }
 
-func InintDentryTree(rocksTree *RocksTree) (memDentryTree, rocksDentryTree DentryTree) {
+func InitDentryTree(rocksTree *RocksTree) (memDentryTree, rocksDentryTree DentryTree) {
 	if rocksTree == nil {
 		fmt.Printf("rocksTree is nil\n")
 		os.Exit(1)
@@ -88,6 +90,320 @@ func InitDeletedDentryTree(rocksTree *RocksTree) (memDeletedDentryTree, rocksDel
 	return
 }
 
+func inodeCreate(inodeTree InodeTree, inode *Inode, replace bool) (ino *Inode, ok bool, err error) {
+	var dbWriteHandle interface{}
+	dbWriteHandle, err = inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer inodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
+
+	ino, ok, err = inodeTree.Create(dbWriteHandle, inode, replace)
+	if err != nil {
+		return
+	}
+
+	if !ok {
+		return
+	}
+
+	err = inodeTree.CommitBatchWrite(dbWriteHandle, false)
+	return
+}
+
+func inodePut(inodeTree InodeTree, inode *Inode) (err error) {
+	var dbWriteHandle interface{}
+	dbWriteHandle, err = inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer inodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
+
+	err = inodeTree.Put(dbWriteHandle, inode)
+	if err != nil {
+		return
+	}
+
+	err = inodeTree.CommitBatchWrite(dbWriteHandle, false)
+	return
+}
+
+func inodeDelete(inodeTree InodeTree, ino uint64) (ok bool, err error) {
+	var dbWriteHandle interface{}
+	dbWriteHandle, err = inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer inodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
+
+	ok, err = inodeTree.Delete(dbWriteHandle, ino)
+	if err != nil {
+		return
+	}
+
+	if !ok {
+		return
+	}
+
+	err = inodeTree.CommitBatchWrite(dbWriteHandle, false)
+	return
+}
+
+func dentryCreate(dentryTree DentryTree, dentry *Dentry, replace bool) (den *Dentry, ok bool, err error) {
+	var dbWriteHandle interface{}
+	dbWriteHandle, err = dentryTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer dentryTree.ReleaseBatchWriteHandle(dbWriteHandle)
+
+	den, ok, err = dentryTree.Create(dbWriteHandle, dentry, replace)
+	if err != nil {
+		return
+	}
+
+	if !ok {
+		return
+	}
+
+	err = dentryTree.CommitBatchWrite(dbWriteHandle, false)
+	return
+}
+
+func deletedDentryCreate(deletedDentryTree DeletedDentryTree, delDentry *DeletedDentry, replace bool) (delDen *DeletedDentry, ok bool, err error) {
+	var dbWriteHandle interface{}
+	dbWriteHandle, err = deletedDentryTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer deletedDentryTree.ReleaseBatchWriteHandle(dbWriteHandle)
+
+	delDen, ok, err = deletedDentryTree.Create(dbWriteHandle, delDentry, replace)
+	if err != nil {
+		return
+	}
+
+	if !ok {
+		return
+	}
+
+	err = deletedDentryTree.CommitBatchWrite(dbWriteHandle, false)
+	return
+}
+
+func deletedDentryDelete(deletedDentryTree DeletedDentryTree, delDentry *DeletedDentry) (ok bool, err error) {
+	var dbWriteHandle interface{}
+	dbWriteHandle, err = deletedDentryTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer deletedDentryTree.ReleaseBatchWriteHandle(dbWriteHandle)
+
+	ok, err = deletedDentryTree.Delete(dbWriteHandle, delDentry.ParentId, delDentry.Name, delDentry.Timestamp)
+	if err != nil {
+		return
+	}
+
+	if !ok {
+		return
+	}
+
+	err = deletedDentryTree.CommitBatchWrite(dbWriteHandle, false)
+	return
+}
+
+func deletedInodeCreate(delInodeTree DeletedInodeTree, delInode *DeletedINode, replace bool) (dino *DeletedINode, ok bool, err error) {
+	var dbWriteHandle interface{}
+	dbWriteHandle, err = delInodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer delInodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
+
+	dino, ok, err = delInodeTree.Create(dbWriteHandle, delInode, replace)
+	if err != nil {
+		return
+	}
+
+	if !ok {
+		return
+	}
+
+	err = delInodeTree.CommitBatchWrite(dbWriteHandle, false)
+	return
+}
+
+func newInodeTree(t *testing.T, storeMode proto.StoreMode, rocksTree *RocksTree) InodeTree {
+	switch storeMode {
+	case proto.StoreModeMem:
+		memItem, _ := mockTree(&RocksTree{}, InodeType)
+		return memItem.(InodeTree)
+	case proto.StoreModeRocksDb:
+		if rocksTree == nil {
+			t.Errorf("rocksTree is nil\n")
+			t.FailNow()
+		}
+		_, rocksItem := mockTree(rocksTree, InodeType)
+		return rocksItem.(InodeTree)
+	default:
+		t.Errorf("error store mode:%v", storeMode)
+		t.FailNow()
+		return nil
+	}
+}
+
+func newDentryTree(t *testing.T, storeMode proto.StoreMode, rocksTree *RocksTree) DentryTree {
+	switch storeMode {
+	case proto.StoreModeMem:
+		memItem, _ := mockTree(&RocksTree{}, DentryType)
+		return memItem.(DentryTree)
+	case proto.StoreModeRocksDb:
+		if rocksTree == nil {
+			t.Errorf("rocksTree is nil\n")
+			t.FailNow()
+		}
+		_, rocksItem := mockTree(rocksTree, DentryType)
+		return rocksItem.(DentryTree)
+	default:
+		t.Errorf("error store mode:%v", storeMode)
+		t.FailNow()
+		return nil
+	}
+}
+
+func newDeletedDentryTree(t *testing.T, storeMode proto.StoreMode, rocksTree *RocksTree) DeletedDentryTree {
+	switch storeMode {
+	case proto.StoreModeMem:
+		memItem, _ := mockTree(&RocksTree{}, DelDentryType)
+		return memItem.(DeletedDentryTree)
+	case proto.StoreModeRocksDb:
+		if rocksTree == nil {
+			t.Errorf("rocksTree is nil\n")
+			t.FailNow()
+		}
+		_, rocksItem := mockTree(rocksTree, DelDentryType)
+		return rocksItem.(DeletedDentryTree)
+	default:
+		t.Errorf("error store mode:%v", storeMode)
+		t.FailNow()
+		return nil
+	}
+}
+
+func TestInodeTree_Create(t *testing.T) {
+	tests := []struct{
+		name       string
+		storeMode  proto.StoreMode
+		rocksDBDir string
+		inode      *Inode
+
+	}{
+		{
+			name:       "MemMode",
+			storeMode:  proto.StoreModeMem,
+			rocksDBDir: "",
+			inode:      &Inode{
+				Inode:      1000,
+				Type:       uint32(os.ModeDir),
+				Uid:        0,
+				Gid:        0,
+				Size:       0,
+				Generation: 0,
+				LinkTarget: []byte("linkTarget"),
+				NLink:      3,
+			},
+		},
+		{
+			name:       "RocksDBMode",
+			storeMode:  proto.StoreModeRocksDb,
+			rocksDBDir: "./test_inode_create",
+			inode:      &Inode{
+				Inode:      20,
+				Type:       470,
+				Uid:        0,
+				Gid:        0,
+				Size:       4096,
+				NLink:      1,
+				Extents:    sortedextent.NewSortedExtents(),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var rocksTree *RocksTree
+			if test.storeMode == proto.StoreModeRocksDb {
+				rocksTree = newTestRocksTree(test.rocksDBDir)
+				defer func() {
+					rocksTree.Release()
+					_ = os.RemoveAll(test.rocksDBDir)
+				}()
+			}
+			inodeTree := newInodeTree(t, test.storeMode, rocksTree)
+			_, _, err := inodeCreate(inodeTree, test.inode, true)
+			if err != nil {
+				t.Errorf(err.Error())
+				return
+			}
+
+			var existIno *Inode
+			if existIno, err = inodeTree.Get(test.inode.Inode); err != nil {
+				t.Errorf(err.Error())
+				return
+			}
+
+			if !reflect.DeepEqual(test.inode, existIno) {
+				t.Errorf("inode info mismatch, expect:%s, actual:%s", test.inode, existIno)
+				return
+			}
+
+			var ok = false
+			_, ok, err = inodeCreate(inodeTree, test.inode, false)
+			if err != nil {
+				t.Errorf(err.Error())
+				return
+			}
+
+			if ok {
+				t.Errorf("create exist inode result mismatch, expect:false, actual:true")
+			}
+
+			if test.storeMode == proto.StoreModeRocksDb {
+				if err = inodeTree.(*InodeRocks).RocksTree.LoadBaseInfo(); err != nil {
+					t.Errorf("load base info failed:%v", err)
+				}
+			}
+
+			if realCount := inodeTree.RealCount(); realCount != 1 || inodeTree.Count() != 1 {
+				t.Errorf("inode count mismatch, expect:1, actual:[real count:%v, count:%v]", realCount, inodeTree.Count())
+			}
+
+			ok = false
+			if ok, err = inodeDelete(inodeTree, test.inode.Inode); err != nil {
+				t.Errorf(err.Error())
+				return
+			}
+
+			if !ok {
+				t.Errorf("inode(%s) delete result mismatch, expect:exist, actual:not exist", test.inode)
+				return
+			}
+
+			if existIno, err = inodeTree.Get(test.inode.Inode); err != nil {
+				t.Errorf(err.Error())
+				return
+			}
+
+			if existIno != nil {
+				t.Errorf("inode(%s) has been deleted, but inode get not nil", test.inode)
+				return
+			}
+
+			t.Logf("%s test success", test.name)
+		})
+	}
+}
+
 func TestInodeTreeCreate(t *testing.T) {
 	//check
 	var errForMem, errForRocks error
@@ -101,30 +417,40 @@ func TestInodeTreeCreate(t *testing.T) {
 	memInodeTree, rocksInodeTree := InitInodeTree(rocksTree)
 	//create
 	inode := NewInode(1000, 0)
-	errForMem = memInodeTree.Create(inode, true)
-	errForRocks = rocksInodeTree.Create(inode, true)
-	if errForMem != errForRocks || errForMem != nil {
+	_, _, errForMem = inodeCreate(memInodeTree, inode, true)
+	_, _, errForRocks = inodeCreate(rocksInodeTree, inode, true)
+	if errForRocks != nil || errForMem != nil {
 		t.Fatalf("Test Create: error different or mismatch, expect:nil, actual[errorInMem:%v errorInRocks:%v]", errForMem, errForRocks)
 	}
 
-	errForMem = memInodeTree.Create(inode, false)
-	errForRocks = rocksInodeTree.Create(inode, false)
-	if errForMem != errForRocks || errForMem != existsError {
-		t.Fatalf("Test Create: error different or error mismatch, expect:existError, actual[errorInMem:%v errorInRocksd:%v]", errForMem, errForRocks)
+	var ok = false
+	_, ok, _ = inodeCreate(memInodeTree, inode, false)
+	if ok {
+		t.Fatalf("Test Create: create exist inode success, expcet:false, actual:true")
+	}
+	_, ok, errForRocks = inodeCreate(rocksInodeTree, inode, false)
+	if errForRocks != nil {
+		t.Fatalf("inode create failed:%v", errForRocks)
+	}
+	if ok {
+		t.Fatalf("Test Create: create exist inode success, expcet:false, actual:true")
 	}
 
-	errForMem = memInodeTree.Create(inode, true)
-	errForRocks = rocksInodeTree.Create(inode, true)
+	_, _, errForMem = inodeCreate(memInodeTree, inode, true)
+	_, _, errForRocks = inodeCreate(rocksInodeTree, inode, true)
 	if errForMem != errForRocks || errForMem != nil {
-		t.Fatalf("Test Create: error different or mismatch, expect:mil, actual[errorInMem:%v errorInRocks:%v]", errForMem, errForRocks)
+		t.Fatalf("Test Create: error different or mismatch, expect:nil, actual[errorInMem:%v errorInRocks:%v]", errForMem, errForRocks)
 	}
 
 	if memInodeTree.Count() != rocksInodeTree.Count() || memInodeTree.Count() != 1 {
 		t.Fatalf("Test Create: inode count different or mismatch, expect:1, actual:[mem:%v, rocks:%v]", memInodeTree.Count(), rocksInodeTree.Count())
 	}
 
-	memInodeTree.Delete(inode.Inode)
-	rocksInodeTree.Delete(inode.Inode)
+	_, errForMem = inodeDelete(memInodeTree, inode.Inode)
+	_, errForRocks = inodeDelete(rocksInodeTree, inode.Inode)
+	if errForMem != nil || errForRocks != nil {
+		t.Fatalf("Test Create: delete inode failed, error[mem:%v, rocks:%v]", errForMem, errForRocks)
+	}
 	if memInodeTree.Count() != rocksInodeTree.Count() || memInodeTree.Count() != 0 {
 		t.Fatalf("Test Create: inode count different or mismatch, expect:0, actual:[mem:%v, rocks:%v]", memInodeTree.Count(), rocksInodeTree.Count())
 	}
@@ -146,13 +472,13 @@ func TestInodeTreeGet(t *testing.T) {
 	//create
 	for index := 1; index <= 100; index++ {
 		inode := NewInode(uint64(index), 0)
-		_ = memInodeTree.Create(inode, true)
-		_ = rocksInodeTree.Create(inode, true)
+		_, _, errForMem = inodeCreate(memInodeTree, inode, true)
+		_, _, errForRocks = inodeCreate(rocksInodeTree, inode, true)
 	}
 	defer func() {
 		for index := 1; index <= 100; index++ {
-			_, _ = memInodeTree.Delete(uint64(index))
-			_, _ = rocksInodeTree.Delete(uint64(index))
+			_, errForMem = inodeDelete(memInodeTree, uint64(index))
+			_, errForRocks = inodeDelete(rocksInodeTree, uint64(index))
 		}
 	}()
 
@@ -194,7 +520,7 @@ func TestInodeTreeGet(t *testing.T) {
 	}
 
 	getIno, errForRocks = rocksInodeTree.Get(1000)
-	if errForRocks != nil && errForRocks != rocksdbError {
+	if errForRocks != nil && errForRocks != rocksDBError {
 		t.Fatalf("Test Get: result mismatch, expect[err:nil] actual[err:%v]", errForRocks)
 	}
 
@@ -219,13 +545,9 @@ func TestInodeTreeGetMaxInode(t *testing.T) {
 	//create
 	for index := 1; index <= inodeCount; index++ {
 		inode := NewInode(uint64(index), 0)
-		_ = memInodeTree.Create(inode, true)
-		_ = rocksInodeTree.Create(inode, true)
+		_, _, _ = inodeCreate(memInodeTree, inode, true)
+		_, _, _ = inodeCreate(rocksInodeTree, inode, true)
 	}
-	defer func() {
-		_ = memInodeTree.Clear()
-		_ = rocksInodeTree.Clear()
-	}()
 
 	maxIno, _ := memInodeTree.GetMaxInode()
 	if maxIno != uint64(inodeCount) {
@@ -242,52 +564,6 @@ func TestInodeTreeGetMaxInode(t *testing.T) {
 	return
 }
 
-func TestInodeTreeClear(t *testing.T) {
-	var (
-		errForRocks error
-		inodeCount  = 12345
-	)
-	rocksDir := "./test_inode_tree_clear"
-	rocksTree := newTestRocksTree(rocksDir)
-	defer func() {
-		rocksTree.Release()
-		_ = os.RemoveAll(rocksDir)
-	}()
-	memInodeTree, rocksInodeTree := InitInodeTree(rocksTree)
-	//create
-	for index := 1; index <= inodeCount; index++ {
-		inode := NewInode(uint64(index), 0)
-		_ = memInodeTree.Create(inode, true)
-		_ = rocksInodeTree.Create(inode, true)
-	}
-	defer func() {
-		for index := 1; index <= inodeCount; index++ {
-			_, _ = memInodeTree.Delete(uint64(index))
-			_, _ = rocksInodeTree.Delete(uint64(index))
-		}
-	}()
-	if memInodeTree.Count() != rocksInodeTree.Count() || memInodeTree.Count() != uint64(inodeCount) {
-		t.Fatalf("Test Clear: inode count mismatch, expect:%v actual[mem:%v, rocks:%v]", inodeCount, memInodeTree.Count(), rocksInodeTree.Count())
-	}
-
-	if memInodeTree.RealCount() != rocksInodeTree.RealCount() || memInodeTree.RealCount() != uint64(inodeCount) {
-		t.Fatalf("Test Clear: inode real count mismatch, expect:%v actual[mem:%v, rocks:%v]", inodeCount, memInodeTree.Count(), rocksInodeTree.Count())
-	}
-	_ = memInodeTree.Clear()
-	errForRocks = rocksInodeTree.Clear()
-	if errForRocks != nil {
-		t.Fatalf("Test Clear: get error:%v", errForRocks)
-	}
-
-	if memInodeTree.Count() != 0 || rocksInodeTree.Count() != 0 {
-		t.Fatalf("Test Clear: inode count mismatch, expect:0 actual[mem:%v, rocks:%v]", memInodeTree.Count(), rocksInodeTree.Count())
-	}
-	if memInodeTree.RealCount() != 0 || rocksInodeTree.RealCount() != 0 {
-		t.Fatalf("Test Clear: inode real count mismatch, expect:0 actual[mem:%v, rocks:%v]", memInodeTree.Count(), rocksInodeTree.Count())
-	}
-	return
-}
-
 func TestInodeTreeRange(t *testing.T) {
 	inodeCount := 123
 	rocksDir := "./test_inode_tree_range"
@@ -300,13 +576,9 @@ func TestInodeTreeRange(t *testing.T) {
 	//create
 	for index := 1; index <= inodeCount; index++ {
 		inode := NewInode(uint64(index), 0)
-		_ = memInodeTree.Create(inode, true)
-		_ = rocksInodeTree.Create(inode, true)
+		_, _, _ = inodeCreate(memInodeTree, inode, true)
+		_, _, _ = inodeCreate(rocksInodeTree, inode, true)
 	}
-	defer func() {
-		_ = memInodeTree.Clear()
-		_ = rocksInodeTree.Clear()
-	}()
 
 	startInode := 43
 	index := 0
@@ -352,8 +624,8 @@ func TestInodeTreeMaxItem(t *testing.T) {
 	//create
 	for index := 1; index <= inodeCount; index++ {
 		inode := NewInode(uint64(index), 0)
-		_ = memInodeTree.Create(inode, true)
-		_ = rocksInodeTree.Create(inode, true)
+		_, _, _ = inodeCreate(memInodeTree, inode, true)
+		_, _, _ = inodeCreate(rocksInodeTree, inode, true)
 	}
 
 	maxInode := memInodeTree.MaxItem()
@@ -379,29 +651,24 @@ func TestDeletedDentryRange(t *testing.T) {
 
 	curTimestamp := time.Now().Unix()
 	delDentry := newPrimaryDeletedDentry(1, "test_01", curTimestamp, 1000)
-	_ = memDelDentryTree.Create(delDentry, true)
-	_ = rocksDelDentryTree.Create(delDentry, true)
+	_, _, _ = deletedDentryCreate(memDelDentryTree, delDentry, true)
+	_, _, _ = deletedDentryCreate(rocksDelDentryTree, delDentry, true)
 
 	delDentry = newPrimaryDeletedDentry(1, "a", curTimestamp+100, 1000)
-	_ = memDelDentryTree.Create(delDentry, true)
-	_ = rocksDelDentryTree.Create(delDentry, true)
+	_, _, _ = deletedDentryCreate(memDelDentryTree, delDentry, true)
+	_, _, _ = deletedDentryCreate(rocksDelDentryTree, delDentry, true)
 
 	delDentry = newPrimaryDeletedDentry(1, "test_01", curTimestamp+1000, 1004)
-	_ = memDelDentryTree.Create(delDentry, true)
-	_ = rocksDelDentryTree.Create(delDentry, true)
+	_, _, _ = deletedDentryCreate(memDelDentryTree, delDentry, true)
+	_, _, _ = deletedDentryCreate(rocksDelDentryTree, delDentry, true)
 
 	delDentry = newPrimaryDeletedDentry(2, "test_02", curTimestamp, 2000)
-	_ = memDelDentryTree.Create(delDentry, true)
-	_ = rocksDelDentryTree.Create(delDentry, true)
+	_, _, _ = deletedDentryCreate(memDelDentryTree, delDentry, true)
+	_, _, _ = deletedDentryCreate(rocksDelDentryTree, delDentry, true)
 
 	delDentry = newPrimaryDeletedDentry(3, "test_03", curTimestamp, 3000)
-	_ = memDelDentryTree.Create(delDentry, true)
-	_ = rocksDelDentryTree.Create(delDentry, true)
-
-	defer func() {
-		_ = memDelDentryTree.Clear()
-		_ = rocksDelDentryTree.Clear()
-	}()
+	_, _, _ = deletedDentryCreate(memDelDentryTree, delDentry, true)
+	_, _, _ = deletedDentryCreate(rocksDelDentryTree, delDentry, true)
 
 	fmt.Printf("start run testRange01\n")
 	expectResult := []*DeletedDentry{
@@ -591,34 +858,34 @@ func TestDentryTreeRange(t *testing.T) {
 		rocksTree.Release()
 		_ = os.RemoveAll(rocksDir)
 	}()
-	memDentryTree, rocksDentryTree := InintDentryTree(rocksTree)
+	memDentryTree, rocksDentryTree := InitDentryTree(rocksTree)
 	dentry := &Dentry{ParentId: 1, Name: "test_01", Inode: 1001, Type: 0}
-	_ = memDentryTree.Create(dentry, true)
-	_ = rocksDentryTree.Create(dentry, true)
+	_, _, _ = dentryCreate(memDentryTree, dentry, true)
+	_, _, _ = dentryCreate(rocksDentryTree, dentry, true)
 
 	dentry = &Dentry{ParentId: 1, Name: "test_02", Inode: 1002, Type: 0}
-	_ = memDentryTree.Create(dentry, true)
-	_ = rocksDentryTree.Create(dentry, true)
+	_, _, _ = dentryCreate(memDentryTree, dentry, true)
+	_, _, _ = dentryCreate(rocksDentryTree, dentry, true)
 
 	dentry = &Dentry{ParentId: 1, Name: "test_03", Inode: 1003, Type: 0}
-	_ = memDentryTree.Create(dentry, true)
-	_ = rocksDentryTree.Create(dentry, true)
+	_, _, _ = dentryCreate(memDentryTree, dentry, true)
+	_, _, _ = dentryCreate(rocksDentryTree, dentry, true)
 
 	dentry = &Dentry{ParentId: 1, Name: "test_04", Inode: 1004, Type: 0}
-	_ = memDentryTree.Create(dentry, true)
-	_ = rocksDentryTree.Create(dentry, true)
+	_, _, _ = dentryCreate(memDentryTree, dentry, true)
+	_, _, _ = dentryCreate(rocksDentryTree, dentry, true)
 
 	dentry = &Dentry{ParentId: 1, Name: "abc", Inode: 1005, Type: 0}
-	_ = memDentryTree.Create(dentry, true)
-	_ = rocksDentryTree.Create(dentry, true)
+	_, _, _ = dentryCreate(memDentryTree, dentry, true)
+	_, _, _ = dentryCreate(rocksDentryTree, dentry, true)
 
 	dentry = &Dentry{ParentId: 1, Name: "def", Inode: 1006, Type: 0}
-	_ = memDentryTree.Create(dentry, true)
-	_ = rocksDentryTree.Create(dentry, true)
+	_, _, _ = dentryCreate(memDentryTree, dentry, true)
+	_, _, _ = dentryCreate(rocksDentryTree, dentry, true)
 
 	dentry = &Dentry{ParentId: 2, Name: "hig", Inode: 1007, Type: 0}
-	_ = memDentryTree.Create(dentry, true)
-	_ = rocksDentryTree.Create(dentry, true)
+	_, _, _ = dentryCreate(memDentryTree, dentry, true)
+	_, _, _ = dentryCreate(rocksDentryTree, dentry, true)
 
 	expectResult := []*Dentry{
 		{ParentId: 1, Name: "abc", Inode: 1005, Type: 0},

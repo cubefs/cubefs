@@ -99,12 +99,19 @@ func (mp *metaPartition) loadMetadata() (err error) {
 }
 
 func (mp *metaPartition) loadInode(ctx context.Context, rootDir string) (err error) {
-	var numInodes uint64
+	var (
+		numInodes uint64
+		status    uint8
+	)
 	defer func() {
 		if err == nil {
 			log.LogInfof("loadInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
 				mp.config.PartitionId, mp.config.VolName, numInodes)
 		}
+	}()
+	handler, _ := mp.inodeTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handler, false)
 	}()
 	filename := path.Join(rootDir, inodeFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -156,9 +163,9 @@ func (mp *metaPartition) loadInode(ctx context.Context, rootDir string) (err err
 				return
 			}
 		}
-		status, e := mp.fsmCreateInode(ino)
-		if e == rocksdbError {
-			err = errors.NewErrorf("[loadInode] fsmCreateInode, inode: %v, err: %v", ino, e)
+
+		if status, err = mp.fsmCreateInode(handler, ino); err != nil {
+			err = errors.NewErrorf("[loadInode] fsmCreateInode, inode: %v, err: %v", ino, err)
 			return
 		}
 		if status != proto.OpOk {
@@ -181,6 +188,10 @@ func (mp *metaPartition) loadDeletedInode(ctx context.Context, rootDir string) (
 			log.LogInfof("loadDeletedInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
 				mp.config.PartitionId, mp.config.VolName, numInodes)
 		}
+	}()
+	handler, _ := mp.inodeDeletedTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.inodeDeletedTree.CommitAndReleaseBatchWriteHandle(handler, false)
 	}()
 	filename := path.Join(rootDir, inodeDeletedFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -226,13 +237,14 @@ func (mp *metaPartition) loadDeletedInode(ctx context.Context, rootDir string) (
 			err = errors.NewErrorf("[loadDeletedInode] Unmarshal: %s", err.Error())
 			return
 		}
-		resp, e := mp.fsmCreateDeletedInode(dino)
-		if e == rocksdbError {
-			err = errors.NewErrorf("[loadDeletedInode] fsmCreateDeletedInode, dinode: %v, err: %v", dino, e)
+		var resp *fsmOpDeletedInodeResponse
+		resp, err = mp.fsmCreateDeletedInode(handler, dino)
+		if err != nil {
+			err = errors.NewErrorf("[loadDeletedInode] fsmCreateDeletedInode, dinode: %v, err: %v", dino, err)
 			return
 		}
-		if status := resp.Status; status != proto.OpOk {
-			err = errors.NewErrorf("[loadDeletedInode] fsmCreateDeletedInode, dinode: %v, resp code: %d", dino, status)
+		if resp.Status != proto.OpOk {
+			err = errors.NewErrorf("[loadDeletedInode] fsmCreateDeletedInode, dinode: %v, resp code: %d", dino, resp.Status)
 			return
 		}
 		mp.checkExpiredAndInsertFreeList(dino)
@@ -248,6 +260,10 @@ func (mp *metaPartition) loadDeletedDentry(rootDir string) (err error) {
 			log.LogInfof("loadDeletedDentry: load complete: partitonID(%v) volume(%v) numDentries(%v)",
 				mp.config.PartitionId, mp.config.VolName, numDentries)
 		}
+	}()
+	handler, _ := mp.dentryDeletedTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.dentryDeletedTree.CommitAndReleaseBatchWriteHandle(handler, false)
 	}()
 	filename := path.Join(rootDir, dentryDeletedFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -299,13 +315,14 @@ func (mp *metaPartition) loadDeletedDentry(rootDir string) (err error) {
 			err = errors.NewErrorf("[loadDeletedDentry] Unmarshal: %s", err.Error())
 			return
 		}
-		resp, e := mp.fsmCreateDeletedDentry(ddentry, true)
-		if e == rocksdbError {
-			err = errors.NewErrorf("[loadDeletedDentry] fsmCreateDeletedDentry, dentry: %v, err: %v", ddentry, e)
+		var resp *fsmOpDeletedDentryResponse
+		resp, err = mp.fsmCreateDeletedDentry(handler, ddentry, true)
+		if err != nil {
+			err = errors.NewErrorf("[loadDeletedDentry] fsmCreateDeletedDentry, dentry: %v, err: %v", ddentry, err)
 			return
 		}
-		if status := resp.Status; status != proto.OpOk {
-			err = errors.NewErrorf("[loadDeletedDentry] fsmCreateDeletedDentry, dentry: %v, resp code: %d", ddentry, status)
+		if resp.Status != proto.OpOk {
+			err = errors.NewErrorf("[loadDeletedDentry] fsmCreateDeletedDentry, dentry: %v, resp code: %d", ddentry, resp.Status)
 			return
 		}
 		numDentries += 1
@@ -320,6 +337,10 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			log.LogInfof("loadDentry: load complete: partitonID(%v) volume(%v) numDentries(%v)",
 				mp.config.PartitionId, mp.config.VolName, numDentries)
 		}
+	}()
+	handler, _ := mp.dentryTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handler, false)
 	}()
 	filename := path.Join(rootDir, dentryFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -377,9 +398,10 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 				return
 			}
 		}
-		status, e := mp.fsmCreateDentry(dentry, true)
-		if e == rocksdbError {
-			err = errors.NewErrorf("[loadDentry] createDentry, dentry: %v, err: %v", dentry, e)
+		var status uint8
+		status, err = mp.fsmCreateDentry(handler, dentry, true)
+		if err != nil {
+			err = errors.NewErrorf("[loadDentry] createDentry, dentry: %v, err: %v", dentry, err)
 			return
 		}
 		if status != proto.OpOk {
@@ -392,6 +414,10 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 
 func (mp *metaPartition) loadExtend(rootDir string) error {
 	var err error
+	handler, _ := mp.extendTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.extendTree.CommitAndReleaseBatchWriteHandle(handler, false)
+	}()
 	filename := path.Join(rootDir, extendFile)
 	if _, err = os.Stat(filename); err != nil {
 		return nil
@@ -426,7 +452,7 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 		}
 		log.LogDebugf("loadExtend: new extend from bytes: partitionID（%v) volume(%v) inode(%v)",
 			mp.config.PartitionId, mp.config.VolName, extend.inode)
-		_, _ = mp.fsmSetXAttr(extend)
+		_, _ = mp.fsmSetXAttr(handler, extend)
 		offset += int(numBytes)
 	}
 	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
@@ -436,6 +462,10 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 
 func (mp *metaPartition) loadMultipart(rootDir string) error {
 	var err error
+	handler, _ := mp.multipartTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.multipartTree.CommitAndReleaseBatchWriteHandle(handler, false)
+	}()
 	filename := path.Join(rootDir, multipartFile)
 	if _, err = os.Stat(filename); err != nil {
 		return nil
@@ -467,9 +497,10 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 		var multipart *Multipart
 		multipart = MultipartFromBytes(mem[offset : offset+int(numBytes)])
 		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
-		status, e := mp.fsmCreateMultipart(multipart)
-		if e == rocksdbError {
-			err = errors.NewErrorf("[loadMultipart] fsmCreateMultipart, multipart: %v, err: %v", multipart, e)
+		var status uint8
+		status, err = mp.fsmCreateMultipart(handler, multipart)
+		if err != nil {
+			err = errors.NewErrorf("[loadMultipart] fsmCreateMultipart, multipart: %v, err: %v", multipart, err)
 			return err
 		}
 		if status != proto.OpOk {
