@@ -68,7 +68,6 @@ func (alloc *IDAllocator) restoreClientID() {
 	log.LogInfof("action[restoreClientID] maxClientID[%v]", alloc.clientID)
 }
 
-
 func (alloc *IDAllocator) restoreMaxDataPartitionID() {
 	value, err := alloc.store.Get(maxDataPartitionIDKey)
 	if err != nil {
@@ -188,7 +187,6 @@ errHandler:
 	return
 }
 
-
 func (alloc *IDAllocator) allocateClientID() (clientID uint64, err error) {
 	alloc.mpIDLock.Lock()
 	defer alloc.mpIDLock.Unlock()
@@ -212,7 +210,6 @@ errHandler:
 	log.LogErrorf("action[allocateClientID] err:%v", err.Error())
 	return
 }
-
 
 func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	alloc.mnIDLock.Lock()

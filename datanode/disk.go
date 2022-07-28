@@ -114,11 +114,11 @@ func (d *Disk) updateQosLimiter() {
 		d.limitFactor[proto.IopsWriteType].SetLimit(rate.Limit(d.dataNode.diskIopsWriteLimit))
 	}
 
-	for i:= proto.IopsReadType;i < proto.FlowWriteType; i++ {
+	for i := proto.IopsReadType; i < proto.FlowWriteType; i++ {
 		log.LogInfof("action[updateQosLimiter] type %v limit %v", proto.QosTypeString(i), d.limitFactor[i].Limit())
 	}
 	log.LogInfof("action[updateQosLimiter] flowRead %v flowrite %v iopsread %v iposwrite %v",
-		d.dataNode.diskFlowReadLimit,d.dataNode.diskFlowWriteLimit,d.dataNode.diskIopsReadLimit,d.dataNode.diskIopsWriteLimit)
+		d.dataNode.diskFlowReadLimit, d.dataNode.diskFlowWriteLimit, d.dataNode.diskIopsReadLimit, d.dataNode.diskIopsWriteLimit)
 }
 
 func (d *Disk) allocCheckLimit(factorType uint32, used uint32) error {
