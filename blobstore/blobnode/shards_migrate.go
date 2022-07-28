@@ -19,6 +19,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -39,8 +40,8 @@ type IVunitAccess interface {
 	StatChunk(ctx context.Context, location proto.VunitLocation) (ci *client.ChunkInfo, err error)
 	StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (si *client.ShardInfo, err error)
 	ListShards(ctx context.Context, location proto.VunitLocation) (shards []*client.ShardInfo, err error)
-	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (body io.ReadCloser, crc32 uint32, err error)
-	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader) (err error)
+	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType blobnode.IOType) (body io.ReadCloser, crc32 uint32, err error)
+	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType blobnode.IOType) (err error)
 }
 
 // GenMigrateBids generates migrate blob ids
@@ -115,7 +116,7 @@ func MigrateBids(
 			return OtherError(err)
 		}
 		err = retry.Timed(3, 1000).On(func() error {
-			return vunitAccess.PutShard(ctx, destLocation, bid.Bid, bid.Size, bytes.NewReader(data))
+			return vunitAccess.PutShard(ctx, destLocation, bid.Bid, bid.Size, bytes.NewReader(data), shardRecover.ioType)
 		})
 		if err != nil {
 			return DstError(err)

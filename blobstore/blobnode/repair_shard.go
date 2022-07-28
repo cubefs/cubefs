@@ -20,6 +20,7 @@ import (
 	"io"
 	"sync"
 
+	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -30,9 +31,9 @@ import (
 
 // IShardAccess define the interface of blobnode use by shard repair
 type IShardAccess interface {
-	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader) (err error)
+	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType api.IOType) (err error)
 	StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (si *client.ShardInfo, err error)
-	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (body io.ReadCloser, crc32 uint32, err error)
+	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error)
 }
 
 // ShardInfoEx shard info execution
@@ -114,7 +115,7 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task proto.Shard
 
 	span.Infof("start recover blob: bid[%d], badIdx[%+v]", task.Bid, task.BadIdxs)
 	bidInfos := []*ShardInfoSimple{{Bid: task.Bid, Size: shardSize}}
-	shardRecover := NewShardRecover(task.Sources, task.CodeMode, bidInfos, repairer.bufPool, repairer.cli, 1)
+	shardRecover := NewShardRecover(task.Sources, task.CodeMode, bidInfos, repairer.bufPool, repairer.cli, 1, api.RepairIO)
 	defer shardRecover.ReleaseBuf()
 	err = shardRecover.RecoverShards(ctx, task.BadIdxs, false)
 	if err != nil {
@@ -136,7 +137,7 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task proto.Shard
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			err = repairer.cli.PutShard(ctx, dstLocation, task.Bid, shardSize, bytes.NewReader(data))
+			err = repairer.cli.PutShard(ctx, dstLocation, task.Bid, shardSize, bytes.NewReader(data), api.RepairIO)
 			retErrs[i] = err
 		}(badi)
 	}

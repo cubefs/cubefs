@@ -38,27 +38,19 @@ type TaskRunnerMgr struct {
 
 	manualMigrate                      map[string]*TaskRunner
 	manualMigrateTaskletRunConcurrency int
-
-	schedulerCli TaskSchedulerCli
-	wf           IWorkerFactory
-	mu           sync.Mutex
+	wf                                 IWorkerFactory
+	schedulerCli                       TaskSchedulerCli
+	mu                                 sync.Mutex
 
 	shardGetConcurrency int
 }
 
-// IWorkerFactory just for UT
 type IWorkerFactory interface {
-	NewRepairWorker(task VolRepairTaskEx) ITaskWorker
 	NewMigrateWorker(task MigrateTaskEx) ITaskWorker
 }
 
 // TaskWorkerCreator task worker creator
 type TaskWorkerCreator struct{}
-
-// NewRepairWorker returns repair worker
-func (wf *TaskWorkerCreator) NewRepairWorker(task VolRepairTaskEx) ITaskWorker {
-	return NewRepairWorker(task)
-}
 
 // NewMigrateWorker returns migrate worker
 func (wf *TaskWorkerCreator) NewMigrateWorker(task MigrateTaskEx) ITaskWorker {
@@ -87,91 +79,44 @@ func NewTaskRunnerMgr(
 
 		manualMigrate:                      make(map[string]*TaskRunner),
 		manualMigrateTaskletRunConcurrency: manualMigrateTaskletRunConcurrency,
-
-		wf:           wf,
-		schedulerCli: schedulerCli,
+		wf:                                 wf,
+		schedulerCli:                       schedulerCli,
 
 		shardGetConcurrency: shardGetConcurrency,
 	}
 	return tm
 }
 
-// AddRepairTask adds repair task
-func (tm *TaskRunnerMgr) AddRepairTask(ctx context.Context, task VolRepairTaskEx) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
-	w := tm.wf.NewRepairWorker(task)
-	runner := NewTaskRunner(
-		ctx,
-		task.taskInfo.TaskID,
-		w, task.taskInfo.SourceIDC,
-		tm.repairTaskletRunConcurrency,
-		tm.schedulerCli)
-	err := addRunner(tm.repair, task.taskInfo.TaskID, runner)
-	if err != nil {
-		return err
-	}
-
-	go runner.Run()
-	return nil
-}
-
-// AddBalanceTask adds balance task
-func (tm *TaskRunnerMgr) AddBalanceTask(ctx context.Context, task MigrateTaskEx) error {
+func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
 	w := tm.wf.NewMigrateWorker(task)
-	runner := NewTaskRunner(
-		ctx,
-		task.taskInfo.TaskID,
-		w, task.taskInfo.SourceIDC,
-		tm.balanceTaskletRunConcurrency,
-		tm.schedulerCli)
-	err := addRunner(tm.balance, task.taskInfo.TaskID, runner)
-	if err != nil {
-		return err
+
+	var taskletRunConcurrency int
+	var mgrType map[string]*TaskRunner
+
+	switch task.taskInfo.TaskType {
+	case proto.TaskTypeDiskRepair:
+		taskletRunConcurrency = tm.repairTaskletRunConcurrency
+		mgrType = tm.repair
+	case proto.TaskTypeBalance:
+		taskletRunConcurrency = tm.balanceTaskletRunConcurrency
+		mgrType = tm.balance
+	case proto.TaskTypeDiskDrop:
+		taskletRunConcurrency = tm.diskDropTaskletRunConcurrency
+		mgrType = tm.diskDrop
+	case proto.TaskTypeManualMigrate:
+		taskletRunConcurrency = tm.manualMigrateTaskletRunConcurrency
+		mgrType = tm.manualMigrate
 	}
-
-	go runner.Run()
-	return nil
-}
-
-// AddDiskDropTask adds disk drop task
-func (tm *TaskRunnerMgr) AddDiskDropTask(ctx context.Context, task MigrateTaskEx) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
-	w := tm.wf.NewMigrateWorker(task)
 	runner := NewTaskRunner(
 		ctx,
 		task.taskInfo.TaskID,
 		w, task.taskInfo.SourceIDC,
-		tm.diskDropTaskletRunConcurrency,
+		taskletRunConcurrency,
 		tm.schedulerCli)
-	err := addRunner(tm.diskDrop, task.taskInfo.TaskID, runner)
-	if err != nil {
-		return err
-	}
-
-	go runner.Run()
-	return nil
-}
-
-// AddManualMigrateTask adds manual migrate task
-func (tm *TaskRunnerMgr) AddManualMigrateTask(ctx context.Context, task MigrateTaskEx) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
-	w := tm.wf.NewMigrateWorker(task)
-	runner := NewTaskRunner(
-		ctx,
-		task.taskInfo.TaskID,
-		w, task.taskInfo.SourceIDC,
-		tm.manualMigrateTaskletRunConcurrency,
-		tm.schedulerCli)
-	err := addRunner(tm.manualMigrate, task.taskInfo.TaskID, runner)
+	err := addRunner(mgrType, task.taskInfo.TaskID, runner)
 	if err != nil {
 		return err
 	}
@@ -181,31 +126,21 @@ func (tm *TaskRunnerMgr) AddManualMigrateTask(ctx context.Context, task MigrateT
 }
 
 // GetRepairAliveTask returns repair alive task runner
-func (tm *TaskRunnerMgr) GetRepairAliveTask() []*TaskRunner {
+func (tm *TaskRunnerMgr) GetAliveTask(taskType proto.TaskType) []*TaskRunner {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	return getAliveTask(tm.repair)
-}
-
-// GetBalanceAliveTask returns balance alive task runner
-func (tm *TaskRunnerMgr) GetBalanceAliveTask() []*TaskRunner {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	return getAliveTask(tm.balance)
-}
-
-// GetDiskDropAliveTask returns disk drop alive task runner
-func (tm *TaskRunnerMgr) GetDiskDropAliveTask() []*TaskRunner {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	return getAliveTask(tm.diskDrop)
-}
-
-// GetManualMigrateAliveTask returns manual migrate alive task runner
-func (tm *TaskRunnerMgr) GetManualMigrateAliveTask() []*TaskRunner {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	return getAliveTask(tm.manualMigrate)
+	var mgrType map[string]*TaskRunner
+	switch taskType {
+	case proto.TaskTypeDiskRepair:
+		mgrType = tm.repair
+	case proto.TaskTypeBalance:
+		mgrType = tm.balance
+	case proto.TaskTypeDiskDrop:
+		mgrType = tm.diskDrop
+	case proto.TaskTypeManualMigrate:
+		mgrType = tm.manualMigrate
+	}
+	return getAliveTask(mgrType)
 }
 
 // StopTaskRunner stops task runner

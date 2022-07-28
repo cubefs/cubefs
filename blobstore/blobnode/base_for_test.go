@@ -182,7 +182,7 @@ func (getter *MockGetter) setVunitStatus(vuid proto.Vuid, status api.ChunkStatus
 	}
 }
 
-func (getter *MockGetter) PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader) (err error) {
+func (getter *MockGetter) PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType api.IOType) (err error) {
 	getter.mu.Lock()
 	defer getter.mu.Unlock()
 	if err, ok := getter.failVuid[location.Vuid]; ok {
@@ -194,7 +194,7 @@ func (getter *MockGetter) PutShard(ctx context.Context, location proto.VunitLoca
 	return
 }
 
-func (getter *MockGetter) GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (body io.ReadCloser, crc32 uint32, err error) {
+func (getter *MockGetter) GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error) {
 	getter.mu.Lock()
 	defer getter.mu.Unlock()
 	vuid := location.Vuid

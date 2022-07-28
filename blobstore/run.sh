@@ -25,7 +25,7 @@ if [ $status -ne 0 ]; then
 fi
 
 sleep 30
-mkdir -p ./run/disks/disk{1..6}
+mkdir -p ./run/disks/disk{1..8}
 # Start the blobnode
 nohup ./bin/blobnode -f ./cmd/blobnode/blobnode.conf >> /tmp/blobnode.log 2>&1 &
 status=$?

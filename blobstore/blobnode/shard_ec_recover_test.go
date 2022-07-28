@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -30,7 +31,7 @@ import (
 
 func TestGenDownloadPlans(t *testing.T) {
 	replicas, mode := genMockVol(1, codemode.EC15P12)
-	repair := NewShardRecover(replicas, mode, nil, nil, nil, 4)
+	repair := NewShardRecover(replicas, mode, nil, nil, nil, 4, blobnode.RepairIO)
 	badi := []uint8{1, 2}
 	stripe := repair.genGlobalStripe(badi)
 	plans := stripe.genDownloadPlans()
@@ -113,7 +114,7 @@ func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, 
 		bidInfos = append(bidInfos, &ele)
 	}
 
-	repair := NewShardRecover(replicas, mode, bidInfos, bp, getter, 3)
+	repair := NewShardRecover(replicas, mode, bidInfos, bp, getter, 3, blobnode.RepairIO)
 	return repair, bidInfos, getter, replicas
 }
 
@@ -327,7 +328,7 @@ func TestRecoverShards2(t *testing.T) {
 
 func TestLocalStripes(t *testing.T) {
 	replicas, mode := genMockVol(1, codemode.EC6P10L2)
-	repair := NewShardRecover(replicas, mode, nil, nil, nil, 4)
+	repair := NewShardRecover(replicas, mode, nil, nil, nil, 4, blobnode.RepairIO)
 	for idx, replica := range replicas {
 		require.Equal(t, idx, int(replica.Vuid.Index()))
 	}

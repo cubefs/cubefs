@@ -19,6 +19,7 @@ import (
 	"errors"
 	"sync"
 
+	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -72,21 +73,26 @@ func (w *MigrateWorker) canDirectDownload() bool {
 // GenTasklets generates migrate tasklets
 func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError) {
 	span := trace.SpanFromContextSafe(ctx)
+	var badIdxs []uint8
+
 	if workutils.BigBufPool == nil {
 		panic("BigBufPool should init before")
 	}
 
-	// balance and disk drop task need to ensure most chunks are in read-only state
-	if err := retry.Timed(3, 1000).On(func() error {
-		if majorityLocked(ctx, w.bolbNodeCli, w.t.Sources, w.t.CodeMode) {
-			return nil
+	if w.t.TaskType == proto.TaskTypeDiskRepair {
+		badIdxs = []uint8{w.t.SourceVuid.Index()}
+	} else {
+		// balance and disk drop task need to ensure most chunks are in read-only state
+		if err := retry.Timed(3, 1000).On(func() error {
+			if majorityLocked(ctx, w.bolbNodeCli, w.t.Sources, w.t.CodeMode) {
+				return nil
+			}
+			return ErrNotReadyForMigrate
+		}); err != nil {
+			return nil, OtherError(ErrNotReadyForMigrate)
 		}
-		return ErrNotReadyForMigrate
-	}); err != nil {
-		return nil, OtherError(ErrNotReadyForMigrate)
 	}
-
-	migBids, benchmarkBids, err := GenMigrateBids(ctx, w.bolbNodeCli, w.t.Sources, w.t.Destination, w.t.CodeMode, []uint8{})
+	migBids, benchmarkBids, err := GenMigrateBids(ctx, w.bolbNodeCli, w.t.Sources, w.t.Destination, w.t.CodeMode, badIdxs)
 	if err != nil {
 		span.Errorf("gen migrate bids failed: err[%v]", err)
 		return nil, err
@@ -102,7 +108,7 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 func (w *MigrateWorker) ExecTasklet(ctx context.Context, tasklet Tasklet) *WorkError {
 	replicas := w.t.Sources
 	mode := w.t.CodeMode
-	shardRecover := NewShardRecover(replicas, mode, tasklet.bids, workutils.BigBufPool, w.bolbNodeCli, w.downloadShardConcurrency)
+	shardRecover := NewShardRecover(replicas, mode, tasklet.bids, workutils.BigBufPool, w.bolbNodeCli, w.downloadShardConcurrency, bnapi.Task2IOType(w.t.TaskType))
 	defer shardRecover.ReleaseBuf()
 
 	return MigrateBids(ctx,
