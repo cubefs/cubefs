@@ -31,7 +31,6 @@ extern "C" {
 #include <sys/stat.h>
 #include <sys/uio.h>
 #include <unistd.h>
-#include "cache.h"
 
 typedef struct {
         int ignore_sighup;
@@ -40,7 +39,6 @@ typedef struct {
         const char* log_level;
         const char* prof_port;
 } cfs_sdk_init_t;
-
 
 typedef struct {
     const char* master_addr;
@@ -53,6 +51,16 @@ typedef struct {
     const char* master_client;
 } cfs_config_t;
 
+typedef struct {
+	int fd;
+	int flags;
+    int file_type;
+    int dup_ref;
+    ino_t inode;
+	size_t size;
+	off_t pos;
+} cfs_file_t;
+
 /*
  * Library / framework initialization
  * This method will initialize logging and HTTP APIs.
@@ -64,7 +72,7 @@ typedef void (*cfs_sdk_close_t)();
 // return client_id, should be positive if no error occurs
 typedef int64_t (*cfs_new_client_t)(const cfs_config_t *conf, const char *config_path, char *str);
 typedef void (*cfs_close_client_t)(int64_t id);
-typedef size_t (*cfs_client_state_t)(int64_t id, char *buf, int size);
+typedef size_t (*cfs_sdk_state_t)(int64_t id, char *buf, int size);
 /*
  * Log is cached by default, will only be flushed when client close.
  * Call this function manually when necessary.
@@ -172,6 +180,7 @@ typedef ssize_t (*cfs_readv_t)(int64_t id, int fd, const struct iovec *iov, int 
 typedef ssize_t (*cfs_preadv_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
 typedef ssize_t (*cfs_write_t)(int64_t id, int fd, const void *buf, size_t size);
 typedef ssize_t (*cfs_pwrite_t)(int64_t id, int fd, const void *buf, size_t size, off_t off);
+typedef ssize_t (*cfs_pwrite_inode_t)(int64_t id, ino_t ino, const void *buf, size_t size, off_t off);
 typedef ssize_t (*cfs_writev_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt);
 typedef ssize_t (*cfs_pwritev_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
 typedef off64_t (*cfs_lseek_t)(int64_t id, int fd, off64_t offset, int whence);
@@ -184,7 +193,7 @@ static cfs_sdk_init_func cfs_sdk_init;
 static cfs_sdk_close_t cfs_sdk_close;
 static cfs_new_client_t cfs_new_client;
 static cfs_close_client_t cfs_close_client;
-static cfs_client_state_t cfs_client_state;
+static cfs_sdk_state_t cfs_sdk_state;
 static cfs_flush_log_t cfs_flush_log;
 static cfs_ump_t cfs_ump;
 
@@ -261,6 +270,7 @@ static cfs_readv_t cfs_readv;
 static cfs_preadv_t cfs_preadv;
 static cfs_write_t cfs_write;
 static cfs_pwrite_t cfs_pwrite;
+static cfs_pwrite_inode_t cfs_pwrite_inode;
 static cfs_writev_t cfs_writev;
 static cfs_pwritev_t cfs_pwritev;
 static cfs_lseek_t cfs_lseek;

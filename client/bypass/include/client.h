@@ -26,6 +26,7 @@
 #include "ini.h"
 #include "sdk.h"
 #include "util.h"
+#include "cache.h"
 
 using namespace std;
 
@@ -64,10 +65,91 @@ struct __dirstream
     char data[0] __attribute__ ((aligned (__alignof__ (long double))));
 };
 
-typedef int (*open_t)(const char *pathname, int flags, mode_t mode);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+int real_close(int fd);
+int real_openat(int dirfd, const char *pathname, int flags, ...);
+int real_renameat2(int olddirfd, const char *old_pathname,
+        int newdirfd, const char *new_pathname, unsigned int flags);
+int real_truncate(const char *pathname, off_t length);
+int real_ftruncate(int fd, off_t length);
+int real_fallocate(int fd, int mode, off_t offset, off_t len);
+int real_posix_fallocate(int fd, off_t offset, off_t len);
+int real_mkdirat(int dirfd, const char *pathname, mode_t mode);
+int real_rmdir(const char *pathname);
+char *real_getcwd(char *buf, size_t size);
+int real_chdir(const char *pathname);
+int real_fchdir(int fd);
+DIR *real_opendir(const char *pathname);
+DIR *real_fdopendir(int fd);
+struct dirent *real_readdir(DIR *dirp);
+int real_closedir(DIR *dirp);
+char *real_realpath(const char *path, char *resolved_path);
+int real_linkat(int olddirfd, const char *old_pathname,
+           int newdirfd, const char *new_pathname, int flags);
+int real_symlinkat(const char *target, int dirfd, const char *linkpath);
+int real_unlinkat(int dirfd, const char *pathname, int flags);
+ssize_t real_readlinkat(int dirfd, const char *pathname, char *buf, size_t size);
+int real_stat(int ver, const char *pathname, struct stat *statbuf);
+int real_stat64(int ver, const char *pathname, struct stat64 *statbuf);
+int real_lstat(int ver, const char *pathname, struct stat *statbuf);
+int real_lstat64(int ver, const char *pathname, struct stat64 *statbuf);
+int real_fstat(int ver, int fd, struct stat *statbuf);
+int real_fstat64(int ver, int fd, struct stat64 *statbuf);
+int real_fstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf, int flags);
+int real_fstatat64(int ver, int dirfd, const char *pathname, struct stat64 *statbuf, int flags);
+int real_fchmod(int fd, mode_t mode);
+int real_fchmodat(int dirfd, const char *pathname, mode_t mode, int flags);
+int real_lchown(const char *pathname, uid_t owner, gid_t group);
+int real_fchown(int fd, uid_t owner, gid_t group);
+int real_fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int flags);
+int real_utime(const char *pathname, const struct utimbuf *times);
+int real_utimes(const char *pathname, const struct timeval *times);
+int real_futimesat(int dirfd, const char *pathname, const struct timeval times[2]);
+int real_utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
+int real_futimens(int fd, const struct timespec times[2]);
+int real_faccessat(int dirfd, const char *pathname, int mode, int flags);
+int real_setxattr(const char *pathname, const char *name,
+        const void *value, size_t size, int flags);
+int real_lsetxattr(const char *pathname, const char *name,
+        const void *value, size_t size, int flags);
+int real_fsetxattr(int fd, const char *name, const void *value, size_t size, int flags);
+ssize_t real_getxattr(const char *pathname, const char *name, void *value, size_t size);
+ssize_t real_lgetxattr(const char *pathname, const char *name, void *value, size_t size);
+ssize_t real_fgetxattr(int fd, const char *name, void *value, size_t size);
+ssize_t real_listxattr(const char *pathname, char *list, size_t size);
+ssize_t real_llistxattr(const char *pathname, char *list, size_t size);
+ssize_t real_flistxattr(int fd, char *list, size_t size);
+int real_removexattr(const char *pathname, const char *name);
+int real_lremovexattr(const char *pathname, const char *name);
+int real_fremovexattr(int fd, const char *name);
+int real_fcntl(int fd, int cmd, ...);
+int real_dup2(int oldfd, int newfd);
+int real_dup3(int oldfd, int newfd, int flags);
+ssize_t real_read(int fd, void *buf, size_t count);
+ssize_t real_readv(int fd, const struct iovec *iov, int iovcnt);
+ssize_t real_pread(int fd, void *buf, size_t count, off_t offset);
+ssize_t real_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset);
+ssize_t real_write(int fd, const void *buf, size_t count);
+ssize_t real_writev(int fd, const struct iovec *iov, int iovcnt);
+ssize_t real_pwrite(int fd, const void *buf, size_t count, off_t offset);
+ssize_t real_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset);
+off_t real_lseek(int fd, off_t offset, int whence);
+int real_fdatasync(int fd);
+int real_fsync(int fd);
+
+int start_libs(void*);
+void* stop_libs();
+void flush_logs();
+#ifdef __cplusplus
+}
+#endif
+
 typedef int (*openat_t)(int dirfd, const char *pathname, int flags, mode_t mode);
 typedef int (*close_t)(int fd);
-typedef int (*rename_t)(const char *oldpath, const char *newpath);
 typedef int (*renameat_t)(int olddirfd, const char *oldpath, int newdirfd, const char *newpath);
 typedef int (*renameat2_t)(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, unsigned int flags);
 typedef int (*truncate_t)(const char *path, off_t length);
@@ -78,7 +160,6 @@ typedef int (*posix_fallocate_t)(int fd, off_t offset, off_t len);
 typedef int (*chdir_t)(const char *path);
 typedef int (*fchdir_t)(int fd);
 typedef char *(*getcwd_t)(char *buf, size_t size);
-typedef int (*mkdir_t)(const char *pathname, mode_t mode);
 typedef int (*mkdirat_t)(int dirfd, const char *pathname, mode_t mode);
 typedef int (*rmdir_t)(const char *pathname);
 typedef DIR *(*opendir_t)(const char *name);
@@ -87,13 +168,9 @@ typedef struct dirent *(*readdir_t)(DIR *dirp);
 typedef int (*closedir_t)(DIR *dirp);
 typedef char *(*realpath_t)(const char *path, char *resolved_path);
 
-typedef int (*link_t)(const char *oldpath, const char *newpath);
 typedef int (*linkat_t)(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, int flags);
-typedef int (*symlink_t)(const char *target, const char *linkpath);
 typedef int (*symlinkat_t)(const char *target, int newdirfd, const char *linkpath);
-typedef int (*unlink_t)(const char *pathname);
 typedef int (*unlinkat_t)(int dirfd, const char *pathname, int flags);
-typedef ssize_t (*readlink_t)(const char *pathname, char *buf, size_t size);
 typedef ssize_t (*readlinkat_t)(int dirfd, const char *pathname, char *buf, size_t size);
 
 typedef int (*stat_t)(int ver, const char *pathname, struct stat *statbuf);
@@ -104,10 +181,8 @@ typedef int (*fstat_t)(int ver, int fd, struct stat *statbuf);
 typedef int (*fstat64_t)(int ver, int fd, struct stat64 *statbuf);
 typedef int (*fstatat_t)(int ver, int dirfd, const char *pathname, struct stat *statbuf, int flags);
 typedef int (*fstatat64_t)(int ver, int dirfd, const char *pathname, struct stat64 *statbuf, int flags);
-typedef int (*chmod_t)(const char *pathname, mode_t mode);
 typedef int (*fchmod_t)(int fd, mode_t mode);
 typedef int (*fchmodat_t)(int dirfd, const char *pathname, mode_t mode, int flags);
-typedef int (*chown_t)(const char *pathname, uid_t owner, gid_t group);
 typedef int (*lchown_t)(const char *pathname, uid_t owner, gid_t group);
 typedef int (*fchown_t)(int fd, uid_t owner, gid_t group);
 typedef int (*fchownat_t)(int dirfd, const char *pathname, uid_t owner, gid_t group, int flags);
@@ -150,15 +225,10 @@ typedef off64_t (*lseek64_t)(int fd, off64_t offset, int whence);
 typedef int (*fdatasync_t)(int fd);
 typedef int (*fsync_t)(int fd);
 
-typedef void (*abort_t)();
-typedef void (*_exit_t)(int status);
-typedef void (*exit_t)(int status);
 //typedef int (*sigaction_t)(int signum, const struct sigaction *act, struct sigaction *oldact);
 
-static open_t libc_open;
 static openat_t libc_openat;
 static close_t libc_close;
-static rename_t libc_rename;
 static renameat_t libc_renameat;
 static renameat2_t libc_renameat2;
 static truncate_t libc_truncate;
@@ -169,7 +239,6 @@ static posix_fallocate_t libc_posix_fallocate;
 static chdir_t libc_chdir;
 static fchdir_t libc_fchdir;
 static getcwd_t libc_getcwd;
-static mkdir_t libc_mkdir;
 static mkdirat_t libc_mkdirat;
 static rmdir_t libc_rmdir;
 static opendir_t libc_opendir;
@@ -178,13 +247,9 @@ static readdir_t libc_readdir;
 static closedir_t libc_closedir;
 static realpath_t libc_realpath;
 
-static link_t libc_link;
 static linkat_t libc_linkat;
-static symlink_t libc_symlink;
 static symlinkat_t libc_symlinkat;
-static unlink_t libc_unlink;
 static unlinkat_t libc_unlinkat;
-static readlink_t libc_readlink;
 static readlinkat_t libc_readlinkat;
 
 static stat_t libc_stat;
@@ -195,10 +260,8 @@ static fstat_t libc_fstat;
 static fstat64_t libc_fstat64;
 static fstatat_t libc_fstatat;
 static fstatat64_t libc_fstatat64;
-static chmod_t libc_chmod;
 static fchmod_t libc_fchmod;
 static fchmodat_t libc_fchmodat;
-static chown_t libc_chown;
 static lchown_t libc_lchown;
 static fchown_t libc_fchown;
 static fchownat_t libc_fchownat;
@@ -241,57 +304,40 @@ static lseek64_t libc_lseek64;
 static fdatasync_t libc_fdatasync;
 static fsync_t libc_fsync;
 
-static abort_t libc_abort;
-static _exit_t libc__exit;
-static exit_t libc_exit;
 //static sigaction_t libc_sigaction;
 
-/*
- * In many bash commands, e.g. touch, cat, etc, dup2 is used to redirect IO.
- * Thus, maintaining a map between system fd and CFS fd is necessary.
- */
-static map<int, int> g_dup_origin;
-
-static map<int, cfs_file_t *> g_open_file;
-pthread_rwlock_t g_open_file_lock;
-static map<ino_t, set<cfs_file_t *>> g_inode_open_file;
-pthread_rwlock_t g_inode_open_file_lock;
-#define BIG_PAGE_CACHE_SIZE 67108864
-#define SMALL_PAGE_CACHE_SIZE 67108864
-static lru_cache_t *g_big_page_cache;
-static lru_cache_t *g_small_page_cache;
-
-// map for each open fd to its pathname, to print pathname in debug log
-static map<int, char *> g_fd_path;
-
-// whether the initialization has been done or not
-static bool g_cfs_inited;
-static bool g_need_rwlock;
-pthread_rwlock_t update_rwlock;
-static void init();
-static void init_libc_func();
-static void init_cfs_func(void *);
-static void *update_cfs_func(void *);
-
 #define CFS_FD_MASK (1 << (sizeof(int)*8 - 2))
-// the current working directory, doesn't include the mount point part if in cfs
-static char *g_cwd;
-// whether the _cwd is in CFS or not
-static bool g_in_cfs;
-static int64_t g_cfs_client_id;
-// hook or not, currently for test
-static const bool g_hook = true;
 
-static cfs_sdk_init_t g_init_config;
-static const char *g_mount_point;
-static const char *g_ignore_path;
-static const char *g_config_path;
 static const char *CFS_CFG_PATH = "cfs_client.ini";
 static const char *CFS_CFG_PATH_JED = "/export/servers/cfs/cfs_client.ini";
+static const uint8_t FILE_TYPE_BIN_LOG = 1;
+static const uint8_t FILE_TYPE_REDO_LOG = 2;
+static const uint8_t FILE_TYPE_RELAY_LOG = 3;
+static const char *BIN_LOG_PREFIX = "mysql-bin.";
+static const char *REDO_LOG_PREFIX = "ib_logfile";
+static const char *RELAY_LOG_PREFIX = "relay-bin.";
 
-static bool g_has_renameat2 = false;
+// hook or not, currently for test
+const bool g_hook = true;
 
-//static void (*g_sa_handler[30])(int);
+typedef struct {
+    int fd;
+    int flags;
+    off_t pos;
+    int dup_ref;
+    int file_type;
+    inode_shared_t *inode_info;
+} file_t;
+
+typedef struct {
+    char *sdk_state;
+    cfs_file_t *files;
+    int file_num;
+    int* dup_fds;
+    int fd_num;
+    char *cwd;
+    bool in_cfs;
+} client_state_t;
 
 typedef struct {
      char* mount_point;
@@ -299,16 +345,49 @@ typedef struct {
      char* log_dir;
      char* log_level;
      char* prof_port;
-     char* master_addr;
-     char* vol_name;
-     char* owner;
-     // whether to read from follower nodes or not, set "false" if want to read the newest data
-     char* follower_read;
-     char* app;
-     char* auto_flush;
-     char* master_client;
 } client_config_t;
 
+typedef struct {
+    map<int, int> dup_fds;
+    pthread_rwlock_t open_files_lock;
+    map<int, file_t *> open_files;
+    pthread_rwlock_t open_inodes_lock;
+    map<ino_t, inode_shared_t *> open_inodes;
+
+    lru_cache_t *big_page_cache;
+    lru_cache_t *small_page_cache;
+
+    // map for each open fd to its pathname, to print pathname in debug log
+    map<int, char *> fd_path;
+
+    // the current working directory, doesn't include the mount point part if in cfs
+    char *cwd;
+    // whether the _cwd is in CFS or not
+    bool in_cfs;
+    int64_t cfs_client_id;
+    bool has_renameat2;
+
+    const char *mount_point;
+    const char *ignore_path;
+    const char *config_path;
+    pthread_t bg_pthread;
+    void* sdk_handle;
+    bool stop;
+    struct inode_wrapper_t inode_wrapper;
+} client_info_t;
+
+static client_info_t g_client_info;
+
+static void init();
+static void init_libc_func();
+static void init_cfs_func(void *);
+static void *plugin_open(const char*);
+static int plugin_close(void*);
+static int record_open_file(cfs_file_t *);
+
+static file_t *get_open_file(int fd);
+static bool try_get_cfs_fd(int *fd_ptr);
+static bool try_get_dupped_fd(int *fd_ptr);
 static int config_handler(void* user, const char* section,
         const char* name, const char* value) {
     client_config_t *pconfig = (client_config_t*)user;
@@ -318,24 +397,12 @@ static int config_handler(void* user, const char* section,
         pconfig->mount_point = strdup(value);
     } else if (MATCH("", "ignorePath")) {
         pconfig->ignore_path = strdup(value);
-    } else if (MATCH("", "volName")) {
-        pconfig->vol_name = strdup(value);
-    } else if (MATCH("", "owner")) {
-        pconfig->owner = strdup(value);
-    } else if (MATCH("", "masterAddr")) {
-        pconfig->master_addr = strdup(value);
     } else if (MATCH("", "logDir")) {
         pconfig->log_dir = strdup(value);
     } else if (MATCH("", "logLevel")) {
         pconfig->log_level = strdup(value);
-    } else if (MATCH("", "app")) {
-        pconfig->app = strdup(value);
     } else if (MATCH("", "profPort")) {
         pconfig->prof_port = strdup(value);
-    } else if (MATCH("", "autoFlush")) {
-        pconfig->auto_flush = strdup(value);
-    } else if (MATCH("", "masterClient")) {
-        pconfig->master_client = strdup(value);
     } else {
         return 0;  /* unknown section/name, error */
     }
@@ -460,7 +527,7 @@ static char *cat_path(const char *cwd, const char *pathname) {
  * The caller should free the returned buffer.
  */
 static char *get_cfs_path(const char *pathname) {
-    if(pathname == NULL || (pathname[0] != '/' && !g_in_cfs)) {
+    if(pathname == NULL || (pathname[0] != '/' && !g_client_info.in_cfs)) {
         return NULL;
     }
 
@@ -476,29 +543,29 @@ static char *get_cfs_path(const char *pathname) {
     }
 
     char *result;
-    if(pathname[0] != '/' && g_in_cfs) {
-        result = cat_path(g_cwd, real_path);
+    if(pathname[0] != '/' && g_client_info.in_cfs) {
+        result = cat_path(g_client_info.cwd, real_path);
         free(real_path);
         return result;
     }
 
     // check if real_path contains mount_point, and doesn't contain ignore_path
     // the mount_point has been strip off the last '/' in cfs_init()
-    size_t len = strlen(g_mount_point);
+    size_t len = strlen(g_client_info.mount_point);
     size_t len_real = strlen(real_path);
     bool is_cfs = false;
-    char *ignore_path = strdup(g_ignore_path);
+    char *ignore_path = strdup(g_client_info.ignore_path);
     if(ignore_path == NULL) {
         free(real_path);
         return NULL;
     }
-    if(strncmp(real_path, g_mount_point, len) == 0) {
-        if(strlen(g_ignore_path) > 0) {
+    if(strncmp(real_path, g_client_info.mount_point, len) == 0) {
+        if(strlen(g_client_info.ignore_path) > 0) {
             char *token = strtok(ignore_path, ",");
             size_t len_token;
             while(token != NULL) {
                 len_token = strlen(token);
-                if(real_path[len] == '/' && strncmp(real_path+len+1, token, len_token) == 0 && 
+                if(real_path[len] == '/' && strncmp(real_path+len+1, token, len_token) == 0 &&
                 (real_path[len+1+len_token] == '\0' || real_path[len+1+len_token] == '/')) {
                     is_cfs = false;
                     break;
@@ -589,22 +656,45 @@ static bool has_renameat2() {
     return major > 2 || (major == 2 && minor >= 28);
 }
 
-static void update_inode_size(ino_t ino, size_t size) {
-    pthread_rwlock_rdlock(&g_inode_open_file_lock);
-    auto it = g_inode_open_file.find(ino);
-    if(it != g_inode_open_file.end()) {
-        for(const auto &f : it->second) {
-            f->size = size;
-        }
-    }
-    pthread_rwlock_unlock(&g_inode_open_file_lock);
+bool fd_in_cfs(int fd) {
+    if(g_client_info.dup_fds.find(fd) != g_client_info.dup_fds.end())
+        return true;
+
+    if (fd & CFS_FD_MASK)
+        return true;
+
+    return false;
 }
 
-static cfs_file_t *get_open_file(int fd) {
-    pthread_rwlock_rdlock(&g_open_file_lock);
-    auto it = g_open_file.find(fd);
-    cfs_file_t *f = (it != g_open_file.end() ? it->second : NULL);
-    pthread_rwlock_unlock(&g_open_file_lock);
+int get_cfs_fd(int fd) {
+    int cfs_fd = -1;
+    auto it = g_client_info.dup_fds.find(fd);
+    if(it != g_client_info.dup_fds.end()) {
+        cfs_fd = it->second;
+    } else if (fd & CFS_FD_MASK) {
+        cfs_fd = fd & ~CFS_FD_MASK;
+    }
+    return cfs_fd;
+}
+
+int dup_fd(int oldfd, int newfd) {
+    pthread_rwlock_rdlock(&g_client_info.open_files_lock);
+    auto it = g_client_info.open_files.find(oldfd);
+    if (it == g_client_info.open_files.end()) {
+        pthread_rwlock_unlock(&g_client_info.open_files_lock);
+        return -1;
+    }
+    it->second->dup_ref++;
+    pthread_rwlock_unlock(&g_client_info.open_files_lock);
+    g_client_info.dup_fds[newfd] = oldfd;
+    return newfd;
+}
+
+file_t *get_open_file(int fd) {
+    pthread_rwlock_rdlock(&g_client_info.open_files_lock);
+    auto it = g_client_info.open_files.find(fd);
+    file_t *f = (it != g_client_info.open_files.end() ? it->second : NULL);
+    pthread_rwlock_unlock(&g_client_info.open_files_lock);
     return f;
 }
 

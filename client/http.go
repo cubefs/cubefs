@@ -166,35 +166,36 @@ func setClientUpgrade(mc *master.MasterClient, version string) (err error) {
 	if err != nil {
 		return
 	}
-	filename := fmt.Sprintf("libcfssdk_%s.so", version)
-	var url string
-	if addr[len(addr)-1] == '/' {
-		url = fmt.Sprintf("%s%s", addr, filename)
-	} else {
-		url = fmt.Sprintf("%s/%s", addr, filename)
-	}
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("Download %s error: %v", url, err)
-	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("Download %s error: %s", url, resp.Status)
-	}
-	defer resp.Body.Close()
+	for filename, version_name := range map[string]string{"libcfsc.so": fmt.Sprintf("libcfsc_%s.so", version), "libcfssdk.so": fmt.Sprintf("libcfssdk_%s.so", version)} {
+		var url string
+		if addr[len(addr)-1] == '/' {
+			url = fmt.Sprintf("%s%s", addr, version_name)
+		} else {
+			url = fmt.Sprintf("%s/%s", addr, version_name)
+		}
+		resp, err := http.Get(url)
+		if err != nil {
+			return fmt.Errorf("Download %s error: %v", url, err)
+		}
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("Download %s error: %s", url, resp.Status)
+		}
+		defer resp.Body.Close()
 
-	tmpfile := fmt.Sprintf("/tmp/.%s", filename)
-	os.Remove(tmpfile)
-	out, err := os.Create(tmpfile)
-	if err != nil {
-		return fmt.Errorf("Create %s error: %v", tmpfile, err)
-	}
-	defer out.Close()
+		tmpfile := fmt.Sprintf("/tmp/.%s", version_name)
+		os.Remove(tmpfile)
+		out, err := os.Create(tmpfile)
+		if err != nil {
+			return fmt.Errorf("Create %s error: %v", tmpfile, err)
+		}
+		defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return fmt.Errorf("Write %s err: %v", tmpfile, err)
+		_, err = io.Copy(out, resp.Body)
+		if err != nil {
+			return fmt.Errorf("Write %s err: %v", tmpfile, err)
+		}
+		os.Rename(tmpfile, fmt.Sprintf("/usr/lib64/%s", filename))
 	}
-	os.Rename(tmpfile, "/usr/lib64/libcfssdk.so")
 	os.Setenv("RELOAD_CLIENT", "1")
 	return
 }

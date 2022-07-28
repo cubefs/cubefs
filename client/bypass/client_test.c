@@ -21,6 +21,7 @@
 
 void testOp(bool is_cfs, bool ignore);
 void testReload();
+void testDup(bool is_cfs);
 int main(int argc, char **argv) {
     bool is_cfs = true;
     bool ignore = false;
@@ -68,7 +69,8 @@ int main(int argc, char **argv) {
     printf("Finish testOp for %d times.\n", num);
     testReload();
     setenv("CFS_MOUNT_POINT", mount, 1);
-    testOp(is_cfs, ignore);
+    testDup(is_cfs);
+    printf("Finish testDup\n");
     printf("Finish test, press ctrl+c to quit...\n");
     getchar();
 }
@@ -138,7 +140,7 @@ void testOp(bool is_cfs, bool ignore) {
     re = chdir(tdir);
     assertf(re == 0, "chdir %s returning %d", tmp_dir, re);
     tmp_dir = getcwd(NULL, 50);
-    assertf(tmp_dir != NULL && !strcmp(tmp_dir, dir), "getcwd returning %s, len: %d", tmp_dir, strlen(tmp_dir));
+    assertf(tmp_dir != NULL && !strcmp(tmp_dir, dir), "getcwd returning %s, len: %d, expect: %s", tmp_dir, strlen(tmp_dir), dir);
     free(tmp_dir);
     re = fchdir(dir_fd);
     assertf(re == 0, "fchdir %d returning %d", dirfd, re);
@@ -224,4 +226,51 @@ void testOp(bool is_cfs, bool ignore) {
     assertf(re == 0, "rmdir %s returning %d", dir, re);
     dir_fd = open(dir, O_RDONLY | O_PATH | O_DIRECTORY);
     assertf(dir_fd < 0, "open removed dir %s returning %d", dir, dir_fd);
+}
+
+void testDup(bool is_cfs) {
+    #define PATH_LEN 100
+    char *mount = getenv("CFS_MOUNT_POINT");
+    char *dir = "dir";
+    char *file = "file1";
+    off_t off;
+    int dirfd, fd, newfd1, newfd2;
+    ssize_t size;
+    int res;
+
+    dirfd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
+    assertf(dirfd > 0, "open dir %s returning %d", dir, dirfd);
+    fd = openat(dirfd, file, O_RDWR | O_CREAT, 0664);
+    assertf(fd > 0, "open %s/dir/file1 returning %d", mount, fd);
+    size = write(fd, "test", 4);
+    assertf(size == 4, "write test to fd returning %d, expect 4", size);
+    newfd2 = dup2(fd, 100);
+    assertf(newfd2 == 100, "dup2 fd %d returning %d, expect 100", fd, newfd2);
+    off = lseek(newfd2, 0, SEEK_CUR);
+    assertf(off == 4, "lseek returning %d, expect 4", off);
+
+    res = close(fd);
+    assertf(res == 0, "close fd %d returning %d, expect 0", fd, res);
+
+    newfd1 = fcntl(newfd2, F_DUPFD, 200);
+    assertf(newfd1 >= 200, "fcntl dup fd %d returning %d, expect 200", fd, newfd1);
+    size = write(fd, "test", 4);
+    assertf(size == 4, "write test to fd returning %d, expect 4", size);
+    size = write(newfd2, "test", 4);
+    assertf(size == 4, "write test to fd returning %d, expect 4", size);
+
+    off = lseek(newfd1, 0, SEEK_CUR);
+    assertf(off == 12, "lseek returning %d, expect 4", off);
+
+    res = close(newfd1);
+    assertf(res == 0, "close fd %d returning %d, expect 0", newfd1, res);
+
+    size = write(newfd2, "test", 4);
+    assertf(size == 4, "write test to fd returning %d, expect 4", size);
+
+    res = close(newfd2);
+    assertf(res == 0, "close fd %d returning %d, expect 0", newfd1, res);
+
+    size = write(fd, "test", 4);
+    assertf(size == -1, "write test to close fd returning %d, expect -1", size);
 }

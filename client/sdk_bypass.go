@@ -81,21 +81,14 @@ typedef struct {
     uint32_t     nameLen;
 } cfs_dirent_t;
 
-typedef ssize_t (*cfs_pwrite_t)(int64_t id, int fd, const void *buf, size_t count, off_t offset);
-
 typedef struct {
-	int64_t client_id;
-	void *c;
 	int fd;
-    ino_t inode;
 	int flags;
     int file_type;
+    int dup_ref;
+    ino_t inode;
 	size_t size;
 	off_t pos;
-    uint8_t cache_flag;
-    uint8_t status;
-	void ***pages;
-	cfs_pwrite_t write_func;
 } cfs_file_t;
 */
 import "C"
@@ -293,6 +286,10 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 		c.useMetaCache = (c.app != appCoralDB)
 		c.autoFlush = cfg.Section("").Key("autoFlush").MustBool(false)
 		c.masterClient = cfg.Section("").Key("masterClient").String()
+		if c.masterAddr == "" || c.volName == "" || c.owner == "" {
+			syslog.Println("Check CFS config file for masterAddr, volName or owner.")
+			os.Exit(1)
+		}
 	}
 
 	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
@@ -304,11 +301,11 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 	return c
 }
 
-func rebuild_client_state(c *client, clientState *ClientState) {
-	log.LogDebugf("rebuild_client_state. clientState: %v\n", clientState)
-	c.cwd = clientState.Cwd
+func rebuild_sdk_state(c *client, sdkState *SdkState) {
+	log.LogDebugf("rebuild_sdk_state. sdkState: %v\n", sdkState)
+	c.cwd = sdkState.Cwd
 
-	for _, v := range clientState.Files {
+	for _, v := range sdkState.Files {
 		f := &file{fd: v.Fd, ino: v.Ino, flags: v.Flags, mode: v.Mode, size: v.Size, pos: v.Pos, path: v.Path, target: []byte(v.Target), locked: v.Locked}
 		if v.DirPos >= 0 {
 			f.dirp = &dirStream{}
@@ -449,8 +446,8 @@ type client struct {
 	inodeDentryCache     map[uint64]*cache.DentryCache
 	inodeDentryCacheLock sync.RWMutex
 
-	clientState string
-	closeOnce   sync.Once
+	sdkState  string
+	closeOnce sync.Once
 }
 
 type FileState struct {
@@ -470,7 +467,7 @@ type FileState struct {
 	Locked bool
 }
 
-type ClientState struct {
+type SdkState struct {
 	Cwd   string // current working directory
 	Files []FileState
 }
@@ -620,12 +617,12 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 		return C.int64_t(statusEIO)
 	}
 	if C.GoString(str) != "" {
-		var clientState ClientState
-		err := json.Unmarshal([]byte(C.GoString(str)), &clientState)
+		var sdkState SdkState
+		err := json.Unmarshal([]byte(C.GoString(str)), &sdkState)
 		if err == nil {
-			rebuild_client_state(c, &clientState)
+			rebuild_sdk_state(c, &sdkState)
 		} else {
-			syslog.Printf("Unmarshal clientState err(%v), clientState(%s)\n", err, C.GoString(str))
+			syslog.Printf("Unmarshal sdkState err(%v), sdkState(%s)\n", err, C.GoString(str))
 			return C.int64_t(statusEIO)
 		}
 	}
@@ -675,24 +672,24 @@ func cfs_flush_log() {
 	log.LogFlush()
 }
 
-//export cfs_client_state
-func cfs_client_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
+//export cfs_sdk_state
+func cfs_sdk_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return 0
 	}
-	if c.clientState != "" {
-		if int(size) < len(c.clientState)+1 {
-			return C.size_t(len(c.clientState) + 1)
+	if c.sdkState != "" {
+		if int(size) < len(c.sdkState)+1 {
+			return C.size_t(len(c.sdkState) + 1)
 		}
 		var buffer []byte
 		hdr := (*reflect.SliceHeader)(unsafe.Pointer(&buffer))
 		hdr.Data = uintptr(buf)
-		hdr.Len = len(c.clientState) + 1
-		hdr.Cap = len(c.clientState) + 1
-		copy(buffer, c.clientState)
-		copy(buffer[len(c.clientState):], "\000")
-		c.clientState = ""
+		hdr.Len = len(c.sdkState) + 1
+		hdr.Cap = len(c.sdkState) + 1
+		copy(buffer, c.sdkState)
+		copy(buffer[len(c.sdkState):], "\000")
+		c.sdkState = ""
 		return 0
 	}
 	c.fdlock.Lock()
@@ -718,12 +715,12 @@ func cfs_client_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t 
 		files = append(files, f)
 	}
 
-	str, err := json.Marshal(ClientState{c.cwd, files})
+	str, err := json.Marshal(SdkState{c.cwd, files})
 	if err != nil {
-		log.LogErrorf("Marshal clientState err(%v), files(%v)\n", err, files)
+		log.LogErrorf("Marshal sdkState err(%v), files(%v)\n", err, files)
 	}
-	c.clientState = string(str)
-	log.LogDebugf("cfs client state: %s\n", c.clientState)
+	c.sdkState = string(str)
+	log.LogDebugf("cfs sdk state: %s\n", c.sdkState)
 	return C.size_t(len(str) + 1)
 }
 
@@ -867,7 +864,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	f.size = info.Size
 	f.path = absPath
 
-	// if you rewrite here, please modify rebuild_client_state together
+	// if you rewrite here, please modify rebuild_sdk_state together
 	if proto.IsRegular(info.Mode) {
 		var appendWriteBuffer bool
 		var readAhead bool
@@ -1321,13 +1318,13 @@ func cfs_get_file(id C.int64_t, fd C.int, file *C.cfs_file_t) (re C.int) {
 	if f == nil {
 		return statusEBADFD
 	}
-	file.client_id = id
 	file.fd = fd
 	file.inode = C.ino_t(f.ino)
 	file.flags = C.int(f.flags)
 	file.size = C.size_t(f.size)
 	file.pos = C.off_t(f.pos)
 	file.file_type = C.int(f.fileType)
+	file.dup_ref = 1
 	return statusOK
 }
 
@@ -3301,6 +3298,75 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	return C.ssize_t(n)
 }
 
+//export cfs_pwrite_inode
+func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size_t, off C.off_t) (re C.ssize_t) {
+	var (
+		c      *client
+		err    error
+		offset uint64
+		start  time.Time
+	)
+	defer func() {
+		r := recover()
+		if r == nil && re == C.ssize_t(size) && !log.IsDebugEnabled() {
+			return
+		}
+		msg := fmt.Sprintf("id(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, ino, size, offset, re, err)
+		if r != nil || re < 0 {
+			var stack string
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
+			}
+			handleError(c, "cfs_pwrite_inode", fmt.Sprintf("%s%s", msg, stack))
+		} else if re < C.ssize_t(size) {
+			log.LogWarnf("cfs_write: %s", msg)
+		} else {
+			log.LogDebugf("cfs_write: %s time(%v)", msg, time.Since(start).Microseconds())
+		}
+	}()
+
+	signalIgnoreOnce.Do(signalIgnoreFunc)
+
+	start = time.Now()
+	c, exist := getClient(int64(id))
+	if !exist {
+		return C.ssize_t(statusEINVAL)
+	}
+
+	overWriteBuffer := false
+	act := ump_cfs_write_pagecache
+	//tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
+	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
+	defer func() {
+		//ump.AfterTPUs(tpObject1, nil)
+		ump.AfterTPUs(tpObject2, nil)
+	}()
+
+	var buffer []byte
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&buffer))
+	hdr.Data = uintptr(buf)
+	hdr.Len = int(size)
+	hdr.Cap = int(size)
+
+	// off >= 0 stands for pwrite
+	offset = uint64(off)
+	n, isROW, err := c.ec.Write(nil, uint64(ino), offset, buffer, false, overWriteBuffer)
+	if err != nil {
+		return C.ssize_t(statusEIO)
+	}
+
+	if isROW && isMysql() {
+		c.broadcastAllReadProcess(uint64(ino))
+	}
+
+	info := c.inodeCache.Get(nil, uint64(ino))
+	if info != nil && info.Size < (uint64(off)+uint64(n)) {
+		info.Size = uint64(off) + uint64(n)
+		c.inodeCache.Put(info)
+	}
+	return C.ssize_t(n)
+}
+
 //export cfs_writev
 func cfs_writev(id C.int64_t, fd C.int, iov *C.struct_iovec, iovcnt C.int) C.ssize_t {
 	return _cfs_writev(id, fd, iov, iovcnt, -1)
@@ -3493,7 +3559,7 @@ func (c *client) start() (err error) {
 		if err != nil {
 			gClientManager.outputFile.Sync()
 			gClientManager.outputFile.Close()
-			fmt.Println("Start client failed. Please check output.log for more details.\n")
+			fmt.Printf("Start client failed: %v. Please check output.log for more details.\n", err)
 		}
 	}()
 

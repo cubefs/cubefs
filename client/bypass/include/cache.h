@@ -6,14 +6,17 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <map>
 #include "util.h"
 
+#define BIG_PAGE_CACHE_SIZE 67108864
+#define SMALL_PAGE_CACHE_SIZE 67108864
 #define BIG_PAGE_SIZE 131072
 #define SMALL_PAGE_SIZE 16384
 #define PAGE_DIRTY 0x1
-struct cfs_file;
+struct inode_shared;
 typedef struct page {
-    struct cfs_file *f;
+    struct inode_shared *inode_info;
     int index;
     int offset;
     // flush from dirty_offset, to avoid overwriting to SDK
@@ -27,12 +30,13 @@ typedef struct page {
     pthread_rwlock_t lock;
 } page_t;
 
-page_t *new_page(struct lru_cache *c);
+page_t *new_page(int page_size);
+void release_page(page_t* p);
 int read_page(page_t *p, ino_t inode, int index, void *data, int offset, int count);
 int write_page(page_t *p, ino_t inode, int index, const void *data, int offset, int count);
 int flush_page(page_t *p);
 void clear_page(page_t *p);
-void occupy_page(page_t *p, struct cfs_file *f, int index);
+void occupy_page(page_t *p, struct inode_shared *inode_info, int index);
 void clear_page_raw(page_t *p);
 
 // sleep when dirty page ratio is below 1/threshold
@@ -48,46 +52,48 @@ typedef struct lru_cache {
 } lru_cache_t;
 
 lru_cache_t *new_lru_cache(int cache_size, int page_size);
+void release_lru_cache(lru_cache_t *c);
 page_t *lru_cache_alloc(lru_cache_t *c);
 void lru_cache_access(lru_cache_t *c, page_t *p);
-void bg_flush(void *arg);
+void *do_flush_inode(void *arg);
+void flush_and_release(void *arg);
 
-typedef ssize_t (*cfs_pwrite_t)(int64_t id, int fd, const void *buf, size_t count, off_t offset);
+typedef ssize_t (*cfs_pwrite_inode_t)(int64_t id, ino_t ino, const void *buf, size_t size, off_t off);
 
 #define BLOCKS_PER_FILE 512
 #define PAGES_PER_BLOCK 512
-#define FILE_TYPE_BIN_LOG 1
-#define FILE_TYPE_RELAY_LOG 3
 #define FILE_CACHE_WRITE_BACK 0x1
 #define FILE_CACHE_WRITE_THROUGH 0x2
 #define FILE_CACHE_PRIORITY_HIGH 0x4
-#define FILE_STATUS_OPEN 0
-#define FILE_STATUS_CLOSED 1
-typedef struct cfs_file {
+
+typedef struct inode_shared {
     int64_t client_id;
-    lru_cache_t *c;
-    int fd;
     ino_t inode;
-    int flags;
-    int file_type;
-    size_t size;
-    off_t pos;
+    bool use_pagecache;
     uint8_t cache_flag;
-    uint8_t status;
+    lru_cache_t *c;
+    size_t size;
+    int fd_ref;
     // The file contents are structured as a two dimentional array of pages for memory efficiency.
     page_t ***pages;
-    cfs_pwrite_t write_func;
-    pthread_mutex_t lock;
-} cfs_file_t;
+    pthread_mutex_t pages_lock;
+    cfs_pwrite_inode_t write_func;
+} inode_shared_t;
 
-cfs_file_t *new_file(cfs_pwrite_t write_func);
-void init_file(cfs_file_t *f);
-size_t read_cache(cfs_file_t *f, off_t offset, size_t count, void *data);
-size_t write_cache(cfs_file_t *f, off_t offset, size_t count, const void *data);
-int flush_file(cfs_file_t *f);
-void flush_file_range(cfs_file_t *f, off_t offset, size_t count);
-void clear_file_range(cfs_file_t *f, off_t offset, size_t count);
-void clear_file(cfs_file_t *f);
+struct inode_wrapper_t {
+    pthread_rwlock_t *open_inodes_lock;
+    std::map<ino_t, inode_shared_t *> *open_inodes;
+    bool *stop;
+};
+
+inode_shared_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t write_func);
+void release_inode_info(inode_shared_t *inode_info);
+size_t read_cache(inode_shared_t *inode_info, off_t offset, size_t count, void *data);
+size_t write_cache(inode_shared_t *inode_info, off_t offset, size_t count, const void *data);
+int flush_inode(inode_shared_t *inode_info);
+void flush_inode_range(inode_shared_t *inode_info, off_t offset, size_t count);
+void clear_inode_range(inode_shared_t *inode_info, off_t offset, size_t count);
+void clear_inode(inode_shared_t *inode_info);
 
 #ifdef __cplusplus
 }
