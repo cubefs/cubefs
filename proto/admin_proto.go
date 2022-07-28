@@ -569,7 +569,6 @@ func NewClientReportLimitInfo() *ClientReportLimitInfo {
 	}
 }
 
-
 type LimitRsp2Client struct {
 	ID            uint64
 	Enable        bool

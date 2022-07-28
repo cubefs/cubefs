@@ -10,7 +10,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-
 type ServerFactorLimit struct {
 	Name           string
 	Type           uint32
@@ -483,7 +482,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 		lastLimitRitio := serverLimit.LimitRate
 		// master assigned limit and buffer not be used as expected,we need adjust the gap
 		if serverLimit.CliUsed < serverLimit.Total {
-			if serverLimit.LimitRate > -10.0 && serverLimit.LastMagnify < serverLimit.Total * 10 {
+			if serverLimit.LimitRate > -10.0 && serverLimit.LastMagnify < serverLimit.Total*10 {
 				serverLimit.LastMagnify += uint64(float64(serverLimit.Total-serverLimit.CliUsed) * 0.1)
 			}
 		} else {
@@ -620,23 +619,23 @@ func (vol *Vol) getClientLimitInfo(id uint64, ip string) (interface{}, error) {
 	vol.qosManager.RLock()
 	defer vol.qosManager.RUnlock()
 
-	assignFuc := func(info *ClientInfoMgr) (rspInfo *ClientInfoOutput){
+	assignFuc := func(info *ClientInfoMgr) (rspInfo *ClientInfoOutput) {
 		rspInfo = &ClientInfoOutput{
 			Cli: &ClientReportOutput{
-				ID: info.Cli.ID,
-				Status: info.Cli.Status,
+				ID:        info.Cli.ID,
+				Status:    info.Cli.Status,
 				FactorMap: make(map[uint32]*proto.ClientLimitInfo, 0),
 			},
 			Assign: &LimitOutput{
-				ID: info.Assign.ID,
-				Enable: info.Assign.Enable,
-				ReqPeriod: info.Assign.ReqPeriod,
+				ID:            info.Assign.ID,
+				Enable:        info.Assign.Enable,
+				ReqPeriod:     info.Assign.ReqPeriod,
 				HitTriggerCnt: info.Assign.HitTriggerCnt,
-				FactorMap: make(map[uint32]*proto.ClientLimitInfo, 0),
+				FactorMap:     make(map[uint32]*proto.ClientLimitInfo, 0),
 			},
 			Time: info.Time,
 			Host: info.Host,
-			ID: info.ID,
+			ID:   info.ID,
 		}
 
 		rspInfo.Cli.FactorMap[proto.FlowReadType] = info.Cli.FactorMap[proto.FlowReadType]

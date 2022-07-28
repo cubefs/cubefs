@@ -403,7 +403,7 @@ func (m *Server) getClientQosInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if host = r.FormValue(addrKey); host != "" {
-		log.LogInfof("action[getClientQosInfo] host %v",host)
+		log.LogInfof("action[getClientQosInfo] host %v", host)
 		if !checkIp(host) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
 			return
@@ -511,7 +511,7 @@ func parseRequestQos(r *http.Request, isMagnify bool, isEnableIops bool) (qosPar
 				}
 				if isMagnify && (qosParam.iopsRVal < MinMagnify || qosParam.iopsRVal > MaxMagnify) {
 					err = fmt.Errorf("iops read magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-					log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+					log.LogErrorf("acttion[parseRequestQos] %v", err.Error())
 					return
 				}
 			}
@@ -527,7 +527,7 @@ func parseRequestQos(r *http.Request, isMagnify bool, isEnableIops bool) (qosPar
 				}
 				if isMagnify && (qosParam.iopsWVal < MinMagnify || qosParam.iopsWVal > MaxMagnify) {
 					err = fmt.Errorf("iops write magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-					log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+					log.LogErrorf("acttion[parseRequestQos] %v", err.Error())
 					return
 				}
 			}

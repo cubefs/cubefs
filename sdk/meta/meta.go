@@ -131,7 +131,7 @@ type MetaWrapper struct {
 	forceUpdate      chan struct{}
 	forceUpdateLimit *rate.Limiter
 	EnableSummary    bool
-	metaSendTimeout int64
+	metaSendTimeout  int64
 }
 
 //the ticket from authnode

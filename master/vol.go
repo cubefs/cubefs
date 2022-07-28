@@ -662,7 +662,6 @@ func (vol *Vol) ebsUsedSpace() uint64 {
 	return size
 }
 
-
 func (vol *Vol) updateViewCache(c *Cluster) {
 	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime, vol.CacheTTL, vol.VolType)
 	view.SetOwner(vol.Owner)

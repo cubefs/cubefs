@@ -355,12 +355,12 @@ func (limitManager *LimitManager) CalcNeedByPow(limitFactor *LimitFactor, used u
 			need = 128 * util.KB
 			return
 		}
-		need = uint64(300*util.MB * math.Pow(float64(used) / float64(300*util.MB), 0.8))
+		need = uint64(300 * util.MB * math.Pow(float64(used)/float64(300*util.MB), 0.8))
 	} else {
 		if used == 0 {
 			used = uint64(limitFactor.waitList.Len())
 		}
-		need = uint64(300 * math.Pow(float64(used) / float64(300), 0.8))
+		need = uint64(300 * math.Pow(float64(used)/float64(300), 0.8))
 	}
 
 	return

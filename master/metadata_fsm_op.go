@@ -175,7 +175,7 @@ type volValue struct {
 	CacheLRUInterval int
 	CacheRule        string
 
-	EnablePosixAcl bool
+	EnablePosixAcl                                         bool
 	VolQosEnable                                           bool
 	DiskQosEnable                                          bool
 	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64
