@@ -38,12 +38,13 @@ var levelNames = [...]string{
 var _ = levelNames[levelNum-1]
 
 var levelPriorityTable = map[blobnode.IOType]Priority{
-	blobnode.NormalIO:     level0,
-	blobnode.BackgroundIO: level1,
-	blobnode.CompactIO:    level2,
-	blobnode.DeleteIO:     level1,
-	blobnode.InternalIO:   level3,
-	blobnode.InspectIO:    level3,
+	blobnode.NormalIO:   level0,
+	blobnode.RepairIO:   level1,
+	blobnode.DeleteIO:   level1,
+	blobnode.MigrateIO:  level2,
+	blobnode.CompactIO:  level2,
+	blobnode.InternalIO: level3,
+	blobnode.InspectIO:  level3,
 }
 
 func (pri Priority) String() string {
