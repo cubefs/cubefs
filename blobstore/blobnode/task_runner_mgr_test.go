@@ -52,51 +52,6 @@ var mocktasklets = []Tasklet{
 	{bids: mockGenTasklet([]proto.BlobID{12})},
 }
 
-type mockRepairWorker struct {
-	tasklet       []Tasklet
-	taskletRetErr error
-}
-
-func NewMockRepairWorker(task VolRepairTaskEx) ITaskWorker {
-	return &mockRepairWorker{
-		tasklet:       mocktasklets,
-		taskletRetErr: nil,
-	}
-}
-
-func (w *mockRepairWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError) {
-	time.Sleep(3600 * time.Second)
-	return w.tasklet, nil
-}
-
-func (w *mockRepairWorker) ExecTasklet(ctx context.Context, t Tasklet) *WorkError {
-	return SrcError(w.taskletRetErr)
-}
-
-func (w *mockRepairWorker) Check(ctx context.Context) *WorkError {
-	return nil
-}
-
-func (w *mockRepairWorker) CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
-}
-
-func (w *mockRepairWorker) CompleteArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
-}
-
-func (w *mockRepairWorker) ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
-}
-
-func (w *mockRepairWorker) TaskType() proto.TaskType {
-	return proto.TaskTypeDiskRepair
-}
-
-func (w *mockRepairWorker) GetBenchmarkBids() []*ShardInfoSimple {
-	return nil
-}
-
 type mockMigrateWorker struct {
 	tasklet       []Tasklet
 	taskletRetErr error
@@ -143,12 +98,7 @@ func (w *mockMigrateWorker) GetBenchmarkBids() []*ShardInfoSimple {
 }
 
 type mockWorkerFactory struct {
-	newRepairWorkerFn func(task VolRepairTaskEx) ITaskWorker
-	newMigWorkerFn    func(task MigrateTaskEx) ITaskWorker
-}
-
-func (mwf *mockWorkerFactory) NewRepairWorker(task VolRepairTaskEx) ITaskWorker {
-	return mwf.newRepairWorkerFn(task)
+	newMigWorkerFn func(task MigrateTaskEx) ITaskWorker
 }
 
 func (mwf *mockWorkerFactory) NewMigrateWorker(task MigrateTaskEx) ITaskWorker {
@@ -187,18 +137,15 @@ func initTestTaskRunnerMgr(t *testing.T, taskCnt int) *TaskRunnerMgr {
 		completeRet: nil,
 		reclaimRet:  nil,
 	}
-	wf := mockWorkerFactory{
-		newRepairWorkerFn: NewMockRepairWorker,
-		newMigWorkerFn:    NewmockMigrateWorker,
-	}
+	wf := mockWorkerFactory{newMigWorkerFn: NewmockMigrateWorker}
 	tm := NewTaskRunnerMgr(0, 2, 2, 2, 2, &cli, &wf)
 	ctx := context.Background()
 	for i := 0; i < taskCnt; i++ {
 		taskID := fmt.Sprintf("repair_%d", i+1)
-		task := VolRepairTaskEx{
+		task := MigrateTaskEx{
 			taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: proto.TaskTypeDiskRepair},
 		}
-		err := tm.AddRepairTask(ctx, task)
+		err := tm.AddTask(ctx, task)
 		require.NoError(t, err)
 	}
 
@@ -207,7 +154,7 @@ func initTestTaskRunnerMgr(t *testing.T, taskCnt int) *TaskRunnerMgr {
 		task := MigrateTaskEx{
 			taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: proto.TaskTypeBalance},
 		}
-		err := tm.AddBalanceTask(ctx, task)
+		err := tm.AddTask(ctx, task)
 		require.NoError(t, err)
 	}
 
@@ -216,7 +163,7 @@ func initTestTaskRunnerMgr(t *testing.T, taskCnt int) *TaskRunnerMgr {
 		task := MigrateTaskEx{
 			taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: proto.TaskTypeDiskDrop},
 		}
-		err := tm.AddDiskDropTask(ctx, task)
+		err := tm.AddTask(ctx, task)
 		require.NoError(t, err)
 	}
 	return tm
@@ -225,12 +172,12 @@ func initTestTaskRunnerMgr(t *testing.T, taskCnt int) *TaskRunnerMgr {
 func TestTaskRunnerMgr(t *testing.T) {
 	tm := initTestTaskRunnerMgr(t, 10)
 	time.Sleep(200 * time.Millisecond)
-	require.Equal(t, 10, len(tm.GetRepairAliveTask()))
-	require.Equal(t, 10, len(tm.GetBalanceAliveTask()))
-	require.Equal(t, 10, len(tm.GetDiskDropAliveTask()))
+	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeDiskRepair)))
+	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeBalance)))
+	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeDiskDrop)))
 
 	tm.StopAllAliveRunner()
-	require.Equal(t, 0, len(tm.GetRepairAliveTask()))
-	require.Equal(t, 0, len(tm.GetBalanceAliveTask()))
-	require.Equal(t, 0, len(tm.GetDiskDropAliveTask()))
+	require.Equal(t, 0, len(tm.GetAliveTask(proto.TaskTypeDiskRepair)))
+	require.Equal(t, 0, len(tm.GetAliveTask(proto.TaskTypeBalance)))
+	require.Equal(t, 0, len(tm.GetAliveTask(proto.TaskTypeDiskDrop)))
 }

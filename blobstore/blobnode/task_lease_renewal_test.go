@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 type MockReportCli struct {
@@ -68,9 +69,9 @@ func TestReport(t *testing.T) {
 	}
 	taskRenter := NewTaskRenter(idc, &reportCli, tm)
 	taskRenter.renewalTask()
-	require.Equal(t, 10, len(tm.GetRepairAliveTask()))
-	require.Equal(t, 10, len(tm.GetBalanceAliveTask()))
-	require.Equal(t, 10, len(tm.GetDiskDropAliveTask()))
+	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeDiskRepair)))
+	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeBalance)))
+	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeDiskDrop)))
 
 	// test renewal fail
 	tm2 := initTestTaskRunnerMgr(t, 10)
@@ -85,9 +86,9 @@ func TestReport(t *testing.T) {
 
 	taskRenter2 := NewTaskRenter(idc, &reportCli2, tm2)
 	taskRenter2.renewalTask()
-	require.Equal(t, 9, len(tm2.GetRepairAliveTask()))
-	require.Equal(t, 9, len(tm2.GetBalanceAliveTask()))
-	require.Equal(t, 9, len(tm2.GetDiskDropAliveTask()))
+	require.Equal(t, 9, len(tm2.GetAliveTask(proto.TaskTypeDiskRepair)))
+	require.Equal(t, 9, len(tm2.GetAliveTask(proto.TaskTypeBalance)))
+	require.Equal(t, 9, len(tm2.GetAliveTask(proto.TaskTypeDiskDrop)))
 
 	// test all renewal fail
 	tm3 := initTestTaskRunnerMgr(t, 10)
@@ -98,7 +99,7 @@ func TestReport(t *testing.T) {
 	}
 	taskRenter3 := NewTaskRenter(idc, &reportCli3, tm3)
 	taskRenter3.renewalTask()
-	require.Equal(t, 0, len(tm3.GetRepairAliveTask()))
-	require.Equal(t, 0, len(tm3.GetBalanceAliveTask()))
-	require.Equal(t, 0, len(tm3.GetDiskDropAliveTask()))
+	require.Equal(t, 0, len(tm3.GetAliveTask(proto.TaskTypeDiskRepair)))
+	require.Equal(t, 0, len(tm3.GetAliveTask(proto.TaskTypeBalance)))
+	require.Equal(t, 0, len(tm3.GetAliveTask(proto.TaskTypeDiskDrop)))
 }

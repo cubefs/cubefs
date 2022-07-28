@@ -61,10 +61,10 @@ func (tr *TaskRenter) renewalTask() {
 
 	alive := api.TaskRenewalArgs{
 		IDC:           tr.idc,
-		Repair:        genRenewalArgs(tr.tm.GetRepairAliveTask()),
-		Balance:       genRenewalArgs(tr.tm.GetBalanceAliveTask()),
-		DiskDrop:      genRenewalArgs(tr.tm.GetDiskDropAliveTask()),
-		ManualMigrate: genRenewalArgs(tr.tm.GetManualMigrateAliveTask()),
+		Repair:        genRenewalArgs(tr.tm.GetAliveTask(proto.TaskTypeDiskRepair)),
+		Balance:       genRenewalArgs(tr.tm.GetAliveTask(proto.TaskTypeBalance)),
+		DiskDrop:      genRenewalArgs(tr.tm.GetAliveTask(proto.TaskTypeDiskDrop)),
+		ManualMigrate: genRenewalArgs(tr.tm.GetAliveTask(proto.TaskTypeManualMigrate)),
 	}
 
 	ret, err := tr.cli.RenewalTask(ctx, &alive)

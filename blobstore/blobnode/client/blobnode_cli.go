@@ -32,8 +32,8 @@ type IBlobNode interface {
 	StatChunk(ctx context.Context, location proto.VunitLocation) (ci *ChunkInfo, err error)
 	StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (si *ShardInfo, err error)
 	ListShards(ctx context.Context, location proto.VunitLocation) (shards []*ShardInfo, err error)
-	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (body io.ReadCloser, crc32 uint32, err error)
-	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader) (err error)
+	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error)
+	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType api.IOType) (err error)
 }
 
 // BlobNodeClient blobnode client
@@ -98,10 +98,10 @@ func (c *BlobNodeClient) StatChunk(ctx context.Context, location proto.VunitLoca
 }
 
 // GetShard returns shard data
-func (c *BlobNodeClient) GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (body io.ReadCloser, crc32 uint32, err error) {
+func (c *BlobNodeClient) GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error) {
 	pSpan := trace.SpanFromContextSafe(ctx)
 	_, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "GetShard", pSpan.TraceID())
-	return c.cli.GetShard(ctx, location.Host, &api.GetShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid, Type: api.BackgroundIO})
+	return c.cli.GetShard(ctx, location.Host, &api.GetShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid, Type: ioType})
 }
 
 // StatShard return shard stat
@@ -150,10 +150,10 @@ func (c *BlobNodeClient) ListShards(ctx context.Context, location proto.VunitLoc
 }
 
 // PutShard put data to shard
-func (c *BlobNodeClient) PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader) (err error) {
+func (c *BlobNodeClient) PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType api.IOType) (err error) {
 	pSpan := trace.SpanFromContextSafe(ctx)
 	_, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "PutShard", pSpan.TraceID())
 
-	_, err = c.cli.PutShard(ctx, location.Host, &api.PutShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid, Body: body, Size: size, Type: api.BackgroundIO})
+	_, err = c.cli.PutShard(ctx, location.Host, &api.PutShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid, Body: body, Size: size, Type: ioType})
 	return
 }

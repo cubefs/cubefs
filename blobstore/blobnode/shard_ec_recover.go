@@ -23,6 +23,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -44,7 +45,7 @@ const defaultGetConcurrency = 100
 
 // ShardGetter define interface of blobnode used for shard getter
 type ShardGetter interface {
-	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (body io.ReadCloser, crc32 uint32, err error)
+	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType blobnode.IOType) (body io.ReadCloser, crc32 uint32, err error)
 }
 
 type (
@@ -344,8 +345,8 @@ type ShardRecover struct {
 
 	shardGetter              ShardGetter
 	vunitShardGetConcurrency int
-
-	ds *downloadStatus
+	ioType                   blobnode.IOType
+	ds                       *downloadStatus
 }
 
 // NewShardRecover returns shard recover
@@ -355,7 +356,8 @@ func NewShardRecover(
 	bidInfos []*ShardInfoSimple,
 	bufPool *workutils.ByteBufferPool,
 	shardGetter ShardGetter,
-	vunitShardGetConcurrency int) *ShardRecover {
+	vunitShardGetConcurrency int,
+	ioType blobnode.IOType) *ShardRecover {
 	if vunitShardGetConcurrency <= 0 {
 		vunitShardGetConcurrency = defaultGetConcurrency
 	}
@@ -366,6 +368,7 @@ func NewShardRecover(
 		codeMode:                 mode,
 		repairBidsReadOnly:       bidInfos,
 		shardGetter:              shardGetter,
+		ioType:                   ioType,
 		vunitShardGetConcurrency: vunitShardGetConcurrency,
 		ds:                       newDownloadStatus(),
 	}
@@ -382,7 +385,7 @@ func NewShardRecoverWithForbiddenDownload(
 	vunitShardGetConcurrency int,
 	forbidenDownload []proto.Vuid,
 ) *ShardRecover {
-	shardRecover := NewShardRecover(replicas, mode, bidInfos, bufPool, shardGetter, vunitShardGetConcurrency)
+	shardRecover := NewShardRecover(replicas, mode, bidInfos, bufPool, shardGetter, vunitShardGetConcurrency, blobnode.RepairIO)
 	for _, vuid := range forbidenDownload {
 		shardRecover.ds.forbiddenDownload(vuid)
 	}
@@ -697,7 +700,7 @@ func (r *ShardRecover) downloadShard(ctx context.Context, replica proto.VunitLoc
 		span.Infof("download cancel: replica[%+v],  bid[%d]", replica, bid)
 		return nil
 	default:
-		data, crc1, err := r.shardGetter.GetShard(ctx, replica, bid)
+		data, crc1, err := r.shardGetter.GetShard(ctx, replica, bid, r.ioType)
 		r.ds.downloaded(replica.Vuid)
 		if err != nil {
 			span.Errorf("download failed: replica[%+v], bid[%d], err[%+v]", replica, bid, err)

@@ -105,9 +105,9 @@ func (cfg *WorkerConfig) checkAndFix() (err error) {
 	fixConfigItemInt(&cfg.ShardRepairConcurrency, 1)
 	fixConfigItemInt(&cfg.InspectConcurrency, 1)
 	fixConfigItemInt(&cfg.DownloadShardConcurrency, 10)
-	fixConfigItemInt(&cfg.SmallBufPool.PoolSize, 5)
-	fixConfigItemInt(&cfg.SmallBufPool.BufSizeByte, 1048576)
-	fixConfigItemInt(&cfg.BigBufPool.PoolSize, 5)
+	fixConfigItemInt(&cfg.SmallBufPool.PoolSize, 800)
+	fixConfigItemInt(&cfg.SmallBufPool.BufSizeByte, 4194304)
+	fixConfigItemInt(&cfg.BigBufPool.PoolSize, 1500)
 	fixConfigItemInt(&cfg.BigBufPool.BufSizeByte, 16777216)
 
 	fixConfigItemInt64(&cfg.Scheduler.ClientTimeoutMs, 1000)
@@ -146,8 +146,7 @@ func NewWorkerService(cfg *WorkerConfig, clusterMgrCli cmapi.APIService, cluster
 		cfg.BalanceConcurrency,
 		cfg.DiskDropConcurrency,
 		cfg.ManualMigrateConcurrency,
-		schedulerCli,
-		&TaskWorkerCreator{})
+		schedulerCli, &TaskWorkerCreator{})
 
 	inspectTaskMgr := NewInspectTaskMgr(cfg.InspectConcurrency, blobNodeCli, schedulerCli)
 
@@ -297,7 +296,6 @@ func (s *WorkerService) hasInspectTaskResource() bool {
 // acquire:disk repair & balance & disk drop task
 func (s *WorkerService) acquireTask() {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "acquireTask")
-
 	t, err := s.schedulerCli.AcquireTask(ctx, &scheduler.AcquireArgs{IDC: s.taskRenter.idc})
 	if err != nil {
 		code := rpc.DetectStatusCode(err)
@@ -312,44 +310,16 @@ func (s *WorkerService) acquireTask() {
 			t.TaskType(), t.Task)
 		return
 	}
-
-	taskID := t.Task.TaskID
-	switch t.TaskType() {
-	case proto.TaskTypeDiskRepair:
-		err = s.taskRunnerMgr.AddRepairTask(ctx, VolRepairTaskEx{
-			taskInfo:                 &t.Task,
-			downloadShardConcurrency: s.DownloadShardConcurrency,
-			blobNodeCli:              s.blobNodeCli,
-		})
-
-	case proto.TaskTypeBalance:
-		err = s.taskRunnerMgr.AddBalanceTask(ctx, MigrateTaskEx{
-			taskInfo:                 &t.Task,
-			blobNodeCli:              s.blobNodeCli,
-			downloadShardConcurrency: s.DownloadShardConcurrency,
-		})
-
-	case proto.TaskTypeDiskDrop:
-		err = s.taskRunnerMgr.AddDiskDropTask(ctx, MigrateTaskEx{
-			taskInfo:                 &t.Task,
-			blobNodeCli:              s.blobNodeCli,
-			downloadShardConcurrency: s.DownloadShardConcurrency,
-		})
-	case proto.TaskTypeManualMigrate:
-		err = s.taskRunnerMgr.AddManualMigrateTask(ctx, MigrateTaskEx{
-			taskInfo:                 &t.Task,
-			blobNodeCli:              s.blobNodeCli,
-			downloadShardConcurrency: s.DownloadShardConcurrency,
-		})
-	default:
-		span.Fatalf("can not support task: type[%+v]", t.TaskType())
-	}
-
+	err = s.taskRunnerMgr.AddTask(ctx, MigrateTaskEx{
+		taskInfo:                 &t.Task,
+		downloadShardConcurrency: s.DownloadShardConcurrency,
+		blobNodeCli:              s.blobNodeCli,
+	})
 	if err != nil {
-		span.Errorf("add task failed: taskID[%s], err[%v]", taskID, err)
+		span.Errorf("add task failed: taskID[%s], err[%v]", t.Task.TaskID, err)
 		return
 	}
-	span.Infof("acquire task success: task_type[%s], taskID[%s]", t.TaskType(), taskID)
+	span.Infof("acquire task success: task_type[%s], taskID[%s]", t.TaskType(), t.Task.TaskID)
 }
 
 // acquire inspect task

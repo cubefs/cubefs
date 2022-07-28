@@ -49,7 +49,7 @@ func (m *mBlobNodeCli) ListShards(ctx context.Context, location proto.VunitLocat
 	return nil, nil
 }
 
-func (m *mBlobNodeCli) GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (io.ReadCloser, uint32, error) {
+func (m *mBlobNodeCli) GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType bnapi.IOType) (io.ReadCloser, uint32, error) {
 	return nil, 0, nil
 }
 
@@ -57,7 +57,7 @@ func (m *mBlobNodeCli) GetShards(ctx context.Context, location proto.VunitLocati
 	return nil, nil
 }
 
-func (m *mBlobNodeCli) PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader) (err error) {
+func (m *mBlobNodeCli) PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType bnapi.IOType) (err error) {
 	return
 }
 
@@ -165,15 +165,11 @@ var (
 func newMockWorkService() *Service {
 	scheduler := schedulerCli
 	blobnode := blobnodeCli
-	wf := &mockWorkerFactory{
-		newRepairWorkerFn: NewMockRepairWorker,
-		newMigWorkerFn:    NewmockMigrateWorker,
-	}
 	workSvr := &WorkerService{
 		shardRepairLimit: count.New(1),
 		inspectTaskMgr:   NewInspectTaskMgr(1, blobnode, scheduler),
 		taskRenter: NewTaskRenter("z0", scheduler, NewTaskRunnerMgr(0, 2, 2,
-			2, 2, scheduler, wf)),
+			2, 2, scheduler, &mockWorkerFactory{newMigWorkerFn: NewmockMigrateWorker})),
 		schedulerCli: scheduler,
 		blobNodeCli:  blobnode,
 		WorkerConfig: WorkerConfig{AcquireIntervalMs: 1},
@@ -183,7 +179,7 @@ func newMockWorkService() *Service {
 		closeOnce: &sync.Once{},
 
 		taskRunnerMgr: NewTaskRunnerMgr(0, 2, 2,
-			2, 2, scheduler, wf),
+			2, 2, scheduler, &mockWorkerFactory{newMigWorkerFn: NewmockMigrateWorker}),
 	}
 	return &Service{WorkerService: workSvr}
 }

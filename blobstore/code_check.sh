@@ -16,7 +16,7 @@ else
     if [[ -n "${diff}" ]]; then
         echo "Gofmt check failed since of:"
         echo "${diff}"
-        echo "Please run this command to fix: [find . -name "*.go" | grep -v "/vendor/" | xargs gofmt -s -w]"
+        echo "Please run this command to fix: [find . -name \"*.go\" | grep -v \"/vendor/\" | xargs gofmt -s -w]"
         exit 1
    fi
 fi

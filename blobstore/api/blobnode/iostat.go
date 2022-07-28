@@ -16,6 +16,8 @@ package blobnode
 
 import (
 	"context"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 // key is unexported and used for context.Context
@@ -28,18 +30,20 @@ const (
 type IOType uint64
 
 const (
-	NormalIO     IOType = iota // From: external: user io: read/write
-	BackgroundIO               // From: external: repair, chunk transfer, delete
-	CompactIO                  // From: internal: chunk compact
-	DeleteIO                   // From: external: delete io
-	InternalIO                 // From: internal: io, such rubbish clean, batch delete
-	InspectIO                  // From: internal: inspect io
+	NormalIO   IOType = iota // From: external: user io: read/write
+	RepairIO                 // From: external: repair
+	MigrateIO                // From: external: chunk transfer, drop, manualMigrate
+	CompactIO                // From: internal: chunk compact
+	DeleteIO                 // From: external: delete io
+	InternalIO               // From: internal: io, such rubbish clean, batch delete
+	InspectIO                // From: internal: inspect io
 	IOTypeMax
 )
 
 var IOtypemap = [...]string{
 	"normal",
-	"background",
+	"repair",
+	"migrate",
 	"compact",
 	"delete",
 	"internal",
@@ -66,4 +70,13 @@ func Getiotype(ctx context.Context) IOType {
 
 func Setiotype(ctx context.Context, iot IOType) context.Context {
 	return context.WithValue(ctx, _ioFlowStatKey, iot)
+}
+
+func Task2IOType(t proto.TaskType) IOType {
+	switch t {
+	case proto.TaskTypeDiskRepair:
+		return RepairIO
+	default:
+		return MigrateIO
+	}
 }
