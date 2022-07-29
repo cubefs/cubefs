@@ -23,6 +23,7 @@ LZ4_VER=1.8.3
 ZSTD_VER=1.4.0
 ROCKSDB_VER=6.3.6
 GCCMAJOR=`gcc -dumpversion`
+check=$1
 
 pushd ${INSTALLDIR}
 if [ ! -f lib/libz.a ]; then
@@ -67,7 +68,7 @@ fi
 if [ ! -f lib/libzstd.a ]; then
     rm -rf zstd-${ZSTD_VER}
     if [ ! -f zstd-${ZSTD_VER}.tar.gz ]; then
-        wget https://github.com/facebook/zstd/archive/v${ZSTD_VER}.tar.gz -O zstd-${ZSTD_VER}.tar.gz
+        wget https://github.com/facebook/zstd/archive/v${ZSTD_VER}.tar.gz -O zstd-${ZSTD_VER}.tar.gz ${check}
         if [ $? -ne 0 ]; then
             exit 1
         fi
@@ -85,7 +86,7 @@ fi
 
 if [ ! -f lib/liblz4.a ]; then
     if [ ! -f lz4-${LZ4_VER}.tar.gz ]; then
-        wget https://github.com/lz4/lz4/archive/v${LZ4_VER}.tar.gz -O lz4-${LZ4_VER}.tar.gz
+        wget https://github.com/lz4/lz4/archive/v${LZ4_VER}.tar.gz -O lz4-${LZ4_VER}.tar.gz ${check}
         if [ $? -ne 0 ]; then
             exit 1
         fi
@@ -104,7 +105,7 @@ fi
 if [ ! -f lib/libsnappy.a ]; then
     rm -rf snappy-${SNAPPY_VER}
     if [ ! -f snappy-${SNAPPY_VER}.tar.gz ]; then
-        wget https://github.com/google/snappy/archive/${SNAPPY_VER}.tar.gz -O snappy-${SNAPPY_VER}.tar.gz
+        wget https://github.com/google/snappy/archive/${SNAPPY_VER}.tar.gz -O snappy-${SNAPPY_VER}.tar.gz ${check}
         if [ $? -ne 0 ]; then
             exit 1
         fi
@@ -127,7 +128,7 @@ fi
 if [ ! -f lib/librocksdb.a ]; then
     rm -rf ${INSTALLDIR}/include/rocksdb rocksdb-${ROCKSDB_VER}
     if [ ! -f rocksdb-${ROCKSDB_VER}.tar.gz ]; then
-        wget https://github.com/facebook/rocksdb/archive/refs/tags/v${ROCKSDB_VER}.tar.gz -O rocksdb-${ROCKSDB_VER}.tar.gz
+        wget https://github.com/facebook/rocksdb/archive/refs/tags/v${ROCKSDB_VER}.tar.gz -O rocksdb-${ROCKSDB_VER}.tar.gz ${check}
         if [ $? -ne 0 ]; then
             exit 1
         fi

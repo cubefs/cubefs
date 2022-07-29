@@ -726,7 +726,7 @@ func (v *VolumeMgr) loop() {
 			// finish last create volume job firstly
 			// return and wait for create volume channel if any failed
 			if err := v.finishLastCreateJob(ctx); err != nil {
-				span.Errorf("finish last create volume job failed ==> ", errors.Detail(err))
+				span.Errorf("finish last create volume job failed ==> %s", errors.Detail(err))
 				continue
 			}
 			if !v.raftServer.IsLeader() {
@@ -763,7 +763,7 @@ func (v *VolumeMgr) loop() {
 
 					err := v.createVolume(ctx, modeConfig.mode)
 					if err != nil {
-						span_.Errorf("create volume failed ==> ", errors.Detail(err))
+						span_.Errorf("create volume failed ==> %s", errors.Detail(err))
 						break
 					}
 				}

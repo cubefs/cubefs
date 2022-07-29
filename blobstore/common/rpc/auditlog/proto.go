@@ -17,6 +17,7 @@ package auditlog
 import "net/http"
 
 type Config struct {
+	// LogDir audit log whether to enable depend on whether config log dir
 	LogDir string `json:"logdir"`
 	// ChunkBits means one audit log file size
 	// eg: chunkbits=20 means one log file will hold 1<<10 size
@@ -28,9 +29,13 @@ type Config struct {
 	// 0 means no backup limit
 	Backup       int              `json:"backup"`
 	MetricConfig PrometheusConfig `json:"metric_config"`
+
+	// KeywordsFilter log filter based on uri and request method
+	KeywordsFilter []string `json:"keywords_filter"`
 }
 
-// a implemented audit logger should implements ProgressHandler and LogCloser interface to replace qn audit log
+// LogCloser a implemented audit logger should implements ProgressHandler
+// and LogCloser interface to replace qn audit log
 type LogCloser interface {
 	Close() error
 	Log([]byte) error
