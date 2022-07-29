@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/limit/count"
 )
 
@@ -158,24 +159,28 @@ var (
 	blobnodeCli  = &mBlobNodeCli{}
 )
 
+func getDefaultConfig() WorkerConfig {
+	cfg := WorkerConfig{}
+	cfg.checkAndFix()
+	return cfg
+}
+
 func newMockWorkService() *Service {
 	scheduler := schedulerCli
 	blobnode := blobnodeCli
 	workSvr := &WorkerService{
+		Closer: closer.New(),
+
 		shardRepairLimit: count.New(1),
 		inspectTaskMgr:   NewInspectTaskMgr(1, blobnode, scheduler),
-		taskRenter: NewTaskRenter("z0", scheduler, NewTaskRunnerMgr(0, 2, 2,
-			2, 2, scheduler, &mockWorkerFactory{newMigWorkerFn: NewmockMigrateWorker})),
+		taskRenter: NewTaskRenter("z0", scheduler, NewTaskRunnerMgr(getDefaultConfig().WorkerConfigMeter,
+			scheduler, &mockWorkerFactory{newMigWorkerFn: NewmockMigrateWorker})),
 		schedulerCli: scheduler,
 		blobNodeCli:  blobnode,
 		WorkerConfig: WorkerConfig{AcquireIntervalMs: 1},
 
-		acquireCh: make(chan struct{}, 1),
-		closeCh:   make(chan struct{}),
-		closeOnce: &sync.Once{},
-
-		taskRunnerMgr: NewTaskRunnerMgr(0, 2, 2,
-			2, 2, scheduler, &mockWorkerFactory{newMigWorkerFn: NewmockMigrateWorker}),
+		taskRunnerMgr: NewTaskRunnerMgr(getDefaultConfig().WorkerConfigMeter,
+			scheduler, &mockWorkerFactory{newMigWorkerFn: NewmockMigrateWorker}),
 	}
 	return &Service{WorkerService: workSvr}
 }
@@ -251,9 +256,7 @@ func TestFixConfigItem(t *testing.T) {
 }
 
 func TestCfgFix(t *testing.T) {
-	var cfg WorkerConfig
-	err := cfg.checkAndFix()
-	require.NoError(t, err)
+	cfg := getDefaultConfig()
 	fixConfigItemInt(&cfg.AcquireIntervalMs, 500)
 	fixConfigItemInt(&cfg.MaxTaskRunnerCnt, 1)
 	fixConfigItemInt(&cfg.RepairConcurrency, 1)

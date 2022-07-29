@@ -17,7 +17,6 @@ package blobnode
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -30,19 +29,14 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/count"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-// ServiceRegisterConfig worker_service register config
-type ServiceRegisterConfig struct {
-	Idc  string `json:"idc"`
-	Host string `json:"host"`
-}
-
-// WorkerConfig worker_service config
-type WorkerConfig struct {
+// WorkerConfigMeter worker controller meter.
+type WorkerConfigMeter struct {
 	// max task run count of disk repair & balance & disk drop
 	MaxTaskRunnerCnt int `json:"max_task_runner_cnt"`
 	// tasklet concurrency of single repair task
@@ -60,6 +54,11 @@ type WorkerConfig struct {
 
 	// batch download concurrency of single tasklet
 	DownloadShardConcurrency int `json:"download_shard_concurrency"`
+}
+
+// WorkerConfig worker service config
+type WorkerConfig struct {
+	WorkerConfigMeter
 
 	// small buffer pool use for shard repair
 	SmallBufPool base.BufPoolConfig `json:"small_buf_pool"`
@@ -79,6 +78,9 @@ type WorkerConfig struct {
 
 // WorkerService worker worker_service
 type WorkerService struct {
+	closer.Closer
+	WorkerConfig
+
 	taskRunnerMgr  *TaskRunnerMgr
 	inspectTaskMgr *InspectTaskMgr
 	taskRenter     *TaskRenter
@@ -86,16 +88,11 @@ type WorkerService struct {
 	shardRepairLimit limit.Limiter
 	shardRepairer    *ShardRepairer
 
-	closeCh   chan struct{}
-	acquireCh chan struct{}
-	closeOnce *sync.Once
-
 	schedulerCli client.IScheduler
 	blobNodeCli  client.IBlobNode
-	WorkerConfig
 }
 
-func (cfg *WorkerConfig) checkAndFix() (err error) {
+func (cfg *WorkerConfig) checkAndFix() {
 	fixConfigItemInt(&cfg.AcquireIntervalMs, 500)
 	fixConfigItemInt(&cfg.MaxTaskRunnerCnt, 1)
 	fixConfigItemInt(&cfg.RepairConcurrency, 1)
@@ -113,7 +110,6 @@ func (cfg *WorkerConfig) checkAndFix() (err error) {
 	fixConfigItemInt64(&cfg.Scheduler.ClientTimeoutMs, 1000)
 	fixConfigItemInt64(&cfg.Scheduler.HostSyncIntervalMs, 1000)
 	fixConfigItemInt64(&cfg.BlobNode.ClientTimeoutMs, 1000)
-	return nil
 }
 
 func fixConfigItemInt(actual *int, defaultVal int) {
@@ -130,24 +126,15 @@ func fixConfigItemInt64(actual *int64, defaultVal int64) {
 
 // NewWorkerService returns rpc worker_service
 func NewWorkerService(cfg *WorkerConfig, clusterMgrCli cmapi.APIService, clusterID proto.ClusterID, idc string) (*WorkerService, error) {
-	if err := cfg.checkAndFix(); err != nil {
-		return nil, fmt.Errorf("check config: err[%w]", err)
-	}
+	cfg.checkAndFix()
 
 	base.BigBufPool = base.NewByteBufferPool(cfg.BigBufPool.BufSizeByte, cfg.BigBufPool.PoolSize)
 	base.SmallBufPool = base.NewByteBufferPool(cfg.SmallBufPool.BufSizeByte, cfg.SmallBufPool.PoolSize)
 
 	schedulerCli := client.NewSchedulerClient(&cfg.Scheduler, clusterMgrCli, clusterID)
-
 	blobNodeCli := client.NewBlobNodeClient(&cfg.BlobNode)
-	taskRunnerMgr := NewTaskRunnerMgr(
-		cfg.DownloadShardConcurrency,
-		cfg.RepairConcurrency,
-		cfg.BalanceConcurrency,
-		cfg.DiskDropConcurrency,
-		cfg.ManualMigrateConcurrency,
-		schedulerCli, &TaskWorkerCreator{})
 
+	taskRunnerMgr := NewTaskRunnerMgr(cfg.WorkerConfigMeter, schedulerCli, &TaskWorkerCreator{})
 	inspectTaskMgr := NewInspectTaskMgr(cfg.InspectConcurrency, blobNodeCli, schedulerCli)
 
 	renewalCli := newRenewalCli(cfg.Scheduler, clusterMgrCli, clusterID)
@@ -164,23 +151,20 @@ func NewWorkerService(cfg *WorkerConfig, clusterMgrCli cmapi.APIService, cluster
 	}
 
 	svr := &WorkerService{
+		Closer:       closer.New(),
+		WorkerConfig: *cfg,
+
 		schedulerCli:   schedulerCli,
 		blobNodeCli:    blobNodeCli,
 		taskRunnerMgr:  taskRunnerMgr,
 		inspectTaskMgr: inspectTaskMgr,
+		taskRenter:     taskRenter,
 
 		shardRepairLimit: shardRepairLimit,
 		shardRepairer:    shardRepairer,
-
-		taskRenter:   taskRenter,
-		acquireCh:    make(chan struct{}, 1),
-		closeCh:      make(chan struct{}),
-		closeOnce:    &sync.Once{},
-		WorkerConfig: *cfg,
 	}
 
 	go svr.Run()
-
 	return svr, nil
 }
 
@@ -226,48 +210,21 @@ func newRenewalCli(cfg scheduler.Config, service cmapi.APIService, clusterID pro
 // Run runs backend task
 func (s *WorkerService) Run() {
 	// task lease
-	go s.taskRenter.RenewalTaskLoop()
-
+	go s.taskRenter.RenewalTaskLoop(s.Done())
 	s.loopAcquireTask()
 }
 
 func (s *WorkerService) loopAcquireTask() {
-	go func() {
-		ticker := time.NewTicker(time.Duration(s.AcquireIntervalMs) * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				s.notifyAcquire()
-			case <-s.closeCh:
-				return
-			}
-		}
-	}()
-
+	ticker := time.NewTicker(time.Duration(s.AcquireIntervalMs) * time.Millisecond)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-s.acquireCh:
+		case <-ticker.C:
 			s.tryAcquireTask()
-		case <-s.closeCh:
+		case <-s.Done():
 			return
 		}
 	}
-}
-
-func (s *WorkerService) notifyAcquire() {
-	select {
-	case s.acquireCh <- struct{}{}:
-	default:
-	}
-}
-
-// Close close worker_service
-func (s *WorkerService) Close() {
-	s.closeOnce.Do(func() {
-		close(s.closeCh)
-	})
 }
 
 func (s *WorkerService) tryAcquireTask() {
