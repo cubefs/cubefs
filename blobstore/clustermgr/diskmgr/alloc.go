@@ -86,7 +86,7 @@ func (d *blobNodeStorage) allocDisk(ctx context.Context, excludes map[proto.Disk
 			}
 			// ignore not writable disk
 			if !disk.isWritable() {
-				span.Debugf("disk %d is not writable, is it expire: %s", disk.diskID, disk.isExpire())
+				span.Debugf("disk %d is not writable, is it expired: %v", disk.diskID, disk.isExpire())
 				return nil
 			}
 

@@ -154,7 +154,7 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 		blobNodeStgs[host].freeChunk += freeChunk
 		blobNodeStgs[host].free += free
 	}
-	span.Debug("all blobNodeStgs: ", blobNodeStgs)
+	span.Debugf("all blobNodeStgs: %+v", blobNodeStgs)
 
 	for _, rackStgs := range idcRackStgs {
 		for rack := range rackStgs {

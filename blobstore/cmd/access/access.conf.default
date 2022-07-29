@@ -2,17 +2,11 @@
     "max_procs": 0,
     "shutdown_timeout_s": 30,
     "log": {
-        "level": "debug",
-        "filename": "/tmp/access.log",
+        "level": "info",
+        "filename": "./run/logs/access.log",
         "maxsize": 1024,
         "maxage": 7,
         "maxbackups": 7
-    },
-    "auditlog": {
-        "chunkbits": 29,
-        "logdir": "/tmp/access/",
-        "backup": 0,
-        "rotate_new": false
     },
     "bind_addr": ":9500",
     "consul_agent_addr": "127.0.0.1:8500",
