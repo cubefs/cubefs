@@ -49,10 +49,16 @@ func NewTaskRenter(idc string, cli TaskRenewalCli, tm *TaskRunnerMgr) *TaskRente
 }
 
 // RenewalTaskLoop renewal task
-func (tr *TaskRenter) RenewalTaskLoop() {
+func (tr *TaskRenter) RenewalTaskLoop(stopCh <-chan struct{}) {
+	ticker := time.NewTicker(time.Duration(proto.TaskRenewalPeriodS) * time.Second)
+	defer ticker.Stop()
 	for {
-		tr.renewalTask()
-		time.Sleep(proto.TaskRenewalPeriodS * time.Second)
+		select {
+		case <-ticker.C:
+			tr.renewalTask()
+		case <-stopCh:
+			return
+		}
 	}
 }
 

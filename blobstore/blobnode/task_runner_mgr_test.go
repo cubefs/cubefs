@@ -123,7 +123,7 @@ func (mock *mockScheCli) ReportTask(ctx context.Context, args *api.TaskReportArg
 func initTestTaskRunnerMgr(t *testing.T, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
 	cli := mockScheCli{}
 	wf := mockWorkerFactory{newMigWorkerFn: NewmockMigrateWorker}
-	tm := NewTaskRunnerMgr(0, 2, 2, 2, 2, &cli, &wf)
+	tm := NewTaskRunnerMgr(getDefaultConfig().WorkerConfigMeter, &cli, &wf)
 
 	ctx := context.Background()
 	for _, typ := range taskTypes {

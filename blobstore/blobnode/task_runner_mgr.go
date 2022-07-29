@@ -27,22 +27,15 @@ var errAddRunningTaskAgain = errors.New("running task add again")
 
 // TaskRunnerMgr task runner manager
 type TaskRunnerMgr struct {
-	repair                      map[string]*TaskRunner
-	repairTaskletRunConcurrency int
+	repair        map[string]*TaskRunner
+	balance       map[string]*TaskRunner
+	diskDrop      map[string]*TaskRunner
+	manualMigrate map[string]*TaskRunner
 
-	balance                      map[string]*TaskRunner
-	balanceTaskletRunConcurrency int
-
-	diskDrop                      map[string]*TaskRunner
-	diskDropTaskletRunConcurrency int
-
-	manualMigrate                      map[string]*TaskRunner
-	manualMigrateTaskletRunConcurrency int
-	wf                                 IWorkerFactory
-	schedulerCli                       TaskSchedulerCli
-	mu                                 sync.Mutex
-
-	shardGetConcurrency int
+	mu           sync.Mutex
+	meter        WorkerConfigMeter
+	schedulerCli TaskSchedulerCli
+	wf           IWorkerFactory
 }
 
 type IWorkerFactory interface {
@@ -58,33 +51,17 @@ func (wf *TaskWorkerCreator) NewMigrateWorker(task MigrateTaskEx) ITaskWorker {
 }
 
 // NewTaskRunnerMgr returns task runner manager
-func NewTaskRunnerMgr(
-	shardGetConcurrency,
-	repairTaskletRunConcurrency,
-	balanceTaskletRunConcurrency,
-	diskDropTaskletRunConcurrency,
-	manualMigrateTaskletRunConcurrency int,
-	schedulerCli TaskSchedulerCli,
-	wf IWorkerFactory,
-) *TaskRunnerMgr {
-	tm := &TaskRunnerMgr{
-		repair:                      make(map[string]*TaskRunner),
-		repairTaskletRunConcurrency: repairTaskletRunConcurrency,
+func NewTaskRunnerMgr(meter WorkerConfigMeter, schedulerCli TaskSchedulerCli, wf IWorkerFactory) *TaskRunnerMgr {
+	return &TaskRunnerMgr{
+		repair:        make(map[string]*TaskRunner),
+		balance:       make(map[string]*TaskRunner),
+		diskDrop:      make(map[string]*TaskRunner),
+		manualMigrate: make(map[string]*TaskRunner),
 
-		balance:                      make(map[string]*TaskRunner),
-		balanceTaskletRunConcurrency: balanceTaskletRunConcurrency,
-
-		diskDrop:                      make(map[string]*TaskRunner),
-		diskDropTaskletRunConcurrency: diskDropTaskletRunConcurrency,
-
-		manualMigrate:                      make(map[string]*TaskRunner),
-		manualMigrateTaskletRunConcurrency: manualMigrateTaskletRunConcurrency,
-		wf:                                 wf,
-		schedulerCli:                       schedulerCli,
-
-		shardGetConcurrency: shardGetConcurrency,
+		meter:        meter,
+		schedulerCli: schedulerCli,
+		wf:           wf,
 	}
-	return tm
 }
 
 func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error {
@@ -93,29 +70,25 @@ func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error 
 
 	w := tm.wf.NewMigrateWorker(task)
 
-	var taskletRunConcurrency int
+	var concurrency int
 	var mgrType map[string]*TaskRunner
 
 	switch task.taskInfo.TaskType {
 	case proto.TaskTypeDiskRepair:
-		taskletRunConcurrency = tm.repairTaskletRunConcurrency
+		concurrency = tm.meter.RepairConcurrency
 		mgrType = tm.repair
 	case proto.TaskTypeBalance:
-		taskletRunConcurrency = tm.balanceTaskletRunConcurrency
+		concurrency = tm.meter.BalanceConcurrency
 		mgrType = tm.balance
 	case proto.TaskTypeDiskDrop:
-		taskletRunConcurrency = tm.diskDropTaskletRunConcurrency
+		concurrency = tm.meter.DiskDropConcurrency
 		mgrType = tm.diskDrop
 	case proto.TaskTypeManualMigrate:
-		taskletRunConcurrency = tm.manualMigrateTaskletRunConcurrency
+		concurrency = tm.meter.ManualMigrateConcurrency
 		mgrType = tm.manualMigrate
 	}
-	runner := NewTaskRunner(
-		ctx,
-		task.taskInfo.TaskID,
-		w, task.taskInfo.SourceIDC,
-		taskletRunConcurrency,
-		tm.schedulerCli)
+
+	runner := NewTaskRunner(ctx, task.taskInfo.TaskID, w, task.taskInfo.SourceIDC, concurrency, tm.schedulerCli)
 	err := addRunner(mgrType, task.taskInfo.TaskID, runner)
 	if err != nil {
 		return err
