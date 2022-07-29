@@ -143,11 +143,7 @@ func (m *mScheCli) CompleteInspect(ctx context.Context, args *api.CompleteInspec
 
 // report doing tasks
 func (m *mScheCli) RenewalTask(ctx context.Context, args *api.TaskRenewalArgs) (ret *api.TaskRenewalRet, err error) {
-	ret = &api.TaskRenewalRet{
-		Repair:   make(map[string]string),
-		Balance:  make(map[string]string),
-		DiskDrop: make(map[string]string),
-	}
+	ret = &api.TaskRenewalRet{}
 	return
 }
 

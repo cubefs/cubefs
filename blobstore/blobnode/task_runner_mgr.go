@@ -125,22 +125,26 @@ func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error 
 	return nil
 }
 
-// GetRepairAliveTask returns repair alive task runner
-func (tm *TaskRunnerMgr) GetAliveTask(taskType proto.TaskType) []*TaskRunner {
+// GetAliveTasks returns all alive migrate task.
+func (tm *TaskRunnerMgr) GetAliveTasks() map[proto.TaskType][]string {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	var mgrType map[string]*TaskRunner
-	switch taskType {
-	case proto.TaskTypeDiskRepair:
-		mgrType = tm.repair
-	case proto.TaskTypeBalance:
-		mgrType = tm.balance
-	case proto.TaskTypeDiskDrop:
-		mgrType = tm.diskDrop
-	case proto.TaskTypeManualMigrate:
-		mgrType = tm.manualMigrate
+
+	all := make(map[proto.TaskType][]string)
+	if tasks := getAliveTask(tm.repair); len(tasks) > 0 {
+		all[proto.TaskTypeDiskRepair] = tasks
 	}
-	return getAliveTask(mgrType)
+	if tasks := getAliveTask(tm.balance); len(tasks) > 0 {
+		all[proto.TaskTypeBalance] = tasks
+	}
+	if tasks := getAliveTask(tm.diskDrop); len(tasks) > 0 {
+		all[proto.TaskTypeDiskDrop] = tasks
+	}
+	if tasks := getAliveTask(tm.manualMigrate); len(tasks) > 0 {
+		all[proto.TaskTypeManualMigrate] = tasks
+	}
+
+	return all
 }
 
 // StopTaskRunner stops task runner
@@ -168,12 +172,14 @@ func (tm *TaskRunnerMgr) StopAllAliveRunner() {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	runners := getAliveTask(tm.repair)
-	runners = append(runners, getAliveTask(tm.balance)...)
-	runners = append(runners, getAliveTask(tm.diskDrop)...)
-	runners = append(runners, getAliveTask(tm.manualMigrate)...)
-	for _, r := range runners {
-		r.Stop()
+	for _, runners := range []map[string]*TaskRunner{
+		tm.repair, tm.balance, tm.diskDrop, tm.manualMigrate,
+	} {
+		for _, r := range runners {
+			if r.Alive() {
+				r.Stop()
+			}
+		}
 	}
 }
 
@@ -224,11 +230,11 @@ func stopRunner(m map[string]*TaskRunner, taskID string) error {
 	return errors.New("no such task")
 }
 
-func getAliveTask(m map[string]*TaskRunner) []*TaskRunner {
-	alive := make([]*TaskRunner, 0)
+func getAliveTask(m map[string]*TaskRunner) []string {
+	alive := make([]string, 0, 16)
 	for _, r := range m {
 		if r.Alive() {
-			alive = append(alive, r)
+			alive = append(alive, r.taskID)
 		}
 	}
 	return alive

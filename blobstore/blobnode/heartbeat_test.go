@@ -17,7 +17,6 @@ package blobnode
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -80,7 +79,7 @@ func TestHeartbeat2(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(workDir)
 
-	fmt.Println("work dir: ", workDir)
+	t.Log("work dir: ", workDir)
 
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
@@ -147,7 +146,7 @@ func TestHeartbeat3(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(workDir)
 
-	fmt.Println("work dir: ", workDir)
+	t.Log("work dir: ", workDir)
 
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)

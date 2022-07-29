@@ -26,31 +26,20 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
-func mockGenTasklet(bids []proto.BlobID) (ret []*ShardInfoSimple) {
+func mockGenTasklet(bids ...proto.BlobID) (ret []*ShardInfoSimple) {
 	for _, bid := range bids {
-		info := ShardInfoSimple{
-			Bid:  bid,
-			Size: 0,
-		}
-		ret = append(ret, &info)
+		ret = append(ret, &ShardInfoSimple{Bid: bid})
 	}
 	return
 }
 
-var mocktasklets = []Tasklet{
-	{bids: mockGenTasklet([]proto.BlobID{1})},
-	{bids: mockGenTasklet([]proto.BlobID{2})},
-	{bids: mockGenTasklet([]proto.BlobID{3})},
-	{bids: mockGenTasklet([]proto.BlobID{4})},
-	{bids: mockGenTasklet([]proto.BlobID{5})},
-	{bids: mockGenTasklet([]proto.BlobID{6})},
-	{bids: mockGenTasklet([]proto.BlobID{7})},
-	{bids: mockGenTasklet([]proto.BlobID{8})},
-	{bids: mockGenTasklet([]proto.BlobID{9})},
-	{bids: mockGenTasklet([]proto.BlobID{10})},
-	{bids: mockGenTasklet([]proto.BlobID{11})},
-	{bids: mockGenTasklet([]proto.BlobID{12})},
-}
+var mocktasklets = func() []Tasklet {
+	lets := make([]Tasklet, 12)
+	for idx := range [12]struct{}{} {
+		lets[idx].bids = mockGenTasklet(proto.BlobID(idx + 1))
+	}
+	return lets
+}()
 
 type mockMigrateWorker struct {
 	tasklet       []Tasklet
@@ -131,53 +120,51 @@ func (mock *mockScheCli) ReportTask(ctx context.Context, args *api.TaskReportArg
 	return nil
 }
 
-func initTestTaskRunnerMgr(t *testing.T, taskCnt int) *TaskRunnerMgr {
-	cli := mockScheCli{
-		cancelRet:   nil,
-		completeRet: nil,
-		reclaimRet:  nil,
-	}
+func initTestTaskRunnerMgr(t *testing.T, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
+	cli := mockScheCli{}
 	wf := mockWorkerFactory{newMigWorkerFn: NewmockMigrateWorker}
 	tm := NewTaskRunnerMgr(0, 2, 2, 2, 2, &cli, &wf)
+
 	ctx := context.Background()
-	for i := 0; i < taskCnt; i++ {
-		taskID := fmt.Sprintf("repair_%d", i+1)
-		task := MigrateTaskEx{
-			taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: proto.TaskTypeDiskRepair},
+	for _, typ := range taskTypes {
+		for i := 0; i < taskCnt; i++ {
+			taskID := fmt.Sprintf("%s_%d", typ, i+1)
+			err := tm.AddTask(ctx, MigrateTaskEx{
+				taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: typ},
+			})
+			require.NoError(t, err)
 		}
-		err := tm.AddTask(ctx, task)
-		require.NoError(t, err)
 	}
-
-	for i := 0; i < taskCnt; i++ {
-		taskID := fmt.Sprintf("balance_%d", i+1)
-		task := MigrateTaskEx{
-			taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: proto.TaskTypeBalance},
-		}
-		err := tm.AddTask(ctx, task)
-		require.NoError(t, err)
-	}
-
-	for i := 0; i < taskCnt; i++ {
-		taskID := fmt.Sprintf("diskDrop_%d", i+1)
-		task := MigrateTaskEx{
-			taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: proto.TaskTypeDiskDrop},
-		}
-		err := tm.AddTask(ctx, task)
-		require.NoError(t, err)
-	}
+	time.Sleep(200 * time.Millisecond) // wait task runnner started
 	return tm
 }
 
 func TestTaskRunnerMgr(t *testing.T) {
-	tm := initTestTaskRunnerMgr(t, 10)
-	time.Sleep(200 * time.Millisecond)
-	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeDiskRepair)))
-	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeBalance)))
-	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeDiskDrop)))
-
-	tm.StopAllAliveRunner()
-	require.Equal(t, 0, len(tm.GetAliveTask(proto.TaskTypeDiskRepair)))
-	require.Equal(t, 0, len(tm.GetAliveTask(proto.TaskTypeBalance)))
-	require.Equal(t, 0, len(tm.GetAliveTask(proto.TaskTypeDiskDrop)))
+	{
+		tm := initTestTaskRunnerMgr(t, 10)
+		require.Equal(t, 0, len(tm.GetAliveTasks()))
+		tm.StopAllAliveRunner()
+	}
+	{
+		tm := initTestTaskRunnerMgr(t, 0, proto.TaskTypeBalance)
+		require.Equal(t, 0, len(tm.GetAliveTasks()))
+		tm.StopAllAliveRunner()
+	}
+	{
+		tm := initTestTaskRunnerMgr(t, 10, proto.TaskTypeBalance)
+		tasks := tm.GetAliveTasks()
+		require.Equal(t, 1, len(tasks))
+		require.Equal(t, 10, len(tasks[proto.TaskTypeBalance]))
+		tm.StopAllAliveRunner()
+	}
+	{
+		tm := initTestTaskRunnerMgr(t, 10, proto.TaskTypeBalance, proto.TaskTypeDiskDrop, proto.TaskTypeDiskRepair)
+		tasks := tm.GetAliveTasks()
+		require.Equal(t, 3, len(tasks))
+		require.Equal(t, 10, len(tasks[proto.TaskTypeBalance]))
+		require.Equal(t, 10, len(tasks[proto.TaskTypeDiskDrop]))
+		require.Equal(t, 10, len(tasks[proto.TaskTypeDiskRepair]))
+		require.Equal(t, 0, len(tasks[proto.TaskTypeManualMigrate]))
+		tm.StopAllAliveRunner()
+	}
 }

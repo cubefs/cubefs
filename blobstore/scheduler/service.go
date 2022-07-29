@@ -177,43 +177,27 @@ func (svr *Service) HTTPTaskRenewal(c *rpc.Context) {
 		return
 	}
 
-	idc := args.IDC
-	ret := &api.TaskRenewalRet{
-		Repair:        make(map[string]string),
-		Balance:       make(map[string]string),
-		DiskDrop:      make(map[string]string),
-		ManualMigrate: make(map[string]string),
-	}
-
 	ctx := c.Request.Context()
-	for taskID := range args.Repair {
-		err := svr.diskRepairMgr.RenewalTask(ctx, idc, taskID)
-		ret.Repair[taskID] = getErrMsg(err)
-	}
+	typeErrors := make(map[proto.TaskType]map[string]string)
+	for typ, ids := range args.IDs {
+		renewaler, err := svr.mgrByType(typ)
+		if err != nil {
+			c.RespondError(err)
+			return
+		}
 
-	for taskID := range args.Balance {
-		err := svr.balanceMgr.RenewalTask(ctx, idc, taskID)
-		ret.Balance[taskID] = getErrMsg(err)
-	}
+		errors := make(map[string]string)
+		for _, id := range ids {
+			if err := renewaler.RenewalTask(ctx, args.IDC, id); err != nil {
+				errors[id] = err.Error()
+			}
+		}
 
-	for taskID := range args.DiskDrop {
-		err := svr.diskDropMgr.RenewalTask(ctx, idc, taskID)
-		ret.DiskDrop[taskID] = getErrMsg(err)
+		if len(errors) > 0 {
+			typeErrors[typ] = errors
+		}
 	}
-
-	for taskID := range args.ManualMigrate {
-		err := svr.manualMigMgr.RenewalTask(ctx, idc, taskID)
-		ret.ManualMigrate[taskID] = getErrMsg(err)
-	}
-
-	c.RespondJSON(ret)
-}
-
-func getErrMsg(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
+	c.RespondJSON(api.TaskRenewalRet{Errors: typeErrors})
 }
 
 // HTTPTaskReport reports task stats
