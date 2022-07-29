@@ -15,7 +15,6 @@
 package scheduler
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -28,6 +27,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/util/task"
 )
+
+var errIllegalTaskType = rpc.NewError(http.StatusBadRequest, "illegal_type", errcode.ErrIllegalTaskType)
 
 // Service rpc service
 type Service struct {
@@ -51,66 +52,53 @@ type Service struct {
 	clusterMgrCli client.ClusterMgrAPI
 }
 
+func (svr *Service) mgrByType(typ proto.TaskType) (Migrator, error) {
+	switch typ {
+	case proto.TaskTypeDiskRepair:
+		return svr.diskRepairMgr, nil
+	case proto.TaskTypeBalance:
+		return svr.balanceMgr, nil
+	case proto.TaskTypeDiskDrop:
+		return svr.diskDropMgr, nil
+	case proto.TaskTypeManualMigrate:
+		return svr.manualMigMgr, nil
+	}
+	return nil, errIllegalTaskType
+}
+
 // HTTPTaskAcquire acquire task
 func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
-	ctx := c.Request.Context()
-
 	args := new(api.AcquireArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
 
-	manualMigTask, err := svr.manualMigMgr.AcquireTask(ctx, args.IDC)
-	if err == nil {
-		ret := &api.WorkerTask{
-			Task: manualMigTask,
+	// acquire task ordered
+	ctx := c.Request.Context()
+	for _, acquire := range []Migrator{
+		svr.manualMigMgr, svr.diskRepairMgr, svr.diskDropMgr, svr.balanceMgr,
+	} {
+		if task, err := acquire.AcquireTask(ctx, args.IDC); err == nil {
+			c.RespondJSON(api.WorkerTask{Task: task})
+			return
 		}
-		c.RespondJSON(ret)
-		return
 	}
-
-	repairTask, err := svr.diskRepairMgr.AcquireTask(ctx, args.IDC)
-	if err == nil {
-		ret := &api.WorkerTask{
-			Task: repairTask,
-		}
-		c.RespondJSON(ret)
-		return
-	}
-
-	diskDropTask, err := svr.diskDropMgr.AcquireTask(ctx, args.IDC)
-	if err == nil {
-		ret := &api.WorkerTask{
-			Task: diskDropTask,
-		}
-		c.RespondJSON(ret)
-		return
-	}
-
-	balanceTask, err := svr.balanceMgr.AcquireTask(ctx, args.IDC)
-	if err == nil {
-		ret := &api.WorkerTask{
-			Task: balanceTask,
-		}
-		c.RespondJSON(ret)
-		return
-	}
-
 	c.RespondError(errcode.ErrNothingTodo)
 }
 
 // HTTPTaskReclaim reclaim task
 func (svr *Service) HTTPTaskReclaim(c *rpc.Context) {
-	ctx := c.Request.Context()
-
 	args := new(api.ReclaimTaskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
-	if !args.TaskType.Valid() {
-		c.RespondError(rpc.NewError(http.StatusBadRequest, "illegal_type", errcode.ErrIllegalTaskType))
+
+	ctx := c.Request.Context()
+	reclaimer, err := svr.mgrByType(args.TaskType)
+	if err != nil {
+		c.RespondError(err)
 		return
 	}
 
@@ -119,78 +107,41 @@ func (svr *Service) HTTPTaskReclaim(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-
-	switch args.TaskType {
-	case proto.TaskTypeDiskRepair:
-		err = svr.diskRepairMgr.ReclaimTask(ctx, args.IDC, args.TaskId, args.Src, args.Dest, newDst)
-	case proto.TaskTypeBalance:
-		err = svr.balanceMgr.ReclaimTask(ctx, args.IDC, args.TaskId, args.Src, args.Dest, newDst)
-	case proto.TaskTypeDiskDrop:
-		err = svr.diskDropMgr.ReclaimTask(ctx, args.IDC, args.TaskId, args.Src, args.Dest, newDst)
-	case proto.TaskTypeManualMigrate:
-		err = svr.manualMigMgr.ReclaimTask(ctx, args.IDC, args.TaskId, args.Src, args.Dest, newDst)
-	}
-
-	c.RespondError(err)
+	c.RespondError(reclaimer.ReclaimTask(ctx, args.IDC, args.TaskId, args.Src, args.Dest, newDst))
 }
 
 // HTTPTaskCancel cancel task
 func (svr *Service) HTTPTaskCancel(c *rpc.Context) {
-	ctx := c.Request.Context()
-
 	args := new(api.CancelTaskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
 
-	if !args.TaskType.Valid() {
-		c.RespondError(rpc.NewError(http.StatusBadRequest, "illegal_type", errcode.ErrIllegalTaskType))
+	ctx := c.Request.Context()
+	canceler, err := svr.mgrByType(args.TaskType)
+	if err != nil {
+		c.RespondError(err)
 		return
 	}
-
-	var err error
-	switch args.TaskType {
-	case proto.TaskTypeDiskRepair:
-		err = svr.diskRepairMgr.CancelTask(ctx, args)
-	case proto.TaskTypeBalance:
-		err = svr.balanceMgr.CancelTask(ctx, args)
-	case proto.TaskTypeDiskDrop:
-		err = svr.diskDropMgr.CancelTask(ctx, args)
-	case proto.TaskTypeManualMigrate:
-		err = svr.manualMigMgr.CancelTask(ctx, args)
-	}
-
-	c.RespondError(err)
+	c.RespondError(canceler.CancelTask(ctx, args))
 }
 
 // HTTPTaskComplete complete task
 func (svr *Service) HTTPTaskComplete(c *rpc.Context) {
-	ctx := c.Request.Context()
-
 	args := new(api.CompleteTaskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
-	if !args.TaskType.Valid() {
-		c.RespondError(rpc.NewError(http.StatusBadRequest, "illegal_type", errcode.ErrIllegalTaskType))
+
+	ctx := c.Request.Context()
+	completer, err := svr.mgrByType(args.TaskType)
+	if err != nil {
+		c.RespondError(err)
 		return
 	}
-
-	var err error
-	switch args.TaskType {
-	case proto.TaskTypeDiskRepair:
-		err = svr.diskRepairMgr.CompleteTask(ctx, args)
-	case proto.TaskTypeBalance:
-		err = svr.balanceMgr.CompleteTask(ctx, args)
-	case proto.TaskTypeDiskDrop:
-		err = svr.diskDropMgr.CompleteTask(ctx, args)
-	case proto.TaskTypeManualMigrate:
-		err = svr.manualMigMgr.CompleteTask(ctx, args)
-	}
-
-	c.RespondError(err)
+	c.RespondError(completer.CompleteTask(ctx, args))
 }
 
 // HTTPInspectAcquire acquire inspect task
@@ -202,28 +153,24 @@ func (svr *Service) HTTPInspectAcquire(c *rpc.Context) {
 		c.RespondJSON(api.WorkerInspectTask{Task: task})
 		return
 	}
-
 	c.RespondError(errcode.ErrNothingTodo)
 }
 
 // HTTPInspectComplete complete inspect task
 func (svr *Service) HTTPInspectComplete(c *rpc.Context) {
-	ctx := c.Request.Context()
-
 	args := new(api.CompleteInspectArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
 
+	ctx := c.Request.Context()
 	svr.inspectMgr.CompleteInspect(ctx, args.InspectRet)
 	c.Respond()
 }
 
 // HTTPTaskRenewal renewal task
 func (svr *Service) HTTPTaskRenewal(c *rpc.Context) {
-	ctx := c.Request.Context()
-
 	args := new(api.TaskRenewalArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
@@ -238,6 +185,7 @@ func (svr *Service) HTTPTaskRenewal(c *rpc.Context) {
 		ManualMigrate: make(map[string]string),
 	}
 
+	ctx := c.Request.Context()
 	for taskID := range args.Repair {
 		err := svr.diskRepairMgr.RenewalTask(ctx, idc, taskID)
 		ret.Repair[taskID] = getErrMsg(err)
@@ -276,17 +224,12 @@ func (svr *Service) HTTPTaskReport(c *rpc.Context) {
 		return
 	}
 
-	switch args.TaskType {
-	case proto.TaskTypeDiskRepair:
-		svr.diskRepairMgr.ReportWorkerTaskStats(args)
-	case proto.TaskTypeBalance:
-		svr.balanceMgr.ReportWorkerTaskStats(args)
-	case proto.TaskTypeDiskDrop:
-		svr.diskDropMgr.ReportWorkerTaskStats(args)
-	case proto.TaskTypeManualMigrate:
-		svr.manualMigMgr.ReportWorkerTaskStats(args)
+	reporter, err := svr.mgrByType(args.TaskType)
+	if err != nil {
+		c.RespondError(err)
+		return
 	}
-
+	reporter.ReportWorkerTaskStats(args)
 	c.Respond()
 }
 
@@ -297,26 +240,17 @@ func (svr *Service) HTTPMigrateTaskDetail(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	if !args.Type.Valid() || args.ID == "" {
+	if args.ID == "" {
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
 
-	var mgr interface {
-		QueryTask(context.Context, string) (*api.MigrateTaskDetail, error)
+	querier, err := svr.mgrByType(args.Type)
+	if err != nil {
+		c.RespondError(err)
+		return
 	}
-	switch args.Type {
-	case proto.TaskTypeBalance:
-		mgr = svr.balanceMgr
-	case proto.TaskTypeDiskDrop:
-		mgr = svr.diskDropMgr
-	case proto.TaskTypeDiskRepair:
-		mgr = svr.diskRepairMgr
-	case proto.TaskTypeManualMigrate:
-		mgr = svr.manualMigMgr
-	}
-
-	detail, err := mgr.QueryTask(c.Request.Context(), args.ID)
+	detail, err := querier.QueryTask(c.Request.Context(), args.ID)
 	if err != nil {
 		c.RespondError(rpc.NewError(http.StatusNotFound, "NotFound", err))
 		return
