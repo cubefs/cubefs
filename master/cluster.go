@@ -438,6 +438,11 @@ func (c *Cluster) dataPartitionInRecovering() (num int) {
 		num = num + len(badDataPartitionIds)
 		return true
 	})
+	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
+		badDataPartitionIds := value.([]uint64)
+		num = num + len(badDataPartitionIds)
+		return true
+	})
 
 	return
 }

@@ -70,6 +70,7 @@ const (
 	defaultIntervalToWaitMetaPartitionElectionLeader         = 2 * 60
 	defaultVolMinWritableMPNum                               = 1
 	defaultVolMinWritableDPNum                               = 5
+	defaultMaxInRecoveringDataPartitionCount                 = 100
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)

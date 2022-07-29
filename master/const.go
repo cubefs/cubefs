@@ -108,6 +108,7 @@ const (
 	versionKey                  = "version"
 	isManualKey                 = "isManual"
 	mediumKey                   = "medium"
+	forceKey                    = "force"
 )
 
 const (
