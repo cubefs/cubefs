@@ -366,7 +366,7 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept DiskHeartbeat request, args: %v", args)
+	span.Infof("accept DiskHeartbeat request, args: %+v", args)
 
 	disks := make([]*clustermgr.DiskHeartbeatRet, len(args.Disks))
 	for i := range args.Disks {

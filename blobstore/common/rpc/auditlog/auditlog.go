@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,6 +48,9 @@ type jsonAuditlog struct {
 }
 
 func Open(module string, cfg *Config) (rpc.ProgressHandler, LogCloser, error) {
+	if cfg.LogDir == "" {
+		return nil, nil, nil
+	}
 	if cfg.BodyLimit == 0 {
 		cfg.BodyLimit = defaultReadBodyBuffLength
 	}
@@ -116,6 +120,11 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	}()
 	f(_w, req)
 
+	// log filter
+	if len(j.cfg.KeywordsFilter) > 0 && defaultLogFilter(req, j.cfg.KeywordsFilter) {
+		return
+	}
+
 	endTime := time.Now().UnixNano() / 1000
 	b := j.logPool.Get().(*bytes.Buffer)
 	defer j.logPool.Put(b)
@@ -171,4 +180,16 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	}
 	// report request metric
 	j.metricSender.Send(b.Bytes())
+}
+
+// defaultLogFilter support uri and method filter based on keywords
+func defaultLogFilter(r *http.Request, words []string) bool {
+	method := strings.ToLower(r.Method)
+	for _, word := range words {
+		str := strings.ToLower(word)
+		if method == str || strings.Contains(r.RequestURI, str) {
+			return true
+		}
+	}
+	return false
 }

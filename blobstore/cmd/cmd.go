@@ -124,7 +124,9 @@ func Main(args []string) {
 	if err != nil {
 		log.Fatal("failed to open auditlog:", err)
 	}
-	defer logf.Close()
+	if logf != nil {
+		defer logf.Close()
+	}
 
 	ctx, cancel1 := context.WithCancel(context.Background())
 	defer cancel1()
@@ -200,7 +202,10 @@ func Main(args []string) {
 //	4. the fourth is Auth handler if config,
 //	5. others self define handlers by modules.
 func reorderMiddleWareHandlers(r *rpc.Router, lh rpc.ProgressHandler, profileAddr string, authCfg auth.Config, handlers []rpc.ProgressHandler) (mux http.Handler) {
-	hs := append([]rpc.ProgressHandler{}, lh)
+	var hs []rpc.ProgressHandler
+	if lh != nil {
+		hs = append(hs, lh)
+	}
 	if profileHandler := profile.NewProfileHandler(profileAddr); profileHandler != nil {
 		hs = append(hs, profileHandler)
 	}
