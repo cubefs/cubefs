@@ -101,3 +101,7 @@ func (m MockPartition) IsOfflinePeer() bool {
 func (m MockPartition) CreateRaft(cfg *raftstore.PartitionConfig, raftStore raftstore.RaftStore) error {
 	panic("implement me")
 }
+
+func (m MockPartition) FlushWal() {
+	panic("implement me")
+}
