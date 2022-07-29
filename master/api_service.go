@@ -1732,6 +1732,10 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err = m.checkCanContinueDecommission(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	if node, err = m.cluster.dataNode(offLineAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
@@ -2010,6 +2014,21 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) checkCanContinueDecommission(r *http.Request) (err error) {
+	force, err := extractForce(r)
+	if err != nil {
+		return
+	}
+	if !force {
+		dpInRecover := m.cluster.dataPartitionInRecovering()
+		if dpInRecover >= defaultMaxInRecoveringDataPartitionCount {
+			err = fmt.Errorf("dpInRecover:%v more than maxInRecoveringDataPartitionCount:%v", dpInRecover, defaultMaxInRecoveringDataPartitionCount)
+			return
+		}
+	}
+	return
+}
+
 // Decommission a disk. This will decommission all the data partitions on this disk.
 func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -2024,6 +2043,10 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 
 	if offLineAddr, diskPath, err = parseRequestToDecommissionNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.checkCanContinueDecommission(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	auto = extractAuto(r)
@@ -3470,6 +3493,18 @@ func extractStatus(r *http.Request) (status bool, err error) {
 		return
 	}
 	if status, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
+func extractForce(r *http.Request) (force bool, err error) {
+	var value string
+	if value = r.FormValue(forceKey); value == "" {
+		force = false
+		return
+	}
+	if force, err = strconv.ParseBool(value); err != nil {
 		return
 	}
 	return
