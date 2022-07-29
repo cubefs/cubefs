@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -32,74 +31,75 @@ type MockReportCli struct {
 }
 
 func (m *MockReportCli) RenewalTask(ctx context.Context, tasks *api.TaskRenewalArgs) (ret *api.TaskRenewalRet, err error) {
-	result := api.TaskRenewalRet{}
-	result.Repair = make(map[string]string)
-	result.Balance = make(map[string]string)
-	result.DiskDrop = make(map[string]string)
-
-	for taskID := range tasks.Repair {
-		if _, ok := m.failTaskIDMap[taskID]; ok {
-			result.Repair[taskID] = "mock fail"
+	result := api.TaskRenewalRet{Errors: make(map[proto.TaskType]map[string]string)}
+	for typ, ids := range tasks.IDs {
+		errors := make(map[string]string)
+		for _, taskID := range ids {
+			if _, ok := m.failTaskIDMap[taskID]; ok {
+				errors[taskID] = "mock fail"
+			}
 		}
+		result.Errors[typ] = errors
 	}
-
-	for taskID := range tasks.Balance {
-		if _, ok := m.failTaskIDMap[taskID]; ok {
-			result.Balance[taskID] = "mock fail"
-		}
-	}
-
-	for taskID := range tasks.DiskDrop {
-		if _, ok := m.failTaskIDMap[taskID]; ok {
-			result.DiskDrop[taskID] = "mock fail"
-		}
-	}
-
 	return &result, m.renewalFail
 }
 
-func TestReport(t *testing.T) {
+func TestWorkerTaskRenewal(t *testing.T) {
 	idc := "Z0"
-	tm := initTestTaskRunnerMgr(t, 10)
-	time.Sleep(200 * time.Millisecond)
+
 	// test renewal ok
-	reportCli := MockReportCli{
-		renewalFail:   nil,
-		failTaskIDMap: make(map[string]bool),
+	{
+		tm := initTestTaskRunnerMgr(t, 20, proto.TaskTypeDiskDrop, proto.TaskTypeDiskRepair)
+		reportCli := MockReportCli{}
+		taskRenter := NewTaskRenter(idc, &reportCli, tm)
+		taskRenter.renewalTask()
+		tasks := tm.GetAliveTasks()
+		require.Equal(t, 2, len(tasks))
+		require.Equal(t, 20, len(tasks[proto.TaskTypeDiskDrop]))
+		require.Equal(t, 20, len(tasks[proto.TaskTypeDiskRepair]))
 	}
-	taskRenter := NewTaskRenter(idc, &reportCli, tm)
-	taskRenter.renewalTask()
-	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeDiskRepair)))
-	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeBalance)))
-	require.Equal(t, 10, len(tm.GetAliveTask(proto.TaskTypeDiskDrop)))
 
 	// test renewal fail
-	tm2 := initTestTaskRunnerMgr(t, 10)
-	time.Sleep(200 * time.Millisecond)
-	reportCli2 := MockReportCli{
-		renewalFail:   nil,
-		failTaskIDMap: make(map[string]bool),
-	}
-	reportCli2.failTaskIDMap["repair_1"] = true
-	reportCli2.failTaskIDMap["balance_1"] = true
-	reportCli2.failTaskIDMap["diskDrop_1"] = true
+	{
+		tm := initTestTaskRunnerMgr(t, 11, proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
+			proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate)
+		reportCli := MockReportCli{failTaskIDMap: make(map[string]bool)}
+		taskRenter := NewTaskRenter(idc, &reportCli, tm)
 
-	taskRenter2 := NewTaskRenter(idc, &reportCli2, tm2)
-	taskRenter2.renewalTask()
-	require.Equal(t, 9, len(tm2.GetAliveTask(proto.TaskTypeDiskRepair)))
-	require.Equal(t, 9, len(tm2.GetAliveTask(proto.TaskTypeBalance)))
-	require.Equal(t, 9, len(tm2.GetAliveTask(proto.TaskTypeDiskDrop)))
+		taskRenter.renewalTask()
+		tasks := tm.GetAliveTasks()
+		require.Equal(t, 4, len(tasks))
+		require.Equal(t, 11, len(tasks[proto.TaskTypeBalance]))
+
+		reportCli.failTaskIDMap[proto.TaskTypeBalance.String()+"_1"] = true
+		reportCli.failTaskIDMap[proto.TaskTypeBalance.String()+"_7"] = true
+		reportCli.failTaskIDMap[proto.TaskTypeDiskDrop.String()+"_1"] = true
+		reportCli.failTaskIDMap[proto.TaskTypeDiskRepair.String()+"_3"] = true
+		reportCli.failTaskIDMap[proto.TaskTypeManualMigrate.String()+"_10"] = true
+
+		taskRenter.renewalTask()
+		tasks = tm.GetAliveTasks()
+		require.Equal(t, 4, len(tasks))
+		require.Equal(t, 9, len(tasks[proto.TaskTypeBalance]))
+		require.Equal(t, 10, len(tasks[proto.TaskTypeDiskDrop]))
+		require.Equal(t, 10, len(tasks[proto.TaskTypeDiskRepair]))
+		require.Equal(t, 10, len(tasks[proto.TaskTypeManualMigrate]))
+	}
 
 	// test all renewal fail
-	tm3 := initTestTaskRunnerMgr(t, 10)
-	time.Sleep(200 * time.Millisecond)
-	reportCli3 := MockReportCli{
-		renewalFail:   errors.New("mock fail"),
-		failTaskIDMap: make(map[string]bool),
+	{
+		tm := initTestTaskRunnerMgr(t, 11, proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
+			proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate)
+		reportCli := MockReportCli{
+			renewalFail:   errors.New("mock fail"),
+			failTaskIDMap: make(map[string]bool),
+		}
+		taskRenter := NewTaskRenter(idc, &reportCli, tm)
+		tasks := tm.GetAliveTasks()
+		require.Equal(t, 4, len(tasks))
+
+		taskRenter.renewalTask()
+		tasks = tm.GetAliveTasks()
+		require.Equal(t, 0, len(tasks))
 	}
-	taskRenter3 := NewTaskRenter(idc, &reportCli3, tm3)
-	taskRenter3.renewalTask()
-	require.Equal(t, 0, len(tm3.GetAliveTask(proto.TaskTypeDiskRepair)))
-	require.Equal(t, 0, len(tm3.GetAliveTask(proto.TaskTypeBalance)))
-	require.Equal(t, 0, len(tm3.GetAliveTask(proto.TaskTypeDiskDrop)))
 }

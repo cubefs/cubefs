@@ -24,7 +24,6 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 func TestCreateChunk(t *testing.T) {
@@ -159,7 +158,6 @@ func TestSetChunkStatus(t *testing.T) {
 }
 
 func TestReleaseChunk(t *testing.T) {
-	log.SetOutputLevel(log.Ldebug)
 	service, _ := newTestBlobNodeService(t, "ReleaseChunk")
 	defer cleanTestBlobNodeService(service)
 

@@ -17,7 +17,6 @@ package disk
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"hash/crc32"
 	"io/ioutil"
 	"net/http"
@@ -183,7 +182,7 @@ func TestRunCompact(t *testing.T) {
 
 	go func() {
 		vuid := <-ds.compactCh
-		fmt.Println(vuid)
+		t.Log(vuid)
 	}()
 
 	defer ds.ResetChunks(ctx)

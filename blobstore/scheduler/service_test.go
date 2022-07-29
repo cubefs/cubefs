@@ -248,8 +248,16 @@ func TestServiceAPI(t *testing.T) {
 		require.Error(t, err)
 
 		// renewal task
-		tasks := map[string]struct{}{"task1": {}, "task2": {}, "task3": {}}
-		_, err = schedulerCli.RenewalTask(ctx, &api.TaskRenewalArgs{IDC: "z0", Repair: tasks, Balance: tasks, DiskDrop: tasks, ManualMigrate: tasks})
+		tasks := []string{"task1", "task2", "task3"}
+		_, err = schedulerCli.RenewalTask(ctx, &api.TaskRenewalArgs{
+			IDC: "z0",
+			IDs: map[proto.TaskType][]string{
+				proto.TaskTypeBalance:       tasks,
+				proto.TaskTypeDiskRepair:    tasks,
+				proto.TaskTypeDiskDrop:      tasks,
+				proto.TaskTypeManualMigrate: tasks,
+			},
+		})
 		require.NoError(t, err)
 
 		// report task

@@ -43,7 +43,7 @@ type mockWorker struct {
 func (w *mockWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError) {
 	tasklets := make([]Tasklet, 0, 12)
 	for id := proto.BlobID(1); id <= 12; id++ {
-		tasklets = append(tasklets, Tasklet{bids: mockGenTasklet([]proto.BlobID{id})})
+		tasklets = append(tasklets, Tasklet{bids: mockGenTasklet(id)})
 	}
 	if w.genTaskletsErr != nil {
 		return tasklets, SrcError(w.genTaskletsErr)

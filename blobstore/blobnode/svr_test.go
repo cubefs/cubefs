@@ -16,7 +16,6 @@ package blobnode
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -166,7 +165,7 @@ func TestService2(t *testing.T) {
 	cc := &cmapi.Config{}
 	cc.Hosts = []string{mcmURL}
 
-	fmt.Println("work dir: ", workDir)
+	t.Log("work dir: ", workDir)
 
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
@@ -202,7 +201,7 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 	cc := &cmapi.Config{}
 	cc.Hosts = []string{mcmURL}
 
-	fmt.Println("work dir: ", workDir)
+	t.Log("work dir: ", workDir)
 
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
@@ -261,7 +260,7 @@ func TestService_CmdpChunk(t *testing.T) {
 	cc := &cmapi.Config{}
 	cc.Hosts = []string{mcmURL}
 
-	fmt.Println("work dir: ", workDir)
+	t.Log("work dir: ", workDir)
 
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
