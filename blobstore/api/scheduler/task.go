@@ -35,11 +35,9 @@ func (t *WorkerTask) TaskType() proto.TaskType {
 }
 
 func (t *WorkerTask) IsValid() bool {
-	if !t.TaskType().Valid() || !t.Task.CodeMode.IsValid() ||
-		!proto.CheckVunitLocations([]proto.VunitLocation{t.Task.Destination}) || !proto.CheckVunitLocations(t.Task.Sources) {
-		return false
-	}
-	return true
+	return t.TaskType().Valid() && t.Task.CodeMode.IsValid() &&
+		proto.CheckVunitLocations([]proto.VunitLocation{t.Task.Destination}) &&
+		proto.CheckVunitLocations(t.Task.Sources)
 }
 
 func (c *client) AcquireTask(ctx context.Context, args *AcquireArgs) (ret *WorkerTask, err error) {
@@ -54,15 +52,7 @@ type WorkerInspectTask struct {
 }
 
 func (task *WorkerInspectTask) IsValid() bool {
-	if !task.Task.Mode.IsValid() {
-		return false
-	}
-
-	if !proto.CheckVunitLocations(task.Task.Replicas) {
-		return false
-	}
-
-	return true
+	return task.Task.Mode.IsValid() && proto.CheckVunitLocations(task.Task.Replicas)
 }
 
 func (c *client) AcquireInspectTask(ctx context.Context) (*WorkerInspectTask, error) {
@@ -76,18 +66,12 @@ func (c *client) AcquireInspectTask(ctx context.Context) (*WorkerInspectTask, er
 }
 
 type TaskRenewalArgs struct {
-	IDC           string              `json:"idc"`
-	Repair        map[string]struct{} `json:"repair"`
-	Balance       map[string]struct{} `json:"balance"`
-	DiskDrop      map[string]struct{} `json:"disk_drop"`
-	ManualMigrate map[string]struct{} `json:"manual_migrate"`
+	IDC string                      `json:"idc"`
+	IDs map[proto.TaskType][]string `json:"ids"`
 }
 
 type TaskRenewalRet struct {
-	Repair        map[string]string `json:"repair"`
-	Balance       map[string]string `json:"balance"`
-	DiskDrop      map[string]string `json:"disk_drop"`
-	ManualMigrate map[string]string `json:"manual_migrate"`
+	Errors map[proto.TaskType]map[string]string `json:"errors,omitempty"`
 }
 
 func (c *client) RenewalTask(ctx context.Context, args *TaskRenewalArgs) (ret *TaskRenewalRet, err error) {

@@ -57,17 +57,13 @@ func (tr *TaskRenter) RenewalTaskLoop() {
 }
 
 func (tr *TaskRenter) renewalTask() {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "renewalTask")
-
-	alive := api.TaskRenewalArgs{
-		IDC:           tr.idc,
-		Repair:        genRenewalArgs(tr.tm.GetAliveTask(proto.TaskTypeDiskRepair)),
-		Balance:       genRenewalArgs(tr.tm.GetAliveTask(proto.TaskTypeBalance)),
-		DiskDrop:      genRenewalArgs(tr.tm.GetAliveTask(proto.TaskTypeDiskDrop)),
-		ManualMigrate: genRenewalArgs(tr.tm.GetAliveTask(proto.TaskTypeManualMigrate)),
+	aliveTasks := tr.tm.GetAliveTasks()
+	if len(aliveTasks) == 0 {
+		return
 	}
 
-	ret, err := tr.cli.RenewalTask(ctx, &alive)
+	span, ctx := trace.StartSpanFromContext(context.Background(), "renewalTask")
+	ret, err := tr.cli.RenewalTask(ctx, &api.TaskRenewalArgs{IDC: tr.idc, IDs: aliveTasks})
 	if err != nil {
 		span.Errorf("renewal task failed and stop all runner: err[%+v]", err)
 		tr.tm.StopAllAliveRunner()
@@ -78,51 +74,12 @@ func (tr *TaskRenter) renewalTask() {
 
 func (tr *TaskRenter) stopRenewalFailTask(ctx context.Context, ret *api.TaskRenewalRet) {
 	span := trace.SpanFromContextSafe(ctx)
-	for taskID, errMsg := range ret.Repair {
-		if len(errMsg) != 0 {
-			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.TaskTypeDiskRepair)
-			err := tr.tm.StopTaskRunner(taskID, proto.TaskTypeDiskRepair)
-			if err != nil {
-				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.TaskTypeDiskRepair, err)
+	for typ, errors := range ret.Errors {
+		for taskID, errMsg := range errors {
+			span.Warnf("renewal fail to stop runner: type[%s], taskID[%s], error[%s]", typ, taskID, errMsg)
+			if err := tr.tm.StopTaskRunner(taskID, typ); err != nil {
+				span.Errorf("stop task runner failed: type[%s], taskID[%s], err[%+v]", typ, taskID, err)
 			}
 		}
 	}
-
-	for taskID, errMsg := range ret.Balance {
-		if len(errMsg) != 0 {
-			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.TaskTypeBalance)
-			err := tr.tm.StopTaskRunner(taskID, proto.TaskTypeBalance)
-			if err != nil {
-				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.TaskTypeBalance, err)
-			}
-		}
-	}
-
-	for taskID, errMsg := range ret.DiskDrop {
-		if len(errMsg) != 0 {
-			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.TaskTypeDiskDrop)
-			err := tr.tm.StopTaskRunner(taskID, proto.TaskTypeDiskDrop)
-			if err != nil {
-				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.TaskTypeDiskDrop, err)
-			}
-		}
-	}
-
-	for taskID, errMsg := range ret.ManualMigrate {
-		if len(errMsg) != 0 {
-			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.TaskTypeManualMigrate)
-			err := tr.tm.StopTaskRunner(taskID, proto.TaskTypeManualMigrate)
-			if err != nil {
-				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.TaskTypeManualMigrate, err)
-			}
-		}
-	}
-}
-
-func genRenewalArgs(runners []*TaskRunner) map[string]struct{} {
-	m := make(map[string]struct{})
-	for _, r := range runners {
-		m[r.taskID] = struct{}{}
-	}
-	return m
 }
