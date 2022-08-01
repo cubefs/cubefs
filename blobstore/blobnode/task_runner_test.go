@@ -120,6 +120,10 @@ func (mock *mockCli) ReportTask(ctx context.Context, args *api.TaskReportArgs) (
 	return nil
 }
 
+func (mock *mockCli) RenewalTask(ctx context.Context, tasks *api.TaskRenewalArgs) (ret *api.TaskRenewalRet, err error) {
+	return &api.TaskRenewalRet{}, nil
+}
+
 func TestTaskRunner(t *testing.T) {
 	cli := mockCli{
 		cancelRet:   nil,

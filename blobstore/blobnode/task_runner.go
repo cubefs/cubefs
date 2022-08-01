@@ -180,6 +180,7 @@ type TaskSchedulerCli interface {
 	CancelTask(ctx context.Context, args *api.CancelTaskArgs) (err error)
 	CompleteTask(ctx context.Context, args *api.CompleteTaskArgs) (err error)
 	ReportTask(ctx context.Context, args *api.TaskReportArgs) (err error)
+	RenewalTask(ctx context.Context, tasks *api.TaskRenewalArgs) (ret *api.TaskRenewalRet, err error)
 }
 
 // Tasklet is the smallest unit of task exe

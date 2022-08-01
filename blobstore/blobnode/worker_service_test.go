@@ -172,14 +172,12 @@ func newMockWorkService() *Service {
 		Closer: closer.New(),
 
 		shardRepairLimit: count.New(1),
-		inspectTaskMgr:   NewInspectTaskMgr(1, blobnode, scheduler),
-		taskRenter: NewTaskRenter("z0", scheduler,
-			NewTaskRunnerMgr(getDefaultConfig().WorkerConfigMeter, scheduler, NewMockMigrateWorker)),
-		schedulerCli: scheduler,
-		blobNodeCli:  blobnode,
-		WorkerConfig: WorkerConfig{AcquireIntervalMs: 1},
+		schedulerCli:     scheduler,
+		blobNodeCli:      blobnode,
+		WorkerConfig:     WorkerConfig{AcquireIntervalMs: 1},
 
-		taskRunnerMgr: NewTaskRunnerMgr(getDefaultConfig().WorkerConfigMeter, scheduler, NewMockMigrateWorker),
+		taskRunnerMgr:  NewTaskRunnerMgr("z0", getDefaultConfig().WorkerConfigMeter, scheduler, NewMockMigrateWorker),
+		inspectTaskMgr: NewInspectTaskMgr(1, blobnode, scheduler),
 	}
 	return &Service{WorkerService: workSvr}
 }
