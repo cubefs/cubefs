@@ -98,8 +98,7 @@ type VolWriteMutexClient struct {
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool, createTime, smartEnableTime int64, description, dpSelectorName,
 	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays uint32,
-	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag,
-	compactTagModifyTime int64, forceRowModifyTime int64) (vol *Vol) {
+	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -129,7 +128,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.ForceROW = forceROW
-	vol.forceRowModifyTime = forceRowModifyTime
 	vol.authenticate = authenticate
 	vol.zoneName = zoneName
 	vol.viewCache = make([]byte, 0)
@@ -159,7 +157,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 		vol.smartRules = smartRules
 	}
 	vol.compactTag = compactTag
-	vol.compactTagModifyTime = compactTagModifyTime
 	return
 }
 
@@ -194,9 +191,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.ConverState,
 		vv.MpLayout,
 		vv.SmartRules,
-		vv.CompactTag,
-		vv.CompactTagModifyTime,
-		vv.ForceRowModifyTime)
+		vv.CompactTag)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status

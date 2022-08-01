@@ -482,14 +482,15 @@ func TestMetaMergeExtents(t *testing.T) {
 	subTask.endIndex = len(extents) - 2
 	_ = subTask.OpenFile()
 	_ = subTask.ReadAndWriteEkData()
+	afterCompactEkLen := len(subTask.newEks) + 1
 	err := subTask.MetaMergeExtents()
 	if err != nil {
 		t.Fatalf("inode task MetaMergeExtents failed: err(%v)", err)
 	}
 	gen, _, extents, _ = cmpMpTask.vol.metaClient.GetExtents(ctx, stat.Ino)
 	fmt.Printf("after merge gen:%v\n", gen)
-	if len(extents) != len(subTask.newEks) + 1 {
-		t.Fatalf("inode task MetaMergeExtents failed: extents length, expect:%v, actual:%v", 2, len(extents))
+	if len(extents) != afterCompactEkLen {
+		t.Fatalf("inode task MetaMergeExtents failed: extents length, expect:%v, actual:%v", afterCompactEkLen, len(extents))
 	}
 	if subTask.State != proto.InodeCmpCalcCmpEKS {
 		t.Fatalf("inode task Initial State expect:%v, actual:%v", proto.InodeCmpCalcCmpEKS, subTask.State)

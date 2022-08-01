@@ -3066,7 +3066,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
 		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, createTime, smartEnableTime, description, "", "",
-		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout, smartRules, compactTag, createTime, createTime)
+		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout, smartRules, compactTag)
 	if len(masterRegionZoneList) > 1 {
 		vol.crossZone = true
 	}
