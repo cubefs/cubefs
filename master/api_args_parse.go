@@ -346,8 +346,11 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if replicaNum != 0 && replicaNum != int(vol.dpReplicaNum) {
-		err = fmt.Errorf("replicaNum cann't be changed")
-		return
+		if replicaNum != 2 || vol.dpReplicaNum != 3 {
+			err = fmt.Errorf("replicaNum cann't be changed(3 to 2 is allowed)")
+			return
+		}
+		vol.dpReplicaNum = 2
 	}
 
 	if proto.IsCold(vol.VolType) {
