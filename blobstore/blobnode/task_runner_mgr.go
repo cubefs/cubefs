@@ -17,6 +17,7 @@ package blobnode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -33,12 +34,9 @@ type WorkerGenerator = func(task MigrateTaskEx) ITaskWorker
 
 // TaskRunnerMgr task runner manager
 type TaskRunnerMgr struct {
-	repair        map[string]*TaskRunner
-	balance       map[string]*TaskRunner
-	diskDrop      map[string]*TaskRunner
-	manualMigrate map[string]*TaskRunner
+	mu      sync.Mutex
+	typeMgr map[proto.TaskType]mapTaskRunner
 
-	mu           sync.Mutex
 	idc          string
 	meter        WorkerConfigMeter
 	schedulerCli TaskSchedulerCli
@@ -48,10 +46,12 @@ type TaskRunnerMgr struct {
 // NewTaskRunnerMgr returns task runner manager
 func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, schedulerCli TaskSchedulerCli, genWorker WorkerGenerator) *TaskRunnerMgr {
 	return &TaskRunnerMgr{
-		repair:        make(map[string]*TaskRunner),
-		balance:       make(map[string]*TaskRunner),
-		diskDrop:      make(map[string]*TaskRunner),
-		manualMigrate: make(map[string]*TaskRunner),
+		typeMgr: map[proto.TaskType]mapTaskRunner{
+			proto.TaskTypeBalance:       make(mapTaskRunner),
+			proto.TaskTypeDiskDrop:      make(mapTaskRunner),
+			proto.TaskTypeDiskRepair:    make(mapTaskRunner),
+			proto.TaskTypeManualMigrate: make(mapTaskRunner),
+		},
 
 		idc:          idc,
 		meter:        meter,
@@ -89,11 +89,20 @@ func (tm *TaskRunnerMgr) renewalTask() {
 		tm.StopAllAliveRunner()
 		return
 	}
+	if len(ret.Errors) == 0 {
+		return
+	}
 
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 	for typ, errs := range ret.Errors {
+		mgr, ok := tm.typeMgr[typ]
+		if !ok {
+			continue
+		}
 		for taskID, errMsg := range errs {
 			span.Warnf("renewal fail so stop runner: type[%s], taskID[%s], error[%s]", typ, taskID, errMsg)
-			if err := tm.StopTaskRunner(taskID, typ); err != nil {
+			if err := mgr.stopTask(taskID); err != nil {
 				span.Errorf("stop runner failed: type[%s], taskID[%s], err[%+v]", typ, taskID, err)
 			}
 		}
@@ -105,28 +114,15 @@ func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error 
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	var concurrency int
-	var mgrType map[string]*TaskRunner
-
-	switch task.taskInfo.TaskType {
-	case proto.TaskTypeDiskRepair:
-		concurrency = tm.meter.RepairConcurrency
-		mgrType = tm.repair
-	case proto.TaskTypeBalance:
-		concurrency = tm.meter.BalanceConcurrency
-		mgrType = tm.balance
-	case proto.TaskTypeDiskDrop:
-		concurrency = tm.meter.DiskDropConcurrency
-		mgrType = tm.diskDrop
-	case proto.TaskTypeManualMigrate:
-		concurrency = tm.meter.ManualMigrateConcurrency
-		mgrType = tm.manualMigrate
+	mgr, ok := tm.typeMgr[task.taskInfo.TaskType]
+	if !ok {
+		return fmt.Errorf("invalid task type: %s", task.taskInfo.TaskType)
 	}
 
 	w := tm.genWorker(task)
+	concurrency := tm.meter.concurrencyByType(task.taskInfo.TaskType)
 	runner := NewTaskRunner(ctx, task.taskInfo.TaskID, w, task.taskInfo.SourceIDC, concurrency, tm.schedulerCli)
-	err := addRunner(mgrType, task.taskInfo.TaskID, runner)
-	if err != nil {
+	if err := mgr.addTask(task.taskInfo.TaskID, runner); err != nil {
 		return err
 	}
 
@@ -138,53 +134,21 @@ func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error 
 func (tm *TaskRunnerMgr) GetAliveTasks() map[proto.TaskType][]string {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-
 	all := make(map[proto.TaskType][]string)
-	if tasks := getAliveTask(tm.repair); len(tasks) > 0 {
-		all[proto.TaskTypeDiskRepair] = tasks
+	for typ, mgr := range tm.typeMgr {
+		if alives := mgr.getAliveTasks(); len(alives) > 0 {
+			all[typ] = alives
+		}
 	}
-	if tasks := getAliveTask(tm.balance); len(tasks) > 0 {
-		all[proto.TaskTypeBalance] = tasks
-	}
-	if tasks := getAliveTask(tm.diskDrop); len(tasks) > 0 {
-		all[proto.TaskTypeDiskDrop] = tasks
-	}
-	if tasks := getAliveTask(tm.manualMigrate); len(tasks) > 0 {
-		all[proto.TaskTypeManualMigrate] = tasks
-	}
-
 	return all
-}
-
-// StopTaskRunner stops task runner
-func (tm *TaskRunnerMgr) StopTaskRunner(taskID string, taskType proto.TaskType) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
-	switch taskType {
-	case proto.TaskTypeDiskRepair:
-		return stopRunner(tm.repair, taskID)
-	case proto.TaskTypeBalance:
-		return stopRunner(tm.balance, taskID)
-	case proto.TaskTypeDiskDrop:
-		return stopRunner(tm.diskDrop, taskID)
-	case proto.TaskTypeManualMigrate:
-		return stopRunner(tm.manualMigrate, taskID)
-	default:
-		log.Panicf("unknown task type %s", taskType)
-	}
-	return nil
 }
 
 // StopAllAliveRunner stops all alive runner
 func (tm *TaskRunnerMgr) StopAllAliveRunner() {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-
-	for _, runners := range []map[string]*TaskRunner{
-		tm.repair, tm.balance, tm.diskDrop, tm.manualMigrate,
-	} {
-		for _, r := range runners {
+	for _, mgr := range tm.typeMgr {
+		for _, r := range mgr {
 			if r.Alive() {
 				r.Stop()
 			}
@@ -193,23 +157,22 @@ func (tm *TaskRunnerMgr) StopAllAliveRunner() {
 }
 
 // RunningTaskCnt return running task count
-func (tm *TaskRunnerMgr) RunningTaskCnt() (repair, balance, drop, manualMigrate int) {
+func (tm *TaskRunnerMgr) RunningTaskCnt() map[proto.TaskType]int {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	tm.removeStoppedRunner()
-	return len(tm.repair), len(tm.balance), len(tm.diskDrop), len(tm.manualMigrate)
+	running := make(map[proto.TaskType]int)
+	for typ, mgr := range tm.typeMgr {
+		tm.typeMgr[typ] = mgr.eliminateStopped()
+		running[typ] = len(tm.typeMgr[typ])
+	}
+	return running
 }
 
-func (tm *TaskRunnerMgr) removeStoppedRunner() {
-	tm.repair = removeStoppedRunner(tm.repair)
-	tm.balance = removeStoppedRunner(tm.balance)
-	tm.diskDrop = removeStoppedRunner(tm.diskDrop)
-	tm.manualMigrate = removeStoppedRunner(tm.manualMigrate)
-}
+type mapTaskRunner map[string]*TaskRunner
 
-func removeStoppedRunner(tasks map[string]*TaskRunner) map[string]*TaskRunner {
-	newTasks := make(map[string]*TaskRunner)
-	for taskID, task := range tasks {
+func (m mapTaskRunner) eliminateStopped() mapTaskRunner {
+	newTasks := make(mapTaskRunner, len(m))
+	for taskID, task := range m {
 		if task.Stopped() {
 			log.Infof("remove stopped task: taskID[%s], state[%d]", task.taskID, task.state.state)
 			continue
@@ -220,26 +183,26 @@ func removeStoppedRunner(tasks map[string]*TaskRunner) map[string]*TaskRunner {
 	return newTasks
 }
 
-func addRunner(m map[string]*TaskRunner, taskID string, r *TaskRunner) error {
+func (m mapTaskRunner) addTask(taskID string, runner *TaskRunner) error {
 	if r, ok := m[taskID]; ok {
 		if !r.Stopped() {
 			log.Warnf("task is running shouldn't add again: taskID[%s]", taskID)
 			return errAddRunningTaskAgain
 		}
 	}
-	m[taskID] = r
+	m[taskID] = runner
 	return nil
 }
 
-func stopRunner(m map[string]*TaskRunner, taskID string) error {
+func (m mapTaskRunner) stopTask(taskID string) error {
 	if r, ok := m[taskID]; ok {
 		r.Stop()
 		return nil
 	}
-	return errors.New("no such task")
+	return fmt.Errorf("no such task: %s", taskID)
 }
 
-func getAliveTask(m map[string]*TaskRunner) []string {
+func (m mapTaskRunner) getAliveTasks() []string {
 	alive := make([]string, 0, 16)
 	for _, r := range m {
 		if r.Alive() {

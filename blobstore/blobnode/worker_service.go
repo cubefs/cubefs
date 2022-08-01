@@ -56,6 +56,20 @@ type WorkerConfigMeter struct {
 	DownloadShardConcurrency int `json:"download_shard_concurrency"`
 }
 
+func (meter *WorkerConfigMeter) concurrencyByType(taskType proto.TaskType) int {
+	switch taskType {
+	case proto.TaskTypeDiskRepair:
+		return meter.RepairConcurrency
+	case proto.TaskTypeBalance:
+		return meter.BalanceConcurrency
+	case proto.TaskTypeDiskDrop:
+		return meter.DiskDropConcurrency
+	case proto.TaskTypeManualMigrate:
+		return meter.ManualMigrateConcurrency
+	}
+	return 0
+}
+
 // WorkerConfig worker service config
 type WorkerConfig struct {
 	WorkerConfigMeter
@@ -227,10 +241,13 @@ func (s *WorkerService) tryAcquireTask() {
 }
 
 func (s *WorkerService) hasTaskRunnerResource() bool {
-	repair, balance, drop, manualMig := s.taskRunnerMgr.RunningTaskCnt()
-	log.Infof("task count:repair %d balance %d drop %d manualMig %d max %d",
-		repair, balance, drop, manualMig, s.MaxTaskRunnerCnt)
-	return (repair + balance + drop + manualMig) < s.MaxTaskRunnerCnt
+	running := s.taskRunnerMgr.RunningTaskCnt()
+	all := 0
+	for _, cnt := range running {
+		all += cnt
+	}
+	log.Infof("task count max %d, all %d, %+v", s.MaxTaskRunnerCnt, all, running)
+	return all < s.MaxTaskRunnerCnt
 }
 
 func (s *WorkerService) hasInspectTaskResource() bool {
