@@ -225,9 +225,10 @@ func TestSvr(t *testing.T) {
 	svr.WorkerService.Close()
 	wg.Wait()
 
-	require.Equal(t, schedulerCli.repairTaskCnt, len(svr.WorkerService.taskRunnerMgr.repair))
-	require.Equal(t, schedulerCli.balanceTaskCnt, len(svr.WorkerService.taskRunnerMgr.balance))
-	require.Equal(t, schedulerCli.diskDropTaskCnt, len(svr.WorkerService.taskRunnerMgr.diskDrop))
+	typeMgr := svr.WorkerService.taskRunnerMgr.typeMgr
+	require.Equal(t, schedulerCli.repairTaskCnt, len(typeMgr[proto.TaskTypeDiskRepair]))
+	require.Equal(t, schedulerCli.balanceTaskCnt, len(typeMgr[proto.TaskTypeBalance]))
+	require.Equal(t, schedulerCli.diskDropTaskCnt, len(typeMgr[proto.TaskTypeDiskDrop]))
 }
 
 func TestNewWorkService(t *testing.T) {
