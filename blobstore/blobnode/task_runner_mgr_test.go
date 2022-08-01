@@ -16,14 +16,17 @@ package blobnode
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
-	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
 func mockGenTasklet(bids ...proto.BlobID) (ret []*ShardInfoSimple) {
@@ -71,35 +74,8 @@ func (w *mockMigrateWorker) ReclaimArgs() (taskID string, taskType proto.TaskTyp
 	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-type mockScheCli struct {
-	cancelRet   error
-	completeRet error
-	reclaimRet  error
-	step        string
-}
-
-func (mock *mockScheCli) CancelTask(ctx context.Context, args *api.CancelTaskArgs) error {
-	mock.step = "CancelOrReclaim"
-	return mock.cancelRet
-}
-
-func (mock *mockScheCli) CompleteTask(ctx context.Context, args *api.CompleteTaskArgs) error {
-	mock.step = "Complete"
-	return mock.completeRet
-}
-
-func (mock *mockScheCli) ReclaimTask(ctx context.Context, args *api.ReclaimTaskArgs) error {
-	mock.step = "CancelOrReclaim"
-	return mock.reclaimRet
-}
-
-func (mock *mockScheCli) ReportTask(ctx context.Context, args *api.TaskReportArgs) (err error) {
-	return nil
-}
-
-func initTestTaskRunnerMgr(t *testing.T, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
-	cli := mockScheCli{}
-	tm := NewTaskRunnerMgr(getDefaultConfig().WorkerConfigMeter, &cli, NewMockMigrateWorker)
+func initTestTaskRunnerMgr(t *testing.T, cli client.IScheduler, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
+	tm := NewTaskRunnerMgr("Z0", getDefaultConfig().WorkerConfigMeter, cli, NewMockMigrateWorker)
 
 	ctx := context.Background()
 	for _, typ := range taskTypes {
@@ -116,25 +92,26 @@ func initTestTaskRunnerMgr(t *testing.T, taskCnt int, taskTypes ...proto.TaskTyp
 }
 
 func TestTaskRunnerMgr(t *testing.T) {
+	schedCli := mocks.NewMockIScheduler(C(t))
 	{
-		tm := initTestTaskRunnerMgr(t, 10)
+		tm := initTestTaskRunnerMgr(t, schedCli, 10)
 		require.Equal(t, 0, len(tm.GetAliveTasks()))
 		tm.StopAllAliveRunner()
 	}
 	{
-		tm := initTestTaskRunnerMgr(t, 0, proto.TaskTypeBalance)
+		tm := initTestTaskRunnerMgr(t, schedCli, 0, proto.TaskTypeBalance)
 		require.Equal(t, 0, len(tm.GetAliveTasks()))
 		tm.StopAllAliveRunner()
 	}
 	{
-		tm := initTestTaskRunnerMgr(t, 10, proto.TaskTypeBalance)
+		tm := initTestTaskRunnerMgr(t, schedCli, 10, proto.TaskTypeBalance)
 		tasks := tm.GetAliveTasks()
 		require.Equal(t, 1, len(tasks))
 		require.Equal(t, 10, len(tasks[proto.TaskTypeBalance]))
 		tm.StopAllAliveRunner()
 	}
 	{
-		tm := initTestTaskRunnerMgr(t, 10, proto.TaskTypeBalance, proto.TaskTypeDiskDrop, proto.TaskTypeDiskRepair)
+		tm := initTestTaskRunnerMgr(t, schedCli, 10, proto.TaskTypeBalance, proto.TaskTypeDiskDrop, proto.TaskTypeDiskRepair)
 		tasks := tm.GetAliveTasks()
 		require.Equal(t, 3, len(tasks))
 		require.Equal(t, 10, len(tasks[proto.TaskTypeBalance]))
@@ -142,5 +119,78 @@ func TestTaskRunnerMgr(t *testing.T) {
 		require.Equal(t, 10, len(tasks[proto.TaskTypeDiskRepair]))
 		require.Equal(t, 0, len(tasks[proto.TaskTypeManualMigrate]))
 		tm.StopAllAliveRunner()
+	}
+}
+
+func newMockRenewalCli(t *testing.T, mockFailTasks map[string]bool, mockErr error, times int) client.IScheduler {
+	cli := mocks.NewMockIScheduler(C(t))
+	cli.EXPECT().RenewalTask(A, A).Times(times).DoAndReturn(
+		func(_ context.Context, tasks *scheduler.TaskRenewalArgs) (*scheduler.TaskRenewalRet, error) {
+			result := &scheduler.TaskRenewalRet{Errors: make(map[proto.TaskType]map[string]string)}
+			for typ, ids := range tasks.IDs {
+				errors := make(map[string]string)
+				for _, taskID := range ids {
+					if _, ok := mockFailTasks[taskID]; ok {
+						errors[taskID] = "mock fail"
+					}
+				}
+				result.Errors[typ] = errors
+			}
+			return result, mockErr
+		})
+	return cli
+}
+
+func TestWorkerTaskRenewal(t *testing.T) {
+	// test renewal ok
+	{
+		cli := newMockRenewalCli(t, nil, nil, 1)
+		tm := initTestTaskRunnerMgr(t, cli, 20, proto.TaskTypeDiskDrop, proto.TaskTypeDiskRepair)
+		tm.renewalTask()
+		tasks := tm.GetAliveTasks()
+		require.Equal(t, 2, len(tasks))
+		require.Equal(t, 20, len(tasks[proto.TaskTypeDiskDrop]))
+		require.Equal(t, 20, len(tasks[proto.TaskTypeDiskRepair]))
+	}
+
+	// test few renewal fail
+	{
+		mockFailTasks := make(map[string]bool)
+		cli := newMockRenewalCli(t, mockFailTasks, nil, 2)
+		tm := initTestTaskRunnerMgr(t, cli, 11, proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
+			proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate)
+
+		tm.renewalTask()
+		tasks := tm.GetAliveTasks()
+		require.Equal(t, 4, len(tasks))
+		require.Equal(t, 11, len(tasks[proto.TaskTypeBalance]))
+
+		mockFailTasks[proto.TaskTypeBalance.String()+"_1"] = true
+		mockFailTasks[proto.TaskTypeBalance.String()+"_7"] = true
+		mockFailTasks[proto.TaskTypeDiskDrop.String()+"_1"] = true
+		mockFailTasks[proto.TaskTypeDiskRepair.String()+"_3"] = true
+		mockFailTasks[proto.TaskTypeManualMigrate.String()+"_10"] = true
+
+		tm.renewalTask()
+		tasks = tm.GetAliveTasks()
+		require.Equal(t, 4, len(tasks))
+		require.Equal(t, 9, len(tasks[proto.TaskTypeBalance]))
+		require.Equal(t, 10, len(tasks[proto.TaskTypeDiskDrop]))
+		require.Equal(t, 10, len(tasks[proto.TaskTypeDiskRepair]))
+		require.Equal(t, 10, len(tasks[proto.TaskTypeManualMigrate]))
+	}
+
+	// test all renewal fail
+	{
+		cli := newMockRenewalCli(t, nil, errors.New("mock fail"), 1)
+		tm := initTestTaskRunnerMgr(t, cli, 11, proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
+			proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate)
+
+		tasks := tm.GetAliveTasks()
+		require.Equal(t, 4, len(tasks))
+
+		tm.renewalTask()
+		tasks = tm.GetAliveTasks()
+		require.Equal(t, 0, len(tasks))
 	}
 }

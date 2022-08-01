@@ -18,8 +18,11 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -36,25 +39,68 @@ type TaskRunnerMgr struct {
 	manualMigrate map[string]*TaskRunner
 
 	mu           sync.Mutex
+	idc          string
 	meter        WorkerConfigMeter
 	schedulerCli TaskSchedulerCli
 	genWorker    WorkerGenerator
 }
 
 // NewTaskRunnerMgr returns task runner manager
-func NewTaskRunnerMgr(meter WorkerConfigMeter, schedulerCli TaskSchedulerCli, genWorker WorkerGenerator) *TaskRunnerMgr {
+func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, schedulerCli TaskSchedulerCli, genWorker WorkerGenerator) *TaskRunnerMgr {
 	return &TaskRunnerMgr{
 		repair:        make(map[string]*TaskRunner),
 		balance:       make(map[string]*TaskRunner),
 		diskDrop:      make(map[string]*TaskRunner),
 		manualMigrate: make(map[string]*TaskRunner),
 
+		idc:          idc,
 		meter:        meter,
 		schedulerCli: schedulerCli,
 		genWorker:    genWorker,
 	}
 }
 
+// RenewalTaskLoop renewal task.
+func (tm *TaskRunnerMgr) RenewalTaskLoop(stopCh <-chan struct{}) {
+	go func() {
+		ticker := time.NewTicker(time.Duration(proto.TaskRenewalPeriodS) * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				tm.renewalTask()
+			case <-stopCh:
+				return
+			}
+		}
+	}()
+}
+
+func (tm *TaskRunnerMgr) renewalTask() {
+	aliveTasks := tm.GetAliveTasks()
+	if len(aliveTasks) == 0 {
+		return
+	}
+
+	span, ctx := trace.StartSpanFromContext(context.Background(), "renewalTask")
+	ret, err := tm.schedulerCli.RenewalTask(ctx, &scheduler.TaskRenewalArgs{IDC: tm.idc, IDs: aliveTasks})
+	if err != nil {
+		span.Errorf("renewal task failed and stop all runner: err[%+v]", err)
+		tm.StopAllAliveRunner()
+		return
+	}
+
+	for typ, errs := range ret.Errors {
+		for taskID, errMsg := range errs {
+			span.Warnf("renewal fail so stop runner: type[%s], taskID[%s], error[%s]", typ, taskID, errMsg)
+			if err := tm.StopTaskRunner(taskID, typ); err != nil {
+				span.Errorf("stop runner failed: type[%s], taskID[%s], err[%+v]", typ, taskID, err)
+			}
+		}
+	}
+}
+
+// AddTask add migrate task.
 func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
