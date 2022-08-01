@@ -42,15 +42,11 @@ var mocktasklets = func() []Tasklet {
 }()
 
 type mockMigrateWorker struct {
-	tasklet       []Tasklet
-	taskletRetErr error
+	tasklet []Tasklet
 }
 
-func NewmockMigrateWorker(task MigrateTaskEx) ITaskWorker {
-	return &mockMigrateWorker{
-		tasklet:       mocktasklets,
-		taskletRetErr: nil,
-	}
+func NewMockMigrateWorker(task MigrateTaskEx) ITaskWorker {
+	return &mockMigrateWorker{tasklet: mocktasklets}
 }
 
 func (w *mockMigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError) {
@@ -58,13 +54,10 @@ func (w *mockMigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkEr
 	return w.tasklet, nil
 }
 
-func (w *mockMigrateWorker) ExecTasklet(ctx context.Context, t Tasklet) *WorkError {
-	return nil
-}
-
-func (w *mockMigrateWorker) Check(ctx context.Context) *WorkError {
-	return nil
-}
+func (w *mockMigrateWorker) ExecTasklet(ctx context.Context, t Tasklet) *WorkError { return nil }
+func (w *mockMigrateWorker) Check(ctx context.Context) *WorkError                  { return nil }
+func (w *mockMigrateWorker) TaskType() proto.TaskType                              { return proto.TaskTypeBalance }
+func (w *mockMigrateWorker) GetBenchmarkBids() []*ShardInfoSimple                  { return nil }
 
 func (w *mockMigrateWorker) CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
 	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
@@ -76,22 +69,6 @@ func (w *mockMigrateWorker) CompleteArgs() (taskID string, taskType proto.TaskTy
 
 func (w *mockMigrateWorker) ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
 	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
-}
-
-func (w *mockMigrateWorker) TaskType() proto.TaskType {
-	return proto.TaskTypeBalance
-}
-
-func (w *mockMigrateWorker) GetBenchmarkBids() []*ShardInfoSimple {
-	return nil
-}
-
-type mockWorkerFactory struct {
-	newMigWorkerFn func(task MigrateTaskEx) ITaskWorker
-}
-
-func (mwf *mockWorkerFactory) NewMigrateWorker(task MigrateTaskEx) ITaskWorker {
-	return mwf.newMigWorkerFn(task)
 }
 
 type mockScheCli struct {
@@ -122,8 +99,7 @@ func (mock *mockScheCli) ReportTask(ctx context.Context, args *api.TaskReportArg
 
 func initTestTaskRunnerMgr(t *testing.T, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
 	cli := mockScheCli{}
-	wf := mockWorkerFactory{newMigWorkerFn: NewmockMigrateWorker}
-	tm := NewTaskRunnerMgr(getDefaultConfig().WorkerConfigMeter, &cli, &wf)
+	tm := NewTaskRunnerMgr(getDefaultConfig().WorkerConfigMeter, &cli, NewMockMigrateWorker)
 
 	ctx := context.Background()
 	for _, typ := range taskTypes {
