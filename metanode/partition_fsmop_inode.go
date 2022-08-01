@@ -310,6 +310,13 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 			mp.config.PartitionId, existInode.Inode, delExtents, err)
 		return
 	}
+	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
+		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Commit error:%v",
+			mp.config.PartitionId, existInode.Inode, eks, err)
+		status = proto.OpErr
+		return
+	}
+	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	log.LogInfof("fsm(%v) AppendExtents inode(%v) exts(%v) extDelChLen(%v)", mp.config.PartitionId, existInode.Inode, delExtents, len(mp.extDelCh))
 	mp.extDelCh <- delExtents
 	return
@@ -357,6 +364,13 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 			mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize, err)
 		return
 	}
+	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
+		log.LogErrorf("fsm(%v) action(InsertExtents) inode(%v) eks(insert: %v, deleted: %v) size(old: %v, new: %v) Commit error:%v",
+			mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize, err)
+		status = proto.OpErr
+		return
+	}
+	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	log.LogInfof("fsm(%v) InsertExtents inode(%v) eks(insert: %v, deleted: %v) size(old: %v, new: %v) extDelChLen(%v)",
 		mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize, len(mp.extDelCh))
 	mp.extDelCh <- delExtents
@@ -410,6 +424,13 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 		resp.Status = proto.OpErr
 		return
 	}
+	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
+		log.LogErrorf("fsm(%v) action(ExtentsTruncate) inode(%v) size(old: %v, new: %v, req: %v) Commit error:%v",
+			mp.config.PartitionId, ino.Inode, oldSize, newSize, ino.Size, err)
+		resp.Status = proto.OpErr
+		return
+	}
+	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	// now we should delete the extent
 	log.LogInfof("fsm(%v) ExtentsTruncate inode(%v) size(old: %v, new: %v, req: %v) delExtents(%v) extDelChLen(%v)",
 		mp.config.PartitionId, i.Inode, oldSize, newSize, ino.Size, delExtents, len(mp.extDelCh))
