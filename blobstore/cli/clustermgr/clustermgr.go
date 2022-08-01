@@ -27,9 +27,14 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
 )
 
+var defaultClusterMgrAddrs = []string{"http://127.0.0.1:9998"}
+
 func newCMClient(secret string, hosts ...string) *clustermgr.Client {
 	if len(hosts) == 0 {
 		hosts = config.ClusterMgrAddrs()
+	}
+	if len(hosts) == 0 {
+		hosts = defaultClusterMgrAddrs
 	}
 	if secret == "" {
 		secret = config.ClusterMgrSecret()

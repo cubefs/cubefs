@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
+	"github.com/cubefs/cubefs/blobstore/cli/scheduler"
 )
 
 // App blobstore command app
@@ -104,4 +105,5 @@ func init() {
 
 	access.Register(App)
 	clustermgr.Register(App)
+	scheduler.Register(App)
 }
