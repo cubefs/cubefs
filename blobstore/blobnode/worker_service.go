@@ -125,19 +125,19 @@ func fixConfigItemInt64(actual *int64, defaultVal int64) {
 }
 
 // NewWorkerService returns rpc worker_service
-func NewWorkerService(cfg *WorkerConfig, clusterMgrCli cmapi.APIService, clusterID proto.ClusterID, idc string) (*WorkerService, error) {
+func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID proto.ClusterID, idc string) (*WorkerService, error) {
 	cfg.checkAndFix()
 
 	base.BigBufPool = base.NewByteBufferPool(cfg.BigBufPool.BufSizeByte, cfg.BigBufPool.PoolSize)
 	base.SmallBufPool = base.NewByteBufferPool(cfg.SmallBufPool.BufSizeByte, cfg.SmallBufPool.PoolSize)
 
-	schedulerCli := client.NewSchedulerClient(&cfg.Scheduler, clusterMgrCli, clusterID)
+	schedulerCli := client.NewSchedulerClient(&cfg.Scheduler, service, clusterID)
 	blobNodeCli := client.NewBlobNodeClient(&cfg.BlobNode)
 
-	taskRunnerMgr := NewTaskRunnerMgr(cfg.WorkerConfigMeter, schedulerCli, &TaskWorkerCreator{})
+	taskRunnerMgr := NewTaskRunnerMgr(cfg.WorkerConfigMeter, schedulerCli, NewMigrateWorker)
 	inspectTaskMgr := NewInspectTaskMgr(cfg.InspectConcurrency, blobNodeCli, schedulerCli)
 
-	renewalCli := newRenewalCli(cfg.Scheduler, clusterMgrCli, clusterID)
+	renewalCli := newRenewalCli(cfg.Scheduler, service, clusterID)
 	taskRenter := NewTaskRenter(idc, renewalCli, taskRunnerMgr)
 
 	shardRepairLimit := count.New(cfg.ShardRepairConcurrency)

@@ -25,6 +25,9 @@ import (
 
 var errAddRunningTaskAgain = errors.New("running task add again")
 
+// WorkerGenerator generates task worker.
+type WorkerGenerator = func(task MigrateTaskEx) ITaskWorker
+
 // TaskRunnerMgr task runner manager
 type TaskRunnerMgr struct {
 	repair        map[string]*TaskRunner
@@ -35,23 +38,11 @@ type TaskRunnerMgr struct {
 	mu           sync.Mutex
 	meter        WorkerConfigMeter
 	schedulerCli TaskSchedulerCli
-	wf           IWorkerFactory
-}
-
-type IWorkerFactory interface {
-	NewMigrateWorker(task MigrateTaskEx) ITaskWorker
-}
-
-// TaskWorkerCreator task worker creator
-type TaskWorkerCreator struct{}
-
-// NewMigrateWorker returns migrate worker
-func (wf *TaskWorkerCreator) NewMigrateWorker(task MigrateTaskEx) ITaskWorker {
-	return NewMigrateWorker(task)
+	genWorker    WorkerGenerator
 }
 
 // NewTaskRunnerMgr returns task runner manager
-func NewTaskRunnerMgr(meter WorkerConfigMeter, schedulerCli TaskSchedulerCli, wf IWorkerFactory) *TaskRunnerMgr {
+func NewTaskRunnerMgr(meter WorkerConfigMeter, schedulerCli TaskSchedulerCli, genWorker WorkerGenerator) *TaskRunnerMgr {
 	return &TaskRunnerMgr{
 		repair:        make(map[string]*TaskRunner),
 		balance:       make(map[string]*TaskRunner),
@@ -60,15 +51,13 @@ func NewTaskRunnerMgr(meter WorkerConfigMeter, schedulerCli TaskSchedulerCli, wf
 
 		meter:        meter,
 		schedulerCli: schedulerCli,
-		wf:           wf,
+		genWorker:    genWorker,
 	}
 }
 
 func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-
-	w := tm.wf.NewMigrateWorker(task)
 
 	var concurrency int
 	var mgrType map[string]*TaskRunner
@@ -88,6 +77,7 @@ func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error 
 		mgrType = tm.manualMigrate
 	}
 
+	w := tm.genWorker(task)
 	runner := NewTaskRunner(ctx, task.taskInfo.TaskID, w, task.taskInfo.SourceIDC, concurrency, tm.schedulerCli)
 	err := addRunner(mgrType, task.taskInfo.TaskID, runner)
 	if err != nil {
