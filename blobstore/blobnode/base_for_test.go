@@ -23,6 +23,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/klauspost/reedsolomon"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -37,6 +38,11 @@ import (
 func init() {
 	log.SetOutputLevel(log.Lfatal)
 }
+
+var (
+	A = gomock.Any()
+	C = gomock.NewController
+)
 
 func testWithAllMode(t *testing.T, testFunc func(t *testing.T, mode codemode.CodeMode)) {
 	for _, mode := range codemode.GetAllCodeModes() {

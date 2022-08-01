@@ -83,7 +83,6 @@ type WorkerService struct {
 
 	taskRunnerMgr  *TaskRunnerMgr
 	inspectTaskMgr *InspectTaskMgr
-	taskRenter     *TaskRenter
 
 	shardRepairLimit limit.Limiter
 	shardRepairer    *ShardRepairer
@@ -134,11 +133,8 @@ func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID pro
 	schedulerCli := client.NewSchedulerClient(&cfg.Scheduler, service, clusterID)
 	blobNodeCli := client.NewBlobNodeClient(&cfg.BlobNode)
 
-	taskRunnerMgr := NewTaskRunnerMgr(cfg.WorkerConfigMeter, schedulerCli, NewMigrateWorker)
+	taskRunnerMgr := NewTaskRunnerMgr(idc, cfg.WorkerConfigMeter, schedulerCli, NewMigrateWorker)
 	inspectTaskMgr := NewInspectTaskMgr(cfg.InspectConcurrency, blobNodeCli, schedulerCli)
-
-	renewalCli := newRenewalCli(cfg.Scheduler, service, clusterID)
-	taskRenter := NewTaskRenter(idc, renewalCli, taskRunnerMgr)
 
 	shardRepairLimit := count.New(cfg.ShardRepairConcurrency)
 	shardRepairer := NewShardRepairer(blobNodeCli, base.SmallBufPool)
@@ -158,7 +154,6 @@ func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID pro
 		blobNodeCli:    blobNodeCli,
 		taskRunnerMgr:  taskRunnerMgr,
 		inspectTaskMgr: inspectTaskMgr,
-		taskRenter:     taskRenter,
 
 		shardRepairLimit: shardRepairLimit,
 		shardRepairer:    shardRepairer,
@@ -201,16 +196,10 @@ func (s *WorkerService) WorkerStats(c *rpc.Context) {
 	c.RespondJSON(ret)
 }
 
-func newRenewalCli(cfg scheduler.Config, service cmapi.APIService, clusterID proto.ClusterID) client.IScheduler {
-	// The timeout period must be strictly controlled
-	cfg.ClientTimeoutMs = proto.RenewalTimeoutS * 1000
-	return client.NewSchedulerClient(&cfg, service, clusterID)
-}
-
 // Run runs backend task
 func (s *WorkerService) Run() {
 	// task lease
-	go s.taskRenter.RenewalTaskLoop(s.Done())
+	s.taskRunnerMgr.RenewalTaskLoop(s.Done())
 	s.loopAcquireTask()
 }
 
@@ -253,7 +242,7 @@ func (s *WorkerService) hasInspectTaskResource() bool {
 // acquire:disk repair & balance & disk drop task
 func (s *WorkerService) acquireTask() {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "acquireTask")
-	t, err := s.schedulerCli.AcquireTask(ctx, &scheduler.AcquireArgs{IDC: s.taskRenter.idc})
+	t, err := s.schedulerCli.AcquireTask(ctx, &scheduler.AcquireArgs{IDC: s.taskRunnerMgr.idc})
 	if err != nil {
 		code := rpc.DetectStatusCode(err)
 		if code != errcode.CodeNotingTodo {
