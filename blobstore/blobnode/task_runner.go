@@ -25,6 +25,7 @@ import (
 
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
+	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -34,7 +35,7 @@ import (
 
 // task runner status
 const (
-	TaskInit = iota + 1
+	TaskInit uint8 = iota + 1
 	TaskRunning
 	TaskStopping
 	TaskSuccess
@@ -43,46 +44,31 @@ const (
 
 var errKilled = errors.New("task killed")
 
-// TaskState task state
-type TaskState struct {
-	mu    sync.Mutex
-	state int
+// taskState task state
+type taskState struct {
+	sync.Mutex
+	state uint8
 }
 
-func (ts *TaskState) setStatus(s int) {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-	if s == ts.state {
+func (ts *taskState) set(st uint8) {
+	ts.Lock()
+	defer ts.Unlock()
+	if ts.state >= TaskSuccess {
 		return
 	}
-
-	if s == TaskRunning && ts.stoppedState() {
-		return
-	}
-
-	ts.state = s
+	ts.state = st
 }
 
-func (ts *TaskState) stopped() bool {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-	return ts.stoppedState()
+func (ts *taskState) stopped() bool {
+	ts.Lock()
+	defer ts.Unlock()
+	return ts.state >= TaskSuccess
 }
 
-func (ts *TaskState) stoppedState() bool {
-	if ts.state == TaskSuccess || ts.state == TaskStopped {
-		return true
-	}
-	return false
-}
-
-func (ts *TaskState) alive() bool {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-	if ts.state == TaskInit || ts.state == TaskRunning {
-		return true
-	}
-	return false
+func (ts *taskState) alive() bool {
+	ts.Lock()
+	defer ts.Unlock()
+	return ts.state <= TaskRunning
 }
 
 // WokeErrorType worker error type
@@ -174,15 +160,6 @@ type ITaskWorker interface {
 	GetBenchmarkBids() []*ShardInfoSimple
 }
 
-// TaskSchedulerCli define the interface of scheuler use
-type TaskSchedulerCli interface {
-	ReclaimTask(ctx context.Context, args *api.ReclaimTaskArgs) (err error)
-	CancelTask(ctx context.Context, args *api.CancelTaskArgs) (err error)
-	CompleteTask(ctx context.Context, args *api.CompleteTaskArgs) (err error)
-	ReportTask(ctx context.Context, args *api.TaskReportArgs) (err error)
-	RenewalTask(ctx context.Context, tasks *api.TaskRenewalArgs) (ret *api.TaskRenewalRet, err error)
-}
-
 // Tasklet is the smallest unit of task exe
 type Tasklet struct {
 	bids []*ShardInfoSimple
@@ -204,29 +181,26 @@ type TaskRunner struct {
 	idc    string
 
 	taskletRunConcurrency int
-	state                 TaskState
-	ctx                   context.Context
-	cancel                context.CancelFunc
+	state                 taskState
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	span   trace.Span
 
 	stopMu     sync.Mutex
 	stopReason *WorkError
 
-	schedulerCli TaskSchedulerCli
+	schedulerCli client.IScheduler
 
 	statsMu sync.Mutex
 	stats   proto.TaskStatistics // work run statics info
 }
 
 // NewTaskRunner return task runner
-func NewTaskRunner(
-	ctx context.Context,
-	taskID string,
-	w ITaskWorker,
-	idc string,
-	taskletRunConcurrency int,
-	schedulerCli TaskSchedulerCli) *TaskRunner {
+func NewTaskRunner(ctx context.Context, taskID string, w ITaskWorker, idc string,
+	taskletRunConcurrency int, schedulerCli client.IScheduler) *TaskRunner {
 	ctx, cancel := context.WithCancel(ctx)
-	_, ctx = trace.StartSpanFromContext(ctx, "taskRunner")
+	span, ctx := trace.StartSpanFromContext(ctx, "taskRunner")
 
 	task := TaskRunner{
 		taskID:                taskID,
@@ -235,18 +209,19 @@ func NewTaskRunner(
 		taskletRunConcurrency: taskletRunConcurrency,
 		ctx:                   ctx,
 		cancel:                cancel,
+		span:                  span,
 		schedulerCli:          schedulerCli,
 	}
-	task.state.setStatus(TaskInit)
+	task.state.set(TaskInit)
 	return &task
 }
 
 // Run runs task
 func (r *TaskRunner) Run() {
-	span := trace.SpanFromContext(r.ctx)
+	span := r.span
 	span.Infof("start run task: taskID[%s]", r.taskID)
 
-	r.state.setStatus(TaskRunning)
+	r.state.set(TaskRunning)
 
 	tasklets, err := r.w.GenTasklets(r.ctx)
 	if err != nil {
@@ -304,11 +279,9 @@ func (r *TaskRunner) Run() {
 }
 
 func (r *TaskRunner) execTaskletWrap(ctx context.Context, t Tasklet) {
-	span := trace.SpanFromContext(ctx)
-
 	select {
 	case <-r.ctx.Done():
-		span.Infof("tasklet canceled: taskID[%s]", r.taskID)
+		r.span.Infof("tasklet canceled: taskID[%s]", r.taskID)
 	default:
 		retErr := r.w.ExecTasklet(ctx, t)
 		if retErr != nil {
@@ -322,13 +295,12 @@ func (r *TaskRunner) execTaskletWrap(ctx context.Context, t Tasklet) {
 
 // Stop stops task
 func (r *TaskRunner) Stop() {
-	r.state.setStatus(TaskStopping)
+	r.state.set(TaskStopping)
 	r.stopWithFail(OtherError(errKilled))
 }
 
 func (r *TaskRunner) stopWithFail(fail *WorkError) {
-	span := trace.SpanFromContext(r.ctx)
-	span.Infof("stop task: taskID[%s], err_type[%d], err[%+v]", r.taskID, fail.errType, fail.err)
+	r.span.Infof("stop task: taskID[%s], err_type[%d], err[%+v]", r.taskID, fail.errType, fail.err)
 
 	r.stopMu.Lock()
 	defer r.stopMu.Unlock()
@@ -340,9 +312,9 @@ func (r *TaskRunner) stopWithFail(fail *WorkError) {
 }
 
 func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
-	span := trace.SpanFromContext(r.ctx)
+	span := r.span
 
-	defer r.state.setStatus(TaskStopped)
+	defer r.state.set(TaskStopped)
 
 	if ShouldReclaim(retErr) {
 		taskID, taskType, src, dest := r.w.ReclaimArgs()
@@ -383,11 +355,9 @@ func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 }
 
 func (r *TaskRunner) completeTask() {
-	span := trace.SpanFromContext(r.ctx)
+	defer r.state.set(TaskSuccess)
 
-	defer r.state.setStatus(TaskSuccess)
-
-	span.Infof("complete task: taskID[%s]", r.taskID)
+	r.span.Infof("complete task: taskID[%s]", r.taskID)
 	taskID, taskType, src, dest := r.w.CompleteArgs()
 	args := api.CompleteTaskArgs{
 		TaskId:   taskID,
@@ -398,14 +368,12 @@ func (r *TaskRunner) completeTask() {
 	}
 	err := r.schedulerCli.CompleteTask(r.ctx, &args)
 	if err != nil {
-		span.Errorf("complete failed: taskID[%s], taskType[%s], src[%+v], dest[%+v], code[%d], err[%+v]",
+		r.span.Errorf("complete failed: taskID[%s], taskType[%s], src[%+v], dest[%+v], code[%d], err[%+v]",
 			taskID, taskType, src, dest, rpc.DetectStatusCode(err), err)
 	}
 }
 
 func (r *TaskRunner) statsAndReportTask(ctx context.Context, increaseDataSize, increaseShardCnt uint64) {
-	span := trace.SpanFromContext(ctx)
-
 	r.statsMu.Lock()
 	r.stats.Add(increaseDataSize, increaseShardCnt)
 	r.statsMu.Unlock()
@@ -419,7 +387,7 @@ func (r *TaskRunner) statsAndReportTask(ctx context.Context, increaseDataSize, i
 	}
 	err := r.schedulerCli.ReportTask(ctx, &reportArgs)
 	if err != nil {
-		span.Errorf("report task failed: taskID[%s], code[%d], err[%+v]", r.taskID, rpc.DetectStatusCode(err), err)
+		r.span.Errorf("report task failed: taskID[%s], code[%d], err[%+v]", r.taskID, rpc.DetectStatusCode(err), err)
 	}
 }
 
