@@ -71,12 +71,6 @@ const (
 )
 
 func genInode(t *testing.T, mp *metaPartition, cnt uint64) uint64 {
-	dbHandle, err := mp.inodeTree.CreateBatchWriteHandle()
-	if err != nil {
-		t.Errorf("create batch write handle failed:%v", err)
-		t.FailNow()
-	}
-	defer mp.inodeTree.ReleaseBatchWriteHandle(dbHandle)
 	maxInode := uint64(0)
 	testTarget := []byte{'1', '2', '3', '4', '1', '2', '3', '4'}
 	for i := uint64(0); i < cnt;  {
@@ -93,15 +87,10 @@ func genInode(t *testing.T, mp *metaPartition, cnt uint64) uint64 {
 					ExtentOffset: rand.Uint64(), Size: rand.Uint32(), CRC:0})
 			}
 		}
-		if _, _, err = mp.inodeTree.Create(dbHandle, ino, false); err != nil {
+		if _, ok, err := inodeCreate(mp.inodeTree, ino, false); err != nil || !ok {
 			continue
 		}
 		i++
-	}
-	err = mp.inodeTree.CommitBatchWrite(dbHandle, false)
-	if err != nil {
-		t.Errorf("commit batch write handle failed:%v", err)
-		t.FailNow()
 	}
 	return maxInode
 }
@@ -116,12 +105,6 @@ func RandString(len int) string {
 }
 
 func genDentry(t *testing.T, mp *metaPartition, cnt, maxInode uint64) {
-	dbHandle, err := mp.dentryTree.CreateBatchWriteHandle()
-	if err != nil {
-		t.Errorf("create batch write handle failed:%v", err)
-		t.FailNow()
-	}
-	defer mp.dentryTree.ReleaseBatchWriteHandle(dbHandle)
 	for i := uint64(0); i < cnt;  {
 		dentry := &Dentry{}
 		dentry.ParentId = rand.Uint64() % uint64(1000000000) + 1
@@ -131,15 +114,10 @@ func genDentry(t *testing.T, mp *metaPartition, cnt, maxInode uint64) {
 		}
 		dentry.Type = rand.Uint32()
 		dentry.Name = RandString(rand.Int() % 100 + 10)
-		if _, _, err = mp.dentryTree.Create(dbHandle, dentry, false); err != nil {
+		if _, ok, err := dentryCreate(mp.dentryTree, dentry, false); err != nil || !ok {
 			continue
 		}
 		i++
-	}
-	err = mp.inodeTree.CommitBatchWrite(dbHandle, false)
-	if err != nil {
-		t.Errorf("commit batch write handle failed:%v", err)
-		t.FailNow()
 	}
 }
 
