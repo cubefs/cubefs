@@ -101,13 +101,13 @@ func (cw *CompactWorker) CreateMpTask(cluster string, vols []*proto.CompactVolum
 
 		var mpView []*proto.MetaPartitionView
 		mpView, err = cw.GetMpView(cluster, vol.Name)
-		sort.Slice(mpView, func(i, j int) bool {
-			return mpView[i].PartitionID < mpView[j].PartitionID
-		})
 		if err != nil {
 			log.LogErrorf("CompactWorker CreateMpTask GetMpView cluster(%v) volName(%v) err(%v)", cluster, vol.Name, err)
 			continue
 		}
+		sort.Slice(mpView, func(i, j int) bool {
+			return mpView[i].PartitionID < mpView[j].PartitionID
+		})
 		clusterVolumekey := clusterVolumeKey(cluster, vol.Name)
 		// resolve volume delete rebuild
 		if len(mpView) > 0 && mpView[len(mpView)-1].PartitionID <= cw.volumeTaskPos[clusterVolumekey] {
@@ -115,6 +115,11 @@ func (cw *CompactWorker) CreateMpTask(cluster string, vols []*proto.CompactVolum
 		}
 		for i, mp := range mpView {
 			if mp.InodeCount == 0 {
+				if i >= len(mpView)-1 {
+					cw.volumeTaskPos[clusterVolumekey] = 0
+				} else {
+					cw.volumeTaskPos[clusterVolumekey] = mp.PartitionID
+				}
 				continue
 			}
 			if volumeTaskNum >= DefaultVolumeMaxCompactingMPNums {

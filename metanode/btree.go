@@ -99,6 +99,7 @@ type Tree interface {
 	CommitAndReleaseBatchWriteHandle(handle interface{}, needCommitApplyID bool) error
 	ReleaseBatchWriteHandle(handle interface{}) error
 	BatchWriteCount(handle interface{}) (int, error)
+	ClearBatchWriteHandle(handle interface{}) error
 	PersistBaseInfo() error
 	GetPersistentApplyID() uint64
 }

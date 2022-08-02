@@ -735,6 +735,10 @@ func (i *BTree) CommitAndReleaseBatchWriteHandle(handle interface{}, needCommitA
 	return nil
 }
 
+func (i *BTree) ClearBatchWriteHandle(handle interface{}) error {
+	return nil
+}
+
 func (i *BTree) Flush() error {
 	return nil
 }

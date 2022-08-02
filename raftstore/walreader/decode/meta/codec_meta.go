@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/metanode"
-	se "github.com/chubaofs/chubaofs/util/sortedextent"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore/walreader/common"
+	se "github.com/chubaofs/chubaofs/util/sortedextent"
 )
 
 const (
@@ -302,7 +302,7 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 			return
 		}
 		columnValOp.SetValue("ExtentMerge")
-		columnValAttrs.SetValue(fmt.Sprintf("inode: %v, eks:%v", inodeMerge.Inode, decoder.formatEks(inodeMerge.NewOldExtents)))
+		columnValAttrs.SetValue(fmt.Sprintf("inode: %v, eks:%v", inodeMerge.Inode, decoder.formatEks(inodeMerge.NewExtents, inodeMerge.OldExtents)))
 	default:
 		columnValOp.SetValue(strconv.Itoa(int(opKVData.Op)))
 		columnValAttrs.SetValue("N/A")
@@ -324,9 +324,16 @@ func (decoder *MetadataCommandDecoder) formatExtentKeys(extents *se.SortedExtent
 	return sb.String()
 }
 
-func (decoder *MetadataCommandDecoder) formatEks(eks []proto.ExtentKey) string {
+func (decoder *MetadataCommandDecoder) formatEks(newEks, oldEks []proto.ExtentKey) string {
 	sb := strings.Builder{}
-	for _, ek := range eks {
+	for _, ek := range newEks {
+		if sb.Len() > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(fmt.Sprintf("%v_%v_%v_%v_%v", ek.FileOffset, ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.Size))
+	}
+	sb.WriteString("||")
+	for _, ek := range oldEks {
 		if sb.Len() > 0 {
 			sb.WriteString(", ")
 		}

@@ -275,6 +275,7 @@ func (s *Super) handleErrorWithGetInode(op, msg string, inode uint64) {
 func (s *Super) Close() {
 	if s.ec != nil {
 		_ = s.ec.Close(context.Background())
+		s.ec.CloseConnPool()
 	}
 	if s.mw != nil {
 		_ = s.mw.Close()
