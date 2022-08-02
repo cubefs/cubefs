@@ -17,7 +17,6 @@ package blobnode
 import (
 	"bytes"
 	"context"
-	"io"
 	"sync"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -28,13 +27,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
-
-// IShardAccess define the interface of blobnode use by shard repair
-type IShardAccess interface {
-	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType api.IOType) (err error)
-	StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (si *client.ShardInfo, err error)
-	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error)
-}
 
 // ShardInfoEx shard info execution
 type ShardInfoEx struct {
@@ -74,12 +66,12 @@ func (shard *ShardInfoEx) ShardSize() int64 {
 
 // ShardRepairer used to repair shard data
 type ShardRepairer struct {
-	cli     IShardAccess
+	cli     client.IBlobNode
 	bufPool *workutils.ByteBufferPool
 }
 
 // NewShardRepairer returns shard repairer
-func NewShardRepairer(cli IShardAccess, bufPool *workutils.ByteBufferPool) *ShardRepairer {
+func NewShardRepairer(cli client.IBlobNode, bufPool *workutils.ByteBufferPool) *ShardRepairer {
 	return &ShardRepairer{cli: cli, bufPool: bufPool}
 }
 
@@ -180,11 +172,8 @@ func hasRepaired(shardInfos []*ShardInfoEx, repairIdxs []int) (bool, error) {
 	return false, nil
 }
 
-func getRepairShards(
-	ctx context.Context,
-	shardInfos []*ShardInfoEx,
-	mode codemode.CodeMode,
-	repaireIdxs []int) (repairIdx []int, shardSize int64, err error) {
+func getRepairShards(ctx context.Context, shardInfos []*ShardInfoEx, mode codemode.CodeMode, repaireIdxs []int,
+) (repairIdx []int, shardSize int64, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	// step1:
 	// if any shards has mark delete will not need repair
@@ -243,11 +232,7 @@ func getRepairShards(
 // so will appear the case that the repair shard exist only in a blob which we called orphan shard
 // to resolve this problem,we check whether the shard is an orphan shard when repair shard finish
 // and simply record the shard in a table for troubleshooting
-func (repairer *ShardRepairer) checkOrphanShard(
-	ctx context.Context,
-	repls []proto.VunitLocation,
-	bid proto.BlobID,
-	badIdxs []int) bool {
+func (repairer *ShardRepairer) checkOrphanShard(ctx context.Context, repls []proto.VunitLocation, bid proto.BlobID, badIdxs []int) bool {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start check orphan shard: bid[%d], badIdxs[%+v]", bid, badIdxs)
 

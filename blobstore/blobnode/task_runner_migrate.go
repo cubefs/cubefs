@@ -28,8 +28,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
-// balance and disk drop task use
-
 // ErrNotReadyForMigrate not ready for migrate
 var ErrNotReadyForMigrate = errors.New("not ready for migrate")
 
@@ -41,7 +39,7 @@ type chunkState struct {
 // MigrateWorker used to manager migrate task
 type MigrateWorker struct {
 	t           *proto.MigrateTask
-	bolbNodeCli IVunitAccess
+	bolbNodeCli client.IBlobNode
 
 	benchmarkBids            []*ShardInfoSimple
 	downloadShardConcurrency int
@@ -53,7 +51,7 @@ type MigrateTaskEx struct {
 	taskInfo *proto.MigrateTask
 
 	downloadShardConcurrency int
-	blobNodeCli              IVunitAccess
+	blobNodeCli              client.IBlobNode
 }
 
 // NewMigrateWorker returns migrate worker
@@ -150,8 +148,8 @@ func (w *MigrateWorker) TaskType() (taskType proto.TaskType) {
 	return w.t.TaskType
 }
 
-func majorityLocked(ctx context.Context, vunitAccess IVunitAccess, replicas []proto.VunitLocation, mode codemode.CodeMode) (success bool) {
-	chunksStat := getChunksStat(ctx, vunitAccess, replicas)
+func majorityLocked(ctx context.Context, blobnodeCli client.IBlobNode, replicas []proto.VunitLocation, mode codemode.CodeMode) (success bool) {
+	chunksStat := getChunksStat(ctx, blobnodeCli, replicas)
 
 	lockedCnt := 0
 	for _, chunkStat := range chunksStat {
@@ -163,7 +161,7 @@ func majorityLocked(ctx context.Context, vunitAccess IVunitAccess, replicas []pr
 	return lockedCnt >= minLockedMajorityNum(mode)
 }
 
-func getChunksStat(ctx context.Context, vunitAccess IVunitAccess, replicas []proto.VunitLocation) map[proto.Vuid]*chunkState {
+func getChunksStat(ctx context.Context, blobnodeCli client.IBlobNode, replicas []proto.VunitLocation) map[proto.Vuid]*chunkState {
 	results := make(map[proto.Vuid]*chunkState, len(replicas))
 	wg := sync.WaitGroup{}
 	var mu sync.Mutex
@@ -173,7 +171,7 @@ func getChunksStat(ctx context.Context, vunitAccess IVunitAccess, replicas []pro
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			chunkInfo, err := vunitAccess.StatChunk(ctx, replica)
+			chunkInfo, err := blobnodeCli.StatChunk(ctx, replica)
 			mu.Lock()
 			defer mu.Unlock()
 			results[vuid] = &chunkState{retErr: err, chunkInfo: chunkInfo}
