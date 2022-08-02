@@ -23,8 +23,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
 type mockWorker struct {
@@ -46,6 +47,9 @@ func (w *mockWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError) {
 		tasklets = append(tasklets, Tasklet{bids: mockGenTasklet(id)})
 	}
 	if w.genTaskletsErr != nil {
+		if err, ok := w.genTaskletsErr.(*WorkError); ok {
+			return tasklets, err
+		}
 		return tasklets, SrcError(w.genTaskletsErr)
 	}
 	return tasklets, nil
@@ -90,138 +94,119 @@ func (w *mockWorker) GetBenchmarkBids() (bids []*ShardInfoSimple) {
 	return
 }
 
-type mockCli struct {
-	cancelRet   error
-	completeRet error
-	reclaimRet  error
-	wg          sync.WaitGroup
-	step        string
+type mockStats struct {
+	wg   sync.WaitGroup
+	step string
 }
 
-func (mock *mockCli) CancelTask(ctx context.Context, args *api.CancelTaskArgs) error {
-	mock.step = "CancelOrReclaim"
-	mock.wg.Done()
-	return mock.cancelRet
-}
-
-func (mock *mockCli) CompleteTask(ctx context.Context, args *api.CompleteTaskArgs) error {
-	mock.step = "Complete"
-	mock.wg.Done()
-	return mock.completeRet
-}
-
-func (mock *mockCli) ReclaimTask(ctx context.Context, args *api.ReclaimTaskArgs) error {
-	mock.step = "CancelOrReclaim"
-	mock.wg.Done()
-	return mock.reclaimRet
-}
-
-func (mock *mockCli) ReportTask(ctx context.Context, args *api.TaskReportArgs) (err error) {
-	return nil
-}
-
-func (mock *mockCli) RenewalTask(ctx context.Context, tasks *api.TaskRenewalArgs) (ret *api.TaskRenewalRet, err error) {
-	return &api.TaskRenewalRet{}, nil
+func newMockSchedulerCli(t *testing.T, stats *mockStats) scheduler.IScheduler {
+	cli := mocks.NewMockIScheduler(C(t))
+	cli.EXPECT().ReportTask(A, A).AnyTimes().Return(nil)
+	cli.EXPECT().CancelTask(A, A).AnyTimes().DoAndReturn(
+		func(context.Context, *scheduler.CancelTaskArgs) error {
+			stats.step = "Cancel"
+			stats.wg.Done()
+			return errors.New("nothing")
+		})
+	cli.EXPECT().CompleteTask(A, A).AnyTimes().DoAndReturn(
+		func(context.Context, *scheduler.CompleteTaskArgs) error {
+			stats.step = "Complete"
+			stats.wg.Done()
+			return errors.New("nothing")
+		})
+	cli.EXPECT().ReclaimTask(A, A).AnyTimes().DoAndReturn(
+		func(context.Context, *scheduler.ReclaimTaskArgs) error {
+			stats.step = "Reclaim"
+			stats.wg.Done()
+			return errors.New("nothing")
+		})
+	return cli
 }
 
 func TestTaskRunner(t *testing.T) {
-	cli := mockCli{
-		cancelRet:   nil,
-		completeRet: nil,
-		reclaimRet:  nil,
-	}
-
-	// test stop
-	t.Log("start test tasklet stop")
-	w1 := mockWorker{
-		taskRetErr:  nil,
-		checkRetErr: nil,
-		sleepS:      1,
-	}
+	taskID := "test_mock_task"
 	idc := "z0"
-	runner1 := NewTaskRunner(context.Background(), "test_mock_task", &w1, idc, 2, &cli)
-	cli.wg.Add(1)
-	go runner1.Run()
-	time.Sleep(500 * time.Millisecond)
-	runner1.Stop()
-	cli.wg.Wait()
-	require.Equal(t, "CancelOrReclaim", cli.step)
-	require.Equal(t, true, w1.taskLetCnt < 12)
-
+	stats := &mockStats{}
+	cli := newMockSchedulerCli(t, stats)
+	run := func(worker ITaskWorker) {
+		runner := NewTaskRunner(context.Background(), taskID, worker, idc, 3, cli)
+		stats.step = ""
+		stats.wg.Add(1)
+		go runner.Run()
+		stats.wg.Wait()
+	}
+	// test stop
+	{
+		t.Log("start test tasklet stop")
+		worker := &mockWorker{sleepS: 1}
+		runner := NewTaskRunner(context.Background(), taskID, worker, idc, 2, cli)
+		stats.step = ""
+		stats.wg.Add(1)
+		go runner.Run()
+		time.Sleep(100 * time.Millisecond)
+		runner.Stop()
+		stats.wg.Wait()
+		require.Equal(t, "Cancel", stats.step)
+		require.True(t, worker.taskLetCnt < 12)
+	}
 	// test tasklet fail
-	t.Log("start test tasklet fail")
-	w2 := mockWorker{
-		taskRetErr:  errors.New("mock fail"),
-		failIdx:     3,
-		checkRetErr: nil,
-		sleepS:      0,
+	{
+		t.Log("start test tasklet fail")
+		worker := &mockWorker{taskRetErr: errors.New("mock fail"), failIdx: 3}
+		run(worker)
+		require.Equal(t, "Cancel", stats.step)
+		require.True(t, worker.taskLetCnt < 12)
 	}
-	runner2 := NewTaskRunner(context.Background(), "test_mock_task", &w2, idc, 3, &cli)
-	cli.wg.Add(1)
-	go runner2.Run()
-	cli.wg.Wait()
-	require.Equal(t, "CancelOrReclaim", cli.step)
-	require.Equal(t, true, w1.taskLetCnt < 12)
-
 	// test check fail
-	t.Log("start test check fail")
-	w3 := mockWorker{
-		taskRetErr:  nil,
-		checkRetErr: errors.New("mock check fail"),
-		sleepS:      0,
+	{
+		t.Log("start test check fail")
+		worker := &mockWorker{checkRetErr: errors.New("mock check fail")}
+		run(worker)
+		require.Equal(t, "Cancel", stats.step)
+		require.Equal(t, 12, worker.taskLetCnt)
 	}
-
-	t.Log("runner3 start run")
-	runner3 := NewTaskRunner(context.Background(), "test_mock_task", &w3, idc, 3, &cli)
-	cli.wg.Add(1)
-	go runner3.Run()
-	cli.wg.Wait()
-	require.Equal(t, "CancelOrReclaim", cli.step)
-	require.Equal(t, 12, w3.taskLetCnt)
-
 	// test genTasklet fail
-	t.Log("start test genTasklet fail")
-	w4 := mockWorker{
-		taskRetErr:     nil,
-		genTaskletsErr: errors.New("mock check fail"),
-		sleepS:         0,
+	{
+		t.Log("start test genTasklet fail")
+		worker := &mockWorker{genTaskletsErr: errors.New("mock check fail")}
+		run(worker)
+		require.Equal(t, "Cancel", stats.step)
+		require.Equal(t, 0, worker.taskLetCnt)
 	}
-	runner4 := NewTaskRunner(context.Background(), "test_mock_task", &w4, idc, 3, &cli)
-	cli.wg.Add(1)
-	go runner4.Run()
-	cli.wg.Wait()
-	require.Equal(t, "CancelOrReclaim", cli.step)
-	require.Equal(t, 0, w4.taskLetCnt)
-
+	// test genTasklet dest fail
+	{
+		t.Log("start test genTasklet dest fail")
+		worker := &mockWorker{genTaskletsErr: DstError(errors.New("mock dest fail"))}
+		run(worker)
+		require.Equal(t, "Reclaim", stats.step)
+		require.Equal(t, 0, worker.taskLetCnt)
+	}
 	// test tasklet complete
-	t.Log("start test tasklet complete")
-	w5 := mockWorker{
-		sleepS: 0,
+	{
+		t.Log("start test tasklet complete")
+		worker := &mockWorker{}
+		run(worker)
+		require.Equal(t, "Complete", stats.step)
+		require.Equal(t, 12, worker.taskLetCnt)
 	}
-	runner5 := NewTaskRunner(context.Background(), "test_mock_task", &w5, idc, 3, &cli)
-	cli.wg.Add(1)
-	go runner5.Run()
-	cli.wg.Wait()
-	require.Equal(t, "Complete", cli.step)
-	require.Equal(t, 12, w5.taskLetCnt)
 }
 
 func TestTaskState(t *testing.T) {
-	s := TaskState{}
-	s.setStatus(TaskRunning)
+	s := taskState{}
+	s.set(TaskRunning)
 	require.Equal(t, TaskRunning, s.state)
-	s.setStatus(TaskRunning)
+	s.set(TaskRunning)
 	require.Equal(t, s.state, TaskRunning)
 	require.Equal(t, true, s.alive())
-	s.setStatus(TaskStopping)
+	s.set(TaskStopping)
 	require.Equal(t, s.state, TaskStopping)
 	require.Equal(t, false, s.alive())
 	require.Equal(t, false, s.stopped())
 
-	s.setStatus(TaskStopped)
+	s.set(TaskStopped)
 	require.Equal(t, true, s.stopped())
 	require.Equal(t, false, s.alive())
-	s.setStatus(TaskSuccess)
+	s.set(TaskSuccess)
 	require.Equal(t, false, s.alive())
 	require.Equal(t, true, s.stopped())
 }
