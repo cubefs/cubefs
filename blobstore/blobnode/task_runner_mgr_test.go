@@ -24,7 +24,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
-	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
@@ -74,7 +73,7 @@ func (w *mockMigrateWorker) ReclaimArgs() (taskID string, taskType proto.TaskTyp
 	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-func initTestTaskRunnerMgr(t *testing.T, cli client.IScheduler, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
+func initTestTaskRunnerMgr(t *testing.T, cli scheduler.IScheduler, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
 	tm := NewTaskRunnerMgr("Z0", getDefaultConfig().WorkerConfigMeter, cli, NewMockMigrateWorker)
 
 	ctx := context.Background()
@@ -122,7 +121,7 @@ func TestTaskRunnerMgr(t *testing.T) {
 	}
 }
 
-func newMockRenewalCli(t *testing.T, mockFailTasks map[string]bool, mockErr error, times int) client.IScheduler {
+func newMockRenewalCli(t *testing.T, mockFailTasks map[string]bool, mockErr error, times int) scheduler.IScheduler {
 	cli := mocks.NewMockIScheduler(C(t))
 	cli.EXPECT().RenewalTask(A, A).Times(times).DoAndReturn(
 		func(_ context.Context, tasks *scheduler.TaskRenewalArgs) (*scheduler.TaskRenewalRet, error) {
