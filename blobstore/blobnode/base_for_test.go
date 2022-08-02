@@ -50,7 +50,7 @@ func testWithAllMode(t *testing.T, testFunc func(t *testing.T, mode codemode.Cod
 	}
 }
 
-func genMockVol(vid proto.Vid, mode codemode.CodeMode) ([]proto.VunitLocation, codemode.CodeMode) {
+func genMockVol(vid proto.Vid, mode codemode.CodeMode) []proto.VunitLocation {
 	modeInfo := mode.Tactic()
 	replicas := make([]proto.VunitLocation, modeInfo.N+modeInfo.M+modeInfo.L)
 	for i := 0; i < modeInfo.N+modeInfo.M+modeInfo.L; i++ {
@@ -61,7 +61,7 @@ func genMockVol(vid proto.Vid, mode codemode.CodeMode) ([]proto.VunitLocation, c
 			DiskID: 1,
 		}
 	}
-	return replicas, mode
+	return replicas
 }
 
 func genMockBytes(letter byte, size int64) []byte {

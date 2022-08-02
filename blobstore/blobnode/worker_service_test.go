@@ -83,7 +83,7 @@ type mockScheCli struct {
 func (m *mockScheCli) AcquireTask(ctx context.Context, args *scheduler.AcquireArgs) (ret *scheduler.WorkerTask, err error) {
 	m.migrateID++
 	mode := codemode.EC6P10L2
-	srcReplicas, _ := genMockVol(1, mode)
+	srcReplicas := genMockVol(1, mode)
 	destVuid, _ := proto.NewVuid(1, uint8(0), 2)
 	dst := proto.VunitLocation{
 		Vuid:   destVuid,
@@ -125,7 +125,7 @@ func (m *mockScheCli) AcquireInspectTask(ctx context.Context) (ret *scheduler.Wo
 		},
 	}
 	if m.inspectID%2 == 0 {
-		ret.Task.Replicas, _ = genMockVol(1, mode)
+		ret.Task.Replicas = genMockVol(1, mode)
 	}
 	return
 }

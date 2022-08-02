@@ -17,7 +17,7 @@ package blobnode
 import (
 	"context"
 
-	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -26,47 +26,36 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/limit/count"
 )
 
-//duties:manage inspect volume task executing
-
-// IBidGetter define the interface of blobnode used by inspect
-type IBidGetter interface {
-	ListShards(ctx context.Context, location proto.VunitLocation) (shards []*client.ShardInfo, err error)
-}
-
-// IResultReporter define the interface of scheduler used by inspect
-type IResultReporter interface {
-	CompleteInspect(ctx context.Context, args *api.CompleteInspectArgs) (err error)
-}
-
 // InspectTaskMgr inspect task manager
 type InspectTaskMgr struct {
 	taskLimit limit.Limiter
-	bidGetter IBidGetter
-	reporter  IResultReporter
+	bidGetter client.IBlobNode
+	reporter  scheduler.IScheduler
 }
 
 // NewInspectTaskMgr returns inspect task manager
-func NewInspectTaskMgr(inspectConcurrency int, bidGetter IBidGetter, report IResultReporter) *InspectTaskMgr {
+func NewInspectTaskMgr(concurrency int, bidGetter client.IBlobNode, reporter scheduler.IScheduler) *InspectTaskMgr {
 	return &InspectTaskMgr{
-		taskLimit: count.New(inspectConcurrency),
+		taskLimit: count.New(concurrency),
 		bidGetter: bidGetter,
-		reporter:  report,
+		reporter:  reporter,
 	}
 }
 
 // AddTask adds inspect task
 func (mgr *InspectTaskMgr) AddTask(ctx context.Context, task *proto.VolumeInspectTask) error {
 	span := trace.SpanFromContextSafe(ctx)
-
-	err := mgr.taskLimit.Acquire()
-	if err != nil {
+	if err := mgr.taskLimit.Acquire(); err != nil {
 		return err
 	}
 
 	go func() {
 		defer mgr.taskLimit.Release()
 		ret := mgr.doInspect(ctx, task)
-		mgr.reportInspectResult(ctx, ret)
+		args := scheduler.CompleteInspectArgs{VolumeInspectRet: ret}
+		if err := mgr.reporter.CompleteInspect(ctx, &args); err != nil {
+			span.Errorf("report inspect result failed: result[%+v], err[%+v]", ret, err)
+		}
 		span.Debugf("finish inspect: taskID[%s]", task.TaskId)
 	}()
 	return nil
@@ -82,16 +71,13 @@ func (mgr *InspectTaskMgr) doInspect(ctx context.Context, task *proto.VolumeInsp
 
 	mode := task.Mode
 	replicas := task.Replicas
-	ret := proto.VolumeInspectRet{TaskID: task.TaskId}
+	ret := &proto.VolumeInspectRet{TaskID: task.TaskId}
 
 	if len(replicas) != workutils.AllReplCnt(mode) {
 		span.Errorf("replicas length is invalid: taskID[%s], mode[%d], expect len[%d], actual len[%d]",
-			task.TaskId,
-			mode,
-			workutils.AllReplCnt(mode),
-			len(replicas))
+			task.TaskId, mode, workutils.AllReplCnt(mode), len(replicas))
 		ret.InspectErrStr = "unexpect:code mode not match"
-		return &ret
+		return ret
 	}
 
 	replicasBids := GetReplicasBids(ctx, mgr.bidGetter, replicas)
@@ -99,7 +85,7 @@ func (mgr *InspectTaskMgr) doInspect(ctx context.Context, task *proto.VolumeInsp
 		if replBids.RetErr != nil {
 			span.Errorf("get replicas bids failed: vuid[%d], err[%+v]", vuid, replBids.RetErr)
 			ret.InspectErrStr = replBids.RetErr.Error()
-			return &ret
+			return ret
 		}
 	}
 
@@ -140,15 +126,5 @@ func (mgr *InspectTaskMgr) doInspect(ctx context.Context, task *proto.VolumeInsp
 		}
 	}
 	ret.MissedShards = allBlobMissed
-	return &ret
-}
-
-func (mgr *InspectTaskMgr) reportInspectResult(ctx context.Context, inspectRet *proto.VolumeInspectRet) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	args := api.CompleteInspectArgs{VolumeInspectRet: inspectRet}
-	err := mgr.reporter.CompleteInspect(ctx, &args)
-	if err != nil {
-		span.Errorf("report inspect result failed: taskID[%s], err[%+v]", inspectRet.TaskID, err)
-	}
+	return ret
 }

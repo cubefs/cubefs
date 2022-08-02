@@ -30,7 +30,8 @@ import (
 )
 
 func TestGenDownloadPlans(t *testing.T) {
-	replicas, mode := genMockVol(1, codemode.EC15P12)
+	mode := codemode.EC15P12
+	replicas := genMockVol(1, mode)
 	repair := NewShardRecover(replicas, mode, nil, nil, nil, 4, blobnode.RepairIO)
 	badi := []uint8{1, 2}
 	stripe := repair.genGlobalStripe(badi)
@@ -100,7 +101,7 @@ func TestShardsBuf(t *testing.T) {
 
 func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, *MockGetter, []proto.VunitLocation) {
 	bp := workutils.NewByteBufferPool(1024*10, 100)
-	replicas, mode := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	getter := NewMockGetter(replicas, mode)
 
 	bidInfos := []*ShardInfoSimple{}
@@ -327,7 +328,8 @@ func TestRecoverShards2(t *testing.T) {
 }
 
 func TestLocalStripes(t *testing.T) {
-	replicas, mode := genMockVol(1, codemode.EC6P10L2)
+	mode := codemode.EC6P10L2
+	replicas := genMockVol(1, mode)
 	repair := NewShardRecover(replicas, mode, nil, nil, nil, 4, blobnode.RepairIO)
 	for idx, replica := range replicas {
 		require.Equal(t, idx, int(replica.Vuid.Index()))
@@ -426,7 +428,7 @@ func TestDownload(t *testing.T) {
 
 func TestNewShardRecoverWithForbiddenDownload(t *testing.T) {
 	mode := codemode.EC6P6
-	replicas, mode := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	getter := NewMockGetter(replicas, mode)
 	repair := NewShardRecoverWithForbiddenDownload(
 		replicas,
