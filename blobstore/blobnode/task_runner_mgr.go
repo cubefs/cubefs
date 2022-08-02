@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -39,12 +40,12 @@ type TaskRunnerMgr struct {
 
 	idc          string
 	meter        WorkerConfigMeter
-	schedulerCli TaskSchedulerCli
+	schedulerCli client.IScheduler
 	genWorker    WorkerGenerator
 }
 
 // NewTaskRunnerMgr returns task runner manager
-func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, schedulerCli TaskSchedulerCli, genWorker WorkerGenerator) *TaskRunnerMgr {
+func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, schedulerCli client.IScheduler, genWorker WorkerGenerator) *TaskRunnerMgr {
 	return &TaskRunnerMgr{
 		typeMgr: map[proto.TaskType]mapTaskRunner{
 			proto.TaskTypeBalance:       make(mapTaskRunner),
