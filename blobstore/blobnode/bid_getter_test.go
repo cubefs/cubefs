@@ -64,7 +64,7 @@ func TestGetSingleVunitNormalBids(t *testing.T) {
 }
 
 func testGetSingleVunitNormalBids(t *testing.T, mode codemode.CodeMode) {
-	replicas, _ := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
 	sizes := []int64{10, 1024, 1024, 1024, 1024, 1024, 1024}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
@@ -94,7 +94,7 @@ func TestGetReplicasBids(t *testing.T) {
 }
 
 func testGetReplicasBids(t *testing.T, mode codemode.CodeMode) {
-	replicas, _ := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
 	sizes := []int64{10, 1024, 1024, 1024, 1024, 1024, 1024}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
@@ -127,7 +127,7 @@ func TestMergeBids(t *testing.T) {
 }
 
 func testMergeBids(t *testing.T, mode codemode.CodeMode) {
-	replicas, _ := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
 	sizes := []int64{10, 1024, 1024, 1024, 1024, 1024, 1024}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
@@ -158,7 +158,7 @@ func TestGetBenchmarkBids(t *testing.T) {
 }
 
 func testGetBenchmarkBids(t *testing.T, mode codemode.CodeMode) {
-	replicas, _ := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
 	sizes := []int64{10, 1024, 1024, 1024, 1024, 1024, 1024}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)

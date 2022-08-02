@@ -29,7 +29,7 @@ import (
 
 func TestMigrateGenTasklets(t *testing.T) {
 	mode := codemode.EC6P10L2
-	replicas, _ := genMockVol(100, codemode.CodeMode(mode))
+	replicas := genMockVol(100, codemode.CodeMode(mode))
 	badi := 10
 	godi := 11
 	balanceTask := &proto.MigrateTask{
@@ -158,7 +158,7 @@ func TestMigrateGenTasklets(t *testing.T) {
 
 func TestMigrateExecTasklet(t *testing.T) {
 	mode := codemode.EC16P20L2
-	replicas, _ := genMockVol(100, codemode.CodeMode(mode))
+	replicas := genMockVol(100, codemode.CodeMode(mode))
 	badi := 10
 	diskDropTask := &proto.MigrateTask{
 		TaskID:      "mock_disk_drop_task_id",
@@ -228,7 +228,7 @@ func TestMigrateExecTasklet(t *testing.T) {
 
 func TestMigrateCheck(t *testing.T) {
 	mode := codemode.EC16P20L2
-	replicas, _ := genMockVol(100, codemode.CodeMode(mode))
+	replicas := genMockVol(100, codemode.CodeMode(mode))
 	badi := 10
 	diskDropTask := &proto.MigrateTask{
 		TaskID:      "mock_disk_drop_task_id",
@@ -289,7 +289,7 @@ func TestMigrateCheck(t *testing.T) {
 
 func TestMigrateArgs(t *testing.T) {
 	mode := codemode.EC15P12
-	replicas, _ := genMockVol(100, mode)
+	replicas := genMockVol(100, mode)
 	badi := 15
 	diskDropTask := &proto.MigrateTask{
 		TaskID:      "mock_disk_drop_task_id",

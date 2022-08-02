@@ -77,7 +77,7 @@ func getRepairShardsTest(ctx context.Context,
 
 func testGetRepairShards(t *testing.T, mode codemode.CodeMode) {
 	codeInfo := mode.Tactic()
-	replicas, _ := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	bids := []proto.BlobID{1}
 	sizes := []int64{1025}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
@@ -175,7 +175,7 @@ func TestShardRepair(t *testing.T) {
 
 func testShardRepair(t *testing.T, mode codemode.CodeMode) {
 	codeInfo := mode.Tactic()
-	replicas, _ := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	bids := []proto.BlobID{1}
 	sizes := []int64{1025}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
@@ -251,7 +251,7 @@ func TestShardRepair2(t *testing.T) {
 }
 
 func testShardRepair2(t *testing.T, mode codemode.CodeMode) {
-	replicas, _ := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	bids := []proto.BlobID{1}
 	sizes := []int64{1025}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
@@ -288,7 +288,7 @@ func TestCheckOrphanShard(t *testing.T) {
 }
 
 func testCheckOrphanShard(t *testing.T, mode codemode.CodeMode) {
-	replicas, _ := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	bids := []proto.BlobID{1}
 	sizes := []int64{1025}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
