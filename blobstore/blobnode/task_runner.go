@@ -23,9 +23,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
-	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -190,7 +190,7 @@ type TaskRunner struct {
 	stopMu     sync.Mutex
 	stopReason *WorkError
 
-	schedulerCli client.IScheduler
+	schedulerCli scheduler.IScheduler
 
 	statsMu sync.Mutex
 	stats   proto.TaskStatistics // work run statics info
@@ -198,9 +198,9 @@ type TaskRunner struct {
 
 // NewTaskRunner return task runner
 func NewTaskRunner(ctx context.Context, taskID string, w ITaskWorker, idc string,
-	taskletRunConcurrency int, schedulerCli client.IScheduler) *TaskRunner {
-	ctx, cancel := context.WithCancel(ctx)
+	taskletRunConcurrency int, schedulerCli scheduler.IScheduler) *TaskRunner {
 	span, ctx := trace.StartSpanFromContext(ctx, "taskRunner")
+	ctx, cancel := context.WithCancel(ctx)
 
 	task := TaskRunner{
 		taskID:                taskID,
@@ -238,7 +238,7 @@ func (r *TaskRunner) Run() {
 	r.stats.InitTotal(totalDataSize, totalShardCnt)
 	r.stats.Add(migratedDataSize, migratedShardCnt)
 	r.statsMu.Unlock()
-	r.statsAndReportTask(r.ctx, 0, 0)
+	r.statsAndReportTask(0, 0)
 
 	// all tasks are put into the task pool at one time to be executed
 	span.Infof("start exec task: taskID[%s], tasklets len[%d]", r.taskID, len(tasklets))
@@ -289,7 +289,7 @@ func (r *TaskRunner) execTaskletWrap(ctx context.Context, t Tasklet) {
 			return
 		}
 
-		r.statsAndReportTask(r.ctx, t.DataSizeByte(), uint64(len(t.bids)))
+		r.statsAndReportTask(t.DataSizeByte(), uint64(len(t.bids)))
 	}
 }
 
@@ -311,6 +311,10 @@ func (r *TaskRunner) stopWithFail(fail *WorkError) {
 	r.cancel()
 }
 
+func (r *TaskRunner) newCtx() context.Context {
+	return trace.ContextWithSpan(context.Background(), r.span)
+}
+
 func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 	span := r.span
 
@@ -327,7 +331,8 @@ func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 			Reason:   retErr.Error(),
 		}
 		span.Infof("reclaim task: taskID[%s], err[%s]", r.taskID, retErr.String())
-		err := r.schedulerCli.ReclaimTask(r.ctx, &args)
+
+		err := r.schedulerCli.ReclaimTask(r.newCtx(), &args)
 		if err != nil {
 			span.Errorf("reclaim task failed: taskID[%s], taskType[%s], src[%+v], dst[%+v], code[%d], err[%+v]",
 				taskID, taskType, src, dest, rpc.DetectStatusCode(err), err)
@@ -346,7 +351,7 @@ func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 		Dest:     dest,
 		Reason:   retErr.Error(),
 	}
-	err := r.schedulerCli.CancelTask(r.ctx, &args)
+	err := r.schedulerCli.CancelTask(r.newCtx(), &args)
 	if err != nil {
 		span.Errorf("cancel failed: taskID[%s], taskType[%s], src[%+v], dest[%+v], code[%d], err[%+v]",
 			taskID, taskType, src, dest, rpc.DetectStatusCode(err), err)
@@ -366,14 +371,14 @@ func (r *TaskRunner) completeTask() {
 		Src:      src,
 		Dest:     dest,
 	}
-	err := r.schedulerCli.CompleteTask(r.ctx, &args)
+	err := r.schedulerCli.CompleteTask(r.newCtx(), &args)
 	if err != nil {
 		r.span.Errorf("complete failed: taskID[%s], taskType[%s], src[%+v], dest[%+v], code[%d], err[%+v]",
 			taskID, taskType, src, dest, rpc.DetectStatusCode(err), err)
 	}
 }
 
-func (r *TaskRunner) statsAndReportTask(ctx context.Context, increaseDataSize, increaseShardCnt uint64) {
+func (r *TaskRunner) statsAndReportTask(increaseDataSize, increaseShardCnt uint64) {
 	r.statsMu.Lock()
 	r.stats.Add(increaseDataSize, increaseShardCnt)
 	r.statsMu.Unlock()
@@ -385,7 +390,7 @@ func (r *TaskRunner) statsAndReportTask(ctx context.Context, increaseDataSize, i
 		IncreaseDataSizeByte: int(increaseDataSize),
 		IncreaseShardCnt:     int(increaseShardCnt),
 	}
-	err := r.schedulerCli.ReportTask(ctx, &reportArgs)
+	err := r.schedulerCli.ReportTask(r.newCtx(), &reportArgs)
 	if err != nil {
 		r.span.Errorf("report task failed: taskID[%s], code[%d], err[%+v]", r.taskID, rpc.DetectStatusCode(err), err)
 	}

@@ -101,7 +101,7 @@ type WorkerService struct {
 	shardRepairLimit limit.Limiter
 	shardRepairer    *ShardRepairer
 
-	schedulerCli client.IScheduler
+	schedulerCli scheduler.IScheduler
 	blobNodeCli  client.IBlobNode
 }
 
@@ -144,7 +144,7 @@ func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID pro
 	base.BigBufPool = base.NewByteBufferPool(cfg.BigBufPool.BufSizeByte, cfg.BigBufPool.PoolSize)
 	base.SmallBufPool = base.NewByteBufferPool(cfg.SmallBufPool.BufSizeByte, cfg.SmallBufPool.PoolSize)
 
-	schedulerCli := client.NewSchedulerClient(&cfg.Scheduler, service, clusterID)
+	schedulerCli := scheduler.New(&cfg.Scheduler, service, clusterID)
 	blobNodeCli := client.NewBlobNodeClient(&cfg.BlobNode)
 
 	taskRunnerMgr := NewTaskRunnerMgr(idc, cfg.WorkerConfigMeter, schedulerCli, NewMigrateWorker)

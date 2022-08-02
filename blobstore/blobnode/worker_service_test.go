@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
@@ -27,14 +26,21 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/limit/count"
 )
+
+func getDefaultConfig() WorkerConfig {
+	cfg := WorkerConfig{}
+	cfg.checkAndFix()
+	return cfg
+}
 
 type mBlobNodeCli struct{}
 
@@ -62,17 +68,20 @@ func (m *mBlobNodeCli) PutShard(ctx context.Context, location proto.VunitLocatio
 	return
 }
 
-type mScheCli struct {
-	id                int
-	inspectID         int
-	repairTaskCnt     int
-	diskDropTaskCnt   int
-	balanceTaskCnt    int
-	acquireInspectCnt int
+type mockScheCli struct {
+	*mocks.MockIScheduler
+
+	migrateID       int
+	repairTaskCnt   int
+	diskDropTaskCnt int
+	balanceTaskCnt  int
+
+	inspectID  int
+	inspectCnt int
 }
 
-func (m *mScheCli) AcquireTask(ctx context.Context, args *api.AcquireArgs) (ret *api.WorkerTask, err error) {
-	m.id++
+func (m *mockScheCli) AcquireTask(ctx context.Context, args *scheduler.AcquireArgs) (ret *scheduler.WorkerTask, err error) {
+	m.migrateID++
 	mode := codemode.EC6P10L2
 	srcReplicas, _ := genMockVol(1, mode)
 	destVuid, _ := proto.NewVuid(1, uint8(0), 2)
@@ -82,115 +91,75 @@ func (m *mScheCli) AcquireTask(ctx context.Context, args *api.AcquireArgs) (ret 
 		DiskID: 1,
 	}
 
-	task := api.WorkerTask{}
-	switch m.id % 3 {
+	task := proto.MigrateTask{
+		CodeMode:    mode,
+		Destination: dst,
+		Sources:     srcReplicas,
+	}
+	switch m.migrateID % 4 {
 	case 0:
-		task.Task = proto.MigrateTask{
-			TaskID:      fmt.Sprintf("repair_%d", m.id),
-			TaskType:    proto.TaskTypeDiskRepair,
-			CodeMode:    mode,
-			Destination: dst,
-			Sources:     srcReplicas,
-		}
+		task.TaskType = proto.TaskTypeDiskRepair
+		task.TaskID = fmt.Sprintf("repair_%d", m.migrateID)
 		m.repairTaskCnt++
 	case 1:
-		task.Task = proto.MigrateTask{
-			TaskID:      fmt.Sprintf("balance_%d", m.id),
-			TaskType:    proto.TaskTypeBalance,
-			CodeMode:    mode,
-			Destination: dst,
-			Sources:     srcReplicas,
-		}
+		task.TaskType = proto.TaskTypeBalance
+		task.TaskID = fmt.Sprintf("balance_%d", m.migrateID)
 		m.balanceTaskCnt++
 	case 2:
-		task.Task = proto.MigrateTask{
-			TaskID:      fmt.Sprintf("disk_drop_%d", m.id),
-			TaskType:    proto.TaskTypeDiskDrop,
-			CodeMode:    mode,
-			Destination: dst,
-			Sources:     srcReplicas,
-		}
+		task.TaskType = proto.TaskTypeDiskDrop
+		task.TaskID = fmt.Sprintf("disk_drop_%d", m.migrateID)
 		m.diskDropTaskCnt++
 	}
-	return &task, nil
+	return &scheduler.WorkerTask{Task: task}, nil
 }
 
-func (m *mScheCli) AcquireInspectTask(ctx context.Context) (ret *api.WorkerInspectTask, err error) {
+func (m *mockScheCli) AcquireInspectTask(ctx context.Context) (ret *scheduler.WorkerInspectTask, err error) {
 	m.inspectID++
-	m.acquireInspectCnt++
-	ret = &api.WorkerInspectTask{}
-	task := &proto.VolumeInspectTask{}
-	task.Mode = codemode.EC6P10L2
-	ret.Task = task
-	ret.Task.TaskId = fmt.Sprintf("inspect_%d", m.inspectID)
+	m.inspectCnt++
+
+	mode := codemode.EC6P10L2
+	ret = &scheduler.WorkerInspectTask{
+		Task: &proto.VolumeInspectTask{
+			TaskId: fmt.Sprintf("inspect_%d", m.inspectID),
+			Mode:   mode,
+		},
+	}
+	if m.inspectID%2 == 0 {
+		ret.Task.Replicas, _ = genMockVol(1, mode)
+	}
 	return
 }
 
-func (m *mScheCli) ReclaimTask(ctx context.Context, args *api.ReclaimTaskArgs) error {
-	return nil
-}
+func newMockWorkService(t *testing.T) (*Service, *mockScheCli) {
+	cli := mocks.NewMockIScheduler(C(t))
+	schedulerCli := &mockScheCli{MockIScheduler: cli}
+	schedulerCli.EXPECT().CompleteInspect(A, A).AnyTimes().Return(nil)
+	blobnodeCli := &mBlobNodeCli{}
 
-func (m *mScheCli) CancelTask(ctx context.Context, args *api.CancelTaskArgs) error {
-	return nil
-}
-
-func (m *mScheCli) CompleteTask(ctx context.Context, args *api.CompleteTaskArgs) error {
-	return nil
-}
-
-func (m *mScheCli) CompleteInspect(ctx context.Context, args *api.CompleteInspectArgs) error {
-	return nil
-}
-
-// report doing tasks
-func (m *mScheCli) RenewalTask(ctx context.Context, args *api.TaskRenewalArgs) (ret *api.TaskRenewalRet, err error) {
-	ret = &api.TaskRenewalRet{}
-	return
-}
-
-func (m *mScheCli) ReportTask(ctx context.Context, args *api.TaskReportArgs) (err error) {
-	return nil
-}
-
-var (
-	workerServer *httptest.Server
-	once         sync.Once
-	schedulerCli = &mScheCli{}
-	blobnodeCli  = &mBlobNodeCli{}
-)
-
-func getDefaultConfig() WorkerConfig {
-	cfg := WorkerConfig{}
-	cfg.checkAndFix()
-	return cfg
-}
-
-func newMockWorkService() *Service {
-	scheduler := schedulerCli
-	blobnode := blobnodeCli
 	workSvr := &WorkerService{
 		Closer: closer.New(),
+		WorkerConfig: WorkerConfig{
+			WorkerConfigMeter: WorkerConfigMeter{
+				MaxTaskRunnerCnt:   100,
+				InspectConcurrency: 1,
+			},
+			AcquireIntervalMs: 1,
+		},
 
 		shardRepairLimit: count.New(1),
-		schedulerCli:     scheduler,
-		blobNodeCli:      blobnode,
-		WorkerConfig:     WorkerConfig{AcquireIntervalMs: 1},
+		schedulerCli:     schedulerCli,
+		blobNodeCli:      blobnodeCli,
 
-		taskRunnerMgr:  NewTaskRunnerMgr("z0", getDefaultConfig().WorkerConfigMeter, scheduler, NewMockMigrateWorker),
-		inspectTaskMgr: NewInspectTaskMgr(1, blobnode, scheduler),
+		taskRunnerMgr:  NewTaskRunnerMgr("z0", getDefaultConfig().WorkerConfigMeter, schedulerCli, NewMockMigrateWorker),
+		inspectTaskMgr: NewInspectTaskMgr(1, blobnodeCli, schedulerCli),
 	}
-	return &Service{WorkerService: workSvr}
-}
-
-func runMockService(s *Service) string {
-	once.Do(func() {
-		workerServer = httptest.NewServer(NewHandler(s))
-	})
-	return workerServer.URL
+	return &Service{WorkerService: workSvr}, schedulerCli
 }
 
 func TestServiceAPI(t *testing.T) {
-	runMockService(newMockWorkService())
+	service, _ := newMockWorkService(t)
+	defer service.WorkerService.Close()
+	workerServer := httptest.NewServer(NewHandler(service))
 	workerCli := bnapi.New(&bnapi.Config{})
 	testCases := []struct {
 		args *bnapi.ShardRepairArgs
@@ -212,35 +181,33 @@ func TestServiceAPI(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestSvr(t *testing.T) {
-	svr := newMockWorkService()
-	var wg sync.WaitGroup
-	wg.Add(1)
+func TestWorkerService(t *testing.T) {
+	svr, schedulerCli := newMockWorkService(t)
+	closed := make(chan struct{})
 	go func() {
 		svr.WorkerService.Run()
-		wg.Done()
+		close(closed)
 	}()
-
 	time.Sleep(100 * time.Millisecond)
 	svr.WorkerService.Close()
-	wg.Wait()
+	<-closed
 
 	typeMgr := svr.WorkerService.taskRunnerMgr.typeMgr
 	require.Equal(t, schedulerCli.repairTaskCnt, len(typeMgr[proto.TaskTypeDiskRepair]))
 	require.Equal(t, schedulerCli.balanceTaskCnt, len(typeMgr[proto.TaskTypeBalance]))
 	require.Equal(t, schedulerCli.diskDropTaskCnt, len(typeMgr[proto.TaskTypeDiskDrop]))
+	require.Less(t, 2, schedulerCli.inspectCnt)
 }
 
 func TestNewWorkService(t *testing.T) {
-	cfg := &WorkerConfig{}
 	clusterMgr := cmapi.New(&cmapi.Config{})
-	_, err := NewWorkerService(cfg, clusterMgr, proto.ClusterID(1), "z0")
+	svr, err := NewWorkerService(&WorkerConfig{}, clusterMgr, 1, "z0")
 	require.NoError(t, err)
+	svr.Close()
 }
 
 func TestFixConfigItem(t *testing.T) {
 	var item int
-	item = 0
 	fixConfigItemInt(&item, 100)
 	require.Equal(t, item, 100)
 
