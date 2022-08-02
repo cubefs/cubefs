@@ -36,12 +36,6 @@ import (
 // ErrNotEnoughWellReplicaCnt well replicas cnt is not enough
 var ErrNotEnoughWellReplicaCnt = errors.New("well replicas cnt is not enough")
 
-// BidInfoGetter defines the clustermgr interface used by bid getter
-type BidInfoGetter interface {
-	// ListShards returns shards info of location
-	ListShards(ctx context.Context, location proto.VunitLocation) (shards []*client.ShardInfo, err error)
-}
-
 // ShardInfoSimple with blob id and size
 type ShardInfoSimple struct {
 	Bid  proto.BlobID
@@ -56,7 +50,7 @@ type ShardInfoWithCrc struct {
 }
 
 // GetSingleVunitNormalBids returns single volume unit bids info
-func GetSingleVunitNormalBids(ctx context.Context, cli BidInfoGetter, replica proto.VunitLocation) (bids []*ShardInfoWithCrc, err error) {
+func GetSingleVunitNormalBids(ctx context.Context, cli client.IBlobNode, replica proto.VunitLocation) (bids []*ShardInfoWithCrc, err error) {
 	shards, err := cli.ListShards(ctx, replica)
 	if err != nil {
 		return nil, err
@@ -83,11 +77,7 @@ type ReplicaBidsRet struct {
 }
 
 // GetReplicasBids returns replicas bids info
-func GetReplicasBids(
-	ctx context.Context,
-	cli BidInfoGetter,
-	replicas []proto.VunitLocation,
-) map[proto.Vuid]*ReplicaBidsRet {
+func GetReplicasBids(ctx context.Context, cli client.IBlobNode, replicas []proto.VunitLocation) map[proto.Vuid]*ReplicaBidsRet {
 	result := make(map[proto.Vuid]*ReplicaBidsRet)
 	wg := sync.WaitGroup{}
 	var mu sync.Mutex
@@ -133,12 +123,8 @@ func MergeBids(replicasBids map[proto.Vuid]*ReplicaBidsRet) []*ShardInfoSimple {
 }
 
 // GetBenchmarkBids returns bench mark bids
-func GetBenchmarkBids(
-	ctx context.Context,
-	cli BidInfoGetter,
-	replicas []proto.VunitLocation,
-	mode codemode.CodeMode,
-	badIdxs []uint8) (bids []*ShardInfoSimple, err error) {
+func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas []proto.VunitLocation,
+	mode codemode.CodeMode, badIdxs []uint8) (bids []*ShardInfoSimple, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	globalReplicas := workutils.AbstractGlobalStripeReplicas(replicas, mode, badIdxs)

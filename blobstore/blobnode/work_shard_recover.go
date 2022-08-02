@@ -25,6 +25,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
+	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -42,11 +43,6 @@ var (
 )
 
 const defaultGetConcurrency = 100
-
-// ShardGetter define interface of blobnode used for shard getter
-type ShardGetter interface {
-	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType blobnode.IOType) (body io.ReadCloser, crc32 uint32, err error)
-}
 
 type (
 	// N data block count
@@ -343,21 +339,16 @@ type ShardRecover struct {
 	codeMode           codemode.CodeMode
 	repairBidsReadOnly []*ShardInfoSimple // Strictly not allow modification
 
-	shardGetter              ShardGetter
+	shardGetter              client.IBlobNode
 	vunitShardGetConcurrency int
 	ioType                   blobnode.IOType
 	ds                       *downloadStatus
 }
 
 // NewShardRecover returns shard recover
-func NewShardRecover(
-	replicas []proto.VunitLocation,
-	mode codemode.CodeMode,
-	bidInfos []*ShardInfoSimple,
-	bufPool *workutils.ByteBufferPool,
-	shardGetter ShardGetter,
-	vunitShardGetConcurrency int,
-	ioType blobnode.IOType) *ShardRecover {
+func NewShardRecover(replicas []proto.VunitLocation, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
+	bufPool *workutils.ByteBufferPool, shardGetter client.IBlobNode, vunitShardGetConcurrency int, ioType blobnode.IOType,
+) *ShardRecover {
 	if vunitShardGetConcurrency <= 0 {
 		vunitShardGetConcurrency = defaultGetConcurrency
 	}
@@ -376,14 +367,8 @@ func NewShardRecover(
 }
 
 // NewShardRecoverWithForbiddenDownload returns shard recover with forbidden download
-func NewShardRecoverWithForbiddenDownload(
-	replicas []proto.VunitLocation,
-	mode codemode.CodeMode,
-	bidInfos []*ShardInfoSimple,
-	bufPool *workutils.ByteBufferPool,
-	shardGetter ShardGetter,
-	vunitShardGetConcurrency int,
-	forbidenDownload []proto.Vuid,
+func NewShardRecoverWithForbiddenDownload(replicas []proto.VunitLocation, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
+	bufPool *workutils.ByteBufferPool, shardGetter client.IBlobNode, vunitShardGetConcurrency int, forbidenDownload []proto.Vuid,
 ) *ShardRecover {
 	shardRecover := NewShardRecover(replicas, mode, bidInfos, bufPool, shardGetter, vunitShardGetConcurrency, blobnode.RepairIO)
 	for _, vuid := range forbidenDownload {
