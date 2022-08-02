@@ -16,41 +16,33 @@ package blobnode
 
 import (
 	"context"
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
-	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-type mockResultReporter struct {
-	reportErr error
+func newMockReporter(t *testing.T) scheduler.IScheduler {
+	cli := mocks.NewMockIScheduler(C(t))
+	cli.EXPECT().CompleteInspect(A, A).AnyTimes().Return(nil)
+	return cli
 }
 
-func (m *mockResultReporter) CompleteInspect(ctx context.Context, args *api.CompleteInspectArgs) (err error) {
-	time.Sleep(time.Duration(50) * time.Millisecond)
-	return m.reportErr
+func TestTaskInspectMgrDo(t *testing.T) {
+	testWithAllMode(t, testTaskInspectMgrDo)
 }
 
-func TestDodoInspect(t *testing.T) {
-	testWithAllMode(t, testDodoInspect)
-}
-
-func testDodoInspect(t *testing.T, mode codemode.CodeMode) {
-	codeInfo := mode.Tactic()
-	m := codeInfo.M
-
-	replicas, _ := genMockVol(1, mode)
+func testTaskInspectMgrDo(t *testing.T, mode codemode.CodeMode) {
+	replicas := genMockVol(1, mode)
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
 	sizes := []int64{10, 1024, 1024, 1024, 1024, 1024, 1024}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
-	reporter := &mockResultReporter{nil}
-	mgr := NewInspectTaskMgr(1, getter, reporter)
+	mgr := NewInspectTaskMgr(1, getter, newMockReporter(t))
 	task := proto.VolumeInspectTask{
 		TaskId:   "InspectTask_XXX",
 		Mode:     mode,
@@ -87,7 +79,7 @@ func testDodoInspect(t *testing.T, mode codemode.CodeMode) {
 
 	// delete m
 	delStartIdx := 1
-	delEndIdx := m
+	delEndIdx := mode.Tactic().M
 	for _, replica := range replicas[delStartIdx:delEndIdx] {
 		getter.Delete(context.Background(), replica.Vuid, 1)
 		expectMissedShard = append(expectMissedShard, &proto.MissedShard{Vuid: replica.Vuid, Bid: 1})
@@ -125,29 +117,23 @@ func testDodoInspect(t *testing.T, mode codemode.CodeMode) {
 
 func verifyInspectResult(t *testing.T, expect, FailShards []*proto.MissedShard) {
 	require.Equal(t, len(expect), len(FailShards))
-	expectM := make(map[string]bool)
-	for _, e := range expect {
-		expectM[missedShardStr(e)] = true
+	expectM := make(map[proto.MissedShard]bool)
+	for _, shard := range expect {
+		expectM[*shard] = true
 	}
-
-	for _, e := range FailShards {
-		_, ok := expectM[missedShardStr(e)]
+	for _, shard := range FailShards {
+		_, ok := expectM[*shard]
 		require.True(t, ok)
 	}
 }
 
-func missedShardStr(e *proto.MissedShard) string {
-	return fmt.Sprintf("%d_%d", e.Vuid, e.Bid)
-}
-
-func TestAddTask(t *testing.T) {
+func TestTaskInspectMgrAddTask(t *testing.T) {
 	mode := codemode.EC6P10L2
-	replicas, _ := genMockVol(1, mode)
+	replicas := genMockVol(1, mode)
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
 	sizes := []int64{10, 1024, 1024, 1024, 1024, 1024, 1024}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
-	reporter := &mockResultReporter{nil}
-	mgr := NewInspectTaskMgr(1, getter, reporter)
+	mgr := NewInspectTaskMgr(1, getter, newMockReporter(t))
 	task := proto.VolumeInspectTask{
 		TaskId:   "InspectTask_XXX",
 		Mode:     mode,
