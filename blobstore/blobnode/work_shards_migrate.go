@@ -17,9 +17,7 @@ package blobnode
 import (
 	"bytes"
 	"context"
-	"io"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -35,26 +33,13 @@ var (
 	ErrBidNotMatch = errors.New("bid not match")
 )
 
-// IVunitAccess define the interface of blobnode used for volume unit access
-type IVunitAccess interface {
-	StatChunk(ctx context.Context, location proto.VunitLocation) (ci *client.ChunkInfo, err error)
-	StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (si *client.ShardInfo, err error)
-	ListShards(ctx context.Context, location proto.VunitLocation) (shards []*client.ShardInfo, err error)
-	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType blobnode.IOType) (body io.ReadCloser, crc32 uint32, err error)
-	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType blobnode.IOType) (err error)
-}
-
 // GenMigrateBids generates migrate blob ids
-func GenMigrateBids(
-	ctx context.Context,
-	vunitAccess IVunitAccess,
-	srcReplicas []proto.VunitLocation,
-	dst proto.VunitLocation,
-	mode codemode.CodeMode,
-	badIdxs []uint8) (migBids, benchmarkBids []*ShardInfoSimple, wErr *WorkError) {
+func GenMigrateBids(ctx context.Context, blobnodeCli client.IBlobNode, srcReplicas []proto.VunitLocation,
+	dst proto.VunitLocation, mode codemode.CodeMode, badIdxs []uint8,
+) (migBids, benchmarkBids []*ShardInfoSimple, wErr *WorkError) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	benchmarkBids, err := GetBenchmarkBids(ctx, vunitAccess, srcReplicas, mode, badIdxs)
+	benchmarkBids, err := GetBenchmarkBids(ctx, blobnodeCli, srcReplicas, mode, badIdxs)
 	if err != nil {
 		span.Errorf("get benchmark bids failed: err[%v]", err)
 		return nil, nil, SrcError(err)
@@ -63,7 +48,7 @@ func GenMigrateBids(
 
 	// get destination bids and check the meta info,if the bid is good,
 	// which means we don’t need to migrate the corresponding bid
-	destBids, err := GetSingleVunitNormalBids(ctx, vunitAccess, dst)
+	destBids, err := GetSingleVunitNormalBids(ctx, blobnodeCli, dst)
 	if err != nil {
 		span.Errorf("get single vunit normal bids failed: dst[%+v], err[%+v]", dst, err)
 		return nil, nil, DstError(err)
@@ -89,14 +74,8 @@ func GenMigrateBids(
 }
 
 // MigrateBids migrate the bids data to destination
-func MigrateBids(
-	ctx context.Context,
-	shardRecover *ShardRecover,
-	badIdx uint8,
-	destLocation proto.VunitLocation,
-	direct bool,
-	bids []*ShardInfoSimple,
-	vunitAccess IVunitAccess) *WorkError {
+func MigrateBids(ctx context.Context, shardRecover *ShardRecover, badIdx uint8, destLocation proto.VunitLocation,
+	direct bool, bids []*ShardInfoSimple, blobnodeCli client.IBlobNode) *WorkError {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// step1 recover shards
@@ -116,7 +95,7 @@ func MigrateBids(
 			return OtherError(err)
 		}
 		err = retry.Timed(3, 1000).On(func() error {
-			return vunitAccess.PutShard(ctx, destLocation, bid.Bid, bid.Size, bytes.NewReader(data), shardRecover.ioType)
+			return blobnodeCli.PutShard(ctx, destLocation, bid.Bid, bid.Size, bytes.NewReader(data), shardRecover.ioType)
 		})
 		if err != nil {
 			return DstError(err)
@@ -127,11 +106,11 @@ func MigrateBids(
 }
 
 // CheckVunit checks volume unit info
-func CheckVunit(ctx context.Context, expectBids []*ShardInfoSimple, dest proto.VunitLocation, vunitAccess IVunitAccess) *WorkError {
+func CheckVunit(ctx context.Context, expectBids []*ShardInfoSimple, dest proto.VunitLocation, blobnodeCli client.IBlobNode) *WorkError {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// check dst shards
-	destBids, err := GetSingleVunitNormalBids(ctx, vunitAccess, dest)
+	destBids, err := GetSingleVunitNormalBids(ctx, blobnodeCli, dest)
 	if err != nil {
 		return DstError(err)
 	}

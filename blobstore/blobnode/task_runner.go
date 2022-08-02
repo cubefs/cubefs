@@ -14,9 +14,6 @@
 
 package blobnode
 
-// duties：schedule long period task(disk repair & balance & disk drop) to run
-// a task split many tasklets to run in concurrent
-
 import (
 	"context"
 	"errors"
