@@ -3,6 +3,7 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/log"
+	"time"
 )
 
 func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
@@ -13,7 +14,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 				"checkMigratedDataPartitionsRecoveryProgress occurred panic")
 		}
 	}()
-
+	unrecoverPartitionIDs := make(map[uint64]int64, 0)
 	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		newBadDpIds := make([]uint64, 0)
@@ -30,17 +31,19 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 				continue
 			}
 			if partition.isDataCatchUpInStrictMode() {
-				partition.isRecover = false
 				partition.RLock()
+				partition.isRecover = false
 				c.syncUpdateDataPartition(partition)
 				partition.RUnlock()
 			} else {
 				newBadDpIds = append(newBadDpIds, partitionID)
+				if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+					unrecoverPartitionIDs[partitionID] = partition.modifyTime
+				}
 			}
 		}
 
 		if len(newBadDpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("action[checkMigratedDpRecoveryProgress] clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
 			c.MigratedDataPartitionIds.Delete(key)
 		} else {
 			c.MigratedDataPartitionIds.Store(key, newBadDpIds)
@@ -48,6 +51,9 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 
 		return true
 	})
+	if len(unrecoverPartitionIDs) != 0 {
+		Warn(c.Name, fmt.Sprintf("action[checkMigratedDpRecoveryProgress] clusterID[%v],has[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs))
+	}
 }
 
 func (c *Cluster) putMigratedDataPartitionIDs(replica *DataReplica, addr string, partitionID uint64) {
@@ -101,6 +107,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 		dentryDiff  float64
 		applyIDDiff float64
 	)
+	unrecoverMpIDs := make(map[uint64]int64, 0)
 	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badMetaPartitionIds := value.([]uint64)
 		newBadMpIds := make([]uint64, 0)
@@ -121,12 +128,15 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 			//inodeDiff = partition.getPercentMinusOfInodeCount()
 			applyIDDiff = partition.getMinusOfApplyID()
 			if dentryDiff == 0 && applyIDDiff == 0 {
-				partition.IsRecover = false
 				partition.RLock()
+				partition.IsRecover = false
 				c.syncUpdateMetaPartition(partition)
 				partition.RUnlock()
 			} else {
 				newBadMpIds = append(newBadMpIds, partitionID)
+				if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+					unrecoverMpIDs[partitionID] = partition.modifyTime
+				}
 			}
 		}
 
@@ -139,4 +149,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 
 		return true
 	})
+	if len(unrecoverMpIDs) != 0 {
+		Warn(c.Name, fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverMpIDs), unrecoverMpIDs))
+	}
 }

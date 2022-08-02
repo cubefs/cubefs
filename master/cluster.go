@@ -1512,6 +1512,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	dp.Lock()
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
+	dp.modifyTime = time.Now().Unix()
 	c.syncUpdateDataPartition(dp)
 	dp.Unlock()
 	dpReplica, _ = dp.getReplica(oldAddr)
@@ -2005,6 +2006,7 @@ func (c *Cluster) resetDataPartition(dp *DataPartition, panicHosts []string) (er
 	dp.Lock()
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
+	dp.modifyTime = time.Now().Unix()
 	dp.PanicHosts = panicHosts
 	c.syncUpdateDataPartition(dp)
 	dp.Unlock()
@@ -3076,7 +3078,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64,
 	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol, err error) {
 	var (
-		id uint64
+		id              uint64
 		smartEnableTime int64
 	)
 	var createTime = time.Now().Unix() // record unix seconds of volume create time

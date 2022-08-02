@@ -139,7 +139,7 @@ func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress() {
 					c.checkMigratedMetaPartitionRecoveryProgress()
 				}
 			}
-			time.Sleep(3 * time.Second * defaultIntervalToCheckDataPartition)
+			time.Sleep(3 * time.Minute)
 		}
 	}()
 }
@@ -156,6 +156,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 	var diff float64
 	var normalReplicaCount int
 	c.checkFulfillMetaReplica()
+	unrecoverMpIDs := make(map[uint64]int64, 0)
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badMetaPartitionIds := value.([]uint64)
 		newBadMpIds := make([]uint64, 0)
@@ -173,18 +174,19 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			}
 			diff, normalReplicaCount = partition.getMinusOfMaxInodeID()
 			if diff < defaultMinusOfMaxInodeID && int(vol.mpReplicaNum) <= normalReplicaCount {
-				partition.IsRecover = false
 				partition.RLock()
+				partition.IsRecover = false
 				c.syncUpdateMetaPartition(partition)
 				partition.RUnlock()
-				Warn(c.Name, fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],vol[%v] partitionID[%v] has recovered success", c.Name, partition.volName, partitionID))
 			} else {
 				newBadMpIds = append(newBadMpIds, partitionID)
+				if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+					unrecoverMpIDs[partitionID] = partition.modifyTime
+				}
 			}
 		}
 
 		if len(newBadMpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],node[%v] has recovered success", c.Name, key))
 			c.BadMetaPartitionIds.Delete(key)
 		} else {
 			c.BadMetaPartitionIds.Store(key, newBadMpIds)
@@ -192,6 +194,9 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 
 		return true
 	})
+	if len(unrecoverMpIDs) != 0 {
+		Warn(c.Name, fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverMpIDs), unrecoverMpIDs))
+	}
 }
 
 // Add replica for the partition whose replica number is less than replicaNum
@@ -217,7 +222,7 @@ func (c *Cluster) fulfillMetaReplica(partitionID uint64, badAddr string) (isPush
 	var (
 		newPeer   proto.Peer
 		partition *MetaPartition
-		vol 	  *Vol
+		vol       *Vol
 		err       error
 	)
 	defer func() {

@@ -48,6 +48,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 		}
 	}()
 	c.checkFulfillDataReplica()
+	unrecoverPartitionIDs := make(map[uint64]int64, 0)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		newBadDpIds := make([]uint64, 0)
@@ -71,18 +72,19 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				}
 			}
 			if partition.isDataCatchUp() && len(partition.Replicas) >= int(replicaNum) {
-				partition.isRecover = false
 				partition.RLock()
+				partition.isRecover = false
 				c.syncUpdateDataPartition(partition)
 				partition.RUnlock()
-				Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
 			} else {
 				newBadDpIds = append(newBadDpIds, partitionID)
+				if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+					unrecoverPartitionIDs[partitionID] = partition.modifyTime
+				}
 			}
 		}
 
 		if len(newBadDpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
 			c.BadDataPartitionIds.Delete(key)
 		} else {
 			c.BadDataPartitionIds.Store(key, newBadDpIds)
@@ -90,6 +92,9 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 
 		return true
 	})
+	if len(unrecoverPartitionIDs) != 0 {
+		Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],has[%v] has offlined more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs))
+	}
 
 }
 

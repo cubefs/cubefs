@@ -177,6 +177,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 	}
 	mp.RLock()
 	c.syncUpdateMetaPartition(mp)
+	mp.modifyTime = time.Now().Unix()
 	mp.RUnlock()
 	return
 errHandler:
@@ -417,6 +418,7 @@ func (c *Cluster) resetMetaPartition(mp *MetaPartition, panicHosts []string) (er
 	mp.Status = proto.ReadOnly
 	mp.IsRecover = true
 	mp.PanicHosts = panicHosts
+	mp.modifyTime = time.Now().Unix()
 	c.syncUpdateMetaPartition(mp)
 	mp.Unlock()
 

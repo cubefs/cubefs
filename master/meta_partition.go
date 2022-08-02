@@ -43,8 +43,8 @@ type MetaReplica struct {
 	Status      int8 // unavailable, readOnly, readWrite
 	IsLeader    bool
 	IsLearner   bool
-	StoreMode	proto.StoreMode
-	ApplyId		uint64
+	StoreMode   proto.StoreMode
+	ApplyId     uint64
 	metaNode    *MetaNode
 }
 
@@ -69,6 +69,7 @@ type MetaPartition struct {
 	Learners      []proto.Learner
 	MissNodes     map[string]int64 `graphql:"-"`
 	OfflinePeerID uint64
+	modifyTime    int64
 	//PanicHosts records the hosts discard by reset peer action.
 	PanicHosts   []string
 	LoadResponse []*proto.MetaPartitionLoadResponse
@@ -580,7 +581,7 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 		Members:     peers,
 		VolName:     volName,
 		Learners:    mp.Learners,
-		StoreMode: 	 storeMode,
+		StoreMode:   storeMode,
 		TrashDays:   trashDays,
 	}
 	if specifyAddrs == nil {

@@ -347,6 +347,9 @@ func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsag
 	if len(partition.Replicas) == 0 {
 		return
 	}
+	if partition.isRecover {
+		return
+	}
 	diff := 0.0
 	sentry := float64(partition.Replicas[0].Used)
 	for _, dr := range partition.Replicas {

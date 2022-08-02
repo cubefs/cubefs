@@ -553,6 +553,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 	}
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
+	dp.modifyTime = time.Now().Unix()
 	m.cluster.putBadDataPartitionIDs(nil, addr, dp.PartitionID)
 	go m.cluster.syncDataPartitionReplicasToDataNode(dp)
 
@@ -692,6 +693,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 	}
 	msg = fmt.Sprintf("meta partitionID[%v]  add replica [%v] successfully", partitionID, addr)
 	mp.IsRecover = true
+	mp.modifyTime = time.Now().Unix()
 	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -844,6 +846,7 @@ func (m *Server) addDataReplicaLearner(w http.ResponseWriter, r *http.Request) {
 	}
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
+	dp.modifyTime = time.Now().Unix()
 	m.cluster.putBadDataPartitionIDs(nil, addr, dp.PartitionID)
 	go m.cluster.syncDataPartitionReplicasToDataNode(dp)
 
@@ -1689,7 +1692,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		ConvertState:         vol.convertState,
 		MpLayout:             vol.MpLayout,
 		IsSmart:              vol.isSmart,
-		SmartEnableTime:           time.Unix(vol.smartEnableTime, 0).Format(proto.TimeFormat),
+		SmartEnableTime:      time.Unix(vol.smartEnableTime, 0).Format(proto.TimeFormat),
 		SmartRules:           vol.smartRules,
 		TotalSize:            stat.TotalSize,
 		UsedSize:             stat.UsedSize,

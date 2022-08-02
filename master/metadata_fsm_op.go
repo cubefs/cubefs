@@ -138,21 +138,21 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 }
 
 type dataPartitionValue struct {
-	PartitionID   uint64
-	CreateTime    int64
-	ReplicaNum    uint8
-	Hosts         string
-	Peers         []bsProto.Peer
-	Learners      []bsProto.Learner
-	Status        int8
-	VolID         uint64
-	VolName       string
-	OfflinePeerID uint64
-	Replicas      []*replicaValue
-	IsRecover     bool
-	IsFrozen      bool
-	PanicHosts    []string
-	IsManual      bool
+	PartitionID     uint64
+	CreateTime      int64
+	ReplicaNum      uint8
+	Hosts           string
+	Peers           []bsProto.Peer
+	Learners        []bsProto.Learner
+	Status          int8
+	VolID           uint64
+	VolName         string
+	OfflinePeerID   uint64
+	Replicas        []*replicaValue
+	IsRecover       bool
+	IsFrozen        bool
+	PanicHosts      []string
+	IsManual        bool
 	EcMigrateStatus uint8
 }
 
@@ -163,21 +163,21 @@ type replicaValue struct {
 
 func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 	dpv = &dataPartitionValue{
-		PartitionID:   dp.PartitionID,
-		CreateTime:    dp.createTime,
-		ReplicaNum:    dp.ReplicaNum,
-		Hosts:         dp.hostsToString(),
-		Peers:         dp.Peers,
-		Learners:      dp.Learners,
-		Status:        dp.Status,
-		VolID:         dp.VolID,
-		VolName:       dp.VolName,
-		OfflinePeerID: dp.OfflinePeerID,
-		PanicHosts:    dp.PanicHosts,
-		Replicas:      make([]*replicaValue, 0),
-		IsRecover:     dp.isRecover,
-		IsFrozen:      dp.IsFrozen,
-		IsManual:      dp.IsManual,
+		PartitionID:     dp.PartitionID,
+		CreateTime:      dp.createTime,
+		ReplicaNum:      dp.ReplicaNum,
+		Hosts:           dp.hostsToString(),
+		Peers:           dp.Peers,
+		Learners:        dp.Learners,
+		Status:          dp.Status,
+		VolID:           dp.VolID,
+		VolName:         dp.VolName,
+		OfflinePeerID:   dp.OfflinePeerID,
+		PanicHosts:      dp.PanicHosts,
+		Replicas:        make([]*replicaValue, 0),
+		IsRecover:       dp.isRecover,
+		IsFrozen:        dp.IsFrozen,
+		IsManual:        dp.IsManual,
 		EcMigrateStatus: dp.EcMigrateStatus,
 	}
 	for _, replica := range dp.Replicas {
@@ -227,7 +227,7 @@ type volValue struct {
 	ConverState          bsProto.VolConvertState
 	MpLayout             bsProto.MetaPartitionLayout
 	IsSmart              bool
-	SmartEnableTime int64
+	SmartEnableTime      int64
 	SmartRules           []string
 	CompactTag           bsProto.CompactTag
 	CompactTagModifyTime int64
@@ -286,7 +286,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		ConverState:          vol.convertState,
 		MpLayout:             vol.MpLayout,
 		IsSmart:              vol.isSmart,
-		SmartEnableTime: vol.smartEnableTime,
+		SmartEnableTime:      vol.smartEnableTime,
 		SmartRules:           vol.smartRules,
 		CompactTag:           vol.compactTag,
 		CompactTagModifyTime: vol.compactTagModifyTime,
@@ -1012,6 +1012,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setLearners(mpv.Learners)
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
+		mp.modifyTime = time.Now().Unix()
 		mp.PanicHosts = mpv.PanicHosts
 		if mp.IsRecover && len(mp.PanicHosts) > 0 {
 			for _, address := range mp.PanicHosts {
@@ -1059,6 +1060,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp.IsManual = dpv.IsManual
 		dp.IsFrozen = dpv.IsFrozen
 		dp.total = vol.dataPartitionSize
+		dp.modifyTime = time.Now().Unix()
 		if dpv.CreateTime > 0 {
 			dp.createTime = dpv.CreateTime
 		} else {
