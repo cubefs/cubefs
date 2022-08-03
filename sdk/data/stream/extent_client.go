@@ -16,6 +16,7 @@ package stream
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"github.com/cubefs/cubefs/sdk/data/manager"
 	"golang.org/x/time/rate"
@@ -540,6 +541,10 @@ func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data [
 	} else {
 		//read data by offset:size
 		req = NewExtentRequest(int(ek.FileOffset)+offset, size, data, ek)
+		ctx := context.Background()
+		s.client.readLimiter.Wait(ctx)
+		s.client.LimitManager.ReadAlloc(ctx, size)
+
 		read, err = reader.Read(req)
 		if err != nil {
 			return
