@@ -373,9 +373,6 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 	reader.inflightL2cache.Store(cacheKey, true)
 	defer reader.inflightL2cache.Delete(cacheKey)
 
-	// qos control
-	reader.limitManager.ReadAlloc(ctx, int(objExtentKey.Size))
-
 	buf := make([]byte, objExtentKey.Size)
 	read, err := reader.ebs.Read(ctx, reader.volName, buf, 0, uint64(len(buf)), objExtentKey)
 	if err != nil || read != len(buf) {
