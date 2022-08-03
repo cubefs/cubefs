@@ -310,13 +310,14 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 		}
 	}
 
+	readLimitOn := false
 	//read cfs and cache to bcache
 	if rs.extentKey != (proto.ExtentKey{}) {
 		//check if dp is exist in preload sence
 		if err = reader.ec.CheckDataPartitionExsit(rs.extentKey.PartitionId); err == nil {
+			readLimitOn = true
 			readN, err = reader.ec.ReadExtent(reader.ino, &rs.extentKey, buf, int(rs.rOffset), int(rs.rSize))
 			if err == nil && readN == int(rs.rSize) {
-
 				// L2 cache hit.
 				metric := exporter.NewTPCnt("L2CacheGetHit")
 				stat.EndStat("CacheHit-L2", nil, bgTime, 1)
@@ -333,8 +334,10 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 		}
 		log.LogDebugf("TRACE blobStore readSliceRange. cfs block miss.extentKey=%v,err=%v", rs.extentKey, err)
 	}
+	if !readLimitOn {
+		reader.limitManager.ReadAlloc(ctx, int(rs.rSize))
+	}
 
-	reader.limitManager.ReadAlloc(ctx, int(rs.rSize))
 	readN, err = reader.ebs.Read(ctx, reader.volName, buf, rs.rOffset, uint64(rs.rSize), rs.objExtentKey)
 	if err != nil {
 		reader.err <- err
