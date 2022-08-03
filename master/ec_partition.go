@@ -879,7 +879,7 @@ func (ecdp *EcDataPartition) convertToEcPartitionResponse() (ecdpr *proto.EcPart
 	ecdpr.Status = ecdp.Status
 	ecdpr.Hosts = make([]string, len(ecdp.Hosts))
 	copy(ecdpr.Hosts, ecdp.Hosts)
-	ecdpr.LeaderAddr = ecdp.getLeaderAddr()
+	ecdpr.LeaderAddr = ecdp.Hosts[0]
 	ecdpr.DataUnitsNum = ecdp.DataUnitsNum
 	ecdpr.ParityUnitsNum = ecdp.ParityUnitsNum
 	ecdpr.ReplicaNum = ecdp.ReplicaNum
@@ -923,26 +923,6 @@ func (ecdp *EcDataPartition) deleteReplicaByIndex(index int) {
 
 func (ecdp *EcDataPartition) ecHostsToString() string {
 	return strings.Join(ecdp.Hosts, underlineSeparator)
-}
-
-func (ecdp *EcDataPartition) getLeaderAddr() (leaderAddr string) {
-	for _, erp := range ecdp.ecReplicas {
-		if erp.IsLeader {
-			return erp.Addr
-		}
-	}
-	return
-}
-
-func (ecdp *EcDataPartition) getLeaderAddrWithLock() (leaderAddr string) {
-	ecdp.RLock()
-	defer ecdp.RUnlock()
-	for _, replica := range ecdp.ecReplicas {
-		if replica.IsLeader {
-			return replica.Addr
-		}
-	}
-	return
 }
 
 func (ecdp *EcDataPartition) getLiveZones(offlineAddr string) (zones []string) {
@@ -1289,7 +1269,6 @@ func (ecdp *EcDataPartition) appendEcInfoToDataPartitionResponse(dpr *proto.Data
 	dpr.EcHosts = make([]string, len(ecdp.Hosts))
 	copy(dpr.EcHosts, ecdp.Hosts)
 	dpr.Status = proto.ReadOnly
-	dpr.ReplicaNum = ecdp.ReplicaNum
 	dpr.IsRecover = ecdp.isRecover
 }
 

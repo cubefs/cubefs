@@ -1294,11 +1294,21 @@ func (c *Cluster) updateEcNodeStatInfo() {
 	var (
 		total uint64
 		used  uint64
+		totalNodes         int
+		writableNodes      int
+		highUsedRatioNodes int
 	)
 	c.ecNodes.Range(func(addr, node interface{}) bool {
 		ecNode := node.(*ECNode)
 		total = total + ecNode.Total
 		used = used + ecNode.Used
+		totalNodes++
+		if ecNode.isActive && ecNode.isWriteAble() {
+			writableNodes++
+		}
+		if ecNode.UsageRatio >= defaultHighUsedRatioDataNodesThreshold {
+			highUsedRatioNodes++
+		}
 		return true
 	})
 	if total <= 0 {
@@ -1314,6 +1324,9 @@ func (c *Cluster) updateEcNodeStatInfo() {
 	c.ecNodeStatInfo.IncreasedGB = int64(usedGB) - int64(c.ecNodeStatInfo.UsedGB)
 	c.ecNodeStatInfo.UsedGB = usedGB
 	c.ecNodeStatInfo.UsedRatio = strconv.FormatFloat(usedRate, 'f', 3, 32)
+	c.ecNodeStatInfo.TotalNodes = totalNodes
+	c.ecNodeStatInfo.WritableNodes = writableNodes
+	c.ecNodeStatInfo.HighUsedRatioNodes = highUsedRatioNodes
 }
 
 func (c *Cluster) addEcNodeTasks(tasks []*proto.AdminTask) {

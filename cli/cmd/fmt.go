@@ -229,17 +229,28 @@ func formatVolDetailInfoTableRow(vv *proto.SimpleVolView, vi *proto.VolInfo) str
 		formatVolumeStatus(vi.Status), vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 
-// cfs-cli volume info [vol name] -m/-d
+// cfs-cli volume info [vol name] -m/-d/-e
 var (
-	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-18v    %-18v"
+	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v    %-10v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
-		"ID", "REPLICAS", "STATUS", "ISRECOVER", "LEADER", "MEMBERS")
+		"ID", "REPLICAS", "STATUS", "EcMigrateStatus", "ISRECOVER", "LEADER", "MEMBERS")
 )
 
 func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 	return fmt.Sprintf(dataPartitionTablePattern,
-		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), view.IsRecover, view.LeaderAddr,
+		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status),  EcStatusMap[view.EcMigrateStatus], view.IsRecover, view.LeaderAddr,
 		strings.Join(view.Hosts, ","))
+}
+
+var (
+	ecPartitionTablePattern = "%-6v   %-8v   %-8v   %-10v   %-18v"
+	ecPartitionTableHeader  = fmt.Sprintf(ecPartitionTablePattern,
+		"ID", "DataNum", "ParityNum", "STATUS", "MEMBERS")
+)
+
+func formatEcPartitionTableRow(view *proto.EcPartitionResponse) string {
+	return fmt.Sprintf(ecPartitionTablePattern,
+		view.PartitionID, view.DataUnitsNum, view.ParityUnitsNum, formatDataPartitionStatus(view.Status), strings.Join(view.Hosts, ","))
 }
 
 var (
