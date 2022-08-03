@@ -546,7 +546,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 	if followerExist && followerRead == false && proto.IsHot(req.volType) &&
-		(req.dpReplicaNum == 1 || req.dpReplicaNum == 2){
+		(req.dpReplicaNum == 1 || req.dpReplicaNum == 2) {
 		return fmt.Errorf("vol with 1 ro 2 replia should enable followerRead")
 	}
 	req.followerRead = followerRead
@@ -883,6 +883,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 
 		params[clusterLoadFactorKey] = float32(valF)
+	}
+
+	if value = r.FormValue(maxDpCntLimitKey); value != "" {
+		noParams = false
+		var val = uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(maxDpCntLimitKey)
+			return
+		}
+		params[maxDpCntLimitKey] = val
 	}
 
 	if noParams {
