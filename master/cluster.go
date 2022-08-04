@@ -1553,12 +1553,12 @@ func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		return
 	}
 	if !isValidZone {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], partitionId[%v] dpReplicaNum[%v] can not be automatically repaired", vol.Name, vol.zoneName, partition.PartitionID, vol.dpReplicaNum)
+		log.LogDebugf("action[RepairZone], vol[%v], zoneName[%v], partitionId[%v] dpReplicaNum[%v] can not be automatically repaired", vol.Name, vol.zoneName, partition.PartitionID, vol.dpReplicaNum)
 		return
 	}
 	rps := partition.liveReplicas(defaultDataPartitionTimeOutSec)
 	if len(rps) < int(vol.dpReplicaNum) {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], partitionId[%v] live Replicas [%v] less than dpReplicaNum[%v], can not be automatically repaired",
+		log.LogDebugf("action[RepairZone], vol[%v], zoneName[%v], partitionId[%v] live Replicas [%v] less than dpReplicaNum[%v], can not be automatically repaired",
 			vol.Name, vol.zoneName, partition.PartitionID, len(rps), vol.dpReplicaNum)
 		return
 	}
@@ -1567,18 +1567,18 @@ func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		zoneList = masterRegionZoneName
 	}
 	if len(partition.Replicas) != int(vol.dpReplicaNum+vol.dpLearnerNum) {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], partitionId[%v] data replica length[%v] not equal to dpReplicaNum[%v]",
+		log.LogDebugf("action[RepairZone], vol[%v], zoneName[%v], partitionId[%v] data replica length[%v] not equal to dpReplicaNum[%v]",
 			vol.Name, vol.zoneName, partition.PartitionID, len(partition.Replicas), vol.dpReplicaNum)
 		return
 	}
 	if partition.isRecover {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], data partition[%v] is recovering", vol.Name, vol.zoneName, partition.PartitionID)
+		log.LogDebugf("action[RepairZone], vol[%v], zoneName[%v], data partition[%v] is recovering", vol.Name, vol.zoneName, partition.PartitionID)
 		return
 	}
 	var dpInRecover int
 	dpInRecover = c.dataPartitionInRecovering()
 	if int32(dpInRecover) >= c.cfg.DataPartitionsRecoverPoolSize {
-		log.LogWarnf("action[repairDataPartition] clusterID[%v] Recover pool is full, recover partition[%v], pool size[%v]", c.Name, dpInRecover, c.cfg.DataPartitionsRecoverPoolSize)
+		log.LogDebugf("action[repairDataPartition] clusterID[%v] Recover pool is full, recover partition[%v], pool size[%v]", c.Name, dpInRecover, c.cfg.DataPartitionsRecoverPoolSize)
 		return
 	}
 	if vol.isSmart {
@@ -3924,10 +3924,10 @@ func (c *Cluster) sendRepairMetaPartitionTask(mp *MetaPartition, rType RepairTyp
 	}
 	select {
 	case c.mpRepairChan <- repairTask:
-		Warn(c.Name, fmt.Sprintf("action[sendRepairMetaPartitionTask] clusterID[%v] vol[%v] meta partition[%v] "+
+		log.LogInfo(fmt.Sprintf("action[sendRepairMetaPartitionTask] clusterID[%v] vol[%v] meta partition[%v] "+
 			"task type[%v]", c.Name, mp.volName, mp.PartitionID, rType))
 	default:
-		Warn(c.Name, fmt.Sprintf("action[sendRepairMetaPartitionTask] clusterID[%v] vol[%v] meta partition[%v] "+
+		log.LogDebug(fmt.Sprintf("action[sendRepairMetaPartitionTask] clusterID[%v] vol[%v] meta partition[%v] "+
 			"task type[%v], mpRepairChan has been full", c.Name, mp.volName, mp.PartitionID, rType))
 	}
 	return
@@ -3941,12 +3941,10 @@ func (c *Cluster) sendRepairDataPartitionTask(dp *DataPartition, rType RepairTyp
 	}
 	select {
 	case c.dpRepairChan <- repairTask:
-		Warn(c.Name, fmt.Sprintf("action[sendRepairDataPartitionTask] clusterID[%v] vol[%v] data partition[%v] "+
-			"task type[%v]", c.Name, dp.VolName, dp.PartitionID, rType))
-		log.LogDebugf(c.Name, fmt.Sprintf("action[sendRepairDataPartitionTask] clusterID[%v] vol[%v] data partition[%v] "+
+		log.LogInfo(fmt.Sprintf("action[sendRepairDataPartitionTask] clusterID[%v] vol[%v] data partition[%v] "+
 			"task type[%v]", c.Name, dp.VolName, dp.PartitionID, rType))
 	default:
-		Warn(c.Name, fmt.Sprintf("action[sendRepairDataPartitionTask] clusterID[%v] vol[%v] data partition[%v] "+
+		log.LogDebug(fmt.Sprintf("action[sendRepairDataPartitionTask] clusterID[%v] vol[%v] data partition[%v] "+
 			"task type[%v], chanLength[%v], chanCapacity[%v], dpRepairChan has been full", c.Name, dp.VolName, dp.PartitionID, rType, len(c.dpRepairChan),
 			cap(c.dpRepairChan)))
 	}

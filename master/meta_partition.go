@@ -990,7 +990,7 @@ func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		return
 	}
 	if !isValidZone {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], mpReplicaNum[%v] can not be automatically repaired", vol.Name, vol.zoneName, vol.mpReplicaNum)
+		log.LogDebugf("action[RepairZone], vol[%v], zoneName[%v], mpReplicaNum[%v] can not be automatically repaired", vol.Name, vol.zoneName, vol.mpReplicaNum)
 		return
 	}
 	zoneList = strings.Split(vol.zoneName, ",")
@@ -999,23 +999,23 @@ func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 	}
 	normalReplicas := mp.getNormalReplicas()
 	if len(normalReplicas) != int(vol.mpReplicaNum) {
-		log.LogWarnf("action[RepairZone], meta replica normalReplicas[%v] not equal to mpReplicaNum[%v]", len(normalReplicas), vol.mpReplicaNum)
+		log.LogDebugf("action[RepairZone], meta replica normalReplicas[%v] not equal to mpReplicaNum[%v]", len(normalReplicas), vol.mpReplicaNum)
 		return
 	}
 	if mp.IsRecover {
-		log.LogWarnf("action[RepairZone], meta partition[%v] is recovering", mp.PartitionID)
+		log.LogDebugf("action[RepairZone], meta partition[%v] is recovering", mp.PartitionID)
 		return
 	}
 
 	var mpInRecover uint64
 	mpInRecover = uint64(c.metaPartitionInRecovering())
 	if int32(mpInRecover) > c.cfg.MetaPartitionsRecoverPoolSize {
-		log.LogWarnf("action[repairMetaPartition] clusterID[%v]Recover pool is full, recover partition[%v], pool size[%v]", c.Name, mpInRecover, c.cfg.MetaPartitionsRecoverPoolSize)
+		log.LogDebugf("action[repairMetaPartition] clusterID[%v]Recover pool is full, recover partition[%v], pool size[%v]", c.Name, mpInRecover, c.cfg.MetaPartitionsRecoverPoolSize)
 		return
 	}
 	rps := mp.getLiveReplicas()
 	if len(rps) < int(vol.mpReplicaNum) {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], live Replicas [%v] less than mpReplicaNum[%v], can not be automatically repaired", vol.Name, vol.zoneName, len(rps), vol.mpReplicaNum)
+		log.LogDebugf("action[RepairZone], vol[%v], zoneName[%v], live Replicas [%v] less than mpReplicaNum[%v], can not be automatically repaired", vol.Name, vol.zoneName, len(rps), vol.mpReplicaNum)
 		return
 	}
 
