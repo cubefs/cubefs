@@ -347,11 +347,18 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	metaNodeReqRateLimit := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReqRateLimit)
 	metaNodeReadDirLimitNum := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReadDirLimitNum)
+	ssdZoneRepairTaskCount := atomic.LoadUint64(&m.cluster.cfg.DataNodeRepairSSDZoneTaskCount)
+	if ssdZoneRepairTaskCount == 0 {
+		ssdZoneRepairTaskCount = defaultSSDZoneTaskLimit
+	}
+	clusterRepairTaskCount := repairTaskCount
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
 	if dataNodeZoneName != "" {
 		if zoneTaskLimit, ok := m.cluster.cfg.DataNodeRepairTaskCountZoneLimit[dataNodeZoneName]; ok {
 			repairTaskCount = zoneTaskLimit
+		} else if strings.Contains(dataNodeZoneName, mediumSSD) {
+			repairTaskCount = ssdZoneRepairTaskCount
 		}
 	}
 	cInfo := &proto.LimitInfo{
@@ -363,6 +370,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaNodeReqOpRateLimitMap:              m.cluster.cfg.MetaNodeReqOpRateLimitMap,
 		DataNodeDeleteLimitRate:                deleteLimitRate,
 		DataNodeRepairTaskLimitOnDisk:          repairTaskCount,
+		DataNodeRepairClusterTaskLimitOnDisk:   clusterRepairTaskCount,
+		DataNodeRepairSSDZoneTaskLimitOnDisk:   ssdZoneRepairTaskCount,
 		DataNodeRepairTaskCountZoneLimit:       m.cluster.cfg.DataNodeRepairTaskCountZoneLimit,
 		DataNodeReqZoneRateLimitMap:            m.cluster.cfg.DataNodeReqZoneRateLimitMap,
 		DataNodeReqZoneOpRateLimitMap:          m.cluster.cfg.DataNodeReqZoneOpRateLimitMap,
@@ -3747,7 +3756,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs, metaNodeReqRateKey, metaNodeReqOpRateKey,
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
-		extentMergeSleepMsKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey}
+		extentMergeSleepMsKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return

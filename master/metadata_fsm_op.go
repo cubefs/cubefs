@@ -37,6 +37,7 @@ type clusterValue struct {
 	DisableAutoAllocate               bool
 	DataNodeDeleteLimitRate           uint64
 	DataNodeRepairTaskCount           uint64
+	DataNodeRepairTaskSSDZoneLimit    uint64
 	DataNodeRepairTaskCountZoneLimit  map[string]uint64
 	DataNodeReqZoneRateLimitMap       map[string]uint64
 	DataNodeReqZoneOpRateLimitMap     map[string]map[uint8]uint64
@@ -70,6 +71,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		Threshold:                         c.cfg.MetaNodeThreshold,
 		DataNodeDeleteLimitRate:           c.cfg.DataNodeDeleteLimitRate,
 		DataNodeRepairTaskCount:           c.cfg.DataNodeRepairTaskCount,
+		DataNodeRepairTaskSSDZoneLimit:    c.cfg.DataNodeRepairSSDZoneTaskCount,
 		DataNodeRepairTaskCountZoneLimit:  c.cfg.DataNodeRepairTaskCountZoneLimit,
 		DataNodeReqZoneRateLimitMap:       c.cfg.DataNodeReqZoneRateLimitMap,
 		DataNodeReqZoneOpRateLimitMap:     c.cfg.DataNodeReqZoneOpRateLimitMap,
@@ -829,6 +831,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, cv.DataNodeRepairTaskCount)
+		if cv.DataNodeRepairTaskSSDZoneLimit == 0 {
+			cv.DataNodeRepairTaskSSDZoneLimit = defaultSSDZoneTaskLimit
+		}
+		atomic.StoreUint64(&c.cfg.DataNodeRepairSSDZoneTaskCount, cv.DataNodeRepairTaskSSDZoneLimit)
 		c.cfg.DataNodeRepairTaskCountZoneLimit = cv.DataNodeRepairTaskCountZoneLimit
 		if c.cfg.DataNodeRepairTaskCountZoneLimit == nil {
 			c.cfg.DataNodeRepairTaskCountZoneLimit = make(map[string]uint64)

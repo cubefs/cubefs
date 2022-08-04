@@ -101,6 +101,7 @@ type clusterConfig struct {
 	reqRateLimitMapMutex                sync.Mutex
 	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
 	DataNodeRepairTaskCount             uint64
+	DataNodeRepairSSDZoneTaskCount      uint64
 	DataNodeRepairTaskCountZoneLimit    map[string]uint64
 	MetaNodeDeleteWorkerSleepMs         uint64
 	ClientReadVolRateLimitMap           map[string]uint64

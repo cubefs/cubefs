@@ -2205,6 +2205,45 @@ func TestSetDataNodeRepairTaskCountZoneLimit(t *testing.T) {
 	}
 }
 
+func TestSetDataNodeRepairTaskLimit(t *testing.T) {
+	limitInfoReqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	reply := processReturnRawReply(limitInfoReqURL, t)
+	limitInfo := &proto.LimitInfo{}
+	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
+		t.Errorf("unmarshal limitinfo failed,err:%v", err)
+	}
+	if limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk != defaultSSDZoneTaskLimit {
+		t.Errorf("DataNodeRepairSSDZoneTaskLimitOnDisk expect:%v, real:%v", defaultSSDZoneTaskLimit, limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk)
+	}
+
+	ssdLimitNum := uint64(29)
+	clusterLimitNum := uint64(5)
+	reqURL := fmt.Sprintf("%v%v?%v=%v&%v=%v", hostAddr, proto.AdminSetNodeInfo, dataNodeRepairTaskSSDKey, ssdLimitNum, dataNodeRepairTaskCountKey, clusterLimitNum)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if server.cluster.cfg.DataNodeRepairSSDZoneTaskCount != ssdLimitNum {
+		t.Errorf("set DataNodeRepairSSDZoneTaskCount failed expect:%v, real:%v", ssdLimitNum, server.cluster.cfg.DataNodeRepairSSDZoneTaskCount)
+		return
+	}
+	if server.cluster.cfg.DataNodeRepairTaskCount != clusterLimitNum {
+		t.Errorf("set DataNodeRepairTaskCount failed expect:%v, real:%v", clusterLimitNum, server.cluster.cfg.DataNodeRepairTaskCount)
+		return
+	}
+
+	fmt.Println(limitInfoReqURL)
+	reply = processReturnRawReply(limitInfoReqURL, t)
+	limitInfo = &proto.LimitInfo{}
+	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
+		t.Errorf("unmarshal limitinfo failed,err:%v", err)
+	}
+	if limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk != ssdLimitNum {
+		t.Errorf("DataNodeRepairSSDZoneTaskLimitOnDisk expect:%v, real:%v", ssdLimitNum, limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk)
+	}
+	if limitInfo.DataNodeRepairClusterTaskLimitOnDisk != clusterLimitNum {
+		t.Errorf("DataNodeRepairClusterTaskLimitOnDisk expect:%v, real:%v", clusterLimitNum, limitInfo.DataNodeRepairClusterTaskLimitOnDisk)
+	}
+}
+
 func TestValidSmartRules(t *testing.T) {
 	clusterID := "cfs"
 	volName := "vol"

@@ -100,6 +100,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DataNodeRepairTaskCount > 0 {
 				msg += fmt.Sprintf("dataNodeRepairTaskCount: %d, ", info.DataNodeRepairTaskCount)
 			}
+			if info.DataNodeRepairTaskSSDZone > 0 {
+				msg += fmt.Sprintf("dataNodeRepairTaskSSDZoneCount: %d, ", info.DataNodeRepairTaskSSDZone)
+			}
 			if info.MetaNodeReqRate >= 0 {
 				msg += fmt.Sprintf("metaNodeReqRate: %d, ", info.MetaNodeReqRate)
 			}
@@ -141,6 +144,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().Int64Var(&info.DataNodeRepairTaskCount, "dataNodeRepairTaskCount", -1, "data node repair task count")
+	cmd.Flags().Int64Var(&info.DataNodeRepairTaskSSDZone, "dataNodeRepairTaskSSDZoneCount", -1, "data node repair task count of ssd zones")
 	cmd.Flags().StringVar(&info.ZoneName, "zone", "", "zone (empty zone acts as default)")
 	cmd.Flags().StringVar(&info.Volume, "volume", "", "volume (empty volume acts as default)")
 	cmd.Flags().Int8Var(&info.Opcode, "opcode", 0, "opcode (zero opcode acts as default)")
@@ -170,6 +174,8 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  (map[opcode]limit)\n"))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskCount     : %v\n", info.DataNodeRepairTaskLimitOnDisk))
+	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskCluster   : %v\n", info.DataNodeRepairClusterTaskLimitOnDisk))
+	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskSSDZone   : %v\n", info.DataNodeRepairSSDZoneTaskLimitOnDisk))
 	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneRateMap      : %v\n", info.DataNodeReqZoneRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[zone]limit)\n"))
 	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneOpRateMap    : %v\n", info.DataNodeReqZoneOpRateLimitMap))

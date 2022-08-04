@@ -61,6 +61,7 @@ const (
 	nodeDeleteBatchCountKey     = "batchCount"
 	nodeMarkDeleteRateKey       = "markDeleteRate"
 	dataNodeRepairTaskCountKey  = "dataNodeRepairTaskCount"
+	dataNodeRepairTaskSSDKey    = "dataNodeRepairTaskSSDZoneCount"
 	dataNodeRepairTaskCntZoneKey= "dataNodeRepairTaskZoneCount"
 	dataNodeReqRateKey          = "dataNodeReqRate"
 	dataNodeReqOpRateKey        = "dataNodeReqOpRate"
@@ -229,6 +230,7 @@ const (
 	defaultEcDataNum                                   = 4
 	defaultEcParityNum                                 = 2
 	defaultDataNodeHttpPort                            = "17320"
+	defaultSSDZoneTaskLimit                            = 20
 )
 
 const (

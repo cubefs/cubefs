@@ -3432,6 +3432,10 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[dataNodeRepairTaskCountKey]; ok {
 		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, val.(uint64))
 	}
+	oldRepairTaskSSDZoneLimit := atomic.LoadUint64(&c.cfg.DataNodeRepairSSDZoneTaskCount)
+	if val, ok := params[dataNodeRepairTaskSSDKey]; ok {
+		atomic.StoreUint64(&c.cfg.DataNodeRepairSSDZoneTaskCount, val.(uint64))
+	}
 	oldMetaNodeReqRateLimit := atomic.LoadUint64(&c.cfg.MetaNodeReqRateLimit)
 	if val, ok := params[metaNodeReqRateKey]; ok {
 		v := val.(uint64)
@@ -3472,6 +3476,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
 		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldDeleteLimitRate)
 		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, oldRepairTaskCount)
+		atomic.StoreUint64(&c.cfg.DataNodeRepairSSDZoneTaskCount, oldRepairTaskSSDZoneLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, oldMetaNodeReqRateLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, oldMetaNodeReadDirLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldDeleteWorkerSleepMs)
