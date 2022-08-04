@@ -232,11 +232,7 @@ func (statsMgr *TaskStatsMgr) ReportTaskCntLoop() {
 }
 
 // ReportWorkerTaskStats report worker task stats
-func (statsMgr *TaskStatsMgr) ReportWorkerTaskStats(
-	taskID string,
-	s proto.TaskStatistics,
-	increaseDataSize,
-	increaseShardCnt int) {
+func (statsMgr *TaskStatsMgr) ReportWorkerTaskStats(taskID string, s proto.TaskStatistics, increaseDataSize, increaseShardCnt int) {
 	statsMgr.mu.Lock()
 	defer statsMgr.mu.Unlock()
 
@@ -248,7 +244,7 @@ func (statsMgr *TaskStatsMgr) ReportWorkerTaskStats(
 	}
 
 	taskRunInfo.Statistics = s
-	if taskRunInfo.Statistics.Completed() {
+	if s.Progress >= 100 {
 		taskRunInfo.CompleteTime = time.Now()
 		taskRunInfo.Completed = true
 	}
