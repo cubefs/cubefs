@@ -50,8 +50,8 @@ type MMigrator interface {
 // Migrator base interface of migrate, balancer, disk_droper, manual_migrater.
 type Migrator interface {
 	AcquireTask(ctx context.Context, idc string) (proto.MigrateTask, error)
-	CancelTask(ctx context.Context, args *api.CancelTaskArgs) error
-	CompleteTask(ctx context.Context, args *api.CompleteTaskArgs) error
+	CancelTask(ctx context.Context, args *api.OperateTaskArgs) error
+	CompleteTask(ctx context.Context, args *api.OperateTaskArgs) error
 	ReclaimTask(ctx context.Context, idc, taskID string,
 		src []proto.VunitLocation, oldDst proto.VunitLocation, newDst *client.AllocVunitInfo) error
 	RenewalTask(ctx context.Context, idc, taskID string) error
@@ -584,13 +584,13 @@ func (mgr *MigrateMgr) AcquireTask(ctx context.Context, idc string) (task proto.
 }
 
 // CancelTask cancel migrate task
-func (mgr *MigrateMgr) CancelTask(ctx context.Context, args *api.CancelTaskArgs) (err error) {
+func (mgr *MigrateMgr) CancelTask(ctx context.Context, args *api.OperateTaskArgs) (err error) {
 	mgr.taskStatsMgr.CancelTask()
 
-	err = mgr.workQueue.Cancel(args.IDC, args.TaskId, args.Src, args.Dest)
+	err = mgr.workQueue.Cancel(args.IDC, args.TaskID, args.Src, args.Dest)
 	if err != nil {
 		span := trace.SpanFromContextSafe(ctx)
-		span.Errorf("cancel migrate failed: task_type[%s], task_id[%s], err[%+v]", mgr.taskType, args.TaskId, err)
+		span.Errorf("cancel migrate failed: task_type[%s], task_id[%s], err[%+v]", mgr.taskType, args.TaskID, err)
 	}
 	return
 }
@@ -621,12 +621,12 @@ func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, idc, taskID string,
 }
 
 // CompleteTask complete migrate task
-func (mgr *MigrateMgr) CompleteTask(ctx context.Context, args *api.CompleteTaskArgs) (err error) {
+func (mgr *MigrateMgr) CompleteTask(ctx context.Context, args *api.OperateTaskArgs) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	completeTask, err := mgr.workQueue.Complete(args.IDC, args.TaskId, args.Src, args.Dest)
+	completeTask, err := mgr.workQueue.Complete(args.IDC, args.TaskID, args.Src, args.Dest)
 	if err != nil {
-		span.Errorf("complete migrate task failed: task_id[%s], err[%+v]", args.TaskId, err)
+		span.Errorf("complete migrate task failed: task_id[%s], err[%+v]", args.TaskID, err)
 		return err
 	}
 
@@ -640,7 +640,7 @@ func (mgr *MigrateMgr) CompleteTask(ctx context.Context, args *api.CompleteTaskA
 		span.Errorf("complete migrate task into db failed: task_id[%s], err[%+v]", t.TaskID, err)
 		err = nil
 	}
-	mgr.finishQueue.PushTask(args.TaskId, t)
+	mgr.finishQueue.PushTask(args.TaskID, t)
 	return
 }
 
@@ -702,7 +702,7 @@ func (mgr *MigrateMgr) QueryTask(ctx context.Context, taskID string) (*api.Migra
 
 // ReportWorkerTaskStats implement migrator
 func (mgr *MigrateMgr) ReportWorkerTaskStats(st *api.TaskReportArgs) {
-	mgr.taskStatsMgr.ReportWorkerTaskStats(st.TaskId, st.TaskStats, st.IncreaseDataSizeByte, st.IncreaseShardCnt)
+	mgr.taskStatsMgr.ReportWorkerTaskStats(st.TaskID, st.TaskStats, st.IncreaseDataSizeByte, st.IncreaseShardCnt)
 }
 
 // Enabled returns enable or not.

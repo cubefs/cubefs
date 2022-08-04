@@ -60,17 +60,8 @@ func (w *mockMigrateWorker) ExecTasklet(ctx context.Context, t Tasklet) *WorkErr
 func (w *mockMigrateWorker) Check(ctx context.Context) *WorkError                  { return nil }
 func (w *mockMigrateWorker) TaskType() proto.TaskType                              { return proto.TaskTypeBalance }
 func (w *mockMigrateWorker) GetBenchmarkBids() []*ShardInfoSimple                  { return nil }
-
-func (w *mockMigrateWorker) CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
-}
-
-func (w *mockMigrateWorker) CompleteArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
-}
-
-func (w *mockMigrateWorker) ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
+func (w *mockMigrateWorker) OperateArgs() scheduler.OperateTaskArgs {
+	return scheduler.OperateTaskArgs{TaskID: "test_mock_task", TaskType: w.TaskType()}
 }
 
 func initTestTaskRunnerMgr(t *testing.T, cli scheduler.IScheduler, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {

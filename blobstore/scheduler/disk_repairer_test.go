@@ -627,7 +627,7 @@ func TestDiskRepairerCancelTask(t *testing.T) {
 	idc := "z0"
 	{
 		mgr := newDiskRepairer(t)
-		err := mgr.CancelTask(ctx, &api.CancelTaskArgs{})
+		err := mgr.CancelTask(ctx, &api.OperateTaskArgs{})
 		require.Error(t, err)
 	}
 	{
@@ -635,7 +635,7 @@ func TestDiskRepairerCancelTask(t *testing.T) {
 		t1 := mockGenMigrateTask(proto.TaskTypeDiskRepair, "z0", 1, 1, proto.MigrateStatePrepared, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 
-		err := mgr.CancelTask(ctx, &api.CancelTaskArgs{})
+		err := mgr.CancelTask(ctx, &api.OperateTaskArgs{})
 		require.Error(t, err)
 	}
 }
@@ -673,14 +673,14 @@ func TestDiskRepairerCompleteTask(t *testing.T) {
 	{
 		mgr := newDiskRepairer(t)
 		t1 := mockGenMigrateTask(proto.TaskTypeDiskRepair, "z0", 1, 1, proto.MigrateStatePrepared, newMockVolInfoMap())
-		err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+		err := mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 		require.Error(t, err)
 	}
 	{
 		mgr := newDiskRepairer(t)
 		t1 := mockGenMigrateTask(proto.TaskTypeDiskRepair, "z0", 1, 1, proto.MigrateStatePrepared, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
-		err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+		err := mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 		require.NoError(t, err)
 		todo, doing := mgr.finishQueue.StatsTasks()
 		require.Equal(t, 1, todo+doing)
@@ -748,7 +748,7 @@ func TestDiskRepairerQueryTask(t *testing.T) {
 func TestDiskRepairerReportWorkerTaskStats(t *testing.T) {
 	mgr := newDiskRepairer(t)
 	mgr.ReportWorkerTaskStats(&api.TaskReportArgs{
-		TaskId:               "task",
+		TaskID:               "task",
 		IncreaseDataSizeByte: 1,
 		IncreaseShardCnt:     1,
 	})

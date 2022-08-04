@@ -83,7 +83,7 @@ func (c *client) RenewalTask(ctx context.Context, args *TaskRenewalArgs) (ret *T
 
 type TaskReportArgs struct {
 	TaskType proto.TaskType `json:"task_type"`
-	TaskId   string         `json:"task_id"`
+	TaskID   string         `json:"task_id"`
 
 	TaskStats            proto.TaskStatistics `json:"task_stats"`
 	IncreaseDataSizeByte int                  `json:"increase_data_size_byte"`
@@ -96,45 +96,29 @@ func (c *client) ReportTask(ctx context.Context, args *TaskReportArgs) (err erro
 	})
 }
 
-type ReclaimTaskArgs struct {
-	TaskId   string                `json:"task_id"`
+// OperateTaskArgs for task action.
+type OperateTaskArgs struct {
 	IDC      string                `json:"idc"`
+	TaskID   string                `json:"task_id"`
 	TaskType proto.TaskType        `json:"task_type"`
 	Src      []proto.VunitLocation `json:"src"`
 	Dest     proto.VunitLocation   `json:"dest"`
 	Reason   string                `json:"reason"`
 }
 
-func (c *client) ReclaimTask(ctx context.Context, args *ReclaimTaskArgs) (err error) {
+func (c *client) ReclaimTask(ctx context.Context, args *OperateTaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskReclaim, nil, args)
 	})
 }
 
-type CancelTaskArgs struct {
-	TaskId   string                `json:"task_id"`
-	IDC      string                `json:"idc"`
-	TaskType proto.TaskType        `json:"task_type"`
-	Src      []proto.VunitLocation `json:"src"`
-	Dest     proto.VunitLocation   `json:"dest"`
-	Reason   string                `json:"reason"`
-}
-
-func (c *client) CancelTask(ctx context.Context, args *CancelTaskArgs) (err error) {
+func (c *client) CancelTask(ctx context.Context, args *OperateTaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskCancel, nil, args)
 	})
 }
 
-type CompleteTaskArgs struct {
-	TaskId   string                `json:"task_id"`
-	IDC      string                `json:"idc"`
-	TaskType proto.TaskType        `json:"task_type"`
-	Src      []proto.VunitLocation `json:"src"`
-	Dest     proto.VunitLocation   `json:"dest"`
-}
-
-func (c *client) CompleteTask(ctx context.Context, args *CompleteTaskArgs) (err error) {
+func (c *client) CompleteTask(ctx context.Context, args *OperateTaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskComplete, nil, args)
 	})

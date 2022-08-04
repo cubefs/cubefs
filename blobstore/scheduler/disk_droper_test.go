@@ -396,7 +396,7 @@ func TestDiskDropCancelTask(t *testing.T) {
 	ctx := context.Background()
 	mgr := newDiskDroper(t)
 	mgr.IMigrator.(*MockMigrater).EXPECT().CancelTask(any, any).Return(nil)
-	err := mgr.CancelTask(ctx, &api.CancelTaskArgs{})
+	err := mgr.CancelTask(ctx, &api.OperateTaskArgs{})
 	require.NoError(t, err)
 }
 
@@ -416,11 +416,11 @@ func TestDiskDropCompleteTask(t *testing.T) {
 	mgr := newDiskDroper(t)
 	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(nil)
 	t1 := mockGenMigrateTask(proto.TaskTypeDiskDrop, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
-	err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+	err := mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 	require.NoError(t, err)
 
 	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(errMock)
-	err = mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+	err = mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 	require.True(t, errors.Is(err, errMock))
 }
 

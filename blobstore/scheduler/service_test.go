@@ -187,137 +187,80 @@ func TestServiceAPI(t *testing.T) {
 	runMockService(newMockService(t))
 	ctr := gomock.NewController(t)
 	clusterMgrCli := mocks.NewMockClientAPI(ctr)
-	clusterMgrCli.EXPECT().GetService(any, any).AnyTimes().Return(cmapi.ServiceInfo{Nodes: []cmapi.ServiceNode{{ClusterID: 1, Host: schedulerServer.URL}}}, nil)
+	clusterMgrCli.EXPECT().GetService(any, any).AnyTimes().Return(
+		cmapi.ServiceInfo{Nodes: []cmapi.ServiceNode{{ClusterID: 1, Host: schedulerServer.URL}}}, nil)
 
 	ctx := context.Background()
-	schedulerCli := api.New(&api.Config{}, clusterMgrCli, proto.ClusterID(1))
+	cli := api.New(&api.Config{}, clusterMgrCli, proto.ClusterID(1))
+	idc := "z0"
+	taskTypes := []proto.TaskType{
+		proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
+		proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate,
+	}
+
+	// opetate task
+	for _, taskType := range taskTypes {
+		task, err := cli.AcquireTask(ctx, &api.AcquireArgs{IDC: idc})
+		require.NoError(t, err)
+		require.Equal(t, taskType, task.TaskType())
+
+		require.NoError(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType}))
+		require.NoError(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType}))
+		require.NoError(t, cli.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType}))
+		require.NoError(t, cli.ReportTask(ctx, &api.TaskReportArgs{TaskType: taskType}))
+	}
+	require.Error(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
+	require.Error(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
+	require.Error(t, cli.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
+
+	// renewal task
+	tasks := []string{"task1", "task2", "task3"}
+	_, err := cli.RenewalTask(ctx, &api.TaskRenewalArgs{
+		IDC: "z0",
+		IDs: map[proto.TaskType][]string{
+			proto.TaskTypeBalance:       tasks,
+			proto.TaskTypeDiskRepair:    tasks,
+			proto.TaskTypeDiskDrop:      tasks,
+			proto.TaskTypeManualMigrate: tasks,
+		},
+	})
+	require.NoError(t, err)
+
+	// add manual migrate task
+	err = cli.AddManualMigrateTask(ctx, &api.AddManualMigrateArgs{})
+	require.Equal(t, 400, rpc.DetectStatusCode(err))
+	err = cli.AddManualMigrateTask(ctx, &api.AddManualMigrateArgs{Vuid: proto.Vuid(24726512599042)})
+	require.NoError(t, err)
+
+	// acquire inspect task
+	_, err = cli.AcquireInspectTask(ctx)
+	require.NoError(t, err)
+	// complete inspect task
+	require.NoError(t, cli.CompleteInspect(ctx, &api.CompleteInspectArgs{}))
+
+	// volume update
+	require.NoError(t, cli.UpdateVol(ctx, schedulerServer.URL, proto.Vid(1)))
+	require.Error(t, cli.UpdateVol(ctx, schedulerServer.URL, proto.Vid(1)))
+
+	// stats
+	_, err = cli.Stats(ctx, schedulerServer.URL)
+	require.NoError(t, err)
+
+	// task detail
 	{
-		// acquire task
-		task, err := schedulerCli.AcquireTask(ctx, &api.AcquireArgs{IDC: "z0"})
-		require.NoError(t, err)
-		require.Equal(t, proto.TaskTypeBalance, task.TaskType())
-
-		task, err = schedulerCli.AcquireTask(ctx, &api.AcquireArgs{IDC: "z0"})
-		require.NoError(t, err)
-		require.Equal(t, proto.TaskTypeDiskDrop, task.TaskType())
-
-		task, err = schedulerCli.AcquireTask(ctx, &api.AcquireArgs{IDC: "z0"})
-		require.NoError(t, err)
-		require.Equal(t, proto.TaskTypeDiskRepair, task.TaskType())
-
-		task, err = schedulerCli.AcquireTask(ctx, &api.AcquireArgs{IDC: "z0"})
-		require.NoError(t, err)
-		require.Equal(t, proto.TaskTypeManualMigrate, task.TaskType())
-
-		// reclaim task
-		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskRepair})
-		require.NoError(t, err)
-		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.TaskTypeBalance})
-		require.NoError(t, err)
-		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskDrop})
-		require.NoError(t, err)
-		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.TaskTypeManualMigrate})
-		require.NoError(t, err)
-		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: "task"})
+		_, err = cli.DetailMigrateTask(ctx, nil)
 		require.Error(t, err)
-
-		// cancel task
-		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskRepair})
-		require.NoError(t, err)
-		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.TaskTypeBalance})
-		require.NoError(t, err)
-		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskDrop})
-		require.NoError(t, err)
-		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.TaskTypeManualMigrate})
-		require.NoError(t, err)
-		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: "task"})
+		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{})
 		require.Error(t, err)
-
-		// complete task
-		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskRepair})
-		require.NoError(t, err)
-		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.TaskTypeBalance})
-		require.NoError(t, err)
-		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskDrop})
-		require.NoError(t, err)
-		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.TaskTypeManualMigrate})
-		require.NoError(t, err)
-		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: "task"})
+		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: "xxxxx", ID: "task_id"})
 		require.Error(t, err)
-
-		// renewal task
-		tasks := []string{"task1", "task2", "task3"}
-		_, err = schedulerCli.RenewalTask(ctx, &api.TaskRenewalArgs{
-			IDC: "z0",
-			IDs: map[proto.TaskType][]string{
-				proto.TaskTypeBalance:       tasks,
-				proto.TaskTypeDiskRepair:    tasks,
-				proto.TaskTypeDiskDrop:      tasks,
-				proto.TaskTypeManualMigrate: tasks,
-			},
-		})
-		require.NoError(t, err)
-
-		// report task
-		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.TaskTypeDiskRepair})
-		require.NoError(t, err)
-		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.TaskTypeBalance})
-		require.NoError(t, err)
-		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.TaskTypeDiskDrop})
-		require.NoError(t, err)
-		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.TaskTypeManualMigrate})
-		require.NoError(t, err)
-
-		// add manual migrate task
-		err = schedulerCli.AddManualMigrateTask(ctx, &api.AddManualMigrateArgs{})
-		require.Equal(t, 400, rpc.DetectStatusCode(err))
-		err = schedulerCli.AddManualMigrateTask(ctx, &api.AddManualMigrateArgs{Vuid: proto.Vuid(24726512599042)})
-		require.NoError(t, err)
-
-		// acquire inspect task
-		_, err = schedulerCli.AcquireInspectTask(ctx)
-		require.NoError(t, err)
-
-		// complete inspect task
-		err = schedulerCli.CompleteInspect(ctx, &api.CompleteInspectArgs{})
-		require.NoError(t, err)
-
-		// volume update
-		err = schedulerCli.UpdateVol(ctx, schedulerServer.URL, proto.Vid(1))
-		require.NoError(t, err)
-		err = schedulerCli.UpdateVol(ctx, schedulerServer.URL, proto.Vid(1))
+		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeBalance, ID: ""})
 		require.Error(t, err)
-
-		// stats
-		_, err = schedulerCli.Stats(ctx, schedulerServer.URL)
+	}
+	for _, taskType := range taskTypes {
+		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: taskType, ID: "task-id"})
 		require.NoError(t, err)
-
-		// task detail
-		{
-			_, err = schedulerCli.DetailMigrateTask(ctx, nil)
-			require.Error(t, err)
-			_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{})
-			require.Error(t, err)
-			_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: "xxxxx", ID: "task_id"})
-			require.Error(t, err)
-			_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeBalance, ID: ""})
-			require.Error(t, err)
-		}
-		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeBalance, ID: "task-id"})
-		require.NoError(t, err)
-		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeDiskDrop, ID: "task-id"})
-		require.NoError(t, err)
-		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeDiskRepair, ID: "task-id"})
-		require.NoError(t, err)
-		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeManualMigrate, ID: "task-id"})
-		require.NoError(t, err)
-		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeBalance, ID: "err-task-id"})
-		require.Error(t, err)
-		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeDiskDrop, ID: "err-task-id"})
-		require.Error(t, err)
-		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeDiskRepair, ID: "err-task-id"})
-		require.Error(t, err)
-		_, err = schedulerCli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeManualMigrate, ID: "err-task-id"})
+		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: taskType, ID: "err-task-id"})
 		require.Error(t, err)
 	}
 }

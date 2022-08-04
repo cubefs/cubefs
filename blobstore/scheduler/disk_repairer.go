@@ -676,12 +676,12 @@ func (mgr *DiskRepairMgr) AcquireTask(ctx context.Context, idc string) (task pro
 }
 
 // CancelTask cancel repair task
-func (mgr *DiskRepairMgr) CancelTask(ctx context.Context, args *api.CancelTaskArgs) error {
+func (mgr *DiskRepairMgr) CancelTask(ctx context.Context, args *api.OperateTaskArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	err := mgr.workQueue.Cancel(args.IDC, args.TaskId, args.Src, args.Dest)
+	err := mgr.workQueue.Cancel(args.IDC, args.TaskID, args.Src, args.Dest)
 	if err != nil {
-		span.Errorf("cancel repair failed: task_id[%s], err[%+v]", args.TaskId, err)
+		span.Errorf("cancel repair failed: task_id[%s], err[%+v]", args.TaskID, err)
 	}
 
 	mgr.taskStatsMgr.CancelTask()
@@ -720,19 +720,19 @@ func (mgr *DiskRepairMgr) ReclaimTask(ctx context.Context,
 }
 
 // CompleteTask complete repair task
-func (mgr *DiskRepairMgr) CompleteTask(ctx context.Context, args *api.CompleteTaskArgs) error {
+func (mgr *DiskRepairMgr) CompleteTask(ctx context.Context, args *api.OperateTaskArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	completeTask, err := mgr.workQueue.Complete(args.IDC, args.TaskId, args.Src, args.Dest)
+	completeTask, err := mgr.workQueue.Complete(args.IDC, args.TaskID, args.Src, args.Dest)
 	if err != nil {
-		span.Errorf("complete repair task failed: task_id[%s], err[%+v]", args.TaskId, err)
+		span.Errorf("complete repair task failed: task_id[%s], err[%+v]", args.TaskID, err)
 		return err
 	}
 
 	t := completeTask.(*proto.MigrateTask)
 	t.State = proto.MigrateStateWorkCompleted
 
-	mgr.finishQueue.PushTask(args.TaskId, t)
+	mgr.finishQueue.PushTask(args.TaskID, t)
 	// as complete func is face to svr api, so can not loop save task
 	// to db until success, it will make saving task info to be difficult,
 	// that delay saving task info in finish stage is a simply way
@@ -757,7 +757,7 @@ func (mgr *DiskRepairMgr) RenewalTask(ctx context.Context, idc, taskID string) e
 
 // ReportWorkerTaskStats reports task stats
 func (mgr *DiskRepairMgr) ReportWorkerTaskStats(st *api.TaskReportArgs) {
-	mgr.taskStatsMgr.ReportWorkerTaskStats(st.TaskId, st.TaskStats, st.IncreaseDataSizeByte, st.IncreaseShardCnt)
+	mgr.taskStatsMgr.ReportWorkerTaskStats(st.TaskID, st.TaskStats, st.IncreaseDataSizeByte, st.IncreaseShardCnt)
 }
 
 // QueryTask return task statistics
