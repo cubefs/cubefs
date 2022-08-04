@@ -481,7 +481,7 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 	return
 }
 
-func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data []byte, offset int, size int) (read int, err error) {
+func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data []byte, offset int, size int) (read int, err error, isStream bool) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("read-extent", err, bgTime, 1)
@@ -544,6 +544,7 @@ func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data [
 		ctx := context.Background()
 		s.client.readLimiter.Wait(ctx)
 		s.client.LimitManager.ReadAlloc(ctx, size)
+		isStream = true
 
 		read, err = reader.Read(req)
 		if err != nil {

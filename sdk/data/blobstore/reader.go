@@ -315,9 +315,9 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 	if rs.extentKey != (proto.ExtentKey{}) {
 		//check if dp is exist in preload sence
 		if err = reader.ec.CheckDataPartitionExsit(rs.extentKey.PartitionId); err == nil {
-			readLimitOn = true
-			readN, err = reader.ec.ReadExtent(reader.ino, &rs.extentKey, buf, int(rs.rOffset), int(rs.rSize))
+			readN, err, readLimitOn = reader.ec.ReadExtent(reader.ino, &rs.extentKey, buf, int(rs.rOffset), int(rs.rSize))
 			if err == nil && readN == int(rs.rSize) {
+
 				// L2 cache hit.
 				metric := exporter.NewTPCnt("L2CacheGetHit")
 				stat.EndStat("CacheHit-L2", nil, bgTime, 1)
