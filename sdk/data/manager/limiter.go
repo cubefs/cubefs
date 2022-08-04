@@ -137,6 +137,7 @@ func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Futur
 					log.LogDebugf("CheckGrid factor [%v] unlock before active update simple vol view,gird id[%v] limit[%v] buffer [%v] used [%v]",
 						proto.QosTypeString(factor.factorType), grid.ID, grid.limit, grid.buffer, grid.used)
 					// unlock need call here,UpdateSimpleVolView will lock again
+					grid.hitLimit = true
 					factor.lock.Unlock()
 					activeState.activeUpdate = true
 					go factor.mgr.WrapperUpdate(factor.mgr.simpleClient)
