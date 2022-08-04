@@ -18,34 +18,38 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestVuid(t *testing.T) {
+	_, err := NewVuid(1, 1, 0)
+	require.Error(t, err)
+
 	vid := Vid(rand.Uint32())
 	index := uint8(rand.Intn(256))
-	epoch := uint32(rand.Int31n(MaxEpoch))
+	epoch := uint32(rand.Int31n(MaxEpoch-MinEpoch) + MinEpoch)
 	vuid, err := NewVuid(vid, index, epoch)
 	vuidPre := EncodeVuidPrefix(vid, index)
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.True(t, vuid.IsValid())
 
-	assert.Equal(t, vuidPre, vuid.VuidPrefix())
-	assert.Equal(t, vid, vuidPre.Vid())
-	assert.Equal(t, index, vuidPre.Index())
-	assert.Equal(t, vid, vuid.Vid())
-	assert.Equal(t, index, vuid.Index())
-	assert.Equal(t, epoch, vuid.Epoch())
+	require.Equal(t, vuidPre, vuid.VuidPrefix())
+	require.Equal(t, vid, vuidPre.Vid())
+	require.Equal(t, index, vuidPre.Index())
+	require.Equal(t, vid, vuid.Vid())
+	require.Equal(t, index, vuid.Index())
+	require.Equal(t, epoch, vuid.Epoch())
 }
 
-func TestDecodeVuid(t *testing.T) {
-	for i := 0; i < 900000; i++ {
+func TestVuidMulti(t *testing.T) {
+	for range [1000]struct{}{} {
 		TestVuid(t)
 	}
 }
 
-func TestDecodeVuid2(t *testing.T) {
-	old := Vuid(425335980033)
-	new := Vuid(116131889167)
-	t.Log(old.Vid(), old.VuidPrefix(), old.Index(), old.Epoch())
-	t.Log(new.Vid(), new.VuidPrefix(), new.Index(), new.Epoch())
+func TestDecodeVuid(t *testing.T) {
+	for _, vuid := range []Vuid{425335980033, 116131889167} {
+		t.Log(vuid.Vid(), vuid.VuidPrefix(), vuid.Index(), vuid.Epoch(), vuid.ToString())
+		require.Equal(t, vuid, EncodeVuid(vuid.VuidPrefix(), vuid.Epoch()))
+	}
 }

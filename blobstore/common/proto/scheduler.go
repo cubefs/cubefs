@@ -15,6 +15,8 @@
 package proto
 
 import (
+	"sync"
+
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
@@ -187,4 +189,63 @@ type ShardRepairTask struct {
 
 func (task *ShardRepairTask) IsValid() bool {
 	return task.CodeMode.IsValid() && CheckVunitLocations(task.Sources)
+}
+
+// TaskStatistics thread-unsafe task statistics.
+type TaskStatistics struct {
+	DoneSize   uint64 `json:"done_size"`
+	DoneCount  uint64 `json:"done_count"`
+	TotalSize  uint64 `json:"total_size"`
+	TotalCount uint64 `json:"total_count"`
+	Progress   uint64 `json:"progress"`
+}
+
+// TaskProgress migrate task running progress.
+type TaskProgress interface {
+	Total(size, count uint64) // reset total size and count.
+	Do(size, count uint64)    // update progress.
+	Done() TaskStatistics     // returns newest statistics.
+}
+
+// NewTaskProgress returns thread-safe task progress.
+func NewTaskProgress() TaskProgress {
+	return &taskProgress{}
+}
+
+type taskProgress struct {
+	mu sync.Mutex
+	st TaskStatistics
+}
+
+func (p *taskProgress) Total(size, count uint64) {
+	p.mu.Lock()
+	st := &p.st
+	st.TotalSize = size
+	st.TotalCount = count
+	if st.TotalSize == 0 {
+		st.Progress = 100
+	} else {
+		st.Progress = (st.DoneSize * 100) / st.TotalSize
+	}
+	p.mu.Unlock()
+}
+
+func (p *taskProgress) Do(size, count uint64) {
+	p.mu.Lock()
+	st := &p.st
+	st.DoneSize += size
+	st.DoneCount += count
+	if st.TotalSize == 0 {
+		st.Progress = 100
+	} else {
+		st.Progress = (st.DoneSize * 100) / st.TotalSize
+	}
+	p.mu.Unlock()
+}
+
+func (p *taskProgress) Done() TaskStatistics {
+	p.mu.Lock()
+	st := p.st
+	p.mu.Unlock()
+	return st
 }
