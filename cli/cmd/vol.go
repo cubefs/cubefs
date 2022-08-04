@@ -598,6 +598,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 	var (
 		optMetaDetail bool
 		optDataDetail bool
+		optEcDetail   bool
 	)
 
 	var cmd = &cobra.Command{
@@ -667,6 +668,24 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					stdout("%v\n", formatDataPartitionTableRow(dp))
 				}
 			}
+
+			// print ec detail
+			if optEcDetail {
+				var view *proto.EcPartitionsView
+				if view, err = client.ClientAPI().GetEcPartitions(volumeName); err != nil {
+					errout("Get volume data detail information failed:\n%v\n", err)
+					os.Exit(1)
+				}
+				stdout("ec partitions count         : %v\n", len(view.EcPartitions))
+				stdout("Ec partitions:\n")
+				stdout("%v\n", ecPartitionTableHeader)
+				sort.SliceStable(view.EcPartitions, func(i, j int) bool {
+					return view.EcPartitions[i].PartitionID < view.EcPartitions[j].PartitionID
+				})
+				for _, ep := range view.EcPartitions {
+					stdout("%v\n", formatEcPartitionTableRow(ep))
+				}
+			}
 			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -678,6 +697,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&optMetaDetail, "meta-partition", "m", false, "Display meta partition detail information")
 	cmd.Flags().BoolVarP(&optDataDetail, "data-partition", "d", false, "Display data partition detail information")
+	cmd.Flags().BoolVarP(&optEcDetail, "ec-partition", "e", false, "Display ec partition detail information")
 	return cmd
 }
 

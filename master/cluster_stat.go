@@ -53,6 +53,7 @@ func (c *Cluster) updateStatInfo() {
 	}()
 	c.updateDataNodeStatInfo()
 	c.updateMetaNodeStatInfo()
+	c.updateEcNodeStatInfo()
 	c.updateVolStatInfo()
 	c.updateZoneStatInfo()
 }
