@@ -21,7 +21,6 @@ import (
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
-	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -150,9 +149,7 @@ type ITaskWorker interface {
 	ExecTasklet(ctx context.Context, t Tasklet) *WorkError
 	// check whether the task is executed successfully when volume task finish
 	Check(ctx context.Context) *WorkError
-	CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation)
-	CompleteArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation)
-	ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation)
+	OperateArgs() scheduler.OperateTaskArgs
 	TaskType() (taskType proto.TaskType)
 	GetBenchmarkBids() []*ShardInfoSimple
 }
@@ -311,44 +308,29 @@ func (r *TaskRunner) newCtx() context.Context {
 
 func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 	span := r.span
-
 	defer r.state.set(TaskStopped)
 
 	if ShouldReclaim(retErr) {
-		taskID, taskType, src, dest := r.w.ReclaimArgs()
-		args := api.ReclaimTaskArgs{
-			TaskId:   taskID,
-			TaskType: taskType,
-			IDC:      r.idc,
-			Src:      src,
-			Dest:     dest,
-			Reason:   retErr.Error(),
-		}
+		args := r.w.OperateArgs()
+		args.IDC = r.idc
+		args.Reason = retErr.Error()
 		span.Infof("reclaim task: taskID[%s], err[%s]", r.taskID, retErr.String())
-
-		err := r.schedulerCli.ReclaimTask(r.newCtx(), &args)
-		if err != nil {
-			span.Errorf("reclaim task failed: taskID[%s], taskType[%s], src[%+v], dst[%+v], code[%d], err[%+v]",
-				taskID, taskType, src, dest, rpc.DetectStatusCode(err), err)
+		if err := r.schedulerCli.ReclaimTask(r.newCtx(), &args); err != nil {
+			span.Errorf("reclaim task failed: taskID[%s], args[%+v], code[%d], err[%+v]",
+				r.taskID, args, rpc.DetectStatusCode(err), err)
 		}
 		workutils.WorkerStatsInst().AddReclaim()
 		return
 	}
 
 	span.Infof("cancel task: taskID[%s], err[%+v]", r.taskID, retErr)
-	taskID, taskType, src, dest := r.w.CancelArgs()
-	args := api.CancelTaskArgs{
-		TaskId:   taskID,
-		TaskType: taskType,
-		IDC:      r.idc,
-		Src:      src,
-		Dest:     dest,
-		Reason:   retErr.Error(),
-	}
-	err := r.schedulerCli.CancelTask(r.newCtx(), &args)
-	if err != nil {
-		span.Errorf("cancel failed: taskID[%s], taskType[%s], src[%+v], dest[%+v], code[%d], err[%+v]",
-			taskID, taskType, src, dest, rpc.DetectStatusCode(err), err)
+
+	args := r.w.OperateArgs()
+	args.IDC = r.idc
+	args.Reason = retErr.Error()
+	if err := r.schedulerCli.CancelTask(r.newCtx(), &args); err != nil {
+		span.Errorf("cancel failed: taskID[%s], args[%+v], code[%d], err[%+v]",
+			r.taskID, args, rpc.DetectStatusCode(err), err)
 	}
 	workutils.WorkerStatsInst().AddCancel()
 }
@@ -357,26 +339,19 @@ func (r *TaskRunner) completeTask() {
 	defer r.state.set(TaskSuccess)
 
 	r.span.Infof("complete task: taskID[%s]", r.taskID)
-	taskID, taskType, src, dest := r.w.CompleteArgs()
-	args := api.CompleteTaskArgs{
-		TaskId:   taskID,
-		TaskType: taskType,
-		IDC:      r.idc,
-		Src:      src,
-		Dest:     dest,
-	}
-	err := r.schedulerCli.CompleteTask(r.newCtx(), &args)
-	if err != nil {
-		r.span.Errorf("complete failed: taskID[%s], taskType[%s], src[%+v], dest[%+v], code[%d], err[%+v]",
-			taskID, taskType, src, dest, rpc.DetectStatusCode(err), err)
+	args := r.w.OperateArgs()
+	args.IDC = r.idc
+	if err := r.schedulerCli.CompleteTask(r.newCtx(), &args); err != nil {
+		r.span.Errorf("complete failed: taskID[%s], args[%+v], code[%d], err[%+v]",
+			r.taskID, args, rpc.DetectStatusCode(err), err)
 	}
 }
 
 func (r *TaskRunner) statsAndReportTask(increaseDataSize, increaseShardCnt uint64) {
 	r.stats.Do(increaseDataSize, increaseShardCnt)
 
-	reportArgs := api.TaskReportArgs{
-		TaskId:               r.taskID,
+	reportArgs := scheduler.TaskReportArgs{
+		TaskID:               r.taskID,
 		TaskType:             r.w.TaskType(),
 		TaskStats:            r.stats.Done(),
 		IncreaseDataSizeByte: int(increaseDataSize),

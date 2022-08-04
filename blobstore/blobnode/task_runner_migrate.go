@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -128,19 +129,14 @@ func (w *MigrateWorker) GetBenchmarkBids() []*ShardInfoSimple {
 	return w.benchmarkBids
 }
 
-// CancelArgs returns cancel args
-func (w *MigrateWorker) CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return w.t.TaskID, w.TaskType(), w.t.Sources, w.t.Destination
-}
-
-// CompleteArgs returns complete args
-func (w *MigrateWorker) CompleteArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return w.t.TaskID, w.TaskType(), w.t.Sources, w.t.Destination
-}
-
-// ReclaimArgs returns reclaim args
-func (w *MigrateWorker) ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return w.t.TaskID, w.TaskType(), w.t.Sources, w.t.Destination
+// OperateArgs args for cancel, complete, reclaim.
+func (w *MigrateWorker) OperateArgs() scheduler.OperateTaskArgs {
+	return scheduler.OperateTaskArgs{
+		TaskID:   w.t.TaskID,
+		TaskType: w.t.TaskType,
+		Src:      w.t.Sources,
+		Dest:     w.t.Destination,
+	}
 }
 
 // TaskType returns task type

@@ -346,7 +346,7 @@ func TestCancelMigrateTask(t *testing.T) {
 	idc := "z0"
 	{
 		mgr := newMigrateMgr(t)
-		err := mgr.CancelTask(ctx, &api.CancelTaskArgs{IDC: idc})
+		err := mgr.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc})
 		require.Error(t, err)
 	}
 	{
@@ -355,10 +355,10 @@ func TestCancelMigrateTask(t *testing.T) {
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 
 		// no such task
-		err := mgr.CancelTask(ctx, &api.CancelTaskArgs{IDC: idc})
+		err := mgr.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc})
 		require.Error(t, err)
 
-		err = mgr.CancelTask(ctx, &api.CancelTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+		err = mgr.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 		require.NoError(t, err)
 	}
 }
@@ -395,7 +395,7 @@ func TestCompleteMigrateTask(t *testing.T) {
 	{
 		// no task
 		mgr := newMigrateMgr(t)
-		err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc})
+		err := mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc})
 		require.Error(t, err)
 	}
 	{
@@ -405,18 +405,18 @@ func TestCompleteMigrateTask(t *testing.T) {
 
 		// update failed
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(errMock)
-		err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+		err := mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 		require.NoError(t, err)
 
 		// no task in queue
-		err = mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+		err = mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 		require.Error(t, err)
 
 		// update success
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		t2 := mockGenMigrateTask(proto.TaskTypeManualMigrate, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 		mgr.workQueue.AddPreparedTask(idc, t2.TaskID, t2)
-		err = mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t2.TaskID, Src: t2.Sources, Dest: t2.Destination})
+		err = mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t2.TaskID, Src: t2.Sources, Dest: t2.Destination})
 		require.NoError(t, err)
 	}
 }
@@ -505,7 +505,7 @@ func TestMigrateQueryTask(t *testing.T) {
 func TestMigrateReportWorkerTaskStats(t *testing.T) {
 	mgr := newMigrateMgr(t)
 	mgr.ReportWorkerTaskStats(&api.TaskReportArgs{
-		TaskId:               "task_id",
+		TaskID:               "task_id",
 		IncreaseDataSizeByte: 1,
 		IncreaseShardCnt:     1,
 	})

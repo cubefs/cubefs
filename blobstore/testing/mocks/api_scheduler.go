@@ -81,7 +81,7 @@ func (mr *MockISchedulerMockRecorder) AddManualMigrateTask(arg0, arg1 interface{
 }
 
 // CancelTask mocks base method.
-func (m *MockIScheduler) CancelTask(arg0 context.Context, arg1 *scheduler.CancelTaskArgs) error {
+func (m *MockIScheduler) CancelTask(arg0 context.Context, arg1 *scheduler.OperateTaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CancelTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -109,7 +109,7 @@ func (mr *MockISchedulerMockRecorder) CompleteInspect(arg0, arg1 interface{}) *g
 }
 
 // CompleteTask mocks base method.
-func (m *MockIScheduler) CompleteTask(arg0 context.Context, arg1 *scheduler.CompleteTaskArgs) error {
+func (m *MockIScheduler) CompleteTask(arg0 context.Context, arg1 *scheduler.OperateTaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CompleteTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -153,7 +153,7 @@ func (mr *MockISchedulerMockRecorder) LeaderStats(arg0 interface{}) *gomock.Call
 }
 
 // ReclaimTask mocks base method.
-func (m *MockIScheduler) ReclaimTask(arg0 context.Context, arg1 *scheduler.ReclaimTaskArgs) error {
+func (m *MockIScheduler) ReclaimTask(arg0 context.Context, arg1 *scheduler.OperateTaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReclaimTask", arg0, arg1)
 	ret0, _ := ret[0].(error)

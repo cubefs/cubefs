@@ -52,9 +52,9 @@ type IScheduler interface {
 	// report alive tasks
 	RenewalTask(ctx context.Context, args *TaskRenewalArgs) (ret *TaskRenewalRet, err error)
 	ReportTask(ctx context.Context, args *TaskReportArgs) (err error)
-	ReclaimTask(ctx context.Context, args *ReclaimTaskArgs) (err error)
-	CancelTask(ctx context.Context, args *CancelTaskArgs) (err error)
-	CompleteTask(ctx context.Context, args *CompleteTaskArgs) (err error)
+	ReclaimTask(ctx context.Context, args *OperateTaskArgs) (err error)
+	CancelTask(ctx context.Context, args *OperateTaskArgs) (err error)
+	CompleteTask(ctx context.Context, args *OperateTaskArgs) (err error)
 	CompleteInspect(ctx context.Context, args *CompleteInspectArgs) (err error)
 
 	// stats
