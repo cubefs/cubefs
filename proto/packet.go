@@ -211,6 +211,7 @@ const (
 	OpEcNodeDail                      uint8 = 0xC0
 
 	// Commons
+	OpInodeMergeErr    uint8 = 0xF1
 	OpInodeOutOfRange  uint8 = 0xF2
 	OpIntraGroupNetErr uint8 = 0xF3
 	OpArgMismatchErr   uint8 = 0xF4

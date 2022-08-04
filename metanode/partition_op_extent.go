@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/chubaofs/chubaofs/util/log"
@@ -190,11 +191,11 @@ func (mp *metaPartition) MergeExtents(req *proto.InodeMergeExtentsRequest, p *Pa
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
-	if len(req.OldExtents) <= 1 {
-		p.PacketErrorWithBody(proto.OpErr, []byte("OldExtents should not be less than 1."))
+	if len(req.NewExtents) == 0 || len(req.OldExtents) <= 1 {
+		msg := fmt.Sprintf("inode(%v) newExtents length(%v) oldExtents length(%v)", req.Inode, len(req.NewExtents), len(req.OldExtents))
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(msg))
 		return
 	}
-
 	im := &InodeMerge{
 		Inode: req.Inode,
 		NewExtents: req.NewExtents,

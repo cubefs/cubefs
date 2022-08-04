@@ -19,6 +19,7 @@ import (
 	"hash/crc32"
 	"net"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -54,7 +55,10 @@ type StreamConn struct {
 	currAddr string
 }
 
-var StreamConnPool *util.ConnectPool
+var (
+	streamConnPoolInitOnce sync.Once
+	StreamConnPool *util.ConnectPool
+)
 
 // NewStreamConn returns a new stream connection.
 func NewStreamConn(dp *DataPartition, follower bool) *StreamConn {
@@ -101,7 +105,7 @@ func (sc *StreamConn) String() string {
 }
 
 func (sc *StreamConn) sendToDataPartition(req *Packet) (conn *net.TCPConn, err error) {
-	if log.IsDebugEnabled(){
+	if log.IsDebugEnabled() {
 		log.LogDebugf("sendToDataPartition: send to addr(%v), reqPacket(%v)", sc.currAddr, req)
 	}
 	if conn, err = StreamConnPool.GetConnect(sc.currAddr); err != nil {
@@ -109,7 +113,7 @@ func (sc *StreamConn) sendToDataPartition(req *Packet) (conn *net.TCPConn, err e
 		return
 	}
 
-	if err=req.WriteToConnNs(conn, sc.dp.ClientWrapper.connConfig.WriteTimeoutNs);err != nil {
+	if err = req.WriteToConnNs(conn, sc.dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
 		log.LogWarnf("sendToDataPartition: failed to write to addr(%v) err(%v)", sc.currAddr, err)
 		return
 	}

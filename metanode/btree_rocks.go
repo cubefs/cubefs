@@ -248,6 +248,10 @@ func (r *RocksTree) CommitAndReleaseBatchWriteHandle(handle interface{}, needCom
 	return nil
 }
 
+func (r *RocksTree) ClearBatchWriteHandle(handle interface{}) error {
+	return r.db.ClearBatchWriteHandle(handle)
+}
+
 func (r *RocksTree) PersistBaseInfo() error {
 	var handle interface{}
 	buffBaseInfo, err := r.baseInfo.Marshal()

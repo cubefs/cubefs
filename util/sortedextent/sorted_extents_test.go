@@ -829,9 +829,9 @@ func TestSortedExtents_Merge1(t *testing.T) {
 		{FileOffset: 3, Size: 3, PartitionId: 4, ExtentId: 4},
 		{FileOffset: 6, Size: 4, PartitionId: 5, ExtentId: 5},
 	}
-	deleteExtents, err := se.Merge([]proto.ExtentKey{newEk}, oldEks)
-	if err != nil {
-		t.Fatalf("There should be no error, current error:%v", err)
+	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	if !merged {
+		t.Fatalf("There should be no error, current error:%v", msg)
 	}
 	if len(deleteExtents) != len(oldEks) {
 		t.Fatalf("deleteExtents length expect:%v ,actual:%v", len(oldEks), len(deleteExtents))
@@ -841,9 +841,9 @@ func TestSortedExtents_Merge1(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	deleteExtents, err = se.Merge([]proto.ExtentKey{newEk}, oldEks)
-	if err != nil {
-		t.Fatalf("There should be no error, current error:%v", err)
+	deleteExtents, merged, msg = se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	if !merged {
+		t.Fatalf("There should be no error, current error:%v", msg)
 	}
 	if len(deleteExtents) != len(oldEks) {
 		t.Fatalf("deleteExtents length expect:%v ,actual:%v", len(oldEks), len(deleteExtents))
@@ -877,9 +877,9 @@ func TestSortedExtents_Merge2(t *testing.T) {
 		{FileOffset: 3, Size: 3, PartitionId: 4, ExtentId: 4},
 		shouldNotContainEk,
 	}
-	deleteExtents, err := se.Merge([]proto.ExtentKey{newEk}, oldEks)
-	if err != nil {
-		t.Fatalf("There should be no error, current error:%v", err)
+	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	if !merged {
+		t.Fatalf("There should be no error, current error:%v", msg)
 	}
 	if len(deleteExtents) != len(oldEks)-1 {
 		t.Fatalf("deleteExtents length expect:%v ,actual:%v", len(oldEks)-1, len(deleteExtents))
@@ -919,9 +919,9 @@ func TestSortedExtents_Merge3(t *testing.T) {
 		shouldNotContainEk1,
 		shouldNotContainEk2,
 	}
-	deleteExtents, err := se.Merge([]proto.ExtentKey{newEk}, oldEks)
-	if err != nil {
-		t.Fatalf("Merge should have no error, current error:%v", err)
+	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	if !merged {
+		t.Fatalf("Merge should have no error, current error:%v", msg)
 	}
 	if len(deleteExtents) != len(oldEks)-2 {
 		t.Fatalf("deleteExtents length expect:%v ,actual:%v", len(oldEks)-2, len(deleteExtents))
@@ -962,9 +962,9 @@ func TestSortedExtents_Merge4(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	_, err := se.Merge([]proto.ExtentKey{newEk}, oldEks)
-	fmt.Println(err)
-	if err == nil {
+	_, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	fmt.Println(msg)
+	if merged {
 		t.Fatalf("Merge should hava error")
 	}
 	oldEks = []proto.ExtentKey{
@@ -973,9 +973,9 @@ func TestSortedExtents_Merge4(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	_, err = se.Merge([]proto.ExtentKey{newEk}, oldEks)
-	fmt.Println(err)
-	if err == nil {
+	_, merged, msg = se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	fmt.Println(msg)
+	if merged {
 		t.Fatalf("Merge should hava error")
 	}
 }
@@ -1006,9 +1006,9 @@ func TestSortedExtents_Merge5(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	_, err := se.Merge([]proto.ExtentKey{newEk}, oldEks)
-	fmt.Println(err)
-	if err == nil {
+	_, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	fmt.Println(msg)
+	if merged {
 		t.Fatalf("Merge should hava error")
 	}
 }

@@ -3569,6 +3569,7 @@ func (c *client) stop() {
 		}
 		if c.ec != nil {
 			_ = c.ec.Close(context.Background())
+			c.ec.CloseConnPool()
 		}
 		if c.mw != nil {
 			_ = c.mw.Close()

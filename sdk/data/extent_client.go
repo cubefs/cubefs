@@ -629,9 +629,14 @@ func (client *ExtentClient) Close(ctx context.Context) error {
 		_ = client.MustCloseStream(ctx, inode)
 		_ = client.EvictStream(ctx, inode)
 	}
-	StreamConnPool.Close()
-	StreamConnPool = nil
 	return nil
+}
+
+func (client *ExtentClient) CloseConnPool() {
+	if StreamConnPool != nil {
+		StreamConnPool.Close()
+		StreamConnPool = nil
+	}
 }
 
 //func (c *ExtentClient) AlignSize() int {

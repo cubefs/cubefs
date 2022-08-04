@@ -686,27 +686,26 @@ func (se *SortedExtents) findEkIndex(ek *proto.ExtentKey) (int, bool) {
 	return -1, false
 }
 
-func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKey) (deleteExtents []proto.ExtentKey, err error) {
+func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKey) (deleteExtents []proto.ExtentKey, merged bool, msg string) {
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
 	set := NewExtentKeySet()
 	// get the old start index
 	index, ok := se.findEkIndex(&oldEks[0])
 	if !ok {
-		err = fmt.Errorf("findEkIndex oldEks[0](%v) not found(%v)", oldEks[0], ok)
-		log.LogInfof(err.Error())
+		msg = fmt.Sprintf("findEkIndex oldEks[0](%v) not found(%v)", oldEks[0], ok)
 		return
 	}
 	start := index
 	// check index out of range
 	if index + len(oldEks) > len(se.eks)-1 {
-		err = fmt.Errorf("merge extent failed, index out of range [%v] with length %v", index + len(oldEks), len(se.eks))
+		msg = fmt.Sprintf("merge extent failed, index out of range [%v] with length %v", index + len(oldEks), len(se.eks))
 		return
 	}
 	// check old ek exist
 	for _, ek := range oldEks {
 		if !se.eks[index].Equal(&ek) {
-			err = fmt.Errorf("merge extent failed, can not find pre ek:%v", ek.String())
+			msg = fmt.Sprintf("merge extent failed, can not find pre ek:%v", ek.String())
 			return
 		}
 		index++
@@ -715,7 +714,7 @@ func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKe
 	lastEk := se.eks[index - 1]
 	nextEk := se.eks[index]
 	if lastEk.FileOffset + uint64(lastEk.Size)  != nextEk.FileOffset {
-		err = fmt.Errorf("merge extent failed, ek changed, lastek can not merged, last:%v, next:%v", lastEk.String(), nextEk)
+		msg = fmt.Sprintf("merge extent failed, ek changed, lastek can not merged, last:%v, next:%v", lastEk.String(), nextEk)
 		return
 	}
 	// merge
@@ -729,7 +728,7 @@ func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKe
 		set.Put(&ek)
 	}
 	deleteExtents = set.GetDelExtentKeys(se.eks)
-	return
+	return deleteExtents, true, ""
 }
 
 func (se *SortedExtents) DelNewExtent(newEks []proto.ExtentKey) (deleteExtents []proto.ExtentKey) {

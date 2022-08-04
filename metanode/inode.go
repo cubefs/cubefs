@@ -690,15 +690,10 @@ func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.Ext
 	return
 }
 
-func (i *Inode) MergeExtents(newEks []proto.ExtentKey,  oldEks []proto.ExtentKey) (delExtents []proto.ExtentKey, err error) {
-	if len(oldEks) == 0 {
-		err = fmt.Errorf("MergeExtents inode(%v) oldEks Should not be equal to 0", i.Inode)
-		return
-	}
-
+func (i *Inode) MergeExtents(newEks []proto.ExtentKey,  oldEks []proto.ExtentKey) (delExtents []proto.ExtentKey, merged bool, msg string) {
 	i.Lock()
 	defer i.Unlock()
-	if delExtents, err = i.Extents.Merge(newEks, oldEks); err == nil {
+	if delExtents, merged, msg = i.Extents.Merge(newEks, oldEks); merged {
 		i.Generation++
 	}
 	return
