@@ -72,6 +72,14 @@ Refer to [cubefs.readthedocs.io](https://cubefs.readthedocs.io/en/latest/evaluat
 
 For a list of users and success stories see [ADOPTERS.md](ADOPTERS.md).
 
+
+## Reference
+
+Haifeng Liu, et al., CFS: A Distributed File System for Large Scale Container Platforms. SIGMOD‘19, June 30-July 5, 2019, Amsterdam, Netherlands. 
+
+For more information, please refer to https://dl.acm.org/citation.cfm?doid=3299869.3314046 and https://arxiv.org/abs/1911.03001
+
+
 ## License
 
 CubeFS is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
