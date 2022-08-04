@@ -188,9 +188,7 @@ type TaskRunner struct {
 	stopReason *WorkError
 
 	schedulerCli scheduler.IScheduler
-
-	statsMu sync.Mutex
-	stats   proto.TaskStatistics // work run statics info
+	stats        proto.TaskProgress // task progress statics
 }
 
 // NewTaskRunner return task runner
@@ -208,6 +206,7 @@ func NewTaskRunner(ctx context.Context, taskID string, w ITaskWorker, idc string
 		cancel:                cancel,
 		span:                  span,
 		schedulerCli:          schedulerCli,
+		stats:                 proto.NewTaskProgress(),
 	}
 	task.state.set(TaskInit)
 	return &task
@@ -231,10 +230,8 @@ func (r *TaskRunner) Run() {
 	remainDataSize, remainShardCnt := totalDataSizeAndShardCntByTasklets(tasklets)
 	migratedDataSize := totalDataSize - remainDataSize
 	migratedShardCnt := totalShardCnt - remainShardCnt
-	r.statsMu.Lock()
-	r.stats.InitTotal(totalDataSize, totalShardCnt)
-	r.stats.Add(migratedDataSize, migratedShardCnt)
-	r.statsMu.Unlock()
+	r.stats.Total(totalDataSize, totalShardCnt)
+	r.stats.Do(migratedDataSize, migratedShardCnt)
 	r.statsAndReportTask(0, 0)
 
 	// all tasks are put into the task pool at one time to be executed
@@ -376,14 +373,12 @@ func (r *TaskRunner) completeTask() {
 }
 
 func (r *TaskRunner) statsAndReportTask(increaseDataSize, increaseShardCnt uint64) {
-	r.statsMu.Lock()
-	r.stats.Add(increaseDataSize, increaseShardCnt)
-	r.statsMu.Unlock()
+	r.stats.Do(increaseDataSize, increaseShardCnt)
 
 	reportArgs := api.TaskReportArgs{
 		TaskId:               r.taskID,
 		TaskType:             r.w.TaskType(),
-		TaskStats:            r.stats,
+		TaskStats:            r.stats.Done(),
 		IncreaseDataSizeByte: int(increaseDataSize),
 		IncreaseShardCnt:     int(increaseShardCnt),
 	}
