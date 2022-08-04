@@ -225,7 +225,7 @@ func (mr *MockMigraterMockRecorder) AddTask(arg0, arg1 interface{}) *gomock.Call
 }
 
 // CancelTask mocks base method.
-func (m *MockMigrater) CancelTask(arg0 context.Context, arg1 *scheduler.CancelTaskArgs) error {
+func (m *MockMigrater) CancelTask(arg0 context.Context, arg1 *scheduler.OperateTaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CancelTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -251,7 +251,7 @@ func (mr *MockMigraterMockRecorder) Close() *gomock.Call {
 }
 
 // CompleteTask mocks base method.
-func (m *MockMigrater) CompleteTask(arg0 context.Context, arg1 *scheduler.CompleteTaskArgs) error {
+func (m *MockMigrater) CompleteTask(arg0 context.Context, arg1 *scheduler.OperateTaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CompleteTask", arg0, arg1)
 	ret0, _ := ret[0].(error)

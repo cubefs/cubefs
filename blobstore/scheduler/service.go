@@ -88,7 +88,7 @@ func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 
 // HTTPTaskReclaim reclaim task
 func (svr *Service) HTTPTaskReclaim(c *rpc.Context) {
-	args := new(api.ReclaimTaskArgs)
+	args := new(api.OperateTaskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
@@ -106,12 +106,12 @@ func (svr *Service) HTTPTaskReclaim(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	c.RespondError(reclaimer.ReclaimTask(ctx, args.IDC, args.TaskId, args.Src, args.Dest, newDst))
+	c.RespondError(reclaimer.ReclaimTask(ctx, args.IDC, args.TaskID, args.Src, args.Dest, newDst))
 }
 
 // HTTPTaskCancel cancel task
 func (svr *Service) HTTPTaskCancel(c *rpc.Context) {
-	args := new(api.CancelTaskArgs)
+	args := new(api.OperateTaskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
@@ -128,7 +128,7 @@ func (svr *Service) HTTPTaskCancel(c *rpc.Context) {
 
 // HTTPTaskComplete complete task
 func (svr *Service) HTTPTaskComplete(c *rpc.Context) {
-	args := new(api.CompleteTaskArgs)
+	args := new(api.OperateTaskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return

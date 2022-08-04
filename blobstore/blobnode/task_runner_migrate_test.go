@@ -306,21 +306,9 @@ func TestMigrateArgs(t *testing.T) {
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
 	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
-	taskID, taskType, src, dest := w.ReclaimArgs()
-	require.Equal(t, diskDropTask.TaskID, taskID)
-	require.Equal(t, proto.TaskTypeDiskDrop, taskType)
-	require.Equal(t, diskDropTask.Sources, src)
-	require.Equal(t, diskDropTask.Destination, dest)
-
-	taskID, taskType, src, dest = w.CompleteArgs()
-	require.Equal(t, diskDropTask.TaskID, taskID)
-	require.Equal(t, proto.TaskTypeDiskDrop, taskType)
-	require.Equal(t, diskDropTask.Sources, src)
-	require.Equal(t, diskDropTask.Destination, dest)
-
-	taskID, taskType, src, dest = w.CancelArgs()
-	require.Equal(t, diskDropTask.TaskID, taskID)
-	require.Equal(t, proto.TaskTypeDiskDrop, taskType)
-	require.Equal(t, diskDropTask.Sources, src)
-	require.Equal(t, diskDropTask.Destination, dest)
+	args := w.OperateArgs()
+	require.Equal(t, diskDropTask.TaskID, args.TaskID)
+	require.Equal(t, proto.TaskTypeDiskDrop, args.TaskType)
+	require.Equal(t, diskDropTask.Sources, args.Src)
+	require.Equal(t, diskDropTask.Destination, args.Dest)
 }
