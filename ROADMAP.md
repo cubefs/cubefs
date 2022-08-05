@@ -23,7 +23,4 @@ for atomic versioned data lake
 ## CubeFS for Android
 
 
-from datacenter to mobile devices
-
-
-
+Not only for datacenters, also for mobile devices. CubeFS will work as the storage infrastructure for cloud-enabled mobile applications run on any Android devices.  
