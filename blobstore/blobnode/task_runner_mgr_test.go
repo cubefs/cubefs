@@ -65,7 +65,7 @@ func (w *mockMigrateWorker) OperateArgs() scheduler.OperateTaskArgs {
 }
 
 func initTestTaskRunnerMgr(t *testing.T, cli scheduler.IMigrator, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
-	tm := NewTaskRunnerMgr("Z0", getDefaultConfig().WorkerConfigMeter, cli, NewMockMigrateWorker)
+	tm := NewTaskRunnerMgr("Z0", getDefaultConfig().WorkerConfigMeter, NewMockMigrateWorker, cli, cli)
 
 	ctx := context.Background()
 	for _, typ := range taskTypes {
