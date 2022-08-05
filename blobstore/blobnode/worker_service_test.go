@@ -145,7 +145,7 @@ func newMockWorkService(t *testing.T) (*Service, *mockScheCli) {
 		schedulerCli:     schedulerCli,
 		blobNodeCli:      blobnodeCli,
 
-		taskRunnerMgr:  NewTaskRunnerMgr("z0", getDefaultConfig().WorkerConfigMeter, schedulerCli, NewMockMigrateWorker),
+		taskRunnerMgr:  NewTaskRunnerMgr("z0", getDefaultConfig().WorkerConfigMeter, NewMockMigrateWorker, schedulerCli, schedulerCli),
 		inspectTaskMgr: NewInspectTaskMgr(1, blobnodeCli, schedulerCli),
 	}
 	return &Service{WorkerService: workSvr}, schedulerCli

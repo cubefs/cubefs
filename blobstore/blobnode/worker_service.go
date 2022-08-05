@@ -147,7 +147,10 @@ func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID pro
 	schedulerCli := scheduler.New(&cfg.Scheduler, service, clusterID)
 	blobNodeCli := client.NewBlobNodeClient(&cfg.BlobNode)
 
-	taskRunnerMgr := NewTaskRunnerMgr(idc, cfg.WorkerConfigMeter, schedulerCli, NewMigrateWorker)
+	renewalConfig := cfg.Scheduler
+	renewalConfig.ClientTimeoutMs = 1000 * proto.RenewalTimeoutS
+	renewalCli := scheduler.New(&renewalConfig, service, clusterID)
+	taskRunnerMgr := NewTaskRunnerMgr(idc, cfg.WorkerConfigMeter, NewMigrateWorker, renewalCli, schedulerCli)
 	inspectTaskMgr := NewInspectTaskMgr(cfg.InspectConcurrency, blobNodeCli, schedulerCli)
 
 	shardRepairLimit := count.New(cfg.ShardRepairConcurrency)

@@ -39,12 +39,14 @@ type TaskRunnerMgr struct {
 
 	idc          string
 	meter        WorkerConfigMeter
-	schedulerCli scheduler.IMigrator
 	genWorker    WorkerGenerator
+	renewalCli   scheduler.IMigrator // TODO: must be timeout in proto.RenewalTimeoutS
+	schedulerCli scheduler.IMigrator
 }
 
 // NewTaskRunnerMgr returns task runner manager
-func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, schedulerCli scheduler.IMigrator, genWorker WorkerGenerator) *TaskRunnerMgr {
+func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, genWorker WorkerGenerator,
+	renewalCli, schedulerCli scheduler.IMigrator) *TaskRunnerMgr {
 	return &TaskRunnerMgr{
 		typeMgr: map[proto.TaskType]mapTaskRunner{
 			proto.TaskTypeBalance:       make(mapTaskRunner),
@@ -55,8 +57,9 @@ func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, schedulerCli schedule
 
 		idc:          idc,
 		meter:        meter,
-		schedulerCli: schedulerCli,
 		genWorker:    genWorker,
+		renewalCli:   renewalCli,
+		schedulerCli: schedulerCli,
 	}
 }
 
@@ -83,7 +86,7 @@ func (tm *TaskRunnerMgr) renewalTask() {
 	}
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), "renewalTask")
-	ret, err := tm.schedulerCli.RenewalTask(ctx, &scheduler.TaskRenewalArgs{IDC: tm.idc, IDs: aliveTasks})
+	ret, err := tm.renewalCli.RenewalTask(ctx, &scheduler.TaskRenewalArgs{IDC: tm.idc, IDs: aliveTasks})
 	if err != nil {
 		span.Errorf("renewal task failed and stop all runner: err[%+v]", err)
 		tm.StopAllAliveRunner()
