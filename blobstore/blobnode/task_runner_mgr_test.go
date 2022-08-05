@@ -64,7 +64,7 @@ func (w *mockMigrateWorker) OperateArgs() scheduler.OperateTaskArgs {
 	return scheduler.OperateTaskArgs{TaskID: "test_mock_task", TaskType: w.TaskType()}
 }
 
-func initTestTaskRunnerMgr(t *testing.T, cli scheduler.IScheduler, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
+func initTestTaskRunnerMgr(t *testing.T, cli scheduler.IMigrator, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
 	tm := NewTaskRunnerMgr("Z0", getDefaultConfig().WorkerConfigMeter, cli, NewMockMigrateWorker)
 
 	ctx := context.Background()
@@ -112,7 +112,7 @@ func TestTaskRunnerMgr(t *testing.T) {
 	}
 }
 
-func newMockRenewalCli(t *testing.T, mockFailTasks map[string]bool, mockErr error, times int) scheduler.IScheduler {
+func newMockRenewalCli(t *testing.T, mockFailTasks map[string]bool, mockErr error, times int) scheduler.IMigrator {
 	cli := mocks.NewMockIScheduler(C(t))
 	cli.EXPECT().RenewalTask(A, A).Times(times).DoAndReturn(
 		func(_ context.Context, tasks *scheduler.TaskRenewalArgs) (*scheduler.TaskRenewalRet, error) {

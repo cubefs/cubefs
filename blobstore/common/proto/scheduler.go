@@ -150,15 +150,25 @@ func (t *MigrateTask) Copy() *MigrateTask {
 	return task
 }
 
+func (t *MigrateTask) IsValid() bool {
+	return t.TaskType.Valid() && t.CodeMode.IsValid() &&
+		CheckVunitLocations(t.Sources) &&
+		CheckVunitLocations([]VunitLocation{t.Destination})
+}
+
 type VolumeInspectCheckPoint struct {
 	StartVid Vid    `json:"start_vid"` // min vid in current batch volumes
 	Ctime    string `json:"ctime"`
 }
 
 type VolumeInspectTask struct {
-	TaskId   string            `json:"task_id"`
+	TaskID   string            `json:"task_id"`
 	Mode     codemode.CodeMode `json:"mode"`
 	Replicas []VunitLocation   `json:"replicas"`
+}
+
+func (t *VolumeInspectTask) IsValid() bool {
+	return t.Mode.IsValid() && CheckVunitLocations(t.Replicas)
 }
 
 type MissedShard struct {

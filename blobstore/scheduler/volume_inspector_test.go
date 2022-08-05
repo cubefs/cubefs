@@ -269,7 +269,7 @@ func TestInspectorAcquire(t *testing.T) {
 
 		task, err := mgr.AcquireInspect(ctx)
 		require.NoError(t, err)
-		require.Equal(t, mgr.tasks[taskID].t.TaskId, task.TaskId)
+		require.Equal(t, mgr.tasks[taskID].t.TaskID, task.TaskID)
 	}
 }
 

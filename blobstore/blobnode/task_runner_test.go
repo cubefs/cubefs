@@ -91,7 +91,7 @@ type mockStats struct {
 	step string
 }
 
-func newMockSchedulerCli(t *testing.T, stats *mockStats) scheduler.IScheduler {
+func newMockSchedulerCli(t *testing.T, stats *mockStats) scheduler.IMigrator {
 	cli := mocks.NewMockIScheduler(C(t))
 	cli.EXPECT().ReportTask(A, A).AnyTimes().Return(nil)
 	cli.EXPECT().CancelTask(A, A).AnyTimes().DoAndReturn(

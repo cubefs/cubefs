@@ -46,36 +46,49 @@ const (
 
 var errNoServiceAvailable = errors.New("no service available")
 
-type IScheduler interface {
-	AcquireTask(ctx context.Context, args *AcquireArgs) (ret *WorkerTask, err error)
-	AcquireInspectTask(ctx context.Context) (ret *WorkerInspectTask, err error)
-	// report alive tasks
+// IMigrator scheduler migrate task.
+type IMigrator interface {
+	AcquireTask(ctx context.Context, args *AcquireArgs) (ret *proto.MigrateTask, err error)
 	RenewalTask(ctx context.Context, args *TaskRenewalArgs) (ret *TaskRenewalRet, err error)
 	ReportTask(ctx context.Context, args *TaskReportArgs) (err error)
 	ReclaimTask(ctx context.Context, args *OperateTaskArgs) (err error)
 	CancelTask(ctx context.Context, args *OperateTaskArgs) (err error)
 	CompleteTask(ctx context.Context, args *OperateTaskArgs) (err error)
-	CompleteInspect(ctx context.Context, args *CompleteInspectArgs) (err error)
+}
 
-	// stats
+// IInspector volume inspect task.
+type IInspector interface {
+	AcquireInspectTask(ctx context.Context) (ret *proto.VolumeInspectTask, err error)
+	CompleteInspectTask(ctx context.Context, args *proto.VolumeInspectRet) (err error)
+}
+
+// ISchedulerStatus scheduler status.
+type ISchedulerStatus interface {
 	DetailMigrateTask(ctx context.Context, args *MigrateTaskDetailArgs) (detail MigrateTaskDetail, err error)
 	Stats(ctx context.Context, host string) (ret TasksStat, err error)
 	LeaderStats(ctx context.Context) (ret TasksStat, err error)
+}
 
-	// add manual migrate task
+// IManualMigrator add manual migrate task.
+type IManualMigrator interface {
 	AddManualMigrateTask(ctx context.Context, args *AddManualMigrateArgs) (err error)
+}
+
+// IVolumeUpdater volume updater.
+type IVolumeUpdater interface {
+	UpdateVolume(ctx context.Context, host string, vid proto.Vid) (err error)
+}
+
+// IScheduler scheduler api interface.
+type IScheduler interface {
+	IMigrator
+	IInspector
+	ISchedulerStatus
+	IManualMigrator
 	IVolumeUpdater
 }
 
-type IVolumeUpdater interface {
-	UpdateVol(ctx context.Context, host string, vid proto.Vid) (err error)
-}
-
-// UpdateVolumeArgs argument of volume to update.
-type UpdateVolumeArgs struct {
-	Vid proto.Vid `json:"vid"`
-}
-
+// Config scheduler config.
 type Config struct {
 	HostSyncIntervalMs int64 `json:"host_sync_interval_ms"`
 	rpc.Config
@@ -86,12 +99,7 @@ type client struct {
 	rpc.Client
 }
 
-func NewVolumeUpdater(cfg *Config) IVolumeUpdater {
-	return &client{
-		Client: rpc.NewClient(&cfg.Config),
-	}
-}
-
+// New returns scheduler client.
 func New(cfg *Config, service cmapi.APIService, clusterID proto.ClusterID) IScheduler {
 	hostGetter := func() ([]string, error) {
 		svrInfos, err := service.GetService(context.Background(), cmapi.GetServiceArgs{Name: proto.ServiceNameScheduler})
@@ -120,6 +128,16 @@ func New(cfg *Config, service cmapi.APIService, clusterID proto.ClusterID) ISche
 	}
 }
 
-func (c *client) UpdateVol(ctx context.Context, host string, vid proto.Vid) (err error) {
+// NewVolumeUpdater returns volume updater client.
+func NewVolumeUpdater(cfg *Config) IVolumeUpdater {
+	return &client{Client: rpc.NewClient(&cfg.Config)}
+}
+
+// UpdateVolumeArgs argument of volume to update.
+type UpdateVolumeArgs struct {
+	Vid proto.Vid `json:"vid"`
+}
+
+func (c *client) UpdateVolume(ctx context.Context, host string, vid proto.Vid) (err error) {
 	return c.PostWith(ctx, host+PathUpdateVolume, nil, UpdateVolumeArgs{Vid: vid})
 }

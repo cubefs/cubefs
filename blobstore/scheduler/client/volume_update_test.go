@@ -34,13 +34,13 @@ func TestVolumeUpdate(t *testing.T) {
 
 	ctx := context.Background()
 	schedulerCli := mocks.NewMockIScheduler(gomock.NewController(t))
-	schedulerCli.EXPECT().UpdateVol(any, any, any).Return(nil)
+	schedulerCli.EXPECT().UpdateVolume(any, any, any).Return(nil)
 	cli.Client = schedulerCli
 
 	err := cli.UpdateLeaderVolumeCache(ctx, proto.Vid(1))
 	require.NoError(t, err)
 
-	schedulerCli.EXPECT().UpdateVol(any, any, any).Return(errMock)
+	schedulerCli.EXPECT().UpdateVolume(any, any, any).Return(errMock)
 	err = cli.UpdateFollowerVolumeCache(ctx, "127.0.0.1:xxx", proto.Vid(1))
 	require.True(t, errors.Is(err, errMock))
 }
