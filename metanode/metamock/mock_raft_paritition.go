@@ -3,6 +3,7 @@ package metamock
 import (
 	"context"
 	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
 )
 
@@ -104,4 +105,8 @@ func (m MockPartition) CreateRaft(cfg *raftstore.PartitionConfig, raftStore raft
 
 func (m MockPartition) FlushWal() {
 	panic("implement me")
+}
+
+func (m MockPartition) RaftConfig() *raft.Config {
+	return raft.DefaultConfig()
 }

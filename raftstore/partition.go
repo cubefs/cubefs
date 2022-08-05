@@ -89,6 +89,8 @@ type Partition interface {
 	CreateRaft(cfg *PartitionConfig, raftStore RaftStore) error
 
 	FlushWal()
+
+	RaftConfig() *raft.Config
 }
 
 // Default implementation of the Partition interface.
@@ -239,6 +241,10 @@ func (p *partition) FlushWal() {
 	if p.raft != nil {
 		p.raft.FlusdLastLogFile(p.id)
 	}
+}
+
+func (p *partition) RaftConfig() *raft.Config {
+	return p.raft.Config()
 }
 
 func (p *partition) CreateRaft(cfg *PartitionConfig, raftStore RaftStore) (err error) {

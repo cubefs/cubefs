@@ -994,8 +994,7 @@ func (mp *metaPartition) uploadApplyID(applyId uint64) {
 	atomic.StoreUint64(&mp.applyID, applyId)
 
 	if mp.HasRocksDBStore() {
-		//todo:min(retain logs, maximumApplyIdDifference)
-		if math.Abs(float64(mp.applyID - mp.inodeTree.GetPersistentApplyID())) > maximumApplyIdDifference {
+		if math.Abs(float64(mp.applyID - mp.inodeTree.GetPersistentApplyID())) > math.Min(float64(mp.raftPartition.RaftConfig().RetainLogs), maximumApplyIdDifference) {
 			//persist to rocksdb
 			if err := mp.inodeTree.PersistBaseInfo(); err != nil {
 				log.LogErrorf("action[uploadApplyID] persist base info failed:%v", err)

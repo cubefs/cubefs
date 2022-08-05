@@ -521,3 +521,7 @@ func (rs *RaftServer) FlusdLastLogFile(id uint64) {
 		raft.syncLastLogFile(id)
 	}
 }
+
+func (rs *RaftServer) Config() *Config {
+	return rs.config
+}
