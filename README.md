@@ -20,22 +20,16 @@
 
 CubeFS (储宝文件系统 in Chinese) is a cloud-native storage platform hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [incubating](https://www.cncf.io/projects/) project.
 
-CubeFS has been commonly used as the underlying storage infrastructure for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. An advantage of doing so is to separate storage from compute - one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
+CubeFS has been commonly used as the storage infrastructure for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. An advantage of doing so is to separate storage from compute - one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
 
 Some key features of CubeFS include:
 
-- Multiple Access Protocols
-  Allowing users to access the same file over multiple protocols, such as POSIX/HDFS/S3
-- Highly Scalable Metadata Service  
-  Elasticity, scalability and strong consistency of metadata
-- Excellent Storage Performance  
-  A lot of performance optimizations for large/small files and sequential/random writes
-- Multi-tenancy Support
-  Implementing an efficient mechanism to improve resource utilization and tenant isolation
-- Hybrid Cloud Acceleration  
-  Boosting Hybrid Cloud IO performance through multi-level caching
-- Multiple Storage Engines  
-  Providing a high-performance replication engine and a low-cost erasure coding engine
+- Multiple access protocols, allowing users to access the same file over multiple protocols, such as POSIX/HDFS/S3
+- Highly scalable metadata service with strong consistency  
+- Excellent storage performance via optimizing large/small files and sequential/random writes
+- Multi-tenancy support with better resource utilization and tenant isolation
+- Hybrid cloud I/O acceleration through multi-level caching
+- Flexible storage policies, high-performance replication or low-cost erasure coding
 
 ## Documents
 
