@@ -18,25 +18,25 @@
 
 ## Overview
 
-CubeFS (储宝文件系统 in Chinese) is a cloud-native storage platform be hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [incubating](https://www.cncf.io/projects/) project.
+CubeFS (储宝文件系统 in Chinese) is a cloud-native storage platform hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [incubating](https://www.cncf.io/projects/) project.
 
 CubeFS has been commonly used as the underlying storage infrastructure for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. 
 An advantage of doing so is to separate storage from compute - one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
 
 Some key features of CubeFS include:
 
-- Multiple Protocols Support  
+- Multiple Access Protocols
   Allowing users to access the same file over multiple protocols, such as POSIX/HDFS/S3
 - Highly Scalable Metadata Service  
   Elasticity, scalability and strong consistency of metadata
 - Excellent Storage Performance  
   A lot of performance optimizations for large/small files and sequential/random writes
-- Multi-tenancy  
+- Multi-tenancy Support
   Provides an efficient mechanism to improve resource utilization and tenant isolation
 - Hybrid Cloud Acceleration  
-  Accelerate Hybrid Cloud IO performance through multi-level cache
+  Accelerate Hybrid Cloud IO performance through multi-level caching
 - Multiple Storage Engines  
-  Provides high-performance replication engine and low-cost erasure coding engine
+  Provides a high-performance replication engine and a low-cost erasure coding engine
 
 ## Documents
 
@@ -45,7 +45,7 @@ Some key features of CubeFS include:
 
 ## Benchmark
 
-Small file operation performance and scalability benchmark test by [mdtest](https://github.com/LLNL/mdtest).
+Small file operation performance and scalability benchmark tested by [mdtest](https://github.com/LLNL/mdtest).
 
 <img src="https://raw.githubusercontent.com/cubefs/cubefs/master/docs/source/pic/cfs-small-file-benchmark.png" width="600" align=center/>
 
@@ -71,7 +71,7 @@ Refer to [cubefs.readthedocs.io](https://cubefs.readthedocs.io/en/latest/evaluat
 
 ## Partners and Users
 
-For a list of users and success stories see [ADOPTERS.md](ADOPTERS.md).
+There is the list of users and success stories [ADOPTERS.md](ADOPTERS.md).
 
 
 ## Reference
