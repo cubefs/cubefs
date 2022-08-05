@@ -31,11 +31,11 @@ Some key features of CubeFS include:
 - Excellent Storage Performance  
   A lot of performance optimizations for large/small files and sequential/random writes
 - Multi-tenancy Support
-  Provides an efficient mechanism to improve resource utilization and tenant isolation
+  Implementing an efficient mechanism to improve resource utilization and tenant isolation
 - Hybrid Cloud Acceleration  
-  Accelerate Hybrid Cloud IO performance through multi-level caching
+  Boosting Hybrid Cloud IO performance through multi-level caching
 - Multiple Storage Engines  
-  Provides a high-performance replication engine and a low-cost erasure coding engine
+  Providing a high-performance replication engine and a low-cost erasure coding engine
 
 ## Documents
 
