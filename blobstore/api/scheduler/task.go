@@ -26,43 +26,11 @@ type AcquireArgs struct {
 	IDC string `json:"idc"`
 }
 
-type WorkerTask struct {
-	Task proto.MigrateTask `json:"task"` // migrate task
-}
-
-func (t *WorkerTask) TaskType() proto.TaskType {
-	return t.Task.TaskType
-}
-
-func (t *WorkerTask) IsValid() bool {
-	return t.TaskType().Valid() && t.Task.CodeMode.IsValid() &&
-		proto.CheckVunitLocations([]proto.VunitLocation{t.Task.Destination}) &&
-		proto.CheckVunitLocations(t.Task.Sources)
-}
-
-func (c *client) AcquireTask(ctx context.Context, args *AcquireArgs) (ret *WorkerTask, err error) {
+func (c *client) AcquireTask(ctx context.Context, args *AcquireArgs) (ret *proto.MigrateTask, err error) {
 	err = c.request(func(host string) error {
 		return c.GetWith(ctx, host+PathTaskAcquire+"?idc="+args.IDC, &ret)
 	})
 	return
-}
-
-type WorkerInspectTask struct {
-	Task *proto.VolumeInspectTask `json:"task"`
-}
-
-func (task *WorkerInspectTask) IsValid() bool {
-	return task.Task.Mode.IsValid() && proto.CheckVunitLocations(task.Task.Replicas)
-}
-
-func (c *client) AcquireInspectTask(ctx context.Context) (*WorkerInspectTask, error) {
-	ret := WorkerInspectTask{
-		Task: &proto.VolumeInspectTask{},
-	}
-	err := c.request(func(host string) error {
-		return c.GetWith(ctx, host+PathInspectAcquire, &ret)
-	})
-	return &ret, err
 }
 
 type TaskRenewalArgs struct {
@@ -124,11 +92,14 @@ func (c *client) CompleteTask(ctx context.Context, args *OperateTaskArgs) (err e
 	})
 }
 
-type CompleteInspectArgs struct {
-	*proto.VolumeInspectRet
+func (c *client) AcquireInspectTask(ctx context.Context) (ret *proto.VolumeInspectTask, err error) {
+	err = c.request(func(host string) error {
+		return c.GetWith(ctx, host+PathInspectAcquire, &ret)
+	})
+	return
 }
 
-func (c *client) CompleteInspect(ctx context.Context, args *CompleteInspectArgs) (err error) {
+func (c *client) CompleteInspectTask(ctx context.Context, args *proto.VolumeInspectRet) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathInspectComplete, nil, args)
 	})

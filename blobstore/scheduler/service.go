@@ -79,7 +79,7 @@ func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 		svr.manualMigMgr, svr.diskRepairMgr, svr.diskDropMgr, svr.balanceMgr,
 	} {
 		if task, err := acquire.AcquireTask(ctx, args.IDC); err == nil {
-			c.RespondJSON(api.WorkerTask{Task: task})
+			c.RespondJSON(task)
 			return
 		}
 	}
@@ -149,7 +149,7 @@ func (svr *Service) HTTPInspectAcquire(c *rpc.Context) {
 
 	task, _ := svr.inspectMgr.AcquireInspect(ctx)
 	if task != nil {
-		c.RespondJSON(api.WorkerInspectTask{Task: task})
+		c.RespondJSON(task)
 		return
 	}
 	c.RespondError(errcode.ErrNothingTodo)
@@ -157,14 +157,14 @@ func (svr *Service) HTTPInspectAcquire(c *rpc.Context) {
 
 // HTTPInspectComplete complete inspect task
 func (svr *Service) HTTPInspectComplete(c *rpc.Context) {
-	args := new(api.CompleteInspectArgs)
+	args := new(proto.VolumeInspectRet)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
 
 	ctx := c.Request.Context()
-	svr.inspectMgr.CompleteInspect(ctx, args.VolumeInspectRet)
+	svr.inspectMgr.CompleteInspect(ctx, args)
 	c.Respond()
 }
 

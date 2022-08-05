@@ -540,7 +540,7 @@ func (mgr *VolumeInspectMgr) genTaskID(vol *client.VolumeInfoSimple) string {
 
 func (mgr *VolumeInspectMgr) genInspectTask(taskID string, vol *client.VolumeInfoSimple) *proto.VolumeInspectTask {
 	return &proto.VolumeInspectTask{
-		TaskId:   taskID,
+		TaskID:   taskID,
 		Mode:     vol.CodeMode,
 		Replicas: vol.VunitLocations,
 	}
