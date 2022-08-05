@@ -134,8 +134,10 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 	} else {
 		columnValFrom.Value = "N/A"
 	}
-	if opKVData.Timestamp > 0 {
+	if opKVData.Timestamp > time.Now().Unix() {
 		columnValTime.Value = time.Unix(opKVData.Timestamp/1000/1000, 0).Format("2006-01-02 15:04:05")
+	} else if opKVData.Timestamp > 0 {
+		columnValTime.Value = time.Unix(opKVData.Timestamp, 0).Format("2006-01-02 15:04:05")
 	} else {
 		columnValTime.Value = "N/A"
 	}
