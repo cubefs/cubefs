@@ -141,14 +141,14 @@ func (dataNode *DataNode) GetAddr() string {
 }
 
 // SetCarry implements "SetCarry" in the Node interface
-func (dataNode *DataNode) SetCarry(carry float64) {
+func (dataNode *DataNode) SetCarry(carry float64, storeMode proto.StoreMode) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	dataNode.Carry = carry
 }
 
 // SelectNodeForWrite implements "SelectNodeForWrite" in the Node interface
-func (dataNode *DataNode) SelectNodeForWrite() {
+func (dataNode *DataNode) SelectNodeForWrite(storeMode proto.StoreMode) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	dataNode.UsageRatio = float64(dataNode.Used) / float64(dataNode.Total)

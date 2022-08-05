@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +27,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-type ChooseMetaHostFunc func(c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string, excludeNodeSets []uint64, zoneName string) (oldAddr, addAddr string, err error)
+type ChooseMetaHostFunc func(c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string, excludeNodeSets []uint64, zoneName string, dstStoreMode proto.StoreMode) (oldAddr, addAddr string, err error)
 
 func (c *Cluster) addDataNodeTasks(tasks []*proto.AdminTask) {
 	for _, t := range tasks {
@@ -139,7 +140,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 		}
 		addAddr = destAddr
 	} else {
-		if nodeAddr, addAddr, err = chooseMetaHostFunc(c, nodeAddr, mp, oldHosts, excludeNodeSets, vol.zoneName); err != nil {
+		if nodeAddr, addAddr, err = chooseMetaHostFunc(c, nodeAddr, mp, oldHosts, excludeNodeSets, vol.zoneName, dstStoreMode); err != nil {
 			goto errHandler
 		}
 	}
@@ -207,7 +208,7 @@ func (c *Cluster) selectMetaReplaceAddr(nodeAddr string, mp *MetaPartition, dstS
 	if dstStoreMode == proto.StoreModeDef {
 		dstStoreMode = vol.DefaultStoreMode
 	}
-	if nodeAddr, dstAddr, err = getTargetAddressForMetaPartitionDecommission(c, nodeAddr, mp, oldHosts, excludeNodeSets, vol.zoneName); err != nil {
+	if nodeAddr, dstAddr, err = getTargetAddressForMetaPartitionDecommission(c, nodeAddr, mp, oldHosts, excludeNodeSets, vol.zoneName, dstStoreMode); err != nil {
 		goto errHandler
 	}
 
@@ -224,7 +225,8 @@ errHandler:
 	return
 }
 
-var getTargetAddressForMetaPartitionDecommission = func(c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string, excludeNodeSets []uint64, zoneName string) (oldAddr, addAddr string, err error) {
+var getTargetAddressForMetaPartitionDecommission = func(c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string,
+	excludeNodeSets []uint64, zoneName string, dstStoreMode proto.StoreMode) (oldAddr, addAddr string, err error) {
 	var (
 		metaNode    *MetaNode
 		zone        *Zone
@@ -251,14 +253,14 @@ var getTargetAddressForMetaPartitionDecommission = func(c *Cluster, nodeAddr str
 	if ns, err = zone.getNodeSet(metaNode.NodeSetID); err != nil {
 		return
 	}
-	if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1); err != nil {
+	if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1, dstStoreMode); err != nil {
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1); err != nil {
+		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1, dstStoreMode); err != nil {
 			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 				//select meta nodes from the other zones in the same region type
 				_, newPeers, err = c.chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName,
-					1, excludeNodeSets, oldHosts)
+					1, excludeNodeSets, oldHosts, dstStoreMode)
 				if err != nil {
 					return
 				}
@@ -274,7 +276,7 @@ var getTargetAddressForMetaPartitionDecommission = func(c *Cluster, nodeAddr str
 				excludeZone = zones[0]
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.chooseTargetMetaHostForDecommission(excludeZone, mp, oldHosts, 1, zoneName); err != nil {
+			if _, newPeers, err = c.chooseTargetMetaHostForDecommission(excludeZone, mp, oldHosts, 1, zoneName, dstStoreMode); err != nil {
 				return
 			}
 		}
@@ -447,6 +449,7 @@ func (c *Cluster) chooseTargetMetaPartitionHost(oldAddr string, mp *MetaPartitio
 		excludeZone     string
 		zones           []string
 		msg             string
+		dstStoreMode    proto.StoreMode
 	)
 	oldHosts = mp.Hosts
 	if metaNode, err = c.metaNode(oldAddr); err != nil {
@@ -458,17 +461,24 @@ func (c *Cluster) chooseTargetMetaPartitionHost(oldAddr string, mp *MetaPartitio
 	if ns, err = zone.getNodeSet(metaNode.NodeSetID); err != nil {
 		goto errHandler
 	}
-	if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1); err != nil {
+	if vol, err = c.getVol(mp.volName); err != nil {
+		goto errHandler
+	}
+	dstStoreMode = vol.DefaultStoreMode
+	for _, replica := range mp.Replicas {
+		if strings.Contains(replica.Addr, oldAddr) {
+			dstStoreMode = replica.StoreMode
+			break
+		}
+	}
+	if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1, dstStoreMode); err != nil {
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1); err != nil {
-			if vol, err = c.getVol(mp.volName); err != nil {
-				goto errHandler
-			}
+		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1, dstStoreMode); err != nil {
 			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 				//select meta nodes from the other zones in the same region type
 				_, newPeers, err = c.chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName,
-					1, excludeNodeSets, oldHosts)
+					1, excludeNodeSets, oldHosts, dstStoreMode)
 				if err != nil {
 					return
 				}
@@ -484,7 +494,7 @@ func (c *Cluster) chooseTargetMetaPartitionHost(oldAddr string, mp *MetaPartitio
 				excludeZone = zones[0]
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, "", false); err != nil {
+			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, "", false, dstStoreMode); err != nil {
 				goto errHandler
 			}
 		}
@@ -1292,8 +1302,9 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		c.adjustMetaNode(metaNode)
 		log.LogWarnf("metaNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
 	}
-	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
+	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold, c.cfg.MetaNodeRocksdbDiskThreshold)
 	metaNode.setNodeActive()
+	metaNode.updateRocksdbDisks(resp)
 
 	if err = c.t.putMetaNode(metaNode); err != nil {
 		log.LogErrorf("action[dealMetaNodeHeartbeatResp],metaNode[%v] error[%v]", metaNode.Addr, err)

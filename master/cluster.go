@@ -3171,7 +3171,8 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 }
 
 // Choose the target hosts from the available zones and meta nodes.
-func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, zoneName string, isStrict bool) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int,
+	zoneName string, isStrict bool, dstStoreMode proto.StoreMode) (hosts []string, peers []proto.Peer, err error) {
 	var (
 		zones []*Zone
 	)
@@ -3186,12 +3187,12 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 	if excludeZone != "" {
 		excludeZones = append(excludeZones, excludeZone)
 	}
-	if zones, err = c.t.allocZonesForMetaNode(c.Name, zoneName, replicaNum, excludeZones, isStrict); err != nil {
+	if zones, err = c.t.allocZonesForMetaNode(c.Name, zoneName, replicaNum, excludeZones, isStrict, dstStoreMode); err != nil {
 		return
 	}
 	zoneList := strings.Split(zoneName, ",")
 	if len(zones) == 1 && len(zoneList) == 1 {
-		if hosts, peers, err = zones[0].getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, replicaNum); err != nil {
+		if hosts, peers, err = zones[0].getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, replicaNum, dstStoreMode); err != nil {
 			log.LogErrorf("action[chooseTargetMetaNodes],err[%v]", err)
 			return
 		}
@@ -3211,7 +3212,7 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 		localExcludeHosts := excludeHosts
 		for _, zone := range zones {
 			localExcludeHosts = append(localExcludeHosts, allocateZoneMap[zone]...)
-			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, localExcludeHosts, 1)
+			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, localExcludeHosts, 1, dstStoreMode)
 			if e != nil {
 				return nil, nil, errors.NewError(e)
 			}
@@ -3233,7 +3234,8 @@ result:
 	return
 }
 
-func (c *Cluster) chooseTargetMetaHostForDecommission(excludeZone string, mp *MetaPartition, excludeHosts []string, replicaNum int, zoneName string) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) chooseTargetMetaHostForDecommission(excludeZone string, mp *MetaPartition, excludeHosts []string,
+	replicaNum int, zoneName string, dstStoreMode proto.StoreMode) (hosts []string, peers []proto.Peer, err error) {
 	var zones []*Zone
 	var targetZone *Zone
 	zones = make([]*Zone, 0)
@@ -3259,7 +3261,7 @@ func (c *Cluster) chooseTargetMetaHostForDecommission(excludeZone string, mp *Me
 		if excludeZone == z.name {
 			continue
 		}
-		if z.canWriteForMetaNode(uint8(demandWriteNodes)) {
+		if z.canWriteForMetaNode(uint8(demandWriteNodes), dstStoreMode) {
 			candidateZones = append(candidateZones, z)
 		}
 	}
@@ -3317,7 +3319,7 @@ func (c *Cluster) chooseTargetMetaHostForDecommission(excludeZone string, mp *Me
 		err = fmt.Errorf("no candidate zones available")
 		return
 	}
-	hosts, peers, err = targetZone.getAvailMetaNodeHosts(nil, excludeHosts, 1)
+	hosts, peers, err = targetZone.getAvailMetaNodeHosts(nil, excludeHosts, 1, dstStoreMode)
 	return
 }
 
@@ -3351,7 +3353,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 	metaNodes = make([]proto.NodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, Version: metaNode.Version, IsWritable: metaNode.isWritable()})
+		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, Version: metaNode.Version, IsWritable: metaNode.isWritable(proto.StoreModeMem)})
 		return true
 	})
 	return
@@ -3413,6 +3415,18 @@ func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setMetaNodeThreshold] err[%v]", err)
 		c.cfg.MetaNodeThreshold = oldThreshold
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeRocksDBDiskUsedThreshold(threshold float32) (err error) {
+	oldThreshold := c.cfg.MetaNodeRocksdbDiskThreshold
+	c.cfg.MetaNodeRocksdbDiskThreshold = threshold
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeRocksDBDiskUsedThreshold] err[%v]", err)
+		c.cfg.MetaNodeRocksdbDiskThreshold = oldThreshold
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -4139,7 +4153,7 @@ func (c *Cluster) setZoneRegion(zoneName, newRegionName string) (err error) {
 	return
 }
 
-func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, learnerReplicaNum int, zoneName string) (hosts []string, peers []proto.Peer,
+func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, learnerReplicaNum int, zoneName string, dstStoreMode proto.StoreMode) (hosts []string, peers []proto.Peer,
 	learners []proto.Learner, err error) {
 	masterRegionZoneName, slaveRegionZoneName, err := c.getMasterAndSlaveRegionZoneName(zoneName)
 	if err != nil {
@@ -4147,7 +4161,7 @@ func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, 
 	}
 	learners = make([]proto.Learner, 0)
 	masterRegionHosts, masterRegionPeers, err := c.chooseTargetMetaHosts("", nil, nil,
-		replicaNum, strings.Join(masterRegionZoneName, ","), true)
+		replicaNum, strings.Join(masterRegionZoneName, ","), true, dstStoreMode)
 	if err != nil {
 		err = fmt.Errorf("choose master region hosts failed, err:%v", err)
 		return
@@ -4160,7 +4174,7 @@ func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, 
 		return
 	}
 	slaveRegionHosts, slaveRegionPeers, err := c.chooseTargetMetaHosts("", nil, nil,
-		slaveReplicaNum, strings.Join(slaveRegionZoneName, ","), true)
+		slaveReplicaNum, strings.Join(slaveRegionZoneName, ","), true, dstStoreMode)
 	if err != nil {
 		err = fmt.Errorf("choose slave region hosts failed, err:%v", err)
 		return
@@ -4278,7 +4292,7 @@ func (c *Cluster) chooseTargetDataNodesFromSameRegionTypeOfOfflineReplica(offlin
 }
 
 func (c *Cluster) chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(offlineReplicaRegionName, volZoneName string, replicaNum int,
-	excludeNodeSets []uint64, oldHosts []string) (hosts []string, peers []proto.Peer, err error) {
+	excludeNodeSets []uint64, oldHosts []string, dstStoreMode proto.StoreMode) (hosts []string, peers []proto.Peer, err error) {
 	var targetZoneNames string
 	region, err := c.t.getRegion(offlineReplicaRegionName)
 	if err != nil {
@@ -4298,7 +4312,7 @@ func (c *Cluster) chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(offlin
 			offlineReplicaRegionName, region.Name, region.RegionType)
 		return
 	}
-	if hosts, peers, err = c.chooseTargetMetaHosts("", excludeNodeSets, oldHosts, replicaNum, targetZoneNames, true); err != nil {
+	if hosts, peers, err = c.chooseTargetMetaHosts("", excludeNodeSets, oldHosts, replicaNum, targetZoneNames, true, dstStoreMode); err != nil {
 		return
 	}
 	return
@@ -4424,7 +4438,7 @@ func (c *Cluster) updateVolMetaPartitionConvertMode(volName string, convertMode 
 	return
 }
 
-func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVol(mp *MetaPartition) (addr string, totalReplicaNum int, err error) {
+func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVol(mp *MetaPartition, dstStoreMode proto.StoreMode) (addr string, totalReplicaNum int, err error) {
 	hosts := make([]string, 0)
 	var targetZoneNames string
 	vol, err := c.getVol(mp.volName)
@@ -4475,14 +4489,14 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVol(mp *MetaPartition)
 			mp.PartitionID, vol.mpReplicaNum, masterRegionHosts)
 		return
 	}
-	if hosts, _, err = c.chooseTargetMetaHosts("", nil, mp.Hosts, 1, targetZoneNames, true); err != nil {
+	if hosts, _, err = c.chooseTargetMetaHosts("", nil, mp.Hosts, 1, targetZoneNames, true, dstStoreMode); err != nil {
 		return
 	}
 	addr = hosts[0]
 	return
 }
 
-func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp *MetaPartition) (addr string, totalReplicaNum int, err error) {
+func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp *MetaPartition, dstStoreMode proto.StoreMode) (addr string, totalReplicaNum int, err error) {
 	hosts := make([]string, 0)
 	var targetZoneNames string
 	vol, err := c.getVol(mp.volName)
@@ -4516,7 +4530,7 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp
 			mp.PartitionID, learnerReplicaNum, slaveRegionHosts)
 		return
 	}
-	if hosts, _, err = c.chooseTargetMetaHosts("", nil, mp.Hosts, 1, targetZoneNames, true); err != nil {
+	if hosts, _, err = c.chooseTargetMetaHosts("", nil, mp.Hosts, 1, targetZoneNames, true, dstStoreMode); err != nil {
 		return
 	}
 	addr = hosts[0]

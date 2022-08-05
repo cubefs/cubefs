@@ -37,8 +37,8 @@ type weightedNode struct {
 
 // Node defines an interface that needs to be implemented by weightedNode
 type Node interface {
-	SetCarry(carry float64)
-	SelectNodeForWrite()
+	SetCarry(carry float64, storeMode proto.StoreMode)
+	SelectNodeForWrite(storeMode proto.StoreMode)
 	GetID() uint64
 	GetAddr() string
 }
@@ -58,7 +58,7 @@ func (nodes SortedWeightedNodes) Swap(i, j int) {
 	nodes[i], nodes[j] = nodes[j], nodes[i]
 }
 
-func (nodes SortedWeightedNodes) setNodeCarry(availCarryCount, replicaNum int) {
+func (nodes SortedWeightedNodes) setNodeCarry(availCarryCount, replicaNum int, storeMode proto.StoreMode) {
 	if availCarryCount >= replicaNum {
 		return
 	}
@@ -70,7 +70,7 @@ func (nodes SortedWeightedNodes) setNodeCarry(availCarryCount, replicaNum int) {
 				carry = 10.0
 			}
 			nt.Carry = carry
-			nt.Ptr.SetCarry(carry)
+			nt.Ptr.SetCarry(carry, storeMode)
 			if carry > 1.0 {
 				availCarryCount++
 			}
@@ -89,20 +89,31 @@ func (ns *nodeSet) getMetaNodeMaxTotal() (maxTotal uint64) {
 	return
 }
 
-type GetMaxTotal func(nodes *sync.Map) (maxTotal uint64)
+type GetMaxTotal func(nodes *sync.Map, storeMode proto.StoreMode) (maxTotal uint64)
 
-func getMetaNodeMaxTotal(metaNodes *sync.Map) (maxTotal uint64) {
+func getMetaNodeMaxTotal(metaNodes *sync.Map, storeMode proto.StoreMode) (maxTotal uint64) {
 	metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.Total > maxTotal {
-			maxTotal = metaNode.Total
+		switch storeMode {
+		case proto.StoreModeMem, proto.StoreModeDef:
+			if metaNode.Total > maxTotal {
+				maxTotal = metaNode.Total
+			}
+		case proto.StoreModeRocksDb:
+			for _, disk := range metaNode.RocksdbDisks {
+				if disk.Total > maxTotal {
+					maxTotal = disk.Total
+				}
+			}
+		default:
+			panic(fmt.Sprintf("error store mode:%v", storeMode))
 		}
 		return true
 	})
 	return
 }
 
-func getDataNodeMaxTotal(dataNodes *sync.Map) (maxTotal uint64) {
+func getDataNodeMaxTotal(dataNodes *sync.Map, storeMode proto.StoreMode) (maxTotal uint64) {
 	dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if dataNode.Total > maxTotal {
@@ -113,9 +124,9 @@ func getDataNodeMaxTotal(dataNodes *sync.Map) (maxTotal uint64) {
 	return
 }
 
-type GetCarryNodes func(maxTotal uint64, excludeHosts []string, nodes *sync.Map) (weightedNodes SortedWeightedNodes, availCount int)
+type GetCarryNodes func(maxTotal uint64, excludeHosts []string, nodes *sync.Map, storeMode proto.StoreMode) (weightedNodes SortedWeightedNodes, availCount int)
 
-func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
+func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map, storeMode proto.StoreMode) (nodes SortedWeightedNodes, availCount int) {
 	nodes = make(SortedWeightedNodes, 0)
 	metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
@@ -125,14 +136,15 @@ func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *syn
 		if metaNode.isMixedMetaNode() {
 			return true
 		}
-		if metaNode.isWritable() == false {
+		if metaNode.isWritable(storeMode) == false {
 			return true
 		}
-		if metaNode.isCarryNode() == true {
+		if metaNode.isCarryNode(storeMode) == true {
 			availCount++
 		}
 		nt := new(weightedNode)
-		nt.Carry = metaNode.Carry
+		nt.Carry = metaNode.GetCarry(storeMode)
+		nt.Weight = metaNode.GetWeight(maxTotal, storeMode)
 		if metaNode.Used < 0 {
 			nt.Weight = 1.0
 		} else {
@@ -147,7 +159,7 @@ func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *syn
 	return
 }
 
-func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes *sync.Map) (nodeTabs SortedWeightedNodes, availCount int) {
+func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes *sync.Map, storeMode proto.StoreMode) (nodeTabs SortedWeightedNodes, availCount int) {
 	nodeTabs = make(SortedWeightedNodes, 0)
 	dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
@@ -178,7 +190,7 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 	return
 }
 
-func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selectType int) (newHosts []string, peers []proto.Peer, err error) {
+func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selectType int, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
 	var (
 		maxTotalFunc      GetMaxTotal
 		getCarryNodesFunc GetCarryNodes
@@ -202,19 +214,23 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	default:
 		return nil, nil, fmt.Errorf("invalid selectType[%v]", selectType)
 	}
-	maxTotal := maxTotalFunc(nodes)
-	weightedNodes, count := getCarryNodesFunc(maxTotal, excludeHosts, nodes)
+	maxTotal := maxTotalFunc(nodes, storeMode)
+	if maxTotal == 0 {
+		err = fmt.Errorf("action[getAvailHosts] maxTotal is zero")
+		return
+	}
+	weightedNodes, count := getCarryNodesFunc(maxTotal, excludeHosts, nodes, storeMode)
 	if len(weightedNodes) < replicaNum {
 		err = fmt.Errorf("action[getAvailHosts] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
 			replicaNum, len(weightedNodes))
 		return
 	}
-	weightedNodes.setNodeCarry(count, replicaNum)
+	weightedNodes.setNodeCarry(count, replicaNum, storeMode)
 	sort.Sort(weightedNodes)
 
 	for i := 0; i < replicaNum; i++ {
 		node := weightedNodes[i].Ptr
-		node.SelectNodeForWrite()
+		node.SelectNodeForWrite(storeMode)
 		orderHosts = append(orderHosts, node.GetAddr())
 		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 		peers = append(peers, peer)
@@ -227,6 +243,6 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	return
 }
 
-func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
-	return getAvailHosts(ns.metaNodes, excludeHosts, replicaNum, selectMetaNode)
+func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
+	return getAvailHosts(ns.metaNodes, excludeHosts, replicaNum, selectMetaNode, storeMode)
 }

@@ -507,14 +507,14 @@ func (ecNode *ECNode) isAvailCarryNode() (ok bool) {
 }
 
 // SetCarry implements "SetCarry" in the Node interface
-func (ecNode *ECNode) SetCarry(carry float64) {
+func (ecNode *ECNode) SetCarry(carry float64, storeMode proto.StoreMode) {
 	ecNode.Lock()
 	defer ecNode.Unlock()
 	ecNode.Carry = carry
 }
 
 // SelectNodeForWrite implements "SelectNodeForWrite" in the Node interface
-func (ecNode *ECNode) SelectNodeForWrite() {
+func (ecNode *ECNode) SelectNodeForWrite(storeMode proto.StoreMode) {
 	ecNode.Lock()
 	defer ecNode.Unlock()
 	ecNode.UsageRatio = float64(ecNode.Used) / float64(ecNode.Total)
@@ -1439,7 +1439,7 @@ func (c *Cluster) decommissionEcDisk(ecNode *ECNode, badDiskPath string, badPart
 	return
 }
 
-func getEcNodeMaxTotal(ecNodes *sync.Map) (maxTotal uint64) {
+func getEcNodeMaxTotal(ecNodes *sync.Map, storeMode proto.StoreMode) (maxTotal uint64) {
 	ecNodes.Range(func(key, value interface{}) bool {
 		ecNode := value.(*ECNode)
 		if ecNode.Total > maxTotal {
@@ -1451,7 +1451,7 @@ func getEcNodeMaxTotal(ecNodes *sync.Map) (maxTotal uint64) {
 	return
 }
 
-func getAvailCarryEcNodeTab(maxTotal uint64, excludeHosts []string, ecNodes *sync.Map) (nodeTabs SortedWeightedNodes, availCount int) {
+func getAvailCarryEcNodeTab(maxTotal uint64, excludeHosts []string, ecNodes *sync.Map, storeMode proto.StoreMode) (nodeTabs SortedWeightedNodes, availCount int) {
 	nodeTabs = make(SortedWeightedNodes, 0)
 	ecNodes.Range(func(key, value interface{}) bool {
 		ecNode := value.(*ECNode)

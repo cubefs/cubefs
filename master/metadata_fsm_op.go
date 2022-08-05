@@ -63,6 +63,7 @@ type clusterValue struct {
 	EcScrubPeriod                     uint32
 	EcStartScrubTime                  int64
 	MaxCodecConcurrent                int
+	MetaNodeRocksdbDiskThreshold      float32
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -98,6 +99,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		EcScrubPeriod:                     c.EcScrubPeriod,
 		EcStartScrubTime:                  c.EcStartScrubTime,
 		MaxCodecConcurrent:                c.MaxCodecConcurrent,
+		MetaNodeRocksdbDiskThreshold:      c.cfg.MetaNodeRocksdbDiskThreshold,
 	}
 	return cv
 }
@@ -801,6 +803,9 @@ func (c *Cluster) loadClusterValue() (err error) {
 			return err
 		}
 		c.cfg.MetaNodeThreshold = cv.Threshold
+		if cv.MetaNodeRocksdbDiskThreshold > 0 && cv.MetaNodeRocksdbDiskThreshold < 1 {
+			c.cfg.MetaNodeRocksdbDiskThreshold = cv.MetaNodeRocksdbDiskThreshold
+		}
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		if cv.FixTinyDeleteRecordLimit <= 0 {
 			cv.FixTinyDeleteRecordLimit = 1

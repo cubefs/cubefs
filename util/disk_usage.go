@@ -23,24 +23,28 @@ const (
 
 type diskScore struct {
 	path         string
-	freeMemory   uint64
+	avail        uint64
 	partitionNum int
 	score        float64
 }
 
 const (
-	DiskStatusFile = ".diskStatus"
-	DiskHangCnt    = 2
+	DiskStatusFile  = ".diskStatus"
+	DiskHangCnt     = 2
+	MAXFsUsedFactor = 0.6
 )
 
 type FsCapMon struct {
 	sync.RWMutex
-	Path       string
-	Total      float64
-	Used       float64
-	Available  float64
-	Status     int8
-	lastUpdate time.Time
+	Path          string
+	IsRocksDBDisk bool
+	ReservedSpace uint64
+	Total         float64
+	Used          float64
+	Available     float64
+	Status        int8
+	MPCount       int
+	lastUpdate    time.Time
 }
 
 func GetDiskTotal(path string) (total uint64, err error) {
@@ -56,9 +60,11 @@ func GetDiskTotal(path string) (total uint64, err error) {
 	return
 }
 
-func NewFsMon(path string) (d *FsCapMon) {
+func NewFsMon(path string, isRocksDBDisk bool, reservedSpace uint64) (d *FsCapMon) {
 	d = new(FsCapMon)
 	d.Path = path
+	d.ReservedSpace = reservedSpace
+	d.IsRocksDBDisk = isRocksDBDisk
 	d.ComputeUsage()
 	d.Status = ReadWrite
 	d.lastUpdate = time.Now()
@@ -82,6 +88,7 @@ func (d *FsCapMon) ComputeUsage() (err error) {
 	d.Total = float64(fs.Blocks) * float64(fs.Bsize)
 	d.Available = float64(fs.Bavail) * float64(fs.Bsize)
 	d.Used = d.Total - d.Available
+	d.MPCount = d.GetPartitionCount()
 	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)", d.Path, d.Total, d.Available, d.Used)
 
 	return
@@ -161,11 +168,20 @@ func (d *FsCapMon) CheckDiskStatus(interval time.Duration) {
 	}
 }
 
+func (d *FsCapMon) GetPartitionCount() (mpCount int){
+	dirs, _ := ioutil.ReadDir(d.Path)
+	for _, dir := range dirs {
+		if strings.HasPrefix(dir.Name(), "partition_") {
+			mpCount++
+		}
+	}
+	return
+}
 
 
 // score = 1/(1+exp(1-free/allfree)) + 1/(1+exp(num/allnum))
-func (ds *diskScore) computeScore(memory uint64, num int) {
-	ds.score = 1/(1+math.Exp(1-float64(ds.freeMemory)/float64(memory))) + 1/(1+math.Exp(float64(ds.partitionNum)/float64(num)))
+func (ds *diskScore) computeScore(diskTotalAvail uint64, num int) {
+	ds.score = 1/(1+math.Exp(1-float64(ds.avail)/float64(diskTotalAvail))) + 1/(1+math.Exp(float64(ds.partitionNum)/float64(num)))
 }
 
 // select best dir by dirs , The reference parameters are the number of space remaining and partitions
@@ -174,33 +190,32 @@ func SelectDisk(dirs []string) (string, error) {
 	result := make([]*diskScore, 0, len(dirs))
 
 	var (
-		sumMemory uint64
+		sumAvail uint64
 		sumCount  int
 	)
 
-	for _, path := range dirs {
+	for _, dir := range dirs {
 		fs := syscall.Statfs_t{}
-		if err := syscall.Statfs(path, &fs); err != nil {
-			log.LogErrorf("statfs dir:[%s] has err:[%s]", path, err.Error())
+		if err := syscall.Statfs(dir, &fs); err != nil {
+			log.LogErrorf("statfs dir:[%s] has err:[%s]", dir, err.Error())
 			continue
 		}
-		freeMemory := fs.Bfree * uint64(fs.Bsize)
-
-		dirs, _ := ioutil.ReadDir(path) //this only total all count in dir, so best to ensure the uniqueness of the directory
-
-		if freeMemory < GB {
-			log.LogWarnf("dir:[%s] not enough space:[%d] of disk so skip", path, freeMemory)
+		total := float64(fs.Blocks * uint64(fs.Bsize))
+		avail := float64(fs.Bavail * uint64(fs.Bsize))
+		if (total - avail) > total * MAXFsUsedFactor {
+			log.LogWarnf("dir:[%s] not enough space:[%v] of disk so skip", dir, avail)
 			continue
 		}
 
+		subDir, _ := ioutil.ReadDir(dir) //this only total all count in dir, so best to ensure the uniqueness of the directory
 		result = append(result, &diskScore{
-			path:         path,
-			freeMemory:   freeMemory,
-			partitionNum: len(dirs),
+			path:         dir,
+			avail:        uint64(avail),
+			partitionNum: len(subDir),
 		})
 
-		sumMemory += freeMemory
-		sumCount += len(dirs)
+		sumAvail += uint64(avail)
+		sumCount += len(subDir)
 	}
 
 	if len(result) == 0 {
@@ -208,9 +223,8 @@ func SelectDisk(dirs []string) (string, error) {
 	}
 
 	var max *diskScore
-
 	for _, ds := range result {
-		ds.computeScore(sumMemory, sumCount)
+		ds.computeScore(sumAvail, sumCount)
 		if max == nil {
 			max = ds
 		}

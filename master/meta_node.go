@@ -15,6 +15,7 @@
 package master
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -46,15 +47,20 @@ type MetaNode struct {
 	PersistenceMetaPartitions []uint64
 	ProfPort                  string
 	Version                   string
+	RocksdbDisks              []*proto.MetaNodeDiskInfo
+	RocksdbHostSelectCount    uint64
+	RocksdbHostSelectCarry    float64
+	RocksdbDiskThreshold      float32
 }
 
 func newMetaNode(addr, zoneName, clusterID string, version string) (node *MetaNode) {
 	return &MetaNode{
-		Addr:     addr,
-		ZoneName: zoneName,
-		Sender:   newAdminTaskManager(addr, zoneName, clusterID),
-		Carry:    rand.Float64(),
-		Version:  version,
+		Addr:                   addr,
+		ZoneName:               zoneName,
+		Sender:                 newAdminTaskManager(addr, zoneName, clusterID),
+		Carry:                  rand.Float64(),
+		RocksdbHostSelectCarry: rand.Float64(),
+		Version:                version,
 	}
 }
 
@@ -75,29 +81,78 @@ func (metaNode *MetaNode) GetAddr() string {
 }
 
 // SetCarry implements the Node interface
-func (metaNode *MetaNode) SetCarry(carry float64) {
+func (metaNode *MetaNode) SetCarry(carry float64, storeMode proto.StoreMode) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
-	metaNode.Carry = carry
+	switch storeMode {
+	case proto.StoreModeMem, proto.StoreModeDef:
+		metaNode.Carry = carry
+	case proto.StoreModeRocksDb:
+		metaNode.RocksdbHostSelectCarry = carry
+	default:
+		panic(fmt.Sprintf("error store mode:%v", storeMode))
+	}
+}
+
+func (metaNode *MetaNode) GetCarry(storeMode proto.StoreMode) float64 {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	switch storeMode {
+	case proto.StoreModeMem, proto.StoreModeDef:
+		return metaNode.Carry
+	case proto.StoreModeRocksDb:
+		return metaNode.RocksdbHostSelectCarry
+	default:
+		panic(fmt.Sprintf("error store mode:%v", storeMode))
+	}
+}
+
+func (metaNode *MetaNode) GetWeight(maxTotal uint64, storeMode proto.StoreMode) (weight float64) {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	switch storeMode {
+	case proto.StoreModeMem, proto.StoreModeDef:
+		if metaNode.Used < 0 {
+			weight = 1.0
+		} else {
+			weight = (float64)(maxTotal-metaNode.Used) / (float64)(maxTotal)
+		}
+	case proto.StoreModeRocksDb:
+		weight = metaNode.getRocksdbDisksWeight(maxTotal)
+	default:
+		panic(fmt.Sprintf("error store mode:%v", storeMode))
+	}
+	return
 }
 
 // SelectNodeForWrite implements the Node interface
-func (metaNode *MetaNode) SelectNodeForWrite() {
+func (metaNode *MetaNode) SelectNodeForWrite(storeMode proto.StoreMode) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
-	metaNode.SelectCount++
-	metaNode.Carry = metaNode.Carry - 1.0
+	switch storeMode {
+	case proto.StoreModeMem, proto.StoreModeDef:
+		metaNode.SelectCount++
+		metaNode.Carry = metaNode.Carry - 1.0
+	case proto.StoreModeRocksDb:
+		metaNode.RocksdbHostSelectCount++
+		metaNode.RocksdbHostSelectCarry = metaNode.RocksdbHostSelectCarry - 1.0
+	default:
+		panic(fmt.Sprintf("error store mode:%v", storeMode))
+	}
 }
 
-func (metaNode *MetaNode) isWritable() (ok bool) {
+func (metaNode *MetaNode) isWritable(storeMode proto.StoreMode) bool {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
-	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
-		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
-		metaNode.ToBeOffline == false && metaNode.ToBeMigrated == false {
-		ok = true
+	if !metaNode.IsActive || metaNode.MaxMemAvailWeight <= gConfig.metaNodeReservedMem || metaNode.reachesThreshold() ||
+		metaNode.MetaPartitionCount >= defaultMaxMetaPartitionCountOnEachNode || metaNode.ToBeOffline == true ||
+		metaNode.ToBeMigrated == true {
+		return false
 	}
-	return
+	if storeMode == proto.StoreModeRocksDb && metaNode.reachesRocksdbDisksThreshold() {
+		return false
+	}
+	return true
 }
 
 func (metaNode *MetaNode) isMixedMetaNode() bool {
@@ -105,10 +160,17 @@ func (metaNode *MetaNode) isMixedMetaNode() bool {
 }
 
 // A carry node is the meta node whose carry is greater than one.
-func (metaNode *MetaNode) isCarryNode() (ok bool) {
+func (metaNode *MetaNode) isCarryNode(storeMode proto.StoreMode) (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
-	return metaNode.Carry >= 1
+	switch storeMode {
+	case proto.StoreModeMem, proto.StoreModeDef:
+		return metaNode.Carry >= 1
+	case proto.StoreModeRocksDb:
+		return metaNode.RocksdbHostSelectCarry >= 1
+	default:
+		panic(fmt.Sprintf("error store mode:%v", storeMode))
+	}
 }
 
 func (metaNode *MetaNode) setNodeActive() {
@@ -118,7 +180,7 @@ func (metaNode *MetaNode) setNodeActive() {
 	metaNode.IsActive = true
 }
 
-func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, threshold float32) {
+func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, threshold, rocksdbDiskThreshold float32) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.metaPartitionInfos = resp.MetaPartitionReports
@@ -134,6 +196,13 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	metaNode.ZoneName = resp.ZoneName
 	metaNode.Threshold = threshold
 	metaNode.ProfPort = resp.ProfPort
+	metaNode.RocksdbDiskThreshold = rocksdbDiskThreshold
+}
+
+func (metaNode *MetaNode) updateRocksdbDisks(resp *proto.MetaNodeHeartbeatResponse) {
+	metaNode.Lock()
+	defer metaNode.Unlock()
+	metaNode.RocksdbDisks = resp.RocksDBDiskInfo
 }
 
 func (metaNode *MetaNode) reachesThreshold() bool {
@@ -141,6 +210,37 @@ func (metaNode *MetaNode) reachesThreshold() bool {
 		metaNode.Threshold = defaultMetaPartitionMemUsageThreshold
 	}
 	return float32(float64(metaNode.Used)/float64(metaNode.Total)) > metaNode.Threshold
+}
+
+func (metaNode *MetaNode) reachesRocksdbDisksThreshold() bool {
+	var total, used uint64 = 0, 0
+	if metaNode.RocksdbDiskThreshold <= 0 {
+		metaNode.RocksdbDiskThreshold = defaultRocksdbDiskUsageThreshold
+	}
+	if len(metaNode.RocksdbDisks) == 0 {
+		return true
+	}
+	for _, disk := range metaNode.RocksdbDisks {
+		total += disk.Total
+		used += disk.Used
+	}
+	if total == 0 {
+		return true
+	}
+	return float32(used)/float32(total) > metaNode.RocksdbDiskThreshold
+}
+
+func (metaNode *MetaNode) getRocksdbDisksWeight(maxTotal uint64) (weight float64) {
+	for _, disk := range metaNode.RocksdbDisks {
+		w := float64(disk.Total - disk.Used) / float64(maxTotal)
+		if w > weight {
+			weight = w
+		}
+	}
+	if weight > 1 {
+		weight = 1
+	}
+	return
 }
 
 func (metaNode *MetaNode) createHeartbeatTask(masterAddr string) (task *proto.AdminTask) {

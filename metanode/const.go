@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -187,6 +188,7 @@ const (
 	defaultRaftDir                        = "raftDir"
 	defaultAuthTimeout                    = 5 // seconds
 	defaultMaxMetaPartitionInodeID uint64 = 1<<63 - 1
+	defaultDiskReservedSpace              = 30 * util.GB
 )
 
 // Configuration keys
@@ -204,6 +206,7 @@ const (
 	cfgTickIntervalMs    = "tickIntervalMs"
 	cfgRocksDirs         = "rocksDirs"
 	cfgProfPort          = "prof"
+	cfgDiskReservedSpace = "diskReservedSpace"
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	trashEnableKey              = "trashEnable"

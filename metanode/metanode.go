@@ -58,10 +58,11 @@ type MetaNode struct {
 	zoneName          string
 	httpStopC         chan uint8
 	processStatInfo   *statinfo.ProcessStatInfo
-	rocksDirs          []string
-	diskStopCh         chan struct{}
-	disks              map[string]*util.FsCapMon
-	control common.Control
+	diskReservedSpace uint64
+	rocksDirs         []string
+	diskStopCh        chan struct{}
+	disks             map[string]*util.FsCapMon
+	control           common.Control
 }
 
 // Start starts up the meta node with the specified configuration.
@@ -191,7 +192,11 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	m.zoneName = cfg.GetString(cfgZoneName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
-	m.rocksDirs = cfg.GetStringSlice(cfgRocksDirs)
+	m.diskReservedSpace, _ = strconv.ParseUint(cfg.GetString(cfgDiskReservedSpace), 10, 64)
+	if m.diskReservedSpace == 0 || m.diskReservedSpace < defaultDiskReservedSpace {
+		m.diskReservedSpace = defaultDiskReservedSpace
+	}
+
 
 	m.tickInterval = int(cfg.GetFloat(cfgTickIntervalMs))
 	if m.tickInterval <= 300 {
@@ -231,7 +236,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("bad cfgRaftReplicaPort config")
 	}
 	if len(m.rocksDirs) == 0 {
-		fmt.Errorf("conf do not have rocks db dir, now use meta data dir")
+		log.LogInfof("conf do not have rocks db dir, now use meta data dir")
 		m.rocksDirs = append(m.rocksDirs, m.metadataDir)
 	}
 
@@ -253,6 +258,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 	log.LogInfof("[parseConfig] load zoneName[%v].", m.zoneName)
+	log.LogInfof("[parseConfig] load rocksdb dirs[%v].", m.rocksDirs)
 
 	addrs := cfg.GetSlice(proto.MasterAddr)
 	masters := make([]string, 0, len(addrs))

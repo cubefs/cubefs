@@ -90,7 +90,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 func (m *MetaNode) getDiskStatHandler(w http.ResponseWriter,
 	r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
-	resp.Data = m.getDiskStat()
+	resp.Data = m.getDisks()
 	data, _ := resp.Marshal()
 	if _, err := w.Write(data); err != nil {
 		log.LogErrorf("[getPartitionsHandler] response %s", err)
@@ -705,11 +705,16 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 			log.LogErrorf("[getStatInfoHandler] response %s", err)
 		}
 	}()
+
+	if m.processStatInfo == nil {
+		resp.Msg = "meta node is initializing"
+		return
+	}
 	//get process stat info
 	cpuUsageList, maxCPUUsage := m.processStatInfo.GetProcessCPUStatInfo()
 	memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := m.processStatInfo.GetProcessMemoryStatInfo()
 	//get disk info
-	disks := m.getDiskStat()
+	disks := m.getDisks()
 	diskList := make([]interface{}, 0, len(disks))
 	for _, disk := range disks {
 		diskInfo := &struct {
@@ -717,14 +722,15 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 			TotalTB       float64 `json:"totalTB"`
 			UsedGB        float64 `json:"usedGB"`
 			UsedRatio     float64 `json:"usedRatio"`
-			ReservedSpace uint    `json:"reservedSpaceGB"`
+			ReservedSpace uint64  `json:"reservedSpaceGB"`
 			Status        int8    `json:"status"`
 		}{
-			Path:      disk.Path,
-			TotalTB:   util.FixedPoint(disk.Total / util.TB, 1),
-			UsedGB:    util.FixedPoint(disk.Used / util.GB, 1),
-			UsedRatio: util.FixedPoint(disk.Used / disk.Total, 1),
-			Status:    disk.GetStatus(),
+			Path:          disk.Path,
+			TotalTB:       util.FixedPoint(disk.Total/util.TB, 1),
+			UsedGB:        util.FixedPoint(disk.Used/util.GB, 1),
+			UsedRatio:     util.FixedPoint(disk.Used/disk.Total, 1),
+			ReservedSpace: disk.ReservedSpace / util.GB,
+			Status:        disk.Status,
 		}
 		diskList = append(diskList, diskInfo)
 	}

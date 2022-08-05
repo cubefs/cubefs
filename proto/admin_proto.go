@@ -16,8 +16,6 @@ package proto
 
 import (
 	"fmt"
-
-	"github.com/chubaofs/chubaofs/util"
 )
 
 // api
@@ -81,6 +79,7 @@ const (
 	AdminGetClientPkgAddr          = "/clientPkgAddr/get"
 
 	AdminSmartVolList = "/admin/smartVol/list"
+	AdminSetMNRocksDBDiskThreshold = "/rocksdbDiskThreshold/set"
 
 	AdminCompactVolList = "/admin/compactVol/list"
 	AdminCompactVolSet  = "/admin/compactVol/set"
@@ -663,7 +662,7 @@ type MetaNodeHeartbeatResponse struct {
 	Status               uint8
 	ProfPort             string
 	Result               string
-	FSInfo               []*util.FsCapMon
+	RocksDBDiskInfo      []*MetaNodeDiskInfo
 	Version              string
 }
 
@@ -1197,4 +1196,13 @@ type CodecNodeMigrationResponse struct {
 	Result          string
 	PartitionId     uint64
 	CurrentExtentID uint64
+}
+
+type MetaNodeDiskInfo struct {
+	Path               string
+	Total              uint64
+	Used               uint64
+	UsageRatio         float64
+	Status             int8
+	MPCount            int
 }

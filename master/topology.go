@@ -295,14 +295,14 @@ func (ns *nodeSet) canWriteForDataNode(excludeHosts []string, replicaNum int) bo
 	return count >= replicaNum
 }
 
-func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
+func (ns *nodeSet) canWriteForMetaNode(replicaNum int, dstStoreMode proto.StoreMode) bool {
 	var count int
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		node := value.(*MetaNode)
 		if node.isMixedMetaNode() {
 			return true
 		}
-		if node.isWritable() {
+		if node.isWritable(dstStoreMode) {
 			count++
 		}
 		if count >= replicaNum {
@@ -366,7 +366,8 @@ func (t *topology) getCandidateZonesFromTargetRegionForDataNode(excludeZone []st
 	return
 }
 
-func (t *topology) getCandidateZonesFromTargetRegionForMetaNode(excludeZone []string, targetRegionName string, demandWriteNodes, candidateZoneCount int) (candidateZones []*Zone) {
+func (t *topology) getCandidateZonesFromTargetRegionForMetaNode(excludeZone []string, targetRegionName string,
+	demandWriteNodes, candidateZoneCount int, dstStoreMode proto.StoreMode) (candidateZones []*Zone) {
 	candidateZones = make([]*Zone, 0)
 	initCandidateZones := t.getZonesOfTargetRegion(targetRegionName)
 	for _, zone := range initCandidateZones {
@@ -376,7 +377,7 @@ func (t *topology) getCandidateZonesFromTargetRegionForMetaNode(excludeZone []st
 		if contains(excludeZone, zone.name) {
 			continue
 		}
-		if zone.canWriteForMetaNode(uint8(demandWriteNodes)) {
+		if zone.canWriteForMetaNode(uint8(demandWriteNodes), dstStoreMode) {
 			candidateZones = append(candidateZones, zone)
 		}
 		if len(candidateZones) >= candidateZoneCount {
@@ -416,7 +417,8 @@ func calculateDemandWriteNodes(zoneNum, replicaNum int) (demandWriteNodes int) {
 	return
 }
 
-func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum int, excludeZone []string, isStrict bool) (candidateZones []*Zone, err error) {
+func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum int, excludeZone []string, isStrict bool,
+	dstStoreMode proto.StoreMode) (candidateZones []*Zone, err error) {
 	var initCandidateZones []*Zone
 	initCandidateZones = make([]*Zone, 0)
 	zoneList := strings.Split(zoneName, ",")
@@ -442,7 +444,7 @@ func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum 
 		if contains(excludeZone, zone.name) {
 			continue
 		}
-		if zone.canWriteForMetaNode(uint8(demandWriteNodes)) {
+		if zone.canWriteForMetaNode(uint8(demandWriteNodes), dstStoreMode) {
 			candidateZones = append(candidateZones, zone)
 		}
 		if len(candidateZones) >= len(zoneList) {
@@ -451,7 +453,7 @@ func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum 
 	}
 	//if there is no space in the zone for single zone partition, randomly choose a zone from same region zones
 	if len(candidateZones) < 1 && len(zoneList) == 1 && len(initCandidateZones) == 1 {
-		candidateZones = t.getCandidateZonesFromTargetRegionForMetaNode(excludeZone, initCandidateZones[0].regionName, demandWriteNodes, 1)
+		candidateZones = t.getCandidateZonesFromTargetRegionForMetaNode(excludeZone, initCandidateZones[0].regionName, demandWriteNodes, 1, dstStoreMode)
 		log.LogInfof(fmt.Sprintf("action[allocZonesForMetaNode],zoneName[%v],excludeZone[%v],candidateZones[%v],demandWriteNodes[%v]",
 			zoneName, excludeZone, len(candidateZones), demandWriteNodes))
 	}
@@ -462,7 +464,7 @@ func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum 
 			if zone.status == proto.ZoneStUnavailable {
 				continue
 			}
-			if zone.canWriteForMetaNode(uint8(demandWriteNodes)) {
+			if zone.canWriteForMetaNode(uint8(demandWriteNodes), dstStoreMode) {
 				candidateZones = append(candidateZones, zone)
 			}
 		}
@@ -560,7 +562,7 @@ func (ns *nodeSet) dataNodeCount() int {
 }
 
 func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
-	return getAvailHosts(ns.dataNodes, excludeHosts, replicaNum, selectDataNode)
+	return getAvailHosts(ns.dataNodes, excludeHosts, replicaNum, selectDataNode, proto.StoreModeDef)
 }
 
 func (ns *nodeSet) metaNodeCount() int {
@@ -799,7 +801,7 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, excludeHosts
 	return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
 }
 
-func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum uint8, dstStoreMode proto.StoreMode) (ns *nodeSet, err error) {
 	nset := zone.getAllNodeSet()
 	if nset == nil {
 		return nil, proto.ErrNoNodeSetToCreateMetaPartition
@@ -815,7 +817,7 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 		if containsID(excludeNodeSets, ns.ID) {
 			continue
 		}
-		if ns.canWriteForMetaNode(int(replicaNum)) {
+		if ns.canWriteForMetaNode(int(replicaNum), dstStoreMode) {
 			return
 		}
 	}
@@ -843,7 +845,7 @@ func (zone *Zone) canWriteForDataNode(replicaNum uint8) (can bool) {
 	return
 }
 
-func (zone *Zone) canWriteForMetaNode(replicaNum uint8) (can bool) {
+func (zone *Zone) canWriteForMetaNode(replicaNum uint8, dstStoreMode proto.StoreMode) (can bool) {
 	zone.RLock()
 	defer zone.RUnlock()
 	var leastAlive uint8
@@ -852,7 +854,7 @@ func (zone *Zone) canWriteForMetaNode(replicaNum uint8) (can bool) {
 		if metaNode.isMixedMetaNode() {
 			return true
 		}
-		if metaNode.IsActive == true && metaNode.isWritable() == true {
+		if metaNode.isWritable(dstStoreMode) {
 			leastAlive++
 		}
 		if leastAlive >= replicaNum {
@@ -886,15 +888,15 @@ func (zone *Zone) getAvailDataNodeHosts(excludeNodeSets []uint64, excludeHosts [
 	return ns.getAvailDataNodeHosts(excludeHosts, replicaNum)
 }
 
-func (zone *Zone) getAvailMetaNodeHosts(excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (zone *Zone) getAvailMetaNodeHosts(excludeNodeSets []uint64, excludeHosts []string, replicaNum int, dstStoreMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
 	if replicaNum == 0 {
 		return
 	}
-	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum))
+	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum), dstStoreMode)
 	if err != nil {
 		return nil, nil, errors.NewErrorf("zone[%v],err[%v]", zone.name, err)
 	}
-	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum)
+	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum, dstStoreMode)
 
 }
 
@@ -1575,7 +1577,7 @@ func (zone *Zone) getAvailEcNodeHosts(excludeHosts []string, replicaNum int) (ne
 	if replicaNum == 0 {
 		return
 	}
-	return getAvailHosts(zone.ecNodes, excludeHosts, replicaNum, selectEcNode)
+	return getAvailHosts(zone.ecNodes, excludeHosts, replicaNum, selectEcNode, proto.StoreModeDef)
 }
 
 func (zone *Zone) putEcNode(ecNode *ECNode) (err error) {

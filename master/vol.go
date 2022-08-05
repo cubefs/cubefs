@@ -535,7 +535,7 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
 	if !foundReadonlyReplica {
 		return
 	}
-	if readonlyReplica.metaNode.isWritable() {
+	if readonlyReplica.metaNode.isWritable(proto.StoreModeMem) {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition] vol[%v],max meta parition[%v] status is readonly\n",
 			vol.Name, partition.PartitionID)
 		Warn(c.Name, msg)
@@ -979,12 +979,12 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	storeMode = vol.DefaultStoreMode
 	errChannel := make(chan error, vol.mpReplicaNum+vol.mpLearnerNum)
 	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
-		if hosts, peers, learners, err = c.chooseTargetMetaHostsForCreateQuorumMetaPartition(int(vol.mpReplicaNum), int(vol.mpLearnerNum), vol.zoneName); err != nil {
+		if hosts, peers, learners, err = c.chooseTargetMetaHostsForCreateQuorumMetaPartition(int(vol.mpReplicaNum), int(vol.mpLearnerNum), vol.zoneName, storeMode); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts for cross region quorum vol,err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 	} else {
-		if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.zoneName, false); err != nil {
+		if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.zoneName, false, storeMode); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
 			return nil, errors.NewError(err)
 		}

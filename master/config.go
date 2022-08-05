@@ -71,6 +71,7 @@ const (
 	defaultVolMinWritableMPNum                               = 1
 	defaultVolMinWritableDPNum                               = 5
 	defaultMaxInRecoveringDataPartitionCount                 = 100
+	defaultRocksdbDiskUsageThreshold                 float32 = 0.6
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -117,6 +118,7 @@ type clusterConfig struct {
 	DataPartitionsRecoverPoolSize       int32
 	MetaPartitionsRecoverPoolSize       int32
 	ClientPkgAddr                       string
+	MetaNodeRocksdbDiskThreshold        float32
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -135,6 +137,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.diffSpaceUsage = defaultDiffSpaceUsage
 	cfg.DataPartitionsRecoverPoolSize = defaultRecoverPoolSize
 	cfg.MetaPartitionsRecoverPoolSize = defaultRecoverPoolSize
+	cfg.MetaNodeRocksdbDiskThreshold = defaultRocksdbDiskUsageThreshold
 	cfg.MetaNodeReqOpRateLimitMap = make(map[uint8]uint64)
 	cfg.DataNodeReqZoneRateLimitMap = make(map[string]uint64)
 	cfg.DataNodeReqZoneOpRateLimitMap = make(map[string]map[uint8]uint64)

@@ -32,7 +32,7 @@ import (
 
 const (
 	MaxUsedMemFactor = 1.1
-	MAXFsUsedFactor  = 0.8
+	MAXFsUsedFactor  = 0.6
 )
 
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
@@ -47,7 +47,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		}
 	)
 	resp.ProfPort = m.metaNode.profPort
-	disks := m.metaNode.getDiskStat()
+	disks := m.metaNode.getDisks()
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
@@ -57,7 +57,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	}
 
 	for _, disk := range disks {
-		if disk.GetStatus() != util.ReadWrite {
+		if disk.Status != util.ReadWrite {
 			resp.Status = proto.TaskFailed
 			resp.Result = fmt.Sprintf("disk :%s status is not read write", disk.Path)
 			goto end
@@ -124,7 +124,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	})
 	resp.ZoneName = m.zoneName
 	resp.Status = proto.TaskSucceeds
-	resp.FSInfo = m.metaNode.getDiskStat()
+	resp.RocksDBDiskInfo = m.metaNode.getRocksDBDiskStat()
 	resp.Version = MetaNodeLatestVersion
 end:
 	adminTask.Request = nil

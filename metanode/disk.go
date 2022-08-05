@@ -15,10 +15,11 @@
 package metanode
 
 import (
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 	"os"
 	"time"
-	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -87,7 +88,7 @@ func (m *MetaNode) startScheduleToCheckDiskStatus() {
 }
 
 
-func (m *MetaNode) addDisk(path string) *util.FsCapMon {
+func (m *MetaNode) addDisk(path string, isRocksDBDisk bool, reservedSpace uint64) *util.FsCapMon {
 	//add disk when node start, can not add
 	if len(path) == 0{
 		return nil
@@ -101,7 +102,7 @@ func (m *MetaNode) addDisk(path string) *util.FsCapMon {
 
 	disk , ok := m.disks[path]
 	if disk == nil || !ok {
-		disk = util.NewFsMon(path)
+		disk = util.NewFsMon(path, isRocksDBDisk, reservedSpace)
 		m.disks[path] = disk
 		log.LogInfof("add disk:%v", disk)
 		return disk
@@ -112,12 +113,13 @@ func (m *MetaNode) addDisk(path string) *util.FsCapMon {
 }
 
 func (m *MetaNode) startDiskStat() error{
+	rootDirIsRocksDBDisk := len(m.rocksDirs) == 0 || contains(m.rocksDirs, m.metadataDir)
 	m.disks = make(map[string]*util.FsCapMon)
 	m.diskStopCh = make(chan struct{})
-	m.addDisk(m.metadataDir)
-	m.addDisk(m.raftDir)
+	m.addDisk(m.metadataDir, rootDirIsRocksDBDisk, m.diskReservedSpace)
+	m.addDisk(m.raftDir, false, m.diskReservedSpace)
 	for _, rocksDir := range m.rocksDirs{
-		m.addDisk(rocksDir)
+		m.addDisk(rocksDir, true, m.diskReservedSpace)
 	}
 
 	m.startScheduleToUpdateSpaceInfo()
@@ -125,17 +127,56 @@ func (m *MetaNode) startDiskStat() error{
 	return nil
 }
 
+func contains(arr []string, element string) (ok bool) {
+	if arr == nil || len(arr) == 0 {
+		return
+	}
+
+	for _, e := range arr {
+		if e == element {
+			ok = true
+			break
+		}
+	}
+	return
+}
+
 
 func (m *MetaNode) stopDiskStat() {
 	close(m.diskStopCh)
 }
 
-func (m *MetaNode) getDiskStat() []*util.FsCapMon {
-	ds := make([]*util.FsCapMon, 0)
+func (m *MetaNode) getDisks() []*util.FsCapMon {
+	disks := make([]*util.FsCapMon, 0, len(m.disks))
 	for _, d := range m.disks {
-		ds = append(ds, d)
+		disks = append(disks, d)
 	}
-	return ds
+	return disks
+}
+
+func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeDiskInfo {
+	disks := make([]*proto.MetaNodeDiskInfo, 0, len(m.disks))
+	for _, d := range m.disks {
+		if !d.IsRocksDBDisk {
+			continue
+		}
+		var ratio float64 = 0
+		total := uint64(d.Total) - d.ReservedSpace
+		if d.Used > 0 && d.Used <= float64(total) {
+			ratio = d.Used/d.Total
+		} else if d.Used > d.Total {
+			ratio = 1
+		}
+		disks = append(disks, &proto.MetaNodeDiskInfo{
+			Path:               d.Path,
+			Total:              total,
+			Used:               uint64(d.Used),
+			UsageRatio:         ratio,
+			Status:             d.Status,
+			MPCount:            d.MPCount,
+		})
+	}
+	return disks
 }
 
 func (m *MetaNode) getSingleDiskStat(path string) *util.FsCapMon {

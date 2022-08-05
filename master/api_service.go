@@ -93,6 +93,22 @@ func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set threshold to %v successfully", threshold)))
 }
 
+func (m *Server) setMetaNodeRocksDBDiskUsedThreshold(w http.ResponseWriter, r *http.Request) {
+	var (
+		threshold float64
+		err       error
+	)
+	if threshold, err = parseAndExtractThreshold(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setMetaNodeRocksDBDiskUsedThreshold(float32(threshold)); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set rocksdb disk threshold to %v successfully", threshold)))
+}
+
 // Turn on or off the automatic allocation of the data partitions.
 // If DisableAutoAllocate == off, then we WILL NOT automatically allocate new data partitions for the volume when:
 // 	1. the used space is below the max capacity,
@@ -141,7 +157,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem)})
 				return true
 			})
 		}
@@ -211,35 +227,36 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv := &proto.ClusterView{
-		Name:                   m.cluster.Name,
-		LeaderAddr:             m.leaderInfo.addr,
-		DisableAutoAlloc:       m.cluster.DisableAutoAllocate,
-		AutoMergeNodeSet:       m.cluster.AutoMergeNodeSet,
-		NodeSetCapacity:        m.cluster.cfg.nodeSetCapacity,
-		MetaNodeThreshold:      m.cluster.cfg.MetaNodeThreshold,
-		DpRecoverPool:          m.cluster.cfg.DataPartitionsRecoverPoolSize,
-		MpRecoverPool:          m.cluster.cfg.MetaPartitionsRecoverPoolSize,
-		ClientPkgAddr:          m.cluster.cfg.ClientPkgAddr,
-		Applied:                m.fsm.applied,
-		MaxDataPartitionID:     m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:          m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID:     m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:              make([]proto.NodeView, 0),
-		DataNodes:              make([]proto.NodeView, 0),
-		CodEcnodes:             make([]proto.NodeView, 0),
-		EcNodes:                make([]proto.NodeView, 0),
-		VolStatInfo:            make([]*proto.VolStatInfo, 0),
-		BadPartitionIDs:        make([]proto.BadPartitionView, 0),
-		BadMetaPartitionIDs:    make([]proto.BadPartitionView, 0),
-		BadEcPartitionIDs:      make([]proto.BadPartitionView, 0),
-		MigratedDataPartitions: make([]proto.BadPartitionView, 0),
-		MigratedMetaPartitions: make([]proto.BadPartitionView, 0),
-		DataNodeBadDisks:       make([]proto.DataNodeBadDisksView, 0),
-		EcScrubEnable:          m.cluster.EcScrubEnable,
-		EcMaxScrubExtents:      m.cluster.EcMaxScrubExtents,
-		EcScrubPeriod:          m.cluster.EcScrubPeriod,
-		EcScrubStartTime:       m.cluster.EcStartScrubTime,
-		MaxCodecConcurrent:     m.cluster.MaxCodecConcurrent,
+		Name:                         m.cluster.Name,
+		LeaderAddr:                   m.leaderInfo.addr,
+		DisableAutoAlloc:             m.cluster.DisableAutoAllocate,
+		AutoMergeNodeSet:             m.cluster.AutoMergeNodeSet,
+		NodeSetCapacity:              m.cluster.cfg.nodeSetCapacity,
+		MetaNodeThreshold:            m.cluster.cfg.MetaNodeThreshold,
+		DpRecoverPool:                m.cluster.cfg.DataPartitionsRecoverPoolSize,
+		MpRecoverPool:                m.cluster.cfg.MetaPartitionsRecoverPoolSize,
+		ClientPkgAddr:                m.cluster.cfg.ClientPkgAddr,
+		Applied:                      m.fsm.applied,
+		MaxDataPartitionID:           m.cluster.idAlloc.dataPartitionID,
+		MaxMetaNodeID:                m.cluster.idAlloc.commonID,
+		MaxMetaPartitionID:           m.cluster.idAlloc.metaPartitionID,
+		MetaNodeRocksdbDiskThreshold: m.cluster.cfg.MetaNodeRocksdbDiskThreshold,
+		MetaNodes:                    make([]proto.NodeView, 0),
+		DataNodes:                    make([]proto.NodeView, 0),
+		CodEcnodes:                   make([]proto.NodeView, 0),
+		EcNodes:                      make([]proto.NodeView, 0),
+		VolStatInfo:                  make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:              make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
+		BadEcPartitionIDs:            make([]proto.BadPartitionView, 0),
+		MigratedDataPartitions:       make([]proto.BadPartitionView, 0),
+		MigratedMetaPartitions:       make([]proto.BadPartitionView, 0),
+		DataNodeBadDisks:             make([]proto.DataNodeBadDisksView, 0),
+		EcScrubEnable:                m.cluster.EcScrubEnable,
+		EcMaxScrubExtents:            m.cluster.EcMaxScrubExtents,
+		EcScrubPeriod:                m.cluster.EcScrubPeriod,
+		EcScrubStartTime:             m.cluster.EcStartScrubTime,
+		MaxCodecConcurrent:           m.cluster.MaxCodecConcurrent,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -667,8 +684,25 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
+
+	if proto.StoreMode(storeMode) == proto.StoreModeDef {
+		var vol *Vol
+		vol, err = m.cluster.getVol(mp.volName)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+			return
+		}
+		storeMode = int(vol.DefaultStoreMode)
+	}
+
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if isAutoChooseAddrForQuorumVol(addReplicaType) {
-		if addr, totalReplicaNum, err = m.cluster.chooseTargetMetaNodeForCrossRegionQuorumVol(mp); err != nil {
+		if addr, totalReplicaNum, err = m.cluster.chooseTargetMetaNodeForCrossRegionQuorumVol(mp, proto.StoreMode(storeMode)); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -760,8 +794,25 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
+
+	if proto.StoreMode(storeMode) == proto.StoreModeDef {
+		var vol *Vol
+		vol, err = m.cluster.getVol(mp.volName)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+			return
+		}
+		storeMode = int(vol.DefaultStoreMode)
+	}
+
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if isAutoChooseAddrForQuorumVol(addReplicaType) {
-		if addr, totalReplicaNum, err = m.cluster.chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp); err != nil {
+		if addr, totalReplicaNum, err = m.cluster.chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp, proto.StoreMode(storeMode)); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}

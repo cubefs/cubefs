@@ -455,6 +455,10 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 }
 
 func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
+	if s.processStatInfo == nil {
+		s.buildFailureResp(w, http.StatusBadRequest, "data node is initializing")
+		return
+	}
 	//get process stat info
 	cpuUsageList, maxCPUUsage := s.processStatInfo.GetProcessCPUStatInfo()
 	memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := s.processStatInfo.GetProcessMemoryStatInfo()
@@ -476,7 +480,7 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 			Path:          disk.Path,
 			TotalTB:       util.FixedPoint(float64(diskTotal)/util.TB, 1),
 			UsedGB:        util.FixedPoint(float64(disk.Used)/util.GB, 1),
-			UsedRatio:     util.FixedPoint(float64(disk.Used)/float64(disk.Total), 1),
+			UsedRatio:     util.FixedPoint(float64(disk.Used)/float64(diskTotal), 1),
 			ReservedSpace: uint(disk.ReservedSpace / util.GB),
 		}
 		diskList = append(diskList, diskInfo)

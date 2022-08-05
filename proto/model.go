@@ -173,39 +173,40 @@ type MetaReplicaInfo struct {
 
 // ClusterView provides the view of a cluster.
 type ClusterView struct {
-	Name                   string
-	LeaderAddr             string
-	DisableAutoAlloc       bool
-	AutoMergeNodeSet       bool
-	NodeSetCapacity        int
-	MetaNodeThreshold      float32
-	DpRecoverPool          int32
-	MpRecoverPool          int32
-	Applied                uint64
-	MaxDataPartitionID     uint64
-	MaxMetaNodeID          uint64
-	MaxMetaPartitionID     uint64
-	EcScrubEnable          bool
-	EcMaxScrubExtents      uint8
-	EcScrubPeriod          uint32
-	EcScrubStartTime       int64
-	MaxCodecConcurrent     int
-	DataNodeStatInfo       *NodeStatInfo
-	MetaNodeStatInfo       *NodeStatInfo
-	EcNodeStatInfo         *NodeStatInfo
-	VolStatInfo            []*VolStatInfo
-	BadPartitionIDs        []BadPartitionView
-	BadMetaPartitionIDs    []BadPartitionView
-	BadEcPartitionIDs      []BadPartitionView
-	MigratedDataPartitions []BadPartitionView
-	MigratedMetaPartitions []BadPartitionView
-	MetaNodes              []NodeView
-	DataNodes              []NodeView
-	CodEcnodes             []NodeView
-	EcNodes                []NodeView
-	DataNodeBadDisks       []DataNodeBadDisksView
-	SchedulerDomain        string // todo
-	ClientPkgAddr          string
+	Name                         string
+	LeaderAddr                   string
+	DisableAutoAlloc             bool
+	AutoMergeNodeSet             bool
+	NodeSetCapacity              int
+	MetaNodeThreshold            float32
+	DpRecoverPool                int32
+	MpRecoverPool                int32
+	Applied                      uint64
+	MaxDataPartitionID           uint64
+	MaxMetaNodeID                uint64
+	MaxMetaPartitionID           uint64
+	EcScrubEnable                bool
+	EcMaxScrubExtents            uint8
+	EcScrubPeriod                uint32
+	EcScrubStartTime             int64
+	MaxCodecConcurrent           int
+	DataNodeStatInfo             *NodeStatInfo
+	MetaNodeStatInfo             *NodeStatInfo
+	EcNodeStatInfo               *NodeStatInfo
+	VolStatInfo                  []*VolStatInfo
+	BadPartitionIDs              []BadPartitionView
+	BadMetaPartitionIDs          []BadPartitionView
+	BadEcPartitionIDs            []BadPartitionView
+	MigratedDataPartitions       []BadPartitionView
+	MigratedMetaPartitions       []BadPartitionView
+	MetaNodes                    []NodeView
+	DataNodes                    []NodeView
+	CodEcnodes                   []NodeView
+	EcNodes                      []NodeView
+	DataNodeBadDisks             []DataNodeBadDisksView
+	SchedulerDomain              string // todo
+	ClientPkgAddr                string
+	MetaNodeRocksdbDiskThreshold float32
 }
 
 // NodeView provides the view of the data or meta node.

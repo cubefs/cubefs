@@ -351,7 +351,7 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem)})
 				return true
 			})
 		}
@@ -667,22 +667,23 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 
 func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	cv := &proto.ClusterView{
-		Name:                m.cluster.Name,
-		LeaderAddr:          m.cluster.leaderInfo.addr,
-		DisableAutoAlloc:    m.cluster.DisableAutoAllocate,
-		MetaNodeThreshold:   m.cluster.cfg.MetaNodeThreshold,
-		DpRecoverPool:       m.cluster.cfg.DataPartitionsRecoverPoolSize,
-		MpRecoverPool:       m.cluster.cfg.MetaPartitionsRecoverPoolSize,
-		Applied:             m.cluster.fsm.applied,
-		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:       m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID:  m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:           make([]proto.NodeView, 0),
-		DataNodes:           make([]proto.NodeView, 0),
-		VolStatInfo:         make([]*proto.VolStatInfo, 0),
-		BadPartitionIDs:     make([]proto.BadPartitionView, 0),
-		BadMetaPartitionIDs: make([]proto.BadPartitionView, 0),
-		DataNodeBadDisks:    make([]proto.DataNodeBadDisksView, 0),
+		Name:                         m.cluster.Name,
+		LeaderAddr:                   m.cluster.leaderInfo.addr,
+		DisableAutoAlloc:             m.cluster.DisableAutoAllocate,
+		MetaNodeThreshold:            m.cluster.cfg.MetaNodeThreshold,
+		DpRecoverPool:                m.cluster.cfg.DataPartitionsRecoverPoolSize,
+		MpRecoverPool:                m.cluster.cfg.MetaPartitionsRecoverPoolSize,
+		Applied:                      m.cluster.fsm.applied,
+		MaxDataPartitionID:           m.cluster.idAlloc.dataPartitionID,
+		MaxMetaNodeID:                m.cluster.idAlloc.commonID,
+		MaxMetaPartitionID:           m.cluster.idAlloc.metaPartitionID,
+		MetaNodeRocksdbDiskThreshold: m.cluster.cfg.MetaNodeRocksdbDiskThreshold,
+		MetaNodes:                    make([]proto.NodeView, 0),
+		DataNodes:                    make([]proto.NodeView, 0),
+		VolStatInfo:                  make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:              make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
+		DataNodeBadDisks:             make([]proto.DataNodeBadDisksView, 0),
 	}
 
 	vols := m.cluster.allVolNames()

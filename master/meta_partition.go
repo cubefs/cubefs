@@ -1033,7 +1033,8 @@ func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 	return
 }
 
-var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string, excludeNodeSets []uint64, zoneName string) (oldAddr, addAddr string, err error) {
+var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string,
+	excludeNodeSets []uint64, zoneName string,  dstStoreMode proto.StoreMode) (oldAddr, addAddr string, err error) {
 	var (
 		offlineZoneName     string
 		targetZoneName      string
@@ -1070,7 +1071,7 @@ var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *Me
 	}
 	//if there is no replica in target zone, choose random nodeset in target zone
 	if addrInTargetZone == "" {
-		if targetHosts, _, err = targetZone.getAvailMetaNodeHosts(nil, mp.Hosts, 1); err != nil {
+		if targetHosts, _, err = targetZone.getAvailMetaNodeHosts(nil, mp.Hosts, 1, dstStoreMode); err != nil {
 			return
 		}
 		if len(targetHosts) == 0 {
@@ -1089,10 +1090,10 @@ var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *Me
 	if nodesetInTargetZone, err = targetZone.getNodeSet(targetNode.NodeSetID); err != nil {
 		return
 	}
-	if targetHosts, _, err = nodesetInTargetZone.getAvailMetaNodeHosts(mp.Hosts, 1); err != nil {
+	if targetHosts, _, err = nodesetInTargetZone.getAvailMetaNodeHosts(mp.Hosts, 1, dstStoreMode); err != nil {
 		// select meta nodes from the other node set in same zone
 		excludeNodeSets = append(excludeNodeSets, nodesetInTargetZone.ID)
-		if targetHosts, _, err = targetZone.getAvailMetaNodeHosts(excludeNodeSets, mp.Hosts, 1); err != nil {
+		if targetHosts, _, err = targetZone.getAvailMetaNodeHosts(excludeNodeSets, mp.Hosts, 1, dstStoreMode); err != nil {
 			return
 		}
 	}
