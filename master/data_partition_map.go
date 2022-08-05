@@ -141,7 +141,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(eps *EcDataPartitionCache, 
 		}
 		dpResps = append(dpResps, dpResp)
 	}
-	defer dpMap.RUnlock()
+	dpMap.RUnlock()
 
 	eps.RLock()
 	defer eps.RUnlock()
