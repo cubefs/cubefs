@@ -3555,7 +3555,9 @@ func (c *client) start() (err error) {
 	}
 	c.initUmpKeys()
 
-	c.registerReadProcStatus(true)
+	if isMysql() {
+		c.registerReadProcStatus(true)
+	}
 
 	// version
 	startVersionReporter(mw.Cluster(), masters)
