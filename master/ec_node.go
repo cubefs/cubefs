@@ -409,15 +409,15 @@ func (c *Cluster) loadEcNodes() (err error) {
 }
 
 func (c *Cluster) syncAddEcNode(ecNode *ECNode) (err error) {
-	return c.syncPutEcNodeInfo(opSyncPut, ecNode)
+	return c.syncPutEcNodeInfo(opSyncAddEcNode, ecNode)
 }
 
 func (c *Cluster) syncDeleteEcNode(ecNode *ECNode) (err error) {
-	return c.syncPutEcNodeInfo(opSyncDelete, ecNode)
+	return c.syncPutEcNodeInfo(opSyncDeleteEcNode, ecNode)
 }
 
 func (c *Cluster) syncUpdateEcNode(ecNode *ECNode) (err error) {
-	return c.syncPutEcNodeInfo(opSyncUpdate, ecNode)
+	return c.syncPutEcNodeInfo(opSyncUpdateEcNode, ecNode)
 }
 
 func (c *Cluster) handleEcNodeTaskResponse(nodeAddr string, task *proto.AdminTask) (err error) {

@@ -289,11 +289,11 @@ errHandler:
 
 // key=#dn#id#Addr,value = json.Marshal(dnv)
 func (c *Cluster) syncAddCodecNode(codecNode *CodecNode) (err error) {
-	return c.syncPutCodecNodeInfo(opSyncPut, codecNode)
+	return c.syncPutCodecNodeInfo(opSyncAddCodecNode, codecNode)
 }
 
 func (c *Cluster) syncDeleteCodecNode(codecNode *CodecNode) (err error) {
-	return c.syncPutCodecNodeInfo(opSyncDelete, codecNode)
+	return c.syncPutCodecNodeInfo(opSyncDeleteCodecNode, codecNode)
 }
 
 func (c *Cluster) syncPutCodecNodeInfo(opType uint32, codecNode *CodecNode) (err error) {

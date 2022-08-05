@@ -989,8 +989,12 @@ func (m *Server) setNodeToOfflineState(w http.ResponseWriter, r *http.Request) {
 			m.cluster.setDataNodeToOfflineState(startID, endID, state, zoneName)
 		} else if nodeType == nodeTypeMetaNode{
 			m.cluster.setMetaNodeToOfflineState(startID, endID, state, zoneName)
-		} else {
+		} else if nodeType == nodeTypeEcNode{
 			m.cluster.setEcNodeToOfflineState(startID, endID, state, zoneName)
+		}else {
+			err = errors.New("setNodeToOfflineState unknown nodeType")
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
 		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
@@ -3146,7 +3150,6 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	var tmpDataNum int
 	if dataNumStr := r.FormValue(ecDataNumKey); dataNumStr == "" {
 		tmpDataNum = defaultEcDataNum
-		log.LogWarnf("ecDataNum no set")
 	} else if tmpDataNum, err = strconv.Atoi(dataNumStr); err != nil {
 		err = unmatchedKey(ecDataNumKey)
 		return
@@ -3156,7 +3159,6 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	var tmpParityNum int
 	if parityNumStr := r.FormValue(ecParityNumKey); parityNumStr == "" {
 		tmpParityNum = defaultEcParityNum
-		log.LogWarnf("ecParityNum no set")
 	} else if tmpParityNum, err = strconv.Atoi(parityNumStr); err != nil {
 		err = unmatchedKey(ecParityNumKey)
 		return

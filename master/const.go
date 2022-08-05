@@ -283,14 +283,18 @@ const (
 	OpSyncUpdateIDC uint32 = 0x27
 	OpSyncDelIDC    uint32 = 0x28
 
-	opSyncPut               uint32 = 0x26
-	opSyncDelete            uint32 = 0x27
-	opSyncUpdate            uint32 = 0x28
-	opSyncAddEcPartition    uint32 = 0x29
-	opSyncDelEcPartition	uint32 = 0x2A
-	opSyncUpdateEcPartition uint32 = 0x2B
-	opSyncAddMigrateTask    uint32 = 0x2C
-	opSyncUpdateMigrateTask uint32 = 0x2D
+	opSyncAddEcNode         uint32 = 0x30
+	opSyncDeleteEcNode      uint32 = 0x31
+	opSyncUpdateEcNode      uint32 = 0x32
+	opSyncAddCodecNode      uint32 = 0x33
+	opSyncDeleteCodecNode   uint32 = 0x34
+	opSyncAddEcPartition    uint32 = 0x35
+	opSyncDelEcPartition	uint32 = 0x36
+	opSyncUpdateEcPartition uint32 = 0x37
+	opSyncAddMigrateTask    uint32 = 0x38
+	opSyncDeleteMigrateTask uint32 = 0x39
+	opSyncUpdateMigrateTask uint32 = 0x3A
+
 )
 
 const (

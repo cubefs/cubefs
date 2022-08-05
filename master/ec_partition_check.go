@@ -40,7 +40,7 @@ func (c *Cluster) checkEcDataPartitions() {
 		canReadWriteEpCnt := vol.checkEcDataPartitions(c)
 		vol.ecDataPartitions.updateResponseCache(true, 0)
 		msg := fmt.Sprintf("action[checkEcDataPartitions],vol[%v] can readWrite ec partitions:%v  ", vol.Name, canReadWriteEpCnt)
-		log.LogInfo(msg)
+		log.LogDebugf(msg)
 	}
 }
 

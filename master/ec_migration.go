@@ -32,11 +32,11 @@ const (
 	EcTaskRetry                   = 1
 	EcTaskFail                    = 2
 	EcMaxRetryTimes               = 3
-	EcMaxMigrateGoroutineSize     = 100
+	EcMaxMigrateGoroutineSize     = 10
 	EcTimeMinute                  = 60
 	EcMigrateInterval             = time.Minute * 3
-	EcMigrateStatusDetectInterval = time.Minute * 5
-	EcRetryInterval               = time.Minute * 8
+	EcMigrateTimeOutInterval      = time.Minute * 5
+	EcRetryInterval               = time.Minute * 5
 )
 
 var (
@@ -75,7 +75,7 @@ func (c *Cluster) scheduleToMigrationEc() {
 
 func (c *Cluster) doScheduleMigrationEc() {
 	migrateTimer := time.NewTimer(EcMigrateInterval)
-	statusDetectTimer := time.NewTimer(EcMigrateStatusDetectInterval)
+	statusDetectTimer := time.NewTimer(EcMigrateTimeOutInterval)
 	retryTimer := time.NewTimer(EcRetryInterval)
 	if migrateTaskList == nil {
 		migrateTaskList = NewMigrateList()
@@ -92,7 +92,7 @@ func (c *Cluster) doScheduleMigrationEc() {
 			if c.partition.IsRaftLeader() {
 				c.checkMigrateTaskTimeout()
 			}
-			statusDetectTimer.Reset(EcMigrateStatusDetectInterval)
+			statusDetectTimer.Reset(EcMigrateTimeOutInterval)
 		case <-retryTimer.C:
 			if c.partition.IsRaftLeader() {
 				c.retryFailTask()
@@ -446,7 +446,7 @@ func (c *Cluster) updateMigrateTask(task *MigrateTask) error {
 }
 
 func (c *Cluster) delMigrateTask(task *MigrateTask) error {
-	return c.persistMigrateTask(opSyncDelete, task)
+	return c.persistMigrateTask(opSyncDeleteMigrateTask, task)
 }
 
 func (c *Cluster) persistMigrateTask(opType uint32, task *MigrateTask) (err error) {
