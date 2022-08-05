@@ -64,6 +64,7 @@ Refer to [cubefs.readthedocs.io](https://cubefs.readthedocs.io/en/latest/evaluat
 
 ## Community
 
+- Homepage: [cubefs.io](https://cubefs.io/)
 - Mailing list: cubefs-users@groups.io
 - Slack: [cubefs.slack.com](https://cubefs.slack.com/)
 - WeChat: detail see [here](https://github.com/cubefs/cubefs/issues/604).
