@@ -27,9 +27,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-func newMockReporter(t *testing.T) scheduler.IScheduler {
+func newMockReporter(t *testing.T) scheduler.IInspector {
 	cli := mocks.NewMockIScheduler(C(t))
-	cli.EXPECT().CompleteInspect(A, A).AnyTimes().Return(nil)
+	cli.EXPECT().CompleteInspectTask(A, A).AnyTimes().Return(nil)
 	return cli
 }
 
@@ -44,7 +44,7 @@ func testTaskInspectMgrDo(t *testing.T, mode codemode.CodeMode) {
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
 	mgr := NewInspectTaskMgr(1, getter, newMockReporter(t))
 	task := proto.VolumeInspectTask{
-		TaskId:   "InspectTask_XXX",
+		TaskID:   "InspectTask_XXX",
 		Mode:     mode,
 		Replicas: replicas,
 	}
@@ -135,7 +135,7 @@ func TestTaskInspectMgrAddTask(t *testing.T) {
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
 	mgr := NewInspectTaskMgr(1, getter, newMockReporter(t))
 	task := proto.VolumeInspectTask{
-		TaskId:   "InspectTask_XXX",
+		TaskID:   "InspectTask_XXX",
 		Mode:     mode,
 		Replicas: replicas,
 	}

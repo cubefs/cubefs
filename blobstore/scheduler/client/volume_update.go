@@ -26,9 +26,9 @@ func NewVolumeUpdater(cfg *api.Config, host string) IVolumeUpdater {
 }
 
 func (v *volumeUpdater) UpdateLeaderVolumeCache(ctx context.Context, vid proto.Vid) (err error) {
-	return v.Client.UpdateVol(ctx, v.LeaderHost, vid)
+	return v.Client.UpdateVolume(ctx, v.LeaderHost, vid)
 }
 
 func (v *volumeUpdater) UpdateFollowerVolumeCache(ctx context.Context, host string, vid proto.Vid) (err error) {
-	return v.Client.UpdateVol(ctx, host, vid)
+	return v.Client.UpdateVolume(ctx, host, vid)
 }

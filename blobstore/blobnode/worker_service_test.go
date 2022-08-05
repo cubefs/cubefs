@@ -80,7 +80,7 @@ type mockScheCli struct {
 	inspectCnt int
 }
 
-func (m *mockScheCli) AcquireTask(ctx context.Context, args *scheduler.AcquireArgs) (ret *scheduler.WorkerTask, err error) {
+func (m *mockScheCli) AcquireTask(ctx context.Context, args *scheduler.AcquireArgs) (ret *proto.MigrateTask, err error) {
 	m.migrateID++
 	mode := codemode.EC6P10L2
 	srcReplicas := genMockVol(1, mode)
@@ -110,22 +110,17 @@ func (m *mockScheCli) AcquireTask(ctx context.Context, args *scheduler.AcquireAr
 		task.TaskID = fmt.Sprintf("disk_drop_%d", m.migrateID)
 		m.diskDropTaskCnt++
 	}
-	return &scheduler.WorkerTask{Task: task}, nil
+	return &task, nil
 }
 
-func (m *mockScheCli) AcquireInspectTask(ctx context.Context) (ret *scheduler.WorkerInspectTask, err error) {
+func (m *mockScheCli) AcquireInspectTask(ctx context.Context) (ret *proto.VolumeInspectTask, err error) {
 	m.inspectID++
 	m.inspectCnt++
 
 	mode := codemode.EC6P10L2
-	ret = &scheduler.WorkerInspectTask{
-		Task: &proto.VolumeInspectTask{
-			TaskId: fmt.Sprintf("inspect_%d", m.inspectID),
-			Mode:   mode,
-		},
-	}
+	ret = &proto.VolumeInspectTask{TaskID: fmt.Sprintf("inspect_%d", m.inspectID), Mode: mode}
 	if m.inspectID%2 == 0 {
-		ret.Task.Replicas = genMockVol(1, mode)
+		ret.Replicas = genMockVol(1, mode)
 	}
 	return
 }
@@ -133,7 +128,7 @@ func (m *mockScheCli) AcquireInspectTask(ctx context.Context) (ret *scheduler.Wo
 func newMockWorkService(t *testing.T) (*Service, *mockScheCli) {
 	cli := mocks.NewMockIScheduler(C(t))
 	schedulerCli := &mockScheCli{MockIScheduler: cli}
-	schedulerCli.EXPECT().CompleteInspect(A, A).AnyTimes().Return(nil)
+	schedulerCli.EXPECT().CompleteInspectTask(A, A).AnyTimes().Return(nil)
 	blobnodeCli := &mBlobNodeCli{}
 
 	workSvr := &WorkerService{

@@ -39,12 +39,12 @@ type TaskRunnerMgr struct {
 
 	idc          string
 	meter        WorkerConfigMeter
-	schedulerCli scheduler.IScheduler
+	schedulerCli scheduler.IMigrator
 	genWorker    WorkerGenerator
 }
 
 // NewTaskRunnerMgr returns task runner manager
-func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, schedulerCli scheduler.IScheduler, genWorker WorkerGenerator) *TaskRunnerMgr {
+func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, schedulerCli scheduler.IMigrator, genWorker WorkerGenerator) *TaskRunnerMgr {
 	return &TaskRunnerMgr{
 		typeMgr: map[proto.TaskType]mapTaskRunner{
 			proto.TaskTypeBalance:       make(mapTaskRunner),

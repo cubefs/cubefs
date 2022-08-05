@@ -184,13 +184,13 @@ type TaskRunner struct {
 	stopMu     sync.Mutex
 	stopReason *WorkError
 
-	schedulerCli scheduler.IScheduler
+	schedulerCli scheduler.IMigrator
 	stats        proto.TaskProgress // task progress statics
 }
 
 // NewTaskRunner return task runner
 func NewTaskRunner(ctx context.Context, taskID string, w ITaskWorker, idc string,
-	taskletRunConcurrency int, schedulerCli scheduler.IScheduler) *TaskRunner {
+	taskletRunConcurrency int, schedulerCli scheduler.IMigrator) *TaskRunner {
 	span, ctx := trace.StartSpanFromContext(ctx, "taskRunner")
 	ctx, cancel := context.WithCancel(ctx)
 

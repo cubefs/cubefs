@@ -269,20 +269,19 @@ func (s *WorkerService) acquireTask() {
 	}
 
 	if !t.IsValid() {
-		span.Errorf("task is illegal: task type[%s], task[%+v]",
-			t.TaskType(), t.Task)
+		span.Errorf("task is illegal: task type[%s], task[%+v]", t.TaskType, t)
 		return
 	}
 	err = s.taskRunnerMgr.AddTask(ctx, MigrateTaskEx{
-		taskInfo:                 &t.Task,
+		taskInfo:                 t,
 		downloadShardConcurrency: s.DownloadShardConcurrency,
 		blobNodeCli:              s.blobNodeCli,
 	})
 	if err != nil {
-		span.Errorf("add task failed: taskID[%s], err[%v]", t.Task.TaskID, err)
+		span.Errorf("add task failed: taskID[%s], err[%v]", t.TaskID, err)
 		return
 	}
-	span.Infof("acquire task success: task_type[%s], taskID[%s]", t.TaskType(), t.Task.TaskID)
+	span.Infof("acquire task success: task_type[%s], taskID[%s]", t.TaskType, t.TaskID)
 }
 
 // acquire inspect task
@@ -299,15 +298,15 @@ func (s *WorkerService) acquireInspectTask() {
 	}
 
 	if !t.IsValid() {
-		span.Errorf("inspect task is illegal: task[%+v]", t.Task)
+		span.Errorf("inspect task is illegal: task[%+v]", t)
 		return
 	}
 
-	err = s.inspectTaskMgr.AddTask(ctx, t.Task)
+	err = s.inspectTaskMgr.AddTask(ctx, t)
 	if err != nil {
-		span.Errorf("add inspect task failed: taskID[%s], err[%v]", t.Task.TaskId, err)
+		span.Errorf("add inspect task failed: taskID[%s], err[%v]", t.TaskID, err)
 		return
 	}
 
-	span.Infof("acquire inspect task success: taskID[%s]", t.Task.TaskId)
+	span.Infof("acquire inspect task success: taskID[%s]", t.TaskID)
 }

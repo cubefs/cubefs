@@ -197,12 +197,11 @@ func TestServiceAPI(t *testing.T) {
 		proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
 		proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate,
 	}
-
 	// opetate task
 	for _, taskType := range taskTypes {
 		task, err := cli.AcquireTask(ctx, &api.AcquireArgs{IDC: idc})
 		require.NoError(t, err)
-		require.Equal(t, taskType, task.TaskType())
+		require.Equal(t, taskType, task.TaskType)
 
 		require.NoError(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType}))
 		require.NoError(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType}))
@@ -236,11 +235,11 @@ func TestServiceAPI(t *testing.T) {
 	_, err = cli.AcquireInspectTask(ctx)
 	require.NoError(t, err)
 	// complete inspect task
-	require.NoError(t, cli.CompleteInspect(ctx, &api.CompleteInspectArgs{}))
+	require.NoError(t, cli.CompleteInspectTask(ctx, &proto.VolumeInspectRet{}))
 
 	// volume update
-	require.NoError(t, cli.UpdateVol(ctx, schedulerServer.URL, proto.Vid(1)))
-	require.Error(t, cli.UpdateVol(ctx, schedulerServer.URL, proto.Vid(1)))
+	require.NoError(t, cli.UpdateVolume(ctx, schedulerServer.URL, proto.Vid(1)))
+	require.Error(t, cli.UpdateVolume(ctx, schedulerServer.URL, proto.Vid(1)))
 
 	// stats
 	_, err = cli.Stats(ctx, schedulerServer.URL)

@@ -211,10 +211,10 @@ func TestServer(t *testing.T) {
 		_, err = cli.LeaderStats(ctx)
 		require.NoError(t, err)
 
-		err = cli.UpdateVol(ctx, leaderHost, proto.Vid(1))
+		err = cli.UpdateVolume(ctx, leaderHost, proto.Vid(1))
 		require.NoError(t, err)
 
-		err = cli.UpdateVol(ctx, followerHost, proto.Vid(1))
+		err = cli.UpdateVolume(ctx, followerHost, proto.Vid(1))
 		require.NoError(t, err)
 
 		_, err = cli.AcquireTask(ctx, &api.AcquireArgs{IDC: "z0"})

@@ -37,10 +37,10 @@ func (m *MockIScheduler) EXPECT() *MockISchedulerMockRecorder {
 }
 
 // AcquireInspectTask mocks base method.
-func (m *MockIScheduler) AcquireInspectTask(arg0 context.Context) (*scheduler.WorkerInspectTask, error) {
+func (m *MockIScheduler) AcquireInspectTask(arg0 context.Context) (*proto.VolumeInspectTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcquireInspectTask", arg0)
-	ret0, _ := ret[0].(*scheduler.WorkerInspectTask)
+	ret0, _ := ret[0].(*proto.VolumeInspectTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -52,10 +52,10 @@ func (mr *MockISchedulerMockRecorder) AcquireInspectTask(arg0 interface{}) *gomo
 }
 
 // AcquireTask mocks base method.
-func (m *MockIScheduler) AcquireTask(arg0 context.Context, arg1 *scheduler.AcquireArgs) (*scheduler.WorkerTask, error) {
+func (m *MockIScheduler) AcquireTask(arg0 context.Context, arg1 *scheduler.AcquireArgs) (*proto.MigrateTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcquireTask", arg0, arg1)
-	ret0, _ := ret[0].(*scheduler.WorkerTask)
+	ret0, _ := ret[0].(*proto.MigrateTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -94,18 +94,18 @@ func (mr *MockISchedulerMockRecorder) CancelTask(arg0, arg1 interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelTask", reflect.TypeOf((*MockIScheduler)(nil).CancelTask), arg0, arg1)
 }
 
-// CompleteInspect mocks base method.
-func (m *MockIScheduler) CompleteInspect(arg0 context.Context, arg1 *scheduler.CompleteInspectArgs) error {
+// CompleteInspectTask mocks base method.
+func (m *MockIScheduler) CompleteInspectTask(arg0 context.Context, arg1 *proto.VolumeInspectRet) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CompleteInspect", arg0, arg1)
+	ret := m.ctrl.Call(m, "CompleteInspectTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// CompleteInspect indicates an expected call of CompleteInspect.
-func (mr *MockISchedulerMockRecorder) CompleteInspect(arg0, arg1 interface{}) *gomock.Call {
+// CompleteInspectTask indicates an expected call of CompleteInspectTask.
+func (mr *MockISchedulerMockRecorder) CompleteInspectTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteInspect", reflect.TypeOf((*MockIScheduler)(nil).CompleteInspect), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteInspectTask", reflect.TypeOf((*MockIScheduler)(nil).CompleteInspectTask), arg0, arg1)
 }
 
 // CompleteTask mocks base method.
@@ -210,16 +210,16 @@ func (mr *MockISchedulerMockRecorder) Stats(arg0, arg1 interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stats", reflect.TypeOf((*MockIScheduler)(nil).Stats), arg0, arg1)
 }
 
-// UpdateVol mocks base method.
-func (m *MockIScheduler) UpdateVol(arg0 context.Context, arg1 string, arg2 proto.Vid) error {
+// UpdateVolume mocks base method.
+func (m *MockIScheduler) UpdateVolume(arg0 context.Context, arg1 string, arg2 proto.Vid) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateVol", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "UpdateVolume", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// UpdateVol indicates an expected call of UpdateVol.
-func (mr *MockISchedulerMockRecorder) UpdateVol(arg0, arg1, arg2 interface{}) *gomock.Call {
+// UpdateVolume indicates an expected call of UpdateVolume.
+func (mr *MockISchedulerMockRecorder) UpdateVolume(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVol", reflect.TypeOf((*MockIScheduler)(nil).UpdateVol), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVolume", reflect.TypeOf((*MockIScheduler)(nil).UpdateVolume), arg0, arg1, arg2)
 }

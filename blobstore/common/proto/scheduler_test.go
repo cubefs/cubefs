@@ -19,6 +19,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -40,6 +41,8 @@ func TestSchedulerAll(t *testing.T) {
 	locs[0].DiskID = 10
 	require.True(t, proto.CheckVunitLocations(locs))
 
+	vt := &proto.VolumeInspectTask{Mode: codemode.EC6P6}
+	require.False(t, vt.IsValid())
 	vi := proto.VolumeInspectRet{}
 	require.NoError(t, vi.Err())
 	vi.InspectErrStr = "has error"
@@ -62,21 +65,18 @@ func TestSchedulerMigrateTask(t *testing.T) {
 		SourceIDC:    "z0",
 		SourceDiskID: 11,
 		SourceVuid:   sVuid,
-		Sources:      []proto.VunitLocation{},
-
-		Destination: proto.VunitLocation{
-			Vuid:   dVuid,
-			Host:   "dest_host",
-			DiskID: 22,
-		},
+		CodeMode:     codemode.EC6P6,
+		Sources:      []proto.VunitLocation{{Vuid: sVuid, Host: "src_host", DiskID: 11}},
+		Destination:  proto.VunitLocation{Vuid: dVuid, Host: "dest_host", DiskID: 22},
 	}
 
 	require.Equal(t, proto.Vid(111), mt.Vid())
 	require.Equal(t, dVuid, mt.GetDestination().Vuid)
 	require.Equal(t, proto.DiskID(11), mt.GetSourceDiskID())
 	require.Equal(t, proto.DiskID(22), mt.DestinationDiskID())
-	require.Empty(t, mt.GetSources())
+	require.Equal(t, 1, len(mt.GetSources()))
 	require.True(t, mt.Running())
+	require.True(t, mt.IsValid())
 	require.Equal(t, mt, *(mt.Copy()))
 
 	mt.SetDestination(proto.VunitLocation{DiskID: 33})

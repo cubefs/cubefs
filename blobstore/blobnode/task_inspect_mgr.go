@@ -30,11 +30,11 @@ import (
 type InspectTaskMgr struct {
 	taskLimit limit.Limiter
 	bidGetter client.IBlobNode
-	reporter  scheduler.IScheduler
+	reporter  scheduler.IInspector
 }
 
 // NewInspectTaskMgr returns inspect task manager
-func NewInspectTaskMgr(concurrency int, bidGetter client.IBlobNode, reporter scheduler.IScheduler) *InspectTaskMgr {
+func NewInspectTaskMgr(concurrency int, bidGetter client.IBlobNode, reporter scheduler.IInspector) *InspectTaskMgr {
 	return &InspectTaskMgr{
 		taskLimit: count.New(concurrency),
 		bidGetter: bidGetter,
@@ -52,11 +52,10 @@ func (mgr *InspectTaskMgr) AddTask(ctx context.Context, task *proto.VolumeInspec
 	go func() {
 		defer mgr.taskLimit.Release()
 		ret := mgr.doInspect(ctx, task)
-		args := scheduler.CompleteInspectArgs{VolumeInspectRet: ret}
-		if err := mgr.reporter.CompleteInspect(ctx, &args); err != nil {
+		if err := mgr.reporter.CompleteInspectTask(ctx, ret); err != nil {
 			span.Errorf("report inspect result failed: result[%+v], err[%+v]", ret, err)
 		}
-		span.Debugf("finish inspect: taskID[%s]", task.TaskId)
+		span.Debugf("finish inspect: taskID[%s]", task.TaskID)
 	}()
 	return nil
 }
@@ -71,11 +70,11 @@ func (mgr *InspectTaskMgr) doInspect(ctx context.Context, task *proto.VolumeInsp
 
 	mode := task.Mode
 	replicas := task.Replicas
-	ret := &proto.VolumeInspectRet{TaskID: task.TaskId}
+	ret := &proto.VolumeInspectRet{TaskID: task.TaskID}
 
 	if len(replicas) != workutils.AllReplCnt(mode) {
 		span.Errorf("replicas length is invalid: taskID[%s], mode[%d], expect len[%d], actual len[%d]",
-			task.TaskId, mode, workutils.AllReplCnt(mode), len(replicas))
+			task.TaskID, mode, workutils.AllReplCnt(mode), len(replicas))
 		ret.InspectErrStr = "unexpect:code mode not match"
 		return ret
 	}
