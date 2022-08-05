@@ -252,6 +252,7 @@ retry:
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
 
 	if config.MaxStreamerLimit <= 0 {
+		client.disableMetaCache = true
 		return
 	}
 

@@ -1146,6 +1146,7 @@ func (c *client) start() (err error) {
 		OnLoadBcache:      c.bc.Get,
 		OnCacheBcache:     c.bc.Put,
 		OnEvictBcache:     c.bc.Evict,
+		DisableMetaCache:  true,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
