@@ -3,7 +3,7 @@
 conn_pool_t *new_conn_pool() {
     conn_pool_t *conn_pool = (conn_pool_t *)malloc(sizeof(conn_pool_t));
     memset(conn_pool, 0, sizeof(conn_pool_t));
-    conn_pool->pool = new map<string, queue<conn_t>>;
+    conn_pool->pool = new map<string, queue<conn_t*>*>;
     pthread_rwlock_init(&conn_pool->lock, NULL);
     return conn_pool;
 }
@@ -51,15 +51,18 @@ int get_conn(conn_pool_t *conn_pool, const char *ip, int port) {
     pthread_rwlock_wrlock(&conn_pool->lock);
     auto it = conn_pool->pool->find(addr.str());
     if(it != conn_pool->pool->end()) {
-        queue<conn_t> q = it->second;
-        while(!q.empty()) {
-            conn_t conn = q.front();
-            q.pop();
-            if(time(NULL) - conn.idle <= IDLE_CONN_TIMEOUT) {
+        queue<conn_t*> *q = it->second;
+        while(!q->empty()) {
+            conn_t *conn = q->front();
+            q->pop();
+            if(time(NULL) - conn->idle <= IDLE_CONN_TIMEOUT) {
+                sock_fd = conn->sock_fd;
                 pthread_rwlock_unlock(&conn_pool->lock);
-                return conn.sock_fd;
+                delete conn;
+                return sock_fd;
             } else {
-                close(conn.sock_fd);
+                close(conn->sock_fd);
+                delete conn;
             }
         }
     }
@@ -71,10 +74,18 @@ int get_conn(conn_pool_t *conn_pool, const char *ip, int port) {
 void put_conn(conn_pool_t *conn_pool, const char *ip, int port, int sock_fd) {
     stringstream addr;
     addr << ip << ":" << port;
-    conn_t conn;
-    conn.sock_fd = sock_fd;
-    conn.idle = time(NULL);
+    conn_t *conn = new conn_t();
+    conn->sock_fd = sock_fd;
+    conn->idle = time(NULL);
     pthread_rwlock_wrlock(&conn_pool->lock);
-    (*conn_pool->pool)[addr.str()].push(conn);
+    auto it = (conn_pool->pool)->find(addr.str());
+    if (it == conn_pool->pool->end()) {
+        queue<conn_t*> *q = new queue<conn_t*>();
+        q->push(conn);
+        (*conn_pool->pool)[addr.str()] = q;
+    } else {
+        auto *q = it->second;
+        q->push(conn);
+    }
     pthread_rwlock_unlock(&conn_pool->lock);
 }

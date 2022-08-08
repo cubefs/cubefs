@@ -28,7 +28,7 @@ typedef struct {
 } conn_t;
 
 typedef struct {
-    map<string, queue<conn_t>> *pool;
+    map<string, queue<conn_t*>*> *pool;
     pthread_rwlock_t lock;
 } conn_pool_t;
 

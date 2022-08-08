@@ -78,6 +78,9 @@ ssize_t write_sock(int sock_fd, packet_t *p) {
 	marshal_header(p, header);
 	ssize_t re = send(sock_fd, header, PacketHeaderSize, 0);
 	free(header);
+	if (re < PacketHeaderSize) {
+		re = -1;
+	}
 	return re;
 }
 
@@ -87,16 +90,19 @@ ssize_t read_sock(int sock_fd, packet_t *p) {
 		return -1;
 	}
 	ssize_t re = recv(sock_fd, header, PacketHeaderSize, MSG_WAITALL);
-	if(re < 0) {
+	if(re < PacketHeaderSize) {
 		free(header);
-		return re;
+		return -1;
 	}
 	unmarshal_header(p, header);
 	free(header);
 	if(p->Size <= 0) {
-		return re;
+		return -1;
 	}
 	re = recv(sock_fd, p->Data, p->Size, MSG_WAITALL);
+	if (re < p->Size) {
+		re = -1;
+	}
 	return re;
 }
 
@@ -106,12 +112,13 @@ ssize_t get_read_reply(int sock_fd, packet_t *req) {
 		packet_t *reply = new_reply(req->ReqID, req->PartitionID, req->ExtentID);
 		reply->Data = req->Data + read;
 		ssize_t re = read_sock(sock_fd, reply);
+		if (re < 0) {
+			free(reply);
+			return re;
+		}
 		bool valid = check_read_reply(req, reply);
 		uint32_t size = reply->Size;
 		free(reply);
-		if(re < 0) {
-			return re;
-		}
 		if(!valid) {
 			return read;
 		}
