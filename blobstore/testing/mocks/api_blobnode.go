@@ -110,21 +110,6 @@ func (mr *MockStorageAPIMockRecorder) GetShard(arg0, arg1, arg2 interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShard", reflect.TypeOf((*MockStorageAPI)(nil).GetShard), arg0, arg1, arg2)
 }
 
-// GetShards mocks base method.
-func (m *MockStorageAPI) GetShards(arg0 context.Context, arg1 string, arg2 *blobnode.GetShardsArgs) (io.ReadCloser, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetShards", arg0, arg1, arg2)
-	ret0, _ := ret[0].(io.ReadCloser)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetShards indicates an expected call of GetShards.
-func (mr *MockStorageAPIMockRecorder) GetShards(arg0, arg1, arg2 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShards", reflect.TypeOf((*MockStorageAPI)(nil).GetShards), arg0, arg1, arg2)
-}
-
 // IsOnline mocks base method.
 func (m *MockStorageAPI) IsOnline(arg0 context.Context, arg1 string) bool {
 	m.ctrl.T.Helper()
