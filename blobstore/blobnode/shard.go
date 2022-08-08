@@ -138,18 +138,16 @@ func (s *Service) ShardGet(c *rpc.Context) {
 			rangeResp := "bytes " + strconv.FormatInt(from, 10) + "-" + strconv.FormatInt(to-1, 10) + "/" + strconv.FormatInt(int64(shard.Size), 10)
 			w.Header().Set("Content-Length", strconv.FormatInt(int64(bodySize), 10))
 			w.Header().Set("Content-Range", rangeResp)
-			w.WriteHeader(206)
+			c.RespondStatus(http.StatusPartialContent)
 		} else {
 			w.Header().Set("Content-Length", strconv.FormatInt(bodySize, 10))
-			w.WriteHeader(200)
+			c.RespondStatus(http.StatusOK)
 		}
 
 		wroteHeader = true
 
 		// flush header, First byte optimization
-		if wf, ok := w.(http.Flusher); ok {
-			wf.Flush()
-		}
+		c.Flush()
 	}
 
 	if rangeBytesStr != "" {
