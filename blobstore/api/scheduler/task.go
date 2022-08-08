@@ -219,18 +219,25 @@ func (c *client) LeaderStats(ctx context.Context) (ret TasksStat, err error) {
 	return
 }
 
-func (c *client) selectHost() (string, error) {
-	hosts := c.selector.GetRandomN(1)
+func (c *client) selectHost() ([]string, error) {
+	hosts := c.selector.GetRandomN(c.hostRetry)
 	if len(hosts) == 0 {
-		return "", errNoServiceAvailable
+		return nil, errNoServiceAvailable
 	}
-	return hosts[0], nil
+	return hosts, nil
 }
 
-func (c *client) request(req func(host string) error) error {
-	host, err := c.selectHost()
+func (c *client) request(req func(host string) error) (err error) {
+	var hosts []string
+	hosts, err = c.selectHost()
 	if err != nil {
 		return err
 	}
-	return req(host)
+
+	for _, host := range hosts {
+		if err = req(host); err == nil {
+			return err
+		}
+	}
+	return err
 }
