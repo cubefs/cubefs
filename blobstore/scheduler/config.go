@@ -18,10 +18,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
@@ -75,7 +75,7 @@ type Config struct {
 	ClusterMgr clustermgr.Config `json:"clustermgr"`
 	Proxy      proxy.LbConfig    `json:"proxy"`
 	Blobnode   blobnode.Config   `json:"blobnode"`
-	Scheduler  rpc.Config        `json:"scheduler"`
+	Scheduler  scheduler.Config  `json:"scheduler"`
 
 	Balance       BalanceMgrConfig    `json:"balance"`
 	DiskDrop      MigrateConfig       `json:"disk_drop"`
@@ -194,9 +194,10 @@ func (c *Config) fixConfig() (err error) {
 func (c *Config) fixClientConfig() {
 	defaulter.LessOrEqual(&c.Proxy.ClientTimeoutMs, defaultClientTimeoutMs)
 	defaulter.LessOrEqual(&c.Proxy.HostSyncIntervalMs, defaultHostSyncIntervalMs)
-	defaulter.LessOrEqual(&c.Proxy.RetryHostsCnt, defaultRetryHostsCnt)
+	defaulter.LessOrEqual(&c.Proxy.HostRetry, defaultRetryHostsCnt)
 	defaulter.LessOrEqual(&c.Blobnode.ClientTimeoutMs, defaultClientTimeoutMs)
 	defaulter.LessOrEqual(&c.Scheduler.ClientTimeoutMs, defaultClientTimeoutMs)
+	defaulter.LessOrEqual(&c.Scheduler.HostRetry, defaultRetryHostsCnt)
 }
 
 func (c *Config) fixKafkaConfig() {

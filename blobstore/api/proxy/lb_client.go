@@ -30,14 +30,14 @@ var errNoServiceAvailable = errors.New("no service available")
 type LbConfig struct {
 	Config
 
-	RetryHostsCnt      int   `json:"retry_hosts_cnt"`
+	HostRetry          int   `json:"host_retry"`
 	HostSyncIntervalMs int64 `json:"host_sync_interval_ms"`
 }
 
 type lbClient struct {
 	Client
-	selector      selector.Selector
-	retryHostsCnt int
+	selector  selector.Selector
+	hostRetry int
 }
 
 func NewMQLbClient(cfg *LbConfig, service clustermgr.APIService, clusterID proto.ClusterID) LbMsgSender {
@@ -63,21 +63,21 @@ func NewMQLbClient(cfg *LbConfig, service clustermgr.APIService, clusterID proto
 	if cfg.HostSyncIntervalMs == 0 {
 		cfg.HostSyncIntervalMs = 1000
 	}
-	if cfg.RetryHostsCnt == 0 {
-		cfg.RetryHostsCnt = 1
+	if cfg.HostRetry == 0 {
+		cfg.HostRetry = 1
 	}
 
 	return &lbClient{
-		retryHostsCnt: cfg.RetryHostsCnt,
-		Client:        New(&cfg.Config),
-		selector:      selector.MakeSelector(cfg.HostSyncIntervalMs, hostGetter),
+		hostRetry: cfg.HostRetry,
+		Client:    New(&cfg.Config),
+		selector:  selector.MakeSelector(cfg.HostSyncIntervalMs, hostGetter),
 	}
 }
 
 func (c *lbClient) SendDeleteMsg(ctx context.Context, args *DeleteArgs) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	hosts := c.selector.GetRandomN(c.retryHostsCnt)
+	hosts := c.selector.GetRandomN(c.hostRetry)
 	if len(hosts) == 0 {
 		return errNoServiceAvailable
 	}
@@ -96,7 +96,7 @@ func (c *lbClient) SendShardRepairMsg(ctx context.Context, args *ShardRepairArgs
 	span := trace.SpanFromContextSafe(ctx)
 	ctx = trace.ContextWithSpan(ctx, span)
 
-	hosts := c.selector.GetRandomN(c.retryHostsCnt)
+	hosts := c.selector.GetRandomN(c.hostRetry)
 	if len(hosts) == 0 {
 		return errNoServiceAvailable
 	}

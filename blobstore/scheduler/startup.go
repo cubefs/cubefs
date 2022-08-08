@@ -106,7 +106,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 
 	blobnodeCli := client.NewBlobnodeClient(&conf.Blobnode)
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
-	volumeUpdater := client.NewVolumeUpdater(&api.Config{Config: conf.Scheduler}, scheme+localHost+conf.BindAddr)
+	volumeUpdater := client.NewVolumeUpdater(&conf.Scheduler, scheme+localHost+conf.BindAddr)
 
 	vc := NewVolumeCache(clusterMgrCli, conf.VolumeCacheUpdateIntervalS)
 	conf.ShardRepair.Kafka = conf.Kafka.ShardRepair

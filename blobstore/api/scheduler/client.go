@@ -90,12 +90,14 @@ type IScheduler interface {
 
 // Config scheduler config.
 type Config struct {
+	HostRetry          int   `json:"host_retry"`
 	HostSyncIntervalMs int64 `json:"host_sync_interval_ms"`
 	rpc.Config
 }
 
 type client struct {
-	selector selector.Selector
+	hostRetry int
+	selector  selector.Selector
 	rpc.Client
 }
 
@@ -122,9 +124,13 @@ func New(cfg *Config, service cmapi.APIService, clusterID proto.ClusterID) ISche
 	if cfg.HostSyncIntervalMs == 0 {
 		cfg.HostSyncIntervalMs = 1000
 	}
+	if cfg.HostRetry == 0 {
+		cfg.HostRetry = 1
+	}
 	return &client{
-		selector: selector.MakeSelector(cfg.HostSyncIntervalMs, hostGetter),
-		Client:   rpc.NewClient(&cfg.Config),
+		hostRetry: cfg.HostRetry,
+		selector:  selector.MakeSelector(cfg.HostSyncIntervalMs, hostGetter),
+		Client:    rpc.NewClient(&cfg.Config),
 	}
 }
 

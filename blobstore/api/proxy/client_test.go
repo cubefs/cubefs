@@ -58,7 +58,7 @@ func TestLbClient_SendShardRepairMsg(t *testing.T) {
 	cm := clustermgr.New(&cmCfg)
 	cli := NewMQLbClient(&LbConfig{
 		Config:             Config{},
-		RetryHostsCnt:      0,
+		HostRetry:          0,
 		HostSyncIntervalMs: 0,
 	}, cm, 1)
 
@@ -85,7 +85,7 @@ func TestLbClient_SendShardRepairMsg_failed(t *testing.T) {
 	cm := clustermgr.New(&cmCfg)
 	cli := NewMQLbClient(&LbConfig{
 		Config:             Config{},
-		RetryHostsCnt:      0,
+		HostRetry:          0,
 		HostSyncIntervalMs: 0,
 	}, cm, 1)
 
@@ -112,7 +112,7 @@ func TestLbClient_BlobDelete_failed(t *testing.T) {
 	cm := clustermgr.New(&cmCfg)
 	cli := NewMQLbClient(&LbConfig{
 		Config:             Config{},
-		RetryHostsCnt:      0,
+		HostRetry:          0,
 		HostSyncIntervalMs: 0,
 	}, cm, 1)
 
@@ -142,7 +142,7 @@ func TestLbClient_BlobDelete(t *testing.T) {
 	cm := clustermgr.New(&cmCfg)
 	cli := NewMQLbClient(&LbConfig{
 		Config:             Config{},
-		RetryHostsCnt:      0,
+		HostRetry:          0,
 		HostSyncIntervalMs: 0,
 	}, cm, 1)
 
