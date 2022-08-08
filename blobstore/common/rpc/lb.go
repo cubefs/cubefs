@@ -20,7 +20,6 @@ import (
 	"errors"
 	"net/http"
 	urllib "net/url"
-	"strconv"
 	"strings"
 
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -34,14 +33,18 @@ type LbConfig struct {
 	Hosts []string `json:"hosts"`
 	// backup hosts
 	BackupHosts []string `json:"backup_hosts"`
+	// HostTryTimes Number of host failure retries, HostTryTimes < RequestTryTimes,
+	// Avoid requesting the unavailable host all the time
+	HostTryTimes int32 `json:"host_try_times"`
+	// Failure retry interval, default value is -1, if FailRetryIntervalS < 0,
+	// remove failed hosts will not work.
+	FailRetryIntervalS int64 `json:"fail_retry_interval_s"`
+	// Within MaxFailsPeriodS, if the number of failures is greater than or equal
+	// to MaxFails, the host is considered disconnected.
+	MaxFailsPeriodS int64 `json:"max_fails_period_s"`
+
 	// RequestTryTimes The maximum number of attempts for a request hosts.
 	RequestTryTimes uint32 `json:"try_times"`
-	// HostTryTimes Number of host failure retries, HostTryTimes < RequestTryTimes, Avoid requesting the unavailable host all the time
-	HostTryTimes int32 `json:"host_try_times"`
-	// Failure retry interval, default value is -1, if FailRetryIntervalS < 0, remove failed hosts will not work.
-	FailRetryIntervalS int64 `json:"fail_retry_interval_s"`
-	// Within MaxFailsPeriodS, if the number of failures is greater than or equal to MaxFails, the host is considered disconnected.
-	MaxFailsPeriodS int64 `json:"max_fails_period_s"`
 
 	// should retry function
 	ShouldRetry func(code int, err error) bool `json:"-"`
@@ -82,7 +85,7 @@ func NewLbClient(cfg *LbConfig, sel Selector) Client {
 		cfg.FailRetryIntervalS = -1
 	}
 	if sel == nil {
-		sel = NewSelector(cfg)
+		sel = newSelector(cfg)
 	}
 	cl := &lbClient{sel: sel, cfg: cfg}
 	cl.clientMap = make(map[string]Client)
@@ -98,14 +101,10 @@ func NewLbClient(cfg *LbConfig, sel Selector) Client {
 }
 
 var defaultShouldRetry = func(code int, err error) bool {
-	// use proxy will return 50x，need retry target，don't change proxy（suppose proxy always work）
-	if code == 502 || code == 504 {
-		return true // server error
+	if err != nil || (code/100 != 4 && code/100 != 2) {
+		return true
 	}
-	if err == nil {
-		return false // ok
-	}
-	return true
+	return false
 }
 
 func (c *lbClient) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
@@ -253,10 +252,12 @@ func (c *lbClient) doCtx(ctx context.Context, r *http.Request) (resp *http.Respo
 	reqURI := r.URL.RequestURI()
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debug("lb.doCtx: start", reqURI)
+	var (
+		hosts    []string
+		tryTimes = c.requestTryTimes
+		index    = 0
+	)
 
-	index := 0
-	var hosts []string
-	tryTimes := c.requestTryTimes
 	for i := uint32(0); i < tryTimes; i++ {
 		// get the available hosts
 		if index == len(hosts) || hosts == nil {
@@ -278,7 +279,8 @@ func (c *lbClient) doCtx(ctx context.Context, r *http.Request) (resp *http.Respo
 		r.Host = r.URL.Host
 		resp, err = c.clientMap[host].Do(ctx, r)
 		if i == tryTimes-1 {
-			span.Warn("lb.doCtx: the last host of request, try times: %s, err: %s, host: %s", strconv.Itoa(int(i+1)), err, r.URL.String())
+			span.Warnf("lb.doCtx: the last host of request, try times: %d, err: %v, host: %s",
+				i+1, err, host)
 			return
 		}
 		code := 0
@@ -286,12 +288,28 @@ func (c *lbClient) doCtx(ctx context.Context, r *http.Request) (resp *http.Respo
 			code = resp.StatusCode
 		}
 		if c.cfg.ShouldRetry(code, err) {
-			span.Infof("lb.doCtx: retry host, try times: %s, code: %s, err: %v, host: %s", strconv.Itoa(int(i+1)), strconv.Itoa(code), err, r.URL.String())
-			c.sel.SetFail(host)
+			span.Infof("lb.doCtx: retry host, try times: %d, code: %d, err: %v, host: %s",
+				i+1, code, err, host)
 			index++
-			continue
+			c.sel.SetFail(host)
+			if r.Body == nil {
+				continue
+			}
+			if r.GetBody != nil {
+				r.Body, err = r.GetBody()
+				if err != nil {
+					span.Warnf("lb.doCtx: retry failed, try times: %d, code: %d, err: %v, host: %s",
+						i+1, code, err, host)
+					return
+				}
+				continue
+			}
+			span.Warnf("lb.doCtx: request not support retry, try times: %d, code: %d, err: %v, host: %s",
+				i+1, code, err, host)
+			return
 		}
-		span.Debugf("lb.doCtx: the last host of request, try times: %s, code: %s, err: %v, host: %s", strconv.Itoa(int(i+1)), strconv.Itoa(code), err, r.URL.String())
+		span.Debugf("lb.doCtx: the last host of request, try times: %d, code: %d, err: %v, host: %s",
+			i+1, code, err, host)
 		return
 	}
 	return
