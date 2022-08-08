@@ -149,21 +149,6 @@ func TestNewBlobNodeClient(t *testing.T) {
 	require.NoError(t, err)
 	span.Infof("bids: %v\n", bids)
 
-	getShardsArgs := &GetShardsArgs{
-		DiskID: diskid,
-		Vuid:   20012,
-		Bids: []proto.BlobID{
-			300008,
-			300009,
-		},
-	}
-	blobsBody, err := cli.GetShards(ctx, mockServer.URL, getShardsArgs)
-	require.NoError(t, err)
-	if body != nil {
-		b, _ := ioutil.ReadAll(blobsBody)
-		span.Infof("body: %s\n", b)
-	}
-
 	_ = cli.String(ctx, mockServer.URL)
 	_ = cli.Close(ctx, mockServer.URL)
 	_ = cli.IsOnline(ctx, mockServer.URL)

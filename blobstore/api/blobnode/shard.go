@@ -193,30 +193,6 @@ func (c *client) RangeGetShard(ctx context.Context, host string, args *RangeGetS
 	return resp.Body, shardCrc, nil
 }
 
-type GetShardsArgs struct {
-	DiskID proto.DiskID   `json:"diskid"`
-	Vuid   proto.Vuid     `json:"vuid"`
-	Bids   []proto.BlobID `json:"bids"`
-}
-
-func (c *client) GetShards(ctx context.Context, host string, args *GetShardsArgs) (body io.ReadCloser, err error) {
-	if !IsValidDiskID(args.DiskID) {
-		err = bloberr.ErrInvalidDiskId
-		return
-	}
-
-	urlStr := fmt.Sprintf("%v/shards", host)
-	var resp *http.Response
-	resp, err = c.Post(ctx, urlStr, args)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode/100 != 2 {
-		return nil, bloberr.Error(resp.StatusCode)
-	}
-	return resp.Body, err
-}
-
 type DeleteShardArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 	Vuid   proto.Vuid   `json:"vuid"`

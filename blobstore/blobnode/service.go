@@ -90,7 +90,6 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.RegisterArgsParser(&bnapi.GetShardArgs{}, "json")
 	rpc.RegisterArgsParser(&bnapi.ListShardsArgs{}, "json")
-	rpc.RegisterArgsParser(&bnapi.GetShardsArgs{}, "json")
 	rpc.RegisterArgsParser(&bnapi.StatShardArgs{}, "json")
 	rpc.RegisterArgsParser(&bnapi.DeleteShardArgs{}, "json")
 	rpc.RegisterArgsParser(&bnapi.PutShardArgs{}, "json")
@@ -115,7 +114,6 @@ func NewHandler(service *Service) *rpc.Router {
 
 	r.Handle(http.MethodGet, "/shard/get/diskid/:diskid/vuid/:vuid/bid/:bid", service.ShardGet, rpc.OptArgsURI(), rpc.OptArgsQuery())
 	r.Handle(http.MethodGet, "/shard/list/diskid/:diskid/vuid/:vuid/startbid/:startbid/status/:status/count/:count", service.ShardList, rpc.OptArgsURI())
-	r.Handle(http.MethodPost, "/shards", service.GetShards, rpc.OptArgsBody())
 	r.Handle(http.MethodGet, "/shard/stat/diskid/:diskid/vuid/:vuid/bid/:bid", service.ShardStat, rpc.OptArgsURI())
 	r.Handle(http.MethodPost, "/shard/markdelete/diskid/:diskid/vuid/:vuid/bid/:bid", service.ShardMarkdelete, rpc.OptArgsURI())
 	r.Handle(http.MethodPost, "/shard/delete/diskid/:diskid/vuid/:vuid/bid/:bid", service.ShardDelete, rpc.OptArgsURI())
