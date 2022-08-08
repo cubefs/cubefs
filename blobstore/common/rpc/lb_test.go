@@ -16,8 +16,11 @@ package rpc
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,6 +33,35 @@ import (
 
 type ret struct {
 	Name string `json:"name"`
+}
+
+type testReader struct {
+	i    int64
+	data []byte
+}
+
+func (r *testReader) Read(p []byte) (n int, err error) {
+	if r.data == nil {
+		return 0, errors.New("reader closed")
+	}
+	if r.i >= int64(len(r.data)) {
+		return 0, io.EOF
+	}
+	n = copy(p, r.data[r.i:])
+	r.i += int64(n)
+	return
+}
+
+func (r *testReader) Close() {
+	r.data = nil
+}
+
+func newTestReader(data []byte) *testReader {
+	if data == nil {
+		return nil
+	}
+	t := &testReader{data: data, i: 0}
+	return t
 }
 
 func newCfg(hosts, backupHosts []string) *LbConfig {
@@ -147,7 +179,7 @@ func TestLbClient_Delete(t *testing.T) {
 }
 
 func TestLbClient_PostWithCrc(t *testing.T) {
-	cfg := newCfg([]string{testServer.URL}, nil)
+	cfg := newCfg([]string{"http://127.0.0.1:8889"}, []string{testServer.URL})
 	client := NewLbClient(cfg, nil)
 	ctx := context.Background()
 	result := &ret{}
@@ -155,7 +187,7 @@ func TestLbClient_PostWithCrc(t *testing.T) {
 		&ret{Name: "Test_lb_PostWithCrc"}, WithCrcEncode())
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
-	t.Logf("result:%s, error:%s \n", result, err)
+	assert.Equal(t, result, &ret{Name: "Test_lb_PostWithCrc"})
 	client.Close()
 }
 
@@ -185,7 +217,7 @@ func TestLbClient_PutWithNoCrc(t *testing.T) {
 }
 
 func TestLbClient_PutWithCrc(t *testing.T) {
-	cfg := newCfg([]string{testServer.URL}, nil)
+	cfg := newCfg([]string{"http://127.0.0.1:8889"}, []string{testServer.URL})
 	client := NewLbClient(cfg, nil)
 	ctx := context.Background()
 	result := &ret{}
@@ -193,7 +225,7 @@ func TestLbClient_PutWithCrc(t *testing.T) {
 		&ret{Name: "Test_lb_PutWithCrc"}, WithCrcEncode())
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
-	t.Logf("result:%s, error:%s \n", result, err)
+	assert.Equal(t, &ret{Name: "Test_lb_PutWithCrc"}, result)
 	client.Close()
 }
 
@@ -221,6 +253,44 @@ func TestLbClient_Form(t *testing.T) {
 	client.Close()
 }
 
+func TestLbClient_RetryWithBody(t *testing.T) {
+	cfg := newCfg([]string{testServer.URL}, []string{testServer.URL})
+	client := NewLbClient(cfg, nil)
+	ctx := context.Background()
+	request, err := http.NewRequest(http.MethodPost, "/retry", strings.NewReader("hello"))
+	assert.NoError(t, err)
+
+	resp, err := client.Do(ctx, request)
+	assert.NoError(t, err)
+	assert.Equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+
+	request, err = http.NewRequest(http.MethodPost, "/retry", newTestReader([]byte("hello")))
+	assert.NoError(t, err)
+	resp, err = client.Do(ctx, request)
+	assert.NoError(t, err)
+	assert.Equal(t, resp.StatusCode, 500)
+	resp.Body.Close()
+
+	client.Close()
+}
+
+func TestLbClient_RetryCrcBodyGetter(t *testing.T) {
+	for _, try := range []uint32{1, 2, 3, 5, 7, 10} {
+		cfg := newCfg([]string{}, []string{testServer.URL})
+		cfg.RequestTryTimes = try
+		cfg.ShouldRetry = func(code int, err error) bool {
+			assert.Equal(t, 500, code)
+			return true
+		}
+		client := NewLbClient(cfg, nil)
+		err := client.PutWith(context.Background(), "/crcbody", nil,
+			&ret{Name: "RetryCrcBodyGetter"}, WithCrcEncode())
+		assert.Error(t, err)
+		client.Close()
+	}
+}
+
 func TestLbClient_DoWithNoCrc(t *testing.T) {
 	cfg := newCfg([]string{testServer.URL}, []string{testServer.URL})
 	client := NewLbClient(cfg, nil)
@@ -235,7 +305,7 @@ func TestLbClient_DoWithNoCrc(t *testing.T) {
 }
 
 func TestLbClient_DoWithCrc(t *testing.T) {
-	cfg := newCfg([]string{testServer.URL}, nil)
+	cfg := newCfg([]string{"http://127.0.0.1:8889"}, []string{testServer.URL})
 	client := NewLbClient(cfg, nil)
 	result := &ret{}
 	ctx := context.Background()

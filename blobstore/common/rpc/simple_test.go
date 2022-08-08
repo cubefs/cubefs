@@ -17,6 +17,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,15 +27,28 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 )
 
-var testServer *httptest.Server
+var (
+	testServer *httptest.Server
+	first      = true
+)
 
 type handler struct{}
 
 func (s *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	uri := r.URL.RequestURI()
 	switch uri {
+	case "/retry":
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil || int64(len(b)) != r.ContentLength || first {
+			w.WriteHeader(500)
+			w.Write([]byte("test retry"))
+			first = false
+		}
 	case "/crc":
 		doAfterCrc(w, r)
+	case "/crcbody":
+		w.Header().Set(HeaderAckCrcEncoded, "1")
+		w.WriteHeader(500)
 	case "/json":
 		callWithJSON(w, r)
 	case "/timeout":

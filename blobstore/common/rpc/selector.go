@@ -63,7 +63,7 @@ type selector struct {
 	cancelDetectionGoroutine context.CancelFunc
 }
 
-func NewSelector(cfg *LbConfig) Selector {
+func newSelector(cfg *LbConfig) Selector {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	rand.Seed(time.Now().UnixNano())
 	s := &selector{
@@ -141,9 +141,14 @@ func (s *selector) SetFail(host string) {
 
 // detectAvailableHostInBack enable the host from crackHosts
 func (s *selector) detectAvailableHostInBack() {
-	s.Lock()
-	defer s.Unlock()
-	for hItem := range s.crackHosts {
+	var cache []*hostItem
+	s.RLock()
+	for key := range s.crackHosts {
+		cache = append(cache, key)
+	}
+	s.RUnlock()
+
+	for _, hItem := range cache {
 		hItem.Lock()
 		now := time.Now().Unix()
 		if now-hItem.lastFailedTime >= s.failRetryIntervalS {

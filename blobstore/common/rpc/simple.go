@@ -58,6 +58,12 @@ func WithCrcEncode() Option {
 		if req.ContentLength > 0 && req.Body != nil {
 			encoder := crc32block.NewBodyEncoder(req.Body)
 			req.Body = encoder
+			if bodyGetter := req.GetBody; bodyGetter != nil {
+				req.GetBody = func() (io.ReadCloser, error) {
+					body, err := bodyGetter()
+					return crc32block.NewBodyEncoder(body), err
+				}
+			}
 			req.ContentLength = encoder.CodeSize(req.ContentLength)
 		}
 	}
