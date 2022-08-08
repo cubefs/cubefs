@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"io"
 	"sync"
 
@@ -172,6 +173,12 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			total += req.Size
 			log.LogDebugf("Stream read hole: ino(%v) req(%v) total(%v)", s.inode, req, total)
 		} else {
+			log.LogDebugf("Stream read: ino(%v) req(%v) s.needBCache(%v) s.client.bcacheEnable(%v)", s.inode, req, s.needBCache, s.client.bcacheEnable)
+			if s.needBCache {
+				bcacheMetric := exporter.NewCounter("fileReadL1Cache")
+				bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
+			}
+
 			//skip hole,ek is not nil,read block cache firstly
 			cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
 			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.needBCache(%v)", s.inode, req, s.client.bcacheEnable, s.needBCache)
@@ -182,19 +189,26 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 					readBytes, err = s.client.loadBcache(cacheKey, req.Data, uint64(offset), uint32(req.Size))
 					if err == nil && readBytes == req.Size {
 						total += req.Size
+						bcacheMetric := exporter.NewCounter("fileReadL1CacheHit")
+						bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
 						log.LogDebugf("TRACE Stream read. hit blockCache: ino(%v) cacheKey(%v) readBytes(%v) err(%v)", s.inode, cacheKey, readBytes, err)
 						continue
 					}
 				}
 				log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
 			}
+
+			if s.needBCache {
+				bcacheMetric := exporter.NewCounter("fileReadL1CacheMiss")
+				bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
+			}
+
 			//read extent
 			reader, err = s.GetExtentReader(req.ExtentKey)
 			if err != nil {
 				break
 			}
 
-			// todo :  optimization
 			var needCache = false
 			if _, ok := s.inflightL1cache.Load(cacheKey); !ok && s.client.bcacheEnable && s.needBCache {
 				s.inflightL1cache.Store(cacheKey, true)
