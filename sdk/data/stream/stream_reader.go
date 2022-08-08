@@ -183,7 +183,6 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.needBCache(%v)", s.inode, req, s.client.bcacheEnable, s.needBCache)
 			cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxBlockSize {
-				//todo offset is ok for tinyextent?
 				offset := req.FileOffset - int(req.ExtentKey.FileOffset)
 				if s.client.loadBcache != nil {
 					readBytes, err = s.client.loadBcache(cacheKey, req.Data, uint64(offset), uint32(req.Size))
