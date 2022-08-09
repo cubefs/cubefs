@@ -22,8 +22,6 @@ import (
 	"strings"
 
 	"github.com/afex/hystrix-go/hystrix"
-	"github.com/hashicorp/consul/api"
-
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -179,6 +177,9 @@ func confCheck(cfg *StreamConfig) {
 	if cfg.IDC == "" {
 		log.Fatal("idc config can not be null")
 	}
+	if cfg.ClusterConfig.ConsulAgentAddr == "" && len(cfg.ClusterConfig.Clusters) == 0 {
+		log.Panic("consul or clusters can not all be empty")
+	}
 	cfg.ClusterConfig.IDC = cfg.IDC
 
 	if len(cfg.MemPoolSizeClasses) == 0 {
@@ -225,10 +226,9 @@ func confCheck(cfg *StreamConfig) {
 }
 
 // NewStreamHandler returns a stream handler
-func NewStreamHandler(cfg *StreamConfig, kvClient *api.Client, stopCh <-chan struct{}) StreamHandler {
+func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 	confCheck(cfg)
-
-	clusterController, err := controller.NewClusterController(&cfg.ClusterConfig, kvClient)
+	clusterController, err := controller.NewClusterController(&cfg.ClusterConfig)
 	if err != nil {
 		log.Fatalf("new cluster controller failed, err: %v", err)
 	}

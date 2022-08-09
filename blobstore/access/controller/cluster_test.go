@@ -49,6 +49,7 @@ func initCluster() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", consul)
 	mux.HandleFunc("/service/get", serviceGet)
+	mux.HandleFunc("/stat", stat)
 
 	testServer := httptest.NewServer(mux)
 	hostAddr = testServer.URL
@@ -136,6 +137,19 @@ func serviceGet(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func stat(w http.ResponseWriter, req *http.Request) {
+	info := &clustermgr.StatInfo{
+		LeaderHost: hostAddr,
+		ReadOnly:   false,
+		SpaceStat: clustermgr.SpaceStatInfo{
+			TotalSpace:    1 << 40,
+			WritableSpace: 1 << 20,
+		},
+	}
+	bytes, _ := json.Marshal(info)
+	w.Write(bytes)
+}
+
 func initCC() {
 	defer func() {
 		var data []byte
@@ -213,15 +227,14 @@ func newCC() controller.ClusterController {
 		cfg.RedisClientConfig.Addrs = nil
 	}
 	conf := api.DefaultConfig()
-	conf.Address = hostAddr
+	cfg.ConsulAgentAddr = hostAddr
 	conf.Transport = &http.Transport{
 		MaxIdleConns:    1000,
 		IdleConnTimeout: time.Minute,
 	}
 	conf.Transport.DialContext = (&net.Dialer{KeepAlive: time.Minute}).DialContext
 
-	client, _ := api.NewClient(conf)
-	cc, err := controller.NewClusterController(&cfg, client)
+	cc, err := controller.NewClusterController(&cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -229,7 +242,25 @@ func newCC() controller.ClusterController {
 }
 
 func TestAccessClusterNew(t *testing.T) {
-	require.Equal(t, region, cc.Region())
+	cfg := controller.ClusterConfig{
+		Region:            region,
+		ClusterReloadSecs: 0,
+		CMClientConfig: clustermgr.Config{
+			LbConfig: rpc.LbConfig{
+				Hosts: []string{"http://localhost"},
+			},
+		},
+		RedisClientConfig: redis.ClusterConfig{
+			Addrs: []string{redismr.Addr()},
+		},
+	}
+	cfg.Clusters = []controller.Cluster{
+		{ClusterID: 1, Hosts: []string{hostAddr, hostAddr}},
+	}
+	clusterController, err := controller.NewClusterController(&cfg)
+	require.NotNil(t, clusterController)
+	require.Nil(t, err)
+	require.Equal(t, region, clusterController.Region())
 }
 
 func TestAccessClusterAll(t *testing.T) {
