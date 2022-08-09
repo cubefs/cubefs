@@ -1106,17 +1106,17 @@ func TestMetaPartition_CreateDentryWithSubmitErrorTest(t *testing.T) {
 			releaseMetaPartition(rocksModeTestMp)
 		}
 	}()
-	_, _ = memModeTestMp.CursorReset(context.Background(), &proto.CursorResetRequest{
+	_ = memModeTestMp.CursorReset(context.Background(), &proto.CursorResetRequest{
 		PartitionId: 1,
-		Inode:       10000,
+		NewCursor:   10000,
 		Force:       true,
 	})
 	defer func() {
-		_, _ = memModeTestMp.CursorReset(context.Background(), &proto.CursorResetRequest{
+		_ = memModeTestMp.CursorReset(context.Background(), &proto.CursorResetRequest{
 			PartitionId: 1,
-			Inode: 1,
-			Cursor: 1,
-			Force: true,
+			NewCursor:   1,
+			Cursor:      1,
+			Force:       true,
 		})
 	}()
 	fmt.Println(memModeTestMp.config.Cursor)

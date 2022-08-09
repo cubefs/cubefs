@@ -270,7 +270,7 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*proto.Met
 	return inodeMap, nil
 }
 
-func (mc *MetaHttpClient) ResetCursor(pid uint64, ino uint64, force bool) (resp *proto.CursorResetResponse, err error) {
+func (mc *MetaHttpClient) ResetCursor(pid uint64, resetType string, newCursor uint64, force bool) (resp *proto.CursorResetResponse, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
@@ -281,7 +281,8 @@ func (mc *MetaHttpClient) ResetCursor(pid uint64, ino uint64, force bool) (resp 
 	resp = &proto.CursorResetResponse{}
 	req := newAPIRequest(http.MethodGet, "/cursorReset")
 	req.addParam("pid", fmt.Sprintf("%v", pid))
-	req.addParam("ino", fmt.Sprintf("%v", ino))
+	req.addParam("resetType", resetType)
+	req.addParam("newCursor", fmt.Sprintf("%v", newCursor))
 	if force {
 		req.addParam("force", "1")
 	}

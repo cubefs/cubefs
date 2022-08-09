@@ -446,57 +446,82 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 	return
 }
 
-func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorResetRequest) (uint64, error) {
+func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorResetRequest) error {
+	status, _ := mp.calcMPStatus()
+	if status == proto.Unavailable {
+		log.LogInfof("mp[%v] status[%d] is unavailable[%d], can not reset cursor[%v]",
+			mp.config.PartitionId, status, proto.Unavailable, mp.config.Cursor)
+		return fmt.Errorf("mp[%v] status[%d] is unavailable[%d], can not reset cursor[%v]",
+			mp.config.PartitionId, status, proto.Unavailable, mp.config.Cursor)
+	}
+
+	if mp.config.End == defaultMaxMetaPartitionInodeID {
+		log.LogInfof("mp[%v] is max partition, not support reset cursor", mp.config.PartitionId)
+		return fmt.Errorf("max partition not support reset cursor")
+	}
+
 	maxIno := mp.config.Start
 	maxInode := mp.inodeTree.MaxItem()
 	if maxInode != nil {
 		maxIno = maxInode.Inode
 	}
 
-	req.Cursor = atomic.LoadUint64(&mp.config.Cursor)
+	switch CursorResetMode(req.CursorResetType) {
+	case SubCursor:
+		if status != proto.ReadOnly {
+			log.LogInfof("mp[%v] status[%d] is not readonly[%d], can not reset cursor[%v]",
+				mp.config.PartitionId, status, proto.ReadOnly, mp.config.Cursor)
+			return fmt.Errorf("mp[%v] status[%d] is not readonly[%d], can not reset cursor[%v]",
+				mp.config.PartitionId, status, proto.ReadOnly, mp.config.Cursor)
+		}
 
-	status, _ := mp.calcMPStatus()
-	if status != proto.ReadOnly {
-		log.LogInfof("mp[%v] status[%d] is not readonly[%d], can not reset cursor[%v]",
-			mp.config.PartitionId, status, proto.ReadOnly, mp.config.Cursor)
-		return mp.config.Cursor, fmt.Errorf("mp[%v] status[%d] is not readonly[%d], can not reset cursor[%v]",
-			mp.config.PartitionId, status, proto.ReadOnly, mp.config.Cursor)
+		if req.NewCursor == 0 {
+			req.NewCursor = maxIno + mpResetInoStep
+		}
+
+		req.Cursor = atomic.LoadUint64(&mp.config.Cursor)
+		if req.NewCursor >= req.Cursor {
+			return fmt.Errorf("operation mismatch, cursorResetMode(%v), newCursor(%v) oldCursor(%v)",
+				CursorResetMode(req.CursorResetType), req.NewCursor, req.Cursor)
+		}
+
+		willFree := mp.config.End - req.NewCursor
+		if !req.Force && willFree < mpResetInoLimited {
+			log.LogInfof("mp[%v] max inode[%v] is too high, no need reset",
+				mp.config.PartitionId, maxIno)
+			return fmt.Errorf("mp[%v] max inode[%v] is too high, no need reset",
+				mp.config.PartitionId, maxIno)
+		}
+	case AddCursor:
+		req.NewCursor = atomic.LoadUint64(&mp.config.End)
+	default:
+		return fmt.Errorf("mp[%v] with error cursor reset mode[%v]", mp.config.PartitionId, req.CursorResetType)
 	}
 
-	if req.Inode == 0 {
-		req.Inode = maxIno + mpResetInoStep
-	}
-
-	if req.Inode <= maxIno || req.Inode >= mp.config.End {
-		log.LogInfof("mp[%v] req[%d] ino is out of max[%d]~end[%d]",
-			mp.config.PartitionId, req.Inode, maxIno, mp.config.End)
-		return mp.config.Cursor, fmt.Errorf("mp[%v] req[%d] ino is out of max[%d]~end[%d]",
-			mp.config.PartitionId, req.Inode, maxIno, mp.config.End)
-	}
-
-	willFree := mp.config.End - req.Inode
-	if !req.Force && willFree < mpResetInoLimited {
-		log.LogInfof("mp[%v] max inode[%v] is too high, no need reset",
-			mp.config.PartitionId, maxIno)
-		return mp.config.Cursor, fmt.Errorf("mp[%v] max inode[%v] is too high, no need reset",
-			mp.config.PartitionId, maxIno)
+	if req.NewCursor <= maxIno || req.NewCursor > mp.config.End {
+		log.LogInfof("mp[%v] req ino[%d] is out of max[%d]~end[%d]",
+			mp.config.PartitionId, req.NewCursor, maxIno, mp.config.End)
+		return fmt.Errorf("mp[%v] req ino[%d] is out of max[%d]~end[%d]", mp.config.PartitionId, req.NewCursor, maxIno, mp.config.End)
 	}
 
 	data, err := json.Marshal(req)
 	if err != nil {
 		log.LogInfof("mp[%v] reset cursor failed, json marshal failed:%v",
 			mp.config.PartitionId, err.Error())
-		return mp.config.Cursor, err
+		return err
 	}
 
 	if _, ok := mp.IsLeader(); !ok {
-		return mp.config.Cursor, fmt.Errorf("this node is not leader, can not execute this op")
+		return fmt.Errorf("this node is not leader, can not execute this op")
 	}
-	cursor, err := mp.submit(ctx, opFSMCursorReset, "", data)
+	resp, err := mp.submit(ctx, opFSMCursorReset, "", data)
 	if err != nil {
-		return mp.config.Cursor, err
+		return err
 	}
-	return cursor.(uint64), nil
+	if resp.(*CursorResetResponse).Status != proto.OpOk {
+		return fmt.Errorf(resp.(*CursorResetResponse).Msg)
+	}
+	return nil
 }
 
 func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error) {

@@ -37,6 +37,11 @@ func NewInodeResponse() *InodeResponse {
 	return &InodeResponse{}
 }
 
+type CursorResetResponse struct {
+	Status uint8
+	Msg    string
+}
+
 // Create and inode and attach it to the inode tree.
 func (mp *metaPartition) fsmCreateInode(dbHandle interface{}, ino *Inode) (status uint8, err error) {
 	var ok bool
@@ -242,14 +247,27 @@ func (mp *metaPartition) internalDelete(dbHandle interface{}, val []byte) (err e
 	return
 }
 
-func (mp *metaPartition) internalCursorReset(req *proto.CursorResetRequest) (uint64, error) {
-	if ok := atomic.CompareAndSwapUint64(&mp.config.Cursor, req.Cursor, req.Inode); !ok {
-		log.LogInfof("mp[%v] reset cursor, failed: cursor changed", mp.config.PartitionId)
-		return mp.config.Cursor, fmt.Errorf("mp[%v] reset cursor, failed: cursor changed", mp.config.PartitionId)
+func (mp *metaPartition) internalCursorReset(req *proto.CursorResetRequest) (resp *CursorResetResponse) {
+	resp = new(CursorResetResponse)
+	resp.Status = proto.OpErr
+
+	switch CursorResetMode(req.CursorResetType) {
+	case SubCursor:
+		if ok := atomic.CompareAndSwapUint64(&mp.config.Cursor, req.Cursor, req.NewCursor); !ok {
+			log.LogInfof("mp[%v] reset cursor, failed: cursor changed", mp.config.PartitionId)
+			resp.Msg = fmt.Sprintf("mp[%v] reset cursor, failed: cursor changed", mp.config.PartitionId)
+			return
+		}
+	case AddCursor:
+		atomic.StoreUint64(&mp.config.Cursor, req.NewCursor)
+	default:
+		resp.Msg = fmt.Sprintf("mp[%v] with error reset type[%v]", mp.config.PartitionId, req.CursorResetType)
+		return
 	}
 
+	resp.Status = proto.OpOk
 	log.LogInfof("internalCursorReset: partitionID(%v) reset to (%v) ", mp.config.PartitionId, mp.config.Cursor)
-	return mp.config.Cursor, nil
+	return
 }
 
 func (mp *metaPartition) internalDeleteBatch(dbHandle interface{}, inodes InodeBatch) (err error) {

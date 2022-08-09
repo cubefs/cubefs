@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
 	"math"
 	"os"
 	"path"
@@ -1268,33 +1269,26 @@ func TestMetaPartition_BatchDeleteInodeCase01(t *testing.T) {
 	releaseMp(leader, follower, dir)
 }
 
-
-func TestResetCursor_WriteStatus(t *testing.T) {
+func TestResetCursor_OperationMismatch(t *testing.T) {
 	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_cursor", ApplyMock)
 	if mp == nil {
 		t.Errorf("mock mp failed:%v", err)
 		t.FailNow()
 	}
-	//mp, _ := newTestMetapartition(1)
 	defer releaseMetaPartition(mp)
-
+	mp.config.Cursor = 10000
 	req := &proto.CursorResetRequest{
-		PartitionId: 1,
-		Inode: 0,
-		Force: true,
+		PartitionId:     1,
+		NewCursor:       15000,
+		Force:           true,
+		CursorResetType: int(SubCursor),
 	}
 
-	configTotalMem = 100 * GB
-	status, _ := mp.calcMPStatus()
-	cursor, err := mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
+	err = mp.CursorReset(context.Background(), req)
+	if err == nil {
+		t.Errorf("error mismatch, expect:operation mismatch, actual:nil")
 		return
 	}
-	configTotalMem = 0
-	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
-
-	//releaseTestMetapartition(mp)
 	return
 }
 
@@ -1304,34 +1298,36 @@ func TestResetCursor_OutOfMaxEnd(t *testing.T) {
 		t.Errorf("mock mp failed:%v", err)
 		t.FailNow()
 	}
-	//mp, _ := newTestMetapartition(1)
 	defer releaseMetaPartition(mp)
-
+	mp.config.Cursor = mp.config.End
 	req := &proto.CursorResetRequest{
-		PartitionId: 1,
-		Inode: 10000,
-		Force: true,
+		PartitionId:     1,
+		NewCursor:       15000,
+		Force:           true,
+		CursorResetType: int(SubCursor),
 	}
 
 	status, _ := mp.calcMPStatus()
-	cursor, err := mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
+	err = mp.CursorReset(context.Background(), req)
+	if err != nil {
 		t.Errorf("reset cursor test failed, err:%s", err.Error())
 		return
 	}
-	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
+	t.Logf("reset cursor:%d, status:%d, err:%v", mp.config.Cursor, status, err)
 
 	for i := 1; i <100; i++ {
 		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
 	}
-	req.Inode = 90
-	cursor, err = mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
+	req.NewCursor = 90
+	err = mp.CursorReset(context.Background(), req)
+	if err == nil {
+		t.Errorf("expect error is out of bound, but actual is nil")
+	}
+	if mp.config.Cursor != 15000 {
+		t.Errorf("cursor mismatch, expect:10000, actual:%v", mp.config.Cursor)
 		return
 	}
-	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
-	//releaseTestMetapartition(mp)
+	t.Logf("reset cursor:%d, status:%d, err:%v", mp.config.Cursor, status, err)
 	return
 }
 
@@ -1341,105 +1337,268 @@ func TestResetCursor_LimitedAndForce(t *testing.T) {
 		t.Errorf("mock mp failed:%v", err)
 		t.FailNow()
 	}
-	//mp, _ := newTestMetapartition(1)
 	defer releaseMetaPartition(mp)
-	//mp, _ := newTestMetapartition(1)
+	mp.config.End = 10000
+	mp.config.Cursor = 9999
 
 	req := &proto.CursorResetRequest{
-		PartitionId: 1,
-		Inode: 9900,
-		Force: false,
+		PartitionId:     1,
+		NewCursor:       9900,
+		Force:           false,
+		CursorResetType: int(SubCursor),
 	}
 
 	for i := 1; i <100; i++ {
 		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
 	}
 
-	status, _ := mp.calcMPStatus()
-	cursor, err := mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
+	err = mp.CursorReset(context.Background(), req)
+	if err == nil {
+		t.Errorf("error mismatch, expect(no need reset), actual(nil)")
 		return
 	}
-	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
+	if mp.config.Cursor != 9999 {
+		t.Errorf("cursor mismatch, expect:9999, actual:%v", mp.config.Cursor)
+		return
+	}
 
 	req.Force = true
-	cursor, err = mp.CursorReset(context.Background(), req)
-	if cursor != req.Inode {
-		t.Errorf("reset cursor:%d test failed, err:%v", cursor, err)
+	err = mp.CursorReset(context.Background(), req)
+	if err != nil {
+		t.Errorf("reset cursor:%d test failed, err:%v", mp.config.Cursor, err)
 		return
 	}
-	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
+	if mp.config.Cursor != req.NewCursor {
+		t.Errorf("reset cursor failed, expect:%v, actual:%v", req.NewCursor, mp.config.Cursor)
+	}
 
-	//releaseTestMetapartition(mp)
 	return
 }
 
 func TestResetCursor_CursorChange(t *testing.T) {
-	//mp, _ := newTestMetapartition(1)
 	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_cursor", ApplyMock)
 	if mp == nil {
 		t.Errorf("mock mp failed:%v", err)
 		t.FailNow()
 	}
-	//mp, _ := newTestMetapartition(1)
 	defer releaseMetaPartition(mp)
 
 	req := &proto.CursorResetRequest{
 		PartitionId: 1,
-		Inode: 8000,
-		Force: false,
+		NewCursor:   8000,
+		Force:       false,
 	}
 
 	for i := 1; i <100; i++ {
 		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
 	}
+	mp.config.Cursor = 99
 
 	go func() {
 		for i := 0; i < 100; i++{
 			mp.nextInodeID()
+			time.Sleep(time.Microsecond * 1)
 		}
 	}()
-	time.Sleep(time.Microsecond * 10)
-	cursor, err := mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
-		return
-	}
-	t.Logf("reset cursor:%d, err:%v", cursor,  err)
+	time.Sleep(time.Microsecond * 5)
+	err = mp.CursorReset(context.Background(), req)
+	t.Logf("reset cursor:%d, err:%v", mp.config.Cursor,  err)
 
-	//releaseTestMetapartition(mp)
 	return
 }
 
 func TestResetCursor_LeaderChange(t *testing.T) {
-	//mp, _ := newTestMetapartition(1)
 	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_cursor", ApplyMock)
 	if mp == nil {
 		t.Errorf("mock mp failed:%v", err)
 		t.FailNow()
 	}
-	//mp, _ := newTestMetapartition(1)
 	defer releaseMetaPartition(mp)
 
+	mp.config.Cursor = 100
+
 	req := &proto.CursorResetRequest{
-		PartitionId: 1,
-		Inode: 8000,
-		Force: false,
+		PartitionId:     1,
+		NewCursor:       8000,
+		Force:           false,
+		CursorResetType: int(SubCursor),
 	}
+
+	mp.config.NodeId = 2
+	err = mp.CursorReset(context.Background(), req)
+	if err == nil {
+		t.Errorf("expect error is leader change, but actual is nil")
+	}
+	if 100 != mp.config.Cursor {
+		t.Errorf("cursor mismatch, expect:0, actual:%v", mp.config.Cursor)
+		return
+	}
+	t.Logf("reset cursor:%d, err:%v", mp.config.Cursor,  err)
+
+	return
+}
+
+func TestResetCursor_MPWriteStatus(t *testing.T) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_cursor", ApplyMock)
+	if mp == nil {
+		t.Errorf("mock mp failed:%v", err)
+		t.FailNow()
+	}
+	defer releaseMetaPartition(mp)
+
+	configTotalMem = 100 * util.GB
+	defer func() {
+		configTotalMem = 0
+	}()
+
+	for i := 1; i <100; i++ {
+		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
+	}
+	mp.config.Cursor = 10000
+
+	req := &proto.CursorResetRequest{
+		PartitionId:     1,
+		NewCursor:       0,
+		Force:           true,
+		CursorResetType: int(SubCursor),
+	}
+
+	status, _ := mp.calcMPStatus()
+	err = mp.CursorReset(context.Background(), req)
+	if err == nil {
+		t.Errorf("error mismatch, expect:(mp status not read only), but actual:(nil), mp status(%v)", status)
+		return
+	}
+	if mp.config.Cursor != 10000 {
+		t.Errorf("cursor mismatch, expect:99, actual:%v", mp.config.Cursor)
+	}
+}
+
+func TestResetCursor_MPReadOnly(t *testing.T) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_cursor", ApplyMock)
+	if mp == nil {
+		t.Errorf("mock mp failed:%v", err)
+		t.FailNow()
+	}
+	defer releaseMetaPartition(mp)
 
 	for i := 1; i <100; i++ {
 		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
 	}
 
-	mp.config.NodeId = 2
-	cursor, err := mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
+	maxInode := mp.inodeTree.MaxItem()
+	if maxInode == nil {
+		t.Errorf("maxInode is nil")
 		return
 	}
-	t.Logf("reset cursor:%d, err:%v", cursor,  err)
+	mp.config.Cursor = mp.config.End
 
-	//releaseTestMetapartition(mp)
+	req := &proto.CursorResetRequest{
+		PartitionId:     1,
+		NewCursor:       0,
+		Force:           true,
+		CursorResetType: int(SubCursor),
+	}
+
+	status, _ := mp.calcMPStatus()
+	err = mp.CursorReset(context.Background(), req)
+	if err != nil {
+		t.Errorf("error mismatch, expect:nil, actual:%v, mp status(%v)", err, status)
+		return
+	}
+	if mp.config.Cursor != maxInode.Inode + mpResetInoStep {
+		t.Errorf("cursor mismatch, expect:99, actual:%v", mp.config.Cursor)
+	}
+}
+
+func TestResetCursor_SubCursorCase01(t *testing.T) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_cursor", ApplyMock)
+	if mp == nil {
+		t.Errorf("mock mp failed:%v", err)
+		t.FailNow()
+	}
+	defer releaseMetaPartition(mp)
+
+	for i := 1; i <100; i++ {
+		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
+	}
+
+	maxInode := mp.inodeTree.MaxItem()
+	if maxInode == nil {
+		t.Errorf("maxInode is nil")
+		return
+	}
+	mp.config.Cursor = mp.config.End
+
+	req := &proto.CursorResetRequest{
+		PartitionId:     1,
+		NewCursor:       maxInode.Inode + 2000,
+		CursorResetType: int(SubCursor),
+	}
+
+	status, _ := mp.calcMPStatus()
+	err = mp.CursorReset(context.Background(), req)
+	if err != nil {
+		t.Errorf("error mismatch, expect:nil, actual:%v, mp status(%v)", err, status)
+		return
+	}
+	if mp.config.Cursor != maxInode.Inode + 2000 {
+		t.Errorf("cursor mismatch, expect:99, actual:%v", mp.config.Cursor)
+	}
+}
+
+func TestResetCursor_AddCursorCase01(t *testing.T) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_cursor", ApplyMock)
+	if mp == nil {
+		t.Errorf("mock mp failed:%v", err)
+		t.FailNow()
+	}
+	defer releaseMetaPartition(mp)
+	configTotalMem = 100 * GB
+
+	req := &proto.CursorResetRequest{
+		PartitionId: 1,
+		CursorResetType: int(AddCursor),
+	}
+
+	err = mp.CursorReset(context.Background(), req)
+	if err != nil {
+		t.Errorf("reset cursor failed, err:%v", err)
+		return
+	}
+	status, _ := mp.calcMPStatus()
+	if status != proto.ReadOnly {
+		t.Errorf("mp status mismatch, expect:read only(%v), actual(%v)", proto.ReadOnly, status)
+	}
+	if mp.config.Cursor != mp.config.End {
+		t.Errorf("mp cursor mismatch, expect:%v, actual:%v", mp.config.End, mp.config.Cursor)
+	}
+	return
+}
+
+func TestResetCursor_ResetMaxMP(t *testing.T) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_cursor", ApplyMock)
+	if mp == nil {
+		t.Errorf("mock mp failed:%v", err)
+		t.FailNow()
+	}
+	defer releaseMetaPartition(mp)
+	mp.config.Cursor = 1000
+	mp.config.End = defaultMaxMetaPartitionInodeID
+	configTotalMem = 100 * GB
+
+	req := &proto.CursorResetRequest{
+		PartitionId:     1,
+		CursorResetType: int(SubCursor),
+	}
+
+	err = mp.CursorReset(context.Background(), req)
+	if err == nil {
+		t.Errorf("error expect:not support reset cursor, but actual:nil")
+		return
+	}
+	if mp.config.Cursor != 1000 {
+		t.Errorf("cursor mismatch, expect:%v, actual:%v", defaultMaxMetaPartitionInodeID, mp.config.Cursor)
+	}
 	return
 }

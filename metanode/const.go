@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -182,9 +183,10 @@ var (
 
 // Default configuration
 const (
-	defaultMetadataDir = "metadataDir"
-	defaultRaftDir     = "raftDir"
-	defaultAuthTimeout = 5 // seconds
+	defaultMetadataDir                    = "metadataDir"
+	defaultRaftDir                        = "raftDir"
+	defaultAuthTimeout                    = 5 // seconds
+	defaultMaxMetaPartitionInodeID uint64 = 1<<63 - 1
 )
 
 // Configuration keys
@@ -228,8 +230,8 @@ const (
 )
 
 const (
-	RocksDBVersion       = "3.1.0"
-	MetaNodeLatestVersion          = RocksDBVersion
+	RocksDBVersion        = "3.1.0"
+	MetaNodeLatestVersion = RocksDBVersion
 )
 
 const (
@@ -240,4 +242,34 @@ const (
 	RaftHangTimeOut       = 60
 	ProxyTryToLeaderRetryCnt = 1
 )
+
+type CursorResetMode int
+
+const (
+	AddCursor CursorResetMode = iota
+	SubCursor
+	InValidCursorType
+)
+
+func (mode CursorResetMode) String() string {
+	switch mode {
+	case AddCursor:
+		return "add"
+	case SubCursor:
+		return "sub"
+	default:
+		return "unknown"
+	}
+}
+
+func ParseCursorResetMode(typeStr string) (CursorResetMode, error) {
+	switch typeStr {
+	case "0", "add", "Add", "ADD":
+		return AddCursor, nil
+	case "1", "sub", "Sub", "SUB":
+		return SubCursor, nil
+	default:
+		return InValidCursorType, fmt.Errorf("error cursor reset mode:%s", typeStr)
+	}
+}
 
