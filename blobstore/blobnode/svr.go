@@ -112,7 +112,7 @@ func (s *Service) Close() {
 	chunks := s.copyChunkStorages(ctx)
 	for _, cs := range chunks {
 		if err := cs.Sync(ctx); err != nil {
-			span.Errorf("Failed sync %s. err:%v", err)
+			span.Errorf("Failed sync err:%v", err)
 		}
 	}
 

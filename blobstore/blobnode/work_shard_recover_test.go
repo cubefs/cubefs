@@ -22,7 +22,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -32,9 +31,10 @@ import (
 func TestGenDownloadPlans(t *testing.T) {
 	mode := codemode.EC15P12
 	replicas := genMockVol(1, mode)
-	repair := NewShardRecover(replicas, mode, nil, nil, 4, blobnode.RepairIO)
+	repair := NewShardRecover(replicas, mode, nil, nil, 4, proto.TaskTypeDiskRepair)
 	badi := []uint8{1, 2}
-	stripe := repair.genGlobalStripe(badi)
+	stripe, err := repair.genGlobalStripe(badi)
+	require.NoError(t, err)
 	plans := stripe.genDownloadPlans()
 
 	require.Equal(t, 11, len(plans))
@@ -70,14 +70,15 @@ func TestShardsBuf(t *testing.T) {
 	}
 	buf, _ := taskBufPool.GetMigrateBuf()
 	shardsBuf := NewShardsBuf(buf)
-	shardsBuf.PlanningDataLayout(bidInfos)
+	err := shardsBuf.PlanningDataLayout(bidInfos)
+	require.NoError(t, err)
 	for idx := range bids {
 		buf, err := shardsBuf.getShardBuf(bids[idx])
 		require.NoError(t, err)
 		require.Equal(t, 0, len(buf))
 	}
 
-	_, err := shardsBuf.FetchShard(1)
+	_, err = shardsBuf.FetchShard(1)
 	require.EqualError(t, errShardDataNotPrepared, err.Error())
 
 	err = shardsBuf.PutShard(1, bytes.NewReader(genMockBytes('a', 1023)))
@@ -125,7 +126,7 @@ func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, 
 		bidInfos = append(bidInfos, &ele)
 	}
 
-	repair := NewShardRecover(replicas, mode, bidInfos, getter, 3, blobnode.RepairIO)
+	repair := NewShardRecover(replicas, mode, bidInfos, getter, 3, proto.TaskTypeShardRepair)
 	return repair, bidInfos, getter, replicas
 }
 
@@ -340,13 +341,14 @@ func TestRecoverShards2(t *testing.T) {
 func TestLocalStripes(t *testing.T) {
 	mode := codemode.EC6P10L2
 	replicas := genMockVol(1, mode)
-	repair := NewShardRecover(replicas, mode, nil, nil, 4, blobnode.RepairIO)
+	repair := NewShardRecover(replicas, mode, nil, nil, 4, proto.TaskTypeShardRepair)
 	for idx, replica := range replicas {
 		require.Equal(t, idx, int(replica.Vuid.Index()))
 	}
 	badi := []uint8{0}
 	localStripeIdxs := []uint8{}
-	stripes := repair.genLocalStripes(badi)
+	stripes, err := repair.genLocalStripes(badi)
+	require.NoError(t, err)
 	for _, stripe := range stripes {
 		for _, replica := range stripe.replicas {
 			localStripeIdxs = append(localStripeIdxs, replica.Vuid.Index())
@@ -363,7 +365,8 @@ func TestGlobalStripe(t *testing.T) {
 
 	badi := []uint8{0, 1, 3}
 	globalStripeIdxs := []uint8{}
-	stripe := repair.genGlobalStripe(badi)
+	stripe, err := repair.genGlobalStripe(badi)
+	require.NoError(t, err)
 	for _, replica := range stripe.replicas {
 		globalStripeIdxs = append(globalStripeIdxs, replica.Vuid.Index())
 	}

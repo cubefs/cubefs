@@ -74,7 +74,7 @@ func Setiotype(ctx context.Context, iot IOType) context.Context {
 
 func Task2IOType(t proto.TaskType) IOType {
 	switch t {
-	case proto.TaskTypeDiskRepair:
+	case proto.TaskTypeDiskRepair, proto.TaskTypeShardRepair:
 		return RepairIO
 	default:
 		return MigrateIO
