@@ -19,8 +19,9 @@
 using namespace std;
 
 #define IDLE_CONN_TIMEOUT 30
-#define SEND_TIMEOUT_MS 1000
-#define RCV_TIMEOUT_MS 1000
+#define SEND_TIMEOUT_MS   1000
+#define RECV_TIMEOUT_MS   1000
+#define CONN_TIMEOUT_MS   1000
 
 typedef struct {
     int sock_fd;

@@ -1,4 +1,5 @@
 #include "conn_pool.h"
+#include <sys/ioctl.h>
 
 conn_pool_t *new_conn_pool() {
     conn_pool_t *conn_pool = (conn_pool_t *)malloc(sizeof(conn_pool_t));
@@ -8,36 +9,107 @@ conn_pool_t *new_conn_pool() {
     return conn_pool;
 }
 
+int check_conn_timeout(int sock_fd, int64_t timeout_ms) {
+    int ret = 0;
+    struct timeval tv;
+    fd_set rset, wset;
+    int error = 0;
+    socklen_t len = 0;
+
+    len = sizeof(error);
+    tv.tv_sec = timeout_ms/1000;
+    tv.tv_usec = (timeout_ms%1000)*1000;
+    FD_ZERO(&rset);
+    FD_ZERO(&wset);
+    FD_SET(sock_fd, &rset);
+    wset = rset;
+
+    ret = select(sock_fd+1, &rset, &wset, NULL, &tv);
+    if( ret <= 0) {
+        return -1;
+    }
+
+    if (FD_ISSET(sock_fd, &rset) || FD_ISSET(sock_fd, &wset)) {
+        ret = getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, &error, &len);
+        if(error != 0 || ret < 0) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int set_socket_non_block(int sock_fd, unsigned long enable) {
+    return ioctl(sock_fd, FIONBIO, &enable);
+}
+
+int set_fd_timeout(int sock_fd, int64_t recv_timeout_ms, int64_t send_timeout_ms) {
+    struct timeval tv;
+
+    tv.tv_sec = send_timeout_ms/1000;
+    tv.tv_usec = (send_timeout_ms%1000)*1000;
+    if(setsockopt(sock_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
+        return -1;
+    }
+
+    tv.tv_sec = recv_timeout_ms/1000;
+    tv.tv_usec = (recv_timeout_ms%1000)*1000;
+    if(setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
 int new_conn(const char *ip, int port) {
     int sock_fd = -1;
+    int ret = 0;
+    struct sockaddr_in addr;
+
     if((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         return sock_fd;
     }
-    struct sockaddr_in addr;
+
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     if(inet_pton(AF_INET, ip, &addr.sin_addr) < 0) {
 		close(sock_fd);
         return -1;
     }
-    if(connect(sock_fd, (struct sockaddr*)&addr, sizeof(addr))) {
-		close(sock_fd);
+
+    ret = set_socket_non_block(sock_fd, 1);
+    if (ret < 0) {
+        close(sock_fd);
         return -1;
     }
 
-    struct timeval tv;
-    tv.tv_sec = SEND_TIMEOUT_MS/1000;
-    tv.tv_usec = (SEND_TIMEOUT_MS%1000)*1000;
-    if(setsockopt(sock_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
+    ret = connect(sock_fd, (struct sockaddr*)&addr, sizeof(addr));
+    if (ret < 0) {
+        //error
+        if (errno != EINPROGRESS) {
+            close(sock_fd);
+            return -1;
+        }
+
+        ret = check_conn_timeout(sock_fd, CONN_TIMEOUT_MS);
+        if (ret < 0) {
+            close(sock_fd);
+            return -1;
+        }
+    }
+
+    ret = set_socket_non_block(sock_fd, 0);
+    if (ret < 0) {
         close(sock_fd);
         return -1;
     }
-    tv.tv_sec = RCV_TIMEOUT_MS/1000;
-    tv.tv_usec = (RCV_TIMEOUT_MS%1000)*1000;
-    if(setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+
+    ret = set_fd_timeout(sock_fd, RECV_TIMEOUT_MS, SEND_TIMEOUT_MS);
+    if (ret < 0) {
         close(sock_fd);
         return -1;
     }
+
     return sock_fd;
 }
 
