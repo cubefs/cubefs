@@ -213,7 +213,8 @@ func testGetBenchmarkBids(t *testing.T, mode codemode.CodeMode) {
 }
 
 func TestBidsSplit(t *testing.T) {
-	tasklets := BidsSplit(context.Background(), []*ShardInfoSimple{}, 1024)
+	tasklets, wErr := BidsSplit(context.Background(), []*ShardInfoSimple{}, 1024)
+	require.Nil(t, wErr)
 	require.Equal(t, 0, len(tasklets))
 
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
@@ -227,7 +228,8 @@ func TestBidsSplit(t *testing.T) {
 	for idx := range bids {
 		bidInfos = append(bidInfos, &ShardInfoSimple{Bid: bids[idx], Size: sizes[idx]})
 	}
-	tasklets = BidsSplit(context.Background(), bidInfos, 1024)
+	tasklets, wErr = BidsSplit(context.Background(), bidInfos, 1024)
+	require.Nil(t, wErr)
 	require.Equal(t, 4, len(tasklets))
 
 	bids2 := []*ShardInfoSimple{}

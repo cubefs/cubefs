@@ -33,8 +33,13 @@ import (
 // 2.get benchmark bids of volume(not allowed tp be miss any bid which has written success by user,
 // but the rubbish bid which can recover can be allowed to be included in benchmark bids)
 
-// ErrNotEnoughWellReplicaCnt well replicas cnt is not enough
-var ErrNotEnoughWellReplicaCnt = errors.New("well replicas cnt is not enough")
+var (
+	ErrNotEnoughWellReplicaCnt = errors.New("well replicas cnt is not enough")
+	ErrNotEnoughBidsInTasklet  = errors.New("check len of tasklet and bids is not equal")
+	ErrTaskletSizeInvalid      = errors.New("tasklet size is invalid")
+	ErrBidSizeOverTaskletSize  = errors.New("bid size is over tasklet size")
+	ErrUnexpected              = errors.New("unexpected error when get bench bids")
+)
 
 // ShardInfoSimple with blob id and size
 type ShardInfoSimple struct {
@@ -127,7 +132,10 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas []prot
 	mode codemode.CodeMode, badIdxs []uint8) (bids []*ShardInfoSimple, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	globalReplicas := workutils.AbstractGlobalStripeReplicas(replicas, mode, badIdxs)
+	globalReplicas, err := workutils.AbstractGlobalStripeReplicas(replicas, mode, badIdxs)
+	if err != nil {
+		return nil, err
+	}
 	replicasBids := GetReplicasBids(ctx, cli, globalReplicas)
 
 	wellCnt := 0
@@ -192,12 +200,13 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas []prot
 			continue
 		}
 
-		span.Panicf("unexpect when get benchmark bids: vid[%d], bid[%d], existCnt[%d], notExistCnt[%d], allowFailCnt[%d]",
+		span.Errorf("unexpect when get benchmark bids: vid[%d], bid[%d], existCnt[%d], notExistCnt[%d], allowFailCnt[%d]",
 			replicas[0].Vuid.Vid(),
 			bid.Bid,
 			existStatus.ExistCnt(),
 			notExistCnt,
 			workutils.AllowFailCnt(mode))
+		return nil, ErrUnexpected
 	}
 
 	return benchMark, nil
@@ -210,14 +219,15 @@ func minWellReplicasCnt(mode codemode.CodeMode) int {
 }
 
 // BidsSplit split bids list to many tasklets by taskletSize
-func BidsSplit(ctx context.Context, bids []*ShardInfoSimple, taskletSize int) []Tasklet {
+func BidsSplit(ctx context.Context, bids []*ShardInfoSimple, taskletSize int) ([]Tasklet, *WorkError) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if len(bids) == 0 {
-		return []Tasklet{}
+		return []Tasklet{}, nil
 	}
 	if taskletSize == 0 {
-		span.Fatalf("BidsSplit taskletSize size can not zero")
+		span.Errorf("BidsSplit taskletSize size can not zero")
+		return nil, OtherError(ErrTaskletSizeInvalid)
 	}
 
 	sortByBid(bids)
@@ -226,7 +236,8 @@ func BidsSplit(ctx context.Context, bids []*ShardInfoSimple, taskletSize int) []
 	task := Tasklet{}
 	for _, bid := range bids {
 		if bid.Size > int64(taskletSize) {
-			span.Panicf("bid  size is too big: bid[%d], bid size[%d], tasklet size[%d]", bid.Bid, bid.Size, taskletSize)
+			span.Errorf("bid size is too big: bid[%d], bid size[%d], tasklet size[%d]", bid.Bid, bid.Size, taskletSize)
+			return nil, OtherError(ErrBidSizeOverTaskletSize)
 		}
 		if taskShardDataSize+uint64(bid.Size) > uint64(taskletSize) {
 			tasks = append(tasks, task)
@@ -243,10 +254,11 @@ func BidsSplit(ctx context.Context, bids []*ShardInfoSimple, taskletSize int) []
 		taskletBidCnt += len(task.bids)
 	}
 	if taskletBidCnt != len(bids) {
-		span.Panicf("check len of tasklet and bids is not equal: taskletBidCnt[%d], len(bids)[%d]", taskletBidCnt, len(bids))
+		span.Errorf("check len of tasklet and bids is not equal: taskletBidCnt[%d], len(bids)[%d]", taskletBidCnt, len(bids))
+		return tasks, OtherError(ErrNotEnoughBidsInTasklet)
 	}
 
-	return tasks
+	return tasks, nil
 }
 
 func sortByBid(bids []*ShardInfoSimple) {

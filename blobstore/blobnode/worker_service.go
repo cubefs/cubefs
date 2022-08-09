@@ -75,7 +75,7 @@ type WorkerConfig struct {
 	WorkerConfigMeter
 
 	// buffer pool use for migrate and repair shard repair
-	BufPoolConf base.BufConfig `json:"buf_pool"`
+	BufPoolConf base.BufConfig `json:"buf_pool_conf"`
 
 	// acquire task period
 	AcquireIntervalMs int `json:"acquire_interval_ms"`
