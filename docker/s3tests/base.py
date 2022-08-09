@@ -47,7 +47,7 @@ def random_bytes(length):
     :param length:
     :return: bytes content
     """
-    f = open('/dev/random', 'rb')
+    f = open('/dev/urandom', 'rb')
     data = f.read(length)
     f.close()
     return data
