@@ -1,7 +1,7 @@
 Authnode
 ====================
 
-`Authnode` provides a general authentication & authorization service among `ChubaoFS` nodes. `Client`, `Master`, `Meta` and `Data` node are required to be authenticated and authorized before any resource access in another node.
+`Authnode` provides a general authentication & authorization service among `CubeFS` nodes. `Client`, `Master`, `Meta` and `Data` node are required to be authenticated and authorized before any resource access in another node.
 
 Initially, each node (`Auth`, `Client`, `Master`, `Meta` or `Data` node) is launched with a secure key which is distributed by a authenticated person (for instance, cluster admin). With a valid key, a node can be identified in `Authnode` service and granted a ticket for resource access.
 
@@ -47,7 +47,7 @@ Use the following commands to build client side tool for `Authnode`:
 .. code-block:: bash
 
    $ git clone http://github.com/cubefs/cubefs.git
-   $ cd chubaofs
+   $ cd cubefs
    $ make build
 
 If successful, the tool `cfs-authtool` can be found in `build/bin`.
@@ -120,7 +120,7 @@ AuthNode Configurations
       }
 
 
-Steps for Starting ChubaoFS with AuthNode
+Steps for Starting CubeFS with AuthNode
 ------------------------------------------
 
 Create Authnode key
@@ -224,7 +224,7 @@ Create `admin` using `Authnode` ticket:
           "caps": "{\"API\":[\"*:*:*\"]}"
       }
 
-Create key for ChubaoFS cluster
+Create key for CubeFS cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -310,9 +310,9 @@ Create key for ChubaoFS cluster
       enableHTTPS: will enable HTTPS if set true.
 
 
-Start ChubaoFS cluster
+Start CubeFS cluster
 ~~~~~~~~~~~~~~~~~~~~~~~
- Run the following to launch ChubaoFS cluster with `AuthNode` enabled:
+ Run the following to launch CubeFS cluster with `AuthNode` enabled:
 
   .. code-block:: bash
 

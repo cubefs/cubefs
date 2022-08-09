@@ -4,7 +4,7 @@ failed=0
 
 export GO111MODULE=off
 
-echo -n 'Building ChubaoFS Server ... ';
+echo -n 'Building CubeFS Server ... ';
 cd /go/src/github.com/cubefs/cubefs/cmd;
 bash ./build.sh &>> /tmp/cfs_build_output
 if [[ $? -eq 0 ]]; then
@@ -16,7 +16,7 @@ else
 fi
 
 
-echo -n 'Building ChubaoFS Client ... ' ;
+echo -n 'Building CubeFS Client ... ' ;
 cd /go/src/github.com/cubefs/cubefs/client;
 bash ./build.sh &>> /tmp/cfs_build_output
 if [[ $? -eq 0 ]]; then
@@ -27,7 +27,7 @@ else
     failed=1
 fi
 
-echo -n 'Building ChubaoFS CLI    ... ';
+echo -n 'Building CubeFS CLI    ... ';
 cd /go/src/github.com/cubefs/cubefs/cli;
 bash ./build.sh &>> /tmp/cfs_build_output;
 if [[ $? -eq 0 ]]; then
@@ -38,7 +38,7 @@ else
     failed=1
 fi
 
-echo -n 'Building ChubaoFS libsdk ... ';
+echo -n 'Building CubeFS libsdk ... ';
 cd /go/src/github.com/cubefs/cubefs/libsdk;
 bash ./build.sh &>> /tmp/cfs_build_output;
 if [[ $? -eq 0 ]]; then
