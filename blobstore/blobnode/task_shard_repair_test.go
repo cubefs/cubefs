@@ -192,7 +192,7 @@ func testShardRepair(t *testing.T, mode codemode.CodeMode) {
 	})
 	repairer := NewShardRepairer(getter)
 
-	task := proto.ShardRepairTask{
+	task := &proto.ShardRepairTask{
 		Bid:      1,
 		CodeMode: mode,
 		Sources:  replicas,
@@ -260,7 +260,7 @@ func testShardRepair2(t *testing.T, mode codemode.CodeMode) {
 	bids := []proto.BlobID{1}
 	sizes := []int64{1025}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
-	task := proto.ShardRepairTask{
+	task := &proto.ShardRepairTask{
 		Bid:      1,
 		CodeMode: mode,
 		Sources:  replicas,

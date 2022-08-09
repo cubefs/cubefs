@@ -75,7 +75,7 @@ func NewShardRepairer(cli client.IBlobNode) *ShardRepairer {
 }
 
 // RepairShard repair shard data
-func (repairer *ShardRepairer) RepairShard(ctx context.Context, task proto.ShardRepairTask) error {
+func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.ShardRepairTask) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if !task.IsValid() {
