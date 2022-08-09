@@ -332,8 +332,7 @@ func (d *downloadStatus) downloaded(vuid proto.Vuid) {
 
 // ShardRecover used to recover shard data
 type ShardRecover struct {
-	chunksShardsBuf []*ShardsBuf              // record batch download shard data
-	bufPool         *workutils.ByteBufferPool // for repair shard
+	chunksShardsBuf []*ShardsBuf // record batch download shard data
 
 	replicas           []proto.VunitLocation // stripe replicas list
 	codeMode           codemode.CodeMode
@@ -347,7 +346,7 @@ type ShardRecover struct {
 
 // NewShardRecover returns shard recover
 func NewShardRecover(replicas []proto.VunitLocation, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
-	bufPool *workutils.ByteBufferPool, shardGetter client.IBlobNode, vunitShardGetConcurrency int, ioType blobnode.IOType,
+	shardGetter client.IBlobNode, vunitShardGetConcurrency int, ioType blobnode.IOType,
 ) *ShardRecover {
 	if vunitShardGetConcurrency <= 0 {
 		vunitShardGetConcurrency = defaultGetConcurrency
@@ -355,7 +354,6 @@ func NewShardRecover(replicas []proto.VunitLocation, mode codemode.CodeMode, bid
 	repair := ShardRecover{
 		replicas:                 replicas,
 		chunksShardsBuf:          make([]*ShardsBuf, len(replicas)),
-		bufPool:                  bufPool,
 		codeMode:                 mode,
 		repairBidsReadOnly:       bidInfos,
 		shardGetter:              shardGetter,
@@ -364,17 +362,6 @@ func NewShardRecover(replicas []proto.VunitLocation, mode codemode.CodeMode, bid
 		ds:                       newDownloadStatus(),
 	}
 	return &repair
-}
-
-// NewShardRecoverWithForbiddenDownload returns shard recover with forbidden download
-func NewShardRecoverWithForbiddenDownload(replicas []proto.VunitLocation, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
-	bufPool *workutils.ByteBufferPool, shardGetter client.IBlobNode, vunitShardGetConcurrency int, forbidenDownload []proto.Vuid,
-) *ShardRecover {
-	shardRecover := NewShardRecover(replicas, mode, bidInfos, bufPool, shardGetter, vunitShardGetConcurrency, blobnode.RepairIO)
-	for _, vuid := range forbidenDownload {
-		shardRecover.ds.forbiddenDownload(vuid)
-	}
-	return shardRecover
 }
 
 // RecoverShards recover shards
@@ -851,7 +838,7 @@ func (r *ShardRecover) GetShard(idx uint8, bid proto.BlobID) ([]byte, error) {
 func (r *ShardRecover) ReleaseBuf() {
 	for idx := range r.chunksShardsBuf {
 		if r.chunksShardsBuf[idx] != nil {
-			r.bufPool.Put(r.chunksShardsBuf[idx].buf)
+			workutils.TaskBufPool.Put(r.chunksShardsBuf[idx].buf)
 			r.chunksShardsBuf[idx] = nil
 		}
 	}
@@ -860,9 +847,21 @@ func (r *ShardRecover) ReleaseBuf() {
 func (r *ShardRecover) allocBuf(ctx context.Context, vunitIdxs []uint8) error {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("alloc buf: vunit idxs[%+v]", vunitIdxs)
+	var (
+		buf []byte
+		err error
+	)
 	for _, idx := range vunitIdxs {
 		if r.chunksShardsBuf[idx] == nil {
-			buf, err := r.bufPool.Get()
+			switch r.ioType {
+			case blobnode.RepairIO:
+				buf, err = workutils.TaskBufPool.GetRepairBuf()
+			case blobnode.MigrateIO:
+				buf, err = workutils.TaskBufPool.GetMigrateBuf()
+			default:
+				err = errors.New("unknown type")
+			}
+
 			if err != nil {
 				span.Errorf("alloc buf failed: err[%+v]", err)
 				return err

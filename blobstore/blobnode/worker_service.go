@@ -74,10 +74,8 @@ func (meter *WorkerConfigMeter) concurrencyByType(taskType proto.TaskType) int {
 type WorkerConfig struct {
 	WorkerConfigMeter
 
-	// small buffer pool use for shard repair
-	SmallBufPool base.BufPoolConfig `json:"small_buf_pool"`
-	// bid buffer pool use for disk repair & balance & disk drop task
-	BigBufPool base.BufPoolConfig `json:"big_buf_pool"`
+	// buffer pool use for migrate and repair shard repair
+	BufPoolConf base.BufConfig `json:"buf_pool"`
 
 	// acquire task period
 	AcquireIntervalMs int `json:"acquire_interval_ms"`
@@ -115,11 +113,6 @@ func (cfg *WorkerConfig) checkAndFix() {
 	fixConfigItemInt(&cfg.ShardRepairConcurrency, 1)
 	fixConfigItemInt(&cfg.InspectConcurrency, 1)
 	fixConfigItemInt(&cfg.DownloadShardConcurrency, 10)
-	fixConfigItemInt(&cfg.SmallBufPool.PoolSize, 800)
-	fixConfigItemInt(&cfg.SmallBufPool.BufSizeByte, 4194304)
-	fixConfigItemInt(&cfg.BigBufPool.PoolSize, 1500)
-	fixConfigItemInt(&cfg.BigBufPool.BufSizeByte, 16777216)
-
 	fixConfigItemInt64(&cfg.Scheduler.ClientTimeoutMs, 1000)
 	fixConfigItemInt64(&cfg.Scheduler.HostSyncIntervalMs, 1000)
 	fixConfigItemInt64(&cfg.BlobNode.ClientTimeoutMs, 1000)
@@ -141,8 +134,7 @@ func fixConfigItemInt64(actual *int64, defaultVal int64) {
 func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID proto.ClusterID, idc string) (*WorkerService, error) {
 	cfg.checkAndFix()
 
-	base.BigBufPool = base.NewByteBufferPool(cfg.BigBufPool.BufSizeByte, cfg.BigBufPool.PoolSize)
-	base.SmallBufPool = base.NewByteBufferPool(cfg.SmallBufPool.BufSizeByte, cfg.SmallBufPool.PoolSize)
+	base.TaskBufPool = base.NewBufPool(&cfg.BufPoolConf)
 
 	schedulerCli := scheduler.New(&cfg.Scheduler, service, clusterID)
 	blobNodeCli := client.NewBlobNodeClient(&cfg.BlobNode)
@@ -154,7 +146,7 @@ func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID pro
 	inspectTaskMgr := NewInspectTaskMgr(cfg.InspectConcurrency, blobNodeCli, schedulerCli)
 
 	shardRepairLimit := count.New(cfg.ShardRepairConcurrency)
-	shardRepairer := NewShardRepairer(blobNodeCli, base.SmallBufPool)
+	shardRepairer := NewShardRepairer(blobNodeCli)
 
 	// init dropped bid record
 	bidRecord := base.DroppedBidRecorderInst()

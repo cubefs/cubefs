@@ -48,7 +48,12 @@ func TestMigrateGenTasklets(t *testing.T) {
 		bidsMap[bids[idx]] = sizes[idx]
 	}
 
-	workutils.BigBufPool = workutils.NewByteBufferPool(2*1024, 10)
+	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
+		MigrateBufSize:     2 * 1024,
+		MigrateBufCapacity: 10,
+		RepairBufSize:      1,
+		RepairBufCapacity:  1,
+	})
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
 	w := NewMigrateWorker(MigrateTaskEx{taskInfo: balanceTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
@@ -74,7 +79,7 @@ func TestMigrateGenTasklets(t *testing.T) {
 				size += bid.Size
 			}
 			bids = append(bids, tasklet.bids...)
-			require.LessOrEqual(t, size, int64(workutils.BigBufPool.GetBufSize()))
+			require.LessOrEqual(t, size, int64(workutils.TaskBufPool.GetMigrateBufSize()))
 		}
 
 		for _, bid := range bids {
@@ -93,7 +98,7 @@ func TestMigrateGenTasklets(t *testing.T) {
 				size += bid.Size
 			}
 			bids = append(bids, tasklet.bids...)
-			require.LessOrEqual(t, size, int64(workutils.BigBufPool.GetBufSize()))
+			require.LessOrEqual(t, size, int64(workutils.TaskBufPool.GetMigrateBufSize()))
 		}
 
 		for _, bid := range bids {
@@ -112,7 +117,7 @@ func TestMigrateGenTasklets(t *testing.T) {
 				size += bid.Size
 			}
 			bids = append(bids, tasklet.bids...)
-			require.LessOrEqual(t, size, int64(workutils.BigBufPool.GetBufSize()))
+			require.LessOrEqual(t, size, int64(workutils.TaskBufPool.GetMigrateBufSize()))
 		}
 
 		for _, bid := range bids {
@@ -172,7 +177,12 @@ func TestMigrateExecTasklet(t *testing.T) {
 	sizes := []int64{1024, 2048, 0, 512, 23, 65, 12, 50, 100, 2047}
 	crcMap := make(map[proto.BlobID]uint32)
 
-	workutils.BigBufPool = workutils.NewByteBufferPool(2*1024, 100)
+	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
+		MigrateBufSize:     2 * 1024,
+		MigrateBufCapacity: 100,
+		RepairBufSize:      1,
+		RepairBufCapacity:  1,
+	})
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
 	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
@@ -219,7 +229,7 @@ func TestMigrateExecTasklet(t *testing.T) {
 			require.Equal(t, crc, crcMap[shard.Bid])
 		}
 	}
-	workutils.BigBufPool = nil
+	workutils.TaskBufPool = nil
 	require.Panics(t, func() {
 		_, err := w.GenTasklets(context.Background())
 		require.Nil(t, err)
@@ -242,7 +252,12 @@ func TestMigrateCheck(t *testing.T) {
 	sizes := []int64{1024, 2048, 0, 512, 23, 65, 12, 50, 100, 2047}
 	crcMap := make(map[proto.BlobID]uint32)
 
-	workutils.BigBufPool = workutils.NewByteBufferPool(2*1024, 100)
+	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
+		MigrateBufSize:     2 * 1024,
+		MigrateBufCapacity: 100,
+		RepairBufSize:      1,
+		RepairBufCapacity:  1,
+	})
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
 	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
@@ -302,7 +317,6 @@ func TestMigrateArgs(t *testing.T) {
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	sizes := []int64{1024, 2048, 0, 512, 23, 65, 12, 50, 100, 2047}
 
-	workutils.BigBufPool = workutils.NewByteBufferPool(2*1024, 100)
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
 	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
