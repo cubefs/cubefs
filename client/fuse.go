@@ -696,7 +696,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.ReadThreads = GlobalMountOptions[proto.ReadThreads].GetInt64()
 	opt.WriteThreads = GlobalMountOptions[proto.WriteThreads].GetInt64()
 	opt.BcacheDir = GlobalMountOptions[proto.BcacheDir].GetString()
-	opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
+	//opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
 	if _, err := os.Stat(bcache.UnixSocketPath); err == nil && opt.BcacheDir != "" {
 		opt.EnableBcache = true
 	}
