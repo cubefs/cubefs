@@ -19,7 +19,6 @@ import (
 	"errors"
 	"sync"
 
-	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
@@ -75,7 +74,7 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 	var badIdxs []uint8
 
 	if workutils.TaskBufPool == nil {
-		panic("BigBufPool should init before")
+		return nil, OtherError(errors.New("TaskBufPool should init before"))
 	}
 
 	if w.t.TaskType == proto.TaskTypeDiskRepair {
@@ -99,15 +98,15 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 
 	w.benchmarkBids = benchmarkBids
 	span.Debugf("task info: taskType[%s], benchmarkBids size[%d], need migrate bids size[%d]", w.TaskType(), len(benchmarkBids), len(migBids))
-	tasklets := BidsSplit(ctx, migBids, workutils.TaskBufPool.GetMigrateBufSize())
-	return tasklets, nil
+
+	return BidsSplit(ctx, migBids, workutils.TaskBufPool.GetMigrateBufSize())
 }
 
 // ExecTasklet execute migrate tasklet
 func (w *MigrateWorker) ExecTasklet(ctx context.Context, tasklet Tasklet) *WorkError {
 	replicas := w.t.Sources
 	mode := w.t.CodeMode
-	shardRecover := NewShardRecover(replicas, mode, tasklet.bids, w.bolbNodeCli, w.downloadShardConcurrency, bnapi.Task2IOType(w.t.TaskType))
+	shardRecover := NewShardRecover(replicas, mode, tasklet.bids, w.bolbNodeCli, w.downloadShardConcurrency, w.t.TaskType)
 	defer shardRecover.ReleaseBuf()
 
 	return MigrateBids(ctx,

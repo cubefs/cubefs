@@ -106,7 +106,7 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task proto.Shard
 
 	span.Infof("start recover blob: bid[%d], badIdx[%+v]", task.Bid, task.BadIdxs)
 	bidInfos := []*ShardInfoSimple{{Bid: task.Bid, Size: shardSize}}
-	shardRecover := NewShardRecover(task.Sources, task.CodeMode, bidInfos, repairer.cli, 1, api.RepairIO)
+	shardRecover := NewShardRecover(task.Sources, task.CodeMode, bidInfos, repairer.cli, 1, proto.TaskTypeShardRepair)
 	defer shardRecover.ReleaseBuf()
 	err = shardRecover.RecoverShards(ctx, task.BadIdxs, false)
 	if err != nil {

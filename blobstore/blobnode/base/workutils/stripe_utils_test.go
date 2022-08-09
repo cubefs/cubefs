@@ -112,14 +112,14 @@ func testGetIdcLocalStripe(mode codemode.CodeMode, idcIdx int) (local []int, n, 
 func testGetIdcIdx(mode codemode.CodeMode, idx int) (idcIdx int) {
 	codeInfo := mode.Tactic()
 	stripe := allModeStripe[mode]
-	for idcIdx := 0; idcIdx < codeInfo.AZCount; idcIdx++ {
+	for idcIdx = 0; idcIdx < codeInfo.AZCount; idcIdx++ {
 		var idcLocalStripeIdxs [][]int
 		idcLocalStripeIdxs = append(idcLocalStripeIdxs, stripe.N[idcIdx])
 		if containIntTest(idx, idcLocalStripeIdxs) {
 			return idcIdx
 		}
 	}
-	panic("unexpect")
+	return
 }
 
 func containIntTest(i int, lists [][]int) bool {
@@ -354,7 +354,8 @@ func testAbstractGlobalStripeReplicas(t *testing.T, mode codemode.CodeMode) {
 
 func testAbstractGlobalStripeReplicasWithBads(t *testing.T, mode codemode.CodeMode, badIdxs []uint8) {
 	replicas, _ := genMockVol(1, mode)
-	globalStripe := AbstractGlobalStripeReplicas(replicas, mode, badIdxs)
+	globalStripe, err := AbstractGlobalStripeReplicas(replicas, mode, badIdxs)
+	require.NoError(t, err)
 
 	stripeLayout := allModeStripe[mode]
 	expectStripe := stripeLayout.globalStripe()

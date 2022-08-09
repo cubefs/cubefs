@@ -15,8 +15,11 @@
 package workutils
 
 import (
+	"fmt"
+
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -50,7 +53,8 @@ func (s *BidExistStatus) ExistCnt() int {
 // CanRecover returns if data can be recover
 func (s *BidExistStatus) CanRecover() bool {
 	if len(s.exist) != AllReplCnt(s.mode) {
-		panic("unexpect:len(existStatus.exist) != AllReplCnt(mode)")
+		log.Errorf("unexpect:len(existStatus.exist) != AllReplCnt(mode)")
+		return false
 	}
 
 	globalStripe, _, _ := GlobalStripe(s.mode)
@@ -133,7 +137,7 @@ func AllowFailCnt(mode codemode.CodeMode) int {
 func AbstractGlobalStripeReplicas(
 	replicas []proto.VunitLocation,
 	mode codemode.CodeMode,
-	badIdxs []uint8) []proto.VunitLocation {
+	badIdxs []uint8) ([]proto.VunitLocation, error) {
 	globalStripeIdxs, _, _ := GlobalStripe(mode)
 
 	idxs := filterOut(globalStripeIdxs, badIdxs)
@@ -158,13 +162,14 @@ func filterOut(idxs []int, badIdxs []uint8) []int {
 }
 
 // AbstractReplicas returns abstract replicas
-func AbstractReplicas(replicas []proto.VunitLocation, idxs []int) []proto.VunitLocation {
+func AbstractReplicas(replicas []proto.VunitLocation, idxs []int) ([]proto.VunitLocation, error) {
 	abstract := make([]proto.VunitLocation, len(idxs))
 	for i, idx := range idxs {
 		if uint8(idx) != replicas[idx].Vuid.Index() {
-			log.Panicf("unexpect replicas: idx[%d], replica idx[%d]", idx, replicas[idx].Vuid.Index())
+			err := errors.New(fmt.Sprintf("unexpect replicas: idx[%d], replica idx[%d]", idx, replicas[idx].Vuid.Index()))
+			return nil, err
 		}
 		abstract[i] = replicas[idx]
 	}
-	return abstract
+	return abstract, nil
 }

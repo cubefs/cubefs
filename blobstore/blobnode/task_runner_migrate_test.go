@@ -230,10 +230,8 @@ func TestMigrateExecTasklet(t *testing.T) {
 		}
 	}
 	workutils.TaskBufPool = nil
-	require.Panics(t, func() {
-		_, err := w.GenTasklets(context.Background())
-		require.Nil(t, err)
-	})
+	_, err := w.GenTasklets(context.Background())
+	require.Error(t, err)
 }
 
 func TestMigrateCheck(t *testing.T) {

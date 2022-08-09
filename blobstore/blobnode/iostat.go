@@ -39,6 +39,7 @@ func (s *Service) loopCleanExpiredStatFile() {
 	span.Infof("loop clean expired stat file")
 
 	ticker := time.NewTicker(time.Duration(s.Conf.CleanExpiredStatIntervalSec) * time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-s.closeCh:
