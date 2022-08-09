@@ -491,7 +491,6 @@ func mockClusterMgrRouter(service *mockClusterMgr) *rpc.Router {
 	rpc.RegisterArgsParser(&cmapi.DiskSetArgs{}, "json")
 	rpc.RegisterArgsParser(&cmapi.ReportChunkArgs{}, "json")
 	rpc.RegisterArgsParser(&cmapi.GetVolumeArgs{}, "json")
-	rpc.RegisterArgsParser(&bnapi.ShardRepairArgs{}, "json")
 
 	r.Handle(http.MethodGet, "/disk/list", service.DiskList, rpc.OptArgsQuery())
 	r.Handle(http.MethodGet, "/volume/unit/list", service.VolumeUnitList, rpc.OptArgsQuery())

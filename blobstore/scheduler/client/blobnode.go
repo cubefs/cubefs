@@ -38,9 +38,7 @@ func NewBlobnodeClient(cfg *api.Config) BlobnodeAPI {
 }
 
 func (c *blobnodeClient) RepairShard(ctx context.Context, host string, task proto.ShardRepairTask) error {
-	return c.client.RepairShard(ctx, host, &api.ShardRepairArgs{
-		Task: task,
-	})
+	return c.client.RepairShard(ctx, host, &task)
 }
 
 // MarkDelete mark delete blob
