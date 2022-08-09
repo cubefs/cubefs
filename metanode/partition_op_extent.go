@@ -45,7 +45,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentsAdd, p.Remote(), val)
+	resp, err := mp.submit(p.Ctx(), opFSMExtentsAdd, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -73,7 +73,7 @@ func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Pack
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentsInsert, p.Remote(), val)
+	resp, err := mp.submit(p.Ctx(), opFSMExtentsInsert, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -146,7 +146,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentTruncate, p.Remote(), val)
+	resp, err := mp.submit(p.Ctx(), opFSMExtentTruncate, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -177,7 +177,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentsAdd, p.Remote(), val)
+	resp, err := mp.submit(p.Ctx(), opFSMExtentsAdd, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -207,7 +207,7 @@ func (mp *metaPartition) MergeExtents(req *proto.InodeMergeExtentsRequest, p *Pa
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentMerge, p.Remote(), val)
+	resp, err := mp.submit(p.Ctx(), opFSMExtentMerge, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

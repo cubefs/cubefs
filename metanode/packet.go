@@ -17,6 +17,7 @@ package metanode
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"strings"
 
@@ -42,6 +43,10 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 
 func (p *Packet) Remote() string {
 	return p.remote
+}
+
+func (p *Packet) RemoteWithReqID() string {
+	return fmt.Sprintf("%s_%v", p.remote, p.ReqID)
 }
 
 func NewPacket(ctx context.Context) *Packet {

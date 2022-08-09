@@ -69,7 +69,7 @@ func (mp *metaPartition) RecoverDeletedInode(req *proto.RecoverDeletedInodeReque
 		reply []byte
 	)
 
-	resp, err = mp.submit(p.Ctx(), opFSMRecoverDeletedInode, p.Remote(), data)
+	resp, err = mp.submit(p.Ctx(), opFSMRecoverDeletedInode, p.RemoteWithReqID(), data)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -95,7 +95,7 @@ func (mp *metaPartition) BatchRecoverDeletedInode(req *proto.BatchRecoverDeleted
 		resp  interface{}
 		reply []byte
 	)
-	resp, err = mp.submit(p.Ctx(), opFSMBatchRecoverDeletedInode, p.Remote(), data)
+	resp, err = mp.submit(p.Ctx(), opFSMBatchRecoverDeletedInode, p.RemoteWithReqID(), data)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -126,7 +126,7 @@ func (mp *metaPartition) BatchCleanDeletedInode(req *proto.BatchCleanDeletedInod
 		resp  interface{}
 		reply []byte
 	)
-	resp, err = mp.submit(p.Ctx(), opFSMBatchCleanDeletedInode, p.Remote(), data)
+	resp, err = mp.submit(p.Ctx(), opFSMBatchCleanDeletedInode, p.RemoteWithReqID(), data)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -153,7 +153,7 @@ func (mp *metaPartition) CleanDeletedInode(req *proto.CleanDeletedInodeRequest, 
 		resp  interface{}
 		reply []byte
 	)
-	resp, err = mp.submit(p.Ctx(), opFSMCleanDeletedInode, p.Remote(), data)
+	resp, err = mp.submit(p.Ctx(), opFSMCleanDeletedInode, p.RemoteWithReqID(), data)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

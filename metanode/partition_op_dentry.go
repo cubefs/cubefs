@@ -46,7 +46,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMCreateDentry, p.Remote(), val)
+	resp, err := mp.submit(p.Ctx(), opFSMCreateDentry, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -74,9 +74,9 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 	}
 	var r interface{}
 	if mp.getTrashStatus() && req.TrashEnable {
-		r, err = mp.submitTrash(p.Ctx(), opFSMDeleteDentry, p.Remote(), val)
+		r, err = mp.submitTrash(p.Ctx(), opFSMDeleteDentry, p.RemoteWithReqID(), val)
 	} else {
-		r, err = mp.submit(p.Ctx(), opFSMDeleteDentry, p.Remote(), val)
+		r, err = mp.submit(p.Ctx(), opFSMDeleteDentry, p.RemoteWithReqID(), val)
 	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -117,9 +117,9 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 	}
 	var r interface{}
 	if mp.getTrashStatus() && req.TrashEnable {
-		r, err = mp.submitTrash(p.Ctx(), opFSMDeleteDentryBatch, p.Remote(), val)
+		r, err = mp.submitTrash(p.Ctx(), opFSMDeleteDentryBatch, p.RemoteWithReqID(), val)
 	} else {
-		r, err = mp.submit(p.Ctx(), opFSMDeleteDentryBatch, p.Remote(), val)
+		r, err = mp.submit(p.Ctx(), opFSMDeleteDentryBatch, p.RemoteWithReqID(), val)
 	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -194,7 +194,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMUpdateDentry, p.remote, val)
+	resp, err := mp.submit(p.Ctx(), opFSMUpdateDentry, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
