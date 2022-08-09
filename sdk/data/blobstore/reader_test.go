@@ -388,7 +388,7 @@ func TestReadSliceRange(t *testing.T) {
 		extentKey        proto.ExtentKey
 		bcacheGetFunc    func(*bcache.BcacheClient, string, []byte, uint64, uint32) (int, error)
 		checkDpExistFunc func(*stream.ExtentClient, uint64) error
-		readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int) (int, error)
+		readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int) (int, error, bool)
 		ebsReadFunc      func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
 		expectError      error
 	}{
@@ -484,8 +484,8 @@ func MockEbscReadFalse(ebsc *BlobStoreClient, ctx context.Context, volName strin
 }
 
 func MockReadExtentTrue(client *stream.ExtentClient, inode uint64, ek *proto.ExtentKey,
-	data []byte, offset int, size int) (read int, err error) {
-	return len("Hello world"), nil
+	data []byte, offset int, size int) (read int, err error, b bool) {
+	return len("Hello world"), nil, true
 }
 
 func MockReadExtentFalse(client *stream.ExtentClient, inode uint64, ek *proto.ExtentKey,
