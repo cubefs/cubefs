@@ -74,7 +74,7 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 	span := trace.SpanFromContextSafe(ctx)
 	var badIdxs []uint8
 
-	if workutils.BigBufPool == nil {
+	if workutils.TaskBufPool == nil {
 		panic("BigBufPool should init before")
 	}
 
@@ -99,7 +99,7 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 
 	w.benchmarkBids = benchmarkBids
 	span.Debugf("task info: taskType[%s], benchmarkBids size[%d], need migrate bids size[%d]", w.TaskType(), len(benchmarkBids), len(migBids))
-	tasklets := BidsSplit(ctx, migBids, workutils.BigBufPool.GetBufSize())
+	tasklets := BidsSplit(ctx, migBids, workutils.TaskBufPool.GetMigrateBufSize())
 	return tasklets, nil
 }
 
@@ -107,7 +107,7 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 func (w *MigrateWorker) ExecTasklet(ctx context.Context, tasklet Tasklet) *WorkError {
 	replicas := w.t.Sources
 	mode := w.t.CodeMode
-	shardRecover := NewShardRecover(replicas, mode, tasklet.bids, workutils.BigBufPool, w.bolbNodeCli, w.downloadShardConcurrency, bnapi.Task2IOType(w.t.TaskType))
+	shardRecover := NewShardRecover(replicas, mode, tasklet.bids, w.bolbNodeCli, w.downloadShardConcurrency, bnapi.Task2IOType(w.t.TaskType))
 	defer shardRecover.ReleaseBuf()
 
 	return MigrateBids(ctx,

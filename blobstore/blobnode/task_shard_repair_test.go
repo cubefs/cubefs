@@ -81,7 +81,7 @@ func testGetRepairShards(t *testing.T, mode codemode.CodeMode) {
 	bids := []proto.BlobID{1}
 	sizes := []int64{1025}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
-	repairer := NewShardRepairer(getter, nil)
+	repairer := NewShardRepairer(getter)
 	badi := []int{0, 1}
 
 	shouldRepair, shardSize, err := getRepairShardsTest(context.Background(), repairer, replicas, mode, 1, badi)
@@ -117,7 +117,7 @@ func testGetRepairShards(t *testing.T, mode codemode.CodeMode) {
 	require.EqualError(t, errcode.ErrDestReplicaBad, err.Error())
 
 	getter2 := NewMockGetterWithBids(replicas, mode, bids, sizes)
-	repairer2 := NewShardRepairer(getter2, nil)
+	repairer2 := NewShardRepairer(getter2)
 	badi2 := []int{0, 1}
 	for i := 2; i < 2+codeInfo.M+1; i++ {
 		getter2.setFail(replicas[i].Vuid, errors.New("fake error"))
@@ -127,7 +127,7 @@ func testGetRepairShards(t *testing.T, mode codemode.CodeMode) {
 	require.EqualError(t, errcode.ErrShardMayBeLost, err.Error())
 
 	getter3 := NewMockGetterWithBids(replicas, mode, bids, sizes)
-	repairer3 := NewShardRepairer(getter3, nil)
+	repairer3 := NewShardRepairer(getter3)
 	badi3 := []int{0, 1}
 	getter3.MarkDelete(context.Background(), replicas[0].Vuid, 1)
 	shouldRepair, _, err = getRepairShardsTest(context.Background(), repairer3, replicas, mode, 1, badi3)
@@ -135,7 +135,7 @@ func testGetRepairShards(t *testing.T, mode codemode.CodeMode) {
 	require.Equal(t, 0, len(shouldRepair))
 
 	getter4 := NewMockGetterWithBids(replicas, mode, bids, sizes)
-	repairer4 := NewShardRepairer(getter4, nil)
+	repairer4 := NewShardRepairer(getter4)
 	badi4 := []int{0, 1}
 	for i := 0; i < codeInfo.M+1; i++ {
 		getter4.Delete(context.Background(), replicas[i].Vuid, 1)
@@ -184,8 +184,13 @@ func testShardRepair(t *testing.T, mode codemode.CodeMode) {
 		replicasCrc32[replica.Vuid.Index()] = getter.getShardCrc32(replica.Vuid, 1)
 	}
 
-	bufPool := workutils.NewByteBufferPool(1024*2, 100)
-	repairer := NewShardRepairer(getter, bufPool)
+	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
+		MigrateBufSize:     4 * 1024,
+		MigrateBufCapacity: 100,
+		RepairBufSize:      2 * 1024,
+		RepairBufCapacity:  100,
+	})
+	repairer := NewShardRepairer(getter)
 
 	task := proto.ShardRepairTask{
 		Bid:      1,
@@ -268,8 +273,7 @@ func testShardRepair2(t *testing.T, mode codemode.CodeMode) {
 		getter.Delete(context.Background(), replica.Vuid, 1)
 	}
 
-	bufPool := workutils.NewByteBufferPool(1024*2, 100)
-	repairer := NewShardRepairer(getter, bufPool)
+	repairer := NewShardRepairer(getter)
 
 	err := repairer.RepairShard(context.Background(), task)
 	require.NoError(t, err)
@@ -299,8 +303,7 @@ func testCheckOrphanShard(t *testing.T, mode codemode.CodeMode) {
 		BadIdxs:  []uint8{0, 1},
 	}
 
-	bufPool := workutils.NewByteBufferPool(1024*2, 100)
-	repairer := NewShardRepairer(getter, bufPool)
+	repairer := NewShardRepairer(getter)
 
 	isOrphanShard := repairer.checkOrphanShard(context.Background(), task.Sources, task.Bid, sliceUint8ToInt(task.BadIdxs))
 	require.Equal(t, false, isOrphanShard)
