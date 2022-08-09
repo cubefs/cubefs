@@ -70,8 +70,9 @@ func (alg AlgChoose) String() string {
 
 // errors
 var (
-	ErrNoSuchCluster    = errors.New("controller: no such cluster")
-	ErrInvalidChooseAlg = errors.New("controller: invalid cluster chosen algorithm")
+	ErrNoSuchCluster      = errors.New("controller: no such cluster")
+	ErrNoClusterAvailable = errors.New("controller: no cluster available")
+	ErrInvalidChooseAlg   = errors.New("controller: invalid cluster chosen algorithm")
 )
 
 // ClusterController controller of clusters in one region
@@ -107,6 +108,15 @@ type ClusterConfig struct {
 
 	ServicePunishThreshold      uint32 `json:"service_punish_threshold"`
 	ServicePunishValidIntervalS int    `json:"service_punish_valid_interval_s"`
+
+	ConsulAgentAddr string    `json:"consul_agent_addr"`
+	Clusters        []Cluster `json:"clusters"`
+}
+
+// Cluster cluster config, each clusterID related to hosts list
+type Cluster struct {
+	ClusterID proto.ClusterID `json:"cluster_id"`
+	Hosts     []string        `json:"hosts"`
 }
 
 type cluster struct {
@@ -133,15 +143,29 @@ type clusterControllerImpl struct {
 }
 
 // NewClusterController returns a cluster controller
-func NewClusterController(cfg *ClusterConfig, kvClient *api.Client) (ClusterController, error) {
+func NewClusterController(cfg *ClusterConfig) (ClusterController, error) {
+	consulConf := api.DefaultConfig()
+	consulConf.Address = cfg.ConsulAgentAddr
+	var client *api.Client
+	var err error
+	if consulConf.Address != "" {
+		client, err = api.NewClient(consulConf)
+		if err != nil {
+			return nil, fmt.Errorf("new consul client failed, err: %v", err)
+		}
+	}
 	controller := &clusterControllerImpl{
 		region:   cfg.Region,
-		kvClient: kvClient,
+		kvClient: client,
 		config:   *cfg,
 	}
 	atomic.StoreUint32(&controller.allocAlg, uint32(AlgAvailable))
 
-	if err := controller.load(); err != nil {
+	f := controller.loadWithConfig
+	if client != nil {
+		f = controller.loadWithConsul
+	}
+	if err := f(); err != nil {
 		return nil, errors.Base(err, "load cluster failed")
 	}
 
@@ -152,7 +176,7 @@ func NewClusterController(cfg *ClusterConfig, kvClient *api.Client) (ClusterCont
 	go func() {
 		defer tick.Stop()
 		for range tick.C {
-			if err := controller.load(); err != nil {
+			if err := f(); err != nil {
 				log.Warn("load timer error", err)
 			}
 		}
@@ -160,8 +184,48 @@ func NewClusterController(cfg *ClusterConfig, kvClient *api.Client) (ClusterCont
 	return controller, nil
 }
 
-func (c *clusterControllerImpl) load() error {
-	span := trace.SpanFromContextSafe(context.Background())
+func (c *clusterControllerImpl) loadWithConfig() error {
+	span, ctx := trace.StartSpanFromContext(context.Background(), "")
+	if len(c.config.Clusters) == 0 {
+		return ErrNoClusterAvailable
+	}
+	span.Debugf("clusters info: %+v", c.config.Clusters)
+	allClusters := make(clusterMap)
+	available := make([]*cmapi.ClusterInfo, 0, len(c.config.Clusters))
+	totalAvailable := int64(0)
+	for _, cs := range c.config.Clusters {
+		conf := c.config.CMClientConfig
+		conf.Hosts = cs.Hosts
+		cmCli := cmapi.New(&conf)
+
+		stat, err := cmCli.Stat(ctx)
+		if err != nil {
+			span.Warnf("get cluster info from clusterMgr failed: %v, clusterID: %d", err, cs.ClusterID)
+			continue
+		}
+		clusterInfo := &cmapi.ClusterInfo{}
+		clusterInfo.ClusterID = cs.ClusterID
+		clusterInfo.Capacity = stat.SpaceStat.TotalSpace
+		clusterInfo.Available = stat.SpaceStat.WritableSpace
+		clusterInfo.Nodes = cs.Hosts
+		clusterInfo.Readonly = stat.ReadOnly
+
+		allClusters[cs.ClusterID] = &cluster{client: cmCli, clusterInfo: clusterInfo}
+
+		if !clusterInfo.Readonly && clusterInfo.Available > 0 {
+			available = append(available, clusterInfo)
+			totalAvailable += clusterInfo.Available
+			allClusters[clusterInfo.ClusterID].client = cmCli
+		} else {
+			span.Debug("readonly or no available cluster", clusterInfo.ClusterID)
+		}
+	}
+
+	return c.deal(ctx, available, allClusters, totalAvailable)
+}
+
+func (c *clusterControllerImpl) loadWithConsul() error {
+	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	path := cmapi.GetConsulClusterPath(c.region)
 	span.Debug("to list consul path", path)
@@ -204,6 +268,11 @@ func (c *clusterControllerImpl) load() error {
 			span.Debug("readonly or no available cluster", clusterID)
 		}
 	}
+	return c.deal(ctx, available, allClusters, totalAvailable)
+}
+
+func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.ClusterInfo, allClusters clusterMap, totalAvailable int64) error {
+	span := trace.SpanFromContextSafe(ctx)
 
 	sort.Slice(available, func(i, j int) bool {
 		return available[i].Capacity < available[j].Capacity
@@ -217,12 +286,15 @@ func (c *clusterControllerImpl) load() error {
 	}
 
 	for _, newCluster := range newClusters {
-		conf := c.config.CMClientConfig
-		conf.Hosts = newCluster.Nodes
-		cmCli := cmapi.New(&conf)
-
 		clusterID := newCluster.ClusterID
-		allClusters[clusterID].client = cmCli
+
+		if allClusters[clusterID].client == nil {
+			conf := c.config.CMClientConfig
+			conf.Hosts = newCluster.Nodes
+			allClusters[clusterID].client = cmapi.New(&conf)
+		}
+
+		cmCli := allClusters[clusterID].client
 
 		removeThisCluster := func() {
 			delete(allClusters, clusterID)

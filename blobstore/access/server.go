@@ -22,8 +22,6 @@ import (
 	"sync"
 	"time"
 
-	consulapi "github.com/hashicorp/consul/api"
-
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -99,7 +97,7 @@ type accessStatus struct {
 // Config service configs
 type Config struct {
 	cmd.Config
-	ConsulAgentAddr string        `json:"consul_agent_addr"`
+
 	ServiceRegister consul.Config `json:"service_register"`
 	Stream          StreamConfig  `json:"stream"`
 	Limit           LimitConfig   `json:"limit"`
@@ -115,21 +113,13 @@ type Service struct {
 
 // New returns an access service
 func New(cfg Config) *Service {
-	consulConf := consulapi.DefaultConfig()
-	consulConf.Address = cfg.ConsulAgentAddr
-
-	client, err := consulapi.NewClient(consulConf)
-	if err != nil {
-		log.Fatalf("new consul client failed, err: %v", err)
-	}
-
 	// add region magic checksum to the secret keys
 	initWithRegionMagic(cfg.Stream.ClusterConfig.RegionMagic)
 
 	cl := closer.New()
 	return &Service{
 		config:        cfg,
-		streamHandler: NewStreamHandler(&cfg.Stream, client, cl.Done()),
+		streamHandler: NewStreamHandler(&cfg.Stream, cl.Done()),
 		limiter:       NewLimiter(cfg.Limit),
 		closer:        cl,
 	}
@@ -142,6 +132,9 @@ func (s *Service) Close() {
 
 // RegisterService register service to rpc
 func (s *Service) RegisterService() {
+	if s.config.ServiceRegister.ConsulAddr == "" {
+		return
+	}
 	_, err := consul.ServiceRegister(s.config.BindAddr, &s.config.ServiceRegister)
 	if err != nil {
 		log.Fatalf("service register failed, err: %v", err)

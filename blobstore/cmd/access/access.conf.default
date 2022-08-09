@@ -9,7 +9,6 @@
         "maxbackups": 7
     },
     "bind_addr": ":9500",
-    "consul_agent_addr": "127.0.0.1:8500",
     "service_register": {
         "consul_addr": "127.0.0.1:8500",
         "node": "nodename",
@@ -77,6 +76,7 @@
             },
             "service_punish_threshold": 3,
             "service_punish_valid_interval_s": 30,
+            "consul_agent_addr": "127.0.0.1:8500",
             "service_reload_secs": 3
         },
         "disk_punish_interval_s": 60,
