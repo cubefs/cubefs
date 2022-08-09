@@ -66,13 +66,12 @@ func (shard *ShardInfoEx) ShardSize() int64 {
 
 // ShardRepairer used to repair shard data
 type ShardRepairer struct {
-	cli     client.IBlobNode
-	bufPool *workutils.ByteBufferPool
+	cli client.IBlobNode
 }
 
 // NewShardRepairer returns shard repairer
-func NewShardRepairer(cli client.IBlobNode, bufPool *workutils.ByteBufferPool) *ShardRepairer {
-	return &ShardRepairer{cli: cli, bufPool: bufPool}
+func NewShardRepairer(cli client.IBlobNode) *ShardRepairer {
+	return &ShardRepairer{cli: cli}
 }
 
 // RepairShard repair shard data
@@ -107,7 +106,7 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task proto.Shard
 
 	span.Infof("start recover blob: bid[%d], badIdx[%+v]", task.Bid, task.BadIdxs)
 	bidInfos := []*ShardInfoSimple{{Bid: task.Bid, Size: shardSize}}
-	shardRecover := NewShardRecover(task.Sources, task.CodeMode, bidInfos, repairer.bufPool, repairer.cli, 1, api.RepairIO)
+	shardRecover := NewShardRecover(task.Sources, task.CodeMode, bidInfos, repairer.cli, 1, api.RepairIO)
 	defer shardRecover.ReleaseBuf()
 	err = shardRecover.RecoverShards(ctx, task.BadIdxs, false)
 	if err != nil {

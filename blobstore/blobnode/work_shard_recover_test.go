@@ -32,7 +32,7 @@ import (
 func TestGenDownloadPlans(t *testing.T) {
 	mode := codemode.EC15P12
 	replicas := genMockVol(1, mode)
-	repair := NewShardRecover(replicas, mode, nil, nil, nil, 4, blobnode.RepairIO)
+	repair := NewShardRecover(replicas, mode, nil, nil, 4, blobnode.RepairIO)
 	badi := []uint8{1, 2}
 	stripe := repair.genGlobalStripe(badi)
 	plans := stripe.genDownloadPlans()
@@ -49,7 +49,12 @@ func TestGenDownloadPlans(t *testing.T) {
 }
 
 func TestShardsBuf(t *testing.T) {
-	bp := workutils.NewByteBufferPool(1024*1024, 20)
+	taskBufPool := workutils.NewBufPool(&workutils.BufConfig{
+		MigrateBufSize:     1024 * 1024,
+		MigrateBufCapacity: 20,
+		RepairBufSize:      0,
+		RepairBufCapacity:  0,
+	})
 	var bidInfos []*ShardInfoSimple
 	bids := []proto.BlobID{1, 2, 3}
 	sizes := []int64{1024, 2048, 0}
@@ -63,7 +68,7 @@ func TestShardsBuf(t *testing.T) {
 		}
 		bidInfos = append(bidInfos, &ele)
 	}
-	buf, _ := bp.Get()
+	buf, _ := taskBufPool.GetMigrateBuf()
 	shardsBuf := NewShardsBuf(buf)
 	shardsBuf.PlanningDataLayout(bidInfos)
 	for idx := range bids {
@@ -100,7 +105,12 @@ func TestShardsBuf(t *testing.T) {
 }
 
 func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, *MockGetter, []proto.VunitLocation) {
-	bp := workutils.NewByteBufferPool(1024*10, 100)
+	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
+		MigrateBufSize:     10 * 1024,
+		MigrateBufCapacity: 100,
+		RepairBufSize:      10 * 1024,
+		RepairBufCapacity:  100,
+	})
 	replicas := genMockVol(1, mode)
 	getter := NewMockGetter(replicas, mode)
 
@@ -115,7 +125,7 @@ func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, 
 		bidInfos = append(bidInfos, &ele)
 	}
 
-	repair := NewShardRecover(replicas, mode, bidInfos, bp, getter, 3, blobnode.RepairIO)
+	repair := NewShardRecover(replicas, mode, bidInfos, getter, 3, blobnode.RepairIO)
 	return repair, bidInfos, getter, replicas
 }
 
@@ -330,7 +340,7 @@ func TestRecoverShards2(t *testing.T) {
 func TestLocalStripes(t *testing.T) {
 	mode := codemode.EC6P10L2
 	replicas := genMockVol(1, mode)
-	repair := NewShardRecover(replicas, mode, nil, nil, nil, 4, blobnode.RepairIO)
+	repair := NewShardRecover(replicas, mode, nil, nil, 4, blobnode.RepairIO)
 	for idx, replica := range replicas {
 		require.Equal(t, idx, int(replica.Vuid.Index()))
 	}
@@ -426,27 +436,6 @@ func TestDownload(t *testing.T) {
 	}
 }
 
-func TestNewShardRecoverWithForbiddenDownload(t *testing.T) {
-	mode := codemode.EC6P6
-	replicas := genMockVol(1, mode)
-	getter := NewMockGetter(replicas, mode)
-	repair := NewShardRecoverWithForbiddenDownload(
-		replicas,
-		mode,
-		[]*ShardInfoSimple{},
-		nil,
-		getter,
-		10,
-		[]proto.Vuid{replicas[0].Vuid},
-	)
-
-	require.Equal(t, false, repair.ds.needDownload(replicas[0].Vuid))
-
-	for i := 1; i < len(replicas); i++ {
-		require.Equal(t, true, repair.ds.needDownload(replicas[i].Vuid))
-	}
-}
-
 func TestDirect(t *testing.T) {
 	ctx := context.Background()
 	repair, _, getter, _ := InitMockRepair(codemode.EC6P6)
@@ -456,49 +445,40 @@ func TestDirect(t *testing.T) {
 	testCheckData(t, repair, getter, badi)
 }
 
-func TestMemNotEnough(t *testing.T) {
+func TestMemEnough(t *testing.T) {
 	// direct get
 	ctx := context.Background()
 	repair, _, _, _ := InitMockRepair(codemode.EC6P6)
-	repair.bufPool = workutils.NewByteBufferPool(16*1024*1024, 1)
+
 	badi := []uint8{0, 1, 2, 3, 4, 5}
 	err := repair.RecoverShards(ctx, badi, true)
-	require.Error(t, err)
-	require.EqualError(t, workutils.ErrMemNotEnough, err.Error())
+	require.NoError(t, err)
 
 	// local stripe
 	repair1, repairBids, _, _ := InitMockRepair(codemode.EC6P3L3)
-	repair1.bufPool = workutils.NewByteBufferPool(16*1024*1024, 1)
 	badi1 := []uint8{11}
 	err = repair1.recoverLocalReplicaShards(ctx, badi1, []proto.BlobID{repairBids[0].Bid})
-	require.Error(t, err)
-	require.EqualError(t, workutils.ErrMemNotEnough, err.Error())
+	require.NoError(t, err)
 
 	repair1, repairBids, getter, replicas := InitMockRepair(codemode.EC6P3L3)
-	repair1.bufPool = workutils.NewByteBufferPool(16*1024*1024, 4)
 	badi1 = []uint8{11}
 	getter.setFail(replicas[5].Vuid, errors.New("fake error"))
 	getter.setFail(replicas[9].Vuid, errors.New("fake error"))
 	err = repair1.recoverLocalReplicaShards(ctx, badi1, []proto.BlobID{repairBids[0].Bid})
-	require.Error(t, err)
-	require.EqualError(t, workutils.ErrMemNotEnough, err.Error())
+	require.NoError(t, err)
 
 	// global stripe
 	repair2, repairBids, _, _ := InitMockRepair(codemode.EC6P3L3)
-	repair2.bufPool = workutils.NewByteBufferPool(16*1024*1024, 1)
 	badi2 := []uint8{0}
 	err = repair2.recoverGlobalReplicaShards(ctx, badi2, []proto.BlobID{repairBids[0].Bid})
-	require.Error(t, err)
-	require.EqualError(t, workutils.ErrMemNotEnough, err.Error())
+	require.NoError(t, err)
 
 	repair2, repairBids, getter, replicas2 := InitMockRepair(codemode.EC6P3L3)
-	repair2.bufPool = workutils.NewByteBufferPool(16*1024*1024, 4)
 
 	badi2 = []uint8{0}
 	getter.setFail(replicas2[1].Vuid, errors.New("fake error"))
 	getter.setFail(replicas2[9].Vuid, errors.New("fake error"))
 
 	err = repair2.recoverGlobalReplicaShards(ctx, badi2, []proto.BlobID{repairBids[0].Bid})
-	require.Error(t, err)
-	require.EqualError(t, workutils.ErrMemNotEnough, err.Error())
+	require.NoError(t, err)
 }
