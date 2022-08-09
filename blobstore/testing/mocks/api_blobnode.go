@@ -215,7 +215,7 @@ func (mr *MockStorageAPIMockRecorder) ReleaseChunk(arg0, arg1, arg2 interface{})
 }
 
 // RepairShard mocks base method.
-func (m *MockStorageAPI) RepairShard(arg0 context.Context, arg1 string, arg2 *blobnode.ShardRepairArgs) error {
+func (m *MockStorageAPI) RepairShard(arg0 context.Context, arg1 string, arg2 *proto.ShardRepairTask) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RepairShard", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)

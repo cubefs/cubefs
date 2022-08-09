@@ -94,7 +94,11 @@ type StorageAPI interface {
 	DeleteShard(ctx context.Context, host string, args *DeleteShardArgs) (err error)
 	ListShards(ctx context.Context, host string, args *ListShardsArgs) (sis []*ShardInfo, next proto.BlobID, err error)
 
-	// worker
-	RepairShard(ctx context.Context, host string, args *ShardRepairArgs) (err error)
+	WorkerAPI
+}
+
+// WorkerAPI woker api on blobnode.
+type WorkerAPI interface {
+	RepairShard(ctx context.Context, host string, args *proto.ShardRepairTask) (err error)
 	WorkerStats(ctx context.Context, host string) (ret WorkerStats, err error)
 }

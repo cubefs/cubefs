@@ -153,15 +153,10 @@ func TestServiceAPI(t *testing.T) {
 	workerServer := httptest.NewServer(NewHandler(service))
 	workerCli := bnapi.New(&bnapi.Config{})
 	testCases := []struct {
-		args *bnapi.ShardRepairArgs
+		args *proto.ShardRepairTask
 		code int
 	}{
-		{
-			args: &bnapi.ShardRepairArgs{
-				Task: proto.ShardRepairTask{},
-			},
-			code: 704,
-		},
+		{args: &proto.ShardRepairTask{}, code: 704},
 	}
 	for _, tc := range testCases {
 		err := workerCli.RepairShard(context.Background(), workerServer.URL, tc.args)

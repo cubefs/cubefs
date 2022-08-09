@@ -174,7 +174,7 @@ func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID pro
 
 // ShardRepair repair shard
 func (s *WorkerService) ShardRepair(c *rpc.Context) {
-	args := new(bnapi.ShardRepairArgs)
+	args := new(proto.ShardRepairTask)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
@@ -191,7 +191,7 @@ func (s *WorkerService) ShardRepair(c *rpc.Context) {
 	}
 	defer s.shardRepairLimit.Release()
 
-	err = s.shardRepairer.RepairShard(ctx, args.Task)
+	err = s.shardRepairer.RepairShard(ctx, args)
 	c.RespondError(err)
 }
 

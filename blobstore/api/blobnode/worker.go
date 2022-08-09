@@ -16,24 +16,17 @@ package blobnode
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
-
-type ShardRepairArgs struct {
-	Task proto.ShardRepairTask `json:"task"`
-}
 
 type WorkerStats struct {
 	CancelCount  string `json:"cancel_count"`
 	ReclaimCount string `json:"reclaim_count"`
 }
 
-func (c *client) RepairShard(ctx context.Context, host string, args *ShardRepairArgs) (err error) {
-	urlStr := fmt.Sprintf("%v/shard/repair", host)
-	err = c.PostWith(ctx, urlStr, nil, args)
-	return
+func (c *client) RepairShard(ctx context.Context, host string, args *proto.ShardRepairTask) (err error) {
+	return c.PostWith(ctx, host+"/shard/repair", nil, args)
 }
 
 func (c *client) WorkerStats(ctx context.Context, host string) (ret WorkerStats, err error) {

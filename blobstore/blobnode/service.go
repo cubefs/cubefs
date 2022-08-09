@@ -94,8 +94,6 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.RegisterArgsParser(&bnapi.DeleteShardArgs{}, "json")
 	rpc.RegisterArgsParser(&bnapi.PutShardArgs{}, "json")
 
-	rpc.RegisterArgsParser(&bnapi.ShardRepairArgs{}, "json")
-
 	rpc.Use(service.requestCounter) // first interceptor
 	r.Handle(http.MethodGet, "/stat", service.Stat, rpc.OptArgsQuery())
 	r.Handle(http.MethodGet, "/debug/stat", service.DebugStat, rpc.OptArgsQuery())
