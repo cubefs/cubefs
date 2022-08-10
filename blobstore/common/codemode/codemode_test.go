@@ -33,29 +33,34 @@ var (
 )
 
 func TestCodeModeBase(t *testing.T) {
-	codeMode1 := EC15P12.Tactic()
-	assert.Equal(t, codeMode1.MinShardSize, 2048)
-	indexes, n, m := (&codeMode1).GlobalStripe()
-	assert.Equal(t, codeMode1.N, n)
-	assert.Equal(t, codeMode1.M, m)
-	assert.True(t, codeMode1.IsValid())
-	expectedIndex := make([]int, 0)
-	for i := 0; i < codeMode1.N+codeMode1.M; i++ {
-		expectedIndex = append(expectedIndex, i)
-	}
-	assert.Equal(t, expectedIndex, indexes)
+	for _, cm := range []CodeMode{EC15P12, EC6P10L2, EC10P4} {
+		tactic := cm.Tactic()
+		assert.Equal(t, tactic.MinShardSize, 2048)
+		assert.Equal(t, tactic, *cm.T())
+		assert.Equal(t, tactic.N+tactic.M+tactic.L, cm.GetShardNum())
+		assert.True(t, tactic.IsValid())
 
-	codeMode2 := EC6P10L2.Tactic()
-	assert.Equal(t, codeMode2.MinShardSize, 2048)
-	indexes, n, m = (&codeMode2).GlobalStripe()
-	assert.Equal(t, codeMode2.N, n)
-	assert.Equal(t, codeMode2.M, m)
-	assert.True(t, codeMode2.IsValid())
-	expectedIndex = make([]int, 0)
-	for i := 0; i < codeMode2.N+codeMode2.M; i++ {
-		expectedIndex = append(expectedIndex, i)
+		indexes, n, m := cm.T().GlobalStripe()
+		assert.Equal(t, tactic.N, n)
+		assert.Equal(t, tactic.M, m)
+		expectedIndex := make([]int, 0)
+		for i := 0; i < tactic.N+tactic.M; i++ {
+			expectedIndex = append(expectedIndex, i)
+		}
+		assert.Equal(t, expectedIndex, indexes)
 	}
-	assert.Equal(t, expectedIndex, indexes)
+
+	for _, cm := range GetAllCodeModes() {
+		assert.True(t, cm.IsValid())
+		assert.True(t, cm.Name().IsValid())
+		assert.Equal(t, cm.String(), string(cm.Name()))
+		assert.Equal(t, cm, cm.Name().GetCodeMode())
+		assert.Equal(t, cm.Tactic(), cm.Name().Tactic())
+	}
+
+	name := CodeModeName("xxx")
+	assert.False(t, name.IsValid())
+	assert.Panics(t, func() { name.GetCodeMode() })
 }
 
 func TestCodeModeGetTactic(t *testing.T) {
@@ -73,6 +78,9 @@ func TestCodeModeGetTactic(t *testing.T) {
 	for _, cs := range cases {
 		if cs.isPanic {
 			assert.Panics(t, func() { cs.mode.Tactic() })
+			assert.Panics(t, func() { cs.mode.Name() })
+			assert.Empty(t, cs.mode.String())
+			assert.False(t, cs.mode.IsValid())
 		} else {
 			assert.NotPanics(t, func() { cs.mode.Tactic() })
 		}
@@ -80,16 +88,14 @@ func TestCodeModeGetTactic(t *testing.T) {
 }
 
 func TestGetLayoutByAZ(t *testing.T) {
-	codeMode1 := EC15P12.Tactic()
-	indexes := (&codeMode1).GetECLayoutByAZ()
+	indexes := EC15P12.T().GetECLayoutByAZ()
 	assert.Equal(t, 3, len(indexes))
 
 	for i := range indexes {
 		assert.Equal(t, 9, len(indexes[i]))
 	}
 
-	codeMode2 := EC6P10L2.Tactic()
-	indexes = (&codeMode2).GetECLayoutByAZ()
+	indexes = EC6P10L2.T().GetECLayoutByAZ()
 	assert.Equal(t, 2, len(indexes))
 
 	assert.Equal(t, ec6P10L2Stripes[0], indexes[0])
@@ -216,24 +222,21 @@ func TestLocalStripeInAZ(t *testing.T) {
 }
 
 func BenchmarkGlobalStripe(b *testing.B) {
-	t := EC16P20L2.Tactic()
-	tactic := &t
+	tactic := EC16P20L2.Tactic()
 	for ii := 0; ii < b.N; ii++ {
 		tactic.GlobalStripe()
 	}
 }
 
 func BenchmarkGetECLayoutByAZ(b *testing.B) {
-	t := EC16P20L2.Tactic()
-	tactic := &t
+	tactic := EC16P20L2.Tactic()
 	for ii := 0; ii < b.N; ii++ {
 		tactic.GetECLayoutByAZ()
 	}
 }
 
 func BenchmarkLocalStripe(b *testing.B) {
-	t := EC16P20L2.Tactic()
-	tactic := &t
+	tactic := EC16P20L2.Tactic()
 	for ii := 0; ii < b.N; ii++ {
 		tactic.LocalStripe(37)
 	}
