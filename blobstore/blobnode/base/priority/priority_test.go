@@ -22,8 +22,8 @@ import (
 
 func TestGetpriority(t *testing.T) {
 	pri := GetPriority(10)
-	require.Equal(t, level3, pri)
-	require.Equal(t, "level3", pri.String())
+	require.Equal(t, level4, pri)
+	require.Equal(t, "level4", pri.String())
 
 	pri = GetPriority(1)
 	require.Equal(t, level1, pri)

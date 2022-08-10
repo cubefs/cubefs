@@ -128,7 +128,7 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.Shar
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			err = repairer.cli.PutShard(ctx, dstLocation, task.Bid, shardSize, bytes.NewReader(data), api.RepairIO)
+			err = repairer.cli.PutShard(ctx, dstLocation, task.Bid, shardSize, bytes.NewReader(data), api.ShardRepairIO)
 			retErrs[i] = err
 		}(badi)
 	}
