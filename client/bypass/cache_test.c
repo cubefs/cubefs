@@ -87,7 +87,7 @@ void produce_operation() {
 }
 
 void *execute_operation(void *arg) {
-    inode_shared_t *inode_info = (inode_shared_t *)arg;
+    inode_info_t *inode_info = (inode_info_t *)arg;
     int offset, len;
     char *d;
     for(int i = 0; i < TEST_ROUND; i++) {
@@ -135,8 +135,8 @@ void test_inode_operation() {
     }
 
     lru_cache_t *c = new_lru_cache(size, PAGE_SIZE);
-    inode_shared_t *inodes[INODE_COUNT];
-    map<ino_t, inode_shared_t *> open_inodes;
+    inode_info_t *inodes[INODE_COUNT];
+    map<ino_t, inode_info_t *> open_inodes;
     pthread_rwlock_t open_inodes_lock;
     pthread_rwlock_init(&open_inodes_lock, NULL);
     bool stop;

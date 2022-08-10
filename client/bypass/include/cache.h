@@ -56,7 +56,6 @@ void release_lru_cache(lru_cache_t *c);
 page_t *lru_cache_alloc(lru_cache_t *c);
 void lru_cache_access(lru_cache_t *c, page_t *p);
 void *do_flush_inode(void *arg);
-void flush_and_release(void *arg);
 
 typedef ssize_t (*cfs_pwrite_inode_t)(int64_t id, ino_t ino, const void *buf, size_t size, off_t off);
 
@@ -78,22 +77,23 @@ typedef struct inode_shared {
     page_t ***pages;
     pthread_mutex_t pages_lock;
     cfs_pwrite_inode_t write_func;
-} inode_shared_t;
+} inode_info_t;
 
-struct inode_wrapper_t {
+typedef struct inode_wrapper {
     pthread_rwlock_t *open_inodes_lock;
-    std::map<ino_t, inode_shared_t *> *open_inodes;
+    std::map<ino_t, inode_info_t *> *open_inodes;
     bool *stop;
-};
+} inode_wrapper_t;
 
-inode_shared_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t write_func);
-void release_inode_info(inode_shared_t *inode_info);
-size_t read_cache(inode_shared_t *inode_info, off_t offset, size_t count, void *data);
-size_t write_cache(inode_shared_t *inode_info, off_t offset, size_t count, const void *data);
-int flush_inode(inode_shared_t *inode_info);
-void flush_inode_range(inode_shared_t *inode_info, off_t offset, size_t count);
-void clear_inode_range(inode_shared_t *inode_info, off_t offset, size_t count);
-void clear_inode(inode_shared_t *inode_info);
+inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t write_func);
+void release_inode_info(inode_info_t *inode_info);
+size_t read_cache(inode_info_t *inode_info, off_t offset, size_t count, void *data);
+size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const void *data);
+int flush_inode(inode_info_t *inode_info);
+void flush_inode_range(inode_info_t *inode_info, off_t offset, size_t count);
+void clear_inode_range(inode_info_t *inode_info, off_t offset, size_t count);
+void clear_inode(inode_info_t *inode_info);
+void flush_and_release(std::map<ino_t, inode_info_t *> &arg);
 
 #ifdef __cplusplus
 }

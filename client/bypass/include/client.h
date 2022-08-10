@@ -326,7 +326,7 @@ typedef struct {
     off_t pos;
     int dup_ref;
     int file_type;
-    inode_shared_t *inode_info;
+    inode_info_t *inode_info;
 } file_t;
 
 typedef struct {
@@ -352,7 +352,7 @@ typedef struct {
     pthread_rwlock_t open_files_lock;
     map<int, file_t *> open_files;
     pthread_rwlock_t open_inodes_lock;
-    map<ino_t, inode_shared_t *> open_inodes;
+    map<ino_t, inode_info_t *> open_inodes;
 
     lru_cache_t *big_page_cache;
     lru_cache_t *small_page_cache;
@@ -373,7 +373,7 @@ typedef struct {
     pthread_t bg_pthread;
     void* sdk_handle;
     bool stop;
-    struct inode_wrapper_t inode_wrapper;
+    inode_wrapper_t inode_wrapper;
 } client_info_t;
 
 static client_info_t g_client_info;

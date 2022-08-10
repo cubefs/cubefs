@@ -137,7 +137,7 @@ void clear_page(page_t *p) {
     pthread_rwlock_unlock(&p->lock);
 }
 
-void occupy_page(page_t *p, inode_shared_t *inode_info, int index) {
+void occupy_page(page_t *p, inode_info_t *inode_info, int index) {
     pthread_rwlock_wrlock(&p->lock);
     #ifdef _CFS_DEBUG
     page_str(p);
@@ -300,9 +300,9 @@ void *do_flush_lru(void *arg) {
 }
 
 void *do_flush_inode(void *arg) {
-    struct inode_wrapper_t *inode_wrapper = (struct inode_wrapper_t *)arg;
+    inode_wrapper_t *inode_wrapper = (inode_wrapper_t *)arg;
     pthread_rwlock_t *open_inodes_lock = inode_wrapper->open_inodes_lock;
-    auto open_inodes = inode_wrapper->open_inodes;
+    auto *open_inodes = inode_wrapper->open_inodes;
     bool *stop = inode_wrapper->stop;
     page_t *p;
     int dirty_num, page_num;
@@ -314,7 +314,7 @@ void *do_flush_inode(void *arg) {
         pthread_rwlock_rdlock(open_inodes_lock);
         for(const auto &item : *open_inodes) {
             if (*stop) break;
-            inode_shared_t *inode_info = item.second;
+            inode_info_t *inode_info = item.second;
             if (!inode_info->use_pagecache)
                 continue;
             for(int i = 0; i < BLOCKS_PER_FILE; i++) {
@@ -351,11 +351,10 @@ void *do_flush_inode(void *arg) {
     return NULL;
 }
 
-void flush_and_release(void *arg) {
-    auto open_inodes = *(map<ino_t, inode_shared_t *> *)arg;
+void flush_and_release(map<ino_t, inode_info_t *> &open_inodes) {
     page_t *p;
     for(const auto &item : open_inodes) {
-        inode_shared_t *inode_info = item.second;
+        inode_info_t *inode_info = item.second;
         for(int i = 0; i < BLOCKS_PER_FILE; i++) {
             if (!inode_info->use_pagecache)
                 continue;
@@ -376,13 +375,13 @@ void flush_and_release(void *arg) {
     }
 }
 
-inode_shared_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t write_func) {
-    inode_shared_t *inode_info = (inode_shared_t *)malloc(sizeof(inode_shared_t));
+inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t write_func) {
+    inode_info_t *inode_info = (inode_info_t *)malloc(sizeof(inode_info_t));
     if(inode_info == NULL) {
-        fprintf(stderr, "malloc inode_shared_t failed.\n");
+        fprintf(stderr, "malloc inode_info_t failed.\n");
         return NULL;
     }
-    memset(inode_info, 0, sizeof(inode_shared_t));
+    memset(inode_info, 0, sizeof(inode_info_t));
     pthread_mutex_init(&inode_info->pages_lock, NULL);
     inode_info->inode = inode;
     inode_info->fd_ref = 1;
@@ -402,7 +401,7 @@ inode_shared_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode
     return inode_info;
 }
 
-void release_inode_info(inode_shared_t *inode_info) {
+void release_inode_info(inode_info_t *inode_info) {
     if(inode_info == NULL) return;
 
     page_t *p;
@@ -426,7 +425,7 @@ void release_inode_info(inode_shared_t *inode_info) {
     free(inode_info);
 }
 
-size_t read_cache(inode_shared_t *inode_info, off_t offset, size_t count, void *data) {
+size_t read_cache(inode_info_t *inode_info, off_t offset, size_t count, void *data) {
     if (!inode_info->use_pagecache) return 0;
 
     int page_size = inode_info->c->page_size;
@@ -465,7 +464,7 @@ size_t read_cache(inode_shared_t *inode_info, off_t offset, size_t count, void *
     return read;
 }
 
-size_t write_cache(inode_shared_t *inode_info, off_t offset, size_t count, const void *data) {
+size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const void *data) {
     if (!inode_info->use_pagecache)
         return 0;
     int page_size = inode_info->c->page_size;
@@ -525,7 +524,7 @@ size_t write_cache(inode_shared_t *inode_info, off_t offset, size_t count, const
     return write;
 }
 
-int flush_inode(inode_shared_t *inode_info) {
+int flush_inode(inode_info_t *inode_info) {
     if (!inode_info->use_pagecache) return 0;
 
     page_t *p;
@@ -549,7 +548,7 @@ int flush_inode(inode_shared_t *inode_info) {
     return re;
 }
 
-void flush_inode_range(inode_shared_t *inode_info, off_t offset, size_t count) {
+void flush_inode_range(inode_info_t *inode_info, off_t offset, size_t count) {
     if (!inode_info->use_pagecache) return;
 
     int begin_index = offset/inode_info->c->page_size;
@@ -571,7 +570,7 @@ void flush_inode_range(inode_shared_t *inode_info, off_t offset, size_t count) {
     }
 }
 
-void clear_inode_range(inode_shared_t *inode_info, off_t offset, size_t count) {
+void clear_inode_range(inode_info_t *inode_info, off_t offset, size_t count) {
     if (!inode_info->use_pagecache) return;
 
     int begin_index = offset/inode_info->c->page_size;

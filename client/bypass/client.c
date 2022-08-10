@@ -24,7 +24,7 @@ int close_cfs_fd(int fd) {
         pthread_rwlock_unlock(&g_client_info.open_files_lock);
         return 0;
     }
-    inode_shared_t* inode_info = f->inode_info;
+    inode_info_t* inode_info = f->inode_info;
     g_client_info.open_files.erase(open_file_it);
     free(f);
     pthread_rwlock_unlock(&g_client_info.open_files_lock);
@@ -70,8 +70,8 @@ log:
     return re;
 }
 
-inode_shared_t *record_inode_info(ino_t inode, int file_type, size_t size) {
-    inode_shared_t *inode_info = NULL;
+inode_info_t *record_inode_info(ino_t inode, int file_type, size_t size) {
+    inode_info_t *inode_info = NULL;
     bool use_pagecache = false;
     if(file_type == FILE_TYPE_RELAY_LOG ||file_type == FILE_TYPE_BIN_LOG)
         use_pagecache = true;
@@ -138,7 +138,7 @@ int record_open_file(cfs_file_t *cfs_file) {
     f->pos = cfs_file->pos;
     f->dup_ref = cfs_file->dup_ref;
 
-    inode_shared_t *inode_info = record_inode_info(cfs_file->inode, cfs_file->file_type, cfs_file->size);
+    inode_info_t *inode_info = record_inode_info(cfs_file->inode, cfs_file->file_type, cfs_file->size);
     if (inode_info == NULL) return -1;
     f->inode_info = inode_info;
 
@@ -2366,7 +2366,7 @@ void* stop_libs() {
         client_state->file_num = count;
     }
 
-    flush_and_release(&g_client_info.open_inodes);
+    flush_and_release(g_client_info.open_inodes);
     release_lru_cache(g_client_info.big_page_cache);
     release_lru_cache(g_client_info.small_page_cache);
     size = cfs_sdk_state(g_client_info.cfs_client_id, NULL, 0);
