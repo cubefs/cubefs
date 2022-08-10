@@ -16,9 +16,11 @@ package codemode
 
 import "fmt"
 
-// CodeMode EC encode and decode mode
-type CodeMode uint8
-type CodeModeName string
+type (
+	// CodeMode EC encode and decode mode
+	CodeMode     uint8
+	CodeModeName string
+)
 
 // pre-defined mode
 const (
@@ -178,6 +180,13 @@ func init() {
 	}
 }
 
+// T returns pointer of Tactic, used like:
+// EC6P6.T().AllLocalStripe()
+func (c CodeMode) T() *Tactic {
+	tactic := c.Tactic()
+	return &tactic
+}
+
 // Tactic returns its constant tactic
 func (c CodeMode) Tactic() Tactic {
 	if tactic, ok := constCodeModeTactic[c]; ok {
@@ -186,6 +195,7 @@ func (c CodeMode) Tactic() Tactic {
 	panic(fmt.Sprintf("Invalid codemode:%d", c))
 }
 
+// GetShardNum returns all shards number.
 func (c CodeMode) GetShardNum() int {
 	tactic := c.Tactic()
 	return tactic.L + tactic.M + tactic.N
