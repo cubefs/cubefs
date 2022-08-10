@@ -82,7 +82,7 @@ type ReplicaBidsRet struct {
 }
 
 // GetReplicasBids returns replicas bids info
-func GetReplicasBids(ctx context.Context, cli client.IBlobNode, replicas []proto.VunitLocation) map[proto.Vuid]*ReplicaBidsRet {
+func GetReplicasBids(ctx context.Context, cli client.IBlobNode, replicas Vunits) map[proto.Vuid]*ReplicaBidsRet {
 	result := make(map[proto.Vuid]*ReplicaBidsRet)
 	wg := sync.WaitGroup{}
 	var mu sync.Mutex
@@ -128,14 +128,11 @@ func MergeBids(replicasBids map[proto.Vuid]*ReplicaBidsRet) []*ShardInfoSimple {
 }
 
 // GetBenchmarkBids returns bench mark bids
-func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas []proto.VunitLocation,
+func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits,
 	mode codemode.CodeMode, badIdxs []uint8) (bids []*ShardInfoSimple, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	globalReplicas, err := workutils.AbstractGlobalStripeReplicas(replicas, mode, badIdxs)
-	if err != nil {
-		return nil, err
-	}
+	globalReplicas := replicas.IntactGlobalSet(mode, badIdxs)
 	replicasBids := GetReplicasBids(ctx, cli, globalReplicas)
 
 	wellCnt := 0

@@ -34,7 +34,7 @@ var (
 )
 
 // GenMigrateBids generates migrate blob ids
-func GenMigrateBids(ctx context.Context, blobnodeCli client.IBlobNode, srcReplicas []proto.VunitLocation,
+func GenMigrateBids(ctx context.Context, blobnodeCli client.IBlobNode, srcReplicas Vunits,
 	dst proto.VunitLocation, mode codemode.CodeMode, badIdxs []uint8,
 ) (migBids, benchmarkBids []*ShardInfoSimple, wErr *WorkError) {
 	span := trace.SpanFromContextSafe(ctx)

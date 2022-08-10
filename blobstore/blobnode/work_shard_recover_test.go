@@ -105,7 +105,7 @@ func TestShardsBuf(t *testing.T) {
 	require.Equal(t, true, ok)
 }
 
-func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, *MockGetter, []proto.VunitLocation) {
+func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, *MockGetter, Vunits) {
 	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
 		MigrateBufSize:     10 * 1024,
 		MigrateBufCapacity: 100,
@@ -399,7 +399,7 @@ func TestDownload(t *testing.T) {
 	ctx := context.Background()
 	repair, _, getter, replicas := InitMockRepair(codemode.EC6P6)
 	repairBids := []proto.BlobID{1, 2, 4, 5, 6, 7}
-	idxs := VunitIdxs(replicas)
+	idxs := replicas.Indexes()
 	err := repair.allocBuf(ctx, idxs)
 	require.NoError(t, err)
 
