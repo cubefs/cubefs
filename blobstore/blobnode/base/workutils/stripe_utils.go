@@ -15,11 +15,7 @@
 package workutils
 
 import (
-	"fmt"
-
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
-	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 // BidExistStatus blob id exist status
@@ -93,45 +89,4 @@ func IdxSplitByLocalStripe(idxs []uint8, mode codemode.CodeMode) [][]uint8 {
 		ret = append(ret, val)
 	}
 	return ret
-}
-
-// AbstractGlobalStripeReplicas returns abstract global stripe replicas
-func AbstractGlobalStripeReplicas(
-	replicas []proto.VunitLocation,
-	mode codemode.CodeMode,
-	badIdxs []uint8) ([]proto.VunitLocation, error) {
-	globalStripeIdxs, _, _ := mode.T().GlobalStripe()
-
-	idxs := filterOut(globalStripeIdxs, badIdxs)
-
-	return AbstractReplicas(replicas, idxs)
-}
-
-func filterOut(idxs []int, badIdxs []uint8) []int {
-	badIdxsMap := make(map[uint8]struct{})
-	for _, idx := range badIdxs {
-		badIdxsMap[idx] = struct{}{}
-	}
-
-	var filterIdxs []int
-	for _, idx := range idxs {
-		if _, ok := badIdxsMap[uint8(idx)]; ok {
-			continue
-		}
-		filterIdxs = append(filterIdxs, idx)
-	}
-	return filterIdxs
-}
-
-// AbstractReplicas returns abstract replicas
-func AbstractReplicas(replicas []proto.VunitLocation, idxs []int) ([]proto.VunitLocation, error) {
-	abstract := make([]proto.VunitLocation, len(idxs))
-	for i, idx := range idxs {
-		if uint8(idx) != replicas[idx].Vuid.Index() {
-			err := errors.New(fmt.Sprintf("unexpect replicas: idx[%d], replica idx[%d]", idx, replicas[idx].Vuid.Index()))
-			return nil, err
-		}
-		abstract[i] = replicas[idx]
-	}
-	return abstract, nil
 }

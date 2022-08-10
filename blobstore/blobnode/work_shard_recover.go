@@ -45,6 +45,7 @@ var (
 	errEcVerifyFailed       = errors.New("ec verify failed")
 	errShardSizeNotMatch    = errors.New("shard data size not match")
 	errBufNotEnough         = errors.New("buf space not enough")
+	errInvalidReplicas      = errors.New("invalid volume replicas")
 )
 
 const defaultGetConcurrency = 100
@@ -59,8 +60,57 @@ type (
 	}
 )
 
+// Vunits volume stripe locations.
+type Vunits []proto.VunitLocation
+
+func (locs Vunits) IsValid() bool {
+	if !proto.CheckVunitLocations(locs) {
+		return false
+	}
+	for idx, loc := range locs {
+		if uint8(idx) != loc.Vuid.Index() {
+			return false
+		}
+	}
+	return true
+}
+
+func (locs Vunits) Indexes() []uint8 {
+	idxes := make([]uint8, len(locs))
+	for idx, loc := range locs {
+		idxes[idx] = loc.Vuid.Index()
+	}
+	return idxes
+}
+
+func (locs Vunits) Subset(idxes []int) Vunits {
+	sub := make(Vunits, 0, len(idxes))
+	for _, idx := range idxes {
+		sub = append(sub, locs[idx])
+	}
+	return sub
+}
+
+func (locs Vunits) IntactGlobalSet(mode codemode.CodeMode, bad []uint8) Vunits {
+	ex := make(map[int]struct{}, len(bad))
+	for _, idx := range bad {
+		ex[int(idx)] = struct{}{}
+	}
+
+	var idxes []int
+	globalStripe, _, _ := mode.T().GlobalStripe()
+	for _, idx := range globalStripe {
+		if _, ok := ex[idx]; ok {
+			continue
+		}
+		idxes = append(idxes, idx)
+	}
+
+	return locs.Subset(idxes)
+}
+
 type repairStripe struct {
-	replicas []proto.VunitLocation
+	replicas Vunits
 	n        N
 	m        M
 	badIdxes []uint8
@@ -340,7 +390,7 @@ func (d *downloadStatus) downloaded(vuid proto.Vuid) {
 type ShardRecover struct {
 	chunksShardsBuf []*ShardsBuf // record batch download shard data
 
-	replicas           []proto.VunitLocation // stripe replicas list
+	replicas           Vunits // stripe replicas list
 	codeMode           codemode.CodeMode
 	repairBidsReadOnly []*ShardInfoSimple // Strictly not allow modification
 
@@ -352,7 +402,7 @@ type ShardRecover struct {
 }
 
 // NewShardRecover returns shard recover
-func NewShardRecover(replicas []proto.VunitLocation, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
+func NewShardRecover(replicas Vunits, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
 	shardGetter client.IBlobNode, vunitShardGetConcurrency int, taskType proto.TaskType,
 ) *ShardRecover {
 	if vunitShardGetConcurrency <= 0 {
@@ -377,6 +427,9 @@ func NewShardRecover(replicas []proto.VunitLocation, mode codemode.CodeMode, bid
 // RecoverShards recover shards
 func (r *ShardRecover) RecoverShards(ctx context.Context, repairIdxs []uint8, direct bool) error {
 	span := trace.SpanFromContextSafe(ctx)
+	if !r.replicas.IsValid() {
+		return errInvalidReplicas
+	}
 
 	// direct download shard
 	repairBids := GetBids(r.repairBidsReadOnly)
@@ -550,7 +603,7 @@ func (r *ShardRecover) directGetShard(ctx context.Context, repairBids []proto.Bl
 	if allocBufErr != nil {
 		return nil, allocBufErr
 	}
-	replicas := make([]proto.VunitLocation, len(repairIdxs))
+	replicas := make(Vunits, len(repairIdxs))
 	for i, idx := range repairIdxs {
 		replicas[i] = r.replicas[idx]
 	}
@@ -578,7 +631,7 @@ func (r *ShardRecover) recoverByLocalStripe(ctx context.Context, repairBids []pr
 	for _, stripe := range stripes {
 		//todo:repairs between strips are completely unrelated,
 		// so can improve efficiency through concurrent repair
-		idxs := VunitIdxs(stripe.replicas)
+		idxs := stripe.replicas.Indexes()
 		err = r.allocBuf(ctx, idxs)
 		if err != nil {
 			return
@@ -600,7 +653,7 @@ func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, repairBids []p
 	if err != nil {
 		return err
 	}
-	idxs := VunitIdxs(stripe.replicas)
+	idxs := stripe.replicas.Indexes()
 	err = r.allocBuf(ctx, idxs)
 	if err != nil {
 		return
@@ -636,7 +689,7 @@ func (r *ShardRecover) repairStripe(ctx context.Context, repairBids []proto.Blob
 	return nil
 }
 
-func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, replicas []proto.VunitLocation) {
+func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, replicas Vunits) {
 	wg := sync.WaitGroup{}
 	tp := taskpool.New(len(replicas), len(replicas))
 	for _, replica := range replicas {
@@ -825,10 +878,7 @@ func (r *ShardRecover) genLocalStripes(repairIdxs []uint8) (stripes []repairStri
 		}
 		idxs, n, m := r.codeMode.T().LocalStripe(int(oneIdcRepairIdxs[0]))
 
-		replicas, err := r.abstractReplicas(idxs)
-		if err != nil {
-			return nil, err
-		}
+		replicas := r.replicas.Subset(idxs)
 		stripe := repairStripe{
 			replicas: replicas,
 			n:        N(n),
@@ -843,10 +893,7 @@ func (r *ShardRecover) genLocalStripes(repairIdxs []uint8) (stripes []repairStri
 func (r *ShardRecover) genGlobalStripe(repairIdxs []uint8) (stripe repairStripe, err error) {
 	// generate global stripes
 	idxs, n, m := r.codeMode.T().GlobalStripe()
-	replicas, err := r.abstractReplicas(idxs)
-	if err != nil {
-		return repairStripe{}, err
-	}
+	replicas := r.replicas.Subset(idxs)
 	return repairStripe{
 		replicas: replicas,
 		n:        N(n),
@@ -919,19 +966,6 @@ func (r *ShardRecover) allocBuf(ctx context.Context, vunitIdxs []uint8) error {
 		}
 	}
 	return nil
-}
-
-func (r *ShardRecover) abstractReplicas(idxs []int) ([]proto.VunitLocation, error) {
-	return workutils.AbstractReplicas(r.replicas, idxs)
-}
-
-// VunitIdxs returns volume idx with VunitLocations
-func VunitIdxs(replicaLocations []proto.VunitLocation) []uint8 {
-	idxs := make([]uint8, len(replicaLocations))
-	for i, l := range replicaLocations {
-		idxs[i] = l.Vuid.Index()
-	}
-	return idxs
 }
 
 // AllShardsCanNotDownload judge whether all shards can  download or not accord by download error
