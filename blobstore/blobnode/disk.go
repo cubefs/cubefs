@@ -63,7 +63,7 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	fileExists, err := base.IsFileExists(probePath)
 	if err != nil || !fileExists {
 		span.Errorf("probePath(%s) is not exist, err:%v", probePath, err)
-		c.RespondError(bloberr.ErrInvalidParam)
+		c.RespondError(bloberr.ErrPathNotExist)
 		return
 	}
 
@@ -71,7 +71,7 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	empty, err := base.IsEmptyDisk(probePath)
 	if err != nil || !empty {
 		span.Errorf("probePath(%s) is not empty. err:%v", probePath, err)
-		c.RespondError(bloberr.ErrInvalidParam)
+		c.RespondError(bloberr.ErrPathNotEmpty)
 		return
 	}
 
@@ -94,7 +94,7 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	// must be no corresponding active handle
 	if foundOnlineDisk {
 		span.Errorf("path<%s> found online disk.", probePath)
-		c.RespondError(bloberr.ErrInvalidParam)
+		c.RespondError(bloberr.ErrPathFindOnline)
 		return
 	}
 
