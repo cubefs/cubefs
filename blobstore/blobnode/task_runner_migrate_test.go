@@ -131,7 +131,7 @@ func TestMigrateGenTasklets(t *testing.T) {
 		m := codeInfo.M
 		allowFailCnt := n + m - codeInfo.PutQuorum
 		minWellReplicasCnt := n + allowFailCnt
-		globalIdxs, n, m := workutils.GlobalStripe(mode)
+		globalIdxs, n, m := mode.T().GlobalStripe()
 		brokenReplicasCnt := m + n - (minWellReplicasCnt) + 1
 		if brokenReplicasCnt <= 0 {
 			return

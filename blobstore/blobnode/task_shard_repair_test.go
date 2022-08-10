@@ -209,7 +209,7 @@ func testShardRepair(t *testing.T, mode codemode.CodeMode) {
 
 	var localIdxs []int
 	if codeInfo.L != 0 {
-		localStripes, localN, localM := workutils.AllLocalStripe(mode)
+		localStripes, localN, localM := mode.T().AllLocalStripe()
 		for _, stripe := range localStripes {
 			localIdxs = append(localIdxs, stripe[localN:localN+localM]...)
 		}
