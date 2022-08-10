@@ -190,7 +190,7 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas []prot
 			continue
 		}
 
-		if notExistCnt > workutils.AllowFailCnt(mode) {
+		if notExistCnt > allowFailCnt(mode) {
 			workutils.DroppedBidRecorderInst().Write(
 				ctx,
 				replicas[0].Vuid.Vid(),
@@ -201,11 +201,7 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas []prot
 		}
 
 		span.Errorf("unexpect when get benchmark bids: vid[%d], bid[%d], existCnt[%d], notExistCnt[%d], allowFailCnt[%d]",
-			replicas[0].Vuid.Vid(),
-			bid.Bid,
-			existStatus.ExistCnt(),
-			notExistCnt,
-			workutils.AllowFailCnt(mode))
+			replicas[0].Vuid.Vid(), bid.Bid, existStatus.ExistCnt(), notExistCnt, allowFailCnt(mode))
 		return nil, ErrUnexpected
 	}
 
@@ -215,7 +211,12 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas []prot
 // minWellReplicasCnt:It is the mini count of well replicas which can determine
 // whether a bid is repaired or discarded
 func minWellReplicasCnt(mode codemode.CodeMode) int {
-	return workutils.ModeN(mode) + workutils.AllowFailCnt(mode)
+	return mode.Tactic().N + allowFailCnt(mode)
+}
+
+func allowFailCnt(mode codemode.CodeMode) int {
+	modeInfo := mode.Tactic()
+	return modeInfo.N + modeInfo.M - modeInfo.PutQuorum
 }
 
 // BidsSplit split bids list to many tasklets by taskletSize

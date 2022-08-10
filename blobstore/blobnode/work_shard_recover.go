@@ -403,7 +403,7 @@ func (r *ShardRecover) RecoverShards(ctx context.Context, repairIdxs []uint8, di
 	//why:two ways of repair is difference
 	var globalRepairIdxs, localRepairIdxs []uint8
 	for _, repairIdx := range repairIdxs {
-		if workutils.IsLocalStripeUint(int(repairIdx), r.codeMode) {
+		if workutils.IsLocalStripeIndex(r.codeMode, int(repairIdx)) {
 			localRepairIdxs = append(localRepairIdxs, repairIdx)
 		} else {
 			globalRepairIdxs = append(globalRepairIdxs, repairIdx)
@@ -517,7 +517,7 @@ func (r *ShardRecover) collectGlobalBadReplicas(ctx context.Context, failBids []
 		if len(repairIdxs) == 0 {
 			continue
 		}
-		idxs, n, _ := workutils.LocalStripe(int(repairIdxs[0]), r.codeMode)
+		idxs, n, _ := r.codeMode.T().LocalStripe(int(repairIdxs[0]))
 		globalReplicaIdxs = append(globalReplicaIdxs, idxs[0:n]...)
 	}
 
@@ -823,7 +823,7 @@ func (r *ShardRecover) genLocalStripes(repairIdxs []uint8) (stripes []repairStri
 		if len(oneIdcRepairIdxs) == 0 {
 			continue
 		}
-		idxs, n, m := workutils.LocalStripe(int(oneIdcRepairIdxs[0]), r.codeMode)
+		idxs, n, m := r.codeMode.T().LocalStripe(int(oneIdcRepairIdxs[0]))
 
 		replicas, err := r.abstractReplicas(idxs)
 		if err != nil {
@@ -842,7 +842,7 @@ func (r *ShardRecover) genLocalStripes(repairIdxs []uint8) (stripes []repairStri
 
 func (r *ShardRecover) genGlobalStripe(repairIdxs []uint8) (stripe repairStripe, err error) {
 	// generate global stripes
-	idxs, n, m := workutils.GlobalStripe(r.codeMode)
+	idxs, n, m := r.codeMode.T().GlobalStripe()
 	replicas, err := r.abstractReplicas(idxs)
 	if err != nil {
 		return repairStripe{}, err

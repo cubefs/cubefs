@@ -192,7 +192,7 @@ func getRepairShards(ctx context.Context, shardInfos []*ShardInfoEx, mode codemo
 			continue
 		}
 	}
-	if bidNotExistCnt == workutils.AllReplCnt(mode)-len(repaireIdxs) {
+	if bidNotExistCnt == mode.GetShardNum()-len(repaireIdxs) {
 		span.Info("all shards without repair are not exist")
 		return []int{}, 0, nil
 	}

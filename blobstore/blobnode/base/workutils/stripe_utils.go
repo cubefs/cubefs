@@ -20,7 +20,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 // BidExistStatus blob id exist status
@@ -35,7 +34,7 @@ func NewBidExistStatus(mode codemode.CodeMode) BidExistStatus {
 	return BidExistStatus{
 		mode:     mode,
 		existCnt: 0,
-		exist:    make([]bool, AllReplCnt(mode)),
+		exist:    make([]bool, mode.GetShardNum()),
 	}
 }
 
@@ -52,33 +51,25 @@ func (s *BidExistStatus) ExistCnt() int {
 
 // CanRecover returns if data can be recover
 func (s *BidExistStatus) CanRecover() bool {
-	if len(s.exist) != AllReplCnt(s.mode) {
-		log.Errorf("unexpect:len(existStatus.exist) != AllReplCnt(mode)")
+	if len(s.exist) != s.mode.GetShardNum() {
 		return false
 	}
 
-	globalStripe, _, _ := GlobalStripe(s.mode)
+	globalStripe, _, _ := s.mode.T().GlobalStripe()
 	existInGlobalStripe := 0
 	for _, idx := range globalStripe {
 		if s.exist[idx] {
 			existInGlobalStripe++
 		}
 	}
-	return existInGlobalStripe >= ModeN(s.mode)
+	return existInGlobalStripe >= s.mode.T().N
 }
 
-// ModeN returns the count of N
-func ModeN(mode codemode.CodeMode) int {
-	modeInfo := mode.Tactic()
-	return modeInfo.N
-}
-
-// IsLocalStripeUint returns true if stripe is local unit
-func IsLocalStripeUint(idx int, mode codemode.CodeMode) bool {
-	localStripe, n, m := LocalStripe(idx, mode)
-	localStripeUnits := localStripe[n : n+m]
-	for i := range localStripeUnits {
-		if localStripeUnits[i] == idx {
+// IsLocalStripeIndex returns true if index is local unit.
+func IsLocalStripeIndex(mode codemode.CodeMode, idx int) bool {
+	localStripe, n, m := mode.T().LocalStripe(idx)
+	for _, localIdx := range localStripe[n : n+m] {
+		if localIdx == idx {
 			return true
 		}
 	}
@@ -88,8 +79,9 @@ func IsLocalStripeUint(idx int, mode codemode.CodeMode) bool {
 // IdxSplitByLocalStripe returns local stripe idx
 func IdxSplitByLocalStripe(idxs []uint8, mode codemode.CodeMode) [][]uint8 {
 	splitMap := make(map[int][]uint8)
+	tactic := mode.Tactic()
 	for _, idx := range idxs {
-		stripeIdxs, _, _ := LocalStripe(int(idx), mode)
+		stripeIdxs, _, _ := tactic.LocalStripe(int(idx))
 		if len(stripeIdxs) == 0 {
 			continue
 		}
@@ -103,42 +95,12 @@ func IdxSplitByLocalStripe(idxs []uint8, mode codemode.CodeMode) [][]uint8 {
 	return ret
 }
 
-// LocalStripe returns local stripe message
-func LocalStripe(vuidIdx int, mode codemode.CodeMode) (locatIdxs []int, n, m int) {
-	modeInfo := mode.Tactic()
-	return modeInfo.LocalStripe(vuidIdx)
-}
-
-// GlobalStripe returns global stripe message
-func GlobalStripe(mode codemode.CodeMode) (idxs []int, n, m int) {
-	modeInfo := mode.Tactic()
-	return modeInfo.GlobalStripe()
-}
-
-// AllLocalStripe returns all local stripe message
-func AllLocalStripe(mode codemode.CodeMode) (stripes [][]int, n, m int) {
-	modeInfo := mode.Tactic()
-	return modeInfo.AllLocalStripe()
-}
-
-// AllReplCnt returns replica count
-func AllReplCnt(mode codemode.CodeMode) int {
-	modeInfo := mode.Tactic()
-	return modeInfo.N + modeInfo.M + modeInfo.L
-}
-
-// AllowFailCnt returns allow fail count
-func AllowFailCnt(mode codemode.CodeMode) int {
-	modeInfo := mode.Tactic()
-	return modeInfo.N + modeInfo.M - modeInfo.PutQuorum
-}
-
 // AbstractGlobalStripeReplicas returns abstract global stripe replicas
 func AbstractGlobalStripeReplicas(
 	replicas []proto.VunitLocation,
 	mode codemode.CodeMode,
 	badIdxs []uint8) ([]proto.VunitLocation, error) {
-	globalStripeIdxs, _, _ := GlobalStripe(mode)
+	globalStripeIdxs, _, _ := mode.T().GlobalStripe()
 
 	idxs := filterOut(globalStripeIdxs, badIdxs)
 

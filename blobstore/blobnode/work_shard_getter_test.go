@@ -20,7 +20,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -195,7 +194,7 @@ func testGetBenchmarkBids(t *testing.T, mode codemode.CodeMode) {
 	// test broken many
 	allowFailCnt := n + m - codeInfo.PutQuorum
 	minWellReplicasCnt := n + allowFailCnt
-	globalIdxs, n, m := workutils.GlobalStripe(mode)
+	globalIdxs, n, m := mode.T().GlobalStripe()
 	brokenReplicasCnt := m + n - (minWellReplicasCnt) + 1
 	if brokenReplicasCnt <= 0 {
 		return
