@@ -15,11 +15,14 @@
 package errors
 
 const (
-	CodeInvalidParam = 600
-	CodeAlreadyExist = 601
-	CodeOutOfLimit   = 602
-	CodeInternal     = 603
-	CodeOverload     = 604
+	CodeInvalidParam   = 600
+	CodeAlreadyExist   = 601
+	CodeOutOfLimit     = 602
+	CodeInternal       = 603
+	CodeOverload       = 604
+	CodePathNotExist   = 605
+	CodePathNotEmpty   = 606
+	CodePathFindOnline = 607
 
 	CodeDiskNotFound  = 611
 	CodeDiskBroken    = 613
@@ -48,10 +51,13 @@ const (
 )
 
 var (
-	ErrInvalidParam = Error(CodeInvalidParam)
-	ErrAlreadyExist = Error(CodeAlreadyExist)
-	ErrOutOfLimit   = Error(CodeOutOfLimit)
-	ErrOverload     = Error(CodeOverload)
+	ErrInvalidParam   = Error(CodeInvalidParam)
+	ErrAlreadyExist   = Error(CodeAlreadyExist)
+	ErrOutOfLimit     = Error(CodeOutOfLimit)
+	ErrOverload       = Error(CodeOverload)
+	ErrPathNotExist   = Error(CodePathNotExist)
+	ErrPathNotEmpty   = Error(CodePathNotEmpty)
+	ErrPathFindOnline = Error(CodePathFindOnline)
 
 	ErrNoSuchDisk    = Error(CodeDiskNotFound)
 	ErrDiskBroken    = Error(CodeDiskBroken)
