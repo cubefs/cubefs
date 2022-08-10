@@ -58,7 +58,7 @@ func TestService_WsprpcDiskProbe(t *testing.T) {
 	resp, err := http.DefaultClient.Do(req)
 	require.NotNil(t, resp)
 	resp.Body.Close()
-	require.Equal(t, 600, resp.StatusCode)
+	require.Equal(t, 606, resp.StatusCode)
 	span.Infof("=== resp:%v, err:%v ===", resp, err)
 
 	// err: path not exist
@@ -68,7 +68,7 @@ func TestService_WsprpcDiskProbe(t *testing.T) {
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
-	require.Equal(t, 600, resp.StatusCode)
+	require.Equal(t, 605, resp.StatusCode)
 	span.Infof("=== resp:%v, err:%v ===", resp, err)
 
 	// err: online disk
@@ -79,7 +79,7 @@ func TestService_WsprpcDiskProbe(t *testing.T) {
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
-	require.Equal(t, 600, resp.StatusCode)
+	require.Equal(t, 607, resp.StatusCode)
 	span.Infof("=== resp:%v, err:%v ===", resp, err)
 
 	// gc disk storage

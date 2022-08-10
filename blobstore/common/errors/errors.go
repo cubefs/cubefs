@@ -104,11 +104,14 @@ var errCodeMap = map[int]string{
 	CodeAllocBidFromCm:    "alloc bid from clustermgr error",
 
 	// blobnode
-	CodeInvalidParam: "blobnode: invalid params",
-	CodeAlreadyExist: "blobnode: entry already exist",
-	CodeOutOfLimit:   "blobnode: out of limit",
-	CodeInternal:     "blobnode: internal error",
-	CodeOverload:     "blobnode: service is overload",
+	CodeInvalidParam:   "blobnode: invalid params",
+	CodeAlreadyExist:   "blobnode: entry already exist",
+	CodeOutOfLimit:     "blobnode: out of limit",
+	CodeInternal:       "blobnode: internal error",
+	CodeOverload:       "blobnode: service is overload",
+	CodePathNotExist:   "blobnode: path is not exist",
+	CodePathNotEmpty:   "blobnode: path is not empty",
+	CodePathFindOnline: "blobnode: path find online disk",
 
 	CodeDiskNotFound:  "disk not found",
 	CodeDiskBroken:    "disk is broken",
