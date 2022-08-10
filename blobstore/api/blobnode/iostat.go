@@ -30,19 +30,21 @@ const (
 type IOType uint64
 
 const (
-	NormalIO   IOType = iota // From: external: user io: read/write
-	RepairIO                 // From: external: repair
-	MigrateIO                // From: external: chunk transfer, drop, manualMigrate
-	CompactIO                // From: internal: chunk compact
-	DeleteIO                 // From: external: delete io
-	InternalIO               // From: internal: io, such rubbish clean, batch delete
-	InspectIO                // From: internal: inspect io
+	NormalIO      IOType = iota // From: external: user io: read/write
+	ShardRepairIO               // From: external: shard repair
+	DiskRepairIO                // From: external: disk repair
+	MigrateIO                   // From: external: chunk transfer, drop, manualMigrate
+	CompactIO                   // From: internal: chunk compact
+	DeleteIO                    // From: external: delete io
+	InternalIO                  // From: internal: io, such rubbish clean, batch delete
+	InspectIO                   // From: internal: inspect io
 	IOTypeMax
 )
 
 var IOtypemap = [...]string{
 	"normal",
-	"repair",
+	"shardRepair",
+	"diskRepair",
 	"migrate",
 	"compact",
 	"delete",
@@ -74,8 +76,10 @@ func Setiotype(ctx context.Context, iot IOType) context.Context {
 
 func Task2IOType(t proto.TaskType) IOType {
 	switch t {
-	case proto.TaskTypeDiskRepair, proto.TaskTypeShardRepair:
-		return RepairIO
+	case proto.TaskTypeShardRepair:
+		return ShardRepairIO
+	case proto.TaskTypeDiskRepair:
+		return DiskRepairIO
 	default:
 		return MigrateIO
 	}

@@ -24,7 +24,8 @@ const (
 	level0   Priority = iota // high, need low latency
 	level1                   // normal
 	level2                   // low
-	level3                   // least
+	level3                   // less
+	level4                   // least
 	levelNum                 // numbers of priority
 )
 
@@ -33,18 +34,20 @@ var levelNames = [...]string{
 	"level1",
 	"level2",
 	"level3",
+	"level4",
 }
 
 var _ = levelNames[levelNum-1]
 
 var levelPriorityTable = map[blobnode.IOType]Priority{
-	blobnode.NormalIO:   level0,
-	blobnode.RepairIO:   level1,
-	blobnode.DeleteIO:   level1,
-	blobnode.MigrateIO:  level2,
-	blobnode.CompactIO:  level2,
-	blobnode.InternalIO: level3,
-	blobnode.InspectIO:  level3,
+	blobnode.NormalIO:      level0,
+	blobnode.ShardRepairIO: level1,
+	blobnode.DiskRepairIO:  level2,
+	blobnode.DeleteIO:      level2,
+	blobnode.CompactIO:     level2,
+	blobnode.MigrateIO:     level3,
+	blobnode.InternalIO:    level4,
+	blobnode.InspectIO:     level4,
 }
 
 func (pri Priority) String() string {
@@ -64,7 +67,7 @@ func GetPriority(ioType blobnode.IOType) Priority {
 	if pri, ok := levelPriorityTable[ioType]; ok {
 		return pri
 	}
-	return level3 // lowest
+	return level4
 }
 
 func GetLevels() []string {
