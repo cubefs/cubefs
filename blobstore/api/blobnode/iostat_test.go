@@ -31,7 +31,7 @@ func TestGetIotype(t *testing.T) {
 	iotype = Getiotype(ctx0)
 	require.Equal(t, CompactIO, iotype)
 
-	ctx1 := context.WithValue(ctx0, _ioFlowStatKey, RepairIO)
+	ctx1 := context.WithValue(ctx0, _ioFlowStatKey, DiskRepairIO)
 	iotype = Getiotype(ctx1)
-	require.Equal(t, RepairIO, iotype)
+	require.Equal(t, DiskRepairIO, iotype)
 }
