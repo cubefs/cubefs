@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func testWithAllMode(t *testing.T, testFunc func(t *testing.T, mode codemode.CodeMode)) {
@@ -33,18 +32,6 @@ type stripeLayoutTest struct {
 	N [][]int
 	M [][]int
 	L [][]int
-}
-
-func (stripe *stripeLayoutTest) globalStripe() []int {
-	var globalStripeIdxs []int
-	for _, idxs := range stripe.N {
-		globalStripeIdxs = append(globalStripeIdxs, idxs...)
-	}
-
-	for _, idxs := range stripe.M {
-		globalStripeIdxs = append(globalStripeIdxs, idxs...)
-	}
-	return globalStripeIdxs
 }
 
 var EC15P12 = stripeLayoutTest{
@@ -214,52 +201,4 @@ LoopTest:
 		}
 	}
 	require.Equal(t, false, status.CanRecover())
-}
-
-func genMockVol(vid proto.Vid, mode codemode.CodeMode) ([]proto.VunitLocation, codemode.CodeMode) {
-	modeInfo := mode.Tactic()
-	replicas := make([]proto.VunitLocation, modeInfo.N+modeInfo.M+modeInfo.L)
-	for i := 0; i < modeInfo.N+modeInfo.M+modeInfo.L; i++ {
-		vuid, _ := proto.NewVuid(vid, uint8(i), 1)
-		replicas[i] = proto.VunitLocation{
-			Vuid:   vuid,
-			Host:   "127.0.0.1:xxxx",
-			DiskID: 1,
-		}
-	}
-	return replicas, mode
-}
-
-func TestAbstractGlobalStripeReplicas(t *testing.T) {
-	testWithAllMode(t, testAbstractGlobalStripeReplicas)
-}
-
-func testAbstractGlobalStripeReplicas(t *testing.T, mode codemode.CodeMode) {
-	testAbstractGlobalStripeReplicasWithBads(t, mode, []uint8{})
-	testAbstractGlobalStripeReplicasWithBads(t, mode, []uint8{0})
-	testAbstractGlobalStripeReplicasWithBads(t, mode, []uint8{0, 1})
-}
-
-func testAbstractGlobalStripeReplicasWithBads(t *testing.T, mode codemode.CodeMode, badIdxs []uint8) {
-	replicas, _ := genMockVol(1, mode)
-	globalStripe, err := AbstractGlobalStripeReplicas(replicas, mode, badIdxs)
-	require.NoError(t, err)
-
-	stripeLayout := allModeStripe[mode]
-	expectStripe := stripeLayout.globalStripe()
-	require.Equal(t, len(expectStripe), len(globalStripe)+len(badIdxs))
-
-	m := make(map[int]struct{})
-	for _, replicas := range globalStripe {
-		m[int(replicas.Vuid.Index())] = struct{}{}
-	}
-
-	for _, idx := range badIdxs {
-		m[int(idx)] = struct{}{}
-	}
-
-	for _, idx := range expectStripe {
-		_, ok := m[idx]
-		require.Equal(t, true, ok)
-	}
 }
