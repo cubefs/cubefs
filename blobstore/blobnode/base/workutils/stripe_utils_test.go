@@ -23,17 +23,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
-var testModes = []codemode.CodeMode{
-	codemode.EC15P12,
-	codemode.EC6P6,
-	codemode.EC16P20L2,
-	codemode.EC6P10L2,
-	codemode.EC6P3L3,
-	codemode.EC4P4L2,
-}
-
 func testWithAllMode(t *testing.T, testFunc func(t *testing.T, mode codemode.CodeMode)) {
-	for _, mode := range testModes {
+	for mode := range allModeStripe {
 		testFunc(t, mode)
 	}
 }
@@ -56,13 +47,13 @@ func (stripe *stripeLayoutTest) globalStripe() []int {
 	return globalStripeIdxs
 }
 
-var EC15p12 = stripeLayoutTest{
+var EC15P12 = stripeLayoutTest{
 	N: [][]int{{0, 1, 2, 3, 4}, {5, 6, 7, 8, 9}, {10, 11, 12, 13, 14}},
 	M: [][]int{{15, 16, 17, 18}, {19, 20, 21, 22}, {23, 24, 25, 26}},
 	L: [][]int{{}},
 }
 
-var EC6p6 = stripeLayoutTest{
+var EC6P6 = stripeLayoutTest{
 	N: [][]int{{0, 1}, {2, 3}, {4, 5}},
 	M: [][]int{{6, 7}, {8, 9}, {10, 11}},
 	L: [][]int{{}},
@@ -93,20 +84,12 @@ var EC4P4L2 = stripeLayoutTest{
 }
 
 var allModeStripe = map[codemode.CodeMode]stripeLayoutTest{
-	codemode.EC15P12:   EC15p12,
-	codemode.EC6P6:     EC6p6,
+	codemode.EC15P12:   EC15P12,
+	codemode.EC6P6:     EC6P6,
 	codemode.EC16P20L2: EC16P20L2,
 	codemode.EC6P10L2:  EC6P10L2,
 	codemode.EC6P3L3:   EC6P3L3,
 	codemode.EC4P4L2:   EC4P4L2,
-}
-
-func testGetIdcLocalStripe(mode codemode.CodeMode, idcIdx int) (local []int, n, m int) {
-	stripe := allModeStripe[mode]
-	local = append(local, stripe.N[idcIdx]...)
-	local = append(local, stripe.M[idcIdx]...)
-	local = append(local, stripe.L[idcIdx]...)
-	return local, len(stripe.N[idcIdx]) + len(stripe.M[idcIdx]), len(stripe.L[idcIdx])
 }
 
 func testGetIdcIdx(mode codemode.CodeMode, idx int) (idcIdx int) {
@@ -115,14 +98,14 @@ func testGetIdcIdx(mode codemode.CodeMode, idx int) (idcIdx int) {
 	for idcIdx = 0; idcIdx < codeInfo.AZCount; idcIdx++ {
 		var idcLocalStripeIdxs [][]int
 		idcLocalStripeIdxs = append(idcLocalStripeIdxs, stripe.N[idcIdx])
-		if containIntTest(idx, idcLocalStripeIdxs) {
+		if contains(idcLocalStripeIdxs, idx) {
 			return idcIdx
 		}
 	}
 	return
 }
 
-func containIntTest(i int, lists [][]int) bool {
+func contains(lists [][]int, i int) bool {
 	for _, l := range lists {
 		for _, val := range l {
 			if val == i {
@@ -157,23 +140,14 @@ func uin8ListTointListTest(l []uint8) []int {
 	return ret
 }
 
-func TestIsLocalStripeUint(t *testing.T) {
-	testWithAllMode(t, testIsLocalStripeUint)
+func TestIsLocalStripeIndex(t *testing.T) {
+	testWithAllMode(t, testIsLocalStripeIndex)
 }
 
-func testIsLocalStripeUint(t *testing.T, mode codemode.CodeMode) {
-	codeInfo := mode.Tactic()
-
-	n := codeInfo.N
-	m := codeInfo.M
-	l := codeInfo.L
-	for idx := 0; idx < n+m+l; idx++ {
-		flag := IsLocalStripeUint(idx, mode)
-		isLocal := false
-		if containIntTest(idx, allModeStripe[mode].L) {
-			isLocal = true
-		}
-		require.Equal(t, isLocal, flag)
+func testIsLocalStripeIndex(t *testing.T, mode codemode.CodeMode) {
+	for idx := 0; idx < mode.GetShardNum(); idx++ {
+		isLocal := contains(allModeStripe[mode].L, idx)
+		require.Equal(t, isLocal, IsLocalStripeIndex(mode, idx))
 	}
 }
 
@@ -198,92 +172,6 @@ func testIdxSplitByIdc(t *testing.T, mode codemode.CodeMode) {
 		compareStripe = append(compareStripe, stripe.L[idcIdx]...)
 		require.Equal(t, true, listEqualTest(uin8ListTointListTest(idxs), compareStripe))
 	}
-}
-
-func TestLocalStripe(t *testing.T) {
-	testWithAllMode(t, testLocalStripe)
-}
-
-func testLocalStripe(t *testing.T, mode codemode.CodeMode) {
-	codeInfo := mode.Tactic()
-	if codeInfo.L == 0 {
-		return
-	}
-
-	stripe := allModeStripe[mode]
-	for i := 0; i < codeInfo.AZCount; i++ {
-		var localStripe []int
-		localStripe = append(localStripe, stripe.N[i]...)
-		localStripe = append(localStripe, stripe.M[i]...)
-		localStripe = append(localStripe, stripe.L[i]...)
-		localN := len(stripe.N[i]) + len(stripe.M[i])
-		localM := len(stripe.L[i])
-		for _, idx := range localStripe {
-			localIdxs, n, m := LocalStripe(idx, mode)
-			require.Equal(t, localN, n)
-			require.Equal(t, localM, m)
-			require.Equal(t, true, listEqualTest(localIdxs, localStripe))
-		}
-	}
-}
-
-func TestGlobalStripe(t *testing.T) {
-	testWithAllMode(t, testGlobalStripe)
-}
-
-func testGlobalStripe(t *testing.T, mode codemode.CodeMode) {
-	codeInfo := mode.Tactic()
-	stripe := allModeStripe[mode]
-	var compareGlobal []int
-	for i := 0; i < codeInfo.AZCount; i++ {
-		compareGlobal = append(compareGlobal, stripe.N[i]...)
-		compareGlobal = append(compareGlobal, stripe.M[i]...)
-	}
-
-	global, n, m := GlobalStripe(mode)
-	require.Equal(t, n, codeInfo.N)
-	require.Equal(t, m, codeInfo.M)
-	require.Equal(t, true, listEqualTest(global, compareGlobal))
-}
-
-func TestGetAllLocalStripe(t *testing.T) {
-	testWithAllMode(t, testGetAllLocalStripe)
-}
-
-func testGetAllLocalStripe(t *testing.T, mode codemode.CodeMode) {
-	codeInfo := mode.Tactic()
-	if codeInfo.L == 0 {
-		localStripes, n, m := AllLocalStripe(mode)
-		require.Equal(t, 0, len(localStripes))
-		require.Equal(t, 0, n)
-		require.Equal(t, 0, m)
-		return
-	}
-
-	localStripes, n, m := AllLocalStripe(mode)
-	require.Equal(t, codeInfo.AZCount, len(localStripes))
-	idcMap := make(map[int]bool)
-	for _, local := range localStripes {
-		idcIdx := testGetIdcIdx(mode, local[0])
-		idcMap[idcIdx] = true
-		compareLocal, compareN, compareM := testGetIdcLocalStripe(mode, idcIdx)
-		require.Equal(t, true, listEqualTest(local, compareLocal))
-		require.Equal(t, compareN, n)
-		require.Equal(t, compareM, m)
-	}
-	require.Equal(t, codeInfo.AZCount, len(idcMap))
-}
-
-func TestModeFunc(t *testing.T) {
-	codeMode := codemode.EC16P20L2
-	mode := codeMode.Tactic()
-	N := mode.N
-	M := mode.M
-	L := mode.L
-	PutQuorum := mode.PutQuorum
-
-	require.Equal(t, N+L+M, AllReplCnt(codeMode))
-	require.Equal(t, N+M-PutQuorum, AllowFailCnt(codeMode))
 }
 
 func TestCanRecover(t *testing.T) {
@@ -313,14 +201,14 @@ LoopTest:
 	for i := 0; i < mode.Tactic().AZCount; i++ {
 		for _, idx := range stripeLayout.N[i] {
 			status.Exist(uint8(idx))
-			if status.existCnt == ModeN(mode)-1 {
+			if status.existCnt == mode.Tactic().N-1 {
 				break LoopTest
 			}
 		}
 
 		for _, idx := range stripeLayout.M[i] {
 			status.Exist(uint8(idx))
-			if status.existCnt == ModeN(mode)-1 {
+			if status.existCnt == mode.Tactic().N-1 {
 				break LoopTest
 			}
 		}

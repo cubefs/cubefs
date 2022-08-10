@@ -27,7 +27,6 @@ import (
 	"github.com/klauspost/reedsolomon"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -117,7 +116,7 @@ func NewMockGetterWithBids(replicas []proto.VunitLocation, mode codemode.CodeMod
 		}
 
 		stripeShards := make([][]byte, modeInfo.N+modeInfo.M)
-		globalStripe, n, m := workutils.GlobalStripe(mode)
+		globalStripe, n, m := mode.T().GlobalStripe()
 		for _, nShardIdx := range globalStripe[0:n] {
 			vuid := replicas[nShardIdx].Vuid
 			data := genMockBytes(byte(uint8(bids[i])+vuid.Index()), sizes[i])
@@ -138,7 +137,7 @@ func NewMockGetterWithBids(replicas []proto.VunitLocation, mode codemode.CodeMod
 			continue
 		}
 
-		localStripes, localN, localM := workutils.AllLocalStripe(mode)
+		localStripes, localN, localM := mode.T().AllLocalStripe()
 		for _, localStripe := range localStripes {
 			localStripeShards := abstractShards(localStripe, stripeShards)
 			genParityShards(localN, localM, localStripeShards)
