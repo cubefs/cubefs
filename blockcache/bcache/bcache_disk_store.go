@@ -514,6 +514,11 @@ func (d *DiskStore) flushKey(key string, data []byte) error {
 		stat.EndStat("Cache:Write:FlushData", err, bgTime, 1)
 	}()
 	cachePath := d.buildCachePath(key, d.dir)
+	info, err := os.Stat(cachePath)
+	//if already cached
+	if err == nil && info.Size() > 0 {
+		return nil
+	}
 	log.LogDebugf("TRACE BCacheService flushKey Enter. key(%v) cachePath(%v)", key, cachePath)
 	d.checkBuildCacheDir(filepath.Dir(cachePath))
 	tmp := cachePath + ".tmp"
@@ -536,13 +541,13 @@ func (d *DiskStore) flushKey(key string, data []byte) error {
 		log.LogErrorf("Close tmp failed: file:%s err:%s!", tmp, err)
 		return err
 	}
-	info, err := os.Stat(cachePath)
-	//if already cached
-	if !os.IsNotExist(err) {
-		atomic.AddInt64(&d.usedSize, -(info.Size()))
-		atomic.AddInt64(&d.usedCount, -1)
-		os.Remove(cachePath)
-	}
+	//info, err := os.Stat(cachePath)
+	////if already cached
+	//if !os.IsNotExist(err) {
+	//	atomic.AddInt64(&d.usedSize, -(info.Size()))
+	//	atomic.AddInt64(&d.usedCount, -1)
+	//	os.Remove(cachePath)
+	//}
 	err = os.Rename(tmp, cachePath)
 	if err != nil {
 		log.LogErrorf("Rename block tmp file:%s err:%s!", tmp, err)
