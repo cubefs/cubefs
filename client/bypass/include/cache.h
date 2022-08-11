@@ -36,7 +36,7 @@ page_t *new_page(int page_size);
 void release_page(page_t* p);
 int read_page(page_t *p, ino_t inode, int index, void *data, int offset, int count);
 int write_page(page_t *p, ino_t inode, int index, const void *data, int offset, int count);
-int flush_page(page_t *p);
+int flush_page(page_t *p, ino_t inode, int index);
 void clear_page(page_t *p);
 void occupy_page(page_t *p, struct inode_shared *inode_info, int index);
 void clear_page_raw(page_t *p);
@@ -67,7 +67,7 @@ typedef ssize_t (*cfs_pwrite_inode_t)(int64_t id, ino_t ino, const void *buf, si
 #define FILE_CACHE_WRITE_THROUGH 0x2
 #define FILE_CACHE_PRIORITY_HIGH 0x4
 
-typedef struct inode_shared {
+typedef struct inode_info {
     int64_t client_id;
     ino_t inode;
     bool use_pagecache;
