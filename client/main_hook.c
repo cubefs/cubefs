@@ -524,6 +524,7 @@ __attribute__((constructor)) static void setup(void) {
 }
 
 __attribute__((destructor)) static void destroy(void) {
+    flush_logs();
     pthread_rwlock_destroy(&update_rwlock);
 }
 

@@ -1,4 +1,5 @@
 #include "client.h"
+
 /*
  * File operations
  */
@@ -141,7 +142,9 @@ int record_open_file(cfs_file_t *cfs_file) {
     f->dup_ref = cfs_file->dup_ref;
 
     inode_info_t *inode_info = record_inode_info(cfs_file->inode, cfs_file->file_type, cfs_file->size);
-    if (inode_info == NULL) return -1;
+    if (inode_info == NULL) {
+        return -1;
+    }
     f->inode_info = inode_info;
 
     pthread_rwlock_wrlock(&g_client_info.open_files_lock);
@@ -170,7 +173,7 @@ int real_openat(int dirfd, const char *pathname, int flags, ...) {
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    int fd;
+    int fd, fd_origin;
     if(g_hook && is_cfs) {
         #ifdef DUP_TO_LOCAL
         fd = libc_openat(dirfd, pathname, flags, mode);
@@ -184,17 +187,10 @@ int real_openat(int dirfd, const char *pathname, int flags, ...) {
         if(fd < 0) {
             goto log;
         }
-        cfs_file_t cfs_file;
-        cfs_get_file(g_client_info.cfs_client_id, fd, &cfs_file);
-        if(record_open_file(&cfs_file) < 0) {
-            fprintf(stderr, "cache open_file %d failed.\n", fd);
-            fd = -1;
-        }
     } else {
         fd = libc_openat(dirfd, pathname, flags, mode);
     }
 
-log:
     if(fd > 0 && fd & CFS_FD_MASK) {
         if(g_hook && is_cfs) {
             cfs_close(g_client_info.cfs_client_id, fd);
@@ -203,21 +199,30 @@ log:
         }
         fd = -1;
     }
+    fd_origin = fd;
+    if(g_hook && is_cfs && fd > 0) {
+        fd |= CFS_FD_MASK;
+        cfs_file_t cfs_file;
+        cfs_get_file(g_client_info.cfs_client_id, fd, &cfs_file);
+        if(record_open_file(&cfs_file) < 0) {
+            fprintf(stderr, "cache open_file %d failed.\n", fd);
+            fd = -1;
+        }
+    }
+
+log:
     free(path);
     #if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
     pthread_rwlock_wrlock(&g_client_info.fd_path_lock);
-    g_client_info.fd_path[fd] = strdup(pathname);
+    g_client_info.fd_path[fd_origin] = strdup(pathname);
     pthread_rwlock_unlock(&g_client_info.fd_path_lock);
     #endif
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, flags:%#x(%s%s%s%s%s%s%s), re:%d\n",
     __func__, fd_in_cfs(fd), dirfd, pathname, flags, flags&O_RDONLY?"O_RDONLY|":"",
     flags&O_WRONLY?"O_WRONLY|":"", flags&O_RDWR?"O_RDWR|":"", flags&O_CREAT?"O_CREAT|":"",
-    flags&O_DIRECT?"O_DIRECT|":"", flags&O_SYNC?"O_SYNC|":"", flags&O_DSYNC?"O_DSYNC":"", fd);
+    flags&O_DIRECT?"O_DIRECT|":"", flags&O_SYNC?"O_SYNC|":"", flags&O_DSYNC?"O_DSYNC":"", fd_origin);
     #endif
-    if(g_hook && is_cfs && fd > 0) {
-        fd |= CFS_FD_MASK;
-    }
     return fd;
 }
 
@@ -2184,6 +2189,7 @@ static void init_cfs_func(void *handle) {
     cfs_writev = (cfs_writev_t)dlsym(handle, "cfs_writev");
     cfs_pwritev = (cfs_pwritev_t)dlsym(handle, "cfs_pwritev");
     cfs_lseek = (cfs_lseek_t)dlsym(handle, "cfs_lseek");
+    cfs_read_requests = (cfs_read_requests_t)dlsym(handle, "cfs_read_requests");
 }
 
 int start_libs(void *args) {
@@ -2273,6 +2279,7 @@ int start_libs(void *args) {
     if(g_client_info.big_page_cache == NULL || g_client_info.small_page_cache == NULL) {
         goto out;
     }
+    g_client_info.conn_pool = new_conn_pool();
 
     g_client_info.cfs_client_id = cfs_new_client(NULL, g_client_info.config_path, client_state->sdk_state);
     if(g_client_info.cfs_client_id < 0) {
@@ -2366,6 +2373,7 @@ void* stop_libs() {
     flush_and_release(g_client_info.open_inodes);
     release_lru_cache(g_client_info.big_page_cache);
     release_lru_cache(g_client_info.small_page_cache);
+    release_conn_pool(g_client_info.conn_pool);
     size = cfs_sdk_state(g_client_info.cfs_client_id, NULL, 0);
     if (size > 0) {
         sdk_state = (char *)malloc(size);

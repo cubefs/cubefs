@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <map>
 #include <set>
+#include <vector>
 #include "sdk.h"
 #include "util.h"
 
@@ -16,9 +17,9 @@
 #define BIG_PAGE_SIZE 131072
 #define SMALL_PAGE_SIZE 16384
 #define PAGE_DIRTY 0x1
-struct inode_shared;
+struct inode_info;
 typedef struct page {
-    struct inode_shared *inode_info;
+    struct inode_info *inode_info;
     int index;
     int offset;
     // flush from dirty_offset, to avoid overwriting to SDK
@@ -37,9 +38,15 @@ void release_page(page_t* p);
 int read_page(page_t *p, ino_t inode, int index, void *data, int offset, int count);
 int write_page(page_t *p, ino_t inode, int index, const void *data, int offset, int count);
 int flush_page(page_t *p, ino_t inode, int index);
-void clear_page(page_t *p);
+void clear_page(page_t *p, ino_t inode, int index);
 void occupy_page(page_t *p, struct inode_shared *inode_info, int index);
-void clear_page_raw(page_t *p);
+void clear_page_raw(page_t *p, ino_t inode, int index);
+
+typedef struct {
+    page_t *p;
+    ino_t inode;
+    int index;
+} page_meta_t;
 
 // sleep when dirty page ratio is below 1/threshold
 #define BG_FLUSH_SLEEP_THRESHOLD 10

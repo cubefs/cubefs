@@ -359,6 +359,7 @@ typedef struct {
 
     lru_cache_t *big_page_cache;
     lru_cache_t *small_page_cache;
+    conn_pool_t *conn_pool;
 
     // map for each open fd to its pathname, to print pathname in debug log
     map<int, char *> fd_path;
@@ -721,7 +722,7 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
         if(p == NULL) {
             break;
         }
-        int sock_fd = get_conn(g_conn_pool, req[i].dp_host, req[i].dp_port);
+        int sock_fd = get_conn(g_client_info.conn_pool, req[i].dp_host, req[i].dp_port);
         if(sock_fd < 0) {
             free(p);
             break;
@@ -741,7 +742,7 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
         #ifdef _CFS_DEBUG
         log_debug("cfs_pread_sock read sock, file_offset:%d, host:%s, sock_fd:%d, dp:%d, extent:%d, extent_offset:%ld, size:%d, re:%d\n", req[i].file_offset, req[i].dp_host, sock_fd, req[i].partition_id, req[i].extent_id, req[i].extent_offset, req[i].size, re);
         #endif
-        put_conn(g_conn_pool, req[i].dp_host, req[i].dp_port, sock_fd);
+        put_conn(g_client_info.conn_pool, req[i].dp_host, req[i].dp_port, sock_fd);
         read += re;
         if(re != req[i].size) {
             break;
@@ -757,10 +758,10 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
 }
 
 static const char *get_fd_path(int fd) {
-    pthread_rwlock_rdlock(&g_fd_path_lock);
-    auto it = g_fd_path.find(fd);
-    const char *path = it != g_fd_path.end() ? it->second : "";
-    pthread_rwlock_unlock(&g_fd_path_lock);
+    pthread_rwlock_rdlock(&g_client_info.fd_path_lock);
+    auto it = g_client_info.fd_path.find(fd);
+    const char *path = it != g_client_info.fd_path.end() ? it->second : "";
+    pthread_rwlock_unlock(&g_client_info.fd_path_lock);
     return path;
 }
 #endif

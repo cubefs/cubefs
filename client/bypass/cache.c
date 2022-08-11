@@ -25,8 +25,10 @@ page_t *new_page(int page_size) {
 }
 
 void release_page(page_t* p) {
-    if(p == NULL) return;
-    if(p->data != NULL) free(p->data);
+    if(p == NULL) {
+        return;
+    }
+    free(p->data);
     pthread_rwlock_destroy(&p->lock);
     free(p);
 }
@@ -120,13 +122,13 @@ log:
     return re;
 }
 
-void clear_page(page_t *p) {
+void clear_page(page_t *p, ino_t inode, int index) {
     pthread_rwlock_wrlock(&p->lock);
     #ifdef _CFS_DEBUG
     page_str(p);
     log_debug("clear_page, p:(%s)\n", str);
     #endif
-    clear_page_raw(p);
+    clear_page_raw(p, inode, index);
     pthread_rwlock_unlock(&p->lock);
 }
 
@@ -144,7 +146,7 @@ void occupy_page(page_t *p, inode_info_t *inode_info, int index) {
     pthread_rwlock_unlock(&p->lock);
 }
 
-void clear_page_raw(page_t *p) {
+void clear_page_raw(page_t *p, ino_t inode, int index) {
     // both file eviction and page allocation will clear page
     // inode 0 means not check
     if(p->inode_info == NULL || (inode > 0 && (p->inode_info->inode != inode || p->index != index))) {
@@ -181,12 +183,14 @@ lru_cache_t *new_lru_cache(int cache_size, int page_size) {
 }
 
 void release_lru_cache(lru_cache_t *c) {
-    if(c == NULL) return;
-
+    if(c == NULL) {
+        return;
+    }
     page_t *p, *next;
     p = c->head;
-    if (p != NULL)
+    if (p != NULL) {
         p->prev->next = NULL;
+    }
     while(p != NULL) {
         next = p->next;
         release_page(p);
@@ -281,7 +285,7 @@ void *do_flush_inode(void *arg) {
         }
         dirty_num = 0;
         page_num = 0;
-        vector<page_t *> pages;
+        vector<page_meta_t> pages;
         pthread_rwlock_rdlock(open_inodes_lock);
         for(const auto &item : *open_inodes) {
             if (*stop) {
@@ -302,7 +306,7 @@ void *do_flush_inode(void *arg) {
                     if(p == NULL) {
                         continue;
                     }
-                    pages.push_back(p);
+                    pages.push_back(page_meta_t{.p = p, .inode = inode_info->inode, .index = i*PAGES_PER_BLOCK + j});
                 }
             }
         }
@@ -315,7 +319,7 @@ void *do_flush_inode(void *arg) {
             p = pages[i].p;
             if(p->flag&PAGE_DIRTY && p->len == p->inode_info->c->page_size) {
                 dirty_num++;
-                flush_page(p, f->inode_info->inode, i*PAGES_PER_BLOCK + j);
+                flush_page(p, pages[i].inode, pages[i].index);
             }
         }
 
@@ -384,23 +388,22 @@ void release_inode_info(inode_info_t *inode_info) {
         return;
     }
 
-    page_t *p;
     pthread_mutex_destroy(&inode_info->pages_lock);
     if(!inode_info->use_pagecache) {
         free(inode_info);
         return;
     }
 
+    page_t *p;
     for(int i = 0; i < BLOCKS_PER_FILE; i++) {
         if(inode_info->pages[i] == NULL) {
             continue;
         }
         for(int j = 0; j < PAGES_PER_BLOCK; j++) {
             p = inode_info->pages[i][j];
-            if (p == NULL) {
-                continue;
+            if (p != NULL) {
+                clear_page(p, inode_info->inode, i*PAGES_PER_BLOCK + j);
             }
-            p->inode_info = NULL;
         }
         free(inode_info->pages[i]);
     }
@@ -576,7 +579,7 @@ void clear_inode_range(inode_info_t *inode_info, off_t offset, size_t count) {
         }
         p = inode_info->pages[block_index][i%PAGES_PER_BLOCK];
         if(p != NULL) {
-            clear_page(p);
+            clear_page(p, inode_info->inode, i);
         }
     }
 }

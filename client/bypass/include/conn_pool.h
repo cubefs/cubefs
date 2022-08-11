@@ -29,11 +29,12 @@ typedef struct {
 } conn_t;
 
 typedef struct {
-    map<string, queue<conn_t*>*> *pool;
+    map<string, queue<conn_t>*> *pool;
     pthread_rwlock_t lock;
 } conn_pool_t;
 
 conn_pool_t *new_conn_pool();
+void release_conn_pool(conn_pool_t *conn_pool);
 int get_conn(conn_pool_t *conn_pool, const char *ip, int port);
 void put_conn(conn_pool_t *conn_pool, const char *ip, int port, int sock_fd);
 
