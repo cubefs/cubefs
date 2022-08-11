@@ -36,7 +36,7 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 	var extend = NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), []byte(req.Value))
 
-	resp, err = mp.putExtend(p.Ctx(), opFSMSetXAttr, p.Remote(), extend)
+	resp, err = mp.putExtend(p.Ctx(), opFSMSetXAttr, p.RemoteWithReqID(), extend)
 	if  err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -143,7 +143,7 @@ func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (
 
 	var extend = NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), nil)
-	resp, err = mp.putExtend(p.Ctx(), opFSMRemoveXAttr, p.Remote(), extend)
+	resp, err = mp.putExtend(p.Ctx(), opFSMRemoveXAttr, p.RemoteWithReqID(), extend)
 	if  err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return

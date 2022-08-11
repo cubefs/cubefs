@@ -579,13 +579,19 @@ func newMetaPartitionPromoteLearnerCmd(client *master.MasterClient) *cobra.Comma
 }
 
 func newMetaPartitionResetCursorCmd(client *master.MasterClient) *cobra.Command {
-	var optForce bool
+	var (
+		optForce           bool
+		optCursorResetMode string
+		optNewCursor       uint64
+	)
 	var cmd = &cobra.Command{
-		Use:   CliOpResetCursor + " [META PARTITION ID] [inode]",
+		Use:   CliOpResetCursor + " [META PARTITION ID]",
 		Short: cmdMetaPartitionResetCursorShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			inodeId := uint64(0)
+			if len(args) <= 0 {
+				stdout("META PARTITION ID is needed\n")
+			}
 			ip := ""
 			var mp *proto.MetaPartitionInfo
 			partitionID, err := strconv.ParseUint(args[0], 10, 64)
@@ -594,12 +600,6 @@ func newMetaPartitionResetCursorCmd(client *master.MasterClient) *cobra.Command 
 				return
 			}
 
-			if len(args) >= 2 {
-				inodeId, err = strconv.ParseUint(args[1], 10, 64)
-				if err != nil {
-					inodeId = 0
-				}
-			}
 			if mp, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
 				stdout("%v\n", err)
 				return
@@ -613,7 +613,7 @@ func newMetaPartitionResetCursorCmd(client *master.MasterClient) *cobra.Command 
 			ip += ":" + strconv.Itoa(int(client.MetaNodeProfPort))
 
 			mtClient := meta.NewMetaHttpClient(ip, false)
-			resp, err := mtClient.ResetCursor(partitionID, inodeId, optForce)
+			resp, err := mtClient.ResetCursor(partitionID, optCursorResetMode, optNewCursor, optForce)
 			if err != nil {
 				errout("get resp err:%s\n", err.Error())
 			}
@@ -627,7 +627,10 @@ func newMetaPartitionResetCursorCmd(client *master.MasterClient) *cobra.Command 
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().BoolVar(&optForce, "force", false, "force reset cursor through max inode is high")
+
+	cmd.Flags().StringVar(&optCursorResetMode, "reset-type", "", "cursor reset type:add or sub")
+	cmd.Flags().Uint64Var(&optNewCursor, "new-cursor", 0, "new cursor, just for sub cursor")
+	cmd.Flags().BoolVar(&optForce, "force", false, "force reset cursor through max inode is high, just for sub cursor")
 	return cmd
 }
 

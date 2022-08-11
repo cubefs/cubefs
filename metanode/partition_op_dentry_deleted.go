@@ -35,7 +35,7 @@ func (mp *metaPartition) RecoverDeletedDentry(req *RecoverDeletedDentryReq, p *P
 		return
 	}
 	var ret interface{}
-	ret, err = mp.submit(p.Ctx(), opFSMRecoverDeletedDentry, p.Remote(), val)
+	ret, err = mp.submit(p.Ctx(), opFSMRecoverDeletedDentry, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -73,7 +73,7 @@ func (mp *metaPartition) BatchRecoverDeletedDentry(req *BatchRecoverDeletedDentr
 		return
 	}
 	var ret interface{}
-	ret, err = mp.submit(p.Ctx(), opFSMBatchRecoverDeletedDentry, p.Remote(), val)
+	ret, err = mp.submit(p.Ctx(), opFSMBatchRecoverDeletedDentry, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -102,7 +102,7 @@ func (mp *metaPartition) BatchCleanDeletedDentry(req *BatchCleanDeletedDentryReq
 		return
 	}
 	var ret interface{}
-	ret, err = mp.submit(p.Ctx(), opFSMBatchCleanDeletedDentry, p.Remote(), val)
+	ret, err = mp.submit(p.Ctx(), opFSMBatchCleanDeletedDentry, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -127,7 +127,7 @@ func (mp *metaPartition) CleanDeletedDentry(req *CleanDeletedDentryReq, p *Packe
 		return
 	}
 	var ret interface{}
-	ret, err = mp.submit(p.Ctx(), opFSMCleanDeletedDentry, p.Remote(), val)
+	ret, err = mp.submit(p.Ctx(), opFSMCleanDeletedDentry, p.RemoteWithReqID(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

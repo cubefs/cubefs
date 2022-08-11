@@ -21,7 +21,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 	"hash/crc32"
 	"io"
 	"math"
@@ -29,9 +31,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // APIResponse defines the structure of the response to an HTTP request
@@ -394,18 +393,17 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ino, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	cursorResetType, err := ParseCursorResetMode(r.FormValue("resetType"))
 	if err != nil {
-		ino = 0
-		err = nil
+		resp.Msg = err.Error()
+		return
 	}
 
-	force := false
-	forceStr := r.FormValue("force")
-	if forceStr != "" {
-		force = true
-	}
-	log.LogInfof("Mp[%d] recv reset cursor, ino:%d, force:%v", pid, ino, force)
+	newCursor, _ := strconv.ParseUint(r.FormValue("newCursor"), 10, 64)
+
+	force, _ := strconv.ParseBool(r.FormValue("force"))
+
+	log.LogInfof("Mp[%d] recv reset cursor, type:%s, ino:%d, force:%v", pid, cursorResetType, newCursor, force)
 
 	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
@@ -421,16 +419,17 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := &proto.CursorResetRequest{
-		PartitionId: pid,
-		Inode:       ino,
-		Force:       force,
+		PartitionId:     pid,
+		NewCursor:       newCursor,
+		Force:           force,
+		CursorResetType: int(cursorResetType),
 	}
 
-	cursor, err := mp.(*metaPartition).CursorReset(r.Context(), req)
+	err = mp.(*metaPartition).CursorReset(r.Context(), req)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
-		log.LogInfof("Mp[%d] recv reset cursor failed, cursor:%d, err:%s", pid, cursor, err.Error())
+		log.LogInfof("Mp[%d] recv reset cursor failed, cursor:%d, err:%s", pid, mp.GetBaseConfig().Cursor, err.Error())
 		return
 	}
 
@@ -438,10 +437,10 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 		PartitionId: mp.GetBaseConfig().PartitionId,
 		Start:       mp.GetBaseConfig().Start,
 		End:         mp.GetBaseConfig().End,
-		Cursor:      cursor,
+		Cursor:      mp.GetBaseConfig().Cursor,
 	}
 
-	log.LogInfof("Mp[%d] recv reset cursor success, cursor:%d", pid, cursor)
+	log.LogInfof("Mp[%d] recv reset cursor success, cursor:%d", pid, mp.GetBaseConfig().Cursor)
 	resp.Code = http.StatusOK
 	resp.Msg = "Ok"
 	resp.Data = respInfo

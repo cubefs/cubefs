@@ -217,7 +217,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			log.LogInfof("mp[%v] reset cursor, json unmarshal failed:%s", mp.config.PartitionId, err.Error())
 			return mp.config.Cursor, err
 		}
-		resp, err = mp.internalCursorReset(req)
+		resp = mp.internalCursorReset(req)
 	case opFSMInternalDeleteInodeBatch:
 		if len(msg.V) == 0 {
 			return

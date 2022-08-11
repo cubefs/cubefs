@@ -1294,7 +1294,7 @@ func (m *metadataManager) opMetaCursorReset(conn net.Conn, p *Packet, remoteAddr
 	if !m.serveProxy(conn, mp, p) {
 		return nil
 	}
-	if _, err = mp.(*metaPartition).CursorReset(p.Ctx(), req); err != nil {
+	if err = mp.(*metaPartition).CursorReset(p.Ctx(), req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 	} else {
 		p.PacketOkReply()
