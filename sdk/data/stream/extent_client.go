@@ -319,12 +319,12 @@ func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache bool) e
 	s, ok := client.streamers[inode]
 	if !ok {
 		s = NewStreamer(client, inode)
-		s.needBCache = needBCache
 		client.streamers[inode] = s
 		if !client.disableMetaCache {
 			client.streamerList.PushFront(inode)
 		}
 	}
+	s.needBCache = needBCache
 	if !s.isOpen && !client.disableMetaCache {
 		s.isOpen = true
 		log.LogDebugf("open stream again, ino(%v)", s.inode)

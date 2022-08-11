@@ -173,7 +173,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 		} else {
 			//skip hole,ek is not nil,read block cache firstly
 			cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
-			log.LogDebugf("Stream read hole: ino(%v) req(%v) s.client.bcacheEnable(%v) s.needBCache(%v)", s.inode, req, s.client.bcacheEnable, s.needBCache)
+			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.needBCache(%v)", s.inode, req, s.client.bcacheEnable, s.needBCache)
 			if s.client.bcacheEnable && s.needBCache && req.FileOffset <= bcache.MaxBlockSize {
 				//todo offset is ok for tinyextent?
 				offset := req.FileOffset - int(req.ExtentKey.FileOffset)
