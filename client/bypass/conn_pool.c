@@ -15,6 +15,7 @@ void release_conn_pool(conn_pool_t *conn_pool) {
         queue<conn_t> *q = item.second;
         while(!q->empty()) {
             conn_t conn = q->front();
+            q->pop();
             close(conn.sock_fd);
         }
         delete q;

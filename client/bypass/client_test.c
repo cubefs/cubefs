@@ -231,13 +231,19 @@ void testOp(bool is_cfs, bool ignore) {
 void testDup(bool is_cfs) {
     #define PATH_LEN 100
     char *mount = getenv("CFS_MOUNT_POINT");
-    char *dir = "dir";
+    char *path = "dir";
     char *file = "file1";
     off_t off;
     int dirfd, fd, newfd1, newfd2;
     ssize_t size;
     int res;
 
+    char dir[PATH_LEN] = {0};
+    strcat(dir, mount);
+    strcat(dir, "/");
+    strcat(dir, path);
+    res = mkdir(dir, 0775);
+    assertf(res == 0, "mkdir %s returning %d", dir, res);
     dirfd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
     assertf(dirfd > 0, "open dir %s returning %d", dir, dirfd);
     fd = openat(dirfd, file, O_RDWR | O_CREAT, 0664);

@@ -78,7 +78,7 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
         mode = va_arg(args, mode_t);
         va_end(args);
     }
-    LOCK(real_openat(AT_FDCWD, pathname, flags, mode));
+    LOCK(real_openat(dirfd, pathname, flags, mode));
 }
 weak_alias (openat, openat64)
 

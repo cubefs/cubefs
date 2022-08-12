@@ -696,6 +696,14 @@ int dup_fd(int oldfd, int newfd) {
     return newfd;
 }
 
+int gen_fd(int start) {
+    int fd = start;
+    while(g_client_info.dup_fds.find(fd) != g_client_info.dup_fds.end()) {
+        fd++;
+    }
+    return fd;
+}
+
 file_t *get_open_file(int fd) {
     pthread_rwlock_rdlock(&g_client_info.open_files_lock);
     auto it = g_client_info.open_files.find(fd);
