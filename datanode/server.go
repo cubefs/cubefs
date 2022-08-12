@@ -359,6 +359,9 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 		}
 		break
 	}
+	if dataNode == nil {
+		return
+	}
 	dinfo := convert(dataNode)
 	if len(dinfo.PersistenceDataPartitions) == 0 {
 		return
