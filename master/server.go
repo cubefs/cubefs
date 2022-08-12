@@ -43,7 +43,9 @@ const (
 	WalDir             = "walDir"
 	StoreDir           = "storeDir"
 	EbsAddrKey         = "ebsAddr"
+	BStoreAddrKey      = "bStoreAddr"
 	EbsServicePathKey  = "ebsServicePath"
+	BStoreServicePathKey  = "bStoreServicePath"
 	GroupID            = 1
 	ModuleName         = "master"
 	CfgRetainLogs      = "retainLogs"
@@ -104,7 +106,7 @@ type Server struct {
 	port            string
 	walDir          string
 	storeDir        string
-	ebsAddr         string
+	bStoreAddr      string
 	servicePath     string
 	retainLogs      uint64
 	tickInterval    int
@@ -188,11 +190,15 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.port = cfg.GetString(proto.ListenPort)
 	m.walDir = cfg.GetString(WalDir)
 	m.storeDir = cfg.GetString(StoreDir)
-	m.ebsAddr = cfg.GetString(EbsAddrKey)
-	m.servicePath = cfg.GetString(EbsServicePathKey)
-
+	m.bStoreAddr = cfg.GetString(BStoreAddrKey)
+	if m.bStoreAddr == "" {
+		m.bStoreAddr = cfg.GetString(EbsAddrKey)
+	}
+	m.servicePath = cfg.GetString(BStoreServicePathKey)
+	if m.servicePath == "" {
+		m.servicePath = cfg.GetString(EbsServicePathKey)
+	}
 	peerAddrs := cfg.GetString(cfgPeers)
-
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
 		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (ip,listen,walDir,storeDir,clusterName) is null",
 			m.ip, m.port, m.walDir, m.storeDir, m.clusterName, peerAddrs)
