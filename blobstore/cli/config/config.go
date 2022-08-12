@@ -27,6 +27,9 @@ import (
 
 // Config config in file
 type Config struct {
+	Region           string `json:"region" cache:"Key-Region" help:"region to choose cluster"`
+	DefaultClusterID int    `json:"default_cluster_id" cache:"Key-DefaultClusterID" help:"ID to choose default cluster"`
+
 	Verbose  bool `json:"verbose" cache:"Flag-Verbose" help:"enable verbose mode"`
 	Vverbose bool `json:"vverbose" cache:"Flag-Vverbose" help:"enable verbose verbose mode"`
 
@@ -34,17 +37,20 @@ type Config struct {
 	RedisUser  string   `json:"redis_user" cache:"Key-RedisUser" help:"redis username"`
 	RedisPass  string   `json:"redis_pass" cache:"Key-RedisPass" help:"redis password"`
 
-	ClusterMgrAddrs  []string `json:"cm_addrs" cache:"Key-ClusterMgrAddrs" help:"cluster manager addrs"`
-	ClusterMgrSecret string   `json:"cm_secret" cache:"Key-ClusterMgrSecret" help:"cluster manager secret"`
+	ClusterMgrCluster map[string]string `json:"cm_cluster" cache:"Key-ClusterMgrCluster" help:"cluster manager addrs"`
+	ClusterMgrSecret  string            `json:"cm_secret" cache:"Key-ClusterMgrSecret" help:"cluster manager secret"`
 
 	Access struct { // see more in api/access/client.go
-		ConnMode          uint8    `json:"conn_mode" cache:"Key-Access-ConnMode" help:"connection mode, 4 means no timeout"`
-		ConsulAddr        string   `json:"consul_addr" cache:"Key-Access-ConsulAddr" help:"consul address"`
-		ServiceIntervalMs int64    `json:"service_interval_ms" cache:"Key-Access-ServiceIntervalMs" help:"service interval ms"`
-		PriorityAddrs     []string `json:"priority_addrs" cache:"Key-Access-PriorityAddrs" help:"priority addresses to try"`
-		MaxSizePutOnce    int64    `json:"max_size_put_once" cache:"Key-Access-MaxSizePutOnce" help:"max size put once"`
-		MaxPartRetry      int      `json:"max_part_retry" cache:"Key-Access-MaxPartRetry" help:"max times to retry part"`
-		MaxHostRetry      int      `json:"max_host_retry" cache:"Key-Access-MaxHostRetry" help:"max times to retry host"`
+		ConnMode           uint8    `json:"conn_mode" cache:"Key-Access-ConnMode" help:"connection mode, 4 means no timeout"`
+		ConsulAddr         string   `json:"consul_addr" cache:"Key-Access-ConsulAddr" help:"consul address"`
+		ServiceIntervalMs  int64    `json:"service_interval_ms" cache:"Key-Access-ServiceIntervalMs" help:"service interval ms"`
+		PriorityAddrs      []string `json:"priority_addrs" cache:"Key-Access-PriorityAddrs" help:"priority addresses to try"`
+		MaxSizePutOnce     int64    `json:"max_size_put_once" cache:"Key-Access-MaxSizePutOnce" help:"max size put once"`
+		MaxPartRetry       int      `json:"max_part_retry" cache:"Key-Access-MaxPartRetry" help:"max times to retry part"`
+		MaxHostRetry       int      `json:"max_host_retry" cache:"Key-Access-MaxHostRetry" help:"max times to retry host"`
+		FailRetryIntervalS int      `json:"fail_retry_interval_s" cache:"Key-Access-FailRetryIntervalS" help:"interval for the failed host to retry"`
+		MaxFailsPeriodS    int      `json:"max_fails_period_s" cache:"Key-Access-MaxFailsPeriodS" help:"failure marking time interval, used in conjunction with HostTryTimes"`
+		HostTryTimes       int      `json:"host_try_times" cache:"Key-Access-HostTryTimes" help:"number of host failure retries"`
 	} `json:"access"`
 }
 

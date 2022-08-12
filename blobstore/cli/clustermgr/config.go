@@ -29,8 +29,12 @@ import (
 )
 
 func cmdGetConfig(c *grumble.Context) error {
-	cli, ctx := newCMClient(c.Flags.String("secret"), specificHosts(c.Flags)...), common.CmdContext()
-
+	cli, err := NewCMClient(c.Flags.String("secret"),
+		specificClusterID(c.Flags), specificHost(c.Flags))
+	if err != nil {
+		return err
+	}
+	ctx := common.CmdContext()
 	verbose := flags.Verbose(c.Flags)
 	key := c.Args.String("key")
 	if key != "" {
@@ -65,7 +69,7 @@ func showConfig(key, value string, verbose bool) {
 			value = "\n" + common.Readable(policies)
 		}
 	}
-	fmt.Println("    ", key, ":", value)
+	fmt.Println("\t", key, ":", value)
 }
 
 func addCmdConfig(cmd *grumble.Command) {
@@ -102,7 +106,12 @@ func addCmdConfig(cmd *grumble.Command) {
 			key := c.Args.String("key")
 			value := c.Args.String("value")
 
-			cli, ctx := newCMClient(c.Flags.String("secret"), specificHosts(c.Flags)...), common.CmdContext()
+			cli, err := NewCMClient(c.Flags.String("secret"),
+				specificClusterID(c.Flags), specificHost(c.Flags))
+			if err != nil {
+				return err
+			}
+			ctx := common.CmdContext()
 			oldV, err := cli.GetConfig(ctx, key)
 			if err != nil {
 				if rpc.DetectStatusCode(err) != http.StatusNotFound ||
@@ -135,7 +144,12 @@ func addCmdConfig(cmd *grumble.Command) {
 		Run: func(c *grumble.Context) error {
 			key := c.Args.String("key")
 
-			cli, ctx := newCMClient(c.Flags.String("secret"), specificHosts(c.Flags)...), common.CmdContext()
+			cli, err := NewCMClient(c.Flags.String("secret"),
+				specificClusterID(c.Flags), specificHost(c.Flags))
+			if err != nil {
+				return err
+			}
+			ctx := common.CmdContext()
 			oldV, err := cli.GetConfig(ctx, key)
 			if err != nil {
 				return err

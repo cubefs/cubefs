@@ -16,6 +16,7 @@ package scheduler
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/desertbit/grumble"
 
@@ -89,7 +90,7 @@ func cmdGetTask(c *grumble.Context) error {
 	}
 	key := c.Args.String(_taskID)
 	clusterID := c.Args.Int(_clusterID)
-	clusterMgrCli := newClusterMgrClient()
+	clusterMgrCli := newClusterMgrClient(strconv.Itoa(clusterID))
 	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, proto.ClusterID(clusterID))
 
 	task, err := cli.DetailMigrateTask(common.CmdContext(), &scheduler.MigrateTaskDetailArgs{
@@ -112,7 +113,7 @@ func cmdAddTask(c *grumble.Context) error {
 	if !common.Confirm("?") {
 		return nil
 	}
-	clusterMgrCli := newClusterMgrClient()
+	clusterMgrCli := newClusterMgrClient(strconv.Itoa(clusterID))
 	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, proto.ClusterID(clusterID))
 	err := cli.AddManualMigrateTask(ctx, &scheduler.AddManualMigrateArgs{
 		Vuid:           vuid,
@@ -133,8 +134,9 @@ func cmdListTask(c *grumble.Context) error {
 		return errcode.ErrIllegalTaskType
 	}
 	count := c.Args.Int(_count)
+	clusterID := c.Args.Int(_clusterID)
 	diskID := args.DiskID(c.Args)
-	clusterMgrCli := newClusterMgrTaskClient()
+	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 	prefix := client.GenMigrateTaskPrefix(taskType)
 	if diskID != proto.InvalidDiskID {
 		prefix = client.GenMigrateTaskPrefixByDiskID(taskType, diskID)
@@ -169,8 +171,9 @@ func cmdGetMigratingDisk(c *grumble.Context) error {
 		return errcode.ErrIllegalTaskType
 	}
 	diskID := args.DiskID(c.Args)
+	clusterID := c.Args.Int(_clusterID)
 
-	clusterMgrCli := newClusterMgrTaskClient()
+	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 
 	if diskID == 0 {
 		disks, err := clusterMgrCli.ListMigratingDisks(ctx, taskType)
