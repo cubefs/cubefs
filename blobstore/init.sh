@@ -13,7 +13,7 @@ function INIT()
 
     # get consul
     if [ ! -f bin/consul ]; then
-        wget https://releases.hashicorp.com/consul/1.11.4/consul_1.11.4_linux_amd64.zip
+        wget https://ocs-cn-south1.heytapcs.com/blobstore/consul_1.11.4_linux_amd64.zip
         unzip consul_1.11.4_linux_amd64.zip
         rm -f consul_1.11.4_linux_amd64.zip
         mv consul bin/

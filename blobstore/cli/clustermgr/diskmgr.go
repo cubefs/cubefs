@@ -86,12 +86,18 @@ func addCmdDisk(cmd *grumble.Command) {
 }
 
 func cmdGetDisk(c *grumble.Context) error {
-	cmClient := newCMClient(c.Flags.String("secret"), specificHosts(c.Flags)...)
+	cmClient, err := NewCMClient(c.Flags.String("secret"),
+		specificClusterID(c.Flags), specificHost(c.Flags))
+	if err != nil {
+		return err
+	}
 	ctx := common.CmdContext()
+
 	disk, err := cmClient.DiskInfo(ctx, args.DiskID(c.Args))
 	if err != nil {
 		return err
 	}
+
 	if config.Verbose() || flags.Verbose(c.Flags) {
 		fmt.Println(cfmt.DiskInfoJoinV(disk, ""))
 	} else {
@@ -101,16 +107,20 @@ func cmdGetDisk(c *grumble.Context) error {
 }
 
 func cmdListDisks(c *grumble.Context) error {
-	cmClient := newCMClient(c.Flags.String("secret"), specificHosts(c.Flags)...)
+	cmClient, err := NewCMClient(c.Flags.String("secret"),
+		specificClusterID(c.Flags), specificHost(c.Flags))
+	if err != nil {
+		return err
+	}
 	ctx := common.CmdContext()
 
-	args := &clustermgr.ListOptionArgs{
+	listOptionArgs := &clustermgr.ListOptionArgs{
 		Status: proto.DiskStatus(c.Flags.Uint("status")),
 		Marker: proto.DiskID(c.Flags.Int64("marker")),
 		Count:  c.Flags.Int("count"),
 	}
-	if args.Marker <= proto.InvalidDiskID {
-		args.Marker = proto.DiskID(1)
+	if listOptionArgs.Marker <= proto.InvalidDiskID {
+		listOptionArgs.Marker = proto.DiskID(1)
 	}
 
 	verbose := config.Verbose() || flags.Verbose(c.Flags)
@@ -118,8 +128,8 @@ func cmdListDisks(c *grumble.Context) error {
 	next := true
 	num := 0
 	ac := common.NewAlternateColor(3)
-	for next && args.Marker > proto.InvalidDiskID {
-		disks, err := cmClient.ListDisk(ctx, args)
+	for next && listOptionArgs.Marker > proto.InvalidDiskID {
+		disks, err := cmClient.ListDisk(ctx, listOptionArgs)
 		if err != nil {
 			return err
 		}
@@ -138,10 +148,10 @@ func cmdListDisks(c *grumble.Context) error {
 			}
 		}
 
-		if disks.Marker == proto.InvalidDiskID || len(disks.Disks) < args.Count {
+		if disks.Marker == proto.InvalidDiskID || len(disks.Disks) < listOptionArgs.Count {
 			next = false
 		} else {
-			args.Marker = disks.Marker
+			listOptionArgs.Marker = disks.Marker
 			fmt.Println()
 			next = common.Confirm("list next page?")
 		}

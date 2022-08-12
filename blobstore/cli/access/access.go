@@ -38,13 +38,11 @@ func newAccessClient() (access.API, error) {
 		MaxHostRetry:   config.AccessMaxHostRetry(),
 
 		ServiceIntervalMs: config.AccessServiceIntervalMs(),
-	})
-}
 
-func newConsulClient() (*api.Client, error) {
-	conf := api.DefaultConfig()
-	conf.Address = config.AccessConsulAddr()
-	return api.NewClient(conf)
+		HostTryTimes:       config.AccessHostTryTimes(),
+		FailRetryIntervalS: config.AccessFailRetryIntervalS(),
+		MaxFailsPeriodS:    config.AccessMaxFailsPeriodS(),
+	})
 }
 
 func readLocation(f grumble.FlagMap) (loc access.Location, err error) {
@@ -85,7 +83,7 @@ func Register(app *grumble.App) {
 		Help:     "access tools",
 		LongHelp: "blobstore access api tools",
 		Run: func(c *grumble.Context) error {
-			cli, err := newConsulClient()
+			cli, err := common.NewConsulClient(config.AccessConsulAddr())
 			if err != nil {
 				return err
 			}

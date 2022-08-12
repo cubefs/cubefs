@@ -138,8 +138,13 @@ func cmdUpdateVolume(c *grumble.Context) error {
 }
 
 func cmdListVolumeUnits(c *grumble.Context) error {
-	cmClient := newCMClient(c.Flags.String("secret"), specificHosts(c.Flags)...)
+	cmClient, err := NewCMClient(c.Flags.String("secret"),
+		specificClusterID(c.Flags), specificHost(c.Flags))
+	if err != nil {
+		return err
+	}
 	ctx := common.CmdContext()
+
 	volumeInfo, err := cmClient.GetVolumeInfo(ctx,
 		&clustermgr.GetVolumeArgs{Vid: args.Vid(c.Args)})
 	if err != nil {

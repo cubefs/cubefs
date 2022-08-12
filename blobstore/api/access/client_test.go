@@ -134,7 +134,6 @@ func init() {
 	hostsApply = services
 
 	cfg := access.Config{}
-	cfg.Consul.Address = mockServer.URL[7:] // strip http://
 	cfg.PriorityAddrs = []string{mockServer.URL}
 	cfg.ConnMode = access.QuickConnMode
 	cfg.MaxSizePutOnce = 1 << 20
@@ -484,7 +483,7 @@ func TestAccessClientConnectionMode(t *testing.T) {
 
 	for _, cs := range cases {
 		cfg := access.Config{}
-		cfg.Consul.Address = mockServer.URL[7:]
+		cfg.PriorityAddrs = []string{mockServer.URL}
 		cfg.MaxSizePutOnce = cs.size
 		cfg.ConnMode = cs.mode
 		cfg.LogLevel = log.Lfatal
@@ -586,12 +585,20 @@ func TestAccessClientPutAtBase(t *testing.T) {
 	}
 }
 
+func TestAccessServiceUnavailable(t *testing.T) {
+	cfg := access.Config{}
+	cfg.Consul.Address = ""
+	cfg.PriorityAddrs = []string{}
+	_, err := access.New(cfg)
+	require.Equal(t, errcode.ErrAccessServiceDiscovery, err)
+}
+
 func TestAccessClientPutAtMerge(t *testing.T) {
 	cfg := access.Config{}
-	cfg.Consul.Address = mockServer.URL[7:]
 	cfg.MaxSizePutOnce = 1 << 20
 	cfg.PartConcurrence = 2
 	cfg.LogLevel = log.Lfatal
+	cfg.PriorityAddrs = []string{mockServer.URL}
 	client, err := access.New(cfg)
 	require.NoError(t, err)
 
@@ -640,7 +647,7 @@ func TestAccessClientPutAtMerge(t *testing.T) {
 
 func TestAccessClientPutMaxBlobsLength(t *testing.T) {
 	cfg := access.Config{}
-	cfg.Consul.Address = mockServer.URL[7:]
+	cfg.PriorityAddrs = []string{mockServer.URL}
 	cfg.MaxSizePutOnce = 1 << 20
 	cfg.PartConcurrence = 2
 	cfg.LogLevel = log.Lfatal
@@ -684,14 +691,14 @@ func linearTimeoutMs(baseSec, size, speedMBps float64) int64 {
 		timeoutMs = 0
 	}
 	if ms := timeoutMs % alignMs; ms > 0 {
-		timeoutMs += (alignMs - ms)
+		timeoutMs += alignMs - ms
 	}
 	return timeoutMs
 }
 
 func TestAccessClientPutTimeout(t *testing.T) {
 	cfg := access.Config{}
-	cfg.Consul.Address = mockServer.URL[7:]
+	cfg.PriorityAddrs = []string{mockServer.URL}
 	cfg.LogLevel = log.Lfatal
 
 	mb := int(1 << 20)
@@ -795,7 +802,6 @@ func TestAccessClientDelete(t *testing.T) {
 
 func TestAccessClientRequestBody(t *testing.T) {
 	cfg := access.Config{}
-	cfg.Consul.Address = mockServer.URL[7:]
 	cfg.MaxSizePutOnce = 1 << 20
 	cfg.PartConcurrence = 2
 	cfg.LogLevel = log.Lfatal
@@ -845,14 +851,13 @@ func TestAccessClientPutAtToken(t *testing.T) {
 	}()
 
 	cfg := access.Config{}
-	cfg.Consul.Address = mockServer.URL[7:]
 	cfg.MaxSizePutOnce = 1 << 20
 	cfg.PartConcurrence = 1
 	cfg.MaxPartRetry = -1
 	cfg.LogLevel = log.Lfatal
+	cfg.PriorityAddrs = []string{mockServer.URL}
 	client, err := access.New(cfg)
 	require.NoError(t, err)
-
 	cases := []struct {
 		keyLen int
 	}{
@@ -879,7 +884,6 @@ func TestAccessClientRPCConfig(t *testing.T) {
 	cfg := access.Config{}
 	cfg.RPCConfig = &rpc.Config{}
 	cfg.LogLevel = log.Lfatal
-	cfg.Consul.Address = mockServer.URL[7:]
 	cfg.PriorityAddrs = []string{mockServer.URL}
 	client, err := access.New(cfg)
 	require.NoError(t, err)
@@ -918,8 +922,8 @@ func TestAccessClientLogger(t *testing.T) {
 		Logger: &access.Logger{
 			Filename: file.Name(),
 		},
+		PriorityAddrs: []string{"127.0.0.1:9500"},
 	}
-	cfg.Consul.Address = mockServer.URL[7:]
 	client, err := access.New(cfg)
 	require.NoError(t, err)
 	defer func() {
