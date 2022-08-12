@@ -27,7 +27,7 @@ type hostItem struct {
 	// The last time the host failed
 	lastFailedTime int64
 	// The number of times the host can retry
-	retryTimes int32
+	retryTimes int
 	// Whether the host is a backup host
 	isBackup bool
 
@@ -53,11 +53,11 @@ type selector struct {
 	backupHost []*hostItem
 	hostMap    map[string]*hostItem
 	// the frequency for a host to retry, if retryTimes > hostTryTimes the host will be marked as failed
-	hostTryTimes int32
+	hostTryTimes int
 	// retry interval after host failure, after this time, the host can be remarked as available
-	failRetryIntervalS int64
+	failRetryIntervalS int
 	// the interval for a host can fail one time, the lastFailedTime will be set to current time if exceeded
-	maxFailsPeriodS int64
+	maxFailsPeriodS int
 
 	sync.RWMutex
 	cancelDetectionGoroutine context.CancelFunc
@@ -126,7 +126,7 @@ func (s *selector) SetFail(host string) {
 		item.lastFailedTime = now
 	}
 	// update last failed time
-	if now-item.lastFailedTime >= s.maxFailsPeriodS {
+	if now-item.lastFailedTime >= int64(s.maxFailsPeriodS) {
 		item.retryTimes = s.hostTryTimes
 		item.lastFailedTime = now
 	}
@@ -151,7 +151,7 @@ func (s *selector) detectAvailableHostInBack() {
 	for _, hItem := range cache {
 		hItem.Lock()
 		now := time.Now().Unix()
-		if now-hItem.lastFailedTime >= s.failRetryIntervalS {
+		if now-hItem.lastFailedTime >= int64(s.failRetryIntervalS) {
 			hItem.retryTimes = s.hostTryTimes
 			hItem.lastFailedTime = 0
 			hItem.Unlock()

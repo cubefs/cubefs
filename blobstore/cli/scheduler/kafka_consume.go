@@ -67,7 +67,9 @@ func cmdGetConsumeOffset(c *grumble.Context) error {
 	}
 	topic := c.Args.String(_topic)
 	partition := c.Args.Int(_partition)
-	clusterMgrCli := newClusterMgrTaskClient()
+	clusterID := c.Args.Int(_clusterID)
+
+	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 	offset, err := clusterMgrCli.GetConsumeOffset(taskType, topic, int32(partition))
 	if err != nil {
 		return err
@@ -84,7 +86,9 @@ func cmdSetConsumeOffset(c *grumble.Context) error {
 	topic := c.Args.String(_topic)
 	partition := c.Args.Int(_partition)
 	offset := c.Args.Int64(_offset)
-	clusterMgrCli := newClusterMgrTaskClient()
+	clusterID := c.Args.Int(_clusterID)
+
+	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 	err := clusterMgrCli.SetConsumeOffset(taskType, topic, int32(partition), offset)
 	if err != nil {
 		return err

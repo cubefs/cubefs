@@ -276,7 +276,7 @@ func TestLbClient_RetryWithBody(t *testing.T) {
 }
 
 func TestLbClient_RetryCrcBodyGetter(t *testing.T) {
-	for _, try := range []uint32{1, 2, 3, 5, 7, 10} {
+	for _, try := range []int{1, 2, 3, 5, 7, 10} {
 		cfg := newCfg([]string{}, []string{testServer.URL})
 		cfg.RequestTryTimes = try
 		cfg.ShouldRetry = func(code int, err error) bool {

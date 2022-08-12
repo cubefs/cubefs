@@ -47,7 +47,8 @@ func addCmdVolumeInspectCheckpointTask(cmd *grumble.Command) {
 }
 
 func cmdGetInspectCheckpoint(c *grumble.Context) error {
-	clusterMgrCli := newClusterMgrTaskClient()
+	clusterID := c.Args.Int(_clusterID)
+	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 	ck, err := clusterMgrCli.GetVolumeInspectCheckPoint(common.CmdContext())
 	if err != nil {
 		return err
@@ -57,7 +58,8 @@ func cmdGetInspectCheckpoint(c *grumble.Context) error {
 }
 
 func cmdSetInspectCheckpoint(c *grumble.Context) error {
-	clusterMgrCli := newClusterMgrTaskClient()
+	clusterID := c.Args.Int(_clusterID)
+	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 	vid := args.Vid(c.Args)
 	fmt.Printf("set volume inspect checkpoint: %d\n", vid)
 	if !common.Confirm("to set checkpoint?") {

@@ -1,4 +1,6 @@
 #!/bin/bash
+
+consul=$1
 source ./init.sh
 
 # build blobstore and get consul kafka
@@ -9,13 +11,15 @@ if [ ! -d ./run/logs ];then
 fi
 
 # start consul
-nohup ./bin/consul agent -dev -client 0.0.0.0 >> ./run/logs/consul.log 2>&1 &
-# check consul running
-sleep 1
-num=`ps -ef | egrep ./bin/consul | egrep -v "grep|vi|tail" | wc -l`
-if [ ${num} -lt 1 ];then
-	echo "Failed to start consul."
-	exit 1
+if [ "${consul}" == "--consul" ]; then
+  nohup ./bin/consul agent -dev -client 0.0.0.0 >> ./run/logs/consul.log 2>&1 &
+  # check consul running
+  sleep 1
+  num=`ps -ef | egrep ./bin/consul | egrep -v "grep|vi|tail" | wc -l`
+  if [ ${num} -lt 1 ];then
+    echo "Failed to start consul."
+    exit 1
+  fi
 fi
 
 # start kafka
@@ -74,8 +78,11 @@ if [ ${num} -lt 1 ];then
 fi
 echo "start blobnode ok"
 
-echo "Wait clustermgr register to consul..."
-sleep 80
+
+if [ "${consul}" == "--consul" ]; then
+  echo "Wait clustermgr register to consul..."
+  sleep 80
+fi
 
 # Start the access
 nohup ./bin/access -f ./cmd/access/access.conf >> ./run/logs/access.log 2>&1 &

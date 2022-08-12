@@ -35,16 +35,16 @@ type LbConfig struct {
 	BackupHosts []string `json:"backup_hosts"`
 	// HostTryTimes Number of host failure retries, HostTryTimes < RequestTryTimes,
 	// Avoid requesting the unavailable host all the time
-	HostTryTimes int32 `json:"host_try_times"`
+	HostTryTimes int `json:"host_try_times"`
 	// Failure retry interval, default value is -1, if FailRetryIntervalS < 0,
 	// remove failed hosts will not work.
-	FailRetryIntervalS int64 `json:"fail_retry_interval_s"`
+	FailRetryIntervalS int `json:"fail_retry_interval_s"`
 	// Within MaxFailsPeriodS, if the number of failures is greater than or equal
 	// to MaxFails, the host is considered disconnected.
-	MaxFailsPeriodS int64 `json:"max_fails_period_s"`
+	MaxFailsPeriodS int `json:"max_fails_period_s"`
 
 	// RequestTryTimes The maximum number of attempts for a request hosts.
-	RequestTryTimes uint32 `json:"try_times"`
+	RequestTryTimes int `json:"try_times"`
 
 	// should retry function
 	ShouldRetry func(code int, err error) bool `json:"-"`
@@ -54,7 +54,7 @@ type LbConfig struct {
 }
 
 type lbClient struct {
-	requestTryTimes uint32
+	requestTryTimes int
 	// host for simple client
 	clientMap map[string]Client
 
@@ -67,19 +67,19 @@ var _ Client = (*lbClient)(nil)
 // NewLbClient returns a lb client
 func NewLbClient(cfg *LbConfig, sel Selector) Client {
 	if cfg.HostTryTimes == 0 {
-		cfg.HostTryTimes = int32((len(cfg.Hosts) + len(cfg.BackupHosts)) * 2)
+		cfg.HostTryTimes = (len(cfg.Hosts) + len(cfg.BackupHosts)) * 2
 	}
 	if cfg.MaxFailsPeriodS == 0 {
 		cfg.MaxFailsPeriodS = 1
 	}
 	if cfg.RequestTryTimes == 0 {
-		cfg.RequestTryTimes = uint32(cfg.HostTryTimes + 1)
+		cfg.RequestTryTimes = cfg.HostTryTimes + 1
 	}
 	if cfg.ShouldRetry == nil {
 		cfg.ShouldRetry = defaultShouldRetry
 	}
-	if cfg.HostTryTimes > int32(cfg.RequestTryTimes) {
-		cfg.HostTryTimes = int32(cfg.RequestTryTimes - 1)
+	if cfg.HostTryTimes > cfg.RequestTryTimes {
+		cfg.HostTryTimes = cfg.RequestTryTimes - 1
 	}
 	if cfg.FailRetryIntervalS == 0 {
 		cfg.FailRetryIntervalS = -1
@@ -258,7 +258,7 @@ func (c *lbClient) doCtx(ctx context.Context, r *http.Request) (resp *http.Respo
 		index    = 0
 	)
 
-	for i := uint32(0); i < tryTimes; i++ {
+	for i := 0; i < tryTimes; i++ {
 		// get the available hosts
 		if index == len(hosts) || hosts == nil {
 			hosts = c.sel.GetAvailableHosts()

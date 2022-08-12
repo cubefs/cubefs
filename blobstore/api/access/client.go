@@ -20,6 +20,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
+	"sort"
+	"sync/atomic"
+	"time"
 
 	"github.com/hashicorp/consul/api"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -31,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/log"
-	"github.com/cubefs/cubefs/blobstore/util/selector"
 	"github.com/cubefs/cubefs/blobstore/util/task"
 )
 
@@ -164,6 +167,14 @@ type Config struct {
 	// PartConcurrence concurrence of put parts
 	PartConcurrence int
 
+	// rpc selector config
+	// Failure retry interval, default value is -1, if FailRetryIntervalS < 0, remove failed hosts will not work.
+	FailRetryIntervalS int
+	// Within MaxFailsPeriodS, if the number of failures is greater than or equal to MaxFails, the host is considered disconnected.
+	MaxFailsPeriodS int
+	// HostTryTimes Number of host failure retries
+	HostTryTimes int
+
 	// RPCConfig user-defined rpc config
 	// All connections will use the config if it's not nil
 	// ConnMode will be ignored if rpc config is setting
@@ -188,10 +199,9 @@ type Logger = lumberjack.Logger
 
 // client access rpc client
 type client struct {
-	config       Config
-	consulClient *api.Client
-	selector     selector.Selector
-	rpcClient    rpc.Client
+	config    Config
+	rpcClient atomic.Value
+	stop      chan struct{}
 }
 
 // API access api for s3
@@ -251,21 +261,33 @@ func New(cfg Config) (API, error) {
 		cfg.ServiceIntervalMs = defaultServiceIntervalMs
 	}
 
-	var rpcClient rpc.Client
-	if cfg.RPCConfig != nil {
-		rpcClient = rpc.NewClient(cfg.RPCConfig)
-	} else {
-		rpcConfig := cfg.ConnMode.getConfig(cfg.BodyBandwidthMBPs,
-			cfg.ClientTimeoutMs, cfg.BodyBaseTimeoutMs)
-		rpcClient = rpc.NewClient(&rpcConfig)
-	}
-
 	log.SetOutputLevel(cfg.LogLevel)
 	if cfg.Logger != nil {
 		log.SetOutput(cfg.Logger)
 	}
 
-	consulConfig := api.Config(cfg.Consul)
+	c := &client{
+		config: cfg,
+		stop:   make(chan struct{}),
+	}
+
+	runtime.SetFinalizer(c, func(c *client) {
+		rpcClient, ok := c.rpcClient.Load().(rpc.Client)
+		if ok {
+			rpcClient.Close()
+		}
+		close(c.stop)
+	})
+
+	if cfg.Consul.Address == "" {
+		if len(cfg.PriorityAddrs) < 1 {
+			return nil, errcode.ErrAccessServiceDiscovery
+		}
+		c.rpcClient.Store(getClient(&cfg, cfg.PriorityAddrs))
+		return c, nil
+	}
+
+	consulConfig := cfg.Consul
 	consulClient, err := api.NewClient(&consulConfig)
 	if err != nil {
 		return nil, errcode.ErrAccessServiceDiscovery
@@ -280,12 +302,10 @@ func New(cfg Config) (API, error) {
 			first = false
 			return hosts, nil
 		}
-
 		services, _, err := consulClient.Health().Service(serviceName, "", true, nil)
 		if err != nil {
 			return nil, err
 		}
-
 		hosts := make([]string, 0, len(services))
 		for _, s := range services {
 			address := s.Service.Address
@@ -294,25 +314,81 @@ func New(cfg Config) (API, error) {
 			}
 			hosts = append(hosts, fmt.Sprintf("http://%s:%d", address, s.Service.Port))
 		}
-
 		if len(hosts) == 0 {
 			return nil, fmt.Errorf("unavailable service")
 		}
-
 		return hosts, nil
 	}
 
-	hostSelector, err := selector.NewSelector(cfg.ServiceIntervalMs, hostGetter)
+	hosts, err := hostGetter()
 	if err != nil {
+		log.Errorf("get hosts from consul failed: %v", err)
 		return nil, errcode.ErrAccessServiceDiscovery
 	}
+	c.rpcClient.Store(getClient(&cfg, hosts))
 
-	return &client{
-		config:       cfg,
-		consulClient: consulClient,
-		selector:     hostSelector,
-		rpcClient:    rpcClient,
-	}, nil
+	ticker := time.NewTicker(time.Duration(cfg.ServiceIntervalMs) * time.Millisecond)
+	go func() {
+		for {
+			old := hosts
+			select {
+			case <-ticker.C:
+				hosts, err = hostGetter()
+				if err != nil {
+					log.Warnf("update hosts from consul failed: %v", err)
+					continue
+				}
+				if isUpdated(old, hosts) {
+					oldClient, ok := c.rpcClient.Swap(getClient(&cfg, hosts)).(rpc.Client)
+					if ok && oldClient != nil {
+						oldClient.Close()
+					}
+				}
+			case <-c.stop:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	return c, nil
+}
+
+func isUpdated(a, b []string) bool {
+	if len(a) != len(b) {
+		return true
+	}
+
+	sort.Slice(a, func(i, j int) bool { return a[i] < a[j] })
+	sort.Slice(b, func(i, j int) bool { return b[i] < b[j] })
+
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			return true
+		}
+	}
+	return false
+}
+
+func getClient(cfg *Config, hosts []string) rpc.Client {
+	lbConfig := &rpc.LbConfig{
+		Hosts:              hosts,
+		FailRetryIntervalS: cfg.FailRetryIntervalS,
+		MaxFailsPeriodS:    cfg.MaxFailsPeriodS,
+		HostTryTimes:       cfg.HostTryTimes,
+		RequestTryTimes:    cfg.MaxHostRetry,
+		ShouldRetry:        shouldRetry,
+	}
+
+	if cfg.RPCConfig == nil {
+		rpcConfig := cfg.ConnMode.getConfig(cfg.BodyBandwidthMBPs,
+			cfg.ClientTimeoutMs, cfg.BodyBaseTimeoutMs)
+		lbConfig.Config = rpcConfig
+		return rpc.NewLbClient(lbConfig, nil)
+	}
+	lbConfig.Config = *cfg.RPCConfig
+
+	return rpc.NewLbClient(lbConfig, nil)
 }
 
 func (c *client) Put(ctx context.Context, args *PutArgs) (location Location, hashSumMap HashSumMap, err error) {
@@ -333,6 +409,7 @@ func (c *client) Put(ctx context.Context, args *PutArgs) (location Location, has
 
 func (c *client) putObject(ctx context.Context, args *PutArgs) (location Location, hashSumMap HashSumMap, err error) {
 	span := trace.SpanFromContextSafe(ctx)
+	rpcClient := c.rpcClient.Load().(rpc.Client)
 
 	var (
 		cached bool
@@ -357,7 +434,7 @@ func (c *client) putObject(ctx context.Context, args *PutArgs) (location Locatio
 		}
 	}
 
-	err = c.tryN(ctx, c.config.MaxHostRetry, func(host string) error {
+	err = func() error {
 		var body io.Reader
 		if cached {
 			body = bytes.NewReader(buffer)
@@ -369,20 +446,20 @@ func (c *client) putObject(ctx context.Context, args *PutArgs) (location Locatio
 			body = reader
 		}
 
-		urlStr := fmt.Sprintf("%s/put?size=%d&hashes=%d", host, args.Size, args.Hashes)
+		urlStr := fmt.Sprintf("/put?size=%d&hashes=%d", args.Size, args.Hashes)
 		req, e := http.NewRequest(http.MethodPut, urlStr, body)
 		if e != nil {
 			return e
 		}
 
 		resp := &PutResp{}
-		e = c.rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode())
+		e = rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode())
 		if e == nil {
 			location = resp.Location
 			hashSumMap = resp.HashSumMap
 		}
 		return e
-	})
+	}()
 	return
 }
 
@@ -397,20 +474,22 @@ type blobPart struct {
 }
 
 func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
+	rpcClient := c.rpcClient.Load().(rpc.Client)
+
 	tasks := make([]func() error, 0, len(parts))
 	for _, part := range parts {
 		part := part
 		tasks = append(tasks, func() error {
-			return c.tryN(ctx, c.config.MaxHostRetry, func(host string) error {
-				urlStr := fmt.Sprintf("%s/putat?clusterid=%d&volumeid=%d&blobid=%d&size=%d&hashes=%d&token=%s",
-					host, part.cid, part.vid, part.bid, part.size, 0, part.token)
+			return func() error {
+				urlStr := fmt.Sprintf("/putat?clusterid=%d&volumeid=%d&blobid=%d&size=%d&hashes=%d&token=%s",
+					part.cid, part.vid, part.bid, part.size, 0, part.token)
 				req, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(part.buf))
 				if err != nil {
 					return err
 				}
 				resp := &PutAtResp{}
-				return c.rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode())
-			})
+				return rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode())
+			}()
 		})
 	}
 
@@ -419,15 +498,13 @@ func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
 			part := part
 			// asynchronously delete blob
 			go func() {
-				c.tryN(ctx, c.config.MaxHostRetry, func(host string) error {
-					urlStr := fmt.Sprintf("%s/deleteblob?clusterid=%d&volumeid=%d&blobid=%d&size=%d&token=%s",
-						host, part.cid, part.vid, part.bid, part.size, part.token)
-					req, err := http.NewRequest(http.MethodDelete, urlStr, nil)
-					if err != nil {
-						return err
-					}
-					return c.rpcClient.DoWith(ctx, req, nil)
-				})
+				urlStr := fmt.Sprintf("/deleteblob?clusterid=%d&volumeid=%d&blobid=%d&size=%d&token=%s",
+					part.cid, part.vid, part.bid, part.size, part.token)
+				req, err := http.NewRequest(http.MethodDelete, urlStr, nil)
+				if err != nil {
+					return
+				}
+				rpcClient.DoWith(ctx, req, nil)
 			}()
 		}
 		return err
@@ -437,6 +514,7 @@ func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
 
 func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSumMap, error) {
 	span := trace.SpanFromContextSafe(ctx)
+	rpcClient := c.rpcClient.Load().(rpc.Client)
 
 	hashSumMap := args.Hashes.ToHashSumMap()
 	hasherMap := make(HasherMap, len(hashSumMap))
@@ -465,9 +543,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 		if len(locations) > 1 {
 			signArgs.Location = loc.Copy()
 			signResp := &SignResp{}
-			if err := c.tryN(ctx, c.config.MaxHostRetry, func(host string) error {
-				return c.rpcClient.PostWith(ctx, fmt.Sprintf("%s/sign", host), signResp, signArgs)
-			}); err == nil {
+			if err := rpcClient.PostWith(ctx, "/sign", signResp, signArgs); err == nil {
 				locations = []Location{signResp.Location.Copy()}
 			}
 		}
@@ -479,20 +555,15 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 	}()
 
 	// alloc
-	err := c.tryN(ctx, c.config.MaxHostRetry, func(host string) error {
-		allocResp := &AllocResp{}
-		if err := c.rpcClient.PostWith(ctx, fmt.Sprintf("%s/alloc", host), allocResp, AllocArgs{
-			Size: uint64(args.Size),
-		}); err != nil {
-			return err
-		}
-		loc = allocResp.Location
-		tokens = allocResp.Tokens
-		return nil
-	})
-	if err != nil {
-		return loc, nil, err
+	allocResp := &AllocResp{}
+	if err := rpcClient.PostWith(ctx, "/alloc", allocResp, AllocArgs{
+		Size: uint64(args.Size),
+	}); err != nil {
+		return allocResp.Location, nil, err
 	}
+	loc = allocResp.Location
+	tokens = allocResp.Tokens
+
 	signArgs.Locations = append(signArgs.Locations, loc.Copy())
 
 	// buffer pipeline
@@ -641,9 +712,9 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 
 			var restPartsResp *AllocResp
 			// alloc the rest parts
-			err = c.tryN(ctx, c.config.MaxHostRetry, func(host string) error {
+			err = func() error {
 				resp := &AllocResp{}
-				if err := c.rpcClient.PostWith(ctx, fmt.Sprintf("%s/alloc", host), resp, AllocArgs{
+				if err := rpcClient.PostWith(ctx, "/alloc", resp, AllocArgs{
 					Size:            remainSize,
 					BlobSize:        loc.BlobSize,
 					CodeMode:        loc.CodeMode,
@@ -658,7 +729,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 				}
 				restPartsResp = resp
 				return nil
-			})
+			}()
 			if err != nil {
 				releaseBuffer(parts)
 				close(closeCh)
@@ -685,14 +756,14 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 	if len(signArgs.Locations) > 1 {
 		signArgs.Location = loc.Copy()
 		// sign
-		err = c.tryN(ctx, c.config.MaxHostRetry, func(host string) error {
+		err := func() error {
 			signResp := &SignResp{}
-			if err := c.rpcClient.PostWith(ctx, fmt.Sprintf("%s/sign", host), signResp, signArgs); err != nil {
+			if err := rpcClient.PostWith(ctx, "/sign", signResp, signArgs); err != nil {
 				return err
 			}
 			loc = signResp.Location
 			return nil
-		})
+		}()
 		if err != nil {
 			span.Error("sign location with crc", err)
 			return Location{}, nil, errcode.ErrUnexpected
@@ -710,30 +781,19 @@ func (c *client) Get(ctx context.Context, args *GetArgs) (body io.ReadCloser, er
 	if !args.IsValid() {
 		return nil, errcode.ErrIllegalArguments
 	}
+	rpcClient := c.rpcClient.Load().(rpc.Client)
 
 	ctx = withReqidContext(ctx)
 	if args.Location.Size == 0 || args.ReadSize == 0 {
 		return noopBody{}, nil
 	}
 
-	err = c.tryN(ctx, c.config.MaxHostRetry, func(host string) error {
-		gotBody, e := func() (io.ReadCloser, error) {
-			resp, e := c.rpcClient.Post(ctx, fmt.Sprintf("%s/get", host), args)
-			if e != nil {
-				return nil, e
-			}
-			if resp.StatusCode >= 400 {
-				return nil, rpc.NewError(resp.StatusCode, "StatusCode", fmt.Errorf("code: %d", resp.StatusCode))
-			}
-			return resp.Body, nil
-		}()
-		if e != nil {
-			return e
-		}
-		body = gotBody
-		return nil
-	})
-	return
+	resp, err := rpcClient.Post(ctx, "/get", args)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Body, nil
 }
 
 func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]Location, error) {
@@ -743,6 +803,7 @@ func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]Location, erro
 		}
 		return args.Locations, errcode.ErrIllegalArguments
 	}
+	rpcClient := c.rpcClient.Load().(rpc.Client)
 
 	ctx = withReqidContext(ctx)
 	locations := make([]Location, 0, len(args.Locations))
@@ -755,55 +816,29 @@ func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]Location, erro
 		return nil, nil
 	}
 
-	err := c.tryN(ctx, c.config.MaxHostRetry, func(host string) error {
-		// access response 2xx even if there has failed locations
-		deleteResp := &DeleteResp{}
-		if err := c.rpcClient.PostWith(ctx, fmt.Sprintf("%s/delete", host), deleteResp,
-			DeleteArgs{Locations: locations}); err != nil && rpc.DetectStatusCode(err) != http.StatusIMUsed {
-			return err
-		}
-		if len(deleteResp.FailedLocations) > 0 {
-			locations = deleteResp.FailedLocations[:]
-			return errcode.ErrUnexpected
-		}
-		return nil
-	})
-	if err == nil {
-		return nil, nil
+	// access response 2xx even if there has failed locations
+	deleteResp := &DeleteResp{}
+	if err := rpcClient.PostWith(ctx, "/delete", deleteResp,
+		DeleteArgs{Locations: locations}); err != nil && rpc.DetectStatusCode(err) != http.StatusIMUsed {
+		return nil, err
 	}
-	return locations, err
+	if len(deleteResp.FailedLocations) > 0 {
+		locations = deleteResp.FailedLocations[:]
+		return locations, errcode.ErrUnexpected
+	}
+	return nil, nil
 }
 
-func (c *client) tryN(ctx context.Context, n int, connector func(string) error) error {
-	span := trace.SpanFromContextSafe(ctx)
-
-	hs := c.selector.GetRandomN(n)
-	hosts := append(c.config.PriorityAddrs[:], hs...)
-	if len(hosts) == 0 {
-		return errcode.ErrAccessServiceDiscovery
-	}
-
-	var host string
-	for _, host = range hosts {
-		err := connector(host)
-		if err == nil {
-			return nil
-		}
-
-		// has connected access node
+func shouldRetry(code int, err error) bool {
+	if err != nil {
 		if httpErr, ok := err.(rpc.HTTPError); ok {
 			// 500 need to retry next host
-			if httpErr.StatusCode() == http.StatusInternalServerError {
-				span.Warn("httpcode 500 need to try next, failed on", host, err)
-				continue
-			}
-			return err
+			return httpErr.StatusCode() == http.StatusInternalServerError
 		}
-
-		// cannot connected most probably
-		span.Warn("failed on", host, err)
+		return true
 	}
-
-	span.Error("try all hosts failed, recently on", host)
-	return errcode.ErrUnexpected
+	if code/100 != 4 && code/100 != 2 {
+		return true
+	}
+	return false
 }

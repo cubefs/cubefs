@@ -15,7 +15,9 @@
 package access
 
 import (
+	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/desertbit/grumble"
@@ -23,18 +25,25 @@ import (
 	"github.com/fatih/color"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/cli/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
+	"github.com/cubefs/cubefs/blobstore/cli/config"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func showClusters(c *grumble.Context) error {
-	cli, err := newConsulClient()
+	cli, err := common.NewConsulClient(config.AccessConsulAddr())
 	if err != nil {
-		return err
+		return showClusterWithConfig()
 	}
 
 	var regions []string
-	if region := c.Args.String("region"); region != "" {
+	region := c.Args.String("region")
+	if region == "" {
+		region = config.Region()
+	}
+	if region != "" {
 		regions = []string{region}
 	} else {
 		pairs, _, err := cli.KV().List("/ebs/", nil)
@@ -58,6 +67,7 @@ func showClusters(c *grumble.Context) error {
 		fmt.Printf("found %s regions\n\n", color.GreenString("%d", len(regions)))
 	}
 
+	fmt.Println("\tClusters Info From Consul\t")
 	for _, region := range regions {
 		fmt.Println("to list region:", color.RedString("%s", region))
 		path := cmapi.GetConsulClusterPath(region)
@@ -85,10 +95,45 @@ func showClusters(c *grumble.Context) error {
 			fmt.Println(cfmt.ClusterInfoJoin(clusterInfo, "\t"))
 			fmt.Println()
 		}
-		fmt.Printf("    space in region: %s (%s / %s)\n", region,
+		fmt.Printf("\tspace in region: %s (%s / %s)\n", region,
 			common.ColorizeInt64(-available, capacity).Sprint(humanize.IBytes(uint64(available))),
 			humanize.IBytes(uint64(capacity)))
 	}
 
+	return nil
+}
+
+func showClusterWithConfig() error {
+	fmt.Println("\tClusters Info From Config\t")
+
+	cs := config.ClusterMgrClusters()
+	for clusterID, hosts := range cs {
+		fmt.Println("====================================")
+		client, err := clustermgr.NewCMClient("", clusterID, nil)
+		if err != nil {
+			fmt.Println("\terror:", err)
+			continue
+		}
+		stat, err := client.Stat(context.Background())
+		if err != nil {
+			fmt.Println("\terror:", err)
+			continue
+		}
+
+		clusterInfo := &cmapi.ClusterInfo{}
+		ClusterID, _ := strconv.Atoi(clusterID)
+		clusterInfo.ClusterID = proto.ClusterID(ClusterID)
+		clusterInfo.Capacity = stat.SpaceStat.TotalSpace
+		clusterInfo.Available = stat.SpaceStat.WritableSpace
+		clusterInfo.Nodes = hosts
+		clusterInfo.Readonly = stat.ReadOnly
+
+		fmt.Println(cfmt.ClusterInfoJoin(clusterInfo, "\t"))
+		fmt.Println()
+
+		fmt.Printf("\tspace in cluster: %s (%s / %s)\n", clusterID,
+			common.ColorizeInt64(-stat.SpaceStat.WritableSpace, stat.SpaceStat.TotalSpace).Sprint(humanize.IBytes(uint64(stat.SpaceStat.WritableSpace))),
+			humanize.IBytes(uint64(stat.SpaceStat.TotalSpace)))
+	}
 	return nil
 }

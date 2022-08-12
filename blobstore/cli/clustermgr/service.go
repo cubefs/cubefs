@@ -25,7 +25,12 @@ import (
 )
 
 func cmdGetService(c *grumble.Context) error {
-	cli, ctx := newCMClient(c.Flags.String("secret"), specificHosts(c.Flags)...), common.CmdContext()
+	cli, err := NewCMClient(c.Flags.String("secret"),
+		specificClusterID(c.Flags), specificHost(c.Flags))
+	if err != nil {
+		return err
+	}
+	ctx := common.CmdContext()
 
 	names := []string{
 		proto.ServiceNameProxy,

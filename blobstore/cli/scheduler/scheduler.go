@@ -16,6 +16,7 @@ package scheduler
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/desertbit/grumble"
 
@@ -37,15 +38,17 @@ const (
 
 var defaultClusterMgrAddrs = []string{"http://127.0.0.1:9998"}
 
-func newClusterMgrTaskClient() client.ClusterMgrTaskAPI {
+func newClusterMgrTaskClient(clusterID int) client.ClusterMgrTaskAPI {
 	enableAuth := false
 	secret := config.ClusterMgrSecret()
 	if secret != "" {
 		enableAuth = true
 	}
-	addrs := config.ClusterMgrAddrs()
-	if len(addrs) == 0 {
-		addrs = defaultClusterMgrAddrs
+	var addrs []string
+	addrs = defaultClusterMgrAddrs
+	hosts, ok := config.ClusterMgrClusters()[strconv.Itoa(clusterID)]
+	if !ok {
+		addrs = hosts
 	}
 	return client.NewClusterMgrClient(&clustermgr.Config{
 		LbConfig: rpc.LbConfig{
@@ -57,15 +60,17 @@ func newClusterMgrTaskClient() client.ClusterMgrTaskAPI {
 	})
 }
 
-func newClusterMgrClient() *clustermgr.Client {
+func newClusterMgrClient(clusterID string) *clustermgr.Client {
 	enableAuth := false
 	secret := config.ClusterMgrSecret()
 	if secret != "" {
 		enableAuth = true
 	}
-	addrs := config.ClusterMgrAddrs()
-	if len(addrs) == 0 {
-		addrs = defaultClusterMgrAddrs
+	var addrs []string
+	addrs = defaultClusterMgrAddrs
+	hosts, ok := config.ClusterMgrClusters()[clusterID]
+	if !ok {
+		addrs = hosts
 	}
 	return clustermgr.New(&clustermgr.Config{
 		LbConfig: rpc.LbConfig{
@@ -100,7 +105,7 @@ func Register(app *grumble.App) {
 
 func leaderStat(c *grumble.Context) error {
 	clusterID := c.Args.Int(_clusterID)
-	clusterMgrCli := newClusterMgrClient()
+	clusterMgrCli := newClusterMgrClient(strconv.Itoa(clusterID))
 	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, proto.ClusterID(clusterID))
 	stat, err := cli.LeaderStats(common.CmdContext())
 	if err != nil {
