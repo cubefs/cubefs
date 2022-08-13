@@ -163,7 +163,7 @@ int real_openat(int dirfd, const char *pathname, int flags, ...) {
         va_end(args);
     }
 
-    bool is_cfs = 0;
+    bool is_cfs = false;
     char *path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
@@ -232,7 +232,7 @@ log:
 // rename between cfs and ordinary file is not allowed
 int real_renameat2(int olddirfd, const char *old_pathname,
         int newdirfd, const char *new_pathname, unsigned int flags) {
-    int is_cfs_old = 0;
+    bool is_cfs_old = false;
     char *old_path = NULL;
     if((old_pathname != NULL && old_pathname[0] == '/') || olddirfd == AT_FDCWD) {
         old_path = get_cfs_path(old_pathname);
@@ -244,7 +244,7 @@ int real_renameat2(int olddirfd, const char *old_pathname,
         }
     }
 
-    int is_cfs_new = 0;
+    bool is_cfs_new = false;
     char *new_path = NULL;
     if((new_pathname != NULL && new_pathname[0] == '/') || newdirfd == AT_FDCWD) {
         new_path = get_cfs_path(new_pathname);
@@ -657,7 +657,7 @@ DIR *real_opendir(const char *pathname) {
     cfs_file_t cfs_file;
     cfs_get_file(g_client_info.cfs_client_id, fd, &cfs_file);
     if(record_open_file(&cfs_file) < 0) {
-        fprintf(stderr, "cache open_file %d failed.\n", fd);
+        fprintf(stderr, "cache opendir %d failed.\n", fd);
         fd = -1;
     }
 
@@ -1906,7 +1906,7 @@ ssize_t real_pwrite(int fd, const void *buf, size_t count, off_t offset) {
     ssize_t re = -1, re_cache = 0;
 
     bool is_cfs = fd_in_cfs(fd);
-    if(g_hook && fd_in_cfs(fd)) {
+    if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
         #ifdef DUP_TO_LOCAL
         re = libc_pwrite(fd, buf, count, offset);

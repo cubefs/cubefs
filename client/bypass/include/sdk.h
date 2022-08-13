@@ -71,7 +71,6 @@ typedef struct {
 	int 	 	dp_port;
 } cfs_read_req_t;
 
-struct cfs_file;
 
 /*
  * Library / framework initialization
