@@ -2155,85 +2155,6 @@ int plugin_close(void* handle) {
     return dlclose(handle);
 }
 
-static void init_libc_func() {
-    libc_openat = (openat_t)dlsym(RTLD_NEXT, "openat");
-    libc_close = (close_t)dlsym(RTLD_NEXT, "close");
-    libc_renameat = (renameat_t)dlsym(RTLD_NEXT, "renameat");
-    libc_renameat2 = (renameat2_t)dlsym(RTLD_NEXT, "renameat2");
-    libc_truncate = (truncate_t)dlsym(RTLD_NEXT, "truncate");
-    libc_ftruncate = (ftruncate_t)dlsym(RTLD_NEXT, "ftruncate");
-    libc_fallocate = (fallocate_t)dlsym(RTLD_NEXT, "fallocate");
-    libc_posix_fallocate = (posix_fallocate_t)dlsym(RTLD_NEXT, "posix_fallocate");
-
-    libc_chdir = (chdir_t)dlsym(RTLD_NEXT, "chdir");
-    libc_fchdir = (fchdir_t)dlsym(RTLD_NEXT, "fchdir");
-    libc_getcwd = (getcwd_t)dlsym(RTLD_NEXT, "getcwd");
-    libc_mkdirat = (mkdirat_t)dlsym(RTLD_NEXT, "mkdirat");
-    libc_rmdir = (rmdir_t)dlsym(RTLD_NEXT, "rmdir");
-    libc_opendir = (opendir_t)dlsym(RTLD_NEXT, "opendir");
-    libc_fdopendir = (fdopendir_t)dlsym(RTLD_NEXT, "fdopendir");
-    libc_readdir = (readdir_t)dlsym(RTLD_NEXT, "readdir");
-    libc_closedir = (closedir_t)dlsym(RTLD_NEXT, "closedir");
-    libc_realpath = (realpath_t)dlsym(RTLD_NEXT, "realpath");
-
-    libc_linkat = (linkat_t)dlsym(RTLD_NEXT, "linkat");
-    libc_symlinkat = (symlinkat_t)dlsym(RTLD_NEXT, "symlinkat");
-    libc_unlinkat = (unlinkat_t)dlsym(RTLD_NEXT, "unlinkat");
-    libc_readlinkat = (readlinkat_t)dlsym(RTLD_NEXT, "readlinkat");
-
-    libc_stat = (stat_t)dlsym(RTLD_NEXT, "__xstat");
-    libc_stat64 = (stat64_t)dlsym(RTLD_NEXT, "__xstat64");
-    libc_lstat = (lstat_t)dlsym(RTLD_NEXT, "__lxstat");
-    libc_lstat64 = (lstat64_t)dlsym(RTLD_NEXT, "__lxstat64");
-    libc_fstat = (fstat_t)dlsym(RTLD_NEXT, "__fxstat");
-    libc_fstat64 = (fstat64_t)dlsym(RTLD_NEXT, "__fxstat64");
-    libc_fstatat = (fstatat_t)dlsym(RTLD_NEXT, "__fxstatat");
-    libc_fstatat64 = (fstatat64_t)dlsym(RTLD_NEXT, "__fxstatat64");
-    libc_fchmod = (fchmod_t)dlsym(RTLD_NEXT, "fchmod");
-    libc_fchmodat = (fchmodat_t)dlsym(RTLD_NEXT, "fchmodat");
-    libc_lchown = (lchown_t)dlsym(RTLD_NEXT, "lchown");
-    libc_fchown = (fchown_t)dlsym(RTLD_NEXT, "fchown");
-    libc_fchownat = (fchownat_t)dlsym(RTLD_NEXT, "fchownat");
-    libc_utime = (utime_t)dlsym(RTLD_NEXT, "utime");
-    libc_utimes = (utimes_t)dlsym(RTLD_NEXT, "utimes");
-    libc_futimesat = (futimesat_t)dlsym(RTLD_NEXT, "futimesat");
-    libc_utimensat = (utimensat_t)dlsym(RTLD_NEXT, "utimensat");
-    libc_futimens = (futimens_t)dlsym(RTLD_NEXT, "futimens");
-    libc_access = (access_t)dlsym(RTLD_NEXT, "access");
-    libc_faccessat = (faccessat_t)dlsym(RTLD_NEXT, "faccessat");
-
-    libc_setxattr = (setxattr_t)dlsym(RTLD_NEXT, "setxattr");
-    libc_lsetxattr = (lsetxattr_t)dlsym(RTLD_NEXT, "lsetxattr");
-    libc_fsetxattr = (fsetxattr_t)dlsym(RTLD_NEXT, "fsetxattr");
-    libc_getxattr = (getxattr_t)dlsym(RTLD_NEXT, "getxattr");
-    libc_lgetxattr = (lgetxattr_t)dlsym(RTLD_NEXT, "lgetxattr");
-    libc_fgetxattr = (fgetxattr_t)dlsym(RTLD_NEXT, "fgetxattr");
-    libc_listxattr = (listxattr_t)dlsym(RTLD_NEXT, "listxattr");
-    libc_llistxattr = (llistxattr_t)dlsym(RTLD_NEXT, "llistxattr");
-    libc_flistxattr = (flistxattr_t)dlsym(RTLD_NEXT, "flistxattr");
-    libc_removexattr = (removexattr_t)dlsym(RTLD_NEXT, "removexattr");
-    libc_lremovexattr = (lremovexattr_t)dlsym(RTLD_NEXT, "lremovexattr");
-    libc_fremovexattr = (fremovexattr_t)dlsym(RTLD_NEXT, "fremovexattr");
-
-    libc_fcntl = (fcntl_t)dlsym(RTLD_NEXT, "fcntl");
-    libc_dup2 = (dup2_t)dlsym(RTLD_NEXT, "dup2");
-    libc_dup3 = (dup3_t)dlsym(RTLD_NEXT, "dup3");
-
-    libc_read = (read_t)dlsym(RTLD_NEXT, "read");
-    libc_readv = (readv_t)dlsym(RTLD_NEXT, "readv");
-    libc_pread = (pread_t)dlsym(RTLD_NEXT, "pread");
-    libc_preadv = (preadv_t)dlsym(RTLD_NEXT, "preadv");
-    libc_write = (write_t)dlsym(RTLD_NEXT, "write");
-    libc_writev = (writev_t)dlsym(RTLD_NEXT, "writev");
-    libc_pwrite = (pwrite_t)dlsym(RTLD_NEXT, "pwrite");
-    libc_pwritev = (pwritev_t)dlsym(RTLD_NEXT, "pwritev");
-    libc_lseek = (lseek_t)dlsym(RTLD_NEXT, "lseek");
-    libc_lseek64 = (lseek64_t)dlsym(RTLD_NEXT, "lseek64");
-
-    libc_fdatasync = (fdatasync_t)dlsym(RTLD_NEXT, "fdatasync");
-    libc_fsync = (fsync_t)dlsym(RTLD_NEXT, "fsync");
-}
-
 static void init_cfs_func(void *handle) {
     cfs_sdk_init = (cfs_sdk_init_func)dlsym(handle, "cfs_sdk_init");
     cfs_sdk_close = (cfs_sdk_close_t)dlsym(handle, "cfs_sdk_close");
@@ -2340,7 +2261,6 @@ int start_libs(void *args) {
         client_state = &null_state;
     }
 
-    init_libc_func();
     g_client_info.sdk_handle = plugin_open("/usr/lib64/libcfssdk.so");
     if(g_client_info.sdk_handle == NULL) {
         fprintf(stderr, "dlopen /usr/lib64/libcfssdk.so error: %s.\n", dlerror());

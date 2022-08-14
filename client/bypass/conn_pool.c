@@ -1,4 +1,5 @@
 #include "conn_pool.h"
+#include "libc_operation.h"
 #include <sys/ioctl.h>
 
 conn_pool_t *new_conn_pool() {
@@ -16,7 +17,7 @@ void release_conn_pool(conn_pool_t *conn_pool) {
         while(!q->empty()) {
             conn_t conn = q->front();
             q->pop();
-            close(conn.sock_fd);
+            libc_close(conn.sock_fd);
         }
         delete q;
     }
@@ -89,13 +90,13 @@ int new_conn(const char *ip, int port) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     if(inet_pton(AF_INET, ip, &addr.sin_addr) < 0) {
-		close(sock_fd);
+		libc_close(sock_fd);
         return -1;
     }
 
     ret = set_socket_non_block(sock_fd, 1);
     if (ret < 0) {
-        close(sock_fd);
+        libc_close(sock_fd);
         return -1;
     }
 
@@ -103,26 +104,26 @@ int new_conn(const char *ip, int port) {
     if (ret < 0) {
         //error
         if (errno != EINPROGRESS) {
-            close(sock_fd);
+            libc_close(sock_fd);
             return -1;
         }
 
         ret = check_conn_timeout(sock_fd, CONN_TIMEOUT_MS);
         if (ret < 0) {
-            close(sock_fd);
+            libc_close(sock_fd);
             return -1;
         }
     }
 
     ret = set_socket_non_block(sock_fd, 0);
     if (ret < 0) {
-        close(sock_fd);
+        libc_close(sock_fd);
         return -1;
     }
 
     ret = set_fd_timeout(sock_fd, RECV_TIMEOUT_MS, SEND_TIMEOUT_MS);
     if (ret < 0) {
-        close(sock_fd);
+        libc_close(sock_fd);
         return -1;
     }
 
@@ -148,7 +149,7 @@ int get_conn(conn_pool_t *conn_pool, const char *ip, int port) {
                 pthread_rwlock_unlock(&conn_pool->lock);
                 return conn.sock_fd;
             } else {
-                close(conn.sock_fd);
+                libc_close(conn.sock_fd);
             }
         }
     }
