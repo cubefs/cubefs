@@ -35,25 +35,25 @@ import (
 
 // configuration keys
 const (
-	ClusterName        = "clusterName"
-	ID                 = "id"
-	IP                 = "ip"
-	Port               = "port"
-	LogLevel           = "logLevel"
-	WalDir             = "walDir"
-	StoreDir           = "storeDir"
-	EbsAddrKey         = "ebsAddr"
-	BStoreAddrKey      = "bStoreAddr"
-	EbsServicePathKey  = "ebsServicePath"
-	BStoreServicePathKey  = "bStoreServicePath"
-	GroupID            = 1
-	ModuleName         = "master"
-	CfgRetainLogs      = "retainLogs"
-	DefaultRetainLogs  = 20000
-	cfgTickInterval    = "tickInterval"
-	cfgRaftRecvBufSize = "raftRecvBufSize"
-	cfgElectionTick    = "electionTick"
-	SecretKey          = "masterServiceKey"
+	ClusterName          = "clusterName"
+	ID                   = "id"
+	IP                   = "ip"
+	Port                 = "port"
+	LogLevel             = "logLevel"
+	WalDir               = "walDir"
+	StoreDir             = "storeDir"
+	EbsAddrKey           = "ebsAddr"
+	BStoreAddrKey        = "bStoreAddr"
+	EbsServicePathKey    = "ebsServicePath"
+	BStoreServicePathKey = "bStoreServicePath"
+	GroupID              = 1
+	ModuleName           = "master"
+	CfgRetainLogs        = "retainLogs"
+	DefaultRetainLogs    = 20000
+	cfgTickInterval      = "tickInterval"
+	cfgRaftRecvBufSize   = "raftRecvBufSize"
+	cfgElectionTick      = "electionTick"
+	SecretKey            = "masterServiceKey"
 )
 
 var (

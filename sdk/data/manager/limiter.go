@@ -274,7 +274,6 @@ func (factor *LimitFactor) CheckGrid() {
 			newGrid.ID, newGrid.used, newGrid.limit, newGrid.buffer, newGrid.time)
 	}
 
-
 	factor.gridList.PushBack(newGrid)
 	for factor.gridList.Len() > gridWindowTimeScope*girdCntOneSecond {
 		firstGrid := factor.gridList.Front().Value.(*GridElement)
