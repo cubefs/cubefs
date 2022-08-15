@@ -3,6 +3,7 @@ package master
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -327,4 +328,44 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 		t.Errorf("split failed,oldMpLen[%v],curMpLen[%v]", mpLen, curMpLen)
 	}
 
+}
+
+func TestUpdateDataNodeBadDisks(t *testing.T) {
+	c := &Cluster{DataNodeBadDisks: new(sync.Map)}
+	addr1 := "192.168.0.31"
+	addr2 := "192.168.0.32"
+	allBadDisks := make([]map[string][]string, 0)
+	dataNodeBadDisksOfVol := make(map[string][]string)
+	dataNodeBadDisksOfVol[addr1] = append(dataNodeBadDisksOfVol[addr1], "/diskPath1")
+	allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
+	allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
+	// one bad disk
+	c.updateDataNodeBadDisks(allBadDisks)
+	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 1 || len(badDiskView[0].BadDiskPath) != 1 {
+		t.Errorf("getDataNodeBadDisks should be 1 but get :%v detail:%v", len(badDiskView), badDiskView)
+	} else {
+		t.Logf("getDataNodeBadDisks detail:%v", badDiskView)
+	}
+	// one datanode with more than one bad disk
+	allBadDisks = append(allBadDisks, map[string][]string{addr1: {"/diskPath2"}})
+	c.updateDataNodeBadDisks(allBadDisks)
+	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 1 || len(badDiskView[0].BadDiskPath) != 2 {
+		t.Errorf("getDataNodeBadDisks should be 1 and bad disks shoule be 2 but get :%v detail:%v", len(badDiskView), badDiskView)
+	} else {
+		t.Logf("getDataNodeBadDisks detail:%v", badDiskView)
+	}
+	// two datanode
+	dataNodeBadDisksOfVol[addr2] = append(dataNodeBadDisksOfVol[addr2], "/diskPath3")
+	allBadDisks = append(allBadDisks, map[string][]string{addr2: {"/diskPath3"}})
+	c.updateDataNodeBadDisks(allBadDisks)
+	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 2 {
+		t.Errorf("getDataNodeBadDisks should be 2 but get :%v detail:%v", len(badDiskView), badDiskView)
+	} else {
+		t.Logf("getDataNodeBadDisks detail:%v", badDiskView)
+	}
+	// when there is no bad disks
+	c.updateDataNodeBadDisks(make([]map[string][]string, 0))
+	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 0 {
+		t.Errorf("getDataNodeBadDisks should be 0 but get :%v detail:%v", len(badDiskView), badDiskView)
+	}
 }

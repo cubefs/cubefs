@@ -4010,6 +4010,9 @@ func (c *Cluster) updateDataNodeBadDisks(allBadDisks []map[string][]string) {
 	for _, dataNodeBadDisks := range allBadDisks {
 		for addr, badDisks := range dataNodeBadDisks {
 			diskPaths := make([]string, 0)
+			if diskPathsValue, ok := datanodeBadDisks.Load(addr); ok {
+				diskPaths = diskPathsValue.([]string)
+			}
 			for _, diskPath := range badDisks {
 				if contains(diskPaths, diskPath) {
 					continue
