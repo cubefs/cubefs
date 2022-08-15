@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/blobstore/util/retry"
 	"github.com/cubefs/cubefs/blobstore/util/task"
 )
 
@@ -45,8 +46,6 @@ const (
 	defaultPartConcurrence   int   = 4
 	defaultServiceIntervalMs int64 = 5000
 	defaultServiceName             = "access"
-
-	_cacheBufferPutOnce = 1 << 23 // 8M
 )
 
 // RPCConnectMode self-defined rpc client connection config setting
@@ -168,9 +167,11 @@ type Config struct {
 	PartConcurrence int
 
 	// rpc selector config
-	// Failure retry interval, default value is -1, if FailRetryIntervalS < 0, remove failed hosts will not work.
+	// Failure retry interval, default value is -1, if FailRetryIntervalS < 0,
+	// remove failed hosts will not work.
 	FailRetryIntervalS int
-	// Within MaxFailsPeriodS, if the number of failures is greater than or equal to MaxFails, the host is considered disconnected.
+	// Within MaxFailsPeriodS, if the number of failures is greater than or equal to MaxFails,
+	// the host is considered disconnected.
 	MaxFailsPeriodS int
 	// HostTryTimes Number of host failure retries
 	HostTryTimes int
@@ -209,6 +210,9 @@ type client struct {
 type API interface {
 	// Put object once if size is not greater than MaxSizePutOnce, otherwise put blobs one by one.
 	// return a location and map of hash summary bytes you excepted.
+	//
+	// If PutArgs' body is of type *bytes.Buffer, *bytes.Reader, or *strings.Reader,
+	// GetBody is populated, then the Put once request has retry ability.
 	Put(ctx context.Context, args *PutArgs) (location Location, hashSumMap HashSumMap, err error)
 	// Get object, range is supported.
 	Get(ctx context.Context, args *GetArgs) (body io.ReadCloser, err error)
@@ -218,17 +222,6 @@ type API interface {
 }
 
 var _ API = (*client)(nil)
-
-type hadReader struct {
-	isRead bool
-	reader io.Reader
-}
-
-// Read the io.Reader had been read
-func (r *hadReader) Read(p []byte) (n int, err error) {
-	r.isRead = true
-	return r.reader.Read(p)
-}
 
 type noopBody struct{}
 
@@ -408,58 +401,19 @@ func (c *client) Put(ctx context.Context, args *PutArgs) (location Location, has
 }
 
 func (c *client) putObject(ctx context.Context, args *PutArgs) (location Location, hashSumMap HashSumMap, err error) {
-	span := trace.SpanFromContextSafe(ctx)
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
-	var (
-		cached bool
-		buffer []byte
-		reader *hadReader
-	)
-	if args.Size > 0 && args.Size <= _cacheBufferPutOnce {
-		cached = true
-		buffer, _ = memPool.Alloc(int(args.Size))
-		buffer = buffer[:args.Size]
-		defer memPool.Put(buffer)
-
-		_, err := io.ReadFull(args.Body, buffer)
-		if err != nil {
-			span.Error("read buffer from request", err)
-			return Location{}, nil, errcode.ErrAccessReadRequestBody
-		}
-	} else {
-		reader = &hadReader{
-			isRead: false,
-			reader: args.Body,
-		}
+	urlStr := fmt.Sprintf("/put?size=%d&hashes=%d", args.Size, args.Hashes)
+	req, err := http.NewRequest(http.MethodPut, urlStr, args.Body)
+	if err != nil {
+		return
 	}
 
-	err = func() error {
-		var body io.Reader
-		if cached {
-			body = bytes.NewReader(buffer)
-		} else {
-			if reader.isRead {
-				span.Info("retry on other access host which had been read body")
-				return errcode.ErrAccessReadConflictBody
-			}
-			body = reader
-		}
-
-		urlStr := fmt.Sprintf("/put?size=%d&hashes=%d", args.Size, args.Hashes)
-		req, e := http.NewRequest(http.MethodPut, urlStr, body)
-		if e != nil {
-			return e
-		}
-
-		resp := &PutResp{}
-		e = rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode())
-		if e == nil {
-			location = resp.Location
-			hashSumMap = resp.HashSumMap
-		}
-		return e
-	}()
+	resp := &PutResp{}
+	if err = rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode()); err == nil {
+		location = resp.Location
+		hashSumMap = resp.HashSumMap
+	}
 	return
 }
 
@@ -468,7 +422,6 @@ type blobPart struct {
 	vid   proto.Vid
 	bid   proto.BlobID
 	size  int
-	index int
 	token string
 	buf   []byte
 }
@@ -480,16 +433,14 @@ func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
 	for _, part := range parts {
 		part := part
 		tasks = append(tasks, func() error {
-			return func() error {
-				urlStr := fmt.Sprintf("/putat?clusterid=%d&volumeid=%d&blobid=%d&size=%d&hashes=%d&token=%s",
-					part.cid, part.vid, part.bid, part.size, 0, part.token)
-				req, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(part.buf))
-				if err != nil {
-					return err
-				}
-				resp := &PutAtResp{}
-				return rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode())
-			}()
+			urlStr := fmt.Sprintf("/putat?clusterid=%d&volumeid=%d&blobid=%d&size=%d&hashes=%d&token=%s",
+				part.cid, part.vid, part.bid, part.size, 0, part.token)
+			req, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(part.buf))
+			if err != nil {
+				return err
+			}
+			resp := &PutAtResp{}
+			return rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode())
 		})
 	}
 
@@ -510,6 +461,41 @@ func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
 		return err
 	}
 	return nil
+}
+
+func (c *client) readerPipeline(span trace.Span, reqBody io.Reader,
+	closeCh <-chan struct{}, size, blobSize int) <-chan []byte {
+	ch := make(chan []byte, c.config.PartConcurrence-1)
+	go func() {
+		for size > 0 {
+			toread := blobSize
+			if toread > size {
+				toread = size
+			}
+
+			buf, _ := memPool.Alloc(toread)
+			buf = buf[:toread]
+			_, err := io.ReadFull(reqBody, buf)
+			if err != nil {
+				span.Error("read buffer from request", err)
+				memPool.Put(buf)
+				close(ch)
+				return
+			}
+
+			select {
+			case <-closeCh:
+				memPool.Put(buf)
+				close(ch)
+				return
+			case ch <- buf:
+			}
+
+			size -= toread
+		}
+		close(ch)
+	}()
+	return ch
 }
 
 func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSumMap, error) {
@@ -556,53 +542,18 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 
 	// alloc
 	allocResp := &AllocResp{}
-	if err := rpcClient.PostWith(ctx, "/alloc", allocResp, AllocArgs{
-		Size: uint64(args.Size),
-	}); err != nil {
+	if err := rpcClient.PostWith(ctx, "/alloc", allocResp, AllocArgs{Size: uint64(args.Size)}); err != nil {
 		return allocResp.Location, nil, err
 	}
 	loc = allocResp.Location
 	tokens = allocResp.Tokens
-
 	signArgs.Locations = append(signArgs.Locations, loc.Copy())
 
 	// buffer pipeline
 	closeCh := make(chan struct{})
-	bufferPipe := func(size, blobSize int) <-chan []byte {
-		ch := make(chan []byte, c.config.PartConcurrence-1)
-		go func() {
-			for size > 0 {
-				toread := blobSize
-				if toread > size {
-					toread = size
-				}
-
-				buf, _ := memPool.Alloc(toread)
-				buf = buf[:toread]
-				_, err := io.ReadFull(reqBody, buf)
-				if err != nil {
-					span.Error("read buffer from request", err)
-					memPool.Put(buf)
-					close(ch)
-					return
-				}
-
-				select {
-				case <-closeCh:
-					memPool.Put(buf)
-					close(ch)
-					return
-				case ch <- buf:
-				}
-
-				size -= toread
-			}
-			close(ch)
-		}()
-		return ch
-	}(int(loc.Size), int(loc.BlobSize))
-
+	bufferPipe := c.readerPipeline(span, reqBody, closeCh, int(loc.Size), int(loc.BlobSize))
 	defer func() {
+		close(closeCh)
 		// waiting pipeline close if has error
 		for buf := range bufferPipe {
 			if len(buf) > 0 {
@@ -622,7 +573,6 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 	remainSize := loc.Size
 	restPartsLoc := loc
 
-	index := -1
 	readSize := 0
 	for readSize < int(loc.Size) {
 		parts := make([]blobPart, 0, c.config.PartConcurrence)
@@ -632,9 +582,8 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 		if !ok && readSize < int(loc.Size) {
 			return Location{}, nil, errcode.ErrAccessReadRequestBody
 		}
-		index++
 		readSize += len(buf)
-		parts = append(parts, blobPart{size: len(buf), index: index, buf: buf})
+		parts = append(parts, blobPart{size: len(buf), buf: buf})
 
 		more := true
 		for more && len(parts) < c.config.PartConcurrence {
@@ -647,9 +596,8 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 					}
 					more = false
 				} else {
-					index++
 					readSize += len(buf)
-					parts = append(parts, blobPart{size: len(buf), index: index, buf: buf})
+					parts = append(parts, blobPart{size: len(buf), buf: buf})
 				}
 			default:
 				more = false
@@ -658,9 +606,8 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 
 		tryTimes := c.config.MaxPartRetry
 		for {
-			if uint32(len(loc.Blobs)) > MaxLocationBlobs {
+			if len(loc.Blobs) > MaxLocationBlobs {
 				releaseBuffer(parts)
-				close(closeCh)
 				return Location{}, nil, errcode.ErrUnexpected
 			}
 
@@ -703,7 +650,6 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 			if tryTimes > 0 { // has retry setting
 				if tryTimes == 1 {
 					releaseBuffer(parts)
-					close(closeCh)
 					span.Error("exceed the max retry limit", c.config.MaxPartRetry)
 					return Location{}, nil, errcode.ErrUnexpected
 				}
@@ -712,7 +658,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 
 			var restPartsResp *AllocResp
 			// alloc the rest parts
-			err = func() error {
+			err = retry.Timed(3, 10).RuptOn(func() (bool, error) {
 				resp := &AllocResp{}
 				if err := rpcClient.PostWith(ctx, "/alloc", resp, AllocArgs{
 					Size:            remainSize,
@@ -720,19 +666,18 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 					CodeMode:        loc.CodeMode,
 					AssignClusterID: loc.ClusterID,
 				}); err != nil {
-					return err
+					return true, err
 				}
 				if len(resp.Location.Blobs) > 0 {
 					if newVid := resp.Location.Blobs[0].Vid; newVid == loc.Blobs[currBlobIdx].Vid {
-						return fmt.Errorf("alloc the same vid %d", newVid)
+						return false, fmt.Errorf("alloc the same vid %d", newVid)
 					}
 				}
 				restPartsResp = resp
-				return nil
-			}()
+				return true, nil
+			})
 			if err != nil {
 				releaseBuffer(parts)
-				close(closeCh)
 				span.Error("alloc another parts to put", err)
 				return Location{}, nil, errcode.ErrUnexpected
 			}
@@ -756,18 +701,12 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 	if len(signArgs.Locations) > 1 {
 		signArgs.Location = loc.Copy()
 		// sign
-		err := func() error {
-			signResp := &SignResp{}
-			if err := rpcClient.PostWith(ctx, "/sign", signResp, signArgs); err != nil {
-				return err
-			}
-			loc = signResp.Location
-			return nil
-		}()
-		if err != nil {
+		signResp := &SignResp{}
+		if err := rpcClient.PostWith(ctx, "/sign", signResp, signArgs); err != nil {
 			span.Error("sign location with crc", err)
 			return Location{}, nil, errcode.ErrUnexpected
 		}
+		loc = signResp.Location
 	}
 
 	for alg, hasher := range hasherMap {
@@ -816,15 +755,20 @@ func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]Location, erro
 		return nil, nil
 	}
 
-	// access response 2xx even if there has failed locations
-	deleteResp := &DeleteResp{}
-	if err := rpcClient.PostWith(ctx, "/delete", deleteResp,
-		DeleteArgs{Locations: locations}); err != nil && rpc.DetectStatusCode(err) != http.StatusIMUsed {
-		return nil, err
-	}
-	if len(deleteResp.FailedLocations) > 0 {
-		locations = deleteResp.FailedLocations[:]
-		return locations, errcode.ErrUnexpected
+	if err := retry.Timed(3, 10).On(func() error {
+		// access response 2xx even if there has failed locations
+		deleteResp := &DeleteResp{}
+		if err := rpcClient.PostWith(ctx, "/delete", deleteResp,
+			DeleteArgs{Locations: locations}); err != nil && rpc.DetectStatusCode(err) != http.StatusIMUsed {
+			return err
+		}
+		if len(deleteResp.FailedLocations) > 0 {
+			locations = deleteResp.FailedLocations[:]
+			return errcode.ErrUnexpected
+		}
+		return nil
+	}); err != nil {
+		return locations, err
 	}
 	return nil, nil
 }

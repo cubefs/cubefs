@@ -239,7 +239,11 @@ func handlePut(c *rpc.Context) {
 	}
 
 	buf := make([]byte, args.Size)
-	io.ReadFull(c.Request.Body, buf)
+	_, err := io.ReadFull(c.Request.Body, buf)
+	if err != nil {
+		c.RespondError(errcode.ErrAccessReadRequestBody)
+		return
+	}
 	dataCache.put(0, buf)
 
 	hashSumMap := args.Hashes.ToHashSumMap()
@@ -700,6 +704,7 @@ func TestAccessClientPutTimeout(t *testing.T) {
 	cfg := access.Config{}
 	cfg.PriorityAddrs = []string{mockServer.URL}
 	cfg.LogLevel = log.Lfatal
+	cfg.MaxHostRetry = 1
 
 	mb := int(1 << 20)
 	ms := time.Millisecond
@@ -832,15 +837,7 @@ func TestAccessClientRequestBody(t *testing.T) {
 		}
 
 		_, _, err := client.Put(randCtx(), &args)
-		if cs.size < int(cfg.MaxSizePutOnce) {
-			if cs.size <= 1<<22 {
-				require.Equal(t, errcode.ErrAccessReadRequestBody, err)
-			} else {
-				require.Equal(t, errcode.ErrAccessReadConflictBody, err)
-			}
-		} else {
-			require.Equal(t, errcode.ErrAccessReadRequestBody, err)
-		}
+		require.Equal(t, errcode.CodeAccessReadRequestBody, rpc.DetectStatusCode(err))
 	}
 }
 
