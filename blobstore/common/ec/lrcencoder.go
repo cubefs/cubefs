@@ -148,14 +148,15 @@ func (e *lrcEncoder) Reconstruct(shards [][]byte, badIdx []int) error {
 
 	// secondly, check if need to reconstruct the local shards
 	localRestructs := make(map[int][]int)
+	n, m, l, azCount := e.CodeMode.N, e.CodeMode.M, e.CodeMode.L, e.CodeMode.AZCount
 	for _, i := range badIdx {
-		if i >= (e.CodeMode.N + e.CodeMode.M) {
-			idcIdx := (i - e.CodeMode.N - e.CodeMode.M) * e.CodeMode.AZCount / e.CodeMode.L
-			badIdx := idcIdx + (e.CodeMode.N+e.CodeMode.M)/e.CodeMode.AZCount - 1
+		if i >= (n + m) {
+			idcIdx := (i - n - m) * azCount / l
+			localBadIdx := i - n - m - l/azCount*idcIdx + (n+m)/azCount
 			if _, ok := localRestructs[idcIdx]; !ok {
 				localRestructs[idcIdx] = make([]int, 0)
 			}
-			localRestructs[idcIdx] = append(localRestructs[idcIdx], badIdx)
+			localRestructs[idcIdx] = append(localRestructs[idcIdx], localBadIdx)
 		}
 	}
 
