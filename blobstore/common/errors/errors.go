@@ -49,7 +49,6 @@ func (e Error) ErrorCode() string {
 var errCodeMap = map[int]string{
 	// access
 	CodeAccessReadRequestBody:  "access read request body",
-	CodeAccessReadConflictBody: "access read conflict body",
 	CodeAccessUnexpect:         "access unexpected error",
 	CodeAccessServiceDiscovery: "access client service discovery disconnect",
 	CodeAccessLimited:          "access limited",
