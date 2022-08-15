@@ -47,7 +47,7 @@ const (
 	HashSize = 0
 
 	// MaxLocationBlobs max blobs length in Location
-	MaxLocationBlobs uint32 = 4
+	MaxLocationBlobs int = 4
 	// MaxDeleteLocations max locations of delete request
 	MaxDeleteLocations int = 1024
 	// MaxBlobSize max blob size for allocation

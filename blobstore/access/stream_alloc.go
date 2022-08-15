@@ -197,7 +197,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		return 0, nil, errors.New("no enough blob ids from allocator")
 	}
 
-	if uint32(len(blobs)) > access.MaxLocationBlobs {
+	if len(blobs) > access.MaxLocationBlobs {
 		span.Errorf("alloc exceed max blobs %d>%d", len(blobs), access.MaxLocationBlobs)
 		return 0, nil, errors.New("alloc exceed max blobs of location")
 	}
