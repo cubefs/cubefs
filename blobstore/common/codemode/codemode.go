@@ -37,6 +37,9 @@ const (
 	EC3P3         CodeMode = 11
 	EC10P4        CodeMode = 12
 	EC6P3         CodeMode = 13
+	// for test
+	EC6P6L9  CodeMode = 200
+	EC6P8L10 CodeMode = 201
 )
 
 // Note: Don't modify it unless you know very well how codemode works.
@@ -66,6 +69,8 @@ var constCodeModeTactic = map[CodeMode]Tactic{
 	EC6P6Align0:   {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize0B},
 	EC6P6Align512: {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize512B},
 	EC4P4L2:       {N: 4, M: 4, L: 2, AZCount: 2, PutQuorum: 6, GetQuorum: 0, MinShardSize: alignSize2KB},
+	EC6P6L9:       {N: 6, M: 6, L: 9, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize2KB},
+	EC6P8L10:      {N: 6, M: 8, L: 10, AZCount: 2, PutQuorum: 13, GetQuorum: 0, MinShardSize: alignSize0B},
 }
 
 var constName2CodeMode = map[CodeModeName]CodeMode{
@@ -82,6 +87,8 @@ var constName2CodeMode = map[CodeModeName]CodeMode{
 	"EC3P3":         EC3P3,
 	"EC10P4":        EC10P4,
 	"EC6P3":         EC6P3,
+	"EC6P6L9":       EC6P6L9,
+	"EC6P8L10":      EC6P8L10,
 }
 
 var constCodeMode2Name = map[CodeMode]CodeModeName{
@@ -98,6 +105,8 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 	EC3P3:         "EC3P3",
 	EC10P4:        "EC10P4",
 	EC6P3:         "EC6P3",
+	EC6P6L9:       "EC6P6L9",
+	EC6P8L10:      "EC6P8L10",
 }
 
 //vol layout ep:EC6P10L2
@@ -343,5 +352,7 @@ func GetAllCodeModes() []CodeMode {
 		EC3P3,
 		EC10P4,
 		EC6P3,
+		EC6P6L9,
+		EC6P8L10,
 	}
 }

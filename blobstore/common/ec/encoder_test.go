@@ -16,14 +16,26 @@ package ec
 
 import (
 	"bytes"
+	"crypto/rand"
+	mrand "math/rand"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 )
 
 var srcData = []byte("Hello world")
+
+func copyShards(a [][]byte) [][]byte {
+	b := make([][]byte, len(a))
+	for i := range a {
+		b[i] = append(b[i], a[i]...)
+	}
+	return b
+}
 
 func TestEncoderNew(t *testing.T) {
 	{
@@ -196,4 +208,62 @@ func TestLrcEncoder(t *testing.T) {
 	assert.Equal(t, cfg.CodeMode.L, len(ls))
 	si := encoder.GetShardsInIdc(shards, 0)
 	assert.Equal(t, (cfg.CodeMode.N+cfg.CodeMode.M+cfg.CodeMode.L)/cfg.CodeMode.AZCount, len(si))
+}
+
+func TestLrcReconstruct(t *testing.T) {
+	for _, cm := range codemode.GetAllCodeModes() {
+		testLrcReconstruct(t, cm)
+	}
+}
+
+func testLrcReconstruct(t *testing.T, cm codemode.CodeMode) {
+	tactic := cm.Tactic()
+	cfg := Config{CodeMode: tactic, EnableVerify: true}
+	encoder, _ := NewEncoder(cfg)
+
+	data := make([]byte, (1<<16)+mrand.Intn(1<<16))
+	rand.Read(data)
+
+	shards, err := encoder.Split(data)
+	assert.NoError(t, err)
+	assert.NoError(t, encoder.Encode(shards))
+
+	origin := copyShards(shards)
+	bads := make([]int, 0)
+	for badIdx := tactic.N + tactic.M; badIdx < cm.GetShardNum(); badIdx++ {
+		bads = append(bads, badIdx)
+		for _, idx := range bads {
+			bytespool.Zero(shards[idx])
+		}
+		assert.NoError(t, encoder.Reconstruct(shards, bads))
+		assert.True(t, reflect.DeepEqual(origin, shards))
+	}
+	for badIdx := 0; badIdx < tactic.N+tactic.M; badIdx++ {
+		bads = append(bads, badIdx)
+	}
+	assert.Error(t, encoder.Reconstruct(copyShards(shards), bads))
+
+	// use local ec reconstruct
+	for azIdx := 0; azIdx < tactic.AZCount; azIdx++ {
+		locals, n, m := tactic.LocalStripeInAZ(azIdx)
+		var localShards [][]byte
+		for _, idx := range locals {
+			localShards = append(localShards, shards[idx])
+		}
+		localOrigin := copyShards(localShards)
+
+		bads := make([]int, 0)
+		for badIdx := n; badIdx < n+m; badIdx++ {
+			bads = append(bads, badIdx)
+			for _, idx := range bads {
+				bytespool.Zero(localShards[idx])
+			}
+			assert.NoError(t, encoder.Reconstruct(localShards, bads))
+			assert.True(t, reflect.DeepEqual(localOrigin, localShards))
+		}
+		if n > 0 {
+			bads = append(bads, n-1)
+			assert.Error(t, encoder.Reconstruct(localShards, bads))
+		}
+	}
 }
