@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/util/exporter"
 
@@ -35,7 +34,7 @@ import (
 func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	defer func() {
 		if err == nil || !IsSysErr(err) {
-			dp.uploadApplyID(index)
+			dp.advanceApplyID(index)
 		}
 		if err != nil {
 			if IsSysErr(err) {
@@ -76,7 +75,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			dp.Stop()
 			return
 		}
-		dp.uploadApplyID(index)
+		dp.advanceApplyID(index)
 		log.LogWarnf("partition [%v] apply member change [index: %v] %v %v", dp.partitionID, index, confChange.Type, confChange.Peer)
 	}(index)
 
@@ -119,7 +118,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-		if err = dp.PersistMetadata(); err != nil {
+		if err = dp.Persist(PF_METADATA); err != nil {
 			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}
@@ -132,9 +131,9 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
 func (dp *DataPartition) Snapshot(recoverNode uint64) (raftproto.Snapshot, error) {
-	snapIterator := NewItemIterator(dp.lastTruncateID)
-	log.LogInfof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v) firstCommitID(%v)",
-		dp.partitionID, dp.lastTruncateID, dp.appliedID, dp.lastTruncateID)
+	snapIterator := NewItemIterator(dp.applyStatus.LastTruncate())
+	log.LogInfof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v)",
+		dp.partitionID, dp.applyStatus.LastTruncate(), dp.applyStatus.Applied())
 	return snapIterator, nil
 }
 
@@ -195,6 +194,8 @@ func (dp *DataPartition) Del(key interface{}) (interface{}, error) {
 	return nil, nil
 }
 
-func (dp *DataPartition) uploadApplyID(applyID uint64) {
-	atomic.StoreUint64(&dp.appliedID, applyID)
+func (dp *DataPartition) advanceApplyID(applyID uint64) {
+	if snap, success := dp.applyStatus.AdvanceApplied(applyID); !success {
+		log.LogWarnf("Partition(%v) advance apply ID failed, curApplied[%v] curLastTruncate[%v]", dp.partitionID, snap.Applied(), snap.LastTruncate())
+	}
 }

@@ -16,7 +16,6 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
 	"io/ioutil"
 	"path"
 	"regexp"
@@ -26,6 +25,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/storage"
 
@@ -204,7 +205,7 @@ func (d *Disk) startFlushFPScheduler() {
 
 	go func() {
 		var (
-			forceFlushFDTicker = time.NewTicker(time.Second * 2)
+			forceFlushFDTicker = time.NewTicker(time.Second * 10)
 		)
 		defer func() {
 			forceFlushFDTicker.Stop()
@@ -218,8 +219,7 @@ func (d *Disk) startFlushFPScheduler() {
 					partitions = append(partitions, partition)
 				}
 				d.RUnlock()
-				d.forceFlushFileDescriptor(partitions)
-				d.forceStoreApplyIDAndWalLog(partitions)
+				d.forcePersistPartitions(partitions)
 			}
 		}
 	}()
@@ -375,9 +375,10 @@ func (d *Disk) GetDataPartition(partitionID uint64) (partition *DataPartition) {
 func (d *Disk) ForceExitRaftStore() {
 	partitionList := d.DataPartitionList()
 	for _, partitionID := range partitionList {
-		partition := d.GetDataPartition(partitionID)
-		partition.partitionStatus = proto.Unavailable
-		partition.stopRaft()
+		if partition := d.GetDataPartition(partitionID); partition != nil {
+			partition.partitionStatus = proto.Unavailable
+			partition.stopRaft()
+		}
 	}
 }
 
@@ -665,20 +666,8 @@ func (d *Disk) forceEvictFileDescriptor() {
 		d.Path, count, atomic.LoadInt64(&d.fdCount))
 }
 
-func (d *Disk) forceFlushFileDescriptor(partitions []*DataPartition) {
-	var count = atomic.LoadInt64(&d.fdCount)
-	log.LogDebugf("action[forceFlushFileDescriptor] disk(%v) current FD count(%v) begin",
-		d.Path, count)
-	var flushedCount int
-	for _, partition := range partitions {
-		flushedCount += partition.ForceFlushAllFD()
-	}
-	log.LogDebugf("action[forceFlushFileDescriptor] disk(%v),fd count(%v),flushed count(%v) end",
-		d.Path, count, flushedCount)
-}
-
-func (d *Disk) forceStoreApplyIDAndWalLog(partitions []*DataPartition) {
-	log.LogDebugf("action[forceStoreApplyIDAndWalLog] disk(%v) partition count(%v) begin",
+func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
+	log.LogDebugf("action[forcePersistPartitions] disk(%v) partition count(%v) begin",
 		d.Path, len(partitions))
 	pChan := make(chan *DataPartition, len(partitions))
 	for _, dp := range partitions {
@@ -693,15 +682,14 @@ func (d *Disk) forceStoreApplyIDAndWalLog(partitions []*DataPartition) {
 			for {
 				select {
 				case dp := <-pChan:
-					if dp.raftPartition == nil || dp.appliedID == 0 {
+					if dp.raftPartition == nil || dp.applyStatus.Applied() == 0 {
 						return
 					}
-					if err := dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID)); err != nil {
-						err = errors.NewErrorf("[forceStoreApplyIDAndWalLog]: flush applyID failed, partition=%d: %v", dp.config.PartitionID, err.Error())
+					if err := dp.Persist(PF_ALL); err != nil {
+						err = errors.NewErrorf("[forcePersistPartitions]: persist all failed, partition=%d: %v", dp.config.PartitionID, err.Error())
 						log.LogErrorf(err.Error())
 						atomic.AddInt64(&failedCount, 1)
 					}
-					dp.raftPartition.FlushWal()
 				default:
 					return
 				}
@@ -710,6 +698,6 @@ func (d *Disk) forceStoreApplyIDAndWalLog(partitions []*DataPartition) {
 	}
 	wg.Wait()
 	close(pChan)
-	log.LogDebugf("action[forceStoreApplyIDAndWalLog] disk(%v) partition count(%v),failed count(%v) end",
+	log.LogDebugf("action[forcePersistPartitions] disk(%v) partition count(%v),failed count(%v) end",
 		d.Path, len(partitions), atomic.LoadInt64(&failedCount))
 }

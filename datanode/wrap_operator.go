@@ -551,6 +551,15 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	needReplySize := p.Size
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
+	if isRepairRead {
+		if !partition.Disk().canRepairOnDisk(){
+			err=fmt.Errorf("disk(%v) limit on handleExtentRepairRead",partition.Disk().Path)
+			return
+		}
+		defer func() {
+			partition.Disk().finishRepairTask()
+		}()
+	}
 
 	action := statistics.ActionRead
 	if isRepairRead {
@@ -781,6 +790,13 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	}
 
 	partition := request.Object.(*DataPartition)
+	if !partition.Disk().canRepairOnDisk(){
+		err=fmt.Errorf("disk(%v) limit on handleExtentRepairRead",partition.Disk().Path)
+		return
+	}
+	defer func() {
+		partition.Disk().finishRepairTask()
+	}()
 	store := partition.ExtentStore()
 	tinyExtentFinfoSize, err = store.TinyExtentGetFinfoSize(request.ExtentID)
 	if err != nil {
@@ -1328,7 +1344,7 @@ func (s *DataNode) handlePacketToResetDataPartitionRaftMember(p *repl.Packet) {
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-		if err = dp.PersistMetadata(); err != nil {
+		if err = dp.Persist(PF_METADATA); err != nil {
 			log.LogErrorf("handlePacketToResetDataPartitionRaftMember dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}

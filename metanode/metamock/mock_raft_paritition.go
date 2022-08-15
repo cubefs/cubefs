@@ -2,20 +2,21 @@ package metamock
 
 import (
 	"context"
+
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
 )
 
-type ApplyFunc func(mp interface{},command []byte, index uint64) (resp interface{}, err error)
+type ApplyFunc func(mp interface{}, command []byte, index uint64) (resp interface{}, err error)
 
 type MockPartition struct {
 	Id      uint64
 	applyId uint64
 	Buff    []byte
-	Mp  	[]interface{}
-	MemMp  	interface{}
-	RocksMp	interface{}
+	Mp      []interface{}
+	MemMp   interface{}
+	RocksMp interface{}
 	Apply   ApplyFunc
 }
 
@@ -99,11 +100,11 @@ func (m MockPartition) IsOfflinePeer() bool {
 	panic("implement me")
 }
 
-func (m MockPartition) CreateRaft(cfg *raftstore.PartitionConfig, raftStore raftstore.RaftStore) error {
+func (m MockPartition) Start() error {
 	panic("implement me")
 }
 
-func (m MockPartition) FlushWal() {
+func (m MockPartition) FlushWAL(wait bool) error {
 	panic("implement me")
 }
 

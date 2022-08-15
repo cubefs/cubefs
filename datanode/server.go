@@ -57,7 +57,7 @@ var (
 const (
 	DefaultZoneName          = proto.DefaultZoneName
 	DefaultRaftDir           = "raft"
-	DefaultRaftLogsToRetain  = 10 // Count of raft logs per data partition
+	DefaultRaftLogsToRetain  = 1000 // Count of raft logs per data partition
 	DefaultDiskMaxErr        = 1
 	DefaultDiskReservedSpace = 5 * util.GB // GB
 	DefaultDiskReservedRatio = float64(0.1)

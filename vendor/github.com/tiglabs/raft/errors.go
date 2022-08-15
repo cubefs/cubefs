@@ -31,6 +31,8 @@ var (
 	ErrLearnerNotReady	= errors.New("raft learner is not ready.")
 	ErrUnmarshal		= errors.New("json unmarshl error")
 	ErrFullChannel		= errors.New("channel is full.")
+
+	ErrSnapshotDoesNotReadCompleted = errors.New("snapshot does not read completed")
 )
 
 type FatalError struct {

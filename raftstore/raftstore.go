@@ -152,6 +152,15 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition) {
 	} else {
 		walPath = path.Join(cfg.WalPath, "wal_"+strconv.FormatUint(cfg.ID, 10))
 	}
+
+	for _, peerAddress := range cfg.Peers {
+		s.AddNodeWithPort(
+			peerAddress.ID,
+			peerAddress.Address,
+			peerAddress.HeartbeatPort,
+			peerAddress.ReplicaPort,
+		)
+	}
 	p = newPartition(cfg, s.raftServer, walPath)
 	return
 }

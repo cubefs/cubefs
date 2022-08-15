@@ -26,7 +26,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -117,14 +116,14 @@ func (dp *DataPartition) startRaft() (err error) {
 		dp.partitionID, peers, dp.path)
 	pc := &raftstore.PartitionConfig{
 		ID:       uint64(dp.partitionID),
-		Applied:  dp.appliedID,
+		Applied:  dp.applyStatus.Applied(),
 		Peers:    peers,
 		Learners: learners,
 		SM:       dp,
 		WalPath:  dp.path,
 	}
 	dp.raftPartition = dp.config.RaftStore.CreatePartition(pc)
-	if err = dp.raftPartition.CreateRaft(pc, dp.config.RaftStore); err != nil {
+	if err = dp.raftPartition.Start(); err != nil {
 		return
 	}
 	go dp.StartRaftLoggingSchedule()
@@ -211,23 +210,17 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			if dp.raftPartition == nil {
 				break
 			}
-			var (
-				minAppliedID, lastTruncateID, appliedID = dp.minAppliedID, dp.lastTruncateID, atomic.LoadUint64(&dp.appliedID)
-			)
-			if appliedID >= minAppliedID && minAppliedID > lastTruncateID { // Has changed
-				if err := dp.storeAppliedID(appliedID); err != nil {
-					log.LogErrorf("partition(%v) scheduled store applied ID(%v) failed: %v", dp.partitionID, appliedID, err)
-					truncateRaftLogTimer.Reset(time.Minute)
-					continue
+			if minAppliedID, lastTruncateID, appliedID := dp.minAppliedID, dp.applyStatus.LastTruncate(), dp.applyStatus.Applied(); appliedID >= minAppliedID && minAppliedID > lastTruncateID { // Has changed
+				if snap, success := dp.applyStatus.AdvanceNextTruncate(minAppliedID); success {
+					if err := dp.Persist(PF_ALL); err != nil {
+						log.LogErrorf("partition(%v) scheduled persist all failed: %v", dp.partitionID, err)
+						truncateRaftLogTimer.Reset(time.Minute)
+						continue
+					}
+					truncateTo := snap.LastTruncate()
+					dp.raftPartition.Truncate(truncateTo)
+					log.LogInfof("partition(%v) scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, truncateTo)
 				}
-				dp.lastTruncateID = minAppliedID
-				if err := dp.PersistMetadata(); err != nil {
-					log.LogErrorf("partition(%v) scheduled persist metadata failed: %v", dp.partitionID, err)
-					truncateRaftLogTimer.Reset(time.Minute)
-					continue
-				}
-				dp.raftPartition.Truncate(minAppliedID)
-				log.LogInfof("partition(%v) scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
 		}
@@ -300,9 +293,13 @@ func (dp *DataPartition) startRaftAfterRepair() {
 
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-			dp.PersistMetadata()
+			if err = dp.Persist(PF_METADATA); err != nil {
+				log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)
+				timer.Reset(5 * time.Second)
+				continue
+			}
 			if err := dp.startRaft(); err != nil {
-				log.LogErrorf("PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
+				log.LogErrorf("PartitionID(%v) start raft err(%v). Retry after 5s.", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue
 			}
@@ -577,26 +574,8 @@ func (dp *DataPartition) updateRaftNode(req *proto.DataPartitionDecommissionRequ
 	return
 }
 
-func (dp *DataPartition) storeAppliedID(applyIndex uint64) (err error) {
-	filename := path.Join(dp.Path(), TempApplyIndexFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0755)
-	if err != nil {
-		return
-	}
-	defer func() {
-		fp.Close()
-		os.Remove(filename)
-	}()
-	if _, err = fp.WriteString(fmt.Sprintf("%d", applyIndex)); err != nil {
-		return
-	}
-	fp.Sync()
-	err = os.Rename(filename, path.Join(dp.Path(), ApplyIndexFile))
-	return
-}
-
 // LoadAppliedID loads the applied IDs to the memory.
-func (dp *DataPartition) LoadAppliedID() (err error) {
+func (dp *DataPartition) LoadAppliedID() (applied uint64, err error) {
 	filename := path.Join(dp.Path(), ApplyIndexFile)
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -611,7 +590,7 @@ func (dp *DataPartition) LoadAppliedID() (err error) {
 		err = errors.NewErrorf("[loadApplyIndex]: ApplyIndex is empty")
 		return
 	}
-	if _, err = fmt.Sscanf(string(data), "%d", &dp.appliedID); err != nil {
+	if _, err = fmt.Sscanf(string(data), "%d", &applied); err != nil {
 		err = errors.NewErrorf("[loadApplyID] ReadApplyID: %s", err.Error())
 		return
 	}
@@ -623,7 +602,7 @@ func (dp *DataPartition) SetMinAppliedID(id uint64) {
 }
 
 func (dp *DataPartition) GetAppliedID() (id uint64) {
-	return dp.appliedID
+	return dp.applyStatus.Applied()
 }
 
 func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
@@ -864,7 +843,7 @@ func (dp *DataPartition) broadcastMinAppliedID(ctx context.Context, minAppliedID
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
-				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
+				dp.partitionID, LocalIP, replicaHost, dp.applyStatus.Applied())
 			dp.minAppliedID = minAppliedID
 			continue
 		}
@@ -905,8 +884,8 @@ func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context) (allApplied
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
-				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
-			allAppliedID[i] = dp.appliedID
+				dp.partitionID, LocalIP, replicaHost, dp.applyStatus.Applied())
+			allAppliedID[i] = dp.applyStatus.Applied()
 			replyNum++
 			continue
 		}
@@ -917,7 +896,7 @@ func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context) (allApplied
 		}
 		if appliedID == 0 {
 			log.LogDebugf("[getAllReplicaAppliedID] partition(%v) local appliedID(%v) replicaHost(%v) appliedID=0",
-				dp.partitionID, dp.appliedID, replicaHost)
+				dp.partitionID, dp.applyStatus.Applied(), replicaHost)
 		}
 		allAppliedID[i] = appliedID
 		replyNum++
@@ -975,7 +954,7 @@ func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 	}
 
 	// if leader has not applied the raft, no need to get others
-	if dp.appliedID == 0 {
+	if dp.applyStatus.Applied() == 0 {
 		return
 	}
 
@@ -992,13 +971,13 @@ func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 	if replyNum == uint8(len(allAppliedID)) { // update dp.minAppliedID when every member had replied
 		minAppliedID, _ = dp.findMinAppliedID(allAppliedID)
 		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMinID(%v) newMinID(%v) allAppliedID(%v)",
-			dp.partitionID, dp.appliedID, dp.minAppliedID, minAppliedID, allAppliedID)
+			dp.partitionID, dp.applyStatus.Applied(), dp.minAppliedID, minAppliedID, allAppliedID)
 		dp.broadcastMinAppliedID(ctx, minAppliedID)
 	}
 
 	maxAppliedID, _ = dp.findMaxAppliedID(allAppliedID)
 	log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMaxID(%v) newMaxID(%v)",
-		dp.partitionID, dp.appliedID, dp.maxAppliedID, maxAppliedID)
+		dp.partitionID, dp.applyStatus.Applied(), dp.maxAppliedID, maxAppliedID)
 	dp.maxAppliedID = maxAppliedID
 
 	return

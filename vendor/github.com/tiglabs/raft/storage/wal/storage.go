@@ -254,7 +254,7 @@ func (s *Storage) StoreHardState(st proto.HardState) error {
 	return nil
 }
 
-func (s *Storage) SyncLastLogFile() error {
+func (s *Storage) Flush() error {
 	if err := s.metafile.Sync(); err != nil {
 		return err
 	}

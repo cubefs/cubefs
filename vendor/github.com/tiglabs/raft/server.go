@@ -512,14 +512,16 @@ func (rs *RaftServer) reciveSnapshot(req *snapshotRequest) {
 	raft.reciveSnapshot(req)
 }
 
-func (rs *RaftServer) FlusdLastLogFile(id uint64) {
+// wait: 等待至Flush完成
+func (rs *RaftServer) Flush(id uint64, wait bool) (err error) {
 	rs.mu.RLock()
 	raft, ok := rs.rafts[id]
 	rs.mu.RUnlock()
 
 	if ok {
-		raft.syncLastLogFile(id)
+		err = raft.flush(wait)
 	}
+	return
 }
 
 func (rs *RaftServer) Config() *Config {

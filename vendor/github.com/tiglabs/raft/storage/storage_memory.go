@@ -231,7 +231,7 @@ func (ms *MemoryStorage) Close() {
 
 }
 
-func (ms *MemoryStorage) SyncLastLogFile() error {
+func (ms *MemoryStorage) Flush() error {
 	return nil
 }
 

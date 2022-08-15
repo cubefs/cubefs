@@ -54,12 +54,24 @@ func newSnapshotRequest(m *proto.Message, r *util.BufferReader) *snapshotRequest
 }
 
 func (r *snapshotRequest) response() error {
-	return <-r.error()
+	if err := <-r.error(); err != nil {
+		return err
+	}
+	if !r.Completed() {
+		return ErrSnapshotDoesNotReadCompleted
+	}
+	return nil
 }
 
 type snapshotReader struct {
 	reader *util.BufferReader
 	err    error
+
+	completed bool
+}
+
+func (r *snapshotReader) Completed() bool {
+	return r.completed
 }
 
 func (r *snapshotReader) Next() ([]byte, error) {
@@ -75,6 +87,7 @@ func (r *snapshotReader) Next() ([]byte, error) {
 	}
 	size := uint64(binary.BigEndian.Uint32(buf))
 	if size == 0 {
+		r.completed = true
 		r.err = io.EOF
 		return nil, r.err
 	}

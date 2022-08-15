@@ -16,11 +16,12 @@ package raftstore
 
 import (
 	"context"
-	"github.com/tiglabs/raft/storage/wal"
 	"os"
 	"path"
 	"strconv"
 	"time"
+
+	"github.com/tiglabs/raft/storage/wal"
 
 	"github.com/chubaofs/chubaofs/util/log"
 
@@ -45,6 +46,9 @@ type PartitionFsm = raft.StateMachine
 // manages multiple raft replication groups at same time through a single
 // raft server instance and system resource.
 type Partition interface {
+	// Start this partition instance
+	Start() error
+
 	// Submit submits command data to raft log.
 	Submit(cmd []byte) (resp interface{}, err error)
 
@@ -86,11 +90,9 @@ type Partition interface {
 
 	IsOfflinePeer() bool
 
-	CreateRaft(cfg *PartitionConfig, raftStore RaftStore) error
-
-	FlushWal()
-
 	RaftConfig() *raft.Config
+
+	FlushWAL(wait bool) error
 }
 
 // Default implementation of the Partition interface.
@@ -237,48 +239,42 @@ func (p *partition) Truncate(index uint64) {
 	}
 }
 
-func (p *partition) FlushWal() {
+func (p *partition) FlushWAL(wait bool) (err error) {
 	if p.raft != nil {
-		p.raft.FlusdLastLogFile(p.id)
+		err = p.raft.Flush(p.id, wait)
 	}
+	return
 }
 
 func (p *partition) RaftConfig() *raft.Config {
 	return p.raft.Config()
 }
 
-func (p *partition) CreateRaft(cfg *PartitionConfig, raftStore RaftStore) (err error) {
+func (p *partition) Start() (err error) {
 	wc := &wal.Config{}
 	ws, err := wal.NewStorage(p.walPath, wc)
 	if err != nil {
 		return
 	}
 	peers := make([]proto.Peer, 0)
-	for _, peerAddress := range cfg.Peers {
+	for _, peerAddress := range p.config.Peers {
 		peers = append(peers, peerAddress.Peer)
-		raftStore.AddNodeWithPort(
-			peerAddress.ID,
-			peerAddress.Address,
-			peerAddress.HeartbeatPort,
-			peerAddress.ReplicaPort,
-		)
 	}
 	rc := &raft.RaftConfig{
-		ID:           cfg.ID,
+		ID:           p.config.ID,
 		Peers:        peers,
-		Leader:       cfg.Leader,
-		Term:         cfg.Term,
+		Leader:       p.config.Leader,
+		Term:         p.config.Term,
 		Storage:      ws,
-		StateMachine: cfg.SM,
-		Applied:      cfg.Applied,
-		Learners:     cfg.Learners,
+		StateMachine: p.config.SM,
+		Applied:      p.config.Applied,
+		Learners:     p.config.Learners,
 	}
 	if err = p.raft.CreateRaft(rc); err != nil {
 		return
 	}
 	return
 }
-
 
 func newPartition(cfg *PartitionConfig, raft *raft.RaftServer, walPath string) Partition {
 	return &partition{

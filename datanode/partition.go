@@ -26,12 +26,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"hash/crc32"
 	"net"
-	"sort"
 	"syscall"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -91,6 +89,79 @@ func (md *DataPartitionMetadata) Validate() (err error) {
 	return
 }
 
+type WALApplyStatus struct {
+	applied      uint64
+	lastTruncate uint64
+	nextTruncate uint64
+
+	mu sync.RWMutex
+}
+
+func (s *WALApplyStatus) Init(applied, lastTruncate uint64) (success bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if applied == 0 || (applied != 0 && applied >= lastTruncate) {
+		s.applied, s.lastTruncate = applied, lastTruncate
+		success = true
+	}
+	return
+}
+
+func (s *WALApplyStatus) AdvanceApplied(id uint64) (snap WALApplyStatus, success bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.applied < id && s.lastTruncate <= id {
+		s.applied = id
+		success = true
+	}
+	snap = WALApplyStatus{
+		applied:      s.applied,
+		lastTruncate: s.lastTruncate,
+		nextTruncate: s.nextTruncate,
+	}
+	return
+}
+
+func (s *WALApplyStatus) Applied() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.applied
+}
+
+func (s *WALApplyStatus) AdvanceNextTruncate(id uint64) (snap WALApplyStatus, success bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastTruncate < id && s.nextTruncate < id && id <= s.applied {
+		if s.nextTruncate != 0 && s.nextTruncate > s.lastTruncate {
+			s.lastTruncate = s.nextTruncate
+		}
+		s.nextTruncate = id
+		success = true
+	}
+	snap = WALApplyStatus{
+		applied:      s.applied,
+		lastTruncate: s.lastTruncate,
+		nextTruncate: s.nextTruncate,
+	}
+	return
+}
+
+func (s *WALApplyStatus) NextTruncate() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.nextTruncate
+}
+
+func (s *WALApplyStatus) LastTruncate() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastTruncate
+}
+
+func NewWALApplyStatus() *WALApplyStatus {
+	return &WALApplyStatus{}
+}
+
 type DataPartition struct {
 	clusterID       string
 	volumeID        string
@@ -107,10 +178,10 @@ type DataPartition struct {
 	extentStore     *storage.ExtentStore
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
-	appliedID       uint64 // apply id used in Raft
-	lastTruncateID  uint64 // truncate id used in Raft
-	minAppliedID    uint64
-	maxAppliedID    uint64
+
+	applyStatus  *WALApplyStatus
+	minAppliedID uint64
+	maxAppliedID uint64
 
 	repairC         chan struct{}
 	fetchVolHATypeC chan struct{}
@@ -132,7 +203,7 @@ type DataPartition struct {
 
 	monitorData []*statistics.MonitorData
 
-	persistMetadataSync chan struct{}
+	persistSync chan struct{}
 
 	inRepairExtents  map[uint64]struct{}
 	inRepairExtentMu sync.Mutex
@@ -151,7 +222,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	// persist file metadata
 	dp.DataPartitionCreateType = request.CreateType
 	dp.lastUpdateTime = time.Now().Unix()
-	err = dp.PersistMetadata()
+	err = dp.Persist(PF_METADATA)
 	disk.AddSize(uint64(dp.Size()))
 	return
 }
@@ -222,12 +293,18 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dp.lastUpdateTime = meta.LastUpdateTime
 	// dp.PersistMetadata()
 	disk.space.AttachPartition(dp)
-	if err = dp.LoadAppliedID(); err != nil {
+
+	var appliedID uint64
+	if appliedID, err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
 	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v)", dp.partitionID, meta)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
-	dp.lastTruncateID = meta.LastTruncateID
+
+	if !dp.applyStatus.Init(appliedID, meta.LastTruncateID) {
+		err = fmt.Errorf("action[loadApplyIndex] illegal metadata, appliedID %v, lastTruncateID %v", appliedID, meta.LastTruncateID)
+		return
+	}
 
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
@@ -263,8 +340,9 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		config:                  dpCfg,
 		DataPartitionCreateType: dpCfg.CreationType,
 		monitorData:             statistics.InitMonitorData(statistics.ModelDataNode),
-		persistMetadataSync:     make(chan struct{}, 1),
+		persistSync:             make(chan struct{}, 1),
 		inRepairExtents:         make(map[uint64]struct{}),
+		applyStatus:             NewWALApplyStatus(),
 	}
 	partition.replicasInit()
 
@@ -422,7 +500,9 @@ func (dp *DataPartition) Stop() {
 		// Close the store and raftstore.
 		dp.extentStore.Close()
 		dp.stopRaft()
-		_ = dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
+		if err := dp.Persist(PF_ALL); err != nil {
+			log.LogErrorf("persist partition [%v] failed when stop: %v", dp.partitionID, err)
+		}
 	})
 	return
 }
@@ -525,63 +605,6 @@ func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
 
-// PersistMetadata persists the file metadata on the disk.
-func (dp *DataPartition) PersistMetadata() (err error) {
-	dp.persistMetadataSync <- struct{}{}
-	defer func() {
-		<-dp.persistMetadataSync
-	}()
-	originFileName := path.Join(dp.path, DataPartitionMetadataFileName)
-	tempFileName := path.Join(dp.path, TempMetadataFileName)
-
-	var metadata = new(DataPartitionMetadata)
-	if originData, err := ioutil.ReadFile(originFileName); err == nil {
-		_ = json.Unmarshal(originData, metadata)
-	}
-	sp := sortedPeers(dp.config.Peers)
-	sort.Sort(sp)
-	metadata.VolumeID = dp.config.VolName
-	metadata.PartitionID = dp.config.PartitionID
-	metadata.PartitionSize = dp.config.PartitionSize
-	metadata.Peers = dp.config.Peers
-	metadata.Hosts = dp.config.Hosts
-	metadata.Learners = dp.config.Learners
-	metadata.DataPartitionCreateType = dp.DataPartitionCreateType
-	metadata.VolumeHAType = dp.config.VolHAType
-	metadata.LastUpdateTime = dp.lastUpdateTime
-	if metadata.CreateTime == "" {
-		metadata.CreateTime = time.Now().Format(TimeLayout)
-	}
-	if dp.lastTruncateID > metadata.LastTruncateID {
-		metadata.LastTruncateID = dp.lastTruncateID
-	}
-	var newData []byte
-	if newData, err = json.Marshal(metadata); err != nil {
-		return
-	}
-	var tempFile *os.File
-	if tempFile, err = os.OpenFile(tempFileName, os.O_CREATE|os.O_RDWR, 0666); err != nil {
-		return
-	}
-	defer func() {
-		_ = tempFile.Close()
-		if err != nil {
-			_ = os.Remove(tempFileName)
-		}
-	}()
-	if _, err = tempFile.Write(newData); err != nil {
-		return
-	}
-	if err = tempFile.Sync(); err != nil {
-		return
-	}
-	if err = os.Rename(tempFileName, originFileName); err != nil {
-		return
-	}
-	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(newData))
-	return
-}
-
 func (dp *DataPartition) Repair() {
 	select {
 	case dp.repairC <- struct{}{}:
@@ -642,7 +665,7 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 				retryFetchVolHATypeTimer.Reset(time.Minute)
 			}
 		case <-persistDpLastUpdateTimer.C:
-			dp.PersistMetadata()
+			_ = dp.Persist(PF_METADATA)
 			persistDpLastUpdateTimer.Reset(time.Hour)
 		}
 	}
@@ -655,7 +678,7 @@ func (dp *DataPartition) fetchVolHATypeFromMaster() (err error) {
 	}
 	if dp.config.VolHAType != simpleVolView.CrossRegionHAType {
 		dp.config.VolHAType = simpleVolView.CrossRegionHAType
-		if err = dp.PersistMetadata(); err != nil {
+		if err = dp.Persist(PF_METADATA); err != nil {
 			return
 		}
 	}
@@ -1103,8 +1126,4 @@ func (dp *DataPartition) EvictExpiredFileDescriptor() {
 
 func (dp *DataPartition) ForceEvictFileDescriptor(ratio storage.Ratio) {
 	dp.extentStore.ForceEvictCache(ratio)
-}
-
-func (dp *DataPartition) ForceFlushAllFD() (cnt int) {
-	return dp.extentStore.ForceFlushAllFD()
 }

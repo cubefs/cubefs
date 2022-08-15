@@ -107,8 +107,7 @@ func (w *recordWriter) Sync() error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	return nil
-	//return w.f.Sync()
+	return w.f.Sync()
 }
 
 // 关闭写

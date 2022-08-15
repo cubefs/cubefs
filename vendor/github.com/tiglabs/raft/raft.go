@@ -141,7 +141,7 @@ type raft struct {
 	recvc             chan *proto.Message
 	snapRecvc         chan *snapshotRequest
 	truncatec         chan uint64
-	syncLastLogFileC  chan uint64
+	flushc            chan *Future
 	readIndexC        chan *Future
 	statusc           chan chan *Status
 	entryRequestC     chan *entryRequest
@@ -171,28 +171,28 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		replicasErrCnt: make(map[uint64]uint8),
 	}
 	raft := &raft{
-		raftFsm:          r,
-		config:           config,
-		raftConfig:       raftConfig,
-		mStatus:          mStatus,
-		pending:          make(map[uint64]*Future),
-		pendingCmd:       make(map[uint64]proto.EntryType),
-		snapping:         make(map[uint64]*snapshotStatus),
-		recvc:            make(chan *proto.Message, config.ReqBufferSize),
-		applyc:           make(chan *apply, config.AppBufferSize),
-		propc:            make(chan *proposal, 256),
-		snapRecvc:        make(chan *snapshotRequest, 1),
-		truncatec:        make(chan uint64, 1),
-		syncLastLogFileC: make(chan uint64, 1),
-		readIndexC:       make(chan *Future, 256),
-		statusc:          make(chan chan *Status, 1),
-		entryRequestC:    make(chan *entryRequest, 16),
-		tickc:            make(chan struct{}, 64),
-		promtec:          make(chan struct{}, 64),
-		readyc:           make(chan struct{}, 1),
-		electc:           make(chan struct{}, 1),
-		stopc:            make(chan struct{}),
-		done:             make(chan struct{}),
+		raftFsm:       r,
+		config:        config,
+		raftConfig:    raftConfig,
+		mStatus:       mStatus,
+		pending:       make(map[uint64]*Future),
+		pendingCmd:    make(map[uint64]proto.EntryType),
+		snapping:      make(map[uint64]*snapshotStatus),
+		recvc:         make(chan *proto.Message, config.ReqBufferSize),
+		applyc:        make(chan *apply, config.AppBufferSize),
+		propc:         make(chan *proposal, 256),
+		snapRecvc:     make(chan *snapshotRequest, 1),
+		truncatec:     make(chan uint64, 1),
+		flushc:        make(chan *Future, 1),
+		readIndexC:    make(chan *Future, 256),
+		statusc:       make(chan chan *Status, 1),
+		entryRequestC: make(chan *entryRequest, 16),
+		tickc:         make(chan struct{}, 64),
+		promtec:       make(chan struct{}, 64),
+		readyc:        make(chan struct{}, 1),
+		electc:        make(chan struct{}, 1),
+		stopc:         make(chan struct{}),
+		done:          make(chan struct{}),
 	}
 	raft.curApplied.Set(r.raftLog.applied)
 	raft.peerState.replace(raftConfig.Peers)
@@ -448,8 +448,12 @@ func (s *raft) run() {
 
 		case c := <-s.statusc:
 			c <- s.getStatus()
-		case <-s.syncLastLogFileC:
-			s.raftConfig.Storage.SyncLastLogFile()
+		case f := <-s.flushc:
+			err := s.raftConfig.Storage.Flush()
+			if err != nil {
+				logger.Error("raft[%v] flush storage failed: %v", err)
+			}
+			f.respond(nil, err)
 		case truncIndex := <-s.truncatec:
 			func() {
 				defer util.HandleCrash()
@@ -460,7 +464,9 @@ func (s *raft) run() {
 					maxIndex := util.Min(truncIndex, lasti-s.config.RetainLogs)
 					if err = s.raftConfig.Storage.Truncate(maxIndex); err != nil {
 						logger.Error("raft[%v] truncate failed,error is: %v", s.raftFsm.id, err)
+						return
 					}
+					logger.Debug("raft[%v] truncate storage to %v", maxIndex)
 				}
 			}()
 
@@ -705,17 +711,22 @@ func (s *raft) truncate(index uint64) {
 	}
 }
 
-func (s *raft) syncLastLogFile(id uint64) {
+func (s *raft) flush(wait bool) (err error) {
 	if s.restoringSnapshot.Get() {
 		return
 	}
 
+	future := newFuture()
+
 	select {
 	case <-s.stopc:
-	case s.syncLastLogFileC <- id:
+	case s.flushc <- future:
+		if wait {
+			_, err = future.Response()
+		}
 	default:
-		return
 	}
+	return
 }
 
 func (s *raft) tryToLeader(future *Future) {
