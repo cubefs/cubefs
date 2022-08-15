@@ -834,9 +834,7 @@ func TestMetaPartition_CopyGet(t *testing.T) {
 
 			var timestamp int64 = 0
 
-			mp.dentryDeletedTree.Range(nil, nil, func(data []byte) (bool, error) {
-				dden := new(DeletedDentry)
-				_ = dden.Unmarshal(data)
+			mp.dentryDeletedTree.Range(nil, nil, func(dden *DeletedDentry) (bool, error) {
 				if dden.ParentId == 10 && dden.Name == "f4" {
 					timestamp = dden.Timestamp
 				}
@@ -851,9 +849,7 @@ func TestMetaPartition_CopyGet(t *testing.T) {
 				return
 			}
 			item.Timestamp++
-			mp.dentryDeletedTree.Range(nil, nil, func(data []byte) (bool, error) {
-				dden := new(DeletedDentry)
-				_ = dden.Unmarshal(data)
+			mp.dentryDeletedTree.Range(nil, nil, func(dden *DeletedDentry) (bool, error) {
 				t.Logf("fsmRecoverDeletedDentry: ascend2: %v", dden)
 				return true, nil
 			})

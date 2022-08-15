@@ -277,11 +277,7 @@ func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *Re
 
 	count := uint64(0)
 	readDirLimit := ReadDirLimitNum()
-	err = mp.dentryTree.Range(begDentry, endDentry, func(v []byte) (bool, error) {
-		d := &Dentry{}
-		if e := d.Unmarshal(v); e != nil {
-			return false, fmt.Errorf("unmarshal dentry failed:%v", err)
-		}
+	err = mp.dentryTree.RangeWithPrefix(&Dentry{ParentId: req.ParentID}, begDentry, endDentry, func(d *Dentry) (bool, error) {
 		count += 1
 		if req.IsBatch && count > readDirMax {
 			resp.NextMarker = d.Name

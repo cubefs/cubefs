@@ -22,8 +22,6 @@ import (
 	"strings"
 	"time"
 
-
-
 	"github.com/chubaofs/chubaofs/util"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -187,8 +185,7 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 	multipartIdMarker := req.MultipartIdMarker
 	prefix := req.Prefix
 	var matches = make([]*Multipart, 0, max)
-	var walkTreeFunc = func(v []byte) (bool, error) {
-		multipart := MultipartFromBytes(v)
+	var walkTreeFunc = func(multipart *Multipart) (bool, error) {
 		if multipart.key < keyMarker || (multipart.key == keyMarker && multipart.id < multipartIdMarker) {
 			return true, nil
 		}
@@ -200,9 +197,13 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 		return !(len(matches) >= max), nil
 	}
 	if len(prefix) > 0 {
-		mp.multipartTree.Range(&Multipart{key: prefix}, nil, walkTreeFunc)
+		err = mp.multipartTree.RangeWithPrefix(&Multipart{key: prefix}, &Multipart{key: keyMarker, id: multipartIdMarker}, nil, walkTreeFunc)
 	} else {
-		mp.multipartTree.Range(nil, nil, walkTreeFunc)
+		err = mp.multipartTree.Range(nil, nil, walkTreeFunc)
+	}
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
 	}
 	multipartInfos := make([]*proto.MultipartInfo, len(matches))
 

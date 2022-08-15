@@ -309,7 +309,7 @@ func (mp *metaPartition) cleanDeletedInode(dbHandle interface{}, inode uint64) (
 	begDen := newPrimaryDeletedDentry(dino.Inode.Inode, "", 0, 0)
 	endDen := newPrimaryDeletedDentry(dino.Inode.Inode+1, "", 0, 0)
 	var children int
-	err = mp.dentryDeletedTree.Range(begDen, endDen, func(v []byte) (bool, error) {
+	err = mp.dentryDeletedTree.RangeWithPrefix(begDen, begDen, endDen, func(d *DeletedDentry) (bool, error) {
 		children++
 		if children > 0 {
 			return false, nil

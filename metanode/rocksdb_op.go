@@ -270,6 +270,26 @@ func (dbInfo *RocksDbInfo) rangeWithIter(it *gorocksdb.Iterator, start []byte, e
 	return nil
 }
 
+func (dbInfo *RocksDbInfo) rangeWithIterByPrefix(it *gorocksdb.Iterator, prefix, start, end []byte, cb func(k, v []byte) (bool, error)) error {
+	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+		key := it.Key().Data()
+		value := it.Value().Data()
+		if bytes.Compare(key, start) < 0 {
+			continue
+		}
+		if bytes.Compare(end, key) < 0 {
+			break
+		}
+		if hasNext, err := cb(key, value); err != nil {
+			log.LogErrorf("[RocksTree] RangeWithIter key: %v value: %v err: %v", key, value, err)
+			return err
+		} else if !hasNext {
+			return nil
+		}
+	}
+	return nil
+}
+
 func (dbInfo *RocksDbInfo) descRangeWithIter(it *gorocksdb.Iterator, start []byte, end []byte, cb func(k, v []byte) (bool, error)) error {
 	it.SeekForPrev(end)
 	for ; it.ValidForPrefix(start); it.Prev() {
@@ -340,6 +360,18 @@ func (dbInfo *RocksDbInfo)RangeWithSnap(start, end []byte, snap *gorocksdb.Snaps
 		it.Close()
 	}()
 	return dbInfo.rangeWithIter(it, start, end, cb)
+}
+
+func (dbInfo *RocksDbInfo)RangeWithSnapByPrefix(prefix, start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte)(bool, error)) error {
+	if snap == nil {
+		return fmt.Errorf("invalid snapshot")
+	}
+
+	it := dbInfo.iterator(snap)
+	defer func() {
+		it.Close()
+	}()
+	return dbInfo.rangeWithIterByPrefix(it, prefix, start, end, cb)
 }
 
 func (dbInfo *RocksDbInfo)DescRangeWithSnap(start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte)(bool, error)) error  {

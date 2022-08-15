@@ -15,6 +15,10 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+const (
+	DefBatchDelCount = 10000
+)
+
 type RocksBaseInfo struct {
 	version           uint32
 	length            uint32
@@ -354,6 +358,18 @@ func (r *RocksTree) Range(start, end []byte, cb func(v []byte) (bool, error)) er
 	return r.db.RangeWithSnap(start, end, snapshot, callbackFunc)
 }
 
+func (r *RocksTree) RangeWithPrefix(prefix, start, end []byte, cb func(v []byte) (bool, error)) error {
+	snapshot := r.db.OpenSnap()
+	if snapshot == nil {
+		return errors.NewErrorf("open snap failed")
+	}
+	defer r.db.ReleaseSnap(snapshot)
+	callbackFunc := func(k, v []byte) (bool, error) {
+		return cb(v)
+	}
+	return r.db.RangeWithSnapByPrefix(prefix, start, end, snapshot, callbackFunc)
+}
+
 func (r *RocksTree) HasKey(key []byte) (bool, error) {
 	bs, err := r.GetBytes(key)
 	if err != nil {
@@ -554,6 +570,16 @@ func dentryEncodingKey(parentId uint64, name string) []byte {
 	return buff.Bytes()
 }
 
+func dentryEncodingPrefix(parentId uint64, name string) []byte {
+	buff := new(bytes.Buffer)
+	buff.WriteByte(byte(DentryTable))
+	_ = binary.Write(buff, binary.BigEndian, parentId)
+	if name != "" {
+		buff.WriteString(name)
+	}
+	return buff.Bytes()
+}
+
 func extendEncodingKey(ino uint64) []byte {
 	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(ExtendTable))
@@ -570,12 +596,35 @@ func multipartEncodingKey(key string, id string) []byte {
 	return buff.Bytes()
 }
 
+func multipartEncodingPrefix(key string, id string) []byte {
+	buff := new(bytes.Buffer)
+	buff.WriteByte(byte(MultipartTable))
+	buff.WriteString(key)
+	return buff.Bytes()
+}
+
 func deletedDentryEncodingKey(parentId uint64, name string, timeStamp int64) []byte {
 	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(DelDentryTable))
 	_ = binary.Write(buff, binary.BigEndian, parentId)
 	buff.WriteString(name)
 	buff.WriteByte(0)
+	_ = binary.Write(buff, binary.BigEndian, timeStamp)
+	return buff.Bytes()
+}
+
+func deletedDentryEncodingPrefix(parentId uint64, name string, timeStamp int64) []byte {
+	buff := new(bytes.Buffer)
+	buff.WriteByte(byte(DelDentryTable))
+	_ = binary.Write(buff, binary.BigEndian, parentId)
+	if name == "" {
+		return buff.Bytes()
+	}
+	buff.WriteString(name)
+	buff.WriteByte(0)
+	if timeStamp == 0 {
+		return buff.Bytes()
+	}
 	_ = binary.Write(buff, binary.BigEndian, timeStamp)
 	return buff.Bytes()
 }
@@ -1145,7 +1194,7 @@ func (b *DeletedInodeRocks) Delete(dbHandle interface{}, ino uint64) (bool, erro
 
 // Range begin
 //Range , if end is nil , it will range all of this type , it range not include end
-func (b *InodeRocks) Range(start, end *Inode, cb func(v []byte) (bool, error)) error {
+func (b *InodeRocks) Range(start, end *Inode, cb func(i *Inode) (bool, error)) error {
 	var (
 		startByte []byte
 		endByte   []byte
@@ -1156,24 +1205,21 @@ func (b *InodeRocks) Range(start, end *Inode, cb func(v []byte) (bool, error)) e
 		endByte = inodeEncodingKey(end.Inode)
 	}
 
-	if start == nil {
-		callBackFunc = cb
-	} else {
-		callBackFunc = func(data []byte) (bool, error) {
-			inode := NewInode(0, 0)
-			inode.Unmarshal(context.Background(), data)
-			if inode.Less(start) {
-				return true, nil
-			}
-			return cb(data)
+	callBackFunc = func(v []byte) (bool, error) {
+		inode := NewInode(0, 0)
+		if err := inode.Unmarshal(context.Background(), v); err != nil {
+			return false, err
 		}
+		if start != nil && inode.Less(start) {
+			return true, nil
+		}
+		return cb(inode)
 	}
 	return b.RocksTree.Range(startByte, endByte, callBackFunc)
 }
 
-//Range , just for current scenario(readDir)
-//todo:lizhenzhen comment
-func (b *DentryRocks) Range(start, end *Dentry, cb func(v []byte) (bool, error)) error {
+//Range , just for range dentry table from the beginning of dentry table
+func (b *DentryRocks) Range(start, end *Dentry, cb func(d *Dentry) (bool, error)) error {
 	var (
 		startByte []byte
 		endByte   []byte
@@ -1184,27 +1230,49 @@ func (b *DentryRocks) Range(start, end *Dentry, cb func(v []byte) (bool, error))
 		endByte = dentryEncodingKey(end.ParentId, end.Name)
 	}
 
-	if start != nil && start.ParentId != 0 {
-		startByte = dentryEncodingKey(start.ParentId, "")
-		cbFunc = func(data []byte) (bool, error) {
-			dentry := new(Dentry)
-			if err := dentry.Unmarshal(data); err != nil {
-				return false, err
-			}
-			if dentry.Less(start) {
-				return true, nil
-			}
-			return cb(data)
-
+	cbFunc = func(v []byte) (bool, error) {
+		d := new(Dentry)
+		if err := d.Unmarshal(v); err != nil {
+			return false, err
 		}
-	} else {
-		cbFunc = cb
+		if start != nil && start.ParentId != 0 && d.Less(start) {
+			return true, nil
+		}
+		return cb(d)
 	}
 	return b.RocksTree.Range(startByte, endByte, cbFunc)
 }
 
+func (b *DentryRocks) RangeWithPrefix(prefix, start, end *Dentry, cb func(d *Dentry) (bool, error)) error {
+	var (
+		startByte, endByte, prefixByte []byte
+		cbFunc    func(v []byte) (bool, error)
+	)
+	prefixByte, startByte, endByte = []byte{byte(DentryTable)}, []byte{byte(DentryTable)}, []byte{byte(DentryTable) + 1}
+	if end != nil {
+		endByte = dentryEncodingKey(end.ParentId, end.Name)
+	}
+
+	if start != nil && start.ParentId != 0 {
+		startByte = dentryEncodingKey(start.ParentId, start.Name)
+	}
+
+	if prefix != nil {
+		prefixByte = dentryEncodingPrefix(prefix.ParentId, prefix.Name)
+	}
+
+	cbFunc = func(v []byte) (bool, error) {
+		d := new(Dentry)
+		if err := d.Unmarshal(v); err != nil {
+			return false, err
+		}
+		return cb(d)
+	}
+	return b.RocksTree.RangeWithPrefix(prefixByte, startByte, endByte, cbFunc)
+}
+
 //Range , if end is nil , it will range all of this type , it range not include end
-func (b *ExtendRocks) Range(start, end *Extend, cb func(v []byte) (bool, error)) error {
+func (b *ExtendRocks) Range(start, end *Extend, cb func(e *Extend) (bool, error)) error {
 	var (
 		startByte    []byte
 		endByte      []byte
@@ -1214,132 +1282,136 @@ func (b *ExtendRocks) Range(start, end *Extend, cb func(v []byte) (bool, error))
 	if end != nil {
 		endByte = extendEncodingKey(end.inode)
 	}
-	if start == nil {
-		callBackFunc = cb
-	} else {
-		callBackFunc = func(data []byte) (bool, error) {
-			extent, err := NewExtendFromBytes(data)
-			if err != nil {
-				return false, err
-			}
-			if extent.Less(start) {
-				return true, nil
-			}
-			return cb(data)
+
+	callBackFunc = func(data []byte) (bool, error) {
+		extent, err := NewExtendFromBytes(data)
+		if err != nil {
+			return false, err
 		}
+		if start != nil && extent.Less(start) {
+			return true, nil
+		}
+		return cb(extent)
 	}
 	return b.RocksTree.Range(startByte, endByte, callBackFunc)
 }
 
-//Range, if start with name key, start key encoding with name key, else if start is nil, it will range MultipartTable start to endBytes,
-//note: Just for current scenario,
-//todo:lizhenzhen comment
-func (b *MultipartRocks) Range(start, end *Multipart, cb func(v []byte) (bool, error)) error {
+//Range, just for range multipart table from the beginning of multipart table
+func (b *MultipartRocks) Range(start, end *Multipart, cb func(m *Multipart) (bool, error)) error {
 	var startByte, endByte = []byte{byte(MultipartTable)}, []byte{byte(MultipartTable) + 1}
 	if end != nil {
 		endByte = multipartEncodingKey(end.key, end.id)
 	}
 
-	if start != nil {
-		buff := new(bytes.Buffer)
-		buff.WriteByte(byte(MultipartTable))
-		buff.WriteString(start.key)
-		startByte = buff.Bytes()
+	callBackFunc := func(v []byte) (bool, error) {
+		mul := MultipartFromBytes(v)
+		if start != nil && mul.Less(start) {
+			return true, nil
+		}
+		return cb(mul)
 	}
 
-	return b.RocksTree.Range(startByte, endByte, cb)
+	return b.RocksTree.Range(startByte, endByte, callBackFunc)
 }
 
-//todo:lizhenzhen just for Current scenario
-//Range, just for current scenario
-func (b *DeletedDentryRocks) Range(start, end *DeletedDentry, cb func(v []byte) (bool, error)) error {
+func (b *MultipartRocks) RangeWithPrefix(prefix, start, end *Multipart, cb func(m *Multipart) (bool, error)) error {
+	var prefixByte, startByte, endByte = []byte{byte(MultipartTable)}, []byte{byte(MultipartTable)}, []byte{byte(MultipartTable) + 1}
+	if end != nil {
+		endByte = multipartEncodingKey(end.key, end.id)
+	}
+
+	if start != nil {
+		startByte = multipartEncodingKey(start.key, start.id)
+	}
+
+	if prefix != nil {
+		prefixByte = multipartEncodingPrefix(prefix.key, prefix.id)
+	}
+
+	callBackFunc := func(v []byte) (bool, error) {
+		mul := MultipartFromBytes(v)
+		return cb(mul)
+	}
+	return b.RocksTree.RangeWithPrefix(prefixByte, startByte, endByte, callBackFunc)
+}
+
+//just for range deleted dentry table from table start
+func (b *DeletedDentryRocks) Range(start, end *DeletedDentry, cb func(deleteDentry *DeletedDentry) (bool, error)) error {
 	var (
-		startByte    []byte
-		endByte      []byte
+		startByte []byte
+		endByte   []byte
 		callBackFunc func(v []byte) (bool, error)
 	)
+
 	startByte, endByte = []byte{byte(DelDentryTable)}, []byte{byte(DelDentryTable) + 1}
 	if end != nil {
 		endByte = deletedDentryEncodingKey(end.ParentId, end.Name, end.Timestamp)
 	}
 
-	if start == nil || start.ParentId == 0 {
-		return b.RocksTree.Range(startByte, endByte, cb)
-	}
-
-	//start != nil
 	callBackFunc = func(v []byte) (bool, error) {
 		dd := new(DeletedDentry)
 		if err := dd.Unmarshal(v); err != nil {
 			return false, err
 		}
-		if dd.Less(start) {
+		if start != nil && dd.Less(start) {
 			return true, nil
 		}
-		return cb(v)
-	}
-
-	if end != nil {
-		if start.ParentId == end.ParentId && start.Name == end.Name {
-			buff := new(bytes.Buffer)
-			buff.WriteByte(byte(DelDentryTable))
-			_ = binary.Write(buff, binary.BigEndian, start.ParentId)
-			buff.WriteString(start.Name)
-			startByte = buff.Bytes()
-		} else { //todo:lizhenzhen startByte with pid just for current usage scenario
-			buff := new(bytes.Buffer)
-			buff.WriteByte(byte(DelDentryTable))
-			_ = binary.Write(buff, binary.BigEndian, start.ParentId)
-			startByte = buff.Bytes()
-		}
+		return cb(dd)
 	}
 	return b.RocksTree.Range(startByte, endByte, callBackFunc)
 }
 
-func (b *DeletedDentryRocks) RangeBackup(start, end *DeletedDentry, cb func(v []byte) (bool, error)) error {
+func (b *DeletedDentryRocks) RangeWithPrefix(prefix, start, end *DeletedDentry, cb func(deleteDentry *DeletedDentry) (bool, error)) error {
 	var (
-		startByte []byte
-		endByte   []byte
-		callBackFunc func(v []byte) (bool, error)
+		startByte, endByte, prefixByte []byte
+		callBackFunc                   func(v []byte) (bool, error)
 	)
 
-	startByte, endByte = []byte{byte(DelDentryTable)}, []byte{byte(DelDentryTable) + 1}
+	prefixByte, startByte, endByte = []byte{byte(DelDentryTable)}, []byte{byte(DelDentryTable)}, []byte{byte(DelDentryTable) + 1}
 	if end != nil {
 		endByte = deletedDentryEncodingKey(end.ParentId, end.Name, end.Timestamp)
 	}
 
-	if start == nil || start.ParentId == 0 {
-		callBackFunc = cb
-	} else {
-		callBackFunc = func(v []byte) (bool, error) {
-			dd := new(DeletedDentry)
-			if err := dd.Unmarshal(v); err != nil {
-				return false, err
-			}
-			if dd.Less(start) {
-				return true, nil
-			}
-			return cb(v)
-		}
+	if start != nil {
+		startByte = deletedDentryEncodingKey(start.ParentId, start.Name, start.Timestamp)
 	}
-	return b.RocksTree.Range(startByte, endByte, callBackFunc)
+
+	if prefix != nil {
+		prefixByte = deletedDentryEncodingPrefix(prefix.ParentId, prefix.Name, prefix.Timestamp)
+	}
+
+	callBackFunc = func(v []byte) (bool, error) {
+		dd := new(DeletedDentry)
+		if err := dd.Unmarshal(v); err != nil {
+			return false, err
+		}
+		return cb(dd)
+	}
+
+	return b.RocksTree.RangeWithPrefix(prefixByte, startByte, endByte, callBackFunc)
 }
 
-//todo:just for current scenario
-func (b *DeletedInodeRocks) Range(start, end *DeletedINode, cb func(v []byte) (bool, error)) error {
+func (b *DeletedInodeRocks) Range(start, end *DeletedINode, cb func(deletedInode *DeletedINode) (bool, error)) error {
 	var (
 		startByte []byte
 		endByte   []byte
 	)
 	startByte, endByte = []byte{byte(DelInodeTable)}, []byte{byte(DelInodeTable) + 1}
-	if start != nil {
-		startByte = inodeEncodingKey(start.Inode.Inode)
-	}
-
 	if end != nil {
 		endByte = inodeEncodingKey(end.Inode.Inode)
 	}
-	return b.RocksTree.Range(startByte, endByte, cb)
+
+	callBackFunc := func(v []byte) (bool, error) {
+		di := new(DeletedINode)
+		if err := di.Unmarshal(context.Background(), v); err != nil {
+			return false, err
+		}
+		if start != nil && di.Less(start) {
+			return true, nil
+		}
+		return cb(di)
+	}
+	return b.RocksTree.Range(startByte, endByte, callBackFunc)
 }
 
 func (b *InodeRocks) MaxItem() *Inode {
@@ -1405,10 +1477,45 @@ func (r *RocksSnapShot) Count(tp TreeType) (uint64) {
 	return count
 }
 
-func (r *RocksSnapShot) Range(tp TreeType, cb func(v []byte) (bool, error)) error {
+func (r *RocksSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, error)) error {
 	tableType := getTableTypeKey(tp)
 	callbackFunc := func(k, v []byte) (bool, error) {
-		return cb(v)
+		switch tp {
+		case InodeType:
+			inode := NewInode(0, 0)
+			if err := inode.Unmarshal(context.Background(), v); err != nil {
+				return false, err
+			}
+			return cb(inode)
+		case DentryType:
+			dentry := new(Dentry)
+			if err := dentry.Unmarshal(v); err != nil {
+				return false, err
+			}
+			return cb(dentry)
+		case ExtendType:
+			extent, err := NewExtendFromBytes(v)
+			if err != nil {
+				return false, err
+			}
+			return cb(extent)
+		case MultipartType:
+			return cb(MultipartFromBytes(v))
+		case DelDentryType:
+			delDentry := new(DeletedDentry)
+			if err := delDentry.Unmarshal(v); err != nil {
+				return false, err
+			}
+			return cb(delDentry)
+		case DelInodeType:
+			delInode := new(DeletedINode)
+			if err := delInode.Unmarshal(context.Background(), v); err != nil {
+				return false, err
+			}
+			return cb(delInode)
+		default:
+			return false, fmt.Errorf("error type")
+		}
 	}
 	return r.tree.db.RangeWithSnap([]byte{byte(tableType)}, []byte{byte(tableType) + 1}, r.snap, callbackFunc)
 }

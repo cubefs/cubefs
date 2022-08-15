@@ -15,8 +15,6 @@
 package metanode
 
 import (
-	"encoding/binary"
-	"fmt"
 	"hash/crc32"
 	"sync"
 
@@ -42,20 +40,38 @@ type MemSnapShot struct {
 	delInode  *DeletedInodeBTree
 }
 
-func (b *MemSnapShot) Range(tp TreeType, cb func(v []byte) (bool, error)) error {
+func (b *MemSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, error)) error {
 	switch tp {
 	case InodeType:
-		return b.inode.Range(&Inode{}, nil, cb)
+		callBackFunc := func(inode *Inode) (bool, error) {
+			return cb(inode)
+		}
+		return b.inode.Range(&Inode{}, nil, callBackFunc)
 	case DentryType:
-		return b.dentry.Range(&Dentry{}, nil, cb)
+		callBackFunc := func(dentry *Dentry) (bool, error) {
+			return cb(dentry)
+		}
+		return b.dentry.Range(&Dentry{}, nil, callBackFunc)
 	case ExtendType:
-		return b.extend.Range(&Extend{}, nil, cb)
+		callBackFunc := func(extend *Extend) (bool, error) {
+			return cb(extend)
+		}
+		return b.extend.Range(&Extend{}, nil, callBackFunc)
 	case MultipartType:
-		return b.multipart.Range(&Multipart{}, nil, cb)
+		callBackFunc := func(multipart *Multipart) (bool, error) {
+			return cb(multipart)
+		}
+		return b.multipart.Range(&Multipart{}, nil, callBackFunc)
 	case DelDentryType:
-		return b.delDentry.Range(&DeletedDentry{}, nil, cb)
+		callBackFunc := func(delDentry *DeletedDentry) (bool, error) {
+			return cb(delDentry)
+		}
+		return b.delDentry.Range(&DeletedDentry{}, nil, callBackFunc)
 	case DelInodeType:
-		return b.delInode.Range(&DeletedINode{}, nil, cb)
+		callBackFunc := func(delInode *DeletedINode) (bool, error) {
+			return cb(delInode)
+		}
+		return b.delInode.Range(&DeletedINode{}, nil, callBackFunc)
 	default:
 	}
 	panic("out of type")
@@ -83,32 +99,78 @@ func (b *MemSnapShot) Count(tp TreeType) uint64 {
 }
 
 func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
-	crc := crc32.NewIEEE()
-	cb := func(v []byte) (bool, error) {
-		if tp == InodeType {
-			if len(v) < AccessTimeOffset+8 {
-				return false, fmt.Errorf("inode binary with error length:%v", len(v))
-			}
-			binary.BigEndian.PutUint64(v[AccessTimeOffset:AccessTimeOffset+8], 0)
-		}
-		if _, err = crc.Write(v); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-
+	var (
+		crc  = crc32.NewIEEE()
+		data []byte
+	)
 	switch tp {
 	case InodeType:
+		cb := func(i *Inode) (bool, error) {
+			i.AccessTime = 0
+			if data, err = i.MarshalV2(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
 		err = b.inode.Range(&Inode{}, nil, cb)
 	case DentryType:
+		cb := func(d *Dentry) (bool, error) {
+			if data, err = d.MarshalV2(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
 		err = b.dentry.Range(&Dentry{}, nil, cb)
 	case ExtendType:
+		cb := func(extend *Extend) (bool, error) {
+			if data, err = extend.Bytes(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
 		err = b.extend.Range(&Extend{}, nil, cb)
 	case MultipartType:
+		cb := func(multipart *Multipart) (bool, error) {
+			if data, err = multipart.Bytes(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
 		err = b.multipart.Range(&Multipart{}, nil, cb)
 	case DelDentryType:
+		cb := func(delDentry *DeletedDentry) (bool, error) {
+			if data, err = delDentry.Marshal(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
 		err = b.delDentry.Range(&DeletedDentry{}, nil, cb)
 	case DelInodeType:
+		cb := func(delInode *DeletedINode) (bool, error) {
+			delInode.Inode.AccessTime = 0
+			if data, err = delInode.Marshal(); err != nil {
+				return false, err
+			}
+			if _, err = crc.Write(data); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
 		err = b.delInode.Range(&DeletedINode{}, nil, cb)
 	default:
 		panic("out of type")
@@ -378,10 +440,9 @@ func (i *DeletedInodeBTree) Delete(dbHandle interface{}, ino uint64) (bool, erro
 }
 
 //range
-func (i *InodeBTree) Range(start, end *Inode, cb func(v []byte) (bool, error)) error {
+func (i *InodeBTree) Range(start, end *Inode, cb func(i *Inode) (bool, error)) error {
 	var (
 		err  error
-		bs   []byte
 		next bool
 	)
 	if start == nil {
@@ -389,11 +450,7 @@ func (i *InodeBTree) Range(start, end *Inode, cb func(v []byte) (bool, error)) e
 	}
 
 	callback := func(i BtreeItem) bool {
-		bs, err = i.(*Inode).MarshalV2()
-		if err != nil {
-			return false
-		}
-		next, err = cb(bs)
+		next, err = cb(i.(*Inode))
 		if err != nil {
 			return false
 		}
@@ -405,14 +462,12 @@ func (i *InodeBTree) Range(start, end *Inode, cb func(v []byte) (bool, error)) e
 	} else {
 		i.BTree.AscendRange(start, end, callback)
 	}
-
 	return err
 }
 
-func (i *DentryBTree) Range(start, end *Dentry, cb func(v []byte) (bool, error)) error {
+func (i *DentryBTree) Range(start, end *Dentry, cb func(d *Dentry) (bool, error)) error {
 	var (
 		err  error
-		bs   []byte
 		next bool
 	)
 	if start == nil {
@@ -420,11 +475,7 @@ func (i *DentryBTree) Range(start, end *Dentry, cb func(v []byte) (bool, error))
 	}
 
 	callback := func(i BtreeItem) bool {
-		bs, err = i.(*Dentry).Marshal()
-		if err != nil {
-			return false
-		}
-		next, err = cb(bs)
+		next, err = cb(i.(*Dentry))
 		if err != nil {
 			return false
 		}
@@ -439,10 +490,13 @@ func (i *DentryBTree) Range(start, end *Dentry, cb func(v []byte) (bool, error))
 	return err
 }
 
-func (i *ExtendBTree) Range(start, end *Extend, cb func(v []byte) (bool, error)) error {
+func (i *DentryBTree) RangeWithPrefix(prefix, start, end *Dentry, cb func(d *Dentry) (bool, error)) error {
+	return i.Range(start, end, cb)
+}
+
+func (i *ExtendBTree) Range(start, end *Extend, cb func(e *Extend) (bool, error)) error {
 	var (
 		err  error
-		bs   []byte
 		next bool
 	)
 	if start == nil {
@@ -450,11 +504,7 @@ func (i *ExtendBTree) Range(start, end *Extend, cb func(v []byte) (bool, error))
 	}
 
 	callback := func(i BtreeItem) bool {
-		bs, err = i.(*Extend).Bytes()
-		if err != nil {
-			return false
-		}
-		next, err = cb(bs)
+		next, err = cb(i.(*Extend))
 		if err != nil {
 			return false
 		}
@@ -469,18 +519,14 @@ func (i *ExtendBTree) Range(start, end *Extend, cb func(v []byte) (bool, error))
 
 	return err
 }
-func (i *MultipartBTree) Range(start, end *Multipart, cb func(v []byte) (bool, error)) error {
+
+func (i *MultipartBTree) Range(start, end *Multipart, cb func(m *Multipart) (bool, error)) error {
 	var (
 		err  error
-		bs   []byte
 		next bool
 	)
 	callback := func(i BtreeItem) bool {
-		bs, err = i.(*Multipart).Bytes()
-		if err != nil {
-			return false
-		}
-		next, err = cb(bs)
+		next, err = cb(i.(*Multipart))
 		if err != nil {
 			return false
 		}
@@ -499,21 +545,20 @@ func (i *MultipartBTree) Range(start, end *Multipart, cb func(v []byte) (bool, e
 	return err
 }
 
-func (i *DeletedDentryBTree) Range(start, end *DeletedDentry, cb func(v []byte) (bool, error)) error {
+func (i *MultipartBTree) RangeWithPrefix(prefix, start, end *Multipart, cb func(m *Multipart) (bool, error)) error {
+	return i.Range(start, end, cb)
+}
+
+func (i *DeletedDentryBTree) Range(start, end *DeletedDentry, cb func(deletedDentry *DeletedDentry) (bool, error)) error {
 	var (
 		err  error
-		bs   []byte
 		next bool
 	)
 	if start == nil {
 		start = newPrimaryDeletedDentry(0, "", 0, 0)
 	}
 	callback := func(i BtreeItem) bool {
-		bs, err = i.(*DeletedDentry).Marshal()
-		if err != nil {
-			return false
-		}
-		next, err = cb(bs)
+		next, err = cb(i.(*DeletedDentry))
 		if err != nil {
 			return false
 		}
@@ -527,21 +572,20 @@ func (i *DeletedDentryBTree) Range(start, end *DeletedDentry, cb func(v []byte) 
 	return err
 }
 
-func (i *DeletedInodeBTree) Range(start, end *DeletedINode, cb func(v []byte) (bool, error)) error {
+func (i *DeletedDentryBTree) RangeWithPrefix(prefix, start, end *DeletedDentry, cb func(deletedDentry *DeletedDentry) (bool, error)) error {
+	return i.Range(start, end, cb)
+}
+
+func (i *DeletedInodeBTree) Range(start, end *DeletedINode, cb func(deletedInode *DeletedINode) (bool, error)) error {
 	var (
 		err  error
-		bs   []byte
 		next bool
 	)
 	if start == nil {
 		start = NewDeletedInodeByID(0)
 	}
 	callback := func(i BtreeItem) bool {
-		bs, err = i.(*DeletedINode).Marshal()
-		if err != nil {
-			return false
-		}
-		next, err = cb(bs)
+		next, err = cb(i.(*DeletedINode))
 		if err != nil {
 			return false
 		}

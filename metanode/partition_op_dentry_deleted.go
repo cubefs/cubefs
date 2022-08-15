@@ -207,11 +207,8 @@ func (mp *metaPartition) getDeletedDentry(start, end *DeletedDentry) (res []*Del
 			res = append(res, dd)
 		}
 	} else {
-		err = mp.dentryDeletedTree.Range(start, end, func(data []byte) (bool, error) {
-			dd = new(DeletedDentry)
-			if err = dd.Unmarshal(data); err != nil {
-				return false, nil
-			}
+		prefix := newPrimaryDeletedDentry(start.ParentId, start.Name, 0, 0)
+		err = mp.dentryDeletedTree.RangeWithPrefix(prefix, start, end, func(dd *DeletedDentry) (bool, error) {
 			res = append(res, dd)
 			return true, nil
 		})
@@ -254,15 +251,12 @@ func (mp *metaPartition) readDeletedDir(req *ReadDeletedDirReq) (resp *ReadDelet
 		batchNum = proto.ReadDeletedDirBatchNum - 1
 	}
 	count := 0
-	err = mp.dentryDeletedTree.Range(startDentry, endDentry, func(data []byte) (bool, error) {
+	prefix := newPrimaryDeletedDentry(req.ParentID, "", 0, 0)
+	err = mp.dentryDeletedTree.RangeWithPrefix(prefix, startDentry, endDentry, func(dd *DeletedDentry) (bool, error) {
 		count++
 		// discard the first record
 		if req.Timestamp > 0 && count == 1 {
 			return true, nil
-		}
-		dd := new(DeletedDentry)
-		if err = dd.Unmarshal(data); err != nil {
-			return false, err
 		}
 		resp.Children = append(resp.Children, buildProtoDeletedDentry(dd))
 
@@ -318,18 +312,11 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 		return
 	}
 	defer snap.Close()
-	err = snap.Range(DelDentryType, func(data []byte) (bool, error) {
+	err = snap.Range(DelDentryType, func(item interface{}) (bool, error) {
+		dd := item.(*DeletedDentry)
 		_, ok := mp.IsLeader()
 		if !ok {
 			return false, nil
-		}
-		dd := new(DeletedDentry)
-		if err = dd.Unmarshal(data); err != nil {
-			exporter.WarningRocksdbError(fmt.Sprintf("action[CleanExpiredDeletedDentry] clusterID[%s] volumeName[%s] partitionID[%v]"+
-				"unmarshal failed:%v", mp.manager.metaNode.clusterId, mp.config.VolName,
-				mp.config.PartitionId, err))
-			log.LogErrorf("[CleanExpiredDeletedDentry] failed to unmarshal value, err:%v", err)
-			return true, err
 		}
 		if dd.Timestamp >= expires {
 			return true, nil

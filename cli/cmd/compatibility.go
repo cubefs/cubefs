@@ -110,12 +110,8 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 		return fmt.Errorf("can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
 	}
 	defer mp.ReleaseSnapShot(snap)
-	if err = snap.Range(metanode.DentryType, func(data []byte) (bool, error) {
-		dentry := &metanode.Dentry{}
-		if err = dentry.Unmarshal(data); err != nil {
-			stdout("unmarshal dentry value failed:%v", err)
-			return false, err
-		}
+	if err = snap.Range(metanode.DentryType, func(item interface{}) (bool, error) {
+		dentry := item.(*metanode.Dentry)
 		key := fmt.Sprintf("%v_%v", dentry.ParentId, dentry.Name)
 		oldDentry, ok := dentryMap[key]
 		if !ok {
@@ -147,11 +143,8 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		return fmt.Errorf("can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
 	}
 	defer mp.ReleaseSnapShot(snap)
-	if err = snap.Range(metanode.InodeType, func(data []byte) (bool, error) {
-		inode := metanode.NewInode(0, 0)
-		if err = inode.Unmarshal(context.Background(), data); err != nil {
-			return false, err
-		}
+	if err = snap.Range(metanode.InodeType, func(item interface{}) (bool, error) {
+		inode := item.(*metanode.Inode)
 		oldInode, ok := inodesMap[inode.Inode]
 		if !ok {
 			stdout("inode %v is not in old version \n", inode.Inode)
