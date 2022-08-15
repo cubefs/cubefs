@@ -69,6 +69,7 @@ func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient, cc 
 		trash.NewTrashCmd(client),
 		newConvertNodeCmd(cc),
 		newIdcCommand(client),
+		newCompactCmd(client),
 	)
 	return cmd
 }

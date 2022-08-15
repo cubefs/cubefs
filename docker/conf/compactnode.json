@@ -1,0 +1,27 @@
+{
+  "role": "compact",
+  "localIP": "",
+  "prof": "17321",
+  "logDir": "/cfs/log",
+  "logLevel": "debug",
+  "inodeCheckStep": 100,
+  "inodeConcurrent": 10,
+  "minEkLen": 2,
+  "minInodeSize": 1,
+  "maxEkAvgSize": 64,
+  "mysql": {
+    "url": "11.97.57.230",
+    "userName": "root",
+    "password": "123456",
+    "database": "compact",
+    "port": 3306
+  },
+  "hBaseUrl": "http://test123.jd.com",
+  "clusterAddr": {
+    "smart_vol_test": [
+      "192.168.0.11:17010",
+      "192.168.0.12:17010",
+      "192.168.0.13:17010"
+    ]
+  }
+}

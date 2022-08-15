@@ -86,7 +86,7 @@ func (cw *CompactWorker) CreateMpTask(cluster string, vols []*proto.CompactVolum
 		key2 := clusterVolumeKey(cluster, vols[j].Name)
 		return cw.volumeTaskCnt[key1] < cw.volumeTaskCnt[key2]
 	})
-	log.LogDebugf("order of vols: %v", vols)
+	cw.debugMsg(cluster, vols)
 	for _, vol := range vols {
 		if !vol.ForceROW {
 			log.LogWarnf("CompactWorker CreateMpTask verify forceROW cluster(%v) volName(%v) ForceROW(%v) CompactTag(%v)", cluster, vol.Name, vol.ForceROW, vol.CompactTag)
@@ -160,6 +160,15 @@ func (cw *CompactWorker) CreateMpTask(cluster string, vols []*proto.CompactVolum
 		}
 	}
 	return
+}
+
+func (cw *CompactWorker) debugMsg(cluster string, vols []*proto.CompactVolume) {
+	var msg = ""
+	for _, vol := range vols {
+		volumeKey := clusterVolumeKey(cluster, vol.Name)
+		msg += fmt.Sprintf("%v:%v:%v ", vol.Name, cw.volumeTaskCnt[volumeKey], cw.volumeTaskPos[volumeKey])
+	}
+	log.LogDebugf("order of vols: %v", msg)
 }
 
 func (cw *CompactWorker) CancelMpTask(cluster string, vols []*proto.CompactVolume, wns []*proto.WorkerNode) {

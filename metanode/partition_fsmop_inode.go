@@ -595,7 +595,7 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 		if len(delExtents) > 0 {
 			mp.extDelCh <- delExtents
 			log.LogInfof("fsm(%v) ExtentsMerge inode(%v) delExtents(%v) newExtents(%v) extDelChLen(%v)",
-				mp.config.PartitionId, ino.Inode, delExtents, newExtents, len(mp.extDelCh))
+				mp.config.PartitionId, inodeId, delExtents, newExtents, len(mp.extDelCh))
 		}
 	}()
 	var outOfRange bool
