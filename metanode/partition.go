@@ -1274,8 +1274,12 @@ func (mp *metaPartition) SumMonitorData(reportTime int64) []*statistics.MonitorD
 	return dataList
 }
 
-func (mp *metaPartition) getTrashStatus() bool {
+func (mp *metaPartition) isTrashEnable() bool {
 	return mp.config.TrashRemainingDays > 0
+}
+
+func (mp *metaPartition) isTrashDisable() bool {
+	return mp.config.TrashRemainingDays <= 0
 }
 
 

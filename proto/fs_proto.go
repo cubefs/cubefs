@@ -160,7 +160,7 @@ type UnlinkInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
-	TrashEnable bool   `json:"trash"`
+	NoTrash     bool   `json:"noTrash"`
 }
 
 // UnlinkInodeRequest defines the request to unlink an inode.
@@ -168,7 +168,7 @@ type BatchUnlinkInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
-	TrashEnable bool     `json:"trash"`
+	NoTrash     bool     `json:"noTrash"`
 }
 
 // UnlinkInodeResponse defines the response to the request of unlinking an inode.
@@ -189,7 +189,7 @@ type EvictInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
-	TrashEnable bool   `json:"trash"`
+	NoTrash     bool   `json:"noTrash"`
 }
 
 // EvictInodeRequest defines the request to evict some inode.
@@ -197,7 +197,7 @@ type BatchEvictInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
-	TrashEnable bool     `json:"trash"`
+	NoTrash     bool     `json:"noTrash"`
 }
 
 // CreateDentryRequest defines the request to create a dentry.
@@ -230,14 +230,14 @@ type DeleteDentryRequest struct {
 	PartitionID uint64 `json:"pid"`
 	ParentID    uint64 `json:"pino"`
 	Name        string `json:"name"`
-	TrashEnable bool   `json:"trash"`
+	NoTrash     bool   `json:"noTrash"`
 }
 
 type BatchDeleteDentryRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	ParentID    uint64   `json:"pino"`
-	TrashEnable bool     `json:"trash"`
+	NoTrash     bool     `json:"noTrash"`
 	Dens        []Dentry `json:"dens"`
 }
 

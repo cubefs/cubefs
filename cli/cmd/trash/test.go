@@ -1154,12 +1154,12 @@ func batchDeleteFileTest() (err error) {
 		}
 
 		res := make(map[uint64]int, 0)
-		_, err = gTrashEnv.metaWrapper.BatchEvictInodeUntest(ctx, inos, true)
+		_, err = gTrashEnv.metaWrapper.BatchEvictInodeUntest(ctx, inos, false)
 		if err != nil {
 			log.LogError(err.Error())
 			return
 		}
-		res, err = gTrashEnv.metaWrapper.BatchUnlinkInodeUntest(ctx, inos, true)
+		res, err = gTrashEnv.metaWrapper.BatchUnlinkInodeUntest(ctx, inos, false)
 		if err != nil {
 			log.LogError(err.Error())
 			return
@@ -1170,7 +1170,7 @@ func batchDeleteFileTest() (err error) {
 			return
 		}
 
-		res, err = gTrashEnv.metaWrapper.BatchDeleteDentryUntest(ctx, ino, dens, true)
+		res, err = gTrashEnv.metaWrapper.BatchDeleteDentryUntest(ctx, ino, dens, false)
 		if err != nil {
 			log.LogError(err.Error())
 			return
@@ -1256,7 +1256,7 @@ func batchDeleteFileTest() (err error) {
 			}
 
 		*/
-		res, err = gTrashEnv.metaWrapper.BatchUnlinkInodeUntest(ctx, inos, true)
+		res, err = gTrashEnv.metaWrapper.BatchUnlinkInodeUntest(ctx, inos, false)
 		if err != nil {
 			log.LogError(err.Error())
 			return
@@ -1267,7 +1267,7 @@ func batchDeleteFileTest() (err error) {
 			return
 		}
 
-		res, err = gTrashEnv.metaWrapper.BatchDeleteDentryUntest(ctx, ino, dens, true)
+		res, err = gTrashEnv.metaWrapper.BatchDeleteDentryUntest(ctx, ino, dens, false)
 		if err != nil {
 			log.LogError(err.Error())
 			return

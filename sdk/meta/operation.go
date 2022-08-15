@@ -80,13 +80,13 @@ func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid
 }
 
 func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uint64,
-	trashEnable bool) (status int, info *proto.InodeInfo, err error) {
+	noTrash bool) (status int, info *proto.InodeInfo, err error) {
 
 	req := &proto.UnlinkInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
-		TrashEnable: trashEnable,
+		NoTrash:     noTrash,
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -112,7 +112,7 @@ func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uin
 		log.LogWarnf("iunlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		newMp := mw.getRefreshMp(ctx, inode)
 		if newMp != nil && newMp.PartitionID != mp.PartitionID {
-			return mw.iunlink(ctx, newMp, inode, trashEnable)
+			return mw.iunlink(ctx, newMp, inode, noTrash)
 		}
 	}
 	if status != statusOK {
@@ -131,13 +131,13 @@ func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uin
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) ievict(ctx context.Context, mp *MetaPartition, inode uint64, trashEnable bool) (status int, err error) {
+func (mw *MetaWrapper) ievict(ctx context.Context, mp *MetaPartition, inode uint64, noTrash bool) (status int, err error) {
 
 	req := &proto.EvictInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
-		TrashEnable: trashEnable,
+		NoTrash:     noTrash,
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -163,7 +163,7 @@ func (mw *MetaWrapper) ievict(ctx context.Context, mp *MetaPartition, inode uint
 		log.LogWarnf("ievict: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		newMp := mw.getRefreshMp(ctx, inode)
 		if newMp != nil && newMp.PartitionID != mp.PartitionID {
-			return mw.ievict(ctx, newMp, inode, trashEnable)
+			return mw.ievict(ctx, newMp, inode, noTrash)
 		}
 	}
 	if status != statusOK {
@@ -290,14 +290,14 @@ func (mw *MetaWrapper) dupdate(ctx context.Context, mp *MetaPartition, parentID 
 }
 
 func (mw *MetaWrapper) ddelete(ctx context.Context, mp *MetaPartition, parentID uint64, name string,
-	trashEnable bool) (status int, inode uint64, err error) {
+	noTrash bool) (status int, inode uint64, err error) {
 
 	req := &proto.DeleteDentryRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		ParentID:    parentID,
 		Name:        name,
-		TrashEnable: trashEnable,
+		NoTrash:     noTrash,
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -323,7 +323,7 @@ func (mw *MetaWrapper) ddelete(ctx context.Context, mp *MetaPartition, parentID 
 		log.LogWarnf("ddelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		newMp := mw.getRefreshMp(ctx, parentID)
 		if newMp != nil && newMp.PartitionID != mp.PartitionID {
-			return mw.ddelete(ctx, newMp, parentID, name, trashEnable)
+			return mw.ddelete(ctx, newMp, parentID, name, noTrash)
 		}
 	}
 	if status != statusOK {
@@ -2205,13 +2205,13 @@ func (mw *MetaWrapper) batchGetDeletedInodeInfo(ctx context.Context, wg *sync.Wa
 }
 
 func (mw *MetaWrapper) batchUnlinkInodeUntest(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64,
-	respChan chan *proto.BatchUnlinkInodeResponse, trashEnable bool) (status int, err error) {
+	respChan chan *proto.BatchUnlinkInodeResponse, noTrash bool) (status int, err error) {
 	defer wg.Done()
 	req := new(proto.BatchUnlinkInodeRequest)
 	req.VolName = mw.volname
 	req.PartitionID = mp.PartitionID
 	req.Inodes = inodes
-	req.TrashEnable = trashEnable
+	req.NoTrash = noTrash
 
 	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaBatchUnlinkInode
@@ -2254,7 +2254,7 @@ func (mw *MetaWrapper) batchUnlinkInodeUntest(ctx context.Context, wg *sync.Wait
 }
 
 func (mw *MetaWrapper) batchEvictInodeUntest(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64,
-	respChan chan int, trashEnable bool) (status int, err error) {
+	respChan chan int, noTrash bool) (status int, err error) {
 	defer wg.Done()
 
 	status = statusError
@@ -2268,7 +2268,7 @@ func (mw *MetaWrapper) batchEvictInodeUntest(ctx context.Context, wg *sync.WaitG
 	req.VolName = mw.volname
 	req.PartitionID = mp.PartitionID
 	req.Inodes = inodes
-	req.TrashEnable = trashEnable
+	req.NoTrash = noTrash
 
 	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaBatchEvictInode
@@ -2301,7 +2301,7 @@ func (mw *MetaWrapper) batchEvictInodeUntest(ctx context.Context, wg *sync.WaitG
 }
 
 func (mw *MetaWrapper) batchDeleteDentryUntest(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, pid uint64, dens []proto.Dentry,
-	respChan chan *proto.BatchDeleteDentryResponse, trashEnable bool) (status int, err error) {
+	respChan chan *proto.BatchDeleteDentryResponse, noTrash bool) (status int, err error) {
 	defer wg.Done()
 	log.LogDebugf("batchDeleteDentryUntest, mp: %v, len(dens): %v", mp.PartitionID, len(dens))
 	req := new(proto.BatchDeleteDentryRequest)
@@ -2309,7 +2309,7 @@ func (mw *MetaWrapper) batchDeleteDentryUntest(ctx context.Context, wg *sync.Wai
 	req.PartitionID = mp.PartitionID
 	req.ParentID = pid
 	req.Dens = dens
-	req.TrashEnable = trashEnable
+	req.NoTrash = noTrash
 
 	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaBatchDeleteDentry

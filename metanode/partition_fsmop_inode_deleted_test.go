@@ -107,7 +107,7 @@ func TestMetaPartition_mvToDeletedInodeTree(t *testing.T) {
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
@@ -186,7 +186,7 @@ func TestMetaPartition_RecoverDeletedInodeCase01(t *testing.T) {
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
@@ -205,7 +205,7 @@ func TestMetaPartition_RecoverDeletedInodeCase01(t *testing.T) {
 			evictInodeReq := &EvictInodeReq{
 				PartitionID: 1,
 				Inode:       20,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			p = &Packet{}
 			if err = mp.EvictInode(evictInodeReq, p); err != nil {
@@ -365,7 +365,7 @@ func TestMetaPartition_RecoverDeletedInodeCase02(t *testing.T) {
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
@@ -384,7 +384,7 @@ func TestMetaPartition_RecoverDeletedInodeCase02(t *testing.T) {
 			evictInodeReq := &EvictInodeReq{
 				PartitionID: 1,
 				Inode:       20,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			p = &Packet{}
 			if err = mp.EvictInode(evictInodeReq, p); err != nil {
@@ -566,7 +566,7 @@ func TestMetaPartition_CleanDeletedInodeCase01(t *testing.T) {
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
@@ -591,7 +591,7 @@ func TestMetaPartition_CleanDeletedInodeCase01(t *testing.T) {
 			evictInodeReq := &EvictInodeReq{
 				PartitionID: 1,
 				Inode:       20,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			p = &Packet{}
 			if err = mp.EvictInode(evictInodeReq, p); err != nil {
@@ -614,7 +614,7 @@ func TestMetaPartition_CleanDeletedInodeCase01(t *testing.T) {
 			evictInodeReq = &EvictInodeReq{
 				PartitionID: 1,
 				Inode:       21,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			p = &Packet{}
 			if err = mp.EvictInode(evictInodeReq, p); err != nil {
@@ -753,7 +753,7 @@ func TestMetaPartition_CleanDeletedInodeCase02(t *testing.T) {
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
@@ -847,7 +847,7 @@ func TestMetaPartition_BatchCleanDeletedInode(t *testing.T) {
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
@@ -865,7 +865,7 @@ func TestMetaPartition_BatchCleanDeletedInode(t *testing.T) {
 			evictInodeReq := &EvictInodeReq{
 				PartitionID: 1,
 				Inode:       20,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			p = &Packet{}
 			if err = mp.EvictInode(evictInodeReq, p); err != nil {
@@ -883,7 +883,7 @@ func TestMetaPartition_BatchCleanDeletedInode(t *testing.T) {
 			evictInodeReq = &EvictInodeReq{
 				PartitionID: 1,
 				Inode:       21,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			p = &Packet{}
 			if err = mp.EvictInode(evictInodeReq, p); err != nil {
@@ -967,7 +967,7 @@ func TestMetaPartition_BatchCleanExpiredDeletedInodeCase01(t *testing.T) {
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
@@ -985,7 +985,7 @@ func TestMetaPartition_BatchCleanExpiredDeletedInodeCase01(t *testing.T) {
 			evictInodeReq := &EvictInodeReq{
 				PartitionID: 1,
 				Inode:       20,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			p = &Packet{}
 			if err = mp.EvictInode(evictInodeReq, p); err != nil {
@@ -1101,7 +1101,7 @@ func TestMetaPartition_BatchCleanExpiredDeletedInodeCase02(t *testing.T) {
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
@@ -1119,7 +1119,7 @@ func TestMetaPartition_BatchCleanExpiredDeletedInodeCase02(t *testing.T) {
 			evictInodeReq := &EvictInodeReq{
 				PartitionID: 1,
 				Inode:       20,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			p = &Packet{}
 			if err = mp.EvictInode(evictInodeReq, p); err != nil {
@@ -1137,7 +1137,7 @@ func TestMetaPartition_BatchCleanExpiredDeletedInodeCase02(t *testing.T) {
 			evictInodeReq = &EvictInodeReq{
 				PartitionID: 1,
 				Inode:       21,
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			p = &Packet{}
 			if err = mp.EvictInode(evictInodeReq, p); err != nil {
