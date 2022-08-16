@@ -40,9 +40,6 @@ func NewAuthTransport(tr http.RoundTripper, cfg *Config) http.RoundTripper {
 // a simple auth token
 func (self *AuthTransport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 	now := time.Now().Unix()
-	if err != nil {
-		return self.Tr.RoundTrip(req)
-	}
 
 	info := &authInfo{timestamp: now, others: genEncodeStr(req)}
 

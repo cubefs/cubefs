@@ -42,7 +42,7 @@ func (self *AuthHandler) Handler(w http.ResponseWriter, req *http.Request, f fun
 	}
 	info, err := decodeAuthInfo(token)
 	if err != nil {
-		f(w, req)
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	info.others = genEncodeStr(req)

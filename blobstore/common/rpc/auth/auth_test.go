@@ -74,4 +74,20 @@ func TestAuth(t *testing.T) {
 	err = json.NewDecoder(response.Body).Decode(result)
 	assert.NoError(t, err)
 	assert.Equal(t, testName, result.Name)
+
+	// test empty token
+	c := http.Client{}
+	req, err = http.NewRequest("POST", testServer.URL+"/get/name?id="+strconv.Itoa(101), nil)
+	assert.NoError(t, err)
+	response, err = c.Do(req)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, response.StatusCode)
+	response.Body.Close()
+
+	// test token failed
+	req.Header.Set(TokenHeaderKey, "#$@%DF#$@#$")
+	response, err = c.Do(req)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, response.StatusCode)
+	response.Body.Close()
 }

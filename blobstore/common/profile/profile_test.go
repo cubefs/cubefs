@@ -75,6 +75,13 @@ func TestProfileBase(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 
+	// test /debug/pprof/:key, ignore profile
+	for _, m := range []string{"cmdline", "symbol", "trace", " "} {
+		resp, err := http.Get(profileAddr + "/debug/pprof/" + m)
+		require.NoError(t, err)
+		resp.Body.Close()
+	}
+
 	// get one expvar
 	resp, err = http.Get(profileAddr + "/debug/var/")
 	require.NoError(t, err)

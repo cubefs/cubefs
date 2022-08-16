@@ -37,15 +37,23 @@ func TestNewVolumeMgr(t *testing.T) {
 	defer ctrl.Finish()
 
 	cmcli := mock.ProxyMockClusterMgrCli(ctrl)
-	_, err := NewVolumeMgr(ctx, BlobConfig{}, VolConfig{InitVolumeNum: 4}, cmcli)
-	time.Sleep(200 * time.Millisecond)
+	vm, err := NewVolumeMgr(ctx, BlobConfig{}, VolConfig{
+		InitVolumeNum:         4,
+		MetricReportIntervalS: 1, RetainIntervalS: 1,
+	}, cmcli)
+	time.Sleep(2 * time.Second)
 	require.NoError(t, err)
+	vm.Close()
+	time.Sleep(100 * time.Millisecond)
 }
 
 func TestGetAllocList(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	cmcli := mock.ProxyMockClusterMgrCli(ctrl)
+	bid, err := NewBidMgr(context.Background(), BlobConfig{BidAllocNums: 10000}, cmcli)
+	require.NoError(t, err)
+
 	expireTime := time.Now().UnixNano() + 300*int64(math.Pow(10, 9))
 	volInfo1 := cm.AllocVolumeInfo{
 		VolumeInfo: cm.VolumeInfo{
@@ -122,6 +130,7 @@ func TestGetAllocList(t *testing.T) {
 		BlobConfig: BlobConfig{
 			BidAllocNums: 1000,
 		},
+		BidMgr: bid,
 	}
 
 	ctx := context.Background()
@@ -158,6 +167,12 @@ func TestGetAllocList(t *testing.T) {
 		vid, err := vm.allocVid(ctx, writableVidsArgs)
 		require.Error(t, err)
 		require.Equal(t, 0, int(vid))
+	}
+
+	{
+		alloc, err := vm.Alloc(context.Background(), &proxy.AllocVolsArgs{Fsize: 100, CodeMode: 2, BidCount: 1})
+		require.NoError(t, err)
+		require.NotNil(t, alloc)
 	}
 }
 

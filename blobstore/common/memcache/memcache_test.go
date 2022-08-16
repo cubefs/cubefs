@@ -26,6 +26,12 @@ import (
 func TestNewMemCache(t *testing.T) {
 	_, err := memcache.NewMemCache(context.TODO(), 1024)
 	require.Nil(t, err)
+
+	// test 0 or -1
+	_, err = memcache.NewMemCache(context.TODO(), -1)
+	require.Error(t, err)
+	_, err = memcache.NewMemCache(context.TODO(), 0)
+	require.Error(t, err)
 }
 
 func TestMemCacheGetSet(t *testing.T) {
@@ -56,6 +62,10 @@ func TestMemCacheDel(t *testing.T) {
 	mc.Set(key, nil)
 	v = mc.Get(key)
 	require.Nil(t, v)
+
+	// test no key
+	test := mc.Get("test-no-key")
+	require.Nil(t, test)
 }
 
 func BenchmarkNewMemCache(b *testing.B) {

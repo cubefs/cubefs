@@ -15,7 +15,6 @@
 package recordlog
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
@@ -85,7 +84,8 @@ func TestLogger(t *testing.T) {
 	wg.Wait()
 
 	// test read
-	dec := json.NewDecoder(enc.(io.Reader))
+	dec, err := NewDecoder(conf)
+	require.NoError(t, err)
 	count := 0
 	var m Doc
 	for {
