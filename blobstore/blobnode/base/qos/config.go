@@ -25,7 +25,8 @@ import (
 )
 
 const (
-	thresholdNotSet = -1
+	MaxIops      = 1000 * 1000 // 1000k
+	MaxBandwidth = 2 << 30     // 1GB/s
 )
 
 type Config struct {
@@ -61,30 +62,23 @@ func (t *Threshold) reset(level string, c Config) {
 	t.Unlock()
 }
 
-func initAndFixParaConfig(raw ParaConfig) (para ParaConfig, err error) {
+func InitAndFixParaConfig(raw ParaConfig) (para ParaConfig, err error) {
 	para = raw
 
 	if para.Iops < 0 || para.Bandwidth < 0 || para.Factor < 0 {
 		return para, ErrWrongConfig
 	}
-
-	if para.Bandwidth == 0 {
-		para.Bandwidth = thresholdNotSet
-	}
-
 	if para.Iops == 0 {
-		para.Iops = thresholdNotSet
+		para.Iops = MaxIops
 	}
-
+	if para.Bandwidth == 0 {
+		para.Bandwidth = MaxBandwidth
+	}
 	if para.Factor == 0 || para.Factor > 1 {
 		para.Factor = 1
 	}
 
 	return para, nil
-}
-
-func isNotSet(v int64) bool {
-	return v == thresholdNotSet
 }
 
 func initConfig(conf *Config) (err error) {
@@ -94,7 +88,7 @@ func initConfig(conf *Config) (err error) {
 			return ErrWrongConfig
 		}
 
-		para, err = initAndFixParaConfig(para)
+		para, err = InitAndFixParaConfig(para)
 		if err != nil {
 			return ErrWrongConfig
 		}
@@ -103,14 +97,6 @@ func initConfig(conf *Config) (err error) {
 	}
 
 	conf.LevelConfigs = levelConf
-
-	if conf.DiskBandwidthMBPS <= 0 {
-		conf.DiskBandwidthMBPS = thresholdNotSet
-	}
-
-	if conf.DiskIOPS <= 0 {
-		conf.DiskIOPS = thresholdNotSet
-	}
 
 	return nil
 }

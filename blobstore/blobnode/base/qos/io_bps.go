@@ -67,9 +67,6 @@ func NewBpsReader(ctx context.Context, underlying io.Reader, c limitio.Controlle
 }
 
 func NewBpsReaderAt(ctx context.Context, underlying io.ReaderAt, c limitio.Controller) io.ReaderAt {
-	if c == nil {
-		return underlying
-	}
 	return &bpsReaderAt{
 		ctx:        ctx,
 		underlying: underlying,
@@ -78,9 +75,6 @@ func NewBpsReaderAt(ctx context.Context, underlying io.ReaderAt, c limitio.Contr
 }
 
 func NewBpsWriter(ctx context.Context, underlying io.Writer, c limitio.Controller) io.Writer {
-	if c == nil {
-		return underlying
-	}
 	return &bpsWriter{
 		ctx:        ctx,
 		underlying: underlying,
@@ -89,9 +83,6 @@ func NewBpsWriter(ctx context.Context, underlying io.Writer, c limitio.Controlle
 }
 
 func NewBpsWriterAt(ctx context.Context, underlying io.WriterAt, c limitio.Controller) io.WriterAt {
-	if c == nil {
-		return underlying
-	}
 	return &bpsWriterAt{
 		ctx:        ctx,
 		underlying: underlying,

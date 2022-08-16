@@ -56,9 +56,6 @@ type iopsWriterAt struct {
 }
 
 func NewIOPSReader(ctx context.Context, underlying io.Reader, c limitio.Controller) io.Reader {
-	if c == nil {
-		return underlying
-	}
 	return &iopsReader{
 		ctx:        ctx,
 		underlying: underlying,
@@ -67,9 +64,6 @@ func NewIOPSReader(ctx context.Context, underlying io.Reader, c limitio.Controll
 }
 
 func NewIOPSReaderAt(ctx context.Context, underlying io.ReaderAt, c limitio.Controller) io.ReaderAt {
-	if c == nil {
-		return underlying
-	}
 	return &iopsReaderAt{
 		ctx:        ctx,
 		underlying: underlying,
@@ -78,9 +72,6 @@ func NewIOPSReaderAt(ctx context.Context, underlying io.ReaderAt, c limitio.Cont
 }
 
 func NewIOPSWriter(ctx context.Context, underlying io.Writer, c limitio.Controller) io.Writer {
-	if c == nil {
-		return underlying
-	}
 	return &iopsWriter{
 		ctx:        ctx,
 		underlying: underlying,
@@ -89,9 +80,6 @@ func NewIOPSWriter(ctx context.Context, underlying io.Writer, c limitio.Controll
 }
 
 func NewIOPSWriterAt(ctx context.Context, underlying io.WriterAt, c limitio.Controller) io.WriterAt {
-	if c == nil {
-		return underlying
-	}
 	return &iopsWriterAt{
 		ctx:        ctx,
 		underlying: underlying,

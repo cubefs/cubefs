@@ -35,7 +35,7 @@ func TestNewController(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	require.Equal(t, 0, int(c.hit))
+	require.Equal(t, 0, int(c.Hit()))
 
 	// scene: iops 100
 	c = NewController(100)
@@ -47,7 +47,7 @@ func TestNewController(t *testing.T) {
 		c.Assign(1)
 	}
 	wg.Wait()
-	require.Equal(t, 0, int(c.hit))
+	require.Equal(t, 0, int(c.Hit()))
 
 	// scene: iops 100
 	c = NewController(100)
@@ -58,5 +58,5 @@ func TestNewController(t *testing.T) {
 		c.Assign(1)
 	}
 	wg.Wait()
-	require.Equal(t, true, int(c.hit) > 0)
+	require.Equal(t, true, int(c.Hit()) > 0)
 }

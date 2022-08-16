@@ -52,6 +52,9 @@ func (s *Service) loopDataInspect() {
 						return
 					}
 					for _, chunk := range chunks {
+						if chunk.Status == bnapi.ChunkStatusRelease {
+							continue
+						}
 						cs, found := ds.GetChunkStorage(chunk.Vuid)
 						if !found {
 							span.Errorf("vuid:%v not found", chunk.Vuid)
@@ -78,10 +81,10 @@ func ScanShard(ctx context.Context, cs core.ChunkAPI, startBid proto.BlobID, ins
 			return err
 		}
 		err = inspectFunc(ctx, shards)
-		startBid = next
 		if err != nil {
 			return err
 		}
+		startBid = next
 		if next == proto.InValidBlobID {
 			break
 		}
@@ -91,7 +94,7 @@ func ScanShard(ctx context.Context, cs core.ChunkAPI, startBid proto.BlobID, ins
 
 func startInspect(ctx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, error) {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("start inspect chunk, vuid:%s,chunkid:%s.", cs.Vuid(), cs.ID())
+	span.Debugf("start inspect chunk, vuid:%v,chunkid:%s.", cs.Vuid(), cs.ID())
 	ctx = bnapi.Setiotype(ctx, bnapi.InspectIO)
 	startBid := proto.InValidBlobID
 	ds := cs.Disk()

@@ -20,6 +20,7 @@ import (
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/priority"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/cmd"
@@ -41,6 +42,11 @@ const (
 	DefaultGetQpsLimitPerDisk    = 512
 	DefaultGetQpsLimitPerKey     = 64
 	DefaultDeleteQpsLimitPerDisk = 128
+)
+
+var (
+	ErrNotConfigPrevious = errors.New("level previously not config")
+	ErrNotConfigNow      = errors.New("level not config now")
 )
 
 type Config struct {
@@ -121,31 +127,39 @@ func configInit(config *Config) {
 
 func (s *Service) changeLimit(ctx context.Context, c Config) {
 	span := trace.SpanFromContextSafe(ctx)
+	configInit(&c)
 	s.PutQpsLimitPerDisk.Reset(c.PutQpsLimitPerDisk)
 	s.DeleteQpsLimitPerDisk.Reset(c.DeleteQpsLimitPerDisk)
 	span.Info("hot reload limit config success.")
 }
 
-func (s *Service) changeQos(ctx context.Context, c Config) (err error) {
+func (s *Service) changeQos(ctx context.Context, c Config) error {
 	span := trace.SpanFromContextSafe(ctx)
 	disks := s.copyDiskStorages(ctx)
 	qosConfig := c.DiskConfig.DiskQos
-	span.Infof("qos config:", qosConfig)
+	span.Infof("qos config:%v", qosConfig)
+	for k, v := range qosConfig.LevelConfigs {
+		para, err := qos.InitAndFixParaConfig(v)
+		if err != nil {
+			return err
+		}
+		qosConfig.LevelConfigs[k] = para
+	}
 	priLevels := priority.GetLevels()
 	for pri, name := range priLevels {
 		for _, ds := range disks {
 			levelQos := ds.GetIoQos().GetIOQosIns().LevelMgr.GetLevel(priority.Priority(pri))
 			if levelQos == nil {
 				if _, ok := qosConfig.LevelConfigs[name]; ok {
-					return errors.New("level previously not config")
+					return ErrNotConfigPrevious
 				}
 				break
 			}
 			if _, ok := qosConfig.LevelConfigs[name]; !ok {
-				return errors.New("level not config now")
+				return ErrNotConfigNow
 			}
 			levelQos.GetLevelQosIns().ChangeLevelQos(name, qosConfig)
 		}
 	}
-	return
+	return nil
 }
