@@ -193,7 +193,7 @@ func TestAccessLimiterBase(t *testing.T) {
 			}
 		}()
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(time.Second)
 		cancel()
 		close(closeCh)
 		wg.Wait()

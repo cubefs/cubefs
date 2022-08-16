@@ -40,6 +40,11 @@ func TestDb(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Close()
 
+	ins, ok := db.(*instance)
+	assert.Equal(t, true, ok)
+	assert.Equal(t, path, ins.Name())
+	assert.NotNil(t, ins.GetDB())
+
 	err = db.Put(KV{Key: k1, Value: v1})
 	assert.NoError(t, err)
 
@@ -88,6 +93,18 @@ func TestTable(t *testing.T) {
 		t1 := db.Table(tableName1)
 		assert.NoError(t, err)
 
+		tab, ok := t1.(*table)
+		assert.Equal(t, true, ok)
+		assert.NotNil(t, tab)
+		assert.Equal(t, tableName1, tab.Name())
+		assert.NoError(t, tab.Flush())
+
+		assert.NotNil(t, tab.GetDB())
+		assert.NotNil(t, tab.GetCf())
+		writeBatch := tab.NewWriteBatch()
+		assert.NotNil(t, writeBatch)
+		assert.NoError(t, tab.DoBatch(writeBatch))
+
 		// not found
 		_, err = t1.Get(k1)
 		assert.Equal(t, ErrNotFound, err)
@@ -101,6 +118,10 @@ func TestTable(t *testing.T) {
 		v, err := t1.Get(k1)
 		assert.NoError(t, err)
 		assert.Equal(t, v1, v)
+
+		snapshot := tab.NewSnapshot()
+		assert.NotNil(t, snapshot)
+		tab.ReleaseSnapshot(snapshot)
 
 		db.Close()
 	}
@@ -126,14 +147,10 @@ func TestTable(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, v2, v)
 
-		// test snapshot
-		// s := t1.NewSnapshot()
-		// assert.NotNil(t, s)
 		i := t1.NewIterator(nil)
 		assert.NotNil(t, i)
 
 		kvs := make([]KV, 0)
-		// i.Seek(nil)
 		for i.SeekToFirst(); i.Valid(); i.Next() {
 			assert.NoError(t, i.Err())
 			ik := i.Key().Data()
@@ -161,6 +178,40 @@ func TestTable(t *testing.T) {
 	}
 }
 
+func TestTableBatchOP(t *testing.T) {
+	path, err := ioutil.TempDir("", "testrocksdbkvdb12345")
+	require.NoError(t, err)
+	defer os.RemoveAll(path)
+
+	tableName1 := "table1"
+	tableName2 := "table2"
+	k1 := []byte("t1k1")
+	v1 := []byte("t1v1")
+
+	err = os.MkdirAll(path, 0o755)
+	require.NoError(t, err)
+
+	db, err := OpenDBWithCF(path, false, []string{tableName1, tableName2})
+	assert.NoError(t, err)
+
+	t1 := db.Table(tableName1)
+	assert.NoError(t, err)
+
+	kvs := []KV{
+		{Key: k1, Value: v1},
+	}
+
+	err = t1.WriteBatch(kvs, false)
+	assert.NoError(t, err)
+
+	v, err := t1.Get(k1)
+	assert.NoError(t, err)
+	assert.Equal(t, v1, v)
+
+	err = t1.DeleteBatch([][]byte{k1}, true)
+	assert.NoError(t, err)
+}
+
 func TestDbBatchOP(t *testing.T) {
 	path, err := ioutil.TempDir("", "testrocksdbkvdb121212323")
 	require.NoError(t, err)
@@ -174,31 +225,56 @@ func TestDbBatchOP(t *testing.T) {
 	defer db.Close()
 
 	keyPrefix := "testkey"
-	var kvs []KV
-	for i := 0; i < 10; i++ {
-		var value [8]byte
 
-		key := []byte(fmt.Sprintf("%s/%d", keyPrefix, i))
-		binary.BigEndian.PutUint64(value[:], uint64(i))
+	{
+		var kvs []KV
+		for i := 0; i < 10; i++ {
+			var value [8]byte
 
-		kv := KV{
-			Key:   key,
-			Value: value[:],
+			key := []byte(fmt.Sprintf("%s/%d", keyPrefix, i))
+			binary.BigEndian.PutUint64(value[:], uint64(i))
+
+			kv := KV{
+				Key:   key,
+				Value: value[:],
+			}
+			kvs = append(kvs, kv)
 		}
-		kvs = append(kvs, kv)
-	}
 
-	err = db.WriteBatch(kvs, false)
-	require.NoError(t, err)
-
-	// valid
-	for i := 0; i < 10; i++ {
-		key := []byte(fmt.Sprintf("%s/%d", keyPrefix, i))
-		expValue := i
-		valueBytes, err := db.Get([]byte(key))
+		err = db.WriteBatch(kvs, true)
 		require.NoError(t, err)
 
-		value := binary.BigEndian.Uint64(valueBytes)
-		require.Equal(t, int64(expValue), int64(value))
+		// valid
+		for i := 0; i < 10; i++ {
+			key := []byte(fmt.Sprintf("%s/%d", keyPrefix, i))
+			expValue := i
+			valueBytes, err := db.Get([]byte(key))
+			require.NoError(t, err)
+
+			value := binary.BigEndian.Uint64(valueBytes)
+			require.Equal(t, int64(expValue), int64(value))
+		}
+	}
+
+	{ // delete batch
+		var ks [][]byte
+		for i := 0; i < 10; i++ {
+			key := []byte(fmt.Sprintf("%s/%d", keyPrefix, i))
+			ks = append(ks, key)
+		}
+		err = db.DeleteBatch(ks, true)
+		require.NoError(t, err)
+
+		// valid
+		for i := 0; i < 10; i++ {
+			key := []byte(fmt.Sprintf("%s/%d", keyPrefix, i))
+			_, err = db.Get(key)
+			require.Error(t, err)
+		}
+	}
+
+	{ // test Delete
+		err = db.Delete([]byte(fmt.Sprintf("%s/%d", keyPrefix, 1)))
+		require.NoError(t, err)
 	}
 }

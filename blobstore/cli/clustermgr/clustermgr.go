@@ -19,8 +19,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cubefs/cubefs/blobstore/util/errors"
-
 	"github.com/desertbit/grumble"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -28,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 func NewCMClient(secret string, clusterID string, hosts []string) (*clustermgr.Client, error) {

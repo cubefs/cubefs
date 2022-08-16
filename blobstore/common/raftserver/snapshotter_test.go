@@ -49,7 +49,7 @@ func (s *testSnapshot) Close() {
 }
 
 func TestSnapshotter(t *testing.T) {
-	shotter := newSnapshotter(10, time.Second)
+	shotter := newSnapshotter(10, time.Millisecond)
 
 	for i := 0; i < 10; i++ {
 		snap := &snapshot{
@@ -106,8 +106,13 @@ func TestSnapshotter(t *testing.T) {
 
 	buffer := &bytes.Buffer{}
 	st := newApplySnapshot(buffer)
+	defer st.Close()
+
+	name := st.Name()
 	_, err := st.Read()
 	assert.NotNil(t, err)
+	assert.Equal(t, "", name)
+	assert.Equal(t, uint64(0), st.Index())
 
 	b := make([]byte, 4)
 	binary.BigEndian.PutUint32(b, 10)

@@ -113,6 +113,9 @@ func TestLrcEncoder(t *testing.T) {
 	encoder, err := NewEncoder(cfg)
 	assert.NoError(t, err)
 
+	_, err = encoder.Split([]byte{})
+	assert.Error(t, err)
+
 	// source data split
 	shards, err := encoder.Split(srcData)
 	assert.NoError(t, err)
@@ -141,6 +144,12 @@ func TestLrcEncoder(t *testing.T) {
 	for i := range dataShards[0] {
 		dataShards[0][i] = 222
 	}
+
+	// test verify failed
+	ok, err := encoder.Verify(shards)
+	assert.NoError(t, err)
+	assert.False(t, ok)
+
 	// reconstruct data and check
 	err = encoder.ReconstructData(shards, []int{0})
 	assert.NoError(t, err)
@@ -168,10 +177,22 @@ func TestLrcEncoder(t *testing.T) {
 		assert.True(t, ok)
 	}
 
+	badIdxs := make([]int, 0)
+
+	// add a local broken
+	for j := range shards[cfg.CodeMode.N+cfg.CodeMode.M+1] {
+		shards[cfg.CodeMode.N+cfg.CodeMode.M+1][j] = 222
+	}
+	badIdxs = append(badIdxs, cfg.CodeMode.N+cfg.CodeMode.M+1)
+
+	// test local verify failed
+	ok, err = encoder.Verify(shards)
+	assert.NoError(t, err)
+	assert.False(t, ok)
+
 	// global reconstruct shard and check
 	dataShards = encoder.GetDataShards(shards)
 	parityShards := encoder.GetParityShards(shards)
-	badIdxs := make([]int, 0)
 	for i := 0; i < cfg.CodeMode.M; i++ {
 		if i%2 == 0 {
 			badIdxs = append(badIdxs, i)
@@ -189,14 +210,15 @@ func TestLrcEncoder(t *testing.T) {
 			}
 		}
 	}
-	// add a local broken
-	for j := range shards[cfg.CodeMode.N+cfg.CodeMode.M+1] {
-		shards[cfg.CodeMode.N+cfg.CodeMode.M+1][j] = 222
-	}
-	badIdxs = append(badIdxs, cfg.CodeMode.N+cfg.CodeMode.M+1)
+
+	// test verify failed
+	ok, err = encoder.Verify(shards)
+	assert.NoError(t, err)
+	assert.False(t, ok)
+
 	err = encoder.Reconstruct(shards, badIdxs)
 	assert.NoError(t, err)
-	ok, err := encoder.Verify(shards)
+	ok, err = encoder.Verify(shards)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 	wbuff = bytes.NewBuffer(make([]byte, 0))
@@ -208,6 +230,20 @@ func TestLrcEncoder(t *testing.T) {
 	assert.Equal(t, cfg.CodeMode.L, len(ls))
 	si := encoder.GetShardsInIdc(shards, 0)
 	assert.Equal(t, (cfg.CodeMode.N+cfg.CodeMode.M+cfg.CodeMode.L)/cfg.CodeMode.AZCount, len(si))
+
+	// test data len
+	shards[badIdxs[0]] = shards[badIdxs[0]][:0]
+	ok, err = encoder.Verify(shards)
+	assert.Error(t, err)
+	assert.False(t, ok)
+
+	err = encoder.Reconstruct(shards, badIdxs)
+	assert.NoError(t, err)
+
+	shards[badIdxs[len(badIdxs)-1]] = shards[len(badIdxs)-1][:0]
+	ok, err = encoder.Verify(shards)
+	assert.Error(t, err)
+	assert.False(t, ok)
 }
 
 func TestLrcReconstruct(t *testing.T) {

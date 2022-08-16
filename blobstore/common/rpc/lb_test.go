@@ -141,12 +141,12 @@ func TestLbClient_Put(t *testing.T) {
 func TestLbClient_GetWith(t *testing.T) {
 	now := time.Now().UnixNano() / 1e6
 	log.SetOutputLevel(log.Ldebug)
-	cfg := newCfg([]string{testServer.URL, "http://127.0.0.1:8898", "http://127.0.0.1:8888"},
+	cfg := newCfg([]string{testServer.URL, "http://127.0.0.1:8898", "http://127.0.0.1:12345"},
 		[]string{testServer.URL})
 	cfg.FailRetryIntervalS = 5
 	client := NewLbClient(cfg, nil)
 	wg := sync.WaitGroup{}
-	var number int = 100
+	var number int = 50
 	wg.Add(number)
 	for i := 0; i < number; i++ {
 		go func() {
@@ -155,7 +155,6 @@ func TestLbClient_GetWith(t *testing.T) {
 			result := &ret{}
 			err := client.GetWith(ctx, "/get/name?id="+strconv.Itoa(122), result)
 			assert.NoError(t, err)
-			assert.NotNil(t, result)
 			assert.Equal(t, "Test_GetWith", result.Name)
 		}()
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
 )
 
 var (
@@ -40,8 +41,7 @@ func (s *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/retry":
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil || int64(len(b)) != r.ContentLength || first {
-			w.WriteHeader(500)
-			w.Write([]byte("test retry"))
+			ReplyErr(w, 500, "test retry")
 			first = false
 		}
 	case "/crc":
@@ -54,8 +54,7 @@ func (s *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/timeout":
 		timeout(w, r)
 	case "/notfound":
-		w.WriteHeader(404)
-		w.Write([]byte("404 page not found"))
+		ReplyWith(w, 404, "", []byte("404 page not found"))
 	default:
 		{
 			marshal, err := json.Marshal(ret{Name: "Test_GetWith"})
@@ -114,6 +113,10 @@ var simpleCfg = &Config{
 		MaxIdleConnsPerHost:     10,
 		IdleConnTimeoutMs:       60000,
 		DisableCompression:      true,
+		Auth: auth.Config{
+			EnableAuth: true,
+			Secret:     "test",
+		},
 	},
 }
 var simpleClient = NewClient(simpleCfg)
@@ -196,12 +199,22 @@ func TestClient_PostWithReadResponseTimeout(t *testing.T) {
 	assert.NoError(t, err)
 	defer resp.Body.Close()
 	cache := make([]byte, 128)
+	_, err = resp.Body.Read(cache)
 	for err == nil {
-		if _, e := resp.Body.Read(cache); e != nil {
-			assert.Equal(t, "read body timeout", e.Error())
-			return
-		}
+		_, err = resp.Body.Read(cache)
 	}
+	assert.Equal(t, "read body timeout", err.Error())
+
+	simpleCfg.BodyBaseTimeoutMs = 1
+	simpleCfg.BodyBandwidthMBPs = 1
+	simpleCli = NewClient(simpleCfg)
+	resp, err = simpleCli.Post(ctx, testServer.URL+"/timeout", &ret{Name: "TestClient_Post"})
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+	cache = make([]byte, 2*1024*1024*1024)
+	_, err = resp.Body.Read(cache)
+	assert.Error(t, err)
+	assert.Equal(t, "read body timeout", err.Error())
 }
 
 func TestClient_Put(t *testing.T) {

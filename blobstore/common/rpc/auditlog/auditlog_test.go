@@ -40,12 +40,20 @@ func TestOpen(t *testing.T) {
 	tracer := trace.NewTracer(moduleName)
 	trace.SetGlobalTracer(tracer)
 
+	ah, lc, err := Open(moduleName, &Config{})
+	assert.Nil(t, ah)
+	assert.Nil(t, lc)
+	assert.Nil(t, err)
+
 	tmpDir := os.TempDir() + "/testauditog" + strconv.FormatInt(time.Now().Unix(), 10) + strconv.Itoa(rand.Intn(100000))
-	err := os.Mkdir(tmpDir, 0o755)
+	err = os.Mkdir(tmpDir, 0o755)
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
-	ah, lc, err := Open(moduleName, &Config{LogDir: tmpDir, ChunkBits: 29})
+	ah, lc, err = Open(moduleName, &Config{
+		LogDir: tmpDir, ChunkBits: 29,
+		KeywordsFilter: []string{"Get"},
+	})
 	assert.NoError(t, err)
 	assert.NotNil(t, ah)
 	assert.NotNil(t, lc)
@@ -70,12 +78,32 @@ func TestOpen(t *testing.T) {
 	url := server.URL
 	client := http.DefaultClient
 
-	for _, method := range []string{http.MethodPost, http.MethodGet, http.MethodDelete, http.MethodPut} {
+	// test keywords filter
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	assert.NoError(t, err)
+	resp, err := client.Do(req)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	b, err := ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	respData := &testRespData{}
+	err = json.Unmarshal(b, respData)
+	assert.NoError(t, err)
+	assert.Equal(t, "success", respData.Result)
+	resp.Body.Close()
+
+	open, err := os.Open(tmpDir)
+	assert.NoError(t, err)
+	dirEntries, err := open.ReadDir(-1)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(dirEntries))
+	assert.NoError(t, open.Close())
+
+	for _, method := range []string{http.MethodPost, http.MethodDelete, http.MethodPut} {
 		req, err := http.NewRequest(method, url, nil)
 		assert.NoError(t, err)
 		resp, err := client.Do(req)
 		assert.NoError(t, err)
-		defer resp.Body.Close()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		b, err := ioutil.ReadAll(resp.Body)
 		assert.NoError(t, err)
@@ -83,5 +111,12 @@ func TestOpen(t *testing.T) {
 		err = json.Unmarshal(b, respData)
 		assert.NoError(t, err)
 		assert.Equal(t, "success", respData.Result)
+		resp.Body.Close()
 	}
+
+	open, err = os.Open(tmpDir)
+	assert.NoError(t, err)
+	dirEntries, err = open.ReadDir(-1)
+	assert.NoError(t, err)
+	assert.Greater(t, len(dirEntries), 0)
 }

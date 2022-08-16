@@ -20,12 +20,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/kvstore"
-
 	"github.com/desertbit/grumble"
 
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
+	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 )
 
 type volInfo struct {
