@@ -618,6 +618,7 @@ services:
         volumes:
             - ./bin:/cfs/bin:ro
             - ./bin/libcfssdk.so:/usr/lib64/libcfssdk.so:ro
+            - ./bin/libcfsc.so:/usr/lib64/libcfsc.so:ro
             - ./bin/libcfsclient.so:/usr/lib64/libcfsclient.so:ro
             - ./bin/libempty.so:/usr/lib64/libempty.so:ro
             - ./conf/hosts:/etc/hosts:ro

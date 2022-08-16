@@ -238,7 +238,7 @@ wait_proc_done() {
 }
 
 reload_client() {
-    echo -n "run update libcfssdk.so test    ... "
+    echo -n "run update libcfssdk.so libcfsc.so test    ... "
     curl "http://127.0.0.1:17410/set/clientUpgrade?version=test"
     echo ""
 }

@@ -38,6 +38,7 @@ if [[ $? -eq 0 ]]; then
     echo -e "\033[32mdone\033[0m";
     mv bin/cfs-client /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client;
     mv bin/libcfssdk.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfssdk.so;
+    mv bin/libcfsc.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfsc.so;
     mv bin/libcfssdk_cshared.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfssdk_cshared.so;
     mv bin/libcfsclient.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfsclient.so;
     mv bin/libempty.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libempty.so;

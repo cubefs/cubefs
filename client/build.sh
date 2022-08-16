@@ -48,7 +48,7 @@ for opt in ${ARGS[*]} ; do
         test)
             build_test=1
             build_sdk=1
-            build_client=0
+            build_client=1
             ;;
     esac
 done
@@ -73,7 +73,5 @@ fi
 if [[ ${build_test} -eq 1 ]]; then
     echo "building test (cfs-client test-bypass libcfsclient.so libempty.so) ..."
     go test -c -covermode=atomic -coverpkg="../..." -linkshared -o ${bin}/cfs-client ${dir}/main_fuse.go ${dir}/fuse_test.go
-    go build -buildmode=plugin -linkshared -o ${bin}/libempty.so  ${dir}/empty.go
-    g++ ${gccflag} -fPIC -shared -o ${bin}/libcfsclient.so ${dir}/main_bypass.c ${dir}/bypass/cache.c ${dir}/bypass/ini.c -ldl -lpthread -I ${dir}/bypass/include
     gcc ${dir}/bypass/client_test.c -o ${bin}/test-bypass
 fi
