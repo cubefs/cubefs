@@ -119,52 +119,72 @@ func (s *Service) checkAndCleanGarbageEpoch(ctx context.Context) {
 	disks := s.copyDiskStorages(ctx)
 
 	for _, ds := range disks {
-		localChunks, err := ds.ListChunks(ctx)
-		if err != nil {
-			span.Errorf("get local chunks(%v) failed: %v", ds.ID(), err)
-			continue
-		}
 		cmVuids, err := s.ClusterMgrClient.ListVolumeUnit(ctx, &cmapi.ListVolumeUnitArgs{DiskID: ds.ID()})
 		if err != nil {
 			span.Errorf("get cm volume units(%v) info failed: %v", ds.ID(), err)
-			continue
-		}
-
-		if len(localChunks) == len(cmVuids) {
-			span.Debugf("local chunks  is equal to cm vuids.disk id:%v", ds.ID())
 			continue
 		}
 		cmVuidMaps := make(map[proto.VuidPrefix]proto.Vuid)
 		for _, vuidInfo := range cmVuids {
 			cmVuidMaps[vuidInfo.Vuid.VuidPrefix()] = vuidInfo.Vuid
 		}
-		for _, cs := range localChunks {
-			vuid := cs.Vuid
-			localEpoch := vuid.Epoch()
-			vuidPre := vuid.VuidPrefix()
-			if cmVuid, ok := cmVuidMaps[vuidPre]; ok {
-				cmEpoch := cmVuid.Epoch()
-				if cmEpoch > localEpoch {
-					createTime := time.Unix(0, int64(cs.ChunkId.UnixTime()))
-					protectionPeriod := time.Duration(s.Conf.ChunkProtectionPeriodSec) * time.Second
-
-					if time.Since(createTime) < protectionPeriod {
-						span.Debugf("%s still in ctime protection", cs.ChunkId)
-						continue
-					}
-
-					span.Warnf("vuid(%v) already expired, local epoch:%v, new epoch:%v", vuid, localEpoch, cmEpoch)
-
-					// todo: Remove to cm
-					// Important note: in the future, the logical consideration will be transferred to cm to judge
-					err := ds.ReleaseChunk(ctx, vuid, true)
-					if err != nil {
-						span.Errorf("release ChunkStorage(%s) form disk(%v) failed: %v", cs.ChunkId, ds.ID(), err)
-						continue
-					}
-					span.Infof("vuid(%v) have been release", vuid)
-				}
-			}
-		}
+		s.rangeChunks(ctx, ds, cmVuidMaps)
 	}
+}
+
+func (s *Service) rangeChunks(ctx context.Context, ds core.DiskAPI, cmVuidMaps map[proto.VuidPrefix]proto.Vuid) {
+	span := trace.SpanFromContextSafe(ctx)
+	localChunks, err := ds.ListChunks(ctx)
+	if err != nil {
+		span.Errorf("get local chunks(%v) failed: %v", ds.ID(), err)
+		return
+	}
+	for _, cs := range localChunks {
+		vuid := cs.Vuid
+		vid := vuid.Vid()
+		index := vuid.Index()
+		vuidPre := vuid.VuidPrefix()
+		if cmVuid, ok := cmVuidMaps[vuidPre]; ok {
+			s.releaseEpochChunk(ctx, cs, ds, cmVuid)
+			continue
+		}
+		volumeInfo, err := s.ClusterMgrClient.GetVolumeInfo(ctx, &cmapi.GetVolumeArgs{Vid: vid})
+		if err != nil {
+			span.Errorf("get volume(%v) info failed: %v", vid, err)
+			continue
+		}
+		if index >= uint8(len(volumeInfo.Units)) {
+			span.Errorf("vuid number does not match, volumeInfo:%v", volumeInfo)
+			continue
+		}
+		// get the latest vuid
+		cmVuid := volumeInfo.Units[index].Vuid
+		s.releaseEpochChunk(ctx, cs, ds, cmVuid)
+	}
+}
+
+func (s *Service) releaseEpochChunk(ctx context.Context, cs core.VuidMeta, ds core.DiskAPI, cmVuid proto.Vuid) {
+	span := trace.SpanFromContextSafe(ctx)
+	if cs.Vuid.Epoch() >= cmVuid.Epoch() {
+		return
+	}
+
+	createTime := time.Unix(0, int64(cs.ChunkId.UnixTime()))
+	protectionPeriod := time.Duration(s.Conf.ChunkProtectionPeriodSec) * time.Second
+
+	if time.Since(createTime) < protectionPeriod {
+		span.Debugf("%s still in ctime protection", cs.ChunkId)
+		return
+	}
+
+	span.Warnf("vuid(%v) already expired, local epoch:%v, new epoch:%v", cs.Vuid, cs.Vuid.Epoch(), cmVuid.Epoch())
+
+	// todo: Remove to cm
+	// Important note: in the future, the logical consideration will be transferred to cm to judge
+	err := ds.ReleaseChunk(ctx, cs.Vuid, true)
+	if err != nil {
+		span.Errorf("release ChunkStorage(%s) form disk(%v) failed: %v", cs.ChunkId, ds.ID(), err)
+		return
+	}
+	span.Infof("vuid(%v) have been release", cs.Vuid)
 }
