@@ -234,6 +234,7 @@ func testLrcReconstruct(t *testing.T, cm codemode.CodeMode) {
 		bads = append(bads, badIdx)
 		for _, idx := range bads {
 			bytespool.Zero(shards[idx])
+			shards[idx] = shards[idx][:0]
 		}
 		assert.NoError(t, encoder.Reconstruct(shards, bads))
 		assert.True(t, reflect.DeepEqual(origin, shards))
@@ -257,6 +258,7 @@ func testLrcReconstruct(t *testing.T, cm codemode.CodeMode) {
 			bads = append(bads, badIdx)
 			for _, idx := range bads {
 				bytespool.Zero(localShards[idx])
+				localShards[idx] = localShards[idx][:0]
 			}
 			assert.NoError(t, encoder.Reconstruct(localShards, bads))
 			assert.True(t, reflect.DeepEqual(localOrigin, localShards))
