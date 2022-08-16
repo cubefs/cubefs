@@ -134,5 +134,9 @@ bool check_read_reply(packet_t *req, packet_t *reply) {
 	if(req->ReqID != reply->ReqID || req->PartitionID != reply->PartitionID || req->ExtentID != reply->ExtentID) {
 		return false;
 	}
+	uint32_t crc = crc32((unsigned char *)reply->Data, reply->Size);
+	if(reply->CRC != crc) {
+        return false;
+	}
 	return true;
 }

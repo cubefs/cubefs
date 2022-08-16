@@ -9,14 +9,12 @@ using namespace std;
 page_t *new_page(int page_size) {
     page_t *p = (page_t *)malloc(sizeof(page_t));
     if(p == NULL) {
-        fprintf(stderr, "malloc page_t failed.\n");
         return NULL;
     }
     memset(p, 0, sizeof(page_t));
     p->data = malloc(page_size);
     if(p->data == NULL) {
         free(p);
-        fprintf(stderr, "malloc page_size failed.\n");
         return NULL;
     }
     memset(p->data, 0, page_size);
@@ -360,7 +358,6 @@ void flush_and_release(map<ino_t, inode_info_t *> &open_inodes) {
 inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t write_func) {
     inode_info_t *inode_info = (inode_info_t *)malloc(sizeof(inode_info_t));
     if(inode_info == NULL) {
-        fprintf(stderr, "malloc inode_info_t failed.\n");
         return NULL;
     }
     memset(inode_info, 0, sizeof(inode_info_t));
@@ -373,7 +370,6 @@ inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t
     if(use_pagecache) {
         inode_info->pages = (page_t ***)calloc(BLOCKS_PER_FILE, sizeof(page_t **));
         if(inode_info->pages == NULL) {
-            fprintf(stderr, "calloc inode_info->pages failed.\n");
             free(inode_info);
             return NULL;
         }
@@ -474,7 +470,6 @@ size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const v
         if(inode_info->pages[block_index] == NULL) {
             inode_info->pages[block_index] = (page_t **)calloc(PAGES_PER_BLOCK, sizeof(page_t *));
             if(inode_info->pages[block_index] == NULL) {
-                fprintf(stderr, "calloc inode_info->pages[] failed.\n");
                 pthread_mutex_unlock(&inode_info->pages_lock);
                 break;
             }

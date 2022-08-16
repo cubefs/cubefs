@@ -77,20 +77,21 @@ log:
 inode_info_t *record_inode_info(ino_t inode, int file_type, size_t size) {
     inode_info_t *inode_info = NULL;
     bool use_pagecache = false;
-    if(file_type == FILE_TYPE_RELAY_LOG ||file_type == FILE_TYPE_BIN_LOG)
+    if(file_type == FILE_TYPE_RELAY_LOG || file_type == FILE_TYPE_BIN_LOG) {
         use_pagecache = true;
+    }
 
     pthread_rwlock_rdlock(&g_client_info.open_inodes_lock);
     auto it = g_client_info.open_inodes.find(inode);
-    if(it != g_client_info.open_inodes.end())
+    if(it != g_client_info.open_inodes.end()) {
         inode_info = it->second;
+    }
     pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
     if (inode_info != NULL) {
         if(use_pagecache && !inode_info->use_pagecache) {
             inode_info->use_pagecache = use_pagecache;
             inode_info->pages = (page_t ***)calloc(BLOCKS_PER_FILE, sizeof(page_t **));
             if(inode_info->pages == NULL) {
-                fprintf(stderr, "calloc inode_info->pages failed.\n");
                 return NULL;
             }
             if(file_type == FILE_TYPE_BIN_LOG || file_type == FILE_TYPE_RELAY_LOG) {
@@ -108,7 +109,9 @@ inode_info_t *record_inode_info(ino_t inode, int file_type, size_t size) {
     }
 
     inode_info = new_inode_info(inode, use_pagecache, cfs_pwrite_inode);
-    if(inode_info == NULL) return NULL;
+    if(inode_info == NULL) {
+        return NULL;
+    }
     inode_info->client_id = g_client_info.cfs_client_id;
     inode_info->size = size;
 
