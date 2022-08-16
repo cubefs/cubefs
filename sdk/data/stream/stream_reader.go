@@ -53,8 +53,9 @@ type Streamer struct {
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
 
-	writeLock       sync.Mutex
-	inflightL1cache sync.Map
+	writeLock            sync.Mutex
+	inflightL1cache      sync.Map
+	inflightEvictL1cache sync.Map
 }
 
 // NewStreamer returns a new streamer.
