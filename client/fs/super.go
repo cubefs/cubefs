@@ -49,6 +49,7 @@ type Super struct {
 	volname     string
 	owner       string
 	ic          *InodeCache
+	dc          *Dcache
 	mw          *meta.MetaWrapper
 	ec          *stream.ExtentClient
 	orphan      *OrphanInodeList
@@ -127,6 +128,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.keepCache = opt.KeepCache
 	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
+	s.dc = NewDcache(inodeExpiration, MaxInodeCache)
 	s.orphan = NewOrphanInodeList()
 	s.nodeCache = make(map[uint64]fs.Node)
 	s.disableDcache = opt.DisableDcache
