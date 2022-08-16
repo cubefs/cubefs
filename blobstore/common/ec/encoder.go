@@ -186,3 +186,25 @@ func initBadShards(shards [][]byte, badIdx []int) {
 		}
 	}
 }
+
+func shardSize(shards [][]byte) int {
+	for _, shard := range shards {
+		if len(shard) != 0 {
+			return len(shard)
+		}
+	}
+	return 0
+}
+
+func fillFullShards(shards [][]byte) {
+	shardSize := shardSize(shards)
+	for iShard := 0; iShard < len(shards); iShard++ {
+		if len(shards[iShard]) == 0 {
+			if cap(shards[iShard]) >= shardSize {
+				shards[iShard] = shards[iShard][0:shardSize]
+			} else {
+				shards[iShard] = make([]byte, shardSize)
+			}
+		}
+	}
+}

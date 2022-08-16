@@ -38,6 +38,7 @@ func (e *lrcEncoder) Encode(shards [][]byte) error {
 	}
 	e.pool.Acquire()
 	defer e.pool.Release()
+	fillFullShards(shards)
 
 	// firstly, do global ec encode
 	if err := e.engine.Encode(shards[:e.CodeMode.N+e.CodeMode.M]); err != nil {
@@ -122,6 +123,8 @@ func (e *lrcEncoder) Verify(shards [][]byte) (bool, error) {
 }
 
 func (e *lrcEncoder) Reconstruct(shards [][]byte, badIdx []int) error {
+	fillFullShards(shards)
+
 	globalBadIdx := make([]int, 0)
 	for _, i := range badIdx {
 		if i < e.CodeMode.N+e.CodeMode.M {
@@ -175,7 +178,14 @@ func (e *lrcEncoder) Reconstruct(shards [][]byte, badIdx []int) error {
 }
 
 func (e *lrcEncoder) ReconstructData(shards [][]byte, badIdx []int) error {
-	initBadShards(shards, badIdx)
+	fillFullShards(shards[:e.CodeMode.N+e.CodeMode.M])
+	globalBadIdx := make([]int, 0)
+	for _, i := range badIdx {
+		if i < e.CodeMode.N+e.CodeMode.M {
+			globalBadIdx = append(globalBadIdx, i)
+		}
+	}
+	initBadShards(shards, globalBadIdx)
 	shards = shards[:e.CodeMode.N+e.CodeMode.M]
 	e.pool.Acquire()
 	defer e.pool.Release()
@@ -216,20 +226,12 @@ func (e *lrcEncoder) GetLocalShards(shards [][]byte) [][]byte {
 }
 
 func (e *lrcEncoder) GetShardsInIdc(shards [][]byte, idx int) [][]byte {
-	n, m, l := e.CodeMode.N, e.CodeMode.M, e.CodeMode.L
-	idcCnt := e.CodeMode.AZCount
-	localN, localM, localL := n/idcCnt, m/idcCnt, l/idcCnt
-
-	localShardsInIdc := make([][]byte, localN+localM+localL)
-
-	shardsN := shards[idx*localN : (idx+1)*localN]
-	shardsM := shards[(n + localM*idx):(n + localM*(idx+1))]
-	shardsL := shards[(n + m + localL*idx):(n + m + localL*(idx+1))]
-
-	copy(localShardsInIdc, shardsN)
-	copy(localShardsInIdc[localN:], shardsM)
-	copy(localShardsInIdc[localN+localM:], shardsL)
-	return localShardsInIdc
+	locals, _, _ := e.CodeMode.LocalStripeInAZ(idx)
+	localShards := make([][]byte, len(locals))
+	for localIdx, globalIdx := range locals {
+		localShards[localIdx] = shards[globalIdx]
+	}
+	return localShards
 }
 
 func (e *lrcEncoder) Join(dst io.Writer, shards [][]byte, outSize int) error {
