@@ -209,14 +209,8 @@ func NewLevelQos(threshold *Threshold, diskStat iostat.IOViewer) LevelQos {
 		diskStat:  diskStat,
 		threshold: threshold,
 	}
-
-	if !isNotSet(threshold.Bandwidth) {
-		qos.bps = limitio.NewController(threshold.Bandwidth)
-	}
-	if !isNotSet(threshold.Iops) {
-		qos.iops = limitio.NewController(threshold.Iops)
-	}
-
+	qos.bps = limitio.NewController(threshold.Bandwidth)
+	qos.iops = limitio.NewController(threshold.Iops)
 	return qos
 }
 
@@ -242,12 +236,8 @@ func NewLevelQosMgr(conf Config, diskStat iostat.IOViewer) (*LevelManager, error
 			DiskIOPS:      conf.DiskIOPS,
 			DiskBandwidth: conf.DiskBandwidthMBPS,
 		}
-		if !isNotSet(threshold.DiskBandwidth) {
-			threshold.DiskBandwidth = threshold.DiskBandwidth * humanize.MiByte
-		}
-		if !isNotSet(threshold.Bandwidth) {
-			threshold.Bandwidth = threshold.Bandwidth * humanize.MiByte
-		}
+		threshold.DiskBandwidth = threshold.DiskBandwidth * humanize.MiByte
+		threshold.Bandwidth = threshold.Bandwidth * humanize.MiByte
 		levelController := NewLevelQos(threshold, diskStat)
 		mgr.levels[prio] = levelController
 	}

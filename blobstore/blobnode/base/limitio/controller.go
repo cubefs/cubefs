@@ -29,21 +29,25 @@ type Controller interface {
 	Assign(int64) (int64, bool)
 	Fill(int64)
 	UpdateCapacity(ratePerSecond int)
+	Hit() uint64
 	Close() error
 }
 
 type AtomicController struct {
 	remain   int64 // read/write
 	capacity int64 // read/write
-	limit    int64 // limits per second. readonly
 	hit      uint64
 	cond     *sync.Cond
 	done     chan struct{}
 	once     *sync.Once
 }
 
+func (c *AtomicController) Hit() uint64 {
+	return atomic.LoadUint64(&c.hit)
+}
+
 func (c *AtomicController) UpdateCapacity(ratePerSecond int) {
-	if ratePerSecond <= 0 {
+	if ratePerSecond < 0 {
 		return
 	}
 	limit := int64(ratePerSecond * int(tickWindow) / int(time.Second))
@@ -146,7 +150,7 @@ func (c *AtomicController) Close() error {
 	return nil
 }
 
-func NewController(limitPerSec int64) *AtomicController {
+func NewController(limitPerSec int64) Controller {
 	capacity := limitPerSec * int64(tickWindow) / int64(time.Second)
 	if capacity < minLimitPerTick {
 		capacity = minLimitPerTick
@@ -155,7 +159,6 @@ func NewController(limitPerSec int64) *AtomicController {
 	c := &AtomicController{
 		remain:   capacity,
 		capacity: capacity,
-		limit:    limitPerSec,
 		cond:     sync.NewCond(new(sync.Mutex)),
 		done:     make(chan struct{}, 1),
 		once:     &sync.Once{},
