@@ -16,8 +16,6 @@ package datanode
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
-	"golang.org/x/time/rate"
 	"path"
 	"regexp"
 	"strconv"
@@ -26,6 +24,9 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 
 	"os"
 
@@ -178,7 +179,7 @@ func (d *Disk) computeUsage() (err error) {
 	d.Available = uint64(available)
 
 	//  used := math.Max(0, int64(total - available))
-	free := int64(fs.Bfree*uint64(fs.Bsize) - d.ReservedSpace)
+	free := int64(fs.Bfree*uint64(fs.Bsize) - d.DiskRdonlySpace)
 	used := total - free
 	if used < 0 {
 		used = 0
