@@ -360,7 +360,7 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 			break
 		}
 		//avoid dead loop
-		if cnt > 100000 {
+		if cnt > 10000000 {
 			break
 		}
 
