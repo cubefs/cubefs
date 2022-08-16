@@ -85,6 +85,20 @@ type SummaryInfo struct {
 	Fbytes  int64 `json:"fbytes"`
 }
 
+type DentryInfo struct {
+	Name       string `json:"name"`
+	Inode      uint64 `json:"inode"`
+	expiration int64
+}
+
+func (info *DentryInfo) SetExpiration(e int64) {
+	info.expiration = e
+}
+
+func (info *DentryInfo) Expiration() int64 {
+	return info.expiration
+}
+
 func (info *InodeInfo) Expiration() int64 {
 	return info.expiration
 }

@@ -300,15 +300,6 @@ func (client *ExtentClient) OpenStream(inode uint64) error {
 	if !ok {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
-		if !client.disableMetaCache {
-			client.streamerList.PushFront(inode)
-		}
-	}
-	if !s.isOpen && !client.disableMetaCache {
-		s.isOpen = true
-		log.LogDebugf("open stream again, ino(%v)", s.inode)
-		s.request = make(chan interface{}, 64)
-		go s.server()
 	}
 	return s.IssueOpenRequest()
 }
@@ -320,7 +311,7 @@ func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache bool) e
 	if !ok {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
-		if !client.disableMetaCache {
+		if !client.disableMetaCache && needBCache {
 			client.streamerList.PushFront(inode)
 		}
 	}

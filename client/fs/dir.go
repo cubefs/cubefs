@@ -15,9 +15,11 @@
 package fs
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -121,28 +123,6 @@ func NewDir(s *Super, i *proto.InodeInfo, pino uint64, dirName string) fs.Node {
 		name:      dirName,
 		dctx:      NewDirContexts(),
 	}
-}
-
-func (d *Dir) getCwd() string {
-	dirPath := ""
-	curIno := d.info.Inode
-	for curIno != d.super.rootIno {
-		d.super.fslock.Lock()
-		node, ok := d.super.nodeCache[curIno]
-		d.super.fslock.Unlock()
-		if !ok {
-			log.LogErrorf("Get node cache failed: ino(%v)", curIno)
-			return "unknown" + dirPath
-		}
-		curDir, ok := node.(*Dir)
-		if !ok {
-			log.LogErrorf("Type error: Can not convert node -> *Dir, ino(%v)", curDir.parentIno)
-			return "unknown" + dirPath
-		}
-		dirPath = "/" + curDir.name + dirPath
-		curIno = curDir.parentIno
-	}
-	return dirPath
 }
 
 // Attr set the attributes of a directory.
@@ -293,8 +273,9 @@ func (d *Dir) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 // Lookup handles the lookup request.
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
 	var (
-		ino uint64
-		err error
+		ino      uint64
+		err      error
+		dcachev2 bool
 	)
 
 	bgTime := stat.BeginStat()
@@ -303,16 +284,48 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	}()
 
 	log.LogDebugf("TRACE Lookup: parent(%v) req(%v)", d.info.Inode, req)
+	log.LogDebugf("TRACE Lookup: parent(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
 
-	ino, ok := d.dcache.Get(req.Name)
-	if !ok {
-		ino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name)
-		if err != nil {
-			if err != syscall.ENOENT {
-				log.LogErrorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+	if d.needDentrycache() {
+		dcachev2 = true
+	}
+	if dcachev2 {
+		lookupMetric := exporter.NewCounter("lookupDcache")
+		lookupMetric.AddWithLabels(1, map[string]string{exporter.Vol: d.super.volname})
+		dcacheKey := d.buildDcacheKey(d.info.Inode, req.Name)
+		dentryInfo := d.super.dc.Get(dcacheKey)
+		if dentryInfo == nil {
+			lookupMetric := exporter.NewCounter("lookupDcacheMiss")
+			lookupMetric.AddWithLabels(1, map[string]string{exporter.Vol: d.super.volname})
+			ino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name)
+			if err != nil {
+				if err != syscall.ENOENT {
+					log.LogErrorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+				}
+				return nil, ParseError(err)
 			}
-			return nil, ParseError(err)
+			info := &proto.DentryInfo{
+				Name:  dcacheKey,
+				Inode: ino,
+			}
+			d.super.dc.Put(info)
+		} else {
+			lookupMetric := exporter.NewCounter("lookupDcacheHit")
+			lookupMetric.AddWithLabels(1, map[string]string{exporter.Vol: d.super.volname})
+			ino = dentryInfo.Inode
 		}
+	} else {
+		cino, ok := d.dcache.Get(req.Name)
+		if !ok {
+			cino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name)
+			if err != nil {
+				if err != syscall.ENOENT {
+					log.LogErrorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+				}
+				return nil, ParseError(err)
+			}
+		}
+		ino = cino
 	}
 
 	info, err := d.super.InodeGet(ino)
@@ -339,6 +352,10 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	log.LogDebugf("TRACE Lookup exit: parent(%v) req(%v) cost (%d)", d.info.Inode, req, time.Since(*bgTime).Microseconds())
 	return child, nil
+}
+
+func (d *Dir) buildDcacheKey(inode uint64, name string) string {
+	return fmt.Sprintf("%v_%v", inode, name)
 }
 
 func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) ([]fuse.Dirent, error) {
@@ -379,10 +396,15 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	inodes := make([]uint64, 0, len(children))
 	dirents := make([]fuse.Dirent, 0, len(children))
 
-	dcache := d.dcache
+	log.LogDebugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
+	var dcache *DentryCache
 	if !d.super.disableDcache {
 		dcache = NewDentryCache()
-		d.dcache = dcache
+	}
+
+	var dcachev2 bool
+	if d.needDentrycache() {
+		dcachev2 = true
 	}
 
 	for _, child := range children {
@@ -394,7 +416,15 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 
 		inodes = append(inodes, child.Inode)
 		dirents = append(dirents, dentry)
-		dcache.Put(child.Name, child.Inode)
+		if dcachev2 {
+			info := &proto.DentryInfo{
+				Name:  d.buildDcacheKey(d.info.Inode, child.Name),
+				Inode: child.Inode,
+			}
+			d.super.dc.Put(info)
+		} else {
+			dcache.Put(child.Name, child.Inode)
+		}
 	}
 
 	infos := d.super.mw.BatchInodeGet(inodes)
@@ -402,6 +432,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		d.super.ic.Put(info)
 	}
 
+	d.dcache = dcache
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE ReadDir exit: ino(%v) (%v)ns %v", d.info.Inode, elapsed.Nanoseconds(), req)
 	return dirents, err
@@ -410,7 +441,6 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 // ReadDirAll gets all the dentries in a directory and puts them into the cache.
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	start := time.Now()
-
 	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("readdir")
@@ -428,9 +458,15 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	inodes := make([]uint64, 0, len(children))
 	dirents := make([]fuse.Dirent, 0, len(children))
 
+	log.LogDebugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
 	var dcache *DentryCache
 	if !d.super.disableDcache {
 		dcache = NewDentryCache()
+	}
+
+	var dcachev2 bool
+	if d.needDentrycache() {
+		dcachev2 = true
 	}
 
 	for _, child := range children {
@@ -442,7 +478,15 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 		inodes = append(inodes, child.Inode)
 		dirents = append(dirents, dentry)
-		dcache.Put(child.Name, child.Inode)
+		if dcachev2 {
+			info := &proto.DentryInfo{
+				Name:  d.buildDcacheKey(d.info.Inode, child.Name),
+				Inode: child.Inode,
+			}
+			d.super.dc.Put(info)
+		} else {
+			dcache.Put(child.Name, child.Inode)
+		}
 	}
 
 	infos := d.super.mw.BatchInodeGet(inodes)
@@ -450,7 +494,6 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		d.super.ic.Put(info)
 	}
 	d.dcache = dcache
-
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE ReadDirAll: ino(%v) (%v)ns", d.info.Inode, elapsed.Nanoseconds())
 	return dirents, nil
@@ -774,4 +817,38 @@ func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) err
 	}
 	log.LogDebugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
 	return nil
+}
+
+func (d *Dir) getCwd() string {
+	dirPath := ""
+	curIno := d.info.Inode
+	for curIno != d.super.rootIno {
+		d.super.fslock.Lock()
+		node, ok := d.super.nodeCache[curIno]
+		d.super.fslock.Unlock()
+		if !ok {
+			log.LogErrorf("Get node cache failed: ino(%v)", curIno)
+			return "unknown" + dirPath
+		}
+		curDir, ok := node.(*Dir)
+		if !ok {
+			log.LogErrorf("Type error: Can not convert node -> *Dir, ino(%v)", curDir.parentIno)
+			return "unknown" + dirPath
+		}
+		dirPath = "/" + curDir.name + dirPath
+		curIno = curDir.parentIno
+	}
+	return dirPath
+}
+
+func (d *Dir) needDentrycache() bool {
+	return !DisableMetaCache && d.super.bcacheDir != "" && strings.HasPrefix(d.getCwd(), d.super.bcacheDir)
+}
+
+func dentryExpired(info *proto.DentryInfo) bool {
+	return time.Now().UnixNano() > info.Expiration()
+}
+
+func dentrySetExpiration(info *proto.DentryInfo, t time.Duration) {
+	info.SetExpiration(time.Now().Add(t).UnixNano())
 }
