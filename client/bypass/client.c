@@ -2444,6 +2444,10 @@ void* stop_libs() {
         fprintf(stderr, "dlclose /usr/lib64/libcfssdk.so error: %s\n", dlerror());
         goto err;
     }
+    free((void*)g_client_info.mount_point);
+    if(strlen(g_client_info.ignore_path) > 0) {
+        free((void*)g_client_info.ignore_path);
+    }
     return client_state;
 
 err:

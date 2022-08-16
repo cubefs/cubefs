@@ -92,9 +92,6 @@ static start_libs_t start_libs;
 static stop_libs_t stop_libs;
 static flush_logs_t flush_logs;
 
-const int CHECK_UPDATE_INTERVAL = 10;
-pthread_rwlock_t update_rwlock;
-static bool g_inited;
 static void init();
 static void init_cfsc_func(void *);
 static void *update_dynamic_libs(void *);

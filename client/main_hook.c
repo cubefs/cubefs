@@ -35,6 +35,11 @@
 
 #include "hook.h"
 
+static bool g_inited;
+pthread_rwlock_t update_rwlock;
+
+const int CHECK_UPDATE_INTERVAL = 10;
+
 #define LOCK(cmd, res)                                                                     \
     do {                                                                                   \
         errno = pthread_rwlock_rdlock(&update_rwlock);                                     \
@@ -500,6 +505,7 @@ void _exit(int status) {
     }
     void (*libc__exit)(int) = dlsym(RTLD_NEXT, "_exit");
     libc__exit(status);
+
     // _exit is marked with __attribute__((noreturn)) by GCC.
     // If not ends with an infinite loop, there will be a compile warning.
     while(1) {}
@@ -512,6 +518,7 @@ void exit(int status) {
     }
     void (*libc_exit)(int) = dlsym(RTLD_NEXT, "exit");
     libc_exit(status);
+
     // exit is marked with __attribute__((noreturn)) by GCC.
     // If not ends with an infinite loop, there will be a compile warning.
     while(1) {}

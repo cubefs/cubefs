@@ -584,6 +584,7 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
             break;
         }
     }
+    free(req);
     #ifdef _CFS_DEBUG
     log_debug("cfs_pread_sock, fd:%d, count:%d, offset:%ld, req_count:%d, read:%d\n", fd, count, offset, req_count, read);
     #endif
