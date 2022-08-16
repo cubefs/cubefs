@@ -169,12 +169,12 @@ func (s *Streamer) IssueEvictRequest() error {
 func (s *Streamer) server() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
-	defer func() {
-		if !s.client.disableMetaCache {
-			close(s.request)
-			s.request = nil
-		}
-	}()
+	//defer func() {
+	//	if !s.client.disableMetaCache && s.needBCache {
+	//		close(s.request)
+	//		s.request = nil
+	//	}
+	//}()
 
 	for {
 		select {
@@ -192,7 +192,7 @@ func (s *Streamer) server() {
 
 				s.client.streamerLock.Lock()
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
-					if s.client.disableMetaCache {
+					if s.client.disableMetaCache || !s.needBCache {
 						delete(s.client.streamers, s.inode)
 						if s.client.evictIcache != nil {
 							s.client.evictIcache(s.inode)
@@ -200,10 +200,10 @@ func (s *Streamer) server() {
 					}
 
 					s.isOpen = false
-					s.client.streamerLock.Unlock()
-
 					// fail the remaining requests in such case
 					s.clearRequests()
+					s.client.streamerLock.Unlock()
+
 					log.LogDebugf("done server: no requests for a long time, ino(%v)", s.inode)
 					return
 				}
@@ -322,21 +322,32 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 					s.client.evictBcache(cacheKey)
 					s.inflightEvictL1cache.Delete(cacheKey)
 				}(cacheKey)
+				if s.client.bcacheEnable {
+					cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.ExtentId, uint64(req.FileOffset))
+					if _, ok := s.inflightEvictL1cache.Load(cacheKey); !ok {
+						go func(cacheKey string) {
+							s.inflightEvictL1cache.Store(cacheKey, true)
+							s.client.evictBcache(cacheKey)
+							s.inflightEvictL1cache.Delete(cacheKey)
+						}(cacheKey)
+					}
+				}
+
+			} else {
+				writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
 			}
-		} else {
-			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
+			if err != nil {
+				log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
+				break
+			}
+			total += writeSize
 		}
-		if err != nil {
-			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
-			break
+		if filesize, _ := s.extents.Size(); offset+total > filesize {
+			s.extents.SetSize(uint64(offset+total), false)
+			log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
 		}
-		total += writeSize
+		log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
 	}
-	if filesize, _ := s.extents.Size(); offset+total > filesize {
-		s.extents.SetSize(uint64(offset+total), false)
-		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
-	}
-	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
 	return
 }
 
@@ -639,7 +650,7 @@ func (s *Streamer) evict() error {
 		s.client.streamerLock.Unlock()
 		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v)", s, s.refcnt))
 	}
-	if s.client.disableMetaCache {
+	if s.client.disableMetaCache || !s.needBCache {
 		delete(s.client.streamers, s.inode)
 	}
 	s.client.streamerLock.Unlock()

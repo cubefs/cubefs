@@ -57,6 +57,7 @@ type ReadCloser interface {
 type BcacheManager interface {
 	cache(key string, data []byte, direct bool)
 	read(key string, offset uint64, len uint32) (io.ReadCloser, error)
+	queryCachePath(key string, offset uint64, len uint32) (string, error)
 	load(key string) (ReadCloser, error)
 	erase(key string)
 	stats() (int64, int64)
@@ -141,6 +142,39 @@ func encryptXOR(data []byte) {
 	for index, value := range data {
 		data[index] = value ^ byte(0xF)
 	}
+}
+
+func (bm *bcacheManager) queryCachePath(key string, offset uint64, len uint32) (path string, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("GetCache:GetCachePath", err, bgTime, 1)
+	}()
+
+	bm.Lock()
+	element, ok := bm.bcacheKeys[key]
+	bm.Unlock()
+	if ok {
+		item := element.Value.(*cacheItem)
+		path, err := bm.getCachePath(key)
+		if err != nil {
+			return "", err
+		}
+		bm.Lock()
+		bm.lrulist.MoveToBack(element)
+		bm.Unlock()
+		log.LogDebugf("Cache item found. key=%v offset =%v,len=%v size=%v, path=%v", key, offset, len, item.size, path)
+		return path, nil
+	}
+	log.LogDebugf("Cache item not found. key=%v offset =%v,len=%v", key, offset, len)
+	return "", os.ErrNotExist
+}
+
+func (bm *bcacheManager) getCachePath(key string) (string, error) {
+	if len(bm.bstore) == 0 {
+		return "", errors.New("no cache dir")
+	}
+	cachePath := bm.selectDiskKv(key).getPath(key)
+	return cachePath, nil
 }
 
 func (bm *bcacheManager) cache(key string, data []byte, direct bool) {
@@ -363,6 +397,7 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 			break
 		}
 		bm.Lock()
+
 		element := bm.lrulist.Front()
 		if element == nil {
 			return
@@ -376,6 +411,7 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 			decreaseCnt--
 			cnt++
 		}
+
 		bm.Unlock()
 		log.LogDebugf("remove %v from cache", item.key)
 
@@ -478,11 +514,11 @@ func NewDiskStore(dir string, cacheSize int64, config *bcacheConfig) *DiskStore 
 	}
 
 	if config.Limit <= 0 {
-		config.Limit = 20000000
+		config.Limit = 50000000
 	}
 
-	if config.Limit > 20000000 {
-		config.Limit = 20000000
+	if config.Limit > 50000000 {
+		config.Limit = 50000000
 	}
 	c := &DiskStore{
 		dir:       dir,
@@ -507,6 +543,53 @@ func (d *DiskStore) checkBuildCacheDir(dir string) {
 	}
 }
 
+//func (d *DiskStore) flushKey(key string, data []byte) error {
+//	var err error
+//	bgTime := stat.BeginStat()
+//	defer func() {
+//		stat.EndStat("Cache:Write:FlushData", err, bgTime, 1)
+//	}()
+//	cachePath := d.buildCachePath(key, d.dir)
+//	log.LogDebugf("TRACE BCacheService flushKey Enter. key(%v) cachePath(%v)", key, cachePath)
+//	d.checkBuildCacheDir(filepath.Dir(cachePath))
+//	tmp := cachePath + ".tmp"
+//	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(d.mode))
+//	defer os.Remove(tmp)
+//	if err != nil {
+//		log.LogErrorf("Create block tmp file:%s err:%s!", tmp, err)
+//		return err
+//	}
+//	//encrypt
+//	encryptXOR(data)
+//	_, err = f.Write(data)
+//	if err != nil {
+//		f.Close()
+//		log.LogErrorf("Write tmp failed: file %s err %s!", tmp, err)
+//		return err
+//	}
+//	err = f.Close()
+//	if err != nil {
+//		log.LogErrorf("Close tmp failed: file:%s err:%s!", tmp, err)
+//		return err
+//	}
+//	info, err := os.Stat(cachePath)
+//	//if already cached
+//	if !os.IsNotExist(err) {
+//		atomic.AddInt64(&d.usedSize, -(info.Size()))
+//		atomic.AddInt64(&d.usedCount, -1)
+//		os.Remove(cachePath)
+//	}
+//	err = os.Rename(tmp, cachePath)
+//	if err != nil {
+//		log.LogErrorf("Rename block tmp file:%s err:%s!", tmp, err)
+//		return err
+//	}
+//	atomic.AddInt64(&d.usedSize, int64(len(data)))
+//	atomic.AddInt64(&d.usedCount, 1)
+//	log.LogDebugf("TRACE BCacheService flushKey Exit. key(%v) cachePath(%v)", key, cachePath)
+//	return nil
+//
+//}
 func (d *DiskStore) flushKey(key string, data []byte) error {
 	var err error
 	bgTime := stat.BeginStat()
@@ -525,7 +608,7 @@ func (d *DiskStore) flushKey(key string, data []byte) error {
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(d.mode))
 	defer os.Remove(tmp)
 	if err != nil {
-		log.LogErrorf("Create block tmp file:%s err:%s!", tmp, err)
+		log.LogWarnf("Create block tmp file:%s err:%s!", tmp, err)
 		return err
 	}
 	//encrypt
@@ -630,6 +713,11 @@ func (d *DiskStore) updateStat(size uint32) {
 	atomic.AddInt64(&d.usedCount, 1)
 }
 
+func (d *DiskStore) getPath(key string) string {
+	cachePath := d.buildCachePath(key, d.dir)
+	return cachePath
+}
+
 func (bm *bcacheManager) deleteTmpFile(store *DiskStore) {
 	if _, err := os.Stat(store.dir); err != nil {
 		log.LogErrorf("cache dir %s is not exists", store.dir)
@@ -652,7 +740,10 @@ func (bm *bcacheManager) deleteTmpFile(store *DiskStore) {
 }
 
 func checkoutTempFileOuttime(file string) bool {
-	finfo, _ := os.Stat(file)
+	finfo, err := os.Stat(file)
+	if err != nil {
+		return false
+	}
 	stat_t := finfo.Sys().(*syscall.Stat_t)
 	now := time.Now()
 	return now.Sub(timespecToTime(stat_t.Ctim)).Seconds() > 60*60 //1 hour
