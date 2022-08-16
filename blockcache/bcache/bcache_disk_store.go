@@ -345,8 +345,7 @@ func (bm *bcacheManager) spaceManager() {
 func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) {
 	var decreaseSpace int64
 	var decreaseCnt int
-	bm.Lock()
-	defer bm.Unlock()
+
 	if free < store.freeLimit {
 		decreaseSpace = int64((store.freeLimit - free) * (float32(store.capacity)))
 	}
@@ -360,10 +359,10 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 			break
 		}
 		//avoid dead loop
-		if cnt > 10000000 {
+		if cnt > 500000 {
 			break
 		}
-
+		bm.Lock()
 		element := bm.lrulist.Front()
 		if element == nil {
 			return
@@ -377,6 +376,7 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 			decreaseCnt--
 			cnt++
 		}
+		bm.Unlock()
 		log.LogDebugf("remove %v from cache", item.key)
 
 	}
