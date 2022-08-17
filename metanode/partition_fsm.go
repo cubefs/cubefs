@@ -96,6 +96,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
 		}
+		mp.inodeTree.SetCursor(ino.Inode)
 		resp, err = mp.fsmCreateInode(dbWriteHandle, ino)
 	case opFSMUnlinkInode:
 		ino := NewInode(0, 0)
@@ -217,7 +218,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			log.LogInfof("mp[%v] reset cursor, json unmarshal failed:%s", mp.config.PartitionId, err.Error())
 			return mp.config.Cursor, err
 		}
-		resp = mp.internalCursorReset(req)
+		resp, err = mp.internalCursorReset(req)
 	case opFSMInternalDeleteInodeBatch:
 		if len(msg.V) == 0 {
 			return
@@ -260,8 +261,16 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMSyncCursor:
 		var cursor uint64
 		cursor = binary.BigEndian.Uint64(msg.V)
-		if cursor > mp.config.Cursor {
-			mp.config.Cursor = cursor
+		mp.inodeTree.SetCursor(cursor)
+		if cursor <= mp.config.Cursor {
+			return
+		}
+
+		log.LogDebugf("mp[%v] sync cursor(%v)", mp.config.PartitionId, cursor)
+		atomic.StoreUint64(&mp.config.Cursor, cursor)
+		if err = mp.inodeTree.PersistBaseInfo(); err != nil {
+			log.LogErrorf("mp[%v] persist base info failed:%v", mp.config.PartitionId, err)
+			return
 		}
 
 	case opFSMCleanExpiredDentry:
@@ -641,7 +650,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err = mp.MetaItemBatchCreate(db, metaTree, mulItemsCh)
+		err = mp.MetaItemBatchCreate(db, metaTree, mulItemsCh, &cursor)
 		if err != nil {
 			log.LogErrorf("meta item batch create failed:%v", err)
 		}
@@ -709,6 +718,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			}
 			if cursor < ino.Inode {
 				cursor = ino.Inode
+				metaTree.InodeTree.SetCursor(cursor)
 			}
 			if _, _, err = metaTree.InodeTree.Create(dbWriteHandle, ino, true); err != nil {
 				log.LogErrorf("ApplySnapshot: create inode failed, partitionID(%v) inode(%v)", mp.config.PartitionId, ino)
@@ -826,7 +836,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	}
 }
 
-func (mp *metaPartition)MetaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree, mulItemsCh chan *MulItems) (err error) {
+func (mp *metaPartition)MetaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree, mulItemsCh chan *MulItems, cursor *uint64) (err error) {
 	defer func() {
 		log.LogDebugf("meta item batch create finished, error:%v", err)
 	}()
@@ -841,6 +851,10 @@ func (mp *metaPartition)MetaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree,
 			return
 		}
 		for _, inode := range mulItems.InodeBatches {
+			if *cursor < inode.Inode {
+				*cursor = inode.Inode
+				metaTree.InodeTree.SetCursor(*cursor)
+			}
 			if _, _, err = metaTree.InodeTree.Create(dbHandle, inode, true); err != nil {
 				err = fmt.Errorf("create inode failed:%v", err)
 				return

@@ -15,10 +15,9 @@
 package metanode
 
 import (
+	"github.com/chubaofs/chubaofs/util/btree"
 	"hash/crc32"
 	"sync"
-
-	"github.com/chubaofs/chubaofs/util/btree"
 )
 
 const defaultBTreeDegree = 32
@@ -781,6 +780,14 @@ func (i *BTree) CommitAndReleaseBatchWriteHandle(handle interface{}, needCommitA
 
 func (i *BTree) ClearBatchWriteHandle(handle interface{}) error {
 	return nil
+}
+
+func (i *BTree) SetCursor(cursor uint64) {
+	return
+}
+
+func (i *BTree) GetCursor() uint64 {
+	return 0
 }
 
 func (i *BTree) Flush() error {

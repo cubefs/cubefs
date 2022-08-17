@@ -102,6 +102,8 @@ type Tree interface {
 	ClearBatchWriteHandle(handle interface{}) error
 	PersistBaseInfo() error
 	GetPersistentApplyID() uint64
+	SetCursor(cursor uint64)
+	GetCursor() uint64
 }
 
 type InodeTree interface {

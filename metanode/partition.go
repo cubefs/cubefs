@@ -746,6 +746,7 @@ func (mp *metaPartition) loadApplyIDAndCursor() (err error) {
 		applyIDInSnapshot uint64 = ^uint64(0)
 		applyIDInRocksDB  uint64 = ^uint64(0)
 		cursorInSnapshot  uint64
+		cursorInRocksDB   uint64
 		maxInode          uint64
 	)
 	if mp.HasMemStore() {
@@ -764,6 +765,7 @@ func (mp *metaPartition) loadApplyIDAndCursor() (err error) {
 		applyIDInRocksDB = mp.inodeTree.GetApplyID()
 		atomic.StoreUint64(&mp.applyID, applyIDInRocksDB)
 
+		cursorInRocksDB = mp.inodeTree.GetCursor()
 		if maxInode, err = mp.inodeTree.GetMaxInode(); err != nil {
 			return
 		}
@@ -771,7 +773,11 @@ func (mp *metaPartition) loadApplyIDAndCursor() (err error) {
 		if maxInode > atomic.LoadUint64(&mp.config.Cursor) {
 			atomic.StoreUint64(&mp.config.Cursor, maxInode)
 		}
+		if cursorInRocksDB > atomic.LoadUint64(&mp.config.Cursor) {
+			atomic.StoreUint64(&mp.config.Cursor, cursorInRocksDB)
+		}
 	}
+	log.LogDebugf("mp[%v] applyID:%v, cursor:%v", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
 
 	return
 }
