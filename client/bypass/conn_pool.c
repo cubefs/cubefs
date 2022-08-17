@@ -24,7 +24,7 @@ void release_conn_pool(conn_pool_t *conn_pool) {
         pthread_join(conn_pool->alive_check_pthread, NULL);
     }
 
-    pthread_rwlock_rdlock(&conn_pool->lock);
+    pthread_rwlock_wrlock(&conn_pool->lock);
     for(const auto &item : *conn_pool->pool) {
         queue<conn_t> *q = item.second;
         while(!q->empty()) {
