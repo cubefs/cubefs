@@ -13,15 +13,18 @@
 #include <iostream>
 #include <map>
 #include <queue>
+#include <list>
 #include <string>
 #include <sstream>
 
 using namespace std;
 
-#define IDLE_CONN_TIMEOUT 30
-#define SEND_TIMEOUT_MS   1000
-#define RECV_TIMEOUT_MS   1000
-#define CONN_TIMEOUT_MS   1000
+#define IDLE_CONN_TIMEOUT       30
+#define ALIVE_CHECK_INTERVAL_S  1
+#define SEND_TIMEOUT_MS         1000
+#define RECV_TIMEOUT_MS         1000
+#define CONN_TIMEOUT_MS         1000
+
 
 typedef struct {
     int sock_fd;
@@ -31,6 +34,8 @@ typedef struct {
 typedef struct {
     map<string, queue<conn_t>*> *pool;
     pthread_rwlock_t lock;
+    pthread_t alive_check_pthread;
+    int stop;
 } conn_pool_t;
 
 conn_pool_t *new_conn_pool();

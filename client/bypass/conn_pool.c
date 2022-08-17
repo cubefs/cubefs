@@ -2,15 +2,28 @@
 #include "libc_operation.h"
 #include <sys/ioctl.h>
 
+static int new_conn(const char *ip, int port);
+
+static void* check_alive_func(void* args);
+
 conn_pool_t *new_conn_pool() {
     conn_pool_t *conn_pool = (conn_pool_t *)malloc(sizeof(conn_pool_t));
     memset(conn_pool, 0, sizeof(conn_pool_t));
     conn_pool->pool = new map<string, queue<conn_t>*>;
     pthread_rwlock_init(&conn_pool->lock, NULL);
+    conn_pool->stop = 0;
+    if (pthread_create(&conn_pool->alive_check_pthread, NULL, check_alive_func, conn_pool) < 0) {
+        conn_pool->alive_check_pthread = -1;
+    }
     return conn_pool;
 }
 
 void release_conn_pool(conn_pool_t *conn_pool) {
+    conn_pool->stop = 1;
+    if (conn_pool->alive_check_pthread != -1) {
+        pthread_join(conn_pool->alive_check_pthread, NULL);
+    }
+
     pthread_rwlock_rdlock(&conn_pool->lock);
     for(const auto &item : *conn_pool->pool) {
         queue<conn_t> *q = item.second;
@@ -24,6 +37,45 @@ void release_conn_pool(conn_pool_t *conn_pool) {
     delete conn_pool->pool;
     pthread_rwlock_unlock(&conn_pool->lock);
     free(conn_pool);
+}
+
+static void* check_alive_func(void* args) {
+    conn_pool_t *conn_pool = (conn_pool_t*) args;
+    list<int> wait_close_fds;
+
+    if (conn_pool == NULL) {
+        return NULL;
+    }
+
+    while(1) {
+        if (conn_pool->stop) {
+            break;
+        }
+        wait_close_fds.clear();
+
+        pthread_rwlock_wrlock(&conn_pool->lock);
+        for(const auto &item : *conn_pool->pool) {
+            queue<conn_t> *q = item.second;
+            while(!q->empty()) {
+               conn_t conn = q->front();
+               if(time(NULL) - conn.idle <= IDLE_CONN_TIMEOUT)  {
+                    break;
+               }
+               wait_close_fds.push_back(conn.sock_fd);
+               q->pop();
+            }
+        }
+        pthread_rwlock_unlock(&conn_pool->lock);
+
+        for(list<int>::iterator it = wait_close_fds.begin(); it != wait_close_fds.end(); it++) {
+            libc_close(*it);
+        }
+
+        sleep(ALIVE_CHECK_INTERVAL_S);
+    }
+
+    wait_close_fds.clear();
+    return NULL;
 }
 
 int check_conn_timeout(int sock_fd, int64_t timeout_ms) {
