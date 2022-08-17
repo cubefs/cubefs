@@ -45,7 +45,7 @@ func getEcNodeInfo(addr string, t *testing.T) {
 }
 
 func setEcNodeProto(ecnode *ECNode, t *testing.T) {
-	ecnode.SetCarry(1.0)
+	ecnode.SetCarry(1.0, proto.StoreModeDef)
 	if ecnode.Carry != 1.0 {
 		t.Errorf("setCarry fail")
 	}
@@ -64,7 +64,7 @@ func getEcNodeProto(ecnode *ECNode, t *testing.T) {
 
 func modifyEcNodeProto(ecnode *ECNode, t *testing.T) {
 	oldCarry := ecnode.Carry
-	ecnode.SelectNodeForWrite()
+	ecnode.SelectNodeForWrite(proto.StoreModeDef)
 	if newCarry := ecnode.Carry; oldCarry-newCarry != 1 {
 		t.Errorf("select node fail")
 	}

@@ -13,7 +13,7 @@ func newMockMetaNode(addr, zoneName, clusterID string, version string) *MetaNode
 	return &MetaNode{
 		Addr:                   addr,
 		ZoneName:               zoneName,
-		Sender:                 newAdminTaskManager(addr, clusterID),
+		Sender:                 newAdminTaskManager(addr, zoneName, clusterID),
 		Carry:                  rand.Float64(),
 		RocksdbHostSelectCarry: rand.Float64(),
 		Version:                version,
