@@ -446,6 +446,10 @@ func HTTPRequest(method string, url string) (*http.Response, error) {
 }
 
 func cleanTestBlobNodeService(svr *Service) {
+	go cleanTestBlobNodeServiceBg(svr)
+}
+
+func cleanTestBlobNodeServiceBg(svr *Service) {
 	svr.Close()
 
 	var dirs []string

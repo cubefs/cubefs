@@ -73,7 +73,7 @@ func TestAccessLimitReader(t *testing.T) {
 		errCh <- err
 	}()
 
-	time.Sleep(time.Second)
+	time.Sleep(100 * time.Millisecond)
 	cancel()
 
 	err := <-errCh
@@ -93,7 +93,7 @@ func TestAccessLimitWriter(t *testing.T) {
 		errCh <- err
 	}()
 
-	time.Sleep(time.Second)
+	time.Sleep(100 * time.Millisecond)
 	cancel()
 
 	err := <-errCh
@@ -193,7 +193,7 @@ func TestAccessLimiterBase(t *testing.T) {
 			}
 		}()
 
-		time.Sleep(time.Second)
+		time.Sleep(100 * time.Millisecond)
 		cancel()
 		close(closeCh)
 		wg.Wait()
@@ -255,7 +255,7 @@ func TestAccessLimiterStatus(t *testing.T) {
 		name := "foo"
 		l := NewLimiter(LimitConfig{
 			NameRps:    map[string]int{name: 10},
-			ReaderMBps: 2,
+			ReaderMBps: 4,
 			WriterMBps: 10,
 		})
 
@@ -293,7 +293,7 @@ func TestAccessLimiterStatus(t *testing.T) {
 			}()
 		}
 
-		time.Sleep(time.Second * 3)
+		time.Sleep(time.Second * 2)
 		t.Logf("%+v\n", l.Status())
 
 		close(ch)

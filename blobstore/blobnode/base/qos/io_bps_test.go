@@ -58,7 +58,7 @@ func TestBpsReader_Read(t *testing.T) {
 func TestBpsWriter_Write(t *testing.T) {
 	{
 		w := bytes.NewBuffer(nil)
-		c := limitio.NewController(1 * _mb)
+		c := limitio.NewController(2 * _mb)
 		wc := NewBpsWriter(context.TODO(), w, c)
 
 		now := time.Now()
@@ -66,7 +66,7 @@ func TestBpsWriter_Write(t *testing.T) {
 		elapsed := time.Since(now).Seconds()
 
 		require.NoError(t, err)
-		require.True(t, math.Abs(4-elapsed) < 0.8)
+		require.True(t, math.Abs(2-elapsed) < 0.8)
 		require.Equal(t, bufferSize, int(n))
 		require.Equal(t, buffer, w.Bytes())
 	}
@@ -83,7 +83,7 @@ func TestBpsWriter_WriteAt(t *testing.T) {
 
 		w, err := os.OpenFile(path1, os.O_CREATE|os.O_RDWR, 0o666)
 		require.NoError(t, err)
-		c := limitio.NewController(1 * _mb)
+		c := limitio.NewController(4 * _mb)
 		wc := NewBpsWriterAt(context.TODO(), w, c)
 
 		now := time.Now()
@@ -91,7 +91,7 @@ func TestBpsWriter_WriteAt(t *testing.T) {
 		elapsed := time.Since(now).Seconds()
 
 		require.NoError(t, err)
-		require.True(t, math.Abs(4-elapsed) < 0.8)
+		require.True(t, math.Abs(1-elapsed) < 0.8)
 		require.Equal(t, bufferSize, int(n))
 	}
 }
@@ -99,13 +99,13 @@ func TestBpsWriter_WriteAt(t *testing.T) {
 func TestBPSWriter(t *testing.T) {
 	{
 		buffer := bytes.NewBuffer(nil)
-		c := limitio.NewController(1 * _mb)
+		c := limitio.NewController(2 * _mb)
 		w := NewBpsWriter(context.TODO(), buffer, c)
 
 		now := time.Now()
 		n, err := w.Write(_buffer)
 		elapsed := time.Since(now).Seconds()
-		require.True(t, math.Abs(4-elapsed) < 0.5)
+		require.True(t, math.Abs(2-elapsed) < 0.5)
 		require.NoError(t, err)
 		require.Equal(t, _bufferSize, int64(n))
 		require.Equal(t, _buffer, buffer.Bytes())

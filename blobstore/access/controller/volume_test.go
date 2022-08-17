@@ -82,7 +82,7 @@ func TestAccessVolumeGetterNew(t *testing.T) {
 func TestAccessVolumeGetterNotExistVolume(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeGetterNotExistVolume")
 
-	getter, err := controller.NewVolumeGetter(0xfe, cmcli, rediscli, time.Millisecond*500)
+	getter, err := controller.NewVolumeGetter(0xfe, cmcli, rediscli, time.Millisecond*200)
 	require.Nil(t, err)
 	info := getter.Get(ctx, proto.Vid(0), true)
 	require.Nil(t, info)
@@ -112,7 +112,7 @@ func TestAccessVolumeGetterNotExistVolume(t *testing.T) {
 	wg.Wait()
 	require.Equal(t, 3, dataCalled[id])
 
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(time.Millisecond * 210)
 	getter.Get(ctx, id, true)
 	require.Equal(t, 6, dataCalled[id])
 	require.ErrorIs(t, redis.ErrNotFound, rediscli.Get(ctx, fmtKeyRedisVolume(0xfe, id), nil))
@@ -124,7 +124,7 @@ func TestAccessVolumeGetterNotExistVolume(t *testing.T) {
 	for ii := 0; ii < 10; ii++ {
 		getter.Get(ctx, id, true)
 		require.Equal(t, 3, dataCalled[id])
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * 10)
 	}
 }
 

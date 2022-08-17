@@ -24,7 +24,7 @@ import (
 )
 
 func TestQueue(t *testing.T) {
-	q := NewQueue(500 * time.Millisecond)
+	q := NewQueue(200 * time.Millisecond)
 	msgID := "msg_1"
 	msgString := "test_msg"
 
@@ -45,7 +45,7 @@ func TestQueue(t *testing.T) {
 	require.Equal(t, true, exist)
 	_, _, exist = q.Pop()
 	require.Equal(t, false, exist)
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 250)
 	id, msg, exist = q.Pop()
 	require.Equal(t, msgID, id)
 	require.Equal(t, msgString, msg)

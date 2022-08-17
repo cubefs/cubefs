@@ -26,7 +26,7 @@ import (
 func TestCmdCommonProgressBoldBar(t *testing.T) {
 	for curr := 0; curr <= 100; curr++ {
 		fmt.Printf("\r[%s] %d%%", common.BoldBar(curr), curr)
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(3 * time.Millisecond)
 	}
 	fmt.Println()
 }
@@ -34,19 +34,19 @@ func TestCmdCommonProgressBoldBar(t *testing.T) {
 func TestCmdCommonProgressLineBar(t *testing.T) {
 	for curr := 0; curr <= 100; curr++ {
 		fmt.Printf("\r[%s] %d%%", common.LineBar(curr, 10), curr)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(time.Millisecond)
 	}
 	fmt.Println()
 
 	for curr := 0; curr <= 100; curr++ {
 		fmt.Printf("\r[%s] %d%%", common.LineBar(curr, 50), curr)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(time.Millisecond)
 	}
 	fmt.Println()
 
 	for curr := 0; curr <= 100; curr++ {
 		fmt.Printf("\r[%s] %d%%", common.LineBar(curr, 100), curr)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(time.Millisecond)
 	}
 	fmt.Println()
 }
@@ -75,7 +75,7 @@ func TestCmdCommonProgressLoader(t *testing.T) {
 				ch <- n
 			}
 			loaded += n
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(20 * time.Millisecond)
 		}
 		close(ch)
 	}
@@ -84,7 +84,7 @@ func TestCmdCommonProgressLoader(t *testing.T) {
 type mockReader struct{}
 
 func (r *mockReader) Read(p []byte) (n int, err error) {
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(time.Millisecond)
 	return len(p), nil
 }
 
@@ -130,7 +130,7 @@ func (w *mockWriter) Write(p []byte) (n int, err error) {
 		return 0, nil
 	}
 	w.written += len(p)
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(time.Millisecond)
 	return len(p), nil
 }
 
