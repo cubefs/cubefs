@@ -1,13 +1,18 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -25,12 +30,15 @@ const (
 	ControlSetUpgrade              = "/set/clientUpgrade"
 	ControlUnsetUpgrade            = "/unset/clientUpgrade"
 
-	aliveKey   = "alive"
-	volKey     = "vol"
-	inoKey     = "ino"
-	clientKey  = "client" // ip:port
-	versionKey = "version"
-	MaxRetry   = 5
+	aliveKey      = "alive"
+	volKey        = "vol"
+	inoKey        = "ino"
+	clientKey     = "client" // ip:port
+	versionKey    = "version"
+	MaxRetry      = 5
+	ClientPkgPath = "/tmp/.cfs_client_libs"
+	CheckFile     = "checkfile"
+	LibsPath      = "/usr/lib64"
 )
 
 var (
@@ -86,7 +94,8 @@ func broadcastRefreshExtentsHandleFunc(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
+	var err error
+	if err = r.ParseForm(); err != nil {
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Parse parameter error: %v", err))
 		return
 	}
@@ -95,109 +104,327 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		buildFailureResp(w, http.StatusBadRequest, "Invalid version parameter.")
 		return
 	}
-	if version == CommitID {
-		buildFailureResp(w, http.StatusBadRequest, "Current version is same to expected.")
-		return
-	}
-	if NextVersion != "" && version != NextVersion {
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Last version %s is upgrading. please waiting.", NextVersion))
-		return
-	}
-	if version == NextVersion {
-		buildSuccessResp(w, "Please waiting")
-		return
-	}
-	if err := setClientUpgrade(c.mc, version); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	buildSuccessResp(w, "Set successful. Upgrading.")
-	return
-}
-
-func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
-	const defaultClientID = 1
-	c, exist := getClient(defaultClientID)
-	if !exist {
-		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Parse parameter error: %v", err))
-		return
-	}
-	version := r.FormValue(versionKey)
-	if version == "" {
-		buildFailureResp(w, http.StatusBadRequest, "Invalid version parameter.")
-		return
-	}
-	if version == CommitID {
-		buildFailureResp(w, http.StatusBadRequest, "Current version is same to expected.")
-		return
-	}
-	if NextVersion != "" && version != NextVersion {
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Last version %s is upgrading. please waiting.", NextVersion))
-		return
-	}
-	if version == NextVersion {
-		buildSuccessResp(w, "Please waiting")
-		return
-	}
-	if err := setClientUpgrade(c.mc, version); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	buildSuccessResp(w, "Set successful. Upgrading.")
-	return
-}
-
-func setClientUpgrade(mc *master.MasterClient, version string) (err error) {
 	if version == "test" {
 		os.Setenv("RELOAD_CLIENT", version)
+		buildSuccessResp(w, "Set successful. Upgrading.")
 		return
 	}
+	if version == CommitID {
+		buildFailureResp(w, http.StatusBadRequest, "Current version is same to expected.")
+		return
+	}
+	if NextVersion != "" && version != NextVersion {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Last version %s is upgrading. please waiting.", NextVersion))
+		return
+	}
+	if version == NextVersion {
+		buildSuccessResp(w, "Please waiting")
+		return
+	}
+
 	NextVersion = version
 	defer func() {
 		if err != nil {
 			NextVersion = ""
 		}
 	}()
-	addr, err := mc.ClientAPI().GetClientPkgAddr()
+
+	err = os.MkdirAll(ClientPkgPath, 0777)
 	if err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	for filename, version_name := range map[string]string{"libcfsc.so": fmt.Sprintf("libcfsc_%s.so", version), "libcfssdk.so": fmt.Sprintf("libcfssdk_%s.so", version)} {
-		var url string
-		if addr[len(addr)-1] == '/' {
-			url = fmt.Sprintf("%s%s", addr, version_name)
-		} else {
-			url = fmt.Sprintf("%s/%s", addr, version_name)
-		}
-		resp, err := http.Get(url)
-		if err != nil {
-			return fmt.Errorf("Download %s error: %v", url, err)
-		}
-		if resp.StatusCode != 200 {
-			return fmt.Errorf("Download %s error: %s", url, resp.Status)
-		}
-		defer resp.Body.Close()
+	defer os.RemoveAll(ClientPkgPath)
 
-		tmpfile := fmt.Sprintf("/tmp/.%s", version_name)
-		os.Remove(tmpfile)
-		out, err := os.Create(tmpfile)
-		if err != nil {
-			return fmt.Errorf("Create %s error: %v", tmpfile, err)
-		}
-		defer out.Close()
-
-		_, err = io.Copy(out, resp.Body)
-		if err != nil {
-			return fmt.Errorf("Write %s err: %v", tmpfile, err)
-		}
-		os.Rename(tmpfile, fmt.Sprintf("/usr/lib64/%s", filename))
+	fileName := "libcfssdk.so"
+	version_name := fmt.Sprintf("libcfssdk_%s.so", version)
+	if err = downloadClientPkg(c.mc, version_name, ClientPkgPath); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
 	}
+
+	src := filepath.Join(ClientPkgPath, version_name)
+	tmpfile := filepath.Join(LibsPath, version_name)
+	dst := filepath.Join(LibsPath, fileName)
+	if err = moveFile(src, tmpfile); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err = os.Rename(tmpfile, dst); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	os.Setenv("RELOAD_CLIENT", "1")
+	buildSuccessResp(w, "Set successful. Upgrading.")
 	return
+}
+
+func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
+	const defaultClientID = 1
+	var err error
+	c, exist := getClient(defaultClientID)
+	if !exist {
+		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Parse parameter error: %v", err))
+		return
+	}
+	version := r.FormValue(versionKey)
+	if version == "" {
+		buildFailureResp(w, http.StatusBadRequest, "Invalid version parameter.")
+		return
+	}
+	if version == "test" {
+		os.Setenv("RELOAD_CLIENT", version)
+		buildSuccessResp(w, "Set successful. Upgrading.")
+		return
+	}
+	if version == CommitID {
+		buildFailureResp(w, http.StatusBadRequest, "Current version is same to expected.")
+		return
+	}
+	if NextVersion != "" && version != NextVersion {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Last version %s is upgrading. please waiting.", NextVersion))
+		return
+	}
+	if version == NextVersion {
+		buildSuccessResp(w, "Please waiting")
+		return
+	}
+
+	NextVersion = version
+	defer func() {
+		if err != nil {
+			NextVersion = ""
+		}
+	}()
+
+	err = os.MkdirAll(ClientPkgPath, 0777)
+	if err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer os.RemoveAll(ClientPkgPath)
+
+	version_name := fmt.Sprintf("cfs-client-libs_%s.tar.gz", version)
+	if err = downloadClientPkg(c.mc, version_name, ClientPkgPath); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var fileNames []string
+	if fileNames, err = untar(filepath.Join(ClientPkgPath, version_name), ClientPkgPath); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Untar %s err: %v", version_name, err))
+		return
+	}
+
+	var checkMap map[string]string
+	if checkMap, err = readCheckfile(filepath.Join(ClientPkgPath, CheckFile)); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Invalid checkfile: %v", err))
+		return
+	}
+
+	if !checkFiles(fileNames, checkMap) {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("check libs faild: %v", err))
+		return
+	}
+
+	for _, fileName := range fileNames {
+		if fileName == CheckFile {
+			continue
+		}
+
+		src := filepath.Join(ClientPkgPath, fileName)
+		dst := filepath.Join(LibsPath, fileName+".tmp")
+		if err = moveFile(src, dst); err != nil {
+			buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	for _, fileName := range fileNames {
+		if fileName == CheckFile {
+			continue
+		}
+		src := filepath.Join(LibsPath, fileName+".tmp")
+		dst := filepath.Join(LibsPath, fileName)
+		if err = os.Rename(src, dst); err != nil {
+			buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	os.Setenv("RELOAD_CLIENT", "1")
+	buildSuccessResp(w, "Set successful. Upgrading.")
+	return
+}
+
+func downloadClientPkg(mc *master.MasterClient, fileName, downloadPath string) (err error) {
+	addr, err := mc.ClientAPI().GetClientPkgAddr()
+	if err != nil {
+		return err
+	}
+	var url string
+	if addr[len(addr)-1] == '/' {
+		url = fmt.Sprintf("%s%s", addr, fileName)
+	} else {
+		url = fmt.Sprintf("%s/%s", addr, fileName)
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("Download %s error: %v", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("Download %s error: %s", url, resp.Status)
+	}
+
+	dstFile := filepath.Join(downloadPath, fileName)
+	file, err := os.OpenFile(dstFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func moveFile(src, dst string) error {
+	if err := os.Rename(src, dst); err != nil {
+		input, err := ioutil.ReadFile(src)
+		if err != nil {
+			return err
+		}
+
+		err = ioutil.WriteFile(dst, input, 0755)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func untar(tarName, xpath string) ([]string, error) {
+	tarFile, err := os.Open(tarName)
+	if err != nil {
+		return nil, err
+	}
+	defer tarFile.Close()
+
+	tr := tar.NewReader(tarFile)
+	if strings.HasSuffix(tarName, ".gz") || strings.HasSuffix(tarName, ".gzip") {
+		gz, err := gzip.NewReader(tarFile)
+		if err != nil {
+			return nil, err
+		}
+		defer gz.Close()
+		tr = tar.NewReader(gz)
+	}
+
+	fileNames := make([]string, 0, 3)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		finfo := hdr.FileInfo()
+		if finfo.Mode().IsDir() {
+			continue
+		}
+
+		fileName := filepath.Join(xpath, hdr.Name)
+		file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, finfo.Mode().Perm())
+		if err != nil {
+			return nil, err
+		}
+
+		n, err := io.Copy(file, tr)
+		if err != nil {
+			file.Close()
+			return nil, err
+		}
+		if err = file.Close(); err != nil {
+			return nil, err
+		}
+
+		if n != finfo.Size() {
+			return nil, fmt.Errorf("unexpected bytes written: wrote %d, want %d", n, finfo.Size())
+		}
+		fileNames = append(fileNames, hdr.Name)
+	}
+	return fileNames, nil
+}
+
+func checkFiles(fileNames []string, checkMap map[string]string) bool {
+	for _, fileName := range fileNames {
+		if fileName == CheckFile {
+			continue
+		}
+		expected, exist := checkMap[fileName]
+		if !exist {
+			return false
+		}
+		md5, err := getFileMd5(filepath.Join(ClientPkgPath, fileName))
+		if err != nil {
+			return false
+		}
+
+		if md5 != expected {
+			return false
+		}
+	}
+	return true
+}
+
+func getFileMd5(fileName string) (string, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	md5h := md5.New()
+	io.Copy(md5h, file)
+
+	return hex.EncodeToString(md5h.Sum(nil)), nil
+}
+
+func readCheckfile(fileName string) (map[string]string, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	checkMap := make(map[string]string)
+
+	body, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, line := range strings.Split(string(body), "\n") {
+		field := strings.Fields(line)
+		if len(field) < 2 {
+			continue
+		}
+		checkMap[field[1]] = field[0]
+	}
+	return checkMap, nil
 }
 
 func UnsetClientUpgrade(w http.ResponseWriter, r *http.Request) {

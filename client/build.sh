@@ -12,6 +12,7 @@ goflag="-s"
 build_sdk=1
 build_client=1
 build_test=0
+pack_libs=0
 
 help() {
     cat <<EOF
@@ -21,6 +22,7 @@ Usage: ./build.sh [ -h | --help ] [ -g ] [ --sdk-only | --client-only ]
     -g                      setup Debug="1" goflag="" gccflag="-g"
     -s, --sdk-only              build sdk (libcfssdk.so libempty.so) only
     -c, --client-only           build client (libcfsclient.so and cfs-client) only
+    -p, --pack-libs             pack libs to cfs-client-libs.tar.gz used for bypass upgrade
     test                    build in test mode
 EOF
     exit 0
@@ -45,6 +47,11 @@ for opt in ${ARGS[*]} ; do
 	        build_sdk=0
 	        build_client=1
 	        ;;
+        -p | --pack-libs)
+            build_sdk=1
+            build_client=1
+            pack_libs=1
+            ;;
         test)
             build_test=1
             build_sdk=1
@@ -74,4 +81,12 @@ if [[ ${build_test} -eq 1 ]]; then
     echo "building test (cfs-client test-bypass libcfsclient.so libempty.so) ..."
     go test -c -covermode=atomic -coverpkg="../..." -linkshared -o ${bin}/cfs-client ${dir}/main_fuse.go ${dir}/fuse_test.go
     gcc ${dir}/bypass/client_test.c -o ${bin}/test-bypass
+fi
+if [[ ${pack_libs} -eq 1 ]]; then
+    echo "pack libs, generate cfs-client-libs.tar.gz ..."
+    cd ${bin}
+    md5sum libcfssdk.so > checkfile
+    md5sum libcfsc.so >> checkfile
+    tar -zcvf cfs-client-libs_${CommitID}.tar.gz  libcfssdk.so libcfsc.so checkfile
+    cd ~-
 fi
