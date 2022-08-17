@@ -334,6 +334,80 @@ func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mo
 	return inode, mode, nil
 }
 
+func (mw *MetaWrapper) BatchGetExpiredMultipart(prefix string, days int) (expiredIds []*proto.ExpiredMultipartInfo, err error) {
+	partitions := mw.partitions
+	var (
+		mp *MetaPartition
+	)
+	var wg = new(sync.WaitGroup)
+	var resultMu sync.Mutex
+	log.LogDebugf("BatchGetExpiredMultipart: mp num(%v) prefix(%v) days(%v)", len(partitions), prefix, days)
+	for _, mp = range partitions {
+		wg.Add(1)
+		go func(mp *MetaPartition) {
+			defer wg.Done()
+			status, infos, err := mw.getExpiredMultipart(prefix, days, mp)
+			if err == nil && status == statusOK {
+				resultMu.Lock()
+				expiredIds = append(expiredIds, infos...)
+				resultMu.Unlock()
+			}
+			if err != nil && err != syscall.ENOENT {
+				log.LogErrorf("batchGetExpiredMultipart: get expired multipart fail: partitionId(%v)",
+					mp.PartitionID)
+			}
+		}(mp)
+	}
+	wg.Wait()
+
+	resultMu.Lock()
+	defer resultMu.Unlock()
+	if len(expiredIds) == 0 {
+		err = syscall.ENOENT
+		return
+	}
+	return
+}
+
+func (mw *MetaWrapper) BatchInodeExpirationGet(dentries []*proto.ScanDentry, cond *proto.InodeExpireCondition) []*proto.ExpireInfo {
+	var wg sync.WaitGroup
+
+	batchInfos := make([]*proto.ExpireInfo, 0)
+	resp := make(chan []*proto.ExpireInfo, BatchIgetRespBuf)
+	candidates := make(map[uint64][]*proto.ScanDentry)
+
+	// Target partition does not have to be very accurate.
+	for _, d := range dentries {
+		mp := mw.getPartitionByInode(d.Inode)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]*proto.ScanDentry, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], d)
+	}
+
+	for id, ds := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchExpriratrionGet(&wg, mp, ds, cond, resp)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resp)
+	}()
+
+	for infos := range resp {
+		batchInfos = append(batchInfos, infos...)
+	}
+	return batchInfos
+}
+
 func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {

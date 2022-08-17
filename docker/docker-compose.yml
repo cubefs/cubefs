@@ -34,6 +34,9 @@ services:
             - objectnode1
             - objectnode2
             - objectnode3
+            - lcnode1
+            - lcnode2
+            - lcnode3
             - console1
             - nginx
         networks:
@@ -56,6 +59,8 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.11
@@ -77,6 +82,8 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.12
@@ -97,6 +104,8 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.13
@@ -118,6 +127,8 @@ services:
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.21
@@ -139,6 +150,8 @@ services:
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.22
@@ -160,6 +173,8 @@ services:
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.23
@@ -181,6 +196,8 @@ services:
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.24
@@ -202,6 +219,8 @@ services:
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.31
@@ -223,6 +242,8 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.32
@@ -244,6 +265,8 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.33
@@ -265,6 +288,8 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.34
@@ -326,6 +351,64 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.43
 
+    lcnode1:
+        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        ports:
+            - "17410"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/lcnode1/log:/cfs/log
+            - ./conf/lcnode.json:/cfs/conf/lcnode.json
+            - ./script/start_lcnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.61
+
+
+    lcnode2:
+        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        ports:
+            - "17410"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/lcnode2/log:/cfs/log
+            - ./conf/lcnode.json:/cfs/conf/lcnode.json
+            - ./script/start_lcnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.62
+
+    lcnode3:
+        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        ports:
+            - "17410"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/lcnode3/log:/cfs/log
+            - ./conf/lcnode.json:/cfs/conf/lcnode.json
+            - ./script/start_lcnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.63
+
     console1:
         image: ${IMAGE}
         ports:
@@ -362,6 +445,8 @@ services:
         cap_add:
             - SYS_ADMIN
         command: /bin/bash /cfs/script/start.sh
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
 

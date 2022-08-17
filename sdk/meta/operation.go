@@ -924,6 +924,67 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64) (sta
 	return statusOK, resp.Info, nil
 }
 
+func (mw *MetaWrapper) batchExpriratrionGet(wg *sync.WaitGroup, mp *MetaPartition, dentries []*proto.ScanDentry, cond *proto.InodeExpireCondition, respCh chan []*proto.ExpireInfo) {
+	defer wg.Done()
+	var (
+		err error
+	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("batchExpriratrionGet", err, bgTime, 1)
+	}()
+
+	req := &proto.BatchInodeGetExpirationRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Dentries:    dentries,
+		Cond:        cond,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchInodeExpirationGet
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.BatchInodeGetExpirationResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("batchIget: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+
+	if len(resp.ExpirationResults) == 0 {
+		return
+	}
+
+	select {
+	case respCh <- resp.ExpirationResults:
+	default:
+	}
+}
+
 func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, respCh chan []*proto.InodeInfo) {
 	defer wg.Done()
 	var (
@@ -1511,6 +1572,58 @@ func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend ma
 		return
 	}
 	return statusOK, resp.Info.ID, nil
+}
+
+func (mw *MetaWrapper) getExpiredMultipart(prefix string, days int, mp *MetaPartition) (status int, Infos []*proto.ExpiredMultipartInfo, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("getExpiredMultipart", err, bgTime, 1)
+	}()
+
+	req := &proto.GetExpiredMultipartRequest{
+		PartitionId: mp.PartitionID,
+		VolName:     mw.volname,
+		Prefix:      prefix,
+		Days:        days,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpGetExpiredMultipart
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("get session: err(%v)", err)
+		return
+	}
+
+	log.LogDebugf("getExpiredMultipart enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("getExpiredMultipart: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("getExpiredMultipart: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.GetExpiredMultipartResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("getExpiredMultipart: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+
+	return statusOK, resp.Infos, nil
 }
 
 func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string) (status int, info *proto.MultipartInfo, err error) {

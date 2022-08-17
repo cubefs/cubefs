@@ -24,6 +24,45 @@ import (
 	"github.com/cubefs/cubefs/proto"
 )
 
+func (mp *metaPartition) GetExpiredMultipart(req *proto.GetExpiredMultipartRequest, p *Packet) (err error) {
+	expiredMultiPartInfos := make([]*proto.ExpiredMultipartInfo, 0)
+	var walkTreeFunc = func(i BtreeItem) bool {
+		multipart := i.(*Multipart)
+		if len(req.Prefix) > 0 && !strings.HasPrefix(multipart.key, req.Prefix) {
+			// skip and continue
+			return true
+		}
+
+		if multipart.initTime.Unix()+int64(req.Days*24*60*60) <= time.Now().Local().Unix() {
+			info := &proto.ExpiredMultipartInfo{
+				Path:        multipart.key,
+				MultipartId: multipart.id,
+				Inodes:      make([]uint64, 0),
+			}
+			for _, part := range multipart.Parts() {
+				info.Inodes = append(info.Inodes, part.Inode)
+			}
+			expiredMultiPartInfos = append(expiredMultiPartInfos, info)
+		}
+
+		return true
+	}
+
+	mp.multipartTree.Ascend(walkTreeFunc)
+
+	resp := &proto.GetExpiredMultipartResponse{
+		Infos: expiredMultiPartInfos,
+	}
+
+	var reply []byte
+	if reply, err = json.Marshal(resp); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkWithBody(reply)
+	return
+}
+
 func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
 	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
 	if item == nil {

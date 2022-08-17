@@ -150,3 +150,27 @@ func (api *NodeAPI) DataNodeMigrate(srcAddr, targetAddr string, count int) (err 
 	}
 	return
 }
+
+func (api *NodeAPI) AddLcNode(serverAddr string) (id uint64, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AddLcNode)
+	request.addParam("addr", serverAddr)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
+
+func (api *NodeAPI) ResponseLcNodeTask(task *proto.AdminTask) (err error) {
+	var encoded []byte
+	if encoded, err = json.Marshal(task); err != nil {
+		return
+	}
+	var request = newAPIRequest(http.MethodPost, proto.GetLcNodeTaskResponse)
+	request.addBody(encoded)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}

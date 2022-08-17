@@ -1534,6 +1534,32 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 	return
 }
 
+func (m *metadataManager) opMetaBatchInodeExpirationGet(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.BatchInodeGetExpirationRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.InodeExpirationGetBatch(req, p)
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaBatchInodeGet] req: %d - %v, resp: %v, "+
+		"body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
 func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &proto.BatchInodeGetRequest{}
@@ -1927,6 +1953,31 @@ func (m *metadataManager) opRemoveMultipart(conn net.Conn, p *Packet, remote str
 		return
 	}
 	err = mp.RemoveMultipart(req, p)
+	_ = m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opGetExpiredMultipart(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.GetExpiredMultipartRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opGetExpiredMultipart] req: %v, resp: %v", req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opGetMultipart] req: %v, resp: %v", req, err.Error())
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.GetExpiredMultipart(req, p)
 	_ = m.respondToClient(conn, p)
 	return
 }

@@ -115,9 +115,12 @@ const (
 	OSSDeleteBucketTaggingAction Action = OSSActionPrefix + "DeleteBucketTagging"
 
 	// Bucket lifecycle actions
-	OSSGetBucketLifecycleAction    Action = OSSActionPrefix + "GetBucketLifecycle"    // unsupported
-	OSSPutBucketLifecycleAction    Action = OSSActionPrefix + "PutBucketLifecycle"    // unsupported
-	OSSDeleteBucketLifecycleAction Action = OSSActionPrefix + "DeleteBucketLifecycle" // unsupported
+	OSSGetBucketLifecycleAction                 Action = OSSActionPrefix + "GetBucketLifecycle"    // unsupported
+	OSSPutBucketLifecycleAction                 Action = OSSActionPrefix + "PutBucketLifecycle"    // unsupported
+	OSSDeleteBucketLifecycleAction              Action = OSSActionPrefix + "DeleteBucketLifecycle" // unsupported
+	OSSGetBucketLifecycleConfigurationAction    Action = OSSActionPrefix + "GetBucketLifecycleConfiguration"
+	OSSPutBucketLifecycleConfigurationAction    Action = OSSActionPrefix + "PutBucketLifecycleConfiguration"
+	OSSDeleteBucketLifecycleConfigurationAction Action = OSSActionPrefix + "DeleteBucketLifecycleConfiguration"
 
 	// Object storage version actions
 	OSSGetBucketVersioningAction Action = OSSActionPrefix + "GetBucketVersioning" // unsupported
@@ -214,6 +217,9 @@ var (
 		OSSGetBucketLifecycleAction,
 		OSSPutBucketLifecycleAction,
 		OSSDeleteBucketLifecycleAction,
+		OSSGetBucketLifecycleConfigurationAction,
+		OSSPutBucketLifecycleConfigurationAction,
+		OSSDeleteBucketLifecycleConfigurationAction,
 		OSSGetBucketVersioningAction,
 		OSSPutBucketVersioningAction,
 		OSSListObjectVersionsAction,
