@@ -4798,6 +4798,18 @@ func (m *Server) queryDataNodeDecoFailedDps(w http.ResponseWriter, r *http.Reque
 	sendOkReply(w, r, newSuccessHTTPReply(dps))
 }
 
+// handle tasks such as heartbeat，expiration scanning, etc.
+func (m *Server) handleLcNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
+	tr, err := parseRequestToGetTaskResponse(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
+	m.cluster.handleLcNodeTaskResponse(tr.OperatorAddr, tr)
+}
+
 func parseReqToDecoDataNodeProgress(r *http.Request) (nodeAddr string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -5120,6 +5132,97 @@ func (m *Server) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 	msg := fmt.Sprintf("delete quota successfully, vol [%v] quotaId [%v]", name, quotaId)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 	return
+}
+
+func (m *Server) addLcNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr string
+		id       uint64
+		err      error
+	)
+	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if !checkIp(nodeAddr) {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
+		return
+	}
+
+	if id, err = m.cluster.addLcNode(nodeAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(id))
+}
+
+func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
+	var (
+		bytes []byte
+		err   error
+	)
+	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	var req = proto.SetBucketLifecycleRequest{}
+	if err = json.Unmarshal(bytes, &req); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if _, err = m.cluster.getVol(req.VolName); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	_ = m.cluster.SetBucketLifecycle(&req)
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("PutBucketLifecycleConfiguration successful ")))
+}
+
+func (m *Server) GetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
+
+	var (
+		err    error
+		name   string
+		lcConf *proto.LcConfiguration
+	)
+
+	if name, err = parseAndExtractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if _, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	lcConf = m.cluster.GetBucketLifecycle(name)
+	if lcConf == nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSuchLifecycleConfiguration))
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(lcConf))
+}
+
+func (m *Server) DelBucketLifecycle(w http.ResponseWriter, r *http.Request) {
+	var (
+		err  error
+		name string
+	)
+	if name, err = parseAndExtractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if _, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	m.cluster.DelBucketLifecycle(name)
+
+	msg := fmt.Sprintf("delete vol[%v] lifecycle successfully", name)
+	log.LogWarn(msg)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 func (m *Server) ListQuota(w http.ResponseWriter, r *http.Request) {

@@ -282,6 +282,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	// multi version
 	case proto.OpVersionOperation:
 		err = m.opMultiVersionOp(conn, p, remoteAddr)
+	case proto.OpMetaBatchInodeExpirationGet:
+		err = m.opMetaBatchInodeExpirationGet(conn, p, remoteAddr)
+	case proto.OpGetExpiredMultipart:
+		err = m.opGetExpiredMultipart(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
