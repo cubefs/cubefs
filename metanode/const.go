@@ -249,17 +249,17 @@ const (
 type CursorResetMode int
 
 const (
-	AddCursor CursorResetMode = iota
-	SubCursor
+	SubCursor CursorResetMode = iota
+	AddCursor
 	InValidCursorType
 )
 
 func (mode CursorResetMode) String() string {
 	switch mode {
-	case AddCursor:
-		return "add"
 	case SubCursor:
 		return "sub"
+	case AddCursor:
+		return "add"
 	default:
 		return "unknown"
 	}
@@ -267,10 +267,10 @@ func (mode CursorResetMode) String() string {
 
 func ParseCursorResetMode(typeStr string) (CursorResetMode, error) {
 	switch typeStr {
-	case "0", "add", "Add", "ADD":
-		return AddCursor, nil
-	case "1", "sub", "Sub", "SUB":
+	case "0", "sub", "Sub", "SUB":
 		return SubCursor, nil
+	case "1", "add", "Add", "ADD":
+		return AddCursor, nil
 	default:
 		return InValidCursorType, fmt.Errorf("error cursor reset mode:%s", typeStr)
 	}

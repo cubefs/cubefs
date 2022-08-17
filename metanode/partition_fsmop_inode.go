@@ -247,7 +247,7 @@ func (mp *metaPartition) internalDelete(dbHandle interface{}, val []byte) (err e
 	return
 }
 
-func (mp *metaPartition) internalCursorReset(req *proto.CursorResetRequest) (resp *CursorResetResponse) {
+func (mp *metaPartition) internalCursorReset(req *proto.CursorResetRequest) (resp *CursorResetResponse, err error) {
 	resp = new(CursorResetResponse)
 	resp.Status = proto.OpErr
 
@@ -262,6 +262,12 @@ func (mp *metaPartition) internalCursorReset(req *proto.CursorResetRequest) (res
 		atomic.StoreUint64(&mp.config.Cursor, req.NewCursor)
 	default:
 		resp.Msg = fmt.Sprintf("mp[%v] with error reset type[%v]", mp.config.PartitionId, req.CursorResetType)
+		return
+	}
+
+	mp.inodeTree.SetCursor(mp.config.Cursor)
+	if err = mp.inodeTree.PersistBaseInfo(); err != nil {
+		resp.Msg = fmt.Sprintf("mp[%v] reset cursor failed, [error:%s]", mp.config.PartitionId, err.Error())
 		return
 	}
 

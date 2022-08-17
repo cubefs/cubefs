@@ -30,6 +30,7 @@ type RocksBaseInfo struct {
 	delDentryCnt      uint64
 	delInodeCnt       uint64
 	persistentApplyId uint64
+	cursor            uint64
 }
 
 func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
@@ -62,6 +63,9 @@ func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
 		panic(err)
 	}
 	info.persistentApplyId = info.applyId
+	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.cursor)); err != nil {
+		panic(err)
+	}
 	return buff.Bytes(), nil
 }
 
@@ -92,6 +96,9 @@ func (info *RocksBaseInfo) MarshalWithoutApplyID() (result []byte, err error) {
 		panic(err)
 	}
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.delInodeCnt)); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.cursor)); err != nil {
 		panic(err)
 	}
 	return buff.Bytes(), nil
@@ -128,6 +135,9 @@ func (info *RocksBaseInfo) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	info.persistentApplyId = info.applyId
+	if err = binary.Read(buff, binary.BigEndian, &info.cursor); err != nil {
+		return
+	}
 	return
 }
 
@@ -279,6 +289,17 @@ func (r *RocksTree) PersistBaseInfo() error {
 		return err
 	}
 	return nil
+}
+
+func (r *RocksTree) SetCursor(cursor uint64) {
+	if cursor < r.baseInfo.cursor {
+		return
+	}
+	atomic.StoreUint64(&r.baseInfo.cursor, cursor)
+}
+
+func (r *RocksTree) GetCursor() uint64 {
+	return atomic.LoadUint64(&r.baseInfo.cursor)
 }
 
 func (r *RocksTree) Flush() error {
