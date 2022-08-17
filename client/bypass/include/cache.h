@@ -1,12 +1,15 @@
 #ifndef CACHE_H
 #define CACHE_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
+#include <pthread.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 #include <map>
+#include <set>
+#include <vector>
+#include "sdk.h"
 #include "util.h"
 
 #define BIG_PAGE_CACHE_SIZE 67108864
@@ -14,9 +17,9 @@ extern "C" {
 #define BIG_PAGE_SIZE 131072
 #define SMALL_PAGE_SIZE 16384
 #define PAGE_DIRTY 0x1
-struct inode_shared;
+struct inode_info;
 typedef struct page {
-    struct inode_shared *inode_info;
+    struct inode_info *inode_info;
     int index;
     int offset;
     // flush from dirty_offset, to avoid overwriting to SDK
@@ -34,10 +37,16 @@ page_t *new_page(int page_size);
 void release_page(page_t* p);
 int read_page(page_t *p, ino_t inode, int index, void *data, int offset, int count);
 int write_page(page_t *p, ino_t inode, int index, const void *data, int offset, int count);
-int flush_page(page_t *p);
-void clear_page(page_t *p);
+int flush_page(page_t *p, ino_t inode, int index);
+void clear_page(page_t *p, ino_t inode, int index);
 void occupy_page(page_t *p, struct inode_shared *inode_info, int index);
-void clear_page_raw(page_t *p);
+void clear_page_raw(page_t *p, ino_t inode, int index);
+
+typedef struct {
+    page_t *p;
+    ino_t inode;
+    int index;
+} page_meta_t;
 
 // sleep when dirty page ratio is below 1/threshold
 #define BG_FLUSH_SLEEP_THRESHOLD 10
@@ -65,7 +74,7 @@ typedef ssize_t (*cfs_pwrite_inode_t)(int64_t id, ino_t ino, const void *buf, si
 #define FILE_CACHE_WRITE_THROUGH 0x2
 #define FILE_CACHE_PRIORITY_HIGH 0x4
 
-typedef struct inode_shared {
+typedef struct inode_info {
     int64_t client_id;
     ino_t inode;
     bool use_pagecache;
@@ -94,9 +103,5 @@ void flush_inode_range(inode_info_t *inode_info, off_t offset, size_t count);
 void clear_inode_range(inode_info_t *inode_info, off_t offset, size_t count);
 void clear_inode(inode_info_t *inode_info);
 void flush_and_release(std::map<ino_t, inode_info_t *> &arg);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

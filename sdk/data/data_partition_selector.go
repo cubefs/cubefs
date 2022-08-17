@@ -83,7 +83,7 @@ func (w *Wrapper) initDpSelector() (err error) {
 	w.dpSelectorChanged = false
 	var selectorName = w.dpSelectorName
 	if strings.TrimSpace(selectorName) == "" {
-		log.LogWarnf("initDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
+		log.LogDebugf("initDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
 		selectorName = DefaultRandomSelectorName
 	}
 	dpSelectorParam := &DpSelectorParam{

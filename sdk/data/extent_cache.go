@@ -250,10 +250,10 @@ func (cache *ExtentCache) PrepareRequests(offset uint64, size int, data []byte) 
 		}
 	})
 
-	if log.IsDebugEnabled() {
-		log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
-	}
 	if start < end {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
+		}
 		// add hole (start, end)
 		req := NewExtentRequest(start, int(end-start), data[start-offset:end-offset], nil)
 		requests = append(requests, req)

@@ -1,42 +1,31 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
-#include <dirent.h>
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <dlfcn.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <gnu/libc-version.h>
-#include <limits.h>
 #include <pthread.h>
 #include <search.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/types.h>
 #include <time.h>
-#include <unistd.h>
-#include <utime.h>
 #include <map>
 #include <set>
+#include "cache.h"
+#include "conn_pool.h"
 #include "ini.h"
+#include "packet.h"
 #include "sdk.h"
 #include "util.h"
-#include "cache.h"
+#include "libc_operation.h"
 
 using namespace std;
-
-// Define ALIASNAME as a weak alias for NAME.
-# define weak_alias(name, aliasname) extern __typeof (name) aliasname __attribute__ ((weak, alias (#name)));
-
-// compatible for glibc before 2.18
-#ifndef RENAME_NOREPLACE
-#define RENAME_NOREPLACE (1 << 0)
-#endif
 
 /*
  * The implementation of opendir depend on struct __dirstream
@@ -148,163 +137,6 @@ void flush_logs();
 }
 #endif
 
-typedef int (*openat_t)(int dirfd, const char *pathname, int flags, mode_t mode);
-typedef int (*close_t)(int fd);
-typedef int (*renameat_t)(int olddirfd, const char *oldpath, int newdirfd, const char *newpath);
-typedef int (*renameat2_t)(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, unsigned int flags);
-typedef int (*truncate_t)(const char *path, off_t length);
-typedef int (*ftruncate_t)(int fd, off_t length);
-typedef int (*fallocate_t)(int fd, int mode, off_t offset, off_t len);
-typedef int (*posix_fallocate_t)(int fd, off_t offset, off_t len);
-
-typedef int (*chdir_t)(const char *path);
-typedef int (*fchdir_t)(int fd);
-typedef char *(*getcwd_t)(char *buf, size_t size);
-typedef int (*mkdirat_t)(int dirfd, const char *pathname, mode_t mode);
-typedef int (*rmdir_t)(const char *pathname);
-typedef DIR *(*opendir_t)(const char *name);
-typedef DIR *(*fdopendir_t)(int fd);
-typedef struct dirent *(*readdir_t)(DIR *dirp);
-typedef int (*closedir_t)(DIR *dirp);
-typedef char *(*realpath_t)(const char *path, char *resolved_path);
-
-typedef int (*linkat_t)(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, int flags);
-typedef int (*symlinkat_t)(const char *target, int newdirfd, const char *linkpath);
-typedef int (*unlinkat_t)(int dirfd, const char *pathname, int flags);
-typedef ssize_t (*readlinkat_t)(int dirfd, const char *pathname, char *buf, size_t size);
-
-typedef int (*stat_t)(int ver, const char *pathname, struct stat *statbuf);
-typedef int (*stat64_t)(int ver, const char *pathname, struct stat64 *statbuf);
-typedef int (*lstat_t)(int ver, const char *pathname, struct stat *statbuf);
-typedef int (*lstat64_t)(int ver, const char *pathname, struct stat64 *statbuf);
-typedef int (*fstat_t)(int ver, int fd, struct stat *statbuf);
-typedef int (*fstat64_t)(int ver, int fd, struct stat64 *statbuf);
-typedef int (*fstatat_t)(int ver, int dirfd, const char *pathname, struct stat *statbuf, int flags);
-typedef int (*fstatat64_t)(int ver, int dirfd, const char *pathname, struct stat64 *statbuf, int flags);
-typedef int (*fchmod_t)(int fd, mode_t mode);
-typedef int (*fchmodat_t)(int dirfd, const char *pathname, mode_t mode, int flags);
-typedef int (*lchown_t)(const char *pathname, uid_t owner, gid_t group);
-typedef int (*fchown_t)(int fd, uid_t owner, gid_t group);
-typedef int (*fchownat_t)(int dirfd, const char *pathname, uid_t owner, gid_t group, int flags);
-typedef int (*utime_t)(const char *filename, const struct utimbuf *times);
-typedef int (*utimes_t)(const char *filename, const struct timeval times[2]);
-typedef int (*futimesat_t)(int dirfd, const char *pathname, const struct timeval times[2]);
-typedef int (*utimensat_t)(int dirfd, const char *pathname, const struct timespec times[2], int flags);
-typedef int (*futimens_t)(int fd, const struct timespec times[2]);
-typedef int (*access_t)(const char *pathname, int mode);
-typedef int (*faccessat_t)(int dirfd, const char *pathname, int mode, int flags);
-
-typedef int (*setxattr_t)(const char *path, const char *name, const void *value, size_t size, int flags);
-typedef int (*lsetxattr_t)(const char *path, const char *name, const void *value, size_t size, int flags);
-typedef int (*fsetxattr_t)(int fd, const char *name, const void *value, size_t size, int flags);
-typedef ssize_t (*getxattr_t)(const char *path, const char *name, void *value, size_t size);
-typedef ssize_t (*lgetxattr_t)(const char *path, const char *name, void *value, size_t size);
-typedef ssize_t (*fgetxattr_t)(int fd, const char *name, void *value, size_t size);
-typedef ssize_t (*listxattr_t)(const char *path, char *list, size_t size);
-typedef ssize_t (*llistxattr_t)(const char *path, char *list, size_t size);
-typedef ssize_t (*flistxattr_t)(int fd, char *list, size_t size);
-typedef int (*removexattr_t)(const char *path, const char *name);
-typedef int (*lremovexattr_t)(const char *path, const char *name);
-typedef int (*fremovexattr_t)(int fd, const char *name);
-
-typedef int (*fcntl_t)(int fd, int cmd, ...);
-typedef int (*dup2_t)(int oldfd, int newfd);
-typedef int (*dup3_t)(int oldfd, int newfd, int flags);
-
-typedef ssize_t (*read_t)(int fd, void *buf, size_t count);
-typedef ssize_t (*readv_t)(int fd, const struct iovec *iov, int iovcnt);
-typedef ssize_t (*pread_t)(int fd, void *buf, size_t count, off_t offset);
-typedef ssize_t (*preadv_t)(int fd, const struct iovec *iov, int iovcnt, off_t offset);
-typedef ssize_t (*write_t)(int fd, const void *buf, size_t count);
-typedef ssize_t (*writev_t)(int fd, const struct iovec *iov, int iovcnt);
-typedef ssize_t (*pwrite_t)(int fd, const void *buf, size_t count, off_t offset);
-typedef ssize_t (*pwritev_t)(int fd, const struct iovec *iov, int iovcnt, off_t offset);
-typedef off_t (*lseek_t)(int fd, off_t offset, int whence);
-typedef off64_t (*lseek64_t)(int fd, off64_t offset, int whence);
-
-typedef int (*fdatasync_t)(int fd);
-typedef int (*fsync_t)(int fd);
-
-//typedef int (*sigaction_t)(int signum, const struct sigaction *act, struct sigaction *oldact);
-
-static openat_t libc_openat;
-static close_t libc_close;
-static renameat_t libc_renameat;
-static renameat2_t libc_renameat2;
-static truncate_t libc_truncate;
-static ftruncate_t libc_ftruncate;
-static fallocate_t libc_fallocate;
-static posix_fallocate_t libc_posix_fallocate;
-
-static chdir_t libc_chdir;
-static fchdir_t libc_fchdir;
-static getcwd_t libc_getcwd;
-static mkdirat_t libc_mkdirat;
-static rmdir_t libc_rmdir;
-static opendir_t libc_opendir;
-static fdopendir_t libc_fdopendir;
-static readdir_t libc_readdir;
-static closedir_t libc_closedir;
-static realpath_t libc_realpath;
-
-static linkat_t libc_linkat;
-static symlinkat_t libc_symlinkat;
-static unlinkat_t libc_unlinkat;
-static readlinkat_t libc_readlinkat;
-
-static stat_t libc_stat;
-static stat64_t libc_stat64;
-static lstat_t libc_lstat;
-static lstat64_t libc_lstat64;
-static fstat_t libc_fstat;
-static fstat64_t libc_fstat64;
-static fstatat_t libc_fstatat;
-static fstatat64_t libc_fstatat64;
-static fchmod_t libc_fchmod;
-static fchmodat_t libc_fchmodat;
-static lchown_t libc_lchown;
-static fchown_t libc_fchown;
-static fchownat_t libc_fchownat;
-static utime_t libc_utime;
-static utimes_t libc_utimes;
-static futimesat_t libc_futimesat;
-static utimensat_t libc_utimensat;
-static futimens_t libc_futimens;
-static access_t libc_access;
-static faccessat_t libc_faccessat;
-
-static setxattr_t libc_setxattr;
-static lsetxattr_t libc_lsetxattr;
-static fsetxattr_t libc_fsetxattr;
-static getxattr_t libc_getxattr;
-static lgetxattr_t libc_lgetxattr;
-static fgetxattr_t libc_fgetxattr;
-static listxattr_t libc_listxattr;
-static llistxattr_t libc_llistxattr;
-static flistxattr_t libc_flistxattr;
-static removexattr_t libc_removexattr;
-static lremovexattr_t libc_lremovexattr;
-static fremovexattr_t libc_fremovexattr;
-
-static fcntl_t libc_fcntl;
-static dup2_t libc_dup2;
-static dup3_t libc_dup3;
-
-static read_t libc_read;
-static readv_t libc_readv;
-static pread_t libc_pread;
-static preadv_t libc_preadv;
-static write_t libc_write;
-static writev_t libc_writev;
-static pwrite_t libc_pwrite;
-static pwritev_t libc_pwritev;
-static lseek_t libc_lseek;
-static lseek64_t libc_lseek64;
-
-static fdatasync_t libc_fdatasync;
-static fsync_t libc_fsync;
-
-//static sigaction_t libc_sigaction;
 
 #define CFS_FD_MASK (1 << (sizeof(int)*8 - 2))
 
@@ -356,9 +188,11 @@ typedef struct {
 
     lru_cache_t *big_page_cache;
     lru_cache_t *small_page_cache;
+    conn_pool_t *conn_pool;
 
     // map for each open fd to its pathname, to print pathname in debug log
     map<int, char *> fd_path;
+    pthread_rwlock_t fd_path_lock;
 
     // the current working directory, doesn't include the mount point part if in cfs
     char *cwd;
@@ -379,7 +213,6 @@ typedef struct {
 static client_info_t g_client_info;
 
 static void init();
-static void init_libc_func();
 static void init_cfs_func(void *);
 static void *plugin_open(const char*);
 static int plugin_close(void*);
@@ -657,12 +490,13 @@ static bool has_renameat2() {
 }
 
 bool fd_in_cfs(int fd) {
-    if(g_client_info.dup_fds.find(fd) != g_client_info.dup_fds.end())
+    if(g_client_info.dup_fds.find(fd) != g_client_info.dup_fds.end()) {
         return true;
+    }
 
-    if (fd & CFS_FD_MASK)
+    if (fd & CFS_FD_MASK) {
         return true;
-
+    }
     return false;
 }
 
@@ -690,6 +524,14 @@ int dup_fd(int oldfd, int newfd) {
     return newfd;
 }
 
+int gen_fd(int start) {
+    int fd = start;
+    while(g_client_info.dup_fds.find(fd) != g_client_info.dup_fds.end()) {
+        fd++;
+    }
+    return fd;
+}
+
 file_t *get_open_file(int fd) {
     pthread_rwlock_rdlock(&g_client_info.open_files_lock);
     auto it = g_client_info.open_files.find(fd);
@@ -698,4 +540,65 @@ file_t *get_open_file(int fd) {
     return f;
 }
 
+ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset) {
+    int max_count = 3;
+    cfs_read_req_t *req = (cfs_read_req_t *)calloc(max_count, sizeof(cfs_read_req_t));
+	int req_count = cfs_read_requests(id, fd, buf, count, offset, req, max_count);
+    ssize_t read = 0;
+    for(int i = 0; i < req_count; i++) {
+        if(req[i].size == 0) {
+            break;
+        }
+        if(req[i].partition_id == 0) {
+            memset((char *)buf + read, 0, req[i].size);
+            read += req[i].size;
+            continue;
+        }
+        packet_t *p = new_read_packet(req[i].partition_id, req[i].extent_id, req[i].extent_offset, (char *)buf + read, req[i].size, req[i].file_offset);
+        if(p == NULL) {
+            break;
+        }
+        int sock_fd = get_conn(g_client_info.conn_pool, req[i].dp_host, req[i].dp_port);
+        if(sock_fd < 0) {
+            free(p);
+            break;
+        }
+        ssize_t re = write_sock(sock_fd, p);
+        if(re < 0) {
+            free(p);
+            close(sock_fd);
+            break;
+        }
+        re = get_read_reply(sock_fd, p);
+        free(p);
+        if(re < 0) {
+            close(sock_fd);
+            break;
+        }
+        #ifdef _CFS_DEBUG
+        log_debug("cfs_pread_sock read sock, file_offset:%d, host:%s, sock_fd:%d, dp:%d, extent:%d, extent_offset:%ld, size:%d, re:%d\n", req[i].file_offset, req[i].dp_host, sock_fd, req[i].partition_id, req[i].extent_id, req[i].extent_offset, req[i].size, re);
+        #endif
+        put_conn(g_client_info.conn_pool, req[i].dp_host, req[i].dp_port, sock_fd);
+        read += re;
+        if(re != req[i].size) {
+            break;
+        }
+    }
+    free(req);
+    #ifdef _CFS_DEBUG
+    log_debug("cfs_pread_sock, fd:%d, count:%d, offset:%ld, req_count:%d, read:%d\n", fd, count, offset, req_count, read);
+    #endif
+    if(read < count) {
+        read = cfs_pread(id, fd, buf, count, offset);
+    }
+    return read;
+}
+
+static const char *get_fd_path(int fd) {
+    pthread_rwlock_rdlock(&g_client_info.fd_path_lock);
+    auto it = g_client_info.fd_path.find(fd);
+    const char *path = it != g_client_info.fd_path.end() ? it->second : "";
+    pthread_rwlock_unlock(&g_client_info.fd_path_lock);
+    return path;
+}
 #endif

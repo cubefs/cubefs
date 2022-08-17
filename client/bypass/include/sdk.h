@@ -22,15 +22,15 @@
 #ifndef CFS_SDK_DL_H
 #define CFS_SDK_DL_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <fcntl.h>
 #include <stdint.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
 #include <unistd.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct {
         int ignore_sighup;
@@ -60,6 +60,17 @@ typedef struct {
 	size_t size;
 	off_t pos;
 } cfs_file_t;
+
+typedef struct {
+	off_t 		file_offset;
+	size_t 		size;
+	uint64_t 	partition_id;
+	uint64_t 	extent_id;
+	uint64_t 	extent_offset;
+	char 	 	dp_host[32];
+	int 	 	dp_port;
+} cfs_read_req_t;
+
 
 /*
  * Library / framework initialization
@@ -184,6 +195,7 @@ typedef ssize_t (*cfs_pwrite_inode_t)(int64_t id, ino_t ino, const void *buf, si
 typedef ssize_t (*cfs_writev_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt);
 typedef ssize_t (*cfs_pwritev_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
 typedef off64_t (*cfs_lseek_t)(int64_t id, int fd, off64_t offset, int whence);
+typedef ssize_t (*cfs_read_requests_t)(int64_t id, int fd, const void *buf, size_t size, off_t off, cfs_read_req_t* requests, int count);
 
 
 typedef void (*InitModule_t)(void*);
@@ -274,6 +286,7 @@ static cfs_pwrite_inode_t cfs_pwrite_inode;
 static cfs_writev_t cfs_writev;
 static cfs_pwritev_t cfs_pwritev;
 static cfs_lseek_t cfs_lseek;
+static cfs_read_requests_t cfs_read_requests;
 #ifdef __cplusplus
 }
 #endif

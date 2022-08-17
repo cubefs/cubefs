@@ -1,10 +1,3 @@
-#include <pthread.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <map>
-#include <set>
-#include <vector>
 #include "cache.h"
 
 using namespace std;
@@ -16,14 +9,12 @@ using namespace std;
 page_t *new_page(int page_size) {
     page_t *p = (page_t *)malloc(sizeof(page_t));
     if(p == NULL) {
-        fprintf(stderr, "malloc page_t failed.\n");
         return NULL;
     }
     memset(p, 0, sizeof(page_t));
     p->data = malloc(page_size);
     if(p->data == NULL) {
         free(p);
-        fprintf(stderr, "malloc page_size failed.\n");
         return NULL;
     }
     memset(p->data, 0, page_size);
@@ -32,8 +23,10 @@ page_t *new_page(int page_size) {
 }
 
 void release_page(page_t* p) {
-    if(p == NULL) return;
-    if(p->data != NULL) free(p->data);
+    if(p == NULL) {
+        return;
+    }
+    free(p->data);
     pthread_rwlock_destroy(&p->lock);
     free(p);
 }
@@ -103,11 +96,11 @@ log:
     return write;
 }
 
-int flush_page(page_t *p) {
-    pthread_rwlock_wrlock(&p->lock);
+int flush_page(page_t *p, ino_t inode, int index) {
     ssize_t re = 0;
+    pthread_rwlock_wrlock(&p->lock);
     // the page may have been cleared by page allocation
-    if(p->inode_info == NULL) {
+    if(p->inode_info == NULL || p->inode_info->inode != inode || p->index != index) {
         goto log;
     }
     if(p->flag&PAGE_DIRTY) {
@@ -127,13 +120,13 @@ log:
     return re;
 }
 
-void clear_page(page_t *p) {
+void clear_page(page_t *p, ino_t inode, int index) {
     pthread_rwlock_wrlock(&p->lock);
     #ifdef _CFS_DEBUG
     page_str(p);
     log_debug("clear_page, p:(%s)\n", str);
     #endif
-    clear_page_raw(p);
+    clear_page_raw(p, inode, index);
     pthread_rwlock_unlock(&p->lock);
 }
 
@@ -143,16 +136,18 @@ void occupy_page(page_t *p, inode_info_t *inode_info, int index) {
     page_str(p);
     log_debug("occupy_page, p:(%s), inode:%d, index:%d\n", str, inode_info->inode, index);
     #endif
-    clear_page_raw(p);
+    // should not check inode and index here
+    clear_page_raw(p, 0, 0);
     p->inode_info = inode_info;
     p->index = index;
     p->last_alloc = time(NULL);
     pthread_rwlock_unlock(&p->lock);
 }
 
-void clear_page_raw(page_t *p) {
+void clear_page_raw(page_t *p, ino_t inode, int index) {
     // both file eviction and page allocation will clear page
-    if(p->inode_info == NULL) {
+    // inode 0 means not check
+    if(p->inode_info == NULL || (inode > 0 && (p->inode_info->inode != inode || p->index != index))) {
         return;
     }
     if(p->flag&PAGE_DIRTY) {
@@ -186,12 +181,14 @@ lru_cache_t *new_lru_cache(int cache_size, int page_size) {
 }
 
 void release_lru_cache(lru_cache_t *c) {
-    if(c == NULL) return;
-
+    if(c == NULL) {
+        return;
+    }
     page_t *p, *next;
     p = c->head;
-    if (p != NULL)
+    if (p != NULL) {
         p->prev->next = NULL;
+    }
     while(p != NULL) {
         next = p->next;
         release_page(p);
@@ -273,32 +270,6 @@ void lru_cache_access(lru_cache_t *c, page_t *p) {
     c->head->prev = p;
 }
 
-void *do_flush_lru(void *arg) {
-    lru_cache_t *c = (lru_cache_t *)arg;
-    page_t *head, *p;
-    int dirty_num;
-    while(1) {
-        pthread_rwlock_rdlock(&c->lock);
-        head = c->head;
-        p = head;
-        dirty_num = 0;
-        while(p != NULL) {
-            if(p->flag&PAGE_DIRTY && p->dirty_offset == 0 && p->len == c->page_size) {
-                dirty_num++;
-                flush_page(p);
-            }
-            p = p->next;
-            if(p == head) {
-                break;
-            }
-        }
-        pthread_rwlock_unlock(&c->lock);
-        if(c->count == 0 || dirty_num < c->count/BG_FLUSH_SLEEP_THRESHOLD) {
-            sleep(BG_FLUSH_SLEEP);
-        }
-    }
-}
-
 void *do_flush_inode(void *arg) {
     inode_wrapper_t *inode_wrapper = (inode_wrapper_t *)arg;
     pthread_rwlock_t *open_inodes_lock = inode_wrapper->open_inodes_lock;
@@ -307,18 +278,24 @@ void *do_flush_inode(void *arg) {
     page_t *p;
     int dirty_num, page_num;
     while(1) {
-        if (*stop) break;
+        if (*stop) {
+            break;
+        }
         dirty_num = 0;
         page_num = 0;
-        vector<page_t *> pages;
+        vector<page_meta_t> pages;
         pthread_rwlock_rdlock(open_inodes_lock);
         for(const auto &item : *open_inodes) {
-            if (*stop) break;
+            if (*stop) {
+                break;
+            }
             inode_info_t *inode_info = item.second;
             if (!inode_info->use_pagecache)
                 continue;
             for(int i = 0; i < BLOCKS_PER_FILE; i++) {
-                if (*stop) break;
+                if (*stop) {
+                    break;
+                }
                 if(inode_info->pages[i] == NULL) {
                     continue;
                 }
@@ -327,23 +304,26 @@ void *do_flush_inode(void *arg) {
                     if(p == NULL) {
                         continue;
                     }
-                    pages.push_back(p);
+                    pages.push_back(page_meta_t{.p = p, .inode = inode_info->inode, .index = i*PAGES_PER_BLOCK + j});
                 }
             }
         }
         pthread_rwlock_unlock(open_inodes_lock);
 
-        if (*stop) break;
+        if (*stop) {
+            break;
+        }
         for(int i = 0; i < pages.size(); i++) {
-            p = pages[i];
-            if(p->flag&PAGE_DIRTY && p->dirty_offset == 0 && p->len == p->inode_info->c->page_size) {
-
+            p = pages[i].p;
+            if(p->flag&PAGE_DIRTY && p->len == p->inode_info->c->page_size) {
                 dirty_num++;
-                flush_page(p);
+                flush_page(p, pages[i].inode, pages[i].index);
             }
         }
 
-        if (*stop) break;
+        if (*stop) {
+            break;
+        }
         if(pages.size() == 0 || dirty_num < pages.size()/BG_FLUSH_SLEEP_THRESHOLD) {
             sleep(BG_FLUSH_SLEEP);
         }
@@ -367,7 +347,7 @@ void flush_and_release(map<ino_t, inode_info_t *> &open_inodes) {
                     continue;
                 }
                 if(p->flag&PAGE_DIRTY) {
-                    flush_page(p);
+                    flush_page(p, inode_info->inode, i*PAGES_PER_BLOCK + j);
                 }
             }
         }
@@ -378,7 +358,6 @@ void flush_and_release(map<ino_t, inode_info_t *> &open_inodes) {
 inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t write_func) {
     inode_info_t *inode_info = (inode_info_t *)malloc(sizeof(inode_info_t));
     if(inode_info == NULL) {
-        fprintf(stderr, "malloc inode_info_t failed.\n");
         return NULL;
     }
     memset(inode_info, 0, sizeof(inode_info_t));
@@ -391,7 +370,6 @@ inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t
     if(use_pagecache) {
         inode_info->pages = (page_t ***)calloc(BLOCKS_PER_FILE, sizeof(page_t **));
         if(inode_info->pages == NULL) {
-            fprintf(stderr, "calloc inode_info->pages failed.\n");
             free(inode_info);
             return NULL;
         }
@@ -402,31 +380,37 @@ inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t
 }
 
 void release_inode_info(inode_info_t *inode_info) {
-    if(inode_info == NULL) return;
+    if(inode_info == NULL) {
+        return;
+    }
+
+    pthread_mutex_destroy(&inode_info->pages_lock);
+    if(!inode_info->use_pagecache) {
+        free(inode_info);
+        return;
+    }
 
     page_t *p;
-    pthread_mutex_destroy(&inode_info->pages_lock);
-    if(inode_info->use_pagecache) {
-        for(int i = 0; i < BLOCKS_PER_FILE; i++) {
-            if(inode_info->pages[i] != NULL) {
-                for(int j = 0; j < PAGES_PER_BLOCK; j++) {
-                    p = inode_info->pages[i][j];
-                    if (p != NULL) {
-                        pthread_rwlock_wrlock(&p->lock);
-                        p->inode_info = NULL;
-                        pthread_rwlock_unlock(&p->lock);
-                    }
-                }
-                free(inode_info->pages[i]);
+    for(int i = 0; i < BLOCKS_PER_FILE; i++) {
+        if(inode_info->pages[i] == NULL) {
+            continue;
+        }
+        for(int j = 0; j < PAGES_PER_BLOCK; j++) {
+            p = inode_info->pages[i][j];
+            if (p != NULL) {
+                clear_page(p, inode_info->inode, i*PAGES_PER_BLOCK + j);
             }
         }
-        free(inode_info->pages);
+        free(inode_info->pages[i]);
     }
+    free(inode_info->pages);
     free(inode_info);
 }
 
 size_t read_cache(inode_info_t *inode_info, off_t offset, size_t count, void *data) {
-    if (!inode_info->use_pagecache) return 0;
+    if (!inode_info->use_pagecache) {
+        return 0;
+    }
 
     int page_size = inode_info->c->page_size;
     int index = offset/page_size;
@@ -465,8 +449,9 @@ size_t read_cache(inode_info_t *inode_info, off_t offset, size_t count, void *da
 }
 
 size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const void *data) {
-    if (!inode_info->use_pagecache)
+    if (!inode_info->use_pagecache) {
         return 0;
+    }
     int page_size = inode_info->c->page_size;
     int index = offset/page_size;
     int block_index;
@@ -485,7 +470,6 @@ size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const v
         if(inode_info->pages[block_index] == NULL) {
             inode_info->pages[block_index] = (page_t **)calloc(PAGES_PER_BLOCK, sizeof(page_t *));
             if(inode_info->pages[block_index] == NULL) {
-                fprintf(stderr, "calloc inode_info->pages[] failed.\n");
                 pthread_mutex_unlock(&inode_info->pages_lock);
                 break;
             }
@@ -525,8 +509,9 @@ size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const v
 }
 
 int flush_inode(inode_info_t *inode_info) {
-    if (!inode_info->use_pagecache) return 0;
-
+    if (!inode_info->use_pagecache) {
+        return 0;
+    }
     page_t *p;
     int re = 0;
     int re_tmp;
@@ -539,7 +524,7 @@ int flush_inode(inode_info_t *inode_info) {
             if(p == NULL || !(p->flag&PAGE_DIRTY)) {
                 continue;
             }
-            re_tmp = flush_page(p);
+            re_tmp = flush_page(p, inode_info->inode, i*PAGES_PER_BLOCK + j);
             if(re_tmp < 0) {
                 re = re_tmp;
             }
@@ -549,8 +534,9 @@ int flush_inode(inode_info_t *inode_info) {
 }
 
 void flush_inode_range(inode_info_t *inode_info, off_t offset, size_t count) {
-    if (!inode_info->use_pagecache) return;
-
+    if (!inode_info->use_pagecache) {
+        return;
+    }
     int begin_index = offset/inode_info->c->page_size;
     int end_index = (offset + count - 1)/inode_info->c->page_size;
     int block_index;
@@ -565,14 +551,15 @@ void flush_inode_range(inode_info_t *inode_info, off_t offset, size_t count) {
         }
         p = inode_info->pages[block_index][i%PAGES_PER_BLOCK];
         if(p != NULL && p->flag&PAGE_DIRTY) {
-            flush_page(p);
+            flush_page(p, inode_info->inode, i);
         }
     }
 }
 
 void clear_inode_range(inode_info_t *inode_info, off_t offset, size_t count) {
-    if (!inode_info->use_pagecache) return;
-
+    if (!inode_info->use_pagecache) {
+        return;
+    }
     int begin_index = offset/inode_info->c->page_size;
     int end_index = (offset + count - 1)/inode_info->c->page_size;
     int block_index;
@@ -587,7 +574,7 @@ void clear_inode_range(inode_info_t *inode_info, off_t offset, size_t count) {
         }
         p = inode_info->pages[block_index][i%PAGES_PER_BLOCK];
         if(p != NULL) {
-            clear_page(p);
+            clear_page(p, inode_info->inode, i);
         }
     }
 }

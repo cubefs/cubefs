@@ -19,8 +19,8 @@ help() {
 Usage: ./build.sh [ -h | --help ] [ -g ] [ --sdk-only | --client-only ]
     -h, --help              show help info
     -g                      setup Debug="1" goflag="" gccflag="-g"
-    --sdk-only              build sdk (libcfssdk.so libempty.so) only
-    --client-only           build client (libcfsclient.so and cfs-client) only
+    -s, --sdk-only              build sdk (libcfssdk.so libempty.so) only
+    -c, --client-only           build client (libcfsclient.so and cfs-client) only
     test                    build in test mode
 EOF
     exit 0
@@ -29,7 +29,7 @@ EOF
 ARGS=( "$@" )
 for opt in ${ARGS[*]} ; do
     case "$opt" in
-        -h|--help)
+        -h | --help)
             help
             ;;
         -g)
@@ -37,11 +37,11 @@ for opt in ${ARGS[*]} ; do
             goflag=""
             gccflag="-g"
             ;;
-    	--sdk-only)
+    	-s | --sdk-only)
     	    build_sdk=1
     	    build_client=0
 	        ;;
-	    --client-only)
+	    -c | --client-only)
 	        build_sdk=0
 	        build_client=1
 	        ;;
@@ -68,7 +68,7 @@ if [[ ${build_client} -eq 1 ]]; then
     go build -buildmode=plugin -linkshared -o ${bin}/libempty.so  ${dir}/empty.go
     go build -ldflags "${goflag}" -linkshared -o ${bin}/cfs-client ${dir}/main_fuse.go
     gcc ${gccflag} -std=c99 -fPIC -shared -o ${bin}/libcfsclient.so ${dir}/main_hook.c -ldl -lpthread -I ${dir}/bypass/include
-    g++ ${gccflag} -DCommitID=\"${CommitID}\" -fPIC -shared -o ${bin}/libcfsc.so ${dir}/bypass/client.c ${dir}/bypass/cache.c ${dir}/bypass/ini.c -ldl -lpthread -I ${dir}/bypass/include
+    g++ -std=c++11 ${gccflag} -DCommitID=\"${CommitID}\" -fPIC -shared -o ${bin}/libcfsc.so ${dir}/bypass/client.c ${dir}/bypass/cache.c ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.c ${dir}/bypass/ini.c -ldl -lpthread -I ${dir}/bypass/include
 fi
 if [[ ${build_test} -eq 1 ]]; then
     echo "building test (cfs-client test-bypass libcfsclient.so libempty.so) ..."
