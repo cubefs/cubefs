@@ -7,10 +7,11 @@
 
 #include <pthread.h>
 #include <errno.h>
-#include "libc_type.h"
+#include "libc_operation.h"
 
 static openat_t real_openat;
 static close_t real_close;
+static renameat_t real_renameat;
 static renameat2_t real_renameat2;
 static truncate_t real_truncate;
 static ftruncate_t real_ftruncate;
