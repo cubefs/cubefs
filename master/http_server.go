@@ -295,6 +295,23 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetAllVersionInfo).
 		HandlerFunc(m.GetAllVersionInfo)
 
+	// S3 lifecycle configuration APIS
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.SetBucketLifecycle).
+		HandlerFunc(m.SetBucketLifecycle)
+
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetBucketLifecycle).
+		HandlerFunc(m.GetBucketLifecycle)
+
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DeleteBucketLifecycle).
+		HandlerFunc(m.DelBucketLifecycle)
+
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddLcNode).
+		HandlerFunc(m.addLcNode)
+
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetDataNodeTaskResponse).
@@ -302,6 +319,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetMetaNodeTaskResponse).
 		HandlerFunc(m.handleMetaNodeTaskResponse)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetLcNodeTaskResponse).
+		HandlerFunc(m.handleLcNodeTaskResponse)
 
 	// meta partition management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

@@ -41,6 +41,7 @@ import (
 	"github.com/cubefs/cubefs/authnode"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/datanode"
+	"github.com/cubefs/cubefs/lcnode"
 	"github.com/cubefs/cubefs/master"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/util/config"
@@ -58,21 +59,23 @@ const (
 )
 
 const (
-	RoleMaster  = "master"
-	RoleMeta    = "metanode"
-	RoleData    = "datanode"
-	RoleAuth    = "authnode"
-	RoleObject  = "objectnode"
-	RoleConsole = "console"
+	RoleMaster    = "master"
+	RoleMeta      = "metanode"
+	RoleData      = "datanode"
+	RoleAuth      = "authnode"
+	RoleObject    = "objectnode"
+	RoleConsole   = "console"
+	RoleLifeCycle = "lcnode"
 )
 
 const (
-	ModuleMaster  = "master"
-	ModuleMeta    = "metaNode"
-	ModuleData    = "dataNode"
-	ModuleAuth    = "authNode"
-	ModuleObject  = "objectNode"
-	ModuleConsole = "console"
+	ModuleMaster    = "master"
+	ModuleMeta      = "metaNode"
+	ModuleData      = "dataNode"
+	ModuleAuth      = "authNode"
+	ModuleObject    = "objectNode"
+	ModuleConsole   = "console"
+	ModuleLifeCycle = "lcnode"
 )
 
 const (
@@ -183,6 +186,9 @@ func main() {
 	case RoleConsole:
 		server = console.NewServer()
 		module = ModuleConsole
+	case RoleLifeCycle:
+		server = lcnode.NewServer()
+		module = ModuleLifeCycle
 	default:
 		err = errors.NewErrorf("Fatal: role mismatch: %s", role)
 		fmt.Println(err)

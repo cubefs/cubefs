@@ -313,6 +313,13 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	intervalToScanS3ExpirationVal := cfg.GetString(intervalToScanS3Expiration)
+	if intervalToScanS3ExpirationVal != "" {
+		if m.config.IntervalToScanS3Expiration, err = strconv.ParseInt(intervalToScanS3ExpirationVal, 10, 0); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.electionTick = int(cfg.GetFloat(cfgElectionTick))

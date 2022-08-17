@@ -15,5 +15,6 @@
   "storeDir": "/cfs/data/store",
   "metaNodeReservedMem": "67108864",
   "ebsAddr": "10.177.40.215:8500",
-  "ebsServicePath": "access"
+  "ebsServicePath": "access",
+  "intervalToScanS3Expiration": "180"
 }

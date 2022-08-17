@@ -52,6 +52,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		}
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
+		m.cluster.checkLcNodeHeartbeat()
 		m.cluster.followerReadManager.reSet()
 
 	} else {
@@ -208,6 +209,18 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadQuota] end")
+
+	log.LogInfo("action[loadLcConfs] begin")
+	if err = m.cluster.loadLcConfs(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadLcConfs] end")
+
+	log.LogInfo("action[loadLcNodes] begin")
+	if err = m.cluster.loadLcNodes(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadLcNodes] end")
 }
 
 func (m *Server) clearMetadata() {

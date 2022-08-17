@@ -90,6 +90,7 @@ var (
 	ErrNoAclPermission                         = errors.New("acl no permission")
 	ErrQuotaNotExists                          = errors.New("quota not exists")
 	ErrCodeVersionOp                           = errors.New("version op failed")
+	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
 )
 
 // http response error code and error message definitions

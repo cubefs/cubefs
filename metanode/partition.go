@@ -142,6 +142,7 @@ type OpInode interface {
 	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error)
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet) (err error)
 	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet) (err error)
+	InodeExpirationGetBatch(req *InodeGetExpirationReqBatch, p *Packet) (err error)
 }
 
 type OpExtend interface {
@@ -204,6 +205,7 @@ type OpMultipart interface {
 	GetUidInfo() (info []*proto.UidReportSpaceInfo)
 	SetUidLimit(info []*proto.UidSpaceInfo)
 	SetTxInfo(info []*proto.TxInfo)
+	GetExpiredMultipart(req *proto.GetExpiredMultipartRequest, p *Packet) (err error)
 }
 
 // MultiVersion operation from master or client
