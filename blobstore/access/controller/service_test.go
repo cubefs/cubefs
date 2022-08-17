@@ -63,8 +63,6 @@ func TestAccessServiceNew(t *testing.T) {
 
 		_, err = sc.GetServiceHost(serviceCtx, serviceName)
 		require.Error(t, err)
-
-		time.Sleep(time.Second * 2)
 	}
 }
 
@@ -116,7 +114,7 @@ func TestAccessServicePunishService(t *testing.T) {
 		require.True(t, host == "proxy-1")
 	}
 
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Millisecond * 1200)
 	{
 		keys := make(hostSet)
 		for ii := 0; ii < 100; ii++ {
@@ -172,7 +170,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 		require.True(t, host == "proxy-2")
 	}
 
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Millisecond * 1200)
 	{
 		keys := make(hostSet)
 		for ii := 0; ii < 100; ii++ {

@@ -709,12 +709,13 @@ func TestAccessClientPutTimeout(t *testing.T) {
 	mb := int(1 << 20)
 	ms := time.Millisecond
 
-	cases := []struct {
+	type caseT struct {
 		mode  access.RPCConnectMode
 		size  int
 		minMs time.Duration
 		maxMs time.Duration
-	}{
+	}
+	cases := []caseT{
 		// QuickConnMode 3s + size / 40, dial and response 2s
 		{access.QuickConnMode, mb * -119, ms * 0, ms * 600},
 		{access.QuickConnMode, mb * -100, ms * 500, ms * 1000},
@@ -727,7 +728,12 @@ func TestAccessClientPutTimeout(t *testing.T) {
 		{access.DefaultConnMode, mb * -270, ms * 3000, ms * 3500},
 		{access.DefaultConnMode, mb * -1, ms * 5000, ms * 5500},
 	}
-	for _, cs := range cases {
+
+	var wg sync.WaitGroup
+	wg.Add(len(cases))
+
+	run := func(cfg access.Config, cs caseT) {
+		defer wg.Done()
 		cfg.ConnMode = cs.mode
 		switch cs.mode {
 		case access.QuickConnMode:
@@ -751,6 +757,11 @@ func TestAccessClientPutTimeout(t *testing.T) {
 		require.GreaterOrEqual(t, cs.maxMs, duration, "greater duration: ", duration)
 		require.LessOrEqual(t, cs.minMs, duration, "less duration: ", duration)
 	}
+
+	for _, cs := range cases {
+		go run(cfg, cs)
+	}
+	wg.Wait()
 }
 
 func TestAccessClientDelete(t *testing.T) {

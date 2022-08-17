@@ -40,13 +40,11 @@ func TestNewController(t *testing.T) {
 	// scene: iops 100
 	c = NewController(100)
 	defer c.Close()
-	time.Sleep(1 * time.Second)
 	for i := 0; i < 200; i++ {
 		// iops: 66
 		time.Sleep(15 * time.Millisecond)
 		c.Assign(1)
 	}
-	wg.Wait()
 	require.Equal(t, 0, int(c.Hit()))
 
 	// scene: iops 100
@@ -57,6 +55,5 @@ func TestNewController(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 		c.Assign(1)
 	}
-	wg.Wait()
 	require.Equal(t, true, int(c.Hit()) > 0)
 }

@@ -16,7 +16,6 @@ package base
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -33,14 +32,13 @@ func TestNewKafkaTopicMonitor(t *testing.T) {
 	}
 
 	access := newMockAccess(nil)
-	monitor, err := NewKafkaTopicMonitor(proto.TaskTypeBlobDelete, proto.ClusterID(1), cfg, access, 0)
+	monitor, err := NewKafkaTopicMonitor(proto.TaskTypeBlobDelete, 1, cfg, access, 0)
+	require.NoError(t, err)
 	go func() {
 		monitor.Run()
 	}()
-	time.Sleep(time.Second * 3)
-	require.NoError(t, err)
 
 	cfg.BrokerList = []string{}
-	monitor, err = NewKafkaTopicMonitor(proto.TaskTypeBlobDelete, proto.ClusterID(1), cfg, access, 0)
+	_, err = NewKafkaTopicMonitor(proto.TaskTypeBlobDelete, 1, cfg, access, 0)
 	require.Error(t, err)
 }

@@ -62,7 +62,7 @@ func TestAccessStreamAllocBase(t *testing.T) {
 	{
 		// wait for service manager to reload
 		defer func() {
-			time.Sleep(time.Second * 2)
+			time.Sleep(time.Second)
 		}()
 		_, err := streamer.Alloc(ctx(), allocTimeoutSize+1, 0, 0, 0)
 		require.Error(t, err)

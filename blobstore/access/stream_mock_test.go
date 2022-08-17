@@ -58,6 +58,7 @@ var (
 
 	allocTimeoutSize uint64 = 1 << 40
 	punishServiceS          = 1
+	minReadShardsX          = 5
 
 	idc        = "test-idc"
 	idcOther   = "test-idc-other"
@@ -474,9 +475,9 @@ func initController() {
 		broken:  make(map[proto.Vuid]bool),
 		blocked: make(map[proto.Vuid]bool),
 		block: func() {
-			time.Sleep(2 * time.Second)
+			time.Sleep(200 * time.Millisecond)
 		},
-		duration:      2 * time.Second,
+		duration:      200 * time.Millisecond,
 		isBNRealError: false,
 	}
 	// initialized broken 1005
@@ -526,7 +527,7 @@ func init() {
 			ServicePunishIntervalS: punishServiceS,
 			AllocRetryTimes:        3,
 			AllocRetryIntervalMS:   3000,
-			MinReadShardsX:         defaultMinReadShardsX,
+			MinReadShardsX:         minReadShardsX,
 		},
 		discardVidChan: make(chan discardVid, 8),
 		stopCh:         make(chan struct{}),

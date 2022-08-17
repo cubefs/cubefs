@@ -94,14 +94,14 @@ func TestBlockingKeyLimitBase(t *testing.T) {
 		done2.Set(true)
 	}()
 
-	time.Sleep(0.5e9)
+	time.Sleep(50 * time.Millisecond)
 	require.Equal(t, 5, l.Running())
 
 	go func() {
 		require.NoError(t, l.Acquire(key1)) // blocking
 		done1.Set(true)
 	}()
-	time.Sleep(0.5e9)
+	time.Sleep(50 * time.Millisecond)
 	require.NoError(t, l.Acquire(key3))
 	require.Equal(t, 6, l.Running())
 	require.False(t, done1.Get())
@@ -109,7 +109,7 @@ func TestBlockingKeyLimitBase(t *testing.T) {
 
 	l.Release(key1)
 	l.Release(key2)
-	time.Sleep(0.5e9)
+	time.Sleep(50 * time.Millisecond)
 	require.True(t, done1.Get())
 	require.True(t, done2.Get())
 	require.Equal(t, 6, l.Running())
@@ -127,7 +127,7 @@ func TestBlockingKeyLimitBase(t *testing.T) {
 		require.NoError(t, l.Acquire(key3)) // blocking
 		done3.Set(true)
 	}()
-	time.Sleep(0.5e9)
+	time.Sleep(50 * time.Millisecond)
 	require.False(t, done1.Get())
 	require.False(t, done2.Get())
 	require.False(t, done3.Get())
@@ -137,7 +137,7 @@ func TestBlockingKeyLimitBase(t *testing.T) {
 	var wg sync.WaitGroup
 	runtime.GOMAXPROCS(10)
 	limiter := NewBlockingKeyCountLimit(1)
-	for i := 0; i < 100; i++ {
+	for range [33]struct{}{} {
 		wg.Add(1)
 		go func() {
 			limiter.Acquire(key)
@@ -212,7 +212,6 @@ func getKeys(num int) []interface{} {
 }
 
 func BenchmarkKeyCountLimit_Acquire(b *testing.B) {
-	// n := b.N
 	for i := 0; i < b.N; i++ {
 		for _, thread := range []int{500} {
 			l := New(thread)

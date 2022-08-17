@@ -195,8 +195,10 @@ func TestAccessStreamGetShardTimeout(t *testing.T) {
 	ctx := ctxWithName("TestAccessStreamGetShardTimeout")
 	dataShards.clean()
 	vuidController.Unbreak(1005)
+	streamer.MinReadShardsX = defaultMinReadShardsX
 	defer func() {
 		vuidController.Break(1005)
+		streamer.MinReadShardsX = minReadShardsX
 		dataShards.clean()
 	}()
 
@@ -245,8 +247,10 @@ func TestAccessStreamGetShardBroken(t *testing.T) {
 	ctx := ctxWithName("TestAccessStreamGetShardBroken")
 	dataShards.clean()
 	vuidController.Unbreak(1005)
+	streamer.MinReadShardsX = defaultMinReadShardsX
 	defer func() {
 		vuidController.Break(1005)
+		streamer.MinReadShardsX = minReadShardsX
 		dataShards.clean()
 	}()
 
@@ -276,7 +280,8 @@ func TestAccessStreamGetShardBroken(t *testing.T) {
 		require.Error(t, err)
 
 		duration := time.Since(startTime)
-		require.GreaterOrEqual(t, vuidController.duration, duration, "greater duration: ", duration)
+		retryWait := time.Millisecond * (200 + 400) // retry.ExponentialBackoff(attempts, 200)
+		require.GreaterOrEqual(t, vuidController.duration+retryWait, duration, "greater duration:", duration)
 	}
 }
 
@@ -407,7 +412,7 @@ func TestAccessStreamGetAligned(t *testing.T) {
 		require.NoError(t, err)
 
 		// cos put shards asynchronously, should wait all shard written
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 
 		randomGoodShards(cs.goodShards)
 
