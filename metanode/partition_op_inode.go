@@ -122,10 +122,10 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	if mp.getTrashStatus() && req.TrashEnable {
-		r, err = mp.submitTrash(p.Ctx(), opFSMUnlinkInode, p.RemoteWithReqID(), val)
-	} else {
+	if req.NoTrash || mp.isTrashDisable() {
 		r, err = mp.submit(p.Ctx(), opFSMUnlinkInode, p.RemoteWithReqID(), val)
+	} else {
+		r, err = mp.submitTrash(p.Ctx(), opFSMUnlinkInode, p.RemoteWithReqID(), val)
 	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -171,10 +171,10 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	if mp.getTrashStatus() && req.TrashEnable {
-		r, err = mp.submitTrash(p.Ctx(), opFSMUnlinkInodeBatch, p.RemoteWithReqID(), val)
-	} else {
+	if req.NoTrash || mp.isTrashDisable() {
 		r, err = mp.submit(p.Ctx(), opFSMUnlinkInodeBatch, p.RemoteWithReqID(), val)
+	} else {
+		r, err = mp.submitTrash(p.Ctx(), opFSMUnlinkInodeBatch, p.RemoteWithReqID(), val)
 	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -351,10 +351,10 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 		return
 	}
 
-	if mp.getTrashStatus() && req.TrashEnable {
-		resp, err = mp.submitTrash(p.Ctx(), opFSMEvictInode, p.RemoteWithReqID(), val)
-	} else {
+	if req.NoTrash || mp.isTrashDisable() {
 		resp, err = mp.submit(p.Ctx(), opFSMEvictInode, p.RemoteWithReqID(), val)
+	} else {
+		resp, err = mp.submitTrash(p.Ctx(), opFSMEvictInode, p.RemoteWithReqID(), val)
 	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -386,10 +386,10 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	if mp.getTrashStatus() && req.TrashEnable {
-		resp, err = mp.submitTrash(p.Ctx(), opFSMEvictInodeBatch, p.RemoteWithReqID(), val)
-	} else {
+	if req.NoTrash || mp.isTrashDisable() {
 		resp, err = mp.submit(p.Ctx(), opFSMEvictInodeBatch, p.RemoteWithReqID(), val)
+	} else {
+		resp, err = mp.submitTrash(p.Ctx(), opFSMEvictInodeBatch, p.RemoteWithReqID(), val)
 	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))

@@ -207,8 +207,8 @@ create_dentry:
 				}
 				log.LogWarnf("Create_ll: update_dentry failed, status(%v), err(%v)", updateStatus, updateErr)
 			} else {
-				mw.iunlink(ctx, mp, info.Inode, false)
-				mw.ievict(ctx, mp, info.Inode, false)
+				mw.iunlink(ctx, mp, info.Inode, true)
+				mw.ievict(ctx, mp, info.Inode, true)
 				log.LogWarnf("Create_ll: dentry has allready been created by other client, curInode(%v), mode(%v)",
 					oldInode, mode)
 			}
@@ -456,7 +456,7 @@ func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name stri
 		}
 	}
 
-	status, inode, err = mw.ddelete(ctx, parentMP, parentID, name, true)
+	status, inode, err = mw.ddelete(ctx, parentMP, parentID, name, false)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			return nil, nil
@@ -471,7 +471,7 @@ func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name stri
 		return nil, nil
 	}
 
-	status, info, err = mw.iunlink(ctx, mp, inode, true)
+	status, info, err = mw.iunlink(ctx, mp, inode, false)
 	if err != nil || status != statusOK {
 		return nil, nil
 	}
@@ -520,12 +520,12 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	}
 
 	if status != statusOK {
-		mw.iunlink(ctx, srcMP, inode, false)
+		mw.iunlink(ctx, srcMP, inode, true)
 		return statusToErrno(status)
 	}
 
 	// delete dentry from src parent
-	status, _, err = mw.ddelete(ctx, srcParentMP, srcParentID, srcName, false)
+	status, _, err = mw.ddelete(ctx, srcParentMP, srcParentID, srcName, true)
 	// Unable to determin delete dentry status, rollback may cause unexcepted result.
 	// So we return error, user should check opration result manually or retry.
 	if err != nil || (status != statusOK && status != statusNoent) {
@@ -534,15 +534,15 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 		return statusToErrno(status)
 	}
 
-	mw.iunlink(ctx, srcMP, inode, false)
+	mw.iunlink(ctx, srcMP, inode, true)
 
 	// As update dentry may be try, the second op will be the result which old inode be the same inode
 	if oldInode != 0 && oldInode != inode {
 		inodeMP := mw.getPartitionByInode(ctx, oldInode)
 		if inodeMP != nil {
-			mw.iunlink(ctx, inodeMP, oldInode, false)
+			mw.iunlink(ctx, inodeMP, oldInode, true)
 			// evict oldInode to avoid oldInode becomes orphan inode
-			mw.ievict(ctx, inodeMP, oldInode, false)
+			mw.ievict(ctx, inodeMP, oldInode, true)
 		}
 	}
 
@@ -701,21 +701,21 @@ func (mw *MetaWrapper) Link(ctx context.Context, parentID uint64, name string, i
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(ctx, mp, ino, false)
+			mw.iunlink(ctx, mp, ino, true)
 		}
 		return nil, statusToErrno(status)
 	}
 	return info, nil
 }
 
-func (mw *MetaWrapper) Evict(ctx context.Context, inode uint64, trashEnable bool) error {
+func (mw *MetaWrapper) Evict(ctx context.Context, inode uint64, noTrash bool) error {
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogWarnf("Evict: No such partition, ino(%v)", inode)
 		return syscall.EINVAL
 	}
 
-	status, err := mw.ievict(ctx, mp, inode, trashEnable)
+	status, err := mw.ievict(ctx, mp, inode, noTrash)
 	if err != nil || status != statusOK {
 		log.LogWarnf("Evict: ino(%v) err(%v) status(%v)", inode, err, status)
 		return statusToErrno(status)
@@ -762,7 +762,7 @@ func (mw *MetaWrapper) InodeCreate_ll(ctx context.Context, mode, uid, gid uint32
 	return nil, syscall.ENOMEM
 }
 
-// InodeUnlink_ll is a low-level api that makes specified inode link value +1.
+// InodeLink_ll is a low-level api that makes specified inode link value +1.
 func (mw *MetaWrapper) InodeLink_ll(ctx context.Context, inode uint64) (*proto.InodeInfo, error) {
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
@@ -784,7 +784,7 @@ func (mw *MetaWrapper) InodeUnlink_ll(ctx context.Context, inode uint64) (*proto
 		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.EINVAL
 	}
-	status, info, err := mw.iunlink(ctx, mp, inode, false)
+	status, info, err := mw.iunlink(ctx, mp, inode, true)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		err = statusToErrno(status)
@@ -1592,7 +1592,7 @@ func (mw *MetaWrapper) CleanExpiredDeletedInode(ctx context.Context, pid uint64,
 	return
 }
 
-func (mw *MetaWrapper) BatchUnlinkInodeUntest(ctx context.Context, inodes []uint64, trashEnable bool) (res map[uint64]int, err error) {
+func (mw *MetaWrapper) BatchUnlinkInodeUntest(ctx context.Context, inodes []uint64, noTrash bool) (res map[uint64]int, err error) {
 	log.LogDebugf("BatchUnlinkInodeUntest: len(dens): %v", len(inodes))
 	for index, ino := range inodes {
 		log.LogDebugf("index: %v, den: %v", index, ino)
@@ -1620,7 +1620,7 @@ func (mw *MetaWrapper) BatchUnlinkInodeUntest(ctx context.Context, inodes []uint
 			continue
 		}
 		wg.Add(1)
-		go mw.batchUnlinkInodeUntest(ctx, &wg, mp, inos, batchChan, trashEnable)
+		go mw.batchUnlinkInodeUntest(ctx, &wg, mp, inos, batchChan, noTrash)
 	}
 
 	go func() {
@@ -1641,7 +1641,7 @@ func (mw *MetaWrapper) BatchUnlinkInodeUntest(ctx context.Context, inodes []uint
 	return
 }
 
-func (mw *MetaWrapper) BatchEvictInodeUntest(ctx context.Context, inodes []uint64, trashEnable bool) (res map[uint64]int, err error) {
+func (mw *MetaWrapper) BatchEvictInodeUntest(ctx context.Context, inodes []uint64, noTrash bool) (res map[uint64]int, err error) {
 	log.LogDebugf("BatchEvictInodeUntest: len(dens): %v", len(inodes))
 	for index, ino := range inodes {
 		log.LogDebugf("index: %v, den: %v", index, ino)
@@ -1669,7 +1669,7 @@ func (mw *MetaWrapper) BatchEvictInodeUntest(ctx context.Context, inodes []uint6
 			continue
 		}
 		wg.Add(1)
-		go mw.batchEvictInodeUntest(ctx, &wg, mp, inos, batchChan, trashEnable)
+		go mw.batchEvictInodeUntest(ctx, &wg, mp, inos, batchChan, noTrash)
 	}
 
 	go func() {
@@ -1687,7 +1687,7 @@ func (mw *MetaWrapper) BatchEvictInodeUntest(ctx context.Context, inodes []uint6
 	return
 }
 
-func (mw *MetaWrapper) BatchDeleteDentryUntest(ctx context.Context, pid uint64, dens []proto.Dentry, trashEnable bool) (
+func (mw *MetaWrapper) BatchDeleteDentryUntest(ctx context.Context, pid uint64, dens []proto.Dentry, noTrash bool) (
 	res map[uint64]int, err error) {
 	if dens == nil || len(dens) == 0 {
 		err = errors.New("BatchDeleteDentryUntest, the dens is 0.")
@@ -1721,7 +1721,7 @@ func (mw *MetaWrapper) BatchDeleteDentryUntest(ctx context.Context, pid uint64, 
 			continue
 		}
 		wg.Add(1)
-		go mw.batchDeleteDentryUntest(ctx, &wg, mp, pid, inos, batchChan, trashEnable)
+		go mw.batchDeleteDentryUntest(ctx, &wg, mp, pid, inos, batchChan, noTrash)
 	}
 
 	go func() {

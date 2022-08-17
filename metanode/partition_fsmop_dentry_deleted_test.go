@@ -242,7 +242,7 @@ func TestMetaPartition_mvToDeletedDentryTree(t *testing.T) {
 				PartitionID: 1,
 				ParentID:    10,
 				Name:        "f1",
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.DeleteDentry(req, p); err != nil {
@@ -508,7 +508,7 @@ func TestMetaPartition_RecoverDeletedDentry(t *testing.T) {
 				PartitionID: 1,
 				ParentID:    10,
 				Name:        "f3",
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.DeleteDentry(req, p); err != nil {
@@ -533,7 +533,7 @@ func TestMetaPartition_RecoverDeletedDentry(t *testing.T) {
 				PartitionID: 1,
 				ParentID:    10,
 				Name:        "f1",
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			p = &Packet{}
 			if err = mp.DeleteDentry(req, p); err != nil {
@@ -821,7 +821,7 @@ func TestMetaPartition_CopyGet(t *testing.T) {
 				PartitionID: 1,
 				ParentID:    10,
 				Name:        "f4",
-				TrashEnable: true,
+				NoTrash:     false,
 			}
 			var p = &Packet{}
 			if err = mp.DeleteDentry(req, p); err != nil {

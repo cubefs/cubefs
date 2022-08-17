@@ -140,7 +140,7 @@ func TestCreateFileAfterInodeLost(t *testing.T)  {
 					return
 				}
 			}
-			if err = mw.Evict(ctx, info.Inode, false); err != nil {
+			if err = mw.Evict(ctx, info.Inode, true); err != nil {
 				t.Errorf("TestCreateFileAfterInodeLost: evict err(%v) name(%v)", err, tt.name)
 				return
 			}
