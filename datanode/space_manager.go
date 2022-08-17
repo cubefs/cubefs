@@ -48,6 +48,7 @@ type SpaceManager struct {
 	// Parallel task limits on disk
 	fixTinyDeleteRecordLimitOnDisk uint64
 	repairTaskLimitOnDisk          uint64
+	flushFDIntervalSec             uint32
 }
 
 // NewSpaceManager creates a new space manager.
@@ -562,7 +563,8 @@ func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
 }
 
 const (
-	MaxDiskRepairTaskLimit = 256
+	MaxDiskRepairTaskLimit    = 256
+	DefaultForceFlushFDSecond = 10
 )
 
 func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
@@ -572,5 +574,15 @@ func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
 	if newValue > 0 && manager.repairTaskLimitOnDisk != newValue {
 		log.LogInfof("action[spaceManager] change DiskRepairTaskLimit from(%v) to(%v)", manager.repairTaskLimitOnDisk, newValue)
 		manager.repairTaskLimitOnDisk = newValue
+	}
+}
+
+func (manager *SpaceManager) SetForceFlushFDInterval(newValue uint32) {
+	if newValue == 0 {
+		newValue = DefaultForceFlushFDSecond
+	}
+	if newValue > 0 && manager.flushFDIntervalSec != newValue {
+		log.LogInfof("action[spaceManager] change ForceFlushFDInterval from(%v) to(%v)", manager.flushFDIntervalSec, newValue)
+		manager.flushFDIntervalSec = newValue
 	}
 }

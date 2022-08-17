@@ -76,6 +76,7 @@ const (
 	clientWriteVolRateKey       = "clientWriteVolRate"
 	clientVolOpRateKey          = "clientVolOpRate"
 	nodeDeleteWorkerSleepMs     = "deleteWorkerSleepMs"
+	dataNodeFlushFDIntervalKey  = "dataNodeFlushFDInterval"
 	descriptionKey              = "description"
 	dpRecoverPoolSizeKey        = "dpRecoverPool"
 	mpRecoverPoolSizeKey        = "mpRecoverPool"

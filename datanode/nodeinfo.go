@@ -15,7 +15,7 @@ import (
 
 const (
 	DefaultMarkDeleteLimitBurst           = 512
-	UpdateDeleteLimitInfoTicket           = 1 * time.Minute
+	UpdateNodeBaseInfoTicket              = 1 * time.Minute
 	UpdateRateLimitInfoTicket             = 5 * time.Minute
 	UpdateClusterViewTicket               = 24 * time.Hour
 	DefaultFixTinyDeleteRecordLimitOnDisk = 1
@@ -64,26 +64,26 @@ var (
 )
 
 func (m *DataNode) startUpdateNodeInfo() {
-	deleteTicker := time.NewTicker(UpdateDeleteLimitInfoTicket)
+	updateNodeBaseInfoTicker := time.NewTicker(UpdateNodeBaseInfoTicket)
 	rateLimitTicker := time.NewTicker(UpdateRateLimitInfoTicket)
 	clusterViewTicker := time.NewTicker(UpdateClusterViewTicket)
 	defer func() {
-		deleteTicker.Stop()
+		updateNodeBaseInfoTicker.Stop()
 		rateLimitTicker.Stop()
 		clusterViewTicker.Stop()
 	}()
 
 	// call once on init before first tick
 	m.updateClusterMap()
-	m.updateDeleteLimitInfo()
+	m.updateNodeBaseInfo()
 	m.updateRateLimitInfo()
 	for {
 		select {
 		case <-nodeInfoStopC:
 			log.LogInfo("datanode nodeinfo goroutine stopped")
 			return
-		case <-deleteTicker.C:
-			m.updateDeleteLimitInfo()
+		case <-updateNodeBaseInfoTicker.C:
+			m.updateNodeBaseInfo()
 		case <-rateLimitTicker.C:
 			m.updateRateLimitInfo()
 		case <-clusterViewTicker.C:
@@ -96,10 +96,11 @@ func (m *DataNode) stopUpdateNodeInfo() {
 	nodeInfoStopC <- struct{}{}
 }
 
-func (m *DataNode) updateDeleteLimitInfo() {
+func (m *DataNode) updateNodeBaseInfo() {
+	//todo: better using a lightweighter interface
 	info, err := MasterClient.AdminAPI().GetLimitInfo("")
 	if err != nil {
-		log.LogWarnf("[updateDeleteLimitInfo] get limit info err: %s", err.Error())
+		log.LogWarnf("[updateNodeBaseInfo] get limit info err: %s", err.Error())
 		return
 	}
 
@@ -118,6 +119,7 @@ func (m *DataNode) updateDeleteLimitInfo() {
 		}
 	}
 	m.space.SetDiskRepairTaskLimit(limitInfo.DataNodeRepairTaskLimitOnDisk)
+	m.space.SetForceFlushFDInterval(limitInfo.DataNodeFlushFDInterval)
 }
 
 func (m *DataNode) updateRateLimitInfo() {

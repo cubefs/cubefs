@@ -434,6 +434,7 @@ type LimitInfo struct {
 	ExtentMergeIno              map[string][]uint64
 	ExtentMergeSleepMs          uint64
 	MetaNodeDumpWaterLevel      uint64
+	DataNodeFlushFDInterval     uint32
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

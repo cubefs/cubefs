@@ -204,9 +204,11 @@ func (d *Disk) incWriteErrCnt() {
 func (d *Disk) startFlushFPScheduler() {
 
 	go func() {
-		var (
-			forceFlushFDTicker = time.NewTicker(time.Second * 10)
-		)
+		flushFDSecond := d.space.flushFDIntervalSec
+		if flushFDSecond == 0 {
+			flushFDSecond = DefaultForceFlushFDSecond
+		}
+		forceFlushFDTicker := time.NewTicker(time.Duration(flushFDSecond) * time.Second)
 		defer func() {
 			forceFlushFDTicker.Stop()
 		}()
@@ -221,8 +223,25 @@ func (d *Disk) startFlushFPScheduler() {
 				d.RUnlock()
 				d.forcePersistPartitions(partitions)
 			}
+			if d.maybeUpdateFlushFDInterval(flushFDSecond) {
+				log.LogDebugf("action[startFlushFPScheduler] disk(%v) update ticker from(%v) to (%v)", d.Path, flushFDSecond, d.space.flushFDIntervalSec)
+				oldFlushFDSecond := flushFDSecond
+				flushFDSecond = d.space.flushFDIntervalSec
+				if flushFDSecond > 0 {
+					forceFlushFDTicker.Reset(time.Duration(flushFDSecond) * time.Second)
+				} else {
+					flushFDSecond = oldFlushFDSecond
+				}
+			}
 		}
 	}()
+}
+
+func(d *Disk) maybeUpdateFlushFDInterval(oldVal uint32) bool {
+	if d.space.flushFDIntervalSec > 0 && oldVal != d.space.flushFDIntervalSec {
+		return true
+	}
+	return false
 }
 
 func (d *Disk) startScheduler() {

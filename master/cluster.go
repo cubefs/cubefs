@@ -3473,6 +3473,10 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[nodeDeleteWorkerSleepMs]; ok {
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val.(uint64))
 	}
+	oldDataNodeFlushFDInterval := atomic.LoadUint32(&c.cfg.DataNodeFlushFDInterval)
+	if val, ok := params[dataNodeFlushFDIntervalKey]; ok {
+		atomic.StoreUint32(&c.cfg.DataNodeFlushFDInterval, uint32(val.(uint64)))
+	}
 	oldDpRecoverPoolSize := atomic.LoadInt32(&c.cfg.DataPartitionsRecoverPoolSize)
 	if val, ok := params[dpRecoverPoolSizeKey]; ok {
 		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, int32(val.(int64)))
@@ -3499,6 +3503,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, oldMetaNodeReqRateLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, oldMetaNodeReadDirLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldDeleteWorkerSleepMs)
+		atomic.StoreUint32(&c.cfg.DataNodeFlushFDInterval, oldDataNodeFlushFDInterval)
 		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, oldDpRecoverPoolSize)
 		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpRecoverPoolSize)
 		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, oldExtentMergeSleepMs)

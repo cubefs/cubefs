@@ -51,7 +51,7 @@ const (
 	MinExtentID              = 1024
 	DeleteTinyRecordSize     = 24
 	UpdateCrcInterval        = 600
-	RepairInterval           = 60
+	RepairInterval           = 10
 	ValidateCrcInterval      = 20 * RepairInterval
 	RandomWriteType          = 2
 	AppendWriteType          = 1
