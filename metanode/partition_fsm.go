@@ -54,6 +54,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		log.LogErrorf("action[Apply] create write batch handle failed:%v", err)
 		return
 	}
+	mp.waitPersistCommitCnt++
 
 	defer func() {
 		if err != nil {
@@ -199,17 +200,23 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmInsertExtents(ctx, dbWriteHandle, ino)
 	case opFSMStoreTick:
-		sMsg := &storeMsg{
-			command:    opFSMStoreTick,
-			applyIndex: index,
-			snap:       NewSnapshot(mp),
-		}
-		if sMsg.snap != nil {
-			select {
-			case mp.storeChan <- sMsg:
-			default:
+		sMsg := &storeMsg{command: resetStoreTick}
+		log.LogInfof("MP [%d] store tick wait:%d, water level:%d", mp.config.PartitionId, mp.waitPersistCommitCnt, GetDumpWaterLevel())
+		if mp.waitPersistCommitCnt > GetDumpWaterLevel() {
+			mp.waitPersistCommitCnt = 0
+			sMsg.command = opFSMStoreTick
+			sMsg.applyIndex = index
+			sMsg.snap = NewSnapshot(mp)
+			if sMsg.snap == nil {
+				return
 			}
 		}
+
+		select {
+			case mp.storeChan <- sMsg:
+			default:
+		}
+
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(dbWriteHandle, msg.V)
 	case opFSMCursorReset:

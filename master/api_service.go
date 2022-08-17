@@ -360,6 +360,10 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	//m.cluster.loadClusterValue()
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	deleteLimitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
+	dumpWaterLevel  := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDumpWaterLevel)
+	if dumpWaterLevel < defaultMetanodeDumpWaterLevel {
+		dumpWaterLevel = defaultMetanodeDumpWaterLevel
+	}
 	repairTaskCount := atomic.LoadUint64(&m.cluster.cfg.DataNodeRepairTaskCount)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	metaNodeReqRateLimit := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReqRateLimit)
@@ -401,6 +405,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ExtentMergeIno:                         m.cluster.cfg.ExtentMergeIno,
 		ExtentMergeSleepMs:                     m.cluster.cfg.ExtentMergeSleepMs,
 		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
+		MetaNodeDumpWaterLevel:					dumpWaterLevel,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -3835,7 +3840,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs, metaNodeReqRateKey, metaNodeReqOpRateKey,
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
-		extentMergeSleepMsKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey}
+		extentMergeSleepMsKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return

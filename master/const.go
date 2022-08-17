@@ -127,6 +127,7 @@ const (
 	ecTestKey                   = "test"
 	dataNodeHttpPortKey         = "httpPort"
 	compactTagKey				= "compactTag"
+	dumpWaterLevelKey           = "metaNodeDumpWaterLevel"
 )
 
 const (

@@ -17,11 +17,13 @@ const (
 	UpdateClusterViewTicket     = 24 * time.Hour
 	DefaultDeleteBatchCounts    = 128
 	DefaultReqLimitBurst        = 512
+	DefaultDumpWaterLevel       = 100
 )
 
 type NodeInfo struct {
 	deleteBatchCount 	uint64
 	readDirLimitNum		uint64
+	dumpWaterLevel      uint64
 }
 
 var (
@@ -85,6 +87,18 @@ func DeleteWorkerSleepMs() {
 	}
 }
 
+func GetDumpWaterLevel() uint64 {
+	val := atomic.LoadUint64(&nodeInfo.dumpWaterLevel)
+	if val < DefaultDumpWaterLevel {
+		val = DefaultDumpWaterLevel
+	}
+	return val
+}
+
+func updateDumpWaterLevel(val uint64)  {
+	atomic.StoreUint64(&nodeInfo.dumpWaterLevel, val)
+}
+
 func (m *MetaNode) startUpdateNodeInfo() {
 	deleteTicker := time.NewTicker(UpdateDeleteLimitInfoTicket)
 	rateLimitTicker := time.NewTicker(UpdateRateLimitInfoTicket)
@@ -129,6 +143,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	updateDeleteBatchCount(limitInfo.MetaNodeDeleteBatchCount)
 	updateDeleteWorkerSleepMs(limitInfo.MetaNodeDeleteWorkerSleepMs)
 	updateReadDirLimitNum(limitInfo.MetaNodeReadDirLimitNum)
+	updateDumpWaterLevel(limitInfo.MetaNodeDumpWaterLevel)
 }
 
 func (m *MetaNode) updateRateLimitInfo() {

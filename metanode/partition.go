@@ -278,6 +278,7 @@ type metaPartition struct {
 	addBatchKey                 []byte
 	delBatchKey                 []byte
 	lastSubmit                  int64
+	waitPersistCommitCnt        uint64
 }
 
 // Start starts a meta partition.

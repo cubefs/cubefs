@@ -170,6 +170,7 @@ const (
 	opFSMExtentDelSync
 	opSnapSyncExtent
 	opFSMExtentMerge
+	resetStoreTick
 )
 
 var (
