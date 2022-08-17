@@ -18,6 +18,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -420,6 +422,107 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
+	return
+}
+
+func (mp *metaPartition) inodeExpired(inode *Inode, cond *proto.InodeExpireCondition) bool {
+
+	if inode == nil || cond == nil {
+		return false
+	}
+
+	now := Now.GetCurrentTime().Unix()
+	if cond.ExpirationInfo.Days > 0 {
+		if now-inode.ModifyTime < int64(cond.ExpirationInfo.Days*24*60*60) {
+			return false
+		}
+	}
+
+	if cond.ExpirationInfo.Date != nil {
+		if now < cond.ExpirationInfo.Date.Unix() {
+			return false
+		}
+	}
+
+	if cond.ObjectSizeGreaterThan > 0 {
+		if inode.Size <= uint64(cond.ObjectSizeGreaterThan) {
+			return false
+		}
+	}
+
+	if cond.ObjectSizeLessThan > 0 {
+		if inode.Size >= uint64(cond.ObjectSizeLessThan) {
+			return false
+		}
+	}
+
+	if len(cond.Tags) > 0 {
+		treeItem := mp.extendTree.Get(NewExtend(inode.Inode))
+		if treeItem != nil {
+			extend := treeItem.(*Extend)
+
+			if val, exist := extend.Get([]byte("oss:tagging")); exist {
+				tagParser := func(src string) map[string]string {
+					values, err := url.ParseQuery(src)
+					if err != nil {
+						return nil
+					}
+					tagMap := make(map[string]string, 0)
+					for key, value := range values {
+						tagMap[key] = value[0]
+					}
+					if len(tagMap) == 0 {
+						return nil
+					}
+					return tagMap
+				}
+
+				tags := tagParser(string(val))
+				for _, tag := range cond.Tags {
+					if tagVal, exist := tags[tag.Key]; exist {
+						if tagVal != tag.Value {
+							return false
+						}
+					} else {
+						return false
+					}
+				}
+
+			} else {
+				return false
+			}
+
+		}
+	}
+	return true
+}
+
+func (mp *metaPartition) InodeExpirationGetBatch(req *InodeGetExpirationReqBatch, p *Packet) (err error) {
+	resp := &proto.BatchInodeGetExpirationResponse{
+		ExpirationResults: make([]*proto.ExpireInfo, 0),
+	}
+	ino := NewInode(0, 0)
+	for _, dentry := range req.Dentries {
+		ino.Inode = dentry.Inode
+		retMsg := mp.getInode(ino)
+		expireInfo := &proto.ExpireInfo{
+			Dentry:  dentry,
+			Expired: false,
+		}
+		if retMsg.Status == proto.OpOk {
+
+			if mp.inodeExpired(retMsg.Msg, req.Cond) {
+				expireInfo.Expired = true
+			}
+		}
+		resp.ExpirationResults = append(resp.ExpirationResults, expireInfo)
+	}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkWithBody(data)
 	return
 }
 

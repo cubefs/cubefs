@@ -813,6 +813,23 @@ type GetMultipartResponse struct {
 	Info *MultipartInfo `json:"info"`
 }
 
+type GetExpiredMultipartRequest struct {
+	VolName     string `json:"vol"`
+	Prefix      string `json:"path"`
+	Days        int    `json:"days"`
+	PartitionId uint64 `json:"pid"`
+}
+
+type ExpiredMultipartInfo struct {
+	Path        string   `json:"path"`
+	MultipartId string   `json:"mid"`
+	Inodes      []uint64 `json:"inodes"`
+}
+
+type GetExpiredMultipartResponse struct {
+	Infos []*ExpiredMultipartInfo `json:"infos"`
+}
+
 type AddMultipartPartRequest struct {
 	VolName     string             `json:"vol"`
 	PartitionId uint64             `json:"pid"`

@@ -114,7 +114,7 @@ func (t *AdminTask) isCreateTask() bool {
 
 // IsHeartbeatTask returns if the task is a heartbeat task.
 func (t *AdminTask) IsHeartbeatTask() bool {
-	return t.OpCode == OpDataNodeHeartbeat || t.OpCode == OpMetaNodeHeartbeat
+	return t.OpCode == OpDataNodeHeartbeat || t.OpCode == OpMetaNodeHeartbeat || t.OpCode == OpLcNodeHeartbeat
 }
 
 // NewAdminTask returns a new adminTask.
