@@ -160,9 +160,17 @@ const (
 	AdminGetAllVersionInfo = "/multiVer/getAll"
 	AdminGetVolVer         = "/vol/getVer"
 
+	// S3 lifecycle configuration APIS
+	SetBucketLifecycle    = "/s3/setLifecycle"
+	GetBucketLifecycle    = "/s3/getLifecycle"
+	DeleteBucketLifecycle = "/s3/deleteLifecycle"
+
+	AddLcNode = "/lcNode/add"
+
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
+	GetLcNodeTaskResponse   = "/lcNode/response"   // Method: 'POST', ContentType: 'application/json'
 
 	GetTopologyView = "/topo/get"
 	UpdateZone      = "/zone/update"
@@ -602,6 +610,18 @@ type MetaNodeHeartbeatResponse struct {
 	Status               uint8
 	Result               string
 	CpuUtil              float64 `json:"cpuUtil"`
+}
+
+type ScanTaskInfo struct {
+	Id        string
+	RoutineId int64
+}
+
+// LcNodeHeartbeatResponse defines the response to the lc node heartbeat.
+type LcNodeHeartbeatResponse struct {
+	ScanningTasks []*ScanTaskInfo
+	Status        uint8
+	Result        string
 }
 
 // DeleteFileRequest defines the request to delete a file.

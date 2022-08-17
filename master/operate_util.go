@@ -103,6 +103,10 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.MetaPartitionDecommissionResponse{}
 	case proto.OpVersionOperation:
 		response = &proto.MultiVersionOpResponse{}
+	case proto.OpLcNodeHeartbeat:
+		response = &proto.LcNodeHeartbeatResponse{}
+	case proto.OpLcNodeScan:
+		response = &proto.RuleTaskResponse{}
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
 	}
@@ -223,6 +227,10 @@ func dataNodeNotFound(addr string) (err error) {
 
 func metaNodeNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("meta node[%v]", addr))
+}
+
+func lcNodeNotFound(addr string) (err error) {
+	return notFoundMsg(fmt.Sprintf("lc node[%v]", addr))
 }
 
 func volNotFound(name string) (err error) {

@@ -57,6 +57,180 @@ func (c *Cluster) addMetaNodeTasks(tasks []*proto.AdminTask) {
 	}
 }
 
+func (c *Cluster) addLcNodeTasks(tasks []*proto.AdminTask) {
+
+	for _, t := range tasks {
+		if t == nil {
+			continue
+		}
+		if node, err := c.lcNode(t.OperatorAddr); err != nil {
+			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+		} else {
+			node.TaskManager.AddTask(t)
+		}
+	}
+}
+
+func (c *Cluster) handleLcNodeTaskResponse(nodeAddr string, task *proto.AdminTask) {
+	if task == nil {
+		log.LogInfof("action[handleLcNodeTaskResponse] receive addr[%v] task response,but task is nil", nodeAddr)
+		return
+	}
+	log.LogDebugf("action[handleLcNodeTaskResponse] receive addr[%v] task response:%v", nodeAddr, task.ToString())
+	var (
+		err    error
+		lcNode *LcNode
+	)
+
+	if lcNode, err = c.lcNode(nodeAddr); err != nil {
+		goto errHandler
+	}
+	lcNode.TaskManager.DelTask(task)
+	if err = unmarshalTaskResponse(task); err != nil {
+		goto errHandler
+	}
+
+	switch task.OpCode {
+	case proto.OpLcNodeScan:
+		bytes, err := json.Marshal(task.Request)
+		if err != nil {
+			log.LogErrorf("action[handleLcNodeTaskResponse] Marshal task request failed!")
+			return
+		}
+		var request interface{}
+		request = &proto.RuleTaskRequest{}
+		if err = json.Unmarshal(bytes, request); err != nil {
+			log.LogErrorf("action[handleLcNodeTaskResponse] Unmarshal task request failed!")
+			return
+		}
+		task.Request = request
+
+		req := task.Request.(*proto.RuleTaskRequest)
+		response := task.Response.(*proto.RuleTaskResponse)
+		err = c.handleLcNodeScanResp(task.OperatorAddr, req, response)
+	case proto.OpLcNodeHeartbeat:
+		response := task.Response.(*proto.LcNodeHeartbeatResponse)
+		err = c.handleLcNodeHeartbeatResp(task.OperatorAddr, response)
+	default:
+		err = fmt.Errorf(fmt.Sprintf("unknown operate code %v", task.OpCode))
+		goto errHandler
+	}
+
+	if err != nil {
+		goto errHandler
+	}
+	return
+
+errHandler:
+	log.LogErrorf("process task[%v] failed,err:%v", task.ToString(), err)
+	return
+}
+
+func (c *Cluster) handleLcNodeScanResp(nodeAddr string, req *proto.RuleTaskRequest, resp *proto.RuleTaskResponse) (err error) {
+	log.LogDebugf("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v) Enter", req.Task.Rule.ID, req.Task.Id, req.RoutineID)
+	defer func() {
+		log.LogDebugf("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v) Exit", req.Task.Rule.ID, req.Task.Id, req.RoutineID)
+	}()
+
+	c.s3LcMgr.lnStates.ReleaseTask(req.Task.Id, req.RoutineID)
+
+	lcScan := c.s3LcMgr.getScanRoutine()
+	if lcScan != nil {
+		log.LogDebugf("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v), current routine(%v)",
+			req.Task.Rule.ID, req.Task.Id, req.RoutineID, lcScan.Id)
+		lcScan.Lock()
+		if lcScan.Id == req.RoutineID {
+			for i, ruleTask := range lcScan.RuleStatus.Scanning {
+				if req.Task.Id == ruleTask.Id {
+					lcScan.RuleStatus.Scanning = append(lcScan.RuleStatus.Scanning[:i], lcScan.RuleStatus.Scanning[i+1:]...)
+					if resp.Status == proto.TaskFailed {
+						log.LogWarnf("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v) scanning failed, current routine(%v), results(%v).",
+							req.Task.Rule.ID, req.Task.Id, req.RoutineID, lcScan.Id, resp)
+						lcScan.RuleStatus.ToBeScanned = append(lcScan.RuleStatus.ToBeScanned, ruleTask)
+						lcScan.Unlock()
+						return nil
+					} else {
+						lcScan.RuleStatus.Scanned = append(lcScan.RuleStatus.Scanned, ruleTask)
+						lcScan.RuleStatus.Results = append(lcScan.RuleStatus.Results, resp)
+						break
+					}
+
+				}
+			}
+
+		} else {
+			lcScan.Unlock()
+			log.LogWarnf("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v),", req.Task.Rule.ID, req.Task.Id, req.RoutineID)
+			if resp.Status == proto.TaskSucceeds {
+				log.LogInfof("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v) scanning completed, current routine(%v),"+
+					" task startTime(%v), task endTime(%v), totalScanned(%v), fileScanned(%v), dirScanned(%v), ExpiredNum(%v), "+
+					"ErrorSkippedNum(%v), AbortedIncompleteMultipartNum(%v)",
+					req.Task.Rule.ID, req.Task.Id, req.RoutineID, lcScan.Id, resp.StartTime.String(), resp.EndTime.String(),
+					resp.TotalInodeScannedNum, resp.FileScannedNum, resp.DirScannedNum, resp.ExpiredNum, resp.ErrorSkippedNum, resp.AbortedIncompleteMultipartNum)
+			}
+			return
+		}
+		lcScan.Unlock()
+
+		log.LogInfof("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v) scanning completed, current routine(%v), results(%v).",
+			req.Task.Rule.ID, req.Task.Id, req.RoutineID, lcScan.Id, resp)
+
+		if !lcScan.Scanning() {
+			lcScan.Stop()
+		}
+
+	}
+	return
+}
+
+func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeHeartbeatResponse) (err error) {
+
+	var (
+		lcNode *LcNode
+		logMsg string
+	)
+	log.LogDebugf("action[handleLcNodeHeartbeatResp] clusterID[%v] receive lcNode[%v] heartbeat, ", c.Name, nodeAddr)
+	if resp.Status != proto.TaskSucceeds {
+		Warn(c.Name, fmt.Sprintf("action[handleLcNodeHeartbeatResp] clusterID[%v] lcNode[%v] heartbeat task failed",
+			c.Name, nodeAddr))
+		return
+	}
+
+	if lcNode, err = c.lcNode(nodeAddr); err != nil {
+		goto errHandler
+	}
+
+	lcNode.Lock()
+	lcNode.IsActive = true
+	lcNode.ReportTime = time.Now()
+	lcNode.Unlock()
+
+	//c.s3LcMgr.lnStates.UpdateNodeTask(nodeAddr, resp.ScanningTasks)
+
+	if len(resp.ScanningTasks) > 0 {
+		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is scanning", nodeAddr)
+	} else {
+		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is idle", nodeAddr)
+		lcScan := c.s3LcMgr.getScanRoutine()
+		if lcScan != nil {
+			select {
+			case lcScan.idleNodeCh <- struct{}{}:
+				log.LogDebugf("action[handleLcNodeHeartbeatResp], scan routine notified!")
+			default:
+				log.LogDebugf("action[handleLcNodeHeartbeatResp], skipping notify looper")
+			}
+		}
+	}
+
+	logMsg = fmt.Sprintf("action[handleLcNodeHeartbeatResp], lcNode:%v, ReportTime:%v success", lcNode.Addr, lcNode.ReportTime.Unix())
+	log.LogInfof(logMsg)
+	return
+errHandler:
+	logMsg = fmt.Sprintf("nodeAddr %v heartbeat error :%v", nodeAddr, err.Error())
+	log.LogError(logMsg)
+	return
+}
+
 func (c *Cluster) waitForResponseToLoadDataPartition(partitions []*DataPartition) {
 
 	var wg sync.WaitGroup
