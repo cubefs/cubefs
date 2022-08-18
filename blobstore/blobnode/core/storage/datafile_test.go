@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
@@ -48,7 +49,7 @@ func TestNewChunkData(t *testing.T) {
 	chunkname := chunkid.String()
 
 	chunkname = filepath.Join(testDir, chunkname)
-	println(chunkname)
+	log.Info(chunkname)
 
 	ctx := context.Background()
 
@@ -64,7 +65,7 @@ func TestNewChunkData(t *testing.T) {
 	require.NotNil(t, cd)
 	defer cd.Close()
 
-	fmt.Printf("chunkdata: \n%s\n", cd)
+	log.Infof("chunkdata: \n%s", cd)
 
 	_, err = cd.Read(ctx, nil, 1, 1)
 	require.Error(t, err)
@@ -82,7 +83,7 @@ func TestNewChunkData(t *testing.T) {
 	require.NotNil(t, cdRo)
 	defer cdRo.Close()
 
-	fmt.Printf("chunkdata: \n%s\n", cdRo)
+	log.Infof("chunkdata: \n%s", cdRo)
 
 	require.Equal(t, cd.header.version, cdRo.header.version)
 	require.Equal(t, cd.wOff, cdRo.wOff)
@@ -99,7 +100,7 @@ func TestChunkData_Write(t *testing.T) {
 	chunkname := bnapi.NewChunkId(0).String()
 
 	chunkname = filepath.Join(testDir, chunkname)
-	println(chunkname)
+	log.Info(chunkname)
 
 	diskConfig := &core.Config{
 		BaseConfig:    core.BaseConfig{Path: testDir},
@@ -112,7 +113,7 @@ func TestChunkData_Write(t *testing.T) {
 	require.NotNil(t, cd)
 	defer cd.Close()
 
-	fmt.Printf("chunkdata: \n%s\n", cd)
+	log.Infof("chunkdata: \n%s", cd)
 
 	require.Equal(t, int32(cd.wOff), int32(4096))
 
@@ -142,8 +143,8 @@ func TestChunkData_Write(t *testing.T) {
 	rd, err := ioutil.ReadAll(r)
 	require.NoError(t, err)
 
-	fmt.Printf("read: %s\n", string(rd))
-	fmt.Printf("shard:%s\n", shard)
+	log.Infof("read: %s", string(rd))
+	log.Infof("shard:%s", shard)
 
 	require.Equal(t, sharddata, rd)
 
@@ -164,7 +165,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 	chunkname := bnapi.NewChunkId(0).String()
 
 	chunkname = filepath.Join(testDir, chunkname)
-	println(chunkname)
+	log.Info(chunkname)
 
 	diskConfig := &core.Config{
 		BaseConfig:    core.BaseConfig{Path: testDir},
@@ -177,7 +178,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 	require.NotNil(t, cd)
 	defer cd.Close()
 
-	fmt.Printf("chunkdata: \n%s\n", cd)
+	log.Infof("chunkdata: \n%s", cd)
 
 	require.Equal(t, int32(cd.wOff), int32(4096))
 
@@ -216,8 +217,8 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 			rd, err := ioutil.ReadAll(r)
 			require.NoError(t, err)
 
-			fmt.Printf("read: %s\n", string(rd))
-			fmt.Printf("shard:%s\n", shard)
+			log.Infof("read: %s", string(rd))
+			log.Infof("shard:%s", shard)
 
 			require.Equal(t, sharddatas[i], rd)
 		}(i, shards[i])
@@ -225,11 +226,11 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 	wg.Wait()
 
 	for i := 0; i < concurrency; i++ {
-		fmt.Printf("shard[%d] offset:%d\n", i, shards[i].Offset)
+		log.Infof("shard[%d] offset:%d", i, shards[i].Offset)
 		require.True(t, shards[i].Offset%_pagesize == 0)
 	}
 
-	fmt.Printf("chunkdata: \n%s\n", cd)
+	log.Infof("chunkdata: \n%s", cd)
 
 	expectedOff := 4096 + 4096*10
 	require.Equal(t, int64(expectedOff), int64(cd.wOff))
@@ -245,7 +246,7 @@ func TestChunkData_Delete(t *testing.T) {
 	chunkname := bnapi.NewChunkId(0).String()
 
 	chunkname = filepath.Join(testDir, chunkname)
-	println(chunkname)
+	log.Info(chunkname)
 
 	diskConfig := &core.Config{
 		BaseConfig:    core.BaseConfig{Path: testDir},
@@ -257,7 +258,7 @@ func TestChunkData_Delete(t *testing.T) {
 	require.NotNil(t, cd)
 	defer cd.Close()
 
-	fmt.Printf("chunkdata: \n%s\n", cd)
+	log.Infof("chunkdata: \n%s", cd)
 
 	require.Equal(t, int32(cd.wOff), int32(4096))
 
@@ -299,8 +300,8 @@ func TestChunkData_Delete(t *testing.T) {
 			rd, err := ioutil.ReadAll(r)
 			require.NoError(t, err)
 
-			fmt.Printf("read: %s\n", string(rd))
-			fmt.Printf("shard:%s\n", shard)
+			log.Infof("read: %s", string(rd))
+			log.Infof("shard:%s", shard)
 
 			require.Equal(t, sharddatas[i], rd)
 		}(i, shards[i])
@@ -308,11 +309,11 @@ func TestChunkData_Delete(t *testing.T) {
 	wg.Wait()
 
 	for i := 0; i < concurrency; i++ {
-		fmt.Printf("shard[%d] offset:%d\n", i, shards[i].Offset)
+		log.Infof("shard[%d] offset:%d", i, shards[i].Offset)
 		require.True(t, shards[i].Offset%_pagesize == 0)
 	}
 
-	fmt.Printf("chunkdata: \n%s\n", cd)
+	log.Infof("chunkdata: \n%s", cd)
 
 	for i := 0; i < concurrency; i++ {
 		err = cd.Delete(ctx, shards[i])
@@ -321,8 +322,8 @@ func TestChunkData_Delete(t *testing.T) {
 
 	stat, err := cd.ef.SysStat()
 	require.NoError(t, err)
-	fmt.Printf("stat: %v\n", stat)
-	fmt.Printf("blksize: %d\n", stat.Blocks)
+	log.Infof("stat: %v", stat)
+	log.Infof("blksize: %d", stat.Blocks)
 
 	require.Equal(t, true, int(stat.Blocks) >= 8)
 	require.Equal(t, true, int(stat.Blocks) < (1+len(shards))*8)
@@ -368,7 +369,7 @@ func TestChunkData_Destroy(t *testing.T) {
 	chunkname := bnapi.NewChunkId(0).String()
 
 	chunkname = filepath.Join(testDir, chunkname)
-	println(chunkname)
+	log.Info(chunkname)
 
 	diskConfig := &core.Config{
 		BaseConfig:    core.BaseConfig{Path: testDir},
@@ -414,7 +415,7 @@ func TestParseMeta(t *testing.T) {
 	chunkname := bnapi.NewChunkId(0).String()
 
 	chunkname = filepath.Join(testDir, chunkname)
-	println(chunkname)
+	log.Info(chunkname)
 
 	diskConfig := &core.Config{
 		BaseConfig:    core.BaseConfig{Path: testDir},

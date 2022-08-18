@@ -132,8 +132,6 @@ func TestChunkReport2(t *testing.T) {
 	workDir, err := ioutil.TempDir(os.TempDir(), defaultSvrTestDir+"ChunkReport2")
 	require.NoError(t, err)
 
-	t.Log("work dir: ", workDir)
-
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
 

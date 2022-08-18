@@ -35,7 +35,12 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
+
+func init() {
+	log.SetOutputLevel(log.Lfatal)
+}
 
 func getDiskIDFn(ctx context.Context) (proto.DiskID, error) {
 	return 101, nil
@@ -57,7 +62,7 @@ func TestNewDiskStorage(t *testing.T) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)
@@ -138,7 +143,7 @@ func TestRunCompact(t *testing.T) {
 	ctx := context.Background()
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)
@@ -182,7 +187,7 @@ func TestRunCompact(t *testing.T) {
 
 	go func() {
 		vuid := <-ds.compactCh
-		t.Log(vuid)
+		log.Info(vuid)
 	}()
 
 	defer ds.ResetChunks(ctx)
@@ -195,7 +200,7 @@ func TestDiskStorage_UpdateChunkStatus(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)
@@ -239,7 +244,7 @@ func TestSuperBlock_UpdateDiskStatus(t *testing.T) {
 	ctx := context.Background()
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)
 
@@ -286,7 +291,7 @@ func TestDiskStorage_CompactChunkFile2(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)
@@ -371,7 +376,7 @@ func TestExecCompact(t *testing.T) {
 	ctx := context.Background()
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)
@@ -430,7 +435,7 @@ func TestCleanChunk(t *testing.T) {
 	ctx := context.Background()
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)
@@ -545,7 +550,7 @@ func TestDiskstorage_Finalizer(t *testing.T) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)
@@ -610,7 +615,7 @@ func TestDiskStorageWrapper_CreateChunk(t *testing.T) {
 	ctx := context.Background()
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)
@@ -642,7 +647,7 @@ func TestDiskStorage_ReleaseChunk(t *testing.T) {
 	ctx := context.Background()
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)
@@ -687,7 +692,7 @@ func TestDiskStorage_UpdateChunkStatus2(t *testing.T) {
 	ctx := context.Background()
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)

@@ -38,11 +38,23 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
 	defaultSvrTestDir = "BlobNodeSvrTestDir_"
 )
+
+var cleanWG sync.WaitGroup
+
+func TestMain(m *testing.M) {
+	log.Info("start blobnode testing ......")
+	exitCode := m.Run()
+	log.Info("wait background cleaning ...")
+	cleanWG.Wait()
+	log.Info("ended blobnode testing ......")
+	os.Exit(exitCode)
+}
 
 func TestService(t *testing.T) {
 	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "TestService")
@@ -165,8 +177,6 @@ func TestService2(t *testing.T) {
 	cc := &cmapi.Config{}
 	cc.Hosts = []string{mcmURL}
 
-	t.Log("work dir: ", workDir)
-
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
 	conf := Config{
@@ -200,8 +210,6 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 
 	cc := &cmapi.Config{}
 	cc.Hosts = []string{mcmURL}
-
-	t.Log("work dir: ", workDir)
 
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
@@ -259,8 +267,6 @@ func TestService_CmdpChunk(t *testing.T) {
 
 	cc := &cmapi.Config{}
 	cc.Hosts = []string{mcmURL}
-
-	t.Log("work dir: ", workDir)
 
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
@@ -446,10 +452,12 @@ func HTTPRequest(method string, url string) (*http.Response, error) {
 }
 
 func cleanTestBlobNodeService(svr *Service) {
+	cleanWG.Add(1)
 	go cleanTestBlobNodeServiceBg(svr)
 }
 
 func cleanTestBlobNodeServiceBg(svr *Service) {
+	defer cleanWG.Done()
 	svr.Close()
 
 	var dirs []string

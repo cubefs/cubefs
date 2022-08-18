@@ -15,12 +15,12 @@
 package core
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/mergetask"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +31,7 @@ func TestBlobFile_Op(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	posixfilepath := filepath.Join(testDir, "PoxsixFile")
-	println(posixfilepath)
+	log.Info(posixfilepath)
 
 	temppath := filepath.Join(posixfilepath, "xxxtemp")
 	f, err := OpenFile(temppath, false)
@@ -47,7 +47,7 @@ func TestBlobFile_Op(t *testing.T) {
 	syncWorker := mergetask.NewMergeTask(-1, func(interface{}) error { return nil })
 
 	ef := blobFile{f, syncWorker, nil}
-	println(ef.Name())
+	log.Info(ef.Name())
 	fd := ef.Fd()
 	require.NotNil(t, fd)
 
@@ -73,17 +73,17 @@ func TestBlobFile_Op(t *testing.T) {
 	// stat
 	stat, err := ef.SysStat()
 	require.NoError(t, err)
-	fmt.Printf("stat: %v\n", stat)
+	log.Infof("stat: %v", stat)
 	require.Equal(t, int32(stat.Size), int32(len(data)))
 
-	fmt.Printf("blksize: %d\n", stat.Blocks)
+	log.Infof("blksize: %d", stat.Blocks)
 
 	// pre allocate 1M
 	err = ef.Allocate(0, 1*1024*1024)
 	require.NoError(t, err)
 	stat, err = ef.SysStat()
 	require.NoError(t, err)
-	fmt.Printf("blksize: %d\n", stat.Blocks)
+	log.Infof("blksize: %d", stat.Blocks)
 	// scale size
 	require.Equal(t, int32(stat.Size), int32(1*1024*1024))
 	// phy allocate >= 1M
@@ -94,7 +94,7 @@ func TestBlobFile_Op(t *testing.T) {
 	require.NoError(t, err)
 	stat, err = ef.SysStat()
 	require.NoError(t, err)
-	fmt.Printf("blksize: %d\n", stat.Blocks)
+	log.Infof("blksize: %d", stat.Blocks)
 	// keep size
 	require.Equal(t, int32(stat.Size), int32(1*1024*1024))
 	// phy allocate == 0

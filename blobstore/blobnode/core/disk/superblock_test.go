@@ -28,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/storage"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 func TestNewSuperBlock(t *testing.T) {
@@ -38,7 +39,7 @@ func TestNewSuperBlock(t *testing.T) {
 	ctx := context.Background()
 
 	diskmetapath := filepath.Join(testDir, "DiskPath")
-	println(diskmetapath)
+	log.Info(diskmetapath)
 
 	err = os.MkdirAll(diskmetapath, 0o755)
 	require.NoError(t, err)
@@ -94,7 +95,7 @@ func TestSuperBlock_RegisterDisk(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	diskmetapath := filepath.Join(testDir, "DiskPath")
-	println(diskmetapath)
+	log.Info(diskmetapath)
 
 	err = os.MkdirAll(diskmetapath, 0o755)
 	require.NoError(t, err)
@@ -144,7 +145,7 @@ func TestSuperBlock_ListChunks(t *testing.T) {
 	ctx := context.Background()
 
 	diskmetapath := filepath.Join(testDir, "DiskPath")
-	println(diskmetapath)
+	log.Info(diskmetapath)
 
 	err = os.MkdirAll(diskmetapath, 0o755)
 	require.NoError(t, err)
@@ -187,7 +188,7 @@ func TestSuperBlock_ListVuids(t *testing.T) {
 	ctx := context.Background()
 
 	diskmetapath := filepath.Join(testDir, "DiskPath")
-	println(diskmetapath)
+	log.Info(diskmetapath)
 
 	err = os.MkdirAll(diskmetapath, 0o755)
 	require.NoError(t, err)
@@ -262,12 +263,12 @@ func TestSuperblockErrorCondition(t *testing.T) {
 		DiskID:  diskid,
 	}
 
-	var InvalidChunkId bnapi.ChunkId = [16]byte{}
+	var InvalidChunkID bnapi.ChunkId = [16]byte{}
 	// upsert invalid ChunkId
-	err = s.UpsertChunk(ctx, InvalidChunkId, vm)
+	err = s.UpsertChunk(ctx, InvalidChunkID, vm)
 	require.Error(t, err)
 
-	err = s.BindVuidChunk(ctx, vuid, InvalidChunkId)
+	err = s.BindVuidChunk(ctx, vuid, InvalidChunkID)
 	require.Error(t, err)
 }
 
@@ -279,7 +280,7 @@ func TestCleanChunkSpace(t *testing.T) {
 	ctx := context.Background()
 
 	diskmetapath := filepath.Join(testDir, "DiskPath")
-	println(diskmetapath)
+	log.Info(diskmetapath)
 
 	err = os.MkdirAll(diskmetapath, 0o755)
 	require.NoError(t, err)

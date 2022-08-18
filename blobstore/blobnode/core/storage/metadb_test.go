@@ -16,7 +16,6 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -28,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 func TestNewChunkMeta(t *testing.T) {
@@ -36,7 +36,7 @@ func TestNewChunkMeta(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	diskmetapath := filepath.Join(testDir, "DiskPath")
-	println(diskmetapath)
+	log.Info(diskmetapath)
 
 	err = os.MkdirAll(diskmetapath, 0o755)
 	require.NoError(t, err)
@@ -70,7 +70,7 @@ func TestChunkMeta_Write(t *testing.T) {
 	ctx := context.Background()
 
 	diskmetapath := filepath.Join(testDir, "DiskPath")
-	println(diskmetapath)
+	log.Info(diskmetapath)
 
 	err = os.MkdirAll(diskmetapath, 0o755)
 	require.NoError(t, err)
@@ -106,9 +106,9 @@ func TestChunkMeta_Write(t *testing.T) {
 	require.NoError(t, err)
 
 	// read
-	rd_meta, err := cm.Read(ctx, proto.BlobID(bid))
+	rdMeta, err := cm.Read(ctx, proto.BlobID(bid))
 	require.NoError(t, err)
-	require.Equal(t, meta, rd_meta)
+	require.Equal(t, meta, rdMeta)
 
 	// delete
 	err = cm.Delete(ctx, proto.BlobID(bid))
@@ -126,7 +126,7 @@ func TestChunkMeta_Scan(t *testing.T) {
 	ctx := context.Background()
 
 	diskmetapath := filepath.Join(testDir, "DiskPath")
-	println(diskmetapath)
+	log.Info(diskmetapath)
 
 	err = os.MkdirAll(diskmetapath, 0o755)
 	require.NoError(t, err)
@@ -167,8 +167,8 @@ func TestChunkMeta_Scan(t *testing.T) {
 	// scan
 	count := 0
 	err = cm.Scan(ctx, 0, 10, func(bid proto.BlobID, shard *core.ShardMeta) (err error) {
-		fmt.Printf("----- scan => %d, shard: %v\n", bid, shard)
-		count += 1
+		log.Infof("----- scan => %d, shard: %v", bid, shard)
+		count++
 		return nil
 	})
 	require.Equal(t, count, 10)
@@ -176,8 +176,8 @@ func TestChunkMeta_Scan(t *testing.T) {
 
 	count = 0
 	err = cm.Scan(ctx, 2, 10, func(bid proto.BlobID, shard *core.ShardMeta) (err error) {
-		fmt.Printf("----- scan => %d, shard: %v\n", bid, shard)
-		count += 1
+		log.Infof("----- scan => %d, shard: %v", bid, shard)
+		count++
 		return nil
 	})
 	require.Equal(t, count, 8)
@@ -186,8 +186,8 @@ func TestChunkMeta_Scan(t *testing.T) {
 	// eof
 	count = 0
 	err = cm.Scan(ctx, 8, 1, func(bid proto.BlobID, shard *core.ShardMeta) (err error) {
-		fmt.Printf("----- scan => %d, shard: %v\n", bid, shard)
-		count += 1
+		log.Infof("----- scan => %d, shard: %v", bid, shard)
+		count++
 		return nil
 	})
 	require.Equal(t, count, 1)
@@ -195,8 +195,8 @@ func TestChunkMeta_Scan(t *testing.T) {
 
 	count = 0
 	err = cm.Scan(ctx, 8, 2, func(bid proto.BlobID, shard *core.ShardMeta) (err error) {
-		fmt.Printf("----- scan => %d, shard: %v\n", bid, shard)
-		count += 1
+		log.Infof("----- scan => %d, shard: %v", bid, shard)
+		count++
 		return nil
 	})
 	require.Equal(t, count, 2)
@@ -204,8 +204,8 @@ func TestChunkMeta_Scan(t *testing.T) {
 
 	count = 0
 	err = cm.Scan(ctx, 9, 2, func(bid proto.BlobID, shard *core.ShardMeta) (err error) {
-		fmt.Printf("----- scan => %d, shard: %v\n", bid, shard)
-		count += 1
+		log.Infof("----- scan => %d, shard: %v", bid, shard)
+		count++
 		return nil
 	})
 	require.Equal(t, count, 1)
@@ -238,7 +238,7 @@ func TestChunkMeta_Destroy(t *testing.T) {
 	ctx := context.Background()
 
 	diskmetapath := filepath.Join(testDir, "DiskPath")
-	println(diskmetapath)
+	log.Info(diskmetapath)
 
 	err = os.MkdirAll(diskmetapath, 0o755)
 	require.NoError(t, err)

@@ -57,12 +57,12 @@ func TestHeartbeat(t *testing.T) {
 }
 
 func TestHeartbeat2(t *testing.T) {
-	diskId := proto.DiskID(101)
+	diskID := proto.DiskID(101)
 	mockClusterMgrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if strings.HasPrefix(req.URL.Path, "/diskid/alloc") {
-			b, _ := json.Marshal(cmapi.DiskIDAllocRet{DiskID: diskId})
+			b, _ := json.Marshal(cmapi.DiskIDAllocRet{DiskID: diskID})
 			_, _ = w.Write(b)
-			diskId++
+			diskID++
 			return
 		}
 		if strings.HasPrefix(req.URL.Path, "/disk/heartbeat") {
@@ -78,8 +78,6 @@ func TestHeartbeat2(t *testing.T) {
 	workDir, err := ioutil.TempDir(os.TempDir(), defaultSvrTestDir+"Heartbeat2")
 	require.NoError(t, err)
 	defer os.Remove(workDir)
-
-	t.Log("work dir: ", workDir)
 
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
@@ -114,14 +112,14 @@ func TestHeartbeat2(t *testing.T) {
 
 func TestHeartbeat3(t *testing.T) {
 	lock := sync.RWMutex{}
-	diskId := proto.DiskID(101)
+	diskID := proto.DiskID(101)
 	mockClusterMgrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if strings.HasPrefix(req.URL.Path, "/diskid/alloc") {
 			lock.Lock()
 			defer lock.Unlock()
-			b, _ := json.Marshal(cmapi.DiskIDAllocRet{DiskID: diskId})
+			b, _ := json.Marshal(cmapi.DiskIDAllocRet{DiskID: diskID})
 			_, _ = w.Write(b)
-			diskId++
+			diskID++
 			return
 		}
 		if strings.HasPrefix(req.URL.Path, "/disk/heartbeat") {
@@ -145,8 +143,6 @@ func TestHeartbeat3(t *testing.T) {
 	workDir, err := ioutil.TempDir(os.TempDir(), defaultSvrTestDir+"Heartbeat3")
 	require.NoError(t, err)
 	defer os.Remove(workDir)
-
-	t.Log("work dir: ", workDir)
 
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
