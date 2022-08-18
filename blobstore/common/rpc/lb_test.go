@@ -27,8 +27,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 type ret struct {
@@ -98,7 +96,6 @@ func TestLbClient_DefaultConfig(t *testing.T) {
 
 func TestLbClient_GetWithNoHost(t *testing.T) {
 	now := time.Now().UnixNano() / 1e6
-	log.SetOutputLevel(log.Lwarn)
 	cfg := newCfg([]string{"http://127.0.0.1:8898", "http://127.0.0.1:8888"}, nil)
 	cfg.FailRetryIntervalS = 5
 	client := NewLbClient(cfg, nil)
@@ -140,7 +137,6 @@ func TestLbClient_Put(t *testing.T) {
 
 func TestLbClient_GetWith(t *testing.T) {
 	now := time.Now().UnixNano() / 1e6
-	log.SetOutputLevel(log.Ldebug)
 	cfg := newCfg([]string{testServer.URL, "http://127.0.0.1:8898", "http://127.0.0.1:12345"},
 		[]string{testServer.URL})
 	cfg.FailRetryIntervalS = 5
@@ -337,7 +333,6 @@ func TestLbClient_New(t *testing.T) {
 func TestLbClient_EnableHost(t *testing.T) {
 	cfg := newCfg([]string{"http://127.0.0.1:8898"}, []string{testServer.URL, "http://127.0.0.1:8888"})
 	cfg.FailRetryIntervalS = 1
-	log.SetOutputLevel(log.Lwarn)
 	client := NewLbClient(cfg, nil)
 	wg := sync.WaitGroup{}
 	var number int = 1

@@ -93,7 +93,6 @@ func TestSnapshot(t *testing.T) {
 		assert.NoError(t, err)
 		err = diskDropTbl2.AddDroppingDisk(proto.DiskID(2))
 		assert.NoError(t, err)
-
 	}
 
 	// create snapshot and apply snapshot
@@ -132,6 +131,5 @@ func TestSnapshot(t *testing.T) {
 
 		err = raftNode.ApplyRaftSnapshot(ctx, snapshot)
 		assert.NoError(t, err)
-
 	}
 }

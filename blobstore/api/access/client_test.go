@@ -41,6 +41,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -85,8 +86,6 @@ var (
 )
 
 func init() {
-	log.SetOutputLevel(log.Lfatal)
-
 	t := time.Now()
 	services = make([]*api.ServiceEntry, 0, 2)
 	services = append(services, &api.ServiceEntry{

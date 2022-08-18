@@ -155,6 +155,8 @@ func TestSpan_TrackLogWithDuration(t *testing.T) {
 }
 
 func TestSpan_BaseLogger(t *testing.T) {
+	originLevel := log.GetOutputLevel()
+	defer log.SetOutputLevel(originLevel)
 	rootSpan, ctx := StartSpanFromContext(context.Background(), "test baseLogger")
 	defer rootSpan.Finish()
 

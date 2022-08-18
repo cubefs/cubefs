@@ -35,12 +35,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
-
-func init() {
-	log.SetOutputLevel(log.Lfatal)
-}
 
 func getDiskIDFn(ctx context.Context) (proto.DiskID, error) {
 	return 101, nil

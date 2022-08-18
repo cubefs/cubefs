@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/stretchr/testify/assert"
 )
 

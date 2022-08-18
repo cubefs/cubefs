@@ -30,13 +30,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
-
-func init() {
-	log.SetOutputLevel(log.Lfatal)
-}
 
 var (
 	A = gomock.Any()

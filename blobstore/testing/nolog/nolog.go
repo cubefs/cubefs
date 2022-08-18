@@ -12,33 +12,11 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package core
+// Package nolog for dummy logger in testing cases.
+package nolog
 
-import (
-	"context"
-	"testing"
+import "github.com/cubefs/cubefs/blobstore/util/log"
 
-	"github.com/stretchr/testify/require"
-
-	"github.com/cubefs/cubefs/blobstore/common/proto"
-	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
-)
-
-func TestInitConfig(t *testing.T) {
-	conf := &Config{
-		BaseConfig: BaseConfig{
-			Path: "",
-		},
-	}
-
-	err := InitConfig(conf)
-	require.Error(t, err)
-
-	conf.Path = "/home"
-	err = InitConfig(conf)
-	require.Error(t, err)
-
-	conf.HandleIOError = func(ctx context.Context, diskID proto.DiskID, diskErr error) {}
-	err = InitConfig(conf)
-	require.Error(t, err)
+func init() {
+	log.SetOutputLevel(log.Lfatal)
 }

@@ -32,7 +32,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -126,7 +125,6 @@ func TestAlloc(t *testing.T) {
 		testDiskMgr.refresh(ctx)
 
 		t.Log(fmt.Sprintf("all disk length: %d", len(testDiskMgr.allDisks)))
-		log.SetOutputLevel(log.Ldebug)
 
 		// alloc from not enough space, alloc should return ErrNoEnoughSpace
 		for _, idc := range testIdcs {
@@ -239,7 +237,6 @@ func TestAllocWithSameHost(t *testing.T) {
 		testDiskMgr.refresh(ctx)
 
 		t.Log(fmt.Sprintf("all disk length: %d", len(testDiskMgr.allDisks)))
-		log.SetOutputLevel(log.Ldebug)
 
 		// alloc from not enough space, alloc should return ErrNoEnoughSpace
 		for _, idc := range testIdcs {
@@ -358,7 +355,6 @@ func TestAllocWithDiffRack(t *testing.T) {
 		testDiskMgr.HostAware = true
 		testDiskMgr.RackAware = true
 		testDiskMgr.refresh(ctx)
-		log.SetOutputLevel(log.Ldebug)
 		// alloc from not enough rack, but enough data node, it should be successful
 		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
 		diskIDs, err := allocator.alloc(ctx, 10, nil)
@@ -416,7 +412,6 @@ func TestAllocWithDiffHost(t *testing.T) {
 		testDiskMgr.HostAware = true
 		testDiskMgr.RackAware = false
 		testDiskMgr.refresh(ctx)
-		log.SetOutputLevel(log.Ldebug)
 		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
 		diskIDs, err := allocator.alloc(ctx, 10, nil)
 		require.NoError(t, err)
@@ -481,7 +476,6 @@ func TestAllocWithDiffRackAndSameHost(t *testing.T) {
 		testDiskMgr.HostAware = false
 		testDiskMgr.RackAware = true
 		testDiskMgr.refresh(ctx)
-		log.SetOutputLevel(log.Ldebug)
 		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
 		diskIDs, err := allocator.alloc(ctx, 10, nil)
 		require.NoError(t, err)
@@ -520,7 +514,6 @@ func TestAllocCost(t *testing.T) {
 		concurrency = 10
 		totalTimes  = 1 * 100
 	)
-	log.SetOutputLevel(log.Linfo)
 
 	initTestDiskMgrDisks(t, testDiskMgr, 1, 18000, testIdcs[0])
 	// refresh cluster's disk space allocator

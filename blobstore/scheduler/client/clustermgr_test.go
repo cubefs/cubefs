@@ -31,17 +31,13 @@ import (
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
-	"github.com/cubefs/cubefs/blobstore/util/log"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 var (
 	defaultVolumeListMarker = proto.Vid(0)
 	defaultDiskListMarker   = proto.DiskID(0)
 )
-
-func init() {
-	log.SetOutputLevel(log.Lfatal)
-}
 
 func MockGenVolInfo(vid proto.Vid, mode codemode.CodeMode, status proto.VolumeStatus) *cmapi.VolumeInfo {
 	cmInfo := mode.Tactic()

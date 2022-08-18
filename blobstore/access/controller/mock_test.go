@@ -30,8 +30,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/redis"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
@@ -55,7 +55,6 @@ var (
 
 func init() {
 	rand.Seed(int64(time.Now().Nanosecond()))
-	log.SetOutputLevel(log.Lfatal)
 
 	dataCalled = map[proto.Vid]int{1: 0, 9: 0}
 

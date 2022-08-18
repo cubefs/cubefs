@@ -28,12 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
-
-func init() {
-	log.SetOutputLevel(log.Lfatal)
-}
 
 type mockmeta struct {
 	id            bnapi.ChunkId
