@@ -414,16 +414,19 @@ func (c *Cluster) createEcDataPartition(vol *Vol, dp *DataPartition) (ecdp *EcDa
 	defer vol.createDpMutex.Unlock()
 	errChannel := make(chan error, replicaNum)
 	zoneNum := int(math.Ceil(float64(replicaNum) / float64(vol.EcParityNum)))
-	if targetHosts, err = c.chooseTargetEcNodes("", nil, int(replicaNum), zoneNum); err != nil {
+	if targetHosts, err = c.chooseTargetEcNodes("", nil, int(replicaNum), zoneNum, neededSpace); err != nil {
 		goto errHandler
 	}
 
 	for _, host := range targetHosts {
-		if ecNode, err = c.ecNode(host); err == nil && (ecNode.RemainCapacity < neededSpace+util.MB) {
-			err = errors.New(fmt.Sprintf("select ecnode:%v free space is less than needed:%v", host, neededSpace))
+		if ecNode, err = c.ecNode(host); err == nil && (ecNode.MaxDiskAvailSpace < neededSpace) {
+			err = errors.New(fmt.Sprintf("select ecnode:%v max disk free space is less than needed:%v", host, neededSpace))
 			return
 		}
-		ecNode.RemainCapacity -= neededSpace
+		ecNode.Lock()
+		ecNode.AvailableSpace    -= neededSpace
+		ecNode.MaxDiskAvailSpace -= neededSpace
+		ecNode.Unlock()
 	}
 
 	ecdp = newEcDataPartition(vol.EcDataNum, vol.EcParityNum, vol.EcMaxUnitSize, dp.PartitionID, vol.ID, vol.Name)
@@ -529,7 +532,7 @@ func (c *Cluster) decommissionEcDataPartition(offlineAddr string, ecdp *EcDataPa
 		goto errHandler
 	}
 
-	if targetHosts, _, err = zone.getAvailEcNodeHosts(ecdp.Hosts, 1); err != nil {
+	if targetHosts, _, err = zone.getAvailEcNodeHosts(ecdp.Hosts, 1, ecdp.NeededSpace); err != nil {
 		// select ec nodes from the other zone
 		zones = ecdp.getLiveZones(offlineAddr)
 		if len(zones) == 0 {
@@ -537,7 +540,7 @@ func (c *Cluster) decommissionEcDataPartition(offlineAddr string, ecdp *EcDataPa
 		} else {
 			excludeZone = zones[0]
 		}
-		if targetHosts, err = c.chooseTargetEcNodes(excludeZone, ecdp.Hosts, 1, 1); err != nil {
+		if targetHosts, err = c.chooseTargetEcNodes(excludeZone, ecdp.Hosts, 1, 1, ecdp.NeededSpace); err != nil {
 			goto errHandler
 		}
 	}

@@ -255,7 +255,6 @@ func (e *EcNode) buildHeartbeatResponse(response *proto.EcNodeHeartbeatResponse)
 	response.MaxCapacity = stat.MaxCapacityToCreatePartition
 	response.CreatedPartitionCnt = uint32(stat.CreatedPartitionCnt)
 	response.TotalPartitionSize = stat.TotalPartitionSize
-	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
 	response.BadDisks = make([]string, 0)
 	response.Version = EcNodeLatestVersion
 	stat.Unlock()

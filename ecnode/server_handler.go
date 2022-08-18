@@ -21,10 +21,12 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"hash/crc32"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -297,7 +299,8 @@ func checkExtentParityData(ecStripe *ecStripe, ep *EcPartition, stripeUnitOffset
 	}
 	for i := 0; i < int(ep.EcParityNum); i++ {
 		if crc32.ChecksumIEEE(parityData[i]) != crc32.ChecksumIEEE(stripeData[int(ep.EcDataNum)+i]) {
-			err = errors.New("parity data not consistent")
+			err = errors.NewErrorf("partition(%v) extent(%v) stripe data not consistent", ep.PartitionID, ecStripe.extentID)
+			exporter.Warning(err.Error())
 			break
 		}
 	}
@@ -435,4 +438,56 @@ func (e *EcNode) setMaxTinyDelCount(w http.ResponseWriter, r *http.Request) {
 	log.LogDebugf("setMaxTinyDelCount maxTinyDelCount(%v)", maxTinyDelCount)
 	e.maxTinyDelCount = uint8(maxTinyDelCount)
 	e.buildSuccessResp(w, "")
+}
+
+func (e *EcNode) setEcPartitionSize(w http.ResponseWriter, r *http.Request) {
+	var (
+		size           uint64
+		partitionId    uint64
+		err            error
+	)
+	if err = r.ParseForm(); err != nil {
+		e.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if partitionId, err = strconv.ParseUint(r.FormValue("partitionId"), 10, 64); err != nil {
+		e.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if size, err = strconv.ParseUint(r.FormValue("size"), 10, 64); err != nil {
+		e.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	log.LogDebugf("setEcPartition(%v) Size(%v)", partitionId, size)
+	ep := e.space.Partition(partitionId)
+	if ep == nil {
+		err = errors.NewErrorf("no this ec partition(%v)", partitionId)
+		e.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	
+	if size < ep.Used() {
+		err = errors.NewErrorf("partition(%v) setSize < used", partitionId)
+		e.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ep.PartitionSize = size
+	currentPath := path.Clean(ep.path)
+	newPath := path.Join(path.Dir(currentPath), fmt.Sprintf(EcPartitionPrefix+"_%v_%v", partitionId, size))
+	err = os.Rename(currentPath, newPath)
+	if err != nil {
+		e.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ep.path = newPath
+	err = ep.PersistMetaData()
+	if err != nil {
+		e.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	e.buildSuccessResp(w, "success")
 }

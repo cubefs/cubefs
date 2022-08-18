@@ -1573,11 +1573,40 @@ func (zone *Zone) ecNodeCount() (len int) {
 	return
 }
 
-func (zone *Zone) getAvailEcNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (zone *Zone) getAvailEcNodeHosts(excludeHosts []string, replicaNum int, needAllocSpace uint64) (newHosts []string, peers []proto.Peer, err error) {
+	orderHosts := make([]string, 0)
+	newHosts = make([]string, 0)
+	peers = make([]proto.Peer, 0)
 	if replicaNum == 0 {
 		return
 	}
-	return getAvailHosts(zone.ecNodes, excludeHosts, replicaNum, selectEcNode, proto.StoreModeDef)
+	maxTotal := getEcNodeMaxTotal(zone.ecNodes)
+	if maxTotal == 0 {
+		err = fmt.Errorf("action[getAvailHosts] maxTotal is zero")
+		return
+	}
+	weightedNodes, count := getAvailCarryEcNodeTab(maxTotal, excludeHosts, zone.ecNodes, needAllocSpace)
+	if len(weightedNodes) < replicaNum {
+		err = fmt.Errorf("action[getAvailHosts] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+			replicaNum, len(weightedNodes))
+		return
+	}
+	weightedNodes.setNodeCarry(count, replicaNum, proto.StoreModeDef)
+	sort.Sort(weightedNodes)
+
+	for i := 0; i < replicaNum; i++ {
+		node := weightedNodes[i].Ptr
+		node.SelectNodeForWrite(proto.StoreModeDef)
+		orderHosts = append(orderHosts, node.GetAddr())
+		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
+		peers = append(peers, peer)
+	}
+
+	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
+		err = fmt.Errorf("action[getAvailHosts] err:%v  orderHosts is nil", err.Error())
+		return
+	}
+	return
 }
 
 func (zone *Zone) putEcNode(ecNode *ECNode) (err error) {

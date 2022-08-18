@@ -821,6 +821,10 @@ func TestEcNode_httpApi(t *testing.T) {
 	if err := releasePartitions(addr, t); err != nil {
 		t.Fatal(err)
 	}
+
+	if err := setEcPartitionSize(addr, ep.PartitionID, t); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestEcNode_updateMetrics(t *testing.T) {
@@ -1108,6 +1112,15 @@ func releasePartitions(addr string, t *testing.T) (err error) {
 	_, err = getHttpRequestResp(releasePartitionsUrl, t)
 	if err != nil {
 		t.Fatalf("http releasePartitions error")
+	}
+	return
+}
+
+func setEcPartitionSize(addr string, partitionId uint64, t *testing.T) (err error) {
+	url := fmt.Sprintf("http://%s/setEcPartitionSize?partitionId=%v&size=%v", addr, partitionId, 1*util.GB)
+	_, err = getHttpRequestResp(url, t)
+	if err != nil {
+		t.Fatalf("http setEcPartitionSize error")
 	}
 	return
 }

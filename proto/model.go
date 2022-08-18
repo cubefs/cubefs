@@ -88,7 +88,7 @@ type EcNodeInfo struct {
 	Total                     uint64 `json:"TotalWeight"`
 	Used                      uint64 `json:"UsedWeight"`
 	AvailableSpace            uint64
-	RemainCapacity            uint64
+	MaxDiskAvailSpace         uint64
 	ID                        uint64
 	ZoneName                  string `json:"Zone"`
 	Addr                      string

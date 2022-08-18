@@ -208,9 +208,6 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	case selectMetaNode:
 		maxTotalFunc = getMetaNodeMaxTotal
 		getCarryNodesFunc = getAllCarryMetaNodes
-	case selectEcNode:
-		maxTotalFunc = getEcNodeMaxTotal
-		getCarryNodesFunc = getAvailCarryEcNodeTab
 	default:
 		return nil, nil, fmt.Errorf("invalid selectType[%v]", selectType)
 	}

@@ -186,7 +186,6 @@ func (ecs *MockEcServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, task
 	response.CreatedPartitionCnt = 3
 	response.TotalPartitionSize = 120 * util.GB
 	response.MaxCapacity = 800 * util.GB
-	response.RemainingCapacity = 800 * util.GB
 	response.CellName = ecs.zoneName
 
 	response.PartitionReports = make([]*proto.EcPartitionReport, 0)
