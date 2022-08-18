@@ -33,16 +33,13 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
 	defaultDiskTestDir = "NodeDiskTestDir"
 )
-
-func init() {
-	log.SetOutputLevel(log.Lfatal)
-}
 
 func TestNewChunkStorage(t *testing.T) {
 	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"NewChunkStorage")

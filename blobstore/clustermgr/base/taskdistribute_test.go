@@ -17,6 +17,7 @@ package base
 import (
 	"testing"
 
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 

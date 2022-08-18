@@ -25,7 +25,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
 	rp "github.com/cubefs/cubefs/blobstore/common/resourcepool"
-	"github.com/cubefs/cubefs/blobstore/util/log"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 const (
@@ -40,7 +40,6 @@ var memPool = rp.NewMemPool(map[int]int{kb64: 1, mb: 1})
 
 func init() {
 	mrand.Seed(time.Now().Unix())
-	log.SetOutputLevel(log.Lfatal)
 }
 
 func TestNewBuffer(t *testing.T) {

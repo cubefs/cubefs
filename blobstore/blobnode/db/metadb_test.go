@@ -31,12 +31,8 @@ import (
 
 	rdb "github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util/log"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
-
-func init() {
-	log.SetOutputLevel(log.Lfatal)
-}
 
 func TestNewKVDB(t *testing.T) {
 	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbNew")

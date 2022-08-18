@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	"github.com/cubefs/cubefs/blobstore/util/log"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 func TestProfileBase(t *testing.T) {
@@ -51,7 +51,7 @@ func TestProfileBase(t *testing.T) {
 		Addr:    "127.0.0.1:8888",
 		Handler: rpc.MiddlewareHandlerWith(defaultRouter, ph),
 	}
-	log.Info("Server is running at", "127.0.0.1:8888")
+	t.Log("Server is running at", "127.0.0.1:8888")
 	go func() {
 		err = httpServer.ListenAndServe()
 		require.NoError(t, err)

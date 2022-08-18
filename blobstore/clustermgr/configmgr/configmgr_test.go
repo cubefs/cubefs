@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 func TestConfigMgr(t *testing.T) {

@@ -35,10 +35,12 @@ const (
 var cli = http.Client{Transport: &http.Transport{}}
 
 func setLogLevel() {
-	log.SetOutputLevel(log.Lerror)
+	log.SetOutputLevel(log.Lfatal)
 }
 
 func init() {
+	setLogLevel()
+
 	mux := New()
 	mux.Handle(http.MethodGet, "/", func(c *Context) {
 		remoteIP, ok := c.RemoteIP()
@@ -65,6 +67,7 @@ func init() {
 	})
 	mux.Handle(http.MethodGet, "/stream", func(c *Context) {
 		n := 0
+		c.RespondStatus(http.StatusPartialContent)
 		clientGone := c.Stream(func(w io.Writer) bool {
 			if n < 1<<20 {
 				n += 1 << 10
@@ -90,8 +93,6 @@ func init() {
 		}
 	}()
 	time.Sleep(time.Second)
-
-	setLogLevel()
 }
 
 func TestServerResponse(t *testing.T) {
@@ -135,7 +136,7 @@ func TestServerResponse(t *testing.T) {
 		require.NoError(t, err)
 		resp.Body.Close()
 
-		require.Equal(t, 200, resp.StatusCode)
+		require.Equal(t, 206, resp.StatusCode)
 		buf := make([]byte, 1<<22)
 		n, _ := resp.Body.Read(buf)
 		require.Equal(t, 0, n)
@@ -147,7 +148,7 @@ func TestServerResponse(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		require.Equal(t, 200, resp.StatusCode)
+		require.Equal(t, 206, resp.StatusCode)
 		buf := make([]byte, 1<<18)
 		_, err = io.ReadFull(resp.Body, buf)
 		require.NoError(t, err)

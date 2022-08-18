@@ -22,7 +22,7 @@ import (
 	"github.com/Shopify/sarama"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/util/log"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 //go:generate mockgen -destination=./utils_mock_test.go -package=base -mock_names IAllocVunit=MockAllocVunit github.com/cubefs/cubefs/blobstore/scheduler/base IAllocVunit
@@ -30,10 +30,6 @@ import (
 const testTopic = "test_topic"
 
 var errMock = errors.New("mock error")
-
-func init() {
-	log.SetOutputLevel(log.Lfatal)
-}
 
 func newBroker(t *testing.T) *sarama.MockBroker {
 	mockFetchResponse := sarama.NewMockFetchResponse(t, 1)

@@ -17,6 +17,7 @@ package config
 import (
 	"testing"
 
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/stretchr/testify/assert"
 )
 

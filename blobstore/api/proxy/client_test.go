@@ -25,6 +25,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 func TestClient_VolumeAlloc(t *testing.T) {

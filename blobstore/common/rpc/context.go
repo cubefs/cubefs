@@ -250,6 +250,7 @@ func (c *Context) RemoteIP() (net.IP, bool) {
 
 // Hijack implements the http.Hijacker interface.
 func (c *Context) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	c.wroteHeader = true
 	return c.Writer.(http.Hijacker).Hijack()
 }
 

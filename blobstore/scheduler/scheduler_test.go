@@ -25,7 +25,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
-	"github.com/cubefs/cubefs/blobstore/util/log"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 // github.com/cubefs/cubefs/blobstore/scheduler/... module scheduler interfaces
@@ -41,10 +41,6 @@ var (
 	any     = gomock.Any()
 	errMock = errors.New("fake error")
 )
-
-func init() {
-	log.SetOutputLevel(log.Lfatal)
-}
 
 func NewBroker(t *testing.T) *sarama.MockBroker {
 	mockFetchResponse := sarama.NewMockFetchResponse(t, 1)

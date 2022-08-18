@@ -49,7 +49,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
-	"github.com/cubefs/cubefs/blobstore/util/log"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 var (
@@ -496,7 +496,6 @@ func newMockStorageAPI() blobnode.StorageAPI {
 
 func init() {
 	rand.Seed(int64(time.Now().Nanosecond()))
-	log.SetOutputLevel(log.Lfatal)
 
 	hystrix.ConfigureCommand(rwCommand, hystrix.CommandConfig{
 		Timeout:               9000,

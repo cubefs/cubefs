@@ -27,16 +27,13 @@ import (
 
 	rdb "github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util/log"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 func BenchmarkKVDB_CoPut(b *testing.B) {
 	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbCoPut")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
-
-	log.SetOutputLevel(log.Lerror)
-	defer log.SetOutputLevel(log.Linfo)
 
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "kvloop")
 
@@ -83,9 +80,6 @@ func BenchmarkKVDB_DirectPut(b *testing.B) {
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
 
-	log.SetOutputLevel(log.Lerror)
-	defer log.SetOutputLevel(log.Linfo)
-
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "kvloop")
 
 	diskdir := filepath.Join(testDir, "disk1/")
@@ -130,9 +124,6 @@ func BenchmarkKVDB_CoDelete(b *testing.B) {
 	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbCoDelete")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
-
-	log.SetOutputLevel(log.Lerror)
-	defer log.SetOutputLevel(log.Linfo)
 
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "kvloop")
 
@@ -189,9 +180,6 @@ func BenchmarkKVDB_DirectDelete(b *testing.B) {
 	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbDelete")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
-
-	log.SetOutputLevel(log.Lerror)
-	defer log.SetOutputLevel(log.Linfo)
 
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "kvloop")
 

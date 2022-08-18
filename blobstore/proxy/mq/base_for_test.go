@@ -22,6 +22,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/proxy/mock"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 func newProducer() Producer {
