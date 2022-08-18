@@ -666,7 +666,7 @@ func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, repairBids []p
 	return
 }
 
-func (r *ShardRecover) repairStripe(ctx context.Context, repairBids []proto.BlobID, stripe repairStripe) error {
+func (r *ShardRecover) repairStripe(ctx context.Context, repairBids []proto.BlobID, stripe repairStripe) (err error) {
 	// step1:gen download plans for repair
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -677,16 +677,16 @@ func (r *ShardRecover) repairStripe(ctx context.Context, repairBids []proto.Blob
 	// step2:download data according download plans and repair data
 	for _, plan := range downloadPlans {
 		r.download(ctx, failBids, plan.downloadReplicas)
-		err := r.repair(ctx, failBids, stripe)
+		err = r.repair(ctx, failBids, stripe)
 		if err != nil {
-			return err
+			span.Errorf("plan.downloadReplicas:%+v repair error:%v", plan.downloadReplicas, err)
 		}
 		failBids = r.collectFailBids(failBids, stripe.badIdxes)
 		if len(failBids) == 0 {
 			return nil
 		}
 	}
-	return nil
+	return err
 }
 
 func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, replicas Vunits) {
