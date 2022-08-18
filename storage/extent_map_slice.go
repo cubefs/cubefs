@@ -36,6 +36,9 @@ func (ms *MapSlice) Store(extentId uint64, extentBlock ExtentInfoBlock) {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	if extentBlock[FileID] != extentId {
+		return
+	}
 	if idx, ok := ms.idxMap[extentId]; ok {
 		ms.objSlice[idx] = extentBlock
 		return
