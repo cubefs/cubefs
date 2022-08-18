@@ -764,8 +764,9 @@ func (cs *chunk) HasEnoughSpace(needSize int64) bool {
 
 	diskStats := cs.Disk().Stats()
 	reserved := cs.conf.DiskReservedSpaceB
+	compactReserved := cs.conf.CompactReservedSpaceB
 
-	return needSize+reserved < diskStats.Free
+	return needSize+reserved-compactReserved < diskStats.Free
 }
 
 func (cs *chunk) SetStatus(status bnapi.ChunkStatus) (err error) {
