@@ -31,6 +31,7 @@ import (
 	db2 "github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 func TestDiskStorage_StartCompact(t *testing.T) {
@@ -48,15 +49,15 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 	conf.CompactBatchSize = core.DefaultCompactBatchSize
 
 	vuid := proto.Vuid(2001)
-	chunkId := bnapi.NewChunkId(vuid)
+	chunkID := bnapi.NewChunkId(vuid)
 
 	err = core.EnsureDiskArea(testDir, "")
 	require.NoError(t, err)
 
 	dataPath := core.GetDataPath(testDir)
-	println(dataPath)
+	log.Info(dataPath)
 	metaPath := core.GetMetaPath(testDir, "")
-	println(metaPath)
+	log.Info(metaPath)
 
 	mockDiskStorage := &DiskStorageWrapper{&DiskStorage{
 		DiskID:   proto.DiskID(101),
@@ -72,7 +73,7 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 	vm := core.VuidMeta{
 		Vuid:    vuid,
 		DiskID:  12,
-		ChunkId: chunkId,
+		ChunkId: chunkID,
 		Mtime:   time.Now().UnixNano(),
 		Status:  bnapi.ChunkStatusNormal,
 	}
@@ -146,7 +147,7 @@ func TestCompactChunkInternal(t *testing.T) {
 	// bad bytes
 	badBytes := []byte{0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xaa, 0xaa}
 	srcFile := filepath.Join(ds.DataPath, cs.ID().String())
-	t.Log(srcFile)
+	log.Info(srcFile)
 	f, err := os.OpenFile(srcFile, 2, 0o644)
 	require.NoError(t, err)
 	_, err = f.WriteAt(badBytes, 4128)

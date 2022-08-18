@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,7 +36,7 @@ func TestChunkStats_write(t *testing.T) {
 	require.Equal(t, int(0), int(stat.WriteInque))
 	require.Equal(t, int(1), int(stat.TotalWriteCnt))
 	require.Equal(t, int(1024), int(stat.TotalWriteBytes))
-	println(stat.TotalWriteDelay)
+	log.Info(stat.TotalWriteDelay)
 	require.True(t, int64(stat.TotalWriteDelay) >= int64(time.Second))
 }
 
@@ -51,6 +52,6 @@ func TestChunkStats_write_1(t *testing.T) {
 	require.Equal(t, int(0), int(stat.WriteInque))
 	require.Equal(t, int(1), int(stat.TotalWriteCnt))
 	require.Equal(t, int(1024), int(stat.TotalWriteBytes))
-	println(stat.TotalWriteDelay)
+	log.Info(stat.TotalWriteDelay)
 	require.True(t, int64(stat.TotalWriteDelay) >= int64(time.Second))
 }

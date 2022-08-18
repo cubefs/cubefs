@@ -33,11 +33,16 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
 	defaultDiskTestDir = "NodeDiskTestDir"
 )
+
+func init() {
+	log.SetOutputLevel(log.Lfatal)
+}
 
 func TestNewChunkStorage(t *testing.T) {
 	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"NewChunkStorage")
@@ -57,9 +62,9 @@ func TestNewChunkStorage(t *testing.T) {
 	require.NoError(t, err)
 
 	datapath := core.GetDataPath(testDir)
-	println(datapath)
+	log.Info(datapath)
 	metapath := core.GetMetaPath(testDir, "")
-	println(metapath)
+	log.Info(metapath)
 
 	kvdb, err := db.NewMetaHandler(metapath, db.MetaConfig{})
 	require.NoError(t, err)
@@ -117,9 +122,9 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	require.NoError(t, err)
 
 	datapath := core.GetDataPath(testDir)
-	println(datapath)
+	log.Info(datapath)
 	metapath := core.GetMetaPath(testDir, "")
-	println(metapath)
+	log.Info(metapath)
 
 	kvdb, err := db.NewMetaHandler(metapath, db.MetaConfig{})
 	require.NoError(t, err)
@@ -204,7 +209,7 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	// calc crc32
 	expectedCrc := crc32.ChecksumIEEE(shardData)
 	require.Equal(t, expectedCrc, shard.Crc)
-	println(expectedCrc)
+	log.Info(expectedCrc)
 
 	from, to := int64(0), int64(1)
 	_, err = cs.NewRangeReader(ctx, shard.Bid, from, to)
@@ -239,9 +244,9 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 	require.NoError(t, err)
 
 	datapath := core.GetDataPath(testDir)
-	println(datapath)
+	log.Info(datapath)
 	metapath := core.GetMetaPath(testDir, "")
-	println(metapath)
+	log.Info(metapath)
 
 	kvdb, err := db.NewMetaHandler(metapath, db.MetaConfig{})
 	require.NoError(t, err)
@@ -322,7 +327,7 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 	// calc crc32
 	expectedCrc := crc32.ChecksumIEEE(shardData)
 	require.Equal(t, expectedCrc, shard.Crc)
-	println(expectedCrc)
+	log.Info(expectedCrc)
 
 	from, to := int64(0), int64(1)
 	_, err = cs.NewRangeReader(ctx, shard.Bid, from, to)
@@ -354,9 +359,9 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 	require.NoError(t, err)
 
 	datapath := core.GetDataPath(testDir)
-	println(datapath)
+	log.Info(datapath)
 	metapath := core.GetMetaPath(testDir, "")
-	println(metapath)
+	log.Info(metapath)
 
 	kvdb, err := db.NewMetaHandler(metapath, db.MetaConfig{})
 	require.NoError(t, err)
@@ -463,9 +468,9 @@ func TestChunkStorage_Finalizer(t *testing.T) {
 	require.NoError(t, err)
 
 	datapath := core.GetDataPath(testDir)
-	println(datapath)
+	log.Info(datapath)
 	metapath := core.GetMetaPath(testDir, "")
-	println(metapath)
+	log.Info(metapath)
 
 	metadb, err := db.NewMetaHandler(metapath, db.MetaConfig{})
 	require.NoError(t, err)

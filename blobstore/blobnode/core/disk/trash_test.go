@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +36,7 @@ func TestCleanTrash(t *testing.T) {
 	ctx := context.Background()
 
 	diskpath := filepath.Join(testDir, "DiskPath")
-	println(diskpath)
+	log.Info(diskpath)
 
 	err = os.MkdirAll(diskpath, 0o755)
 	require.NoError(t, err)

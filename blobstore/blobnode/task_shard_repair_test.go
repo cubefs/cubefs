@@ -25,6 +25,7 @@ import (
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 func TestContain(t *testing.T) {
@@ -218,7 +219,7 @@ func testShardRepair(t *testing.T, mode codemode.CodeMode) {
 		getter.Delete(context.Background(), localReplica.Vuid, 1)
 		getter.Delete(context.Background(), replicas[1].Vuid, 1)
 		err = repairer.RepairShard(context.Background(), task)
-		t.Log("keno localIdxs", localIdxs)
+		log.Info("keno localIdxs", localIdxs)
 		require.NoError(t, err)
 		checkRepairShardResult(t, getter, replicas, replicasCrc32)
 	}

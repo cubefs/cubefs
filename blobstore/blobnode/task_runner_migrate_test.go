@@ -197,7 +197,7 @@ func TestMigrateExecTasklet(t *testing.T) {
 		require.Equal(t, 4, len(tasklets))
 
 		for _, tasklet := range tasklets {
-			t.Log(w.ExecTasklet(context.Background(), tasklet))
+			require.Nil(t, w.ExecTasklet(context.Background(), tasklet))
 		}
 
 		for _, shard := range shards {

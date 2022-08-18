@@ -154,9 +154,7 @@ func TestReplStorage_Operations(t *testing.T) {
 
 	// ===================================
 	var notifyCnt int
-	notify := func(err error) {
-		notifyCnt += 1
-	}
+	notify := func(err error) { notifyCnt++ }
 	repstg1 := NewReplicateStg(stg, stg2, notify)
 	require.NotNil(t, repstg1)
 	err = repstg1.Write(ctx, b1)

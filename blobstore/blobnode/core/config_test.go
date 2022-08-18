@@ -21,7 +21,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
+
+func init() {
+	log.SetOutputLevel(log.Lfatal)
+}
 
 func TestInitConfig(t *testing.T) {
 	conf := &Config{

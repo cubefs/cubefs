@@ -31,7 +31,12 @@ import (
 
 	rdb "github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
+
+func init() {
+	log.SetOutputLevel(log.Lfatal)
+}
 
 func TestNewKVDB(t *testing.T) {
 	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbNew")
@@ -349,7 +354,7 @@ func TestDeleteRange(t *testing.T) {
 	copy(maxKey, keyPrefix1)
 	binary.BigEndian.PutUint64(maxKey[len(keyPrefix1):], math.MaxUint64)
 
-	fmt.Printf("minKey:%v, maxKey:%v\n", minKey, maxKey)
+	t.Logf("minKey:%v, maxKey:%v", minKey, maxKey)
 
 	err = md.DeleteRange(ctx, minKey, maxKey)
 	require.NoError(t, err)
@@ -365,8 +370,6 @@ func TestDeleteRange(t *testing.T) {
 			copy(keyBuf, keyPrefix2)
 			binary.BigEndian.PutUint64(keyBuf[len(keyPrefix2):], uint64(i))
 		}
-
-		fmt.Printf("key:%v\n", keyBuf)
 
 		value, err := md.Get(ctx, []byte(keyBuf))
 		if i%2 == 0 {

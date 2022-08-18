@@ -26,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 type mockWorker struct {
@@ -129,7 +130,7 @@ func TestTaskRunner(t *testing.T) {
 	}
 	// test stop
 	{
-		t.Log("start test tasklet stop")
+		log.Info("start test tasklet stop")
 		worker := &mockWorker{sleepS: 1}
 		runner := NewTaskRunner(context.Background(), taskID, worker, idc, 2, cli)
 		stats.step = ""
@@ -143,7 +144,7 @@ func TestTaskRunner(t *testing.T) {
 	}
 	// test tasklet fail
 	{
-		t.Log("start test tasklet fail")
+		log.Info("start test tasklet fail")
 		worker := &mockWorker{taskRetErr: errors.New("mock fail"), failIdx: 3}
 		run(worker)
 		require.Equal(t, "Cancel", stats.step)
@@ -151,7 +152,7 @@ func TestTaskRunner(t *testing.T) {
 	}
 	// test check fail
 	{
-		t.Log("start test check fail")
+		log.Info("start test check fail")
 		worker := &mockWorker{checkRetErr: errors.New("mock check fail")}
 		run(worker)
 		require.Equal(t, "Cancel", stats.step)
@@ -159,7 +160,7 @@ func TestTaskRunner(t *testing.T) {
 	}
 	// test genTasklet fail
 	{
-		t.Log("start test genTasklet fail")
+		log.Info("start test genTasklet fail")
 		worker := &mockWorker{genTaskletsErr: errors.New("mock check fail")}
 		run(worker)
 		require.Equal(t, "Cancel", stats.step)
@@ -167,7 +168,7 @@ func TestTaskRunner(t *testing.T) {
 	}
 	// test genTasklet dest fail
 	{
-		t.Log("start test genTasklet dest fail")
+		log.Info("start test genTasklet dest fail")
 		worker := &mockWorker{genTaskletsErr: DstError(errors.New("mock dest fail"))}
 		run(worker)
 		require.Equal(t, "Reclaim", stats.step)
@@ -175,7 +176,7 @@ func TestTaskRunner(t *testing.T) {
 	}
 	// test tasklet complete
 	{
-		t.Log("start test tasklet complete")
+		log.Info("start test tasklet complete")
 		worker := &mockWorker{}
 		run(worker)
 		require.Equal(t, "Complete", stats.step)
