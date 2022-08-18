@@ -174,6 +174,7 @@ func (ds *DiskStorage) DiskInfo() (info bnapi.DiskInfo) {
 	// stats
 	info.Used = stats.Used
 	info.UsedChunkCnt = int64(len(ds.Chunks))
+	// for chunk space
 	info.Free = stats.Free - stats.Reserved
 	if info.Free < 0 {
 		info.Free = 0

@@ -26,6 +26,7 @@ import (
 
 const (
 	DefaultDiskReservedSpaceB           = int64(60 << 30) // 60 GiB
+	DefaultCompactReservedSpaceB        = int64(20 << 30) // 20 GiB
 	DefaultChunkSize                    = int64(16 << 30) // 16 GiB
 	DefaultMaxChunks                    = int32(1 << 13)  // 8192
 	DefaultChunkReleaseProtectionM      = 1440            // 1 days
@@ -53,6 +54,7 @@ type BaseConfig struct {
 
 type RuntimeConfig struct {
 	DiskReservedSpaceB           int64      `json:"disk_reserved_space_B"`             // threshold
+	CompactReservedSpaceB        int64      `json:"compact_reserved_space_B"`          // compact reserve
 	ChunkReleaseProtectionM      int64      `json:"chunk_protection_M"`                // protect
 	ChunkCompactIntervalSec      int64      `json:"chunk_compact_interval_S"`          // loop
 	ChunkCleanIntervalSec        int64      `json:"chunk_clean_interval_S"`            // loop
@@ -106,6 +108,9 @@ func InitConfig(conf *Config) error {
 	}
 	if conf.DiskReservedSpaceB <= 0 {
 		conf.DiskReservedSpaceB = DefaultDiskReservedSpaceB
+	}
+	if conf.CompactReservedSpaceB <= 0 {
+		conf.CompactReservedSpaceB = DefaultCompactReservedSpaceB
 	}
 	if conf.MaxChunks <= 0 {
 		conf.MaxChunks = DefaultMaxChunks
