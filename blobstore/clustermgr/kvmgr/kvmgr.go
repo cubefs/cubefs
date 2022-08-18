@@ -35,9 +35,10 @@ type KvMgrAPI interface {
 }
 
 type KvMgr struct {
-	module   string
-	tbl      *kvdb.KvTable
-	taskPool *base.TaskDistribution
+	module           string
+	applyConcurrency uint64
+	tbl              *kvdb.KvTable
+	taskPool         *base.TaskDistribution
 }
 
 func NewKvMgr(db *kvdb.KvDB) (*KvMgr, error) {
@@ -46,9 +47,10 @@ func NewKvMgr(db *kvdb.KvDB) (*KvMgr, error) {
 		return nil, err
 	}
 	t := &KvMgr{
-		tbl:      kvTbl,
-		module:   moduleName,
-		taskPool: base.NewTaskDistribution(defaultApplyConcurrency, 1),
+		tbl:              kvTbl,
+		module:           moduleName,
+		applyConcurrency: uint64(defaultApplyConcurrency),
+		taskPool:         base.NewTaskDistribution(defaultApplyConcurrency, 1),
 	}
 	return t, nil
 }

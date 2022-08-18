@@ -18,7 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	"hash/fnv"
 	"sync"
 	"time"
 
@@ -64,7 +64,7 @@ func (t *KvMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, co
 				continue
 			}
 			unmarshalCost := time.Since(start)
-			t.taskPool.Run(rand.Intn(defaultApplyConcurrency), func() {
+			t.taskPool.Run(t.getTaskIdx(kvSetArgs.Key), func() {
 				errs[idx] = t.Set(kvSetArgs.Key, kvSetArgs.Value)
 				wg.Done()
 				span.Debugf("unmarshal cost time : %v", unmarshalCost)
@@ -78,7 +78,7 @@ func (t *KvMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, co
 				wg.Done()
 				continue
 			}
-			t.taskPool.Run(rand.Intn(defaultApplyConcurrency), func() {
+			t.taskPool.Run(t.getTaskIdx(kvDeleteArgs.Key), func() {
 				errs[idx] = t.Delete(kvDeleteArgs.Key)
 				wg.Done()
 			})
@@ -109,4 +109,11 @@ func (t *KvMgr) Flush(ctx context.Context) error {
 
 // Switch manager work when leader change
 func (t *KvMgr) NotifyLeaderChange(ctx context.Context, leader uint64, host string) {
+}
+
+func (t *KvMgr) getTaskIdx(key string) int {
+	h := fnv.New64()
+	h.Write([]byte(key))
+	kIdx := h.Sum64()
+	return int(kIdx % t.applyConcurrency)
 }
