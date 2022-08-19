@@ -332,10 +332,11 @@ func New(cfg Config) (API, error) {
 					continue
 				}
 				if isUpdated(old, hosts) {
-					oldClient, ok := c.rpcClient.Swap(getClient(&cfg, hosts)).(rpc.Client)
+					oldClient, ok := c.rpcClient.Load().(rpc.Client)
 					if ok && oldClient != nil {
 						oldClient.Close()
 					}
+					c.rpcClient.Store(getClient(&cfg, hosts))
 				}
 			case <-c.stop:
 				ticker.Stop()

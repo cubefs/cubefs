@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -66,6 +67,13 @@ func (s *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type testTimeoutReader struct{}
+
+func (t *testTimeoutReader) Read(p []byte) (n int, err error) {
+	time.Sleep(time.Millisecond * 20)
+	return 0, nil
+}
+
 func doAfterCrc(w http.ResponseWriter, req *http.Request) {
 	dec := crc32block.NewBodyDecoder(req.Body)
 	defer dec.Close()
@@ -109,7 +117,7 @@ var simpleCfg = &Config{
 		DialTimeoutMs:           1000,
 		ResponseHeaderTimeoutMs: 3000,
 		MaxConnsPerHost:         100,
-		MaxIdleConns:            100,
+		MaxIdleConns:            1000,
 		MaxIdleConnsPerHost:     10,
 		IdleConnTimeoutMs:       60000,
 		DisableCompression:      true,
@@ -203,18 +211,18 @@ func TestClient_PostWithReadResponseTimeout(t *testing.T) {
 	for err == nil {
 		_, err = resp.Body.Read(cache)
 	}
-	assert.Equal(t, "read body timeout", err.Error())
+	assert.Equal(t, ErrBodyReadTimeout, err)
+}
 
-	simpleCfg.BodyBaseTimeoutMs = 1
-	simpleCfg.BodyBandwidthMBPs = 1
-	simpleCli = NewClient(simpleCfg)
-	resp, err = simpleCli.Post(ctx, testServer.URL+"/timeout", &ret{Name: "TestClient_Post"})
-	assert.NoError(t, err)
-	defer resp.Body.Close()
-	cache = make([]byte, 2*1024*1024*1024)
-	_, err = resp.Body.Read(cache)
-	assert.Error(t, err)
-	assert.Equal(t, "read body timeout", err.Error())
+func TestTimeoutReadCloser_Read(t *testing.T) {
+	// test for read data for input buffer timeout
+	readCloser := timeoutReadCloser{
+		timeoutMs: 1,
+		body:      ioutil.NopCloser(&testTimeoutReader{}),
+	}
+	res := make([]byte, 30)
+	_, err := readCloser.Read(res)
+	assert.Equal(t, ErrBodyReadTimeout, err)
 }
 
 func TestClient_Put(t *testing.T) {
