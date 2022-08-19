@@ -41,33 +41,36 @@ func addCmdKafkaConsumer(cmd *grumble.Command) {
 		Name: "get",
 		Help: "get kafka consume offset",
 		Run:  cmdGetConsumeOffset,
-		Args: func(a *grumble.Args) {
-			a.String(_taskType, "task_type, such as shard_repair and blob_delete")
-			a.String(_topic, _topic, grumble.Default(""))
-			a.Int(_partition, _partition, grumble.Default(int(0)))
+		Flags: func(f *grumble.Flags) {
+			kafkaFlag(f)
 		},
 	})
 	kafkaCommand.AddCommand(&grumble.Command{
 		Name: "set",
 		Help: "set kafka consume offset",
 		Run:  cmdSetConsumeOffset,
-		Args: func(a *grumble.Args) {
-			a.String(_taskType, "task_type, such as shard_repair and blob_delete")
-			a.String(_topic, _topic, grumble.Default(""))
-			a.Int(_partition, _partition, grumble.Default(int(0)))
-			a.Int64(_offset, _offset, grumble.Default(int64(0)))
+		Flags: func(f *grumble.Flags) {
+			kafkaFlag(f)
+			f.Int64L(_offset, 0, "set the offset")
 		},
 	})
 }
 
+func kafkaFlag(f *grumble.Flags) {
+	f.StringL(_taskType, "", "task_type, such as shard_repair and blob_delete")
+	f.StringL(_topic, "", "set the topic")
+	f.IntL(_partition, 0, "set the partition")
+	f.Int("c", _clusterID, 1, "set the cluster id")
+}
+
 func cmdGetConsumeOffset(c *grumble.Context) error {
-	taskType := proto.TaskType(c.Args.String(_taskType))
+	taskType := proto.TaskType(c.Flags.String(_taskType))
 	if !taskType.Valid() {
 		return errcode.ErrIllegalTaskType
 	}
-	topic := c.Args.String(_topic)
-	partition := c.Args.Int(_partition)
-	clusterID := c.Args.Int(_clusterID)
+	topic := c.Flags.String(_topic)
+	partition := c.Flags.Int(_partition)
+	clusterID := c.Flags.Int(_clusterID)
 
 	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 	offset, err := clusterMgrCli.GetConsumeOffset(taskType, topic, int32(partition))
@@ -79,14 +82,14 @@ func cmdGetConsumeOffset(c *grumble.Context) error {
 }
 
 func cmdSetConsumeOffset(c *grumble.Context) error {
-	taskType := proto.TaskType(c.Args.String(_taskType))
+	taskType := proto.TaskType(c.Flags.String(_taskType))
 	if !taskType.Valid() {
 		return errcode.ErrIllegalTaskType
 	}
-	topic := c.Args.String(_topic)
-	partition := c.Args.Int(_partition)
-	offset := c.Args.Int64(_offset)
-	clusterID := c.Args.Int(_clusterID)
+	topic := c.Flags.String(_topic)
+	partition := c.Flags.Int(_partition)
+	offset := c.Flags.Int64(_offset)
+	clusterID := c.Flags.Int(_clusterID)
 
 	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 	err := clusterMgrCli.SetConsumeOffset(taskType, topic, int32(partition), offset)

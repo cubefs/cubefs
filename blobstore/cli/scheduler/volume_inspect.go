@@ -20,7 +20,7 @@ import (
 	"github.com/desertbit/grumble"
 
 	"github.com/cubefs/cubefs/blobstore/cli/common"
-	"github.com/cubefs/cubefs/blobstore/cli/common/args"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func addCmdVolumeInspectCheckpointTask(cmd *grumble.Command) {
@@ -35,19 +35,23 @@ func addCmdVolumeInspectCheckpointTask(cmd *grumble.Command) {
 		Name: "get",
 		Help: "get inspect checkpoint",
 		Run:  cmdGetInspectCheckpoint,
+		Flags: func(f *grumble.Flags) {
+			f.Int("c", _clusterID, 1, "set the cluster id")
+		},
 	})
 	inspectCommand.AddCommand(&grumble.Command{
 		Name: "set",
 		Help: "set inspect checkpoint",
 		Run:  cmdSetInspectCheckpoint,
-		Args: func(a *grumble.Args) {
-			args.VidRegister(a)
+		Flags: func(f *grumble.Flags) {
+			f.Int("c", _clusterID, 1, "set the cluster id")
+			f.Uint64L("volume_id", 0, "set the Vid")
 		},
 	})
 }
 
 func cmdGetInspectCheckpoint(c *grumble.Context) error {
-	clusterID := c.Args.Int(_clusterID)
+	clusterID := c.Flags.Int(_clusterID)
 	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 	ck, err := clusterMgrCli.GetVolumeInspectCheckPoint(common.CmdContext())
 	if err != nil {
@@ -58,9 +62,9 @@ func cmdGetInspectCheckpoint(c *grumble.Context) error {
 }
 
 func cmdSetInspectCheckpoint(c *grumble.Context) error {
-	clusterID := c.Args.Int(_clusterID)
+	clusterID := c.Flags.Int(_clusterID)
 	clusterMgrCli := newClusterMgrTaskClient(clusterID)
-	vid := args.Vid(c.Args)
+	vid := proto.Vid(c.Flags.Uint64("volume_id"))
 	fmt.Printf("set volume inspect checkpoint: %d\n", vid)
 	if !common.Confirm("to set checkpoint?") {
 		return nil
