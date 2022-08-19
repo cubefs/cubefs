@@ -47,7 +47,7 @@ func newClusterMgrTaskClient(clusterID int) client.ClusterMgrTaskAPI {
 	var addrs []string
 	addrs = defaultClusterMgrAddrs
 	hosts, ok := config.ClusterMgrClusters()[strconv.Itoa(clusterID)]
-	if !ok {
+	if ok {
 		addrs = hosts
 	}
 	return client.NewClusterMgrClient(&clustermgr.Config{
@@ -69,7 +69,7 @@ func newClusterMgrClient(clusterID string) *clustermgr.Client {
 	var addrs []string
 	addrs = defaultClusterMgrAddrs
 	hosts, ok := config.ClusterMgrClusters()[clusterID]
-	if !ok {
+	if ok {
 		addrs = hosts
 	}
 	return clustermgr.New(&clustermgr.Config{
@@ -93,8 +93,8 @@ func Register(app *grumble.App) {
 		Name: "stat",
 		Help: "show leader stat of scheduler",
 		Run:  leaderStat,
-		Args: func(a *grumble.Args) {
-			a.Int(_clusterID, _clusterID, grumble.Default(int(1)))
+		Flags: func(f *grumble.Flags) {
+			f.Int("c", _clusterID, 1, "set the cluster id")
 		},
 	})
 
@@ -104,7 +104,7 @@ func Register(app *grumble.App) {
 }
 
 func leaderStat(c *grumble.Context) error {
-	clusterID := c.Args.Int(_clusterID)
+	clusterID := c.Flags.Int(_clusterID)
 	clusterMgrCli := newClusterMgrClient(strconv.Itoa(clusterID))
 	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, proto.ClusterID(clusterID))
 	stat, err := cli.LeaderStats(common.CmdContext())

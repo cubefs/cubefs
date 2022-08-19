@@ -83,6 +83,13 @@ func Register(app *grumble.App) {
 		Help:     "access tools",
 		LongHelp: "blobstore access api tools",
 		Run: func(c *grumble.Context) error {
+			if config.AccessConsulAddr() == "" {
+				fmt.Println("access services: ")
+				for index, node := range config.AccessPriorityAddrs() {
+					fmt.Printf("node %d: %s\n", index+1, node)
+				}
+				return nil
+			}
 			cli, err := common.NewConsulClient(config.AccessConsulAddr())
 			if err != nil {
 				return err
