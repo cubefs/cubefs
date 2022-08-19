@@ -53,6 +53,7 @@ func newEcPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newEcPartitionGetExtentHosts(client),
 		newEcPartitionCheckConsistency(client),
 		newEcGetTinyExtentDelInfo(client),
+		newEcSetPartitionSize(client),
 	)
 	return cmd
 }
@@ -68,6 +69,7 @@ const (
 	cmdGetExtentHosts                   = "get extent hosts"
 	cmdGetTinyDelInfo                   = "get tiny extent del info"
 	cmdEcPartitionCheckConsistency      = "Check Consistency of ec partition and data partition"
+	cmdEcSetPartitionSize               = "set ecPartition size"
 )
 
 func newEcPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -609,10 +611,8 @@ func checkEcExtentChunkData(ep *proto.EcPartitionInfo, extentId uint64) (err err
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
-			err = errors.NewErrorf("extent(%v) errCode[%v]", extentId, resp.StatusCode)
-		}
-		if resp.StatusCode == http.StatusNotFound {
-			err = errors.NewErrorf("extent(%v) data inConsist", extentId)
+			errMsg, _ := parseErrMsg(resp)
+			err = errors.NewErrorf("extent(%v) errCode(%v) errMsg(%v)", extentId, resp.StatusCode, errMsg)
 		}
 		break
 	}
@@ -799,5 +799,81 @@ func compareCrc(dpCrc map[uint64]map[string]uint32, epCrc map[uint64]uint32, ext
 			errExtent = append(errExtent, extentId)
 		}
 	}
+	return
+}
+
+func newEcSetPartitionSize(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpSet + " [EC PARTITION ID]" + " [newSize]",
+		Short: cmdEcSetPartitionSize,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				partition *proto.EcPartitionInfo
+			)
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+
+			size, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return
+			}
+
+			if partition, err = client.AdminAPI().GetEcPartition("", partitionID); err != nil {
+				return
+			}
+			err = setPartitionSize(partition, size)
+			if err != nil {
+				stdout("setPartitionSize err(%v)\n", err)
+			}
+		},
+	}
+	return cmd
+}
+
+func setPartitionSize(ep *proto.EcPartitionInfo, size uint64) (err error) {
+	var (
+		httpPort int
+		resp     *http.Response
+	)
+	httpClient := http.Client{
+		Timeout: 2 * time.Minute,
+	}
+	for _, replica := range ep.EcReplicas {
+		httpPort, err = strconv.Atoi(replica.HttpPort)
+		if err != nil {
+			continue
+		}
+		ecNodeAddr := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], httpPort)
+		url := fmt.Sprintf("http://%s/setEcPartitionSize?partitionId=%v&size=%v", ecNodeAddr, ep.PartitionID, size)
+		resp, err = httpClient.Get(url)
+		if err != nil {
+			return
+		}
+		if resp.StatusCode != http.StatusOK {
+			errMsg, _ := parseErrMsg(resp)
+			err = errors.NewErrorf("host(%v) errCode(%v) errMsg(%v)", ecNodeAddr, resp.StatusCode, errMsg)
+			return
+		}
+	}
+	return
+}
+
+func parseErrMsg(resp *http.Response) (msg string, err error) {
+	respData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	var body = &struct {
+		Code int32           `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}{}
+	if err = json.Unmarshal(respData, &body); err != nil {
+		return
+	}
+	msg = body.Msg
 	return
 }

@@ -132,6 +132,8 @@ func (er *ExtentReader) read(dp *DataPartition, reqPacket *Packet, req *ExtentRe
 			return
 		}
 		log.LogWarnf("read error: read EC failed, read data from replicate, err(%v)", err)
+		errMsg := fmt.Sprintf("read EC failed inode(%v) req(%v)", er.inode, req)
+		handleUmpAlarm(dp.ClientWrapper.clusterName, dp.ClientWrapper.volName, "ecRead", errMsg)
 	}
 	if !followerRead {
 		sc, readBytes, err = dp.LeaderRead(reqPacket, req)

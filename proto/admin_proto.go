@@ -1103,7 +1103,6 @@ type EcNodeHeartbeatResponse struct {
 	Used                uint64
 	Available           uint64
 	TotalPartitionSize  uint64 // volCnt * volsize
-	RemainingCapacity   uint64 // remaining capacity to create partition
 	CreatedPartitionCnt uint32
 	MaxCapacity         uint64 // maximum capacity of disk to create partition
 	PartitionReports    []*EcPartitionReport

@@ -1094,6 +1094,7 @@ func formatEcNodeDetail(en *proto.EcNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Used ratio          : %v\n", en.UsageRatio))
 	sb.WriteString(fmt.Sprintf("  Used                : %v\n", formatSize(en.Used)))
 	sb.WriteString(fmt.Sprintf("  Available           : %v\n", formatSize(en.AvailableSpace)))
+	sb.WriteString(fmt.Sprintf("  MaxDiskAvail        : %v\n", formatSize(en.MaxDiskAvailSpace)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(en.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", en.ZoneName))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(en.IsActive)))

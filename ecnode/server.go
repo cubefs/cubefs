@@ -249,6 +249,7 @@ func (e *EcNode) registerHandler() {
 	http.HandleFunc("/getTinyDelInfo", e.getTinyDelInfo)
 	http.HandleFunc("/extentCrc", e.getExtentCrc)
 	http.HandleFunc("/setMaxTinyDelCount", e.setMaxTinyDelCount)
+	http.HandleFunc("/setEcPartitionSize", e.setEcPartitionSize)
 
 
 	server.ListenAndServe()

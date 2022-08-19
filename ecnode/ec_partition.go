@@ -183,6 +183,7 @@ func (ep *EcPartition) checkIsDiskError(err error) (diskError bool) {
 	if IsDiskErr(err.Error()) {
 		mesg := fmt.Sprintf("disk path %v error on %v", ep.Path(), localIP)
 		log.LogErrorf(mesg)
+		exporter.Warning(mesg)
 		ep.disk.incReadErrCnt()
 		ep.disk.incWriteErrCnt()
 		ep.disk.Status = proto.Unavailable
@@ -314,6 +315,7 @@ func newEcPartition(epMetaData *EcPartitionMetaData, disk *Disk) (ep *EcPartitio
 			disk.DecreaseFDCount()
 		}
 	}
+	log.LogDebugf("partition(%v) partitionSize(%v) dataPath(%v)\n", partition.PartitionID, partition.PartitionSize, partition.path)
 	partition.extentStore, err = ecstorage.NewEcExtentStore(partition.path, partition.PartitionID, int(partition.PartitionSize), CacheCapacityPerPartition, cacheListener)
 	if err != nil {
 		return
@@ -389,6 +391,7 @@ func LoadEcPartition(partitionDir string, disk *Disk) (ep *EcPartition, err erro
 	if err != nil {
 		return
 	}
+
 
 	volumeID := strings.TrimSpace(metaData.VolumeID)
 	if len(volumeID) == 0 || metaData.PartitionID == 0 || metaData.PartitionSize == 0 {

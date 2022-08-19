@@ -31,7 +31,7 @@ import (
 
 type ECNode struct {
 	DataNode
-	RemainCapacity     uint64
+	MaxDiskAvailSpace     uint64
 	EcPartitionReports []*proto.EcPartitionReport
 }
 
@@ -82,7 +82,7 @@ func (ecNode *ECNode) updateMetric(resp *proto.EcNodeHeartbeatResponse) {
 	ecNode.Total = resp.Total
 	ecNode.Used = resp.Used
 	ecNode.AvailableSpace = resp.Available
-	ecNode.RemainCapacity = resp.RemainingCapacity
+	ecNode.MaxDiskAvailSpace = resp.MaxCapacity
 	ecNode.DataPartitionCount = resp.CreatedPartitionCnt
 	ecNode.EcPartitionReports = resp.PartitionReports
 	ecNode.HttpPort = resp.HttpPort
@@ -120,7 +120,7 @@ func (m *Server) getEcNode(w http.ResponseWriter, r *http.Request) {
 		Total:                     node.Total,
 		Used:                      node.Used,
 		AvailableSpace:            node.AvailableSpace,
-		RemainCapacity:            node.RemainCapacity,
+		MaxDiskAvailSpace:         node.MaxDiskAvailSpace,
 		ID:                        node.ID,
 		ZoneName:                  node.ZoneName,
 		Addr:                      node.Addr,
@@ -492,10 +492,19 @@ func (ecNode *ECNode) isWriteAble() (ok bool) {
 	ecNode.RLock()
 	defer ecNode.RUnlock()
 
-	if ecNode.isActive == true && ecNode.AvailableSpace > 10*util.GB && ecNode.ToBeOffline == false && ecNode.ToBeMigrated == false{
+	if ecNode.isActive == true && ecNode.AvailableSpace > 100*util.GB && ecNode.ToBeOffline == false && ecNode.ToBeMigrated == false{
 		ok = true
 	}
 
+	return
+}
+
+func (ecNode *ECNode) canCreateEcPartition(needAllocSpace uint64) (ok bool) {
+	ecNode.RLock()
+	defer ecNode.RUnlock()
+	if ecNode.isActive == true && needAllocSpace < ecNode.MaxDiskAvailSpace {
+		ok = true
+	}
 	return
 }
 
@@ -1110,7 +1119,7 @@ func (c *Cluster) ecNode(addr string) (ecNode *ECNode, err error) {
 	return
 }
 
-func (c *Cluster) chooseTargetEcNodes(excludeZone string, excludeHosts []string, replicaNum int, zoneNum int) (hosts []string, err error) {
+func (c *Cluster) chooseTargetEcNodes(excludeZone string, excludeHosts []string, replicaNum int, zoneNum int, needAllocSpace uint64) (hosts []string, err error) {
 	var (
 		zones          []*Zone
 		hasAllocateNum int
@@ -1127,7 +1136,7 @@ func (c *Cluster) chooseTargetEcNodes(excludeZone string, excludeHosts []string,
 	}
 	for hasAllocateNum < replicaNum {
 		for _, zone := range zones {
-			selectedHosts, _, e := zone.getAvailEcNodeHosts(excludeHosts, 1)
+			selectedHosts, _, e := zone.getAvailEcNodeHosts(excludeHosts, 1, needAllocSpace)
 			if e != nil {
 				return nil, errors.NewError(e)
 			}
@@ -1439,7 +1448,7 @@ func (c *Cluster) decommissionEcDisk(ecNode *ECNode, badDiskPath string, badPart
 	return
 }
 
-func getEcNodeMaxTotal(ecNodes *sync.Map, storeMode proto.StoreMode) (maxTotal uint64) {
+func getEcNodeMaxTotal(ecNodes *sync.Map) (maxTotal uint64) {
 	ecNodes.Range(func(key, value interface{}) bool {
 		ecNode := value.(*ECNode)
 		if ecNode.Total > maxTotal {
@@ -1451,7 +1460,7 @@ func getEcNodeMaxTotal(ecNodes *sync.Map, storeMode proto.StoreMode) (maxTotal u
 	return
 }
 
-func getAvailCarryEcNodeTab(maxTotal uint64, excludeHosts []string, ecNodes *sync.Map, storeMode proto.StoreMode) (nodeTabs SortedWeightedNodes, availCount int) {
+func getAvailCarryEcNodeTab(maxTotal uint64, excludeHosts []string, ecNodes *sync.Map, needAllocSpace uint64) (nodeTabs SortedWeightedNodes, availCount int) {
 	nodeTabs = make(SortedWeightedNodes, 0)
 	ecNodes.Range(func(key, value interface{}) bool {
 		ecNode := value.(*ECNode)
@@ -1461,6 +1470,11 @@ func getAvailCarryEcNodeTab(maxTotal uint64, excludeHosts []string, ecNodes *syn
 		if ecNode.isWriteAble() == false {
 			return true
 		}
+
+		if ecNode.canCreateEcPartition(needAllocSpace) == false {
+			return true
+		}
+
 		if ecNode.isAvailCarryNode() == true {
 			availCount++
 		}

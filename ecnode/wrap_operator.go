@@ -969,6 +969,7 @@ func (e *EcNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn) {
 			if err != nil || len(data) == 0 {
 				err = errors.NewErrorf("StreamRead repairReadStripeProcess fail, ReqID(%v) PartitionID(%v) ExtentID(%v) ExtentOffset(%v) nodeAddr(%v) extentFileOffset(%v) curReadSize(%v) dataSize(%v). err:%v",
 					p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset, nodeAddr, stripeUnitFileOffset, curReadSize, len(data), err)
+				exporter.Warning(err.Error())
 				return
 			}
 			log.LogDebugf("StreamRead repairReadStripeProcess reqId(%v) nodeAddr(%v) srtipeUnitFileOffset(%v) curReadSize(%v) crc(%v) len(data)(%v) err(%v)",

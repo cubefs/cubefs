@@ -17,6 +17,7 @@ package ecnode
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/ecstorage"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"io/ioutil"
 	"os"
 	"path"
@@ -144,16 +145,24 @@ func (d *Disk) computeUsage() (err error) {
 	}
 	d.Available = uint64(available)
 
-	//  used := math.Max(0, int64(total - available))
-	used := int64(total - available)
+	used := total - available
 	if used < 0 {
 		used = 0
 	}
 	d.Used = uint64(used)
 
 	allocatedSize := int64(0)
+	allEpfinishEc := true
 	for _, ep := range d.partitionMap {
-		allocatedSize += int64(ep.Size())
+		if proto.IsEcFinished(ep.ecMigrateStatus) {
+			allocatedSize += int64(ep.Used())//partition used 会比预占空间小，因为包含已经打洞的空间，如果有打洞会比真实使用空间大
+		}else {
+			allocatedSize += int64(ep.Size())
+			allEpfinishEc = false
+		}
+	}
+	if allEpfinishEc {
+		allocatedSize = int64(d.Used)
 	}
 	atomic.StoreUint64(&d.Allocated, uint64(allocatedSize))
 	//  unallocated = math.Max(0, total - allocatedSize)
@@ -199,6 +208,7 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	if d.Status == proto.Unavailable {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, localIP)
 		log.LogErrorf(mesg)
+		exporter.Warning(mesg)
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
 	} else {
@@ -222,7 +232,7 @@ func IsDiskErr(errMsg string) bool {
 func (d *Disk) triggerDiskError(err error) {
 	if IsDiskErr(err.Error()) {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, localIP)
-		//exporter.Warning(mesg)
+		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
 		//d.ForceExitRaftStore()
 		d.Status = proto.Unavailable
@@ -527,7 +537,7 @@ func (d *Disk) RestorePartition(visitor func(ep *EcPartition)) {
 				mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
 					partitionID, err.Error())
 				log.LogError(mesg)
-				//exporter.Warning(mesg)
+				exporter.Warning(mesg)
 				return
 			}
 			if visitor != nil {
