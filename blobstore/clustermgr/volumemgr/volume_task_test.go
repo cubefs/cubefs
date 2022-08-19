@@ -16,7 +16,9 @@ package volumemgr
 
 import (
 	"context"
+	"math/rand"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -35,19 +37,14 @@ import (
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
-func closeTestTask() {
-	os.RemoveAll("/tmp/taskdb")
-	os.RemoveAll("/tmp/volumedb")
-	os.RemoveAll("/tmp/normaldb")
-}
-
 func TestTaskProc(t *testing.T) {
-	defer closeTestTask()
-	os.RemoveAll("/tmp/taskdbhufdiauher")
+	tmpTaskDb := "/tmp/taskDb" + strconv.Itoa(rand.Intn(100))
+	defer os.RemoveAll(tmpTaskDb)
+
 	opt := kvstore.RocksDBOption{
 		WriteBufferSize: 4 * 1024 * 1024,
 	}
-	db, err := volumedb.Open("/tmp/taskdb", false, func(option *kvstore.RocksDBOption) {
+	db, err := volumedb.Open(tmpTaskDb, false, func(option *kvstore.RocksDBOption) {
 		option.WriteBufferSize = opt.WriteBufferSize
 	})
 	require.Nil(t, err)

@@ -18,7 +18,6 @@ import (
 	"context"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -99,6 +98,5 @@ func TestService(t *testing.T) {
 	{
 		err := testClusterClient.UnregisterService(ctx, clustermgr.UnregisterArgs{Name: testServiceName, Host: testHostPrefix + "9:8080"})
 		require.NoError(t, err)
-		time.Sleep(1 * time.Second)
 	}
 }

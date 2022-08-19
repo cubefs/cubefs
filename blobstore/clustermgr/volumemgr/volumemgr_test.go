@@ -353,7 +353,6 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockVolumeMgr.Start()
 
 	// wait check expired volume,set volume1 expired
-	time.Sleep(time.Second)
 	vol1 := mockVolumeMgr.all.getVol(1)
 	vol1.lock.Lock()
 	vol1.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
@@ -725,7 +724,10 @@ func TestVolumeMgr_PreRetainVolume(t *testing.T) {
 	tokens = []string{
 		"127.0.0.1:8080;5",
 	}
-	time.Sleep(10 * time.Second)
+	vol5 := mockVolumeMgr.all.getVol(proto.Vid(5))
+	vol5.lock.Lock()
+	vol5.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
+	vol5.lock.Unlock()
 	ret, err = mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
 	require.NoError(t, err)
 	require.Nil(t, ret)
@@ -850,7 +852,7 @@ func TestVolumeMgr_ApplyAdminUpdateVolume(t *testing.T) {
 
 func TestVolumeMgr_ApplyAdminUpdateVolumeUnit(t *testing.T) {
 	initMockVolumeMgr(t)
-	defer closeTestTask()
+	defer closeTestVolumeMgr()
 
 	unitInfo := &clustermgr.AdminUpdateUnitArgs{
 		Epoch:     1,

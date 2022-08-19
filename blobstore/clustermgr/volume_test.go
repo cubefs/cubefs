@@ -39,7 +39,6 @@ func initServiceWithData() *Service {
 	cfg := *testServiceCfg
 
 	cfg.VolumeMgrConfig.FlushIntervalS = 600
-	cfg.VolumeMgrConfig.RetainTimeS = 10
 	cfg.VolumeMgrConfig.MinAllocableVolumeCount = 0
 	cfg.DiskMgrConfig.HeartbeatExpireIntervalS = 600
 	cfg.ClusterReportIntervalS = 3
@@ -122,6 +121,8 @@ func TestService_VolumeInfo(t *testing.T) {
 
 	// retain volume
 	{
+		// set volume retain time as 1 second
+		testService.VolumeMgr.RetainTimeS = 1
 		volInfos, err := cmClient.AllocVolume(ctx, &clustermgr.AllocVolumeArgs{IsInit: false, CodeMode: 1, Count: 2})
 		require.NoError(t, err)
 		token1 := fmt.Sprintf("127.0.0.1;%d", volInfos.AllocVolumeInfos[0].Vid)
@@ -133,27 +134,18 @@ func TestService_VolumeInfo(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, len(ret.RetainVolTokens), 2)
 
+		// ignore error token
 		args.Tokens = append(args.Tokens, "127.0.e8080;11")
 		ret, err = cmClient.RetainVolume(ctx, args)
 		require.NoError(t, err)
 		require.Equal(t, len(ret.RetainVolTokens), 2)
 
-		// choose one not retained,this volume's expire time is 10 second
-		token3 := ""
-		for i := 1; i <= 10; i++ {
-			vid := proto.Vid(i)
-			if vid != volInfos.AllocVolumeInfos[0].Vid && vid != volInfos.AllocVolumeInfos[1].Vid {
-				token3 = fmt.Sprintf("127.0.0.1;%d", vid)
-				break
-			}
-		}
-		args.Tokens = []string{token3}
-		// sleep 15 second wait to expired
-		time.Sleep(time.Second * 15)
+		// volume has expired
+		args.Tokens = []string{token2}
+		time.Sleep(time.Millisecond * 1100)
 		ret, err = cmClient.RetainVolume(ctx, args)
 		require.NoError(t, err)
 		require.Equal(t, len(ret.RetainVolTokens), 0)
-
 	}
 }
 

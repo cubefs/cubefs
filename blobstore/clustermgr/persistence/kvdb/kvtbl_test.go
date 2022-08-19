@@ -20,9 +20,10 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/util/log"
-	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -79,6 +80,10 @@ func TestKvTable(t *testing.T) {
 			key:   "repair-1000-1000-1",
 			value: []byte("disk-1000-vid-1000-test5"),
 		},
+		{
+			key:   "repair-100-nil-value",
+			value: []byte{},
+		},
 	}
 
 	for _, c := range putCases {
@@ -134,8 +139,13 @@ func TestKvTable(t *testing.T) {
 	ret, err := kvTbl.List(&clustermgr.ListKvOpts{
 		Prefix: "repair-100-",
 		Marker: "",
-		Count:  3,
+		Count:  4,
 	})
+	for _, r := range ret {
+		// putCases[1].key already delete
+		require.NotEqual(t, putCases[1].key, r.Key)
+	}
+
 	require.NoError(t, err)
-	require.Equal(t, len(ret), 2)
+	require.Equal(t, len(ret), 3)
 }

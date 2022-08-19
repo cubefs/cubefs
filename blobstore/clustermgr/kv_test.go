@@ -19,8 +19,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 func TestKV(t *testing.T) {
@@ -33,6 +34,23 @@ func TestKV(t *testing.T) {
 
 	err := testClusterClient.SetKV(ctx, "test1", []byte("value"))
 	require.NoError(t, err)
+	err = testClusterClient.SetKV(ctx, "", nil)
+	require.Error(t, err)
+
+	v, err := testClusterClient.GetKV(ctx, "test1")
+	require.NoError(t, err)
+	require.Equal(t, string(v.Value), "value")
+
+	_, err = testClusterClient.GetKV(ctx, "")
+	require.Error(t, err)
+
+	_, err = testClusterClient.GetKV(ctx, "no-exist-key")
+	require.Error(t, err)
+
+	err = testClusterClient.DeleteKV(ctx, "test1")
+	require.NoError(t, err)
+	_, err = testClusterClient.GetKV(ctx, "test1")
+	require.Error(t, err)
 }
 
 func BenchmarkService_KvSet(b *testing.B) {
