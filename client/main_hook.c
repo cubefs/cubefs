@@ -42,10 +42,14 @@ const int CHECK_UPDATE_INTERVAL = 10;
 
 #define LOCK(cmd, res)                                                                     \
     do {                                                                                   \
+        if(!g_inited) {                                                                    \
+            res = libc_##cmd;                                                              \
+            break;                                                                         \
+        }                                                                                  \
         errno = pthread_rwlock_rdlock(&update_rwlock);                                     \
         if(errno == 0)                                                                     \
         {                                                                                  \
-            res = cmd;                                                                     \
+            res = real_##cmd;                                                              \
             pthread_rwlock_unlock(&update_rwlock);                                         \
         }                                                                                  \
         else if(errno == EDEADLK)                                                          \
@@ -75,7 +79,7 @@ const int CHECK_UPDATE_INTERVAL = 10;
  */
 
 int close(int fd) {
-    LOCK_RETURN_INT(real_close(fd));
+    LOCK_RETURN_INT(close(fd));
 }
 
 int creat(const char *pathname, mode_t mode) {
@@ -103,41 +107,41 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
         mode = va_arg(args, mode_t);
         va_end(args);
     }
-    LOCK_RETURN_INT(real_openat(dirfd, pathname, flags, mode));
+    LOCK_RETURN_INT(openat(dirfd, pathname, flags, mode));
 }
 weak_alias (openat, openat64)
 
 // rename between cfs and ordinary file is not allowed
 int renameat2(int olddirfd, const char *old_pathname,
         int newdirfd, const char *new_pathname, unsigned int flags) {
-    LOCK_RETURN_INT(real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, flags));
+    LOCK_RETURN_INT(renameat2(olddirfd, old_pathname, newdirfd, new_pathname, flags));
 }
 
 int rename(const char *old_pathname, const char *new_pathname) {
-    return renameat2(AT_FDCWD, old_pathname, AT_FDCWD, new_pathname, 0);
+    return renameat(AT_FDCWD, old_pathname, AT_FDCWD, new_pathname);
 }
 
 int renameat(int olddirfd, const char *old_pathname,
         int newdirfd, const char *new_pathname) {
-    LOCK_RETURN_INT(real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, 0));
+    LOCK_RETURN_INT(renameat(olddirfd, old_pathname, newdirfd, new_pathname));
 }
 
 int truncate(const char *pathname, off_t length) {
-    LOCK_RETURN_INT(real_truncate(pathname, length));
+    LOCK_RETURN_INT(truncate(pathname, length));
 }
 
 int ftruncate(int fd, off_t length) {
-    LOCK_RETURN_INT(real_ftruncate(fd, length));
+    LOCK_RETURN_INT(ftruncate(fd, length));
 }
 weak_alias (ftruncate, ftruncate64)
 
 int fallocate(int fd, int mode, off_t offset, off_t len) {
-    LOCK_RETURN_INT(real_fallocate(fd, mode, offset, len));
+    LOCK_RETURN_INT(fallocate(fd, mode, offset, len));
 }
 weak_alias (fallocate, fallocate64)
 
 int posix_fallocate(int fd, off_t offset, off_t len) {
-    LOCK_RETURN_INT(real_posix_fallocate(fd, offset, len));
+    LOCK_RETURN_INT(posix_fallocate(fd, offset, len));
 }
 weak_alias (posix_fallocate, posix_fallocate64)
 
@@ -150,39 +154,39 @@ int mkdir(const char *pathname, mode_t mode) {
 }
 
 int mkdirat(int dirfd, const char *pathname, mode_t mode) {
-    LOCK_RETURN_INT(real_mkdirat(dirfd, pathname, mode));
+    LOCK_RETURN_INT(mkdirat(dirfd, pathname, mode));
 }
 
 int rmdir(const char *pathname) {
-    LOCK_RETURN_INT(real_rmdir(pathname));
+    LOCK_RETURN_INT(rmdir(pathname));
 }
 
 char *getcwd(char *buf, size_t size) {
     char *res;
-    LOCK_RETURN_PTR(real_getcwd(buf, size), res);
+    LOCK_RETURN_PTR(getcwd(buf, size), res);
 }
 
 int chdir(const char *pathname) {
-    LOCK_RETURN_INT(real_chdir(pathname));
+    LOCK_RETURN_INT(chdir(pathname));
 }
 
 int fchdir(int fd) {
-    LOCK_RETURN_INT(real_fchdir(fd));
+    LOCK_RETURN_INT(fchdir(fd));
 }
 
 DIR *opendir(const char *pathname) {
     DIR *res;
-    LOCK_RETURN_PTR(real_opendir(pathname), res);
+    LOCK_RETURN_PTR(opendir(pathname), res);
 }
 
 DIR *fdopendir(int fd) {
     DIR *res;
-    LOCK_RETURN_PTR(real_fdopendir(fd), res);
+    LOCK_RETURN_PTR(fdopendir(fd), res);
 }
 
 struct dirent *readdir(DIR *dirp) {
     struct dirent *res;
-    LOCK_RETURN_PTR(real_readdir(dirp), res);
+    LOCK_RETURN_PTR(readdir(dirp), res);
 }
 
 struct dirent64 *readdir64(DIR *dirp) {
@@ -190,12 +194,12 @@ struct dirent64 *readdir64(DIR *dirp) {
 }
 
 int closedir(DIR *dirp) {
-    LOCK_RETURN_INT(real_closedir(dirp));
+    LOCK_RETURN_INT(closedir(dirp));
 }
 
 char *realpath(const char *path, char *resolved_path) {
     char *res;
-    LOCK_RETURN_PTR(real_realpath(path, resolved_path), res);
+    LOCK_RETURN_PTR(realpath(path, resolved_path), res);
 }
 
 /*
@@ -210,7 +214,7 @@ int link(const char *old_pathname, const char *new_pathname) {
 // link between CFS and ordinary file is not allowed
 int linkat(int olddirfd, const char *old_pathname,
            int newdirfd, const char *new_pathname, int flags) {
-    LOCK_RETURN_INT(real_linkat(olddirfd, old_pathname, newdirfd, new_pathname, flags));
+    LOCK_RETURN_INT(linkat(olddirfd, old_pathname, newdirfd, new_pathname, flags));
 }
 
 // symlink a CFS linkpath to ordinary file target is not allowed
@@ -220,7 +224,7 @@ int symlink(const char *target, const char *linkpath) {
 
 // symlink a CFS linkpath to ordinary file target is not allowed
 int symlinkat(const char *target, int dirfd, const char *linkpath) {
-    LOCK_RETURN_INT(real_symlinkat(target, dirfd, linkpath));
+    LOCK_RETURN_INT(symlinkat(target, dirfd, linkpath));
 }
 
 int unlink(const char *pathname) {
@@ -228,7 +232,7 @@ int unlink(const char *pathname) {
 }
 
 int unlinkat(int dirfd, const char *pathname, int flags) {
-    LOCK_RETURN_INT(real_unlinkat(dirfd, pathname, flags));
+    LOCK_RETURN_INT(unlinkat(dirfd, pathname, flags));
 }
 
 ssize_t readlink(const char *pathname, char *buf, size_t size) {
@@ -236,7 +240,7 @@ ssize_t readlink(const char *pathname, char *buf, size_t size) {
 }
 
 ssize_t readlinkat(int dirfd, const char *pathname, char *buf, size_t size) {
-    LOCK_RETURN_LONG(real_readlinkat(dirfd, pathname, buf, size));
+    LOCK_RETURN_LONG(readlinkat(dirfd, pathname, buf, size));
 }
 
 
@@ -254,35 +258,35 @@ ssize_t readlinkat(int dirfd, const char *pathname, char *buf, size_t size) {
  */
 
 int __xstat(int ver, const char *pathname, struct stat *statbuf) {
-    LOCK_RETURN_INT(real_stat(ver, pathname, statbuf));
+    LOCK_RETURN_INT(stat(ver, pathname, statbuf));
 }
 
 int __xstat64(int ver, const char *pathname, struct stat64 *statbuf) {
-    LOCK_RETURN_INT(real_stat64(ver, pathname, statbuf));
+    LOCK_RETURN_INT(stat64(ver, pathname, statbuf));
 }
 
 int __lxstat(int ver, const char *pathname, struct stat *statbuf) {
-    LOCK_RETURN_INT(real_lstat(ver, pathname, statbuf));
+    LOCK_RETURN_INT(lstat(ver, pathname, statbuf));
 }
 
 int __lxstat64(int ver, const char *pathname, struct stat64 *statbuf) {
-    LOCK_RETURN_INT(real_lstat64(ver, pathname, statbuf));
+    LOCK_RETURN_INT(lstat64(ver, pathname, statbuf));
 }
 
 int __fxstat(int ver, int fd, struct stat *statbuf) {
-    LOCK_RETURN_INT(real_fstat(ver, fd, statbuf));
+    LOCK_RETURN_INT(fstat(ver, fd, statbuf));
 }
 
 int __fxstat64(int ver, int fd, struct stat64 *statbuf) {
-    LOCK_RETURN_INT(real_fstat64(ver, fd, statbuf));
+    LOCK_RETURN_INT(fstat64(ver, fd, statbuf));
 }
 
 int __fxstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf, int flags) {
-    LOCK_RETURN_INT(real_fstatat(ver, dirfd, pathname, statbuf, flags));
+    LOCK_RETURN_INT(fstatat(ver, dirfd, pathname, statbuf, flags));
 }
 
 int __fxstatat64(int ver, int dirfd, const char *pathname, struct stat64 *statbuf, int flags) {
-    LOCK_RETURN_INT(real_fstatat64(ver, dirfd, pathname, statbuf, flags));
+    LOCK_RETURN_INT(fstatat64(ver, dirfd, pathname, statbuf, flags));
 }
 
 int chmod(const char *pathname, mode_t mode) {
@@ -290,11 +294,11 @@ int chmod(const char *pathname, mode_t mode) {
 }
 
 int fchmod(int fd, mode_t mode) {
-    LOCK_RETURN_INT(real_fchmod(fd, mode));
+    LOCK_RETURN_INT(fchmod(fd, mode));
 }
 
 int fchmodat(int dirfd, const char *pathname, mode_t mode, int flags) {
-    LOCK_RETURN_INT(real_fchmodat(dirfd, pathname, mode, flags));
+    LOCK_RETURN_INT(fchmodat(dirfd, pathname, mode, flags));
 }
 
 int chown(const char *pathname, uid_t owner, gid_t group) {
@@ -302,35 +306,35 @@ int chown(const char *pathname, uid_t owner, gid_t group) {
 }
 
 int lchown(const char *pathname, uid_t owner, gid_t group) {
-    LOCK_RETURN_INT(real_lchown(pathname, owner, group));
+    LOCK_RETURN_INT(lchown(pathname, owner, group));
 }
 
 int fchown(int fd, uid_t owner, gid_t group) {
-    LOCK_RETURN_INT(real_fchown(fd, owner, group));
+    LOCK_RETURN_INT(fchown(fd, owner, group));
 }
 
 int fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int flags) {
-    LOCK_RETURN_INT(real_fchownat(dirfd, pathname, owner, group, flags));
+    LOCK_RETURN_INT(fchownat(dirfd, pathname, owner, group, flags));
 }
 
 int utime(const char *pathname, const struct utimbuf *times) {
-    LOCK_RETURN_INT(real_utime(pathname, times));
+    LOCK_RETURN_INT(utime(pathname, times));
 }
 
 int utimes(const char *pathname, const struct timeval *times) {
-    LOCK_RETURN_INT(real_utimes(pathname, times));
+    LOCK_RETURN_INT(utimes(pathname, times));
 }
 
 int futimesat(int dirfd, const char *pathname, const struct timeval times[2]) {
-    LOCK_RETURN_INT(real_futimesat(dirfd, pathname, times));
+    LOCK_RETURN_INT(futimesat(dirfd, pathname, times));
 }
 
 int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags) {
-    LOCK_RETURN_INT(real_utimensat(dirfd, pathname, times, flags));
+    LOCK_RETURN_INT(utimensat(dirfd, pathname, times, flags));
 }
 
 int futimens(int fd, const struct timespec times[2]) {
-    LOCK_RETURN_INT(real_futimens(fd, times));
+    LOCK_RETURN_INT(futimens(fd, times));
 }
 
 int access(const char *pathname, int mode) {
@@ -338,12 +342,7 @@ int access(const char *pathname, int mode) {
 }
 
 int faccessat(int dirfd, const char *pathname, int mode, int flags) {
-     // libdl.so call access before libcfsclient.so inited
-    if(!g_inited) {
-        faccessat_t libc_faccessat = (faccessat_t)dlsym(RTLD_NEXT, "faccessat");
-        return libc_faccessat(dirfd, pathname, mode, flags);
-    }
-    LOCK_RETURN_INT(real_faccessat(dirfd, pathname, mode, flags));
+    LOCK_RETURN_INT(faccessat(dirfd, pathname, mode, flags));
 }
 
 
@@ -353,52 +352,52 @@ int faccessat(int dirfd, const char *pathname, int mode, int flags) {
 
 int setxattr(const char *pathname, const char *name,
         const void *value, size_t size, int flags) {
-    LOCK_RETURN_INT(real_setxattr(pathname, name, value, size, flags));
+    LOCK_RETURN_INT(setxattr(pathname, name, value, size, flags));
 }
 
 int lsetxattr(const char *pathname, const char *name,
              const void *value, size_t size, int flags) {
-    LOCK_RETURN_INT(real_lsetxattr(pathname, name, value, size, flags));
+    LOCK_RETURN_INT(lsetxattr(pathname, name, value, size, flags));
 }
 
 int fsetxattr(int fd, const char *name, const void *value, size_t size, int flags) {
-    LOCK_RETURN_INT(real_fsetxattr(fd, name, value, size, flags));
+    LOCK_RETURN_INT(fsetxattr(fd, name, value, size, flags));
 }
 
 ssize_t getxattr(const char *pathname, const char *name, void *value, size_t size) {
-    LOCK_RETURN_LONG(real_getxattr(pathname, name, value, size));
+    LOCK_RETURN_LONG(getxattr(pathname, name, value, size));
 }
 
 ssize_t lgetxattr(const char *pathname, const char *name, void *value, size_t size) {
-    LOCK_RETURN_LONG(real_lgetxattr(pathname, name, value, size));
+    LOCK_RETURN_LONG(lgetxattr(pathname, name, value, size));
 }
 
 ssize_t fgetxattr(int fd, const char *name, void *value, size_t size) {
-    LOCK_RETURN_LONG(real_fgetxattr(fd, name, value, size));
+    LOCK_RETURN_LONG(fgetxattr(fd, name, value, size));
 }
 
 ssize_t listxattr(const char *pathname, char *list, size_t size) {
-    LOCK_RETURN_LONG(real_listxattr(pathname, list, size));
+    LOCK_RETURN_LONG(listxattr(pathname, list, size));
 }
 
 ssize_t llistxattr(const char *pathname, char *list, size_t size) {
-    LOCK_RETURN_LONG(real_llistxattr(pathname, list, size));
+    LOCK_RETURN_LONG(llistxattr(pathname, list, size));
 }
 
 ssize_t flistxattr(int fd, char *list, size_t size) {
-    LOCK_RETURN_LONG(real_flistxattr(fd, list, size));
+    LOCK_RETURN_LONG(flistxattr(fd, list, size));
 }
 
 int removexattr(const char *pathname, const char *name) {
-    LOCK_RETURN_INT(real_removexattr(pathname, name));
+    LOCK_RETURN_INT(removexattr(pathname, name));
 }
 
 int lremovexattr(const char *pathname, const char *name) {
-    LOCK_RETURN_INT(real_lremovexattr(pathname, name));
+    LOCK_RETURN_INT(lremovexattr(pathname, name));
 }
 
 int fremovexattr(int fd, const char *name) {
-    LOCK_RETURN_INT(real_fremovexattr(fd, name));
+    LOCK_RETURN_INT(fremovexattr(fd, name));
 }
 
 
@@ -411,16 +410,16 @@ int fcntl(int fd, int cmd, ...) {
     va_start(args, cmd);
     void *arg = va_arg(args, void *);
     va_end(args);
-    LOCK_RETURN_INT(real_fcntl(fd, cmd, arg));
+    LOCK_RETURN_INT(fcntl(fd, cmd, arg));
 }
 weak_alias (fcntl, fcntl64)
 
 int dup2(int oldfd, int newfd) {
-    LOCK_RETURN_INT(real_dup2(oldfd, newfd));
+    LOCK_RETURN_INT(dup2(oldfd, newfd));
 }
 
 int dup3(int oldfd, int newfd, int flags) {
-    LOCK_RETURN_INT(real_dup3(oldfd, newfd, flags));
+    LOCK_RETURN_INT(dup3(oldfd, newfd, flags));
 }
 
 
@@ -429,41 +428,41 @@ int dup3(int oldfd, int newfd, int flags) {
  */
 
 ssize_t read(int fd, void *buf, size_t count) {
-    LOCK_RETURN_LONG(real_read(fd, buf, count));
+    LOCK_RETURN_LONG(read(fd, buf, count));
 }
 
 ssize_t readv(int fd, const struct iovec *iov, int iovcnt) {
-    LOCK_RETURN_LONG(real_readv(fd, iov, iovcnt));
+    LOCK_RETURN_LONG(readv(fd, iov, iovcnt));
 }
 
 ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
-    LOCK_RETURN_LONG(real_pread(fd, buf, count, offset));
+    LOCK_RETURN_LONG(pread(fd, buf, count, offset));
 }
 weak_alias (pread, pread64)
 
 ssize_t preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
-    LOCK_RETURN_LONG(real_preadv(fd, iov, iovcnt, offset));
+    LOCK_RETURN_LONG(preadv(fd, iov, iovcnt, offset));
 }
 
 ssize_t write(int fd, const void *buf, size_t count) {
-    LOCK_RETURN_LONG(real_write(fd, buf, count));
+    LOCK_RETURN_LONG(write(fd, buf, count));
 }
 
 ssize_t writev(int fd, const struct iovec *iov, int iovcnt) {
-    LOCK_RETURN_LONG(real_writev(fd, iov, iovcnt));
+    LOCK_RETURN_LONG(writev(fd, iov, iovcnt));
 }
 
 ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset) {
-    LOCK_RETURN_LONG(real_pwrite(fd, buf, count, offset));
+    LOCK_RETURN_LONG(pwrite(fd, buf, count, offset));
 }
 weak_alias (pwrite, pwrite64)
 
 ssize_t pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
-    LOCK_RETURN_LONG(real_pwritev(fd, iov, iovcnt, offset));
+    LOCK_RETURN_LONG(pwritev(fd, iov, iovcnt, offset));
 }
 
 off_t lseek(int fd, off_t offset, int whence) {
-    LOCK_RETURN_LONG(real_lseek(fd, offset, whence));
+    LOCK_RETURN_LONG(lseek(fd, offset, whence));
 }
 weak_alias (lseek, lseek64)
 
@@ -473,11 +472,11 @@ weak_alias (lseek, lseek64)
  */
 
 int fdatasync(int fd) {
-    LOCK_RETURN_INT(real_fdatasync(fd));
+    LOCK_RETURN_INT(fdatasync(fd));
 }
 
 int fsync(int fd) {
-    LOCK_RETURN_INT(real_fsync(fd));
+    LOCK_RETURN_INT(fsync(fd));
 }
 
 
@@ -574,6 +573,7 @@ static void init_cfsc_func(void *handle) {
 
     real_openat = (openat_t)dlsym(handle, "real_openat");
     real_close = (close_t)dlsym(handle, "real_close");
+    real_renameat = (renameat_t)dlsym(handle, "real_renameat");
     real_renameat2 = (renameat2_t)dlsym(handle, "real_renameat2");
     real_truncate = (truncate_t)dlsym(handle, "real_truncate");
     real_ftruncate = (ftruncate_t)dlsym(handle, "real_ftruncate");

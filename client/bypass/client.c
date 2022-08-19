@@ -232,6 +232,11 @@ log:
     return fd;
 }
 
+int real_renameat(int olddirfd, const char *old_pathname,
+        int newdirfd, const char *new_pathname) {
+    return real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, 0);
+}
+
 // rename between cfs and ordinary file is not allowed
 int real_renameat2(int olddirfd, const char *old_pathname,
         int newdirfd, const char *new_pathname, unsigned int flags) {

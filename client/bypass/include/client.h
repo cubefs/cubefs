@@ -61,6 +61,8 @@ extern "C"
 
 int real_close(int fd);
 int real_openat(int dirfd, const char *pathname, int flags, ...);
+int real_renameat(int olddirfd, const char *old_pathname,
+        int newdirfd, const char *new_pathname);
 int real_renameat2(int olddirfd, const char *old_pathname,
         int newdirfd, const char *new_pathname, unsigned int flags);
 int real_truncate(const char *pathname, off_t length);
