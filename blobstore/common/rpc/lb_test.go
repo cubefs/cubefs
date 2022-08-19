@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,6 +29,23 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
+
+var refusedHosts []string
+
+func init() {
+	for i := 30000; i < 40000; i++ {
+		host := "127.0.0.1:" + strconv.Itoa(i)
+		listen, err := net.Listen("tcp", host)
+		if err != nil {
+			continue
+		}
+		listen.Close()
+		refusedHosts = append(refusedHosts, "http://"+host)
+		if len(refusedHosts) == 2 {
+			return
+		}
+	}
+}
 
 type ret struct {
 	Name string `json:"name"`
@@ -96,7 +114,7 @@ func TestLbClient_DefaultConfig(t *testing.T) {
 
 func TestLbClient_GetWithNoHost(t *testing.T) {
 	now := time.Now().UnixNano() / 1e6
-	cfg := newCfg([]string{"http://127.0.0.1:8898", "http://127.0.0.1:8888"}, nil)
+	cfg := newCfg(refusedHosts, nil)
 	cfg.FailRetryIntervalS = 5
 	client := NewLbClient(cfg, nil)
 
@@ -137,8 +155,7 @@ func TestLbClient_Put(t *testing.T) {
 
 func TestLbClient_GetWith(t *testing.T) {
 	now := time.Now().UnixNano() / 1e6
-	cfg := newCfg([]string{testServer.URL, "http://127.0.0.1:8898", "http://127.0.0.1:12345"},
-		[]string{testServer.URL})
+	cfg := newCfg(refusedHosts, []string{testServer.URL})
 	cfg.FailRetryIntervalS = 5
 	client := NewLbClient(cfg, nil)
 	wg := sync.WaitGroup{}
@@ -174,7 +191,7 @@ func TestLbClient_Delete(t *testing.T) {
 }
 
 func TestLbClient_PostWithCrc(t *testing.T) {
-	cfg := newCfg([]string{"http://127.0.0.1:8889"}, []string{testServer.URL})
+	cfg := newCfg([]string{refusedHosts[0]}, []string{testServer.URL})
 	client := NewLbClient(cfg, nil)
 	ctx := context.Background()
 	result := &ret{}
@@ -212,7 +229,7 @@ func TestLbClient_PutWithNoCrc(t *testing.T) {
 }
 
 func TestLbClient_PutWithCrc(t *testing.T) {
-	cfg := newCfg([]string{"http://127.0.0.1:8889"}, []string{testServer.URL})
+	cfg := newCfg(refusedHosts, []string{testServer.URL})
 	client := NewLbClient(cfg, nil)
 	ctx := context.Background()
 	result := &ret{}
@@ -300,7 +317,7 @@ func TestLbClient_DoWithNoCrc(t *testing.T) {
 }
 
 func TestLbClient_DoWithCrc(t *testing.T) {
-	cfg := newCfg([]string{"http://127.0.0.1:8889"}, []string{testServer.URL})
+	cfg := newCfg(refusedHosts, []string{testServer.URL})
 	client := NewLbClient(cfg, nil)
 	result := &ret{}
 	ctx := context.Background()
@@ -331,7 +348,7 @@ func TestLbClient_New(t *testing.T) {
 }
 
 func TestLbClient_EnableHost(t *testing.T) {
-	cfg := newCfg([]string{"http://127.0.0.1:8898"}, []string{testServer.URL, "http://127.0.0.1:8888"})
+	cfg := newCfg([]string{refusedHosts[0]}, []string{testServer.URL, refusedHosts[1]})
 	cfg.FailRetryIntervalS = 1
 	client := NewLbClient(cfg, nil)
 	wg := sync.WaitGroup{}
