@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -41,31 +41,31 @@ func TestOpen(t *testing.T) {
 	trace.SetGlobalTracer(tracer)
 
 	ah, lc, err := Open(moduleName, &Config{})
-	assert.Nil(t, ah)
-	assert.Nil(t, lc)
-	assert.Nil(t, err)
+	require.Nil(t, ah)
+	require.Nil(t, lc)
+	require.Nil(t, err)
 
 	tmpDir := os.TempDir() + "/testauditog" + strconv.FormatInt(time.Now().Unix(), 10) + strconv.Itoa(rand.Intn(100000))
 	err = os.Mkdir(tmpDir, 0o755)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
 	ah, lc, err = Open(moduleName, &Config{
 		LogDir: tmpDir, ChunkBits: 29,
 		KeywordsFilter: []string{"Get"},
 	})
-	assert.NoError(t, err)
-	assert.NotNil(t, ah)
-	assert.NotNil(t, lc)
+	require.NoError(t, err)
+	require.NotNil(t, ah)
+	require.NotNil(t, lc)
 	defer lc.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	bussinessHandler := func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("testh1", "testh1value")
 		w.Header().Set("Content-Type", rpc.MIMEJSON)
 		w.WriteHeader(http.StatusOK)
 		data, err := json.Marshal(testRespData{Result: "success"})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		w.Write(data)
 	}
 	entryHandler := func(w http.ResponseWriter, req *http.Request) {
@@ -80,43 +80,43 @@ func TestOpen(t *testing.T) {
 
 	// test keywords filter
 	req, err := http.NewRequest(http.MethodGet, url, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp, err := client.Do(req)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	b, err := ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	respData := &testRespData{}
 	err = json.Unmarshal(b, respData)
-	assert.NoError(t, err)
-	assert.Equal(t, "success", respData.Result)
+	require.NoError(t, err)
+	require.Equal(t, "success", respData.Result)
 	resp.Body.Close()
 
 	open, err := os.Open(tmpDir)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	dirEntries, err := open.ReadDir(-1)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(dirEntries))
-	assert.NoError(t, open.Close())
+	require.NoError(t, err)
+	require.Equal(t, 0, len(dirEntries))
+	require.NoError(t, open.Close())
 
 	for _, method := range []string{http.MethodPost, http.MethodDelete, http.MethodPut} {
 		req, err := http.NewRequest(method, url, nil)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		resp, err := client.Do(req)
-		assert.NoError(t, err)
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
 		b, err := ioutil.ReadAll(resp.Body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		respData := &testRespData{}
 		err = json.Unmarshal(b, respData)
-		assert.NoError(t, err)
-		assert.Equal(t, "success", respData.Result)
+		require.NoError(t, err)
+		require.Equal(t, "success", respData.Result)
 		resp.Body.Close()
 	}
 
 	open, err = os.Open(tmpDir)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	dirEntries, err = open.ReadDir(-1)
-	assert.NoError(t, err)
-	assert.Greater(t, len(dirEntries), 0)
+	require.NoError(t, err)
+	require.Greater(t, len(dirEntries), 0)
 }

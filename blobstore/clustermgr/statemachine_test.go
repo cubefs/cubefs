@@ -17,7 +17,7 @@ package clustermgr
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
@@ -62,8 +62,8 @@ func TestStateMachine(t *testing.T) {
 	// test snapshot
 	{
 		snapshot, err := srcService.Snapshot()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = destService.ApplySnapshot(raftserver.SnapshotMeta{Index: snapshot.Index()}, snapshot)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 }

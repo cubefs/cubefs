@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -39,8 +39,8 @@ func TestVolumeMgr_ListVolumeUnitInfo(t *testing.T) {
 
 	args := &clustermgr.ListVolumeUnitArgs{DiskID: 2}
 	ret, err := mockVolumeMgr.ListVolumeUnitInfo(context.Background(), args)
-	assert.NoError(t, err)
-	assert.Equal(t, volumeCount, len(ret))
+	require.NoError(t, err)
+	require.Equal(t, volumeCount, len(ret))
 }
 
 func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
@@ -93,20 +93,20 @@ func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
 	})
 	mockVolumeMgr.raftServer = mockRaftServer
 	ret, err := mockVolumeMgr.AllocVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix, 1))
-	assert.NoError(t, err)
-	assert.Equal(t, ret.Vuid, proto.EncodeVuid(vuidPrefix, 3))
-	assert.NotEqual(t, ret.DiskID, 0)
+	require.NoError(t, err)
+	require.Equal(t, ret.Vuid, proto.EncodeVuid(vuidPrefix, 3))
+	require.NotEqual(t, ret.DiskID, 0)
 
 	// failed case,raft propose error
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(errors.New("error"))
 	ret, err = mockVolumeMgr.AllocVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix, 1))
-	assert.Error(t, err)
-	assert.Nil(t, ret)
+	require.Error(t, err)
+	require.Nil(t, ret)
 
 	// failed case:vid not exist
 	ret, err = mockVolumeMgr.AllocVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(44, 1), 1))
-	assert.Error(t, err)
-	assert.Nil(t, ret)
+	require.Error(t, err)
+	require.Nil(t, ret)
 
 	// failed case, pendingEntries = 0
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, data []byte) error {
@@ -118,12 +118,12 @@ func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
 		return nil
 	})
 	ret, err = mockVolumeMgr.AllocVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix, 1))
-	assert.Error(t, err)
-	assert.Nil(t, ret)
+	require.Error(t, err)
+	require.Nil(t, ret)
 
 	// failed case , index over
 	_, err = mockVolumeMgr.AllocVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(1, 30), 1))
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestVolumeMgr_applyAllocVolumeUnit(t *testing.T) {
@@ -131,7 +131,7 @@ func TestVolumeMgr_applyAllocVolumeUnit(t *testing.T) {
 	defer closeTestVolumeMgr()
 
 	unit, err := mockVolumeMgr.volumeTbl.GetVolumeUnit(vuidPrefix1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	epoch := unit.Epoch
 	allocArgs := &allocVolumeUnitCtx{
 		Vuid:           proto.EncodeVuid(vuidPrefix1, epoch),
@@ -140,24 +140,24 @@ func TestVolumeMgr_applyAllocVolumeUnit(t *testing.T) {
 	}
 	mockVolumeMgr.pendingEntries.Store(allocArgs.PendingVuidKey, proto.Vuid(0))
 	err = mockVolumeMgr.applyAllocVolumeUnit(context.Background(), allocArgs)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	vol := mockVolumeMgr.all.getVol(vuidPrefix1.Vid())
 	nextEpoch := vol.vUnits[vuidPrefix1.Index()].nextEpoch
-	assert.NoError(t, err)
-	assert.Equal(t, epoch+1, nextEpoch)
+	require.NoError(t, err)
+	require.Equal(t, epoch+1, nextEpoch)
 
 	err = mockVolumeMgr.applyAllocVolumeUnit(context.Background(), allocArgs)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	vol = mockVolumeMgr.all.getVol(vuidPrefix1.Vid())
 	nextEpoch = vol.vUnits[vuidPrefix1.Index()].nextEpoch
-	assert.NoError(t, err)
-	assert.Equal(t, epoch+1, nextEpoch)
+	require.NoError(t, err)
+	require.Equal(t, epoch+1, nextEpoch)
 
 	// failed case ,vid not exist
 	allocArgs.Vuid = proto.Vuid(proto.EncodeVuid(proto.EncodeVuidPrefix(44, 1), epoch))
 	err = mockVolumeMgr.applyAllocVolumeUnit(context.Background(), allocArgs)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
@@ -187,7 +187,7 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 			NewVuid:   proto.EncodeVuid(proto.EncodeVuidPrefix(2, 0), 2),
 			NewDiskID: 30,
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// failed case, vid not exist
 		err = mockVolumeMgr.PreUpdateVolumeUnit(context.Background(), &clustermgr.UpdateVolumeArgs{
@@ -195,18 +195,18 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 			NewVuid:   proto.EncodeVuid(vuidPrefix1, 1),
 			NewDiskID: 30,
 		})
-		assert.Error(t, err)
+		require.Error(t, err)
 
 		// failed case,old vuid not match
 		args.OldVuid = proto.EncodeVuid(vuidPrefix1, 111)
 		err = mockVolumeMgr.PreUpdateVolumeUnit(context.Background(), args)
-		assert.Equal(t, ErrOldVuidNotMatch, err)
+		require.Equal(t, ErrOldVuidNotMatch, err)
 
 		// failed case,new vuid not match
 		args.OldVuid = proto.EncodeVuid(vuidPrefix1, 1)
 		args.NewVuid = proto.EncodeVuid(vuidPrefix1, 222)
 		err = mockVolumeMgr.PreUpdateVolumeUnit(context.Background(), args)
-		assert.Equal(t, ErrNewVuidNotMatch, err)
+		require.Equal(t, ErrNewVuidNotMatch, err)
 	}
 
 	// test applyUpdateVolumeUnit()
@@ -214,8 +214,8 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 
 		_, ctx := trace.StartSpanFromContext(context.Background(), "applyVolumeUnit")
 		beforeUnits, err := mockVolumeMgr.ListVolumeUnitInfo(ctx, &clustermgr.ListVolumeUnitArgs{DiskID: 1})
-		assert.NoError(t, err)
-		assert.Equal(t, len(beforeUnits), 30)
+		require.NoError(t, err)
+		require.Equal(t, len(beforeUnits), 30)
 
 		volInfo := mockVolumeMgr.all.getVol(3)
 		volInfo.lock.Lock()
@@ -225,35 +225,35 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 
 		// success case, vid=1 volume status=active
 		err = mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(3, 0), 2), 2)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// repeat update
 		err = mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(3, 0), 2), 2)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		units, err := mockVolumeMgr.ListVolumeUnitInfo(ctx, &clustermgr.ListVolumeUnitArgs{DiskID: 2})
-		assert.NoError(t, err)
-		assert.Equal(t, len(units), 31)
+		require.NoError(t, err)
+		require.Equal(t, len(units), 31)
 
 		afterUnits, err := mockVolumeMgr.ListVolumeUnitInfo(ctx, &clustermgr.ListVolumeUnitArgs{DiskID: 1})
-		assert.NoError(t, err)
-		assert.Equal(t, len(afterUnits), 29)
+		require.NoError(t, err)
+		require.Equal(t, len(afterUnits), 29)
 
 		// success case, vid=1 volume status=idle
 		err = mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(2, 1), 1), 30)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// success case, epoch= 0 just test next epoch small than  epoch store in db.actually epoch must bigger than 0
 		err = mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(2, 1), 0), 30)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// failed case, vid not exist
 		err = mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(44, 1), 1), 30)
-		assert.Error(t, err)
+		require.Error(t, err)
 
 		// failed case, vuidPrefix not match
 		err = mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(2, 55), 1), 30)
-		assert.Error(t, err)
+		require.Error(t, err)
 
 	}
 
@@ -282,7 +282,7 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 		volInfo.lock.Unlock()
 
 		err := mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(11, 0), 2), 2)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// test applyUpdateVolumeUnit, get diskInfo return error
@@ -299,7 +299,7 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 		volInfo.vUnits[0].nextEpoch = 2
 		volInfo.lock.Unlock()
 		err := mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(12, 0), 2), 2)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 }
 
@@ -313,8 +313,8 @@ func TestVolumeMgr_applyChunkSetCompact(t *testing.T) {
 	}
 	vol := mockVolumeMgr.all.getVol(args.Vuid.Vid())
 	err := mockVolumeMgr.applyChunkSetCompact(context.Background(), args)
-	assert.NoError(t, err)
-	assert.Equal(t, vol.vUnits[args.Vuid.Index()].vuInfo.Compacting, true)
+	require.NoError(t, err)
+	require.Equal(t, vol.vUnits[args.Vuid.Index()].vuInfo.Compacting, true)
 
 	// success case, already set compacting ,direct return
 	args2 := &clustermgr.SetCompactChunkArgs{
@@ -326,17 +326,17 @@ func TestVolumeMgr_applyChunkSetCompact(t *testing.T) {
 	vol2.vUnits[args2.Vuid.Index()].vuInfo.Compacting = true
 	vol2.lock.Unlock()
 	err = mockVolumeMgr.applyChunkSetCompact(context.Background(), args2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// failed case ,vid not exist
 	args.Vuid = proto.Vuid(proto.EncodeVuid(proto.EncodeVuidPrefix(44, 1), 1))
 	err = mockVolumeMgr.applyChunkSetCompact(context.Background(), args)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// failed case ,vuid  not match
 	args.Vuid = proto.Vuid(proto.EncodeVuid(proto.EncodeVuidPrefix(1, 44), 1))
 	err = mockVolumeMgr.applyChunkSetCompact(context.Background(), args)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestVolumeMgr_DiskWritableChange(t *testing.T) {
@@ -353,12 +353,12 @@ func TestVolumeMgr_DiskWritableChange(t *testing.T) {
 	// success case
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil)
 	err := mockVolumeMgr.DiskWritableChange(ctx, 2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// failed case
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(errors.New("error"))
 	err = mockVolumeMgr.DiskWritableChange(ctx, 2)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestVolumeMgr_applyDiskWritableChange(t *testing.T) {
@@ -367,8 +367,8 @@ func TestVolumeMgr_applyDiskWritableChange(t *testing.T) {
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	vol, err := mockVolumeMgr.GetVolumeInfo(ctx, vuidPrefix1.Vid())
-	assert.NoError(t, err)
-	assert.Equal(t, vol.HealthScore, 0)
+	require.NoError(t, err)
+	require.Equal(t, vol.HealthScore, 0)
 
 	volInfo := mockVolumeMgr.all.getVol(vuidPrefix1.Vid())
 	volInfo.lock.Lock()
@@ -376,18 +376,18 @@ func TestVolumeMgr_applyDiskWritableChange(t *testing.T) {
 	volInfo.vUnits[vuidPrefix1.Index()].nextEpoch = 2
 	volInfo.lock.Unlock()
 	err = mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix1, 2), 29)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// diskID:29 is be set unWritable
 	err = mockVolumeMgr.applyDiskWritableChange(context.Background(), []proto.VuidPrefix{vuidPrefix1})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	vol2, err := mockVolumeMgr.GetVolumeInfo(ctx, vuidPrefix1.Vid())
-	assert.NoError(t, err)
-	assert.Equal(t, vol2.HealthScore, -1)
+	require.NoError(t, err)
+	require.Equal(t, vol2.HealthScore, -1)
 
 	// vid not exist
 	err = mockVolumeMgr.applyDiskWritableChange(context.Background(), []proto.VuidPrefix{proto.EncodeVuidPrefix(99, 1)})
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestVolumeMgr_applyChunkReport(t *testing.T) {
@@ -408,23 +408,23 @@ func TestVolumeMgr_applyChunkReport(t *testing.T) {
 	// set  report chunkInfo(vid:1) epoch=2,
 	args[1].Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(proto.Vid(1), 2), 0)
 	err := mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	for i := 0; i < len(args); i++ {
 		vol := mockVolumeMgr.all.getVol(args[i].Vuid.Vid())
 		unit := vol.vUnits[args[i].Vuid.Index()]
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		// vid=1,report chunk's vuid epoch=2 > 1,will not apply
 		if i == 1 {
-			assert.NotEqual(t, unit.vuInfo.Free, uint64(1024*1024))
+			require.NotEqual(t, unit.vuInfo.Free, uint64(1024*1024))
 			continue
 		}
-		assert.Equal(t, unit.vuInfo.Free, uint64(1024*1024))
+		require.Equal(t, unit.vuInfo.Free, uint64(1024*1024))
 	}
 
 	// invalid vuid case
 	args[1].Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(44, 2), 1)
 	err = mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestVolumeMgr_ReleaseVolumeUnit(t *testing.T) {
@@ -457,12 +457,12 @@ func TestVolumeMgr_ReleaseVolumeUnit(t *testing.T) {
 	mockBlobNode.EXPECT().ReleaseChunk(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 	err := mockVolumeMgr.ReleaseVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix1, 1), 1, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// failed case ,diskid not exist
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).Return(nil, errors.New("err"))
 	err = mockVolumeMgr.ReleaseVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix1, 1), 90, false)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func BenchmarkVolumeMgr_ChunkReport(b *testing.B) {
@@ -485,7 +485,7 @@ func BenchmarkVolumeMgr_ChunkReport(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			err := mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
-			assert.NoError(b, err)
+			require.NoError(b, err)
 		}
 	})
 }

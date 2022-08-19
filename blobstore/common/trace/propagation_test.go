@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/opentracing/opentracing-go/mocktracer"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSpanPropagator(t *testing.T) {
@@ -44,33 +44,33 @@ func TestSpanPropagator(t *testing.T) {
 
 	for _, c := range carriers {
 		err := span.Tracer().Inject(span.Context(), c.carrierType, c.carrier)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		sp, err := Extract(c.carrierType, c.carrier)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		child := tracer.StartSpan("child", ChildOf(sp))
-		assert.Equal(t, "v1", child.BaggageItem("k1"))
-		assert.Equal(t, span.Context().(*SpanContext).traceID, child.Context().(*SpanContext).traceID)
-		assert.Equal(t, span.Context().(*SpanContext).spanID, child.Context().(*SpanContext).parentID)
+		require.Equal(t, "v1", child.BaggageItem("k1"))
+		require.Equal(t, span.Context().(*SpanContext).traceID, child.Context().(*SpanContext).traceID)
+		require.Equal(t, span.Context().(*SpanContext).spanID, child.Context().(*SpanContext).parentID)
 		child.Finish()
 	}
 
 	err := span.Tracer().Inject(span.Context(), Binary, &bytes.Buffer{})
-	assert.EqualError(t, err, ErrUnsupportedFormat.Error())
+	require.EqualError(t, err, ErrUnsupportedFormat.Error())
 	_, err = Extract(Binary, &bytes.Buffer{})
-	assert.EqualError(t, err, ErrUnsupportedFormat.Error())
+	require.EqualError(t, err, ErrUnsupportedFormat.Error())
 
 	err = tracer.Inject(mocktracer.MockSpanContext{}, Binary, &bytes.Buffer{})
-	assert.EqualError(t, err, ErrInvalidSpanContext.Error())
+	require.EqualError(t, err, ErrInvalidSpanContext.Error())
 
 	err = defaultTexMapPropagator.Inject(span.(*spanImpl).context, &bytes.Buffer{})
-	assert.EqualError(t, err, ErrInvalidCarrier.Error())
+	require.EqualError(t, err, ErrInvalidCarrier.Error())
 	_, err = defaultTexMapPropagator.Extract(&bytes.Buffer{})
-	assert.EqualError(t, err, ErrInvalidCarrier.Error())
+	require.EqualError(t, err, ErrInvalidCarrier.Error())
 
 	_, err = defaultTexMapPropagator.Extract(HTTPHeadersCarrier(http.Header{}))
-	assert.Error(t, err)
+	require.Error(t, err)
 
-	assert.Equal(t, fieldKeyTraceID, GetTraceIDKey())
+	require.Equal(t, fieldKeyTraceID, GetTraceIDKey())
 }

@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
@@ -116,30 +115,30 @@ func TestAccessLimiterBase(t *testing.T) {
 	{
 		for range [100]struct{}{} {
 			err := l.Acquire("")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 		l.Release("")
 	}
 	{
 		err := l.Acquire(nameGet)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = l.Acquire(nameGet)
-		assert.Equal(t, limit.ErrLimited, err)
+		require.Equal(t, limit.ErrLimited, err)
 		l.Release(nameGet)
 		err = l.Acquire(nameGet)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		l.Release(nameGet)
 	}
 	{
 		err := l.Acquire(nameGet)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = l.Acquire(namePut)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = l.Acquire(nameGet)
-		assert.Equal(t, limit.ErrLimited, err)
+		require.Equal(t, limit.ErrLimited, err)
 		err = l.Acquire(namePut)
-		assert.Equal(t, limit.ErrLimited, err)
+		require.Equal(t, limit.ErrLimited, err)
 
 		l.Release(nameGet)
 		l.Release(namePut)
@@ -213,9 +212,9 @@ func TestAccessLimiterNoop(t *testing.T) {
 
 	name := "noop"
 	err := l.Acquire(name)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = l.Acquire(name)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	l.Release(name)
 	l.Release(name)
 

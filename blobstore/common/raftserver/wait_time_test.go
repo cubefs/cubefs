@@ -17,7 +17,6 @@ package raftserver
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,7 +39,7 @@ func TestWaitTime(t *testing.T) {
 		v = true
 	default:
 	}
-	assert.True(t, v)
+	require.True(t, v)
 
 	for i := 0; i < 10; i++ {
 		v = false
@@ -49,7 +48,7 @@ func TestWaitTime(t *testing.T) {
 			v = true
 		default:
 		}
-		assert.True(t, v)
+		require.True(t, v)
 	}
 
 	ch = wt.Wait(29)
@@ -59,10 +58,10 @@ func TestWaitTime(t *testing.T) {
 		v = true
 	default:
 	}
-	assert.True(t, v)
+	require.True(t, v)
 	for i := 0; i < 10; i++ {
 		wt.Wait(uint64(30 + i))
 	}
 	wt.Trigger(35)
-	assert.Equal(t, 4, len(wt.(*timeList).items))
+	require.Equal(t, 4, len(wt.(*timeList).items))
 }

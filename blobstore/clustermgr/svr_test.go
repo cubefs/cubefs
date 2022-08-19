@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
@@ -95,7 +95,7 @@ func initTestService(t *testing.T) *Service {
 	cfg.ClusterCfg[proto.VolumeReserveSizeKey] = "20000000"
 	os.Mkdir(cfg.DBPath, 0o755)
 	testService, err := New(&cfg)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	return testService
 }
@@ -124,12 +124,12 @@ func TestBidAlloc(t *testing.T) {
 	// test bid alloc
 	{
 		ret, err := testClusterClient.AllocBid(ctx, &clustermgr.BidScopeArgs{Count: 10})
-		assert.NoError(t, err)
-		assert.Equal(t, proto.BlobID(1), ret.StartBid)
-		assert.Equal(t, proto.BlobID(10), ret.EndBid)
+		require.NoError(t, err)
+		require.Equal(t, proto.BlobID(1), ret.StartBid)
+		require.Equal(t, proto.BlobID(10), ret.EndBid)
 
 		_, err = testClusterClient.AllocBid(ctx, &clustermgr.BidScopeArgs{Count: 100001})
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 }
 
@@ -158,14 +158,14 @@ func TestNewService(t *testing.T) {
 	os.Mkdir(cfg.DBPath, 0o755)
 
 	testService, err := New(&cfg)
-	assert.NoError(t, err)
-	assert.NotNil(t, testService)
+	require.NoError(t, err)
+	require.NotNil(t, testService)
 
 	testService.report(context.Background())
 	testService.metricReport(context.Background())
 
 	req, err := http.NewRequest(http.MethodPost, "/", nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	testService.forwardToLeader(&mockWriter{}, req)
 

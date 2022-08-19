@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSelector_Base(t *testing.T) {
@@ -30,26 +30,26 @@ func TestSelector_Base(t *testing.T) {
 	s := newSelector(cfg)
 
 	sel, ok := s.(*selector)
-	assert.Equal(t, true, ok)
-	assert.NotNil(t, sel)
-	assert.Equal(t, 4, len(s.GetAvailableHosts()))
+	require.Equal(t, true, ok)
+	require.NotNil(t, sel)
+	require.Equal(t, 4, len(s.GetAvailableHosts()))
 
 	// test set fail
 	s.SetFail("http://127.0.0.1:8988")
 	s.SetFail("http://127.0.0.1:8988")
 	s.SetFail("http://127.0.0.1:8988")
-	assert.Equal(t, 3, len(s.GetAvailableHosts()))
+	require.Equal(t, 3, len(s.GetAvailableHosts()))
 
 	// test enable host
 	for key := range sel.crackHosts {
 		sel.enableHost(key)
 	}
-	assert.Equal(t, 4, len(s.GetAvailableHosts()))
+	require.Equal(t, 4, len(s.GetAvailableHosts()))
 
 	// test detect
 	s.SetFail("http://127.0.0.1:8888")
 	s.SetFail("http://127.0.0.1:8888")
 	s.SetFail("http://127.0.0.1:8888")
 	time.Sleep(time.Second * 2)
-	assert.Equal(t, 4, len(s.GetAvailableHosts()))
+	require.Equal(t, 4, len(s.GetAvailableHosts()))
 }

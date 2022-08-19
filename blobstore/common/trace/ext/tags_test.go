@@ -17,7 +17,7 @@ package ext
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
@@ -37,7 +37,7 @@ func TestPeerTags(t *testing.T) {
 	SpanKindRPCClient.Set(span)
 	span.Finish()
 
-	assert.Equal(t, trace.Tags{
+	require.Equal(t, trace.Tags{
 		"peer.service":      "my-service",
 		"peer.address":      "my-hostname:8080",
 		"peer.hostname":     "my-hostname",
@@ -57,7 +57,7 @@ func TestHTTPTags(t *testing.T) {
 	HTTPStatusCode.Set(span, 301)
 	span.Finish()
 
-	assert.Equal(t, trace.Tags{
+	require.Equal(t, trace.Tags{
 		"http.url":         "test.biz/uri?protocol=false",
 		"http.method":      "GET",
 		"http.status_code": uint16(301),
@@ -74,7 +74,7 @@ func TestDBTags(t *testing.T) {
 	DBUser.Set(span, "customer_user")
 	span.Finish()
 
-	assert.Equal(t, trace.Tags{
+	require.Equal(t, trace.Tags{
 		"db.instance":  "127.0.0.1:3306/customers",
 		"db.statement": "SELECT * FROM user_table",
 		"db.type":      "sql",
@@ -92,7 +92,7 @@ func TestMiscTags(t *testing.T) {
 
 	span.Finish()
 
-	assert.Equal(t, trace.Tags{
+	require.Equal(t, trace.Tags{
 		"component":         "my-awesome-library",
 		"sampling.priority": uint16(1),
 		"error":             true,
@@ -122,7 +122,7 @@ func TestMessageBusProducerTags(t *testing.T) {
 	MessageBusDestination.Set(span, "topic name")
 	span.Finish()
 
-	assert.Equal(t, trace.Tags{
+	require.Equal(t, trace.Tags{
 		"message_bus.destination": "topic name",
 		"span.kind":               SpanKindProducerEnum,
 	}, span.Tags())
@@ -134,7 +134,7 @@ func TestMessageBusConsumerTags(t *testing.T) {
 	MessageBusDestination.Set(span, "topic name")
 	span.Finish()
 
-	assert.Equal(t, trace.Tags{
+	require.Equal(t, trace.Tags{
 		"message_bus.destination": "topic name",
 		"span.kind":               SpanKindConsumerEnum,
 	}, span.Tags())

@@ -23,13 +23,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLargeFile(t *testing.T) {
 	tmpPath := os.TempDir() + "/largefile" + strconv.FormatInt(time.Now().Unix(), 16) + strconv.Itoa(rand.Intn(10000000))
 	err := os.Mkdir(tmpPath, 0o755)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer os.RemoveAll(tmpPath)
 
 	l, err := OpenLargeFile(
@@ -39,11 +39,11 @@ func TestLargeFile(t *testing.T) {
 			Suffix:            ".log",
 			Backup:            10,
 		})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer l.Close()
 	size, err := l.FsizeOf()
-	assert.NoError(t, err)
-	assert.Equal(t, int64(0), size)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), size)
 
 	buf := make([]byte, 100)
 	for i := 0; i < 100; i++ {
@@ -51,38 +51,38 @@ func TestLargeFile(t *testing.T) {
 			buf[j] = uint8(i)
 		}
 		n, err := l.Write(buf)
-		assert.NoError(t, err)
-		assert.Equal(t, len(buf), n)
+		require.NoError(t, err)
+		require.Equal(t, len(buf), n)
 	}
 
 	dir, _ := os.Open(tmpPath)
 	fis, _ := dir.Readdir(-1)
 	for i := range fis {
 		b, err := ioutil.ReadFile(tmpPath + "/" + fis[i].Name())
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		t.Log(fis[i].Name(), len(b))
 	}
 
 	off := int64(0)
 	for i := 0; i < 100; i++ {
 		n, err := l.ReadAt(buf, off)
-		assert.NoError(t, err)
-		assert.Equal(t, len(buf), n)
+		require.NoError(t, err)
+		require.Equal(t, len(buf), n)
 		expectedBuf := make([]byte, 100)
 		for j := range expectedBuf {
 			expectedBuf[j] = uint8(i)
 		}
-		assert.Equal(t, expectedBuf, buf)
+		require.Equal(t, expectedBuf, buf)
 		off += int64(len(buf))
 	}
 	_, err = l.ReadAt(buf, off)
-	assert.Equal(t, io.EOF, err)
+	require.Equal(t, io.EOF, err)
 }
 
 func TestLargeFile_Rotate(t *testing.T) {
 	tmpPath := os.TempDir() + "/largefile" + strconv.FormatInt(time.Now().Unix(), 16) + strconv.Itoa(rand.Intn(10000000))
 	err := os.Mkdir(tmpPath, 0o755)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer os.RemoveAll(tmpPath)
 
 	l, err := OpenLargeFile(
@@ -92,34 +92,34 @@ func TestLargeFile_Rotate(t *testing.T) {
 			Suffix:            ".log",
 			Backup:            4,
 		})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer l.Close()
 
 	size, err := l.FsizeOf()
-	assert.NoError(t, err)
-	assert.Equal(t, int64(0), size)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), size)
 
 	buf := make([]byte, 256)
 	for i := 0; i < 20; i++ {
 		n, err := l.Write(buf)
-		assert.NoError(t, err)
-		assert.Equal(t, len(buf), n)
+		require.NoError(t, err)
+		require.Equal(t, len(buf), n)
 	}
 	size, err = l.FsizeOf()
-	assert.NoError(t, err)
-	assert.Equal(t, int64(5*1<<10), size)
+	require.NoError(t, err)
+	require.Equal(t, int64(5*1<<10), size)
 
 	off := int64(0)
 	for i := 0; i < 4; i++ {
 		_, err := l.ReadAt(buf, off)
-		assert.Equal(t, io.EOF, err)
+		require.Equal(t, io.EOF, err)
 		off += int64(len(buf))
 	}
 
 	for i := 4; i < 20; i++ {
 		n, err := l.ReadAt(buf, off)
-		assert.NoError(t, err)
-		assert.Equal(t, len(buf), n)
+		require.NoError(t, err)
+		require.Equal(t, len(buf), n)
 		off += int64(len(buf))
 	}
 }

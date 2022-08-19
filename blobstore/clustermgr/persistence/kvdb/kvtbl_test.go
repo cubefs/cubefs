@@ -22,7 +22,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/util/log"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -83,13 +83,13 @@ func TestKvTable(t *testing.T) {
 
 	for _, c := range putCases {
 		err := kvTbl.Set([]byte(c.key), c.value)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	for i, c := range putCases {
 		val, err := kvTbl.Get([]byte(c.key))
-		assert.NoError(t, err)
-		assert.Equal(t, val, putCases[i].value)
+		require.NoError(t, err)
+		require.Equal(t, val, putCases[i].value)
 	}
 
 	listCases := []clustermgr.ListKvOpts{
@@ -117,25 +117,25 @@ func TestKvTable(t *testing.T) {
 
 	for i, c := range listCases {
 		ret, err := kvTbl.List(&c)
-		assert.NoError(t, err)
-		assert.Equal(t, len(ret), listCases[i].Count)
+		require.NoError(t, err)
+		require.Equal(t, len(ret), listCases[i].Count)
 	}
 
 	err := kvTbl.Delete([]byte(putCases[1].key))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = kvTbl.Delete([]byte("not exist key"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	v, err := kvTbl.Get([]byte(putCases[1].key))
-	assert.Error(t, err)
-	assert.Equal(t, []byte(nil), v)
+	require.Error(t, err)
+	require.Equal(t, []byte(nil), v)
 
 	ret, err := kvTbl.List(&clustermgr.ListKvOpts{
 		Prefix: "repair-100-",
 		Marker: "",
 		Count:  3,
 	})
-	assert.NoError(t, err)
-	assert.Equal(t, len(ret), 2)
+	require.NoError(t, err)
+	require.Equal(t, len(ret), 2)
 }

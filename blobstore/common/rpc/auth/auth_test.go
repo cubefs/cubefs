@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var testServer *httptest.Server
@@ -53,11 +53,11 @@ func TestAuth(t *testing.T) {
 		Transport: tc,
 	}
 	req, err := http.NewRequest("POST", testServer.URL+"/get/name?id="+strconv.Itoa(101), nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	response, err := client.Do(req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer response.Body.Close()
-	assert.Equal(t, http.StatusForbidden, response.StatusCode)
+	require.Equal(t, http.StatusForbidden, response.StatusCode)
 
 	// valid secret
 	tc = NewAuthTransport(&http.Transport{}, &Config{EnableAuth: true, Secret: testSecret})
@@ -66,28 +66,28 @@ func TestAuth(t *testing.T) {
 	}
 	result := &ret{}
 	req, err = http.NewRequest("POST", testServer.URL+"/get/name?id="+strconv.Itoa(101), nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	response, err = client.Do(req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer response.Body.Close()
-	assert.Equal(t, http.StatusOK, response.StatusCode)
+	require.Equal(t, http.StatusOK, response.StatusCode)
 	err = json.NewDecoder(response.Body).Decode(result)
-	assert.NoError(t, err)
-	assert.Equal(t, testName, result.Name)
+	require.NoError(t, err)
+	require.Equal(t, testName, result.Name)
 
 	// test empty token
 	c := http.Client{}
 	req, err = http.NewRequest("POST", testServer.URL+"/get/name?id="+strconv.Itoa(101), nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	response, err = c.Do(req)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, response.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusForbidden, response.StatusCode)
 	response.Body.Close()
 
 	// test token failed
 	req.Header.Set(TokenHeaderKey, "#$@%DF#$@#$")
 	response, err = c.Do(req)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, response.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusForbidden, response.StatusCode)
 	response.Body.Close()
 }

@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/util/log"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -57,15 +57,15 @@ func closeVolumeDB() {
 func TestVolumeDB(t *testing.T) {
 	volumeDBPath = ""
 	_, err := Open(volumeDBPath, false)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestVolumeDB_GetAllCfNames(t *testing.T) {
 	volumeDBPath = ""
 	db, err := Open(volumeDBPath, false)
-	assert.Error(t, err)
+	require.Error(t, err)
 	db.GetAllCfNames()
 
 	_, err = OpenVolumeTable(nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 }

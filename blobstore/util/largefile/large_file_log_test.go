@@ -21,13 +21,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLargeFileLog(t *testing.T) {
 	tmpPath := os.TempDir() + "/largefilelog" + strconv.FormatInt(time.Now().Unix(), 16) + strconv.Itoa(rand.Intn(10000000))
 	err := os.Mkdir(tmpPath, 0o755)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer os.RemoveAll(tmpPath)
 
 	cfg := Config{
@@ -37,35 +37,35 @@ func TestLargeFileLog(t *testing.T) {
 		Backup:            8,
 	}
 	l, err := OpenLargeFileLog(cfg, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	buf := make([]byte, 100)
 	for i := 0; i < 100; i++ {
 		err := l.Log(buf)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 	l.Close()
 
 	l, err = OpenLargeFileLog(cfg, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	for i := 0; i < 200; i++ {
 		err := l.Log(buf)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 	l.Close()
 
 	l, err = OpenLargeFileLog(cfg, true)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	for i := 0; i < 200; i++ {
 		err := l.Log(buf)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 	l.Close()
 
 	l, err = OpenLargeFileLog(cfg, true)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	for i := 0; i < 200; i++ {
 		err := l.Log(buf)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 	l.Close()
 }

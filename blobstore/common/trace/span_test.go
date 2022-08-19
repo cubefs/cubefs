@@ -22,7 +22,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	ptlog "github.com/opentracing/opentracing-go/log"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -38,7 +38,7 @@ func TestSpan_Tags(t *testing.T) {
 
 	span.SetTag("module", "worker")
 	span.SetTag("ip", "127.0.0.1")
-	assert.Equal(t, span.Tags(), expectedTags)
+	require.Equal(t, span.Tags(), expectedTags)
 }
 
 func TestSpan_Logs(t *testing.T) {
@@ -58,29 +58,29 @@ func TestSpan_Logs(t *testing.T) {
 
 	for k, v := range expectedLogs {
 		span.LogFields(v.logs...)
-		assert.Equal(t, expectedLogs[k].logs, span.Logs()[k].Fields)
+		require.Equal(t, expectedLogs[k].logs, span.Logs()[k].Fields)
 	}
-	assert.Equal(t, 2, len(span.Logs()))
+	require.Equal(t, 2, len(span.Logs()))
 
 	fields := []ptlog.Field{ptlog.String("code", "200"), ptlog.Float32("count", 100)}
 	for k, v := range fields {
 		span.LogKV(v.Key(), v.Value())
-		assert.Equal(t, fields[k].Key(), span.Logs()[k+2].Fields[0].Key())
-		assert.Equal(t, fields[k].Value(), span.Logs()[k+2].Fields[0].Value())
+		require.Equal(t, fields[k].Key(), span.Logs()[k+2].Fields[0].Key())
+		require.Equal(t, fields[k].Value(), span.Logs()[k+2].Fields[0].Value())
 	}
-	assert.Equal(t, 4, len(span.Logs()))
+	require.Equal(t, 4, len(span.Logs()))
 
 	span.LogKV("only key")
-	assert.Equal(t, 5, len(span.Logs()))
+	require.Equal(t, 5, len(span.Logs()))
 }
 
 func TestSpan_OperationName(t *testing.T) {
 	span, _ := StartSpanFromContext(context.Background(), "span")
 	defer span.Finish()
 
-	assert.Equal(t, "span", span.OperationName())
+	require.Equal(t, "span", span.OperationName())
 	span.SetOperationName("span2")
-	assert.Equal(t, "span2", span.OperationName())
+	require.Equal(t, "span2", span.OperationName())
 }
 
 func TestSpan_Baggage(t *testing.T) {
@@ -97,17 +97,17 @@ func TestSpan_Baggage(t *testing.T) {
 	}
 	for _, v := range baggages {
 		span.SetBaggageItem(v.k, v.v)
-		assert.Equal(t, v.v, span.BaggageItem(v.k))
+		require.Equal(t, v.v, span.BaggageItem(v.k))
 	}
 
 	spanChild, _ := StartSpanFromContext(ctx, "child of span")
 	for _, v := range baggages {
-		assert.Equal(t, v.v, spanChild.BaggageItem(v.k))
+		require.Equal(t, v.v, spanChild.BaggageItem(v.k))
 	}
 
 	spanChild.SetBaggageItem("k4", "v4")
-	assert.Equal(t, "v4", spanChild.BaggageItem("k4"))
-	assert.Equal(t, "v4", span.BaggageItem("k4"))
+	require.Equal(t, "v4", spanChild.BaggageItem("k4"))
+	require.Equal(t, "v4", span.BaggageItem("k4"))
 }
 
 func TestSpan_TrackLog(t *testing.T) {
@@ -115,21 +115,21 @@ func TestSpan_TrackLog(t *testing.T) {
 	defer span.Finish()
 
 	span.AppendTrackLog("sleep", time.Now(), nil)
-	assert.Equal(t, []string{"sleep"}, span.TrackLog())
+	require.Equal(t, []string{"sleep"}, span.TrackLog())
 
 	spanChild, _ := StartSpanFromContext(ctx, "child of span")
-	assert.Equal(t, []string{"sleep"}, spanChild.TrackLog())
+	require.Equal(t, []string{"sleep"}, spanChild.TrackLog())
 
 	spanChild.AppendTrackLog("sleep2", time.Now(), errors.New("sleep2 err"))
-	assert.Equal(t, []string{"sleep", "sleep2/sleep2 err"}, spanChild.TrackLog())
-	assert.Equal(t, []string{"sleep", "sleep2/sleep2 err"}, span.TrackLog())
+	require.Equal(t, []string{"sleep", "sleep2/sleep2 err"}, spanChild.TrackLog())
+	require.Equal(t, []string{"sleep", "sleep2/sleep2 err"}, span.TrackLog())
 
 	spanChild.AppendRPCTrackLog([]string{"blobnode:4", "scheduler:5"})
-	assert.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5"}, spanChild.TrackLog())
-	assert.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5"}, span.TrackLog())
+	require.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5"}, spanChild.TrackLog())
+	require.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5"}, span.TrackLog())
 
 	spanChild.AppendTrackLog("sleep3", time.Now(), nil)
-	assert.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5", "sleep3"}, span.TrackLog())
+	require.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5", "sleep3"}, span.TrackLog())
 }
 
 func TestSpan_TrackLogWithDuration(t *testing.T) {
@@ -137,21 +137,21 @@ func TestSpan_TrackLogWithDuration(t *testing.T) {
 	defer span.Finish()
 
 	span.AppendTrackLogWithDuration("sleep", time.Millisecond, nil)
-	assert.Equal(t, []string{"sleep:1"}, span.TrackLog())
+	require.Equal(t, []string{"sleep:1"}, span.TrackLog())
 
 	spanChild, _ := StartSpanFromContext(ctx, "child of span")
-	assert.Equal(t, []string{"sleep:1"}, spanChild.TrackLog())
+	require.Equal(t, []string{"sleep:1"}, spanChild.TrackLog())
 
 	spanChild.AppendTrackLogWithDuration("sleep2", 2*time.Millisecond, errors.New("sleep2 err"))
-	assert.Equal(t, []string{"sleep:1", "sleep2:2/sleep2 err"}, spanChild.TrackLog())
-	assert.Equal(t, []string{"sleep:1", "sleep2:2/sleep2 err"}, span.TrackLog())
+	require.Equal(t, []string{"sleep:1", "sleep2:2/sleep2 err"}, spanChild.TrackLog())
+	require.Equal(t, []string{"sleep:1", "sleep2:2/sleep2 err"}, span.TrackLog())
 
 	spanChild.AppendRPCTrackLog([]string{"blobnode:4", "scheduler:5"})
-	assert.Equal(t, []string{"sleep:1", "sleep2:2/sleep2 err", "blobnode:4", "scheduler:5"}, spanChild.TrackLog())
-	assert.Equal(t, []string{"sleep:1", "sleep2:2/sleep2 err", "blobnode:4", "scheduler:5"}, span.TrackLog())
+	require.Equal(t, []string{"sleep:1", "sleep2:2/sleep2 err", "blobnode:4", "scheduler:5"}, spanChild.TrackLog())
+	require.Equal(t, []string{"sleep:1", "sleep2:2/sleep2 err", "blobnode:4", "scheduler:5"}, span.TrackLog())
 
 	spanChild.AppendTrackLogWithDuration("sleep3", 3*time.Millisecond, nil)
-	assert.Equal(t, []string{"sleep:1", "sleep2:2/sleep2 err", "blobnode:4", "scheduler:5", "sleep3:3"}, span.TrackLog())
+	require.Equal(t, []string{"sleep:1", "sleep2:2/sleep2 err", "blobnode:4", "scheduler:5", "sleep3:3"}, span.TrackLog())
 }
 
 func TestSpan_BaseLogger(t *testing.T) {
@@ -190,7 +190,7 @@ func TestSpan_BaseLogger(t *testing.T) {
 			span.Errorf("ctx: %+v, span: %+v", ctx, spanNil)
 		}
 
-		assert.Panics(t, func() {
+		require.Panics(t, func() {
 			if level%2 == 0 {
 				span.Panic("panic on span", span)
 			} else {

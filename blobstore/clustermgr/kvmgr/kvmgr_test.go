@@ -28,7 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewKvMgr(t *testing.T) {
@@ -37,7 +37,7 @@ func TestNewKvMgr(t *testing.T) {
 
 	kvDB, _ := kvdb.Open(tmpKvDBPath, false)
 	kvMgr, err := NewKvMgr(kvDB)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	for i := 1; i <= 10; i++ {
 		for j := 1; j <= 100; j++ {
@@ -49,46 +49,46 @@ func TestNewKvMgr(t *testing.T) {
 
 	{
 		repairTask, err := kvMgr.Get("repair-1-1-taskUuid1")
-		assert.NoError(t, err)
-		assert.Equal(t, repairTask, []byte("repair-task-id-1-1"))
+		require.NoError(t, err)
+		require.Equal(t, repairTask, []byte("repair-task-id-1-1"))
 
 		_, err = kvMgr.Get("not-exist-key")
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	{
 		listRet, err := kvMgr.List(nil)
-		assert.NoError(t, err)
-		assert.Nil(t, listRet)
+		require.NoError(t, err)
+		require.Nil(t, listRet)
 
 		listRet, err = kvMgr.List(&clustermgr.ListKvOpts{
 			Prefix: "",
 			Marker: "",
 			Count:  0,
 		})
-		assert.NoError(t, err)
-		assert.Equal(t, len(listRet.Kvs), 10)
+		require.NoError(t, err)
+		require.Equal(t, len(listRet.Kvs), 10)
 
 		listRet, err = kvMgr.List(&clustermgr.ListKvOpts{Prefix: "repair-1-", Count: 200})
-		assert.NoError(t, err)
-		assert.Equal(t, len(listRet.Kvs), 100)
+		require.NoError(t, err)
+		require.Equal(t, len(listRet.Kvs), 100)
 
 		listRet, err = kvMgr.List(&clustermgr.ListKvOpts{Prefix: "repair-1-", Marker: "repair-1-98-taskUuid98", Count: 100})
-		assert.NoError(t, err)
-		assert.Equal(t, len(listRet.Kvs), 1)
+		require.NoError(t, err)
+		require.Equal(t, len(listRet.Kvs), 1)
 
 		listRet, err = kvMgr.List(&clustermgr.ListKvOpts{Prefix: "repair-1-41-", Marker: "repair-1-40-taskUuid40", Count: 100})
-		assert.NoError(t, err)
-		assert.Equal(t, len(listRet.Kvs), 1)
+		require.NoError(t, err)
+		require.Equal(t, len(listRet.Kvs), 1)
 
 	}
 
 	{
 		err := kvMgr.Delete("repair-1-1-taskUuid1")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		repairTask, err := kvMgr.Get("repair-task-id-1-1")
-		assert.Error(t, err)
-		assert.Nil(t, repairTask)
+		require.Error(t, err)
+		require.Nil(t, repairTask)
 	}
 }
 
@@ -98,7 +98,7 @@ func TestKvMgr_Apply(t *testing.T) {
 
 	kvDB, _ := kvdb.Open(tmpKvDBPath, false)
 	kvMgr, err := NewKvMgr(kvDB)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 	kvMgr.LoadData(ctx)
@@ -115,17 +115,17 @@ func TestKvMgr_Apply(t *testing.T) {
 				Key:   fmt.Sprintf("repair-%d-%d", i, i),
 				Value: []byte(fmt.Sprintf("repair-%d-%d-value", i, i)),
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			datas = append(datas, data)
 			operTypes = append(operTypes, OperTypeSetKv)
 			ctxs = append(ctxs, base.ProposeContext{ReqID: span.TraceID()})
 		}
 		err = kvMgr.Apply(ctx, operTypes, datas, ctxs)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		val, err := kvMgr.Get("repair-1-1")
-		assert.NoError(t, err)
-		assert.Equal(t, val, []byte("repair-1-1-value"))
+		require.NoError(t, err)
+		require.Equal(t, val, []byte("repair-1-1-value"))
 	}
 
 	{
@@ -136,23 +136,23 @@ func TestKvMgr_Apply(t *testing.T) {
 			data, err := json.Marshal(&clustermgr.DeleteKvArgs{
 				Key: fmt.Sprintf("repair-%d-%d", i, i),
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			datas = append(datas, data)
 			operTypes = append(operTypes, OperTypeDeleteKv)
 			ctxs = append(ctxs, base.ProposeContext{ReqID: span.TraceID()})
 		}
 		err = kvMgr.Apply(ctx, operTypes, datas, ctxs)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		_, err := kvMgr.Get("repair-1-1")
-		assert.Error(t, err)
+		require.Error(t, err)
 
 		ret, err := kvMgr.List(&clustermgr.ListKvOpts{
 			Prefix: "",
 			Marker: "",
 			Count:  10,
 		})
-		assert.NoError(t, err)
-		assert.Equal(t, len(ret.Kvs), 7)
+		require.NoError(t, err)
+		require.Equal(t, len(ret.Kvs), 7)
 	}
 
 	{
@@ -184,7 +184,7 @@ func TestKvMgr_Apply(t *testing.T) {
 
 		for _, tCase := range errTestCase {
 			err = kvMgr.Apply(ctx, tCase.operTypes, tCase.datas, tCase.ctxs)
-			assert.Error(t, err)
+			require.Error(t, err)
 		}
 
 	}

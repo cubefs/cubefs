@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"go.etcd.io/etcd/raft/v3"
 )
@@ -57,7 +57,7 @@ func TestSnapshotter(t *testing.T) {
 				name: fmt.Sprintf("testsnapshot%d", i),
 			},
 		}
-		assert.Nil(t, shotter.Set(snap))
+		require.Nil(t, shotter.Set(snap))
 	}
 
 	for i := 10; i < 20; i++ {
@@ -66,17 +66,17 @@ func TestSnapshotter(t *testing.T) {
 				name: fmt.Sprintf("testsnapshot%d", i),
 			},
 		}
-		assert.Equal(t, shotter.Set(snap), raft.ErrSnapshotTemporarilyUnavailable)
+		require.Equal(t, shotter.Set(snap), raft.ErrSnapshotTemporarilyUnavailable)
 	}
 
 	for i := 0; i < 10; i++ {
 		name := fmt.Sprintf("testsnapshot%d", i)
-		assert.NotNil(t, shotter.Get(name))
+		require.NotNil(t, shotter.Get(name))
 		shotter.Delete(name)
-		assert.Nil(t, shotter.Get(name))
+		require.Nil(t, shotter.Get(name))
 	}
 	for i := 10; i < 20; i++ {
-		assert.Nil(t, shotter.Get(fmt.Sprintf("testsnapshot%d", i)))
+		require.Nil(t, shotter.Get(fmt.Sprintf("testsnapshot%d", i)))
 	}
 
 	for i := 0; i < 10; i++ {
@@ -85,12 +85,12 @@ func TestSnapshotter(t *testing.T) {
 				name: fmt.Sprintf("testsnapshot%d", i),
 			},
 		}
-		assert.Nil(t, shotter.Set(snap))
+		require.Nil(t, shotter.Set(snap))
 	}
 	shotter.deleteAll()
 	for i := 0; i < 10; i++ {
 		name := fmt.Sprintf("testsnapshot%d", i)
-		assert.Nil(t, shotter.Get(name))
+		require.Nil(t, shotter.Get(name))
 	}
 
 	for i := 0; i < 10; i++ {
@@ -99,7 +99,7 @@ func TestSnapshotter(t *testing.T) {
 				name: fmt.Sprintf("testsnapshot%d", i),
 			},
 		}
-		assert.Nil(t, shotter.Set(snap))
+		require.Nil(t, shotter.Set(snap))
 	}
 	time.Sleep(time.Second)
 	shotter.Stop()
@@ -110,23 +110,23 @@ func TestSnapshotter(t *testing.T) {
 
 	name := st.Name()
 	_, err := st.Read()
-	assert.NotNil(t, err)
-	assert.Equal(t, "", name)
-	assert.Equal(t, uint64(0), st.Index())
+	require.NotNil(t, err)
+	require.Equal(t, "", name)
+	require.Equal(t, uint64(0), st.Index())
 
 	b := make([]byte, 4)
 	binary.BigEndian.PutUint32(b, 10)
 	buffer.Write(b)
 	buffer.Write([]byte("123456789"))
 	_, err = st.Read()
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 
 	buffer.Reset()
 	binary.BigEndian.PutUint32(b, 10)
 	buffer.Write(b)
 	buffer.Write([]byte("0123456789"))
 	_, err = st.Read()
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 
 	buffer.Reset()
 	crc := crc32.NewIEEE()
@@ -138,6 +138,6 @@ func TestSnapshotter(t *testing.T) {
 	binary.BigEndian.PutUint32(b, checksum)
 	buffer.Write(b)
 	body, err := st.Read()
-	assert.Nil(t, err)
-	assert.True(t, bytes.Equal(body, []byte("0123456789")))
+	require.Nil(t, err)
+	require.True(t, bytes.Equal(body, []byte("0123456789")))
 }

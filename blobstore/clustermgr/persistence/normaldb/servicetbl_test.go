@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServiceTbl(t *testing.T) {
@@ -28,7 +28,7 @@ func TestServiceTbl(t *testing.T) {
 	defer os.RemoveAll(tmpDBPath)
 
 	db, err := OpenNormalDB(tmpDBPath, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	serviceTbl := OpenServiceTable(db)
@@ -40,27 +40,27 @@ func TestServiceTbl(t *testing.T) {
 		for i := 1; i <= 10; i++ {
 			host := testHostPrefix + strconv.Itoa(i)
 			err = serviceTbl.Put(testServiceName, host, []byte(testServiceName+host))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			err = serviceTbl.Put(otherTestServiceName, host, []byte(testServiceName+host))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 
 		list, err := serviceTbl.Get(testServiceName)
-		assert.NoError(t, err)
-		assert.Equal(t, 10, len(list))
+		require.NoError(t, err)
+		require.Equal(t, 10, len(list))
 
 		err = serviceTbl.Delete(testServiceName, testHostPrefix+strconv.Itoa(1))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		list, err = serviceTbl.Get(testServiceName)
-		assert.NoError(t, err)
-		assert.Equal(t, 9, len(list))
+		require.NoError(t, err)
+		require.Equal(t, 9, len(list))
 
 		count := 0
 		serviceTbl.Range(func(key []byte, val []byte) bool {
-			count += 1
+			count++
 			return true
 		})
-		assert.Equal(t, 19, count)
+		require.Equal(t, 19, count)
 	}
 }

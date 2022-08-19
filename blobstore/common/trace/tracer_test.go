@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExplicitStartTime(t *testing.T) {
@@ -34,7 +34,7 @@ func TestExplicitStartTime(t *testing.T) {
 	span := tracer.StartSpan("testStartTime", StartTime(start))
 	defer span.Finish()
 
-	assert.Equal(t, start, span.(*spanImpl).startTime)
+	require.Equal(t, start, span.(*spanImpl).startTime)
 }
 
 func TestExplicitTags(t *testing.T) {
@@ -49,7 +49,7 @@ func TestExplicitTags(t *testing.T) {
 	span1 := tracer.StartSpan("testTags", tags)
 	defer span1.Finish()
 
-	assert.Equal(t, tags, span1.(*spanImpl).tags)
+	require.Equal(t, tags, span1.(*spanImpl).tags)
 
 	tag1 := Tag{
 		Key:   "tag1K",
@@ -61,14 +61,14 @@ func TestExplicitTags(t *testing.T) {
 	expect := Tags{
 		"tag1K": "tag1V",
 	}
-	assert.Equal(t, expect, span2.(*spanImpl).tags)
+	require.Equal(t, expect, span2.(*spanImpl).tags)
 
 	tag2 := Tag{
 		Key:   "tag2K",
 		Value: "tag2V",
 	}
 	tag2.Set(span2)
-	assert.Equal(t, tags, span2.(*spanImpl).tags)
+	require.Equal(t, tags, span2.(*spanImpl).tags)
 }
 
 func TestExplicitReferences(t *testing.T) {
@@ -81,9 +81,9 @@ func TestExplicitReferences(t *testing.T) {
 	span1 := tracer.StartSpan("child", ChildOf(parentSpan.Context())).(*spanImpl)
 	defer span1.Finish()
 
-	assert.Equal(t, 1, len(span1.references))
-	assert.Equal(t, parentSpan.context.traceID, span1.context.traceID)
-	assert.Equal(t, parentSpan.context.spanID, span1.context.parentID)
+	require.Equal(t, 1, len(span1.references))
+	require.Equal(t, parentSpan.context.traceID, span1.context.traceID)
+	require.Equal(t, parentSpan.context.spanID, span1.context.parentID)
 
 	ctx := ContextWithSpan(context.Background(), span1)
 	span2 := SpanFromContext(ctx).(*spanImpl)
@@ -91,33 +91,33 @@ func TestExplicitReferences(t *testing.T) {
 	span3, _ := StartSpanFromContext(ctx, "child of span")
 	cs := span3.(*spanImpl)
 
-	assert.Equal(t, span1, span2)
-	assert.Equal(t, 1, len(cs.references))
-	assert.Equal(t, span1.context.traceID, cs.context.traceID)
-	assert.Equal(t, span1.context.spanID, cs.context.parentID)
+	require.Equal(t, span1, span2)
+	require.Equal(t, 1, len(cs.references))
+	require.Equal(t, span1.context.traceID, cs.context.traceID)
+	require.Equal(t, span1.context.spanID, cs.context.parentID)
 
 	newParentSpan := tracer.StartSpan("newParentSpan")
 	span4 := tracer.StartSpan("nChild", FollowsFrom(span3.Context()),
 		FollowsFrom(newParentSpan.Context())).(*spanImpl)
 
-	assert.Equal(t, 2, len(span4.references))
+	require.Equal(t, 2, len(span4.references))
 
 	span5 := tracer.StartSpan("empty span context", ChildOf(&SpanContext{})).(*spanImpl)
-	assert.Equal(t, 0, len(span5.references))
+	require.Equal(t, 0, len(span5.references))
 }
 
 func TestStartSpanFromContext(t *testing.T) {
 	span, ctx := StartSpanFromContext(context.Background(), "span1")
 	defer span.Finish()
 
-	assert.NotNil(t, SpanFromContext(ctx))
+	require.NotNil(t, SpanFromContext(ctx))
 	s := span.(*spanImpl)
 
 	childSpan, _ := StartSpanFromContext(ctx, "child span")
 	cs := childSpan.(*spanImpl)
-	assert.Equal(t, 1, len(cs.references))
-	assert.Equal(t, s.context.traceID, cs.context.traceID)
-	assert.Equal(t, s.context.spanID, cs.context.parentID)
+	require.Equal(t, 1, len(cs.references))
+	require.Equal(t, s.context.traceID, cs.context.traceID)
+	require.Equal(t, s.context.spanID, cs.context.parentID)
 
 	// root span
 	traceID := "traceID"
@@ -127,49 +127,49 @@ func TestStartSpanFromContext(t *testing.T) {
 	rs1 := rootSpan1.(*spanImpl)
 	rs2 := rootSpan2.(*spanImpl)
 
-	assert.Equal(t, traceID, rs1.context.traceID)
-	assert.NotEqual(t, traceID, rs2.context.traceID)
+	require.Equal(t, traceID, rs1.context.traceID)
+	require.NotEqual(t, traceID, rs2.context.traceID)
 }
 
 func TestSpanFromContext(t *testing.T) {
 	ctx := context.Background()
-	assert.Nil(t, SpanFromContext(ctx))
+	require.Nil(t, SpanFromContext(ctx))
 
 	span, ctx := StartSpanFromContext(ctx, "span1")
 	defer span.Finish()
 
-	assert.NotNil(t, SpanFromContext(ctx))
+	require.NotNil(t, SpanFromContext(ctx))
 
 	spanSafe := SpanFromContextSafe(context.Background())
 	defer spanSafe.Finish()
 
 	s := spanSafe.(*spanImpl)
-	assert.Equal(t, defaultRootSpanName, s.operationName)
+	require.Equal(t, defaultRootSpanName, s.operationName)
 
 	spanCopy := SpanFromContextSafe(ctx)
 
 	sc := spanCopy.(*spanImpl)
-	assert.Equal(t, span.OperationName(), sc.OperationName())
+	require.Equal(t, span.OperationName(), sc.OperationName())
 }
 
 func TestStartSpanFromHTTPHeaderSafe(t *testing.T) {
 	r := &http.Request{Header: http.Header{}}
 	traceID := "test"
 	span, _ := StartSpanFromHTTPHeaderSafe(r, "http")
-	assert.NotEqual(t, traceID, span.Context().(*SpanContext).traceID)
+	require.NotEqual(t, traceID, span.Context().(*SpanContext).traceID)
 
 	r.Header.Set(reqidKey, traceID)
 	span, _ = StartSpanFromHTTPHeaderSafe(r, "http")
-	assert.Equal(t, traceID, span.Context().(*SpanContext).traceID)
+	require.Equal(t, traceID, span.Context().(*SpanContext).traceID)
 }
 
 func TestNewTracer(t *testing.T) {
 	tracer := NewTracer("blobstore")
-	assert.Equal(t, defaultMaxLogsPerSpan, tracer.options.maxLogsPerSpan)
+	require.Equal(t, defaultMaxLogsPerSpan, tracer.options.maxLogsPerSpan)
 	tracer.Close()
 
 	tracer = NewTracer("blobstore", TracerOptions.MaxLogsPerSpan(10))
-	assert.Equal(t, 10, tracer.options.maxLogsPerSpan)
+	require.Equal(t, 10, tracer.options.maxLogsPerSpan)
 	tracer.Close()
 }
 
@@ -186,7 +186,7 @@ func TestCloseGlobalTracer(t *testing.T) {
 func TestInject(t *testing.T) {
 	r := &http.Request{Header: http.Header{}}
 	err := InjectWithHTTPHeader(context.Background(), r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	span1, _ := StartSpanFromHTTPHeaderSafe(r, "span1")
 	firstUpper := func(s string) string {
 		if s == "" {
@@ -194,14 +194,14 @@ func TestInject(t *testing.T) {
 		}
 		return strings.ToUpper(s[:1]) + s[1:]
 	}
-	assert.Equal(t, r.Header.Get(firstUpper(fieldKeyTraceID)), span1.Context().(*SpanContext).traceID)
+	require.Equal(t, r.Header.Get(firstUpper(fieldKeyTraceID)), span1.Context().(*SpanContext).traceID)
 
 	span2, ctx := StartSpanFromContext(context.Background(), "span2")
 	r = &http.Request{Header: http.Header{}}
 	err = InjectWithHTTPHeader(ctx, r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	span3, _ := StartSpanFromHTTPHeaderSafe(r, "span3")
-	assert.Equal(t, r.Header.Get(firstUpper(fieldKeyTraceID)), span3.Context().(*SpanContext).traceID)
-	assert.Equal(t, span2.Context().(*SpanContext).traceID, span3.Context().(*SpanContext).traceID)
+	require.Equal(t, r.Header.Get(firstUpper(fieldKeyTraceID)), span3.Context().(*SpanContext).traceID)
+	require.Equal(t, span2.Context().(*SpanContext).traceID, span3.Context().(*SpanContext).traceID)
 }

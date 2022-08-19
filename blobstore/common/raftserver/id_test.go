@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIdGenerator(t *testing.T) {
@@ -26,5 +26,5 @@ func TestIdGenerator(t *testing.T) {
 
 	id1 := genetator.Next()
 	id2 := genetator.Next()
-	assert.Equal(t, id1+1, id2)
+	require.Equal(t, id1+1, id2)
 }

@@ -29,7 +29,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
@@ -74,23 +74,23 @@ func TestQoSControllerReader(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			n, err := io.ReadFull(r1, b1)
-			assert.NoError(t, err)
-			assert.Equal(t, _bufferSize, int64(n))
+			require.NoError(t, err)
+			require.Equal(t, _bufferSize, int64(n))
 			wg.Done()
 		}()
 		go func() {
 			time.Sleep(1 * time.Second)
 			n, err := io.ReadFull(r2, b2)
-			assert.NoError(t, err)
-			assert.Equal(t, _bufferSize, int64(n))
+			require.NoError(t, err)
+			require.Equal(t, _bufferSize, int64(n))
 			wg.Done()
 		}()
 		now := time.Now()
 		wg.Wait()
 		elapsed := time.Since(now).Seconds()
-		assert.True(t, math.Abs(4-elapsed) < 0.5)
-		assert.Equal(t, _buffer, b1)
-		assert.Equal(t, _buffer, b2)
+		require.True(t, math.Abs(4-elapsed) < 0.5)
+		require.Equal(t, _buffer, b1)
+		require.Equal(t, _buffer, b2)
 	}
 }
 
@@ -123,23 +123,23 @@ func TestQoSControllerReaderAt(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			n, err := io.ReadFull(sc1, b1)
-			assert.NoError(t, err)
-			assert.Equal(t, _bufferSize, int64(n))
+			require.NoError(t, err)
+			require.Equal(t, _bufferSize, int64(n))
 			wg.Done()
 		}()
 		go func() {
 			time.Sleep(1 * time.Second)
 			n, err := io.ReadFull(sc2, b2)
-			assert.NoError(t, err)
-			assert.Equal(t, _bufferSize, int64(n))
+			require.NoError(t, err)
+			require.Equal(t, _bufferSize, int64(n))
 			wg.Done()
 		}()
 		now := time.Now()
 		wg.Wait()
 		elapsed := time.Since(now).Seconds()
-		assert.True(t, math.Abs(4-elapsed) < 0.5)
-		assert.Equal(t, _buffer, b1)
-		assert.Equal(t, _buffer, b2)
+		require.True(t, math.Abs(4-elapsed) < 0.5)
+		require.Equal(t, _buffer, b1)
+		require.Equal(t, _buffer, b2)
 	}
 }
 
@@ -170,24 +170,24 @@ func TestBPSControllerWriter(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			n, err := io.Copy(w1, bytes.NewReader(_buffer))
-			assert.NoError(t, err)
-			assert.Equal(t, _bufferSize, n)
+			require.NoError(t, err)
+			require.Equal(t, _bufferSize, n)
 			wg.Done()
 		}()
 		go func() {
 			time.Sleep(1 * time.Second)
 			n, err := io.Copy(w2, bytes.NewReader(_buffer))
-			assert.NoError(t, err)
-			assert.Equal(t, _bufferSize, n)
+			require.NoError(t, err)
+			require.Equal(t, _bufferSize, n)
 			wg.Done()
 		}()
 
 		now := time.Now()
 		wg.Wait()
 		elapsed := time.Since(now).Seconds()
-		assert.True(t, math.Abs(4-elapsed) < 0.5)
-		assert.Equal(t, _buffer, b1.Bytes())
-		assert.Equal(t, _buffer, b2.Bytes())
+		require.True(t, math.Abs(4-elapsed) < 0.5)
+		require.Equal(t, _buffer, b1.Bytes())
+		require.Equal(t, _buffer, b2.Bytes())
 	}
 }
 
@@ -210,7 +210,7 @@ func TestBPSControllerWriterAt(t *testing.T) {
 	defer c.Close()
 
 	workDir, err := ioutil.TempDir(os.TempDir(), "workDir")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer os.RemoveAll(workDir)
 	path1 := filepath.Join(workDir, "path1")
 	path2 := filepath.Join(workDir, "path2")
@@ -218,28 +218,28 @@ func TestBPSControllerWriterAt(t *testing.T) {
 	defer os.Remove(path2)
 
 	b1, err := os.OpenFile(path1, os.O_CREATE|os.O_RDWR, 0o666)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	b2, err := os.OpenFile(path2, os.O_CREATE|os.O_RDWR, 0o666)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	w1 := c.WriterAt(ctx, ioStat.WriterAt(b1))
 	w2 := c.WriterAt(ctx, ioStat.WriterAt(b2))
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
 		n, err := w1.WriteAt(_buffer, 0)
-		assert.NoError(t, err)
-		assert.Equal(t, _bufferSize, int64(n))
+		require.NoError(t, err)
+		require.Equal(t, _bufferSize, int64(n))
 		wg.Done()
 	}()
 	go func() {
 		time.Sleep(1 * time.Second)
 		n, err := w2.WriteAt(_buffer, 0)
-		assert.NoError(t, err)
-		assert.Equal(t, _bufferSize, int64(n))
+		require.NoError(t, err)
+		require.Equal(t, _bufferSize, int64(n))
 		wg.Done()
 	}()
 	now := time.Now()
 	wg.Wait()
 	elapsed := time.Since(now).Seconds()
-	assert.True(t, math.Abs(4-elapsed) < 0.8)
+	require.True(t, math.Abs(4-elapsed) < 0.8)
 }

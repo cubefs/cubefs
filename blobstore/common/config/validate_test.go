@@ -18,72 +18,72 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNotZero(t *testing.T) {
 	{
-		assert.True(t, testisZero(nil))
+		require.True(t, testisZero(nil))
 	}
 
 	{
 		var i int
-		assert.True(t, testisZero(i))
+		require.True(t, testisZero(i))
 		i = 1
-		assert.False(t, testisZero(i))
+		require.False(t, testisZero(i))
 	}
 
 	{
 		var i uint
-		assert.True(t, testisZero(i))
+		require.True(t, testisZero(i))
 		i = 1
-		assert.False(t, testisZero(i))
+		require.False(t, testisZero(i))
 	}
 
 	{
 		var f float64
-		assert.True(t, testisZero(f))
+		require.True(t, testisZero(f))
 		f = 1.2
-		assert.False(t, testisZero(f))
+		require.False(t, testisZero(f))
 	}
 
 	{
 		var str string
-		assert.True(t, testisZero(str))
+		require.True(t, testisZero(str))
 		str = "str"
-		assert.False(t, testisZero(str))
+		require.False(t, testisZero(str))
 	}
 
 	{
 		var sli []string
 		sli1 := make([]string, 0)
 		sli2 := []string{""}
-		assert.True(t, testisZero(sli))
-		assert.True(t, testisZero(sli1))
-		assert.False(t, testisZero(sli2))
+		require.True(t, testisZero(sli))
+		require.True(t, testisZero(sli1))
+		require.False(t, testisZero(sli2))
 	}
 
 	{
 		var arr [2]int
-		assert.True(t, testisZero(arr))
+		require.True(t, testisZero(arr))
 		arr = [2]int{0, 1}
-		assert.False(t, testisZero(arr))
+		require.False(t, testisZero(arr))
 	}
 
 	{
 		var m1 map[string]struct{}
 		m2 := make(map[string]string)
-		assert.True(t, testisZero(m1))
-		assert.True(t, testisZero(m2))
+		require.True(t, testisZero(m1))
+		require.True(t, testisZero(m2))
 		m2["key"] = "value"
-		assert.False(t, testisZero(m2))
+		require.False(t, testisZero(m2))
 	}
 
 	{
 		var v chan int
-		assert.True(t, testisZero(v))
+		require.True(t, testisZero(v))
 		v = make(chan int)
-		assert.False(t, testisZero(v))
+		require.False(t, testisZero(v))
 	}
 
 	type School struct {
@@ -98,19 +98,19 @@ func TestNotZero(t *testing.T) {
 
 	{
 		var struct1 *StructA
-		assert.True(t, testisZero(struct1))
+		require.True(t, testisZero(struct1))
 		var struct2 StructA
-		assert.True(t, testisZero(struct2))
+		require.True(t, testisZero(struct2))
 
 		struct2 = StructA{Age: 1}
-		assert.False(t, testisZero(struct2))
+		require.False(t, testisZero(struct2))
 		struct2 = StructA{Name: []string{"name1"}}
-		assert.False(t, testisZero(struct2))
+		require.False(t, testisZero(struct2))
 
 		struct2 = StructA{School2: &School{}}
-		assert.True(t, testisZero(struct2))
+		require.True(t, testisZero(struct2))
 		struct2 = StructA{School2: &School{Address: "address1"}}
-		assert.False(t, testisZero(struct2))
+		require.False(t, testisZero(struct2))
 	}
 }
 
@@ -132,8 +132,8 @@ func TestRequiredWithParent(t *testing.T) {
 
 	var stu1, stu2 Student
 	err := LoadData(&stu1, []byte(stu1Json))
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	err = LoadData(&stu2, []byte(stu2Json))
-	assert.Nil(t, err)
+	require.Nil(t, err)
 }

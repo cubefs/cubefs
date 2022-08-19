@@ -34,7 +34,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,7 +60,7 @@ func initTestDiskMgr(t *testing.T) (d *DiskMgr, closeFunc func()) {
 	var err error
 	testTmpDBPath := "/tmp/tmpdiskmgrnormaldb" + strconv.Itoa(rand.Intn(10000000000))
 	testDB, err := normaldb.OpenNormalDB(testTmpDBPath, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -74,7 +73,7 @@ func initTestDiskMgr(t *testing.T) (d *DiskMgr, closeFunc func()) {
 	testMockBlobNode = mocks.NewMockStorageAPI(ctrl)
 	testDiskMgr.blobNodeClient = testMockBlobNode
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	return testDiskMgr, func() {
 		testDB.Close()
 		os.RemoveAll(testTmpDBPath)

@@ -19,23 +19,23 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 func TestDefaultDecoder_DecodeReq(t *testing.T) {
 	request, err := http.NewRequest(http.MethodPost, "/test", strings.NewReader("test"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	decoder := defaultDecoder{}
 
 	request.Header.Set("Content-Type", rpc.MIMEJSON)
 	request.Header.Set("Content-MD5", "1")
 	decodeReq := decoder.DecodeReq(request)
-	assert.NotNil(t, decodeReq)
+	require.NotNil(t, decodeReq)
 
 	request.Header.Set("Content-Type", rpc.MIMEPOSTForm)
 	decodeReq = decoder.DecodeReq(request)
-	assert.NotNil(t, decodeReq)
+	require.NotNil(t, decodeReq)
 }

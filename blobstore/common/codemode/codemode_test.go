@@ -18,7 +18,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -35,32 +35,32 @@ var (
 func TestCodeModeBase(t *testing.T) {
 	for _, cm := range []CodeMode{EC15P12, EC6P10L2, EC10P4} {
 		tactic := cm.Tactic()
-		assert.Equal(t, tactic.MinShardSize, 2048)
-		assert.Equal(t, tactic, *cm.T())
-		assert.Equal(t, tactic.N+tactic.M+tactic.L, cm.GetShardNum())
-		assert.True(t, tactic.IsValid())
+		require.Equal(t, tactic.MinShardSize, 2048)
+		require.Equal(t, tactic, *cm.T())
+		require.Equal(t, tactic.N+tactic.M+tactic.L, cm.GetShardNum())
+		require.True(t, tactic.IsValid())
 
 		indexes, n, m := cm.T().GlobalStripe()
-		assert.Equal(t, tactic.N, n)
-		assert.Equal(t, tactic.M, m)
+		require.Equal(t, tactic.N, n)
+		require.Equal(t, tactic.M, m)
 		expectedIndex := make([]int, 0)
 		for i := 0; i < tactic.N+tactic.M; i++ {
 			expectedIndex = append(expectedIndex, i)
 		}
-		assert.Equal(t, expectedIndex, indexes)
+		require.Equal(t, expectedIndex, indexes)
 	}
 
 	for _, cm := range GetAllCodeModes() {
-		assert.True(t, cm.IsValid())
-		assert.True(t, cm.Name().IsValid())
-		assert.Equal(t, cm.String(), string(cm.Name()))
-		assert.Equal(t, cm, cm.Name().GetCodeMode())
-		assert.Equal(t, cm.Tactic(), cm.Name().Tactic())
+		require.True(t, cm.IsValid())
+		require.True(t, cm.Name().IsValid())
+		require.Equal(t, cm.String(), string(cm.Name()))
+		require.Equal(t, cm, cm.Name().GetCodeMode())
+		require.Equal(t, cm.Tactic(), cm.Name().Tactic())
 	}
 
 	name := CodeModeName("xxx")
-	assert.False(t, name.IsValid())
-	assert.Panics(t, func() { name.GetCodeMode() })
+	require.False(t, name.IsValid())
+	require.Panics(t, func() { name.GetCodeMode() })
 }
 
 func TestCodeModeGetTactic(t *testing.T) {
@@ -77,37 +77,37 @@ func TestCodeModeGetTactic(t *testing.T) {
 
 	for _, cs := range cases {
 		if cs.isPanic {
-			assert.Panics(t, func() { cs.mode.Tactic() })
-			assert.Panics(t, func() { cs.mode.Name() })
-			assert.Empty(t, cs.mode.String())
-			assert.False(t, cs.mode.IsValid())
+			require.Panics(t, func() { cs.mode.Tactic() })
+			require.Panics(t, func() { cs.mode.Name() })
+			require.Empty(t, cs.mode.String())
+			require.False(t, cs.mode.IsValid())
 		} else {
-			assert.NotPanics(t, func() { cs.mode.Tactic() })
+			require.NotPanics(t, func() { cs.mode.Tactic() })
 		}
 	}
 }
 
 func TestGetLayoutByAZ(t *testing.T) {
 	indexes := EC15P12.T().GetECLayoutByAZ()
-	assert.Equal(t, 3, len(indexes))
+	require.Equal(t, 3, len(indexes))
 
 	for i := range indexes {
-		assert.Equal(t, 9, len(indexes[i]))
+		require.Equal(t, 9, len(indexes[i]))
 	}
 
 	indexes = EC6P10L2.T().GetECLayoutByAZ()
-	assert.Equal(t, 2, len(indexes))
+	require.Equal(t, 2, len(indexes))
 
-	assert.Equal(t, ec6P10L2Stripes[0], indexes[0])
-	assert.Equal(t, ec6P10L2Stripes[1], indexes[1])
+	require.Equal(t, ec6P10L2Stripes[0], indexes[0])
+	require.Equal(t, ec6P10L2Stripes[1], indexes[1])
 
 	{
 		codeMode := EC12P4.Tactic()
 		indexes := codeMode.GetECLayoutByAZ()
-		assert.Equal(t, 1, len(indexes))
+		require.Equal(t, 1, len(indexes))
 
 		for i := range indexes {
-			assert.Equal(t, codeMode.N+codeMode.M+codeMode.L, len(indexes[i]))
+			require.Equal(t, codeMode.N+codeMode.M+codeMode.L, len(indexes[i]))
 		}
 	}
 }
@@ -127,9 +127,9 @@ func TestGlobalStripe(t *testing.T) {
 	for _, cs := range cases {
 		tactic := cs.mode.Tactic()
 		stripe, n, m := tactic.GlobalStripe()
-		assert.Equal(t, cs.n, len(stripe))
-		assert.Equal(t, tactic.N, n)
-		assert.Equal(t, tactic.M, m)
+		require.Equal(t, cs.n, len(stripe))
+		require.Equal(t, tactic.N, n)
+		require.Equal(t, tactic.M, m)
 	}
 }
 
@@ -147,9 +147,9 @@ func TestAllLocalStripe(t *testing.T) {
 	for _, cs := range cases {
 		tactic := cs.mode.Tactic()
 		stripes, n, m := tactic.AllLocalStripe()
-		assert.Equal(t, cs.stripes, stripes)
-		assert.Equal(t, cs.n, n)
-		assert.Equal(t, cs.m, m)
+		require.Equal(t, cs.stripes, stripes)
+		require.Equal(t, cs.n, n)
+		require.Equal(t, cs.m, m)
 	}
 }
 
@@ -185,9 +185,9 @@ func TestLocalStripe(t *testing.T) {
 	for _, cs := range cases {
 		tactic := cs.mode.Tactic()
 		stripe, n, m := tactic.LocalStripe(cs.index)
-		assert.Equal(t, cs.stripe, stripe)
-		assert.Equal(t, cs.n, n)
-		assert.Equal(t, cs.m, m)
+		require.Equal(t, cs.stripe, stripe)
+		require.Equal(t, cs.n, n)
+		require.Equal(t, cs.m, m)
 	}
 }
 
@@ -215,9 +215,9 @@ func TestLocalStripeInAZ(t *testing.T) {
 	for _, cs := range cases {
 		tactic := cs.mode.Tactic()
 		stripe, n, m := tactic.LocalStripeInAZ(cs.azIndex)
-		assert.Equal(t, cs.stripe, stripe)
-		assert.Equal(t, cs.n, n)
-		assert.Equal(t, cs.m, m)
+		require.Equal(t, cs.stripe, stripe)
+		require.Equal(t, cs.n, n)
+		require.Equal(t, cs.m, m)
 	}
 }
 
