@@ -3485,6 +3485,10 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[extentMergeSleepMsKey]; ok {
 		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, val.(uint64))
 	}
+	oldDumpWaterLevel := atomic.LoadUint64(&c.cfg.MetaNodeDumpWaterLevel)
+	if val, ok := params[dumpWaterLevelKey]; ok {
+		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, val.(uint64))
+	}
 
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
@@ -3498,6 +3502,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, oldDpRecoverPoolSize)
 		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpRecoverPoolSize)
 		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, oldExtentMergeSleepMs)
+		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, oldDumpWaterLevel)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -3791,6 +3796,18 @@ func (c *Cluster) setFixTinyDeleteRecord(limitRate uint64) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDnFixTinyDeleteRecordLimit] err[%v]", err)
 		c.dnFixTinyDeleteRecordLimit = oldDeleteRecordLimit
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeDumpWaterLevel(level uint64) (err error) {
+	oldDumpWaterLevel := atomic.LoadUint64(&c.cfg.MetaNodeDumpWaterLevel)
+	atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, level)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeDumpWaterLevel] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, oldDumpWaterLevel)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

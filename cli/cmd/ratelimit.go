@@ -133,10 +133,16 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.ExtentMergeSleepMs >= 0 {
 				msg += fmt.Sprintf("extentMergeSleepMs: %d, ", info.ExtentMergeSleepMs)
 			}
+			if info.MetaNodeDumpWaterLevel > 0 {
+				msg += fmt.Sprintf("dumpWaterLevel    : %d, ", info.MetaNodeDumpWaterLevel)
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
 			}
+
+			stdout("Set rate limit: %s\n", strings.TrimRight(msg, " ,"))
+
 			if err = client.AdminAPI().SetRateLimit(&info); err != nil {
 				errout("Set rate limit fail:\n%v\n", err)
 			}
@@ -162,6 +168,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.ExtentMergeSleepMs, "extentMergeSleepMs", -1, "extent merge interval(ms)")
 	cmd.Flags().Int64Var(&info.DnFixTinyDeleteRecordLimit, "fixTinyDeleteRecordLimit", -1, "data node fix tiny delete record limit")
 	cmd.Flags().Int64Var(&info.DataNodeRepairTaskZoneCount, "dataNodeRepairTaskZoneCount", -1, "data node repair task count of target zone")
+	cmd.Flags().Int64Var(&info.MetaNodeDumpWaterLevel, "metaNodeDumpWaterLevel", -1, "meta node dump snap shot water level")
 	return cmd
 }
 
@@ -199,6 +206,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  (map[volume][]inode)\n"))
 	sb.WriteString(fmt.Sprintf("  ExtentMergeSleepMs          : %v\n", info.ExtentMergeSleepMs))
 	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskZoneLimit : %v\n", info.DataNodeRepairTaskCountZoneLimit))
+	sb.WriteString(fmt.Sprintf("  MetaNodeDumpWaterLevel      : %v\n", info.MetaNodeDumpWaterLevel))
 	sb.WriteString(fmt.Sprintf("  (map[zone]limit)\n"))
 	return sb.String()
 }

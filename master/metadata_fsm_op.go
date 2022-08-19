@@ -64,6 +64,7 @@ type clusterValue struct {
 	EcStartScrubTime                  int64
 	MaxCodecConcurrent                int
 	MetaNodeRocksdbDiskThreshold      float32
+	MetaNodeDumpWaterLevel            uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -100,6 +101,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		EcStartScrubTime:                  c.EcStartScrubTime,
 		MaxCodecConcurrent:                c.MaxCodecConcurrent,
 		MetaNodeRocksdbDiskThreshold:      c.cfg.MetaNodeRocksdbDiskThreshold,
+		MetaNodeDumpWaterLevel:            c.cfg.MetaNodeDumpWaterLevel,
 	}
 	return cv
 }
@@ -884,6 +886,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 			c.cfg.ExtentMergeIno = make(map[string][]uint64)
 		}
 		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, cv.ExtentMergeSleepMs)
+
+		if cv.MetaNodeDumpWaterLevel < defaultMetanodeDumpWaterLevel {
+			cv.MetaNodeDumpWaterLevel = defaultMetanodeDumpWaterLevel
+		}
+		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, cv.MetaNodeDumpWaterLevel)
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

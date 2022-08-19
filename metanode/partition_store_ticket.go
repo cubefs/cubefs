@@ -122,6 +122,10 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Stop()
 				case opFSMStoreTick:
 					msgs = append(msgs, msg)
+				case resetStoreTick:
+					if _, ok := mp.IsLeader(); ok {
+						timer.Reset(intervalToPersistData)
+					}
 				}
 			case <-timer.C:
 				if mp.applyID <= curIndex {

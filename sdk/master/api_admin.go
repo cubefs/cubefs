@@ -601,6 +601,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.DnFixTinyDeleteRecordLimit >= 0 {
 		request.addParam("fixTinyDeleteRecordKey", strconv.FormatInt(info.DnFixTinyDeleteRecordLimit, 10))
 	}
+	if info.MetaNodeDumpWaterLevel > 0 {
+		request.addParam("metaNodeDumpWaterLevel", strconv.FormatInt(int64(info.MetaNodeDumpWaterLevel), 10))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {
