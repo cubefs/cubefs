@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
-	"net/http"
 	"os"
 	"strconv"
 	"testing"
@@ -91,7 +90,7 @@ func TestManage(t *testing.T) {
 		resp, err := testClusterClient.Snapshot(ctx)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, 206, resp.StatusCode)
 		index, err := strconv.ParseUint(resp.Header.Get(clustermgr.RaftSnapshotIndexHeaderKey), 10, 64)
 		require.NoError(t, err)
 

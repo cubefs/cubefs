@@ -137,6 +137,8 @@ func (s *Service) SnapshotDump(c *rpc.Context) {
 	}
 	c.Writer.Header().Set(clustermgr.RaftSnapshotIndexHeaderKey, strconv.FormatUint(snapshot.Index(), 10))
 	c.Writer.Header().Set(clustermgr.RaftSnapshotNameHeaderKey, snapshot.Name())
+	c.RespondStatus(206)
+
 	for {
 		buf, err := snapshot.Read()
 		if err != nil {

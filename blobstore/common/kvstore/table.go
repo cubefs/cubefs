@@ -46,7 +46,8 @@ func (t *table) Get(key []byte, opts ...OpOption) (data []byte, err error) {
 		return nil, err
 	}
 	defer cValue.Free()
-	if err == nil && cValue.Size() == 0 {
+
+	if !cValue.Exists() {
 		err = ErrNotFound
 		return
 	}
