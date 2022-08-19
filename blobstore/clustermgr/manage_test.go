@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
@@ -34,37 +34,37 @@ func TestManage(t *testing.T) {
 	// test member add or remove
 	{
 		err := testClusterClient.AddMember(ctx, &clustermgr.AddMemberArgs{PeerID: 2, Host: "127.0.0.1", NodeHost: "127.0.0.2", MemberType: clustermgr.MemberTypeMin})
-		assert.NotNil(t, err)
+		require.NotNil(t, err)
 
 		err = testClusterClient.AddMember(ctx, &clustermgr.AddMemberArgs{PeerID: 2, Host: "127.0.0.1", NodeHost: "127.0.0.2", MemberType: clustermgr.MemberTypeNormal})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = testClusterClient.RemoveMember(ctx, 10)
-		assert.Equal(t, apierrors.ErrIllegalArguments.Error(), err.Error())
+		require.Equal(t, apierrors.ErrIllegalArguments.Error(), err.Error())
 
 		err = testClusterClient.TransferLeadership(ctx, 2)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = testClusterClient.RemoveMember(ctx, 1)
-		assert.Equal(t, apierrors.ErrRequestNotAllow.Error(), err.Error())
+		require.Equal(t, apierrors.ErrRequestNotAllow.Error(), err.Error())
 
 		err = testClusterClient.AddMember(ctx, &clustermgr.AddMemberArgs{PeerID: 2, Host: "127.0.0.1", NodeHost: "127.0.0.2", MemberType: clustermgr.MemberTypeNormal})
-		assert.Equal(t, apierrors.CodeDuplicatedMemberInfo, err.(rpc.HTTPError).StatusCode())
+		require.Equal(t, apierrors.CodeDuplicatedMemberInfo, err.(rpc.HTTPError).StatusCode())
 
 	}
 
 	// test stat
 	{
 		statInfo, err := testClusterClient.Stat(ctx)
-		assert.NoError(t, err)
-		assert.NotNil(t, statInfo)
+		require.NoError(t, err)
+		require.NotNil(t, statInfo)
 	}
 
 	// test snapshot dump
 	{
 		snapshotDBs := make(map[string]base.SnapshotDB)
 		uuid, err := uuid.NewUUID()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		tmpNormalDBPath := os.TempDir() + "/snapshot-normaldb-" + uuid.String()
 		tmpVolumeDBPath := os.TempDir() + "/snapshot-volumedb-" + uuid.String()
 		tmpRaftDBPath := os.TempDir() + "/snapshot-raftdb-" + uuid.String()
@@ -76,29 +76,29 @@ func TestManage(t *testing.T) {
 		defer os.RemoveAll(tmpRaftDBPath)
 
 		normalDB, err := normaldb.OpenNormalDB(tmpNormalDBPath, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		defer normalDB.Close()
 		volumeDB, err := volumedb.Open(tmpVolumeDBPath, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		defer volumeDB.Close()
 		raftDB, err := raftdb.OpenRaftDB(tmpRaftDBPath, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		defer raftDB.Close()
 
 		snapshotDBs["volume"] = volumeDB
 		snapshotDBs["normal"] = normalDB
 
 		resp, err := testClusterClient.Snapshot(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		defer resp.Body.Close()
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
 		index, err := strconv.ParseUint(resp.Header.Get(clustermgr.RaftSnapshotIndexHeaderKey), 10, 64)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		for {
 			snapshotData, err := base.DecodeSnapshotData(resp.Body)
 			if err != nil {
-				assert.Equal(t, io.EOF, err)
+				require.Equal(t, io.EOF, err)
 				break
 			}
 			dbName := snapshotData.Header.DbName
@@ -109,11 +109,11 @@ func TestManage(t *testing.T) {
 			} else {
 				err = snapshotDBs[dbName].Put(kvstore.KV{Key: snapshotData.Key, Value: snapshotData.Value})
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 		indexValue := make([]byte, 8)
 		binary.BigEndian.PutUint64(indexValue, index)
 		err = raftDB.Put(base.ApplyIndexKey, indexValue)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 }

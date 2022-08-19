@@ -27,7 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEncodeSnapshotData(t *testing.T) {
@@ -43,15 +43,15 @@ func TestEncodeSnapshotData(t *testing.T) {
 	}
 
 	data, err := EncodeSnapshotData(snap)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	decodeSnap, err := DecodeSnapshotData(bytes.NewBuffer(data))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, snap.Header.DbName, decodeSnap.Header.DbName)
-	assert.Equal(t, snap.Header.CfName, decodeSnap.Header.CfName)
-	assert.Equal(t, snap.Key, decodeSnap.Key)
-	assert.Equal(t, snap.Value, decodeSnap.Value)
+	require.Equal(t, snap.Header.DbName, decodeSnap.Header.DbName)
+	require.Equal(t, snap.Header.CfName, decodeSnap.Header.CfName)
+	require.Equal(t, snap.Key, decodeSnap.Key)
+	require.Equal(t, snap.Value, decodeSnap.Value)
 }
 
 func TestSnapshot(t *testing.T) {
@@ -63,11 +63,11 @@ func TestSnapshot(t *testing.T) {
 	defer os.RemoveAll(tmpNormalDBPat2)
 
 	normalDB1, err := normaldb.OpenNormalDB(tmpNormalDBPat1, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer normalDB1.Close()
 
 	normalDB2, err := normaldb.OpenNormalDB(tmpNormalDBPat2, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer normalDB2.Close()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
@@ -75,24 +75,24 @@ func TestSnapshot(t *testing.T) {
 	// insert test data
 	{
 		scopeTbl1, err := normaldb.OpenScopeTable(normalDB1)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = scopeTbl1.Put("testName", uint64(1))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		diskDropTbl1, err := normaldb.OpenDroppedDiskTable(normalDB1)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = diskDropTbl1.AddDroppingDisk(proto.DiskID(1))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		scopeTbl2, err := normaldb.OpenScopeTable(normalDB2)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = scopeTbl2.Put("testName", 2)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		diskDropTbl2, err := normaldb.OpenDroppedDiskTable(normalDB2)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = diskDropTbl2.AddDroppingDisk(proto.DiskID(2))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	// create snapshot and apply snapshot
@@ -101,20 +101,20 @@ func TestSnapshot(t *testing.T) {
 		os.MkdirAll(tmpDBPath, 0o755)
 		defer os.RemoveAll(tmpDBPath)
 		raftDB, err := raftdb.OpenRaftDB(tmpDBPath, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		defer raftDB.Close()
 
 		dbName1 := "normal1"
 		dbName2 := "normal2"
 		raftNode, err := NewRaftNode(&RaftNodeConfig{FlushNumInterval: 1, TruncateNumInterval: 1, ApplyIndex: 1}, raftDB, map[string]SnapshotDB{dbName1: normalDB1, dbName2: normalDB2})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		snapshot := raftNode.CreateRaftSnapshot(10)
 		defer snapshot.Close()
 
 		snapshot.Name()
 		index := snapshot.Index()
-		assert.Equal(t, uint64(1), index)
+		require.Equal(t, uint64(1), index)
 
 		applyNormalDBPat1 := "/tmp/tmpsnapshotnormaldb1" + strconv.Itoa(rand.Intn(1000000000))
 		defer os.RemoveAll(applyNormalDBPat1)
@@ -122,14 +122,14 @@ func TestSnapshot(t *testing.T) {
 		defer os.RemoveAll(applyNormalDBPat2)
 
 		applyNormalDB1, err := normaldb.OpenNormalDB(applyNormalDBPat1, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		defer applyNormalDB1.Close()
 
 		applyNormalDB2, err := normaldb.OpenNormalDB(applyNormalDBPat2, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		defer applyNormalDB2.Close()
 
 		err = raftNode.ApplyRaftSnapshot(ctx, snapshot)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 }

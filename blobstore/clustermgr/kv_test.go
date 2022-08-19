@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestKV(t *testing.T) {
@@ -32,7 +32,7 @@ func TestKV(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	err := testClusterClient.SetKV(ctx, "test1", []byte("value"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func BenchmarkService_KvSet(b *testing.B) {

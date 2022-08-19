@@ -29,7 +29,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestScopeMgr(t *testing.T) {
@@ -37,7 +37,7 @@ func TestScopeMgr(t *testing.T) {
 	defer os.RemoveAll(tmpDBPath)
 
 	db, err := normaldb.OpenNormalDB(tmpDBPath, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	ctrl := gomock.NewController(t)
@@ -47,7 +47,7 @@ func TestScopeMgr(t *testing.T) {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	scopeMgr, err := NewScopeMgr(db)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	scopeMgr.SetRaftServer(mockRaftServer)
 
 	name1 := "testname1"
@@ -59,15 +59,15 @@ func TestScopeMgr(t *testing.T) {
 		count := 10
 
 		base, new, err := scopeMgr.Alloc(ctx, name1, count)
-		assert.NoError(t, err)
-		assert.Equal(t, uint64(1), base)
-		assert.Equal(t, uint64(10), new)
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), base)
+		require.Equal(t, uint64(10), new)
 
 		data, _ := json.Marshal(&allocCtx{Name: name1, Current: 10})
 
 		scopeMgr.Apply(ctx, []int32{OperTypeAllocScope}, [][]byte{data}, []base_.ProposeContext{{ReqID: span.TraceID()}})
 		current := scopeMgr.GetCurrent(name1)
-		assert.Equal(t, uint64(count), current)
+		require.Equal(t, uint64(count), current)
 	}
 
 	// test alloc: current continue from 10
@@ -75,12 +75,12 @@ func TestScopeMgr(t *testing.T) {
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil)
 
 		base, new, err := scopeMgr.Alloc(ctx, name1, 10)
-		assert.NoError(t, err)
-		assert.Equal(t, uint64(11), base)
-		assert.Equal(t, uint64(20), new)
+		require.NoError(t, err)
+		require.Equal(t, uint64(11), base)
+		require.Equal(t, uint64(20), new)
 
 		current := scopeMgr.GetCurrent(name1)
-		assert.Equal(t, uint64(20), current)
+		require.Equal(t, uint64(20), current)
 	}
 
 	// test alloc: count < 0
@@ -91,18 +91,18 @@ func TestScopeMgr(t *testing.T) {
 
 		now := scopeMgr.GetCurrent(name1)
 		_, _, err = scopeMgr.Alloc(ctx, name1, -10)
-		assert.Error(t, err)
-		assert.Equal(t, uint64(20), now)
+		require.Error(t, err)
+		require.Equal(t, uint64(20), now)
 
 		data, _ := json.Marshal(&allocCtx{Name: name1, Current: 30})
 		scopeMgr.Apply(ctx, []int32{OperTypeAllocScope}, [][]byte{data}, []base_.ProposeContext{{ReqID: span.TraceID()}})
 		now = scopeMgr.GetCurrent(name1)
-		assert.Equal(t, uint64(30), now)
+		require.Equal(t, uint64(30), now)
 
 		base, current, err := scopeMgr.Alloc(ctx, name1, 1000009)
-		assert.NoError(t, err)
-		assert.Equal(t, base, uint64(31))
-		assert.Equal(t, current, uint64(1000030))
+		require.NoError(t, err)
+		require.Equal(t, base, uint64(31))
+		require.Equal(t, current, uint64(1000030))
 	}
 
 	// test alloc: raft return err
@@ -110,13 +110,13 @@ func TestScopeMgr(t *testing.T) {
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(errors.New("err"))
 
 		_, _, err := scopeMgr.Alloc(ctx, name1, 10)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// test applier other function
 	{
 		moduleName := scopeMgr.GetModuleName()
-		assert.Equal(t, module, module)
+		require.Equal(t, module, module)
 		scopeMgr.SetModuleName(moduleName)
 		scopeMgr.NotifyLeaderChange(ctx, 1, "")
 		scopeMgr.Flush(ctx)

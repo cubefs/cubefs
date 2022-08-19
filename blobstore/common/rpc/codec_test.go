@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServerCrcDecode(t *testing.T) {
@@ -49,7 +49,7 @@ func TestServerCrcDecode(t *testing.T) {
 		body := bytes.NewBuffer(make([]byte, 1024))
 		req, _ := http.NewRequest(http.MethodPut, "/put/1024", body)
 		router.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusOK, w.status)
+		require.Equal(t, http.StatusOK, w.status)
 	}
 	{
 		w := new(mockResponseWriter)
@@ -57,7 +57,7 @@ func TestServerCrcDecode(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodPut, "/put/1024", body)
 		WithCrcEncode()(req)
 		router.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusOK, w.status)
+		require.Equal(t, http.StatusOK, w.status)
 	}
 	{
 		w := new(mockResponseWriter)
@@ -65,7 +65,7 @@ func TestServerCrcDecode(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodPut, "/put/1025", body)
 		WithCrcEncode()(req)
 		router.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusInternalServerError, w.status)
+		require.Equal(t, http.StatusInternalServerError, w.status)
 	}
 }
 
@@ -93,7 +93,7 @@ func TestServerCrcDecodeWithMiddleware(t *testing.T) {
 		body := bytes.NewBuffer(make([]byte, 1024))
 		req, _ := http.NewRequest(http.MethodPut, "/put/1024", body)
 		handler.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusOK, w.status)
+		require.Equal(t, http.StatusOK, w.status)
 	}
 	{
 		w := new(mockResponseWriter)
@@ -101,7 +101,7 @@ func TestServerCrcDecodeWithMiddleware(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodPut, "/put/1024", body)
 		WithCrcEncode()(req)
 		handler.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusOK, w.status)
+		require.Equal(t, http.StatusOK, w.status)
 	}
 	{
 		w := new(mockResponseWriter)
@@ -109,6 +109,6 @@ func TestServerCrcDecodeWithMiddleware(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodPut, "/put/1025", body)
 		WithCrcEncode()(req)
 		handler.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusInternalServerError, w.status)
+		require.Equal(t, http.StatusInternalServerError, w.status)
 	}
 }

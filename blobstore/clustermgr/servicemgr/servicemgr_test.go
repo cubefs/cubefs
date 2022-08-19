@@ -27,7 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServiceMgr(t *testing.T) {
@@ -35,7 +35,7 @@ func TestServiceMgr(t *testing.T) {
 	defer os.RemoveAll(tmpDBPath)
 
 	db, err := normaldb.OpenNormalDB(tmpDBPath, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 	serviceTbl := normaldb.OpenServiceTable(db)
 
@@ -53,12 +53,12 @@ func TestServiceMgr(t *testing.T) {
 			Expires:   time.Now().Add(time.Duration(60) * time.Second),
 		}
 		data, err := json.Marshal(service)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = serviceTbl.Put(testServiceName, host, data)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = serviceTbl.Put(otherTestServiceName, host, data)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	serviceMgr := NewServiceMgr(serviceTbl)
@@ -67,7 +67,7 @@ func TestServiceMgr(t *testing.T) {
 	serviceMgr.NotifyLeaderChange(context.Background(), 0, "")
 
 	info := serviceMgr.GetServiceInfo(testServiceName)
-	assert.Equal(t, 10, len(info.Nodes))
+	require.Equal(t, 10, len(info.Nodes))
 }
 
 func TestServiceMgr_Apply(t *testing.T) {
@@ -75,7 +75,7 @@ func TestServiceMgr_Apply(t *testing.T) {
 	defer os.RemoveAll(tmpDBPath)
 
 	db, err := normaldb.OpenNormalDB(tmpDBPath, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 	serviceTbl := normaldb.OpenServiceTable(db)
 	serviceMgr := NewServiceMgr(serviceTbl)
@@ -94,17 +94,17 @@ func TestServiceMgr_Apply(t *testing.T) {
 				ServiceNode: clustermgr.ServiceNode{ClusterID: 1, Name: serviceName, Host: hostPrefix + strconv.Itoa(i), Idc: ""},
 				Timeout:     30,
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			datas = append(datas, data)
 			operTypes = append(operTypes, OpRegister)
 			ctxs = append(ctxs, base.ProposeContext{ReqID: span.TraceID()})
 		}
 
 		err = serviceMgr.Apply(ctx, operTypes, datas, ctxs)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		info := serviceMgr.GetServiceInfo(serviceName)
-		assert.Equal(t, 3, len(info.Nodes))
+		require.Equal(t, 3, len(info.Nodes))
 	}
 
 	{
@@ -112,13 +112,13 @@ func TestServiceMgr_Apply(t *testing.T) {
 			Name: serviceName,
 			Host: hostPrefix + strconv.Itoa(1),
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = serviceMgr.Apply(ctx, []int32{OpUnregister}, [][]byte{data}, []base.ProposeContext{{ReqID: span.TraceID()}})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		info := serviceMgr.GetServiceInfo(serviceName)
-		assert.Equal(t, 2, len(info.Nodes))
+		require.Equal(t, 2, len(info.Nodes))
 	}
 
 	{
@@ -126,12 +126,12 @@ func TestServiceMgr_Apply(t *testing.T) {
 			Name: serviceName,
 			Host: hostPrefix + strconv.Itoa(2),
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = serviceMgr.Apply(ctx, []int32{OpHeartbeat}, [][]byte{data}, []base.ProposeContext{{ReqID: span.TraceID()}})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	err = serviceMgr.Flush(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }

@@ -27,7 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestVolumeMgr_Apply(t *testing.T) {
@@ -51,7 +51,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			VolInfo: vol.volInfoBase,
 		}
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeInitCreateVolume)
 		datas = append(datas, data)
 	}
@@ -67,7 +67,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 		}
 
 		data, err := json.Marshal(unitRecs)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeIncreaseVolumeUnitsEpoch)
 		datas = append(datas, data)
 	}
@@ -85,7 +85,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			VolInfo: vol.volInfoBase,
 		}
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeCreateVolume)
 		datas = append(datas, data)
 	}
@@ -99,7 +99,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			PendingAllocVolKey: "1",
 		}
 		data, err := json.Marshal(allocVol)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeAllocVolume)
 		datas = append(datas, data)
 
@@ -116,7 +116,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			},
 		}
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeRetainVolume)
 		datas = append(datas, data)
 	}
@@ -128,7 +128,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			TaskType: base.VolumeTaskTypeLock,
 		}
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeChangeVolumeStatus)
 		datas = append(datas, data)
 	}
@@ -141,7 +141,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			OldVuid:   proto.EncodeVuid(4294967296, 1),
 		}
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeUpdateVolumeUnit)
 		datas = append(datas, data)
 	}
@@ -160,7 +160,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			},
 		}
 		data, err := args.Encode()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeChunkReport)
 		datas = append(datas, data)
 	}
@@ -172,7 +172,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			Compacting: true,
 		}
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeChunkSetCompact)
 		datas = append(datas, data)
 	}
@@ -182,7 +182,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 		args := make([]proto.VuidPrefix, 0)
 		args = append(args, 4294967296)
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeVolumeUnitSetWritable)
 		datas = append(datas, data)
 	}
@@ -193,7 +193,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			Vuid: proto.EncodeVuid(4294967296, 1),
 		}
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeAllocVolumeUnit)
 		datas = append(datas, data)
 	}
@@ -206,7 +206,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			TaskId:   "1",
 		}
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeDeleteTask)
 		datas = append(datas, data)
 	}
@@ -215,7 +215,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 	{
 		args := []proto.Vid{1, 2}
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeExpireVolume)
 		datas = append(datas, data)
 	}
@@ -229,7 +229,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 			},
 		}
 		data, err := json.Marshal(args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeAdminUpdateVolume)
 		datas = append(datas, data)
 	}
@@ -240,20 +240,20 @@ func TestVolumeMgr_Apply(t *testing.T) {
 	}
 
 	err := mockVolumeMgr.Apply(ctx, operTypes, datas, ctxs)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// test error datas
 	for i := range datas {
 		datas[i] = append(datas[i], []byte{1}...)
 		err = mockVolumeMgr.Apply(ctx, operTypes, datas, ctxs)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// test error opertype
 	operTypes = []int32{0}
 	datas = [][]byte{{0}}
 	err = mockVolumeMgr.Apply(ctx, operTypes, datas, ctxs[0:1])
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestVolumeMgr_Others(t *testing.T) {
@@ -264,6 +264,6 @@ func TestVolumeMgr_Others(t *testing.T) {
 	mockVolumeMgr.NotifyLeaderChange(ctx, 1, "")
 	mockVolumeMgr.SetModuleName("volumemgr")
 	name := mockVolumeMgr.GetModuleName()
-	assert.Equal(t, name, "volumemgr")
+	require.Equal(t, name, "volumemgr")
 	mockVolumeMgr.Flush(ctx)
 }

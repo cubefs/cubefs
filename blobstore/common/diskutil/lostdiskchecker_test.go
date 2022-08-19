@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetMountPoint(t *testing.T) {
@@ -15,8 +15,8 @@ func TestGetMountPoint(t *testing.T) {
 		return
 	}
 	mountPath, err := getMountPoint("/")
-	assert.NoError(t, err)
-	assert.Equal(t, mountPath, "/")
+	require.NoError(t, err)
+	require.Equal(t, mountPath, "/")
 }
 
 func TestLsblkByMountPoint(t *testing.T) {
@@ -24,7 +24,7 @@ func TestLsblkByMountPoint(t *testing.T) {
 		return
 	}
 	_, err := lsblkByMountPoint("/")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func backupFstab() error {
@@ -63,16 +63,16 @@ func TestIsLostDisk(t *testing.T) {
 		return
 	}
 	lost := IsLostDisk("/")
-	assert.Equal(t, lost, false)
+	require.Equal(t, lost, false)
 
 	// Fault injection
 	err := backupFstab()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer restoreFstab()
 	mountPoint := "/TestIsLostDisk"
 	err = addMountRecord(mountPoint)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	lost = IsLostDisk(mountPoint)
-	assert.Equal(t, lost, true)
+	require.Equal(t, lost, true)
 }

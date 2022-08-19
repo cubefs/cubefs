@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
@@ -137,8 +137,8 @@ func TestClient_GetWith(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	err := simpleClient.GetWith(ctx, testServer.URL, result)
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }
 
 func TestClient_PostWithCrc(t *testing.T) {
@@ -146,35 +146,35 @@ func TestClient_PostWithCrc(t *testing.T) {
 	result := &ret{}
 	err := simpleClient.PostWith(ctx, testServer.URL+"/crc", result,
 		&ret{Name: "TestClient_PostWithCrc"}, WithCrcEncode())
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, "TestClient_PostWithCrc", result.Name)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "TestClient_PostWithCrc", result.Name)
 }
 
 func TestClient_PostWithNoCrc(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	err := simpleClient.PostWith(ctx, testServer.URL+"/json", result, &ret{Name: "TestClient_PostWithNoCrc"})
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, "TestClient_PostWithNoCrc+Test", result.Name)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "TestClient_PostWithNoCrc+Test", result.Name)
 }
 
 func TestClient_Delete(t *testing.T) {
 	ctx := context.Background()
 	resp, err := simpleClient.Delete(ctx, testServer.URL)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestClient_PutWithNoCrc(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	err := simpleClient.PutWith(ctx, testServer.URL+"/json", result, &ret{Name: "TestClient_PutWithNoCrc"})
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, "TestClient_PutWithNoCrc+Test", result.Name)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "TestClient_PutWithNoCrc+Test", result.Name)
 }
 
 func TestClient_PutWithCrc(t *testing.T) {
@@ -182,20 +182,20 @@ func TestClient_PutWithCrc(t *testing.T) {
 	result := &ret{}
 	err := simpleClient.PostWith(ctx, testServer.URL+"/crc", result,
 		&ret{Name: "TestClient_PutWithCrc"}, WithCrcEncode())
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, "TestClient_PutWithCrc", result.Name)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "TestClient_PutWithCrc", result.Name)
 }
 
 func TestClient_Post(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	resp, err := simpleClient.Post(ctx, testServer.URL+"/json", &ret{Name: "TestClient_Post"})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = ParseData(resp, result)
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, "TestClient_Post+Test", result.Name)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "TestClient_Post+Test", result.Name)
 }
 
 func TestClient_PostWithReadResponseTimeout(t *testing.T) {
@@ -204,14 +204,14 @@ func TestClient_PostWithReadResponseTimeout(t *testing.T) {
 	simpleCli := NewClient(simpleCfg)
 	ctx := context.Background()
 	resp, err := simpleCli.Post(ctx, testServer.URL+"/timeout", &ret{Name: "TestClient_Post"})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer resp.Body.Close()
 	cache := make([]byte, 128)
 	_, err = resp.Body.Read(cache)
 	for err == nil {
 		_, err = resp.Body.Read(cache)
 	}
-	assert.Equal(t, ErrBodyReadTimeout, err)
+	require.Equal(t, ErrBodyReadTimeout, err)
 }
 
 func TestTimeoutReadCloser_Read(t *testing.T) {
@@ -222,18 +222,18 @@ func TestTimeoutReadCloser_Read(t *testing.T) {
 	}
 	res := make([]byte, 30)
 	_, err := readCloser.Read(res)
-	assert.Equal(t, ErrBodyReadTimeout, err)
+	require.Equal(t, ErrBodyReadTimeout, err)
 }
 
 func TestClient_Put(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	resp, err := simpleClient.Put(ctx, testServer.URL+"/json", &ret{Name: "TestClient_Put"})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = ParseData(resp, result)
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, "TestClient_Put+Test", result.Name)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "TestClient_Put+Test", result.Name)
 }
 
 func TestClient_Close(t *testing.T) {
@@ -243,29 +243,29 @@ func TestClient_Close(t *testing.T) {
 func TestClient_Head(t *testing.T) {
 	ctx := context.Background()
 	resp, err := simpleClient.Head(ctx, testServer.URL)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestClient_DoWithNoCrc(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	request, err := http.NewRequest(http.MethodPost, testServer.URL, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = simpleClient.DoWith(ctx, request, result)
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }
 
 func TestClient_DoWithCrc(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	request, err := http.NewRequest(http.MethodPost, testServer.URL+"/crc", nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = simpleClient.DoWith(ctx, request, result, WithCrcEncode())
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }
 
 func TestClient_Form(t *testing.T) {
@@ -273,9 +273,9 @@ func TestClient_Form(t *testing.T) {
 	m["test"] = []string{"test_lb_Form"}
 	ctx := context.Background()
 	resp, err := simpleClient.Form(ctx, http.MethodPost, testServer.URL, m)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestClient_ParseDataWithContentLengthZero(t *testing.T) {
@@ -284,11 +284,11 @@ func TestClient_ParseDataWithContentLengthZero(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	resp, err := simpleClient.Form(ctx, http.MethodPost, testServer.URL, m)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.StatusCode = 400
 	resp.ContentLength = 0
 	err = ParseData(resp, result)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestClient_ParseData(t *testing.T) {
@@ -297,11 +297,11 @@ func TestClient_ParseData(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	resp, err := simpleClient.Form(ctx, http.MethodPost, testServer.URL, m)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.StatusCode = 400
 	resp.ContentLength = 12
 	err = ParseData(resp, result)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestClient_DoContextCancel(t *testing.T) {
@@ -309,10 +309,10 @@ func TestClient_DoContextCancel(t *testing.T) {
 	result := &ret{}
 	cancel, cancelFunc := context.WithCancel(ctx)
 	request, err := http.NewRequest(http.MethodPost, testServer.URL, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	cancelFunc()
 	err = simpleClient.DoWith(cancel, request, result)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestClient_ResponseClose(t *testing.T) {
@@ -320,27 +320,27 @@ func TestClient_ResponseClose(t *testing.T) {
 	result := &ret{}
 	resp, err := simpleClient.Post(ctx, testServer.URL+"/json",
 		&ret{Name: "TestClient_ResponseClose"})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
 	err = ParseData(resp, result)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestClient_PostWithOnServerNotAck(t *testing.T) {
 	request, err := http.NewRequest(http.MethodPost, testServer.URL, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	request.Header.Set(HeaderCrcEncoded, "1")
 	response, err := simpleClient.Do(context.Background(), request)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = serverCrcEncodeCheck(context.Background(), request, response)
 	response.Body.Close()
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 }
 
 func TestClient_PageNotFound(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	err := simpleClient.GetWith(ctx, testServer.URL+"/notfound", result)
-	assert.Error(t, err)
-	assert.Equal(t, "", result.Name)
+	require.Error(t, err)
+	require.Equal(t, "", result.Name)
 }

@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -137,11 +137,11 @@ func TestVolumeTable_PutVolumeRecord(t *testing.T) {
 	defer closeVolumeDB()
 
 	err := volumeTable.PutVolumeRecord(volume1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	vol, err := volumeTable.GetVolume(proto.Vid(1))
-	assert.NoError(t, err)
-	assert.Equal(t, vol.Vid, proto.Vid(1))
+	require.NoError(t, err)
+	require.Equal(t, vol.Vid, proto.Vid(1))
 }
 
 func TestVolumeTable_PutVolumes(t *testing.T) {
@@ -150,19 +150,19 @@ func TestVolumeTable_PutVolumes(t *testing.T) {
 
 	recs := []*VolumeRecord{volume1, volume2, volume3}
 	err := volumeTable.PutVolumeRecords(recs)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	vol, err := volumeTable.GetVolume(proto.Vid(1))
-	assert.NoError(t, err)
-	assert.Equal(t, vol.Vid, proto.Vid(1))
+	require.NoError(t, err)
+	require.Equal(t, vol.Vid, proto.Vid(1))
 
 	vol2, err := volumeTable.GetVolume(proto.Vid(2))
-	assert.NoError(t, err)
-	assert.Equal(t, vol2.Vid, proto.Vid(2))
+	require.NoError(t, err)
+	require.Equal(t, vol2.Vid, proto.Vid(2))
 
 	vol3, err := volumeTable.GetVolume(proto.Vid(3))
-	assert.NoError(t, err)
-	assert.Equal(t, vol3.Vid, proto.Vid(3))
+	require.NoError(t, err)
+	require.Equal(t, vol3.Vid, proto.Vid(3))
 }
 
 func TestVolumeTable_GetVolumeRecord(t *testing.T) {
@@ -170,14 +170,14 @@ func TestVolumeTable_GetVolumeRecord(t *testing.T) {
 	defer closeVolumeDB()
 
 	err := volumeTable.PutVolumeRecord(volume1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	vol, err := volumeTable.GetVolume(1)
-	assert.NoError(t, err)
-	assert.Equal(t, volume1, vol)
+	require.NoError(t, err)
+	require.Equal(t, volume1, vol)
 
 	vol, err = volumeTable.GetVolume(55)
-	assert.Error(t, err)
-	assert.Nil(t, vol)
+	require.Error(t, err)
+	require.Nil(t, vol)
 }
 
 func TestVolumeTable_PutVolumeAndVolumeUnit(t *testing.T) {
@@ -186,7 +186,7 @@ func TestVolumeTable_PutVolumeAndVolumeUnit(t *testing.T) {
 
 	volumeUnits := [][]*VolumeUnitRecord{{volumeUnit1}, {volumeUnit2}, {volumeUnit3}}
 	err := volumeTable.PutVolumeAndVolumeUnit(volumes, volumeUnits)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestVolumeTable_PutBatch(t *testing.T) {
@@ -196,15 +196,15 @@ func TestVolumeTable_PutBatch(t *testing.T) {
 	volumeUnits := [][]*VolumeUnitRecord{{volumeUnit1}, {volumeUnit2}, {volumeUnit3}}
 	tokens := []*TokenRecord{token1, token2, token3}
 	err := volumeTable.PutVolumes(volumes, volumeUnits, tokens)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ret, err := volumeTable.ListVolumeUnit(32)
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(ret))
+	require.NoError(t, err)
+	require.Equal(t, 2, len(ret))
 
 	volTokens, err := volumeTable.GetAllTokens()
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(volTokens))
+	require.NoError(t, err)
+	require.Equal(t, 3, len(volTokens))
 }
 
 func TestVolumeTable_RangeVolumeRecord(t *testing.T) {
@@ -214,14 +214,14 @@ func TestVolumeTable_RangeVolumeRecord(t *testing.T) {
 	volumeUnits := [][]*VolumeUnitRecord{{volumeUnit1}, {volumeUnit2}, {volumeUnit3}}
 	tokens := []*TokenRecord{token1, token2, token3}
 	err := volumeTable.PutVolumes(volumes, volumeUnits, tokens)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	i := 0
 	volumeTable.RangeVolumeRecord(func(Record *VolumeRecord) error {
 		i++
 		return nil
 	})
-	assert.Equal(t, i, len(volumes))
+	require.Equal(t, i, len(volumes))
 }
 
 func TestVolumeTable_ListVolumeRecord(t *testing.T) {
@@ -231,27 +231,27 @@ func TestVolumeTable_ListVolumeRecord(t *testing.T) {
 	volumeUnits := [][]*VolumeUnitRecord{{volumeUnit1}, {volumeUnit2}, {volumeUnit3}}
 	tokens := []*TokenRecord{token1, token2, token3}
 	err := volumeTable.PutVolumes(volumes, volumeUnits, tokens)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ret, err := volumeTable.ListVolume(5, 0)
-	assert.NoError(t, err)
-	assert.Equal(t, len(ret), 3)
+	require.NoError(t, err)
+	require.Equal(t, len(ret), 3)
 
 	ret, err = volumeTable.ListVolume(5, 2)
-	assert.NoError(t, err)
-	assert.Equal(t, len(ret), 1)
+	require.NoError(t, err)
+	require.Equal(t, len(ret), 1)
 
 	ret, err = volumeTable.ListVolume(2, 1)
-	assert.NoError(t, err)
-	assert.Equal(t, len(ret), 2)
+	require.NoError(t, err)
+	require.Equal(t, len(ret), 2)
 
 	ret, err = volumeTable.ListVolume(1, 2)
-	assert.NoError(t, err)
-	assert.Equal(t, len(ret), 1)
+	require.NoError(t, err)
+	require.Equal(t, len(ret), 1)
 
 	ret, err = volumeTable.ListVolume(12, 44)
-	assert.NoError(t, err)
-	assert.Equal(t, len(ret), 0)
+	require.NoError(t, err)
+	require.Equal(t, len(ret), 0)
 }
 
 func TestTokenTable_PutToken(t *testing.T) {
@@ -259,7 +259,7 @@ func TestTokenTable_PutToken(t *testing.T) {
 	defer closeVolumeDB()
 
 	err := volumeTable.PutToken(1, token1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestTokenTable_GetToken(t *testing.T) {
@@ -267,17 +267,17 @@ func TestTokenTable_GetToken(t *testing.T) {
 	defer closeVolumeDB()
 
 	err := volumeTable.PutToken(1, token1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	token, err := volumeTable.GetToken(1)
-	assert.NoError(t, err)
-	assert.Equal(t, token1, token)
+	require.NoError(t, err)
+	require.Equal(t, token1, token)
 }
 
 func TestTokenTable_PutBatch(t *testing.T) {
 	initVolumeDB()
 	defer closeVolumeDB()
 	err := volumeTable.PutTokens(tokens)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestTokenTable_DeleteToken(t *testing.T) {
@@ -285,20 +285,20 @@ func TestTokenTable_DeleteToken(t *testing.T) {
 	defer closeVolumeDB()
 
 	err := volumeTable.PutTokens(tokens)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = volumeTable.DeleteToken(1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	ret, err := volumeTable.GetAllTokens()
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(ret))
+	require.NoError(t, err)
+	require.Equal(t, 2, len(ret))
 
 	err = volumeTable.PutToken(1, token1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ret, err = volumeTable.GetAllTokens()
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(ret))
+	require.NoError(t, err)
+	require.Equal(t, 3, len(ret))
 }
 
 func TestTokenTable_ListTokens(t *testing.T) {
@@ -306,12 +306,12 @@ func TestTokenTable_ListTokens(t *testing.T) {
 	defer closeVolumeDB()
 
 	err := volumeTable.PutTokens(tokens)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ret, err := volumeTable.GetAllTokens()
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(ret))
-	assert.Equal(t, token1, ret[0])
+	require.NoError(t, err)
+	require.Equal(t, 3, len(ret))
+	require.Equal(t, token1, ret[0])
 }
 
 func TestVolumeUnitTable_PutVolumeUnit(t *testing.T) {
@@ -320,7 +320,7 @@ func TestVolumeUnitTable_PutVolumeUnit(t *testing.T) {
 
 	volumeUintInfo := volumeUnit1
 	err := volumeTable.PutVolumeUnit(volumeUintInfo.VuidPrefix, volumeUintInfo)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestVolumeUnitTable_GetVolumeUnit(t *testing.T) {
@@ -329,14 +329,14 @@ func TestVolumeUnitTable_GetVolumeUnit(t *testing.T) {
 
 	volumeUintInfo := volumeUnit1
 	err := volumeTable.PutVolumeUnit(volumeUintInfo.VuidPrefix, volumeUintInfo)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	volumeUnit, err := volumeTable.GetVolumeUnit(4294967296)
-	assert.NoError(t, err)
-	assert.Equal(t, proto.VuidPrefix(4294967296), volumeUnit.VuidPrefix)
-	assert.Equal(t, uint32(1432), volumeUnit.Epoch)
-	assert.Equal(t, uint32(1432), volumeUnit.NextEpoch)
-	assert.Equal(t, proto.DiskID(20), volumeUnit.DiskID)
+	require.NoError(t, err)
+	require.Equal(t, proto.VuidPrefix(4294967296), volumeUnit.VuidPrefix)
+	require.Equal(t, uint32(1432), volumeUnit.Epoch)
+	require.Equal(t, uint32(1432), volumeUnit.NextEpoch)
+	require.Equal(t, proto.DiskID(20), volumeUnit.DiskID)
 }
 
 func TestVolumeTable_UpdateVolumeUnit(t *testing.T) {
@@ -345,7 +345,7 @@ func TestVolumeTable_UpdateVolumeUnit(t *testing.T) {
 
 	volumeUintInfo := volumeUnit1
 	err := volumeTable.PutVolumeUnit(volumeUintInfo.VuidPrefix, volumeUintInfo)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	volumeUnit2 = &VolumeUnitRecord{
 		VuidPrefix: 8589934592,
 		Epoch:      1,
@@ -360,30 +360,30 @@ func TestVolumeTable_UpdateVolumeUnit(t *testing.T) {
 	volumeUnitInfo2 := volumeUnit2
 	volumeUnitInfo2.DiskID = 20
 	err = volumeTable.PutVolumeUnit(volumeUnitInfo2.VuidPrefix, volumeUnitInfo2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ret, err := volumeTable.ListVolumeUnit(20)
-	assert.NoError(t, err)
-	assert.Equal(t, len(ret), 2)
+	require.NoError(t, err)
+	require.Equal(t, len(ret), 2)
 
 	// repeat update volume unit
 	err = volumeTable.UpdateVolumeUnit(volumeUnitInfo2.VuidPrefix, volumeUnitInfo2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	ret, err = volumeTable.ListVolumeUnit(20)
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(ret))
+	require.NoError(t, err)
+	require.Equal(t, 2, len(ret))
 
 	volumeUnit2.DiskID = 45
 	err = volumeTable.UpdateVolumeUnit(volumeUnit2.VuidPrefix, volumeUnit2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ret, err = volumeTable.ListVolumeUnit(20)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(ret))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(ret))
 
 	ret, err = volumeTable.ListVolumeUnit(45)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(ret))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(ret))
 }
 
 func TestVolumeUnitTable_PutBatch(t *testing.T) {
@@ -391,7 +391,7 @@ func TestVolumeUnitTable_PutBatch(t *testing.T) {
 	defer closeVolumeDB()
 
 	err := volumeTable.PutVolumeUnits(units)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestVolumeUnitTable_ListVolumeUnit(t *testing.T) {
@@ -399,11 +399,11 @@ func TestVolumeUnitTable_ListVolumeUnit(t *testing.T) {
 	defer closeVolumeDB()
 
 	err := volumeTable.PutVolumeUnits(units)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ret, err := volumeTable.ListVolumeUnit(32)
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(ret))
+	require.NoError(t, err)
+	require.Equal(t, 2, len(ret))
 }
 
 func TestVolumeUnitTable_RangeVolumeUints(t *testing.T) {
@@ -411,13 +411,13 @@ func TestVolumeUnitTable_RangeVolumeUints(t *testing.T) {
 	defer closeVolumeDB()
 
 	err := volumeTable.PutVolumeUnits(units)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	i := 0
 	volumeTable.RangeVolumeUnits(func(unitRecord *VolumeUnitRecord) {
 		i++
 	})
-	assert.Equal(t, len(units), i)
+	require.Equal(t, len(units), i)
 }
 
 func TestVolumeTable_PutVolumeAndTask(t *testing.T) {
@@ -425,24 +425,24 @@ func TestVolumeTable_PutVolumeAndTask(t *testing.T) {
 	defer closeVolumeDB()
 
 	err := volumeTable.PutVolumeAndTask(volume1, taskRecord1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = volumeTable.PutVolumeAndTask(volume2, taskRecord2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	var taskRecords []*VolumeTaskRecord
 	volumeTable.ListTaskRecords(func(rec *VolumeTaskRecord) bool {
 		taskRecords = append(taskRecords, rec)
 		return true
 	})
-	assert.Equal(t, 2, len(taskRecords))
-	assert.Equal(t, taskRecord1, taskRecords[0])
-	assert.Equal(t, taskRecord2, taskRecords[1])
+	require.Equal(t, 2, len(taskRecords))
+	require.Equal(t, taskRecord1, taskRecords[0])
+	require.Equal(t, taskRecord2, taskRecords[1])
 
 	err = volumeTable.PutVolumeAndTask(nil, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = volumeTable.PutVolumeAndTask(volume1, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = volumeTable.PutVolumeAndTask(nil, taskRecord1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }

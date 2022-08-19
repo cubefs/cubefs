@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -33,16 +33,16 @@ func TestLoad(t *testing.T) {
 	confName = nil
 	Init("f", "appname", "notexist.conf")
 	err := Load(confName)
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 }
 
 func TestLoadFile(t *testing.T) {
 	var conf interface{}
 	err := LoadFile(&conf, srcconf)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	err = LoadFile(&conf, "notexist.conf")
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 }
 
 func TestSafeLoadData(t *testing.T) {
@@ -50,12 +50,12 @@ func TestSafeLoadData(t *testing.T) {
 	{
 		data := `{"field" : "value", }` // bad json
 		err := SafeLoadData(&conf, []byte(data))
-		assert.NotNil(t, err)
+		require.NotNil(t, err)
 	}
 	{
 		data := `{"field" : "value"}` // unknown field
 		err := SafeLoadData(&conf, []byte(data))
-		assert.Nil(t, err)
+		require.Nil(t, err)
 	}
 }
 
@@ -63,7 +63,7 @@ func TestLoadData(t *testing.T) {
 	var conf interface{}
 	data := `{"field" : "value", }` // bad json
 	err := LoadData(&conf, []byte(data))
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 
 	type Stu struct {
 		Name string `json:"name" validate:"required"`
@@ -73,13 +73,13 @@ func TestLoadData(t *testing.T) {
 	var stu Stu
 	stuStr := `{"age" : 20}`
 	err = LoadData(&stu, []byte(stuStr))
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 
 	stuStr = `{"age" : 20, "name" : "slax", "unknown" : "field"}`
 	err = LoadData(&stu, []byte(stuStr))
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 
 	stuStr = `{"age" : 20, "name" : "slax"}`
 	err = LoadData(&stu, []byte(stuStr))
-	assert.Nil(t, err)
+	require.Nil(t, err)
 }

@@ -23,7 +23,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfig(t *testing.T) {
@@ -37,46 +37,46 @@ func TestConfig(t *testing.T) {
 	// test set config
 	{
 		err := testClusterClient.SetConfig(ctx, &clustermgr.ConfigSetArgs{Key: "idc1", Value: "idc1"})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		b, err := json.Marshal(1)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = testClusterClient.SetConfig(ctx, &clustermgr.ConfigSetArgs{Key: "num", Value: string(b)})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// failed case
 		err = testClusterClient.SetConfig(ctx, &clustermgr.ConfigSetArgs{Key: proto.CodeModeConfigKey, Value: string(b)})
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// test get config
 	{
 		key := "idc1"
 		val, err := testClusterClient.GetConfig(ctx, key)
-		assert.NoError(t, err)
-		assert.Equal(t, "idc1", val)
+		require.NoError(t, err)
+		require.Equal(t, "idc1", val)
 
 		key2 := "num"
 		var n int
 		val, err = testClusterClient.GetConfig(ctx, key2)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = json.Unmarshal([]byte(val), &n)
-		assert.NoError(t, err)
-		assert.Equal(t, 1, n)
+		require.NoError(t, err)
+		require.Equal(t, 1, n)
 	}
 
 	// test list config
 	{
 		_, err := testClusterClient.ListConfig(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	// test delete config
 	{
 		key := "idc1"
 		err := testClusterClient.DeleteConfig(ctx, key)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		_, err = testClusterClient.GetConfig(ctx, key)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 }

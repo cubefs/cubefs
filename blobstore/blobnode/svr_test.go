@@ -494,8 +494,7 @@ type mockClusterMgr struct {
 	disks  []mockDiskInfo
 }
 
-func mockClusterMgrRouter(service *mockClusterMgr) *rpc.Router {
-	r := rpc.New()
+func init() {
 	rpc.RegisterArgsParser(&cmapi.ListOptionArgs{}, "json")
 	rpc.RegisterArgsParser(&cmapi.ListVolumeUnitArgs{}, "json")
 	rpc.RegisterArgsParser(&cmapi.DiskInfoArgs{}, "json")
@@ -503,7 +502,10 @@ func mockClusterMgrRouter(service *mockClusterMgr) *rpc.Router {
 	rpc.RegisterArgsParser(&cmapi.DiskSetArgs{}, "json")
 	rpc.RegisterArgsParser(&cmapi.ReportChunkArgs{}, "json")
 	rpc.RegisterArgsParser(&cmapi.GetVolumeArgs{}, "json")
+}
 
+func mockClusterMgrRouter(service *mockClusterMgr) *rpc.Router {
+	r := rpc.New()
 	r.Handle(http.MethodGet, "/disk/list", service.DiskList, rpc.OptArgsQuery())
 	r.Handle(http.MethodGet, "/volume/unit/list", service.VolumeUnitList, rpc.OptArgsQuery())
 	r.Handle(http.MethodPost, "/diskid/alloc", service.DiskIdAlloc)

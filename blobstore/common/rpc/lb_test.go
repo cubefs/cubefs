@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var refusedHosts []string
@@ -107,9 +107,9 @@ func TestLbClient_DefaultConfig(t *testing.T) {
 	defer client.Close()
 
 	resp, err := client.Head(context.Background(), "/get/name")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestLbClient_GetWithNoHost(t *testing.T) {
@@ -128,8 +128,8 @@ func TestLbClient_GetWithNoHost(t *testing.T) {
 			ctx := context.Background()
 			result := &ret{}
 			err := client.GetWith(ctx, "/get/name?id="+strconv.Itoa(122), result)
-			assert.Error(t, err)
-			assert.NotNil(t, result)
+			require.Error(t, err)
+			require.NotNil(t, result)
 			atomic.AddInt64(&count, 1)
 		}()
 	}
@@ -145,11 +145,11 @@ func TestLbClient_Put(t *testing.T) {
 	ctx := context.Background()
 	data := &ret{Name: "TestLbClient_Put"}
 	resp, err := client.Put(ctx, "/get/name?id="+strconv.Itoa(122), data)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
-	assert.NotNil(t, resp)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, err)
 	client.Close()
 }
 
@@ -167,8 +167,8 @@ func TestLbClient_GetWith(t *testing.T) {
 			ctx := context.Background()
 			result := &ret{}
 			err := client.GetWith(ctx, "/get/name?id="+strconv.Itoa(122), result)
-			assert.NoError(t, err)
-			assert.Equal(t, "Test_GetWith", result.Name)
+			require.NoError(t, err)
+			require.Equal(t, "Test_GetWith", result.Name)
 		}()
 	}
 	wg.Wait()
@@ -183,10 +183,10 @@ func TestLbClient_Delete(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}
 	resp, err := client.Delete(ctx, "/get/name?id="+strconv.Itoa(122))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = ParseData(resp, result)
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 	client.Close()
 }
 
@@ -197,9 +197,9 @@ func TestLbClient_PostWithCrc(t *testing.T) {
 	result := &ret{}
 	err := client.PostWith(ctx, "/crc", result,
 		&ret{Name: "Test_lb_PostWithCrc"}, WithCrcEncode())
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, result, &ret{Name: "Test_lb_PostWithCrc"})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, result, &ret{Name: "Test_lb_PostWithCrc"})
 	client.Close()
 }
 
@@ -209,9 +209,9 @@ func TestLbClient_Head(t *testing.T) {
 
 	ctx := context.Background()
 	resp, err := client.Head(ctx, "/get/name")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	client.Close()
 }
 
@@ -223,8 +223,8 @@ func TestLbClient_PutWithNoCrc(t *testing.T) {
 	result := &ret{}
 	err := client.PutWith(ctx, "/json",
 		result, &ret{Name: "Test_lb_PutWithNoCrc"})
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 	client.Close()
 }
 
@@ -235,9 +235,9 @@ func TestLbClient_PutWithCrc(t *testing.T) {
 	result := &ret{}
 	err := client.PutWith(ctx, "/crc", result,
 		&ret{Name: "Test_lb_PutWithCrc"}, WithCrcEncode())
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, &ret{Name: "Test_lb_PutWithCrc"}, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, &ret{Name: "Test_lb_PutWithCrc"}, result)
 	client.Close()
 }
 
@@ -248,8 +248,8 @@ func TestLbClient_PostWithNoCrc(t *testing.T) {
 	result := &ret{}
 	err := client.PostWith(ctx, "/json",
 		result, &ret{Name: "Test_lb_PostJSONWith"})
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 	client.Close()
 }
 
@@ -260,7 +260,7 @@ func TestLbClient_Form(t *testing.T) {
 	m := make(map[string][]string)
 	m["test"] = []string{"yest_lb_Form"}
 	resp, err := client.Form(ctx, http.MethodPost, "/get/name?id="+strconv.Itoa(122), m)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
 	client.Close()
 }
@@ -270,18 +270,18 @@ func TestLbClient_RetryWithBody(t *testing.T) {
 	client := NewLbClient(cfg, nil)
 	ctx := context.Background()
 	request, err := http.NewRequest(http.MethodPost, "/retry", strings.NewReader("hello"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	resp, err := client.Do(ctx, request)
-	assert.NoError(t, err)
-	assert.Equal(t, resp.StatusCode, 200)
+	require.NoError(t, err)
+	require.Equal(t, resp.StatusCode, 200)
 	resp.Body.Close()
 
 	request, err = http.NewRequest(http.MethodPost, "/retry", newTestReader([]byte("hello")))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp, err = client.Do(ctx, request)
-	assert.NoError(t, err)
-	assert.Equal(t, resp.StatusCode, 500)
+	require.NoError(t, err)
+	require.Equal(t, resp.StatusCode, 500)
 	resp.Body.Close()
 
 	client.Close()
@@ -292,13 +292,13 @@ func TestLbClient_RetryCrcBodyGetter(t *testing.T) {
 		cfg := newCfg([]string{}, []string{testServer.URL})
 		cfg.RequestTryTimes = try
 		cfg.ShouldRetry = func(code int, err error) bool {
-			assert.Equal(t, 500, code)
+			require.Equal(t, 500, code)
 			return true
 		}
 		client := NewLbClient(cfg, nil)
 		err := client.PutWith(context.Background(), "/crcbody", nil,
 			&ret{Name: "RetryCrcBodyGetter"}, WithCrcEncode())
-		assert.Error(t, err)
+		require.Error(t, err)
 		client.Close()
 	}
 }
@@ -309,11 +309,11 @@ func TestLbClient_DoWithNoCrc(t *testing.T) {
 	result := &ret{}
 	ctx := context.Background()
 	request, err := http.NewRequest(http.MethodPost, "", nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = client.DoWith(ctx, request, result)
 	client.Close()
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }
 
 func TestLbClient_DoWithCrc(t *testing.T) {
@@ -322,11 +322,11 @@ func TestLbClient_DoWithCrc(t *testing.T) {
 	result := &ret{}
 	ctx := context.Background()
 	request, err := http.NewRequest(http.MethodPost, "/crc", nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = client.DoWith(ctx, request, result, WithCrcEncode())
 	client.Close()
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }
 
 func TestLbClient_Post(t *testing.T) {
@@ -335,11 +335,11 @@ func TestLbClient_Post(t *testing.T) {
 	result := &ret{}
 	ctx := context.Background()
 	check, err := client.Post(ctx, "", ret{Name: "test_lb_PostJSON"})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	client.Close()
 	err = ParseData(check, result)
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }
 
 func TestLbClient_New(t *testing.T) {
@@ -360,8 +360,8 @@ func TestLbClient_EnableHost(t *testing.T) {
 			ctx := context.Background()
 			result := &ret{}
 			err := client.GetWith(ctx, "/get/name?id="+strconv.Itoa(122), result)
-			assert.NoError(t, err)
-			assert.Equal(t, "Test_GetWith", result.Name)
+			require.NoError(t, err)
+			require.Equal(t, "Test_GetWith", result.Name)
 		}()
 	}
 	wg.Wait()
@@ -369,8 +369,8 @@ func TestLbClient_EnableHost(t *testing.T) {
 	after := time.After(time.Second * time.Duration(cfg.FailRetryIntervalS+1))
 	<-after
 	resp, err := client.Head(context.Background(), "/get/name?id="+strconv.Itoa(122))
-	assert.NoError(t, err)
-	assert.NotNil(t, resp)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
 	resp.Body.Close()
 	client.Close()
 }
@@ -384,7 +384,7 @@ func TestLbClient_OneHostWithNotConfigTryTimes(t *testing.T) {
 	result := &ret{}
 	err := client.PostWith(ctx, "/json",
 		result, &ret{Name: "Test_lb_PostJSONWith"})
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 	client.Close()
 }

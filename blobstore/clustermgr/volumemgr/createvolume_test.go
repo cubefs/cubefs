@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
@@ -82,7 +82,7 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(31), uint64(31), nil)
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).MaxTimes(2).Return(nil)
 		err := mockVolumeMgr.createVolume(ctx, 1)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	// failed case
@@ -90,14 +90,14 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(41), uint64(41), nil)
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).MaxTimes(1).Return(errors.New("err"))
 		err := mockVolumeMgr.createVolume(ctx, 1)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// failed case, create volume exist
 	{
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(1), uint64(1), nil)
 		err := mockVolumeMgr.createVolume(ctx, 1)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	vols := generateVolume(codemode.EC15P12, 1, 31)
@@ -105,18 +105,18 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 	{
 		vols[0].vUnits[0].epoch = proto.MinEpoch - 1
 		err := mockVolumeMgr.applyCreateVolume(ctx, vols[0])
-		assert.Error(t, err)
+		require.Error(t, err)
 
 		// epoch invalid
 		vols[0].vUnits[0].epoch = proto.MaxEpoch + 1
 		err = mockVolumeMgr.applyCreateVolume(ctx, vols[0])
-		assert.Error(t, err)
+		require.Error(t, err)
 
 		// vuid invalid
 		vols[0].vUnits[0].epoch = 1
 		vols[0].vUnits[0].vuInfo.Vuid = 0
 		err = mockVolumeMgr.applyCreateVolume(ctx, vols[0])
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// az unavailable ,create volume
@@ -171,12 +171,12 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(51), uint64(51), nil)
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 		err := mockVolumeMgr.createVolume(ctx, 8)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// one az Unavailable ,create 3AZ code failed
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(52), uint64(52), nil)
 		err = mockVolumeMgr.createVolume(ctx, 1)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 }
 
@@ -229,20 +229,20 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 			proposeInfo := base.DecodeProposeInfo(data)
 			args := &CreateVolumeCtx{}
 			err := args.Decode(proposeInfo.Data)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			volume, err := args.ToVolume(ctx)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			err = mockVolumeMgr.applyInitCreateVolume(ctx, volume)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			return nil
 		})
 		allocFailed(1)
 		err := mockVolumeMgr.createVolume(ctx, codemode.EC15P12)
-		assert.Error(t, err)
+		require.Error(t, err)
 		allocSuccess(1)
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).MaxTimes(2).Return(nil)
 		err = mockVolumeMgr.finishLastCreateJob(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	// failed case, propose initial create volume failed
@@ -250,7 +250,7 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(41), uint64(41), nil)
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).MaxTimes(1).Return(errors.New("err"))
 		err := mockVolumeMgr.createVolume(ctx, codemode.EC15P12)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// failed case, propose increase volume units epoch failed
@@ -259,10 +259,10 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).MaxTimes(1).Return(nil)
 		allocFailed(1)
 		err := mockVolumeMgr.createVolume(ctx, codemode.EC15P12)
-		assert.Error(t, err)
+		require.Error(t, err)
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).MaxTimes(1).Return(errors.New("err"))
 		err = mockVolumeMgr.finishLastCreateJob(ctx)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// failed case, alloc chunks failed
@@ -271,10 +271,10 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(42), uint64(42), nil)
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 		err := mockVolumeMgr.createVolume(ctx, codemode.EC15P12)
-		assert.Error(t, err)
+		require.Error(t, err)
 		allocFailed(1)
 		err = mockVolumeMgr.finishLastCreateJob(ctx)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// finish all last create job
@@ -282,13 +282,13 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 		allocSuccess(2)
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 		err := mockVolumeMgr.finishLastCreateJob(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	// failed case, create volume exist
 	{
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(1), uint64(1), nil)
 		err := mockVolumeMgr.createVolume(ctx, codemode.EC15P12)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 }

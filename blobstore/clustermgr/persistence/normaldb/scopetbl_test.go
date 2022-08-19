@@ -22,7 +22,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestScopeTbl(t *testing.T) {
@@ -30,34 +30,34 @@ func TestScopeTbl(t *testing.T) {
 	defer os.RemoveAll(tmpDBPath)
 
 	db, err := OpenNormalDB(tmpDBPath, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	scopeTbl, err := OpenScopeTable(db)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	key1 := "testkey1"
 	key2 := "testkey2"
 
 	current, err := scopeTbl.Get("testkey")
-	assert.Equal(t, kvstore.ErrNotFound, err)
-	assert.Equal(t, uint64(0), current)
+	require.Equal(t, kvstore.ErrNotFound, err)
+	require.Equal(t, uint64(0), current)
 
 	err = scopeTbl.Put(key1, 1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	current, err = scopeTbl.Get(key1)
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(1), current)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), current)
 
 	err = scopeTbl.Put(key1, 2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = scopeTbl.Put(key2, 1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	scopes, err := scopeTbl.Load()
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(2), scopes[key1])
-	assert.Equal(t, uint64(1), scopes[key2])
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), scopes[key1])
+	require.Equal(t, uint64(1), scopes[key2])
 }

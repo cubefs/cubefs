@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -48,18 +48,18 @@ func TestChunkReportArgs(t *testing.T) {
 		},
 	}
 	b, err := args.Encode()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	decodeArgs := &ReportChunkArgs{}
 	err = decodeArgs.Decode(bytes.NewReader(b))
-	assert.NoError(t, err)
-	assert.Equal(t, len(args.ChunkInfos), len(decodeArgs.ChunkInfos))
+	require.NoError(t, err)
+	require.Equal(t, len(args.ChunkInfos), len(decodeArgs.ChunkInfos))
 	for i := 0; i < len(args.ChunkInfos); i++ {
-		assert.Equal(t, args.ChunkInfos[i].Id, decodeArgs.ChunkInfos[i].Id)
-		assert.Equal(t, args.ChunkInfos[i].Vuid, decodeArgs.ChunkInfos[i].Vuid)
-		assert.Equal(t, args.ChunkInfos[i].DiskID, decodeArgs.ChunkInfos[i].DiskID)
-		assert.Equal(t, args.ChunkInfos[i].Free, decodeArgs.ChunkInfos[i].Free)
-		assert.Equal(t, args.ChunkInfos[i].Used, decodeArgs.ChunkInfos[i].Used)
-		assert.Equal(t, args.ChunkInfos[i].Size, decodeArgs.ChunkInfos[i].Size)
+		require.Equal(t, args.ChunkInfos[i].Id, decodeArgs.ChunkInfos[i].Id)
+		require.Equal(t, args.ChunkInfos[i].Vuid, decodeArgs.ChunkInfos[i].Vuid)
+		require.Equal(t, args.ChunkInfos[i].DiskID, decodeArgs.ChunkInfos[i].DiskID)
+		require.Equal(t, args.ChunkInfos[i].Free, decodeArgs.ChunkInfos[i].Free)
+		require.Equal(t, args.ChunkInfos[i].Used, decodeArgs.ChunkInfos[i].Used)
+		require.Equal(t, args.ChunkInfos[i].Size, decodeArgs.ChunkInfos[i].Size)
 	}
 }

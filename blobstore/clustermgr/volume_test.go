@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -89,8 +89,8 @@ func TestService_VolumeInfo(t *testing.T) {
 	// get volumeInfo
 	{
 		ret, err := cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: 1})
-		assert.NoError(t, err)
-		assert.NotNil(t, ret)
+		require.NoError(t, err)
+		require.NotNil(t, ret)
 	}
 
 	// list volumeInfo
@@ -100,43 +100,43 @@ func TestService_VolumeInfo(t *testing.T) {
 			Count:  1,
 		}
 		list, err := cmClient.ListVolume(ctx, listArgs)
-		assert.NoError(t, err)
-		assert.Equal(t, 1, len(list.Volumes))
-		assert.Equal(t, proto.Vid(1), list.Volumes[0].Vid)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(list.Volumes))
+		require.Equal(t, proto.Vid(1), list.Volumes[0].Vid)
 
 		listArgs.Marker = proto.Vid(1)
 		listArgs.Count = 4
 		list, err = cmClient.ListVolume(ctx, listArgs)
-		assert.NoError(t, err)
-		assert.Equal(t, 4, len(list.Volumes))
-		assert.Equal(t, proto.Vid(2), list.Volumes[0].Vid)
-		assert.Equal(t, proto.Vid(5), list.Volumes[3].Vid)
+		require.NoError(t, err)
+		require.Equal(t, 4, len(list.Volumes))
+		require.Equal(t, proto.Vid(2), list.Volumes[0].Vid)
+		require.Equal(t, proto.Vid(5), list.Volumes[3].Vid)
 	}
 
 	// list volume info v2
 	{
 		ret, err := cmClient.ListVolumeV2(ctx, &clustermgr.ListVolumeV2Args{Status: proto.VolumeStatusIdle})
-		assert.Error(t, err)
-		assert.Equal(t, 0, len(ret.Volumes))
+		require.Error(t, err)
+		require.Equal(t, 0, len(ret.Volumes))
 	}
 
 	// retain volume
 	{
 		volInfos, err := cmClient.AllocVolume(ctx, &clustermgr.AllocVolumeArgs{IsInit: false, CodeMode: 1, Count: 2})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		token1 := fmt.Sprintf("127.0.0.1;%d", volInfos.AllocVolumeInfos[0].Vid)
 		token2 := fmt.Sprintf("127.0.0.1;%d", volInfos.AllocVolumeInfos[1].Vid)
 		args := &clustermgr.RetainVolumeArgs{
 			Tokens: []string{token1, token2},
 		}
 		ret, err := cmClient.RetainVolume(ctx, args)
-		assert.NoError(t, err)
-		assert.Equal(t, len(ret.RetainVolTokens), 2)
+		require.NoError(t, err)
+		require.Equal(t, len(ret.RetainVolTokens), 2)
 
 		args.Tokens = append(args.Tokens, "127.0.e8080;11")
 		ret, err = cmClient.RetainVolume(ctx, args)
-		assert.NoError(t, err)
-		assert.Equal(t, len(ret.RetainVolTokens), 2)
+		require.NoError(t, err)
+		require.Equal(t, len(ret.RetainVolTokens), 2)
 
 		// choose one not retained,this volume's expire time is 10 second
 		token3 := ""
@@ -151,8 +151,8 @@ func TestService_VolumeInfo(t *testing.T) {
 		// sleep 15 second wait to expired
 		time.Sleep(time.Second * 15)
 		ret, err = cmClient.RetainVolume(ctx, args)
-		assert.NoError(t, err)
-		assert.Equal(t, len(ret.RetainVolTokens), 0)
+		require.NoError(t, err)
+		require.Equal(t, len(ret.RetainVolTokens), 0)
 
 	}
 }
@@ -172,15 +172,15 @@ func TestService_VolumeAlloc(t *testing.T) {
 		Count:    1,
 	}
 	ret, err := cmClient.AllocVolume(ctx, args)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(ret.AllocVolumeInfos))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(ret.AllocVolumeInfos))
 	vol := ret.AllocVolumeInfos[0]
-	assert.Equal(t, vol.Status, proto.VolumeStatusActive)
+	require.Equal(t, vol.Status, proto.VolumeStatusActive)
 
 	args.CodeMode = 2
 	ret, err = cmClient.AllocVolume(ctx, args)
-	assert.Error(t, err)
-	assert.Equal(t, 0, len(ret.AllocVolumeInfos))
+	require.Error(t, err)
+	require.Equal(t, 0, len(ret.AllocVolumeInfos))
 
 	// failed case, count not invalid
 	args = &clustermgr.AllocVolumeArgs{
@@ -188,13 +188,13 @@ func TestService_VolumeAlloc(t *testing.T) {
 		Count:    0,
 	}
 	_, err = cmClient.AllocVolume(ctx, args)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// failed case ,code mode not invalid
 	args.Count = 1
 	args.CodeMode = 9
 	_, err = cmClient.AllocVolume(ctx, args)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 // test allov volume with disk load threshold
@@ -214,13 +214,13 @@ func TestService_VolumeAlloc2(t *testing.T) {
 	}
 	// first alloc 3 volume, disk_id(1-7)'s load is 9,
 	ret, err := cmClient.AllocVolume(ctx, args)
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(ret.AllocVolumeInfos))
+	require.NoError(t, err)
+	require.Equal(t, 3, len(ret.AllocVolumeInfos))
 
 	// second request 3 volume will success
 	ret, err = cmClient.AllocVolume(ctx, args)
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(ret.AllocVolumeInfos))
+	require.NoError(t, err)
+	require.Equal(t, 3, len(ret.AllocVolumeInfos))
 }
 
 func TestService_ChunkSetCompact(t *testing.T) {
@@ -238,11 +238,11 @@ func TestService_ChunkSetCompact(t *testing.T) {
 			Compacting: true,
 		}
 		err := cmClient.SetCompactChunk(ctx, args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		vol, err := cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: proto.Vid(1)})
-		assert.NoError(t, err)
-		assert.Equal(t, vol.HealthScore, -1)
+		require.NoError(t, err)
+		require.Equal(t, vol.HealthScore, -1)
 	}
 
 	// failed case, invalid vid or vuid
@@ -252,14 +252,14 @@ func TestService_ChunkSetCompact(t *testing.T) {
 			Compacting: true,
 		}
 		err := cmClient.SetCompactChunk(ctx, args)
-		assert.Error(t, err)
+		require.Error(t, err)
 
 		args = &clustermgr.SetCompactChunkArgs{
 			Vuid:       proto.EncodeVuid(proto.EncodeVuidPrefix(1, 255), 9999),
 			Compacting: true,
 		}
 		err = cmClient.SetCompactChunk(ctx, args)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 }
 
@@ -281,7 +281,7 @@ func TestService_UpdateVolume(t *testing.T) {
 			OldVuid:   oldVuid,
 		}
 		err := cmClient.UpdateVolume(context.Background(), updateArgs)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 	// failed case ,update unit next epoch not match
 	{
@@ -293,7 +293,7 @@ func TestService_UpdateVolume(t *testing.T) {
 			OldVuid:   oldVuid,
 		}
 		err := cmClient.UpdateVolume(ctx, updateArgs)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// alloc Volume unit failed case, not blobnode ,alloc unit always failed
@@ -304,8 +304,8 @@ func TestService_UpdateVolume(t *testing.T) {
 		}
 		// alloc  volume unit failed case
 		ret, err := cmClient.AllocVolumeUnit(ctx, args)
-		assert.NotNil(t, err)
-		assert.Nil(t, ret)
+		require.NotNil(t, err)
+		require.Nil(t, ret)
 	}
 }
 
@@ -323,7 +323,7 @@ func TestService_VolumeLock(t *testing.T) {
 			Vid: proto.Vid(1),
 		}
 		err := cmClient.LockVolume(ctx, args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 	}
 
@@ -333,7 +333,7 @@ func TestService_VolumeLock(t *testing.T) {
 			Vid: proto.Vid(1),
 		}
 		err := cmClient.UnlockVolume(ctx, args)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 }
 
@@ -348,12 +348,12 @@ func TestService_VolumeUnitList(t *testing.T) {
 	// list volumeUnits
 	{
 		ret, err := cmClient.ListVolumeUnit(ctx, &clustermgr.ListVolumeUnitArgs{DiskID: proto.DiskID(2)})
-		assert.NoError(t, err)
-		assert.NotNil(t, ret)
+		require.NoError(t, err)
+		require.NotNil(t, ret)
 
 		_, err = cmClient.ListVolumeUnit(ctx, &clustermgr.ListVolumeUnitArgs{DiskID: proto.DiskID(99)})
-		assert.NoError(t, err)
-		assert.Nil(t, err)
+		require.NoError(t, err)
+		require.Nil(t, err)
 	}
 }
 
@@ -369,11 +369,11 @@ func TestService_VolumeUnitRelease(t *testing.T) {
 	{
 		vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(1, 1), 1)
 		vol, err := cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: proto.Vid(1)})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		oldDiskId := vol.Units[1].DiskID
 		// UT test request to blobnode will return connection refused
 		err = cmClient.ReleaseVolumeUnit(ctx, &clustermgr.ReleaseVolumeUnitArgs{Vuid: vuid, DiskID: oldDiskId})
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 }
 
@@ -399,7 +399,7 @@ func TestService_ChunkReport(t *testing.T) {
 			chunks = append(chunks, chunk)
 		}
 		err := cmClient.ReportChunk(ctx, &clustermgr.ReportChunkArgs{ChunkInfos: chunks})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 }
 
@@ -417,23 +417,23 @@ func TestService_VolumeAllocatedList(t *testing.T) {
 		Count:    3,
 	}
 	allocVols, err := cmClient.AllocVolume(ctx, args)
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(allocVols.AllocVolumeInfos))
+	require.NoError(t, err)
+	require.Equal(t, 3, len(allocVols.AllocVolumeInfos))
 
 	args.IsInit = true
 	initAllocVols, err := cmClient.AllocVolume(ctx, args)
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(initAllocVols.AllocVolumeInfos))
+	require.NoError(t, err)
+	require.Equal(t, 3, len(initAllocVols.AllocVolumeInfos))
 
 	args.CodeMode = 2
 	initAllocVols, err = cmClient.AllocVolume(ctx, args)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(initAllocVols.AllocVolumeInfos))
+	require.NoError(t, err)
+	require.Equal(t, 0, len(initAllocVols.AllocVolumeInfos))
 
 	ret, err := cmClient.ListAllocatedVolumes(ctx, &clustermgr.ListAllocatedVolumeArgs{Host: "127.0.0.1", CodeMode: 1})
-	assert.NoError(t, err)
-	assert.NotNil(t, ret.AllocVolumeInfos)
-	assert.Equal(t, 3, len(ret.AllocVolumeInfos))
+	require.NoError(t, err)
+	require.NotNil(t, ret.AllocVolumeInfos)
+	require.Equal(t, 3, len(ret.AllocVolumeInfos))
 }
 
 func TestService_AdminUpdateVolume(t *testing.T) {
@@ -448,7 +448,7 @@ func TestService_AdminUpdateVolume(t *testing.T) {
 		Used: 99,
 	}
 	err := cmClient.PostWith(ctx, "/admin/update/volume", nil, args)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestService_AdminUpdateVolumeUnit(t *testing.T) {
@@ -470,21 +470,21 @@ func TestService_AdminUpdateVolumeUnit(t *testing.T) {
 		},
 	}
 	err := cmClient.PostWith(ctx, "/admin/update/volume/unit", nil, args)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	volInfo, err := cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: 1})
-	assert.NoError(t, err)
-	assert.Equal(t, volInfo.Units[1].DiskID, proto.DiskID(args.DiskID))
-	assert.Equal(t, volInfo.Units[1].Vuid, proto.EncodeVuid(args.Vuid.VuidPrefix(), args.Epoch))
+	require.NoError(t, err)
+	require.Equal(t, volInfo.Units[1].DiskID, proto.DiskID(args.DiskID))
+	require.Equal(t, volInfo.Units[1].Vuid, proto.EncodeVuid(args.Vuid.VuidPrefix(), args.Epoch))
 
 	// failed case, diskid not exist
 	args.VolumeUnitInfo.DiskID = 88
 	err = cmClient.PostWith(ctx, "/admin/update/volume/unit", nil, args)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// failed case, vid not exist
 	args.VolumeUnitInfo.Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(99, 1), 1)
 	err = cmClient.PostWith(ctx, "/admin/update/volume/unit", nil, args)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 var (
@@ -627,8 +627,8 @@ func BenchmarkService_VolumeAlloc(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			ret, err := cmClient.AllocVolume(ctx, args)
-			assert.Equal(b, len(ret.AllocVolumeInfos), 3)
-			assert.NoError(b, err)
+			require.Equal(b, len(ret.AllocVolumeInfos), 3)
+			require.NoError(b, err)
 		}
 	})
 }
@@ -677,7 +677,7 @@ func BenchmarkService_ChunkReport(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			err := cmClient.ReportChunk(ctx, &clustermgr.ReportChunkArgs{ChunkInfos: chunks})
-			assert.NoError(b, err)
+			require.NoError(b, err)
 		}
 	})
 }

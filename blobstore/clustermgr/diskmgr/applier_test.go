@@ -26,7 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestApplier_Others(t *testing.T) {
@@ -40,7 +40,7 @@ func TestApplier_Others(t *testing.T) {
 		testModuleName := "DiskMgr"
 		testDiskMgr.SetModuleName(testModuleName)
 		module := testDiskMgr.GetModuleName()
-		assert.Equal(t, testModuleName, module)
+		require.Equal(t, testModuleName, module)
 
 		testDiskMgr.NotifyLeaderChange(ctx, 0, "")
 	}
@@ -50,16 +50,16 @@ func TestApplier_Others(t *testing.T) {
 		heartbeatInfos := make([]*blobnode.DiskHeartBeatInfo, 0)
 		for i := 1; i <= 10; i++ {
 			diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			diskInfo.DiskHeartBeatInfo.Free = 0
 			diskInfo.DiskHeartBeatInfo.FreeChunkCnt = 0
 			heartbeatInfos = append(heartbeatInfos, &diskInfo.DiskHeartBeatInfo)
 		}
 		err := testDiskMgr.heartBeatDiskInfo(ctx, heartbeatInfos)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = testDiskMgr.Flush(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 }
 
@@ -95,7 +95,7 @@ func TestApplier_Apply(t *testing.T) {
 
 			operTypes = append(operTypes, OperTypeAddDisk)
 			data, err := json.Marshal(&info)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			datas = append(datas, data)
 		}
 	}
@@ -106,7 +106,7 @@ func TestApplier_Apply(t *testing.T) {
 			DiskID: proto.DiskID(1),
 			Status: proto.DiskStatusBroken,
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeSetDiskStatus)
 		datas = append(datas, data)
 	}
@@ -114,7 +114,7 @@ func TestApplier_Apply(t *testing.T) {
 	// OperTypeDroppingDisk
 	{
 		data, err := json.Marshal(&clustermgr.DiskInfoArgs{DiskID: proto.DiskID(2)})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeDroppingDisk)
 		datas = append(datas, data)
 	}
@@ -129,7 +129,7 @@ func TestApplier_Apply(t *testing.T) {
 			heartbeatInfos = append(heartbeatInfos, &heartbeatInfo)
 		}
 		data, err := json.Marshal(&clustermgr.DisksHeartbeatArgs{Disks: heartbeatInfos})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeHeartbeatDiskInfo)
 		datas = append(datas, data)
 	}
@@ -137,7 +137,7 @@ func TestApplier_Apply(t *testing.T) {
 	// OperTypeDroppedDisk
 	{
 		data, err := json.Marshal(&clustermgr.DiskInfoArgs{DiskID: proto.DiskID(2)})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeDroppedDisk)
 		datas = append(datas, data)
 	}
@@ -145,7 +145,7 @@ func TestApplier_Apply(t *testing.T) {
 	// OperTypeSwitchReadonly
 	{
 		data, err := json.Marshal(&clustermgr.DiskAccessArgs{DiskID: proto.DiskID(3), Readonly: true})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeSwitchReadonly)
 		datas = append(datas, data)
 	}
@@ -156,5 +156,5 @@ func TestApplier_Apply(t *testing.T) {
 	}
 
 	err := testDiskMgr.Apply(ctx, operTypes, datas, ctxs)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }

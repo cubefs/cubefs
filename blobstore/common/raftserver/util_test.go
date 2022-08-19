@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	pb "go.etcd.io/etcd/raft/v3/raftpb"
 )
@@ -33,24 +32,24 @@ func TestNotifier(t *testing.T) {
 	go func() {
 		nt.notify(errors.New("error"))
 	}()
-	assert.NotNil(t, nt.wait(context.TODO(), stopc))
+	require.NotNil(t, nt.wait(context.TODO(), stopc))
 
 	nt = newNotifier()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
-	assert.NotNil(t, nt.wait(ctx, stopc))
+	require.NotNil(t, nt.wait(ctx, stopc))
 	cancel()
 
 	nt = newNotifier()
 	go func() {
 		nt.notify(nil)
 	}()
-	assert.Nil(t, nt.wait(context.TODO(), stopc))
+	require.Nil(t, nt.wait(context.TODO(), stopc))
 
 	nt = newNotifier()
 	go func() {
 		close(stopc)
 	}()
-	assert.NotNil(t, nt.wait(context.TODO(), stopc))
+	require.NotNil(t, nt.wait(context.TODO(), stopc))
 }
 
 func TestNormalEntryDecode(t *testing.T) {
@@ -81,20 +80,20 @@ func TestProto(t *testing.T) {
 		err error
 	)
 	nms, err = nms.Decode(buffer)
-	assert.Nil(t, err)
-	assert.Equal(t, nms, ms)
+	require.Nil(t, err)
+	require.Equal(t, nms, ms)
 
 	buffer.Reset()
 	buffer.Write([]byte("123"))
 	_, err = nms.Decode(buffer)
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 	buffer.Reset()
 
 	b := make([]byte, 4)
 	binary.BigEndian.PutUint32(b, 4)
 	buffer.Write(b)
 	_, err = nms.Decode(buffer)
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 
 	buffer.Reset()
 	binary.BigEndian.PutUint32(b, 1) // write cnt
@@ -102,7 +101,7 @@ func TestProto(t *testing.T) {
 	binary.BigEndian.PutUint32(b, 10) // write msg len
 	buffer.Write(b)
 	_, err = nms.Decode(buffer)
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 
 	buffer.Reset()
 	binary.BigEndian.PutUint32(b, 1) // write cnt
@@ -111,7 +110,7 @@ func TestProto(t *testing.T) {
 	buffer.Write(b)
 	buffer.Write([]byte("0123456789"))
 	_, err = nms.Decode(buffer)
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 
 	msg := &pb.Message{Type: pb.MsgProp, Entries: []pb.Entry{{Data: []byte("njdaiuerjkteia")}}}
 	buffer.Reset()
@@ -122,7 +121,7 @@ func TestProto(t *testing.T) {
 	mdata, _ := msg.Marshal()
 	buffer.Write(mdata)
 	_, err = nms.Decode(buffer)
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 
 	buffer.Reset()
 	binary.BigEndian.PutUint32(b, 1) // write cnt
@@ -133,5 +132,5 @@ func TestProto(t *testing.T) {
 	binary.BigEndian.PutUint32(b, 783287498) // write crc
 	buffer.Write(b)
 	_, err = nms.Decode(buffer)
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 }

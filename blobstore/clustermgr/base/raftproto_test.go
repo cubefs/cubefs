@@ -28,7 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func BenchmarkEncodeProposeInfo(b *testing.B) {
@@ -67,10 +67,10 @@ func TestDecodeProposeInfo(t *testing.T) {
 	t.Log(decodeProposeInfo.OperType)
 	t.Log(decodeProposeInfo.Context.ReqID)
 
-	assert.Equal(t, module, decodeProposeInfo.Module)
-	assert.Equal(t, operType, decodeProposeInfo.OperType)
-	assert.Equal(t, data, decodeProposeInfo.Data)
-	assert.Equal(t, ctx.ReqID, decodeProposeInfo.Context.ReqID)
+	require.Equal(t, module, decodeProposeInfo.Module)
+	require.Equal(t, operType, decodeProposeInfo.OperType)
+	require.Equal(t, data, decodeProposeInfo.Data)
+	require.Equal(t, ctx.ReqID, decodeProposeInfo.Context.ReqID)
 }
 
 func TestRaftNode(t *testing.T) {
@@ -78,7 +78,7 @@ func TestRaftNode(t *testing.T) {
 	os.MkdirAll(tmpDBPath, 0o755)
 	defer os.RemoveAll(tmpDBPath)
 	raftDB, err := raftdb.OpenRaftDB(tmpDBPath, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer raftDB.Close()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
@@ -93,7 +93,7 @@ func TestRaftNode(t *testing.T) {
 		FlushNumInterval: 1, TruncateNumInterval: 1, ApplyIndex: 1,
 		Members: []RaftMember{{ID: 1, Host: "127.0.0.1", Learner: false, NodeHost: "127.0.0.1"}},
 	}, raftDB, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	raftNode.nodes[1] = "127.0.0.1"
 	raftNode.SetRaftServer(mockRaftSever)
 	defer raftNode.Stop()
@@ -120,32 +120,32 @@ func TestRaftNode(t *testing.T) {
 	// apply index
 	{
 		index := raftNode.GetStableApplyIndex()
-		assert.Equal(t, uint64(1), index)
+		require.Equal(t, uint64(1), index)
 
 		err = raftNode.RecordApplyIndex(ctx, uint64(2), false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = raftNode.RecordApplyIndex(ctx, uint64(2), true)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	{
 		host := "127.0.0.1"
 		raftNode.NotifyLeaderChange(ctx, uint64(1), "")
 		err := raftNode.ModuleApply(ctx, moduleName, []int32{1}, [][]byte{}, []ProposeContext{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		raftNode.SetLeaderHost(1, host)
 		getHost := raftNode.GetLeaderHost()
-		assert.Equal(t, host, getHost)
+		require.Equal(t, host, getHost)
 	}
 
 	{
 		err = raftNode.RecordApplyIndex(ctx, uint64(3), true)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = raftNode.RecordApplyIndex(ctx, uint64(4), false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = raftNode.RecordApplyIndex(ctx, uint64(5), false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// wait for raftNode background flush start
 		time.Sleep(time.Duration(defaultFlushCheckIntervalS+1) * time.Second)

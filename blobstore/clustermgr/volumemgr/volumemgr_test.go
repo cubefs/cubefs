@@ -25,7 +25,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -112,7 +112,7 @@ func initMockVolumeMgr(t testing.TB) {
 	//  new volumeMgr
 	var err error
 	mockVolumeMgr, err = NewVolumeMgr(testConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
 	mockVolumeMgr.SetRaftServer(mockRaftServer)
 }
@@ -258,7 +258,7 @@ func Test_VolumeMgr(t *testing.T) {
 		count++
 		return nil
 	})
-	assert.Equal(t, count, 30)
+	require.Equal(t, count, 30)
 }
 
 func Test_NewVolumeMgr(t *testing.T) {
@@ -327,7 +327,7 @@ func Test_NewVolumeMgr(t *testing.T) {
 	// test new volumeMgr
 	var err error
 	mockVolumeMgr, err = NewVolumeMgr(volConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	mockVolumeMgr.SetRaftServer(mockRaftServer)
 
 	// test volumeMgr load()
@@ -361,9 +361,9 @@ func Test_NewVolumeMgr(t *testing.T) {
 
 	// test exec task
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.New().String(), base.VolumeTaskTypeLock)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	vol2 := mockVolumeMgr.all.getVol(2)
-	assert.Equal(t, proto.VolumeStatusLock, vol2.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusLock, vol2.volInfoBase.Status)
 
 	mockVolumeMgr.configMgr.Get(context.Background(), proto.VolumeReserveSizeKey)
 	mockVolumeMgr.configMgr.Set(context.Background(), proto.VolumeReserveSizeKey, "2097152")
@@ -378,7 +378,7 @@ func TestVolumeMgr_AllocChunkForIdcUnits(t *testing.T) {
 	defer ctr.Finish()
 
 	vol := mockVolumeMgr.all.getVol(1)
-	assert.NotNil(t, vol)
+	require.NotNil(t, vol)
 	vuInfos := make(map[proto.VuidPrefix]*clustermgr.VolumeUnitInfo)
 	for i := 0; i < 6; i++ {
 		vuInfos[vol.vUnits[i].vuidPrefix] = vol.vUnits[i].vuInfo
@@ -419,7 +419,7 @@ func TestVolumeMgr_AllocChunkForIdcUnits(t *testing.T) {
 	mockVolumeMgr.diskMgr = mockDiskMgr
 	mockVolumeMgr.allocChunkForIdcUnits(ctx, "z1", vuInfos)
 	for i := range vuInfos {
-		assert.Equal(t, vuInfos[i].DiskID, proto.DiskID(9999))
+		require.Equal(t, vuInfos[i].DiskID, proto.DiskID(9999))
 	}
 }
 
@@ -433,24 +433,24 @@ func TestVolumeMgr_ListVolumeInfo(t *testing.T) {
 		Count:  503,
 	}
 	volInfos, err := mockVolumeMgr.ListVolumeInfo(ctx, args)
-	assert.NoError(t, err)
-	assert.Equal(t, len(volInfos), 28)
+	require.NoError(t, err)
+	require.Equal(t, len(volInfos), 28)
 
 	args.Count = 3
 	volInfos1, err := mockVolumeMgr.ListVolumeInfo(ctx, args)
-	assert.NoError(t, err)
-	assert.Equal(t, len(volInfos1), 3)
+	require.NoError(t, err)
+	require.Equal(t, len(volInfos1), 3)
 
 	args.Marker = 28
 	volInfos2, err := mockVolumeMgr.ListVolumeInfo(ctx, args)
-	assert.NoError(t, err)
-	assert.Equal(t, len(volInfos2), 1)
-	assert.Equal(t, volInfos2[0].Vid, proto.Vid(29))
+	require.NoError(t, err)
+	require.Equal(t, len(volInfos2), 1)
+	require.Equal(t, volInfos2[0].Vid, proto.Vid(29))
 
 	args.Marker = 29
 	volInfos3, err := mockVolumeMgr.ListVolumeInfo(ctx, args)
-	assert.NoError(t, err)
-	assert.Nil(t, volInfos3)
+	require.NoError(t, err)
+	require.Nil(t, volInfos3)
 }
 
 func TestVolumeMgr_ListVolumeInfoV2(t *testing.T) {
@@ -460,12 +460,12 @@ func TestVolumeMgr_ListVolumeInfoV2(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "listVolumeInfoV2")
 
 	volInfos, err := mockVolumeMgr.ListVolumeInfoV2(ctx, proto.VolumeStatusIdle)
-	assert.NoError(t, err)
-	assert.Equal(t, 15, len(volInfos))
+	require.NoError(t, err)
+	require.Equal(t, 15, len(volInfos))
 
 	volInfos, err = mockVolumeMgr.ListVolumeInfoV2(ctx, proto.VolumeStatusActive)
-	assert.NoError(t, err)
-	assert.Equal(t, 15, len(volInfos))
+	require.NoError(t, err)
+	require.Equal(t, 15, len(volInfos))
 }
 
 func TestVolumeMgr_GetVolumeInfo(t *testing.T) {
@@ -476,12 +476,12 @@ func TestVolumeMgr_GetVolumeInfo(t *testing.T) {
 	// success case
 	vid1 := proto.Vid(2)
 	volInfo, err := mockVolumeMgr.GetVolumeInfo(ctx, vid1)
-	assert.NoError(t, err)
-	assert.Equal(t, volInfo.Vid, vid1)
+	require.NoError(t, err)
+	require.Equal(t, volInfo.Vid, vid1)
 	// failed case
 	volInfo2, err := mockVolumeMgr.GetVolumeInfo(ctx, 31)
-	assert.Error(t, err)
-	assert.Nil(t, volInfo2)
+	require.Error(t, err)
+	require.Nil(t, volInfo2)
 }
 
 func TestVolumeMgr_AllocVolume(t *testing.T) {
@@ -538,15 +538,15 @@ func TestVolumeMgr_AllocVolume(t *testing.T) {
 			return nil
 		})
 		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
-		assert.NoError(t, err)
-		assert.Equal(t, ret.AllocVolumeInfos[0].HealthScore, 0)
-		assert.Equal(t, len(ret.AllocVolumeInfos), 2)
+		require.NoError(t, err)
+		require.Equal(t, ret.AllocVolumeInfos[0].HealthScore, 0)
+		require.Equal(t, len(ret.AllocVolumeInfos), 2)
 
 		// alloc not exist codemode
 		mode := codemode.EC6P6Align512
 		ret, err = mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
-		assert.Error(t, err)
-		assert.Nil(t, ret)
+		require.Error(t, err)
+		require.Nil(t, ret)
 	}
 
 	// failed case , no pending entries
@@ -559,7 +559,7 @@ func TestVolumeMgr_AllocVolume(t *testing.T) {
 			return nil
 		})
 		_, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// failed case ,pending entries length is 0
@@ -572,23 +572,23 @@ func TestVolumeMgr_AllocVolume(t *testing.T) {
 			return nil
 		})
 		_, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// test allocVolume : failed case, raft propose error
 	{
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(errors.New("error"))
 		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
-		assert.Error(t, err)
-		assert.Nil(t, ret)
+		require.Error(t, err)
+		require.Nil(t, ret)
 	}
 
 	// failed case, only volume free space bigger than freezeThreshold can alloc
 	{
 		mockVolumeMgr.allocator.freezeThreshold = 1 << 42
 		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
-		assert.Error(t, err)
-		assert.Nil(t, ret)
+		require.Error(t, err)
+		require.Nil(t, ret)
 	}
 }
 
@@ -610,33 +610,33 @@ func TestVolumeMgr_applyAllocVolume(t *testing.T) {
 		beforeLength := allocVolLenMap[mode]
 		for _, vid := range args.Vids {
 			_, err := mockVolumeMgr.applyAllocVolume(ctx, vid, args.Host, args.ExpireTime)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 
 		allocVolLenMap = mockVolumeMgr.allocator.StatAllocatable()
 		afterLength := allocVolLenMap[mode]
-		assert.Equal(t, beforeLength, afterLength+len(args.Vids))
+		require.Equal(t, beforeLength, afterLength+len(args.Vids))
 
 		// test count > len(allocatorVol)
 		args.Vids = []proto.Vid{0, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28}
 		for _, vid := range args.Vids {
 			_, err := mockVolumeMgr.applyAllocVolume(ctx, vid, args.Host, args.ExpireTime)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 		allocVolLenMap = mockVolumeMgr.allocator.StatAllocatable()
 		// all volume has actives ,allocVolLen is 0
-		assert.Equal(t, 0, allocVolLenMap[mode])
+		require.Equal(t, 0, allocVolLenMap[mode])
 
 		// test allocator has 0 volume,
 		for _, vid := range args.Vids {
 			_, err := mockVolumeMgr.applyAllocVolume(ctx, vid, args.Host, args.ExpireTime)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 
 		// test vid not exist
 		args.Vids = []proto.Vid{44}
 		_, err := mockVolumeMgr.applyAllocVolume(ctx, args.Vids[0], args.Host, args.ExpireTime)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 
 	// test allocVolume : success case
@@ -684,7 +684,7 @@ func TestVolumeMgr_applyAllocVolume(t *testing.T) {
 
 		args.Vids = []proto.Vid{10, 12, 14, 16, 18}
 		_, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 }
 
@@ -698,28 +698,28 @@ func TestVolumeMgr_PreRetainVolume(t *testing.T) {
 	}
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	ret, err := mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
-	assert.NoError(t, err)
-	assert.Equal(t, len(ret.RetainVolTokens), len(tokens))
+	require.NoError(t, err)
+	require.Equal(t, len(ret.RetainVolTokens), len(tokens))
 
 	ret, err = mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.2:8080")
-	assert.NoError(t, err)
-	assert.Nil(t, ret)
+	require.NoError(t, err)
+	require.Nil(t, ret)
 
 	// vid(2) not has tokenID, should not  retained
 	tokens = append(tokens, "127.0.0.1:8080;2")
 	ret, err = mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
-	assert.NoError(t, err)
-	assert.Equal(t, len(ret.RetainVolTokens), 2)
+	require.NoError(t, err)
+	require.Equal(t, len(ret.RetainVolTokens), 2)
 
 	// test invalid tokenID
 	tokens = []string{"134"}
 	_, err = mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// failed case, vid not exist
 	tokens = []string{"127.0.0.1:8080;55"}
 	_, err = mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// test retain has expired
 	tokens = []string{
@@ -727,8 +727,8 @@ func TestVolumeMgr_PreRetainVolume(t *testing.T) {
 	}
 	time.Sleep(10 * time.Second)
 	ret, err = mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
-	assert.NoError(t, err)
-	assert.Nil(t, ret)
+	require.NoError(t, err)
+	require.Nil(t, ret)
 }
 
 func TestVolumeMgr_applyRetainVolume(t *testing.T) {
@@ -748,7 +748,7 @@ func TestVolumeMgr_applyRetainVolume(t *testing.T) {
 		},
 	}
 	err := mockVolumeMgr.applyRetainVolume(ctx, args)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// fail case,invalid volume
 	args = []clustermgr.RetainVolume{
@@ -758,7 +758,7 @@ func TestVolumeMgr_applyRetainVolume(t *testing.T) {
 		},
 	}
 	err = mockVolumeMgr.applyRetainVolume(ctx, args)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// fail case , vid not exist
 	args = []clustermgr.RetainVolume{
@@ -768,7 +768,7 @@ func TestVolumeMgr_applyRetainVolume(t *testing.T) {
 		},
 	}
 	err = mockVolumeMgr.applyRetainVolume(ctx, args)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestVolumeMgr_applyExpireVolume(t *testing.T) {
@@ -780,9 +780,9 @@ func TestVolumeMgr_applyExpireVolume(t *testing.T) {
 	vol1 := mockVolumeMgr.all.getVol(proto.Vid(1))
 	vol3 := mockVolumeMgr.all.getVol(proto.Vid(3))
 	vol5 := mockVolumeMgr.all.getVol(proto.Vid(5))
-	assert.Equal(t, proto.VolumeStatusActive, vol1.volInfoBase.Status)
-	assert.Equal(t, proto.VolumeStatusActive, vol3.volInfoBase.Status)
-	assert.Equal(t, proto.VolumeStatusActive, vol5.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusActive, vol1.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusActive, vol3.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusActive, vol5.volInfoBase.Status)
 
 	vol1.lock.Lock()
 	vol1.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
@@ -796,23 +796,23 @@ func TestVolumeMgr_applyExpireVolume(t *testing.T) {
 	vol5.lock.Unlock()
 
 	err := mockVolumeMgr.applyExpireVolume(ctx, []proto.Vid{1, 3, 5})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	vol1 = mockVolumeMgr.all.getVol(proto.Vid(1))
 	vol3 = mockVolumeMgr.all.getVol(proto.Vid(3))
-	assert.Equal(t, proto.VolumeStatusIdle, vol1.volInfoBase.Status)
-	assert.Equal(t, proto.VolumeStatusIdle, vol3.volInfoBase.Status)
-	assert.Equal(t, proto.VolumeStatusIdle, vol5.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusIdle, vol1.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusIdle, vol3.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusIdle, vol5.volInfoBase.Status)
 
 	// double check if not expire ,direct return
 	vol7 := mockVolumeMgr.all.getVol(proto.Vid(7))
 	err = mockVolumeMgr.applyExpireVolume(ctx, []proto.Vid{7})
-	assert.NoError(t, err)
-	assert.Equal(t, proto.VolumeStatusActive, vol7.volInfoBase.Status)
+	require.NoError(t, err)
+	require.Equal(t, proto.VolumeStatusActive, vol7.volInfoBase.Status)
 
 	// vid not exist
 	err = mockVolumeMgr.applyExpireVolume(ctx, []proto.Vid{77})
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestVolumeMgr_ListAllocatedVolume(t *testing.T) {
@@ -821,15 +821,15 @@ func TestVolumeMgr_ListAllocatedVolume(t *testing.T) {
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	ret := mockVolumeMgr.ListAllocatedVolume(ctx, "127.0.0.1:8080", 1)
-	assert.NotNil(t, ret)
-	assert.Equal(t, len(ret.AllocVolumeInfos), 15)
+	require.NotNil(t, ret)
+	require.Equal(t, len(ret.AllocVolumeInfos), 15)
 
 	ret = mockVolumeMgr.ListAllocatedVolume(ctx, "127.0.0.1:8080", 2)
-	assert.NotNil(t, ret)
-	assert.Equal(t, len(ret.AllocVolumeInfos), 0)
+	require.NotNil(t, ret)
+	require.Equal(t, len(ret.AllocVolumeInfos), 0)
 
 	ret = mockVolumeMgr.ListAllocatedVolume(ctx, "127.0.0.99:8080", 1)
-	assert.Nil(t, ret.AllocVolumeInfos)
+	require.Nil(t, ret.AllocVolumeInfos)
 }
 
 func TestVolumeMgr_ApplyAdminUpdateVolume(t *testing.T) {
@@ -842,10 +842,10 @@ func TestVolumeMgr_ApplyAdminUpdateVolume(t *testing.T) {
 		HealthScore: -1,
 	}
 	err := mockVolumeMgr.applyAdminUpdateVolume(context.Background(), volInfo)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	ret := mockVolumeMgr.all.getVol(1)
-	assert.Equal(t, ret.volInfoBase.Used, volInfo.Used)
-	assert.Equal(t, ret.volInfoBase.HealthScore, volInfo.HealthScore)
+	require.Equal(t, ret.volInfoBase.Used, volInfo.Used)
+	require.Equal(t, ret.volInfoBase.HealthScore, volInfo.HealthScore)
 }
 
 func TestVolumeMgr_ApplyAdminUpdateVolumeUnit(t *testing.T) {
@@ -862,20 +862,20 @@ func TestVolumeMgr_ApplyAdminUpdateVolumeUnit(t *testing.T) {
 		},
 	}
 	err := mockVolumeMgr.applyAdminUpdateVolumeUnit(context.Background(), unitInfo)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	vol := mockVolumeMgr.all.getVol(1)
-	assert.Equal(t, vol.vUnits[1].vuInfo.DiskID, unitInfo.DiskID)
-	assert.Equal(t, vol.vUnits[1].epoch, unitInfo.Epoch)
-	assert.Equal(t, vol.vUnits[1].nextEpoch, unitInfo.NextEpoch)
-	assert.Equal(t, vol.vUnits[1].vuInfo.Compacting, unitInfo.Compacting)
+	require.Equal(t, vol.vUnits[1].vuInfo.DiskID, unitInfo.DiskID)
+	require.Equal(t, vol.vUnits[1].epoch, unitInfo.Epoch)
+	require.Equal(t, vol.vUnits[1].nextEpoch, unitInfo.NextEpoch)
+	require.Equal(t, vol.vUnits[1].vuInfo.Compacting, unitInfo.Compacting)
 
 	unitRecord, err := mockVolumeMgr.volumeTbl.GetVolumeUnit(proto.EncodeVuidPrefix(1, 1))
-	assert.NoError(t, err)
-	assert.Equal(t, unitRecord.Compacting, unitRecord.Compacting)
-	assert.Equal(t, unitRecord.Epoch, unitRecord.Epoch)
-	assert.Equal(t, unitRecord.NextEpoch, unitRecord.NextEpoch)
-	assert.Equal(t, unitRecord.DiskID, unitRecord.DiskID)
+	require.NoError(t, err)
+	require.Equal(t, unitRecord.Compacting, unitRecord.Compacting)
+	require.Equal(t, unitRecord.Epoch, unitRecord.Epoch)
+	require.Equal(t, unitRecord.NextEpoch, unitRecord.NextEpoch)
+	require.Equal(t, unitRecord.DiskID, unitRecord.DiskID)
 
 	// failed case,diskid = 0 ,not update
 	unitInfo1 := &clustermgr.AdminUpdateUnitArgs{
@@ -888,12 +888,12 @@ func TestVolumeMgr_ApplyAdminUpdateVolumeUnit(t *testing.T) {
 		},
 	}
 	err = mockVolumeMgr.applyAdminUpdateVolumeUnit(context.Background(), unitInfo1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// failed case, vid not exist
 	unitInfo1.VolumeUnitInfo.Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(33, 1), 1)
 	err = mockVolumeMgr.applyAdminUpdateVolumeUnit(context.Background(), unitInfo1)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestVolumeMgr_LockVolume(t *testing.T) {
@@ -902,11 +902,11 @@ func TestVolumeMgr_LockVolume(t *testing.T) {
 
 	// not allow lock active volume
 	err := mockVolumeMgr.LockVolume(context.Background(), 1)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// vid not exist
 	err = mockVolumeMgr.LockVolume(context.Background(), 55)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	ctr := gomock.NewController(t)
 	defer ctr.Finish()
@@ -916,18 +916,18 @@ func TestVolumeMgr_LockVolume(t *testing.T) {
 
 	// not apply ,
 	vol2 := mockVolumeMgr.all.getVol(2)
-	assert.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
 	err = mockVolumeMgr.LockVolume(context.Background(), 2)
-	assert.Error(t, err)
-	assert.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
+	require.Error(t, err)
+	require.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
 
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.New().String(), base.VolumeTaskTypeLock)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	vol2 = mockVolumeMgr.all.getVol(2)
-	assert.Equal(t, proto.VolumeStatusLock, vol2.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusLock, vol2.volInfoBase.Status)
 
 	err = mockVolumeMgr.LockVolume(context.Background(), 2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestVolumeMgr_UnlockVolume(t *testing.T) {
@@ -941,34 +941,34 @@ func TestVolumeMgr_UnlockVolume(t *testing.T) {
 
 	// failed case: lock status can unlock
 	vol2 := mockVolumeMgr.all.getVol(2)
-	assert.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
 	err := mockVolumeMgr.UnlockVolume(context.Background(), 2)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// failed case: vid not exist
 	err = mockVolumeMgr.UnlockVolume(context.Background(), 55)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	vol2.lock.Lock()
 	vol2.volInfoBase.Status = proto.VolumeStatusLock
 	vol2.lock.Unlock()
 	err = mockVolumeMgr.UnlockVolume(context.Background(), 2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ret, err := mockVolumeMgr.GetVolumeInfo(context.Background(), 2)
-	assert.NoError(t, err)
-	assert.Equal(t, proto.VolumeStatusLock, ret.Status)
+	require.NoError(t, err)
+	require.Equal(t, proto.VolumeStatusLock, ret.Status)
 
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.New().String(), base.VolumeTaskTypeUnlock)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ret, err = mockVolumeMgr.GetVolumeInfo(context.Background(), 2)
-	assert.NoError(t, err)
-	assert.Equal(t, proto.VolumeStatusUnlocking, ret.Status)
+	require.NoError(t, err)
+	require.Equal(t, proto.VolumeStatusUnlocking, ret.Status)
 
 	// volume status id idle , cannot apply volume unlock task, direct return but error is nil
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.NewString(), base.VolumeTaskTypeUnlock)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestVolumeMgr_Report(t *testing.T) {
@@ -1042,8 +1042,8 @@ func TestVolumeMgr_PreAlloc(t *testing.T) {
 			return nil
 		})
 		vids, diskLoad := mockVolumeMgr.allocator.PreAlloc(context.Background(), testCase.codemode, testCase.count)
-		assert.Equal(t, len(vids), testCase.lenVids)
-		assert.Equal(t, diskLoad, testCase.diskLoad)
+		require.Equal(t, len(vids), testCase.lenVids)
+		require.Equal(t, diskLoad, testCase.diskLoad)
 	}
 }
 
@@ -1098,8 +1098,8 @@ func BenchmarkVolumeMgr_AllocVolume(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
-			assert.NoError(b, err)
-			assert.Equal(b, len(ret.AllocVolumeInfos), 2)
+			require.NoError(b, err)
+			require.Equal(b, len(ret.AllocVolumeInfos), 2)
 		}
 	})
 }

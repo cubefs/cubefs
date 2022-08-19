@@ -21,7 +21,7 @@ import (
 
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/hashicorp/consul/api"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func skipIfConsulNotRunning(t *testing.T, consulAddr string) {
@@ -39,7 +39,7 @@ func skipIfConsulNotRunning(t *testing.T, consulAddr string) {
 
 func TestServiceRegister(t *testing.T) {
 	skipIfConsulNotRunning(t, "127.0.0.1:8500")
-	ast := assert.New(t)
+	ast := require.New(t)
 	{
 		_, err := ServiceRegister("", nil)
 		ast.Error(err)
@@ -62,7 +62,7 @@ func TestServiceRegister(t *testing.T) {
 }
 
 func TestStartHealthCheckServ(t *testing.T) {
-	ast := assert.New(t)
+	ast := require.New(t)
 	_, port := StartHttpServerForHealthyCheck("", "/test")
 
 	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%v/test", port))
