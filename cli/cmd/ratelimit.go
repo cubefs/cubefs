@@ -87,6 +87,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.ClientVolOpRate < -2 {
 				errout("client meta op limit rate can't be less than %d\n", -1)
 			}
+			if info.DataNodeRepairTaskZoneCount >= 0 && info.ZoneName == "" {
+				errout("if DataNodeRepairTaskZoneCount is set , ZoneName can not be empty")
+			}
 			msg := ""
 			if info.ClientReadVolRate >= 0 {
 				msg += fmt.Sprintf("clientReadVolRate: %d, volume: %s, ", info.ClientReadVolRate, info.Volume)
@@ -149,8 +152,8 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			stdout("Set rate limit success: %s\n", strings.TrimRight(msg, " ,"))
 		},
 	}
-	cmd.Flags().Int64Var(&info.DataNodeRepairTaskCount, "dataNodeRepairTaskCount", -1, "data node repair task count")
-	cmd.Flags().Int64Var(&info.DataNodeRepairTaskSSDZone, "dataNodeRepairTaskSSDZoneCount", -1, "data node repair task count of ssd zones")
+	cmd.Flags().Int64Var(&info.DataNodeRepairTaskCount, "dataNodeRepairTaskHDDCount", -1, "data node repair task count of hdd zones")
+	cmd.Flags().Int64Var(&info.DataNodeRepairTaskSSDZone, "dataNodeRepairTaskSSDCount", -1, "data node repair task count of ssd zones")
 	cmd.Flags().StringVar(&info.ZoneName, "zone", "", "zone (empty zone acts as default)")
 	cmd.Flags().StringVar(&info.Volume, "volume", "", "volume (empty volume acts as default)")
 	cmd.Flags().Int8Var(&info.Opcode, "opcode", 0, "opcode (zero opcode acts as default)")
@@ -180,8 +183,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  MetaNodeReqOpRateMap        : %v\n", info.MetaNodeReqOpRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[opcode]limit)\n"))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskCount     : %v\n", info.DataNodeRepairTaskLimitOnDisk))
-	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskCluster   : %v\n", info.DataNodeRepairClusterTaskLimitOnDisk))
+	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskHDDZone   : %v\n", info.DataNodeRepairClusterTaskLimitOnDisk))
 	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskSSDZone   : %v\n", info.DataNodeRepairSSDZoneTaskLimitOnDisk))
 	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneRateMap      : %v\n", info.DataNodeReqZoneRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[zone]limit)\n"))
