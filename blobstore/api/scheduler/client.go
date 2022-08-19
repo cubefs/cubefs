@@ -145,5 +145,5 @@ type UpdateVolumeArgs struct {
 }
 
 func (c *client) UpdateVolume(ctx context.Context, host string, vid proto.Vid) (err error) {
-	return c.PostWith(ctx, host+PathUpdateVolume, nil, UpdateVolumeArgs{Vid: vid})
+	return c.PostWith(ctx, hostWithScheme(host)+PathUpdateVolume, nil, UpdateVolumeArgs{Vid: vid})
 }

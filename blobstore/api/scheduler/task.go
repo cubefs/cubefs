@@ -17,6 +17,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -208,7 +209,7 @@ func (c *client) DetailMigrateTask(ctx context.Context, args *MigrateTaskDetailA
 }
 
 func (c *client) Stats(ctx context.Context, host string) (ret TasksStat, err error) {
-	err = c.GetWith(ctx, host+PathStats, &ret)
+	err = c.GetWith(ctx, hostWithScheme(host)+PathStats, &ret)
 	return
 }
 
@@ -240,4 +241,12 @@ func (c *client) request(req func(host string) error) (err error) {
 		}
 	}
 	return err
+}
+
+func hostWithScheme(host string) string {
+	u, err := url.Parse(host)
+	if err == nil && u.Scheme != "" && u.Host != "" {
+		return host
+	}
+	return "http://" + host
 }
