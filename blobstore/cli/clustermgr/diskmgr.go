@@ -86,13 +86,8 @@ func addCmdDisk(cmd *grumble.Command) {
 }
 
 func cmdGetDisk(c *grumble.Context) error {
-	cmClient, err := NewCMClient(c.Flags.String("secret"),
-		specificClusterID(c.Flags), specificHost(c.Flags))
-	if err != nil {
-		return err
-	}
 	ctx := common.CmdContext()
-
+	cmClient := newCMClient(c.Flags)
 	disk, err := cmClient.DiskInfo(ctx, args.DiskID(c.Args))
 	if err != nil {
 		return err
@@ -107,12 +102,8 @@ func cmdGetDisk(c *grumble.Context) error {
 }
 
 func cmdListDisks(c *grumble.Context) error {
-	cmClient, err := NewCMClient(c.Flags.String("secret"),
-		specificClusterID(c.Flags), specificHost(c.Flags))
-	if err != nil {
-		return err
-	}
 	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
 
 	listOptionArgs := &clustermgr.ListOptionArgs{
 		Status: proto.DiskStatus(c.Flags.Uint("status")),

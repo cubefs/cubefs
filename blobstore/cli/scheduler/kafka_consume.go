@@ -38,29 +38,27 @@ func addCmdKafkaConsumer(cmd *grumble.Command) {
 	cmd.AddCommand(kafkaCommand)
 
 	kafkaCommand.AddCommand(&grumble.Command{
-		Name: "get",
-		Help: "get kafka consume offset",
-		Run:  cmdGetConsumeOffset,
-		Flags: func(f *grumble.Flags) {
-			kafkaFlag(f)
-		},
+		Name:  "get",
+		Help:  "get kafka consume offset",
+		Run:   cmdGetConsumeOffset,
+		Flags: kafkaFlags,
 	})
 	kafkaCommand.AddCommand(&grumble.Command{
-		Name: "set",
-		Help: "set kafka consume offset",
-		Run:  cmdSetConsumeOffset,
-		Flags: func(f *grumble.Flags) {
-			kafkaFlag(f)
-			f.Int64L(_offset, 0, "set the offset")
+		Name:  "set",
+		Help:  "set kafka consume offset",
+		Run:   cmdSetConsumeOffset,
+		Flags: kafkaFlags,
+		Args: func(a *grumble.Args) {
+			a.Int64(_offset, "kafka offset")
 		},
 	})
 }
 
-func kafkaFlag(f *grumble.Flags) {
+func kafkaFlags(f *grumble.Flags) {
+	clusterFlags(f)
 	f.StringL(_taskType, "", "task_type, such as shard_repair and blob_delete")
 	f.StringL(_topic, "", "set the topic")
 	f.IntL(_partition, 0, "set the partition")
-	f.Int("c", _clusterID, 1, "set the cluster id")
 }
 
 func cmdGetConsumeOffset(c *grumble.Context) error {
@@ -70,7 +68,7 @@ func cmdGetConsumeOffset(c *grumble.Context) error {
 	}
 	topic := c.Flags.String(_topic)
 	partition := c.Flags.Int(_partition)
-	clusterID := c.Flags.Int(_clusterID)
+	clusterID := getClusterID(c.Flags)
 
 	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 	offset, err := clusterMgrCli.GetConsumeOffset(taskType, topic, int32(partition))
@@ -88,9 +86,9 @@ func cmdSetConsumeOffset(c *grumble.Context) error {
 	}
 	topic := c.Flags.String(_topic)
 	partition := c.Flags.Int(_partition)
-	offset := c.Flags.Int64(_offset)
-	clusterID := c.Flags.Int(_clusterID)
+	clusterID := getClusterID(c.Flags)
 
+	offset := c.Args.Int64(_offset)
 	clusterMgrCli := newClusterMgrTaskClient(clusterID)
 	err := clusterMgrCli.SetConsumeOffset(taskType, topic, int32(partition), offset)
 	if err != nil {

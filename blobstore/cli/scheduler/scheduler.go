@@ -16,7 +16,6 @@ package scheduler
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/desertbit/grumble"
 
@@ -25,7 +24,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 )
@@ -38,48 +36,36 @@ const (
 
 var defaultClusterMgrAddrs = []string{"http://127.0.0.1:9998"}
 
-func newClusterMgrTaskClient(clusterID int) client.ClusterMgrTaskAPI {
-	enableAuth := false
-	secret := config.ClusterMgrSecret()
-	if secret != "" {
-		enableAuth = true
-	}
-	var addrs []string
-	addrs = defaultClusterMgrAddrs
-	hosts, ok := config.ClusterMgrClusters()[strconv.Itoa(clusterID)]
-	if ok {
-		addrs = hosts
-	}
-	return client.NewClusterMgrClient(&clustermgr.Config{
-		LbConfig: rpc.LbConfig{
-			Hosts: addrs,
-			Config: rpc.Config{
-				Tc: rpc.TransportConfig{Auth: auth.Config{EnableAuth: enableAuth, Secret: secret}},
-			},
-		},
-	})
+func newClusterMgrClient(clusterID proto.ClusterID) *clustermgr.Client {
+	return clustermgr.New(cmConfig(clusterID))
 }
 
-func newClusterMgrClient(clusterID string) *clustermgr.Client {
-	enableAuth := false
-	secret := config.ClusterMgrSecret()
-	if secret != "" {
-		enableAuth = true
-	}
-	var addrs []string
-	addrs = defaultClusterMgrAddrs
-	hosts, ok := config.ClusterMgrClusters()[clusterID]
-	if ok {
+func newClusterMgrTaskClient(clusterID proto.ClusterID) client.ClusterMgrTaskAPI {
+	return client.NewClusterMgrClient(cmConfig(clusterID))
+}
+
+func cmConfig(clusterID proto.ClusterID) *clustermgr.Config {
+	addrs := defaultClusterMgrAddrs[:]
+	if hosts, ok := config.ClusterMgrClusters()[clusterID.ToString()]; ok {
 		addrs = hosts
 	}
-	return clustermgr.New(&clustermgr.Config{
-		LbConfig: rpc.LbConfig{
-			Hosts: addrs,
-			Config: rpc.Config{
-				Tc: rpc.TransportConfig{Auth: auth.Config{EnableAuth: enableAuth, Secret: secret}},
-			},
-		},
-	})
+	secret := config.ClusterMgrSecret()
+	cfg := &clustermgr.Config{}
+	cfg.LbConfig.Hosts = addrs
+	cfg.LbConfig.Config.Tc.Auth = auth.Config{EnableAuth: secret != "", Secret: secret}
+	return cfg
+}
+
+func clusterFlags(f *grumble.Flags) {
+	f.Int("c", _clusterID, -1, "specific clustermgr cluster id")
+}
+
+func getClusterID(f grumble.FlagMap) proto.ClusterID {
+	clusterID := f.Int(_clusterID)
+	if clusterID < 0 {
+		return proto.ClusterID(config.DefaultClusterID())
+	}
+	return proto.ClusterID(clusterID)
 }
 
 // Register register scheduler
@@ -90,12 +76,10 @@ func Register(app *grumble.App) {
 	}
 	app.AddCommand(schedulerCommand)
 	schedulerCommand.AddCommand(&grumble.Command{
-		Name: "stat",
-		Help: "show leader stat of scheduler",
-		Run:  leaderStat,
-		Flags: func(f *grumble.Flags) {
-			f.Int("c", _clusterID, 1, "set the cluster id")
-		},
+		Name:  "stat",
+		Help:  "show leader stat of scheduler",
+		Run:   leaderStat,
+		Flags: clusterFlags,
 	})
 
 	addCmdMigrateTask(schedulerCommand)
@@ -104,9 +88,9 @@ func Register(app *grumble.App) {
 }
 
 func leaderStat(c *grumble.Context) error {
-	clusterID := c.Flags.Int(_clusterID)
-	clusterMgrCli := newClusterMgrClient(strconv.Itoa(clusterID))
-	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, proto.ClusterID(clusterID))
+	clusterID := getClusterID(c.Flags)
+	clusterMgrCli := newClusterMgrClient(clusterID)
+	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, clusterID)
 	stat, err := cli.LeaderStats(common.CmdContext())
 	if err != nil {
 		return err

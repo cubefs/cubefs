@@ -32,27 +32,24 @@ func addCmdVolumeInspectCheckpointTask(cmd *grumble.Command) {
 	cmd.AddCommand(inspectCommand)
 
 	inspectCommand.AddCommand(&grumble.Command{
-		Name: "get",
-		Help: "get inspect checkpoint",
-		Run:  cmdGetInspectCheckpoint,
-		Flags: func(f *grumble.Flags) {
-			f.Int("c", _clusterID, 1, "set the cluster id")
-		},
+		Name:  "get",
+		Help:  "get inspect checkpoint",
+		Run:   cmdGetInspectCheckpoint,
+		Flags: clusterFlags,
 	})
 	inspectCommand.AddCommand(&grumble.Command{
-		Name: "set",
-		Help: "set inspect checkpoint",
-		Run:  cmdSetInspectCheckpoint,
-		Flags: func(f *grumble.Flags) {
-			f.Int("c", _clusterID, 1, "set the cluster id")
-			f.Uint64L("volume_id", 0, "set the Vid")
+		Name:  "set",
+		Help:  "set inspect checkpoint",
+		Run:   cmdSetInspectCheckpoint,
+		Flags: clusterFlags,
+		Args: func(a *grumble.Args) {
+			a.Uint64("volume_id", "set the start volume id")
 		},
 	})
 }
 
 func cmdGetInspectCheckpoint(c *grumble.Context) error {
-	clusterID := c.Flags.Int(_clusterID)
-	clusterMgrCli := newClusterMgrTaskClient(clusterID)
+	clusterMgrCli := newClusterMgrTaskClient(getClusterID(c.Flags))
 	ck, err := clusterMgrCli.GetVolumeInspectCheckPoint(common.CmdContext())
 	if err != nil {
 		return err
@@ -62,11 +59,9 @@ func cmdGetInspectCheckpoint(c *grumble.Context) error {
 }
 
 func cmdSetInspectCheckpoint(c *grumble.Context) error {
-	clusterID := c.Flags.Int(_clusterID)
-	clusterMgrCli := newClusterMgrTaskClient(clusterID)
-	vid := proto.Vid(c.Flags.Uint64("volume_id"))
-	fmt.Printf("set volume inspect checkpoint: %d\n", vid)
-	if !common.Confirm("to set checkpoint?") {
+	clusterMgrCli := newClusterMgrTaskClient(getClusterID(c.Flags))
+	vid := proto.Vid(c.Args.Uint64("volume_id"))
+	if !common.Confirm(fmt.Sprintf("set volume inspect checkpoint: %d ?", vid)) {
 		return nil
 	}
 	err := clusterMgrCli.SetVolumeInspectCheckPoint(common.CmdContext(), vid)

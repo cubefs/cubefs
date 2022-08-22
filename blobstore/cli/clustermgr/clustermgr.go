@@ -16,7 +16,6 @@ package clustermgr
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/desertbit/grumble"
@@ -26,60 +25,48 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
-	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-func NewCMClient(secret string, clusterID string, hosts []string) (*clustermgr.Client, error) {
+func NewCMClient(secret string, clusterID string, hosts []string) *clustermgr.Client {
 	if len(hosts) == 0 {
 		hosts = config.ClusterMgrClusters()[clusterID]
-		if len(hosts) == 0 {
-			return nil, errors.New("clusterID not exist, please config")
-		}
 	}
-
 	if secret == "" {
 		secret = config.ClusterMgrSecret()
 	}
-	enableAuth := false
-	if secret != "" {
-		enableAuth = true
-	}
-
 	return clustermgr.New(&clustermgr.Config{
 		LbConfig: rpc.LbConfig{
 			Hosts: hosts,
 			Config: rpc.Config{
 				Tc: rpc.TransportConfig{
 					Auth: auth.Config{
-						EnableAuth: enableAuth,
+						EnableAuth: secret != "",
 						Secret:     secret,
 					},
 				},
 			},
 		},
-	}), nil
+	})
+}
+
+func newCMClient(f grumble.FlagMap) *clustermgr.Client {
+	clusterID := f.String("cluster_id")
+	if clusterID == "" {
+		clusterID = fmt.Sprintf("%d", config.DefaultClusterID())
+	}
+
+	var hosts []string
+	if str := strings.TrimSpace(f.String("hosts")); str != "" {
+		hosts = strings.Split(str, " ")
+	}
+
+	return NewCMClient(f.String("secret"), clusterID, hosts)
 }
 
 func clusterFlags(f *grumble.Flags) {
-	f.StringL("clusterID", "", "specific clustermgr clusterID")
+	f.StringL("cluster_id", "", "specific clustermgr cluster id")
 	f.StringL("secret", "", "specific clustermgr secret")
-	f.StringL("hosts", "", "specific clustermgr secret")
-}
-
-func specificClusterID(f grumble.FlagMap) string {
-	clusterID := f.String("clusterID")
-	if clusterID == "" {
-		clusterID = strconv.Itoa(config.DefaultClusterID())
-	}
-	return clusterID
-}
-
-func specificHost(f grumble.FlagMap) []string {
-	hosts := strings.TrimSpace(f.String("hosts"))
-	if hosts == "" {
-		return nil
-	}
-	return strings.Split(hosts, " ")
+	f.StringL("hosts", "", "specific clustermgr hosts")
 }
 
 // Register register cm
@@ -98,17 +85,11 @@ func Register(app *grumble.App) {
 	addCmdDisk(cmCommand)
 
 	cmCommand.AddCommand(&grumble.Command{
-		Name: "stat",
-		Help: "show stat of clustermgr",
-		Flags: func(f *grumble.Flags) {
-			clusterFlags(f)
-		},
+		Name:  "stat",
+		Help:  "show stat of clustermgr",
+		Flags: clusterFlags,
 		Run: func(c *grumble.Context) error {
-			cli, err := NewCMClient(c.Flags.String("secret"),
-				specificClusterID(c.Flags), specificHost(c.Flags))
-			if err != nil {
-				return err
-			}
+			cli := newCMClient(c.Flags)
 			stat, err := cli.Stat(common.CmdContext())
 			if err != nil {
 				return err
