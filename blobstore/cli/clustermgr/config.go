@@ -29,11 +29,7 @@ import (
 )
 
 func cmdGetConfig(c *grumble.Context) error {
-	cli, err := NewCMClient(c.Flags.String("secret"),
-		specificClusterID(c.Flags), specificHost(c.Flags))
-	if err != nil {
-		return err
-	}
+	cli := newCMClient(c.Flags)
 	ctx := common.CmdContext()
 	verbose := flags.Verbose(c.Flags)
 	key := c.Args.String("key")
@@ -99,18 +95,12 @@ func addCmdConfig(cmd *grumble.Command) {
 			a.String("key", "config key")
 			a.String("value", "config value")
 		},
-		Flags: func(f *grumble.Flags) {
-			clusterFlags(f)
-		},
+		Flags: clusterFlags,
 		Run: func(c *grumble.Context) error {
 			key := c.Args.String("key")
 			value := c.Args.String("value")
 
-			cli, err := NewCMClient(c.Flags.String("secret"),
-				specificClusterID(c.Flags), specificHost(c.Flags))
-			if err != nil {
-				return err
-			}
+			cli := newCMClient(c.Flags)
 			ctx := common.CmdContext()
 			oldV, err := cli.GetConfig(ctx, key)
 			if err != nil {
@@ -138,17 +128,11 @@ func addCmdConfig(cmd *grumble.Command) {
 		Args: func(a *grumble.Args) {
 			a.String("key", "config key")
 		},
-		Flags: func(f *grumble.Flags) {
-			clusterFlags(f)
-		},
+		Flags: clusterFlags,
 		Run: func(c *grumble.Context) error {
 			key := c.Args.String("key")
 
-			cli, err := NewCMClient(c.Flags.String("secret"),
-				specificClusterID(c.Flags), specificHost(c.Flags))
-			if err != nil {
-				return err
-			}
+			cli := newCMClient(c.Flags)
 			ctx := common.CmdContext()
 			oldV, err := cli.GetConfig(ctx, key)
 			if err != nil {

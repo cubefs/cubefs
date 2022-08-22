@@ -109,11 +109,7 @@ func showClusterWithConfig() error {
 	cs := config.ClusterMgrClusters()
 	for clusterID, hosts := range cs {
 		fmt.Println("====================================")
-		client, err := clustermgr.NewCMClient("", clusterID, nil)
-		if err != nil {
-			fmt.Println("\terror:", err)
-			continue
-		}
+		client := clustermgr.NewCMClient("", clusterID, nil)
 		stat, err := client.Stat(context.Background())
 		if err != nil {
 			fmt.Println("\terror:", err)

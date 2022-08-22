@@ -16,7 +16,6 @@ package scheduler
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/desertbit/grumble"
 
@@ -30,6 +29,7 @@ import (
 
 const (
 	_count          = "count"
+	_diskID         = "disk_id"
 	_directDownload = "direct_download"
 )
 
@@ -46,9 +46,8 @@ func addCmdMigrateTask(cmd *grumble.Command) {
 		Help: "get migrate task",
 		Run:  cmdGetTask,
 		Flags: func(f *grumble.Flags) {
-			f.StringL(_taskType, "", "task_type, such as shard_repair and blob_delete")
+			migrateFlags(f)
 			f.StringL(_taskID, "", "set the task_id")
-			f.Int("c", _clusterID, 1, "set the cluster_id")
 		},
 	})
 	migrateCommand.AddCommand(&grumble.Command{
@@ -56,9 +55,9 @@ func addCmdMigrateTask(cmd *grumble.Command) {
 		Help: "add manual migrate task",
 		Run:  cmdAddTask,
 		Flags: func(f *grumble.Flags) {
+			clusterFlags(f)
 			f.Uint64("", "vuid", 0, "set the vuid")
 			f.Bool("", _directDownload, true, "whether download directly")
-			f.Int("c", _clusterID, 1, "set the cluster id")
 		},
 	})
 	migrateCommand.AddCommand(&grumble.Command{
@@ -67,6 +66,7 @@ func addCmdMigrateTask(cmd *grumble.Command) {
 		Run:  cmdListTask,
 		Flags: func(f *grumble.Flags) {
 			migrateFlags(f)
+			f.Uint64L(_diskID, 0, "disk id for which disk")
 			f.IntL(_count, 10, "the number you want to get")
 		},
 	})
@@ -76,14 +76,14 @@ func addCmdMigrateTask(cmd *grumble.Command) {
 		Run:  cmdGetMigratingDisk,
 		Flags: func(f *grumble.Flags) {
 			migrateFlags(f)
+			f.Uint64L(_diskID, 0, "disk id for which disk")
 		},
 	})
 }
 
 func migrateFlags(f *grumble.Flags) {
+	clusterFlags(f)
 	f.StringL(_taskType, "", "task_type, such as disk_repair, disk_drop, balance and manual_migrate")
-	f.Uint64L("disk_id", 0, "disk id for which disk")
-	f.Int("c", _clusterID, 1, "set the cluster id")
 }
 
 func cmdGetTask(c *grumble.Context) error {
@@ -92,9 +92,9 @@ func cmdGetTask(c *grumble.Context) error {
 		return errcode.ErrIllegalTaskType
 	}
 	key := c.Flags.String(_taskID)
-	clusterID := c.Flags.Int(_clusterID)
-	clusterMgrCli := newClusterMgrClient(strconv.Itoa(clusterID))
-	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, proto.ClusterID(clusterID))
+	clusterID := getClusterID(c.Flags)
+	clusterMgrCli := newClusterMgrClient(clusterID)
+	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, clusterID)
 
 	task, err := cli.DetailMigrateTask(common.CmdContext(), &scheduler.MigrateTaskDetailArgs{
 		Type: taskType,
@@ -109,15 +109,14 @@ func cmdGetTask(c *grumble.Context) error {
 
 func cmdAddTask(c *grumble.Context) error {
 	ctx := common.CmdContext()
-	clusterID := c.Flags.Int(_clusterID)
+	clusterID := getClusterID(c.Flags)
 	directDownload := c.Flags.Bool(_directDownload)
 	vuid := proto.Vuid(c.Flags.Uint64("vuid"))
-	fmt.Printf("add manual migrate task: vid[%d], vuid[%d]", vuid.Vid(), vuid)
-	if !common.Confirm("?") {
+	if !common.Confirm(fmt.Sprintf("add manual migrate task: vid[%d], vuid[%d] ?", vuid.Vid(), vuid)) {
 		return nil
 	}
-	clusterMgrCli := newClusterMgrClient(strconv.Itoa(clusterID))
-	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, proto.ClusterID(clusterID))
+	clusterMgrCli := newClusterMgrClient(clusterID)
+	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, clusterID)
 	err := cli.AddManualMigrateTask(ctx, &scheduler.AddManualMigrateArgs{
 		Vuid:           vuid,
 		DirectDownload: directDownload,
@@ -131,15 +130,13 @@ func cmdAddTask(c *grumble.Context) error {
 
 func cmdListTask(c *grumble.Context) error {
 	ctx := common.CmdContext()
-
 	taskType := proto.TaskType(c.Flags.String(_taskType))
 	if !taskType.Valid() {
 		return errcode.ErrIllegalTaskType
 	}
 	count := c.Flags.Int(_count)
-	clusterID := c.Flags.Int(_clusterID)
-	diskID := proto.DiskID(c.Flags.Uint64("disk_id"))
-	clusterMgrCli := newClusterMgrTaskClient(clusterID)
+	diskID := proto.DiskID(c.Flags.Uint64(_diskID))
+	clusterMgrCli := newClusterMgrTaskClient(getClusterID(c.Flags))
 	prefix := client.GenMigrateTaskPrefix(taskType)
 	if diskID != proto.InvalidDiskID {
 		prefix = client.GenMigrateTaskPrefixByDiskID(taskType, diskID)
@@ -173,10 +170,9 @@ func cmdGetMigratingDisk(c *grumble.Context) error {
 	if !taskType.Valid() {
 		return errcode.ErrIllegalTaskType
 	}
-	diskID := proto.DiskID(c.Flags.Uint64("disk_id"))
-	clusterID := c.Flags.Int(_clusterID)
+	diskID := proto.DiskID(c.Flags.Uint64(_diskID))
 
-	clusterMgrCli := newClusterMgrTaskClient(clusterID)
+	clusterMgrCli := newClusterMgrTaskClient(getClusterID(c.Flags))
 
 	if diskID == 0 {
 		disks, err := clusterMgrCli.ListMigratingDisks(ctx, taskType)
