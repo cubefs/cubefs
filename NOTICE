@@ -1,10 +1,10 @@
-ChubaoFS
-Copyright 2017-present The Chubao Authors.
+CubeFS
+Copyright 2017-present The CubeFS Authors.
 
 This product includes software devoloped at
 The Apache Software Foundation (http://www.apache.org/).
 
-ChubaoFS reused the code from the MinIO project to implement the
+CubeFS reused the code from the MinIO project to implement the
 signature algorithm V2, signature algorithm V4 and policy-related
 logic for S3-compatible object storage interfaces.
 

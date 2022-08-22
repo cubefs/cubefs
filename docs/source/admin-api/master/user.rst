@@ -10,7 +10,7 @@ Create
 
 Create a user in the cluster to access object storage service. When the cluster starts, the ``root`` user is automatically created (the value of ``type`` is ``0x1``).
 
-ChubaoFS treats every ``Owner`` of volume as a ``user``. For example, if the value of **Owner** is ``testuser`` when creating a volume, the volume is owned by user ``testuser``.
+CubeFS treats every ``Owner`` of volume as a ``user``. For example, if the value of **Owner** is ``testuser`` when creating a volume, the volume is owned by user ``testuser``.
 
 If there is no user ID with the same value as the **Owner** when creating the volume, the user named the value of **Owner** will be automatically created when creating the volume.
 
@@ -18,7 +18,7 @@ If there is no user ID with the same value as the **Owner** when creating the vo
    :header: "Key", "Type", "Description", "Range", "Mandatory", "Default"
    
    "id", "string", "user ID", "Consists of letters, numbers and underscores, no more than 20 characters", "Yes", "None"
-   "pwd", "string", "user's password", "Unlimited", "No", "``ChubaoFSUser``"
+   "pwd", "string", "user's password", "Unlimited", "No", "``CubeFSUser``"
    "ak", "string", "Access Key", "Consists of 16-bits letters and numbers", "No", "Random value"
    "sk", "string","Secret Key", "Consists of 32-bits letters and numbers", "No", "Random value"
    "type", "int", "user type", "2: [admin] / 3: [normal user]", "Yes", "None"

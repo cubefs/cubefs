@@ -18,8 +18,8 @@ const (
 	accessKeyLength     = 16
 	secretKeyLength     = 32
 	RootUserID          = "root"
-	DefaultRootPasswd   = "ChubaoFSRoot"
-	DefaultUserPassword = "ChubaoFSUser"
+	DefaultRootPasswd   = "CubeFSRoot"
+	DefaultUserPassword = "CubeFSUser"
 )
 
 type User struct {

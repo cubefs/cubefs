@@ -13,7 +13,7 @@ var (
 )
 
 func DumpVersion(role string) string {
-	return fmt.Sprintf("ChubaoFS %s\n"+
+	return fmt.Sprintf("CubeFS %s\n"+
 		"Version : %s\n"+
 		"Branch  : %s\n"+
 		"Commit  : %s\n"+

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -93,7 +93,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 					displaySecretKey = optSecretKey
 				}
 				var displayUserType = userType.String()
-				fmt.Printf("Create a new ChubaoFS cluster user\n")
+				fmt.Printf("Create a new CubeFS cluster user\n")
 				stdout("  User ID   : %v\n", userID)
 				stdout("  Password  : %v\n", displayPassword)
 				stdout("  Access Key: %v\n", displayAccessKey)
@@ -181,7 +181,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 				if optUserType != "" {
 					displayUserType = optUserType
 				}
-				fmt.Printf("Update ChubaoFS cluster user\n")
+				fmt.Printf("Update CubeFS cluster user\n")
 				stdout("  User ID   : %v\n", userID)
 				stdout("  Access Key: %v\n", displayAccessKey)
 				stdout("  Secret Key: %v\n", displaySecretKey)

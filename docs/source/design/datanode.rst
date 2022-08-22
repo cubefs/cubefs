@@ -17,13 +17,13 @@ Writing a new file to the extent store always causes the data to be written at t
 
 - Small File Storage
 
-The contents of multiple small files are aggregated and stored in a single extent, and the physical offset of each file content in the extent is recorded in the corresponding meta node.  ChubaoFS relies on the punch hole interface, \textit{fallocate()}\footnote{\url{http://man7.org/linux/man-pages/man2/fallocate.2.html}},  to \textit{asynchronous} free the disk space occupied by the to-be-deleted file. The advantage of this design is to eliminate the need of implementing a garbage collection mechanism and therefore avoid to employ a mapping from logical offset to physical offset  in an extent~\cite{haystack}.  Note that this is different from deleting large files, where  the extents of the file can be removed directly from the disk.
+The contents of multiple small files are aggregated and stored in a single extent, and the physical offset of each file content in the extent is recorded in the corresponding meta node.  CubeFS relies on the punch hole interface, \textit{fallocate()}\footnote{\url{http://man7.org/linux/man-pages/man2/fallocate.2.html}},  to \textit{asynchronous} free the disk space occupied by the to-be-deleted file. The advantage of this design is to eliminate the need of implementing a garbage collection mechanism and therefore avoid to employ a mapping from logical offset to physical offset  in an extent~\cite{haystack}.  Note that this is different from deleting large files, where  the extents of the file can be removed directly from the disk.
 
 - Replication
 
-  The replication is performed in terms of partitions during file writes. Depending on the file write pattern, ChubaoFS adopts different replication strategies.
+  The replication is performed in terms of partitions during file writes. Depending on the file write pattern, CubeFS adopts different replication strategies.
 
-  When a file is sequentially written into ChubaoFS, a primary-backup replication protocol is used to ensure the strong consistency with optimized IO throughput.
+  When a file is sequentially written into CubeFS, a primary-backup replication protocol is used to ensure the strong consistency with optimized IO throughput.
 
   .. image:: ../pic/workflow-sequential-write.png
      :align: center

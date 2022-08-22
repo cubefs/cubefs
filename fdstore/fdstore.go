@@ -1,4 +1,4 @@
-// Copyright 2022 The Chubao Authors.
+// Copyright 2022 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ var (
 )
 
 const (
-	DefaultUDS string = "/tmp/ChubaoFS-fdstore.sock"
+	DefaultUDS string = "/tmp/CubeFS-fdstore.sock"
 	DefaultIP  string = "127.0.0.1"
 )
 
@@ -49,7 +49,7 @@ func createUDS() (listener net.Listener, err error) {
 	var addr *net.UnixAddr
 
 	if *optDynamicUDS {
-		sockAddr = fmt.Sprintf("/tmp/ChubaoFS-fdstore-%v.sock", os.Getpid())
+		sockAddr = fmt.Sprintf("/tmp/CubeFS-fdstore-%v.sock", os.Getpid())
 	} else {
 		sockAddr = DefaultUDS
 	}

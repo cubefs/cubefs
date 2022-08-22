@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -245,7 +245,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	syslog.Printf("Hello, ChubaoFS Storage\n%s\n", Version)
+	syslog.Printf("Hello, CubeFS Storage\n%s\n", Version)
 
 	err = modifyOpenFiles()
 	if err != nil {
@@ -283,7 +283,7 @@ func main() {
 	err = server.Start(cfg)
 	if err != nil {
 		log.LogFlush()
-		err = errors.NewErrorf("Fatal: failed to start the ChubaoFS %s daemon err %v - ", role, err)
+		err = errors.NewErrorf("Fatal: failed to start the CubeFS %s daemon err %v - ", role, err)
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)

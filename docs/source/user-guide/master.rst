@@ -17,7 +17,7 @@ Features
 Configurations
 --------------
 
-ChubaoFS use **JSON** as configuration file format.
+CubeFS use **JSON** as configuration file format.
 
 .. csv-table:: Properties
    :header: "Key", "Type", "Description", "Mandatory"

@@ -1,7 +1,7 @@
 Monitor
 -----------------------
 
-ChubaoFS use prometheus as metrics collector. It simply config as follow in master, metanode, datanode, client's config file：
+CubeFS use prometheus as metrics collector. It simply config as follow in master, metanode, datanode, client's config file：
 
 .. code-block:: json
 
@@ -15,7 +15,7 @@ ChubaoFS use prometheus as metrics collector. It simply config as follow in mast
 
 
 * exporterPort：prometheus exporter Port. when set, can export prometheus metrics from URL(http://$hostip:$exporterPort/metrics). If not set, prometheus exporter will unavailable；
-* consulAddr: consul register address, it can work with prometheus to auto discover deployed ChubaoFS nodes, if not set, consul register will not work.
+* consulAddr: consul register address, it can work with prometheus to auto discover deployed CubeFS nodes, if not set, consul register will not work.
 * consulMeta: conusl meta config, not necessary, it can set meta info when register to consul.
 * ipFilter: it's a ip regular filter, exposed to consul, not necessary, default empty, which is used for multiple ip machine. it can support positive or negative filter, for example:
     * ipFilter="10.17.*", means that ip, regular match ipFilter, is ok
