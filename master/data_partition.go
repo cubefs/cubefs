@@ -41,6 +41,7 @@ type DataPartition struct {
 	IsFrozen       bool
 	isRecover      bool
 	IsManual       bool
+	isOffline      bool
 	Replicas       []*DataReplica `graphql:"-"`
 	Hosts          []string       // host addresses
 	Peers          []proto.Peer
@@ -475,6 +476,9 @@ func (partition *DataPartition) hasReplica(host string) (replica *DataReplica, o
 func (partition *DataPartition) checkReplicaNumAndSize(c *Cluster, vol *Vol) {
 	partition.RLock()
 	defer partition.RUnlock()
+	if partition.isOffline {
+		return
+	}
 	if int(partition.ReplicaNum) != len(partition.Hosts) {
 		msg := fmt.Sprintf("FIX DataPartition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v Hosts:%v",
 			c.Name, vol.Name, partition.PartitionID, partition.ReplicaNum, partition.Hosts)

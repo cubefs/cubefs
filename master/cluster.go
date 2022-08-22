@@ -1474,7 +1474,11 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		pmConfig        *proto.PromoteConfig
 	)
 	dp.offlineMutex.Lock()
-	defer dp.offlineMutex.Unlock()
+	dp.isOffline = true
+	defer func() {
+		dp.isOffline = false
+		dp.offlineMutex.Unlock()
+	}()
 	excludeNodeSets = make([]uint64, 0)
 	if destAddr != "" {
 		if err = c.validateDecommissionDataPartition(dp, offlineAddr, true); err != nil {
