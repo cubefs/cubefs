@@ -31,7 +31,7 @@ init_cli() {
     cp ${cli} /usr/bin/
     cd ${conf_path}
     ${cli} completion &> /dev/null
-    echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc
+#    echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc
     echo -n "Installing CubeFS cli tool  ... "
     echo -e "\033[32mdone\033[0m"
 }
