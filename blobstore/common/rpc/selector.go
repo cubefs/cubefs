@@ -222,6 +222,9 @@ func (s *selector) disableHost(item *hostItem) {
 
 // enableHost add available host from crackHosts into backupHost or hosts
 func (s *selector) enableHost(hItem *hostItem) {
+	s.Lock()
+	defer s.Unlock()
+
 	delete(s.crackHosts, hItem)
 	if hItem.isBackup {
 		s.backupHost = append(s.backupHost, hItem)
