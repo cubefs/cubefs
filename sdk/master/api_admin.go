@@ -356,7 +356,7 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 }
 
 func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool, authKey, zoneName, mpLayout, smartRules string,
+	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool, authKey, zoneName, mpLayout, smartRules string,
 	bucketPolicy, crossRegionHAType uint8, extentCacheExpireSec int64, compactTag string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
@@ -365,6 +365,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("replicaNum", strconv.Itoa(replicas))
 	request.addParam("mpReplicaNum", strconv.Itoa(mpReplicas))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
+	request.addParam("volWriteMutex", strconv.FormatBool(volWriteMutex))
 	request.addParam("nearRead", strconv.FormatBool(nearRead))
 	request.addParam("forceROW", strconv.FormatBool(forceROW))
 	request.addParam("writeCache", strconv.FormatBool(enableWriteCache))
@@ -956,7 +957,6 @@ func (api *AdminAPI) StopMigratingByDataPartition(dataPartitionID uint64) string
 	}
 	return string(data)
 }
-
 
 func (api *AdminAPI) ListCompactVolumes() (volumes []*proto.CompactVolume, err error) {
 	var buf []byte

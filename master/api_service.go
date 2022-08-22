@@ -360,7 +360,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	//m.cluster.loadClusterValue()
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	deleteLimitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
-	dumpWaterLevel  := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDumpWaterLevel)
+	dumpWaterLevel := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDumpWaterLevel)
 	if dumpWaterLevel < defaultMetanodeDumpWaterLevel {
 		dumpWaterLevel = defaultMetanodeDumpWaterLevel
 	}
@@ -407,7 +407,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ExtentMergeIno:                         m.cluster.cfg.ExtentMergeIno,
 		ExtentMergeSleepMs:                     m.cluster.cfg.ExtentMergeSleepMs,
 		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
-		MetaNodeDumpWaterLevel:					dumpWaterLevel,
+		MetaNodeDumpWaterLevel:                 dumpWaterLevel,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1045,11 +1045,11 @@ func (m *Server) setNodeToOfflineState(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if nodeType == nodeTypeDataNode {
 			m.cluster.setDataNodeToOfflineState(startID, endID, state, zoneName)
-		} else if nodeType == nodeTypeMetaNode{
+		} else if nodeType == nodeTypeMetaNode {
 			m.cluster.setMetaNodeToOfflineState(startID, endID, state, zoneName)
-		} else if nodeType == nodeTypeEcNode{
+		} else if nodeType == nodeTypeEcNode {
 			m.cluster.setEcNodeToOfflineState(startID, endID, state, zoneName)
-		}else {
+		} else {
 			err = errors.New("setNodeToOfflineState unknown nodeType")
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return
@@ -1444,10 +1444,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		authenticate         bool
 		enableToken          bool
 		autoRepair           bool
+		volWriteMutexEnable  bool
 		zoneName             string
 		description          string
 		extentCacheExpireSec int64
-		enableWriteCache	 bool
+		enableWriteCache     bool
 
 		vol *Vol
 
@@ -1491,7 +1492,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	if mpReplicaNum == 0 {
 		mpReplicaNum = int(vol.mpReplicaNum)
 	}
-	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, enableWriteCache, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1546,7 +1547,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
-		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache, dpSelectorName, dpSelectorParm, ossBucketPolicy,
+		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache, dpSelectorName, dpSelectorParm, ossBucketPolicy,
 		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1601,7 +1602,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		autoRepair           bool
 		volWriteMutexEnable  bool
 		forceROW             bool
-		enableWriteCache	bool
+		enableWriteCache     bool
 		crossRegionHAType    proto.CrossRegionHAType
 		zoneName             string
 		description          string
@@ -1736,7 +1737,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		FollowerRead:         vol.FollowerRead,
 		NearRead:             vol.NearRead,
 		ForceROW:             vol.ForceROW,
-		EnableWriteCache: 	 vol.enableWriteCache,
+		EnableWriteCache:     vol.enableWriteCache,
 		CrossRegionHAType:    vol.CrossRegionHAType,
 		NeedToLowerReplica:   vol.NeedToLowerReplica,
 		Authenticate:         vol.authenticate,
@@ -2892,7 +2893,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	return
 }
 
-func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, enableWriteCache bool, err error) {
+func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -2948,6 +2949,14 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRea
 		}
 	} else {
 		forceROW = vol.ForceROW
+	}
+	if volWriteMutexEnableStr := r.FormValue(volWriteMutexKey); volWriteMutexEnableStr != "" {
+		if volWriteMutexEnable, err = strconv.ParseBool(volWriteMutexEnableStr); err != nil {
+			err = unmatchedKey(volWriteMutexKey)
+			return
+		}
+	} else {
+		volWriteMutexEnable = vol.volWriteMutexEnable
 	}
 	return
 }

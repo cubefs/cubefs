@@ -50,7 +50,7 @@ type Cluster struct {
 	t                          *topology
 	dataNodeStatInfo           *nodeStatInfo
 	metaNodeStatInfo           *nodeStatInfo
-	ecNodeStatInfo			   *nodeStatInfo
+	ecNodeStatInfo             *nodeStatInfo
 	zoneStatInfos              map[string]*proto.ZoneStat
 	volStatInfo                sync.Map
 	BadDataPartitionIds        *sync.Map
@@ -70,16 +70,16 @@ type Cluster struct {
 	DataNodeBadDisks           *sync.Map
 	metaLoadedTime             int64
 
-	EcScrubEnable              bool
-	EcMaxScrubExtents          uint8
-	EcScrubPeriod              uint32
-	EcStartScrubTime           int64
-	MaxCodecConcurrent         int
-	BadEcPartitionIds          *sync.Map
-	codecNodes                 sync.Map
-	ecNodes                    sync.Map
-	cnMutex                    sync.RWMutex
-	enMutex                    sync.RWMutex // ec node mutex
+	EcScrubEnable      bool
+	EcMaxScrubExtents  uint8
+	EcScrubPeriod      uint32
+	EcStartScrubTime   int64
+	MaxCodecConcurrent int
+	BadEcPartitionIds  *sync.Map
+	codecNodes         sync.Map
+	ecNodes            sync.Map
+	cnMutex            sync.RWMutex
+	enMutex            sync.RWMutex // ec node mutex
 }
 type (
 	RepairType uint8
@@ -106,7 +106,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.t = newTopology()
 	c.BadDataPartitionIds = new(sync.Map)
 	c.BadMetaPartitionIds = new(sync.Map)
-	c.BadEcPartitionIds   = new(sync.Map)
+	c.BadEcPartitionIds = new(sync.Map)
 	c.MigratedDataPartitionIds = new(sync.Map)
 	c.MigratedMetaPartitionIds = new(sync.Map)
 	c.DataNodeBadDisks = new(sync.Map)
@@ -225,7 +225,7 @@ func (c *Cluster) checkDataPartitions() {
 		readWrites, dataNodeBadDisksOfVol := vol.checkDataPartitions(c)
 		allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
-		vol.dataPartitions.updateResponseCache(vol.ecDataPartitions,true, 0)
+		vol.dataPartitions.updateResponseCache(vol.ecDataPartitions, true, 0)
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
 	}
@@ -853,10 +853,10 @@ func (c *Cluster) markDeleteVol(name, authKey string) (err error) {
 
 func (c *Cluster) setVolCompactTag(name, compactTag, authKey string) (err error) {
 	var (
-		vol           *Vol
-		oldCompactTag proto.CompactTag
+		vol                     *Vol
+		oldCompactTag           proto.CompactTag
 		oldCompactTagModifyTime int64
-		serverAuthKey string
+		serverAuthKey           string
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[SetVolCompactTag] err[%v]", err)
@@ -878,8 +878,8 @@ func (c *Cluster) setVolCompactTag(name, compactTag, authKey string) (err error)
 		return proto.ErrCompactTagOpened
 	}
 	curTime := time.Now().Unix()
-	if tag == proto.CompactOpen && vol.ForceROW && (curTime - vol.forceRowModifyTime) < proto.ForceRowClosedTimeDuration {
-		err = fmt.Errorf("compact cannot be opened when force row is opened for less than %v minutes, now diff time %v minutes", proto.ForceRowClosedTimeDuration / 60, (curTime - vol.forceRowModifyTime) / 60)
+	if tag == proto.CompactOpen && vol.ForceROW && (curTime-vol.forceRowModifyTime) < proto.ForceRowClosedTimeDuration {
+		err = fmt.Errorf("compact cannot be opened when force row is opened for less than %v minutes, now diff time %v minutes", proto.ForceRowClosedTimeDuration/60, (curTime-vol.forceRowModifyTime)/60)
 		return
 	}
 	oldCompactTag = vol.compactTag
@@ -2829,7 +2829,8 @@ errHandler:
 }
 
 func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum uint8,
-	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool, dpSelectorName, dpSelectorParm string,
+	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache bool,
+	dpSelectorName, dpSelectorParm string,
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
 	smartRules []string, compactTag proto.CompactTag) (err error) {
@@ -2936,6 +2937,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.authenticate = authenticate
 	vol.enableToken = enableToken
 	vol.autoRepair = autoRepair
+	vol.volWriteMutexEnable = volWriteMutexEnable
 	vol.CrossRegionHAType = crossRegionHAType
 	if description != "" {
 		vol.description = description
@@ -4847,8 +4849,8 @@ func checkForceRowAndCompact(vol *Vol, forceRowChange, compactTagChange bool) (e
 		curTime := time.Now().Unix()
 		if !vol.ForceROW &&
 			(vol.compactTag == proto.CompactClose || vol.compactTag == proto.CompactDefault) &&
-			(curTime - vol.compactTagModifyTime) < proto.CompatTagClosedTimeDuration {
-			err = fmt.Errorf("force row cannot be closed when compact is closed for less than %v minutes, now diff time %v minutes", proto.CompatTagClosedTimeDuration / 60, (curTime - vol.compactTagModifyTime) / 60)
+			(curTime-vol.compactTagModifyTime) < proto.CompatTagClosedTimeDuration {
+			err = fmt.Errorf("force row cannot be closed when compact is closed for less than %v minutes, now diff time %v minutes", proto.CompatTagClosedTimeDuration/60, (curTime-vol.compactTagModifyTime)/60)
 		}
 	}
 
@@ -4857,8 +4859,8 @@ func checkForceRowAndCompact(vol *Vol, forceRowChange, compactTagChange bool) (e
 			err = fmt.Errorf("compact cannot be opened when force row is closed, Please open force row first")
 		}
 		curTime := time.Now().Unix()
-		if vol.compactTag == proto.CompactOpen && vol.ForceROW && (curTime - vol.forceRowModifyTime) < proto.ForceRowClosedTimeDuration {
-			err = fmt.Errorf("compact cannot be opened when force row is opened for less than %v minutes, now diff time %v minutes", proto.ForceRowClosedTimeDuration / 60, (curTime - vol.forceRowModifyTime) / 60)
+		if vol.compactTag == proto.CompactOpen && vol.ForceROW && (curTime-vol.forceRowModifyTime) < proto.ForceRowClosedTimeDuration {
+			err = fmt.Errorf("compact cannot be opened when force row is opened for less than %v minutes, now diff time %v minutes", proto.ForceRowClosedTimeDuration/60, (curTime-vol.forceRowModifyTime)/60)
 		}
 	}
 
@@ -4868,10 +4870,10 @@ func checkForceRowAndCompact(vol *Vol, forceRowChange, compactTagChange bool) (e
 		}
 		if !vol.ForceROW &&
 			(vol.compactTag == proto.CompactClose || vol.compactTag == proto.CompactDefault) {
-			err = fmt.Errorf("force row cannot be closed when compact is closed for less than %v minutes, Please close compact first", proto.CompatTagClosedTimeDuration / 60)
+			err = fmt.Errorf("force row cannot be closed when compact is closed for less than %v minutes, Please close compact first", proto.CompatTagClosedTimeDuration/60)
 		}
 		if vol.compactTag == proto.CompactOpen && vol.ForceROW {
-			err = fmt.Errorf("compact cannot be opened when force row is opened for less than %v minutes, Please open force row first", proto.ForceRowClosedTimeDuration / 60)
+			err = fmt.Errorf("compact cannot be opened when force row is opened for less than %v minutes, Please open force row first", proto.ForceRowClosedTimeDuration/60)
 		}
 	}
 	return

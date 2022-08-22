@@ -48,7 +48,7 @@ type Vol struct {
 	NearRead             bool
 	ForceROW             bool
 	forceRowModifyTime   int64
-	enableWriteCache	 bool
+	enableWriteCache     bool
 	authenticate         bool
 	autoRepair           bool
 	zoneName             string
@@ -86,7 +86,7 @@ type Vol struct {
 	smartEnableTime      int64
 	smartRules           []string
 	CreateStatus         proto.VolCreateStatus
-	compactTag			 proto.CompactTag
+	compactTag           proto.CompactTag
 	compactTagModifyTime int64
 	EcEnable             bool
 	EcDataNum            uint8
@@ -230,9 +230,9 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.EcMigrationRetryWait = vv.EcRetryWait
 	vol.EcMigrationTimeOut = vv.EcTimeOut
 	vol.EcMaxUnitSize = vv.EcMaxUnitSize
-	vol.EcDataNum     = vv.EcDataNum
-	vol.EcParityNum   = vv.EcParityNum
-	vol.EcEnable      = vv.EcEnable
+	vol.EcDataNum = vv.EcDataNum
+	vol.EcParityNum = vv.EcParityNum
+	vol.EcEnable = vv.EcEnable
 	if vol.EcDataNum == 0 || vol.EcParityNum == 0 {
 		vol.EcDataNum = defaultEcDataNum
 		vol.EcParityNum = defaultEcParityNum
@@ -1134,7 +1134,8 @@ func (vol *Vol) backupConfig() *Vol {
 		dpWriteableThreshold: vol.dpWriteableThreshold,
 		mpReplicaNum:         vol.mpReplicaNum,
 		ForceROW:             vol.ForceROW,
-		enableWriteCache:	  vol.enableWriteCache,
+		volWriteMutexEnable:  vol.volWriteMutexEnable,
+		enableWriteCache:     vol.enableWriteCache,
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 		isSmart:              vol.isSmart,
 		smartRules:           vol.smartRules,
@@ -1171,6 +1172,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.dpWriteableThreshold = backupVol.dpWriteableThreshold
 	vol.mpReplicaNum = backupVol.mpReplicaNum
 	vol.ForceROW = backupVol.ForceROW
+	vol.volWriteMutexEnable = backupVol.volWriteMutexEnable
 	vol.enableWriteCache = backupVol.enableWriteCache
 	vol.ExtentCacheExpireSec = backupVol.ExtentCacheExpireSec
 	vol.isSmart = backupVol.isSmart
