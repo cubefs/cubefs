@@ -122,7 +122,7 @@ func TestTaskRunner(t *testing.T) {
 	stats := &mockStats{}
 	cli := newMockSchedulerCli(t, stats)
 	run := func(worker ITaskWorker) {
-		runner := NewTaskRunner(context.Background(), taskID, worker, idc, 3, cli)
+		runner := NewTaskRunner(context.Background(), taskID, worker, idc, 3, &taskCounter{}, cli)
 		stats.step = ""
 		stats.wg.Add(1)
 		go runner.Run()
@@ -132,7 +132,7 @@ func TestTaskRunner(t *testing.T) {
 	{
 		log.Info("start test tasklet stop")
 		worker := &mockWorker{sleepS: 1}
-		runner := NewTaskRunner(context.Background(), taskID, worker, idc, 2, cli)
+		runner := NewTaskRunner(context.Background(), taskID, worker, idc, 2, &taskCounter{}, cli)
 		stats.step = ""
 		stats.wg.Add(1)
 		go runner.Run()

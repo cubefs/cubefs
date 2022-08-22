@@ -21,7 +21,6 @@ import (
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -186,11 +185,12 @@ type TaskRunner struct {
 
 	schedulerCli scheduler.IMigrator
 	stats        proto.TaskProgress // task progress statics
+	taskCounter  *taskCounter
 }
 
 // NewTaskRunner return task runner
 func NewTaskRunner(ctx context.Context, taskID string, w ITaskWorker, idc string,
-	taskletRunConcurrency int, schedulerCli scheduler.IMigrator) *TaskRunner {
+	taskletRunConcurrency int, taskCounter *taskCounter, schedulerCli scheduler.IMigrator) *TaskRunner {
 	span, ctx := trace.StartSpanFromContext(ctx, "taskRunner")
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -204,6 +204,7 @@ func NewTaskRunner(ctx context.Context, taskID string, w ITaskWorker, idc string
 		span:                  span,
 		schedulerCli:          schedulerCli,
 		stats:                 proto.NewTaskProgress(),
+		taskCounter:           taskCounter,
 	}
 	task.state.set(TaskInit)
 	return &task
@@ -319,7 +320,7 @@ func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 			span.Errorf("reclaim task failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 				r.taskID, args, rpc.DetectStatusCode(err), err)
 		}
-		workutils.WorkerStatsInst().AddReclaim()
+		r.taskCounter.reclaim.Add()
 		return
 	}
 
@@ -332,7 +333,7 @@ func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 		span.Errorf("cancel failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 			r.taskID, args, rpc.DetectStatusCode(err), err)
 	}
-	workutils.WorkerStatsInst().AddCancel()
+	r.taskCounter.cancel.Add()
 }
 
 func (r *TaskRunner) completeTask() {
