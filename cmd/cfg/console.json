@@ -8,7 +8,7 @@
     "192.168.0.12:17010",
     "192.168.0.13:17010"
   ],
-  "objectNodeDomain": "object.chubao.io",
+  "objectNodeDomain": "object.cubefs.io",
   "monitor_addr": "http://192.168.0.102:9090",
   "dashboard_addr": "http://192.168.0.103",
   "monitor_app": "cfs",

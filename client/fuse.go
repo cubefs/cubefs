@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -83,8 +83,8 @@ const (
 	Role                       = "Client"
 
 	DefaultIP            = "127.0.0.1"
-	DynamicUDSNameFormat = "/tmp/ChubaoFS-fdstore-%v.sock"
-	DefaultUDSName       = "/tmp/ChubaoFS-fdstore.sock"
+	DynamicUDSNameFormat = "/tmp/CubeFS-fdstore-%v.sock"
+	DefaultUDSName       = "/tmp/CubeFS-fdstore.sock"
 
 	DefaultLogPath = "/var/log/chubaofs"
 )

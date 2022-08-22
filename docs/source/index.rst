@@ -1,4 +1,4 @@
-Welcome to ChubaoFS(Chubao File System)
+Welcome to CubeFS(Chubao File System)
 ==============================================
 
 .. toctree::

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,16 +26,16 @@ import (
 )
 
 const (
-	cmdRootShort = "ChubaoFS Command Line Interface (CLI)"
+	cmdRootShort = "CubeFS Command Line Interface (CLI)"
 )
 
-type ChubaoFSCmd struct {
+type CubeFSCmd struct {
 	CFSCmd *cobra.Command
 }
 
-func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
+func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 	var optShowVersion bool
-	var cmd = &ChubaoFSCmd{
+	var cmd = &CubeFSCmd{
 		CFSCmd: &cobra.Command{
 			Use:   path.Base(os.Args[0]),
 			Short: cmdRootShort,

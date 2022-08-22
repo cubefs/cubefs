@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ const (
 	cmdClusterShort = "Manage cluster components"
 )
 
-func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Command {
+func (cmd *CubeFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Command {
 	var clusterCmd = &cobra.Command{
 		Use:   cmdClusterUse,
 		Short: cmdClusterShort,
@@ -123,11 +123,11 @@ func newClusterFreezeCmd(client *master.MasterClient) *cobra.Command {
 		Short:     cmdClusterFreezeShort,
 		Args:      cobra.MinimumNArgs(1),
 		Long: `Turn on or off the automatic allocation of the data partitions. 
-If 'freeze=false', ChubaoFS WILL automatically allocate new data partitions for the volume when:
+If 'freeze=false', CubeFS WILL automatically allocate new data partitions for the volume when:
   1. the used space is below the max capacity,
   2. and the number of r&w data partition is less than 20.
 		
-If 'freeze=true', ChubaoFS WILL NOT automatically allocate new data partitions `,
+If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err    error

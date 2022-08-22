@@ -34,7 +34,7 @@ Multi-Zone Deploy
 -----------------------
 
 
-If you want the cluster to support fault tolerance in the computer room, you can deploy a ChubaoFS cluster across computer rooms. At the same time, it should be noted that since the communication delay between computer rooms is higher than that of a single computer room, if the requirements for high availability are greater than low latency, you can choose a cross-computer room deployment solution. If you have higher performance requirements, it is recommended to deploy clusters in a single computer room.
+If you want the cluster to support fault tolerance in the computer room, you can deploy a CubeFS cluster across computer rooms. At the same time, it should be noted that since the communication delay between computer rooms is higher than that of a single computer room, if the requirements for high availability are greater than low latency, you can choose a cross-computer room deployment solution. If you have higher performance requirements, it is recommended to deploy clusters in a single computer room.
 Configuration scheme: Modify the zoneName parameter in the DataNode/MetaNode configuration file, specify the name of the computer room where you are, and then start the DataNode/MetaNode process, the computer room will be stored and recorded by the Master along with the registration of DataNode/MetaNode.
 
 

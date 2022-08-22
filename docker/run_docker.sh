@@ -11,10 +11,10 @@ help() {
 
 Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltptest ]
     -h, --help              show help info
-    -d, --disk </disk/path>     set ChubaoFS DataNode local disk path
-    -b, --build             build ChubaoFS server and client
-    -s, --server            start ChubaoFS servers docker image
-    -c, --client            start ChubaoFS client docker image
+    -d, --disk </disk/path>     set CubeFS DataNode local disk path
+    -b, --build             build CubeFS server and client
+    -s, --server            start CubeFS servers docker image
+    -c, --client            start CubeFS client docker image
     -m, --monitor           start monitor web ui
     -l, --ltptest           run ltp test
     -r, --run               run servers, client and monitor
