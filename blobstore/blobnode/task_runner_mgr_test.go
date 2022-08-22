@@ -87,6 +87,7 @@ func TestTaskRunnerMgr(t *testing.T) {
 		tm := initTestTaskRunnerMgr(t, schedCli, 10)
 		require.Equal(t, 0, len(tm.GetAliveTasks()))
 		tm.StopAllAliveRunner()
+		tm.TaskStats()
 	}
 	{
 		tm := initTestTaskRunnerMgr(t, schedCli, 0, proto.TaskTypeBalance)
@@ -109,6 +110,7 @@ func TestTaskRunnerMgr(t *testing.T) {
 		require.Equal(t, 10, len(tasks[proto.TaskTypeDiskRepair]))
 		require.Equal(t, 0, len(tasks[proto.TaskTypeManualMigrate]))
 		tm.StopAllAliveRunner()
+		tm.TaskStats()
 	}
 }
 

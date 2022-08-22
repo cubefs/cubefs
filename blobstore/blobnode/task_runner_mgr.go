@@ -21,7 +21,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/common/counter"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -31,6 +33,11 @@ var errAddRunningTaskAgain = errors.New("running task add again")
 
 // WorkerGenerator generates task worker.
 type WorkerGenerator = func(task MigrateTaskEx) ITaskWorker
+
+type taskCounter struct {
+	cancel  counter.Counter
+	reclaim counter.Counter
+}
 
 // TaskRunnerMgr task runner manager
 type TaskRunnerMgr struct {
@@ -42,6 +49,7 @@ type TaskRunnerMgr struct {
 	genWorker    WorkerGenerator
 	renewalCli   scheduler.IMigrator // TODO: must be timeout in proto.RenewalTimeoutS
 	schedulerCli scheduler.IMigrator
+	taskCounter  taskCounter
 }
 
 // NewTaskRunnerMgr returns task runner manager
@@ -117,15 +125,16 @@ func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error 
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	mgr, ok := tm.typeMgr[task.taskInfo.TaskType]
+	t := task.taskInfo
+	mgr, ok := tm.typeMgr[t.TaskType]
 	if !ok {
-		return fmt.Errorf("invalid task type: %s", task.taskInfo.TaskType)
+		return fmt.Errorf("invalid task type: %s", t.TaskType)
 	}
 
 	w := tm.genWorker(task)
-	concurrency := tm.meter.concurrencyByType(task.taskInfo.TaskType)
-	runner := NewTaskRunner(ctx, task.taskInfo.TaskID, w, task.taskInfo.SourceIDC, concurrency, tm.schedulerCli)
-	if err := mgr.addTask(task.taskInfo.TaskID, runner); err != nil {
+	concurrency := tm.meter.concurrencyByType(t.TaskType)
+	runner := NewTaskRunner(ctx, t.TaskID, w, t.SourceIDC, concurrency, &tm.taskCounter, tm.schedulerCli)
+	if err := mgr.addTask(t.TaskID, runner); err != nil {
 		return err
 	}
 
@@ -169,6 +178,14 @@ func (tm *TaskRunnerMgr) RunningTaskCnt() map[proto.TaskType]int {
 		running[typ] = len(tm.typeMgr[typ])
 	}
 	return running
+}
+
+// TaskStats task counter result.
+func (tm *TaskRunnerMgr) TaskStats() blobnode.WorkerStats {
+	return blobnode.WorkerStats{
+		CancelCount:  fmt.Sprint(tm.taskCounter.cancel.Show()),
+		ReclaimCount: fmt.Sprint(tm.taskCounter.reclaim.Show()),
+	}
 }
 
 type mapTaskRunner map[string]*TaskRunner

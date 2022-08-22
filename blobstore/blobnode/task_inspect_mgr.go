@@ -73,8 +73,6 @@ func (mgr *InspectTaskMgr) doInspect(ctx context.Context, task *proto.VolumeInsp
 	ret := &proto.VolumeInspectRet{TaskID: task.TaskID}
 
 	if len(replicas) != mode.GetShardNum() {
-		span.Errorf("replicas length is invalid: taskID[%s], mode[%d], expect len[%d], actual len[%d]",
-			task.TaskID, mode, mode.GetShardNum(), len(replicas))
 		ret.InspectErrStr = "unexpect:code mode not match"
 		return ret
 	}

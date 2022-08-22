@@ -16,7 +16,6 @@ package blobnode
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -197,12 +196,7 @@ func (s *WorkerService) ShardRepair(c *rpc.Context) {
 
 // WorkerStats returns worker_service stats
 func (s *WorkerService) WorkerStats(c *rpc.Context) {
-	cancelCount, reclaimCount := base.WorkerStatsInst().Stats()
-	ret := bnapi.WorkerStats{
-		CancelCount:  fmt.Sprint(cancelCount),
-		ReclaimCount: fmt.Sprint(reclaimCount),
-	}
-	c.RespondJSON(ret)
+	c.RespondJSON(s.taskRunnerMgr.TaskStats())
 }
 
 // Run runs backend task
@@ -241,13 +235,13 @@ func (s *WorkerService) hasTaskRunnerResource() bool {
 	for _, cnt := range running {
 		all += cnt
 	}
-	log.Infof("task count max %d, all %d, %+v", s.MaxTaskRunnerCnt, all, running)
+	log.Infof("task running %d / %d, %+v", all, s.MaxTaskRunnerCnt, running)
 	return all < s.MaxTaskRunnerCnt
 }
 
 func (s *WorkerService) hasInspectTaskResource() bool {
 	inspectCnt := s.inspectTaskMgr.RunningTaskSize()
-	log.Infof("inspect task count:inspectCnt %d max %d", inspectCnt, s.InspectConcurrency)
+	log.Infof("inspect running task %d / %d", inspectCnt, s.InspectConcurrency)
 	return inspectCnt < s.InspectConcurrency
 }
 
@@ -303,5 +297,5 @@ func (s *WorkerService) acquireInspectTask() {
 		return
 	}
 
-	span.Infof("acquire inspect task success: taskID[%s]", t.TaskID)
+	span.Infof("acquire inspect task success: taskID[%s] task[%+v]", t.TaskID, t)
 }
