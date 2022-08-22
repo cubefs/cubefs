@@ -690,7 +690,11 @@ func (c *Cluster) ecRollBack(partitionID uint64, needDelEc bool) (err error) {
 
 	dp.EcMigrateStatus = proto.RollBack
 	err = c.syncUpdateDataPartition(dp)
-	if needDelEc {
+	if err != nil {
+		return
+	}
+	if ecDp.EcMigrateStatus != proto.FinishEC || needDelEc {
+		migrateTaskList.Remove(ecDp.PartitionID)//stop migrating
 		err = c.delEcPartition(vol, ecDp)
 	}
 	log.LogDebugf("end EcRollback partition(%v)", partitionID)

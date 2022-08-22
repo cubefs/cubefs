@@ -432,7 +432,6 @@ func (ep *EcPartition) updatePartition(nodeAddr string, data []byte, e *EcNode, 
 	defer wg.Done()
 	if nodeAddr == e.localServerAddr {
 		// change member local
-		ep.isRecover = true
 		err := ep.updatePartitionLocal(data)
 		if err != nil {
 			log.LogErrorf("updatePartitionLocal fail, PartitionID(%v), err:%v", ep.PartitionID, err)

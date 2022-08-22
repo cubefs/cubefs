@@ -88,6 +88,7 @@ type ecDataPartitionValue struct {
 	VolName          string
 	Replicas         []*replicaValue
 	HostsIdx         []bool
+	PanicHosts       []string
 	FinishEcTime     int64
 	LastUpdateTime   int64
 }
@@ -139,6 +140,7 @@ func newEcDataPartition(ecDataBlockNum, ecParityBlockNum uint8, maxStripeUnitSiz
 	partition := newDataPartition(ID, ecDataBlockNum+ecParityBlockNum, volName, volID)
 	ecdp = &EcDataPartition{DataPartition: partition}
 	ecdp.ecReplicas = make([]*EcReplica, 0)
+	ecdp.PanicHosts = make([]string, 0)
 	ecdp.DataUnitsNum = ecDataBlockNum
 	ecdp.ParityUnitsNum = ecParityBlockNum
 	ecdp.Status = proto.ReadOnly
@@ -157,7 +159,6 @@ func newEcDataPartitionCache(vol *Vol) (ecdpCache *EcDataPartitionCache) {
 
 func newEcDataPartitionValue(ep *EcDataPartition) (edpv *ecDataPartitionValue) {
 	edpv = &ecDataPartitionValue{
-
 		DataUnitsNum:     ep.DataUnitsNum,
 		ParityUnitsNum:   ep.ParityUnitsNum,
 		ReplicaNum:       ep.ReplicaNum,
@@ -172,6 +173,7 @@ func newEcDataPartitionValue(ep *EcDataPartition) (edpv *ecDataPartitionValue) {
 		Replicas:         make([]*replicaValue, 0),
 		HostsIdx:         ep.hostsIdx,
 		NeededSpace:      ep.NeededSpace,
+		PanicHosts:       ep.PanicHosts,
 		FinishEcTime:     ep.FinishEcTime,
 		LastUpdateTime:   ep.LastUpdateTime,
 	}
@@ -323,6 +325,26 @@ func (ecdp *EcDataPartition) isEcFilesCatchUp() (ok bool) {
 	defer ecdp.RUnlock()
 	fileMinus := ecdp.getFileMinus()
 	return fileMinus < 2
+}
+
+func (ecdp *EcDataPartition) getEcMinus() (minus float64) {
+	if len(ecdp.ecReplicas) == 0 {
+		return
+	}
+	used := ecdp.ecReplicas[0].Used
+	for _, replica := range ecdp.ecReplicas {
+		if math.Abs(float64(replica.Used)-float64(used)) > minus {
+			minus = math.Abs(float64(replica.Used) - float64(used))
+		}
+	}
+	return minus
+}
+
+func (ecdp *EcDataPartition) isEcDataCatchUp() (ok bool) {
+	ecdp.RLock()
+	defer ecdp.RUnlock()
+	minus := ecdp.getEcMinus()
+	return minus < util.GB
 }
 
 // Obtain all the ec partitions in a volume.
@@ -504,6 +526,18 @@ func (c *Cluster) decommissionEcDataPartition(offlineAddr string, ecdp *EcDataPa
 		excludeZone string
 		index       int
 	)
+
+
+	dp, err := c.getDataPartitionByID(ecdp.PartitionID)
+	if err != nil {
+		return
+	}
+	if dp.EcMigrateStatus == proto.Migrating {
+		err = errors.NewErrorf("ecPartition(%v) is migrating, can't decommission", ecdp.PartitionID)
+		return
+	}
+
+
 	ecdp.RLock()
 	if ok := ecdp.hasHost(offlineAddr); !ok {
 		log.LogErrorf("decommissionEcDataPartition no this host")
@@ -569,6 +603,7 @@ func (c *Cluster) decommissionEcDataPartition(offlineAddr string, ecdp *EcDataPa
 	ecdp.Lock()
 	ecdp.Status = proto.ReadOnly
 	ecdp.isRecover = true
+	ecdp.PanicHosts = append(ecdp.PanicHosts, offlineAddr)
 	c.syncUpdateEcDataPartition(ecdp)
 	ecdp.Unlock()
 	c.putBadEcPartitionIDs(ecReplica, offlineAddr, ecdp.PartitionID)
@@ -642,7 +677,6 @@ func (c *Cluster) loadEcPartitions() (err error) {
 		return err
 	}
 	for _, value := range result {
-
 		edpv := &ecDataPartitionValue{}
 		if err = json.Unmarshal(value, edpv); err != nil {
 			err = fmt.Errorf("action[loadDataPartitions],value:%v,unmarshal err:%v", string(value), err)
@@ -664,10 +698,16 @@ func (c *Cluster) loadEcPartitions() (err error) {
 		ep.isRecover = edpv.IsRecover
 		ep.Status = edpv.Status
 		ep.NeededSpace = edpv.NeededSpace
+		ep.PanicHosts  = edpv.PanicHosts
 		ep.FinishEcTime = edpv.FinishEcTime
 		ep.LastUpdateTime = edpv.LastUpdateTime
 		for _, rv := range edpv.Replicas {
 			ep.afterCreation(rv.Addr, rv.DiskPath, c)
+		}
+		if ep.isRecover {
+			for _, address := range ep.PanicHosts {
+				c.putBadEcPartitionIDs(nil, address, ep.PartitionID)
+			}
 		}
 		vol.ecDataPartitions.put(ep)
 		log.LogInfof("action[loadEcPartitions],vol[%v],ep[%v]", vol.Name, ep.PartitionID)
@@ -798,7 +838,7 @@ func (c *Cluster) validateDecommissionEcDataPartition(ecdp *EcDataPartition, off
 		return
 	}
 
-	if c.isEcRecovering(ecdp, offlineAddr) {
+	if c.isEcRecovering(ecdp, offlineAddr) || ecdp.isRecover {
 		log.LogErrorf("partition [%v] is recovering", ecdp.PartitionID)
 		err = fmt.Errorf("vol[%v],ec partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, ecdp.PartitionID, offlineAddr)
 		return
@@ -1047,6 +1087,7 @@ func (ecdp *EcDataPartition) ToProto(c *Cluster) *proto.EcPartitionInfo {
 		PartitionID:     ecdp.PartitionID,
 		LastLoadedTime:  ecdp.FinishEcTime,
 		Status:          ecdp.Status,
+		IsRecover:       ecdp.isRecover,
 		Hosts:           ecdp.Hosts,
 		EcMigrateStatus: ecdp.EcMigrateStatus,
 		ReplicaNum:      ecdp.ParityUnitsNum + ecdp.DataUnitsNum,
@@ -1133,9 +1174,6 @@ func (ecdp *EcDataPartition) updateMetric(vr *proto.EcPartitionReport, ecNode *E
 	replica.FileCount = uint32(vr.ExtentCount)
 	replica.ReportTime = time.Now().Unix()
 	replica.IsLeader = vr.IsLeader
-	if ecNode.Addr == ecdp.Hosts[0] {
-		ecdp.isRecover = vr.IsRecover
-	}
 	replica.NeedsToCompare = vr.NeedCompare
 	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
 		oldDiskPath := replica.DiskPath

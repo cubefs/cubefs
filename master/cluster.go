@@ -69,17 +69,17 @@ type Cluster struct {
 	mpRepairChan               chan *RepairTask
 	DataNodeBadDisks           *sync.Map
 	metaLoadedTime             int64
-
-	EcScrubEnable      bool
-	EcMaxScrubExtents  uint8
-	EcScrubPeriod      uint32
-	EcStartScrubTime   int64
-	MaxCodecConcurrent int
-	BadEcPartitionIds  *sync.Map
-	codecNodes         sync.Map
-	ecNodes            sync.Map
-	cnMutex            sync.RWMutex
-	enMutex            sync.RWMutex // ec node mutex
+	EcScrubEnable              bool
+	EcMaxScrubExtents          uint8
+	EcScrubPeriod              uint32
+	EcStartScrubTime           int64
+	MaxCodecConcurrent         int
+	BadEcPartitionIds          *sync.Map
+	badEcPartitionsMutex       sync.Mutex
+	codecNodes                 sync.Map
+	ecNodes                    sync.Map
+	cnMutex                    sync.RWMutex
+	enMutex                    sync.RWMutex // ec node mutex
 }
 type (
 	RepairType uint8
