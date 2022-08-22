@@ -366,7 +366,7 @@ func TestLbClient_EnableHost(t *testing.T) {
 	}
 	wg.Wait()
 	t.Log("waiting the failRetryIntervalS...")
-	after := time.After(time.Second * time.Duration(cfg.FailRetryIntervalS+1))
+	after := time.After(time.Millisecond * 1200)
 	<-after
 	resp, err := client.Head(context.Background(), "/get/name?id="+strconv.Itoa(122))
 	require.NoError(t, err)

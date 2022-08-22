@@ -50,6 +50,8 @@ func TestSelector_Base(t *testing.T) {
 	s.SetFail("http://127.0.0.1:8888")
 	s.SetFail("http://127.0.0.1:8888")
 	s.SetFail("http://127.0.0.1:8888")
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Millisecond * 1200)
 	require.Equal(t, 4, len(s.GetAvailableHosts()))
+
+	s.Close()
 }
