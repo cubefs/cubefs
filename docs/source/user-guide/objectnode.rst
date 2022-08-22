@@ -4,7 +4,7 @@ Object Subsystem (ObjectNode)
 How To start ObjectNode
 ------------------------
 
-Start a ObjectNode process by execute the server binary of ChubaoFS you built with ``-c`` argument and specify configuration file.
+Start a ObjectNode process by execute the server binary of CubeFS you built with ``-c`` argument and specify configuration file.
 
 .. code-block:: bash
 
@@ -115,7 +115,7 @@ Edit s3cmd configuration file ``$HOME/.s3cfg``
     s3cmd mb s3://my_volume
     Bucket 's3://my_volume/' created
 
-**Example: uploading an local file to ChubaoFS**
+**Example: uploading an local file to CubeFS**
 
 .. code-block:: bash
 
@@ -129,7 +129,7 @@ Edit s3cmd configuration file ``$HOME/.s3cfg``
     s3cmd ls
     2020-05-10 15:29 s3://my_volume
 
-**Example: listing files stored in a ChubaoFS volume**
+**Example: listing files stored in a CubeFS volume**
 
 .. code-block:: bash
 
@@ -138,7 +138,7 @@ Edit s3cmd configuration file ``$HOME/.s3cfg``
     2020-05-10  15:31   10485760    s3://my_volume/data.dat
     2020005-10  15:33         10    s3://my_volume/hello.txt
 
-**Example: deleting file stored in a ChubaoFS volume**
+**Example: deleting file stored in a CubeFS volume**
 
 .. code-block:: bash
 
@@ -165,7 +165,7 @@ Use AWS Java SDK to access the ObjectNode deployed locally.
     </dependency>
 
 
-**Example: uploading file to ChubaoFS volume (PutObject)**
+**Example: uploading file to CubeFS volume (PutObject)**
 
 .. code-block:: java
 
@@ -173,7 +173,7 @@ Use AWS Java SDK to access the ObjectNode deployed locally.
     String endpoint = "http://127.0.0.1"; // Setup endpoint
     String accessKey = "*** Access Key ***"; // Setup AccessKey
     String secretKey = "*** Secret Key ***"; // Setup SecretKey
-    String bucketName = "*** Bucket name ***"; // Setup target bucket (ChubaoFS Volume)
+    String bucketName = "*** Bucket name ***"; // Setup target bucket (CubeFS Volume)
     String objectKey = "*** File object key name ***"; // Setup object key
     []byte data = "*** Example File Data as String **".getBytes();
 
@@ -205,7 +205,7 @@ Use AWS Java SDK to access the ObjectNode deployed locally.
 
 
 
-**Example: downloading file stored in ChubaoFS volume (GetObject)**
+**Example: downloading file stored in CubeFS volume (GetObject)**
 
 .. code-block:: java
 
@@ -213,7 +213,7 @@ Use AWS Java SDK to access the ObjectNode deployed locally.
     String endpoint = "http://127.0.0.1"; // Setup endpoint
     String accessKey = "*** Access Key ***"; // Setup AccessKey
     String secretKey = "*** Secret Key ***"; // Setup SecretKey
-    String bucketName = "*** Bucket name ***"; // Setup target bucket (ChubaoFS Volume)
+    String bucketName = "*** Bucket name ***"; // Setup target bucket (CubeFS Volume)
     String objectKey = "*** File object key name ***"; // Setup object key
 
     try {
@@ -260,7 +260,7 @@ Use AWS Python SDK (Boto3) to access the ObjectNode deployed locally.
 
     $ pip install boto3
 
-**Example: uploading file to ChubaoFS volume (PutObject)**
+**Example: uploading file to CubeFS volume (PutObject)**
 
 .. code-block:: python
 
@@ -280,7 +280,7 @@ Use AWS Python SDK (Boto3) to access the ObjectNode deployed locally.
         client = session.client(service_name="s3", region_name=region_name, endpoint_url=endpoint)
         client.put_object(Bucket=bucket, Key=key, Body=bytes("hello world"))
 
-**Example: downloading file stored in ChubaoFS volume (GetObject)**
+**Example: downloading file stored in CubeFS volume (GetObject)**
 
 .. code-block:: python
 

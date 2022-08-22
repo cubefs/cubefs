@@ -1,7 +1,7 @@
 Authnode
 =========
 
-Internet and Intranet are insecure places where malicious hackers usually use tools to "sniff" sensitive information off of the network. Worse yet, client/server are not trusted to be honest about their identities. Therefore, ChubaoFS encounters some common security problems once deployed in the Network.
+Internet and Intranet are insecure places where malicious hackers usually use tools to "sniff" sensitive information off of the network. Worse yet, client/server are not trusted to be honest about their identities. Therefore, CubeFS encounters some common security problems once deployed in the Network.
 
 Security Problems
 ------------------
@@ -12,7 +12,7 @@ Security Problems
 High Level Architecture
 -----------------------
 
-`Authnode` is the security node providing a general Authentication & Authorization framework for `ChubaoFS`. Besides, `Authnode` acts as a centralized key store of both symmetric and asymmetric key. `Authnode` adopts and customizes the idea of authentication from `Kerberos` which is built on top of tickets. Specifically, whenever a client node (`Master`, `Meta`, `Data` or `Client` node) accesses a service, it's firstly required to show the shared secret key for authentication in `Authnode`. If successful, `Authnode` would issue a time-limited ticket specifically for that service. With the purpose of authorization, capabilities are embedded in tickets to indicate `who can do what on what resource`.
+`Authnode` is the security node providing a general Authentication & Authorization framework for `CubeFS`. Besides, `Authnode` acts as a centralized key store of both symmetric and asymmetric key. `Authnode` adopts and customizes the idea of authentication from `Kerberos` which is built on top of tickets. Specifically, whenever a client node (`Master`, `Meta`, `Data` or `Client` node) accesses a service, it's firstly required to show the shared secret key for authentication in `Authnode`. If successful, `Authnode` would issue a time-limited ticket specifically for that service. With the purpose of authorization, capabilities are embedded in tickets to indicate `who can do what on what resource`.
 
 .. image:: pic/authflow.png
    :align: center
@@ -20,7 +20,7 @@ High Level Architecture
    :alt: Architecture
 
 
-In the context of `Authnode`, we define a node as `Client` if it is responsible to initialize a service request while `Server` or `Service` is defined as the node responding that request. In this case, any `ChubaoFS` nodes can be acted as either `Client` or `Server`.
+In the context of `Authnode`, we define a node as `Client` if it is responsible to initialize a service request while `Server` or `Service` is defined as the node responding that request. In this case, any `CubeFS` nodes can be acted as either `Client` or `Server`.
 
 The communication between `Client` and `Server` is based on `HTTPS` or `TCP` and the workflow of `Authnode` is depicted in the graph above and briefly described as follows:
 
@@ -61,7 +61,7 @@ If a service request is sent via TCP protocol, it has the following steps:
 Future Work
 -----------
 
-`Authnode` supports a general authentication and authorization which is an emergent need for `ChubaoFS`. There are two directions of security enhancements for `ChubaoFS` in the future.
+`Authnode` supports a general authentication and authorization which is an emergent need for `CubeFS`. There are two directions of security enhancements for `ChubaoFS` in the future.
 
 
 Feature Enrichment
@@ -71,7 +71,7 @@ Current implementation of `Authnode` doesn't support some advanced features:
 
 - Key rotation: Shared secret keys are hardcoded in client and server and would not changed. It increases security risks that attacks break the encryption and find the keys. Rotating keys on a regular basis would help to mitigate such risks.
 - Ticket revocation: For performance considerations, ticket would be valid for a while (such as several hours). If a client unfortunately leaks its ticket, malicious parties are able to use the ticket for service request during the period of being valid. Ticket revocation mechanism can prevent such an issue by revoking it once leakage happens.
-- HSM support: `Authnode` is the security bottleneck in `ChubaoFS`. Breaking `Authnode` means compromising the whole system since it manages the key store. Hardware Security Module or HSM provides physical safeguards for key management. Having `Authnode` protected by HSM (for example *SGX*) can mitigate the risk of `Authnode` being compromised.
+- HSM support: `Authnode` is the security bottleneck in `CubeFS`. Breaking `Authnode` means compromising the whole system since it manages the key store. Hardware Security Module or HSM provides physical safeguards for key management. Having `Authnode` protected by HSM (for example *SGX*) can mitigate the risk of `Authnode` being compromised.
 
 
 End-to-End Data Encryption

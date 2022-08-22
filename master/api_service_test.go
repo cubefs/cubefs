@@ -81,7 +81,7 @@ func createDefaultMasterServerForTest() *Server {
 		"logLevel":"DEBUG",
 		"walDir":"/tmp/chubaofs/raft",
 		"storeDir":"/tmp/chubaofs/rocksdbstore",
-		"clusterName":"chubaofs"
+		"clusterName":"cubefs"
 	}`
 
 	testServer, err := createMasterServer(cfgJSON)

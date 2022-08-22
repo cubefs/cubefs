@@ -1,4 +1,4 @@
-Contributing to ChubaoFS
+Contributing to CubeFS
 ========================
 
 Bug Reports
