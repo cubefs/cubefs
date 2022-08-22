@@ -83,6 +83,7 @@ func Register(app *grumble.App) {
 	addCmdVolume(cmCommand)
 	addCmdListAllDB(cmCommand)
 	addCmdDisk(cmCommand)
+	addCmdKV(cmCommand)
 
 	cmCommand.AddCommand(&grumble.Command{
 		Name:  "stat",

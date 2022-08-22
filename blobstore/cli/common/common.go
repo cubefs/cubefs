@@ -24,7 +24,8 @@ import (
 
 // CmdContext returns context with special reqest id tag
 func CmdContext() context.Context {
-	_, ctx := trace.StartSpanFromContext(context.Background(), "from-cmd")
+	_, ctx := trace.StartSpanFromContextWithTraceID(
+		context.Background(), "from-cmd", trace.RandomID().String()+"-cmd")
 	return ctx
 }
 
