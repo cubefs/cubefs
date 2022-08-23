@@ -329,6 +329,7 @@ func parsePaths(str string) (res []string) {
 func rebuild_sdk_state(c *client, sdkState *SdkState) {
 	log.LogDebugf("rebuild_sdk_state. sdkState: %v\n", sdkState)
 	c.cwd = sdkState.Cwd
+	c.readProcErrMap = sdkState.ReadProcErrMap
 
 	for _, v := range sdkState.Files {
 		f := &file{fd: v.Fd, ino: v.Ino, flags: v.Flags, mode: v.Mode, size: v.Size, pos: v.Pos, path: v.Path, target: []byte(v.Target), locked: v.Locked}
@@ -344,18 +345,7 @@ func rebuild_sdk_state(c *client, sdkState *SdkState) {
 			f.dirp.dirents = dentries
 		}
 		if proto.IsRegular(f.mode) {
-			var appendWriteBuffer bool
-			var readAhead bool
-			_, name := gopath.Split(f.path)
-			nameParts := strings.Split(name, ".")
-			if nameParts[0] == fileRelaylog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
-				f.fileType = fileTypeRelaylog
-			} else if nameParts[0] == fileBinlog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
-				f.fileType = fileTypeBinlog
-			} else if strings.Contains(nameParts[0], fileRedolog) {
-				f.fileType = fileTypeRedolog
-			}
-			c.ec.OpenStream(f.ino, appendWriteBuffer, readAhead)
+			c.openInodeStream(f)
 			c.ec.RefreshExtentsCache(nil, f.ino)
 		}
 		if v.Locked {
@@ -495,8 +485,9 @@ type FileState struct {
 }
 
 type SdkState struct {
-	Cwd   string // current working directory
-	Files []FileState
+	Cwd            string
+	ReadProcErrMap map[string]int
+	Files          []FileState
 }
 
 /*
@@ -580,6 +571,7 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		http.HandleFunc(ControlGetReadProcs, getReadProcsHandleFunc)
 		http.HandleFunc(ControlSetReadWrite, setReadWrite)
 		http.HandleFunc(ControlSetReadOnly, setReadOnly)
+		http.HandleFunc(ControlGetReadStatus, getReadStatus)
 		http.HandleFunc(ControlSetUpgrade, SetClientUpgrade)
 		http.HandleFunc(ControlUnsetUpgrade, UnsetClientUpgrade)
 		server := &http.Server{Addr: fmt.Sprintf(":%v", gClientManager.profPort)}
@@ -744,7 +736,7 @@ func cfs_sdk_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
 		files = append(files, f)
 	}
 
-	str, err := json.Marshal(SdkState{c.cwd, files})
+	str, err := json.Marshal(SdkState{c.cwd, c.readProcErrMap, files})
 	if err != nil {
 		log.LogErrorf("Marshal sdkState err(%v), files(%v)\n", err, files)
 	}
@@ -900,23 +892,8 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	f.size = info.Size
 	f.path = absPath
 
-	// if you rewrite here, please modify rebuild_sdk_state together
 	if proto.IsRegular(info.Mode) {
-		var appendWriteBuffer bool
-		var readAhead bool
-		_, name := gopath.Split(f.path)
-		nameParts := strings.Split(name, ".")
-		if nameParts[0] == fileRelaylog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
-			f.fileType = fileTypeRelaylog
-			//appendWriteBuffer = true
-			//readAhead = true
-		} else if nameParts[0] == fileBinlog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
-			f.fileType = fileTypeBinlog
-			//appendWriteBuffer = true
-		} else if strings.Contains(nameParts[0], fileRedolog) {
-			f.fileType = fileTypeRedolog
-		}
-		c.ec.OpenStream(f.ino, appendWriteBuffer, readAhead)
+		c.openInodeStream(f)
 		if fuseFlags&uint32(C.O_TRUNC) != 0 {
 			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 				c.closeStream(f)
@@ -935,6 +912,24 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	f.size = info.Size
 	f.path = absPath
 	return C.int(f.fd)
+}
+
+func (c *client) openInodeStream(f *file) {
+	var appendWriteBuffer bool
+	var readAhead bool
+	_, name := gopath.Split(f.path)
+	nameParts := strings.Split(name, ".")
+	if nameParts[0] == fileRelaylog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
+		f.fileType = fileTypeRelaylog
+		//appendWriteBuffer = true
+		//readAhead = true
+	} else if nameParts[0] == fileBinlog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
+		f.fileType = fileTypeBinlog
+		//appendWriteBuffer = true
+	} else if strings.Contains(nameParts[0], fileRedolog) {
+		f.fileType = fileTypeRedolog
+	}
+	c.ec.OpenStream(f.ino, appendWriteBuffer, readAhead)
 }
 
 //export cfs_openat
@@ -4094,7 +4089,7 @@ func (c *client) checkReadOnly(absPath string) bool {
 		if !strings.HasPrefix(absPath, pre) {
 			continue
 		}
-		if len(absPath) == len(pre) || absPath[len(pre)] == '/' {
+		if pre == "/" || len(absPath) == len(pre) || absPath[len(pre)] == '/' {
 			return false
 		}
 	}

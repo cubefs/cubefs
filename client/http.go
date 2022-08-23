@@ -29,6 +29,7 @@ const (
 	ControlGetReadProcs            = "/get/readProcs"
 	ControlSetReadWrite            = "/set/readwrite"
 	ControlSetReadOnly             = "/set/readonly"
+	ControlGetReadStatus           = "/get/readstatus"
 	ControlSetUpgrade              = "/set/clientUpgrade"
 	ControlUnsetUpgrade            = "/unset/clientUpgrade"
 
@@ -110,6 +111,7 @@ func setReadWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.readOnly = false
+	log.LogInfof("Set ReadWrite %s successfully.", c.volName)
 	buildSuccessResp(w, "success")
 }
 
@@ -139,7 +141,24 @@ func setReadOnly(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.readOnly = true
+	log.LogInfof("Set ReadOnly %s successfully.", c.volName)
 	buildSuccessResp(w, "success")
+}
+
+func getReadStatus(w http.ResponseWriter, r *http.Request) {
+	const defaultClientID = 1
+	c, exist := getClient(defaultClientID)
+	if !exist {
+		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
+		return
+	}
+
+	if c.readOnly {
+		buildSuccessResp(w, "read only.")
+	} else {
+		buildSuccessResp(w, "read write.")
+	}
+	return
 }
 
 func broadcastRefreshExtentsHandleFunc(w http.ResponseWriter, r *http.Request) {
