@@ -43,10 +43,7 @@ var _, serviceCtx = trace.StartSpanFromContext(context.Background(), "TestAccess
 func TestAccessServiceNew(t *testing.T) {
 	{
 		sc, err := controller.NewServiceController(
-			controller.ServiceConfig{
-				ClusterID: 0,
-				IDC:       idc,
-			}, cmcli)
+			controller.ServiceConfig{IDC: idc}, cmcli)
 		require.NoError(t, err)
 
 		_, err = sc.GetServiceHost(serviceCtx, serviceName)
@@ -54,11 +51,7 @@ func TestAccessServiceNew(t *testing.T) {
 	}
 	{
 		sc, err := controller.NewServiceController(
-			controller.ServiceConfig{
-				ClusterID: 0,
-				IDC:       idc + "x",
-				ReloadSec: 1,
-			}, cmcli)
+			controller.ServiceConfig{IDC: idc + "x", ReloadSec: 1}, cmcli)
 		require.NoError(t, err)
 
 		_, err = sc.GetServiceHost(serviceCtx, serviceName)
@@ -68,11 +61,7 @@ func TestAccessServiceNew(t *testing.T) {
 
 func TestAccessServiceGetServiceHost(t *testing.T) {
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{
-			ClusterID: 0,
-			IDC:       idc,
-			ReloadSec: 1,
-		}, cmcli)
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli)
 	require.NoError(t, err)
 
 	keys := make(hostSet)
@@ -90,11 +79,7 @@ func TestAccessServiceGetServiceHost(t *testing.T) {
 
 func TestAccessServicePunishService(t *testing.T) {
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{
-			ClusterID: 0,
-			IDC:       idc,
-			ReloadSec: 1,
-		}, cmcli)
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli)
 	require.NoError(t, err)
 
 	{
@@ -130,7 +115,6 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 	threshold := uint32(5)
 	sc, err := controller.NewServiceController(
 		controller.ServiceConfig{
-			ClusterID:                   0,
 			IDC:                         idc,
 			ReloadSec:                   1,
 			ServicePunishThreshold:      threshold,
@@ -184,11 +168,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 
 func TestAccessServiceGetDiskHost(t *testing.T) {
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{
-			ClusterID: 0,
-			IDC:       idc,
-			ReloadSec: 1,
-		}, cmcli)
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli)
 	require.NoError(t, err)
 
 	{
@@ -204,11 +184,7 @@ func TestAccessServiceGetDiskHost(t *testing.T) {
 
 func TestAccessServicePunishDisk(t *testing.T) {
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{
-			ClusterID: 0,
-			IDC:       idc,
-			ReloadSec: 1,
-		}, cmcli)
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli)
 	require.NoError(t, err)
 
 	{

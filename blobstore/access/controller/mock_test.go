@@ -59,21 +59,15 @@ func init() {
 	dataCalled = map[proto.Vid]int{1: 0, 9: 0}
 
 	dataVolumes = make(map[proto.Vid]cmapi.VolumeInfo, 4)
-	dataVolumes[proto.Vid(1)] = cmapi.VolumeInfo{
-		VolumeInfoBase: cmapi.VolumeInfoBase{
-			Vid:      1,
-			CodeMode: codemode.EC6P10L2,
-		},
+	dataVolumes[1] = cmapi.VolumeInfo{
+		VolumeInfoBase: cmapi.VolumeInfoBase{Vid: 1, CodeMode: codemode.EC6P10L2},
 		Units: []cmapi.Unit{
 			{Vuid: 1011, DiskID: 1021, Host: "1031"},
 			{Vuid: 1012, DiskID: 1022, Host: "1032"},
 		},
 	}
-	dataVolumes[proto.Vid(9)] = cmapi.VolumeInfo{
-		VolumeInfoBase: cmapi.VolumeInfoBase{
-			Vid:      9,
-			CodeMode: codemode.EC16P20L2,
-		},
+	dataVolumes[9] = cmapi.VolumeInfo{
+		VolumeInfoBase: cmapi.VolumeInfoBase{Vid: 9, CodeMode: codemode.EC16P20L2},
 		Units: []cmapi.Unit{
 			{Vuid: 9011, DiskID: 9021, Host: "9031"},
 			{Vuid: 9012, DiskID: 9022, Host: "9032"},
@@ -84,18 +78,8 @@ func init() {
 	dataNodes = make(map[string]cmapi.ServiceInfo)
 	dataNodes[proto.ServiceNameProxy] = cmapi.ServiceInfo{
 		Nodes: []cmapi.ServiceNode{
-			{
-				ClusterID: 1,
-				Name:      proto.ServiceNameProxy,
-				Host:      "proxy-1",
-				Idc:       idc,
-			},
-			{
-				ClusterID: 1,
-				Name:      proto.ServiceNameProxy,
-				Host:      "proxy-2",
-				Idc:       idc,
-			},
+			{ClusterID: 1, Name: proto.ServiceNameProxy, Host: "proxy-1", Idc: idc},
+			{ClusterID: 1, Name: proto.ServiceNameProxy, Host: "proxy-2", Idc: idc},
 		},
 	}
 

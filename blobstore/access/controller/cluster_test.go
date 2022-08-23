@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"math/rand"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -31,7 +30,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/redis"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -109,27 +107,23 @@ func initCluster() {
 }
 
 func consul(w http.ResponseWriter, req *http.Request) {
-	val := stableCluster.Load()
-	if val != nil {
+	if val := stableCluster.Load(); val != nil {
 		if b := val.([]byte); b != nil {
 			w.Write(b)
 			return
 		}
 	}
-
 	data, _ := json.Marshal(consulKV)
 	w.Write(data)
 }
 
 func serviceGet(w http.ResponseWriter, req *http.Request) {
-	val := stableCluster.Load()
-	if val != nil {
+	if val := stableCluster.Load(); val != nil {
 		if b := val.([]byte); b != nil {
 			w.Write([]byte("{}"))
 			return
 		}
 	}
-
 	if rand.Int31()%2 == 0 {
 		w.Write([]byte("{cannot unmarshal"))
 	} else {
@@ -184,27 +178,19 @@ func initCC() {
 
 	// init cluster 2
 	if cc2 == nil {
-		var clusters api.KVPairs
-		clusters = append(clusters, consulKV[1])
-		data, _ := json.Marshal(clusters)
+		data, _ := json.Marshal(api.KVPairs{consulKV[1]})
 		stableCluster.Store(data)
 		cc2 = newCC()
 	}
 	// init cluster 3
 	if cc3 == nil {
-		var clusters api.KVPairs
-		clusters = append(clusters, consulKV[2])
-		data, _ := json.Marshal(clusters)
+		data, _ := json.Marshal(api.KVPairs{consulKV[2]})
 		stableCluster.Store(data)
 		cc3 = newCC()
 	}
-
 	// init cluster 1 and 9
 	if cc19 == nil {
-		var clusters api.KVPairs
-		clusters = append(clusters, consulKV[0])
-		clusters = append(clusters, consulKV[3])
-		data, _ := json.Marshal(clusters)
+		data, _ := json.Marshal(api.KVPairs{consulKV[0], consulKV[3]})
 		stableCluster.Store(data)
 		cc19 = newCC()
 	}
@@ -214,26 +200,15 @@ func newCC() controller.ClusterController {
 	cfg := controller.ClusterConfig{
 		Region:            region,
 		ClusterReloadSecs: 0,
-		CMClientConfig: clustermgr.Config{
-			LbConfig: rpc.LbConfig{
-				Hosts: []string{"http://localhost"},
-			},
-		},
-		RedisClientConfig: redis.ClusterConfig{
-			Addrs: []string{redismr.Addr()},
-		},
+		ConsulAgentAddr:   hostAddr,
+	}
+	cfg.CMClientConfig.LbConfig.Config.Tc = rpc.TransportConfig{
+		MaxIdleConns:      4,
+		IdleConnTimeoutMs: 2,
 	}
 	if rand.Int31()%2 == 0 {
-		cfg.RedisClientConfig.Addrs = nil
+		cfg.RedisClientConfig.Addrs = []string{redismr.Addr()}
 	}
-	conf := api.DefaultConfig()
-	cfg.ConsulAgentAddr = hostAddr
-	conf.Transport = &http.Transport{
-		MaxIdleConns:    1000,
-		IdleConnTimeout: time.Minute,
-	}
-	conf.Transport.DialContext = (&net.Dialer{KeepAlive: time.Minute}).DialContext
-
 	cc, err := controller.NewClusterController(&cfg)
 	if err != nil {
 		panic(err)
@@ -243,19 +218,13 @@ func newCC() controller.ClusterController {
 
 func TestAccessClusterNew(t *testing.T) {
 	cfg := controller.ClusterConfig{
-		Region:            region,
-		ClusterReloadSecs: 0,
+		Region: region,
 		CMClientConfig: clustermgr.Config{
-			LbConfig: rpc.LbConfig{
-				Hosts: []string{"http://localhost"},
-			},
+			LbConfig: rpc.LbConfig{Hosts: []string{"http://localhost"}},
 		},
-		RedisClientConfig: redis.ClusterConfig{
-			Addrs: []string{redismr.Addr()},
+		Clusters: []controller.Cluster{
+			{ClusterID: 1, Hosts: []string{hostAddr, hostAddr}},
 		},
-	}
-	cfg.Clusters = []controller.Cluster{
-		{ClusterID: 1, Hosts: []string{hostAddr, hostAddr}},
 	}
 	clusterController, err := controller.NewClusterController(&cfg)
 	require.NotNil(t, clusterController)
