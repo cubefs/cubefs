@@ -1572,6 +1572,8 @@ func (vol *Vol) deleteVolFromStore(c *Cluster) (err error) {
 	// then delete the volume
 	c.deleteVol(vol.Name)
 	c.volStatInfo.Delete(vol.Name)
+
+	c.DelBucketLifecycle(vol.Name)
 	return
 }
 
