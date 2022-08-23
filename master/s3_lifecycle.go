@@ -60,7 +60,7 @@ func (ns *nodesState) addTaskToNode(info *proto.ScanTaskInfo, nodeAddr string) {
 	}
 }
 
-func (ns *nodesState) AddTaskToNode(info *proto.ScanTaskInfo) (nodeAddr string, err error) {
+func (ns *nodesState) AddTaskToNode(info *proto.ScanTaskInfo, maxConcurrentLcNodes uint64) (nodeAddr string, err error) {
 	ns.Lock()
 	defer ns.Unlock()
 
@@ -68,8 +68,12 @@ func (ns *nodesState) AddTaskToNode(info *proto.ScanTaskInfo) (nodeAddr string, 
 	if err != nil {
 		return nodeAddr, err
 	}
-	delete(ns.idleNodes, nodeAddr)
 
+	if len(ns.workingNodes) >= int(maxConcurrentLcNodes) {
+		return "", errors.New("max concurrent lcnodes reached")
+	}
+
+	delete(ns.idleNodes, nodeAddr)
 	ns.addTaskToNode(info, nodeAddr)
 	return
 }
@@ -173,7 +177,8 @@ type lcRuleStatus struct {
 	Scanned     []*proto.RuleTask
 	Scanning    []*proto.RuleTask
 	ToBeScanned []*proto.RuleTask
-	Results     []*proto.RuleTaskResponse
+	//Results     []*proto.RuleTaskResponse
+	Results map[string]*proto.RuleTaskResponse
 }
 
 type scanRoutine struct {
@@ -209,7 +214,7 @@ func newScanRoutine(s3LcMgr *s3LifecycleManager) *scanRoutine {
 			Scanned:     make([]*proto.RuleTask, 0),
 			Scanning:    make([]*proto.RuleTask, 0),
 			ToBeScanned: make([]*proto.RuleTask, 0),
-			Results:     make([]*proto.RuleTaskResponse, 0),
+			Results:     make(map[string]*proto.RuleTaskResponse, 0),
 		},
 		exitCh:     make(chan struct{}),
 		idleNodeCh: make(chan struct{}),
@@ -271,7 +276,8 @@ func (s *scanRoutine) process() {
 					Id:        task.Id,
 					RoutineId: s.Id,
 				}
-				nodeAddr, err := s.s3LcMgr.lnStates.AddTaskToNode(info)
+				maxConcurrentLcNodes := s.s3LcMgr.cluster.cfg.MaxConcurrentLcNodes
+				nodeAddr, err := s.s3LcMgr.lnStates.AddTaskToNode(info, maxConcurrentLcNodes)
 				if err != nil {
 					log.LogWarnf("scan routine: err(%v)", err)
 					break

@@ -151,7 +151,8 @@ func (c *Cluster) handleLcNodeScanResp(nodeAddr string, req *proto.RuleTaskReque
 						return nil
 					} else {
 						lcScan.RuleStatus.Scanned = append(lcScan.RuleStatus.Scanned, ruleTask)
-						lcScan.RuleStatus.Results = append(lcScan.RuleStatus.Results, resp)
+						//lcScan.RuleStatus.Results = append(lcScan.RuleStatus.Results, resp)
+						lcScan.RuleStatus.Results[resp.ID] = resp
 						break
 					}
 
@@ -209,6 +210,24 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 
 	if len(resp.ScanningTasks) > 0 {
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is scanning", nodeAddr)
+		lcScan := c.s3LcMgr.getScanRoutine()
+		if lcScan != nil {
+			lcScan.Lock()
+			for _, task := range resp.ScanningTasks {
+				if lcScan.Id == task.RoutineId {
+					tmpResp := &proto.RuleTaskResponse{
+						ID:             task.Id,
+						RoutineID:      task.RoutineId,
+						Done:           false,
+						TaskStatistics: task.TaskStatistics,
+					}
+					lcScan.RuleStatus.Results[task.Id] = tmpResp
+					log.LogDebugf("action[handleLcNodeHeartbeatResp], lcScan.Id(%v) task.RoutineId(%v) rsp(%v)",
+						lcScan.Id, task.RoutineId, tmpResp)
+				}
+			}
+			lcScan.Unlock()
+		}
 	} else {
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is idle", nodeAddr)
 		lcScan := c.s3LcMgr.getScanRoutine()

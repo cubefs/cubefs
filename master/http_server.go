@@ -299,18 +299,18 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.SetBucketLifecycle).
 		HandlerFunc(m.SetBucketLifecycle)
-
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetBucketLifecycle).
 		HandlerFunc(m.GetBucketLifecycle)
-
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DeleteBucketLifecycle).
 		HandlerFunc(m.DelBucketLifecycle)
-
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddLcNode).
 		HandlerFunc(m.addLcNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetConLcNodeNum).
+		HandlerFunc(m.setConLcNodeNum)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

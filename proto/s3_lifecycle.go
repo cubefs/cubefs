@@ -79,11 +79,11 @@ func (lcConf *LcConfiguration) GenEnabledRuleTasks() []*RuleTask {
 //lcnode
 
 type ScanDentry struct {
-	DelInode bool   `json:"delino"` //if Type is file, and DelInode is true, then Inode and Dentry(ParentId, Name) is to be deleted
-	ParentId uint64 `json:"pid"`    // FileID value of the parent inode.
-	Name     string `json:"name"`   // Name of the current dentry.
-	Inode    uint64 `json:"inode"`  // FileID value of the current inode.
+	ParentId uint64 `json:"pid"`   // FileID value of the parent inode.
+	Inode    uint64 `json:"inode"` // FileID value of the current inode.
+	Name     string `json:"name"`  // Name of the current dentry.
 	Type     uint32 `json:"type"`
+	DelInode bool   `json:"delino"` //if Type is file, and DelInode is true, then Inode and Dentry(ParentId, Name) is to be deleted
 }
 
 //meta
@@ -131,17 +131,26 @@ type RuleTaskRequest struct {
 	Task       *RuleTask
 }
 
-type RuleTaskResponse struct {
+type TaskStatistics struct {
+	Volume                        string
+	Prefix                        string
 	TotalInodeScannedNum          int64
 	FileScannedNum                int64
 	DirScannedNum                 int64
 	ExpiredNum                    int64
 	ErrorSkippedNum               int64
 	AbortedIncompleteMultipartNum int64
-	StartTime                     *time.Time
-	EndTime                       *time.Time
-	Status                        uint8
-	Result                        string
+}
+
+type RuleTaskResponse struct {
+	ID        string
+	RoutineID int64
+	TaskStatistics
+	StartTime *time.Time
+	EndTime   *time.Time
+	Done      bool
+	Status    uint8
+	Result    string
 }
 
 type AbortIncompleteMultipartUpload struct {
