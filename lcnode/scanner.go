@@ -11,24 +11,29 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 var (
-	defaultUChanInitCapacity int = 1000
+	defaultUChanInitCapacity int = 10000
 	defaultRoutingNumPerTask int = 100
+	defaultMaxChanUnm        int = 10000000 //worst case: may take up around 400MB of heap space
 )
 
 type TaskScanner struct {
 	ID        string
 	RoutineID int64
+	Volume    string
 	mw        *meta.MetaWrapper
 	//ScanTask *proto.RuleTask
 	filter        *proto.ScanFilter
 	abortFilter   *proto.AbortIncompleteMultiPartFilter
 	dirChan       *unboundedchan.UnboundedChan
 	fileChan      *unboundedchan.UnboundedChan
-	rPoll         *routinepool.RoutinePool
+	fileRPoll     *routinepool.RoutinePool
+	dirRPoll      *routinepool.RoutinePool
 	batchDentries *fileDentries
+	currentStat   proto.TaskStatistics
 	stopC         chan bool
 }
 
@@ -53,12 +58,14 @@ func NewTaskScanner(scanTask *proto.RuleTask, RoutineID int64, masters []string)
 	scanner := &TaskScanner{
 		ID:          scanTask.Id,
 		RoutineID:   RoutineID,
+		Volume:      scanTask.VolName,
 		mw:          metaWrapper,
 		filter:      filter,
 		abortFilter: abortFilter,
 		dirChan:     unboundedchan.NewUnboundedChan(defaultUChanInitCapacity),
 		fileChan:    unboundedchan.NewUnboundedChan(defaultUChanInitCapacity),
-		rPoll:       routinepool.NewRoutinePool(defaultRoutingNumPerTask),
+		fileRPoll:   routinepool.NewRoutinePool(defaultRoutingNumPerTask),
+		dirRPoll:    routinepool.NewRoutinePool(defaultRoutingNumPerTask),
 		stopC:       make(chan bool, 0),
 	}
 	scanner.batchDentries = newFileDentries()
@@ -109,8 +116,18 @@ func (s *TaskScanner) FindPrefixInode() (inode uint64, mode uint32, err error) {
 }
 
 func (s *TaskScanner) Stop() {
-	log.LogDebugf("stopping scanner(%v)", s.ID)
-	s.stopC <- true
+	close(s.stopC)
+	s.fileRPoll.WaitAndClose()
+	s.dirRPoll.WaitAndClose()
+	close(s.dirChan.In)
+	close(s.fileChan.In)
+	log.LogDebugf("scanner(%v) stopped", s.ID)
+}
+
+func (s *TaskScanner) DoneScanning() bool {
+	log.LogDebugf("dirChan.Len(%v) fileChan.Len(%v) fileRPoll.RunningNum(%v) dirRPoll.RunningNum(%v)",
+		s.dirChan.Len(), s.fileChan.Len(), s.fileRPoll.RunningNum(), s.dirRPoll.RunningNum())
+	return s.dirChan.Len() == 0 && s.fileChan.Len() == 0 && s.fileRPoll.RunningNum() == 0 && s.dirRPoll.RunningNum() == 0
 }
 
 func (s *TaskScanner) batchAbortIncompleteMultiPart(expriredInfos []*proto.ExpiredMultipartInfo, resp *proto.RuleTaskResponse) (err error) {
@@ -155,9 +172,203 @@ func (s *TaskScanner) incompleteMultiPartScan(resp *proto.RuleTaskResponse) {
 	_ = s.batchAbortIncompleteMultiPart(expriredInfos, resp)
 }
 
-func (s *TaskScanner) scan(resp *proto.RuleTaskResponse) {
-	fileChanClosed := false
-	dirChanClosed := false
+func (s *TaskScanner) handFile(dentry *proto.ScanDentry) {
+	log.LogDebugf("scan file dentry(%v)", dentry)
+	if dentry.DelInode {
+		_, err := s.mw.Delete_ll(dentry.ParentId, dentry.Name, false)
+		if err != nil {
+			log.LogErrorf("delete dentry(%v) failed, err(%v)", dentry, err)
+		} else {
+			log.LogDebugf("dentry(%v) deleted!", dentry)
+			//atomic.AddInt64(&resp.ExpiredNum, 1)
+			atomic.AddInt64(&s.currentStat.ExpiredNum, 1)
+		}
+
+	} else {
+		s.batchDentries.Append(dentry)
+		if s.batchDentries.Len() >= batchExpirationGetNum {
+			expireInfos := s.mw.BatchInodeExpirationGet(s.batchDentries.GetDentries(), s.filter.ExpireCond)
+			for _, info := range expireInfos {
+				if info.Expired {
+					info.Dentry.DelInode = true
+					s.fileChan.In <- info.Dentry
+				}
+			}
+
+			var scannedNum int64 = int64(s.batchDentries.Len())
+			atomic.AddInt64(&s.currentStat.FileScannedNum, scannedNum)
+			atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, scannedNum)
+			s.batchDentries.Clear()
+		}
+	}
+}
+
+func (s *TaskScanner) handleDir(dentry *proto.ScanDentry, resp *proto.RuleTaskResponse) {
+	log.LogDebugf("scan dir dentry(%v)", dentry)
+	children, err := s.mw.ReadDir_ll(dentry.Inode)
+	if err != nil && err != syscall.ENOENT {
+		atomic.AddInt64(&resp.ErrorSkippedNum, 1)
+		log.LogWarnf("ReadDir_ll failed")
+		return
+	}
+	if err == syscall.ENOENT {
+		return
+	}
+
+	atomic.AddInt64(&resp.DirScannedNum, 1)
+	atomic.AddInt64(&resp.TotalInodeScannedNum, 1)
+
+	for _, child := range children {
+		childDentry := &proto.ScanDentry{
+			DelInode: false,
+			ParentId: dentry.Inode,
+			Name:     child.Name,
+			Inode:    child.Inode,
+			Type:     child.Type,
+		}
+		if os.FileMode(childDentry.Type).IsDir() {
+			s.dirChan.In <- childDentry
+		} else {
+			s.fileChan.In <- childDentry
+		}
+	}
+}
+
+func (s *TaskScanner) handleDirLimit(dentry *proto.ScanDentry) {
+	log.LogDebugf("scan dir dentry(%v)", dentry)
+
+	marker := ""
+	done := false
+	for !done {
+		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultRoutingNumPerTask))
+		if err != nil && err != syscall.ENOENT {
+			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			log.LogWarnf("ReadDir_ll failed")
+			return
+		}
+
+		if marker == "" {
+			atomic.AddInt64(&s.currentStat.DirScannedNum, 1)
+			atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, 1)
+		}
+
+		if err == syscall.ENOENT {
+			done = true
+			break
+		}
+
+		if marker != "" {
+			children = children[1:]
+		}
+
+		for _, child := range children {
+			childDentry := &proto.ScanDentry{
+				DelInode: false,
+				ParentId: dentry.Inode,
+				Name:     child.Name,
+				Inode:    child.Inode,
+				Type:     child.Type,
+			}
+			if os.FileMode(childDentry.Type).IsDir() {
+				s.dirChan.In <- childDentry
+			} else {
+				s.fileChan.In <- childDentry
+			}
+		}
+
+		childrenNr := len(children)
+		if (marker == "" && childrenNr < defaultRoutingNumPerTask) || (marker != "" && childrenNr+1 < defaultRoutingNumPerTask) {
+			done = true
+		} else {
+			marker = children[childrenNr-1].Name
+		}
+
+	}
+
+}
+
+//handleDirLimitDepthFirst used to scan dir tree in depth when size of dirChan.In grow too much.
+//consider 40 Bytes is the ave size of proto.ScanDentry, 100 million ScanDentries may take up to around 4GB of Memory
+func (s *TaskScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
+	log.LogDebugf("scan dir dentry(%v)", dentry)
+
+	marker := ""
+	done := false
+	for !done {
+		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultRoutingNumPerTask))
+		if err != nil && err != syscall.ENOENT {
+			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			log.LogWarnf("ReadDir_ll failed")
+			return
+		}
+
+		if marker == "" {
+			atomic.AddInt64(&s.currentStat.DirScannedNum, 1)
+			atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, 1)
+		}
+
+		if err == syscall.ENOENT {
+			done = true
+			break
+		}
+
+		if marker != "" {
+			children = children[1:]
+		}
+
+		files := make([]*proto.ScanDentry, 0)
+		dirs := make([]*proto.ScanDentry, 0)
+		for _, child := range children {
+			childDentry := &proto.ScanDentry{
+				DelInode: false,
+				ParentId: dentry.Inode,
+				Name:     child.Name,
+				Inode:    child.Inode,
+				Type:     child.Type,
+			}
+
+			if os.FileMode(childDentry.Type).IsDir() {
+				dirs = append(dirs, childDentry)
+			} else {
+				files = append(files, childDentry)
+			}
+		}
+
+		for _, file := range files {
+			s.fileChan.In <- file
+		}
+		for _, dir := range dirs {
+			s.handleDirLimitDepthFirst(dir)
+		}
+
+		childrenNr := len(children)
+		if (marker == "" && childrenNr < defaultRoutingNumPerTask) || (marker != "" && childrenNr+1 < defaultRoutingNumPerTask) {
+			done = true
+		} else {
+			marker = children[childrenNr-1].Name
+		}
+
+	}
+
+}
+
+func (s *TaskScanner) getDirJob(dentry *proto.ScanDentry) (job func()) {
+	//no need to lock
+	if s.dirChan.Len()+defaultRoutingNumPerTask > defaultMaxChanUnm {
+		log.LogDebugf("getDirJob: Depth first job")
+		job = func() {
+			s.handleDirLimitDepthFirst(dentry)
+		}
+	} else {
+		log.LogDebugf("getDirJob: Breadth first job")
+		job = func() {
+			s.handleDirLimit(dentry)
+		}
+	}
+	return
+}
+
+func (s *TaskScanner) scan() {
 	log.LogDebugf("Enter scan")
 	defer func() {
 		log.LogDebugf("Exit scan")
@@ -165,106 +376,111 @@ func (s *TaskScanner) scan(resp *proto.RuleTaskResponse) {
 	for {
 		select {
 		case <-s.stopC:
-			close(s.dirChan.In)
-			close(s.fileChan.In)
-			//close(s.stopC)
-			s.rPoll.WaitAndClose()
 			return
 		case val, ok := <-s.fileChan.Out:
 			if !ok {
 				log.LogWarnf("fileChan closed")
-				fileChanClosed = true
-				if dirChanClosed {
-					return
-				}
 			} else {
-
-				handFile := func() {
-					dentry := val.(*proto.ScanDentry)
-					log.LogDebugf("scan file dentry(%v)", dentry)
-					if dentry.DelInode {
-						_, err := s.mw.Delete_ll(dentry.ParentId, dentry.Name, false)
-						if err != nil {
-							log.LogErrorf("delete dentry(%v) failed, err(%v)", dentry, err)
-						} else {
-							log.LogDebugf("dentry(%v) deleted!", dentry)
-							atomic.AddInt64(&resp.ExpiredNum, 1)
-						}
-
-					} else {
-						s.batchDentries.Append(dentry)
-						if s.batchDentries.Len() >= batchExpirationGetNum {
-							expireInfos := s.mw.BatchInodeExpirationGet(s.batchDentries.GetDentries(), s.filter.ExpireCond)
-							for _, info := range expireInfos {
-								if info.Expired {
-									info.Dentry.DelInode = true
-									s.fileChan.In <- info.Dentry
-								}
-							}
-
-							var scannedNum int64 = int64(s.batchDentries.Len())
-							atomic.AddInt64(&resp.FileScannedNum, scannedNum)
-							atomic.AddInt64(&resp.TotalInodeScannedNum, scannedNum)
-							s.batchDentries.Clear()
-						}
-					}
+				dentry := val.(*proto.ScanDentry)
+				job := func() {
+					s.handFile(dentry)
 				}
 
-				_, err := s.rPoll.Submit(handFile)
+				_, err := s.fileRPoll.Submit(job)
 				if err != nil {
 					log.LogErrorf("handFile failed, err(%v)", err)
 				}
 
 			}
-		case val, ok := <-s.dirChan.Out:
-			if !ok {
-				log.LogWarnf("dirChan closed")
-				dirChanClosed = true
-				if fileChanClosed {
+		default:
+			select {
+			case <-s.stopC:
+				return
+			case val, ok := <-s.fileChan.Out:
+				if !ok {
+					log.LogWarnf("fileChan closed")
+				} else {
+					dentry := val.(*proto.ScanDentry)
+					job := func() {
+						s.handFile(dentry)
+					}
+
+					_, err := s.fileRPoll.Submit(job)
+					if err != nil {
+						log.LogErrorf("handFile failed, err(%v)", err)
+					}
+
+				}
+			case val, ok := <-s.dirChan.Out:
+				if !ok {
+					log.LogWarnf("dirChan closed")
+				} else {
+					dentry := val.(*proto.ScanDentry)
+					job := s.getDirJob(dentry)
+
+					_, err := s.dirRPoll.Submit(job)
+					if err != nil {
+						log.LogErrorf("handleDir failed, err(%v)", err)
+					}
+				}
+			}
+		}
+	}
+}
+
+func (s *TaskScanner) checkScanning(adminTask *proto.AdminTask, resp *proto.RuleTaskResponse, l *LcNode) {
+	dur := time.Second * time.Duration(scanCheckInterval)
+	taskCheckTimer := time.NewTimer(dur)
+	for {
+		select {
+		case <-s.stopC:
+			log.LogDebugf("stop checking scan")
+			return
+		case <-taskCheckTimer.C:
+			if s.DoneScanning() {
+				if s.batchDentries.Len() > 0 {
+					log.LogDebugf("last batch dentries scan")
+					expireInfos := s.mw.BatchInodeExpirationGet(s.batchDentries.GetDentries(), s.filter.ExpireCond)
+					for _, info := range expireInfos {
+						if info.Expired {
+							info.Dentry.DelInode = true
+							s.fileChan.In <- info.Dentry
+						}
+					}
+
+					var scannedNum int64 = int64(s.batchDentries.Len())
+					atomic.AddInt64(&s.currentStat.FileScannedNum, scannedNum)
+					atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, scannedNum)
+					s.batchDentries.Clear()
+				} else {
+					log.LogInfof("scan completed for task(%v)", adminTask)
+					taskCheckTimer.Stop()
+					t := time.Now()
+					resp.EndTime = &t
+					resp.Status = proto.TaskSucceeds
+					resp.Done = true
+					resp.ID = s.ID
+					resp.RoutineID = s.RoutineID
+					resp.Volume = s.Volume
+					resp.Prefix = s.filter.Prefix
+					resp.ExpiredNum = s.currentStat.ExpiredNum
+					resp.FileScannedNum = s.currentStat.FileScannedNum
+					resp.DirScannedNum = s.currentStat.DirScannedNum
+					resp.TotalInodeScannedNum = s.currentStat.TotalInodeScannedNum
+					resp.AbortedIncompleteMultipartNum = s.currentStat.AbortedIncompleteMultipartNum
+					resp.ErrorSkippedNum = s.currentStat.ErrorSkippedNum
+
+					l.scannerMutex.Lock()
+					delete(l.scanners, s.ID)
+					l.scannerMutex.Unlock()
+
+					l.respondToMaster(adminTask)
 					return
 				}
 
-			} else {
-
-				handleDir := func() {
-					dentry := val.(*proto.ScanDentry)
-					log.LogDebugf("scan dir dentry(%v)", dentry)
-					children, err := s.mw.ReadDir_ll(dentry.Inode)
-					if err != nil && err != syscall.ENOENT {
-						atomic.AddInt64(&resp.ErrorSkippedNum, 1)
-						log.LogWarnf("ReadDir_ll failed")
-						return
-					}
-					if err == syscall.ENOENT {
-						atomic.AddInt64(&resp.ErrorSkippedNum, 1)
-						return
-					}
-
-					atomic.AddInt64(&resp.DirScannedNum, 1)
-					atomic.AddInt64(&resp.TotalInodeScannedNum, 1)
-
-					for _, child := range children {
-						childDentry := &proto.ScanDentry{
-							DelInode: false,
-							ParentId: dentry.Inode,
-							Name:     child.Name,
-							Inode:    child.Inode,
-							Type:     child.Type,
-						}
-						if os.FileMode(childDentry.Type).IsDir() {
-							s.dirChan.In <- childDentry
-						} else {
-							s.fileChan.In <- childDentry
-						}
-					}
-				}
-
-				_, err := s.rPoll.Submit(handleDir)
-				if err != nil {
-					log.LogErrorf("handleDir failed, err(%v)", err)
-				}
 			}
-
+			taskCheckTimer.Reset(dur)
 		}
 	}
+
 }

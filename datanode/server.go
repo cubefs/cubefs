@@ -161,8 +161,8 @@ type DataNode struct {
 	clusterUuid             string
 	clusterUuidEnable       bool
 	serviceIDKey            string
-	cpuUtil        atomicutil.Float64
-	cpuSamplerDone chan struct{}
+	cpuUtil                 atomicutil.Float64
+	cpuSamplerDone          chan struct{}
 }
 
 type verOp2Phase struct {

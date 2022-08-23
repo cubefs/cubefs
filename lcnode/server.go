@@ -62,10 +62,15 @@ func (l *LcNode) stopServer() {
 			}
 		}()
 
-		for _, s := range l.scanners {
-			s.Stop()
-		}
+		l.StopScanners()
 		close(l.stopC)
+	}
+}
+
+func (l *LcNode) StopScanners() {
+	for _, s := range l.scanners {
+		s.Stop()
+		delete(l.scanners, s.ID)
 	}
 }
 
@@ -173,58 +178,6 @@ func (l *LcNode) scanning() bool {
 	return len(l.scanners) > 0
 }
 
-func (l *LcNode) checkScanning(adminTask *proto.AdminTask, scanner *TaskScanner, resp *proto.RuleTaskResponse) {
-	dur := time.Second * time.Duration(scanCheckInterval)
-	taskCheckTimer := time.NewTimer(dur)
-	for {
-		select {
-		case <-l.stopC:
-			log.LogDebugf("stop checking scan")
-			//close(l.stopC)
-			return
-		case <-taskCheckTimer.C:
-			log.LogDebugf("ticker: dirChan.Len(%v) fileChan.Len(%v) rPoll.RunningNum(%v)",
-				scanner.dirChan.Len(), scanner.fileChan.Len(), scanner.rPoll.RunningNum())
-			if scanner.dirChan.Len() == 0 && scanner.fileChan.Len() == 0 && scanner.rPoll.RunningNum() == 0 {
-				if scanner.batchDentries.Len() > 0 {
-					log.LogDebugf("last batch dentries scan")
-					expireInfos := scanner.mw.BatchInodeExpirationGet(scanner.batchDentries.GetDentries(), scanner.filter.ExpireCond)
-					for _, info := range expireInfos {
-						if info.Expired {
-							info.Dentry.DelInode = true
-							scanner.fileChan.In <- info.Dentry
-						}
-					}
-
-					var scannedNum int64 = int64(scanner.batchDentries.Len())
-					atomic.AddInt64(&resp.FileScannedNum, scannedNum)
-					atomic.AddInt64(&resp.TotalInodeScannedNum, scannedNum)
-					scanner.batchDentries.Clear()
-				} else {
-					log.LogInfof("scan completed for task(%v)", adminTask)
-					//close(scanner.dirChan.In)
-					//close(scanner.fileChan.In)
-					scanner.Stop()
-					taskCheckTimer.Stop()
-					t := time.Now()
-					resp.EndTime = &t
-					resp.Status = proto.TaskSucceeds
-
-					l.scannerMutex.Lock()
-					delete(l.scanners, scanner.ID)
-					l.scannerMutex.Unlock()
-
-					l.respondToMaster(adminTask)
-					return
-				}
-
-			}
-			taskCheckTimer.Reset(dur)
-		}
-	}
-
-}
-
 func (l *LcNode) startScan(adminTask *proto.AdminTask) (err error) {
 
 	request := adminTask.Request.(*proto.RuleTaskRequest)
@@ -272,7 +225,7 @@ func (l *LcNode) startScan(adminTask *proto.AdminTask) (err error) {
 		return nil
 	}
 
-	go scanner.scan(resp)
+	go scanner.scan()
 
 	prefixDentry := &proto.ScanDentry{
 		Inode: perfixInode,
@@ -293,11 +246,10 @@ func (l *LcNode) startScan(adminTask *proto.AdminTask) (err error) {
 		scanMultipart := func() {
 			scanner.incompleteMultiPartScan(resp)
 		}
-
-		_, _ = scanner.rPoll.Submit(scanMultipart)
+		_, _ = scanner.fileRPoll.Submit(scanMultipart)
 	}
 
-	go l.checkScanning(adminTask, scanner, resp)
+	go scanner.checkScanning(adminTask, resp, l)
 
 	l.scannerMutex.Lock()
 	l.scanners[scanner.ID] = scanner
@@ -349,7 +301,7 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 	var (
 		req  = &proto.HeartBeatRequest{}
 		resp = &proto.LcNodeHeartbeatResponse{
-			ScanningTasks: make([]*proto.ScanTaskInfo, 0),
+			ScanningTasks: make(map[string]*proto.ScanInfo, 0),
 		}
 		adminTask = &proto.AdminTask{
 			Request: req,
@@ -369,11 +321,23 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 
 		l.scannerMutex.RLock()
 		for _, scanner := range l.scanners {
-			taskInfo := &proto.ScanTaskInfo{
-				Id:        scanner.ID,
-				RoutineId: scanner.RoutineID,
+			info := &proto.ScanInfo{
+				ScanTaskInfo: proto.ScanTaskInfo{
+					Id:        scanner.ID,
+					RoutineId: scanner.RoutineID,
+				},
+				TaskStatistics: proto.TaskStatistics{
+					Volume:                        scanner.Volume,
+					Prefix:                        scanner.filter.Prefix,
+					TotalInodeScannedNum:          atomic.LoadInt64(&scanner.currentStat.TotalInodeScannedNum),
+					FileScannedNum:                atomic.LoadInt64(&scanner.currentStat.FileScannedNum),
+					DirScannedNum:                 atomic.LoadInt64(&scanner.currentStat.DirScannedNum),
+					ExpiredNum:                    atomic.LoadInt64(&scanner.currentStat.ExpiredNum),
+					ErrorSkippedNum:               atomic.LoadInt64(&scanner.currentStat.ErrorSkippedNum),
+					AbortedIncompleteMultipartNum: atomic.LoadInt64(&scanner.currentStat.AbortedIncompleteMultipartNum),
+				},
 			}
-			resp.ScanningTasks = append(resp.ScanningTasks, taskInfo)
+			resp.ScanningTasks[scanner.ID] = info
 		}
 		l.scannerMutex.RUnlock()
 
