@@ -85,6 +85,7 @@ const (
 	defaultMasterMinQosAccept                          = 20000
 	defaultMaxDpCntLimit                               = 3000
 	defaultIntervalToScanS3Expiration                  = 12 * 3600
+	defaultMaxConcurrentLcNodes                        = 3
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -128,6 +129,7 @@ type clusterConfig struct {
 	MaxQuotaNumPerVol                   int
 	MonitorPushAddr                     string
 	IntervalToScanS3Expiration          int64
+	MaxConcurrentLcNodes                uint64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -155,6 +157,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaPartitionInodeIdStep = defaultMetaPartitionInodeIDStep
 	cfg.MaxQuotaNumPerVol = defaultMaxQuotaNumPerVol
 	cfg.IntervalToScanS3Expiration = defaultIntervalToScanS3Expiration
+	cfg.MaxConcurrentLcNodes = defaultMaxConcurrentLcNodes
 	return
 }
 
