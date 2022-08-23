@@ -52,6 +52,9 @@ type MetadataManager interface {
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
 	SummaryMonitorData(reportTime int64) []*statistics.MonitorData
+	StartPartition(id uint64) error
+	StopPartition(id uint64) error
+	ReloadPartition(id uint64) error
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -680,6 +683,86 @@ func (m *metadataManager) SummaryMonitorData(reportTime int64) []*statistics.Mon
 		return true
 	})
 	return dataList
+}
+
+func (m *metadataManager) StartPartition(id uint64) (err error) {
+	if _, err = m.getPartition(id); err == nil {
+		err = fmt.Errorf("MP[%d] already start", id)
+		return
+	}
+
+	err = nil
+	fileName := fmt.Sprintf("%s%d", partitionPrefix, id)
+	var mpDirInfo os.FileInfo
+	partitionConfig := &MetaPartitionConfig{
+		NodeId:             m.nodeId,
+		RaftStore:          m.raftStore,
+		RootDir:            path.Join(m.rootDir, fileName),
+		ConnPool:           m.connPool,
+		TrashRemainingDays: -1,
+	}
+	partitionConfig.AfterStop = func() {
+		m.detachPartition(id)
+	}
+
+	if mpDirInfo, err = os.Stat(partitionConfig.RootDir); err != nil{
+		err = fmt.Errorf("MP[%d] not exist", id)
+		return
+	}
+
+	if !mpDirInfo.IsDir() {
+		err = fmt.Errorf("MP[%d] root path is not dir", id)
+		return
+	}
+
+	// check snapshot dir or backup
+	snapDir := path.Join(partitionConfig.RootDir, snapshotDir)
+	if _, err = os.Stat(snapDir); err != nil {
+		backupDir := path.Join(partitionConfig.RootDir, snapshotBackup)
+		if _, err = os.Stat(backupDir); err == nil {
+			if err = os.Rename(backupDir, snapDir); err != nil {
+				err = errors.Trace(err,
+					fmt.Sprintf(": fail recover backup snapshot %s",
+						snapshotDir))
+				return
+			}
+		}
+		err = nil
+	}
+	var partition MetaPartition
+	if partition, err = LoadMetaPartition(partitionConfig, m); err != nil {
+		log.LogErrorf("load partition id=%d failed: %s.",
+			id, err.Error())
+		return
+	}
+	m.attachPartition(id, partition)
+	err = partition.Start()
+	if err != nil {
+		m.detachPartition(id)
+	}
+	return
+}
+
+func (m *metadataManager) StopPartition(id uint64) (err error) {
+	var partition MetaPartition
+	if partition, err = m.getPartition(id); err != nil {
+		err = fmt.Errorf("MP[%d] already stopped", id)
+		return
+	}
+
+	partition.Stop()
+	// after func will detach partition
+	return
+}
+
+func (m *metadataManager) ReloadPartition(id uint64) (err error) {
+	if err = m.StopPartition(id); err != nil {
+		return
+	}
+	if err = m.StartPartition(id); err != nil {
+		return
+	}
+	return
 }
 
 // NewMetadataManager returns a new metadata manager.
