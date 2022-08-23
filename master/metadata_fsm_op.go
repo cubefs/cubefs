@@ -211,13 +211,14 @@ type volValue struct {
 	NearRead             bool
 	ForceROW             bool
 	ForceRowModifyTime   int64
-	EnableWriteCache	bool
+	EnableWriteCache     bool
 	CrossRegionHAType    bsProto.CrossRegionHAType
 	Authenticate         bool
 	EnableToken          bool
 	CrossZone            bool
 	AutoRepair           bool
 	VolWriteMutexEnable  bool
+	VolWriteMutexClient  string
 	ZoneName             string
 	OSSAccessKey         string
 	OSSSecretKey         string
@@ -268,11 +269,12 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FollowerRead:         vol.FollowerRead,
 		NearRead:             vol.NearRead,
 		ForceROW:             vol.ForceROW,
-		EnableWriteCache: 	  vol.enableWriteCache,
+		EnableWriteCache:     vol.enableWriteCache,
 		CrossRegionHAType:    vol.CrossRegionHAType,
 		Authenticate:         vol.authenticate,
 		AutoRepair:           vol.autoRepair,
 		VolWriteMutexEnable:  vol.volWriteMutexEnable,
+		VolWriteMutexClient:  vol.volWriteMutexClient,
 		ZoneName:             vol.zoneName,
 		CrossZone:            vol.crossZone,
 		EnableToken:          vol.enableToken,

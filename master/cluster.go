@@ -2938,6 +2938,9 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.enableToken = enableToken
 	vol.autoRepair = autoRepair
 	vol.volWriteMutexEnable = volWriteMutexEnable
+	if !volWriteMutexEnable {
+		vol.volWriteMutexClient = ""
+	}
 	vol.CrossRegionHAType = crossRegionHAType
 	if description != "" {
 		vol.description = description
@@ -4563,6 +4566,74 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp
 		return
 	}
 	addr = hosts[0]
+	return
+}
+
+func (c *Cluster) applyVolMutex(volName, clientIP string, force bool) (err error) {
+	var vol *Vol
+	if vol, err = c.getVol(volName); err != nil {
+		return
+	}
+
+	if !vol.volWriteMutexEnable {
+		return proto.ErrVolWriteMutexUnable
+	}
+
+	vol.volWriteMutex.Lock()
+	defer vol.volWriteMutex.Unlock()
+	if force {
+		oldClient := vol.volWriteMutexClient
+		vol.volWriteMutexClient = clientIP
+		if err = c.syncUpdateVol(vol); err != nil {
+			vol.volWriteMutexClient = oldClient
+			return proto.ErrPersistenceByRaft
+		}
+		return
+	}
+
+	if vol.volWriteMutexClient != "" {
+		if vol.volWriteMutexClient == clientIP {
+			return
+		}
+		return proto.ErrVolWriteMutexOccupied
+	}
+
+	vol.volWriteMutexClient = clientIP
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.volWriteMutexClient = ""
+		return proto.ErrPersistenceByRaft
+	}
+	return
+}
+
+func (c *Cluster) releaseVolMutex(volName, clientIP string) (err error) {
+	var (
+		vol       *Vol
+		oldClient string
+	)
+	if vol, err = c.getVol(volName); err != nil {
+		return
+	}
+
+	if !vol.volWriteMutexEnable {
+		return proto.ErrVolWriteMutexUnable
+	}
+	vol.volWriteMutex.Lock()
+	defer vol.volWriteMutex.Unlock()
+
+	if vol.volWriteMutexClient == "" {
+		return
+	}
+	if vol.volWriteMutexClient != clientIP {
+		return proto.ErrVolWriteMutexOccupied
+	}
+
+	oldClient = vol.volWriteMutexClient
+	vol.volWriteMutexClient = ""
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.volWriteMutexClient = oldClient
+		return proto.ErrPersistenceByRaft
+	}
 	return
 }
 

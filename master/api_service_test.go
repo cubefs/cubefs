@@ -1449,7 +1449,7 @@ func TestGetNoVolWriteMutex(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
 	fmt.Println(reqURL)
 	reply := process(reqURL, t)
-	if reply.Data != "no client info" {
+	if reply.Data != nil {
 		t.Errorf("Got volume write mutex resopnse is not expected")
 	}
 }

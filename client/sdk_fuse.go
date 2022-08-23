@@ -173,18 +173,6 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) (err er
 	}
 	gClient.readonly = opt.Rdonly
 
-	// check volume mutex is whether open, if true, apply volume mutex
-	if err = checkVolWriteMutex(); err != nil {
-		syslog.Println("check volume mutex permission failed: ", err)
-		log.LogFlush()
-		return err
-	}
-	defer func() {
-		if err != nil {
-			releaseVolWriteMutex()
-		}
-	}()
-
 	fsConn, err := mount(opt, fuseFd, clientState)
 	if err != nil {
 		syslog.Println("mount failed: ", err)
@@ -318,8 +306,6 @@ func registerInterceptedSignal() {
 			syslog.Printf("Killed due to a received signal (%v)\n", sig)
 			gClient.outputFile.Sync()
 			gClient.outputFile.Close()
-			// release volume write mutex
-			releaseVolWriteMutex()
 			os.Exit(1)
 		}
 	}()
@@ -444,28 +430,6 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 	return
 }
 
-func checkVolWriteMutex() (err error) {
-	if gClient.readonly {
-		return
-	}
-	err = gClient.mc.ClientAPI().ApplyVolMutex(gClient.volName)
-	if err == nil || err == proto.ErrVolWriteMutexUnable {
-		return nil
-	}
-	return
-}
-
-func releaseVolWriteMutex() (err error) {
-	if gClient.readonly {
-		return
-	}
-	err = gClient.mc.ClientAPI().ReleaseVolMutex(gClient.volName)
-	if err == nil || err == proto.ErrVolWriteMutexUnable {
-		return nil
-	}
-	return
-}
-
 func parseLogLevel(loglvl string) log.Level {
 	var level log.Level
 	switch strings.ToLower(loglvl) {
@@ -507,10 +471,9 @@ func StopClient() (clientState []byte) {
 	gClient.wg.Wait()
 	clientState = gClient.clientState
 
-	releaseVolWriteMutex()
 	gClient.super.Close()
-
 	syslog.Printf("Stop fuse client successfully.")
+
 	sysutil.RedirectFD(gClient.stderrFd, int(os.Stderr.Fd()))
 	gClient.outputFile.Sync()
 	gClient.outputFile.Close()

@@ -174,9 +174,10 @@ func (api *ClientAPI) GetEcPartitions(volName string) (view *proto.EcPartitionsV
 	return
 }
 
-func (api *ClientAPI) ApplyVolMutex(volName string) (err error) {
+func (api *ClientAPI) ApplyVolMutex(volName string, force bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminApplyVolMutex)
 	request.addParam("name", volName)
+	request.addParam("force", strconv.FormatBool(force))
 	_, err = api.mc.serveRequest(request)
 	return
 }
@@ -186,6 +187,20 @@ func (api *ClientAPI) ReleaseVolMutex(volName string) (err error) {
 	request.addParam("name", volName)
 	_, err = api.mc.serveRequest(request)
 	return
+}
+
+func (api *ClientAPI) GetVolMutex(volName string) (string, error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetVolMutex)
+	request.addParam("name", volName)
+	data, err := api.mc.serveRequest(request)
+	if err != nil {
+		return "", err
+	}
+	var clientIP string
+	if err = json.Unmarshal(data, &clientIP); err != nil {
+		return "", err
+	}
+	return clientIP, nil
 }
 
 func (api *ClientAPI) SetClientPkgAddr(addr string) (err error) {

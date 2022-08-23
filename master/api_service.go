@@ -4330,26 +4330,19 @@ func (m *Server) setCompactVol(w http.ResponseWriter, r *http.Request) {
 func (m *Server) applyVolWriteMutex(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName string
-		vol     *Vol
+		force   bool
 		err     error
 	)
 	if volName, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.getVol(volName); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	clientIP := iputil.RealIP(r)
-	err = vol.applyVolMutex(clientIP)
 
-	if err != nil && err != proto.ErrVolWriteMutexUnable {
+	force, err = extractForce(r)
+	clientIP := iputil.RealIP(r)
+
+	if err = m.cluster.applyVolMutex(volName, clientIP, force); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	if err != nil && err == proto.ErrVolWriteMutexUnable {
-		sendOkReply(w, r, newSuccessHTTPReply(err.Error()))
 		return
 	}
 	log.LogInfof("apply volume mutex success, volume(%v), clientIP(%v)", volName, clientIP)
@@ -4359,27 +4352,18 @@ func (m *Server) applyVolWriteMutex(w http.ResponseWriter, r *http.Request) {
 func (m *Server) releaseVolWriteMutex(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName string
-		vol     *Vol
 		err     error
 	)
 	if volName, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.getVol(volName); err != nil {
+	clientIP := iputil.RealIP(r)
+	if err = m.cluster.releaseVolMutex(volName, clientIP); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	err = vol.releaseVolMutex()
-	if err != nil && err != proto.ErrVolWriteMutexUnable {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	if err != nil && err == proto.ErrVolWriteMutexUnable {
-		sendOkReply(w, r, newSuccessHTTPReply(err.Error()))
-		return
-	}
 	log.LogInfof("release volume mutex success, volume(%v)", volName)
 	sendOkReply(w, r, newSuccessHTTPReply("release volume mutex success"))
 }
@@ -4398,22 +4382,12 @@ func (m *Server) getVolWriteMutexInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	var clientInfo *VolWriteMutexClient
 
-	err, clientInfo = vol.getVolMutexClientInfo()
-	if err != nil && err != proto.ErrVolWriteMutexUnable {
-		sendErrReply(w, r, newErrHTTPReply(err))
+	if !vol.volWriteMutexEnable {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolWriteMutexUnable))
 		return
 	}
-	if err != nil && err == proto.ErrVolWriteMutexUnable {
-		sendOkReply(w, r, newSuccessHTTPReply(err.Error()))
-		return
-	}
-	if clientInfo == nil {
-		sendOkReply(w, r, newSuccessHTTPReply("no client info"))
-	} else {
-		sendOkReply(w, r, newSuccessHTTPReply(clientInfo))
-	}
+	sendOkReply(w, r, newSuccessHTTPReply(vol.volWriteMutexClient))
 }
 
 func parseAndExtractPartitionInfo(r *http.Request) (partitionID uint64, err error) {
