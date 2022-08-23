@@ -1751,7 +1751,7 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 			if !os.FileMode(child.Type).IsDir() && path < marker {
 				continue
 			}
-			if os.FileMode(child.Type).IsDir() && path < marker {
+			if delimiter != pathSep && os.FileMode(child.Type).IsDir() && path < marker {
 				fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys, rc, append(dirs, child.Name), prefix, marker, delimiter)
 				if err != nil {
 					return fileInfos, prefixMap, nextMarker, rc, err
