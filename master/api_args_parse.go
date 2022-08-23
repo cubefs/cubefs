@@ -817,6 +817,18 @@ func parseRequestToCreateDataPartition(r *http.Request) (count int, name string,
 	return
 }
 
+func parseRequestToGetConcurrentLcNode(r *http.Request) (count uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if count, err = extractUint64(r, countKey); err != nil || count == 0 {
+		err = unmatchedKey(countKey)
+		return
+	}
+
+	return
+}
+
 func parseRequestToGetDataPartition(r *http.Request) (ID uint64, volName string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

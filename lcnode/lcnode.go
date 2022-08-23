@@ -171,7 +171,7 @@ func (l *LcNode) register(cfg *config.Config) {
 				timer.Reset(2 * time.Second)
 				continue
 			}
-			exporter.RegistConsul(l.clusterID, ModuleName, cfg)
+			//exporter.RegistConsul(l.clusterID, ModuleName, cfg)
 			l.nodeID = nodeID
 			log.LogInfof("register: register LcNode: nodeID(%v)", l.nodeID)
 			return
@@ -185,6 +185,7 @@ func (l *LcNode) register(cfg *config.Config) {
 func (l *LcNode) checkRegister(cfg *config.Config) {
 	for {
 		if time.Since(l.lastHeartbeat) > time.Second*time.Duration(defaultLcNodeTimeOutSec) {
+			l.StopScanners()
 			log.LogWarnf("Lcnode might be deregistered from master, retry registering...")
 			l.register(cfg)
 			l.lastHeartbeat = time.Now()
@@ -210,6 +211,11 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	if err = l.startServer(); err != nil {
 		return
 	}
+
+	exporter.Init(ModuleName, cfg)
+	exporter.RegistConsul(l.clusterID, ModuleName, cfg)
+
+	log.LogInfo("lcnode start successfully")
 	return
 }
 
