@@ -205,7 +205,6 @@ typedef struct {
 
     const char *mount_point;
     const char *ignore_path;
-    const char *config_path;
     pthread_t bg_pthread;
     void* sdk_handle;
     bool stop;

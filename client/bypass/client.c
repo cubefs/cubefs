@@ -1442,7 +1442,6 @@ int real_fcntl(int fd, int cmd, ...) {
         }
         if(cmd == F_SETLK || cmd == F_SETLKW) {
             re = cfs_fcntl_lock(g_client_info.cfs_client_id, fd, cmd, (struct flock *)arg);
-            typedef int (*renameat_t)(int olddirfd, const char *oldpath, int newdirfd, const char *newpath);
         } else if(cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC) {
             re_old = re;
             re = dup_fd(fd, re_old);
@@ -2260,6 +2259,7 @@ int start_libs(void *args) {
     int res = -1;
     int *dup_fds;
     char *mount_point;
+    const char *config_path;
     client_config_t client_config;
     client_state_t *client_state;
     client_state_t null_state = {NULL, NULL, 0, NULL, 0, NULL, false};
@@ -2276,18 +2276,18 @@ int start_libs(void *args) {
     }
     init_cfs_func(g_client_info.sdk_handle);
 
-    g_client_info.config_path = getenv("CFS_CONFIG_PATH");
-    if(g_client_info.config_path == NULL) {
-        g_client_info.config_path = CFS_CFG_PATH;
-        if(libc_access(g_client_info.config_path, F_OK)) {
-            g_client_info.config_path = CFS_CFG_PATH_JED;
+    config_path = getenv("CFS_CONFIG_PATH");
+    if(config_path == NULL) {
+        config_path = CFS_CFG_PATH;
+        if(libc_access(config_path, F_OK)) {
+            config_path = CFS_CFG_PATH_JED;
         }
     }
 
     // parse client configurations from ini file.
     memset(&client_config, 0, sizeof(client_config_t));
     // libc printf CANNOT be used in this init function, otherwise will cause circular dependencies.
-    if(ini_parse(g_client_info.config_path, config_handler, &client_config) < 0) {
+    if(ini_parse(config_path, config_handler, &client_config) < 0) {
         fprintf(stderr, "Can't load CFS config file, use CFS_CONFIG_PATH env variable.\n");
         goto out;
     }
@@ -2340,7 +2340,7 @@ int start_libs(void *args) {
     }
     g_client_info.conn_pool = new_conn_pool();
 
-    g_client_info.cfs_client_id = cfs_new_client(NULL, g_client_info.config_path, client_state->sdk_state);
+    g_client_info.cfs_client_id = cfs_new_client(NULL, config_path, client_state->sdk_state);
     if(g_client_info.cfs_client_id < 0) {
         fprintf(stderr, "Can't start CFS client, check the config file.\n");
         goto out;
@@ -2424,6 +2424,7 @@ void* stop_libs() {
             (files+count)->inode = f->inode_info->inode;
             (files+count)->size = f->inode_info->size;
             count++;
+            free(f);
         }
         client_state->files = files;
         client_state->file_num = count;
