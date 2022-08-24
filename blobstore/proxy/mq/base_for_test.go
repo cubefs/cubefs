@@ -25,16 +25,14 @@ import (
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
-func newProducer() Producer {
-	ctr := gomock.NewController(&testing.T{})
-	producer := mock.NewMockProducer(ctr)
+func newProducer(tb testing.TB) Producer {
+	producer := mock.NewMockProducer(gomock.NewController(tb))
 	producer.EXPECT().SendMessage(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(topic string, msg []byte) (err error) {
 		if topic == "priority" {
 			return ErrSendMessage
 		}
 		return nil
 	})
-
 	producer.EXPECT().SendMessages(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(topic string, msgs [][]byte) (err error) {
 		if len(msgs) == 2 {
 			return ErrSendMessage

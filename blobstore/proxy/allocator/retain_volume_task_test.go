@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -46,10 +45,7 @@ func TestRetainTaskClose(t *testing.T) {
 
 func TestRetain(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	cmcli := mock.ProxyMockClusterMgrCli(ctrl)
+	cmcli := mock.ProxyMockClusterMgrCli(t)
 
 	modeInfoMap := MockModeInfoMap()
 

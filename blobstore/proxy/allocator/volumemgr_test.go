@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	cm "github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -33,10 +32,7 @@ import (
 
 func TestNewVolumeMgr(t *testing.T) {
 	ctx := context.Background()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	cmcli := mock.ProxyMockClusterMgrCli(ctrl)
+	cmcli := mock.ProxyMockClusterMgrCli(t)
 	vm, err := NewVolumeMgr(ctx, BlobConfig{}, VolConfig{
 		InitVolumeNum:         4,
 		MetricReportIntervalS: 1, RetainIntervalS: 1,
@@ -48,9 +44,7 @@ func TestNewVolumeMgr(t *testing.T) {
 }
 
 func TestGetAllocList(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	cmcli := mock.ProxyMockClusterMgrCli(ctrl)
+	cmcli := mock.ProxyMockClusterMgrCli(t)
 	bid, err := NewBidMgr(context.Background(), BlobConfig{BidAllocNums: 10000}, cmcli)
 	require.NoError(t, err)
 
@@ -104,24 +98,14 @@ func TestGetAllocList(t *testing.T) {
 	modeInfoMap := make(map[codemode.CodeMode]*ModeInfo)
 
 	volumeStateInfo1 := &ModeInfo{volumes: &volumes{}, totalThreshold: 5 * 1024 * 1024, totalFree: 3 * 1024 * 1024}
-	volumeStateInfo1.volumes.Put(&volume{
-		AllocVolumeInfo: volInfo1,
-	})
-	volumeStateInfo1.volumes.Put(&volume{
-		AllocVolumeInfo: volInfo2,
-	})
+	volumeStateInfo1.volumes.Put(&volume{AllocVolumeInfo: volInfo1})
+	volumeStateInfo1.volumes.Put(&volume{AllocVolumeInfo: volInfo2})
 	modeInfoMap[codemode.CodeMode(1)] = volumeStateInfo1
 
 	volumeStateInfo2 := &ModeInfo{volumes: &volumes{}, totalThreshold: 5 * 1024 * 1024, totalFree: 32 * 1024 * 1024}
-	volumeStateInfo2.volumes.Put(&volume{
-		AllocVolumeInfo: volInfo3,
-	})
-	volumeStateInfo2.volumes.Put(&volume{
-		AllocVolumeInfo: volInfo4,
-	})
-	volumeStateInfo2.volumes.Put(&volume{
-		AllocVolumeInfo: volInfo5,
-	})
+	volumeStateInfo2.volumes.Put(&volume{AllocVolumeInfo: volInfo3})
+	volumeStateInfo2.volumes.Put(&volume{AllocVolumeInfo: volInfo4})
+	volumeStateInfo2.volumes.Put(&volume{AllocVolumeInfo: volInfo5})
 	modeInfoMap[codemode.CodeMode(2)] = volumeStateInfo2
 
 	vm := volumeMgr{
@@ -177,10 +161,7 @@ func TestGetAllocList(t *testing.T) {
 }
 
 func BenchmarkVolumeMgr_Alloc(b *testing.B) {
-	ctrl := gomock.NewController(b)
-	defer ctrl.Finish()
-
-	cmcli := mock.ProxyMockClusterMgrCli(ctrl)
+	cmcli := mock.ProxyMockClusterMgrCli(b)
 	ctx := context.Background()
 	bidMgr, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 100000}, cmcli)
 	vm := volumeMgr{clusterMgr: cmcli, BidMgr: bidMgr}
@@ -224,10 +205,7 @@ func BenchmarkVolumeMgr_Alloc(b *testing.B) {
 }
 
 func TestPollingAlloc(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	cmcli := mock.ProxyMockClusterMgrCli(ctrl)
+	cmcli := mock.ProxyMockClusterMgrCli(t)
 	ctx := context.Background()
 	bidMgr, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 100000}, cmcli)
 	vm := volumeMgr{clusterMgr: cmcli, BidMgr: bidMgr}
@@ -316,11 +294,7 @@ func TestPollingAlloc(t *testing.T) {
 
 func TestAllocVolumeRetry(t *testing.T) {
 	ctx := context.Background()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	cmcli := mock.ProxyMockClusterMgrCli(ctrl)
+	cmcli := mock.ProxyMockClusterMgrCli(t)
 	v := volumeMgr{clusterMgr: cmcli}
 
 	codemodes := codemode.GetAllCodeModes()
@@ -340,9 +314,7 @@ func TestAllocVolumeRetry(t *testing.T) {
 }
 
 func TestGetAvaliableVols(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	cmcli := mock.ProxyMockClusterMgrCli(ctrl)
+	cmcli := mock.ProxyMockClusterMgrCli(t)
 	v := &volumeMgr{
 		BlobConfig: BlobConfig{},
 		VolConfig:  VolConfig{},

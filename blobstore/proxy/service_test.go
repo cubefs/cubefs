@@ -113,12 +113,9 @@ func newClient() rpc.Client {
 func TestService_New(t *testing.T) {
 	// interface test
 	seedBroker, leader := newBrokersWith2Responses(t)
-	ctrl := gomock.NewController(t)
-	cmcli := mock.ProxyMockClusterMgrCli(ctrl)
-
-	defer ctrl.Finish()
 	defer seedBroker.Close()
 	defer leader.Close()
+	cmcli := mock.ProxyMockClusterMgrCli(t)
 
 	testCases := []struct {
 		cfg Config
