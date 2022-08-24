@@ -240,6 +240,9 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
+	verSeq, _ := strconv.ParseUint(r.FormValue("verSeq"), 10, 64)
+	verAll, _ := strconv.ParseBool(r.FormValue("verAll"))
+
 	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
@@ -249,6 +252,8 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	req := &InodeGetReq{
 		PartitionID: pid,
 		Inode:       id,
+		VerSeq:      verSeq,
+		VerAll:      verAll,
 	}
 	p := &Packet{}
 	err = mp.InodeGet(req, p)

@@ -4579,6 +4579,7 @@ func (m *Server) GetVersionInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	if verInfo, err = vol.VersionMgr.getVersionInfo(verSeq); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVersionOpError, Msg: err.Error()})
+		return
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(verInfo))
