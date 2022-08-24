@@ -607,6 +607,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 	mp.multiVersionList = verList
+	log.LogDebugf("action[onStart] verList %v", verList)
 
 	mp.volType = volumeInfo.VolType
 	var ebsClient *blobstore.BlobStoreClient

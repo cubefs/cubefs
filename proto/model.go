@@ -300,9 +300,10 @@ type DiscardDataPartitionInfos struct {
 }
 
 type VolVersionInfo struct {
-	Ver    uint64
-	Ctime  time.Time
-	Status uint8 // building,normal,deleted,abnormal
+	Ver     uint64
+	Ctime   time.Time
+	DelTime time.Time
+	Status  uint8 // building,normal,deleted,abnormal
 }
 
 type VolVersionInfoList struct {

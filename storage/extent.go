@@ -411,7 +411,7 @@ func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64) erro
 			return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 		}
 	} else if writeType == AppendRandomWriteType {
-		log.LogDebug("action[checkOffsetAndSize] offset %v size %v", offset, size)
+		log.LogDebugf("action[checkOffsetAndSize] offset %v size %v", offset, size)
 		if offset < util.ExtentSize || size == 0 {
 			return NewParameterMismatchErr(fmt.Sprintf("writeType=%v offset=%v size=%v", writeType, offset, size))
 		}
