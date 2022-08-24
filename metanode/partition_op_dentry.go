@@ -248,7 +248,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 		Name:     req.Name,
 		VerSeq:   req.Verseq,
 	}
-	log.LogDebugf("action[DeleteDentry] den(%v)", dentry)
+	log.LogDebugf("action[DeleteDentry] den param(%v)", dentry)
 
 	val, err := dentry.Marshal()
 	if err != nil {

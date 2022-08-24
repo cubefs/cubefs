@@ -88,7 +88,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 			return
 		}
 		if !proto.IsDir(parIno.Type) {
-			log.LogErrorf("action[fsmCreateDentry] ParentId [%v] type [%v] not dir, dentry name [%v], inode [%v]", dentry.ParentId, parIno.Type, dentry.Name, dentry.Inode)
+			log.LogErrorf("action[fsmCreateDentry] ParentId [%v] get [%v] but should del, dentry name [%v], inode [%v]", dentry.ParentId, parIno, dentry.Name, dentry.Inode)
 			status = proto.OpArgMismatchErr
 			return
 		}
@@ -111,9 +111,8 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 				parIno.SetMtime()
 			}
 			return
-		} else if proto.OsModeType(dentry.Type) != proto.OsModeType(d.Type) && !proto.IsSymlink(dentry.Type) && !proto.IsSymlink(d.Type) {
-			log.LogErrorf("action[fsmCreateDentry] ParentId [%v] get [%v] but should del, dentry name [%v], inode [%v], type[%v,%v],dir[%v,%v]",
-				dentry.ParentId, parIno, dentry.Name, dentry.Inode, dentry.Type, d.Type, proto.IsSymlink(dentry.Type), proto.IsSymlink(d.Type))
+		} else if proto.OsModeType(dentry.Type) != proto.OsModeType(d.Type) {
+			log.LogDebugf("action[fsmCreateDentry.ver] OpArgMismatchErr [%v] [%v]", proto.OsModeType(dentry.Type), proto.OsModeType(d.Type))
 			status = proto.OpArgMismatchErr
 			return
 		} else if dentry.ParentId == d.ParentId && strings.Compare(dentry.Name, d.Name) == 0 && dentry.Inode == d.Inode {
@@ -145,7 +144,7 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 		status = proto.OpNotExistErr
 		return nil, status
 	}
-	log.LogDebug("action[getDentry] dentry[%v]", dentry)
+	log.LogDebugf("action[getDentry] dentry[%v]", item.(*Dentry))
 
 	den := mp.getDentryByVerSeq(item.(*Dentry), dentry.VerSeq)
 	if den != nil {
@@ -204,7 +203,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 // Delete dentry from the dentry tree.
 func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp *DentryResponse) {
 
-	log.LogDebugf("action[fsmDeleteDentry] dentry(%v)", denParm)
+	log.LogDebugf("action[fsmDeleteDentry] delete param (%v)", denParm)
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 
@@ -214,7 +213,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 		clean  bool
 	)
 	if checkInode {
-		log.LogDebugf("action[fsmDeleteDentry] dentry %v", denParm)
+		log.LogDebugf("action[fsmDeleteDentry] delete param %v", denParm)
 		item = mp.dentryTree.Execute(func(tree *btree.BTree) interface{} {
 			d := tree.CopyGet(denParm)
 			if d == nil {
@@ -228,11 +227,11 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 				log.LogDebugf("action[fsmDeleteDentry] volume snapshot not enabled,delete directly")
 				return mp.dentryTree.tree.Delete(den)
 			}
-			_, doMore, clean = item.(*Dentry).deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.multiVersionList.VerList)
+			_, doMore, clean = den.deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.multiVersionList.VerList)
 			return den
 		})
 	} else {
-		log.LogDebugf("action[fsmDeleteDentry] dentry %v", denParm)
+		log.LogDebugf("action[fsmDeleteDentry] denParm dentry %v", denParm)
 		if mp.verSeq == 0 {
 			item = mp.dentryTree.tree.Delete(denParm)
 		} else {
@@ -359,8 +358,8 @@ func (mp *metaPartition) getDentryTree() *BTree {
 }
 
 func (mp *metaPartition) getDentryByVerSeq(dy *Dentry, verSeq uint64) (d *Dentry) {
-	log.LogInfof("action[getDentryByVerSeq] verseq %v, tmp dentry %v, inode id %v, name %v", verSeq, dy.VerSeq, dy.Inode, dy.Name)
-	d, _ = dy.getDentryByVerSeq(verSeq)
+	log.LogInfof("action[getDentryFromVerList] verseq %v, tmp dentry %v, inode id %v, name %v", verSeq, dy.VerSeq, dy.Inode, dy.Name)
+	d, _ = dy.getDentryFromVerList(verSeq)
 	return
 }
 
@@ -419,6 +418,7 @@ func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 // else if req.Marker != "" and req.Limit != 0, return dentries from pid:marker to pid:xxxx with limit count
 //
 func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitResp) {
+	log.LogDebugf("action[readDirLimit] req %v", req)
 	resp = &ReadDirLimitResp{}
 	startDentry := &Dentry{
 		ParentId: req.ParentID,
@@ -445,5 +445,6 @@ func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitR
 		}
 		return true
 	})
+	log.LogDebugf("action[readDirLimit] resp %v", resp)
 	return
 }

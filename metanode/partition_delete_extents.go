@@ -132,6 +132,7 @@ LOOP:
 		case eks := <-mp.extDelCh:
 			var data []byte
 			buf = buf[:0]
+			log.LogDebugf("del eks [%v]", eks)
 			for _, ek := range eks {
 				data, err = ek.MarshalBinaryWithCheckSum(ek.VerSeq > 0)
 				if err != nil {
