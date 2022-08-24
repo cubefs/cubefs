@@ -31,7 +31,7 @@ import (
 
 type mockBidMgr struct{}
 
-func (m *mockBidMgr) BidAlloc(c *rpc.Context) {
+func (mockBidMgr) BidAlloc(c *rpc.Context) {
 	args := new(clustermgr.BidScopeArgs)
 	if err := c.ArgsBody(args); err != nil {
 		c.RespondError(err)
@@ -43,79 +43,64 @@ func (m *mockBidMgr) BidAlloc(c *rpc.Context) {
 	})
 }
 
-func runBidServer(svr *mockBidMgr) string {
+func runBidServer(svr mockBidMgr) (string, func()) {
 	r := rpc.New()
 	r.Handle(http.MethodPost, "/bid/alloc", svr.BidAlloc)
 	testServer := httptest.NewServer(r)
-	return testServer.URL
+	return testServer.URL, func() { testServer.Close() }
 }
 
 func TestGetBidScopes(t *testing.T) {
-	mc := &mockBidMgr{}
-	clusterHost := runBidServer(mc)
+	clusterHost, clean := runBidServer(mockBidMgr{})
+	defer clean()
 	mockCli := clustermgr.New(&clustermgr.Config{LbConfig: rpc.LbConfig{Hosts: []string{clusterHost}}})
 
 	ctx := context.Background()
-	bid, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 10000}, mockCli)
+	bid, err := NewBidMgr(ctx, BlobConfig{BidAllocNums: 10000}, mockCli)
+	require.NoError(t, err)
 	{
 		objBidScopes, err := bid.Alloc(ctx, 3)
-		if err != nil {
-			t.Fatal(err)
-		}
-
+		require.NoError(t, err)
 		require.Equal(t, 10001, int(objBidScopes[0].StartBid))
 		require.Equal(t, 10003, int(objBidScopes[0].EndBid))
 
 		time.Sleep(100 * time.Millisecond)
 		objBidScopes11, err := bid.Alloc(ctx, 3)
-		if err != nil {
-			t.Fatal(err)
-		}
-
+		require.NoError(t, err)
 		require.Equal(t, 10004, int(objBidScopes11[0].StartBid))
 		require.Equal(t, 10006, int(objBidScopes11[0].EndBid))
 
 		time.Sleep(100 * time.Millisecond)
 		objBidScopes2, err := bid.Alloc(ctx, 9994)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		require.Equal(t, 10007, int(objBidScopes2[0].StartBid))
 		require.Equal(t, 20000, int(objBidScopes2[0].EndBid))
 
 		objBidScopes3, err := bid.Alloc(ctx, 6)
-		if err != nil {
-			t.Fatal(err)
-		}
-
+		require.NoError(t, err)
 		require.Equal(t, 10001, int(objBidScopes3[0].StartBid))
 		require.Equal(t, 10006, int(objBidScopes3[0].EndBid))
 
 		time.Sleep(100 * time.Millisecond)
 		objBidScopes4, err := bid.Alloc(ctx, 9998)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		require.Equal(t, 10007, int(objBidScopes4[0].StartBid))
 		require.Equal(t, 20000, int(objBidScopes4[0].EndBid))
-
 		require.Equal(t, 10001, int(objBidScopes4[1].StartBid))
 		require.Equal(t, 10004, int(objBidScopes4[1].EndBid))
 	}
 }
 
 func BenchmarkAllocBid(b *testing.B) {
-	mc := &mockBidMgr{}
-	clusterHost := runBidServer(mc)
+	clusterHost, clean := runBidServer(mockBidMgr{})
+	defer clean()
 	mockCli := clustermgr.New(&clustermgr.Config{LbConfig: rpc.LbConfig{Hosts: []string{clusterHost}}})
 
 	ctx := context.Background()
-	bid, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 10000}, mockCli)
+	bid, err := NewBidMgr(ctx, BlobConfig{BidAllocNums: 10000}, mockCli)
+	require.NoError(b, err)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := bid.Alloc(ctx, 2)
-		if err != nil {
-			b.Fatal(err)
-		}
+		bid.Alloc(ctx, 2)
 	}
 }

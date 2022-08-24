@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"testing"
 	"time"
 
 	"github.com/golang/mock/gomock"
@@ -29,24 +30,22 @@ import (
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
-func ProxyMockClusterMgrCli(c *gomock.Controller) cm.APIProxy {
-	cmcli := mocks.NewMockClientAPI(c)
+func ProxyMockClusterMgrCli(tb testing.TB) cm.APIProxy {
+	cmcli := mocks.NewMockClientAPI(gomock.NewController(tb))
 	cmcli.EXPECT().RegisterService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	cmcli.EXPECT().AllocBid(gomock.Any(), gomock.Any()).Return(&cm.BidScopeRet{StartBid: proto.BlobID(1), EndBid: proto.BlobID(10000)}, nil).AnyTimes()
 	cmcli.EXPECT().GetConfig(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) (ret string, err error) {
-		if key == proto.CodeModeConfigKey {
+		switch key {
+		case proto.CodeModeConfigKey:
 			policy := []codemode.Policy{
-				{
-					ModeName: codemode.EC6P6.Name(), MinSize: 0, MaxSize: 0, SizeRatio: 0.3, Enable: true,
-				}, {
-					ModeName: codemode.EC15P12.Name(), MinSize: 0, MaxSize: 0, SizeRatio: 0.7, Enable: true,
-				},
+				{ModeName: codemode.EC6P6.Name(), MinSize: 0, MaxSize: 0, SizeRatio: 0.3, Enable: true},
+				{ModeName: codemode.EC15P12.Name(), MinSize: 0, MaxSize: 0, SizeRatio: 0.7, Enable: true},
 			}
 			data, err := json.Marshal(policy)
 			return string(data), err
-		} else if key == proto.VolumeReserveSizeKey {
+		case proto.VolumeReserveSizeKey:
 			return "1024", nil
-		} else if key == proto.VolumeChunkSizeKey {
+		case proto.VolumeChunkSizeKey:
 			return "17179869184", nil
 		}
 		return
