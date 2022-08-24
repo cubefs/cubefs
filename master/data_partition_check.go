@@ -276,7 +276,7 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (di
 	return
 }
 
-func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSize uint64) {
+func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSize uint64, dpReplicaNum int) {
 	var msg string
 	if excessAddr, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication"+
@@ -302,6 +302,17 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
 		Warn(c.Name, msg)
+		return
+	}
+
+	if partition.isRecover && len(partition.Hosts) == dpReplicaNum && (time.Now().Unix()-partition.modifyTime > defaultCheckRecoverDuration) && partition.isDataCatchUpInStrictMode() {
+		partition.RLock()
+		if partition.isRecover {
+			partition.isRecover = false
+			c.syncUpdateDataPartition(partition)
+			log.LogWarn(fmt.Sprintf("action[checkReplicationTask],partitionID:%v reset isRecover", partition.PartitionID))
+		}
+		partition.RUnlock()
 	}
 
 	return

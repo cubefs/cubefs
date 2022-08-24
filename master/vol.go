@@ -416,7 +416,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol 
 		for addr, diskPath := range diskErrorAddrs {
 			dataNodeBadDisksOfVol[addr] = append(dataNodeBadDisksOfVol[addr], diskPath)
 		}
-		dp.checkReplicationTask(c, vol.dataPartitionSize)
+		dp.checkReplicationTask(c, vol.dataPartitionSize, int(vol.dpReplicaNum))
 	}
 	return
 }

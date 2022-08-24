@@ -73,8 +73,10 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			}
 			if partition.isDataCatchUp() && len(partition.Replicas) >= int(replicaNum) {
 				partition.RLock()
-				partition.isRecover = false
-				c.syncUpdateDataPartition(partition)
+				if partition.isRecover {
+					partition.isRecover = false
+					c.syncUpdateDataPartition(partition)
+				}
 				partition.RUnlock()
 			} else {
 				newBadDpIds = append(newBadDpIds, partitionID)

@@ -32,8 +32,10 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 			}
 			if partition.isDataCatchUpInStrictMode() {
 				partition.RLock()
-				partition.isRecover = false
-				c.syncUpdateDataPartition(partition)
+				if partition.isRecover {
+					partition.isRecover = false
+					c.syncUpdateDataPartition(partition)
+				}
 				partition.RUnlock()
 			} else {
 				newBadDpIds = append(newBadDpIds, partitionID)
