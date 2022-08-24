@@ -349,10 +349,13 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 
 // Delete a raft node.
 func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
-	var canRemoveSelf bool
-	if canRemoveSelf, err = dp.canRemoveSelf(); err != nil {
-		return
+	canRemoveSelf := true
+	if dp.config.NodeID == req.RemovePeer.ID {
+		if canRemoveSelf, err = dp.canRemoveSelf(); err != nil {
+			return
+		}
 	}
+
 	peerIndex := -1
 	data, _ := json.Marshal(req)
 	isUpdated = false
