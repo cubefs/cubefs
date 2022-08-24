@@ -127,17 +127,6 @@ func uin8ListTointListTest(l []uint8) []int {
 	return ret
 }
 
-func TestIsLocalStripeIndex(t *testing.T) {
-	testWithAllMode(t, testIsLocalStripeIndex)
-}
-
-func testIsLocalStripeIndex(t *testing.T, mode codemode.CodeMode) {
-	for idx := 0; idx < mode.GetShardNum(); idx++ {
-		isLocal := contains(allModeStripe[mode].L, idx)
-		require.Equal(t, isLocal, IsLocalStripeIndex(mode, idx))
-	}
-}
-
 func TestIdxSplitByIdc(t *testing.T) {
 	testWithAllMode(t, testIdxSplitByIdc)
 }

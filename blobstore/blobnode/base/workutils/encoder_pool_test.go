@@ -18,17 +18,26 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 )
 
-func TestReEncoderPool(t *testing.T) {
-	pool := EncoderPoolInst()
-	pool2 := EncoderPoolInst()
-	require.Equal(t, pool, pool2)
+func TestEncoderPool(t *testing.T) {
+	modes := codemode.GetAllCodeModes()
+	for _, mode := range modes {
+		_, err := GetEncoder(mode)
+		require.NoError(t, err)
+	}
 
-	encoderN3M2 := pool.GetEncoder(3, 2)
-	encoderN5M3 := pool.GetEncoder(5, 3)
-	require.NotEqual(t, encoderN3M2, encoderN5M3)
+	encode1, err := GetEncoder(codemode.EC15P12)
+	require.NoError(t, err)
+	encoder2, err := GetEncoder(codemode.EC15P12)
+	require.NoError(t, err)
+	require.Equal(t, encode1, encoder2)
 
-	encoderN5M3Copy := pool.GetEncoder(5, 3)
-	require.Equal(t, encoderN5M3, encoderN5M3Copy)
+	encoder3, err := GetEncoder(3)
+	require.NoError(t, err)
+	encoder4, err := GetEncoder(4)
+	require.NoError(t, err)
+	require.NotEqual(t, encoder3, encoder4)
 }

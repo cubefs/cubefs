@@ -61,17 +61,6 @@ func (s *BidExistStatus) CanRecover() bool {
 	return existInGlobalStripe >= s.mode.T().N
 }
 
-// IsLocalStripeIndex returns true if index is local unit.
-func IsLocalStripeIndex(mode codemode.CodeMode, idx int) bool {
-	localStripe, n, m := mode.T().LocalStripe(idx)
-	for _, localIdx := range localStripe[n : n+m] {
-		if localIdx == idx {
-			return true
-		}
-	}
-	return false
-}
-
 // IdxSplitByLocalStripe returns local stripe idx
 func IdxSplitByLocalStripe(idxs []uint8, mode codemode.CodeMode) [][]uint8 {
 	splitMap := make(map[int][]uint8)

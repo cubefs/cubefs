@@ -50,15 +50,9 @@ var (
 
 const defaultGetConcurrency = 100
 
-type (
-	// N data block count
-	N int
-	// M parity data block count
-	M            int
-	downloadPlan struct {
-		downloadReplicas []proto.VunitLocation
-	}
-)
+type downloadPlan struct {
+	downloadReplicas Vunits
+}
 
 // Vunits volume stripe locations.
 type Vunits []proto.VunitLocation
@@ -109,18 +103,11 @@ func (locs Vunits) IntactGlobalSet(mode codemode.CodeMode, bad []uint8) Vunits {
 	return locs.Subset(idxes)
 }
 
-type repairStripe struct {
-	replicas Vunits
-	n        N
-	m        M
-	badIdxes []uint8
-}
-
 func (stripe *repairStripe) genDownloadPlans() []downloadPlan {
 	badi := stripe.badIdxes
 	n := stripe.n
 	var downloadPlans []downloadPlan
-	var wellReplications []proto.VunitLocation
+	var wellReplications Vunits
 
 	stripeReplicas := make([]proto.VunitLocation, len(stripe.replicas))
 	copy(stripeReplicas, stripe.replicas)
@@ -152,6 +139,13 @@ func (stripe *repairStripe) genDownloadPlans() []downloadPlan {
 	}
 
 	return downloadPlans
+}
+
+type repairStripe struct {
+	replicas Vunits
+	n        int
+	m        int
+	badIdxes []uint8
 }
 
 // duties：repair shard data
@@ -452,147 +446,52 @@ func (r *ShardRecover) RecoverShards(ctx context.Context, repairIdxs []uint8, di
 		r.ds.forbiddenDownload(repairVuid)
 	}
 
-	//what:split global chunk data and local chunk data repair
-	//why:two ways of repair is difference
-	var globalRepairIdxs, localRepairIdxs []uint8
-	for _, repairIdx := range repairIdxs {
-		if workutils.IsLocalStripeIndex(r.codeMode, int(repairIdx)) {
-			localRepairIdxs = append(localRepairIdxs, repairIdx)
-		} else {
-			globalRepairIdxs = append(globalRepairIdxs, repairIdx)
-		}
-	}
-	span.Infof("start recover shards: localRepairIdxs[%+v], globalRepairIdxs[%+v], len repairBidInfos[%d]",
-		localRepairIdxs, globalRepairIdxs, len(r.repairBidsReadOnly))
+	span.Infof("start recover shards: repairIdxs[%+v], len repairBidInfos[%d]", repairIdxs, len(r.repairBidsReadOnly))
 
-	if len(globalRepairIdxs) != 0 {
-		span.Infof("start recoverGlobalReplicaShards")
-		err := r.recoverGlobalReplicaShards(ctx, globalRepairIdxs, repairBids)
-		if err != nil {
-			span.Errorf("end recoverGlobalReplicaShards failed: err[%+v]", err)
-			return err
-		}
+	err := r.recoverReplicaShards(ctx, repairIdxs, repairBids)
+	if err != nil {
+		span.Errorf("end recoverReplicaShards failed: err[%+v]", err)
+		return err
 	}
 
-	if len(localRepairIdxs) != 0 {
-		span.Infof("start recoverLocalReplicaShards")
-		err := r.recoverLocalReplicaShards(ctx, localRepairIdxs, repairBids)
-		if err != nil {
-			span.Errorf("end recoverLocalReplicaShards failed: err[%+v]", err)
-			return err
-		}
-	}
 	span.Infof("end recover shards success")
 	return nil
 }
 
-func (r *ShardRecover) recoverGlobalReplicaShards(ctx context.Context, repairIdxs []uint8, repairBids []proto.BlobID) error {
+func (r *ShardRecover) recoverReplicaShards(ctx context.Context, repairIdxs []uint8, repairBids []proto.BlobID) error {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start recover global shards: repairIdxs[%+v], len(repairBids)[%d]", repairIdxs, len(repairBids))
 
 	failBids := repairBids
 	var err error
 
-	span.Infof("step1: recover by local stripe")
-	err = r.recoverByLocalStripe(ctx, failBids, repairIdxs)
-	if err != nil {
-		return err
+	if localRepairable(repairIdxs, r.codeMode) {
+		span.Info("recover by local stripe")
+		err = r.recoverByLocalStripe(ctx, failBids, repairIdxs)
+		if err != nil {
+			span.Warnf("recover by local stripe failed:%v", err)
+		}
+
+		failBids = r.collectFailBids(failBids, repairIdxs)
+		if len(failBids) == 0 {
+			return nil
+		}
+		span.Warnf("after local repaired, still fail bids is:%v", failBids)
 	}
 
-	failBids = r.collectFailBids(failBids, repairIdxs)
-	if len(failBids) == 0 {
-		return nil
-	}
-
-	span.Infof("step2: recover by local stripe fail need recover by global stripe")
+	span.Infof("recover by global stripe")
 	err = r.recoverByGlobalStripe(ctx, failBids, repairIdxs)
 	if err != nil {
+		span.Errorf("recover by global stripe failed %v", err)
 		return err
 	}
 
 	failBids = r.collectFailBids(failBids, repairIdxs)
 	if len(failBids) != 0 {
-		span.Errorf("recoverGlobalReplicaShards failed: failBids len[%d]", len(failBids))
+		span.Errorf("recoverReplicaShards failed: failBids len[%d]", len(failBids))
 		return errBidCanNotRecover
 	}
 	return nil
-}
-
-func (r *ShardRecover) recoverLocalReplicaShards(ctx context.Context, repairIdxs []uint8, repairBids []proto.BlobID) error {
-	span := trace.SpanFromContextSafe(ctx)
-	span.Infof("start recover local vunit shards: repairIdxs[%+v], len(repairBids)[%d]", repairIdxs, len(repairBids))
-
-	failBids := repairBids
-	var allocBufErr error
-
-	span.Infof("step1: recover by local stripe")
-	allocBufErr = r.recoverByLocalStripe(ctx, failBids, repairIdxs)
-	if allocBufErr != nil {
-		return allocBufErr
-	}
-
-	failBids = r.collectFailBids(failBids, repairIdxs)
-	if len(failBids) == 0 {
-		return nil
-	}
-
-	globalRepairIdxs := r.collectGlobalBadReplicas(ctx, failBids, repairIdxs)
-	span.Infof("step2: recover by local stripe fail need recover other global repl by global stripeIdx[%+v]", globalRepairIdxs)
-	allocBufErr = r.recoverByGlobalStripe(ctx, failBids, globalRepairIdxs)
-	if allocBufErr != nil {
-		return allocBufErr
-	}
-
-	span.Infof("step3: recover by local stripe again")
-	allocBufErr = r.recoverByLocalStripe(ctx, failBids, repairIdxs)
-	if allocBufErr != nil {
-		return allocBufErr
-	}
-
-	failBids = r.collectFailBids(failBids, repairIdxs)
-	if len(failBids) != 0 {
-		span.Errorf("recoverLocalReplicaShards failed: failBids len[%d]", len(failBids))
-		return errBidCanNotRecover
-	}
-
-	return nil
-}
-
-func (r *ShardRecover) collectGlobalBadReplicas(ctx context.Context, failBids []proto.BlobID, repairIdxs []uint8) []uint8 {
-	span := trace.SpanFromContextSafe(ctx)
-
-	globalRepairIdxs := []uint8{}
-	globalRepairIdxsMap := make(map[int]bool)
-	globalReplicaIdxs := []int{}
-	repairIdxsInIdc := workutils.IdxSplitByLocalStripe(repairIdxs, r.codeMode)
-
-	for _, repairIdxs := range repairIdxsInIdc {
-		if len(repairIdxs) == 0 {
-			continue
-		}
-		idxs, n, _ := r.codeMode.T().LocalStripe(int(repairIdxs[0]))
-		globalReplicaIdxs = append(globalReplicaIdxs, idxs[0:n]...)
-	}
-
-	for _, bid := range failBids {
-		for _, globalReplicaIdx := range globalReplicaIdxs {
-			if r.chunksShardsBuf[globalReplicaIdx] == nil {
-				globalRepairIdxsMap[globalReplicaIdx] = true
-				continue
-			}
-
-			if !r.chunksShardsBuf[globalReplicaIdx].shardIsOk(bid) {
-				globalRepairIdxsMap[globalReplicaIdx] = true
-			}
-		}
-	}
-
-	for idx := range globalRepairIdxsMap {
-		globalRepairIdxs = append(globalRepairIdxs, uint8(idx))
-	}
-
-	span.Infof("collect global bad replicas: idx[%+v]", globalRepairIdxs)
-	return globalRepairIdxs
 }
 
 func (r *ShardRecover) directGetShard(ctx context.Context, repairBids []proto.BlobID, repairIdxs []uint8) (failBids []proto.BlobID, allocBufErr error) {
@@ -649,9 +548,11 @@ func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, repairBids []p
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start recoverByGlobalStripe: repairIdxs[%+v]", repairIdxs)
 
-	stripe, err := r.genGlobalStripe(repairIdxs)
-	if err != nil {
-		return err
+	stripe := repairStripe{
+		replicas: r.replicas,
+		n:        r.codeMode.T().N,
+		m:        r.codeMode.T().M,
+		badIdxes: repairIdxs,
 	}
 	idxs := stripe.replicas.Indexes()
 	err = r.allocBuf(ctx, idxs)
@@ -673,7 +574,6 @@ func (r *ShardRecover) repairStripe(ctx context.Context, repairBids []proto.Blob
 	downloadPlans := stripe.genDownloadPlans()
 	span.Infof("start repairStripe: downloadPlans len[%d], len(repairBids)[%d]", len(downloadPlans), len(repairBids))
 	failBids := repairBids
-
 	// step2:download data according download plans and repair data
 	for _, plan := range downloadPlans {
 		r.download(ctx, failBids, plan.downloadReplicas)
@@ -731,7 +631,7 @@ func (r *ShardRecover) downloadReplShards(ctx context.Context, replica proto.Vun
 				return
 			}
 
-			span.Errorf("download shard: replica[%+v], bid[%d], err[%+v]", replica, downloadBid, err)
+			span.Errorf("download shard: replica[%+v],index[%d], bid[%d], err[%+v]", replica, replica.Vuid.Index(), downloadBid, err)
 			if AllShardsCanNotDownload(err) {
 				span.Infof("all shards can not download, so cancel download: replica[%+v]", replica)
 				cancel()
@@ -791,18 +691,20 @@ func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, st
 	span := trace.SpanFromContextSafe(ctx)
 
 	var err error
-	n := stripe.n
-	m := stripe.m
 	replicas := stripe.replicas
 
-	span.Infof("start repair stripe: n[%d], m[%d], bids len[%d], replicas[%+v]", n, m, len(repairBids), replicas)
+	span.Infof("start repair stripe: code mode[%v], bids len[%d], replicas[%+v]", r.codeMode.Tactic(), len(repairBids), replicas)
 
 	if len(replicas) == 0 {
 		span.Error("unexpect len of replicas is zero")
 		return errUnexpectedLength
 	}
 
-	encoder := workutils.EncoderPoolInst().GetEncoder(int(n), int(m))
+	encoder, err := workutils.GetEncoder(r.codeMode)
+	if err != nil {
+		return err
+	}
+
 	for _, bid := range repairBids {
 		span.Debugf("start repair: bid[%d]", bid)
 
@@ -829,8 +731,9 @@ func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, st
 			continue
 		}
 
-		if len(recoverIdxOfVunit) > int(m) {
-			span.Debugf("too many data can not prepared: bid[%d]", bid)
+		// broken uints length > M + L can not repair
+		if len(recoverIdxOfVunit) > r.codeMode.Tactic().M+r.codeMode.Tactic().L {
+			span.Warnf("too many data can not prepared: bid[%d]", bid)
 			continue
 		}
 
@@ -845,14 +748,14 @@ func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, st
 			continue
 		}
 
-		err = encoder.Reconstruct(blobShards)
+		err = encoder.Reconstruct(blobShards, recoverIdxOfStripe)
 		if err != nil {
-			span.Errorf("reconstruct shard failed: err[%+v]", err)
+			span.Errorf("reconstruct shard failed: err[%+v],codemode:%v", err, r.codeMode.Tactic())
+			return errBidCanNotRecover
 		}
-		// make sure ec reconstruct is correct
-		ok, err := encoder.Verify(blobShards)
-		if err != nil || !ok {
-			span.Errorf(" ec verify failed: ok[%+v], err[%+v]", err, ok)
+
+		if ok, err := encoder.Verify(blobShards); !ok {
+			span.Errorf("verify data failed,err[%v]", err)
 			return errEcVerifyFailed
 		}
 
@@ -866,6 +769,7 @@ func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, st
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -881,25 +785,13 @@ func (r *ShardRecover) genLocalStripes(repairIdxs []uint8) (stripes []repairStri
 		replicas := r.replicas.Subset(idxs)
 		stripe := repairStripe{
 			replicas: replicas,
-			n:        N(n),
-			m:        M(m),
+			n:        n,
+			m:        m,
 			badIdxes: oneIdcRepairIdxs,
 		}
 		stripes = append(stripes, stripe)
 	}
 	return stripes, nil
-}
-
-func (r *ShardRecover) genGlobalStripe(repairIdxs []uint8) (stripe repairStripe, err error) {
-	// generate global stripes
-	idxs, n, m := r.codeMode.T().GlobalStripe()
-	replicas := r.replicas.Subset(idxs)
-	return repairStripe{
-		replicas: replicas,
-		n:        N(n),
-		m:        M(m),
-		badIdxes: repairIdxs,
-	}, nil
 }
 
 func (r *ShardRecover) collectFailBids(repairBids []proto.BlobID, repairIdxs []uint8) []proto.BlobID {
@@ -977,4 +869,22 @@ func AllShardsCanNotDownload(shardDownloadFail error) bool {
 	default:
 		return true
 	}
+}
+
+func localRepairable(badIdxs []uint8, mode codemode.CodeMode) bool {
+	// localMap use count each az bad uint num
+	localMap := make(map[int]int)
+	for _, idx := range badIdxs {
+		stripeIdxs, _, _ := mode.T().LocalStripe(int(idx))
+		if len(stripeIdxs) == 0 {
+			return false
+		}
+		localMap[stripeIdxs[0]]++
+	}
+	for _, v := range localMap {
+		if v > mode.T().L/mode.T().AZCount {
+			return false
+		}
+	}
+	return true
 }

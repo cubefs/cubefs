@@ -90,6 +90,14 @@ func (e *lrcEncoder) Verify(shards [][]byte) (bool, error) {
 	e.pool.Acquire()
 	defer e.pool.Release()
 
+	if len(shards) == (e.CodeMode.N+e.CodeMode.M+e.CodeMode.L)/e.CodeMode.AZCount {
+		ok, err := e.localEngine.Verify(shards)
+		if err != nil {
+			err = errors.Info(err, "lrcEncoder.Verify local shards failed")
+		}
+		return ok, err
+	}
+
 	ok, err := e.engine.Verify(shards[:e.CodeMode.N+e.CodeMode.M])
 	if !ok || err != nil {
 		if err != nil {

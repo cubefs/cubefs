@@ -28,26 +28,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-func TestGenDownloadPlans(t *testing.T) {
-	mode := codemode.EC15P12
-	replicas := genMockVol(1, mode)
-	repair := NewShardRecover(replicas, mode, nil, nil, 4, proto.TaskTypeDiskRepair)
-	badi := []uint8{1, 2}
-	stripe, err := repair.genGlobalStripe(badi)
-	require.NoError(t, err)
-	plans := stripe.genDownloadPlans()
-
-	require.Equal(t, 11, len(plans))
-	for _, plan := range plans {
-		downloadReplicaCnt := 0
-		for _, replica := range plan.downloadReplicas {
-			require.Equal(t, false, replica.Vuid.Index() == 1 || replica.Vuid.Index() == 2)
-			downloadReplicaCnt++
-		}
-		require.Equal(t, 15, downloadReplicaCnt)
-	}
-}
-
 func TestShardsBuf(t *testing.T) {
 	taskBufPool := workutils.NewBufPool(&workutils.BufConfig{
 		MigrateBufSize:     1024 * 1024,
@@ -209,7 +189,7 @@ func TestRecoverLocalReplicaShards(t *testing.T) {
 		getter.setFail(repair.replicas[idx].Vuid, errors.New("fake error"))
 	}
 
-	err := repair.recoverLocalReplicaShards(context.Background(), badi, GetBids(bidInfos))
+	err := repair.recoverReplicaShards(context.Background(), badi, GetBids(bidInfos))
 	require.Error(t, err)
 
 	repair, bidInfos, getter, _ = InitMockRepair(codemode.EC6P10L2)
@@ -217,13 +197,13 @@ func TestRecoverLocalReplicaShards(t *testing.T) {
 	for idx := range [10]struct{}{} {
 		getter.setFail(repair.replicas[idx].Vuid, errors.New("fake error"))
 	}
-	err = repair.recoverLocalReplicaShards(context.Background(), badi, GetBids(bidInfos))
+	err = repair.recoverReplicaShards(context.Background(), badi, GetBids(bidInfos))
 	require.NoError(t, err)
 	testCheckData(t, repair, getter, badi)
 
 	repair, bidInfos, getter, _ = InitMockRepair(codemode.EC16P20L2)
 	badi = []uint8{34}
-	err = repair.recoverLocalReplicaShards(context.Background(), badi, GetBids(bidInfos))
+	err = repair.recoverReplicaShards(context.Background(), badi, GetBids(bidInfos))
 	require.NoError(t, err)
 	testCheckData(t, repair, getter, badi)
 }
@@ -357,22 +337,6 @@ func TestLocalStripes(t *testing.T) {
 	}
 }
 
-func TestGlobalStripe(t *testing.T) {
-	repair, _, _, replicas := InitMockRepair(codemode.EC6P10L2)
-	for idx, replica := range replicas {
-		require.Equal(t, idx, int(replica.Vuid.Index()))
-	}
-
-	badi := []uint8{0, 1, 3}
-	globalStripeIdxs := []uint8{}
-	stripe, err := repair.genGlobalStripe(badi)
-	require.NoError(t, err)
-	for _, replica := range stripe.replicas {
-		globalStripeIdxs = append(globalStripeIdxs, replica.Vuid.Index())
-	}
-	require.Equal(t, []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, globalStripeIdxs)
-}
-
 func testCheckData(t *testing.T, repairer *ShardRecover, getter *MockGetter, badi []uint8) {
 	for _, bidInfo := range repairer.repairBidsReadOnly {
 		for _, repl := range repairer.replicas {
@@ -460,20 +424,20 @@ func TestMemEnough(t *testing.T) {
 	// local stripe
 	repair1, repairBids, _, _ := InitMockRepair(codemode.EC6P3L3)
 	badi1 := []uint8{11}
-	err = repair1.recoverLocalReplicaShards(ctx, badi1, []proto.BlobID{repairBids[0].Bid})
+	err = repair1.recoverReplicaShards(ctx, badi1, []proto.BlobID{repairBids[0].Bid})
 	require.NoError(t, err)
 
 	repair1, repairBids, getter, replicas := InitMockRepair(codemode.EC6P3L3)
 	badi1 = []uint8{11}
 	getter.setFail(replicas[5].Vuid, errors.New("fake error"))
 	getter.setFail(replicas[9].Vuid, errors.New("fake error"))
-	err = repair1.recoverLocalReplicaShards(ctx, badi1, []proto.BlobID{repairBids[0].Bid})
+	err = repair1.recoverReplicaShards(ctx, badi1, []proto.BlobID{repairBids[0].Bid})
 	require.NoError(t, err)
 
 	// global stripe
 	repair2, repairBids, _, _ := InitMockRepair(codemode.EC6P3L3)
 	badi2 := []uint8{0}
-	err = repair2.recoverGlobalReplicaShards(ctx, badi2, []proto.BlobID{repairBids[0].Bid})
+	err = repair2.recoverReplicaShards(ctx, badi2, []proto.BlobID{repairBids[0].Bid})
 	require.NoError(t, err)
 
 	repair2, repairBids, getter, replicas2 := InitMockRepair(codemode.EC6P3L3)
@@ -482,6 +446,6 @@ func TestMemEnough(t *testing.T) {
 	getter.setFail(replicas2[1].Vuid, errors.New("fake error"))
 	getter.setFail(replicas2[9].Vuid, errors.New("fake error"))
 
-	err = repair2.recoverGlobalReplicaShards(ctx, badi2, []proto.BlobID{repairBids[0].Bid})
+	err = repair2.recoverReplicaShards(ctx, badi2, []proto.BlobID{repairBids[0].Bid})
 	require.NoError(t, err)
 }
