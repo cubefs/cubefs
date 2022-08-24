@@ -134,6 +134,29 @@ func (api *AdminAPI) ResetCorruptDataNode(nodeAddr string) (err error) {
 	return
 }
 
+func (api *AdminAPI) ResetRecoverDataPartition(partitionId uint64) (result string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDataPartitionSetIsRecover)
+	request.addParam("id", strconv.Itoa(int(partitionId)))
+	request.addParam("isRecover", "false")
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) ResetRecoverMetaPartition(partitionId uint64) (result string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminMetaPartitionSetIsRecover)
+	request.addParam("id", strconv.Itoa(int(partitionId)))
+	request.addParam("isRecover", "false")
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+
 func (api *AdminAPI) DiagnoseMetaPartition() (diagnosis *proto.MetaPartitionDiagnosis, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminDiagnoseMetaPartition)

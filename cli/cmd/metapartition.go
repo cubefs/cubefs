@@ -58,6 +58,7 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMetaPartitionCheckSnapshot(client),
 		newMetaDataChecksum(client),
 		newCheckInodeTree(client),
+		newMetaPartitionResetRecoverCmd(client),
 	)
 	return cmd
 }
@@ -74,6 +75,7 @@ const (
 	cmdMetaPartitionResetCursorShort    = "Reset mp inode cursor"
 	cmdMetaPartitionListAllInoShort     = "list mp all inodes id"
 	cmdMetaPartitionCheckSnapshotShort  = "check snapshot is same by id"
+	cmdMetaPartitionResetRecoverShort   = "set the meta partition IsRecover value to false"
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -573,6 +575,47 @@ func newMetaPartitionPromoteLearnerCmd(client *master.MasterClient) *cobra.Comma
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newMetaPartitionResetRecoverCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		partitionID uint64
+		confirm     string
+		err         error
+		result      string
+		partition   *proto.MetaPartitionInfo
+	)
+	var cmd = &cobra.Command{
+		Use:   CliOpResetRecover + " [PARTITION ID]",
+		Short: cmdMetaPartitionResetRecoverShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			defer func() {
+				if err != nil {
+					errout("reset meta partition recover status failed:%v\n", err.Error())
+				}
+			}()
+			partitionID, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+				return
+			}
+			stdout(fmt.Sprintf("Set meta partition[%v] IsRecover[%v] to false.\n", partition.PartitionID, partition.IsRecover))
+			stdout(fmt.Sprintf("The action may risk the danger of losing data, please confirm(y/n):"))
+			_, _ = fmt.Scanln(&confirm)
+			if "y" != confirm && "yes" != confirm {
+				return
+			}
+			result, err = client.AdminAPI().ResetRecoverMetaPartition(partitionID)
+			if err != nil {
+				return
+			}
+			stdout("%s\n", result)
 		},
 	}
 	return cmd

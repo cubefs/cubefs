@@ -26,6 +26,8 @@ func TestMetaPartition(t *testing.T) {
 	decommissionMetaPartition(commonVol, maxPartitionID, t)
 	decommissionMetaPartitionWithoutReplica(commonVol, maxPartitionID, t)
 	decommissionMetaPartitionToDestAddr(commonVol, maxPartitionID, t)
+	setMetaPartitionIsRecover(commonVol, maxPartitionID, true, t)
+	setMetaPartitionIsRecover(commonVol, maxPartitionID, false, t)
 }
 
 func createMetaPartition(vol *Vol, t *testing.T) {
@@ -181,4 +183,20 @@ func decommissionMetaPartitionToDestAddr(vol *Vol, id uint64, t *testing.T) {
 		return
 	}
 	fmt.Printf("decommissionMetaPartitionToDestAddr,offlineAddr[%v],destAddr[%v],hosts[%v]\n", offlineAddr, msAddr, mp.Hosts)
+}
+
+func setMetaPartitionIsRecover(vol *Vol, id uint64, isRecover bool, t *testing.T) {
+	mp, err := vol.metaPartition(id)
+	if err != nil {
+		t.Errorf("setMetaPartitionIsRecover,err [%v]", err)
+		return
+	}
+	reqURL := fmt.Sprintf("%v%v?id=%v&isRecover=%v",
+		hostAddr, proto.AdminMetaPartitionSetIsRecover, mp.PartitionID, isRecover)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if mp.IsRecover != isRecover {
+		t.Errorf("expect isRecover[%v],mp.isRecover[%v],not equal", isRecover, mp.IsRecover)
+		return
+	}
 }

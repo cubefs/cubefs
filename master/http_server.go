@@ -296,6 +296,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminVolBatchUpdateDps).
 		HandlerFunc(m.batchUpdateDataPartitions)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDataPartitionSetIsRecover).
+		HandlerFunc(m.setDataPartitionIsRecover)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminMetaPartitionSetIsRecover).
+		HandlerFunc(m.setMetaPartitionIsRecover)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminTransferDataPartition).
 		HandlerFunc(m.transferDataPartition)
 	router.NewRoute().Methods(http.MethodGet).

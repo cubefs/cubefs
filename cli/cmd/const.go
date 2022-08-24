@@ -30,6 +30,7 @@ const (
 	CliOpMetaCompatibility = "meta"
 	CliOpFreeze            = "freeze"
 	CliOpUnfreeze          = "unfreeze"
+	CliOpResetRecover      = "resetRecover"
 	CliOpTransfer          = "transfer"
 	CliOpSetThreshold      = "threshold"
 	CliOpCheck             = "check"

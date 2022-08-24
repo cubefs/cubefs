@@ -1403,6 +1403,60 @@ func (m *Server) batchUpdateDataPartitions(w http.ResponseWriter, r *http.Reques
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) setDataPartitionIsRecover(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		isRecover   bool
+		dp          *DataPartition
+		err         error
+	)
+	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if isRecover, err = extractIsRecoverKey(r); err != nil {
+		return
+	}
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+	dp.isRecover = isRecover
+	if err = m.cluster.syncUpdateDataPartition(dp); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	rstMsg := fmt.Sprintf("setDataPartition[%v] IsRecover to [%v] successfully", partitionID, isRecover)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) setMetaPartitionIsRecover(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		isRecover   bool
+		mp          *MetaPartition
+		err         error
+	)
+	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if isRecover, err = extractIsRecoverKey(r); err != nil {
+		return
+	}
+	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+	mp.IsRecover = isRecover
+	if err = m.cluster.syncUpdateMetaPartition(mp); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	rstMsg := fmt.Sprintf("setMetaPartition[%v] IsRecover to [%v] successfully", partitionID, isRecover)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
 // Mark the volume as deleted, which will then be deleted later.
 func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -3385,6 +3439,15 @@ func extractIsManual(r *http.Request) (isManual bool, err error) {
 	var value string
 	if value = r.FormValue(isManualKey); value == "" {
 		err = keyNotFound(isManualKey)
+		return
+	}
+	return strconv.ParseBool(value)
+}
+
+func extractIsRecoverKey(r *http.Request) (isManual bool, err error) {
+	var value string
+	if value = r.FormValue(isRecoverKey); value == "" {
+		err = keyNotFound(isRecoverKey)
 		return
 	}
 	return strconv.ParseBool(value)

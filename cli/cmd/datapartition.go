@@ -58,6 +58,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDelDpAlreadyEc(client),
 		newMigrateEc(client),
 		newStopMigratingByDataPartition(client),
+		newDataPartitionResetRecoverCmd(client),
 	)
 	return cmd
 }
@@ -79,6 +80,7 @@ const (
 	cmdDelDpAlreadyEc                   = "delete the datapartition of already finish ec migration"
 	cmdMigrateEc                        = "start ec migration to using ecnode store data"
 	cmdStopMigratingEcByDataPartition   = "stop migrating task by data partition"
+	cmdDataPartitionResetRecoverShort   = "set the data partition IsRecover value to false"
 )
 
 func newDataPartitionTransferCmd(client *master.MasterClient) *cobra.Command {
@@ -178,6 +180,47 @@ func newDataPartitionFreezeCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			result, err = client.AdminAPI().FreezeDataPartition(volName, partitionId)
+			if err != nil {
+				return
+			}
+			stdout("%s\n", result)
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionResetRecoverCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		partitionID uint64
+		confirm     string
+		err         error
+		result      string
+		partition   *proto.DataPartitionInfo
+	)
+	var cmd = &cobra.Command{
+		Use:   CliOpResetRecover + " [PARTITION ID]",
+		Short: cmdDataPartitionResetRecoverShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			defer func() {
+				if err != nil {
+					errout("reset data partition recover status failed:%v\n", err.Error())
+				}
+			}()
+			partitionID, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			if partition, err = client.AdminAPI().GetDataPartition("", partitionID); err != nil {
+				return
+			}
+			stdout(fmt.Sprintf("Set data partition[%v] IsRecover[%v] to false.\n", partition.PartitionID, partition.IsRecover))
+			stdout(fmt.Sprintf("The action may risk the danger of losing data, please confirm(y/n):"))
+			_, _ = fmt.Scanln(&confirm)
+			if "y" != confirm && "yes" != confirm {
+				return
+			}
+			result, err = client.AdminAPI().ResetRecoverDataPartition(partitionID)
 			if err != nil {
 				return
 			}

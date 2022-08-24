@@ -36,6 +36,7 @@ const (
 	AdminTransferDataPartition     = "/dataPartition/transfer"
 	AdminManualResetDataPartition  = "/dataPartition/manualReset"
 	AdminDataPartitionUpdate       = "/dataPartition/update"
+	AdminDataPartitionSetIsRecover = "/dataPartition/setIsRecover"
 	AdminCanDelDataPartitions      = "/dataPartition/candel"
 	AdminCanMigrateDataPartitions  = "/dataPartition/canmigrate"
 	AdminDelDpAlreadyEc            = "/dataPartition/deldpalreadyec"
@@ -131,6 +132,7 @@ const (
 	AdminSelectMetaReplicaNode     = "/metaReplica/selectNode"
 	AdminAddMetaReplicaLearner     = "/metaLearner/add"
 	AdminPromoteMetaReplicaLearner = "/metaLearner/promote"
+	AdminMetaPartitionSetIsRecover = "/metaPartition/setIsRecover"
 
 	// Operation response
 	GetMetaNodeTaskResponse   = "/metaNode/response"          // Method: 'POST', ContentType: 'application/json'

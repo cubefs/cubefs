@@ -29,6 +29,8 @@ func TestDataPartition(t *testing.T) {
 	decommissionDataPartition(partition, t)
 	updateDataPartition(partition, true, server.cluster, commonVol, t)
 	updateDataPartition(partition, false, server.cluster, commonVol, t)
+	setDataPartitionIsRecover(partition, true, t)
+	setDataPartitionIsRecover(partition, false, t)
 	allDataNodes := make([]string, 0)
 	server.cluster.dataNodes.Range(func(key, _ interface{}) bool {
 		if addr, ok := key.(string); ok {
@@ -177,5 +179,16 @@ func updateDataPartition(dp *DataPartition, isManual bool, c *Cluster, vol *Vol,
 			t.Errorf("dp.IsManual[%v] expect Status ReadOnly, but get Status[%v]", dp.IsManual, dp.Status)
 			return
 		}
+	}
+}
+
+func setDataPartitionIsRecover(dp *DataPartition, isRecover bool, t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?id=%v&isRecover=%v",
+		hostAddr, proto.AdminDataPartitionSetIsRecover, dp.PartitionID, isRecover)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if dp.isRecover != isRecover {
+		t.Errorf("expect isRecover[%v],dp.isRecover[%v],not equal", isRecover, dp.isRecover)
+		return
 	}
 }

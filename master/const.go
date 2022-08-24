@@ -110,6 +110,7 @@ const (
 	volConvertStKey              = "convertState"
 	versionKey                   = "version"
 	isManualKey                  = "isManual"
+	isRecoverKey                 = "isRecover"
 	mediumKey                    = "medium"
 	forceKey                     = "force"
 	ecEnableKey                  = "ecEnable"
