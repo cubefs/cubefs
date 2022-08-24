@@ -475,6 +475,7 @@ log:
 
 char *real_getcwd(char *buf, size_t size) {
     char *re = NULL;
+    char *tmpcwd = NULL;
     int alloc_size;
     int len_mount;
     int len_cwd;
@@ -505,8 +506,10 @@ char *real_getcwd(char *buf, size_t size) {
     }
 
     len_mount = 0;
+
+    tmpcwd = strdup(g_client_info.cwd);
     // If g_client_info.cwd="/" ignore the backslash
-    len_cwd = strcmp(g_client_info.cwd, "/") ? strlen(g_client_info.cwd) : 0;
+    len_cwd = strcmp(tmpcwd, "/") ? strlen(tmpcwd) : 0;
     len = len_cwd;
     if(g_client_info.in_cfs) {
         len_mount = strlen(g_client_info.mount_point);
@@ -533,7 +536,7 @@ char *real_getcwd(char *buf, size_t size) {
         strcat(buf, g_client_info.mount_point);
     }
     if(len_cwd > 0) {
-        strcat(buf, g_client_info.cwd);
+        strcat(buf, tmpcwd);
     }
     re = buf;
 
@@ -541,6 +544,9 @@ log:
     #ifdef _CFS_DEBUG
     log_debug("hook %s, re: %s\n", __func__, re == NULL ? "" : re);
     #endif
+    if(tmpcwd != NULL) {
+        free(tmpcwd);
+    }
     return re;
 }
 
