@@ -116,6 +116,9 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 	}
 	m.connPool.PutConnect(mConn, NoClosedConnect)
 end:
+	if needTryToLeader {
+		p.PacketErrorWithBody(proto.OpErr, []byte(fmt.Sprintf("proxy to leader[%s] err:%v, try to leader", leaderAddr, err)))
+	}
 
 	leaderAddr, _ = mp.IsLeader()
 	if leaderAddr == oldLeaderAddr && needTryToLeader{

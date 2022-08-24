@@ -590,10 +590,16 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.ClientVolOpRate >= -1 {
 		request.addParam("clientVolOpRate", strconv.FormatInt(info.ClientVolOpRate, 10))
 	}
+	if info.Action != "" {
+		request.addParam("action", info.Action)
+	}
+	if info.ObjectVolActionRate >= -1 {
+		request.addParam("objectVolActionRate", strconv.FormatInt(info.ObjectVolActionRate, 10))
+	}
 	if info.MetaNodeReqRate >= 0 {
 		request.addParam("metaNodeReqRate", strconv.FormatInt(info.MetaNodeReqRate, 10))
 	}
-	if info.MetaNodeReqOpRate >= 0 {
+	if info.MetaNodeReqOpRate != 0 {
 		request.addParam("metaNodeReqOpRate", strconv.FormatInt(info.MetaNodeReqOpRate, 10))
 	}
 	if info.DataNodeRepairTaskCount > 0 {

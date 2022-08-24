@@ -3727,12 +3727,54 @@ func (c *Cluster) setDataNodeReqVolOpPartRateLimit(val uint64, vol string, op ui
 	return
 }
 
-func (c *Cluster) setMetaNodeReqOpRateLimit(val uint64, op uint8) (err error) {
+func (c *Cluster) setMetaNodeReqVolOpRateLimit(vol string, val int64, op uint8) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+
+	var (
+		oldVal  uint64
+		opExist bool
+	)
+	opMap, volExist := c.cfg.MetaNodeReqVolOpRateLimitMap[vol]
+	if !volExist {
+		opMap = make(map[uint8]uint64)
+		c.cfg.MetaNodeReqVolOpRateLimitMap[vol] = opMap
+	}
+	oldVal, opExist = opMap[op]
+	opMap[op] = uint64(val)
+	if val < 0 {
+		delete(opMap, op)
+	}
+
+	if len(opMap) <= 0 {
+		delete(c.cfg.MetaNodeReqVolOpRateLimitMap, vol)
+	}
+	log.LogDebugf("setMetaNodeReqVolOpRateLimit: vol(%v) op(%v) val(%v)", vol, op, val)
+	if err = c.syncPutCluster(); err != nil {
+		err = proto.ErrPersistenceByRaft
+		log.LogErrorf("action[setMetaNodeReqVolOpRateLimit] err[%v]", err)
+		if !volExist {
+			delete(c.cfg.MetaNodeReqVolOpRateLimitMap, vol)
+			return
+		}
+
+		if !opExist {
+			delete(c.cfg.ClientVolOpRateLimitMap[vol], op)
+			return
+		}
+
+		c.cfg.MetaNodeReqVolOpRateLimitMap[vol][op] = oldVal
+		return
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeReqOpRateLimit(val int64, op uint8) (err error) {
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
 	oldVal, ok := c.cfg.MetaNodeReqOpRateLimitMap[op]
 	if val > 0 {
-		c.cfg.MetaNodeReqOpRateLimitMap[op] = val
+		c.cfg.MetaNodeReqOpRateLimitMap[op] = uint64(val)
 	} else {
 		delete(c.cfg.MetaNodeReqOpRateLimitMap, op)
 	}
@@ -3819,6 +3861,37 @@ func (c *Cluster) setClientVolOpRateLimit(val int64, vol string, op uint8) (err 
 		c.cfg.ClientVolOpRateLimitMap[vol][op] = oldVal
 		if !volExist || !opExist {
 			delete(c.cfg.ClientVolOpRateLimitMap[vol], op)
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setObjectVolActionRateLimit(val int64, vol string, action string) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	var (
+		oldVal      int64
+		actionExist bool
+	)
+	actionMap, volExist := c.cfg.ObjectNodeActionRateLimitMap[vol]
+	if !volExist {
+		actionMap = make(map[string]int64)
+		c.cfg.ObjectNodeActionRateLimitMap[vol] = actionMap
+	} else {
+		oldVal, actionExist = actionMap[action]
+	}
+	actionMap[action] = val
+	if val < 0 {
+		delete(actionMap, action)
+	}
+	log.LogDebugf("setObjectVolActionRateLimit: vol(%v) action(%v) val(%v)", vol, action, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setObjectVolActionRateLimit] err[%v]", err)
+		c.cfg.ObjectNodeActionRateLimitMap[vol][action] = oldVal
+		if !volExist || !actionExist {
+			delete(c.cfg.ObjectNodeActionRateLimitMap[vol], action)
 		}
 		err = proto.ErrPersistenceByRaft
 		return

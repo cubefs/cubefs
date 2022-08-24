@@ -425,6 +425,7 @@ type LimitInfo struct {
 
 	MetaNodeReqRateLimit             uint64
 	MetaNodeReqOpRateLimitMap        map[uint8]uint64
+	MetaNodeReqVolOpRateLimitMap     map[string]map[uint8]uint64
 	DataNodeReqZoneRateLimitMap      map[string]uint64
 	DataNodeReqZoneOpRateLimitMap    map[string]map[uint8]uint64
 	DataNodeReqZoneVolOpRateLimitMap map[string]map[string]map[uint8]uint64
@@ -436,6 +437,7 @@ type LimitInfo struct {
 	ClientReadRateLimit              uint64
 	ClientWriteRateLimit             uint64
 	ClientVolOpRateLimit             map[uint8]int64 // less than 0: no limit; equal 0: disable op
+	ObjectNodeActionRateLimit        map[string]int64
 
 	DataNodeFixTinyDeleteRecordLimitOnDisk uint64
 	DataNodeRepairTaskLimitOnDisk          uint64
@@ -1022,6 +1024,7 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 type RateLimitInfo struct {
 	ZoneName                   string
 	Volume                     string
+	Action                     string
 	Opcode                     int8
 	MetaNodeReqRate            int64
 	MetaNodeReqOpRate          int64
@@ -1039,6 +1042,7 @@ type RateLimitInfo struct {
 	ClientReadRate             int64
 	ClientWriteRate            int64
 	ClientVolOpRate            int64
+	ObjectVolActionRate        int64
 	DnFixTinyDeleteRecordLimit int64
 	DataNodeRepairTaskZoneCount  int64
 	MetaNodeDumpWaterLevel     int64

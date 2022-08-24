@@ -153,6 +153,7 @@ type MetaWrapper struct {
 	forceUpdateLimit *rate.Limiter
 	// meta op limit rate
 	opLimiter     map[uint8]*rate.Limiter // key: op
+	actionLimiter map[proto.Action]*rate.Limiter
 	limitMapMutex sync.RWMutex
 	// infinite retry send to mp
 	InfiniteRetry bool
@@ -208,6 +209,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.InfiniteRetry = config.InfiniteRetry
 	mw.opLimiter = make(map[uint8]*rate.Limiter)
+	mw.actionLimiter = make(map[proto.Action]*rate.Limiter)
 	mw.connConfig = &proto.ConnConfig{
 		IdleTimeoutSec:   IdleConnTimeoutMeta,
 		ConnectTimeoutNs: ConnectTimeoutMetaMs * int64(time.Millisecond),
@@ -315,14 +317,15 @@ func (mw *MetaWrapper) startUpdateLimiterConfigWithRecover() (err error) {
 	}()
 
 	updateConfigTicket := time.Second * 120
-	ticker := time.NewTicker(updateConfigTicket)
-	defer ticker.Stop()
+	timer := time.NewTimer(0)
+	defer timer.Stop()
 	for {
 		select {
 		case <-mw.closeCh:
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			mw.updateLimiterConfig()
+			timer.Reset(updateConfigTicket)
 		}
 	}
 }
@@ -353,6 +356,29 @@ func (mw *MetaWrapper) updateLimiterConfig() {
 			mw.opLimiter[op] = rate.NewLimiter(rate.Limit(val), int(val))
 		}
 	}
+	// delete action which not stored on master
+	for action := range mw.actionLimiter {
+		if _, exist := limitInfo.ObjectNodeActionRateLimit[action.String()]; !exist {
+			delete(mw.actionLimiter, action)
+		}
+	}
+	for as, av := range limitInfo.ObjectNodeActionRateLimit {
+		var action proto.Action
+		if action = proto.ParseAction(as); action == proto.NoneAction {
+			log.LogWarnf("updateLimiterConfig: invalid objectNode action, vol(%v) action(%v)", mw.volname, as)
+			continue
+		}
+		if av < 0 {
+			delete(mw.actionLimiter, action)
+			continue
+		}
+		if opLimit, ok := mw.actionLimiter[action]; ok {
+			opLimit.SetLimit(rate.Limit(av))
+			opLimit.SetBurst(int(av))
+		} else {
+			mw.actionLimiter[action] = rate.NewLimiter(rate.Limit(av), int(av))
+		}
+	}
 	log.LogInfof("updateLimiterConfig: vol(%v) opLimiter(%v)", mw.volname, mw.opLimiter)
 }
 
@@ -369,9 +395,29 @@ func (mw *MetaWrapper) checkLimiter(ctx context.Context, opCode uint8) error {
 	return nil
 }
 
+func (mw *MetaWrapper) CheckActionLimiter(ctx context.Context, action proto.Action) error {
+	limiter := mw.getActionLimiter(action)
+	if limiter != nil {
+		log.LogDebugf("check action limiter begin: vol(%v), action(%v), limit(%v), burst(%v)", mw.volname, action.String(), limiter.Limit(), limiter.Burst())
+		if limiter.Burst() == 0 {
+			return syscall.EPERM
+		}
+		limitErr := limiter.Wait(ctx)
+		log.LogDebugf("check action limiter end: vol(%v), action(%v), limit(%v), burst(%v), err(%v)", mw.volname, action.String(), limiter.Limit(), limiter.Burst(), limitErr)
+	}
+	return nil
+}
+
 func (mw *MetaWrapper) getOpLimiter(op uint8) (limiter *rate.Limiter) {
 	mw.limitMapMutex.RLock()
 	limiter = mw.opLimiter[op]
+	mw.limitMapMutex.RUnlock()
+	return
+}
+
+func (mw *MetaWrapper) getActionLimiter(action proto.Action) (limiter *rate.Limiter) {
+	mw.limitMapMutex.RLock()
+	limiter = mw.actionLimiter[action]
 	mw.limitMapMutex.RUnlock()
 	return
 }

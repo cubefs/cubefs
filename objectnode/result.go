@@ -15,9 +15,13 @@
 package objectnode
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/xml"
 	"github.com/chubaofs/chubaofs/util/log"
 	"net/url"
+	"strconv"
+	"strings"
 )
 
 func MarshalXMLEntity(entity interface{}) ([]byte, error) {
@@ -317,4 +321,24 @@ type PartRequest struct {
 type CompleteMultipartUploadRequest struct {
 	XMLName xml.Name       `xml:"CompleteMultipartUpload"`
 	Parts   []*PartRequest `xml:"Part"`
+}
+
+func (cr *CompleteMultipartUploadRequest) MultipartETag() string {
+	var md5Val string
+	if len(cr.Parts) == 1 {
+		md5Val = cr.Parts[0].ETag
+	} else {
+		var md5Hash = md5.New()
+		for _, part := range cr.Parts {
+			md5Hash.Write([]byte(part.ETag))
+		}
+		md5Val = hex.EncodeToString(md5Hash.Sum(nil))
+	}
+
+	sb := strings.Builder{}
+	sb.WriteString(md5Val)
+	if len(cr.Parts) > 0 {
+		sb.WriteString("-" + strconv.Itoa(len(cr.Parts)))
+	}
+	return sb.String()
 }

@@ -345,8 +345,9 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	log.LogInfof("completeMultipartUploadHandler: complete multiple upload, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
 
 	var (
-		err       error
-		errorCode *ErrorCode
+		err        error
+		fsFileInfo *FSFileInfo
+		errorCode  *ErrorCode
 	)
 
 	defer func() {
@@ -425,6 +426,12 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		log.LogErrorf("CompleteMultipart: meta get multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
 			vol.name, uploadId, param.object, err)
 		if err == syscall.ENOENT {
+			fsFileInfo, err = vol.ObjectMeta(param.Object())
+			if err == nil && fsFileInfo != nil && fsFileInfo.ETag == multipartUploadRequest.MultipartETag() {
+				log.LogInfof("CompleteMultipart: multipart id not found, got file metadata and last is upload via multipart, response file info in direct, volume(%v) multipartID(%v) path(%v)",
+					vol.name, uploadId, param.object)
+				goto response
+			}
 			errorCode = NoSuchUpload
 			return
 		}
@@ -456,7 +463,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		}
 	}
 
-	fsFileInfo, err := vol.CompleteMultipart(param.Object(), uploadId, multipartInfo)
+	fsFileInfo, err = vol.CompleteMultipart(param.Object(), uploadId, multipartInfo)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchUpload
 		return
@@ -474,6 +481,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	log.LogDebugf("completeMultipartUploadHandler: complete multipart, requestID(%v) uploadID(%v) path(%v)",
 		GetRequestID(r), uploadId, param.Object())
 
+	response:
 	// write response
 	completeResult := CompleteMultipartResult{
 		Bucket: param.Bucket(),

@@ -95,6 +95,7 @@ type clusterConfig struct {
 	MetaNodeReqRateLimit                uint64
 	MetaNodeReadDirLimitNum				uint64
 	MetaNodeReqOpRateLimitMap           map[uint8]uint64
+	MetaNodeReqVolOpRateLimitMap        map[string]map[uint8]uint64
 	DataNodeReqZoneRateLimitMap         map[string]uint64
 	DataNodeReqZoneOpRateLimitMap       map[string]map[uint8]uint64
 	DataNodeReqZoneVolOpRateLimitMap    map[string]map[string]map[uint8]uint64
@@ -110,6 +111,7 @@ type clusterConfig struct {
 	ClientReadVolRateLimitMap           map[string]uint64
 	ClientWriteVolRateLimitMap          map[string]uint64
 	ClientVolOpRateLimitMap             map[string]map[uint8]int64
+	ObjectNodeActionRateLimitMap        map[string]map[string]int64
 	ExtentMergeIno                      map[string][]uint64
 	ExtentMergeSleepMs                  uint64
 	peers                               []raftstore.PeerAddress
@@ -144,6 +146,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaPartitionsRecoverPoolSize = defaultRecoverPoolSize
 	cfg.MetaNodeRocksdbDiskThreshold = defaultRocksdbDiskUsageThreshold
 	cfg.MetaNodeReqOpRateLimitMap = make(map[uint8]uint64)
+	cfg.MetaNodeReqVolOpRateLimitMap = make(map[string]map[uint8]uint64)
 	cfg.DataNodeReqZoneRateLimitMap = make(map[string]uint64)
 	cfg.DataNodeReqZoneOpRateLimitMap = make(map[string]map[uint8]uint64)
 	cfg.DataNodeReqZoneVolOpRateLimitMap = make(map[string]map[string]map[uint8]uint64)
@@ -152,6 +155,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.ClientReadVolRateLimitMap = make(map[string]uint64)
 	cfg.ClientWriteVolRateLimitMap = make(map[string]uint64)
 	cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)
+	cfg.ObjectNodeActionRateLimitMap = make(map[string]map[string]int64)
 	cfg.ExtentMergeIno = make(map[string][]uint64)
 	cfg.DataNodeRepairTaskCountZoneLimit = make(map[string]uint64)
 	cfg.ClientPkgAddr = defaultClientPkgAddr

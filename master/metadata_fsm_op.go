@@ -47,12 +47,14 @@ type clusterValue struct {
 	MetaNodeReqRateLimit              uint64
 	MetaNodeReadDirLimitNum           uint64
 	MetaNodeReqOpRateLimitMap         map[uint8]uint64
+	MetaNodeReqVolOpRateLimitMap      map[string]map[uint8]uint64
 	MetaNodeDeleteBatchCount          uint64
 	MetaNodeDeleteWorkerSleepMs       uint64
 	DataNodeFlushFDInterval           uint32
 	ClientReadVolRateLimitMap         map[string]uint64
 	ClientWriteVolRateLimitMap        map[string]uint64
 	ClientVolOpRateLimitMap           map[string]map[uint8]int64
+	ObjectNodeActionRateLimitMap      map[string]map[string]int64
 	PoolSizeOfDataPartitionsInRecover int32
 	PoolSizeOfMetaPartitionsInRecover int32
 	ExtentMergeIno                    map[string][]uint64
@@ -85,6 +87,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeReqVolOpPartRateLimitMap:  c.cfg.DataNodeReqVolOpPartRateLimitMap,
 		MetaNodeReqRateLimit:              c.cfg.MetaNodeReqRateLimit,
 		MetaNodeReqOpRateLimitMap:         c.cfg.MetaNodeReqOpRateLimitMap,
+		MetaNodeReqVolOpRateLimitMap:      c.cfg.MetaNodeReqVolOpRateLimitMap,
 		MetaNodeDeleteBatchCount:          c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
 		DataNodeFlushFDInterval:           c.cfg.DataNodeFlushFDInterval,
@@ -92,6 +95,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ClientReadVolRateLimitMap:         c.cfg.ClientReadVolRateLimitMap,
 		ClientWriteVolRateLimitMap:        c.cfg.ClientWriteVolRateLimitMap,
 		ClientVolOpRateLimitMap:           c.cfg.ClientVolOpRateLimitMap,
+		ObjectNodeActionRateLimitMap:      c.cfg.ObjectNodeActionRateLimitMap,
 		DisableAutoAllocate:               c.DisableAutoAllocate,
 		PoolSizeOfDataPartitionsInRecover: c.cfg.DataPartitionsRecoverPoolSize,
 		PoolSizeOfMetaPartitionsInRecover: c.cfg.MetaPartitionsRecoverPoolSize,
@@ -855,6 +859,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if c.cfg.MetaNodeReqOpRateLimitMap == nil {
 			c.cfg.MetaNodeReqOpRateLimitMap = make(map[uint8]uint64)
 		}
+		c.cfg.MetaNodeReqVolOpRateLimitMap = cv.MetaNodeReqVolOpRateLimitMap
+		if c.cfg.MetaNodeReqVolOpRateLimitMap == nil {
+			c.cfg.MetaNodeReqVolOpRateLimitMap = make(map[string]map[uint8]uint64)
+		}
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, cv.DataNodeRepairTaskCount)
 		if cv.DataNodeRepairTaskSSDZoneLimit == 0 {
@@ -896,6 +904,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.ClientVolOpRateLimitMap = cv.ClientVolOpRateLimitMap
 		if c.cfg.ClientVolOpRateLimitMap == nil {
 			c.cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)
+		}
+		c.cfg.ObjectNodeActionRateLimitMap = cv.ObjectNodeActionRateLimitMap
+		if c.cfg.ObjectNodeActionRateLimitMap == nil {
+			c.cfg.ObjectNodeActionRateLimitMap = make(map[string]map[string]int64)
 		}
 		c.updateRecoverPoolSize(cv.PoolSizeOfDataPartitionsInRecover, cv.PoolSizeOfMetaPartitionsInRecover)
 		c.cfg.ExtentMergeIno = cv.ExtentMergeIno

@@ -103,7 +103,8 @@ var (
 	InvalidCacheArgument                = &ErrorCode{ErrorCode: "InvalidCacheArgument", ErrorMessage: "Invalid Cache-Control or Expires Argument", StatusCode: http.StatusBadRequest}
 	TagsGreaterThen10                   = &ErrorCode{ErrorCode: "BadRequest", ErrorMessage: "Object tags cannot be greater than 10", StatusCode: http.StatusBadRequest}
 	InvalidTagKey                       = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagKey you have provided is invalid", StatusCode: http.StatusBadRequest}
-	InvalidTagValue                     = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
+	InvalidTagValue                     = &ErrorCode{ErrorCode: "InvalidTagValue", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
+	TooManyRequests                     = &ErrorCode{ErrorCode: "TooManyRequests", ErrorMessage: "Too many requests, reduce your request", StatusCode: http.StatusTooManyRequests}
 )
 
 func HttpStatusErrorCode(code int) *ErrorCode {

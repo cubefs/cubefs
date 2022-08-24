@@ -17,10 +17,12 @@ package objectnode
 import (
 	"errors"
 	"fmt"
+	"golang.org/x/net/context"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -96,6 +98,34 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 		SetRequestAction(r, action)
+
+		// volume rate limit
+		var param = ParseRequestParam(r)
+		if param.Bucket() != "" {
+			var vol *Volume
+			if vol, err = o.getVol(param.Bucket()); err != nil {
+				log.LogErrorf("traceMiddleware: load volume fail: requestID(%v) volume(%v) err(%v)",
+					GetRequestID(r), param.Bucket(), err)
+				_ = InternalErrorCode(err).ServeResponse(w, r)
+				exporter.Warning(generateWarnDetail(r, err.Error()))
+				return
+			}
+			err = vol.mw.CheckActionLimiter(context.Background(), action)
+			if err != nil && err == syscall.EPERM {
+				log.LogWarnf("traceMiddleware: volume action been limited, volume(%v), requestID(%v) action(%v) err(%v)",
+					param.Bucket(), GetRequestID(r), action.String(), err)
+				_ = TooManyRequests.ServeResponse(w, r)
+				exporter.Warning(generateWarnDetail(r, fmt.Sprintf("volume action been limited, err(%s)", err.Error())))
+				return
+			}
+			if err != nil {
+				log.LogErrorf("traceMiddleware: volume action been limited, volume(%v), requestID(%v) action(%v) err(%v)",
+					param.Bucket(), GetRequestID(r), action.String(), err)
+				_ = InternalErrorCode(err).ServeResponse(w, r)
+				exporter.Warning(generateWarnDetail(r, fmt.Sprintf("volume action been limited, err(%s)", err.Error())))
+				return
+			}
+		}
 		// ===== pre-handle finish =====
 
 		var startTime = time.Now()

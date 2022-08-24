@@ -39,6 +39,8 @@ var (
 	// map[opcode]*rate.Limiter, request rate limiter for opcode
 	reqOpRateLimitMap   = make(map[uint8]uint64)
 	reqOpRateLimiterMap = make(map[uint8]*rate.Limiter)
+	reqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
+	reqVolOpPartRateLimiterMap = make(map[string]map[uint8]*rate.Limiter)
 
 	isRateLimitOn bool
 
@@ -53,6 +55,7 @@ var (
 		proto.OpMetaBatchExtentsAdd: true,
 		proto.OpMetaExtentsList:     true,
 		proto.OpMetaInodeGetV2:      true,
+		proto.OpMetaReadDir:         true,
 	}
 )
 
@@ -152,33 +155,27 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	}
 }
 
-func (m *MetaNode) updateRateLimitInfo() {
-	if limitInfo == nil {
-		return
-	}
-
-	var (
-		r                   uint64
-		l                   rate.Limit
-		ok                  bool
-		tmpOpRateLimiterMap map[uint8]*rate.Limiter
-	)
-
-	// update request rate limiter for entire meta node
-	reqRateLimit = limitInfo.MetaNodeReqRateLimit
-	l = rate.Limit(reqRateLimit)
+func (m *MetaNode) updateTotReqLimitInfo(info *proto.LimitInfo) {
+	reqRateLimit = info.MetaNodeReqRateLimit
+	l := rate.Limit(reqRateLimit)
 	if reqRateLimit == 0 {
 		l = rate.Inf
 	}
 	reqRateLimiter.SetLimit(l)
+}
+
+func (m *MetaNode) updateOpLimitiInfo(info *proto.LimitInfo) {
+	var (
+		r                   uint64
+		ok                  bool
+		tmpOpRateLimiterMap map[uint8]*rate.Limiter
+	)
 
 	// update request rate limiter for opcode
-	if reflect.DeepEqual(reqOpRateLimitMap, limitInfo.MetaNodeReqOpRateLimitMap) {
-		isRateLimitOn = (reqRateLimit > 0 ||
-			len(reqOpRateLimitMap) > 0)
+	if reflect.DeepEqual(reqOpRateLimitMap, info.MetaNodeReqOpRateLimitMap) {
 		return
 	}
-	reqOpRateLimitMap = limitInfo.MetaNodeReqOpRateLimitMap
+	reqOpRateLimitMap = info.MetaNodeReqOpRateLimitMap
 	tmpOpRateLimiterMap = make(map[uint8]*rate.Limiter)
 	for op, _ := range limitOpcodeMap {
 		r, ok = reqOpRateLimitMap[op]
@@ -191,9 +188,45 @@ func (m *MetaNode) updateRateLimitInfo() {
 		tmpOpRateLimiterMap[op] = rate.NewLimiter(rate.Limit(r), DefaultReqLimitBurst)
 	}
 	reqOpRateLimiterMap = tmpOpRateLimiterMap
+}
+
+func (m *MetaNode) updateVolLimitiInfo(info *proto.LimitInfo) {
+	if reflect.DeepEqual(reqOpRateLimitMap, info.MetaNodeReqVolOpRateLimitMap) {
+		return
+	}
+	reqVolOpPartRateLimitMap = info.MetaNodeReqVolOpRateLimitMap
+	tmpVolOpRateLimiterMap := make(map[string]map[uint8]*rate.Limiter)
+	for vol, volOps := range reqVolOpPartRateLimitMap {
+		opRateLimiterMap := make(map[uint8]*rate.Limiter)
+		tmpVolOpRateLimiterMap[vol] = opRateLimiterMap
+		for op, opValue := range volOps {
+			//op is not limit
+			isLimitOp, ok := limitOpcodeMap[op]
+			if !ok || !isLimitOp {
+				continue
+			}
+
+			//set limit
+			l := rate.Limit(opValue)
+			opRateLimiterMap[op] = rate.NewLimiter(l, DefaultReqLimitBurst)
+		}
+	}
+	reqVolOpPartRateLimiterMap = tmpVolOpRateLimiterMap
+}
+
+func (m *MetaNode) updateRateLimitInfo() {
+	info := limitInfo
+	if info == nil {
+		return
+	}
+
+	m.updateTotReqLimitInfo(info)
+	m.updateOpLimitiInfo(info)
+	m.updateVolLimitiInfo(info)
 
 	isRateLimitOn = (reqRateLimit > 0 ||
-		len(reqOpRateLimitMap) > 0)
+		len(reqOpRateLimitMap) > 0 ||
+		len(reqVolOpPartRateLimitMap) > 0 )
 }
 
 func (m *MetaNode) updateClusterMap() {

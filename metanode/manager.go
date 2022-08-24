@@ -673,6 +673,23 @@ func (s *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string)
 	if ok {
 		limiter.Wait(ctx)
 	}
+	pid := p.PartitionID
+	mp , err := s.GetPartition(pid)
+	if err != nil {
+		return
+	}
+
+	vol := mp.GetBaseConfig().VolName
+	volLimiterMap, ok := reqVolOpPartRateLimiterMap[vol]
+	if !ok {
+		return
+	}
+	volOpLimiter, ok := volLimiterMap[p.Opcode]
+	if !ok {
+		return
+	}
+	volOpLimiter.Wait(ctx)
+	return
 }
 
 func (m *metadataManager) SummaryMonitorData(reportTime int64) []*statistics.MonitorData {
