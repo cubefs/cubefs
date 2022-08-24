@@ -509,11 +509,19 @@ type InodeGetRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	VerSeq      uint64 `json:"seq"`
+	VerAll      bool   `json:"verAll"`
+}
+
+type LayerInfo struct {
+	LayerIdx uint32      `json:"layerIdx"`
+	Info     *InodeInfo  `json:"info"`
+	Eks      []ExtentKey `json:"eks"`
 }
 
 // InodeGetResponse defines the response to the InodeGetRequest.
 type InodeGetResponse struct {
-	Info *InodeInfo `json:"info"`
+	Info   *InodeInfo  `json:"info"`
+	LayAll []LayerInfo `json:"layerInfo"`
 }
 
 // BatchInodeGetRequest defines the request to get the inode in batch.

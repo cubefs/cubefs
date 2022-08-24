@@ -258,7 +258,9 @@ func cleanDentries() error {
 
 func cleanSnapshot() (err error) {
 	log.LogInfof("action[cleanSnapshot] vol %v verSeq %v", VolName, VerSeq)
-
+	if VerSeq == 0 {
+		VerSeq = math.MaxUint64
+	}
 	var (
 		children []proto.Dentry
 		parents  []proto.Dentry

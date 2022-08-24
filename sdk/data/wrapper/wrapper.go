@@ -314,7 +314,7 @@ func (w *Wrapper) updateSimpleVolView(client SimpleClientInfo) (err error) {
 	w.UpdateUidsView(view)
 	if w.verReadSeq > 0 {
 		if err = w.updateCheckVerList(w.volName, w.verReadSeq); err != nil {
-			log.LogFatal("updateSimpleVolView: readSeq abnormal %v", err)
+			log.LogFatalf("updateSimpleVolView: readSeq abnormal %v", err)
 		}
 	} else {
 		if err = client.UpdateLatestVer(view.LatestVer); err != nil {
