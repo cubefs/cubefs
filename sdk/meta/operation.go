@@ -361,7 +361,7 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64, verSeq uint64) (
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("iunlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogErrorf("iunlink: packet(%v) mp(%v) req(%v) result(%v) status(%v)", packet, mp, *req, packet.GetResultMsg(), status)
 		return
 	}
 

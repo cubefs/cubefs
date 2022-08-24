@@ -375,6 +375,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 
 	ino := NewInode(req.Inode, 0)
 	ino.verSeq = req.VerSeq
+	getAllVerInfo := req.VerAll
 	log.LogDebugf("action[Inode] %v seq %v", ino.Inode, req.VerSeq)
 	retMsg := mp.getInode(ino)
 	ino = retMsg.Msg
@@ -401,6 +402,11 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 		}
 		if replyInfo(resp.Info, retMsg.Msg, quotaIds) {
 			status = proto.OpOk
+			if getAllVerInfo {
+				inode := mp.getInodeTopLayer(ino)
+				log.LogDebugf("req ino %v, toplayer ino %v", retMsg.Msg, inode)
+				resp.LayAll = inode.Msg.getAllLayerEks()
+			}
 			reply, err = json.Marshal(resp)
 			if err != nil {
 				status = proto.OpErr

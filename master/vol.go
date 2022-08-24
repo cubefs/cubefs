@@ -112,18 +112,19 @@ func (verMgr *VolVersionManager) CommitVer() (ver *proto.VolVersionInfo) {
 			return
 		}
 		verMgr.multiVersionList[idx].Status = proto.VersionDeleting
+		verMgr.multiVersionList[idx].DelTime = time.Now()
 		if err := verMgr.Persist(); err != nil {
 			log.LogErrorf("action[CommitVer] vol %v del seq %v persist error %v", verMgr.vol.Name, verMgr.prepareCommit.prepareInfo.Ver, err)
 		}
 	} else {
 		log.LogErrorf("action[CommitVer] vol %v with seq %v wrong step", verMgr.vol.Name, verMgr.prepareCommit.prepareInfo.Ver)
 	}
-	log.LogInfof("action[CommitVer] verseq %v exit")
+	log.LogInfof("action[CommitVer] verseq %v exit", verMgr.verSeq)
 	return
 }
 
 func (verMgr *VolVersionManager) GenerateVer(verSeq uint64, op uint8) (err error) {
-	log.LogInfof("action[GenerateVer] vol %v  enter verseq %v", verSeq)
+	log.LogInfof("action[GenerateVer] vol %v  enter verseq %v", verMgr.vol.Name, verSeq)
 	verMgr.Lock()
 	defer verMgr.Unlock()
 	tm := time.Now()
@@ -152,14 +153,34 @@ func (verMgr *VolVersionManager) GenerateVer(verSeq uint64, op uint8) (err error
 	return
 }
 
-func (verMgr *VolVersionManager) DelVer() (err error) {
+func (verMgr *VolVersionManager) DelVer(verSeq uint64) (err error) {
 	verMgr.Lock()
 	defer verMgr.Unlock()
 
 	for i, ver := range verMgr.multiVersionList {
-		if ver.Ver == verMgr.prepareCommit.prepareInfo.Ver {
+		if ver.Ver == verSeq {
+			if ver.Status != proto.VersionDeleting && ver.Status != proto.VersionDeleteAbnormal {
+				err = fmt.Errorf("with seq %v but it's status is %v", verSeq, ver.Status)
+				log.LogErrorf("action[VolVersionManager.DelVer] err %v", err)
+				return
+			}
 			verMgr.multiVersionList = append(verMgr.multiVersionList[:i], verMgr.multiVersionList[i+1:]...)
 			break
+		}
+	}
+	return
+}
+
+func (verMgr *VolVersionManager) UpdateVerStatus(verSeq uint64, status uint8) (err error) {
+	verMgr.Lock()
+	defer verMgr.Unlock()
+
+	for _, ver := range verMgr.multiVersionList {
+		if ver.Ver == verSeq {
+			ver.Status = status
+		}
+		if ver.Ver > verSeq {
+			return fmt.Errorf("not found")
 		}
 	}
 	return
@@ -188,7 +209,7 @@ func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpRespons
 			resp.Op, resp.VerSeq, verMgr.prepareCommit.prepareInfo.Ver)
 		return
 	}
-
+	var needCommit bool
 	dFunc := func(pType uint32, array *sync.Map) {
 		if val, ok := array.Load(resp.Addr); ok {
 			if rType, rok := val.(int); rok && rType == TypeNoReply {
@@ -209,7 +230,9 @@ func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpRespons
 					}
 					return
 				}
-				atomic.AddUint32(&verMgr.prepareCommit.commitCnt, 1)
+				if verMgr.prepareCommit.nodeCnt == atomic.AddUint32(&verMgr.prepareCommit.commitCnt, 1) {
+					needCommit = true
+				}
 				log.LogInfof("action[handleTaskRsp] type %v node %v rsp sucess. op %v, verseq %v,commit cnt %v",
 					pType, resp.Addr, resp.Op, resp.VerSeq, atomic.LoadUint32(&verMgr.prepareCommit.commitCnt))
 			} else {
@@ -231,7 +254,7 @@ func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpRespons
 	log.LogInfof("action[handleTaskRsp] commit cnt %v, node cnt %v, operation %v", atomic.LoadUint32(&verMgr.prepareCommit.commitCnt),
 		atomic.LoadUint32(&verMgr.prepareCommit.nodeCnt), verMgr.prepareCommit.op)
 
-	if atomic.LoadUint32(&verMgr.prepareCommit.commitCnt) == verMgr.prepareCommit.nodeCnt {
+	if atomic.LoadUint32(&verMgr.prepareCommit.commitCnt) == verMgr.prepareCommit.nodeCnt && needCommit {
 		if verMgr.prepareCommit.op == proto.DeleteVersion {
 			verMgr.CommitVer()
 			verMgr.prepareCommit.reset()
@@ -350,7 +373,7 @@ func (verMgr *VolVersionManager) createTaskToDataNode(cluster *Cluster, verSeq u
 		dpHost sync.Map
 	)
 
-	log.LogWarnf("action[createTaskToDataNode] vol %v verMgr.status %v verSeq %v op force %v", verMgr.vol.Name, verMgr.status, verSeq, op, force)
+	log.LogWarnf("action[createTaskToDataNode] vol %v verMgr.status %v verSeq %v op %v force %v", verMgr.vol.Name, verMgr.status, verSeq, op, force)
 	for _, dp := range verMgr.vol.dataPartitions.clonePartitions() {
 		for _, host := range dp.Hosts {
 			dpHost.Store(host, nil)
@@ -537,13 +560,15 @@ func (verMgr *VolVersionManager) loadMultiVersion(val []byte) (err error) {
 func (verMgr *VolVersionManager) getVersionInfo(verGet uint64) (verInfo *proto.VolVersionInfo, err error) {
 	verMgr.RLock()
 	defer verMgr.RUnlock()
-
+	log.LogDebugf("action[getVersionInfo] verGet %v", verGet)
 	for _, ver := range verMgr.multiVersionList {
-		if ver.Ctime.Unix() == int64(verGet) {
+		if ver.Ver == verGet {
+			log.LogDebugf("action[getVersionInfo] ver %v", ver)
 			return ver, nil
 		}
-
-		if ver.Ctime.Unix() > int64(verGet) {
+		log.LogDebugf("action[getVersionInfo] ver %v", ver)
+		if ver.Ver > verGet {
+			log.LogDebugf("action[getVersionInfo] ver %v", ver)
 			break
 		}
 	}

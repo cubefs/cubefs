@@ -66,12 +66,12 @@ func (d *Dentry) setDeleted() {
 	d.VerSeq |= uint64(1) << 63
 }
 
-func (d *Dentry) getDentryByVerSeq(verSeq uint64) (den *Dentry, idx int) {
+func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
 
-	log.LogInfof("action[getDentryByVerSeq] verseq %v, tmp dentry %v, inode id %v, name %v", verSeq, d.getVerSeq(), d.Inode, d.Name)
+	log.LogInfof("action[getDentryFromVerList] verseq %v, tmp dentry %v, inode id %v, name %v", verSeq, d.getVerSeq(), d.Inode, d.Name)
 	if verSeq == 0 || (verSeq >= d.getVerSeq() && verSeq != math.MaxUint64) {
 		if d.isDeleted() {
-			log.LogDebugf("action[getDentryByVerSeq] tmp dentry %v, is deleted, seq %v", d, d.getVerSeq())
+			log.LogDebugf("action[getDentryFromVerList] tmp dentry %v, is deleted, seq %v", d, d.getVerSeq())
 			return
 		}
 		return d, 0
@@ -90,23 +90,23 @@ func (d *Dentry) getDentryByVerSeq(verSeq uint64) (den *Dentry, idx int) {
 		if d.dentryList[denListLen-1].getVerSeq() != 0 || d.dentryList[denListLen-1].isDeleted() {
 			return nil, 0
 		}
-		log.LogDebugf("action[getDentryByVerSeq] return dentry %v seq %v", den, den.getVerSeq())
+		log.LogDebugf("action[getDentryFromVerList] return dentry %v seq %v", den, den.getVerSeq())
 		return
 	}
 
 	for id, lDen := range d.dentryList {
-		log.LogDebugf("action[getDentryByVerSeq] den in ver list %v, is delete %v, seq %v", lDen, lDen.isDeleted(), lDen.getVerSeq())
+		log.LogDebugf("action[getDentryFromVerList] den in ver list %v, is delete %v, seq %v", lDen, lDen.isDeleted(), lDen.getVerSeq())
 		if verSeq < lDen.getVerSeq() {
-			log.LogDebugf("action[getDentryByVerSeq] den in ver list %v, return nil, request seq %v, history ver seq %v", lDen, verSeq, lDen.getVerSeq())
+			log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil, request seq %v, history ver seq %v", lDen, verSeq, lDen.getVerSeq())
 		} else if lDen.isDeleted() {
-			log.LogDebugf("action[getDentryByVerSeq] den in ver list %v, return nil due to latest is deleted", lDen)
+			log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil due to latest is deleted", lDen)
 			return
 		} else if verSeq >= lDen.getVerSeq() {
-			log.LogDebugf("action[getDentryByVerSeq] den in ver list %v got", lDen)
+			log.LogDebugf("action[getDentryFromVerList] den in ver list %v got", lDen)
 			return lDen, id + 1
 		}
 	}
-	log.LogDebugf("action[getDentryByVerSeq] den in ver list not found right dentry with seq %v", verSeq)
+	log.LogDebugf("action[getDentryFromVerList] den in ver list not found right dentry with seq %v", verSeq)
 	return
 }
 
@@ -138,7 +138,8 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 	if delVerSeq != math.MaxUint64 && delVerSeq > mpVerSeq {
 		panic(fmt.Sprintf("Dentry version %v large than mp %v", delVerSeq, mpVerSeq))
 	}
-	if delVerSeq == 0 || (delVerSeq == math.MaxUint64 && d.getVerSeq() == 0) {
+
+	if delVerSeq == 0 {
 		if d.isDeleted() {
 			log.LogDebugf("action[deleteVerSnapshot.delSeq_0] do noting dentry %v seq %v be deleted before", d, delVerSeq)
 			return nil, false, false
@@ -174,11 +175,11 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 			den    *Dentry
 			endSeq uint64
 		)
-		if den, idx = d.getDentryByVerSeq(delVerSeq); den == nil {
+		if den, idx = d.getDentryFromVerList(delVerSeq); den == nil {
 			log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] den %v not found", delVerSeq, d)
 			return nil, false, false
 		}
-		if idx == 0 {
+		if idx == 0 { // top layer
 			// header layer do nothing and be depends on should not be dropped
 			log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] den %v first layer do nothing", delVerSeq, d)
 			return d, false, false
