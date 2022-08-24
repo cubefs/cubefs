@@ -1,7 +1,6 @@
 package clustermgr
 
 import (
-	"context"
 	"encoding/binary"
 	"io"
 	"os"
@@ -19,16 +18,13 @@ import (
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 func TestManage(t *testing.T) {
-	testService := initTestService(t)
-	defer clear(testService)
-	defer testService.Close()
+	testService, clean := initTestService(t)
+	defer clean()
 	testClusterClient := initTestClusterClient(testService)
-
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctx := newCtx()
 
 	// test member add or remove
 	{
@@ -49,7 +45,6 @@ func TestManage(t *testing.T) {
 
 		err = testClusterClient.AddMember(ctx, &clustermgr.AddMemberArgs{PeerID: 2, Host: "127.0.0.1", NodeHost: "127.0.0.2", MemberType: clustermgr.MemberTypeNormal})
 		require.Equal(t, apierrors.CodeDuplicatedMemberInfo, err.(rpc.HTTPError).StatusCode())
-
 	}
 
 	// test stat

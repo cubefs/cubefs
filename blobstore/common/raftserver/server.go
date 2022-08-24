@@ -82,6 +82,9 @@ func NewRaftServer(cfg *Config) (RaftServer, error) {
 		return nil, err
 	}
 	tickInterval := time.Duration(cfg.TickInterval) * time.Second
+	if cfg.TickIntervalMs > 0 {
+		tickInterval = time.Duration(cfg.TickIntervalMs) * time.Millisecond
+	}
 	proposeTimeout := time.Duration(cfg.ProposeTimeout) * time.Second
 	snapTimeout := time.Duration(cfg.SnapshotTimeout) * time.Second
 	rs := &raftServer{

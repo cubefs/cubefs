@@ -24,17 +24,17 @@ import (
 )
 
 func TestStateMachine(t *testing.T) {
-	srcService := initTestService(t)
-	defer clear(srcService)
-	defer srcService.Close()
-
+	srcService, srcClean := initTestService(t)
+	defer srcClean()
 	srcClusterClient := initTestClusterClient(srcService)
 
 	// change another listen port
 	oldPort := testServiceCfg.RaftConfig.ServerConfig.ListenPort
 	oldMembers := testServiceCfg.RaftConfig.ServerConfig.Members
 	testServiceCfg.RaftConfig.ServerConfig.ListenPort = GetFreePort()
-	testServiceCfg.RaftConfig.ServerConfig.Members = []raftserver.Member{{NodeID: 1, Host: "127.0.0.1:65342", Learner: false}}
+	testServiceCfg.RaftConfig.ServerConfig.Members = []raftserver.Member{
+		{NodeID: 1, Host: "127.0.0.1:65342", Learner: false},
+	}
 	testServiceCfg.CodeModePolicies = []codemode.Policy{
 		{
 			ModeName:  codemode.EC15P12.Name(),
@@ -51,11 +51,11 @@ func TestStateMachine(t *testing.T) {
 			Enable:    false,
 		},
 	}
-	destService := initTestService(t)
+
+	destService, destClean := initTestService(t)
+	defer destClean()
 	testServiceCfg.RaftConfig.ServerConfig.ListenPort = oldPort
 	testServiceCfg.RaftConfig.ServerConfig.Members = oldMembers
-	defer clear(destService)
-	defer destService.Close()
 
 	insertDiskInfos(t, srcClusterClient, 1, 10, "z0")
 

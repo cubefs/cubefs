@@ -15,23 +15,19 @@
 package clustermgr
 
 import (
-	"context"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 func TestService(t *testing.T) {
-	testService := initTestService(t)
-	defer clear(testService)
-	defer testService.Close()
+	testService, clean := initTestService(t)
+	defer clean()
 	testClusterClient := initTestClusterClient(testService)
-
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctx := newCtx()
 
 	testServiceName := "testService"
 	testHostPrefix := "http://127.0.0."

@@ -16,12 +16,13 @@ package clustermgr
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -41,7 +42,7 @@ var testServiceCfg = &Config{
 	IDC:       []string{"z0", "z1", "z2"},
 	ClusterID: 1,
 	Readonly:  false,
-	DBPath:    "/tmp/tmpsvrdb-" + strconv.Itoa(rand.Intn(100000000)),
+	DBPath:    "/tmp/tmpsvrdb-" + randID(),
 	CodeModePolicies: []codemode.Policy{
 		{
 			ModeName:  codemode.EC15P12.Name(),
@@ -69,8 +70,10 @@ var testServiceCfg = &Config{
 			ListenPort:   GetFreePort(),
 			TickInterval: 1,
 			ElectionTick: 2,
-			WalDir:       "/tmp/tmpsvrraftwal-" + strconv.Itoa(rand.Intn(10000000)),
+			WalDir:       "/tmp/tmpsvrraftwal-" + randID(),
 			Members:      []raftserver.Member{{NodeID: 1, Host: "127.0.0.1:60110", Learner: false}},
+
+			TickIntervalMs: 20,
 		},
 	},
 	DiskMgrConfig: diskmgr.DiskMgrConfig{
@@ -80,28 +83,57 @@ var testServiceCfg = &Config{
 	},
 }
 
-func clear(testService *Service) {
+var (
+	cleanWG sync.WaitGroup
+	newCtx  = func() context.Context {
+		_, ctx := trace.StartSpanFromContext(context.Background(), "")
+		return ctx
+	}
+)
+
+func TestMain(m *testing.M) {
+	exitCode := m.Run()
+	cleanWG.Wait()
+	os.Exit(exitCode)
+}
+
+func randID() string {
+	return fmt.Sprintf("%010d", rand.Intn(100000000))
+}
+
+func cleanTestService(testService *Service) {
+	testService.Close()
 	os.RemoveAll(testService.DBPath)
 	os.RemoveAll(testService.RaftConfig.ServerConfig.WalDir)
 }
 
-func initTestService(t *testing.T) *Service {
+func initTestService(t testing.TB) (*Service, func()) {
 	cfg := *testServiceCfg
-	cfg.NormalDBPath = cfg.DBPath + "/normaldb" + strconv.Itoa(rand.Intn(100000000))
-	cfg.KvDBPath = cfg.DBPath + "/kvdb" + strconv.Itoa(rand.Intn(100000000))
-	cfg.VolumeMgrConfig.VolumeDBPath = cfg.DBPath + "/volumedb" + strconv.Itoa(rand.Intn(10000000))
-	cfg.RaftConfig.RaftDBPath = cfg.DBPath + "/raftdb" + strconv.Itoa(rand.Intn(10000000))
-	cfg.RaftConfig.ServerConfig.WalDir = "/tmp/tmpsvrraftwal-" + strconv.Itoa(rand.Intn(10000000))
+	cfg.DBPath = "/tmp/tmpsvrdb-" + randID()
+	cfg.NormalDBPath = cfg.DBPath + "/normaldb-" + randID()
+	cfg.KvDBPath = cfg.DBPath + "/kvdb-" + randID()
+	cfg.VolumeMgrConfig.VolumeDBPath = cfg.DBPath + "/volumedb-" + randID()
+	cfg.RaftConfig.RaftDBPath = cfg.DBPath + "/raftdb-" + randID()
+	cfg.RaftConfig.ServerConfig.WalDir = "/tmp/tmpsvrraftwal-" + randID()
+	cfg.RaftConfig.ServerConfig.ListenPort = GetFreePort()
+	cfg.RaftConfig.ServerConfig.Members = []raftserver.Member{
+		{NodeID: 1, Host: fmt.Sprintf("127.0.0.1:%d", GetFreePort()), Learner: false},
+	}
 	cfg.ClusterCfg[proto.VolumeReserveSizeKey] = "20000000"
 	os.Mkdir(cfg.DBPath, 0o755)
 	testService, err := New(&cfg)
 	require.NoError(t, err)
 
-	return testService
+	cleanWG.Add(1)
+	return testService, func() {
+		go func() {
+			cleanTestService(testService)
+			cleanWG.Done()
+		}()
+	}
 }
 
 func initTestClusterClient(testService *Service) *clustermgr.Client {
-	// mux := server.MockRegist(testService, http.NewServeMux())
 	ph := rpc.DefaultRouter.Router.PanicHandler
 	rpc.DefaultRouter = rpc.New()
 	rpc.DefaultRouter.Router.PanicHandler = ph
@@ -115,12 +147,11 @@ func initTestClusterClient(testService *Service) *clustermgr.Client {
 }
 
 func TestBidAlloc(t *testing.T) {
-	testService := initTestService(t)
-	defer clear(testService)
-	defer testService.Close()
+	testService, clean := initTestService(t)
+	defer clean()
 	testClusterClient := initTestClusterClient(testService)
+	ctx := newCtx()
 
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	// test bid alloc
 	{
 		ret, err := testClusterClient.AllocBid(ctx, &clustermgr.BidScopeArgs{Count: 10})
@@ -135,16 +166,9 @@ func TestBidAlloc(t *testing.T) {
 
 type mockWriter struct{}
 
-func (m *mockWriter) Write(data []byte) (int, error) {
-	return len(data), nil
-}
-
-func (m *mockWriter) Header() http.Header {
-	return http.Header{}
-}
-
-func (m *mockWriter) WriteHeader(statusCode int) {
-}
+func (mockWriter) Write(data []byte) (int, error) { return len(data), nil }
+func (mockWriter) Header() http.Header            { return http.Header{} }
+func (mockWriter) WriteHeader(statusCode int)     {}
 
 func TestNewService(t *testing.T) {
 	cfg := *testServiceCfg
@@ -153,7 +177,7 @@ func TestNewService(t *testing.T) {
 	cfg.MetricReportIntervalM = 0
 	cfg.HeartbeatNotifyIntervalS = 0
 
-	cfg.RaftConfig.ServerConfig.WalDir = "/tmp/tmpsvrraftwal-" + strconv.Itoa(rand.Intn(10000000))
+	cfg.RaftConfig.ServerConfig.WalDir = "/tmp/tmpsvrraftwal-" + randID()
 	cfg.ClusterCfg[proto.VolumeReserveSizeKey] = "20000000"
 	os.Mkdir(cfg.DBPath, 0o755)
 
@@ -167,10 +191,9 @@ func TestNewService(t *testing.T) {
 	req, err := http.NewRequest(http.MethodPost, "/", nil)
 	require.NoError(t, err)
 
-	testService.forwardToLeader(&mockWriter{}, req)
+	testService.forwardToLeader(mockWriter{}, req)
 
-	defer clear(testService)
-	defer testService.Close()
+	cleanTestService(testService)
 }
 
 func GetFreePort() int {
