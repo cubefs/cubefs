@@ -15,24 +15,20 @@
 package clustermgr
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestConfig(t *testing.T) {
-	testService := initTestService(t)
-	defer clear(testService)
-	defer testService.Close()
+	testService, clean := initTestService(t)
+	defer clean()
 	testClusterClient := initTestClusterClient(testService)
-
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctx := newCtx()
 
 	// test set config
 	{

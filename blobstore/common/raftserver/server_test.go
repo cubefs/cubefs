@@ -208,6 +208,8 @@ var cfgs = [3]*Config{
 		TickInterval: 1,
 		ElectionTick: 3,
 		Members:      members,
+
+		TickIntervalMs: 50,
 	},
 	{
 		NodeId:       2,
@@ -216,6 +218,8 @@ var cfgs = [3]*Config{
 		TickInterval: 1,
 		ElectionTick: 3,
 		Members:      members,
+
+		TickIntervalMs: 50,
 	},
 	{
 		NodeId:       3,
@@ -224,6 +228,8 @@ var cfgs = [3]*Config{
 		TickInterval: 1,
 		ElectionTick: 3,
 		Members:      members,
+
+		TickIntervalMs: 50,
 	},
 }
 

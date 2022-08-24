@@ -15,22 +15,17 @@
 package clustermgr
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 func TestKV(t *testing.T) {
-	testService := initTestService(t)
-	defer clear(testService)
-	defer testService.Close()
+	testService, clean := initTestService(t)
+	defer clean()
 	testClusterClient := initTestClusterClient(testService)
-
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctx := newCtx()
 
 	err := testClusterClient.SetKV(ctx, "test1", []byte("value"))
 	require.NoError(t, err)
@@ -54,12 +49,9 @@ func TestKV(t *testing.T) {
 }
 
 func BenchmarkService_KvSet(b *testing.B) {
-	testService := initTestService(&testing.T{})
-	defer clear(testService)
-	defer testService.Close()
+	testService, clean := initTestService(b)
+	defer clean()
 	testClusterClient := initTestClusterClient(testService)
-
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	testCases := []struct {
 		key   string
@@ -71,6 +63,7 @@ func BenchmarkService_KvSet(b *testing.B) {
 		{key: "test4", value: []byte("test-repair")},
 	}
 
+	ctx := newCtx()
 	b.ResetTimer()
 	for i, tCase := range testCases {
 		b.Run(fmt.Sprintf("case-%d", i), func(b *testing.B) {

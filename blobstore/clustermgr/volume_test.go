@@ -30,25 +30,38 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 )
 
 // generate 10 volume in db
-func initServiceWithData() *Service {
+func initServiceWithData() (*Service, func()) {
 	cfg := *testServiceCfg
 
+	cfg.DBPath = "/tmp/tmpsvrdb-" + randID()
 	cfg.VolumeMgrConfig.FlushIntervalS = 600
 	cfg.VolumeMgrConfig.MinAllocableVolumeCount = 0
 	cfg.DiskMgrConfig.HeartbeatExpireIntervalS = 600
 	cfg.ClusterReportIntervalS = 3
 	cfg.ClusterCfg[proto.VolumeReserveSizeKey] = "20000000"
+	cfg.RaftConfig.ServerConfig.ListenPort = GetFreePort()
+	cfg.RaftConfig.ServerConfig.Members = []raftserver.Member{
+		{NodeID: 1, Host: fmt.Sprintf("127.0.0.1:%d", GetFreePort()), Learner: false},
+	}
 
 	os.Mkdir(cfg.DBPath, 0o755)
-	generateVolume(cfg.DBPath+"/volumedb", cfg.DBPath+"/normaldb")
+	err := generateVolume(cfg.DBPath+"/volumedb", cfg.DBPath+"/normaldb")
+	if err != nil {
+		panic("generate volume error: " + err.Error())
+	}
 
 	testService, _ := New(&cfg)
-	return testService
+	cleanWG.Add(1)
+	return testService, func() {
+		go func() {
+			cleanTestService(testService)
+			cleanWG.Done()
+		}()
+	}
 }
 
 func TestService_CreateVolume(t *testing.T) {
@@ -59,9 +72,9 @@ func TestService_CreateVolume(t *testing.T) {
 
 	testServiceCfg.CodeModePolicies = append(testServiceCfg.CodeModePolicies,
 		codemode.Policy{ModeName: codemode.EC4P4L2.Name(), Enable: true})
-	testService := initServiceWithData()
-	testService.Close()
-	clear(testService)
+	testService, _ := initServiceWithData()
+	cleanTestService(testService) // waiting closed
+	cleanWG.Done()
 
 	// set EC4P4L2 enable=false
 	for i := range testServiceCfg.CodeModePolicies {
@@ -71,19 +84,15 @@ func TestService_CreateVolume(t *testing.T) {
 			testServiceCfg.CodeModePolicies[i].Enable = true
 		}
 	}
-	testService = initServiceWithData()
-
-	defer clear(testService)
-	defer testService.Close()
+	_, clean := initServiceWithData()
+	defer clean()
 }
 
 func TestService_VolumeInfo(t *testing.T) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	// get volumeInfo
 	{
@@ -150,15 +159,12 @@ func TestService_VolumeInfo(t *testing.T) {
 }
 
 func TestService_VolumeAlloc(t *testing.T) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	// alloc volume
-
 	args := &clustermgr.AllocVolumeArgs{
 		CodeMode: 1,
 		Count:    1,
@@ -193,12 +199,10 @@ func TestService_VolumeAlloc(t *testing.T) {
 func TestService_VolumeAlloc2(t *testing.T) {
 	testServiceCfg.VolumeMgrConfig.AllocatableDiskLoadThreshold = 10
 	// initServiceWithData generate disk_id 1-10
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	args := &clustermgr.AllocVolumeArgs{
 		CodeMode: 1,
@@ -216,12 +220,10 @@ func TestService_VolumeAlloc2(t *testing.T) {
 }
 
 func TestService_ChunkSetCompact(t *testing.T) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	// chunk set compact
 	{
@@ -256,12 +258,10 @@ func TestService_ChunkSetCompact(t *testing.T) {
 }
 
 func TestService_UpdateVolume(t *testing.T) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	// success case
 	{
@@ -302,12 +302,10 @@ func TestService_UpdateVolume(t *testing.T) {
 }
 
 func TestService_VolumeLock(t *testing.T) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	// lock volume
 	{
@@ -316,7 +314,6 @@ func TestService_VolumeLock(t *testing.T) {
 		}
 		err := cmClient.LockVolume(ctx, args)
 		require.NoError(t, err)
-
 	}
 
 	// unlock volume
@@ -330,12 +327,10 @@ func TestService_VolumeLock(t *testing.T) {
 }
 
 func TestService_VolumeUnitList(t *testing.T) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	// list volumeUnits
 	{
@@ -350,32 +345,28 @@ func TestService_VolumeUnitList(t *testing.T) {
 }
 
 func TestService_VolumeUnitRelease(t *testing.T) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	// release volume unit
 	{
 		vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(1, 1), 1)
 		vol, err := cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: proto.Vid(1)})
 		require.NoError(t, err)
-		oldDiskId := vol.Units[1].DiskID
+		oldDiskID := vol.Units[1].DiskID
 		// UT test request to blobnode will return connection refused
-		err = cmClient.ReleaseVolumeUnit(ctx, &clustermgr.ReleaseVolumeUnitArgs{Vuid: vuid, DiskID: oldDiskId})
+		err = cmClient.ReleaseVolumeUnit(ctx, &clustermgr.ReleaseVolumeUnitArgs{Vuid: vuid, DiskID: oldDiskID})
 		require.Error(t, err)
 	}
 }
 
 func TestService_ChunkReport(t *testing.T) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	// chunk report
 	{
@@ -396,12 +387,12 @@ func TestService_ChunkReport(t *testing.T) {
 }
 
 func TestService_VolumeAllocatedList(t *testing.T) {
-	testService := initServiceWithData()
-	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	cleanWG.Wait()
 
-	defer clear(testService)
-	defer testService.Close()
+	testService, clean := initServiceWithData()
+	defer clean()
+	cmClient := initTestClusterClient(testService)
+	ctx := newCtx()
 
 	args := &clustermgr.AllocVolumeArgs{
 		IsInit:   false,
@@ -429,12 +420,11 @@ func TestService_VolumeAllocatedList(t *testing.T) {
 }
 
 func TestService_AdminUpdateVolume(t *testing.T) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctx := newCtx()
 
-	defer clear(testService)
-	defer testService.Close()
 	args := &clustermgr.VolumeInfoBase{
 		Vid:  1,
 		Used: 99,
@@ -444,12 +434,11 @@ func TestService_AdminUpdateVolume(t *testing.T) {
 }
 
 func TestService_AdminUpdateVolumeUnit(t *testing.T) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctx := newCtx()
 
-	defer clear(testService)
-	defer testService.Close()
 	args := &clustermgr.AdminUpdateUnitArgs{
 		Epoch:     3,
 		NextEpoch: 5,
@@ -479,32 +468,30 @@ func TestService_AdminUpdateVolumeUnit(t *testing.T) {
 	require.Error(t, err)
 }
 
-var (
-	unitCount = 27
-	tokens    = []*volumedb.TokenRecord{}
-	units     = [][]*volumedb.VolumeUnitRecord{}
-	volumes   = []*volumedb.VolumeRecord{}
-)
-
-func generateVolume(volumeDBPath, NormalDBPath string) {
+func generateVolume(volumeDBPath, NormalDBPath string) error {
+	var (
+		unitCount = 27
+		tokens    = []*volumedb.TokenRecord{}
+		units     = [][]*volumedb.VolumeUnitRecord{}
+		volumes   = []*volumedb.VolumeRecord{}
+	)
 	volumeDB, err := volumedb.Open(volumeDBPath, false)
 	if err != nil {
-		log.Error("open db error")
-	}
-	normalDB, err := normaldb.OpenNormalDB(NormalDBPath, false)
-	if err != nil {
-		log.Error("open db error")
+		return err
 	}
 	defer volumeDB.Close()
+	normalDB, err := normaldb.OpenNormalDB(NormalDBPath, false)
+	if err != nil {
+		return err
+	}
 	defer normalDB.Close()
 
 	volTable, err := volumedb.OpenVolumeTable(volumeDB.KVStore)
 	if err != nil {
-		log.Error("open volumeTable error, db is nil")
+		return err
 	}
 
 	for i := 1; i < 11; i++ {
-
 		vuidPrefixs := make([]proto.VuidPrefix, unitCount)
 		unitRecords := make([]*volumedb.VolumeUnitRecord, unitCount)
 		for j := 0; j < unitCount; j++ {
@@ -541,12 +528,12 @@ func generateVolume(volumeDBPath, NormalDBPath string) {
 	}
 	err = volTable.PutVolumes(volumes, units, tokens)
 	if err != nil {
-		log.Error("put volume error", err)
+		return err
 	}
 
 	diskTable, err := normaldb.OpenDiskTable(normalDB, true)
 	if err != nil {
-		log.Error("open normalTable error,db is nil")
+		return err
 	}
 	for i := 1; i <= unitCount+3; i++ {
 		dr := &normaldb.DiskInfoRecord{
@@ -575,19 +562,18 @@ func generateVolume(volumeDBPath, NormalDBPath string) {
 		}
 		err := diskTable.AddDisk(dr)
 		if err != nil {
-			log.Error("pur disk record error")
-			return
+			return err
 		}
 	}
+
+	return nil
 }
 
 func BenchmarkService_ChunkSetCompact(b *testing.B) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	b.ResetTimer()
 	for i := 1; i < b.N; i++ {
@@ -603,12 +589,10 @@ func BenchmarkService_ChunkSetCompact(b *testing.B) {
 }
 
 func BenchmarkService_VolumeAlloc(b *testing.B) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	args := &clustermgr.AllocVolumeArgs{
 		CodeMode: 1,
@@ -626,12 +610,10 @@ func BenchmarkService_VolumeAlloc(b *testing.B) {
 }
 
 func BenchmarkService_VolumeListAndListV2(b *testing.B) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	listArgs := &clustermgr.ListVolumeArgs{
 		Marker: proto.Vid(1),
@@ -647,12 +629,10 @@ func BenchmarkService_VolumeListAndListV2(b *testing.B) {
 }
 
 func BenchmarkService_ChunkReport(b *testing.B) {
-	testService := initServiceWithData()
+	testService, clean := initServiceWithData()
+	defer clean()
 	cmClient := initTestClusterClient(testService)
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
-	defer clear(testService)
-	defer testService.Close()
+	ctx := newCtx()
 
 	var chunks []blobnode.ChunkInfo
 	for i := 1; i < 11; i++ {

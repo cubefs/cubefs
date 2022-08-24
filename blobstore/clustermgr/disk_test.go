@@ -15,14 +15,12 @@
 package clustermgr
 
 import (
-	"context"
 	"strconv"
 	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 
 	"github.com/stretchr/testify/require"
 )
@@ -42,8 +40,7 @@ var testDiskInfo = blobnode.DiskInfo{
 }
 
 func insertDiskInfos(t *testing.T, client *clustermgr.Client, start, end int, idcs ...string) {
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-
+	ctx := newCtx()
 	for idx, idc := range idcs {
 		for i := start; i <= end; i++ {
 			_, err := client.AllocDiskID(ctx)
@@ -61,12 +58,10 @@ func insertDiskInfos(t *testing.T, client *clustermgr.Client, start, end int, id
 }
 
 func TestDisk(t *testing.T) {
-	testService := initTestService(t)
-	defer clear(testService)
-	defer testService.Close()
+	testService, clean := initTestService(t)
+	defer clean()
 	testClusterClient := initTestClusterClient(testService)
-
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctx := newCtx()
 
 	// test disk id alloc
 	{
