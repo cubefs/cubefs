@@ -572,6 +572,9 @@ func (c *Cluster) updateDataNodeBaseInfo(nodeAddr string, id uint64) (err error)
 		return
 	}
 
+	if err = c.syncDeleteDataNode(dataNode); err != nil {
+		return
+	}
 	dataNode.ID = id
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
 		return
@@ -592,7 +595,9 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	if metaNode.ID == id {
 		return
 	}
-
+	if err = c.syncDeleteMetaNode(metaNode); err != nil {
+		return
+	}
 	metaNode.ID = id
 	if err = c.syncUpdateMetaNode(metaNode); err != nil {
 		return
