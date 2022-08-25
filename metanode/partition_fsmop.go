@@ -115,9 +115,11 @@ AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 
 func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMemberRequest,
 	index uint64) (updated bool, err error) {
-	var canRemoveSelf bool
-	if canRemoveSelf, err = mp.canRemoveSelf(); err != nil {
-		return
+	canRemoveSelf := true
+	if mp.config.NodeId == req.RemovePeer.ID {
+		if canRemoveSelf, err = mp.canRemoveSelf(); err != nil {
+			return
+		}
 	}
 	peerIndex := -1
 	data, _ := json.Marshal(req)

@@ -24,11 +24,14 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"hash/crc32"
 	"io"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // APIResponse defines the structure of the response to an HTTP request
@@ -84,6 +87,12 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 
 	http.HandleFunc("/getMetaDataCrcSum", m.getMetaDataCrcSum)
 	http.HandleFunc("/getInodesCrcSum", m.getAllInodesCrcSum)
+
+	http.HandleFunc("/startPartition", m.startPartition)
+	http.HandleFunc("/stopPartition", m.stopPartition)
+	http.HandleFunc("/reloadPartition", m.reloadPartition)
+
+	http.HandleFunc("/cleanExpiredPartitions", m.cleanExpiredPartitions)
 	return
 }
 
@@ -1114,4 +1123,155 @@ func (m *MetaNode) getAllInodesCrcSum(w http.ResponseWriter, r *http.Request)  {
 		CRCSumSet:       crcSumSet,
 	}
 	return
+}
+
+func (m *MetaNode) cleanExpiredPartitions(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		reservedDays uint64
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getAllInodesCrcSum] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	if reservedDays, err = strconv.ParseUint(r.FormValue("Days"), 10, 64); err != nil {
+		reservedDays = 1
+	}
+
+	expiredCheck := (time.Now().Add(- 24 * time.Hour * time.Duration(reservedDays))).Unix()
+	fileInfoList, err := ioutil.ReadDir(m.metadataDir)
+	if err != nil {
+		return
+	}
+	//expired_partition_7320_1634280431
+	cnt := 0
+	for _, fileInfo := range fileInfoList {
+		if !fileInfo.IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(fileInfo.Name(), ExpiredPartitionPrefix) {
+			continue
+		}
+		mpInfo := strings.Split(fileInfo.Name(), "_")
+		if len(mpInfo) == 0 {
+			continue
+		}
+		delTime := int64(0)
+		if delTime, err = strconv.ParseInt(mpInfo[len(mpInfo) - 1], 10, 64); err != nil {
+			continue
+		}
+
+		if delTime > expiredCheck {
+			continue
+		}
+		cnt++
+		os.RemoveAll(path.Join(m.metadataDir, fileInfo.Name()))
+	}
+
+	resp.Msg = fmt.Sprintf("Success, Delete %d expired partitions", cnt)
+	return
+}
+
+func (m *MetaNode) stopPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getAllInodesCrcSum] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	//m.metadataManager.Start()
+	err = m.metadataManager.StopPartition(pid)
+	if err != nil {
+		resp.Msg = err.Error()
+	}
+}
+
+func (m *MetaNode) startPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getAllInodesCrcSum] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	err = m.metadataManager.StartPartition(pid)
+	if err != nil {
+		resp.Msg = err.Error()
+	}
+}
+
+func (m *MetaNode) reloadPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getAllInodesCrcSum] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	err = m.metadataManager.ReloadPartition(pid)
+	if err != nil {
+		resp.Msg = err.Error()
+	}
 }
