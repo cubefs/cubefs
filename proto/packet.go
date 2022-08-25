@@ -136,9 +136,6 @@ const (
 	OpMetaInodeGetV2         uint8 = 0x3C //new op code, old(get) compatible the old client
 	OpGetMetaNodeVersionInfo uint8 = 0x3D
 
-	OpMetaInsertInnerData	 uint8 = 0x3E
-	OpMetaGetInnerData		 uint8 = 0x3F
-
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition             uint8 = 0x40
 	OpMetaNodeHeartbeat               uint8 = 0x41
@@ -249,7 +246,6 @@ const (
 	TinyExtentType   = 0
 	NormalExtentType = 1
 	AllExtentType    = 2
-	InnerDataType	 = 3
 )
 
 const (
@@ -341,8 +337,6 @@ func (p *Packet) GetStoreType() (m string) {
 		m = "TinyExtent"
 	case NormalExtentType:
 		m = "NormalExtent"
-	case InnerDataType:
-		m = "InnerExtent"
 	default:
 		m = "Unknown"
 	}
@@ -562,10 +556,6 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaGetCmpInode"
 	case OpMetaInodeMergeEks:
 		m = "OpMetaInodeMergeEks"
-	case OpMetaInsertInnerData:
-		m = "OpMetaInsertInnerData"
-	case OpMetaGetInnerData:
-		m = "OpMetaGetInnerData"
 	}
 	return
 }
@@ -925,7 +915,7 @@ func (p *Packet) IsReadMetaPkt() bool {
 		p.Opcode == OpMetaReadDir || p.Opcode == OpMetaExtentsList || p.Opcode == OpGetMultipart ||
 		p.Opcode == OpMetaGetXAttr || p.Opcode == OpMetaListXAttr || p.Opcode == OpListMultiparts ||
 		p.Opcode == OpMetaBatchGetXAttr || p.Opcode == OpMetaLookupForDeleted || p.Opcode == OpMetaGetDeletedInode ||
-		p.Opcode == OpMetaBatchGetDeletedInode || p.Opcode == OpMetaReadDeletedDir || p.Opcode == OpMetaGetInnerData {
+		p.Opcode == OpMetaBatchGetDeletedInode || p.Opcode == OpMetaReadDeletedDir {
 		return true
 	}
 	return false

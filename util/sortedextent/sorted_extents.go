@@ -269,7 +269,6 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 				ExtentId:     cur.ExtentId,
 				ExtentOffset: cur.ExtentOffset,
 				Size:         uint32(ek.FileOffset - cur.FileOffset),
-				StoreType:    cur.StoreType,
 			}
 		}
 		if ek.FileOffset+uint64(ek.Size) < cur.FileOffset+uint64(cur.Size) {
@@ -279,7 +278,6 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 				ExtentId:     cur.ExtentId,
 				ExtentOffset: cur.ExtentOffset + ek.FileOffset - cur.FileOffset + uint64(ek.Size),
 				Size:         cur.Size - uint32(ek.FileOffset-cur.FileOffset+uint64(ek.Size)),
-				StoreType:    cur.StoreType,
 			}
 		}
 

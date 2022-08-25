@@ -511,11 +511,6 @@ func (task *ConvertTask) getVolumeInfo() (err error) {
 		return
 	}
 
-	if volInfo.EnableInnerData {
-		err = fmt.Errorf("inner data has been enabled, convert not support")
-		return
-	}
-
 	if volInfo.ConvertState == proto.VolConvertStInit || volInfo.ConvertState == proto.VolConvertStFinished {
 		err = fmt.Errorf("can not start Convert Task , vol state[%v] is not support", volInfo.ConvertState)
 		return

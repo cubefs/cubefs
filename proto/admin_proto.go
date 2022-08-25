@@ -972,8 +972,6 @@ type SimpleVolView struct {
 	EcTimeOut             int64
 	EcRetryWait           int64
 	EcMaxUnitSize         uint64
-	EnableInnerData       bool
-	InnerSize			  uint64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

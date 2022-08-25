@@ -27,27 +27,9 @@ import (
 )
 
 var (
-	ExtentLength 	  = 40
+	ExtentLength      = 40
 	ExtentDbKeyLength = 24
 	InvalidKey        = errors.New("invalid key error")
-)
-
-type ExtentType uint8
-
-func (t ExtentType) String() string {
-	switch t {
-	case NormalData:
-		return "normal-data"
-	case InnerData:
-		return "inner-data"
-	default:
-	}
-	return "undefined"
-}
-
-const (
-	NormalData	ExtentType = iota	// store in DataNode
-	InnerData						// store in RocksDB of MetaNode
 )
 
 // ExtentKey defines the extent key struct.
@@ -58,13 +40,11 @@ type ExtentKey struct {
 	ExtentOffset uint64
 	Size         uint32
 	CRC          uint32
-	StoreType	 ExtentType
 }
 
 // String returns the string format of the extentKey.
 func (k ExtentKey) String() string {
-	return fmt.Sprintf("ExtentKey{FileOffset(%v),Partition(%v),ExtentID(%v),ExtentOffset(%v),Size(%v),CRC(%v),Type(%v)}",
-		k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC, k.StoreType)
+	return fmt.Sprintf("ExtentKey{FileOffset(%v),Partition(%v),ExtentID(%v),ExtentOffset(%v),Size(%v),CRC(%v)}", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
 }
 
 // Less defines the less comparator.
@@ -79,7 +59,7 @@ func (k *ExtentKey) Copy() btree.Item {
 }
 
 func (k *ExtentKey) Marshal() (m string) {
-	return fmt.Sprintf("%v_%v_%v_%v_%v_%v_%v", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC, k.StoreType)
+	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
 }
 
 // MarshalDbKey marshals the binary format of the extent for db key.
@@ -212,12 +192,12 @@ func (k *ExtentKey) UnmarshalBinaryV2(data []byte) (err error) {
 	if len(data) < ExtentLength {
 		return fmt.Errorf("ekdata buff err, need at least %d, but buff len:%d", ExtentLength, len(data))
 	}
-	k.FileOffset   = binary.BigEndian.Uint64(data[0  : 8])
-	k.PartitionId  = binary.BigEndian.Uint64(data[8  : 16])
-	k.ExtentId     = binary.BigEndian.Uint64(data[16 : 24])
-	k.ExtentOffset = binary.BigEndian.Uint64(data[24 : 32])
-	k.Size         = binary.BigEndian.Uint32(data[32 : 36])
-	k.CRC          = binary.BigEndian.Uint32(data[36 : 40])
+	k.FileOffset = binary.BigEndian.Uint64(data[0:8])
+	k.PartitionId = binary.BigEndian.Uint64(data[8:16])
+	k.ExtentId = binary.BigEndian.Uint64(data[16:24])
+	k.ExtentOffset = binary.BigEndian.Uint64(data[24:32])
+	k.Size = binary.BigEndian.Uint32(data[32:36])
+	k.CRC = binary.BigEndian.Uint32(data[36:40])
 
 	return nil
 }
@@ -285,7 +265,6 @@ func GetExtentKeyFromPool() *ExtentKey {
 	ek.CRC = 0
 	ek.FileOffset = 0
 	ek.PartitionId = 0
-	ek.StoreType = 0
 	return ek
 }
 

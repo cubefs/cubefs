@@ -133,8 +133,6 @@ type OpInode interface {
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 	GetCompactInodeInfo(req *proto.GetCmpInodesRequest, p *Packet) (err error)
 	MergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error)
-	InsertInnerData(req *proto.InsertInnerDataRequest, p *Packet) (err error)
-	GetInnerData(req *proto.GetInnerDataRequest, p *Packet) (err error)
 }
 
 type OpDeletedInode interface {

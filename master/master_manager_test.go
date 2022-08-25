@@ -88,7 +88,7 @@ func snapshotTest(t *testing.T) {
 	for _, peer := range server.config.peers {
 		peers = append(peers, peer.Peer)
 	}
-	if err = fsm.ApplySnapshot(peers, mdSnapshot, 0); err != nil {
+	if err = fsm.ApplySnapshot(peers, mdSnapshot); err != nil {
 		t.Error(err)
 		return
 	}

@@ -231,7 +231,7 @@ func (mp *metaPartition) loadDeletedInode(ctx context.Context, rootDir string) (
 			err = errors.NewErrorf("[loadDeletedInode] ReadBody: %s", err.Error())
 			return
 		}
-		dino := NewDeletedInode(NewInode(0, 0), 0)
+		dino := new(DeletedINode)
 		err = dino.Unmarshal(ctx, inoBuf)
 		if err != nil {
 			err = errors.NewErrorf("[loadDeletedInode] Unmarshal: %s", err.Error())

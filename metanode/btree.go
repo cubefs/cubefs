@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	_ "github.com/chubaofs/chubaofs/proto"
 )
@@ -56,6 +57,7 @@ func (t TreeType) String() string {
 }
 
 var (
+	existsError    = fmt.Errorf("exists error")
 	baseInfoKey    = []byte{byte(BaseInfoType)}
 )
 

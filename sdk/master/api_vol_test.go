@@ -31,7 +31,7 @@ var (
 
 func TestVolCreate(t *testing.T) {
 	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, testStoreMode, 0, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testEnableWriteCache, false, testZoneName, testMpLyout, "",0, proto.CompactDefaultName, 4, 2, false)
+		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testEnableWriteCache, testZoneName, testMpLyout, "",0, proto.CompactDefaultName, 4, 2, false)
 	if err != nil {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, testVolName)
 	}
@@ -47,8 +47,8 @@ func TestUpdateVol(t *testing.T) {
 	extentCap := uint64(2)
 	updateFollowerRead := false
 	trashDays := 15
-	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, trashDays, testStoreMode, 0,
-		updateFollowerRead, false, false, false, false, false, false, false, false, authKey, testZoneName,
+	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, trashDays, testStoreMode,
+		updateFollowerRead, false, false, false, false, false, false, false, authKey, testZoneName,
 		testMpLyout, "", 0, 0, 0, "default")
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)
@@ -94,161 +94,4 @@ func calcAuthKey(key string) (authKey string) {
 	_, _ = h.Write([]byte(key))
 	cipherStr := h.Sum(nil)
 	return strings.ToLower(hex.EncodeToString(cipherStr))
-}
-
-func TestVolCreateAndUpdate_InnerDataCase01(t *testing.T) {
-	volName := "testInnerDataCase01"
-	authKey := calcAuthKey(testOwner)
-	extentCap := uint64(2)
-	updateFollowerRead := false
-	trashDays := 15
-	err := testMc.AdminAPI().CreateVolume(volName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, int(proto.StoreModeMem), 0, testFollowerRead,
-		testAutoRepair, testVolWriteMutex, testForceROW, false, false, true, testZoneName, testMpLyout, "", 0, "default", 4, 2, false)
-	if err == nil {
-		t.Errorf("expect error is failed, inner data can not be enabled when volume default store mode is memory")
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().CreateVolume(volName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, int(proto.StoreModeMem), 4096, testFollowerRead,
-		testAutoRepair, testVolWriteMutex, testForceROW, false, false, false, testZoneName, testMpLyout, "", 0, "default", 4, 2, false)
-	if err == nil {
-		t.Errorf("expect error is failed, inner size can not be set when inner data disbaled")
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().CreateVolume(volName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, int(proto.StoreModeRocksDb), 4096, testFollowerRead,
-		testAutoRepair, testVolWriteMutex, testForceROW, false, false, false, testZoneName, testMpLyout, "", 0, "default", 4, 2, false)
-	if err == nil {
-		t.Errorf("expect error is failed, inner size can not be set when inner data disbaled")
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().CreateVolume(volName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, int(proto.StoreModeMem), 0, testFollowerRead,
-		testAutoRepair, testVolWriteMutex, testForceROW, false, false, false, testZoneName, testMpLyout, "", 0, "default", 4, 2, false)
-	if err != nil {
-		t.Errorf("create volume failed, err(%v), vol(%v)", err, testVolName)
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().UpdateVolume(volName, extentCap, testReplicas, testMpReplicas, trashDays, int(proto.StoreModeMem), 0,
-		updateFollowerRead, false, false, false, false, false, false, false, true, authKey, testZoneName,
-		testMpLyout, "", 0, 0, 0, "default")
-	if err == nil {
-		t.Errorf("expect error is failed, inner data can not be enabled when volume default store mode is memory")
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().UpdateVolume(volName, extentCap, testReplicas, testMpReplicas, trashDays, int(proto.StoreModeMem), 4096,
-		updateFollowerRead, false, false, false, false, false, false, false, false, authKey, testZoneName,
-		testMpLyout, "", 0, 0, 0, "default")
-	if err == nil {
-		t.Errorf("expect error is failed, inner size can not be set when inner data flag disabled")
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().UpdateVolume(volName, extentCap, testReplicas, testMpReplicas, trashDays, int(proto.StoreModeRocksDb), 0,
-		updateFollowerRead, false, false, false, false, false, false, false, false, authKey, testZoneName,
-		testMpLyout, "", 0, 0, 0, "default")
-	if err != nil {
-		t.Errorf("update volume default store mode failed, err(%v), vol(%v)", err, volName)
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().UpdateVolume(volName, extentCap, testReplicas, testMpReplicas, trashDays, int(proto.StoreModeRocksDb), 0,
-		updateFollowerRead, false, false, false, false, false, false, false, true, authKey, testZoneName,
-		testMpLyout, "", 0, 0, 0, "default")
-	if err == nil {
-		t.Errorf("expect error is failed, volume container mem mode mp")
-		t.FailNow()
-	}
-
-	var vv *proto.SimpleVolView
-	vv, err = testMc.adminAPI.GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Errorf("get volume simple info failed, err(%v), volume(%s)", err, volName)
-		t.FailNow()
-	}
-
-	if vv.DefaultStoreMode != proto.StoreModeRocksDb || vv.EnableInnerData || vv.InnerSize != 0 {
-		t.Errorf("volume config mismatch, expect(defaultStoreMode:%v, enableInnerData:true, innerSize:4096)," +
-			" actual(defaultStoreMode:%v, enableInnerData:%v, innerSize:%v)", proto.StoreModeRocksDb, vv.DefaultStoreMode,
-			vv.EnableInnerData, vv.InnerSize)
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().DeleteVolume(volName, authKey)
-	if err != nil {
-		t.Errorf("delete vols failed: err(%v) vol(%v)", err, volName)
-		t.FailNow()
-	}
-}
-
-func TestVolCreateAndUpdate_InnerDataCase02(t *testing.T) {
-	volName := "testInnerDataCase02"
-	authKey := calcAuthKey(testOwner)
-	extentCap := uint64(2)
-	updateFollowerRead := false
-	trashDays := 15
-	err := testMc.AdminAPI().CreateVolume(volName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, int(proto.StoreModeRocksDb), 4096, testFollowerRead,
-		testAutoRepair, testVolWriteMutex, testForceROW, false, false, false, testZoneName, testMpLyout, "", 0, "default", 4, 2, false)
-	if err == nil {
-		t.Errorf("expect error is failed, inner size can not be set when inner data flag disabled")
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().CreateVolume(volName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, int(proto.StoreModeRocksDb), 0, testFollowerRead,
-		testAutoRepair, testVolWriteMutex, testForceROW, false, false, false, testZoneName, testMpLyout, "", 0, "default", 4, 2, false)
-	if err != nil {
-		t.Errorf("create volume failed, err(%v), vol(%s)", err, volName)
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().UpdateVolume(volName, extentCap, testReplicas, testMpReplicas, trashDays, int(proto.StoreModeRocksDb), 4096,
-		updateFollowerRead, false, false, false, false, false, false, false, true, authKey, testZoneName,
-		testMpLyout, "", 0, 0, 0, "default")
-	if err != nil {
-		t.Errorf("update volume failed, err(%v), vol(%s)", err, volName)
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().UpdateVolume(volName, extentCap, testReplicas, testMpReplicas, trashDays, int(proto.StoreModeRocksDb), 1024,
-		updateFollowerRead, false, false, false, false, false, false, false,true, authKey, testZoneName,
-		testMpLyout, "", 0, 0, 0, "default")
-	if err != nil {
-		t.Errorf("update volume failed, err(%v), vol(%s)", err, volName)
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().UpdateVolume(volName, extentCap, testReplicas, testMpReplicas, trashDays, int(proto.StoreModeMem), 0,
-		updateFollowerRead, false, false, false, false, false, false, false, false, authKey, testZoneName,
-		testMpLyout, "", 0, 0, 0, "default")
-	if err == nil {
-		t.Errorf("expect error is failed, if inner data has been enabled, it is not allowed to disable")
-		t.FailNow()
-	}
-
-	var vv *proto.SimpleVolView
-	vv, err = testMc.adminAPI.GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Errorf("get volume simple info failed, err(%v), volume(%s)", err, volName)
-		t.FailNow()
-	}
-	if vv.DefaultStoreMode != proto.StoreModeRocksDb || !vv.EnableInnerData || vv.InnerSize != 1024 {
-		t.Errorf("volume config mismatch, expect(defaultStoreMode:%v, enableInnerData:true, innerSize:4096)," +
-			" actual(defaultStoreMode:%v, enableInnerData:%v, innerSize:%v)", proto.StoreModeRocksDb, vv.DefaultStoreMode,
-			vv.EnableInnerData, vv.InnerSize)
-		t.FailNow()
-	}
-
-	err = testMc.AdminAPI().DeleteVolume(volName, authKey)
-	if err != nil {
-		t.Errorf("delete vols failed: err(%v) vol(%v)", err, volName)
-		t.FailNow()
-	}
 }

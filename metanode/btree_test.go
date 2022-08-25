@@ -310,7 +310,6 @@ func TestInodeTree_Create(t *testing.T) {
 				Generation: 0,
 				LinkTarget: []byte("linkTarget"),
 				NLink:      3,
-				version:    InodeMarshalVersion,
 			},
 		},
 		{
@@ -325,7 +324,6 @@ func TestInodeTree_Create(t *testing.T) {
 				Size:       4096,
 				NLink:      1,
 				Extents:    sortedextent.NewSortedExtents(),
-				version:    InodeMarshalVersion,
 			},
 		},
 	}
@@ -503,7 +501,7 @@ func TestInodeTreeGet(t *testing.T) {
 
 	getIno, errForRocks = rocksInodeTree.Get(30)
 	if errForRocks != nil || getIno == nil {
-		t.Fatalf("Test Get: result mismatch, expect[err:nil, inode:30] actual[err:%v, inode:%v]", errForRocks, getIno.Inode)
+		t.Fatalf("Test Get: result mismatch, expect[err:nil, inode:30] actual[err:%v, inode:%v]", errForRocks, getIno)
 	}
 
 	if getIno.Inode != 30 {

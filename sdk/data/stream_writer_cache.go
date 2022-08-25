@@ -67,7 +67,7 @@ func (s *Streamer) WritePendingPacket(data []byte, offset uint64, size int, dire
 	}
 	s.pendingPacketList = newPendingPacketList
 	ek = &proto.ExtentKey {
-		FileOffset: offset,
+		FileOffset: uint64(offset),
 		Size:       uint32(size),
 	}
 	if log.IsDebugEnabled() {
@@ -126,7 +126,7 @@ func (s *Streamer) FlushAllPendingPacket(ctx context.Context) {
 
 func (s *Streamer) OverwriteLocalPacket(req *ExtentRequest) bool {
 	if s.client.EnableWriteCache() {
-		if s.handler != nil && s.handler.storeMode != proto.InnerDataType {
+		if s.handler != nil {
 			s.handler.overwriteLocalPacketMutex.Lock()
 			if s.handler.packet != nil {
 				if req.FileOffset >= s.handler.packet.KernelOffset && req.FileOffset + uint64(req.Size) <= s.handler.packet.KernelOffset + uint64(s.handler.packet.Size)  {

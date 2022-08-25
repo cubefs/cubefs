@@ -129,8 +129,6 @@ const (
 	dataNodeHttpPortKey         = "httpPort"
 	compactTagKey				= "compactTag"
 	dumpWaterLevelKey           = "metaNodeDumpWaterLevel"
-	enableInnerDataKey          = "enableInnerData"
-	innerSizeKey                = "innerSize"
 )
 
 const (

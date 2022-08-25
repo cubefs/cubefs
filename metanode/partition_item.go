@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tecbot/gorocksdb"
 	"io"
 	"io/ioutil"
@@ -30,20 +29,6 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-)
-
-type RaftCmdItemMarshalBinaryVersion byte
-
-const (
-	ItemMarshalBinaryMinVersion RaftCmdItemMarshalBinaryVersion = iota
-	ItemMarshalBinaryV1
-	ItemMarshalBinaryMaxVersion
-	ItemMarshalJsonVersion = 123
-)
-
-const (
-	RaftCmdItemMarshalBinaryBaseLen = 26
-	MetaItemMarshalBinaryTimestampLen = 8
 )
 
 // MetaItem defines the structure of the metadata operations.
@@ -147,7 +132,7 @@ func (s *MetaItem) String() string {
 		}
 		v = fmt.Sprintf("inode: %v", ino.Inode)
 	}
-	return fmt.Sprintf("Op: %v, K: %v, V: %v, From: %v, Timestamp: %v, trashEnable: %v", s.Op, string(s.K), v, s.From, s.Timestamp, s.TrashEnable)
+	return fmt.Sprintf("Op: %v, K: %v, V: %v, From: %v", s.Op, string(s.K), v, s.From)
 }
 
 // NewMetaItem returns a new MetaItem.
@@ -157,133 +142,6 @@ func NewMetaItem(op uint32, key, value []byte) *MetaItem {
 		K:  key,
 		V:  value,
 	}
-}
-
-func (s *MetaItem) MarshalBinaryWithVersion(version RaftCmdItemMarshalBinaryVersion) (dataBytes []byte, err error) {
-	if s == nil {
-		return nil, nil
-	}
-
-	switch version {
-	case ItemMarshalBinaryV1:
-		return s.marshalBinaryV1()
-	default:
-		return nil, fmt.Errorf("error version")
-	}
-}
-
-func (s *MetaItem) marshalBinaryV1() (dataBytes []byte, err error) {
-	length := RaftCmdItemMarshalBinaryBaseLen + len(s.K) + len(s.V) + len([]byte(s.From))
-	dataBytes = make([]byte, length)
-	offset := 0
-	dataBytes[0] = byte(ItemMarshalBinaryV1)
-	offset += 1
-	binary.BigEndian.PutUint32(dataBytes[offset:offset+4], s.Op)
-	offset += 4
-	binary.BigEndian.PutUint32(dataBytes[offset:offset+4], uint32(len(s.K)))
-	offset += 4
-	copy(dataBytes[offset:offset+len(s.K)], s.K)
-	offset += len(s.K)
-	binary.BigEndian.PutUint32(dataBytes[offset:offset+4], uint32(len(s.V)))
-	offset += 4
-	copy(dataBytes[offset:offset+len(s.V)], s.V)
-	offset += len(s.V)
-	binary.BigEndian.PutUint32(dataBytes[offset:offset+4], uint32(len([]byte(s.From))))
-	offset += 4
-	copy(dataBytes[offset:offset+len([]byte(s.From))], []byte(s.From))
-	offset += len([]byte(s.From))
-	binary.BigEndian.PutUint64(dataBytes[offset:offset+8], uint64(s.Timestamp))
-	offset += 8
-	if s.TrashEnable {
-		dataBytes[offset] = 1
-	} else {
-		dataBytes[offset] = 0
-	}
-	return
-}
-
-func (s *MetaItem) UnmarshalBinaryWithVersion(version RaftCmdItemMarshalBinaryVersion, raw []byte) (err error) {
-	switch version {
-	case ItemMarshalBinaryV1:
-		return s.unmarshalBinaryV1(raw)
-	default:
-		return fmt.Errorf("error version")
-	}
-}
-
-func (s *MetaItem) unmarshalBinaryV1(raw []byte) (err error) {
-	var lenK, lenV, lenFrom uint32
-	if len(raw) < RaftCmdItemMarshalBinaryBaseLen {
-		return fmt.Errorf("error data")
-	}
-
-	//skip version
-	offset := 1
-
-	s.Op = binary.BigEndian.Uint32(raw[offset : offset+4])
-	offset += 4
-
-	lenK = binary.BigEndian.Uint32(raw[offset : offset+4])
-	offset += 4
-
-	if len(raw) < int(lenK+RaftCmdItemMarshalBinaryBaseLen) {
-		err = fmt.Errorf("decode item K failed, actual len:%d, execpt at least:%d", len(raw)-offset, lenK+RaftCmdItemMarshalBinaryBaseLen-uint32(offset))
-		log.LogErrorf(err.Error())
-		return
-	}
-	s.K = make([]byte, lenK)
-	copy(s.K, raw[offset:])
-	offset += int(lenK)
-
-	lenV = binary.BigEndian.Uint32(raw[offset : offset+4])
-	offset += 4
-
-	if len(raw) < int(lenK+lenV+RaftCmdItemMarshalBinaryBaseLen) {
-		err = fmt.Errorf("decode item V failed, actual len:%d, execpt at least:%d", len(raw)-offset, lenV+lenV+RaftCmdItemMarshalBinaryBaseLen-uint32(offset))
-		log.LogErrorf(err.Error())
-		return
-	}
-	s.V = make([]byte, lenV)
-	copy(s.V, raw[offset:])
-	offset += int(lenV)
-
-	lenFrom = binary.BigEndian.Uint32(raw[offset : offset+4])
-	offset += 4
-
-	if len(raw) < int(lenFrom+lenK+lenV+RaftCmdItemMarshalBinaryBaseLen) {
-		err = fmt.Errorf("decode item from failed, actual len:%d, execpt at least:%d", len(raw)-offset, lenFrom+lenK+lenV+RaftCmdItemMarshalBinaryBaseLen-uint32(offset))
-		log.LogErrorf(err.Error())
-		return
-	}
-	fromBuff := make([]byte, lenFrom)
-	copy(fromBuff, raw[offset:])
-	offset += int(lenFrom)
-	s.From = string(fromBuff)
-
-	s.Timestamp = int64(binary.BigEndian.Uint64(raw[offset : offset+8]))
-	offset += 8
-
-	if raw[offset] == 1 {
-		s.TrashEnable = true
-	}
-	return
-}
-
-func (s *MetaItem) UnmarshalRaftMsg(command []byte) (err error) {
-	if len(command) <= 0 {
-		return fmt.Errorf("error raft command")
-	}
-	if command[0] == ItemMarshalJsonVersion {
-		log.LogInfof("unmarshal by json")
-		return s.UnmarshalJson(command)
-	}
-
-	var version = RaftCmdItemMarshalBinaryVersion(command[0])
-	if version > ItemMarshalBinaryMinVersion && version < ItemMarshalBinaryMaxVersion {
-		log.LogInfof("unmarshal by binary")
-		return s.UnmarshalBinaryWithVersion(version, command)
-	}
-	return fmt.Errorf("error version:%v", version)
 }
 
 type fileData struct {
@@ -452,10 +310,6 @@ func (si *MetaItemIterator) Close() {
 		si.treeSnap.Close()
 	})
 	return
-}
-
-func (si *MetaItemIterator) Version() uint32 {
-	return BaseSnapshotV
 }
 
 // Next returns the next item.

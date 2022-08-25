@@ -150,10 +150,9 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			}
 			stdout("Summary of inodeExtentInfo  :\n%s\n", inodeExtentInfoTableHeader)
 			var (
-				fileOffset 	float64
-				crc        	float64
-				total      	uint64
-				extentType	float64
+				fileOffset float64
+				crc        float64
+				total      uint64
 			)
 			for _, ek := range eks {
 				inodeExtentInfo := ek.(map[string]interface{})
@@ -164,7 +163,6 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				} else {
 					fileOffset = inodeExtentInfo["FileOffset"].(float64)
 					crc = inodeExtentInfo["CRC"].(float64)
-					extentType = inodeExtentInfo["StoreType"].(float64)
 				}
 				inodeExtentInfoView = &proto.InodeExtentInfoView{
 					FileOffset:   uint64(fileOffset),
@@ -173,7 +171,6 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 					ExtentOffset: uint64(inodeExtentInfo["ExtentOffset"].(float64)),
 					Size:         uint64(inodeExtentInfo["Size"].(float64)),
 					CRC:          uint64(crc),
-					StoreType: 	  extentType,
 				}
 				total += inodeExtentInfoView.Size
 				stdout("%v\n", formatInodeExtentInfoTableRow(inodeExtentInfoView))

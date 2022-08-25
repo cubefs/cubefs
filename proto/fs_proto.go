@@ -824,18 +824,3 @@ type OpDeletedINodeRsp struct {
 type BatchOpDeletedINodeRsp struct {
 	Inos []*OpDeletedINodeRsp `json:"inos"`
 }
-
-type InsertInnerDataRequest struct {
-	Inode       uint64  		`json:"ino"`
-	InnerData   *InnerDataSt	`json:"innerData"`
-}
-
-type GetInnerDataRequest struct {
-	Inode      	uint64 	`json:"ino"`
-	FileOffset 	uint64 	`json:"fileOffset"`
-	Size       	uint32 	`json:"size"`
-}
-
-type GetInnerDataResponse struct {
-	InnerData	*InnerDataSt	`json:"innerData"`
-}

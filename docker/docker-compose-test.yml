@@ -625,7 +625,6 @@ services:
             - ./bin/libempty.so:/usr/lib64/libempty.so:ro
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
-            - ./conf/client_rocksdb.json:/cfs/conf/client_rocksdb.json
             - ./conf/bypass.ini:/cfs/conf/bypass.ini
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
@@ -656,7 +655,6 @@ services:
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
             - ./conf/client_ec.json:/cfs/conf/client_ec.json
-            - ./conf/client_rocksdb.json:/cfs/conf/client_rocksdb.json
             - ./conf/bypass.ini:/cfs/conf/bypass.ini
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage

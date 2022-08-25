@@ -18,8 +18,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"hash/crc32"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -1524,8 +1522,8 @@ func containsExtent(extentKeys []proto.ExtentKey, ek proto.ExtentKey) bool {
 	for _, curExtentKey := range extentKeys {
 		if ek.FileOffset >= curExtentKey.FileOffset &&
 			ek.FileOffset+uint64(ek.Size) <= curExtentKey.FileOffset+uint64(curExtentKey.Size) &&
-			ek.PartitionId == curExtentKey.PartitionId && ek.ExtentId == curExtentKey.ExtentId &&
-			ek.StoreType == curExtentKey.StoreType {
+			ek.PartitionId == curExtentKey.PartitionId &&
+			ek.ExtentId == curExtentKey.ExtentId {
 			return true
 		}
 	}
@@ -2351,90 +2349,4 @@ func (mw *MetaWrapper) batchDeleteDentryUntest(ctx context.Context, wg *sync.Wai
 	log.LogDebugf("batchDeleteDentryUntest: packet(%v) mp(%v) req(%v) dens(%v), res(%v)",
 		packet, mp, *req, len(dens), len(resp.Items))
 	return
-}
-
-func (mw *MetaWrapper) insertInnerData(ctx context.Context, mp *MetaPartition, inode uint64, innerData *proto.InnerDataSt) (status int, err error) {
-	packet := proto.NewPacketReqID(ctx)
-	packet.Opcode = proto.OpMetaInsertInnerData
-	packet.PartitionID = mp.PartitionID
-	packet.ExtentID = inode
-	packet.KernelOffset = innerData.FileOffset
-	packet.Size = innerData.Size
-	packet.CRC = innerData.CRC
-	packet.Data = innerData.Data
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
-
-	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
-	if err != nil {
-		log.LogWarnf("insertInnerData: packet(%v) mp(%v) inode(%v) innerData(%v) err(%v)", packet, mp, inode, innerData, err)
-		return
-	}
-
-	status = parseStatus(packet.ResultCode)
-	if status == statusOutOfRange {
-		log.LogWarnf("insertInnerData: packet(%v) mp(%v) inode(%v) innerData(%v) result(%v)", packet, mp, inode, innerData, packet.GetResultMsg())
-		newMp := mw.getRefreshMp(ctx, inode)
-		if newMp != nil && newMp.PartitionID != mp.PartitionID {
-			return mw.insertInnerData(ctx, newMp, inode, innerData)
-		}
-	}
-	if status != statusOK {
-		log.LogWarnf("insertInnerData: packet(%v) mp(%v) inode(%v) innerData(%v) result(%v)", packet, mp, inode, innerData, packet.GetResultMsg())
-	}
-	return status, nil
-}
-
-func (mw *MetaWrapper) getInnerData(ctx context.Context, mp *MetaPartition, inode, fileOffset uint64, size uint32) (status, readSize int, data []byte, err error) {
-	packet := proto.NewPacketReqID(ctx)
-	packet.Opcode = proto.OpMetaGetInnerData
-	packet.PartitionID = mp.PartitionID
-	packet.ExtentID = inode
-	packet.KernelOffset = fileOffset
-	packet.ExtentOffset = int64(size)
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
-
-	var	respPacket 	*proto.Packet
-	resp := new(proto.GetInnerDataResponse)
-	for retry := 0; retry < SendGetInnerDataRetry; retry++ {
-		respPacket, err = mw.sendReadToMP(ctx, mp, packet)
-		if err != nil {
-			log.LogWarnf("getInnerData: packet(%v) mp(%v) inode(%v) fileOffset(%v) size(%v) err(%v)", packet, mp, inode, fileOffset, size, err)
-			return
-		}
-
-		status = parseStatus(respPacket.ResultCode)
-		if status == statusOutOfRange {
-			log.LogWarnf("getInnerData: packet(%v) mp(%v) inode(%v) result(%v)", packet, mp, inode, respPacket.GetResultMsg())
-			newMp := mw.getRefreshMp(ctx, inode)
-			if newMp != nil && newMp.PartitionID != mp.PartitionID {
-				return mw.getInnerData(ctx, newMp, inode, fileOffset, size)
-			}
-		}
-		if status != statusOK {
-			log.LogWarnf("getInnerData: packet(%v) mp(%v) result(%v)", packet, mp, respPacket.GetResultMsg())
-			return
-		}
-
-		resp.InnerData = &proto.InnerDataSt{
-			FileOffset: respPacket.KernelOffset,
-			Size:       respPacket.Size,
-			CRC:        respPacket.CRC,
-			Data:       respPacket.Data,
-		}
-		expectCrc := crc32.ChecksumIEEE(resp.InnerData.Data[:size])
-		if size != resp.InnerData.Size || expectCrc != resp.InnerData.CRC {
-			errMsg := fmt.Sprintf("getInnerData: inconsistent response(%v) packet(%v) mp(%v) expectSize(%v) expectCrc(%v)",
-				resp.InnerData, packet, mp, size, expectCrc)
-			err = errors.New(errMsg)
-			log.LogWarnf(errMsg)
-			continue
-		}
-		break
-	}
-
-	return statusOK, int(resp.InnerData.Size), resp.InnerData.Data, nil
 }

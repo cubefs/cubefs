@@ -15,6 +15,27 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+type Rule struct {
+	offset 		uint64
+	size		int
+	writeCount	int
+	isFlush		bool
+	isOverWrite	bool
+	isRead		bool
+}
+
+type ExtentRule struct {
+	FileOffset	uint64
+	Size		uint32
+}
+
+func (rule *ExtentRule) String() string {
+	if rule == nil {
+		return ""
+	}
+	return fmt.Sprintf("FileOffset(%v) Size(%v)", rule.FileOffset, rule.Size)
+}
+
 func TestStreamer_WritePendingPacket(t *testing.T) {
 	s := &Streamer{handler: &ExtentHandler{inode: 999, storeMode: proto.NormalExtentType}}
 	tests := []struct{
@@ -249,7 +270,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T)  {
 	log.InitLog(logDir, "test", log.DebugLevel, nil)
 
 	// create inode
-	mw, ec, err := creatHelper(t, ltptestVolume, ltptestVolume)
+	mw, ec, err := creatHelper(t)
 	if err != nil {
 		t.Fatalf("TestExtentHandler_PendingPacket: create wrapper err(%v)", err)
 	}
@@ -615,7 +636,7 @@ func TestStreamer_WriteFile_discontinuous(t *testing.T)  {
 	log.InitLog(logDir, "test", log.DebugLevel, nil)
 
 	// create inode
-	mw, ec, err := creatHelper(t, ltptestVolume, ltptestVolume)
+	mw, ec, err := creatHelper(t)
 	if err != nil {
 		t.Fatalf("TestExtentHandler_PendingPacket: create wrapper err(%v)", err)
 	}

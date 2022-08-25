@@ -19,7 +19,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"hash/crc32"
 	"sync/atomic"
 	"time"
 
@@ -548,85 +547,6 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 		return
 	}
 	p.PacketOkReply()
-	return
-}
-
-func (mp *metaPartition) InsertInnerData(req *proto.InsertInnerDataRequest, p *Packet) (err error) {
-	if mp.HasMemStore() {
-		err = fmt.Errorf("not support inner data")
-		p.PacketErrorWithBody(proto.OpDisabled, []byte(err.Error()))
-		return
-	}
-
-	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
-		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
-		return
-	}
-
-	if req.InnerData.CRC != crc32.ChecksumIEEE(req.InnerData.Data[:req.InnerData.Size]) {
-		err = fmt.Errorf("inner data crc sum error")
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
-	}
-
-	var (
-		inode  *Inode
-		encoded []byte
-		status  interface{}
-	)
-	inode = NewInode(req.Inode, 0)
-	inode.InnerDataSet.Insert(req.InnerData)
-	_ = inode.InnerDataSet.GenCrc()
-	encoded, err = inode.MarshalInnerData()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
-	}
-	status, err = mp.submitByBinaryBytes(p.Ctx(), opFSMInsertInnerData, p.Remote(), encoded, ItemMarshalBinaryV1)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-		return
-	}
-	p.PacketErrorWithBody(status.(uint8), nil)
-	return
-}
-
-func (mp *metaPartition) GetInnerData(req *proto.GetInnerDataRequest, p *Packet) (err error) {
-	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
-		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
-		return
-	}
-
-	var resMsg *InodeResponse
-	resMsg, err = mp.getInode(NewInode(req.Inode, 0))
-	if err != nil {
-		p.PacketErrorWithBody(resMsg.Status, []byte(err.Error()))
-		return
-	}
-
-	inode := resMsg.Msg
-	var (
-		reply  []byte
-		status = resMsg.Status
-	)
-	if status == proto.OpOk {
-		inode.DoReadFunc(func() {
-			var data []byte
-			data, err = inode.InnerDataSet.ReadInnerData(req.FileOffset, req.Size)
-			if err != nil {
-				return
-			}
-			if uint32(len(data)) != req.Size {
-				err = fmt.Errorf("read inner data expect size:%v, actual:%v", req.Size, len(data))
-				return
-			}
-			p.KernelOffset = req.FileOffset
-			p.Size = req.Size
-			p.CRC = crc32.ChecksumIEEE(data[:req.Size])
-			reply = data
-		})
-	}
-	p.PacketErrorWithBody(status, reply)
 	return
 }
 

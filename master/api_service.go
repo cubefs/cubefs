@@ -679,7 +679,6 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		addReplicaType  proto.AddReplicaType
 		totalReplicaNum int
 		storeMode       int
-		vol             *Vol
 		err             error
 	)
 
@@ -692,25 +691,20 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
-	if vol, err = m.cluster.getVol(mp.volName); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
-		return
-	}
 
-	if storeMode == int(proto.StoreModeDef) {
+	if proto.StoreMode(storeMode) == proto.StoreModeDef {
+		var vol *Vol
+		vol, err = m.cluster.getVol(mp.volName)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+			return
+		}
 		storeMode = int(vol.DefaultStoreMode)
 	}
 
 	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
 		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if vol.EnableInnerData && storeMode == int(proto.StoreModeMem) {
-		errMsg := "addMetaReplica, inner data has been enabled, replica store mode must be rocksdb store mode"
-		log.LogErrorf(errMsg)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: errMsg, Data: nil})
 		return
 	}
 
@@ -726,6 +720,20 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 	if isAutoChooseAddrForQuorumVol(addReplicaType) && len(mp.Hosts) >= totalReplicaNum {
 		err = fmt.Errorf("partition:%v can not add replica for type:%s, replica more than vol replica num", mp.PartitionID, addReplicaType)
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if storeMode == 0 {
+		storeMode = int(proto.StoreModeMem)
+		vol, _ := m.cluster.getVol(mp.volName)
+		if vol != nil {
+			storeMode = int(vol.DefaultStoreMode)
+		}
+	}
+
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
@@ -782,7 +790,6 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		isNeedIncreaseMPLearnerNum bool
 		err                        error
 		storeMode                  int
-		vol                        *Vol
 	)
 
 	if partitionID, addr, auto, threshold, addReplicaType, storeMode, err = parseRequestToAddMetaReplicaLearner(r); err != nil {
@@ -794,6 +801,23 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
+
+	if proto.StoreMode(storeMode) == proto.StoreModeDef {
+		var vol *Vol
+		vol, err = m.cluster.getVol(mp.volName)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+			return
+		}
+		storeMode = int(vol.DefaultStoreMode)
+	}
+
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if isAutoChooseAddrForQuorumVol(addReplicaType) {
 		if addr, totalReplicaNum, err = m.cluster.chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp, proto.StoreMode(storeMode)); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
@@ -804,27 +828,17 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		isNeedIncreaseMPLearnerNum = true
 	}
 
-	vol, err = m.cluster.getVol(mp.volName)
-	if err != nil {
-		log.LogErrorf("addMetaReplicaLearner cluster(%s) vol(%s) not exist", m.cluster.Name, mp.volName)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
-		return
-	}
-
-	if storeMode == int(proto.StoreModeDef) {
-		storeMode = int(vol.DefaultStoreMode)
+	if storeMode == 0 {
+		storeMode = int(proto.StoreModeMem)
+		vol, _ := m.cluster.getVol(mp.volName)
+		if vol != nil {
+			storeMode = int(vol.DefaultStoreMode)
+		}
 	}
 
 	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
 		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if vol.EnableInnerData && storeMode == int(proto.StoreModeMem) {
-		errMsg := "addMetaReplicaLearner, inner data has been enabled, replica store mode must be rocksdb store mode"
-		log.LogErrorf(errMsg)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: errMsg, Data: nil})
 		return
 	}
 
@@ -1434,7 +1448,6 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		description          string
 		extentCacheExpireSec int64
 		enableWriteCache	 bool
-		innerSize            uint64
 
 		vol *Vol
 
@@ -1449,7 +1462,6 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		isSmart              bool
 		smartRules           []string
 		compactTag           proto.CompactTag
-		enableInnerData      bool
 	)
 	if name, authKey, replicaNum, mpReplicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1479,7 +1491,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	if mpReplicaNum == 0 {
 		mpReplicaNum = int(vol.mpReplicaNum)
 	}
-	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, enableWriteCache, enableInnerData, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, enableWriteCache, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1510,12 +1522,6 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	innerSize, err = parseDefaultInnerSizeVol(r, vol)
-	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
 	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
 		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1539,27 +1545,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	if storeMode == int(proto.StoreModeMem) && enableInnerData {
-		err = fmt.Errorf("inner data only can be enabled in rocksdb store mode")
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if innerSize > defaultVolMaxInnerSize {
-		err = fmt.Errorf("inner size out of bound, min:0, max:%v", defaultVolMaxInnerSize)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if !enableInnerData && innerSize > 0 {
-		err = fmt.Errorf("inner size can be set when inner data has been enabled")
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), innerSize, uint8(replicaNum), uint8(mpReplicaNum),
-		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache, enableInnerData, dpSelectorName, dpSelectorParm, ossBucketPolicy,
+	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
+		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache, dpSelectorName, dpSelectorParm, ossBucketPolicy,
 		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1615,7 +1602,6 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		volWriteMutexEnable  bool
 		forceROW             bool
 		enableWriteCache	bool
-		enableInnerData      bool
 		crossRegionHAType    proto.CrossRegionHAType
 		zoneName             string
 		description          string
@@ -1629,11 +1615,10 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		isSmart              bool
 		smartRules           []string
 		compactTag           string
-		innerSize			 int
 	)
 
-	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, innerSize, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
-		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, enableInnerData, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, compactTag, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
+		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, compactTag, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1674,15 +1659,9 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if innerSize > defaultVolMaxInnerSize {
-		err = fmt.Errorf("inner size must be %vKB ,received is[%v]", defaultVolMaxInnerSize / 1024 , innerSize)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
-		capacity, innerSize, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
-		enableInnerData, crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag); err != nil {
+		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
+		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1804,8 +1783,6 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		EcDataNum:            vol.EcDataNum,
 		EcParityNum:          vol.EcParityNum,
 		EcMaxUnitSize:        vol.EcMaxUnitSize,
-		EnableInnerData:      vol.EnableInnerData,
-		InnerSize:            vol.InnerSize,
 	}
 }
 
@@ -2915,7 +2892,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	return
 }
 
-func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, enableWriteCache, enableInnerData bool, err error) {
+func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, enableWriteCache bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -2971,14 +2948,6 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRea
 		}
 	} else {
 		forceROW = vol.ForceROW
-	}
-	if enableInnerDataStr := r.FormValue(enableInnerDataKey); enableInnerDataStr != "" {
-		if enableInnerData, err = strconv.ParseBool(enableInnerDataStr); err != nil {
-			err = unmatchedKey(enableInnerDataKey)
-			return
-		}
-	} else {
-		enableInnerData = vol.EnableInnerData
 	}
 	return
 }
@@ -3120,34 +3089,9 @@ func parseDefaultTrashDaysToUpdateVol(r *http.Request, vol *Vol) (remaining uint
 	return
 }
 
-func parseDefaultInnerSizeVol(r *http.Request, vol *Vol) (innerSize uint64, err error) {
-	innerSize = 0
-	err = r.ParseForm()
-	if err != nil {
-		err = fmt.Errorf("inner size param failed:%s", err.Error())
-		return
-	}
-
-	val := r.FormValue(innerSizeKey)
-	if val == "" {
-		innerSize = vol.InnerSize
-		return
-	}
-
-	var valTemp int
-	valTemp, err = strconv.Atoi(val)
-	if err != nil {
-		err = fmt.Errorf("inner size param failed:%s", err.Error())
-		return
-	}
-
-	innerSize = uint64(valTemp)
-	return
-}
-
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
-	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, innerSize, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, enableInnerData bool,
+	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, err error) {
 	if err = r.ParseForm(); err != nil {
@@ -3194,14 +3138,6 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		err = unmatchedKey(volCapacityKey)
 		return
 	}
-
-	if innerSizeStr := r.FormValue(innerSizeKey); innerSizeStr == "" {
-		innerSize = defaultVolInnerSize
-	} else if innerSize, err = strconv.Atoi(innerSizeStr); err != nil {
-		err = unmatchedKey(innerSizeKey)
-		return
-	}
-
 	var dpWriteableThresholdStr string
 	if dpWriteableThresholdStr = r.FormValue(dpWritableThresholdKey); dpWriteableThresholdStr == "" {
 		dpWritableThreshold = 0.0
@@ -3310,7 +3246,6 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	if enableEc, err = strconv.ParseBool(value); err != nil {
 		return
 	}
-	enableInnerData = extractEnableInnerData(r)
 	return
 }
 
@@ -3876,14 +3811,6 @@ func extractCrossRegionHA(r *http.Request) (crossRegionHAType proto.CrossRegionH
 	return
 }
 
-func extractEnableInnerData(r *http.Request) bool {
-	enableInnerData, err := strconv.ParseBool(r.FormValue(enableInnerDataKey))
-	if err != nil {
-		return false
-	}
-	return enableInnerData
-}
-
 func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -4186,8 +4113,12 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	for _, learner := range mp.Learners {
 		mpView.Learners = append(mpView.Learners, learner.Addr)
 	}
+	mr, err := mp.getMetaReplicaLeader()
+	if err != nil {
+		return
+	}
+	mpView.LeaderAddr = mr.Addr
 	if len(mp.Replicas) <= 0 {
-		log.LogInfof("[getMetaPartitionView] vol(%s) mp(%v) replica count is zero", mp.volName, mp.PartitionID)
 		return
 	}
 
@@ -4205,11 +4136,6 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 			mpView.MemCount++
 		}
 	}
-	mr, err := mp.getMetaReplicaLeader()
-	if err != nil {
-		return
-	}
-	mpView.LeaderAddr = mr.Addr
 	return
 }
 

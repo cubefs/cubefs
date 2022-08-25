@@ -120,8 +120,6 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Status               : %v\n", formatVolumeStatus(svv.Status)))
 	sb.WriteString(fmt.Sprintf("  EcEnable             : %v\n", svv.EcEnable))
 	sb.WriteString(fmt.Sprintf("  Capacity             : %v GB\n", svv.Capacity))
-	sb.WriteString(fmt.Sprintf("  Inner Data           : %v\n", formatEnabledDisabled(svv.EnableInnerData)))
-	sb.WriteString(fmt.Sprintf("  InnerSize            : %v KB\n", svv.InnerSize/ 1024))
 	sb.WriteString(fmt.Sprintf("  Create time          : %v\n", svv.CreateTime))
 	sb.WriteString(fmt.Sprintf("  Authenticate         : %v\n", formatEnabledDisabled(svv.Authenticate)))
 	sb.WriteString(fmt.Sprintf("  Follower read        : %v\n", formatEnabledDisabled(svv.FollowerRead)))
@@ -191,14 +189,13 @@ func formatInodeInfoView(inodeInfo *proto.InodeInfoView) string {
 }
 
 var (
-	inodeExtentInfoTablePattern = "% -15v    % -15v    % -15v    % -10v    % -15v    % -10v    % -10v    % -10v"
-	inodeExtentInfoTableHeader  = fmt.Sprintf(inodeExtentInfoTablePattern, "EkStart", "EkEnd", "PartitionId", "ExtentId", "ExtentOffset", "Size", "CRC", "Type")
+	inodeExtentInfoTablePattern = "% -15v    % -15v    % -15v    % -10v    % -15v    % -10v    % -10v"
+	inodeExtentInfoTableHeader  = fmt.Sprintf(inodeExtentInfoTablePattern, "EkStart", "EkEnd", "PartitionId", "ExtentId", "ExtentOffset", "Size", "CRC")
 )
 
 func formatInodeExtentInfoTableRow(ie *proto.InodeExtentInfoView) string {
 	return fmt.Sprintf(inodeExtentInfoTablePattern,
-		formatIntWithThousandComma(int64(ie.FileOffset)), formatIntWithThousandComma(int64(ie.FileOffset+ie.Size)),
-		ie.PartitionId, ie.ExtentId, ie.ExtentOffset, formatSize(ie.Size), ie.CRC, ie.StoreType)
+		formatIntWithThousandComma(int64(ie.FileOffset)), formatIntWithThousandComma(int64(ie.FileOffset+ie.Size)), ie.PartitionId, ie.ExtentId, ie.ExtentOffset, formatSize(ie.Size), ie.CRC)
 }
 
 func formatVolumeStatus(status uint8) string {

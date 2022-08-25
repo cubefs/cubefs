@@ -113,8 +113,6 @@ const (
 	CliExtentDelByRocksKey      = "extentDelByRocks"
 	CliFlagRaft                 = "raft"
 	CliFlagCompactTag           = "compact"
-	CliFlagInnerSize            = "inner-size"
-	CliFlagEnableInnerData      = "enable-inner-data"
 
 	CliOpRollBack              = "rollback"
 	CliOpGetCanEcDel           = "get-can-del"

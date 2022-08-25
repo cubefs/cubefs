@@ -5,14 +5,11 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"reflect"
 
 	"github.com/chubaofs/chubaofs/util/log"
-)
-
-const (
-	DeletedInodeTimeStampLen   = 8
-	DeletedInodeExpiredFlagLen = 1
+	se "github.com/chubaofs/chubaofs/util/sortedextent"
 )
 
 type DeletedINodeBatch []*DeletedINode
@@ -26,7 +23,6 @@ type DeletedINode struct {
 func NewDeletedInode(ino *Inode, timestamp int64) *DeletedINode {
 	di := new(DeletedINode)
 	di.Inode.Inode = ino.Inode
-	di.version = ino.version
 	di.Type = ino.Type
 	di.Uid = ino.Uid
 	di.Gid = ino.Gid
@@ -39,7 +35,6 @@ func NewDeletedInode(ino *Inode, timestamp int64) *DeletedINode {
 	di.Flag = ino.Flag
 	di.Reserved = ino.Reserved
 	di.Extents = ino.Extents
-	di.InnerDataSet = ino.InnerDataSet
 	di.Timestamp = timestamp
 	di.NLink = ino.NLink
 	di.IsExpired = false
@@ -70,7 +65,6 @@ func (di *DeletedINode) Less(than BtreeItem) bool {
 func (di *DeletedINode) Copy() BtreeItem {
 	newIno := new(DeletedINode)
 	newIno.Inode.Inode = di.Inode.Inode
-	newIno.version = di.version
 	newIno.Type = di.Type
 	newIno.Uid = di.Uid
 	newIno.Gid = di.Gid
@@ -89,12 +83,11 @@ func (di *DeletedINode) Copy() BtreeItem {
 	newIno.Extents = di.Extents.Clone()
 	newIno.Timestamp = di.Timestamp
 	newIno.IsExpired = di.IsExpired
-	newIno.InnerDataSet = di.InnerDataSet.Clone()
 	return newIno
 }
 
 func (di *DeletedINode) buildInode() (ino *Inode) {
-	ino = NewInode(0, 0)
+	ino = new(Inode)
 	ino.Inode = di.Inode.Inode
 	ino.Type = di.Type
 	ino.Uid = di.Uid
@@ -109,7 +102,6 @@ func (di *DeletedINode) buildInode() (ino *Inode) {
 	ino.Flag = di.Flag
 	ino.Reserved = di.Reserved
 	ino.Extents = di.Extents
-	ino.InnerDataSet = di.InnerDataSet
 	return ino
 }
 
@@ -161,10 +153,6 @@ func (di *DeletedINode) String() string {
 	}
 	buff.WriteString(fmt.Sprintf("DeleteTime[%d]", di.Timestamp))
 	buff.WriteString(fmt.Sprintf("IsExpired[%v]", di.IsExpired))
-	buff.WriteString(fmt.Sprintf("Version[%v]", di.version))
-	if di.InnerDataSet != nil {
-		buff.WriteString(fmt.Sprintf("InnerDataSet[%s]", di.InnerDataSet))
-	}
 	buff.WriteString("}")
 	return buff.String()
 }
@@ -174,7 +162,7 @@ func (di *DeletedINode) Marshal() (result []byte, err error) {
 	valBytes := di.MarshalValue()
 	keyLen := uint32(len(keyBytes))
 	valLen := uint32(len(valBytes))
-	buff := bytes.NewBuffer(make([]byte, 0, keyLen + valLen + 8))
+	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
 		return
 	}
@@ -192,30 +180,83 @@ func (di *DeletedINode) Marshal() (result []byte, err error) {
 }
 
 func (di *DeletedINode) MarshalKey() (k []byte) {
-	k = make([]byte, BaseInodeKeyLen)
+	k = make([]byte, 8)
 	binary.BigEndian.PutUint64(k, di.Inode.Inode)
 	return
 }
 
 func (di *DeletedINode) MarshalValue() (val []byte) {
-	var (
-		err           error
-		inodeValBytes []byte
-	)
+	var err error
+	buff := bytes.NewBuffer(make([]byte, 0, 128))
+	buff.Grow(64)
 	di.RLock()
-	defer di.RUnlock()
-
-	switch di.Inode.version {
-	case InodeMarshalVersion3:
-		inodeValBytes, err = di.Inode.MarshalValueV3()
-	default:
-		panic("error version")
-	}
-
-	buff := bytes.NewBuffer(make([]byte, 0, len(inodeValBytes) + DeletedInodeTimeStampLen + DeletedInodeExpiredFlagLen))
-	if err = binary.Write(buff, binary.BigEndian, inodeValBytes); err != nil {
+	di.RUnlock()
+	if err = binary.Write(buff, binary.BigEndian, &di.Type); err != nil {
 		panic(err)
 	}
+	if err = binary.Write(buff, binary.BigEndian, &di.Uid); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &di.Gid); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &di.Size); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &di.Generation); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &di.CreateTime); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &di.AccessTime); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &di.ModifyTime); err != nil {
+		panic(err)
+	}
+	symSize := uint32(len(di.LinkTarget))
+	if err = binary.Write(buff, binary.BigEndian, &symSize); err != nil {
+		panic(err)
+	}
+	if symSize > 0 {
+		if _, err = buff.Write(di.LinkTarget); err != nil {
+			panic(err)
+		}
+	}
+
+	if err = binary.Write(buff, binary.BigEndian, &di.NLink); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &di.Flag); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &di.Reserved); err != nil {
+		panic(err)
+	}
+
+	var extDataLen uint32
+	if di.Extents != nil {
+		extData, err := di.Extents.MarshalBinary()
+		if err != nil {
+			panic(err)
+		}
+		extDataLen = uint32(len(extData))
+		if err = binary.Write(buff, binary.BigEndian, extDataLen); err != nil {
+			panic(err)
+		}
+		if extDataLen > 0 {
+			if _, err = buff.Write(extData); err != nil {
+				panic(err)
+			}
+		}
+	} else {
+		extDataLen = 0
+		if err = binary.Write(buff, binary.BigEndian, extDataLen); err != nil {
+			panic(err)
+		}
+	}
+
 	if err = binary.Write(buff, binary.BigEndian, &di.Timestamp); err != nil {
 		panic(err)
 	}
@@ -229,14 +270,30 @@ func (di *DeletedINode) MarshalValue() (val []byte) {
 }
 
 func (di *DeletedINode) Unmarshal(ctx context.Context, raw []byte) (err error) {
-	inodeValueLen := len(raw) - DeletedInodeTimeStampLen - DeletedInodeExpiredFlagLen
-	if err = di.Inode.UnmarshalByVersion(ctx, raw[0:inodeValueLen]); err != nil {
+	var (
+		keyLen uint32
+		valLen uint32
+	)
+	buff := bytes.NewBuffer(raw)
+	if err = binary.Read(buff, binary.BigEndian, &keyLen); err != nil {
 		return
 	}
-	offset := inodeValueLen
-	di.Timestamp = int64(binary.BigEndian.Uint64(raw[offset:offset+DeletedInodeTimeStampLen]))
-	offset += 8
-	di.IsExpired = raw[offset] != 0
+	keyBytes := make([]byte, keyLen)
+	if _, err = buff.Read(keyBytes); err != nil {
+		return
+	}
+	if err = di.UnmarshalKey(keyBytes); err != nil {
+		return
+	}
+
+	if err = binary.Read(buff, binary.BigEndian, &valLen); err != nil {
+		return
+	}
+	valBytes := make([]byte, valLen)
+	if _, err = buff.Read(valBytes); err != nil {
+		return
+	}
+	err = di.UnmarshalValue(ctx, valBytes)
 	return
 }
 
@@ -246,20 +303,77 @@ func (di *DeletedINode) UnmarshalKey(k []byte) (err error) {
 }
 
 func (di *DeletedINode) UnmarshalValue(ctx context.Context, val []byte) (err error) {
-	versionOffset := 0
-	inodeV := binary.BigEndian.Uint32(val[versionOffset:versionOffset+4])
-	switch inodeV {
-	case InodeMarshalVersion3:
-		if err = di.Inode.UnmarshalValueV3(ctx, val[:len(val) - DeletedInodeTimeStampLen - DeletedInodeExpiredFlagLen]); err != nil {
+	buff := bytes.NewBuffer(val)
+	if err = binary.Read(buff, binary.BigEndian, &di.Type); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &di.Uid); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &di.Gid); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &di.Size); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &di.Generation); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &di.CreateTime); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &di.AccessTime); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &di.ModifyTime); err != nil {
+		return
+	}
+
+	symSize := uint32(0)
+	if err = binary.Read(buff, binary.BigEndian, &symSize); err != nil {
+		return
+	}
+	if symSize > 0 {
+		di.LinkTarget = make([]byte, symSize)
+		if _, err = io.ReadFull(buff, di.LinkTarget); err != nil {
 			return
 		}
-	default:
-		panic(fmt.Sprintf("error version:%v", inodeV))
 	}
-	offset := len(val) - DeletedInodeTimeStampLen - DeletedInodeExpiredFlagLen
-	di.Timestamp = int64(binary.BigEndian.Uint64(val[offset:offset+8]))
-	offset += 8
-	di.IsExpired = val[offset] != 0
+
+	if err = binary.Read(buff, binary.BigEndian, &di.NLink); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &di.Flag); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &di.Reserved); err != nil {
+		return
+	}
+
+	var extentBytesLen uint32
+	if err = binary.Read(buff, binary.BigEndian, &extentBytesLen); err != nil {
+		return
+	}
+	di.Extents = se.NewSortedExtents()
+	if extentBytesLen > 0 {
+		extentBytes := make([]byte, extentBytesLen)
+		_, err = buff.Read(extentBytes)
+		if err != nil {
+			return
+		}
+		if err = di.Extents.UnmarshalBinary(ctx, extentBytes); err != nil {
+			return
+		}
+	}
+
+	if err = binary.Read(buff, binary.BigEndian, &di.Timestamp); err != nil {
+		return
+	}
+
+	if err = binary.Read(buff, binary.BigEndian, &di.IsExpired); err != nil {
+		return
+	}
+
 	return
 }
 
