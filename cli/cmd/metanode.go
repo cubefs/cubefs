@@ -53,12 +53,19 @@ const (
 func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 	var optFilterStatus string
 	var optFilterWritable string
+	var optShowDp bool
 	var cmd = &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdMetaNodeListShort,
 		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
-			var err error
+			var (
+				err           error
+				nodeInfoSlice []*proto.MetaNodeInfo
+				info          *proto.MetaNodeInfo
+				header        string
+				row           string
+			)
 			defer func() {
 				if err != nil {
 					errout("List cluster meta nodes failed: %v\n", err)
@@ -71,9 +78,23 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 			sort.SliceStable(view.MetaNodes, func(i, j int) bool {
 				return view.MetaNodes[i].ID < view.MetaNodes[j].ID
 			})
+			if optShowDp {
+				nodeInfoSlice = make([]*proto.MetaNodeInfo, len(view.MetaNodes))
+				for index, node := range view.MetaNodes {
+					if info, err = client.NodeAPI().GetMetaNode(node.Addr); err != nil {
+						return
+					}
+					nodeInfoSlice[index] = info
+				}
+			}
 			stdout("[Meta nodes]\n")
-			stdout("%v\n", formatNodeViewTableHeader())
-			for _, node := range view.MetaNodes {
+			if optShowDp {
+				header = formatMetaNodeViewTableHeader()
+			} else {
+				header = formatNodeViewTableHeader()
+			}
+			stdout("%v\n", header)
+			for index, node := range view.MetaNodes {
 				if optFilterStatus != "" &&
 					!strings.Contains(formatNodeStatus(node.Status), optFilterStatus) {
 					continue
@@ -82,12 +103,20 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 					!strings.Contains(formatYesNo(node.IsWritable), optFilterWritable) {
 					continue
 				}
-				stdout("%v\n", formatNodeView(&node, true))
+				if optShowDp {
+					info = nodeInfoSlice[index]
+					row = fmt.Sprintf(metaNodeDetailViewTableRowPattern, node.ID, node.Addr, node.Version,
+						formatYesNo(node.IsWritable), formatNodeStatus(node.Status), formatSize(info.Used), formatFloat(info.Ratio), info.ZoneName, info.MetaPartitionCount)
+				} else {
+					row = formatNodeView(&node, true)
+				}
+				stdout("%v\n", row)
 			}
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")
 	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter status [Active, Inactive")
+	cmd.Flags().BoolVarP(&optShowDp, "detail", "d", false, "Show detail information")
 	return cmd
 }
 

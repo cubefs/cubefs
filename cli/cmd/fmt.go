@@ -86,14 +86,19 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 }
 
 var nodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v"
-var dataNodeDetailViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v"
+var dataNodeDetailViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v"
+var metaNodeDetailViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
 	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "VERSION", "WRITABLE", "STATUS")
 }
 
 func formatDataNodeViewTableHeader() string {
-	return fmt.Sprintf(dataNodeDetailViewTableRowPattern, "ID", "ADDRESS", "VERSION", "WRITABLE", "STATUS", "USED", "ZONE", "DP COUNT")
+	return fmt.Sprintf(dataNodeDetailViewTableRowPattern, "ID", "ADDRESS", "VERSION", "WRITABLE", "STATUS", "USED", "RATIO", "ZONE", "DP COUNT")
+}
+
+func formatMetaNodeViewTableHeader() string {
+	return fmt.Sprintf(metaNodeDetailViewTableRowPattern, "ID", "ADDRESS", "VERSION", "WRITABLE", "STATUS", "USED", "RATIO", "ZONE", "MP COUNT")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
@@ -515,6 +520,10 @@ func fixUnit(curSize uint64, curUnitIndex int) (newSize uint64, newUnitIndex int
 func formatSize(size uint64) string {
 	fixedSize, fixedUnitIndex := fixUnit(size, 0)
 	return fmt.Sprintf("%v %v", fixedSize, units[fixedUnitIndex])
+}
+
+func formatFloat(value float64) string {
+	return fmt.Sprintf("%.2v", value)
 }
 
 func formatIntWithThousandComma(n int64) string {

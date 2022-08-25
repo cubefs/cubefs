@@ -106,7 +106,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 				if optShowDp {
 					info = nodeInfoSlice[index]
 					row = fmt.Sprintf(dataNodeDetailViewTableRowPattern, node.ID, node.Addr,node.Version,
-						formatYesNo(node.IsWritable), formatNodeStatus(node.Status), formatSize(info.Used), info.ZoneName, info.DataPartitionCount)
+						formatYesNo(node.IsWritable), formatNodeStatus(node.Status), formatSize(info.Used), formatFloat(info.UsageRatio), info.ZoneName, info.DataPartitionCount)
 				} else {
 					row = formatNodeView(&node, true)
 				}
