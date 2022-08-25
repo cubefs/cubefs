@@ -34,8 +34,8 @@ import (
 var vuidPrefix1 proto.VuidPrefix = 4294967296
 
 func TestVolumeMgr_ListVolumeUnitInfo(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	args := &clustermgr.ListVolumeUnitArgs{DiskID: 2}
 	ret, err := mockVolumeMgr.ListVolumeUnitInfo(context.Background(), args)
@@ -44,12 +44,10 @@ func TestVolumeMgr_ListVolumeUnitInfo(t *testing.T) {
 }
 
 func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	ctr := gomock.NewController(t)
-	defer ctr.Finish()
-
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
 	mockDiskMgr := NewMockDiskMgrAPI(ctr)
@@ -61,23 +59,8 @@ func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
 		return diskids, nil
 	})
 	mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
-	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (bool, error) {
-		if id == proto.DiskID(29) {
-			return false, nil
-		}
-		return true, nil
-	})
-	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-		heatInfo := blobnode.DiskHeartBeatInfo{
-			DiskID: id,
-		}
-		diskInfo := &blobnode.DiskInfo{
-			DiskHeartBeatInfo: heatInfo,
-			Idc:               "z0",
-			Host:              "127.0.0.1",
-		}
-		return diskInfo, nil
-	})
+	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockIsDiskWritable)
+	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockVolumeMgr.diskMgr = mockDiskMgr
 
 	var vuidPrefix proto.VuidPrefix = 4294967296
@@ -127,8 +110,8 @@ func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
 }
 
 func TestVolumeMgr_applyAllocVolumeUnit(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	unit, err := mockVolumeMgr.volumeTbl.GetVolumeUnit(vuidPrefix1)
 	require.NoError(t, err)
@@ -161,8 +144,8 @@ func TestVolumeMgr_applyAllocVolumeUnit(t *testing.T) {
 }
 
 func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	ctr := gomock.NewController(t)
 	dnClient := mocks.NewMockStorageAPI(ctr)
@@ -211,7 +194,6 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 
 	// test applyUpdateVolumeUnit()
 	{
-
 		_, ctx := trace.StartSpanFromContext(context.Background(), "applyVolumeUnit")
 		beforeUnits, err := mockVolumeMgr.ListVolumeUnitInfo(ctx, &clustermgr.ListVolumeUnitArgs{DiskID: 1})
 		require.NoError(t, err)
@@ -254,7 +236,6 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 		// failed case, vuidPrefix not match
 		err = mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(2, 55), 1), 30)
 		require.Error(t, err)
-
 	}
 
 	// test applyUpdateVolumeUnit, refresh health return err
@@ -304,8 +285,8 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 }
 
 func TestVolumeMgr_applyChunkSetCompact(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	args := &clustermgr.SetCompactChunkArgs{
 		Vuid:       proto.EncodeVuid(vuidPrefix1, 1),
@@ -340,8 +321,8 @@ func TestVolumeMgr_applyChunkSetCompact(t *testing.T) {
 }
 
 func TestVolumeMgr_DiskWritableChange(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	ctr := gomock.NewController(t)
@@ -362,8 +343,8 @@ func TestVolumeMgr_DiskWritableChange(t *testing.T) {
 }
 
 func TestVolumeMgr_applyDiskWritableChange(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	vol, err := mockVolumeMgr.GetVolumeInfo(ctx, vuidPrefix1.Vid())
@@ -391,8 +372,8 @@ func TestVolumeMgr_applyDiskWritableChange(t *testing.T) {
 }
 
 func TestVolumeMgr_applyChunkReport(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	var args []blobnode.ChunkInfo
 	for i := 0; i < volumeCount; i++ {
@@ -428,10 +409,10 @@ func TestVolumeMgr_applyChunkReport(t *testing.T) {
 }
 
 func TestVolumeMgr_ReleaseVolumeUnit(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	ctr := gomock.NewController(t)
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	// avoid background loopCreate volume
@@ -466,8 +447,8 @@ func TestVolumeMgr_ReleaseVolumeUnit(t *testing.T) {
 }
 
 func BenchmarkVolumeMgr_ChunkReport(b *testing.B) {
-	initMockVolumeMgr(b)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(b)
+	defer clean()
 
 	var args []blobnode.ChunkInfo
 	for i := 0; i < volumeCount; i++ {

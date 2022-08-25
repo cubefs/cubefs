@@ -22,7 +22,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
@@ -34,17 +33,14 @@ import (
 )
 
 func TestVolumeMgr_CreateVolume(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
-
-	ctr := gomock.NewController(t)
-	defer ctr.Finish()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctr := gomock.NewController(t)
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
-	mockVolumeMgr.raftServer = mockRaftServer
 	mockDiskMgr := NewMockDiskMgrAPI(ctr)
 	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
 		diskids := make([]proto.DiskID, len(policy.Vuids))
@@ -62,23 +58,13 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 		}
 		return diskids, nil
 	})
-	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-		heatInfo := blobnode.DiskHeartBeatInfo{
-			DiskID: id,
-		}
-		diskInfo := &blobnode.DiskInfo{
-			DiskHeartBeatInfo: heatInfo,
-			Idc:               "z0",
-			Host:              "127.0.0.1",
-		}
-		return diskInfo, nil
-	})
+	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
+	mockVolumeMgr.raftServer = mockRaftServer
 	mockVolumeMgr.scopeMgr = mockScopeMgr
 	mockVolumeMgr.diskMgr = mockDiskMgr
 
 	// success case
 	{
-
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(31), uint64(31), nil)
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).MaxTimes(2).Return(nil)
 		err := mockVolumeMgr.createVolume(ctx, 1)
@@ -122,8 +108,10 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 	// az unavailable ,create volume
 	{
 		testConfig.UnavailableIDC = "z0"
+		oldPolicies := testConfig.CodeModePolicies[:]
 		defer func() {
 			testConfig.UnavailableIDC = ""
+			testConfig.CodeModePolicies = oldPolicies
 		}()
 		testConfig.CodeModePolicies = append(testConfig.CodeModePolicies,
 			codemode.Policy{
@@ -131,39 +119,10 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 				Enable:   true,
 			},
 		)
-		initMockVolumeMgr(t)
-		mockRaftServer := mocks.NewMockRaftServer(ctr)
-		mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
-		mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
+		mockVolumeMgr, clean := initMockVolumeMgr(t)
+		defer clean()
+
 		mockVolumeMgr.raftServer = mockRaftServer
-		mockDiskMgr := NewMockDiskMgrAPI(ctr)
-		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
-			diskids := make([]proto.DiskID, len(policy.Vuids))
-			var backErr bool
-			for i := range diskids {
-				if i < 3 {
-					diskids[i] = 9999
-				} else {
-					backErr = true
-					diskids[i] = 0
-				}
-			}
-			if backErr {
-				return diskids, errors.New("err")
-			}
-			return diskids, nil
-		})
-		mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-			heatInfo := blobnode.DiskHeartBeatInfo{
-				DiskID: id,
-			}
-			diskInfo := &blobnode.DiskInfo{
-				DiskHeartBeatInfo: heatInfo,
-				Idc:               "z0",
-				Host:              "127.0.0.1",
-			}
-			return diskInfo, nil
-		})
 		mockVolumeMgr.scopeMgr = mockScopeMgr
 		mockVolumeMgr.diskMgr = mockDiskMgr
 
@@ -181,13 +140,11 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 }
 
 func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
-
-	ctr := gomock.NewController(t)
-	defer ctr.Finish()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctr := gomock.NewController(t)
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockVolumeMgr.raftServer = mockRaftServer
@@ -203,22 +160,9 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 		})
 	}
 	allocFailed := func(n int) {
-		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n * codemode.EC15P12.Tactic().AZCount).DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
-			return nil, diskmgr.ErrNoEnoughSpace
-		})
+		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n*codemode.EC15P12.Tactic().AZCount).Return(nil, diskmgr.ErrNoEnoughSpace)
 	}
-
-	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-		heatInfo := blobnode.DiskHeartBeatInfo{
-			DiskID: id,
-		}
-		diskInfo := &blobnode.DiskInfo{
-			DiskHeartBeatInfo: heatInfo,
-			Idc:               "z0",
-			Host:              "127.0.0.1",
-		}
-		return diskInfo, nil
-	})
+	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockVolumeMgr.scopeMgr = mockScopeMgr
 	mockVolumeMgr.diskMgr = mockDiskMgr
 
