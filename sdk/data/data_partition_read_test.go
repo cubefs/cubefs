@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 )
@@ -26,10 +27,15 @@ func TestLeaderRead(t *testing.T) {
 	}
 	defer readFile.Close()
 	testMc := master.NewMasterClient([]string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}, false)
-	volumeSimpleInfo, _ := testMc.AdminAPI().GetVolumeSimpleInfo("ltptest")
-	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
-		false, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
-		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag); err != nil {
+
+	var volumeSimple *proto.SimpleVolView
+	volumeSimple, err = testMc.AdminAPI().GetVolumeSimpleInfo("ltptest")
+	if err != nil {
+		t.Fatalf("get volume simple info failed:error(%v) vol(ltptest)", err)
+	}
+	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, int(volumeSimple.DefaultStoreMode),
+		int(volumeSimple.InnerSize), false, false, false, false, false, false, false, false, volumeSimple.EnableInnerData, calcAuthKey("ltptest"),
+		"default", "0,0", "", 0, 0, 60, volumeSimple.CompactTag); err != nil {
 		t.Fatalf("update followerRead to 'false' failed: err(%v) vol(ltptest)", err)
 	}
 	time.Sleep(70 * time.Second)
@@ -58,9 +64,9 @@ func TestLeaderRead(t *testing.T) {
 		}
 		readOffset += int64(readLen)
 	}
-	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
-		true, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
-		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag); err != nil {
+	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, int(volumeSimple.DefaultStoreMode),
+		int(volumeSimple.InnerSize), true, false, false, false, false, false,false, false, volumeSimple.EnableInnerData, calcAuthKey("ltptest"),
+		"default", "0,0","", 0, 0, 60, volumeSimple.CompactTag); err != nil {
 		t.Errorf("update followerRead to 'true' failed: err(%v) vol(ltptest)", err)
 	}
 }
@@ -176,6 +182,9 @@ func TestConsistenceRead(t *testing.T) {
 		OnInsertExtentKey: mw.InsertExtentKey,
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
+		OnInsertInnerData: mw.InsertInnerData,
+		OnGetInnerData:    mw.GetInnerData,
+		OnIsRocksDBMp: 	   mw.IsRocksDBMp,
 		TinySize:          NoUseTinyExtent,
 	}); err != nil {
 		t.Fatalf("NewExtentClient failed: err(%v) vol(%v)", err, ltptestVolume)
@@ -194,6 +203,9 @@ func TestConsistenceRead(t *testing.T) {
 
 	eks := streamer.extents.List()
 	for _, ek := range eks {
+		if ek.StoreType == proto.InnerData {
+			continue
+		}
 		data := make([]byte, ek.Size)
 		req := NewExtentRequest(ek.FileOffset, int(ek.Size), data, &ek)
 		reqPacket := NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, false)

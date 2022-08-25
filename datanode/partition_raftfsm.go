@@ -138,7 +138,7 @@ func (dp *DataPartition) Snapshot(recoverNode uint64) (raftproto.Snapshot, error
 }
 
 // ApplySnapshot asks the raft leader for the snapshot data to recover the contents on the local disk.
-func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
+func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator, snapV uint32) (err error) {
 	// Never delete the raft log which hadn't applied, so snapshot no need.
 	log.LogInfof("PartitionID(%v) ApplySnapshot from(%v)", dp.partitionID, dp.raftPartition.CommittedIndex())
 	for {

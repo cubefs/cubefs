@@ -33,6 +33,8 @@ const (
 
 	ReadConsistenceRetryLimit   = 50
 	ReadConsistenceRetryTimeout = 60 * time.Second
+
+	SendGetInnerDataRetry	= 5
 )
 
 type MetaConn struct {

@@ -3,6 +3,7 @@ package sortedextent
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"testing"
 
@@ -1010,5 +1011,94 @@ func TestSortedExtents_Merge5(t *testing.T) {
 	fmt.Println(msg)
 	if merged {
 		t.Fatalf("Merge should hava error")
+	}
+}
+
+func TestSortedExtents_Insert08(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+	orders := []proto.ExtentKey{
+		{FileOffset: 0, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 0, Size: 200, StoreType: proto.InnerData},
+		{FileOffset: 200, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 200, Size: 200, StoreType: proto.InnerData},
+		{FileOffset: 300, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 300, Size: 200, StoreType: proto.InnerData},
+		{FileOffset: 500, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 500, Size: 1500, StoreType: proto.InnerData},
+		{FileOffset: 1500, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 1000, StoreType: proto.NormalData},
+		{FileOffset: 800, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 800, Size: 1000, StoreType: proto.NormalData},
+	}
+	for _, order := range orders {
+		se.Insert(ctx, order)
+	}
+
+	var (
+		expectedEks = []proto.ExtentKey{
+			{FileOffset: 0, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 0, Size: 1800, StoreType: proto.InnerData},
+			{FileOffset: 1800, PartitionId: 1, ExtentId: 1, ExtentOffset: 300, Size: 700, StoreType: proto.NormalData},
+		}
+	)
+
+	if len(se.eks) != len(expectedEks) {
+		t.Fatalf("number of ek mismatch: expect %v, actual %v", len(expectedEks), len(se.eks))
+	}
+	for i := 0; i < len(expectedEks); i++ {
+		if !reflect.DeepEqual(se.eks[i], expectedEks[i]) {
+			t.Fatalf("ek[%v] mismatch: expect %v, actual %v", i, expectedEks[i], se.eks[i])
+		}
+	}
+}
+
+func TestSortedExtents_Insert09(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+	orders := []proto.ExtentKey{
+		{FileOffset: 0, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 0, Size: 2000, StoreType: proto.InnerData},
+		{FileOffset: 1500, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100, StoreType: proto.NormalData},
+	}
+	for _, order := range orders {
+		se.Insert(ctx, order)
+	}
+
+	var (
+		expectedEks = []proto.ExtentKey{
+			{FileOffset: 0, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 0, Size: 1500, StoreType: proto.InnerData},
+			{FileOffset: 1500, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100, StoreType: proto.NormalData},
+			{FileOffset: 1600, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 1600, Size: 400, StoreType: proto.InnerData},
+		}
+	)
+
+	if len(se.eks) != len(expectedEks) {
+		t.Fatalf("number of ek mismatch: expect %v, actual %v", len(expectedEks), len(se.eks))
+	}
+	for i := 0; i < len(expectedEks); i++ {
+		if !reflect.DeepEqual(se.eks[i], expectedEks[i]) {
+			t.Fatalf("ek[%v] mismatch: expect %v, actual %v", i, expectedEks[i], se.eks[i])
+		}
+	}
+}
+
+func TestSortedExtents_Insert10(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+	orders := []proto.ExtentKey{
+		{FileOffset: 0, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 0, Size: 2000, StoreType: proto.InnerData},
+		{FileOffset: 1500, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 2000, StoreType: proto.NormalData},
+	}
+	for _, order := range orders {
+		se.Insert(ctx, order)
+	}
+
+	var (
+		expectedEks = []proto.ExtentKey{
+			{FileOffset: 0, PartitionId: math.MaxUint64, ExtentId: math.MaxUint64, ExtentOffset: 0, Size: 1500, StoreType: proto.InnerData},
+			{FileOffset: 1500, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 2000, StoreType: proto.NormalData},
+		}
+	)
+
+	if len(se.eks) != len(expectedEks) {
+		t.Fatalf("number of ek mismatch: expect %v, actual %v", len(expectedEks), len(se.eks))
+	}
+	for i := 0; i < len(expectedEks); i++ {
+		if !reflect.DeepEqual(se.eks[i], expectedEks[i]) {
+			t.Fatalf("ek[%v] mismatch: expect %v, actual %v", i, expectedEks[i], se.eks[i])
+		}
 	}
 }

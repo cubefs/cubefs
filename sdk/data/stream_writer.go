@@ -659,12 +659,21 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 }
 
 func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct bool) (total int, err error) {
-	var dp *DataPartition
 	offset := req.FileOffset
 	size := req.Size
-	ekFileOffset := req.ExtentKey.FileOffset
-	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 
+	switch req.ExtentKey.StoreType {
+	case proto.InnerData:
+		total, err = s.overWriteInnerData(ctx, req, offset, size)
+	default:
+		total, err = s.overWriteNormalData(ctx, req, offset, size, direct)
+	}
+
+	return
+}
+
+func (s *Streamer) overWriteNormalData(ctx context.Context, req *ExtentRequest, offset uint64, size int, direct bool) (total int, err error) {
+	var dp *DataPartition
 	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
 		err = errors.Trace(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
@@ -674,6 +683,9 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 		err = errors.New("Ec not support RandomWrite")
 		return
 	}
+
+	ekFileOffset := req.ExtentKey.FileOffset
+	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 	sc := NewStreamConn(dp, false)
 
 	for total < size {
@@ -708,7 +720,14 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 
 		total += packSize
 	}
+	return
+}
 
+func (s *Streamer) overWriteInnerData(ctx context.Context, req *ExtentRequest, offset uint64, size int) (total int, err error) {
+	if err = s.client.insertInnerData(ctx, s.inode, uint64(offset), uint32(size), req.Data[:size]); err != nil {
+		return
+	}
+	total = size
 	return
 }
 
@@ -722,21 +741,7 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset uint64, size
 
 	for i := 0; i < MaxNewHandlerRetry; i++ {
 		if s.handler == nil {
-			storeMode := proto.TinyExtentType
-
-			if offset != 0 || offset+uint64(size) > uint64(s.tinySizeLimit()) {
-				storeMode = proto.NormalExtentType
-			}
-			if log.IsDebugEnabled() {
-				log.LogDebugf("doWrite: NewExtentHandler ino(%v) offset(%v) size(%v) storeMode(%v)",
-					s.inode, offset, size, storeMode)
-			}
-
-			// not use preExtent if once failed
-			if i > MaxUsePreHandlerRetry || !s.usePreExtentHandler(offset, size) {
-				s.handler = NewExtentHandler(s, offset, storeMode, s.appendWriteBuffer)
-			}
-
+			s.prepareExtentHandler(offset, size, i)
 			s.dirty = false
 		}
 
@@ -763,9 +768,30 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset uint64, size
 	s.extents.Insert(ek, false)
 	total = size
 	if log.IsDebugEnabled() {
-		log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
+		log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v) eh(%v)", s.inode, offset, size, ek, s.handler)
 	}
 	return
+}
+
+func (s *Streamer) prepareExtentHandler(offset uint64, size, retryTime int) {
+	storeMode := proto.TinyExtentType
+
+	// all data is stored in DataNode if (innerSize == 0)
+	if offset+uint64(size) <= s.innerSize && s.client.isRocksDBMp != nil && s.client.isRocksDBMp(context.Background(), s.inode) {
+		storeMode = proto.InnerDataType
+	} else if offset > s.innerSize || offset+uint64(size) > uint64(s.tinySizeLimit())+s.innerSize {
+		storeMode = proto.NormalExtentType
+	}
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("doWrite: NewExtentHandler ino(%v) offset(%v) size(%v) storeMode(%v)",
+			s.inode, offset, size, storeMode)
+	}
+
+	// not use preExtent if once failed
+	if storeMode == proto.InnerDataType || retryTime > MaxUsePreHandlerRetry || !s.usePreExtentHandler(offset, size) {
+		s.handler = NewExtentHandler(s, offset, storeMode, s.appendWriteBuffer)
+	}
 }
 
 func (s *Streamer) appendOverWriteReq(oriReq *ExtentRequest, direct bool) (writeSize int) {
@@ -781,6 +807,7 @@ func (s *Streamer) appendOverWriteReq(oriReq *ExtentRequest, direct bool) (write
 	for _, curReq := range s.overWriteReq {
 		if req.oriReq.ExtentKey.PartitionId != curReq.oriReq.ExtentKey.PartitionId ||
 			req.oriReq.ExtentKey.ExtentId != curReq.oriReq.ExtentKey.ExtentId ||
+			req.oriReq.ExtentKey.StoreType != curReq.oriReq.ExtentKey.StoreType ||
 			req.oriReq.FileOffset < curReq.oriReq.FileOffset ||
 			req.oriReq.FileOffset > curReq.oriReq.FileOffset+uint64(curReq.oriReq.Size) {
 			continue
@@ -867,7 +894,10 @@ func (s *Streamer) traverse() (err error) {
 		if eh.getStatus() >= ExtentStatusClosed {
 			// handler can be in different status such as close, recovery, and error,
 			// and therefore there can be packet that has not been flushed yet.
-			eh.flushPacket(nil)
+			if err = eh.flushPacket(nil); err != nil {
+				log.LogWarnf("Streamer traverse abort: flushPacket failed, eh(%v) err(%v)", eh, err)
+				return
+			}
 			if atomic.LoadInt32(&eh.inflight) > 0 {
 				log.LogDebugf("Streamer traverse skipped: non-zero inflight, eh(%v)", eh)
 				continue
@@ -956,7 +986,7 @@ func (s *Streamer) evict(ctx context.Context) error {
 }
 
 func (s *Streamer) abort() {
-	// todo flush pending packet?
+	// todo flush eh and pending packet?
 	for {
 		element := s.dirtylist.Get()
 		if element == nil {
@@ -1152,6 +1182,11 @@ func (s *Streamer) extentMerge(ctx context.Context) (finish bool, err error) {
 	}
 
 	for _, req := range readRequests {
+		if req.ExtentKey.StoreType == proto.InnerData {
+			err = fmt.Errorf("can not merge extent(%v) of inner data type", req.ExtentKey)
+			finish = true
+			return
+		}
 		reader, err = s.GetExtentReader(req.ExtentKey)
 		if err != nil {
 			return
@@ -1169,7 +1204,7 @@ func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 	preEk := s.extents.Pre(uint64(offset))
 	if preEk == nil ||
 		s.dirtylist.Len() != 0 ||
-		storage.IsTinyExtent(preEk.ExtentId) ||
+		preEk.StoreType == proto.InnerData || storage.IsTinyExtent(preEk.ExtentId) ||
 		preEk.FileOffset+uint64(preEk.Size) != uint64(offset) ||
 		int(preEk.Size)+int(preEk.ExtentOffset)+size > s.extentSize {
 		return false
@@ -1205,6 +1240,7 @@ func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 		ExtentOffset: preEk.ExtentOffset,
 		Size:         preEk.Size,
 		CRC:          preEk.CRC,
+		StoreType: 	  preEk.StoreType,
 	}
 	s.handler.isPreExtent = true
 	s.handler.size = int(preEk.Size)

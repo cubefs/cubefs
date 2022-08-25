@@ -70,6 +70,9 @@ func NewCompVolume(name string, clusterName string, nodes []string, mcc *metaNod
 		OnGetExtents:        metaWrapper.GetExtents,
 		OnTruncate:          metaWrapper.Truncate,
 		OnInodeMergeExtents: metaWrapper.InodeMergeExtents_ll,
+		OnInsertInnerData: 	 metaWrapper.InsertInnerData,
+		OnGetInnerData:	 	 metaWrapper.GetInnerData,
+		OnIsRocksDBMp: 		 metaWrapper.IsRocksDBMp,
 	}
 	var extentClient *data.ExtentClient
 	if extentClient, err = data.NewExtentClient(extentConfig); err != nil {

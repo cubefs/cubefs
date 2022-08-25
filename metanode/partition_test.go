@@ -131,8 +131,7 @@ func checkMPInodeAndDentry(t *testing.T, mp1, mp2 *metaPartition) {
 	_ = mp1.inodeTree.Range(nil, nil, func(ino1 *Inode) (bool, error) {
 		ino2, _ := mp2.inodeTree.Get(ino1.Inode)
 		if !reflect.DeepEqual(ino1, ino2) {
-			t.Errorf("Failed to test, error: res=[%v] expectRes=[%v]\n",ino1, ino2)
-			t.FailNow()
+			t.Errorf("Failed to test, error:\n res=\n[%v]\n expectRes=\n[%v]\n",ino1, ino2)
 		}
 		return true, nil
 	})
@@ -145,7 +144,7 @@ func checkMPInodeAndDentry(t *testing.T, mp1, mp2 *metaPartition) {
 	mp1.dentryTree.Range(nil, nil, func(dentry1 *Dentry) (bool, error) {
 		dentry2, _ := mp2.dentryTree.Get(dentry1.ParentId, dentry1.Name)
 		if !reflect.DeepEqual(dentry1, dentry2) {
-			t.Errorf("Failed to test, error: res=[%v] expectRes=[%v]\n",dentry1, dentry2)
+			t.Errorf("Failed to test, error:\n res=\n[%v]\n expectRes=\n[%v]\n",dentry1, dentry2)
 			t.FailNow()
 		}
 		return true, nil

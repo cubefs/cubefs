@@ -156,6 +156,7 @@ type InodeExtentInfoView struct {
 	ExtentOffset uint64
 	Size         uint64
 	CRC          uint64
+	StoreType	 float64
 }
 
 // MetaReplica defines the replica of a meta partition

@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-
+	"fmt"
 )
 
 type MulItems struct {
@@ -31,8 +31,28 @@ type MulItems struct {
 	DelExtents           DelExtentBatch
 }
 
+func InodeMarshal(inode *Inode, version SnapshotVersion) (data []byte, err error) {
+	switch version {
+	case BatchSnapshotV1:
+		return inode.MarshalV3()
+	default:
+		panic(fmt.Errorf("error version:%v", version))
+	}
+}
+
+func InodeUnmarshal(ctx context.Context, data []byte, version SnapshotVersion) (inode *Inode, err error) {
+	inode = NewInode(0, 0)
+	switch version {
+	case BatchSnapshotV1:
+		err = inode.UnmarshalV3(ctx, data)
+	default:
+		panic(fmt.Errorf("error version:%v", version))
+	}
+	return
+}
+
 // MarshalKey marshals the exporterKey to bytes.
-func (i *MulItems) Marshal() (k []byte, err error) {
+func (i *MulItems) Marshal(v SnapshotVersion) (k []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	var bs []byte
 	// inode: len+data
@@ -40,7 +60,7 @@ func (i *MulItems) Marshal() (k []byte, err error) {
 		return
 	}
 	for _, inode := range i.InodeBatches {
-		bs, err = inode.MarshalV2()
+		bs, err = InodeMarshal(inode, v)
 		if err != nil {
 			return
 		}
@@ -149,7 +169,7 @@ func (i *MulItems) Marshal() (k []byte, err error) {
 }
 
 // Unmarshal unmarshal the MulItems.
-func MulItemsUnmarshal(ctx context.Context, raw []byte) (result *MulItems, err error) {
+func MulItemsUnmarshal(ctx context.Context, raw []byte, batchSnapV SnapshotVersion) (result *MulItems, err error) {
 	buff := bytes.NewBuffer(raw)
 	var (
 		inodeBatchesLen       uint32
@@ -175,8 +195,8 @@ func MulItemsUnmarshal(ctx context.Context, raw []byte) (result *MulItems, err e
 		if _, err = buff.Read(data); err != nil {
 			return
 		}
-		ino := NewInode(0, 0)
-		if err = ino.UnmarshalV2(ctx, data); err != nil {
+		var ino *Inode
+		if ino, err = InodeUnmarshal(ctx, data, batchSnapV); err != nil {
 			return
 		}
 		inodeBatchesLenResult = append(inodeBatchesLenResult, ino)
@@ -249,7 +269,7 @@ func MulItemsUnmarshal(ctx context.Context, raw []byte) (result *MulItems, err e
 		if _, err = buff.Read(data); err != nil {
 			return
 		}
-		delInode := new(DeletedINode)
+		delInode := NewDeletedInode(NewInode(0,0), 0)
 		if err = delInode.Unmarshal(context.Background(), data); err != nil {
 			return
 		}

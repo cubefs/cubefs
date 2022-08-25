@@ -24,7 +24,7 @@ type StateMachine interface {
 	Apply(command []byte, index uint64) (interface{}, error)
 	ApplyMemberChange(confChange *proto.ConfChange, index uint64) (interface{}, error)
 	Snapshot(recoverNode uint64) (proto.Snapshot, error)
-	ApplySnapshot(peers []proto.Peer, iter proto.SnapIterator) error
+	ApplySnapshot(peers []proto.Peer, iter proto.SnapIterator, snapV uint32) error
 	HandleFatalEvent(err *FatalError)
 	HandleLeaderChange(leader uint64)
 }

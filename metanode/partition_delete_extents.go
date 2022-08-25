@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/cast"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"path"
 	"sort"
@@ -121,6 +122,9 @@ func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.ExtentKey) (er
 	}
 
 	for _, ek := range eks {
+		if ek.StoreType == proto.InnerData || ek.PartitionId == math.MaxUint64 {
+			continue
+		}
 		var ekInfo []byte
 
 		if ekInfo, err = ek.MarshalDbKey(); err != nil {

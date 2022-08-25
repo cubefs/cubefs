@@ -21,11 +21,16 @@ func TestGetMetaPartition(t *testing.T) {
 	if len(cv.MetaNodes) < 1 {
 		t.Fatalf("metanodes[] len < 1")
 	}
-	maxMetaPartitionId := cv.MaxMetaPartitionID
-	testMetaPartitionID := maxMetaPartitionId
-	_, err = testMc.ClientAPI().GetMetaPartition(testMetaPartitionID)
+	testVolName := "ltptest"
+	views, err := testMc.ClientAPI().GetMetaPartitions(testVolName)
 	if err != nil {
-		t.Fatalf("GetMetaPartition failed, err %v", err)
+		t.Fatalf("GetMetaPartitions failed, err %v", err)
+	}
+	for _, view := range views {
+		_, err = testMc.ClientAPI().GetMetaPartition(view.PartitionID)
+		if err != nil {
+			t.Fatalf("GetMetaPartition failed, err %v", err)
+		}
 	}
 }
 

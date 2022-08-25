@@ -58,6 +58,7 @@ func (api *APIResponse) Marshal() ([]byte, error) {
 func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc(proto.VersionPath, func(w http.ResponseWriter, _ *http.Request) {
 		version := proto.MakeVersion("MetaNode")
+		version.Version = MetaNodeLatestVersion
 		marshal, _ := json.Marshal(version)
 		if _, err := w.Write(marshal); err != nil {
 			log.LogErrorf("write version has err:[%s]", err.Error())
@@ -1099,7 +1100,7 @@ func (m *MetaNode) getAllInodesCrcSum(w http.ResponseWriter, r *http.Request)  {
 		inode := item.(*Inode)
 		inode.AccessTime = 0
 		var inodeBinary []byte
-		inodeBinary, err = inode.MarshalV2()
+		inodeBinary, err = inode.MarshalByVersion()
 		if err != nil {
 			return false, err
 		}

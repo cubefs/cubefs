@@ -67,6 +67,7 @@ type Snapshot interface {
 	SnapIterator
 	ApplyIndex() uint64
 	Close()
+	Version() uint32
 }
 
 type SnapIterator interface {
@@ -79,6 +80,7 @@ type SnapshotMeta struct {
 	Term     uint64
 	Peers    []Peer
 	Learners []Learner
+	SnapV    uint32
 }
 
 

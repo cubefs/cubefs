@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/btree"
 )
 
@@ -29,6 +30,7 @@ type MetaPartition struct {
 	Learners   	[]string
 	LeaderAddr 	string
 	Status      int8
+	StoreMode	proto.StoreMode
 }
 
 func (this *MetaPartition) Less(than btree.Item) bool {
@@ -44,8 +46,12 @@ func (mp *MetaPartition) String() string {
 	if mp == nil {
 		return ""
 	}
-	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) Learners(%v) LeaderAddr(%v) Status(%v)",
-		mp.PartitionID, mp.Start, mp.End, mp.Members, mp.Learners, mp.LeaderAddr, mp.Status)
+	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) Learners(%v) LeaderAddr(%v) Status(%v) StoreMode(%v)",
+		mp.PartitionID, mp.Start, mp.End, mp.Members, mp.Learners, mp.LeaderAddr, mp.Status, mp.StoreMode)
+}
+
+func (mp *MetaPartition) IsRocksDBType() bool {
+	return mp.StoreMode == proto.StoreModeRocksDb
 }
 
 // Meta partition managements
