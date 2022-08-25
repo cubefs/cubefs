@@ -153,7 +153,7 @@ func (s *Super) Root() (fs.Node, error) {
 	return root, nil
 }
 
-func (s *Super) Node(ino uint64, mode uint32) (fs.Node, error) {
+func (s *Super) Node(ino uint64, mode uint32) fs.Node {
 	var node fs.Node
 
 	// Create a fake InodeInfo. All File or Dir operations only use
@@ -164,7 +164,7 @@ func (s *Super) Node(ino uint64, mode uint32) (fs.Node, error) {
 	} else {
 		node = NewFile(s, fakeInfo)
 	}
-	return node, nil
+	return node
 }
 
 // Statfs handles the Statfs request and returns a set of statistics.

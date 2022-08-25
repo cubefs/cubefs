@@ -48,7 +48,7 @@ var ForgetServeLimit *rate.Limiter = rate.NewLimiter(defaultForgetServeLimit, de
 type FS interface {
 	// Root is called to obtain the Node for the file system root.
 	Root() (Node, error)
-	Node(ino uint64, mode uint32) (Node, error)
+	Node(ino uint64, mode uint32) Node
 }
 
 type FSStatfser interface {
@@ -111,6 +111,7 @@ type Node interface {
 	// The result may be cached for the duration set in Valid.
 	Attr(ctx context.Context, attr *fuse.Attr) error
 	NodeID() uint64
+	Mode() uint32
 }
 
 type NodeGetattrer interface {
@@ -416,11 +417,12 @@ type FuseContext struct {
 	HandleList []*ContextHandle
 }
 
-func (s *Server) marshalFuseContext() (fuseContext []byte, err error) {
+func (s *Server) marshalFuseContext() (fuseContext []byte) {
 	var (
 		ncount int
 		hcount int
 		skip   uint64
+		err    error
 	)
 	// Wait all received requests to finish
 	// FIXME: add a timeout to avoid waiting forever
@@ -435,19 +437,11 @@ func (s *Server) marshalFuseContext() (fuseContext []byte, err error) {
 		if sn == nil {
 			continue
 		}
-		var (
-			attr   fuse.Attr = fuse.Attr{}
-			nodeid uint64    = skip + uint64(i)
-		)
+		var nodeid uint64 = skip + uint64(i)
 
 		sn.wg.Wait()
 
-		if err = sn.node.Attr(nil, &attr); err != nil {
-			s.meta.Unlock()
-			err = fmt.Errorf("marshalFuseContext: failed to get mode of node %v: %v", sn.inode, err)
-			return
-		}
-		cn := &ContextNode{sn.inode, sn.generation, sn.refs, nodeid, uint32(attr.Mode)}
+		cn := &ContextNode{sn.inode, sn.generation, sn.refs, nodeid, sn.node.Mode()}
 		nodeList = append(nodeList, cn)
 		ncount++
 	}
@@ -461,10 +455,8 @@ func (s *Server) marshalFuseContext() (fuseContext []byte, err error) {
 		handleid := skip + uint64(i)
 		if hdl, ok := sh.handle.(HandleFlusher); ok {
 			if err = hdl.Flush(nil, nil); err != nil {
-				s.meta.Unlock()
-				err = fmt.Errorf("marshalFuseContext: flush handle %v: %v\n",
+				cfslog.LogErrorf("marshalFuseContext: flush handle err. Inode %v, err: %v\n",
 					s.node[sh.nodeID].inode, err)
-				return
 			}
 		}
 		cfslog.LogDebugf("marshalFuseContext. Opened inode: %d, nodeID: %d\n", s.node[sh.nodeID].inode, sh.nodeID)
@@ -478,20 +470,20 @@ func (s *Server) marshalFuseContext() (fuseContext []byte, err error) {
 	return
 }
 
-func (s *Server) rebuildFuseContext(fs FS, buf []byte) (err error) {
+func (s *Server) rebuildFuseContext(fs FS, buf []byte) {
 	if buf == nil {
 		return
 	}
+
+	var err error
 	fuseContext := &FuseContext{}
-	if err = json.Unmarshal(buf, &fuseContext); err != nil {
+	if err := json.Unmarshal(buf, &fuseContext); err != nil {
+		cfslog.LogErrorf("rebuildFuseContext: Unmarshal fuseContext %s err: %v", string(buf), err)
 		return
 	}
 	for _, cn := range fuseContext.NodeList {
 		sn := &serveNode{inode: cn.Inode, generation: cn.Generation, refs: cn.Refs}
-		if sn.node, err = fs.Node(cn.Inode, cn.Mode); err != nil {
-			err = fmt.Errorf("rebuildFuseContext: failed to get fs.Node of %v: %v\n", sn.inode, err)
-			return
-		}
+		sn.node = fs.Node(cn.Inode, cn.Mode)
 
 		for uint64(len(s.node)) < cn.NodeID {
 			freeNodeID := fuse.NodeID(len(s.node))
@@ -504,9 +496,9 @@ func (s *Server) rebuildFuseContext(fs FS, buf []byte) (err error) {
 
 	for _, ch := range fuseContext.HandleList {
 		if ch.NodeID > uint64(len(s.node)) {
-			err = fmt.Errorf("rebuildFuseContext: invalid handle(%v) len of s.node %v\n",
+			cfslog.LogErrorf("rebuildFuseContext: invalid handle(%v). Len of s.node %v\n",
 				ch, len(s.node))
-			return
+			continue
 		}
 
 		var hdl Handle
@@ -514,13 +506,13 @@ func (s *Server) rebuildFuseContext(fs FS, buf []byte) (err error) {
 		if node, ok := sn.node.(NodeOpener); ok {
 			// create streamers for chubaofs
 			if hdl, err = node.Open(nil, nil, nil); err != nil {
-				err = fmt.Errorf("rebuildFuseContext: failed to open handle %v: %v\n", sn.inode, err)
-				return
+				cfslog.LogErrorf("rebuildFuseContext: failed to open handle. ino(%d): %v\n", sn.inode, err)
+				continue
 			}
 		} else {
 			hdl = sn.node
 		}
-		cfslog.LogDebugf("rebuildFuseContext: re open nodeid : %d\n", fuse.NodeID(ch.NodeID))
+		cfslog.LogDebugf("rebuildFuseContext: reopen inode : %d\n", sn.inode)
 
 		sh := &serveHandle{handle: hdl, nodeID: fuse.NodeID(ch.NodeID)}
 		for uint64(len(s.handle)) < ch.HandleID {
@@ -562,16 +554,12 @@ func (s *Server) Serve(fs FS, fuseContext []byte) ([]byte, error) {
 	})
 	s.handle = append(s.handle, nil)
 
-	err = s.rebuildFuseContext(fs, fuseContext)
-	if err != nil {
-		cfslog.LogErrorf("rebuildFuseContext err: %v\n", err)
-		return nil, fmt.Errorf("cannot rebuildFuseContext: %v", err)
-	}
+	s.rebuildFuseContext(fs, fuseContext)
 
 	for {
 		if s.stop {
 			s.wg.Wait()
-			return s.marshalFuseContext()
+			return s.marshalFuseContext(), nil
 		}
 		req, err := s.conn.ReadRequest()
 		if err != nil {

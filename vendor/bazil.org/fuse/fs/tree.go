@@ -24,6 +24,11 @@ func (t *Tree) Root() (Node, error) {
 	return &t.tree, nil
 }
 
+func (t *Tree) Node(ino uint64, mode uint32) Node {
+	panic("Node need to implement")
+	return nil
+}
+
 // Add adds the path to the tree, resolving to the given node.
 // If path or a prefix of path has already been added to the tree,
 // Add panics.
@@ -83,7 +88,12 @@ func (t *tree) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (t *tree) NodeID() uint64 {
-	panic("need to implement")
+	panic("NodeID need to implement")
+	return 0
+}
+
+func (t *tree) Mode() uint32 {
+	panic("Mode need to implement")
 	return 0
 }
 

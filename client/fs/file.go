@@ -92,6 +92,10 @@ func (f *File) NodeID() uint64 {
 	return f.info.Inode
 }
 
+func (f *File) Mode() uint32 {
+	return f.info.Mode
+}
+
 // Forget evicts the inode of the current file. This can only happen when the inode is on the orphan list.
 func (f *File) Forget() {
 
