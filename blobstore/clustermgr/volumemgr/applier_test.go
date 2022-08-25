@@ -31,8 +31,8 @@ import (
 )
 
 func TestVolumeMgr_Apply(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 	operTypes := make([]int32, 0)
@@ -102,7 +102,6 @@ func TestVolumeMgr_Apply(t *testing.T) {
 		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeAllocVolume)
 		datas = append(datas, data)
-
 	}
 
 	// OperTypeRetainVolume
@@ -257,8 +256,8 @@ func TestVolumeMgr_Apply(t *testing.T) {
 }
 
 func TestVolumeMgr_Others(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	mockVolumeMgr.NotifyLeaderChange(ctx, 1, "")

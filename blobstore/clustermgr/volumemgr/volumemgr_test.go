@@ -17,8 +17,10 @@ package volumemgr
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"os"
+	"path"
 	"strconv"
 	"testing"
 	"time"
@@ -40,19 +42,11 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 var (
-	mockVolumeMgr *VolumeMgr
-	volumeDB      *volumedb.VolumeDB
-	normalDB      *normaldb.NormalDB
-	volTable      *volumedb.VolumeTable
-
 	volumeCount             = 30
 	defaultChunkSize uint64 = 1 << 34
-	volumeDBPPath           = "/tmp/volumedb/"
-	normalDBPath            = "/tmp/normaldb/"
 	testConfig              = VolumeMgrConfig{
 		IDC:                          []string{"z0", "z1", "z2"},
 		RetainTimeS:                  100,
@@ -72,14 +66,30 @@ var (
 // in reality,vid=0 is invalid volume, this vid=0 only use to test
 // vid:[0,2,4,...,28] status is VolumeStatusIdle ,which volume is in allocator, can be use to test allocVolume
 // vid:[1,3,5,...,29]status is volumeStatusActive,which volume already actives, can be use to test retainVolume
-func initMockVolumeMgr(t testing.TB) {
-	volumeDBPPath = "/tmp/volumedb/" + strconv.FormatInt(time.Now().UnixNano(), 10) + strconv.Itoa(rand.Intn(1000000))
-	normalDBPath = "/tmp/volumedb/" + strconv.FormatInt(time.Now().UnixNano(), 10) + strconv.Itoa(rand.Intn(1000000))
-	generateDataInDB()
+func initMockVolumeMgr(t testing.TB) (*VolumeMgr, func()) {
+	dir := path.Join(os.TempDir(), fmt.Sprintf("volumemgr-%d-%010d", time.Now().Unix(), rand.Intn(100000000)))
+	volumeDBPPath := path.Join(dir, "volumedb")
+	normalDBPath := path.Join(dir, "normaldb")
+	succ := false
+	defer func() {
+		if !succ {
+			os.RemoveAll(dir)
+		}
+	}()
+
+	volumeDB, err := volumedb.Open(volumeDBPPath, false)
+	require.NoError(t, err)
+	normalDB, err := normaldb.OpenNormalDB(normalDBPath, false)
+	require.NoError(t, err)
+
+	volTable, err := volumedb.OpenVolumeTable(volumeDB.KVStore)
+	require.NoError(t, err)
+	// generate 30 volume in db, vid from 0 to 29
+	volumeRecords, unitRecords := generateVolumeRecord(codemode.EC15P12, 0, volumeCount)
+	volTable.PutVolumeAndVolumeUnit(volumeRecords, unitRecords)
+	volTable.PutTokens(generateToken(volumeRecords))
 
 	ctr := gomock.NewController(t)
-	defer ctr.Finish()
-
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockConfigMgr := mock.NewMockConfigMgrAPI(ctr)
@@ -91,39 +101,34 @@ func initMockVolumeMgr(t testing.TB) {
 	mockConfigMgr.EXPECT().Get(gomock.Any(), proto.VolumeReserveSizeKey).AnyTimes().Return("2097152", nil)
 	mockConfigMgr.EXPECT().Get(gomock.Any(), proto.VolumeChunkSizeKey).AnyTimes().Return("17179869184", nil)
 	mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
-	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (bool, error) {
-		if id == proto.DiskID(29) {
-			return false, nil
-		}
-		return true, nil
-	})
-	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-		heatInfo := blobnode.DiskHeartBeatInfo{
-			DiskID: id,
-		}
-		diskInfo := &blobnode.DiskInfo{
-			DiskHeartBeatInfo: heatInfo,
-			Idc:               "z0",
-			Host:              "127.0.0.1",
-		}
-		return diskInfo, nil
-	})
+	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockIsDiskWritable)
+	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 
-	//  new volumeMgr
-	var err error
-	mockVolumeMgr, err = NewVolumeMgr(testConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
+	mockVolumeMgr, err := NewVolumeMgr(testConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
 	require.NoError(t, err)
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
 	mockVolumeMgr.SetRaftServer(mockRaftServer)
+
+	succ = true
+	return mockVolumeMgr, func() {
+		mockVolumeMgr.Close()
+		volumeDB.Close()
+		normalDB.Close()
+		os.RemoveAll(dir)
+		initialVolumeStatusStat()
+	}
 }
 
-func closeTestVolumeMgr() {
-	mockVolumeMgr.Close()
-	volumeDB.Close()
-	normalDB.Close()
-	os.RemoveAll(volumeDBPPath)
-	os.RemoveAll(normalDBPath)
-	initialVolumeStatusStat()
+func mockIsDiskWritable(_ context.Context, id proto.DiskID) (bool, error) {
+	return id != proto.DiskID(29), nil
+}
+
+func mockGetDiskInfo(_ context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
+	return &blobnode.DiskInfo{
+		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{DiskID: id},
+		Idc:               "z0",
+		Host:              "127.0.0.1",
+	}, nil
 }
 
 func generateVolume(mode codemode.CodeMode, count int, startVid int) (vols []*volume) {
@@ -145,11 +150,11 @@ func generateVolume(mode codemode.CodeMode, count int, startVid int) (vols []*vo
 		volume.vUnits = vUnits
 		vols = append(vols, volume)
 	}
-
 	return
 }
 
-func generateVolumeRecord(mode codemode.CodeMode, start, end int) (volumeRecords []*volumedb.VolumeRecord, unitRecords [][]*volumedb.VolumeUnitRecord) {
+func generateVolumeRecord(mode codemode.CodeMode, start, end int) (
+	volumeRecords []*volumedb.VolumeRecord, unitRecords [][]*volumedb.VolumeUnitRecord) {
 	for i := start; i < end; i++ {
 		volInfo := clustermgr.VolumeInfoBase{
 			Vid:         proto.Vid(i),
@@ -174,15 +179,13 @@ func generateVolumeRecord(mode codemode.CodeMode, start, end int) (volumeRecords
 		volRecord := volume.ToRecord()
 		volRecord.VuidPrefixs = vuidPrefixs
 		volumeRecords = append(volumeRecords, volRecord)
-
 		unitRecords = append(unitRecords, records)
-
 	}
-
 	return
 }
 
-func generateVolumeUnit(vol *volume) (volumeUints []*volumeUnit, unitRecords []*volumedb.VolumeUnitRecord, units []clustermgr.Unit) {
+func generateVolumeUnit(vol *volume) (volumeUints []*volumeUnit,
+	unitRecords []*volumedb.VolumeUnitRecord, units []clustermgr.Unit) {
 	modeInfo := vol.volInfoBase.CodeMode.Tactic()
 	unitsCount := modeInfo.N + modeInfo.M + modeInfo.L
 	for i := 0; i < unitsCount; i++ {
@@ -210,7 +213,6 @@ func generateVolumeUnit(vol *volume) (volumeUints []*volumeUnit, unitRecords []*
 		unitRecords = append(unitRecords, volumeUnit.ToVolumeUnitRecord())
 		units = append(units, unit)
 	}
-
 	return
 }
 
@@ -230,29 +232,9 @@ func generateToken(volumeRecords []*volumedb.VolumeRecord) (ret []*volumedb.Toke
 	return
 }
 
-// generate 30 volume in db, vid from 0 to 29
-func generateDataInDB() {
-	var err error
-	volumeDB, err = volumedb.Open(volumeDBPPath, false)
-	if err != nil {
-		log.Error("open db error")
-	}
-	volTable, err = volumedb.OpenVolumeTable(volumeDB.KVStore)
-	if err != nil {
-		log.Error("open volumeTable error,db is nil")
-	}
-
-	normalDB, _ = normaldb.OpenNormalDB(normalDBPath, false)
-	volumeRecords, unitRecords := generateVolumeRecord(codemode.EC15P12, 0, volumeCount)
-	volTable.PutVolumeAndVolumeUnit(volumeRecords, unitRecords)
-
-	// volUnitTable.PutBatch(generateVolumeUnit(volumeInfos))
-	volTable.PutTokens(generateToken(volumeRecords))
-}
-
 func Test_VolumeMgr(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 	var count int
 	mockVolumeMgr.all.rangeVol(func(v *volume) error {
 		count++
@@ -262,14 +244,26 @@ func Test_VolumeMgr(t *testing.T) {
 }
 
 func Test_NewVolumeMgr(t *testing.T) {
-	volumeDBPPath += strconv.Itoa(rand.Intn(100))
-	normalDBPath += strconv.Itoa(rand.Intn(100))
-	generateDataInDB()
-	defer closeTestVolumeMgr()
+	dir := path.Join(os.TempDir(), fmt.Sprintf("volumemgr-%d-%010d", time.Now().Unix(), rand.Intn(100000000)))
+	volumeDBPPath := path.Join(dir, "volumedb")
+	normalDBPath := path.Join(dir, "normaldb")
+	defer initialVolumeStatusStat()
+	defer os.RemoveAll(dir)
+
+	volumeDB, err := volumedb.Open(volumeDBPPath, false)
+	require.NoError(t, err)
+	defer volumeDB.Close()
+	normalDB, err := normaldb.OpenNormalDB(normalDBPath, false)
+	require.NoError(t, err)
+	defer normalDB.Close()
+
+	volTable, err := volumedb.OpenVolumeTable(volumeDB.KVStore)
+	require.NoError(t, err)
+	volumeRecords, unitRecords := generateVolumeRecord(codemode.EC15P12, 0, volumeCount)
+	volTable.PutVolumeAndVolumeUnit(volumeRecords, unitRecords)
+	volTable.PutTokens(generateToken(volumeRecords))
 
 	ctr := gomock.NewController(t)
-	defer ctr.Finish()
-
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockConfigMgr := mock.NewMockConfigMgrAPI(ctr)
@@ -312,31 +306,15 @@ func Test_NewVolumeMgr(t *testing.T) {
 
 	mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 100})
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, nil)
-	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-		heatInfo := blobnode.DiskHeartBeatInfo{
-			DiskID: id,
-		}
-		diskInfo := &blobnode.DiskInfo{
-			DiskHeartBeatInfo: heatInfo,
-			Idc:               "z0",
-			Host:              "127.0.0.1",
-		}
-		return diskInfo, nil
-	})
+	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 
-	// test new volumeMgr
-	var err error
-	mockVolumeMgr, err = NewVolumeMgr(volConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
+	mockVolumeMgr, err := NewVolumeMgr(volConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
 	require.NoError(t, err)
+	defer mockVolumeMgr.Close()
 	mockVolumeMgr.SetRaftServer(mockRaftServer)
 
 	// test volumeMgr load()
-	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (bool, error) {
-		if id == proto.DiskID(29) {
-			return false, nil
-		}
-		return true, nil
-	})
+	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockIsDiskWritable)
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(true)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(uint64(31), uint64(31), nil)
@@ -371,10 +349,8 @@ func Test_NewVolumeMgr(t *testing.T) {
 }
 
 func TestVolumeMgr_AllocChunkForIdcUnits(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
-	ctr := gomock.NewController(t)
-	defer ctr.Finish()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	vol := mockVolumeMgr.all.getVol(1)
 	require.NotNil(t, vol)
@@ -383,26 +359,10 @@ func TestVolumeMgr_AllocChunkForIdcUnits(t *testing.T) {
 		vuInfos[vol.vUnits[i].vuidPrefix] = vol.vUnits[i].vuInfo
 	}
 
-	mockDiskMgr := NewMockDiskMgrAPI(ctr)
-
+	mockDiskMgr := NewMockDiskMgrAPI(gomock.NewController(t))
 	mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
-	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (bool, error) {
-		if id == proto.DiskID(29) {
-			return false, nil
-		}
-		return true, nil
-	})
-	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-		heatInfo := blobnode.DiskHeartBeatInfo{
-			DiskID: id,
-		}
-		diskInfo := &blobnode.DiskInfo{
-			DiskHeartBeatInfo: heatInfo,
-			Idc:               "z0",
-			Host:              "127.0.0.1",
-		}
-		return diskInfo, nil
-	})
+	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockIsDiskWritable)
+	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
 		diskids := make([]proto.DiskID, len(policy.Vuids))
 		for i := range diskids {
@@ -423,8 +383,8 @@ func TestVolumeMgr_AllocChunkForIdcUnits(t *testing.T) {
 }
 
 func TestVolumeMgr_ListVolumeInfo(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "listVolumeInfo")
 	args := &clustermgr.ListVolumeArgs{
@@ -453,8 +413,8 @@ func TestVolumeMgr_ListVolumeInfo(t *testing.T) {
 }
 
 func TestVolumeMgr_ListVolumeInfoV2(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "listVolumeInfoV2")
 
@@ -468,8 +428,8 @@ func TestVolumeMgr_ListVolumeInfoV2(t *testing.T) {
 }
 
 func TestVolumeMgr_GetVolumeInfo(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "GetVolumeInfo")
 	// success case
@@ -484,13 +444,10 @@ func TestVolumeMgr_GetVolumeInfo(t *testing.T) {
 }
 
 func TestVolumeMgr_AllocVolume(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
-	ctr := gomock.NewController(t)
-	defer ctr.Finish()
-
-	mockRaftServer := mocks.NewMockRaftServer(ctr)
+	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(t))
 	// new raftServer to mockVolumeMgr, background run loopCreateVolume  use request IsLeader()
 	// mockRaftServer.EXPECT().IsLeader()return false will not run createVolume()
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
@@ -592,8 +549,8 @@ func TestVolumeMgr_AllocVolume(t *testing.T) {
 }
 
 func TestVolumeMgr_applyAllocVolume(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	mode := codemode.EC15P12
 	args := &AllocVolumeCtx{
@@ -640,9 +597,6 @@ func TestVolumeMgr_applyAllocVolume(t *testing.T) {
 
 	// test allocVolume : success case
 	{
-		ctr := gomock.NewController(t)
-		defer ctr.Finish()
-
 		args := &AllocVolumeCtx{
 			Host:       "127.0.0.1:8080",
 			ExpireTime: time.Now().Add(time.Duration(10 * time.Minute)).UnixNano(),
@@ -670,7 +624,8 @@ func TestVolumeMgr_applyAllocVolume(t *testing.T) {
 			},
 		}
 		volInfos := &clustermgr.AllocatedVolumeInfos{AllocVolumeInfos: allocVolumeInfos}
-		mockRaftServer := mocks.NewMockRaftServer(ctr)
+
+		mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(t))
 		mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, data []byte) error {
 			mockVolumeMgr.pendingEntries.Range(func(key, value interface{}) bool {
@@ -688,8 +643,8 @@ func TestVolumeMgr_applyAllocVolume(t *testing.T) {
 }
 
 func TestVolumeMgr_PreRetainVolume(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	tokens := []string{
 		"127.0.0.1:8080;1",
@@ -734,8 +689,8 @@ func TestVolumeMgr_PreRetainVolume(t *testing.T) {
 }
 
 func TestVolumeMgr_applyRetainVolume(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	// success case
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
@@ -774,8 +729,8 @@ func TestVolumeMgr_applyRetainVolume(t *testing.T) {
 }
 
 func TestVolumeMgr_applyExpireVolume(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
@@ -818,8 +773,8 @@ func TestVolumeMgr_applyExpireVolume(t *testing.T) {
 }
 
 func TestVolumeMgr_ListAllocatedVolume(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	ret := mockVolumeMgr.ListAllocatedVolume(ctx, "127.0.0.1:8080", 1)
@@ -835,8 +790,8 @@ func TestVolumeMgr_ListAllocatedVolume(t *testing.T) {
 }
 
 func TestVolumeMgr_ApplyAdminUpdateVolume(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	volInfo := &clustermgr.VolumeInfoBase{
 		Vid:         1,
@@ -851,8 +806,8 @@ func TestVolumeMgr_ApplyAdminUpdateVolume(t *testing.T) {
 }
 
 func TestVolumeMgr_ApplyAdminUpdateVolumeUnit(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	unitInfo := &clustermgr.AdminUpdateUnitArgs{
 		Epoch:     1,
@@ -899,8 +854,8 @@ func TestVolumeMgr_ApplyAdminUpdateVolumeUnit(t *testing.T) {
 }
 
 func TestVolumeMgr_LockVolume(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	// not allow lock active volume
 	err := mockVolumeMgr.LockVolume(context.Background(), 1)
@@ -910,9 +865,7 @@ func TestVolumeMgr_LockVolume(t *testing.T) {
 	err = mockVolumeMgr.LockVolume(context.Background(), 55)
 	require.Error(t, err)
 
-	ctr := gomock.NewController(t)
-	defer ctr.Finish()
-	mockRaftServer := mocks.NewMockRaftServer(ctr)
+	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(t))
 	mockVolumeMgr.raftServer = mockRaftServer
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil)
 
@@ -933,11 +886,10 @@ func TestVolumeMgr_LockVolume(t *testing.T) {
 }
 
 func TestVolumeMgr_UnlockVolume(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
-	ctr := gomock.NewController(t)
-	defer ctr.Finish()
-	mockRaftServer := mocks.NewMockRaftServer(ctr)
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+
+	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(t))
 	mockVolumeMgr.raftServer = mockRaftServer
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil)
 
@@ -974,15 +926,14 @@ func TestVolumeMgr_UnlockVolume(t *testing.T) {
 }
 
 func TestVolumeMgr_Report(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
-
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 	mockVolumeMgr.Report(context.Background(), "test-region", 1)
 }
 
 func TestVolumeMgr_PreAlloc(t *testing.T) {
-	initMockVolumeMgr(t)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
 
 	testCases := []struct {
 		codemode    codemode.CodeMode
@@ -992,44 +943,14 @@ func TestVolumeMgr_PreAlloc(t *testing.T) {
 		diskLoad    int
 	}{
 		// first have 8 diskload=0 vid,alloc success
-		{
-			codemode:    1,
-			healthScore: 0,
-			count:       2,
-			lenVids:     2,
-			diskLoad:    0,
-		},
-		{
-			codemode:    1,
-			healthScore: 0,
-			count:       1,
-			lenVids:     1,
-			diskLoad:    0,
-		},
+		{codemode: 1, healthScore: 0, count: 2, lenVids: 2, diskLoad: 0},
+		{codemode: 1, healthScore: 0, count: 1, lenVids: 1, diskLoad: 0},
 		// prealloc's vid(diskload=0) num not match require,should add diskload
-		{
-			codemode:    1,
-			healthScore: 0,
-			count:       2,
-			lenVids:     2,
-			diskLoad:    mockVolumeMgr.AllocatableDiskLoadThreshold,
-		},
+		{codemode: 1, healthScore: 0, count: 2, lenVids: 2, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold},
 		// first add diskLoad,then add healthScore
-		{
-			codemode:    1,
-			healthScore: -3,
-			count:       2,
-			lenVids:     2,
-			diskLoad:    mockVolumeMgr.AllocatableDiskLoadThreshold,
-		},
+		{codemode: 1, healthScore: -3, count: 2, lenVids: 2, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold},
 		// all volume health not match,not add diskLoad
-		{
-			codemode:    1,
-			healthScore: -4,
-			count:       5,
-			lenVids:     0,
-			diskLoad:    0,
-		},
+		{codemode: 1, healthScore: -4, count: 5, lenVids: 0, diskLoad: 0},
 	}
 	for _, testCase := range testCases {
 		mockVolumeMgr.all.rangeVol(func(v *volume) error {
@@ -1050,13 +971,10 @@ func TestVolumeMgr_PreAlloc(t *testing.T) {
 }
 
 func BenchmarkVolumeMgr_AllocVolume(b *testing.B) {
-	initMockVolumeMgr(b)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(b)
+	defer clean()
 
-	ctr := gomock.NewController(b)
-	defer ctr.Finish()
-
-	mockRaftServer := mocks.NewMockRaftServer(ctr)
+	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(b))
 	mockVolumeMgr.raftServer = mockRaftServer
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	mode := codemode.EC15P12
@@ -1107,8 +1025,8 @@ func BenchmarkVolumeMgr_AllocVolume(b *testing.B) {
 }
 
 func BenchmarkVolumeMgr_PreRetainVolume(b *testing.B) {
-	initMockVolumeMgr(b)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(b)
+	defer clean()
 
 	tokens := []string{}
 	for i := 0; i < 20; i++ {
@@ -1125,8 +1043,8 @@ func BenchmarkVolumeMgr_PreRetainVolume(b *testing.B) {
 }
 
 func BenchmarkVolumeMgr_ListVolumeInfo(b *testing.B) {
-	initMockVolumeMgr(b)
-	defer closeTestVolumeMgr()
+	mockVolumeMgr, clean := initMockVolumeMgr(b)
+	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "ListVolumeInfo")
 	args := &clustermgr.ListVolumeArgs{

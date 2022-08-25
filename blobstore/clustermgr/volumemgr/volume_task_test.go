@@ -18,6 +18,7 @@ import (
 	"context"
 	"math/rand"
 	"os"
+	"path"
 	"strconv"
 	"testing"
 	"time"
@@ -38,43 +39,27 @@ import (
 )
 
 func TestTaskProc(t *testing.T) {
-	tmpTaskDb := "/tmp/taskDb" + strconv.Itoa(rand.Intn(100))
+	tmpTaskDb := path.Join(os.TempDir(), "taskDb-"+strconv.Itoa(rand.Intn(100)))
 	defer os.RemoveAll(tmpTaskDb)
 
-	opt := kvstore.RocksDBOption{
-		WriteBufferSize: 4 * 1024 * 1024,
-	}
 	db, err := volumedb.Open(tmpTaskDb, false, func(option *kvstore.RocksDBOption) {
-		option.WriteBufferSize = opt.WriteBufferSize
+		option.WriteBufferSize = 1 << 22
 	})
 	require.Nil(t, err)
 	volumeTbl, err := volumedb.OpenVolumeTable(db)
 	require.Nil(t, err)
 
 	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
 	raftServer := mocks.NewMockRaftServer(ctrl)
-	raftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, data []byte) error {
-		return nil
-	})
-	raftServer.EXPECT().IsLeader().AnyTimes().DoAndReturn(func() bool {
-		return true
-	})
+	raftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	raftServer.EXPECT().IsLeader().AnyTimes().Return(true)
+
 	dnClient := mocks.NewMockStorageAPI(ctrl)
-	dnClient.EXPECT().SetChunkReadonly(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, host string, args *blobnode.ChangeChunkStatusArgs) error {
-		return nil
-	})
-	dnClient.EXPECT().SetChunkReadwrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, host string, args *blobnode.ChangeChunkStatusArgs) error {
-		return nil
-	})
+	dnClient.EXPECT().SetChunkReadonly(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	dnClient.EXPECT().SetChunkReadwrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 
 	diskmgr := NewMockDiskMgrAPI(ctrl)
-	diskmgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-		return &blobnode.DiskInfo{
-			Host: "127.0.0.1:8080",
-		}, nil
-	})
+	diskmgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().Return(&blobnode.DiskInfo{Host: "127.0.0.1:8080"}, nil)
 
 	volMgr := &VolumeMgr{
 		volumeTbl:      volumeTbl,
@@ -142,7 +127,7 @@ func TestTaskProc(t *testing.T) {
 	require.Equal(t, proto.VolumeStatusLock, vol.volInfoBase.Status)
 	taskid, hit := volMgr.lastTaskIdMap.Load(vol.vid)
 	require.True(t, hit)
-	time.Sleep(2 * time.Second)
+	time.Sleep(100 * time.Millisecond)
 	volMgr.applyRemoveVolumeTask(ctx, vol.vid, taskid.(string), base.VolumeTaskTypeLock)
 	_, hit = volMgr.lastTaskIdMap.Load(vol.vid)
 	require.False(t, hit)
@@ -151,7 +136,7 @@ func TestTaskProc(t *testing.T) {
 	volMgr.applyVolumeTask(ctx, 1, uuid.New().String(), base.VolumeTaskTypeUnlock)
 	taskid, hit = volMgr.lastTaskIdMap.Load(vol.vid)
 	require.True(t, hit)
-	time.Sleep(2 * time.Second) // wait task finish
+	time.Sleep(100 * time.Millisecond) // wait task finish
 	volMgr.applyRemoveVolumeTask(ctx, vol.vid, taskid.(string), base.VolumeTaskTypeUnlock)
 	require.Equal(t, proto.VolumeStatusIdle, vol.volInfoBase.Status)
 
