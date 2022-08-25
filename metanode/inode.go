@@ -38,6 +38,11 @@ const (
 	AccessTimeOffset     = 52
 )
 
+const (
+	MinEkLen     = 10
+	MinInodeSize = 1 * 1024 * 1024
+)
+
 // Inode wraps necessary properties of `Inode` information in the file system.
 // Marshal exporterKey:
 //  +-------+-------+
@@ -80,8 +85,8 @@ type InodeBatch []*Inode
 
 type InodeMerge struct {
 	Inode      uint64 // Inode ID
-	NewExtents  []proto.ExtentKey
-	OldExtents  []proto.ExtentKey
+	NewExtents []proto.ExtentKey
+	OldExtents []proto.ExtentKey
 }
 
 // String returns the string format of the inode.
@@ -240,16 +245,13 @@ func (i InodeBatch) Marshal(ctx context.Context) ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
-// inodeid len(NewExtents) len(OldExtents) []byte(NewExtents) []byte(OldExtents)
+// inodeid len(NewExtents) []byte(NewExtents) len(OldExtents) []byte(OldExtents)
 func (im *InodeMerge) Marshal() ([]byte, error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	if err := binary.Write(buff, binary.BigEndian, im.Inode); err != nil {
 		return nil, err
 	}
 	if err := binary.Write(buff, binary.BigEndian, uint32(len(im.NewExtents))); err != nil {
-		return nil, err
-	}
-	if err := binary.Write(buff, binary.BigEndian, uint32(len(im.OldExtents))); err != nil {
 		return nil, err
 	}
 	for _, extent := range im.NewExtents {
@@ -260,6 +262,9 @@ func (im *InodeMerge) Marshal() ([]byte, error) {
 		if _, err := buff.Write(ex); err != nil {
 			return nil, err
 		}
+	}
+	if err := binary.Write(buff, binary.BigEndian, uint32(len(im.OldExtents))); err != nil {
+		return nil, err
 	}
 	for _, extent := range im.OldExtents {
 		ex, err := extent.MarshalBinary()
@@ -275,24 +280,17 @@ func (im *InodeMerge) Marshal() ([]byte, error) {
 
 func InodeMergeUnmarshal(raw []byte) (*InodeMerge, error) {
 	buff := bytes.NewBuffer(raw)
+	im := &InodeMerge{}
 	var inodeId uint64
 	if err := binary.Read(buff, binary.BigEndian, &inodeId); err != nil {
 		return nil, err
 	}
+	im.Inode = inodeId
 	var newEksSize uint32
 	if err := binary.Read(buff, binary.BigEndian, &newEksSize); err != nil {
 		return nil, err
 	}
-	var oldEksSize uint32
-	if err := binary.Read(buff, binary.BigEndian, &oldEksSize); err != nil {
-		return nil, err
-	}
-
-	im := &InodeMerge{
-		Inode: inodeId,
-		NewExtents: make([]proto.ExtentKey, newEksSize),
-		OldExtents: make([]proto.ExtentKey, oldEksSize),
-	}
+	im.NewExtents = make([]proto.ExtentKey, newEksSize)
 	for i := 0; i < int(newEksSize); i++ {
 		ek := proto.ExtentKey{}
 		if err := ek.UnmarshalBinary(buff); err != nil {
@@ -300,6 +298,11 @@ func InodeMergeUnmarshal(raw []byte) (*InodeMerge, error) {
 		}
 		im.NewExtents[i] = ek
 	}
+	var oldEksSize uint32
+	if err := binary.Read(buff, binary.BigEndian, &oldEksSize); err != nil {
+		return nil, err
+	}
+	im.OldExtents = make([]proto.ExtentKey, oldEksSize)
 	for i := 0; i < int(oldEksSize); i++ {
 		ek := proto.ExtentKey{}
 		if err := ek.UnmarshalBinary(buff); err != nil {
@@ -690,7 +693,7 @@ func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.Ext
 	return
 }
 
-func (i *Inode) MergeExtents(newEks []proto.ExtentKey,  oldEks []proto.ExtentKey) (delExtents []proto.ExtentKey, merged bool, msg string) {
+func (i *Inode) MergeExtents(newEks []proto.ExtentKey, oldEks []proto.ExtentKey) (delExtents []proto.ExtentKey, merged bool, msg string) {
 	i.Lock()
 	defer i.Unlock()
 	if delExtents, merged, msg = i.Extents.Merge(newEks, oldEks); merged {
@@ -760,17 +763,17 @@ func (i *Inode) IsEmptyDir() bool {
 func (i *Inode) IsNeedCompact(minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) bool {
 	i.RLock()
 	defer i.RUnlock()
-	if minEkLen < 2 {
-		minEkLen = 2
+	if minEkLen < MinEkLen {
+		minEkLen = MinEkLen
 	}
-	if minInodeSize < 1*1024*1024 {
-		minInodeSize = 1*1024*1024
+	if minInodeSize < MinInodeSize {
+		minInodeSize = MinInodeSize
 	}
 	if i.Extents.Len() <= minEkLen || i.Size <= minInodeSize {
 		return false
 	}
 	ekAvgSize := i.Size / uint64(i.Extents.Len())
-	if ekAvgSize < maxEkAvgSize { // 32*1024*1024
+	if ekAvgSize < maxEkAvgSize {
 		return true
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/mysql"
 	"github.com/chubaofs/chubaofs/util/log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -36,7 +37,13 @@ func (cw *CompactWorker) collectCompactWorkerViewInfo() *proto.CompactWorkerView
 		for _, volInfo := range clusterInfo.volumeMap {
 			cluster.VolumeInfo = append(cluster.VolumeInfo, volInfo.GetVolumeCompactView())
 		}
+		sort.SliceStable(cluster.VolumeInfo, func(i, j int) bool {
+			return cluster.VolumeInfo[i].Name < cluster.VolumeInfo[j].Name
+		})
 		view.Clusters = append(view.Clusters, cluster)
+		sort.SliceStable(view.Clusters, func(i, j int) bool {
+			return view.Clusters[i].ClusterName < view.Clusters[j].ClusterName
+		})
 	}
 	return view
 }

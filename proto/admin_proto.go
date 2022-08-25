@@ -359,6 +359,15 @@ func (ct CompactTag) String() string {
 	}
 }
 
+func (ct CompactTag) Bool() bool {
+	switch ct {
+	case CompactOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 type AddReplicaType uint8
 
 func (a AddReplicaType) String() string {

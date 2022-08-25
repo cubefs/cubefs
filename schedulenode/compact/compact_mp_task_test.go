@@ -6,6 +6,7 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"strings"
 	"testing"
+	"time"
 )
 
 var (
@@ -33,6 +34,7 @@ func TestMpInitTask(t *testing.T) {
 }
 
 func TestGetMpInfo(t *testing.T) {
+	time.Sleep(time.Minute * 2)
 	mpTask = NewMpCmpTask(task, masterClient, vol)
 	err := mpTask.GetMpInfo()
 	if err != nil {

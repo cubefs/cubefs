@@ -1106,3 +1106,14 @@ func formatEcNodeDetail(en *proto.EcNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  tobeMigrated        : %v\n", en.ToBeMigrated))
 	return sb.String()
 }
+
+var compactViewTableRowPattern = "%-63v    %-20v    %-8v    %-8v"
+
+func formatCompactVolViewTableHeader() string {
+	return fmt.Sprintf(compactViewTableRowPattern, "VOLUME", "OWNER", "FORCEROW", "COMPACT")
+}
+
+func formatCompactVolView(view *proto.CompactVolume) string {
+	return fmt.Sprintf(compactViewTableRowPattern, view.Name, view.Owner, view.ForceROW, view.CompactTag.Bool())
+}
+
