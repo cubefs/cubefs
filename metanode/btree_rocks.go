@@ -668,7 +668,7 @@ func (b *InodeRocks) GetMaxInode() (uint64, error) {
 	var maxInode uint64 = 0
 	err := b.db.descRangeWithIter(iterator, []byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, func(k, v []byte) (bool, error) {
 		inode := NewInode(0, 0)
-		if e := inode.UnmarshalByVersion(context.Background(), v); e != nil {
+		if e := inode.Unmarshal(context.Background(), v); e != nil {
 			return false, e
 		}
 		maxInode = inode.Inode
@@ -750,7 +750,7 @@ func (b *InodeRocks) Get(ino uint64) (inode *Inode, err error) {
 		return
 	}
 	inode = NewInode(ino, 0)
-	if err = inode.UnmarshalByVersion(context.Background(), bs); err != nil {
+	if err = inode.Unmarshal(context.Background(), bs); err != nil {
 		log.LogErrorf("[InodeRocks] unmarshal value error : %v", err)
 	}
 	return
@@ -877,7 +877,7 @@ func (b *DeletedInodeRocks) Get(ino uint64) (di *DeletedINode, err error) {
 	if len(bs) == 0 {
 		return
 	}
-	di = NewDeletedInode(NewInode(0,0), 0)
+	di = new(DeletedINode)
 	if err = di.Unmarshal(context.Background(), bs); err != nil {
 		log.LogErrorf("[DeletedInodeRocks] unmarshal error: %v", err)
 	}
@@ -887,7 +887,7 @@ func (b *DeletedInodeRocks) Get(ino uint64) (di *DeletedINode, err error) {
 //put inode into rocksdb
 func (b *InodeRocks) Put(dbHandle interface{}, inode *Inode) (err error) {
 	var bs []byte
-	bs, err = inode.MarshalByVersion()
+	bs, err = inode.Marshal()
 	if err != nil {
 		log.LogErrorf("InodeRocks inode marshal failed, inode:%v, error:%v", inode, err)
 		return
@@ -940,7 +940,7 @@ func (b *MultipartRocks) Put(dbHandle interface{}, multipart *Multipart) (err er
 //update
 func (b *InodeRocks) Update(dbHandle interface{}, inode *Inode) (err error) {
 	var bs []byte
-	bs, err = inode.MarshalByVersion()
+	bs, err = inode.Marshal()
 	if err != nil {
 		log.LogErrorf("InodeRocks inode marshal failed, inode:%v, error:%v", inode, err)
 		return
@@ -1008,7 +1008,7 @@ func (b *DeletedInodeRocks) Update(dbHandle interface{}, delIno *DeletedINode) (
 func (b *InodeRocks) Create(dbHandle interface{}, inode *Inode, replace bool) (ino *Inode, ok bool, err error) {
 	var key, bs, v []byte
 	key = inodeEncodingKey(inode.Inode)
-	bs, err = inode.MarshalByVersion()
+	bs, err = inode.Marshal()
 	if err != nil {
 		log.LogErrorf("[InodeRocksCreate] haskey error %v, %v", key, err)
 		return
@@ -1028,7 +1028,7 @@ func (b *InodeRocks) Create(dbHandle interface{}, inode *Inode, replace bool) (i
 		}
 		//exist
 		ino = NewInode(0, 0)
-		if err = ino.UnmarshalByVersion(context.Background(), v); err != nil {
+		if err = ino.Unmarshal(context.Background(), v); err != nil {
 			log.LogErrorf("[InodeRocksCreate] unmarshal exist inode value failed, inode:%v, err:%v", inode, err)
 			return
 		}
@@ -1228,7 +1228,7 @@ func (b *InodeRocks) Range(start, end *Inode, cb func(i *Inode) (bool, error)) e
 
 	callBackFunc = func(v []byte) (bool, error) {
 		inode := NewInode(0, 0)
-		if err := inode.UnmarshalByVersion(context.Background(), v); err != nil {
+		if err := inode.Unmarshal(context.Background(), v); err != nil {
 			return false, err
 		}
 		if start != nil && inode.Less(start) {
@@ -1423,7 +1423,7 @@ func (b *DeletedInodeRocks) Range(start, end *DeletedINode, cb func(deletedInode
 	}
 
 	callBackFunc := func(v []byte) (bool, error) {
-		di := NewDeletedInode(NewInode(0, 0), 0)
+		di := new(DeletedINode)
 		if err := di.Unmarshal(context.Background(), v); err != nil {
 			return false, err
 		}
@@ -1447,7 +1447,7 @@ func (b *InodeRocks) MaxItem() *Inode {
 	defer iterator.Close()
 	err := b.db.descRangeWithIter(iterator, []byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, func(k, v []byte) (bool, error) {
 		inode := NewInode(0, 0)
-		if e := inode.UnmarshalByVersion(context.Background(), v); e != nil {
+		if e := inode.Unmarshal(context.Background(), v); e != nil {
 			return false, e
 		}
 		maxItem = inode
@@ -1504,7 +1504,7 @@ func (r *RocksSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, erro
 		switch tp {
 		case InodeType:
 			inode := NewInode(0, 0)
-			if err := inode.UnmarshalByVersion(context.Background(), v); err != nil {
+			if err := inode.Unmarshal(context.Background(), v); err != nil {
 				return false, err
 			}
 			return cb(inode)
@@ -1529,7 +1529,7 @@ func (r *RocksSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, erro
 			}
 			return cb(delDentry)
 		case DelInodeType:
-			delInode := NewDeletedInode(NewInode(0, 0), 0)
+			delInode := new(DeletedINode)
 			if err := delInode.Unmarshal(context.Background(), v); err != nil {
 				return false, err
 			}

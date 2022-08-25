@@ -92,8 +92,8 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 
 		}
 		// o represent proto.ErrCodeSuccess
-		if body.Code != http.StatusOK && body.Code != http.StatusSeeOther {
-			return nil, fmt.Errorf("%v:%s", body.Code, body.Msg)
+		if body.Code != 200 {
+			return nil, fmt.Errorf("%s:%s", proto.ParseErrorCode(body.Code), body.Msg)
 		}
 		return []byte(body.Data), nil
 	default:
@@ -332,34 +332,5 @@ func (mc *MetaHttpClient) ListAllInodesId(pid uint64, mode uint32, stTime, endTi
 		return
 	}
 
-	return
-}
-
-func (mc *MetaHttpClient) GetMetaNodeVersion() (versionInfo *proto.VersionValue, err error) {
-	var (
-		respData []byte
-		url      string
-		resp     *http.Response
-		req      *request
-	)
-	req = newAPIRequest(http.MethodGet, proto.VersionPath)
-	url = fmt.Sprintf("http://%s%s", mc.host, req.path)
-	resp, err = mc.httpRequest(req.method, url, req.params, req.header, req.body)
-	log.LogInfof("resp %v, err %v", resp, err)
-	if err != nil {
-		log.LogErrorf("GetMetaNodeVersion: send http request fail: method(%v) url(%v) err(%v)", req.method, url, err)
-		return
-	}
-	respData, err = ioutil.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if err != nil {
-		log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)
-		return
-	}
-	versionInfo = new(proto.VersionValue)
-	log.LogInfof("resp data:%s", string(respData))
-	if err = json.Unmarshal(respData, versionInfo); err != nil {
-		return
-	}
 	return
 }

@@ -162,7 +162,7 @@ func (mf *MetadataFsm) Snapshot(recoverNode uint64) (proto.Snapshot, error) {
 }
 
 // ApplySnapshot implements the interface of raft.StateMachine
-func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator, snapV uint32) (err error) {
+func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
 	log.LogInfof(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	var data []byte
 	for err == nil {

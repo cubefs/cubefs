@@ -111,8 +111,6 @@ type (
 	CleanExpiredDentryReq        = proto.CleanExpiredDentryRequest
 	StatDeletedFileReq           = proto.StatDeletedFileInfoRequest
 	StatDeletedFileResp          = proto.StatDeletedFileInfoResponse
-	InsertInnerDataReq           = proto.InsertInnerDataRequest
-	GetInnerDataReq              = proto.GetInnerDataRequest
 )
 
 const (
@@ -172,9 +170,7 @@ const (
 	opFSMExtentDelSync
 	opSnapSyncExtent
 	opFSMExtentMerge
-
 	resetStoreTick
-	opFSMInsertInnerData
 )
 
 var (
@@ -238,7 +234,6 @@ const (
 )
 
 const (
-	BaseVersion           = "0.0.0"
 	RocksDBVersion        = "3.1.0"
 	MetaNodeLatestVersion = RocksDBVersion
 )
@@ -282,9 +277,3 @@ func ParseCursorResetMode(typeStr string) (CursorResetMode, error) {
 	}
 }
 
-type SnapshotVersion byte
-
-const (
-	BaseSnapshotV = iota
-	BatchSnapshotV1
-)

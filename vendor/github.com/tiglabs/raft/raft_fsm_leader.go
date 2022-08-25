@@ -464,7 +464,7 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 		m.Type = proto.ReqMsgSnapShot
 		m.To = to
 		m.Snapshot = snapshot
-		snapMeta := proto.SnapshotMeta{Index: snapApplyIndex, Peers: make([]proto.Peer, 0, len(r.replicas)), Learners: make([]proto.Learner, 0), SnapV: snapshot.Version()}
+		snapMeta := proto.SnapshotMeta{Index: snapApplyIndex, Peers: make([]proto.Peer, 0, len(r.replicas)), Learners: make([]proto.Learner, 0)}
 		m.SetCtx(ctx)
 		if snapTerm, err := r.raftLog.term(snapMeta.Index); err != nil {
 			panic(AppPanicError(fmt.Sprintf("[raft->sendAppend][%v]failed to send snapshot to %v because snapshot is unavailable, error is: \r\n%v", r.id, to, err)))

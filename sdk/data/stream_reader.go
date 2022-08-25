@@ -61,7 +61,6 @@ type Streamer struct {
 
 	tinySize   int
 	extentSize int
-	innerSize  uint64
 
 	readAhead    bool
 	extentReader *ExtentReader
@@ -85,7 +84,6 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.appendWriteBuffer = appendWriteBuffer
 	s.readAhead = readAhead
 	s.pendingPacketList = make([]*Packet, 0)
-	s.innerSize = client.dataWrapper.innerSize
 	s.wg.Add(1)
 	go s.server()
 	return s
@@ -125,6 +123,7 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size int) (total int, hasHole bool, err error) {
 	var (
 		readBytes       int
+		reader          *ExtentReader
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
 		fileSize        uint64
@@ -191,12 +190,11 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 				log.LogDebugf("Stream read hole: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) total(%v)", s.inode, offset, size, req, total)
 			}
 		} else if req.ExtentKey.PartitionId > 0 {
-			switch req.ExtentKey.StoreType {
-			case proto.InnerData:
-				readBytes, err = s.readInnerData(ctx, req)
-			default:
-				readBytes, err = s.readNormalData(ctx, req)
+			reader, err = s.GetExtentReader(req.ExtentKey)
+			if err != nil {
+				break
 			}
+			readBytes, err = reader.Read(ctx, req)
 			if log.IsDebugEnabled() {
 				log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset, size, req, readBytes, err)
 			}
@@ -314,26 +312,6 @@ func (s *Streamer) UpdateExpiredExtentCache(ctx context.Context) {
 	if s.extents.IsExpired(expireSecond) {
 		s.GetExtents(ctx)
 	}
-}
-
-func (s *Streamer) readNormalData(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
-	var reader *ExtentReader
-	reader, err = s.GetExtentReader(req.ExtentKey)
-	if err != nil {
-		return
-	}
-	readBytes, err = reader.Read(ctx, req)
-	return
-}
-
-func (s *Streamer) readInnerData(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
-	var readData []byte
-	readBytes, readData, err = s.client.getInnerData(ctx, s.inode, uint64(req.FileOffset), uint32(req.Size))
-	if err != nil {
-		return
-	}
-	copy(req.Data[:readBytes], readData[:readBytes])
-	return
 }
 
 func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *Packet) (targetHosts []string, isErr bool) {

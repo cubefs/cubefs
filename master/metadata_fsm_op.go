@@ -248,8 +248,6 @@ type volValue struct {
 	EcRetryWait          int64
 	EcMaxUnitSize        uint64
 	EcEnable             bool
-	EnableInnerData      bool
-	InnerSize            uint64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -310,8 +308,6 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		EcTimeOut:            vol.EcMigrationTimeOut,
 		EcRetryWait:          vol.EcMigrationRetryWait,
 		EcMaxUnitSize:        vol.EcMaxUnitSize,
-		EnableInnerData:      vol.EnableInnerData,
-		InnerSize:            vol.InnerSize,
 	}
 	return
 }

@@ -283,26 +283,23 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 	}
 }
 
-func creatHelper(t *testing.T, vol, owner string) (mw *meta.MetaWrapper, ec *ExtentClient, err error) {
+func creatHelper(t *testing.T) (mw *meta.MetaWrapper, ec *ExtentClient, err error) {
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
-		Volume:        vol,
+		Volume:        ltptestVolume,
 		Masters:       strings.Split(ltptestMaster, ","),
 		ValidateOwner: true,
-		Owner:         owner,
+		Owner:         ltptestVolume,
 	}); err != nil {
 		t.Fatalf("NewMetaWrapper failed: err(%v) vol(%v)", err, ltptestVolume)
 	}
 	if ec, err = NewExtentClient(&ExtentConfig{
-		Volume:            vol,
+		Volume:            ltptestVolume,
 		Masters:           strings.Split(ltptestMaster, ","),
 		FollowerRead:      false,
 		OnInsertExtentKey: mw.InsertExtentKey,
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
 		TinySize:          NoUseTinyExtent,
-		OnInsertInnerData: mw.InsertInnerData,
-		OnGetInnerData:    mw.GetInnerData,
-		OnIsRocksDBMp: 	   mw.IsRocksDBMp,
 	}); err != nil {
 		t.Fatalf("NewExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
 	}
@@ -329,7 +326,7 @@ func TestROW(t *testing.T) {
 		err             error
 	)
 	ctx := context.Background()
-	mw, ec, err = creatHelper(t, ltptestVolume, ltptestVolume)
+	mw, ec, err = creatHelper(t)
 	if err != nil {
 		t.Fatalf("create help metaWrapper and extentClient failed: err(%v), metaWrapper(%v), extentclient(%v)",
 			err, mw, ec)
@@ -403,7 +400,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 	defer file.Close()
 	// append write
-	fileOffset := uint64(16*1024)
+	var fileOffset uint64 = 0
 	for i := 0; i < 3; i++ {
 		n, _ := file.WriteAt([]byte(" aaaa aaaa"), int64(fileOffset))
 		fileOffset += uint64(n)
@@ -432,7 +429,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 	file.Sync()
 
-	mw, ec, err := creatHelper(t, ltptestVolume, ltptestVolume)
+	mw, ec, err := creatHelper(t)
 
 	if fInfo, err = os.Stat(testFile); err != nil {
 		t.Fatalf("stat file: err(%v) file(%v)", err, testFile)
@@ -495,11 +492,10 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 		log.LogFlush()
 	}()
 
-	_, ec, err := creatHelper(t, ltptestVolume, ltptestVolume)
+	_, ec, err := creatHelper(t)
 	streamer := getStreamer(t, testFile, ec, false, false)
 	ctx := context.Background()
-	// set larger than inner size
-	length := 18*1024
+	length := 1024
 	data := make([]byte, length)
 	_, _, err = streamer.write(ctx, data, 0, length, false, false)
 	if err != nil {
@@ -510,7 +506,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 		t.Fatalf("flush failed: err(%v)", err)
 	}
 
-	_, ec1, err := creatHelper(t, ltptestVolume, ltptestVolume)
+	_, ec1, err := creatHelper(t)
 	streamer1 := getStreamer(t, testFile, ec1, false, false)
 	requests, _ := streamer1.extents.PrepareRequests(0, length, data)
 	_, err = streamer1.doROW(ctx, requests[0], false)
@@ -538,10 +534,10 @@ func TestHandler_Recover(t *testing.T) {
 	}()
 
 	var err error
-	_, ec, _ := creatHelper(t, ltptestVolume, ltptestVolume)
+	_, ec, _ := creatHelper(t)
 	streamer := getStreamer(t, testFile, ec, false, false)
 	ctx := context.Background()
-	length := 18*1024
+	length := 1024
 	data := make([]byte, length*2)
 	_, _, err = streamer.write(ctx, data, 0, length, false, false)
 	if err != nil {
@@ -585,7 +581,7 @@ func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
 	}()
 
 	var err error
-	_, ec, _ := creatHelper(t, ltptestVolume, ltptestVolume)
+	_, ec, _ := creatHelper(t)
 	streamer := getStreamer(t, testFile, ec, true, false)
 	ctx := context.Background()
 	length := 1024
@@ -619,7 +615,7 @@ func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 	}()
 
 	var err error
-	_, ec, _ := creatHelper(t, ltptestVolume, ltptestVolume)
+	_, ec, _ := creatHelper(t)
 	streamer := getStreamer(t, testFile, ec, false, false)
 	ctx := context.Background()
 	length := 1024
@@ -653,7 +649,7 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 	}()
 
 	var err error
-	_, ec, _ := creatHelper(t, ltptestVolume, ltptestVolume)
+	_, ec, _ := creatHelper(t)
 	streamer := getStreamer(t, testFile, ec, false, false)
 	ctx := context.Background()
 	length := 1024

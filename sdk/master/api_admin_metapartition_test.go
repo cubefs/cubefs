@@ -151,7 +151,7 @@ func TestMetaLearner(t *testing.T) {
 	//Add Meta Replica Learner
 	autoPromote := false
 	var threshold uint8 = 10
-	err = testMc.AdminAPI().AddMetaReplicaLearner(testMetaPartitionID, newAddr, autoPromote, threshold, 0, int(proto.StoreModeDef))
+	err = testMc.AdminAPI().AddMetaReplicaLearner(testMetaPartitionID, newAddr, autoPromote, threshold, 0, testStoreMode)
 	if err != nil {
 		t.Fatalf("AddMetaReplicaLearner failed, err %v", err)
 	}

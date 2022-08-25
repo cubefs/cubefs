@@ -106,9 +106,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnGetExtents:             s.mw.GetExtents,
 		OnTruncate:               s.mw.Truncate,
 		OnEvictIcache:            s.ic.Delete,
-		OnInsertInnerData: 		  s.mw.InsertInnerData,
-		OnGetInnerData: 		  s.mw.GetInnerData,
-		OnIsRocksDBMp: 			  s.mw.IsRocksDBMp,
 	}
 	s.ec, err = data.NewExtentClient(extentConfig)
 	if err != nil {

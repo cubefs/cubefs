@@ -14,7 +14,7 @@ func TestDeletedINode_Copy(t *testing.T) {
 }
 
 func mockINode(id uint64) *Inode {
-	ino := NewInode(0, 0)
+	ino := new(Inode)
 	ino.Inode = id
 	ino.Type = proto.Mode(os.ModeDir)
 	ino.Uid = 500

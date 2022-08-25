@@ -97,8 +97,6 @@ type Vol struct {
 	EcMigrationRetryWait int64
 	EcMaxUnitSize        uint64
 	ecDataPartitions     *EcDataPartitionCache
-	EnableInnerData      bool
-	InnerSize 			 uint64
 	sync.RWMutex
 }
 
@@ -107,8 +105,8 @@ type VolWriteMutexClient struct {
 	ApplyTime time.Time
 }
 
-func newVol(id uint64, name, owner, zoneName string, dpSize, capacity, innerSize uint64, dpReplicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, enableInnerData bool, createTime, smartEnableTime int64, description, dpSelectorName,
+func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool, createTime, smartEnableTime int64, description, dpSelectorName,
 	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays uint32,
 	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
@@ -139,7 +137,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity, innerSize
 	}
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
-	vol.InnerSize = innerSize
 	vol.FollowerRead = followerRead
 	vol.ForceROW = forceROW
 	vol.enableWriteCache = enableWriteCache
@@ -181,7 +178,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity, innerSize
 	vol.EcMigrationTimeOut = defaultEcMigrationTimeOut
 	vol.EcMigrationRetryWait = defaultEcMigrationRetryWait
 	vol.EcMaxUnitSize = defaultEcMaxUnitSize
-	vol.EnableInnerData = enableInnerData
 	return
 }
 
@@ -193,7 +189,6 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.ZoneName,
 		vv.DataPartitionSize,
 		vv.Capacity,
-		vv.InnerSize,
 		vv.DpReplicaNum,
 		vv.ReplicaNum,
 		vv.FollowerRead,
@@ -204,7 +199,6 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.ForceROW,
 		vv.IsSmart,
 		vv.EnableWriteCache,
-		vv.EnableInnerData,
 		vv.CreateTime,
 		vv.SmartEnableTime,
 		vv.Description,
@@ -1146,8 +1140,6 @@ func (vol *Vol) backupConfig() *Vol {
 		smartRules:           vol.smartRules,
 		compactTag:           vol.compactTag,
 		compactTagModifyTime: vol.compactTagModifyTime,
-		EnableInnerData:      vol.EnableInnerData,
-		InnerSize:            vol.InnerSize,
 	}
 }
 
@@ -1185,24 +1177,6 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.smartRules = backupVol.smartRules
 	vol.compactTag = backupVol.compactTag
 	vol.compactTagModifyTime = backupVol.compactTagModifyTime
-	vol.EnableInnerData = backupVol.EnableInnerData
-	vol.InnerSize = backupVol.InnerSize
-}
-
-func (vol *Vol) allMetaPartitionIsRocksDBStoreMode() bool {
-	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
-
-	if len(vol.MetaPartitions) == 0 {
-		return false
-	}
-
-	for _, mp := range vol.MetaPartitions {
-		if mp.storeMode() != proto.StoreModeRocksDb {
-			return false
-		}
-	}
-	return true
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

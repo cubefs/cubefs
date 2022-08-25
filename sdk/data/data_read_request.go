@@ -71,9 +71,6 @@ func (client *ExtentClient) GetReadRequests(ctx context.Context, inode uint64, d
 		var readReq *ReadRequest
 		if req.ExtentKey == nil {
 			readReq = &ReadRequest{Req: req}
-		} else if req.ExtentKey.StoreType == proto.InnerData {
-			err = fmt.Errorf("Read: can't read extent of inner type, ino(%v) offset(%v) size(%v)", inode, offset, size)
-			return
 		} else {
 			partition, err := s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId)
 			if err != nil {

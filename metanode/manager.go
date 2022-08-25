@@ -249,10 +249,6 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opBatchCleanDeletedINode(conn, p, remoteAddr)
 	case proto.OpMetaStatDeletedFileInfo:
 		err = m.opStatDeletedFileInfo(conn, p, remoteAddr)
-	case proto.OpMetaInsertInnerData:
-		err = m.opInsertInnerData(conn, p, remoteAddr)
-	case proto.OpMetaGetInnerData:
-		err = m.opGetInnerData(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
@@ -706,6 +702,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 	return mm, nil
 }
 
+
 // isExpiredPartition return whether one partition is expired
 // if one partition does not exist in master, we decided that it is one expired partition
 func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition bool) {
@@ -728,7 +725,7 @@ func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition 
 	return true
 }
 
-func NewMetaNodeVersion(version string) *MetaNodeVersion {
+func NewMetaNodeVersion(version string) (*MetaNodeVersion) {
 	ver := &MetaNodeVersion{2,5, 0}
 	dotParts := strings.SplitN(version, ".", 3)
 	if len(dotParts) != 3 {
@@ -774,8 +771,4 @@ func recursiveCompare(versionA []int64, versionB []int64) int {
 // LessThan: compare metaNodeVersion, return true if A < B.
 func (v MetaNodeVersion) LessThan(versionB *MetaNodeVersion) bool {
 	return v.Compare(versionB) < 0
-}
-
-func (v MetaNodeVersion) VersionStr() string {
-	return fmt.Sprintf("%v.%v.%v", v.Major, v.Minor, v.Patch)
 }

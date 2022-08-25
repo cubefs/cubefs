@@ -140,7 +140,6 @@ const (
 	cmdVolDefaultEcDataNum      = 4
 	cmdVolDefaultEcParityNum    = 2
 	cmdVolDefaultEcEnable       = false
-	cmdVolDefInnerSize          = 0
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -166,8 +165,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optIsSmart bool
 	var smartRules []string
 	var optCompactTag bool
-	var optInnerSize int
-	var optEnableInnerData bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -210,8 +207,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Ec data units num   : %v\n", optEcDataNum)
 				stdout("  Ec parity units num : %v\n", optEcParityNum)
 				stdout("  Ec is enabled       : %v\n", optEcEnable)
-				stdout("  EnableInnerData     : %v\n", formatEnabledDisabled(optEnableInnerData))
-				stdout("  InnerSize           : %v\n", optInnerSize)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 				stdout("  Force ROW           : %v\n", formatEnabledDisabled(optForceROW))
 				stdout("  Enable Write Cache  : %v\n", formatEnabledDisabled(optEnableWriteCache))
@@ -235,7 +230,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
-				optMpReplicas, optTrashDays, optStoreMode, optInnerSize, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart, optEnableWriteCache, optEnableInnerData,
+				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart, optEnableWriteCache,
 				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag), optEcDataNum, optEcParityNum, optEcEnable)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
@@ -267,8 +262,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint8Var(&optEcDataNum, CliFlagEcDataNum, cmdVolDefaultEcDataNum, "Specify ec data units number")
 	cmd.Flags().Uint8Var(&optEcParityNum, CliFlagEcParityNum, cmdVolDefaultEcParityNum, "Specify ec parity units number")
 	cmd.Flags().BoolVar(&optEcEnable, CliFlagEcEnable, cmdVolDefaultEcEnable, "Enable ec partiton backup")
-	cmd.Flags().IntVar(&optInnerSize, CliFlagInnerSize, cmdVolDefInnerSize, "Specify volume inner size default:0]")
-	cmd.Flags().BoolVar(&optEnableInnerData, CliFlagEnableInnerData, false, "Use Inner data")
 	return cmd
 }
 
@@ -290,7 +283,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optMpReplicas           int
 		optTrashDays            int
 		optStoreMode            int
-		optInnerSize			int
 		optFollowerRead         string
 		optNearRead             string
 		optForceROW             string
@@ -302,7 +294,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optCrossRegionHAType    string
 		optZoneName             string
 		optLayout               string
-		optEnableInnerData      string
 		optExtentCacheExpireSec int64
 		optYes                  bool
 		confirmString           = strings.Builder{}
@@ -325,7 +316,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			var compactTagChange = false
 			defer func() {
 				if err != nil {
-					errout("Error: %v\n", err)
+					errout("Error: %v", err)
 				}
 			}()
 			fmt.Printf("%v\n", smartRules)
@@ -480,12 +471,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
 			}
 
-			if optInnerSize != -1 && int(vv.InnerSize) != optInnerSize {
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  InnerSize           : %v -> %v\n", vv.InnerSize, optInnerSize))
-				vv.InnerSize = uint64(optInnerSize)
-			}
-
 			if optTrashDays > -1 && uint32(optTrashDays) != vv.TrashRemainingDays {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  TrashRemainingDays  : %v -> %v\n", vv.TrashRemainingDays, optTrashDays))
@@ -567,18 +552,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  compact             :  %v\n", vv.CompactTag))
 			}
 
-			if optEnableInnerData != "" {
-				isChange = true
-				var enableInnerData bool
-				if enableInnerData, err = strconv.ParseBool(optEnableInnerData); err != nil {
-					return
-				}
-				confirmString.WriteString(fmt.Sprintf("  EnableInnerData     : %v -> %v\n", formatEnabledDisabled(vv.EnableInnerData), formatEnabledDisabled(enableInnerData)))
-				vv.EnableInnerData = enableInnerData
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  EnableInnerData     : %v\n", formatEnabledDisabled(vv.EnableInnerData)))
-			}
-
 			if err != nil {
 				return
 			}
@@ -599,8 +572,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
-				int(vv.DefaultStoreMode), int(vv.InnerSize), vv.FollowerRead, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
-				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, vv.EnableInnerData, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag)
+				int(vv.DefaultStoreMode), vv.FollowerRead, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
+				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag)
 			if err != nil {
 				return
 			}
@@ -636,8 +609,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optIsSmart, CliFlagIsSmart, "", "Enable the smart vol or not")
 	cmd.Flags().StringSliceVar(&smartRules, CliSmartRulesMode, []string{}, "Specify volume smart rules")
 	cmd.Flags().StringVar(&optCompactTag, CliFlagCompactTag, "", "Specify volume compact")
-	cmd.Flags().IntVar(&optInnerSize, CliFlagInnerSize, -1, "specify volume inner size")
-	cmd.Flags().StringVar(&optEnableInnerData, CliFlagEnableInnerData, "", "enable inner data")
 	return cmd
 }
 func newVolInfoCmd(client *master.MasterClient) *cobra.Command {

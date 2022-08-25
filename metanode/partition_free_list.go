@@ -175,7 +175,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
-			if ek.StoreType == proto.InnerData || occurErrors[ek.PartitionId] == nil {
+			if occurErrors[ek.PartitionId] == nil {
 				successDeleteExtentCnt++
 				return true
 			} else {
@@ -218,9 +218,6 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 			}
 		}
 		inodeVal.Extents.Range(func(ek proto.ExtentKey) bool {
-			if ek.StoreType == proto.InnerData {
-				return true
-			}
 			ext := &ek
 			_, ok := allDeleteExtents[ext.GetExtentKey()]
 			if !ok {

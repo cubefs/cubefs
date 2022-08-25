@@ -330,16 +330,14 @@ func applySnapshot(t *testing.T, num int, rocksEnable bool) {
 	time.Sleep(time.Second)
 	checkRocksDBEks(t, mp, eks, key)
 	mockPartition.Id = 2
-	var snapV uint32 = 0
 	var si raftproto.SnapIterator
 	if rocksEnable {
-		snapV = uint32(BatchSnapshotV1)
-		si, _ = newBatchMetaItemIterator(mp, BatchSnapshotV1)
+		si, _ = newMetaItemIteratorV2(mp, NewMetaNodeVersion("2.7.0"))
 	} else {
 		si, _ = newMetaItemIterator(mp)
 	}
 
-	mp2.ApplySnapshot(nil, si, snapV)
+	mp2.ApplySnapshot(nil, si)
 	cnt := getRocksDbCnt(t, mp2)
 
 	if rocksEnable {
@@ -348,7 +346,7 @@ func applySnapshot(t *testing.T, num int, rocksEnable bool) {
 		} else {
 			checkRocksDBEks(t, mp2, eks, key)
 		}
-		metaItem := si.(*BatchMetaItemIterator)
+		metaItem := si.(*MetaItemIteratorV2)
 		metaItem.Close()
 	} else {
 		if cnt != 0 {

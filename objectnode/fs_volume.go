@@ -2371,9 +2371,6 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		OnInsertExtentKey: metaWrapper.InsertExtentKey,
 		OnGetExtents:      metaWrapper.GetExtents,
 		OnTruncate:        metaWrapper.Truncate,
-		OnInsertInnerData: metaWrapper.InsertInnerData,
-		OnGetInnerData:    metaWrapper.GetInnerData,
-		OnIsRocksDBMp: 	   metaWrapper.IsRocksDBMp,
 	}
 	var extentClient *data.ExtentClient
 	if extentClient, err = data.NewExtentClient(extentConfig); err != nil {

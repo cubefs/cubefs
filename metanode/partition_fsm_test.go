@@ -34,7 +34,7 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			followerStoreMode: proto.StoreModeMem,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BaseSnapshotV,
+			snapV:             1,
 		},
 		{
 			name:              "test2",
@@ -44,7 +44,7 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			followerStoreMode: proto.StoreModeRocksDb,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BaseSnapshotV,
+			snapV:             1,
 		},
 		{
 			name:              "test3",
@@ -54,7 +54,7 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			followerStoreMode: proto.StoreModeMem,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BaseSnapshotV,
+			snapV:             1,
 		},
 		{
 			name:              "test4",
@@ -64,7 +64,7 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			followerStoreMode: proto.StoreModeRocksDb,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BaseSnapshotV,
+			snapV:             1,
 		},
 		{
 			name:              "test5",
@@ -74,37 +74,37 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			followerStoreMode: proto.StoreModeMem,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BatchSnapshotV1,
+			snapV:             2,
 		},
 		{
 			name:              "test6",
 			partitionID:       6,
 			leaderStoreMode:   proto.StoreModeMem,
 			leaderRootDir:     "./test_apply_snapshot_leader_mp",
-			followerStoreMode: proto.StoreModeRocksDb,
+			followerStoreMode: proto.StoreModeMem,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BatchSnapshotV1,
+			snapV:             2,
 		},
 		{
 			name:              "test7",
 			partitionID:       7,
-			leaderStoreMode:   proto.StoreModeRocksDb,
+			leaderStoreMode:   proto.StoreModeMem,
 			leaderRootDir:     "./test_apply_snapshot_leader_mp",
 			followerStoreMode: proto.StoreModeMem,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BatchSnapshotV1,
+			snapV:             2,
 		},
 		{
 			name:              "test8",
 			partitionID:       8,
-			leaderStoreMode:   proto.StoreModeRocksDb,
+			leaderStoreMode:   proto.StoreModeMem,
 			leaderRootDir:     "./test_apply_snapshot_leader_mp",
-			followerStoreMode: proto.StoreModeRocksDb,
+			followerStoreMode: proto.StoreModeMem,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BatchSnapshotV1,
+			snapV:             2,
 		},
 	}
 	for _, test := range tests {
@@ -468,10 +468,10 @@ func interTest(t *testing.T, leaderMp, followerMp *metaPartition, snapV int) {
 	//new item iterator by leader mp
 	var snap raftproto.Snapshot
 	switch snapV {
-	case BaseSnapshotV:
+	case 1:
 		snap, err = newMetaItemIterator(leaderMp)
-	case BatchSnapshotV1:
-		snap, err = newBatchMetaItemIterator(leaderMp, BatchSnapshotV1)
+	case 2:
+		snap, err = newMetaItemIteratorV2(leaderMp, NewMetaNodeVersion("2.7.0"))
 	default:
 		t.Errorf("error snap version:%v", snapV)
 		t.FailNow()
@@ -480,7 +480,7 @@ func interTest(t *testing.T, leaderMp, followerMp *metaPartition, snapV int) {
 
 	t.Logf("leader create snap success")
 	//apply snapshot to follower mp
-	if err = followerMp.ApplySnapshot(nil, snap, uint32(snapV)); err != nil {
+	if err = followerMp.ApplySnapshot(nil, snap); err != nil {
 		t.Errorf("follower mp apply snapshot failed:%v", err)
 		return
 	}
@@ -631,6 +631,15 @@ func compareExtentDeleteFile(leaderMp, followerMp *metaPartition) (bool, error){
 	return true, nil
 }
 
+func dealChanel(mp *metaPartition) {
+	for {
+		select {
+		case <-mp.extReset:
+			return
+		}
+	}
+}
+
 func TestMetaPartition_GenSnap(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	mp, _ := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMock)
@@ -656,7 +665,7 @@ func TestMetaPartition_GenSnap(t *testing.T) {
 	start := time.Now()
 	snap, _ := newMetaItemIterator(mp)
 	//go dealChanel(mp2)
-	err := mp2.ApplySnapshot(nil, snap, BaseSnapshotV)
+	err := mp2.ApplySnapshot(nil, snap)
 	if err != nil {
 		t.Errorf("applySnapshot failed, error:%v", err)
 		t.FailNow()
@@ -693,7 +702,7 @@ func TestMetaPartition_ApplySnap(t *testing.T) {
 	start := time.Now()
 	snap, _ := newMetaItemIterator(mp)
 	//go dealChanel(mp2)
-	mp2.ApplySnapshot(nil, snap, BaseSnapshotV)
+	mp2.ApplySnapshot(nil, snap)
 	cost := time.Since(start)
 
 	checkMPInodeAndDentry(t, mp, mp2)
@@ -725,7 +734,7 @@ func TestMetaPartition_ApplySnapV2(t *testing.T) {
 	start := time.Now()
 	snap, _ := newMetaItemIterator(mp)
 	//go dealChanel(mp2)
-	mp2.ApplySnapshot(nil, snap, BaseSnapshotV)
+	mp2.ApplySnapshot(nil, snap)
 	cost := time.Since(start)
 
 	checkMPInodeAndDentry(t, mp, mp2)
@@ -771,13 +780,13 @@ func TestMetaPartition_Snap(t *testing.T) {
 	start := time.Now()
 	snap, _ := newMetaItemIterator(mp)
 	//go dealChanel(mp3)
-	mp3.ApplySnapshot(nil, snap, BaseSnapshotV)
+	mp3.ApplySnapshot(nil, snap)
 	v1Cost := time.Since(start)
 
 	start = time.Now()
 	snap2, _ := newMetaItemIterator(mp2)
 	//go dealChanel(mp4)
-	mp4.ApplySnapshot(nil, snap2, BaseSnapshotV)
+	mp4.ApplySnapshot(nil, snap2)
 	v2Cost := time.Since(start)
 
 	checkMPInodeAndDentry(t, mp, mp3)
