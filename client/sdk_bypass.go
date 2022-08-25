@@ -3736,26 +3736,37 @@ func (c *client) checkVolWriteMutex() error {
 	if c.app != appCoralDB {
 		return nil
 	}
-	clientIP, err := c.mc.ClientAPI().GetVolMutex(c.volName)
-	if err == proto.ErrVolWriteMutexUnable {
-		c.readOnly = false
-		return nil
+	for true {
+		clientIP, err := c.mc.ClientAPI().GetVolMutex(c.volName)
+		if err == nil && clientIP == "" {
+			return nil
+		}
+		if err == proto.ErrVolWriteMutexUnable {
+			c.readOnly = false
+			return nil
+		}
+		if err == proto.ErrVolNotExists {
+			return err
+		}
+		if err != nil {
+			syslog.Printf("checkVolWriteMutex err: %v, retry...\n", err)
+			continue
+		}
+
+		err = c.mc.ClientAPI().ApplyVolMutex(c.volName, false)
+		if err == nil {
+			c.readOnly = false
+			return nil
+		}
+		if err == proto.ErrVolWriteMutexOccupied {
+			return nil
+		}
+		if err != nil {
+			syslog.Printf("checkVolWriteMutex err: %v, retry...\n", err)
+			continue
+		}
 	}
-	if err != nil {
-		return err
-	}
-	if clientIP == "" {
-		return nil
-	}
-	err = c.mc.ClientAPI().ApplyVolMutex(c.volName, false)
-	if err == nil {
-		c.readOnly = false
-		return nil
-	}
-	if err == proto.ErrVolWriteMutexOccupied {
-		return nil
-	}
-	return err
+	return nil
 }
 
 func (c *client) start() (err error) {
