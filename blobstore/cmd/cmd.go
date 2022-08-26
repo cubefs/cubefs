@@ -202,10 +202,8 @@ func Main(args []string) {
 //	4. the fourth is Auth handler if config,
 //	5. others self define handlers by modules.
 func reorderMiddleWareHandlers(r *rpc.Router, lh rpc.ProgressHandler, profileAddr string, authCfg auth.Config, handlers []rpc.ProgressHandler) (mux http.Handler) {
-	var hs []rpc.ProgressHandler
-	if lh != nil {
-		hs = append(hs, lh)
-	}
+	hs := []rpc.ProgressHandler{lh}
+
 	if profileHandler := profile.NewProfileHandler(profileAddr); profileHandler != nil {
 		hs = append(hs, profileHandler)
 	}

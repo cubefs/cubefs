@@ -35,21 +35,22 @@ type testRespData struct {
 	Result string `json:"result"`
 }
 
-func TestOpen(t *testing.T) {
+var (
+	server *httptest.Server
+	tmpDir string
+	lc     LogCloser
+)
+
+func initServer(t *testing.T) {
 	moduleName := "TESTMOULE"
 	tracer := trace.NewTracer(moduleName)
 	trace.SetGlobalTracer(tracer)
 
-	ah, lc, err := Open(moduleName, &Config{})
-	require.Nil(t, ah)
-	require.Nil(t, lc)
-	require.Nil(t, err)
-
-	tmpDir := os.TempDir() + "/testauditog" + strconv.FormatInt(time.Now().Unix(), 10) + strconv.Itoa(rand.Intn(100000))
-	err = os.Mkdir(tmpDir, 0o755)
+	tmpDir = os.TempDir() + "/test-audit-log" + strconv.FormatInt(time.Now().Unix(), 10) + strconv.Itoa(rand.Intn(100000))
+	err := os.Mkdir(tmpDir, 0o755)
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
 
+	var ah rpc.ProgressHandler
 	ah, lc, err = Open(moduleName, &Config{
 		LogDir: tmpDir, ChunkBits: 29,
 		KeywordsFilter: []string{"Get"},
@@ -57,8 +58,6 @@ func TestOpen(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ah)
 	require.NotNil(t, lc)
-	defer lc.Close()
-	require.NoError(t, err)
 
 	bussinessHandler := func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("testh1", "testh1value")
@@ -72,8 +71,18 @@ func TestOpen(t *testing.T) {
 		ah.Handler(w, req, bussinessHandler)
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(entryHandler))
-	defer server.Close()
+	server = httptest.NewServer(http.HandlerFunc(entryHandler))
+}
+
+func close() {
+	server.Close()
+	os.RemoveAll(tmpDir)
+	lc.Close()
+}
+
+func TestOpen(t *testing.T) {
+	initServer(t)
+	defer close()
 
 	url := server.URL
 	client := http.DefaultClient
