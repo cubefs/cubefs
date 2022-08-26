@@ -196,6 +196,8 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			}
 			log.LogWarnf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
 				resp.Request.URL.String(), host, stateCode, strings.Replace(string(repsData), "\n", "", -1))
+			err = fmt.Errorf("serveRequest: unknown status(%v) host(%v) uri(%v) body(%s)", stateCode, resp.Request.URL.String(),
+				host, strings.Replace(string(repsData), "\n", "", -1))
 			continue
 		}
 	}
