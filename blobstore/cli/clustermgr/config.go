@@ -15,7 +15,6 @@
 package clustermgr
 
 import (
-	"fmt"
 	"net/http"
 	"sort"
 
@@ -24,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )

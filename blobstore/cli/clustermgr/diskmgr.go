@@ -16,7 +16,6 @@ package clustermgr
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/desertbit/grumble"
@@ -27,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/args"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/common/proto"

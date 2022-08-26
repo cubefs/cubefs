@@ -15,19 +15,31 @@
 package common_test
 
 import (
+	"io"
+	"os"
 	"testing"
 
+	"github.com/fatih/color"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/cli/common"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
+func init() {
+	if os.Getenv("JENKINS_TEST") != "" {
+		color.Output = io.Discard
+		fmt.SetOutput(io.Discard)
+	}
+}
+
 func TestCmdCommonContext(t *testing.T) {
-	for ii := 0; ii < 10; ii++ {
+	for range [3]struct{}{} {
 		span := trace.SpanFromContext(common.CmdContext())
 		t.Log(span)
-		span.Info("infoooooooooooooooooo bar")
+		span.Info("infoooooo bar")
 	}
 }
 

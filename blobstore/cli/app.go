@@ -15,8 +15,10 @@
 package cli
 
 import (
+	"io"
 	"os"
 	"os/user"
+	"strings"
 	"time"
 
 	"github.com/desertbit/grumble"
@@ -26,8 +28,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/cli/scheduler"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 // App blobstore command app
@@ -71,6 +75,7 @@ var App = grumble.New(&grumble.Config{
 		flags.ConfigRegister(f)
 		flags.VerboseRegister(f)
 		flags.VverboseRegister(f)
+		f.BoolL("silence", false, "disable print output")
 	},
 })
 
@@ -85,18 +90,27 @@ func init() {
 		if flags.Vverbose(fm) {
 			config.Set("Flag-Vverbose", true)
 		}
+		if fm.Bool("silence") {
+			color.Output = io.Discard
+			fmt.SetOutput(io.Discard)
+			log.SetOutput(io.Discard)
+		}
+		if fm.Bool("nocolor") {
+			color.NoColor = true
+		}
 		return nil
 	})
 
 	App.SetPrintASCIILogo(func(a *grumble.App) {
-		a.Println(` _______ _______ _______ _______ _______ _______ _______ _______ _______     _______ _______ _______ `)
-		a.Println(`|\     /|\     /|\     /|\     /|\     /|\     /|\     /|\     /|\     /|   |\     /|\     /|\     /|`)
-		a.Println(`| +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ |   | +---+ | +---+ | +---+ |`)
-		a.Println(`| |   | | |   | | |   | | |   | | |   | | |   | | |   | | |   | | |   | |   | |   | | |   | | |   | |`)
-		a.Println(`| |b  | | |l  | | |o  | | |b  | | |s  | | |t  | | |o  | | |r  | | |e  | |   | |c  | | |l  | | |i  | |`)
-		a.Println(`| +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ |   | +---+ | +---+ | +---+ |`)
-		a.Println(`|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|   |/_____\|/_____\|/_____\|`)
-		a.Println()
+		fmt.Println(strings.Join([]string{
+			` _______ _______ _______ _______ _______ _______ _______ _______ _______     _______ _______ _______ `,
+			`|\     /|\     /|\     /|\     /|\     /|\     /|\     /|\     /|\     /|   |\     /|\     /|\     /|`,
+			`| +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ |   | +---+ | +---+ | +---+ |`,
+			`| |   | | |   | | |   | | |   | | |   | | |   | | |   | | |   | | |   | |   | |   | | |   | | |   | |`,
+			`| |b  | | |l  | | |o  | | |b  | | |s  | | |t  | | |o  | | |r  | | |e  | |   | |c  | | |l  | | |i  | |`,
+			`| +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ |   | +---+ | +---+ | +---+ |`,
+			`|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|   |/_____\|/_____\|/_____\|`,
+		}, "\r\n"))
 	})
 
 	registerHistory(App)

@@ -16,7 +16,6 @@ package access
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -28,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )

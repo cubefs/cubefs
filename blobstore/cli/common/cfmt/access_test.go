@@ -16,16 +16,26 @@ package cfmt_test
 
 import (
 	"crypto/rand"
-	"fmt"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/fatih/color"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 )
+
+func init() {
+	if os.Getenv("JENKINS_TEST") != "" {
+		color.Output = io.Discard
+		fmt.SetOutput(io.Discard)
+	}
+}
 
 func TestParseLocation(t *testing.T) {
 	loc := access.Location{

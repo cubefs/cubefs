@@ -16,11 +16,11 @@ package common
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/hashicorp/consul/api"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 )
 
 func NewConsulClient(addr string) (*api.Client, error) {

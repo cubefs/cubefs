@@ -17,7 +17,6 @@ package cli
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/args"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/common/redis"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"

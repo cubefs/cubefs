@@ -15,10 +15,9 @@
 package scheduler
 
 import (
-	"fmt"
-
 	"github.com/desertbit/grumble"
 
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )

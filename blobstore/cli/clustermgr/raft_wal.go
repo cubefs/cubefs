@@ -17,7 +17,6 @@ package clustermgr
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -27,6 +26,7 @@ import (
 	"github.com/desertbit/grumble"
 	pb "go.etcd.io/etcd/raft/v3/raftpb"
 
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/volumemgr"
 )

@@ -15,12 +15,12 @@
 package common_test
 
 import (
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/cli/common"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 )
 
 func TestCmdCommonProgressBoldBar(t *testing.T) {

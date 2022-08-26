@@ -15,14 +15,13 @@
 package access
 
 import (
-	"fmt"
-
 	"github.com/desertbit/grumble"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 )
 

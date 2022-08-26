@@ -15,12 +15,12 @@
 package cfmt_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 

@@ -15,12 +15,12 @@
 package common_test
 
 import (
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/cli/common"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 )
 
 func TestCmdCommonColorAlternate(t *testing.T) {
@@ -37,7 +37,7 @@ func TestCmdCommonColorAlternate(t *testing.T) {
 		alterColor := common.NewAlternateColor(n)
 		fmt.Printf("%3d : ", n)
 		for _, line := range lines {
-			alterColor.Next().Print(line + " ")
+			fmt.Print(alterColor.Next().Sprint(line + " "))
 		}
 		fmt.Println()
 	}

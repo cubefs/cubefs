@@ -15,12 +15,13 @@
 package common
 
 import (
-	"fmt"
 	"io"
 	"strings"
 	"sync"
 
 	"github.com/fatih/color"
+
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 )
 
 var boldRunes = []rune(" ▏▎▍▌▋▋▊▉█")

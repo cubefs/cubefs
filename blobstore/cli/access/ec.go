@@ -15,7 +15,6 @@
 package access
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/desertbit/grumble"
@@ -23,6 +22,7 @@ import (
 	"github.com/fatih/color"
 
 	"github.com/cubefs/cubefs/blobstore/cli/common"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
 )

@@ -17,11 +17,11 @@ package clustermgr
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/desertbit/grumble"
 
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
