@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
@@ -9,10 +10,14 @@ import (
 )
 
 const (
-	PendingPacketMaxLen	= 32
+	PendingPacketFlushThreshold = 32
+	PendingPacketMaxLength		= 64
 )
 
 func (s *Streamer) WritePendingPacket(data []byte, offset uint64, size int, direct bool) (ek *proto.ExtentKey, err error) {
+	if len(s.pendingPacketList) > PendingPacketMaxLength {
+		return nil, fmt.Errorf("ExtentHandler: pending packet is full, offset(%v) size(%v) eh(%v)", offset, size, s.handler)
+	}
 	blksize := util.BlockSize
 	var (
 		total, write 		int

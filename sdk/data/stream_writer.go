@@ -809,7 +809,7 @@ func (s *Streamer) appendOverWriteReq(oriReq *ExtentRequest, direct bool) (write
 }
 
 func (s *Streamer) flush(ctx context.Context, flushPendingPacket bool) (err error) {
-	if len(s.pendingPacketList) > PendingPacketMaxLen || (flushPendingPacket && len(s.pendingPacketList) > 0) {
+	if len(s.pendingPacketList) > PendingPacketFlushThreshold || (flushPendingPacket && len(s.pendingPacketList) > 0) {
 		s.FlushAllPendingPacket(ctx)
 	}
 
