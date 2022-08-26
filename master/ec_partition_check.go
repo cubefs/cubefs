@@ -259,16 +259,13 @@ func (ecdp *EcDataPartition) checkEcReplicationTask(c *Cluster) {
 			c.deleteEcReplicaFromEcNodeOptimistic(ecdp, ecNode)
 		}
 	}
-	if ecdp.isRecover == false {
-		return
-	}
+
 	if lackAddr, lackErr := ecdp.missingEcReplicaAddress(); lackErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication"+
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, ecdp.PartitionID, lackAddr, lackErr.Error(), ecdp.Hosts)
 		Warn(c.Name, msg)
-	} else {
-		ecdp.setToNormal()
+		return
 	}
 
 	return

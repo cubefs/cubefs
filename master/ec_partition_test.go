@@ -13,7 +13,7 @@ func Test_EcPartition(t *testing.T) {
 	server.cluster.checkMetaNodeHeartbeat()
 	server.cluster.checkEcNodeHeartbeat()
 	partitionId := uint64(1)
-	_, err := server.cluster.getDataPartitionByID(partitionId)
+	dp, err := server.cluster.getDataPartitionByID(partitionId)
 	if err == nil {
 		if err = server.cluster.ecMigrateById(partitionId, true); err != nil {
 			t.Errorf("ecMigrateById err(%v)", err)
@@ -30,6 +30,7 @@ func Test_EcPartition(t *testing.T) {
 	}
 	for _, partition := range commonVol.ecDataPartitions.partitions {
 		getEcPartition(partition.PartitionID, t)
+		dp.EcMigrateStatus = proto.FinishEC
 		decommissionEcPartition(partition, t)
 		break
 	}

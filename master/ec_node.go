@@ -898,8 +898,10 @@ func (m *Server) addEcDataReplica(w http.ResponseWriter, r *http.Request) {
 	ep.Lock()
 	ep.Status = proto.ReadOnly
 	ep.isRecover = true
+	ep.PanicHosts = append(ep.PanicHosts, addr)
 	m.cluster.syncUpdateEcDataPartition(ep)
 	ep.Unlock()
+	m.cluster.putBadEcPartitionIDs(nil, addr, ep.PartitionID)
 	rstMsg = fmt.Sprintf("ec partitionID :%v  add replica [%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
@@ -1163,9 +1165,6 @@ func (c *Cluster) getAllEcDataPartitionByEcNode(addr string) (partitions []*EcDa
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, ecdp := range vol.ecDataPartitions.partitions {
-			if !proto.IsEcFinished(ecdp.EcMigrateStatus){
-				continue
-			}
 			for _, host := range ecdp.Hosts {
 				if host == addr {
 					partitions = append(partitions, ecdp)
@@ -1242,7 +1241,7 @@ func (c *Cluster) checkLackReplicaEcPartitions() (lackReplicaEcPartitions []*EcD
 	return
 }
 
-func (c *Cluster) putBadEcPartitionIDs(replica *EcReplica, addr string, partitionID uint64) {
+func (c *Cluster) putBadEcPartitionIDs(replica *EcReplica, addr string, partitionId uint64) {
 	var key string
 	newBadEcPartitionIDs := make([]uint64, 0)
 	if replica != nil {
@@ -1250,11 +1249,13 @@ func (c *Cluster) putBadEcPartitionIDs(replica *EcReplica, addr string, partitio
 	} else {
 		key = fmt.Sprintf("%s:%s", addr, "")
 	}
+	c.badEcPartitionsMutex.Lock()
+	defer c.badEcPartitionsMutex.Unlock()
 	badEcPartitionIDs, ok := c.BadEcPartitionIds.Load(key)
 	if ok {
 		newBadEcPartitionIDs = badEcPartitionIDs.([]uint64)
 	}
-	newBadEcPartitionIDs = append(newBadEcPartitionIDs, partitionID)
+	newBadEcPartitionIDs = append(newBadEcPartitionIDs, partitionId)
 	c.BadEcPartitionIds.Store(key, newBadEcPartitionIDs)
 }
 
@@ -1390,16 +1391,14 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 			if err != nil {
 				continue
 			}
-			vol, err := c.getVol(ep.VolName)
-			if err != nil {
+			if !ep.isRecover {
 				continue
 			}
-			if len(ep.ecReplicas) == 0 {
-				continue
-			}
-			if ep.isEcFilesCatchUp() && len(ep.ecReplicas) >= int(vol.EcDataNum + vol.EcParityNum) {
-				ep.isRecover = false
+
+			if ep.isEcFilesCatchUp() && ep.isEcDataCatchUp() && len(ep.ecReplicas) >= int(ep.DataUnitsNum + ep.ParityUnitsNum) {
 				ep.RLock()
+				ep.isRecover = false
+				ep.PanicHosts = make([]string, 0)
 				c.syncUpdateEcDataPartition(ep)
 				ep.RUnlock()
 				Warn(c.Name, fmt.Sprintf("action[checkEcDiskRecoveryProgress] clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
@@ -1407,7 +1406,16 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 				newBadEcDpIds = append(newBadEcDpIds, partitionID)
 			}
 		}
+		c.badEcPartitionsMutex.Lock()
+		defer c.badEcPartitionsMutex.Unlock()
 
+		newValue, _ := c.BadEcPartitionIds.Load(key)
+		newBadEcPartitionIds := newValue.([]uint64)
+		if len(newBadEcPartitionIds) != len(badEcPartitionIds) {//avoid new insert value deleted
+			log.LogInfof("new value insert, wait next schedule handle, newBadEcPartitionIds(%v) badEcPartitionIds(%v)\n",
+				newBadEcPartitionIds, badEcPartitionIds)
+			return true
+		}
 		if len(newBadEcDpIds) == 0 {
 			Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
 			c.BadEcPartitionIds.Delete(key)
