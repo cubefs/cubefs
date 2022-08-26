@@ -276,22 +276,15 @@ func TestStreamer_WriteFile_Pending(t *testing.T)  {
 	}
 	ec.SetEnableWriteCache(true)
 	ec.tinySize = util.DefaultTinySizeLimit
-	inodeInfo, err := mw.Create_ll(context.Background(), 1, "TestPendingPacket", 0644, 0, 0, nil)
-	if err != nil {
-		t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)
-	}
-	streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode), false, false)
-	streamer.refcnt++
-	fmt.Println("TestExtentHandler_PendingPacket: done create inode")
+	ec.dataWrapper.followerRead = false
 
 	// create local directory
 	localTestDir := "/tmp/pending_packet_test"
 	os.MkdirAll(localTestDir, 0755)
 
 	defer func() {
-		streamer.done <- struct{}{}
-		mw.Delete_ll(context.Background(), 1, "TestPendingPacket", false)
-		os.RemoveAll(localTestDir)
+		//mw.Delete_ll(context.Background(), 1, "TestPendingPacket", false)
+		//os.RemoveAll(localTestDir)
 		log.LogFlush()
 	}()
 
@@ -513,19 +506,41 @@ func TestStreamer_WriteFile_Pending(t *testing.T)  {
 				{FileOffset: 12*128*1024, Size: 128*1024},
 			},
 		},
+		{
+			name: 			"pending_packet_length_max",
+			operationRules: 		[]*Rule {
+				{offset: 0, size: 128*1024, writeCount: 1, isFlush: false},
+				{offset: 2*128*1024, size: 128*1024, writeCount: 16, isFlush: false},
+				{offset: 20*128*1024, size: 128*1024, writeCount: 1024, isFlush: false},
+			},
+			extentTypeList: []*ExtentRule{
+				{FileOffset: 0, Size: 128*1024},
+				{FileOffset: 2*128*1024, Size: 16*128*1024},
+				{FileOffset: 20*128*1024, Size: 128*1024*1024},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// create local file
 			localFile, err := os.Create(path.Join(localTestDir, tt.name))
-			defer localFile.Close()
 			if err != nil {
 				t.Fatalf("TestStreamer_WriteFile_Pending create local file(%v) err: %v", tt.name, err)
 			}
-			// clean CFS file
-			if err := streamer.truncate(context.Background(), 0); err != nil {
-				t.Fatalf("TestStreamer_WriteFile_Pending truncate err: %v, name(%v) ino(%v)", err, tt.name, streamer.inode)
+			defer localFile.Close()
+			// create CFS file
+			inodeInfo, err := mw.Create_ll(context.Background(), 1, "TestPendingPacket_" + tt.name, 0644, 0, 0, nil)
+			if err != nil {
+				t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)
 			}
+			streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode), false, false)
+			streamer.refcnt++
+			fmt.Println("TestExtentHandler_PendingPacket: done create inode")
+
+			defer func() {
+				streamer.done <- struct{}{}
+			}()
+
 			writeIndex := 0
 			// write
 			for _, rule := range tt.operationRules {
