@@ -79,37 +79,35 @@ static void* check_alive_func(void* args) {
 }
 
 int check_conn_timeout(int sock_fd, int64_t timeout_ms) {
-    int ret = 0;
+    int ret;
     struct timeval tv;
-    fd_set rset, wset;
-    int error = 0;
-    socklen_t len = 0;
-
-    len = sizeof(error);
     tv.tv_sec = timeout_ms/1000;
     tv.tv_usec = (timeout_ms%1000)*1000;
-    FD_ZERO(&rset);
-    FD_ZERO(&wset);
-    FD_SET(sock_fd, &rset);
-    wset = rset;
-
-    ret = select(sock_fd+1, &rset, &wset, NULL, &tv);
-    if( ret <= 0) {
+    fd_set *wset = (fd_set *)malloc(sizeof(fd_set));
+    if(wset == NULL) {
         return -1;
     }
 
-    if (FD_ISSET(sock_fd, &rset) || FD_ISSET(sock_fd, &wset)) {
+    FD_ZERO(wset);
+    FD_SET(sock_fd, wset);
+    ret = select(sock_fd+1, NULL, wset, NULL, &tv);
+    if(ret <= 0) {
+        free(wset);
+        return -1;
+    }
+
+    if(FD_ISSET(sock_fd, wset)) {
+        int error = 0;
+        socklen_t len = sizeof(error);
         ret = getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, &error, &len);
         if(error != 0 || ret < 0) {
+            free(wset);
             return -1;
         }
     }
 
+    free(wset);
     return 0;
-}
-
-int set_socket_non_block(int sock_fd, unsigned long enable) {
-    return ioctl(sock_fd, FIONBIO, &enable);
 }
 
 int set_fd_timeout(int sock_fd, int64_t recv_timeout_ms, int64_t send_timeout_ms) {
@@ -146,11 +144,8 @@ int new_conn(const char *ip, int port) {
         return -1;
     }
 
-    ret = set_socket_non_block(sock_fd, 1);
-    if (ret < 0) {
-        libc_close(sock_fd);
-        return -1;
-    }
+    int flags = fcntl(sock_fd, F_GETFL, 0);
+    fcntl(sock_fd, F_SETFL, flags | O_NONBLOCK);
 
     ret = connect(sock_fd, (struct sockaddr*)&addr, sizeof(addr));
     if (ret < 0) {
@@ -167,11 +162,7 @@ int new_conn(const char *ip, int port) {
         }
     }
 
-    ret = set_socket_non_block(sock_fd, 0);
-    if (ret < 0) {
-        libc_close(sock_fd);
-        return -1;
-    }
+    fcntl(sock_fd, F_SETFL, flags);
 
     ret = set_fd_timeout(sock_fd, RECV_TIMEOUT_MS, SEND_TIMEOUT_MS);
     if (ret < 0) {
