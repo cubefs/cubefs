@@ -164,9 +164,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  writable dp count    : %v\n", svv.RwDpCnt))
 	sb.WriteString(fmt.Sprintf("  min writable mp num  : %v\n", svv.MinWritableMPNum))
 	sb.WriteString(fmt.Sprintf("  min writable dp num  : %v\n", svv.MinWritableDPNum))
-	sb.WriteString(fmt.Sprintf("  smart           : %s\n", formatEnabledDisabled(svv.IsSmart)))
-	sb.WriteString(fmt.Sprintf("  smart enable time: %v\n", svv.SmartEnableTime))
-	sb.WriteString(fmt.Sprintf("  smart rules           : %v\n", strings.Join(svv.SmartRules, ",")))
+	sb.WriteString(fmt.Sprintf("  smart                : %s\n", formatEnabledDisabled(svv.IsSmart)))
+	sb.WriteString(fmt.Sprintf("  smart enable time    : %v\n", svv.SmartEnableTime))
+	sb.WriteString(fmt.Sprintf("  smart rules          : %v\n", strings.Join(svv.SmartRules, ",")))
 	sb.WriteString(fmt.Sprintf("  Compact              : %v\n", svv.CompactTag))
 	return sb.String()
 }
@@ -241,7 +241,7 @@ var (
 
 func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 	return fmt.Sprintf(dataPartitionTablePattern,
-		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status),  EcStatusMap[view.EcMigrateStatus], view.IsRecover, view.LeaderAddr,
+		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), EcStatusMap[view.EcMigrateStatus], view.IsRecover, view.LeaderAddr,
 		strings.Join(view.Hosts, ","))
 }
 
@@ -986,6 +986,7 @@ func formatIdcInfoTableRow(name string, zones string) string {
 
 var raftInfoTableHeader = "%-6v     %-8v    %-10v     %-10v   %-10v      %-10v    %-10v    %-8v    %-16v    %-10v"
 var dataPartitionRaftTableHeaderInfo = fmt.Sprintf(raftInfoTableHeader, "ID", "ISLEADER", "COMMIT", "INDEX", "APPLIED", "LOGFIRST", "LOGLAST", "PENDQUE", "STATE", "STOPED")
+
 func formatDataPartitionRaftTableInfo(raft *proto.Status) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf(raftInfoTableHeader, raft.NodeID, raft.Leader == raft.NodeID, raft.Commit, raft.Index, raft.Applied, raft.Log.FirstIndex, raft.Log.LastIndex, raft.PendQueue, raft.State, raft.Stopped))

@@ -20,7 +20,7 @@ const (
 	clusterName   = "chubaofs01"
 	ltptestVolume = "ltptest"
 	ltptestMaster = "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010"
-	size10M = 10 * 1024 * 1024
+	size10M       = 10 * 1024 * 1024
 )
 
 var cmpInodeTask *CmpInodeTask
@@ -635,7 +635,7 @@ func setVolForceRow(forceRow bool) {
 	mc := getMasterClient()
 	vv, _ := mc.AdminAPI().GetVolumeSimpleInfo(ltptestVolume)
 	_ = mc.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
-		int(vv.DefaultStoreMode), vv.FollowerRead, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
+		int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 		forceRow, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, fmt.Sprintf("%v,%v", vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica), strings.Join(vv.SmartRules, ","),
 		uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag)
 }

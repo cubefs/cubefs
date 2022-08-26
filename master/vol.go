@@ -48,7 +48,7 @@ type Vol struct {
 	NearRead             bool
 	ForceROW             bool
 	forceRowModifyTime   int64
-	enableWriteCache	 bool
+	enableWriteCache     bool
 	authenticate         bool
 	autoRepair           bool
 	zoneName             string
@@ -73,7 +73,7 @@ type Vol struct {
 	MPConvertMode        proto.ConvertMode
 	volWriteMutexEnable  bool
 	volWriteMutex        sync.Mutex
-	volWriteMutexClient  *VolWriteMutexClient
+	volWriteMutexClient  string
 	ExtentCacheExpireSec int64
 	writableMpCount      int64
 	MinWritableMPNum     int
@@ -86,7 +86,7 @@ type Vol struct {
 	smartEnableTime      int64
 	smartRules           []string
 	CreateStatus         proto.VolCreateStatus
-	compactTag			 proto.CompactTag
+	compactTag           proto.CompactTag
 	compactTagModifyTime int64
 	EcEnable             bool
 	EcDataNum            uint8
@@ -98,11 +98,6 @@ type Vol struct {
 	EcMaxUnitSize        uint64
 	ecDataPartitions     *EcDataPartitionCache
 	sync.RWMutex
-}
-
-type VolWriteMutexClient struct {
-	ClientIP  string
-	ApplyTime time.Time
 }
 
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
@@ -222,6 +217,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.DPConvertMode = vv.DPConvertMode
 	vol.MPConvertMode = vv.MPConvertMode
 	vol.ExtentCacheExpireSec = vv.ExtentCacheExpireSec
+	vol.volWriteMutexClient = vv.VolWriteMutexClient
 	vol.MinWritableMPNum = vv.MinWritableMPNum
 	vol.MinWritableDPNum = vv.MinWritableDPNum
 	vol.NearRead = vv.NearRead
@@ -230,9 +226,9 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.EcMigrationRetryWait = vv.EcRetryWait
 	vol.EcMigrationTimeOut = vv.EcTimeOut
 	vol.EcMaxUnitSize = vv.EcMaxUnitSize
-	vol.EcDataNum     = vv.EcDataNum
-	vol.EcParityNum   = vv.EcParityNum
-	vol.EcEnable      = vv.EcEnable
+	vol.EcDataNum = vv.EcDataNum
+	vol.EcParityNum = vv.EcParityNum
+	vol.EcEnable = vv.EcEnable
 	if vol.EcDataNum == 0 || vol.EcParityNum == 0 {
 		vol.EcDataNum = defaultEcDataNum
 		vol.EcParityNum = defaultEcParityNum
@@ -1048,44 +1044,6 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	return
 }
 
-func (vol *Vol) applyVolMutex(clientIP string) (err error) {
-	if !vol.volWriteMutexEnable {
-		return proto.ErrVolWriteMutexUnable
-	}
-	if vol.volWriteMutexClient != nil {
-		return proto.ErrVolWriteMutexOccupied
-	}
-	vol.volWriteMutex.Lock()
-	defer vol.volWriteMutex.Unlock()
-
-	clientInfo := &VolWriteMutexClient{
-		ClientIP:  clientIP,
-		ApplyTime: time.Now(),
-	}
-	vol.volWriteMutexClient = clientInfo
-	return
-}
-
-func (vol *Vol) releaseVolMutex() (err error) {
-	if !vol.volWriteMutexEnable {
-		return proto.ErrVolWriteMutexUnable
-	}
-	if vol.volWriteMutexClient == nil {
-		return
-	}
-	vol.volWriteMutex.Lock()
-	defer vol.volWriteMutex.Unlock()
-	vol.volWriteMutexClient = nil
-	return
-}
-
-func (vol *Vol) getVolMutexClientInfo() (err error, clientInfo *VolWriteMutexClient) {
-	if !vol.volWriteMutexEnable {
-		return proto.ErrVolWriteMutexUnable, nil
-	}
-	return nil, vol.volWriteMutexClient
-}
-
 func (vol *Vol) getDataPartitionQuorum() (quorum int) {
 	switch vol.CrossRegionHAType {
 	case proto.CrossRegionHATypeQuorum:
@@ -1134,7 +1092,9 @@ func (vol *Vol) backupConfig() *Vol {
 		dpWriteableThreshold: vol.dpWriteableThreshold,
 		mpReplicaNum:         vol.mpReplicaNum,
 		ForceROW:             vol.ForceROW,
-		enableWriteCache:	  vol.enableWriteCache,
+		volWriteMutexEnable:  vol.volWriteMutexEnable,
+		volWriteMutexClient:  vol.volWriteMutexClient,
+		enableWriteCache:     vol.enableWriteCache,
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 		isSmart:              vol.isSmart,
 		smartRules:           vol.smartRules,
@@ -1171,6 +1131,8 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.dpWriteableThreshold = backupVol.dpWriteableThreshold
 	vol.mpReplicaNum = backupVol.mpReplicaNum
 	vol.ForceROW = backupVol.ForceROW
+	vol.volWriteMutexEnable = backupVol.volWriteMutexEnable
+	vol.volWriteMutexClient = backupVol.volWriteMutexClient
 	vol.enableWriteCache = backupVol.enableWriteCache
 	vol.ExtentCacheExpireSec = backupVol.ExtentCacheExpireSec
 	vol.isSmart = backupVol.isSmart

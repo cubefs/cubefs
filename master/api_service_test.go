@@ -1433,14 +1433,14 @@ func TestApplyAndReleaseVolWriteMutex(t *testing.T) {
 	applyReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminApplyVolMutex, commonVolName)
 	fmt.Println(applyReqURL)
 	applyReply := process(applyReqURL, t)
-	if applyReply.Data != "apply volume mutex success" {
+	if applyReply.Data.(string) != "apply volume mutex success" {
 		t.Errorf("apply volume mutex failed, responseInfo: %v", applyReply.Data)
 	}
 	// release volume write mutex
 	releaseReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminReleaseVolMutex, commonVolName)
 	fmt.Println(releaseReqURL)
 	releaseReply := process(releaseReqURL, t)
-	if releaseReply.Data != "release volume mutex success" {
+	if releaseReply.Data.(string) != "release volume mutex success" {
 		t.Errorf("Release volume write mutest failed, errorInfo: %v", releaseReply.Data)
 	}
 }
@@ -1449,8 +1449,8 @@ func TestGetNoVolWriteMutex(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
 	fmt.Println(reqURL)
 	reply := process(reqURL, t)
-	if reply.Data != "no client info" {
-		t.Errorf("Got volume write mutex resopnse is not expected")
+	if reply.Data.(string) != "" {
+		t.Errorf("Got volume write mutex resopnse is not expected, resopnse: %v", reply.Data)
 	}
 }
 
@@ -1463,15 +1463,7 @@ func TestGetVolWriteMutex(t *testing.T) {
 	getReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
 	fmt.Println(getReqURL)
 	reply := process(getReqURL, t)
-	if _, ok := reply.Data.(map[string]interface{}); !ok {
-		t.Errorf("Get volume write mutest failed, errorInfo: %v", reply.Data)
-	}
-	if _, ok := reply.Data.(map[string]interface{})["ApplyTime"]; !ok {
-		t.Errorf("Get volume write mutest failed, errorInfo: %v", reply.Data)
-	}
-	if _, ok := reply.Data.(map[string]interface{})["ClientIP"]; !ok {
-		t.Errorf("Get volume write mutest failed, errorInfo: %v", reply.Data)
-	}
+	t.Logf("Get volume write mutex reply: %s", reply.Data.(string))
 }
 
 func TestSetNodeInfoHandler(t *testing.T) {
@@ -1799,7 +1791,7 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	volName := quorumVolName
 	newZoneName := fmt.Sprintf("%s,%s,%s,%s", testZone1, testZone2, testZone3, testZone6)
 	// update to cross region vol
-	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, 0, 1, false, false, false, false, false,
+	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, 0, 1, false, false, false, false, false, false,
 		true, false, false, buildAuthKey("cfs"), newZoneName, "0,0", "", 0, 1, 120, "default")
 	if err != nil {
 		t.Errorf("UpdateVolume err:%v", err)

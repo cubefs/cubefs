@@ -150,7 +150,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optMpReplicas int
 	var optFollowerRead bool
 	var optForceROW bool
-	var optEnableWriteCache	bool
+	var optEnableWriteCache bool
 	var optCrossRegionHAType uint8
 	var optEcDataNum uint8
 	var optEcParityNum uint8
@@ -217,7 +217,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  ZoneName            : %v\n", optZoneName)
 				stdout("  Store mode          : %v\n", storeMode.Str())
 				stdout("  Meta layout         : %v - %v\n", num1, num2)
-				stdout("  Smart Enable       : %s\n", formatEnabledDisabled(optIsSmart))
+				stdout("  Smart Enable        : %s\n", formatEnabledDisabled(optIsSmart))
 				stdout("  Smart Rules         : %v\n", strings.Join(smartRules, ","))
 				stdout("  Compact             : %v\n", formatEnabledDisabled(optCompactTag))
 				stdout("\nConfirm (yes/no)[yes]: ")
@@ -251,7 +251,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint8Var(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, cmdVolDefaultCrossRegionHA,
 		"Set cross region high available type(0 for default, 1 for quorum)")
 	cmd.Flags().BoolVar(&optAutoRepair, CliFlagAutoRepair, false, "Enable auto balance partition distribution according to zoneName")
-	cmd.Flags().BoolVar(&optVolWriteMutex, CliFlagVolWriteMutexEnable, false, "Enable only one client have volume exclusive write permission")
+	cmd.Flags().BoolVar(&optVolWriteMutex, CliFlagVolWriteMutexEnable, false, "Enable only one client have volume write permission")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, cmdVolDefaultStoreMode, "Specify volume store mode[1:Mem, 2:RocksDb]")
@@ -284,9 +284,10 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optTrashDays            int
 		optStoreMode            int
 		optFollowerRead         string
+		optVolWriteMutex        string
 		optNearRead             string
 		optForceROW             string
-		optEnableWriteCache		string
+		optEnableWriteCache     string
 		optAuthenticate         string
 		optEnableToken          string
 		optAutoRepair           string
@@ -373,10 +374,10 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				if enable, err = strconv.ParseBool(optNearRead); err != nil {
 					return
 				}
-				confirmString.WriteString(fmt.Sprintf("  Allow near read : %v -> %v\n", formatEnabledDisabled(vv.NearRead), formatEnabledDisabled(enable)))
+				confirmString.WriteString(fmt.Sprintf("  Allow near read     : %v -> %v\n", formatEnabledDisabled(vv.NearRead), formatEnabledDisabled(enable)))
 				vv.NearRead = enable
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Allow near read : %v\n", formatEnabledDisabled(vv.NearRead)))
+				confirmString.WriteString(fmt.Sprintf("  Allow near read     : %v\n", formatEnabledDisabled(vv.NearRead)))
 			}
 			if optForceROW != "" {
 				isChange = true
@@ -436,6 +437,17 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.AutoRepair = enable
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  AutoRepair          : %v\n", formatEnabledDisabled(vv.AutoRepair)))
+			}
+			if optVolWriteMutex != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optVolWriteMutex); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Enable write mutex  : %v -> %v\n", formatEnabledDisabled(vv.VolWriteMutexEnable), formatEnabledDisabled(enable)))
+				vv.VolWriteMutexEnable = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Enable write mutex  : %v\n", formatEnabledDisabled(vv.VolWriteMutexEnable)))
 			}
 			if optBucketPolicy != "" {
 				isChange = true
@@ -519,17 +531,17 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				if enable, err = strconv.ParseBool(optIsSmart); err != nil {
 					return
 				}
-				confirmString.WriteString(fmt.Sprintf("  smart:  %v -> %v\n", vv.IsSmart, enable))
+				confirmString.WriteString(fmt.Sprintf("  smart               : %v -> %v\n", vv.IsSmart, enable))
 				vv.IsSmart = enable
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  smart          :  %v\n", vv.IsSmart))
+				confirmString.WriteString(fmt.Sprintf("  smart               : %v\n", vv.IsSmart))
 			}
 			if len(smartRules) != 0 {
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  SmartRules          :  %s -> %s\n", strings.Join(vv.SmartRules, ","), strings.Join(smartRules, ",")))
+				confirmString.WriteString(fmt.Sprintf("  SmartRules          : %s -> %s\n", strings.Join(vv.SmartRules, ","), strings.Join(smartRules, ",")))
 				vv.SmartRules = smartRules
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  SmartRules          :  %s\n", strings.Join(vv.SmartRules, ",")))
+				confirmString.WriteString(fmt.Sprintf("  SmartRules          : %s\n", strings.Join(vv.SmartRules, ",")))
 			}
 
 			if optCompactTag != "" {
@@ -543,13 +555,13 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				} else {
 					optCompactTag = proto.CompactCloseName
 				}
-				confirmString.WriteString(fmt.Sprintf("  compact             :  %v -> %v\n", vv.CompactTag, optCompactTag))
+				confirmString.WriteString(fmt.Sprintf("  compact             : %v -> %v\n", vv.CompactTag, optCompactTag))
 				if vv.CompactTag != optCompactTag {
 					compactTagChange = true
 				}
 				vv.CompactTag = optCompactTag
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  compact             :  %v\n", vv.CompactTag))
+				confirmString.WriteString(fmt.Sprintf("  compact             : %v\n", vv.CompactTag))
 			}
 
 			if err != nil {
@@ -572,7 +584,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
-				int(vv.DefaultStoreMode), vv.FollowerRead, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
+				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag)
 			if err != nil {
 				return
@@ -602,6 +614,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().StringVar(&optAutoRepair, CliFlagAutoRepair, "", "Enable auto balance partition distribution according to zoneName")
+	cmd.Flags().StringVar(&optVolWriteMutex, CliFlagVolWriteMutexEnable, "", "Enable only one client have volume write permission")
 	cmd.Flags().StringVar(&optBucketPolicy, CliFlagOSSBucketPolicy, "", "Set bucket access policy for S3(0 for private 1 for public-read)")
 	cmd.Flags().Int64Var(&optExtentCacheExpireSec, CliFlagExtentCacheExpireSec, 0, "Specify the expiration second of the extent cache (-1 means never expires)")
 	cmd.Flags().StringVar(&optLayout, CliFlagMetaLayout, "", "specify volume meta layout num1,num2 [num1:rocks db mp percent, num2:rocks db replicas percent]")
@@ -1225,8 +1238,8 @@ func checkForceRowAndCompact(vv *proto.SimpleVolView, forceRowChange, compactTag
 		curTime := time.Now().Unix()
 		if !vv.ForceROW &&
 			(vv.CompactTag == proto.CompactCloseName || vv.CompactTag == proto.CompactDefaultName) &&
-			(curTime - vv.CompactTagModifyTime) < proto.CompatTagClosedTimeDuration {
-			errout("error: force row cannot be closed when compact is closed for less than %v minutes, now diff time %v minutes\n", proto.CompatTagClosedTimeDuration / 60, (curTime - vv.CompactTagModifyTime) / 60)
+			(curTime-vv.CompactTagModifyTime) < proto.CompatTagClosedTimeDuration {
+			errout("error: force row cannot be closed when compact is closed for less than %v minutes, now diff time %v minutes\n", proto.CompatTagClosedTimeDuration/60, (curTime-vv.CompactTagModifyTime)/60)
 		}
 	}
 
@@ -1242,7 +1255,7 @@ func checkForceRowAndCompact(vv *proto.SimpleVolView, forceRowChange, compactTag
 		}
 		if !vv.ForceROW &&
 			(vv.CompactTag == proto.CompactCloseName || vv.CompactTag == proto.CompactDefaultName) {
-			errout("error: force row cannot be closed when compact is closed for less than %v minutes, Please close compact first\n", proto.CompatTagClosedTimeDuration / 60)
+			errout("error: force row cannot be closed when compact is closed for less than %v minutes, Please close compact first\n", proto.CompatTagClosedTimeDuration/60)
 		}
 	}
 }

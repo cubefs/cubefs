@@ -175,7 +175,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			case MASTER:
 				// o represent proto.ErrCodeSuccess
 				if body.Code != 0 {
-					log.LogErrorf("action failed, Code:%v, Msg:%v, Data:%v", body.Code, body.Msg, body.Data)
+					log.LogErrorf("action failed, Code:%v, Msg:%v, Data:%v", body.Code, body.Msg, string(body.Data))
 					if err = proto.ParseErrorCode(body.Code); err == proto.ErrInternalError {
 						err = fmt.Errorf("errcode:%v, msg:%v\n", err.Error(), body.Msg)
 					}
@@ -184,7 +184,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			case DATANODE, METANODE, ECNODE:
 				// o represent proto.ErrCodeSuccess
 				if body.Code != 200 {
-					log.LogErrorf("action failed, Code:%v, Msg:%v, Data:%v", body.Code, body.Msg, body.Data)
+					log.LogErrorf("action failed, Code:%v, Msg:%v, Data:%v", body.Code, body.Msg, string(body.Data))
 					return nil, proto.ParseErrorCode(body.Code)
 				}
 			}

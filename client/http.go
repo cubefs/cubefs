@@ -27,6 +27,9 @@ const (
 	ControlBroadcastRefreshExtents = "/broadcast/refreshExtents"
 	ControlReadProcessRegister     = "/readProcess/register"
 	ControlGetReadProcs            = "/get/readProcs"
+	ControlSetReadWrite            = "/set/readwrite"
+	ControlSetReadOnly             = "/set/readonly"
+	ControlGetReadStatus           = "/get/readstatus"
 	ControlSetUpgrade              = "/set/clientUpgrade"
 	ControlUnsetUpgrade            = "/unset/clientUpgrade"
 
@@ -36,6 +39,7 @@ const (
 	clientKey     = "client" // ip:port
 	versionKey    = "version"
 	MaxRetry      = 5
+	forceKey      = "force"
 	ClientPkgPath = "/tmp/.cfs_client_libs"
 	CheckFile     = "checkfile"
 	LibsPath      = "/usr/lib64"
@@ -64,6 +68,96 @@ func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
 	var encoded []byte
 	encoded, _ = json.Marshal(&resp)
 	w.Write(encoded)
+	return
+}
+
+func setReadWrite(w http.ResponseWriter, r *http.Request) {
+	var (
+		err   error
+		force bool
+	)
+	const defaultClientID = 1
+	c, exist := getClient(defaultClientID)
+	if !exist {
+		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse parameter error: %v", err))
+		return
+	}
+	if forceStr := r.FormValue(forceKey); forceStr != "" {
+		if force, err = strconv.ParseBool(forceStr); err != nil {
+			buildFailureResp(w, http.StatusBadRequest, "invalid parameter force")
+			return
+		}
+	}
+	err = c.mc.ClientAPI().ApplyVolMutex(c.volName, force)
+	if err == proto.ErrVolWriteMutexUnable {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume %s not support WriteMutex", c.volName))
+		return
+	}
+	if err == proto.ErrVolWriteMutexOccupied {
+		clientIP, err := c.mc.ClientAPI().GetVolMutex(c.volName)
+		if err != nil {
+			buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume WriteMutex occupied, fail to get holder: %v", err.Error()))
+			return
+		}
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume WriteMutex occupied by %s", clientIP))
+		return
+	}
+	if err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("set readwrite failed: %v", err.Error()))
+		return
+	}
+	c.readOnly = false
+	log.LogInfof("Set ReadWrite %s successfully.", c.volName)
+	buildSuccessResp(w, "success")
+}
+
+func setReadOnly(w http.ResponseWriter, r *http.Request) {
+	const defaultClientID = 1
+	c, exist := getClient(defaultClientID)
+	if !exist {
+		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
+		return
+	}
+	err := c.mc.ClientAPI().ReleaseVolMutex(c.volName)
+	if err == proto.ErrVolWriteMutexUnable {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume %s not support WriteMutex", c.volName))
+		return
+	}
+	if err == proto.ErrVolWriteMutexOccupied {
+		clientIP, err := c.mc.ClientAPI().GetVolMutex(c.volName)
+		if err != nil {
+			buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume WriteMutex occupied by others, fail to get holder: %v", err.Error()))
+			return
+		}
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume WriteMutex occupied by %s", clientIP))
+		return
+	}
+	if err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("set readonly failed: %v", err.Error()))
+		return
+	}
+	c.readOnly = true
+	log.LogInfof("Set ReadOnly %s successfully.", c.volName)
+	buildSuccessResp(w, "success")
+}
+
+func getReadStatus(w http.ResponseWriter, r *http.Request) {
+	const defaultClientID = 1
+	c, exist := getClient(defaultClientID)
+	if !exist {
+		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
+		return
+	}
+
+	if c.readOnly {
+		buildSuccessResp(w, "read only.")
+	} else {
+		buildSuccessResp(w, "read write.")
+	}
 	return
 }
 

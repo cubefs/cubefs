@@ -9,35 +9,35 @@ import (
 )
 
 var (
-	testVolName              = "unittestVol"
-	testOwner                = "test"
-	testMpcount              = 3
-	testDpSize        uint64 = 120
-	testCapacity      uint64 = 1
-	testReplicas             = 3
-	testTrashDays            = 10
-	testMpReplicas           = 3
-	testFollowerRead         = true
-	testForceROW             = false
-	testIsSmart              = false
-	testEnableWriteCache	 = false
-	testAutoRepair           = false
-	testVolWriteMutex        = false
-	testZoneName             = "default"
-	testMc                   = NewMasterClient([]string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}, false)
-	testStoreMode            = 1
-	testMpLyout              = "0,0"
+	testVolName                 = "unittestVol"
+	testOwner                   = "test"
+	testMpcount                 = 3
+	testDpSize           uint64 = 120
+	testCapacity         uint64 = 1
+	testReplicas                = 3
+	testTrashDays               = 10
+	testMpReplicas              = 3
+	testFollowerRead            = true
+	testForceROW                = false
+	testIsSmart                 = false
+	testEnableWriteCache        = false
+	testAutoRepair              = false
+	testVolWriteMutex           = false
+	testZoneName                = "default"
+	testMc                      = NewMasterClient([]string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}, false)
+	testStoreMode               = 1
+	testMpLyout                 = "0,0"
 )
 
 func TestVolCreate(t *testing.T) {
 	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testEnableWriteCache, testZoneName, testMpLyout, "",0, proto.CompactDefaultName, 4, 2, false)
+		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testEnableWriteCache, testZoneName, testMpLyout, "", 0, proto.CompactDefaultName, 4, 2, false)
 	if err != nil {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, testVolName)
 	}
 	defaultVol := "defaultVol"
 	err = testMc.AdminAPI().CreateDefaultVolume(defaultVol, testOwner)
-	if err != nil && !strings.Contains(err.Error(), "duplicate vol"){
+	if err != nil && !strings.Contains(err.Error(), "duplicate vol") {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, defaultVol)
 	}
 }
@@ -48,7 +48,7 @@ func TestUpdateVol(t *testing.T) {
 	updateFollowerRead := false
 	trashDays := 15
 	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, trashDays, testStoreMode,
-		updateFollowerRead, false, false, false, false, false, false, false, authKey, testZoneName,
+		updateFollowerRead, false, false, false, false, false, false, false, false, authKey, testZoneName,
 		testMpLyout, "", 0, 0, 0, "default")
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)

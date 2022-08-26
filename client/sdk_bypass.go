@@ -294,6 +294,8 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 		c.followerRead = cfg.Section("").Key("followerRead").MustBool(false)
 		c.app = cfg.Section("").Key("app").String()
 		c.useMetaCache = (c.app != appCoralDB)
+		c.readOnly = (c.app == appCoralDB)
+		c.readOnlyExclude = parsePaths(cfg.Section("").Key("readOnlyExclude").String())
 		c.autoFlush = cfg.Section("").Key("autoFlush").MustBool(false)
 		c.masterClient = cfg.Section("").Key("masterClient").String()
 		if c.masterAddr == "" || c.volName == "" || c.owner == "" {
@@ -311,9 +313,23 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 	return c
 }
 
+func parsePaths(str string) (res []string) {
+	var tmp []string
+	tmp = strings.Split(str, ",")
+	for _, p := range tmp {
+		if p == "" {
+			continue
+		}
+		p2 := gopath.Clean("/" + p)
+		res = append(res, p2)
+	}
+	return
+}
+
 func rebuild_sdk_state(c *client, sdkState *SdkState) {
 	log.LogDebugf("rebuild_sdk_state. sdkState: %v\n", sdkState)
 	c.cwd = sdkState.Cwd
+	c.readProcErrMap = sdkState.ReadProcErrMap
 
 	for _, v := range sdkState.Files {
 		f := &file{fd: v.Fd, ino: v.Ino, flags: v.Flags, mode: v.Mode, size: v.Size, pos: v.Pos, path: v.Path, target: []byte(v.Target), locked: v.Locked}
@@ -329,18 +345,7 @@ func rebuild_sdk_state(c *client, sdkState *SdkState) {
 			f.dirp.dirents = dentries
 		}
 		if proto.IsRegular(f.mode) {
-			var appendWriteBuffer bool
-			var readAhead bool
-			_, name := gopath.Split(f.path)
-			nameParts := strings.Split(name, ".")
-			if nameParts[0] == fileRelaylog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
-				f.fileType = fileTypeRelaylog
-			} else if nameParts[0] == fileBinlog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
-				f.fileType = fileTypeBinlog
-			} else if strings.Contains(nameParts[0], fileRedolog) {
-				f.fileType = fileTypeRedolog
-			}
-			c.ec.OpenStream(f.ino, appendWriteBuffer, readAhead)
+			c.openInodeStream(f)
 			c.ec.RefreshExtentsCache(nil, f.ino)
 		}
 		if v.Locked {
@@ -434,7 +439,9 @@ type client struct {
 	readProcErrMap  map[string]int // key: ip:port, value: count of error
 	readProcMapLock sync.Mutex
 
-	masterClient string
+	masterClient    string
+	readOnly        bool
+	readOnlyExclude []string
 
 	autoFlush bool
 
@@ -478,8 +485,9 @@ type FileState struct {
 }
 
 type SdkState struct {
-	Cwd   string // current working directory
-	Files []FileState
+	Cwd            string
+	ReadProcErrMap map[string]int
+	Files          []FileState
 }
 
 /*
@@ -561,6 +569,9 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		http.HandleFunc(ControlReadProcessRegister, registerReadProcStatusHandleFunc)
 		http.HandleFunc(ControlBroadcastRefreshExtents, broadcastRefreshExtentsHandleFunc)
 		http.HandleFunc(ControlGetReadProcs, getReadProcsHandleFunc)
+		http.HandleFunc(ControlSetReadWrite, setReadWrite)
+		http.HandleFunc(ControlSetReadOnly, setReadOnly)
+		http.HandleFunc(ControlGetReadStatus, getReadStatus)
 		http.HandleFunc(ControlSetUpgrade, SetClientUpgrade)
 		http.HandleFunc(ControlUnsetUpgrade, UnsetClientUpgrade)
 		server := &http.Server{Addr: fmt.Sprintf(":%v", gClientManager.profPort)}
@@ -725,7 +736,7 @@ func cfs_sdk_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
 		files = append(files, f)
 	}
 
-	str, err := json.Marshal(SdkState{c.cwd, files})
+	str, err := json.Marshal(SdkState{c.cwd, c.readProcErrMap, files})
 	if err != nil {
 		log.LogErrorf("Marshal sdkState err(%v), files(%v)\n", err, files)
 	}
@@ -823,6 +834,13 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	fuseFlags := uint32(flags) &^ uint32(0x8000)
 	accFlags := fuseFlags & uint32(C.O_ACCMODE)
 	absPath := c.absPath(C.GoString(path))
+
+	if fuseFlags&(uint32(C.O_WRONLY)|uint32(C.O_RDWR)|uint32(C.O_CREAT)) != 0 {
+		if c.checkReadOnly(absPath) {
+			return statusEPERM
+		}
+	}
+
 	var info *proto.InodeInfo
 
 	// According to POSIX, flags must include one of the following
@@ -874,23 +892,8 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	f.size = info.Size
 	f.path = absPath
 
-	// if you rewrite here, please modify rebuild_sdk_state together
 	if proto.IsRegular(info.Mode) {
-		var appendWriteBuffer bool
-		var readAhead bool
-		_, name := gopath.Split(f.path)
-		nameParts := strings.Split(name, ".")
-		if nameParts[0] == fileRelaylog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
-			f.fileType = fileTypeRelaylog
-			//appendWriteBuffer = true
-			//readAhead = true
-		} else if nameParts[0] == fileBinlog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
-			f.fileType = fileTypeBinlog
-			//appendWriteBuffer = true
-		} else if strings.Contains(nameParts[0], fileRedolog) {
-			f.fileType = fileTypeRedolog
-		}
-		c.ec.OpenStream(f.ino, appendWriteBuffer, readAhead)
+		c.openInodeStream(f)
 		if fuseFlags&uint32(C.O_TRUNC) != 0 {
 			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 				c.closeStream(f)
@@ -909,6 +912,24 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	f.size = info.Size
 	f.path = absPath
 	return C.int(f.fd)
+}
+
+func (c *client) openInodeStream(f *file) {
+	var appendWriteBuffer bool
+	var readAhead bool
+	_, name := gopath.Split(f.path)
+	nameParts := strings.Split(name, ".")
+	if nameParts[0] == fileRelaylog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
+		f.fileType = fileTypeRelaylog
+		//appendWriteBuffer = true
+		//readAhead = true
+	} else if nameParts[0] == fileBinlog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
+		f.fileType = fileTypeBinlog
+		//appendWriteBuffer = true
+	} else if strings.Contains(nameParts[0], fileRedolog) {
+		f.fileType = fileTypeRedolog
+	}
+	c.ec.OpenStream(f.ino, appendWriteBuffer, readAhead)
 }
 
 //export cfs_openat
@@ -975,6 +996,9 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 
 	absFrom := c.absPath(C.GoString(from))
 	absTo := c.absPath(C.GoString(to))
+	if c.checkReadOnly(absFrom) || c.checkReadOnly(absTo) {
+		return statusEPERM
+	}
 	if absFrom == absTo || strings.HasPrefix(absTo, absFrom+string(os.PathSeparator)) {
 		// 不允许源路径和目标路径一样，或将源路径移动到自身子目录的操作
 		return statusEINVAL
@@ -1071,6 +1095,9 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
+	}
 	inode, err = c.lookupPath(nil, absPath)
 	if err != nil {
 		return errorToStatus(err)
@@ -1120,6 +1147,9 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	}
 	path = f.path
 	ino = f.ino
+	if c.checkReadOnly(path) {
+		return statusEPERM
+	}
 
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_ftruncate))
 	defer ump.AfterTPUs(tpObject, nil)
@@ -1167,6 +1197,9 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	}
 	path = f.path
 	ino = f.ino
+	if c.checkReadOnly(path) {
+		return statusEPERM
+	}
 
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fallocate))
 	defer ump.AfterTPUs(tpObject, nil)
@@ -1233,6 +1266,9 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 	}
 	path = f.path
 	ino = f.ino
+	if c.checkReadOnly(path) {
+		return statusEPERM
+	}
 
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_posix_fallocate))
 	defer ump.AfterTPUs(tpObject, nil)
@@ -1375,6 +1411,9 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 		re = statusEEXIST
 		return
 	}
+	if c.checkReadOnly(dirpath) {
+		return statusEPERM
+	}
 
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_mkdirs))
 	defer ump.AfterTPUs(tpObject, nil)
@@ -1465,6 +1504,9 @@ func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
 	absPath := c.absPath(C.GoString(path))
 	if absPath == "/" {
 		return statusOK
+	}
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
 	}
 	dirpath, name := gopath.Split(absPath)
 	dirInode, err := c.lookupPath(nil, dirpath)
@@ -1718,6 +1760,9 @@ func cfs_link(id C.int64_t, oldpath *C.char, newpath *C.char) (re C.int) {
 	}
 
 	absPath := c.absPath(C.GoString(newpath))
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
+	}
 	dirPath, name := gopath.Split(absPath)
 	dirInode, err := c.lookupPath(nil, dirPath)
 	if err != nil {
@@ -1777,6 +1822,9 @@ func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(linkPath))
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
+	}
 	dirpath, name := gopath.Split(absPath)
 	dirInode, err := c.lookupPath(nil, dirpath)
 	if err != nil {
@@ -1843,6 +1891,9 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
+	}
 	info, err := c.getInodeByPath(nil, absPath)
 	if err != nil {
 		return errorToStatus(err)
@@ -2227,6 +2278,9 @@ func _cfs_chmod(id C.int64_t, path *C.char, mode C.mode_t, flags C.int) C.int {
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
+	}
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
@@ -2258,6 +2312,9 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 	f := c.getFile(uint(fd))
 	if f == nil {
 		return statusEBADFD
+	}
+	if c.checkReadOnly(f.path) {
+		return statusEPERM
 	}
 
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fchmod))
@@ -2313,6 +2370,9 @@ func _cfs_chown(id C.int64_t, path *C.char, uid C.uid_t, gid C.gid_t, flags C.in
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
+	}
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
@@ -2343,6 +2403,9 @@ func cfs_fchown(id C.int64_t, fd C.int, uid C.uid_t, gid C.gid_t) C.int {
 	f := c.getFile(uint(fd))
 	if f == nil {
 		return statusEBADFD
+	}
+	if c.checkReadOnly(f.path) {
+		return statusEPERM
 	}
 
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fchown))
@@ -2535,6 +2598,9 @@ func cfs_setxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointer
 	}
 
 	absPath := c.absPath(C.GoString(path))
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
+	}
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && proto.IsSymlink(info.Mode); {
@@ -2567,6 +2633,10 @@ func cfs_lsetxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointe
 	}
 
 	absPath := c.absPath(C.GoString(path))
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
+	}
+
 	inode, err := c.lookupPath(nil, absPath)
 	if err != nil {
 		return errorToStatus(err)
@@ -2596,6 +2666,9 @@ func cfs_fsetxattr(id C.int64_t, fd C.int, name *C.char, value unsafe.Pointer, s
 	f := c.getFile(uint(fd))
 	if f == nil {
 		return statusEBADFD
+	}
+	if c.checkReadOnly(f.path) {
+		return statusEPERM
 	}
 
 	var buffer []byte
@@ -2880,6 +2953,9 @@ func cfs_removexattr(id C.int64_t, path *C.char, name *C.char) C.int {
 	}
 
 	absPath := c.absPath(C.GoString(path))
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
+	}
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && proto.IsSymlink(info.Mode); {
@@ -2906,6 +2982,9 @@ func cfs_lremovexattr(id C.int64_t, path *C.char, name *C.char) C.int {
 	}
 
 	absPath := c.absPath(C.GoString(path))
+	if c.checkReadOnly(absPath) {
+		return statusEPERM
+	}
 	inode, err := c.lookupPath(context.Background(), absPath)
 	if err != nil {
 		return errorToStatus(err)
@@ -2929,6 +3008,9 @@ func cfs_fremovexattr(id C.int64_t, fd C.int, name *C.char) C.int {
 	f := c.getFile(uint(fd))
 	if f == nil {
 		return statusEBADFD
+	}
+	if c.checkReadOnly(f.path) {
+		return statusEPERM
 	}
 
 	err := c.mw.XAttrDel_ll(context.Background(), f.ino, C.GoString(name))
@@ -3301,6 +3383,9 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	}
 	path = f.path
 	ino = f.ino
+	if c.checkReadOnly(path) {
+		return C.ssize_t(statusEPERM)
+	}
 	if log.IsDebugEnabled() {
 		if f.flags&uint32(C.O_DIRECT) != 0 {
 			flagBuf.WriteString("O_DIRECT|")
@@ -3477,6 +3562,9 @@ func _cfs_writev(id C.int64_t, fd C.int, iov *C.struct_iovec, iovcnt C.int, off 
 	if f == nil {
 		return C.ssize_t(statusEBADFD)
 	}
+	if c.checkReadOnly(f.path) {
+		return C.ssize_t(statusEPERM)
+	}
 
 	accFlags := f.flags & uint32(C.O_ACCMODE)
 	if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
@@ -3644,6 +3732,43 @@ func (c *client) absPathAt(dirfd C.int, path *C.char) (string, error) {
 	return absPath, nil
 }
 
+func (c *client) checkVolWriteMutex() error {
+	if c.app != appCoralDB {
+		return nil
+	}
+	for true {
+		clientIP, err := c.mc.ClientAPI().GetVolMutex(c.volName)
+		if err == nil && clientIP == "" {
+			return nil
+		}
+		if err == proto.ErrVolWriteMutexUnable {
+			c.readOnly = false
+			return nil
+		}
+		if err == proto.ErrVolNotExists {
+			return err
+		}
+		if err != nil {
+			syslog.Printf("checkVolWriteMutex err: %v, retry...\n", err)
+			continue
+		}
+
+		err = c.mc.ClientAPI().ApplyVolMutex(c.volName, false)
+		if err == nil {
+			c.readOnly = false
+			return nil
+		}
+		if err == proto.ErrVolWriteMutexOccupied {
+			return nil
+		}
+		if err != nil {
+			syslog.Printf("checkVolWriteMutex err: %v, retry...\n", err)
+			continue
+		}
+	}
+	return nil
+}
+
 func (c *client) start() (err error) {
 	defer func() {
 		if err != nil {
@@ -3654,21 +3779,11 @@ func (c *client) start() (err error) {
 	}()
 
 	masters := strings.Split(c.masterAddr, ",")
-	mc := master.NewMasterClient(masters, false)
-	err = mc.ClientAPI().ApplyVolMutex(c.volName)
-	if err == proto.ErrVolWriteMutexUnable {
-		err = nil
-	}
-	if err != nil {
-		syslog.Println(err)
+	c.mc = master.NewMasterClient(masters, false)
+	if err = c.checkVolWriteMutex(); err != nil {
+		syslog.Printf("checkVolWriteMutex error: %v\n", err)
 		return
 	}
-
-	defer func() {
-		if err != nil {
-			mc.ClientAPI().ReleaseVolMutex(c.volName)
-		}
-	}()
 
 	var mw *meta.MetaWrapper
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
@@ -3700,7 +3815,6 @@ func (c *client) start() (err error) {
 		return
 	}
 
-	c.mc = mc
 	c.mw = mw
 	c.ec = ec
 
@@ -3722,9 +3836,6 @@ func (c *client) start() (err error) {
 
 func (c *client) stop() {
 	c.closeOnce.Do(func() {
-		if c.mc != nil {
-			_ = c.mc.ClientAPI().ReleaseVolMutex(c.volName)
-		}
 		if c.ec != nil {
 			_ = c.ec.Close(context.Background())
 			c.ec.CloseConnPool()
@@ -3979,6 +4090,21 @@ func (c *client) broadcastAllReadProcess(ino uint64) {
 		c.broadcastRefreshExtents(readClient, ino)
 	}
 	c.readProcMapLock.Unlock()
+}
+
+func (c *client) checkReadOnly(absPath string) bool {
+	if !c.readOnly {
+		return false
+	}
+	for _, pre := range c.readOnlyExclude {
+		if !strings.HasPrefix(absPath, pre) {
+			continue
+		}
+		if pre == "/" || len(absPath) == len(pre) || absPath[len(pre)] == '/' {
+			return false
+		}
+	}
+	return true
 }
 
 func handleError(c *client, act, msg string) {
