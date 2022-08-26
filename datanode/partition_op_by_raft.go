@@ -314,6 +314,10 @@ func (si *ItemIterator) Close() {
 	return
 }
 
+func (si *ItemIterator) Version() uint32 {
+	return 0
+}
+
 // Next returns the next item in the iterator.
 func (si *ItemIterator) Next() (data []byte, err error) {
 	return nil, io.EOF

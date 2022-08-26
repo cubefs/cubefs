@@ -93,7 +93,7 @@ func NewRocksDb() (dbInfo *RocksDbInfo){
 	return
 }
 
-func (dbInfo *RocksDbInfo) ReleaseRocksDb() (error){
+func (dbInfo *RocksDbInfo) ReleaseRocksDb() error{
 	dbInfo.mutex.Lock()
 	defer dbInfo.mutex.Unlock()
 	if dbInfo.db != nil || atomic.LoadUint32(&dbInfo.state) != dbClosedSt{
@@ -104,6 +104,7 @@ func (dbInfo *RocksDbInfo) ReleaseRocksDb() (error){
 }
 
 func (dbInfo *RocksDbInfo) CloseDb() (err error){
+	log.LogDebugf("close RocksDB, Path(%s), State(%v)", dbInfo.dir, atomic.LoadUint32(&dbInfo.state))
 
 	if ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbOpenedSt, dbClosingSt); !ok {
 		if atomic.LoadUint32(&dbInfo.state) == dbClosedSt {
@@ -661,7 +662,7 @@ func (dbInfo *RocksDbInfo) ReleaseBatchHandle(handle interface{})(err error) {
 func (dbInfo *RocksDbInfo) ClearBatchWriteHandle(handle interface{}) (err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("[RocksDB Op] CommitBatchAndRelease failed, err:%v", err)
+			log.LogErrorf("[RocksDB Op] ClearBatchWriteHandle failed, err:%v", err)
 		}
 	}()
 

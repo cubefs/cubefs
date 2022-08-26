@@ -132,7 +132,7 @@ func (s *MetaItem) String() string {
 		}
 		v = fmt.Sprintf("inode: %v", ino.Inode)
 	}
-	return fmt.Sprintf("Op: %v, K: %v, V: %v, From: %v", s.Op, string(s.K), v, s.From)
+	return fmt.Sprintf("Op: %v, K: %v, V: %v, From: %v, Timestamp: %v, trashEnable: %v", s.Op, string(s.K), v, s.From, s.Timestamp, s.TrashEnable)
 }
 
 // NewMetaItem returns a new MetaItem.
@@ -310,6 +310,10 @@ func (si *MetaItemIterator) Close() {
 		si.treeSnap.Close()
 	})
 	return
+}
+
+func (si *MetaItemIterator) Version() uint32 {
+	return BaseSnapshotV
 }
 
 // Next returns the next item.

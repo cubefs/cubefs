@@ -4113,12 +4113,8 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	for _, learner := range mp.Learners {
 		mpView.Learners = append(mpView.Learners, learner.Addr)
 	}
-	mr, err := mp.getMetaReplicaLeader()
-	if err != nil {
-		return
-	}
-	mpView.LeaderAddr = mr.Addr
 	if len(mp.Replicas) <= 0 {
+		log.LogInfof("[getMetaPartitionView] vol(%s) mp(%v) replica count is zero", mp.volName, mp.PartitionID)
 		return
 	}
 
@@ -4136,6 +4132,11 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 			mpView.MemCount++
 		}
 	}
+	mr, err := mp.getMetaReplicaLeader()
+	if err != nil {
+		return
+	}
+	mpView.LeaderAddr = mr.Addr
 	return
 }
 

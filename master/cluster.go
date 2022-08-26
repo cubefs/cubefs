@@ -2822,7 +2822,7 @@ func (c *Cluster) setVolConvertTaskState(name, authKey string, newState proto.Vo
 	return
 
 errHandler:
-	err = fmt.Errorf("action[updateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+	err = fmt.Errorf("action[setVolConvertTaskState], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return

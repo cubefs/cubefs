@@ -23,11 +23,14 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
-	"os"
-	"strings"
 	"sync"
 )
+
+const DefaultBatchCount = 128
+
+var MetaBatchSnapshotVersionMap = map[string]SnapshotVersion{
+	RocksDBVersion:    BatchSnapshotV1,
+}
 
 type EkData struct {
 	key     []byte
@@ -85,57 +88,43 @@ func (ekInfo *EkData) UnMarshal(raw []byte) (err error){
 }
 type DelExtentBatch []*EkData
 
-// MetaItemIteratorV2 defines the iterator of the MetaItem.
-type MetaItemIteratorV2 struct {
-	fileRootDir   string
-	applyID       uint64
-	db            *RocksDbInfo
-	snap          *gorocksdb.Snapshot
-
-	dataCh    chan interface{}
-	errorCh   chan error
-	err       error
-	closeCh   chan struct{}
-	closeOnce sync.Once
-	snapshotSign hash.Hash32
+// BatchMetaItemIterator defines the iterator of the MetaItem.
+type BatchMetaItemIterator struct {
+	fileRootDir     string
+	applyID         uint64
+	db              *RocksDbInfo
+	rocksDBSnap     *gorocksdb.Snapshot
+	dataCh          chan interface{}
+	errorCh         chan error
+	err             error
+	closeCh         chan struct{}
+	closeOnce       sync.Once
+	snapshotSign    hash.Hash32
 	snapshotCrcFlag bool
-	treeSnap Snapshot
-	recoverNodeVersion *MetaNodeVersion
+	treeSnap        Snapshot
+	batchSnapV      SnapshotVersion
 }
 
-// newMetaItemIteratorV2 returns a new MetaItemIterator.
-func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *MetaItemIteratorV2, err error) {
-	si = new(MetaItemIteratorV2)
+// newBatchMetaItemIterator returns a new MetaItemIterator.
+func newBatchMetaItemIterator(mp *metaPartition, snapV SnapshotVersion) (si *BatchMetaItemIterator, err error) {
+	si = new(BatchMetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
-	//si.dataTmpCh = make(chan interface{}, 1)
 	si.snapshotSign = crc32.NewIEEE()
 	si.treeSnap = NewSnapshot(mp)
 	if si.treeSnap == nil {
 		err = errors.NewErrorf("get mp[%v] tree snap failed", mp.config.PartitionId)
 		return
 	}
+	si.batchSnapV = snapV
 	si.db = mp.db
-	si.snap = mp.db.OpenSnap()
-	// collect extend del files
-	var filenames = make([]string, 0)
-	var fileInfos []os.FileInfo
-	if fileInfos, err = ioutil.ReadDir(mp.config.RootDir); err != nil {
-		return
-	}
-
-	for _, fileInfo := range fileInfos {
-		if !fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), prefixDelExtent) {
-			filenames = append(filenames, fileInfo.Name())
-		}
-	}
-	si.recoverNodeVersion = version
+	si.rocksDBSnap = mp.db.OpenSnap()
 
 	// start data producer
-	go func(iter *MetaItemIteratorV2) {
+	go func(iter *BatchMetaItemIterator) {
 		defer func() {
 			close(iter.dataCh)
 			close(iter.errorCh)
@@ -252,7 +241,7 @@ func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *Me
 
 		stKey[0]  = byte(ExtentDelTable)
 		endKey[0] = byte(ExtentDelTable + 1)
-		_ = mp.db.RangeWithSnap(stKey, endKey, si.snap, func(k, v []byte) (bool, error){
+		_ = mp.db.RangeWithSnap(stKey, endKey, si.rocksDBSnap, func(k, v []byte) (bool, error){
 			if k[0] !=  byte(ExtentDelTable) {
 				return false, nil
 			}
@@ -271,21 +260,25 @@ func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *Me
 }
 
 // ApplyIndex returns the applyID of the iterator.
-func (si *MetaItemIteratorV2) ApplyIndex() uint64 {
+func (si *BatchMetaItemIterator) ApplyIndex() uint64 {
 	return si.applyID
 }
 
 // Close closes the iterator.
-func (si *MetaItemIteratorV2) Close() {
+func (si *BatchMetaItemIterator) Close() {
 	si.closeOnce.Do(func() {
 		close(si.closeCh)
-		si.db.ReleaseSnap(si.snap)
+		si.db.ReleaseSnap(si.rocksDBSnap)
 		si.treeSnap.Close()
 	})
 	return
 }
 
-func (si *MetaItemIteratorV2) Next() (data []byte, err error) {
+func (si *BatchMetaItemIterator) Version() uint32 {
+	return uint32(si.batchSnapV)
+}
+
+func (si *BatchMetaItemIterator) Next() (data []byte, err error) {
 	if si.err != nil {
 		if !si.snapshotCrcFlag && si.err == io.EOF {
 			si.snapshotCrcFlag = true
@@ -306,12 +299,11 @@ func (si *MetaItemIteratorV2) Next() (data []byte, err error) {
 	var open bool
 	var snap *MetaItem
 
-	batchSize := 128
 	var (
 		val        []byte
 		mulItems  MulItems
 	)
-	for i := 0; i < batchSize;  i++{
+	for i := 0; i < DefaultBatchCount;  i++{
 		select {
 		case item, open = <-si.dataCh:
 		case err, open = <-si.errorCh:
@@ -327,7 +319,7 @@ func (si *MetaItemIteratorV2) Next() (data []byte, err error) {
 			break
 		}
 
-		switch   item.(type) {
+		switch item.(type) {
 		case uint64:
 			applyIDBuf := make([]byte, 8)
 			binary.BigEndian.PutUint64(applyIDBuf, si.applyID)

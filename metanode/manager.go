@@ -855,3 +855,7 @@ func recursiveCompare(versionA []int64, versionB []int64) int {
 func (v MetaNodeVersion) LessThan(versionB *MetaNodeVersion) bool {
 	return v.Compare(versionB) < 0
 }
+
+func (v MetaNodeVersion) VersionStr() string {
+	return fmt.Sprintf("%v.%v.%v", v.Major, v.Minor, v.Patch)
+}
