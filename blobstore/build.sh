@@ -27,7 +27,7 @@ check=$1
 
 pushd ${INSTALLDIR}
 if [ ! -f lib/libz.a ]; then
-    rm -rf zlib-${ZLIB_VER}
+    rm -rf zlib-${ZLIB_VER}*
     if [ ! -f zlib-${ZLIB_VER}.tar.gz ]; then
         wget http://zlib.net/zlib-${ZLIB_VER}.tar.gz
         if [ $? -ne 0 ]; then
@@ -47,7 +47,7 @@ if [ ! -f lib/libz.a ]; then
 fi
 
 if [ ! -f lib/libbz2.a ]; then
-    rm -rf bzip2-bzip2-${BZIP2_VER}
+    rm -rf bzip2-bzip2-${BZIP2_VER}*
     if [ ! -f bzip2-bzip2-${BZIP2_VER}.tar.gz ]; then
         wget https://gitlab.com/bzip2/bzip2/-/archive/bzip2-${BZIP2_VER}/bzip2-bzip2-${BZIP2_VER}.tar.gz
         if [ $? -ne 0 ]; then
@@ -66,7 +66,7 @@ if [ ! -f lib/libbz2.a ]; then
 fi
 
 if [ ! -f lib/libzstd.a ]; then
-    rm -rf zstd-${ZSTD_VER}
+    rm -rf zstd-${ZSTD_VER}*
     if [ ! -f zstd-${ZSTD_VER}.tar.gz ]; then
         wget https://github.com/facebook/zstd/archive/v${ZSTD_VER}.tar.gz -O zstd-${ZSTD_VER}.tar.gz ${check}
         if [ $? -ne 0 ]; then
@@ -85,6 +85,7 @@ if [ ! -f lib/libzstd.a ]; then
 fi
 
 if [ ! -f lib/liblz4.a ]; then
+  rm -rf lz4-${LZ4_VER}*
     if [ ! -f lz4-${LZ4_VER}.tar.gz ]; then
         wget https://github.com/lz4/lz4/archive/v${LZ4_VER}.tar.gz -O lz4-${LZ4_VER}.tar.gz ${check}
         if [ $? -ne 0 ]; then
@@ -103,7 +104,7 @@ if [ ! -f lib/liblz4.a ]; then
 fi
 
 if [ ! -f lib/libsnappy.a ]; then
-    rm -rf snappy-${SNAPPY_VER}
+    rm -rf snappy-${SNAPPY_VER}*
     if [ ! -f snappy-${SNAPPY_VER}.tar.gz ]; then
         wget https://github.com/google/snappy/archive/${SNAPPY_VER}.tar.gz -O snappy-${SNAPPY_VER}.tar.gz ${check}
         if [ $? -ne 0 ]; then

@@ -125,12 +125,12 @@ func (tr *transport) SetMembers(members []*Member) {
 func (tr *transport) Stop() {
 	tr.once.Do(func() {
 		tr.httpSvr.Shutdown(context.TODO())
-		tr.mu.RLock()
+		tr.mu.Lock()
 		for id, sender := range tr.senders {
 			sender.Stop()
 			delete(tr.senders, id)
 		}
-		tr.mu.RUnlock()
+		tr.mu.Unlock()
 	})
 }
 

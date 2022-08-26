@@ -47,10 +47,7 @@ type jsonAuditlog struct {
 	cfg *Config
 }
 
-func Open(module string, cfg *Config) (rpc.ProgressHandler, LogCloser, error) {
-	if cfg.LogDir == "" {
-		return nil, nil, nil
-	}
+func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser, err error) {
 	if cfg.BodyLimit == 0 {
 		cfg.BodyLimit = defaultReadBodyBuffLength
 	}
@@ -67,9 +64,12 @@ func Open(module string, cfg *Config) (rpc.ProgressHandler, LogCloser, error) {
 		Suffix:            cfg.LogFileSuffix,
 		Backup:            cfg.Backup,
 	}
-	logFile, err := largefile.OpenLargeFileLog(largeLogConfig, cfg.RotateNew)
-	if err != nil {
-		return nil, nil, errors.Info(err, "auditlog.Open: large file log open failed").Detail(err)
+
+	if cfg.LogDir != "" {
+		logFile, err = largefile.OpenLargeFileLog(largeLogConfig, cfg.RotateNew)
+		if err != nil {
+			return nil, nil, errors.Info(err, "auditlog.Open: large file log open failed").Detail(err)
+		}
 	}
 
 	return &jsonAuditlog{
@@ -107,6 +107,9 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	}
 	req = req.WithContext(ctx)
 
+	// parse request to decodeRep
+	decodeReq := j.decoder.DecodeReq(req)
+
 	// handle panic recover, return 597 status code
 	defer func() {
 		j.bodyPool.Put(_w.body) // nolint: staticcheck
@@ -120,11 +123,6 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	}()
 	f(_w, req)
 
-	// log filter
-	if len(j.cfg.KeywordsFilter) > 0 && defaultLogFilter(req, j.cfg.KeywordsFilter) {
-		return
-	}
-
 	endTime := time.Now().UnixNano() / 1000
 	b := j.logPool.Get().(*bytes.Buffer)
 	defer j.logPool.Put(b)
@@ -135,7 +133,6 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	b.WriteByte('\t')
 
 	// record request info
-	decodeReq := j.decoder.DecodeReq(req)
 	b.WriteString(strconv.FormatInt(startTime/100, 10))
 	b.WriteByte('\t')
 	b.WriteString(req.Method)
@@ -144,7 +141,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	b.WriteByte('\t')
 	b.Write(decodeReq.Header.Encode())
 	b.WriteByte('\t')
-	if len(decodeReq.Params) < 1024 {
+	if len(decodeReq.Params) <= maxSeekableBodyLength && len(decodeReq.Params) > 0 {
 		b.Write(decodeReq.Params)
 	}
 	b.WriteByte('\t')
@@ -173,13 +170,18 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	b.WriteString(strconv.FormatInt(endTime-startTime/1000, 10))
 	b.WriteByte('\n')
 
+	// report request metric
+	j.metricSender.Send(b.Bytes())
+
+	// log filter
+	if j.logFile == nil || (len(j.cfg.KeywordsFilter) > 0 && defaultLogFilter(req, j.cfg.KeywordsFilter)) {
+		return
+	}
 	err := j.logFile.Log(b.Bytes())
 	if err != nil {
 		span.Errorf("jsonlog.Handler Log failed, err: %s", err.Error())
 		return
 	}
-	// report request metric
-	j.metricSender.Send(b.Bytes())
 }
 
 // defaultLogFilter support uri and method filter based on keywords

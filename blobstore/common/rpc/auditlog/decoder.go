@@ -26,7 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
 )
 
-const maxSeekableBodyLength = 5 << 10
+const maxSeekableBodyLength = 1 << 10
 
 var DefaultRequestHeaderKeys = []string{
 	"User-Agent",
