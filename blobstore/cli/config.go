@@ -15,12 +15,12 @@
 package cli
 
 import (
-	"fmt"
 	"sort"
 
 	"github.com/desertbit/grumble"
 	"github.com/fatih/color"
 
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 )
 

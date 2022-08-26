@@ -15,7 +15,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"reflect"
 	"sort"
@@ -23,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/blobstore/cli/common"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 )
 
 // Config config in file

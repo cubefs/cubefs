@@ -16,9 +16,10 @@ package common
 
 import (
 	"context"
-	"fmt"
+	sysfmt "fmt"
 	"strings"
 
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
@@ -38,7 +39,7 @@ func Confirm(s string) bool {
 		fmt.Printf("%s [Y / N]: ", s)
 
 		var response string
-		_, err := fmt.Scanln(&response)
+		_, err := sysfmt.Scanln(&response)
 		if err != nil {
 			fmt.Println("Error:", err)
 			return false
