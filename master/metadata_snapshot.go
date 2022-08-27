@@ -38,6 +38,10 @@ func (ms *MetadataSnapshot) Close() {
 	ms.fsm.store.ReleaseSnapshot(ms.snapshot)
 }
 
+func (ms *MetadataSnapshot) Version() uint32 {
+	return 0
+}
+
 // Next implements the Snapshot interface
 func (ms *MetadataSnapshot) Next() (data []byte, err error) {
 	md := new(RaftCmd)

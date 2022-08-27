@@ -200,7 +200,7 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 
 	// restore snapshot
 	s.raftConfig.Storage.ApplySnapshot(proto.SnapshotMeta{})
-	if err = s.raftConfig.StateMachine.ApplySnapshot(req.header.SnapshotMeta.Peers, req); err != nil {
+	if err = s.raftConfig.StateMachine.ApplySnapshot(req.header.SnapshotMeta.Peers, req, req.header.SnapshotMeta.SnapV); err != nil {
 		return
 	}
 	if err = s.raftConfig.Storage.ApplySnapshot(req.header.SnapshotMeta); err != nil {

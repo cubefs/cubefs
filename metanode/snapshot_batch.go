@@ -149,7 +149,7 @@ func (i *MulItems) Marshal() (k []byte, err error) {
 }
 
 // Unmarshal unmarshal the MulItems.
-func MulItemsUnmarshal(ctx context.Context, raw []byte) (result *MulItems, err error) {
+func MulItemsUnmarshal(ctx context.Context, raw []byte, snapV SnapshotVersion) (result *MulItems, err error) {
 	buff := bytes.NewBuffer(raw)
 	var (
 		inodeBatchesLen       uint32

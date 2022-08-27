@@ -16,6 +16,7 @@
 
 MntPoint=/cfs/mnt
 EcMntPoint=/cfs/ecmnt
+RocksDBMntPoint=/cfs/rocksdbmnt
 mkdir -p /cfs/bin /cfs/log /cfs/mnt
 src_path=/go/src/github.com/chubaofs/cfs
 cli=/cfs/bin/cfs-cli
@@ -25,6 +26,7 @@ cover_path=/cfs/coverage
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
 VolName=ltptest
+RocksDBVolName=rocksdb-volume
 Owner=ltptest
 EcVolName=ltpectest
 EcOwner=ltpectest
@@ -93,54 +95,30 @@ create_cluster_user() {
 
 create_volume() {
     echo -n "Creating volume   ... "
-    # check volume exist
+    # check mem volume exist
     ${cli} volume info ${VolName} &> /dev/null
     if [[ $? -eq 0 ]]; then
         echo -e "\033[32mdone\033[0m"
-        return
-    fi
-    ${cli} volume create ${VolName} ${Owner} --capacity=30 --store-mode=1 -y > /dev/null
-    if [[ $? -ne 0 ]]; then
+    else
+      ${cli} volume create ${VolName} ${Owner} --capacity=30 --store-mode=1 -y > /dev/null
+      if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
+      fi
+    fi
+
+    # check rocksdb volume exist
+    ${cli} volume info ${RocksDBVolName} &> /dev/null
+    if [[ $? -eq 0 ]]; then
+        echo -e "\033[32mdone\033[0m"
+    else
+      ${cli} volume create ${RocksDBVolName} ${Owner} --capacity=30 --store-mode=2 -y > /dev/null
+      if [[ $? -ne 0 ]]; then
+        echo -e "\033[31mfail\033[0m"
+        exit 1
+      fi
     fi
     echo -e "\033[32mdone\033[0m"
-}
-
-change_store_mode_to_rocksdb() {
-   echo -n "change default store mode to rockdb   ... "
-   ${cli} volume set ${VolName} --store-mode=2 -y > /dev/null
-   if [[ $? -ne 0 ]]; then
-        echo -e "\033[31mfail\033[0m"
-        exit 1
-   fi
-   echo -e "\033[32mdone\033[0m"
-}
-
-get_max_meta_partition_id_and_check_leader() {
-  max_mpid=`${cli} volume info ${VolName} -m |grep unlimited | awk -F " " '{print $1}'`
-  for i in $(seq 1 300) ; do
-        ${cli} metapartition info ${max_mpid} &> /tmp/cli_max_mp_info
-        while read line;
-        do
-          result=`echo $line | awk -F " " '{print $2}'`
-          if [ "$result" = "true" ]; then
-            return
-          fi
-        done < /tmp/cli_max_mp_info
-        sleep 1
-   done
-   exit 1
-}
-
-add_rocksdb_mode_meta_partitions() {
-   echo -n "add rockdb store mode meta partitions for volume   ... "
-   for i in $(seq 1 5); do
-     get_max_meta_partition_id_and_check_leader
-     ${cli} volume add-mp ${VolName} > /dev/null
-     sleep 60
-   done
-   echo -e "\033[32mdone\033[0m"
 }
 
 show_cluster_info() {
@@ -155,6 +133,8 @@ show_cluster_info() {
     echo &>> ${tmp_file}
     ${cli} volume info ${VolName} &>> ${tmp_file}
     echo &>> ${tmp_file}
+    ${cli} volume info ${RocksDBVolName} &>> ${tmp_file}
+    echo &>> ${tmp_file}
     cat /tmp/collect_cluster_info | grep -v "Master address"
 }
 
@@ -162,9 +142,18 @@ add_data_partitions() {
     echo -n "Increasing DPs    ... "
     ${cli} vol add-dp ${VolName} 2 &> /dev/null
     if [[ $? -eq 0 ]] ; then
-        echo -e "\033[32mdone\033[0m"
+        echo -e "\033[32madd dp for mem volume done\033[0m"
+    else
+      echo -e "\033[31mfail\033[0m"
+      exit 1
+    fi
+
+    ${cli} vol add-dp ${RocksDBVolName} 2 &> /dev/null
+    if [[ $? -eq 0 ]] ; then
+        echo -e "\033[32madd dp for rocksdb volume done\033[0m"
         return
     fi
+
     echo -e "\033[31mfail\033[0m"
     exit 1
 }
@@ -184,10 +173,19 @@ print_error_info() {
 }
 
 start_client() {
+    mkdir -p /cfs/rocksdbmnt
     echo -n "Starting client   ... "
     nohup /cfs/bin/cfs-client -test.coverprofile=client.cov -test.outputdir=${cover_path} -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
+    nohup /cfs/bin/cfs-client -test.coverprofile=client_rocksdb.cov -test.outputdir=${cover_path} -c /cfs/conf/client_rocksdb.json >/cfs/log/cfs_rocksdb.out 2>&1 &
     sleep 10
     res=$( mount | grep -q "$VolName on $MntPoint" ; echo $? )
+    if [[ $res -ne 0 ]] ; then
+        echo -e "\033[31mfail\033[0m"
+        print_error_info
+        exit $res
+    fi
+    sleep 1
+    res=$( mount | grep -q "$RocksDBVolName on $RocksDBMntPoint" ; echo $? )
     if [[ $res -ne 0 ]] ; then
         echo -e "\033[31mfail\033[0m"
         print_error_info
@@ -293,11 +291,16 @@ run_ltptest() {
     echo "************************";
     echo "        LTP test        ";
     echo "************************";
-    LTPTestDir=$MntPoint/ltptest
-    LtpLog=/tmp/ltp.log
-    mkdir -p $LTPTestDir
-    nohup /bin/sh -c " /opt/ltp/runltp  -f fs -d $LTPTestDir > $LtpLog 2>&1; echo $? > /tmp/ltpret " &
-    wait_proc_done "runltp" $LtpLog
+
+    LTPMemTestDir=$MntPoint/ltptest
+    LTPRocksDBTestDir=$RocksDBMntPoint/ltptest
+    LtpMemLog=/tmp/ltp.log
+    LtpRocksDBLog=/tmp/ltp_rocksdb.log
+    mkdir -p $LTPMemTestDir
+    mkdir -p $LTPRocksDBTestDir
+    nohup /bin/sh -c " /opt/ltp/runltp  -f fs -d $LTPMemTestDir > $LtpMemLog 2>&1; echo $? > /tmp/ltpret " &
+    nohup /bin/sh -c " /opt/ltp/runltp  -f fs -d $LTPRocksDBTestDir > $LtpRocksDBLog 2>&1; echo $? > /tmp/ltpret_rocksdb " &
+    wait_proc_done "runltp" $LtpMemLog
     echo "------------------------";
     echo "Failed LTP Test Cases:"
     cat /opt/ltp/output/*
@@ -307,6 +310,7 @@ run_ltptest() {
 stop_client() {
     echo -n "Stopping client   ... "
     umount ${MntPoint}
+    umount ${RocksDBMntPoint}
     echo -e "\033[32mdone\033[0m" || { echo -e "\033[31mfail\033[0m"; exit 1; }
 }
 
@@ -314,7 +318,15 @@ delete_volume() {
     echo -n "Deleting volume   ... "
     ${cli} volume delete ${VolName} -y &> /dev/null
     if [[ $? -eq 0 ]]; then
-        echo -e "\033[32mdone\033[0m"
+        echo -e "\033[32mdelete mem volume done\033[0m"
+    else
+      echo -e "\033[31mfail\033[0m"
+      exit 1
+    fi
+
+    ${cli} volume delete ${RocksDBVolName} -y &> /dev/null
+    if [[ $? -eq 0 ]]; then
+        echo -e "\033[32mdelete rocksdb volume done\033[0m"
         return
     fi
     echo -e "\033[31mfail\033[0m"
@@ -341,6 +353,11 @@ set_trash_days() {
         echo -e "\033[31mfail\033[0m"
         exit 1
    fi
+   ${cli} volume set ${RocksDBVolName} --trash-days=2 -y > /dev/null
+   if [[ $? -ne 0 ]]; then
+        echo -e "\033[31mfail\033[0m"
+        exit 1
+   fi
    echo -e "\033[32mdone\033[0m"
 }
 
@@ -349,7 +366,13 @@ run_trash_test() {
    ${cli} trash test --vol ${VolName} > /dev/null
    if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
-	cp -r /tmp/cfs/cli /cfs/log/
+	      cp -r /tmp/cfs/cli /cfs/log/
+        exit 1
+   fi
+   ${cli} trash test --vol ${RocksDBVolName} > /dev/null
+   if [[ $? -ne 0 ]]; then
+        echo -e "\033[31mfail\033[0m"
+	      cp -r /tmp/cfs/cli /cfs/log/
         exit 1
    fi
    cp -r /tmp/cfs/cli /cfs/log/
@@ -516,8 +539,6 @@ ensure_node_writable "metanode"
 ensure_node_writable "datanode"
 create_volume ; sleep 2
 add_data_partitions ; sleep 3
-change_store_mode_to_rocksdb ; sleep 2
-add_rocksdb_mode_meta_partitions ; sleep 2
 show_cluster_info
 start_client ; sleep 2
 run_unit_test

@@ -234,6 +234,7 @@ const (
 )
 
 const (
+	BaseVersion           = proto.BaseVersion
 	RocksDBVersion        = "3.1.0"
 	MetaNodeLatestVersion = RocksDBVersion
 )
@@ -277,3 +278,9 @@ func ParseCursorResetMode(typeStr string) (CursorResetMode, error) {
 	}
 }
 
+type SnapshotVersion byte
+
+const (
+	BaseSnapshotV = iota
+	BatchSnapshotV1
+)

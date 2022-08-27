@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/statistics"
 	"io"
 	"sync/atomic"
 	"time"
@@ -487,6 +488,7 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 	if i.ShouldDelete() {
 		return
 	}
+	defer mp.monitorData[statistics.ActionMetaEvictInode].UpdateData(i.Size)
 
 	if proto.IsDir(i.Type) {
 		if i.IsEmptyDir() {

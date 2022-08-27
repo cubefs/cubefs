@@ -492,7 +492,7 @@ func TestInodeTreeGet(t *testing.T) {
 	var getIno *Inode
 	getIno, errForMem = memInodeTree.Get(30)
 	if errForMem != nil || getIno == nil {
-		t.Fatalf("Test Get: result mismatch, expect[err:nil, inode:not nil] actual[err:%v, inode:%v]", errForMem, getIno)
+		t.Fatalf("Test Get: result mismatch, expect[err:nil, inode:not nil] actual[err:%v, inode:%v]", errForMem, getIno.Inode)
 	}
 
 	if getIno.Inode != 30 {
@@ -501,7 +501,7 @@ func TestInodeTreeGet(t *testing.T) {
 
 	getIno, errForRocks = rocksInodeTree.Get(30)
 	if errForRocks != nil || getIno == nil {
-		t.Fatalf("Test Get: result mismatch, expect[err:nil, inode:30] actual[err:%v, inode:%v]", errForRocks, getIno)
+		t.Fatalf("Test Get: result mismatch, expect[err:nil, inode:30] actual[err:%v, inode:%v]", errForRocks, getIno.Inode)
 	}
 
 	if getIno.Inode != 30 {
