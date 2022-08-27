@@ -147,6 +147,7 @@ int record_open_file(cfs_file_t *cfs_file) {
 
     inode_info_t *inode_info = record_inode_info(cfs_file->inode, cfs_file->file_type, cfs_file->size);
     if (inode_info == NULL) {
+        free(f);
         return -1;
     }
     f->inode_info = inode_info;
@@ -1168,10 +1169,14 @@ int real_utime(const char *pathname, const struct utimbuf *times) {
     #ifdef _CFS_DEBUG
     log_debug("hook %s\n", __func__);
     #endif
-    struct timespec *pts;
+    struct timespec *pts = NULL;
+    struct timespec ts[2];
     if(times != NULL) {
-        struct timespec ts[2] = {times->actime, 0, times->modtime, 0};
-        pts = & ts[0];
+        ts[0].tv_sec = times->actime;
+        ts[0].tv_nsec = 0;
+        ts[1].tv_sec = times->modtime;
+        ts[1].tv_nsec = 0;
+        pts = &ts[0];
     }
     char *path = get_cfs_path(pathname);
     int re;
@@ -1185,10 +1190,14 @@ int real_utimes(const char *pathname, const struct timeval *times) {
     #ifdef _CFS_DEBUG
     log_debug("hook %s\n", __func__);
     #endif
-    struct timespec *pts;
+    struct timespec *pts = NULL;
+    struct timespec ts[2];
     if(times != NULL) {
-        struct timespec ts[2] = {times[0].tv_sec, times[0].tv_usec*1000, times[1].tv_sec, times[1].tv_usec*1000};
-        pts = & ts[0];
+        ts[0].tv_sec = times[0].tv_sec;
+        ts[0].tv_nsec = times[0].tv_usec*1000;
+        ts[1].tv_sec = times[1].tv_sec;
+        ts[1].tv_nsec = times[1].tv_usec*1000;
+        pts = &ts[0];
     }
     char *path = get_cfs_path(pathname);
     int re;
@@ -1214,10 +1223,14 @@ int real_futimesat(int dirfd, const char *pathname, const struct timeval times[2
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    struct timespec *pts;
+    struct timespec *pts = NULL;
+    struct timespec ts[2];
     if(times != NULL) {
-        struct timespec ts[2] = {times[0].tv_sec, times[0].tv_usec*1000, times[1].tv_sec, times[1].tv_usec*1000};
-        pts = & ts[0];
+        ts[0].tv_sec = times[0].tv_sec;
+        ts[0].tv_nsec = times[0].tv_usec*1000;
+        ts[1].tv_sec = times[1].tv_sec;
+        ts[1].tv_nsec = times[1].tv_usec*1000;
+        pts = &ts[0];
     }
     int re;
     re = g_hook && is_cfs ? cfs_errno(cfs_utimensat(g_client_info.cfs_client_id, dirfd, cfs_path, pts, 0)) :

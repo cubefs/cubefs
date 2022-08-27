@@ -153,7 +153,7 @@ void test_inode_operation() {
         open_inodes[i+1] = inodes[i];
     }
 
-    struct inode_wrapper_t wrapper = {&open_inodes_lock, &open_inodes, &stop};
+    inode_wrapper_t wrapper = {&open_inodes_lock, &open_inodes, &stop};
     pthread_t pid;
     pthread_create(&pid, NULL, do_flush_inode, &wrapper);
     pthread_t thd[INODE_COUNT];
