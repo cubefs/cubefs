@@ -5,6 +5,10 @@
  */
 
 int close_cfs_fd(int fd) {
+    int is_need_release_file = 0;
+    int is_need_release_inode = 0;
+
+    pthread_rwlock_wrlock(&g_client_info.dup_fds_lock);
     auto dup_fd_it = g_client_info.dup_fds.find(fd);
     if(dup_fd_it != g_client_info.dup_fds.end()) {
         fd = dup_fd_it->second;
@@ -12,6 +16,7 @@ int close_cfs_fd(int fd) {
     } else {
         fd = fd & ~CFS_FD_MASK;
     }
+    pthread_rwlock_unlock(&g_client_info.dup_fds_lock);
 
     pthread_rwlock_wrlock(&g_client_info.open_files_lock);
     auto open_file_it = g_client_info.open_files.find(fd);
@@ -20,23 +25,38 @@ int close_cfs_fd(int fd) {
         return 0;
     }
     file_t *f = open_file_it->second;
+    pthread_mutex_lock(&f->file_lock);
     f->dup_ref--;
-    if(f->dup_ref > 0) {
+    if(f->dup_ref == 0) {
+        is_need_release_file = 1;
+    }
+    pthread_mutex_unlock(&f->file_lock);
+    if(is_need_release_file == 0) {
         pthread_rwlock_unlock(&g_client_info.open_files_lock);
         return 0;
     }
+
     inode_info_t* inode_info = f->inode_info;
+    f->inode_info = NULL;
+    pthread_mutex_destroy(&f->file_lock);
     g_client_info.open_files.erase(open_file_it);
     free(f);
     pthread_rwlock_unlock(&g_client_info.open_files_lock);
 
-    flush_inode(inode_info);
+    pthread_rwlock_wrlock(&g_client_info.open_inodes_lock);
+    pthread_mutex_lock(&inode_info->inode_lock);
     inode_info->fd_ref--;
+
     if (inode_info->fd_ref == 0) {
-        pthread_rwlock_wrlock(&g_client_info.open_inodes_lock);
         g_client_info.open_inodes.erase(inode_info->inode);
+        is_need_release_inode = 1;
+    }
+    pthread_mutex_unlock(&inode_info->inode_lock);
+    pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
+
+    if (is_need_release_inode) {
+        flush_inode(inode_info);
         release_inode_info(inode_info);
-        pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
     }
     return cfs_errno(cfs_close(g_client_info.cfs_client_id, fd));
 }
@@ -76,38 +96,25 @@ log:
 
 inode_info_t *record_inode_info(ino_t inode, int file_type, size_t size) {
     inode_info_t *inode_info = NULL;
-    bool use_pagecache = false;
-    if(file_type == FILE_TYPE_RELAY_LOG || file_type == FILE_TYPE_BIN_LOG) {
-        use_pagecache = true;
-    }
 
     pthread_rwlock_rdlock(&g_client_info.open_inodes_lock);
     auto it = g_client_info.open_inodes.find(inode);
     if(it != g_client_info.open_inodes.end()) {
         inode_info = it->second;
+        pthread_mutex_lock(&inode_info->inode_lock);
+        inode_info->fd_ref++;
+        pthread_mutex_unlock(&inode_info->inode_lock);
     }
     pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
-    if (inode_info != NULL) {
-        if(use_pagecache && !inode_info->use_pagecache) {
-            inode_info->use_pagecache = use_pagecache;
-            inode_info->pages = (page_t ***)calloc(BLOCKS_PER_FILE, sizeof(page_t **));
-            if(inode_info->pages == NULL) {
-                return NULL;
-            }
-            if(file_type == FILE_TYPE_BIN_LOG || file_type == FILE_TYPE_RELAY_LOG) {
-                inode_info->c = g_client_info.big_page_cache;
-            } else {
-                inode_info->c = g_client_info.small_page_cache;
-            }
-            inode_info->cache_flag |= FILE_CACHE_WRITE_BACK;
-            if(file_type == FILE_TYPE_RELAY_LOG) {
-                inode_info->cache_flag |= FILE_CACHE_PRIORITY_HIGH;
-            }
-        }
-        inode_info->fd_ref++;
+
+    if(inode_info != NULL) {
         return inode_info;
     }
 
+    bool use_pagecache = false;
+    if(file_type == FILE_TYPE_RELAY_LOG || file_type == FILE_TYPE_BIN_LOG) {
+        use_pagecache = true;
+    }
     inode_info = new_inode_info(inode, use_pagecache, cfs_pwrite_inode);
     if(inode_info == NULL) {
         return NULL;
@@ -128,6 +135,16 @@ inode_info_t *record_inode_info(ino_t inode, int file_type, size_t size) {
     }
 
     pthread_rwlock_wrlock(&g_client_info.open_inodes_lock);
+    it = g_client_info.open_inodes.find(inode);
+    if(it != g_client_info.open_inodes.end()) {
+        release_inode_info(inode_info);
+        inode_info = it->second;
+        pthread_mutex_lock(&inode_info->inode_lock);
+        inode_info->fd_ref++;
+        pthread_mutex_unlock(&inode_info->inode_lock);
+        pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
+        return inode_info;
+    }
     g_client_info.open_inodes[inode] = inode_info;
     pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
     return inode_info;
@@ -144,6 +161,7 @@ int record_open_file(cfs_file_t *cfs_file) {
     f->flags = cfs_file->flags;
     f->pos = cfs_file->pos;
     f->dup_ref = cfs_file->dup_ref;
+    pthread_mutex_init(&f->file_lock, NULL);
 
     inode_info_t *inode_info = record_inode_info(cfs_file->inode, cfs_file->file_type, cfs_file->size);
     if (inode_info == NULL) {
@@ -1598,7 +1616,7 @@ ssize_t real_read(int fd, void *buf, size_t count) {
         offset = f->pos;
         size = f->inode_info->size;
         re_cache = read_cache(f->inode_info, f->pos, count, buf);
-        if(re_cache < count && f->pos + re_cache < f->inode_info->size) {
+        if(re_cache < count && f->pos + re_cache < size) {
             // data may reside both in cache and CFS, flush to prevent inconsistent read
             flush_inode_range(f->inode_info, f->pos, count);
             re = cfs_errno_ssize_t(cfs_pread_sock(g_client_info.cfs_client_id, fd, buf, count, f->pos));
@@ -1860,10 +1878,7 @@ ssize_t real_write(int fd, const void *buf, size_t count) {
         }
         if(re > 0) {
             f->pos += re;
-            if(f->inode_info->size < f->pos) {
-                f->inode_info->size = f->pos;
-            }
-            size = f->inode_info->size;
+            size = update_inode_size(f->inode_info, f->pos);
         }
     } else {
         re = libc_write(fd, buf, count);
@@ -1903,9 +1918,7 @@ ssize_t real_writev(int fd, const struct iovec *iov, int iovcnt) {
         re = cfs_errno_ssize_t(cfs_pwritev(g_client_info.cfs_client_id, fd, iov, iovcnt, f->pos));
         if(re > 0) {
             f->pos += re;
-            if(f->inode_info->size < f->pos) {
-                f->inode_info->size = f->pos;
-            }
+            update_inode_size(f->inode_info, f->pos);
         }
     } else {
         re = libc_writev(fd, iov, iovcnt);
@@ -1952,8 +1965,8 @@ ssize_t real_pwrite(int fd, const void *buf, size_t count, off_t offset) {
         } else {
             re = re_cache;
         }
-        if(re > 0 && f->inode_info->size < offset + re) {
-            f->inode_info->size = offset + re;
+        if(re > 0) {
+            update_inode_size(f->inode_info, offset + re);
         }
     } else {
         re = libc_pwrite(fd, buf, count, offset);
@@ -1988,8 +2001,8 @@ ssize_t real_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset) 
         if(f == NULL)
             goto log;
         re = cfs_errno_ssize_t(cfs_pwritev(g_client_info.cfs_client_id, fd, iov, iovcnt, offset));
-        if(re > 0 && f->inode_info->size < offset + re) {
-            f->inode_info->size = offset + re;
+        if(re > 0) {
+            update_inode_size(f->inode_info, offset + re);
         }
     } else {
         re = libc_pwritev(fd, iov, iovcnt, offset);
@@ -2346,6 +2359,7 @@ int start_libs(void *args) {
     free(client_config.log_level);
     free(client_config.prof_port);
 
+    pthread_rwlock_init(&g_client_info.dup_fds_lock, NULL);
     pthread_rwlock_init(&g_client_info.open_files_lock, NULL);
     pthread_rwlock_init(&g_client_info.open_inodes_lock, NULL);
     g_client_info.cwd = client_state->cwd;

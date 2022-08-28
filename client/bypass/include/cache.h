@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <assert.h>
 #include <map>
 #include <set>
 #include <vector>
@@ -84,7 +85,7 @@ typedef struct inode_info {
     int fd_ref;
     // The file contents are structured as a two dimentional array of pages for memory efficiency.
     page_t ***pages;
-    pthread_mutex_t pages_lock;
+    pthread_mutex_t inode_lock;
     cfs_pwrite_inode_t write_func;
 } inode_info_t;
 
@@ -96,6 +97,7 @@ typedef struct inode_wrapper {
 
 inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t write_func);
 void release_inode_info(inode_info_t *inode_info);
+size_t update_inode_size(inode_info_t *inode_info, size_t size);
 size_t read_cache(inode_info_t *inode_info, off_t offset, size_t count, void *data);
 size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const void *data);
 int flush_inode(inode_info_t *inode_info);

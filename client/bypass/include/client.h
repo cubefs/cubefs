@@ -160,6 +160,7 @@ typedef struct {
     off_t pos;
     int dup_ref;
     int file_type;
+    pthread_mutex_t file_lock;
     inode_info_t *inode_info;
 } file_t;
 
@@ -182,6 +183,7 @@ typedef struct {
 } client_config_t;
 
 typedef struct {
+    pthread_rwlock_t dup_fds_lock;
     map<int, int> dup_fds;
     pthread_rwlock_t open_files_lock;
     map<int, file_t *> open_files;
@@ -519,9 +521,16 @@ int dup_fd(int oldfd, int newfd) {
         pthread_rwlock_unlock(&g_client_info.open_files_lock);
         return -1;
     }
-    it->second->dup_ref++;
+
+    file_t *f = it->second;
+    pthread_mutex_lock(&f->file_lock);
+    f->dup_ref++;
+    pthread_mutex_unlock(&f->file_lock);
     pthread_rwlock_unlock(&g_client_info.open_files_lock);
+
+    pthread_rwlock_wrlock(&g_client_info.dup_fds_lock);
     g_client_info.dup_fds[newfd] = oldfd;
+    pthread_rwlock_unlock(&g_client_info.dup_fds_lock);
     return newfd;
 }
 

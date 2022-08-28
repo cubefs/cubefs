@@ -361,7 +361,7 @@ inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t
         return NULL;
     }
     memset(inode_info, 0, sizeof(inode_info_t));
-    pthread_mutex_init(&inode_info->pages_lock, NULL);
+    pthread_mutex_init(&inode_info->inode_lock, NULL);
     inode_info->inode = inode;
     inode_info->fd_ref = 1;
     inode_info->write_func = write_func;
@@ -384,7 +384,7 @@ void release_inode_info(inode_info_t *inode_info) {
         return;
     }
 
-    pthread_mutex_destroy(&inode_info->pages_lock);
+    pthread_mutex_destroy(&inode_info->inode_lock);
     if(!inode_info->use_pagecache) {
         free(inode_info);
         return;
@@ -405,6 +405,21 @@ void release_inode_info(inode_info_t *inode_info) {
     }
     free(inode_info->pages);
     free(inode_info);
+}
+
+size_t update_inode_size(inode_info_t *inode_info, size_t size) {
+    if(inode_info == NULL) {
+        return 0;
+    }
+
+    size_t res;
+    pthread_mutex_lock(&inode_info->inode_lock);
+    if(inode_info->size < size) {
+        inode_info->size = size;
+    }
+    res = inode_info->size;
+    pthread_mutex_unlock(&inode_info->inode_lock);
+    return res;
 }
 
 size_t read_cache(inode_info_t *inode_info, off_t offset, size_t count, void *data) {
@@ -466,11 +481,11 @@ size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const v
             break;
         }
 
-        pthread_mutex_lock(&inode_info->pages_lock);
+        pthread_mutex_lock(&inode_info->inode_lock);
         if(inode_info->pages[block_index] == NULL) {
             inode_info->pages[block_index] = (page_t **)calloc(PAGES_PER_BLOCK, sizeof(page_t *));
             if(inode_info->pages[block_index] == NULL) {
-                pthread_mutex_unlock(&inode_info->pages_lock);
+                pthread_mutex_unlock(&inode_info->inode_lock);
                 break;
             }
         }
@@ -479,12 +494,12 @@ size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const v
         if(alloc) {
             p = lru_cache_alloc(inode_info->c);
             if(p == NULL) {
-                pthread_mutex_unlock(&inode_info->pages_lock);
+                pthread_mutex_unlock(&inode_info->inode_lock);
                 break;
             }
             inode_info->pages[block_index][index%PAGES_PER_BLOCK] = p;
         }
-        pthread_mutex_unlock(&inode_info->pages_lock);
+        pthread_mutex_unlock(&inode_info->inode_lock);
         if(alloc) {
             occupy_page(p, inode_info, index);
         }
