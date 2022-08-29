@@ -55,23 +55,24 @@ github.com/bits-and-blooms/bitset
 github.com/brahma-adshonor/gohook
 # github.com/cespare/xxhash/v2 v2.1.2
 github.com/cespare/xxhash/v2
-# github.com/cubefs/blobstore v0.0.0-00010101000000-000000000000 => github.com/cubefs/cubefs-blobstore v0.0.0-20220126103542-48f2f9535cc8
+# github.com/cubefs/cubefs/blobstore v0.0.0-00010101000000-000000000000 => ./blobstore
 ## explicit
-github.com/cubefs/blobstore/api/access
-github.com/cubefs/blobstore/common/codemode
-github.com/cubefs/blobstore/common/crc32block
-github.com/cubefs/blobstore/common/errors
-github.com/cubefs/blobstore/common/proto
-github.com/cubefs/blobstore/common/resourcepool
-github.com/cubefs/blobstore/common/rpc
-github.com/cubefs/blobstore/common/rpc/auth
-github.com/cubefs/blobstore/common/trace
-github.com/cubefs/blobstore/util/bytespool
-github.com/cubefs/blobstore/util/errors
-github.com/cubefs/blobstore/util/log
-github.com/cubefs/blobstore/util/selector
-github.com/cubefs/blobstore/util/task
-github.com/cubefs/blobstore/util/version
+github.com/cubefs/cubefs/blobstore/api/access
+github.com/cubefs/cubefs/blobstore/common/codemode
+github.com/cubefs/cubefs/blobstore/common/crc32block
+github.com/cubefs/cubefs/blobstore/common/errors
+github.com/cubefs/cubefs/blobstore/common/proto
+github.com/cubefs/cubefs/blobstore/common/resourcepool
+github.com/cubefs/cubefs/blobstore/common/rpc
+github.com/cubefs/cubefs/blobstore/common/rpc/auth
+github.com/cubefs/cubefs/blobstore/common/trace
+github.com/cubefs/cubefs/blobstore/util/bytespool
+github.com/cubefs/cubefs/blobstore/util/defaulter
+github.com/cubefs/cubefs/blobstore/util/errors
+github.com/cubefs/cubefs/blobstore/util/log
+github.com/cubefs/cubefs/blobstore/util/retry
+github.com/cubefs/cubefs/blobstore/util/task
+github.com/cubefs/cubefs/blobstore/util/version
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/edsrzf/mmap-go v1.1.0
@@ -312,7 +313,7 @@ gopkg.in/natefinch/lumberjack.v2
 gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 gopkg.in/yaml.v3
-# github.com/cubefs/blobstore => github.com/cubefs/cubefs-blobstore v0.0.0-20220126103542-48f2f9535cc8
+# github.com/cubefs/cubefs/blobstore => ./blobstore
 # github.com/jacobsa/daemonize => ./depends/jacobsa/daemonize
 # github.com/jacobsa/fuse => ./depends/jacobsa/fuse
 # github.com/spf13/cobra => ./depends/spf13/cobra

@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"path"
@@ -24,11 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/blobstore/api/access"
-	"github.com/hashicorp/consul/api"
-
-	"golang.org/x/net/context"
-
+	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 
@@ -203,7 +200,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if proto.IsCold(opt.VolType) {
 		s.ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
-			Consul: api.Config{
+			Consul: access.ConsulConfig{
 				Address: opt.EbsEndpoint,
 			},
 			MaxSizePutOnce: MaxSizePutOnce,
