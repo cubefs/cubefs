@@ -29,7 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -39,7 +39,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/hashicorp/consul/api"
 )
 
 var (
@@ -368,7 +367,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		ebsClient, err = blobstore.NewEbsClient(
 			access.Config{
 				ConnMode: access.NoLimitConnMode,
-				Consul: api.Config{
+				Consul: access.ConsulConfig{
 					Address: clusterInfo.EbsAddr,
 				},
 				MaxSizePutOnce: int64(volumeInfo.ObjBlockSize),

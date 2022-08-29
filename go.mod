@@ -3,7 +3,7 @@ module github.com/cubefs/cubefs
 go 1.16
 
 replace (
-	github.com/cubefs/blobstore => github.com/cubefs/cubefs-blobstore v0.0.0-20220126103542-48f2f9535cc8
+	github.com/cubefs/cubefs/blobstore => ./blobstore
 	github.com/jacobsa/daemonize => ./depends/jacobsa/daemonize
 	github.com/jacobsa/fuse => ./depends/jacobsa/fuse
 	github.com/spf13/cobra => ./depends/spf13/cobra
@@ -14,14 +14,14 @@ require (
 	github.com/aws/aws-sdk-go v1.33.1
 	github.com/bits-and-blooms/bitset v1.2.1
 	github.com/brahma-adshonor/gohook v1.1.9
-	github.com/cubefs/blobstore v0.0.0-00010101000000-000000000000
+	github.com/cubefs/cubefs/blobstore v0.0.0-00010101000000-000000000000
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/google/btree v1.0.1
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/graphql-go/graphql v0.8.0 // indirect
-	github.com/hashicorp/consul/api v1.12.0
+	github.com/hashicorp/consul/api v1.12.0 // indirect
 	github.com/jacobsa/daemonize v0.0.0-00010101000000-000000000000
 	github.com/prometheus/client_golang v1.11.0
 	github.com/samsarahq/thunder v0.0.0-20211005041752-96f4331b7baa
