@@ -193,7 +193,7 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 			// skip and continue
 			return true, nil
 		}
-		matches = append(matches, multipart)
+		matches = append(matches, multipart.Copy().(*Multipart))
 		return !(len(matches) >= max), nil
 	}
 	if len(prefix) > 0 {
