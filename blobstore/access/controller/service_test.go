@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
 
 var serviceName = proto.ServiceNameProxy
@@ -43,7 +44,7 @@ var _, serviceCtx = trace.StartSpanFromContext(context.Background(), "TestAccess
 func TestAccessServiceNew(t *testing.T) {
 	{
 		sc, err := controller.NewServiceController(
-			controller.ServiceConfig{IDC: idc}, cmcli)
+			controller.ServiceConfig{IDC: idc}, cmcli, nil)
 		require.NoError(t, err)
 
 		_, err = sc.GetServiceHost(serviceCtx, serviceName)
@@ -51,7 +52,7 @@ func TestAccessServiceNew(t *testing.T) {
 	}
 	{
 		sc, err := controller.NewServiceController(
-			controller.ServiceConfig{IDC: idc + "x", ReloadSec: 1}, cmcli)
+			controller.ServiceConfig{IDC: idc + "x", ReloadSec: 1}, cmcli, nil)
 		require.NoError(t, err)
 
 		_, err = sc.GetServiceHost(serviceCtx, serviceName)
@@ -61,7 +62,7 @@ func TestAccessServiceNew(t *testing.T) {
 
 func TestAccessServiceGetServiceHost(t *testing.T) {
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli)
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, nil)
 	require.NoError(t, err)
 
 	keys := make(hostSet)
@@ -78,8 +79,10 @@ func TestAccessServiceGetServiceHost(t *testing.T) {
 }
 
 func TestAccessServicePunishService(t *testing.T) {
+	stop := closer.New()
+	defer stop.Close()
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli)
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, stop.Done())
 	require.NoError(t, err)
 
 	{
@@ -112,6 +115,8 @@ func TestAccessServicePunishService(t *testing.T) {
 }
 
 func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
+	stop := closer.New()
+	defer stop.Close()
 	threshold := uint32(5)
 	sc, err := controller.NewServiceController(
 		controller.ServiceConfig{
@@ -119,7 +124,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 			ReloadSec:                   1,
 			ServicePunishThreshold:      threshold,
 			ServicePunishValidIntervalS: 2,
-		}, cmcli)
+		}, cmcli, stop.Done())
 	require.NoError(t, err)
 
 	{
@@ -168,7 +173,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 
 func TestAccessServiceGetDiskHost(t *testing.T) {
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli)
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, nil)
 	require.NoError(t, err)
 
 	{
@@ -183,8 +188,10 @@ func TestAccessServiceGetDiskHost(t *testing.T) {
 }
 
 func TestAccessServicePunishDisk(t *testing.T) {
+	stop := closer.New()
+	defer stop.Close()
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli)
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, stop.Done())
 	require.NoError(t, err)
 
 	{

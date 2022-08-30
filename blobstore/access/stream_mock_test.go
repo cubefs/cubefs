@@ -375,7 +375,7 @@ func initMockData() {
 			ClusterID: clusterID,
 			IDC:       idc,
 			ReloadSec: 1000,
-		}, cmcli)
+		}, cmcli, nil)
 	volumeGetter, _ = controller.NewVolumeGetter(clusterID, cmcli, rediscli, 0)
 
 	ctr = gomock.NewController(&testing.T{})

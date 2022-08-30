@@ -113,9 +113,10 @@ type serviceControllerImpl struct {
 }
 
 // NewServiceController returns a service controller
-func NewServiceController(cfg ServiceConfig, cmCli clustermgr.APIAccess) (ServiceController, error) {
+func NewServiceController(cfg ServiceConfig, cmCli clustermgr.APIAccess, stopCh <-chan struct{}) (ServiceController, error) {
 	defaulter.Equal(&cfg.ServicePunishThreshold, defaultServicePinishThreshold)
 	defaulter.LessOrEqual(&cfg.ServicePunishValidIntervalS, defaultServicePinishValidIntervalS)
+	defaulter.LessOrEqual(&cfg.ReloadSec, int(10))
 
 	controller := &serviceControllerImpl{
 		serviceHosts: serviceMap{
@@ -133,15 +134,20 @@ func NewServiceController(cfg ServiceConfig, cmCli clustermgr.APIAccess) (Servic
 		return nil, errors.Base(err, "load service failed")
 	}
 
-	if cfg.ReloadSec <= 0 {
-		cfg.ReloadSec = 10
+	if stopCh == nil {
+		return controller, nil
 	}
-	tick := time.NewTicker(time.Duration(cfg.ReloadSec) * time.Second)
 	go func() {
+		tick := time.NewTicker(time.Duration(cfg.ReloadSec) * time.Second)
 		defer tick.Stop()
-		for range tick.C {
-			if err := controller.load(cfg.ClusterID, cfg.IDC); err != nil {
-				log.Warn("load timer error", err)
+		for {
+			select {
+			case <-tick.C:
+				if err := controller.load(cfg.ClusterID, cfg.IDC); err != nil {
+					log.Warn("load timer error", err)
+				}
+			case <-stopCh:
+				return
 			}
 		}
 	}()

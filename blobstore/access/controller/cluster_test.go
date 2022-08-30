@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -31,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -39,9 +41,18 @@ var (
 	consulKV api.KVPairs = nil
 
 	stableCluster = &atomic.Value{}
+	stopChs       []closer.Closer
 
 	cc, cc0, cc1, cc2, cc3, cc19 controller.ClusterController
 )
+
+func TestMain(m *testing.M) {
+	exitCode := m.Run()
+	for _, stop := range stopChs {
+		stop.Close()
+	}
+	os.Exit(exitCode)
+}
 
 func initCluster() {
 	mux := http.NewServeMux()
@@ -152,9 +163,10 @@ func initCC() {
 
 	count := 0
 	for cc == nil || cc0 == nil || cc1 == nil {
-		c := newCC()
+		c, stop := newCCStop()
 		if cc == nil {
 			cc = c
+			stop = func() {}
 		}
 
 		clusters := c.All()
@@ -169,7 +181,11 @@ func initCC() {
 				cc2 = c
 			case 3:
 				cc3 = c
+			default:
+				stop()
 			}
+		default:
+			stop()
 		}
 
 		count++
@@ -197,6 +213,11 @@ func initCC() {
 }
 
 func newCC() controller.ClusterController {
+	cc, _ := newCCStop()
+	return cc
+}
+
+func newCCStop() (controller.ClusterController, func()) {
 	cfg := controller.ClusterConfig{
 		Region:            region,
 		ClusterReloadSecs: 0,
@@ -209,11 +230,14 @@ func newCC() controller.ClusterController {
 	if rand.Int31()%2 == 0 {
 		cfg.RedisClientConfig.Addrs = []string{redismr.Addr()}
 	}
-	cc, err := controller.NewClusterController(&cfg)
+
+	stop := closer.New()
+	stopChs = append(stopChs, stop)
+	cc, err := controller.NewClusterController(&cfg, stop.Done())
 	if err != nil {
 		panic(err)
 	}
-	return cc
+	return cc, stop.Close
 }
 
 func TestAccessClusterNew(t *testing.T) {
@@ -226,7 +250,7 @@ func TestAccessClusterNew(t *testing.T) {
 			{ClusterID: 1, Hosts: []string{hostAddr, hostAddr}},
 		},
 	}
-	clusterController, err := controller.NewClusterController(&cfg)
+	clusterController, err := controller.NewClusterController(&cfg, nil)
 	require.NotNil(t, clusterController)
 	require.Nil(t, err)
 	require.Equal(t, region, clusterController.Region())

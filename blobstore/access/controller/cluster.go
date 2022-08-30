@@ -32,11 +32,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/redis"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
-
-// TODO: how to stop service of one cluster???
 
 // AlgChoose algorithm of choose cluster
 type AlgChoose uint32
@@ -138,12 +137,15 @@ type clusterControllerImpl struct {
 	serviceMgrs     sync.Map
 	volumeGetters   sync.Map
 	roundRobinCount uint64 // a count for round robin
+	stopCh          <-chan struct{}
 
 	config ClusterConfig
 }
 
 // NewClusterController returns a cluster controller
-func NewClusterController(cfg *ClusterConfig) (ClusterController, error) {
+func NewClusterController(cfg *ClusterConfig, stopCh <-chan struct{}) (ClusterController, error) {
+	defaulter.LessOrEqual(&cfg.ClusterReloadSecs, int(3))
+
 	consulConf := api.DefaultConfig()
 	consulConf.Address = cfg.ConsulAgentAddr
 	var client *api.Client
@@ -157,6 +159,7 @@ func NewClusterController(cfg *ClusterConfig) (ClusterController, error) {
 	controller := &clusterControllerImpl{
 		region:   cfg.Region,
 		kvClient: client,
+		stopCh:   stopCh,
 		config:   *cfg,
 	}
 	atomic.StoreUint32(&controller.allocAlg, uint32(AlgAvailable))
@@ -169,15 +172,20 @@ func NewClusterController(cfg *ClusterConfig) (ClusterController, error) {
 		return nil, errors.Base(err, "load cluster failed")
 	}
 
-	if cfg.ClusterReloadSecs <= 0 {
-		cfg.ClusterReloadSecs = 3
+	if stopCh == nil {
+		return controller, nil
 	}
-	tick := time.NewTicker(time.Duration(cfg.ClusterReloadSecs) * time.Second)
 	go func() {
+		tick := time.NewTicker(time.Duration(cfg.ClusterReloadSecs) * time.Second)
 		defer tick.Stop()
-		for range tick.C {
-			if err := f(); err != nil {
-				log.Warn("load timer error", err)
+		for {
+			select {
+			case <-tick.C:
+				if err := f(); err != nil {
+					log.Warn("load timer error", err)
+				}
+			case <-controller.stopCh:
+				return
 			}
 		}
 	}()
@@ -309,19 +317,6 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 			}
 		}
 
-		serviceController, err := NewServiceController(ServiceConfig{
-			ClusterID:                   clusterID,
-			IDC:                         c.config.IDC,
-			ReloadSec:                   c.config.ServiceReloadSecs,
-			ServicePunishThreshold:      c.config.ServicePunishThreshold,
-			ServicePunishValidIntervalS: c.config.ServicePunishValidIntervalS,
-		}, cmCli)
-		if err != nil {
-			removeThisCluster()
-			span.Warn("new service manager failed", clusterID, err)
-			continue
-		}
-
 		var redisCli *redis.ClusterClient
 		if len(c.config.RedisClientConfig.Addrs) > 0 {
 			redisCli = redis.NewClusterClient(&c.config.RedisClientConfig)
@@ -333,9 +328,21 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 			continue
 		}
 
+		serviceController, err := NewServiceController(ServiceConfig{
+			ClusterID:                   clusterID,
+			IDC:                         c.config.IDC,
+			ReloadSec:                   c.config.ServiceReloadSecs,
+			ServicePunishThreshold:      c.config.ServicePunishThreshold,
+			ServicePunishValidIntervalS: c.config.ServicePunishValidIntervalS,
+		}, cmCli, c.stopCh)
+		if err != nil {
+			removeThisCluster()
+			span.Warn("new service manager failed", clusterID, err)
+			continue
+		}
+
 		c.serviceMgrs.Store(clusterID, serviceController)
 		c.volumeGetters.Store(clusterID, volumeGetter)
-
 		span.Debug("loaded new cluster", clusterID)
 	}
 
