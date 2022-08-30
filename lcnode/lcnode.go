@@ -69,13 +69,14 @@ type LcNode struct {
 	nodeID          uint64
 	httpServer      *http.Server
 	//tcpListener     net.Listener
-	masters       []string
-	mc            *master.MasterClient
-	scannerMutex  sync.RWMutex
-	scanners      map[string]*TaskScanner
-	stopC         chan bool
-	lastHeartbeat time.Time
-	control       common.Control
+	masters          []string
+	mc               *master.MasterClient
+	scannerMutex     sync.RWMutex
+	s3Scanners       map[string]*S3Scanner
+	snapshotScanners map[string]*SnapshotScanner
+	stopC            chan bool
+	lastHeartbeat    time.Time
+	control          common.Control
 }
 
 func NewServer() *LcNode {
@@ -118,7 +119,8 @@ func (l *LcNode) loadConfig(cfg *config.Config) (err error) {
 	l.masters = masters
 	l.mc = master.NewMasterClient(masters, false)
 
-	l.scanners = make(map[string]*TaskScanner, 0)
+	l.s3Scanners = make(map[string]*S3Scanner, 0)
+	l.snapshotScanners = make(map[string]*SnapshotScanner, 0)
 
 	batchExpirationGetNum = int(cfg.GetInt(batchExpirationGetNumStr))
 	if batchExpirationGetNum == 0 {
