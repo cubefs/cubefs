@@ -40,6 +40,9 @@ const (
 )
 
 var (
+	A = gomock.Any()
+	C = gomock.NewController
+
 	vid404      = proto.Vid(404)
 	errNotFound = errors.New("not found")
 
@@ -106,17 +109,16 @@ func init() {
 		Addrs: []string{redismr.Addr()},
 	})
 
-	ctr := gomock.NewController(&testing.T{})
-	cli := mocks.NewMockClientAPI(ctr)
-	cli.EXPECT().GetConfig(gomock.Any(), gomock.Any()).AnyTimes().Return("abc", nil)
-	cli.EXPECT().GetService(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+	cli := mocks.NewMockClientAPI(C(&testing.T{}))
+	cli.EXPECT().GetConfig(A, A).AnyTimes().Return("abc", nil)
+	cli.EXPECT().GetService(A, A).AnyTimes().DoAndReturn(
 		func(ctx context.Context, args cmapi.GetServiceArgs) (cmapi.ServiceInfo, error) {
 			if val, ok := dataNodes[args.Name]; ok {
 				return val, nil
 			}
 			return cmapi.ServiceInfo{}, errNotFound
 		})
-	cli.EXPECT().GetVolumeInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+	cli.EXPECT().GetVolumeInfo(A, A).AnyTimes().DoAndReturn(
 		func(ctx context.Context, args *cmapi.GetVolumeArgs) (*cmapi.VolumeInfo, error) {
 			if val, ok := dataVolumes[args.Vid]; ok {
 				dataCalled[args.Vid]++
@@ -127,13 +129,14 @@ func init() {
 			}
 			return nil, errNotFound
 		})
-	cli.EXPECT().DiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+	cli.EXPECT().DiskInfo(A, A).AnyTimes().DoAndReturn(
 		func(ctx context.Context, id proto.DiskID) (*bnapi.DiskInfo, error) {
 			if val, ok := dataDisks[id]; ok {
 				return &val, nil
 			}
 			return nil, errNotFound
 		})
+	cli.EXPECT().ListDisk(A, A).AnyTimes().Return(cmapi.ListDiskRet{}, nil)
 	cmcli = cli
 
 	initCluster()

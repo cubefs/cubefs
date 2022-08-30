@@ -16,14 +16,18 @@ package controller_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
+	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
 
@@ -184,6 +188,93 @@ func TestAccessServiceGetDiskHost(t *testing.T) {
 	{
 		_, err := sc.GetDiskHost(serviceCtx, proto.DiskID(10000))
 		require.Error(t, err)
+	}
+}
+
+func TestAccessServiceGetBrokenDiskHost(t *testing.T) {
+	brokenRet := cmapi.ListDiskRet{}
+	brokenRet.Disks = make([]*bnapi.DiskInfo, 2)
+	brokenRet.Disks[0] = &bnapi.DiskInfo{}
+	brokenRet.Disks[1] = &bnapi.DiskInfo{}
+
+	cli := mocks.NewMockClientAPI(C(t))
+	cli.EXPECT().GetService(A, A).Times(5).DoAndReturn(
+		func(_ context.Context, args cmapi.GetServiceArgs) (cmapi.ServiceInfo, error) {
+			if val, ok := dataNodes[args.Name]; ok {
+				return val, nil
+			}
+			return cmapi.ServiceInfo{}, errNotFound
+		})
+	cli.EXPECT().DiskInfo(A, A).AnyTimes().DoAndReturn(
+		func(ctx context.Context, id proto.DiskID) (*bnapi.DiskInfo, error) {
+			if val, ok := dataDisks[id]; ok {
+				return &val, nil
+			}
+			return nil, errNotFound
+		})
+	cli.EXPECT().ListDisk(A, A).Times(6).Return(brokenRet, nil)
+
+	stop := closer.New()
+	defer stop.Close()
+	sc, err := controller.NewServiceController(
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1, LoadDiskInterval: 1}, cli, stop.Done())
+	require.NoError(t, err)
+
+	{
+		host, err := sc.GetDiskHost(serviceCtx, 10001)
+		require.NoError(t, err)
+		require.False(t, host.Punished)
+		host, err = sc.GetDiskHost(serviceCtx, 10002)
+		require.NoError(t, err)
+		require.False(t, host.Punished)
+	}
+
+	brokenRet.Disks[0].DiskID = 10000
+	brokenRet.Disks[1].DiskID = 10002
+	time.Sleep(1200 * time.Millisecond)
+	{
+		host, err := sc.GetDiskHost(serviceCtx, 10001)
+		require.NoError(t, err)
+		require.False(t, host.Punished)
+		host, err = sc.GetDiskHost(serviceCtx, 10002)
+		require.NoError(t, err)
+		require.True(t, host.Punished)
+	}
+
+	brokenRet.Disks[1].DiskID = 10001
+	time.Sleep(time.Second)
+	{
+		host, err := sc.GetDiskHost(serviceCtx, 10001)
+		require.NoError(t, err)
+		require.True(t, host.Punished)
+		host, err = sc.GetDiskHost(serviceCtx, 10002)
+		require.NoError(t, err)
+		require.False(t, host.Punished)
+	}
+
+	brokenRet.Disks[0].DiskID = 10000
+	brokenRet.Disks[1].DiskID = 10000
+	cli.EXPECT().ListDisk(A, A).Times(1).Return(brokenRet, errors.New("list error"))
+	time.Sleep(time.Second)
+	{
+		host, err := sc.GetDiskHost(serviceCtx, 10001)
+		require.NoError(t, err)
+		require.True(t, host.Punished)
+		host, err = sc.GetDiskHost(serviceCtx, 10002)
+		require.NoError(t, err)
+		require.False(t, host.Punished)
+	}
+
+	brokenRet.Disks = brokenRet.Disks[:0]
+	cli.EXPECT().ListDisk(A, A).Times(2).Return(brokenRet, nil)
+	time.Sleep(time.Second)
+	{
+		host, err := sc.GetDiskHost(serviceCtx, 10001)
+		require.NoError(t, err)
+		require.False(t, host.Punished)
+		host, err = sc.GetDiskHost(serviceCtx, 10002)
+		require.NoError(t, err)
+		require.False(t, host.Punished)
 	}
 }
 

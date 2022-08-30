@@ -127,6 +127,21 @@ func (mr *MockClientAPIMockRecorder) GetVolumeInfo(arg0, arg1 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeInfo", reflect.TypeOf((*MockClientAPI)(nil).GetVolumeInfo), arg0, arg1)
 }
 
+// ListDisk mocks base method.
+func (m *MockClientAPI) ListDisk(arg0 context.Context, arg1 *clustermgr.ListOptionArgs) (clustermgr.ListDiskRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDisk", arg0, arg1)
+	ret0, _ := ret[0].(clustermgr.ListDiskRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDisk indicates an expected call of ListDisk.
+func (mr *MockClientAPIMockRecorder) ListDisk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDisk", reflect.TypeOf((*MockClientAPI)(nil).ListDisk), arg0, arg1)
+}
+
 // RegisterService mocks base method.
 func (m *MockClientAPI) RegisterService(arg0 context.Context, arg1 clustermgr.ServiceNode, arg2, arg3, arg4 uint32) error {
 	m.ctrl.T.Helper()

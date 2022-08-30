@@ -50,18 +50,19 @@ func GetConsulClusterPath(region string) string {
 	return fmt.Sprintf(ConsulRegisterPath, region)
 }
 
+// ClientAPI all interface of cluster manager
+type ClientAPI interface {
+	APIAccess
+	APIProxy
+}
+
 // APIAccess sub of cluster manager api for access
 type APIAccess interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetService(ctx context.Context, args GetServiceArgs) (ServiceInfo, error)
 	GetVolumeInfo(ctx context.Context, args *GetVolumeArgs) (*VolumeInfo, error)
 	DiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error)
-}
-
-// ClientAPI all interface of cluster manager
-type ClientAPI interface {
-	APIAccess
-	APIProxy
+	ListDisk(ctx context.Context, options *ListOptionArgs) (ListDiskRet, error)
 }
 
 // APIProxy sub of cluster manager api for allocator
