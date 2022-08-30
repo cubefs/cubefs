@@ -107,6 +107,9 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.LcNodeHeartbeatResponse{}
 	case proto.OpLcNodeScan:
 		response = &proto.RuleTaskResponse{}
+	case proto.OpLcNodeSnapshotVerDel:
+		response = &proto.SnapshotVerDelTaskResponse{}
+
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
 	}

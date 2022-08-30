@@ -613,22 +613,35 @@ type MetaNodeHeartbeatResponse struct {
 	CpuUtil              float64 `json:"cpuUtil"`
 }
 
-type ScanTaskInfo struct {
+type S3ScanTaskInfo struct {
 	Id        string
 	RoutineId int64
 }
 
-type ScanInfo struct {
-	ScanTaskInfo
-	TaskStatistics
+type S3ScanInfo struct {
+	S3ScanTaskInfo
+	S3TaskStatistics
+}
+
+type DelVerTaskInfo struct {
+	Id string
+}
+
+type SnapshotScanInfo struct {
+	DelVerTaskInfo
+	SnapshotStatistics
 }
 
 // LcNodeHeartbeatResponse defines the response to the lc node heartbeat.
 type LcNodeHeartbeatResponse struct {
-	//ScanningTasks []*ScanTaskInfo
-	ScanningTasks map[string]*ScanInfo
-	Status        uint8
-	Result        string
+	S3ScanningTasks       map[string]*S3ScanInfo
+	SnapshotScanningTasks map[string]*SnapshotScanInfo
+	Status                uint8
+	Result                string
+}
+
+func (r *LcNodeHeartbeatResponse) IsLcNodeIdle() bool {
+	return len(r.S3ScanningTasks) == 0 && len(r.SnapshotScanningTasks) == 0
 }
 
 // DeleteFileRequest defines the request to delete a file.
