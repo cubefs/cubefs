@@ -76,7 +76,7 @@ func (c *Cluster) handleLcNodeTaskResponse(nodeAddr string, task *proto.AdminTas
 		log.LogInfof("action[handleLcNodeTaskResponse] receive addr[%v] task response,but task is nil", nodeAddr)
 		return
 	}
-	log.LogDebugf("action[handleLcNodeTaskResponse] receive addr[%v] task response:%v", nodeAddr, task.ToString())
+	log.LogDebugf("action[handleLcNodeTaskResponse] receive addr[%v] task:%v", nodeAddr, task.ToString())
 	var (
 		err    error
 		lcNode *LcNode
@@ -107,7 +107,10 @@ func (c *Cluster) handleLcNodeTaskResponse(nodeAddr string, task *proto.AdminTas
 
 		req := task.Request.(*proto.RuleTaskRequest)
 		response := task.Response.(*proto.RuleTaskResponse)
-		err = c.handleLcNodeScanResp(task.OperatorAddr, req, response)
+		err = c.handleLcNodeS3ScanResp(task.OperatorAddr, req, response)
+	case proto.OpLcNodeSnapshotVerDel:
+		response := task.Response.(*proto.SnapshotVerDelTaskResponse)
+		err = c.handleLcNodeSnapshotScanResp(task.OperatorAddr, response)
 	case proto.OpLcNodeHeartbeat:
 		response := task.Response.(*proto.LcNodeHeartbeatResponse)
 		err = c.handleLcNodeHeartbeatResp(task.OperatorAddr, response)
@@ -126,17 +129,47 @@ errHandler:
 	return
 }
 
-func (c *Cluster) handleLcNodeScanResp(nodeAddr string, req *proto.RuleTaskRequest, resp *proto.RuleTaskResponse) (err error) {
-	log.LogDebugf("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v) Enter", req.Task.Rule.ID, req.Task.Id, req.RoutineID)
+func (c *Cluster) handleLcNodeSnapshotScanResp(nodeAddr string, resp *proto.SnapshotVerDelTaskResponse) (err error) {
+	taskInfo := &proto.DelVerTaskInfo{Id: resp.ID}
+	c.lcMgr.lnStates.ReleaseTask(taskInfo)
+
+	verInfo := c.lcMgr.snapshotMgr.volVerInfos.RemoveProcessingVerInfo(taskInfo.Id)
+	if verInfo != nil {
+		var vol *Vol
+		vol, err = c.getVol(resp.VolName)
+		if err != nil {
+			log.LogErrorf("action[handleLcNodeSnapshotScanResp] snapshot task(%v) scanning completed, results(%v), volume(%v) is not found",
+				taskInfo.Id, resp, resp.VolName)
+			return
+		}
+
+		_ = vol.VersionMgr.DelVer(resp.VerSeq)
+		//todo_lc: statistics??
+		log.LogInfof("action[handleLcNodeSnapshotScanResp] snapshot task(%v) volume(%v) verseq(%v) scanning completed, results(%v).",
+			taskInfo.Id, verInfo.VolName, verInfo.VerSeq, resp)
+	} else {
+		log.LogErrorf("action[handleLcNodeSnapshotScanResp] snapshot task(%v) scanning completed, results(%v).",
+			taskInfo.Id, resp)
+	}
+	return
+}
+
+func (c *Cluster) handleLcNodeS3ScanResp(nodeAddr string, req *proto.RuleTaskRequest, resp *proto.RuleTaskResponse) (err error) {
+	log.LogDebugf("action[handleLcNodeS3ScanResp] Rule(%v) in task(%v) of routine(%v) Enter", req.Task.Rule.ID, req.Task.Id, req.RoutineID)
 	defer func() {
-		log.LogDebugf("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v) Exit", req.Task.Rule.ID, req.Task.Id, req.RoutineID)
+		log.LogDebugf("action[handleLcNodeS3ScanResp] Rule(%v) in task(%v) of routine(%v) Exit", req.Task.Rule.ID, req.Task.Id, req.RoutineID)
 	}()
 
-	c.s3LcMgr.lnStates.ReleaseTask(req.Task.Id, req.RoutineID)
+	taskInfo := &proto.S3ScanTaskInfo{
+		Id:        req.Task.Id,
+		RoutineId: req.RoutineID,
+	}
 
-	lcScan := c.s3LcMgr.getScanRoutine()
+	c.lcMgr.lnStates.ReleaseTask(taskInfo)
+
+	lcScan := c.lcMgr.getScanRoutine()
 	if lcScan != nil {
-		log.LogDebugf("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v), current routine(%v)",
+		log.LogDebugf("action[handleLcNodeS3ScanResp] Rule(%v) in task(%v) of routine(%v), current routine(%v)",
 			req.Task.Rule.ID, req.Task.Id, req.RoutineID, lcScan.Id)
 		lcScan.Lock()
 		if lcScan.Id == req.RoutineID {
@@ -144,7 +177,7 @@ func (c *Cluster) handleLcNodeScanResp(nodeAddr string, req *proto.RuleTaskReque
 				if req.Task.Id == ruleTask.Id {
 					lcScan.RuleStatus.Scanning = append(lcScan.RuleStatus.Scanning[:i], lcScan.RuleStatus.Scanning[i+1:]...)
 					if resp.Status == proto.TaskFailed {
-						log.LogWarnf("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v) scanning failed, current routine(%v), results(%v).",
+						log.LogWarnf("action[handleLcNodeS3ScanResp] Rule(%v) in task(%v) of routine(%v) scanning failed, current routine(%v), results(%v).",
 							req.Task.Rule.ID, req.Task.Id, req.RoutineID, lcScan.Id, resp)
 						lcScan.RuleStatus.ToBeScanned = append(lcScan.RuleStatus.ToBeScanned, ruleTask)
 						lcScan.Unlock()
@@ -161,9 +194,9 @@ func (c *Cluster) handleLcNodeScanResp(nodeAddr string, req *proto.RuleTaskReque
 
 		} else {
 			lcScan.Unlock()
-			log.LogWarnf("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v),", req.Task.Rule.ID, req.Task.Id, req.RoutineID)
+			log.LogWarnf("action[handleLcNodeS3ScanResp] Rule(%v) in task(%v) of routine(%v),", req.Task.Rule.ID, req.Task.Id, req.RoutineID)
 			if resp.Status == proto.TaskSucceeds {
-				log.LogInfof("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v) scanning completed, current routine(%v),"+
+				log.LogInfof("action[handleLcNodeS3ScanResp] Rule(%v) in task(%v) of routine(%v) scanning completed, current routine(%v),"+
 					" task startTime(%v), task endTime(%v), totalScanned(%v), fileScanned(%v), dirScanned(%v), ExpiredNum(%v), "+
 					"ErrorSkippedNum(%v), AbortedIncompleteMultipartNum(%v)",
 					req.Task.Rule.ID, req.Task.Id, req.RoutineID, lcScan.Id, resp.StartTime.String(), resp.EndTime.String(),
@@ -173,7 +206,7 @@ func (c *Cluster) handleLcNodeScanResp(nodeAddr string, req *proto.RuleTaskReque
 		}
 		lcScan.Unlock()
 
-		log.LogInfof("action[handleLcNodeScanResp] Rule(%v) in task(%v) of routine(%v) scanning completed, current routine(%v), results(%v).",
+		log.LogInfof("action[handleLcNodeS3ScanResp] Rule(%v) in task(%v) of routine(%v) scanning completed, current routine(%v), results(%v).",
 			req.Task.Rule.ID, req.Task.Id, req.RoutineID, lcScan.Id, resp)
 
 		if !lcScan.Scanning() {
@@ -206,20 +239,20 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 	lcNode.ReportTime = time.Now()
 	lcNode.Unlock()
 
-	//c.s3LcMgr.lnStates.UpdateNodeTask(nodeAddr, resp.ScanningTasks)
+	//c.lcMgr.lnStates.UpdateNodeTask(nodeAddr, resp.S3ScanningTasks)
 
-	if len(resp.ScanningTasks) > 0 {
+	if !resp.IsLcNodeIdle() {
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is scanning", nodeAddr)
-		lcScan := c.s3LcMgr.getScanRoutine()
+		lcScan := c.lcMgr.getScanRoutine()
 		if lcScan != nil {
 			lcScan.Lock()
-			for _, task := range resp.ScanningTasks {
+			for _, task := range resp.S3ScanningTasks {
 				if lcScan.Id == task.RoutineId {
 					tmpResp := &proto.RuleTaskResponse{
-						ID:             task.Id,
-						RoutineID:      task.RoutineId,
-						Done:           false,
-						TaskStatistics: task.TaskStatistics,
+						ID:               task.Id,
+						RoutineID:        task.RoutineId,
+						Done:             false,
+						S3TaskStatistics: task.S3TaskStatistics,
 					}
 					lcScan.RuleStatus.Results[task.Id] = tmpResp
 					log.LogDebugf("action[handleLcNodeHeartbeatResp], lcScan.Id(%v) task.RoutineId(%v) rsp(%v)",
@@ -228,17 +261,22 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 			}
 			lcScan.Unlock()
 		}
+
+		for _, task := range resp.SnapshotScanningTasks {
+			tmpResp := &proto.SnapshotVerDelTaskResponse{
+				ID:                 task.Id,
+				SnapshotStatistics: task.SnapshotStatistics,
+				Done:               false,
+			}
+			c.lcMgr.snapshotMgr.volVerInfos.Lock()
+			c.lcMgr.snapshotMgr.volVerInfos.TaskResults[task.Id] = tmpResp
+			c.lcMgr.snapshotMgr.volVerInfos.Unlock()
+			log.LogDebugf("action[handleLcNodeHeartbeatResp], snapshot scan taskid(%v) rsp(%v)",
+				task.Id, tmpResp)
+		}
 	} else {
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is idle", nodeAddr)
-		lcScan := c.s3LcMgr.getScanRoutine()
-		if lcScan != nil {
-			select {
-			case lcScan.idleNodeCh <- struct{}{}:
-				log.LogDebugf("action[handleLcNodeHeartbeatResp], scan routine notified!")
-			default:
-				log.LogDebugf("action[handleLcNodeHeartbeatResp], skipping notify looper")
-			}
-		}
+		c.lcMgr.NotifyIdleLcNode()
 	}
 
 	logMsg = fmt.Sprintf("action[handleLcNodeHeartbeatResp], lcNode:%v, ReportTime:%v success", lcNode.Addr, lcNode.ReportTime.Unix())

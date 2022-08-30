@@ -854,16 +854,16 @@ func (mm *monitorMetrics) deleteS3LcVolMetric(volName string) {
 }
 
 func (mm *monitorMetrics) setS3LcMetrics() {
-	lcScan := mm.cluster.s3LcMgr.getScanRoutine()
+	lcScan := mm.cluster.lcMgr.getScanRoutine()
 	if lcScan != nil {
-		volumeScanStatistics := make(map[string]proto.TaskStatistics, 0)
+		volumeScanStatistics := make(map[string]proto.S3TaskStatistics, 0)
 		lcScan.RLock()
 		for _, rst := range lcScan.RuleStatus.Results {
 			key := rst.Volume + "[" + rst.Prefix + "]"
 			if _, ok := volumeScanStatistics[key]; ok && rst.Done {
-				volumeScanStatistics[key] = proto.TaskStatistics{}
+				volumeScanStatistics[key] = proto.S3TaskStatistics{}
 			} else {
-				volumeScanStatistics[key] = rst.TaskStatistics
+				volumeScanStatistics[key] = rst.S3TaskStatistics
 			}
 		}
 		lcScan.RUnlock()
