@@ -304,9 +304,8 @@ func (c *Cluster) sendMigrateTask(ecdp *EcDataPartition, dp *DataPartition, codE
 		return
 	}
 	task := proto.NewAdminTask(proto.OpIssueMigrationTask, codEcNode.Addr, request)
-	var resp *proto.Packet
-	if resp, err = codEcNode.TaskManager.syncSendAdminTask(task); err != nil {
-		log.LogErrorf("syncSendAdminTask error:%+v, resp:%+v", err, resp.Data)
+	if _, err = codEcNode.TaskManager.syncSendAdminTask(task); err != nil {
+		log.LogErrorf("syncSendAdminTask error:%v", err)
 	}
 	return
 }
