@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -68,9 +67,11 @@ func (l *LcNode) stopServer() {
 }
 
 func (l *LcNode) StopScanners() {
-	for _, s := range l.scanners {
+	l.scannerMutex.Lock()
+	defer l.scannerMutex.Unlock()
+	for _, s := range l.s3Scanners {
+		delete(l.s3Scanners, s.ID)
 		s.Stop()
-		delete(l.scanners, s.ID)
 	}
 }
 
@@ -107,6 +108,8 @@ func (l *LcNode) handlePacket(conn net.Conn, p *proto.Packet, remoteAddr string)
 		err = l.opMasterHeartbeat(conn, p, remoteAddr)
 	case proto.OpLcNodeScan:
 		err = l.opLcScan(conn, p, remoteAddr)
+	case proto.OpLcNodeSnapshotVerDel:
+		err = l.opSnapshotVerDel(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
@@ -175,41 +178,88 @@ func (f *fileDentries) Clear() {
 func (l *LcNode) scanning() bool {
 	l.scannerMutex.Lock()
 	defer l.scannerMutex.Unlock()
-	return len(l.scanners) > 0
+	return len(l.s3Scanners) > 0
 }
 
-func (l *LcNode) startScan(adminTask *proto.AdminTask) (err error) {
+func (l *LcNode) startSnapshotScan(adminTask *proto.AdminTask) (err error) {
+	request := adminTask.Request.(*proto.SnapshotVerDelTaskRequest)
+	log.LogInfof("startSnapshotScan: scan task(%v) received!", request.Task)
+	response := &proto.SnapshotVerDelTaskResponse{}
+	adminTask.Response = response
+
+	defer func() {
+		if err != nil {
+			l.respondToMaster(adminTask)
+		}
+	}()
+
+	l.scannerMutex.Lock()
+	if _, ok := l.snapshotScanners[request.Task.Key()]; ok {
+		log.LogInfof("startSnapshotScan: scan task(%v) is already running!", request.Task)
+		l.scannerMutex.Unlock()
+		return
+	}
+
+	var scanner *SnapshotScanner
+	scanner, err = NewSnapshotScanner(adminTask, l)
+	if err != nil {
+		log.LogErrorf("startSnapshotScan: NewSnapshotScanner err(%v)", err)
+		response.Status = proto.TaskFailed
+		response.Result = err.Error()
+		l.scannerMutex.Unlock()
+		return
+	}
+	l.snapshotScanners[request.Task.Key()] = scanner
+	l.scannerMutex.Unlock()
+	if err = scanner.Start(); err != nil {
+		return
+	}
+	return
+}
+
+func (l *LcNode) startS3Scan(adminTask *proto.AdminTask) (err error) {
 
 	request := adminTask.Request.(*proto.RuleTaskRequest)
-	log.LogInfof("startScan: scan task(%v) of routine(%v) received!", request.Task, request.RoutineID)
+	log.LogInfof("startS3Scan: scan task(%v) of routine(%v) received!", request.Task, request.RoutineID)
 	resp := &proto.RuleTaskResponse{}
 	adminTask.Response = resp
 
 	defer func() {
 		if err != nil {
-			resp.Status = proto.TaskFailed
-			resp.Result = err.Error()
-			adminTask.Request = nil
+			//resp.Status = proto.TaskFailed
+			//resp.Result = err.Error()
+			//adminTask.Request = nil
 			l.respondToMaster(adminTask)
 		}
 	}()
 
-	l.scannerMutex.RLock()
-	if _, ok := l.scanners[request.Task.Id]; ok {
-		log.LogInfof("startScan: scan task(%v) of routine(%v) is already running!", request.Task, request.RoutineID)
-		l.scannerMutex.RUnlock()
-		return nil
+	l.scannerMutex.Lock()
+	if _, ok := l.s3Scanners[request.Task.Id]; ok {
+		log.LogInfof("startS3Scan: scan task(%v) of routine(%v) is already running!", request.Task, request.RoutineID)
+		l.scannerMutex.Unlock()
+		return
 	}
-	l.scannerMutex.RUnlock()
 
-	var scanner *TaskScanner
-	scanner, err = NewTaskScanner(request.Task, request.RoutineID, l.masters)
+	var scanner *S3Scanner
+	//scanner, err = NewS3Scanner(request.Task, request.RoutineID, l)
+	scanner, err = NewS3Scanner(adminTask, l)
 	if err != nil {
-		log.LogErrorf("startScan: NewTaskScanner err(%v)", err)
-		return err
+		log.LogErrorf("startS3Scan: NewS3Scanner err(%v)", err)
+		resp.Status = proto.TaskFailed
+		resp.Result = err.Error()
+		l.scannerMutex.Unlock()
+		return
+	}
+	l.s3Scanners[scanner.ID] = scanner
+	l.scannerMutex.Unlock()
+
+	if err = scanner.Start(); err != nil {
+		return
 	}
 
-	perfixInode, mode, err := scanner.FindPrefixInode()
+	/*var perfixInode uint64
+	var mode uint32
+	perfixInode, mode, err = scanner.FindPrefixInode()
 	if err != nil {
 		log.LogWarnf("startScan: node path(%v) found in volume(%v), err(%v), scanning done!",
 			scanner.filter.Prefix, request.Task.VolName, err)
@@ -218,11 +268,10 @@ func (l *LcNode) startScan(adminTask *proto.AdminTask) (err error) {
 		resp.Status = proto.TaskSucceeds
 
 		l.scannerMutex.Lock()
-		delete(l.scanners, scanner.ID)
+		delete(l.s3Scanners, scanner.ID)
 		l.scannerMutex.Unlock()
 
-		l.respondToMaster(adminTask)
-		return nil
+		return
 	}
 
 	go scanner.scan()
@@ -249,13 +298,39 @@ func (l *LcNode) startScan(adminTask *proto.AdminTask) (err error) {
 		_, _ = scanner.fileRPoll.Submit(scanMultipart)
 	}
 
-	go scanner.checkScanning(adminTask, resp, l)
-
-	l.scannerMutex.Lock()
-	l.scanners[scanner.ID] = scanner
-	l.scannerMutex.Unlock()
+	go scanner.checkScanning(adminTask, resp)*/
 
 	return err
+}
+
+func (l *LcNode) opSnapshotVerDel(conn net.Conn, p *proto.Packet, remoteAddr string) (err error) {
+	go func() {
+		p.PacketOkReply()
+		if err := p.WriteToConn(conn); err != nil {
+			log.LogErrorf("ack master response: %s", err.Error())
+		}
+	}()
+	data := p.Data
+	var (
+		req       = &proto.SnapshotVerDelTaskRequest{}
+		resp      = &proto.SnapshotVerDelTaskResponse{}
+		adminTask = &proto.AdminTask{
+			Request: req,
+		}
+	)
+
+	decoder := json.NewDecoder(bytes.NewBuffer(data))
+	decoder.UseNumber()
+	if err = decoder.Decode(adminTask); err != nil {
+		resp.Status = proto.TaskFailed
+		resp.Result = err.Error()
+		//adminTask.Request = nil
+		adminTask.Response = resp
+		_ = l.respondToMaster(adminTask)
+	} else {
+		err = l.startSnapshotScan(adminTask)
+	}
+	return
 }
 
 func (l *LcNode) opLcScan(conn net.Conn, p *proto.Packet, remoteAddr string) (err error) {
@@ -283,7 +358,7 @@ func (l *LcNode) opLcScan(conn net.Conn, p *proto.Packet, remoteAddr string) (er
 		adminTask.Response = resp
 		_ = l.respondToMaster(adminTask)
 	} else {
-		err = l.startScan(adminTask)
+		err = l.startS3Scan(adminTask)
 	}
 
 	return
@@ -301,7 +376,8 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 	var (
 		req  = &proto.HeartBeatRequest{}
 		resp = &proto.LcNodeHeartbeatResponse{
-			ScanningTasks: make(map[string]*proto.ScanInfo, 0),
+			S3ScanningTasks:       make(map[string]*proto.S3ScanInfo, 0),
+			SnapshotScanningTasks: make(map[string]*proto.SnapshotScanInfo, 0),
 		}
 		adminTask = &proto.AdminTask{
 			Request: req,
@@ -320,13 +396,13 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 		//collect status?
 
 		l.scannerMutex.RLock()
-		for _, scanner := range l.scanners {
-			info := &proto.ScanInfo{
-				ScanTaskInfo: proto.ScanTaskInfo{
+		for _, scanner := range l.s3Scanners {
+			info := &proto.S3ScanInfo{
+				S3ScanTaskInfo: proto.S3ScanTaskInfo{
 					Id:        scanner.ID,
 					RoutineId: scanner.RoutineID,
 				},
-				TaskStatistics: proto.TaskStatistics{
+				S3TaskStatistics: proto.S3TaskStatistics{
 					Volume:                        scanner.Volume,
 					Prefix:                        scanner.filter.Prefix,
 					TotalInodeScannedNum:          atomic.LoadInt64(&scanner.currentStat.TotalInodeScannedNum),
@@ -337,7 +413,26 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 					AbortedIncompleteMultipartNum: atomic.LoadInt64(&scanner.currentStat.AbortedIncompleteMultipartNum),
 				},
 			}
-			resp.ScanningTasks[scanner.ID] = info
+			resp.S3ScanningTasks[scanner.ID] = info
+		}
+
+		for _, scanner := range l.snapshotScanners {
+			info := &proto.SnapshotScanInfo{
+				DelVerTaskInfo: proto.DelVerTaskInfo{
+					Id: scanner.ID,
+				},
+				SnapshotStatistics: proto.SnapshotStatistics{
+					VerInfo: proto.VerInfo{
+						VolName: scanner.getTaskVolName(),
+						VerSeq:  scanner.getTaskVerSeq(),
+					},
+					TotalInodeNum:   atomic.LoadInt64(&scanner.currentStat.TotalInodeNum),
+					FileNum:         atomic.LoadInt64(&scanner.currentStat.FileNum),
+					DirNum:          atomic.LoadInt64(&scanner.currentStat.DirNum),
+					ErrorSkippedNum: atomic.LoadInt64(&scanner.currentStat.ErrorSkippedNum),
+				},
+			}
+			resp.SnapshotScanningTasks[scanner.ID] = info
 		}
 		l.scannerMutex.RUnlock()
 
