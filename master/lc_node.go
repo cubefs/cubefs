@@ -71,3 +71,13 @@ func (lcNode *LcNode) createLcScanTask(routineId int64, rTask *proto.RuleTask, m
 	task = proto.NewAdminTask(proto.OpLcNodeScan, lcNode.Addr, request)
 	return
 }
+
+func (lcNode *LcNode) createSnapshotVerDelTask(sTask *proto.SnapshotVerDelTask, masterAddr string) (task *proto.AdminTask) {
+
+	request := &proto.SnapshotVerDelTaskRequest{
+		MasterAddr: masterAddr,
+		Task:       sTask,
+	}
+	task = proto.NewAdminTask(proto.OpLcNodeSnapshotVerDel, lcNode.Addr, request)
+	return
+}

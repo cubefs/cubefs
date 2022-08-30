@@ -113,7 +113,7 @@ type BatchInodeGetExpirationResponse struct {
 	ExpirationResults []*ExpireInfo `json:"rsts"`
 }
 
-//rules
+//s3 rules
 var (
 	RuleEnabled  string = "Enabled"
 	RuleDisabled string = "Disabled"
@@ -131,7 +131,7 @@ type RuleTaskRequest struct {
 	Task       *RuleTask
 }
 
-type TaskStatistics struct {
+type S3TaskStatistics struct {
 	Volume                        string
 	Prefix                        string
 	TotalInodeScannedNum          int64
@@ -145,7 +145,7 @@ type TaskStatistics struct {
 type RuleTaskResponse struct {
 	ID        string
 	RoutineID int64
-	TaskStatistics
+	S3TaskStatistics
 	StartTime *time.Time
 	EndTime   *time.Time
 	Done      bool
@@ -320,4 +320,41 @@ func (r *Rule) Validate() (valid bool, err error) {
 	}
 
 	return true, nil
+}
+
+type VerInfo struct {
+	VolName string
+	VerSeq  uint64
+}
+
+func (vi *VerInfo) Key() string {
+	return fmt.Sprintf("%s_%d", vi.VolName, vi.VerSeq)
+}
+
+//snapshot version delete
+type SnapshotVerDelTask struct {
+	VerInfo
+}
+
+type SnapshotVerDelTaskRequest struct {
+	MasterAddr string
+	Task       *SnapshotVerDelTask
+}
+
+type SnapshotStatistics struct {
+	VerInfo
+	TotalInodeNum   int64
+	FileNum         int64
+	DirNum          int64
+	ErrorSkippedNum int64
+}
+
+type SnapshotVerDelTaskResponse struct {
+	ID string
+	SnapshotStatistics
+	StartTime *time.Time
+	EndTime   *time.Time
+	Done      bool
+	Status    uint8
+	Result    string
 }

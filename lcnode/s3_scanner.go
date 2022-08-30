@@ -14,18 +14,13 @@ import (
 	"time"
 )
 
-var (
-	defaultUChanInitCapacity int = 10000
-	defaultRoutingNumPerTask int = 100
-	defaultMaxChanUnm        int = 10000000 //worst case: may take up around 400MB of heap space
-)
-
-type TaskScanner struct {
-	ID        string
-	RoutineID int64
-	Volume    string
-	mw        *meta.MetaWrapper
-	//ScanTask *proto.RuleTask
+type S3Scanner struct {
+	ID            string
+	RoutineID     int64
+	Volume        string
+	mw            *meta.MetaWrapper
+	lcnode        *LcNode
+	adminTask     *proto.AdminTask
 	filter        *proto.ScanFilter
 	abortFilter   *proto.AbortIncompleteMultiPartFilter
 	dirChan       *unboundedchan.UnboundedChan
@@ -33,11 +28,14 @@ type TaskScanner struct {
 	fileRPoll     *routinepool.RoutinePool
 	dirRPoll      *routinepool.RoutinePool
 	batchDentries *fileDentries
-	currentStat   proto.TaskStatistics
+	currentStat   proto.S3TaskStatistics
 	stopC         chan bool
 }
 
-func NewTaskScanner(scanTask *proto.RuleTask, RoutineID int64, masters []string) (*TaskScanner, error) {
+//func NewS3Scanner(scanTask *proto.RuleTask, RoutineID int64, l *LcNode) (*S3Scanner, error) {
+func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*S3Scanner, error) {
+	request := adminTask.Request.(*proto.RuleTaskRequest)
+	scanTask := request.Task
 	var err error
 	filter, abortFilter := scanTask.Rule.GetScanFilter()
 	if filter == nil && abortFilter == nil {
@@ -45,7 +43,7 @@ func NewTaskScanner(scanTask *proto.RuleTask, RoutineID int64, masters []string)
 	}
 	var metaConfig = &meta.MetaConfig{
 		Volume:        scanTask.VolName,
-		Masters:       masters,
+		Masters:       l.masters,
 		Authenticate:  false,
 		ValidateOwner: false,
 	}
@@ -55,11 +53,13 @@ func NewTaskScanner(scanTask *proto.RuleTask, RoutineID int64, masters []string)
 		return nil, err
 	}
 
-	scanner := &TaskScanner{
+	scanner := &S3Scanner{
 		ID:          scanTask.Id,
-		RoutineID:   RoutineID,
+		RoutineID:   request.RoutineID,
 		Volume:      scanTask.VolName,
 		mw:          metaWrapper,
+		lcnode:      l,
+		adminTask:   adminTask,
 		filter:      filter,
 		abortFilter: abortFilter,
 		dirChan:     unboundedchan.NewUnboundedChan(defaultUChanInitCapacity),
@@ -73,7 +73,7 @@ func NewTaskScanner(scanTask *proto.RuleTask, RoutineID int64, masters []string)
 	return scanner, nil
 }
 
-func (s *TaskScanner) FindPrefixInode() (inode uint64, mode uint32, err error) {
+func (s *S3Scanner) FindPrefixInode() (inode uint64, mode uint32, err error) {
 	// if prefix and marker are both not empty, use marker
 	var dirs []string
 	if s.filter.Prefix != "" {
@@ -115,7 +115,7 @@ func (s *TaskScanner) FindPrefixInode() (inode uint64, mode uint32, err error) {
 	return
 }
 
-func (s *TaskScanner) Stop() {
+func (s *S3Scanner) Stop() {
 	close(s.stopC)
 	s.fileRPoll.WaitAndClose()
 	s.dirRPoll.WaitAndClose()
@@ -124,13 +124,60 @@ func (s *TaskScanner) Stop() {
 	log.LogDebugf("scanner(%v) stopped", s.ID)
 }
 
-func (s *TaskScanner) DoneScanning() bool {
+func (s *S3Scanner) Start() (err error) {
+	request := s.adminTask.Request.(*proto.RuleTaskRequest)
+	response := s.adminTask.Response.(*proto.RuleTaskResponse)
+	perfixInode, mode, err := s.FindPrefixInode()
+	if err != nil {
+		log.LogWarnf("startScan: node path(%v) found in volume(%v), err(%v), scanning done!",
+			s.filter.Prefix, request.Task.VolName, err)
+		t := time.Now()
+		response.EndTime = &t
+		response.Status = proto.TaskSucceeds
+
+		s.lcnode.scannerMutex.Lock()
+		delete(s.lcnode.s3Scanners, s.ID)
+		s.lcnode.scannerMutex.Unlock()
+
+		//l.respondToMaster(s.adminTask)
+		return
+	}
+
+	go s.scan()
+
+	prefixDentry := &proto.ScanDentry{
+		Inode: perfixInode,
+		Type:  mode,
+	}
+
+	t := time.Now()
+	response.StartTime = &t
+	if os.FileMode(mode).IsDir() {
+		log.LogDebugf("startScan: first dir entry(%v) in!", prefixDentry)
+		s.dirChan.In <- prefixDentry
+	} else {
+		log.LogDebugf("startScan: first file entry(%v) in!", prefixDentry)
+		s.fileChan.In <- prefixDentry
+	}
+
+	if s.abortFilter != nil {
+		scanMultipart := func() {
+			s.incompleteMultiPartScan(response)
+		}
+		_, _ = s.fileRPoll.Submit(scanMultipart)
+	}
+
+	go s.checkScanning()
+	return
+}
+
+func (s *S3Scanner) DoneScanning() bool {
 	log.LogDebugf("dirChan.Len(%v) fileChan.Len(%v) fileRPoll.RunningNum(%v) dirRPoll.RunningNum(%v)",
 		s.dirChan.Len(), s.fileChan.Len(), s.fileRPoll.RunningNum(), s.dirRPoll.RunningNum())
 	return s.dirChan.Len() == 0 && s.fileChan.Len() == 0 && s.fileRPoll.RunningNum() == 0 && s.dirRPoll.RunningNum() == 0
 }
 
-func (s *TaskScanner) batchAbortIncompleteMultiPart(expriredInfos []*proto.ExpiredMultipartInfo, resp *proto.RuleTaskResponse) (err error) {
+func (s *S3Scanner) batchAbortIncompleteMultiPart(expriredInfos []*proto.ExpiredMultipartInfo, resp *proto.RuleTaskResponse) (err error) {
 
 	for _, info := range expriredInfos {
 		// release part data
@@ -162,7 +209,7 @@ func (s *TaskScanner) batchAbortIncompleteMultiPart(expriredInfos []*proto.Expir
 	return nil
 }
 
-func (s *TaskScanner) incompleteMultiPartScan(resp *proto.RuleTaskResponse) {
+func (s *S3Scanner) incompleteMultiPartScan(resp *proto.RuleTaskResponse) {
 	expriredInfos, err := s.mw.BatchGetExpiredMultipart(s.abortFilter.Prefix, s.abortFilter.DaysAfterInitiation)
 	if err == syscall.ENOENT {
 		log.LogDebugf("incompleteMultiPartScan: no expired multipart")
@@ -172,7 +219,7 @@ func (s *TaskScanner) incompleteMultiPartScan(resp *proto.RuleTaskResponse) {
 	_ = s.batchAbortIncompleteMultiPart(expriredInfos, resp)
 }
 
-func (s *TaskScanner) handFile(dentry *proto.ScanDentry) {
+func (s *S3Scanner) handlFile(dentry *proto.ScanDentry) {
 	log.LogDebugf("scan file dentry(%v)", dentry)
 	if dentry.DelInode {
 		_, err := s.mw.Delete_ll(dentry.ParentId, dentry.Name, false)
@@ -203,7 +250,7 @@ func (s *TaskScanner) handFile(dentry *proto.ScanDentry) {
 	}
 }
 
-func (s *TaskScanner) handleDir(dentry *proto.ScanDentry, resp *proto.RuleTaskResponse) {
+func (s *S3Scanner) handleDir(dentry *proto.ScanDentry, resp *proto.RuleTaskResponse) {
 	log.LogDebugf("scan dir dentry(%v)", dentry)
 	children, err := s.mw.ReadDir_ll(dentry.Inode)
 	if err != nil && err != syscall.ENOENT {
@@ -234,7 +281,7 @@ func (s *TaskScanner) handleDir(dentry *proto.ScanDentry, resp *proto.RuleTaskRe
 	}
 }
 
-func (s *TaskScanner) handleDirLimit(dentry *proto.ScanDentry) {
+func (s *S3Scanner) handleDirLimit(dentry *proto.ScanDentry) {
 	log.LogDebugf("scan dir dentry(%v)", dentry)
 
 	marker := ""
@@ -289,7 +336,7 @@ func (s *TaskScanner) handleDirLimit(dentry *proto.ScanDentry) {
 
 //handleDirLimitDepthFirst used to scan dir tree in depth when size of dirChan.In grow too much.
 //consider 40 Bytes is the ave size of proto.ScanDentry, 100 million ScanDentries may take up to around 4GB of Memory
-func (s *TaskScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
+func (s *S3Scanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 	log.LogDebugf("scan dir dentry(%v)", dentry)
 
 	marker := ""
@@ -352,7 +399,7 @@ func (s *TaskScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 
 }
 
-func (s *TaskScanner) getDirJob(dentry *proto.ScanDentry) (job func()) {
+func (s *S3Scanner) getDirJob(dentry *proto.ScanDentry) (job func()) {
 	//no need to lock
 	if s.dirChan.Len()+defaultRoutingNumPerTask > defaultMaxChanUnm {
 		log.LogDebugf("getDirJob: Depth first job")
@@ -368,7 +415,7 @@ func (s *TaskScanner) getDirJob(dentry *proto.ScanDentry) (job func()) {
 	return
 }
 
-func (s *TaskScanner) scan() {
+func (s *S3Scanner) scan() {
 	log.LogDebugf("Enter scan")
 	defer func() {
 		log.LogDebugf("Exit scan")
@@ -383,12 +430,12 @@ func (s *TaskScanner) scan() {
 			} else {
 				dentry := val.(*proto.ScanDentry)
 				job := func() {
-					s.handFile(dentry)
+					s.handlFile(dentry)
 				}
 
 				_, err := s.fileRPoll.Submit(job)
 				if err != nil {
-					log.LogErrorf("handFile failed, err(%v)", err)
+					log.LogErrorf("handlFile failed, err(%v)", err)
 				}
 
 			}
@@ -402,12 +449,12 @@ func (s *TaskScanner) scan() {
 				} else {
 					dentry := val.(*proto.ScanDentry)
 					job := func() {
-						s.handFile(dentry)
+						s.handlFile(dentry)
 					}
 
 					_, err := s.fileRPoll.Submit(job)
 					if err != nil {
-						log.LogErrorf("handFile failed, err(%v)", err)
+						log.LogErrorf("handlFile failed, err(%v)", err)
 					}
 
 				}
@@ -428,7 +475,8 @@ func (s *TaskScanner) scan() {
 	}
 }
 
-func (s *TaskScanner) checkScanning(adminTask *proto.AdminTask, resp *proto.RuleTaskResponse, l *LcNode) {
+//func (s *S3Scanner) checkScanning(adminTask *proto.AdminTask, resp *proto.RuleTaskResponse) {
+func (s *S3Scanner) checkScanning() {
 	dur := time.Second * time.Duration(scanCheckInterval)
 	taskCheckTimer := time.NewTimer(dur)
 	for {
@@ -453,28 +501,30 @@ func (s *TaskScanner) checkScanning(adminTask *proto.AdminTask, resp *proto.Rule
 					atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, scannedNum)
 					s.batchDentries.Clear()
 				} else {
-					log.LogInfof("scan completed for task(%v)", adminTask)
+					log.LogInfof("scan completed for task(%v)", s.adminTask)
 					taskCheckTimer.Stop()
 					t := time.Now()
-					resp.EndTime = &t
-					resp.Status = proto.TaskSucceeds
-					resp.Done = true
-					resp.ID = s.ID
-					resp.RoutineID = s.RoutineID
-					resp.Volume = s.Volume
-					resp.Prefix = s.filter.Prefix
-					resp.ExpiredNum = s.currentStat.ExpiredNum
-					resp.FileScannedNum = s.currentStat.FileScannedNum
-					resp.DirScannedNum = s.currentStat.DirScannedNum
-					resp.TotalInodeScannedNum = s.currentStat.TotalInodeScannedNum
-					resp.AbortedIncompleteMultipartNum = s.currentStat.AbortedIncompleteMultipartNum
-					resp.ErrorSkippedNum = s.currentStat.ErrorSkippedNum
+					response := s.adminTask.Response.(*proto.RuleTaskResponse)
+					response.EndTime = &t
+					response.Status = proto.TaskSucceeds
+					response.Done = true
+					response.ID = s.ID
+					response.RoutineID = s.RoutineID
+					response.Volume = s.Volume
+					response.Prefix = s.filter.Prefix
+					response.ExpiredNum = s.currentStat.ExpiredNum
+					response.FileScannedNum = s.currentStat.FileScannedNum
+					response.DirScannedNum = s.currentStat.DirScannedNum
+					response.TotalInodeScannedNum = s.currentStat.TotalInodeScannedNum
+					response.AbortedIncompleteMultipartNum = s.currentStat.AbortedIncompleteMultipartNum
+					response.ErrorSkippedNum = s.currentStat.ErrorSkippedNum
 
-					l.scannerMutex.Lock()
-					delete(l.scanners, s.ID)
-					l.scannerMutex.Unlock()
+					s.lcnode.scannerMutex.Lock()
+					delete(s.lcnode.s3Scanners, s.ID)
+					s.Stop()
+					s.lcnode.scannerMutex.Unlock()
 
-					l.respondToMaster(adminTask)
+					s.lcnode.respondToMaster(s.adminTask)
 					return
 				}
 
