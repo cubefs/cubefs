@@ -22,7 +22,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"math"
-	"sort"
 	"sync"
 	"time"
 
@@ -714,6 +713,32 @@ func (i *Inode) MultiLayerClearExtByVer(layer int, dVerSeq uint64) (delExtents [
 	return
 }
 
+func mergeExtentArr(nums1 []proto.ExtentKey, nums2 []proto.ExtentKey) []proto.ExtentKey {
+	m := len(nums1)
+	n := len(nums2)
+	sorted := make([]proto.ExtentKey, 0, m+n)
+	p1, p2 := 0, 0
+	for {
+		if p1 == m {
+			sorted = append(sorted, nums2[p2:]...)
+			break
+		}
+		if p2 == n {
+			sorted = append(sorted, nums1[p1:]...)
+			break
+		}
+		if nums1[p1].FileOffset < nums2[p2].FileOffset {
+			sorted = append(sorted, nums1[p1])
+			p1++
+		} else {
+			sorted = append(sorted, nums2[p2])
+			p2++
+		}
+	}
+	copy(nums1, sorted)
+	return sorted
+}
+
 // Restore ext info to older version or deleted if no right version
 // The list(multiVersions) contains all point of modification on inode, each ext must belong to one layer.
 // Once the layer be deleted and layer ver be changed to upper layer, the ext belongs is not exist and can be dropped
@@ -750,16 +775,11 @@ func (i *Inode) RestoreExts2NextLayer(delExtentsOrigin []proto.ExtentKey, curVer
 		return
 	}
 
-	i.PrintAllVersionInfo()
+	//i.PrintAllVersionInfo()
 
-	i.multiVersions[idx].Extents.eks = append(i.multiVersions[idx].Extents.eks, specSnapExtent...)
+	i.multiVersions[idx].Extents.eks = mergeExtentArr(i.multiVersions[idx].Extents.eks, specSnapExtent)
 
-	sort.SliceStable(
-		i.multiVersions[idx].Extents.eks, func(w, z int) bool {
-			return i.multiVersions[idx].Extents.eks[w].FileOffset < i.multiVersions[idx].Extents.eks[z].FileOffset
-		})
-
-	i.PrintAllVersionInfo()
+	//i.PrintAllVersionInfo()
 	return
 }
 
