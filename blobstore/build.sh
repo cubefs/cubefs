@@ -28,15 +28,13 @@ check=$1
 pushd ${INSTALLDIR}
 if [ ! -f lib/libz.a ]; then
     rm -rf zlib-${ZLIB_VER}*
-    if [ ! -f zlib-${ZLIB_VER}.tar.gz ]; then
-        wget http://zlib.net/zlib-${ZLIB_VER}.tar.gz
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-        tar -zxf zlib-${ZLIB_VER}.tar.gz
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
+    wget http://zlib.net/zlib-${ZLIB_VER}.tar.gz
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    tar -zxf zlib-${ZLIB_VER}.tar.gz
+    if [ $? -ne 0 ]; then
+        exit 1
     fi
     pushd zlib-${ZLIB_VER}
     CFLAGS='-fPIC' ./configure --prefix=${INSTALLDIR} --static
@@ -48,15 +46,13 @@ fi
 
 if [ ! -f lib/libbz2.a ]; then
     rm -rf bzip2-bzip2-${BZIP2_VER}*
-    if [ ! -f bzip2-bzip2-${BZIP2_VER}.tar.gz ]; then
-        wget https://gitlab.com/bzip2/bzip2/-/archive/bzip2-${BZIP2_VER}/bzip2-bzip2-${BZIP2_VER}.tar.gz
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-        tar -zxf bzip2-bzip2-${BZIP2_VER}.tar.gz
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
+    wget https://gitlab.com/bzip2/bzip2/-/archive/bzip2-${BZIP2_VER}/bzip2-bzip2-${BZIP2_VER}.tar.gz
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    tar -zxf bzip2-bzip2-${BZIP2_VER}.tar.gz
+    if [ $? -ne 0 ]; then
+        exit 1
     fi
     pushd bzip2-bzip2-${BZIP2_VER}
     make CFLAGS='-fPIC -O2 -g -D_FILE_OFFSET_BITS=64'
@@ -67,15 +63,13 @@ fi
 
 if [ ! -f lib/libzstd.a ]; then
     rm -rf zstd-${ZSTD_VER}*
-    if [ ! -f zstd-${ZSTD_VER}.tar.gz ]; then
-        wget https://github.com/facebook/zstd/archive/v${ZSTD_VER}.tar.gz -O zstd-${ZSTD_VER}.tar.gz ${check}
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-        tar -zxf zstd-${ZSTD_VER}.tar.gz
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
+    wget https://github.com/facebook/zstd/archive/v${ZSTD_VER}.tar.gz -O zstd-${ZSTD_VER}.tar.gz ${check}
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    tar -zxf zstd-${ZSTD_VER}.tar.gz
+    if [ $? -ne 0 ]; then
+        exit 1
     fi
     pushd zstd-${ZSTD_VER}/lib
     make CFLAGS='-fPIC -O2'
@@ -85,16 +79,14 @@ if [ ! -f lib/libzstd.a ]; then
 fi
 
 if [ ! -f lib/liblz4.a ]; then
-  rm -rf lz4-${LZ4_VER}*
-    if [ ! -f lz4-${LZ4_VER}.tar.gz ]; then
-        wget https://github.com/lz4/lz4/archive/v${LZ4_VER}.tar.gz -O lz4-${LZ4_VER}.tar.gz ${check}
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-        tar -zxf lz4-${LZ4_VER}.tar.gz
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
+    rm -rf lz4-${LZ4_VER}*
+    wget https://github.com/lz4/lz4/archive/v${LZ4_VER}.tar.gz -O lz4-${LZ4_VER}.tar.gz ${check}
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    tar -zxf lz4-${LZ4_VER}.tar.gz
+    if [ $? -ne 0 ]; then
+        exit 1
     fi
     pushd lz4-${LZ4_VER}/lib
     make CFLAGS='-fPIC -O2'
@@ -105,15 +97,13 @@ fi
 
 if [ ! -f lib/libsnappy.a ]; then
     rm -rf snappy-${SNAPPY_VER}*
-    if [ ! -f snappy-${SNAPPY_VER}.tar.gz ]; then
-        wget https://github.com/google/snappy/archive/${SNAPPY_VER}.tar.gz -O snappy-${SNAPPY_VER}.tar.gz ${check}
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-        tar -zxf snappy-${SNAPPY_VER}.tar.gz
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
+    wget https://github.com/google/snappy/archive/${SNAPPY_VER}.tar.gz -O snappy-${SNAPPY_VER}.tar.gz ${check}
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    tar -zxf snappy-${SNAPPY_VER}.tar.gz
+    if [ $? -ne 0 ]; then
+        exit 1
     fi
     mkdir snappy-${SNAPPY_VER}/build
     pushd snappy-${SNAPPY_VER}/build
@@ -127,16 +117,14 @@ if [ ! -f lib/libsnappy.a ]; then
 fi
 
 if [ ! -f lib/librocksdb.a ]; then
-    rm -rf ${INSTALLDIR}/include/rocksdb rocksdb-${ROCKSDB_VER}
-    if [ ! -f rocksdb-${ROCKSDB_VER}.tar.gz ]; then
-        wget https://github.com/facebook/rocksdb/archive/refs/tags/v${ROCKSDB_VER}.tar.gz -O rocksdb-${ROCKSDB_VER}.tar.gz ${check}
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-        tar -zxf rocksdb-${ROCKSDB_VER}.tar.gz
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
+    rm -rf ${INSTALLDIR}/include/rocksdb rocksdb-${ROCKSDB_VER}*
+    wget https://github.com/facebook/rocksdb/archive/refs/tags/v${ROCKSDB_VER}.tar.gz -O rocksdb-${ROCKSDB_VER}.tar.gz ${check}
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    tar -zxf rocksdb-${ROCKSDB_VER}.tar.gz
+    if [ $? -ne 0 ]; then
+        exit 1
     fi
     pushd rocksdb-${ROCKSDB_VER}
     CCMAJOR=`gcc -dumpversion | awk -F. '{print $1}'`

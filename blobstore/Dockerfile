@@ -1,13 +1,13 @@
-FROM golang:1.15
+FROM golang:1.16
 
 
-ENV JAVA_HOME=jdk1.8.0_321
+ENV JAVA_HOME=bin/jdk1.8.0_321
 ENV CLASSPATH=$CLASSPATH:$JAVA_HOME/lib
 ENV PATH=$PATH:$JAVA_HOME/bin
 
 WORKDIR /apps
-VOLUME ["/apps/conf"]
-COPY   ./bin/ /apps/
+VOLUME ["/apps/conf", "/apps/bin"]
+COPY   ./bin/ /apps/bin
 COPY  ./cmd/clustermgr/clustermgr.conf /apps/conf/clustermgr.conf
 COPY  ./cmd/clustermgr/clustermgr1.conf /apps/conf/clustermgr1.conf
 COPY  ./cmd/clustermgr/clustermgr2.conf /apps/conf/clustermgr2.conf

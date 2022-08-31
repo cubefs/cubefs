@@ -1,76 +1,103 @@
 #!/bin/bash
 
+consul=$1
+
+if [ ! -d ./run/logs ]; then
+  mkdir -p ./run/logs
+fi
+
 # start consul
-nohup ./consul agent -dev -client 0.0.0.0 >> /tmp/consul.log  2>&1 &
-
-uuid=`./kafka_2.13-3.1.0/bin/kafka-storage.sh random-uuid`
-./kafka_2.13-3.1.0/bin/kafka-storage.sh format -t $uuid -c kafka_2.13-3.1.0/config/kraft/server.properties
-./kafka_2.13-3.1.0/bin/kafka-server-start.sh -daemon kafka_2.13-3.1.0/config/kraft/server.properties
-
-# Start the clustermgr
-nohup ./clustermgr -f conf/clustermgr.conf >> /tmp/clustermgr.log  2>&1 &
-nohup ./clustermgr -f conf/clustermgr1.conf >> /tmp/clustermgr1.log  2>&1 &
-nohup ./clustermgr -f conf/clustermgr2.conf >> /tmp/clustermgr2.log  2>&1 &
-status=$?
-if [ $status -ne 0 ]; then
-  echo "Failed to start clustermgr: $status"
-  exit $status
-fi
-
-sleep 30
-mkdir -p ./run/disks/disk{1..6}
-# Start the blobnode
-nohup ./blobnode -f  conf/blobnode.conf >> /tmp/blobnode.log 2>&1 &
-status=$?
-if [ $status -ne 0 ]; then
-  echo "Failed to start blobnode: $status"
-  exit $status
-fi
-
-# Start the proxy
-nohup ./proxy -f conf/proxy.conf >> /tmp/prxoy.log 2>&1 &
-status=$?
-if [ $status -ne 0 ]; then
-  echo "Failed to start proxy: $status"
-  exit $status
-fi
-
-sleep 60
-# Start the access
-nohup ./access -f conf/access.conf >> /tmp/access.log 2>&1 &
-status=$?
-if [ $status -ne 0 ]; then
-  echo "Failed to start access: $status"
-  exit $status
-fi
-
-# Start the scheduler
-nohup ./scheduler -f conf/scheduler.conf >> /tmp/scheduler.log 2>&1 &
-status=$?
-if [ $status -ne 0 ]; then
-  echo "Failed to start scheduler: $status"
-  exit $status
-fi
-
-
-
-# Naive check runs checks once a minute to see if either of the processes exited.
-# This illustrates part of the heavy lifting you need to do if you want to run
-# more than one service in a container. The container exits with an error
-# if it detects that either of the processes has exited.
-# Otherwise it loops forever, waking up every 60 seconds
-
-processes="clustermgr blobnode access proxy scheduler"
-for process in $processes;
-do
-  ps aux |grep $process |grep -q -v grep
-  PROCESS_STATUS=$?
-  # If the greps above find anything, they exit with 0 status
-  # If they are not both 0, then something is wrong
-  if [ $PROCESS_STATUS -ne 0 ]; then
-    echo "the $process has already exited."
+if [ "${consul}" == "--consul" ]; then
+  nohup ./bin/consul agent -dev -client 0.0.0.0 >> ./run/logs/consul.log 2>&1 &
+  # check consul running
+  sleep 1
+  num=`ps -ef | egrep ./bin/consul | egrep -v "grep|vi|tail" | wc -l`
+  if [ ${num} -lt 1 ];then
+    echo "Failed to start consul."
     exit 1
   fi
+fi
+
+# start kafka
+uuid=`./bin/kafka_2.13-3.1.0/bin/kafka-storage.sh random-uuid`
+./bin/kafka_2.13-3.1.0/bin/kafka-storage.sh format -t $uuid -c bin/kafka_2.13-3.1.0/config/kraft/server.properties
+./bin/kafka_2.13-3.1.0/bin/kafka-server-start.sh -daemon bin/kafka_2.13-3.1.0/config/kraft/server.properties
+# check kafka running
+sleep 1
+num=`ps -ef | grep kafka | grep -v "grep|vi|tail" | wc -l`
+if [ ${num} -le 1 ];then
+	echo "Failed to start kafka."
+	exit 1
+fi
+
+# Start the clustermgr
+nohup ./bin/clustermgr -f conf/clustermgr.conf >> ./run/logs/clustermgr.log  2>&1 &
+nohup ./bin/clustermgr -f conf/clustermgr1.conf >> ./run/logs/clustermgr1.log  2>&1 &
+nohup ./bin/clustermgr -f conf/clustermgr2.conf >> ./run/logs/clustermgr2.log  2>&1 &
+sleep 5
+num=`ps -ef | egrep "./bin/clustermgr" |  egrep -v "vi|tail|grep" | wc -l`
+if [ $num -ne 3 ]; then
+  echo "Failed to start clustermgr"
+fi
+
+sleep 15
+echo "start clustermgr ok"
+
+# Start the proxy
+nohup ./bin/proxy -f conf/proxy.conf >> ./run/logs/proxy.log 2>&1 &
+sleep 1
+num=`ps -ef | egrep ./bin/proxy |  egrep -v "vi|tail|grep" | wc -l`
+if [ ${num} -lt 1 ];then
+	echo "The proxy start failed."
+	exit 1
+fi
+echo "start proxy ok"
+
+# Start the scheduler
+nohup ./bin/scheduler -f conf/scheduler.conf >> ./run/logs/scheduler.log 2>&1 &
+sleep 1
+num=`ps -ef | egrep ./bin/scheduler |  egrep -v "vi|tail|grep" | wc -l`
+if [ ${num} -lt 1 ];then
+	echo "The scheduler start failed."
+	exit 1
+fi
+echo "start scheduler ok"
+
+mkdir -p ./run/disks/disk{1..8}
+# Start the blobnode
+nohup ./bin/blobnode -f conf/blobnode.conf >> ./run/logs/blobnode.log 2>&1 &
+sleep 1
+num=`ps -ef | egrep ./bin/blobnode |  egrep -v "vi|tail|grep" | wc -l`
+if [ ${num} -lt 1 ];then
+	echo "The blobnode start failed."
+	exit 1
+fi
+echo "start blobnode ok"
+
+
+if [ "${consul}" == "--consul" ]; then
+  echo "Wait clustermgr register to consul..."
+  sleep 80
+fi
+
+# Start the access
+nohup ./bin/access -f conf/access.conf >> ./run/logs/access.log 2>&1 &
+sleep 1
+num=`ps -ef | egrep ./bin/access |  egrep -v "vi|tail|grep" | wc -l`
+if [ ${num} -lt 1 ];then
+	echo "The access start failed."
+	exit 1
+fi
+echo "start blobstore service successfully, wait minutes for internal state preparation"
+
+# wait for docker, avoid container exit
+while true
+ do
+    sleep 300
 done
+
+
+
+
 
 
