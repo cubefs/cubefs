@@ -732,14 +732,14 @@ func TestDiskRepairerQueryTask(t *testing.T) {
 	taskID := "task"
 	{
 		mgr := newDiskRepairer(t)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any).Return(nil, errMock)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(nil, errMock)
 		_, err := mgr.QueryTask(ctx, taskID)
 		require.True(t, errors.Is(err, errMock))
 	}
 	{
 		mgr := newDiskRepairer(t)
 		t1 := mockGenMigrateTask(proto.TaskTypeDiskRepair, "z0", 1, 1, proto.MigrateStatePrepared, newMockVolInfoMap())
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any).Return(t1, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(t1, nil)
 		_, err := mgr.QueryTask(ctx, taskID)
 		require.NoError(t, err)
 	}

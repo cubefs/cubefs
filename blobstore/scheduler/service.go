@@ -93,7 +93,10 @@ func (svr *Service) HTTPTaskReclaim(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-
+	if !client.ValidMigrateTask(args.TaskType, args.TaskID) {
+		c.RespondError(errcode.ErrIllegalArguments)
+		return
+	}
 	ctx := c.Request.Context()
 	reclaimer, err := svr.mgrByType(args.TaskType)
 	if err != nil {
@@ -116,7 +119,10 @@ func (svr *Service) HTTPTaskCancel(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-
+	if !client.ValidMigrateTask(args.TaskType, args.TaskID) {
+		c.RespondError(errcode.ErrIllegalArguments)
+		return
+	}
 	ctx := c.Request.Context()
 	canceler, err := svr.mgrByType(args.TaskType)
 	if err != nil {
@@ -133,7 +139,10 @@ func (svr *Service) HTTPTaskComplete(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-
+	if !client.ValidMigrateTask(args.TaskType, args.TaskID) {
+		c.RespondError(errcode.ErrIllegalArguments)
+		return
+	}
 	ctx := c.Request.Context()
 	completer, err := svr.mgrByType(args.TaskType)
 	if err != nil {
@@ -187,6 +196,10 @@ func (svr *Service) HTTPTaskRenewal(c *rpc.Context) {
 
 		errors := make(map[string]string)
 		for _, id := range ids {
+			if !client.ValidMigrateTask(typ, id) {
+				errors[id] = errcode.ErrIllegalArguments.Error()
+				continue
+			}
 			if err := renewaler.RenewalTask(ctx, args.IDC, id); err != nil {
 				errors[id] = err.Error()
 			}
@@ -206,7 +219,10 @@ func (svr *Service) HTTPTaskReport(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-
+	if !client.ValidMigrateTask(args.TaskType, args.TaskID) {
+		c.RespondError(errcode.ErrIllegalArguments)
+		return
+	}
 	reporter, err := svr.mgrByType(args.TaskType)
 	if err != nil {
 		c.RespondError(err)
@@ -223,7 +239,7 @@ func (svr *Service) HTTPMigrateTaskDetail(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	if args.ID == "" {
+	if args.ID == "" || !client.ValidMigrateTask(args.Type, args.ID) {
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}

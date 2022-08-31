@@ -680,7 +680,7 @@ func (mgr *MigrateMgr) ListAllTaskByDiskID(ctx context.Context, diskID proto.Dis
 
 // GetTask returns task in db
 func (mgr *MigrateMgr) GetTask(ctx context.Context, taskID string) (*proto.MigrateTask, error) {
-	return mgr.clusterMgrCli.GetMigrateTask(ctx, taskID)
+	return mgr.clusterMgrCli.GetMigrateTask(ctx, mgr.taskType, taskID)
 }
 
 // QueryTask implement migrator
