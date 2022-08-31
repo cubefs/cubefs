@@ -26,6 +26,7 @@ using namespace std;
 
 #define IDLE_CONN_TIMEOUT       30
 #define ALIVE_CHECK_INTERVAL_S  1
+#define POLL_CHECK_CNT          3
 #define SEND_TIMEOUT_MS         1000
 #define RECV_TIMEOUT_MS         1000
 #define CONN_TIMEOUT_MS         1000
