@@ -705,5 +705,5 @@ func TestComplicateSnapshotDeletion(t *testing.T) {
 	assert.True(t, mp.fsmCreateDentry(renameDen, false) == proto.OpOk)
 	PrintDirTree(t, 1, "root")
 
-	assert.True(t, false)
+	//assert.True(t, false)
 }
