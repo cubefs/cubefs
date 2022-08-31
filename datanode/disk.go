@@ -164,6 +164,8 @@ func (d *Disk) computeUsage() (err error) {
 		return
 	}
 
+	repairSize := uint64(d.repairAllocSize())
+
 	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize) - d.PreReserveSpace))
 	total := int64(fs.Blocks*uint64(fs.Bsize) - d.DiskRdonlySpace)
 	if total < 0 {
@@ -172,15 +174,16 @@ func (d *Disk) computeUsage() (err error) {
 	d.Total = uint64(total)
 
 	//  available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.PreReserveSpace))
-	available := int64(fs.Bavail*uint64(fs.Bsize) - d.DiskRdonlySpace)
+	available := int64(fs.Bavail*uint64(fs.Bsize) - d.DiskRdonlySpace - repairSize)
 	if available < 0 {
 		available = 0
 	}
 	d.Available = uint64(available)
 
 	//  used := math.Max(0, int64(total - available))
-	free := int64(fs.Bfree*uint64(fs.Bsize) - d.DiskRdonlySpace)
-	used := total - free
+	free := int64(fs.Bfree*uint64(fs.Bsize) - d.DiskRdonlySpace - repairSize)
+
+	used := int64(total - free)
 	if used < 0 {
 		used = 0
 	}
@@ -206,6 +209,19 @@ func (d *Disk) computeUsage() (err error) {
 	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)", d.Path, d.Total, d.Available, d.Used)
 
 	return
+}
+
+func (d *Disk) repairAllocSize() int {
+	allocSize := 0
+	for _, dp := range d.partitionMap {
+		if dp.DataPartitionCreateType == proto.NormalCreateDataPartition || dp.leaderSize <= dp.used {
+			continue
+		}
+
+		allocSize += dp.leaderSize - dp.used
+	}
+
+	return allocSize
 }
 
 func (d *Disk) incReadErrCnt() {
@@ -472,6 +488,18 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 
 func (d *Disk) AddSize(size uint64) {
 	atomic.AddUint64(&d.Allocated, size)
+}
+
+func (d *Disk) updateDisk(allocSize uint64) {
+	d.Lock()
+	defer d.Unlock()
+
+	if d.Available < allocSize {
+		d.Status = proto.ReadOnly
+		d.Available = 0
+		return
+	}
+	d.Available = d.Available - allocSize
 }
 
 func (d *Disk) getSelectWeight() float64 {

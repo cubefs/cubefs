@@ -17,17 +17,19 @@ package datanode
 import (
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
-	"hash/crc32"
 	"math"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/util"
+
+	"fmt"
+	"hash/crc32"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -528,6 +530,11 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	)
 	var loopTimes uint64
 	for currFixOffset < remoteExtentInfo.Size {
+
+		if !dp.Disk().CanWrite() {
+			return fmt.Errorf("disk is full, can't do repair write any more")
+		}
+
 		if currFixOffset >= remoteExtentInfo.Size {
 			break
 		}
