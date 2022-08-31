@@ -60,6 +60,7 @@ func (m *truncateMeta) Decode(b []byte) {
 type metaFile struct {
 	f           *os.File
 	truncOffset int64
+	maybeDirty  bool
 }
 
 func openMetaFile(dir string) (mf *metaFile, hs proto.HardState, meta truncateMeta, err error) {
@@ -130,6 +131,7 @@ func (mf *metaFile) SaveTruncateMeta(meta truncateMeta) error {
 	b := buffer.Alloc(mt_size)
 	meta.Encode(b)
 	_, err := mf.f.WriteAt(b, mf.truncOffset)
+	mf.maybeDirty = true
 	return err
 }
 
@@ -141,9 +143,16 @@ func (mf *metaFile) SaveHardState(hs proto.HardState) error {
 	b := buffer.Alloc(hs_size)
 	hs.Encode(b)
 	_, err := mf.f.WriteAt(b, 0)
+	mf.maybeDirty = true
 	return err
 }
 
-func (mf *metaFile) Sync() error {
-	return mf.f.Sync()
+func (mf *metaFile) Sync() (err error) {
+	if mf.maybeDirty {
+		if err = mf.f.Sync(); err != nil {
+			return
+		}
+		mf.maybeDirty = false
+	}
+	return
 }

@@ -23,6 +23,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,6 +67,30 @@ type DataPartitionMetadata struct {
 	VolumeHAType            proto.CrossRegionHAType
 }
 
+func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
+	return (md == nil && other == nil) ||
+		(md != nil && other != nil && md.VolumeID == other.VolumeID &&
+			md.PartitionID == other.PartitionID &&
+			md.PartitionSize == other.PartitionSize &&
+			md.CreateTime == other.CreateTime &&
+			reflect.DeepEqual(md.Peers, other.Peers) &&
+			reflect.DeepEqual(md.Hosts, other.Hosts) &&
+			reflect.DeepEqual(md.Learners, other.Learners) &&
+			md.DataPartitionCreateType == other.DataPartitionCreateType &&
+			md.LastTruncateID == other.LastTruncateID &&
+			md.LastUpdateTime == other.LastUpdateTime &&
+			md.VolumeHAType == other.VolumeHAType)
+}
+
+func (md *DataPartitionMetadata) Validate() (err error) {
+	md.VolumeID = strings.TrimSpace(md.VolumeID)
+	if len(md.VolumeID) == 0 || md.PartitionID == 0 || md.PartitionSize == 0 {
+		err = errors.New("illegal data partition metadata")
+		return
+	}
+	return
+}
+
 type sortedPeers []proto.Peer
 
 func (sp sortedPeers) Len() int {
@@ -78,15 +103,6 @@ func (sp sortedPeers) Less(i, j int) bool {
 
 func (sp sortedPeers) Swap(i, j int) {
 	sp[i], sp[j] = sp[j], sp[i]
-}
-
-func (md *DataPartitionMetadata) Validate() (err error) {
-	md.VolumeID = strings.TrimSpace(md.VolumeID)
-	if len(md.VolumeID) == 0 || md.PartitionID == 0 || md.PartitionSize == 0 {
-		err = errors.New("illegal data partition metadata")
-		return
-	}
-	return
 }
 
 type WALApplyStatus struct {
@@ -207,6 +223,9 @@ type DataPartition struct {
 
 	inRepairExtents  map[uint64]struct{}
 	inRepairExtentMu sync.Mutex
+
+	persistedApplied  uint64
+	persistedMetadata *DataPartitionMetadata
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -312,6 +331,9 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		(len(dp.config.Hosts) <= 3 && dp.config.VolHAType == proto.CrossRegionHATypeQuorum) {
 		dp.ProposeFetchVolHAType()
 	}
+
+	dp.persistedApplied = appliedID
+	dp.persistedMetadata = meta
 	return
 }
 

@@ -60,7 +60,7 @@ func (dp *DataPartition) persistAppliedID() (err error) {
 		newAppliedIndex    = dp.applyStatus.Applied()
 	)
 
-	if newAppliedIndex == 0 {
+	if newAppliedIndex == 0 || newAppliedIndex <= dp.persistedApplied {
 		return
 	}
 
@@ -89,6 +89,7 @@ func (dp *DataPartition) persistAppliedID() (err error) {
 		return
 	}
 	err = os.Rename(tmpFilename, path.Join(dp.Path(), ApplyIndexFile))
+	dp.persistedApplied = newAppliedIndex
 	return
 }
 
@@ -119,6 +120,11 @@ func (dp *DataPartition) persistMetadata() (err error) {
 	if lastTruncate := dp.applyStatus.LastTruncate(); lastTruncate > metadata.LastTruncateID {
 		metadata.LastTruncateID = lastTruncate
 	}
+
+	if dp.persistedMetadata != nil && dp.persistedMetadata.Equals(metadata) {
+		return
+	}
+
 	var newData []byte
 	if newData, err = json.Marshal(metadata); err != nil {
 		return
@@ -142,6 +148,7 @@ func (dp *DataPartition) persistMetadata() (err error) {
 	if err = os.Rename(tempFileName, originFileName); err != nil {
 		return
 	}
+	dp.persistedMetadata = metadata
 	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(newData))
 	return
 }
