@@ -83,6 +83,10 @@ func (d *Dir) NodeID() uint64 {
 	return d.info.Inode
 }
 
+func (d *Dir) Mode() uint32 {
+	return d.info.Mode
+}
+
 // Create handles the create request.
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 
