@@ -169,11 +169,10 @@ static int new_conn(const char *ip, int port) {
     }
 
     int flag = 1;
-    if(setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&flag, sizeof(flag)) < 0) {
-        return sock_fd;
-    }
-    if(setsockopt(sock_fd, SOL_TCP, TCP_NODELAY, (void *)&flag, sizeof(flag)) < 0) {
-        return sock_fd;
+    if(setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&flag, sizeof(flag)) < 0 ||
+       setsockopt(sock_fd, SOL_TCP, TCP_NODELAY, (void *)&flag, sizeof(flag)) < 0) {
+        libc_close(sock_fd);
+        return -1;
     }
 
     addr.sin_family = AF_INET;
