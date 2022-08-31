@@ -50,7 +50,7 @@ func (v *volumeMgr) retain(ctx context.Context) {
 	if len(retainTokenArgs) == 0 {
 		return
 	}
-	span.Debugf("retain tokens: %v, lens:%v", retainTokenArgs, len(retainTokenArgs))
+	span.Debugf("retain tokens: %v, lens: %v", retainTokenArgs, len(retainTokenArgs))
 	args := &clustermgr.RetainVolumeArgs{
 		Tokens: retainTokenArgs,
 	}
@@ -59,7 +59,7 @@ func (v *volumeMgr) retain(ctx context.Context) {
 		span.Errorf("retain volume from clusterMgr failed: %v", err)
 		return
 	}
-	span.Debugf("retain result: %#v, lens:%v\n", retainVolume, len(retainVolume.RetainVolTokens))
+	span.Debugf("retain result: %#v, lens: %v\n", retainVolume, len(retainVolume.RetainVolTokens))
 	v.handleRetainResult(ctx, retainTokenArgs, retainVolume.RetainVolTokens)
 }
 
@@ -82,7 +82,7 @@ func (v *volumeMgr) handleFullVols(ctx context.Context) {
 		if len(fullVols) > 0 {
 			for _, vid := range fullVols {
 				volInfo.volumes.Delete(vid)
-				span.Debugf("volume is full, vid:%v,codeMode:%v", vid, codeMode)
+				span.Debugf("volume is full, vid: %v,codeMode: %v", vid, codeMode)
 			}
 		}
 	}
@@ -100,7 +100,7 @@ func (v *volumeMgr) handleRetainResult(ctx context.Context, retainTokenArgs []st
 		}
 		return
 	}
-	tokenMap := make(map[string]int)
+	tokenMap := make(map[string]int, len(retainRet))
 	for _, infos := range retainRet {
 		_, vid, err := proto.DecodeToken(infos.Token)
 		if err != nil {
@@ -130,7 +130,7 @@ func (v *volumeMgr) discardVolume(ctx context.Context, token string) (err error)
 	if err != nil {
 		return
 	}
-	span.Debugf("retain failed vid:%v", vid)
+	span.Debugf("retain failed vid: %v", vid)
 	for _, modeInfo := range v.modeInfos {
 		if vol, ok := modeInfo.volumes.Get(vid); ok {
 			vol.mu.Lock()
@@ -141,7 +141,7 @@ func (v *volumeMgr) discardVolume(ctx context.Context, token string) (err error)
 			return
 		}
 	}
-	return errors.New("discardVolume, vid not in cache ")
+	return errors.New("discardVolume, vid not in cache")
 }
 
 // Generate volume information for lease renewal
