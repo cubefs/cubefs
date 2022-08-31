@@ -1,8 +1,4 @@
 #include "conn_pool.h"
-#include "libc_operation.h"
-#include <sys/ioctl.h>
-#include <signal.h>
-#include <poll.h>
 
 static int new_conn(const char *ip, int port);
 
@@ -163,12 +159,20 @@ int set_fd_timeout(int sock_fd, int64_t recv_timeout_ms, int64_t send_timeout_ms
     return 0;
 }
 
-int new_conn(const char *ip, int port) {
+static int new_conn(const char *ip, int port) {
     int sock_fd = -1;
     int ret = 0;
     struct sockaddr_in addr;
 
     if((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        return sock_fd;
+    }
+
+    int flag = 1;
+    if(setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&flag, sizeof(flag)) < 0) {
+        return sock_fd;
+    }
+    if(setsockopt(sock_fd, SOL_TCP, TCP_NODELAY, (void *)&flag, sizeof(flag)) < 0) {
         return sock_fd;
     }
 

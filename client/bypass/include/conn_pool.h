@@ -2,10 +2,14 @@
 #define CONN_POOL_H
 
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
+#include <poll.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <time.h>
@@ -16,6 +20,7 @@
 #include <list>
 #include <string>
 #include <sstream>
+#include "libc_operation.h"
 
 using namespace std;
 
