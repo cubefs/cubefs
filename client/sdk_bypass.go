@@ -578,9 +578,23 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		gClientManager.wg.Add(2)
 		go func() {
 			defer gClientManager.wg.Done()
-			listenErr := server.ListenAndServe()
-			if listenErr != nil && listenErr != http.ErrServerClosed && isMysql() {
-				syslog.Printf("listen prof port [%v] failed: %v", gClientManager.profPort, err)
+			i := 0
+			for ; i < 300; i++ {
+				listenErr := server.ListenAndServe()
+				if listenErr == http.ErrServerClosed {
+					syslog.Printf("Stop listen prof port [%v]", gClientManager.profPort)
+					break
+				}
+				if i%30 == 0 {
+					syslog.Printf("listen prof port [%v] failed: %v, try %d times", gClientManager.profPort, listenErr, i+1)
+				}
+				if !isMysql() {
+					break
+				}
+				time.Sleep(time.Second)
+			}
+			if i == 300 {
+				syslog.Printf("listen prof port [%v] failed. exit.", gClientManager.profPort)
 				os.Exit(1)
 			}
 		}()
