@@ -1,6 +1,8 @@
 #include "conn_pool.h"
 #include "libc_operation.h"
 #include <sys/ioctl.h>
+#include <signal.h>
+#include <poll.h>
 
 static int new_conn(const char *ip, int port);
 
@@ -76,6 +78,39 @@ static void* check_alive_func(void* args) {
 
     wait_close_fds.clear();
     return NULL;
+}
+
+int check_conn_timeout_poll(int sock_fd,  int64_t timeout_ms) {
+    struct pollfd wfds[1];
+    int ret = 0;
+    int error = 0;
+    socklen_t len = sizeof(error);
+
+    wfds[0].fd = sock_fd;
+    wfds[0].events = POLLOUT;
+    wfds[0].revents = 0;
+    while (1) {
+        ret = poll(wfds, 1, timeout_ms);
+        if (ret < 0 && error == EINTR) {
+            continue;
+        }
+
+        break;
+    }
+
+    if (ret <= 0) {
+        return -1;
+    }
+
+    if (wfds[0].revents & POLLOUT) {
+        ret = getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, &error, &len);
+        if(error != 0 || ret < 0) {
+            return -1;
+        }
+        return 0;
+    }
+
+    return -1;
 }
 
 int check_conn_timeout(int sock_fd, int64_t timeout_ms) {
@@ -155,7 +190,7 @@ int new_conn(const char *ip, int port) {
             return -1;
         }
 
-        ret = check_conn_timeout(sock_fd, CONN_TIMEOUT_MS);
+        ret = check_conn_timeout_poll(sock_fd, CONN_TIMEOUT_MS);
         if (ret < 0) {
             libc_close(sock_fd);
             return -1;
