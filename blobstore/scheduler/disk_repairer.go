@@ -148,7 +148,7 @@ func (mgr *DiskRepairMgr) clearJunkTasksWhenLoading(ctx context.Context, tasks [
 		}
 		if !disks[task.SourceDiskID] {
 			span.Errorf("has junk task but the disk is not repaired: disk_id[%d], task_id[%s]", task.SourceDiskID, task.TaskID)
-			return errors.New("unexpect migration task")
+			return errcode.ErrUnexpectMigrationTask
 		}
 		span.Warnf("delete junk task: task_id[%s]", task.TaskID)
 		base.InsistOn(ctx, "delete junk task", func() error {
@@ -900,23 +900,25 @@ func (mgr *DiskRepairMgr) Stats() api.MigrateTasksStat {
 }
 
 // Progress repair manager progress
-func (mgr *DiskRepairMgr) Progress(ctx context.Context) (repairingDiskID proto.DiskID, total, repaired int) {
+func (mgr *DiskRepairMgr) Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, repaired int) {
 	span := trace.SpanFromContextSafe(ctx)
-	repairingDiskID = mgr.getRepairingDiskID()
+	migratingDisks = make([]proto.DiskID, 0)
+
+	repairingDiskID := mgr.getRepairingDiskID()
 	if repairingDiskID == base.EmptyDiskID {
-		return base.EmptyDiskID, 0, 0
+		return migratingDisks, 0, 0
 	}
 	meta, err := mgr.clusterMgrCli.GetMigratingDisk(ctx, proto.TaskTypeDiskRepair, repairingDiskID)
 	if err != nil {
 		span.Errorf("find all task failed: err[%+v]", err)
-		return repairingDiskID, 0, 0
+		return migratingDisks, 0, 0
 	}
 	total = int(meta.Disk.UsedChunkCnt)
 	remainTasks, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeDiskRepair, repairingDiskID)
 	if err != nil {
 		span.Errorf("find all task failed: err[%+v]", err)
-		return repairingDiskID, 0, 0
+		return []proto.DiskID{repairingDiskID}, 0, 0
 	}
 	repaired = total - len(remainTasks)
-	return repairingDiskID, total, repaired
+	return []proto.DiskID{repairingDiskID}, total, repaired
 }

@@ -290,20 +290,20 @@ func (svr *Service) HTTPStats(c *rpc.Context) {
 	}
 
 	// stats repair tasks
-	repairDiskID, totalTasksCnt, repairedTasksCnt := svr.diskRepairMgr.Progress(ctx)
+	repairDisks, totalTasksCnt, repairedTasksCnt := svr.diskRepairMgr.Progress(ctx)
 	taskStats.DiskRepair = &api.DiskRepairTasksStat{
 		Enable:           svr.diskRepairMgr.Enabled(),
-		RepairingDiskID:  repairDiskID,
+		RepairingDisks:   repairDisks,
 		TotalTasksCnt:    totalTasksCnt,
 		RepairedTasksCnt: repairedTasksCnt,
 		MigrateTasksStat: svr.diskRepairMgr.Stats(),
 	}
 
 	// stats drop tasks
-	dropDiskID, totalTasksCnt, droppedTasksCnt := svr.diskDropMgr.Progress(ctx)
+	dropDisks, totalTasksCnt, droppedTasksCnt := svr.diskDropMgr.Progress(ctx)
 	taskStats.DiskDrop = &api.DiskDropTasksStat{
 		Enable:           svr.diskDropMgr.Enabled(),
-		DroppingDiskID:   dropDiskID,
+		DroppingDisks:    dropDisks,
 		TotalTasksCnt:    totalTasksCnt,
 		DroppedTasksCnt:  droppedTasksCnt,
 		MigrateTasksStat: svr.diskDropMgr.Stats(),

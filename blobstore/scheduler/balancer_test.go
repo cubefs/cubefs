@@ -87,7 +87,7 @@ func TestBalanceCollectionTask(t *testing.T) {
 	}
 	{
 		mgr := newBalancer(t)
-		mgr.cfg.BalanceDiskCntLimit = 2
+		mgr.cfg.DiskConcurrency = 2
 		mgr.IMigrator.(*MockMigrater).EXPECT().GetMigratingDiskNum().AnyTimes().Return(1)
 
 		disk1 := &client.DiskInfoSimple{

@@ -38,8 +38,30 @@ const (
 )
 
 var (
-	any     = gomock.Any()
-	errMock = errors.New("fake error")
+	any       = gomock.Any()
+	errMock   = errors.New("fake error")
+	testDisk1 = &client.DiskInfoSimple{
+		ClusterID:    1,
+		Idc:          "z0",
+		Rack:         "rack1",
+		Host:         "127.0.0.1:8000",
+		Status:       proto.DiskStatusNormal,
+		DiskID:       1,
+		FreeChunkCnt: 10,
+		UsedChunkCnt: 20,
+		MaxChunkCnt:  700,
+	}
+	testDisk2 = &client.DiskInfoSimple{
+		ClusterID:    1,
+		Idc:          "z0",
+		Rack:         "rack1",
+		Host:         "127.0.0.1:8000",
+		Status:       proto.DiskStatusNormal,
+		DiskID:       2,
+		FreeChunkCnt: 10,
+		UsedChunkCnt: 10,
+		MaxChunkCnt:  700,
+	}
 )
 
 func NewBroker(t *testing.T) *sarama.MockBroker {

@@ -32,7 +32,6 @@ const (
 	defaultClientTimeoutMs            = int64(1000)
 	defaultHostSyncIntervalMs         = int64(1000)
 
-	defaultBalanceDiskCntLimit = 100
 	defaultMaxDiskFreeChunkCnt = int64(1024)
 	defaultMinDiskFreeChunkCnt = int64(20)
 
@@ -215,7 +214,6 @@ func (c *Config) fixKafkaConfig() {
 
 func (c *Config) fixBalanceConfig() {
 	c.Balance.ClusterID = c.ClusterID
-	defaulter.LessOrEqual(&c.Balance.BalanceDiskCntLimit, defaultBalanceDiskCntLimit)
 	defaulter.LessOrEqual(&c.Balance.MaxDiskFreeChunkCnt, defaultMaxDiskFreeChunkCnt)
 	defaulter.LessOrEqual(&c.Balance.MinDiskFreeChunkCnt, defaultMinDiskFreeChunkCnt)
 	c.Balance.CheckAndFix()

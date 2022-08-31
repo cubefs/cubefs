@@ -35,8 +35,9 @@ var (
 
 // scheduler
 var (
-	ErrIllegalTaskType = errors.New("illegal task type")
-	ErrCanNotDropped   = errors.New("disk can not dropped")
+	ErrIllegalTaskType       = errors.New("illegal task type")
+	ErrCanNotDropped         = errors.New("disk can not dropped")
+	ErrUnexpectMigrationTask = errors.New("unexpect migration task")
 
 	// error code
 	ErrNothingTodo = Error(CodeNotingTodo)

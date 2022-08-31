@@ -41,7 +41,6 @@ var (
 
 // BalanceMgrConfig balance task manager config
 type BalanceMgrConfig struct {
-	BalanceDiskCntLimit int   `json:"balance_disk_cnt_limit"`
 	MaxDiskFreeChunkCnt int64 `json:"max_disk_free_chunk_cnt"`
 	MinDiskFreeChunkCnt int64 `json:"min_disk_free_chunk_cnt"`
 	MigrateConfig
@@ -106,10 +105,10 @@ func (mgr *BalanceMgr) collectionTask() (err error) {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "balance_collectionTask")
 	defer span.Finish()
 
-	needBalanceDiskCnt := mgr.cfg.BalanceDiskCntLimit - mgr.IMigrator.GetMigratingDiskNum()
+	needBalanceDiskCnt := mgr.cfg.DiskConcurrency - mgr.IMigrator.GetMigratingDiskNum()
 	if needBalanceDiskCnt <= 0 {
 		span.Warnf("the number of balancing disk is greater than config: current[%d], conf[%d]",
-			mgr.IMigrator.GetMigratingDiskNum(), mgr.cfg.BalanceDiskCntLimit)
+			mgr.IMigrator.GetMigratingDiskNum(), mgr.cfg.DiskConcurrency)
 		return ErrTooManyBalancingTasks
 	}
 

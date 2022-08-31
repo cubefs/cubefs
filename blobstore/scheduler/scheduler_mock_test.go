@@ -418,10 +418,10 @@ func (mr *MockMigraterMockRecorder) Load() *gomock.Call {
 }
 
 // Progress mocks base method.
-func (m *MockMigrater) Progress(arg0 context.Context) (proto.DiskID, int, int) {
+func (m *MockMigrater) Progress(arg0 context.Context) ([]proto.DiskID, int, int) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Progress", arg0)
-	ret0, _ := ret[0].(proto.DiskID)
+	ret0, _ := ret[0].([]proto.DiskID)
 	ret1, _ := ret[1].(int)
 	ret2, _ := ret[2].(int)
 	return ret0, ret1, ret2
@@ -500,8 +500,20 @@ func (mr *MockMigraterMockRecorder) Run() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockMigrater)(nil).Run))
 }
 
+// SetClearJunkTasksWhenLoadingFunc mocks base method.
+func (m *MockMigrater) SetClearJunkTasksWhenLoadingFunc(arg0 clearJunkTasksFunc) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetClearJunkTasksWhenLoadingFunc", arg0)
+}
+
+// SetClearJunkTasksWhenLoadingFunc indicates an expected call of SetClearJunkTasksWhenLoadingFunc.
+func (mr *MockMigraterMockRecorder) SetClearJunkTasksWhenLoadingFunc(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetClearJunkTasksWhenLoadingFunc", reflect.TypeOf((*MockMigrater)(nil).SetClearJunkTasksWhenLoadingFunc), arg0)
+}
+
 // SetLockFailHandleFunc mocks base method.
-func (m *MockMigrater) SetLockFailHandleFunc(arg0 func(context.Context, *proto.MigrateTask)) {
+func (m *MockMigrater) SetLockFailHandleFunc(arg0 lockFailFunc) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetLockFailHandleFunc", arg0)
 }

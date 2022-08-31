@@ -22,7 +22,7 @@ import (
 
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
-	"github.com/cubefs/cubefs/blobstore/common/errors"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -72,7 +72,7 @@ type Migrator interface {
 // IDisKMigrator base interface of disk migrate, such as disk repair and disk drop
 type IDisKMigrator interface {
 	Migrator
-	Progress(ctx context.Context) (repairingDiskID proto.DiskID, total, repaired int)
+	Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, repaired int)
 }
 
 // IManualMigrator interface of manual migrator
@@ -85,7 +85,8 @@ type IManualMigrator interface {
 type IMigrator interface {
 	Migrator
 	// inner interface
-	SetLockFailHandleFunc(lockFailHandleFunc func(ctx context.Context, task *proto.MigrateTask))
+	SetLockFailHandleFunc(lockFailHandleFunc lockFailFunc)
+	SetClearJunkTasksWhenLoadingFunc(clearJunkTasksWhenLoadingFunc clearJunkTasksFunc)
 	GetMigratingDiskNum() int
 	IsMigratingDisk(diskID proto.DiskID) bool
 	ClearDeletedTasks(diskID proto.DiskID)
@@ -95,6 +96,52 @@ type IMigrator interface {
 	ListAllTask(ctx context.Context) (tasks []*proto.MigrateTask, err error)
 	ListAllTaskByDiskID(ctx context.Context, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error)
 	FinishTaskInAdvanceWhenLockFail(ctx context.Context, task *proto.MigrateTask)
+}
+
+type migratingDisks struct {
+	disks map[proto.DiskID]*client.DiskInfoSimple
+	sync.RWMutex
+}
+
+func newMigratingDisks() *migratingDisks {
+	return &migratingDisks{
+		disks: make(map[proto.DiskID]*client.DiskInfoSimple),
+	}
+}
+
+func (m *migratingDisks) add(diskID proto.DiskID, disk *client.DiskInfoSimple) {
+	m.Lock()
+	m.disks[diskID] = disk
+	m.Unlock()
+}
+
+func (m *migratingDisks) delete(diskID proto.DiskID) {
+	m.Lock()
+	delete(m.disks, diskID)
+	m.Unlock()
+}
+
+func (m *migratingDisks) get(diskID proto.DiskID) (disk *client.DiskInfoSimple, exist bool) {
+	m.RLock()
+	disk, exist = m.disks[diskID]
+	m.RUnlock()
+	return
+}
+
+func (m *migratingDisks) list() (disks []*client.DiskInfoSimple) {
+	m.RLock()
+	for _, disk := range m.disks {
+		disks = append(disks, disk)
+	}
+	m.RUnlock()
+	return
+}
+
+func (m *migratingDisks) size() (size int) {
+	m.RLock()
+	size = len(m.disks)
+	m.RUnlock()
+	return
 }
 
 // MigratingVuids record migrating vuid info
@@ -230,6 +277,14 @@ type MigrateConfig struct {
 	base.TaskCommonConfig
 }
 
+type clearJunkTasksFunc func(ctx context.Context, tasks []*proto.MigrateTask) error
+
+var defaultClearJunkTasksWhenLoadingFunc = func(ctx context.Context, tasks []*proto.MigrateTask) error {
+	return nil
+}
+
+type lockFailFunc func(ctx context.Context, task *proto.MigrateTask)
+
 // MigrateMgr migrate manager
 type MigrateMgr struct {
 	closer.Closer
@@ -254,7 +309,9 @@ type MigrateMgr struct {
 
 	taskLogger recordlog.Encoder
 	// handle func when lock volume fail
-	lockFailHandleFunc func(ctx context.Context, task *proto.MigrateTask)
+	lockFailHandleFunc lockFailFunc
+	// clear junk tasks
+	clearJunkTasksWhenLoadingFunc clearJunkTasksFunc
 }
 
 // NewMigrateMgr returns migrate manager
@@ -283,6 +340,8 @@ func NewMigrateMgr(
 		cfg:        conf,
 		taskLogger: taskLogger,
 
+		clearJunkTasksWhenLoadingFunc: defaultClearJunkTasksWhenLoadingFunc,
+
 		Closer: closer.New(),
 	}
 
@@ -291,8 +350,13 @@ func NewMigrateMgr(
 }
 
 // SetLockFailHandleFunc set lock failed func
-func (mgr *MigrateMgr) SetLockFailHandleFunc(lockFailHandleFunc func(ctx context.Context, task *proto.MigrateTask)) {
+func (mgr *MigrateMgr) SetLockFailHandleFunc(lockFailHandleFunc lockFailFunc) {
 	mgr.lockFailHandleFunc = lockFailHandleFunc
+}
+
+// SetClearJunkTasksWhenLoadingFunc set clear junk task func
+func (mgr *MigrateMgr) SetClearJunkTasksWhenLoadingFunc(clearJunkTasksWhenLoadingFunc clearJunkTasksFunc) {
+	mgr.clearJunkTasksWhenLoadingFunc = clearJunkTasksWhenLoadingFunc
 }
 
 // Load load migrate task from database
@@ -309,7 +373,20 @@ func (mgr *MigrateMgr) Load() (err error) {
 	}
 	span.Infof("load task success: task_type[%s], tasks len[%d]", mgr.taskType, len(tasks))
 
+	if len(tasks) == 0 {
+		return
+	}
+
+	disks, err := mgr.listMigratingDisks(ctx)
+	if err != nil {
+		return
+	}
+	var junkTasks []*proto.MigrateTask
 	for i := range tasks {
+		if mgr.isJunkTask(disks, tasks[i]) {
+			junkTasks = append(junkTasks, tasks[i])
+			continue
+		}
 		if tasks[i].Running() {
 			err = base.VolTaskLockerInst().TryLock(ctx, tasks[i].SourceVuid.Vid())
 			if err != nil {
@@ -334,7 +411,34 @@ func (mgr *MigrateMgr) Load() (err error) {
 			return fmt.Errorf("unexpect migrate state: task[%+v]", tasks[i])
 		}
 	}
-	return
+	return mgr.clearJunkTasksWhenLoadingFunc(ctx, junkTasks)
+}
+
+func (mgr *MigrateMgr) isJunkTask(disks *migratingDisks, task *proto.MigrateTask) bool {
+	switch mgr.taskType {
+	case proto.TaskTypeDiskDrop:
+		if _, ok := disks.get(task.SourceDiskID); !ok {
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+func (mgr *MigrateMgr) listMigratingDisks(ctx context.Context) (*migratingDisks, error) {
+	switch mgr.taskType {
+	case proto.TaskTypeDiskDrop:
+		migratingDisks, err := mgr.clusterMgrCli.ListMigratingDisks(ctx, mgr.taskType)
+		if err != nil {
+			return nil, err
+		}
+		disks := newMigratingDisks()
+		for _, disk := range migratingDisks {
+			disks.add(disk.Disk.DiskID, disk.Disk)
+		}
+		return disks, nil
+	}
+	return nil, nil
 }
 
 // Run run migrate task do prepare and finish task phase
@@ -420,7 +524,8 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 	// lock volume
 	err = mgr.clusterMgrCli.LockVolume(ctx, migTask.SourceVuid.Vid())
 	if err != nil {
-		if rpc.DetectStatusCode(err) == errors.CodeLockNotAllow && mgr.lockFailHandleFunc != nil {
+		if rpc.DetectStatusCode(err) == errcode.CodeLockNotAllow && mgr.lockFailHandleFunc != nil {
+			// disk drop lockFailHandleFunc is nil, and can not finished in advance
 			mgr.lockFailHandleFunc(ctx, migTask)
 			return nil
 		}
@@ -512,7 +617,7 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 		// to avoid affecting the deletion process due to caching the old mapping relationship.
 		// If the update is successful, continue with the following process, and return err it fails.
 		httpCode := rpc.DetectStatusCode(err)
-		if httpCode != errors.CodeVuidNotFound && httpCode != errors.CodeDiskBroken {
+		if httpCode != errcode.CodeVuidNotFound && httpCode != errcode.CodeDiskBroken {
 			err = mgr.updateVolumeCache(ctx, migrateTask)
 			if err != nil {
 				return base.ErrUpdateVolumeCache
@@ -598,7 +703,7 @@ func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *pro
 	span.Infof("handle update vol mapping failed: task_id[%s], state[%d], dest vuid[%d]", task.TaskID, task.State, task.Destination.Vuid)
 
 	code := rpc.DetectStatusCode(err)
-	if code == errors.CodeOldVuidNotMatch {
+	if code == errcode.CodeOldVuidNotMatch {
 		span.Panicf("change volume unit relationship failed: old vuid not match")
 	}
 

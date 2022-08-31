@@ -28,7 +28,8 @@ const (
 	defaultCollectIntervalS        = 5
 	defaultCheckTaskIntervalS      = 5
 
-	defaultWorkQueueSize = 20
+	defaultDiskConcurrency = 1
+	defaultWorkQueueSize   = 20
 )
 
 const (
@@ -51,6 +52,7 @@ type TaskCommonConfig struct {
 	WorkQueueSize           int `json:"work_queue_size"`
 	CollectTaskIntervalS    int `json:"collect_task_interval_s"`
 	CheckTaskIntervalS      int `json:"check_task_interval_s"`
+	DiskConcurrency         int `json:"disk_concurrency"`
 }
 
 // CheckAndFix check and fix task common config
@@ -61,4 +63,5 @@ func (conf *TaskCommonConfig) CheckAndFix() {
 	defaulter.LessOrEqual(&conf.WorkQueueSize, defaultWorkQueueSize)
 	defaulter.LessOrEqual(&conf.CollectTaskIntervalS, defaultCollectIntervalS)
 	defaulter.LessOrEqual(&conf.CheckTaskIntervalS, defaultCheckTaskIntervalS)
+	defaulter.LessOrEqual(&conf.DiskConcurrency, defaultDiskConcurrency)
 }
