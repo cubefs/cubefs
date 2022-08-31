@@ -44,7 +44,7 @@ type compactTask struct {
 func (cs *chunk) StartCompact(ctx context.Context) (newcs core.ChunkAPI, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	span.Debugf("==== start compact chunk:(%s) ====", cs.ID())
+	span.Warnf("==== start compact chunk:(%s) ====", cs.ID())
 
 	// new dst
 	now := time.Now().UnixNano()
@@ -94,7 +94,7 @@ func (cs *chunk) StartCompact(ctx context.Context) (newcs core.ChunkAPI, err err
 		cs.setStg(repStg)
 	}
 	cs.lock.Unlock()
-	span.Infof("set chunk:%s compacting success", cs.ID())
+	span.Warnf("set chunk:%s compacting success", cs.ID())
 
 	// wait for all requests before switching handles to complete
 	timestamp := cs.consistent.Synchronize()

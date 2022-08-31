@@ -163,7 +163,7 @@ STOPCOMPACT:
 		span.Errorf("Failed update chunk[%s] status. err:%v", ncsMeta.ChunkId, err)
 	}
 
-	span.Infof("compact success. vuid[%d] chunkfile[%s]", vuid, cs.ID())
+	span.Warnf("compact success. vuid[%d] chunkfile[%s]", vuid, cs.ID())
 
 	return nil
 }

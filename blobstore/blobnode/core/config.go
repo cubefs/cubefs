@@ -112,6 +112,9 @@ func InitConfig(conf *Config) error {
 	if conf.CompactReservedSpaceB <= 0 {
 		conf.CompactReservedSpaceB = DefaultCompactReservedSpaceB
 	}
+	if conf.CompactReservedSpaceB > conf.DiskReservedSpaceB {
+		return errors.New("CompactReservedSpaceB is larger than DiskReservedSpaceB")
+	}
 	if conf.MaxChunks <= 0 {
 		conf.MaxChunks = DefaultMaxChunks
 	}

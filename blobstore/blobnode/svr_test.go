@@ -229,7 +229,7 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{RocksdbOption: kvstore.RocksDBOption{WriteBufferSize: 1024}}},
 			{BaseConfig: core.BaseConfig{Path: path2, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{RocksdbOption: kvstore.RocksDBOption{WriteBufferSize: 1024}}},
 		},
-		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1},
+		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
 		Clustermgr:           cc,
 		HeartbeatIntervalSec: 600,
 	}
@@ -286,7 +286,7 @@ func TestService_CmdpChunk(t *testing.T) {
 			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{RocksdbOption: kvstore.RocksDBOption{WriteBufferSize: 1024}}},
 			{BaseConfig: core.BaseConfig{Path: path2, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{RocksdbOption: kvstore.RocksDBOption{WriteBufferSize: 1024}}},
 		},
-		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1},
+		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
 		Clustermgr:           cc,
 		HeartbeatIntervalSec: 600,
 	}
