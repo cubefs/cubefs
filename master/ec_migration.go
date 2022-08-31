@@ -711,20 +711,8 @@ func (c *Cluster) delDpAlreadyEc(partitionID uint64) (err error) {
 	if dp.EcMigrateStatus != proto.FinishEC {
 		return errors.NewErrorf("EcMigrateStatus != FinishEC")
 	}
-
-	vol, err := c.getVol(dp.VolName)
-	if err != nil {
-		return
-	}
 	dp.doDelDpAlreadyEcTime = time.Now().Unix()
-	if err = c.syncUpdateDataPartition(dp); err != nil {
-		return
-	}
-
-	vol.dataPartitions.RLock()
-	delete(vol.dataPartitions.partitionMap, partitionID)
-	vol.dataPartitions.RUnlock()
-
+	//just record curTime, after 5 min, checkReplicaSaveTime handle dp delete
 	var ecdp *EcDataPartition
 	if ecdp, err = c.getEcPartitionByID(partitionID); err != nil {
 		return
