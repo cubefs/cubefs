@@ -112,6 +112,7 @@ type DataPartition struct {
 	isRaftLeader    bool
 	path            string
 	used            int
+	leaderSize      int
 	extentStore     *storage.ExtentStore
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
@@ -146,6 +147,9 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	if request.CreateType == proto.NormalCreateDataPartition {
 		err = dp.StartRaft()
 	} else {
+		// init leaderSize to partitionSize
+		dp.leaderSize = dp.partitionSize
+		disk.updateDisk(uint64(dp.leaderSize))
 		go dp.StartRaftAfterRepair()
 	}
 	if err != nil {
@@ -240,6 +244,8 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
 		err = dp.StartRaft()
 	} else {
+		// init leaderSize to partitionSize
+		dp.leaderSize = dp.partitionSize
 		go dp.StartRaftAfterRepair()
 	}
 	if err != nil {
@@ -801,8 +807,8 @@ func (dp *DataPartition) pushSyncDeleteRecordFromLeaderMesg() bool {
 	case dp.Disk().syncTinyDeleteRecordFromLeaderOnEveryDisk <- true:
 		return true
 	default:
+		return false
 	}
-	return false
 }
 
 func (dp *DataPartition) consumeTinyDeleteRecordFromLeaderMesg() {

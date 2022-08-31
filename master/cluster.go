@@ -1436,6 +1436,12 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 		}(toBeOffLinePartitions[i])
 	}
 
+	defer func() {
+		if targetAddr != "" {
+			srcNode.ToBeOffline = false
+		}
+	}()
+
 	go func(dataNode *DataNode) {
 		log.LogInfof("action[migrateDataNode] %v wait subroutine  finished", srcAddr)
 		wg.Wait()
@@ -1680,13 +1686,25 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		}
 	}
 
+	newAddr = targetHosts[0]
+	err = c.updateDataNodeSize(newAddr, dp)
+	if err != nil {
+		log.LogErrorf("action[migrateDataPartition] target addr can't be writable, add %s %s", newAddr, err.Error())
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			c.returnDataSize(newAddr, dp)
+		}
+	}()
+
 	// if single replica wait for
 	if dp.isSpecialReplicaCnt() {
 		dp.Status = proto.ReadOnly
 		dp.isRecover = true
 		c.putBadDataPartitionIDs(replica, srcAddr, dp.PartitionID)
 
-		newAddr = targetHosts[0]
 		if err = c.decommissionSingleDp(dp, newAddr, srcAddr); err != nil {
 			goto errHandler
 		}
@@ -1694,7 +1712,6 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		if err = c.removeDataReplica(dp, srcAddr, false, false); err != nil {
 			goto errHandler
 		}
-		newAddr = targetHosts[0]
 		if err = c.addDataReplica(dp, newAddr); err != nil {
 			goto errHandler
 		}
@@ -1813,6 +1830,48 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
 	}
 
 	return
+}
+
+// update datanode size with to replica size
+func (c *Cluster) updateDataNodeSize(addr string, dp *DataPartition) error {
+	leaderSize := dp.Replicas[0].Used
+	dataNode, err := c.dataNode(addr)
+	if err != nil {
+		return err
+	}
+
+	dataNode.Lock()
+	defer dataNode.Unlock()
+
+	if dataNode.AvailableSpace < 10*util.GB {
+		return fmt.Errorf("new datanode %s is not writable %d", addr, dataNode.AvailableSpace)
+	}
+
+	dataNode.LastUpdateTime = time.Now()
+	if dataNode.AvailableSpace < leaderSize {
+		dataNode.AvailableSpace = 0
+		return nil
+	}
+
+	dataNode.AvailableSpace -= leaderSize
+
+	return nil
+}
+
+func (c *Cluster) returnDataSize(addr string, dp *DataPartition) {
+	leaderSize := dp.Replicas[0].Used
+	dataNode, err := c.dataNode(addr)
+	if err != nil {
+		return
+	}
+
+	dataNode.Lock()
+	defer dataNode.Unlock()
+	log.LogWarnf("returnDataSize after error, addr %s, ava %d, leader %d", addr, dataNode.AvailableSpace, leaderSize)
+
+	dataNode.LastUpdateTime = time.Now()
+	dataNode.AvailableSpace += leaderSize
+
 }
 
 func (c *Cluster) buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPartition, addPeer proto.Peer, leaderAddr string) (resp *proto.Packet, err error) {
