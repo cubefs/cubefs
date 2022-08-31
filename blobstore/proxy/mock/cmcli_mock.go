@@ -31,10 +31,10 @@ import (
 )
 
 func ProxyMockClusterMgrCli(tb testing.TB) cm.APIProxy {
-	cmcli := mocks.NewMockClientAPI(gomock.NewController(tb))
-	cmcli.EXPECT().RegisterService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-	cmcli.EXPECT().AllocBid(gomock.Any(), gomock.Any()).Return(&cm.BidScopeRet{StartBid: proto.BlobID(1), EndBid: proto.BlobID(10000)}, nil).AnyTimes()
-	cmcli.EXPECT().GetConfig(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) (ret string, err error) {
+	cmCli := mocks.NewMockClientAPI(gomock.NewController(tb))
+	cmCli.EXPECT().RegisterService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	cmCli.EXPECT().AllocBid(gomock.Any(), gomock.Any()).Return(&cm.BidScopeRet{StartBid: proto.BlobID(1), EndBid: proto.BlobID(10000)}, nil).AnyTimes()
+	cmCli.EXPECT().GetConfig(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) (ret string, err error) {
 		switch key {
 		case proto.CodeModeConfigKey:
 			policy := []codemode.Policy{
@@ -50,7 +50,7 @@ func ProxyMockClusterMgrCli(tb testing.TB) cm.APIProxy {
 		}
 		return
 	}).AnyTimes()
-	cmcli.EXPECT().AllocVolume(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, args *cm.AllocVolumeArgs) (ret cm.AllocatedVolumeInfos, err error) {
+	cmCli.EXPECT().AllocVolume(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, args *cm.AllocVolumeArgs) (ret cm.AllocatedVolumeInfos, err error) {
 		if !args.CodeMode.IsValid() {
 			return cm.AllocatedVolumeInfos{}, errors.New("alloc error")
 		}
@@ -75,7 +75,7 @@ func ProxyMockClusterMgrCli(tb testing.TB) cm.APIProxy {
 
 		return rets, nil
 	}).AnyTimes()
-	cmcli.EXPECT().RetainVolume(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, args *cm.RetainVolumeArgs) (ret cm.RetainVolumes, err error) {
+	cmCli.EXPECT().RetainVolume(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, args *cm.RetainVolumeArgs) (ret cm.RetainVolumes, err error) {
 		now := int64(1598000000)
 		ret = cm.RetainVolumes{}
 		vol := make([]cm.RetainVolume, 0)
@@ -90,5 +90,5 @@ func ProxyMockClusterMgrCli(tb testing.TB) cm.APIProxy {
 		return ret, nil
 	}).AnyTimes()
 
-	return cmcli
+	return cmCli
 }

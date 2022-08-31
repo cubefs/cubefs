@@ -42,29 +42,27 @@ type BlobDeleteConfig struct {
 	MsgSenderCfg kafka.ProducerCfg `json:"msg_sender_cfg"`
 }
 
-// BlobDeleteMgr is blob delete manager
-type BlobDeleteMgr struct {
+// blobDeleteMgr is blob delete manager
+type blobDeleteMgr struct {
 	topic        string
 	delMsgSender Producer
 }
 
 // NewBlobDeleteMgr returns blob delete manager to handle delete message
-func NewBlobDeleteMgr(cfg BlobDeleteConfig) (*BlobDeleteMgr, error) {
+func NewBlobDeleteMgr(cfg BlobDeleteConfig) (*blobDeleteMgr, error) {
 	delMsgSender, err := kafka.NewProducer(&cfg.MsgSenderCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	blobDeleteMgr := BlobDeleteMgr{
+	return &blobDeleteMgr{
 		topic:        cfg.Topic,
 		delMsgSender: delMsgSender,
-	}
-
-	return &blobDeleteMgr, nil
+	}, nil
 }
 
 // SendDeleteMsg sends delete message to kafka
-func (d *BlobDeleteMgr) SendDeleteMsg(ctx context.Context, info *proxy.DeleteArgs) error {
+func (d *blobDeleteMgr) SendDeleteMsg(ctx context.Context, info *proxy.DeleteArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	msgs := make([][]byte, 0, len(info.Blobs))

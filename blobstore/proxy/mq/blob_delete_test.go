@@ -29,7 +29,7 @@ var ErrSendMessage = errors.New("fake send message failed")
 
 func TestBlobDeleteMgr_sendDeleteMsg(t *testing.T) {
 	mockProducer := newProducer(t)
-	mgr := BlobDeleteMgr{
+	mgr := blobDeleteMgr{
 		topic:        "test",
 		delMsgSender: mockProducer,
 	}

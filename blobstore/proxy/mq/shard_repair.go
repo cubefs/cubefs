@@ -39,24 +39,22 @@ type ShardRepairConfig struct {
 }
 
 // NewShardRepairMgr returns shard repair manager
-func NewShardRepairMgr(cfg ShardRepairConfig) (*ShardRepairMgr, error) {
+func NewShardRepairMgr(cfg ShardRepairConfig) (*shardRepairMgr, error) {
 	shardRepairMsgSender, err := kafka.NewProducer(&cfg.MsgSenderCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	shardRepairMgr := ShardRepairMgr{
+	return &shardRepairMgr{
 		topic:                cfg.Topic,
 		priorityTopic:        cfg.PriorityTopic,
 		topicSelector:        defaultTopicSelector,
 		shardRepairMsgSender: shardRepairMsgSender,
-	}
-
-	return &shardRepairMgr, nil
+	}, nil
 }
 
-// ShardRepairMgr is shard repair manager
-type ShardRepairMgr struct {
+// shardRepairMgr is shard repair manager
+type shardRepairMgr struct {
 	priorityTopic        string
 	topic                string
 	topicSelector        func(info *proxy.ShardRepairArgs, topic, priorityTopic string) string
@@ -64,7 +62,7 @@ type ShardRepairMgr struct {
 }
 
 // SendShardRepairMsg sends shard repair msg to mq
-func (s *ShardRepairMgr) SendShardRepairMsg(ctx context.Context, info *proxy.ShardRepairArgs) error {
+func (s *shardRepairMgr) SendShardRepairMsg(ctx context.Context, info *proxy.ShardRepairArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	topic := s.topicSelector(info, s.topic, s.priorityTopic)

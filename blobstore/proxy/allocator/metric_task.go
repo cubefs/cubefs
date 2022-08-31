@@ -24,18 +24,18 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
-var AllocatorVolsStatusMetric = prometheus.NewGaugeVec(
+var proxyStatusMetric = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
 		Namespace: "blobstore",
 		Subsystem: "proxy",
-		Name:      "proxy_allocator_vols_status",
-		Help:      "proxy allocator volume status",
+		Name:      "volume_status",
+		Help:      "proxy status about allocator",
 	},
 	[]string{"service", "cluster", "idc", "codemode", "type"},
 )
 
 func init() {
-	prometheus.MustRegister(AllocatorVolsStatusMetric)
+	prometheus.MustRegister(proxyStatusMetric)
 }
 
 func (v *volumeMgr) metricReportTask() {
@@ -59,7 +59,7 @@ func (v *volumeMgr) metricReport(ctx context.Context) {
 	for codeMode, modeInfo := range v.modeInfos {
 		vols := modeInfo.volumes.List()
 		volNums := len(vols)
-		AllocatorVolsStatusMetric.With(
+		proxyStatusMetric.With(
 			prometheus.Labels{
 				"service":  "PROXY",
 				"cluster":  strconv.FormatUint(uint64(v.ClusterID), 10),
@@ -67,7 +67,7 @@ func (v *volumeMgr) metricReport(ctx context.Context) {
 				"codemode": codeMode.String(),
 				"type":     "volume_nums",
 			}).Set(float64(volNums))
-		AllocatorVolsStatusMetric.With(
+		proxyStatusMetric.With(
 			prometheus.Labels{
 				"service":  "PROXY",
 				"cluster":  strconv.FormatUint(uint64(v.ClusterID), 10),

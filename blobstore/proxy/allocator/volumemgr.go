@@ -172,7 +172,7 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 			totalThreshold: uint64(threshold),
 		}
 		v.modeInfos[codeMode] = modeInfo
-		span.Infof("code_mode:%v,initVolumeNum:%v,threshold:%v", codeModeConfig.ModeName, v.InitVolumeNum, threshold)
+		span.Infof("code_mode: %v, initVolumeNum: %v, threshold: %v", codeModeConfig.ModeName, v.InitVolumeNum, threshold)
 	}
 
 	for mode := range v.allocChs {
@@ -226,7 +226,7 @@ func (v *volumeMgr) List(ctx context.Context, codeMode codemode.CodeMode) (vids 
 		volumes = append(volumes, vol.AllocVolumeInfo)
 		vol.mu.RUnlock()
 	}
-	span.Debugf("[list]code mode:%v,avaliable volumes:%v,count:%v", codeMode, volumes, len(volumes))
+	span.Debugf("[list]code mode: %v, available volumes: %v,count: %v", codeMode, volumes, len(volumes))
 	return
 }
 
@@ -251,14 +251,14 @@ func (v *volumeMgr) modifySpace(ctx context.Context, volInfo *volume, modeInfo *
 	}
 	volInfo.mu.Lock()
 	if volInfo.Free < args.Fsize || volInfo.deleted {
-		span.Warnf("reselect vid:%v, free:%v, size:%v", volInfo.Vid, volInfo.Free, args.Fsize)
+		span.Warnf("reselect vid: %v, free: %v, size: %v", volInfo.Vid, volInfo.Free, args.Fsize)
 		volInfo.mu.Unlock()
 		return false
 	}
 	volInfo.Free -= args.Fsize
 	volInfo.Used += args.Fsize
-	span.Debugf("selectVid:%v,this vid alloced Size:%v,freeSize:%v,reserve size:%v", volInfo.Vid, volInfo.Used,
-		volInfo.Free, v.VolumeReserveSize)
+	span.Debugf("selectVid: %v, this vid allocated Size: %v, freeSize: %v, reserve size: %v",
+		volInfo.Vid, volInfo.Used, volInfo.Free, v.VolumeReserveSize)
 	deleteFlag := false
 	if volInfo.Free < uint64(v.VolumeReserveSize) {
 		span.Infof("volume is full, remove vid:%v", volInfo.Vid)
@@ -283,7 +283,7 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 	if err != nil {
 		return 0, err
 	}
-	span.Debugf("code mode:%v,avaliable volumes:%v", args.CodeMode, vols)
+	span.Debugf("code mode: %v, available volumes: %v", args.CodeMode, vols)
 	vid, err := v.getNextVid(ctx, vols, modeInfo, args)
 	if err != nil {
 		return 0, err
@@ -292,7 +292,7 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 		span.Infof("less than threshold")
 		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum)
 	}
-	span.Debugf("code_mode:%v,modeInfo.totalFree:%v,modeInfo.totalThreshold:%v", args.CodeMode,
+	span.Debugf("code_mode: %v, modeInfo.totalFree: %v, modeInfo.totalThreshold: %v", args.CodeMode,
 		atomic.LoadUint64(&modeInfo.totalFree), atomic.LoadUint64(&modeInfo.totalThreshold))
 	return vid, nil
 }
@@ -347,7 +347,7 @@ func (v *volumeMgr) allocVolume(ctx context.Context, args *clustermgr.AllocVolum
 	span := trace.SpanFromContextSafe(ctx)
 	err = retry.ExponentialBackoff(2, 200).On(func() error {
 		allocVolumes, err := v.clusterMgr.AllocVolume(ctx, args)
-		span.Infof("alloc volume from clusterMgr:%#v,err:%v", allocVolumes, err)
+		span.Infof("alloc volume from clusterMgr: %#v, err: %v", allocVolumes, err)
 		if err == nil && len(allocVolumes.AllocVolumeInfos) != 0 {
 			ret = allocVolumes.AllocVolumeInfos
 		}
@@ -370,7 +370,7 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 				CodeMode: args.codeMode,
 				Count:    requireCount,
 			}
-			span.Infof("allocVolumeLoop arguments:%+v", *allocArg)
+			span.Infof("allocVolumeLoop arguments: %+v", *allocArg)
 			volumeRets, err := v.allocVolume(ctx, allocArg)
 			if err != nil {
 				span.Warnf("alloc volume codemode: %s, err: %v", mode.String(), err)
@@ -386,7 +386,7 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 				atomic.AddUint64(&v.modeInfos[allocArg.CodeMode].totalFree, vol.Free)
 			}
 			if len(volumeRets) < requireCount {
-				span.Warnf("clusterMgr volume num not enough.code_mode:%v, need:%v, got:%v", allocArg.CodeMode,
+				span.Warnf("clusterMgr volume num not enough.code_mode: %v, need: %v, got: %v", allocArg.CodeMode,
 					requireCount, len(volumeRets))
 				requireCount -= len(volumeRets)
 				args.isInit = false

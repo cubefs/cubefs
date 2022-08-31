@@ -28,7 +28,7 @@ import (
 func TestShardRepairMgr_sendShardRepairMsg(t *testing.T) {
 	mockProducer := newProducer(t)
 
-	mgr := &ShardRepairMgr{
+	mgr := &shardRepairMgr{
 		priorityTopic:        "priority",
 		topic:                "normal",
 		topicSelector:        defaultTopicSelector,
