@@ -468,7 +468,7 @@ func TestAddMigrateTask(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(tasks))
 
-	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any).Return(t1, nil)
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(t1, nil)
 	task, err := mgr.GetTask(ctx, t1.TaskID)
 	require.NoError(t, err)
 	require.Equal(t, t1.TaskID, task.TaskID)
@@ -493,11 +493,11 @@ func TestMigrateQueryTask(t *testing.T) {
 	taskID := "task_id"
 	mgr := newMigrateMgr(t)
 
-	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any).Return(nil, errMock)
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(nil, errMock)
 	_, err := mgr.QueryTask(ctx, taskID)
 	require.ErrorIs(t, errMock, err)
 
-	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any).Return(&proto.MigrateTask{}, nil)
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(&proto.MigrateTask{}, nil)
 	_, err = mgr.QueryTask(ctx, taskID)
 	require.NoError(t, err)
 }

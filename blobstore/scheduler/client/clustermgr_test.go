@@ -325,19 +325,19 @@ func TestClustermgrClient(t *testing.T) {
 		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: taskBytes}, nil)
 		err := cli.AddMigrateTask(ctx, task1)
 		require.NoError(t, err)
-		task2, err := cli.GetMigrateTask(ctx, task1.TaskID)
+		task2, err := cli.GetMigrateTask(ctx, task1.TaskType, task1.TaskID)
 		require.NoError(t, err)
 		require.Equal(t, task1.TaskID, task2.TaskID)
 
 		// unmarshal failed
 		taskBytes = append(taskBytes, []byte("mock")...)
 		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: taskBytes}, nil)
-		_, err = cli.GetMigrateTask(ctx, task1.TaskID)
+		_, err = cli.GetMigrateTask(ctx, task1.TaskType, task1.TaskID)
 		require.Error(t, err)
 
 		// clustermgr return err
 		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{}, errMock)
-		_, err = cli.GetMigrateTask(ctx, task1.TaskID)
+		_, err = cli.GetMigrateTask(ctx, task1.TaskType, task1.TaskID)
 		require.True(t, errors.Is(err, errMock))
 	}
 	{

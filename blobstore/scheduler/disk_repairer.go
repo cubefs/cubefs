@@ -763,7 +763,7 @@ func (mgr *DiskRepairMgr) ReportWorkerTaskStats(st *api.TaskReportArgs) {
 // QueryTask return task statistics
 func (mgr *DiskRepairMgr) QueryTask(ctx context.Context, taskID string) (*api.MigrateTaskDetail, error) {
 	detail := &api.MigrateTaskDetail{}
-	taskInfo, err := mgr.clusterMgrCli.GetMigrateTask(ctx, taskID)
+	taskInfo, err := mgr.clusterMgrCli.GetMigrateTask(ctx, proto.TaskTypeDiskRepair, taskID)
 	if err != nil {
 		return detail, err
 	}

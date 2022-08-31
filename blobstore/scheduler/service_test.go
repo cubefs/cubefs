@@ -193,6 +193,8 @@ func TestServiceAPI(t *testing.T) {
 	ctx := context.Background()
 	cli := api.New(&api.Config{}, clusterMgrCli, proto.ClusterID(1))
 	idc := "z0"
+	diskID := proto.DiskID(1)
+	volumeID := proto.Vid(1)
 	taskTypes := []proto.TaskType{
 		proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
 		proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate,
@@ -203,24 +205,39 @@ func TestServiceAPI(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, taskType, task.TaskType)
 
-		require.NoError(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType}))
-		require.NoError(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType}))
-		require.NoError(t, cli.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType}))
-		require.NoError(t, cli.ReportTask(ctx, &api.TaskReportArgs{TaskType: taskType}))
+		require.NoError(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
+		require.NoError(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
+		require.NoError(t, cli.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
+		require.NoError(t, cli.ReportTask(ctx, &api.TaskReportArgs{TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
 	}
 	require.Error(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
 	require.Error(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
 	require.Error(t, cli.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
 
 	// renewal task
-	tasks := []string{"task1", "task2", "task3"}
 	_, err := cli.RenewalTask(ctx, &api.TaskRenewalArgs{
 		IDC: "z0",
 		IDs: map[proto.TaskType][]string{
-			proto.TaskTypeBalance:       tasks,
-			proto.TaskTypeDiskRepair:    tasks,
-			proto.TaskTypeDiskDrop:      tasks,
-			proto.TaskTypeManualMigrate: tasks,
+			proto.TaskTypeBalance: {
+				client.GenMigrateTaskPrefix(proto.TaskTypeBalance) + "1",
+				client.GenMigrateTaskPrefix(proto.TaskTypeBalance) + "2",
+				client.GenMigrateTaskPrefix(proto.TaskTypeBalance) + "3",
+			},
+			proto.TaskTypeDiskRepair: {
+				client.GenMigrateTaskPrefix(proto.TaskTypeDiskRepair) + "1",
+				client.GenMigrateTaskPrefix(proto.TaskTypeDiskRepair) + "2",
+				client.GenMigrateTaskPrefix(proto.TaskTypeDiskRepair) + "3",
+			},
+			proto.TaskTypeDiskDrop: {
+				client.GenMigrateTaskPrefix(proto.TaskTypeDiskDrop) + "1",
+				client.GenMigrateTaskPrefix(proto.TaskTypeDiskDrop) + "2",
+				client.GenMigrateTaskPrefix(proto.TaskTypeDiskDrop) + "3",
+			},
+			proto.TaskTypeManualMigrate: {
+				client.GenMigrateTaskPrefix(proto.TaskTypeManualMigrate) + "1",
+				client.GenMigrateTaskPrefix(proto.TaskTypeManualMigrate) + "2",
+				client.GenMigrateTaskPrefix(proto.TaskTypeManualMigrate) + "3",
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -255,11 +272,13 @@ func TestServiceAPI(t *testing.T) {
 		require.Error(t, err)
 		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeBalance, ID: ""})
 		require.Error(t, err)
+		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: proto.TaskTypeBalance, ID: "disk_repair"})
+		require.Error(t, err)
 	}
 	for _, taskType := range taskTypes {
-		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: taskType, ID: "task-id"})
+		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: taskType, ID: client.GenMigrateTaskID(taskType, diskID, volumeID)})
 		require.NoError(t, err)
-		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: taskType, ID: "err-task-id"})
+		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: taskType, ID: client.GenMigrateTaskID(taskType, diskID, volumeID)})
 		require.Error(t, err)
 	}
 }

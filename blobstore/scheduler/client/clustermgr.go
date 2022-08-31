@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,7 +68,7 @@ type ClusterMgrServiceAPI interface {
 type ClusterMgrTaskAPI interface {
 	UpdateMigrateTask(ctx context.Context, value *proto.MigrateTask) (err error)
 	AddMigrateTask(ctx context.Context, value *proto.MigrateTask) (err error)
-	GetMigrateTask(ctx context.Context, key string) (task *proto.MigrateTask, err error)
+	GetMigrateTask(ctx context.Context, taskType proto.TaskType, key string) (task *proto.MigrateTask, err error)
 	DeleteMigrateTask(ctx context.Context, key string) (err error)
 	ListMigrateTasks(ctx context.Context, taskType proto.TaskType, args *cmapi.ListKvOpts) (tasks []*proto.MigrateTask, marker string, err error)
 	ListAllMigrateTasks(ctx context.Context, taskType proto.TaskType) (tasks []*proto.MigrateTask, err error)
@@ -166,6 +167,10 @@ func GenMigrateTaskPrefix(taskType proto.TaskType) string {
 
 func GenMigrateTaskPrefixByDiskID(taskType proto.TaskType, diskID proto.DiskID) string {
 	return fmt.Sprintf("%s%d%s", GenMigrateTaskPrefix(taskType), diskID, _delimiter)
+}
+
+func ValidMigrateTask(taskType proto.TaskType, taskID string) bool {
+	return strings.HasPrefix(taskID, GenMigrateTaskPrefix(taskType))
 }
 
 type ConsumeOffset struct {
@@ -793,12 +798,18 @@ func (c *clustermgrClient) setTask(ctx context.Context, key string, value interf
 }
 
 // GetMigrateTask returns migrate task
-func (c *clustermgrClient) GetMigrateTask(ctx context.Context, key string) (task *proto.MigrateTask, err error) {
+func (c *clustermgrClient) GetMigrateTask(ctx context.Context, taskType proto.TaskType, key string) (task *proto.MigrateTask, err error) {
 	val, err := c.client.GetKV(ctx, key)
 	if err != nil {
 		return nil, err
 	}
 	err = json.Unmarshal(val.Value, &task)
+	if err != nil {
+		return nil, err
+	}
+	if task.TaskType != taskType {
+		return nil, errcode.ErrIllegalTaskType
+	}
 	return
 }
 
