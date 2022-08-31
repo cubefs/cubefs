@@ -723,20 +723,6 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if storeMode == 0 {
-		storeMode = int(proto.StoreModeMem)
-		vol, _ := m.cluster.getVol(mp.volName)
-		if vol != nil {
-			storeMode = int(vol.DefaultStoreMode)
-		}
-	}
-
-	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
-		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
 	if err = m.cluster.addMetaReplica(mp, addr, proto.StoreMode(storeMode)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -826,20 +812,6 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		auto = false
 		threshold = 100
 		isNeedIncreaseMPLearnerNum = true
-	}
-
-	if storeMode == 0 {
-		storeMode = int(proto.StoreModeMem)
-		vol, _ := m.cluster.getVol(mp.volName)
-		if vol != nil {
-			storeMode = int(vol.DefaultStoreMode)
-		}
-	}
-
-	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
-		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
 	}
 
 	mp.offlineMutex.Lock()
