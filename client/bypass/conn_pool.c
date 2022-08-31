@@ -81,13 +81,15 @@ int check_conn_timeout_poll(int sock_fd,  int64_t timeout_ms) {
     int ret = 0;
     int error = 0;
     socklen_t len = sizeof(error);
+    int cnt = 0;
 
     wfds[0].fd = sock_fd;
     wfds[0].events = POLLOUT;
     wfds[0].revents = 0;
     while (1) {
         ret = poll(wfds, 1, timeout_ms);
-        if (ret < 0 && error == EINTR) {
+        if (ret < 0 && error == EINTR && cnt < POLL_CHECK_CNT) {
+            cnt++;
             continue;
         }
 
@@ -169,11 +171,10 @@ static int new_conn(const char *ip, int port) {
     }
 
     int flag = 1;
-    if(setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&flag, sizeof(flag)) < 0) {
-        return sock_fd;
-    }
-    if(setsockopt(sock_fd, SOL_TCP, TCP_NODELAY, (void *)&flag, sizeof(flag)) < 0) {
-        return sock_fd;
+    if(setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&flag, sizeof(flag)) < 0 ||
+       setsockopt(sock_fd, SOL_TCP, TCP_NODELAY, (void *)&flag, sizeof(flag)) < 0) {
+        libc_close(sock_fd);
+        return -1;
     }
 
     addr.sin_family = AF_INET;
