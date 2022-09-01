@@ -69,11 +69,9 @@ func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaIds []uint32) (st
 // Create and inode and attach it to the inode tree.
 func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	log.LogDebugf("action[fsmCreateInode] inode  %v be created", ino.Inode)
-
 	if status = mp.uidManager.addUidSpace(ino.Uid, ino.Inode, nil); status != proto.OpOk {
 		return
 	}
-
 	log.LogDebugf("action[fsmCreateInode] inode  %v be created", ino)
 
 	status = proto.OpOk
@@ -182,12 +180,12 @@ func (mp *metaPartition) getInodeTopLayer(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 
 	i := mp.getInodeByVer(ino)
-	if i == nil || i.ShouldDelete() {
+	if i == nil || (listAll == false && i.ShouldDelete()) {
 		log.LogDebugf("action[getInode] ino  %v not found", ino)
 		resp.Status = proto.OpNotExistErr
 		return
@@ -269,7 +267,7 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 		}
 	}()
 
-	resp = mp.fsmUnlinkInode(txIno.Inode, 0, mp.multiVersionList.VerList)
+	resp = mp.fsmUnlinkInode(txIno.Inode, 0)
 	if resp.Status != proto.OpOk {
 		return
 	}
@@ -285,7 +283,7 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 // snapshot unlink seq is snapshotVersion
 // fsmUnlinkInode delete the specified inode from inode tree.
 
-func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64, verlist []*proto.VolVersionInfo) (resp *InodeResponse) {
+func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeResponse) {
 	log.LogDebugf("action[fsmUnlinkInode] ino %v", ino)
 	var (
 		ext2Del []proto.ExtentKey
@@ -306,6 +304,8 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64, verlist []*pr
 		return
 	}
 
+	topLayerEmpty := inode.IsTopLayerEmptyDir()
+
 	resp.Msg = inode
 
 	if !mp.uniqChecker.legalIn(uniqID) {
@@ -318,9 +318,9 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64, verlist []*pr
 		doMore bool
 		status = proto.OpOk
 	)
-	// create a version if the snapshot be depend on
+
 	if ino.verSeq == 0 {
-		ext2Del, doMore, status = inode.unlinkVerInTopLayer(ino, mp.verSeq, verlist)
+		ext2Del, doMore, status = inode.unlinkTopLayer(ino, mp.verSeq, mp.multiVersionList)
 	} else { // means drop snapshot
 		log.LogDebugf("action[fsmUnlinkInode] req drop assigned snapshot reqseq %v inode seq %v", ino.verSeq, inode.verSeq)
 		if ino.verSeq > inode.verSeq && ino.verSeq != math.MaxUint64 {
@@ -328,14 +328,15 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64, verlist []*pr
 				ino.Inode, ino.verSeq, inode.verSeq)
 			return
 		} else {
-			ext2Del, doMore, status = inode.unlinkVerInList(ino, mp.verSeq, verlist)
+			ext2Del, doMore, status = inode.unlinkVerInList(ino, mp.verSeq, mp.multiVersionList)
 		}
 	}
 	if !doMore {
 		resp.Status = status
 		return
 	}
-	if inode.IsEmptyDir() {
+
+	if topLayerEmpty && inode.IsEmptyDirAndNoSnapshot() {
 		log.LogDebugf("action[fsmUnlinkInode] ino %v really be deleted, empty dir", ino)
 		mp.inodeTree.Delete(inode)
 		mp.updateUsedInfo(0, -1, inode.Inode)
@@ -377,7 +378,7 @@ func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeRespon
 			resp = append(resp, &InodeResponse{Status: status})
 			continue
 		}
-		resp = append(resp, mp.fsmUnlinkInode(ino, 0, mp.multiVersionList.VerList))
+		resp = append(resp, mp.fsmUnlinkInode(ino, 0))
 	}
 	return
 }
@@ -495,9 +496,10 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		return
 	}
 
-	log.LogDebugf("action[fsmAppendExtentWithCheck] ino %v isSplit %v ek %v hist len %v", ino2, isSplit, eks[0], len(ino2.multiVersions))
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] ino %v isSplit %v ek %v hist len %v", ino2.Inode, isSplit, eks[0], len(ino2.multiVersions))
+
 	if !isSplit {
-		delExtents, status = ino2.AppendExtentWithCheck(mp.verSeq, ino.verSeq, eks[0], ino.ModifyTime, discardExtentKey, mp.volType)
+		delExtents, status = ino2.AppendExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.verSeq, eks[0], ino.ModifyTime, discardExtentKey, mp.volType)
 		if status == proto.OpOk {
 			log.LogInfof("action[fsmAppendExtentsWithCheck] delExtents [%v]", delExtents)
 			mp.extDelCh <- delExtents
@@ -511,7 +513,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		// only the ek itself will be moved to level before
 		// ino verseq be set with mp ver before submit in case other mp be updated while on flight, which will lead to
 		// inconsistent between raft pairs
-		delExtents, status = ino2.SplitExtentWithCheck(mp.verSeq, ino.verSeq, eks[0])
+		delExtents, status = ino2.SplitExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.verSeq, eks[0], ino.ModifyTime, mp.volType)
 		mp.extDelCh <- delExtents
 		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
 	}
@@ -522,10 +524,11 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		mp.extDelCh <- eks[:1]
 		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, eks[:1])
 		log.LogDebugf("fsmAppendExtentsWithCheck delExtents inode(%v) ek(%v)", delExtents)
+
 	}
 
-	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v) isSplit(%v), extents(%v)",
-		ino2.Inode, eks[0], delExtents, discardExtentKey, status, isSplit, ino2.Extents.eks)
+	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v) isSplit(%v)",
+		ino2.Inode, eks[0], delExtents, discardExtentKey, status, isSplit)
 
 	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
 	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
@@ -561,7 +564,7 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	var err error
 	resp = NewInodeResponse()
-
+	log.LogDebugf("fsmExtentsTruncate. req ino %v", ino)
 	resp.Status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
@@ -586,8 +589,19 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	if i.verSeq != mp.verSeq {
 		i.CreateVer(mp.verSeq)
 	}
+	i.Lock()
+	defer i.Unlock()
+
+	if err = i.CreateLowerVersion(i.verSeq, mp.multiVersionList); err != nil {
+		return
+	}
 	oldSize := int64(i.Size)
 	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime, doOnLastKey)
+
+	if len(delExtents) == 0 {
+		return
+	}
+
 	if delExtents, err = i.RestoreExts2NextLayer(delExtents, mp.verSeq, 0); err != nil {
 		panic("RestoreExts2NextLayer should not be error")
 	}
@@ -615,7 +629,7 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 	if proto.IsDir(i.Type) {
-		if i.IsEmptyDir() {
+		if i.IsEmptyDirAndNoSnapshot() {
 			i.SetDeleteMark()
 		}
 		return
@@ -624,7 +638,7 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	if i.IsTempFile() {
 		log.LogDebugf("action[fsmEvictInode] inode %v already linke zero and be set mark delete and be put to freelist", ino)
 		i.SetDeleteMark()
-		if len(i.multiVersions) == 0 {
+		if i.isEmptyVerList() {
 			mp.freeList.Push(i.Inode)
 		}
 	}
@@ -779,7 +793,7 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuot
 		var extend = NewExtend(ino)
 		treeItem := mp.extendTree.Get(extend)
 		inode := NewInode(ino, 0)
-		retMsg := mp.getInode(inode)
+		retMsg := mp.getInode(inode, false)
 
 		if retMsg.Status != proto.OpOk {
 			log.LogErrorf("fsmSetInodeQuotaBatch get inode [%v] fail.", ino)
@@ -821,7 +835,7 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuot
 			resp.InodeRes[ino] = proto.OpErr
 			continue
 		}
-		extend.Put([]byte(proto.QuotaKey), value)
+		extend.Put([]byte(proto.QuotaKey), value, 0)
 		resp.InodeRes[ino] = proto.OpOk
 		if !isExist {
 			files += 1
@@ -844,7 +858,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 		var extend = NewExtend(ino)
 		treeItem := mp.extendTree.Get(extend)
 		inode := NewInode(ino, 0)
-		retMsg := mp.getInode(inode)
+		retMsg := mp.getInode(inode, false)
 		if retMsg.Status != proto.OpOk {
 			log.LogErrorf("fsmDeleteInodeQuotaBatch get inode [%v] fail.", ino)
 			resp.InodeRes[ino] = retMsg.Status
@@ -882,7 +896,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 							resp.InodeRes[ino] = proto.OpErr
 							continue
 						}
-						extend.Put([]byte(proto.QuotaKey), value)
+						extend.Put([]byte(proto.QuotaKey), value, 0)
 					}
 				} else {
 					log.LogDebugf("fsmDeleteInodeQuotaBatch QuotaInfoMap can not find inode [%v] quota [%v]", ino, req.QuotaId)

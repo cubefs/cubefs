@@ -147,7 +147,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	if request.IsBatchDeleteExtents() {
 		timeOut = proto.BatchDeleteExtentReadDeadLineTime
 	}
-	if err = reply.ReadFromConn(ft.conn, timeOut); err != nil {
+	if err = reply.ReadFromConnWithVer(ft.conn, timeOut); err != nil {
 		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
 		return
 	}

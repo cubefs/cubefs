@@ -89,7 +89,7 @@ func (l *LcNode) serveConn(conn net.Conn, stopC chan bool) {
 		default:
 		}
 		p := &proto.Packet{}
-		if err := p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
+		if err := p.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
 				log.LogError("serve LcNode: ", err.Error())
 			}

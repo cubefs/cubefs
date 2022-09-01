@@ -746,12 +746,12 @@ func (c *Cluster) loadUidSpaceList(vol *Vol) (err error) {
 func (c *Cluster) loadMultiVersion(vol *Vol) (err error) {
 	key := MultiVerPrefix + strconv.FormatUint(vol.ID, 10)
 	result, err := c.fsm.store.SeekForPrefix([]byte(key))
-	if err != nil {
-		log.LogErrorf("action[loadMultiVersion] err %v", err.Error())
+	if err != nil || len(result) == 0 {
+		log.LogErrorf("action[loadMultiVersion] err %v", err)
 		return vol.VersionMgr.init(c)
 	}
 	for _, value := range result {
-		return vol.VersionMgr.loadMultiVersion(value)
+		return vol.VersionMgr.loadMultiVersion(c, value)
 	}
 	return
 }
@@ -1587,7 +1587,7 @@ func (c *Cluster) loadLcNodes() (err error) {
 				continue
 			}
 		}
-		c.dataNodes.Store(lcNode.Addr, lcNode)
+		c.lcMgr.lcNodes.Store(lcNode.Addr, lcNode)
 		log.LogInfof("action[loadLcNodes],lcNode[%v],lcNodeID[%v]", lcNode.Addr, lcNode.ID)
 	}
 	return
