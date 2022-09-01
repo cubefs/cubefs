@@ -33,6 +33,8 @@ type logEntryFile struct {
 	r     recordReadAt
 	w     *recordWriter
 	index logEntryIndex
+
+	maybeDirty bool
 }
 
 func openLogEntryFile(dir string, name logFileName, isLastOne bool) (*logEntryFile, error) {
@@ -267,7 +269,7 @@ func (lf *logEntryFile) Save(ctx context.Context, ent *proto.Entry) error {
 
 	// 更新索引
 	lf.index = lf.index.Append(uint32(offset), ent)
-
+	lf.maybeDirty = true
 	return nil
 }
 
@@ -285,13 +287,18 @@ func (lf *logEntryFile) WriteOffset() int64 {
 }
 
 func (lf *logEntryFile) Flush(ctx context.Context) error {
-
 	return lf.w.Flush()
 }
 
 // Sync flush write buffer and sync to disk
-func (lf *logEntryFile) Sync() error {
-	return lf.w.Sync()
+func (lf *logEntryFile) Sync() (err error) {
+	if lf.maybeDirty {
+		if err = lf.w.Sync(); err != nil {
+			return
+		}
+		lf.maybeDirty = false
+	}
+	return
 }
 
 func (lf *logEntryFile) FinishWrite(ctx context.Context) error {
@@ -316,6 +323,7 @@ func (lf *logEntryFile) FinishWrite(ctx context.Context) error {
 		return err
 	}
 	lf.w = nil
+	lf.maybeDirty = false
 	return nil
 }
 
