@@ -1578,7 +1578,7 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 
 	case TxDelete:
 		//_ = tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode)
-		if rsp := tr.txProcessor.mp.getInode(rbInode.inode); rsp.Status == proto.OpOk {
+		if rsp := tr.txProcessor.mp.getInode(rbInode.inode, false); rsp.Status == proto.OpOk {
 			if tr.txProcessor.mp.uidManager != nil {
 				tr.txProcessor.mp.uidManager.doMinusUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Size)
 			}

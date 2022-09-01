@@ -47,11 +47,19 @@ type ExtentKey struct {
 	ExtentOffset uint64 // offset in extent like tiny extent offset large than 0,normal is 0
 	Size         uint32 // extent real size?
 	CRC          uint32
-
 	//snapshot
 	VerSeq  uint64
 	ModGen  uint64
 	IsSplit bool
+}
+
+func (k *ExtentKey) IsSequence(rightKey *ExtentKey) bool {
+	//	return false
+	return k.PartitionId == rightKey.PartitionId &&
+		k.ExtentId == rightKey.ExtentId &&
+		k.VerSeq == rightKey.VerSeq &&
+		k.ExtentOffset+uint64(k.Size) == rightKey.ExtentOffset &&
+		k.FileOffset+uint64(k.Size) == rightKey.FileOffset
 }
 
 // String returns the string format of the extentKey.

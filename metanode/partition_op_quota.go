@@ -79,7 +79,7 @@ func (mp *metaPartition) getQuotaReportInfos() (infos []*proto.QuotaReportInfo) 
 func (mp *metaPartition) statisticExtendByLoad(extend *Extend) {
 	mqMgr := mp.mqMgr
 	ino := NewInode(extend.GetInode(), 0)
-	retMsg := mp.getInode(ino)
+	retMsg := mp.getInode(ino, true)
 	if retMsg.Status != proto.OpOk {
 		log.LogErrorf("statisticExtendByLoad get inode [%v] fail [%v].", extend.GetInode(), retMsg.Status)
 		return
@@ -112,11 +112,13 @@ func (mp *metaPartition) statisticExtendByLoad(extend *Extend) {
 func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree) {
 	mqMgr := mp.mqMgr
 	ino := NewInode(extend.GetInode(), 0)
-	item := inodeTree.Get(ino)
-	if item == nil {
+
+	retMsg := mp.getInode(ino, true)
+	if retMsg.Status != proto.OpOk {
+		log.LogErrorf("statisticExtendByStore get inode [%v] fail [%v].", extend.GetInode(), retMsg.Status)
 		return
 	}
-	ino = item.(*Inode)
+	ino = retMsg.Msg
 	if ino.NLink == 0 {
 		return
 	}

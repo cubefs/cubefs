@@ -133,6 +133,21 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	return
 }
 
+func (mp *metaPartition) getDentryList(dentry *Dentry) (denList []proto.DetryInfo) {
+	item := mp.dentryTree.Get(dentry)
+	if item != nil {
+		for _, den := range item.(*Dentry).dentryList {
+			denList = append(denList, proto.DetryInfo{
+				Inode:  den.Inode,
+				Mode:   den.Type,
+				IsDel:  den.isDeleted(),
+				VerSeq: den.getVerSeq(),
+			})
+		}
+	}
+	return
+}
+
 // Query a dentry from the dentry tree with specified dentry info.
 func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 	status := proto.OpOk
@@ -141,7 +156,7 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 		status = proto.OpNotExistErr
 		return nil, status
 	}
-	log.LogDebugf("action[getDentry] dentry[%v]", item.(*Dentry))
+	log.LogDebugf("action[getDentry] get dentry[%v] by req dentry %v", item.(*Dentry), dentry)
 
 	den := mp.getDentryByVerSeq(item.(*Dentry), dentry.VerSeq)
 	if den != nil {
@@ -191,7 +206,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry, checkInode bool) 
 // Delete dentry from the dentry tree.
 func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp *DentryResponse) {
 
-	log.LogDebugf("action[fsmDeleteDentry] delete param (%v)", denParm)
+	log.LogDebugf("action[fsmDeleteDentry] delete param (%v) seq %v", denParm, denParm.VerSeq)
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 
@@ -215,7 +230,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 				log.LogDebugf("action[fsmDeleteDentry] volume snapshot not enabled,delete directly")
 				return mp.dentryTree.tree.Delete(den)
 			}
-			_, doMore, clean = den.deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.multiVersionList.VerList)
+			_, doMore, clean = den.deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.getVerList())
 			return den
 		})
 	} else {
@@ -225,7 +240,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 		} else {
 			item = mp.dentryTree.Get(denParm)
 			if item != nil {
-				_, doMore, clean = item.(*Dentry).deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.multiVersionList.VerList)
+				_, doMore, clean = item.(*Dentry).deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.getVerList())
 			}
 		}
 	}
@@ -395,6 +410,9 @@ func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitR
 		ParentId: req.ParentID + 1,
 	}
 	mp.dentryTree.AscendRange(startDentry, endDentry, func(i BtreeItem) bool {
+		if !proto.IsDir(i.(*Dentry).Type) && req.VerDel && !i.(*Dentry).isEffective(req.VerSeq) {
+			return true
+		}
 		d := mp.getDentryByVerSeq(i.(*Dentry), req.VerSeq)
 		if d == nil {
 			return true

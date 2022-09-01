@@ -45,7 +45,9 @@ type SimpleClientInfo interface {
 	GetFlowInfo() (*proto.ClientReportLimitInfo, bool)
 	UpdateFlowInfo(limit *proto.LimitRsp2Client)
 	SetClientID(id uint64) error
-	UpdateLatestVer(id uint64) error
+	UpdateLatestVer(verSeq uint64) error
+	GetReadVer() uint64
+	GetLatestVer() uint64
 }
 
 // Wrapper TODO rename. This name does not reflect what it is doing.

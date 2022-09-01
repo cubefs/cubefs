@@ -152,7 +152,7 @@ func (sender *AdminTaskManager) sendTasks(tasks []*proto.AdminTask) {
 			break
 		}
 		if err = sender.sendAdminTask(task, conn); err != nil {
-			log.LogError(fmt.Sprintf("send task %v to %v,err,%v", task.ID, sender.targetAddr, errors.Stack(err)))
+			log.LogError(fmt.Sprintf("send task %v to %v err %v,errStack,%v", task.ID, sender.targetAddr, err, errors.Stack(err)))
 			sender.putConn(conn, true)
 			sender.updateTaskInfo(task, true)
 			continue
@@ -191,7 +191,7 @@ func (sender *AdminTaskManager) sendAdminTask(task *proto.AdminTask, conn net.Co
 	if err = packet.WriteToConn(conn); err != nil {
 		return errors.Trace(err, "action[sendAdminTask],WriteToConn failed,task:%v", task.ID)
 	}
-	if err = packet.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+	if err = packet.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
 		return errors.Trace(err, "action[sendAdminTask],ReadFromConn failed task:%v", task.ID)
 	}
 	log.LogDebugf(fmt.Sprintf("action[sendAdminTask] sender task:%v success", task.ToString()))
@@ -220,7 +220,7 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet
 	if err = packet.WriteToConn(conn); err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask],WriteToConn failed,task:%v,reqID[%v]", task.ID, packet.ReqID)
 	}
-	if err = packet.ReadFromConn(conn, proto.SyncSendTaskDeadlineTime); err != nil {
+	if err = packet.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime); err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask],ReadFromConn failed task:%v,reqID[%v]", task.ID, packet.ReqID)
 	}
 	if packet.ResultCode != proto.OpOk {

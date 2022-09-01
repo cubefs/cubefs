@@ -507,12 +507,29 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 		Name:     req.Name,
 		VerSeq:   req.VerSeq,
 	}
+	var denList []proto.DetryInfo
+	if req.VerAll {
+		denList = mp.getDentryList(dentry)
+	}
 	dentry, status := mp.getDentry(dentry)
+
 	var reply []byte
-	if status == proto.OpOk {
-		resp := &LookupResp{
-			Inode: dentry.Inode,
-			Mode:  dentry.Type,
+	if status == proto.OpOk || req.VerAll {
+		var resp *LookupResp
+		if status == proto.OpOk {
+			resp = &LookupResp{
+				Inode:  dentry.Inode,
+				Mode:   dentry.Type,
+				VerSeq: dentry.VerSeq,
+				LayAll: denList,
+			}
+		} else {
+			resp = &LookupResp{
+				Inode:  0,
+				Mode:   0,
+				VerSeq: 0,
+				LayAll: denList,
+			}
 		}
 		reply, err = json.Marshal(resp)
 		if err != nil {
@@ -520,6 +537,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 			reply = []byte(err.Error())
 		}
 	}
+
 	p.PacketErrorWithBody(status, reply)
 	return
 }

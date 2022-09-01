@@ -1245,6 +1245,12 @@ func (c *Cluster) getVolVer(volName string) (info *proto.VolumeVerInfo, err erro
 		err = proto.ErrVolNotExists
 		return
 	}
+
+	if !proto.IsHot(vol.VolType) {
+		err = fmt.Errorf("vol need be hot one")
+		return
+	}
+
 	if vol.VersionMgr.enabled {
 		verSeqPrepare = vol.VersionMgr.prepareCommit.prepareInfo.Ver
 	}
