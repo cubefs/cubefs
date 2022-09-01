@@ -124,36 +124,83 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 	}
 }
 
-// Split extent key.
-func (cache *ExtentCache) SplitExtentKey(ekPivot *proto.ExtentKey) (err error) {
+func (cache *ExtentCache) isSequnce(ekLeft *proto.ExtentKey, ekRight *proto.ExtentKey) bool {
+	return ekLeft.ExtentId == ekRight.ExtentId &&
+		ekLeft.VerSeq == ekRight.VerSeq &&
+		ekLeft.ExtentOffset+uint64(ekLeft.Size) == ekRight.ExtentOffset &&
+		ekLeft.FileOffset+uint64(ekLeft.Size) == ekRight.FileOffset
+}
 
-	cache.RLock()
-	defer cache.RUnlock()
+// Split extent key.
+func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKey) (err error) {
+	cache.Lock()
+	defer cache.Unlock()
 
 	// When doing the append, we do not care about the data after the file offset.
 	// Those data will be overwritten by the current extent anyway.
-	var ek *proto.ExtentKey
+	var ekFind *proto.ExtentKey
+	var ekLeft *proto.ExtentKey
+	var ekRight *proto.ExtentKey
 	cache.root.DescendLessOrEqual(ekPivot, func(i btree.Item) bool {
-		ek = i.(*proto.ExtentKey)
-		log.LogDebugf("action[ExtentCache.PrepareWriteRequests] ek [%v]", ek)
+		if ekFind == nil {
+			ekFind = i.(*proto.ExtentKey)
+			log.LogDebugf("action[ExtentCache.PrepareWriteRequests] inode %v ek [%v]", inodeID, ekFind)
+			return true
+		}
+		ekLeft = i.(*proto.ExtentKey)
+		log.LogDebugf("action[ExtentCache.PrepareWriteRequests] inode %v ekLeft [%v]", inodeID, ekLeft)
 		return false
 	})
 
-	if ek == nil {
-		err = fmt.Errorf("not found ek fileOff[%v] seq[%v]", ekPivot.FileOffset, ekPivot.VerSeq)
+	cache.root.AscendGreaterThan(ekPivot, func(i btree.Item) bool {
+		ekRight = i.(*proto.ExtentKey)
+		log.LogDebugf("action[ExtentCache.PrepareWriteRequests] inode %v ekRight [%v]", inodeID, ekRight)
+		return false
+	})
+
+	if ekFind == nil {
+		err = fmt.Errorf("inode %v not found ek fileOff[%v] seq[%v]", inodeID, ekPivot.FileOffset, ekPivot.VerSeq)
 		return
 	}
+	ek := &proto.ExtentKey{}
+	*ek = *ekFind
+	cache.root.Delete(ekFind)
+	if nil != cache.root.Get(ekFind) {
+		log.LogDebugf("ExtentCache Delete: ino(%v) ek(%v) ", cache.inode, ekFind)
+		panic(nil)
+	}
+	log.LogDebugf("ExtentCache Delete: ino(%v) ek(%v) ", cache.inode, ekFind)
 	ek.ModGen++
-	log.LogDebugf("action[SplitExtentKey] ek [%v] ekPivot [%v]", ek, ekPivot)
+	log.LogDebugf("action[SplitExtentKey] inode %v ek [%v] ekPivot [%v] ekLeft [%v]", inodeID, ek, ekPivot, ekLeft)
 	// begin
 	if ek.FileOffset == ekPivot.FileOffset {
 		ek.Size = ek.Size - ekPivot.Size
 		ek.FileOffset = ek.FileOffset + uint64(ekPivot.Size)
 		ek.ExtentOffset = ek.ExtentOffset + uint64(ekPivot.Size)
-		log.LogDebugf("action[SplitExtentKey] ek [%v]", ek)
+		if ekLeft != nil && ekLeft.IsSequence(ekPivot) {
+			log.LogDebugf("SplitExtentKey.merge.begin. ekLeft %v and %v", ekLeft, ekPivot)
+			ekLeft.Size += ekPivot.Size
+			log.LogDebugf("action[SplitExtentKey] inode %v ek [%v], ekPivot[%v] ekLeft[%v]", inodeID, ek, ekPivot, ekLeft)
+			cache.root.ReplaceOrInsert(ekLeft)
+			cache.root.ReplaceOrInsert(ek)
+			cache.gen++
+			return
+		}
+		log.LogDebugf("action[SplitExtentKey] inode %v ek [%v]", inodeID, ek)
 	} else if ek.FileOffset+uint64(ek.Size) == ekPivot.FileOffset+uint64(ekPivot.Size) { // end
 		ek.Size = ek.Size - ekPivot.Size
-		log.LogDebugf("action[SplitExtentKey] ek [%v]", ek)
+		log.LogDebugf("action[SplitExtentKey] inode %v ek [%v]", inodeID, ek)
+		if ekRight != nil && ekPivot.IsSequence(ekRight) {
+			cache.root.Delete(ekRight)
+			ekRight.FileOffset = ekPivot.FileOffset
+			ekRight.ExtentOffset = ekPivot.ExtentOffset
+			ekRight.Size += ekPivot.Size
+			cache.root.ReplaceOrInsert(ekRight)
+			cache.root.ReplaceOrInsert(ek)
+			log.LogDebugf("SplitExtentKey.merge.end. ek %v and %v", ekPivot, ekRight)
+			cache.gen++
+			return
+		}
 	} else {
 		newSize := uint32(ekPivot.FileOffset - ek.FileOffset) // middle
 		ekEnd := &proto.ExtentKey{
@@ -165,20 +212,17 @@ func (cache *ExtentCache) SplitExtentKey(ekPivot *proto.ExtentKey) (err error) {
 			VerSeq:       ek.VerSeq,
 			ModGen:       ek.ModGen,
 		}
-		log.LogDebugf("action[SplitExtentKey] add ekEnd [%v] after split size(%v,%v,%v)", ekEnd, newSize, ekPivot.Size, ekEnd.Size)
+		log.LogDebugf("action[SplitExtentKey] inode %v add ekEnd [%v] after split size(%v,%v,%v)", inodeID, ekEnd, newSize, ekPivot.Size, ekEnd.Size)
 		cache.root.ReplaceOrInsert(ekEnd)
+		log.LogDebugf("ExtentCache ReplaceOrInsert: ino(%v) ek(%v) ", cache.inode, ekEnd)
 		ek.Size = newSize
 	}
 
+	cache.root.ReplaceOrInsert(ek)
 	cache.root.ReplaceOrInsert(ekPivot)
-	log.LogDebugf("action[SplitExtentKey] ek [%v], ekPivot[%v]", ek, ekPivot)
 
-	cache.root.Descend(func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
-		// skip if the start offset matches with the given offset
-		log.LogDebugf("action[SplitExtentKey.LoopPrint.Exit] inode %v ek [%v]", cache.inode, ek.String())
-		return true
-	})
+	log.LogDebugf("action[SplitExtentKey] inode %v ek [%v], ekPivot[%v]", inodeID, ek, ekPivot)
+	cache.gen++
 
 	return
 }
@@ -194,12 +238,13 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 	cache.Lock()
 	defer cache.Unlock()
 
-	cache.root.Descend(func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
-		// skip if the start offset matches with the given offset
-		log.LogDebugf("action[Append.LoopPrint.Enter] inode %v ek [%v]", cache.inode, ek.String())
-		return true
-	})
+	//cache.root.Descend(func(i btree.Item) bool {
+	//	ek := i.(*proto.ExtentKey)
+	//	// skip if the start offset matches with the given offset
+	//	log.LogDebugf("action[Append.LoopPrint.Enter] inode %v ek [%v]", cache.inode, ek.String())
+	//	return true
+	//})
+
 	// When doing the append, we do not care about the data after the file offset.
 	// Those data will be overwritten by the current extent anyway.
 	cache.root.AscendRange(lower, upper, func(i btree.Item) bool {
@@ -211,6 +256,7 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 	// After deleting the data between lower and upper, we will do the append
 	for _, key := range discard {
 		cache.root.Delete(key)
+		log.LogDebugf("ExtentCache del: ino(%v) ek(%v) ", cache.inode, key)
 		if key.PartitionId != 0 && key.ExtentId != 0 && (key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId || ek.ExtentOffset != key.ExtentOffset) {
 			if sync || (ek.PartitionId == 0 && ek.ExtentId == 0) {
 				cache.discard.ReplaceOrInsert(key)
@@ -220,6 +266,7 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 	}
 
 	cache.root.ReplaceOrInsert(ek)
+	log.LogDebugf("ExtentCache ReplaceOrInsert: ino(%v) ek(%v) ", cache.inode, ek)
 	if sync {
 		cache.gen++
 		discardExtents = make([]proto.ExtentKey, 0, cache.discard.Len())
@@ -239,12 +286,12 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 		cache.inode, sync, ek, discard, discardExtents, ek.VerSeq)
 	//	log.LogDebugf("ExtentCache Append stack[%v]", string(debug.Stack()))
 
-	cache.root.Descend(func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
-		// skip if the start offset matches with the given offset
-		log.LogDebugf("action[Append.LoopPrint.Exit] inode %v ek [%v]", cache.inode, ek.String())
-		return true
-	})
+	//cache.root.Descend(func(i btree.Item) bool {
+	//	ek := i.(*proto.ExtentKey)
+	//	// skip if the start offset matches with the given offset
+	//	log.LogDebugf("action[Append.LoopPrint.Exit] inode %v ek [%v]", cache.inode, ek.String())
+	//	return true
+	//})
 	return
 }
 
@@ -333,31 +380,30 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 	return ret
 }
 
-// GetEnd returns the extent key whose end offset equals the given offset.
-func (cache *ExtentCache) GetEnd(offset uint64, verSeq uint64) (ret *proto.ExtentKey) {
+// GetEndForAppendW returns the extent key whose end offset equals the given offset.
+func (cache *ExtentCache) GetEndForAppendW(offset uint64, verSeq uint64) (ret *proto.ExtentKey) {
 	pivot := &proto.ExtentKey{FileOffset: offset}
 	cache.RLock()
 	defer cache.RUnlock()
 
-	// for debug loop print
-	cache.root.Descend(func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
-		// skip if the start offset matches with the given offset
-		log.LogDebugf("action[ExtentCache.GetEnd.LoopPrint] inode %v reqSeq [%v] ek [%v]", cache.inode, verSeq, ek.String())
-		return true
-	})
+	var lastExistEk *proto.ExtentKey
 	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
 		ek := i.(*proto.ExtentKey)
 		// skip if the start offset matches with the given offset
 		if offset == ek.FileOffset {
+			lastExistEk = ek
 			return true
 		}
 		if offset == ek.FileOffset+uint64(ek.Size) {
 			if ek.VerSeq == verSeq {
-				log.LogDebugf("action[ExtentCache.GetEnd] inode %v offset %v verseq %v found,ek [%v]", cache.inode, offset, verSeq, ek.String())
+				if ek.IsSequence(lastExistEk) {
+					log.LogDebugf("action[ExtentCache.GetEndForAppendW] exist sequence extent %v", lastExistEk)
+					return false
+				}
+				log.LogDebugf("action[ExtentCache.GetEndForAppendW] inode %v offset %v verseq %v found,ek [%v]", cache.inode, offset, verSeq, ek.String())
 				ret = ek
 			} else {
-				log.LogDebugf("action[ExtentCache.GetEnd] inode %v req offset %v verseq %v not found, exist ek [%v]", cache.inode, offset, verSeq, ek.String())
+				log.LogDebugf("action[ExtentCache.GetEndForAppendW] inode %v req offset %v verseq %v not found, exist ek [%v]", cache.inode, offset, verSeq, ek.String())
 			}
 
 			return false

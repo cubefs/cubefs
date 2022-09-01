@@ -86,6 +86,7 @@ type InodeInfo struct {
 	AccessTime time.Time                 `json:"at"`
 	Target     []byte                    `json:"tgt"`
 	QuotaInfos map[uint32]*MetaQuotaInfo `json:"qifs"`
+	VerSeq     uint64                    `json:"seq"`
 	expiration int64
 }
 
@@ -495,12 +496,21 @@ type LookupRequest struct {
 	ParentID    uint64 `json:"pino"`
 	Name        string `json:"name"`
 	VerSeq      uint64 `json:"seq"`
+	VerAll      bool   `json:"verAll"`
+}
+type DetryInfo struct {
+	Inode  uint64 `json:"ino"`
+	Mode   uint32 `json:"mode"`
+	VerSeq uint64 `json:"seq"`
+	IsDel  bool   `json:"isDel"`
 }
 
 // LookupResponse defines the response for the loopup request.
 type LookupResponse struct {
-	Inode uint64 `json:"ino"`
-	Mode  uint32 `json:"mode"`
+	Inode  uint64      `json:"ino"`
+	Mode   uint32      `json:"mode"`
+	VerSeq uint64      `json:"seq"`
+	LayAll []DetryInfo `json:"layerInfo"`
 }
 
 // InodeGetRequest defines the request to get the inode.
@@ -521,7 +531,7 @@ type LayerInfo struct {
 // InodeGetResponse defines the response to the InodeGetRequest.
 type InodeGetResponse struct {
 	Info   *InodeInfo  `json:"info"`
-	LayAll []LayerInfo `json:"layerInfo"`
+	LayAll []InodeInfo `json:"layerInfo"`
 }
 
 // BatchInodeGetRequest defines the request to get the inode in batch.
@@ -568,6 +578,7 @@ type ReadDirLimitRequest struct {
 	Marker      string `json:"marker"`
 	Limit       uint64 `json:"limit"`
 	VerSeq      uint64 `json:"seq"`
+	VerDel      bool   `json:"verDel"`
 }
 
 type ReadDirLimitResponse struct {
@@ -606,6 +617,7 @@ type GetExtentsRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	VerSeq      uint64 `json:"seq"`
+	VerAll      bool
 }
 
 // GetObjExtentsResponse defines the response to the request of getting obj extents.
@@ -621,6 +633,7 @@ type GetExtentsResponse struct {
 	Generation uint64      `json:"gen"`
 	Size       uint64      `json:"sz"`
 	Extents    []ExtentKey `json:"eks"`
+	LayerInfo  []LayerInfo `json:"layer"`
 	Status     int
 }
 

@@ -62,7 +62,7 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 	}
 
 	// read connection from the master
-	if err = p.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
+	if err = p.ReadFromConnWithVer(mConn, proto.NoReadDeadlineTime); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.connPool.PutConnect(mConn, ForceClosedConnect)
 		goto end

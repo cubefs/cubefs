@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -55,7 +54,6 @@ const (
 	RepairInterval               = 60
 	RandomWriteType              = 2
 	AppendWriteType              = 1
-	AppendWriteVerType           = 3
 	AppendRandomWriteType        = 4
 	NormalExtentDeleteRetainTime = 3600 * 4
 )
@@ -209,7 +207,7 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	}
 
 	ei.Size = uint64(extent.dataSize)
-	ei.SnapshotDataSize = extent.snapshotDataSize
+	ei.SnapshotDataOff = extent.snapshotDataOff
 
 	log.LogInfof("action[ExtentInfo.UpdateExtentInfo] ei info [%v]", ei.String())
 
@@ -348,13 +346,13 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
 	log.LogDebugf("action[Write] extentID %v offset %v size %v writeTYPE %v", extentID, offset, size, writeType)
 	if err = s.checkOffsetAndSize(extentID, offset, size, writeType); err != nil {
-		log.LogInfof("action[Write] err %v", err)
+		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
 		return err
 	}
 	log.LogDebugf("action[Write] extentID %v offset %v size %v writeTYPE %v", extentID, offset, size, writeType)
 	err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
 	if err != nil {
-		log.LogInfof("action[Write] err %v", err)
+		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
 		return err
 	}
 	log.LogDebugf("action[Write] extentID %v offset %v size %v writeTYPE %v", extentID, offset, size, writeType)
@@ -365,6 +363,10 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 
 func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64, writeType int) error {
 	if IsTinyExtent(extentID) {
+		return nil
+	}
+	// random write pos can happen on modAppend partition of extent
+	if writeType == RandomWriteType {
 		return nil
 	}
 	if writeType == AppendRandomWriteType {
@@ -461,11 +463,11 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 		return
 	}
 	log.LogDebugf("action[MarkDelete] extentID %v offset %v size %v ei(size %v snapshotSize %v)",
-		extentID, offset, size, ei.Size, ei.SnapshotDataSize)
+		extentID, offset, size, ei.Size, ei.SnapshotDataOff)
 
 	funcNeedPunchDel := func() bool {
-		return offset != 0 || (ei.Size != uint64(size) && ei.SnapshotDataSize == util.ExtentSize) ||
-			(ei.Size != uint64(ei.SnapshotDataSize) && ei.SnapshotDataSize > util.ExtentSize)
+		return offset != 0 || (ei.Size != uint64(size) && ei.SnapshotDataOff == util.ExtentSize) ||
+			(ei.SnapshotDataOff != uint64(size) && ei.SnapshotDataOff > util.ExtentSize)
 	}
 
 	if IsTinyExtent(extentID) || funcNeedPunchDel() {
@@ -549,17 +551,22 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 }
 
 // GetTinyExtentOffset returns the offset of the given extent.
-func (s *ExtentStore) GetExtentSnapshotModOffset(extentID uint64) (watermark int64, err error) {
+func (s *ExtentStore) GetExtentSnapshotModOffset(extentID uint64, allocSize uint32) (watermark int64, err error) {
 	einfo, err := s.Watermark(extentID)
 	if err != nil {
 		return
 	}
-	log.LogDebugf("action[ExtentStore.GetExtentSnapshotModOffset] extId %v SnapshotDataSize %v", extentID, einfo.SnapshotDataSize)
-
-	watermark = einfo.SnapshotDataSize
-	if watermark%PageSize != 0 {
-		watermark = watermark + (PageSize - watermark%PageSize)
+	log.LogDebugf("action[ExtentStore.GetExtentSnapshotModOffset] extId %v SnapshotDataOff %v", extentID, einfo.SnapshotDataOff)
+	// snapshot write may in sequence
+	//watermark = int64(einfo.SnapshotDataOff)
+	//if watermark%PageSize != 0 {
+	//	watermark = watermark + (PageSize - watermark%PageSize)
+	//}
+	if einfo.SnapPreAllocDataOff == 0 {
+		einfo.SnapPreAllocDataOff = einfo.SnapshotDataOff
 	}
+	watermark = int64(einfo.SnapPreAllocDataOff)
+	einfo.SnapPreAllocDataOff += uint64(allocSize)
 
 	return
 }
@@ -586,9 +593,9 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 			if err != nil {
 				continue
 			}
-			used += (stat.Blocks * DiskSectorSize)
+			used += stat.Blocks * DiskSectorSize
 		} else {
-			used += int64(einfo.Size)
+			used += int64(einfo.Size + (einfo.SnapshotDataOff - util.ExtentSize))
 		}
 	}
 	return
@@ -683,7 +690,7 @@ func (s *ExtentStore) GetAvailableTinyExtent() (extentID uint64, err error) {
 
 // SendToAvailableTinyExtentC sends the extent to the channel that stores the available tiny extents.
 func (s *ExtentStore) SendToAvailableTinyExtentC(extentID uint64) {
-	log.LogInfof("action[SendToAvailableTinyExtentC] backtrace %v", string(debug.Stack()))
+	//	log.LogInfof("action[SendToAvailableTinyExtentC] backtrace %v", string(debug.Stack()))
 	if _, ok := s.availableTinyExtentMap.Load(extentID); !ok {
 		s.availableTinyExtentC <- extentID
 		s.availableTinyExtentMap.Store(extentID, true)
@@ -754,7 +761,7 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 	}
 	s.eiMutex.RUnlock()
 	for _, extentInfo := range extentInfos {
-		totalSize += extentInfo.Size
+		totalSize += extentInfo.Size + (extentInfo.SnapshotDataOff - uint64(util.ExtentSize))
 	}
 
 	return totalSize
@@ -772,7 +779,7 @@ func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize u
 		if extentInfo.FileID > maxExtentID {
 			maxExtentID = extentInfo.FileID
 		}
-		totalSize += extentInfo.Size
+		totalSize += extentInfo.Size + uint64(extentInfo.SnapshotDataOff) - uint64(util.ExtentSize)
 	}
 
 	return maxExtentID, totalSize

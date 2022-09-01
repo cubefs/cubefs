@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/binary"
+	"github.com/cubefs/cubefs/proto"
 	"sync/atomic"
 	"time"
 
@@ -40,6 +41,7 @@ type storeMsg struct {
 	uidRebuild     bool
 	uniqId         uint64
 	uniqChecker    *uniqChecker
+	multiVerList   []*proto.VolVersionInfo
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {
