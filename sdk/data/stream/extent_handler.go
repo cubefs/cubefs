@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/stat"
 	"net"
-	"runtime/debug"
 	"sync/atomic"
 	"time"
 
@@ -114,7 +113,7 @@ type ExtentHandler struct {
 
 // NewExtentHandler returns a new extent handler.
 func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
-	log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
+	//	log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
 	eh := &ExtentHandler{
 		stream:       stream,
 		id:           GetExtentHandlerID(),
@@ -322,7 +321,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-	err := reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
+	err := reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
 	if err != nil {
 		eh.processReplyError(packet, err.Error())
 		return
@@ -337,6 +336,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			return
 		}
 		// todo(leonchang) need check safety
+		log.LogWarnf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 		eh.stream.GetExtents()
 	}
 
@@ -620,7 +620,7 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 		return extID, errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 	}
 
-	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*2); err != nil {
+	if err = p.ReadFromConnWithVer(conn, proto.ReadDeadlineTime*2); err != nil {
 		return extID, errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 	}
 
@@ -658,17 +658,17 @@ func (eh *ExtentHandler) getStatus() int32 {
 }
 
 func (eh *ExtentHandler) setClosed() bool {
-	log.LogDebugf("action[ExtentHandler.setClosed] stack (%v)", string(debug.Stack()))
+	//	log.LogDebugf("action[ExtentHandler.setClosed] stack (%v)", string(debug.Stack()))
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusOpen, ExtentStatusClosed)
 }
 
 func (eh *ExtentHandler) setRecovery() bool {
-	log.LogDebugf("action[ExtentHandler.setRecovery] stack (%v)", string(debug.Stack()))
+	//	log.LogDebugf("action[ExtentHandler.setRecovery] stack (%v)", string(debug.Stack()))
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusClosed, ExtentStatusRecovery)
 }
 
 func (eh *ExtentHandler) setError() bool {
-	log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
+	//	log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
 	if proto.IsHot(eh.stream.client.volumeType) {
 		atomic.StoreInt32(&eh.stream.status, StreamerError)
 	}

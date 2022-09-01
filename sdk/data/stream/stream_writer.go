@@ -386,7 +386,7 @@ begin:
 				}
 				log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
 			} else {
-				log.LogDebugf("action[streamer.write] doOverwriteByAppend extent key (%v)", req.ExtentKey)
+				log.LogDebugf("action[streamer.write] ino %v doOverwriteByAppend extent key (%v)", s.inode, req.ExtentKey)
 				writeSize, err = s.doOverwriteByAppend(req, direct)
 			}
 			if s.client.bcacheEnable {
@@ -394,14 +394,16 @@ begin:
 				go s.client.evictBcache(cacheKey)
 			}
 		} else {
+
 			if !isChecked && checkFunc != nil {
 				isChecked = true
 				if err = checkFunc(); err != nil {
 					return
 				}
 			}
-			log.LogDebugf("action[streamer.write] doWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
+
+			log.LogDebugf("action[streamer.write] doAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
+			writeSize, err = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct)
 		}
 		if err != nil {
 			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
@@ -424,7 +426,7 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 		dp     *wrapper.DataPartition
 	)
 
-	log.LogDebugf("action[doOverwriteByAppend] enter in req %v", req)
+	log.LogDebugf("action[doOverwriteByAppend] inode %v enter in req %v", s.inode, req)
 
 	err = s.flush()
 	if err != nil {
@@ -453,7 +455,7 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 	if proto.IsCold(s.client.volumeType) {
 		retry = false
 	}
-	log.LogDebugf("action[doOverwriteByAppend] data process")
+	log.LogDebugf("action[doOverwriteByAppend] inode %v  data process", s.inode)
 	sc := NewStreamConn(dp, false)
 	for total < size { // normally should only run once due to key exist in the system must be less than BlockSize
 		// right position in extent:offset-ekFileOffset+total+ekExtOffset .
@@ -473,7 +475,7 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 
 		replyPacket := new(Packet)
 		err = sc.Send(&retry, reqPacket, func(conn *net.TCPConn) (error, bool) {
-			e := replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
+			e := replyPacket.ReadFromConnWithVer(conn, proto.ReadDeadlineTime)
 			if e != nil {
 				log.LogWarnf("Stream Writer doOverwrite: ino(%v) failed to read from connect, req(%v) err(%v)", s.inode, reqPacket, e)
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
@@ -527,17 +529,17 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 		VerSeq:       s.verSeq,
 		ModGen:       req.ExtentKey.ModGen,
 	}
-	log.LogDebugf("action[doOverwriteByAppend] local cache process start extKey %v", extKey)
-	if err = s.extents.SplitExtentKey(extKey); err != nil {
-		log.LogErrorf("action[doOverwriteByAppend] local cache process err %v", err)
+	log.LogDebugf("action[doOverwriteByAppend] inode %v local cache process start extKey %v", s.inode, extKey)
+	if err = s.extents.SplitExtentKey(s.inode, extKey); err != nil {
+		log.LogErrorf("action[doOverwriteByAppend] inode %v llocal cache process err %v", s.inode, err)
 		return
 	}
-	log.LogDebugf("action[doOverwriteByAppend] meta extent split with ek (%v)", extKey)
+	log.LogDebugf("action[doOverwriteByAppend] inode %v meta extent split with ek (%v)", s.inode, extKey)
 	if err = s.client.splitExtentKey(s.parentInode, s.inode, *extKey); err != nil {
-		log.LogErrorf("action[doOverwriteByAppend] lmeta extent split process err %v", err)
+		log.LogErrorf("action[doOverwriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 		return
 	}
-	log.LogDebugf("action[doOverwriteByAppend] process over!")
+	log.LogDebugf("action[doOverwriteByAppend] inode %v process over!", s.inode)
 	return
 }
 
@@ -640,7 +642,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	return
 }
 
-func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total int, err error) {
+func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool) (total int, err error) {
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -650,14 +652,14 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 	// store only for the first write operation.
 	storeMode = s.GetStoreMod(offset, size)
 
-	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
+	log.LogDebugf("doAppendWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 	if proto.IsHot(s.client.volumeType) {
 		// && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset)  delete ??
 		if storeMode == proto.NormalExtentType && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset) {
-			if currentEK := s.extents.GetEnd(uint64(offset), s.verSeq); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
+			if currentEK := s.extents.GetEndForAppendW(uint64(offset), s.verSeq); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
 				s.closeOpenHandler()
 
-				log.LogDebugf("doWrite: found ek in ExtentCache, extent_id(%v) offset(%v) size(%v), ekoffset(%v) eksize(%v)",
+				log.LogDebugf("doAppendWrite: found ek in ExtentCache, extent_id(%v) offset(%v) size(%v), ekoffset(%v) eksize(%v)",
 					currentEK.ExtentId, offset, size, currentEK.FileOffset, currentEK.Size)
 				_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
 				if pidErr == nil {
@@ -672,13 +674,13 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 					}
 					s.handler = handler
 					s.dirty = false
-					log.LogDebugf("doWrite: currentEK.PartitionId(%v) found", currentEK.PartitionId)
+					log.LogDebugf("doAppendWrite: currentEK.PartitionId(%v) found", currentEK.PartitionId)
 				} else {
-					log.LogDebugf("doWrite: currentEK.PartitionId(%v) not found", currentEK.PartitionId)
+					log.LogDebugf("doAppendWrite: currentEK.PartitionId(%v) not found", currentEK.PartitionId)
 				}
 
 			} else {
-				log.LogDebugf("doWrite: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
+				log.LogDebugf("doAppendWrite: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
 			}
 		}
 		for i := 0; i < MaxNewHandlerRetry; i++ {
@@ -699,7 +701,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 				break
 			}
 
-			log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
+			log.LogDebugf("doAppendWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
 				s.inode, offset, size, storeMode, err)
 
 			s.closeOpenHandler()
@@ -715,13 +717,13 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 			}
 		}
 
-		log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
+		log.LogDebugf("doAppendWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
 			s.inode, offset, size, storeMode, err)
 		err = s.closeOpenHandler()
 	}
 
 	if err != nil || ek == nil {
-		log.LogErrorf("doWrite error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
+		log.LogErrorf("doAppendWrite error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
 		return
 	}
 
@@ -729,7 +731,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 	_ = s.extents.Append(ek, false)
 	total = size
 
-	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
+	log.LogDebugf("doAppendWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
 	return
 }
 

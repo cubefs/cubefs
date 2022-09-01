@@ -787,6 +787,15 @@ func (t *BTree) AscendGreaterOrEqual(pivot Item, iterator ItemIterator) {
 	t.root.iterate(ascend, pivot, nil, true, false, iterator)
 }
 
+// AscendGreaterOrEqual calls the iterator for every value in the tree within
+// the range [pivot, last], until iterator returns false.
+func (t *BTree) AscendGreaterThan(pivot Item, iterator ItemIterator) {
+	if t.root == nil {
+		return
+	}
+	t.root.iterate(ascend, pivot, nil, false, false, iterator)
+}
+
 // Ascend calls the iterator for every value in the tree within the range
 // [first, last], until iterator returns false.
 func (t *BTree) Ascend(iterator ItemIterator) {

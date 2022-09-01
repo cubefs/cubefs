@@ -52,6 +52,7 @@ type MetadataManager interface {
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
 	GetLeaderPartitions() map[uint64]MetaPartition
+	checkVolVerList() (err error)
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
