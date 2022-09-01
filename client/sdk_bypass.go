@@ -178,6 +178,9 @@ const (
 	inodeExpiration       = time.Hour
 	inodeEvictionInterval = time.Hour
 	dentryValidDuration   = time.Hour
+
+	MaxRequestMasterRetry      = 10
+	RequestMasterRetryInterval = time.Second * 2
 )
 
 var (
@@ -647,11 +650,12 @@ func cfs_sdk_version(v *C.cfs_sdk_version_t) C.int {
 
 //export cfs_new_client
 func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
+	first_start := C.GoString(str) == ""
 	c := newClient(conf, C.GoString(configPath))
-	if err := c.start(); err != nil {
+	if err := c.start(first_start); err != nil {
 		return C.int64_t(statusEIO)
 	}
-	if C.GoString(str) != "" {
+	if !first_start {
 		var sdkState SdkState
 		err := json.Unmarshal([]byte(C.GoString(str)), &sdkState)
 		if err == nil {
@@ -3746,11 +3750,11 @@ func (c *client) absPathAt(dirfd C.int, path *C.char) (string, error) {
 	return absPath, nil
 }
 
-func (c *client) checkVolWriteMutex() error {
+func (c *client) checkVolWriteMutex(tryTime int) (err error) {
 	if c.app != appCoralDB {
 		return nil
 	}
-	for true {
+	for i := 0; i < tryTime; i++ {
 		clientIP, err := c.mc.ClientAPI().GetVolMutex(c.volName)
 		if err == nil && clientIP == "" {
 			return nil
@@ -3764,6 +3768,7 @@ func (c *client) checkVolWriteMutex() error {
 		}
 		if err != nil {
 			syslog.Printf("checkVolWriteMutex err: %v, retry...\n", err)
+			time.Sleep(RequestMasterRetryInterval)
 			continue
 		}
 
@@ -3777,13 +3782,14 @@ func (c *client) checkVolWriteMutex() error {
 		}
 		if err != nil {
 			syslog.Printf("checkVolWriteMutex err: %v, retry...\n", err)
+			time.Sleep(RequestMasterRetryInterval)
 			continue
 		}
 	}
-	return nil
+	return err
 }
 
-func (c *client) start() (err error) {
+func (c *client) start(first_start bool) (err error) {
 	defer func() {
 		if err != nil {
 			gClientManager.outputFile.Sync()
@@ -3794,7 +3800,12 @@ func (c *client) start() (err error) {
 
 	masters := strings.Split(c.masterAddr, ",")
 	c.mc = master.NewMasterClient(masters, false)
-	if err = c.checkVolWriteMutex(); err != nil {
+
+	tryTime := MaxRequestMasterRetry
+	if first_start {
+		tryTime = 1
+	}
+	if err = c.checkVolWriteMutex(tryTime); err != nil {
 		syslog.Printf("checkVolWriteMutex error: %v\n", err)
 		return
 	}

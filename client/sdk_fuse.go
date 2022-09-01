@@ -35,6 +35,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -166,14 +167,27 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) (err er
 
 	registerInterceptedSignal()
 
-	if err = checkPermission(opt); err != nil {
+	first_start := clientState == nil
+	tryTime := MaxRequestMasterRetry
+	if first_start {
+		tryTime = 1
+	}
+	for i := 0; i < tryTime; i++ {
+		if err = checkPermission(opt); err == nil || err == proto.ErrNoPermission {
+			break
+		}
+		syslog.Println("check permission failed: ", err)
+		time.Sleep(RequestMasterRetryInterval)
+	}
+	if err != nil {
 		syslog.Println("check permission failed: ", err)
 		log.LogFlush()
 		return err
 	}
+
 	gClient.readonly = opt.Rdonly
 
-	fsConn, err := mount(opt, fuseFd, clientState)
+	fsConn, err := mount(opt, fuseFd)
 	if err != nil {
 		syslog.Println("mount failed: ", err)
 		log.LogFlush()
@@ -213,7 +227,7 @@ func dumpVersion() string {
 	return fmt.Sprintf("\nChubaoFS Client\nBranch: %s\nCommit: %s\nBuild: %s %s %s %s\n", BranchName, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 }
 
-func mount(opt *proto.MountOptions, fuseFd *os.File, clientState []byte) (fsConn *fuse.Conn, err error) {
+func mount(opt *proto.MountOptions, fuseFd *os.File) (fsConn *fuse.Conn, err error) {
 	super, err := cfs.NewSuper(opt)
 	if err != nil {
 		log.LogError(errors.Stack(err))

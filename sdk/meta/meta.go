@@ -168,16 +168,24 @@ type Ticket struct {
 
 func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	var err error
+	var ticket *auth.Ticket
 	mw := new(MetaWrapper)
 	mw.closeCh = make(chan struct{}, 1)
 
 	if config.Authenticate {
 		var ticketMess = config.TicketMess
 		mw.ac = authSDK.NewAuthClient(ticketMess.TicketHosts, ticketMess.EnableHTTPS, ticketMess.CertFile)
-		ticket, err := mw.ac.API().GetTicket(config.Owner, ticketMess.ClientKey, proto.MasterServiceID)
+		for i := 0; i < MaxMountRetryLimit; i++ {
+			ticket, err = mw.ac.API().GetTicket(config.Owner, ticketMess.ClientKey, proto.MasterServiceID)
+			if err == nil {
+				break
+			}
+			time.Sleep(MountRetryInterval)
+		}
 		if err != nil {
 			return nil, errors.Trace(err, "Get ticket from authnode failed!")
 		}
+
 		mw.authenticate = config.Authenticate
 		mw.accessToken.Ticket = ticket.Ticket
 		mw.accessToken.ClientID = config.Owner
