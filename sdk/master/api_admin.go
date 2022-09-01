@@ -798,6 +798,10 @@ func (api *AdminAPI) GetVerList(volName string) (verList *proto.VolVersionInfoLi
 	if err = json.Unmarshal(buf, verList); err != nil {
 		return
 	}
+	log.LogDebugf("GetVerList. vol %v verList %v", volName, verList)
+	for _, info := range verList.VerList {
+		log.LogDebugf("GetVerList. vol %v verList %v", volName, info)
+	}
 	return
 }
 

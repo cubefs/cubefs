@@ -1807,25 +1807,6 @@ func (m *Server) checkReplicaNum(r *http.Request, vol *Vol, req *updateVolReq) (
 	return
 }
 
-func (m *Server) getVolVer(w http.ResponseWriter, r *http.Request) {
-	var (
-		err  error
-		name string
-		info *proto.VolumeVerInfo
-	)
-	if name, err = parseVolName(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if info, err = m.cluster.getVolVer(name); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
-		return
-	}
-
-	sendOkReply(w, r, newSuccessHTTPReply(info))
-}
-
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		req = &updateVolReq{}
@@ -4509,7 +4490,7 @@ func (m *Server) DelVersion(w http.ResponseWriter, r *http.Request) {
 		value  string
 		force  bool
 	)
-	log.LogDebugf("action[DelVersion]")
+
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -4522,11 +4503,8 @@ func (m *Server) DelVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if verSeq, err = extractUint64(r, verSeqKey); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("verSeq not exist")))
-		return
-	}
-
+	verSeq, err = extractUint64(r, verSeqKey)
+	log.LogDebugf("action[DelVersion] vol %v verSeq %v", name, verSeq)
 	if value = r.FormValue(forceKey); value != "" {
 		force, _ = strconv.ParseBool(value)
 	}
@@ -4535,16 +4513,11 @@ func (m *Server) DelVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = vol.VersionMgr.startWork(); err != nil {
+	if _, err = vol.VersionMgr.createVer2PhaseTask(m.cluster, verSeq, proto.DeleteVersion, force); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVersionOpError, Msg: err.Error()})
 		return
 	}
-	if _, err = vol.VersionMgr.createTask(m.cluster, verSeq, proto.DeleteVersion, force); err != nil {
-		vol.VersionMgr.finishWork()
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVersionOpError, Msg: err.Error()})
-		return
-	}
-	vol.VersionMgr.finishWork()
+
 	sendOkReply(w, r, newSuccessHTTPReply("success!"))
 }
 
@@ -4599,9 +4572,33 @@ func (m *Server) GetAllVersionInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
+	if !proto.IsHot(vol.VolType) {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVersionOpError, Msg: "vol need be hot one"})
+		return
+	}
+
 	verList = vol.VersionMgr.getVersionList()
 
 	sendOkReply(w, r, newSuccessHTTPReply(verList))
+}
+
+func (m *Server) getVolVer(w http.ResponseWriter, r *http.Request) {
+	var (
+		err  error
+		name string
+		info *proto.VolumeVerInfo
+	)
+	if name, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if info, err = m.cluster.getVolVer(name); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(info))
 }
 
 func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) (message string, err error) {

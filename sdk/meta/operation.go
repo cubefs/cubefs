@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -580,7 +579,10 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	if parentID == inode {
 		return statusExist, nil
 	}
-
+	var verSeq uint64
+	if mw.Client != nil {
+		verSeq = mw.Client.GetLatestVer()
+	}
 	req := &proto.CreateDentryRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -588,7 +590,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 		Inode:       inode,
 		Name:        name,
 		Mode:        mode,
-		VerSeq:      mw.LastVerSeq,
+		VerSeq:      verSeq,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -1098,7 +1100,7 @@ func (mw *MetaWrapper) readDir(mp *MetaPartition, parentID uint64) (status int, 
 }
 
 // read limit dentries start from
-func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from string, limit uint64, verSeq uint64) (status int, children []proto.Dentry, err error) {
+func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from string, limit uint64, verSeq uint64, verDel bool) (status int, children []proto.Dentry, err error) {
 	req := &proto.ReadDirLimitRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -1106,6 +1108,7 @@ func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from str
 		Marker:      from,
 		Limit:       limit,
 		VerSeq:      verSeq,
+		VerDel:      verDel,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -2753,10 +2756,11 @@ func (mw *MetaWrapper) getUniqID(mp *MetaPartition, num uint32) (status int, sta
 }
 
 func (mw *MetaWrapper) checkVerFromMeta(packet *proto.Packet) {
-	if packet.VerSeq > atomic.LoadUint64(&mw.LastVerSeq) {
-		mw.LastVerSeq = packet.VerSeq
-		if mw.Client != nil {
-			mw.Client.UpdateLatestVer(mw.LastVerSeq)
-		}
+
+	if packet.VerSeq <= mw.Client.GetLatestVer() {
+		return
 	}
+
+	log.LogDebugf("checkVerFromMeta.try update meta wrapper verSeq from %v to %v", mw.Client.GetLatestVer(), packet.VerSeq)
+	mw.Client.UpdateLatestVer(packet.VerSeq)
 }

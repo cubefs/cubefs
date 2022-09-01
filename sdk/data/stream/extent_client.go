@@ -124,6 +124,7 @@ type ExtentConfig struct {
 type MultiVerMgr struct {
 	verReadSeq   uint64 // verSeq in config used as snapshot read
 	latestVerSeq uint64 // newest verSeq from master for datanode write to check
+	sync.RWMutex
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -332,20 +333,25 @@ func (client *ExtentClient) GetVolumeName() string {
 	return client.volumeName
 }
 
+func (client *ExtentClient) GetLatestVer() uint64 {
+	return atomic.LoadUint64(&client.multiVerMgr.latestVerSeq)
+}
+func (client *ExtentClient) GetReadVer() uint64 {
+	return atomic.LoadUint64(&client.multiVerMgr.verReadSeq)
+}
 func (client *ExtentClient) UpdateLatestVer(verSeq uint64) (err error) {
-	if verSeq == 0 || verSeq == client.multiVerMgr.latestVerSeq {
+	if verSeq == 0 || verSeq <= atomic.LoadUint64(&client.multiVerMgr.latestVerSeq) {
 		return
 	}
-	log.LogDebugf("action[UpdateLatestVer] try update verseq [%v]", verSeq)
-	if verSeq != client.multiVerMgr.latestVerSeq {
-		if verSeq < client.multiVerMgr.latestVerSeq {
-			err = fmt.Errorf("%v less than client seq %v", verSeq, client.multiVerMgr.latestVerSeq)
-			log.LogErrorf("action[UpdateLatestVer] %v", err.Error())
-			return
-		}
-		log.LogInfof("action[UpdateLatestVer] update verseq [%v] to [%v]", client.multiVerMgr.latestVerSeq, verSeq)
-		client.multiVerMgr.latestVerSeq = verSeq
+	client.multiVerMgr.Lock()
+	defer client.multiVerMgr.Unlock()
+	if verSeq <= atomic.LoadUint64(&client.multiVerMgr.latestVerSeq) {
+		return
 	}
+
+	log.LogInfof("action[UpdateLatestVer] update verseq [%v] to [%v]", client.multiVerMgr.latestVerSeq, verSeq)
+	atomic.StoreUint64(&client.multiVerMgr.latestVerSeq, verSeq)
+
 	for _, streamer := range client.streamers {
 		if streamer.verSeq != verSeq {
 			log.LogDebugf("action[ExtentClient.UpdateLatestVer] stream inode %v ver %v try update to %v", streamer.inode, streamer.verSeq, verSeq)

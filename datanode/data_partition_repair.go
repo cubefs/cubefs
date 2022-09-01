@@ -113,7 +113,7 @@ func (dp *DataPartition) repair(extentType uint8) {
 		log.LogError(errors.Stack(err))
 		return
 	}
-
+	log.LogDebugf("DoRepair")
 	// ask the leader to do the repair
 	dp.DoRepair(repairTasks)
 	end := time.Now().UnixNano()
@@ -151,7 +151,7 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, replica[index], err)
 			continue
 		}
-		log.LogInfof("buildDataPartitionRepairTask dp %v,add new add %v,  extent type %v", dp.partitionID, replica[index], extentType)
+		log.LogInfof("buildDataPartitionRepairTask dp %v,  add new add %v,  extent type %v", dp.partitionID, replica[index], extentType)
 		repairTasks[index] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, replica[index], replica[0])
 		repairTasks[index].addr = replica[index]
 	}
@@ -211,7 +211,7 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 		return
 	}
 	reply := new(repl.Packet)
-	err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime) // read the response
+	err = reply.ReadFromConnWithVer(conn, proto.GetAllWatermarksDeadLineTime) // read the response
 	if err != nil {
 		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) read from host(%v)", dp.partitionID, target)
 		return
@@ -242,7 +242,9 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 
 		store.Create(extentInfo.FileID)
 	}
+	log.LogDebugf("action[DoRepair] leader to repair len[%v], {%v}", len(repairTasks[0].ExtentsToBeRepaired), repairTasks[0].ExtentsToBeRepaired)
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
+		log.LogDebugf("action[DoRepair] leader to repair len[%v], {%v}", len(repairTasks[0].ExtentsToBeRepaired), extentInfo)
 		err := dp.streamRepairExtent(extentInfo)
 		if err != nil {
 			err = errors.Trace(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(extentInfo.FileID)))
@@ -314,10 +316,11 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 			if !ok {
 				extentInfoMap[extentID] = extentInfo
 			} else {
-				if extentInfo.Size > extentWithMaxSize.Size {
+				if extentInfo.TotalSize() > extentWithMaxSize.TotalSize() {
 					extentInfoMap[extentID] = extentInfo
 				}
 			}
+			log.LogInfof("action[prepareRepairTasks] dp %v extentid %v addr[dst %v,leader %v] info %v", dp.partitionID, extentID, repairTask.addr, repairTask.LeaderAddr, extentInfoMap[extentID])
 		}
 	}
 	for extentID := range deleteExtents {
@@ -353,7 +356,7 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 				if dp.ExtentStore().IsDeletedNormalExtent(extentID) {
 					continue
 				}
-				ei := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentID, Size: extentInfo.Size}
+				ei := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentID, Size: extentInfo.Size, SnapshotDataOff: extentInfo.SnapshotDataOff}
 				repairTask.ExtentsToBeCreated = append(repairTask.ExtentsToBeCreated, ei)
 				repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, ei)
 				log.LogInfof("action[generatorAddExtentsTasks] addFile(%v_%v) on Index(%v).", dp.partitionID, ei, index)
@@ -383,8 +386,8 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 			if dp.ExtentStore().IsDeletedNormalExtent(extentID) {
 				continue
 			}
-			if extentInfo.Size < maxFileInfo.Size {
-				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileID: extentID, Size: maxFileInfo.Size}
+			if extentInfo.TotalSize() < maxFileInfo.TotalSize() {
+				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileID: extentID, Size: maxFileInfo.Size, SnapshotDataOff: maxFileInfo.SnapshotDataOff}
 				repairTasks[index].ExtentsToBeRepaired = append(repairTasks[index].ExtentsToBeRepaired, fixExtent)
 				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v) on Index(%v) on(%v).",
 					dp.partitionID, fixExtent, index, repairTasks[index].addr)
@@ -430,7 +433,7 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	if err = p.WriteToConn(conn); err != nil {
 		return err
 	}
-	if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
+	if err = p.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
 		return err
 	}
 	return err
@@ -479,8 +482,10 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 
 // The actual repair of an extent happens here.
 func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo) (err error) {
+	log.LogDebugf("streamRepairExtent dp %v remote info %v", dp.partitionID, remoteExtentInfo)
 	store := dp.ExtentStore()
 	if !store.HasExtent(remoteExtentInfo.FileID) {
+		log.LogDebugf("streamRepairExtent remote info %v not exist", remoteExtentInfo)
 		return
 	}
 	if !AutoRepairStatus && !storage.IsTinyExtent(remoteExtentInfo.FileID) {
@@ -489,147 +494,158 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	}
 	localExtentInfo, err := store.Watermark(remoteExtentInfo.FileID)
 	if err != nil {
+		log.LogDebugf("streamRepairExtent local v% remote info %v", localExtentInfo, remoteExtentInfo)
 		return errors.Trace(err, "streamRepairExtent Watermark error")
 	}
-
+	log.LogDebugf("streamRepairExtent dp %v remote info %v,local %v", dp.partitionID, remoteExtentInfo, localExtentInfo)
 	if dp.ExtentStore().IsDeletedNormalExtent(remoteExtentInfo.FileID) {
+		log.LogDebugf("streamRepairExtent local %v remote info %v", localExtentInfo, remoteExtentInfo)
 		return nil
 	}
 
-	if localExtentInfo.Size >= remoteExtentInfo.Size {
+	if localExtentInfo.Size >= remoteExtentInfo.Size && localExtentInfo.SnapshotDataOff >= remoteExtentInfo.SnapshotDataOff {
+		log.LogDebugf("streamRepairExtent local v% remote info %v", localExtentInfo, remoteExtentInfo)
 		return nil
 	}
+
+	doWork := func(wType int, currFixOffset uint64, dstOffset uint64, request *repl.Packet) (err error) {
+		log.LogDebugf("streamRepairExtent. currFixOffset %v dstOffset %v, request %v", currFixOffset, dstOffset, request)
+		var conn net.Conn
+		conn, err = dp.getRepairConn(remoteExtentInfo.Source)
+		if err != nil {
+			return errors.Trace(err, "streamRepairExtent get conn from host(%v) error", remoteExtentInfo.Source)
+		}
+		defer func() {
+			dp.putRepairConn(conn, err != nil)
+		}()
+
+		if err = request.WriteToConn(conn); err != nil {
+			err = errors.Trace(err, "streamRepairExtent send streamRead to host(%v) error", remoteExtentInfo.Source)
+			log.LogWarnf("action[streamRepairExtent] err(%v).", err)
+			return
+		}
+
+		var (
+			hasRecoverySize uint64
+		)
+		var loopTimes uint64
+		for currFixOffset < dstOffset {
+			if currFixOffset >= dstOffset {
+				break
+			}
+			reply := repl.NewPacket()
+
+			// read 64k streaming repair packet
+			if err = reply.ReadFromConnWithVer(conn, 60); err != nil {
+				err = errors.Trace(err, "streamRepairExtent receive data error,localExtentSize(%v) remoteExtentSize(%v)", currFixOffset, dstOffset)
+				return
+			}
+
+			if reply.ResultCode != proto.OpOk {
+				err = errors.Trace(fmt.Errorf("unknow result code"),
+					"streamRepairExtent receive opcode error(%v) ,localExtentSize(%v) remoteExtentSize(%v)", string(reply.Data[:intMin(len(reply.Data), int(reply.Size))]), currFixOffset, remoteExtentInfo.Size)
+				return
+			}
+
+			if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
+				reply.ExtentID != request.ExtentID {
+				err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
+					"request(%v) reply(%v) ,localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, dstOffset)
+				return
+			}
+
+			if !storage.IsTinyExtent(reply.ExtentID) && (reply.Size == 0 || reply.ExtentOffset != int64(currFixOffset)) {
+				err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
+					"request(%v) reply(%v) localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, dstOffset)
+				return
+			}
+			if loopTimes%100 == 0 {
+				log.LogInfof(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
+					" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
+					dstOffset, currFixOffset, reply.GetUniqueLogId()))
+			}
+			loopTimes++
+
+			actualCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
+			if reply.CRC != crc32.ChecksumIEEE(reply.Data[:reply.Size]) {
+				err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from (%v)"+
+					" remoteSize(%v) localSize(%v) request(%v) reply(%v) ", reply.CRC, actualCrc, dp.partitionID, remoteExtentInfo.String(),
+					remoteExtentInfo.Source, dstOffset, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
+				return errors.Trace(err, "streamRepairExtent receive data error")
+			}
+			isEmptyResponse := false
+			// Write it to local extent file
+			if storage.IsTinyExtent(uint64(localExtentInfo.FileID)) {
+				currRecoverySize := uint64(reply.Size)
+				var remoteAvaliSize uint64
+				if reply.ArgLen == TinyExtentRepairReadResponseArgLen {
+					remoteAvaliSize = binary.BigEndian.Uint64(reply.Arg[9:TinyExtentRepairReadResponseArgLen])
+				}
+				if reply.Arg != nil { //compact v1.2.0 recovery
+					isEmptyResponse = reply.Arg[0] == EmptyResponse
+				}
+				if isEmptyResponse {
+					currRecoverySize = binary.BigEndian.Uint64(reply.Arg[1:9])
+					reply.Size = uint32(currRecoverySize)
+				}
+				err = store.TinyExtentRecover(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.Data, reply.CRC, isEmptyResponse)
+				if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
+					log.LogInfof("streamRepairTinyExtent(%v) recover fininsh,remoteAvaliSize(%v) "+
+						"hasRecoverySize(%v) currRecoverySize(%v)", dp.applyRepairKey(int(localExtentInfo.FileID)),
+						remoteAvaliSize, hasRecoverySize+currRecoverySize, currRecoverySize)
+					break
+				}
+			} else {
+				log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v ", reply.Size, currFixOffset, reply)
+				err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, wType, BufferWrite)
+			}
+			//log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
+			// write to the local extent file
+			if err != nil {
+				err = errors.Trace(err, "streamRepairExtent repair data error ")
+				return
+			}
+			hasRecoverySize += uint64(reply.Size)
+			currFixOffset += uint64(reply.Size)
+			if currFixOffset >= dstOffset {
+				log.LogWarnf(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
+					" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
+					dstOffset, currFixOffset, reply.GetUniqueLogId()))
+				break
+			}
+
+		}
+		return
+	}
+
 	// size difference between the local extent and the remote extent
 	var request *repl.Packet
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
+
 	if storage.IsTinyExtent(remoteExtentInfo.FileID) {
 		if sizeDiff >= math.MaxUint32 {
 			sizeDiff = math.MaxUint32 - util.MB
 		}
 		request = repl.NewTinyExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
+		currFixOffset := localExtentInfo.Size
+		return doWork(0, currFixOffset, remoteExtentInfo.Size, request)
 	} else {
-		request = repl.NewExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
-	}
-	var conn net.Conn
-	conn, err = dp.getRepairConn(remoteExtentInfo.Source)
-	if err != nil {
-		return errors.Trace(err, "streamRepairExtent get conn from host(%v) error", remoteExtentInfo.Source)
-	}
-
-	isNetError := false
-	defer func() {
-		dp.putRepairConn(conn, isNetError)
-	}()
-
-	if err = request.WriteToConn(conn); err != nil {
-		err = errors.Trace(err, "streamRepairExtent send streamRead to host(%v) error", remoteExtentInfo.Source)
-		log.LogWarnf("action[streamRepairExtent] err(%v).", err)
-		isNetError = true
-		return
-	}
-	currFixOffset := localExtentInfo.Size
-	var (
-		hasRecoverySize uint64
-	)
-	var loopTimes uint64
-	for currFixOffset < remoteExtentInfo.Size {
-
-		if !dp.Disk().CanWrite() {
-			return fmt.Errorf("disk is full, can't do repair write any more")
-		}
-
-		if currFixOffset >= remoteExtentInfo.Size {
-			break
-		}
-		reply := repl.NewPacket()
-
-		// read 64k streaming repair packet
-		if err = reply.ReadFromConn(conn, 60); err != nil {
-			err = errors.Trace(err, "streamRepairExtent receive data error,localExtentSize(%v) remoteExtentSize(%v)", currFixOffset, remoteExtentInfo.Size)
-			isNetError = true
-			return
-		}
-
-		if reply.ResultCode != proto.OpOk {
-			err = errors.Trace(fmt.Errorf("unknow result code"),
-				"streamRepairExtent receive opcode error(%v) ,localExtentSize(%v) remoteExtentSize(%v)", string(reply.Data[:intMin(len(reply.Data), int(reply.Size))]), currFixOffset, remoteExtentInfo.Size)
-			return
-		}
-
-		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
-			reply.ExtentID != request.ExtentID {
-			err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
-				"request(%v) reply(%v) ,localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, remoteExtentInfo.Size)
-			return
-		}
-
-		if !storage.IsTinyExtent(reply.ExtentID) && (reply.Size == 0 || reply.ExtentOffset != int64(currFixOffset)) {
-			err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
-				"request(%v) reply(%v) localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, remoteExtentInfo.Size)
-			return
-		}
-		if loopTimes%100 == 0 {
-			log.LogInfof(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
-				" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
-				remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId()))
-		}
-		loopTimes++
-
-		actualCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
-		if reply.CRC != actualCrc {
-			err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from (%v)"+
-				" remoteSize(%v) localSize(%v) request(%v) reply(%v) ", reply.CRC, actualCrc, dp.partitionID, remoteExtentInfo.String(),
-				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
-			return errors.Trace(err, "streamRepairExtent receive data error")
-		}
-		isEmptyResponse := false
-		// Write it to local extent file
-		if storage.IsTinyExtent(uint64(localExtentInfo.FileID)) {
-			currRecoverySize := uint64(reply.Size)
-			var remoteAvaliSize uint64
-			if reply.ArgLen == TinyExtentRepairReadResponseArgLen {
-				remoteAvaliSize = binary.BigEndian.Uint64(reply.Arg[9:TinyExtentRepairReadResponseArgLen])
+		if sizeDiff > 0 {
+			log.LogDebugf("streamRepairExtent. local info %v, remote %v", localExtentInfo, remoteExtentInfo)
+			request = repl.NewExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
+			currFixOffset := localExtentInfo.Size
+			if err = doWork(storage.AppendWriteType, currFixOffset, remoteExtentInfo.Size, request); err != nil {
+				return
 			}
-			if reply.Arg != nil { //compact v1.2.0 recovery
-				isEmptyResponse = reply.Arg[0] == EmptyResponse
-			}
-			if isEmptyResponse {
-				currRecoverySize = binary.BigEndian.Uint64(reply.Arg[1:9])
-				reply.Size = uint32(currRecoverySize)
-			}
-
-			dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(reply.Size))
-			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
-
-			err = store.TinyExtentRecover(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.Data, reply.CRC, isEmptyResponse)
-			if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
-				log.LogInfof("streamRepairTinyExtent(%v) recover finish,remoteAvaliSize(%v) "+
-					"hasRecoverySize(%v) currRecoverySize(%v)", dp.applyRepairKey(int(localExtentInfo.FileID)),
-					remoteAvaliSize, hasRecoverySize+currRecoverySize, currRecoverySize)
-				break
-			}
-		} else {
-			dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(reply.Size))
-			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
-
-			err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, storage.AppendWriteType, BufferWrite)
 		}
-
-		// write to the local extent file
-		if err != nil {
-			err = errors.Trace(err, "streamRepairExtent repair data error ")
-			return
+		sizeDiffVerAppend := remoteExtentInfo.SnapshotDataOff - localExtentInfo.SnapshotDataOff
+		if sizeDiffVerAppend > 0 {
+			request = repl.NewExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.SnapshotDataOff), int(sizeDiffVerAppend))
+			currFixOffset := localExtentInfo.SnapshotDataOff
+			return doWork(storage.AppendRandomWriteType, currFixOffset, remoteExtentInfo.SnapshotDataOff, request)
 		}
-		hasRecoverySize += uint64(reply.Size)
-		currFixOffset += uint64(reply.Size)
-		if currFixOffset >= remoteExtentInfo.Size {
-			log.LogWarnf(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
-				" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
-				remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId()))
-			break
-		}
-
 	}
+
 	return
 
 }

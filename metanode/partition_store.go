@@ -52,6 +52,7 @@ const (
 	metadataFileTmp    = ".meta"
 	uniqCheckerFile    = "uniqChecker"
 	uniqCheckerFileTmp = ".uniqChecker"
+	verdataFile        = "multiVer"
 )
 
 func (mp *metaPartition) loadMetadata() (err error) {
@@ -698,6 +699,64 @@ func (mp *metaPartition) loadUniqChecker(rootDir string) (err error) {
 	return
 }
 
+func (mp *metaPartition) loadMultiVer(rootDir string) (err error) {
+	filename := path.Join(mp.config.RootDir, verdataFile)
+	if _, err = os.Stat(filename); err != nil {
+
+		err = nil
+		return
+	}
+
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		if err == os.ErrNotExist {
+			err = nil
+			return
+		}
+
+		err = errors.NewErrorf("[loadMultiVer] OpenFile: %s", err.Error())
+		return
+	}
+
+	if len(data) == 0 {
+		err = errors.NewErrorf("[loadMultiVer]: ApplyID is empty")
+		return
+	}
+
+	var verData string
+	if strings.Contains(string(data), "|") {
+		_, err = fmt.Sscanf(string(data), "%d|%s", &mp.applyID, &verData)
+	} else {
+		_, err = fmt.Sscanf(string(data), "%d", &mp.applyID)
+	}
+
+	if err != nil {
+		err = errors.NewErrorf("[loadMultiVer] ReadVerList: %s", err.Error())
+		return
+	}
+	log.LogInfof("loadMultiVer: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v) data(%v) versionlist %v",
+		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename, verData, mp.multiVersionList)
+
+	var verList []proto.VolVersionInfo
+	if err = json.Unmarshal([]byte(verData), &verList); err != nil {
+		err = errors.NewErrorf("[loadMultiVer] ReadVerList: %s", err.Error())
+		return
+	}
+
+	for _, info := range verList {
+		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, &proto.VolVersionInfo{
+			Ver:     info.Ver,
+			Ctime:   info.Ctime,
+			DelTime: info.DelTime,
+			Status:  info.Status,
+		})
+	}
+
+	log.LogInfof("loadMultiVer: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v) verlist (%v)",
+		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename, mp.multiVersionList.VerList)
+	return
+}
+
 func (mp *metaPartition) persistMetadata() (err error) {
 	if err = mp.config.checkMeta(); err != nil {
 		err = errors.NewErrorf("[persistMetadata]->%s", err.Error())
@@ -730,6 +789,36 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	}
 	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
+	return
+}
+
+func (mp *metaPartition) storeInitMultiversion() (err error) {
+	sm := &storeMsg{
+		multiVerList: mp.multiVersionList.VerList,
+	}
+	return mp.storeMultiversion(mp.config.RootDir, sm)
+}
+
+func (mp *metaPartition) storeMultiversion(rootDir string, sm *storeMsg) (err error) {
+	filename := path.Join(mp.config.RootDir, verdataFile)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
+		O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = fp.Sync()
+		fp.Close()
+	}()
+	var verData []byte
+	if verData, err = json.Marshal(sm.multiVerList); err != nil {
+		return
+	}
+	if _, err = fp.WriteString(fmt.Sprintf("%d|%s", sm.applyIndex, string(verData))); err != nil {
+		return
+	}
+	log.LogInfof("storeMultiversion: store complete: partitionID(%v) volume(%v) applyID(%v) verData(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.applyIndex, verData)
 	return
 }
 

@@ -66,6 +66,24 @@ func (d *Dentry) setDeleted() {
 	d.VerSeq |= uint64(1) << 63
 }
 
+func (d *Dentry) minimizeSeq() (verSeq uint64) {
+	cnt := len(d.dentryList)
+	if cnt == 0 {
+		return d.getVerSeq()
+	}
+	return d.dentryList[cnt-1].getVerSeq()
+}
+
+func (d *Dentry) isEffective(verSeq uint64) bool {
+	if verSeq == 0 {
+		return false
+	}
+	if verSeq == math.MaxUint64 {
+		verSeq = 0
+	}
+	return verSeq >= d.minimizeSeq()
+}
+
 func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
 
 	log.LogInfof("action[getDentryFromVerList] verseq %v, tmp dentry %v, inode id %v, name %v", verSeq, d.getVerSeq(), d.Inode, d.Name)
@@ -98,10 +116,11 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
 		log.LogDebugf("action[getDentryFromVerList] den in ver list %v, is delete %v, seq %v", lDen, lDen.isDeleted(), lDen.getVerSeq())
 		if verSeq < lDen.getVerSeq() {
 			log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil, request seq %v, history ver seq %v", lDen, verSeq, lDen.getVerSeq())
-		} else if lDen.isDeleted() {
-			log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil due to latest is deleted", lDen)
-			return
-		} else if verSeq >= lDen.getVerSeq() {
+		} else {
+			if lDen.isDeleted() {
+				log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil due to latest is deleted", lDen)
+				return
+			}
 			log.LogDebugf("action[getDentryFromVerList] den in ver list %v got", lDen)
 			return lDen, id + 1
 		}
@@ -118,19 +137,19 @@ func (d *Dentry) getLastestVer(reqVerSeq uint64, commit bool, verlist []*proto.V
 		if commit && id == len(verlist)-1 {
 			break
 		}
-		if info.Ver > reqVerSeq {
+		if info.Ver >= reqVerSeq { // include reqSeq itself
 			return info.Ver, true
 		}
 	}
 
-	log.LogErrorf("action[getLastestVer] inode %v reqVerSeq %v not found, the largetst one %v",
+	log.LogDebugf("action[getLastestVer] inode %v reqVerSeq %v not found, the largetst one %v",
 		d.Inode, reqVerSeq, verlist[len(verlist)-1].Ver)
 	return 0, false
 }
 
 // the lastest dentry may be deleted before and set status DentryDeleted,
 // the scope of  deleted happened from the DentryDeleted flag owner(include in) to the file with the same name be created is invisible,
-// if create anther dentry with larger verSeq, put the eleted dentry to the history list.
+// if create anther dentry with larger verSeq, put the deleted dentry to the history list.
 // return doMore bool.True means need do next step on caller such as unlink parentIO
 func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []*proto.VolVersionInfo) (rd *Dentry, dmore bool, clean bool) { // bool is doMore
 	log.LogDebugf("action[deleteVerSnapshot] enter.dentry %v delVerSeq %v mpVer %v verList %v", d, delVerSeq, mpVerSeq, verlist)
@@ -150,7 +169,7 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 		if len(d.dentryList) == 0 {
 			var found bool
 			// no matter verSeq of dentry is larger than zero,if not be depended then dropped
-			_, found = d.getLastestVer(d.getVerSeq(), false, verlist)
+			_, found = d.getLastestVer(d.getVerSeq(), true, verlist)
 			if !found { // no snapshot depend on this dentry,could drop it
 				// operate dentry directly
 				log.LogDebugf("action[deleteVerSnapshot.delSeq_0] no snapshot depend on this dentry,could drop seq %v dentry %v", delVerSeq, d)
@@ -450,8 +469,8 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	buff.Grow(int(keyLen + valLen + 8))
 
-	log.LogInfof("action[dentry.Marshal] dentry name %v inode %v parent %v seq %v keyLen  %v valLen %v total len %v",
-		d.Name, d.Inode, d.ParentId, d.VerSeq, keyLen, valLen, int(keyLen+valLen+8))
+	//log.LogInfof("action[dentry.Marshal] dentry name %v inode %v parent %v seq %v keyLen  %v valLen %v total len %v",
+	//	d.Name, d.Inode, d.ParentId, d.VerSeq, keyLen, valLen, int(keyLen+valLen+8))
 
 	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
 		return
@@ -460,7 +479,7 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 		return
 	}
 	if err = binary.Write(buff, binary.BigEndian, valLen); err != nil {
-
+		return nil, err
 	}
 	if _, err = buff.Write(valBytes); err != nil {
 		return

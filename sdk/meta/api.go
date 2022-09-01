@@ -303,7 +303,7 @@ create_dentry:
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(mp, info.Inode, mw.LastVerSeq)
+			mw.iunlink(mp, info.Inode, mw.Client.GetLatestVer())
 			mw.ievict(mp, info.Inode)
 		}
 		return nil, statusToErrno(status)
@@ -570,6 +570,7 @@ func (mw *MetaWrapper) Delete_Ver_ll(parentID uint64, name string, isDir bool, v
 	if verSeq == 0 {
 		verSeq = math.MaxUint64
 	}
+	log.LogDebugf("Delete_Ver_ll.parentId %v name %v isDir %v verSeq %v", parentID, name, isDir, verSeq)
 	return mw.Delete_ll_EX(parentID, name, isDir, verSeq)
 }
 
@@ -1152,15 +1153,21 @@ func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 
 // Read limit count dentries with parentID, start from string
 func (mw *MetaWrapper) ReadDirLimitByVer(parentID uint64, from string, limit uint64, verSeq uint64) ([]proto.Dentry, error) {
-	log.LogDebugf("action[ReadDirLimit_ll] parentID %v from %v limit %v", parentID, from, limit)
+	if verSeq == 0 {
+		verSeq = math.MaxUint64
+	}
+	log.LogDebugf("action[ReadDirLimit_ll] parentID %v from %v limit %v verSeq %v", parentID, from, limit, verSeq)
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		return nil, syscall.ENOENT
 	}
 
-	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, verSeq)
+	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, verSeq, true)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
+	}
+	for _, den := range children {
+		log.LogDebugf("ReadDirLimitByVer. get dentry %v", den)
 	}
 	return children, nil
 }
@@ -1173,7 +1180,7 @@ func (mw *MetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint6
 		return nil, syscall.ENOENT
 	}
 
-	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, mw.VerReadSeq)
+	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, mw.VerReadSeq, false)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1319,7 +1326,7 @@ func (mw *MetaWrapper) GetExtents(inode uint64) (gen uint64, size uint64, extent
 	size = resp.Size
 
 	// log.LogDebugf("GetObjExtents stack[%v]", string(debug.Stack()))
-	log.LogDebugf("GetExtents: ino(%v) gen(%v) size(%v) extents(%v)", inode, gen, size, extents)
+	log.LogDebugf("GetExtents: ino(%v) gen(%v) size(%v) extents len (%v)", inode, gen, size, len(extents))
 	return gen, size, extents, nil
 }
 
@@ -1485,7 +1492,7 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64) (*proto.In
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(mp, ino, mw.LastVerSeq)
+			mw.iunlink(mp, ino, mw.Client.GetLatestVer())
 		}
 		return nil, statusToErrno(status)
 	}
@@ -1600,7 +1607,7 @@ func (mw *MetaWrapper) InodeUnlink_ll(inode uint64) (*proto.InodeInfo, error) {
 		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.EINVAL
 	}
-	status, info, err := mw.iunlink(mp, inode, mw.LastVerSeq)
+	status, info, err := mw.iunlink(mp, inode, mw.Client.GetLatestVer())
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)

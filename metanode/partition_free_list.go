@@ -330,7 +330,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, targ
 		return
 	}
 
-	if err = request.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
+	if err = request.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
 
@@ -384,7 +384,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 		return
 	}
 
-	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+	if err = p.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
 		err = errors.NewErrorf("read response from dataNode %s, %s",
 			p.GetUniqueLogId(), err.Error())
 		return
@@ -452,7 +452,7 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 			err.Error())
 		return
 	}
-	if err = p.ReadFromConn(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
+	if err = p.ReadFromConnWithVer(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
 		err = errors.NewErrorf("read response from dataNode %s, %s",
 			p.GetUniqueLogId(), err.Error())
 		return

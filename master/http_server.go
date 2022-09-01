@@ -251,9 +251,6 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminDeleteVol).
 		HandlerFunc(m.markDeleteVol)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminGetVolVer).
-		HandlerFunc(m.getVolVer)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateVol).
 		HandlerFunc(m.updateVol)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -294,6 +291,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetAllVersionInfo).
 		HandlerFunc(m.GetAllVersionInfo)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetVolVer).
+		HandlerFunc(m.getVolVer)
 
 	// S3 lifecycle configuration APIS
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

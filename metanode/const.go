@@ -184,6 +184,9 @@ const (
 	opFSMVersionOp   = 68
 	opFSMExtentSplit = 69
 	opFSMDelVer      = 70
+
+	opFSMSentToChanV1 = 71
+	opFSMStoreTickV1  = 72
 )
 
 var (
