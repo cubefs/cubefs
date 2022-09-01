@@ -381,12 +381,14 @@ func (ecdp *EcDataPartition) checkReplicaSaveTime(c *Cluster, vol *Vol) {
 		log.LogErrorf("CheckReplicaSaveTime syncDeleteDataPartition fail: %v", err)
 	}
 
-	ecdp.Lock()
-	ecdp.EcMigrateStatus = proto.OnlyEcExist
-	if err = c.syncUpdateEcDataPartition(ecdp); err != nil {
-		log.LogErrorf("CheckReplicaSaveTime syncUpdateEcDataPartition fail: %v", err)
+	if ecdp.EcMigrateStatus != proto.OnlyEcExist {
+		ecdp.Lock()
+		ecdp.EcMigrateStatus = proto.OnlyEcExist
+		if err = c.syncUpdateEcDataPartition(ecdp); err != nil {
+			log.LogErrorf("CheckReplicaSaveTime syncUpdateEcDataPartition fail: %v", err)
+		}
+		ecdp.Unlock()
 	}
-	ecdp.Unlock()
 	vol.dataPartitions.updateResponseCache(vol.ecDataPartitions, true, 0)
 	log.LogInfof("CheckReplicaSaveTime delete dataPartitionId(%v) success", ecdp.PartitionID)
 }
