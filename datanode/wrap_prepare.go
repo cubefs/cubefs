@@ -145,6 +145,7 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 				p.PartitionID, p.ExtentOffset, p.KernelOffset)
 			return err
 		}
+
 		p.ExtentOffset, err = store.GetExtentSnapshotModOffset(p.ExtentID, p.Size)
 		log.LogDebugf("action[prepare.addExtentInfo] pack (%v) partition %v %v", p, p.PartitionID, extentID)
 		if err != nil {

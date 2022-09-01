@@ -203,15 +203,15 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 }
 
 // ApplyRandomWrite random write apply
-func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (resp interface{}, err error) {
+func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (respStatus interface{}, err error) {
 	opItem := &rndWrtOpItem{}
-	resp = proto.OpOk
+	respStatus = proto.OpOk
 	defer func() {
 		if err == nil {
 			dp.uploadApplyID(raftApplyID)
 			log.LogDebug("action[ApplyRandomWrite] success!")
 		} else {
-			if resp == proto.OpExistErr { // for tryAppendWrite
+			if respStatus == proto.OpExistErr { // for tryAppendWrite
 				err = nil
 				log.LogDebugf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]",
 					raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
@@ -221,8 +221,8 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 				raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
 			log.LogErrorf("action[ApplyRandomWrite] failed err %v", err)
 			exporter.Warning(err.Error())
-			if resp == proto.OpOk {
-				resp = proto.OpDiskErr
+			if respStatus == proto.OpOk {
+				respStatus = proto.OpDiskErr
 			}
 			panic(newRaftApplyError(err))
 		}
@@ -243,7 +243,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(opItem.size))
 		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
-		resp, err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
+		respStatus, err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
 		var syncWrite bool
 		writeType := storage.RandomWriteType
 		if opItem.opcode == proto.OpRandomWrite || opItem.opcode == proto.OpSyncRandomWrite {
@@ -262,7 +262,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			syncWrite = true
 		}
 
-		resp, err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, writeType, syncWrite)
+		respStatus, err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, writeType, syncWrite)
 		if err == nil {
 			break
 		}
@@ -273,11 +273,12 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			err = nil
 			return
 		}
-		if (opItem.opcode == proto.OpTryWriteAppend || opItem.opcode == proto.OpSyncTryWriteAppend) && resp == proto.OpTryOtherExtent {
+		if (opItem.opcode == proto.OpTryWriteAppend || opItem.opcode == proto.OpSyncTryWriteAppend) && respStatus == proto.OpTryOtherExtent {
 			err = nil
 			return
 		}
-		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
+		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)",
+			raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
 	}
 
 	return

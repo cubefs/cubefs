@@ -266,7 +266,6 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 // It can only happens after all the extent files are repaired by the leader.
 // When the repair is finished, the local dp.partitionSize is same as the leader's dp.partitionSize.
 // The repair task can be done in statusUpdateScheduler->LaunchRepair.
-
 func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 	log.LogDebugf("StartRaftAfterRepair enter")
 	// cache or preload partition not support raft and repair.
@@ -291,10 +290,12 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				log.LogDebugf("PartitionID(%v) leader started.", dp.partitionID)
 				return
 			}
+
 			if dp.stopRecover && dp.isDecommissionRecovering() {
 				log.LogDebugf("action[StartRaftAfterRepair] PartitionID(%v) receive stop signal.", dp.partitionID)
 				continue
 			}
+
 			// wait for dp.replicas to be updated
 			if dp.getReplicaLen() == 0 {
 				continue
@@ -685,6 +686,7 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 }
 
 func (dp *DataPartition) getMaxExtentIDAndPartitionSize(target string) (maxExtentID, PartitionSize uint64, err error) {
+
 	var conn *net.TCPConn
 	p := NewPacketToGetMaxExtentIDAndPartitionSIze(dp.partitionID)
 
@@ -721,6 +723,12 @@ func (dp *DataPartition) getMaxExtentIDAndPartitionSize(target string) (maxExten
 // Get the MaxExtentID partition  from the leader.
 func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, PartitionSize uint64, err error) {
 	target := dp.getReplicaAddr(0)
+	return dp.getMaxExtentIDAndPartitionSize(target)
+}
+
+// Get the MaxExtentID partition  from the leader.
+func (dp *DataPartition) getMemberExtentIDAndPartitionSize() (maxExtentID, PartitionSize uint64, err error) {
+	target := dp.getReplicaAddr(1)
 	return dp.getMaxExtentIDAndPartitionSize(target)
 }
 
