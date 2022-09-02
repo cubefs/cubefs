@@ -107,6 +107,10 @@ typedef off_t (*lseek_t)(int fd, off_t offset, int whence);
 typedef int (*fdatasync_t)(int fd);
 typedef int (*fsync_t)(int fd);
 
+typedef void (*abort_t)();
+typedef void (*_exit_t)(int);
+typedef void (*exit_t)(int);
+
 //typedef int (*sigaction_t)(int signum, const struct sigaction *act, struct sigaction *oldact);
 
 
@@ -182,5 +186,8 @@ ssize_t libc_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset);
 off_t libc_lseek(int fd, off_t offset, int whence);
 int libc_fdatasync(int fd);
 int libc_fsync(int fd);
+void libc_abort();
+void libc__exit(int status);
+void libc_exit(int status);
 
 #endif

@@ -269,6 +269,7 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 	id := getNextClientID()
 	c := &client{
 		id:               id,
+		configPath:       configPath,
 		fdmap:            make(map[uint]*file),
 		fdset:            bitset.New(maxFdNum),
 		inomap:           make(map[uint64]map[uint]bool),
@@ -430,7 +431,8 @@ type dirStream struct {
 
 type client struct {
 	// client id allocated by libsdk
-	id int64
+	id         int64
+	configPath string
 
 	// mount config
 	masterAddr   string
@@ -547,7 +549,7 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		return C.int(statusEINVAL)
 	}
 	if _, err = log.InitLog(logDir, gClientManager.moduleName, level, nil); err != nil {
-		syslog.Println("initialize logging failed: %v\n", err)
+		syslog.Printf("initialize logging failed: %v\n", err)
 		return C.int(statusEIO)
 	}
 

@@ -35,10 +35,18 @@
 
 #include "hook.h"
 
+#define CHECK_UPDATE_INTERVAL 10
+#define CFS_CFG_PATH "cfs_client.ini"
+#define CFS_CFG_PATH_JED "/export/servers/cfs/cfs_client.ini"
+#define LIB_EMPTY "/usr/lib64/libempty.so"
+#define SDK_SO "libcfssdk.so"
+#define C_SO "libcfsc.so"
+
 static bool g_inited;
 pthread_rwlock_t update_rwlock;
-
-const int CHECK_UPDATE_INTERVAL = 10;
+char *lib_cfssdk;
+char *lib_cfsc;
+char *config_path;
 
 #define LOCK(cmd, res)                                                                     \
     do {                                                                                   \
@@ -486,10 +494,11 @@ int fsync(int fd) {
 
 void abort() {
     if (pthread_rwlock_tryrdlock(&update_rwlock) == 0) {
-        flush_logs();
+        if(flush_logs != NULL) {
+            flush_logs();
+        }
         pthread_rwlock_unlock(&update_rwlock);
     }
-    void (*libc_abort)() = dlsym(RTLD_NEXT, "abort");
     libc_abort();
 
     // abort is marked with __attribute__((noreturn)) by GCC.
@@ -499,10 +508,11 @@ void abort() {
 
 void _exit(int status) {
     if (pthread_rwlock_tryrdlock(&update_rwlock) == 0) {
-        flush_logs();
+        if(flush_logs != NULL) {
+            flush_logs();
+        }
         pthread_rwlock_unlock(&update_rwlock);
     }
-    void (*libc__exit)(int) = dlsym(RTLD_NEXT, "_exit");
     libc__exit(status);
 
     // _exit is marked with __attribute__((noreturn)) by GCC.
@@ -512,10 +522,11 @@ void _exit(int status) {
 
 void exit(int status) {
     if (pthread_rwlock_tryrdlock(&update_rwlock) == 0) {
-        flush_logs();
+        if(flush_logs != NULL) {
+            flush_logs();
+        }
         pthread_rwlock_unlock(&update_rwlock);
     }
-    void (*libc_exit)(int) = dlsym(RTLD_NEXT, "exit");
     libc_exit(status);
 
     // exit is marked with __attribute__((noreturn)) by GCC.
@@ -534,34 +545,78 @@ __attribute__((constructor)) static void setup(void) {
 }
 
 __attribute__((destructor)) static void destroy(void) {
-    flush_logs();
     pthread_rwlock_destroy(&update_rwlock);
+    if(flush_logs != NULL) {
+        flush_logs();
+    }
+    if(lib_cfssdk != NULL) {
+        free(lib_cfssdk);
+    }
+    if(lib_cfsc != NULL) {
+        free(lib_cfsc);
+    }
+    if(config_path != NULL) {
+        free(config_path);
+    }
 }
 
 static void init() {
+    config_path = getenv("CFS_CONFIG_PATH");
+    if(config_path == NULL) {
+        config_path = CFS_CFG_PATH;
+        if(libc_access(config_path, F_OK)) {
+            config_path = CFS_CFG_PATH_JED;
+        }
+    }
+    config_path = strdup(config_path);
+
+    char *p = strrchr(config_path, '/');
+    if(p == NULL) {
+        lib_cfssdk = (char *)malloc(strlen(SDK_SO) + 3);
+        memset(lib_cfssdk, 0, strlen(SDK_SO) + 3);
+        sprintf(lib_cfssdk, "./%s", SDK_SO);
+        lib_cfsc = (char *)malloc(strlen(C_SO) + 3);
+        memset(lib_cfsc, 0, strlen(C_SO) + 3);
+        sprintf(lib_cfsc, "./%s", C_SO);
+    } else {
+        char tmp = *(p+1);
+        *(p+1) = 0;
+        lib_cfssdk = (char *)malloc(strlen(config_path) + strlen(SDK_SO) + 1);
+        memset(lib_cfssdk, 0, strlen(config_path) + strlen(SDK_SO) + 1);
+        sprintf(lib_cfssdk, "%s%s", config_path, SDK_SO);
+        lib_cfsc = (char *)malloc(strlen(config_path) + strlen(C_SO) + 1);
+        memset(lib_cfsc, 0, strlen(config_path) + strlen(C_SO) + 1);
+        sprintf(lib_cfsc, "%s%s", config_path, C_SO);
+        *(p+1) = tmp;
+
+    }
+    setenv("CFS_CONFIG_PATH", config_path, 1);
+    setenv("CFS_CFSSDK_PATH", lib_cfssdk, 1);
+    setenv("CFS_CFSC_PATH", lib_cfsc, 1);
+
     void* handle;
-    handle = base_open("/usr/lib64/libempty.so");
+    handle = base_open(LIB_EMPTY);
     if(handle == NULL) {
         fprintf(stderr, "dlopen /usr/lib64/libempty.so error: %s.\n", dlerror());
-        exit(1);
+        libc_exit(1);
     }
-    handle = dlopen("/usr/lib64/libcfsc.so", RTLD_NOW|RTLD_GLOBAL);
+    handle = dlopen(lib_cfsc, RTLD_NOW|RTLD_GLOBAL);
     if(handle == NULL) {
-        fprintf(stderr, "dlopen /usr/lib64/libcfsc.so error: %s\n", dlerror());
-        exit(1);
+        fprintf(stderr, "dlopen %s error: %s\n", lib_cfsc, dlerror());
+        libc_exit(1);
     }
     init_cfsc_func(handle);
     int res = start_libs(NULL);
     if(res != 0) {
         fprintf(stderr, "start libs error.");
-        exit(1);
+        libc_exit(1);
     }
 
     pthread_rwlock_init(&update_rwlock, NULL);
     pthread_t thread;
     if(pthread_create(&thread, NULL, &update_dynamic_libs, handle)) {
         fprintf(stderr, "pthread_create update_dynamic_libs error.\n");
-        exit(1);
+        libc_exit(1);
     }
     g_inited = true;
 }
@@ -647,11 +702,12 @@ static void init_cfsc_func(void *handle) {
     real_fsync = (fsync_t)dlsym(handle, "real_fsync");
 }
 
+
 static void *update_dynamic_libs(void* handle) {
     char* reload;
     char* ld_preload = getenv("LD_PRELOAD");
+    char* mount_point = getenv("CFS_MOUNT_POINT");
     char* config_path = getenv("CFS_CONFIG_PATH");
-    char *mount_point = getenv("CFS_MOUNT_POINT");
 
     while(1) {
         sleep(CHECK_UPDATE_INTERVAL);
@@ -669,18 +725,19 @@ static void *update_dynamic_libs(void* handle) {
         }
 
         fprintf(stderr, "Begin to update client.\n");
+        flush_logs = NULL;
         void *client_state = stop_libs();
         if(client_state == NULL) {
             pthread_rwlock_unlock(&update_rwlock);
             fprintf(stderr, "stop libs error.");
-            exit(1);
+            libc_exit(1);
         }
 
         int res = dlclose(handle);
         if(res != 0) {
             pthread_rwlock_unlock(&update_rwlock);
             fprintf(stderr, "dlclose error: %s\n", dlerror());
-            exit(1);
+            libc_exit(1);
         }
         fprintf(stderr, "finish dlclose client.\n");
 
@@ -688,15 +745,18 @@ static void *update_dynamic_libs(void* handle) {
             sleep(CHECK_UPDATE_INTERVAL);
 
         setenv("LD_PRELOAD", ld_preload, 1);
-        if(config_path != NULL) setenv("CFS_CONFIG_PATH", config_path, 1);
+        setenv("CFS_CONFIG_PATH", config_path, 1);
+        setenv("CFS_CFSSDK_PATH", lib_cfssdk, 1);
+        setenv("CFS_CFSC_PATH", lib_cfsc, 1);
         if(mount_point != NULL) setenv("CFS_MOUNT_POINT", mount_point, 1);
+
         unsetenv("RELOAD_CLIENT");
 
-        handle = dlopen("/usr/lib64/libcfsc.so", RTLD_NOW|RTLD_GLOBAL);
-        if(res != 0) {
+        handle = dlopen(lib_cfsc, RTLD_NOW|RTLD_GLOBAL);
+        if(handle == NULL) {
             pthread_rwlock_unlock(&update_rwlock);
-            fprintf(stderr, "dlopen /usr/lib64/libcfsc.so error: %s\n", dlerror());
-            exit(1);
+            fprintf(stderr, "dlopen %s error: %s\n", lib_cfsc, dlerror());
+            libc_exit(1);
         }
         fprintf(stderr, "finish dlopen client.\n");
 
@@ -705,7 +765,7 @@ static void *update_dynamic_libs(void* handle) {
         if(res != 0) {
             pthread_rwlock_unlock(&update_rwlock);
             fprintf(stderr, "start libs error.");
-            exit(1);
+            libc_exit(1);
         }
         pthread_rwlock_unlock(&update_rwlock);
         fprintf(stderr, "finish update client.\n");

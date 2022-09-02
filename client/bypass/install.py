@@ -51,4 +51,4 @@ package = "http://storage.jd.local/dpgimage/libcfs_mysql/libcfs.tar.gz"
 if args.env == "test":
     package = "http://storage.jd.local/dpgimage/libcfs_mysql/libcfs_test.tar.gz"
 
-os.system('wget --quiet -O libcfs.tar.gz {0} && tar xzf libcfs.tar.gz && chmod 755 libcfssdk.so libcfsclient.so && mv libcfssdk.so libcfsclient.so {1} && rm -f libcfs.tar.gz argparse.py*'.format(package, args.libDir))
+os.system('wget --quiet -O libcfs.tar.gz {0} && tar xzf libcfs.tar.gz && chmod 755 lib*.so && cp lib*.so {1} && mv lib*.so {2} && rm -f libcfs.tar.gz argparse.py*'.format(package, args.configDir, args.libDir))

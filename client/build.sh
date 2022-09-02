@@ -73,7 +73,7 @@ if [[ ${build_sdk} -eq 1 ]]; then
 fi
 if [[ ${build_client} -eq 1 ]]; then
     echo "building client (cfs-client libcfsclient.so libempty.so libcfsc.so) ..."
-    go build -buildmode=plugin -linkshared -o ${bin}/libempty.so  ${dir}/empty.go
+    go build -ldflags "${goflag}" -buildmode=plugin -linkshared -o ${bin}/libempty.so  ${dir}/empty.go
     go build -ldflags "${goflag}" -linkshared -o ${bin}/cfs-client ${dir}/main_fuse.go
     gcc ${gccflag} -std=c99 -fPIC -shared -o ${bin}/libcfsclient.so ${dir}/main_hook.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
     g++ -std=c++11 ${gccflag} -DCommitID=\"${CommitID}\" -fPIC -shared -o ${bin}/libcfsc.so ${dir}/bypass/client.c ${dir}/bypass/cache.c ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.c ${dir}/bypass/ini.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include

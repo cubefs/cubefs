@@ -2292,6 +2292,7 @@ int start_libs(void *args) {
     int *dup_fds;
     char *mount_point;
     const char *config_path;
+    const char *libcfssdk_path;
     client_config_t client_config;
     client_state_t *client_state;
     client_state_t null_state = {NULL, NULL, 0, NULL, 0, NULL, false};
@@ -2301,20 +2302,14 @@ int start_libs(void *args) {
         client_state = &null_state;
     }
 
-    g_client_info.sdk_handle = plugin_open("/usr/lib64/libcfssdk.so");
+    config_path = getenv("CFS_CONFIG_PATH");
+    libcfssdk_path = getenv("CFS_CFSSDK_PATH");
+    g_client_info.sdk_handle = plugin_open(libcfssdk_path);
     if(g_client_info.sdk_handle == NULL) {
-        fprintf(stderr, "dlopen /usr/lib64/libcfssdk.so error: %s.\n", dlerror());
+        fprintf(stderr, "dlopen %s error: %s.\n", libcfssdk_path, dlerror());
         goto out;
     }
     init_cfs_func(g_client_info.sdk_handle);
-
-    config_path = getenv("CFS_CONFIG_PATH");
-    if(config_path == NULL) {
-        config_path = CFS_CFG_PATH;
-        if(libc_access(config_path, F_OK)) {
-            config_path = CFS_CFG_PATH_JED;
-        }
-    }
 
     // parse client configurations from ini file.
     memset(&client_config, 0, sizeof(client_config_t));
@@ -2483,7 +2478,7 @@ void* stop_libs() {
     res = plugin_close(g_client_info.sdk_handle);
     fprintf(stderr, "finish dlclose sdk.\n");
     if (res != 0) {
-        fprintf(stderr, "dlclose /usr/lib64/libcfssdk.so error: %s\n", dlerror());
+        fprintf(stderr, "dlclose libcfssdk.so error: %s\n", dlerror());
         goto err;
     }
     free((void*)g_client_info.mount_point);

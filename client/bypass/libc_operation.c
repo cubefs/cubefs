@@ -90,6 +90,9 @@ static lseek_t func_lseek;
 static fdatasync_t func_fdatasync;
 static fsync_t func_fsync;
 
+static abort_t func_abort;
+static _exit_t func__exit;
+static exit_t func_exit;
 
 int libc_openat(int dirfd, const char *pathname, int flags, ...) {
     mode_t mode = 0;
@@ -582,4 +585,25 @@ int libc_fsync(int fd) {
         func_fsync = (fsync_t)dlsym(RTLD_NEXT, "fsync");
     }
     return func_fsync(fd);
+}
+
+void libc_abort() {
+    if(func_abort == NULL) {
+        func_abort = (abort_t)dlsym(RTLD_NEXT, "abort");
+    }
+    func_abort();
+}
+
+void libc__exit(int status) {
+    if(func__exit == NULL) {
+        func__exit = (_exit_t)dlsym(RTLD_NEXT, "_exit");
+    }
+    func__exit(status);
+}
+
+void libc_exit(int status) {
+    if(func_exit == NULL) {
+        func_exit = (exit_t)dlsym(RTLD_NEXT, "exit");
+    }
+    func_exit(status);
 }
