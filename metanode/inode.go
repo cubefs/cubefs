@@ -39,8 +39,7 @@ const (
 )
 
 const (
-	MinEkLen     = 10
-	MinInodeSize = 1 * 1024 * 1024
+	MinEkLen     = 5
 )
 
 // Inode wraps necessary properties of `Inode` information in the file system.
@@ -765,9 +764,6 @@ func (i *Inode) IsNeedCompact(minEkLen int, minInodeSize uint64, maxEkAvgSize ui
 	defer i.RUnlock()
 	if minEkLen < MinEkLen {
 		minEkLen = MinEkLen
-	}
-	if minInodeSize < MinInodeSize {
-		minInodeSize = MinInodeSize
 	}
 	if i.Extents.Len() <= minEkLen || i.Size <= minInodeSize {
 		return false
