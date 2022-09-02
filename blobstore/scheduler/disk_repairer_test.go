@@ -83,7 +83,36 @@ func TestDiskRepairerLoad(t *testing.T) {
 	{
 		mgr := newDiskRepairer(t)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListMigratingDisks(any, any).Return(nil, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{{}, {}}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{{
+			SourceDiskID: proto.DiskID(1),
+			TaskID:       client.GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1)),
+		}}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, any).Return(
+			&client.DiskInfoSimple{DiskID: mgr.repairingDiskID, Status: proto.DiskStatusRepaired}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+		err := mgr.Load()
+		require.NoError(t, err)
+	}
+	{
+		mgr := newDiskRepairer(t)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListMigratingDisks(any, any).Return(nil, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{{
+			SourceDiskID: proto.DiskID(1),
+			TaskID:       client.GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1)),
+		}}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, any).Return(
+			&client.DiskInfoSimple{DiskID: mgr.repairingDiskID, Status: proto.DiskStatusNormal}, nil)
+		err := mgr.Load()
+		require.Error(t, err)
+	}
+	{
+		mgr := newDiskRepairer(t)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListMigratingDisks(any, any).Return(nil, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{{
+			SourceDiskID: proto.DiskID(1),
+			TaskID:       client.GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1)),
+		}}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, any).Return(nil, errMock)
 		err := mgr.Load()
 		require.Error(t, err)
 	}
@@ -559,41 +588,96 @@ func TestDiskRepairerCheckRepairedAndClear(t *testing.T) {
 			TaskType:   proto.TaskTypeDiskRepair,
 			SourceVuid: units[0].Vuid,
 		}
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return([]*proto.MigrateTask{t1}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Times(3).Return([]*proto.MigrateTask{t1}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(units, nil)
 		mgr.checkRepairedAndClear()
 		require.True(t, mgr.hasRepairingDisk())
 
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return([]*proto.MigrateTask{t1}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, nil)
-		require.Panics(t, func() {
-			mgr.checkRepairedAndClear()
-		})
+		mgr.checkRepairedAndClear()
+		require.True(t, mgr.hasRepairingDisk())
+
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, nil)
+		mgr.deletedTasks.add(t1.SourceDiskID, t1.TaskID)
+		mgr.checkRepairedAndClear()
+		require.True(t, mgr.hasRepairingDisk())
 
 		t1.State = proto.MigrateStateFinished
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return(nil, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Times(4).Return(nil, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, errMock)
 		mgr.checkRepairedAndClear()
 		require.True(t, mgr.hasRepairingDisk())
 
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return(nil, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(units, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, any).Return(nil, errMock)
 		mgr.checkRepairedAndClear()
 		require.True(t, mgr.hasRepairingDisk())
 
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return(nil, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Times(2).Return(nil, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().SetDiskRepaired(any, any).Return(errMock)
 		mgr.checkRepairedAndClear()
 		require.True(t, mgr.hasRepairingDisk())
 
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return(nil, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().SetDiskRepaired(any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigratingDisk(any, any, any).Return(nil)
 		mgr.checkRepairedAndClear()
 		require.False(t, mgr.hasRepairingDisk())
+		require.Equal(t, 1, mgr.migratedDisks.size())
+		require.Equal(t, proto.DiskID(1), mgr.migratedDisks.list()[0].diskID)
+	}
+}
+
+func TestDiskRepairerCheckAndClearJunkTasks(t *testing.T) {
+	{
+		mgr := newDiskRepairer(t)
+		mgr.migratedDisks.add(proto.DiskID(1), time.Now())
+		mgr.checkAndClearJunkTasks()
+		require.Equal(t, 1, mgr.migratedDisks.size())
+		require.Equal(t, proto.DiskID(1), mgr.migratedDisks.list()[0].diskID)
+	}
+	{
+		mgr := newDiskRepairer(t)
+		disk1 := &client.DiskInfoSimple{
+			ClusterID:    1,
+			Idc:          "z0",
+			Rack:         "rack1",
+			Host:         "127.0.0.1:8000",
+			Status:       proto.DiskStatusBroken,
+			DiskID:       proto.DiskID(1),
+			FreeChunkCnt: 10,
+			MaxChunkCnt:  700,
+		}
+		mgr.migratedDisks.add(disk1.DiskID, time.Now().Add(-junkMigrationTaskProtectionWindow))
+
+		// get disk info failed
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, any).Return(nil, errMock)
+		mgr.checkAndClearJunkTasks()
+		require.Equal(t, 1, mgr.migratedDisks.size())
+		require.Equal(t, disk1.DiskID, mgr.migratedDisks.list()[0].diskID)
+
+		// disk not repaired
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, any).Times(4).Return(disk1, nil)
+		mgr.checkAndClearJunkTasks()
+		require.Equal(t, 1, mgr.migratedDisks.size())
+		require.Equal(t, disk1.DiskID, mgr.migratedDisks.list()[0].diskID)
+
+		// disk is repaired and list task failed
+		disk1.Status = proto.DiskStatusRepaired
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return(nil, errMock)
+		mgr.checkAndClearJunkTasks()
+		require.Equal(t, 1, mgr.migratedDisks.size())
+		require.Equal(t, disk1.DiskID, mgr.migratedDisks.list()[0].diskID)
+		// no junk tasks
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return(nil, nil)
+		mgr.checkAndClearJunkTasks()
+		require.Equal(t, 0, mgr.migratedDisks.size())
+
+		// has junk task and clear
+		mgr.migratedDisks.add(disk1.DiskID, time.Now().Add(-junkMigrationTaskProtectionWindow))
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return([]*proto.MigrateTask{{TaskID: "test"}}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+		mgr.checkAndClearJunkTasks()
+		require.Equal(t, 0, mgr.migratedDisks.size())
 	}
 }
 
