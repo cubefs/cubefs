@@ -16,11 +16,12 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/datanode"
 	"math"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/datanode"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -201,9 +202,14 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Pe
 func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64,
 	peers []proto.Peer, hosts []string, createType int, partitionType int) (task *proto.AdminTask) {
 
+	leaderSize := 0
+	if createType == proto.DecommissionedCreateDataPartition {
+		leaderSize = int(partition.Replicas[0].Used)
+	}
+
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
 		partition.VolName, partition.PartitionID, int(partition.ReplicaNum),
-		peers, int(dataPartitionSize), hosts, createType, partitionType))
+		peers, int(dataPartitionSize), leaderSize, hosts, createType, partitionType))
 
 	partition.resetTaskID(task)
 	return
