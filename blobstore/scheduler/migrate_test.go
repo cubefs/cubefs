@@ -449,33 +449,92 @@ func TestRenewalMigrateTask(t *testing.T) {
 }
 
 func TestAddMigrateTask(t *testing.T) {
-	ctx := context.Background()
-	mgr := newMigrateMgr(t)
-	t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
-	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
-	mgr.AddTask(ctx, t1)
-	require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
-	require.False(t, mgr.IsMigratingDisk(proto.DiskID(5)))
-	require.Equal(t, 1, mgr.GetMigratingDiskNum())
+	{
+		ctx := context.Background()
+		mgr := newMigrateMgr(t)
+		mgr.taskType = proto.TaskTypeDiskDrop
+		t1 := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
+		mgr.AddTask(ctx, t1)
+		require.False(t, mgr.IsMigratingDisk(proto.DiskID(4)))
 
-	inited, prepared, completed := mgr.StatQueueTaskCnt()
-	require.Equal(t, 1, inited)
-	require.Equal(t, 0, prepared)
-	require.Equal(t, 0, completed)
+		mgr.taskType = proto.TaskTypeManualMigrate
+		t1 = mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
+		mgr.AddTask(ctx, t1)
+		require.False(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+	}
+	{
+		ctx := context.Background()
+		mgr := newMigrateMgr(t)
+		t1 := mockGenMigrateTask(proto.TaskTypeBalance, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
+		mgr.AddTask(ctx, t1)
+		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		require.False(t, mgr.IsMigratingDisk(proto.DiskID(5)))
+		require.Equal(t, 1, mgr.GetMigratingDiskNum())
 
-	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{t1}, nil)
-	tasks, err := mgr.ListAllTask(ctx)
-	require.NoError(t, err)
-	require.Equal(t, 1, len(tasks))
+		inited, prepared, completed := mgr.StatQueueTaskCnt()
+		require.Equal(t, 1, inited)
+		require.Equal(t, 0, prepared)
+		require.Equal(t, 0, completed)
 
-	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(t1, nil)
-	task, err := mgr.GetTask(ctx, t1.TaskID)
-	require.NoError(t, err)
-	require.Equal(t, t1.TaskID, task.TaskID)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{t1}, nil)
+		tasks, err := mgr.ListAllTask(ctx)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(tasks))
 
-	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return([]*proto.MigrateTask{}, nil)
-	_, err = mgr.ListAllTaskByDiskID(ctx, proto.DiskID(1))
-	require.NoError(t, err)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(t1, nil)
+		task, err := mgr.GetTask(ctx, t1.TaskID)
+		require.NoError(t, err)
+		require.Equal(t, t1.TaskID, task.TaskID)
+
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return([]*proto.MigrateTask{}, nil)
+		_, err = mgr.ListAllTaskByDiskID(ctx, proto.DiskID(1))
+		require.NoError(t, err)
+	}
+}
+
+func TestDeletedTasks(t *testing.T) {
+	{
+		mgr := newMigrateMgr(t)
+		mgr.taskType = proto.TaskTypeDiskDrop
+		diskID1 := proto.DiskID(1)
+		diskID2 := proto.DiskID(2)
+		task1 := &proto.MigrateTask{
+			TaskID:       "task1",
+			SourceDiskID: diskID1,
+		}
+		task2 := &proto.MigrateTask{
+			TaskID:       "task2",
+			SourceDiskID: diskID1,
+		}
+		task3 := &proto.MigrateTask{
+			TaskID:       "task3",
+			SourceDiskID: diskID2,
+		}
+		mgr.addDeletedTask(task1)
+		mgr.addDeletedTask(task2)
+		mgr.addDeletedTask(task3)
+
+		require.True(t, mgr.IsDeletedTask(task1))
+		require.True(t, mgr.IsDeletedTask(task2))
+		require.True(t, mgr.IsDeletedTask(task3))
+
+		mgr.ClearDeletedTasks(diskID1)
+		require.False(t, mgr.IsDeletedTask(task1))
+		require.True(t, mgr.IsDeletedTask(task3))
+	}
+	{
+		mgr := newMigrateMgr(t)
+		diskID1 := proto.DiskID(1)
+		task1 := &proto.MigrateTask{
+			TaskID:       "task1",
+			SourceDiskID: diskID1,
+		}
+		mgr.addDeletedTask(task1)
+		require.False(t, mgr.IsDeletedTask(task1))
+	}
 }
 
 func TestMigrateRun(t *testing.T) {

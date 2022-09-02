@@ -313,6 +313,11 @@ func (disk *DiskInfoSimple) IsDropped() bool {
 	return disk.Status == proto.DiskStatusDropped
 }
 
+// IsRepaired return true if disk is repaired
+func (disk *DiskInfoSimple) IsRepaired() bool {
+	return disk.Status == proto.DiskStatusRepaired
+}
+
 // CanDropped  disk can drop when disk is normal or has repaired or has dropped
 // for simplicity we not allow to set disk status dropped
 // when disk is repairing

@@ -238,6 +238,18 @@ func (mr *MockMigraterMockRecorder) CancelTask(arg0, arg1 interface{}) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelTask", reflect.TypeOf((*MockMigrater)(nil).CancelTask), arg0, arg1)
 }
 
+// ClearDeletedTasks mocks base method.
+func (m *MockMigrater) ClearDeletedTasks(arg0 proto.DiskID) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ClearDeletedTasks", arg0)
+}
+
+// ClearDeletedTasks indicates an expected call of ClearDeletedTasks.
+func (mr *MockMigraterMockRecorder) ClearDeletedTasks(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearDeletedTasks", reflect.TypeOf((*MockMigrater)(nil).ClearDeletedTasks), arg0)
+}
+
 // Close mocks base method.
 func (m *MockMigrater) Close() {
 	m.ctrl.T.Helper()
@@ -331,6 +343,20 @@ func (m *MockMigrater) GetTask(arg0 context.Context, arg1 string) (*proto.Migrat
 func (mr *MockMigraterMockRecorder) GetTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTask", reflect.TypeOf((*MockMigrater)(nil).GetTask), arg0, arg1)
+}
+
+// IsDeletedTask mocks base method.
+func (m *MockMigrater) IsDeletedTask(arg0 *proto.MigrateTask) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsDeletedTask", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsDeletedTask indicates an expected call of IsDeletedTask.
+func (mr *MockMigraterMockRecorder) IsDeletedTask(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsDeletedTask", reflect.TypeOf((*MockMigrater)(nil).IsDeletedTask), arg0)
 }
 
 // IsMigratingDisk mocks base method.
