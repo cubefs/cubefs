@@ -911,7 +911,7 @@ func (mw *MetaWrapper) RemoveMultipart_ll(ctx context.Context, path, multipartID
 
 func (mw *MetaWrapper) broadcastGetMultipart(ctx context.Context, path, multipartId string) (info *proto.MultipartInfo, mpID uint64, err error) {
 	log.LogInfof("broadcastGetMultipart: find meta partition broadcast multipartId(%v)", multipartId)
-	partitions := mw.partitions
+	partitions := mw.getPartitions()
 	var (
 		mp *MetaPartition
 	)
@@ -946,7 +946,7 @@ func (mw *MetaWrapper) broadcastGetMultipart(ctx context.Context, path, multipar
 }
 
 func (mw *MetaWrapper) ListMultipart_ll(ctx context.Context, prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (sessionResponse []*proto.MultipartInfo, err error) {
-	partitions := mw.partitions
+	partitions := mw.getPartitions()
 	var wg = sync.WaitGroup{}
 	var wl = sync.Mutex{}
 	var sessions = make([]*proto.MultipartInfo, 0)

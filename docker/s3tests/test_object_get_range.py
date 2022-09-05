@@ -43,11 +43,11 @@ class ObjectGetRangeTest(S3TestCase):
             {"range": "bytes=0-99,200-299", "status_code": 200, "content-length": 10000},
             { "range":"bytes=-0", "status_code": 416 },
             { "range":"bytes=1-0", "status_code": 416 },
-            { "range":"bytes=10", "status_code": 416 },
-            { "range":"bytes=", "status_code": 416 },
-            { "range":"bytes=abc", "status_code": 416 },
-            { "range":"bytes=abc-123", "status_code": 416 },
-            { "range":"1-0", "status_code": 416 },
+            { "range":"bytes=10", "status_code": 200 },
+            { "range":"bytes=", "status_code": 200 },
+            { "range":"bytes=abc", "status_code": 200 },
+            { "range":"bytes=abc-123", "status_code": 200 },
+            { "range":"1-0", "status_code": 200 },
         ]
 
         self._init_object()

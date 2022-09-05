@@ -136,6 +136,16 @@ func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
 	return rwPartitions
 }
 
+func (mw *MetaWrapper) getPartitions() []*MetaPartition  {
+	mw.RLock()
+	defer mw.RUnlock()
+	tempPartitions := make([]*MetaPartition, 0)
+	for _, mp := range mw.partitions {
+		tempPartitions = append(tempPartitions, mp)
+	}
+	return tempPartitions
+}
+
 func (mw *MetaWrapper) getRefreshMp(ctx context.Context, inode uint64) *MetaPartition {
 	mw.triggerAndWaitForceUpdate()
 	return mw.getPartitionByInode(ctx, inode)
