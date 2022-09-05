@@ -42,6 +42,8 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
 		if oldLeaderAddr != m.leaderInfo.addr {
+			m.cluster.checkPersistClusterValue()
+
 			m.loadMetadata()
 			m.metaReady = true
 		}

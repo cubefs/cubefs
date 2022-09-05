@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	bsProto "github.com/cubefs/cubefs/proto"
@@ -34,6 +35,7 @@ import (
 
 type clusterValue struct {
 	Name                        string
+	CreateTime                  int64
 	Threshold                   float32
 	LoadFactor                  float32
 	DisableAutoAllocate         bool
@@ -50,6 +52,7 @@ type clusterValue struct {
 func newClusterValue(c *Cluster) (cv *clusterValue) {
 	cv = &clusterValue{
 		Name:                        c.Name,
+		CreateTime:                  c.CreateTime,
 		LoadFactor:                  c.cfg.ClusterLoadFactor,
 		Threshold:                   c.cfg.MetaNodeThreshold,
 		DataNodeDeleteLimitRate:     c.cfg.DataNodeDeleteLimitRate,
@@ -389,6 +392,7 @@ func (c *Cluster) syncPutCluster() (err error) {
 	metadata.Op = opSyncPutCluster
 	metadata.K = clusterPrefix + c.Name
 	cv := newClusterValue(c)
+	log.LogInfof("action[syncPutCluster] cluster value:[%+v]", cv)
 	metadata.V, err = json.Marshal(cv)
 	if err != nil {
 		return
@@ -675,6 +679,47 @@ func (c *Cluster) loadZoneValue() (err error) {
 	return
 }
 
+//persist cluster value if not persisted; set create time for cluster being created.
+func (c *Cluster) checkPersistClusterValue() {
+	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[checkPersistClusterValue] seek cluster value err: %v", err.Error())
+		panic(err)
+	}
+	if len(result) != 0 {
+		log.LogInfo("action[checkPersistClusterValue] already has cluster value record, need to do nothing")
+		return
+	}
+
+	/* when cluster value not persisted, it could be:
+	   - cluster created by old version master which may not persist cluster value, not need set create time;
+	   - cluster being created, need to set create time;
+	 check whether persisted node set info to determine which scenario it is. */
+	result, err = c.fsm.store.SeekForPrefix([]byte(nodeSetPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[checkPersistClusterValue] seek node set err: %v", err.Error())
+		panic(err)
+	}
+	oldVal := c.CreateTime
+	var scenarioMsg string
+	if len(result) != 0 {
+		scenarioMsg = "cluster already created"
+	} else {
+		scenarioMsg = "cluster being created"
+		c.CreateTime = time.Now().Unix()
+	}
+	log.LogInfo("action[checkPersistClusterValue] to add cluster value record for " + scenarioMsg)
+
+	if err = c.syncPutCluster(); err != nil {
+		c.CreateTime = oldVal
+		log.LogErrorf("action[checkPersistClusterValue] put err[%v]", err.Error())
+		panic(err)
+	}
+
+	log.LogInfo("action[checkPersistClusterValue] add cluster value record")
+	return
+}
+
 func (c *Cluster) loadClusterValue() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
@@ -687,6 +732,9 @@ func (c *Cluster) loadClusterValue() (err error) {
 			log.LogErrorf("action[loadClusterValue], unmarshal err:%v", err.Error())
 			return err
 		}
+		log.LogDebugf("action[loadClusterValue] loaded cluster value: %+v", cv)
+
+		c.CreateTime = cv.CreateTime
 		c.cfg.MetaNodeThreshold = cv.Threshold
 		c.cfg.ClusterLoadFactor = cv.LoadFactor
 		c.DisableAutoAllocate = cv.DisableAutoAllocate

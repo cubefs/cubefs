@@ -896,6 +896,11 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[maxDpCntLimitKey] = val
 	}
 
+	if value = r.FormValue(clusterCreateTimeKey); value != "" {
+		noParams = false
+		params[clusterCreateTimeKey] = value
+	}
+
 	if noParams {
 		err = keyNotFound(nodeDeleteBatchCountKey)
 		return

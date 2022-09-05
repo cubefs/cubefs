@@ -203,6 +203,7 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv := &proto.ClusterView{
 		Name:                m.cluster.Name,
+		CreateTime:          time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
 		LeaderAddr:          m.leaderInfo.addr,
 		DisableAutoAlloc:    m.cluster.DisableAutoAllocate,
 		MetaNodeThreshold:   m.cluster.cfg.MetaNodeThreshold,
@@ -1696,6 +1697,23 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	if val, ok := params[clusterCreateTimeKey]; ok {
+		if createTimeParam, ok := val.(string); ok {
+			var createTime time.Time
+			var err error
+			if createTime, err = time.ParseInLocation(proto.TimeFormat, createTimeParam, time.Local); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+
+			if err = m.cluster.setClusterCreateTime(createTime.Unix()); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 
 }
