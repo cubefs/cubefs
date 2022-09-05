@@ -273,6 +273,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FollowerRead:         vol.FollowerRead,
 		NearRead:             vol.NearRead,
 		ForceROW:             vol.ForceROW,
+		ForceRowModifyTime:   vol.forceRowModifyTime,
 		EnableWriteCache:     vol.enableWriteCache,
 		CrossRegionHAType:    vol.CrossRegionHAType,
 		Authenticate:         vol.authenticate,
