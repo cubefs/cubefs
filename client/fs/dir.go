@@ -239,6 +239,8 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
 	d.dcache.Delete(req.Name)
+	dcacheKey := d.buildDcacheKey(d.info.Inode, req.Name)
+	d.super.dc.Delete(dcacheKey)
 
 	bgTime := stat.BeginStat()
 	var err error
@@ -508,6 +510,8 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	}
 	start := time.Now()
 	d.dcache.Delete(req.OldName)
+	dcacheKey := d.buildDcacheKey(d.info.Inode, req.OldName)
+	d.super.dc.Delete(dcacheKey)
 
 	bgTime := stat.BeginStat()
 	var err error
