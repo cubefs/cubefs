@@ -210,7 +210,6 @@ func (m *ConvertNode)getLocalIp()(err error){
 	//get local ip addr
 	conn, err := net.Dial("tcp", m.mySqlDB.getServerAddr())
 	if err != nil {
-		conn.Close()
 		log.LogErrorf("dial failed:%v", err)
 		return
 	}
