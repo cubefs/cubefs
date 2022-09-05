@@ -16,6 +16,7 @@ package proto
 
 import (
 	"fmt"
+	"strconv"
 )
 
 // api
@@ -338,9 +339,9 @@ func StrToCompactTag(str string) (cTag CompactTag, err error) {
 	switch str {
 	case CompactDefaultName:
 		cTag = CompactDefault
-	case CompactOpenName:
+	case CompactOpenName, strconv.FormatBool(true):
 		cTag = CompactOpen
-	case CompactCloseName:
+	case CompactCloseName, strconv.FormatBool(false):
 		cTag = CompactClose
 	default:
 		err = fmt.Errorf("invalid compact tag: %v", str)

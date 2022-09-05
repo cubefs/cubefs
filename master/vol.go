@@ -248,6 +248,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	if vol.EcMaxUnitSize == 0 {
 		vol.EcMaxUnitSize = defaultEcMaxUnitSize
 	}
+	vol.forceRowModifyTime = vv.ForceRowModifyTime
+	vol.compactTagModifyTime = vv.CompactTagModifyTime
 	return vol
 }
 

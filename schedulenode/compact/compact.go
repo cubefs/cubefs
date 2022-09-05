@@ -36,8 +36,8 @@ type metaNodeControlConfig struct {
 	inodeCheckStep  int
 	inodeConcurrent int
 	minEkLen        int
-	minInodeSize    int
-	maxEkAvgSize    int
+	minInodeSize    uint64
+	maxEkAvgSize    uint64
 }
 
 func NewCompactWorker() *CompactWorker {
@@ -205,10 +205,10 @@ func (cw *CompactWorker) parseMetaNodeControlConfig(cfg *config.Config) {
 	if mcc.minEkLen = int(cfg.GetFloat(ConfigKeyMinEkLen)); mcc.minEkLen <= 0 {
 		mcc.minEkLen = DefaultMinEkLen
 	}
-	if mcc.minInodeSize = int(cfg.GetFloat(ConfigKeyMinInodeSize)); mcc.minInodeSize <= 0 {
+	if mcc.minInodeSize = uint64(cfg.GetFloat(ConfigKeyMinInodeSize)); mcc.minInodeSize <= 0 {
 		mcc.minInodeSize = DefaultMinInodeSize
 	}
-	if mcc.maxEkAvgSize = int(cfg.GetFloat(ConfigKeyMaxEkAvgSize)); mcc.maxEkAvgSize <= 0 {
+	if mcc.maxEkAvgSize = uint64(cfg.GetFloat(ConfigKeyMaxEkAvgSize)); mcc.maxEkAvgSize <= 0 {
 		mcc.maxEkAvgSize = DefaultMaxEkAvgSize
 	}
 	cw.mcc = mcc

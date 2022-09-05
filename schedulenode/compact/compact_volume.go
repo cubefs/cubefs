@@ -46,8 +46,8 @@ func NewCompVolume(name string, clusterName string, nodes []string, mcc *metaNod
 	volume.inodeCheckStep = mcc.inodeCheckStep
 	volume.inodeConcurrent = mcc.inodeConcurrent
 	volume.minEkLen = mcc.minEkLen
-	volume.minInodeSize = uint64(mcc.minInodeSize * 1024 * 1024)
-	volume.maxEkAvgSize = uint64(mcc.maxEkAvgSize * 1024 * 1024)
+	volume.minInodeSize = mcc.minInodeSize
+	volume.maxEkAvgSize = mcc.maxEkAvgSize
 	volume.runingMpIds = make(map[uint64]struct{}, 0)
 	var metaConfig = &meta.MetaConfig{
 		Volume:        name,
