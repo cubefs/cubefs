@@ -407,8 +407,9 @@ type CursorResetResponse struct {
 }
 
 type MpAllInodesId struct {
-	Count  uint64   `json:"count"`
-	Inodes []uint64 `json:"inodes"`
+	Count     uint64   `json:"count"`
+	Inodes    []uint64 `json:"inodes"`
+	DelInodes []uint64 `json:"delInodes"`
 }
 
 // DeleteInodeRequest defines the request to delete an inode.

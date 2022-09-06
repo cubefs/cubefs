@@ -94,6 +94,12 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/reloadPartition", m.reloadPartition)
 
 	http.HandleFunc("/cleanExpiredPartitions", m.cleanExpiredPartitions)
+
+	http.HandleFunc("/getAllDeletedInodes", m.getAllDeletedInodesHandler)
+	http.HandleFunc("/getAllDeletedDentry", m.getAllDeletedDentriesHandler)
+	http.HandleFunc("/getAllDeletedInodeId", m.getAllDeletedInodeIdHandler)
+	http.HandleFunc("/getExtentsByDelIno", m.getExtentsByDeletedInodeHandler)
+	http.HandleFunc("/getAllInodeIdWithDeleted", m.getAllInodeIdWithDeletedHandler)
 	return
 }
 
@@ -1275,4 +1281,395 @@ func (m *MetaNode) reloadPartition(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp.Msg = err.Error()
 	}
+}
+
+func (m *MetaNode) getAllDeletedInodesHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusSeeOther, "")
+	shouldSkip := false
+	defer func() {
+		if !shouldSkip {
+			data, _ := resp.Marshal()
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllDeletedInodesHandler] response %s", err)
+			}
+		}
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	snap := NewSnapshot(mp.(*metaPartition))
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
+
+	buff := bytes.NewBufferString(`{"data":[`)
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+
+	buff.Reset()
+	var (
+		val       []byte
+		delimiter = []byte{',', '\n'}
+		isFirst   = true
+	)
+
+	inodeType := uint32(0)
+	mode, err := strconv.ParseUint(r.FormValue("mode"), 10, 64)
+	if err == nil {
+		inodeType = uint32(mode)
+	}
+
+	stTime, err := strconv.ParseInt(r.FormValue("start"), 10, 64)
+	if err != nil {
+		stTime = 0
+	}
+
+	endTime, err := strconv.ParseInt(r.FormValue("end"), 10, 64)
+	if err != nil {
+		endTime = math.MaxInt64
+	}
+
+	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
+		delInode := item.(*DeletedINode)
+		if inodeType != 0 &&  delInode.Inode.Type != inodeType {
+			return true, nil
+		}
+
+		if delInode.Timestamp < stTime || delInode.Timestamp > endTime {
+			return true, nil
+		}
+
+		val, err = json.Marshal(delInode)
+		if err != nil {
+			return false, err
+		}
+
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false, err
+			}
+		} else {
+			isFirst = false
+		}
+
+		if _, err = w.Write(val); err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+	shouldSkip = true
+	if err != nil {
+		buff.WriteString(fmt.Sprintf(`], "code": %v, "msg": "%s"}`, http.StatusInternalServerError, err.Error()))
+	} else {
+		buff.WriteString(`], "code": 200, "msg": "OK"}`)
+	}
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getAllDeletedInodesHandler] response %s", err)
+	}
+	return
+}
+
+func (m *MetaNode) getAllDeletedDentriesHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusSeeOther, "")
+	shouldSkip := false
+	defer func() {
+		if !shouldSkip {
+			data, _ := resp.Marshal()
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllDeletedDentriesHandler] response %s", err)
+			}
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	snap := NewSnapshot(mp.(*metaPartition))
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
+
+	buff := bytes.NewBufferString(`{"data":[`)
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	buff.Reset()
+	var (
+		val       []byte
+		delimiter = []byte{',', '\n'}
+		isFirst   = true
+	)
+	err = snap.Range(DelDentryType, func(item interface{}) (bool, error) {
+		delDentry := item.(*DeletedDentry)
+		val, err = json.Marshal(delDentry)
+		if err != nil {
+			return false, err
+		}
+
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false, err
+			}
+		} else {
+			isFirst = false
+		}
+		if _, err = w.Write(val); err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+	shouldSkip = true
+	if err != nil {
+		buff.WriteString(fmt.Sprintf(`], "code": %v, "msg": "%s"}`, http.StatusInternalServerError, err.Error()))
+	} else {
+		buff.WriteString(`], "code": 200, "msg": "OK"}`)
+	}
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getAllDeletedDentriesHandler] response %s", err)
+	}
+	return
+}
+
+func (m *MetaNode) getAllDeletedInodeIdHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusSeeOther, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getAllDeletedInodeId] response %s", err)
+		}
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	inodeType := uint32(0)
+	mode, err := strconv.ParseUint(r.FormValue("mode"), 10, 64)
+	if err == nil {
+		inodeType = uint32(mode)
+	}
+
+	stTime, err := strconv.ParseInt(r.FormValue("start"), 10, 64)
+	if err != nil {
+		stTime = 0
+	}
+
+	endTime, err := strconv.ParseInt(r.FormValue("end"), 10, 64)
+	if err != nil {
+		endTime = math.MaxInt64
+	}
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	snap := NewSnapshot(mp.(*metaPartition))
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
+
+	inosRsp := &proto.MpAllInodesId{Count: 0, DelInodes: make([]uint64, 0)}
+	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
+		delInode := item.(*DeletedINode)
+		if inodeType != 0 && delInode.Type != inodeType {
+			return true, nil
+		}
+
+		if delInode.Timestamp < stTime || delInode.Timestamp > endTime {
+			return true, nil
+		}
+
+		inosRsp.Count++
+		inosRsp.DelInodes = append(inosRsp.DelInodes, delInode.Inode.Inode)
+		return true, nil
+	})
+
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+
+	resp.Code = http.StatusOK
+	resp.Msg = "OK"
+	resp.Data = inosRsp
+	return
+}
+
+func (m *MetaNode) getAllInodeIdWithDeletedHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusSeeOther, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getAllInodeIdWithDeleted] response %s", err)
+		}
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	snap := NewSnapshot(mp.(*metaPartition))
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
+
+	inosRsp := &proto.MpAllInodesId{Count: 0, Inodes: make([]uint64, 0), DelInodes: make([]uint64, 0)}
+	err = snap.Range(InodeType, func(item interface{}) (bool, error) {
+		ino := item.(*Inode)
+		inosRsp.Count++
+		inosRsp.Inodes = append(inosRsp.Inodes, ino.Inode)
+		return true, nil
+	})
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+
+	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
+		delInode := item.(*DeletedINode)
+		inosRsp.Count++
+		inosRsp.DelInodes = append(inosRsp.DelInodes, delInode.Inode.Inode)
+		return true, nil
+	})
+
+	resp.Code = http.StatusOK
+	resp.Msg = "OK"
+	resp.Data = inosRsp
+	return
+}
+
+func (m *MetaNode) getExtentsByDeletedInodeHandler(w http.ResponseWriter,
+	r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getExtentsByInodeHandler] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	srcIno, delIno, _, err := mp.(*metaPartition).getDeletedInode(id)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+
+	ino := srcIno
+	if ino == nil && delIno != nil {
+		ino = delIno.buildInode()
+	}
+
+	if ino != nil {
+		inodeExtentsInfo := &proto.GetExtentsResponse{}
+		inodeExtentsInfo.Generation = ino.Generation
+		inodeExtentsInfo.Size = ino.Size
+		ino.Extents.Range(func(ek proto.ExtentKey) bool {
+			inodeExtentsInfo.Extents = append(inodeExtentsInfo.Extents, ek)
+			return true
+		})
+		var data []byte
+		data, err = json.Marshal(inodeExtentsInfo)
+		if err != nil {
+			resp.Code = http.StatusInternalServerError
+			resp.Msg = err.Error()
+			return
+		}
+		resp.Data = json.RawMessage(data)
+	}
+
+	resp.Code = http.StatusSeeOther
+	resp.Msg = "OK"
+	return
 }

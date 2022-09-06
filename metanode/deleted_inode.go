@@ -16,8 +16,8 @@ type DeletedINodeBatch []*DeletedINode
 
 type DeletedINode struct {
 	Inode
-	Timestamp int64
-	IsExpired bool
+	Timestamp int64 `json:"ts"`
+	IsExpired bool  `json:"isExpired"`
 }
 
 func NewDeletedInode(ino *Inode, timestamp int64) *DeletedINode {

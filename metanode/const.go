@@ -234,9 +234,8 @@ const (
 )
 
 const (
-	BaseVersion           = proto.BaseVersion
-	RocksDBVersion        = "3.1.0"
-	MetaNodeLatestVersion = RocksDBVersion
+	RocksDBVersion        = proto.BaseVersion
+	MetaNodeLatestVersion = proto.BaseVersion
 )
 
 const (
