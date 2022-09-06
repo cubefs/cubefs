@@ -18,7 +18,6 @@ import (
 	"os"
 
 	"github.com/cubefs/cubefs/blobstore/cmd"
-
 	_ "github.com/cubefs/cubefs/blobstore/proxy"
 )
 

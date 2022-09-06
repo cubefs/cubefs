@@ -17,9 +17,8 @@ package main
 import (
 	"os"
 
-	"github.com/cubefs/cubefs/blobstore/cmd"
-
 	_ "github.com/cubefs/cubefs/blobstore/access"
+	"github.com/cubefs/cubefs/blobstore/cmd"
 )
 
 func main() {
