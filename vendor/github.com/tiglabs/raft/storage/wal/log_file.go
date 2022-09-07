@@ -20,9 +20,11 @@ import (
 	"io"
 	"os"
 	"path"
+	"sync/atomic"
+
+	"github.com/tiglabs/raft/logger"
 
 	"github.com/tiglabs/raft/proto"
-	"github.com/tiglabs/raft/util/log"
 )
 
 type logEntryFile struct {
@@ -35,6 +37,7 @@ type logEntryFile struct {
 	index logEntryIndex
 
 	maybeDirty bool
+	ref        int32
 }
 
 func openLogEntryFile(dir string, name logFileName, isLastOne bool) (*logEntryFile, error) {
@@ -49,6 +52,7 @@ func openLogEntryFile(dir string, name logFileName, isLastOne bool) (*logEntryFi
 		name: name,
 		f:    f,
 		r:    newRecordReader(f),
+		ref:  1,
 	}
 
 	if !isLastOne {
@@ -73,7 +77,7 @@ func openLogEntryFile(dir string, name logFileName, isLastOne bool) (*logEntryFi
 	}
 	// 截断索引及后面的数据
 	if toffset >= 0 {
-		log.Warn("truncate last logfile's N@%d index at: %d", lf.name.seq, toffset)
+		logger.Warn("truncate last logfile's N@%d index at: %d", lf.name.seq, toffset)
 		if err := lf.w.Truncate(toffset); err != nil {
 			return nil, err
 		}
@@ -99,6 +103,7 @@ func createLogEntryFile(dir string, name logFileName) (*logEntryFile, error) {
 		name: name,
 		f:    f,
 		r:    newRecordReader(f),
+		ref:  1,
 	}
 
 	if err := lf.OpenWrite(); err != nil {
@@ -185,7 +190,7 @@ func (lf *logEntryFile) ReBuildIndex() (truncateOffset int64, err error) {
 		err = nil
 	}
 	if filesize != nextRecordOffset {
-		log.Warn("logName[%v],fileSize[%v],corrupt data after offset[%v]", lf.name, filesize, nextRecordOffset)
+		logger.Warn("logName[%v],fileSize[%v],corrupt data after offset[%v]", lf.name, filesize, nextRecordOffset)
 	}
 	return offset, err
 }
@@ -329,6 +334,9 @@ func (lf *logEntryFile) FinishWrite(ctx context.Context) error {
 
 // Close 关闭读写，关闭文件
 func (lf *logEntryFile) Close() error {
+	if atomic.LoadInt32(&lf.ref) > 0 {
+		return nil
+	}
 	if lf.w != nil {
 		if err := lf.w.Close(); err != nil {
 			return err
@@ -337,4 +345,12 @@ func (lf *logEntryFile) Close() error {
 	}
 
 	return lf.f.Close()
+}
+
+func (lf *logEntryFile) IncreaseRef() (ref int) {
+	return int(atomic.AddInt32(&lf.ref, 1))
+}
+
+func (lf *logEntryFile) DecreaseRef() (ref int) {
+	return int(atomic.AddInt32(&lf.ref, -1))
 }

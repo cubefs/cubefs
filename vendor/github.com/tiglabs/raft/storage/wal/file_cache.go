@@ -83,6 +83,7 @@ func (lc *logFileCache) Delete(name logFileName, close bool) error {
 
 	lf := e.Value.(*logEntryFile)
 	if close {
+		lf.DecreaseRef()
 		if err := lf.Close(); err != nil {
 			return err
 		}

@@ -16,15 +16,15 @@ package wal
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path"
 	"sort"
 	"sync"
 
-	"math"
+	"github.com/tiglabs/raft/logger"
 
 	"github.com/tiglabs/raft/proto"
-	"github.com/tiglabs/raft/util/log"
 )
 
 type logEntryStorage struct {
@@ -37,12 +37,9 @@ type logEntryStorage struct {
 	last        *logEntryFile
 	nextFileSeq uint64
 
-	rotatingc chan struct{}
-	rotating  *logEntryFile
-	rotateMu  sync.RWMutex
+	cache *logFileCache
 
-	cache  *logFileCache
-	cachec chan *logEntryFile
+	rotates sync.Map
 }
 
 func openLogStorage(dir string, s *Storage) (*logEntryStorage, error) {
@@ -52,8 +49,6 @@ func openLogStorage(dir string, s *Storage) (*logEntryStorage, error) {
 		filesize:    s.c.GetFileSize(),
 		nextFileSeq: 1,
 		syncRotate:  s.c.GetSyncRotate(),
-		rotatingc:   make(chan struct{}, 1),
-		cachec:      make(chan *logEntryFile, s.c.GetFileCacheCapacity()),
 	}
 
 	// cache
@@ -203,10 +198,13 @@ func (ls *logEntryStorage) TruncateFront(index uint64) error {
 	}
 
 	var remove = func(names []logFileName) {
+		for _, name := range names {
+			_ = ls.cache.Delete(name, true)
+		}
 		go func(names []logFileName) {
 			for _, name := range names {
 				if err := ls.remove(name); err != nil {
-					log.Warn("remove log file [%v] fail: %v", name.String(), err)
+					logger.Warn("remove log file [%v] fail: %v", name.String(), err)
 				}
 			}
 		}(names)
@@ -260,12 +258,18 @@ func (ls *logEntryStorage) truncateBack(index uint64) error {
 			if err := ls.remove(ls.logfiles[i]); err != nil {
 				return err
 			}
+			var lfn = ls.logfiles[i]
+			logger.Warn("storage[%v] remove log file [name: %v] cause truncate back to [index: %v]", ls.dir, lfn.String(), index)
 		}
 
 		n := ls.logfiles[idx]
 		lf, err := ls.get(n)
 		if err != nil {
 			return err
+		}
+
+		if ls.isAsyncRotateEnabled() {
+			ls.checkAndWaitRotate(lf.Name())
 		}
 
 		_ = ls.cache.Delete(n, false)
@@ -300,14 +304,6 @@ func (ls *logEntryStorage) get(name logFileName) (*logEntryFile, error) {
 	if name.seq == ls.last.Seq() {
 		return ls.last, nil
 	}
-	ls.maybeUpdateCache()
-	var rotating *logEntryFile
-	ls.rotateMu.RLock()
-	rotating = ls.rotating
-	ls.rotateMu.RUnlock()
-	if rotating != nil && rotating.Name() == name {
-		return rotating, nil
-	}
 	return ls.cache.Get(name)
 }
 
@@ -320,21 +316,11 @@ func (ls *logEntryStorage) rotate(ctx context.Context) error {
 
 	prevLast := ls.last.LastIndex()
 
-	var finish = func(lf *logEntryFile) error {
-		if err := lf.Sync(); err != nil {
-			return err
-		}
-		if err := lf.FinishWrite(ctx); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	perv := ls.last
+	prev := ls.last
 
 	var err error
 
-	if err = perv.Flush(ctx); err != nil {
+	if err = prev.Flush(ctx); err != nil {
 		return err
 	}
 
@@ -347,32 +333,25 @@ func (ls *logEntryStorage) rotate(ctx context.Context) error {
 	ls.last = lf
 	ls.logfiles = append(ls.logfiles, lf.Name())
 
-	if !ls.asyncRotateEnabled() {
-		if err := finish(perv); err != nil {
-			return err
-		}
-		if err = ls.cache.Put(perv.Name(), perv); err != nil {
+	if err = ls.cache.Put(prev.Name(), prev); err != nil {
+		return err
+	}
+
+	if !ls.isAsyncRotateEnabled() {
+		if err := prev.FinishWrite(ctx); err != nil {
 			return err
 		}
 		return nil
 	}
 
-	ls.rotatingc <- struct{}{}
-
-	ls.rotateMu.Lock()
-	ls.rotating = perv
-	ls.rotateMu.Unlock()
-
+	prev.IncreaseRef()
+	ls.registerRotate(prev.Name())
 	go func(lf *logEntryFile) {
-		defer func() {
-			ls.rotateMu.Lock()
-			ls.rotating = nil
-			ls.proposeUpdateCache(lf)
-			ls.rotateMu.Unlock()
-			<-ls.rotatingc
-		}()
-		_ = finish(lf)
-	}(perv)
+		defer ls.revokeRotate(lf.Name())
+		_ = lf.FinishWrite(ctx)
+		lf.DecreaseRef()
+		_ = lf.Close()
+	}(prev)
 
 	return nil
 }
@@ -404,8 +383,6 @@ func (ls *logEntryStorage) locateFile(logindex uint64) (*logEntryFile, error) {
 
 func (ls *logEntryStorage) saveEntry(ctx context.Context, ent *proto.Entry) error {
 
-	ls.maybeUpdateCache()
-
 	// 检查日志是否连续
 	prevIndex := ls.LastIndex()
 	if prevIndex != 0 {
@@ -430,46 +407,60 @@ func (ls *logEntryStorage) saveEntry(ctx context.Context, ent *proto.Entry) erro
 }
 
 func (ls *logEntryStorage) Close() {
-	if ls.asyncRotateEnabled() {
+	if ls.isAsyncRotateEnabled() {
 		// Wait for async rotate process finished.
-		ls.rotatingc <- struct{}{}
-		<-ls.rotatingc
+		ls.checkAndWaitAllRotate()
 	}
 
-	ls.maybeUpdateCache()
 	if err := ls.cache.Close(); err != nil {
-		log.Warn("close log file cache error: %v", err)
+		logger.Warn("close log file cache error: %v", err)
 	}
 
 	if err := ls.last.Close(); err != nil {
-		log.Warn("close log file %s error: %v", ls.last.Name(), err)
+		var name = ls.last.Name()
+		logger.Warn("close log file %s error: %v", name.String(), err)
 	}
 }
 
-func (ls *logEntryStorage) proposeUpdateCache(lf *logEntryFile) {
-	select {
-	case ls.cachec <- lf:
-		return
-	default:
-	}
-	_ = lf.Close()
+func (ls *logEntryStorage) isAsyncRotateEnabled() bool {
+	return !ls.syncRotate
 }
 
-func (ls *logEntryStorage) maybeUpdateCache() {
-	if !ls.asyncRotateEnabled() {
-		return
-	}
+func (ls *logEntryStorage) registerRotate(name logFileName) {
+	var rotateWG = new(sync.WaitGroup)
+	rotateWG.Add(1)
 	for {
-		select {
-		case lf := <-ls.cachec:
-			_ = ls.cache.Put(lf.Name(), lf)
-			continue
-		default:
+		value, loaded := ls.rotates.LoadOrStore(name, rotateWG)
+		if !loaded {
 			return
+		}
+		if wg, is := value.(*sync.WaitGroup); is {
+			wg.Wait()
 		}
 	}
 }
 
-func (ls *logEntryStorage) asyncRotateEnabled() bool {
-	return !ls.syncRotate
+func (ls *logEntryStorage) revokeRotate(name logFileName) {
+	if value, loaded := ls.rotates.LoadAndDelete(name); loaded {
+		if wg, is := value.(*sync.WaitGroup); is {
+			wg.Done()
+		}
+	}
+}
+
+func (ls *logEntryStorage) checkAndWaitRotate(name logFileName) {
+	if value, loaded := ls.rotates.Load(name); loaded {
+		if wg, is := value.(*sync.WaitGroup); is {
+			wg.Wait()
+		}
+	}
+}
+
+func (ls *logEntryStorage) checkAndWaitAllRotate() {
+	ls.rotates.Range(func(key, value interface{}) bool {
+		if wg, is := value.(*sync.WaitGroup); is {
+			wg.Wait()
+		}
+		return true
+	})
 }

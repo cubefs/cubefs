@@ -458,20 +458,20 @@ func (s *raft) run() {
 			}
 			f.respond(nil, err)
 		case truncIndex := <-s.truncatec:
-			func() {
+			func(truncateTo uint64) {
 				defer util.HandleCrash()
 
 				if lasti, err := s.raftConfig.Storage.LastIndex(); err != nil {
 					logger.Error("raft[%v] truncate failed to get last index from storage: %v", s.raftFsm.id, err)
 				} else if lasti > s.config.RetainLogs {
-					maxIndex := util.Min(truncIndex, lasti-s.config.RetainLogs)
+					maxIndex := util.Min(truncateTo, lasti-s.config.RetainLogs)
 					if err = s.raftConfig.Storage.Truncate(maxIndex); err != nil {
 						logger.Error("raft[%v] truncate failed,error is: %v", s.raftFsm.id, err)
 						return
 					}
 					logger.Debug("raft[%v] truncate storage to %v", s.raftFsm.id, maxIndex)
 				}
-			}()
+			}(truncIndex)
 
 		case <-s.promtec:
 			s.promoteLearner()
