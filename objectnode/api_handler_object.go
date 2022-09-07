@@ -76,14 +76,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var isReverseRange bool
 	var partSize uint64
 	var partCount uint64
-	if len(rangeOpt) > 0 && !strings.Contains(rangeOpt, ",") {
-		if !rangeRegexp.MatchString(rangeOpt) {
-			log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
-				GetRequestID(r), rangeOpt)
-			errorCode = InvalidRange
-			return
-		}
-
+	if len(rangeOpt) > 0 && !strings.Contains(rangeOpt, ",") && rangeRegexp.MatchString(rangeOpt) {
 		var hyphenIndex = strings.Index(rangeOpt, "-")
 		if hyphenIndex < 0 {
 			errorCode = InvalidRange
