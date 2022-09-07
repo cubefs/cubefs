@@ -55,6 +55,7 @@ const (
 	AutoFlush
 	DeleteProcessAbsoPath
 	NoBatchGetInodeOnReaddir
+	ReadAheadSize
 
 	MaxMountOption
 )
@@ -65,6 +66,7 @@ const (
 	ListenPort       = "listen"
 	HttpPort         = "prof"
 	ObjectNodeDomain = "objectNodeDomain"
+	MaxReadAhead 	 = 512 * 1024
 )
 
 type MountOption struct {
@@ -105,6 +107,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[KeepCache] = MountOption{"keepcache", "Enable FUSE keepcache feature", "", false}
 	opts[FollowerRead] = MountOption{"followerRead", "Enable read from follower", "", false}
 	opts[NearRead] = MountOption{"nearRead", "Enable read from nearest node", "", false}
+	opts[ReadAheadSize] = MountOption{"readAheadSize", "Set the size of kernel read-ahead", "", int64(MaxReadAhead)}
 
 	opts[Authenticate] = MountOption{"authenticate", "Enable Authenticate", "", false}
 	opts[ClientKey] = MountOption{"clientKey", "Client Key", "", ""}
@@ -271,4 +274,5 @@ type MountOptions struct {
 	AutoFlush                bool
 	DelProcessPath           string
 	NoBatchGetInodeOnReaddir bool
+	ReadAheadSize			 int64
 }
