@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
@@ -206,5 +207,50 @@ func (c *Cluster) updateVolStatInfo() {
 		}
 		useRate := float64(used) / float64(total)
 		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, strconv.FormatFloat(useRate, 'f', 3, 32), vol.enableToken, vol.enableWriteCache))
+	}
+}
+
+func setSSDAndHDDStatByZoneTag(cs *proto.ClusterStatInfo, zoneTag string) {
+	filterZoneStat := &proto.ZoneStat{
+		DataNodeStat: &proto.ZoneNodesStat{},
+		MetaNodeStat: &proto.ZoneNodesStat{},
+	}
+	otherZoneStat := &proto.ZoneStat{
+		DataNodeStat: &proto.ZoneNodesStat{},
+		MetaNodeStat: &proto.ZoneNodesStat{},
+	}
+	for zoneName, zoneStat := range cs.ZoneStatInfo {
+		if strings.Contains(zoneName, zoneTag) {
+			filterZoneStat.Add(zoneStat)
+		} else {
+			otherZoneStat.Add(zoneStat)
+		}
+	}
+	updateZoneStatUsedRatio(filterZoneStat)
+	updateZoneStatUsedRatio(otherZoneStat)
+	if zoneTag == mediumSSD {
+		cs.SSDZoneStatInfo = filterZoneStat
+		cs.HDDZoneStatInfo = otherZoneStat
+	} else {
+		cs.HDDZoneStatInfo = filterZoneStat
+		cs.SSDZoneStatInfo = otherZoneStat
+	}
+}
+
+func updateZoneStatUsedRatio(zoneStat *proto.ZoneStat) {
+	if zoneStat == nil {
+		return
+	}
+	if zoneStat.DataNodeStat != nil && zoneStat.DataNodeStat.Total > 0 {
+		zoneStat.DataNodeStat.UsedRatio = fixedPoint(zoneStat.DataNodeStat.Used/zoneStat.DataNodeStat.Total, 2)
+		zoneStat.DataNodeStat.Total = fixedPoint(zoneStat.DataNodeStat.Total, 2)
+		zoneStat.DataNodeStat.Used = fixedPoint(zoneStat.DataNodeStat.Used, 2)
+		zoneStat.DataNodeStat.Avail = fixedPoint(zoneStat.DataNodeStat.Avail, 2)
+	}
+	if zoneStat.MetaNodeStat != nil && zoneStat.MetaNodeStat.Total > 0 {
+		zoneStat.MetaNodeStat.UsedRatio = fixedPoint(zoneStat.MetaNodeStat.Used/zoneStat.MetaNodeStat.Total, 2)
+		zoneStat.MetaNodeStat.Total = fixedPoint(zoneStat.MetaNodeStat.Total, 2)
+		zoneStat.MetaNodeStat.Used = fixedPoint(zoneStat.MetaNodeStat.Used, 2)
+		zoneStat.MetaNodeStat.Avail = fixedPoint(zoneStat.MetaNodeStat.Avail, 2)
 	}
 }

@@ -116,6 +116,7 @@ const (
 	isManualKey                 = "isManual"
 	isRecoverKey                 = "isRecover"
 	mediumKey                   = "medium"
+	zoneTagKey                  = "zoneTag"
 	forceKey                    = "force"
 	ecEnableKey                 = "ecEnable"
 	ecScrubEnableKey            = "ecScrubEnable"
