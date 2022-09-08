@@ -9,7 +9,9 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -129,7 +131,7 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			}()
 
 			withTrashTest := false
-			if test.snapV > 1 {
+			if test.snapV > 0 {
 				withTrashTest = true
 			}
 
@@ -177,7 +179,7 @@ func TestMetaPartition_ApplySnapshotCase01(t *testing.T) {
 		return
 	}
 
-	interTest(t, leaderMp, followerMp, 1)
+	interTest(t, leaderMp, followerMp, BaseSnapshotV)
 }
 
 func TestMetaPartition_ApplySnapshotCase02(t *testing.T) {
@@ -214,7 +216,7 @@ func TestMetaPartition_ApplySnapshotCase02(t *testing.T) {
 		return
 	}
 
-	interTest(t, leaderMp, followerMp, 1)
+	interTest(t, leaderMp, followerMp, BaseSnapshotV)
 }
 
 func TestMetaPartition_ApplySnapshotCase03(t *testing.T) {
@@ -250,7 +252,7 @@ func TestMetaPartition_ApplySnapshotCase03(t *testing.T) {
 		return
 	}
 
-	interTest(t, leaderMp, followerMp, 1)
+	interTest(t, leaderMp, followerMp, BaseSnapshotV)
 }
 
 func TestMetaPartition_ApplySnapshotCase04(t *testing.T) {
@@ -287,7 +289,7 @@ func TestMetaPartition_ApplySnapshotCase04(t *testing.T) {
 		return
 	}
 
-	interTest(t, leaderMp, followerMp, 1)
+	interTest(t, leaderMp, followerMp, BaseSnapshotV)
 }
 
 func mockForSnapshot(t *testing.T, mp *metaPartition, withTrashTest bool) (err error) {
@@ -297,17 +299,20 @@ func mockForSnapshot(t *testing.T, mp *metaPartition, withTrashTest bool) (err e
 	}
 
 	//create extent del file
-	//for index := 0; index < 5; index++ {
-	//	fileName := path.Join(mp.config.RootDir, prefixDelExtent + "_" + strconv.Itoa(index))
-	//	if _, err = os.Create(fileName); err != nil {
-	//		t.Errorf("create file[%s] failed:%v", fileName, err)
-	//		return
-	//	}
-	//	if err = os.WriteFile(fileName, []byte("test_apply_snapshot"), 0666); err != nil {
-	//		t.Errorf("write data to file[%s] failed:%v", fileName, err)
-	//		return
-	//	}
-	//}
+	if !withTrashTest {
+		for index := 0; index < 5; index++ {
+			fileName := path.Join(mp.config.RootDir, prefixDelExtent + "_" + strconv.Itoa(index))
+			if _, err = os.Create(fileName); err != nil {
+				t.Errorf("create file[%s] failed:%v", fileName, err)
+				return
+			}
+			if err = os.WriteFile(fileName, []byte("test_apply_snapshot"), 0666); err != nil {
+				t.Errorf("write data to file[%s] failed:%v", fileName, err)
+				return
+			}
+		}
+	}
+
 	mp.applyID = 1000
 	return
 }
@@ -582,6 +587,12 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		t.Errorf("validate failed:%v", err)
 		return false
 	}
+
+	if _, err := compareExtentDeleteFile(leaderMp, followerMp); err != nil {
+		t.Errorf("extent file validate failed:%v", err)
+		return false
+	}
+
 	return true
 }
 

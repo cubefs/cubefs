@@ -93,6 +93,7 @@ func newConfigSetCmd() *cobra.Command {
 	var optENProfPort uint16
 	var optConvertHost string
 	var optConvertNodeDBAddr string
+	var optConvertNodeDBName string
 	var optConvertNodeDBUserName string
 	var optConvertNodeDBPassword string
 	var optIsDbBack int8
@@ -141,6 +142,9 @@ func newConfigSetCmd() *cobra.Command {
 			if optConvertNodeDBAddr != "" {
 				config.ConvertNodeDBConfig.Path = optConvertNodeDBAddr
 			}
+			if optConvertNodeDBName != "" {
+				config.ConvertNodeDBConfig.Dbname = optConvertNodeDBName
+			}
 			if optConvertNodeDBUserName != "" {
 				config.ConvertNodeDBConfig.Username = optConvertNodeDBUserName
 			}
@@ -163,6 +167,7 @@ func newConfigSetCmd() *cobra.Command {
 	cmd.Flags().Uint16Var(&optMNProfPort, "mnProf", 0, "Specify prof port for MetaNode")
 	cmd.Flags().StringVar(&optConvertHost, "convertAddr", "", "Specify convert address [{HOST}:{PORT}]")
 	cmd.Flags().StringVar(&optConvertNodeDBAddr, "convertNodeDBAddr", "", "Specify convert node database address")
+	cmd.Flags().StringVar(&optConvertNodeDBName, "convertNodeDBName", "", "Specify convert node database name")
 	cmd.Flags().StringVar(&optConvertNodeDBUserName, "convertNodeDBUserName", "", "Specify convert node database user name")
 	cmd.Flags().StringVar(&optConvertNodeDBPassword, "convertNodeDBPassword", "", "Specify convert node database password")
 	cmd.Flags().Int8Var(&optIsDbBack, "isDbBack", -1, "If used for dbback, 0 or 1")
