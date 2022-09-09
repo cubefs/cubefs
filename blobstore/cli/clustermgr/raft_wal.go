@@ -45,7 +45,7 @@ func addCmdWalParse(cmd *grumble.Command) {
 		Run:  cmdWalParse,
 		Args: func(a *grumble.Args) {
 			a.String("filepath", "wal log filepath")
-			a.String("out", "pase result output", grumble.Default(""))
+			a.String("out", "parse result output", grumble.Default(""))
 		},
 	})
 }
@@ -53,7 +53,7 @@ func addCmdWalParse(cmd *grumble.Command) {
 func cmdWalParse(c *grumble.Context) error {
 	filepath := c.Args.String("filepath")
 	if filepath == "" {
-		return errors.New("wal log file path can't be null")
+		return errors.New("wal log file path can't be empty")
 	}
 
 	printf := func(format string, opts ...interface{}) {
@@ -110,7 +110,10 @@ func parse(filename string, printf func(format string, opts ...interface{})) err
 	var offset int64
 	for {
 		n, err := io.ReadFull(f, u64Buf)
-		if err != nil && err != io.EOF {
+		if err != nil {
+			if err == io.ErrUnexpectedEOF || err == io.EOF {
+				return nil
+			}
 			printf("read data len offset=%d error: %v\n", offset, err)
 			return err
 		}
@@ -121,12 +124,18 @@ func parse(filename string, printf func(format string, opts ...interface{})) err
 		data := make([]byte, dataLen+4)
 		n, err = io.ReadFull(tr, data[0:int(dataLen)])
 		if err != nil {
+			if err == io.ErrUnexpectedEOF || err == io.EOF {
+				return nil
+			}
 			printf("read data offset=%d error: %v\n", offset, err)
-			break
+			return err
 		}
 		offset = offset + int64(n)
 		n, err = io.ReadFull(f, data[dataLen:])
 		if err != nil {
+			if err == io.ErrUnexpectedEOF || err == io.EOF {
+				return nil
+			}
 			printf("read data crc offset=%d error: %v\n", offset, err)
 			return err
 		}
@@ -169,5 +178,4 @@ func parse(filename string, printf func(format string, opts ...interface{})) err
 				entry.Term, entry.Index, proposeInfo.Module, proposeInfo.OperType, string(proposeInfo.Data))
 		}
 	}
-	return nil
 }

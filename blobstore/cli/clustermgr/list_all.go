@@ -49,8 +49,8 @@ func addCmdListAllDB(cmd *grumble.Command) {
 		LongHelp: "list all db tools for clustermgr",
 		Run:      cmdListAllDB,
 		Args: func(a *grumble.Args) {
-			a.String("volumeDBPath", "wal log filename")
-			a.String("normalDBPath", "wal log path")
+			a.String("volumeDBPath", "volume db path")
+			a.String("normalDBPath", "normal db path")
 		},
 	}
 	cmd.AddCommand(command)
@@ -168,10 +168,7 @@ func listAllVolumes(volumeTbl *volumedb.VolumeTable) error {
 			volInfo.units = append(volInfo.units, *unitRecord)
 		}
 
-		token, err := volumeTbl.GetToken(volRecord.Vid)
-		if err != nil {
-			return fmt.Errorf("get volume token failed: %s", err.Error())
-		}
+		token, _ := volumeTbl.GetToken(volRecord.Vid)
 		if token != nil {
 			volInfo.token = *token
 		}

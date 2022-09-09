@@ -86,6 +86,38 @@ func addCmdVolume(cmd *grumble.Command) {
 			clusterFlags(f)
 		},
 	})
+
+	command.AddCommand(&grumble.Command{
+		Name: "listVolumes",
+		Help: "list volumes",
+		Run:  cmdListVolumes,
+		Args: func(a *grumble.Args) {
+			a.Int("count", "number of volumes to list")
+			a.Uint64("marker", "list volumes start from special Vid", grumble.Default(0))
+		},
+		Flags: func(f *grumble.Flags) {
+			flags.VerboseRegister(f)
+			clusterFlags(f)
+		},
+	})
+}
+
+func cmdListVolumes(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
+
+	count := c.Args.Int("count")
+	marker := c.Args.Uint64("marker")
+	listVolumeArgs := &clustermgr.ListVolumeArgs{Count: count, Marker: proto.Vid(marker)}
+
+	volumes, err := cmClient.ListVolume(ctx, listVolumeArgs)
+	if err != nil {
+		return err
+	}
+	for _, vol := range volumes.Volumes {
+		fmt.Printf("%d: %+v\n", vol.Vid, vol.VolumeInfoBase)
+	}
+	return nil
 }
 
 func cmdUpdateVolume(c *grumble.Context) error {

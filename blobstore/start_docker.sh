@@ -1,21 +1,7 @@
 #!/bin/bash
 
-consul=$1
-
 if [ ! -d ./run/logs ]; then
   mkdir -p ./run/logs
-fi
-
-# start consul
-if [ "${consul}" == "--consul" ]; then
-  nohup ./bin/consul agent -dev -client 0.0.0.0 >> ./run/logs/consul.log 2>&1 &
-  # check consul running
-  sleep 1
-  num=`ps -ef | egrep ./bin/consul | egrep -v "grep|vi|tail" | wc -l`
-  if [ ${num} -lt 1 ];then
-    echo "Failed to start consul."
-    exit 1
-  fi
 fi
 
 # start kafka
