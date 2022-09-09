@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -300,6 +300,8 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		NodeID:        manager.nodeID,
 		ClusterID:     manager.clusterID,
 		PartitionSize: request.PartitionSize,
+		PartitionType: int(request.PartitionTyp),
+		ReplicaNum:    request.ReplicaNum,
 	}
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
@@ -351,6 +353,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.MaxCapacity = stat.MaxCapacityToCreatePartition
 	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
 	response.BadDisks = make([]string, 0)
+	response.StartTime = s.startTime
 	stat.Unlock()
 
 	response.ZoneName = s.zoneName

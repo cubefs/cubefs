@@ -10,7 +10,7 @@ url2="http://${host}:${port}"
 ds_url="${url2}/api/datasources"
 dashboard_url="${url2}/api/dashboard/db"
 
-org="chubaofs.io"
+org="cubefs.io"
 
 parse_json(){
     echo "$1" | sed "s/.*\"$2\":\([^,}]*\).*/\1/"

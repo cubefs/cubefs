@@ -98,11 +98,6 @@ func (sb *schemaBuilder) makeStructParser(typ reflect.Type) (*argParser, graphql
 					return fmt.Errorf("%s: %s", name, err)
 				}
 			}
-			for name := range asMap {
-				if _, ok := fields[name]; !ok {
-					return fmt.Errorf("unknown arg %s", name)
-				}
-			}
 
 			return nil
 		},
@@ -129,7 +124,7 @@ func (sb *schemaBuilder) getStructObjectFields(typ reflect.Type) (*graphql.Input
 	}
 
 	if typ.Kind() != reflect.Struct {
-		return nil, nil, fmt.Errorf("expected struct but received type %s", typ.Name())
+		return nil, nil, fmt.Errorf("expected struct but received type %s", typ.Kind())
 	}
 
 	// Cache type information ahead of time to catch self-reference
@@ -431,6 +426,16 @@ var scalarArgParsers = map[reflect.Type]*argParser{
 			return nil
 		},
 	},
+	reflect.TypeOf(int(0)): {
+		FromJSON: func(value interface{}, dest reflect.Value) error {
+			asFloat, ok := value.(float64)
+			if !ok {
+				return errors.New("not a number")
+			}
+			dest.Set(reflect.ValueOf(int(asFloat)).Convert(dest.Type()))
+			return nil
+		},
+	},
 	reflect.TypeOf(uint64(0)): {
 		FromJSON: func(value interface{}, dest reflect.Value) error {
 			asFloat, ok := value.(float64)
@@ -468,6 +473,16 @@ var scalarArgParsers = map[reflect.Type]*argParser{
 				return errors.New("not a number")
 			}
 			dest.Set(reflect.ValueOf(uint8(asFloat)).Convert(dest.Type()))
+			return nil
+		},
+	},
+	reflect.TypeOf(uint(0)): {
+		FromJSON: func(value interface{}, dest reflect.Value) error {
+			asFloat, ok := value.(float64)
+			if !ok {
+				return errors.New("not a number")
+			}
+			dest.Set(reflect.ValueOf(uint(asFloat)).Convert(dest.Type()))
 			return nil
 		},
 	},

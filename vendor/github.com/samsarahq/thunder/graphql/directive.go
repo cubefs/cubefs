@@ -10,8 +10,8 @@ const (
 	IF      = "if"
 )
 
-// shouldIncludeNode validates and checks the value of a skip or include directive
-func shouldIncludeNode(directives []*Directive) (bool, error) {
+// ShouldIncludeNode validates and checks the value of a skip or include directive
+func ShouldIncludeNode(directives []*Directive) (bool, error) {
 	skipDirective := findDirectiveWithName(directives, SKIP)
 	if skipDirective != nil {
 		b, err := parseIf(skipDirective)

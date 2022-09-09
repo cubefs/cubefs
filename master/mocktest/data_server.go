@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -103,6 +103,9 @@ func (mds *MockDataServer) serveConn(rc net.Conn) {
 	}
 	conn.SetKeepAlive(true)
 	conn.SetNoDelay(true)
+
+	proto.InitBufferPool(int64(32768))
+
 	req := proto.NewPacket()
 	err := req.ReadFromConn(conn, proto.NoReadDeadlineTime)
 	if err != nil {

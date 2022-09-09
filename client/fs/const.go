@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"bazil.org/fuse"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -47,12 +47,22 @@ const (
 	DeleteExtentsTimeout = 600 * time.Second
 )
 
+const (
+	MaxSizePutOnce = int64(1) << 23
+)
+
+const (
+	DefaultFlag = 0x0f
+)
+
 var (
 	// The following two are used in the FUSE cache
 	// every time the lookup will be performed on the fly, and the result will not be cached
 	LookupValidDuration = 5 * time.Second
 	// the expiration duration of the attributes in the FUSE cache
 	AttrValidDuration = 30 * time.Second
+
+	DisableMetaCache = true
 )
 
 // ParseError returns the error type.

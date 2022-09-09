@@ -2,7 +2,7 @@ package fs
 
 import (
 	"container/list"
-	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"sync"
 	"time"
 )
@@ -27,7 +27,7 @@ type SummaryCache struct {
 // summaryCacheElement defines the structure of the content-summary cache's element.
 type summaryCacheElement struct {
 	ino        uint64
-	info       *proto.SummaryInfo
+	info       *meta.SummaryInfo
 	expiration int64
 }
 
@@ -44,7 +44,7 @@ func NewSummaryCache(exp time.Duration, maxElement int) *SummaryCache {
 }
 
 // Put puts the given summary info into the content-summary cache.
-func (sc *SummaryCache) Put(inode uint64, summaryInfo *proto.SummaryInfo) {
+func (sc *SummaryCache) Put(inode uint64, summaryInfo *meta.SummaryInfo) {
 	sc.Lock()
 	old, ok := sc.cache[inode]
 	if ok {
@@ -64,7 +64,7 @@ func (sc *SummaryCache) Put(inode uint64, summaryInfo *proto.SummaryInfo) {
 }
 
 // Get returns the content-summary info based on the given inode number.
-func (sc *SummaryCache) Get(inode uint64) *proto.SummaryInfo {
+func (sc *SummaryCache) Get(inode uint64) *meta.SummaryInfo {
 	sc.RLock()
 	element, ok := sc.cache[inode]
 	if !ok {

@@ -9,10 +9,16 @@
   "exporterPort": 9500,
   "cell": "cell-01",
   "logDir": "/cfs/log",
-  "logLevel": "info",
+  "logLevel": "debug",
   "disks": [
     "/cfs/disk:10737418240"
   ],
+
+  "diskIopsReadLimit" : "20000",
+  "diskIopsWriteLimit" : "5000",
+  "diskFlowReadLimit" : "1024000000",
+  "diskFlowWriteLimit": "524288000",
+
   "masterAddr": [
     "192.168.0.11:17010",
     "192.168.0.12:17010",

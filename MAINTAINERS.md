@@ -1,4 +1,4 @@
-This page listed the ChubaoFS main maintainers and their reponsibilities.
+This page listed the CubeFS main maintainers and their reponsibilities.
 
 Name | Email | Duty | Organization
 --------|---|---|---
@@ -27,3 +27,14 @@ Xihao Xu ([@xxscott](https://github.com/xxscott)) | [xxscott@163.com](mailto:xxs
 Wenjia Wu ([@wenjia322](https://github.com/wenjia322)) | [buaa1214wwj@126.com](mailto:buaa1214wwj@126.com) | Authorization | [JD.com](https://www.jd.com/)
 hooklee2000 ([@hooklee2000](https://github.com/hooklee2000)) | [hooklee2000@gmail.com](mailto:hooklee2000@gmail.com) | Project Building | [-](-)
 Zhendong Li ([@lizhendong666](https://github.com/lizhendong666)) | [lizhendong666@gmail.com](mailto:lizhendong666@gmail.com) | Yum Deployment  | [JD.com](https://www.jd.com/)
+Xiaobo Yu ([@cessory](https://github.com/cessory)) | [yxbstorm@gmail.com](mailto:yxbstorm@gmail.com) | Blobstore, Community | [OPPO]
+Cloudstriff ([@Cloudstriff](https://github.com/Cloudstriff)) | [chenjiongwendao@qq.com](mailto:chenjiongwendao@qq.com) | Blobstore ClusterMgr, Access | [OPPO]
+Zongchao Hu ([@JasonHu520](https://github.com/JasonHu520)) | [hastyjason500@gmail.com](mailto:hastyjason500@gmail.com) | Blobstore Proxy | [OPPO]
+Qing Li ([@qingli](https://github.com/liqingqiya)) | [liqing.qiya@gmail.com](mailto:liqing.qiya@gmail.com) | Blobstore Blobnode | [OPPO]
+Zhihao Wang ([@Cresc](https://github.com/zhihao-wang)) | [wzh07@hotmail.com](mailto:liqing.qiya@gmail.com) | Blobstore Blobnode | [OPPO]
+pengtianyue ([@pengtianyue025](https://github.com/pengtianyue025)) | [pengtianyue025@gmail.com](mailto:pengtianyue025@gmail.com) | Blobstore Scheduler | [OPPO]
+slasher ([@sejust](https://github.com/sejust)) | [mcq.sejust@gmail.com](mailto:mcq.sejust@gmail.com) | Blobstore Access, Cli | [OPPO]
+Zhixiang Tang ([@xiangcai1215](https://github.com/xiangcai1215)) | [505892459@qq.com](mailto:505892459@qq.com) | Blobstore ClusterMgr, Access | [OPPO]
+
+
+[OPPO]:https://www.oppo.com/en/

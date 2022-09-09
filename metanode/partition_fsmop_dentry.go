@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type DentryResponse struct {
@@ -37,14 +38,17 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	forceUpdate bool) (status uint8) {
 	status = proto.OpOk
 	item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
+	log.LogInfof("action[fsmCreateDentry] ParentId [%v] get nil, dentry name [%v], inode [%v]", dentry.ParentId, dentry.Name, dentry.Inode)
 	var parIno *Inode
 	if !forceUpdate {
 		if item == nil {
+			log.LogErrorf("action[fsmCreateDentry] ParentId [%v] get nil, dentry name [%v], inode [%v]", dentry.ParentId, dentry.Name, dentry.Inode)
 			status = proto.OpNotExistErr
 			return
 		}
 		parIno = item.(*Inode)
 		if parIno.ShouldDelete() {
+			log.LogErrorf("action[fsmCreateDentry] ParentId [%v] get [%v] but should del, dentry name [%v], inode [%v]", dentry.ParentId, parIno, dentry.Name, dentry.Inode)
 			status = proto.OpNotExistErr
 			return
 		}
@@ -159,6 +163,28 @@ func (mp *metaPartition) getDentryTree() *BTree {
 	return mp.dentryTree.GetTree()
 }
 
+func (mp *metaPartition) readDirOnly(req *ReadDirOnlyReq) (resp *ReadDirOnlyResp) {
+	resp = &ReadDirOnlyResp{}
+	begDentry := &Dentry{
+		ParentId: req.ParentID,
+	}
+	endDentry := &Dentry{
+		ParentId: req.ParentID + 1,
+	}
+	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
+		d := i.(*Dentry)
+		if proto.IsDir(d.Type) {
+			resp.Children = append(resp.Children, proto.Dentry{
+				Inode: d.Inode,
+				Type:  d.Type,
+				Name:  d.Name,
+			})
+		}
+		return true
+	})
+	return
+}
+
 func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 	resp = &ReadDirResp{}
 	begDentry := &Dentry{
@@ -206,28 +232,6 @@ func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitR
 		// Limit == 0 means no limit.
 		if req.Limit > 0 && uint64(len(resp.Children)) >= req.Limit {
 			return false
-		}
-		return true
-	})
-	return
-}
-
-func (mp *metaPartition) readDirOnly(req *ReadDirOnlyReq) (resp *ReadDirOnlyResp) {
-	resp = &ReadDirOnlyResp{}
-	begDentry := &Dentry{
-		ParentId: req.ParentID,
-	}
-	endDentry := &Dentry{
-		ParentId: req.ParentID + 1,
-	}
-	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
-		d := i.(*Dentry)
-		if proto.IsDir(d.Type) {
-			resp.Children = append(resp.Children, proto.Dentry{
-				Inode: d.Inode,
-				Type:  d.Type,
-				Name:  d.Name,
-			})
 		}
 		return true
 	})

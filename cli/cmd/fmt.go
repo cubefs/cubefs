@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 )
 
-func formatClusterView(cv *proto.ClusterView) string {
+func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *proto.ClusterIP) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  Cluster name       : %v\n", cv.Name))
 	sb.WriteString(fmt.Sprintf("  Master leader      : %v\n", cv.LeaderAddr))
@@ -36,6 +36,8 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  DataNode used      : %v GB\n", cv.DataNodeStatInfo.UsedGB))
 	sb.WriteString(fmt.Sprintf("  DataNode total     : %v GB\n", cv.DataNodeStatInfo.TotalGB))
 	sb.WriteString(fmt.Sprintf("  Volume count       : %v\n", len(cv.VolStatInfo)))
+	sb.WriteString(fmt.Sprintf("  EbsAddr            : %v\n", cp.EbsAddr))
+	sb.WriteString(fmt.Sprintf("  loadFactor         : %v\n", cn.LoadFactor))
 	return sb.String()
 }
 
@@ -93,20 +95,37 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  ID                   : %v\n", svv.ID))
 	sb.WriteString(fmt.Sprintf("  Name                 : %v\n", svv.Name))
 	sb.WriteString(fmt.Sprintf("  Owner                : %v\n", svv.Owner))
-	sb.WriteString(fmt.Sprintf("  Zone                 : %v\n", svv.ZoneName))
-	sb.WriteString(fmt.Sprintf("  Status               : %v\n", formatVolumeStatus(svv.Status)))
+	sb.WriteString(fmt.Sprintf("  Authenticate         : %v\n", formatEnabledDisabled(svv.Authenticate)))
 	sb.WriteString(fmt.Sprintf("  Capacity             : %v GB\n", svv.Capacity))
 	sb.WriteString(fmt.Sprintf("  Create time          : %v\n", svv.CreateTime))
-	sb.WriteString(fmt.Sprintf("  Authenticate         : %v\n", formatEnabledDisabled(svv.Authenticate)))
-	sb.WriteString(fmt.Sprintf("  Follower read        : %v\n", formatEnabledDisabled(svv.FollowerRead)))
 	sb.WriteString(fmt.Sprintf("  Cross zone           : %v\n", formatEnabledDisabled(svv.CrossZone)))
-	sb.WriteString(fmt.Sprintf("  Inode count          : %v\n", svv.InodeCount))
+	sb.WriteString(fmt.Sprintf("  DefaultPriority      : %v\n", svv.DefaultPriority))
 	sb.WriteString(fmt.Sprintf("  Dentry count         : %v\n", svv.DentryCount))
+	sb.WriteString(fmt.Sprintf("  Description          : %v\n", string([]rune(svv.Description)[:])))
+	sb.WriteString(fmt.Sprintf("  DpCnt                : %v\n", svv.DpCnt))
+	sb.WriteString(fmt.Sprintf("  DpReplicaNum         : %v\n", svv.DpReplicaNum))
+	sb.WriteString(fmt.Sprintf("  Follower read        : %v\n", formatEnabledDisabled(svv.FollowerRead)))
+	sb.WriteString(fmt.Sprintf("  Inode count          : %v\n", svv.InodeCount))
 	sb.WriteString(fmt.Sprintf("  Max metaPartition ID : %v\n", svv.MaxMetaPartitionID))
-	sb.WriteString(fmt.Sprintf("  Meta partition count : %v\n", svv.MpCnt))
-	sb.WriteString(fmt.Sprintf("  Meta replicas        : %v\n", svv.MpReplicaNum))
-	sb.WriteString(fmt.Sprintf("  Data partition count : %v\n", svv.DpCnt))
-	sb.WriteString(fmt.Sprintf("  Data replicas        : %v", svv.DpReplicaNum))
+	sb.WriteString(fmt.Sprintf("  MpCnt                : %v\n", svv.MpCnt))
+	sb.WriteString(fmt.Sprintf("  MpReplicaNum         : %v\n", svv.MpReplicaNum))
+	sb.WriteString(fmt.Sprintf("  NeedToLowerReplica   : %v\n", svv.NeedToLowerReplica))
+	sb.WriteString(fmt.Sprintf("  MpReplicaNum         : %v\n", formatEnabledDisabled(svv.NeedToLowerReplica)))
+	sb.WriteString(fmt.Sprintf("  RwDpCnt              : %v\n", svv.RwDpCnt))
+	sb.WriteString(fmt.Sprintf("  Status               : %v\n", formatVolumeStatus(svv.Status)))
+	sb.WriteString(fmt.Sprintf("  ZoneName             : %v\n", svv.ZoneName))
+	sb.WriteString(fmt.Sprintf("  VolType              : %v\n", svv.VolType))
+	if svv.VolType == 1 {
+		sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))
+		sb.WriteString(fmt.Sprintf("  CacheCapacity        : %v G\n", svv.CacheCapacity))
+		sb.WriteString(fmt.Sprintf("  CacheAction          : %v\n", svv.CacheAction))
+		sb.WriteString(fmt.Sprintf("  CacheThreshold       : %v byte\n", svv.CacheThreshold))
+		sb.WriteString(fmt.Sprintf("  CacheLruInterval     : %v min\n", svv.CacheLruInterval))
+		sb.WriteString(fmt.Sprintf("  CacheTtl             : %v day\n", svv.CacheTtl))
+		sb.WriteString(fmt.Sprintf("  CacheLowWater        : %v\n", svv.CacheLowWater))
+		sb.WriteString(fmt.Sprintf("  CacheHighWater       : %v\n", svv.CacheHighWater))
+		sb.WriteString(fmt.Sprintf("  CacheRule            : %v\n", svv.CacheRule))
+	}
 	return sb.String()
 }
 
@@ -168,12 +187,23 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("PartitionID   : %v\n", partition.PartitionID))
 	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatDataPartitionStatus(partition.Status)))
 	sb.WriteString(fmt.Sprintf("LastLoadedTime: %v\n", formatTime(partition.LastLoadedTime)))
+	sb.WriteString(fmt.Sprintf("OfflinePeerID : %v\n", partition.OfflinePeerID))
+	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Replicas : \n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatDataReplicaTableHeader()))
 	for _, replica := range partition.Replicas {
 		sb.WriteString(fmt.Sprintf("%v\n", formatDataReplica("", replica, true)))
 	}
+
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("FileInCoreMap : \n"))
+	sb.WriteString(fmt.Sprintf("%v\n", formatDataFileInCoreTableHeader()))
+	sb.WriteString(fmt.Sprintf("%v\n", formatDataFileMetadateTableHeader()))
+	for id, fileCore := range partition.FileInCoreMap {
+		sb.WriteString(fmt.Sprintf(formatDataFileInCoreMap(id, "", fileCore, true)))
+	}
+
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Peers :\n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatPeerTableHeader()))
@@ -342,9 +372,9 @@ func formatNodeStatus(status bool) string {
 }
 
 var units = []string{"B", "KB", "MB", "GB", "TB", "PB"}
-var step uint64 = 1024
+var step float64 = 1024
 
-func fixUnit(curSize uint64, curUnitIndex int) (newSize uint64, newUnitIndex int) {
+func fixUnit(curSize float64, curUnitIndex int) (newSize float64, newUnitIndex int) {
 	if curSize >= step && curUnitIndex < len(units)-1 {
 		return fixUnit(curSize/step, curUnitIndex+1)
 	}
@@ -352,8 +382,8 @@ func fixUnit(curSize uint64, curUnitIndex int) (newSize uint64, newUnitIndex int
 }
 
 func formatSize(size uint64) string {
-	fixedSize, fixedUnitIndex := fixUnit(size, 0)
-	return fmt.Sprintf("%v %v", fixedSize, units[fixedUnitIndex])
+	fixedSize, fixedUnitIndex := fixUnit(float64(size), 0)
+	return fmt.Sprintf("%.2f %v", fixedSize, units[fixedUnitIndex])
 }
 
 func formatTime(timeUnix int64) string {
@@ -364,20 +394,53 @@ func formatTimeToString(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-var dataReplicaTableRowPattern = "%-18v    %-6v    %-6v    %-6v    %-6v    %-6v    %-10v"
+var dataReplicaTableRowPattern = "%-18v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-18v    %-10v"
 
 func formatDataReplicaTableHeader() string {
-	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "FILECOUNT", "STATUS", "REPORT TIME")
+	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDR", "USEDSIZE", "TOTALSIZE", "ISLEADER", "FILECOUNT", "HASLOADRESPONSE", "NEEDSTOCOMPARE", "STATUS", "DISKPATH", "REPORT TIME")
+}
+
+var dataFileInCoreTableRowPattern = "%-12v    %-12v    %-10v    %-10v"
+
+func formatDataFileInCoreTableHeader() string {
+	return fmt.Sprintf(dataFileInCoreTableRowPattern, "KEY", "NAME", "LASTMODIFY", "FILEMETADATE")
+}
+
+var dataFileMetadateTableRowPattern = "%-12v    %-12v    %-10v    %-10v    %-10v    %-18v"
+
+func formatDataFileMetadateTableHeader() string {
+	return fmt.Sprintf(dataFileMetadateTableRowPattern, "", "", "", "CRC", "SIZE", "LOCADDR")
+}
+
+func formatDataFileInCoreMap(id string, indentation string, fileCore *proto.FileInCore, rowTable bool) string {
+	var sb = strings.Builder{}
+	if rowTable {
+		sb.WriteString(fmt.Sprintf(dataFileInCoreTableRowPattern, id, fileCore.Name, fileCore.LastModify, ""))
+		for _, v := range fileCore.MetadataArray {
+			sb.WriteString("\n")
+			sb.WriteString(formatDataFileMetadate("", v))
+		}
+		return sb.String()
+	}
+	sb.WriteString(fmt.Sprintf("%v- Name           : %v\n", indentation, fileCore.Name))
+	sb.WriteString(fmt.Sprintf("%v  LastModify     : %v\n", indentation, fileCore.LastModify))
+	sb.WriteString(fmt.Sprintf("%v  FileMetadate   : %v\n", indentation, fileCore.MetadataArray))
+	return sb.String()
+}
+
+func formatDataFileMetadate(indentation string, fileMeta *proto.FileMetadata) string {
+	return fmt.Sprintf(dataFileMetadateTableRowPattern, "", "", "", fileMeta.Crc, fileMeta.Size, fileMeta.LocAddr)
 }
 
 func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable bool) string {
 	if rowTable {
-		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, formatSize(replica.Used), formatSize(replica.Total),
-			replica.IsLeader, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime))
+		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, formatSize(replica.Used), formatSize(replica.Total), replica.IsLeader,
+			replica.FileCount, replica.HasLoadResponse, replica.NeedsToCompare, formatDataPartitionStatus(replica.Status),
+			replica.DiskPath, formatTime(replica.ReportTime))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
-	sb.WriteString(fmt.Sprintf("%v  Used           : %v\n", indentation, formatSize(replica.Used)))
+	sb.WriteString(fmt.Sprintf("%v  Allocated           : %v\n", indentation, formatSize(replica.Used)))
 	sb.WriteString(fmt.Sprintf("%v  Total          : %v\n", indentation, formatSize(replica.Total)))
 	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
 	sb.WriteString(fmt.Sprintf("%v  FileCount      : %v\n", indentation, replica.FileCount))
@@ -432,8 +495,8 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", dn.ID))
 	sb.WriteString(fmt.Sprintf("  Address             : %v\n", dn.Addr))
 	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", dn.Carry))
-	sb.WriteString(fmt.Sprintf("  Used ratio          : %v\n", dn.UsageRatio))
-	sb.WriteString(fmt.Sprintf("  Used                : %v\n", formatSize(dn.Used)))
+	sb.WriteString(fmt.Sprintf("  Allocated ratio          : %v\n", dn.UsageRatio))
+	sb.WriteString(fmt.Sprintf("  Allocated                : %v\n", formatSize(dn.Used)))
 	sb.WriteString(fmt.Sprintf("  Available           : %v\n", formatSize(dn.AvailableSpace)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(dn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", dn.ZoneName))
@@ -461,7 +524,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", mn.Carry))
 	sb.WriteString(fmt.Sprintf("  Threshold           : %v\n", mn.Threshold))
 	sb.WriteString(fmt.Sprintf("  MaxMemAvailWeight   : %v\n", formatSize(mn.MaxMemAvailWeight)))
-	sb.WriteString(fmt.Sprintf("  Used                : %v\n", formatSize(mn.Used)))
+	sb.WriteString(fmt.Sprintf("  Allocated                : %v\n", formatSize(mn.Used)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(mn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(mn.IsActive)))

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@ package raftstore
 import (
 	"os"
 
-	"github.com/tiglabs/raft"
-	"github.com/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 )
 
 // PartitionStatus is a type alias of raft.Status

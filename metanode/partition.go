@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,24 +17,29 @@ package metanode
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
-	"fmt"
-	"io/ioutil"
-	"os"
-	"path"
-
+	"github.com/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+
+	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	raftproto "github.com/tiglabs/raft/proto"
+	"github.com/hashicorp/consul/api"
 )
 
 var (
@@ -63,20 +68,21 @@ func (sp sortedPeers) Swap(i, j int) {
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
-	PartitionId uint64              `json:"partition_id"`
-	VolName     string              `json:"vol_name"`
-	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
-	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
-	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
-	Cursor      uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
-	NodeId      uint64              `json:"-"`
-	RootDir     string              `json:"-"`
-	BeforeStart func()              `json:"-"`
-	AfterStart  func()              `json:"-"`
-	BeforeStop  func()              `json:"-"`
-	AfterStop   func()              `json:"-"`
-	RaftStore   raftstore.RaftStore `json:"-"`
-	ConnPool    *util.ConnectPool   `json:"-"`
+	PartitionId   uint64              `json:"partition_id"`
+	VolName       string              `json:"vol_name"`
+	Start         uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
+	End           uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
+	PartitionType int                 `json:"partition_type"`
+	Peers         []proto.Peer        `json:"peers"` // Peers information of the raftStore
+	Cursor        uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
+	NodeId        uint64              `json:"-"`
+	RootDir       string              `json:"-"`
+	BeforeStart   func()              `json:"-"`
+	AfterStart    func()              `json:"-"`
+	BeforeStop    func()              `json:"-"`
+	AfterStop     func()              `json:"-"`
+	RaftStore     raftstore.RaftStore `json:"-"`
+	ConnPool      *util.ConnectPool   `json:"-"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -120,6 +126,7 @@ type OpInode interface {
 	GetInodeTree() *BTree
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
+	ClearInodeCache(req *proto.ClearInodeCacheRequest, p *Packet) (err error)
 }
 
 type OpExtend interface {
@@ -128,7 +135,7 @@ type OpExtend interface {
 	BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packet) (err error)
 	RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error)
 	ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error)
-	UpdateSummaryInfo(req *proto.UpdateSummaryInfoRequest, p *Packet) (err error)
+	UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error)
 }
 
 // OpDentry defines the interface for the dentry operations.
@@ -148,9 +155,12 @@ type OpDentry interface {
 type OpExtent interface {
 	ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error)
 	ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet) (err error)
+	BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequest, p *Packet) (err error)
 	ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
+	ObjExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
 	ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error)
 	BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error)
+	// ExtentsDelete(req *proto.DelExtentKeyRequest, p *Packet) (err error)
 }
 
 type OpMultipart interface {
@@ -192,6 +202,7 @@ type OpPartition interface {
 type MetaPartition interface {
 	Start() error
 	Stop()
+	DataSize() uint64
 	OpMeta
 	LoadSnapshot(path string) error
 	ForceSetMetaPartitionToLoadding()
@@ -224,6 +235,33 @@ type metaPartition struct {
 	manager                *metadataManager
 	isLoadingMetaPartition bool
 	summaryLock            sync.Mutex
+	ebsClient              *blobstore.BlobStoreClient
+	volType                int
+	xattrLock              sync.Mutex
+}
+
+func (mp *metaPartition) updateSize() {
+	timer := time.NewTicker(time.Minute * 2)
+	go func() {
+		for {
+			select {
+			case <-timer.C:
+				size := uint64(0)
+
+				mp.inodeTree.GetTree().Ascend(func(item BtreeItem) bool {
+					inode := item.(*Inode)
+					size += inode.Size
+					return true
+				})
+
+				mp.size = size
+				log.LogDebugf("[updateSize] update mp(%d) size(%d) success", mp.config.PartitionId, size)
+			case <-mp.stopC:
+				log.LogDebugf("[updateSize] stop update mp(%d) size", mp.config.PartitionId)
+				return
+			}
+		}
+	}()
 }
 
 func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {
@@ -232,6 +270,10 @@ func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {
 
 func (mp *metaPartition) ForceSetMetaPartitionToFininshLoad() {
 	mp.isLoadingMetaPartition = false
+}
+
+func (mp *metaPartition) DataSize() uint64 {
+	return mp.size
 }
 
 // Start starts a meta partition.
@@ -284,7 +326,7 @@ func (mp *metaPartition) onStart() (err error) {
 		mp.onStop()
 	}()
 	if err = mp.load(); err != nil {
-		err = errors.NewErrorf("[onStart]:load partition id=%d: %s",
+		err = errors.NewErrorf("[onStart] load partition id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
@@ -295,7 +337,59 @@ func (mp *metaPartition) onStart() (err error) {
 		return
 	}
 	if err = mp.startRaft(); err != nil {
-		err = errors.NewErrorf("[onStart]start raft id=%d: %s",
+		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
+			mp.config.PartitionId, err.Error())
+		return
+	}
+
+	// set EBS Client
+	clusterInfo, cerr := masterClient.AdminAPI().GetClusterInfo()
+	if cerr != nil {
+		err = cerr
+		log.LogErrorf("action[onStart] GetClusterInfo err[%v]", err)
+		return
+	}
+	volumeInfo, verr := masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName)
+	if verr != nil {
+		err = verr
+		log.LogErrorf("action[onStart] GetVolumeSimpleInfo err[%v]", err)
+		return
+	}
+	mp.volType = volumeInfo.VolType
+	var ebsClient *blobstore.BlobStoreClient
+	if clusterInfo.EbsAddr != "" {
+		ebsClient, err = blobstore.NewEbsClient(
+			access.Config{
+				ConnMode: access.NoLimitConnMode,
+				Consul: api.Config{
+					Address: clusterInfo.EbsAddr,
+				},
+				MaxSizePutOnce: int64(volumeInfo.ObjBlockSize),
+				Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
+			},
+		)
+
+		if err != nil {
+			log.LogErrorf("action[onStart] err[%v]", err)
+			return
+		}
+		if ebsClient == nil {
+			err = errors.NewErrorf("[onStart] ebsClient is nil")
+			return
+		}
+		mp.ebsClient = ebsClient
+	}
+
+	if proto.IsHot(mp.volType) {
+		log.LogInfof("hot vol not need updateSize & cacheTTL")
+		return
+	}
+
+	mp.updateSize()
+
+	// do cache TTL die out process
+	if err = mp.cacheTTLWork(); err != nil {
+		err = errors.NewErrorf("[onStart] start CacheTTLWork id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
@@ -389,7 +483,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		stopC:         make(chan bool),
 		storeChan:     make(chan *storeMsg, 100),
 		freeList:      newFreeList(),
-		extDelCh:      make(chan []proto.ExtentKey, 10000),
+		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
 		extReset:      make(chan struct{}),
 		vol:           NewVol(),
 		manager:       manager,
@@ -698,4 +792,107 @@ func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 		return
 	}
 	return
+}
+
+// cacheTTLWork only happen in datalake situation
+func (mp *metaPartition) cacheTTLWork() (err error) {
+	// check volume type, only Cold volume will do the cache ttl.
+	volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
+	if mcErr != nil {
+		err = fmt.Errorf("cacheTTLWork: can't get volume info: partitoinID(%v) volume(%v)",
+			mp.config.PartitionId, mp.config.VolName)
+		return
+	}
+	if volView.VolType != proto.VolumeTypeCold {
+		return
+	}
+	// do cache ttl work
+	go mp.doCacheTTL(volView.CacheTTL)
+	return
+}
+
+func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
+	// first sleep a rand time, range [0, 1200s(20m)],
+	// make sure all mps is not doing scan work at the same time.
+	rand.Seed(time.Now().Unix())
+	time.Sleep(time.Duration(rand.Intn(1200)))
+
+	ttl := time.NewTicker(time.Duration(util.OneDaySec()) * time.Second)
+	for {
+		select {
+		case <-ttl.C:
+			log.LogDebugf("[doCacheTTL] begin cache ttl, mp[%v] cacheTTL[%v]", mp.config.PartitionId, cacheTTL)
+			// only leader can do TTL work
+			if _, ok := mp.IsLeader(); !ok {
+				log.LogDebugf("[doCacheTTL] partitionId=%d is not leader, skip", mp.config.PartitionId)
+				continue
+			}
+
+			// get the last cacheTTL
+			volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
+			if mcErr != nil {
+				err = fmt.Errorf("[doCacheTTL]: can't get volume info: partitoinID(%v) volume(%v)",
+					mp.config.PartitionId, mp.config.VolName)
+				return
+			}
+			cacheTTL = volView.CacheTTL
+
+			mp.InodeTTLScan(cacheTTL)
+
+		case <-mp.stopC:
+			log.LogWarnf("[doCacheTTL] stoped, mp(%d)", mp.config.PartitionId)
+			return
+		}
+	}
+}
+
+func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
+	curTime := Now.GetCurrentTime().Unix()
+	// begin
+	count := 0
+	needSleep := false
+	mp.inodeTree.GetTree().Ascend(func(i BtreeItem) bool {
+		inode := i.(*Inode)
+		// dir type just skip
+		if proto.IsDir(inode.Type) {
+			return true
+		}
+		inode.RLock()
+		// eks is empty just skip
+		if len(inode.Extents.eks) == 0 || inode.ShouldDelete() {
+			inode.RUnlock()
+			return true
+		}
+
+		if (curTime - inode.AccessTime) > int64(cacheTTL)*util.OneDaySec() {
+			log.LogDebugf("[InodeTTLScan] mp[%v] do inode ttl delete[%v]", mp.config.PartitionId, inode.Inode)
+			count++
+			// make request
+			p := &Packet{}
+			req := &proto.EmptyExtentKeyRequest{
+				Inode: inode.Inode,
+			}
+			ino := NewInode(req.Inode, 0)
+			curTime = Now.GetCurrentTime().Unix()
+			if inode.ModifyTime < curTime {
+				ino.ModifyTime = curTime
+			}
+
+			mp.ExtentsEmpty(req, p, ino)
+			// check empty result.
+			// if result is OpAgain, means the extDelCh maybe full,
+			// so let it sleep 1s.
+			if p.ResultCode == proto.OpAgain {
+				needSleep = true
+			}
+		}
+		inode.RUnlock()
+		// every 1000 inode sleep 1s
+		if count > 1000 || needSleep {
+			count %= 1000
+			needSleep = false
+			time.Sleep(time.Second)
+		}
+		return true
+	})
 }

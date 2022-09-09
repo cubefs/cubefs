@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -104,6 +104,9 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
+	if len(dp.Hosts) == 1 {
+		p.RemainingFollowers = 127
+	}
 	p.ReqID = proto.GenerateRequestID()
 	p.Opcode = proto.OpCreateExtent
 	p.Data = make([]byte, 8)

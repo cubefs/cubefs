@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ type DataNode struct {
 	ZoneName                  string `json:"Zone"`
 	Addr                      string
 	ReportTime                time.Time
+	StartTime                 int64
 	isActive                  bool
 	sync.RWMutex              `graphql:"-"`
 	UsageRatio                float64           // used / total space
@@ -42,12 +43,17 @@ type DataNode struct {
 	TaskManager               *AdminTaskManager `graphql:"-"`
 	DataPartitionReports      []*proto.PartitionReport
 	DataPartitionCount        uint32
+	TotalPartitionSize        uint64
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
 	ToBeOffline               bool
 	RdOnly                    bool
 	MigrateLock               sync.RWMutex
+	QosIopsRLimit             uint64
+	QosIopsWLimit             uint64
+	QosFlowRLimit             uint64
+	QosFlowWLimit             uint64
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -94,7 +100,9 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.ZoneName = resp.ZoneName
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.DataPartitionReports = resp.PartitionReports
+	dataNode.TotalPartitionSize = resp.TotalPartitionSize
 	dataNode.BadDisks = resp.BadDisks
+	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {
 		dataNode.UsageRatio = 0.0
 	} else {
@@ -102,6 +110,22 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	}
 	dataNode.ReportTime = time.Now()
 	dataNode.isActive = true
+}
+
+func (dataNode *DataNode) canAlloc() bool {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+
+	if !overSoldLimit() {
+		return true
+	}
+
+	maxCapacity := overSoldCap(dataNode.Total)
+	if maxCapacity < dataNode.TotalPartitionSize {
+		return false
+	}
+
+	return true
 }
 
 func (dataNode *DataNode) isWriteAble() (ok bool) {
@@ -113,6 +137,10 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	}
 
 	return
+}
+
+func (dataNode *DataNode) dpCntInLimit() bool {
+	return dataNode.DataPartitionCount <= dpCntOneNodeLimit()
 }
 
 func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
@@ -165,11 +193,16 @@ func (dataNode *DataNode) clean() {
 	dataNode.TaskManager.exitCh <- struct{}{}
 }
 
-func (dataNode *DataNode) createHeartbeatTask(masterAddr string) (task *proto.AdminTask) {
+func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos bool) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,
 	}
+	request.EnableDiskQos = enableDiskQos
+	request.QosIopsReadLimit = dataNode.QosIopsRLimit
+	request.QosIopsWriteLimit = dataNode.QosIopsWLimit
+	request.QosFlowReadLimit = dataNode.QosFlowRLimit
+	request.QosFlowWriteLimit = dataNode.QosFlowWLimit
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
 	return
 }

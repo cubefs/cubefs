@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,11 @@
 
 package util
 
-import "regexp"
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
 
 const (
 	_  = iota
@@ -62,6 +66,15 @@ func IsIPV4(val interface{}) bool {
 	return isMatch(ip4, val)
 }
 
+func GetIp(addr string) (ip string) {
+	var arr []string
+	if arr = strings.Split(addr, ":"); len(arr) < 2 {
+		return
+	}
+	ip = strings.Trim(arr[0], " ")
+	return ip
+}
+
 func regexpCompile(str string) *regexp.Regexp {
 	return regexp.MustCompile("^" + str + "$")
 }
@@ -77,4 +90,16 @@ func isMatch(exp *regexp.Regexp, val interface{}) bool {
 	default:
 		return false
 	}
+}
+
+func GenerateKey(volName string, ino uint64, offset uint64) string {
+	return fmt.Sprintf("%v_%v_%016x", volName, ino, offset)
+}
+
+func GenerateRepVolKey(volName string, ino uint64, extentId uint64, offset uint64) string {
+	return fmt.Sprintf("%v_%v_%v_%016x", volName, ino, extentId, offset)
+}
+
+func OneDaySec() int64 {
+	return 60 * 60 * 24
 }

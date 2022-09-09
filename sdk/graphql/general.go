@@ -17,8 +17,8 @@ func main() {
 	us := master.UserService{}
 	parseSchema(us.Schema(), proto.AdminUserAPI, "user")
 
-	vs := master.VolumeService{}
-	parseSchema(vs.Schema(), proto.AdminVolumeAPI, "volume")
+	//vs := master.VolumeService{}
+	//parseSchema(vs.Schema(), proto.AdminVolumeAPI, "volume")
 
 	cs := master.ClusterService{}
 	parseSchema(cs.Schema(), proto.AdminClusterAPI, "cluster")

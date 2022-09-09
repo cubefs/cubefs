@@ -127,8 +127,8 @@ func safeInvoke(
 // Invoke arranges for the Func's Many to be called with arg as one of its
 // arguments, and returns the corresponding result.
 func (f *Func) Invoke(ctx context.Context, arg interface{}) (interface{}, error) {
-	bctx := ctx.Value(batchContextKey{}).(*batchContext)
-	if bctx == nil {
+	bctx, ok := ctx.Value(batchContextKey{}).(*batchContext)
+	if !ok {
 		panic("WithBatching must be called on the context before using Func")
 	}
 

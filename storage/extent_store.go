@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -105,36 +106,38 @@ var (
 // Multiple small files can be appended to the same tinyExtent.
 // In addition, the deletion of small files is implemented by the punch hole from the underlying file system.
 type ExtentStore struct {
-	dataPath                          string
-	baseExtentID                      uint64                 // TODO what is baseExtentID
-	extentInfoMap                     map[uint64]*ExtentInfo // map that stores all the extent information
-	eiMutex                           sync.RWMutex           // mutex for extent info
-	cache                             *ExtentCache           // extent cache
-	mutex                             sync.Mutex
-	storeSize                         int      // size of the extent store
-	metadataFp                        *os.File // metadata file pointer?
-	tinyExtentDeleteFp                *os.File
-	normalExtentDeleteFp              *os.File
-	closeC                            chan bool
-	closed                            bool
-	availableTinyExtentC              chan uint64 // available tinyExtent channel
-	availableTinyExtentMap            sync.Map
-	brokenTinyExtentC                 chan uint64 // broken tinyExtent channel
-	brokenTinyExtentMap               sync.Map
-	blockSize                         int
+	dataPath               string
+	baseExtentID           uint64                 // TODO what is baseExtentID
+	extentInfoMap          map[uint64]*ExtentInfo // map that stores all the extent information
+	eiMutex                sync.RWMutex           // mutex for extent info
+	cache                  *ExtentCache           // extent cache
+	mutex                  sync.Mutex
+	storeSize              int      // size of the extent store
+	metadataFp             *os.File // metadata file pointer?
+	tinyExtentDeleteFp     *os.File
+	normalExtentDeleteFp   *os.File
+	closeC                 chan bool
+	closed                 bool
+	availableTinyExtentC   chan uint64 // available tinyExtent channel
+	availableTinyExtentMap sync.Map
+	brokenTinyExtentC      chan uint64 // broken tinyExtent channel
+	brokenTinyExtentMap    sync.Map
+	// blockSize                         int
 	partitionID                       uint64
 	verifyExtentFp                    *os.File
 	hasAllocSpaceExtentIDOnVerfiyFile uint64
 	hasDeleteNormalExtentsCache       sync.Map
+	partitionType                     int
 }
 
 func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
-func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *ExtentStore, err error) {
+func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
 	s.dataPath = dataDir
+	s.partitionType = dpType
 	s.partitionID = partitionID
 	if err = MkdirAll(dataDir); err != nil {
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
@@ -182,18 +185,8 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	extent.Lock()
 	defer extent.Unlock()
 
-	// check if file is modified according to os.ModTime
-	if crc != 0 {
-		stat, err := extent.file.Stat()
-		if err != nil {
-			log.LogErrorf("[UpdateExtentInfo] stat file error, set crc default, %v", err)
-			crc = 0
-		}
-
-		if time.Now().Unix()-stat.ModTime().Unix() <= UpdateCrcInterval {
-			log.LogWarn("[UpdateExtentInfo] file has been modified when update extent compute crc, so set crc default")
-			crc = 0
-		}
+	if time.Now().Unix()-extent.ModifyTime() <= UpdateCrcInterval {
+		crc = 0
 	}
 
 	ei.Size = uint64(extent.dataSize)
@@ -244,15 +237,19 @@ func (s *ExtentStore) Create(extentID uint64) (err error) {
 		err = ExtentExistsError
 		return err
 	}
+
 	e = NewExtentInCore(name, extentID)
 	e.header = make([]byte, util.BlockHeaderSize)
 	err = e.InitToFS()
 	if err != nil {
 		return err
 	}
+
 	s.cache.Put(e)
 	extInfo := &ExtentInfo{FileID: extentID}
 	extInfo.UpdateExtentInfo(e, 0)
+
+	atomic.StoreInt64(&extInfo.AccessTime, e.accessTime)
 	s.eiMutex.Lock()
 	s.extentInfoMap[extentID] = extInfo
 	s.eiMutex.Unlock()
@@ -282,11 +279,15 @@ func (s *ExtentStore) initBaseFileID() error {
 		if extentID, isExtent = s.ExtentID(f.Name()); !isExtent {
 			continue
 		}
+
 		if e, loadErr = s.extent(extentID); loadErr != nil {
 			continue
 		}
+
 		ei = &ExtentInfo{FileID: extentID}
 		ei.UpdateExtentInfo(e, 0)
+		atomic.StoreInt64(&ei.AccessTime, e.accessTime)
+
 		s.eiMutex.Lock()
 		s.extentInfoMap[extentID] = ei
 		s.eiMutex.Unlock()
@@ -311,13 +312,17 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 		e  *Extent
 		ei *ExtentInfo
 	)
-	s.eiMutex.RLock()
+
+	s.eiMutex.Lock()
 	ei, _ = s.extentInfoMap[extentID]
-	s.eiMutex.RUnlock()
 	e, err = s.extentWithHeader(ei)
+	s.eiMutex.Unlock()
 	if err != nil {
 		return err
 	}
+	// update access time
+	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
+
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
 	}
@@ -358,14 +363,32 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	s.eiMutex.RLock()
 	ei := s.extentInfoMap[extentID]
 	s.eiMutex.RUnlock()
+
+	if ei == nil {
+		return 0, errors.Trace(ExtentHasBeenDeletedError, "[Read] extent[%d] is already been deleted", extentID)
+	}
+
+	// update extent access time
+	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
+
 	if e, err = s.extentWithHeader(ei); err != nil {
 		return
 	}
+
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return
 	}
 	crc, err = e.Read(nbuf, offset, size, isRepairRead)
 
+	return
+}
+
+func (s *ExtentStore) DumpExtents() (extInfos SortedExtentInfos) {
+	s.eiMutex.RLock()
+	for _, v := range s.extentInfoMap {
+		extInfos = append(extInfos, v)
+	}
+	s.eiMutex.RUnlock()
 	return
 }
 
@@ -859,15 +882,18 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 		err = fmt.Errorf("restore from file %v putCache %v system: %v", name, putCache, err)
 		return
 	}
+
 	if !putCache {
 		return
 	}
-	if !IsTinyExtent(extentID) {
+
+	if !IsTinyExtent(extentID) && proto.IsNormalDp(s.partitionType) {
 		e.header = make([]byte, util.BlockHeaderSize)
 		if _, err = s.verifyExtentFp.ReadAt(e.header, int64(extentID*util.BlockHeaderSize)); err != nil && err != io.EOF {
 			return
 		}
 	}
+
 	err = nil
 	s.cache.Put(e)
 
@@ -875,6 +901,10 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 }
 
 func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
+	if !proto.IsNormalDp(s.partitionType) {
+		return
+	}
+
 	var blockCnt int
 	bcs = make([]*BlockCrc, 0)
 	ei := s.extentInfoMap[extentID]
@@ -918,6 +948,10 @@ func (s *ExtentStore) cleanExpiredNormalExtentDeleteCache() {
 }
 
 func (s *ExtentStore) autoComputeExtentCrc() {
+	if !proto.IsNormalDp(s.partitionType) {
+		return
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			return

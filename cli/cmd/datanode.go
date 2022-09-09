@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,7 +24,9 @@ import (
 )
 
 const (
-	cmdDataNodeShort = "Manage data nodes"
+	cmdDataNodeShort            = "Manage data nodes"
+	cmdDataNodeMigrateInfoShort = "Migrate partitions from a data node to the other node"
+	dpMigrateMax                = 50
 )
 
 func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
@@ -36,6 +38,7 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeListCmd(client),
 		newDataNodeInfoCmd(client),
 		newDataNodeDecommissionCmd(client),
+		newDataNodeMigrateCmd(client),
 	)
 	return cmd
 }
@@ -89,7 +92,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpInfo + " [NODE ADDRESS]",
+		Use:   CliOpInfo + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -120,8 +123,9 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var optCount int
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [NODE ADDRESS]",
+		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeDecommissionInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -133,7 +137,11 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 			nodeAddr = args[0]
-			if err = client.NodeAPI().DataNodeDecommission(nodeAddr); err != nil {
+			if optCount < 0 {
+				stdout("Migrate dp count should >= 0\n")
+				return
+			}
+			if err = client.NodeAPI().DataNodeDecommission(nodeAddr, optCount); err != nil {
 				return
 			}
 			stdout("Decommission data node successfully\n")
@@ -146,5 +154,44 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "DataNode delete mp count")
+	return cmd
+}
+
+func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
+	var optCount int
+	var cmd = &cobra.Command{
+		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
+		Short: cmdDataNodeMigrateInfoShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var src, dst string
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			src = args[0]
+			dst = args[1]
+			if optCount > dpMigrateMax || optCount <= 0 {
+				stdout("Migrate dp count should between [1-50]\n")
+				return
+			}
+
+			if err = client.NodeAPI().DataNodeMigrate(src, dst, optCount); err != nil {
+				return
+			}
+			stdout("Migrate data node successfully\n")
+
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().IntVar(&optCount, CliFlagCount, dpMigrateMax, "Migrate dp count,default 15")
 	return cmd
 }

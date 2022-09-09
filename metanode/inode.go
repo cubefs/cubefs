@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,6 +28,11 @@ import (
 
 const (
 	DeleteMarkFlag = 1 << 0
+)
+
+var (
+	// InodeV1Flag uint64 = 0x01
+	InodeV2Flag uint64 = 0x02
 )
 
 // Inode wraps necessary properties of `Inode` information in the file system.
@@ -65,7 +70,8 @@ type Inode struct {
 	Flag       int32
 	Reserved   uint64 // reserved space
 	//Extents    *ExtentsTree
-	Extents *SortedExtents
+	Extents    *SortedExtents
+	ObjExtents *SortedObjExtents
 }
 
 type InodeBatch []*Inode
@@ -91,6 +97,7 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("Flag[%d]", i.Flag))
 	buff.WriteString(fmt.Sprintf("Reserved[%d]", i.Reserved))
 	buff.WriteString(fmt.Sprintf("Extents[%s]", i.Extents))
+	buff.WriteString(fmt.Sprintf("ObjExtents[%s]", i.ObjExtents))
 	buff.WriteString("}")
 	return buff.String()
 }
@@ -108,6 +115,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 		ModifyTime: ts,
 		NLink:      1,
 		Extents:    NewSortedExtents(),
+		ObjExtents: NewSortedObjExtents(),
 	}
 	if proto.IsDir(t) {
 		i.NLink = 2
@@ -141,6 +149,7 @@ func (i *Inode) Copy() BtreeItem {
 	newIno.Flag = i.Flag
 	newIno.Reserved = i.Reserved
 	newIno.Extents = i.Extents.Clone()
+	newIno.ObjExtents = i.ObjExtents.Clone()
 	i.RUnlock()
 	return newIno
 }
@@ -311,16 +320,45 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.Flag); err != nil {
 		panic(err)
 	}
+	if i.ObjExtents != nil && len(i.ObjExtents.eks) > 0 {
+		i.Reserved = InodeV2Flag
+	}
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
-	// marshal ExtentsKey
-	extData, err := i.Extents.MarshalBinary()
-	if err != nil {
-		panic(err)
-	}
-	if _, err = buff.Write(extData); err != nil {
-		panic(err)
+
+	if i.Reserved == InodeV2Flag {
+		// marshal ExtentsKey
+		extData, err := i.Extents.MarshalBinary()
+		if err != nil {
+			panic(err)
+		}
+		if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
+			panic(err)
+		}
+		if _, err = buff.Write(extData); err != nil {
+			panic(err)
+		}
+		// marshal ObjExtentsKey
+		objExtData, err := i.ObjExtents.MarshalBinary()
+		if err != nil {
+			panic(err)
+		}
+		if err = binary.Write(buff, binary.BigEndian, uint32(len(objExtData))); err != nil {
+			panic(err)
+		}
+		if _, err = buff.Write(objExtData); err != nil {
+			panic(err)
+		}
+	} else {
+		// marshal ExtentsKey
+		extData, err := i.Extents.MarshalBinary()
+		if err != nil {
+			panic(err)
+		}
+		if _, err = buff.Write(extData); err != nil {
+			panic(err)
+		}
 	}
 
 	val = buff.Bytes()
@@ -331,6 +369,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 // UnmarshalValue unmarshals the value from bytes.
 func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	buff := bytes.NewBuffer(val)
+
 	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
 		return
 	}
@@ -383,15 +422,54 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if i.Extents == nil {
 		i.Extents = NewSortedExtents()
 	}
-	if err = i.Extents.UnmarshalBinary(buff.Bytes()); err != nil {
-		return
+
+	if i.Reserved == InodeV2Flag {
+		extSize := uint32(0)
+		if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
+			return
+		}
+		if extSize > 0 {
+			extBytes := make([]byte, extSize)
+			if _, err = io.ReadFull(buff, extBytes); err != nil {
+				return
+			}
+			if err = i.Extents.UnmarshalBinary(extBytes); err != nil {
+				return
+			}
+		}
+		// unmarshal ObjExtentsKey
+		if i.ObjExtents == nil {
+			i.ObjExtents = NewSortedObjExtents()
+		}
+		ObjExtSize := uint32(0)
+		if err = binary.Read(buff, binary.BigEndian, &ObjExtSize); err != nil {
+			return
+		}
+		if ObjExtSize > 0 {
+			objExtBytes := make([]byte, ObjExtSize)
+			if _, err = io.ReadFull(buff, objExtBytes); err != nil {
+				return
+			}
+			if err = i.ObjExtents.UnmarshalBinary(objExtBytes); err != nil {
+				return
+			}
+		}
+	} else {
+		if err = i.Extents.UnmarshalBinary(buff.Bytes()); err != nil {
+			return
+		}
 	}
+
 	return
 }
 
 // AppendExtents append the extent to the btree.
-func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
+func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64, volType int) (delExtents []proto.ExtentKey) {
+	if proto.IsCold(volType) {
+		return
+	}
 	i.Lock()
+	defer i.Unlock()
 	for _, ek := range eks {
 		delItems := i.Extents.Append(ek)
 		size := i.Extents.Size()
@@ -402,23 +480,47 @@ func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []pro
 	}
 	i.Generation++
 	i.ModifyTime = ct
-	i.Unlock()
+
 	return
 }
 
-func (i *Inode) AppendExtentWithCheck(ek proto.ExtentKey, ct int64, discardExtents []proto.ExtentKey) (delExtents []proto.ExtentKey, status uint8) {
+// AppendObjExtents append the extent to the btree.
+func (i *Inode) AppendObjExtents(eks []proto.ObjExtentKey, ct int64) (err error) {
+	i.Lock()
+	defer i.Unlock()
+
+	for _, ek := range eks {
+		err = i.ObjExtents.Append(ek)
+		if err != nil {
+			return
+		}
+		size := i.ObjExtents.Size()
+		if i.Size < size {
+			i.Size = size
+		}
+	}
+	i.Generation++
+	i.ModifyTime = ct
+	return
+}
+
+func (i *Inode) AppendExtentWithCheck(ek proto.ExtentKey, ct int64, discardExtents []proto.ExtentKey, volType int) (delExtents []proto.ExtentKey, status uint8) {
 	i.Lock()
 	defer i.Unlock()
 	delExtents, status = i.Extents.AppendWithCheck(ek, discardExtents)
 	if status != proto.OpOk {
 		return
 	}
-	size := i.Extents.Size()
-	if i.Size < size {
-		i.Size = size
+
+	if proto.IsHot(volType) {
+		size := i.Extents.Size()
+		if i.Size < size {
+			i.Size = size
+		}
+		i.Generation++
+		i.ModifyTime = ct
 	}
-	i.Generation++
-	i.ModifyTime = ct
+
 	return
 }
 
@@ -523,21 +625,65 @@ func (i *Inode) SetAttr(req *SetattrRequest) {
 
 func (i *Inode) DoWriteFunc(fn func()) {
 	i.Lock()
+	defer i.Unlock()
 	fn()
-	i.Unlock()
 }
 
 // DoFunc executes the given function.
 func (i *Inode) DoReadFunc(fn func()) {
 	i.RLock()
+	defer i.RUnlock()
 	fn()
-	i.RUnlock()
 }
 
 // SetMtime sets mtime to the current time.
 func (i *Inode) SetMtime() {
 	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
+	defer i.Unlock()
 	i.ModifyTime = mtime
-	i.Unlock()
 }
+
+// EmptyExtents clean the inode's extent list.
+func (i *Inode) EmptyExtents(mtime int64) (delExtents []proto.ExtentKey) {
+	i.Lock()
+	defer i.Unlock()
+	// eks is safe because extents be reset next and eks is will not be visit except del routine
+	delExtents = i.Extents.eks
+	i.Extents = NewSortedExtents()
+
+	return delExtents
+}
+
+// EmptyExtents clean the inode's extent list.
+func (i *Inode) CopyTinyExtents() (delExtents []proto.ExtentKey) {
+	i.RLock()
+	defer i.RUnlock()
+	return i.Extents.CopyTinyExtents()
+}
+
+// ReplaceExtents replace eks with curEks, delEks are which need to deleted.
+// func (i *Inode) ReplaceExtents(curEks []proto.ExtentKey, mtime int64) (delEks []proto.ExtentKey) {
+// 	i.Lock()
+// 	defer i.Unlock()
+// 	oldEks := i.Extents.eks
+// 	delEks = make([]proto.ExtentKey, len(oldEks)-len(curEks))
+// 	for _, key := range oldEks {
+// 		exist := false
+// 		for _, delKey := range curEks {
+// 			if key.FileOffset == delKey.FileOffset && key.ExtentId == delKey.ExtentId &&
+// 				key.ExtentOffset == delKey.ExtentOffset && key.PartitionId == delKey.PartitionId &&
+// 				key.Size == delKey.Size {
+// 				exist = true
+// 				break
+// 			}
+// 		}
+// 		if !exist {
+// 			delEks = append(delEks, key)
+// 		}
+// 	}
+// 	i.ModifyTime = mtime
+// 	i.Generation++
+// 	i.Extents.eks = curEks
+// 	return
+// }

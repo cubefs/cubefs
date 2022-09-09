@@ -11,7 +11,7 @@ Create
 
 | Allocate a set of data partition and a meta partition to the user.
 | Default create 10 data partition and 3 meta partition when create volume.
-| ChubaoFS uses the **Owner** parameter as the user ID. When creating a volume, if there is no user named the owner of the volume, a user with the user ID same as **Owner** will be automatically created; if a user named Owner already exists in the cluster, the volume will be owned by the user. For details, please see:: doc: `/admin-api/master/user`
+| CubeFS uses the **Owner** parameter as the user ID. When creating a volume, if there is no user named the owner of the volume, a user with the user ID same as **Owner** will be automatically created; if a user named Owner already exists in the cluster, the volume will be owned by the user. For details, please see:: doc: `/admin-api/master/user`
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description", "Mandatory", "Default"

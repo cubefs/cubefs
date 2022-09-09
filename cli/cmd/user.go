@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -86,12 +86,14 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				var displayAccessKey = "[auto generate]"
 				var displaySecretKey = "[auto generate]"
-				if optAccessKey != "" && optSecretKey != "" {
+				if optAccessKey != "" {
 					displayAccessKey = optAccessKey
+				}
+				if optSecretKey != "" {
 					displaySecretKey = optSecretKey
 				}
 				var displayUserType = userType.String()
-				fmt.Printf("Create a new ChubaoFS cluster user\n")
+				fmt.Printf("Create a new CubeFS cluster user\n")
 				stdout("  User ID   : %v\n", userID)
 				stdout("  Password  : %v\n", displayPassword)
 				stdout("  Access Key: %v\n", displayAccessKey)
@@ -126,8 +128,8 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&optPassword, "password", "", "Specify user password")
-	cmd.Flags().StringVar(&optAccessKey, "access-key", "", "Specify user access key for object storage interface authentication")
-	cmd.Flags().StringVar(&optSecretKey, "secret-key", "", "Specify user secret key for object storage interface authentication")
+	cmd.Flags().StringVar(&optAccessKey, "access-key", "", "Specify user access key for object storage interface authentication [16 digits & letters]")
+	cmd.Flags().StringVar(&optSecretKey, "secret-key", "", "Specify user secret key for object storage interface authentication [32 digits & letters]")
 	cmd.Flags().StringVar(&optUserType, "user-type", "normal", "Specify user type [normal | admin]")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
@@ -179,7 +181,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 				if optUserType != "" {
 					displayUserType = optUserType
 				}
-				fmt.Printf("Update ChubaoFS cluster user\n")
+				fmt.Printf("Update CubeFS cluster user\n")
 				stdout("  User ID   : %v\n", userID)
 				stdout("  Access Key: %v\n", displayAccessKey)
 				stdout("  Secret Key: %v\n", displaySecretKey)

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,6 +39,10 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p.ExtentID = ext.ExtentId
 	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
+	if len(dp.Hosts) == 1 {
+		p.RemainingFollowers = 127
+	}
+
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
 
@@ -56,6 +60,9 @@ func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *P
 	p.Size = uint32(len(p.Data))
 	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
+	if len(dp.Hosts) == 1 {
+		p.RemainingFollowers = 127
+	}
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
 

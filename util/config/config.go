@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -81,6 +81,11 @@ func (c *Config) GetString(key string) string {
 	return ""
 }
 
+// GetString returns a string for the config key.
+func (c *Config) SetString(key, val string) {
+	c.data[key] = val
+}
+
 // GetFloat returns a float value for the config key.
 func (c *Config) GetFloat(key string) float64 {
 	x, present := c.data[key]
@@ -150,6 +155,15 @@ func (c *Config) GetInt64(key string) int64 {
 		}
 	}
 	return 0
+}
+
+// GetBool returns a int64 value for the config key.
+func (c *Config) GetInt64WithDefault(key string, defaultVal int64) int64 {
+	if val := c.GetInt64(key); val == 0 {
+		return defaultVal
+	} else {
+		return val
+	}
 }
 
 // GetSlice returns an array for the config key.

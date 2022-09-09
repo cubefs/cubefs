@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,22 +18,32 @@ import (
 	"fmt"
 	"strconv"
 
+	"math"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
-	"math"
 )
 
 type nodeStatInfo = proto.NodeStatInfo
 
 type volStatInfo = proto.VolStatInfo
 
-func newVolStatInfo(name string, total, used uint64, ratio string) *volStatInfo {
+func newVolStatInfo(name string, total, used, cacheTotal, cacheUsed uint64) *volStatInfo {
+	usedRatio := strconv.FormatFloat(float64(used)/float64(total), 'f', 3, 32)
+	cacheUsedRatio := "0.00"
+	if cacheTotal > 0 {
+		strconv.FormatFloat(float64(cacheUsed)/float64(cacheTotal), 'f', 3, 32)
+	}
+
 	return &volStatInfo{
-		Name:      name,
-		TotalSize: total,
-		UsedSize:  used,
-		UsedRatio: ratio,
+		Name:           name,
+		TotalSize:      total,
+		UsedSize:       used,
+		UsedRatio:      usedRatio,
+		CacheTotalSize: cacheTotal,
+		CacheUsedSize:  cacheUsed,
+		CacheUsedRatio: cacheUsedRatio,
 	}
 }
 
@@ -161,7 +171,12 @@ func (c *Cluster) updateVolStatInfo() {
 		if total <= 0 {
 			continue
 		}
-		useRate := float64(used) / float64(total)
-		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, strconv.FormatFloat(useRate, 'f', 3, 32)))
+
+		cacheUsed, cacheTotal := vol.cfsUsedSpace(), vol.CacheCapacity*util.GB
+		if proto.IsHot(vol.VolType) {
+			cacheUsed, cacheTotal = 0, 0
+		}
+
+		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, cacheTotal, cacheUsed))
 	}
 }

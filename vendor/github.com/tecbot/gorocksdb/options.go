@@ -180,7 +180,7 @@ func (opts *Options) SetErrorIfExists(value bool) {
 // errors. This may have unforeseen ramifications: for example, a
 // corruption of one DB entry may cause a large number of entries to
 // become unreadable or for the entire DB to become unopenable.
-// If any of the  writes to the database fails (PutConnect, Delete, Merge, Write),
+// If any of the  writes to the database fails (Put, Delete, Merge, Write),
 // the database will switch to read-only mode and fail all other
 // Write operations.
 // Default: false
@@ -253,7 +253,7 @@ func (opts *Options) IncreaseParallelism(total_threads int) {
 // OptimizeForPointLookup optimize the DB for point lookups.
 //
 // Use this if you don't need to keep the data sorted, i.e. you'll never use
-// an iterator, only PutConnect() and GetConnect() API calls
+// an iterator, only Put() and Get() API calls
 //
 // If you use this with rocksdb >= 5.0.2, you must call `SetAllowConcurrentMemtableWrites(false)`
 // to avoid an assertion error immediately on opening the db.
@@ -609,7 +609,7 @@ func (opts *Options) SetMaxBackgroundCompactions(value int) {
 // It is important when the same Env is shared by multiple db instances.
 // Without a separate pool, long running major compaction jobs could
 // potentially block memtable flush jobs of other db instances, leading to
-// unnecessary PutConnect stalls.
+// unnecessary Put stalls.
 // Default: 0
 func (opts *Options) SetMaxBackgroundFlushes(value int) {
 	C.rocksdb_options_set_max_background_flushes(opts.c, C.int(value))

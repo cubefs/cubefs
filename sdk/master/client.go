@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -158,7 +158,12 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			// o represent proto.ErrCodeSuccess
 			if body.Code != 0 {
 				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
-				return nil, proto.ParseErrorCode(body.Code)
+				if body.Code == proto.ErrCodeInternalError && len(body.Msg) != 0 {
+					return nil, errors.New(body.Msg)
+				} else {
+					return nil, proto.ParseErrorCode(body.Code)
+				}
+
 			}
 			return []byte(body.Data), nil
 		default:

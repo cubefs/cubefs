@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ package fs
 import (
 	"time"
 
-	"bazil.org/fuse"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -92,10 +92,7 @@ func fillAttr(info *proto.InodeInfo, attr *fuse.Attr) {
 }
 
 func inodeExpired(info *proto.InodeInfo) bool {
-	if time.Now().UnixNano() > info.Expiration() {
-		return true
-	}
-	return false
+	return time.Now().UnixNano() > info.Expiration()
 }
 
 func inodeSetExpiration(info *proto.InodeInfo, t time.Duration) {

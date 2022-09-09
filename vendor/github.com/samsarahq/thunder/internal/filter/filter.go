@@ -7,16 +7,16 @@ import (
 
 var matchGroups = regexp.MustCompile(`(?:([^\s"]+)|"([^"]*)"?)+`)
 
-func GetMatchStrings(query string) []string {
+func GetDefaultSearchTokens(query string) []string {
 	if query == "" {
 		return nil
 	}
 	matches := matchGroups.FindAllStringSubmatch(query, -1)
-	matchStrings := make([]string, 0, len(matches))
+	searchTokens := make([]string, 0, len(matches))
 	for _, match := range matches {
 		// Empty quotes can count as a match, ignore them.
 		if match[1] == "" && match[2] == "" {
-			matchStrings = append(matchStrings, "")
+			searchTokens = append(searchTokens, "")
 			continue
 		}
 		// Get relevant match (one of these has to be a non-empty string, otherwise this wouldn't be a match).
@@ -24,17 +24,17 @@ func GetMatchStrings(query string) []string {
 		if matchString == "" {
 			matchString = match[2]
 		}
-		// matchStrings[i] = matchString
-		matchStrings = append(matchStrings, matchString)
+		// searchTokens[i] = matchString
+		searchTokens = append(searchTokens, matchString)
 	}
-	return matchStrings
+	return searchTokens
 }
 
-func MatchText(str string, matchStrings []string) bool {
-	if len(matchStrings) == 0 {
+func DefaultFilterFunc(str string, searchTokens []string) bool {
+	if len(searchTokens) == 0 {
 		return true
 	}
-	for _, matchString := range matchStrings {
+	for _, matchString := range searchTokens {
 		if strings.Contains(strings.ToLower(str), strings.ToLower(matchString)) && matchString != "" {
 			return true
 		}

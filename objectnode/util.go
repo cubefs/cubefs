@@ -1,4 +1,4 @@
-// Copyright 2019 The ChubaoFS Authors.
+// Copyright 2019 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ type PathItem struct {
 	IsDirectory bool
 }
 
-// PathIterator is a path iterator. Used to sequentially iterate each path node from a complete path.
+// PathIterator is a path iterator. Allocated to sequentially iterate each path node from a complete path.
 type PathIterator struct {
 	cursor int
 	path   string

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,8 +22,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -171,7 +172,7 @@ func (mp *metaPartition) deleteWorker() {
 func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey,
 	allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
 	occurErrors := make(map[uint64]error)
-	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
+	shouldCommit = make([]*Inode, 0, len(allInodes))
 	shouldPushToFreeList = make([]*Inode, 0)
 	var (
 		wg   sync.WaitGroup
@@ -236,6 +237,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		if !ok {
 			continue
 		}
+
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
 			ext := &ek
 			exts, ok := deleteExtentsByPartition[ext.PartitionId]
@@ -247,18 +249,33 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			deleteExtentsByPartition[ext.PartitionId] = exts
 			return true
 		})
+
 		allInodes = append(allInodes, inode)
 	}
+
+	if proto.IsCold(mp.volType) {
+		// delete ebs obj extents
+		shouldCommit, shouldRePushToFreeList = mp.doBatchDeleteObjExtentsInEBS(allInodes)
+		log.LogInfof("[doBatchDeleteObjExtentsInEBS] metaPartition(%v) deleteInodeCnt(%d) shouldRePush(%d)",
+			mp.config.PartitionId, len(shouldCommit), len(shouldRePushToFreeList))
+		for _, inode := range shouldRePushToFreeList {
+			mp.freeList.Push(inode.Inode)
+		}
+		allInodes = shouldCommit
+	}
+
 	shouldCommit, shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, allInodes)
 	bufSlice := make([]byte, 0, 8*len(shouldCommit))
 	for _, inode := range shouldCommit {
 		bufSlice = append(bufSlice, inode.MarshalKey()...)
 	}
+
 	err := mp.syncToRaftFollowersFreeInode(bufSlice)
 	if err != nil {
 		log.LogWarnf("[deleteInodeTreeOnRaftPeers] raft commit inode list: %v, "+
 			"response %s", shouldCommit, err.Error())
 	}
+
 	for _, inode := range shouldCommit {
 		if err == nil {
 			mp.internalDeleteInode(inode)
@@ -266,6 +283,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			mp.freeList.Push(inode.Inode)
 		}
 	}
+
 	log.LogInfof("metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId, len(shouldCommit), mp.inodeTree.Len())
 	for _, inode := range shouldRePushToFreeList {
 		mp.freeList.Push(inode.Inode)
@@ -321,6 +339,11 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	// get the data node view
 	dp := mp.vol.GetPartition(ext.PartitionId)
 	if dp == nil {
+		if proto.IsCold(mp.volType) {
+			log.LogInfof("[doDeleteMarkedInodes] ext(%s) is already been deleted, not delete any more", ext.String())
+			return
+		}
+
 		err = errors.NewErrorf("unknown dataPartitionID=%d in vol",
 			ext.PartitionId)
 		return
@@ -329,7 +352,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	// delete the data node
 	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
 	conn, err := smuxPool.GetConnect(addr)
-	log.LogInfof("doDeleteMarkedInodes mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
+	log.LogInfof("doDeleteMarkedInodes mp (%v) GetConnect (%v), ext(%s)", mp.config.PartitionId, addr, ext.String())
 
 	defer func() {
 		if err != nil {
@@ -337,26 +360,34 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 		} else {
 			smuxPool.PutConnect(conn, NoClosedConnect)
 		}
-		log.LogInfof("doDeleteMarkedInodes mp (%v) PutConnect (%v)", mp.config.PartitionId, addr)
+		log.LogInfof("doDeleteMarkedInodes mp (%v) PutConnect (%v), ext(%s)", mp.config.PartitionId, addr, ext.String())
 	}()
 
 	if err != nil {
 		err = errors.NewErrorf("get conn from pool %s, "+
-			"extents partitionId=%d, extentId=%d",
-			err.Error(), ext.PartitionId, ext.ExtentId)
+			"extent(%s))",
+			err.Error(), ext.String())
 		return
 	}
+
 	p := NewPacketToDeleteExtent(dp, ext)
 	if err = p.WriteToConn(conn); err != nil {
 		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())
 		return
 	}
+
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
 		err = errors.NewErrorf("read response from dataNode %s, %s",
 			p.GetUniqueLogId(), err.Error())
 		return
 	}
+
+	if p.ResultCode == proto.OpTryOtherAddr && proto.IsCold(mp.volType) {
+		log.LogInfof("[doBatchDeleteExtentsByPartition] deleteOp retrun tryOtherAddr code means dp is deleted for LF vol, ext(%s)", ext.String())
+		return
+	}
+
 	if p.ResultCode != proto.OpOk {
 		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
@@ -368,10 +399,16 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 	// get the data node view
 	dp := mp.vol.GetPartition(partitionID)
 	if dp == nil {
+		if proto.IsCold(mp.volType) {
+			log.LogInfof("[doBatchDeleteExtentsByPartition] dp(%d) is already been deleted, not delete any more", partitionID)
+			return
+		}
+
 		err = errors.NewErrorf("unknown dataPartitionID=%d in vol",
 			partitionID)
 		return
 	}
+
 	for _, ext := range exts {
 		if ext.PartitionId != partitionID {
 			err = errors.NewErrorf("BatchDeleteExtent do batchDelete on PartitionID(%v) but unexpect Extent(%v)", partitionID, ext)
@@ -415,12 +452,71 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 
 	ResultCode = p.ResultCode
 
+	if ResultCode == proto.OpTryOtherAddr && proto.IsCold(mp.volType) {
+		log.LogInfof("[doBatchDeleteExtentsByPartition] deleteOp retrun tryOtherAddr code means dp is deleted for LF vol, dp(%d)", partitionID)
+		return
+	}
+
 	if p.ResultCode != proto.OpOk {
 		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
 	}
 
 	return
+}
+
+const maxDelCntOnce = 512
+
+func (mp *metaPartition) doBatchDeleteObjExtentsInEBS(allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
+	shouldCommit = make([]*Inode, 0, len(allInodes))
+	shouldPushToFreeList = make([]*Inode, 0)
+	var (
+		wg   sync.WaitGroup
+		lock sync.Mutex
+	)
+
+	for _, inode := range allInodes {
+		wg.Add(1)
+
+		inode.RLock()
+		inode.ObjExtents.RLock()
+		go func(ino *Inode, oeks []proto.ObjExtentKey) {
+			defer wg.Done()
+			log.LogDebugf("[doBatchDeleteObjExtentsInEBS] ino(%d) delObjEks[%d]", ino.Inode, len(oeks))
+			err := mp.deleteObjExtents(oeks)
+
+			lock.Lock()
+			if err != nil {
+				shouldPushToFreeList = append(shouldPushToFreeList, ino)
+				log.LogErrorf("[doBatchDeleteObjExtentsInEBS] delete ebs eks fail, ino(%d), cnt(%d), err(%s)", ino.Inode, len(oeks), err.Error())
+			} else {
+				shouldCommit = append(shouldCommit, ino)
+			}
+			lock.Unlock()
+
+			ino.ObjExtents.RUnlock()
+			ino.RUnlock()
+		}(inode, inode.ObjExtents.eks)
+	}
+
+	wg.Wait()
+
+	return
+}
+
+func (mp *metaPartition) deleteObjExtents(oeks []proto.ObjExtentKey) (err error) {
+	total := len(oeks)
+
+	for i := 0; i < total; i += maxDelCntOnce {
+		max := util.Min(i+maxDelCntOnce, total)
+		err = mp.ebsClient.Delete(oeks[i:max])
+		if err != nil {
+			log.LogErrorf("[deleteObjExtents] delete ebs eks fail, cnt(%d), err(%s)", max-i, err.Error())
+			return err
+		}
+	}
+
+	return err
 }
 
 func (mp *metaPartition) persistDeletedInodes(inos []uint64) {

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -60,20 +60,35 @@ type ExtentCache struct {
 func NewExtentCache(inode uint64) *ExtentCache {
 	return &ExtentCache{
 		inode:   inode,
-		root:    btree.New(32),
-		discard: btree.New(32),
+		root:    btree.NewWithSize(8, 4),
+		discard: btree.NewWithSize(8, 4),
 	}
 }
 
-// Refresh refreshes the extent cache.
-func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error {
+func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) error {
 	gen, size, extents, err := getExtents(inode)
 	if err != nil {
 		return err
 	}
 	//log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	cache.update(gen, size, extents)
-	//log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+	log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+	return nil
+}
+
+// Refresh refreshes the extent cache.
+func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error {
+	if cache.root.Len() > 0 {
+		return nil
+	}
+
+	gen, size, extents, err := getExtents(inode)
+	if err != nil {
+		return err
+	}
+	//log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+	cache.update(gen, size, extents)
+	log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	return nil
 }
 
@@ -255,8 +270,9 @@ func (cache *ExtentCache) GetEnd(offset uint64) (ret *proto.ExtentKey) {
 		}
 		if offset == ek.FileOffset+uint64(ek.Size) {
 			ret = ek
+			return false
 		}
-		return false
+		return true
 	})
 	return ret
 }

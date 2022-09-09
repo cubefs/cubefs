@@ -20,7 +20,7 @@
 # -- Project information -----------------------------------------------------
 
 
-project = u'ChubaoFS'
+project = u'CubeFS'
 copyright = u'2018, The Chubao Authors'
 author = u'The Chubao Authors'
 
@@ -104,7 +104,7 @@ html_theme = 'sphinx_rtd_theme'
 
 # Output file base name for HTML help builder.
 
-htmlhelp_basename = 'ChubaoFS Doc'
+htmlhelp_basename = 'CubeFS Doc'
 
 
 
@@ -113,7 +113,7 @@ htmlhelp_basename = 'ChubaoFS Doc'
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'ChubaoFS', u'ChubaoFS Documentation',
+    (master_doc, 'CubeFS', u'CubeFS Documentation',
      [author], 1)
 ]
 
@@ -124,8 +124,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'ChubaoFS', u'ChubaoFS Documentation',
-     author, 'ChubaoFS', 'One line description of project.',
+    (master_doc, 'CubeFS', u'CubeFS Documentation',
+     author, 'CubeFS', 'One line description of project.',
      'Miscellaneous'),
 ]
 

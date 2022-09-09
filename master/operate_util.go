@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,19 +19,23 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"strings"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"math/rand"
-	"strings"
-	"time"
 )
 
-func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int, hosts []string, createType int) (req *proto.CreateDataPartitionRequest) {
+func newCreateDataPartitionRequest(volName string, ID uint64, replicaNum int, members []proto.Peer,
+	dataPartitionSize int, hosts []string, createType int, partitionType int) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
+		PartitionTyp:  partitionType,
 		PartitionId:   ID,
 		PartitionSize: dataPartitionSize,
+		ReplicaNum:    replicaNum,
 		VolumeId:      volName,
 		Members:       members,
 		Hosts:         hosts,
@@ -121,18 +125,19 @@ func contains(arr []string, element string) (ok bool) {
 	return
 }
 
-func containsID(arr []uint64, element uint64) (ok bool) {
+func containsID(arr []uint64, element uint64) bool {
+
 	if arr == nil || len(arr) == 0 {
-		return
+		return false
 	}
 
 	for _, e := range arr {
 		if e == element {
-			ok = true
-			break
+			return true
 		}
 	}
-	return
+
+	return false
 }
 
 func reshuffleHosts(oldHosts []string) (newHosts []string, err error) {

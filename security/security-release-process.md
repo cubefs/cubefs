@@ -1,6 +1,6 @@
 # Security Release Process
 
-ChubaoFS is a growing community of volunteers, users, and vendors. The ChubaoFS community has adopted this security disclosures and response policy to ensure we responsibly handle critical issues.
+CubeFS is a growing community of volunteers, users, and vendors. The CubeFS community has adopted this security disclosures and response policy to ensure we responsibly handle critical issues.
 
 ## Product Security Committee (PSC)
 
@@ -16,20 +16,20 @@ The initial PSC will consist of volunteers who have been involved in the initial
 
 The PSC members will share various tasks as listed below:
 
-- Triage: make sure the people who should be in "the know" (aka notified) are notified, also responds to issues that are not actually issues and let the ChubaoFS maintainers know that. This person is the escalation path for a bug if it is one. 
+- Triage: make sure the people who should be in "the know" (aka notified) are notified, also responds to issues that are not actually issues and let the CubeFS maintainers know that. This person is the escalation path for a bug if it is one. 
 - Infra: make sure we can test the fixes appropriately.
 - Disclosure: handles public messaging around the bug. Documentation on how to upgrade. Changelog. Explaining to public the severity. notifications of bugs sent to mailing lists etc. Requests CVEs.
 - Release: Create new release addressing a security fix.
 
 ### Contacting the Product Security Committee
 
-Contact the team by sending email to [chubaofs-users@groups.io](mailto:chubaofs-users@groups.io)
+Contact the team by sending email to [cubefs-users@groups.io](mailto:cubefs-users@groups.io)
 
 ### Product Security Committee Membership
 
 #### Joining
 
-The PSC should be consist of 2-4 members. New potential members to the PSC can express their interest to the PSC members. These individuals can be nominated by PSC members or ChubaoFS maintainers.
+The PSC should be consist of 2-4 members. New potential members to the PSC can express their interest to the PSC members. These individuals can be nominated by PSC members or CubeFS maintainers.
 
 If representation changes due to job shifts then PSC members are encouraged to grow the team or replace themselves through mentoring new members.
 
@@ -39,7 +39,7 @@ Selection of new members will be done by lazy consensus amongst members for addi
 
 #### Stepping Down
 
-Members may step down at any time and propose a replacement from existing active contributors of ChubaoFS.
+Members may step down at any time and propose a replacement from existing active contributors of CubeFS.
 
 #### Responsibilities
 
@@ -52,11 +52,11 @@ Members may step down at any time and propose a replacement from existing active
 
 ### Private Disclosure Processes
 
-The ChubaoFS Community asks that all suspected vulnerabilities be privately and responsibly disclosed as explained in the [README](README.md).
+The CubeFS Community asks that all suspected vulnerabilities be privately and responsibly disclosed as explained in the [README](README.md).
 
 ### Public Disclosure Processes
 
-If anyone knows of a publicly disclosed security vulnerability please IMMEDIATELY email [chubaofs-users@groups.io](mailto:chubaofs-users@groups.io) to inform the PSC about the vulnerability so they may start the patch, release, and communication process.
+If anyone knows of a publicly disclosed security vulnerability please IMMEDIATELY email [cubefs-users@groups.io](mailto:cubefs-users@groups.io) to inform the PSC about the vulnerability so they may start the patch, release, and communication process.
 
 If possible the PSC will ask the person making the public report if the issue can be handled via a private disclosure process. If the reporter denies the PSC will move swiftly with the fix and release process. In extreme cases GitHub can be asked to delete the issue but this generally isn't necessary and is unlikely to make a public disclosure less damaging.
 
@@ -70,7 +70,7 @@ development time, and release work. If the PSC is dealing with
 a Public Disclosure all timelines become ASAP. If the fix relies on another
 upstream project's disclosure timeline, that will adjust the process as well.
 We will work with the upstream project to fit their timeline and best protect
-ChubaoFS users.
+CubeFS users.
 
 ### Fix Team Organization
 
@@ -91,7 +91,7 @@ If the CVSS score is under ~4.0
 
 Note: CVSS is convenient but imperfect. Ultimately, the PSC has discretion on classifying the severity of a vulnerability.
 
-The severity of the bug and related handling decisions must be discussed on the chubaofs-users@groups.io mailing list.
+The severity of the bug and related handling decisions must be discussed on the cubefs-users@groups.io mailing list.
 
 ### Fix Disclosure Process
 
@@ -100,14 +100,14 @@ With the Fix Development underway, the PSC needs to come up with an overall comm
 **Fix Release Day** (Completed within 1-21 days of Disclosure)
 
 - The PSC will cherry-pick the patches onto the master branch and all relevant release branches. The Fix Team will `lgtm` and `approve`.
-- The ChubaoFS maintainers will merge these PRs as quickly as possible.
+- The CubeFS maintainers will merge these PRs as quickly as possible.
 - The PSC will ensure all the binaries are built, publicly available, and functional.
 - The PSC will announce the new releases, the CVE number, severity, and impact, and the location of the binaries to get wide distribution and user action. As much as possible this announcement should be actionable, and include any mitigating steps users can take prior to upgrading to a fixed version. The recommended target time is 4pm UTC on a non-Friday weekday. This means the announcement will be seen morning Pacific, early evening Europe, and late evening Asia. The announcement will be sent via the following channels:
-  - chubaofs-users@groups.io
+  - cubefs-users@groups.io
 
 ## Retrospective
 
 These steps should be completed 1-3 days after the Release Date. The retrospective process [should be blameless](https://landing.google.com/sre/book/chapters/postmortem-culture.html).
 
-- The PSC will send a retrospective of the process to chubaofs-users@groups.io including details on everyone involved, the timeline of the process, links to relevant PRs that introduced the issue, if relevant, and any critiques of the response and release process.
-- The PSC and Fix Team are also encouraged to send their own feedback on the process to chubaofs-users@groups.io. Honest critique is the only way we are going to get good at this as a community.
+- The PSC will send a retrospective of the process to cubefs-users@groups.io including details on everyone involved, the timeline of the process, links to relevant PRs that introduced the issue, if relevant, and any critiques of the response and release process.
+- The PSC and Fix Team are also encouraged to send their own feedback on the process to cubefs-users@groups.io. Honest critique is the only way we are going to get good at this as a community.

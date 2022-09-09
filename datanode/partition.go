@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,11 +27,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util"
+
 	"hash/crc32"
 	"net"
 	"sort"
 	"syscall"
 
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
@@ -39,11 +42,12 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	raftProto "github.com/tiglabs/raft/proto"
 )
 
 const (
 	DataPartitionPrefix           = "datapartition"
+	CachePartitionPrefix          = "cachepartition"
+	PreLoadPartitionPrefix        = "preloadpartition"
 	DataPartitionMetadataFileName = "META"
 	TempMetadataFileName          = ".meta"
 	ApplyIndexFile                = "APPLY"
@@ -60,11 +64,13 @@ type DataPartitionMetadata struct {
 	VolumeID                string
 	PartitionID             uint64
 	PartitionSize           int
+	PartitionType           int
 	CreateTime              string
 	Peers                   []proto.Peer
 	Hosts                   []string
 	DataPartitionCreateType int
 	LastTruncateID          uint64
+	ReplicaNum              int
 }
 
 type sortedPeers []proto.Peer
@@ -96,6 +102,8 @@ type DataPartition struct {
 	partitionID     uint64
 	partitionStatus int
 	partitionSize   int
+	partitionType   int
+	replicaNum      int
 	replicas        []string // addresses of the replicas
 	replicasLock    sync.RWMutex
 	disk            *Disk
@@ -147,6 +155,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	// persist file metadata
 	go dp.StartRaftLoggingSchedule()
 	dp.DataPartitionCreateType = request.CreateType
+	dp.replicaNum = request.ReplicaNum
 	err = dp.PersistMetadata()
 	disk.AddSize(uint64(dp.Size()))
 	return
@@ -212,7 +221,9 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dpCfg := &dataPartitionCfg{
 		VolName:       meta.VolumeID,
 		PartitionSize: meta.PartitionSize,
+		PartitionType: meta.PartitionType,
 		PartitionID:   meta.PartitionID,
+		ReplicaNum:    meta.ReplicaNum,
 		Peers:         meta.Peers,
 		Hosts:         meta.Hosts,
 		RaftStore:     disk.space.GetRaftStore(),
@@ -248,15 +259,28 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 
 func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
-	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
+	var dataPath string
+
+	if proto.IsNormalDp(dpCfg.PartitionType) {
+		dataPath = path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
+	} else if proto.IsCacheDp(dpCfg.PartitionType) {
+		dataPath = path.Join(disk.Path, fmt.Sprintf(CachePartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
+	} else if proto.IsPreLoadDp(dpCfg.PartitionType) {
+		dataPath = path.Join(disk.Path, fmt.Sprintf(PreLoadPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
+	} else {
+		return nil, fmt.Errorf("newDataPartition fail, dataPartitionCfg(%v)", dpCfg)
+	}
+
 	partition := &DataPartition{
 		volumeID:        dpCfg.VolName,
 		clusterID:       dpCfg.ClusterID,
 		partitionID:     partitionID,
+		replicaNum:      dpCfg.ReplicaNum,
 		disk:            disk,
 		dataNode:        disk.dataNode,
 		path:            dataPath,
 		partitionSize:   dpCfg.PartitionSize,
+		partitionType:   dpCfg.PartitionType,
 		replicas:        make([]string, 0),
 		stopC:           make(chan bool, 0),
 		stopRaftC:       make(chan uint64, 0),
@@ -266,15 +290,18 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		config:          dpCfg,
 		raftStatus:      RaftStatusStopped,
 	}
+	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
 	partition.replicasInit()
-	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)
+	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, partition.partitionType)
 	if err != nil {
 		return
 	}
 
 	disk.AttachDataPartition(partition)
 	dp = partition
+
 	go partition.statusUpdateScheduler()
+	go partition.startEvict()
 	return
 }
 
@@ -428,6 +455,9 @@ func (dp *DataPartition) Disk() *Disk {
 
 // Status returns the partition status.
 func (dp *DataPartition) Status() int {
+	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
+		return proto.Unavailable
+	}
 	return dp.partitionStatus
 }
 
@@ -475,7 +505,9 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	md := &DataPartitionMetadata{
 		VolumeID:                dp.config.VolName,
 		PartitionID:             dp.config.PartitionID,
+		ReplicaNum:              dp.config.ReplicaNum,
 		PartitionSize:           dp.config.PartitionSize,
+		PartitionType:           dp.config.PartitionType,
 		Peers:                   dp.config.Peers,
 		Hosts:                   dp.config.Hosts,
 		DataPartitionCreateType: dp.DataPartitionCreateType,
@@ -499,11 +531,18 @@ func (dp *DataPartition) statusUpdateScheduler() {
 	for {
 		select {
 		case <-ticker.C:
-			index++
 			dp.statusUpdate()
+			// only repair tiny extent
+			if !dp.isNormalType() {
+				dp.LaunchRepair(proto.TinyExtentType)
+				continue
+			}
+
+			index++
 			if index >= math.MaxUint32 {
 				index = 0
 			}
+
 			if index%2 == 0 {
 				dp.LaunchRepair(proto.TinyExtentType)
 			} else {
@@ -526,13 +565,15 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
-	if dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
+	if dp.isNormalType() && dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
-	if dp.Status() == proto.Unavailable {
+	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
 		status = proto.Unavailable
 	}
 
+	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, dis status %v, res:%v",
+		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status), int(math.Min(float64(status), float64(dp.disk.Status))))
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
 
@@ -726,6 +767,9 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
+
+		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
 		err := store.Create(uint64(extentInfo.FileID))
 		if err != nil {
 			continue
@@ -850,6 +894,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 				continue
 			}
 			DeleteLimiterWait()
+			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 			//log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
 			store.MarkDelete(extentID, int64(offset), int64(size))
 		}
@@ -894,4 +939,212 @@ func (dp *DataPartition) getRepairConn(target string) (net.Conn, error) {
 func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
 	dp.dataNode.putRepairConnFunc(conn, forceClose)
 	return
+}
+
+func (dp *DataPartition) isNormalType() bool {
+	return proto.IsNormalDp(dp.partitionType)
+}
+
+type SimpleVolView struct {
+	vv             *proto.SimpleVolView
+	lastUpdateTime time.Time
+}
+
+type VolMap struct {
+	sync.Mutex
+	volMap map[string]*SimpleVolView
+}
+
+var volViews = VolMap{
+	Mutex:  sync.Mutex{},
+	volMap: make(map[string]*SimpleVolView),
+}
+
+func (vo *VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, err error) {
+	vo.Lock()
+	if volView, ok := vo.volMap[VolumeID]; ok && time.Since(volView.lastUpdateTime) < 5*time.Minute {
+		vo.Unlock()
+		return volView.vv, nil
+	}
+	vo.Unlock()
+
+	volView := &SimpleVolView{
+		vv:             nil,
+		lastUpdateTime: time.Time{},
+	}
+
+	if vv, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(VolumeID); err != nil {
+		log.LogErrorf("action[GetVolumeSimpleInfo] cannot get vol(%v) from master(%v) err(%v).",
+			VolumeID, MasterClient.Leader(), err)
+		return nil, err
+	}
+
+	log.LogDebugf("get volume info, vol(%s), vol(%v)", vv.Name, volView)
+
+	volView.vv = vv
+	volView.lastUpdateTime = time.Now()
+
+	vo.Lock()
+	vo.volMap[VolumeID] = volView
+	vo.Unlock()
+
+	return
+}
+
+func (dp *DataPartition) doExtentTtl(ttl int) {
+	if ttl <= 0 {
+		log.LogWarn("[doTTL] ttl is 0, set default 30", ttl)
+		ttl = 30
+	}
+
+	extents := dp.extentStore.DumpExtents()
+
+	for _, ext := range extents {
+		if storage.IsTinyExtent(ext.FileID) {
+			continue
+		}
+
+		if time.Now().Unix()-ext.AccessTime > int64(ttl)*util.OneDaySec() {
+			log.LogDebugf("action[doExtentTtl] ttl delete dp(%v) extent(%v).", dp.partitionID, ext)
+			dp.extentStore.MarkDelete(ext.FileID, 0, 0)
+		}
+	}
+}
+
+func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) {
+	var (
+		needDieOut      bool
+		freeSpace       int
+		freeExtentCount int
+	)
+
+	needDieOut = false
+	if vv.CacheHighWater < vv.CacheLowWater || vv.CacheLowWater < 0 || vv.CacheHighWater > 100 {
+		log.LogErrorf("action[doExtentEvict] invalid policy dp(%v), CacheHighWater(%v) CacheLowWater(%v).",
+			dp.partitionID, vv.CacheHighWater, vv.CacheLowWater)
+		return
+	}
+
+	// if dp use age larger than the space high water, do die out.
+	freeSpace = 0
+	if dp.Used()*100/dp.Size() > vv.CacheHighWater {
+		needDieOut = true
+		freeSpace = dp.Used() - dp.Size()*vv.CacheLowWater/100
+	} else if dp.partitionStatus == proto.ReadOnly {
+		needDieOut = true
+		freeSpace = dp.Used() * (vv.CacheHighWater - vv.CacheLowWater) / 100
+	}
+
+	// if dp extent count larger than upper count, do die out.
+	freeExtentCount = 0
+	extInfos := dp.extentStore.DumpExtents()
+	maxExtentCount := dp.Size() / util.DefaultTinySizeLimit
+	if len(extInfos) > maxExtentCount {
+		needDieOut = true
+		freeExtentCount = len(extInfos) - vv.CacheLowWater*maxExtentCount/100
+	}
+
+	log.LogDebugf("action[doExtentEvict], vol %v, LRU(%v, %v), dp %v, usage %v, status(%d), extents %v, freeSpace %v, freeExtentCount %v, needDieOut %v",
+		vv.Name, vv.CacheLowWater, vv.CacheHighWater, dp.partitionID, dp.Used()*100/dp.Size(), dp.partitionStatus, len(extInfos),
+		freeSpace, freeExtentCount, needDieOut)
+
+	if !needDieOut {
+		return
+	}
+
+	sort.Sort(extInfos)
+
+	for _, ext := range extInfos {
+		if storage.IsTinyExtent(ext.FileID) {
+			continue
+		}
+
+		freeSpace -= int(ext.Size)
+		freeExtentCount--
+		dp.extentStore.MarkDelete(ext.FileID, 0, 0)
+		log.LogDebugf("action[doExtentEvict] die out. vol %v, dp(%v), extent(%v).", vv.Name, dp.partitionID, *ext)
+
+		if freeSpace <= 0 && freeExtentCount <= 0 {
+			log.LogDebugf("[doExtentEvict] die out done, vol(%s), dp (%d)", vv.Name, dp.partitionID)
+			break
+		}
+	}
+
+}
+
+func (dp *DataPartition) startEvict() {
+	// only cache or preload dp can't do evict.
+	if !proto.IsCacheDp(dp.partitionType) {
+		return
+	}
+
+	log.LogDebugf("[startEvict] start do dp(%d) evict op", dp.partitionID)
+
+	vv, err := volViews.getSimpleVolView(dp.volumeID)
+	if err != nil {
+		err := fmt.Errorf("[startEvict] get vol [%s] info error, err %s", dp.volumeID, err.Error())
+		log.LogError(err)
+		panic(err)
+	}
+
+	lruInterval := getWithDefault(vv.CacheLruInterval, 5)
+	cacheTtl := getWithDefault(vv.CacheTtl, 30)
+
+	lruTimer := time.NewTicker(time.Duration(lruInterval) * time.Minute)
+	ttlTimer := time.NewTicker(time.Duration(util.OneDaySec()) * time.Second)
+	defer func() {
+		lruTimer.Stop()
+		ttlTimer.Stop()
+	}()
+
+	for {
+		// check volume type and dp type.
+		if proto.IsHot(vv.VolType) || !proto.IsCacheDp(dp.partitionType) {
+			log.LogErrorf("action[startEvict] cannot startEvict, vol(%v), dp(%v).", vv.Name, dp.partitionID)
+			return
+		}
+
+		select {
+		case <-lruTimer.C:
+			log.LogDebugf("start [doExtentEvict] vol(%s), dp(%d).", vv.Name, dp.partitionID)
+			evictStart := time.Now()
+			dp.doExtentEvict(vv)
+			log.LogDebugf("action[doExtentEvict] vol(%v), dp(%v), cost (%v)ms, .", vv.Name, dp.partitionID, time.Since(evictStart))
+
+		case <-ttlTimer.C:
+			log.LogDebugf("start [doExtentTtl] vol(%s), dp(%d).", vv.Name, dp.partitionID)
+			ttlStart := time.Now()
+			dp.doExtentTtl(cacheTtl)
+			log.LogDebugf("action[doExtentTtl] vol(%v), dp(%v), cost (%v)ms.", vv.Name, dp.partitionID, time.Since(ttlStart))
+
+		case <-dp.stopC:
+			log.LogWarn("task[doExtentTtl] stopped", dp.volumeID, dp.partitionID)
+			return
+		}
+
+		// loop update vol info
+		newVV, err := volViews.getSimpleVolView(dp.volumeID)
+		if err != nil {
+			err := fmt.Errorf("[startEvict] get vol [%s] info error, err %s", dp.volumeID, err.Error())
+			log.LogError(err)
+			continue
+		}
+
+		vv = newVV
+		if lruInterval != vv.CacheLruInterval || cacheTtl != vv.CacheTtl {
+			lruInterval = getWithDefault(vv.CacheLruInterval, 5)
+			cacheTtl = getWithDefault(vv.CacheTtl, 30)
+
+			lruTimer = time.NewTicker(time.Duration(lruInterval) * time.Minute)
+			log.LogInfof("[startEvict] update vol config, dp(%d) %v ", dp.partitionID, *vv)
+		}
+	}
+}
+
+func getWithDefault(base, def int) int {
+	if base <= 0 {
+		return def
+	}
+
+	return base
 }

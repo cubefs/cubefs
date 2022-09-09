@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,11 +50,12 @@ import (
 )
 
 const (
-	ConfigKeyRole       = "role"
-	ConfigKeyLogDir     = "logDir"
-	ConfigKeyLogLevel   = "logLevel"
-	ConfigKeyProfPort   = "prof"
-	ConfigKeyWarnLogDir = "warnLogDir"
+	ConfigKeyRole              = "role"
+	ConfigKeyLogDir            = "logDir"
+	ConfigKeyLogLevel          = "logLevel"
+	ConfigKeyProfPort          = "prof"
+	ConfigKeyWarnLogDir        = "warnLogDir"
+	ConfigKeyBuffersTotalLimit = "buffersTotalLimit"
 )
 
 const (
@@ -156,6 +157,7 @@ func main() {
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
+	buffersTotalLimit := cfg.GetInt64(ConfigKeyBuffersTotalLimit)
 
 	// Init server instance with specified role configuration.
 	var (
@@ -229,6 +231,13 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
+	if buffersTotalLimit < 0 {
+		syslog.Printf("invalid fields, BuffersTotalLimit(%v) must larger or equal than 0\n", buffersTotalLimit)
+		return
+	}
+
+	proto.InitBufferPool(buffersTotalLimit)
+
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
 		err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)
 		syslog.Println(err)
@@ -236,7 +245,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	syslog.Printf("Hello, ChubaoFS Storage\n%s\n", Version)
+	syslog.Printf("Hello, CubeFS Storage\n%s\n", Version)
 
 	err = modifyOpenFiles()
 	if err != nil {
@@ -274,7 +283,7 @@ func main() {
 	err = server.Start(cfg)
 	if err != nil {
 		log.LogFlush()
-		err = errors.NewErrorf("Fatal: failed to start the ChubaoFS %s daemon err %v - ", role, err)
+		err = errors.NewErrorf("Fatal: failed to start the CubeFS %s daemon err %v - ", role, err)
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)

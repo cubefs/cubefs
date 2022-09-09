@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,39 +14,43 @@
 
 package proto
 
+import "github.com/cubefs/cubefs/util"
+
 // api
 const (
 	// Admin APIs
-	AdminGetCluster                = "/admin/getCluster"
-	AdminGetDataPartition          = "/dataPartition/get"
-	AdminLoadDataPartition         = "/dataPartition/load"
-	AdminCreateDataPartition       = "/dataPartition/create"
-	AdminDecommissionDataPartition = "/dataPartition/decommission"
-	AdminDiagnoseDataPartition     = "/dataPartition/diagnose"
-	AdminDeleteDataReplica         = "/dataReplica/delete"
-	AdminAddDataReplica            = "/dataReplica/add"
-	AdminDeleteVol                 = "/vol/delete"
-	AdminUpdateVol                 = "/vol/update"
-	AdminVolShrink                 = "/vol/shrink"
-	AdminVolExpand                 = "/vol/expand"
-	AdminCreateVol                 = "/admin/createVol"
-	AdminGetVol                    = "/admin/getVol"
-	AdminClusterFreeze             = "/cluster/freeze"
-	AdminClusterStat               = "/cluster/stat"
-	AdminGetIP                     = "/admin/getIp"
-	AdminCreateMetaPartition       = "/metaPartition/create"
-	AdminSetMetaNodeThreshold      = "/threshold/set"
-	AdminListVols                  = "/vol/list"
-	AdminSetNodeInfo               = "/admin/setNodeInfo"
-	AdminGetNodeInfo               = "/admin/getNodeInfo"
-	AdminGetAllNodeSetGrpInfo      = "/admin/getDomainInfo"
-	AdminGetNodeSetGrpInfo         = "/admin/getDomainNodeSetGrpInfo"
-	AdminGetIsDomainOn             = "/admin/getIsDomainOn"
-	AdminUpdateNodeSetCapcity      = "/admin/updateNodeSetCapcity"
-	AdminUpdateNodeSetId           = "/admin/updateNodeSetId"
-	AdminUpdateDomainDataUseRatio  = "/admin/updateDomainDataRatio"
-	AdminUpdateZoneExcludeRatio    = "/admin/updateZoneExcludeRatio"
-	AdminSetNodeRdOnly             = "/admin/setNodeRdOnly"
+	AdminGetCluster                 = "/admin/getCluster"
+	AdminGetDataPartition           = "/dataPartition/get"
+	AdminLoadDataPartition          = "/dataPartition/load"
+	AdminCreateDataPartition        = "/dataPartition/create"
+	AdminCreatePreLoadDataPartition = "/dataPartition/createPreLoad"
+	AdminDecommissionDataPartition  = "/dataPartition/decommission"
+	AdminDiagnoseDataPartition      = "/dataPartition/diagnose"
+	AdminDeleteDataReplica          = "/dataReplica/delete"
+	AdminAddDataReplica             = "/dataReplica/add"
+	AdminDeleteVol                  = "/vol/delete"
+	AdminUpdateVol                  = "/vol/update"
+	AdminVolShrink                  = "/vol/shrink"
+	AdminVolExpand                  = "/vol/expand"
+	AdminCreateVol                  = "/admin/createVol"
+	AdminGetVol                     = "/admin/getVol"
+	AdminClusterFreeze              = "/cluster/freeze"
+	AdminClusterStat                = "/cluster/stat"
+	AdminGetIP                      = "/admin/getIp"
+	AdminCreateMetaPartition        = "/metaPartition/create"
+	AdminSetMetaNodeThreshold       = "/threshold/set"
+	AdminListVols                   = "/vol/list"
+	AdminSetNodeInfo                = "/admin/setNodeInfo"
+	AdminGetNodeInfo                = "/admin/getNodeInfo"
+	AdminGetAllNodeSetGrpInfo       = "/admin/getDomainInfo"
+	AdminGetNodeSetGrpInfo          = "/admin/getDomainNodeSetGrpInfo"
+	AdminGetIsDomainOn              = "/admin/getIsDomainOn"
+	AdminUpdateNodeSetCapcity       = "/admin/updateNodeSetCapcity"
+	AdminUpdateNodeSetId            = "/admin/updateNodeSetId"
+	AdminUpdateDomainDataUseRatio   = "/admin/updateDomainDataRatio"
+	AdminUpdateZoneExcludeRatio     = "/admin/updateZoneExcludeRatio"
+	AdminSetNodeRdOnly              = "/admin/setNodeRdOnly"
+	AdminSetDpRdOnly                = "/admin/setDpRdOnly"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -67,14 +71,27 @@ const (
 	ClientVolStat        = "/client/volStat"
 	ClientMetaPartitions = "/client/metaPartitions"
 
+	// qos api
+	QosGetStatus           = "/qos/getStatus"
+	QosGetClientsLimitInfo = "/qos/getClientsInfo"
+	QosGetZoneLimitInfo    = "/qos/getZoneLimit" // include disk enable
+	QosUpdate              = "/qos/update"       // include disk enable
+	QosUpdateMagnify       = "/qos/updateMagnify"
+	QosUpdateClientParam   = "/qos/updateClientParam"
+	QosUpdateZoneLimit     = "/qos/updateZoneLimit" // include disk enable
+	QosUpload              = "/admin/qosUpload"
+	QosUpdateMasterLimit   = "/qos/masterLimit"
+
 	//raft node APIs
 	AddRaftNode    = "/raftNode/add"
 	RemoveRaftNode = "/raftNode/remove"
+	RaftStatus     = "/get/raftStatus"
 
-	// Node APIs
+	// node APIs
 	AddDataNode                    = "/dataNode/add"
 	DecommissionDataNode           = "/dataNode/decommission"
 	MigrateDataNode                = "/dataNode/migrate"
+	CancelDecommissionDataNode     = "/dataNode/cancelDecommission"
 	DecommissionDisk               = "/disk/decommission"
 	GetDataNode                    = "/dataNode/get"
 	AddMetaNode                    = "/metaNode/add"
@@ -143,13 +160,16 @@ type ClusterInfo struct {
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeDeleteLimitRate     uint64
 	DataNodeAutoRepairLimitRate uint64
+	EbsAddr                     string
+	ServicePath                 string
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
 type CreateDataPartitionRequest struct {
-	PartitionType string
+	PartitionTyp  int
 	PartitionId   uint64
 	PartitionSize int
+	ReplicaNum    int
 	VolumeId      string
 	IsRandomWrite bool
 	Members       []Peer
@@ -195,6 +215,7 @@ type AddDataPartitionRaftMemberRequest struct {
 type RemoveDataPartitionRaftMemberRequest struct {
 	PartitionId uint64
 	RemovePeer  Peer
+	Force       bool
 }
 
 // AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
@@ -249,10 +270,19 @@ type LoadMetaPartitionMetricResponse struct {
 	Result   string
 }
 
+type QosToDataNode struct {
+	EnableDiskQos     bool
+	QosIopsReadLimit  uint64
+	QosIopsWriteLimit uint64
+	QosFlowReadLimit  uint64
+	QosFlowWriteLimit uint64
+}
+
 // HeartBeatRequest define the heartbeat request.
 type HeartBeatRequest struct {
 	CurrTime   int64
 	MasterAddr string
+	QosToDataNode
 }
 
 // PartitionReport defines the partition report.
@@ -268,6 +298,15 @@ type PartitionReport struct {
 	NeedCompare     bool
 }
 
+type DataNodeQosResponse struct {
+	IopsRLimit uint64
+	IopsWLimit uint64
+	FlowRlimit uint64
+	FlowWlimit uint64
+	Status     uint8
+	Result     string
+}
+
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
 type DataNodeHeartbeatResponse struct {
 	Total               uint64
@@ -277,6 +316,7 @@ type DataNodeHeartbeatResponse struct {
 	RemainingCapacity   uint64 // remaining capacity to create partition
 	CreatedPartitionCnt uint32
 	MaxCapacity         uint64 // maximum capacity to create partition
+	StartTime           int64
 	ZoneName            string
 	PartitionReports    []*PartitionReport
 	Status              uint8
@@ -290,6 +330,7 @@ type MetaPartitionReport struct {
 	Start       uint64
 	End         uint64
 	Status      int
+	Size        uint64
 	MaxInodeID  uint64
 	IsLeader    bool
 	VolName     string
@@ -384,13 +425,15 @@ type MetaPartitionLoadResponse struct {
 
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
 type DataPartitionResponse struct {
-	PartitionID uint64
-	Status      int8
-	ReplicaNum  uint8
-	Hosts       []string
-	LeaderAddr  string
-	Epoch       uint64
-	IsRecover   bool
+	PartitionType int
+	PartitionID   uint64
+	Status        int8
+	ReplicaNum    uint8
+	Hosts         []string
+	LeaderAddr    string
+	Epoch         uint64
+	IsRecover     bool
+	PartitionTTL  int64
 }
 
 // DataPartitionsView defines the view of a data partition
@@ -434,6 +477,8 @@ type VolView struct {
 	DomainOn       bool
 	OSSSecure      *OSSSecure
 	CreateTime     int64
+	CacheTTL       int
+	VolType        int
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -444,7 +489,7 @@ func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
 }
 
-func NewVolView(name string, status uint8, followerRead bool, createTime int64) (view *VolView) {
+func NewVolView(name string, status uint8, followerRead bool, createTime int64, cacheTTL int, volType int) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
 	view.FollowerRead = followerRead
@@ -452,6 +497,8 @@ func NewVolView(name string, status uint8, followerRead bool, createTime int64) 
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)
+	view.CacheTTL = cacheTTL
+	view.VolType = volType
 	return
 }
 
@@ -463,6 +510,81 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 	mpView.Status = status
 	mpView.Members = make([]string, 0)
 	return
+}
+
+const (
+	QosStateNormal   uint8 = 0x01
+	QosStateHitLimit uint8 = 0x02
+
+	MinIopsLimit uint64 = 3
+	MinFLowLimit uint64 = 128 * util.KB
+)
+
+const (
+	IopsReadType  uint32 = 0x01
+	IopsWriteType uint32 = 0x02
+	FlowReadType  uint32 = 0x03
+	FlowWriteType uint32 = 0x04
+)
+
+const (
+	QosDefaultBurst                   = 16000000
+	QosDefaultClientCnt        uint32 = 100
+	QosDefaultDiskMaxFLowLimit int    = 0x7FFFFFFF
+	QosDefaultDiskMaxIoLimit   int    = 100000
+)
+
+func QosTypeString(factorType uint32) string {
+	switch factorType {
+	case IopsReadType:
+		return "IopsRead"
+	case IopsWriteType:
+		return "IopsWrite"
+	case FlowReadType:
+		return "FlowRead"
+	case FlowWriteType:
+		return "FlowWrite"
+	}
+	return "unkown"
+}
+
+type ClientLimitInfo struct {
+	UsedLimit  uint64
+	UsedBuffer uint64
+	Used       uint64
+	Need       uint64
+}
+
+type ClientReportLimitInfo struct {
+	ID        uint64
+	FactorMap map[uint32]*ClientLimitInfo
+	Host      string
+	Status    uint8
+	reserved  string
+}
+
+func NewClientReportLimitInfo() *ClientReportLimitInfo {
+	return &ClientReportLimitInfo{
+		FactorMap: make(map[uint32]*ClientLimitInfo, 0),
+	}
+}
+
+type LimitRsp2Client struct {
+	ID            uint64
+	Enable        bool
+	ReqPeriod     uint32
+	HitTriggerCnt uint8
+	FactorMap     map[uint32]*ClientLimitInfo
+	Magnify       map[uint32]uint32
+	reserved      string
+}
+
+func NewLimitRsp2Client() *LimitRsp2Client {
+	limit := &LimitRsp2Client{
+		FactorMap: make(map[uint32]*ClientLimitInfo, 0),
+		Magnify:   make(map[uint32]uint32, 0),
+	}
+	return limit
 }
 
 // SimpleVolView defines the simple view of a volume
@@ -488,11 +610,26 @@ type SimpleVolView struct {
 	DefaultPriority    bool
 	DomainOn           bool
 	CreateTime         string
+	EnableToken        bool
+	EnablePosixAcl     bool
 	Description        string
 	DpSelectorName     string
 	DpSelectorParm     string
 	DefaultZonePrior   bool
+
+	VolType          int
+	ObjBlockSize     int
+	CacheCapacity    uint64
+	CacheAction      int
+	CacheThreshold   int
+	CacheHighWater   int
+	CacheLowWater    int
+	CacheLruInterval int
+	CacheTtl         int
+	CacheRule        string
+	PreloadCapacity  uint64
 }
+
 type NodeSetInfo struct {
 	ID           uint64
 	ZoneName     string
@@ -513,13 +650,18 @@ type SimpleNodeSetGrpInfo struct {
 }
 
 type SimpleNodeSetGrpInfoList struct {
+	DomainId             uint64
+	Status               uint8
+	SimpleNodeSetGrpInfo []*SimpleNodeSetGrpInfo
+}
+
+type DomainNodeSetGrpInfoList struct {
 	DomainOn              bool
 	DataRatioLimit        float64
 	ZoneExcludeRatioLimit float64
 	NeedDomain            bool
-	Status                uint8
 	ExcludeZones          []string
-	SimpleNodeSetGrpInfo  []*SimpleNodeSetGrpInfo
+	DomainNodeSetGrpInfo  []*SimpleNodeSetGrpInfoList
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -566,3 +708,57 @@ type NodeSetView struct {
 type TopologyView struct {
 	Zones []*ZoneView
 }
+
+const (
+	PartitionTypeNormal  = 0
+	PartitionTypeCache   = 1
+	PartitionTypePreLoad = 2
+)
+
+func GetDpType(volType int, isPreload bool) int {
+
+	if volType == VolumeTypeHot {
+		return PartitionTypeNormal
+	}
+
+	if isPreload {
+		return PartitionTypePreLoad
+	}
+
+	return PartitionTypeCache
+}
+
+func IsCacheDp(typ int) bool {
+	return typ == PartitionTypeCache
+}
+
+func IsNormalDp(typ int) bool {
+	return typ == PartitionTypeNormal
+}
+
+func IsPreLoadDp(typ int) bool {
+	return typ == PartitionTypePreLoad
+}
+
+const (
+	VolumeTypeHot  = 0
+	VolumeTypeCold = 1
+)
+
+func IsCold(typ int) bool {
+	return typ == VolumeTypeCold
+}
+
+func IsHot(typ int) bool {
+	return typ == VolumeTypeHot
+}
+
+const (
+	NoCache = 0
+	RCache  = 1
+	RWCache = 2
+)
+
+const (
+	LFClient = 1 // low frequency client
+)

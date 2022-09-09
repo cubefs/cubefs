@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -66,7 +67,7 @@ const (
 
 func newConfigSetCmd() *cobra.Command {
 	var optMasterHosts string
-	var optTimeout uint16
+	var optTimeout string
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdConfigSetShort,
@@ -78,11 +79,19 @@ func newConfigSetCmd() *cobra.Command {
 					errout("Error: %v", err)
 				}
 			}()
-			if optMasterHosts == "" && optTimeout == 0 {
-				stdout(fmt.Sprintf("No change. Input 'cfs-cli config set -h' for help.\n"))
+			tmp, _ := strconv.Atoi(optTimeout)
+			timeOut := uint16(tmp)
+			if optMasterHosts == "" {
+				stdout(fmt.Sprintf("Please set addr. Input 'cfs-cli config set -h' for help.\n"))
 				return
 			}
-			if err = setConfig(optMasterHosts, optTimeout); err != nil {
+
+			if timeOut == 0 {
+				stdout(fmt.Sprintf("timeOut %v is invalid.\n", timeOut))
+				return
+			}
+
+			if err = setConfig(optMasterHosts, timeOut); err != nil {
 				return
 			}
 			stdout(fmt.Sprintf("Config has been set successfully!\n"))
@@ -90,7 +99,7 @@ func newConfigSetCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&optMasterHosts, "addr", "",
 		"Specify master address {HOST}:{PORT}[,{HOST}:{PORT}]")
-	cmd.Flags().Uint16Var(&optTimeout, "timeout", 0, "Specify timeout for requests [Unit: s]")
+	cmd.Flags().StringVar(&optTimeout, "timeout", "60", "Specify timeout for requests [Unit: s]")
 	return cmd
 }
 func newConfigInfoCmd() *cobra.Command {
@@ -109,7 +118,7 @@ func newConfigInfoCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")
-	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter node status [Active, Inactive")
+	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter node status [Active, Inactive]")
 	return cmd
 }
 

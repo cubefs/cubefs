@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ var (
 	ExtentIsFullError         = errors.New("extent is full")
 	BrokenExtentError         = errors.New("extent has been broken")
 	BrokenDiskError           = errors.New("disk has broken")
+	ForbidWriteError          = errors.New("single replica decommission forbid write")
 )
 
 func NewParameterMismatchErr(msg string) (err error) {

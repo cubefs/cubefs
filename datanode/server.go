@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 
-	"smux"
+	"github.com/xtaci/smux"
 )
 
 var (
@@ -95,6 +95,9 @@ const (
 	ConfigKeySmuxMaxConn       = "smuxMaxConn"        //int
 	ConfigKeySmuxStreamPerConn = "smuxStreamPerConn"  //int
 	ConfigKeySmuxMaxBuffer     = "smuxMaxBuffer"      //int
+
+	//rate limit control enable
+	ConfigDiskQosEnable = "diskQosEnable" //bool
 )
 
 // DataNode defines the structure of a data node.
@@ -112,6 +115,7 @@ type DataNode struct {
 	raftStore       raftstore.RaftStore
 	tickInterval    int
 	raftRecvBufSize int
+	startTime       int64
 
 	tcpListener net.Listener
 	stopC       chan bool
@@ -131,6 +135,13 @@ type DataNode struct {
 	metricsCnt     uint64
 
 	control common.Control
+
+	diskQosEnable           bool
+	diskQosEnableFromMaster bool
+	diskIopsReadLimit       uint64
+	diskIopsWriteLimit      uint64
+	diskFlowReadLimit       uint64
+	diskFlowWriteLimit      uint64
 }
 
 func NewServer() *DataNode {
@@ -156,7 +167,7 @@ func (s *DataNode) Sync() {
 func doStart(server common.Server, cfg *config.Config) (err error) {
 	s, ok := server.(*DataNode)
 	if !ok {
-		return errors.New("Invalid Node Type!")
+		return errors.New("Invalid node Type!")
 	}
 
 	s.stopC = make(chan bool, 0)
@@ -261,7 +272,18 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	return
 }
 
+func (s *DataNode) initQosLimit(cfg *config.Config) {
+	s.space.dataNode.diskQosEnable = cfg.GetBoolWithDefault(ConfigDiskQosEnable, true)
+	log.LogWarnf("action[initQosLimit] set qos value [%v] ,other param use default value", s.space.dataNode.diskQosEnable)
+}
+
+func (s *DataNode) updateQosLimit() {
+	for _, disk := range s.space.disks {
+		disk.updateQosLimiter()
+	}
+}
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
+	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
 	if len(strings.TrimSpace(s.port)) == 0 {
 		err = ErrNewSpaceManagerFailed
@@ -271,6 +293,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetRaftStore(s.raftStore)
 	s.space.SetNodeID(s.nodeID)
 	s.space.SetClusterID(s.clusterID)
+	s.initQosLimit(cfg)
 
 	diskRdonlySpace := uint64(cfg.GetInt64(CfgDiskRdonlySpace))
 	if diskRdonlySpace < DefaultDiskRetainMin {
@@ -311,6 +334,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr)
 		}(&wg, path, reservedSpace)
 	}
+
 	wg.Wait()
 	return nil
 }
@@ -395,12 +419,34 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 	if len(dinfo.PersistenceDataPartitions) == 0 {
 		return
 	}
-	lackPartitions := make([]uint64, 0)
+	lackPartitionsNeedCheck := make([]uint64, 0)
 	for _, partitionID := range dinfo.PersistenceDataPartitions {
 		dp := s.space.Partition(partitionID)
 		if dp == nil {
-			lackPartitions = append(lackPartitions, partitionID)
+			lackPartitionsNeedCheck = append(lackPartitionsNeedCheck, partitionID)
 		}
+	}
+	if len(lackPartitionsNeedCheck) == 0 {
+		return
+	}
+	lackPartitions := make([]uint64, 0)
+	for _, lackPartitionID := range lackPartitionsNeedCheck {
+		var dp *proto.DataPartitionInfo
+		for i := 0; i < 3; i++ {
+			if dp, err = MasterClient.AdminAPI().GetDataPartitionById(lackPartitionID); err != nil {
+				log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
+				continue
+			}
+			break
+		}
+		if err != nil {
+			return
+		}
+		if dp.ReplicaNum != 1 {
+			lackPartitions = append(lackPartitions, lackPartitionID)
+			continue
+		}
+		log.LogInfof("action[checkLocalPartitionMatchWithMaster] dp [%v] replicaNum [%v] ignore local error", dp.PartitionID, dp.ReplicaNum)
 	}
 	if len(lackPartitions) == 0 {
 		return
@@ -424,6 +470,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getSmuxPoolStat", s.getSmuxPoolStat())
 	http.HandleFunc("/setMetricsDegrade", s.setMetricsDegrade)
 	http.HandleFunc("/getMetricsDegrade", s.getMetricsDegrade)
+	http.HandleFunc("/qosEnable", s.setQosEnable())
 }
 
 func (s *DataNode) startTCPService() (err error) {

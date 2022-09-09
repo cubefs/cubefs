@@ -1,4 +1,4 @@
-// Copyright 2019 The ChubaoFS Authors.
+// Copyright 2019 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ const (
 // These asynchronous tasks include periodic volume topology and metadata update tasks.
 type AsyncTaskErrorFunc func(err error)
 
-// OnError protects the call of AsyncTaskErrorFunc with null pointer access. Used to simplify caller code.
+// OnError protects the call of AsyncTaskErrorFunc with null pointer access. Allocated to simplify caller code.
 func (f AsyncTaskErrorFunc) OnError(err error) {
 	if f != nil {
 		f(err)

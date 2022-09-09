@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,11 +16,14 @@ package stream
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
 	"io"
 	"sync"
 
+	"golang.org/x/net/context"
+
+	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -41,14 +44,18 @@ type Streamer struct {
 	extents *ExtentCache
 	once    sync.Once
 
-	handler   *ExtentHandler   // current open handler
-	dirtylist *DirtyExtentList // dirty handlers
-	dirty     bool             // whether current open handler is in the dirty list
+	handler    *ExtentHandler   // current open handler
+	dirtylist  *DirtyExtentList // dirty handlers
+	dirty      bool             // whether current open handler is in the dirty list
+	isOpen     bool
+	needBCache bool
 
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
 
-	writeLock sync.Mutex
+	writeLock            sync.Mutex
+	inflightL1cache      sync.Map
+	inflightEvictL1cache sync.Map
 }
 
 // NewStreamer returns a new streamer.
@@ -61,6 +68,7 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.request = make(chan interface{}, 64)
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
+	s.isOpen = true
 	go s.server()
 	return s
 }
@@ -76,7 +84,15 @@ func (s *Streamer) String() string {
 
 // TODO should we call it RefreshExtents instead?
 func (s *Streamer) GetExtents() error {
+	if s.client.disableMetaCache || !s.needBCache {
+		return s.extents.RefreshForce(s.inode, s.client.getExtents)
+	}
+
 	return s.extents.Refresh(s.inode, s.client.getExtents)
+}
+
+func (s *Streamer) GetExtentsForce() error {
+	return s.extents.RefreshForce(s.inode, s.client.getExtents)
 }
 
 // GetExtentReader returns the extent reader.
@@ -86,11 +102,19 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	reader := NewExtentReader(s.inode, ek, partition, s.client.dataWrapper.FollowerRead())
+
+	retryRead := true
+	if proto.IsCold(s.client.volumeType) {
+		retryRead = false
+	}
+
+	reader := NewExtentReader(s.inode, ek, partition, s.client.dataWrapper.FollowerRead(), retryRead)
 	return reader, nil
 }
 
 func (s *Streamer) read(data []byte, offset int, size int) (total int, err error) {
+	//log.LogErrorf("==========> Streamer Read Enter, inode(%v).", s.inode)
+	//t1 := time.Now()
 	var (
 		readBytes       int
 		reader          *ExtentReader
@@ -100,7 +124,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 
 	ctx := context.Background()
 	s.client.readLimiter.Wait(ctx)
-
+	s.client.LimitManager.ReadAlloc(ctx, size)
 	requests = s.extents.PrepareReadRequests(offset, size, data)
 	for _, req := range requests {
 		if req.ExtentKey == nil {
@@ -140,6 +164,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				//if total == 0 {
 				//	log.LogErrorf("read: ino(%v) req(%v) filesize(%v)", s.inode, req, filesize)
 				//}
+				//log.LogErrorf("==========> Streamer Read Exit, inode(%v), time[%v us].", s.inode, time.Since(t1).Microseconds())
 				return
 			}
 
@@ -147,13 +172,73 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			total += req.Size
 			log.LogDebugf("Stream read hole: ino(%v) req(%v) total(%v)", s.inode, req, total)
 		} else {
+			//skip hole,ek is not nil,read block cache firstly
+			cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
+			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.needBCache(%v)", s.inode, req, s.client.bcacheEnable, s.needBCache)
+			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxBlockSize {
+				//todo offset is ok for tinyextent?
+				offset := req.FileOffset - int(req.ExtentKey.FileOffset)
+				if s.client.loadBcache != nil {
+					readBytes, err = s.client.loadBcache(cacheKey, req.Data, uint64(offset), uint32(req.Size))
+					if err == nil && readBytes == req.Size {
+						total += req.Size
+						log.LogDebugf("TRACE Stream read. hit blockCache: ino(%v) cacheKey(%v) readBytes(%v) err(%v)", s.inode, cacheKey, readBytes, err)
+						continue
+					}
+				}
+				log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
+			}
+			//read extent
 			reader, err = s.GetExtentReader(req.ExtentKey)
 			if err != nil {
 				break
 			}
-			readBytes, err = reader.Read(req)
-			log.LogDebugf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
+
+			// todo :  optimization
+			var needCache = false
+			if _, ok := s.inflightL1cache.Load(cacheKey); !ok && s.client.bcacheEnable && s.needBCache {
+				s.inflightL1cache.Store(cacheKey, true)
+				needCache = true
+			}
+
+			var buf []byte
+			if needCache && filesize <= bcache.MaxBlockSize {
+				//read full extent
+				buf = make([]byte, req.ExtentKey.Size)
+				fullReq := NewExtentRequest(int(req.ExtentKey.FileOffset), int(req.ExtentKey.Size), buf, req.ExtentKey)
+				readBytes, err = reader.Read(fullReq)
+				if err != nil || readBytes != len(buf) {
+					s.inflightL1cache.Delete(cacheKey)
+					log.LogErrorf("ERROR Stream read. read full extent error. fullReq(%v) readBytes(%v) err(%v)", fullReq, readBytes, err)
+					return
+				}
+
+				extentOffset := req.FileOffset - int(req.ExtentKey.FileOffset)
+				readBytes = copy(req.Data, buf[extentOffset:extentOffset+req.Size])
+
+				go func(cacheKey string, buf []byte) {
+					if s.client.cacheBcache != nil {
+						log.LogDebugf("TRACE read. write blockCache cacheKey(%v) len_buf(%v),", cacheKey, len(buf))
+						s.client.cacheBcache(cacheKey, buf)
+					} else {
+						log.LogErrorf("TRACE Stream read. write blockCache is nil,loadBcache(%v)", s.client.loadBcache)
+					}
+					s.inflightL1cache.Delete(cacheKey)
+				}(cacheKey, buf)
+
+				log.LogDebugf("TRACE Stream read. read full extent Exit. fullReq(%v) readBytes(%v) err(%v)", fullReq, readBytes, err)
+			} else {
+				readBytes, err = reader.Read(req)
+				if err != nil || readBytes != req.Size {
+					log.LogErrorf("ERROR Stream read. read error. req(%v) readBytes(%v) err(%v)", req, readBytes, err)
+					return
+				}
+			}
+
+			log.LogDebugf("TRACE Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
+
 			total += readBytes
+
 			if err != nil || readBytes < req.Size {
 				if total == 0 {
 					log.LogErrorf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
@@ -162,5 +247,6 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			}
 		}
 	}
+	//log.LogErrorf("==========> Streamer Read Exit, inode(%v), time[%v us].", s.inode, time.Since(t1).Microseconds())
 	return
 }

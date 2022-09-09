@@ -221,7 +221,7 @@ func (m *ClusterService) decommissionDataNode(ctx context.Context, args struct {
 	if err := m.cluster.decommissionDataNode(node); err != nil {
 		return nil, err
 	}
-	rstMsg := fmt.Sprintf("decommission data node [%v] successfully", args.OffLineAddr)
+	rstMsg := fmt.Sprintf("decommission data node [%v] submited,please check laster!", args.OffLineAddr)
 
 	return proto.Success(rstMsg), nil
 }
@@ -630,7 +630,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {
-			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001"))
+			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, 0, 0))
 			continue
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))

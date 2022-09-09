@@ -50,7 +50,7 @@ func (opts *TransactionDBOptions) SetTransactionLockTimeout(txn_lock_timeout int
 }
 
 // SetDefaultLockTimeout if posititve, specifies the wait timeout in milliseconds when writing a key
-// OUTSIDE of a transaction (ie by calling DB::PutConnect(),Merge(),Delete(),Write()
+// OUTSIDE of a transaction (ie by calling DB::Put(),Merge(),Delete(),Write()
 // directly).
 // If 0, no waiting is done if a lock cannot instantly be acquired.
 // If negative, there is no timeout and will block indefinitely when acquiring

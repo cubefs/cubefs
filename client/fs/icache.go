@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -70,6 +71,7 @@ func (ic *InodeCache) Put(info *proto.InodeInfo) {
 	element := ic.lruList.PushFront(info)
 	ic.cache[info.Inode] = element
 	ic.Unlock()
+	// log.LogDebugf("InodeCache put inode: inode(%v)", info.Inode)
 }
 
 // Get returns the inode info based on the given inode number.
@@ -82,9 +84,9 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 	}
 
 	info := element.Value.(*proto.InodeInfo)
-	if inodeExpired(info) {
+	if inodeExpired(info) && DisableMetaCache {
 		ic.RUnlock()
-		//log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), inode)
+		// log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v), expired(%d)", time.Now().Format(LogTimeFormat), info.Inode, info.Expiration())
 		return nil
 	}
 	ic.RUnlock()
@@ -93,7 +95,7 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 
 // Delete deletes the inode info based on the given inode number.
 func (ic *InodeCache) Delete(ino uint64) {
-	//log.LogDebugf("InodeCache Delete: ino(%v)", ino)
+	// log.LogDebugf("InodeCache Delete: ino(%v)", ino)
 	ic.Lock()
 	element, ok := ic.cache[ino]
 	if ok {
@@ -123,6 +125,7 @@ func (ic *InodeCache) evict(foreground bool) {
 			return
 		}
 
+		// log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
 		ic.lruList.Remove(element)
 		delete(ic.cache, info.Inode)
 		count++
@@ -142,6 +145,7 @@ func (ic *InodeCache) evict(foreground bool) {
 		if !inodeExpired(info) {
 			break
 		}
+		// log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), info.Inode)
 		ic.lruList.Remove(element)
 		delete(ic.cache, info.Inode)
 		count++
@@ -151,16 +155,18 @@ func (ic *InodeCache) evict(foreground bool) {
 func (ic *InodeCache) backgroundEviction() {
 	t := time.NewTicker(BgEvictionInterval)
 	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-			//log.LogInfof("InodeCache: start BG evict")
-			//start := time.Now()
-			ic.Lock()
-			ic.evict(false)
-			ic.Unlock()
-			//elapsed := time.Since(start)
-			//log.LogInfof("InodeCache: done BG evict, cost (%v)ns", elapsed.Nanoseconds())
+
+	for range t.C {
+		log.LogInfof("InodeCache: start BG evict")
+		if !DisableMetaCache {
+			log.LogInfof("InodeCache: no need to do BG evict")
+			continue
 		}
+		start := time.Now()
+		ic.Lock()
+		ic.evict(false)
+		ic.Unlock()
+		elapsed := time.Since(start)
+		log.LogInfof("InodeCache: total inode cache(%d), cost(%d)ns", ic.lruList.Len(), elapsed.Nanoseconds())
 	}
 }

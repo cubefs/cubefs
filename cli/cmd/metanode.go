@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 const (
 	cmdMetaNodeUse   = "metanode [COMMAND]"
 	cmdMetaNodeShort = "Manage meta nodes"
+	mpMigrateMax     = 15
 )
 
 func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
@@ -37,6 +38,7 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 		newMetaNodeListCmd(client),
 		newMetaNodeInfoCmd(client),
 		newMetaNodeDecommissionCmd(client),
+		newMetaNodeMigrateCmd(client),
 	)
 	return cmd
 }
@@ -45,6 +47,7 @@ const (
 	cmdMetaNodeListShort             = "List information of meta nodes"
 	cmdMetaNodeInfoShort             = "Show information of meta nodes"
 	cmdMetaNodeDecommissionInfoShort = "Decommission partitions in a meta node to other nodes"
+	cmdMetaNodeMigrateInfoShort      = "Migrate partitions from a meta node to the other node"
 )
 
 func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -90,7 +93,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 
 func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpInfo + " [NODE ADDRESS]",
+		Use:   CliOpInfo + " [{HOST}:{PORT}]",
 		Short: cmdMetaNodeInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -120,8 +123,9 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var optCount int
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [NODE ADDRESS]",
+		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdMetaNodeDecommissionInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -133,7 +137,11 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 			nodeAddr = args[0]
-			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr); err != nil {
+			if optCount < 0 {
+				stdout("Migrate mp count should >= 0\n")
+				return
+			}
+			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr, optCount); err != nil {
 				return
 			}
 			stdout("Decommission meta node successfully\n")
@@ -146,5 +154,42 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "MetaNode delete mp count")
+	return cmd
+}
+func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
+	var optCount int
+	var cmd = &cobra.Command{
+		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
+		Short: cmdMetaNodeMigrateInfoShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var src, dst string
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			src = args[0]
+			dst = args[1]
+			if optCount > mpMigrateMax || optCount <= 0 {
+				stdout("Migrate mp count should between [1-15]\n")
+				return
+			}
+			if err = client.NodeAPI().MetaNodeMigrate(src, dst, optCount); err != nil {
+				return
+			}
+			stdout("Migrate meta node successfully\n")
+
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().IntVar(&optCount, CliFlagCount, mpMigrateMax, "Migrate mp count")
 	return cmd
 }

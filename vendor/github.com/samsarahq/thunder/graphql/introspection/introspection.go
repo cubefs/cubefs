@@ -100,7 +100,7 @@ var includeDirective = Directive{
 	Args: []InputValue{
 		InputValue{
 			Name:        "if",
-			Type:        Type{Inner: &graphql.Scalar{Type: "bool"}},
+			Type:        Type{Inner: &graphql.NonNull{Type: &graphql.Scalar{Type: "bool"}}},
 			Description: "Included when true.",
 		},
 	},
@@ -117,12 +117,20 @@ var skipDirective = Directive{
 	Args: []InputValue{
 		InputValue{
 			Name:        "if",
-			Type:        Type{Inner: &graphql.Scalar{Type: "bool"}},
+			Type:        Type{Inner: &graphql.NonNull{Type: &graphql.Scalar{Type: "bool"}}},
 			Description: "Skipped when true.",
 		},
 	},
 }
 
+var typeAsOptionalDirective = Directive{
+	Description: "Client-side-only directive that instructs the type generator to mark this field as optional. This is useful for making the generated types compliant with Troy persistence schema.",
+	Locations: []DirectiveLocation{
+		FIELD,
+	},
+	Name: "type_as_optional",
+	Args: []InputValue{},
+}
 
 func (s *introspection) registerType(schema *schemabuilder.Schema) {
 	object := schema.Object("__Type", Type{})
@@ -350,7 +358,11 @@ func (s *introspection) registerQuery(schema *schemabuilder.Schema) {
 			Types:        types,
 			QueryType:    &Type{Inner: s.query},
 			MutationType: &Type{Inner: s.mutation},
-			Directives:   []Directive{includeDirective, skipDirective},
+			Directives: []Directive{
+				includeDirective,
+				skipDirective,
+				typeAsOptionalDirective,
+			},
 		}
 	})
 
@@ -415,7 +427,7 @@ func ComputeSchemaJSON(schemaBuilderSchema schemabuilder.Schema) ([]byte, error)
 // RunIntrospectionQuery returns the result of executing a GraphQL introspection
 // query.
 func RunIntrospectionQuery(schema *graphql.Schema) ([]byte, error) {
-	query, err := graphql.Parse(introspectionQuery, map[string]interface{}{})
+	query, err := graphql.Parse(IntrospectionQuery, map[string]interface{}{})
 	if err != nil {
 		return nil, err
 	}

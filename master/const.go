@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,17 +23,32 @@ import (
 
 // Keys in the request
 const (
-	addrKey                 = "addr"
-	diskPathKey             = "disk"
-	nameKey                 = "name"
-	idKey                   = "id"
-	countKey                = "count"
-	startKey                = "start"
-	enableKey               = "enable"
-	thresholdKey            = "threshold"
-	dataPartitionSizeKey    = "size"
-	metaPartitionCountKey   = "mpCount"
-	volCapacityKey          = "capacity"
+	addrKey               = "addr"
+	diskPathKey           = "disk"
+	nameKey               = "name"
+	idKey                 = "id"
+	countKey              = "count"
+	startKey              = "start"
+	enableKey             = "enable"
+	thresholdKey          = "threshold"
+	dataPartitionSizeKey  = "size"
+	metaPartitionCountKey = "mpCount"
+	volCapacityKey        = "capacity"
+	volTypeKey            = "volType"
+	cacheRuleKey          = "cacheRuleKey"
+	emptyCacheRuleKey     = "emptyCacheRule"
+
+	forceDelVolKey          = "forceDelVol"
+	ebsBlkSizeKey           = "ebsBlkSize"
+	cacheCapacity           = "cacheCap"
+	cacheActionKey          = "cacheAction"
+	cacheThresholdKey       = "cacheThreshold"
+	cacheTTLKey             = "cacheTTL"
+	cacheHighWaterKey       = "cacheHighWater"
+	cacheLowWaterKey        = "cacheLowWater"
+	cacheLRUIntervalKey     = "cacheLRUInterval"
+	clientVersion           = "version"
+	domainIdKey             = "domainId"
 	volOwnerKey             = "owner"
 	volAuthKey              = "authKey"
 	replicaNumKey           = "replicaNum"
@@ -43,13 +58,15 @@ const (
 	keywordsKey             = "keywords"
 	zoneNameKey             = "zoneName"
 	crossZoneKey            = "crossZone"
-	defaultPriority         = "defaultPriority"
+	normalZonesFirstKey     = "normalZonesFirst"
 	userKey                 = "user"
 	nodeHostsKey            = "hosts"
 	nodeDeleteBatchCountKey = "batchCount"
 	nodeMarkDeleteRateKey   = "markDeleteRate"
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey   = "autoRepairRate"
+	clusterLoadFactorKey    = "loadFactor"
+	maxDpCntLimitKey        = "maxDpCntLimit"
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
@@ -59,6 +76,17 @@ const (
 	srcAddrKey              = "srcAddr"
 	targetAddrKey           = "targetAddr"
 	forceKey                = "force"
+	raftForceDelKey         = "raftForceDel"
+	enablePosixAclKey       = "enablePosixAcl"
+	QosEnableKey            = "qosEnable"
+	DiskEnableKey           = "diskenable"
+	IopsWKey                = "iopsWKey"
+	IopsRKey                = "iopsRKey"
+	FlowWKey                = "flowWKey"
+	FlowRKey                = "flowRKey"
+	ClientReqPeriod         = "reqPeriod"
+	ClientTriggerCnt        = "triggerCnt"
+	QosMasterLimit          = "qosLimit"
 )
 
 const (
@@ -75,12 +103,21 @@ const (
 )
 
 const (
-	LRUCacheSize    = 3 << 30
-	WriteBufferSize = 4 * util.MB
+	LRUCacheSize       = 3 << 30
+	WriteBufferSize    = 4 * util.MB
+	MaxFlowLimit       = 10 * util.TB
+	MinFlowLimit       = 100 * util.MB
+	MinIoLimit         = 100
+	MinMagnify         = 10
+	MaxMagnify         = 100
+	QosMasterAcceptCnt = 3000
+	MinZoneDiskLimit   = 300
+	MaxZoneDiskLimit   = 10000
 )
 
 const (
 	defaultFaultDomainZoneCnt                    = 3
+	defaultNormalCrossZoneCnt                    = 3
 	defaultInitMetaPartitionCount                = 3
 	defaultMaxInitMetaPartitionCount             = 100
 	defaultMaxMetaPartitionInodeID        uint64 = 1<<63 - 1
@@ -104,6 +141,14 @@ const (
 	defaultNodeSetGrpBatchCnt                    = 3
 	defaultMigrateDpCnt                          = 50
 	defaultMigrateMpCnt                          = 15
+	defaultMaxReplicaCnt                         = 16
+	defaultIopsRLimit                     uint64 = 1 << 35
+	defaultIopsWLimit                     uint64 = 1 << 35
+	defaultFlowWLimit                     uint64 = 1 << 35
+	defaultFlowRLimit                     uint64 = 1 << 35
+	defaultLimitTypeCnt                          = 4
+	defaultClientTriggerHitCnt                   = 1
+	defaultClientReqPeriodSeconds                = 1
 )
 
 const (
@@ -111,9 +156,18 @@ const (
 	markDelete           uint8 = 1
 	normalZone                 = 0
 	unavailableZone            = 1
-	unavaliable                = 1
-	metaNodesUnavaliable       = 2
-	dataNodesUnavaliable       = 3
+	metaNodesUnAvailable       = 2
+	dataNodesUnAvailable       = 3
+)
+
+const (
+	defaultEbsBlkSize = 8 * 1024 * 1024
+
+	defaultCacheThreshold   = 10 * 1024 * 1024
+	defaultCacheTtl         = 30
+	defaultCacheHighWater   = 80
+	defaultCacheLowWater    = 40
+	defaultCacheLruInterval = 5
 )
 
 const (
@@ -150,6 +204,8 @@ const (
 	opSyncNodeSetGrp           uint32 = 0x1F
 	opSyncDataPartitionsView   uint32 = 0x20
 	opSyncExclueDomain         uint32 = 0x23
+	opSyncUpdateZone           uint32 = 0x24
+	opSyncAllocClientID        uint32 = 0x25
 )
 
 const (
@@ -163,10 +219,12 @@ const (
 	clusterAcronym        = "c"
 	nodeSetAcronym        = "s"
 	nodeSetGrpAcronym     = "g"
+	zoneAcronym           = "zone"
 	domainAcronym         = "zoneDomain"
 	maxDataPartitionIDKey = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
 	maxCommonIDKey        = keySeparator + "max_common_id"
+	maxClientIDKey        = keySeparator + "client_id"
 	metaNodePrefix        = keySeparator + metaNodeAcronym + keySeparator
 	dataNodePrefix        = keySeparator + dataNodeAcronym + keySeparator
 	dataPartitionPrefix   = keySeparator + dataPartitionAcronym + keySeparator
@@ -176,6 +234,7 @@ const (
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
 	nodeSetGrpPrefix      = keySeparator + nodeSetGrpAcronym + keySeparator
 	DomainPrefix          = keySeparator + domainAcronym + keySeparator
+	zonePrefix            = keySeparator + zoneAcronym + keySeparator
 	akAcronym             = "ak"
 	userAcronym           = "user"
 	volUserAcronym        = "voluser"
