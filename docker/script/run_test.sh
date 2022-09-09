@@ -529,7 +529,7 @@ after_ec_consistency_test() {
 
 run_bypass_client_test() {
     echo "run bypass client test..."
-    LD_PRELOAD=/usr/lib64/libcfsclient.so CFS_CONFIG_PATH=/cfs/conf/bypass.ini CFS_MOUNT_POINT=/cfs/mnt /cfs/bin/test-bypass
+    LD_PRELOAD=/usr/lib64/libcfsclient.so CFS_CONFIG_PATH=/usr/lib64/bypass.ini CFS_MOUNT_POINT=/cfs/mnt /cfs/bin/test-bypass
 }
 
 init_cli

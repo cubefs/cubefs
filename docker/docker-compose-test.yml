@@ -623,10 +623,11 @@ services:
             - ./bin/libcfsc.so:/usr/lib64/libcfsc.so:ro
             - ./bin/libcfsclient.so:/usr/lib64/libcfsclient.so:ro
             - ./bin/libempty.so:/usr/lib64/libempty.so:ro
+            - /usr/local/go/pkg/linux_amd64_dynlink/libstd.so:/usr/lib64/libstd.so:ro
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
             - ./conf/client_rocksdb.json:/cfs/conf/client_rocksdb.json
-            - ./conf/bypass.ini:/cfs/conf/bypass.ini
+            - ./conf/bypass.ini:/usr/lib64/bypass.ini:ro
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
             - ./script/run_test.sh:/cfs/script/start.sh
@@ -653,11 +654,12 @@ services:
             - ./bin/libcfsc.so:/usr/lib64/libcfsc.so:ro
             - ./bin/libcfsclient.so:/usr/lib64/libcfsclient.so:ro
             - ./bin/libempty.so:/usr/lib64/libempty.so:ro
+            - /usr/local/go/pkg/linux_amd64_dynlink/libstd.so:/usr/lib64/libstd.so:ro
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
             - ./conf/client_ec.json:/cfs/conf/client_ec.json
             - ./conf/client_rocksdb.json:/cfs/conf/client_rocksdb.json
-            - ./conf/bypass.ini:/cfs/conf/bypass.ini
+            - ./conf/bypass.ini:/usr/lib64/bypass.ini:ro
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
             - ./script/run_test.sh:/cfs/script/start.sh
