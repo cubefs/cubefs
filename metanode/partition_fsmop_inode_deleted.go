@@ -337,6 +337,9 @@ func (mp *metaPartition) cleanDeletedInode(dbHandle interface{}, inode uint64) (
 	if dino.IsTempFile() {
 		dino.setExpired()
 		mp.freeList.Push(dino.Inode.Inode)
+		if err = mp.inodeDeletedTree.Update(dbHandle, dino); err != nil {
+			resp.Status = proto.OpErr
+		}
 		return
 	}
 	resp.Status = proto.OpErr

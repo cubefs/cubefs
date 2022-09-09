@@ -221,20 +221,35 @@ func (mp *metaPartition) fsmRecoverDeletedDentry(dbHandle interface{}, ddentry *
 
 func (mp *metaPartition) fsmBatchRecoverDeletedDentry(dbHandle interface{}, dens DeletedDentryBatch) (
 	res []*fsmOpDeletedDentryResponse, err error) {
-	res = make([]*fsmOpDeletedDentryResponse, 0)
+	res = make([]*fsmOpDeletedDentryResponse, 0, len(dens))
+	var wrongIndex int
 	defer func() {
 		if err != nil {
-			for index := 0; index < len(dens); index++ {
+			for index := wrongIndex; index < len(dens); index++ {
 				res = append(res, &fsmOpDeletedDentryResponse{Status: proto.OpErr, Msg: dens[index]})
 			}
 		}
 	}()
-	for _, den := range dens {
-		var rsp *fsmOpDeletedDentryResponse
-		rsp, err = mp.fsmRecoverDeletedDentry(dbHandle, den)
+	for index, den := range dens {
+		var (
+			rsp *fsmOpDeletedDentryResponse
+			dbWriteHandle interface{}
+		)
+		dbWriteHandle, err = mp.dentryDeletedTree.CreateBatchWriteHandle()
 		if err != nil {
-			res = res[:0]
-			return
+			wrongIndex = index
+			break
+		}
+		rsp, err = mp.fsmRecoverDeletedDentry(dbWriteHandle, den)
+		if err != nil {
+			_ = mp.dentryDeletedTree.ReleaseBatchWriteHandle(dbWriteHandle)
+			wrongIndex = index
+			break
+		}
+		err = mp.dentryDeletedTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, false)
+		if err != nil {
+			wrongIndex = index
+			break
 		}
 		if rsp.Status != proto.OpOk {
 			res = append(res, rsp)

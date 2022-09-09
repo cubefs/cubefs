@@ -1552,7 +1552,7 @@ func (r *RocksSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 	tableType := getTableTypeKey(tp)
 	crc := crc32.NewIEEE()
 	cb := func(k, v []byte) (bool, error) {
-		if tp == InodeType {
+		if tp == InodeType || tp == DelInodeType {
 			if len(v) < AccessTimeOffset + 8 {
 				return false, fmt.Errorf("")
 			}

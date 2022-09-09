@@ -874,6 +874,148 @@ func TestMetaPartition_CopyGet(t *testing.T) {
 	}
 }
 
+func TestMetaPartition_BatchRecoverDeletedDentry(t *testing.T) {
+	tests := []struct{
+		name      string
+		storeMode proto.StoreMode
+		rootDir   string
+		applyFunc metamock.ApplyFunc
+	}{
+		{
+			name:      "MemMode",
+			storeMode: proto.StoreModeMem,
+			rootDir:   "./test_mem_batch_recover_deleted_dentry",
+			applyFunc: ApplyMock,
+		},
+		{
+			name:      "RocksDBMode",
+			storeMode: proto.StoreModeRocksDb,
+			rootDir:   "./test_rocksdb_batch_recover_deleted_dentry",
+			applyFunc: ApplyMock,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mp, err := mockMetaPartition(1, 1, test.storeMode, test.rootDir, test.applyFunc)
+			if err != nil {
+				t.Logf("mock mp failed:%v", err)
+				return
+			}
+			defer releaseMetaPartition(mp)
+
+			parIno := NewInode(2, proto.Mode(os.ModeDir))
+			_, _, err = inodeCreate(mp.inodeTree, parIno, true)
+			if err != nil {
+				t.Errorf("inode create failed:%v", err)
+				return
+			}
+
+			batchDelDentry := mockDeletedDentryTreeForBatchRecover(t, mp.dentryDeletedTree, parIno.Inode)
+
+			req := &BatchRecoverDeletedDentryReq{
+				PartitionID: mp.config.PartitionId,
+				Dens: batchDelDentry,
+			}
+			p := &Packet{}
+
+			err = mp.BatchRecoverDeletedDentry(req, p)
+			if err != nil {
+				t.Errorf("batch recover deleted dentry failed:%v", err)
+				return
+			}
+
+			//validate
+			if mp.dentryTree.Count() != 3 || mp.dentryDeletedTree.Count() != 0 {
+				t.Errorf("result mismatch, dentry tree count(expect:3, actual:%v), deleted dentry tree count(expect:0, actual:%v)",
+					mp.dentryTree.Count(), mp.dentryDeletedTree.Count())
+			}
+
+			resp, err := mp.getInode(parIno)
+			if err != nil {
+				t.Errorf("get parent inode failed:%v", err)
+				return
+			}
+			if resp.Status != proto.OpOk {
+				t.Errorf("get parent inode failed:%v", err)
+				return
+			}
+
+			if resp.Msg.Inode != parIno.Inode || resp.Msg.NLink != 5 {
+				t.Errorf("inode info mismatch, expect(inode:%v, nlink:5), actual(inode:%v, nlink:%v)",
+					parIno.Inode, resp.Msg.Inode, resp.Msg.NLink)
+				return
+			}
+			return
+		})
+	}
+}
+
+func mockDeletedDentryTreeForBatchRecover(t *testing.T, delDentryTree DeletedDentryTree, parIno uint64) (batchDelDentry []*proto.DeletedDentry){
+	d1 := new(Dentry)
+	d1.ParentId = parIno
+	d1.Inode = 10
+	d1.Type = proto.Mode(os.ModeDir)
+	d1.Name = "d1"
+	dd1 := newDeletedDentry(d1, ts, from)
+
+	_, _, err := deletedDentryCreate(delDentryTree, dd1, true)
+	if err != nil {
+		t.Errorf("create deleted dentry(%v) failed:%v", dd1, err)
+		return
+	}
+	batchDelDentry = append(batchDelDentry, &proto.DeletedDentry{
+		ParentID:  parIno,
+		Name:      dd1.Name,
+		Inode:     dd1.Inode,
+		Type:      dd1.Type,
+		Timestamp: dd1.Timestamp,
+		From:      dd1.From,
+	})
+
+	d2 := new(Dentry)
+	d2.ParentId = parIno
+	d2.Inode = 100
+	d2.Type = proto.Mode(os.ModeDir)
+	d2.Name = "d2"
+	dd2 := newDeletedDentry(d2, ts, from)
+
+	_, _, err = deletedDentryCreate(delDentryTree, dd2, true)
+	if err != nil {
+		t.Errorf("create deleted dentry(%v) failed:%v", dd2, err)
+		return
+	}
+	batchDelDentry = append(batchDelDentry, &proto.DeletedDentry{
+		ParentID:  parIno,
+		Name:      dd2.Name,
+		Inode:     dd2.Inode,
+		Type:      dd2.Type,
+		Timestamp: dd2.Timestamp,
+		From:      dd2.From,
+	})
+
+	d3 := new(Dentry)
+	d3.ParentId = parIno
+	d3.Inode = 1000
+	d3.Type = proto.Mode(os.ModeDir)
+	d3.Name = "d3"
+	dd3 := newDeletedDentry(d3, ts, from)
+
+	_, _, err = deletedDentryCreate(delDentryTree, dd3, true)
+	if err != nil {
+		t.Errorf("create deleted dentry(%v) failed:%v", dd3, err)
+		return
+	}
+	batchDelDentry = append(batchDelDentry, &proto.DeletedDentry{
+		ParentID:  parIno,
+		Name:      dd3.Name,
+		Inode:     dd3.Inode,
+		Type:      dd3.Type,
+		Timestamp: dd3.Timestamp,
+		From:      dd3.From,
+	})
+	return
+}
+
 func mockDeletedDentryTree2() DeletedDentryTree {
 	tree := NewBtree()
 

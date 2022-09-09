@@ -982,6 +982,7 @@ func validateCrcSum(typeIndex int, r []*proto.MetaDataCRCSumInfo, hosts []string
 }
 
 func newCheckInodeTree(mc *master.MasterClient) *cobra.Command {
+	var optInodeTreeType int
 	var cmd = &cobra.Command{
 		Use:   "check-inode-tree [META PARTITION ID]",
 		Short: "check inode tree",
@@ -1022,7 +1023,18 @@ func newCheckInodeTree(mc *master.MasterClient) *cobra.Command {
 					}
 					addr := fmt.Sprintf("%s:%v", hostSplitArr[0], mc.MetaNodeProfPort)
 					metaHttpClient := api.NewMetaHttpClient(addr, false)
-					r, e := metaHttpClient.GetInodesCrcSum(pid)
+					var (
+						r *proto.InodesCRCSumInfo
+						e error
+					)
+					switch optInodeTreeType{
+					case 0:
+						r, e = metaHttpClient.GetInodesCrcSum(pid)
+					case 1:
+						r, e = metaHttpClient.GetDelInodesCrcSum(pid)
+					default:
+						errout("error tree type:%v, must be 0 or 1, see help info", optInodeTreeType)
+					}
 					if e != nil {
 						errCh <- fmt.Errorf("get mp(%v) meta data crc sum from %s failed, error:%v", pid, addr, e)
 						return
@@ -1047,10 +1059,18 @@ func newCheckInodeTree(mc *master.MasterClient) *cobra.Command {
 				stdout("the crc sum are all the same\n")
 				return
 			}
-
+			switch optInodeTreeType {
+			case 0:
+				stdout("inode tree check result:\n")
+			case 1:
+				stdout("deleted inode tree check result:\n")
+			default:
+				return
+			}
 			validateInodes(resultSet, mpInfo.Hosts)
 		},
 	}
+	cmd.Flags().IntVar(&optInodeTreeType, "tree-type", 0, "Tree type [0:Inode Tree, 1:Delete Inode Tree]")
 	return cmd
 }
 

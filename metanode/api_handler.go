@@ -88,6 +88,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 
 	http.HandleFunc("/getMetaDataCrcSum", m.getMetaDataCrcSum)
 	http.HandleFunc("/getInodesCrcSum", m.getAllInodesCrcSum)
+	http.HandleFunc("/getDelInodesCrcSum", m.getAllDeletedInodesCrcSum)
 
 	http.HandleFunc("/startPartition", m.startPartition)
 	http.HandleFunc("/stopPartition", m.stopPartition)
@@ -174,12 +175,16 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["dentry_count"] = snap.Count(DentryType)
 	msg["multipart_count"] = snap.Count(MultipartType)
 	msg["extend_count"] = snap.Count(ExtendType)
+	msg["deleted_inode_count"] = snap.Count(DelInodeType)
+	msg["deleted_dentry_count"] = snap.Count(DelDentryType)
 	msg["free_list_count"] = mp.(*metaPartition).freeList.Len()
 	msg["trash_days"] = mp.(*metaPartition).config.TrashRemainingDays
 	msg["cursor"] = mp.GetCursor()
 	_, msg["leader"] = mp.IsLeader()
 	msg["apply_id"] = mp.GetAppliedID()
 	msg["raft_status"] = m.raftStore.RaftStatus(pid)
+	msg["trash_first_upd_time"] = mp.(*metaPartition).trashExpiresFirstUpdateTime
+	msg["now"] = time.Now()
 	resp.Data = msg
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(http.StatusOK)
@@ -1671,5 +1676,76 @@ func (m *MetaNode) getExtentsByDeletedInodeHandler(w http.ResponseWriter,
 
 	resp.Code = http.StatusSeeOther
 	resp.Msg = "OK"
+	return
+}
+
+func (m *MetaNode) getAllDeletedInodesCrcSum(w http.ResponseWriter, r *http.Request)  {
+	var (
+		err error
+		pid uint64
+		mp  MetaPartition
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getAllDeletedInodesCrcSum] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	snap := mp.GetSnapShot()
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = "meta partition snapshot is nil"
+		return
+	}
+	defer snap.Close()
+	var (
+		inodeCnt  = snap.Count(InodeType)
+		crcSumSet = make([]uint32, 0, inodeCnt)
+		delInodes = make([]uint64, 0, inodeCnt)
+		crc       = crc32.NewIEEE()
+	)
+	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
+		delIno := item.(*DeletedINode)
+		delIno.Inode.AccessTime = 0
+		var binary []byte
+		binary, err = delIno.Marshal()
+		if err != nil {
+			return false, err
+		}
+		delInodes = append(delInodes, delIno.Inode.Inode)
+		crcSumSet = append(crcSumSet, crc32.ChecksumIEEE(binary[0:]))
+		if _, err = crc.Write(binary); err != nil {
+			return false, fmt.Errorf("crc sum write failed:%v", err)
+		}
+		return true, nil
+	})
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Data = &proto.InodesCRCSumInfo{
+		PartitionID:     pid,
+		ApplyID:         snap.ApplyID(),
+		AllInodesCRCSum: crc.Sum32(),
+		InodesID:        delInodes,
+		CRCSumSet:       crcSumSet,
+	}
 	return
 }

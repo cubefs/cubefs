@@ -321,3 +321,22 @@ func (mc *MetaHttpClient) GetInodesCrcSum(pid uint64) (result *proto.InodesCRCSu
 	}
 	return
 }
+
+func (mc *MetaHttpClient) GetDelInodesCrcSum(pid uint64) (result *proto.InodesCRCSumInfo, err error) {
+	req := newAPIRequest(http.MethodGet, "/getDelInodesCrcSum")
+	req.params["pid"] = fmt.Sprintf("%v", pid)
+	var respData []byte
+	respData, err = mc.serveRequest(req)
+	if err != nil {
+		log.LogErrorf("err:%v,respData:%v\n", err, string(respData))
+		return
+	}
+
+	dec := json.NewDecoder(bytes.NewBuffer(respData))
+	result = &proto.InodesCRCSumInfo{}
+	if err = dec.Decode(result); err != nil {
+		log.LogErrorf("decode failed:%v", err)
+		return
+	}
+	return
+}

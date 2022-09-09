@@ -168,10 +168,13 @@ func (mp *metaPartition) startCleanTrashScheduler() {
 				}
 
 				if mp.trashExpiresFirstUpdateTime.IsZero() {
+					log.LogDebugf("mp[%v] trashExpiresFirstUpdateTime no update", mp.config.PartitionId)
 					continue
 				}
 
-				if time.Now().Before(mp.trashExpiresFirstUpdateTime.Add(intervalToUpdateAllVolsTrashDays + intervalToUpdateVolTrashExpires)) {
+				if time.Since(mp.trashExpiresFirstUpdateTime) < (intervalToUpdateAllVolsTrashDays + intervalToUpdateVolTrashExpires) {
+					log.LogDebugf("mp[%v] since trashExpiresFirstUpdateTime less than %v",
+						mp.config.PartitionId, intervalToUpdateAllVolsTrashDays + intervalToUpdateVolTrashExpires)
 					continue
 				}
 				err := mp.CleanExpiredDeletedDentry()
