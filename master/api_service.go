@@ -222,6 +222,14 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 	for zoneName, zoneStat := range m.cluster.zoneStatInfos {
 		cs.ZoneStatInfo[zoneName] = zoneStat
 	}
+	zoneTag, err := extractZoneTag(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if zoneTag != "" {
+		setSSDAndHDDStatByZoneTag(cs, zoneTag)
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(cs))
 }
 
@@ -3492,6 +3500,20 @@ func extractMedium(r *http.Request) (medium string, err error) {
 	}
 	if !(medium == mediumAll || medium == mediumSSD || medium == mediumHDD) {
 		err = fmt.Errorf("medium must be %v, %v or %v ", mediumAll, mediumSSD, mediumHDD)
+		return
+	}
+	return
+}
+
+func extractZoneTag(r *http.Request) (zoneTag string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if zoneTag = r.FormValue(zoneTagKey); zoneTag == "" {
+		return
+	}
+	if !(zoneTag == mediumSSD || zoneTag == mediumHDD) {
+		err = fmt.Errorf("zoneTag must be %v or %v ", mediumSSD, mediumHDD)
 		return
 	}
 	return

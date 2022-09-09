@@ -233,6 +233,8 @@ type ClusterStatInfo struct {
 	MetaNodeStatInfo *NodeStatInfo
 	EcNodeStatInfo   *NodeStatInfo
 	ZoneStatInfo     map[string]*ZoneStat
+	SSDZoneStatInfo  *ZoneStat `json:"SSDZoneStatInfo,omitempty"`
+	HDDZoneStatInfo  *ZoneStat `json:"HDDZoneStatInfo,omitempty"`
 }
 
 type ZoneStat struct {
@@ -247,6 +249,26 @@ type ZoneNodesStat struct {
 	TotalNodes         int
 	WritableNodes      int
 	HighUsedRatioNodes int
+}
+
+func (zoneStat *ZoneStat) Add(otherZoneStat *ZoneStat) {
+	if otherZoneStat == nil {
+		return
+	}
+	zoneStat.DataNodeStat.Add(otherZoneStat.DataNodeStat)
+	zoneStat.MetaNodeStat.Add(otherZoneStat.MetaNodeStat)
+}
+
+func (zoneNodesStat *ZoneNodesStat) Add(otherZoneNodesStat *ZoneNodesStat) {
+	if otherZoneNodesStat == nil {
+		return
+	}
+	zoneNodesStat.Total += otherZoneNodesStat.Total
+	zoneNodesStat.Used += otherZoneNodesStat.Used
+	zoneNodesStat.Avail += otherZoneNodesStat.Avail
+	zoneNodesStat.TotalNodes += otherZoneNodesStat.TotalNodes
+	zoneNodesStat.WritableNodes += otherZoneNodesStat.WritableNodes
+	zoneNodesStat.HighUsedRatioNodes += otherZoneNodesStat.HighUsedRatioNodes
 }
 
 type NodeStatInfo struct {

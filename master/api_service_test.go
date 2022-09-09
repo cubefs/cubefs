@@ -1070,6 +1070,15 @@ func TestClusterStat(t *testing.T) {
 	process(reqUrl, t)
 }
 
+func TestClusterStatWithZoneTag(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v?zoneTag=ssd", hostAddr, proto.AdminClusterStat)
+	fmt.Println(reqUrl)
+	process(reqUrl, t)
+	reqUrl = fmt.Sprintf("%v%v?zoneTag=hdd", hostAddr, proto.AdminClusterStat)
+	fmt.Println(reqUrl)
+	process(reqUrl, t)
+}
+
 func TestListVols(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?keywords=%v", hostAddr, proto.AdminListVols, commonVolName)
 	fmt.Println(reqURL)
