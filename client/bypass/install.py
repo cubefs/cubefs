@@ -43,7 +43,7 @@ if args.ignorePath is None:
 if args.readOnlyExclude is None:
     args.readOnlyExclude = ''
 
-os.system('mkdir -p {0}'.format(args.configDir))
+os.system('mkdir -p {0} && chmod 777 {0}'.format(args.configDir))
 with open('{0}/cfs_client.ini'.format(args.configDir), 'w') as f:
     f.write('mountPoint={0}\nignorePath={1}\nmasterAddr={2}\nvolName={3}\nowner={4}\nfollowerRead={5}\nlogDir={6}\nlogLevel={7}\napp={8}\nprofPort={9}\nmasterClient={10}\nreadOnlyExclude={11}\n'.format(args.mountPoint, args.ignorePath, args.masterAddr, args.volName, args.owner, args.followerRead, args.logDir, args.logLevel, args.app, args.profPort, args.masterClient, args.readOnlyExclude))
 
@@ -51,4 +51,4 @@ package = "http://storage.jd.local/dpgimage/libcfs_mysql/libcfs.tar.gz"
 if args.env == "test":
     package = "http://storage.jd.local/dpgimage/libcfs_mysql/libcfs_test.tar.gz"
 
-os.system('wget --quiet -O libcfs.tar.gz {0} && tar xzf libcfs.tar.gz && chmod 755 lib*.so && cp lib*.so {1} && mv lib*.so {2} && rm -f libcfs.tar.gz argparse.py*'.format(package, args.configDir, args.libDir))
+os.system('wget --quiet -O libcfs.tar.gz {0} && mkdir libcfs1 libcfs2 && tar -xzf libcfs.tar.gz -C libcfs1 && tar -xzf libcfs.tar.gz -C libcfs2 && chmod 755 libcfs1/* libcfs2/* && mv libcfs1/* {1} && mv libcfs2/* {2} && rm -rf libcfs.tar.gz argparse.py* libcfs1 libcfs2'.format(package, args.configDir, args.libDir))
