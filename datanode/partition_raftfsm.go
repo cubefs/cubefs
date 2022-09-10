@@ -33,23 +33,19 @@ import (
 // Apply puts the data onto the disk.
 func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	defer func() {
-		if err == nil || !IsSysErr(err) {
-			dp.advanceApplyID(index)
-		}
 		if err != nil {
-			if IsSysErr(err) {
-				msg := fmt.Sprintf("partition [id: %v, disk: %v] apply command [index: %v] occurred system error and will be stop: %v",
-					dp.partitionID, dp.Disk().Path, index, err)
-				log.LogErrorf(msg)
-				exporter.Warning(msg)
-				dp.Disk().space.DetachDataPartition(dp.partitionID)
-				dp.Disk().DetachDataPartition(dp)
-				dp.Stop()
-				return
-			}
-			log.LogWarnf("partition [id: %v, disk: %v] apply command [index: %v] failed: %v",
+			msg := fmt.Sprintf("partition [id: %v, disk: %v] apply command [index: %v] occurred error and will be stop: %v",
 				dp.partitionID, dp.Disk().Path, index, err)
+			log.LogErrorf(msg)
+			exporter.WarningCritical(msg)
+			dp.Disk().space.DetachDataPartition(dp.partitionID)
+			dp.Disk().DetachDataPartition(dp)
+			dp.Stop()
+			log.LogCritical("partition [id: %v, disk: %v] apply command [index: %v] failed and stopped: %v",
+				dp.partitionID, dp.Disk().Path, index, err)
+			return
 		}
+		dp.advanceApplyID(index)
 	}()
 	var opItem *rndWrtOpItem
 	if opItem, err = UnmarshalRandWriteRaftLog(command); err != nil {
@@ -66,13 +62,15 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
 		if err != nil {
-			msg := fmt.Sprintf("partition [id: %v, disk: %v] apply member change [index: %v] failed and will be stop: %v",
+			msg := fmt.Sprintf("partition [id: %v, disk: %v] apply member change [index: %v] occurred error and will be stop: %v",
 				dp.partitionID, dp.Disk().Path, index, err)
 			log.LogErrorf(msg)
-			exporter.Warning(msg)
+			exporter.WarningCritical(msg)
 			dp.Disk().space.DetachDataPartition(dp.partitionID)
 			dp.Disk().DetachDataPartition(dp)
 			dp.Stop()
+			log.LogCritical("partition [id: %v, disk: %v] apply member change [index: %v] failed and stopped: %v",
+				dp.partitionID, dp.Disk().Path, index, err)
 			return
 		}
 		dp.advanceApplyID(index)
