@@ -454,6 +454,8 @@ func (mp *metaPartition) selectRocksDBDir() (err error) {
 
 	dir, err = util.SelectDisk(mp.manager.rocksDBDirs)
 	if err != nil {
+		mp.config.RocksDBDir = mp.manager.rootDir
+		err = nil
 		return
 	}
 	mp.config.RocksDBDir = dir
