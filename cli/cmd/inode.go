@@ -148,7 +148,7 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				}
 				eks = data["eks"].([]interface{})
 			}
-			stdout("Summary of inodeExtentInfo  :\n%s\n", inodeExtentInfoTableHeader)
+			stdout("Summary of inodeExtentInfo  :\nEks length: %v\n%s\n", len(eks), inodeExtentInfoTableHeader)
 			var (
 				fileOffset float64
 				crc        float64

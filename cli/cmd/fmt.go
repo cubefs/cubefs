@@ -1130,3 +1130,23 @@ func formatCompactVolView(view *proto.CompactVolume) string {
 	return fmt.Sprintf(compactViewTableRowPattern, view.Name, view.Owner, view.ForceROW, view.CompactTag.Bool())
 }
 
+var checkVolViewTableRowPattern = "%-8v    %-63v    %-17v    %-8v"
+
+func formatCompactCheckVolViewTableHeader() string {
+	return fmt.Sprintf(checkVolViewTableRowPattern, "INDEX", "VOLUME", "CROSSREGIONHATYTE", "FORCEROW")
+}
+
+func formatCompactCheckVolView(index int, view *proto.SimpleVolView) string {
+	return fmt.Sprintf(checkVolViewTableRowPattern, index, view.Name, view.CrossRegionHAType, view.ForceROW)
+}
+
+var checkFragViewTableRowPattern = "%-63v    %-8v    %-8v    %-8v    %-8v    %-8v"
+
+func formatCompactCheckFragViewTableHeader() string {
+	return fmt.Sprintf(checkFragViewTableRowPattern, "VOLUME", "MPID", "INODEID", "EKLENGTH", "EKAVGSIZE", "INODESIZE")
+}
+
+func formatCompactCheckFragView(volName string, mpId, inodeId uint64, extLength int, ekAvgSize uint64, inodeSize uint64) string {
+	return fmt.Sprintf(checkFragViewTableRowPattern, volName, mpId, inodeId, extLength, ekAvgSize, inodeSize)
+}
+
