@@ -56,6 +56,24 @@ var (
 		proto.OpMetaExtentsList:     true,
 		proto.OpMetaInodeGetV2:      true,
 		proto.OpMetaReadDir:         true,
+
+		proto.OpMetaLookup:                    true,
+		proto.OpMetaBatchInodeGet:             true,
+		proto.OpMetaBatchGetXAttr:             true,
+		proto.OpMetaBatchUnlinkInode:          true,
+		proto.OpMetaBatchDeleteDentry:         true,
+		proto.OpMetaBatchEvictInode:           true,
+		proto.OpListMultiparts:                true,
+		proto.OpMetaGetCmpInode:               true,
+		proto.OpMetaInodeMergeEks:             true,
+		proto.OpMetaGetDeletedInode:           true,
+		proto.OpMetaBatchGetDeletedInode:      true,
+		proto.OpMetaRecoverDeletedDentry:      true,
+		proto.OpMetaBatchRecoverDeletedDentry: true,
+		proto.OpMetaRecoverDeletedInode:       true,
+		proto.OpMetaBatchRecoverDeletedInode:  true,
+		proto.OpMetaBatchCleanDeletedDentry:   true,
+		proto.OpMetaBatchCleanDeletedInode:    true,
 	}
 )
 
