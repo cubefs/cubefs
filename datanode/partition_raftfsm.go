@@ -139,6 +139,16 @@ func (dp *DataPartition) Snapshot(recoverNode uint64) (raftproto.Snapshot, error
 func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator, snapV uint32) (err error) {
 	// Never delete the raft log which hadn't applied, so snapshot no need.
 	log.LogInfof("PartitionID(%v) ApplySnapshot from(%v)", dp.partitionID, dp.raftPartition.CommittedIndex())
+	if dp.isCatchUp {
+		msg := fmt.Sprintf("partition [id: %v, disk: %v] triggers an illegal raft snapshot recover and will be stop for data safe",
+			dp.partitionID, dp.Disk().Path)
+		log.LogErrorf(msg)
+		exporter.WarningCritical(msg)
+		log.LogCritical(msg)
+	}
+	defer func() {
+		dp.isCatchUp = true
+	}()
 	for {
 		if _, err = iterator.Next(); err != nil {
 			if err != io.EOF {
@@ -195,5 +205,8 @@ func (dp *DataPartition) Del(key interface{}) (interface{}, error) {
 func (dp *DataPartition) advanceApplyID(applyID uint64) {
 	if snap, success := dp.applyStatus.AdvanceApplied(applyID); !success {
 		log.LogWarnf("Partition(%v) advance apply ID failed, curApplied[%v] curLastTruncate[%v]", dp.partitionID, snap.Applied(), snap.LastTruncate())
+	}
+	if !dp.isCatchUp {
+		dp.isCatchUp = true
 	}
 }

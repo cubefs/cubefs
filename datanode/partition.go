@@ -65,6 +65,12 @@ type DataPartitionMetadata struct {
 	LastTruncateID          uint64
 	LastUpdateTime          int64
 	VolumeHAType            proto.CrossRegionHAType
+
+	// 该BOOL值表示Partition是否已经就绪，该值默认值为false，
+	// 新创建的DP成员为默认值，表示未完成第一次Raft恢复，Raft未就绪。
+	// 当第一次快照或者有应用日志行为时，该值被置为true并需要持久化该信息。
+	// 当发生快照应用(Apply Snapshot)行为时，该值为true。该DP需要关闭并进行报警。
+	IsCatchUp bool
 }
 
 func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
@@ -79,7 +85,8 @@ func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
 			md.DataPartitionCreateType == other.DataPartitionCreateType &&
 			md.LastTruncateID == other.LastTruncateID &&
 			md.LastUpdateTime == other.LastUpdateTime &&
-			md.VolumeHAType == other.VolumeHAType)
+			md.VolumeHAType == other.VolumeHAType) &&
+			md.IsCatchUp == other.IsCatchUp
 }
 
 func (md *DataPartitionMetadata) Validate() (err error) {
@@ -195,6 +202,7 @@ type DataPartition struct {
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
 
+	isCatchUp    bool
 	applyStatus  *WALApplyStatus
 	minAppliedID uint64
 	maxAppliedID uint64
@@ -319,6 +327,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	}
 	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v)", dp.partitionID, meta)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
+	dp.isCatchUp = meta.IsCatchUp
 
 	if !dp.applyStatus.Init(appliedID, meta.LastTruncateID) {
 		err = fmt.Errorf("action[loadApplyIndex] illegal metadata, appliedID %v, lastTruncateID %v", appliedID, meta.LastTruncateID)

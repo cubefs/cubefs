@@ -114,6 +114,7 @@ func (dp *DataPartition) persistMetadata() (err error) {
 	metadata.DataPartitionCreateType = dp.DataPartitionCreateType
 	metadata.VolumeHAType = dp.config.VolHAType
 	metadata.LastUpdateTime = dp.lastUpdateTime
+	metadata.IsCatchUp = dp.isCatchUp
 	if metadata.CreateTime == "" {
 		metadata.CreateTime = time.Now().Format(TimeLayout)
 	}
