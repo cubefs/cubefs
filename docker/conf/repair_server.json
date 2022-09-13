@@ -1,0 +1,6 @@
+{
+  "prof": "6100",
+  "logDir": "/cfs/log",
+  "logLevel": "debug",
+  "taskDir": "/cfs/conf"
+}

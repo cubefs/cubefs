@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"bufio"
+	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -75,6 +77,69 @@ func rangeAllDataPartitions(limit uint64, specifyVols []string, specifyIds []uin
 		doAfterVolumeFunc(volume)
 	}
 }
+//format: "partitionId extentId host"
+func loadRepairExtents() (extentsMap map[string]map[uint64]map[uint64]bool) {
+	extentsMap = make(map[string]map[uint64]map[uint64]bool, 0)
+	buf := make([]byte, 2048)
+	idsF, err := os.OpenFile("repair_extents", os.O_RDONLY, 0666)
+	if err != nil {
+		return
+	}
+	defer idsF.Close()
+	o := bufio.NewReader(idsF)
+	for {
+		buf, _, err = o.ReadLine()
+		if err == io.EOF {
+			break
+		}
+		dpExtents := strings.Split(string(buf), " ")
+		if len(dpExtents) < 3 {
+			stdout("invalid dpExtent: %v", dpExtents)
+			continue
+		}
+		var pid, eid uint64
+		var host string
+		pid, err = strconv.ParseUint(dpExtents[0], 10, 64)
+		if err != nil {
+			stdout("invalid dp: %v", dpExtents[0])
+			continue
+		}
+		eid, err = strconv.ParseUint(dpExtents[1], 10, 64)
+		if err != nil {
+			stdout("invalid extent: %v", dpExtents[1])
+			continue
+		}
+		host = dpExtents[2]
+		if pid > 0 && eid > 0 {
+			if _, ok := extentsMap[host]; !ok {
+				extentsMap[host] = make(map[uint64]map[uint64]bool, 0)
+			}
+			if _, ok := extentsMap[host][pid]; !ok {
+				extentsMap[host][pid] = make(map[uint64]bool, 0)
+			}
+			extentsMap[host][pid][eid] = true
+		}
+	}
+
+	ekMap := make(map[string]string, 0)
+	for k, v := range extentsMap {
+		for pid, exts := range v {
+			for e := range exts {
+				ekStr := fmt.Sprintf("%d-%d", pid, e)
+				if h, ok := ekMap[ekStr]; !ok {
+					ekMap[ekStr] = k
+				} else {
+					delete(exts, e)
+					if _, exist := extentsMap[h][pid][e]; exist {
+						delete(extentsMap[h][pid], e)
+					}
+					fmt.Printf("found duplicate error extent:%v %v %v\n", ekStr, h, k)
+				}
+			}
+		}
+	}
+	return
+}
 func loadSpecifiedPartitions() (ids []uint64) {
 	ids = make([]uint64, 0)
 	buf := make([]byte, 2048)
@@ -95,10 +160,13 @@ func loadSpecifiedPartitions() (ids []uint64) {
 	return
 }
 
-func loadSpecifiedVolumes() (vols []string) {
-	volsF, _ := os.OpenFile("vols", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+
+func loadSpecifiedVolumes(volFilter, volExcludeFilter string) (vols []string) {
+	volsF, err := os.OpenFile("vols", os.O_RDONLY, 0666)
+	if err != nil {
+		return
+	}
 	defer volsF.Close()
-	var err error
 	r := bufio.NewReader(volsF)
 	vols = make([]string, 0)
 	buf := make([]byte, 2048)
@@ -106,6 +174,16 @@ func loadSpecifiedVolumes() (vols []string) {
 		buf, _, err = r.ReadLine()
 		if err == io.EOF {
 			break
+		}
+		if volFilter != "" {
+			if !strings.Contains(string(buf), volFilter) {
+				continue
+			}
+		}
+		if volExcludeFilter != "" {
+			if strings.Contains(string(buf), volExcludeFilter) {
+				continue
+			}
 		}
 		vols = append(vols, string(buf))
 	}

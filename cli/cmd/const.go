@@ -148,6 +148,7 @@ const (
 	CliFlagMaxCodecConcurrent  = "maxCodecConcurrent"
 	CliResourceEcNode          = "ecnode"
 	CliResourceCodecnodeNode   = "codecnode"
+	CliOpCheckReplica          = "check-replica"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

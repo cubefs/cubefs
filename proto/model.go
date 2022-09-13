@@ -369,15 +369,6 @@ type ExtentInfo struct {
 	Source     string `json:"src"`
 }
 
-type ExtentInfoBlock [4]uint64
-
-const (
-	ExtentInfoFileID = iota
-	ExtentInfoSize
-	ExtentInfoCrc
-	ExtentInfoModifyTime
-)
-
 // Status raft status
 type Status struct {
 	ID                uint64

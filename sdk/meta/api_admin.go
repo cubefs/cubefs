@@ -68,7 +68,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	}
 	var url = fmt.Sprintf("%s://%s%s", schema, c.host, r.path)
 	resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
-	log.LogInfof("resp %v,err %v", resp, err)
+
 	if err != nil {
 		log.LogErrorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
 		return
@@ -94,7 +94,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 		}
 		// o represent proto.ErrCodeSuccess
 		if body.Code != http.StatusOK && body.Code != http.StatusSeeOther {
-			return nil, fmt.Errorf("%v:%s", body.Code, body.Msg)
+			return nil, fmt.Errorf("%v:%s", proto.ParseErrorCode(body.Code), body.Msg)
 		}
 		return []byte(body.Data), nil
 	default:
@@ -163,7 +163,6 @@ func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (resp *GetMPInfoResp, err
 		if err != nil {
 			log.LogErrorf("action[GetMetaPartition],pid:%v,err:%v", pid, err)
 		}
-		log.LogFlush()
 	}()
 	req := newAPIRequest(http.MethodGet, "/getPartitionById")
 	req.addParam("pid", fmt.Sprintf("%v", pid))
@@ -184,7 +183,6 @@ func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*proto.
 		if err != nil {
 			log.LogErrorf("action[GetAllDentry],pid:%v,err:%v", pid, err)
 		}
-		log.LogFlush()
 	}()
 	dentryMap = make(map[string]*proto.MetaDentry, 0)
 	req := newAPIRequest(http.MethodGet, "/getAllDentry")
@@ -235,18 +233,15 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*proto.Met
 		if err != nil {
 			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
 		}
-		log.LogFlush()
 	}()
 
 	inodeMap := make(map[uint64]*proto.MetaInode, 0)
 	req := newAPIRequest(http.MethodGet, "/getAllInodes")
 	req.addParam("pid", fmt.Sprintf("%v", pid))
 	respData, err := mc.serveRequest(req)
-	log.LogInfof("err:%v,respData:%v\n", err, string(respData))
 	if err != nil {
 		return
 	}
-
 	dec := json.NewDecoder(bytes.NewBuffer(respData))
 	dec.UseNumber()
 
@@ -276,7 +271,6 @@ func (mc *MetaHttpClient) ResetCursor(pid uint64, resetType string, newCursor ui
 		if err != nil {
 			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
 		}
-		log.LogFlush()
 	}()
 
 	resp = &proto.CursorResetResponse{}
@@ -307,7 +301,6 @@ func (mc *MetaHttpClient) ListAllInodesId(pid uint64, mode uint32, stTime, endTi
 		if err != nil {
 			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
 		}
-		log.LogFlush()
 	}()
 
 	resp = &proto.MpAllInodesId{}
@@ -392,6 +385,29 @@ func (mc *MetaHttpClient) GetExtentKeyByInodeId(metaPartitionId, inode uint64) (
 	result = new(proto.GetExtentsResponse)
 	if err = json.Unmarshal(data, &result); err != nil {
 		err = errors.NewErrorf("data:%s unmarshal extents key failed: %v", string(data), err)
+		return
+	}
+	return
+}
+
+func (mc *MetaHttpClient) GetExtentsByInode(mpId uint64, inode uint64) (re *proto.GetExtentsResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[getExtentsByInode],pid:%v, inode:%v,err:%v", mpId, inode, err)
+		}
+	}()
+
+	re = &proto.GetExtentsResponse{}
+	req := newAPIRequest(http.MethodGet, "/getExtentsByInode")
+	req.addParam("pid", fmt.Sprintf("%v", mpId))
+	req.addParam("ino", fmt.Sprintf("%v", inode))
+	respData, err := mc.serveRequest(req)
+	//fmt.Printf("err:%v,respData:%v\n", err, string(respData))
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(respData, re)
+	if err != nil {
 		return
 	}
 	return

@@ -1,0 +1,44 @@
+{
+  "task_list": [
+    {
+      "task_id": 1,
+      "cluster_info": {
+        "master": "192.168.0.11:17010",
+        "dn_prof": 17320,
+        "mn_prof": 17220
+      },
+      "modify_time_min": "1970-01-02 15:04:05",
+      "modify_time_max": "2022-09-30 15:04:05",
+      "limit_level": 5,
+      "repair_type": 1,
+      "filter": {
+        "vol_filter": "ltptest",
+        "vol_exclude_filter": ""
+      },
+      "frequency": {
+        "interval": 1,
+        "execute_count": 0
+      }
+    },
+    {
+      "task_id": 2,
+      "cluster_info": {
+        "master": "192.168.0.11:17010",
+        "dn_prof": 17320,
+        "mn_prof": 17220
+      },
+      "limit_level": 5,
+      "repair_type": 0,
+      "filter": {
+        "vol_filter": "ltptest",
+        "vol_exclude_filter": ""
+      },
+      "modify_time_max": "2022-09-30 15:04:05",
+      "node_address": "192.168.0.32:17310",
+      "frequency": {
+        "interval": 1,
+        "execute_count": 0
+      }
+    }
+  ]
+}

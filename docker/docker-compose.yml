@@ -625,6 +625,8 @@ services:
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
             - ./conf/bypass.ini:/usr/lib64/bypass.ini:ro
+            - ./conf/task.json:/cfs/conf/task.json
+            - ./conf/repair_server.json:/cfs/conf/repair_server.json
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
             - ./script/run_test.sh:/cfs/script/start.sh

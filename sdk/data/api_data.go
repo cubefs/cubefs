@@ -59,16 +59,16 @@ func NewDataHttpClient(host string, useSSL bool) *DataHttpClient {
 	return &DataHttpClient{host: host, useSSL: useSSL}
 }
 
-func (c *DataHttpClient) serveRequest(r *request) (respData []byte, err error) {
+func (dc *DataHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	var resp *http.Response
 	var schema string
-	if c.useSSL {
+	if dc.useSSL {
 		schema = "https"
 	} else {
 		schema = "http"
 	}
-	var url = fmt.Sprintf("%s://%s%s", schema, c.host, r.path)
-	resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
+	var url = fmt.Sprintf("%s://%s%s", schema, dc.host, r.path)
+	resp, err = dc.httpRequest(r.method, url, r.params, r.header, r.body)
 	log.LogDebugf("resp %v,err %v", resp, err)
 	if err != nil {
 		log.LogErrorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
@@ -98,21 +98,44 @@ func (c *DataHttpClient) serveRequest(r *request) (respData []byte, err error) {
 			return nil, proto.ParseErrorCode(body.Code)
 		}
 		return []byte(body.Data), nil
+	case http.StatusBadRequest:
+		var body = &struct {
+			Code int32           `json:"code"`
+			Msg  string          `json:"msg"`
+			Data json.RawMessage `json:"data"`
+		}{}
+
+		if err = json.Unmarshal(respData, body); err != nil {
+			return nil, fmt.Errorf("unmarshal response body err:%v", err)
+		}
+		return nil, fmt.Errorf("%s:%s", proto.ParseErrorCode(body.Code), body.Msg)
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("404 page:%s not found", r.path)
+	case http.StatusInternalServerError:
+		var body = &struct {
+			Code int32           `json:"code"`
+			Msg  string          `json:"msg"`
+			Data json.RawMessage `json:"data"`
+		}{}
+		if err = json.Unmarshal(respData, body); err != nil {
+			return nil, fmt.Errorf("unmarshal response body err:%v", err)
+		}
+		return nil, fmt.Errorf("%v", body.Msg)
 	default:
 		errMsg := fmt.Sprintf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
-			resp.Request.URL.String(), c.host, stateCode, strings.Replace(string(respData), "\n", "", -1))
+			resp.Request.URL.String(), dc.host, stateCode, strings.Replace(string(respData), "\n", "", -1))
 		err = fmt.Errorf(errMsg)
 		log.LogErrorf(errMsg)
 	}
 	return
 }
 
-func (c *DataHttpClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
+func (dc *DataHttpClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
 	client := http.DefaultClient
 	reader := bytes.NewReader(reqData)
 	client.Timeout = requestTimeout
 	var req *http.Request
-	fullUrl := c.mergeRequestUrl(url, param)
+	fullUrl := dc.mergeRequestUrl(url, param)
 	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
 	if req, err = http.NewRequest(method, fullUrl, reader); err != nil {
 		return
@@ -126,7 +149,7 @@ func (c *DataHttpClient) httpRequest(method, url string, param, header map[strin
 	return
 }
 
-func (c *DataHttpClient) mergeRequestUrl(url string, params map[string]string) string {
+func (dc *DataHttpClient) mergeRequestUrl(url string, params map[string]string) string {
 	if params != nil && len(params) > 0 {
 		buff := bytes.NewBuffer([]byte(url))
 		isFirstParam := true
@@ -146,12 +169,12 @@ func (c *DataHttpClient) mergeRequestUrl(url string, params map[string]string) s
 	return url
 }
 
-func (c *DataHttpClient) RequestHttp(method, path string, param map[string]string) (respData []byte, err error) {
+func (dc *DataHttpClient) RequestHttp(method, path string, param map[string]string) (respData []byte, err error) {
 	req := newAPIRequest(method, path)
 	for k, v := range param {
 		req.addParam(k, v)
 	}
-	return c.serveRequest(req)
+	return dc.serveRequest(req)
 }
 
 func (dc *DataHttpClient) ComputeExtentMd5(partitionID, extentID, offset, size uint64) (md5 string, err error){
@@ -159,7 +182,6 @@ func (dc *DataHttpClient) ComputeExtentMd5(partitionID, extentID, offset, size u
 		if err != nil {
 			log.LogErrorf("action[ComputeExtentMd5],pid:%v, extent:%v, offset:%v, size:%v, err:%v", partitionID, extentID, offset, size, err)
 		}
-		log.LogFlush()
 	}()
 	var buf []byte
 	req := newAPIRequest(http.MethodGet, "/computeExtentMd5")
@@ -180,11 +202,31 @@ func (dc *DataHttpClient) ComputeExtentMd5(partitionID, extentID, offset, size u
 	return
 }
 
-//DataNode api
-func (c *DataHttpClient) GetPartitionsFromNode() (partitions *proto.DataPartitions, err error) {
+func (dc *DataHttpClient) GetDisks() (diskInfo *proto.DataNodeDiskReport, err error){
 	var d []byte
 	for i := 0; i < 3; i++ {
-		d, err = c.RequestHttp(http.MethodGet, "/partitions", nil)
+		req := newAPIRequest(http.MethodGet, "/disks")
+		d, err = dc.serveRequest(req)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	diskInfo = new(proto.DataNodeDiskReport)
+	if err = json.Unmarshal(d, diskInfo); err != nil {
+		return
+	}
+	return
+}
+
+//DataNode api
+func (dc *DataHttpClient) GetPartitionsFromNode() (partitions *proto.DataPartitions, err error) {
+	var d []byte
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/partitions", nil)
 		if err == nil {
 			break
 		}
@@ -200,12 +242,12 @@ func (c *DataHttpClient) GetPartitionsFromNode() (partitions *proto.DataPartitio
 	return
 }
 
-func (c *DataHttpClient) GetPartitionFromNode(id uint64) (pInfo *proto.DNDataPartitionInfo, err error) {
+func (dc *DataHttpClient) GetPartitionFromNode(id uint64) (pInfo *proto.DNDataPartitionInfo, err error) {
 	params := make(map[string]string)
 	params["id"] = strconv.FormatUint(id, 10)
 	var d []byte
 	for i := 0; i < 3; i++ {
-		d, err = c.RequestHttp(http.MethodGet, "/partition", params)
+		d, err = dc.RequestHttp(http.MethodGet, "/partition", params)
 		if err == nil {
 			break
 		}
@@ -215,19 +257,35 @@ func (c *DataHttpClient) GetPartitionFromNode(id uint64) (pInfo *proto.DNDataPar
 		return
 	}
 	pInfo = new(proto.DNDataPartitionInfo)
-	if err = json.Unmarshal(d, pInfo); err != nil {
+	pInfoOld := new(proto.DNDataPartitionInfoOldVersion)
+	if err = json.Unmarshal(d, pInfoOld); err != nil {
+		if err = json.Unmarshal(d, pInfo); err != nil {
+			return
+		}
 		return
 	}
+	for _, ext := range pInfoOld.Files {
+		extent := proto.ExtentInfoBlock{
+			ext.FileID,
+			ext.Size,
+			uint64(ext.Crc),
+			uint64(ext.ModifyTime),
+		}
+		pInfo.Files = append(pInfo.Files, extent)
+	}
+	pInfo.RaftStatus = pInfoOld.RaftStatus
+	pInfo.Path = pInfoOld.Path
+	pInfo.VolName = pInfoOld.VolName
 	return
 }
 
-func (c *DataHttpClient) GetExtentHoles(id uint64, eid uint64) (ehs *proto.DNTinyExtentInfo, err error) {
+func (dc *DataHttpClient) GetExtentHoles(id uint64, eid uint64) (ehs *proto.DNTinyExtentInfo, err error) {
 	params := make(map[string]string)
 	params["partitionID"] = strconv.FormatUint(id, 10)
 	params["extentID"] = strconv.FormatUint(eid, 10)
 	var d []byte
 	for i := 0; i < 3; i++ {
-		d, err = c.RequestHttp(http.MethodGet, "/tinyExtentHoleInfo", params)
+		d, err = dc.RequestHttp(http.MethodGet, "/tinyExtentHoleInfo", params)
 		if err == nil {
 			break
 		}
@@ -243,26 +301,7 @@ func (c *DataHttpClient) GetExtentHoles(id uint64, eid uint64) (ehs *proto.DNTin
 	return
 }
 
-func (c *DataHttpClient) GetExtentInfo(id uint64, eid uint64) (ehs *proto.ExtentInfoBlock, err error) {
-	params := make(map[string]string)
-	params["partitionID"] = strconv.FormatUint(id, 10)
-	params["extentID"] = strconv.FormatUint(eid, 10)
-	var d []byte
-	d, err = c.RequestHttp(http.MethodGet, "/extent", params)
-	if err != nil {
-		return
-	}
-	ehs = new(proto.ExtentInfoBlock)
-	if err = json.Unmarshal(d, ehs); err != nil {
-		return
-	}
-	if len(ehs) < 4 {
-		err = fmt.Errorf("extent block info loss")
-	}
-	return
-}
-
-func (c *DataHttpClient) StopPartition(pid uint64) (err error) {
+func (dc *DataHttpClient) StopPartition(pid uint64) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[StopPartition],pid:%v,err:%v", pid, err)
@@ -271,7 +310,7 @@ func (c *DataHttpClient) StopPartition(pid uint64) (err error) {
 	}()
 	req := newAPIRequest(http.MethodGet, "/stopPartition")
 	req.addParam("partitionID", fmt.Sprintf("%v", pid))
-	_, err = c.serveRequest(req)
+	_, err = dc.serveRequest(req)
 	log.LogInfof("action[StopPartition],pid:%v,:%v", pid, err)
 	if err != nil {
 		return
@@ -279,7 +318,7 @@ func (c *DataHttpClient) StopPartition(pid uint64) (err error) {
 	return
 }
 
-func (c *DataHttpClient) ReLoadPartition(partitionDirName, dirPath string) (err error) {
+func (dc *DataHttpClient) ReLoadPartition(partitionDirName, dirPath string) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[ReLoadPartition],pid:%v,err:%v", partitionDirName, err)
@@ -289,7 +328,7 @@ func (c *DataHttpClient) ReLoadPartition(partitionDirName, dirPath string) (err 
 	req := newAPIRequest(http.MethodGet, "/reloadPartition")
 	req.addParam("partitionPath", partitionDirName)
 	req.addParam("disk", dirPath)
-	_, err = c.serveRequest(req)
+	_, err = dc.serveRequest(req)
 	log.LogInfof("action[ReLoadPartition],pid:%v,err:%v", partitionDirName, err)
 	if err != nil {
 		return
@@ -297,16 +336,72 @@ func (c *DataHttpClient) ReLoadPartition(partitionDirName, dirPath string) (err 
 	return
 }
 
+func (dc *DataHttpClient) GetExtentBlockCrc(id uint64, eid uint64) (blocks []*proto.BlockCrc, err error) {
+	var d []byte
+	for i := 0; i < 3; i++ {
+		req := newAPIRequest(http.MethodGet, "/block")
+		req.addParam("partitionID", strconv.FormatUint(id, 10))
+		req.addParam("extentID", strconv.FormatUint(eid, 10))
+		d, err = dc.serveRequest(req)
+		if err == nil {
+			break
+		}
+		if strings.Contains(err.Error(), "extent does not exist") {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	blocks = make([]*proto.BlockCrc, 0)
+	if err = json.Unmarshal(d, &blocks); err != nil {
+		return
+	}
+	return
+}
 
-//repair agent
-func (c *DataHttpClient) RepairExtent(extent uint64, partitionPath string, partition uint64) (err error) {
+func (dc *DataHttpClient) GetExtentInfo(id uint64, eid uint64) (ehs *proto.ExtentInfoBlock, err error) {
+	var d []byte
+	for i := 0; i < 3; i++ {
+		req := newAPIRequest(http.MethodGet, "/extent")
+		req.addParam("partitionID", strconv.FormatUint(id, 10))
+		req.addParam("extentID", strconv.FormatUint(eid, 10))
+		d, err = dc.serveRequest(req)
+		if err == nil {
+			break
+		}
+		if strings.Contains(err.Error(), "extent does not exist") || strings.Contains(err.Error(), "404 page") {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	ehs = new(proto.ExtentInfoBlock)
+	ehsOld := new(proto.ExtentInfo)
+	if err = json.Unmarshal(d, ehs); err != nil {
+		if err = json.Unmarshal(d, ehsOld); err != nil {
+			return
+		}
+		return
+	}
+	ehs[proto.ExtentInfoFileID] = ehsOld.FileID
+	ehs[proto.ExtentInfoSize] = ehsOld.Size
+	ehs[proto.ExtentInfoModifyTime] = uint64(ehsOld.ModifyTime)
+	ehs[proto.ExtentInfoCrc] = uint64(ehsOld.Crc)
+	return
+}
+
+func (dc *DataHttpClient) RepairExtent(extent uint64, partitionPath string, partition uint64) (err error) {
 	params := make(map[string]string)
 	params["partition"] = strconv.FormatUint(partition, 10)
 	params["path"] = partitionPath
 	params["extent"] = strconv.FormatUint(extent, 10)
 
 	for i := 0; i < 3; i++ {
-		_, err = c.RequestHttp(http.MethodGet, "/repairExtent", params)
+		_, err = dc.RequestHttp(http.MethodGet, "/repairExtent", params)
 		if err == nil {
 			break
 		}
@@ -318,16 +413,17 @@ func (c *DataHttpClient) RepairExtent(extent uint64, partitionPath string, parti
 	return
 }
 
-//extents split by '-'
-//path is like '/data6/datapartition_190_128849018880
-func (c *DataHttpClient) RepairExtentBatch(extents, partitionPath string, partition uint64) (exts map[uint64]string, err error) {
+//RepairExtentBatch
+//extent: split by '-'
+//path: /data6/datapartition_190_128849018880
+func (dc *DataHttpClient) RepairExtentBatch(extents, partitionPath string, partition uint64) (exts map[uint64]string, err error) {
 	params := make(map[string]string)
 	params["partition"] = strconv.FormatUint(partition, 10)
 	params["path"] = partitionPath
 	params["extent"] = extents
 	d := make([]byte, 0)
 	for i := 0; i < 3; i++ {
-		d, err = c.RequestHttp(http.MethodGet, "/repairExtentBatch", params)
+		d, err = dc.RequestHttp(http.MethodGet, "/repairExtentBatch", params)
 		if err == nil {
 			break
 		}
@@ -345,12 +441,12 @@ func (c *DataHttpClient) RepairExtentBatch(extents, partitionPath string, partit
 
 //datanodeAgent api
 
-func (c *DataHttpClient) FetchExtentsCrc(partitionPath string) (extentsMap map[uint64]*proto.ExtentInfoBlock, err error) {
+func (dc *DataHttpClient) FetchExtentsCrc(partitionPath string) (extentsMap map[uint64]*proto.ExtentInfoBlock, err error) {
 	d := make([]byte, 0)
 	for i := 0; i < 3; i++ {
 		req := newAPIRequest(http.MethodGet, "/fetchExtentsCrc")
 		req.addParam("path", partitionPath)
-		d, err = c.serveRequest(req)
+		d, err = dc.serveRequest(req)
 		if err == nil {
 			break
 		}

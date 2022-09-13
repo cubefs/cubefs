@@ -140,6 +140,13 @@ start_client() {
     exit 1
 }
 
+start_repair_server() {
+    echo -n "Starting repair server   ... "
+    /cfs/bin/repair_server -c /cfs/conf/repair_server.json
+    echo -e "\033[31m fail\033[0m"
+    exit 1
+}
+
 init_cli
 check_cluster
 create_cluster_user
@@ -148,4 +155,5 @@ ensure_node_writable "datanode"
 create_volume
 show_cluster_info
 start_client
+start_repair_server
 
