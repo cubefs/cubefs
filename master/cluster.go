@@ -1350,10 +1350,10 @@ func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*Met
 }
 
 func (c *Cluster) decommissionCancel(dataNode *DataNode) (err error) {
-	if dataNode.ToBeOffline == false {
-		log.LogInfof("action[decommissionCancel] dataNode is not on offline %v", dataNode.Addr)
-		return
-	}
+	// if dataNode.ToBeOffline {
+	// 	log.LogInfof("action[decommissionCancel] dataNode is not on offline %v", dataNode.Addr)
+	// 	return
+	// }
 	partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
 	for _, dp := range partitions {
 		if dp.isSpecialReplicaCnt() && dp.SingleDecommissionStatus > 0 {
