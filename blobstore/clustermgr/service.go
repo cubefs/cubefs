@@ -37,7 +37,7 @@ func (s *Service) ServiceGet(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept ServiceGet request, args: %v", args)
+	span.Debugf("accept ServiceGet request, args: %v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
 		span.Errorf("read index error: %v", err)
@@ -55,7 +55,7 @@ func (s *Service) ServiceRegister(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept ServiceRegister request, args: %v", args)
+	span.Debugf("accept ServiceRegister request, args: %v", args)
 
 	if proto.ClusterID(args.ClusterID) != s.ClusterID {
 		span.Warnf("register service clusterID:%d not match", args.ClusterID)
@@ -115,7 +115,7 @@ func (s *Service) ServiceUnregister(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept ServiceUnregister request, args: %v", args)
+	span.Debugf("accept ServiceUnregister request, args: %v", args)
 
 	if !s.ServiceMgr.IsRegistered(args.Name, args.Host) {
 		span.Warnf("service %#v not exist", args)
@@ -148,7 +148,7 @@ func (s *Service) ServiceHeartbeat(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept ServiceHeartbeat request, args: %v", args)
+	span.Debugf("accept ServiceHeartbeat request, args: %v", args)
 
 	if !s.ServiceMgr.IsRegistered(args.Name, args.Host) {
 		span.Warnf("service %#v not exist", args)

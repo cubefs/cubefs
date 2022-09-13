@@ -87,6 +87,7 @@ var errCodeMap = map[int]string{
 	CodeDroppedDiskHasVolumeUnit:  "dropped disk still has volume unit remain, migrate them firstly",
 	CodeNotSupportIdle:            "list volume v2 not support idle status",
 	CodeDiskIsDropping:            "dropping disk not allow change state or set readonly",
+	CodeRejectDeleteSystemConfig:  "reject delete system config",
 
 	// background
 	CodeNotingTodo:                   "nothing to do",

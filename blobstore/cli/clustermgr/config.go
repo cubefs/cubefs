@@ -16,7 +16,6 @@ package clustermgr
 
 import (
 	"net/http"
-	"sort"
 
 	"github.com/desertbit/grumble"
 
@@ -33,28 +32,11 @@ func cmdGetConfig(c *grumble.Context) error {
 	ctx := common.CmdContext()
 	verbose := flags.Verbose(c.Flags)
 	key := c.Args.String("key")
-	if key != "" {
-		value, err := cli.GetConfig(ctx, key)
-		if err != nil {
-			return err
-		}
-		showConfig(key, value, verbose)
-		return nil
-	}
-
-	all, err := cli.ListConfig(ctx)
+	value, err := cli.GetConfig(ctx, key)
 	if err != nil {
 		return err
 	}
-	keys := make([]string, 0, len(all.Configs))
-	for key := range all.Configs {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		showConfig(key, all.Configs[key], verbose)
-	}
+	showConfig(key, value, verbose)
 	return nil
 }
 

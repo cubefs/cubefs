@@ -21,11 +21,12 @@ import (
 	"os"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
@@ -35,14 +36,14 @@ func TestConfigMgr_Others(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	normalDB, err := normaldb.OpenNormalDB(testDir, false)
-	require.NoError(t, err)
+	ctr := gomock.NewController(t)
+	mockKvMgr := mock.NewMockKvMgrAPI(ctr)
 
 	cfMap := map[string]interface{}{
 		"forbid_sync_config": false,
 	}
 
-	configmgr, err := New(normalDB, cfMap)
+	configmgr, err := New(mockKvMgr, cfMap)
 	require.NoError(t, err)
 
 	testModuleName := "configMgr"
@@ -63,14 +64,16 @@ func TestConfigMgr_Apply(t *testing.T) {
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 
-	normalDB, err := normaldb.OpenNormalDB(testDir, false)
-	require.NoError(t, err)
+	ctr := gomock.NewController(t)
+	mockKvMgr := mock.NewMockKvMgrAPI(ctr)
+	mockKvMgr.EXPECT().Set(gomock.Any(), gomock.Any()).Return(nil)
+	mockKvMgr.EXPECT().Delete(gomock.Any()).Return(nil)
 
 	cfMap := map[string]interface{}{
 		"forbid_sync_config": false,
 	}
 
-	configmgr, err := New(normalDB, cfMap)
+	configmgr, err := New(mockKvMgr, cfMap)
 	require.NoError(t, err)
 
 	// OperTypeSetConfig error

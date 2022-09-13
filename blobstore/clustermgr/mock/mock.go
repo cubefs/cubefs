@@ -16,6 +16,7 @@ package mock
 
 // github.com/cubefs/cubefs/blobstore/clustermgr/... module clustermgr interfaces
 //go:generate mockgen -destination=../base/raftproto_mock_test.go -package=base -mock_names RaftApplier=MockRaftApplier github.com/cubefs/cubefs/blobstore/clustermgr/base RaftApplier
+//go:generate mockgen -destination=./kvmgr.go -package=mock -mock_names KvMgrAPI=MockKvMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr KvMgrAPI
 //go:generate mockgen -destination=./configmgr.go -package=mock -mock_names ConfigMgrAPI=MockConfigMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/configmgr ConfigMgrAPI
 //go:generate mockgen -destination=./scopemgr.go -package=mock -mock_names ScopeMgrAPI=MockScopeMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/scopemgr ScopeMgrAPI
 //go:generate mockgen -destination=../volumemgr/diskmgr_mock_test.go -package=volumemgr -mock_names DiskMgrAPI=MockDiskMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr DiskMgrAPI

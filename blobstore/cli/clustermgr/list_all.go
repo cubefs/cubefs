@@ -21,7 +21,9 @@ import (
 
 	"github.com/desertbit/grumble"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
@@ -59,6 +61,7 @@ func addCmdListAllDB(cmd *grumble.Command) {
 func cmdListAllDB(c *grumble.Context) error {
 	volumeDBPath := c.Args.String("volumeDBPath")
 	normalDBPath := c.Args.String("normalDBPath")
+	kvDBPath := c.Args.String("kvDBPath")
 	if volumeDBPath == "" || normalDBPath == "" {
 		return errors.New("invalid command arguments")
 	}
@@ -73,6 +76,11 @@ func cmdListAllDB(c *grumble.Context) error {
 		return err
 	}
 	defer normalDB.Close()
+	kvDB, err := openKvDB(kvDBPath, false)
+	if err != nil {
+		return err
+	}
+	defer kvDB.Close()
 
 	volumeTbl, err := volumedb.OpenVolumeTable(volumeDB)
 	if err != nil {
@@ -91,17 +99,6 @@ func cmdListAllDB(c *grumble.Context) error {
 	}
 	fmt.Println("list disk: ")
 	err = listAllDisks(diskTbl)
-	if err != nil {
-		return err
-	}
-	fmt.Println()
-
-	configTbl, err := normaldb.OpenConfigTable(normalDB)
-	if err != nil {
-		return err
-	}
-	fmt.Println("list config: ")
-	err = listAllConfigs(configTbl)
 	if err != nil {
 		return err
 	}
@@ -135,6 +132,17 @@ func cmdListAllDB(c *grumble.Context) error {
 	}
 	fmt.Println("list service: ")
 	err = listAllServices(serviceTbl)
+	if err != nil {
+		return err
+	}
+	fmt.Println()
+
+	kvTbl, err := kvdb.OpenKvTable(kvDB)
+	if err != nil {
+		return err
+	}
+	fmt.Println("list kv: ")
+	err = listAllKvs(kvTbl)
 	if err != nil {
 		return err
 	}
@@ -197,15 +205,6 @@ func listAllDisks(tbl *normaldb.DiskTable) error {
 	return nil
 }
 
-func listAllConfigs(tbl *normaldb.ConfigTable) error {
-	list, err := tbl.List()
-	if err != nil {
-		return fmt.Errorf("list disk failed, err: %s", err.Error())
-	}
-	fmt.Println(list)
-	return nil
-}
-
 func listAllDroppingDisks(tbl *normaldb.DroppedDiskTable) error {
 	list, err := tbl.GetAllDroppingDisk()
 	if err != nil {
@@ -239,4 +238,23 @@ func listAllServices(tbl *normaldb.ServiceTable) error {
 		retErr = err
 	}
 	return retErr
+}
+
+func listAllKvs(tbl *kvdb.KvTable) error {
+	count := 200
+	args := &clustermgr.ListKvOpts{Count: count}
+	for {
+		kvs, err := tbl.List(args)
+		if err != nil {
+			return fmt.Errorf("list kv failed, err: %s", err.Error())
+		}
+		for i := range kvs {
+			fmt.Println(kvs[i])
+		}
+		if len(kvs) < count {
+			break
+		}
+		args.Marker = kvs[len(kvs)-1].Key
+	}
+	return nil
 }

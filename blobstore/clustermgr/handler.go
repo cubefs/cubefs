@@ -30,8 +30,6 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.POST("/config/delete", service.ConfigDelete, rpc.OptArgsQuery())
 
-	rpc.GET("/config/list", service.ConfigList)
-
 	//==================disk==========================
 	rpc.RegisterArgsParser(&clustermgr.DiskInfoArgs{}, "json")
 	rpc.RegisterArgsParser(&clustermgr.ListOptionArgs{}, "json")

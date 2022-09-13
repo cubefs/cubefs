@@ -63,21 +63,6 @@ func (mr *MockConfigMgrAPIMockRecorder) Get(arg0, arg1 interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockConfigMgrAPI)(nil).Get), arg0, arg1)
 }
 
-// List mocks base method.
-func (m *MockConfigMgrAPI) List(arg0 context.Context) (map[string]string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", arg0)
-	ret0, _ := ret[0].(map[string]string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// List indicates an expected call of List.
-func (mr *MockConfigMgrAPIMockRecorder) List(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockConfigMgrAPI)(nil).List), arg0)
-}
-
 // Set mocks base method.
 func (m *MockConfigMgrAPI) Set(arg0 context.Context, arg1, arg2 string) error {
 	m.ctrl.T.Helper()

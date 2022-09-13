@@ -48,6 +48,7 @@ const (
 	CodeDroppedDiskHasVolumeUnit     = 930
 	CodeNotSupportIdle               = 931
 	CodeDiskIsDropping               = 932
+	CodeRejectDeleteSystemConfig     = 933
 )
 
 var (
@@ -84,4 +85,5 @@ var (
 	ErrDroppedDiskHasVolumeUnit     = Error(CodeDroppedDiskHasVolumeUnit)
 	ErrNotSupportIdle               = Error(CodeNotSupportIdle)
 	ErrDiskIsDropping               = Error(CodeDiskIsDropping)
+	ErrRejectDelSysConfig           = Error(CodeRejectDeleteSystemConfig)
 )

@@ -22,6 +22,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -37,7 +38,7 @@ func (s *Service) KvGet(c *rpc.Context) {
 		return
 	}
 
-	span.Infof("accept KvGet request, args: %s", args.Key)
+	span.Debugf("accept KvGet request, args: %s", args.Key)
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
 		span.Errorf("read index error: %v", err)
 		c.RespondError(apierrors.ErrRaftReadIndex)
@@ -65,12 +66,17 @@ func (s *Service) KvSet(c *rpc.Context) {
 		return
 	}
 	if args.Key == "" || args.Value == nil {
-		span.Errorf("set key and value not allow nil")
+		span.Warn("set key and value not allow nil")
+		c.RespondError(apierrors.ErrIllegalArguments)
+		return
+	}
+	if args.Key == proto.CodeModeConfigKey {
+		span.Warn("code mode key not allow to set by api")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
 
-	span.Infof("accept KvSet request, args: %+v", args)
+	span.Debugf("accept KvSet request, args: %+v", args)
 	data, err := json.Marshal(args)
 	if err != nil {
 		span.Errorf("set key failed, error:%v", err)
@@ -94,7 +100,13 @@ func (s *Service) KvDelete(c *rpc.Context) {
 		return
 	}
 
-	span.Infof("accept KvDelete request, args: %v", args)
+	span.Debugf("accept KvDelete request, args: %v", args)
+	if proto.IsSysConfigKey(args.Key) {
+		span.Warnf("%s not allow delete", args.Key)
+		c.RespondError(apierrors.ErrRejectDelSysConfig)
+		return
+	}
+
 	data, err := json.Marshal(args)
 	if err != nil {
 		span.Errorf("marshal failed, error:%v", err)
@@ -117,7 +129,7 @@ func (s *Service) KvList(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept KvList request, args:%+v", args)
+	span.Debugf("accept KvList request, args:%+v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
 		span.Errorf("KvList read index error: %v", err)

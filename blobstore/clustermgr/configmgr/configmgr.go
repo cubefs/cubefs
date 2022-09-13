@@ -19,11 +19,8 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -34,7 +31,7 @@ const (
 
 type ConfigMgr struct {
 	module               string
-	configTbl            *normaldb.ConfigTable
+	kvMgr                kvmgr.KvMgrAPI
 	defaultClusterConfig map[string]string
 	mu                   sync.RWMutex
 	raftServer           raftserver.RaftServer
@@ -43,16 +40,10 @@ type ConfigMgr struct {
 type ConfigMgrAPI interface {
 	Get(ctx context.Context, key string) (val string, err error)
 	Set(ctx context.Context, key string, value string) (err error)
-	List(ctx context.Context) (allConfig map[string]string, err error)
 	Delete(ctx context.Context, key string) (err error)
 }
 
-func New(db *normaldb.NormalDB, clusterConfig map[string]interface{}) (*ConfigMgr, error) {
-	configTable, err := normaldb.OpenConfigTable(db)
-	if err != nil {
-		return nil, errors.Info(err, "OpenConfigTable error").Detail(err)
-	}
-
+func New(kvMgr kvmgr.KvMgrAPI, clusterConfig map[string]interface{}) (*ConfigMgr, error) {
 	defaultClusterConfig := make(map[string]string)
 	for k, v := range clusterConfig {
 		if _, ok := v.(string); ok {
@@ -67,7 +58,7 @@ func New(db *normaldb.NormalDB, clusterConfig map[string]interface{}) (*ConfigMg
 	}
 
 	configManager := &ConfigMgr{
-		configTbl:            configTable,
+		kvMgr:                kvMgr,
 		defaultClusterConfig: defaultClusterConfig,
 		mu:                   sync.RWMutex{},
 	}
@@ -75,58 +66,33 @@ func New(db *normaldb.NormalDB, clusterConfig map[string]interface{}) (*ConfigMg
 	return configManager, nil
 }
 
-func (v *ConfigMgr) Get(ctx context.Context, key string) (val string, err error) {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
+func (c *ConfigMgr) Get(ctx context.Context, key string) (val string, err error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if key != "" {
-		dbVal, err := v.configTbl.Get(key)
+		dbVal, err := c.kvMgr.Get(key)
 		if err != nil {
-			val, ok := v.defaultClusterConfig[key]
+			val, ok := c.defaultClusterConfig[key]
 			if !ok {
 				return "", err
 			}
 
 			return val, nil
 		}
-		return dbVal, nil
+		return string(dbVal), nil
 	}
 	return "", errors.New("config key is empty")
 }
 
-func (v *ConfigMgr) Delete(ctx context.Context, key string) (err error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	err = v.configTbl.Delete(key)
+func (c *ConfigMgr) Delete(ctx context.Context, key string) (err error) {
+	err = c.kvMgr.Delete(key)
 	return
 }
 
-func (v *ConfigMgr) Set(ctx context.Context, key, value string) (err error) {
-	configSetArgs := &clustermgr.ConfigSetArgs{
-		Key:   key,
-		Value: value,
-	}
-	data, err := json.Marshal(configSetArgs)
-	if err != nil {
-		return err
-	}
-	proposeInfo := base.EncodeProposeInfo(v.GetModuleName(), OperTypeSetConfig, data, base.ProposeContext{ReqID: trace.SpanFromContextSafe(ctx).TraceID()})
-	err = v.raftServer.Propose(ctx, proposeInfo)
-	return
+func (c *ConfigMgr) Set(ctx context.Context, key, value string) (err error) {
+	return c.kvMgr.Set(key, []byte(value))
 }
 
-func (v *ConfigMgr) List(ctx context.Context) (allConfig map[string]string, err error) {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
-	allConfig, err = v.configTbl.List()
-	for key, val := range v.defaultClusterConfig {
-		if _, ok := allConfig[key]; ok {
-			continue
-		}
-		allConfig[key] = val
-	}
-	return allConfig, err
-}
-
-func (v *ConfigMgr) SetRaftServer(raftServer raftserver.RaftServer) {
-	v.raftServer = raftServer
+func (c *ConfigMgr) SetRaftServer(raftServer raftserver.RaftServer) {
+	c.raftServer = raftServer
 }

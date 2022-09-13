@@ -47,7 +47,7 @@ func (v *ConfigMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 				span.Errorf("ConfigMgr.Apply OperTypeSetConfig json unmarshal failed, err: %v, data: %v", err, datas[i])
 				return
 			}
-			err = v.configTbl.Update([]byte(configSetArgs.Key), []byte(configSetArgs.Value))
+			err = v.Set(ctx, configSetArgs.Key, configSetArgs.Value)
 			if err != nil {
 				span.Errorf("ConfigMgr.Apply OperTypeSetConfig update failed, err: %v, args: %v", err, configSetArgs)
 				return

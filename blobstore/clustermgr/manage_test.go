@@ -12,6 +12,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/raftdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
@@ -62,12 +63,15 @@ func TestManage(t *testing.T) {
 		tmpNormalDBPath := os.TempDir() + "/snapshot-normaldb-" + uuid.String()
 		tmpVolumeDBPath := os.TempDir() + "/snapshot-volumedb-" + uuid.String()
 		tmpRaftDBPath := os.TempDir() + "/snapshot-raftdb-" + uuid.String()
+		tmpKvDBPath := os.TempDir() + "/snapshot-kvdb-" + uuid.String()
 		os.RemoveAll(tmpNormalDBPath)
 		os.RemoveAll(tmpVolumeDBPath)
 		os.RemoveAll(tmpRaftDBPath)
+		os.RemoveAll(tmpKvDBPath)
 		defer os.RemoveAll(tmpVolumeDBPath)
 		defer os.RemoveAll(tmpNormalDBPath)
 		defer os.RemoveAll(tmpRaftDBPath)
+		defer os.RemoveAll(tmpKvDBPath)
 
 		normalDB, err := normaldb.OpenNormalDB(tmpNormalDBPath, false)
 		require.NoError(t, err)
@@ -78,9 +82,13 @@ func TestManage(t *testing.T) {
 		raftDB, err := raftdb.OpenRaftDB(tmpRaftDBPath, false)
 		require.NoError(t, err)
 		defer raftDB.Close()
+		kvDB, err := kvdb.Open(tmpKvDBPath, false)
+		require.NoError(t, err)
+		defer kvDB.Close()
 
 		snapshotDBs["volume"] = volumeDB
 		snapshotDBs["normal"] = normalDB
+		snapshotDBs["keyValue"] = kvDB
 
 		resp, err := testClusterClient.Snapshot(ctx)
 		require.NoError(t, err)

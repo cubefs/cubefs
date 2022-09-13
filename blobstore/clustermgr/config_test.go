@@ -15,13 +15,16 @@
 package clustermgr
 
 import (
+	"context"
 	"encoding/json"
+	"strconv"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/common/proto"
-
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func TestConfig(t *testing.T) {
@@ -45,6 +48,22 @@ func TestConfig(t *testing.T) {
 		require.Error(t, err)
 	}
 
+	// test get clusterMgr config
+	{
+		rawCodeModePolicies, err := testClusterClient.GetConfig(context.Background(), proto.CodeModeConfigKey)
+		require.NoError(t, err)
+		codeModePolicies := make([]codemode.Policy, 0)
+		err = json.Unmarshal([]byte(rawCodeModePolicies), &codeModePolicies)
+		require.NoError(t, err)
+		require.Equal(t, testServiceCfg.CodeModePolicies, codeModePolicies)
+
+		rawChunkSize, err := testClusterClient.GetConfig(context.Background(), proto.VolumeChunkSizeKey)
+		require.NoError(t, err)
+		chunkSize, err := strconv.Atoi(rawChunkSize)
+		require.NoError(t, err)
+		require.Equal(t, chunkSize, DefaultChunkSize)
+	}
+
 	// test get config
 	{
 		key := "idc1"
@@ -61,12 +80,6 @@ func TestConfig(t *testing.T) {
 		require.Equal(t, 1, n)
 	}
 
-	// test list config
-	{
-		_, err := testClusterClient.ListConfig(ctx)
-		require.NoError(t, err)
-	}
-
 	// test delete config
 	{
 		key := "idc1"
@@ -74,5 +87,9 @@ func TestConfig(t *testing.T) {
 		require.NoError(t, err)
 		_, err = testClusterClient.GetConfig(ctx, key)
 		require.Error(t, err)
+
+		err = testClusterClient.DeleteConfig(context.Background(), proto.VolumeChunkSizeKey)
+		require.Error(t, err)
+
 	}
 }

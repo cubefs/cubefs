@@ -100,9 +100,17 @@ const (
 	volumeStatusMax
 )
 
-// config key
+// system config key,not allow delete
 const (
 	CodeModeConfigKey    = "code_mode"
 	VolumeReserveSizeKey = "volume_reserve_size"
 	VolumeChunkSizeKey   = "volume_chunk_size"
 )
+
+func IsSysConfigKey(key string) bool {
+	switch key {
+	case VolumeChunkSizeKey, VolumeReserveSizeKey, CodeModeConfigKey:
+		return true
+	}
+	return false
+}

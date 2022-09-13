@@ -37,7 +37,7 @@ func (s *Service) ConfigGet(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Debugf("accept ConfigGet request key:%v\n", args.Key)
+	span.Debugf("accept ConfigGet request key:%v", args.Key)
 
 	// linear read
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
@@ -63,7 +63,7 @@ func (s *Service) ConfigSet(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Debugf("accept ConfigSet request :%v\n", args)
+	span.Debugf("accept ConfigSet request :%v", args)
 
 	if args.Key == proto.CodeModeConfigKey {
 		span.Warnf("code mode key not allow to set by api")
@@ -71,9 +71,17 @@ func (s *Service) ConfigSet(c *rpc.Context) {
 		return
 	}
 
-	if err := s.ConfigMgr.Set(ctx, args.Key, args.Value); err != nil {
+	data, err := json.Marshal(args)
+	if err != nil {
 		span.Errorf("ConfigSet json marshal failed, args: %v, error: %v", args, err)
 		c.RespondError(apierrors.ErrIllegalArguments)
+		return
+	}
+	proposeInfo := base.EncodeProposeInfo(s.ConfigMgr.GetModuleName(), configmgr.OperTypeSetConfig, data, base.ProposeContext{ReqID: trace.SpanFromContextSafe(ctx).TraceID()})
+	err = s.raftNode.Propose(ctx, proposeInfo)
+	if err != nil {
+		span.Errorf("raft propose failed, err:%v ", err)
+		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
 }
@@ -86,7 +94,13 @@ func (s *Service) ConfigDelete(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Debugf("accept ConfigDelete request key:%v\n", args.Key)
+	span.Debugf("accept ConfigDelete request key:%v", args.Key)
+
+	if proto.IsSysConfigKey(args.Key) {
+		span.Warnf("%s is system config, not allow delete", args.Key)
+		c.RespondError(apierrors.ErrRejectDelSysConfig)
+		return
+	}
 
 	data, err := json.Marshal(args)
 	if err != nil {
@@ -97,29 +111,8 @@ func (s *Service) ConfigDelete(c *rpc.Context) {
 	proposeInfo := base.EncodeProposeInfo(s.ConfigMgr.GetModuleName(), configmgr.OperTypeDeleteConfig, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Errorf("raft propose failed, err:%v ", err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
-	}
-}
-
-// Get all config: /config/list
-func (s *Service) ConfigList(c *rpc.Context) {
-	ctx := c.Request.Context()
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debug("accept ConfigList request, ctx: ", ctx)
-
-	// linear read
-	if err := s.raftNode.ReadIndex(ctx); err != nil {
-		span.Errorf("read index error: %v", err)
-		c.RespondError(apierrors.ErrRaftReadIndex)
-		return
-	}
-	ret := clustermgr.AllConfig{}
-	if val, err := s.ConfigMgr.List(ctx); err == nil {
-		ret.Configs = val
-		c.RespondJSON(ret)
-	} else {
-		c.RespondError(err)
 	}
 }

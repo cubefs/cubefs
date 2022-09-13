@@ -45,8 +45,3 @@ func (c *Client) DeleteConfig(ctx context.Context, key string) (err error) {
 	err = c.PostWith(ctx, "/config/delete?key="+key, nil, nil)
 	return
 }
-
-func (c *Client) ListConfig(ctx context.Context) (ret AllConfig, err error) {
-	err = c.GetWith(ctx, "/config/list", &ret)
-	return
-}

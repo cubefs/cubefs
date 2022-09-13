@@ -17,24 +17,27 @@ package configmgr
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"math/rand"
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 func TestConfigMgr(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "cf")
-	defer os.RemoveAll(testDir)
-	ctx := context.Background()
-	require.NoError(t, err)
-	normalDB, err := normaldb.OpenNormalDB(testDir, false)
+	tmpKvDBPath := "/tmp/config/tmpKvDBPath" + strconv.Itoa(rand.Intn(1000000000))
+	defer os.RemoveAll(tmpKvDBPath)
+
+	kvDB, _ := kvdb.Open(tmpKvDBPath, false)
+	kvMgr, err := kvmgr.NewKvMgr(kvDB)
 	require.NoError(t, err)
 
+	ctx := context.Background()
 	cfMap := map[string]interface{}{
 		"forbid_sync_config": false,
 		"enable_recycle":     false,
@@ -42,30 +45,24 @@ func TestConfigMgr(t *testing.T) {
 		"test_map1":          map[string]interface{}{"a": 1, "b": 2},
 	}
 
-	configmgr, err := New(normalDB, cfMap)
+	configMgr, err := New(kvMgr, cfMap)
 	require.NoError(t, err)
 
-	cfList, _ := configmgr.List(ctx)
-	require.Equal(t, 4, len(cfList))
+	ret, _ := configMgr.Get(ctx, "enable_recycle")
+	var enableRec bool
+	json.Unmarshal([]byte(ret), &enableRec)
+	require.Equal(t, false, enableRec)
 
-	ret2, _ := configmgr.Get(ctx, "enable_recycle")
-	var vv bool
-	json.Unmarshal([]byte(ret2), &vv)
-	require.Equal(t, false, vv)
-
-	err = configmgr.Delete(ctx, "enable_recycle")
+	err = configMgr.Delete(ctx, "enable_recycle")
 	require.NoError(t, err)
 
-	cfList2, _ := configmgr.List(ctx)
-	require.Equal(t, 4, len(cfList2))
-
-	idcRet, err := configmgr.Get(ctx, "idc")
+	idcRet, err := configMgr.Get(ctx, "idc")
 	require.NoError(t, err)
 	var vv2 []interface{}
 	json.Unmarshal([]byte(idcRet), &vv2)
 	require.Equal(t, []interface{}{"idc1", "idc2"}, vv2)
 
-	idcRet2, err := configmgr.Get(ctx, "test_map1")
+	idcRet2, err := configMgr.Get(ctx, "test_map1")
 	require.NoError(t, err)
 	var vv3 map[string]interface{}
 	json.Unmarshal([]byte(idcRet2), &vv3)

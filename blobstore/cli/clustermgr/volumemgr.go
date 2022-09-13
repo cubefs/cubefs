@@ -28,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -281,4 +282,14 @@ func openVolumeTable(db *volumedb.VolumeDB) (*volumedb.VolumeTable, error) {
 		return nil, fmt.Errorf("open volume table failed, err: %s", err.Error())
 	}
 	return tbl, nil
+}
+
+func openKvDB(path string, readonly bool) (*kvdb.KvDB, error) {
+	db, err := kvdb.Open(path, false, func(option *kvstore.RocksDBOption) {
+		option.ReadOnly = readonly
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open db failed, err: %s", err.Error())
+	}
+	return db, nil
 }

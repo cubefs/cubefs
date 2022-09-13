@@ -15,10 +15,15 @@
 package clustermgr
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func TestKV(t *testing.T) {
@@ -27,25 +32,50 @@ func TestKV(t *testing.T) {
 	testClusterClient := initTestClusterClient(testService)
 	ctx := newCtx()
 
-	err := testClusterClient.SetKV(ctx, "test1", []byte("value"))
-	require.NoError(t, err)
-	err = testClusterClient.SetKV(ctx, "", nil)
-	require.Error(t, err)
+	{
+		err := testClusterClient.SetKV(ctx, "test1", []byte("value"))
+		require.NoError(t, err)
+		err = testClusterClient.SetKV(ctx, "", nil)
+		require.Error(t, err)
 
-	v, err := testClusterClient.GetKV(ctx, "test1")
-	require.NoError(t, err)
-	require.Equal(t, string(v.Value), "value")
+		mode := []codemode.Policy{
+			{ModeName: codemode.EC15P12.Name(), MinSize: 0, MaxSize: 1073741824, SizeRatio: 0.8, Enable: true},
+		}
+		val, _ := json.Marshal(mode)
+		err = testClusterClient.SetKV(ctx, proto.CodeModeConfigKey, val)
+		require.Error(t, err)
 
-	_, err = testClusterClient.GetKV(ctx, "")
-	require.Error(t, err)
+	}
+	{
+		v, err := testClusterClient.GetKV(ctx, "test1")
+		require.NoError(t, err)
+		require.Equal(t, string(v.Value), "value")
 
-	_, err = testClusterClient.GetKV(ctx, "no-exist-key")
-	require.Error(t, err)
+		_, err = testClusterClient.GetKV(ctx, "")
+		require.Error(t, err)
 
-	err = testClusterClient.DeleteKV(ctx, "test1")
-	require.NoError(t, err)
-	_, err = testClusterClient.GetKV(ctx, "test1")
-	require.Error(t, err)
+		_, err = testClusterClient.GetKV(ctx, "no-exist-key")
+		require.Error(t, err)
+	}
+
+	{
+		err := testClusterClient.DeleteKV(ctx, "test1")
+		require.NoError(t, err)
+		_, err = testClusterClient.GetKV(ctx, "test1")
+		require.Error(t, err)
+
+		err = testClusterClient.DeleteKV(ctx, proto.CodeModeConfigKey)
+		require.Error(t, err)
+		err = testClusterClient.DeleteKV(ctx, proto.VolumeChunkSizeKey)
+		require.Error(t, err)
+		err = testClusterClient.DeleteKV(ctx, proto.VolumeReserveSizeKey)
+		require.Error(t, err)
+	}
+
+	{
+		_, err := testClusterClient.ListKV(ctx, &clustermgr.ListKvOpts{})
+		require.NoError(t, err)
+	}
 }
 
 func BenchmarkService_KvSet(b *testing.B) {

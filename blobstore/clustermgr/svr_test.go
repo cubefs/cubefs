@@ -119,7 +119,6 @@ func initTestService(t testing.TB) (*Service, func()) {
 	cfg.RaftConfig.ServerConfig.Members = []raftserver.Member{
 		{NodeID: 1, Host: fmt.Sprintf("127.0.0.1:%d", GetFreePort()), Learner: false},
 	}
-	cfg.ClusterCfg[proto.VolumeReserveSizeKey] = "20000000"
 	os.Mkdir(cfg.DBPath, 0o755)
 	testService, err := New(&cfg)
 	require.NoError(t, err)

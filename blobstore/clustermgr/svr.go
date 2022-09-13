@@ -222,28 +222,28 @@ func New(cfg *Config) (*Service, error) {
 	// module manager initial
 	scopeMgr, err := scopemgr.NewScopeMgr(normalDB)
 	if err != nil {
-		log.Fatalf("New scopeMgr failed, err: %v", err)
+		log.Fatalf("new scopeMgr failed, err: %v", err)
 	}
 	diskMgr, err := diskmgr.New(scopeMgr, normalDB, cfg.DiskMgrConfig)
 	if err != nil {
-		log.Fatalf("New diskMgr failed, err: %v", err)
+		log.Fatalf("new diskMgr failed, err: %v", err)
 	}
 
-	configMgr, err := configmgr.New(normalDB, cfg.ClusterCfg)
+	kvMgr, err := kvmgr.NewKvMgr(kvDB)
 	if err != nil {
-		log.Fatalf("fail to new configMgr, error: %v", err)
+		log.Fatalf("new kvMgr failed, error: %v", errors.Detail(err))
+	}
+
+	configMgr, err := configmgr.New(kvMgr, cfg.ClusterCfg)
+	if err != nil {
+		log.Fatalf("new configMg failed, error: %v", err)
 	}
 
 	serviceMgr := servicemgr.NewServiceMgr(normaldb.OpenServiceTable(normalDB))
 
 	volumeMgr, err := volumemgr.NewVolumeMgr(cfg.VolumeMgrConfig, diskMgr, scopeMgr, configMgr, volumeDB)
 	if err != nil {
-		log.Fatalf("fail to new volumeMgr, error: %v", errors.Detail(err))
-	}
-
-	kvMgr, err := kvmgr.NewKvMgr(kvDB)
-	if err != nil {
-		log.Fatalf("fail to new kvMgr, error: %v", errors.Detail(err))
+		log.Fatalf("new volumeMgr failed, error: %v", errors.Detail(err))
 	}
 
 	service.KvMgr = kvMgr

@@ -44,7 +44,7 @@ func (s *Service) VolumeGet(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeGet request, args: %v", args)
+	span.Debugf("accept VolumeGet request, args: %v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
 		span.Errorf("read index error: %v", err)
@@ -69,7 +69,7 @@ func (s *Service) VolumeList(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeList request, args: %v", args)
+	span.Debugf("accept VolumeList request, args: %v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
 		span.Errorf("read index error: %v", err)
@@ -98,7 +98,7 @@ func (s *Service) VolumeAlloc(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeAlloc request, args: %v", args)
+	span.Debugf("accept VolumeAlloc request, args: %v", args)
 
 	// allocator init, direct return allocated volume back
 	if args.IsInit {
@@ -131,7 +131,7 @@ func (s *Service) VolumeAllocatedList(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeAllocatedList request, request ip is %v", args.Host)
+	span.Debugf("accept VolumeAllocatedList request, request ip is %v", args.Host)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
 		span.Errorf("read index error: %v", err)
@@ -167,7 +167,7 @@ func (s *Service) VolumeUpdate(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeUpdate request, args: %v", args)
+	span.Debugf("accept VolumeUpdate request, args: %v", args)
 
 	err := s.VolumeMgr.PreUpdateVolumeUnit(ctx, args)
 	if err != nil {
@@ -202,7 +202,7 @@ func (s *Service) VolumeRetain(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeRetain request,args: %v,request ip is %v", args, clientIP(c.Request))
+	span.Debugf("accept VolumeRetain request,args: %v,request ip is %v", args, clientIP(c.Request))
 
 	retainVolumes, err := s.VolumeMgr.PreRetainVolume(ctx, args.Tokens, clientIP(c.Request))
 	if err != nil {
@@ -238,7 +238,7 @@ func (s *Service) VolumeLock(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeLock request, args: %v", args)
+	span.Debugf("accept VolumeLock request, args: %v", args)
 
 	c.RespondError(s.VolumeMgr.LockVolume(ctx, args.Vid))
 }
@@ -251,7 +251,7 @@ func (s *Service) VolumeUnlock(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeUnlock request, args: %v", args)
+	span.Debugf("accept VolumeUnlock request, args: %v", args)
 
 	c.RespondError(s.VolumeMgr.UnlockVolume(ctx, args.Vid))
 }
@@ -264,7 +264,7 @@ func (s *Service) VolumeUnitAlloc(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeUnitAlloc request, args: %v", args)
+	span.Debugf("accept VolumeUnitAlloc request, args: %v", args)
 
 	ret, err := s.VolumeMgr.AllocVolumeUnit(ctx, args.Vuid)
 	if err != nil {
@@ -283,7 +283,7 @@ func (s *Service) VolumeUnitList(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeUnitList request, args: %v", args)
+	span.Debugf("accept VolumeUnitList request, args: %v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
 		span.Errorf("read index error: %v", err)
@@ -309,7 +309,7 @@ func (s *Service) VolumeUnitRelease(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept VolumeUnitRelease request, args: %v", args)
+	span.Debugf("accept VolumeUnitRelease request, args: %v", args)
 
 	c.RespondError(s.VolumeMgr.ReleaseVolumeUnit(ctx, args.Vuid, args.DiskID, false))
 }
@@ -333,7 +333,7 @@ func (s *Service) ChunkReport(c *rpc.Context) {
 		return
 	}
 
-	span.Infof("accept ChunkReport request, args: %v", args)
+	span.Debugf("accept ChunkReport request, args: %v", args)
 
 	proposeInfo := base.EncodeProposeInfo(s.VolumeMgr.GetModuleName(), volumemgr.OperTypeChunkReport, writer.Bytes(), base.ProposeContext{ReqID: span.TraceID()})
 	err := s.raftNode.Propose(ctx, proposeInfo)
@@ -352,7 +352,7 @@ func (s *Service) ChunkSetCompact(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept ChunkSetCompact request, args: %v", args)
+	span.Debugf("accept ChunkSetCompact request, args: %v", args)
 
 	vid := args.Vuid.Vid()
 	index := args.Vuid.Index()
@@ -389,7 +389,7 @@ func (s *Service) AdminUpdateVolume(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept AdminUpdateVolume request, args: %v", args)
+	span.Debugf("accept AdminUpdateVolume request, args: %v", args)
 
 	volume, err := s.VolumeMgr.GetVolumeInfo(ctx, args.Vid)
 	if err != nil {
@@ -435,7 +435,7 @@ func (s *Service) AdminUpdateVolumeUnit(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept AdminUpdateVolumeUnit request, args: %v", args)
+	span.Debugf("accept AdminUpdateVolumeUnit request, args: %v", args)
 
 	_, err := s.VolumeMgr.GetVolumeInfo(ctx, args.Vuid.Vid())
 	if err != nil {
@@ -465,7 +465,7 @@ func (s *Service) AdminUpdateVolumeUnit(c *rpc.Context) {
 	proposeInfo := base.EncodeProposeInfo(s.VolumeMgr.GetModuleName(), volumemgr.OperTypeAdminUpdateVolumeUnit, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Errorf("raft propose failed, err:%v ", err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
@@ -479,7 +479,7 @@ func (s *Service) V2VolumeList(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept V2VolumeList request, args: %v", args)
+	span.Debugf("accept V2VolumeList request, args: %v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
 		span.Errorf("read index error: %v", err)
