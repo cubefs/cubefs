@@ -466,7 +466,7 @@ func (s *raft) run() {
 						logger.Error("raft[%v] truncate failed,error is: %v", s.raftFsm.id, err)
 						return
 					}
-					logger.Debug("raft[%v] truncate storage to %v", maxIndex)
+					logger.Debug("raft[%v] truncate storage to %v", s.raftFsm.id,maxIndex)
 				}
 			}()
 
