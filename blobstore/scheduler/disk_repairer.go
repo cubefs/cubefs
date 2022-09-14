@@ -16,9 +16,7 @@ package scheduler
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
@@ -32,21 +30,18 @@ import (
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 // DiskRepairMgr repair task manager
 type DiskRepairMgr struct {
 	closer.Closer
-	repairingDiskID proto.DiskID // only supports repair one disk at the same time temporarily
 
-	mu sync.Mutex
-
-	prepareQueue  *base.TaskQueue
-	workQueue     *base.WorkerTaskQueue
-	finishQueue   *base.TaskQueue
-	deletedTasks  *diskMigratedTasks
-	migratedDisks *migratedDisks
+	prepareQueue   *base.TaskQueue
+	workQueue      *base.WorkerTaskQueue
+	finishQueue    *base.TaskQueue
+	deletedTasks   *diskMigratedTasks
+	repairedDisks  *migratedDisks
+	repairingDisks *migratingDisks
 
 	clusterMgrCli client.ClusterMgrAPI
 
@@ -64,12 +59,13 @@ type DiskRepairMgr struct {
 // NewDiskRepairMgr returns repair manager
 func NewDiskRepairMgr(clusterMgrCli client.ClusterMgrAPI, taskSwitch taskswitch.ISwitcher, taskLogger recordlog.Encoder, cfg *MigrateConfig) *DiskRepairMgr {
 	mgr := &DiskRepairMgr{
-		Closer:        closer.New(),
-		prepareQueue:  base.NewTaskQueue(time.Duration(cfg.PrepareQueueRetryDelayS) * time.Second),
-		workQueue:     base.NewWorkerTaskQueue(time.Duration(cfg.CancelPunishDurationS) * time.Second),
-		finishQueue:   base.NewTaskQueue(time.Duration(cfg.FinishQueueRetryDelayS) * time.Second),
-		deletedTasks:  newDiskMigratedTasks(),
-		migratedDisks: newMigratedDisks(),
+		Closer:         closer.New(),
+		prepareQueue:   base.NewTaskQueue(time.Duration(cfg.PrepareQueueRetryDelayS) * time.Second),
+		workQueue:      base.NewWorkerTaskQueue(time.Duration(cfg.CancelPunishDurationS) * time.Second),
+		finishQueue:    base.NewTaskQueue(time.Duration(cfg.FinishQueueRetryDelayS) * time.Second),
+		deletedTasks:   newDiskMigratedTasks(),
+		repairedDisks:  newMigratedDisks(),
+		repairingDisks: newMigratingDisks(),
 
 		clusterMgrCli: clusterMgrCli,
 		taskSwitch:    taskSwitch,
@@ -84,30 +80,31 @@ func NewDiskRepairMgr(clusterMgrCli client.ClusterMgrAPI, taskSwitch taskswitch.
 
 // Load load repair task from database
 func (mgr *DiskRepairMgr) Load() error {
-	ctx := context.Background()
+	span, ctx := trace.StartSpanFromContext(context.Background(), "Load")
 
 	repairingDisks, err := mgr.clusterMgrCli.ListMigratingDisks(ctx, proto.TaskTypeDiskRepair)
 	if err != nil {
 		return err
 	}
-	if len(repairingDisks) == 0 {
-		tasks, err := mgr.clusterMgrCli.ListAllMigrateTasks(ctx, proto.TaskTypeDiskRepair)
-		if err != nil {
-			return err
-		}
-		return mgr.clearJunkTasksWhenLoading(ctx, tasks)
+	for _, disk := range repairingDisks {
+		mgr.repairingDisks.add(disk.Disk.DiskID, disk.Disk)
 	}
-	if len(repairingDisks) > 1 {
-		return errors.New("can not allow many disk repairing")
-	}
-	repairingDiskID := repairingDisks[0].Disk.DiskID
-	tasks, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeDiskRepair, repairingDiskID)
+
+	tasks, err := mgr.clusterMgrCli.ListAllMigrateTasks(ctx, proto.TaskTypeDiskRepair)
 	if err != nil {
+		span.Errorf("find all tasks failed: err[%+v]", err)
 		return err
 	}
-	mgr.setRepairingDiskID(repairingDiskID)
+	if len(tasks) == 0 {
+		return nil
+	}
 
+	var junkTasks []*proto.MigrateTask
 	for _, t := range tasks {
+		if _, ok := mgr.repairingDisks.get(t.SourceDiskID); !ok {
+			junkTasks = append(junkTasks, t)
+			continue
+		}
 		if t.Running() {
 			err = base.VolTaskLockerInst().TryLock(ctx, t.Vid())
 			if err != nil {
@@ -116,7 +113,7 @@ func (mgr *DiskRepairMgr) Load() error {
 			}
 		}
 
-		log.Infof("load task success: task_id[%s], state[%d]", t.TaskID, t.State)
+		span.Infof("load task success: task_id[%s], state[%d]", t.TaskID, t.State)
 		switch t.State {
 		case proto.MigrateStateInited:
 			mgr.prepareQueue.PushTask(t.TaskID, t)
@@ -131,7 +128,7 @@ func (mgr *DiskRepairMgr) Load() error {
 		}
 	}
 
-	return nil
+	return mgr.clearJunkTasksWhenLoading(ctx, junkTasks)
 }
 
 func (mgr *DiskRepairMgr) clearJunkTasksWhenLoading(ctx context.Context, tasks []*proto.MigrateTask) error {
@@ -195,42 +192,25 @@ func (mgr *DiskRepairMgr) collectTask() {
 	defer span.Finish()
 
 	// revise repair tasks to make sure data consistency when services start
-	if !mgr.hasRevised && mgr.hasRepairingDisk() {
-		span.Infof("first collect task will revise repair task")
-		err := mgr.reviseRepairTask(ctx, mgr.getRepairingDiskID())
-		if err == nil {
-			span.Infof("firstCollectTask finished")
-			mgr.hasRevised = true
+	if !mgr.hasRevised {
+		if err := mgr.reviseRepairDisks(ctx); err != nil {
+			return
 		}
+		mgr.hasRevised = true
+	}
+
+	if mgr.repairingDisks.size() >= mgr.cfg.DiskConcurrency {
 		return
 	}
 
-	if mgr.hasRepairingDisk() {
-		span.Infof("disk is repairing and skip collect task: disk_id[%d]", mgr.getRepairingDiskID())
-		return
-	}
-
-	// it will retry the same disk when break in initOneTask phase,
-	repairingDisks, err := mgr.clusterMgrCli.ListMigratingDisks(ctx, proto.TaskTypeDiskRepair)
+	brokenDisk, err := mgr.acquireBrokenDisk(ctx)
 	if err != nil {
+		span.Info("acquire broken disk failed: err[%+v]", err)
 		return
 	}
-	var brokenDisk *client.DiskInfoSimple
 
-	switch len(repairingDisks) {
-	case 1:
-		brokenDisk = repairingDisks[0].Disk
-	case 0:
-		brokenDisk, err = mgr.acquireBrokenDisk(ctx)
-		if err != nil {
-			span.Info("acquire broken disk failed: err[%+v]", err)
-			return
-		}
-		if brokenDisk == nil {
-			return
-		}
-	default:
-		span.Panicf("can not allow many disk repairing")
+	if brokenDisk == nil {
+		return
 	}
 
 	err = mgr.genDiskRepairTasks(ctx, brokenDisk, true)
@@ -243,10 +223,22 @@ func (mgr *DiskRepairMgr) collectTask() {
 		return mgr.clusterMgrCli.SetDiskRepairing(ctx, brokenDisk.DiskID)
 	})
 
-	mgr.setRepairingDiskID(brokenDisk.DiskID)
+	mgr.repairingDisks.add(brokenDisk.DiskID, brokenDisk)
 }
 
-func (mgr *DiskRepairMgr) reviseRepairTask(ctx context.Context, diskID proto.DiskID) error {
+func (mgr *DiskRepairMgr) reviseRepairDisks(ctx context.Context) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	for _, disk := range mgr.repairingDisks.list() {
+		if err := mgr.reviseRepairDisk(ctx, disk.DiskID); err != nil {
+			span.Errorf("revise repair tasks failed: disk_id[%d]", disk.DiskID)
+			return err
+		}
+	}
+	return nil
+}
+
+func (mgr *DiskRepairMgr) reviseRepairDisk(ctx context.Context, diskID proto.DiskID) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	diskInfo, err := mgr.clusterMgrCli.GetDiskInfo(ctx, diskID)
@@ -261,10 +253,30 @@ func (mgr *DiskRepairMgr) reviseRepairTask(ctx context.Context, diskID proto.Dis
 	}
 
 	if diskInfo.IsBroken() {
-		execMsg := fmt.Sprintf("set disk diskId %d repairing", mgr.getRepairingDiskID())
+		execMsg := fmt.Sprintf("set disk diskId %d repairing", diskID)
 		base.InsistOn(ctx, execMsg, func() error {
 			return mgr.clusterMgrCli.SetDiskRepairing(ctx, diskID)
 		})
+	}
+	return nil
+}
+
+func (mgr *DiskRepairMgr) acquireBrokenDisk(ctx context.Context) (*client.DiskInfoSimple, error) {
+	repairingDisks, err := mgr.clusterMgrCli.ListBrokenDisks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(repairingDisks) == 0 {
+		return nil, nil
+	}
+	return mgr.getUnRepairingDisk(repairingDisks), nil
+}
+
+func (mgr *DiskRepairMgr) getUnRepairingDisk(disks []*client.DiskInfoSimple) *client.DiskInfoSimple {
+	for _, v := range disks {
+		if _, ok := mgr.repairingDisks.get(v.DiskID); !ok {
+			return v
+		}
 	}
 	return nil
 }
@@ -346,24 +358,12 @@ func (mgr *DiskRepairMgr) initOneTask(ctx context.Context, badVuid proto.Vuid, b
 	span.Infof("init repair task success %+v", t)
 }
 
-func (mgr *DiskRepairMgr) acquireBrokenDisk(ctx context.Context) (*client.DiskInfoSimple, error) {
-	brokenDisks, err := mgr.clusterMgrCli.ListBrokenDisks(ctx, 1)
-	if err != nil {
-		return nil, err
-	}
-	if len(brokenDisks) == 0 {
-		return nil, nil
-	}
-
-	return brokenDisks[0], nil
-}
-
 func (mgr *DiskRepairMgr) prepareTaskLoop() {
 	for {
 		mgr.WaitEnable()
 		todo, doing := mgr.workQueue.StatsTasks()
-		if !mgr.hasRepairingDisk() || todo+doing >= mgr.cfg.WorkQueueSize {
-			time.Sleep(1 * time.Second)
+		if mgr.repairingDisks.size() == 0 || todo+doing >= mgr.cfg.WorkQueueSize {
+			time.Sleep(time.Second)
 			continue
 		}
 
@@ -610,22 +610,18 @@ func (mgr *DiskRepairMgr) checkRepairedAndClearLoop() {
 }
 
 func (mgr *DiskRepairMgr) checkRepairedAndClear() {
-	diskID := mgr.getRepairingDiskID()
 	span, ctx := trace.StartSpanFromContext(context.Background(), "disk_repair.checkRepairedAndClear")
 
-	if !mgr.hasRepairingDisk() {
-		return
-	}
-
-	span.Infof("check repaired: disk_id[%d]", diskID)
-	if mgr.checkRepaired(ctx, diskID) {
-		err := mgr.clusterMgrCli.SetDiskRepaired(ctx, diskID)
+	for _, disk := range mgr.repairingDisks.list() {
+		if !mgr.checkDiskRepaired(ctx, disk.DiskID) {
+			continue
+		}
+		err := mgr.clusterMgrCli.SetDiskRepaired(ctx, disk.DiskID)
 		if err != nil {
 			return
 		}
-		span.Infof("disk repaired will start clear: disk_id[%d]", diskID)
-		mgr.clearTasksByDiskID(ctx, diskID)
-		mgr.emptyRepairingDiskID()
+		span.Infof("disk repaired will start clear: disk_id[%d]", disk.DiskID)
+		mgr.clearTasksByDiskID(ctx, disk.DiskID)
 	}
 }
 
@@ -634,10 +630,11 @@ func (mgr *DiskRepairMgr) clearTasksByDiskID(ctx context.Context, diskID proto.D
 		return mgr.clusterMgrCli.DeleteMigratingDisk(ctx, proto.TaskTypeDiskRepair, diskID)
 	})
 	mgr.deletedTasks.delete(diskID)
-	mgr.migratedDisks.add(diskID, time.Now())
+	mgr.repairedDisks.add(diskID, time.Now())
+	mgr.repairingDisks.delete(diskID)
 }
 
-func (mgr *DiskRepairMgr) checkRepaired(ctx context.Context, diskID proto.DiskID) bool {
+func (mgr *DiskRepairMgr) checkDiskRepaired(ctx context.Context, diskID proto.DiskID) bool {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("check repaired: disk_id[%d]", diskID)
 
@@ -659,7 +656,7 @@ func (mgr *DiskRepairMgr) checkRepaired(ctx context.Context, diskID proto.DiskID
 	if len(vunitInfos) != 0 && len(tasks) == 0 {
 		// it may be occur when migration done and repair tasks generate concurrent, list volume units may not return the migrate unit
 		span.Warnf("clustermgr has some volume unit not repair and revise again: disk_id[%d], volume units len[%d]", diskID, len(vunitInfos))
-		if err = mgr.reviseRepairTask(ctx, diskID); err != nil {
+		if err = mgr.reviseRepairDisk(ctx, diskID); err != nil {
 			span.Errorf("revise repair task failed: err[%+v]", err)
 		}
 		return false
@@ -699,7 +696,7 @@ func (mgr *DiskRepairMgr) checkAndClearJunkTasksLoop() {
 func (mgr *DiskRepairMgr) checkAndClearJunkTasks() {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "disk_repair.clearJunkTasks")
 
-	for _, disk := range mgr.migratedDisks.list() {
+	for _, disk := range mgr.repairedDisks.list() {
 		if time.Since(disk.finishedTime) < junkMigrationTaskProtectionWindow {
 			continue
 		}
@@ -725,32 +722,8 @@ func (mgr *DiskRepairMgr) checkAndClearJunkTasks() {
 				})
 			}
 		}
-		mgr.migratedDisks.delete(disk.diskID)
+		mgr.repairedDisks.delete(disk.diskID)
 	}
-}
-
-func (mgr *DiskRepairMgr) setRepairingDiskID(diskID proto.DiskID) {
-	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
-	mgr.repairingDiskID = diskID
-}
-
-func (mgr *DiskRepairMgr) emptyRepairingDiskID() {
-	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
-	mgr.repairingDiskID = base.EmptyDiskID
-}
-
-func (mgr *DiskRepairMgr) getRepairingDiskID() proto.DiskID {
-	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
-	return mgr.repairingDiskID
-}
-
-func (mgr *DiskRepairMgr) hasRepairingDisk() bool {
-	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
-	return mgr.repairingDiskID != base.EmptyDiskID
 }
 
 // AcquireTask acquire repair task
@@ -904,21 +877,15 @@ func (mgr *DiskRepairMgr) Progress(ctx context.Context) (migratingDisks []proto.
 	span := trace.SpanFromContextSafe(ctx)
 	migratingDisks = make([]proto.DiskID, 0)
 
-	repairingDiskID := mgr.getRepairingDiskID()
-	if repairingDiskID == base.EmptyDiskID {
-		return migratingDisks, 0, 0
+	for _, disk := range mgr.repairingDisks.list() {
+		total += int(disk.UsedChunkCnt)
+		remainTasks, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeDiskRepair, disk.DiskID)
+		if err != nil {
+			span.Errorf("find all task failed: err[%+v]", err)
+			return migratingDisks, 0, 0
+		}
+		repaired += int(disk.UsedChunkCnt) - len(remainTasks)
+		migratingDisks = append(migratingDisks, disk.DiskID)
 	}
-	meta, err := mgr.clusterMgrCli.GetMigratingDisk(ctx, proto.TaskTypeDiskRepair, repairingDiskID)
-	if err != nil {
-		span.Errorf("find all task failed: err[%+v]", err)
-		return migratingDisks, 0, 0
-	}
-	total = int(meta.Disk.UsedChunkCnt)
-	remainTasks, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeDiskRepair, repairingDiskID)
-	if err != nil {
-		span.Errorf("find all task failed: err[%+v]", err)
-		return []proto.DiskID{repairingDiskID}, 0, 0
-	}
-	repaired = total - len(remainTasks)
-	return []proto.DiskID{repairingDiskID}, total, repaired
+	return
 }

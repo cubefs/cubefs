@@ -259,18 +259,18 @@ func (mr *MockClusterMgrAPIMockRecorder) ListAllMigrateTasksByDiskID(arg0, arg1,
 }
 
 // ListBrokenDisks mocks base method.
-func (m *MockClusterMgrAPI) ListBrokenDisks(arg0 context.Context, arg1 int) ([]*client.DiskInfoSimple, error) {
+func (m *MockClusterMgrAPI) ListBrokenDisks(arg0 context.Context) ([]*client.DiskInfoSimple, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListBrokenDisks", arg0, arg1)
+	ret := m.ctrl.Call(m, "ListBrokenDisks", arg0)
 	ret0, _ := ret[0].([]*client.DiskInfoSimple)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListBrokenDisks indicates an expected call of ListBrokenDisks.
-func (mr *MockClusterMgrAPIMockRecorder) ListBrokenDisks(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockClusterMgrAPIMockRecorder) ListBrokenDisks(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBrokenDisks", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListBrokenDisks), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBrokenDisks", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListBrokenDisks), arg0)
 }
 
 // ListClusterDisks mocks base method.

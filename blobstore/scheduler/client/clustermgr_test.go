@@ -199,7 +199,7 @@ func TestClustermgrClient(t *testing.T) {
 	{
 		// list broken disk
 		cli.client.(*MockClusterManager).EXPECT().ListDisk(any, any).Return(cmapi.ListDiskRet{}, errMock)
-		_, err := cli.ListBrokenDisks(ctx, 1)
+		_, err := cli.ListBrokenDisks(ctx)
 		require.True(t, errors.Is(err, errMock))
 	}
 	{

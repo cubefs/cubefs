@@ -51,7 +51,7 @@ type ClusterMgrVolumeAPI interface {
 
 type ClusterMgrDiskAPI interface {
 	ListClusterDisks(ctx context.Context) (disks []*DiskInfoSimple, err error)
-	ListBrokenDisks(ctx context.Context, count int) (disks []*DiskInfoSimple, err error)
+	ListBrokenDisks(ctx context.Context) (disks []*DiskInfoSimple, err error)
 	ListRepairingDisks(ctx context.Context) (disks []*DiskInfoSimple, err error)
 	ListDropDisks(ctx context.Context) (disks []*DiskInfoSimple, err error)
 	SetDiskRepairing(ctx context.Context, diskID proto.DiskID) (err error)
@@ -570,10 +570,10 @@ func (c *clustermgrClient) ListClusterDisks(ctx context.Context) (disks []*DiskI
 }
 
 // ListBrokenDisks list all broken disks
-func (c *clustermgrClient) ListBrokenDisks(ctx context.Context, count int) (disks []*DiskInfoSimple, err error) {
+func (c *clustermgrClient) ListBrokenDisks(ctx context.Context) (disks []*DiskInfoSimple, err error) {
 	c.rwLock.RLock()
 	defer c.rwLock.RUnlock()
-	return c.listDisks(ctx, proto.DiskStatusBroken, count)
+	return c.listAllDisks(ctx, proto.DiskStatusBroken)
 }
 
 // ListRepairingDisks list repairing disks
