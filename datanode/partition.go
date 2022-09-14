@@ -181,6 +181,16 @@ func (s *WALApplyStatus) LastTruncate() uint64 {
 	return s.lastTruncate
 }
 
+func (s *WALApplyStatus) Snap() *WALApplyStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return &WALApplyStatus{
+		applied:      s.applied,
+		lastTruncate: s.lastTruncate,
+		nextTruncate: s.nextTruncate,
+	}
+}
+
 func NewWALApplyStatus() *WALApplyStatus {
 	return &WALApplyStatus{}
 }
@@ -249,7 +259,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	// persist file metadata
 	dp.DataPartitionCreateType = request.CreateType
 	dp.lastUpdateTime = time.Now().Unix()
-	err = dp.Persist(PF_METADATA)
+	err = dp.Persist(nil, false)
 	disk.AddSize(uint64(dp.Size()))
 	return
 }
@@ -531,7 +541,7 @@ func (dp *DataPartition) Stop() {
 		// Close the store and raftstore.
 		dp.extentStore.Close()
 		dp.stopRaft()
-		if err := dp.Persist(PF_ALL); err != nil {
+		if err := dp.Persist(nil, true); err != nil {
 			log.LogErrorf("persist partition [%v] failed when stop: %v", dp.partitionID, err)
 		}
 	})
@@ -696,7 +706,7 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 				retryFetchVolHATypeTimer.Reset(time.Minute)
 			}
 		case <-persistDpLastUpdateTimer.C:
-			_ = dp.Persist(PF_METADATA)
+			_ = dp.Persist(nil, false)
 			persistDpLastUpdateTimer.Reset(time.Hour)
 		}
 	}
@@ -709,7 +719,7 @@ func (dp *DataPartition) fetchVolHATypeFromMaster() (err error) {
 	}
 	if dp.config.VolHAType != simpleVolView.CrossRegionHAType {
 		dp.config.VolHAType = simpleVolView.CrossRegionHAType
-		if err = dp.Persist(PF_METADATA); err != nil {
+		if err = dp.Persist(nil, false); err != nil {
 			return
 		}
 	}

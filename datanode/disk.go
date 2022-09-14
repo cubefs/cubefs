@@ -237,7 +237,7 @@ func (d *Disk) startFlushFPScheduler() {
 	}()
 }
 
-func(d *Disk) maybeUpdateFlushFDInterval(oldVal uint32) bool {
+func (d *Disk) maybeUpdateFlushFDInterval(oldVal uint32) bool {
 	if d.space.flushFDIntervalSec > 0 && oldVal != d.space.flushFDIntervalSec {
 		return true
 	}
@@ -701,10 +701,11 @@ func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
 			for {
 				select {
 				case dp := <-pChan:
-					if dp.raftPartition == nil || dp.applyStatus.Applied() == 0 {
+					var status = dp.applyStatus.Snap()
+					if status.Applied() == 0 || dp.raftPartition == nil {
 						return
 					}
-					if err := dp.Persist(PF_ALL); err != nil {
+					if err := dp.Persist(status, true); err != nil {
 						err = errors.NewErrorf("[forcePersistPartitions]: persist all failed, partition=%d: %v", dp.config.PartitionID, err.Error())
 						log.LogErrorf(err.Error())
 						atomic.AddInt64(&failedCount, 1)

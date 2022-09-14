@@ -14,50 +14,40 @@ import (
 
 type PersistFlag int
 
-const (
-	PF_WAL PersistFlag = 1 << iota
-	PF_EXTENT
-	PF_APPLY
-	PF_METADATA
-
-	PF_ALL = PF_WAL | PF_EXTENT | PF_APPLY | PF_METADATA
-)
-
-func (dp *DataPartition) Persist(f PersistFlag) (err error) {
+func (dp *DataPartition) Persist(status *WALApplyStatus, syncData bool) (err error) {
 	dp.persistSync <- struct{}{}
 	defer func() {
 		<-dp.persistSync
 	}()
 
-	if f&PF_EXTENT == PF_EXTENT {
+	if status == nil {
+		status = dp.applyStatus.Snap()
+	}
+
+	if syncData {
 		dp.forceFlushAllFD()
-	}
-
-	if f&PF_WAL == PF_WAL {
-		if err = dp.raftPartition.FlushWAL(false); err != nil {
-			return
+		if dp.raftPartition != nil {
+			if err = dp.raftPartition.FlushWAL(false); err != nil {
+				return
+			}
 		}
 	}
 
-	if f&PF_APPLY == PF_APPLY {
-		if err = dp.persistAppliedID(); err != nil {
-			return
-		}
+	if err = dp.persistAppliedID(status); err != nil {
+		return
 	}
 
-	if f&PF_METADATA == PF_METADATA {
-		if err = dp.persistMetadata(); err != nil {
-			return
-		}
+	if err = dp.persistMetadata(status); err != nil {
+		return
 	}
 	return
 }
 
-func (dp *DataPartition) persistAppliedID() (err error) {
+func (dp *DataPartition) persistAppliedID(snap *WALApplyStatus) (err error) {
 
 	var (
 		originalApplyIndex uint64
-		newAppliedIndex    = dp.applyStatus.Applied()
+		newAppliedIndex    = snap.Applied()
 	)
 
 	if newAppliedIndex == 0 || newAppliedIndex <= dp.persistedApplied {
@@ -94,7 +84,7 @@ func (dp *DataPartition) persistAppliedID() (err error) {
 }
 
 // PersistMetadata persists the file metadata on the disk.
-func (dp *DataPartition) persistMetadata() (err error) {
+func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 
 	originFileName := path.Join(dp.path, DataPartitionMetadataFileName)
 	tempFileName := path.Join(dp.path, TempMetadataFileName)
@@ -118,7 +108,7 @@ func (dp *DataPartition) persistMetadata() (err error) {
 	if metadata.CreateTime == "" {
 		metadata.CreateTime = time.Now().Format(TimeLayout)
 	}
-	if lastTruncate := dp.applyStatus.LastTruncate(); lastTruncate > metadata.LastTruncateID {
+	if lastTruncate := snap.LastTruncate(); lastTruncate > metadata.LastTruncateID {
 		metadata.LastTruncateID = lastTruncate
 	}
 

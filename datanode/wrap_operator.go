@@ -552,8 +552,8 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
 	if isRepairRead {
-		if !partition.Disk().canRepairOnDisk(){
-			err=fmt.Errorf("disk(%v) limit on handleExtentRepairRead",partition.Disk().Path)
+		if !partition.Disk().canRepairOnDisk() {
+			err = fmt.Errorf("disk(%v) limit on handleExtentRepairRead", partition.Disk().Path)
 			return
 		}
 		defer func() {
@@ -754,9 +754,9 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 	reply.Arg[0] = EmptyResponse
 	binary.BigEndian.PutUint64(reply.Arg[1:9], uint64(replySize))
 	err = reply.WriteToConn(connect, proto.WriteDeadlineTime)
-	if replySize>=math.MaxUint32 {
-		reply.Size=math.MaxUint32
-	}else {
+	if replySize >= math.MaxUint32 {
+		reply.Size = math.MaxUint32
+	} else {
 		reply.Size = uint32(replySize)
 	}
 	logContent := fmt.Sprintf("action[write empty repair packet] %v.",
@@ -790,8 +790,8 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	}
 
 	partition := request.Object.(*DataPartition)
-	if !partition.Disk().canRepairOnDisk(){
-		err=fmt.Errorf("disk(%v) limit on handleExtentRepairRead",partition.Disk().Path)
+	if !partition.Disk().canRepairOnDisk() {
+		err = fmt.Errorf("disk(%v) limit on handleExtentRepairRead", partition.Disk().Path)
 		return
 	}
 	defer func() {
@@ -1344,7 +1344,7 @@ func (s *DataNode) handlePacketToResetDataPartitionRaftMember(p *repl.Packet) {
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-		if err = dp.Persist(PF_METADATA); err != nil {
+		if err = dp.Persist(nil, false); err != nil {
 			log.LogErrorf("handlePacketToResetDataPartitionRaftMember dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}
