@@ -347,6 +347,7 @@ services:
         image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
         ports:
             - 9500
+            - 17410:17410
         volumes:
             - ./bin:/cfs/bin:ro
             - ./conf/hosts:/etc/hosts:ro

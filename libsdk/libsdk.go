@@ -76,6 +76,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/buf"
 	"io"
 	syslog "log"
@@ -88,6 +89,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/cubefs/blobstore/api/access"
@@ -238,6 +240,8 @@ type client struct {
 	pushAddr            string
 	cluster             string
 	dirChildrenNumLimit uint32
+	enableAudit      bool
+
 	// runtime context
 	cwd    string // current working directory
 	fdmap  map[uint]*file
@@ -314,6 +318,12 @@ func cfs_set_client(id C.int64_t, key, val *C.char) C.int {
 		c.secretKey = v
 	case "pushAddr":
 		c.pushAddr = v
+	case "enableAudit":
+		if v == "true" {
+			c.enableAudit = true
+		} else {
+			c.enableAudit = false
+		}
 	default:
 		return statusEINVAL
 	}
@@ -346,6 +356,7 @@ func cfs_close_client(id C.int64_t) {
 		}
 		removeClient(int64(id))
 	}
+	auditlog.StopAudit()
 	log.LogFlush()
 }
 
@@ -455,6 +466,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 	if !exist {
 		return statusEINVAL
 	}
+	start := time.Now()
 
 	fuseMode := uint32(mode) & uint32(0777)
 	fuseFlags := uint32(flags) &^ uint32(0x8000)
@@ -479,6 +491,13 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 			return errorToStatus(err)
 		}
 		parentIno = dirInfo.Inode
+		defer func() {
+			if info != nil {
+				auditlog.FormatLog("Create", dirpath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
+			} else {
+				auditlog.FormatLog("Create", dirpath, "nil", err, time.Since(start).Microseconds(), 0, 0)
+			}
+		}()
 		newInfo, err := c.create(dirInfo.Inode, name, fuseMode)
 		if err != nil {
 			if err != syscall.EEXIST {
@@ -889,10 +908,22 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 		return statusEINVAL
 	}
 
+	start := time.Now()
+	var gerr error
+	var gino uint64
+
 	dirpath := c.absPath(C.GoString(path))
 	if dirpath == "/" {
 		return statusEEXIST
 	}
+
+	defer func() {
+		if gerr == nil {
+			auditlog.FormatLog("Mkdir", dirpath, "nil", gerr, time.Since(start).Microseconds(), gino, 0)
+		} else {
+			auditlog.FormatLog("Mkdir", dirpath, "nil", gerr, time.Since(start).Microseconds(), 0, 0)
+		}
+	}()
 
 	pino := proto.RootIno
 	dirs := strings.Split(dirpath, "/")
@@ -907,16 +938,19 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 
 				if err != nil {
 					if err != syscall.EEXIST {
+						gerr = err
 						return errorToStatus(err)
 					}
 				} else {
 					child = info.Inode
 				}
 			} else {
+				gerr = err
 				return errorToStatus(err)
 			}
 		}
 		pino = child
+		gino = child
 	}
 
 	return 0
@@ -928,15 +962,25 @@ func cfs_rmdir(id C.int64_t, path *C.char) C.int {
 	if !exist {
 		return statusEINVAL
 	}
+	start := time.Now()
+	var err error
+	var info *proto.InodeInfo
 
 	absPath := c.absPath(C.GoString(path))
+	defer func() {
+		if info == nil {
+			auditlog.FormatLog("Rmdir", absPath, "nil", err, time.Since(start).Microseconds(), 0, 0)
+		} else {
+			auditlog.FormatLog("Rmdir", absPath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
+		}
+	}()
 	dirpath, name := gopath.Split(absPath)
 	dirInfo, err := c.lookupPath(dirpath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	_, err = c.mw.Delete_ll(dirInfo.Inode, name, true)
+	info, err = c.mw.Delete_ll(dirInfo.Inode, name, true)
 	c.ic.Delete(dirInfo.Inode)
 	c.dc.Delete(absPath)
 	return errorToStatus(err)
@@ -949,8 +993,20 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 		return statusEINVAL
 	}
 
+	start := time.Now()
+	var err error
+	var info *proto.InodeInfo
+
 	absPath := c.absPath(C.GoString(path))
 	dirpath, name := gopath.Split(absPath)
+
+	defer func() {
+		if info == nil {
+			auditlog.FormatLog("Unlink", absPath, "nil", err, time.Since(start).Microseconds(), 0, 0)
+		} else {
+			auditlog.FormatLog("Unlink", absPath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
+		}
+	}()
 	dirInfo, err := c.lookupPath(dirpath)
 	if err != nil {
 		return errorToStatus(err)
@@ -964,7 +1020,7 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 		return statusEISDIR
 	}
 
-	info, err := c.mw.Delete_ll(dirInfo.Inode, name, false)
+	info, err = c.mw.Delete_ll(dirInfo.Inode, name, false)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -983,8 +1039,16 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 		return statusEINVAL
 	}
 
+	start := time.Now()
+	var err error
+
 	absFrom := c.absPath(C.GoString(from))
 	absTo := c.absPath(C.GoString(to))
+
+	defer func() {
+		auditlog.FormatLog("Rename", absFrom, absTo, err, time.Since(start).Microseconds(), 0, 0)
+	}()
+
 	srcDirPath, srcName := gopath.Split(absFrom)
 	dstDirPath, dstName := gopath.Split(absTo)
 
@@ -1102,6 +1166,13 @@ func (c *client) start() (err error) {
 		err = errors.NewErrorf("check permission failed: %v", err)
 		syslog.Println(err)
 		return
+	}
+
+	if c.enableAudit {
+		_, err = auditlog.InitAudit(c.logDir, "clientSdk", int64(auditlog.DefaultAuditLogSize))
+		if err != nil {
+			log.LogWarnf("Init audit log fail: %v", err)
+		}
 	}
 
 	if c.enableSummary {
