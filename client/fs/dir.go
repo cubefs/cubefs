@@ -16,6 +16,7 @@ package fs
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"io"
 	"os"
 	"strconv"
@@ -155,10 +156,12 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 	bgTime := stat.BeginStat()
 	var err error
+	var newInode uint64
 	metric := exporter.NewTPCnt("filecreate")
 	defer func() {
 		stat.EndStat("Create", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+		auditlog.FormatLog("Create", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
@@ -169,6 +172,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info, uint32(req.Flags&DefaultFlag), d.info.Inode, req.Name)
+	newInode = info.Inode
 
 	d.super.ec.OpenStream(info.Inode)
 	d.super.fslock.Lock()
@@ -209,10 +213,12 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 	bgTime := stat.BeginStat()
 	var err error
+	var newInode uint64
 	metric := exporter.NewTPCnt("mkdir")
 	defer func() {
 		stat.EndStat("Mkdir", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+		auditlog.FormatLog("Mkdir", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
@@ -223,7 +229,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 	d.super.ic.Put(info)
 	child := NewDir(d.super, info, d.info.Inode, req.Name)
-
+	newInode = info.Inode
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()
@@ -244,10 +250,12 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
 	bgTime := stat.BeginStat()
 	var err error
+	var deletedInode uint64
 	metric := exporter.NewTPCnt("remove")
 	defer func() {
 		stat.EndStat("Remove", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+		auditlog.FormatLog("Remove", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
 	}()
 
 	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir)
@@ -256,6 +264,9 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		return ParseError(err)
 	}
 
+	if info != nil {
+		deletedInode = info.Inode
+	}
 	d.super.ic.Delete(d.info.Inode)
 
 	if info != nil && info.Nlink == 0 && !proto.IsDir(info.Mode) {
@@ -537,6 +548,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	defer func() {
 		stat.EndStat("Rename", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+		auditlog.FormatLog("Rename", d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName, err, time.Since(start).Microseconds(), 0, 0)
 	}()
 
 	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, true)

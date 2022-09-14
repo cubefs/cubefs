@@ -65,7 +65,7 @@ var (
 )
 
 // NewFile returns a new file.
-func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, name string) fs.Node {
+func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename string) fs.Node {
 	if proto.IsCold(s.volType) {
 		var (
 			fReader    *blobstore.Reader
@@ -103,9 +103,9 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, name string
 			fWriter = blobstore.NewWriter(clientConf)
 		}
 		log.LogDebugf("Trace NewFile:fReader(%v) fWriter(%v) ", fReader, fWriter)
-		return &File{super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino}
+		return &File{super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename}
 	}
-	return &File{super: s, info: i, parentIno: pino, name: name}
+	return &File{super: s, info: i, parentIno: pino, name: filename}
 }
 
 //get file parentPath
