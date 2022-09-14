@@ -23,6 +23,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"io/ioutil"
 	syslog "log"
 	"net"
@@ -37,8 +39,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/cubefs/cubefs/blockcache/bcache"
 
 	"github.com/cubefs/cubefs/util/buf"
 
@@ -321,6 +321,16 @@ func main() {
 	}
 	stat.ClearStat()
 
+	if opt.EnableAudit {
+		_, err = auditlog.InitAudit(opt.Logpath, LoggerPrefix, int64(auditlog.DefaultAuditLogSize))
+		if err != nil {
+			err = errors.NewErrorf("Init audit log fail: %v\n", err)
+			fmt.Println(err)
+			daemonize.SignalOutcome(err)
+			os.Exit(1)
+		}
+	}
+
 	proto.InitBufferPool(opt.BuffersTotalLimit)
 	if proto.IsCold(opt.VolType) {
 		buf.InitCachePool(opt.EbsBlockSize)
@@ -406,6 +416,10 @@ func main() {
 	defer super.Close()
 
 	syslog.Printf("enable bcache %v", opt.EnableBcache)
+
+	if cfg.GetString(exporter.ConfigKeyPushAddr) == "" {
+		cfg.SetString(exporter.ConfigKeyPushAddr, "cfs-push.oppo.local")
+	}
 
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
@@ -560,6 +574,10 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 	http.HandleFunc(ControlCommandSuspend, super.SetSuspend)
 	http.HandleFunc(ControlCommandResume, super.SetResume)
+	//auditlog
+	http.HandleFunc(auditlog.EnableAuditLogReqPath, auditlog.EnableAuditLog)
+	http.HandleFunc(auditlog.DisableAuditLogReqPath, auditlog.DisableAuditLog)
+	http.HandleFunc(auditlog.SetAuditLogBufSizeReqPath, auditlog.ResetWriterBuffSize)
 
 	statusCh := make(chan error)
 	go waitListenAndServe(statusCh, ":"+opt.Profport, nil)
@@ -632,6 +650,7 @@ func registerInterceptedSignal(mnt string) {
 	go func() {
 		sig := <-sigC
 		syslog.Printf("Killed due to a received signal (%v)\n", sig)
+		auditlog.StopAudit()
 		os.Exit(1)
 	}()
 }
@@ -706,6 +725,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.BuffersTotalLimit = GlobalMountOptions[proto.BuffersTotalLimit].GetInt64()
 	opt.MetaSendTimeout = GlobalMountOptions[proto.MetaSendTimeout].GetInt64()
 	opt.MaxStreamerLimit = GlobalMountOptions[proto.MaxStreamerLimit].GetInt64()
+	opt.EnableAudit = GlobalMountOptions[proto.EnableAudit].GetBool()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

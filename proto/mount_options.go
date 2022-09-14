@@ -66,6 +66,8 @@ const (
 	BuffersTotalLimit
 	MaxStreamerLimit
 
+	EnableAudit
+
 	MaxMountOption
 )
 
@@ -149,6 +151,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[BcacheFilterFiles] = MountOption{"bcacheFilterFiles", "The block cache filter files suffix", "", "py;pyx;sh;yaml;conf"}
 	opts[BcacheBatchCnt] = MountOption{"bcacheBatchCnt", "The block cache get meta count", "", int64(100000)}
 	opts[BcacheCheckIntervalS] = MountOption{"bcacheCheckIntervalS", "The block cache check interval", "", int64(300)}
+	opts[EnableAudit] = MountOption{"enableAudit", "enable client audit logging", "", false}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -297,4 +300,5 @@ type MountOptions struct {
 	MetaSendTimeout      int64
 	BuffersTotalLimit    int64
 	MaxStreamerLimit     int64
+	EnableAudit          bool
 }
