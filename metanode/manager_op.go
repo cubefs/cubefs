@@ -31,8 +31,9 @@ import (
 )
 
 const (
-	MaxUsedMemFactor = 1.1
-	MAXFsUsedFactor  = 0.6
+	MaxUsedMemFactor           = 1.1
+	RocksDBModeMaxFsUsedFactor = 0.6
+	MemModeMaxFsUsedFactor     = 0.8
 )
 
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
@@ -113,8 +114,12 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			}
 
 			FsCapInfo := m.metaNode.getSingleDiskStat(mConf.RocksDBDir)
+			factor := MemModeMaxFsUsedFactor
+			if partition.(*metaPartition).HasRocksDBStore() {
+				factor = RocksDBModeMaxFsUsedFactor
+			}
 
-			if FsCapInfo.Used > FsCapInfo.Total * MAXFsUsedFactor {
+			if FsCapInfo.Used > FsCapInfo.Total * factor {
 				mpr.Status = proto.ReadOnly
 			}
 		}
