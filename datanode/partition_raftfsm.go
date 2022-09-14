@@ -41,7 +41,7 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			dp.Disk().space.DetachDataPartition(dp.partitionID)
 			dp.Disk().DetachDataPartition(dp)
 			dp.Stop()
-			log.LogCritical("partition [id: %v, disk: %v] apply command [index: %v] failed and stopped: %v",
+			log.LogCriticalf("partition [id: %v, disk: %v] apply command [index: %v] failed and stopped: %v",
 				dp.partitionID, dp.Disk().Path, index, err)
 			return
 		}
@@ -69,7 +69,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			dp.Disk().space.DetachDataPartition(dp.partitionID)
 			dp.Disk().DetachDataPartition(dp)
 			dp.Stop()
-			log.LogCritical("partition [id: %v, disk: %v] apply member change [index: %v] failed and stopped: %v",
+			log.LogCriticalf("partition [id: %v, disk: %v] apply member change [index: %v] failed and stopped: %v",
 				dp.partitionID, dp.Disk().Path, index, err)
 			return
 		}
