@@ -213,6 +213,12 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	return
 }
 
+func (ei *ExtentInfoBlock) InitWithExtent(eid,size uint64, modTime time.Time) {
+	ei[FileID]=eid
+	ei[Size] = size
+	ei[ModifyTime] = uint64(modTime.Unix())
+}
+
 func (ei *ExtentInfoBlock) Init(size uint64, modTime time.Time) {
 	ei[Size] = size
 	ei[ModifyTime] = uint64(modTime.Unix())
@@ -533,6 +539,16 @@ func (s *ExtentStore) Watermark(extentID uint64) (ei *ExtentInfoBlock, err error
 		err = PartitionIsLoaddingErr
 		return
 	}
+	ei, ok := s.getExtentInfoByExtentID(extentID)
+	if !ok || ei == nil {
+		err = fmt.Errorf("e %v not exist", s.getExtentKey(extentID))
+		return
+	}
+	return
+}
+
+// Watermark returns the extent info of the given extent on the record.
+func (s *ExtentStore) ForceWatermark(extentID uint64) (ei *ExtentInfoBlock, err error) {
 	ei, ok := s.getExtentInfoByExtentID(extentID)
 	if !ok || ei == nil {
 		err = fmt.Errorf("e %v not exist", s.getExtentKey(extentID))

@@ -323,6 +323,44 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 	return nil, io.EOF
 }
 
+
+const (
+	SkipLimit=true
+	NoSkipLimit=false
+)
+
+func (dp *DataPartition)repairDataOnRandomWriteFromHost(extentID uint64,fromOffset,size uint64,host string) (err error){
+	remoteExtentInfo:=storage.ExtentInfoBlock{}
+	remoteExtentInfo[storage.FileID]=extentID
+	remoteExtentInfo[storage.Size]=fromOffset+size
+	err=dp.streamRepairExtent(nil,remoteExtentInfo,host,SkipLimit)
+	log.LogWarnf("repairDataFromHost extentID(%v) fromOffset(%v) size(%v) result(%v)",dp.applyRepairKey(int(extentID)),fromOffset,size,err)
+	return err
+}
+
+
+
+func (dp *DataPartition)repairDataOnRandomWrite(extentID uint64,fromOffset,size uint64) (err error){
+	hosts:=dp.getReplicaClone()
+	addr,_:=dp.IsRaftLeader()
+	if addr!="" {
+		err=dp.repairDataOnRandomWriteFromHost(extentID,fromOffset,size,addr)
+		if err==nil{
+			return
+		}
+	}
+	for _,h:=range hosts{
+		if h==addr {
+			continue
+		}
+		err=dp.repairDataOnRandomWriteFromHost(extentID,fromOffset,size,h)
+		if err==nil {
+			return
+		}
+	}
+	return
+}
+
 // ApplyRandomWrite random write apply
 func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint64) (resp interface{}, err error) {
 	start := time.Now().UnixMicro()
@@ -362,6 +400,10 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		}
 		if err == nil {
 			break
+		}
+		if strings.Contains(err.Error(),storage.IllegalOverWriteError){
+			dp.repairDataOnRandomWrite(opItem.extentID, uint64(opItem.offset), uint64(opItem.size))
+			continue
 		}
 		if strings.Contains(err.Error(), storage.ExtentNotFoundError.Error()) {
 			log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)

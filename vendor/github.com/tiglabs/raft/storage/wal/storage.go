@@ -255,10 +255,10 @@ func (s *Storage) StoreHardState(st proto.HardState) error {
 }
 
 func (s *Storage) Flush() error {
-	if err := s.metafile.Sync(); err != nil {
+	if err:=s.ls.Sync();err!=nil {
 		return err
 	}
-	return s.ls.Sync()
+	return s.metafile.Sync()
 }
 
 // Truncate the log to index,  The index is inclusive.

@@ -79,6 +79,7 @@ func (dp *DataPartition) persistAppliedID(snap *WALApplyStatus) (err error) {
 		return
 	}
 	err = os.Rename(tmpFilename, path.Join(dp.Path(), ApplyIndexFile))
+	log.LogInfof("dp(%v) persistAppliedID to (%v)",newAppliedIndex)
 	dp.persistedApplied = newAppliedIndex
 	return
 }

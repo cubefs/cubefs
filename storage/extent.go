@@ -225,6 +225,9 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 		}
+		if IsRandomWrite(writeType) && offset+size>e.dataSize{
+			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
+		}
 	}()
 	if isSync {
 		if err = e.file.Sync(); err != nil {
@@ -285,12 +288,16 @@ func (e *Extent) checkOffsetAndSize(offset, size int64) error {
 	return nil
 }
 
+const (
+	IllegalOverWriteError="illegal overwrite"
+)
+
 func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
 	if IsAppendWrite(writeType) && offset != e.dataSize {
 		return NewParameterMismatchErr(fmt.Sprintf("illegal append: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
 	}
 	if IsRandomWrite(writeType) && offset > e.dataSize {
-		return NewParameterMismatchErr(fmt.Sprintf("illegal overwrite: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
+		return NewParameterMismatchErr(fmt.Sprintf("%v: offset=%v size=%v extentsize=%v",IllegalOverWriteError, offset, size, e.dataSize))
 	}
 	return nil
 }
