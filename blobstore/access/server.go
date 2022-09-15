@@ -317,7 +317,7 @@ func (s *Service) PutAt(c *rpc.Context) {
 	valid := false
 	for _, secretKey := range tokenSecretKeys {
 		token := uptoken.DecodeToken(args.Token)
-		if token.IsValid(args.ClusterID, args.Vid, args.Blobid, uint32(args.Size), secretKey[:]) {
+		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
 			break
 		}
@@ -336,7 +336,7 @@ func (s *Service) PutAt(c *rpc.Context) {
 	}
 
 	rc := s.limiter.Reader(ctx, c.Request.Body)
-	err := s.streamHandler.PutAt(ctx, rc, args.ClusterID, args.Vid, args.Blobid, args.Size, hasherMap)
+	err := s.streamHandler.PutAt(ctx, rc, args.ClusterID, args.Vid, args.BlobID, args.Size, hasherMap)
 	if err != nil {
 		span.Error("stream putat failed", errors.Detail(err))
 		c.RespondError(httpError(err))
@@ -569,7 +569,7 @@ func (s *Service) DeleteBlob(c *rpc.Context) {
 	valid := false
 	for _, secretKey := range tokenSecretKeys {
 		token := uptoken.DecodeToken(args.Token)
-		if token.IsValid(args.ClusterID, args.Vid, args.Blobid, uint32(args.Size), secretKey[:]) {
+		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
 			break
 		}
@@ -584,7 +584,7 @@ func (s *Service) DeleteBlob(c *rpc.Context) {
 		ClusterID: args.ClusterID,
 		BlobSize:  1,
 		Blobs: []access.SliceInfo{{
-			MinBid: args.Blobid,
+			MinBid: args.BlobID,
 			Vid:    args.Vid,
 			Count:  1,
 		}},

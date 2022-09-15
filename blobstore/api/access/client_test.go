@@ -267,13 +267,13 @@ func handlePutAt(c *rpc.Context) {
 		return
 	}
 
-	if partRandBroken && args.Blobid%3 == 0 { // random broken
+	if partRandBroken && args.BlobID%3 == 0 { // random broken
 		c.RespondStatus(http.StatusForbidden)
 		return
 	}
 
 	token := uptoken.DecodeToken(args.Token)
-	if !token.IsValid(args.ClusterID, args.Vid, args.Blobid, uint32(args.Size), tokenPutat[:]) {
+	if !token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), tokenPutat[:]) {
 		c.RespondStatus(http.StatusForbidden)
 		return
 	}
@@ -288,7 +288,7 @@ func handlePutAt(c *rpc.Context) {
 		hashSumMap[alg] = hasher.Sum(nil)
 	}
 
-	dataCache.put(args.Blobid, blobBuf)
+	dataCache.put(args.BlobID, blobBuf)
 	c.RespondJSON(access.PutAtResp{HashSumMap: hashSumMap})
 }
 

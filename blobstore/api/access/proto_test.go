@@ -482,7 +482,7 @@ func TestPutAtArgs(t *testing.T) {
 		args := access.PutAtArgs{
 			ClusterID: cs.cid,
 			Vid:       cs.vid,
-			Blobid:    cs.bid,
+			BlobID:    cs.bid,
 			Size:      cs.size,
 		}
 		require.Equal(t, cs.valid, args.IsValid())
@@ -545,7 +545,7 @@ func TestDeleteBlobArgs(t *testing.T) {
 	require.False(t, (*access.DeleteBlobArgs)(nil).IsValid())
 	args.ClusterID = 1
 	require.False(t, args.IsValid())
-	args.Blobid = 1
+	args.BlobID = 1
 	require.False(t, args.IsValid())
 	args.Vid = 1
 	require.False(t, args.IsValid())
