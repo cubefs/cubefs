@@ -409,6 +409,10 @@ func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if storage.IsTinyExtent(uint64(extentID)) {
+		s.buildFailureResp(w, http.StatusBadRequest, "can not query tiny extent")
+		return
+	}
 	partition := s.space.Partition(partitionID)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
