@@ -127,6 +127,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 
 				if conn == nil {
 					if conn, err = getConn(msg.Ctx(), s.nodeID, s.senderType, s.resolver, 0, 2*time.Second); err != nil {
+						logger.Error("[Transport] get connection [%v] to [%v] failed: %v", s.senderType, s.nodeID, err)
 						proto.ReturnMessage(msg)
 						// reset chan
 						for {
@@ -182,9 +183,6 @@ func getConn(ctx context.Context, nodeID uint64, socketType SocketType, resolver
 	defer func() {
 		if err != nil {
 			conn = nil
-			if logger.IsEnableDebug() {
-				logger.Debug("[Transport] get connection[%s] to %v[%s] failed: %s", socketType, nodeID, addr, err)
-			}
 		}
 	}()
 

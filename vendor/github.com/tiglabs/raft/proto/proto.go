@@ -17,6 +17,7 @@ package proto
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync/atomic"
 )
 
@@ -83,8 +84,6 @@ type SnapshotMeta struct {
 	SnapV    uint32
 }
 
-
-
 type Peer struct {
 	Type     PeerType
 	Priority uint16
@@ -105,13 +104,11 @@ type HardState struct {
 }
 
 var (
-	LeaderGetEntryCnt uint64
-	LeaderPutEntryCnt uint64
+	LeaderGetEntryCnt   uint64
+	LeaderPutEntryCnt   uint64
 	FollowerGetEntryCnt uint64
 	FollowerPutEntryCnt uint64
 )
-
-
 
 func LoadLeaderGetEntryCnt() uint64 {
 	return atomic.LoadUint64(&LeaderGetEntryCnt)
@@ -130,17 +127,17 @@ func LoadFollowerPutEntryCnt() uint64 {
 }
 
 const (
-	LeaderLogEntryRefCnt=4
-	FollowerLogEntryRefCnt=2
+	LeaderLogEntryRefCnt   = 4
+	FollowerLogEntryRefCnt = 2
 )
 
 // Entry is the repl log entry.
 type Entry struct {
-	Type  EntryType
-	Term  uint64
-	Index uint64
-	Data  []byte
-	ctx   context.Context // Tracer context
+	Type      EntryType
+	Term      uint64
+	Index     uint64
+	Data      []byte
+	ctx       context.Context // Tracer context
 	RefCnt    int32
 	OrgRefCnt uint8
 }
@@ -149,16 +146,15 @@ func (e *Entry) SetCtx(ctx context.Context) {
 	e.ctx = ctx
 }
 
-func (e *Entry)IsLeaderLogEntry() bool {
+func (e *Entry) IsLeaderLogEntry() bool {
 	return e.OrgRefCnt > MinLeaderLogEntryRefCnt
 }
 
-
-func (e *Entry)IsFollowerLogEntry() bool {
-	return e.OrgRefCnt==FollowerLogEntryRefCnt
+func (e *Entry) IsFollowerLogEntry() bool {
+	return e.OrgRefCnt == FollowerLogEntryRefCnt
 }
 
-func (e *Entry)DecRefCnt() {
+func (e *Entry) DecRefCnt() {
 	if e.IsLeaderLogEntry() || e.IsFollowerLogEntry() {
 		atomic.AddInt32(&e.RefCnt, -1)
 	}
@@ -187,6 +183,8 @@ type Message struct {
 	Snapshot     Snapshot // No need for codec
 	ctx          context.Context
 	magic        uint8
+
+	HeartbeatContext HeartbeatContext
 }
 
 func (m *Message) Ctx() context.Context {
@@ -221,7 +219,28 @@ type ResetPeers struct {
 	NewPeers []Peer
 	Context  []byte
 }
-type HeartbeatContext []uint64
+
+type ContextInfo struct {
+	ID         uint64
+	IsUnstable bool
+}
+
+type HeartbeatContext []ContextInfo
+
+func (ctx HeartbeatContext) Get(id uint64) (e ContextInfo, exist bool) {
+	if len(ctx) == 0 {
+		return
+	}
+	var i = sort.Search(len(ctx), func(i int) bool {
+		return ctx[i].ID >= id
+	})
+	if i >= 0 && i < len(ctx) {
+		e = ctx[i]
+		exist = true
+		return
+	}
+	return
+}
 
 func (t MsgType) String() string {
 	switch t {

@@ -227,9 +227,7 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 						return
 					}
 				} else {
-					func() {
-						t.raftServer.reciveMessage(msg)
-					}()
+					t.raftServer.reciveMessage(msg)
 				}
 			}
 		}

@@ -434,7 +434,7 @@ func (rs *RaftServer) sendHeartbeat() {
 		}
 		peers := raft.getPeers()
 		for _, p := range peers {
-			nodes[p] = append(nodes[p], id)
+			nodes[p] = append(nodes[p], proto.ContextInfo{ID: id, IsUnstable: raft.getRiskState() != stateStable})
 		}
 	}
 	rs.mu.RUnlock()
@@ -455,12 +455,13 @@ func (rs *RaftServer) sendHeartbeat() {
 
 func (rs *RaftServer) handleHeartbeat(m *proto.Message) {
 	ctx := proto.DecodeHBContext(m.Context)
+	m.HeartbeatContext = ctx
 	var respCtx proto.HeartbeatContext
 	rs.mu.RLock()
-	for _, id := range ctx {
-		if raft, ok := rs.rafts[id]; ok {
+	for _, ent := range ctx {
+		if raft, ok := rs.rafts[ent.ID]; ok {
 			raft.reciveMessage(m)
-			respCtx = append(respCtx, id)
+			respCtx = append(respCtx, ent)
 		}
 	}
 	rs.mu.RUnlock()
@@ -479,8 +480,8 @@ func (rs *RaftServer) handleHeartbeatResp(m *proto.Message) {
 	rs.mu.RLock()
 	defer rs.mu.RUnlock()
 
-	for _, id := range ctx {
-		if raft, ok := rs.rafts[id]; ok {
+	for _, ent := range ctx {
+		if raft, ok := rs.rafts[ent.ID]; ok {
 			raft.reciveMessage(m)
 		}
 	}

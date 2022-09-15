@@ -73,7 +73,10 @@ func NewStorage(dir string, c *Config) (*Storage, error) {
 			return nil, err
 		}
 	}
-
+	if logger.IsEnableDebug() {
+		logger.Debug("NewStorage[%v] [Sync: %v, SyncRotate: %v, FileCacheCapacity: %v, FileSize: %v, TruncateFirstDummy: %v]",
+			dir, c.GetSync(), c.GetSyncRotate(), c.GetFileCacheCapacity(), c.GetFileSize(), c.GetTruncateFirstDummy())
+	}
 	return s, nil
 }
 
@@ -92,9 +95,11 @@ func (s *Storage) truncateFirstDummy() error {
 		truncTerm:  1,
 	}
 
-	s.metafile.SaveTruncateMeta(meta)
+	if err := s.metafile.SaveTruncateMeta(meta); err != nil {
+		return err
+	}
 
-	if s.c.GetSyncMeta() {
+	if s.c.GetSync() {
 		if err = s.metafile.Sync(); err != nil {
 			return err
 		}
@@ -231,7 +236,9 @@ func (s *Storage) StoreEntries(entries []*proto.Entry) error {
 // StoreHardState store the raft state to the repository.
 func (s *Storage) StoreHardState(st proto.HardState) error {
 
-	s.metafile.SaveHardState(st)
+	if err := s.metafile.SaveHardState(st); err != nil {
+		return err
+	}
 
 	s.hardState = st
 
@@ -241,11 +248,11 @@ func (s *Storage) StoreHardState(st proto.HardState) error {
 			sync = true
 			s.prevCommit = st.Commit
 		}
-		if sync && s.c.GetSyncMeta() {
-			if err := s.metafile.Sync(); err != nil {
+		if sync {
+			if err := s.ls.Sync(); err != nil {
 				return err
 			}
-			if err := s.ls.Sync(); err != nil {
+			if err := s.metafile.Sync(); err != nil {
 				return err
 			}
 		}
@@ -255,7 +262,10 @@ func (s *Storage) StoreHardState(st proto.HardState) error {
 }
 
 func (s *Storage) Flush() error {
-	if err:=s.ls.Sync();err!=nil {
+	if s.c.GetSync() {
+		return nil
+	}
+	if err := s.ls.Sync(); err != nil {
 		return err
 	}
 	return s.metafile.Sync()
@@ -283,7 +293,7 @@ func (s *Storage) Truncate(index uint64) error {
 	}
 	s.metafile.SaveTruncateMeta(meta)
 
-	if s.c.GetSyncMeta() {
+	if s.c.GetSync() {
 		if err = s.metafile.Sync(); err != nil {
 			return err
 		}
@@ -315,7 +325,7 @@ func (s *Storage) ApplySnapshot(meta proto.SnapshotMeta) error {
 
 	s.metafile.SaveTruncateMeta(tMeta)
 
-	if s.c.GetSyncMeta() {
+	if s.c.GetSync() {
 		if err = s.metafile.Sync(); err != nil {
 			return err
 		}

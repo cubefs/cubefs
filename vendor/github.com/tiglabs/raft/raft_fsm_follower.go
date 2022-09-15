@@ -30,7 +30,7 @@ func (r *raftFsm) becomeFollower(ctx context.Context, term, lead uint64) {
 	r.leader = lead
 	r.state = stateFollower
 	if logger.IsEnableDebug() {
-		logger.Debug("[raft][%v] became follower at term[%d] leader[%d].", r.id, r.term, r.leader)
+		logger.Debug("raft[%v] became follower at term[%d] leader[%d].", r.id, r.term, r.leader)
 	}
 }
 
@@ -57,6 +57,21 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 	case proto.ReqMsgHeartBeat:
 		r.electionElapsed = 0
 		r.leader = m.From
+		if entry, exist := m.HeartbeatContext.Get(r.id); exist {
+			if entry.IsUnstable != (r.riskState == stateUnstable) {
+				var newState riskState
+				if entry.IsUnstable {
+					newState = stateUnstable
+				} else {
+					newState = stateStable
+				}
+				if logger.IsEnableDebug() {
+					logger.Debug("raft[%v] recv risk state change to [%v] from leader [%v].", r.id, newState, m.From)
+				}
+				r.riskState = newState
+				r.riskStateLn.changeTo(newState)
+			}
+		}
 		return
 
 	case proto.ReqMsgElectAck:
@@ -108,7 +123,7 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 			r.send(nmsg)
 		} else {
 			if logger.IsEnableDebug() {
-				logger.Debug("raf[%v] [logterm: %d, index: %d, vote: %v] rejected vote from %v [logterm: %d, index: %d] at term %d.", r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, r.term)
+				logger.Debug("raft[%v] [logterm: %d, index: %d, vote: %v] rejected vote from %v [logterm: %d, index: %d] at term %d.", r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, r.term)
 			}
 			nmsg := proto.GetMessage()
 			nmsg.Type = proto.RespMsgVote
@@ -141,6 +156,16 @@ func (r *raftFsm) tickElection() {
 	}
 
 	r.electionElapsed++
+
+	var stableElapsed = r.config.ElectionTick
+	if r.leader != NoLeader && r.state == stateFollower && r.electionElapsed >= stableElapsed && r.riskState == stateStable {
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] risk state change to [%v] cause election elapsed [%v] larger than stable elapsed [%v].", r.id, stateUnstable, r.electionElapsed, stableElapsed)
+		}
+		r.riskState = stateUnstable
+		r.riskStateLn.changeTo(stateUnstable)
+	}
+
 	timeout := false
 	// check follower lease (2 * electiontimeout)
 	if r.config.LeaseCheck && r.leader != NoLeader && r.state == stateFollower {
@@ -154,6 +179,7 @@ func (r *raftFsm) tickElection() {
 		m.Type = proto.LocalMsgHup
 		m.From = r.config.NodeID
 		r.Step(m)
+
 	}
 }
 

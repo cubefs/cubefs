@@ -283,7 +283,6 @@ func (m *Message) Encode(w io.Writer) error {
 	return nil
 }
 
-
 func (m *Message) Decode(r *util.BufferReader) error {
 	var (
 		datas []byte
@@ -324,7 +323,7 @@ func (m *Message) Decode(r *util.BufferReader) error {
 					esize := binary.BigEndian.Uint32(datas[start:])
 					start = start + 4
 					end := start + uint64(esize)
-					entry:=new(Entry)
+					entry := new(Entry)
 					//entry:=GetEntryFromPoolWithFollower()
 					entry.Decode(datas[start:end])
 					m.Entries = append(m.Entries, entry)
@@ -341,15 +340,18 @@ func (m *Message) Decode(r *util.BufferReader) error {
 
 func EncodeHBContext(ctx HeartbeatContext) (buf []byte) {
 	sort.Slice(ctx, func(i, j int) bool {
-		return ctx[i] < ctx[j]
+		return ctx[i].ID < ctx[j].ID
 	})
 
 	scratch := make([]byte, binary.MaxVarintLen64)
 	prev := uint64(0)
-	for _, id := range ctx {
-		n := binary.PutUvarint(scratch, id-prev)
+	for _, entry := range ctx {
+		n := binary.PutUvarint(scratch, entry.ID-prev)
 		buf = append(buf, scratch[:n]...)
-		prev = id
+		prev = entry.ID
+		if entry.IsUnstable {
+			buf = append(buf, 0)
+		}
 	}
 	return
 }
@@ -358,9 +360,19 @@ func DecodeHBContext(buf []byte) (ctx HeartbeatContext) {
 	prev := uint64(0)
 	for len(buf) > 0 {
 		id, n := binary.Uvarint(buf)
-		ctx = append(ctx, id+prev)
-		prev = id + prev
 		buf = buf[n:]
+		ctxEnt := ContextInfo{
+			ID: id + prev,
+			IsUnstable: func() bool {
+				if len(buf) > 0 && buf[0] == 0 {
+					buf = buf[1:]
+					return true
+				}
+				return false
+			}(),
+		}
+		ctx = append(ctx, ctxEnt)
+		prev = id + prev
 	}
 	return
 }

@@ -152,6 +152,8 @@ type raft struct {
 	stopc             chan struct{}
 	done              chan struct{}
 	mu                sync.Mutex
+
+	riskState riskState
 }
 
 func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
@@ -290,6 +292,7 @@ func (s *raft) run() {
 	s.prevHardSt.Vote = s.raftFsm.vote
 	s.prevHardSt.Commit = s.raftFsm.raftLog.committed
 	s.maybeChange(true)
+	s.raftFsm.setRiskStateListener(s.riskStateChange)
 	loopCount := 0
 	var readyc chan struct{}
 	for {
@@ -466,7 +469,7 @@ func (s *raft) run() {
 						logger.Error("raft[%v] truncate failed,error is: %v", s.raftFsm.id, err)
 						return
 					}
-					logger.Debug("raft[%v] truncate storage to %v", s.raftFsm.id,maxIndex)
+					logger.Debug("raft[%v] truncate storage to %v", s.raftFsm.id, maxIndex)
 				}
 			}()
 
@@ -756,6 +759,10 @@ func (s *raft) isLeader() bool {
 	return leader == s.config.NodeID
 }
 
+func (s *raft) getRiskState() riskState {
+	return s.riskState
+}
+
 func (s *raft) applied() uint64 {
 	return s.curApplied.Get()
 }
@@ -815,6 +822,11 @@ func (s *raft) persist() {
 			panic(AppPanicError(fmt.Sprintf("[raft->persist][%v] storage storeHardState err: [%v].", s.raftFsm.id, err)))
 		}
 		s.prevHardSt = hs
+	}
+	if s.riskState != stateStable {
+		if err := s.raftConfig.Storage.Flush(); err != nil {
+			panic(AppPanicError(fmt.Sprintf("[raft->persist][%v] flush storage err: [%v].", s.raftFsm.id, err)))
+		}
 	}
 }
 
@@ -1082,4 +1094,16 @@ func (s *raft) promoteLearner() {
 			logger.Warn("raft[%v] leader[%v] auto promote learner[%v]", s.raftConfig.ID, s.config.NodeID, id)
 		}
 	}
+}
+
+func (s *raft) riskStateChange(state riskState) {
+	if s.riskState != state && state == stateUnstable {
+		if err := s.raftConfig.Storage.Flush(); err != nil {
+			panic(AppPanicError(fmt.Sprintf("raft[%v] flush storage err: %v", s.raftConfig.ID, err)))
+		}
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] fired storage force flush cause risk state change to [%v].", s.raftConfig.ID, state)
+		}
+	}
+	s.riskState = state
 }

@@ -31,6 +31,31 @@ const NoLeader uint64 = 0
 
 type stepFunc func(r *raftFsm, m *proto.Message)
 
+type riskState int
+
+func (s riskState) String() string {
+	switch s {
+	case stateUnstable:
+		return "StateUnstable"
+	case stateStable:
+		return "StateStable"
+	}
+	return "Unknown"
+}
+
+const (
+	stateUnstable riskState = iota
+	stateStable
+)
+
+type riskStateListener func(state riskState)
+
+func (f riskStateListener) changeTo(state riskState) {
+	if f != nil {
+		f(state)
+	}
+}
+
 type raftFsm struct {
 	id               uint64
 	term             uint64
@@ -56,10 +81,13 @@ type raftFsm struct {
 	step        stepFunc
 	tick        func()
 	stopCh      chan struct{}
+
+	riskState   riskState
+	riskStateLn riskStateListener
 }
 
-func (fsm *raftFsm) getReplicas() (m string) {
-	for id, _ := range fsm.replicas {
+func (r *raftFsm) getReplicas() (m string) {
+	for id := range r.replicas {
 		m += fmt.Sprintf(" [%v] ,", id)
 	}
 	return m
@@ -510,6 +538,11 @@ func (r *raftFsm) addReadIndex(futures []*Future) {
 	}
 	r.readOnly.add(r.raftLog.committed, futures)
 	r.bcastReadOnly()
+}
+
+func (r *raftFsm) setRiskStateListener(f riskStateListener) {
+	r.riskStateLn = f
+	r.riskStateLn.changeTo(r.riskState)
 }
 
 func numOfPendingConf(ents []*proto.Entry) int {

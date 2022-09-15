@@ -305,6 +305,26 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 func (r *raftFsm) tickHeartbeat() {
 	r.heartbeatElapsed++
 	r.electionElapsed++
+
+	if self, found := r.replicas[r.config.NodeID]; found {
+		self.active = true
+		self.lastActive = time.Now()
+	}
+
+	if stables, total := r.calcInStableStateReplicates(); stables < total && r.riskState != stateUnstable {
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] stable state replicas [%v/%v], change risk state to [%v].", r.id, stables, total, stateUnstable)
+		}
+		r.riskState = stateUnstable
+		r.riskStateLn.changeTo(stateUnstable)
+	} else if stables == total && r.riskState != stateStable {
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] stable state replicas [%v/%v], change risk state to [%v].", r.id, stables, total, stateStable)
+		}
+		r.riskState = stateStable
+		r.riskStateLn.changeTo(stateStable)
+	}
+
 	if r.pastElectionTimeout() {
 		r.electionElapsed = 0
 		if r.config.LeaseCheck && !r.checkLeaderLease(false) {
@@ -363,6 +383,21 @@ func (r *raftFsm) checkLeaderLease(promoteLearnerCheck bool) bool {
 	}
 
 	return act >= r.quorum()
+}
+
+func (r *raftFsm) calcInStableStateReplicates() (stables, total int) {
+	var stableElapsed = r.config.ElectionTick
+	var stableLastActiveDeadline = time.Now().Add(-(r.config.TickInterval * time.Duration(stableElapsed)))
+	for id, replica := range r.replicas {
+		if replica.isLearner {
+			continue
+		}
+		total++
+		if id == r.config.NodeID || (replica.state != replicaStateSnapshot && replica.active && replica.lastActive.After(stableLastActiveDeadline)) {
+			stables++
+		}
+	}
+	return
 }
 
 func (r *raftFsm) maybeCommitForRemovePeer() bool {
