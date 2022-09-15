@@ -348,6 +348,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetMNRocksDBDiskThreshold).
 		HandlerFunc(m.setMetaNodeRocksDBDiskUsedThreshold)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetMNMemModeRocksDBDiskThreshold).
+		HandlerFunc(m.setMetaNodeMemModeRocksDBDiskUsedThreshold)
 
 	// data node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

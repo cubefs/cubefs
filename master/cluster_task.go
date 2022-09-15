@@ -1302,7 +1302,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		c.adjustMetaNode(metaNode)
 		log.LogWarnf("metaNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
 	}
-	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold, c.cfg.MetaNodeRocksdbDiskThreshold)
+	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold, c.cfg.MetaNodeRocksdbDiskThreshold, c.cfg.MetaNodeMemModeRocksdbDiskThreshold)
 	metaNode.setNodeActive()
 	metaNode.updateRocksdbDisks(resp)
 

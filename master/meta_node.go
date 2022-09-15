@@ -25,32 +25,33 @@ import (
 
 // MetaNode defines the structure of a meta node
 type MetaNode struct {
-	ID                        uint64
-	Addr                      string
-	IsActive                  bool
-	Sender                    *AdminTaskManager `graphql:"-"`
-	ZoneName                  string            `json:"Zone"`
-	MaxMemAvailWeight         uint64            `json:"MaxMemAvailWeight"`
-	Total                     uint64            `json:"TotalWeight"`
-	Used                      uint64            `json:"UsedWeight"`
-	Ratio                     float64
-	SelectCount               uint64
-	Carry                     float64
-	Threshold                 float32
-	ReportTime                time.Time
-	metaPartitionInfos        []*proto.MetaPartitionReport
-	MetaPartitionCount        int
-	NodeSetID                 uint64
-	sync.RWMutex                                `graphql:"-"`
-	ToBeOffline               bool
-	ToBeMigrated              bool
-	PersistenceMetaPartitions []uint64
-	ProfPort                  string
-	Version                   string
-	RocksdbDisks              []*proto.MetaNodeDiskInfo
-	RocksdbHostSelectCount    uint64
-	RocksdbHostSelectCarry    float64
-	RocksdbDiskThreshold      float32
+	ID                          uint64
+	Addr                        string
+	IsActive                    bool
+	Sender                      *AdminTaskManager `graphql:"-"`
+	ZoneName                    string            `json:"Zone"`
+	MaxMemAvailWeight           uint64            `json:"MaxMemAvailWeight"`
+	Total                       uint64            `json:"TotalWeight"`
+	Used                        uint64            `json:"UsedWeight"`
+	Ratio                       float64
+	SelectCount                 uint64
+	Carry                       float64
+	Threshold                   float32
+	ReportTime                  time.Time
+	metaPartitionInfos          []*proto.MetaPartitionReport
+	MetaPartitionCount          int
+	NodeSetID                   uint64
+	sync.RWMutex                `graphql:"-"`
+	ToBeOffline                 bool
+	ToBeMigrated                bool
+	PersistenceMetaPartitions   []uint64
+	ProfPort                    string
+	Version                     string
+	RocksdbDisks                []*proto.MetaNodeDiskInfo
+	RocksdbHostSelectCount      uint64
+	RocksdbHostSelectCarry      float64
+	RocksdbDiskThreshold        float32
+	MemModeRocksdbDiskThreshold float32
 }
 
 func newMetaNode(addr, zoneName, clusterID string, version string) (node *MetaNode) {
@@ -146,10 +147,7 @@ func (metaNode *MetaNode) isWritable(storeMode proto.StoreMode) bool {
 	defer metaNode.RUnlock()
 	if !metaNode.IsActive || metaNode.MaxMemAvailWeight <= gConfig.metaNodeReservedMem || metaNode.reachesThreshold() ||
 		metaNode.MetaPartitionCount >= defaultMaxMetaPartitionCountOnEachNode || metaNode.ToBeOffline == true ||
-		metaNode.ToBeMigrated == true {
-		return false
-	}
-	if storeMode == proto.StoreModeRocksDb && metaNode.reachesRocksdbDisksThreshold() {
+		metaNode.ToBeMigrated == true || metaNode.reachesRocksdbDisksThreshold(storeMode) {
 		return false
 	}
 	return true
@@ -180,7 +178,7 @@ func (metaNode *MetaNode) setNodeActive() {
 	metaNode.IsActive = true
 }
 
-func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, threshold, rocksdbDiskThreshold float32) {
+func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, threshold, rocksdbDiskThreshold, memModeRocksDBDiskThreshold float32) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.metaPartitionInfos = resp.MetaPartitionReports
@@ -201,6 +199,7 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	metaNode.Threshold = threshold
 	metaNode.ProfPort = resp.ProfPort
 	metaNode.RocksdbDiskThreshold = rocksdbDiskThreshold
+	metaNode.MemModeRocksdbDiskThreshold = memModeRocksDBDiskThreshold
 }
 
 func (metaNode *MetaNode) updateRocksdbDisks(resp *proto.MetaNodeHeartbeatResponse) {
@@ -216,10 +215,13 @@ func (metaNode *MetaNode) reachesThreshold() bool {
 	return float32(float64(metaNode.Used)/float64(metaNode.Total)) > metaNode.Threshold
 }
 
-func (metaNode *MetaNode) reachesRocksdbDisksThreshold() bool {
+func (metaNode *MetaNode) reachesRocksdbDisksThreshold(storeMode proto.StoreMode) bool {
 	var total, used uint64 = 0, 0
 	if metaNode.RocksdbDiskThreshold <= 0 {
 		metaNode.RocksdbDiskThreshold = defaultRocksdbDiskUsageThreshold
+	}
+	if metaNode.MemModeRocksdbDiskThreshold <= 0 {
+		metaNode.MemModeRocksdbDiskThreshold = defaultMemModeRocksdbDiskUsageThreshold
 	}
 	if len(metaNode.RocksdbDisks) == 0 {
 		return true
@@ -231,7 +233,11 @@ func (metaNode *MetaNode) reachesRocksdbDisksThreshold() bool {
 	if total == 0 {
 		return true
 	}
-	return float32(used)/float32(total) > metaNode.RocksdbDiskThreshold
+	threshold := metaNode.MemModeRocksdbDiskThreshold
+	if storeMode == proto.StoreModeRocksDb {
+		threshold = metaNode.RocksdbDiskThreshold
+	}
+	return float32(used)/float32(total) > threshold
 }
 
 func (metaNode *MetaNode) getRocksdbDisksWeight(maxTotal uint64) (weight float64) {

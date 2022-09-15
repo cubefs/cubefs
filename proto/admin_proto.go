@@ -81,7 +81,9 @@ const (
 	AdminGetClientPkgAddr          = "/clientPkgAddr/get"
 
 	AdminSmartVolList = "/admin/smartVol/list"
-	AdminSetMNRocksDBDiskThreshold = "/rocksdbDiskThreshold/set"
+
+	AdminSetMNRocksDBDiskThreshold        = "/rocksdbDiskThreshold/set"
+	AdminSetMNMemModeRocksDBDiskThreshold = "/memModeRocksdbDiskThreshold/set"
 
 	AdminCompactVolList = "/admin/compactVol/list"
 	AdminCompactVolSet  = "/admin/compactVol/set"
@@ -452,6 +454,9 @@ type LimitInfo struct {
 
 	MonitorSummarySec		uint64
 	MonitorReportSec		uint64
+
+	RocksdbDiskUsageThreshold        float32
+	MemModeRocksdbDiskUsageThreshold float32
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

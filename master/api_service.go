@@ -109,6 +109,22 @@ func (m *Server) setMetaNodeRocksDBDiskUsedThreshold(w http.ResponseWriter, r *h
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set rocksdb disk threshold to %v successfully", threshold)))
 }
 
+func (m *Server) setMetaNodeMemModeRocksDBDiskUsedThreshold(w http.ResponseWriter, r *http.Request) {
+	var (
+		threshold float64
+		err       error
+	)
+	if threshold, err = parseAndExtractThreshold(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setMetaNodeMemModeRocksDBDiskUsedThreshold(float32(threshold)); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set rocksdb disk threshold to %v successfully", threshold)))
+}
+
 // Turn on or off the automatic allocation of the data partitions.
 // If DisableAutoAllocate == off, then we WILL NOT automatically allocate new data partitions for the volume when:
 // 	1. the used space is below the max capacity,
@@ -235,36 +251,37 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv := &proto.ClusterView{
-		Name:                         m.cluster.Name,
-		LeaderAddr:                   m.leaderInfo.addr,
-		DisableAutoAlloc:             m.cluster.DisableAutoAllocate,
-		AutoMergeNodeSet:             m.cluster.AutoMergeNodeSet,
-		NodeSetCapacity:              m.cluster.cfg.nodeSetCapacity,
-		MetaNodeThreshold:            m.cluster.cfg.MetaNodeThreshold,
-		DpRecoverPool:                m.cluster.cfg.DataPartitionsRecoverPoolSize,
-		MpRecoverPool:                m.cluster.cfg.MetaPartitionsRecoverPoolSize,
-		ClientPkgAddr:                m.cluster.cfg.ClientPkgAddr,
-		Applied:                      m.fsm.applied,
-		MaxDataPartitionID:           m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:                m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID:           m.cluster.idAlloc.metaPartitionID,
-		MetaNodeRocksdbDiskThreshold: m.cluster.cfg.MetaNodeRocksdbDiskThreshold,
-		MetaNodes:                    make([]proto.NodeView, 0),
-		DataNodes:                    make([]proto.NodeView, 0),
-		CodEcnodes:                   make([]proto.NodeView, 0),
-		EcNodes:                      make([]proto.NodeView, 0),
-		VolStatInfo:                  make([]*proto.VolStatInfo, 0),
-		BadPartitionIDs:              make([]proto.BadPartitionView, 0),
-		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
-		BadEcPartitionIDs:            make([]proto.BadPartitionView, 0),
-		MigratedDataPartitions:       make([]proto.BadPartitionView, 0),
-		MigratedMetaPartitions:       make([]proto.BadPartitionView, 0),
-		DataNodeBadDisks:             make([]proto.DataNodeBadDisksView, 0),
-		EcScrubEnable:                m.cluster.EcScrubEnable,
-		EcMaxScrubExtents:            m.cluster.EcMaxScrubExtents,
-		EcScrubPeriod:                m.cluster.EcScrubPeriod,
-		EcScrubStartTime:             m.cluster.EcStartScrubTime,
-		MaxCodecConcurrent:           m.cluster.MaxCodecConcurrent,
+		Name:                                m.cluster.Name,
+		LeaderAddr:                          m.leaderInfo.addr,
+		DisableAutoAlloc:                    m.cluster.DisableAutoAllocate,
+		AutoMergeNodeSet:                    m.cluster.AutoMergeNodeSet,
+		NodeSetCapacity:                     m.cluster.cfg.nodeSetCapacity,
+		MetaNodeThreshold:                   m.cluster.cfg.MetaNodeThreshold,
+		DpRecoverPool:                       m.cluster.cfg.DataPartitionsRecoverPoolSize,
+		MpRecoverPool:                       m.cluster.cfg.MetaPartitionsRecoverPoolSize,
+		ClientPkgAddr:                       m.cluster.cfg.ClientPkgAddr,
+		Applied:                             m.fsm.applied,
+		MaxDataPartitionID:                  m.cluster.idAlloc.dataPartitionID,
+		MaxMetaNodeID:                       m.cluster.idAlloc.commonID,
+		MaxMetaPartitionID:                  m.cluster.idAlloc.metaPartitionID,
+		MetaNodeRocksdbDiskThreshold:        m.cluster.cfg.MetaNodeRocksdbDiskThreshold,
+		MetaNodeMemModeRocksdbDiskThreshold: m.cluster.cfg.MetaNodeMemModeRocksdbDiskThreshold,
+		MetaNodes:                           make([]proto.NodeView, 0),
+		DataNodes:                           make([]proto.NodeView, 0),
+		CodEcnodes:                          make([]proto.NodeView, 0),
+		EcNodes:                             make([]proto.NodeView, 0),
+		VolStatInfo:                         make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:                     make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs:                 make([]proto.BadPartitionView, 0),
+		BadEcPartitionIDs:                   make([]proto.BadPartitionView, 0),
+		MigratedDataPartitions:              make([]proto.BadPartitionView, 0),
+		MigratedMetaPartitions:              make([]proto.BadPartitionView, 0),
+		DataNodeBadDisks:                    make([]proto.DataNodeBadDisksView, 0),
+		EcScrubEnable:                       m.cluster.EcScrubEnable,
+		EcMaxScrubExtents:                   m.cluster.EcMaxScrubExtents,
+		EcScrubPeriod:                       m.cluster.EcScrubPeriod,
+		EcScrubStartTime:                    m.cluster.EcStartScrubTime,
+		MaxCodecConcurrent:                  m.cluster.MaxCodecConcurrent,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -422,6 +439,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaNodeDumpWaterLevel:                 dumpWaterLevel,
 		MonitorSummarySec:						monitorSummarySec,
 		MonitorReportSec: 						monitorReportSec,
+		RocksdbDiskUsageThreshold:              m.cluster.cfg.MetaNodeRocksdbDiskThreshold,
+		MemModeRocksdbDiskUsageThreshold:       m.cluster.cfg.MetaNodeMemModeRocksdbDiskThreshold,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }

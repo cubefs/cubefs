@@ -13,12 +13,14 @@ import (
 )
 
 const (
-	UpdateDeleteLimitInfoTicket = 1 * time.Minute
-	UpdateRateLimitInfoTicket   = 5 * time.Minute
-	UpdateClusterViewTicket     = 24 * time.Hour
-	DefaultDeleteBatchCounts    = 128
-	DefaultReqLimitBurst        = 512
-	DefaultDumpWaterLevel       = 100
+	UpdateDeleteLimitInfoTicket          = 1 * time.Minute
+	UpdateRateLimitInfoTicket            = 5 * time.Minute
+	UpdateClusterViewTicket              = 24 * time.Hour
+	DefaultDeleteBatchCounts             = 128
+	DefaultReqLimitBurst                 = 512
+	DefaultDumpWaterLevel                = 100
+	DefaultRocksDBModeMaxFsUsedPercent   = 60
+	DefaultMemModeMaxFsUsedFactorPercent = 80
 )
 
 type NodeInfo struct {
@@ -75,6 +77,9 @@ var (
 		proto.OpMetaBatchCleanDeletedDentry:   true,
 		proto.OpMetaBatchCleanDeletedInode:    true,
 	}
+
+	RocksDBModeMaxFsUsedPercent  uint64 = DefaultRocksDBModeMaxFsUsedPercent
+	MemModeMaxFsUsedPercent      uint64 = DefaultMemModeMaxFsUsedFactorPercent
 )
 
 func DeleteBatchCount() uint64 {
@@ -119,6 +124,28 @@ func GetDumpWaterLevel() uint64 {
 
 func updateDumpWaterLevel(val uint64)  {
 	atomic.StoreUint64(&nodeInfo.dumpWaterLevel, val)
+}
+
+func updateRocksDBModeMaxFsUsedPercent(val float32) {
+	if val <= 0 || val >= 1 {
+		return
+	}
+	atomic.StoreUint64(&RocksDBModeMaxFsUsedPercent, uint64(val * 100))
+}
+
+func getRocksDBModeMaxFsUsedPercent() uint64 {
+	return atomic.LoadUint64(&RocksDBModeMaxFsUsedPercent)
+}
+
+func updateMemModeMaxFsUsedPercent(val float32) {
+	if val <= 0 || val >= 1 {
+		return
+	}
+	atomic.StoreUint64(&MemModeMaxFsUsedPercent, uint64(val * 100))
+}
+
+func getMemModeMaxFsUsedPercent() uint64 {
+	return atomic.LoadUint64(&MemModeMaxFsUsedPercent)
 }
 
 func (m *MetaNode) startUpdateNodeInfo() {
@@ -166,6 +193,8 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	updateDeleteWorkerSleepMs(limitInfo.MetaNodeDeleteWorkerSleepMs)
 	updateReadDirLimitNum(limitInfo.MetaNodeReadDirLimitNum)
 	updateDumpWaterLevel(limitInfo.MetaNodeDumpWaterLevel)
+	updateMemModeMaxFsUsedPercent(limitInfo.MemModeRocksdbDiskUsageThreshold)
+	updateRocksDBModeMaxFsUsedPercent(limitInfo.RocksdbDiskUsageThreshold)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

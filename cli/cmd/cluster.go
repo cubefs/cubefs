@@ -39,6 +39,8 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 		newClusterSetThresholdCmd(client),
 		newClusterEcUpdate(client),
 		newClusterSetClientPkgAddr(client),
+		newClusterSetRocksDBDiskThresholdCmd(client),
+		newClusterSetMemModeRocksDBDiskThresholdCmd(client),
 	)
 	return clusterCmd
 }
@@ -140,6 +142,56 @@ If the memory usage reaches this threshold, all the mata partition will be readO
 				errout("Failed: %v\n", err)
 			}
 			stdout("MetaNode threshold is set to %v!\n", threshold)
+		},
+	}
+	return cmd
+}
+
+func newClusterSetRocksDBDiskThresholdCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpSetRocksDBDiskThreshold + " [THRESHOLD]",
+		Short: "Set RocksDB Disk threshold of meta nodes",
+		Args:  cobra.MinimumNArgs(1),
+		Long: `Set the threshold of rocksdb disk on each meta node.
+If the rocksdb disk usage reaches this threshold, all the rocksdb mode mata partition will be readOnly.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var threshold float64
+			if threshold, err = strconv.ParseFloat(args[0], 64); err != nil {
+				errout("Parse Float fail: %v\n", err)
+			}
+			if threshold > 1.0 {
+				errout("Threshold too big\n")
+			}
+			if err = client.AdminAPI().SetMetaNodeRocksDBDiskThreshold(threshold); err != nil {
+				errout("Failed: %v\n", err)
+			}
+			stdout("MetaNode rocksdb disk threshold is set to %v!\n", threshold)
+		},
+	}
+	return cmd
+}
+
+func newClusterSetMemModeRocksDBDiskThresholdCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpSetMemModeRocksDBDiskThreshold + " [THRESHOLD]",
+		Short: "Set RocksDB Disk threshold of mem mode meta nodes",
+		Args:  cobra.MinimumNArgs(1),
+		Long: `Set the threshold of rocksdb disk on each  meta node.
+If the rocksdb disk usage reaches this threshold, all the mem mode mata partition will be readOnly.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var threshold float64
+			if threshold, err = strconv.ParseFloat(args[0], 64); err != nil {
+				errout("Parse Float fail: %v\n", err)
+			}
+			if threshold > 1.0 {
+				errout("Threshold too big\n")
+			}
+			if err = client.AdminAPI().SetMetaNodeMemModeRocksDBDiskThreshold(threshold); err != nil {
+				errout("Failed: %v\n", err)
+			}
+			stdout("MetaNode mem mode rocksdb disk threshold is set to %v!\n", threshold)
 		},
 	}
 	return cmd

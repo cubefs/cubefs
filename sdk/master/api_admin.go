@@ -576,6 +576,24 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
 	return
 }
 
+func (api *AdminAPI) SetMetaNodeRocksDBDiskThreshold(threshold float64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetMNRocksDBDiskThreshold)
+	request.addParam("threshold", strconv.FormatFloat(threshold, 'f', 6, 64))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SetMetaNodeMemModeRocksDBDiskThreshold(threshold float64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetMNMemModeRocksDBDiskThreshold)
+	request.addParam("threshold", strconv.FormatFloat(threshold, 'f', 6, 64))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
 	if info.Opcode >= 0 {
