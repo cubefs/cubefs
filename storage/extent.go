@@ -289,7 +289,7 @@ func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
 	if IsAppendWrite(writeType) && offset != e.dataSize {
 		return NewParameterMismatchErr(fmt.Sprintf("illegal append: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
 	}
-	if IsRandomWrite(writeType) && offset+size > e.dataSize {
+	if IsRandomWrite(writeType) && offset > e.dataSize {
 		return NewParameterMismatchErr(fmt.Sprintf("illegal overwrite: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
 	}
 	return nil
