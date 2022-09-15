@@ -19,18 +19,18 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
-	"math/rand"
-	"net"
-	"strings"
-	"sync"
-	"time"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
+	"io"
+	"math/rand"
+	"net"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/tiglabs/raft"
 )
@@ -363,11 +363,8 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		if err == nil {
 			break
 		}
-		if strings.Contains(err.Error(), "illegal") {
-			err = nil
-			break
-		}
 		if strings.Contains(err.Error(), storage.ExtentNotFoundError.Error()) {
+			log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
 			err = nil
 			return
 		}
