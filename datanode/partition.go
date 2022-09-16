@@ -252,9 +252,6 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 		return
 	}
 	dp.ForceLoadHeader()
-	//if err = dp.Start(); err != nil {
-	//	return nil, err
-	//}
 
 	// persist file metadata
 	dp.DataPartitionCreateType = request.CreateType
