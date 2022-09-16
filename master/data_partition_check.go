@@ -305,7 +305,8 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 		return
 	}
 
-	if partition.isRecover && len(partition.Hosts) == dpReplicaNum && (time.Now().Unix()-partition.modifyTime > defaultCheckRecoverDuration) && partition.isDataCatchUpInStrictMode() {
+	if partition.isRecover && len(partition.Hosts) == dpReplicaNum && (time.Now().Unix()-partition.modifyTime > defaultCheckRecoverDuration) && partition.isDataCatchUpInStrictMode() &&
+		partition.allReplicaHasRecovered() {
 		partition.RLock()
 		if partition.isRecover {
 			partition.isRecover = false

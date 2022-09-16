@@ -71,7 +71,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 					replicaNum = defaultReplicaNum
 				}
 			}
-			if partition.isDataCatchUp() && len(partition.Replicas) >= int(replicaNum) {
+			if partition.isDataCatchUp() && partition.allReplicaHasRecovered() && len(partition.Replicas) >= int(replicaNum) {
 				partition.RLock()
 				if partition.isRecover {
 					partition.isRecover = false
@@ -122,9 +122,9 @@ func (c *Cluster) checkFulfillDataReplica() {
 
 }
 
-//Raft instance will not start until the data has been synchronized by simple repair-read consensus algorithm, and it spends a long time.
-//The raft group can not come to an agreement with a leader, and the data partition will be unavailable.
-//Introducing raft learner can solve the problem.
+// Raft instance will not start until the data has been synchronized by simple repair-read consensus algorithm, and it spends a long time.
+// The raft group can not come to an agreement with a leader, and the data partition will be unavailable.
+// Introducing raft learner can solve the problem.
 func (c *Cluster) fulfillDataReplica(partitionID uint64, badAddr string) (isPushBackToBadIDs bool) {
 	var (
 		newAddr         string

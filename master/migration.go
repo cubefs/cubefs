@@ -30,7 +30,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
 				continue
 			}
-			if partition.isDataCatchUpInStrictMode() {
+			if partition.isDataCatchUpInStrictMode() && partition.allReplicaHasRecovered() {
 				partition.RLock()
 				if partition.isRecover {
 					partition.isRecover = false

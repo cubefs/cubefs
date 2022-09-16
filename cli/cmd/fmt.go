@@ -566,16 +566,16 @@ func formatTimeToString(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-var dataReplicaTableRowPattern = "%-20v    %-8v    %-8v    %-8v    %-12v    %-10v    %-20v    %-8v		%-8v"
+var dataReplicaTableRowPattern = "%-20v    %-8v    %-8v    %-8v    %-8v    %-12v    %-10v    %-20v    %-8v		%-8v"
 
 func formatDataReplicaTableHeader() string {
-	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "FILECOUNT", "STATUS", "REPORT TIME", "ISLEARNER", "MEDIUM-TYPE")
+	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "RECOVER", "FILECOUNT", "STATUS", "REPORT TIME", "ISLEARNER", "MEDIUM-TYPE")
 }
 
 func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, formatSize(replica.Used), formatSize(replica.Total),
-			replica.IsLeader, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime), replica.IsLearner, replica.MType)
+			replica.IsLeader, replica.IsRecover, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime), replica.IsLearner, replica.MType)
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
