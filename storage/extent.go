@@ -113,7 +113,6 @@ func (e *Extent) InitToFS() (err error) {
 	defer func() {
 		if err != nil {
 			e.file.Close()
-			os.Remove(e.filePath)
 		}
 	}()
 	if IsTinyExtent(e.extentID) {
