@@ -282,12 +282,12 @@ type NodeStatInfo struct {
 }
 
 type VolStatInfo struct {
-	Name        		string
-	TotalSize   		uint64
-	UsedSize    		uint64
-	UsedRatio   		string
-	EnableToken 		bool
-	EnableWriteCache	bool
+	Name             string
+	TotalSize        uint64
+	UsedSize         uint64
+	UsedRatio        string
+	EnableToken      bool
+	EnableWriteCache bool
 }
 
 // DataPartition represents the structure of storing the file contents.
@@ -314,7 +314,7 @@ type DataPartitionInfo struct {
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
 
-//FileInCore define file in data partition
+// FileInCore define file in data partition
 type FileInCore struct {
 	Name          string
 	LastModify    int64
@@ -340,6 +340,7 @@ type DataReplica struct {
 	IsLeader        bool
 	NeedsToCompare  bool
 	IsLearner       bool
+	IsRecover       bool
 	DiskPath        string
 	MType           string
 }

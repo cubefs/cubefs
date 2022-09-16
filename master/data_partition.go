@@ -245,7 +245,7 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string, isManuel bool) 
 			otherLiveReplicas = append(otherLiveReplicas, replica)
 		}
 	}
-	minLiveReplicaNum := int(partition.ReplicaNum/2)
+	minLiveReplicaNum := int(partition.ReplicaNum / 2)
 	if !isManuel {
 		minLiveReplicaNum += 1
 	}
@@ -645,6 +645,7 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica.IsLeader = vr.IsLeader
 	replica.IsLearner = vr.IsLearner
 	replica.NeedsToCompare = vr.NeedCompare
+	replica.IsRecover = vr.IsRecover
 	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
 		oldDiskPath := replica.DiskPath
 		replica.DiskPath = vr.DiskPath
@@ -695,6 +696,7 @@ func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Clus
 	if err == nil {
 		replica.MType = zone.MType.String()
 	}
+	replica.IsRecover = true
 	partition.addReplica(replica)
 	partition.checkAndRemoveMissReplica(replica.Addr)
 	return
@@ -860,6 +862,18 @@ func (partition *DataPartition) isDataCatchUp() (ok bool) {
 	return minus < util.GB
 }
 
+func (partition *DataPartition) allReplicaHasRecovered() (ok bool) {
+	partition.RLock()
+	defer partition.RUnlock()
+	for _, replica := range partition.Replicas {
+		if replica.IsRecover == true {
+			ok = false
+			return
+		}
+	}
+	return true
+}
+
 func (partition *DataPartition) isDataCatchUpInStrictMode() (ok bool) {
 	partition.RLock()
 	defer partition.RUnlock()
@@ -890,7 +904,7 @@ func (partition *DataPartition) isDataCatchUpInStrictMode() (ok bool) {
 	return false
 }
 
-//check if the data partition needs to rebalance zone
+// check if the data partition needs to rebalance zone
 func (partition *DataPartition) needToRebalanceZone(c *Cluster, zoneList []string, volCrossRegionHAType proto.CrossRegionHAType) (isNeed bool, err error) {
 	var curZoneMap map[string]uint8
 	var curZoneList []string
@@ -931,7 +945,7 @@ func (partition *DataPartition) needToRebalanceZone(c *Cluster, zoneList []strin
 	return
 }
 
-//check if the data partition needs to rebalance zone
+// check if the data partition needs to rebalance zone
 func (partition *DataPartition) needToRebalanceZoneForSmartVol(c *Cluster, zoneList []string) (isNeed bool, err error) {
 	var (
 		idcMap     map[string]string
