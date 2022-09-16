@@ -302,6 +302,10 @@ func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 	return
 }
 
+const (
+	BaseExtentAddNumOnInitExtentStore=1000
+)
+
 func (s *ExtentStore) initBaseFileID() (err error) {
 	var (
 		baseFileID uint64
@@ -348,6 +352,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	if baseFileID < MinExtentID {
 		baseFileID = MinExtentID
 	}
+	baseFileID+=BaseExtentAddNumOnInitExtentStore
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
 	if err = s.PersistenceBaseExtentID(baseFileID); err != nil {
 		return

@@ -124,6 +124,10 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	}
 }
 
+const (
+	BaseExtentAddNumOnInitExtentStore=1000
+)
+
 func (s *ExtentStore) initBaseFileID() (err error) {
 	var (
 		baseFileID uint64
@@ -163,6 +167,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	if baseFileID < MinExtentID {
 		baseFileID = MinExtentID
 	}
+	baseFileID+=BaseExtentAddNumOnInitExtentStore
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
 	runtime.GC()
