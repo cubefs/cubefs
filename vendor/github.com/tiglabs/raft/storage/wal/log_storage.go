@@ -321,6 +321,9 @@ func (ls *logEntryStorage) rotate(ctx context.Context) error {
 	prevLast := ls.last.LastIndex()
 
 	var finish = func(lf *logEntryFile) error {
+		if err := lf.Sync(); err != nil {
+			return err
+		}
 		if err := lf.FinishWrite(ctx); err != nil {
 			return err
 		}
