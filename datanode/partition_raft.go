@@ -114,9 +114,21 @@ func (dp *DataPartition) startRaft() (err error) {
 	}
 	log.LogDebugf("start partition(%v) raft peers: %s path: %s",
 		dp.partitionID, peers, dp.path)
+
+	// Compute index for raft recover
+	var raftRecoverIndex uint64
+	applied, lastTruncate := dp.applyStatus.Applied(), dp.applyStatus.LastTruncate()
+	if applied == 0 {
+		raftRecoverIndex = 0
+	} else if applied > lastTruncate && applied-lastTruncate > RaftLogRecoverInAdvance {
+		raftRecoverIndex = applied - RaftLogRecoverInAdvance
+	} else {
+		raftRecoverIndex = lastTruncate
+	}
+
 	pc := &raftstore.PartitionConfig{
 		ID:       uint64(dp.partitionID),
-		Applied:  dp.applyStatus.Applied(),
+		Applied:  raftRecoverIndex,
 		Peers:    peers,
 		Learners: learners,
 		SM:       dp,

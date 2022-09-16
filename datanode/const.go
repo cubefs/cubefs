@@ -15,8 +15,9 @@
 package datanode
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 // Network protocol
@@ -28,6 +29,7 @@ const (
 	IntervalToUpdateReplica       = 600 // interval to update the replica
 	IntervalToUpdatePartitionSize = 60  // interval to update the partition size
 	NumOfFilesToRecoverInParallel = 8   // number of files to be recovered simultaneously
+	RaftLogRecoverInAdvance       = 5 // Partition启动时回放日志提前量
 )
 
 // Network protocol
@@ -127,7 +129,7 @@ const (
 const (
 	EmptyCrcValue uint64 = 4045511210
 
-	DefaultIntervalDataPartitionValidateCRC = time.Hour * 24
+	DefaultIntervalDataPartitionValidateCRC     = time.Hour * 24
 	GetRemoteExtentInfoForValidateCRCRetryTimes = 3
 )
 
