@@ -249,15 +249,6 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 	msg := fmt.Sprintf("action[canOffLine],partitionID:%v  RocksDBHost:%v  offLine:%v ",
 		partition.PartitionID, partition.Hosts, offlineAddr)
 	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
-	if partition.isSpecialReplicaCnt() {
-		if len(liveReplicas) != 1 {
-			msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", proto.ErrCannotBeOffLine, len(liveReplicas))
-			log.LogError(msg)
-			err = fmt.Errorf(msg)
-			return
-		}
-		return
-	}
 	otherLiveReplicas := make([]*DataReplica, 0)
 	for i := 0; i < len(liveReplicas); i++ {
 		replica := liveReplicas[i]
@@ -270,12 +261,14 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", proto.ErrCannotBeOffLine, len(liveReplicas))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
+		return
 	}
 
 	if len(liveReplicas) == 0 {
 		msg = fmt.Sprintf(msg+" err:%v  replicaNum:%v liveReplicas:%v ", proto.ErrCannotBeOffLine, partition.ReplicaNum, len(liveReplicas))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
+		return
 	}
 
 	return
