@@ -450,10 +450,14 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 		}
 		break
 	}
-	dinfo := convert(dataNode)
-	if len(dinfo.PersistenceDataPartitions) == 0 {
-		log.LogWarnf("action[RestorePartition]: length of PersistenceDataPartitions is 0, ExpiredPartition check " +
-			"without effect")
+
+	var dinfo *DataNodeInfo = nil
+	if dataNode != nil {
+		dinfo = convert(dataNode)
+		if len(dinfo.PersistenceDataPartitions) == 0 {
+			log.LogWarnf("action[RestorePartition]: length of PersistenceDataPartitions is 0, ExpiredPartition check " +
+				"without effect")
+		}
 	}
 
 	var (
@@ -513,7 +517,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 					filename, d.Path, err.Error())
 				continue
 			}
-			if isExpiredPartition(partitionID, dinfo.PersistenceDataPartitions) {
+			if dinfo != nil && isExpiredPartition(partitionID, dinfo.PersistenceDataPartitions) {
 				log.LogErrorf("action[RestorePartition]: find expired partition[%s], rename it and you can delete it "+
 					"manually", filename)
 				oldName := path.Join(d.Path, filename)
