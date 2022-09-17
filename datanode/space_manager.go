@@ -455,7 +455,7 @@ func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partit
 	}
 
 	partition.DataPartitionCreateType = proto.DecommissionedCreateDataPartition
-	if err = partition.Persist(nil, false); err != nil {
+	if err = partition.Persist(nil); err != nil {
 		goto errDeal
 	}
 

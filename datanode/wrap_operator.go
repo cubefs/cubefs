@@ -1344,7 +1344,7 @@ func (s *DataNode) handlePacketToResetDataPartitionRaftMember(p *repl.Packet) {
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-		if err = dp.Persist(nil, false); err != nil {
+		if err = dp.Persist(nil); err != nil {
 			log.LogErrorf("handlePacketToResetDataPartitionRaftMember dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}

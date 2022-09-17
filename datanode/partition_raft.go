@@ -225,7 +225,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			}
 			if minAppliedID, lastTruncateID, appliedID := dp.minAppliedID, dp.applyStatus.LastTruncate(), dp.applyStatus.Applied(); appliedID >= minAppliedID && minAppliedID > lastTruncateID { // Has changed
 				if snap, success := dp.applyStatus.AdvanceNextTruncate(minAppliedID); success {
-					if err := dp.Persist(&snap, true); err != nil {
+					if err := dp.Persist(&snap); err != nil {
 						log.LogErrorf("partition(%v) scheduled persist all failed: %v", dp.partitionID, err)
 						truncateRaftLogTimer.Reset(time.Minute)
 						continue
@@ -306,7 +306,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-			if err = dp.Persist(nil, false); err != nil {
+			if err = dp.Persist(nil); err != nil {
 				log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue

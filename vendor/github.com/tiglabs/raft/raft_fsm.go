@@ -104,7 +104,8 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		}
 	}
 
-	logger.Info("newRaft[%v] [commit: %d, applied: %d, lastindex: %d]", r.id, raftlog.committed, raftConfig.Applied, raftlog.lastIndex())
+	logger.Info("newRaft[%v] [commit: %d, applied: %d, firstindex: %d, lastindex: %d]",
+		r.id, raftlog.committed, raftConfig.Applied, raftlog.firstIndex(), raftlog.lastIndex())
 
 	if raftConfig.Applied > 0 {
 		lasti := raftlog.lastIndex()

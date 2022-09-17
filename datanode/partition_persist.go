@@ -14,7 +14,7 @@ import (
 
 type PersistFlag int
 
-func (dp *DataPartition) Persist(status *WALApplyStatus, syncData bool) (err error) {
+func (dp *DataPartition) Persist(status *WALApplyStatus) (err error) {
 	dp.persistSync <- struct{}{}
 	defer func() {
 		<-dp.persistSync
@@ -24,12 +24,17 @@ func (dp *DataPartition) Persist(status *WALApplyStatus, syncData bool) (err err
 		status = dp.applyStatus.Snap()
 	}
 
-	if syncData {
-		dp.forceFlushAllFD()
-		if dp.raftPartition != nil {
-			if err = dp.raftPartition.FlushWAL(false); err != nil {
-				return
-			}
+	// 先记录一下这次的持久化行为
+	if log.IsDebugEnabled() {
+		log.LogDebugf("partition(%v) will persist applied ID %v", dp.partitionID, status.Applied())
+	}
+	log.LogFlush()
+
+	dp.forceFlushAllFD()
+
+	if dp.raftPartition != nil {
+		if err = dp.raftPartition.FlushWAL(false); err != nil {
+			return
 		}
 	}
 
@@ -40,6 +45,10 @@ func (dp *DataPartition) Persist(status *WALApplyStatus, syncData bool) (err err
 	if err = dp.persistMetadata(status); err != nil {
 		return
 	}
+
+	// 也Flush一下日志
+	log.LogFlush()
+
 	return
 }
 
@@ -79,7 +88,7 @@ func (dp *DataPartition) persistAppliedID(snap *WALApplyStatus) (err error) {
 		return
 	}
 	err = os.Rename(tmpFilename, path.Join(dp.Path(), ApplyIndexFile))
-	log.LogInfof("dp(%v) persistAppliedID to (%v)",dp.partitionID,newAppliedIndex)
+	log.LogInfof("dp(%v) persistAppliedID to (%v)",dp.partitionID, newAppliedIndex)
 	dp.persistedApplied = newAppliedIndex
 	return
 }

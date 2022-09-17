@@ -709,7 +709,7 @@ func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
 					if status.Applied() == 0 || dp.raftPartition == nil {
 						return
 					}
-					if err := dp.Persist(status, true); err != nil {
+					if err := dp.Persist(status); err != nil {
 						err = errors.NewErrorf("[forcePersistPartitions]: persist all failed, partition=%d: %v", dp.config.PartitionID, err.Error())
 						log.LogErrorf(err.Error())
 						atomic.AddInt64(&failedCount, 1)
