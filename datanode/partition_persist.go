@@ -14,6 +14,12 @@ import (
 
 type PersistFlag int
 
+// Persist方法会执行以下操作:
+// 1. Sync所有打开的文件句柄
+// 2. Sync Raft WAL以及HardState信息
+// 3. 持久化Applied Index水位信息
+// 4. 持久化DP的META信息, 主要用于持久化和Applied Index对应的LastTruncateID。
+// 若status参数为nil，则会使用调用该方法时WALApplyStatus状态
 func (dp *DataPartition) Persist(status *WALApplyStatus) (err error) {
 	dp.persistSync <- struct{}{}
 	defer func() {
@@ -23,12 +29,6 @@ func (dp *DataPartition) Persist(status *WALApplyStatus) (err error) {
 	if status == nil {
 		status = dp.applyStatus.Snap()
 	}
-
-	// 先记录一下这次的持久化行为
-	if log.IsDebugEnabled() {
-		log.LogDebugf("partition(%v) will persist applied ID %v", dp.partitionID, status.Applied())
-	}
-	log.LogFlush()
 
 	dp.forceFlushAllFD()
 
@@ -46,9 +46,19 @@ func (dp *DataPartition) Persist(status *WALApplyStatus) (err error) {
 		return
 	}
 
-	// 也Flush一下日志
-	log.LogFlush()
+	return
+}
 
+// PersistMetaDataOnly仅持久化DP的META信息(不对LastTruncatedID信息进行变更)
+func (dp *DataPartition) PersistMetaDataOnly() (err error) {
+	dp.persistSync <- struct{}{}
+	defer func() {
+		<-dp.persistSync
+	}()
+
+	if err = dp.persistMetadata(nil); err != nil {
+		return
+	}
 	return
 }
 
@@ -88,12 +98,13 @@ func (dp *DataPartition) persistAppliedID(snap *WALApplyStatus) (err error) {
 		return
 	}
 	err = os.Rename(tmpFilename, path.Join(dp.Path(), ApplyIndexFile))
-	log.LogInfof("dp(%v) persistAppliedID to (%v)",dp.partitionID, newAppliedIndex)
+	log.LogInfof("dp(%v) persistAppliedID to (%v)", dp.partitionID, newAppliedIndex)
 	dp.persistedApplied = newAppliedIndex
 	return
 }
 
 // PersistMetadata persists the file metadata on the disk.
+// 若snap参数为nil，则不会修改META文件中的LastTruncateID信息。
 func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 
 	originFileName := path.Join(dp.path, DataPartitionMetadataFileName)
@@ -118,8 +129,11 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	if metadata.CreateTime == "" {
 		metadata.CreateTime = time.Now().Format(TimeLayout)
 	}
-	if lastTruncate := snap.LastTruncate(); lastTruncate > metadata.LastTruncateID {
-		metadata.LastTruncateID = lastTruncate
+
+	if snap != nil && snap.LastTruncate() > metadata.LastTruncateID {
+		metadata.LastTruncateID = snap.LastTruncate()
+	} else if dp.persistedMetadata != nil {
+		metadata.LastTruncateID = dp.persistedMetadata.LastTruncateID
 	}
 
 	if dp.persistedMetadata != nil && dp.persistedMetadata.Equals(metadata) {
