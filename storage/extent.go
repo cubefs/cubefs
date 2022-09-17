@@ -86,6 +86,9 @@ func (e *Extent) IsOccurNewWrite() bool {
 
 // Close this extent and release FD.
 func (e *Extent) Close() (err error) {
+	if err = e.file.Sync(); err != nil {
+		return
+	}
 	if err = e.file.Close(); err != nil {
 		return
 	}
