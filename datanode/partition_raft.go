@@ -134,6 +134,7 @@ func (dp *DataPartition) startRaft() (err error) {
 		SM:       dp,
 		WalPath:  dp.path,
 	}
+	log.LogWarnf("dp(%v) start with applyID(%v)",dp.partitionID,raftRecoverIndex)
 	dp.raftPartition = dp.config.RaftStore.CreatePartition(pc)
 	if err = dp.raftPartition.Start(); err != nil {
 		return
