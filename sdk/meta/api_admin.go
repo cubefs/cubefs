@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net/http"
@@ -358,6 +359,39 @@ func (mc *MetaHttpClient) GetMetaNodeVersion() (versionInfo *proto.VersionValue,
 	}
 	versionInfo = new(proto.VersionValue)
 	if err = json.Unmarshal(respData, versionInfo); err != nil {
+		return
+	}
+	return
+}
+
+func (mc *MetaHttpClient) GetExtentKeyByInodeId(metaPartitionId, inode uint64) (result *proto.GetExtentsResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("GetExtentKeyByInodeId mp:%v, error:%v", metaPartitionId, err)
+		}
+	}()
+	var data []byte
+	req := newAPIRequest(http.MethodGet, "/getExtentsByInode")
+	req.params["pid"] = fmt.Sprintf("%v", metaPartitionId)
+	req.params["ino"] = fmt.Sprintf("%v", inode)
+	data, err = mc.serveRequest(req)
+	if err != nil {
+		err = errors.NewErrorf("get extent key by inode failed, error[%v]", err)
+		return
+	}
+
+	log.LogInfof("mp id:%v, inode id:%v, resp info:%s", metaPartitionId, inode, string(data))
+
+	result = new(proto.GetExtentsResponse)
+	if len(data) == 0 {
+		result.Extents = make([]proto.ExtentKey, 0)
+		log.LogInfof("[getExtentKeyByInodeId] inode:%v not exist", inode)
+		return
+	}
+
+	result = new(proto.GetExtentsResponse)
+	if err = json.Unmarshal(data, &result); err != nil {
+		err = errors.NewErrorf("data:%s unmarshal extents key failed: %v", string(data), err)
 		return
 	}
 	return

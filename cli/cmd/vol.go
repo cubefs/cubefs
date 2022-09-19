@@ -19,12 +19,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/storage"
+	"github.com/chubaofs/chubaofs/util/bitset"
+	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/cli/api"
@@ -66,6 +71,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolEcSetCmd(client),
 		newVolEcPartitionsConsistency(client),
 		newVolEcPartitionsChunkConsistency(client),
+		newVolCheckEKDeletedByMistake(client),
 	)
 	return cmd
 }
@@ -1505,4 +1511,388 @@ func newVolEcPartitionsChunkConsistency(client *master.MasterClient) *cobra.Comm
 		},
 	}
 	return cmd
+}
+
+var (
+	optParallelMpCnt, optParallelInodeCnt int64
+	mistakeDeleteEKInfoPattern = "%-20v    %-20v\n"
+	mistakeDeleteEKInfoHeader  = fmt.Sprintf(mistakeDeleteEKInfoPattern, "DP ID", "EXTENTS ID")
+)
+
+type ExtentInfo struct {
+	DataPartitionID uint64
+	ExtentID        uint64
+}
+
+func newVolCheckEKDeletedByMistake(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   "check-mistake-delete-eks" + " [VOLUME]",
+		Short: "check ek deleted by mistake, ek exist in meta data but not exist in data node",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var dataExtentsMap, metaExtentsMap, ekDeletedByMistake map[uint64]*bitset.ByteSliceBitSet
+			defer func() {
+				if err != nil {
+					errout(err.Error())
+				}
+			}()
+			if metaExtentsMap, err = getExtentsByMPs(client, volumeName); err != nil {
+				err = fmt.Errorf("volume: %s , meta failed: %s", volumeName, err.Error())
+				return
+			}
+
+			if dataExtentsMap, err = getExtentsByDPs(client, volumeName); err != nil {
+				err = fmt.Errorf("volume: %s , data failed: %s", volumeName, err.Error())
+				return
+			}
+
+			//first
+			firstCheckResult := checkEKsDeletedByMistake(dataExtentsMap, metaExtentsMap)
+
+			//re get meta data
+			if metaExtentsMap, err = getExtentsByMPs(client, volumeName); err != nil {
+				err = fmt.Errorf("volume: %s , meta failed: %s", volumeName, err.Error())
+				return
+			}
+
+			//recheck
+			ekDeletedByMistake = reCheckEKsDeletedByMistake(firstCheckResult, metaExtentsMap)
+			if len(ekDeletedByMistake) == 0 {
+				fmt.Printf("volume %s not exist mistake delete eks\n", volumeName)
+				return
+			}
+			fmt.Printf("volume %s mistake delete ek result:\n", volumeName)
+			formatDeletedEKByMistake(ekDeletedByMistake)
+			errout("volume %s has mistake delete ek, please check!", volumeName)
+			return
+
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().Int64Var(&optParallelMpCnt, "parallel-mp", 5, "mp parallel count, default 5")
+	cmd.Flags().Int64Var(&optParallelInodeCnt, "parallel-inode", 10, "inode info parallel count, default is 10")
+	return cmd
+}
+
+func formatDeletedEKByMistake(eks map[uint64]*bitset.ByteSliceBitSet) {
+	fmt.Printf(mistakeDeleteEKInfoHeader)
+	for dpID, extentIDBitSet := range eks {
+		var extentsStr = make([]string, 0, extentIDBitSet.Cap())
+		for index := 0; index <= extentIDBitSet.MaxNum(); index++ {
+			if extentIDBitSet.Get(index) {
+				extentsStr = append(extentsStr, fmt.Sprintf("%v", index))
+			}
+		}
+		if len(extentsStr) == 0 {
+			continue
+		}
+		log.LogInfof("dp is:%v, extents id:%s", dpID, strings.Join(extentsStr, ","))
+		fmt.Printf(mistakeDeleteEKInfoPattern, dpID, strings.Join(extentsStr, ","))
+	}
+}
+
+func checkEKsDeletedByMistake(dataExtentsMap, metaExtentsMap map[uint64]*bitset.ByteSliceBitSet) (result map[uint64]*bitset.ByteSliceBitSet) {
+	result = make(map[uint64]*bitset.ByteSliceBitSet, len(metaExtentsMap))
+	for dpid, metaEKsBitSet := range metaExtentsMap {
+		if _, ok := dataExtentsMap[dpid]; !ok {
+			result[dpid] = metaEKsBitSet
+			continue
+		}
+		r := metaEKsBitSet.Xor(dataExtentsMap[dpid]).And(metaEKsBitSet)
+		if r.IsNil() {
+			continue
+		}
+		result[dpid] = r
+	}
+	return
+}
+
+func reCheckEKsDeletedByMistake(firstResult, metaExtentsMap map[uint64]*bitset.ByteSliceBitSet) (result map[uint64]*bitset.ByteSliceBitSet) {
+	result = make(map[uint64]*bitset.ByteSliceBitSet, 0)
+	for dpID, extentsID := range firstResult {
+		if _, ok := metaExtentsMap[dpID]; !ok {
+			log.LogInfof("reCheckEKsDeletedByMistake dpID:%v, eks:%v not exist in meta data", dpID, extentsID)
+			continue
+		}
+		r := extentsID.And(metaExtentsMap[dpID])
+		if r.IsNil() {
+			continue
+		}
+		result[dpID] = r
+
+	}
+	return
+}
+
+func getExtentsByMPs(client *master.MasterClient, volumeName string) (
+	metaExtentsMap map[uint64]*bitset.ByteSliceBitSet, err error) {
+	metaExtentsMap = make(map[uint64]*bitset.ByteSliceBitSet, 0)
+	var mps []*proto.MetaPartitionView
+	mps, err = client.ClientAPI().GetMetaPartitions(volumeName)
+	if err != nil {
+		err = fmt.Errorf("get volume(%s) metapartitions failed:%v", volumeName, err)
+		return
+	}
+
+	errorCh := make(chan error, len(mps))
+	defer func() {
+		close(errorCh)
+	}()
+
+	var resultWaitGroup sync.WaitGroup
+	extCh := make(chan *ExtentInfo, 1024)
+	resultWaitGroup.Add(1)
+	go func() {
+		defer resultWaitGroup.Done()
+		for {
+			e, ok := <- extCh
+			if e == nil && !ok {
+				break
+			}
+			if e == nil {
+				log.LogInfof("receive nil")
+				continue
+			}
+			log.LogInfof("receive dpid:%v, extent id:%v", e.DataPartitionID, e.ExtentID)
+			if _, ok := metaExtentsMap[e.DataPartitionID]; !ok {
+				metaExtentsMap[e.DataPartitionID] = bitset.NewByteSliceBitSet()
+			}
+			metaExtentsMap[e.DataPartitionID].Set(int(e.ExtentID))
+			if !metaExtentsMap[e.DataPartitionID].Get(int(e.ExtentID)) {
+				log.LogErrorf("set dp id:%v extent id:%v to bit set failed", e.DataPartitionID, e.ExtentID)
+			}
+		}
+	}()
+
+	mpIDCh := make(chan uint64, 512)
+	go func() {
+		defer close(mpIDCh)
+		for _, mp := range mps {
+			mpIDCh <- mp.PartitionID
+		}
+	}()
+
+	var wg sync.WaitGroup
+	for index := 0 ; index < int(optParallelMpCnt); index++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				mpID, ok := <- mpIDCh
+				if !ok {
+					break
+				}
+
+				log.LogInfof("volume:%s, mp:%v", volumeName, mpID)
+				metaPartitionInfo, errGetMPInfo := client.ClientAPI().GetMetaPartition(mpID)
+				if errGetMPInfo != nil {
+					errorCh <- errGetMPInfo
+					log.LogErrorf("action[getExtentsByMPs] get cluster volume[%s] mp[%v] info failed: %v",
+						volumeName, mpID, errGetMPInfo)
+					continue
+				}
+
+				if len(metaPartitionInfo.Replicas) == 0 {
+					log.LogErrorf("action[getExtentsByMPs] volume[%s] mp[%v] replica count is 0",
+						volumeName, mpID)
+					errorCh <- fmt.Errorf("volume[%s] mp[%v] replica count is 0", volumeName, mpID)
+					continue
+				}
+
+				addrs := make([]string, 0, len(metaPartitionInfo.Replicas))
+				for _, replica := range metaPartitionInfo.Replicas {
+					if replica.IsLeader {
+						addrs = append(addrs, replica.Addr)
+					}
+				}
+
+				if len(addrs) == 0 {
+					var (
+						maxInodeCount uint64 = 0
+						leaderAddr = ""
+					)
+
+					for _, replica := range metaPartitionInfo.Replicas {
+						if replica.InodeCount >= maxInodeCount {
+							maxInodeCount = replica.InodeCount
+							leaderAddr = replica.Addr
+						}
+					}
+
+					addrs = append(addrs, leaderAddr)
+				}
+
+				for _, replica := range metaPartitionInfo.Replicas {
+					if replica.Addr != addrs[0] {
+						addrs = append(addrs, replica.Addr)
+					}
+				}
+
+				var errorInfo error
+				for _, addr := range addrs {
+					if addr == "" {
+						continue
+					}
+					errorInfo = getExtentsFromMetaPartition(mpID, addr, extCh)
+					if errorInfo == nil {
+						break
+					} else {
+						log.LogInfof("action[getExtentsByMPs] get volume [%s] extent id list from mp(%s:%v) failed:%v",
+							volumeName, addr, mpID, errorInfo)
+					}
+				}
+				if errorInfo != nil {
+					errorCh <- errorInfo
+					log.LogErrorf("action[getExtentsByMPs] get volume [%s] extent id list " +
+						"from mp[%v] failed: %v", volumeName, mpID, errorInfo)
+					continue
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(extCh)
+	resultWaitGroup.Wait()
+
+	select {
+	case e := <- errorCh:
+		//meta info must be complete
+		log.LogErrorf("get extent id list from meta partition failed:%v", e)
+		err = errors.NewErrorf("get extent id list from meta partition failed:%v", e)
+		return
+	default:
+	}
+	log.LogInfof("meta extent map count:%v", len(metaExtentsMap))
+	return
+}
+
+
+func getExtentsFromMetaPartition(mpId uint64, leaderAddr string, ExtentInfoCh chan *ExtentInfo) (err error) {
+	leaderInfo := strings.Split(leaderAddr, ":")
+	if len(leaderInfo) < 2 {
+		return fmt.Errorf("error leader addr(%s)", leaderAddr)
+	}
+	host := leaderInfo[0] + ":" + strconv.Itoa(int(client.MetaNodeProfPort))
+	metaHttpClient := meta.NewMetaHttpClient(host, false)
+	var (
+		inodesID       []uint64
+		allInodeIDs    *proto.MpAllInodesId
+		wg             sync.WaitGroup
+	)
+	allInodeIDs, err = metaHttpClient.ListAllInodesId(mpId, 0, 0, 0)
+	if err != nil {
+		log.LogErrorf("action[getExtentsFromMetaPartition] get mp[%v] all inode info failed:%v", mpId, err)
+		return
+	}
+
+	log.LogInfof("mp id:%v, inode count:%v", mpId, len(allInodeIDs.Inodes))
+
+	if len(allInodeIDs.Inodes) != 0 {
+		inodesID = append(inodesID, allInodeIDs.Inodes...)
+	}
+
+	inodeIDCh := make(chan uint64, 256)
+	go func() {
+		for _, inoID := range inodesID {
+			inodeIDCh <- inoID
+		}
+		close(inodeIDCh)
+	}()
+
+	errorCh := make(chan error, len(inodesID))
+	defer func() {
+		close(errorCh)
+	}()
+	for i := 0; i < int(optParallelInodeCnt) ; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				inodeID, ok := <- inodeIDCh
+				if !ok {
+					break
+				}
+
+				getExtentsResp, errInfo := metaHttpClient.GetExtentKeyByInodeId(mpId, inodeID)
+				if errInfo != nil {
+					errorCh <- errInfo
+					log.LogErrorf("action[getExtentsFromMetaPartition] get mp[%v] extent " +
+						"key by inode id[%v] failed: %v", mpId, inodeID, errInfo)
+					continue
+				}
+				log.LogInfof("inode id:%v, eks cnt:%v, eks:%v", inodeID, len(getExtentsResp.Extents), getExtentsResp.Extents)
+				for _, ek := range getExtentsResp.Extents {
+					ExtentInfoCh <- &ExtentInfo{
+						DataPartitionID: ek.PartitionId,
+						ExtentID:        ek.ExtentId,
+					}
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	select {
+	case <-errorCh:
+		err = errors.NewErrorf("get extent key by inode id failed")
+		return
+	default:
+	}
+	return
+}
+
+func getExtentsByDPs(client *master.MasterClient, volumeName string) (dataExtentsMap map[uint64]*bitset.ByteSliceBitSet, err error) {
+	var dpsView *proto.DataPartitionsView
+	dpsView, err = client.ClientAPI().GetDataPartitions(volumeName)
+	if err != nil {
+		log.LogErrorf("action[getExtentsByDPs] get volume[%s] data partition failed: %v", volumeName, err)
+		return
+	}
+
+	dataExtentsMap = make(map[uint64]*bitset.ByteSliceBitSet, len(dpsView.DataPartitions))
+	var extentsID []uint64
+	for _, dp := range dpsView.DataPartitions {
+		if dp == nil {
+			continue
+		}
+		extentsID, err = getExtentsByDataPartition(dp.PartitionID, dp.Hosts[0])
+		if err != nil {
+			log.LogErrorf("action[getExtentsByDPs] get volume[%s] extent id list from dp[%v] failed: %v",
+				volumeName, dp.PartitionID, err)
+			return
+		}
+		if len(extentsID) == 0 {
+			log.LogErrorf("action[getExtentsByDPs] get volume[%s] dp[%v] extents count is 0",
+				volumeName, dp.PartitionID)
+			return
+		}
+		bitSet := bitset.NewByteSliceBitSet()
+		for _, extentID := range extentsID {
+			bitSet.Set(int(extentID))
+		}
+		dataExtentsMap[dp.PartitionID] = bitSet
+	}
+	log.LogInfof("volume:%s, data extents map count:%v", volumeName, len(dataExtentsMap))
+	return
+}
+
+
+func getExtentsByDataPartition(dpId uint64, dataNodeAddr string) (extentsID []uint64, err error) {
+	var dpView *DataPartition
+	dpView, err = getExtentsByDp(dpId, dataNodeAddr)
+	if err != nil {
+		return
+	}
+	extentsID = make([]uint64, 0, len(dpView.Files))
+	for _, file := range dpView.Files {
+		extentsID = append(extentsID, file[storage.FileID])
+	}
+	return
 }
