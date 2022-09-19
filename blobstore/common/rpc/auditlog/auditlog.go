@@ -150,15 +150,23 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	respContentType := _w.Header().Get("Content-Type")
 	b.Write(_w.getStatusCode())
 	b.WriteByte('\t')
-	// check if track log change or not,
-	// if change, we should set into response header again
-	traceLogs := span.TrackLog()
+
+	// Check if track-log and tags changed or not,
+	// if changed, we should set into response header again.
+	// But the additional headers DO NOT write to client if
+	// they set after response WriteHeader, just logging.
 	wHeader := _w.Header()
+	traceLogs := span.TrackLog()
 	if len(wHeader[rpc.HeaderTraceLog]) < len(traceLogs) {
 		wHeader[rpc.HeaderTraceLog] = traceLogs
 	}
+	tags := span.Tags().ToSlice()
+	if len(wHeader[rpc.HeaderTraceTags]) < len(tags) {
+		wHeader[rpc.HeaderTraceTags] = tags
+	}
 	b.Write(_w.getHeader())
 	b.WriteByte('\t')
+
 	// record body in json or xml content type
 	if (respContentType == rpc.MIMEJSON || respContentType == rpc.MIMEXML) &&
 		_w.Header().Get("Content-Encoding") != rpc.GzipEncodingType {
