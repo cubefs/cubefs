@@ -481,6 +481,14 @@ func (w *Wrapper) SetConnConfig() {
 	}
 }
 
+func (w *Wrapper) SetDpFollowerReadDelayConfig(enableCollect bool, delaySummaryInterval int64) {
+	if w.dpFollowerReadDelayConfig == nil {
+		w.dpFollowerReadDelayConfig = &proto.DpFollowerReadDelayConfig{}
+	}
+	w.dpFollowerReadDelayConfig.EnableCollect = enableCollect
+	w.dpFollowerReadDelayConfig.DelaySummaryInterval = delaySummaryInterval
+}
+
 func (w *Wrapper) CrossRegionHATypeQuorum() bool {
 	return w.crossRegionHAType == proto.CrossRegionHATypeQuorum
 }
