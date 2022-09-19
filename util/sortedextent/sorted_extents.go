@@ -375,11 +375,13 @@ func (se *SortedExtents) maybeMergeWithPrev(index int) (merged bool) {
 	return
 }
 
-func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
+func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) ([]proto.ExtentKey) {
 	endOffset := ek.FileOffset + uint64(ek.Size)
+	var deleteExtents []proto.ExtentKey
 
 	se.Lock()
 	defer se.Unlock()
+	set := NewExtentKeySet()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -395,12 +397,12 @@ func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) (delete
 
 	if len(se.eks) <= 0 {
 		se.eks = append(se.eks, ek)
-		return
+		return set.GetDelExtentKeys(se.eks)
 	}
 	lastKey := se.eks[len(se.eks)-1]
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ek.FileOffset {
 		se.eks = append(se.eks, ek)
-		return
+		return set.GetDelExtentKeys(se.eks)
 	}
 	firstKey := se.eks[0]
 	if firstKey.FileOffset >= endOffset {
@@ -408,7 +410,7 @@ func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) (delete
 		se.eks = se.eks[:0]
 		se.eks = append(se.eks, ek)
 		se.eks = append(se.eks, eks...)
-		return
+		return set.GetDelExtentKeys(se.eks)
 	}
 
 	var startIndex, endIndex int
@@ -437,16 +439,20 @@ func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) (delete
 	for _, key := range invalidExtents {
 		if key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId {
 			deleteExtents = append(deleteExtents, key)
+			set.Put2(key)
 		}
 	}
-	return
+
+	return set.GetDelExtentKeys(se.eks)
 }
 
-func (se *SortedExtents) Truncate(offset uint64) (deleteExtents []proto.ExtentKey) {
+func (se *SortedExtents) Truncate(offset uint64) ([]proto.ExtentKey) {
 	var endIndex int
+	var deleteExtents []proto.ExtentKey
 
 	se.Lock()
 	defer se.Unlock()
+	set := NewExtentKeySet()
 
 	endIndex = -1
 	for idx, key := range se.eks {
@@ -464,6 +470,10 @@ func (se *SortedExtents) Truncate(offset uint64) (deleteExtents []proto.ExtentKe
 		se.eks = se.eks[:endIndex]
 	}
 
+	for i:= 0; i < len(deleteExtents); i++ {
+		set.Put2(deleteExtents[i])
+	}
+
 	numKeys := len(se.eks)
 	if numKeys > 0 {
 		lastKey := &se.eks[numKeys-1]
@@ -471,7 +481,8 @@ func (se *SortedExtents) Truncate(offset uint64) (deleteExtents []proto.ExtentKe
 			lastKey.Size = uint32(offset - lastKey.FileOffset)
 		}
 	}
-	return
+
+	return set.GetDelExtentKeys(se.eks)
 }
 
 func (se *SortedExtents) Len() int {
@@ -620,6 +631,13 @@ func (s ExtentKeySet) search(ek *proto.ExtentKey) (i int, found bool) {
 func (s *ExtentKeySet) Put(ek *proto.ExtentKey) {
 	if _, found := s.search(ek); !found {
 		*s = append(*s, *ek)
+		s.sort()
+	}
+}
+
+func (s *ExtentKeySet) Put2(ek proto.ExtentKey) {
+	if _, found := s.search(&ek); !found {
+		*s = append(*s, ek)
 		s.sort()
 	}
 }
