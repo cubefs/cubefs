@@ -592,16 +592,16 @@ func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable 
 	return sb.String()
 }
 
-var metaReplicaTableRowPattern = "%-20v    %-8v    %-10v    %-10v    %-16v    %-20v    %-12v"
+var metaReplicaTableRowPattern = "%-20v    %-8v    %-10v    %-10v    %-16v    %-20v    %-12v    %-12v"
 
 func formatMetaReplicaTableHeader() string {
-	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "ISLEADER", "APPLY ID", "STATUS", "STORE MODE", "REPORT TIME", "ISLEARNER")
+	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "ISLEADER", "APPLY ID", "STATUS", "STORE MODE", "REPORT TIME", "ISLEARNER", "ISRECOVER")
 }
 
 func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(metaReplicaTableRowPattern, replica.Addr, replica.IsLeader, replica.ApplyId,
-			formatMetaPartitionStatus(replica.Status), replica.StoreMode.Str(), formatTime(replica.ReportTime), replica.IsLearner)
+			formatMetaPartitionStatus(replica.Status), replica.StoreMode.Str(), formatTime(replica.ReportTime), replica.IsLearner, replica.IsRecover)
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))

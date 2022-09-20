@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -27,8 +28,6 @@ import (
 	"path"
 	"strings"
 	"sync/atomic"
-
-	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -553,6 +552,8 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 }
 
 func (mp *metaPartition) persistMetadata() (err error) {
+	mp.config.Lock()
+	defer mp.config.Unlock()
 	if err = mp.config.checkMeta(); err != nil {
 		err = errors.NewErrorf("[persistMetadata]->%s", err.Error())
 		return

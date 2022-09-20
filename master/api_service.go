@@ -4339,6 +4339,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				IsLearner:   mp.Replicas[i].IsLearner,
 				StoreMode:   mp.Replicas[i].StoreMode,
 				ApplyId:     mp.Replicas[i].ApplyId,
+				IsRecover:   mp.Replicas[i].IsRecover,
 			}
 
 			if mp.Replicas[i].StoreMode == proto.StoreModeMem {

@@ -257,6 +257,11 @@ const (
 	DecommissionedCreateDataPartition = 1
 )
 
+const (
+	NormalCreateMetaPartition         = 0
+	DecommissionedCreateMetaPartition = 1
+)
+
 const FollowerReadFlag = 'F'
 
 var GReadOps = []uint8{OpMetaLookup, OpMetaReadDir, OpMetaInodeGet, OpMetaBatchInodeGet, OpMetaExtentsList, OpMetaGetXAttr,

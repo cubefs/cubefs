@@ -670,6 +670,7 @@ type MetaPartitionReport struct {
 	ExistMaxInodeID uint64
 	StoreMode       StoreMode
 	ApplyId         uint64
+	IsRecover       bool
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.

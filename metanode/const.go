@@ -190,6 +190,7 @@ const (
 	defaultAuthTimeout                    = 5 // seconds
 	defaultMaxMetaPartitionInodeID uint64 = 1<<63 - 1
 	defaultDiskReservedSpace              = 30 * util.GB
+	metaDataFlockFile                     = ".MetaDataFlock"
 )
 
 // Configuration keys

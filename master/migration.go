@@ -129,7 +129,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 			//inodeDiff = partition.getMinusOfInodeCount()
 			//inodeDiff = partition.getPercentMinusOfInodeCount()
 			applyIDDiff = partition.getMinusOfApplyID()
-			if dentryDiff == 0 && applyIDDiff == 0 {
+			if dentryDiff == 0 && applyIDDiff == 0 && partition.allReplicaHasRecovered() {
 				partition.RLock()
 				partition.IsRecover = false
 				c.syncUpdateMetaPartition(partition)

@@ -15,9 +15,8 @@
 package master
 
 import (
-	"sync"
-
 	"github.com/chubaofs/chubaofs/util"
+	"sync"
 
 	"fmt"
 	"math"
@@ -43,6 +42,7 @@ type MetaReplica struct {
 	Status      int8 // unavailable, readOnly, readWrite
 	IsLeader    bool
 	IsLearner   bool
+	IsRecover   bool
 	StoreMode   proto.StoreMode
 	ApplyId     uint64
 	metaNode    *MetaNode
@@ -575,14 +575,15 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 	tasks = make([]*proto.AdminTask, 0)
 	hosts := make([]string, 0)
 	req := &proto.CreateMetaPartitionRequest{
-		Start:       mp.Start,
-		End:         mp.End,
-		PartitionID: mp.PartitionID,
-		Members:     peers,
-		VolName:     volName,
-		Learners:    mp.Learners,
-		StoreMode:   storeMode,
-		TrashDays:   trashDays,
+		Start:        mp.Start,
+		End:          mp.End,
+		PartitionID:  mp.PartitionID,
+		Members:      peers,
+		VolName:      volName,
+		Learners:     mp.Learners,
+		StoreMode:    storeMode,
+		TrashDays:    trashDays,
+		CreationType: proto.NormalCreateMetaPartition,
 	}
 	if specifyAddrs == nil {
 		hosts = mp.Hosts
@@ -617,13 +618,14 @@ func (mp *MetaPartition) createTaskToTryToChangeLeader(addr string) (task *proto
 
 func (mp *MetaPartition) createTaskToCreateReplica(host string, storeMode proto.StoreMode) (t *proto.AdminTask, err error) {
 	req := &proto.CreateMetaPartitionRequest{
-		Start:       mp.Start,
-		End:         mp.End,
-		PartitionID: mp.PartitionID,
-		Members:     mp.Peers,
-		VolName:     mp.volName,
-		Learners:    mp.Learners,
-		StoreMode:   storeMode,
+		Start:        mp.Start,
+		End:          mp.End,
+		PartitionID:  mp.PartitionID,
+		Members:      mp.Peers,
+		VolName:      mp.volName,
+		Learners:     mp.Learners,
+		StoreMode:    storeMode,
+		CreationType: proto.DecommissionedCreateMetaPartition,
 	}
 	t = proto.NewAdminTask(proto.OpCreateMetaPartition, host, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
@@ -740,6 +742,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.DentryCount = mgr.DentryCnt
 	mr.MaxExistIno = mgr.ExistMaxInodeID
 	mr.IsLearner = mgr.IsLearner
+	mr.IsRecover = mgr.IsRecover
 	if mgr.StoreMode == 0 {
 		mgr.StoreMode = proto.StoreModeMem
 	}
@@ -757,6 +760,7 @@ func (mp *MetaPartition) afterCreation(nodeAddr string, c *Cluster, storeMode pr
 	mr.Status = proto.ReadWrite
 	mr.ReportTime = time.Now().Unix()
 	mr.StoreMode = storeMode
+	mr.IsRecover = true
 	mp.addReplica(mr)
 	mp.removeMissingReplica(mr.Addr)
 	return
@@ -1326,4 +1330,16 @@ func (mp *MetaPartition) getLearnerHosts() (learnerHosts []string) {
 		learnerHosts = append(learnerHosts, learner.Addr)
 	}
 	return
+}
+
+func (mp *MetaPartition) allReplicaHasRecovered() bool {
+	mp.RLock()
+	defer mp.RUnlock()
+
+	for _, mpReplica := range mp.Replicas {
+		if mpReplica.IsRecover {
+			return false
+		}
+	}
+	return true
 }
