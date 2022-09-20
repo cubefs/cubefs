@@ -71,8 +71,7 @@ const (
 )
 
 const (
-	_pagesize = 4 * 1024              // 4k
-	bufsize   = core.CrcBlockUnitSize // 64k
+	_pagesize = 4 * 1024 // 4k
 )
 
 const (
@@ -177,7 +176,7 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		ioQos:  ioQos,
 		pool: sync.Pool{
 			New: func() interface{} {
-				return make([]byte, bufsize)
+				return make([]byte, conf.DecodeBufSize)
 			},
 		},
 	}
@@ -414,7 +413,7 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 	block := make([]byte, core.CrcBlockUnitSize)
 
 	// decode crc
-	decoder, err := crc32block.NewDecoderWithBlock(iosr, pos, int64(shard.Size), block, bufsize)
+	decoder, err := crc32block.NewDecoderWithBlock(iosr, pos, int64(shard.Size), block, cd.conf.DecodeBufSize)
 	if err != nil {
 		return nil, err
 	}

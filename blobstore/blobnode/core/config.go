@@ -41,6 +41,7 @@ const (
 	DefaultCompactMinSizeThreshold      = 16 * (1 << 30)  // 16 GiB
 	DefaultCompactTriggerThreshold      = 1 * (1 << 40)   // 1 TiB
 	DefaultMetricReportIntervalS        = 30              // 30 Sec
+	DefaultDecodeBufSize                = 64 * 1024       // 64k
 	DefaultCompactEmptyRateThreshold    = float64(0.8)    // 80% rate
 )
 
@@ -53,29 +54,31 @@ type BaseConfig struct {
 }
 
 type RuntimeConfig struct {
-	DiskReservedSpaceB           int64      `json:"disk_reserved_space_B"`             // threshold
-	CompactReservedSpaceB        int64      `json:"compact_reserved_space_B"`          // compact reserve
-	ChunkReleaseProtectionM      int64      `json:"chunk_protection_M"`                // protect
-	ChunkCompactIntervalSec      int64      `json:"chunk_compact_interval_S"`          // loop
-	ChunkCleanIntervalSec        int64      `json:"chunk_clean_interval_S"`            // loop
-	ChunkGcCreateTimeProtectionM int64      `json:"chunk_gc_create_time_protection_M"` // protect
-	ChunkGcModifyTimeProtectionM int64      `json:"chunk_gc_modify_time_protection_M"` // protect
-	DiskUsageIntervalSec         int64      `json:"disk_usage_interval_S"`             // loop
-	DiskCleanTrashIntervalSec    int64      `json:"disk_clean_trash_interval_S"`       // loop
-	DiskTrashProtectionM         int64      `json:"disk_trash_protection_M"`           // protect
-	AllowCleanTrash              bool       `json:"allow_clean_trash"`
-	DisableModifyInCompacting    bool       `json:"disable_modify_in_compacting"`
-	CompactMinSizeThreshold      int64      `json:"compact_min_size_threshold"`
-	CompactTriggerThreshold      int64      `json:"compact_trigger_threshold"`
-	CompactEmptyRateThreshold    float64    `json:"compact_empty_rate_threshold"`
-	NeedCompactCheck             bool       `json:"need_compact_check"`
-	AllowForceCompact            bool       `json:"allow_force_compact"`
-	CompactBatchSize             int        `json:"compact_batch_size"`
-	MustMountPoint               bool       `json:"must_mount_point"`
-	IOStatFileDryRun             bool       `json:"iostat_file_dryrun"`
-	MetricReportIntervalS        int64      `json:"metric_report_interval_S"`
-	EnableDataInspect            bool       `json:"enable_data_inspect"`
-	DiskQos                      qos.Config `json:"data_qos"`
+	DiskReservedSpaceB           int64   `json:"disk_reserved_space_B"`             // threshold
+	CompactReservedSpaceB        int64   `json:"compact_reserved_space_B"`          // compact reserve
+	ChunkReleaseProtectionM      int64   `json:"chunk_protection_M"`                // protect
+	ChunkCompactIntervalSec      int64   `json:"chunk_compact_interval_S"`          // loop
+	ChunkCleanIntervalSec        int64   `json:"chunk_clean_interval_S"`            // loop
+	ChunkGcCreateTimeProtectionM int64   `json:"chunk_gc_create_time_protection_M"` // protect
+	ChunkGcModifyTimeProtectionM int64   `json:"chunk_gc_modify_time_protection_M"` // protect
+	DiskUsageIntervalSec         int64   `json:"disk_usage_interval_S"`             // loop
+	DiskCleanTrashIntervalSec    int64   `json:"disk_clean_trash_interval_S"`       // loop
+	DiskTrashProtectionM         int64   `json:"disk_trash_protection_M"`           // protect
+	AllowCleanTrash              bool    `json:"allow_clean_trash"`
+	DisableModifyInCompacting    bool    `json:"disable_modify_in_compacting"`
+	CompactMinSizeThreshold      int64   `json:"compact_min_size_threshold"`
+	CompactTriggerThreshold      int64   `json:"compact_trigger_threshold"`
+	CompactEmptyRateThreshold    float64 `json:"compact_empty_rate_threshold"`
+	NeedCompactCheck             bool    `json:"need_compact_check"`
+	AllowForceCompact            bool    `json:"allow_force_compact"`
+	CompactBatchSize             int     `json:"compact_batch_size"`
+	MustMountPoint               bool    `json:"must_mount_point"`
+	IOStatFileDryRun             bool    `json:"iostat_file_dryrun"`
+	MetricReportIntervalS        int64   `json:"metric_report_interval_S"`
+	DecodeBufSize                int64   `json:"decode_buf_size"`
+	EnableDataInspect            bool    `json:"enable_data_inspect"`
+
+	DiskQos qos.Config `json:"data_qos"`
 }
 
 type HostInfo struct {
@@ -159,6 +162,10 @@ func InitConfig(conf *Config) error {
 
 	if conf.MetricReportIntervalS <= 0 {
 		conf.MetricReportIntervalS = DefaultMetricReportIntervalS
+	}
+
+	if conf.DecodeBufSize <= 0 {
+		conf.DecodeBufSize = DefaultDecodeBufSize
 	}
 
 	return nil
