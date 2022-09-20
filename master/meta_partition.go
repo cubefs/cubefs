@@ -70,6 +70,7 @@ type MetaPartition struct {
 	MissNodes     map[string]int64 `graphql:"-"`
 	OfflinePeerID uint64
 	modifyTime    int64
+	lastOfflineTime         int64
 	//PanicHosts records the hosts discard by reset peer action.
 	PanicHosts   []string
 	LoadResponse []*proto.MetaPartitionLoadResponse

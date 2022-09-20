@@ -96,7 +96,7 @@ func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 		return
 	}
 	offlineAddr := mp.Hosts[0]
-	reqURL = fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
+	reqURL = fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionMetaPartition, vol.Name, id, offlineAddr)
 	fmt.Println(reqURL)
 	process(reqURL, t)
@@ -136,7 +136,7 @@ func decommissionMetaPartitionWithoutReplica(vol *Vol, id uint64, t *testing.T) 
 	}
 	mp.IsRecover = false
 	mp.RUnlock()
-	reqURL = fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
+	reqURL = fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionMetaPartition, vol.Name, id, offlineAddr)
 	fmt.Println(reqURL)
 	process(reqURL, t)
@@ -174,7 +174,7 @@ func decommissionMetaPartitionToDestAddr(vol *Vol, id uint64, t *testing.T) {
 	}
 	mp.IsRecover = false
 	offlineAddr := mp.Hosts[len(mp.Hosts)-1]
-	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&destAddr=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&destAddr=%v&force=true",
 		hostAddr, proto.AdminDecommissionMetaPartition, mp.volName, mp.PartitionID, offlineAddr, msAddr)
 	fmt.Println(reqURL)
 	process(reqURL, t)
