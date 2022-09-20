@@ -324,6 +324,10 @@ func TestNewDeleteMgr(t *testing.T) {
 		TaskPoolSize:         2,
 		NormalHandleBatchCnt: 10,
 		FailHandleBatchCnt:   10,
+		DeleteHourRange: HourRange{
+			From: 0,
+			To:   defaultDeleteHourRangeTo,
+		},
 		DeleteLog: recordlog.Config{
 			Dir:       testDir,
 			ChunkBits: 22,
@@ -360,4 +364,56 @@ func TestNewDeleteMgr(t *testing.T) {
 	// get stats
 	service.GetTaskStats()
 	service.GetErrorStats()
+}
+
+func TestAllowDeleting(t *testing.T) {
+	now := time.Now()
+	topicConsumer := &deleteTopicConsumer{}
+	testCases := []struct {
+		hourRange HourRange
+		now       time.Time
+		ok        bool
+		waitTime  time.Duration
+	}{
+		{
+			hourRange: HourRange{0, 1},
+			now:       time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()),
+			ok:        true,
+		},
+		{
+			hourRange: HourRange{0, 1},
+			now:       time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()),
+			ok:        false,
+			waitTime:  23 * time.Hour,
+		},
+		{
+			hourRange: HourRange{0, 2},
+			now:       time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()),
+			ok:        true,
+		},
+		{
+			hourRange: HourRange{0, 23},
+			now:       time.Date(now.Year(), now.Month(), now.Day(), 23, 10, 0, 0, now.Location()),
+			ok:        false,
+			waitTime:  50 * time.Minute,
+		},
+		{
+			hourRange: HourRange{1, 2},
+			now:       time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location()),
+			ok:        false,
+			waitTime:  (21 + 1) * time.Hour,
+		},
+		{
+			hourRange: HourRange{2, 5},
+			now:       time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()),
+			ok:        false,
+			waitTime:  1 * time.Hour,
+		},
+	}
+	for _, test := range testCases {
+		topicConsumer.deleteHourRange = test.hourRange
+		waitTime, ok := topicConsumer.allowDeleting(test.now)
+		require.Equal(t, test.ok, ok)
+		require.Equal(t, test.waitTime, waitTime)
+	}
 }

@@ -43,6 +43,7 @@ const (
 
 	defaultTaskPoolSize             = 10
 	defaultHandleBatchCnt           = 100
+	defaultDeleteHourRangeTo        = 24
 	defaultFailMsgConsumeIntervalMs = int64(10000)
 	defaultDeleteLogChunkSize       = uint(29)
 	defaultDeleteDelayH             = int64(72)
@@ -185,7 +186,9 @@ func (c *Config) fixConfig() (err error) {
 	c.fixManualMigrateConfig()
 	c.fixInspectConfig()
 	c.fixShardRepairConfig()
-	c.fixBlobDeleteConfig()
+	if err := c.fixBlobDeleteConfig(); err != nil {
+		return err
+	}
 	c.fixRegisterConfig()
 	return nil
 }
@@ -255,7 +258,13 @@ func (c *Config) fixShardRepairConfig() {
 	c.ShardRepair.Kafka = c.Kafka.ShardRepair
 }
 
-func (c *Config) fixBlobDeleteConfig() {
+func (c *Config) fixBlobDeleteConfig() error {
+	if !c.BlobDelete.DeleteHourRange.Valid() {
+		return errInvalidHourRange
+	}
+	if c.BlobDelete.DeleteHourRange.From == 0 {
+		defaulter.Equal(&c.BlobDelete.DeleteHourRange.To, defaultDeleteHourRangeTo)
+	}
 	c.BlobDelete.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.BlobDelete.TaskPoolSize, defaultTaskPoolSize)
 	defaulter.LessOrEqual(&c.BlobDelete.NormalHandleBatchCnt, defaultHandleBatchCnt)
@@ -265,6 +274,7 @@ func (c *Config) fixBlobDeleteConfig() {
 	defaulter.Equal(&c.BlobDelete.SafeDelayTimeH, defaultDeleteDelayH)
 	defaulter.Less(&c.BlobDelete.SafeDelayTimeH, defaultDeleteNoDelay)
 	c.BlobDelete.Kafka = c.Kafka.BlobDelete
+	return nil
 }
 
 func (c *Config) fixRegisterConfig() {

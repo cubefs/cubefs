@@ -149,6 +149,21 @@ func toDelDoc(msg proto.DeleteMsg) DelDoc {
 	}
 }
 
+type HourRange struct {
+	From int `json:"from"`
+	To   int `json:"to"`
+}
+
+func (t HourRange) Valid() bool {
+	if t.From > t.To {
+		return false
+	}
+	if t.From < 0 || t.From > 24 || t.To < 0 || t.To > 24 {
+		return false
+	}
+	return true
+}
+
 // BlobDeleteConfig is blob delete config
 type BlobDeleteConfig struct {
 	ClusterID proto.ClusterID
@@ -160,8 +175,9 @@ type BlobDeleteConfig struct {
 	NormalHandleBatchCnt int `json:"normal_handle_batch_cnt"`
 	FailHandleBatchCnt   int `json:"fail_handle_batch_cnt"`
 
-	SafeDelayTimeH int64            `json:"safe_delay_time_h"`
-	DeleteLog      recordlog.Config `json:"delete_log"`
+	SafeDelayTimeH  int64            `json:"safe_delay_time_h"`
+	DeleteHourRange HourRange        `json:"delete_hour_range"`
+	DeleteLog       recordlog.Config `json:"delete_log"`
 
 	Kafka BlobDeleteKafkaConfig `json:"-"`
 }
@@ -256,6 +272,7 @@ func NewBlobDeleteMgr(
 		consumeBatchCnt:   cfg.NormalHandleBatchCnt,
 		consumeIntervalMs: time.Duration(0),
 		safeDelayTime:     time.Duration(cfg.SafeDelayTimeH) * time.Hour,
+		deleteHourRange:   cfg.DeleteHourRange,
 		volCache:          volCache,
 		blobnodeCli:       blobnodeCli,
 		failMsgSender:     failMsgSender,
@@ -277,6 +294,7 @@ func NewBlobDeleteMgr(
 		consumeBatchCnt:   cfg.FailHandleBatchCnt,
 		consumeIntervalMs: time.Duration(cfg.FailMsgConsumeIntervalMs) * time.Millisecond,
 		safeDelayTime:     time.Duration(cfg.SafeDelayTimeH) * time.Hour,
+		deleteHourRange:   cfg.DeleteHourRange,
 		volCache:          volCache,
 		blobnodeCli:       blobnodeCli,
 		failMsgSender:     failMsgSender,
@@ -326,6 +344,7 @@ type deleteTopicConsumer struct {
 	consumeBatchCnt   int
 	consumeIntervalMs time.Duration
 	safeDelayTime     time.Duration
+	deleteHourRange   HourRange
 
 	volCache    IVolumeCache
 	blobnodeCli client.BlobnodeAPI
@@ -349,6 +368,10 @@ func (d *deleteTopicConsumer) run() {
 		go func(consumer base.IConsumer) {
 			for {
 				d.taskSwitch.WaitEnable()
+				if waitTime, ok := d.allowDeleting(time.Now()); !ok {
+					time.Sleep(waitTime)
+					continue
+				}
 				d.consumeAndDelete(consumer, d.consumeBatchCnt)
 				if d.consumeIntervalMs != time.Duration(0) {
 					time.Sleep(d.consumeIntervalMs)
@@ -356,6 +379,25 @@ func (d *deleteTopicConsumer) run() {
 			}
 		}(consumer)
 	}
+}
+
+func (d *deleteTopicConsumer) allowDeleting(now time.Time) (waitTime time.Duration, ok bool) {
+	// from <= now < to
+	nowHour := now.Hour()
+	if nowHour >= d.deleteHourRange.From && nowHour < d.deleteHourRange.To {
+		return waitTime, true
+	}
+
+	// now < from
+	fromTime := time.Date(now.Year(), now.Month(), now.Day(), d.deleteHourRange.From, 0, 0, 0, now.Location())
+	if now.Before(fromTime) {
+		waitTime = fromTime.Sub(now)
+		return waitTime, false
+	}
+	// now >= to
+	endTime := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	waitTime = endTime.Sub(now) + time.Duration(d.deleteHourRange.From)*time.Hour
+	return
 }
 
 func (d *deleteTopicConsumer) consumeAndDelete(consumer base.IConsumer, batchCnt int) {
