@@ -3,12 +3,12 @@
 BranchName=`git rev-parse --abbrev-ref HEAD`
 CommitID=`git rev-parse HEAD`
 BuildTime=`date +%Y-%m-%d\ %H:%M`
-Debug="0"
+Debug="1"
 
 [[ "-$GOPATH" == "-" ]] && { echo "GOPATH not set"; exit 1 ; }
 
-goflag="-s"
-
+goflag=""
+gccflag="-g"
 build_sdk=1
 build_client=1
 build_test=0
@@ -19,10 +19,10 @@ help() {
 
 Usage: ./build.sh [ -h | --help ] [ -g ] [ --sdk-only | --client-only ]
     -h, --help              show help info
-    -g                      setup Debug="1" goflag="" gccflag="-g"
-    -s, --sdk-only              build sdk (libcfssdk.so libempty.so) only
-    -c, --client-only           build client (libcfsclient.so and cfs-client) only
-    -p, --pack-libs             pack libs to cfs-client-libs.tar.gz used for bypass upgrade
+    --online                setup Debug="0" goflag="-s" gccflag=""
+    -s, --sdk-only          build sdk (libcfssdk.so libempty.so) only
+    -c, --client-only       build client (libcfsclient.so and cfs-client) only
+    -p, --pack-libs         pack libs to cfs-client-libs.tar.gz used for bypass upgrade
     test                    build in test mode
 EOF
     exit 0
@@ -34,10 +34,10 @@ for opt in ${ARGS[*]} ; do
         -h | --help)
             help
             ;;
-        -g)
-            Debug="1"
-            goflag=""
-            gccflag="-g"
+        --online)
+            Debug="0"
+            goflag="-s"
+            gccflag=""
             ;;
     	-s | --sdk-only)
     	    build_sdk=1

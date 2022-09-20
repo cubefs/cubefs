@@ -3282,15 +3282,13 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		offset = f.pos
 	}
 	n, hasHole, err := c.ec.Read(nil, f.ino, buffer, offset, len(buffer))
-	if c.app == appCoralDB {
-		extentNotExist := err != nil && strings.Contains(err.Error(), storage.ExtentNotFoundError.Error())
-		if err != nil && err != io.EOF && !extentNotExist {
-			return C.ssize_t(statusEIO)
-		}
-		if extentNotExist || n < int(size) || hasHole {
-			c.ec.RefreshExtentsCache(nil, f.ino)
-			n, _, err = c.ec.Read(nil, f.ino, buffer, offset, len(buffer))
-		}
+	extentNotExist := err != nil && strings.Contains(err.Error(), storage.ExtentNotFoundError.Error())
+	if err != nil && err != io.EOF && !extentNotExist {
+		return C.ssize_t(statusEIO)
+	}
+	if extentNotExist || n < int(size) || hasHole {
+		c.ec.RefreshExtentsCache(nil, f.ino)
+		n, _, err = c.ec.Read(nil, f.ino, buffer, offset, len(buffer))
 	}
 	if err != nil && err != io.EOF {
 		return C.ssize_t(statusEIO)
@@ -4152,7 +4150,7 @@ func handleError(c *client, act, msg string) {
 
 func isMysql() bool {
 	processName := filepath.Base(os.Args[0])
-	return strings.Contains(processName, "mysqld")
+	return strings.Contains(processName, "mysqld") || strings.Contains(processName, "innobackupex") || strings.Contains(processName, "xtrabackup")
 }
 
 //export InitModule
