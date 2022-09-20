@@ -16,6 +16,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -873,7 +874,7 @@ func (mgr *DiskRepairMgr) Stats() api.MigrateTasksStat {
 }
 
 // Progress repair manager progress
-func (mgr *DiskRepairMgr) Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, repaired int) {
+func (mgr *DiskRepairMgr) Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, migrated int) {
 	span := trace.SpanFromContextSafe(ctx)
 	migratingDisks = make([]proto.DiskID, 0)
 
@@ -884,8 +885,27 @@ func (mgr *DiskRepairMgr) Progress(ctx context.Context) (migratingDisks []proto.
 			span.Errorf("find all task failed: err[%+v]", err)
 			return migratingDisks, 0, 0
 		}
-		repaired += int(disk.UsedChunkCnt) - len(remainTasks)
+		migrated += int(disk.UsedChunkCnt) - len(remainTasks)
 		migratingDisks = append(migratingDisks, disk.DiskID)
 	}
+	return
+}
+
+func (mgr *DiskRepairMgr) DiskProgress(ctx context.Context, diskID proto.DiskID) (stats *api.DiskMigratingStats, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	migratingDisk, ok := mgr.repairingDisks.get(diskID)
+	if !ok {
+		err = errors.New("not repairing disk")
+		return
+	}
+	remainTasks, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeDiskRepair, diskID)
+	if err != nil {
+		span.Errorf("find all task failed: err[%+v]", err)
+		return
+	}
+	stats = &api.DiskMigratingStats{}
+	stats.TotalTasksCnt = int(migratingDisk.UsedChunkCnt)
+	stats.MigratedTasksCnt = stats.TotalTasksCnt - len(remainTasks)
 	return
 }

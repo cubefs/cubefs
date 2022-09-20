@@ -137,6 +137,21 @@ func (mr *MockISchedulerMockRecorder) DetailMigrateTask(arg0, arg1 interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetailMigrateTask", reflect.TypeOf((*MockIScheduler)(nil).DetailMigrateTask), arg0, arg1)
 }
 
+// DiskMigratingStats mocks base method.
+func (m *MockIScheduler) DiskMigratingStats(arg0 context.Context, arg1 *scheduler.DiskMigratingStatsArgs) (*scheduler.DiskMigratingStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DiskMigratingStats", arg0, arg1)
+	ret0, _ := ret[0].(*scheduler.DiskMigratingStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DiskMigratingStats indicates an expected call of DiskMigratingStats.
+func (mr *MockISchedulerMockRecorder) DiskMigratingStats(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiskMigratingStats", reflect.TypeOf((*MockIScheduler)(nil).DiskMigratingStats), arg0, arg1)
+}
+
 // LeaderStats mocks base method.
 func (m *MockIScheduler) LeaderStats(arg0 context.Context) (scheduler.TasksStat, error) {
 	m.ctrl.T.Helper()

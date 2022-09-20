@@ -72,7 +72,8 @@ type Migrator interface {
 // IDisKMigrator base interface of disk migrate, such as disk repair and disk drop
 type IDisKMigrator interface {
 	Migrator
-	Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, repaired int)
+	Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, migrated int)
+	DiskProgress(ctx context.Context, diskID proto.DiskID) (stats *api.DiskMigratingStats, err error)
 }
 
 // IManualMigrator interface of manual migrator

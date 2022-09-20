@@ -276,6 +276,21 @@ func (mr *MockMigraterMockRecorder) CompleteTask(arg0, arg1 interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteTask", reflect.TypeOf((*MockMigrater)(nil).CompleteTask), arg0, arg1)
 }
 
+// DiskProgress mocks base method.
+func (m *MockMigrater) DiskProgress(arg0 context.Context, arg1 proto.DiskID) (*scheduler.DiskMigratingStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DiskProgress", arg0, arg1)
+	ret0, _ := ret[0].(*scheduler.DiskMigratingStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DiskProgress indicates an expected call of DiskProgress.
+func (mr *MockMigraterMockRecorder) DiskProgress(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiskProgress", reflect.TypeOf((*MockMigrater)(nil).DiskProgress), arg0, arg1)
+}
+
 // Done mocks base method.
 func (m *MockMigrater) Done() <-chan struct{} {
 	m.ctrl.T.Helper()

@@ -65,6 +65,16 @@ func (svr *Service) mgrByType(typ proto.TaskType) (Migrator, error) {
 	return nil, errIllegalTaskType
 }
 
+func (svr *Service) diskMgrByType(typ proto.TaskType) (IDisKMigrator, error) {
+	switch typ {
+	case proto.TaskTypeDiskDrop:
+		return svr.diskDropMgr, nil
+	case proto.TaskTypeDiskRepair:
+		return svr.diskRepairMgr, nil
+	}
+	return nil, errIllegalTaskType
+}
+
 // HTTPTaskAcquire acquire task
 func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 	args := new(api.AcquireArgs)
@@ -255,6 +265,26 @@ func (svr *Service) HTTPMigrateTaskDetail(c *rpc.Context) {
 		return
 	}
 	c.RespondJSON(detail)
+}
+
+// HTTPDiskMigratingStats returns disk migrating stats
+func (svr *Service) HTTPDiskMigratingStats(c *rpc.Context) {
+	args := new(api.DiskMigratingStatsArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+	querier, err := svr.diskMgrByType(args.TaskType)
+	if err != nil {
+		c.RespondError(err)
+		return
+	}
+	stats, err := querier.DiskProgress(c.Request.Context(), args.DiskID)
+	if err != nil {
+		c.RespondError(err)
+		return
+	}
+	c.RespondJSON(stats)
 }
 
 // HTTPStats returns service stats

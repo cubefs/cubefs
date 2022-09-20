@@ -26,8 +26,9 @@ import (
 
 // defined http server path.
 const (
-	PathStats       = "/stats"
-	PathLeaderStats = "/leader/stats"
+	PathStats              = "/stats"
+	PathStatsLeader        = "/stats/leader"
+	PathStatsDiskMigrating = "/stats/disk/migrating"
 
 	PathTaskAcquire          = "/task/acquire"
 	PathTaskReclaim          = "/task/reclaim"
@@ -67,6 +68,7 @@ type IInspector interface {
 // ISchedulerStatus scheduler status.
 type ISchedulerStatus interface {
 	DetailMigrateTask(ctx context.Context, args *MigrateTaskDetailArgs) (detail MigrateTaskDetail, err error)
+	DiskMigratingStats(ctx context.Context, args *DiskMigratingStatsArgs) (ret *DiskMigratingStats, err error)
 	Stats(ctx context.Context, host string) (ret TasksStat, err error)
 	LeaderStats(ctx context.Context) (ret TasksStat, err error)
 }

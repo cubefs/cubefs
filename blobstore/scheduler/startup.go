@@ -354,6 +354,7 @@ func (svr *Service) Close() {
 // NewHandler returns app server handler
 func NewHandler(service *Service) *rpc.Router {
 	rpc.RegisterArgsParser(&api.AcquireArgs{}, "json")
+	rpc.RegisterArgsParser(&api.DiskMigratingStatsArgs{}, "json")
 	rpc.RegisterArgsParser(&api.MigrateTaskDetailArgs{}, "json")
 
 	// rpc http svr interface
@@ -371,7 +372,8 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.GET(api.PathTaskDetailURI, service.HTTPMigrateTaskDetail, rpc.OptArgsURI())
 	rpc.GET(api.PathStats, service.HTTPStats, rpc.OptArgsQuery())
-	rpc.GET(api.PathLeaderStats, service.HTTPStats, rpc.OptArgsQuery())
+	rpc.GET(api.PathStatsLeader, service.HTTPStats, rpc.OptArgsQuery())
+	rpc.GET(api.PathStatsDiskMigrating, service.HTTPDiskMigratingStats, rpc.OptArgsQuery())
 
 	rpc.POST(api.PathUpdateVolume, service.HTTPUpdateVolume, rpc.OptArgsBody())
 

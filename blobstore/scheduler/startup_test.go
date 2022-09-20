@@ -41,7 +41,7 @@ var (
 func runMockLeaderService(s *Service) string {
 	router := rpc.New()
 	router.Handle(http.MethodGet, api.PathStats, s.HTTPStats, rpc.OptArgsQuery())
-	router.Handle(http.MethodGet, api.PathLeaderStats, s.HTTPStats, rpc.OptArgsQuery())
+	router.Handle(http.MethodGet, api.PathStatsLeader, s.HTTPStats, rpc.OptArgsQuery())
 	router.Handle(http.MethodPost, api.PathUpdateVolume, s.HTTPUpdateVolume, rpc.OptArgsBody())
 	router.Handle(http.MethodGet, api.PathTaskAcquire, s.HTTPTaskAcquire, rpc.OptArgsQuery())
 

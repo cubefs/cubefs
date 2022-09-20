@@ -859,3 +859,33 @@ func TestDiskRepairerProgress(t *testing.T) {
 		require.Equal(t, testDisk1.UsedChunkCnt+testDisk2.UsedChunkCnt-2-3, int64(repaired))
 	}
 }
+
+func TestDiskRepairerDiskProgress(t *testing.T) {
+	ctx := context.Background()
+	{
+		mgr := newDiskRepairer(t)
+		_, err := mgr.DiskProgress(ctx, testDisk1.DiskID)
+		require.Error(t, err)
+	}
+	{
+		mgr := newDiskRepairer(t)
+		mgr.repairingDisks.add(testDisk1.DiskID, testDisk1)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return(nil, errMock)
+		_, err := mgr.DiskProgress(ctx, testDisk1.DiskID)
+		require.True(t, errors.Is(err, errMock))
+	}
+	{
+		mgr := newDiskRepairer(t)
+		mgr.repairingDisks.add(testDisk1.DiskID, testDisk1)
+
+		task1 := &proto.MigrateTask{State: proto.MigrateStatePrepared, SourceDiskID: testDisk1.DiskID}
+		task2 := &proto.MigrateTask{State: proto.MigrateStateInited, SourceDiskID: testDisk1.DiskID}
+		task3 := &proto.MigrateTask{State: proto.MigrateStateWorkCompleted, SourceDiskID: testDisk1.DiskID}
+
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return([]*proto.MigrateTask{task1, task2, task3}, nil)
+		stats, err := mgr.DiskProgress(ctx, testDisk1.DiskID)
+		require.NoError(t, err)
+		require.Equal(t, int(testDisk1.UsedChunkCnt), stats.TotalTasksCnt)
+		require.Equal(t, int(testDisk1.UsedChunkCnt)-3, stats.MigratedTasksCnt)
+	}
+}

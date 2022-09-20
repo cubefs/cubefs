@@ -16,8 +16,10 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
@@ -407,7 +409,7 @@ func (mgr *DiskDropMgr) getUnDroppingDisk(disks []*client.DiskInfoSimple) *clien
 }
 
 // Progress returns disk drop progress
-func (mgr *DiskDropMgr) Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, dropped int) {
+func (mgr *DiskDropMgr) Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, migrated int) {
 	span := trace.SpanFromContextSafe(ctx)
 	migratingDisks = make([]proto.DiskID, 0)
 
@@ -418,8 +420,27 @@ func (mgr *DiskDropMgr) Progress(ctx context.Context) (migratingDisks []proto.Di
 			span.Errorf("find remain task failed: disk_id[%d], err[%+v]", disk.DiskID, err)
 			return migratingDisks, 0, 0
 		}
-		dropped += int(disk.UsedChunkCnt) - len(remainTasks)
+		migrated += int(disk.UsedChunkCnt) - len(remainTasks)
 		migratingDisks = append(migratingDisks, disk.DiskID)
 	}
+	return
+}
+
+func (mgr *DiskDropMgr) DiskProgress(ctx context.Context, diskID proto.DiskID) (stats *api.DiskMigratingStats, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	migratingDisk, ok := mgr.droppingDisks.get(diskID)
+	if !ok {
+		err = errors.New("not dropping disk")
+		return
+	}
+	remainTasks, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeDiskDrop, diskID)
+	if err != nil {
+		span.Errorf("find all task failed: err[%+v]", err)
+		return
+	}
+	stats = &api.DiskMigratingStats{}
+	stats.TotalTasksCnt = int(migratingDisk.UsedChunkCnt)
+	stats.MigratedTasksCnt = stats.TotalTasksCnt - len(remainTasks)
 	return
 }
