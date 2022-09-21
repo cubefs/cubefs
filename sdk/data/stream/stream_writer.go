@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -421,9 +420,8 @@ begin:
 
 func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total int, err error) {
 	var (
-		once   sync.Once
-		verOff int64
-		dp     *wrapper.DataPartition
+		dp        *wrapper.DataPartition
+		reqPacket *Packet
 	)
 
 	log.LogDebugf("action[doOverwriteByAppend] inode %v enter in req %v", s.inode, req)
@@ -456,11 +454,29 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 		retry = false
 	}
 	log.LogDebugf("action[doOverwriteByAppend] inode %v  data process", s.inode)
-	sc := NewStreamConn(dp, false)
+
+	addr := dp.LeaderAddr
+	if storage.IsTinyExtent(req.ExtentKey.ExtentId) {
+		addr = dp.Hosts[0]
+		reqPacket = NewWriteTinyDirectly(s.inode, req.ExtentKey.PartitionId, offset, dp)
+	} else {
+		reqPacket = NewOverwriteByAppendPacket(dp, req.ExtentKey.ExtentId, 0, s.inode, offset)
+	}
+
+	sc := &StreamConn{
+		dp:       dp,
+		currAddr: addr,
+	}
+
+	replyPacket := new(Packet)
+	if size > util.BlockSize {
+		log.LogErrorf("action[doOverwriteByAppend] inode %v size too large %v", s.inode, size)
+		panic(nil)
+	}
 	for total < size { // normally should only run once due to key exist in the system must be less than BlockSize
 		// right position in extent:offset-ekFileOffset+total+ekExtOffset .
 		// ekExtOffset will be set by replay packet at addExtentInfo(datanode)
-		reqPacket := NewOverwriteByAppendPacket(dp, req.ExtentKey.ExtentId, 0, s.inode, offset)
+
 		if direct {
 			reqPacket.Opcode = proto.OpSyncRandomWriteAppend
 		}
@@ -473,11 +489,10 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 		reqPacket.Size = uint32(packSize)
 		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
 
-		replyPacket := new(Packet)
 		err = sc.Send(&retry, reqPacket, func(conn *net.TCPConn) (error, bool) {
 			e := replyPacket.ReadFromConnWithVer(conn, proto.ReadDeadlineTime)
 			if e != nil {
-				log.LogWarnf("Stream Writer doOverwrite: ino(%v) failed to read from connect, req(%v) err(%v)", s.inode, reqPacket, e)
+				log.LogWarnf("doOverwriteByAppend.Stream Writer doOverwrite: ino(%v) failed to read from connect, req(%v) err(%v)", s.inode, reqPacket, e)
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
 				return TryOtherAddrError, false
 			}
@@ -495,7 +510,7 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 
 		proto.Buffers.Put(reqPacket.Data)
 		reqPacket.Data = nil
-		log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
+		log.LogDebugf("doOverwriteByAppend: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
 
 		if err != nil || replyPacket.ResultCode != proto.OpOk {
 			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, s.inode, req, replyPacket))
@@ -509,12 +524,8 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 			break
 		}
 
-		once.Do(func() {
-			verOff = replyPacket.ExtentOffset
-			log.LogWarnf("action[doOverwriteByAppend] data process verOff be set %v", verOff)
-		})
-
 		total += packSize
+		break
 	}
 	if err != nil {
 		log.LogErrorf("action[doOverwriteByAppend] data process err %v", err)
@@ -523,11 +534,11 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 	extKey := &proto.ExtentKey{
 		FileOffset:   uint64(req.FileOffset),
 		PartitionId:  req.ExtentKey.PartitionId,
-		ExtentId:     req.ExtentKey.ExtentId,
-		ExtentOffset: uint64(verOff),
+		ExtentId:     replyPacket.ExtentID,
+		ExtentOffset: uint64(replyPacket.ExtentOffset),
 		Size:         uint32(total),
 		VerSeq:       s.verSeq,
-		ModGen:       req.ExtentKey.ModGen,
+		ModGen:       0,
 	}
 	log.LogDebugf("action[doOverwriteByAppend] inode %v local cache process start extKey %v", s.inode, extKey)
 	if err = s.extents.SplitExtentKey(s.inode, extKey); err != nil {
