@@ -90,6 +90,19 @@ type InodeInfo struct {
 	expiration int64
 }
 
+type SimpleExtInfo struct {
+	ID          uint64
+	PartitionID uint32
+	ExtentID    uint32
+}
+
+// InodeInfo defines the inode struct.
+type InodeSplitInfo struct {
+	Inode    uint64          `json:"ino"`
+	SplitArr []SimpleExtInfo `json:"splitInfo"`
+	VerSeq   uint64          `json:"seq"`
+}
+
 type SummaryInfo struct {
 	Files   int64 `json:"files"`
 	Subdirs int64 `json:"subdirs"`
@@ -545,6 +558,21 @@ type BatchInodeGetRequest struct {
 // BatchInodeGetResponse defines the response to the request of getting the inode in batch.
 type BatchInodeGetResponse struct {
 	Infos []*InodeInfo `json:"infos"`
+}
+
+// InodeGetRequest defines the request to get the inode.
+type InodeGetSplitRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	VerSeq      uint64 `json:"seq"`
+	VerAll      bool   `json:"verAll"`
+}
+
+// InodeGetResponse defines the response to the InodeGetRequest.
+type InodeGetSplitResponse struct {
+	Info   *InodeSplitInfo  `json:"info"`
+	LayAll []InodeSplitInfo `json:"layerInfo"`
 }
 
 // ReadDirRequest defines the request to read dir.

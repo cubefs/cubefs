@@ -19,6 +19,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util"
 	"io"
 	"math"
 	"time"
@@ -291,6 +293,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		log.LogDebugf("action[fsmUnlinkInode] ino %v", ino)
@@ -336,7 +339,10 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		return
 	}
 
-	if topLayerEmpty && inode.IsEmptyDirAndNoSnapshot() {
+	if ino.verSeq == 0 && topLayerEmpty && inode.IsEmptyDirAndNoSnapshot() { // normal deletion
+		log.LogDebugf("action[fsmUnlinkInode] ino %v really be deleted, empty dir", ino)
+		mp.inodeTree.Delete(inode)
+	} else if ino.verSeq > 0 && inode.IsEmptyDirAndNoSnapshot() { // snapshot deletion
 		log.LogDebugf("action[fsmUnlinkInode] ino %v really be deleted, empty dir", ino)
 		mp.inodeTree.Delete(inode)
 		mp.updateUsedInfo(0, -1, inode.Inode)
@@ -364,9 +370,10 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 
 	if len(ext2Del) > 0 {
 		log.LogDebugf("action[fsmUnlinkInode] ino %v ext2Del %v", ino, ext2Del)
+		inode.DecSplitExts(ext2Del)
 		mp.extDelCh <- ext2Del
 	}
-	log.LogDebugf("action[fsmUnlinkInode] ino %v left", ino)
+	log.LogDebugf("action[fsmUnlinkInode] ino %v left", inode)
 	return
 }
 
@@ -455,6 +462,9 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
 	log.LogInfof("fsmAppendExtents inode(%v) deleteExtents(%v)", ino2.Inode, delExtents)
 	mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
+
+	log.LogInfof("fsmAppendExtents inode(%v) deleteExtents(%v)", ino2.Inode, delExtents)
+	ino2.DecSplitExts(delExtents)
 	mp.extDelCh <- delExtents
 	return
 }
@@ -502,11 +512,15 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		delExtents, status = ino2.AppendExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.verSeq, eks[0], ino.ModifyTime, discardExtentKey, mp.volType)
 		if status == proto.OpOk {
 			log.LogInfof("action[fsmAppendExtentsWithCheck] delExtents [%v]", delExtents)
+			ino2.DecSplitExts(delExtents)
 			mp.extDelCh <- delExtents
 		}
 		// conflict need delete eks[0], to clear garbage data
 		if status == proto.OpConflictExtentsErr {
 			log.LogInfof("action[fsmAppendExtentsWithCheck] OpConflictExtentsErr [%v]", eks[:1])
+			if !storage.IsTinyExtent(eks[0].ExtentId) && eks[0].ExtentOffset >= util.ExtentSize {
+				eks[0].IsSplit = true
+			}
 			mp.extDelCh <- eks[:1]
 		}
 	} else {
@@ -514,6 +528,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		// ino verseq be set with mp ver before submit in case other mp be updated while on flight, which will lead to
 		// inconsistent between raft pairs
 		delExtents, status = ino2.SplitExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.verSeq, eks[0], ino.ModifyTime, mp.volType)
+		ino2.DecSplitExts(delExtents)
 		mp.extDelCh <- delExtents
 		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
 	}
@@ -609,6 +624,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 
 	// now we should delete the extent
 	log.LogInfof("fsmExtentsTruncate inode(%v) exts(%v)", i.Inode, delExtents)
+	i.DecSplitExts(delExtents)
 	mp.extDelCh <- delExtents
 	mp.uidManager.minusUidSpace(i.Uid, i.Inode, delExtents)
 	return
@@ -762,6 +778,7 @@ func (mp *metaPartition) fsmClearInodeCache(ino *Inode) (status uint8) {
 	delExtents := ino2.EmptyExtents(ino.ModifyTime)
 	log.LogInfof("fsmClearInodeCache inode(%v) delExtents(%v)", ino2.Inode, delExtents)
 	if len(delExtents) > 0 {
+		ino2.DecSplitExts(delExtents)
 		mp.extDelCh <- delExtents
 	}
 	return
@@ -771,7 +788,7 @@ func (mp *metaPartition) fsmClearInodeCache(ino *Inode) (status uint8) {
 func (mp *metaPartition) fsmSendToChan(val []byte, v3 bool) (status uint8) {
 	sortExtents := NewSortedExtents()
 	// ek for del don't need version info
-	err := sortExtents.UnmarshalBinary(val, v3)
+	err, _ := sortExtents.UnmarshalBinary(val, v3)
 	if err != nil {
 		panic(fmt.Errorf("[fsmDelExtents] unmarshal sortExtents error, mp(%d), err(%s)", mp.config.PartitionId, err.Error()))
 	}

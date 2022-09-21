@@ -39,6 +39,18 @@ func (p *Packet) String() string {
 		p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.ResultCode, p.GetResultMsg(), p.VerSeq)
 }
 
+func NewWriteTinyDirectly(inode uint64, dpID uint64, offset int, dp *wrapper.DataPartition) *Packet {
+	reqPacket := NewWritePacket(inode, offset, proto.TinyExtentType)
+	reqPacket.PartitionID = dpID
+	reqPacket.RemainingFollowers = uint8(len(dp.Hosts) - 1)
+	reqPacket.Arg = ([]byte)(dp.GetAllAddrs())
+	reqPacket.ArgLen = uint32(len(reqPacket.Arg))
+	if len(dp.Hosts) == 1 {
+		reqPacket.RemainingFollowers = 127
+	}
+	return reqPacket
+}
+
 // NewWritePacket returns a new write packet.
 func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	p := new(Packet)

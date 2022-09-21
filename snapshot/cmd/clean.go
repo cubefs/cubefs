@@ -256,6 +256,28 @@ func cleanDentries() error {
 	return nil
 }
 
+func readSnapshot() (err error) {
+	log.LogInfof("action[readSnapshot] vol %v verSeq %v", VolName, VerSeq)
+	if VerSeq == 0 {
+		VerSeq = math.MaxUint64
+	}
+	var (
+		parents []proto.Dentry
+		ino     *proto.InodeInfo
+	)
+
+	log.LogDebugf("action[readSnapshot] ReadDirLimit_ll parent root verSeq %v", VerSeq)
+	parents, err = gMetaWrapper.ReadDirLimitByVer(2, "", math.MaxUint64, VerSeq) // one more for nextMarker
+	if err != nil && err != syscall.ENOENT {
+		log.LogErrorf("action[readSnapshot] parent root verSeq %v err %v", VerSeq, err)
+		return err
+	}
+	for _, child := range parents {
+		log.LogDebugf("action[readSnapshot] parent root Delete_ll_EX child name %v verSeq %v ino %v success", child.Name, VerSeq, ino)
+	}
+	return
+}
+
 func cleanSnapshot() (err error) {
 	log.LogInfof("action[cleanSnapshot] vol %v verSeq %v", VolName, VerSeq)
 	if VerSeq == 0 {
