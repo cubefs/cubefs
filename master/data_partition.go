@@ -57,6 +57,7 @@ type DataPartition struct {
 	createTime              int64
 	lastWarnTime            int64
 	lastModifyStatusTime    int64
+	lastOfflineTime         int64
 	lastStatus              int8
 	OfflinePeerID           uint64
 	PanicHosts              []string

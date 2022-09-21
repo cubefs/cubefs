@@ -1475,7 +1475,9 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	)
 	dp.offlineMutex.Lock()
 	dp.isOffline = true
+	dp.lastOfflineTime = time.Now().Unix()
 	defer func() {
+		dp.lastOfflineTime = time.Now().Unix()
 		dp.isOffline = false
 		dp.offlineMutex.Unlock()
 	}()

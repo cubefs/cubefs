@@ -655,7 +655,7 @@ func TestDataPartitionDecommission(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	partition.isRecover = false
 	offlineAddr := partition.Hosts[0]
-	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionDataPartition, commonVol.Name, partition.PartitionID, offlineAddr)
 	process(reqURL, t)
 	if contains(partition.Hosts, offlineAddr) {
@@ -682,7 +682,7 @@ func TestDataPartitionDecommissionWithoutReplica(t *testing.T) {
 		}
 	}
 	partition.RUnlock()
-	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionDataPartition, commonVol.Name, partition.PartitionID, offlineAddr)
 	process(reqURL, t)
 	if contains(partition.Hosts, offlineAddr) {

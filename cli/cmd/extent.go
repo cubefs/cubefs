@@ -1528,6 +1528,7 @@ func readExtent(dp *proto.DataPartitionResponse, addr string, extentId uint64, d
 		DataPartitionResponse: *dp,
 	}
 	dataPartition.ClientWrapper.SetConnConfig()
+	dataPartition.ClientWrapper.SetDpFollowerReadDelayConfig(false, 60)
 	sc := data.NewStreamConnWithAddr(dataPartition, addr)
 	reqPacket := data.NewReadPacket(ctx, ek, int(offset), size, 0, offset, true)
 	req := data.NewExtentRequest(0, 0, d, nil)

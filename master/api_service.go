@@ -955,6 +955,10 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
+	if err = m.checkDecommissionInterval(r, dp.lastOfflineTime); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	vol, err = m.cluster.getVol(dp.VolName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
@@ -971,6 +975,17 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 	}
 	rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) checkDecommissionInterval(r *http.Request, lastOfflineTime int64) (err error) {
+	force, err := extractForce(r)
+	if err != nil {
+		return
+	}
+	if !force && time.Now().Unix()-lastOfflineTime < defaultDecommissionDuration {
+		return fmt.Errorf("the time interval from last offline time less than:%vsecond, lastOfflineTime:%v ", defaultDecommissionDuration, lastOfflineTime)
+	}
+	return
 }
 
 func (m *Server) transferDataPartition(w http.ResponseWriter, r *http.Request) {
@@ -2408,6 +2423,10 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if err = m.checkDecommissionInterval(r, mp.lastOfflineTime); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp, getTargetAddressForMetaPartitionDecommission, destAddr, false, proto.StoreMode(storeMode)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

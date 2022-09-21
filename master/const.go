@@ -193,6 +193,7 @@ const (
 	intervalToLoadDataPartition                        = 12 * 60 * 60
 	defaultUnrecoverableDuration                       = 24 * 60 * 60
 	defaultCheckRecoverDuration                        = 10 * 60 * 60
+	defaultDecommissionDuration                        = 10 * 60
 	defaultInitDataPartitionCnt                        = 10
 	volExpansionRatio                                  = 0.1
 	maxNumberOfDataPartitionsForExpansion              = 100

@@ -71,7 +71,7 @@ func getDataPartition(id uint64, t *testing.T) {
 
 func decommissionDataPartition(dp *DataPartition, t *testing.T) {
 	offlineAddr := dp.Hosts[0]
-	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionDataPartition, dp.VolName, dp.PartitionID, offlineAddr)
 	fmt.Println(reqURL)
 	process(reqURL, t)
@@ -92,7 +92,7 @@ func decommissionDataPartitionToDestAddr(dp *DataPartition, allDataNodes []strin
 	}
 	dp.isRecover = false
 	offlineAddr := dp.Hosts[0]
-	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&destAddr=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&destAddr=%v&force=true",
 		hostAddr, proto.AdminDecommissionDataPartition, dp.VolName, dp.PartitionID, offlineAddr, destAddr)
 	fmt.Println(reqURL)
 	process(reqURL, t)
