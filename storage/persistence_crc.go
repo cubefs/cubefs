@@ -42,13 +42,13 @@ type UpdateCrcFunc func(e *Extent, blockNo int, crc uint32) (err error)
 type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 
 func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
-	log.LogDebugf("action[PersistenceBlockCrc] extent id %v blockNo %v blockCrc %v", e.extentID, blockNo, blockCrc)
+	log.LogDebugf("action[PersistenceBlockCrc] extent id %v blockNo %v blockCrc %v data path %v", e.extentID, blockNo, blockCrc, s.dataPath)
 	if !proto.IsNormalDp(s.partitionType) {
 		return
 	}
 
 	if blockNo >= len(e.header)/util.PerBlockCrcSize {
-		exp := make([]byte, util.BlockHeaderSize)
+		exp := make([]byte, util.BlockHeaderSize*(1 + (blockNo*util.PerBlockCrcSize-len(e.header))/util.BlockHeaderSize))
 		e.header = append(e.header, exp...)
 	}
 	startIdx := blockNo * util.PerBlockCrcSize
