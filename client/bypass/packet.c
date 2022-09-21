@@ -96,7 +96,8 @@ ssize_t read_sock(int sock_fd, packet_t *p) {
 	}
 	unmarshal_header(p, header);
 	free(header);
-	if(p->Size <= 0) {
+	// if read fails in datanode, p->Data would be error msg, p->Size would be the size of the msg
+	if(p->Size <= 0 || p->ResultCode != OpOk) {
 		return -1;
 	}
 	re = recv(sock_fd, p->Data, p->Size, MSG_WAITALL);
