@@ -129,6 +129,12 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		}
 	} else if p.IsSnapshotModWriteAppendOperation() {
 		if p.IsTinyExtentType() {
+			extentID, err = store.GetAvailableTinyExtent()
+			if err != nil {
+				log.LogErrorf("err %v", err)
+				return fmt.Errorf("addExtentInfo partition %v GetAvailableTinyExtent error %v", p.PartitionID, err.Error())
+			}
+			p.ExtentID = extentID
 			p.ExtentOffset, err = store.GetTinyExtentOffset(p.ExtentID)
 			if err != nil {
 				err = fmt.Errorf("addExtentInfo partition %v  %v GetTinyExtentOffset error %v", p.PartitionID, extentID, err.Error())
@@ -151,7 +157,12 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		if err != nil {
 			return fmt.Errorf("addExtentInfo partition %v allocCheckLimit NextExtentId error %v", p.PartitionID, err)
 		}
-	} else if p.IsLeaderPacket() && p.IsMarkDeleteExtentOperation() {
+	} else if p.IsLeaderPacket() &&
+		((p.IsMarkDeleteExtentOperation() && p.IsTinyExtentType()) ||
+			(p.IsMarkSplitExtentOperation() && !p.IsTinyExtentType())) {
+
+		log.LogDebugf("addExtentInfo. packet opCode %v p.ExtentType %v", p.Opcode, p.ExtentType)
+
 		record := new(proto.TinyExtentDeleteRecord)
 		if err := json.Unmarshal(p.Data[:p.Size], record); err != nil {
 			return fmt.Errorf("addExtentInfo failed %v", err.Error())

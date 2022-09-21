@@ -621,8 +621,9 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			p.PacketOkReply()
 		}
 	}()
+
 	partition := p.Object.(*DataPartition)
-	if p.ExtentType == proto.TinyExtentType || p.Opcode == proto.OpSplitMarkDelete || len(p.Data) > 0 {
+	if p.ExtentType == proto.TinyExtentType || p.Opcode == proto.OpSplitMarkDelete {
 		ext := new(proto.TinyExtentDeleteRecord)
 		err = json.Unmarshal(p.Data, ext)
 		if err == nil {

@@ -466,15 +466,19 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 		extentID, offset, size, ei.Size, ei.SnapshotDataOff)
 
 	funcNeedPunchDel := func() bool {
-		return offset != 0 || (ei.Size != uint64(size) && ei.SnapshotDataOff == util.ExtentSize) ||
-			(ei.SnapshotDataOff != uint64(size) && ei.SnapshotDataOff > util.ExtentSize)
+		return offset != 0 || (size != 0 && ((ei.Size != uint64(size) && ei.SnapshotDataOff == util.ExtentSize) ||
+			(ei.SnapshotDataOff != uint64(size) && ei.SnapshotDataOff > util.ExtentSize)))
 	}
 
 	if IsTinyExtent(extentID) || funcNeedPunchDel() {
+		log.LogDebugf("action[MarkDelete] extentID %v offset %v size %v ei(size %v snapshotSize %v)",
+			extentID, offset, size, ei.Size, ei.SnapshotDataOff)
 		return s.tinyDelete(extentID, offset, size)
 	}
 
 	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
+	log.LogDebugf("action[MarkDelete] extentID %v offset %v size %v ei(size %v extentFilePath %v)",
+		extentID, offset, size, ei.Size, extentFilePath)
 	if err = os.Remove(extentFilePath); err != nil {
 		return
 	}
@@ -680,9 +684,11 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 func (s *ExtentStore) GetAvailableTinyExtent() (extentID uint64, err error) {
 	select {
 	case extentID = <-s.availableTinyExtentC:
+		log.LogDebugf("dp %v GetAvailableTinyExtent. extentID %v", s.partitionID, extentID)
 		s.availableTinyExtentMap.Delete(extentID)
 		return
 	default:
+		log.LogDebugf("dp %v GetAvailableTinyExtent not found", s.partitionID)
 		return 0, NoAvailableExtentError
 
 	}
@@ -690,10 +696,13 @@ func (s *ExtentStore) GetAvailableTinyExtent() (extentID uint64, err error) {
 
 // SendToAvailableTinyExtentC sends the extent to the channel that stores the available tiny extents.
 func (s *ExtentStore) SendToAvailableTinyExtentC(extentID uint64) {
-	//	log.LogInfof("action[SendToAvailableTinyExtentC] backtrace %v", string(debug.Stack()))
+	log.LogDebugf("dp %v action[SendToAvailableTinyExtentC] extentid %v", s.partitionID, extentID)
 	if _, ok := s.availableTinyExtentMap.Load(extentID); !ok {
+		log.LogDebugf("dp %v SendToAvailableTinyExtentC. extentID %v", s.partitionID, extentID)
 		s.availableTinyExtentC <- extentID
 		s.availableTinyExtentMap.Store(extentID, true)
+	} else {
+		log.LogDebugf("dp %v action[SendToAvailableTinyExtentC] extentid %v already exist", s.partitionID, extentID)
 	}
 }
 

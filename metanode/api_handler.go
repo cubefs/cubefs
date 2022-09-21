@@ -58,6 +58,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getPartitionById", m.getPartitionByIDHandler)
 	http.HandleFunc("/getLeaderPartitions", m.getLeaderPartitionsHandler)
 	http.HandleFunc("/getInode", m.getInodeHandler)
+	http.HandleFunc("/getSplitKey", m.getSplitKeyHandler)
 	http.HandleFunc("/getExtentsByInode", m.getExtentsByInodeHandler)
 	http.HandleFunc("/getEbsExtentsByInode", m.getEbsExtentsByInodeHandler)
 	// get all inodes of the partitionID
@@ -224,6 +225,68 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mp.GetInodeTree().Ascend(f)
+}
+
+func (m *MetaNode) getSplitKeyHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	log.LogDebugf("getSplitKeyHandler")
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getSplitKeyHandler] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	log.LogDebugf("getSplitKeyHandler")
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	log.LogDebugf("getSplitKeyHandler")
+	verSeq, err := m.getRealVerSeq(w, r)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	log.LogDebugf("getSplitKeyHandler")
+	verAll, _ := strconv.ParseBool(r.FormValue("verAll"))
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	log.LogDebugf("getSplitKeyHandler")
+	req := &InodeGetSplitReq{
+		PartitionID: pid,
+		Inode:       id,
+		VerSeq:      verSeq,
+		VerAll:      verAll,
+	}
+	log.LogDebugf("getSplitKeyHandler")
+	p := &Packet{}
+	err = mp.InodeGetSplitEk(req, p)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	log.LogDebugf("getSplitKeyHandler")
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMsg()
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+		log.LogDebugf("getSplitKeyHandler data %v", resp.Data)
+	} else {
+		log.LogDebugf("getSplitKeyHandler")
+	}
+	return
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {

@@ -394,6 +394,58 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 }
 
 // InodeGet executes the inodeGet command from the client.
+func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err error) {
+	ino := NewInode(req.Inode, 0)
+	ino.verSeq = req.VerSeq
+	getAllVerInfo := req.VerAll
+	retMsg := mp.getInode(ino, getAllVerInfo)
+
+	log.LogDebugf("action[InodeGetSplitEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
+
+	ino = retMsg.Msg
+	var (
+		reply  []byte
+		status = proto.OpNotExistErr
+	)
+	if retMsg.Status == proto.OpOk {
+		resp := &proto.InodeGetSplitResponse{
+			Info: &proto.InodeSplitInfo{
+				Inode:  ino.Inode,
+				VerSeq: ino.verSeq,
+			},
+		}
+		if retMsg.Msg.ekRefMap != nil {
+			retMsg.Msg.ekRefMap.Range(func(key, value interface{}) bool {
+				dpID, extID := proto.ParseFromId(key.(uint64))
+				resp.Info.SplitArr = append(resp.Info.SplitArr, proto.SimpleExtInfo{
+					ID:          key.(uint64),
+					PartitionID: uint32(dpID),
+					ExtentID:    uint32(extID),
+				})
+				return true
+			})
+		}
+		log.LogDebugf("action[InodeGetSplitEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+			ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
+		status = proto.OpOk
+		reply, err = json.Marshal(resp)
+		if err != nil {
+			log.LogDebugf("action[InodeGetSplitEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+				ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
+			status = proto.OpErr
+			reply = []byte(err.Error())
+		}
+		log.LogDebugf("action[InodeGetSplitEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+			ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
+	}
+	log.LogDebugf("action[InodeGetSplitEk] %v seq %v retMsg.Status %v, getAllVerInfo %v",
+		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
+	p.PacketErrorWithBody(status, reply)
+	return
+}
+
+// InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 
 	ino := NewInode(req.Inode, 0)

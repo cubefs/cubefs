@@ -57,7 +57,7 @@ func (se *SortedExtents) MarshalBinary(v3 bool) ([]byte, error) {
 	return data, nil
 }
 
-func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) error {
+func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, splitMap *sync.Map) {
 	var ek proto.ExtentKey
 
 	se.Lock()
@@ -68,13 +68,25 @@ func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) error {
 		if buf.Len() == 0 {
 			break
 		}
-		if err := ek.UnmarshalBinary(buf, v3); err != nil {
-			return err
+		if err = ek.UnmarshalBinary(buf, v3); err != nil {
+			return
 		}
 		// Don't use se.Append here, since we need to retain the raw ek order.
 		se.eks = append(se.eks, ek)
+		log.LogDebugf("UnmarshalBinary. ek %v", ek)
+		if ek.IsSplit {
+			if splitMap == nil {
+				splitMap = new(sync.Map)
+			}
+			val, ok := splitMap.Load(ek.GenerateId())
+			if !ok {
+				splitMap.Store(ek.GenerateId(), uint32(1))
+				continue
+			}
+			splitMap.Store(ek.GenerateId(), val.(uint32)+1)
+		}
 	}
-	return nil
+	return
 }
 
 func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
@@ -132,7 +144,23 @@ func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.Exten
 	return
 }
 
-func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey) (delExtents []proto.ExtentKey, status uint8) {
+func storeEkSplit(inodeID uint64, ekRef *sync.Map, ek *proto.ExtentKey) (id uint64) {
+	log.LogDebugf("storeEkSplit inode %v mp %v extent id %v ek %v", inodeID, ek.PartitionId, ek.ExtentId, ek)
+	ek.IsSplit = true
+	id = ek.PartitionId<<32 | ek.ExtentId
+	var v uint32
+	if val, ok := ekRef.Load(id); !ok {
+		v = 1
+	} else {
+		v = val.(uint32) + 1
+	}
+	ekRef.Store(id, v)
+	log.LogDebugf("storeEkSplit inode %v mp %v extent id %v.key %v, cnt %v", inodeID, ek.PartitionId, ek.ExtentId,
+		ek.PartitionId<<32|ek.ExtentId, v)
+	return
+}
+
+func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey, ekRef *sync.Map) (delExtents []proto.ExtentKey, status uint8) {
 	status = proto.OpOk
 	endOffset := ekSplit.FileOffset + uint64(ekSplit.Size)
 	log.LogDebugf("SplitWithCheck. inode %v  ekSplit ek %v", inodeID, ekSplit)
@@ -144,6 +172,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey)
 		status = proto.OpArgMismatchErr
 		return
 	}
+	ekSplit.IsSplit = true
 	lastKey := se.eks[len(se.eks)-1]
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ekSplit.FileOffset {
 		log.LogErrorf("SplitWithCheck. inode %v eks do split not found", inodeID)
@@ -159,35 +188,25 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey)
 	}
 
 	var startIndex int
-	invalidExtents := make([]proto.ExtentKey, 0)
 	for idx, key := range se.eks {
 		if ekSplit.FileOffset >= key.FileOffset {
 			startIndex = idx + 1
 			continue
 		}
 		if endOffset >= key.FileOffset+uint64(key.Size) {
-			invalidExtents = append(invalidExtents, key)
 			continue
 		}
 		break
 	}
+
 	if startIndex == 0 {
 		status = proto.OpArgMismatchErr
 		log.LogErrorf("SplitWithCheck. inode %v should have no valid extent request [%v]", inodeID, ekSplit)
 		return
 	}
-	// Makes the request idempotent, just in case client retries.
-	if len(invalidExtents) == 1 {
-		if invalidExtents[0] == ekSplit {
-			return
-		}
-		status = proto.OpArgMismatchErr
-		log.LogErrorf("SplitWithCheck. inode %v  should have no invalid extent [%v] request [%v]", inodeID,
-			invalidExtents[0].String(), ekSplit)
-		return
-	}
+
 	key := &se.eks[startIndex-1]
-	if key.PartitionId != ekSplit.PartitionId || key.ExtentId != ekSplit.ExtentId {
+	if !storage.IsTinyExtent(key.ExtentId) && (key.PartitionId != ekSplit.PartitionId || key.ExtentId != ekSplit.ExtentId) {
 		status = proto.OpArgMismatchErr
 		log.LogErrorf("SplitWithCheck. inode %v  key found with mismatch extent info [%v] request [%v]", inodeID, key, ekSplit)
 		return
@@ -195,11 +214,26 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey)
 
 	keySize := key.Size
 	key.ModGen++
-	key.IsSplit = true
+	if !key.IsSplit {
+		storeEkSplit(inodeID, ekRef, key)
+	}
+
+	if ekSplit.FileOffset+uint64(ekSplit.Size) > key.FileOffset+uint64(key.Size) {
+		status = proto.OpArgMismatchErr
+		log.LogErrorf("SplitWithCheck. inode %v request [%v] out scope of exist key [%v]", inodeID, ekSplit, key)
+		return
+	}
+	// Makes the request idempotent, just in case client retries.
+	if ekSplit.IsEqual(key) {
+		log.LogWarnf("SplitWithCheck. request key %v is a repeat request", key)
+		return
+	}
 
 	delKey := *key
 	delKey.ExtentOffset = key.ExtentOffset + (ekSplit.FileOffset - key.FileOffset)
 	delKey.Size = ekSplit.Size
+	storeEkSplit(inodeID, ekRef, &delKey)
+
 	if ekSplit.Size == 0 {
 		log.LogErrorf("SplitWithCheck. inode %v delKey %v,key %v, eksplit %v", inodeID, delKey, key, ekSplit)
 	}
@@ -226,6 +260,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey)
 			keyBefore.Size += ekSplit.Size
 		} else {
 			se.eks = append(se.eks, ekSplit)
+			storeEkSplit(inodeID, ekRef, &ekSplit)
 		}
 
 		keyDup.FileOffset = keyDup.FileOffset + uint64(ekSplit.Size)
@@ -252,6 +287,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey)
 			eks[0].Size += ekSplit.Size
 		} else {
 			se.eks = append(se.eks, ekSplit)
+			storeEkSplit(inodeID, ekRef, &ekSplit)
 		}
 
 		se.eks = append(se.eks, eks...)
@@ -265,7 +301,8 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey)
 
 		se.eks = se.eks[:startIndex]
 		se.eks = append(se.eks, ekSplit)
-		se.eks = append(se.eks, proto.ExtentKey{
+		storeEkSplit(inodeID, ekRef, &ekSplit)
+		mKey := &proto.ExtentKey{
 			FileOffset:   ekSplit.FileOffset + uint64(ekSplit.Size),
 			PartitionId:  key.PartitionId,
 			ExtentId:     key.ExtentId,
@@ -275,7 +312,10 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey)
 			VerSeq:  key.VerSeq,
 			ModGen:  0,
 			IsSplit: true,
-		})
+		}
+		se.eks = append(se.eks, *mKey)
+		storeEkSplit(inodeID, ekRef, mKey)
+
 		if keySize-key.Size-ekSplit.Size == 0 {
 			log.LogErrorf("SplitWithCheck. inode %v keySize %v,key %v, eksplit %v", inodeID, keySize, key, ekSplit)
 		}
@@ -401,6 +441,7 @@ func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentK
 			rsKey.Size -= lastKey.Size
 			rsKey.FileOffset += uint64(lastKey.Size)
 			rsKey.ExtentOffset += uint64(lastKey.Size)
+			rsKey.IsSplit = true // the delete key not the last one
 
 			deleteExtents = append([]proto.ExtentKey{rsKey}, deleteExtents...)
 			log.LogDebugf("SortedExtents.Truncate rsKey %v, deleteExtents %v", rsKey, deleteExtents)

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type Packet struct {
@@ -31,7 +32,7 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p.Opcode = proto.OpMarkDelete
 	p.ExtentType = proto.NormalExtentType
 	p.PartitionID = uint64(dp.PartitionID)
-	if storage.IsTinyExtent(ext.ExtentId) || ext.IsSplit {
+	if storage.IsTinyExtent(ext.ExtentId) {
 		p.ExtentType = proto.TinyExtentType
 	}
 
@@ -39,7 +40,10 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p.Size = uint32(len(p.Data))
 
 	if ext.IsSplit {
+		log.LogDebugf("ext [%v] delete be set split flag", ext)
 		p.Opcode = proto.OpSplitMarkDelete
+	} else {
+		log.LogDebugf("ext [%v] delete normal ext", ext)
 	}
 	p.ExtentID = ext.ExtentId
 	p.ReqID = proto.GenerateRequestID()
