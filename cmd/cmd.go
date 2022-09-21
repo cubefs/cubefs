@@ -246,6 +246,12 @@ func main() {
 			daemonize.SignalOutcome(err)
 			os.Exit(1)
 		}
+		if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+			err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)
+			syslog.Println(err)
+			daemonize.SignalOutcome(err)
+			os.Exit(1)
+		}
 	}
 
 	if buffersTotalLimit < 0 {
@@ -254,9 +260,7 @@ func main() {
 	}
 
 	proto.InitBufferPool(buffersTotalLimit)
-
 	syslog.Printf("Hello, CubeFS Storage\n%s\n", Version)
-
 	err = modifyOpenFiles()
 	if err != nil {
 		err = errors.NewErrorf("Fatal: failed to modify open files - %v", err)

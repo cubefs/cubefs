@@ -296,7 +296,7 @@ type snapshotDelManager struct {
 
 func (m *snapshotDelManager) NotifyIdleLcNode() {
 	m.volVerInfos.RLock()
-	m.volVerInfos.RUnlock()
+	defer m.volVerInfos.RUnlock()
 
 	if len(m.volVerInfos.VerInfos) > 0 {
 		select {
