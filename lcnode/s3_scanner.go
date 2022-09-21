@@ -305,7 +305,12 @@ func (s *S3Scanner) handleDirLimit(dentry *proto.ScanDentry) {
 		}
 
 		if marker != "" {
-			children = children[1:]
+			if len(children) <= 1 {
+				done = true
+				break
+			} else {
+				children = children[1:]
+			}
 		}
 
 		for _, child := range children {
@@ -360,7 +365,12 @@ func (s *S3Scanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 		}
 
 		if marker != "" {
-			children = children[1:]
+			if len(children) <= 1 {
+				done = true
+				break
+			} else {
+				children = children[1:]
+			}
 		}
 
 		files := make([]*proto.ScanDentry, 0)
