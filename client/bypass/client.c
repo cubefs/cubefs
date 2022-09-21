@@ -1616,7 +1616,7 @@ ssize_t real_read(int fd, void *buf, size_t count) {
         offset = f->pos;
         size = f->inode_info->size;
         re_cache = read_cache(f->inode_info, f->pos, count, buf);
-        if(re_cache < count && f->pos + re_cache < size) {
+        if(re_cache < count) {
             // data may reside both in cache and CFS, flush to prevent inconsistent read
             flush_inode_range(f->inode_info, f->pos, count);
             re = cfs_errno_ssize_t(cfs_pread_sock(g_client_info.cfs_client_id, fd, buf, count, f->pos));
@@ -1746,7 +1746,7 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
             goto log;
         }
         re_cache = read_cache(f->inode_info, offset, count, buf);
-        if(re_cache < count && offset + re_cache < f->inode_info->size) {
+        if(re_cache < count) {
             // data may reside both in cache and CFS, flush to prevent inconsistent read
             flush_inode_range(f->inode_info, offset, count);
             re = cfs_errno_ssize_t(cfs_pread_sock(g_client_info.cfs_client_id, fd, buf, count, offset));
