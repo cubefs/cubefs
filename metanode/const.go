@@ -72,6 +72,8 @@ type (
 	LookupResp = proto.LookupResponse
 	// Client -> MetaNode
 	InodeGetReq = proto.InodeGetRequest
+	// Tool -> MetaNode
+	InodeGetSplitReq = proto.InodeGetSplitRequest
 	// Client -> MetaNode
 	InodeGetReqBatch = proto.BatchInodeGetRequest
 	// Master -> MetaNode

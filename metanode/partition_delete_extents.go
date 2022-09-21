@@ -134,7 +134,7 @@ LOOP:
 			buf = buf[:0]
 			log.LogDebugf("del eks [%v]", eks)
 			for _, ek := range eks {
-				data, err = ek.MarshalBinaryWithCheckSum(ek.VerSeq > 0)
+				data, err = ek.MarshalBinaryWithCheckSum(true)
 				if err != nil {
 					log.LogWarnf("[appendDelExtentsToFile] partitionId=%d,"+
 						" extentKey marshal: %s", mp.config.PartitionId, err.Error())
