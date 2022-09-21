@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -220,12 +221,7 @@ func (c *DataHttpClient) GetExtentInfo(id uint64, eid uint64) (ehs *proto.Extent
 	params["partitionID"] = strconv.FormatUint(id, 10)
 	params["extentID"] = strconv.FormatUint(eid, 10)
 	var d []byte
-	for i := 0; i < 3; i++ {
-		d, err = c.RequestHttp(http.MethodGet, "/extent", params)
-		if err == nil {
-			break
-		}
-	}
+	d, err = c.RequestHttp(http.MethodGet, "/extent", params)
 	if err != nil {
 		return
 	}
@@ -321,7 +317,7 @@ func (c *DataHttpClient) RepairExtentBatch(extents, partitionPath string, partit
 
 //datanodeAgent api
 
-func (c *DataHttpClient) FetchExtentsCrc(partitionPath string)(extentsMap map[uint64]*proto.ExtentInfoBlock, err error) {
+func (c *DataHttpClient) FetchExtentsCrc(partitionPath string) (extentsMap map[uint64]*proto.ExtentInfoBlock, err error) {
 	d := make([]byte, 0)
 	for i := 0; i < 3; i++ {
 		req := newAPIRequest(http.MethodGet, "/fetchExtentsCrc")

@@ -383,13 +383,20 @@ func(dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
 		}
 		httpAddr := fmt.Sprintf("%v:%v", strings.Split(h, ":")[0], profPort)
 		dataClient := data.NewDataHttpClient(httpAddr, false)
-		extentBlock, err1 := dataClient.GetExtentInfo(dp.partitionID, extentId)
-		if err1 != nil && strings.Contains(err1.Error(), "e extent") && strings.Contains(err1.Error(), "not exist"){
+		var extentBlock *proto.ExtentInfoBlock
+		for i := 0; i<3; i++ {
+			extentBlock, err = dataClient.GetExtentInfo(dp.partitionID, extentId)
+			if err == nil || strings.Contains(err.Error(), "e extent") && strings.Contains(err.Error(), "not exist") {
+				break
+			}
+		}
+		if err == nil && extentBlock[proto.ExtentInfoSize] <= uint64(localExtentSize) {
 			notFoundErrCount++
 			continue
 		}
-		if err1 == nil && extentBlock[proto.ExtentInfoSize] <= uint64(localExtentSize) {
+		if err != nil && strings.Contains(err.Error(), "e extent") && strings.Contains(err.Error(), "not exist") {
 			notFoundErrCount++
+			err = nil
 		}
 	}
 	if notFoundErrCount == len(hosts) - 1 {
@@ -422,21 +429,13 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 			log.LogErrorf(msg)
 		}
 	}()
-	for i := 0; i < 20; i++ {
-		err = func() error {
-			var storeErr error
-			tp := exporter.NewTPCnt("ApplyRandomWrite_StoreWrite")
-			defer func() {
-				tp.Set(storeErr)
-			}()
-			storeErr = dp.ExtentStore().Write(nil, opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
-			return storeErr
-		}()
-		if dp.checkIsDiskError(err) {
-			return
-		}
+	for i := 0; i < 2; i++ {
+		err = dp.ExtentStore().Write(nil, opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
 		if err == nil {
 			break
+		}
+		if dp.checkIsDiskError(err) {
+			return
 		}
 		if strings.Contains(err.Error(),storage.IllegalOverWriteError){
 			err = dp.repairDataOnRandomWrite(opItem.extentID, uint64(opItem.offset), uint64(opItem.size))
