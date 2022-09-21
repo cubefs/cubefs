@@ -464,6 +464,23 @@ func (dp *DataPartition) IsRaftLeader() (addr string, ok bool) {
 	return
 }
 
+func (dp *DataPartition) IsLocalAddress(addr string) bool {
+	var addrID uint64
+	if dp.config == nil {
+		return false
+	}
+	for _, peer := range dp.config.Peers {
+		if addr == peer.Addr {
+			addrID = peer.ID
+			break
+		}
+	}
+	if addrID == dp.config.NodeID {
+		return true
+	}
+	return false
+}
+
 func (dp *DataPartition) IsRandomWriteDisabled() (disabled bool) {
 	disabled = dp.config.VolHAType == proto.CrossRegionHATypeQuorum
 	return
