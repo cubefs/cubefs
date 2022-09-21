@@ -153,7 +153,12 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 			}
 
 			if marker != "" {
-				children = children[1:]
+				if len(children) <= 1 {
+					done = true
+					break
+				} else {
+					children = children[1:]
+				}
 			}
 
 			files := make([]*proto.ScanDentry, 0)
@@ -244,7 +249,12 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 			}
 
 			if marker != "" {
-				children = children[1:]
+				if len(children) <= 1 {
+					done = true
+					break
+				} else {
+					children = children[1:]
+				}
 			}
 
 			for _, child := range children {

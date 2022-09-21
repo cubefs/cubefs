@@ -223,7 +223,7 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 		lcNode *LcNode
 		logMsg string
 	)
-	log.LogDebugf("action[handleLcNodeHeartbeatResp] clusterID[%v] receive lcNode[%v] heartbeat, ", c.Name, nodeAddr)
+	log.LogDebugf("action[handleLcNodeHeartbeatResp] clusterID[%v] receive lcNode[%v] heartbeat", c.Name, nodeAddr)
 	if resp.Status != proto.TaskSucceeds {
 		Warn(c.Name, fmt.Sprintf("action[handleLcNodeHeartbeatResp] clusterID[%v] lcNode[%v] heartbeat task failed",
 			c.Name, nodeAddr))
@@ -276,6 +276,8 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 		}
 	} else {
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is idle", nodeAddr)
+		var infos []lcnodeTaskInfo
+		c.lcMgr.lnStates.UpdateNodeTask(nodeAddr, infos)
 		c.lcMgr.NotifyIdleLcNode()
 	}
 
