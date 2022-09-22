@@ -538,17 +538,44 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		return fuse.ENOTSUP
 	}
 	start := time.Now()
+	var srcInode uint64 // must exist
+	var dstInode uint64 // may not exist
+	var err error
+	if ino, ok := dstDir.dcache.Get(req.NewName); ok {
+		dstInode = ino
+	}
+	if ino, ok := d.dcache.Get(req.OldName); ok {
+		srcInode = ino
+	} else {
+		// will not get there
+		if ino, _, err := d.super.mw.Lookup_ll(d.info.Inode, req.OldName); err == nil {
+			srcInode = ino
+		}
+	}
 	d.dcache.Delete(req.OldName)
 	dcacheKey := d.buildDcacheKey(d.info.Inode, req.OldName)
 	d.super.dc.Delete(dcacheKey)
 
 	bgTime := stat.BeginStat()
-	var err error
+
 	metric := exporter.NewTPCnt("rename")
 	defer func() {
 		stat.EndStat("Rename", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
-		auditlog.FormatLog("Rename", d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName, err, time.Since(start).Microseconds(), 0, 0)
+		d.super.fslock.Lock()
+		node, ok := d.super.nodeCache[srcInode]
+		if ok && srcInode != 0 {
+			if dir, ok := node.(*Dir); ok {
+				dir.name = req.NewName
+				dir.parentIno = dstDir.info.Inode
+			} else {
+				file := node.(*File)
+				file.name = req.NewName
+				file.parentIno = dstDir.info.Inode
+			}
+		}
+		d.super.fslock.Unlock()
+		auditlog.FormatLog("Rename", d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName, err, time.Since(start).Microseconds(), srcInode, dstInode)
 	}()
 
 	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, true)
