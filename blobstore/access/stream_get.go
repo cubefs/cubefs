@@ -79,6 +79,7 @@ type pipeBuffer struct {
 //
 //  Read data shards firstly, if blob size is small or read few bytes
 //  then ec reconstruct-read, try to reconstruct from N+X to N+M
+//  Just read essential bytes in each shard when reconstruct-read.
 //
 //  sorted N+X is, such as we use mode EC6P10L2, X=2 and Read from idc=2
 //  shards like this
@@ -289,6 +290,7 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location access.Location
 // 1. try to min-read shards bytes
 // 2. if failed try to read next shard to reconstruct
 // 3. write the the right offset bytes to writer
+// 4. Just read essential bytes if the data is a segment of one shard.
 func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 	serviceController controller.ServiceController,
 	clusterID proto.ClusterID, vid proto.Vid, codeMode codemode.CodeMode,
@@ -308,6 +310,7 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 		minShardsRead = len(sortedVuids)
 	}
 	shardSize := len(shards[0])
+	shardOffset, shardReadSize := shardSegment(shardSize, int(blob.Offset), int(blob.ReadSize))
 
 	stopChan := make(chan struct{})
 	nextChan := make(chan struct{}, len(sortedVuids))
@@ -326,7 +329,7 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 					wg.Add(1)
 					go func(vuid sortedVuid) {
 						ch <- h.readOneShard(ctx, serviceController, clusterID, vid,
-							shardSize, blob, vuid, stopChan)
+							shardSize, shardOffset, shardReadSize, blob, vuid, stopChan)
 						wg.Done()
 					}(vuid)
 				}
@@ -346,7 +349,7 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 				wg.Add(1)
 				go func(vuid sortedVuid) {
 					ch <- h.readOneShard(ctx, serviceController, clusterID, vid,
-						shardSize, blob, vuid, stopChan)
+						shardSize, shardOffset, shardReadSize, blob, vuid, stopChan)
 					wg.Done()
 				}(vuid)
 			}
@@ -411,14 +414,25 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 
 		// has bad shards, but have enough shards to reconstruct
 		if len(received) >= dataN+badShards {
-			span.Debugf("bid(%d) ready to ec reconstruct data", blob.Bid)
-			err := h.encoder[codeMode].ReconstructData(shards, badIdx)
+			var err error
+			if shardReadSize < shardSize {
+				span.Debugf("bid(%d) ready to segment ec reconstruct data", blob.Bid)
+				reportDownload(clusterID, "EC", "segment")
+				segments := make([][]byte, len(shards))
+				for idx := range shards {
+					segments[idx] = shards[idx][shardOffset : shardOffset+shardReadSize]
+				}
+				err = h.encoder[codeMode].ReconstructData(segments, badIdx)
+			} else {
+				span.Debugf("bid(%d) ready to ec reconstruct data", blob.Bid)
+				err = h.encoder[codeMode].ReconstructData(shards, badIdx)
+			}
 			if err == nil {
 				reconstructed = true
 				close(stopChan)
 				break
 			}
-			span.Infof("bid(%d) ec reconstruct data error:%s", blob.Bid, err.Error())
+			span.Errorf("bid(%d) ec reconstruct data error:%s", blob.Bid, err.Error())
 		}
 
 		if len(received) >= len(sortedVuids) {
@@ -445,7 +459,7 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 }
 
 func (h *Handler) readOneShard(ctx context.Context, serviceController controller.ServiceController,
-	clusterID proto.ClusterID, vid proto.Vid, shardSize int,
+	clusterID proto.ClusterID, vid proto.Vid, shardSize, shardOffset, shardReadSize int,
 	blob blobGetArgs, vuid sortedVuid, stopChan <-chan struct{}) shardData {
 	span := trace.SpanFromContextSafe(ctx)
 	shardResult := shardData{
@@ -459,8 +473,8 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 			Vuid:   vuid.vuid,
 			Bid:    blob.Bid,
 		},
-		Offset: 0,
-		Size:   int64(shardSize),
+		Offset: int64(shardOffset),
+		Size:   int64(shardReadSize),
 	}
 
 	var (
@@ -498,7 +512,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 		return shardResult
 	}
 
-	_, err = io.ReadFull(body, buf)
+	_, err = io.ReadFull(body, buf[shardOffset:shardOffset+shardReadSize])
 	if err != nil {
 		h.memPool.Put(buf)
 		span.Warnf("read blob(%d %d %d) on blobnode(%d %d %s) ecidx(%d): %s",
@@ -820,4 +834,14 @@ func emptyDataShardIndexes(sizes ec.BufferSizes) map[int]struct{} {
 	}
 
 	return set
+}
+
+func shardSegment(shardSize, blobOffset, blobReadSize int) (shardOffset int, shardReadSize int) {
+	shardOffset = blobOffset % shardSize
+	if lastOffset := shardOffset + blobReadSize; lastOffset > shardSize {
+		shardOffset, shardReadSize = 0, shardSize
+	} else {
+		shardReadSize = blobReadSize
+	}
+	return
 }

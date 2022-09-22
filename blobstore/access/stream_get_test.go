@@ -172,6 +172,11 @@ func TestAccessStreamGetOffset(t *testing.T) {
 		{(1 << 22) + 1023, 1 << 22, 1022},
 		{(1 << 22) + 1023, 1 << 22, 1023},
 		{12192823, 6799138, 908019},
+		// segment ec
+		{(1 << 22) + 1, 0, (1 << 22) + 1},
+		{(1 << 22) + 1, (1 << 22) - 1, 2},
+		{(1 << 22) + 1, (1 << 22) - 100, 101},
+		{(1 << 22) + 1024, (1 << 22) - 1024, 2048},
 	}
 	for _, cs := range cases {
 		dataShards.clean()
@@ -523,6 +528,31 @@ func TestAccessStreamGenLocationBlobs(t *testing.T) {
 			require.True(t, err == nil)
 		}
 		require.True(t, cs.checker(blobs))
+	}
+}
+
+func TestAccessStreamShardSegment(t *testing.T) {
+	shardSize := 2333
+	for _, cs := range []struct {
+		offset, readSize           int
+		shardOffset, shardReadSize int
+	}{
+		{0, 0, 0, 0},
+		{0, 1, 0, 1},
+		{100, 233, 100, 233},
+		{shardSize - 1, 1, shardSize - 1, 1},
+		{shardSize*10 - 1, 1, shardSize - 1, 1},
+		{shardSize*10 + 1, 1, 1, 1},
+		{shardSize*10 + 100, 233, 100, 233},
+		{shardSize - 1, 2, 0, shardSize},
+		{1, shardSize, 0, shardSize},
+		{shardSize, shardSize + 10, 0, shardSize},
+		{1, shardSize * 2, 0, shardSize},
+		{shardSize + 1, shardSize * 100, 0, shardSize},
+	} {
+		shardOffset, shardReadSize := shardSegment(shardSize, cs.offset, cs.readSize)
+		require.Equal(t, cs.shardOffset, shardOffset)
+		require.Equal(t, cs.shardReadSize, shardReadSize)
 	}
 }
 
