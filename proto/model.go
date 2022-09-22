@@ -169,6 +169,7 @@ type MetaReplicaInfo struct {
 	IsLearner   bool
 	StoreMode   StoreMode
 	ApplyId     uint64
+	IsRecover   bool
 }
 
 // ClusterView provides the view of a cluster.

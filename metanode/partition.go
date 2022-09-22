@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -26,6 +27,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -88,6 +90,8 @@ type MetaPartitionConfig struct {
 	RaftStore          raftstore.RaftStore `json:"-"`
 	ConnPool           *util.ConnectPool   `json:"-"`
 	StoreMode          proto.StoreMode     `json:"store_mode"`
+	CreationType       int                 `json:"creation_type"`
+	sync.Mutex
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -340,6 +344,9 @@ func (mp *metaPartition) onStart() (err error) {
 		err = errors.NewErrorf("[onStart]start raft id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
+	}
+	if mp.config.CreationType == proto.DecommissionedCreateMetaPartition {
+		go mp.checkRecoverAfterStart()
 	}
 	mp.startCleanTrashScheduler()
 	mp.startUpdateTrashDaysScheduler()
@@ -1394,5 +1401,89 @@ func (mp *metaPartition) FreeInode(val []byte) (err error) {
 	if err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, false); err != nil {
 		log.LogErrorf("[FreeInode] commit batch write handle failed:%v", err)
 	}
+	return
+}
+
+func (mp *metaPartition) checkRecoverAfterStart() {
+	timer := time.NewTimer(0)
+	for {
+		select {
+		case <- timer.C:
+			leaderAddr, ok := mp.IsLeader()
+			if ok {
+				log.LogInfof("CheckRecoverAfterStart mp[%v] is leader, skip check recover", mp.config.PartitionId)
+				return
+			}
+
+			if leaderAddr == "" {
+				log.LogErrorf("CheckRecoverAfterStart mp[%v] no leader", mp.config.PartitionId)
+				timer.Reset(time.Second * 5)
+				continue
+			}
+
+			applyID, err := mp.GetLeaderRaftApplyID(leaderAddr)
+			if err != nil {
+				log.LogErrorf("CheckRecoverAfterStart mp[%v] get leader raft apply id failed:%v",
+					mp.config.PartitionId, err)
+				timer.Reset(time.Second * 5)
+				continue
+			}
+
+			if mp.applyID < applyID {
+				log.LogErrorf("CheckRecoverAfterStart mp[%v] apply id(leader:%v, current node:%v)",
+					mp.config.PartitionId, applyID, mp.applyID)
+				timer.Reset(time.Second * 5)
+				continue
+			}
+
+			mp.config.CreationType = proto.NormalCreateMetaPartition
+			if err = mp.persistMetadata(); err != nil {
+				log.LogErrorf("CheckRecoverAfterStart mp[%v] persist meta data failed:%v", mp.config.PartitionId, err)
+				timer.Reset(time.Second * 5)
+				continue
+			}
+			log.LogInfof("CheckRecoverAfterStart mp[%v] recover finish, applyID(leader:%v, current node:%v)",
+				mp.config.PartitionId, applyID, mp.applyID)
+			return
+		case <- mp.stopC:
+			timer.Stop()
+			return
+
+		}
+	}
+}
+
+func (mp *metaPartition) GetLeaderRaftApplyID(target string) (applyID uint64, err error) {
+	var conn *net.TCPConn
+	defer func() {
+		if err != nil {
+			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
+		} else {
+			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
+		}
+	}()
+	conn, err = mp.config.ConnPool.GetConnect(target)
+	if err != nil {
+		log.LogErrorf("GetLeaderRaftApplyID mp[%v] get connect failed:%v", mp.config.PartitionId, err)
+		return
+	}
+	packet := NewPacketToGetApplyID(context.Background(), mp.config.PartitionId)
+	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
+		log.LogErrorf("GetLeaderRaftApplyID mp[%v] write to connection failed:%v", mp.config.PartitionId, err)
+		return
+	}
+
+	if err = packet.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		log.LogErrorf("GetLeaderRaftApplyID mp[%v] read from connection failed:%v", mp.config.PartitionId, err)
+		return
+	}
+
+	if packet.ResultCode != proto.OpOk {
+		log.LogErrorf("GetLeaderRaftApplyID mp[%v] resultCode:0x%x", mp.config.PartitionId, packet.ResultCode)
+		err = fmt.Errorf("get raft apply id failed with code 0x%x", packet.ResultCode)
+		return
+	}
+
+	applyID = binary.BigEndian.Uint64(packet.Data[:8])
 	return
 }

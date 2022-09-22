@@ -168,3 +168,14 @@ func NewPacketToBatchDeleteEcExtent(ctx context.Context, dp *DataPartition, exts
 	p.SetCtx(ctx)
 	return p
 }
+
+func NewPacketToGetApplyID(ctx context.Context, mpID uint64) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpMetaGetAppliedID
+	p.ReqID = proto.GenerateRequestID()
+	p.Data, _ = json.Marshal(&proto.GetAppliedIDRequest{PartitionId: mpID})
+	p.Size = uint32(len(p.Data))
+	p.SetCtx(ctx)
+	return p
+}

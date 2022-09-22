@@ -569,6 +569,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		ConnPool:           m.connPool,
 		TrashRemainingDays: int32(request.TrashDays),
 		StoreMode: 	        request.StoreMode,
+		CreationType:       request.CreationType,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
@@ -717,6 +718,7 @@ func (m *metadataManager) StartPartition(id uint64) (err error) {
 		RootDir:            path.Join(m.rootDir, fileName),
 		ConnPool:           m.connPool,
 		TrashRemainingDays: -1,
+		CreationType:       proto.DecommissionedCreateMetaPartition,
 	}
 	partitionConfig.AfterStop = func() {
 		m.detachPartition(id)
