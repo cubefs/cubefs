@@ -3447,6 +3447,18 @@ func (c *Cluster) setMetaNodeRocksDBDiskUsedThreshold(threshold float32) (err er
 	return
 }
 
+func (c *Cluster) setMetaNodeMemModeRocksDBDiskUsedThreshold(threshold float32) (err error) {
+	oldThreshold := c.cfg.MetaNodeMemModeRocksdbDiskThreshold
+	c.cfg.MetaNodeMemModeRocksdbDiskThreshold = threshold
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeMemModeRocksDBDiskUsedThreshold] err[%v]", err)
+		c.cfg.MetaNodeMemModeRocksdbDiskThreshold = oldThreshold
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	oldDeleteBatchCount := atomic.LoadUint64(&c.cfg.MetaNodeDeleteBatchCount)
 	if val, ok := params[nodeDeleteBatchCountKey]; ok {

@@ -32,86 +32,88 @@ import (
    transferred over the network. */
 
 type clusterValue struct {
-	Name                              string
-	Threshold                         float32
-	DisableAutoAllocate               bool
-	DataNodeDeleteLimitRate           uint64
-	DataNodeRepairTaskCount           uint64
-	DataNodeRepairTaskSSDZoneLimit    uint64
-	DataNodeRepairTaskCountZoneLimit  map[string]uint64
-	DataNodeReqZoneRateLimitMap       map[string]uint64
-	DataNodeReqZoneOpRateLimitMap     map[string]map[uint8]uint64
-	DataNodeReqZoneVolOpRateLimitMap  map[string]map[string]map[uint8]uint64
-	DataNodeReqVolPartRateLimitMap    map[string]uint64
-	DataNodeReqVolOpPartRateLimitMap  map[string]map[uint8]uint64
-	MetaNodeReqRateLimit              uint64
-	MetaNodeReadDirLimitNum           uint64
-	MetaNodeReqOpRateLimitMap         map[uint8]uint64
-	MetaNodeReqVolOpRateLimitMap      map[string]map[uint8]uint64
-	MetaNodeDeleteBatchCount          uint64
-	MetaNodeDeleteWorkerSleepMs       uint64
-	DataNodeFlushFDInterval           uint32
-	ClientReadVolRateLimitMap         map[string]uint64
-	ClientWriteVolRateLimitMap        map[string]uint64
-	ClientVolOpRateLimitMap           map[string]map[uint8]int64
-	ObjectNodeActionRateLimitMap      map[string]map[string]int64
-	PoolSizeOfDataPartitionsInRecover int32
-	PoolSizeOfMetaPartitionsInRecover int32
-	ExtentMergeIno                    map[string][]uint64
-	ExtentMergeSleepMs                uint64
-	FixTinyDeleteRecordLimit          uint64
-	ClientPkgAddr                     string
-	EcScrubEnable                     bool
-	EcMaxScrubExtents                 uint8
-	EcScrubPeriod                     uint32
-	EcStartScrubTime                  int64
-	MaxCodecConcurrent                int
-	MetaNodeRocksdbDiskThreshold      float32
-	MetaNodeDumpWaterLevel            uint64
-	MonitorSummarySec				  uint64
-	MonitorReportSec				  uint64
+	Name                                string
+	Threshold                           float32
+	DisableAutoAllocate                 bool
+	DataNodeDeleteLimitRate             uint64
+	DataNodeRepairTaskCount             uint64
+	DataNodeRepairTaskSSDZoneLimit      uint64
+	DataNodeRepairTaskCountZoneLimit    map[string]uint64
+	DataNodeReqZoneRateLimitMap         map[string]uint64
+	DataNodeReqZoneOpRateLimitMap       map[string]map[uint8]uint64
+	DataNodeReqZoneVolOpRateLimitMap    map[string]map[string]map[uint8]uint64
+	DataNodeReqVolPartRateLimitMap      map[string]uint64
+	DataNodeReqVolOpPartRateLimitMap    map[string]map[uint8]uint64
+	MetaNodeReqRateLimit                uint64
+	MetaNodeReadDirLimitNum             uint64
+	MetaNodeReqOpRateLimitMap           map[uint8]uint64
+	MetaNodeReqVolOpRateLimitMap        map[string]map[uint8]uint64
+	MetaNodeDeleteBatchCount            uint64
+	MetaNodeDeleteWorkerSleepMs         uint64
+	DataNodeFlushFDInterval             uint32
+	ClientReadVolRateLimitMap           map[string]uint64
+	ClientWriteVolRateLimitMap          map[string]uint64
+	ClientVolOpRateLimitMap             map[string]map[uint8]int64
+	ObjectNodeActionRateLimitMap        map[string]map[string]int64
+	PoolSizeOfDataPartitionsInRecover   int32
+	PoolSizeOfMetaPartitionsInRecover   int32
+	ExtentMergeIno                      map[string][]uint64
+	ExtentMergeSleepMs                  uint64
+	FixTinyDeleteRecordLimit            uint64
+	ClientPkgAddr                       string
+	EcScrubEnable                       bool
+	EcMaxScrubExtents                   uint8
+	EcScrubPeriod                       uint32
+	EcStartScrubTime                    int64
+	MaxCodecConcurrent                  int
+	MetaNodeRocksdbDiskThreshold        float32
+	MetaNodeMemModeRocksdbDiskThreshold float32
+	MetaNodeDumpWaterLevel              uint64
+	MonitorSummarySec                   uint64
+	MonitorReportSec                    uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
 	cv = &clusterValue{
-		Name:                              c.Name,
-		Threshold:                         c.cfg.MetaNodeThreshold,
-		DataNodeDeleteLimitRate:           c.cfg.DataNodeDeleteLimitRate,
-		DataNodeRepairTaskCount:           c.cfg.DataNodeRepairTaskCount,
-		DataNodeRepairTaskSSDZoneLimit:    c.cfg.DataNodeRepairSSDZoneTaskCount,
-		DataNodeRepairTaskCountZoneLimit:  c.cfg.DataNodeRepairTaskCountZoneLimit,
-		DataNodeReqZoneRateLimitMap:       c.cfg.DataNodeReqZoneRateLimitMap,
-		DataNodeReqZoneOpRateLimitMap:     c.cfg.DataNodeReqZoneOpRateLimitMap,
-		DataNodeReqZoneVolOpRateLimitMap:  c.cfg.DataNodeReqZoneVolOpRateLimitMap,
-		DataNodeReqVolPartRateLimitMap:    c.cfg.DataNodeReqVolPartRateLimitMap,
-		DataNodeReqVolOpPartRateLimitMap:  c.cfg.DataNodeReqVolOpPartRateLimitMap,
-		MetaNodeReqRateLimit:              c.cfg.MetaNodeReqRateLimit,
-		MetaNodeReqOpRateLimitMap:         c.cfg.MetaNodeReqOpRateLimitMap,
-		MetaNodeReqVolOpRateLimitMap:      c.cfg.MetaNodeReqVolOpRateLimitMap,
-		MetaNodeDeleteBatchCount:          c.cfg.MetaNodeDeleteBatchCount,
-		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
-		DataNodeFlushFDInterval:           c.cfg.DataNodeFlushFDInterval,
-		MetaNodeReadDirLimitNum:           c.cfg.MetaNodeReadDirLimitNum,
-		ClientReadVolRateLimitMap:         c.cfg.ClientReadVolRateLimitMap,
-		ClientWriteVolRateLimitMap:        c.cfg.ClientWriteVolRateLimitMap,
-		ClientVolOpRateLimitMap:           c.cfg.ClientVolOpRateLimitMap,
-		ObjectNodeActionRateLimitMap:      c.cfg.ObjectNodeActionRateLimitMap,
-		DisableAutoAllocate:               c.DisableAutoAllocate,
-		PoolSizeOfDataPartitionsInRecover: c.cfg.DataPartitionsRecoverPoolSize,
-		PoolSizeOfMetaPartitionsInRecover: c.cfg.MetaPartitionsRecoverPoolSize,
-		ExtentMergeIno:                    c.cfg.ExtentMergeIno,
-		ExtentMergeSleepMs:                c.cfg.ExtentMergeSleepMs,
-		FixTinyDeleteRecordLimit:          c.dnFixTinyDeleteRecordLimit,
-		ClientPkgAddr:                     c.cfg.ClientPkgAddr,
-		EcScrubEnable:                     c.EcScrubEnable,
-		EcMaxScrubExtents:                 c.EcMaxScrubExtents,
-		EcScrubPeriod:                     c.EcScrubPeriod,
-		EcStartScrubTime:                  c.EcStartScrubTime,
-		MaxCodecConcurrent:                c.MaxCodecConcurrent,
-		MetaNodeRocksdbDiskThreshold:      c.cfg.MetaNodeRocksdbDiskThreshold,
-		MetaNodeDumpWaterLevel:            c.cfg.MetaNodeDumpWaterLevel,
-		MonitorSummarySec: 				   c.cfg.MonitorSummarySec,
-		MonitorReportSec: 				   c.cfg.MonitorReportSec,
+		Name:                                c.Name,
+		Threshold:                           c.cfg.MetaNodeThreshold,
+		DataNodeDeleteLimitRate:             c.cfg.DataNodeDeleteLimitRate,
+		DataNodeRepairTaskCount:             c.cfg.DataNodeRepairTaskCount,
+		DataNodeRepairTaskSSDZoneLimit:      c.cfg.DataNodeRepairSSDZoneTaskCount,
+		DataNodeRepairTaskCountZoneLimit:    c.cfg.DataNodeRepairTaskCountZoneLimit,
+		DataNodeReqZoneRateLimitMap:         c.cfg.DataNodeReqZoneRateLimitMap,
+		DataNodeReqZoneOpRateLimitMap:       c.cfg.DataNodeReqZoneOpRateLimitMap,
+		DataNodeReqZoneVolOpRateLimitMap:    c.cfg.DataNodeReqZoneVolOpRateLimitMap,
+		DataNodeReqVolPartRateLimitMap:      c.cfg.DataNodeReqVolPartRateLimitMap,
+		DataNodeReqVolOpPartRateLimitMap:    c.cfg.DataNodeReqVolOpPartRateLimitMap,
+		MetaNodeReqRateLimit:                c.cfg.MetaNodeReqRateLimit,
+		MetaNodeReqOpRateLimitMap:           c.cfg.MetaNodeReqOpRateLimitMap,
+		MetaNodeReqVolOpRateLimitMap:        c.cfg.MetaNodeReqVolOpRateLimitMap,
+		MetaNodeDeleteBatchCount:            c.cfg.MetaNodeDeleteBatchCount,
+		MetaNodeDeleteWorkerSleepMs:         c.cfg.MetaNodeDeleteWorkerSleepMs,
+		DataNodeFlushFDInterval:             c.cfg.DataNodeFlushFDInterval,
+		MetaNodeReadDirLimitNum:             c.cfg.MetaNodeReadDirLimitNum,
+		ClientReadVolRateLimitMap:           c.cfg.ClientReadVolRateLimitMap,
+		ClientWriteVolRateLimitMap:          c.cfg.ClientWriteVolRateLimitMap,
+		ClientVolOpRateLimitMap:             c.cfg.ClientVolOpRateLimitMap,
+		ObjectNodeActionRateLimitMap:        c.cfg.ObjectNodeActionRateLimitMap,
+		DisableAutoAllocate:                 c.DisableAutoAllocate,
+		PoolSizeOfDataPartitionsInRecover:   c.cfg.DataPartitionsRecoverPoolSize,
+		PoolSizeOfMetaPartitionsInRecover:   c.cfg.MetaPartitionsRecoverPoolSize,
+		ExtentMergeIno:                      c.cfg.ExtentMergeIno,
+		ExtentMergeSleepMs:                  c.cfg.ExtentMergeSleepMs,
+		FixTinyDeleteRecordLimit:            c.dnFixTinyDeleteRecordLimit,
+		ClientPkgAddr:                       c.cfg.ClientPkgAddr,
+		EcScrubEnable:                       c.EcScrubEnable,
+		EcMaxScrubExtents:                   c.EcMaxScrubExtents,
+		EcScrubPeriod:                       c.EcScrubPeriod,
+		EcStartScrubTime:                    c.EcStartScrubTime,
+		MaxCodecConcurrent:                  c.MaxCodecConcurrent,
+		MetaNodeRocksdbDiskThreshold:        c.cfg.MetaNodeRocksdbDiskThreshold,
+		MetaNodeMemModeRocksdbDiskThreshold: c.cfg.MetaNodeMemModeRocksdbDiskThreshold,
+		MetaNodeDumpWaterLevel:              c.cfg.MetaNodeDumpWaterLevel,
+		MonitorSummarySec:                   c.cfg.MonitorSummarySec,
+		MonitorReportSec:                    c.cfg.MonitorReportSec,
 	}
 	return cv
 }
@@ -829,6 +831,9 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.MetaNodeThreshold = cv.Threshold
 		if cv.MetaNodeRocksdbDiskThreshold > 0 && cv.MetaNodeRocksdbDiskThreshold < 1 {
 			c.cfg.MetaNodeRocksdbDiskThreshold = cv.MetaNodeRocksdbDiskThreshold
+		}
+		if cv.MetaNodeMemModeRocksdbDiskThreshold > 0 && cv.MetaNodeMemModeRocksdbDiskThreshold < 1 {
+			c.cfg.MetaNodeMemModeRocksdbDiskThreshold = cv.MetaNodeMemModeRocksdbDiskThreshold
 		}
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		if cv.FixTinyDeleteRecordLimit <= 0 {

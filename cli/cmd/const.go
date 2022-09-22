@@ -45,6 +45,9 @@ const (
 	CliOpCheckSnapshot     = "check-snapshot"
 	CliOpSetClientPkgAddr  = "client-package-addr"
 
+	CliOpSetRocksDBDiskThreshold        = "rocksdb-threshold"
+	CliOpSetMemModeRocksDBDiskThreshold = "mem-rocksdb-threshold"
+
 	// monitor op
 	CliOpIPTopPartition      = "ip-top-partition"
 	CliOpTopPartitionOp      = "partition-op"
