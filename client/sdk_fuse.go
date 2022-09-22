@@ -282,7 +282,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File) (fsConn *fuse.Conn, err err
 
 	options := []fuse.MountOption{
 		fuse.AllowOther(),
-		fuse.MaxReadahead(MaxReadAhead),
+		fuse.MaxReadahead(uint32(opt.ReadAheadSize)),
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(opt.AutoInvalData),
 		fuse.FSName("chubaofs-" + opt.Volname),
@@ -379,6 +379,10 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.AutoFlush = GlobalMountOptions[proto.AutoFlush].GetBool()
 	opt.DelProcessPath = GlobalMountOptions[proto.DeleteProcessAbsoPath].GetString()
 	opt.NoBatchGetInodeOnReaddir = GlobalMountOptions[proto.NoBatchGetInodeOnReaddir].GetBool()
+	opt.ReadAheadSize = GlobalMountOptions[proto.ReadAheadSize].GetInt64()
+	if opt.ReadAheadSize > MaxReadAhead || opt.ReadAheadSize < 0 || opt.ReadAheadSize%4096 != 0 {
+		return nil, errors.New(fmt.Sprintf("the size of kernel read-ahead ranges from 0~512KB and must be divisible by 4096, invalid value: %v", opt.ReadAheadSize))
+	}
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
@@ -411,9 +415,7 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 	}
 
 	// Get write-cache options
-	if info.EnableWriteCache {
-		opt.WriteCache = true
-	}
+	opt.WriteCache = info.EnableWriteCache && opt.WriteCache
 
 	// Check user access policy is enabled
 	if opt.AccessKey != "" {
