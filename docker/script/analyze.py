@@ -92,13 +92,40 @@ def execute_command(command):
 def exclude_package_filter(content):
     exclude_packages = [
         "github.com/chubaofs/chubaofs/cli/",
+        "github.com/chubaofs/chubaofs/client/fs/",
         "github.com/chubaofs/chubaofs/console/",
         "github.com/chubaofs/chubaofs/monitor/",
+        "github.com/chubaofs/chubaofs/objectnode/",
+        "github.com/chubaofs/chubaofs/proto/",
+        "github.com/chubaofs/chubaofs/vendor/",
+        "github.com/chubaofs/chubaofs/datanodeAgent/",
+        "github.com/chubaofs/chubaofs/ecstorage/",
+        "github.com/chubaofs/chubaofs/convertnode/",
+        "github.com/chubaofs/chubaofs/schedulenode/",
+        "github.com/chubaofs/chubaofs/metanode/",
+        "github.com/chubaofs/chubaofs/master/",
+        "github.com/chubaofs/chubaofs/ecnode/",
         "github.com/chubaofs/chubaofs/sdk/graphql/",
         "github.com/chubaofs/chubaofs/sdk/auth/",
         "github.com/chubaofs/chubaofs/sdk/monitor/",
+        "github.com/chubaofs/chubaofs/sdk/mysql/",
+        "github.com/chubaofs/chubaofs/sdk/hbase/",
+        "github.com/chubaofs/chubaofs/sdk/master/",
+        "github.com/chubaofs/chubaofs/sdk/meta/",
         "github.com/chubaofs/chubaofs/sdk/scheduler/",
-        "github.com/chubaofs/chubaofs/vendor/"
+        "github.com/chubaofs/chubaofs/util/ump/",
+        "github.com/chubaofs/chubaofs/util/synclist/",
+        "github.com/chubaofs/chubaofs/util/log/",
+        "github.com/chubaofs/chubaofs/util/cpu/",
+        "github.com/chubaofs/chubaofs/util/log/http/",
+        "github.com/chubaofs/chubaofs/util/keystore/",
+        "github.com/chubaofs/chubaofs/util/string/",
+        "github.com/chubaofs/chubaofs/util/iputil/",
+        "github.com/chubaofs/chubaofs/util/ec/",
+        "github.com/chubaofs/chubaofs/util/cryptoutil/",
+        "github.com/chubaofs/chubaofs/util/caps/",
+        "github.com/chubaofs/chubaofs/util/config/"
+        "github.com/chubaofs/chubaofs/raftstore/rafttest/",
     ]
     for package in exclude_packages:
         if content.find(package) >= 0:
