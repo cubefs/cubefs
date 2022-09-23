@@ -19,7 +19,6 @@ import (
 	"errors"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -30,16 +29,13 @@ import (
 )
 
 type mockWorker struct {
-	failIdx    int
-	taskRetErr error
-
+	blocking       chan struct{}
+	taskRetErr     error
 	checkRetErr    error
 	genTaskletsErr error
 
 	taskLetCntMu sync.Mutex
 	taskLetCnt   int
-
-	sleepS int
 }
 
 func (w *mockWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError) {
@@ -57,11 +53,14 @@ func (w *mockWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError) {
 }
 
 func (w *mockWorker) ExecTasklet(ctx context.Context, t Tasklet) *WorkError {
-	time.Sleep(time.Duration(w.sleepS) * time.Second)
+	var ok bool
+	if w.blocking != nil {
+		_, ok = <-w.blocking
+	}
 	w.taskLetCntMu.Lock()
 	defer w.taskLetCntMu.Unlock()
 	w.taskLetCnt++
-	if w.taskLetCnt == w.failIdx {
+	if w.taskRetErr != nil && !ok {
 		return OtherError(w.taskRetErr)
 	}
 	return nil
@@ -131,13 +130,17 @@ func TestTaskRunner(t *testing.T) {
 	// test stop
 	{
 		log.Info("start test tasklet stop")
-		worker := &mockWorker{sleepS: 1}
+		blocking := make(chan struct{})
+		worker := &mockWorker{blocking: blocking}
 		runner := NewTaskRunner(context.Background(), taskID, worker, idc, 2, &taskCounter{}, cli)
 		stats.step = ""
 		stats.wg.Add(1)
 		go runner.Run()
-		time.Sleep(100 * time.Millisecond)
+		for range [7]struct{}{} {
+			blocking <- struct{}{}
+		}
 		runner.Stop()
+		close(blocking)
 		stats.wg.Wait()
 		require.Equal(t, "Cancel", stats.step)
 		require.True(t, worker.taskLetCnt < 12)
@@ -145,8 +148,17 @@ func TestTaskRunner(t *testing.T) {
 	// test tasklet fail
 	{
 		log.Info("start test tasklet fail")
-		worker := &mockWorker{taskRetErr: errors.New("mock fail"), failIdx: 3}
-		run(worker)
+		blocking := make(chan struct{})
+		worker := &mockWorker{blocking: blocking, taskRetErr: errors.New("mock fail")}
+		runner := NewTaskRunner(context.Background(), taskID, worker, idc, 3, &taskCounter{}, cli)
+		stats.step = ""
+		stats.wg.Add(1)
+		go runner.Run()
+		for range [7]struct{}{} {
+			blocking <- struct{}{}
+		}
+		close(blocking)
+		stats.wg.Wait()
 		require.Equal(t, "Cancel", stats.step)
 		require.True(t, worker.taskLetCnt < 12)
 	}

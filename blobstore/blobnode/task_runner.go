@@ -251,8 +251,11 @@ func (r *TaskRunner) Run() {
 	r.cancel()
 	span.Infof("all tasklets has finished: taskID[%s]", r.taskID)
 
-	if r.stopReason != nil {
-		r.cancelOrReclaim(r.stopReason)
+	r.stopMu.Lock()
+	stopReason := r.stopReason
+	r.stopMu.Unlock()
+	if stopReason != nil {
+		r.cancelOrReclaim(stopReason)
 		return
 	}
 
@@ -293,13 +296,11 @@ func (r *TaskRunner) Stop() {
 
 func (r *TaskRunner) stopWithFail(fail *WorkError) {
 	r.span.Infof("stop task: taskID[%s], err_type[%d], err[%+v]", r.taskID, fail.errType, fail.err)
-
 	r.stopMu.Lock()
-	defer r.stopMu.Unlock()
-
 	if r.stopReason == nil {
 		r.stopReason = fail
 	}
+	r.stopMu.Unlock()
 	r.cancel()
 }
 
