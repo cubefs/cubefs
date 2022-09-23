@@ -270,6 +270,9 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 	mms.RUnlock()
 	resp.ZoneName = mms.ZoneName
 	resp.Status = proto.TaskSucceeds
+	resp.RocksDBDiskInfo = []*proto.MetaNodeDiskInfo{
+		{Total: 1 * util.TB, Used: 12 * util.GB, Path: "/data0", UsageRatio: float64(12) / float64(1024)},
+	}
 end:
 	return mms.postResponseToMaster(adminTask, resp)
 }

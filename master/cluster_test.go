@@ -181,8 +181,12 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		return true
 	})
 	for _, dp := range dps {
+		if !dp.allReplicaHasRecovered() || !dp.isDataCatchUp() {
+			dpsLen--
+			continue
+		}
 		dp.RLock()
-		if !dp.isDataCatchUp() || len(dp.Replicas) < int(vol.dpReplicaNum) {
+		if len(dp.Replicas) < int(vol.dpReplicaNum) {
 			dpsLen--
 			dp.RUnlock()
 			continue
