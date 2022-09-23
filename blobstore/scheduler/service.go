@@ -43,10 +43,10 @@ type Service struct {
 	manualMigMgr  IManualMigrator
 	inspectMgr    IVolumeInspector
 
-	shardRepairMgr ITaskRunner
-	blobDeleteMgr  ITaskRunner
-	volCache       IVolumeCache
-	volumeUpdater  client.IVolumeUpdater
+	shardRepairMgr  ITaskRunner
+	blobDeleteMgr   ITaskRunner
+	clusterTopology IClusterTopology
+	volumeUpdater   client.IVolumeUpdater
 
 	clusterMgrCli client.ClusterMgrAPI
 }
@@ -392,7 +392,7 @@ func (svr *Service) HTTPUpdateVolume(c *rpc.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// update local cache of volume
-	_, err := svr.volCache.Update(args.Vid)
+	_, err := svr.clusterTopology.UpdateVolume(args.Vid)
 	if err != nil {
 		span.Errorf("local volume cache update failed: vid[%d], err[%+v]", args.Vid, err)
 		c.RespondError(err)

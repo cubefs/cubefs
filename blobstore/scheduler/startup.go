@@ -109,10 +109,18 @@ func NewService(conf *Config) (svr *Service, err error) {
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
 	volumeUpdater := client.NewVolumeUpdater(&conf.Scheduler, scheme+localHost+conf.BindAddr)
 
-	vc := NewVolumeCache(clusterMgrCli, conf.VolumeCacheUpdateIntervalS)
+	topoConf := &clusterTopologyConfig{
+		ClusterID:               conf.ClusterID,
+		Leader:                  conf.IsLeader(),
+		UpdateInterval:          time.Duration(conf.TopologyUpdateIntervalMin) * time.Minute,
+		VolumeUpdateInterval:    time.Duration(conf.VolumeCacheUpdateIntervalS) * time.Second,
+		FreeChunkCounterBuckets: conf.FreeChunkCounterBuckets,
+	}
+	topologyMgr := NewClusterTopologyMgr(clusterMgrCli, topoConf)
+
 	conf.ShardRepair.Kafka = conf.Kafka.ShardRepair
 	conf.ShardRepair.Kafka.BrokerList = conf.Kafka.BrokerList
-	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, vc, switchMgr, blobnodeCli, clusterMgrCli)
+	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, topologyMgr, switchMgr, blobnodeCli, clusterMgrCli)
 	if err != nil {
 		log.Errorf("new shard repair mgr: cfg[%+v], err[%w]", conf.ShardRepair, err)
 		return nil, err
@@ -120,7 +128,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 
 	conf.BlobDelete.Kafka = conf.Kafka.BlobDelete
 	conf.BlobDelete.Kafka.BrokerList = conf.Kafka.BrokerList
-	deleteMgr, err := NewBlobDeleteMgr(&conf.BlobDelete, vc, blobnodeCli, switchMgr, clusterMgrCli)
+	deleteMgr, err := NewBlobDeleteMgr(&conf.BlobDelete, topologyMgr, blobnodeCli, switchMgr, clusterMgrCli)
 	if err != nil {
 		log.Errorf("new blob delete mgr: cfg[%+v], err[%w]", conf.BlobDelete, err)
 		return nil, err
@@ -128,7 +136,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 
 	svr.shardRepairMgr = shardRepairMgr
 	svr.blobDeleteMgr = deleteMgr
-	svr.volCache = vc
+	svr.clusterTopology = topologyMgr
 	svr.volumeUpdater = volumeUpdater
 	svr.clusterMgrCli = clusterMgrCli
 
@@ -147,14 +155,6 @@ func NewService(conf *Config) (svr *Service, err error) {
 		log.Errorf("run kafka monitor failed: err[%w]", err)
 		return nil, err
 	}
-
-	// init cluster topology
-	topoConf := &clusterTopoConf{
-		ClusterID:               conf.ClusterID,
-		UpdateInterval:          time.Duration(conf.TopologyUpdateIntervalMin) * time.Minute,
-		FreeChunkCounterBuckets: conf.FreeChunkCounterBuckets,
-	}
-	topologyMgr := NewClusterTopologyMgr(clusterMgrCli, topoConf)
 
 	// all migrate manager
 	taskLogger, err := recordlog.NewEncoder(&conf.TaskLog)
@@ -297,7 +297,7 @@ func runMonitor(taskType proto.TaskType, clusterID proto.ClusterID, topics []*ba
 
 // LoadVolInfo load volume info
 func (svr *Service) LoadVolInfo() error {
-	return svr.volCache.Load()
+	return svr.clusterTopology.LoadVolumes()
 }
 
 func (svr *Service) Handler(w http.ResponseWriter, req *http.Request, f func(http.ResponseWriter, *http.Request)) {
@@ -320,7 +320,7 @@ func (svr *Service) needForwardToLeader(req *http.Request) bool {
 	return false
 }
 
-// forwardToLeader will forward http request to raft leader
+// forwardToLeader will forward http request to leader
 func (svr *Service) forwardToLeader(w http.ResponseWriter, req *http.Request) {
 	url, err := url.Parse(scheme + req.RequestURI)
 	if err != nil {

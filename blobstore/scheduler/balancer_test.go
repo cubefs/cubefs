@@ -123,7 +123,7 @@ func TestBalanceCollectionTask(t *testing.T) {
 		clusterTopMgr := &ClusterTopologyMgr{
 			taskStatsMgr: base.NewClusterTopologyStatisticsMgr(1, []float64{}),
 		}
-		clusterTopMgr.buildClusterTopo([]*client.DiskInfoSimple{disk1, disk2, disk3}, 1)
+		clusterTopMgr.buildClusterTopology([]*client.DiskInfoSimple{disk1, disk2, disk3}, 1)
 		mgr.IMigrator.(*MockMigrater).EXPECT().IsMigratingDisk(any).AnyTimes().DoAndReturn(func(diskID proto.DiskID) bool {
 			return diskID == 1
 		})

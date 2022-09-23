@@ -116,48 +116,48 @@ func (m *MockVolumeCache) EXPECT() *MockVolumeCacheMockRecorder {
 	return m.recorder
 }
 
-// Get mocks base method.
-func (m *MockVolumeCache) Get(arg0 proto.Vid) (*client.VolumeInfoSimple, error) {
+// GetVolume mocks base method.
+func (m *MockVolumeCache) GetVolume(arg0 proto.Vid) (*client.VolumeInfoSimple, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", arg0)
+	ret := m.ctrl.Call(m, "GetVolume", arg0)
 	ret0, _ := ret[0].(*client.VolumeInfoSimple)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// Get indicates an expected call of Get.
-func (mr *MockVolumeCacheMockRecorder) Get(arg0 interface{}) *gomock.Call {
+// GetVolume indicates an expected call of GetVolume.
+func (mr *MockVolumeCacheMockRecorder) GetVolume(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockVolumeCache)(nil).Get), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolume", reflect.TypeOf((*MockVolumeCache)(nil).GetVolume), arg0)
 }
 
-// Load mocks base method.
-func (m *MockVolumeCache) Load() error {
+// LoadVolumes mocks base method.
+func (m *MockVolumeCache) LoadVolumes() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Load")
+	ret := m.ctrl.Call(m, "LoadVolumes")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Load indicates an expected call of Load.
-func (mr *MockVolumeCacheMockRecorder) Load() *gomock.Call {
+// LoadVolumes indicates an expected call of LoadVolumes.
+func (mr *MockVolumeCacheMockRecorder) LoadVolumes() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Load", reflect.TypeOf((*MockVolumeCache)(nil).Load))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadVolumes", reflect.TypeOf((*MockVolumeCache)(nil).LoadVolumes))
 }
 
-// Update mocks base method.
-func (m *MockVolumeCache) Update(arg0 proto.Vid) (*client.VolumeInfoSimple, error) {
+// UpdateVolume mocks base method.
+func (m *MockVolumeCache) UpdateVolume(arg0 proto.Vid) (*client.VolumeInfoSimple, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", arg0)
+	ret := m.ctrl.Call(m, "UpdateVolume", arg0)
 	ret0, _ := ret[0].(*client.VolumeInfoSimple)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// Update indicates an expected call of Update.
-func (mr *MockVolumeCacheMockRecorder) Update(arg0 interface{}) *gomock.Call {
+// UpdateVolume indicates an expected call of UpdateVolume.
+func (mr *MockVolumeCacheMockRecorder) UpdateVolume(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockVolumeCache)(nil).Update), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVolume", reflect.TypeOf((*MockVolumeCache)(nil).UpdateVolume), arg0)
 }
 
 // MockMigrater is a mock of MMigrator interface.
@@ -773,4 +773,62 @@ func (m *MockClusterTopology) GetIDCs() map[string]*IDC {
 func (mr *MockClusterTopologyMockRecorder) GetIDCs() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIDCs", reflect.TypeOf((*MockClusterTopology)(nil).GetIDCs))
+}
+
+// GetVolume mocks base method.
+func (m *MockClusterTopology) GetVolume(arg0 proto.Vid) (*client.VolumeInfoSimple, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolume", arg0)
+	ret0, _ := ret[0].(*client.VolumeInfoSimple)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVolume indicates an expected call of GetVolume.
+func (mr *MockClusterTopologyMockRecorder) GetVolume(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolume", reflect.TypeOf((*MockClusterTopology)(nil).GetVolume), arg0)
+}
+
+// IsBrokenDisk mocks base method.
+func (m *MockClusterTopology) IsBrokenDisk(arg0 proto.DiskID) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsBrokenDisk", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsBrokenDisk indicates an expected call of IsBrokenDisk.
+func (mr *MockClusterTopologyMockRecorder) IsBrokenDisk(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsBrokenDisk", reflect.TypeOf((*MockClusterTopology)(nil).IsBrokenDisk), arg0)
+}
+
+// LoadVolumes mocks base method.
+func (m *MockClusterTopology) LoadVolumes() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadVolumes")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LoadVolumes indicates an expected call of LoadVolumes.
+func (mr *MockClusterTopologyMockRecorder) LoadVolumes() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadVolumes", reflect.TypeOf((*MockClusterTopology)(nil).LoadVolumes))
+}
+
+// UpdateVolume mocks base method.
+func (m *MockClusterTopology) UpdateVolume(arg0 proto.Vid) (*client.VolumeInfoSimple, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateVolume", arg0)
+	ret0, _ := ret[0].(*client.VolumeInfoSimple)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateVolume indicates an expected call of UpdateVolume.
+func (mr *MockClusterTopologyMockRecorder) UpdateVolume(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVolume", reflect.TypeOf((*MockClusterTopology)(nil).UpdateVolume), arg0)
 }

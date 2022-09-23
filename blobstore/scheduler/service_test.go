@@ -55,7 +55,7 @@ func newMockService(t *testing.T) *Service {
 	manualMgr := NewMockMigrater(ctr)
 	balanceMgr := NewMockMigrater(ctr)
 	inspectorMgr := NewMockVolumeInspector(ctr)
-	volumeCache := NewMockVolumeCache(ctr)
+	clusterTopology := NewMockClusterTopology(ctr)
 
 	// return balance task
 	emptyTask := proto.MigrateTask{}
@@ -132,8 +132,8 @@ func newMockService(t *testing.T) *Service {
 	inspectorMgr.EXPECT().CompleteInspect(any, any).Return()
 
 	// volume update
-	volumeCache.EXPECT().Update(any).Return(&client.VolumeInfoSimple{}, nil)
-	volumeCache.EXPECT().Update(any).Return(nil, errMock)
+	clusterTopology.EXPECT().UpdateVolume(any).Return(&client.VolumeInfoSimple{}, nil)
+	clusterTopology.EXPECT().UpdateVolume(any).Return(nil, errMock)
 
 	// stats
 	blobDeleteMgr.EXPECT().GetErrorStats().Return([]string{}, uint64(0))
@@ -180,9 +180,9 @@ func newMockService(t *testing.T) *Service {
 		diskRepairMgr: diskRepairMgr,
 		inspectMgr:    inspectorMgr,
 
-		shardRepairMgr: shardRepairMgr,
-		blobDeleteMgr:  blobDeleteMgr,
-		volCache:       volumeCache,
+		shardRepairMgr:  shardRepairMgr,
+		blobDeleteMgr:   blobDeleteMgr,
+		clusterTopology: clusterTopology,
 
 		clusterMgrCli: clusterMgrCli,
 	}

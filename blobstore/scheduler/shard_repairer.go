@@ -119,9 +119,9 @@ type OrphanShard struct {
 
 // ShardRepairMgr shard repair manager
 type ShardRepairMgr struct {
-	taskPool   taskpool.TaskPool
-	taskSwitch *taskswitch.TaskSwitch
-	volCache   IVolumeCache
+	taskPool        taskpool.TaskPool
+	taskSwitch      *taskswitch.TaskSwitch
+	clusterTopology IClusterTopology
 
 	normalPriorConsumers base.IConsumer
 
@@ -148,7 +148,7 @@ type ShardRepairMgr struct {
 // NewShardRepairMgr returns shard repair manager
 func NewShardRepairMgr(
 	cfg *ShardRepairConfig,
-	vc IVolumeCache,
+	clusterTopology IClusterTopology,
 	switchMgr *taskswitch.SwitchMgr,
 	blobnodeCli client.BlobnodeAPI,
 	clusterMgrCli client.ClusterMgrAPI,
@@ -185,7 +185,7 @@ func NewShardRepairMgr(
 		blobnodeCli:      blobnodeCli,
 		taskPool:         taskpool.New(cfg.TaskPoolSize, cfg.TaskPoolSize),
 		taskSwitch:       taskSwitch,
-		volCache:         vc,
+		clusterTopology:  clusterTopology,
 		blobnodeSelector: workerSelector,
 
 		normalPriorConsumers: priorConsumers,
@@ -352,7 +352,7 @@ func (s *ShardRepairMgr) handleOneMsg(ctx context.Context, msg *sarama.ConsumerM
 }
 
 func (s *ShardRepairMgr) repairWithCheckVolConsistency(ctx context.Context, repairMsg proto.ShardRepairMsg) error {
-	return DoubleCheckedRun(ctx, s.volCache, repairMsg.Vid, func(info *client.VolumeInfoSimple) error {
+	return DoubleCheckedRun(ctx, s.clusterTopology, repairMsg.Vid, func(info *client.VolumeInfoSimple) error {
 		return s.tryRepair(ctx, info, repairMsg)
 	})
 }
@@ -369,10 +369,10 @@ func (s *ShardRepairMgr) tryRepair(ctx context.Context, volInfo *client.VolumeIn
 		return err
 	}
 
-	newVol, err1 := s.volCache.Update(volInfo.Vid)
+	newVol, err1 := s.clusterTopology.UpdateVolume(volInfo.Vid)
 	if err1 != nil || newVol.EqualWith(volInfo) {
 		// if update volInfo failed or volInfo not updated, don't need retry
-		span.Warnf("new volInfo is same or volCache.Update failed: vid[%d], vol cache update err[%+v], repair err[%+v]",
+		span.Warnf("new volInfo is same or clusterTopology.UpdateVolume failed: vid[%d], vol cache update err[%+v], repair err[%+v]",
 			volInfo.Vid, err1, err)
 		return err
 	}

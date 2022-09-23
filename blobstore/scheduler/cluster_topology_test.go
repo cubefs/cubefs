@@ -15,8 +15,11 @@
 package scheduler
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -88,7 +91,7 @@ func TestNewClusterTopologyMgr(t *testing.T) {
 	clusterTopMgr := &ClusterTopologyMgr{
 		taskStatsMgr: base.NewClusterTopologyStatisticsMgr(1, []float64{}),
 	}
-	clusterTopMgr.buildClusterTopo(topoDisks, 1)
+	clusterTopMgr.buildClusterTopology(topoDisks, 1)
 	require.Equal(t, 3, len(clusterTopMgr.GetIDCs()))
 	disks := clusterTopMgr.GetIDCDisks("z0")
 	require.Equal(t, 2, len(disks))
@@ -101,14 +104,158 @@ func TestNewClusterTopologyMgr(t *testing.T) {
 
 	ctr := gomock.NewController(t)
 	clusterMgrCli := NewMockClusterMgrAPI(ctr)
-	clusterMgrCli.EXPECT().ListClusterDisks(any).AnyTimes().Return(nil, errMock)
-	conf := &clusterTopoConf{
-		ClusterID:      1,
-		UpdateInterval: 1 * time.Microsecond,
+	clusterMgrCli.EXPECT().ListClusterDisks(any).AnyTimes().Return([]*client.DiskInfoSimple{testDisk1}, nil)
+	clusterMgrCli.EXPECT().ListBrokenDisks(any).AnyTimes().Return([]*client.DiskInfoSimple{testDisk2}, nil)
+	clusterMgrCli.EXPECT().ListRepairingDisks(any).AnyTimes().Return([]*client.DiskInfoSimple{testDisk2}, nil)
+	clusterMgrCli.EXPECT().ListVolume(any, any, any).Times(3).Return(nil, defaultMarker, errMock)
+	clusterMgrCli.EXPECT().GetVolumeInfo(any, any).Return(nil, errMock)
+	clusterMgrCli.EXPECT().GetVolumeInfo(any, any).DoAndReturn(
+		func(_ context.Context, vid proto.Vid) (*client.VolumeInfoSimple, error) {
+			return &client.VolumeInfoSimple{Vid: vid}, nil
+		},
+	)
+	conf := &clusterTopologyConfig{
+		ClusterID:            1,
+		UpdateInterval:       time.Microsecond,
+		VolumeUpdateInterval: time.Microsecond,
+		Leader:               true,
 	}
 	mgr := NewClusterTopologyMgr(clusterMgrCli, conf)
 	defer mgr.Close()
 
-	// wait topology update
-	time.Sleep(2 * time.Microsecond)
+	topology := mgr.(*ClusterTopologyMgr)
+	topology.loadNormalDisks()
+	topology.loadBrokenDisks()
+
+	require.True(t, mgr.IsBrokenDisk(testDisk2.DiskID))
+	require.False(t, mgr.IsBrokenDisk(testDisk1.DiskID))
+
+	topology.loadBrokenDisks()
+	require.True(t, mgr.IsBrokenDisk(testDisk2.DiskID))
+	require.False(t, mgr.IsBrokenDisk(testDisk1.DiskID))
+
+	// update volume
+	err := mgr.LoadVolumes()
+	require.ErrorIs(t, err, errMock)
+	_, err = mgr.UpdateVolume(proto.Vid(1))
+	require.ErrorIs(t, err, errMock)
+	_, err = mgr.GetVolume(proto.Vid(1))
+	require.NoError(t, err)
+}
+
+func TestVolumeCache(t *testing.T) {
+	cmClient := NewMockClusterMgrAPI(gomock.NewController(t))
+	cmClient.EXPECT().ListVolume(any, any, any).Times(2).DoAndReturn(
+		func(_ context.Context, marker proto.Vid, _ int) ([]*client.VolumeInfoSimple, proto.Vid, error) {
+			if marker == defaultMarker {
+				return []*client.VolumeInfoSimple{{Vid: 4}}, proto.Vid(10), nil
+			}
+			return []*client.VolumeInfoSimple{{Vid: 9}}, defaultMarker, nil
+		},
+	)
+	cmClient.EXPECT().GetVolumeInfo(any, any).DoAndReturn(
+		func(_ context.Context, vid proto.Vid) (*client.VolumeInfoSimple, error) {
+			return &client.VolumeInfoSimple{Vid: vid}, nil
+		},
+	)
+
+	volCache := NewVolumeCache(cmClient, 10*time.Second)
+	err := volCache.LoadVolumes()
+	require.NoError(t, err)
+
+	// no cache will update
+	_, err = volCache.GetVolume(1)
+	require.NoError(t, err)
+	// return cache
+	_, err = volCache.GetVolume(1)
+	require.NoError(t, err)
+
+	// update ErrFrequentlyUpdate
+	_, err = volCache.UpdateVolume(1)
+	require.ErrorIs(t, err, ErrFrequentlyUpdate)
+
+	// list and get failed
+	cmClient.EXPECT().ListVolume(any, any, any).AnyTimes().Return(nil, proto.Vid(0), errMock)
+	cmClient.EXPECT().GetVolumeInfo(any, any).Return(&client.VolumeInfoSimple{}, errMock)
+	volCache = NewVolumeCache(cmClient, -1)
+	_, err = volCache.GetVolume(1)
+	require.ErrorIs(t, err, errMock)
+	err = volCache.LoadVolumes()
+	require.ErrorIs(t, err, errMock)
+}
+
+func TestDoubleCheckedRun(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+	{
+		c := NewMockClusterTopology(ctr)
+		c.EXPECT().GetVolume(any).Return(nil, errMock)
+		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) error { return nil })
+		require.ErrorIs(t, err, errMock)
+	}
+	{
+		c := NewMockClusterTopology(ctr)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{}, nil)
+		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) error { return errMock })
+		require.ErrorIs(t, err, errMock)
+	}
+	{
+		c := NewMockClusterTopology(ctr)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{}, nil)
+		c.EXPECT().GetVolume(any).Return(nil, errMock)
+		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) error { return nil })
+		require.ErrorIs(t, err, errMock)
+	}
+	{
+		c := NewMockClusterTopology(ctr)
+		c.EXPECT().GetVolume(any).Times(2).Return(&client.VolumeInfoSimple{}, nil)
+		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) error { return nil })
+		require.NoError(t, err)
+	}
+	{
+		c := NewMockClusterTopology(ctr)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 1}}}, nil)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 2}}}, nil)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 2}}}, nil)
+		err := DoubleCheckedRun(context.Background(), c, 1, func(*client.VolumeInfoSimple) error { return nil })
+		require.NoError(t, err)
+	}
+	{
+		c := NewMockClusterTopology(ctr)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 1}}}, nil)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 2}}}, nil)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 3}}}, nil)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 4}}}, nil)
+		err := DoubleCheckedRun(context.Background(), c, 1, func(*client.VolumeInfoSimple) error { return nil })
+		require.ErrorIs(t, err, errVolumeMissmatch)
+	}
+}
+
+func BenchmarkVolumeCache(b *testing.B) {
+	for _, cs := range []struct {
+		Name  string
+		Items int
+	}{
+		{"tiny", 1 << 5},
+		{"norm", 1 << 16},
+		{"huge", 1 << 20},
+	} {
+		items := cs.Items
+		b.Run(cs.Name, func(b *testing.B) {
+			vols := make([]*client.VolumeInfoSimple, items)
+			for idx := range vols {
+				vols[idx] = &client.VolumeInfoSimple{Vid: proto.Vid(idx)}
+			}
+			cmCli := NewMockClusterMgrAPI(gomock.NewController(b))
+			cmCli.EXPECT().ListVolume(any, any, any).Return(vols, defaultMarker, nil)
+
+			cacher := NewVolumeCache(cmCli, -1)
+			require.NoError(b, cacher.LoadVolumes())
+
+			b.ResetTimer()
+			for ii := 0; ii < b.N; ii++ {
+				cacher.GetVolume(proto.Vid(ii % items))
+			}
+		})
+	}
 }

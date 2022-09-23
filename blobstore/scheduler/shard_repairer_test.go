@@ -39,9 +39,9 @@ import (
 func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 	ctr := gomock.NewController(t)
 
-	volCache := NewMockVolumeCache(ctr)
-	volCache.EXPECT().Get(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
-	volCache.EXPECT().Update(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+	clusterTopology := NewMockClusterTopology(ctr)
+	clusterTopology.EXPECT().GetVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+	clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
 
 	selector := mocks.NewMockSelector(ctr)
 	selector.EXPECT().GetRandomN(any).AnyTimes().Return([]string{"http://127.0.0.1:9600"})
@@ -63,7 +63,7 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 	consumer := NewMockConsumer(ctr)
 
 	return &ShardRepairMgr{
-		volCache:                volCache,
+		clusterTopology:         clusterTopology,
 		blobnodeSelector:        selector,
 		blobnodeCli:             blobnode,
 		failMsgSender:           sender,
@@ -213,9 +213,9 @@ func TestNewShardRepairMgr(t *testing.T) {
 		},
 	}
 
-	volCache := NewMockVolumeCache(ctr)
-	volCache.EXPECT().Get(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
-	volCache.EXPECT().Update(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+	clusterTopology := NewMockClusterTopology(ctr)
+	clusterTopology.EXPECT().GetVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+	clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
 
 	clusterMgrCli := NewMockClusterMgrAPI(ctr)
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
@@ -228,9 +228,9 @@ func TestNewShardRepairMgr(t *testing.T) {
 	clusterCli.EXPECT().GetConsumeOffset(any, any, any).AnyTimes().Return(int64(0), nil)
 	clusterCli.EXPECT().SetConsumeOffset(any, any, any, any).AnyTimes().Return(nil)
 
-	_, err = NewShardRepairMgr(cfg, volCache, switchMgr, blobnode, clusterCli)
+	_, err = NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli)
 	require.NoError(t, err)
 
-	_, err = NewShardRepairMgr(cfg, volCache, switchMgr, blobnode, clusterCli)
+	_, err = NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli)
 	require.Error(t, err)
 }

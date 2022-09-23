@@ -101,7 +101,7 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	manualMgr := NewMockMigrater(ctr)
 	balanceMgr := NewMockMigrater(ctr)
 	inspecterMgr := NewMockVolumeInspector(ctr)
-	volumeCache := NewMockVolumeCache(ctr)
+	clusterTopology := NewMockClusterTopology(ctr)
 	volumeUpdater := NewMockVolumeUpdater(ctr)
 
 	balanceMgr.EXPECT().Close().AnyTimes().Return()
@@ -116,7 +116,7 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	inspecterMgr.EXPECT().Run().AnyTimes().Return()
 	manualMgr.EXPECT().Run().AnyTimes().Return()
 
-	volumeCache.EXPECT().Load().AnyTimes().Return(nil)
+	clusterTopology.EXPECT().LoadVolumes().AnyTimes().Return(nil)
 	shardRepairMgr.EXPECT().RunTask().AnyTimes().Return()
 	blobDeleteMgr.EXPECT().RunTask().AnyTimes().Return()
 
@@ -148,21 +148,21 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 
 	manualMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(proto.MigrateTask{TaskType: proto.TaskTypeManualMigrate}, nil)
 
-	volumeCache.EXPECT().Update(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+	clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
 
 	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("", errMock)
 	service := &Service{
-		ClusterID:      1,
-		leader:         isLeader,
-		balanceMgr:     balanceMgr,
-		diskDropMgr:    diskDropMgr,
-		manualMigMgr:   manualMgr,
-		diskRepairMgr:  diskRepairMgr,
-		inspectMgr:     inspecterMgr,
-		shardRepairMgr: shardRepairMgr,
-		blobDeleteMgr:  blobDeleteMgr,
-		volCache:       volumeCache,
-		volumeUpdater:  volumeUpdater,
+		ClusterID:       1,
+		leader:          isLeader,
+		balanceMgr:      balanceMgr,
+		diskDropMgr:     diskDropMgr,
+		manualMigMgr:    manualMgr,
+		diskRepairMgr:   diskRepairMgr,
+		inspectMgr:      inspecterMgr,
+		shardRepairMgr:  shardRepairMgr,
+		blobDeleteMgr:   blobDeleteMgr,
+		clusterTopology: clusterTopology,
+		volumeUpdater:   volumeUpdater,
 
 		clusterMgrCli: clusterMgrCli,
 	}

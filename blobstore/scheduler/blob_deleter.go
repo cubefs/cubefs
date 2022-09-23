@@ -223,7 +223,7 @@ type BlobDeleteMgr struct {
 // NewBlobDeleteMgr returns blob delete manager
 func NewBlobDeleteMgr(
 	cfg *BlobDeleteConfig,
-	volCache IVolumeCache,
+	clusterTopology IClusterTopology,
 	blobnodeCli client.BlobnodeAPI,
 	switchMgr *taskswitch.SwitchMgr,
 	clusterMgrCli client.ClusterMgrAPI,
@@ -273,7 +273,7 @@ func NewBlobDeleteMgr(
 		consumeIntervalMs: time.Duration(0),
 		safeDelayTime:     time.Duration(cfg.SafeDelayTimeH) * time.Hour,
 		deleteHourRange:   cfg.DeleteHourRange,
-		volCache:          volCache,
+		clusterTopology:   clusterTopology,
 		blobnodeCli:       blobnodeCli,
 		failMsgSender:     failMsgSender,
 
@@ -295,7 +295,7 @@ func NewBlobDeleteMgr(
 		consumeIntervalMs: time.Duration(cfg.FailMsgConsumeIntervalMs) * time.Millisecond,
 		safeDelayTime:     time.Duration(cfg.SafeDelayTimeH) * time.Hour,
 		deleteHourRange:   cfg.DeleteHourRange,
-		volCache:          volCache,
+		clusterTopology:   clusterTopology,
 		blobnodeCli:       blobnodeCli,
 		failMsgSender:     failMsgSender,
 
@@ -337,7 +337,8 @@ func (mgr *BlobDeleteMgr) GetErrorStats() (errStats []string, totalErrCnt uint64
 }
 
 type deleteTopicConsumer struct {
-	taskSwitch *taskswitch.TaskSwitch
+	taskSwitch      *taskswitch.TaskSwitch
+	clusterTopology IClusterTopology
 
 	taskPool          *taskpool.TaskPool
 	topicConsumers    []base.IConsumer
@@ -346,7 +347,6 @@ type deleteTopicConsumer struct {
 	safeDelayTime     time.Duration
 	deleteHourRange   HourRange
 
-	volCache    IVolumeCache
 	blobnodeCli client.BlobnodeAPI
 
 	failMsgSender base.IProducer
@@ -516,6 +516,16 @@ func (d *deleteTopicConsumer) handleOneMsg(ctx context.Context, delMsg *proto.De
 		return
 	}
 	pSpan := trace.SpanFromContextSafe(ctx)
+	if d.hasBrokenDisk(delMsg.Vid) {
+		pSpan.Debugf("the volume has broken disk and delete later: vid[%d], bid[%d]", delMsg.Vid, delMsg.Bid)
+		finishCh <- delBlobRet{
+			status: DelFailed,
+			err:    errcode.ErrDiskBroken,
+			delMsg: delMsg,
+		}
+		return
+	}
+
 	pSpan.Infof("start delete msg: [%+v]", delMsg)
 
 	span, tmpCtx := trace.StartSpanFromContextWithTraceID(context.Background(), "handleDeleteMsg", delMsg.ReqId)
@@ -541,8 +551,21 @@ func (d *deleteTopicConsumer) handleOneMsg(ctx context.Context, delMsg *proto.De
 	}
 }
 
+func (d *deleteTopicConsumer) hasBrokenDisk(vid proto.Vid) bool {
+	volume, err := d.clusterTopology.GetVolume(vid)
+	if err != nil {
+		return false
+	}
+	for _, unit := range volume.VunitLocations {
+		if d.clusterTopology.IsBrokenDisk(unit.DiskID) {
+			return true
+		}
+	}
+	return false
+}
+
 func (d *deleteTopicConsumer) deleteWithCheckVolConsistency(ctx context.Context, vid proto.Vid, bid proto.BlobID) error {
-	return DoubleCheckedRun(ctx, d.volCache, vid, func(info *client.VolumeInfoSimple) error {
+	return DoubleCheckedRun(ctx, d.clusterTopology, vid, func(info *client.VolumeInfoSimple) error {
 		return d.deleteBlob(ctx, info, bid)
 	})
 }
@@ -610,11 +633,11 @@ func (d *deleteTopicConsumer) deleteShards(
 	}
 
 	span.Infof("bid delete will update and retry: len updateAndRetryShards[%d]", len(updateAndRetryShards))
-	// update volCache
-	newVolInfo, updateVolErr := d.volCache.Update(vid)
+	// update clusterTopology volume
+	newVolInfo, updateVolErr := d.clusterTopology.UpdateVolume(vid)
 	if updateVolErr != nil || newVolInfo.EqualWith(volInfo) {
 		// if update volInfo failed or volInfo not updated, don't need retry
-		span.Warnf("new volInfo is same or volCache.Update failed: vid[%d], err[%+v]", volInfo.Vid, updateVolErr)
+		span.Warnf("new volInfo is same or clusterTopology.UpdateVolume failed: vid[%d], err[%+v]", volInfo.Vid, updateVolErr)
 		return volInfo, err
 	}
 
