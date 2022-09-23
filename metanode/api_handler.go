@@ -101,6 +101,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getAllDeletedInodeId", m.getAllDeletedInodeIdHandler)
 	http.HandleFunc("/getExtentsByDelIno", m.getExtentsByDeletedInodeHandler)
 	http.HandleFunc("/getAllInodeIdWithDeleted", m.getAllInodeIdWithDeletedHandler)
+
+	http.HandleFunc("/tryToLeader", m.tryToLeader)
 	return
 }
 
@@ -1747,5 +1749,56 @@ func (m *MetaNode) getAllDeletedInodesCrcSum(w http.ResponseWriter, r *http.Requ
 		InodesID:        delInodes,
 		CRCSumSet:       crcSumSet,
 	}
+	return
+}
+
+func (m *MetaNode) tryToLeader(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+		mp  MetaPartition
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getAllDeletedInodesCrcSum] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	if pid != mp.GetBaseConfig().PartitionId {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("Pid:%d is not equal mp:%d", pid, mp.GetBaseConfig().PartitionId)
+		return
+	}
+
+	_, ok := mp.IsLeader()
+	if ok {
+		//alread is leader, do nothing
+		return
+	}
+
+	err = mp.TryToLeader(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
 	return
 }
