@@ -212,7 +212,10 @@ const (
 	UserInfoKey     = "_user_info_key"
 )
 
-const TimeFormat = "2006-01-02 15:04:05"
+const (
+	TimeFormat  = "2006-01-02 15:04:05"
+	TimeFormat2 = "20060102150405"
+)
 
 const (
 	ReadOnlyToken  = 1

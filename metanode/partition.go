@@ -283,6 +283,10 @@ type metaPartition struct {
 	delBatchKey                 []byte
 	lastSubmit                  int64
 	waitPersistCommitCnt        uint64
+	deleteEKRecordCount         uint64
+	delEKFd                     *os.File
+	inodeDelEkRecordCount       uint64
+	inodeDelEkFd				*os.File
 }
 
 // Start starts a meta partition.
@@ -356,11 +360,6 @@ func (mp *metaPartition) onStart() (err error) {
 func (mp *metaPartition) onStop() {
 	mp.stopRaft()
 	mp.stop()
-	if mp.delInodeFp != nil {
-		// TODO Unhandled errors
-		mp.delInodeFp.Sync()
-		mp.delInodeFp.Close()
-	}
 	mp.db.CloseDb()
 	mp.inodeTree.Release()
 }
@@ -1206,11 +1205,6 @@ func (mp *metaPartition) Reset() (err error) {
 
 func (mp *metaPartition) Expired() (err error) {
 	mp.stop()
-	if mp.delInodeFp != nil {
-		// TODO Unhandled errors
-		mp.delInodeFp.Sync()
-		mp.delInodeFp.Close()
-	}
 
 	mp.inodeTree.Release()
 	mp.dentryTree.Release()

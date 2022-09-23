@@ -45,6 +45,21 @@ func (mp *metaPartition) startFreeList() (err error) {
 		DeleteInodeFileExtension), OpenRWAppendOpt, 0644); err != nil {
 		return
 	}
+	mp.renameDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup)
+	mp.renameDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup)
+	delExtentListDir := path.Join(mp.config.RootDir, delExtentKeyList)
+	if mp.delEKFd, err = os.OpenFile(delExtentListDir, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err != nil {
+		log.LogErrorf("[startFreeList] mp[%v] create delEKListFile(%s) failed:%v",
+			mp.config.PartitionId, delExtentListDir, err)
+		return
+	}
+
+	inodeDelEKListDir := path.Join(mp.config.RootDir, InodeDelExtentKeyList)
+	if mp.inodeDelEkFd, err = os.OpenFile(inodeDelEKListDir, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err != nil {
+		log.LogErrorf("[startFreeList] mp[%v] create inodeDelEKListFile(%s) failed:%v",
+			mp.config.PartitionId, inodeDelEKListDir, err)
+		return
+	}
 
 	// start vol update ticket
 	go mp.updateVolWorker()
@@ -112,6 +127,15 @@ func (mp *metaPartition) deleteWorker() {
 		buffSlice = buffSlice[:0]
 		select {
 		case <-mp.stopC:
+			if mp.delInodeFp != nil {
+				mp.delInodeFp.Sync()
+				mp.delInodeFp.Close()
+			}
+
+			if mp.inodeDelEkFd != nil {
+				mp.inodeDelEkFd.Sync()
+				mp.inodeDelEkFd.Close()
+			}
 			return
 		default:
 		}
@@ -193,6 +217,58 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 	return
 }
 
+func (mp *metaPartition) recordInodeDeleteEkInfo(info *Inode) {
+	if info == nil || info.Extents == nil ||info.Extents.Len() == 0 {
+		return
+	}
+
+	log.LogDebugf("[recordInodeDeleteEkInfo] mp[%v] delEk[ino:%v] record %d eks", mp.config.PartitionId, info.Inode, info.Extents.Len())
+	var (
+		data []byte
+		err  error
+	)
+	inoDelExtentListDir := path.Join(mp.config.RootDir, InodeDelExtentKeyList)
+	if mp.inodeDelEkRecordCount >= defMaxDelEKRecord {
+		_ = mp.inodeDelEkFd.Close()
+		mp.inodeDelEkFd = nil
+		mp.renameDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup)
+		mp.inodeDelEkRecordCount = 0
+	}
+
+	info.Extents.Range(func(ek proto.ExtentKey) bool {
+		ekBuff, err := ek.MarshalDeleteEKRecord(info.Inode)
+		if err != nil {
+			return false
+		}
+		data = append(data, ekBuff...)
+		mp.inodeDelEkRecordCount++
+		return true
+	})
+
+	if mp.inodeDelEkFd == nil {
+		if mp.inodeDelEkFd, err = os.OpenFile(inoDelExtentListDir, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err != nil {
+			log.LogErrorf("[recordInodeDeleteEkInfo] mp[%v] delEk[ino:%v, ek:%v] create delEKListFile(%s) failed:%v",
+				mp.config.PartitionId, info.Inode, info.Extents.Len(), InodeDelExtentKeyList, err)
+			return
+		}
+	}
+
+	defer func() {
+		if err != nil {
+			_ = mp.inodeDelEkFd.Close()
+			mp.inodeDelEkFd = nil
+		}
+	}()
+
+	if _, err = mp.inodeDelEkFd.Write(data); err != nil {
+		log.LogErrorf("[recordInodeDeleteEkInfo] mp[%v] delEk[ino:%v, ek:%v] write file(%s) failed:%v",
+			mp.config.PartitionId, info.Inode, info.Extents.Len(), inoDelExtentListDir, err)
+		return
+	}
+	log.LogDebugf("[recordInodeDeleteEkInfo] mp[%v] delEk[ino:%v, ek:%v] record success", mp.config.PartitionId, info.Inode, info.Extents.Len())
+	return
+}
+
 // Delete the marked inodes.
 func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint64) {
 	defer func() {
@@ -217,6 +293,9 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 				continue
 			}
 		}
+
+		mp.recordInodeDeleteEkInfo(inodeVal)
+
 		inodeVal.Extents.Range(func(ek proto.ExtentKey) bool {
 			ext := &ek
 			_, ok := allDeleteExtents[ext.GetExtentKey()]
