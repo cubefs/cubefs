@@ -1,6 +1,8 @@
 package metanode
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
@@ -464,6 +466,32 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 			return fmt.Errorf("create deleted inode[%v] failed, error:%v", dino, err)
 		}
 	}
+
+	key  := make( []byte, dbExtentKeySize)
+	updateKeyToNow(key)
+
+	batchHandle, _ := mp.db.CreateBatchHandler()
+	for index := 0; index < 100; index++ {
+		ek := proto.ExtentKey{
+			PartitionId: uint64(index),
+			ExtentId: uint64(index),
+		}
+		var valueBuff []byte
+		inoBuff := make([]byte, 8)
+		defBuff := make([]byte, 1)
+		valueBuff = defBuff
+		if index % 30 == 0 {
+			binary.BigEndian.PutUint64(inoBuff, uint64(index))
+			valueBuff = inoBuff
+		}
+		keyBuff, _ := ek.MarshalDbKey()
+		copy(key[8:], keyBuff)
+		mp.db.AddItemToBatch(batchHandle, key, valueBuff)
+	}
+	err = mp.db.CommitBatchAndRelease(batchHandle)
+	if err != nil {
+		fmt.Printf("del ek commit failed:%v\n", err.Error())
+	}
 	return
 }
 
@@ -590,6 +618,31 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 
 	if _, err := compareExtentDeleteFile(leaderMp, followerMp); err != nil {
 		t.Errorf("extent file validate failed:%v", err)
+		return false
+	}
+
+	stKey   := make([]byte, 1)
+	endKey  := make([]byte, 1)
+
+	stKey[0]  = byte(ExtentDelTable)
+	endKey[0] = byte(ExtentDelTable + 1)
+	if err := leaderMp.db.Range(stKey, endKey, func(k, v []byte)(bool, error) {
+		value, tmpErr := followerMp.db.GetBytes(k)
+		if tmpErr != nil {
+			return false, tmpErr
+		}
+
+		if len(value) == 8 {
+			fmt.Printf("leader:%d, follower:%d\n", binary.BigEndian.Uint64(v), binary.BigEndian.Uint64(value))
+		}
+
+		if bytes.Compare(v, value) == 0 && bytes.Compare(value, v) == 0{
+			return true, nil
+		}
+
+		return false, fmt.Errorf("del ek value failed ")
+	}); err != nil {
+		t.Errorf("validate failed:%v", err)
 		return false
 	}
 

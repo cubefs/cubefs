@@ -9,7 +9,7 @@ import (
 
 func TestMetaPartitionAPI(t *testing.T) {
 	var err error
-	var count int = 60
+	var count int = 10
 	//Create Meta Partition
 	testVolName := "ltptest"
 	var testInodeStart uint64 = 1
