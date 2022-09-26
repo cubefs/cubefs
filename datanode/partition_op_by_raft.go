@@ -363,16 +363,19 @@ func (dp *DataPartition)repairDataOnRandomWrite(extentID uint64,fromOffset,size 
 func(dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
 	hosts := dp.getReplicaClone()
 	if dp.disk == nil || dp.disk.space == nil || dp.disk.space.dataNode == nil {
+		log.LogErrorf("error: nil")
 		return false
 	}
 	localExtentInfo, err := dp.ExtentStore().Watermark(extentId)
 	if err != nil {
+		log.LogErrorf("error: %v", err)
 		return false
 	}
 	profPort := dp.disk.space.dataNode.httpPort
 	notFoundErrCount := 0
 	for _, h := range hosts {
 		if dp.IsLocalAddress(h) {
+			log.LogErrorf("local: %v", h)
 			continue
 		}
 		httpAddr := fmt.Sprintf("%v:%v", strings.Split(h, ":")[0], profPort)
@@ -386,6 +389,7 @@ func(dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
 			notFoundErrCount++
 		}
 	}
+	log.LogErrorf("error count: %v", notFoundErrCount)
 	if notFoundErrCount == len(hosts) - 1 {
 		return true
 	}
