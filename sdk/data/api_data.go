@@ -98,8 +98,10 @@ func (c *DataHttpClient) serveRequest(r *request) (respData []byte, err error) {
 		}
 		return []byte(body.Data), nil
 	default:
-		log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
+		errMsg := fmt.Sprintf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
 			resp.Request.URL.String(), c.host, stateCode, strings.Replace(string(respData), "\n", "", -1))
+		err = fmt.Errorf(errMsg)
+		log.LogErrorf(errMsg)
 	}
 	return
 }
@@ -223,7 +225,6 @@ func (c *DataHttpClient) GetExtentInfo(id uint64, eid uint64) (ehs *proto.Extent
 		if err == nil {
 			break
 		}
-		time.Sleep(time.Second)
 	}
 	if err != nil {
 		return

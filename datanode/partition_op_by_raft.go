@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
+	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -338,8 +339,6 @@ func (dp *DataPartition)repairDataOnRandomWriteFromHost(extentID uint64,fromOffs
 	return err
 }
 
-
-
 func (dp *DataPartition)repairDataOnRandomWrite(extentID uint64,fromOffset,size uint64) (err error){
 	hosts:=dp.getReplicaClone()
 	addr,_:=dp.IsRaftLeader()
@@ -359,6 +358,42 @@ func (dp *DataPartition)repairDataOnRandomWrite(extentID uint64,fromOffset,size 
 		}
 	}
 	return
+}
+
+func(dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
+	hosts := dp.getReplicaClone()
+	if dp.disk == nil || dp.disk.space == nil || dp.disk.space.dataNode == nil {
+		log.LogErrorf("error: nil")
+		return false
+	}
+	localExtentInfo, err := dp.ExtentStore().Watermark(extentId)
+	if err != nil {
+		log.LogErrorf("error: %v", err)
+		return false
+	}
+	profPort := dp.disk.space.dataNode.httpPort
+	notFoundErrCount := 0
+	for _, h := range hosts {
+		if dp.IsLocalAddress(h) {
+			log.LogErrorf("local: %v", h)
+			continue
+		}
+		httpAddr := fmt.Sprintf("%v:%v", strings.Split(h, ":")[0], profPort)
+		dataClient := data.NewDataHttpClient(httpAddr, false)
+		extentBlock, err := dataClient.GetExtentInfo(dp.partitionID, extentId)
+		if err != nil && strings.Contains(err.Error(), "e extent") && strings.Contains(err.Error(), "not exist"){
+			notFoundErrCount++
+			continue
+		}
+		if err == nil && extentBlock[proto.ExtentInfoSize] <= localExtentInfo[proto.ExtentInfoSize] {
+			notFoundErrCount++
+		}
+	}
+	log.LogErrorf("error count: %v", notFoundErrCount)
+	if notFoundErrCount == len(hosts) - 1 {
+		return true
+	}
+	return false
 }
 
 // ApplyRandomWrite random write apply
@@ -402,7 +437,15 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 			break
 		}
 		if strings.Contains(err.Error(),storage.IllegalOverWriteError){
-			dp.repairDataOnRandomWrite(opItem.extentID, uint64(opItem.offset), uint64(opItem.size))
+			err = dp.repairDataOnRandomWrite(opItem.extentID, uint64(opItem.offset), uint64(opItem.size))
+			if err == nil {
+				continue
+			}
+			if dp.checkDeleteOnAllHosts(opItem.extentID) {
+				log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) extent deleted in all other hosts and ignore error, retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, i)
+				err = nil
+				break
+			}
 			continue
 		}
 		if strings.Contains(err.Error(), storage.ExtentNotFoundError.Error()) {
