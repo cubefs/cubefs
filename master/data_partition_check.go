@@ -60,6 +60,9 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 		partition.lastModifyStatusTime = time.Now().Unix()
 		partition.lastStatus = partition.Status
 	}
+	if partition.isOffline {
+		return
+	}
 	if needLog == true && len(liveReplicas) != int(partition.ReplicaNum) {
 		liveHosts := make([]string, 0, len(liveReplicas))
 		for _, r := range liveReplicas {

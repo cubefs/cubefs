@@ -32,7 +32,7 @@ func (c *Cluster) scheduleToLoadMetaPartitions() {
 					c.checkLoadMetaPartitions()
 				}
 			}
-			time.Sleep(2 * time.Second * defaultIntervalToCheckDataPartition)
+			time.Sleep(60 * time.Second * defaultIntervalToCheckDataPartition)
 		}
 	}()
 }
