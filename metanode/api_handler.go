@@ -103,6 +103,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getAllInodeIdWithDeleted", m.getAllInodeIdWithDeletedHandler)
 
 	http.HandleFunc("/tryToLeader", m.tryToLeader)
+
+	http.HandleFunc("/pushInodeToFreeList", m.pushInodeToFreeList)
 	return
 }
 
@@ -1762,7 +1764,7 @@ func (m *MetaNode) tryToLeader(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		data, _ := resp.Marshal()
 		if _, err = w.Write(data); err != nil {
-			log.LogErrorf("[getAllDeletedInodesCrcSum] response %s", err)
+			log.LogErrorf("[tryToLeader] response %s", err)
 		}
 	}()
 	if err = r.ParseForm(); err != nil {
@@ -1800,5 +1802,72 @@ func (m *MetaNode) tryToLeader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	return
+}
+
+func (m *MetaNode) pushInodeToFreeList(w http.ResponseWriter, r *http.Request) {
+	var (
+		err    error
+		pid    uint64
+		mp     MetaPartition
+		inodes []uint64
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[pushInodeToFreeList] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	inodesStr := r.FormValue("inos")
+	if inodesStr == "" {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("inos is needed")
+		return
+	}
+	inodeStrArr := strings.Split(inodesStr, ",")
+	if len(inodesStr) == 0 {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("inos is needed")
+		return
+	}
+
+	if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	if pid != mp.GetBaseConfig().PartitionId {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("Pid:%d is not equal mp:%d", pid, mp.GetBaseConfig().PartitionId)
+		return
+	}
+
+	inodes = make([]uint64, 0, len(inodesStr))
+	for _, inodeStr := range inodeStrArr {
+		var inode uint64
+		if inode, err = strconv.ParseUint(inodeStr, 10, 64); err != nil {
+			resp.Code = http.StatusBadRequest
+			resp.Msg = fmt.Sprintf("%s parse failed:%v", inodeStr, err)
+			return
+		}
+		inodes = append(inodes, inode)
+	}
+
+	for _, inode := range inodes {
+		mp.(*metaPartition).freeList.PushFront(inode)
+	}
 	return
 }

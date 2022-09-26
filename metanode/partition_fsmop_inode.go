@@ -493,7 +493,6 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 		return
 	}
 	if i == nil {
-		resp.Status = proto.OpNotExistErr
 		return
 	}
 	if i.ShouldDelete() {
@@ -513,23 +512,14 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 
 	if i.IsTempFile() {
 		i.SetDeleteMark()
-		if trashEnable {
-			st, err = mp.mvToDeletedInodeTree(dbHandle, i, timestamp)
-			if err != nil {
-				log.LogErrorf("fsmEvictInode: failed to move inode to deletedInode tree, inode:%v, status:%v",
-					ino, st)
-				resp.Status = proto.OpErr
-			}
-			log.LogDebugf("fsmEvictInode: inode: %v, status: %v", ino, st)
-			return
-		}
-
-		if err = mp.inodeTree.Update(dbHandle, i); err != nil {
+		st, err = mp.mvToDeletedInodeTree(dbHandle, i, timestamp)
+		if err != nil {
+			log.LogErrorf("fsmEvictInode: failed to move inode to deletedInode tree, inode:%v, status:%v",
+				ino, st)
 			resp.Status = proto.OpErr
-			return
 		}
-		//todo:move to deleted inode tree
-		mp.freeList.Push(i.Inode)
+		log.LogDebugf("fsmEvictInode: inode: %v, status: %v", ino, st)
+		return
 	}
 	return
 }
