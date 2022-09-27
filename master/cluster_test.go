@@ -168,7 +168,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 	for _, dp := range vol.dataPartitions.partitions {
 		dps = append(dps, dp)
 	}
-	dpsMapLen := len(vol.dataPartitions.partitionMap)
+	dpsMapLen := vol.getDpCnt()
 	vol.RUnlock()
 	dpsLen := len(dps)
 	if dpsLen != dpsMapLen {

@@ -3072,7 +3072,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
 		_ = vol.initDataPartitions(c)
-		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
+		readWriteDataPartitions = vol.getDpCnt()
 	}
 	vol.CreateStatus = proto.DefaultVolCreateStatus
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
@@ -3418,7 +3418,7 @@ func (c *Cluster) getDataPartitionCount() (count int) {
 func (c *Cluster) getMetaPartitionCount() (count int) {
 	vols := c.copyVols()
 	for _, vol := range vols {
-		count = count + len(vol.MetaPartitions)
+		count = count + vol.getMpCnt()
 	}
 	return count
 }

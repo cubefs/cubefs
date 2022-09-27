@@ -126,9 +126,9 @@ func (dpMap *DataPartitionMap) updateResponseCache(eps *EcDataPartitionCache, ne
 
 func (dpMap *DataPartitionMap) getDataPartitionsView(eps *EcDataPartitionCache, minPartitionID uint64) (dpResps []*proto.DataPartitionResponse) {
 	dpResps = make([]*proto.DataPartitionResponse, 0)
+	dpMap.RLock()
 	log.LogDebugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
 		dpMap.volName, len(dpMap.partitionMap), len(dpMap.partitions), minPartitionID)
-	dpMap.RLock()
 	for _, dp := range dpMap.partitionMap {
 		if dp.PartitionID <= minPartitionID {
 			continue
@@ -270,7 +270,7 @@ func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr str
 
 func (vol *Vol) getRWDataPartitionsOfGivenCount(count int, medium string, c *Cluster) (partitions []*DataPartition, err error) {
 	minRestRwDpCount := 10
-	if len(vol.dataPartitions.partitionMap) > 100 {
+	if vol.getDpCnt() > 100 {
 		minRestRwDpCount = 20
 	}
 	if vol.dataPartitions.readableAndWritableCnt-count <= minRestRwDpCount {

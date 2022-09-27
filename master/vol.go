@@ -336,6 +336,20 @@ func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 	return
 }
 
+func (vol *Vol) getMpCnt() (mpCnt int) {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+	mpCnt = len(vol.MetaPartitions)
+	return
+}
+
+func (vol *Vol) getDpCnt() (dpCnt int) {
+	vol.dataPartitions.RLock()
+	defer vol.dataPartitions.RUnlock()
+	dpCnt = len(vol.dataPartitions.partitionMap)
+	return
+}
+
 func (vol *Vol) getDataPartitionsView() (body []byte, err error) {
 	return vol.dataPartitions.updateResponseCache(vol.ecDataPartitions, false, 0)
 }
@@ -370,9 +384,10 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 		}
 	}
 	vol.setWritableMpCount(int64(count))
-	if len(vol.MetaPartitions) != count {
+	mpCount := vol.getMpCnt()
+	if mpCount != count {
 		err = fmt.Errorf("action[initMetaPartitions] vol[%v] init meta partition failed,mpCount[%v],expectCount[%v],err[%v]",
-			vol.Name, len(vol.MetaPartitions), count, err)
+			vol.Name, mpCount, count, err)
 	}
 	return
 }
@@ -405,7 +420,7 @@ func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol map[string][]string) {
 	dataNodeBadDisksOfVol = make(map[string][]string, 0)
-	if vol.getDataPartitionsCount() == 0 && vol.Status != proto.VolStMarkDelete {
+	if vol.getDpCnt() == 0 && vol.Status != proto.VolStMarkDelete {
 		c.batchCreateDataPartition(vol, 1, "")
 	}
 	vol.dataPartitions.RLock()

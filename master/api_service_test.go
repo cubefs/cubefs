@@ -1952,9 +1952,11 @@ func TestAddMetaLearnerForCrossRegionVol(t *testing.T) {
 func TestAddDataPartitionForCrossRegionVol(t *testing.T) {
 	var dataPartition *DataPartition
 	oldPartitionIDMap := make(map[uint64]bool)
+	quorumVol.dataPartitions.RLock()
 	for id := range quorumVol.dataPartitions.partitionMap {
 		oldPartitionIDMap[id] = true
 	}
+	quorumVol.dataPartitions.RUnlock()
 	// create a new data partition
 	reqURL := fmt.Sprintf("%v%v?count=1&name=%v", hostAddr, proto.AdminCreateDataPartition, quorumVolName)
 	process(reqURL, t)
