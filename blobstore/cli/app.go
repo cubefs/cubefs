@@ -25,6 +25,7 @@ import (
 	"github.com/fatih/color"
 
 	"github.com/cubefs/cubefs/blobstore/cli/access"
+	"github.com/cubefs/cubefs/blobstore/cli/blobnode"
 	"github.com/cubefs/cubefs/blobstore/cli/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
@@ -120,4 +121,5 @@ func init() {
 	access.Register(App)
 	clustermgr.Register(App)
 	scheduler.Register(App)
+	blobnode.Register(App)
 }
