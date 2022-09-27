@@ -1797,7 +1797,7 @@ func (m *MetaNode) tryToLeader(w http.ResponseWriter, r *http.Request) {
 
 	err = mp.TryToLeader(pid)
 	if err != nil {
-		resp.Code = http.StatusNotFound
+		resp.Code = http.StatusBadRequest
 		resp.Msg = err.Error()
 		return
 	}

@@ -78,7 +78,6 @@ func (fl *freeList) PushFront(ino uint64) {
 	item, ok := fl.index[ino]
 	if ok {
 		fl.list.Remove(item)
-		delete(fl.index, ino)
 	}
 	item = fl.list.PushFront(ino)
 	fl.index[ino] = item

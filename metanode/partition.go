@@ -286,7 +286,7 @@ type metaPartition struct {
 	deleteEKRecordCount         uint64
 	delEKFd                     *os.File
 	inodeDelEkRecordCount       uint64
-	inodeDelEkFd				*os.File
+	inodeDelEkFd                *os.File
 }
 
 // Start starts a meta partition.
