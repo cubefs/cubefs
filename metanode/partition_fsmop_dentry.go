@@ -212,7 +212,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 	resp.Status = proto.OpOk
 
 	if denParm.VerSeq != 0 {
-		if err := mp.checkAndUpdateVerList(denParm.VerSeq); err!=nil {
+		if err := mp.checkAndUpdateVerList(denParm.VerSeq); err != nil {
 			resp.Status = proto.OpNotExistErr
 			log.LogErrorf("action[fsmDeleteDentry] dentry %v err %v", denParm, err)
 			return

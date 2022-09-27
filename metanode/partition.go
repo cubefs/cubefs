@@ -522,7 +522,7 @@ func (mp *metaPartition) getVerList() []*proto.VolVersionInfo {
 	return mp.multiVersionList.VerList
 }
 
-func (mp *metaPartition) checkAndUpdateVerList(verSeq uint64) (err error){
+func (mp *metaPartition) checkAndUpdateVerList(verSeq uint64) (err error) {
 
 	mp.multiVersionList.Lock()
 	defer mp.multiVersionList.Unlock()
