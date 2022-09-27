@@ -693,10 +693,17 @@ func (c *ExtentClient) BackgroundExtentMerge() {
 				inodes = c.lookupAllInode(proto.RootIno)
 			}
 			for _, inode := range inodes {
-				var finish bool
+				var (
+					finish 	bool
+					err		error
+				)
 				c.OpenStream(inode, false, false)
 				for !finish {
-					finish, _ = c.ExtentMerge(ctx, inode)
+					finish, err = c.ExtentMerge(ctx, inode)
+					if err != nil {
+						log.LogWarnf("BackgroundExtentMerge err: %v, inode(%v)", err, inode)
+						break
+					}
 					time.Sleep(time.Duration(c.ExtentMergeSleepMs) * time.Millisecond)
 				}
 				c.CloseStream(ctx, inode)
