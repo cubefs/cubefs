@@ -361,35 +361,37 @@ func (dp *DataPartition)repairDataOnRandomWrite(extentID uint64,fromOffset,size 
 }
 
 func(dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
+	var err error
+	defer func() {
+		if err != nil {
+			log.LogErrorf("checkDeleteOnAllHosts, partition:%v, extent:%v, error:%v", dp.partitionID, extentId, err)
+		}
+	}()
 	hosts := dp.getReplicaClone()
 	if dp.disk == nil || dp.disk.space == nil || dp.disk.space.dataNode == nil {
-		log.LogErrorf("error: nil")
 		return false
 	}
-	localExtentInfo, err := dp.ExtentStore().Watermark(extentId)
+	localExtentSize, err := dp.ExtentStore().LoadExtentWaterMark(extentId)
 	if err != nil {
-		log.LogErrorf("error: %v", err)
 		return false
 	}
 	profPort := dp.disk.space.dataNode.httpPort
 	notFoundErrCount := 0
 	for _, h := range hosts {
 		if dp.IsLocalAddress(h) {
-			log.LogErrorf("local: %v", h)
 			continue
 		}
 		httpAddr := fmt.Sprintf("%v:%v", strings.Split(h, ":")[0], profPort)
 		dataClient := data.NewDataHttpClient(httpAddr, false)
-		extentBlock, err := dataClient.GetExtentInfo(dp.partitionID, extentId)
-		if err != nil && strings.Contains(err.Error(), "e extent") && strings.Contains(err.Error(), "not exist"){
+		extentBlock, err1 := dataClient.GetExtentInfo(dp.partitionID, extentId)
+		if err1 != nil && strings.Contains(err1.Error(), "e extent") && strings.Contains(err1.Error(), "not exist"){
 			notFoundErrCount++
 			continue
 		}
-		if err == nil && extentBlock[proto.ExtentInfoSize] <= localExtentInfo[proto.ExtentInfoSize] {
+		if err1 == nil && extentBlock[proto.ExtentInfoSize] <= uint64(localExtentSize) {
 			notFoundErrCount++
 		}
 	}
-	log.LogErrorf("error count: %v", notFoundErrCount)
 	if notFoundErrCount == len(hosts) - 1 {
 		return true
 	}
