@@ -27,10 +27,13 @@ import (
 )
 
 var (
-	ExtentLength      = 40
-	ExtentDbKeyLength = 24
-	ExtentDbKeyLengthWithIno = 32
-	InvalidKey        = errors.New("invalid key error")
+	ExtentLength             = 40
+	OldExtentDbKeyLength     = 24
+	ExtentDbKeyLength        = ExtentLength
+	ExtentDbKeyLengthWithIno = 64
+	ExtentValueLen           = 24
+	InvalidKey               = errors.New("invalid key error")
+	DelEKRecordLen           = 32
 )
 
 // ExtentKey defines the extent key struct.
@@ -41,6 +44,95 @@ type ExtentKey struct {
 	ExtentOffset uint64
 	Size         uint32
 	CRC          uint32
+}
+
+// MarkDelExtentKey defines the extent key struct.
+type MetaDelExtentKey struct {
+	ExtentKey
+	InodeId      uint64
+	TimeStamp    int64
+	SrcType		 uint64
+}
+
+func (k *MetaDelExtentKey) String() string {
+	return fmt.Sprintf("MetaDelExtentKey{FileOffset(%v),Partition(%v),ExtentID(%v),ExtentOffset(%v),Size(%v),CRC(%v),Ino(%d),Src(%d),DelTime(%v)}",
+		k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC, k.InodeId, k.SrcType, time.Unix(k.TimeStamp, 0).Format(TimeFormat2))
+}
+
+func (k *MetaDelExtentKey) MarshDelEkValue(buf []byte) {
+	binary.BigEndian.PutUint64(buf[0:8], k.InodeId)
+	binary.BigEndian.PutUint64(buf[8:16],  uint64(k.TimeStamp))
+	binary.BigEndian.PutUint64(buf[16:24], k.SrcType)
+
+	return
+}
+
+func (k *MetaDelExtentKey) UnMarshDelEkValue(buffer []byte) (err error) {
+	if len(buffer) < ExtentValueLen {
+		return fmt.Errorf("buffer len:%d less %d", len(buffer), ExtentValueLen)
+	}
+	k.InodeId = binary.BigEndian.Uint64(buffer[0:8])
+	k.TimeStamp = int64(binary.BigEndian.Uint64(buffer[8:16]))
+	k.SrcType = binary.BigEndian.Uint64(buffer[16:24])
+	return nil
+}
+
+func (k *MetaDelExtentKey) UnmarshalDbKeyByBuffer(buf *bytes.Buffer) (err error) {
+	if err = binary.Read(buf, binary.BigEndian, &k.FileOffset); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.PartitionId); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.ExtentId); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.ExtentOffset); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.Size); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.CRC); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.InodeId); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.TimeStamp); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.SrcType); err != nil {
+		return
+	}
+	return nil
+}
+
+func (k *MetaDelExtentKey) MarshalDeleteEKRecord(data []byte) {
+	binary.BigEndian.PutUint64(data[0:8], k.FileOffset)
+	binary.BigEndian.PutUint64(data[8:16], k.PartitionId)
+	binary.BigEndian.PutUint64(data[16:24], k.ExtentId)
+	binary.BigEndian.PutUint64(data[24:32], k.ExtentOffset)
+	binary.BigEndian.PutUint32(data[32:36], k.Size)
+	binary.BigEndian.PutUint32(data[36:40], k.CRC)
+	binary.BigEndian.PutUint64(data[40:48], k.InodeId)
+	binary.BigEndian.PutUint64(data[48:56], uint64(k.TimeStamp))
+	binary.BigEndian.PutUint64(data[56:64], k.SrcType)
+	return
+}
+
+func (k ExtentKey) ConvertToMetaDelEk(ino, srcType uint64, delTime int64) *MetaDelExtentKey {
+	delEk := &MetaDelExtentKey{}
+	delEk.FileOffset = k.FileOffset
+	delEk.PartitionId = k.PartitionId
+	delEk.ExtentId = k.ExtentId
+	delEk.ExtentOffset = k.ExtentOffset
+	delEk.Size = k.Size
+	delEk.CRC = k.CRC
+	delEk.InodeId = ino
+	delEk.SrcType = srcType
+	delEk.TimeStamp = delTime
+	return delEk
 }
 
 // String returns the string format of the extentKey.
@@ -64,39 +156,49 @@ func (k *ExtentKey) Marshal() (m string) {
 }
 
 // MarshalDbKey marshals the binary format of the extent for db key.
-//pid(8) + extent Id(8) + extent offset(4) + extent size(4)
+//file offset(8) + pid(8) + extent Id(8) + extent offset(8) + extent size(4) + crc(4)
 func (k *ExtentKey) MarshalDbKey() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, ExtentLength))
+	if err := binary.Write(buf, binary.BigEndian, k.FileOffset); err != nil {
+		return nil, err
+	}
 	if err := binary.Write(buf, binary.BigEndian, k.PartitionId); err != nil {
 		return nil, err
 	}
 	if err := binary.Write(buf, binary.BigEndian, k.ExtentId); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, (uint32)(k.ExtentOffset)); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, k.ExtentOffset); err != nil {
 		return nil, err
 	}
 	if err := binary.Write(buf, binary.BigEndian, k.Size); err != nil {
 		return nil, err
 	}
+	if err := binary.Write(buf, binary.BigEndian, k.CRC); err != nil {
+		return nil, err
+	}
 	return buf.Bytes(), nil
 }
 
-//pid(8) + extent Id(8) + extent offset(4) + extent size(4)
+//file offset(8) + pid(8) + extent Id(8) + extent offset(8) + extent size(4) + crc(4)
 func (k *ExtentKey) UnmarshalDbKey(buffer []byte) (err error) {
-	var ekOffset uint32
 	buf := bytes.NewBuffer(buffer)
+	if err = binary.Read(buf, binary.BigEndian, &k.FileOffset); err != nil {
+		return
+	}
 	if err = binary.Read(buf, binary.BigEndian, &k.PartitionId); err != nil {
 		return
 	}
 	if err = binary.Read(buf, binary.BigEndian, &k.ExtentId); err != nil {
 		return
 	}
-	if err = binary.Read(buf, binary.BigEndian, &ekOffset); err != nil {
+	if err = binary.Read(buf, binary.BigEndian, &k.ExtentOffset); err != nil {
 		return
 	}
-	k.ExtentOffset = uint64(ekOffset)
 	if err = binary.Read(buf, binary.BigEndian, &k.Size); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.CRC); err != nil {
 		return
 	}
 	return nil
@@ -156,15 +258,6 @@ func (k *ExtentKey) MarshalBinaryV2() ([]byte, error) {
 	return data, nil
 }
 
-func (k *ExtentKey) MarshalDeleteEKRecord(ino uint64) ([]byte, error) {
-	data := make([]byte, 0, ExtentDbKeyLengthWithIno)
-	binary.BigEndian.PutUint64(data[0:8], ino)
-	binary.BigEndian.PutUint64(data[8:16], k.PartitionId)
-	binary.BigEndian.PutUint64(data[16:24], k.ExtentId)
-	binary.BigEndian.PutUint32(data[24:28], uint32(k.ExtentOffset))
-	binary.BigEndian.PutUint32(data[28:32], k.Size)
-	return data, nil
-}
 
 func (k *ExtentKey) EncodeBinary(data []byte) {
 	binary.BigEndian.PutUint64(data[0:8], k.FileOffset)

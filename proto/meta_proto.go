@@ -14,6 +14,8 @@
 
 package proto
 
+import "time"
+
 // CreateNameSpaceRequest defines the request to create a name space.
 type CreateNameSpaceRequest struct {
 	Name string
@@ -86,4 +88,22 @@ type InodesCRCSumInfo struct {
 	AllInodesCRCSum uint32   `json:"allInodesCRCSum"`
 	InodesID        []uint64 `json:"inodeIDSet"`
 	CRCSumSet       []uint32 `json:"crcSumSet"`
+}
+
+type InodeInfoWithEK struct {
+	Inode      uint64      `json:"ino"`
+	Mode       uint32      `json:"mode"`
+	Nlink      uint32      `json:"nlink"`
+	Size       uint64      `json:"sz"`
+	Uid        uint32      `json:"uid"`
+	Gid        uint32      `json:"gid"`
+	Generation uint64      `json:"gen"`
+	ModifyTime time.Time   `json:"mt"`
+	CreateTime time.Time   `json:"ct"`
+	AccessTime time.Time   `json:"at"`
+	Target     []byte      `json:"tgt"`
+	Flag       int32       `json:"flag"`
+	Extents    []ExtentKey `json:"eks"`
+	Timestamp  int64       `json:"ts"`
+	IsExpired  bool        `json:"isExpired"`
 }

@@ -344,11 +344,16 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	log.LogInfof("fsm(%v) AppendExtents inode(%v) exts(%v) extDelChLen(%v)", mp.config.PartitionId, existInode.Inode, delExtents, len(mp.extDelCh))
 
-	for i := 0; i < len(delExtents); i++ {
-		delExtents[i].FileOffset = ino.Inode
+	delEks := make([]proto.MetaDelExtentKey, 0)
+	timeStamp := time.Now().Unix()
+	for index := 0; index < len(delExtents); index++ {
+		delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(existInode.Inode, delEkSrcTypeFromAppend, timeStamp))
 	}
-
-	mp.extDelCh <- delExtents
+	select {
+	case mp.extDelCh <- delEks:
+	default:
+		log.LogWarnf("fsm(%v) AppendExtents inode(%v) delEks(%v)", mp.config.PartitionId, existInode.Inode, delEks)
+	}
 	return
 }
 
@@ -403,10 +408,16 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	log.LogInfof("fsm(%v) InsertExtents inode(%v) eks(insert: %v, deleted: %v) size(old: %v, new: %v) extDelChLen(%v)",
 		mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize, len(mp.extDelCh))
-	for i := 0; i < len(delExtents); i++ {
-		delExtents[i].FileOffset = ino.Inode
+	delEks := make([]proto.MetaDelExtentKey, 0)
+	timeStamp := time.Now().Unix()
+	for index := 0; index < len(delExtents); index++ {
+		delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(existIno.Inode, delEkSrcTypeFromInsert, timeStamp))
 	}
-	mp.extDelCh <- delExtents
+	select {
+	case mp.extDelCh <- delEks:
+	default:
+		log.LogWarnf("fsm(%v) InsertExtents inode(%v) delEks(%v)", mp.config.PartitionId, existIno.Inode, delEks)
+	}
 	return
 }
 
@@ -467,10 +478,16 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 	// now we should delete the extent
 	log.LogInfof("fsm(%v) ExtentsTruncate inode(%v) size(old: %v, new: %v, req: %v) delExtents(%v) extDelChLen(%v)",
 		mp.config.PartitionId, i.Inode, oldSize, newSize, ino.Size, delExtents, len(mp.extDelCh))
+	delEks := make([]proto.MetaDelExtentKey, 0)
+	timeStamp := time.Now().Unix()
 	for index := 0; index < len(delExtents); index++ {
-		delExtents[index].FileOffset = ino.Inode
+		delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(ino.Inode, delEkSrcTypeFromTruncate, timeStamp))
 	}
-	mp.extDelCh <- delExtents
+	select {
+	case mp.extDelCh <- delEks:
+	default:
+		log.LogWarnf("fsm(%v) ExtentsTruncate inode(%v) delEks(%v)", mp.config.PartitionId, i.Inode, delEks)
+	}
 	return
 }
 
@@ -596,10 +613,16 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 	var delExtents = newExtents
 	defer func() {
 		if len(delExtents) > 0 {
-			for i := 0; i < len(delExtents); i++ {
-				delExtents[i].FileOffset = inodeId
+			delEks := make([]proto.MetaDelExtentKey, 0)
+			timeStamp := time.Now().Unix()
+			for index := 0; index < len(delExtents); index++ {
+				delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(inodeId, delEkSrcTypeFromAppend, timeStamp))
 			}
-			mp.extDelCh <- delExtents
+			select {
+			case mp.extDelCh <- delEks:
+			default:
+				log.LogWarnf("fsm(%v) ExtentsMerge inode(%v) delEks(%v)", mp.config.PartitionId, inodeId, delEks)
+			}
 			log.LogInfof("fsm(%v) ExtentsMerge inode(%v) delExtents(%v) newExtents(%v) extDelChLen(%v)",
 				mp.config.PartitionId, inodeId, delExtents, newExtents, len(mp.extDelCh))
 		}

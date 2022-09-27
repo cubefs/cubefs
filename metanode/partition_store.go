@@ -92,8 +92,20 @@ func (mp *metaPartition) loadMetadata() (err error) {
 		mp.config.StoreMode = proto.StoreModeMem
 	}
 
+	mp.config.CreationType = mConf.CreationType
+	mp.config.RocksWalFileSize = mConf.RocksWalFileSize
+	mp.config.RocksWalMemSize = mConf.RocksWalMemSize
+	mp.config.RocksLogFileSize = mConf.RocksLogFileSize
+	mp.config.RocksLogReversedTime = mConf.RocksLogReversedTime
+	mp.config.RocksLogReVersedCnt = mConf.RocksLogReVersedCnt
+	mp.config.RocksWalTTL = mConf.RocksWalTTL
+
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
+	log.LogInfof("loadMetadata: partitionID(%v) creationType(%v) RocksDBWalFileSize(%v) RocksDBWalMemSize(%v) +" +
+		"RocksDBLogFileSize(%v) RocksDBReservedCount(%v) RocksDBLogReservedTime(%v) WALTTL(%v)", mp.config.PartitionId,
+		mp.config.CreationType, mp.config.RocksWalFileSize, mp.config.RocksWalMemSize, mp.config.RocksLogFileSize,
+		mp.config.RocksLogReVersedCnt, mp.config.RocksLogReversedTime, mp.config.RocksWalTTL)
 	return
 }
 
@@ -552,8 +564,6 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 }
 
 func (mp *metaPartition) persistMetadata() (err error) {
-	mp.config.Lock()
-	defer mp.config.Unlock()
 	if err = mp.config.checkMeta(); err != nil {
 		err = errors.NewErrorf("[persistMetadata]->%s", err.Error())
 		return
@@ -585,6 +595,10 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	}
 	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
+	log.LogInfof("persistMetadata: persist complete: partitionID(%v) creationType(%v) RocksDBWalFileSize(%v) +" +
+		"RocksDBWalMemSize(%v) RocksDBLogFileSize(%v) RocksDBReservedCount(%v) RocksDBLogReservedTime(%v) WALTTL(%v)", mp.config.PartitionId,
+		mp.config.CreationType, mp.config.RocksWalFileSize, mp.config.RocksWalMemSize, mp.config.RocksLogFileSize,
+		mp.config.RocksLogReVersedCnt, mp.config.RocksLogReversedTime, mp.config.RocksWalTTL)
 	return
 }
 

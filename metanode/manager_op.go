@@ -102,7 +102,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			ExistMaxInodeID: maxIno,
 			StoreMode:       mConf.StoreMode,
 			ApplyId:         applyID,
-			IsRecover:       partition.GetBaseConfig().CreationType == proto.DecommissionedCreateDataPartition,
+			IsRecover:       partition.(*metaPartition).CreationType == proto.DecommissionedCreateDataPartition,
 		}
 		addr, isLeader := partition.IsLeader()
 		if addr == "" || partition.IsRaftHang(){

@@ -61,6 +61,8 @@ var (
 	}
 	// all partitions of a given volume
 	volumePartMap = make(map[string]map[uint64]bool)
+
+	logMaxSize uint64
 )
 
 func (m *DataNode) startUpdateNodeInfo() {
@@ -125,6 +127,8 @@ func (m *DataNode) updateNodeBaseInfo() {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)
 		statistics.StatisticsModule.UpdateMonitorReportTime(limitInfo.MonitorReportSec)
 	}
+
+	m.updateLogMaxSize(limitInfo.LogMaxSize)
 }
 
 func (m *DataNode) updateRateLimitInfo() {
@@ -366,6 +370,15 @@ func (m *DataNode) updateClusterMap() {
 		addrMap[addrSlice[0]] = true
 	}
 	clusterMap = addrMap
+}
+
+func (m *DataNode) updateLogMaxSize(val uint64) {
+	if val != 0 && logMaxSize != val {
+		oldLogMaxSize := logMaxSize
+		logMaxSize = val
+		log.SetLogMaxSize(int64(val))
+		log.LogInfof("updateLogMaxSize, logMaxSize(old:%v, new:%v)", oldLogMaxSize, logMaxSize)
+	}
 }
 
 func DeleteLimiterWait() {

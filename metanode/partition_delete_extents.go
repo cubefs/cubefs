@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/chubaofs/chubaofs/storage"
 	"github.com/spf13/cast"
 	"io"
 	"io/ioutil"
@@ -38,9 +39,13 @@ import (
 const (
 	prefixDelExtent     = "EXTENT_DEL"
 	maxDeleteExtentSize = 10 * MB
-	dbExtentKeySize		= 32			// 1 +   5   +   2    +   8  +  8  +   4  +    4
-										//type  time   reversed  pid   exid   offset  size
-										//time:YY YY MM DD HH
+	oldDBExtentKeySize		= 32			// 1 +   5   +   2    +   8  +  8  +   4  +    4
+											//type  time   reversed  pid   exid   offset  size
+											//time:YY YY MM DD HH
+
+	dbExtentKeySize     = 48                 // 1 +   5   +   2    +  8   +   8  +  8  +   8  +    4    + 4
+											//type  time   reversed   foff    pid   ekid   ekoff  size    reversed2
+											//time:YY YY MM DD HH
 	centuryKeyIndex     = 1
 	yearKeyIndex		= 2
 	monthKeyIndex		= 3
@@ -60,6 +65,13 @@ const (
 
 	InodeDelExtentKeyList             = "inodeDeleteExtentList.tmp"
 	PrefixInodeDelExtentKeyListBackup = "inodeDeleteExtentList."
+
+	delEkSrcTypeFromTruncate  =  0
+	delEkSrcTypeFromInsert    =  1
+	delEkSrcTypeFromAppend    =  2
+	delEkSrcTypeFromMerge     =  3
+	delEkSrcTypeFromDelInode  =  4
+
 )
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
@@ -113,7 +125,7 @@ func getDateInKey(k []byte) uint64 {
 	return dateInfo
 }
 
-func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.ExtentKey) (err error) {
+func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.MetaDelExtentKey) (err error) {
 	log.LogInfof("Mp[%d] add delete extent, date:%d, count:%d, success", mp.config.PartitionId, getDateInKey(key), len(eks))
 	data := make([]byte, 1)
 	var handle interface{}
@@ -134,8 +146,8 @@ func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.ExtentKey) (er
 
 	for _, ek := range eks {
 		var ekInfo []byte
-		InodeBuff := make([]byte, 8)
-		binary.BigEndian.PutUint64(InodeBuff, ek.FileOffset)
+		valueBuff := make([]byte, proto.ExtentValueLen)
+		ek.MarshDelEkValue(valueBuff)
 
 		if ekInfo, err = ek.MarshalDbKey(); err != nil {
 			log.LogWarnf("[addDelExtentToDb] partitionId=%d,"+
@@ -160,14 +172,13 @@ func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.ExtentKey) (er
 		keyOffset := (cnt % maxItemsPerBatch) * dbExtentKeySize
 		copy(mp.addBatchKey[keyOffset : keyOffset + 8], key[0:8])
 		copy(mp.addBatchKey[keyOffset + 8 : keyOffset + dbExtentKeySize], ekInfo)
-		if err = mp.db.AddItemToBatch(handle, mp.addBatchKey[keyOffset : keyOffset + dbExtentKeySize], InodeBuff); err != nil{
+		if err = mp.db.AddItemToBatch(handle, mp.addBatchKey[keyOffset : keyOffset + dbExtentKeySize], valueBuff); err != nil{
 			log.LogErrorf("[addDelExtentToDb] partition[%v] add item to batch handle failed:%v", mp.config.PartitionId, err)
 			goto errOut
 		}
 
 		cnt++
 	}
-
 
 	err = mp.db.CommitBatchAndRelease(handle)
 	if err != nil {
@@ -221,14 +232,18 @@ func (mp *metaPartition) appendDelExtentsToDb() {
 			key  := make( []byte, dbExtentKeySize)
 			updateKeyToNow(key)
 			if err := mp.addDelExtentToDb(key, eks); err != nil {
-				mp.extDelCh<-eks
+				select {
+				case mp.extDelCh <- eks:
+				default:
+					log.LogWarnf("appendDelExtentsToDb mp[%v] reput deleted eks(%v) to channel failed", mp.config.PartitionId, eks)
+				}
 			}
 		}
 	}
 }
 
 func (mp *metaPartition) fsmSyncDelExtents(data []byte) {
-	eks  := make([]proto.ExtentKey, 0)
+	eks  := make([]proto.MetaDelExtentKey, 0)
 	key  := make([]byte, dbExtentKeySize)
 	extDeleteCursor := binary.BigEndian.Uint64(data)
 	buff := bytes.NewBuffer(data[8:])
@@ -248,6 +263,55 @@ func (mp *metaPartition) fsmSyncDelExtents(data []byte) {
 		if err := ek.UnmarshalDbKeyByBuffer(buff); err != nil {
 			log.LogWarnf("Mp[%d] follower recv sync extent delete info, date:%d; recv err packet; unmarshal failed:%v",
 							mp.config.PartitionId, extDeleteCursor, err.Error())
+			return
+		}
+		if storage.IsTinyExtent(ek.ExtentId) {
+			continue
+		}
+
+		eks = append(eks, *ek.ConvertToMetaDelEk(0, 0, 0))
+	}
+
+	updateKeyToDate(key, extDeleteCursor)
+	//Update the key to next day. ignore day 32 item as it will be deleted by next month
+	key[dayKeyIndex] += 1
+
+	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, retry date:%d", mp.config.PartitionId, extDeleteCursor, getDateInKey(key))
+	if err := mp.addDelExtentToDb(key, eks); err != nil {
+		log.LogWarnf("Mp[%d] follower recv sync extent delete info, date:%d; commit retry eks failed:%s", mp.config.PartitionId, extDeleteCursor, err.Error())
+	}
+
+	if _, ok := mp.IsLeader(); !ok {
+		select {
+		case mp.extDelCursor<- extDeleteCursor:
+		default:
+		}
+	}
+	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, err count:%d finished", mp.config.PartitionId, extDeleteCursor, len(eks))
+	return
+}
+
+func (mp *metaPartition) fsmSyncDelExtentsV2(data []byte) {
+	eks  := make([]proto.MetaDelExtentKey, 0)
+	key  := make([]byte, dbExtentKeySize)
+	extDeleteCursor := binary.BigEndian.Uint64(data)
+	buff := bytes.NewBuffer(data[8:])
+	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, data:%v", mp.config.PartitionId, extDeleteCursor, data)
+	for ; ; {
+		if buff.Len() == 0 {
+			break
+		}
+
+		if buff.Len() < proto.ExtentDbKeyLengthWithIno {
+			log.LogErrorf("Mp[%d] follower recv sync extent delete info, date:%d; recv err packet; broken ek record, buff len:%d",
+				mp.config.PartitionId, extDeleteCursor, buff.Len())
+			return
+		}
+
+		ek := proto.MetaDelExtentKey{}
+		if err := ek.UnmarshalDbKeyByBuffer(buff); err != nil {
+			log.LogErrorf("Mp[%d] follower recv sync extent delete info, date:%d; recv err packet; unmarshal failed:%v",
+				mp.config.PartitionId, extDeleteCursor, err.Error())
 			return
 		}
 		eks = append(eks, ek)
@@ -275,7 +339,7 @@ func (mp *metaPartition) fsmSyncDelExtents(data []byte) {
 func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retryList *list.List)(err error){
 	log.LogInfof("Mp[%d] leader sync delete extent info to followers, date:%d, err count:%v", mp.config.PartitionId, extDeletedCursor, retryList.Len())
 
-	buf := bytes.NewBuffer(make([]byte, 0, retryList.Len() * proto.ExtentDbKeyLength + 8))
+	buf := bytes.NewBuffer(make([]byte, 0, retryList.Len() * proto.ExtentDbKeyLengthWithIno + 8))
 
 	defer func(){
 		if err != nil {
@@ -290,22 +354,37 @@ func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retr
 	}
 
 	for elem := retryList.Front(); elem != nil; elem = elem.Next() {
-		ek := elem.Value.(*proto.ExtentKey)
+		ek := elem.Value.(*proto.MetaDelExtentKey)
 		log.LogInfof("Mp[%d] add del to followers ek:%v\n", mp.config.PartitionId, ek)
+		if err = binary.Write(buf, binary.BigEndian, ek.FileOffset); err != nil {
+			return err
+		}
 		if err = binary.Write(buf, binary.BigEndian, ek.PartitionId); err != nil {
 			return err
 		}
 		if err = binary.Write(buf, binary.BigEndian, ek.ExtentId); err != nil {
 			return err
 		}
-		if err = binary.Write(buf, binary.BigEndian, (uint32)(ek.ExtentOffset)); err != nil {
+		if err = binary.Write(buf, binary.BigEndian, ek.ExtentOffset); err != nil {
 			return err
 		}
 		if err = binary.Write(buf, binary.BigEndian, ek.Size); err != nil {
 			return err
 		}
+		if err = binary.Write(buf, binary.BigEndian, ek.CRC); err != nil {
+			return err
+		}
+		if err = binary.Write(buf, binary.BigEndian, ek.InodeId); err != nil {
+			return err
+		}
+		if err = binary.Write(buf, binary.BigEndian, ek.TimeStamp); err != nil {
+			return err
+		}
+		if err = binary.Write(buf, binary.BigEndian, ek.SrcType); err != nil {
+			return err
+		}
 	}
-	if _, err = mp.submit(context.Background(), opFSMExtentDelSync, "", buf.Bytes()); err != nil {
+	if _, err = mp.submit(context.Background(), opFSMExtentDelSyncV2, "", buf.Bytes()); err != nil {
 		return err
 	}
 
@@ -338,15 +417,16 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 	cnt := 0
 	handleItemFunc := func(k, v []byte) (bool, error) {
 
+		needDel := true
 		if retryList.Len() > maxRetryCnt {
 			//next term
 			return false, nil
 		}
 
-		ek := &proto.ExtentKey{}
+		ek := &proto.MetaDelExtentKey{}
 		ino := uint64(0)
-		if len(v) >= 8 {
-			ino = binary.BigEndian.Uint64(v[:8])
+		if len(v) > 1 {
+			ek.UnMarshDelEkValue(v)
 		}
 
 		if k[0] != byte(ExtentDelTable) || getDateInKey(k) > cur {
@@ -357,10 +437,17 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 			return false, err
 		}
 
-		if err = mp.doDeleteMarkedInodes(context.Background(), ek); err != nil {
-			retryList.PushBack(ek)
-			log.LogWarnf("[cleanExpiredExtents] partitionId=%d, %s",
-				mp.config.PartitionId, err.Error())
+		if storage.IsTinyExtent(ek.ExtentId) && len(k) < dbExtentKeySize {
+			log.LogErrorf("may be error ek, do not send del")
+			needDel = false
+		}
+
+		if needDel {
+			if err = mp.doDeleteMarkedInodes(context.Background(), &ek.ExtentKey); err != nil {
+				retryList.PushBack(ek)
+				log.LogWarnf("[cleanExpiredExtents] partitionId=%d, %s",
+					mp.config.PartitionId, err.Error())
+			}
 		}
 
 		mp.recordDeleteEkInfo(ino, ek)
@@ -409,7 +496,7 @@ func (mp *metaPartition) renameDeleteEKRecordFile(curFileName string, prefixName
 	delExtentListDir := path.Join(mp.config.RootDir, curFileName)
 	_, err := os.Stat(path.Join(delExtentListDir))
 	if err == nil {
-		backupDir := path.Join(mp.config.RootDir, prefixName + time.Now().Format(proto.TimeFormat))
+		backupDir := path.Join(mp.config.RootDir, prefixName + time.Now().Format(proto.TimeFormat2))
 		err = os.Rename(delExtentListDir, backupDir)
 		if err != nil {
 			log.LogErrorf("[renameDeleteEKRecordFile] rename %s to %s failed:%v", delExtentListDir, backupDir, err)
@@ -424,7 +511,7 @@ func (mp *metaPartition) renameDeleteEKRecordFile(curFileName string, prefixName
 	return
 }
 
-func (mp *metaPartition) recordDeleteEkInfo(ino uint64, ek *proto.ExtentKey) {
+func (mp *metaPartition) recordDeleteEkInfo(ino uint64, ek *proto.MetaDelExtentKey) {
 	log.LogDebugf("[recordDeleteEkInfo] mp[%v] delEk[ino:%v, ek:%v] record", mp.config.PartitionId, ino, ek)
 	var (
 		data []byte
@@ -437,13 +524,9 @@ func (mp *metaPartition) recordDeleteEkInfo(ino uint64, ek *proto.ExtentKey) {
 		mp.renameDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup)
 		mp.deleteEKRecordCount = 0
 	}
+	data = make([]byte, proto.ExtentDbKeyLengthWithIno)
+	ek.MarshalDeleteEKRecord(data)
 
-	data, err = ek.MarshalDeleteEKRecord(ino)
-	if err != nil {
-		log.LogErrorf("[recordDeleteEkInfo] mp[%v] delEk[ino:%v, ek:%v] marshal failed:%v",
-			mp.config.PartitionId, ino, ek, err)
-		return
-	}
 	mp.deleteEKRecordCount++
 
 	if mp.delEKFd == nil {
@@ -860,8 +943,8 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			}
 			// delete dataPartition
 			if err = mp.doDeleteMarkedInodes(context.Background(), &ek); err != nil {
-				eks := make([]proto.ExtentKey, 0)
-				eks = append(eks, ek)
+				eks := make([]proto.MetaDelExtentKey, 0)
+				eks = append(eks, *ek.ConvertToMetaDelEk(0,0,0))
 				if !strings.Contains(err.Error(), "NotExistErr") {
 					mp.extDelCh <- eks
 				}

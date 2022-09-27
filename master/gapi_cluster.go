@@ -685,6 +685,16 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		BadPartitionIDs:                     make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:                 make([]proto.BadPartitionView, 0),
 		DataNodeBadDisks:                    make([]proto.DataNodeBadDisksView, 0),
+		RocksDBDiskReservedSpace:            m.cluster.cfg.RocksDBDiskReservedSpace,
+		LogMaxMB:                            m.cluster.cfg.LogMaxSize,
+		MetaRockDBWalFileSize:               m.cluster.cfg.MetaRockDBWalFileSize,
+		MetaRocksWalMemSize:                 m.cluster.cfg.MetaRocksWalMemSize,
+		MetaRocksLogSize:                    m.cluster.cfg.MetaRocksLogSize,
+		MetaRocksLogReservedTime:            m.cluster.cfg.MetaRocksLogReservedTime,
+		MetaRocksLogReservedCnt:             m.cluster.cfg.MetaRocksLogReservedCnt,
+		MetaRocksFlushWalInterval:           m.cluster.cfg.MetaRocksFlushWalInterval,
+		MetaRocksDisableFlushFlag:           m.cluster.cfg.MetaRocksDisableFlushFlag,
+		MetaRocksWalTTL:                     m.cluster.cfg.MetaRocksWalTTL,
 	}
 
 	vols := m.cluster.allVolNames()

@@ -17,10 +17,21 @@ func ApplyMockWithNull(elem interface{},command []byte, index uint64) (resp inte
 	return
 }
 
-func generateEk(num int) (eks []proto.ExtentKey){
-	eks = make([]proto.ExtentKey, 0)
+func generateEk(num int) (eks []proto.MetaDelExtentKey){
+	eks = make([]proto.MetaDelExtentKey, 0)
 	for i:= 0; i < num; i++ {
-		eks = append(eks, proto.ExtentKey{FileOffset: 0, Size: 1000, PartitionId: uint64(i), ExtentId: uint64(i), ExtentOffset: uint64(i)})
+		eks = append(eks,
+			proto.MetaDelExtentKey{ExtentKey:proto.ExtentKey{
+				FileOffset: uint64(i * 100),
+				Size: 1000,
+				PartitionId: uint64(i),
+				ExtentId: uint64(i),
+				ExtentOffset: uint64(i),
+				CRC: uint32(i),
+			},
+									InodeId: uint64(i),
+									TimeStamp: int64(i),
+									SrcType: uint64(i % (delEkSrcTypeFromDelInode + 1))})
 	}
 	return
 }
@@ -57,7 +68,7 @@ func generateEk(num int) (eks []proto.ExtentKey){
 //	os.RemoveAll(mp.config.RootDir)
 //}
 
-func checkRocksDBEks(t *testing.T, mp *metaPartition, eks []proto.ExtentKey, date []byte)(int) {
+func checkRocksDBEks(t *testing.T, mp *metaPartition, eks []proto.MetaDelExtentKey, date []byte)(int) {
 	stKey   := make([]byte, 1)
 	endKey  := make([]byte, 1)
 
@@ -68,13 +79,14 @@ func checkRocksDBEks(t *testing.T, mp *metaPartition, eks []proto.ExtentKey, dat
 		if k[0] != byte(ExtentDelTable) {
 			return false, nil
 		}
-		ek := &proto.ExtentKey{}
+		ek := &proto.MetaDelExtentKey{}
 		ek.UnmarshalDbKey(k[8:])
+		ek.UnMarshDelEkValue(v)
 
 		if date[dayKeyIndex] != k[dayKeyIndex] {
 			t.Errorf("check rocks db failed: date prefix failed, want key:%v, but now:%v", date, k)
 		}
-		if ek.Marshal() != eks[cnt].Marshal() {
+		if ek.String() != eks[cnt].String() {
 			t.Errorf("check rocks db failed: ek failed, want key:%v, but now:%v", eks[cnt], ek)
 		}
 		cnt++
@@ -216,22 +228,37 @@ func FollowerSyncExpiredEk(t *testing.T, num int) {
 	}
 
 	for _, ek := range eks {
+		if err = binary.Write(buf, binary.BigEndian, ek.FileOffset); err != nil {
+			return
+		}
 		if err = binary.Write(buf, binary.BigEndian, ek.PartitionId); err != nil {
-			t.Fatalf("marsh failed: marsh ek[%v] failed", ek)
+			return
 		}
 		if err = binary.Write(buf, binary.BigEndian, ek.ExtentId); err != nil {
-			t.Fatalf("marsh failed: marsh ek[%v] failed", ek)
+			return
 		}
-		if err = binary.Write(buf, binary.BigEndian, (uint32)(ek.ExtentOffset)); err != nil {
-			t.Fatalf("marsh failed: marsh ek[%v] failed", ek)
+		if err = binary.Write(buf, binary.BigEndian, ek.ExtentOffset); err != nil {
+			return
 		}
 		if err = binary.Write(buf, binary.BigEndian, ek.Size); err != nil {
-			t.Fatalf("marsh failed: marsh ek[%v] failed", ek)
+			return
+		}
+		if err = binary.Write(buf, binary.BigEndian, ek.CRC); err != nil {
+			return
+		}
+		if err = binary.Write(buf, binary.BigEndian, ek.InodeId); err != nil {
+			return
+		}
+		if err = binary.Write(buf, binary.BigEndian, ek.TimeStamp); err != nil {
+			return
+		}
+		if err = binary.Write(buf, binary.BigEndian, ek.SrcType); err != nil {
+			return
 		}
 	}
 
 
-	mp.fsmSyncDelExtents(buf.Bytes())
+	mp.fsmSyncDelExtentsV2(buf.Bytes())
 
 	time.Sleep(time.Second * 2)
 
@@ -261,7 +288,6 @@ func SnapResetDb(t *testing.T, num int) {
 
 	//gen eks
 	key := make([]byte, dbExtentKeySize)
-	value := make ([]byte, 1)
 	updateKeyToNow(key)
 	eks := generateEk(num)
 
@@ -280,15 +306,17 @@ func SnapResetDb(t *testing.T, num int) {
 	}
 
 	os.MkdirAll(newDbDir, 0x755)
-	if err = db.OpenDb(newDbDir); err != nil {
+	if err = db.OpenDb(newDbDir, 0, 0, 0, 0, 0, 0); err != nil {
 		return
 	}
 	key[dayKeyIndex] += 1
 
 	for _, ek := range eks {
+		valueBuff := make([]byte, proto.ExtentValueLen)
 		ekInfo, _ := ek.MarshalDbKey()
 		copy(key[8:], ekInfo)
-		db.Put(key, value)
+		ek.MarshDelEkValue(valueBuff)
+		db.Put(key, valueBuff)
 	}
 	db.CloseDb()
 

@@ -291,6 +291,16 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		EcScrubPeriod:                       m.cluster.EcScrubPeriod,
 		EcScrubStartTime:                    m.cluster.EcStartScrubTime,
 		MaxCodecConcurrent:                  m.cluster.MaxCodecConcurrent,
+		RocksDBDiskReservedSpace:            m.cluster.cfg.RocksDBDiskReservedSpace,
+		LogMaxMB:                            m.cluster.cfg.LogMaxSize,
+		MetaRockDBWalFileSize:               m.cluster.cfg.MetaRockDBWalFileSize,
+		MetaRocksWalMemSize:                 m.cluster.cfg.MetaRocksWalMemSize,
+		MetaRocksLogSize:                    m.cluster.cfg.MetaRocksLogSize,
+		MetaRocksLogReservedTime:            m.cluster.cfg.MetaRocksLogReservedTime,
+		MetaRocksLogReservedCnt:             m.cluster.cfg.MetaRocksLogReservedCnt,
+		MetaRocksFlushWalInterval:           m.cluster.cfg.MetaRocksFlushWalInterval,
+		MetaRocksDisableFlushFlag:            m.cluster.cfg.MetaRocksDisableFlushFlag,
+		MetaRocksWalTTL:                     m.cluster.cfg.MetaRocksWalTTL,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -410,6 +420,14 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	clusterRepairTaskCount := repairTaskCount
 	monitorSummarySec := atomic.LoadUint64(&m.cluster.cfg.MonitorSummarySec)
 	monitorReportSec := atomic.LoadUint64(&m.cluster.cfg.MonitorReportSec)
+	metaRocksDBWalFileSize := atomic.LoadUint64(&m.cluster.cfg.MetaRockDBWalFileSize)
+	metaRocksDBWalMemSize := atomic.LoadUint64(&m.cluster.cfg.MetaRocksWalMemSize)
+	metaRocksDBLogSize := atomic.LoadUint64(&m.cluster.cfg.MetaRocksLogSize)
+	metaRocksDBLogReservedTime := atomic.LoadUint64(&m.cluster.cfg.MetaRocksLogReservedTime)
+	metaRocksDBLogReservedCnt := atomic.LoadUint64(&m.cluster.cfg.MetaRocksLogReservedCnt)
+	metaRocksDBFlushWalInterval := atomic.LoadUint64(&m.cluster.cfg.MetaRocksFlushWalInterval)
+	metaRocksDBWalTTL := atomic.LoadUint64(&m.cluster.cfg.MetaRocksWalTTL)
+	metaRocksDBDisableFlush := atomic.LoadUint64(&m.cluster.cfg.MetaRocksDisableFlushFlag)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
 	if dataNodeZoneName != "" {
@@ -446,10 +464,20 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ExtentMergeSleepMs:                     m.cluster.cfg.ExtentMergeSleepMs,
 		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
 		MetaNodeDumpWaterLevel:                 dumpWaterLevel,
-		MonitorSummarySec:						monitorSummarySec,
-		MonitorReportSec: 						monitorReportSec,
+		MonitorSummarySec:                      monitorSummarySec,
+		MonitorReportSec:                       monitorReportSec,
 		RocksdbDiskUsageThreshold:              m.cluster.cfg.MetaNodeRocksdbDiskThreshold,
 		MemModeRocksdbDiskUsageThreshold:       m.cluster.cfg.MetaNodeMemModeRocksdbDiskThreshold,
+		RocksDBDiskReservedSpace:               m.cluster.cfg.RocksDBDiskReservedSpace,
+		LogMaxSize:                             m.cluster.cfg.LogMaxSize,
+		MetaRockDBWalFileSize:                  metaRocksDBWalFileSize,
+		MetaRocksWalMemSize:                    metaRocksDBWalMemSize,
+		MetaRocksLogSize:                       metaRocksDBLogSize,
+		MetaRocksLogReservedTime:               metaRocksDBLogReservedTime,
+		MetaRocksLogReservedCnt:                metaRocksDBLogReservedCnt,
+		MetaRocksDisableFlushFlag:              metaRocksDBDisableFlush,
+		MetaRocksFlushWalInterval:              metaRocksDBFlushWalInterval,
+		MetaRocksWalTTL:                        metaRocksDBWalTTL,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -4052,7 +4080,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs,
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
 		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
-		monitorSummarySecondKey, monitorReportSecondKey}
+		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
+	proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return

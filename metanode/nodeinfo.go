@@ -27,6 +27,17 @@ type NodeInfo struct {
 	deleteBatchCount 	uint64
 	readDirLimitNum		uint64
 	dumpWaterLevel      uint64
+	logMaxSize          uint64
+	reservedSpace       uint64
+
+	rocksWalFileSize       uint64				//MB
+	rocksWalMemSize        uint64				//MB
+	rocksLogSize           uint64				//MB
+	rocksLogReservedTime   uint64				//day
+	rocksLogReservedCnt    uint64
+	rocksFlushWalInterval  uint64				// min default 30min
+	rocksFlushWal          bool					// default true flush
+	rocksWalTTL            uint64				//second default 60
 }
 
 var (
@@ -148,6 +159,67 @@ func getMemModeMaxFsUsedPercent() uint64 {
 	return atomic.LoadUint64(&MemModeMaxFsUsedPercent)
 }
 
+func updateLogMaxSize(val uint64) {
+	if val != 0 && val != nodeInfo.logMaxSize {
+		oldLogMaxSize := nodeInfo.logMaxSize
+		nodeInfo.logMaxSize = val
+		log.SetLogMaxSize(int64(nodeInfo.logMaxSize))
+		log.LogInfof("[updateLogMaxSize] log max MB(old:%v, new:%v)", oldLogMaxSize, nodeInfo.logMaxSize)
+	}
+}
+
+func (m *MetaNode)updateRocksDBDiskReservedSpaceSpace(val uint64) {
+	if val != nodeInfo.reservedSpace && val != 0 {
+		nodeInfo.reservedSpace = val
+		for _, disk := range m.getDisks() {
+			disk.UpdateReversedSpace(val)
+		}
+	}
+}
+
+func (m *MetaNode) updateRocksDBConf(info *proto.LimitInfo) {
+	if info.MetaRockDBWalFileSize != 0  && nodeInfo.rocksWalFileSize != info.MetaRockDBWalFileSize{
+		nodeInfo.rocksWalFileSize = info.MetaRockDBWalFileSize
+	}
+
+	if info.MetaRocksWalMemSize != 0  && nodeInfo.rocksWalMemSize != info.MetaRocksWalMemSize{
+		nodeInfo.rocksWalMemSize = info.MetaRocksWalMemSize
+	}
+
+	if info.MetaRocksLogSize != 0  && nodeInfo.rocksLogSize != info.MetaRocksLogSize{
+		nodeInfo.rocksLogSize = info.MetaRocksLogSize
+	}
+
+	if info.MetaRocksLogReservedTime != 0  && nodeInfo.rocksLogReservedTime != info.MetaRocksLogReservedTime{
+		nodeInfo.rocksLogReservedTime = info.MetaRocksLogReservedTime
+	}
+
+	if info.MetaRocksLogReservedCnt != 0  && nodeInfo.rocksLogReservedCnt != info.MetaRocksLogReservedCnt{
+		nodeInfo.rocksLogReservedCnt = info.MetaRocksLogReservedCnt
+	}
+
+	if info.MetaRocksWalTTL != 0 && nodeInfo.rocksWalTTL != info.MetaRocksWalTTL {
+		nodeInfo.rocksWalTTL = info.MetaRocksWalTTL
+	}
+
+	if info.MetaRocksFlushWalInterval != 0 && nodeInfo.rocksFlushWalInterval != info.MetaRocksFlushWalInterval {
+		nodeInfo.rocksFlushWalInterval = info.MetaRocksFlushWalInterval
+	}
+
+	if info.MetaRocksDisableFlushFlag != 0 {
+		nodeInfo.rocksFlushWal = false
+	}
+
+	if info.MetaRocksDisableFlushFlag == 0 {
+		nodeInfo.rocksFlushWal = true
+	}
+}
+
+func getGlobalConfNodeInfo() *NodeInfo {
+	newInfo := *nodeInfo
+	return &newInfo
+}
+
 func (m *MetaNode) startUpdateNodeInfo() {
 	deleteTicker := time.NewTicker(UpdateDeleteLimitInfoTicket)
 	rateLimitTicker := time.NewTicker(UpdateRateLimitInfoTicket)
@@ -195,6 +267,9 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	updateDumpWaterLevel(limitInfo.MetaNodeDumpWaterLevel)
 	updateMemModeMaxFsUsedPercent(limitInfo.MemModeRocksdbDiskUsageThreshold)
 	updateRocksDBModeMaxFsUsedPercent(limitInfo.RocksdbDiskUsageThreshold)
+	updateLogMaxSize(limitInfo.LogMaxSize)
+	m.updateRocksDBDiskReservedSpaceSpace(limitInfo.RocksDBDiskReservedSpace)
+	m.updateRocksDBConf(limitInfo)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

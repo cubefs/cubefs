@@ -218,6 +218,19 @@ const (
 )
 
 const (
+	RocksDBDiskReservedSpaceKey  = "rocksDBDiskReservedSpace"
+	LogMaxMB                     = "logMaxMB"
+	MetaRockDBWalFileMaxMB       = "metaRockDBWalFileMaxMB"
+	MetaRocksDBWalMemMaxMB       = "metaRocksDBWalMemMaxMB"
+	MetaRocksDBLogMaxMB          = "metaRocksDBLogMaxMB"
+	MetaRocksLogReservedDay      = "metaRocksLogReservedDay"
+	MetaRocksLogReservedCnt      = "metaRocksLogReservedCnt"
+	MetaRocksWalFlushIntervalKey = "metaRocksWalFlushInterval"
+	MetaRocksDisableFlushWalKey  = "metaRocksDisableFlushWal"
+	MetaRocksWalTTLKey           = "metaRocksWalTTL"
+)
+
+const (
 	ReadOnlyToken  = 1
 	ReadWriteToken = 2
 )
@@ -460,6 +473,18 @@ type LimitInfo struct {
 
 	RocksdbDiskUsageThreshold        float32
 	MemModeRocksdbDiskUsageThreshold float32
+
+	RocksDBDiskReservedSpace   uint64				//MB
+	LogMaxSize                 uint64				//MB
+
+	MetaRockDBWalFileSize      uint64				//MB  10
+	MetaRocksWalMemSize        uint64				//MB  3
+	MetaRocksLogSize           uint64				//MB  1
+	MetaRocksLogReservedTime   uint64				//day 3
+	MetaRocksLogReservedCnt    uint64				//default 3
+	MetaRocksFlushWalInterval  uint64				//min   30min
+	MetaRocksWalTTL			   uint64				//second  60s
+	MetaRocksDisableFlushFlag  uint64               //0 flush, !=0 disable flush; default 0
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1035,32 +1060,42 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 
 // RateLimitInfo defines the rate limit infomation
 type RateLimitInfo struct {
-	ZoneName                   string
-	Volume                     string
-	Action                     string
-	Opcode                     int8
-	MetaNodeReqRate            int64
-	MetaNodeReqOpRate          int64
-	DataNodeRepairTaskCount    int64
-	DataNodeRepairTaskSSDZone  int64
-	DataNodeReqRate            int64
-	DataNodeReqOpRate          int64
-	DataNodeReqVolOpRate       int64
-	DataNodeReqVolPartRate     int64
-	DataNodeReqVolOpPartRate   int64
-	ClientReadVolRate          int64
-	ClientWriteVolRate         int64
-	ExtentMergeIno             string
-	ExtentMergeSleepMs         int64
-	ClientReadRate             int64
-	ClientWriteRate            int64
-	ClientVolOpRate            int64
-	ObjectVolActionRate        int64
-	DnFixTinyDeleteRecordLimit int64
-	DataNodeRepairTaskZoneCount  int64
-	MetaNodeDumpWaterLevel     int64
-	MonitorSummarySecond	   uint64
-	MonitorReportSecond		   uint64
+	ZoneName                    string
+	Volume                      string
+	Action                      string
+	Opcode                      int8
+	MetaNodeReqRate             int64
+	MetaNodeReqOpRate           int64
+	DataNodeRepairTaskCount     int64
+	DataNodeRepairTaskSSDZone   int64
+	DataNodeReqRate             int64
+	DataNodeReqOpRate           int64
+	DataNodeReqVolOpRate        int64
+	DataNodeReqVolPartRate      int64
+	DataNodeReqVolOpPartRate    int64
+	ClientReadVolRate           int64
+	ClientWriteVolRate          int64
+	ExtentMergeIno              string
+	ExtentMergeSleepMs          int64
+	ClientReadRate              int64
+	ClientWriteRate             int64
+	ClientVolOpRate             int64
+	ObjectVolActionRate         int64
+	DnFixTinyDeleteRecordLimit  int64
+	DataNodeRepairTaskZoneCount int64
+	MetaNodeDumpWaterLevel      int64
+	MonitorSummarySecond        uint64
+	MonitorReportSecond         uint64
+	RocksDBDiskReservedSpace    uint64
+	LogMaxMB                    uint64
+	MetaRockDBWalFileMaxMB      uint64
+	MetaRocksWalMemMaxMB        uint64
+	MetaRocksLogMaxMB           uint64
+	MetaRocksLogReservedDay     uint64
+	MetaRocksLogReservedCnt     uint64
+	MetaRocksFlushWalInterval   uint64 //min
+	MetaRocksDisableFlushFlag   int64 //0 flush, !=0 disable flush
+	MetaRocksWalTTL             uint64
 }
 
 type ConvertMode uint8

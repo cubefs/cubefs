@@ -18,7 +18,7 @@ const (
 func TestOpenDb(t *testing.T) {
 	db := NewRocksDb()
 	os.RemoveAll("./db")
-	if err := db.OpenDb("./db"); err != nil {
+	if err := db.OpenDb("./db", 0, 0, 0, 0, 0, 0); err != nil {
 		t.Errorf("open db without exist dir failed, err:%v", err)
 		return
 	}
@@ -38,7 +38,7 @@ func TestOpenDb(t *testing.T) {
 		return
 	}
 
-	if err = db.OpenDb("./db"); err != nil {
+	if err = db.OpenDb("./db", 0, 0, 0, 0, 0, 0); err != nil {
 		t.Errorf("open db without exist dir failed")
 	}
 
@@ -50,7 +50,7 @@ func TestOpenDb(t *testing.T) {
 func TestReopneDb(t *testing.T) {
 	db := NewRocksDb()
 	os.RemoveAll("./db")
-	if err := db.OpenDb("./db"); err != nil {
+	if err := db.OpenDb("./db", 0, 0, 0, 0, 0, 0); err != nil {
 		t.Errorf("open db without exist dir failed, err:%v", err)
 	}
 
@@ -69,7 +69,7 @@ func TestReopneDb(t *testing.T) {
 		return
 	}
 
-	if err = db.ReOpenDb("./db"); err != nil {
+	if err = db.ReOpenDb("./db", 0, 0, 0, 0, 0, 0); err != nil {
 		t.Errorf("open db without exist dir failed")
 	}
 
@@ -330,7 +330,7 @@ func TestOps(t *testing.T) {
 
 	os.RemoveAll("db")
 	db := NewRocksDb()
-	_ = db.OpenDb("db")
+	_ = db.OpenDb("db", 0, 0, 0, 0, 0, 0)
 
 	start := time.Now()
 	insertByItem(t, db)
@@ -376,7 +376,7 @@ func TestOps(t *testing.T) {
 	runtime.GC()
 	time.Sleep(time.Second * 3)
 	db2 := NewRocksDb()
-	_ = db2.OpenDb("db2")
+	_ = db2.OpenDb("db2", 0, 0, 0, 0, 0, 0)
 	genenerData(t, db2)
 	start = time.Now()
 
@@ -384,7 +384,7 @@ func TestOps(t *testing.T) {
 	_ = db.CloseDb()
 	db.ReleaseRocksDb()
 	os.Rename("db2", "db")
-	db.ReOpenDb("db")
+	db.ReOpenDb("db", 0, 0, 0, 0, 0, 0)
 	t.Logf("reopen db delete used:%v \n", time.Since(start))
 	rangeTest(t, db)
 	deleteDataByMultiItems(t, db)
@@ -447,7 +447,7 @@ func TestAbortOps(t *testing.T) {
 	t.Logf("************ abort test begin *************")
 	os.RemoveAll("db")
 	db := NewRocksDb()
-	_ = db.OpenDb("db")
+	_ = db.OpenDb("db", 0, 0, 0, 0, 0, 0)
 	genenerData(t, db)
 	rangeTest(t, db)
 

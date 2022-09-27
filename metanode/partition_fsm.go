@@ -214,6 +214,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			case mp.storeChan <- sMsg:
 			default:
 		}
+		mp.fsmStoreConfig()
 
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(dbWriteHandle, msg.V)
@@ -365,6 +366,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		err = mp.internalClean(dbWriteHandle, msg.V)
 	case opFSMExtentDelSync:
 		mp.fsmSyncDelExtents(msg.V)
+	case opFSMExtentDelSyncV2:
+		mp.fsmSyncDelExtentsV2(msg.V)
 	}
 
 	return
@@ -522,7 +525,8 @@ func (mp *metaPartition) ResetDbByNewDir(newDBDir string) (err error){
 		return
 	}
 
-	if err = mp.db.ReOpenDb(mp.getRocksDbRootDir()); err != nil {
+	if err = mp.db.ReOpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
+							mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
 		log.LogErrorf("reopen db[%s] failed:%v", mp.getRocksDbRootDir(), err.Error())
 		return
 	}
@@ -554,7 +558,8 @@ func newRocksdbHandle(newDir string) (db *RocksDbInfo, err error) {
 	err = nil
 
 	db = NewRocksDb()
-	if err = db.OpenDb(newDir); err != nil {
+	//apply snapshot, tmp rocks db
+	if err = db.OpenDb(newDir, 0, 0, 0, 0, 0, 0); err != nil {
 		log.LogErrorf("open db failed, error(%v)", err)
 		return
 	}

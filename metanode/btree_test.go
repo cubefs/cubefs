@@ -17,7 +17,7 @@ func newTestRocksTree(dir string) (rocksTree *RocksTree) {
 		os.Exit(1)
 	}
 	rocksdbHandle := NewRocksDb()
-	if err = rocksdbHandle.OpenDb(dir); err != nil {
+	if err = rocksdbHandle.OpenDb(dir, 0, 0, 0, 0, 0, 0); err != nil {
 		fmt.Printf("open db without exist dir(%s) failed:%v\n", dir, err)
 		os.Exit(1)
 	}

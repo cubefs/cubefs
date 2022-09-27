@@ -2,7 +2,6 @@ package metanode
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
@@ -477,12 +476,14 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 			ExtentId: uint64(index),
 		}
 		var valueBuff []byte
-		inoBuff := make([]byte, 8)
 		defBuff := make([]byte, 1)
 		valueBuff = defBuff
 		if index % 30 == 0 {
-			binary.BigEndian.PutUint64(inoBuff, uint64(index))
-			valueBuff = inoBuff
+			valueBuff = make([]byte, 24)
+			delEk := proto.MetaDelExtentKey{InodeId: uint64(index),
+											TimeStamp: time.Now().Unix(),
+											SrcType: uint64(index / 30 % (delEkSrcTypeFromDelInode + 1))}
+			delEk.MarshDelEkValue(valueBuff)
 		}
 		keyBuff, _ := ek.MarshalDbKey()
 		copy(key[8:], keyBuff)
@@ -632,8 +633,14 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 			return false, tmpErr
 		}
 
-		if len(value) == 8 {
-			fmt.Printf("leader:%d, follower:%d\n", binary.BigEndian.Uint64(v), binary.BigEndian.Uint64(value))
+		delEkL := &proto.MetaDelExtentKey{}
+		delEkF := &proto.MetaDelExtentKey{}
+		if len(value) > 1 {
+			delEkL.UnMarshDelEkValue(v)
+			delEkF.UnMarshDelEkValue(value)
+			t.Logf("leader:%d-%d-%d-%d, follower:%d-%d-%d-%d\n",
+					delEkL.InodeId, delEkL.SrcType, delEkL.TimeStamp, len(v),
+					delEkF.InodeId, delEkF.SrcType, delEkF.TimeStamp, len(value))
 		}
 
 		if bytes.Compare(v, value) == 0 && bytes.Compare(value, v) == 0{

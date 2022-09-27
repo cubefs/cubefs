@@ -3536,6 +3536,92 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		}
 		atomic.StoreUint64(&c.cfg.MonitorReportSec, val.(uint64))
 	}
+	oldRocksDBDiskReservedSpace := atomic.LoadUint64(&c.cfg.RocksDBDiskReservedSpace)
+	if val, ok := params[proto.RocksDBDiskReservedSpaceKey]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.RocksDBDiskReservedSpaceKey)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.RocksDBDiskReservedSpace, val.(uint64))
+	}
+	oldLogMaxGB := atomic.LoadUint64(&c.cfg.LogMaxSize)
+	if val, ok := params[proto.LogMaxMB]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.LogMaxMB)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.LogMaxSize, val.(uint64))
+	}
+	oldMetaRockDBWalFileSize := atomic.LoadUint64(&c.cfg.MetaRockDBWalFileSize)
+	if val, ok := params[proto.MetaRockDBWalFileMaxMB]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRockDBWalFileMaxMB)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MetaRockDBWalFileSize, val.(uint64))
+	}
+	oldMetaRocksDBWalMemSize := atomic.LoadUint64(&c.cfg.MetaRocksWalMemSize)
+	if val, ok := params[proto.MetaRocksDBWalMemMaxMB]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRocksDBWalMemMaxMB)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MetaRocksWalMemSize, val.(uint64))
+	}
+	oldMetaRocksLogSize := atomic.LoadUint64(&c.cfg.MetaRocksLogSize)
+	if val, ok := params[proto.MetaRocksDBLogMaxMB]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRocksDBLogMaxMB)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MetaRocksLogSize, val.(uint64))
+	}
+	oldMetaRocksLogReservedTime := atomic.LoadUint64(&c.cfg.MetaRocksLogReservedTime)
+	if val, ok := params[proto.MetaRocksLogReservedDay]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRocksLogReservedDay)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MetaRocksLogReservedTime, val.(uint64))
+	}
+	oldMetaRocksLogReservedCnt := atomic.LoadUint64(&c.cfg.MetaRocksLogReservedCnt)
+	if val, ok := params[proto.MetaRocksLogReservedCnt]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRocksLogReservedCnt)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MetaRocksLogReservedCnt, val.(uint64))
+	}
+	oldMetaRocksFlushWalInterval := atomic.LoadUint64(&c.cfg.MetaRocksFlushWalInterval)
+	if val, ok := params[proto.MetaRocksWalFlushIntervalKey]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRocksWalFlushIntervalKey)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MetaRocksFlushWalInterval, val.(uint64))
+	}
+	oldMetaRocksWalTTL := atomic.LoadUint64(&c.cfg.MetaRocksWalTTL)
+	if val, ok := params[proto.MetaRocksWalTTLKey]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRocksWalTTLKey)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MetaRocksWalTTL, val.(uint64))
+	}
+
+	oldMetaRocksDisableFlushWalFlag := atomic.LoadUint64(&c.cfg.MetaRocksDisableFlushFlag)
+	if val, ok := params[proto.MetaRocksDisableFlushWalKey]; ok {
+		atomic.StoreUint64(&c.cfg.MetaRocksDisableFlushFlag, val.(uint64))
+	}
 
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
@@ -3553,6 +3639,16 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, oldDumpWaterLevel)
 		atomic.StoreUint64(&c.cfg.MonitorSummarySec, oldMonitorSummaryTime)
 		atomic.StoreUint64(&c.cfg.MonitorReportSec, oldMonitorReportTime)
+		atomic.StoreUint64(&c.cfg.RocksDBDiskReservedSpace, oldRocksDBDiskReservedSpace)
+		atomic.StoreUint64(&c.cfg.LogMaxSize, oldLogMaxGB)
+		atomic.StoreUint64(&c.cfg.MetaRockDBWalFileSize, oldMetaRockDBWalFileSize)
+		atomic.StoreUint64(&c.cfg.MetaRocksWalMemSize, oldMetaRocksDBWalMemSize)
+		atomic.StoreUint64(&c.cfg.MetaRocksLogSize, oldMetaRocksLogSize)
+		atomic.StoreUint64(&c.cfg.MetaRocksLogReservedTime, oldMetaRocksLogReservedTime)
+		atomic.StoreUint64(&c.cfg.MetaRocksLogReservedCnt, oldMetaRocksLogReservedCnt)
+		atomic.StoreUint64(&c.cfg.MetaRocksFlushWalInterval, oldMetaRocksFlushWalInterval)
+		atomic.StoreUint64(&c.cfg.MetaRocksWalTTL, oldMetaRocksWalTTL)
+		atomic.StoreUint64(&c.cfg.MetaRocksDisableFlushFlag, oldMetaRocksDisableFlushWalFlag)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

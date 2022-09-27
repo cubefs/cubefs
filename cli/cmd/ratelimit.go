@@ -160,6 +160,38 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.MonitorReportSecond > 0 {
 				msg += fmt.Sprintf("monitorReportSec  : %d, ", info.MonitorReportSecond)
 			}
+			if info.LogMaxMB > 0 {
+				msg += fmt.Sprintf("log max MB        : %d, ", info.LogMaxMB)
+			}
+			if info.RocksDBDiskReservedSpace > 0 {
+				msg += fmt.Sprintf("MN RocksDB Disk Reserved MB  : %d, ", info.RocksDBDiskReservedSpace)
+			}
+			if info.MetaRockDBWalFileMaxMB > 0 {
+				msg += fmt.Sprintf("MN RocksDB Wal File Max MB   : %d, ", info.MetaRockDBWalFileMaxMB)
+			}
+			if info.MetaRocksWalMemMaxMB > 0 {
+				msg += fmt.Sprintf("MN RocksDB Wal Mem Max MB    : %d, ", info.MetaRocksWalMemMaxMB)
+			}
+			if info.MetaRocksLogMaxMB > 0 {
+				msg += fmt.Sprintf("MN RocksDB Log Max MB        : %d, ", info.MetaRocksLogMaxMB)
+			}
+			if info.MetaRocksLogReservedDay > 0 {
+				msg += fmt.Sprintf("MN RocksDB Log Reserved Day  : %d, ", info.MetaRocksLogReservedDay)
+			}
+			if info.MetaRocksLogReservedCnt > 0 {
+				msg += fmt.Sprintf("MN RocksDB Log Reserved Cnt  : %d, ", info.MetaRocksLogReservedCnt)
+			}
+			if info.MetaRocksFlushWalInterval > 0 {
+				msg += fmt.Sprintf("MN RocksDB Flush Wal Interval: %d, ", info.MetaRocksFlushWalInterval)
+			}
+			if info.MetaRocksDisableFlushFlag == 0 {
+				msg += fmt.Sprintf("MN RocksDB Wal Flush         : enable, ")
+			} else if info.MetaRocksDisableFlushFlag == 1 {
+				msg += fmt.Sprintf("MN RocksDB Wal Flush         : disable, ")
+			}
+			if info.MetaRocksWalTTL > 0 {
+				msg += fmt.Sprintf("MN RocksDB Wal Log TTL       : %d, ", info.MetaRocksWalTTL)
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -197,6 +229,16 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.MetaNodeDumpWaterLevel, "metaNodeDumpWaterLevel", -1, "meta node dump snap shot water level")
 	cmd.Flags().Uint64Var(&info.MonitorSummarySecond, "monitorSummarySecond", 0, "summary seconds for monitor")
 	cmd.Flags().Uint64Var(&info.MonitorReportSecond, "monitorReportSecond", 0, "report seconds for monitor")
+	cmd.Flags().Uint64Var(&info.RocksDBDiskReservedSpace, "rocksDBDiskReservedSpace", 0, "rocksdb disk reserved space, unit:MB")
+	cmd.Flags().Uint64Var(&info.LogMaxMB, "logMaxMB", 0, "log max MB")
+	cmd.Flags().Uint64Var(&info.MetaRockDBWalFileMaxMB, "metaRocksWalFileMaxMB", 0, "Meta node RocksDB config:wal_size_limit_mb, unit:MB")
+	cmd.Flags().Uint64Var(&info.MetaRocksWalMemMaxMB, "metaRocksWalMemMaxMB", 0, "Meta node RocksDB config:max_total_wal_size, unit:MB")
+	cmd.Flags().Uint64Var(&info.MetaRocksLogMaxMB, "metaRocksLogMaxMB", 0, "Meta node RocksDB config:max_log_file_size, unit:MB")
+	cmd.Flags().Uint64Var(&info.MetaRocksLogReservedDay, "metaRocksLogReservedDay", 0, "Meta node RocksDB config:log_file_time_to_roll, unit:Day")
+	cmd.Flags().Uint64Var(&info.MetaRocksLogReservedCnt, "metaRocksLogReservedCount", 0, "Meta node RocksDB config:keep_log_file_num")
+	cmd.Flags().Uint64Var(&info.MetaRocksFlushWalInterval, "metaRocksWalFlushInterval", 0, "Meta node RocksDB config:flush wal interval, unit:min")
+	cmd.Flags().Int64Var(&info.MetaRocksDisableFlushFlag, "metaRocksDisableWalFlush", -1, "Meta node RocksDB config:flush wal flag, 0: enable flush wal log, 1:disable flush wal log")
+	cmd.Flags().Uint64Var(&info.MetaRocksWalTTL, "metaRocksWalTTL", 0, "Meta node RocksDB config:wal_ttl_seconds")
 	return cmd
 }
 

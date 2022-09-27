@@ -128,6 +128,16 @@ type clusterConfig struct {
 	MetaNodeDumpWaterLevel              uint64
 	MonitorSummarySec					uint64
 	MonitorReportSec					uint64
+	RocksDBDiskReservedSpace            uint64
+	LogMaxSize                          uint64
+	MetaRockDBWalFileSize               uint64 //MB
+	MetaRocksWalMemSize                 uint64 //MB
+	MetaRocksLogSize                    uint64 //MB
+	MetaRocksLogReservedTime            uint64 //day
+	MetaRocksLogReservedCnt             uint64
+	MetaRocksFlushWalInterval           uint64 //min
+	MetaRocksDisableFlushFlag           uint64   //default 0 flush, !=0 disable flush
+	MetaRocksWalTTL                     uint64 //second
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

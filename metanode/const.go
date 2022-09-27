@@ -171,6 +171,7 @@ const (
 	opSnapSyncExtent
 	opFSMExtentMerge
 	resetStoreTick
+	opFSMExtentDelSyncV2
 )
 
 var (
@@ -189,7 +190,7 @@ const (
 	defaultRaftDir                        = "raftDir"
 	defaultAuthTimeout                    = 5 // seconds
 	defaultMaxMetaPartitionInodeID uint64 = 1<<63 - 1
-	defaultDiskReservedSpace              = 30 * util.GB
+	defaultDiskReservedSpace              = 5 * util.GB
 	metaDataFlockFile                     = ".MetaDataFlock"
 )
 
@@ -220,6 +221,9 @@ const (
 	intervalToSyncCursor             = time.Minute * 1
 	intervalToUpdateAllVolsTrashDays = time.Minute * 5
 	intervalToUpdateVolTrashExpires  = time.Minute * 1
+	defSyncRocksDbWalLog             = time.Minute * 30
+	intervalSyncRocksDbWalLog        = time.Second * 2
+	defMinSyncRockDbWalLog           = time.Minute * 2
 )
 
 const (

@@ -291,12 +291,65 @@ func (m *metadataManager) Stop() {
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
 	m.updateVolsTrashDaysScheduler()
+	go m.syncMetaPartitionsRocksDBWalLogScheduler()
 	err = m.startPartitions()
 	if err != nil {
 		log.LogError(err.Error())
 		return
 	}
 	return
+}
+
+func (m *metadataManager) syncMetaPartitionsRocksDBWalLog() {
+	pidArray := make([]uint64, 0)
+	//get all pid
+	m.Range(func(i uint64, p MetaPartition) bool {
+		pidArray = append(pidArray, i)
+		return true
+	})
+
+	//get mp
+	for _, pid := range pidArray {
+		//check exit?
+		select {
+		case <-m.stopC:
+			return
+		default:
+		}
+		//sync one mp
+		mp, err := m.getPartition(pid)
+		if err != nil || mp == nil {
+			continue
+		}
+		confInfo := getGlobalConfNodeInfo()
+		mp.(*metaPartition).db.CommitEmptyRecordToSyncWal(confInfo.rocksFlushWal)
+		// default 2 second
+		time.Sleep(intervalSyncRocksDbWalLog)
+	}
+}
+
+func (m *metadataManager) syncMetaPartitionsRocksDBWalLogScheduler() {
+	//default 30 min
+	syncTimer := time.NewTimer(defSyncRocksDbWalLog)
+	for {
+		select {
+		case <-syncTimer.C:
+			confInfo := getGlobalConfNodeInfo()
+			interval := time.Duration(confInfo.rocksFlushWalInterval) * time.Minute
+			if interval < defSyncRocksDbWalLog {
+				interval = defSyncRocksDbWalLog
+			}
+			startSync := time.Now()
+			log.LogWarnf("start sync wal log")
+			m.syncMetaPartitionsRocksDBWalLog()
+			syncCost := time.Since(startSync)
+			log.LogWarnf("stop sync wal log:%v", syncCost/time.Second)
+			syncTimer.Reset(interval)
+		case <-m.stopC:
+			syncTimer.Stop()
+			return
+		}
+	}
 }
 
 func (m *metadataManager) updateVolsTrashDaysScheduler() {
@@ -718,7 +771,6 @@ func (m *metadataManager) StartPartition(id uint64) (err error) {
 		RootDir:            path.Join(m.rootDir, fileName),
 		ConnPool:           m.connPool,
 		TrashRemainingDays: -1,
-		CreationType:       proto.DecommissionedCreateMetaPartition,
 	}
 	partitionConfig.AfterStop = func() {
 		m.detachPartition(id)
@@ -754,6 +806,7 @@ func (m *metadataManager) StartPartition(id uint64) (err error) {
 			id, err.Error())
 		return
 	}
+	partition.(*metaPartition).CreationType = proto.DecommissionedCreateMetaPartition
 	m.attachPartition(id, partition)
 	err = partition.Start()
 	if err != nil {

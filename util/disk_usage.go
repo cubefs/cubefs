@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/shirou/gopsutil/disk"
+	"github.com/tiglabs/raft/util"
 	"io/ioutil"
 	"math"
 	"os"
@@ -29,9 +30,10 @@ type diskScore struct {
 }
 
 const (
-	DiskStatusFile  = ".diskStatus"
-	DiskHangCnt     = 2
-	MAXFsUsedFactor = 0.6
+	DiskStatusFile           = ".diskStatus"
+	DiskHangCnt              = 2
+	MAXFsUsedFactor          = 0.6
+	DefReservedSpaceMaxRatio = 0.05
 )
 
 type FsCapMon struct {
@@ -63,9 +65,16 @@ func GetDiskTotal(path string) (total uint64, err error) {
 func NewFsMon(path string, isRocksDBDisk bool, reservedSpace uint64) (d *FsCapMon) {
 	d = new(FsCapMon)
 	d.Path = path
-	d.ReservedSpace = reservedSpace
 	d.IsRocksDBDisk = isRocksDBDisk
+
 	d.ComputeUsage()
+	if isRocksDBDisk {
+		reservedSpace = uint64(math.Min(float64(reservedSpace), d.Total * DefReservedSpaceMaxRatio))
+	} else {
+		reservedSpace = 0
+	}
+	d.ReservedSpace = reservedSpace
+
 	d.Status = ReadWrite
 	d.lastUpdate = time.Now()
 	return
@@ -75,6 +84,17 @@ func (d *FsCapMon) GetStatus() int8 {
 	d.RLock()
 	defer d.RUnlock()
 	return d.Status
+}
+
+func (d *FsCapMon) UpdateReversedSpace(space uint64) {
+	d.RLock()
+	defer d.RUnlock()
+	if !d.IsRocksDBDisk {
+		return
+	}
+	reservedSpace := uint64(math.Min(float64(space * util.MB), d.Total * DefReservedSpaceMaxRatio))
+	d.ReservedSpace = reservedSpace
+	return
 }
 
 // Compute the disk usage

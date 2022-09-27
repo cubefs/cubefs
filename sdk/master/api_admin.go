@@ -662,6 +662,36 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.MonitorReportSecond > 0 {
 		request.addParam("monitorReportSec", strconv.FormatUint(info.MonitorReportSecond, 10))
 	}
+	if info.RocksDBDiskReservedSpace > 0 {
+		request.addParam(proto.RocksDBDiskReservedSpaceKey, strconv.FormatUint(info.RocksDBDiskReservedSpace, 10))
+	}
+	if info.LogMaxMB > 0 {
+		request.addParam(proto.LogMaxMB, strconv.FormatUint(info.LogMaxMB, 10))
+	}
+	if info.MetaRockDBWalFileMaxMB > 0 {
+		request.addParam(proto.MetaRockDBWalFileMaxMB, strconv.FormatUint(info.MetaRockDBWalFileMaxMB, 10))
+	}
+	if info.MetaRocksWalMemMaxMB > 0 {
+		request.addParam(proto.MetaRocksDBWalMemMaxMB, strconv.FormatUint(info.MetaRocksWalMemMaxMB, 10))
+	}
+	if info.MetaRocksLogMaxMB > 0 {
+		request.addParam(proto.MetaRocksDBLogMaxMB, strconv.FormatUint(info.MetaRocksLogMaxMB, 10))
+	}
+	if info.MetaRocksLogReservedDay > 0 {
+		request.addParam(proto.MetaRocksLogReservedDay, strconv.FormatUint(info.MetaRocksLogReservedDay, 10))
+	}
+	if info.MetaRocksLogReservedCnt > 0 {
+		request.addParam(proto.MetaRocksLogReservedCnt, strconv.FormatUint(info.MetaRocksLogReservedCnt, 10))
+	}
+	if info.MetaRocksFlushWalInterval > 0 {
+		request.addParam(proto.MetaRocksWalFlushIntervalKey, strconv.FormatUint(info.MetaRocksFlushWalInterval, 10))
+	}
+	if info.MetaRocksDisableFlushFlag >= 0 {
+		request.addParam(proto.MetaRocksDisableFlushWalKey, strconv.FormatInt(info.MetaRocksDisableFlushFlag, 10))
+	}
+	if info.MetaRocksWalTTL > 0 {
+		request.addParam(proto.MetaRocksWalTTLKey, strconv.FormatUint(info.MetaRocksWalTTL, 10))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {

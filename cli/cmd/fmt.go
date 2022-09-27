@@ -53,6 +53,7 @@ func formatClusterView(cv *proto.ClusterView) string {
 		startScrubTime := time.Unix(cv.EcScrubStartTime, 0).Format(time.RFC1123)
 		sb.WriteString(fmt.Sprintf("  Ec start scrub   : %v \n", startScrubTime))
 	}
+
 	return sb.String()
 }
 

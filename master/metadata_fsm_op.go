@@ -71,6 +71,16 @@ type clusterValue struct {
 	MetaNodeDumpWaterLevel              uint64
 	MonitorSummarySec                   uint64
 	MonitorReportSec                    uint64
+	RocksDBDiskReservedSpace            uint64
+	LogMaxMB                            uint64
+	MetaRockDBWalFileSize               uint64 //MB
+	MetaRocksWalMemSize                 uint64 //MB
+	MetaRocksLogSize                    uint64 //MB
+	MetaRocksLogReservedTime            uint64 //day
+	MetaRocksLogReservedCnt             uint64
+	MetaRocksFlushWalInterval           uint64  //min
+	MetaRocksDisableFlushFlag           uint64  //0 flush, !=0 disable flush
+	MetaRocksWalTTL                     uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -114,6 +124,16 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeDumpWaterLevel:              c.cfg.MetaNodeDumpWaterLevel,
 		MonitorSummarySec:                   c.cfg.MonitorSummarySec,
 		MonitorReportSec:                    c.cfg.MonitorReportSec,
+		RocksDBDiskReservedSpace:            c.cfg.RocksDBDiskReservedSpace,
+		LogMaxMB:                            c.cfg.LogMaxSize,
+		MetaRockDBWalFileSize:               c.cfg.MetaRockDBWalFileSize,
+		MetaRocksWalMemSize:                 c.cfg.MetaRocksWalMemSize,
+		MetaRocksLogSize:                    c.cfg.MetaRocksLogSize,
+		MetaRocksLogReservedTime:            c.cfg.MetaRocksLogReservedTime,
+		MetaRocksLogReservedCnt:             c.cfg.MetaRocksLogReservedCnt,
+		MetaRocksFlushWalInterval:           c.cfg.MetaRocksFlushWalInterval,
+		MetaRocksDisableFlushFlag:           c.cfg.MetaRocksDisableFlushFlag,
+		MetaRocksWalTTL:                     c.cfg.MetaRocksWalTTL,
 	}
 	return cv
 }
@@ -927,6 +947,16 @@ func (c *Cluster) loadClusterValue() (err error) {
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, cv.MetaNodeDumpWaterLevel)
 		atomic.StoreUint64(&c.cfg.MonitorSummarySec, cv.MonitorSummarySec)
 		atomic.StoreUint64(&c.cfg.MonitorReportSec, cv.MonitorReportSec)
+		atomic.StoreUint64(&c.cfg.RocksDBDiskReservedSpace, cv.RocksDBDiskReservedSpace)
+		atomic.StoreUint64(&c.cfg.LogMaxSize, cv.LogMaxMB)
+		atomic.StoreUint64(&c.cfg.MetaRockDBWalFileSize, cv.MetaRockDBWalFileSize)
+		atomic.StoreUint64(&c.cfg.MetaRocksWalMemSize, cv.MetaRocksLogSize)
+		atomic.StoreUint64(&c.cfg.MetaRocksLogSize, cv.MetaRocksLogSize)
+		atomic.StoreUint64(&c.cfg.MetaRocksLogReservedTime, cv.MetaRocksLogReservedTime)
+		atomic.StoreUint64(&c.cfg.MetaRocksLogReservedCnt, cv.MetaRocksLogReservedCnt)
+		atomic.StoreUint64(&c.cfg.MetaRocksFlushWalInterval, cv.MetaRocksFlushWalInterval)
+		atomic.StoreUint64(&c.cfg.MetaRocksDisableFlushFlag, cv.MetaRocksDisableFlushFlag)
+		atomic.StoreUint64(&c.cfg.MetaRocksWalTTL, cv.MetaRocksWalTTL)
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

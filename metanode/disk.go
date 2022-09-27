@@ -117,7 +117,7 @@ func (m *MetaNode) startDiskStat() error{
 	m.disks = make(map[string]*util.FsCapMon)
 	m.diskStopCh = make(chan struct{})
 	m.addDisk(m.metadataDir, rootDirIsRocksDBDisk, m.diskReservedSpace)
-	m.addDisk(m.raftDir, false, m.diskReservedSpace)
+	m.addDisk(m.raftDir, false, 0)
 	for _, rocksDir := range m.rocksDirs{
 		m.addDisk(rocksDir, true, m.diskReservedSpace)
 	}

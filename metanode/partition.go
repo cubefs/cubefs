@@ -27,7 +27,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -91,7 +90,13 @@ type MetaPartitionConfig struct {
 	ConnPool           *util.ConnectPool   `json:"-"`
 	StoreMode          proto.StoreMode     `json:"store_mode"`
 	CreationType       int                 `json:"creation_type"`
-	sync.Mutex
+
+	RocksWalFileSize       uint64			   `json:"rocks_wal_file_size"`
+	RocksWalMemSize        uint64			   `json:"rocks_wal_mem_size"`
+	RocksLogFileSize       uint64			   `json:"rocks_log_file_size"`
+	RocksLogReversedTime   uint64			   `json:"rocks_log_reversed"`
+	RocksLogReVersedCnt    uint64			   `json:"rocks_log_re_versed_cnt"`
+	RocksWalTTL            uint64              `json:"rocks_wal_ttl"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -268,7 +273,7 @@ type metaPartition struct {
 	state                       uint32
 	delInodeFp                  *os.File
 	freeList                    *freeList // free inode list
-	extDelCh                    chan []proto.ExtentKey
+	extDelCh                    chan []proto.MetaDelExtentKey
 	extReset                    chan struct{}
 	vol                         *Vol
 	manager                     *metadataManager
@@ -287,6 +292,7 @@ type metaPartition struct {
 	delEKFd                     *os.File
 	inodeDelEkRecordCount       uint64
 	inodeDelEkFd                *os.File
+	CreationType                int
 }
 
 // Start starts a meta partition.
@@ -349,7 +355,8 @@ func (mp *metaPartition) onStart() (err error) {
 			mp.config.PartitionId, err.Error())
 		return
 	}
-	if mp.config.CreationType == proto.DecommissionedCreateMetaPartition {
+
+	if mp.CreationType == proto.DecommissionedCreateMetaPartition {
 		go mp.checkRecoverAfterStart()
 	}
 	mp.startCleanTrashScheduler()
@@ -482,7 +489,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		stopC:          make(chan bool),
 		storeChan:      make(chan *storeMsg, 100),
 		freeList:       newFreeList(),
-		extDelCh:       make(chan []proto.ExtentKey, 10000),
+		extDelCh:       make(chan []proto.MetaDelExtentKey, 10000),
 		extReset:       make(chan struct{}),
 		vol:            NewVol(),
 		manager:        manager,
@@ -490,6 +497,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		marshalVersion: MetaPartitionMarshVersion2,
 		extDelCursor:   make(chan uint64, 1),
 		db:             NewRocksDb(),
+		CreationType:   conf.CreationType,
 	}
 	return mp
 }
@@ -511,7 +519,8 @@ func CreateMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (M
 		mp.cleanRocksDbTreeResource()
 	}
 
-	if err = mp.db.OpenDb(mp.getRocksDbRootDir()); err != nil {
+	if err = mp.db.OpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
+						mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
 		return nil, err
 	}
 
@@ -543,6 +552,7 @@ func LoadMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (Met
 	if err = mp.load(context.Background()); err != nil {
 		return nil, err
 	}
+	mp.CreationType = mp.config.CreationType
 	return mp, nil
 }
 
@@ -827,7 +837,8 @@ func (mp *metaPartition) load(ctx context.Context) (err error) {
 		return
 	}
 
-	if err = mp.db.OpenDb(mp.getRocksDbRootDir()); err != nil {
+	if err = mp.db.OpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
+		mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
 		return
 	}
 
@@ -1431,12 +1442,7 @@ func (mp *metaPartition) checkRecoverAfterStart() {
 				continue
 			}
 
-			mp.config.CreationType = proto.NormalCreateMetaPartition
-			if err = mp.persistMetadata(); err != nil {
-				log.LogErrorf("CheckRecoverAfterStart mp[%v] persist meta data failed:%v", mp.config.PartitionId, err)
-				timer.Reset(time.Second * 5)
-				continue
-			}
+			mp.CreationType = proto.NormalCreateMetaPartition
 			log.LogInfof("CheckRecoverAfterStart mp[%v] recover finish, applyID(leader:%v, current node:%v)",
 				mp.config.PartitionId, applyID, mp.applyID)
 			return

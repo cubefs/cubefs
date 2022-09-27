@@ -1,14 +1,18 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
+	"path"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -54,6 +58,8 @@ const (
 	cmdCheckTinyExtentHoleUse   = "check-tiny-hole"
 	cmdCheckTinyExtentHoleShort = "check tiny extent hole size and available size"
 	cmdCheckExtentReplicaShort  = "check extent replica "
+	cmdExtentDelParse           = "parse"
+	cmdExtentDelParseShort      = "parse meta/data extent del file"
 )
 
 const (
@@ -119,6 +125,7 @@ func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 		newExtentGetCmd(),
 		newExtentRepairCmd(),
 		newExtentCheckByIdCmd(mc),
+		newExtentParseCmd(),
 	)
 	return cmd
 }
@@ -1962,5 +1969,123 @@ func newExtentCheckByIdCmd(mc *sdk.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&partitionID, "pid",  0, "Specify partition id")
 	cmd.Flags().Uint64Var(&extentID, "eid",  0, "Specify extent id")
 
+	return cmd
+}
+
+func parseMetaExtentDelFiles(dir string) {
+	allFiles, _ := ioutil.ReadDir(dir)
+	for _, file := range allFiles {
+		if file.Mode().IsDir() || (!strings.Contains(file.Name(), "deleteExtentList") && !strings.Contains(file.Name(), "inodeDeleteExtentList") ){
+			continue
+		}
+		fmt.Printf("parse file [%s] begin \n", path.Join(dir, file.Name()))
+
+		fp, err := os.Open(path.Join(dir, file.Name()))
+		if err != nil {
+			fmt.Printf("parse file failed, open file [%s] failed:%v\n", path.Join(dir, file.Name()), err)
+			continue
+		}
+
+		buffer, err := io.ReadAll(fp)
+		if err != nil {
+			fmt.Printf("parse file failed, read file [%s] failed:%v\n", path.Join(dir, file.Name()), err)
+			fp.Close()
+			continue
+		}
+		fp.Close()
+		buff := bytes.NewBuffer(buffer)
+		for ; ; {
+			if buff.Len() == 0 {
+				break
+			}
+
+			if buff.Len() < proto.ExtentDbKeyLengthWithIno {
+				fmt.Printf("file parese failed, last ek len:%d < %d\n", buff.Len(), proto.ExtentDbKeyLengthWithIno)
+				break
+			}
+
+			ek := proto.MetaDelExtentKey{}
+			if err := ek.UnmarshalDbKeyByBuffer(buff); err != nil {
+				fmt.Printf("parese failed:%v\n", err)
+				break
+			}
+			fmt.Printf("%v\n", ek.String())
+		}
+		fmt.Printf("parse file [%s] success\n", path.Join(dir, file.Name()))
+	}
+}
+
+
+func parseDataExtentDelFiles(dir string) {
+	allFiles, _ := ioutil.ReadDir(dir)
+	for _, file := range allFiles {
+		if file.Mode().IsDir() || (!strings.Contains(file.Name(), "NORMALEXTENT_DELETE")){
+			continue
+		}
+		fmt.Printf("parse file [%s] begin \n", path.Join(dir, file.Name()))
+
+		fp, err := os.Open(path.Join(dir, file.Name()))
+		if err != nil {
+			fmt.Printf("parse file failed, open file [%s] failed\n", path.Join(dir, file.Name()))
+			continue
+		}
+
+		buffer := make([]byte, 8 * 1024)
+		for ;; {
+			realLen, err := fp.Read(buffer)
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+
+				fmt.Printf("parse file failed, read file [%s] failed\n", path.Join(dir, file.Name()))
+				break
+			}
+
+			for off := 0; off < realLen && off + 8 < realLen; off += 8 {
+				ekID   := binary.BigEndian.Uint64(buffer[off : off + 8])
+				fmt.Printf("ek: %d\n", ekID)
+			}
+
+		}
+		fp.Close()
+		fmt.Printf("parse file [%s] success\n", path.Join(dir, file.Name()))
+	}
+}
+
+func newExtentParseCmd() *cobra.Command {
+	var srcDir string
+	var decoder string
+	var cmd = &cobra.Command{
+		Use:   cmdExtentDelParse,
+		Short: cmdExtentDelParseShort,
+		Args:  cobra.MinimumNArgs(0),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					stdout(err.Error())
+				}
+			}()
+			if decoder != "meta" && decoder != "data" {
+				err = fmt.Errorf("invalid type param :%s", decoder)
+				return
+			}
+
+			if decoder == "meta" {
+				parseMetaExtentDelFiles(srcDir)
+				return
+			}
+
+			if decoder == "data" {
+				parseDataExtentDelFiles(srcDir)
+				return
+			}
+
+			fmt.Printf("parser success")
+		},
+	}
+	cmd.Flags().StringVar(&srcDir, "dir", ".", "src file")
+	cmd.Flags().StringVar(&decoder, "type", "meta", "meta/data")
 	return cmd
 }

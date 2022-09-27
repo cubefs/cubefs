@@ -209,6 +209,16 @@ type ClusterView struct {
 	ClientPkgAddr                       string
 	MetaNodeRocksdbDiskThreshold        float32
 	MetaNodeMemModeRocksdbDiskThreshold float32
+	RocksDBDiskReservedSpace            uint64
+	LogMaxMB                            uint64
+	MetaRockDBWalFileSize               uint64 //MB
+	MetaRocksWalMemSize                 uint64 //MB
+	MetaRocksLogSize                    uint64 //MB
+	MetaRocksLogReservedTime            uint64 //day
+	MetaRocksLogReservedCnt             uint64
+	MetaRocksFlushWalInterval           uint64  //min
+	MetaRocksDisableFlushFlag           uint64  //0 flush, !=0 disable flush
+	MetaRocksWalTTL                     uint64
 }
 
 // NodeView provides the view of the data or meta node.

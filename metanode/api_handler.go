@@ -17,6 +17,7 @@ package metanode
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
@@ -24,6 +25,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"hash/crc32"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -85,6 +87,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/resetPeer", m.resetPeer)
 	http.HandleFunc("/removePeer", m.removePeerInRaftLog)
 	http.HandleFunc("/getAllDeleteExtents", m.getAllDeleteEkHandler)
+	http.HandleFunc("/cleanDeleteExtents", m.cleanDeleteEkHandler)
 
 	http.HandleFunc("/getMetaDataCrcSum", m.getMetaDataCrcSum)
 	http.HandleFunc("/getInodesCrcSum", m.getAllInodesCrcSum)
@@ -105,6 +108,12 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/tryToLeader", m.tryToLeader)
 
 	http.HandleFunc("/pushInodeToFreeList", m.pushInodeToFreeList)
+
+	http.HandleFunc("/getInodeWithMarkDelete", m.getInodeWithMarkDeleteHandler)
+
+	http.HandleFunc("/enableRocksDBSync", m.enableRocksDBSync)
+	http.HandleFunc("/reopenDb", m.reopenRocksDb)
+
 	return
 }
 
@@ -197,6 +206,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusSeeOther, "")
 	shouldSkip := false
+	prefixTable := ExtentDelTable
 	defer func() {
 		if !shouldSkip {
 			data, _ := resp.Marshal()
@@ -217,6 +227,15 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 		resp.Code = http.StatusBadRequest
 		resp.Msg = err.Error()
 		return
+	}
+	version, _ := strconv.ParseUint(r.FormValue("version"), 10, 64)
+	switch version {
+	case 1:
+		prefixTable = ExtentDelTableV1
+		break
+	default:
+		//0 is latest version
+		prefixTable = ExtentDelTable
 	}
 	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
@@ -245,11 +264,23 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 
 	stKey = make([]byte, 1)
 	endKey = make([]byte, 1)
-	stKey[0] = byte(ExtentDelTable)
-	endKey[0] = byte(ExtentDelTable + 1)
+	stKey[0] = byte(prefixTable)
+	endKey[0] = byte(prefixTable + 1)
 	err = mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte)(bool, error) {
 		ek := &proto.ExtentKey{}
-		err = ek.UnmarshalDbKey(k[8:])
+		switch prefixTable {
+		case ExtentDelTableV1:
+			ek.PartitionId = binary.BigEndian.Uint64(k[8:16])
+			ek.ExtentId = binary.BigEndian.Uint64(k[16:24])
+			ek.ExtentOffset = uint64(binary.BigEndian.Uint32(k[24:28]))
+			ek.Size = binary.BigEndian.Uint32(k[28:32])
+		case ExtentDelTable:
+			err = ek.UnmarshalDbKey(k[8:])
+			break
+		default:
+			break
+		}
+
 		if err != nil {
 			return false, err
 		}
@@ -283,6 +314,68 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
 	}
+	return
+}
+
+func (m *MetaNode) cleanDeleteEkHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+			data, _ := resp.Marshal()
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllDeleteEkHandler] response %s", err)
+			}
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	snap :=	mp.(*metaPartition).db.OpenSnap()
+	defer mp.(*metaPartition).db.ReleaseSnap(snap)
+
+	var (
+		stKey	  []byte
+		endKey    []byte
+	)
+
+	stKey = make([]byte, 1)
+	endKey = make([]byte, 1)
+	stKey[0] = byte(ExtentDelTableV1)
+	endKey[0] = byte(ExtentDelTableV1 + 1)
+	delHandle, err := mp.(*metaPartition).db.CreateBatchHandler()
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	err = mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte)(bool, error) {
+		if k[0] != byte(ExtentDelTableV1) {
+			return false, nil
+		}
+		mp.(*metaPartition).db.DelItemToBatch(delHandle, k)
+		return true, nil
+	})
+	if err = mp.(*metaPartition).db.CommitBatchAndRelease(delHandle); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+
 	return
 }
 
@@ -753,7 +846,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 			Path:          disk.Path,
 			TotalTB:       util.FixedPoint(disk.Total/util.TB, 1),
 			UsedGB:        util.FixedPoint(disk.Used/util.GB, 1),
-			UsedRatio:     util.FixedPoint(disk.Used/disk.Total, 1),
+			UsedRatio:     util.FixedPoint(disk.Used/disk.Total, 3),
 			ReservedSpace: disk.ReservedSpace / util.GB,
 			Status:        disk.Status,
 		}
@@ -1143,14 +1236,15 @@ func (m *MetaNode) getAllInodesCrcSum(w http.ResponseWriter, r *http.Request)  {
 
 func (m *MetaNode) cleanExpiredPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
-		err error
-		reservedDays uint64
+		err           error
+		reservedDays  uint64
+		cleanTotalCnt int
 	)
 	resp := NewAPIResponse(http.StatusOK, "OK")
 	defer func() {
 		data, _ := resp.Marshal()
 		if _, err = w.Write(data); err != nil {
-			log.LogErrorf("[getAllInodesCrcSum] response %s", err)
+			log.LogErrorf("[cleanExpiredPartitions] response %s", err)
 		}
 	}()
 
@@ -1164,37 +1258,53 @@ func (m *MetaNode) cleanExpiredPartitions(w http.ResponseWriter, r *http.Request
 		reservedDays = 1
 	}
 
+	if reservedDays <= 0 {
+		reservedDays = 1
+	}
+
 	expiredCheck := (time.Now().Add(- 24 * time.Hour * time.Duration(reservedDays))).Unix()
-	fileInfoList, err := ioutil.ReadDir(m.metadataDir)
-	if err != nil {
-		return
-	}
-	//expired_partition_7320_1634280431
-	cnt := 0
-	for _, fileInfo := range fileInfoList {
-		if !fileInfo.IsDir() {
-			continue
-		}
-		if !strings.HasPrefix(fileInfo.Name(), ExpiredPartitionPrefix) {
-			continue
-		}
-		mpInfo := strings.Split(fileInfo.Name(), "_")
-		if len(mpInfo) == 0 {
-			continue
-		}
-		delTime := int64(0)
-		if delTime, err = strconv.ParseInt(mpInfo[len(mpInfo) - 1], 10, 64); err != nil {
-			continue
-		}
 
-		if delTime > expiredCheck {
+	cleanDirs := []string{m.metadataDir, m.raftDir}
+	cleanFailedDirs := make([]string, 0, len(cleanDirs))
+	for _, cleanDir := range cleanDirs {
+		var fileInfoList []fs.FileInfo
+		fileInfoList, err = ioutil.ReadDir(cleanDir)
+		if err != nil {
+			cleanFailedDirs = append(cleanFailedDirs, cleanDir)
+			log.LogErrorf("[cleanExpiredPartitions] read %s failed:%v", cleanDir, err)
 			continue
 		}
-		cnt++
-		os.RemoveAll(path.Join(m.metadataDir, fileInfo.Name()))
-	}
+		//meta data:expired_partition_7320_1634280431; raft data:expired_25496_1662606658
+		for _, fileInfo := range fileInfoList {
+			if !fileInfo.IsDir() {
+				continue
+			}
+			if !strings.HasPrefix(fileInfo.Name(), ExpiredPartitionPrefix) {
+				continue
+			}
+			mpInfo := strings.Split(fileInfo.Name(), "_")
+			if len(mpInfo) == 0 {
+				continue
+			}
+			delTime := int64(0)
+			if delTime, err = strconv.ParseInt(mpInfo[len(mpInfo) - 1], 10, 64); err != nil {
+				continue
+			}
 
-	resp.Msg = fmt.Sprintf("Success, Delete %d expired partitions", cnt)
+			if delTime > expiredCheck {
+				continue
+			}
+			cleanTotalCnt++
+			os.RemoveAll(path.Join(cleanDir, fileInfo.Name()))
+		}
+	}
+	resp.Data = &struct {
+		FailedDirs    []string `json:"failedDir"`
+		CleanTotalCnt int      `json:"cleanCnt"`
+	}{
+		FailedDirs:    cleanFailedDirs,
+		CleanTotalCnt: cleanTotalCnt,
+	}
 	return
 }
 
@@ -1868,6 +1978,184 @@ func (m *MetaNode) pushInodeToFreeList(w http.ResponseWriter, r *http.Request) {
 
 	for _, inode := range inodes {
 		mp.(*metaPartition).freeList.PushFront(inode)
+	}
+	return
+}
+
+func (m *MetaNode) getInodeWithMarkDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getInodeHandler] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	needEKInfo, _ := strconv.ParseBool(r.FormValue("needEK"))
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	var (
+		delIno    *DeletedINode
+		expired   bool
+		timestamp int64
+	)
+	ino, err :=  mp.(*metaPartition).inodeTree.Get(id)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+
+	delIno, err = mp.(*metaPartition).inodeDeletedTree.Get(id)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+
+	if ino == nil && delIno == nil {
+		resp.Code = http.StatusNotFound
+		return
+	}
+
+	if ino == nil {
+		ino = delIno.buildInode()
+		expired = delIno.IsExpired
+		timestamp = delIno.Timestamp
+	}
+
+
+	ino.RLock()
+	defer ino.RUnlock()
+
+	inodeInfo := &proto.InodeInfoWithEK{
+		Inode:      ino.Inode,
+		Mode:       ino.Type,
+		Nlink:      ino.NLink,
+		Size:       ino.Size,
+		Uid:        ino.Uid,
+		Gid:        ino.Gid,
+		Generation: ino.Generation,
+		ModifyTime: time.Unix(ino.CreateTime, 0),
+		CreateTime: time.Unix(ino.AccessTime, 0),
+		AccessTime: time.Unix(ino.ModifyTime, 0),
+		Flag:       ino.Flag,
+		Timestamp:  timestamp,
+		IsExpired:  expired,
+	}
+
+	if length := len(ino.LinkTarget); length > 0 {
+		inodeInfo.Target = make([]byte, length)
+		copy(inodeInfo.Target, ino.LinkTarget)
+	}
+
+	if needEKInfo {
+		inodeInfo.Extents = make([]proto.ExtentKey, 0, ino.Extents.Len())
+		ino.Extents.Range(func(ek proto.ExtentKey) bool {
+			inodeInfo.Extents = append(inodeInfo.Extents, ek)
+			return true
+		})
+	}
+
+	resp.Code = http.StatusOK
+	resp.Msg = "OK"
+	resp.Data = inodeInfo
+	return
+}
+
+
+func (m *MetaNode)enableRocksDBSync(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+		mp  MetaPartition
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getAllDeletedInodesCrcSum] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	enable, _ := strconv.ParseBool(r.FormValue("enable"))
+	mp.(*metaPartition).db.SyncFlag = enable
+	return
+}
+
+func (m *MetaNode)reopenRocksDb(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+		mp  MetaPartition
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getAllDeletedInodesCrcSum] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	err = mp.(*metaPartition).db.CloseDb()
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = "close db failed " + err.Error()
+		return
+	}
+
+	mConf := mp.GetBaseConfig()
+
+	err = mp.(*metaPartition).db.ReOpenDb(mp.(*metaPartition).getRocksDbRootDir(), mConf.RocksWalFileSize, mConf.RocksWalMemSize,
+		mConf.RocksLogFileSize, mConf.RocksLogReversedTime, mConf.RocksLogReVersedCnt, mConf.RocksWalTTL)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = "reopen db failed " + err.Error()
+		return
 	}
 	return
 }

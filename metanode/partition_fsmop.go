@@ -71,6 +71,54 @@ func (mp *metaPartition) decommissionPartition() (err error) {
 	return
 }
 
+func (mp *metaPartition) fsmConfigHasChanged() bool{
+	needStore := false
+
+	if mp.CreationType != mp.config.CreationType {
+		needStore = true
+		mp.config.CreationType = mp.CreationType
+	}
+
+	globalConfInfo := getGlobalConfNodeInfo()
+
+	if globalConfInfo.rocksWalFileSize != 0 && globalConfInfo.rocksWalFileSize != mp.config.RocksWalFileSize {
+		needStore = true
+		mp.config.RocksWalFileSize = globalConfInfo.rocksWalFileSize
+	}
+
+	if globalConfInfo.rocksWalMemSize != 0 && globalConfInfo.rocksWalMemSize != mp.config.RocksWalMemSize {
+		needStore = true
+		mp.config.RocksWalMemSize = globalConfInfo.rocksWalMemSize
+	}
+
+	if globalConfInfo.rocksLogSize != 0 && globalConfInfo.rocksLogSize != mp.config.RocksLogFileSize {
+		needStore = true
+		mp.config.RocksLogFileSize = globalConfInfo.rocksLogSize
+	}
+
+	if globalConfInfo.rocksLogReservedTime != 0 && globalConfInfo.rocksLogReservedTime != mp.config.RocksLogReversedTime {
+		needStore = true
+		mp.config.RocksLogReversedTime = globalConfInfo.rocksLogReservedTime
+	}
+
+	if globalConfInfo.rocksLogReservedCnt != 0 && globalConfInfo.rocksLogReservedCnt != mp.config.RocksLogReVersedCnt {
+		needStore = true
+		mp.config.RocksLogReVersedCnt = globalConfInfo.rocksLogReservedCnt
+	}
+
+	if globalConfInfo.rocksWalTTL != 0 && globalConfInfo.rocksWalTTL != mp.config.RocksWalTTL {
+		needStore = true
+		mp.config.RocksWalTTL = globalConfInfo.rocksWalTTL
+	}
+	return needStore
+}
+
+func (mp *metaPartition) fsmStoreConfig() {
+	if mp.fsmConfigHasChanged() {
+		_ = mp.PersistMetadata()
+	}
+}
+
 func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 	err error) {
 	status = proto.OpOk
