@@ -550,11 +550,12 @@ file_t *get_open_file(int fd) {
     return f;
 }
 
-ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset) {
+ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset, bool hasRefreshed) {
     int max_count = 3;
     cfs_read_req_t *req = (cfs_read_req_t *)calloc(max_count, sizeof(cfs_read_req_t));
 	int req_count = cfs_read_requests(id, fd, buf, count, offset, req, max_count);
     ssize_t read = 0;
+    bool has_err = false;
     for(int i = 0; i < req_count; i++) {
         if(req[i].size == 0) {
             break;
@@ -566,23 +567,27 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
         }
         packet_t *p = new_read_packet(req[i].partition_id, req[i].extent_id, req[i].extent_offset, (char *)buf + read, req[i].size, req[i].file_offset);
         if(p == NULL) {
+            has_err = true;
             break;
         }
         int sock_fd = get_conn(g_client_info.conn_pool, req[i].dp_host, req[i].dp_port);
         if(sock_fd < 0) {
             free(p);
+            has_err = true;
             break;
         }
         ssize_t re = write_sock(sock_fd, p);
         if(re < 0) {
             free(p);
             close(sock_fd);
+            has_err = true;
             break;
         }
         re = get_read_reply(sock_fd, p);
         free(p);
         if(re < 0) {
             close(sock_fd);
+            has_err = true;
             break;
         }
         #ifdef _CFS_DEBUG
@@ -596,9 +601,9 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
     }
     free(req);
     #ifdef _CFS_DEBUG
-    log_debug("cfs_pread_sock, fd:%d, count:%d, offset:%ld, req_count:%d, read:%d\n", fd, count, offset, req_count, read);
+    log_debug("cfs_pread_sock, fd:%d, count:%d, offset:%ld, req_count:%d, read:%d, has_err:%d\n", fd, count, offset, req_count, read, has_err);
     #endif
-    if(read < count) {
+    if((read < count && !hasRefreshed) || has_err) {
         read = cfs_pread(id, fd, buf, count, offset);
     }
     return read;

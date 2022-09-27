@@ -293,7 +293,8 @@ func (client *ExtentClient) EvictStream(ctx context.Context, inode uint64) error
 func (client *ExtentClient) RefreshExtentsCache(ctx context.Context, inode uint64) error {
 	s := client.GetStreamer(inode)
 	if s == nil {
-		return nil
+		return fmt.Errorf("stream is not opened yet, inode:%v", inode)
+		// return nil
 	}
 	return s.GetExtents(ctx)
 }

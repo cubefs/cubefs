@@ -3209,6 +3209,23 @@ func cfs_read_requests(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t
 	return C.int(len(readRequests))
 }
 
+//export cfs_refresh_eks
+func cfs_refresh_eks(id C.int64_t, ino C.ino_t) C.ssize_t {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return C.ssize_t(statusEINVAL)
+	}
+	err := c.ec.RefreshExtentsCache(nil, uint64(ino))
+	if err != nil {
+		return C.ssize_t(statusEINVAL)
+	}
+	size, _, valid := c.ec.FileSize(uint64(ino))
+	if !valid {
+		return C.ssize_t(statusEBADFD)
+	}
+	return C.ssize_t(size)
+}
+
 func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) (re C.ssize_t) {
 	var (
 		c      *client
