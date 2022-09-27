@@ -29,6 +29,7 @@ import (
 var (
 	ExtentLength      = 40
 	ExtentDbKeyLength = 24
+	ExtentDbKeyLengthWithIno = 32
 	InvalidKey        = errors.New("invalid key error")
 )
 
@@ -152,6 +153,16 @@ func (k *ExtentKey) MarshalBinaryV2() ([]byte, error) {
 	binary.BigEndian.PutUint64(data[24:32], k.ExtentOffset)
 	binary.BigEndian.PutUint32(data[32:36], k.Size)
 	binary.BigEndian.PutUint32(data[36:40], k.CRC)
+	return data, nil
+}
+
+func (k *ExtentKey) MarshalDeleteEKRecord(ino uint64) ([]byte, error) {
+	data := make([]byte, 0, ExtentDbKeyLengthWithIno)
+	binary.BigEndian.PutUint64(data[0:8], ino)
+	binary.BigEndian.PutUint64(data[8:16], k.PartitionId)
+	binary.BigEndian.PutUint64(data[16:24], k.ExtentId)
+	binary.BigEndian.PutUint32(data[24:28], uint32(k.ExtentOffset))
+	binary.BigEndian.PutUint32(data[28:32], k.Size)
 	return data, nil
 }
 

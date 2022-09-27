@@ -70,3 +70,15 @@ func (fl *freeList) Len() int {
 	defer fl.Unlock()
 	return len(fl.index)
 }
+
+func (fl *freeList) PushFront(ino uint64) {
+	fl.Lock()
+	defer fl.Unlock()
+	//remove
+	item, ok := fl.index[ino]
+	if ok {
+		fl.list.Remove(item)
+	}
+	item = fl.list.PushFront(ino)
+	fl.index[ino] = item
+}

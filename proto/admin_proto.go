@@ -212,7 +212,10 @@ const (
 	UserInfoKey     = "_user_info_key"
 )
 
-const TimeFormat = "2006-01-02 15:04:05"
+const (
+	TimeFormat  = "2006-01-02 15:04:05"
+	TimeFormat2 = "20060102150405"
+)
 
 const (
 	ReadOnlyToken  = 1
@@ -671,6 +674,8 @@ type MetaPartitionReport struct {
 	VolName         string
 	InodeCnt        uint64
 	DentryCnt       uint64
+	DelInodeCnt     uint64
+	DelDentryCnt    uint64
 	IsLearner       bool
 	ExistMaxInodeID uint64
 	StoreMode       StoreMode

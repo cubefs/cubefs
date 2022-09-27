@@ -832,8 +832,8 @@ func EvictFileInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 
 	//validate
-	var inode *Inode
-	inode, _ = leader.inodeTree.Get(ino)
+	var inode *DeletedINode
+	inode, _ = leader.inodeDeletedTree.Get(ino)
 	if inode == nil {
 		t.Fatalf("get exist inode failed")
 		return
@@ -848,7 +848,7 @@ func EvictFileInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 		return
 	}
 
-	inode, _ = follower.inodeTree.Get(ino)
+	inode, _ = follower.inodeDeletedTree.Get(ino)
 	if inode == nil {
 		t.Errorf("get exist inode failed")
 		return
@@ -1051,7 +1051,7 @@ func EvictBatchInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 
 	//validate
 	for _, ino := range testIno {
-		inodeInLeader, _ := leader.inodeTree.Get(ino)
+		inodeInLeader, _ := leader.inodeDeletedTree.Get(ino)
 		if inodeInLeader == nil {
 			t.Errorf("get inode is null")
 			return
@@ -1065,7 +1065,7 @@ func EvictBatchInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 			return
 		}
 
-		inodeInFollower, _ := follower.inodeTree.Get(ino)
+		inodeInFollower, _ := follower.inodeDeletedTree.Get(ino)
 		if inodeInFollower == nil {
 			t.Errorf("get inode is null")
 			return

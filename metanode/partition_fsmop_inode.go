@@ -343,6 +343,11 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 	}
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	log.LogInfof("fsm(%v) AppendExtents inode(%v) exts(%v) extDelChLen(%v)", mp.config.PartitionId, existInode.Inode, delExtents, len(mp.extDelCh))
+
+	for i := 0; i < len(delExtents); i++ {
+		delExtents[i].FileOffset = ino.Inode
+	}
+
 	mp.extDelCh <- delExtents
 	return
 }
@@ -398,6 +403,9 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	log.LogInfof("fsm(%v) InsertExtents inode(%v) eks(insert: %v, deleted: %v) size(old: %v, new: %v) extDelChLen(%v)",
 		mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize, len(mp.extDelCh))
+	for i := 0; i < len(delExtents); i++ {
+		delExtents[i].FileOffset = ino.Inode
+	}
 	mp.extDelCh <- delExtents
 	return
 }
@@ -459,6 +467,9 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 	// now we should delete the extent
 	log.LogInfof("fsm(%v) ExtentsTruncate inode(%v) size(old: %v, new: %v, req: %v) delExtents(%v) extDelChLen(%v)",
 		mp.config.PartitionId, i.Inode, oldSize, newSize, ino.Size, delExtents, len(mp.extDelCh))
+	for index := 0; index < len(delExtents); index++ {
+		delExtents[index].FileOffset = ino.Inode
+	}
 	mp.extDelCh <- delExtents
 	return
 }
@@ -482,7 +493,6 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 		return
 	}
 	if i == nil {
-		resp.Status = proto.OpNotExistErr
 		return
 	}
 	if i.ShouldDelete() {
@@ -502,23 +512,14 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 
 	if i.IsTempFile() {
 		i.SetDeleteMark()
-		if trashEnable {
-			st, err = mp.mvToDeletedInodeTree(dbHandle, i, timestamp)
-			if err != nil {
-				log.LogErrorf("fsmEvictInode: failed to move inode to deletedInode tree, inode:%v, status:%v",
-					ino, st)
-				resp.Status = proto.OpErr
-			}
-			log.LogDebugf("fsmEvictInode: inode: %v, status: %v", ino, st)
-			return
-		}
-
-		if err = mp.inodeTree.Update(dbHandle, i); err != nil {
+		st, err = mp.mvToDeletedInodeTree(dbHandle, i, timestamp)
+		if err != nil {
+			log.LogErrorf("fsmEvictInode: failed to move inode to deletedInode tree, inode:%v, status:%v",
+				ino, st)
 			resp.Status = proto.OpErr
-			return
 		}
-		//todo:move to deleted inode tree
-		mp.freeList.Push(i.Inode)
+		log.LogDebugf("fsmEvictInode: inode: %v, status: %v", ino, st)
+		return
 	}
 	return
 }
@@ -595,6 +596,9 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 	var delExtents = newExtents
 	defer func() {
 		if len(delExtents) > 0 {
+			for i := 0; i < len(delExtents); i++ {
+				delExtents[i].FileOffset = inodeId
+			}
 			mp.extDelCh <- delExtents
 			log.LogInfof("fsm(%v) ExtentsMerge inode(%v) delExtents(%v) newExtents(%v) extDelChLen(%v)",
 				mp.config.PartitionId, inodeId, delExtents, newExtents, len(mp.extDelCh))
