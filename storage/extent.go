@@ -315,19 +315,12 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 			offset, size, writeType, err)
 		return
 	}
-	// snapshot append is triggered by raft,need idempotent
-	//else if IsAppendRandomWrite(writeType) && e.snapshotDataOff != uint64(offset) {
-	//	err = NewParameterMismatchErr(fmt.Sprintf("extent current snapshot size = %v write offset=%v write size=%v", e.snapshotDataOff, offset, size))
-	//	log.LogErrorf("action[Extent.Write] NewParameterMismatchErr offset %v size %v writeType %v err %v",
-	//		offset, size, writeType, err)
-	//	return
-	//}
-	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
+
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		log.LogErrorf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
 		return
 	}
-	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
+
 	blockNo := offset / util.BlockSize
 	offsetInBlock := offset % util.BlockSize
 	defer func() {
@@ -339,15 +332,12 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		} else if IsAppendRandomWrite(writeType) {
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 			index := int64(math.Max(float64(e.snapshotDataOff), float64(offset+size)))
-			//if index%PageSize != 0 {
-			//	index = index + (PageSize - index%PageSize)
-			//}
 			e.snapshotDataOff = uint64(index)
 		}
 		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v dataSize %v snapshotDataOff %v",
 			offset, size, writeType, e.dataSize, e.snapshotDataOff)
 	}()
-	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
+
 	if isSync {
 		if err = e.file.Sync(); err != nil {
 			log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v err %v",
@@ -357,23 +347,19 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	}
 	if offsetInBlock == 0 && size == util.BlockSize {
 		err = crcFunc(e, int(blockNo), crc)
-		log.LogDebugf("action[Extent.Write] NewParameterMismatchErr offset %v size %v writeType %v err %v",
-			offset, size, writeType, err)
+		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
 		return
 	}
-	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
+
 	if offsetInBlock+size <= util.BlockSize {
-		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
 		err = crcFunc(e, int(blockNo), 0)
-		log.LogDebugf("action[Extent.Write] NewParameterMismatchErr offset %v size %v writeType %v err %v",
-			offset, size, writeType, err)
+		log.LogDebugf("action[Extent.Write]  offset %v size %v writeType %v err %v", offset, size, writeType, err)
 		return
 	}
 	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
 	if err = crcFunc(e, int(blockNo), 0); err == nil {
 		err = crcFunc(e, int(blockNo+1), 0)
 	}
-	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
 	return
 }
 
@@ -448,10 +434,15 @@ func (e *Extent) Flush() (err error) {
 
 func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
 	var blockCnt int
-	blockCnt = int(e.Size() / util.BlockSize)
-	if e.Size()%util.BlockSize != 0 {
+	extSize := e.Size()
+	if e.snapshotDataOff > util.ExtentSize {
+		extSize = int64(e.snapshotDataOff)
+	}
+	blockCnt = int(extSize / util.BlockSize)
+	if extSize%util.BlockSize != 0 {
 		blockCnt += 1
 	}
+	log.LogDebugf("autoComputeExtentCrc. path %v extent %v extent size %v,blockCnt %v", e.filePath, e.extentID, extSize, blockCnt)
 	crcData := make([]byte, blockCnt*util.PerBlockCrcSize)
 	for blockNo := 0; blockNo < blockCnt; blockNo++ {
 		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
@@ -463,17 +454,20 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 		offset := int64(blockNo * util.BlockSize)
 		readN, err := e.file.ReadAt(bdata[:util.BlockSize], offset)
 		if readN == 0 && err != nil {
+			log.LogErrorf("autoComputeExtentCrc. path %v extent %v blockNo %v, readN %v err %v", e.filePath, e.extentID, blockNo, readN, err)
 			break
 		}
 		blockCrc = crc32.ChecksumIEEE(bdata[:readN])
 		err = crcFunc(e, blockNo, blockCrc)
 		if err != nil {
+			log.LogErrorf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
 			return 0, nil
 		}
+		log.LogDebugf("autoComputeExtentCrc. path %v extent %v blockCrc %v,blockNo %v", e.filePath, e.extentID, blockCrc, blockNo)
 		binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
 	}
 	crc = crc32.ChecksumIEEE(crcData)
-
+	log.LogDebugf("autoComputeExtentCrc. path %v extent %v crc %v", e.filePath, e.extentID, crc)
 	return crc, err
 }
 
