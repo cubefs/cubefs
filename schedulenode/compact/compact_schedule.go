@@ -114,18 +114,18 @@ func (cw *CompactWorker) CreateMpTask(cluster string, vols []*proto.CompactVolum
 			cw.volumeTaskPos[clusterVolumekey] = 0
 		}
 		for i, mp := range mpView {
+			if mp.PartitionID <= cw.volumeTaskPos[clusterVolumekey] {
+				continue
+			}
+			if volumeTaskNum >= DefaultVolumeMaxCompactingMPNums {
+				break
+			}
 			if mp.InodeCount == 0 {
 				if i >= len(mpView)-1 {
 					cw.volumeTaskPos[clusterVolumekey] = 0
 				} else {
 					cw.volumeTaskPos[clusterVolumekey] = mp.PartitionID
 				}
-				continue
-			}
-			if volumeTaskNum >= DefaultVolumeMaxCompactingMPNums {
-				break
-			}
-			if mp.PartitionID <= cw.volumeTaskPos[clusterVolumekey] {
 				continue
 			}
 			newTask := proto.NewDataTask(proto.WorkerTypeCompact, cluster, vol.Name, 0, mp.PartitionID, vol.CompactTag.String())
