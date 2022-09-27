@@ -674,6 +674,8 @@ type MetaPartitionReport struct {
 	VolName         string
 	InodeCnt        uint64
 	DentryCnt       uint64
+	DelInodeCnt     uint64
+	DelDentryCnt    uint64
 	IsLearner       bool
 	ExistMaxInodeID uint64
 	StoreMode       StoreMode

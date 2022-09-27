@@ -71,12 +71,14 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		goto end
 	}
 	m.Range(func(id uint64, partition MetaPartition) bool {
-		var applyID, inodeCnt, dentryCnt uint64
+		var applyID, inodeCnt, dentryCnt, delInodeCnt, delDentryCnt uint64
 		snap := partition.(*metaPartition).GetSnapShot()
 		if snap != nil {
 			applyID = snap.ApplyID()
 			inodeCnt = snap.Count(InodeType)
 			dentryCnt = snap.Count(DentryType)
+			delInodeCnt = snap.Count(DelInodeType)
+			delDentryCnt = snap.Count(DelDentryType)
 			snap.Close()
 		}
 		mConf := partition.GetBaseConfig()
@@ -94,6 +96,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			VolName:         mConf.VolName,
 			InodeCnt:        inodeCnt,
 			DentryCnt:       dentryCnt,
+			DelInodeCnt:     delInodeCnt,
+			DelDentryCnt:    delDentryCnt,
 			IsLearner:       partition.IsLearner(),
 			ExistMaxInodeID: maxIno,
 			StoreMode:       mConf.StoreMode,
