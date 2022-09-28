@@ -1698,6 +1698,11 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 
 	var currentPath = strings.Join(dirs, pathSep) + pathSep
 
+	if log.IsDebugEnabled() {
+		log.LogDebugf("volume[%v] recursive scan [path: %v, prefix: %v, marker: %v, delimiter: %v]",
+			v.name, currentPath, prefix, marker, delimiter)
+	}
+
 	if len(dirs) > 0 && prefix != "" && strings.HasSuffix(currentPath, prefix) {
 		// When the current scanning position is not the root directory, a prefix matching
 		// check is performed on the current directory first.
@@ -1729,8 +1734,18 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	// parallel operations that may delete the current directory.
 	// If got the syscall.ENOENT error when invoke readdir, it means that the above situation has occurred.
 	// At this time, stops process and returns success.
+	var readDirMarker, readDirPrefix string
+	if prefix != "" && strings.HasPrefix(prefix, currentPath) {
+		readDirPrefix = strings.Replace(prefix, currentPath, "", 1)
+	}
+	if marker != "" && strings.HasPrefix(marker, currentPath) {
+		readDirMarker = strings.Replace(marker, currentPath, "", 1)
+	}
+	if readDirMarker == "" && readDirPrefix != "" {
+		readDirMarker = readDirPrefix
+	}
 	var children []proto.Dentry
-	children, err = v.mw.ReadDir_ll(context.Background(), parentId)
+	children, err = v.mw.ReadDir_wo(parentId, readDirPrefix, readDirMarker, maxKeys*2)
 	if err != nil && err != syscall.ENOENT {
 		return fileInfos, prefixMap, "", 0, err
 	}

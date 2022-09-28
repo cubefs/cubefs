@@ -562,7 +562,24 @@ func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) ([]proto
 		return nil, syscall.ENOENT
 	}
 
-	status, children, err := mw.readdir(ctx, parentMP, parentID)
+	status, children, err := mw.readdir(ctx, parentMP, parentID, "", "", 0)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+	return children, nil
+}
+
+// ReadDir_wo means execute read dir with options.
+func (mw *MetaWrapper) ReadDir_wo(parentID uint64, prefix, marker string, count uint64) ([]proto.Dentry, error) {
+	if mw.volNotExists {
+		return nil, proto.ErrVolNotExists
+	}
+	parentMP := mw.getPartitionByInode(context.Background(), parentID)
+	if parentMP == nil {
+		return nil, syscall.ENOENT
+	}
+
+	status, children, err := mw.readdir(context.Background(), parentMP, parentID, prefix, marker, count)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}

@@ -18,6 +18,8 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -498,20 +500,21 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 	}
 }
 
-func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
+func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID uint64, prefix, marker string, count uint64) (status int, children []proto.Dentry, err error) {
 
-	marker := ""
 	children = make([]proto.Dentry, 0)
 
 	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, "OpMetaReadDir"))
 	defer ump.AfterTP(tpObject, err)
+
+	var stepMarker = marker
 
 	for {
 		req := &proto.ReadDirRequest{
 			VolName:     mw.volname,
 			PartitionID: mp.PartitionID,
 			ParentID:    parentID,
-			Marker:      marker,
+			Marker:      stepMarker,
 			IsBatch:     true,
 		}
 		packet := proto.NewPacketReqID(ctx)
@@ -532,7 +535,7 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 			log.LogWarnf("readdir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 			newMp := mw.getRefreshMp(ctx, parentID)
 			if newMp != nil && newMp.PartitionID != mp.PartitionID {
-				return mw.readdir(ctx, newMp, parentID)
+				return mw.readdir(ctx, newMp, parentID, prefix, marker, count)
 			}
 		}
 		if status != statusOK {
@@ -545,12 +548,38 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 			log.LogWarnf("readdir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 			return
 		}
-		log.LogDebugf("readdir: packet(%v) mp(%v) req(%v) current dentry count(%v)", packet, mp, *req, len(resp.Children))
-		children = append(children, resp.Children...)
-		if resp.NextMarker == "" {
+
+		if log.IsDebugEnabled() {
+			log.LogDebugf("readdir: packet(%v) mp(%v) req(%v) current dentry count(%v)", packet, mp, *req, len(resp.Children))
+		}
+
+		var (
+			validResultUpperIndex = uint64(len(resp.Children)) // 有效结果边界, 有效结果满足结果数量总数(count)和前缀约束(prefix).
+			noNeedToGetMoreResult bool                         // 是否无需继续向MetaNode请求更多数据.
+		)
+		if prefix != "" && len(resp.Children) > 0 && !strings.HasPrefix(resp.Children[len(resp.Children)-1].Name, prefix) {
+			// 若指定了前缀, 由于MetaNode返回的结果遵循字节序排序, 若结果集尾端不满足前缀, 则说明后续结果均不会满足前缀约束.
+			// 无需再和MetaNode请求后续数据, noNeedToGetMoreResult置为true.
+			// 接下来只需要通过二分确定结果集中满足前缀约束的结果的边界即可.
+			if lasti := sort.Search(len(resp.Children), func(i int) bool {
+				return !strings.HasPrefix(resp.Children[i].Name, prefix)
+			}); lasti >= 0 && lasti < len(resp.Children) {
+				validResultUpperIndex = uint64(lasti)
+			}
+			noNeedToGetMoreResult = true
+		}
+		if count > 0 && count-uint64(len(children)) < validResultUpperIndex+1 {
+			validResultUpperIndex = count - uint64(len(children))
+		}
+		children = append(children, resp.Children[:validResultUpperIndex]...)
+		if resp.NextMarker == "" || (count > 0 && uint64(len(children)) >= count) || noNeedToGetMoreResult {
+			// 满足以下条件之一则无需再向MetaNode请求更多数据.
+			// resp.NextMarker == "" : MetaNode已经没有更多数据.
+			// count > 0 && uint64(len(children)) >= count : 目前已有结果集结果总条数达到(count)条数限制要求.
+			// noNeedToGetMoreResult = true : 经过前缀约束检查确定接下来继续向MetaNode请求数据不会再得到符合前缀(prefix)约束要求的结果.
 			break
 		}
-		marker = resp.NextMarker
+		stepMarker = resp.NextMarker
 	}
 	return statusOK, children, nil
 }
@@ -1442,7 +1471,7 @@ func (mw *MetaWrapper) getCmpInodes(ctx context.Context, mp *MetaPartition, ino 
 
 	req := &proto.GetCmpInodesRequest{
 		PartitionId:  mp.PartitionID,
-		ParallelCnt: uint32(cnt),
+		ParallelCnt:  uint32(cnt),
 		Inodes:       ino,
 		MinEkLen:     minEkLen,
 		MinInodeSize: minInodeSize,
