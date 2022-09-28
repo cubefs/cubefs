@@ -92,6 +92,8 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					}
 				}
 
+				log.LogInfof("action[interceptor] request, remote[%v] method[%v] path[%v] query[%v]",
+					r.RemoteAddr, r.Method, r.URL.Path, r.URL.Query())
 				if mux.CurrentRoute(r).GetName() == proto.AdminGetIP {
 					next.ServeHTTP(w, r)
 					return
