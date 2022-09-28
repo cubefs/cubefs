@@ -445,6 +445,7 @@ func TestAccessStreamGenLocationBlobs(t *testing.T) {
 
 	loc := access.Location{
 		ClusterID: 0,
+		CodeMode:  codemode.EC6P6,
 		Size:      1024*4 + 37 + 1024*2, // 5 fine blobs and 2 missing blobs
 		BlobSize:  1024,
 		Blobs: []access.SliceInfo{

@@ -152,7 +152,7 @@ type blobIdent struct {
 }
 
 func (id *blobIdent) String() string {
-	return fmt.Sprintf("blob(%d %d %d)", id.cid, id.vid, id.bid)
+	return fmt.Sprintf("blob(cid:%d vid:%d bid:%d)", id.cid, id.vid, id.bid)
 }
 
 // Handler stream handler

@@ -354,7 +354,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				goto RETRY
 			}
 			if writeErr != nil {
-				span.Warnf("write %s on blobnode(%d %d %s) ecidx(%02d): %s",
+				span.Warnf("write %s on blobnode(vuid:%d disk:%d host:%s) ecidx(%02d): %s",
 					blob.String(), args.Vuid, args.DiskID, hostInfo.Host, index, errors.Detail(writeErr))
 				return
 			}
