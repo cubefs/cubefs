@@ -55,10 +55,11 @@ type LevelConfig map[string]ParaConfig
 func (t *Threshold) reset(level string, c Config) {
 	t.Lock()
 	para := c.LevelConfigs[level]
+	para.Bandwidth *= humanize.MiByte
+	c.DiskBandwidthMBPS *= humanize.MiByte
 	t.ParaConfig = para
 	t.DiskIOPS = c.DiskIOPS
-	t.Bandwidth = t.Bandwidth * humanize.MiByte
-	t.DiskBandwidth = c.DiskBandwidthMBPS * humanize.MiByte
+	t.DiskBandwidth = c.DiskBandwidthMBPS
 	t.Unlock()
 }
 

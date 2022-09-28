@@ -55,6 +55,11 @@ func (c *client) Stat(ctx context.Context, host string) (dis []*DiskInfo, err er
 	return
 }
 
+type ConfigReloadArgs struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 type DiskStatArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 }

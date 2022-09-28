@@ -41,7 +41,7 @@ const (
 	DefaultCompactMinSizeThreshold      = 16 * (1 << 30)  // 16 GiB
 	DefaultCompactTriggerThreshold      = 1 * (1 << 40)   // 1 TiB
 	DefaultMetricReportIntervalS        = 30              // 30 Sec
-	DefaultDecodeBufSize                = 64 * 1024       // 64k
+	DefaultBlockBufferSize              = 64 * 1024       // 64k
 	DefaultCompactEmptyRateThreshold    = float64(0.8)    // 80% rate
 )
 
@@ -75,10 +75,10 @@ type RuntimeConfig struct {
 	MustMountPoint               bool    `json:"must_mount_point"`
 	IOStatFileDryRun             bool    `json:"iostat_file_dryrun"`
 	MetricReportIntervalS        int64   `json:"metric_report_interval_S"`
-	DecodeBufSize                int64   `json:"decode_buf_size"`
+	BlockBufferSize              int64   `json:"block_buffer_size"`
 	EnableDataInspect            bool    `json:"enable_data_inspect"`
 
-	DiskQos qos.Config `json:"data_qos"`
+	DataQos qos.Config `json:"data_qos"`
 }
 
 type HostInfo struct {
@@ -164,8 +164,8 @@ func InitConfig(conf *Config) error {
 		conf.MetricReportIntervalS = DefaultMetricReportIntervalS
 	}
 
-	if conf.DecodeBufSize <= 0 {
-		conf.DecodeBufSize = DefaultDecodeBufSize
+	if conf.BlockBufferSize <= 0 {
+		conf.BlockBufferSize = DefaultBlockBufferSize
 	}
 
 	return nil

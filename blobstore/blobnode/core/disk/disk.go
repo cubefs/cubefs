@@ -78,7 +78,7 @@ type DiskStorage struct {
 	// stats
 	stats atomic.Value // *core.DiskStats
 
-	// DiskQos (include io visualization function)
+	// DataQos (include io visualization function)
 	dataQos qos.Qos
 
 	// status
@@ -478,10 +478,10 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	diskView := flow.NewDiskViewer(dataios)
 
 	// init Qos Manager
-	conf.DiskQos.DiskViewer = diskView
-	conf.DiskQos.StatGetter = dataios
+	conf.DataQos.DiskViewer = diskView
+	conf.DataQos.StatGetter = dataios
 
-	dataQos, err := qos.NewQosManager(conf.DiskQos)
+	dataQos, err := qos.NewQosManager(conf.DataQos)
 	if err != nil {
 		span.Errorf("Failed new io qos, err:%v", err)
 		return nil, err

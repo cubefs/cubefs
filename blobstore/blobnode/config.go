@@ -16,14 +16,19 @@ package blobnode
 
 import (
 	"context"
+	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
+	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/priority"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/cmd"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -31,7 +36,7 @@ import (
 
 const (
 	DefaultHeartbeatIntervalSec        = 30           // 30 s
-	DefaultChunkReportIntervalSec      = 1*60 - 3     // 1 min
+	DefaultChunkReportIntervalSec      = 60           // 1 min
 	DefaultCleanExpiredStatIntervalSec = 60 * 60      // 60 min
 	DefaultChunkGcIntervalSec          = 30 * 60      // 30 min
 	DefaultChunkInspectIntervalSec     = 2 * 60 * 60  // 2 hour
@@ -45,6 +50,8 @@ const (
 )
 
 var (
+	ErrNotSupportKey     = errors.New("not support this key")
+	ErrValueType         = errors.New("value type not match this key")
 	ErrNotConfigPrevious = errors.New("level previously not config")
 	ErrNotConfigNow      = errors.New("level not config now")
 )
@@ -135,31 +142,117 @@ func (s *Service) changeLimit(ctx context.Context, c Config) {
 
 func (s *Service) changeQos(ctx context.Context, c Config) error {
 	span := trace.SpanFromContextSafe(ctx)
-	disks := s.copyDiskStorages(ctx)
-	qosConfig := c.DiskConfig.DiskQos
-	span.Infof("qos config:%v", qosConfig)
-	for k, v := range qosConfig.LevelConfigs {
+	qosConf := c.DiskConfig.DataQos
+	span.Infof("qos config:%v", qosConf)
+	for k, v := range qosConf.LevelConfigs {
 		para, err := qos.InitAndFixParaConfig(v)
 		if err != nil {
 			return err
 		}
-		qosConfig.LevelConfigs[k] = para
+		qosConf.LevelConfigs[k] = para
 	}
+	return s.reloadQos(ctx, qosConf)
+}
+
+// key:disk_bandwidth_MBPS,disk_iops,level0.bandwidth_MBPS,level1.iops ...
+func (s *Service) configReload(c *rpc.Context) {
+	args := new(bnapi.ConfigReloadArgs)
+	err := c.ParseArgs(args)
+	if err != nil {
+		c.RespondError(err)
+		return
+	}
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	span.Infof("config reload args:%v", args)
+
+	levelKeys := strings.Split(args.Key, ".")
+	switch len(levelKeys) {
+	case 1:
+		err := s.reloadDiskConf(ctx, args)
+		if err != nil {
+			c.RespondWith(http.StatusBadRequest, "", []byte(err.Error()))
+			return
+		}
+	case 2:
+		err := s.reloadLevelConf(ctx, args)
+		if err != nil {
+			c.RespondWith(http.StatusBadRequest, "", []byte(err.Error()))
+			return
+		}
+	default:
+		c.RespondWith(http.StatusBadRequest, "", []byte(ErrNotSupportKey.Error()))
+		return
+	}
+}
+
+func (s *Service) reloadQos(ctx context.Context, qosConf qos.Config) error {
+	disks := s.copyDiskStorages(ctx)
 	priLevels := priority.GetLevels()
 	for pri, name := range priLevels {
 		for _, ds := range disks {
 			levelQos := ds.GetIoQos().GetIOQosIns().LevelMgr.GetLevel(priority.Priority(pri))
 			if levelQos == nil {
-				if _, ok := qosConfig.LevelConfigs[name]; ok {
+				if _, ok := qosConf.LevelConfigs[name]; ok {
 					return ErrNotConfigPrevious
 				}
 				break
 			}
-			if _, ok := qosConfig.LevelConfigs[name]; !ok {
+			if _, ok := qosConf.LevelConfigs[name]; !ok {
 				return ErrNotConfigNow
 			}
-			levelQos.GetLevelQosIns().ChangeLevelQos(name, qosConfig)
+			levelQos.GetLevelQosIns().ChangeLevelQos(name, qosConf)
 		}
 	}
 	return nil
+}
+
+func (s *Service) reloadDiskConf(ctx context.Context, args *bnapi.ConfigReloadArgs) (err error) {
+	qosConf := s.Conf.DiskConfig.DataQos
+	value, err := strconv.ParseInt(args.Value, 10, 64)
+	if err != nil {
+		return ErrValueType
+	}
+	switch args.Key {
+	case "disk_bandwidth_MBPS":
+		qosConf.DiskBandwidthMBPS = value
+	case "disk_iops":
+		qosConf.DiskIOPS = value
+	default:
+		return ErrNotSupportKey
+	}
+	return s.reloadQos(ctx, qosConf)
+}
+
+func (s *Service) reloadLevelConf(ctx context.Context, args *bnapi.ConfigReloadArgs) (err error) {
+	var value int64
+	qosConf := s.Conf.DiskConfig.DataQos
+	levelKeys := strings.Split(args.Key, ".")
+	levelName, item := levelKeys[0], levelKeys[1]
+	if _, ok := qosConf.LevelConfigs[levelName]; !ok {
+		return ErrNotConfigPrevious
+	}
+	paraConf := qosConf.LevelConfigs[levelName]
+	if args.Key != "factor" {
+		value, err = strconv.ParseInt(args.Value, 10, 64)
+		if err != nil {
+			return ErrValueType
+		}
+	}
+	switch item {
+	case "bandwidth_MBPS":
+		paraConf.Bandwidth = value
+	case "iops":
+		paraConf.Iops = value
+	case "factor":
+		factor, err := strconv.ParseFloat(args.Value, 64)
+		if err != nil {
+			return ErrValueType
+		}
+		paraConf.Factor = factor
+	default:
+		return ErrNotSupportKey
+	}
+	qosConf.LevelConfigs[levelName] = paraConf
+	return s.reloadQos(ctx, qosConf)
 }

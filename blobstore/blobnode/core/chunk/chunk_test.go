@@ -109,6 +109,7 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	conf := &core.Config{
 		RuntimeConfig: core.RuntimeConfig{
 			MetricReportIntervalS: 30,
+			BlockBufferSize:       64 * 1024,
 		},
 	}
 
@@ -346,6 +347,7 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 	conf := &core.Config{
 		RuntimeConfig: core.RuntimeConfig{
 			MetricReportIntervalS: 30,
+			BlockBufferSize:       64 * 1024,
 		},
 	}
 

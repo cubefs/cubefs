@@ -104,8 +104,10 @@ func TestChunkData_Write(t *testing.T) {
 	log.Info(chunkname)
 
 	diskConfig := &core.Config{
-		BaseConfig:    core.BaseConfig{Path: testDir},
-		RuntimeConfig: core.RuntimeConfig{},
+		BaseConfig: core.BaseConfig{Path: testDir},
+		RuntimeConfig: core.RuntimeConfig{
+			BlockBufferSize: 64 * 1024,
+		},
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
@@ -151,7 +153,7 @@ func TestChunkData_Write(t *testing.T) {
 
 	expectedOff := core.AlignSize(
 		shard.Offset+core.GetShardHeaderSize()+core.GetShardFooterSize()+crc32block.EncodeSize(int64(shard.Size), core.CrcBlockUnitSize),
-		_pagesize)
+		_pageSize)
 
 	require.Equal(t, expectedOff, cd.wOff)
 }
@@ -170,7 +172,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 
 	diskConfig := &core.Config{
 		BaseConfig:    core.BaseConfig{Path: testDir},
-		RuntimeConfig: core.RuntimeConfig{},
+		RuntimeConfig: core.RuntimeConfig{BlockBufferSize: 64 * 1024},
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
@@ -228,7 +230,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 
 	for i := 0; i < concurrency; i++ {
 		log.Infof("shard[%d] offset:%d", i, shards[i].Offset)
-		require.True(t, shards[i].Offset%_pagesize == 0)
+		require.True(t, shards[i].Offset%_pageSize == 0)
 	}
 
 	log.Infof("chunkdata: \n%s", cd)
@@ -251,7 +253,7 @@ func TestChunkData_Delete(t *testing.T) {
 
 	diskConfig := &core.Config{
 		BaseConfig:    core.BaseConfig{Path: testDir},
-		RuntimeConfig: core.RuntimeConfig{},
+		RuntimeConfig: core.RuntimeConfig{BlockBufferSize: 64 * 1024},
 	}
 	ioQos, _ := qos.NewQosManager(qos.Config{})
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos)
@@ -311,7 +313,7 @@ func TestChunkData_Delete(t *testing.T) {
 
 	for i := 0; i < concurrency; i++ {
 		log.Infof("shard[%d] offset:%d", i, shards[i].Offset)
-		require.True(t, shards[i].Offset%_pagesize == 0)
+		require.True(t, shards[i].Offset%_pageSize == 0)
 	}
 
 	log.Infof("chunkdata: \n%s", cd)

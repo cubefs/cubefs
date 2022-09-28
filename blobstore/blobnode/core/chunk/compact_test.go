@@ -163,6 +163,7 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 			MetricReportIntervalS: 30,
 			CompactBatchSize:      core.DefaultCompactBatchSize,
 			NeedCompactCheck:      true,
+			BlockBufferSize:       64 * 1024,
 		},
 	}
 	ioQos, _ := qos.NewQosManager(qos.Config{})
