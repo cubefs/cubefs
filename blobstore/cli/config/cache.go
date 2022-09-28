@@ -89,12 +89,12 @@ func ClusterMgrClusters() (clusters map[string][]string) {
 }
 func ClusterMgrSecret() string { return Get("Key-ClusterMgrSecret").(string) }
 
-func AccessConnMode() uint8          { return Get("Key-Access-ConnMode").(uint8) }
-func AccessConsulAddr() string       { return Get("Key-Access-ConsulAddr").(string) }
-func AccessServiceIntervalMs() int64 { return Get("Key-Access-ServiceIntervalMs").(int64) }
-func AccessPriorityAddrs() []string  { return Get("Key-Access-PriorityAddrs").([]string) }
-func AccessMaxSizePutOnce() int64    { return Get("Key-Access-MaxSizePutOnce").(int64) }
-func AccessMaxPartRetry() int        { return Get("Key-Access-MaxPartRetry").(int) }
+func AccessConnMode() uint8         { return Get("Key-Access-ConnMode").(uint8) }
+func AccessConsulAddr() string      { return Get("Key-Access-ConsulAddr").(string) }
+func AccessServiceIntervalS() int   { return Get("Key-Access-ServiceIntervalS").(int) }
+func AccessPriorityAddrs() []string { return Get("Key-Access-PriorityAddrs").([]string) }
+func AccessMaxSizePutOnce() int64   { return Get("Key-Access-MaxSizePutOnce").(int64) }
+func AccessMaxPartRetry() int       { return Get("Key-Access-MaxPartRetry").(int) }
 
 func AccessMaxHostRetry() int       { return Get("Key-Access-MaxHostRetry").(int) }
 func AccessFailRetryIntervalS() int { return Get("Key-Access-FailRetryIntervalS").(int) }

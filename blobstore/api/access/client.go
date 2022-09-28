@@ -40,12 +40,12 @@ import (
 )
 
 const (
-	defaultMaxSizePutOnce    int64 = 1 << 28 // 256MB
-	defaultMaxPartRetry      int   = 3
-	defaultMaxHostRetry      int   = 3
-	defaultPartConcurrence   int   = 4
-	defaultServiceIntervalMs int64 = 5000
-	defaultServiceName             = "access"
+	defaultMaxSizePutOnce  int64 = 1 << 28 // 256MB
+	defaultMaxPartRetry    int   = 3
+	defaultMaxHostRetry    int   = 3
+	defaultPartConcurrence int   = 4
+	defaultServiceInterval int   = 3600 // one hour.
+	defaultServiceName           = "access"
 )
 
 // RPCConnectMode self-defined rpc client connection config setting
@@ -153,8 +153,8 @@ type Config struct {
 
 	// Consul is consul config for discovering service
 	Consul ConsulConfig
-	// ServiceIntervalMs is interval ms for discovering service
-	ServiceIntervalMs int64
+	// ServiceIntervalS is interval seconds for discovering service
+	ServiceIntervalS int
 	// PriorityAddrs priority addrs of access service when retry
 	PriorityAddrs []string
 	// MaxSizePutOnce max size using once-put object interface
@@ -250,8 +250,8 @@ func New(cfg Config) (API, error) {
 	defaulter.Less(&cfg.MaxPartRetry, defaultMaxPartRetry)
 	defaulter.LessOrEqual(&cfg.MaxHostRetry, defaultMaxHostRetry)
 	defaulter.LessOrEqual(&cfg.PartConcurrence, defaultPartConcurrence)
-	if cfg.ServiceIntervalMs < 500 {
-		cfg.ServiceIntervalMs = defaultServiceIntervalMs
+	if cfg.ServiceIntervalS < 300 { // at least 5 minutes
+		cfg.ServiceIntervalS = defaultServiceInterval
 	}
 
 	log.SetOutputLevel(cfg.LogLevel)
@@ -320,7 +320,7 @@ func New(cfg Config) (API, error) {
 	}
 	c.rpcClient.Store(getClient(&cfg, hosts))
 
-	ticker := time.NewTicker(time.Duration(cfg.ServiceIntervalMs) * time.Millisecond)
+	ticker := time.NewTicker(time.Duration(cfg.ServiceIntervalS) * time.Second)
 	go func() {
 		for {
 			old := hosts

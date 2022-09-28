@@ -43,7 +43,7 @@ type Config struct {
 	Access struct { // see more in api/access/client.go
 		ConnMode           uint8    `json:"conn_mode" cache:"Key-Access-ConnMode" help:"connection mode, 4 means no timeout"`
 		ConsulAddr         string   `json:"consul_addr" cache:"Key-Access-ConsulAddr" help:"consul address"`
-		ServiceIntervalMs  int64    `json:"service_interval_ms" cache:"Key-Access-ServiceIntervalMs" help:"service interval ms"`
+		ServiceIntervalS   int      `json:"service_interval_s" cache:"Key-Access-ServiceIntervalS" help:"service interval second"`
 		PriorityAddrs      []string `json:"priority_addrs" cache:"Key-Access-PriorityAddrs" help:"priority addresses to try"`
 		MaxSizePutOnce     int64    `json:"max_size_put_once" cache:"Key-Access-MaxSizePutOnce" help:"max size put once"`
 		MaxPartRetry       int      `json:"max_part_retry" cache:"Key-Access-MaxPartRetry" help:"max times to retry part"`
