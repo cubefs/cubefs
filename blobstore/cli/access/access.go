@@ -37,7 +37,7 @@ func newAccessClient() (access.API, error) {
 		MaxPartRetry:   config.AccessMaxPartRetry(),
 		MaxHostRetry:   config.AccessMaxHostRetry(),
 
-		ServiceIntervalMs: config.AccessServiceIntervalMs(),
+		ServiceIntervalS: config.AccessServiceIntervalS(),
 
 		HostTryTimes:       config.AccessHostTryTimes(),
 		FailRetryIntervalS: config.AccessFailRetryIntervalS(),
