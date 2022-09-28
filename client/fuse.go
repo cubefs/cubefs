@@ -322,7 +322,8 @@ func main() {
 	stat.ClearStat()
 
 	if opt.EnableAudit {
-		_, err = auditlog.InitAudit(opt.Logpath, LoggerPrefix, int64(auditlog.DefaultAuditLogSize))
+		_, err = auditlog.InitAuditWithPrefix(opt.Logpath, LoggerPrefix, int64(auditlog.DefaultAuditLogSize),
+			auditlog.NewAuditPrefix(opt.Master, opt.Volname, opt.SubDir, opt.MountPoint))
 		if err != nil {
 			err = errors.NewErrorf("Init audit log fail: %v\n", err)
 			fmt.Println(err)
