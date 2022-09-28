@@ -25,7 +25,7 @@ const (
 	Audit_Module           = "audit"
 	FileNameDateFormat     = "20060102150405"
 	ShiftedExtension       = ".old"
-	DefaultAuditLogBufSize = 4096
+	DefaultAuditLogBufSize = 0
 
 	F_OK                 = 0
 	DefaultCleanInterval = 1 * time.Hour
@@ -68,6 +68,24 @@ func (f ShiftedFile) Swap(i, j int) {
 //	timeOut   [MaxTimeoutLevel]uint32
 //}
 
+type AuditPrefix struct {
+	prefixes []string
+}
+
+func NewAuditPrefix(p ...string) *AuditPrefix {
+	return &AuditPrefix{
+		prefixes: p,
+	}
+}
+
+func (a *AuditPrefix) String() string {
+	ap := ""
+	for _, p := range a.prefixes {
+		ap = ap + p + ", "
+	}
+	return ap
+}
+
 type Audit struct {
 	volName          string
 	hostName         string
@@ -79,16 +97,11 @@ type Audit struct {
 	logFile          *os.File
 	writer           *bufio.Writer
 	writerBufSize    int
+	prefix           *AuditPrefix
 	bufferC          chan string
 	stopC            chan struct{}
 	resetWriterBuffC chan int
 	pid              int
-	//lastClearTime time.Time
-	//timeOutUs [MaxTimeoutLevel]uint32
-	//typeInfoMap   map[string]*typeInfo
-	//closeAudit bool
-	//useMutex   bool
-	//sync.Mutex
 }
 
 var gAdt *Audit = nil
@@ -246,6 +259,16 @@ func GetAuditLogInfo() (err error, dir, logModule string, logMaxSize int64) {
 	}
 }
 
+func InitAuditWithPrefix(dir, logModule string, logMaxSize int64, prefix *AuditPrefix) (a *Audit, err error) {
+	a, err = InitAudit(dir, logModule, logMaxSize)
+	if err != nil {
+		return nil, err
+	}
+
+	a.prefix = prefix
+	return a, nil
+}
+
 func InitAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 	AdtMutex.Lock()
 	defer AdtMutex.Unlock()
@@ -279,6 +302,7 @@ func InitAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 		logFileName:      logName,
 		writerBufSize:    DefaultAuditLogBufSize,
 		bufferC:          make(chan string, 1000),
+		prefix:           nil,
 		stopC:            make(chan struct{}),
 		resetWriterBuffC: make(chan int),
 		pid:              os.Getpid(),
@@ -322,6 +346,9 @@ func formatAuditEntry(op, src, dst string, err error, latency int64, srcInode, d
 
 func FormatLog(op, src, dst string, err error, latency int64, srcInode, dstInode uint64) {
 	if entry := formatAuditEntry(op, src, dst, err, latency, srcInode, dstInode); entry != "" {
+		if gAdt.prefix != nil {
+			entry = fmt.Sprintf("%s%s", gAdt.prefix.String(), entry)
+		}
 		AddLog(entry)
 	}
 
