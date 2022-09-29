@@ -394,7 +394,7 @@ func (verMgr *VolVersionManager) createTask(cluster *Cluster, verSeq uint64, op 
 }
 
 func (verMgr *VolVersionManager) initVer2PhaseTask(verSeq uint64, op uint8) (verRsp *proto.VolVersionInfo, err error, opRes uint8) {
-	log.LogWarnf("action[VolVersionManager.initVer2PhaseTask] verMgr.status %v op %v", verMgr.status, op)
+	log.LogWarnf("action[VolVersionManager.initVer2PhaseTask] verMgr.status %v op %v verSeq %v", verMgr.status, op, verSeq)
 	if op == proto.CreateVersion {
 		if err = verMgr.GenerateVer(verSeq, op); err != nil {
 			log.LogInfof("action[VolVersionManager.initVer2PhaseTask] exit")
