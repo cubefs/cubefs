@@ -284,6 +284,7 @@ func (cw *CompactWorker) addInode(w http.ResponseWriter, r *http.Request) {
 		authKey := CalcAuthKey(volInfo.Owner)
 		if _, err = mc.AdminAPI().SetCompact(volumeName, volInfo.CompactTag, authKey); err != nil {
 			log.LogErrorf("addInode SetCompact cluster(%v) volName(%v) err(%v)", clusterName, volumeName, err)
+			msg = fmt.Sprintf("err:%v, current compactTag:%v", err.Error(), volInfo.CompactTag)
 			sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 			return
 		}
