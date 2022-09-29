@@ -140,24 +140,33 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 		done := false
 
 		for !done {
-			log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll parent %v verSeq %v", dentry.Inode, s.getTaskVerSeq())
 			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq())
 			if err != nil && err != syscall.ENOENT {
-				log.LogErrorf("action[handlVerDelDepthFirst] parent %v verSeq %v err %v", dentry.Inode, s.getTaskVerSeq(), err)
+				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
+					dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), err)
 				return
 			}
+			log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimitByVer parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
+				dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), len(children))
 
 			if err == syscall.ENOENT {
 				done = true
+				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
+					dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), marker, err)
 				break
 			}
 
 			if marker != "" {
 				if len(children) <= 1 {
 					done = true
+					log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll done, parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
+						dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), children)
 					break
 				} else {
+					skippedChild := children[0]
 					children = children[1:]
+					log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll skip last marker[%v], parent[%v] verSeq[%v] skippedName[%v]",
+						marker, dentry.Inode, s.getTaskVerSeq(), skippedChild.Name)
 				}
 			}
 
@@ -184,11 +193,11 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 			//for _, file := range scanDentries {
 			for _, file := range files {
 				if ino, err = s.mw.Delete_Ver_ll(file.ParentId, file.Name, false, s.getTaskVerSeq()); err != nil {
-					log.LogErrorf("action[handlVerDelDepthFirst] parent %v Delete_ll_EX child name %v verSeq %v err %v",
+					log.LogErrorf("action[handlVerDelDepthFirst] Delete_Ver_ll failed, file(parent[%v] child name[%v]) verSeq[%v] err[%v]",
 						file.ParentId, file.Name, s.getTaskVerSeq(), err)
 					atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 				} else {
-					log.LogDebugf("action[handlVerDelDepthFirst] parent %v Delete_ll_EX child name %v verSeq %v ino %v success",
+					log.LogDebugf("action[handlVerDelDepthFirst] Delete_Ver_ll success, file(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
 						file.ParentId, file.Name, s.getTaskVerSeq(), ino)
 					atomic.AddInt64(&s.currentStat.FileNum, 1)
 					atomic.AddInt64(&s.currentStat.TotalInodeNum, 1)
@@ -202,21 +211,25 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 
 			childrenNr := len(children)
 			if (marker == "" && childrenNr < defaultRoutingNumPerTask) || (marker != "" && childrenNr+1 < defaultRoutingNumPerTask) {
-				log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll parent %v done", dentry.Inode)
+				log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll done, parent[%v]",
+					dentry.Inode)
 				done = true
 			} else {
 				marker = children[childrenNr-1].Name
+				log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll next marker[%v] parent[%v]", marker, dentry.Inode)
 			}
 		}
 
 	}
 
 	if ino, err = s.mw.Delete_Ver_ll(dentry.ParentId, dentry.Name, false, s.getTaskVerSeq()); err != nil {
-		log.LogErrorf("action[handlVerDelDepthFirst] parent %v Delete_ll_EX child name %v verSeq %v err %v",
-			dentry.ParentId, dentry.Name, s.getTaskVerSeq(), err)
-		atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+		if dentry.ParentId >= 1 {
+			log.LogErrorf("action[handlVerDelDepthFirst] Delete_Ver_ll failed, dir(parent[%v] child name[%v]) verSeq[%v] err[%v]",
+				dentry.ParentId, dentry.Name, s.getTaskVerSeq(), err)
+			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+		}
 	} else {
-		log.LogDebugf("action[handlVerDelDepthFirst] parent %v Delete_ll_EX child name %v verSeq %v ino %v success",
+		log.LogDebugf("action[handlVerDelDepthFirst] Delete_Ver_ll success, dir(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
 			dentry.ParentId, dentry.Name, s.getTaskVerSeq(), ino)
 		atomic.AddInt64(&s.currentStat.DirNum, 1)
 		atomic.AddInt64(&s.currentStat.TotalInodeNum, 1)
@@ -232,30 +245,40 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 
 	scanDentries := make([]*proto.ScanDentry, 0)
 	if os.FileMode(dentry.Type).IsDir() {
+		//totalChildrenNum := 0
+		totalChildDirNum := 0
+		totalChildFileNum := 0
 		marker := ""
 		done := false
 
 		for !done {
-			log.LogDebugf("action[handlVerDel] ReadDirLimit_ll parent %v verSeq %v", dentry.Inode, s.getTaskVerSeq())
 			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq())
 			if err != nil && err != syscall.ENOENT {
-				log.LogErrorf("action[handlVerDel] parent %v verSeq %v marker %v err %v", dentry.Inode, s.getTaskVerSeq(), marker, err)
+				log.LogErrorf("action[handlVerDel] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
+					dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), err)
 				return
 			}
+			log.LogDebugf("action[handlVerDel] ReadDirLimitByVer parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
+				dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), len(children))
 
 			if err == syscall.ENOENT {
 				done = true
-				log.LogErrorf("action[handlVerDel] parent %v verSeq %v marker %v err %v", dentry.Inode, s.getTaskVerSeq(), marker, err)
+				log.LogErrorf("action[handlVerDel] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
+					dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), marker, err)
 				break
 			}
 
 			if marker != "" {
 				if len(children) <= 1 {
 					done = true
-					log.LogDebugf("action[handlVerDel] parent %v verSeq %v children %v marker %v", dentry.Inode, s.getTaskVerSeq(), children, marker)
+					log.LogDebugf("action[handlVerDel] ReadDirLimit_ll done, parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
+						dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), children)
 					break
 				} else {
+					skippedChild := children[0]
 					children = children[1:]
+					log.LogDebugf("action[handlVerDel] ReadDirLimit_ll skip last marker[%v], parent[%v] verSeq[%v] skippedName[%v]",
+						marker, dentry.Inode, s.getTaskVerSeq(), skippedChild.Name)
 				}
 			}
 
@@ -269,6 +292,9 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 				}
 				if os.FileMode(childDentry.Type).IsDir() {
 					s.inodeChan.In <- childDentry
+					totalChildDirNum++
+					log.LogDebugf("action[handlVerDel] push dir(parent[%v] child name[%v] ino[%v]) in channel",
+						childDentry.ParentId, childDentry.Name, childDentry.Inode)
 				} else {
 					scanDentries = append(scanDentries, childDentry)
 				}
@@ -276,11 +302,12 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 
 			for _, file := range scanDentries {
 				if ino, err = s.mw.Delete_Ver_ll(file.ParentId, file.Name, false, s.getTaskVerSeq()); err != nil {
-					log.LogErrorf("action[handlVerDel] parent %v Delete_ll_EX child name %v verSeq %v err %v",
+					log.LogErrorf("action[handlVerDel] Delete_Ver_ll failed, file(parent[%v] child name[%v]) verSeq[%v] err[%v]",
 						file.ParentId, file.Name, s.getTaskVerSeq(), err)
 					atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 				} else {
-					log.LogDebugf("action[handlVerDel] parent %v Delete_ll_EX child name %v verSeq %v ino %v success",
+					totalChildFileNum++
+					log.LogDebugf("action[handlVerDel] Delete_Ver_ll success, file(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
 						file.ParentId, file.Name, s.getTaskVerSeq(), ino)
 					atomic.AddInt64(&s.currentStat.FileNum, 1)
 					atomic.AddInt64(&s.currentStat.TotalInodeNum, 1)
@@ -290,10 +317,12 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 			scanDentries = scanDentries[:0]
 			childrenNr := len(children)
 			if (marker == "" && childrenNr < defaultRoutingNumPerTask) || (marker != "" && childrenNr+1 < defaultRoutingNumPerTask) {
-				log.LogDebugf("action[handlVerDel] ReadDirLimit_ll parent %v done marker %v", dentry.Inode, marker)
+				log.LogDebugf("action[handlVerDel] ReadDirLimit_ll done, parent[%v] total childrenNr[%v] marker[%v]",
+					dentry.Inode, totalChildFileNum+totalChildDirNum, marker)
 				done = true
 			} else {
 				marker = children[childrenNr-1].Name
+				log.LogDebugf("action[handlVerDel] ReadDirLimit_ll next marker[%v] parent[%v]", marker, dentry.Inode)
 			}
 		}
 
@@ -301,12 +330,12 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 
 	if ino, err = s.mw.Delete_Ver_ll(dentry.ParentId, dentry.Name, os.FileMode(dentry.Type).IsDir(), s.getTaskVerSeq()); err != nil {
 		if dentry.ParentId >= 1 {
-			log.LogErrorf("action[handlVerDel] parent %v Delete_ll_EX child name %v verSeq %v err %v",
+			log.LogErrorf("action[handlVerDel] Delete_Ver_ll failed, dir(parent[%v] child name[%v]) verSeq[%v] err[%v]",
 				dentry.ParentId, dentry.Name, s.getTaskVerSeq(), err)
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 		}
 	} else {
-		log.LogDebugf("action[handlVerDel] parent %v Delete_ll_EX child name %v verSeq %v ino %v success",
+		log.LogDebugf("action[handlVerDel] Delete_Ver_ll success, dir(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
 			dentry.ParentId, dentry.Name, s.getTaskVerSeq(), ino)
 		atomic.AddInt64(&s.currentStat.DirNum, 1)
 		atomic.AddInt64(&s.currentStat.TotalInodeNum, 1)
