@@ -391,6 +391,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetVolVer).
 		HandlerFunc(m.getVolVer)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetVerStrategy).
+		HandlerFunc(m.SetVerStrategy)
 
 	// S3 lifecycle configuration APIS
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

@@ -34,6 +34,12 @@ func (commit *Ver2PhaseCommit) reset() {
 	log.LogDebugf("action[Ver2PhaseCommit.reset]")
 }
 
+type VolVersionPersist struct {
+	MultiVersionList []*proto.VolVersionInfo
+	Strategy         proto.VolumeVerStrategy
+	VerSeq           uint64
+}
+
 type VolVersionManager struct {
 	// ALL snapshots not include deleted one,deleted one should write in error log
 	multiVersionList []*proto.VolVersionInfo
@@ -44,6 +50,7 @@ type VolVersionManager struct {
 	cancel           chan bool
 	verSeq           uint64
 	enabled          bool
+	strategy         proto.VolumeVerStrategy
 	c                *Cluster
 	sync.RWMutex
 }
@@ -64,14 +71,31 @@ func (verMgr *VolVersionManager) String() string {
 		verMgr.vol.Name, verMgr.status, verMgr.verSeq, verMgr.prepareCommit)
 }
 func (verMgr *VolVersionManager) Persist() (err error) {
+	persistInfo := &VolVersionPersist{
+		MultiVersionList: verMgr.multiVersionList,
+		Strategy:         verMgr.strategy,
+		VerSeq:           verMgr.verSeq,
+	}
 	var val []byte
-	if val, err = json.Marshal(verMgr.multiVersionList); err != nil {
+	if val, err = json.Marshal(persistInfo); err != nil {
 		return
 	}
 	if err = verMgr.c.syncMultiVersion(verMgr.vol, val); err != nil {
 		return
 	}
 	return
+}
+
+func (verMgr *VolVersionManager) loadMultiVersion(c *Cluster, val []byte) (err error) {
+	persistInfo := &VolVersionPersist{}
+	verMgr.c = c
+	if err = json.Unmarshal(val, persistInfo); err != nil {
+		return
+	}
+	verMgr.multiVersionList = persistInfo.MultiVersionList
+	verMgr.verSeq = persistInfo.VerSeq
+	verMgr.strategy = persistInfo.Strategy
+	return nil
 }
 
 func (verMgr *VolVersionManager) CommitVer() (ver *proto.VolVersionInfo) {
@@ -149,6 +173,62 @@ func (verMgr *VolVersionManager) DelVer(verSeq uint64) (err error) {
 		}
 	}
 	return
+}
+
+func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy) (err error) {
+	verMgr.Lock()
+	defer verMgr.Unlock()
+
+	log.LogDebugf("SetVerStrategy.vol %v keepCnt %v need in [1-%v], peroidic %v need in [1-%v], enable %v",
+		verMgr.vol.Name, strategy.KeepVerCnt, MaxSnapshotCount, strategy.Periodic, 24*7, strategy.Enable)
+
+	if strategy.Enable == true {
+		if strategy.KeepVerCnt == 0 || strategy.Periodic == 0 || strategy.KeepVerCnt > MaxSnapshotCount || strategy.Periodic > 24*7 {
+			return fmt.Errorf("SetVerStrategy.vol %v keepCnt %v need in [1-%v], peroidic %v need in [1-%v] not qualified",
+				verMgr.vol.Name, strategy.KeepVerCnt, MaxSnapshotCount, strategy.Periodic, 24*7)
+		}
+		verMgr.strategy.KeepVerCnt = strategy.KeepVerCnt
+		verMgr.strategy.Periodic = strategy.Periodic
+	}
+
+	verMgr.strategy.Enable = strategy.Enable
+	verMgr.strategy.UTime = time.Now()
+
+	verMgr.Persist()
+	return
+}
+
+func (verMgr *VolVersionManager) checkSnapshotStrategy() {
+	verMgr.RLock()
+	if verMgr.strategy.Periodic == 0 { // strategy not be set
+		verMgr.RUnlock()
+		return
+	}
+	verMgr.RUnlock()
+
+	if verMgr.strategy.UTime.Add(time.Hour * time.Duration(verMgr.strategy.Periodic)).Before(time.Now()) {
+		log.LogDebugf("checkSnapshotStrategy.vol %v try create snapshot", verMgr.vol.Name)
+		if _, err := verMgr.createVer2PhaseTask(verMgr.c, uint64(time.Now().Unix()), proto.CreateVersion, false); err != nil {
+			return
+		}
+	}
+
+	verMgr.RLock()
+	nLen := len(verMgr.multiVersionList)
+	if nLen-1 > int(verMgr.strategy.KeepVerCnt) {
+		if verMgr.multiVersionList[0].Status != proto.VersionNormal {
+			log.LogDebugf("checkSnapshotStrategy.vol %v oldest ver %v status %v",
+				verMgr.vol.Name, verMgr.multiVersionList[0].Ver, verMgr.multiVersionList[0].Status)
+			verMgr.RUnlock()
+			return
+		}
+		verMgr.RUnlock()
+		if _, err := verMgr.createVer2PhaseTask(verMgr.c, verMgr.multiVersionList[0].Ver, proto.DeleteVersion, false); err != nil {
+			return
+		}
+		return
+	}
+	verMgr.RUnlock()
 }
 
 func (verMgr *VolVersionManager) UpdateVerStatus(verSeq uint64, status uint8) (err error) {
@@ -573,14 +653,6 @@ func (verMgr *VolVersionManager) init(cluster *Cluster) error {
 	return nil
 }
 
-func (verMgr *VolVersionManager) loadMultiVersion(c *Cluster, val []byte) (err error) {
-	verMgr.c = c
-	if err = json.Unmarshal(val, &verMgr.multiVersionList); err != nil {
-		return
-	}
-	return nil
-}
-
 func (verMgr *VolVersionManager) getVersionInfo(verGet uint64) (verInfo *proto.VolVersionInfo, err error) {
 	verMgr.RLock()
 	defer verMgr.RUnlock()
@@ -620,6 +692,18 @@ func (verMgr *VolVersionManager) getOldestVer() (ver uint64, status uint8) {
 	return verMgr.multiVersionList[0].Ver, verMgr.multiVersionList[0].Status
 }
 
+func (verMgr *VolVersionManager) getVolDelStatus() (status uint8) {
+	verMgr.RLock()
+	defer verMgr.RUnlock()
+
+	size := len(verMgr.multiVersionList)
+	if size == 0 {
+		return 0
+	}
+	log.LogInfof("action[getLatestVer] ver len %v verMgr %v", size, verMgr)
+	return verMgr.multiVersionList[size-1].Status
+}
+
 func (verMgr *VolVersionManager) getLatestVer() (ver uint64) {
 	verMgr.RLock()
 	defer verMgr.RUnlock()
@@ -637,6 +721,7 @@ func (verMgr *VolVersionManager) getVersionList() *proto.VolVersionInfoList {
 	defer verMgr.RUnlock()
 
 	return &proto.VolVersionInfoList{
-		VerList: verMgr.multiVersionList,
+		VerList:  verMgr.multiVersionList,
+		Strategy: verMgr.strategy,
 	}
 }

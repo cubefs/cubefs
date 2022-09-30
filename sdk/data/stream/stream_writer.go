@@ -623,6 +623,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 				log.LogWarnf("action[doOverwrite] verseq (%v) be updated to (%v) by datanode rsp", s.verSeq, replyPacket.VerSeq)
 				s.verSeq = replyPacket.VerSeq
 				s.extents.verSeq = s.verSeq
+				s.client.UpdateLatestVer(s.verSeq)
 				return e, false
 			}
 

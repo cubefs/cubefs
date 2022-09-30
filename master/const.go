@@ -120,6 +120,7 @@ const (
 	ignoreDiscardKey           = "ignoreDiscard"
 	ClientIDKey                = "clientIDKey"
 	verSeqKey                  = "verSeq"
+	Periodic                   = "periodic"
 )
 
 const (
