@@ -109,7 +109,7 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
 			return nil, 0
 		}
 		log.LogDebugf("action[getDentryFromVerList] return dentry %v seq %v", den, den.getVerSeq())
-		return
+		return den, denListLen
 	}
 
 	for id, lDen := range d.dentryList {
