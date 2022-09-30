@@ -16,6 +16,7 @@ package proto
 
 import (
 	"github.com/cubefs/cubefs/util"
+	"time"
 )
 
 // api
@@ -160,6 +161,7 @@ const (
 	AdminGetVersionInfo    = "/multiVer/get"
 	AdminGetAllVersionInfo = "/multiVer/getAll"
 	AdminGetVolVer         = "/vol/getVer"
+	AdminSetVerStrategy    = "/vol/SetVerStrategy"
 
 	// S3 lifecycle configuration APIS
 	SetBucketLifecycle    = "/s3/setLifecycle"
@@ -350,6 +352,13 @@ type UidSpaceRsp struct {
 	OK          bool
 	UidSpaceArr []*UidSpaceInfo
 	Reserve     string
+}
+
+type VolumeVerStrategy struct {
+	KeepVerCnt int
+	Periodic   int
+	Enable     bool
+	UTime      time.Time
 }
 
 type VolumeVerInfo struct {

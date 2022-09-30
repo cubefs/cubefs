@@ -361,7 +361,7 @@ func (s *DataNode) checkMultiVersionStatus(volName string) (err error) {
 				log.LogErrorf("action[checkMultiVersionStatus] err %v", err)
 				return
 			}
-			if info.VerPrepareStatus == proto.CreateVersionCommit {
+			if info.VerPrepareStatus == proto.VersionNormal {
 				if err = s.commitCreateVersion(info.Name, info.VerSeq); err != nil {
 					log.LogErrorf("action[checkMultiVersionStatus] err %v", err)
 					return
@@ -809,9 +809,13 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		if p.VerSeq < partition.verSeq && (p.Opcode == proto.OpRandomWriteVer || p.Opcode == proto.OpSyncRandomWriteVer) {
 			p.ExtentType |= proto.MultiVersionFlag
 			err = storage.VerNotConsistentError
-			log.LogErrorf("action[handleRandomWritePacket] client verSeq[%v] small than dataPartiton ver[%v]", p.VerSeq, partition.verSeq)
+			log.LogErrorf("action[handleRandomWritePacket] dp %v client verSeq[%v] small than dataPartiton ver[%v]",
+				partition.config.PartitionID, p.VerSeq, partition.verSeq)
 			p.VerSeq = partition.verSeq
 			return
+		} else if p.VerSeq > partition.verSeq {
+			log.LogDebugf("action[handleRandomWritePacket] dp %v client verSeq[%v] and update dp Seq[%v]", partition.config.PartitionID, p.VerSeq, partition.verSeq)
+			partition.verSeq = p.VerSeq
 		}
 	}
 	log.LogDebugf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v before raft submit", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq)

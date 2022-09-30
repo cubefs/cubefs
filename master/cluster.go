@@ -458,6 +458,7 @@ func (c *Cluster) scheduleToDelSnapshotVer() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.getDeletingSnapshotVer()
+				c.checkSnapshotStrategy()
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
@@ -589,6 +590,16 @@ func (c *Cluster) getDeletingSnapshotVer() {
 				c.lcMgr.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
 			}
 		}
+	}
+}
+
+func (c *Cluster) checkSnapshotStrategy() {
+	vols := c.allVols()
+	for _, vol := range vols {
+		if !proto.IsHot(vol.VolType) {
+			continue
+		}
+		vol.VersionMgr.checkSnapshotStrategy()
 	}
 }
 
@@ -1238,6 +1249,23 @@ func (c *Cluster) putVol(vol *Vol) {
 	if _, ok := c.vols[vol.Name]; !ok {
 		c.vols[vol.Name] = vol
 	}
+}
+
+func (c *Cluster) SetVerStrategy(volName string, strategy proto.VolumeVerStrategy) (err error) {
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
+
+	vol, ok := c.vols[volName]
+	if !ok {
+		err = proto.ErrVolNotExists
+		return
+	}
+
+	if !proto.IsHot(vol.VolType) {
+		err = fmt.Errorf("vol need be hot one")
+		return
+	}
+	return vol.VersionMgr.SetVerStrategy(strategy)
 }
 
 func (c *Cluster) getVolVer(volName string) (info *proto.VolumeVerInfo, err error) {
