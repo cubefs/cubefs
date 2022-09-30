@@ -17,7 +17,6 @@ package meta
 import (
 	"context"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
 	syslog "log"
 	"os"
 	"sort"
@@ -26,6 +25,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
@@ -478,7 +479,7 @@ func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name stri
 	return info, nil
 }
 
-func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcName string, dstParentID uint64, dstName string) (err error) {
+func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcName string, dstParentID uint64, dstName string, notEvict bool) (err error) {
 	var oldInode uint64
 
 	srcParentMP := mw.getPartitionByInode(ctx, srcParentID)
@@ -541,11 +542,13 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 		inodeMP := mw.getPartitionByInode(ctx, oldInode)
 		if inodeMP != nil {
 			mw.iunlink(ctx, inodeMP, oldInode, true)
-			// evict oldInode to avoid oldInode becomes orphan inode
-			mw.ievict(ctx, inodeMP, oldInode, true)
+			// evict oldInode to avoid oldInode becomes orphan inode, but if has opened fd refer to this inode, donot evict
+			if !notEvict {
+				mw.ievict(ctx, inodeMP, oldInode, true)
+			}
 		}
 	}
-
+	log.LogDebugf("Rename_ll: srcParentID:%v srcName:%v dstParentID:%v dstName:%v notEvict:%v", srcParentID, srcName, dstParentID, dstName, notEvict)
 	return nil
 }
 
@@ -1069,7 +1072,7 @@ func (mw *MetaWrapper) GetExtentsWithMp(ctx context.Context, mpId uint64, inode 
 	return gen, size, extents, nil
 }
 
-func (mw *MetaWrapper) GetCmpInode_ll(ctx context.Context, mpId uint64, inos []uint64, cnt int, minEkSize int, minInodeSize uint64, maxEkAvgSize uint64) ([]*proto.CmpInodeInfo,  error) {
+func (mw *MetaWrapper) GetCmpInode_ll(ctx context.Context, mpId uint64, inos []uint64, cnt int, minEkSize int, minInodeSize uint64, maxEkAvgSize uint64) ([]*proto.CmpInodeInfo, error) {
 	mp := mw.getPartitionByID(mpId)
 	if mp == nil {
 		log.LogErrorf("GetCmpInode_ll: no such partition(%v)", mpId)

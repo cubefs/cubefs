@@ -268,7 +268,7 @@ func (p *Packet) readFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 		// if read fails in datanode, p->Data would be error msg, p->Size would be the size of the msg
 		msg := make([]byte, p.Size)
 		_, readErr := io.ReadFull(c, msg)
-		err = errors.New(fmt.Sprintf("readFromConn: ResultCode(%v) Size(%v) expectedSize(%v) msg(%v) readErr(%v)", p.GetResultMsg(), p.Size, len(p.Data), msg, readErr))
+		err = errors.New(fmt.Sprintf("readFromConn: ResultCode(%v) Size(%v) expectedSize(%v) msg(%v) readErr(%v)", p.GetResultMsg(), p.Size, len(p.Data), string(msg), readErr))
 		return
 	}
 

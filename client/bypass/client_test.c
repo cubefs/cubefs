@@ -22,6 +22,7 @@
 void testOp(bool is_cfs, bool ignore);
 void testReload();
 void testDup(bool is_cfs);
+void testUnlinkAndRename();
 int main(int argc, char **argv) {
     bool is_cfs = true;
     bool ignore = false;
@@ -71,6 +72,8 @@ int main(int argc, char **argv) {
     setenv("CFS_MOUNT_POINT", mount, 1);
     testDup(is_cfs);
     printf("Finish testDup\n");
+    testUnlinkAndRename();
+    printf("Finish test unlink and rename\n");
     printf("Finish test, press ctrl+c to quit...\n");
     getchar();
 }
@@ -279,4 +282,69 @@ void testDup(bool is_cfs) {
 
     size = write(fd, "test", 4);
     assertf(size == -1, "write test to close fd returning %d, expect -1", size);
+}
+
+void testUnlinkAndRename() {
+    #define COUNT 10
+    #define PATH_LEN 100
+    char *mount = getenv("CFS_MOUNT_POINT");
+    char *file_1 = "test1";
+    char *file_2 = "test2";
+    int fd_1, fd_2;
+    int re, size;
+    char *write_buf_1 = malloc(COUNT);
+    char *write_buf_2 = malloc(COUNT);
+    char *read_buf = malloc(COUNT);
+    memset(write_buf_1, '1', COUNT);
+    memset(write_buf_2, '2', COUNT);
+    memset(read_buf, ' ', COUNT);
+
+    char path_1[PATH_LEN] = {0};
+    char path_2[PATH_LEN] = {0};
+    strcat(path_1, mount);
+    strcat(path_1, "/");
+    strcat(path_1, file_1);
+    strcat(path_2, mount);
+    strcat(path_2, "/");
+    strcat(path_2, file_2);
+
+    fd_1 = open(path_1, O_RDWR|O_CREAT, 0666);
+    assertf(fd_1 > 0, "open file %s returning %d", path_1, fd_1);
+    fd_2 = open(path_2, O_RDWR|O_CREAT, 0666);
+    assertf(fd_2 > 0, "open file %s returning %d", path_2, fd_2);
+
+    size = write(fd_1, write_buf_1, COUNT);
+    assertf(size == COUNT, "write file:%s returning %d, expect %d", path_1, size, COUNT);
+    size = write(fd_2, write_buf_2, COUNT);
+    assertf(size == COUNT, "write file:%s returning %d, expect %d", path_2, size, COUNT);
+
+    re = rename(path_1, path_2);
+    assertf(re == 0, "rename from %s to %s failed", path_1, path_2);
+
+    lseek(fd_1, 0, SEEK_SET);
+    size = read(fd_1, read_buf, COUNT);
+    assertf(size == COUNT, "after rename: read file %s size %d, expect %d", path_1, size, COUNT);
+    assertf(strcmp(read_buf, write_buf_1) == 0, "after unlink: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_1);
+
+    lseek(fd_2, 0, SEEK_SET);
+    size = read(fd_2, read_buf, COUNT);
+    assertf(size == COUNT, "after rename: read file %s size %d, expect %d", path_2, size, COUNT);
+    assertf(strcmp(read_buf, write_buf_2) == 0, "after rename: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_2);
+
+    re = unlink(path_2);
+    assertf(re == 0, "unlink file %s failed", path_2);
+    
+    lseek(fd_1, 0, SEEK_SET);
+    size = read(fd_1, read_buf, COUNT);
+    assertf(size == COUNT, "after unlnk: read file %s size %d, expect %d", path_1, size, COUNT);
+    assertf(strcmp(read_buf, write_buf_1) == 0, "after unlink: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_1);
+    
+    lseek(fd_2, 0, SEEK_SET);
+    size = read(fd_2, read_buf, COUNT);
+    assertf(size == COUNT, "after unlink: read file %s size %d, expect %d", path_2, size, COUNT);
+    assertf(strcmp(read_buf, write_buf_2) == 0, "after unlink: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_2);
+
+    close(fd_1);
+    close(fd_2);
+
 }

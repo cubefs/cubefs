@@ -297,7 +297,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("rename"))
 	defer ump.AfterTP(tpObject, err)
 
-	err = d.super.mw.Rename_ll(ctx, d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName)
+	err = d.super.mw.Rename_ll(ctx, d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, false)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return ParseError(err)
