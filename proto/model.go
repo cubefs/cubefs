@@ -308,6 +308,7 @@ type VolVersionInfo struct {
 }
 
 type VolVersionInfoList struct {
-	VerList []*VolVersionInfo
+	VerList  []*VolVersionInfo
+	Strategy VolumeVerStrategy
 	sync.RWMutex
 }

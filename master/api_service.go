@@ -4583,6 +4583,31 @@ func (m *Server) GetAllVersionInfo(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(verList))
 }
 
+func (m *Server) SetVerStrategy(w http.ResponseWriter, r *http.Request) {
+	var (
+		err      error
+		name     string
+		strategy proto.VolumeVerStrategy
+	)
+
+	if name, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if strategy, err = parseVolVerStrategy(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.SetVerStrategy(name, strategy); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
 func (m *Server) getVolVer(w http.ResponseWriter, r *http.Request) {
 	var (
 		err  error

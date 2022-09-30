@@ -118,6 +118,7 @@ const (
 	dpDiscardKey               = "dpDiscard"
 	ignoreDiscardKey           = "ignoreDiscard"
 	verSeqKey                  = "verSeq"
+	Periodic                   = "periodic"
 )
 
 const (
