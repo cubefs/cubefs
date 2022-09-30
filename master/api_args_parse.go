@@ -230,6 +230,28 @@ func parseVolName(r *http.Request) (name string, err error) {
 	return
 }
 
+func parseVolVerStrategy(r *http.Request) (strategy proto.VolumeVerStrategy, err error) {
+	var value string
+	if value = r.FormValue(enableKey); value == "" {
+		strategy.Enable = true
+		return
+	}
+	if strategy.Enable, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+
+	strategy.KeepVerCnt, err = parseUintParam(r, countKey)
+	if strategy.Enable && err != nil {
+		return
+	}
+	strategy.Periodic, err = parseUintParam(r, Periodic)
+	if strategy.Enable && err != nil {
+		return
+	}
+
+	return
+}
+
 func parseGetVolParameter(r *http.Request) (p *getVolParameter, err error) {
 	p = &getVolParameter{}
 	skipOwnerValidationVal := r.Header.Get(proto.SkipOwnerValidation)
