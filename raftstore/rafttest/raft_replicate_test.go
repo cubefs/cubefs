@@ -153,7 +153,7 @@ func TestLeaderReplWithoutLease(t *testing.T) {
 }
 
 func TestLeaderReplWithLease(t *testing.T) {
-	servers := initTestServer(peers, true, false, 1)
+	servers := initTestServer(peers, true, true, 1)
 	f, w := getLogFile("", "leaderReplWithLease.log")
 	defer func() {
 		w.Flush()
@@ -268,7 +268,7 @@ func TestLeaderReplWithLease(t *testing.T) {
 }
 
 func TestFollowerRepl(t *testing.T) {
-	servers := initTestServer(peers, false, false, 1)
+	servers := initTestServer(peers, false, true, 1)
 	f, w := getLogFile("", "followerRepl.log")
 	defer func() {
 		w.Flush()

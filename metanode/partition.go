@@ -395,10 +395,11 @@ func (mp *metaPartition) startRaft() (err error) {
 	}
 	pc := &raftstore.PartitionConfig{
 		ID:       mp.config.PartitionId,
-		Applied:  mp.applyID,
 		Peers:    peers,
 		Learners: learners,
 		SM:       mp,
+
+		GetStartIndex: func(firstIndex, lastIndex uint64) (startIndex uint64) { return mp.applyID },
 	}
 	mp.raftPartition = mp.config.RaftStore.CreatePartition(pc)
 	err = mp.raftPartition.Start()

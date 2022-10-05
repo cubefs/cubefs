@@ -254,10 +254,11 @@ func (m *Server) createRaftServer() (err error) {
 	fmt.Printf("peers[%v],tickInterval[%v],electionTick[%v]\n", m.config.peers, m.tickInterval, m.electionTick)
 	m.initFsm()
 	partitionCfg := &raftstore.PartitionConfig{
-		ID:      GroupID,
-		Peers:   m.config.peers,
-		Applied: m.fsm.applied,
-		SM:      m.fsm,
+		ID:    GroupID,
+		Peers: m.config.peers,
+		SM:    m.fsm,
+
+		GetStartIndex: func(firstIndex, lastIndex uint64) (startIndex uint64) { return m.fsm.applied },
 	}
 	m.partition = m.raftStore.CreatePartition(partitionCfg)
 	if err = m.partition.Start(); err != nil {

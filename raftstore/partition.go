@@ -252,8 +252,17 @@ func (p *partition) RaftConfig() *raft.Config {
 
 func (p *partition) Start() (err error) {
 	wc := &wal.Config{}
-	ws, err := wal.NewStorage(p.walPath, wc)
+	var ws *wal.Storage
+	ws, err = wal.NewStorage(p.walPath, wc)
 	if err != nil {
+		return
+	}
+	var fi uint64
+	if fi, err = ws.FirstIndex(); err != nil {
+		return
+	}
+	var li uint64
+	if li, err = ws.LastIndex(); err != nil {
 		return
 	}
 	peers := make([]proto.Peer, 0)
@@ -267,7 +276,7 @@ func (p *partition) Start() (err error) {
 		Term:         p.config.Term,
 		Storage:      ws,
 		StateMachine: p.config.SM,
-		Applied:      p.config.Applied,
+		Applied:      p.config.GetStartIndex.Get(fi, li),
 		Learners:     p.config.Learners,
 	}
 	if err = p.raft.CreateRaft(rc); err != nil {
