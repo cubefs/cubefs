@@ -146,7 +146,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 
-	if err = m.createRaftServer(); err != nil {
+	if err = m.createRaftServer(cfg); err != nil {
 		log.LogError(errors.Stack(err))
 		return
 	}
@@ -301,7 +301,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	return
 }
 
-func (m *Server) createRaftServer() (err error) {
+func (m *Server) createRaftServer(cfg *config.Config) (err error) {
 	raftCfg := &raftstore.Config{
 		NodeID:            m.id,
 		RaftPath:          m.walDir,
@@ -312,7 +312,7 @@ func (m *Server) createRaftServer() (err error) {
 		ElectionTick:      m.electionTick,
 		RecvBufSize:       m.raftRecvBufSize,
 	}
-	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
+	if m.raftStore, err = raftstore.NewRaftStore(raftCfg, cfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
 	syslog.Printf("peers[%v],tickInterval[%v],electionTick[%v]\n", m.config.peers, m.tickInterval, m.electionTick)
