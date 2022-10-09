@@ -975,6 +975,8 @@ type SimpleVolView struct {
 	DefaultStoreMode      StoreMode
 	ConvertState          VolConvertState
 	MpLayout              MetaPartitionLayout
+	TotalSizeGB          string `json:"TotalGB"`
+	UsedSizeGB           string `json:"UsedGB"`
 	TotalSize            uint64
 	UsedSize             uint64
 	UsedRatio            float64
