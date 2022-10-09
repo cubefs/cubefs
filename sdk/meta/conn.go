@@ -75,8 +75,8 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 	retryCount := 0
 	for {
 		retryCount++
-		resp, needCheckRead, err,_ = mw.sendToMetaPartition(ctx, mp, req, addr)
-		if err == nil && !resp.ShouldRetry() {
+		resp, needCheckRead, err, _ = mw.sendToMetaPartition(ctx, mp, req, addr)
+		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 			return
 		}
 		// operations don't need to retry
@@ -88,7 +88,6 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 		handleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
 		time.Sleep(SendRetryInterval)
 	}
-	return
 }
 
 func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
@@ -103,7 +102,7 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 	for {
 		retryCount++
 		resp, _, err, successAddr = mw.sendToMetaPartition(ctx, mp, req, addr)
-		if err == nil && !resp.ShouldRetry() {
+		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 			if successAddr != "" && successAddr != mp.LeaderAddr {
 				mp.LeaderAddr = successAddr
 			}
@@ -152,7 +151,7 @@ func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPart
 			req.Arg[0] = proto.FollowerReadFlag
 			for _, host := range targetHosts {
 				resp, _, err = mw.sendToHost(ctx, mp, req, host)
-				if err == nil && !resp.ShouldRetry() {
+				if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 					return
 				}
 				errMap[host] = errors.NewErrorf("err(%v) resp(%v)", err, resp)
@@ -178,7 +177,7 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 		j             int
 	)
 	resp, _, err = mw.sendToHost(ctx, mp, req, addr)
-	if err == nil && !resp.ShouldRetry() {
+	if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 		successAddr = addr
 		goto out
 	}
@@ -191,7 +190,7 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 	for i := 0; i < SendRetryLimit; i++ {
 		for j, addr = range mp.Members {
 			resp, needCheck, err = mw.sendToHost(ctx, mp, req, addr)
-			if err == nil && !resp.ShouldRetry() {
+			if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 				successAddr = addr
 				goto out
 			}
@@ -222,6 +221,10 @@ out:
 }
 
 func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error) {
+	if mw.volNotExists {
+		return nil, false, proto.ErrVolNotExists
+	}
+
 	var mc *MetaConn
 	if addr == "" {
 		return nil, false, errors.New(fmt.Sprintf("sendToHost failed: leader addr empty, req(%v) mp(%v)", req, mp))
