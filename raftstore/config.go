@@ -16,6 +16,7 @@ package raftstore
 
 import (
 	"fmt"
+
 	"github.com/tiglabs/raft/proto"
 )
 
@@ -57,10 +58,19 @@ type PeerAddress struct {
 	ReplicaPort   int
 }
 
+type GetStartIndexFunc func(firstIndex, lastIndex uint64) (startIndex uint64)
+
+func (f GetStartIndexFunc) Get(firstIndex, lastIndex uint64) (startIndex uint64) {
+	if f == nil {
+		return
+	}
+	startIndex = f(firstIndex, lastIndex)
+	return
+}
+
 // PartitionConfig defines the configuration properties for the partitions.
 type PartitionConfig struct {
 	ID          uint64
-	Applied     uint64
 	Leader      uint64
 	Term        uint64
 	Peers       []PeerAddress
@@ -68,6 +78,8 @@ type PartitionConfig struct {
 	WalPath     string
 	Learners    []proto.Learner
 	AutoPromote bool
+
+	GetStartIndex GetStartIndexFunc
 }
 
 func (p PeerAddress) String() string {
