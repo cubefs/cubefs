@@ -23,9 +23,11 @@ import (
 	"github.com/spf13/cobra"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -274,8 +276,26 @@ const (
 	cmdCompactCheckFragShort = "check volume inode fragmentation"
 	ekMinLength              = 10
 	ekMaxAvgSize             = 64
+	inodeMinSize             = 1024
 	CliFlagEkMinLength       = "ek-min-length"
 	CliFlagEkMaxAvgSize      = "ek-max-avg-size"
+	CliFlagInodeMinSize      = "inode-min-size"
+)
+
+type EkInfo struct {
+	inodeCount            uint64
+	mpCount               int
+	totalEk               uint64
+	avgEk                 uint64
+	needCompactInodeCount uint64
+	needCompactEkCount    uint64
+}
+
+var (
+	ekInfos      = make(map[string]*EkInfo, 0)
+	ekInfosMutex sync.RWMutex
+    overlapInode strings.Builder
+	overlapInodeMutex sync.Mutex
 )
 
 func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
@@ -283,6 +303,7 @@ func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
 		optVolName      string
 		optEkMinLength  uint64
 		optEkMaxAvgSize uint64
+		optInodeMinSize uint64
 	)
 	var cmd = &cobra.Command{
 		Use:   cmdCompactCheckFragUse,
@@ -296,15 +317,52 @@ func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
 			stdout("[check inode fragmentation]\n")
 			stdout("ekMinLength:%v ekMaxAvgSize:%vMB\n", optEkMinLength, optEkMaxAvgSize)
 			stdout("%v\n", formatCompactCheckFragViewTableHeader())
-			volNames := strings.Split(optVolName, ",")
-			for _, volName := range volNames {
+			var volNames []string
+			if optVolName == all {
+				var cv *proto.ClusterView
+				cv, err = client.AdminAPI().GetCluster()
+				if err != nil {
+					errout("get cluster err:%v", err)
+				}
+				for _, vol := range cv.VolStatInfo {
+					volNames = append(volNames, vol.Name)
+				}
+			} else {
+				volNames = strings.Split(optVolName, ",")
+			}
+			var wg sync.WaitGroup
+			ch := make(chan struct{}, 2)
+			for i, volName := range volNames {
 				var mps []*proto.MetaPartitionView
 				if mps, err = client.ClientAPI().GetMetaPartitions(volName); err != nil {
 					stdout("Volume(%v) got MetaPartitions failed, err:%v\n", volName, err)
 					continue
 				}
-				checkMps(volName, mps, client, optEkMinLength, optEkMaxAvgSize*1024*1024)
+				wg.Add(1)
+				ch <- struct{}{}
+				go func(i int, volName string, mps []*proto.MetaPartitionView) {
+					defer func() {
+						wg.Done()
+						<- ch
+					}()
+					checkMps(i, volName, mps, client, optEkMinLength, optEkMaxAvgSize*1024*1024, optInodeMinSize)
+				}(i, volName, mps)
 			}
+			wg.Wait()
+			for volume, ekInfo := range ekInfos {
+				if ekInfo.inodeCount == 0 {
+					continue
+				}
+				ekInfo.avgEk = ekInfo.totalEk / ekInfo.inodeCount
+				stdout("volume:%v\n", volume)
+				if ekInfo.needCompactInodeCount == 0 {
+					stdout("needCompactInodeCount:%v needCompactEkCount:%v\n", ekInfo.needCompactInodeCount, ekInfo.needCompactEkCount)
+				} else {
+					stdout("needCompactInodeCount:%v needCompactEkCount:%v needCompactAvgEk:%v\n", ekInfo.needCompactInodeCount, ekInfo.needCompactEkCount, ekInfo.needCompactEkCount/ekInfo.needCompactInodeCount)
+				}
+				stdout("ekInfo: mpCount(%v) inodeCount(%v) totalEk(%v) avgEk(%v)\n", ekInfo.mpCount, ekInfo.inodeCount, ekInfo.totalEk, ekInfo.avgEk)
+			}
+			//saveOverlapResult("overlap.csv", overlapInode.String())
 			stdout("check volume inode fragmentation end.\n")
 			return
 		},
@@ -313,10 +371,31 @@ func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optVolName, CliFlagVolName, "", "Specify volume name, can split by comma")
 	cmd.Flags().Uint64Var(&optEkMinLength, CliFlagEkMinLength, ekMinLength, "ek min length")
 	cmd.Flags().Uint64Var(&optEkMaxAvgSize, CliFlagEkMaxAvgSize, ekMaxAvgSize, "ek max avg size, uint MB")
+	cmd.Flags().Uint64Var(&optInodeMinSize, CliFlagInodeMinSize, inodeMinSize, "inode min size, uint Byte")
 	return cmd
 }
 
-func checkMps(volName string, mps []*proto.MetaPartitionView, client *master.MasterClient, ekMinLength, ekMaxAvgSize uint64) {
+func saveOverlapResult(filePath, result string) {
+	if filePath == "" {
+		return
+	}
+	fd, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return
+	}
+	defer fd.Close()
+	buf := make([]byte, 0)
+	fdContent := fmt.Sprint("volume,mpId,inodeId,ct,mt,preEkEnd,nextEkOffset\n")
+	buf = append(buf, []byte(fdContent)...)
+	buf = append(buf, []byte(result)...)
+	fd.Write(buf)
+}
+
+func checkMps(index int, volName string, mps []*proto.MetaPartitionView, client *master.MasterClient, ekMinLength, ekMaxAvgSize, inodeMinSize uint64) {
+	stdout("index:%v volume:%v\n", index, volName)
+	ekInfos[volName] = &EkInfo{
+		mpCount: len(mps),
+	}
 	for _, mp := range mps {
 		var mpInfo *proto.MetaPartitionInfo
 		var err error
@@ -340,20 +419,27 @@ func checkMps(volName string, mps []*proto.MetaPartitionView, client *master.Mas
 			stdout("Volume(%v) mpId(%v) leaderIpPort(%v) get MpInodeIds info failed:%v\n", volName, mp.PartitionID, leaderIpPort, err)
 			continue
 		}
-		inodeInfoCheck(mp.PartitionID, inodeIds.Inodes, leaderIpPort, volName, ekMinLength, ekMaxAvgSize)
+		inodeInfoCheck(mp.PartitionID, inodeIds.Inodes, leaderIpPort, volName, ekMinLength, ekMaxAvgSize, inodeMinSize)
 	}
+
+	overlapInodeMutex.Lock()
+	if overlapInode.String() != "" {
+		saveOverlapResult("overlap.csv", overlapInode.String())
+	}
+	overlapInode.Reset()
+	overlapInodeMutex.Unlock()
 }
 
-func inodeInfoCheck(mpId uint64, inodes []uint64, leaderIpPort string, volName string, ekMinLength, ekMaxAvgSize uint64) {
+func inodeInfoCheck(mpId uint64, inodes []uint64, leaderIpPort string, volName string, ekMinLength, ekMaxAvgSize, inodeMinSize uint64) {
 	var wg sync.WaitGroup
-	var ch = make(chan struct{}, 10)
+	var ch = make(chan struct{}, 20)
 	for _, inode := range inodes {
 		wg.Add(1)
 		ch <- struct{}{}
-		go func(mpId, inode uint64, leaderIpPort string, volName string, ekMinLength, ekMaxAvgSize uint64) {
+		go func(mpId, inode uint64, leaderIpPort string, volName string, ekMinLength, ekMaxAvgSize, inodeMinSize uint64) {
 			defer func() {
 				wg.Done()
-				<- ch
+				<-ch
 			}()
 			var extentInfo *proto.GetExtentsResponse
 			var err error
@@ -368,13 +454,73 @@ func inodeInfoCheck(mpId uint64, inodes []uint64, leaderIpPort string, volName s
 			if extLength == 0 {
 				return
 			}
+			stdoutOverlapInode(leaderIpPort, volName, mpId, inode, extentInfo)
+			addEKData(volName, uint64(extLength))
+			if extentInfo.Size <= inodeMinSize {
+				return
+			}
 			ekAvgSize := extentInfo.Size / uint64(extLength)
-			if uint64(extLength) >= ekMinLength && ekAvgSize < ekMaxAvgSize {
+			if uint64(extLength) > ekMinLength && ekAvgSize < ekMaxAvgSize {
+				addNeedCompactInodeSizeData(volName, uint64(extLength))
 				stdout("%v\n", formatCompactCheckFragView(volName, mpId, inode, extLength, ekAvgSize, extentInfo.Size))
 			}
-		}(mpId, inode, leaderIpPort, volName, ekMinLength, ekMaxAvgSize)
+		}(mpId, inode, leaderIpPort, volName, ekMinLength, ekMaxAvgSize, inodeMinSize)
 	}
 	wg.Wait()
+}
+
+func stdoutOverlapInode(leaderIpPort string, volName string, mpId, inode uint64, extentInfo *proto.GetExtentsResponse) {
+	if extentInfo == nil {
+		return
+	}
+	for i, extent := range extentInfo.Extents {
+		if i >= len(extentInfo.Extents) - 1 {
+			break
+		}
+		if extent.FileOffset + uint64(extent.Size) > extentInfo.Extents[i+1].FileOffset {
+			var ct, mt string
+			var inodeInfo *proto.InodeInfoView
+			var err error
+			inodeInfo, err = getInode(leaderIpPort, mpId, inode)
+			if inodeInfo != nil && err == nil {
+				ct = inodeInfo.Ct
+				mt = inodeInfo.Mt
+			}
+			overlapInodeMutex.Lock()
+			// volume mpId inodeId ct mt preEkEnd nextEkOffset
+			overlapInode.WriteString(fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v\n", volName, mpId, inode, ct, mt, extent.FileOffset + uint64(extent.Size), extentInfo.Extents[i+1].FileOffset))
+			overlapInodeMutex.Unlock()
+			break
+		}
+	}
+}
+
+func addEKData(volName string, extLength uint64) {
+	ekInfosMutex.Lock()
+	if ekInfo, ok := ekInfos[volName]; ok {
+		ekInfo.inodeCount++
+		ekInfo.totalEk += extLength
+	} else {
+		ekInfos[volName] = &EkInfo{
+			inodeCount: 1,
+			totalEk:    extLength,
+		}
+	}
+	ekInfosMutex.Unlock()
+}
+
+func addNeedCompactInodeSizeData(volName string, needCompactEkCount uint64) {
+	ekInfosMutex.Lock()
+	if ekInfo, ok := ekInfos[volName]; ok {
+		ekInfo.needCompactInodeCount++
+		ekInfo.needCompactEkCount += needCompactEkCount
+	} else {
+		ekInfos[volName] = &EkInfo{
+			needCompactInodeCount: 1,
+			needCompactEkCount: needCompactEkCount,
+		}
+	}
+	ekInfosMutex.Unlock()
 }
 
 func getLeaderAddr(replicas []*proto.MetaReplicaInfo) (leaderAddr string) {
@@ -399,7 +545,8 @@ func getMpInodeInfo(mpId uint64, inodeId uint64, leaderIpPort string) (res *prot
 
 func getExtentsByInodeId(mpId uint64, inode uint64, leaderIpPort string) (re *proto.GetExtentsResponse, err error) {
 	url := fmt.Sprintf("http://%s/getExtentsByInode?pid=%d&ino=%d", leaderIpPort, mpId, inode)
-	resp, err := http.Get(url)
+	httpClient := http.Client{Timeout: 10 * time.Second}
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return
 	}
@@ -421,6 +568,42 @@ func getExtentsByInodeId(mpId uint64, inode uint64, leaderIpPort string) (re *pr
 	if re == nil {
 		err = fmt.Errorf("get %s fails, data: %s", url, string(data))
 		return
+	}
+	return
+}
+
+func getInode(leaderIpPort string, mpId, ino uint64) (inodeInfoView *proto.InodeInfoView, err error) {
+	httpClient := http.Client{Timeout: 10 * time.Second}
+	resp, err := httpClient.Get(fmt.Sprintf("http://%s/getInode?pid=%d&ino=%d", leaderIpPort, mpId, ino))
+	if err != nil {
+		return
+	}
+	all, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	value := make(map[string]interface{})
+	err = json.Unmarshal(all, &value)
+	if err != nil {
+		return
+	}
+	if value["msg"] != "Ok" {
+		return
+	}
+	data := value["data"].(map[string]interface{})
+	dataInfo := data["info"].(map[string]interface{})
+	inodeInfoView = &proto.InodeInfoView{
+		Ino:         uint64(dataInfo["ino"].(float64)),
+		PartitionID: mpId,
+		At:          dataInfo["at"].(string),
+		Ct:          dataInfo["ct"].(string),
+		Mt:          dataInfo["mt"].(string),
+		Nlink:       uint64(dataInfo["nlink"].(float64)),
+		Size:        uint64(dataInfo["sz"].(float64)),
+		Gen:         uint64(dataInfo["gen"].(float64)),
+		Gid:         uint64(dataInfo["gid"].(float64)),
+		Uid:         uint64(dataInfo["uid"].(float64)),
+		Mode:        uint64(dataInfo["mode"].(float64)),
 	}
 	return
 }
