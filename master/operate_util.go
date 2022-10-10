@@ -30,7 +30,7 @@ import (
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, replicaNum int, members []proto.Peer,
-	dataPartitionSize int, hosts []string, createType int, partitionType int) (req *proto.CreateDataPartitionRequest) {
+	dataPartitionSize, leaderSize int, hosts []string, createType int, partitionType int) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
 		PartitionTyp:  partitionType,
 		PartitionId:   ID,
@@ -40,6 +40,7 @@ func newCreateDataPartitionRequest(volName string, ID uint64, replicaNum int, me
 		Members:       members,
 		Hosts:         hosts,
 		CreateType:    createType,
+		LeaderSize:    leaderSize,
 	}
 	return
 }
