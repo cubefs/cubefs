@@ -16,11 +16,12 @@ package master
 
 import (
 	"fmt"
-	"golang.org/x/time/rate"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/datanode"
 	"github.com/cubefs/cubefs/proto"
@@ -1354,10 +1355,10 @@ func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*Met
 }
 
 func (c *Cluster) decommissionCancel(dataNode *DataNode) (err error) {
-	if dataNode.ToBeOffline == false {
-		log.LogInfof("action[decommissionCancel] dataNode is not on offline %v", dataNode.Addr)
-		return
-	}
+	// if dataNode.ToBeOffline {
+	// 	log.LogInfof("action[decommissionCancel] dataNode is not on offline %v", dataNode.Addr)
+	// 	return
+	// }
 	partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
 	for _, dp := range partitions {
 		if dp.isSpecialReplicaCnt() && dp.SingleDecommissionStatus > 0 {
@@ -1371,7 +1372,7 @@ func (c *Cluster) decommissionCancel(dataNode *DataNode) (err error) {
 	return
 }
 
-func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err error) {
+func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int, raftForce bool) (err error) {
 	var toBeOffLinePartitions []*DataPartition
 
 	msg := fmt.Sprintf("action[migrateDataNode], src(%s) migrate to target(%s) cnt(%d)", srcAddr, targetAddr, limit)
@@ -1385,7 +1386,7 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 	srcNode.MigrateLock.Lock()
 	defer srcNode.MigrateLock.Unlock()
 
-	if srcNode.ToBeOffline == true {
+	if srcNode.ToBeOffline {
 		err = fmt.Errorf("migrate src(%v) is still on working, please wait,check or cancel if abnormal", srcAddr)
 		log.LogWarnf("action[migrateDataNode] %v", err)
 		return
@@ -1430,7 +1431,7 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 		wg.Add(1)
 		go func(dp *DataPartition) {
 			defer wg.Done()
-			if err1 := c.migrateDataPartition(srcNode.Addr, targetAddr, dp, dataNodeOfflineErr); err1 != nil {
+			if err1 := c.migrateDataPartition(srcNode.Addr, targetAddr, dp, raftForce, dataNodeOfflineErr); err1 != nil {
 				errChannel <- err1
 			}
 		}(toBeOffLinePartitions[i])
@@ -1479,8 +1480,8 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 	return
 }
 
-func (c *Cluster) decommissionDataNode(dataNode *DataNode) (err error) {
-	return c.migrateDataNode(dataNode.Addr, "", 0)
+func (c *Cluster) decommissionDataNode(dataNode *DataNode, force bool) (err error) {
+	return c.migrateDataNode(dataNode.Addr, "", 0, false)
 }
 
 func (c *Cluster) delDataNodeFromCache(dataNode *DataNode) {
@@ -1597,8 +1598,7 @@ ERR:
 // 4. synchronized create a new data partition
 // 5. Set the data partition as readOnly.
 // 6. persistent the new host list
-
-func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataPartition, errMsg string) (err error) {
+func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataPartition, raftForce bool, errMsg string) (err error) {
 	var (
 		targetHosts     []string
 		newAddr         string
@@ -1700,7 +1700,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 	}()
 
 	// if single replica wait for
-	if dp.isSpecialReplicaCnt() {
+	if dp.ReplicaNum == 1 || dp.ReplicaNum == 2 && !raftForce {
 		dp.Status = proto.ReadOnly
 		dp.isRecover = true
 		c.putBadDataPartitionIDs(replica, srcAddr, dp.PartitionID)
@@ -1709,7 +1709,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 			goto errHandler
 		}
 	} else {
-		if err = c.removeDataReplica(dp, srcAddr, false, false); err != nil {
+		if err = c.removeDataReplica(dp, srcAddr, false, raftForce); err != nil {
 			goto errHandler
 		}
 		if err = c.addDataReplica(dp, newAddr); err != nil {
@@ -1760,8 +1760,8 @@ errHandler:
 // 4. synchronized create a new data partition
 // 5. Set the data partition as readOnly.
 // 6. persistent the new host list
-func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartition, errMsg string) (err error) {
-	return c.migrateDataPartition(offlineAddr, "", dp, errMsg)
+func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartition, raftForce bool, errMsg string) (err error) {
+	return c.migrateDataPartition(offlineAddr, "", dp, raftForce, errMsg)
 }
 
 func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAddr string, raftForceDel bool) (err error) {
@@ -1779,7 +1779,7 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 	}
 
 	// if the partition can be offline or not
-	if err = dp.canBeOffLine(offlineAddr, raftForceDel); err != nil {
+	if err = dp.canBeOffLine(offlineAddr); err != nil {
 		log.LogInfof("action[validateDecommissionDataPartition] dp vol %v dp %v err %v", dp.VolName, dp.PartitionID, err)
 		return
 	}
