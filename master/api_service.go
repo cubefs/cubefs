@@ -161,10 +161,12 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 		cv := newZoneView(zone.name)
 		cv.Region = zone.regionName
 		cv.Status = zone.getStatusToString()
-		tv.Zones = append(tv.Zones, cv)
 		nsc := zone.getAllNodeSet()
 		for _, ns := range nsc {
 			nsView := newNodeSetView(ns.dataNodeLen(), ns.metaNodeLen())
+			if nsView.DataNodeLen == 0 && nsView.MetaNodeLen == 0 {
+				continue
+			}
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
@@ -177,6 +179,10 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				return true
 			})
 		}
+		if len(cv.NodeSet) == 0 {
+			continue
+		}
+		tv.Zones = append(tv.Zones, cv)
 		if zone.regionName == "" {
 			defaultRegionView.Zones = append(defaultRegionView.Zones, zone.name)
 		}
