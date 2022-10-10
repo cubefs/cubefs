@@ -236,6 +236,9 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 		ZoneStatInfo:     make(map[string]*proto.ZoneStat, 0),
 	}
 	for zoneName, zoneStat := range m.cluster.zoneStatInfos {
+		if zoneStat.MetaNodeStat.TotalNodes <= 0 && zoneStat.DataNodeStat.TotalNodes <= 0 {
+			continue
+		}
 		cs.ZoneStatInfo[zoneName] = zoneStat
 	}
 	zoneTag, err := extractZoneTag(r)
@@ -1852,6 +1855,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		SmartRules:           vol.smartRules,
 		TotalSize:            stat.TotalSize,
 		UsedSize:             stat.UsedSize,
+		TotalSizeGB:          fmt.Sprintf("%.2f", float64(stat.TotalSize)/util.GB),
+		UsedSizeGB:           fmt.Sprintf("%.2f", float64(stat.UsedSize)/util.GB),
 		UsedRatio:            usedRatio,
 		FileAvgSize:          fileAvgSize,
 		CreateStatus:         vol.CreateStatus,
