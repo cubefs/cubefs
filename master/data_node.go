@@ -145,6 +145,22 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	return
 }
 
+func (dataNode *DataNode) canAllocDp() bool {
+	if !dataNode.isWriteAble() {
+		return false
+	}
+
+	if dataNode.ToBeOffline {
+		return false
+	}
+
+	if !dataNode.dpCntInLimit() {
+		return false
+	}
+
+	return true
+}
+
 func (dataNode *DataNode) dpCntInLimit() bool {
 	return dataNode.DataPartitionCount <= dpCntOneNodeLimit()
 }
