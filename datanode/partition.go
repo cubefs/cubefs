@@ -148,8 +148,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 		err = dp.StartRaft()
 	} else {
 		// init leaderSize to partitionSize
-		dp.leaderSize = dp.partitionSize
-		disk.updateDisk(uint64(dp.leaderSize))
+		disk.updateDisk(uint64(request.LeaderSize))
 		go dp.StartRaftAfterRepair()
 	}
 	if err != nil {
