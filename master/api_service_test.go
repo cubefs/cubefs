@@ -1619,8 +1619,8 @@ func TestZoneSetRegion(t *testing.T) {
 }
 
 func TestDefaultRegion(t *testing.T) {
-	server.cluster.t.putZoneIfAbsent(newZone(testZone4))
-	server.cluster.t.putZoneIfAbsent(newZone(testZone5))
+	server.cluster.t.putZoneIfAbsent(newZone(testZone6))
+	server.cluster.t.putZoneIfAbsent(newZone(testZone9))
 	topologyView, err := getTopologyView()
 	if err != nil {
 		t.Errorf("get getTopologyView err:%v", err)
@@ -1630,11 +1630,11 @@ func TestDefaultRegion(t *testing.T) {
 	for _, regionView := range topologyView.Regions {
 		if regionView.Name == "default" {
 			flag = true
-			if !contains(regionView.Zones, testZone4) {
-				t.Errorf("zone:%v is expected in default region but is not", testZone4)
+			if !contains(regionView.Zones, testZone6) {
+				t.Errorf("zone:%v is expected in default region but is not", testZone6)
 			}
-			if !contains(regionView.Zones, testZone5) {
-				t.Errorf("zone:%v is expected in default region but is not", testZone5)
+			if !contains(regionView.Zones, testZone9) {
+				t.Errorf("zone:%v is expected in default region but is not", testZone9)
 			}
 			t.Log(*regionView)
 			break
@@ -1646,6 +1646,8 @@ func TestDefaultRegion(t *testing.T) {
 }
 
 func TestUpdateRegion(t *testing.T) {
+	server.cluster.t.putZoneIfAbsent(newZone(testZone4))
+	server.cluster.t.putZoneIfAbsent(newZone(testZone5))
 	regionName := testRegion4
 	// add one zone
 	reqURL := fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, testZone4, regionName)
