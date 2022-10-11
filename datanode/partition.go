@@ -1119,7 +1119,12 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 //
 func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.DataPartitionInfo
-	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
+	for i := 0; i < 2; i++ {
+		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err == nil {
+			break
+		}
+	}
+	if err != nil {
 		log.LogErrorf("action[canRemoveSelf] err(%v)", err)
 		return
 	}
