@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/shirou/gopsutil/disk"
-	"github.com/tiglabs/raft/util"
 	"io/ioutil"
 	"math"
 	"os"
@@ -92,7 +91,7 @@ func (d *FsCapMon) UpdateReversedSpace(space uint64) {
 	if !d.IsRocksDBDisk {
 		return
 	}
-	reservedSpace := uint64(math.Min(float64(space * util.MB), d.Total * DefReservedSpaceMaxRatio))
+	reservedSpace := uint64(math.Min(float64(space * MB), d.Total * DefReservedSpaceMaxRatio))
 	d.ReservedSpace = reservedSpace
 	return
 }
