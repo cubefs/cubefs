@@ -1324,6 +1324,8 @@ func checkInode(vol string, c *sdk.MasterClient, inode uint64, checkedExtent *sy
 					var ekStr string
 					if tinyInUse {
 						ekStr = fmt.Sprintf("%d-%d-%d-%d", ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.Size)
+					} else {
+						ekStr = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
 					}
 					if _, ok := extent.LoadOrStore(ekStr, true); ok {
 						wg.Done()
