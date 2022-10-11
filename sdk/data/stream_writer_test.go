@@ -335,7 +335,11 @@ func TestROW(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create ROW testFile failed: err(%v), file(%v)", err, testROWFilePath)
 	}
-	defer ROWFile.Close()
+	defer func() {
+		ROWFile.Close()
+		os.Remove(testROWFilePath)
+		log.LogFlush()
+	}()
 	writeBytes := []byte(originData)
 	writeOffset := int64(0)
 	_, err = ROWFile.WriteAt(writeBytes, writeOffset)
@@ -398,7 +402,11 @@ func TestWrite_DataConsistency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create testFile failed: err(%v), file(%v)", err, testFile)
 	}
-	defer file.Close()
+	defer func() {
+		file.Close()
+		os.Remove(testFile)
+		log.LogFlush()
+	}()
 	// append write
 	var fileOffset uint64 = 0
 	for i := 0; i < 3; i++ {

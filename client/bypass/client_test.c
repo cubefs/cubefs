@@ -288,8 +288,8 @@ void testUnlinkAndRename() {
     #define COUNT 10
     #define PATH_LEN 100
     char *mount = getenv("CFS_MOUNT_POINT");
-    char *file_1 = "test1";
-    char *file_2 = "test2";
+    char *file_1 = "testUnlinkAndRename_1";
+    char *file_2 = "testUnlinkAndRename_2";
     int fd_1, fd_2;
     int re, size;
     char *write_buf_1 = malloc(COUNT);
@@ -308,9 +308,9 @@ void testUnlinkAndRename() {
     strcat(path_2, "/");
     strcat(path_2, file_2);
 
-    fd_1 = open(path_1, O_RDWR|O_CREAT, 0666);
+    fd_1 = open(path_1, O_RDWR|O_CREAT|O_TRUNC, 0666);
     assertf(fd_1 > 0, "open file %s returning %d", path_1, fd_1);
-    fd_2 = open(path_2, O_RDWR|O_CREAT, 0666);
+    fd_2 = open(path_2, O_RDWR|O_CREAT|O_TRUNC, 0666);
     assertf(fd_2 > 0, "open file %s returning %d", path_2, fd_2);
 
     size = write(fd_1, write_buf_1, COUNT);
