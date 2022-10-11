@@ -259,9 +259,7 @@ func (dc *DataHttpClient) GetPartitionFromNode(id uint64) (pInfo *proto.DNDataPa
 	pInfo = new(proto.DNDataPartitionInfo)
 	pInfoOld := new(proto.DNDataPartitionInfoOldVersion)
 	if err = json.Unmarshal(d, pInfoOld); err != nil {
-		if err = json.Unmarshal(d, pInfo); err != nil {
-			return
-		}
+		err = json.Unmarshal(d, pInfo)
 		return
 	}
 	for _, ext := range pInfoOld.Files {
@@ -381,10 +379,8 @@ func (dc *DataHttpClient) GetExtentInfo(id uint64, eid uint64) (ehs *proto.Exten
 	}
 	ehs = new(proto.ExtentInfoBlock)
 	ehsOld := new(proto.ExtentInfo)
-	if err = json.Unmarshal(d, ehs); err != nil {
-		if err = json.Unmarshal(d, ehsOld); err != nil {
-			return
-		}
+	if err = json.Unmarshal(d, ehsOld); err != nil {
+		err = json.Unmarshal(d, ehs)
 		return
 	}
 	ehs[proto.ExtentInfoFileID] = ehsOld.FileID
