@@ -538,13 +538,11 @@ func (mp *metaPartition) ResetDbByNewDir(newDBDir string) (err error){
 	}
 
 	for _, file := range fileInfoList {
-		if file.IsDir() && strings.HasPrefix(file.Name(), "db") {
-			if file.Name() == "db" {
-				continue
-			}
+		if file.IsDir() && strings.HasPrefix(file.Name(), "db_") {
 			oldName := path.Join(mp.config.RocksDBDir, partitionPrefix + partitionId, file.Name())
-			newName := path.Join(mp.config.RocksDBDir, partitionPrefix + partitionId, "expired_" + file.Name())
-			os.Rename(oldName, newName)
+			//last snap shot failed, exist db_timestamp dir, remove it
+			//newName := path.Join(mp.config.RocksDBDir, partitionPrefix + partitionId, "expired_" + file.Name())
+			os.RemoveAll(oldName)
 		}
 	}
 	return nil
