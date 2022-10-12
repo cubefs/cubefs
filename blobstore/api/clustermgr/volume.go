@@ -293,7 +293,7 @@ func (c *Client) ReportChunk(ctx context.Context, args *ReportChunkArgs) (err er
 		return err
 	}
 	request.ContentLength = int64(len(b))
-	request.Header.Set(rpc.HeaderContentType, rpc.MIMEPOSTForm)
+	request.Header.Set(rpc.HeaderContentType, rpc.MIMEStream)
 	resp, err := c.Do(ctx, request)
 	if err != nil {
 		return
