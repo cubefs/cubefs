@@ -305,11 +305,13 @@ func (s *S3Scanner) handleDirLimit(dentry *proto.ScanDentry) {
 		}
 
 		if marker != "" {
-			if len(children) <= 1 {
-				done = true
-				break
-			} else {
-				children = children[1:]
+			if len(children) >= 1 && marker == children[0].Name {
+				if len(children) <= 1 {
+					done = true
+					break
+				} else {
+					children = children[1:]
+				}
 			}
 		}
 
@@ -365,11 +367,13 @@ func (s *S3Scanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 		}
 
 		if marker != "" {
-			if len(children) <= 1 {
-				done = true
-				break
-			} else {
-				children = children[1:]
+			if len(children) >= 1 && marker == children[0].Name {
+				if len(children) <= 1 {
+					done = true
+					break
+				} else {
+					children = children[1:]
+				}
 			}
 		}
 
