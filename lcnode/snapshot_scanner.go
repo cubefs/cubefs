@@ -157,16 +157,18 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 			}
 
 			if marker != "" {
-				if len(children) <= 1 {
-					done = true
-					log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll done, parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
-						dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), children)
-					break
-				} else {
-					skippedChild := children[0]
-					children = children[1:]
-					log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll skip last marker[%v], parent[%v] verSeq[%v] skippedName[%v]",
-						marker, dentry.Inode, s.getTaskVerSeq(), skippedChild.Name)
+				if len(children) >= 1 && marker == children[0].Name {
+					if len(children) <= 1 {
+						done = true
+						log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll done, parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
+							dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), children)
+						break
+					} else {
+						skippedChild := children[0]
+						children = children[1:]
+						log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll skip last marker[%v], parent[%v] verSeq[%v] skippedName[%v]",
+							marker, dentry.Inode, s.getTaskVerSeq(), skippedChild.Name)
+					}
 				}
 			}
 
@@ -269,16 +271,18 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 			}
 
 			if marker != "" {
-				if len(children) <= 1 {
-					done = true
-					log.LogDebugf("action[handlVerDel] ReadDirLimit_ll done, parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
-						dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), children)
-					break
-				} else {
-					skippedChild := children[0]
-					children = children[1:]
-					log.LogDebugf("action[handlVerDel] ReadDirLimit_ll skip last marker[%v], parent[%v] verSeq[%v] skippedName[%v]",
-						marker, dentry.Inode, s.getTaskVerSeq(), skippedChild.Name)
+				if len(children) >= 1 && marker == children[0].Name {
+					if len(children) <= 1 {
+						done = true
+						log.LogDebugf("action[handlVerDel] ReadDirLimit_ll done, parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
+							dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), children)
+						break
+					} else {
+						skippedChild := children[0]
+						children = children[1:]
+						log.LogDebugf("action[handlVerDel] ReadDirLimit_ll skip last marker[%v], parent[%v] verSeq[%v] skippedName[%v]",
+							marker, dentry.Inode, s.getTaskVerSeq(), skippedChild.Name)
+					}
 				}
 			}
 
