@@ -665,25 +665,23 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 
-	var volumeInfo *proto.SimpleVolView
+	var (
+		volumeInfo *proto.SimpleVolView
+		verList    *proto.VolVersionInfoList
+	)
 	if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
 		log.LogErrorf("action[onStart] GetVolumeSimpleInfo err[%v]", err)
 		return
 	}
 
 	mp.vol.volDeleteLockTime = volumeInfo.DeleteLockTime
-	verList, err := masterClient.AdminAPI().GetVerList(mp.config.VolName)
+	verList, err = masterClient.AdminAPI().GetVerList(mp.config.VolName)
+
 	if err != nil {
 		log.LogErrorf("action[onStart] GetVerList err[%v]", err)
 		return
 	}
 	if isCreate || len(mp.multiVersionList.VerList) == 0 {
-		verList, err = masterClient.AdminAPI().GetVerList(mp.config.VolName)
-		if err != nil {
-			log.LogErrorf("action[onStart] GetVerList err[%v]", err)
-			return
-		}
-
 		for _, info := range verList.VerList {
 			if info.Status != proto.VersionNormal {
 				continue
