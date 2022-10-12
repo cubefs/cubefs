@@ -200,7 +200,7 @@ func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy
 
 func (verMgr *VolVersionManager) checkSnapshotStrategy() {
 	verMgr.RLock()
-	if verMgr.strategy.Periodic == 0 { // strategy not be set
+	if verMgr.strategy.Periodic == 0 || verMgr.strategy.Enable == false { // strategy not be set
 		verMgr.RUnlock()
 		return
 	}

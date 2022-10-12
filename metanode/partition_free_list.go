@@ -255,12 +255,11 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			continue
 		}
 
-
 		if !inode.ShouldDelete() {
 			log.LogWarnf("deleteMarkedInodes: inode should not be deleted, ino %s", inode.String())
 			continue
 		}
-		
+
 		log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] inode.Extents %v, ino verlist %v", mp.config.PartitionId, ino, inode.Extents, inode.multiVersions)
 		if len(inode.multiVersions) > 1 {
 			log.LogErrorf("deleteMarkedInodes. mp %v inode [%v] verlist len %v should not drop",
