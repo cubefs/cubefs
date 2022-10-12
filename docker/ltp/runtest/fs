@@ -40,7 +40,7 @@ gf30 growfiles -W gf30 -D 0 -b -i 0 -L 60 -u -B 1000b -e 1 -o O_RDWR,O_CREAT,O_S
 iogen01 export LTPROOT; rwtest -N iogen01 -i 120s -s read,write -Da -Dv -n 2 500b:$TMPDIR/doio.f1.$$ 1000b:$TMPDIR/doio.f2.$$
 
 fs_inod01 fs_inod $TMPDIR 10 10 10
-linker01 linktest.sh 1000 1000
+linker01 linktest.sh -a 1000 -s 1000
 openfile01 openfile -f10 -t10
 inode01 inode01
 inode02 inode02
