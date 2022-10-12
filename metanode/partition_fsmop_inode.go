@@ -852,7 +852,8 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuot
 			resp.InodeRes[ino] = proto.OpErr
 			continue
 		}
-		extend.Put([]byte(proto.QuotaKey), value, 0)
+
+		extend.Put([]byte(proto.QuotaKey), value, mp.verSeq)
 		resp.InodeRes[ino] = proto.OpOk
 		if !isExist {
 			files += 1
@@ -913,7 +914,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 							resp.InodeRes[ino] = proto.OpErr
 							continue
 						}
-						extend.Put([]byte(proto.QuotaKey), value, 0)
+						extend.Put([]byte(proto.QuotaKey), value, mp.verSeq)
 					}
 				} else {
 					log.LogDebugf("fsmDeleteInodeQuotaBatch QuotaInfoMap can not find inode [%v] quota [%v]", ino, req.QuotaId)
