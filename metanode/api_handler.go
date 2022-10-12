@@ -18,8 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/errors"
+
 	"io"
 	"math"
 	"net/http"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 

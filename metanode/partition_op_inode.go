@@ -335,7 +335,6 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		return
 	}
 
-	log.LogDebugf("action[UnlinkInode] %v get resp", ino)
 	msg = r.(*InodeResponse)
 	makeRspFunc()
 
@@ -614,7 +613,7 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		var quotaIds []uint32
 		ino.Inode = inoId
 		ino.verSeq = req.VerSeq
-		retMsg := mp.getInode(ino)
+		retMsg := mp.getInode(ino, false)
 		if mp.mqMgr.EnableQuota() {
 			quotaIds, err = mp.getInodeQuotaIds(inoId)
 			if err != nil {

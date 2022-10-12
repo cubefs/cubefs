@@ -218,7 +218,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 	}
 
 	parIno := NewInode(req.ParentID, 0)
-	inoResp := mp.getInode(parIno)
+	inoResp := mp.getInode(parIno, false)
 	if inoResp.Status != proto.OpOk {
 		err = fmt.Errorf("parIno[%v] not exists", parIno.Inode)
 		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
