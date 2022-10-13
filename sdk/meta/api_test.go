@@ -74,6 +74,11 @@ func TestMetaAPI(t *testing.T) {
 	if _, err = mw.MakeDirectory(dir2Inode, dir3); err == nil {
 		t.Errorf("make directory(%v) failed", dir3)
 	}
+	// clean test file
+	err = os.RemoveAll(strings.Join([]string{"/cfs/mnt",dir1}, "/"))
+	if err != nil {
+		t.Errorf("TestMetaAPI: clean test dir(%v) failed, err(%v)", dir1, err)
+	}
 }
 
 func TestMetaWrapper_Link(t *testing.T) {
@@ -98,6 +103,15 @@ func TestMetaWrapper_Link(t *testing.T) {
 	data, _ := ioutil.ReadFile(linkFile)
 	if strings.Compare(string(data), word) != 0 {
 		t.Fatalf("link error")
+	}
+	// clean test file
+	err = os.Remove(linkFile)
+	if err != nil {
+		t.Errorf("TestMetaWrapper_Link: remove link file(%s) failed\n", linkFile)
+	}
+	err = os.Remove(testFile)
+	if err != nil {
+		t.Errorf("TestMetaWrapper_Link: remove test file(%s) failed\n", testFile)
 	}
 }
 
@@ -148,6 +162,10 @@ func TestCreateFileAfterInodeLost(t *testing.T)  {
 			if newErr != nil || newInfo.Inode == info.Inode {
 				t.Errorf("TestCreateFileAfterInodeLost: create again err(%v) name(%v) newInode(%v) oldInode(%v)",
 					newErr, tt.name, newInfo, info)
+			}
+			// clean test file
+			if err = os.Remove(strings.Join([]string{"/cfs/mnt",tt.name}, "/")); err != nil {
+				t.Errorf("TestCreateFileAfterInodeLost: clean test file(%v) failed, err(%v)", tt.name, err)
 			}
 		})
 	}

@@ -304,6 +304,10 @@ run_ltptest() {
     echo "------------------------";
     echo "Failed LTP Test Cases:"
     cat /opt/ltp/output/*
+    if [ $(cat /opt/ltp/output/* | wc -l) -ne 0  ] ; then
+      echo -e "\033[31m ltp test fail\033[0m"
+      exit 1
+    fi
     echo "------------------------";
 }
 
@@ -530,6 +534,10 @@ after_ec_consistency_test() {
 run_bypass_client_test() {
     echo "run bypass client test..."
     LD_PRELOAD=/usr/lib64/libcfsclient.so CFS_CONFIG_PATH=/usr/lib64/bypass.ini CFS_MOUNT_POINT=/cfs/mnt /cfs/bin/test-bypass
+    if [[ $? -ne 0 ]]; then
+      echo -e "\033[31mfail\033[0m"
+      exit 1
+    fi
 }
 
 init_cli

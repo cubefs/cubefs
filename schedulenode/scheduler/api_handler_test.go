@@ -27,7 +27,7 @@ func init() {
 		"mysql": {
 			"url": "11.97.57.230",
 			"userName": "root",
-			"password": "123456",
+			"password": "cfsTest123@",
 			"database": "smart",
 			"port": 3306
 		},
