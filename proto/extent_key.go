@@ -282,7 +282,7 @@ func (k *ExtentKey) UnmarshalBinaryWithCheckSum(buf *bytes.Buffer) (err error) {
 	if err = binary.Read(buf, binary.BigEndian, magic); err != nil {
 		return
 	}
-	log.LogDebugf("action[UnmarshalBinaryWithCheckSum] err header magic %v", string(magic))
+	log.LogDebugf("action[UnmarshalBinaryWithCheckSum] header magic %v", string(magic))
 	if r := bytes.Compare(magic, ExtentKeyHeader); r != 0 {
 		if r = bytes.Compare(magic, ExtentKeyHeaderV3); r != 0 {
 			log.LogErrorf("action[UnmarshalBinaryWithCheckSum] err header magic %v", string(magic))
