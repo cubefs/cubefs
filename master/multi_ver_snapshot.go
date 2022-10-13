@@ -211,6 +211,8 @@ func (verMgr *VolVersionManager) checkSnapshotStrategy() {
 		if _, err := verMgr.createVer2PhaseTask(verMgr.c, uint64(time.Now().Unix()), proto.CreateVersion, false); err != nil {
 			return
 		}
+		verMgr.strategy.UTime = time.Now()
+		verMgr.Persist()
 	}
 
 	verMgr.RLock()
@@ -474,7 +476,7 @@ func (verMgr *VolVersionManager) createTask(cluster *Cluster, verSeq uint64, op 
 }
 
 func (verMgr *VolVersionManager) initVer2PhaseTask(verSeq uint64, op uint8) (verRsp *proto.VolVersionInfo, err error, opRes uint8) {
-	log.LogWarnf("action[VolVersionManager.initVer2PhaseTask] verMgr.status %v op %v verSeq %v", verMgr.status, op, verSeq)
+	log.LogWarnf("action[VolVersionManager.initVer2PhaseTask] vol %v verMgr.status %v op %v verSeq %v", verMgr.vol.Name, verMgr.status, op, verSeq)
 	if op == proto.CreateVersion {
 		if err = verMgr.GenerateVer(verSeq, op); err != nil {
 			log.LogInfof("action[VolVersionManager.initVer2PhaseTask] exit")

@@ -106,12 +106,12 @@ type SplitExtentInfo struct {
 // freelist clean inode get all exist extents info, deal special case for split key
 func (inode *Inode) GetAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*proto.ExtentKey) {
 
-	log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] inode.Extents %v, ino verlist %v",
+	log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp %v inode [%v] inode.Extents %v, ino verlist %v",
 		mpID, inode.Inode, inode.Extents, inode.multiVersions)
 	extInfo = make(map[uint64][]*proto.ExtentKey)
 
-	if len(inode.multiVersions) > 1 {
-		log.LogWarnf("deleteMarkedInodes. mp %v inode [%v] verlist len %v should not drop",
+	if len(inode.multiVersions) > 0 {
+		log.LogWarnf("deleteMarkedInodes. GetAllExtsOfflineInode.mp %v inode [%v] verlist len %v should not drop",
 			mpID, inode.Inode, len(inode.multiVersions))
 	}
 
@@ -120,7 +120,7 @@ func (inode *Inode) GetAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*p
 		if i > 0 {
 			dIno = inode.multiVersions[i-1]
 		}
-		log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] dIno %v", mpID, inode.Inode, dIno)
+		log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp %v inode [%v] dIno %v", mpID, inode.Inode, dIno)
 		dIno.Extents.Range(func(ek proto.ExtentKey) bool {
 			ext := &ek
 			if ext.IsSplit {
@@ -132,17 +132,17 @@ func (inode *Inode) GetAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*p
 					return false
 				}
 				if !last {
-					log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] ek %v be removed", mpID, inode.Inode, ext)
+					log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp %v inode [%v] ek %v be removed", mpID, inode.Inode, ext)
 					return true
 				}
 
-				log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] ek %v be removed", mpID, inode.Inode, ext)
+				log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp %v inode [%v] ek %v be removed", mpID, inode.Inode, ext)
 				ext.IsSplit = false
 				ext.ExtentOffset = 0
 				ext.Size = 0
 			}
 			extInfo[ext.PartitionId] = append(extInfo[ext.PartitionId], ext)
-			log.LogWritef("mp(%v) ino(%v) deleteExtent(%v)", mpID, inode.Inode, ext.String())
+			log.LogWritef("GetAllExtsOfflineInode. mp(%v) ino(%v) deleteExtent(%v)", mpID, inode.Inode, ext.String())
 			return true
 		})
 	}
@@ -980,6 +980,10 @@ func (inode *Inode) unlinkTopLayer(ino *Inode, mpVer uint64, verlist *proto.VolV
 
 		ver, err := inode.getNextOlderVer(mpVer, verlist)
 		if err != nil {
+			if err.Error() == "not found" {
+				inode.DecNLink()
+				doMore = true
+			}
 			log.LogErrorf("action[unlinkTopLayer] inode %v cann't get next older ver %v err %v", inode.Inode, mpVer, err)
 			return
 		}
@@ -1314,8 +1318,8 @@ func (i *Inode) getNextOlderVer(ver uint64, verlist *proto.VolVersionInfoList) (
 			return verlist.VerList[idx-1].Ver, nil
 		}
 	}
-	log.LogDebugf("getNextOlderVer inode %v ver %v not found", i.Inode, ver)
-	return 0, fmt.Errorf("not found")
+	log.LogErrorf("getNextOlderVer inode %v ver %v not found", i.Inode, ver)
+	return 0, fmt.Errorf("version not exist")
 }
 
 func (i *Inode) CreateUnlinkVer(mpVer uint64, nVer uint64) {
