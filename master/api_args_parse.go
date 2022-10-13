@@ -234,21 +234,24 @@ func parseVolVerStrategy(r *http.Request) (strategy proto.VolumeVerStrategy, err
 	var value string
 	if value = r.FormValue(enableKey); value == "" {
 		strategy.Enable = true
-		return
-	}
-	if strategy.Enable, err = strconv.ParseBool(value); err != nil {
-		return
+	} else {
+		if strategy.Enable, err = strconv.ParseBool(value); err != nil {
+			log.LogErrorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
+			return
+		}
 	}
 
 	strategy.KeepVerCnt, err = parseUintParam(r, countKey)
 	if strategy.Enable && err != nil {
+		log.LogErrorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
 		return
 	}
 	strategy.Periodic, err = parseUintParam(r, Periodic)
 	if strategy.Enable && err != nil {
+		log.LogErrorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
 		return
 	}
-
+	log.LogDebugf("parseVolVerStrategy. strategy %v", strategy)
 	return
 }
 
