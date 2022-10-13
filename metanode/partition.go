@@ -532,9 +532,10 @@ func (mp *metaPartition) checkAndUpdateVerList(verSeq uint64) (err error) {
 	if verSeq == math.MaxUint64 {
 		verSeq = 0
 	}
+	log.LogDebugf("mp.multiVersionList.VerList size %v, content %v", len(mp.multiVersionList.VerList), mp.multiVersionList.VerList)
 	nLen := len(mp.multiVersionList.VerList)
 	if nLen == 0 {
-		log.LogFatal("checkAndUpdateVerList. mp %v must have more than one version on list", mp.config.PartitionId)
+		log.LogFatalf("checkAndUpdateVerList. mp %v must have more than one version on list", mp.config.PartitionId)
 		return
 	}
 

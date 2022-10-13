@@ -1000,10 +1000,11 @@ func TestSnapshotDeletion(t *testing.T) {
 		time.Sleep(time.Second)
 		dCnt, fCnt := testPrintDirTree(t, 1, "root", ver)
 		if layIdx+1 < dirLayCnt {
+			log.LogDebugf("testCreateVer")
 			testCreateVer()
 		}
 
-		t.Logf("PrintALl verSeq %v get dirCnt %v, fCnt %v", ver, dCnt, fCnt)
+		log.LogDebugf("PrintALl verSeq %v get dirCnt %v, fCnt %v mp verlist size %v", ver, dCnt, fCnt, len(mp.multiVersionList.VerList))
 	}
 
 	t.Logf("---------------------------------------------------------------------")
@@ -1043,6 +1044,9 @@ func TestSnapshotDeletion(t *testing.T) {
 		t.Logf("index %v ver %v after deletion mp inode freeList len %v", idx, ver, mp.freeList.Len())
 		log.LogDebugf("index %v ver %v after deletion mp inode freeList len %v", idx, ver, mp.freeList.Len())
 		t.Logf("---------------------------------------------------------------------")
+		if idx == len(verArr)-2 {
+			break
+		}
 	}
 
 	t.Logf("---------------------------------------------------------------------")
