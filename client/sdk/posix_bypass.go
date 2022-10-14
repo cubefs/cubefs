@@ -686,7 +686,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	}
 
 	ino = info.Inode
-	f = c.allocFD(info.Inode, fuseFlags, info.Mode, info.Target, int(fd))
+	f = c.allocFile(info.Inode, fuseFlags, info.Mode, info.Target, int(fd))
 	if f == nil {
 		return statusEMFILE
 	}
@@ -2926,6 +2926,15 @@ func cfs_fcntl_lock(id C.int64_t, fd C.int, cmd C.int, lk *C.struct_flock) C.int
 
 	// unimplemented
 	return statusEINVAL
+}
+
+//export cfs_alloc_fd
+func cfs_alloc_fd(id C.int64_t) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+	return C.int(c.allocFD())
 }
 
 /*

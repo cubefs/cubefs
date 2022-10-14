@@ -181,6 +181,7 @@ typedef int (*cfs_fremovexattr_t)(int64_t id, int fd, const char *name);
 typedef int (*cfs_fcntl_t)(int64_t id, int fd, int cmd, int arg);
 // For fcntl cmd F_SETLK, F_SETLKW
 typedef int (*cfs_fcntl_lock_t)(int64_t id, int fd, int cmd, struct flock *lk);
+typedef int (*cfs_alloc_fd_t)(int64_t id);
 
 /*
  * Read & Write
@@ -276,6 +277,7 @@ static cfs_fremovexattr_t cfs_fremovexattr;
 
 static cfs_fcntl_t cfs_fcntl;
 static cfs_fcntl_lock_t cfs_fcntl_lock;
+static cfs_alloc_fd_t cfs_alloc_fd;
 
 static cfs_read_t cfs_read;
 static cfs_pread_t cfs_pread;

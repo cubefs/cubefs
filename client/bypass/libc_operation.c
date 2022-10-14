@@ -31,6 +31,7 @@ static rmdir_t func_rmdir;
 static opendir_t func_opendir;
 static fdopendir_t func_fdopendir;
 static readdir_t func_readdir;
+static readdir_r_t func_readdir_r;
 static closedir_t func_closedir;
 static realpath_t func_realpath;
 static realpath_chk_t func_realpath_chk;
@@ -75,6 +76,7 @@ static lremovexattr_t func_lremovexattr;
 static fremovexattr_t func_fremovexattr;
 
 static fcntl_t func_fcntl;
+static dup_t func_dup;
 static dup2_t func_dup2;
 static dup3_t func_dup3;
 
@@ -87,6 +89,7 @@ static writev_t func_writev;
 static pwrite_t func_pwrite;
 static pwritev_t func_pwritev;
 static lseek_t func_lseek;
+static sendfile_t func_sendfile;
 
 static fdatasync_t func_fdatasync;
 static fsync_t func_fsync;
@@ -215,6 +218,13 @@ struct dirent *libc_readdir(DIR *dirp) {
         func_readdir = (readdir_t)dlsym(RTLD_NEXT, "readdir");
     }
     return func_readdir(dirp);
+}
+
+int libc_readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result) {
+    if(func_readdir_r == NULL) {
+        func_readdir_r = (readdir_r_t)dlsym(RTLD_NEXT, "readdir_r");
+    }
+    return func_readdir_r(dirp, entry, result);
 }
 
 int libc_closedir(DIR *dirp) {
@@ -508,6 +518,13 @@ int libc_fcntl(int fd, int cmd, ...) {
     return func_fcntl(fd, cmd, arg);
 }
 
+int libc_dup(int oldfd) {
+    if(func_dup == NULL) {
+        func_dup = (dup_t)dlsym(RTLD_NEXT, "dup");
+    }
+    return func_dup(oldfd);
+}
+
 int libc_dup2(int oldfd, int newfd) {
     if(func_dup2 == NULL) {
         func_dup2 = (dup2_t)dlsym(RTLD_NEXT, "dup2");
@@ -583,6 +600,13 @@ off_t libc_lseek(int fd, off_t offset, int whence) {
         func_lseek = (lseek_t)dlsym(RTLD_NEXT, "lseek");
     }
     return func_lseek(fd, offset, whence);
+}
+
+ssize_t libc_sendfile(int out_fd, int in_fd, off_t *offset, size_t count) {
+    if(func_sendfile == NULL) {
+        func_sendfile = (sendfile_t)dlsym(RTLD_NEXT, "sendfile");
+    }
+    return func_sendfile(out_fd, in_fd, offset, count);
 }
 
 int libc_fdatasync(int fd) {

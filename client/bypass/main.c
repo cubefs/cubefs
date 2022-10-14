@@ -204,6 +204,14 @@ struct dirent64 *readdir64(DIR *dirp) {
     return (struct dirent64 *)readdir(dirp);
 }
 
+int readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result) {
+    LOCK_RETURN_INT(readdir_r(dirp, entry, result));
+}
+
+int readdir64_r(DIR *dirp, struct dirent64 *entry, struct dirent64 **result) {
+    LOCK_RETURN_INT(readdir_r(dirp, (struct dirent *)entry, (struct dirent **)result));
+}
+
 int closedir(DIR *dirp) {
     LOCK_RETURN_INT(closedir(dirp));
 }
@@ -430,6 +438,10 @@ int fcntl(int fd, int cmd, ...) {
 }
 weak_alias (fcntl, fcntl64)
 
+int dup(int oldfd) {
+    LOCK_RETURN_INT(dup(oldfd));
+}
+
 int dup2(int oldfd, int newfd) {
     LOCK_RETURN_INT(dup2(oldfd, newfd));
 }
@@ -482,6 +494,10 @@ off_t lseek(int fd, off_t offset, int whence) {
 }
 weak_alias (lseek, lseek64)
 
+ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count) {
+    LOCK_RETURN_LONG(sendfile(out_fd, in_fd, offset, count));
+}
+weak_alias (sendfile, sendfile64)
 
 /*
  * Synchronized I/O
@@ -653,6 +669,7 @@ static void init_cfsc_func(void *handle) {
     real_opendir = (opendir_t)dlsym(handle, "real_opendir");
     real_fdopendir = (fdopendir_t)dlsym(handle, "real_fdopendir");
     real_readdir = (readdir_t)dlsym(handle, "real_readdir");
+    real_readdir_r = (readdir_r_t)dlsym(handle, "real_readdir_r");
     real_closedir = (closedir_t)dlsym(handle, "real_closedir");
     real_realpath = (realpath_t)dlsym(handle, "real_realpath");
     real_realpath_chk = (realpath_chk_t)dlsym(handle, "real_realpath_chk");
@@ -696,6 +713,7 @@ static void init_cfsc_func(void *handle) {
     real_fremovexattr = (fremovexattr_t)dlsym(handle, "real_fremovexattr");
 
     real_fcntl = (fcntl_t)dlsym(handle, "real_fcntl");
+    real_dup = (dup_t)dlsym(handle, "real_dup");
     real_dup2 = (dup2_t)dlsym(handle, "real_dup2");
     real_dup3 = (dup3_t)dlsym(handle, "real_dup3");
 
@@ -708,6 +726,7 @@ static void init_cfsc_func(void *handle) {
     real_pwrite = (pwrite_t)dlsym(handle, "real_pwrite");
     real_pwritev = (pwritev_t)dlsym(handle, "real_pwritev");
     real_lseek = (lseek_t)dlsym(handle, "real_lseek");
+    real_sendfile = (sendfile_t)dlsym(handle, "real_sendfile");
 
     real_fdatasync = (fdatasync_t)dlsym(handle, "real_fdatasync");
     real_fsync = (fsync_t)dlsym(handle, "real_fsync");

@@ -26,6 +26,7 @@ static rmdir_t real_rmdir;
 static opendir_t real_opendir;
 static fdopendir_t real_fdopendir;
 static readdir_t real_readdir;
+static readdir_r_t real_readdir_r;
 static closedir_t real_closedir;
 static realpath_t real_realpath;
 static realpath_chk_t real_realpath_chk;
@@ -69,6 +70,7 @@ static lremovexattr_t real_lremovexattr;
 static fremovexattr_t real_fremovexattr;
 
 static fcntl_t real_fcntl;
+static dup_t real_dup;
 static dup2_t real_dup2;
 static dup3_t real_dup3;
 
@@ -81,6 +83,7 @@ static writev_t real_writev;
 static pwrite_t real_pwrite;
 static pwritev_t real_pwritev;
 static lseek_t real_lseek;
+static sendfile_t real_sendfile;
 
 static fdatasync_t real_fdatasync;
 static fsync_t real_fsync;

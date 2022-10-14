@@ -259,7 +259,7 @@ void testDup() {
     char *path = "dir";
     char *file = "file1";
     off_t off;
-    int dirfd, fd, newfd1, newfd2;
+    int dirfd, fd, newfd1, newfd2, newfd3;
     ssize_t size;
     int res;
 
@@ -283,6 +283,10 @@ void testDup() {
     assertf(fd > 0, "open %s/dir/file1 returning %d", mount, fd);
     size = write(fd, "test", 4);
     assertf(size == 4, "write test to fd returning %d, expect 4", size);
+    newfd1 = dup(fd);
+    assertf(newfd1 > 0, "dup fd %d returning %d", fd, newfd1);
+    off = lseek(newfd1, 0, SEEK_CUR);
+    assertf(off == 4, "lseek returning %d, expect 4", off);
     newfd2 = dup2(fd, 100);
     assertf(newfd2 == 100, "dup2 fd %d returning %d, expect 100", fd, newfd2);
     off = lseek(newfd2, 0, SEEK_CUR);
@@ -291,23 +295,28 @@ void testDup() {
     res = close(fd);
     assertf(res == 0, "close fd %d returning %d, expect 0", fd, res);
 
-    newfd1 = fcntl(newfd2, F_DUPFD, 200);
-    assertf(newfd1 >= 200, "fcntl dup fd %d returning %d, expect 200", fd, newfd1);
+    newfd3 = fcntl(newfd2, F_DUPFD, 200);
+    assertf(newfd3 >= 200, "fcntl dup fd %d returning %d, expect 200", fd, newfd1);
     size = write(newfd1, "test", 4);
     assertf(size == 4, "write test to fd returning %d, expect 4", size);
     size = write(newfd2, "test", 4);
     assertf(size == 4, "write test to fd returning %d, expect 4", size);
+    size = write(newfd3, "test", 4);
+    assertf(size == 4, "write test to fd returning %d, expect 4", size);
 
     off = lseek(newfd1, 0, SEEK_CUR);
-    assertf(off == 12, "lseek returning %d, expect 4", off);
-
+    assertf(off == 16, "lseek returning %d, expect 4", off);
     res = close(newfd1);
     assertf(res == 0, "close fd %d returning %d, expect 0", newfd1, res);
 
     size = write(newfd2, "test", 4);
     assertf(size == 4, "write test to fd returning %d, expect 4", size);
-
     res = close(newfd2);
+    assertf(res == 0, "close fd %d returning %d, expect 0", newfd1, res);
+
+    size = write(newfd3, "test", 4);
+    assertf(size == 4, "write test to fd returning %d, expect 4", size);
+    res = close(newfd3);
     assertf(res == 0, "close fd %d returning %d, expect 0", newfd1, res);
 
     size = write(newfd2, "test", 4);

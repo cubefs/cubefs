@@ -798,6 +798,39 @@ struct dirent *real_readdir(DIR *dirp) {
     return dp;
 }
 
+int real_readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result) {
+    if(dirp == NULL || entry == NULL || result == NULL) {
+        errno = EBADF;
+        return -1;
+    }
+    bool is_cfs = fd_in_cfs(dirp->fd);
+    if(!g_hook || !is_cfs) {
+        return libc_readdir_r(dirp, entry, result);
+    }
+
+    if(dirp->offset >= dirp->size) {
+        int fd = get_cfs_fd(dirp->fd);
+        int count;
+        count = cfs_getdents(g_client_info.cfs_client_id, fd, dirp->data, dirp->allocation);
+        if(count <= 0) {
+            if(count < 0) {
+                errno = EBADF;
+                return -1;
+            }
+            *result = NULL;
+            return 0;
+        }
+        dirp->size = count;
+        dirp->offset = 0;
+    }
+
+    struct dirent *dp = (struct dirent *) &dirp->data[dirp->offset];
+    *result = (struct dirent *)memcpy(entry, dp, dp->d_reclen);
+    dirp->offset += dp->d_reclen;
+    dirp->filepos = dp->d_off;
+    return 0;
+}
+
 int real_closedir(DIR *dirp) {
     #ifdef _CFS_DEBUG
     log_debug("hook %s\n", __func__);
@@ -1620,6 +1653,31 @@ int close_fd(int fd) {
     return libc_close(fd);
 }
 
+int real_dup(int oldfd) {
+    bool is_cfs = fd_in_cfs(oldfd);
+    int libc_fd = oldfd;
+    int re = -1;
+    if (oldfd < 0) {
+        goto log;
+    }
+
+    if(g_hook && is_cfs) {
+        oldfd = get_cfs_fd(oldfd);
+        re = cfs_errno(cfs_alloc_fd(g_client_info.cfs_client_id));
+        if(re > 0) {
+            re = dup_fd(oldfd, re);
+        }
+    } else {
+        re = libc_dup(oldfd);
+    }
+
+log:
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs:%d, oldfd:%d, re:%d\n", __func__, is_cfs, oldfd, re);
+    #endif
+    return re;
+}
+
 int real_dup2(int oldfd, int newfd) {
     bool is_cfs = fd_in_cfs(oldfd);
     int re = newfd;
@@ -2254,6 +2312,38 @@ log:
     return re;
 }
 
+ssize_t real_sendfile(int out_fd, int in_fd, off_t *offset, size_t count) {
+    if(in_fd < 0 || out_fd < 0) {
+        return -1;
+    }
+
+    bool is_cfs = fd_in_cfs(in_fd) || fd_in_cfs(out_fd);
+    ssize_t re = -1;
+    if(g_hook && is_cfs) {
+        void *buf = malloc(count);
+        if(buf == NULL) {
+            goto log;
+        }
+        if(offset == NULL) {
+            re = real_read(in_fd, buf, count);
+        } else {
+            re = real_pread(in_fd, buf, count, *offset);
+        }
+        if(re < 0) {
+            goto log;
+        }
+        re = real_write(out_fd, buf, count);
+    } else {
+        re = libc_sendfile(out_fd, in_fd, offset, count);
+    }
+
+log:
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs:%d, in_fd:%d, out_fd:%d, offset:%ld, count:%d, re:%d\n", __func__, is_cfs, in_fd, out_fd, offset == NULL ? -1 : *offset, count, re);
+    #endif
+    return re;
+}
+
 
 /*
  * Synchronized I/O
@@ -2470,6 +2560,7 @@ static void init_cfs_func(void *handle) {
 
     cfs_fcntl = (cfs_fcntl_t)dlsym(handle, "cfs_fcntl");
     cfs_fcntl_lock = (cfs_fcntl_lock_t)dlsym(handle, "cfs_fcntl_lock");
+    cfs_alloc_fd = (cfs_alloc_fd_t)dlsym(handle, "cfs_alloc_fd");
 
     cfs_read = (cfs_read_t)dlsym(handle, "cfs_read");
     cfs_pread = (cfs_pread_t)dlsym(handle, "cfs_pread");

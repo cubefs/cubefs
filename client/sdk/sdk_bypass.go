@@ -579,7 +579,17 @@ func (c *client) inodeHasOpenFD(ino uint64) bool {
 	return false
 }
 
-func (c *client) allocFD(ino uint64, flags, mode uint32, target []byte, fd int) *file {
+func (c *client) allocFD() int {
+	c.fdlock.Lock()
+	defer c.fdlock.Unlock()
+	fd, ok := c.fdset.NextClear(0)
+	if !ok || fd > maxFdNum {
+		return -1
+	}
+	return int(fd)
+}
+
+func (c *client) allocFile(ino uint64, flags, mode uint32, target []byte, fd int) *file {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
 	var (
