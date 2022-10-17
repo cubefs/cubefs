@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -252,7 +253,9 @@ func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {
 		if parentId, err = v.lookupDirectories(dirs, false); err != nil {
 			return 0, err
 		}
-		log.LogDebugf("GetXAttr: lookup directories: path(%v) parentId(%v)", path, parentId)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("GetXAttr: lookup directories: path(%v) parentId(%v)", path, parentId)
+		}
 		// check file
 		var lookupMode uint32
 		inode, lookupMode, err = v.mw.Lookup_ll(context.Background(), parentId, filename)
@@ -599,9 +602,11 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 					v.name, path, invisibleTempDataInode.Inode, name, value, err)
 				return nil, err
 			}
-			log.LogDebugf("PutObject: store user-defined metadata: "+
-				"volume(%v) path(%v) inode(%v) key(%v) value(%v)",
-				v.name, path, invisibleTempDataInode.Inode, name, value)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("PutObject: store user-defined metadata: "+
+					"volume(%v) path(%v) inode(%v) key(%v) value(%v)",
+					v.name, path, invisibleTempDataInode.Inode, name, value)
+			}
 		}
 	}
 
@@ -647,8 +652,10 @@ func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) 
 					v.name, parentId, name, inode, err)
 				return
 			}
-			log.LogDebugf("applyInodeToDEntry: apply inode to new dentry: volume(%v) parentID(%v) name(%v) inode(%v)",
-				v.name, parentId, name, inode)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("applyInodeToDEntry: apply inode to new dentry: volume(%v) parentID(%v) name(%v) inode(%v)",
+					v.name, parentId, name, inode)
+			}
 		} else {
 			if os.FileMode(existMode).IsDir() {
 				log.LogErrorf("applyInodeToDEntry: target mode conflict: volume(%v) parentID(%v) name(%v) mode(%v)",
@@ -699,8 +706,11 @@ func (v *Volume) DeletePath(path string) (err error) {
 		// An unexpected error occurred
 		return
 	}
-	log.LogDebugf("DeletePath: lookup target: path(%v) parentID(%v) inode(%v) name(%v) mode(%v)",
-		path, parent, ino, name, mode)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("DeletePath: lookup target: path(%v) parentID(%v) inode(%v) name(%v) mode(%v)",
+			path, parent, ino, name, mode)
+	}
+
 	if mode.IsDir() {
 		// Check if the directory is empty and cannot delete non-empty directories.
 		var dentries []proto.Dentry
@@ -788,8 +798,10 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 			multipartId, partId, err)
 		return nil, err
 	}
-	log.LogDebugf("WritePart: meta create temp file inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
-		v.name, path, multipartId, partId, tempInodeInfo.Inode)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("WritePart: meta create temp file inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+			v.name, path, multipartId, partId, tempInodeInfo.Inode)
+	}
 
 	defer func() {
 		// An error has caused the entire process to fail. Delete the inode and release the written data.
@@ -843,8 +855,10 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 			v.name, path, multipartId, partId, tempInodeInfo.Inode, size, etag, err)
 		return nil, err
 	}
-	log.LogDebugf("WritePart: meta add multipart part: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) size(%v) MD5(%v)",
-		v.name, path, multipartId, partId, tempInodeInfo.Inode, size, etag)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("WritePart: meta add multipart part: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) size(%v) MD5(%v)",
+			v.name, path, multipartId, partId, tempInodeInfo.Inode, size, etag)
+	}
 	// create file info
 	fInfo = &FSFileInfo{
 		Path:       fileName,
@@ -885,8 +899,10 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 			log.LogErrorf("AbortMultipart: meta inode evict fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 				v.name, path, multipartID, part.ID, part.Inode, err)
 		}
-		log.LogDebugf("AbortMultipart: multipart part data released: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
-			v.name, path, multipartID, part.ID, part.Inode)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("AbortMultipart: multipart part data released: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+				v.name, path, multipartID, part.ID, part.Inode)
+		}
 	}
 
 	if err = v.mw.RemoveMultipart_ll(context.Background(), path, multipartID); err != nil {
@@ -894,8 +910,10 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 			v.name, path, multipartID, err)
 		return err
 	}
-	log.LogDebugf("AbortMultipart: meta abort multipart: volume(%v) path(%v) multipartID(%v) path(%v)",
-		v.name, path, multipartID, path)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("AbortMultipart: meta abort multipart: volume(%v) path(%v) multipartID(%v) path(%v)",
+			v.name, path, multipartID, path)
+	}
 	return nil
 }
 
@@ -915,8 +933,10 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			v.name, path, multipartID, err)
 		return
 	}
-	log.LogDebugf("CompleteMultipart: meta inode create: volume(%v) path(%v) multipartID(%v) inode(%v)",
-		v.name, path, multipartID, completeInodeInfo.Inode)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("CompleteMultipart: meta inode create: volume(%v) path(%v) multipartID(%v) inode(%v)",
+			v.name, path, multipartID, completeInodeInfo.Inode)
+	}
 	defer func() {
 		if err != nil {
 			log.LogWarnf("CompleteMultipart: destroy inode: volume(%v) path(%v) multipartID(%v) inode(%v)",
@@ -967,8 +987,10 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		}
 		md5Val = hex.EncodeToString(md5Hash.Sum(nil))
 	}
-	log.LogDebugf("CompleteMultipart: merge parts: volume(%v) path(%v) multipartID(%v) numParts(%v) MD5(%v)",
-		v.name, path, multipartID, len(parts), md5Val)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("CompleteMultipart: merge parts: volume(%v) path(%v) multipartID(%v) numParts(%v) MD5(%v)",
+			v.name, path, multipartID, len(parts), md5Val)
+	}
 
 	if err = v.mw.AppendExtentKeys(context.Background(), completeInodeInfo.Inode, completeExtentKeys); err != nil {
 		log.LogErrorf("CompleteMultipart: meta append extent keys fail: volume(%v) path(%v) multipartID(%v) inode(%v) err(%v)",
@@ -1037,8 +1059,10 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		}
 	}
 
-	log.LogDebugf("CompleteMultipart: meta complete multipart: volume(%v) multipartID(%v) path(%v) parentID(%v) inode(%v) etagValue(%v)",
-		v.name, multipartID, path, parentId, finalInode.Inode, etagValue)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("CompleteMultipart: meta complete multipart: volume(%v) multipartID(%v) path(%v) parentID(%v) inode(%v) etagValue(%v)",
+			v.name, multipartID, path, parentId, finalInode.Inode, etagValue)
+	}
 
 	// create file info
 	fInfo := &FSFileInfo{
@@ -1583,8 +1607,10 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (
 
 	prefixes = prefixMap.Prefixes()
 
-	log.LogDebugf("listFilesV1: Volume list dir: Volume(%v) prefix(%v) marker(%v) delimiter(%v) maxKeys(%v) infos(%v) prefixes(%v) nextMarker(%v)",
-		v.name, prefix, marker, delimiter, maxKeys, len(infos), len(prefixes), nextMarker)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("listFilesV1: Volume list dir: Volume(%v) prefix(%v) marker(%v) delimiter(%v) maxKeys(%v) infos(%v) prefixes(%v) nextMarker(%v)",
+			v.name, prefix, marker, delimiter, maxKeys, len(infos), len(prefixes), nextMarker)
+	}
 
 	return
 }
@@ -1613,7 +1639,9 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 		return nil, nil, "", err
 	}
 
-	log.LogDebugf("listFilesV2: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
+	if log.IsDebugEnabled() {
+		log.LogDebugf("listFilesV2: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
+	}
 
 	// Init the value that queried result count.
 	// Check this value when adding key to contents or common prefix,
@@ -1635,8 +1663,10 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 
 	prefixes = prefixMap.Prefixes()
 
-	log.LogDebugf("listFilesV2: Volume list dir: Volume(%v) prefix(%v) marker(%v) delimiter(%v) maxKeys(%v) infos(%v) prefixes(%v), nextMarker(%v)",
-		v.name, prefix, marker, delimiter, maxKeys, len(infos), len(prefixes), nextMarker)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("listFilesV2: Volume list dir: Volume(%v) prefix(%v) marker(%v) delimiter(%v) maxKeys(%v) infos(%v) prefixes(%v), nextMarker(%v)",
+			v.name, prefix, marker, delimiter, maxKeys, len(infos), len(prefixes), nextMarker)
+	}
 
 	return
 }
@@ -1697,7 +1727,10 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	var err error
 	var nextMarker string
 
-	var currentPath = strings.Join(dirs, pathSep) + pathSep
+	var currentPath string
+	if len(dirs) > 0 {
+		currentPath = strings.Join(dirs, pathSep) + pathSep
+	}
 
 	if log.IsDebugEnabled() {
 		log.LogDebugf("volume[%v] recursive scan [path: %v, prefix: %v, marker: %v, delimiter: %v]",
@@ -1737,23 +1770,29 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	// At this time, stops process and returns success.
 	var readDirMarker, readDirPrefix string
 	if prefix != "" && strings.HasPrefix(prefix, currentPath) {
-		readDirPrefix = strings.Replace(prefix, currentPath, "", 1)
+		readDirPrefix = strings.Split(strings.Replace(prefix, currentPath, "", 1), pathSep)[0]
 	}
 	if marker != "" && strings.HasPrefix(marker, currentPath) {
-		readDirMarker = strings.Replace(marker, currentPath, "", 1)
+		readDirMarker = strings.Split(strings.Replace(marker, currentPath, "", 1), pathSep)[0]
 	}
 	if readDirMarker == "" && readDirPrefix != "" {
 		readDirMarker = readDirPrefix
 	}
+	var readDirCount uint64
+	if collecteds := uint64(len(fileInfos) + prefixMap.Len()); maxKeys > collecteds {
+		readDirCount = maxKeys - collecteds
+	}
+	readDirCount = uint64(math.Max(float64(readDirCount), float64(1)))
+
 	var children []proto.Dentry
-	children, err = v.mw.ReadDir_wo(parentId, readDirPrefix, readDirMarker, maxKeys*2)
+	var readDirNext string
+	children, readDirNext, err = v.mw.ReadDir_wo(parentId, readDirPrefix, readDirMarker, readDirCount)
 	if err != nil && err != syscall.ENOENT {
 		return fileInfos, prefixMap, "", 0, err
 	}
 	if err == syscall.ENOENT {
 		return fileInfos, prefixMap, "", 0, nil
 	}
-
 	for _, child := range children {
 		var path = strings.Join(append(dirs, child.Name), pathSep)
 		if os.FileMode(child.Type).IsDir() {
@@ -1783,7 +1822,7 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 			var nonPrefixPart = strings.Replace(path, prefix, "", 1)
 			if idx := strings.Index(nonPrefixPart, delimiter); idx >= 0 {
 				var commonPrefix = prefix + stringutil.SubString(nonPrefixPart, 0, idx) + delimiter
-				if prefixMap.contain(commonPrefix) {
+				if prefixMap.Contain(commonPrefix) {
 					continue
 				}
 				if rc >= maxKeys {
@@ -1815,6 +1854,18 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 			}
 		}
 	}
+
+	if rc == maxKeys && nextMarker == "" && readDirNext != "" {
+		nextMarker = strings.Join(append(dirs, readDirNext), pathSep)
+		var nextMarkerMode uint32
+		if _, nextMarkerMode, err = v.mw.Lookup_ll(context.Background(), parentId, readDirNext); err != nil {
+			return fileInfos, prefixMap, nextMarker, rc, nil
+		}
+		if os.FileMode(nextMarkerMode).IsDir() {
+			nextMarker += pathSep
+		}
+	}
+
 	return fileInfos, prefixMap, nextMarker, rc, nil
 }
 
@@ -1878,8 +1929,10 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 				log.LogErrorf("supplyListFileInfo: update ETag fail: volume(%v) path(%v) inode(%v) err(%v)",
 					v.name, fileInfo.Path, fileInfo.Inode, err)
 			}
-			log.LogDebugf("supplyListFileInfo: update ETag: volume(%v) path(%v) inode(%v) etagValue(%v)",
-				v.name, fileInfo.Path, fileInfo.Inode, etagValue)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("supplyListFileInfo: update ETag: volume(%v) path(%v) inode(%v) etagValue(%v)",
+					v.name, fileInfo.Path, fileInfo.Inode, etagValue)
+			}
 		}
 		fileInfo.ETag = etagValue.ETag()
 	}
@@ -2226,7 +2279,10 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		return
 	}
 	md5Value = hex.EncodeToString(md5Hash.Sum(nil))
-	log.LogDebugf("Audit: copy file: write file finished, volume(%v), path(%v), etag(%v)", v.name, targetPath, md5Value)
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("Audit: copy file: write file finished, volume(%v), path(%v), etag(%v)", v.name, targetPath, md5Value)
+	}
 
 	var finalInode *proto.InodeInfo
 	if finalInode, err = v.mw.InodeGet_ll(context.Background(), tInodeInfo.Inode); err != nil {

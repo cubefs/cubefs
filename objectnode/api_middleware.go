@@ -149,7 +149,9 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		} else {
 			// If current action is disabled, return access denied in response.
-			log.LogDebugf("traceMiddleware: disabled action: requestID(%v) action(%v)", requestID, action.Name())
+			if log.IsDebugEnabled() {
+				log.LogDebugf("traceMiddleware: disabled action: requestID(%v) action(%v)", requestID, action.Name())
+			}
 			_ = AccessDenied.ServeResponse(w, r)
 		}
 
@@ -202,8 +204,10 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 					return
 				}
 				if volume != nil && volume.isPublicRead() && currentAction.IsReadOnlyAction() {
-					log.LogDebugf("authMiddleware: bucket is PublicRead: requestID(%v) volume(%v) action(%v)",
-						GetRequestID(r), bucket, currentAction)
+					if log.IsDebugEnabled() {
+						log.LogDebugf("authMiddleware: bucket is PublicRead: requestID(%v) volume(%v) action(%v)",
+							GetRequestID(r), bucket, currentAction)
+					}
 					next.ServeHTTP(w, r)
 					return
 				}
@@ -266,7 +270,9 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameXAmzDecodeContentLength))) > 0 {
 			r.Body = NewClosableChunkedReader(r.Body)
-			log.LogDebugf("contentMiddleware: chunk reader inited: requestID(%v)", GetRequestID(r))
+			if log.IsDebugEnabled() {
+				log.LogDebugf("contentMiddleware: chunk reader inited: requestID(%v)", GetRequestID(r))
+			}
 		}
 		next.ServeHTTP(w, r)
 	}

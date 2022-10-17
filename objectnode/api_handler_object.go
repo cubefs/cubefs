@@ -136,8 +136,10 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 		// bytes=-
 		isRangeRead = true
-		log.LogDebugf("getObjectHandler: parse range option: requestID(%v) rangeOpt(%v) rangeLower(%v) rangeUpper(%v)",
-			GetRequestID(r), rangeOpt, rangeLower, rangeUpper)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("getObjectHandler: parse range option: requestID(%v) rangeOpt(%v) rangeLower(%v) rangeUpper(%v)",
+				GetRequestID(r), rangeOpt, rangeLower, rangeUpper)
+		}
 	}
 
 	responseCacheControl := r.URL.Query().Get(ParamResponseCacheControl)
@@ -177,8 +179,10 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
 	if match != "" {
 		if matchEag := strings.Trim(match, "\""); matchEag != fileInfo.ETag {
-			log.LogDebugf("getObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, matchEag, GetRequestID(r))
+			if log.IsDebugEnabled() {
+				log.LogDebugf("getObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
+					fileInfo.ETag, matchEag, GetRequestID(r))
+			}
 			errorCode = PreconditionFailed
 			return
 		}
@@ -291,7 +295,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		partSize, partCount, rangeLower, rangeUpper, err = parsePartInfo(partNumberInt, uint64(fileInfo.Size))
-		log.LogDebugf("getObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("getObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
+		}
 		if err != nil {
 			errorCode = InternalErrorCode(err)
 			return
@@ -351,8 +357,10 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			GetRequestID(r), param.Bucket(), param.Object(), offset, size, err)
 		return
 	}
-	log.LogDebugf("getObjectHandler: Volume read file: requestID(%v) Volume(%v) path(%v) offset(%v) size(%v)",
-		GetRequestID(r), param.Bucket(), param.Object(), offset, size)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("getObjectHandler: Volume read file: requestID(%v) Volume(%v) path(%v) offset(%v) size(%v)",
+			GetRequestID(r), param.Bucket(), param.Object(), offset, size)
+	}
 	return
 }
 
@@ -413,8 +421,10 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
 	if match != "" {
 		if matchEag := strings.Trim(match, "\""); matchEag != fileInfo.ETag {
-			log.LogDebugf("headObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, matchEag, GetRequestID(r))
+			if log.IsDebugEnabled() {
+				log.LogDebugf("headObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
+					fileInfo.ETag, matchEag, GetRequestID(r))
+			}
 			errorCode = PreconditionFailed
 			return
 		}
@@ -425,12 +435,16 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(modified)
 		if err != nil {
-			log.LogDebugf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			}
 			errorCode = InvalidArgument
 			return
 		}
 		if !fileModTime.After(modifiedTime) {
-			log.LogDebugf("headObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
+			if log.IsDebugEnabled() {
+				log.LogDebugf("headObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
+			}
 			errorCode = NotModified
 			return
 		}
@@ -439,8 +453,10 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
 	if noneMatch != "" {
 		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
-			log.LogDebugf("headObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
+			if log.IsDebugEnabled() {
+				log.LogDebugf("headObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
+					fileInfo.ETag, noneMatchEtag, GetRequestID(r))
+			}
 			errorCode = NotModified
 			return
 		}
@@ -451,12 +467,16 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(unmodified)
 		if err != nil {
-			log.LogDebugf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			}
 			errorCode = InvalidArgument
 			return
 		}
 		if fileModTime.After(modifiedTime) {
-			log.LogDebugf("headObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
+			if log.IsDebugEnabled() {
+				log.LogDebugf("headObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
+			}
 			errorCode = PreconditionFailed
 			return
 		}
@@ -491,7 +511,9 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		partSize, partCount, rangeLower, rangeUpper, err := parsePartInfo(partNumberInt, uint64(fileInfo.Size))
-		log.LogDebugf("headObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("headObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
+		}
 		if err != nil {
 			errorCode = InternalErrorCode(err)
 			return
@@ -568,7 +590,9 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	if len(deleteReq.Objects) <= 0 {
-		log.LogDebugf("deleteObjectsHandler: non objects found in request: requestID(%v)", GetRequestID(r))
+		if log.IsDebugEnabled() {
+			log.LogDebugf("deleteObjectsHandler: non objects found in request: requestID(%v)", GetRequestID(r))
+		}
 		errorCode = InvalidArgument
 		return
 	}
@@ -604,8 +628,10 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 				GetRequestID(r), vol.Name(), object.Key, err)
 		} else {
 			deletedObjects = append(deletedObjects, Deleted{Key: object.Key})
-			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)", GetRequestID(r),
-				vol.Name(), object.Key)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)", GetRequestID(r),
+					vol.Name(), object.Key)
+			}
 		}
 	}
 
@@ -618,8 +644,10 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		Error:   deletedErrors,
 	}
 
-	log.LogDebugf("deleteObjectsHandler: delete objects: deletes(%v) errors(%v)",
-		len(deleteResult.Deleted), len(deleteResult.Error))
+	if log.IsDebugEnabled() {
+		log.LogDebugf("deleteObjectsHandler: delete objects: deletes(%v) errors(%v)",
+			len(deleteResult.Deleted), len(deleteResult.Error))
+	}
 
 	var bytesRes []byte
 	var marshalError error

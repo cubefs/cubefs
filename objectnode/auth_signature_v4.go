@@ -106,8 +106,10 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 		return false, err
 	}
 	if time.Since(signatureTime) > SignatureExpires {
-		log.LogDebugf("expired signature: requestID(%v) remote(%v) scope(%v)",
-			GetRequestID(r), getRequestIP(r), req.Credential.GetScopeString())
+		if log.IsDebugEnabled() {
+			log.LogDebugf("expired signature: requestID(%v) remote(%v) scope(%v)",
+				GetRequestID(r), getRequestIP(r), req.Credential.GetScopeString())
+		}
 		return false, nil
 	}
 
@@ -139,8 +141,10 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 
 	newSignature := calculateSignatureV4(r, req.Credential, secretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
-		log.LogDebugf("validateHeaderBySignatureAlgorithmV4: invalid signature: requestID(%v) client(%v) server(%v)",
-			GetRequestID(r), req.Signature, newSignature)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("validateHeaderBySignatureAlgorithmV4: invalid signature: requestID(%v) client(%v) server(%v)",
+				GetRequestID(r), req.Signature, newSignature)
+		}
 		return false, nil
 	}
 
@@ -210,8 +214,10 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	canonicalQuery := createCanonicalQueryV4(req)
 	canonicalRequestString := createCanonicalRequestString(r.Method, getCanonicalURI(r), canonicalQuery, canonicalHeaderStr, headerNames, payload)
 
-	log.LogDebugf("canonical request %v: %v",
-		GetRequestID(r), strings.ReplaceAll(canonicalHeaderStr, "\n", "\\n"))
+	if log.IsDebugEnabled() {
+		log.LogDebugf("canonical request %v: %v",
+			GetRequestID(r), strings.ReplaceAll(canonicalHeaderStr, "\n", "\\n"))
+	}
 
 	// build signingKey
 	signingKey := buildSigningKey(SCHEME, secretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
@@ -500,8 +506,11 @@ func calculateSignatureV4(r *http.Request, cred credential, secretKey string, si
 	stringToSign := buildStringToSign(SignatureV4Algorithm, timestamp, scope, canonicalRequest)
 	signature := sign(stringToSign, signingKey)
 
-	log.LogDebugf("canonical request %v: %v",
-		GetRequestID(r), strings.ReplaceAll(canonicalRequest, "\n", "\\n"))
+	if log.IsDebugEnabled() {
+		log.LogDebugf("canonical request %v: %v",
+			GetRequestID(r), strings.ReplaceAll(canonicalRequest, "\n", "\\n"))
+	}
+
 	return hex.EncodeToString(signature)
 }
 
@@ -590,7 +599,10 @@ func buildCanonicalHeaderString(host string, headers http.Header, signedHeaders 
 		newHeaders.Add(n, headers.Get(n))
 	}
 	newHeaders.Add(HeaderNameHost, host)
-	log.LogDebugf("[buildCanonicalHeaderString] newHeaders(%v)", newHeaders)
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("[buildCanonicalHeaderString] newHeaders(%v)", newHeaders)
+	}
 
 	canonicalHeaders := make([]string, 0)
 	sort.Strings(signedHeaders)
@@ -600,8 +612,10 @@ func buildCanonicalHeaderString(host string, headers http.Header, signedHeaders 
 		if strings.ToLower(signedHeaderName) == strings.ToLower(HeaderNameRange) {
 			if xRangeVal, xok := newHeaders[http.CanonicalHeaderKey(HeaderNameXForwardedRange)]; xok {
 				vals, ok = xRangeVal, true
-				log.LogDebugf("[buildCanonicalHeaderString] using alternate header %v[%v] for canonical headers",
-					HeaderNameXForwardedRange, vals)
+				if log.IsDebugEnabled() {
+					log.LogDebugf("[buildCanonicalHeaderString] using alternate header %v[%v] for canonical headers",
+						HeaderNameXForwardedRange, vals)
+				}
 			}
 		}
 		if ok {

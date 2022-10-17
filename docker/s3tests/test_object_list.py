@@ -15,6 +15,7 @@
 # permissions and limitations under the License.
 
 import env
+import os
 from base import S3TestCase
 from base import random_string, random_bytes, get_env_s3_client
 
@@ -376,3 +377,72 @@ class ObjectListTest(S3TestCase):
             Bucket=env.BUCKET,
             Delete={'Objects': objects}
         )
+
+    def test_list_objects_scan_root(self):
+        # 清理所有文件
+        os.system('rm -rf %s/*' % env.MOUNT_POINT)
+        # 根目录下创建4000个文件, 命名从'0000'到'3999'
+        for i in range(4000):
+            key = '%04d' % i
+            result = self.s3.put_object(Bucket=env.BUCKET, Key=key)
+            self.assert_put_object_result(result=result)
+
+        # 无prefix, 无delimiter, 获取1000条结果
+        result = self.s3.list_objects(Bucket=env.BUCKET, MaxKeys=1000)
+        self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
+        self.assertTrue('Contents' in result)
+        result_contents = result['Contents']
+        self.assertTrue(type(result_contents), list)
+        self.assertEqual(len(result_contents), 1000)
+        self.assertTrue('NextMarker' in result)
+        self.assertEqual(result['NextMarker'], '1000')
+        # 检查带前缀结果
+        result = self.s3.list_objects(Bucket=env.BUCKET, Marker='0100', MaxKeys=110)
+        self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
+        self.assertTrue('Contents' in result)
+        result_contents = result['Contents']
+        self.assertTrue(type(result_contents), list)
+        self.assertEqual(len(result_contents), 110)
+        self.assertTrue('NextMarker' in result)
+        self.assertEqual(result['NextMarker'], '0210')
+
+        # 以'31'为prefix, 无delimiter, 获取100条结果
+        result = self.s3.list_objects(Bucket=env.BUCKET, Prefix='31', MaxKeys=100)
+        self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
+        result_contents = result['Contents']
+        self.assertTrue(type(result_contents), list)
+        self.assertEqual(len(result_contents), 100)
+        self.assertFalse('NextMarker' in result)
+
+        # 清理所有文件
+        os.system('rm -rf %s/*' % env.MOUNT_POINT)
+
+        # 建立如下key
+        keys = [
+            "dir1/file",
+            "dir1/dir2/file",
+            "file1",
+            "file2"
+        ]
+        for key in keys:
+            result = self.s3.put_object(Bucket=env.BUCKET, Key=key)
+            self.assert_put_object_result(result=result)
+
+        # 设定delimiter为"/"，无prefix
+        result = self.s3.list_objects(Bucket=env.BUCKET, Delimiter='/', MaxKeys=2)
+        self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
+        self.assertTrue('Contents' in result)
+        result_contents = result['Contents']
+        self.assertTrue(type(result_contents), list)
+        self.assertEqual(len(result_contents), 1)
+        self.assertTrue('NextMarker' in result)
+        self.assertEqual(result['NextMarker'], 'file2')
+
+        # 设定delimiter为'/', prefix为'dir1'
+        result = self.s3.list_objects(Bucket=env.BUCKET, Prefix='dir1', Delimiter='/', MaxKeys=2)
+        self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
+        self.assertFalse('Contents' in result)
+        self.assertFalse('NextMarker' in result)
+
+        # 清理所有文件
+        os.system('rm -rf %s/*' % env.MOUNT_POINT)

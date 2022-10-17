@@ -205,8 +205,10 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	log.LogDebugf("uploadPartHandler: write part success: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) fsFileInfo(%v)",
-		GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, fsFileInfo)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("uploadPartHandler: write part success: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) fsFileInfo(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, fsFileInfo)
+	}
 
 	// write header to response
 	w.Header()[HeaderNameContentLength] = []string{"0"}
@@ -298,9 +300,11 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	log.LogDebugf("listPartsHandler: Volume list parts, "+
-		"requestID(%v) uploadID(%v) maxParts(%v) partNoMarker(%v) numFSParts(%v) nextMarker(%v) isTruncated(%v)",
-		GetRequestID(r), uploadId, maxPartsInt, partNoMarkerInt, len(fsParts), nextMarker, isTruncated)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("listPartsHandler: Volume list parts, "+
+			"requestID(%v) uploadID(%v) maxParts(%v) partNoMarker(%v) numFSParts(%v) nextMarker(%v) isTruncated(%v)",
+			GetRequestID(r), uploadId, maxPartsInt, partNoMarkerInt, len(fsParts), nextMarker, isTruncated)
+	}
 
 	// get owner
 	bucketOwner := NewBucketOwner(vol)
@@ -478,8 +482,10 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	log.LogDebugf("completeMultipartUploadHandler: complete multipart, requestID(%v) uploadID(%v) path(%v)",
-		GetRequestID(r), uploadId, param.Object())
+	if log.IsDebugEnabled() {
+		log.LogDebugf("completeMultipartUploadHandler: complete multipart, requestID(%v) uploadID(%v) path(%v)",
+			GetRequestID(r), uploadId, param.Object())
+	}
 
 	response:
 	// write response
@@ -556,7 +562,9 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	log.LogDebugf("abortMultipartUploadHandler: Volume abort multipart, requestID(%v) uploadID(%v) path(%v)", GetRequestID(r), uploadId, param.Object())
+	if log.IsDebugEnabled() {
+		log.LogDebugf("abortMultipartUploadHandler: Volume abort multipart, requestID(%v) uploadID(%v) path(%v)", GetRequestID(r), uploadId, param.Object())
+	}
 	return
 }
 
