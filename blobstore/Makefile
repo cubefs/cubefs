@@ -13,7 +13,6 @@
 # permissions and limitations under the License.
 
 PROJECTDIR=$(shell pwd)
-OS=$(shell uname -s)
 BINDIR=$(PROJECTDIR)/bin
 GCFLAGS=all=-trimpath=$(PROJECTDIR)
 ASMFLAGS=all=-trimpath=$(PROJECTDIR)
@@ -33,13 +32,14 @@ endif
 BUILD=go build -v -gcflags=$(GCFLAGS) -asmflags=$(ASMFLAGS) -ldflags='$(LDFLAGS)' -o $(BINDIR)
 INSTALL=CGO_ENABLED=0 $(BUILD)
 CGOINSTALL=CGO_ENABLED=1 $(BUILD)
-CMDDIR=github.com/cubefs/cubefs/blobstore/cmd
-TARGETS=blobnode cm access scheduler tinker proxy cli
+PROJECTMOD=github.com/cubefs/cubefs/blobstore
+CMDDIR=$(PROJECTMOD)/cmd
+TARGETS=clustermgr blobnode access scheduler proxy cli
 
 .PHONY: clean all $(TARGETS)
 all:$(TARGETS)
 
-cm:
+clustermgr:
 	@echo "building clustermgr"
 	@$(CGOINSTALL) $(CMDDIR)/clustermgr
 
@@ -61,7 +61,7 @@ proxy:
 
 cli:
 	@echo "building cli"
-	@$(CGOINSTALL) $(PROJECTDIR)/cli/cli
+	@$(CGOINSTALL) $(PROJECTMOD)/cli/cli
 
 clean:
 	@go clean -i ./...
