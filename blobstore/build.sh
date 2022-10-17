@@ -16,19 +16,19 @@ INSTALLDIR=${CURRENT_DIR}/.deps
 mkdir -p ${INSTALLDIR}/lib
 mkdir -p ${INSTALLDIR}/include
 
-ZLIB_VER=1.2.12
+ZLIB_VER=1.2.13
 BZIP2_VER=1.0.6
 SNAPPY_VER=1.1.7
 LZ4_VER=1.8.3
 ZSTD_VER=1.4.0
 ROCKSDB_VER=6.3.6
 GCCMAJOR=`gcc -dumpversion`
-check=$1
+check=--no-check-certificate
 
 pushd ${INSTALLDIR}
 if [ ! -f lib/libz.a ]; then
     rm -rf zlib-${ZLIB_VER}*
-    wget http://zlib.net/zlib-${ZLIB_VER}.tar.gz
+    wget https://github.com/madler/zlib/archive/refs/tags/v${ZLIB_VER}.tar.gz -O ./zlib-${ZLIB_VER}.tar.gz ${check}
     if [ $? -ne 0 ]; then
         exit 1
     fi

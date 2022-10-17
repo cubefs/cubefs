@@ -5,7 +5,7 @@ function INIT()
     # build blobstore
     rootPath=$(cd $(dirname $0); pwd)
     source $rootPath/env.sh
-    ./build.sh --no-check-certificate
+    ./build.sh
     if [ $? -ne 0 ]; then
       echo "build failed"
       exit 1

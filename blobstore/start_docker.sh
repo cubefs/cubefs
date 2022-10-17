@@ -92,12 +92,6 @@ echo "start blobstore service successfully, wait minutes for internal state prep
 
 # wait for docker, avoid container exit
 while true
- do
+do
     sleep 300
 done
-
-
-
-
-
-

@@ -7,7 +7,7 @@ ENV PATH=$PATH:$JAVA_HOME/bin
 
 WORKDIR /apps
 VOLUME ["/apps/conf", "/apps/bin"]
-COPY   ./bin/ /apps/bin
+COPY  ./bin/ /apps/bin
 COPY  ./cmd/clustermgr/clustermgr.conf /apps/conf/clustermgr.conf
 COPY  ./cmd/clustermgr/clustermgr1.conf /apps/conf/clustermgr1.conf
 COPY  ./cmd/clustermgr/clustermgr2.conf /apps/conf/clustermgr2.conf
