@@ -454,6 +454,7 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, ca
 	request.addParam("smartRules", smartRules)
 	request.addParam("compactTag", compactTag)
 	request.addParam("hostDelayInterval", strconv.Itoa(int(hostDelayInterval)))
+	request.addHeader("isTimeOut", "false")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -465,6 +466,7 @@ func (api *AdminAPI) CreateDefaultVolume(volName, owner string) (err error) {
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
 	request.addParam("capacity", "10")
+	request.addHeader("isTimeOut", "false")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

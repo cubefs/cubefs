@@ -1,12 +1,17 @@
 package master
 
 import (
+	"github.com/chubaofs/chubaofs/util/log"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
+
+func init() {
+	log.InitLog("/tmp/cfs/sdk/master/Logs", "test", log.DebugLevel, nil)
+}
 
 func TestDataPartitionAPI(t *testing.T) {
 	var count int = 60
