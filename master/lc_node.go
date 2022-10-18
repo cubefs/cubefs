@@ -15,6 +15,7 @@
 package master
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -68,7 +69,8 @@ func (lcNode *LcNode) createLcScanTask(routineId int64, rTask *proto.RuleTask, m
 		RoutineID:  routineId,
 	}
 
-	task = proto.NewAdminTask(proto.OpLcNodeScan, lcNode.Addr, request)
+	reqID := fmt.Sprintf("%v_%v", routineId, rTask.Id)
+	task = proto.NewAdminTaskEx(proto.OpLcNodeScan, lcNode.Addr, request, reqID)
 	return
 }
 
@@ -78,6 +80,6 @@ func (lcNode *LcNode) createSnapshotVerDelTask(sTask *proto.SnapshotVerDelTask, 
 		MasterAddr: masterAddr,
 		Task:       sTask,
 	}
-	task = proto.NewAdminTask(proto.OpLcNodeSnapshotVerDel, lcNode.Addr, request)
+	task = proto.NewAdminTaskEx(proto.OpLcNodeSnapshotVerDel, lcNode.Addr, request, request.Task.Key())
 	return
 }

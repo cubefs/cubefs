@@ -127,3 +127,14 @@ func NewAdminTask(opCode uint8, opAddr string, request interface{}) (t *AdminTas
 	t.CreateTime = time.Now().Unix()
 	return
 }
+
+// NewAdminTaskEx returns a new adminTask.
+func NewAdminTaskEx(opCode uint8, opAddr string, request interface{}, reqID string) (t *AdminTask) {
+	t = new(AdminTask)
+	t.OpCode = opCode
+	t.Request = request
+	t.OperatorAddr = opAddr
+	t.ID = fmt.Sprintf("addr[%v]_op[%v]_reqID[%v]", t.OperatorAddr, t.OpCode, reqID)
+	t.CreateTime = time.Now().Unix()
+	return
+}
