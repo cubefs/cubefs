@@ -352,6 +352,8 @@ func (client *ExtentClient) UpdateLatestVer(verSeq uint64) (err error) {
 	log.LogInfof("action[UpdateLatestVer] update verseq [%v] to [%v]", client.multiVerMgr.latestVerSeq, verSeq)
 	atomic.StoreUint64(&client.multiVerMgr.latestVerSeq, verSeq)
 
+	client.streamerLock.Lock()
+	defer client.streamerLock.Unlock()
 	for _, streamer := range client.streamers {
 		if streamer.verSeq != verSeq {
 			log.LogDebugf("action[ExtentClient.UpdateLatestVer] stream inode %v ver %v try update to %v", streamer.inode, streamer.verSeq, verSeq)
