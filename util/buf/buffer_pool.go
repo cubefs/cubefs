@@ -23,6 +23,12 @@ var tinyBuffersCount int64
 var normalBuffersCount int64
 var headBuffersCount int64
 
+var normalBufAllocId uint64
+var headBufAllocId uint64
+
+var normalBufFreecId uint64
+var headBufFreeId uint64
+
 var buffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
 var normalBuffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
 var headBuffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
@@ -65,33 +71,46 @@ func NewNormalBufferPool() *sync.Pool {
 
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
-	pools      [2]chan []byte
+	headPools      []chan []byte
+	normalPools    []chan []byte
 	tinyPool   *sync.Pool
 	headPool   *sync.Pool
 	normalPool *sync.Pool
 }
-
+var (
+	slotCnt = uint64(16)
+)
 // NewBufferPool returns a new buffered pool.
 func NewBufferPool() (bufferP *BufferPool) {
 	bufferP = &BufferPool{}
-	bufferP.pools[0] = make(chan []byte, HeaderBufferPoolSize)
-	bufferP.pools[1] = make(chan []byte, HeaderBufferPoolSize)
+
+	bufferP.headPools = make([]chan []byte, slotCnt)
+	bufferP.normalPools = make([]chan []byte, slotCnt)
+	for i:=0;i<int(slotCnt);i++  {
+		bufferP.headPools[i] = make(chan []byte, HeaderBufferPoolSize/slotCnt)
+		bufferP.normalPools[i] = make(chan []byte, HeaderBufferPoolSize/slotCnt)
+	}
+
 	bufferP.tinyPool = NewTinyBufferPool()
 	bufferP.headPool = NewHeadBufferPool()
 	bufferP.normalPool = NewNormalBufferPool()
 	return bufferP
 }
-
-func (bufferP *BufferPool) get(index int, size int) (data []byte) {
+func (bufferP *BufferPool) getHead(id uint64) (data []byte) {
 	select {
-	case data = <-bufferP.pools[index]:
+	case data = <-bufferP.headPools[id%slotCnt]:
 		return
 	default:
-		if index == 0 {
 			return bufferP.headPool.Get().([]byte)
-		} else {
-			return bufferP.normalPool.Get().([]byte)
-		}
+	}
+}
+
+func (bufferP *BufferPool) getNoraml(id uint64) (data []byte) {
+	select {
+	case data = <-bufferP.normalPools[id%slotCnt]:
+		return
+	default:
+		return bufferP.normalPool.Get().([]byte)
 	}
 }
 
@@ -99,10 +118,12 @@ func (bufferP *BufferPool) get(index int, size int) (data []byte) {
 func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	if size == util.PacketHeaderSize {
 		atomic.AddInt64(&headBuffersCount, 1)
-		return bufferP.get(0, size), nil
+		id := atomic.AddUint64(&headBufAllocId, 1)
+		return bufferP.getHead(id), nil
 	} else if size == util.BlockSize {
 		atomic.AddInt64(&normalBuffersCount, 1)
-		return bufferP.get(1, size), nil
+		id := atomic.AddUint64(&normalBufAllocId, 1)
+		return bufferP.getNoraml(id), nil
 	} else if size == util.DefaultTinySizeLimit {
 		atomic.AddInt64(&tinyBuffersCount, 1)
 		return bufferP.tinyPool.Get().([]byte), nil
@@ -110,16 +131,21 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 }
 
-func (bufferP *BufferPool) put(index int, data []byte) {
+func (bufferP *BufferPool) putHead(index int, data []byte) {
 	select {
-	case bufferP.pools[index] <- data:
+	case bufferP.headPools[index] <- data:
 		return
 	default:
-		if index == 0 {
-			bufferP.headPool.Put(data)
-		} else {
-			bufferP.normalPool.Put(data)
-		}
+		bufferP.headPool.Put(data)
+	}
+}
+
+func (bufferP *BufferPool) putNormal(index int, data []byte) {
+	select {
+	case bufferP.normalPools[index] <- data:
+		return
+	default:
+		bufferP.normalPool.Put(data)
 	}
 }
 
@@ -130,11 +156,13 @@ func (bufferP *BufferPool) Put(data []byte) {
 	}
 	size := len(data)
 	if size == util.PacketHeaderSize {
-		bufferP.put(0, data)
 		atomic.AddInt64(&headBuffersCount, -1)
+		id := atomic.AddUint64(&headBufFreeId, 1)
+		bufferP.putHead(int(id%slotCnt), data)
 	} else if size == util.BlockSize {
-		bufferP.put(1, data)
 		atomic.AddInt64(&normalBuffersCount, -1)
+		id := atomic.AddUint64(&normalBufFreecId, 1)
+		bufferP.putNormal(int(id%slotCnt), data)
 	} else if size == util.DefaultTinySizeLimit {
 		bufferP.tinyPool.Put(data)
 		atomic.AddInt64(&tinyBuffersCount, -1)
