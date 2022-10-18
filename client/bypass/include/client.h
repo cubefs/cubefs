@@ -555,7 +555,7 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
     cfs_read_req_t *req = (cfs_read_req_t *)calloc(max_count, sizeof(cfs_read_req_t));
 	int req_count = cfs_read_requests(id, fd, buf, count, offset, req, max_count);
     ssize_t read = 0;
-    bool has_err = false;
+    bool has_err = req_count < 0;
     for(int i = 0; i < req_count; i++) {
         if(req[i].size == 0) {
             break;

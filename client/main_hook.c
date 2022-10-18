@@ -724,6 +724,7 @@ static void *update_dynamic_libs(void* handle) {
             continue;
         }
 
+        g_inited = false;
         fprintf(stderr, "Begin to update client.\n");
         flush_logs = NULL;
         void *client_state = stop_libs();
@@ -767,6 +768,7 @@ static void *update_dynamic_libs(void* handle) {
             fprintf(stderr, "start libs error.");
             libc_exit(1);
         }
+        g_inited = true;
         pthread_rwlock_unlock(&update_rwlock);
         fprintf(stderr, "finish update client.\n");
     }

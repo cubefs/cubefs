@@ -74,14 +74,14 @@ int main(int argc, char **argv) {
     printf("Finish testDup\n");
     testUnlinkAndRename();
     printf("Finish test unlink and rename\n");
-    printf("Finish test, press ctrl+c to quit...\n");
-    getchar();
+    printf("Finish all tests.");
 }
 
 void testReload() {
     printf("Test update libcfssdk.so. Please waiting finish...\n");
     setenv("RELOAD_CLIENT", "test", 1);
-    sleep(20);
+    sleep(30);
+    printf("finish client update.\n");
 }
 
 void testOp(bool is_cfs, bool ignore) {
@@ -203,10 +203,10 @@ void testOp(bool is_cfs, bool ignore) {
     re = stat(path, &statbuf);
     // access time is updated in metanode when accessing inode, inconsistent with client inode cache
     bool atim_valid = !ignore && is_cfs ?
-        ts[0].tv_sec < statbuf.st_atime:
+        ts[0].tv_sec <= statbuf.st_atime:
         !memcmp((void*)&ts[0].tv_sec, (void*)&statbuf.st_atime, sizeof(time_t));
     assertf(re == 0 && statbuf.st_size == 2*LEN-2
-    //      && atim_valid
+            && atim_valid
             && !memcmp((void*)&ts[1].tv_sec, (void*)&statbuf.st_mtime, sizeof(time_t))
             && statbuf.st_mode == S_IFREG | 0611,
             "stat %s returning %d, size: %d, mode: %o", path, re, statbuf.st_size, statbuf.st_mode);
@@ -249,6 +249,14 @@ void testDup(bool is_cfs) {
     strcat(dir, mount);
     strcat(dir, "/");
     strcat(dir, path);
+
+    char filepath[PATH_LEN] = {0};
+    strcat(filepath, dir);
+    strcat(filepath, "/");
+    strcat(filepath, file);
+    unlink(filepath);
+    rmdir(dir);
+
     res = mkdir(dir, 0775);
     assertf(res == 0, "mkdir %s returning %d", dir, res);
     dirfd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
@@ -267,7 +275,7 @@ void testDup(bool is_cfs) {
 
     newfd1 = fcntl(newfd2, F_DUPFD, 200);
     assertf(newfd1 >= 200, "fcntl dup fd %d returning %d, expect 200", fd, newfd1);
-    size = write(fd, "test", 4);
+    size = write(newfd1, "test", 4);
     assertf(size == 4, "write test to fd returning %d, expect 4", size);
     size = write(newfd2, "test", 4);
     assertf(size == 4, "write test to fd returning %d, expect 4", size);
@@ -284,7 +292,7 @@ void testDup(bool is_cfs) {
     res = close(newfd2);
     assertf(res == 0, "close fd %d returning %d, expect 0", newfd1, res);
 
-    size = write(fd, "test", 4);
+    size = write(newfd2, "test", 4);
     assertf(size == -1, "write test to close fd returning %d, expect -1", size);
 }
 
@@ -328,25 +336,25 @@ void testUnlinkAndRename() {
     lseek(fd_1, 0, SEEK_SET);
     size = read(fd_1, read_buf, COUNT);
     assertf(size == COUNT, "after rename: read file %s size %d, expect %d", path_1, size, COUNT);
-    assertf(strcmp(read_buf, write_buf_1) == 0, "after unlink: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_1);
+    assertf(memcmp(read_buf, write_buf_1, size) == 0, "after unlink: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_1);
 
     lseek(fd_2, 0, SEEK_SET);
     size = read(fd_2, read_buf, COUNT);
     assertf(size == COUNT, "after rename: read file %s size %d, expect %d", path_2, size, COUNT);
-    assertf(strcmp(read_buf, write_buf_2) == 0, "after rename: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_2);
+    assertf(memcmp(read_buf, write_buf_2, size) == 0, "after rename: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_2);
 
     re = unlink(path_2);
     assertf(re == 0, "unlink file %s failed", path_2);
-    
+
     lseek(fd_1, 0, SEEK_SET);
     size = read(fd_1, read_buf, COUNT);
-    assertf(size == COUNT, "after unlnk: read file %s size %d, expect %d", path_1, size, COUNT);
-    assertf(strcmp(read_buf, write_buf_1) == 0, "after unlink: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_1);
-    
+    assertf(size == COUNT, "after unlink: read file %s size %d, expect %d", path_1, size, COUNT);
+    assertf(memcmp(read_buf, write_buf_1, size) == 0, "after unlink: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_1);
+
     lseek(fd_2, 0, SEEK_SET);
     size = read(fd_2, read_buf, COUNT);
     assertf(size == COUNT, "after unlink: read file %s size %d, expect %d", path_2, size, COUNT);
-    assertf(strcmp(read_buf, write_buf_2) == 0, "after unlink: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_2);
+    assertf(memcmp(read_buf, write_buf_2, size) == 0, "after unlink: read file %s failed, read:%s, expect:%s", path_1, read_buf, write_buf_2);
 
     close(fd_1);
     close(fd_2);

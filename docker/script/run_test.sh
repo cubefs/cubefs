@@ -559,5 +559,5 @@ fi
 set_trash_days; sleep 310
 run_trash_test; sleep 2
 stop_client ; sleep 20
-run_bypass_client_test
+run_bypass_client_test ; sleep 10
 delete_volume

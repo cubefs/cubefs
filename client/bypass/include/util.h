@@ -23,7 +23,7 @@ static void log_debug(const char* message, ...) {
     strftime(buf, 20, "%F %H:%M:%S", ptm);
     sprintf(buf + 19, ".%.6d", now.tv_usec);
     buf[26] = '\0';
-    printf("%s [debug] ", buf);
+    fprintf(stderr, "%s [debug] ", buf);
     vprintf(message, args);
 }
 
