@@ -24,11 +24,13 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 // KafkaTopicMonitor kafka monitor
 type KafkaTopicMonitor struct {
+	closer.Closer
 	taskType       proto.TaskType
 	topic          string
 	partitions     []int32
@@ -50,7 +52,7 @@ func NewKafkaTopicMonitor(taskType proto.TaskType, clusterID proto.ClusterID, cf
 	}
 
 	// create kafka monitor
-	monitor, err := kafka.NewKafkaMonitor(clusterID, proto.ServiceNameScheduler, cfg.BrokerList, cfg.Topic, partitions, kafka.DefauleintervalSecs)
+	monitor, err := kafka.NewKafkaMonitor(clusterID, proto.ServiceNameScheduler, cfg.BrokerList, cfg.Topic, partitions, kafka.DefaultIntervalSecs)
 	if err != nil {
 		return nil, fmt.Errorf("new kafka monitor: broker list[%v], topic[%v], parts[%v], error[%w]",
 			cfg.BrokerList, cfg.Topic, partitions, err)
@@ -61,6 +63,7 @@ func NewKafkaTopicMonitor(taskType proto.TaskType, clusterID proto.ClusterID, cf
 		interval = time.Millisecond
 	}
 	return &KafkaTopicMonitor{
+		Closer:         closer.New(),
 		taskType:       taskType,
 		topic:          cfg.Topic,
 		partitions:     partitions,
@@ -76,17 +79,25 @@ func (m *KafkaTopicMonitor) Run() {
 	defer ticker.Stop()
 
 	for {
-		for _, partition := range m.partitions {
-			off, err := m.offsetAccessor.GetConsumeOffset(m.taskType, m.topic, partition)
-			if err != nil {
-				if rpc.DetectStatusCode(err) != http.StatusNotFound {
-					log.Errorf("get consume offset failed: err[%v]", err)
+		select {
+		case <-ticker.C:
+			for _, partition := range m.partitions {
+				off, err := m.offsetAccessor.GetConsumeOffset(m.taskType, m.topic, partition)
+				if err != nil {
+					if rpc.DetectStatusCode(err) != http.StatusNotFound {
+						log.Errorf("get consume offset failed: err[%v]", err)
+					}
+					continue
 				}
-				continue
+				m.monitor.SetConsumeOffset(off, partition)
 			}
-			m.monitor.SetConsumeOffset(off, partition)
+		case <-m.Closer.Done():
+			return
 		}
-
-		<-ticker.C
 	}
+}
+
+func (m *KafkaTopicMonitor) Close() {
+	m.Closer.Close()
+	m.monitor.Close()
 }

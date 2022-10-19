@@ -198,7 +198,7 @@ func TestServer(t *testing.T) {
 	kafkaOffset.EXPECT().GetConsumeOffset(any, any, any).AnyTimes().Return(int64(0), nil)
 	kafkaOffset.EXPECT().SetConsumeOffset(any, any, any, any).AnyTimes().Return(nil)
 
-	err := leaderServer.runKafkaMonitor(proto.ClusterID(1), kafkaOffset)
+	err := leaderServer.NewKafkaMonitor(proto.ClusterID(1), kafkaOffset)
 	require.Error(t, err)
 
 	hosts := []string{leaderHost, followerHost}

@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -95,6 +96,7 @@ func (o *offsetMap) setOffset(offset int64, pid int32) {
 }
 
 type Monitor struct {
+	closer.Closer
 	clusterID                   proto.ClusterID
 	kafkaClient                 sarama.Client
 	topic                       string
@@ -108,7 +110,7 @@ type Monitor struct {
 	moduleName                  string
 }
 
-const DefauleintervalSecs = 60
+const DefaultIntervalSecs = 60
 
 func NewKafkaMonitor(
 	clusterID proto.ClusterID,
@@ -119,18 +121,18 @@ func NewKafkaMonitor(
 	intervalSecs int64) (*Monitor, error,
 ) {
 	monitor := Monitor{
-		clusterID:                   clusterID,
-		topic:                       topic,
-		pids:                        pids,
-		newestOffsetMap:             newOffsetMap(),
-		oldestOffsetMap:             newOffsetMap(),
-		consumeOffsetMap:            newOffsetMap(),
-		kafkaOffAcquireIntervalSecs: DefauleintervalSecs,
-		moduleName:                  moduleName,
+		Closer:           closer.New(),
+		clusterID:        clusterID,
+		topic:            topic,
+		pids:             pids,
+		newestOffsetMap:  newOffsetMap(),
+		oldestOffsetMap:  newOffsetMap(),
+		consumeOffsetMap: newOffsetMap(),
+		moduleName:       moduleName,
 	}
 
 	if intervalSecs == 0 {
-		intervalSecs = DefauleintervalSecs
+		intervalSecs = DefaultIntervalSecs
 	}
 	monitor.kafkaOffAcquireIntervalSecs = intervalSecs
 
@@ -153,28 +155,41 @@ func NewKafkaMonitor(
 }
 
 func (monitor *Monitor) loopAcquireKafkaOffset() {
+	ticker := time.NewTicker(time.Duration(monitor.kafkaOffAcquireIntervalSecs) * time.Second)
+	defer ticker.Stop()
+
 	for {
-		for _, pid := range monitor.pids {
-			newestOffset, err := monitor.kafkaClient.GetOffset(monitor.topic, pid, sarama.OffsetNewest)
-			if err != nil {
-				log.Error(fmt.Sprintf("get newest offset fail topic %v pid %v ", monitor.topic, pid))
-				continue
+		select {
+		case <-ticker.C:
+			for _, pid := range monitor.pids {
+				if err := monitor.update(pid); err != nil {
+					continue
+				}
 			}
-			log.Debug("loopAcquireKafkaOffset newestOffset:", newestOffset)
-			monitor.newestOffsetMap.setOffset(newestOffset, pid)
-
-			oldestOffset, err := monitor.kafkaClient.GetOffset(monitor.topic, pid, sarama.OffsetOldest)
-			if err != nil {
-				log.Error(fmt.Sprintf("get oldest offset fail topic %v pid %v ", monitor.topic, pid))
-				continue
-			}
-			log.Debug("loopAcquireKafkaOffset oldestOffset:", oldestOffset)
-			monitor.oldestOffsetMap.setOffset(oldestOffset, pid)
+			monitor.report()
+		case <-monitor.Closer.Done():
+			return
 		}
-
-		monitor.report()
-		time.Sleep(time.Duration(monitor.kafkaOffAcquireIntervalSecs) * time.Second)
 	}
+}
+
+func (monitor *Monitor) update(pid int32) error {
+	newestOffset, err := monitor.kafkaClient.GetOffset(monitor.topic, pid, sarama.OffsetNewest)
+	if err != nil {
+		log.Errorf("get newest offset failed: topic[%s], pid[%d]", monitor.topic, pid)
+		return err
+	}
+	log.Debugf("set newest offset:%d", newestOffset)
+	monitor.newestOffsetMap.setOffset(newestOffset, pid)
+
+	oldestOffset, err := monitor.kafkaClient.GetOffset(monitor.topic, pid, sarama.OffsetOldest)
+	if err != nil {
+		log.Errorf("get oldest offset failed: topic[%s], pid[%d]", monitor.topic, pid)
+		return err
+	}
+	log.Debugf("set oldest offset: %d", oldestOffset)
+	monitor.oldestOffsetMap.setOffset(oldestOffset, pid)
+	return nil
 }
 
 func (monitor *Monitor) report() {

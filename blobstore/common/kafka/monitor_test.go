@@ -16,10 +16,12 @@ package kafka
 
 import (
 	"testing"
-
-	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 type MockKafkaClient struct{}
@@ -98,6 +100,14 @@ func (c *MockKafkaClient) Closed() bool {
 func TestSetConsumeOffset(t *testing.T) {
 	brokens := []string{"127.0.01:9092"}
 	mockTestKafkaClient = &MockKafkaClient{}
-	monitor, _ := NewKafkaMonitor(proto.ClusterID(1), "", brokens, "Test_monitor", []int32{0, 1, 2}, 10)
+	monitor, _ := NewKafkaMonitor(proto.ClusterID(1), "", brokens, "Test_monitor", []int32{0, 1, 2}, 1)
 	monitor.SetConsumeOffset(1, 1)
+	err := monitor.update(0)
+	require.NoError(t, err)
+	err = monitor.update(1)
+	require.NoError(t, err)
+	err = monitor.update(2)
+	require.NoError(t, err)
+	monitor.report()
+	time.Sleep(time.Second + 10*time.Microsecond)
 }
