@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,6 +47,7 @@ const (
 	defaultListen                = "80"
 	ModuleName                   = "lcNode"
 	defaultBatchExpirationGetNum = 100
+	maxBatchExpirationGetNum     = 10000
 	defaultScanCheckInterval     = 60
 
 	defaultMasterIntervalToCheckHeartbeat = 6
@@ -122,15 +124,29 @@ func (l *LcNode) loadConfig(cfg *config.Config) (err error) {
 	l.s3Scanners = make(map[string]*S3Scanner, 0)
 	l.snapshotScanners = make(map[string]*SnapshotScanner, 0)
 
-	batchExpirationGetNum = int(cfg.GetInt(batchExpirationGetNumStr))
-	if batchExpirationGetNum == 0 {
+	begns := cfg.GetString(batchExpirationGetNumStr)
+	var batchNum int64
+	if begns != "" {
+		if batchNum, err = strconv.ParseInt(begns, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+	batchExpirationGetNum = int(batchNum)
+	if batchExpirationGetNum <= 0 || batchExpirationGetNum > maxBatchExpirationGetNum {
 		batchExpirationGetNum = defaultBatchExpirationGetNum
 	}
+	log.LogInfof("loadConfig: setup config: %v(%v)", batchExpirationGetNumStr, batchExpirationGetNum)
 
-	scanCheckInterval = cfg.GetInt64(scanCheckIntervalStr)
-	if scanCheckInterval == 0 {
+	scis := cfg.GetString(scanCheckIntervalStr)
+	if scis != "" {
+		if scanCheckInterval, err = strconv.ParseInt(scis, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+	if scanCheckInterval <= 0 {
 		scanCheckInterval = defaultScanCheckInterval
 	}
+	log.LogInfof("loadConfig: setup config: %v(%v)", scanCheckIntervalStr, scanCheckInterval)
 	return
 }
 
