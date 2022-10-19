@@ -49,7 +49,7 @@ docker image remove -f  arm64_gcc4_golang1_13_ubuntu_14_04_cubefs
 The list of RPM packages dependencies can be installed with:
 
 ```
-$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.0.0/cfs-install-3.0.0-el7.x86_64.rpm
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.2.0/cfs-install-3.2.0-el7.x86_64.rpm
 $ cd /cfs/install
 $ tree -L 2
 .
@@ -104,18 +104,15 @@ Start the resources of CubeFS cluster with script `install.sh`. (make sure the M
 
 ```
 $ bash install.sh -h
-Usage: install.sh -r | --role [datanode | metanode | master | objectnode | console | monitor | client | all | createvol ] [2.1.0 or latest]
+Usage: install.sh -r | --role [datanode | metanode | master | objectnode | monitor | client | all | createvol ] [2.1.0 or latest]
 $ bash install.sh -r master
 $ bash install.sh -r metanode
 $ bash install.sh -r datanode
 $ bash install.sh -r monitor
 $ bash install.sh -r client
-$ bash install.sh -r console
 ```
 
 Check mount point at `/cfs/mountpoint` on `client` node defined in `iplist`. 
-
-Open [http://[the IP of console system]](https:/github.com/cubefs/cubefs) through a browser for web console system(the IP of console system is defined in `iplist`).  In console default user is `root`, password is `CubeFSRoot`. In  monitor default user is `admin`,password is `123456`.
 
 ## Run a CubeFS Cluster within Docker
 
