@@ -246,6 +246,11 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		w.followerRead = view.FollowerRead
 	}
 
+	if w.nearRead != view.NearRead {
+		log.LogInfof("updateSimpleVolView: update nearRead from old(%v) to new(%v)", w.nearRead, view.NearRead)
+		w.nearRead = view.NearRead
+	}
+
 	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm || w.quorum != view.Quorum {
 		log.LogInfof("updateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v), update quorum from old(%v) to new(%v)",
 			w.dpSelectorName, w.dpSelectorParm, view.DpSelectorName, view.DpSelectorParm, w.quorum, view.Quorum)

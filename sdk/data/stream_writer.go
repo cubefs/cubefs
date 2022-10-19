@@ -34,7 +34,7 @@ import (
 const (
 	MaxSelectDataPartitionForWrite = 32
 	MaxNewHandlerRetry             = 4
-	MaxUsePreHandlerRetry		   = 1
+	MaxUsePreHandlerRetry          = 1
 	MaxPacketErrorCount            = 32
 	MaxDirtyListLen                = 0
 )
@@ -454,6 +454,9 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 }
 
 func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool) (writeSize int, isROW bool, err error) {
+	if s.client.dataWrapper.volNotExists {
+		return 0, false, proto.ErrVolNotExists
+	}
 	var errmsg string
 	tryCount := 0
 	for {
