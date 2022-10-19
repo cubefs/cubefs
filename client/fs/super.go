@@ -127,8 +127,13 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		s.enSyncWrite = true
 	}
 	s.keepCache = opt.KeepCache
-	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
-	s.dc = NewDcache(inodeExpiration, MaxInodeCache)
+	if opt.MaxStreamerLimit > 0 {
+		s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
+		s.dc = NewDcache(inodeExpiration, MaxInodeCache)
+	} else {
+		s.ic = NewInodeCache(inodeExpiration, DefaultMaxInodeCache)
+		s.dc = NewDcache(inodeExpiration, DefaultMaxInodeCache)
+	}
 	s.orphan = NewOrphanInodeList()
 	s.nodeCache = make(map[uint64]fs.Node)
 	s.disableDcache = opt.DisableDcache
