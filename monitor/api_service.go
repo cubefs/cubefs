@@ -254,14 +254,14 @@ func getPartitionQueryTable(start string, end string) (table string, err error) 
 	startHour := getTimeOnHour(startTime)
 	endHour := getTimeOnHour(endTime)
 	if startHour == endHour {
-		table = strings.ToLower(getTableName(startHour))
+		table = strings.ToLower(getTableName(startHour, DataTablePrefix))
 		return
 	}
 	// compare time difference, use table which has more data
 	if endHour - startTime.Unix() > endTime.Unix() - endHour {
-		table = strings.ToLower(getTableName(startHour))
+		table = strings.ToLower(getTableName(startHour, DataTablePrefix))
 	} else {
-		table = strings.ToLower(getTableName(endHour))
+		table = strings.ToLower(getTableName(endHour, DataTablePrefix))
 	}
 	return
 }

@@ -216,3 +216,12 @@ func (m *Monitor) startHTTPService() {
 	m.apiServer = server
 	return
 }
+
+func (m *Monitor) hasPrefixTable(name string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}

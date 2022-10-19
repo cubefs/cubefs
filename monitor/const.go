@@ -39,5 +39,6 @@ const (
 	defaultQueryIP   	= "11.56.17.222"
 	defaultProducerNum 	= 3
 
-	timeLayout = "20060102150405"
+	timeLayout 		= "20060102150405"
+	dayTimeLayout 	= "20060102000000"
 )

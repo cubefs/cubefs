@@ -9,7 +9,6 @@ import (
 	"github.com/cubefs/cubefs/util/statistics"
 	"io/ioutil"
 	"net/http"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -128,30 +127,6 @@ func TestGetPartitionQueryTable(t *testing.T) {
 				t.Errorf("TestGetPartitionQueryTable: name(%v) err(%v) expect table(%v) but(%v)", tt.name, err, tt.expectTable, table)
 			}
 		})
-	}
-}
-
-func TestSplitKey(t *testing.T) {
-	// 2022-04-11 14:00:00
-	loc, _ := time.LoadLocation("Local")
-	initTime, err := time.ParseInLocation("20060102150000", "20220411140000", loc)
-	if err != nil {
-		t.Fatalf("TestSplitKey: parse location time err(%v)", err)
-	}
-	expectTableName := "CFS_MONITOR_20220411140000"
-	expectSplitKeys := []string{"cfs02,datanode,20220411140000", "cfs02,metanode",
-		"mysql,datanode,20220411140000", "mysql,datanode,20220411143000", "mysql,metanode",
-		"spark,datanode,20220411140000", "spark,datanode,20220411141000", "spark,datanode,20220411142000",
-		"spark,datanode,20220411143000", "spark,datanode,20220411144000", "spark,datanode,20220411145000", "spark,metanode"}
-	curTableName, splitKeys := monitorServer.getCreateTableInfo(initTime.Unix())
-	if curTableName != expectTableName {
-		t.Errorf("TestSplitKey: expect table name(%v) but(%v)", expectTableName, curTableName)
-	}
-	sort.Strings(splitKeys)
-	for i, key := range splitKeys {
-		if i >= len(expectSplitKeys) || key != expectSplitKeys[i] {
-			t.Errorf("TestSplitKey: expect split key(%v) but(%v)", expectSplitKeys[i], key)
-		}
 	}
 }
 
