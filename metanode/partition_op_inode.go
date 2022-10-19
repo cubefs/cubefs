@@ -342,6 +342,11 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		r, err = mp.submit(opFSMUnlinkInode, val)
 	}
 
+	log.LogDebugf("action[UnlinkInode] ino %v submit", ino)
+	if req.DenVerSeq == item.(*Inode).verSeq {
+		ino.Flag |= InodeDelTop
+	}
+
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
