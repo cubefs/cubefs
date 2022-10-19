@@ -12,5 +12,6 @@
     "192.168.0.12:17010",
     "192.168.0.13:17010"
   ],
-  "batchExpirationGetNum": 100
+  "batchExpirationGetNum": "100",
+  "scanCheckInterval": "2"
 }
