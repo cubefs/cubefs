@@ -187,6 +187,10 @@ void testOp(bool is_cfs, bool ignore) {
     size = read(fd, rbuf, LEN-1);
     assertf(size == LEN-1 && strncmp(wbuf, rbuf, LEN-1) == 0,
             "read %s from %s after write returning %d", rbuf, path, size);
+    size = pwrite(fd, wbuf, LEN-1, LEN-1);
+    assertf(size == LEN-1, "write %s to %s at offset %d return %d", wbuf, path, LEN-1, size);
+    size = pread(fd, rbuf, LEN-2, LEN);
+    assertf(size == LEN-2 && strncmp(wbuf+1, rbuf, LEN-2) == 0, "pread %s from %s at offset %d returning %d", rbuf, path, LEN-1, size);
 
     // file attributes
     // CFS time precision is second, tv_nsec should be 0
@@ -201,7 +205,7 @@ void testOp(bool is_cfs, bool ignore) {
     bool atim_valid = !ignore && is_cfs ?
         ts[0].tv_sec < statbuf.st_atime:
         !memcmp((void*)&ts[0].tv_sec, (void*)&statbuf.st_atime, sizeof(time_t));
-    assertf(re == 0 && statbuf.st_size == LEN-1
+    assertf(re == 0 && statbuf.st_size == 2*LEN-2
     //      && atim_valid
             && !memcmp((void*)&ts[1].tv_sec, (void*)&statbuf.st_mtime, sizeof(time_t))
             && statbuf.st_mode == S_IFREG | 0611,

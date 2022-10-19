@@ -1615,11 +1615,11 @@ ssize_t real_read(int fd, void *buf, size_t count) {
         bool hasRefreshed = false;
         offset = f->pos;
         size = f->inode_info->size;
-        re_cache = read_cache(f->inode_info, f->pos, count, buf);
+        re_cache = read_cache(f->inode_info, offset, count, buf);
         // If the read range exceed the current file size, refresh ek in case of the file being appended by other clients.
         // For binlog, the read thread of mysql may always read 8k, whether can read enough data or not.
         // So, binlog is an exception for refreshing ek.
-        if(re_cache < count && f->pos + count >= size && f->file_type != FILE_TYPE_BIN_LOG) {
+        if(re_cache < count && offset + count >= size && f->file_type != FILE_TYPE_BIN_LOG) {
             flush_inode(f->inode_info);
             cfs_flush(g_client_info.cfs_client_id, fd);
             size = cfs_refresh_eks(g_client_info.cfs_client_id, f->inode_info->inode);
@@ -1629,13 +1629,13 @@ ssize_t real_read(int fd, void *buf, size_t count) {
             }
             update_inode_size(f->inode_info, size);
         }
-        if(re_cache < count && f->pos + re_cache < size) {
+        if(re_cache < count && offset + re_cache < size) {
             // data may reside both in cache and CFS, flush to prevent inconsistent read
-            flush_inode_range(f->inode_info, f->pos, count);
+            flush_inode_range(f->inode_info, offset, count);
             cfs_flush(g_client_info.cfs_client_id, fd);
             size_t new_count = count;
-            if(f->pos + count > size) {
-                new_count = size - f->pos;
+            if(offset + count > size) {
+                new_count = size - offset;
             }
             re = cfs_errno_ssize_t(cfs_pread_sock(g_client_info.cfs_client_id, fd, buf, new_count, offset, hasRefreshed));
         } else {
@@ -1766,7 +1766,7 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
         bool hasRefreshed = false;
         size_t size = f->inode_info->size;
         re_cache = read_cache(f->inode_info, offset, count, buf);
-        if(re_cache < count && f->pos + count >= size && f->file_type != FILE_TYPE_BIN_LOG) {
+        if(re_cache < count && offset + count >= size && f->file_type != FILE_TYPE_BIN_LOG) {
             flush_inode(f->inode_info);
             cfs_flush(g_client_info.cfs_client_id, fd);
             size = cfs_refresh_eks(g_client_info.cfs_client_id, f->inode_info->inode);
@@ -1776,13 +1776,13 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
             }
             update_inode_size(f->inode_info, size);
         }
-        if(re_cache < count && f->pos + re_cache < size) {
+        if(re_cache < count && offset + re_cache < size) {
             // data may reside both in cache and CFS, flush to prevent inconsistent read
-            flush_inode_range(f->inode_info, f->pos, count);
+            flush_inode_range(f->inode_info, offset, count);
             cfs_flush(g_client_info.cfs_client_id, fd);
             size_t new_count = count;
-            if(f->pos + count > size) {
-                new_count = size - f->pos;
+            if(offset + count > size) {
+                new_count = size - offset;
             }
             re = cfs_errno_ssize_t(cfs_pread_sock(g_client_info.cfs_client_id, fd, buf, new_count, offset, hasRefreshed));
         } else {
