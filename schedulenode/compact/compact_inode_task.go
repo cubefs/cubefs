@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data"
+	"github.com/chubaofs/chubaofs/sdk/mysql"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/unit"
 	"io"
 	"math"
 	"sync"
+	"time"
 )
 
 type CmpInodeTask struct {
@@ -31,6 +33,7 @@ type CmpInodeTask struct {
 
 	vol            *CompactVolumeInfo
 	statisticsInfo StatisticsInfo
+	lastUpdateTime int64
 }
 
 type StatisticsInfo struct {
@@ -359,6 +362,7 @@ func (inodeTask *CmpInodeTask) RunOnce(isIgnoreCompactSwitch bool) (finished boo
 			err = nil
 			return
 		}
+		inodeTask.UpdateTime()
 	}
 	return
 }
@@ -371,4 +375,13 @@ func (inodeTask *CmpInodeTask) DealActionErr(errCode int, err error) {
 	inodeTask.statisticsInfo.CmpErrCnt += 1
 	inodeTask.statisticsInfo.CmpErrMsg = err.Error()
 	return
+}
+
+func (inodeTask *CmpInodeTask) UpdateTime() {
+	if time.Now().Unix() - inodeTask.lastUpdateTime > 10*60  {
+		if updateErr := mysql.UpdateTaskUpdateTime(inodeTask.cmpMpTask.task.TaskId); updateErr != nil {
+			log.LogErrorf("UpdateTaskUpdateTime to mysql failed, tasks(%v), err(%v)", inodeTask.cmpMpTask.task, updateErr)
+		}
+		inodeTask.lastUpdateTime = time.Now().Unix()
+	}
 }
