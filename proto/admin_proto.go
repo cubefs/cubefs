@@ -355,10 +355,11 @@ type UidSpaceRsp struct {
 }
 
 type VolumeVerStrategy struct {
-	KeepVerCnt int
-	Periodic   int
-	Enable     bool
-	UTime      time.Time
+	KeepVerCnt  int
+	Periodic    int
+	Enable      bool
+	ForceUpdate bool
+	UTime       time.Time
 }
 
 type VolumeVerInfo struct {

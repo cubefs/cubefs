@@ -30,6 +30,7 @@ import (
 
 const (
 	DeleteMarkFlag = 1 << 0
+	InodeDelTop    = 1 << 1
 )
 
 var (
@@ -923,7 +924,12 @@ func (inode *Inode) unlinkTopLayer(ino *Inode, mpVer uint64, verlist *proto.VolV
 	log.LogDebugf("action[unlinkTopLayer] mpVer %v check if have snapshot depends on the deleitng ino %v (with no snapshot itself) found seq %v, verlist %v",
 		mpVer, ino, inode.verSeq, verlist)
 	status = proto.OpOk
-	if mpVer == inode.verSeq {
+
+	// if topLayer verSeq is as same as mp, the current inode deletion only happen on the first layer
+	// or ddelete from client do deletion at top layer which should allow delete ionde with older version contrast to mp version
+	// because ddelete have two steps,1 is del dentry,2nd is unlink inode ,version may updated after 1st and before 2nd step, to
+	// make sure inode be unlinked by normal deletion, sdk add filed of dentry verSeq to identify and different from other unlink actions
+	if mpVer == inode.verSeq || ino.Flag&InodeDelTop > 0 {
 		if len(inode.multiVersions) == 0 {
 			log.LogDebugf("action[unlinkTopLayer] no snapshot available depends on ino %v not found seq %v and return, verlist %v", ino, inode.verSeq, verlist)
 			inode.DecNLink()
@@ -1459,7 +1465,7 @@ func (i *Inode) AppendExtentWithCheck(
 
 	if mpVer != i.verSeq {
 		log.LogDebugf("action[AppendExtentWithCheck] ver %v inode ver %v", reqVer, i.verSeq)
-		i.CreateVer(reqVer)
+		i.CreateVer(mpVer)
 	}
 
 	i.Lock()

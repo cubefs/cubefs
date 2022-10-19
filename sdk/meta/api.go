@@ -297,13 +297,13 @@ create_dentry:
 	}
 	if err != nil {
 		if status == statusOpDirQuota || status == statusNoSpace {
-			mw.iunlink(mp, info.Inode, mw.LastVerSeq)
+			mw.iunlink(mp, info.Inode, mw.Client.GetLatestVer(), 0)
 			mw.ievict(mp, info.Inode)
 		}
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(mp, info.Inode, mw.Client.GetLatestVer())
+			mw.iunlink(mp, info.Inode, mw.Client.GetLatestVer(), 0)
 			mw.ievict(mp, info.Inode)
 		}
 		return nil, statusToErrno(status)
@@ -697,6 +697,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		err    error
 		info   *proto.InodeInfo
 		mp     *MetaPartition
+		denVer uint64
 	)
 	log.LogDebugf("action[Delete_ll_EX] name %v verSeq %v parentID %v isDir %v", name, verSeq, parentID, isDir)
 	parentMP := mw.getPartitionByInode(parentID)
@@ -743,7 +744,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		}
 	}
 	log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
-	status, inode, err = mw.ddelete(parentMP, parentID, name, verSeq)
+	status, inode, denVer, err = mw.ddelete(parentMP, parentID, name, verSeq)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
@@ -760,9 +761,9 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		return nil, nil
 	}
 	log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
-	status, info, err = mw.iunlink(mp, inode, verSeq)
+	status, info, err = mw.iunlink(mp, inode, verSeq, denVer)
 	if err != nil || status != statusOK {
-		log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v err %v", parentID, name, verSeq, err)
+		log.LogDebugf("action[Delete_ll] parentID %v inode %v name %v verSeq %v err %v", parentID, inode, name, verSeq, err)
 		return nil, nil
 	}
 
@@ -1048,12 +1049,12 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	if status != statusOK {
-		mw.iunlink(srcMP, inode, lastVerSeq)
+		mw.iunlink(srcMP, inode, lastVerSeq, 0)
 		return statusToErrno(status)
 	}
-
+	var denVer uint64
 	// delete dentry from src parent
-	status, _, err = mw.ddelete(srcParentMP, srcParentID, srcName, lastVerSeq)
+	status, _, denVer, err = mw.ddelete(srcParentMP, srcParentID, srcName, lastVerSeq)
 	if err != nil {
 		log.LogErrorf("mw.ddelete(srcParentMP, srcParentID, %s) failed.", srcName)
 		return statusToErrno(status)
@@ -1063,23 +1064,23 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			e   error
 		)
 		if oldInode == 0 {
-			sts, _, e = mw.ddelete(dstParentMP, dstParentID, dstName, lastVerSeq)
+			sts, inode, denVer, e = mw.ddelete(dstParentMP, dstParentID, dstName, lastVerSeq)
 		} else {
-			sts, _, e = mw.dupdate(dstParentMP, dstParentID, dstName, oldInode)
+			sts, denVer, e = mw.dupdate(dstParentMP, dstParentID, dstName, oldInode)
 		}
 		if e == nil && sts == statusOK {
-			mw.iunlink(srcMP, inode, lastVerSeq)
+			mw.iunlink(srcMP, inode, lastVerSeq, denVer)
 		}
 		return statusToErrno(status)
 	}
 
-	mw.iunlink(srcMP, inode, lastVerSeq)
+	mw.iunlink(srcMP, inode, lastVerSeq, denVer)
 
 	if oldInode != 0 {
 		// overwritten
 		inodeMP := mw.getPartitionByInode(oldInode)
 		if inodeMP != nil {
-			mw.iunlink(inodeMP, oldInode, lastVerSeq)
+			mw.iunlink(inodeMP, oldInode, lastVerSeq, 0)
 			// evict oldInode to avoid oldInode becomes orphan inode
 			mw.ievict(inodeMP, oldInode)
 		}
@@ -1492,7 +1493,7 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64) (*proto.In
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(mp, ino, mw.Client.GetLatestVer())
+			mw.iunlink(mp, ino, mw.Client.GetLatestVer(), 0)
 		}
 		return nil, statusToErrno(status)
 	}
@@ -1607,7 +1608,7 @@ func (mw *MetaWrapper) InodeUnlink_ll(inode uint64) (*proto.InodeInfo, error) {
 		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.EINVAL
 	}
-	status, info, err := mw.iunlink(mp, inode, mw.Client.GetLatestVer())
+	status, info, err := mw.iunlink(mp, inode, mw.Client.GetLatestVer(), 0)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)

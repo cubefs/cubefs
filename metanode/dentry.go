@@ -629,7 +629,7 @@ func (d *Dentry) MarshalValue() (k []byte) {
 	}
 
 	k = buff.Bytes()
-	log.LogInfof("action[MarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", d.Name, d.Inode, d.ParentId, len(k))
+	log.LogDebugf("action[MarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", d.Name, d.Inode, d.ParentId, len(k))
 	return
 }
 
@@ -639,7 +639,7 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 		return
 	}
 	err = binary.Read(buff, binary.BigEndian, &d.Type)
-	log.LogInfof("action[UnmarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", d.Name, d.Inode, d.ParentId, len(val))
+	log.LogDebugf("action[UnmarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", d.Name, d.Inode, d.ParentId, len(val))
 	if len(val) >= 20 {
 		err = binary.Read(buff, binary.BigEndian, &d.VerSeq)
 		if (len(val)-20)%20 != 0 {
@@ -661,7 +661,7 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 				return
 			}
 			d.dentryList = append(d.dentryList, den)
-			log.LogInfof("action[UnmarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", den.Name, den.Inode, den.ParentId, len(val))
+			log.LogDebugf("action[UnmarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", den.Name, den.Inode, den.ParentId, len(val))
 		}
 	}
 	return
