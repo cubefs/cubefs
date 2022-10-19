@@ -222,8 +222,6 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			goto LOOP
 		}
 
-
-
 		//get delete extents cursor at file header 8 bytes
 		if _, err = fp.ReadAt(buf[:8], 0); err != nil {
 			log.LogWarnf("[deleteExtentsFromList] partitionId=%d, "+
@@ -242,7 +240,6 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		stat, _ := fp.Stat()
 		log.LogDebugf("[deleteExtentsFromList] vol %v mp %v o openFile %v file len %v", mp.GetVolName(), mp.config.PartitionId, file,
 			stat.Size(), cursor)
-
 
 		log.LogDebugf("action[deleteExtentsFromList] get cursor %v", cursor)
 		if size := uint64(fileInfo.Size()) - cursor; size < MB {
