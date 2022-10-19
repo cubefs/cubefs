@@ -58,6 +58,7 @@ import (
 	"github.com/cubefs/cubefs/util/stat"
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
+	_ "go.uber.org/automaxprocs"
 )
 
 const (
@@ -297,9 +298,8 @@ func main() {
 
 	if opt.MaxCPUs > 0 {
 		runtime.GOMAXPROCS(int(opt.MaxCPUs))
-	} else {
-		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
+	//use uber automaxprocs: get real cpu number to k8s pod"
 
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil)
