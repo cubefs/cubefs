@@ -666,7 +666,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	var (
 		volumeInfo *proto.SimpleVolView
-		verList *proto.VolVersionInfoList
+		verList    *proto.VolVersionInfoList
 	)
 	if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
 		log.LogErrorf("action[onStart] GetVolumeSimpleInfo err[%v]", err)

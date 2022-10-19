@@ -210,7 +210,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 	log.LogDebugf("action[fsmDeleteDentry] delete param (%v) seq %v", denParm, denParm.VerSeq)
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
-
+	var denFound *Dentry
 	if denParm.VerSeq != 0 {
 		if err := mp.checkAndUpdateVerList(denParm.VerSeq); err != nil {
 			resp.Status = proto.OpNotExistErr
@@ -237,9 +237,10 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 			}
 			if mp.verSeq == 0 {
 				log.LogDebugf("action[fsmDeleteDentry] volume snapshot not enabled,delete directly")
+				denFound = item.(*Dentry)
 				return mp.dentryTree.tree.Delete(den)
 			}
-			_, doMore, clean = den.deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.getVerList())
+			denFound, doMore, clean = den.deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.getVerList())
 			return den
 		})
 	} else {
@@ -247,10 +248,11 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 
 		if mp.verSeq == 0 {
 			item = mp.dentryTree.Delete(denParm)
+			denFound = item.(*Dentry)
 		} else {
 			item = mp.dentryTree.Get(denParm)
 			if item != nil {
-				_, doMore, clean = item.(*Dentry).deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.getVerList())
+				denFound, doMore, clean = item.(*Dentry).deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.getVerList())
 			}
 		}
 	}
@@ -261,13 +263,13 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 	}
 
 	if !doMore { // not the top layer,do nothing to parent inode
-		if item != nil {
-			resp.Msg = item.(*Dentry)
+		if denFound != nil {
+			resp.Msg = denFound
 		}
 		log.LogDebugf("action[fsmDeleteDentry] there's nothing to do more denParm %v", denParm)
 		return
 	}
-	if item == nil {
+	if denFound == nil {
 		resp.Status = proto.OpNotExistErr
 		log.LogErrorf("action[fsmDeleteDentry] not found dentry %v", denParm)
 		return
@@ -287,7 +289,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 				}
 			})
 	}
-	resp.Msg = item.(*Dentry)
+	resp.Msg = denFound
 	return
 }
 

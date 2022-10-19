@@ -24,14 +24,14 @@ func (commit *Ver2PhaseCommit) String() string {
 		commit.op, commit.commitCnt, commit.nodeCnt, commit.prepareInfo)
 }
 
-func (commit *Ver2PhaseCommit) reset() {
+func (commit *Ver2PhaseCommit) reset(volName string) {
 	commit.op = 0
 	commit.commitCnt = 0
 	commit.nodeCnt = 0
 	// datanode and metanode will not allow change member during make snapshot
 	commit.dataNodeArray = new(sync.Map)
 	commit.metaNodeArray = new(sync.Map)
-	log.LogDebugf("action[Ver2PhaseCommit.reset]")
+	log.LogDebugf("action[Ver2PhaseCommit.reset] vol name %v", volName)
 }
 
 type VolVersionPersist struct {
@@ -139,7 +139,7 @@ func (verMgr *VolVersionManager) GenerateVer(verSeq uint64, op uint8) (err error
 		return
 	}
 
-	verMgr.prepareCommit.reset()
+	verMgr.prepareCommit.reset(verMgr.vol.Name)
 	verMgr.prepareCommit.prepareInfo = &proto.VolVersionInfo{
 		Ver:    verSeq,
 		Ctime:  tm,
@@ -175,7 +175,7 @@ func (verMgr *VolVersionManager) DelVer(verSeq uint64) (err error) {
 	return
 }
 
-func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy) (err error) {
+func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy, isForce bool) (err error) {
 	verMgr.Lock()
 	defer verMgr.Unlock()
 
@@ -183,12 +183,19 @@ func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy
 		strategy.KeepVerCnt, MaxSnapshotCount, strategy.Periodic, 24*7, strategy.Enable)
 
 	if strategy.Enable == true {
-		if strategy.KeepVerCnt == 0 || strategy.Periodic == 0 || strategy.KeepVerCnt > MaxSnapshotCount || strategy.Periodic > 24*7 {
+		if strategy.KeepVerCnt > MaxSnapshotCount || strategy.Periodic > 24*7 || strategy.KeepVerCnt < 0 || strategy.Periodic < 0 {
 			return fmt.Errorf("SetVerStrategy.vol %v keepCnt %v need in [1-%v], peroidic %v need in [1-%v] not qualified",
 				verMgr.vol.Name, strategy.KeepVerCnt, MaxSnapshotCount, strategy.Periodic, 24*7)
 		}
-		verMgr.strategy.KeepVerCnt = strategy.KeepVerCnt
-		verMgr.strategy.Periodic = strategy.Periodic
+		if strategy.KeepVerCnt != 0 {
+			verMgr.strategy.KeepVerCnt = strategy.KeepVerCnt
+		}
+		if strategy.Periodic != 0 {
+			verMgr.strategy.Periodic = strategy.Periodic
+		}
+		if isForce {
+			verMgr.strategy.ForceUpdate = strategy.ForceUpdate
+		}
 	}
 
 	verMgr.strategy.Enable = strategy.Enable
@@ -199,6 +206,7 @@ func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy
 }
 
 func (verMgr *VolVersionManager) checkSnapshotStrategy() {
+	log.LogDebugf("checkSnapshotStrategy enter")
 	verMgr.RLock()
 	if verMgr.strategy.Periodic == 0 || verMgr.strategy.Enable == false { // strategy not be set
 		verMgr.RUnlock()
@@ -206,18 +214,20 @@ func (verMgr *VolVersionManager) checkSnapshotStrategy() {
 	}
 	verMgr.RUnlock()
 
-	if verMgr.strategy.UTime.Add(time.Hour * time.Duration(verMgr.strategy.Periodic)).Before(time.Now()) {
+	if verMgr.strategy.UTime.Add(time.Minute * time.Duration(verMgr.strategy.Periodic)).Before(time.Now()) {
 		log.LogDebugf("checkSnapshotStrategy.vol %v try create snapshot", verMgr.vol.Name)
-		if _, err := verMgr.createVer2PhaseTask(verMgr.c, uint64(time.Now().Unix()), proto.CreateVersion, false); err != nil {
+		if _, err := verMgr.createVer2PhaseTask(verMgr.c, uint64(time.Now().Unix()), proto.CreateVersion, verMgr.strategy.ForceUpdate); err != nil {
 			return
 		}
 		verMgr.strategy.UTime = time.Now()
 		verMgr.Persist()
 	}
-
+	log.LogDebugf("checkSnapshotStrategy.vol %v try delete snapshot nLen %v, keep cnt %v", verMgr.vol.Name, len(verMgr.multiVersionList)-1, verMgr.strategy.KeepVerCnt)
 	verMgr.RLock()
 	nLen := len(verMgr.multiVersionList)
-	if nLen-1 > int(verMgr.strategy.KeepVerCnt) {
+	log.LogDebugf("checkSnapshotStrategy.vol %v try delete snapshot nLen %v, keep cnt %v", verMgr.vol.Name, len(verMgr.multiVersionList)-1, verMgr.strategy.KeepVerCnt)
+	if nLen-1 > verMgr.strategy.KeepVerCnt {
+		log.LogDebugf("checkSnapshotStrategy.vol %v try delete snapshot nLen %v, keep cnt %v", verMgr.vol.Name, nLen-1, verMgr.strategy.KeepVerCnt)
 		if verMgr.multiVersionList[0].Status != proto.VersionNormal {
 			log.LogDebugf("checkSnapshotStrategy.vol %v oldest ver %v status %v",
 				verMgr.vol.Name, verMgr.multiVersionList[0].Ver, verMgr.multiVersionList[0].Status)
@@ -225,7 +235,7 @@ func (verMgr *VolVersionManager) checkSnapshotStrategy() {
 			return
 		}
 		verMgr.RUnlock()
-		if _, err := verMgr.createVer2PhaseTask(verMgr.c, verMgr.multiVersionList[0].Ver, proto.DeleteVersion, false); err != nil {
+		if _, err := verMgr.createVer2PhaseTask(verMgr.c, verMgr.multiVersionList[0].Ver, proto.DeleteVersion, verMgr.strategy.ForceUpdate); err != nil {
 			return
 		}
 		return
@@ -340,7 +350,8 @@ func (verMgr *VolVersionManager) createTaskToDataNode(cluster *Cluster, verSeq u
 		dpHost sync.Map
 	)
 
-	log.LogWarnf("action[createTaskToDataNode] vol %v verMgr.status %v verSeq %v op %v force %v", verMgr.vol.Name, verMgr.status, verSeq, op, force)
+	log.LogWarnf("action[createTaskToDataNode] vol %v verMgr.status %v verSeq %v op %v force %v, prepareCommit.nodeCnt %v",
+		verMgr.vol.Name, verMgr.status, verSeq, op, force, verMgr.prepareCommit.nodeCnt)
 	for _, dp := range verMgr.vol.dataPartitions.clonePartitions() {
 		for _, host := range dp.Hosts {
 			dpHost.Store(host, nil)
@@ -366,7 +377,8 @@ func (verMgr *VolVersionManager) createTaskToDataNode(cluster *Cluster, verSeq u
 		}
 		verMgr.prepareCommit.dataNodeArray.Store(node.Addr, TypeNoReply)
 		verMgr.prepareCommit.nodeCnt++
-		log.LogInfof("action[createTaskToDataNode] volume %v addr %v op %v verseq %v", verMgr.vol.Name, addr.(string), op, verSeq)
+		log.LogInfof("action[createTaskToDataNode] volume %v addr %v op %v verseq %v nodeCnt %v",
+			verMgr.vol.Name, addr.(string), op, verSeq, verMgr.prepareCommit.nodeCnt)
 		task := node.createVersionTask(verMgr.vol.Name, verSeq, op, addr.(string))
 		tasks = append(tasks, task)
 		return true
@@ -387,7 +399,10 @@ func (verMgr *VolVersionManager) createTaskToMetaNode(cluster *Cluster, verSeq u
 		mpHost sync.Map
 		ok     bool
 	)
-	log.LogInfof("action[verManager.createTaskToMetaNode] vol %v verSeq %v, dp cnt %v", verMgr.vol.Name, verSeq, len(verMgr.vol.MetaPartitions))
+
+	log.LogInfof("action[verManager.createTaskToMetaNode] vol %v verSeq %v, mp cnt %v, prepareCommit.nodeCnt %v",
+		verMgr.vol.Name, verSeq, len(verMgr.vol.MetaPartitions), verMgr.prepareCommit.nodeCnt)
+
 	verMgr.vol.mpsLock.RLock()
 	for _, mp := range verMgr.vol.MetaPartitions {
 		for _, host := range mp.Hosts {
@@ -412,6 +427,8 @@ func (verMgr *VolVersionManager) createTaskToMetaNode(cluster *Cluster, verSeq u
 			atomic.AddUint32(&verMgr.prepareCommit.commitCnt, 1)
 		}
 		verMgr.prepareCommit.nodeCnt++
+		log.LogInfof("action[createTaskToMetaNode] volume %v addr %v op %v verseq %v nodeCnt %v",
+			verMgr.vol.Name, addr.(string), op, verSeq, verMgr.prepareCommit.nodeCnt)
 		verMgr.prepareCommit.metaNodeArray.Store(node.Addr, TypeNoReply)
 		task := node.createVersionTask(verMgr.vol.Name, verSeq, op, addr.(string))
 		tasks = append(tasks, task)
@@ -457,7 +474,8 @@ func (verMgr *VolVersionManager) getLayInfo(verSeq uint64) (int, bool) {
 }
 
 func (verMgr *VolVersionManager) createTask(cluster *Cluster, verSeq uint64, op uint8, force bool) (ver *proto.VolVersionInfo, err error) {
-	log.LogInfof("action[VolVersionManager.createTask] vol %v verSeq %v op %v force %v", verMgr.vol.Name, verSeq, op, force)
+	log.LogInfof("action[VolVersionManager.createTask] vol %v verSeq %v op %v force %v ,prepareCommit.nodeCnt %v",
+		verMgr.vol.Name, verSeq, op, force, verMgr.prepareCommit.nodeCnt)
 	verMgr.RLock()
 	defer verMgr.RUnlock()
 
@@ -476,6 +494,7 @@ func (verMgr *VolVersionManager) createTask(cluster *Cluster, verSeq uint64, op 
 }
 
 func (verMgr *VolVersionManager) initVer2PhaseTask(verSeq uint64, op uint8) (verRsp *proto.VolVersionInfo, err error, opRes uint8) {
+	verMgr.prepareCommit.reset(verMgr.vol.Name)
 	log.LogWarnf("action[VolVersionManager.initVer2PhaseTask] vol %v verMgr.status %v op %v verSeq %v", verMgr.vol.Name, verMgr.status, op, verSeq)
 	if op == proto.CreateVersion {
 		if err = verMgr.GenerateVer(verSeq, op); err != nil {
@@ -572,7 +591,7 @@ func (verMgr *VolVersionManager) createVer2PhaseTask(cluster *Cluster, verSeq ui
 				log.LogInfof("action[createVer2PhaseTask] %v go routine verseq %v op %v get err %v", verMgr.vol.Name, verSeq, verMgr.prepareCommit.op, err)
 				if verMgr.prepareCommit.op == proto.DeleteVersion {
 					if err == nil {
-						verMgr.prepareCommit.reset()
+						verMgr.prepareCommit.reset(verMgr.vol.Name)
 						if err = verMgr.Persist(); err != nil {
 							log.LogErrorf("action[createVer2PhaseTask] vol %v err %v", verMgr.vol.Name, err)
 							return
@@ -580,7 +599,7 @@ func (verMgr *VolVersionManager) createVer2PhaseTask(cluster *Cluster, verSeq ui
 						verMgr.finishWork()
 						wg.Done()
 					} else {
-						verMgr.prepareCommit.reset()
+						verMgr.prepareCommit.reset(verMgr.vol.Name)
 						verMgr.prepareCommit.prepareInfo.Status = proto.VersionWorkingAbnormal
 						log.LogInfof("action[createVer2PhaseTask] vol %v prepare error %v", verMgr.vol.Name, err)
 					}
@@ -588,7 +607,7 @@ func (verMgr *VolVersionManager) createVer2PhaseTask(cluster *Cluster, verSeq ui
 				} else if verMgr.prepareCommit.op == proto.CreateVersionPrepare {
 					if err == nil {
 						verMgr.verSeq = verSeq
-						verMgr.prepareCommit.reset()
+						verMgr.prepareCommit.reset(verMgr.vol.Name)
 						verMgr.prepareCommit.op = proto.CreateVersionCommit
 						if err = verMgr.Persist(); err != nil {
 							log.LogErrorf("action[createVer2PhaseTask] vol %v err %v", verMgr.vol.Name, err)
@@ -610,7 +629,7 @@ func (verMgr *VolVersionManager) createVer2PhaseTask(cluster *Cluster, verSeq ui
 					}
 				} else if verMgr.prepareCommit.op == proto.CreateVersionCommit {
 					log.LogInfof("action[createVer2PhaseTask] vol %v create ver task commit, create 2phase finished", verMgr.vol.Name)
-					verMgr.prepareCommit.reset()
+					verMgr.prepareCommit.reset(verMgr.vol.Name)
 					verMgr.finishWork()
 					return
 				} else {
@@ -618,21 +637,22 @@ func (verMgr *VolVersionManager) createVer2PhaseTask(cluster *Cluster, verSeq ui
 					return
 				}
 			case <-verMgr.cancel:
-				verMgr.prepareCommit.reset()
+				verMgr.prepareCommit.reset(verMgr.vol.Name)
 				log.LogInfof("action[createVer2PhaseTask.cancel] vol %v verseq %v op %v be canceled", verMgr.vol.Name, verSeq, verMgr.prepareCommit.op)
 				return
 			case <-ticker.C:
 				log.LogInfof("action[createVer2PhaseTask.tick] vol %v verseq %v op %v wait", verMgr.vol.Name, verSeq, verMgr.prepareCommit.op)
 				cnt++
 				if cnt > 5 {
-					verMgr.prepareCommit.reset()
 					verMgr.prepareCommit.prepareInfo.Status = proto.VersionWorkingTimeOut
 					err = fmt.Errorf("verseq %v op %v be set timeout", verSeq, verMgr.prepareCommit.op)
 					log.LogInfof("action[createVer2PhaseTask] vol %v close lock due to err %v", verMgr.vol.Name, err)
-					verMgr.finishWork()
+
 					if verMgr.prepareCommit.op == proto.CreateVersionCommit {
 						err = nil
 					}
+					verMgr.prepareCommit.reset(verMgr.vol.Name)
+					verMgr.finishWork()
 					return
 				}
 			}

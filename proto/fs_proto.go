@@ -327,6 +327,7 @@ type UnlinkInodeRequest struct {
 	Inode       uint64 `json:"ino"`
 	UniqID      uint64 `json:"uid"` //for request dedup
 	VerSeq      uint64 `json:"ver"`
+	DenVerSeq   uint64 `json:"denVer"`
 }
 
 // UnlinkInodeRequest defines the request to unlink an inode.

@@ -4588,6 +4588,7 @@ func (m *Server) SetVerStrategy(w http.ResponseWriter, r *http.Request) {
 		err      error
 		name     string
 		strategy proto.VolumeVerStrategy
+		isForce  bool
 	)
 
 	if name, err = parseVolName(r); err != nil {
@@ -4595,12 +4596,12 @@ func (m *Server) SetVerStrategy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strategy, err = parseVolVerStrategy(r); err != nil {
+	if strategy, isForce, err = parseVolVerStrategy(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if err = m.cluster.SetVerStrategy(name, strategy); err != nil {
+	if err = m.cluster.SetVerStrategy(name, strategy, isForce); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
