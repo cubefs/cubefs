@@ -10,7 +10,7 @@ on:
   pull_request:
     branches: [ master ]
     paths-ignore:
-        - 'blobstore/**'
+        # - 'blobstore/**'
 
 jobs:
 
