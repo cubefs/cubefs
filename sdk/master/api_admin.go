@@ -40,6 +40,18 @@ func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 	}
 	return
 }
+func (api *AdminAPI) GetTopology() (cv *proto.TopologyView, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.GetTopologyView)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	cv = &proto.TopologyView{}
+	if err = json.Unmarshal(buf, &cv); err != nil {
+		return
+	}
+	return
+}
 func (api *AdminAPI) GetClusterStat() (cs *proto.ClusterStatInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminClusterStat)
 	request.addHeader("isTimeOut", "false")

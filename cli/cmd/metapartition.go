@@ -102,6 +102,7 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 
 func newListCorruptMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 	var optCheckAll bool
+	var optSpecifyMP uint64
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptMetaPartitionShort,
@@ -117,6 +118,15 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 				metaNodes []*proto.MetaNodeInfo
 				err       error
 			)
+			if optSpecifyMP > 0 {
+				outPut, isHealthy, _ := checkMetaPartition(optSpecifyMP, client)
+				if !isHealthy {
+					fmt.Printf(outPut)
+				} else {
+					fmt.Printf("partition is healthy")
+				}
+				return
+			}
 			if optCheckAll {
 				err = checkAllMetaPartitions(client)
 				if err != nil {
@@ -199,6 +209,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			return
 		},
 	}
+	cmd.Flags().Uint64Var(&optSpecifyMP, CliFlagId, 0, "check meta partition by partitionID")
 	cmd.Flags().BoolVar(&optCheckAll, "all", false, "true - check all partitions; false - only check partitions which lack of replica")
 	return cmd
 }

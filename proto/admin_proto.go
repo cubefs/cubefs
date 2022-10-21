@@ -1286,3 +1286,9 @@ type DpFollowerReadDelayConfig struct {
 	EnableCollect        bool
 	DelaySummaryInterval int64
 }
+
+// TopologyView provides the view of the topology view of the cluster
+type TopologyView struct {
+	Zones   []*ZoneView
+	Regions []*RegionView
+}
