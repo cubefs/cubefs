@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/binary"
 	"github.com/chubaofs/chubaofs/proto"
+
 	"github.com/chubaofs/chubaofs/util/unit"
 	"time"
 
@@ -271,9 +272,10 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 					mp.trashExpiresFirstUpdateTime = time.Now()
 				}
 				mp.config.TrashRemainingDays = mp.manager.getTrashDaysByVol(mp.config.VolName)
+				mp.config.ChildFileMaxCount = mp.manager.getChildFileMaxCount(mp.config.VolName)
 				mp.config.TrashCleanInterval = mp.manager.getTrashCleanInterval(mp.config.VolName)
-				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v, trashCleanInterval: %vMin",
-					mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays, mp.config.TrashCleanInterval)
+				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v, childFileMaxCount: %v, trashCleanInterval: %vMin",
+					mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays, mp.config.ChildFileMaxCount, mp.config.TrashCleanInterval)
 			}
 		}
 	}(mp.stopC)

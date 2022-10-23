@@ -22,7 +22,7 @@ func ApplyMock(elem interface{},command []byte, index uint64) (resp interface{},
 func mockMetaPartition(partitionID uint64, metaNodeID uint64, storeMode proto.StoreMode, rootDir string, applyFunc metamock.ApplyFunc) (*metaPartition, error) {
 	_ = os.RemoveAll(rootDir)
 	_ = os.MkdirAll(rootDir, 0666)
-	node := &MetaNode{nodeId: metaNodeID}
+	node := &MetaNode{nodeId: metaNodeID, metadataDir: rootDir}
 	manager := &metadataManager{nodeId: metaNodeID, rocksDBDirs: []string{rootDir}, metaNode: node}
 	conf := &MetaPartitionConfig{
 		RocksDBDir:  rootDir,

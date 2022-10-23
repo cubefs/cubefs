@@ -101,6 +101,10 @@ type Partition interface {
 	SetWALFileCacheCapacity(capacity int)
 
 	GetWALFileCacheCapacity() int
+
+	SetSyncWALOnUnstable(enabled bool)
+
+	IsSyncWALOnUnstable() bool
 }
 
 // Default implementation of the Partition interface.
@@ -290,6 +294,7 @@ func (p *partition) Start() (err error) {
 		StateMachine:      p.config.SM,
 		Applied:           p.config.GetStartIndex.Get(fi, li),
 		Learners:          p.config.Learners,
+		SyncWALOnUnstable: p.config.SyncWALOnUnstable,
 	}
 	if err = p.raft.CreateRaft(p.rc); err != nil {
 		return
@@ -336,6 +341,28 @@ func (p *partition) GetWALFileCacheCapacity() (capacity int) {
 		}
 		if p.config != nil {
 			capacity = p.config.WALFileCacheCapacity
+		}
+	}
+	return
+}
+
+func (p *partition) SetSyncWALOnUnstable(enabled bool) {
+	if p != nil && p.config != nil {
+		p.config.SyncWALOnUnstable = enabled
+		if p.rc != nil {
+			p.rc.SyncWALOnUnstable = enabled
+		}
+	}
+}
+
+func (p *partition) IsSyncWALOnUnstable() (enabled bool) {
+	if p != nil {
+		if p.rc != nil {
+			enabled = p.rc.SyncWALOnUnstable
+			return
+		}
+		if p.config != nil {
+			enabled = p.config.SyncWALOnUnstable
 		}
 	}
 	return

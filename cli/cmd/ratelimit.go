@@ -69,7 +69,6 @@ func newRateLimitInfoCmd(client *master.MasterClient) *cobra.Command {
 
 func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	var info proto.RateLimitInfo
-	var opTrashCleanInterval int64
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdRateLimitSetShort,
@@ -196,8 +195,11 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.MetaRocksWalTTL > 0 {
 				msg += fmt.Sprintf("MN RocksDB Wal Log TTL       : %d, ", info.MetaRocksWalTTL)
 			}
-			if opTrashCleanInterval >= 0 {
-				info.MetaTrashCleanInterval = uint64(opTrashCleanInterval)
+
+			if info.MetaDelEKRecordFileMaxMB > 0 {
+				msg += fmt.Sprintf("MN DelEK Record File Max MB  : %d, ", info.MetaDelEKRecordFileMaxMB)
+			}
+			if info.MetaTrashCleanInterval > 0 {
 				msg += fmt.Sprintf("MN trash clean interval : %d Min, ", info.MetaTrashCleanInterval)
 			}
 			if info.MetaRaftLogSize >= 0 {
@@ -253,10 +255,11 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&info.MetaRocksFlushWalInterval, "metaRocksWalFlushInterval", 0, "Meta node RocksDB config:flush wal interval, unit:min")
 	cmd.Flags().Int64Var(&info.MetaRocksDisableFlushFlag, "metaRocksDisableWalFlush", -1, "Meta node RocksDB config:flush wal flag, 0: enable flush wal log, 1:disable flush wal log")
 	cmd.Flags().Uint64Var(&info.MetaRocksWalTTL, "metaRocksWalTTL", 0, "Meta node RocksDB config:wal_ttl_seconds")
-	cmd.Flags().Int64Var(&info.DataNodeFlushFDInterval, "dataNodeFlushFDInterval", 0, "datanode flush wal fd interval")
+	cmd.Flags().Int64Var(&info.DataNodeFlushFDInterval, "dataNodeFlushFDInterval", -1, "datanode flush wal fd interval")
+	cmd.Flags().Uint64Var(&info.MetaDelEKRecordFileMaxMB, "metaDelEKRecordFileMaxMB", 0, "meta node delete ek record file max mb")
+	cmd.Flags().Uint64Var(&info.MetaTrashCleanInterval, "metaTrashCleanInterval", 0, "meta node clean del inode interval, unit:min")
 	cmd.Flags().Int64Var(&info.MetaRaftLogSize, "metaRaftLogSize", -1, "meta node raft log size")
 	cmd.Flags().Int64Var(&info.MetaRaftLogCap, "metaRaftLogCap", -1, "meta node raft log cap")
-	cmd.Flags().Int64Var(&opTrashCleanInterval, "metaTrashCleanInterval", -1, "meta node clean del inode interval, unit:min")
 	return cmd
 }
 

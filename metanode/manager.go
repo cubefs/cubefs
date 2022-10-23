@@ -86,6 +86,7 @@ type VolumeConfig struct {
 	Name               string
 	PartitionCount     int
 	TrashDay           int32
+	ChildFileMaxCnt    uint32
 	TrashCleanInterval uint64
 }
 
@@ -462,10 +463,11 @@ func (m *metadataManager) updateVolConf() (err error) {
 		volConfMap[vol.Name] = &VolumeConfig{
 			Name:               vol.Name,
 			TrashDay:           int32(vol.TrashRemainingDays),
+			ChildFileMaxCnt:    vol.ChildFileMaxCnt,
 			TrashCleanInterval: vol.TrashCleanInterval,
 		}
-		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, trashCleanInterval: %v",
-			vol.Name, vol.TrashRemainingDays, vol.TrashCleanInterval)
+		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v",
+			vol.Name, vol.TrashRemainingDays, vol.ChildFileMaxCnt, vol.TrashCleanInterval)
 	}
 
 	m.volConfMapRWMutex.Lock()
@@ -488,6 +490,17 @@ func (m *metadataManager) getTrashDaysByVol(vol string) (days int32) {
 		}
 
 	*/
+	return
+}
+
+func (m *metadataManager) getChildFileMaxCount(vol string) (maxCount uint32) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	if volConf, ok := m.volConfMap[vol]; !ok {
+		maxCount = 0
+	} else {
+		maxCount = volConf.ChildFileMaxCnt
+	}
 	return
 }
 

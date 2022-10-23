@@ -198,7 +198,7 @@ func createDefaultMasterServerForTest() *Server {
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
-		false, false, false, false, true, false, false, false, 0, 0,
+		false, false, false, false, true, false, false, false, 0, 0, defaultChildFileMaxCount,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0})
 	if err != nil {
 		panic(err)

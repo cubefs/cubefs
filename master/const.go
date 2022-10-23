@@ -137,7 +137,7 @@ const (
 	dumpWaterLevelKey            = "metaNodeDumpWaterLevel"
 	monitorSummarySecondKey      = "monitorSummarySec"
 	monitorReportSecondKey       = "monitorReportSec"
-    volTrashCleanIntervalKey    = "trashCleanInterval"
+	volTrashCleanIntervalKey     = "trashCleanInterval"
 )
 
 const (
@@ -246,6 +246,7 @@ const (
 	defaultDataNodeHttpPort                            = "17320"
 	defaultSSDZoneTaskLimit                            = 20
 	defaultFollReadHostWeight                          = 0
+	defaultChildFileMaxCount                           = 1000000
 )
 
 const (

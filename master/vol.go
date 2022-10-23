@@ -100,13 +100,14 @@ type Vol struct {
 	EcMigrationRetryWait int64
 	EcMaxUnitSize        uint64
 	ecDataPartitions     *EcDataPartitionCache
+	ChildFileMaxCount    uint32
 	TrashCleanInterval   uint64
 	sync.RWMutex
 }
 
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool, createTime, smartEnableTime int64, description, dpSelectorName,
-	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays uint32,
+	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32,
 	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
@@ -179,6 +180,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.EcMigrationTimeOut = defaultEcMigrationTimeOut
 	vol.EcMigrationRetryWait = defaultEcMigrationRetryWait
 	vol.EcMaxUnitSize = defaultEcMaxUnitSize
+	vol.ChildFileMaxCount = childFileMaxCnt
 	return
 }
 
@@ -210,6 +212,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.MpLearnerNum,
 		vv.DpWriteableThreshold,
 		vv.TrashRemainingDays,
+		vv.ChildFileMaxCnt,
 		vv.DefStoreMode,
 		vv.ConverState,
 		vv.MpLayout,
@@ -1126,7 +1129,7 @@ func (vol *Vol) backupConfig() *Vol {
 		compactTag:           vol.compactTag,
 		compactTagModifyTime: vol.compactTagModifyTime,
 		FollowerReadDelayCfg: vol.FollowerReadDelayCfg,
-		TrashCleanInterval :  vol.TrashCleanInterval,
+		TrashCleanInterval : vol.TrashCleanInterval,
 	}
 }
 

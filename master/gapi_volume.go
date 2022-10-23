@@ -238,7 +238,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount),
 		int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, false, 0, 0,
-		proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)}, nil, proto.CompactDefault,
+		defaultChildFileMaxCount, proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)}, nil, proto.CompactDefault,
 		proto.DpFollowerReadDelayConfig{false, 0})
 	if err != nil {
 		return nil, err

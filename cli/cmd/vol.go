@@ -73,6 +73,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolEcPartitionsConsistency(client),
 		newVolEcPartitionsChunkConsistency(client),
 		newVolCheckEKDeletedByMistake(client),
+		newVolSetChildFileMaxCountCmd(client),
 	)
 	return cmd
 }
@@ -1584,6 +1585,78 @@ func newVolEcPartitionsChunkConsistency(client *master.MasterClient) *cobra.Comm
 			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	return cmd
+}
+
+const (
+	cmdVolSetChildFileMaxCountCmdUse = "set-child-file-max-count [VOLUME]"
+	cmdVolSetChildFileMaxCountCmdShort = "set child file max count"
+)
+
+func newVolSetChildFileMaxCountCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		optMaxCount   int
+		optYes        bool
+		confirmString = strings.Builder{}
+		vv            *proto.SimpleVolView
+	)
+	var cmd = &cobra.Command{
+		Use:   cmdVolSetChildFileMaxCountCmdUse,
+		Short: cmdVolSetChildFileMaxCountCmdShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var isChange = false
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
+				return
+			}
+			confirmString.WriteString("Volume configuration changes:\n")
+			confirmString.WriteString(fmt.Sprintf("  Name                 : %v\n", vv.Name))
+
+			if optMaxCount > 0 && vv.ChildFileMaxCount != uint32(optMaxCount) {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  child file max count : %v -> %v\n", vv.ChildFileMaxCount, optMaxCount))
+				vv.ChildFileMaxCount = uint32(optMaxCount)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  child file max count : %v\n", vv.ChildFileMaxCount))
+			}
+			if !isChange {
+				stdout("No changes has been set.\n")
+				return
+			}
+			// ask user for confirm
+			if !optYes {
+				stdout(confirmString.String())
+				stdout("\nConfirm (yes/no)[yes]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" && len(userConfirm) != 0 {
+					err = fmt.Errorf("Abort by user.\n")
+					return
+				}
+			}
+			_, err = client.AdminAPI().SetVolChildFileMaxCount(vv.Name, vv.ChildFileMaxCount)
+			if err != nil {
+				return
+			}
+			stdout("Volume configuration has been set successfully.\n")
+			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().IntVar(&optMaxCount, "maxCount", 0, "child file max count")
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
 }
 

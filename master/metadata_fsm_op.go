@@ -81,6 +81,7 @@ type clusterValue struct {
 	MetaRocksFlushWalInterval           uint64  //min
 	MetaRocksDisableFlushFlag           uint64  //0 flush, !=0 disable flush
 	MetaRocksWalTTL                     uint64
+	MetaDelEKRecordFileMaxMB            uint64 //MB
 	MetaTrashCleanInterval              uint64
 	MetaRaftLogSize                     int64
 	MetaRaftLogCap                      int64
@@ -137,6 +138,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaRocksFlushWalInterval:           c.cfg.MetaRocksFlushWalInterval,
 		MetaRocksDisableFlushFlag:           c.cfg.MetaRocksDisableFlushFlag,
 		MetaRocksWalTTL:                     c.cfg.MetaRocksWalTTL,
+		MetaDelEKRecordFileMaxMB:            c.cfg.DeleteEKRecordFilesMaxSize,
 		MetaTrashCleanInterval:              c.cfg.MetaTrashCleanInterval,
 		MetaRaftLogSize:                     c.cfg.MetaRaftLogSize,
 		MetaRaftLogCap:                      c.cfg.MetaRaftLogCap,
@@ -287,6 +289,7 @@ type volValue struct {
 	EcRetryWait          int64
 	EcMaxUnitSize        uint64
 	EcEnable             bool
+	ChildFileMaxCnt      uint32
 	TrashCleanInterval   uint64
 }
 
@@ -352,6 +355,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		EcTimeOut:            vol.EcMigrationTimeOut,
 		EcRetryWait:          vol.EcMigrationRetryWait,
 		EcMaxUnitSize:        vol.EcMaxUnitSize,
+		ChildFileMaxCnt:      vol.ChildFileMaxCount,
 		TrashCleanInterval:   vol.TrashCleanInterval,
 	}
 	return
@@ -965,6 +969,9 @@ func (c *Cluster) loadClusterValue() (err error) {
 		atomic.StoreUint64(&c.cfg.MetaRocksFlushWalInterval, cv.MetaRocksFlushWalInterval)
 		atomic.StoreUint64(&c.cfg.MetaRocksDisableFlushFlag, cv.MetaRocksDisableFlushFlag)
 		atomic.StoreUint64(&c.cfg.MetaRocksWalTTL, cv.MetaRocksWalTTL)
+		if cv.MetaDelEKRecordFileMaxMB != 0 {
+			atomic.StoreUint64(&c.cfg.DeleteEKRecordFilesMaxSize, cv.MetaDelEKRecordFileMaxMB)
+		}
 		if cv.MetaTrashCleanInterval != 0 {
 			atomic.StoreUint64(&c.cfg.MetaTrashCleanInterval, cv.MetaTrashCleanInterval)
 		}

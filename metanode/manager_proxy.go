@@ -28,9 +28,8 @@ import (
 const (
 	ForceClosedConnect = true
 	NoClosedConnect    = false
-
-	ProxySendTimeoutSec = 2 // Seconds of send timeout
-	ProxyReadTimeoutSec = 2 // Seconds of read timout
+	ProxyReadTimeoutSec  = 2 // Seconds of read timout
+	ProxyWriteTimeoutSec = 2
 )
 
 // The proxy is used during the leader change. When a leader of a partition changes, the proxy forwards the request to
@@ -89,7 +88,7 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		}
 
 		// send to master connection
-		if err = p.WriteToConn(mConn, ProxySendTimeoutSec); err != nil {
+		if err = p.WriteToConn(mConn, ProxyWriteTimeoutSec); err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			m.connPool.PutConnect(mConn, ForceClosedConnect)
 			goto end

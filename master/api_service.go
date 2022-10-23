@@ -324,6 +324,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaRocksFlushWalInterval:           m.cluster.cfg.MetaRocksFlushWalInterval,
 		MetaRocksDisableFlushFlag:           m.cluster.cfg.MetaRocksDisableFlushFlag,
 		MetaRocksWalTTL:                     m.cluster.cfg.MetaRocksWalTTL,
+		MetaDelEKRecordFileMaxMB:            m.cluster.cfg.DeleteEKRecordFilesMaxSize,
 		MetaTrashCleanInterval:              m.cluster.cfg.MetaTrashCleanInterval,
 		MetaRaftLogSize:                     m.cluster.cfg.MetaRaftLogSize,
 		MetaRaftLogCap:                      m.cluster.cfg.MetaRaftLogCap,
@@ -451,6 +452,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	metaRocksDBFlushWalInterval := atomic.LoadUint64(&m.cluster.cfg.MetaRocksFlushWalInterval)
 	metaRocksDBWalTTL := atomic.LoadUint64(&m.cluster.cfg.MetaRocksWalTTL)
 	metaRocksDBDisableFlush := atomic.LoadUint64(&m.cluster.cfg.MetaRocksDisableFlushFlag)
+	metaDeleteEKRecordFilesMaxTotalSize := atomic.LoadUint64(&m.cluster.cfg.DeleteEKRecordFilesMaxSize)
 	metaTrashCleanInterval := atomic.LoadUint64(&m.cluster.cfg.MetaTrashCleanInterval)
 	metaRaftLogSize := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogSize)
 	metaRaftLogCap  := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogCap)
@@ -504,9 +506,10 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaRocksDisableFlushFlag:              metaRocksDBDisableFlush,
 		MetaRocksFlushWalInterval:              metaRocksDBFlushWalInterval,
 		MetaRocksWalTTL:                        metaRocksDBWalTTL,
+		DeleteEKRecordFileMaxMB:                metaDeleteEKRecordFilesMaxTotalSize,
 		MetaTrashCleanInterval:                 metaTrashCleanInterval,
-		MetaRaftLogSize:                        metaRaftLogSize,
-		MetaRaftCap:                            metaRaftLogCap,
+		MetaRaftLogSize: metaRaftLogSize,
+		MetaRaftCap:     metaRaftLogCap,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1750,8 +1753,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
-		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache, dpSelectorName, dpSelectorParm, ossBucketPolicy,
-		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, trashInterVal); err != nil {
+		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
+		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
+		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, trashInterVal); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1842,12 +1846,13 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		smartRules           []string
 		compactTag           string
 		dpFolReadDelayCfg    proto.DpFollowerReadDelayConfig
+		childFileMaxCnt      uint32
 	)
 
 	metrics := exporter.NewTPCnt(proto.AdminCreateVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
-		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, err = parseRequestToCreateVol(r); err != nil {
+		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1890,7 +1895,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
 		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
-		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg); err != nil {
+		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2018,6 +2023,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		EcDataNum:            vol.EcDataNum,
 		EcParityNum:          vol.EcParityNum,
 		EcMaxUnitSize:        vol.EcMaxUnitSize,
+		ChildFileMaxCount:    vol.ChildFileMaxCount,
 		TrashCleanInterval:   vol.TrashCleanInterval,
 	}
 }
@@ -3487,7 +3493,7 @@ func parseDefaultTrashDaysToUpdateVol(r *http.Request, vol *Vol) (remaining uint
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
-	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64,
+	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, childFileMaxCnt uint32,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -3653,6 +3659,15 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	if enableEc, err = strconv.ParseBool(value); err != nil {
 		return
 	}
+	if value = r.FormValue(proto.ChildFileMaxCountKey); value == "" {
+		childFileMaxCnt = defaultChildFileMaxCount
+		return
+	}
+	var maxCount uint64
+	if maxCount, err = strconv.ParseUint(value, 10, 32); err != nil {
+		return
+	}
+	childFileMaxCnt = uint32(maxCount)
 	return
 }
 
@@ -4278,8 +4293,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
 		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
-		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB, proto.MetaTrashCleanIntervalKey}
-
+		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
+	    proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return
@@ -4690,8 +4705,8 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			stat := volStat(vol)
 
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
-				vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
-				vol.enableToken, vol.enableWriteCache, vol.TrashCleanInterval)
+				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules,
+				vol.ForceROW, vol.compact(), vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4723,8 +4738,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 			}
 			stat := volStat(vol)
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
-				vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
-				vol.enableToken, vol.enableWriteCache, vol.TrashCleanInterval)
+				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(), vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4750,8 +4764,8 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 		}
 		stat := volStat(vol)
 		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
-			vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
-			vol.enableToken, vol.enableWriteCache, vol.TrashCleanInterval)
+			vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW,
+			vol.compact(), vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache)
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
@@ -5618,3 +5632,33 @@ func parseRequestToSetCompactVol(r *http.Request) (name, compactTag, authKey str
 
 	return
 }
+
+func (m *Server) setVolChildFileMaxCount(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName    string
+		maxCount   uint64
+		err        error
+	)
+	if volName, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if _, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	value := r.FormValue(proto.ChildFileMaxCountKey)
+	maxCount, err = strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	err = m.cluster.setVolChildFileMaxCount(volName, uint32(maxCount))
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set vol[%v] childFileMaxCount to %v  successfully",
+		volName, maxCount)))
+}
+

@@ -92,7 +92,8 @@ type MetaPartitionConfig struct {
 	ConnPool           *connpool.ConnectPool `json:"-"`
 	StoreMode          proto.StoreMode       `json:"store_mode"`
 	CreationType       int                   `json:"creation_type"`
-        TrashCleanInterval uint64                `json:"-"`
+	ChildFileMaxCount  uint32                `json:"-"`
+	TrashCleanInterval uint64                `json:"-"`
 
 	RocksWalFileSize     uint64 `json:"rocks_wal_file_size"`
 	RocksWalMemSize      uint64 `json:"rocks_wal_mem_size"`
@@ -368,9 +369,7 @@ func (mp *metaPartition) onStart() (err error) {
 }
 
 func (mp *metaPartition) onStop() {
-	if _, ok := mp.IsLeader(); ok {
-		mp.tryToGiveUpLeader()
-	}
+	mp.tryToGiveUpLeader()
 	mp.stopRaft()
 	mp.stop()
 	mp.db.CloseDb()

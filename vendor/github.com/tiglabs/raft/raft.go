@@ -823,7 +823,8 @@ func (s *raft) persist() {
 		}
 		s.prevHardSt = hs
 	}
-	if s.riskState != stateStable && s.config.SyncWALOnUnstable {
+
+	if s.riskState != stateStable && s.raftConfig.SyncWALOnUnstable {
 		if err := s.raftConfig.Storage.Flush(); err != nil {
 			panic(AppPanicError(fmt.Sprintf("[raft->persist][%v] flush storage err: [%v].", s.raftFsm.id, err)))
 		}
@@ -1097,7 +1098,7 @@ func (s *raft) promoteLearner() {
 }
 
 func (s *raft) riskStateChange(state riskState) {
-	if s.riskState != state && state == stateUnstable && s.config.SyncWALOnUnstable {
+	if s.riskState != state && state == stateUnstable && s.raftConfig.SyncWALOnUnstable {
 		if err := s.raftConfig.Storage.Flush(); err != nil {
 			panic(AppPanicError(fmt.Sprintf("raft[%v] flush storage err: %v", s.raftConfig.ID, err)))
 		}

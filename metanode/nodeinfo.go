@@ -1,6 +1,7 @@
 package metanode
 
 import (
+	"github.com/chubaofs/chubaofs/util/unit"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -39,6 +40,7 @@ type NodeInfo struct {
 	rocksFlushWal          bool					// default true flush
 	rocksWalTTL            uint64				//second default 60
 	trashCleanInterval     uint64  //min
+	delEKFileLocalMaxMB    uint64
 	raftLogSizeFromMaster  int
 	raftLogCapFromMaster   int
 	raftLogSizeFromLoc     int
@@ -220,6 +222,26 @@ func (m *MetaNode) updateRocksDBConf(info *proto.LimitInfo) {
 	}
 }
 
+func (m *MetaNode) updateDeleteEKRecordFilesMaxSize(maxMB uint64) {
+	if maxMB == 0 || DeleteEKRecordFilesMaxTotalSize.Load() == maxMB * unit.MB {
+		log.LogDebugf("[updateDeleteEKRecordFilesMaxSize] no need update")
+		return
+	}
+	if atomic.LoadUint64(&nodeInfo.delEKFileLocalMaxMB) == 0 {
+		DeleteEKRecordFilesMaxTotalSize.Store(maxMB * unit.MB)
+		log.LogDebugf("[updateDeleteEKRecordFilesMaxSize] new value:%vMB", maxMB)
+	}
+}
+
+func (m *MetaNode) updateTrashCleanInterval(interval uint64) {
+	if interval == 0 || interval == nodeInfo.trashCleanInterval {
+		log.LogDebugf("[updateTrashCleanInterval] no need update")
+		return
+	}
+	nodeInfo.trashCleanInterval = interval
+	log.LogDebugf("[updateTrashCleanInterval] new value:%v", interval)
+}
+
 func (m *MetaNode) updateRaftParamFromMaster(logSize, cap int) {
 	if logSize >= 0 && logSize != nodeInfo.raftLogSizeFromMaster {
 		nodeInfo.raftLogSizeFromMaster = logSize
@@ -242,15 +264,6 @@ func (m *MetaNode) updateRaftParamFromLocal(logSize, cap int) {
 	}
 
 	return
-}
-
-func (m *MetaNode) updateTrashCleanInterval(interval uint64) {
-	if interval == nodeInfo.trashCleanInterval {
-		log.LogDebugf("[updateTrashCleanInterval] no need update")
-		return
-	}
-	nodeInfo.trashCleanInterval = interval
-	log.LogDebugf("[updateTrashCleanInterval] new value:%v", interval)
 }
 
 func getGlobalConfNodeInfo() *NodeInfo {
@@ -308,8 +321,9 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	updateLogMaxSize(limitInfo.LogMaxSize)
 	m.updateRocksDBDiskReservedSpaceSpace(limitInfo.RocksDBDiskReservedSpace)
 	m.updateRocksDBConf(limitInfo)
-	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
+	m.updateDeleteEKRecordFilesMaxSize(limitInfo.DeleteEKRecordFileMaxMB)
 	m.updateTrashCleanInterval(limitInfo.MetaTrashCleanInterval)
+	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

@@ -391,8 +391,9 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 }
 
 func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool, authKey, zoneName, mpLayout, smartRules string,
-	bucketPolicy, crossRegionHAType uint8, extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64) (err error) {
+	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool,
+	authKey, zoneName, mpLayout, smartRules string, bucketPolicy, crossRegionHAType uint8,
+	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -721,14 +722,17 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.MetaRocksWalTTL > 0 {
 		request.addParam(proto.MetaRocksWalTTLKey, strconv.FormatUint(info.MetaRocksWalTTL, 10))
 	}
-	if info.MetaRaftLogSize >= 0 {
+	if info.MetaDelEKRecordFileMaxMB > 0 {
+		request.addParam(proto.MetaDelEKRecordFileMaxMB, strconv.FormatUint(info.MetaDelEKRecordFileMaxMB, 10))
+	}
+	if info.MetaTrashCleanInterval >0 {
+		request.addParam(proto.MetaTrashCleanIntervalKey, strconv.FormatUint(info.MetaTrashCleanInterval, 10))
+	}
+	if info.MetaRaftLogSize >0 {
 		request.addParam(proto.MetaRaftLogSizeKey, strconv.FormatInt(info.MetaRaftLogSize, 10))
 	}
-	if info.MetaRaftLogCap >= 0 {
+	if info.MetaRaftLogCap >0 {
 		request.addParam(proto.MetaRaftLogCapKey, strconv.FormatInt(info.MetaRaftLogCap, 10))
-	}
-	if info.MetaTrashCleanInterval >= 0 {
-		request.addParam(proto.MetaTrashCleanIntervalKey, strconv.FormatUint(info.MetaTrashCleanInterval, 10))
 	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
@@ -1104,6 +1108,17 @@ func (api *AdminAPI) SetCompact(volName, compactTag, authKey string) (result str
 	request.addParam("compactTag", compactTag)
 	request.addParam("authKey", authKey)
 	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) SetVolChildFileMaxCount(volName string, maxCount uint32) (result string, err error) {
+	var data []byte
+	var req = newAPIRequest(http.MethodGet, proto.AdminSetVolChildMaxCnt)
+	req.addParam(proto.NameKey, volName)
+	req.addParam(proto.ChildFileMaxCountKey, strconv.FormatUint(uint64(maxCount), 10))
+	if data, err = api.mc.serveRequest(req); err != nil {
 		return
 	}
 	return string(data), nil

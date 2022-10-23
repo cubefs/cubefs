@@ -17,6 +17,7 @@ package metanode
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"path"
@@ -82,6 +83,8 @@ func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsVi
 }
 
 func (mp *metaPartition) updateVolWorker() {
+	rand.Seed(time.Now().Unix())
+	time.Sleep(time.Duration(rand.Intn(int(UpdateVolTicket))))
 	t := time.NewTicker(UpdateVolTicket)
 	var convert = func(view *proto.DataPartitionsView) *DataPartitionsView {
 		newView := &DataPartitionsView{

@@ -36,6 +36,18 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 		return
 	}
 
+	var parIno *Inode
+	if parIno, err = mp.inodeTree.Get(req.ParentID); err != nil {
+		err = fmt.Errorf("get parent inode failed:%v", err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
+	if mp.config.ChildFileMaxCount > 0 && parIno.NLink > mp.config.ChildFileMaxCount {
+		p.PacketErrorWithBody(proto.OpNotPerm, []byte(fmt.Sprintf("child file count reach max count:%v", mp.config.ChildFileMaxCount)))
+		return
+	}
+
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,

@@ -34,6 +34,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -114,9 +115,10 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 
 	http.HandleFunc("/enableRocksDBSync", m.enableRocksDBSync)
 	http.HandleFunc("/reopenDb", m.reopenRocksDb)
-
-	http.HandleFunc("/getDeletedDentrys", m.getDeletedDentrysByParentInoHandler)
+	http.HandleFunc("/setDelEKRecordFilesMaxTotalMB", m.setDelEKRecordFilesMaxTotalSize)
+	http.HandleFunc("/removeOldDelEkRecordFile", m.removeOldDelEKRecordFile)
 	http.HandleFunc("/setRaftStorageParam", m.setRaftStorageParam)
+	http.HandleFunc("/getDeletedDentrys", m.getDeletedDentrysByParentInoHandler)
 	return
 }
 
@@ -878,6 +880,8 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"raftLogCapFromMaster":  nodeCfg.raftLogCapFromMaster,
 		"raftLogSizeFromLoc":    nodeCfg.raftLogSizeFromLoc,
 		"raftLogCapFromLoc":     nodeCfg.raftLogCapFromLoc,
+		"trashCleanInterval":    nodeCfg.trashCleanInterval,
+		"delEKRecordFileMaxMB":  DeleteEKRecordFilesMaxTotalSize.Load() / unit.MB,
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -2168,6 +2172,94 @@ func (m *MetaNode) reopenRocksDb(w http.ResponseWriter, r *http.Request) {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = "reopen db failed " + err.Error()
 		return
+	}
+	return
+}
+
+func (m *MetaNode) setDelEKRecordFilesMaxTotalSize(w http.ResponseWriter, r *http.Request) {
+	var (
+		err        error
+		maxTotalMB uint64
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[setDelEKRecordFilesMaxTotalSize] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if maxTotalMB, err = strconv.ParseUint(r.FormValue("maxTotalMB"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if maxTotalMB < 0 {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("maxTotalMB value invalid:%v", maxTotalMB)
+		return
+	}
+	atomic.StoreUint64(&nodeInfo.delEKFileLocalMaxMB, maxTotalMB*unit.MB)
+	DeleteEKRecordFilesMaxTotalSize.Store(maxTotalMB*unit.MB)
+	return
+}
+
+func (m *MetaNode) removeOldDelEKRecordFile(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+		mp  MetaPartition
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[removeOldDelEKRecordFile] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pidStr := r.FormValue("pid")
+	if pidStr != "" {
+		if pid, err = strconv.ParseUint(pidStr, 10, 64); err != nil {
+			resp.Code = http.StatusBadRequest
+			resp.Msg = err.Error()
+			return
+		}
+		if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+			resp.Code = http.StatusNotFound
+			resp.Msg = err.Error()
+			return
+		}
+		mp.(*metaPartition).removeOldDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup, true)
+		mp.(*metaPartition).removeOldDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup, true)
+		return
+	}
+
+	pidArray := make([]uint64, 0)
+	//get all pid
+	m.metadataManager.(*metadataManager).Range(func(i uint64, p MetaPartition) bool {
+		pidArray = append(pidArray, i)
+		return true
+	})
+
+	for _, id := range pidArray {
+		partition, err := m.metadataManager.GetPartition(id)
+		if err != nil {
+			continue
+		}
+		partition.(*metaPartition).removeOldDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup, true)
+		partition.(*metaPartition).removeOldDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup, true)
 	}
 	return
 }
