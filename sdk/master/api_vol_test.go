@@ -10,6 +10,7 @@ import (
 
 var (
 	testVolName                 = "unittestVol"
+	defaultVol                  = "defaultVolume"
 	testOwner                   = "test"
 	testMpcount                 = 3
 	testDpSize           uint64 = 120
@@ -35,10 +36,18 @@ func TestVolCreate(t *testing.T) {
 	if err != nil {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, testVolName)
 	}
-	defaultVol := "defaultVol"
-	err = testMc.AdminAPI().CreateDefaultVolume(defaultVol, testOwner)
+}
+
+func TestCreateDefaultVolume(t *testing.T) {
+	err := testMc.AdminAPI().CreateDefaultVolume(defaultVol, testOwner)
 	if err != nil && !strings.Contains(err.Error(), "duplicate vol") {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, defaultVol)
+	}
+	volInfo, err := testMc.AdminAPI().GetVolumeSimpleInfo(defaultVol)
+	if err != nil {
+		t.Errorf("GetVolume failed: err(%v) vol(%v)", err, defaultVol)
+	} else if volInfo.Name != defaultVol {
+		t.Errorf("GetVolume failed: expect(%v) but get(%v)", defaultVol, volInfo.Name)
 	}
 }
 
@@ -86,6 +95,10 @@ func TestDeleteVol(t *testing.T) {
 	vols, err := testMc.AdminAPI().ListVols("")
 	if err != nil || len(vols) <= 0 {
 		t.Errorf("list vols failed: err(%v) expect vol length larger than 0 but(%v)", err, len(vols))
+	}
+	err = testMc.AdminAPI().DeleteVolume(defaultVol, authKey)
+	if err != nil {
+		t.Errorf("delete vols failed: err(%v) vol(%v)", err, defaultVol)
 	}
 }
 
