@@ -68,7 +68,7 @@ const (
 	defaultCrossZoneNum                                      = 3
 	defaultExtentCacheExpireSec                              = 60
 	defaultIntervalToWaitMetaPartitionElectionLeader         = 2 * 60
-	defaultVolMinWritableMPNum                               = 1
+	defaultVolMinWritableMPNum                               = 2
 	defaultVolMinWritableDPNum                               = 5
 	defaultMaxInRecoveringDataPartitionCount                 = 100
 	defaultRocksdbDiskUsageThreshold                 float32 = 0.6
