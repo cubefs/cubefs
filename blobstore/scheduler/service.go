@@ -16,6 +16,7 @@ package scheduler
 
 import (
 	"fmt"
+	"math/rand"
 	"net/http"
 
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
@@ -84,13 +85,16 @@ func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 		return
 	}
 
-	// acquire task ordered
+	// acquire task ordered: returns disk repair task first and other random
 	ctx := c.Request.Context()
-	for _, acquire := range []Migrator{
-		svr.manualMigMgr, svr.diskRepairMgr, svr.diskDropMgr, svr.balanceMgr,
-	} {
-		if task, err := acquire.AcquireTask(ctx, args.IDC); err == nil {
-			c.RespondJSON(task)
+	migrators := []Migrator{svr.diskRepairMgr, svr.manualMigMgr, svr.diskDropMgr, svr.balanceMgr}
+	shuffledMigrators := migrators[1:]
+	rand.Shuffle(len(shuffledMigrators), func(i, j int) {
+		shuffledMigrators[i], shuffledMigrators[j] = shuffledMigrators[j], shuffledMigrators[i]
+	})
+	for _, acquire := range migrators {
+		if migrateTask, err := acquire.AcquireTask(ctx, args.IDC); err == nil {
+			c.RespondJSON(migrateTask)
 			return
 		}
 	}

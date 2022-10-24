@@ -57,21 +57,8 @@ func newMockService(t *testing.T) *Service {
 	inspectorMgr := NewMockVolumeInspector(ctr)
 	clusterTopology := NewMockClusterTopology(ctr)
 
-	// return balance task
-	emptyTask := proto.MigrateTask{}
-	manualMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
-	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
-	diskDropMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
-	balanceMgr.EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeBalance}, nil)
-	// return disk drop task
-	manualMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
-	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
-	diskDropMgr.EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeDiskDrop}, nil)
 	// return disk repair task
-	manualMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
 	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeDiskRepair}, nil)
-	// return manual migrate task
-	manualMgr.EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeManualMigrate}, nil)
 
 	// reclaim repair task
 	diskRepairMgr.EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
@@ -205,23 +192,24 @@ func TestServiceAPI(t *testing.T) {
 		proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
 		proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate,
 	}
-	// opetate task
-	for _, taskType := range taskTypes {
-		task, err := cli.AcquireTask(ctx, &api.AcquireArgs{IDC: idc})
-		require.NoError(t, err)
-		require.Equal(t, taskType, task.TaskType)
+	// acquire task
+	task, err := cli.AcquireTask(ctx, &api.AcquireArgs{IDC: idc})
+	require.NoError(t, err)
+	require.Equal(t, proto.TaskTypeDiskRepair, task.TaskType)
 
+	for _, taskType := range taskTypes {
 		require.NoError(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
 		require.NoError(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
 		require.NoError(t, cli.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
 		require.NoError(t, cli.ReportTask(ctx, &api.TaskReportArgs{TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
 	}
+
 	require.Error(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
 	require.Error(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
 	require.Error(t, cli.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
 
 	// renewal task
-	_, err := cli.RenewalTask(ctx, &api.TaskRenewalArgs{
+	_, err = cli.RenewalTask(ctx, &api.TaskRenewalArgs{
 		IDC: "z0",
 		IDs: map[proto.TaskType][]string{
 			proto.TaskTypeBalance: {
