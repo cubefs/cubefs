@@ -818,6 +818,20 @@ func (mr *MockClusterTopologyMockRecorder) LoadVolumes() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadVolumes", reflect.TypeOf((*MockClusterTopology)(nil).LoadVolumes))
 }
 
+// MaxFreeChunksDisk mocks base method.
+func (m *MockClusterTopology) MaxFreeChunksDisk(arg0 string) *client.DiskInfoSimple {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MaxFreeChunksDisk", arg0)
+	ret0, _ := ret[0].(*client.DiskInfoSimple)
+	return ret0
+}
+
+// MaxFreeChunksDisk indicates an expected call of MaxFreeChunksDisk.
+func (mr *MockClusterTopologyMockRecorder) MaxFreeChunksDisk(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxFreeChunksDisk", reflect.TypeOf((*MockClusterTopology)(nil).MaxFreeChunksDisk), arg0)
+}
+
 // UpdateVolume mocks base method.
 func (m *MockClusterTopology) UpdateVolume(arg0 proto.Vid) (*client.VolumeInfoSimple, error) {
 	m.ctrl.T.Helper()

@@ -140,12 +140,12 @@ func (mgr *BalanceMgr) collectionTask() (err error) {
 func (mgr *BalanceMgr) selectDisks(maxFreeChunkCnt, minFreeChunkCnt int64) []*client.DiskInfoSimple {
 	var allDisks []*client.DiskInfoSimple
 	for idcName := range mgr.clusterTopology.GetIDCs() {
-		if idcDisks := mgr.clusterTopology.GetIDCDisks(idcName); idcDisks != nil {
-			if freeChunkCntMax(idcDisks) >= maxFreeChunkCnt {
-				allDisks = append(allDisks, idcDisks...)
-			}
+		maxFreeChunksDisk := mgr.clusterTopology.MaxFreeChunksDisk(idcName)
+		if maxFreeChunksDisk != nil && maxFreeChunksDisk.FreeChunkCnt >= maxFreeChunkCnt {
+			allDisks = append(allDisks, mgr.clusterTopology.GetIDCDisks(idcName)...)
 		}
 	}
+	sortDiskByFreeChunkCnt(allDisks)
 
 	var selected []*client.DiskInfoSimple
 	for _, disk := range allDisks {
@@ -207,14 +207,4 @@ func (mgr *BalanceMgr) selectBalanceVunit(ctx context.Context, diskID proto.Disk
 		}
 	}
 	return vuid, ErrNoBalanceVunit
-}
-
-func freeChunkCntMax(disks []*client.DiskInfoSimple) int64 {
-	var max int64
-	for _, disk := range disks {
-		if disk.FreeChunkCnt > max {
-			max = disk.FreeChunkCnt
-		}
-	}
-	return max
 }

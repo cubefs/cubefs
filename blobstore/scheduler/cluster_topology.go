@@ -50,6 +50,7 @@ var errVolumeMissmatch = errors.New("volume missmatch during running task")
 type IClusterTopology interface {
 	GetIDCs() map[string]*IDC
 	GetIDCDisks(idc string) (disks []*client.DiskInfoSimple)
+	MaxFreeChunksDisk(idc string) *client.DiskInfoSimple
 	IsBrokenDisk(diskID proto.DiskID) bool
 	IVolumeCache
 	closer.Closer
@@ -284,6 +285,16 @@ func (m *ClusterTopologyMgr) GetIDCs() map[string]*IDC {
 // GetIDCDisks returns disks with IDC
 func (m *ClusterTopologyMgr) GetIDCDisks(idc string) (disks []*client.DiskInfoSimple) {
 	return m.clusterTopology.diskMap[idc]
+}
+
+// MaxFreeChunksDisk returns disk which has max free chunks
+func (m *ClusterTopologyMgr) MaxFreeChunksDisk(idc string) *client.DiskInfoSimple {
+	disks := m.GetIDCDisks(idc)
+	size := len(disks)
+	if size > 0 {
+		return disks[size-1]
+	}
+	return nil
 }
 
 // ReportFreeChunkCnt report free chunk cnt

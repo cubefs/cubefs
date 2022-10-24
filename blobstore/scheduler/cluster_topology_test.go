@@ -100,7 +100,11 @@ func TestNewClusterTopologyMgr(t *testing.T) {
 	disks = clusterTopMgr.GetIDCDisks("z2")
 	require.Equal(t, 1, len(disks))
 	disks = clusterTopMgr.GetIDCDisks("z3")
-	require.True(t, disks == nil)
+	require.Nil(t, disks)
+	disk := clusterTopMgr.MaxFreeChunksDisk("z1")
+	require.Equal(t, topoDisk3.DiskID, disk.DiskID)
+	disk = clusterTopMgr.MaxFreeChunksDisk("z3")
+	require.Nil(t, disk)
 
 	ctr := gomock.NewController(t)
 	clusterMgrCli := NewMockClusterMgrAPI(ctr)
