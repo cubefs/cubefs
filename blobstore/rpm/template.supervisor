@@ -1,0 +1,13 @@
+[program:@name@]
+command = /usr/local/blobstore/@name@ -f /usr/local/blobstore/@name@.conf
+directory = /usr/local/blobstore
+priority = 999
+user = nobody
+autostart = true
+startsecs = 5
+autorestart = false
+startretries = 1024
+redirect_stderr = true
+stdout_logfile_maxbytes = 100MB
+stdout_logfile_backups = 10
+stdout_logfile = /usr/local/blobstore/@name@.log
