@@ -66,3 +66,24 @@ cli:
 clean:
 	@go clean -i ./...
 	@rm -f $(BINDIR)/*
+
+
+build_rpm: rpm_clustermgr rpm_blobnode rpm_access rpm_scheduler rpm_proxy
+
+rpm_%:
+	$(eval version := $(shell echo `git describe --tags`))
+	$(eval revision:= $(shell echo `git log -n1 --format=%h`))
+	$(eval dirname := blobstore)
+	$(eval name    := $*)
+	$(eval target  := $(name)-$(version))
+	sed -e "s,@name@,${name},g" ./rpm/template.supervisor > rpm/${name}.supervisor
+	mkdir -p ~/rpmbuild/SOURCES
+	cp -rp ../$(dirname) ~/rpmbuild/SOURCES/$(target)
+	cd ~/rpmbuild/SOURCES && tar -zcf $(target).tar.gz $(target)
+	rm -rf ~/rpmbuild/SOURCES/$(target)
+	sed -e "s,@name@,${name},g" \
+	    -e "s,@version@,${version},g" \
+	    -e "s,@revision@,${revision},g" \
+	    ./rpm/template.spec.in > ${name}.spec
+	rpmbuild -bb --clean ${name}.spec
+	rm -f rpm/${name}.supervisor ${name}.spec

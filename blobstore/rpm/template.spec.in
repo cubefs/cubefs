@@ -1,0 +1,82 @@
+%define app_home /usr/local/blobstore
+
+%define __name  @name@
+%define __ver   @version@
+%define __rev   @revision@
+
+Name: %{__name}
+Version: %{__ver}
+Release: %{__rev}
+
+Summary: Built Based-on %{__rev}
+License: Apache
+Group: System Daemons
+
+URL: https://github.com/cubefs/cubefs
+Source0: %{name}-%{version}.tar.gz
+
+BuildRoot: %{_tmppath}/%{name}-%{version}-root
+
+# Disable the building of the debug package
+%define debug_package %{nil}
+
+%description
+A highly reliable, highly available and ultra-large scale distributed storage system.
+
+%prep
+%setup -q -n %{name}-%{version}
+
+%build
+BUILD_BRANCH=%{__ver} GIT_COMMIT=%{__rev} make %{name}
+
+%install
+rm -rf $RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT%{app_home}
+
+# copy files
+install -m 0755 %{_builddir}/%{name}-%{version}/bin/%{name} $RPM_BUILD_ROOT%{app_home}/
+install -m 0644 %{_builddir}/%{name}-%{version}/cmd/%{name}/%{name}.conf $RPM_BUILD_ROOT%{app_home}/
+install -m 0644 %{_builddir}/%{name}-%{version}/rpm/%{name}.supervisor $RPM_BUILD_ROOT%{app_home}/
+
+%post
+# The first time, Register the service
+if [ $1 -eq 1 ]; then
+    # copy service to the supervisor conf
+    install -m 0755 %{app_home}/%{name}.supervisor /etc/supervisor/conf.d/%{name}.conf
+
+    supervisorctl update
+    supervisorctl start %{name}
+fi
+
+# After update
+if [ $1 -eq 2 ]; then
+    # copy service to the supervisor conf
+    install -m 0755 %{app_home}/%{name}.supervisor /etc/supervisor/conf.d/%{name}.conf
+
+    supervisorctl update
+    supervisorctl restart %{name}
+fi
+
+# Before Uninstall
+%preun
+if [ $1 -eq 0 ]; then
+    if [ -x /etc/supervisor/conf.d/%{name}.conf ]; then
+        supervisorctl stop %{name}
+        supervisorctl remove %{name}
+        rm -f /etc/supervisor/conf.d/%{name}.conf
+    fi
+fi
+
+%postun
+    rm -f %{app_home}/%{name}.log
+
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,nobody,nobody)
+%{app_home}/%{name}
+%{app_home}/%{name}.supervisor
+%config(noreplace) %{app_home}/%{name}.conf
+%defattr(-,nobody,nobody)
