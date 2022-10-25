@@ -573,7 +573,7 @@ func checkDataPartition(volName string, pid uint64, client *master.MasterClient,
 			time.Sleep(1 * time.Second)
 		}
 		if err1 != nil || dnPartition == nil {
-			errorReports = append(errorReports, fmt.Sprintf("get partition[%v] failed in addr[%v], err:%v", partition.PartitionID, addr, err))
+			errorReports = append(errorReports, fmt.Sprintf("get partition[%v] failed in addr[%v], err:%v", partition.PartitionID, addr, err1))
 			continue
 		}
 		//RaftStatus Only exists on leader

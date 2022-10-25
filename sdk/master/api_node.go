@@ -258,10 +258,32 @@ func (api *NodeAPI) DataNodeGetPartition(addr string, id uint64) (node *proto.DN
 	if buf, err = nodeClient.serveRequest(request); err != nil {
 		return
 	}
-	node = &proto.DNDataPartitionInfo{}
-	if err = json.Unmarshal(buf, &node); err != nil {
+	node = new(proto.DNDataPartitionInfo)
+	pInfoOld := new(proto.DNDataPartitionInfoOldVersion)
+	if err = json.Unmarshal(buf, pInfoOld); err != nil {
+		err = json.Unmarshal(buf, node)
 		return
 	}
+	for _, ext := range pInfoOld.Files {
+		extent := proto.ExtentInfoBlock{
+			ext.FileID,
+			ext.Size,
+			uint64(ext.Crc),
+			uint64(ext.ModifyTime),
+		}
+		node.Files = append(node.Files, extent)
+	}
+	node.RaftStatus = pInfoOld.RaftStatus
+	node.Path = pInfoOld.Path
+	node.VolName = pInfoOld.VolName
+	node.Replicas = pInfoOld.Replicas
+	node.Size = pInfoOld.Size
+	node.ID = pInfoOld.ID
+	node.Status = pInfoOld.Status
+	node.FileCount = pInfoOld.FileCount
+	node.Peers = pInfoOld.Peers
+	node.Learners = pInfoOld.Learners
+	node.Used = pInfoOld.Used
 	return
 }
 
