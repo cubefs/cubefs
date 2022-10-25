@@ -76,7 +76,6 @@ rpm_%:
 	$(eval dirname := blobstore)
 	$(eval name    := $*)
 	$(eval target  := $(name)-$(version))
-	sed -e "s,@name@,${name},g" ./rpm/template.supervisor > rpm/${name}.supervisor
 	mkdir -p ~/rpmbuild/SOURCES
 	cp -rp ../$(dirname) ~/rpmbuild/SOURCES/$(target)
 	cd ~/rpmbuild/SOURCES && tar -zcf $(target).tar.gz $(target)
@@ -86,4 +85,4 @@ rpm_%:
 	    -e "s,@revision@,${revision},g" \
 	    ./rpm/template.spec.in > ${name}.spec
 	rpmbuild -bb --clean ${name}.spec
-	rm -f rpm/${name}.supervisor ${name}.spec
+	rm -f ${name}.spec

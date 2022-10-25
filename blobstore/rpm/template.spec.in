@@ -36,35 +36,24 @@ mkdir -p $RPM_BUILD_ROOT%{app_home}
 # copy files
 install -m 0755 %{_builddir}/%{name}-%{version}/bin/%{name} $RPM_BUILD_ROOT%{app_home}/
 install -m 0644 %{_builddir}/%{name}-%{version}/cmd/%{name}/%{name}.conf $RPM_BUILD_ROOT%{app_home}/
-install -m 0644 %{_builddir}/%{name}-%{version}/rpm/%{name}.supervisor $RPM_BUILD_ROOT%{app_home}/
 
 %post
-# The first time, Register the service
-if [ $1 -eq 1 ]; then
-    # copy service to the supervisor conf
-    install -m 0755 %{app_home}/%{name}.supervisor /etc/supervisor/conf.d/%{name}.conf
-
-    supervisorctl update
-    supervisorctl start %{name}
-fi
-
-# After update
-if [ $1 -eq 2 ]; then
-    # copy service to the supervisor conf
-    install -m 0755 %{app_home}/%{name}.supervisor /etc/supervisor/conf.d/%{name}.conf
-
-    supervisorctl update
-    supervisorctl restart %{name}
-fi
+case "$1" in
+    # This is an initial install.
+    1)
+        nohup %{app_home}/%{name} -f %{app_home}/%{name}.conf >> %{app_home}/%{name}.log 2>&1 &
+    ;;
+    # This is an upgrade.
+    2)
+        killall %{app_home}/%{name} || echo "no process"
+        nohup %{app_home}/%{name} -f %{app_home}/%{name}.conf >> %{app_home}/%{name}.log 2>&1 &
+    ;;
+esac
 
 # Before Uninstall
 %preun
 if [ $1 -eq 0 ]; then
-    if [ -x /etc/supervisor/conf.d/%{name}.conf ]; then
-        supervisorctl stop %{name}
-        supervisorctl remove %{name}
-        rm -f /etc/supervisor/conf.d/%{name}.conf
-    fi
+    killall %{app_home}/%{name} || echo "no process"
 fi
 
 %postun
@@ -77,6 +66,5 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,nobody,nobody)
 %{app_home}/%{name}
-%{app_home}/%{name}.supervisor
 %config(noreplace) %{app_home}/%{name}.conf
 %defattr(-,nobody,nobody)
