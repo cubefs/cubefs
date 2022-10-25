@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
+	myos "github.com/cubefs/cubefs/blobstore/blobnode/sys"
 	"github.com/cubefs/cubefs/blobstore/common/config"
 	"github.com/cubefs/cubefs/blobstore/common/diskutil"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -275,6 +276,11 @@ func NewService(conf Config) (svr *Service, err error) {
 
 			svr.fixDiskConf(&diskConf)
 
+			if diskConf.MustMountPoint && !myos.IsMountPoint(diskConf.Path) {
+				// skip
+				span.Errorf("Path is not mount point:%s, err:%v. skip init", diskConf.Path, err)
+				return
+			}
 			// read disk meta. get DiskID
 			format, err := readFormatInfo(ctx, diskConf.Path)
 			if err != nil {
