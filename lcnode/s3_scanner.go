@@ -64,8 +64,8 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*S3Scanner, error) {
 		abortFilter: abortFilter,
 		dirChan:     unboundedchan.NewUnboundedChan(defaultUChanInitCapacity),
 		fileChan:    unboundedchan.NewUnboundedChan(defaultUChanInitCapacity),
-		fileRPoll:   routinepool.NewRoutinePool(defaultRoutingNumPerTask),
-		dirRPoll:    routinepool.NewRoutinePool(defaultRoutingNumPerTask),
+		fileRPoll:   routinepool.NewRoutinePool(int(s3ScanRoutineNumPerTask)),
+		dirRPoll:    routinepool.NewRoutinePool(int(s3ScanRoutineNumPerTask)),
 		stopC:       make(chan bool, 0),
 	}
 	scanner.batchDentries = newFileDentries()
@@ -287,7 +287,7 @@ func (s *S3Scanner) handleDirLimit(dentry *proto.ScanDentry) {
 	marker := ""
 	done := false
 	for !done {
-		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultRoutingNumPerTask))
+		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(s3ScanRoutineNumPerTask))
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogWarnf("ReadDir_ll failed")
@@ -331,7 +331,7 @@ func (s *S3Scanner) handleDirLimit(dentry *proto.ScanDentry) {
 		}
 
 		childrenNr := len(children)
-		if (marker == "" && childrenNr < defaultRoutingNumPerTask) || (marker != "" && childrenNr+1 < defaultRoutingNumPerTask) {
+		if (marker == "" && childrenNr < s3ScanRoutineNumPerTask) || (marker != "" && childrenNr+1 < s3ScanRoutineNumPerTask) {
 			done = true
 		} else {
 			marker = children[childrenNr-1].Name
@@ -349,7 +349,7 @@ func (s *S3Scanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 	marker := ""
 	done := false
 	for !done {
-		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultRoutingNumPerTask))
+		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(s3ScanRoutineNumPerTask))
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
 			log.LogWarnf("ReadDir_ll failed")
@@ -403,7 +403,7 @@ func (s *S3Scanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 		}
 
 		childrenNr := len(children)
-		if (marker == "" && childrenNr < defaultRoutingNumPerTask) || (marker != "" && childrenNr+1 < defaultRoutingNumPerTask) {
+		if (marker == "" && childrenNr < s3ScanRoutineNumPerTask) || (marker != "" && childrenNr+1 < s3ScanRoutineNumPerTask) {
 			done = true
 		} else {
 			marker = children[childrenNr-1].Name
@@ -415,7 +415,7 @@ func (s *S3Scanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 
 func (s *S3Scanner) getDirJob(dentry *proto.ScanDentry) (job func()) {
 	//no need to lock
-	if s.dirChan.Len()+defaultRoutingNumPerTask > defaultMaxChanUnm {
+	if s.dirChan.Len()+s3ScanRoutineNumPerTask > defaultMaxChanUnm {
 		log.LogDebugf("getDirJob: Depth first job")
 		job = func() {
 			s.handleDirLimitDepthFirst(dentry)

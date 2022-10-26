@@ -4033,6 +4033,11 @@ func (c *Cluster) addLcNode(nodeAddr string) (id uint64, err error) {
 		return ln.ID, nil
 	}
 
+	if c.lcNodeCount() >= int(c.cfg.MaxConcurrentLcNodes) {
+		err = errors.New("max concurrent LcNodes reached!")
+		goto errHandler
+	}
+
 	ln = newLcNode(nodeAddr, c.Name)
 	// allocate dataNode id
 	if id, err = c.idAlloc.allocateCommonID(); err != nil {

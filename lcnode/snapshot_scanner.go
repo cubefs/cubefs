@@ -46,7 +46,7 @@ func NewSnapshotScanner(adminTask *proto.AdminTask, l *LcNode) (*SnapshotScanner
 		lcnode:      l,
 		adminTask:   adminTask,
 		inodeChan:   unboundedchan.NewUnboundedChan(defaultUChanInitCapacity),
-		rPoll:       routinepool.NewRoutinePool(defaultRoutingNumPerTask),
+		rPoll:       routinepool.NewRoutinePool(snapShotRoutingNumPerTask),
 		currentStat: proto.SnapshotStatistics{},
 		stopC:       make(chan bool, 0),
 	}
@@ -89,7 +89,7 @@ func (s *SnapshotScanner) Start() (err error) {
 
 func (s *SnapshotScanner) getDirJob(dentry *proto.ScanDentry) (job func()) {
 	//no need to lock
-	if s.inodeChan.Len()+defaultRoutingNumPerTask > defaultMaxChanUnm {
+	if s.inodeChan.Len()+snapShotRoutingNumPerTask > defaultMaxChanUnm {
 		log.LogDebugf("getDirJob: Depth first job")
 		job = func() {
 			s.handlVerDelDepthFirst(dentry)
@@ -140,19 +140,19 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 		done := false
 
 		for !done {
-			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq())
+			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq())
 			if err != nil && err != syscall.ENOENT {
 				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
-					dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), err)
+					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), err)
 				return
 			}
 			log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimitByVer parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
-				dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), len(children))
+				dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), len(children))
 
 			if err == syscall.ENOENT {
 				done = true
 				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
-					dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), marker, err)
+					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), marker, err)
 				break
 			}
 
@@ -161,7 +161,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 					if len(children) <= 1 {
 						done = true
 						log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll done, parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
-							dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), children)
+							dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), children)
 						break
 					} else {
 						skippedChild := children[0]
@@ -212,7 +212,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 			}
 
 			childrenNr := len(children)
-			if (marker == "" && childrenNr < defaultRoutingNumPerTask) || (marker != "" && childrenNr+1 < defaultRoutingNumPerTask) {
+			if (marker == "" && childrenNr < snapShotRoutingNumPerTask) || (marker != "" && childrenNr+1 < snapShotRoutingNumPerTask) {
 				log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimit_ll done, parent[%v]",
 					dentry.Inode)
 				done = true
@@ -254,19 +254,19 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 		done := false
 
 		for !done {
-			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq())
+			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq())
 			if err != nil && err != syscall.ENOENT {
 				log.LogErrorf("action[handlVerDel] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
-					dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), err)
+					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), err)
 				return
 			}
 			log.LogDebugf("action[handlVerDel] ReadDirLimitByVer parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
-				dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), len(children))
+				dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), len(children))
 
 			if err == syscall.ENOENT {
 				done = true
 				log.LogErrorf("action[handlVerDel] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
-					dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), marker, err)
+					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), marker, err)
 				break
 			}
 
@@ -275,7 +275,7 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 					if len(children) <= 1 {
 						done = true
 						log.LogDebugf("action[handlVerDel] ReadDirLimit_ll done, parent[%v] maker[%v] limit[%v] verSeq[%v] children[%v]",
-							dentry.Inode, marker, uint64(defaultRoutingNumPerTask), s.getTaskVerSeq(), children)
+							dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), children)
 						break
 					} else {
 						skippedChild := children[0]
@@ -320,7 +320,7 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 			}
 			scanDentries = scanDentries[:0]
 			childrenNr := len(children)
-			if (marker == "" && childrenNr < defaultRoutingNumPerTask) || (marker != "" && childrenNr+1 < defaultRoutingNumPerTask) {
+			if (marker == "" && childrenNr < snapShotRoutingNumPerTask) || (marker != "" && childrenNr+1 < snapShotRoutingNumPerTask) {
 				log.LogDebugf("action[handlVerDel] ReadDirLimit_ll done, parent[%v] total childrenNr[%v] marker[%v]",
 					dentry.Inode, totalChildFileNum+totalChildDirNum, marker)
 				done = true
