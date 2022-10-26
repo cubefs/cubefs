@@ -269,8 +269,10 @@ func (vvi *VolVerInfos) ReturnProcessingVerInfo(keys []string) {
 	vvi.Lock()
 	defer vvi.Unlock()
 
+	log.LogInfof("ReturnProcessingVerInfo, verinfo: %v", keys)
 	for _, k := range keys {
 		if info, ok := vvi.ProcessingVerInfos[k]; ok {
+			log.LogInfof("ReturnProcessingVerInfo, remove %v from processing", info)
 			vvi.VerInfos[k] = info
 			delete(vvi.ProcessingVerInfos, k)
 		}
