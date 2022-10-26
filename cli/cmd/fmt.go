@@ -294,7 +294,7 @@ func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {
 	return sb.String()
 }
 
-func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
+func formatDataPartitionInfo(human bool, partition *proto.DataPartitionInfo) string {
 	var sb = strings.Builder{}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("volume name   : %v\n", partition.VolName))
@@ -311,7 +311,7 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Replicas : \n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatDataReplicaTableHeader()))
 	for _, replica := range partition.Replicas {
-		sb.WriteString(fmt.Sprintf("%v\n", formatDataReplica("", replica, true)))
+		sb.WriteString(fmt.Sprintf("%v\n", formatDataReplica(human, "", replica, true)))
 	}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Peers :\n"))
@@ -567,20 +567,26 @@ func formatTimeToString(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-var dataReplicaTableRowPattern = "%-20v    %-8v    %-8v    %-8v    %-8v    %-12v    %-10v    %-20v    %-8v		%-8v"
+var dataReplicaTableRowPattern = "%-20v    %-12v    %-6v    %-8v    %-8v    %-12v    %-10v    %-20v    %-8v		%-8v"
 
 func formatDataReplicaTableHeader() string {
 	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "RECOVER", "FILECOUNT", "STATUS", "REPORT TIME", "ISLEARNER", "MEDIUM-TYPE")
 }
 
-func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable bool) string {
+func formatDataReplica(human bool, indentation string, replica *proto.DataReplica, rowTable bool) string {
+	var usedSize string
+	if human {
+		usedSize = formatSize(replica.Used)
+	} else {
+		usedSize = strconv.FormatUint(replica.Used, 10)
+	}
 	if rowTable {
-		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, formatSize(replica.Used), formatSize(replica.Total),
+		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, usedSize, formatSize(replica.Total),
 			replica.IsLeader, replica.IsRecover, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime), replica.IsLearner, replica.MType)
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
-	sb.WriteString(fmt.Sprintf("%v  Used           : %v\n", indentation, formatSize(replica.Used)))
+	sb.WriteString(fmt.Sprintf("%v  Used           : %v\n", indentation, usedSize))
 	sb.WriteString(fmt.Sprintf("%v  Total          : %v\n", indentation, formatSize(replica.Total)))
 	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
 	sb.WriteString(fmt.Sprintf("%v  IsLearner      : %v\n", indentation, replica.IsLearner))
