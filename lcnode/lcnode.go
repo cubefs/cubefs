@@ -37,9 +37,11 @@ const (
 	//				"master3.chubao.io"
 	//			]
 	//		}
-	configMasterAddr         = proto.MasterAddr
-	batchExpirationGetNumStr = "batchExpirationGetNum"
-	scanCheckIntervalStr     = "scanCheckInterval"
+	configMasterAddr             = proto.MasterAddr
+	batchExpirationGetNumStr     = "batchExpirationGetNum"
+	scanCheckIntervalStr         = "scanCheckInterval"
+	s3ScanRoutineNumPerTaskStr   = "s3ScanRoutineNumPerTask"
+	snapShotRoutineNumPerTaskStr = "snapShotRoutineNumPerTask"
 )
 
 // Default of configuration value
@@ -59,9 +61,11 @@ const (
 var (
 	// Regular expression used to verify the configuration of the service listening port.
 	// A valid service listening port configuration is a string containing only numbers.
-	regexpListen          = regexp.MustCompile("^(\\d)+$")
-	batchExpirationGetNum int
-	scanCheckInterval     int64
+	regexpListen              = regexp.MustCompile("^(\\d)+$")
+	batchExpirationGetNum     int
+	scanCheckInterval         int64
+	s3ScanRoutineNumPerTask   int
+	snapShotRoutingNumPerTask int
 )
 
 type LcNode struct {
@@ -147,6 +151,33 @@ func (l *LcNode) loadConfig(cfg *config.Config) (err error) {
 		scanCheckInterval = defaultScanCheckInterval
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", scanCheckIntervalStr, scanCheckInterval)
+
+	var routineNum int64
+	s3RoutineNum := cfg.GetString(s3ScanRoutineNumPerTaskStr)
+	if s3RoutineNum != "" {
+		if routineNum, err = strconv.ParseInt(s3RoutineNum, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+	s3ScanRoutineNumPerTask = int(routineNum)
+	if s3ScanRoutineNumPerTask <= 0 || s3ScanRoutineNumPerTask > maxRoutineNumPerTask {
+		s3ScanRoutineNumPerTask = defaultS3ScanRoutineNumPerTask
+	}
+	log.LogInfof("loadConfig: setup config: %v(%v)", s3ScanRoutineNumPerTaskStr, s3ScanRoutineNumPerTask)
+
+	routineNum = 0
+	snapRoutineNum := cfg.GetString(snapShotRoutineNumPerTaskStr)
+	if snapRoutineNum != "" {
+		if routineNum, err = strconv.ParseInt(snapRoutineNum, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
+	snapShotRoutingNumPerTask = int(routineNum)
+	if snapShotRoutingNumPerTask <= 0 || snapShotRoutingNumPerTask > maxRoutineNumPerTask {
+		snapShotRoutingNumPerTask = defaultSnapShotRoutineNumPerTask
+	}
+	log.LogInfof("loadConfig: setup config: %v(%v)", snapShotRoutineNumPerTaskStr, snapShotRoutingNumPerTask)
 	return
 }
 
