@@ -357,11 +357,14 @@ func testGetlastVer() (verSeq uint64) {
 	vlen := len(mp.multiVersionList.VerList)
 	return mp.multiVersionList.VerList[vlen-1].Ver
 }
+
+var tm = time.Now().Unix()
+
 func testCreateVer() (verSeq uint64) {
 	mp.multiVersionList.Lock()
 	defer mp.multiVersionList.Unlock()
 
-	tm := time.Now().Unix()
+	tm = tm + 1
 	verInfo := &proto.VolVersionInfo{
 		Ver:    uint64(tm),
 		Ctime:  time.Now(),
@@ -698,21 +701,18 @@ func TestDentry(t *testing.T) {
 	assert.True(t, fIno != nil)
 	fDen := testCreateDentry(t, dirIno.Inode, fIno.Inode, "testfile", FileModeType)
 	denArry = append(denArry, fDen)
-	time.Sleep(time.Second)
 
 	//--------------------------------------
 	seq1 := testCreateVer()
 	fIno1 := testCreateInode(t, FileModeType)
 	fDen1 := testCreateDentry(t, dirIno.Inode, fIno1.Inode, "testfile2", FileModeType)
 	denArry = append(denArry, fDen1)
-	time.Sleep(time.Second)
 
 	//--------------------------------------
 	seq2 := testCreateVer()
 	fIno2 := testCreateInode(t, FileModeType)
 	fDen2 := testCreateDentry(t, dirIno.Inode, fIno2.Inode, "testfile3", FileModeType)
 	denArry = append(denArry, fDen2)
-	time.Sleep(time.Second)
 
 	//--------------------------------------
 	seq3 := testCreateVer()
@@ -845,7 +845,7 @@ func TestTruncateAndDel(t *testing.T) {
 
 	testAppendExt(t, 0, 0, fileIno.Inode)
 	seq1 := testCreateVer() // seq1 is NOT commited
-	time.Sleep(time.Second)
+
 	seq2 := testCreateVer() // seq1 is commited,seq2 not commited
 
 	t.Logf("TestTruncate. create new snapshot seq %v,%v,file verlist [%v]", seq1, seq2, fileIno.multiVersions)
@@ -873,7 +873,7 @@ func TestTruncateAndDel(t *testing.T) {
 	assert.True(t, rsp.Size == 1000)
 
 	// -------------------------------------------------------
-	time.Sleep(time.Second)
+
 	testCreateVer() // seq2 IS commited, seq3 not
 	mp.fsmUnlinkInode(ino, 0)
 
@@ -945,7 +945,7 @@ func testCleanSnapshot(t *testing.T, verSeq uint64) {
 }
 
 // create
-func TestSnapshotDeletion(t *testing.T) {
+func testSnapshotDeletion(t *testing.T, topFirst bool) {
 	log.LogDebugf("action[TestSnapshotDeletion] start!!!!!!!!!!!")
 	initMp(t)
 	initVer()
@@ -953,7 +953,7 @@ func TestSnapshotDeletion(t *testing.T) {
 	mp.config.Cursor = 1100
 	//--------------------build dir and it's child on different version ------------------
 
-	dirLayCnt := 2
+	dirLayCnt := 4
 	var (
 		dirName      string
 		dirInoId     uint64 = 1
@@ -997,7 +997,7 @@ func TestSnapshotDeletion(t *testing.T) {
 		dirInoId = dirIno.Inode
 		ver := testGetlastVer()
 		verArr = append(verArr, ver)
-		time.Sleep(time.Second)
+
 		dCnt, fCnt := testPrintDirTree(t, 1, "root", ver)
 		if layIdx+1 < dirLayCnt {
 			log.LogDebugf("testCreateVer")
@@ -1031,30 +1031,42 @@ func TestSnapshotDeletion(t *testing.T) {
 		assert.True(t, mp.fsmCreateDentry(renameDen, false) == proto.OpOk)
 		testPrintDirTree(t, 1, "root", 0)
 	}
-	t.Logf("---------------------------------------------------------------------")
-	t.Logf("--------testCleanSnapshot by ver-------------------------------------")
-	t.Logf("---------------------------------------------------------------------")
-	for idx, ver := range verArr {
+	delSnapshotList := func() {
 		t.Logf("---------------------------------------------------------------------")
-		t.Logf("index %v ver %v try to deletion", idx, ver)
-		log.LogDebugf("index %v ver %v try to deletion", idx, ver)
+		t.Logf("--------testCleanSnapshot by ver-------------------------------------")
 		t.Logf("---------------------------------------------------------------------")
-		testCleanSnapshot(t, ver)
-		t.Logf("---------------------------------------------------------------------")
-		t.Logf("index %v ver %v after deletion mp inode freeList len %v", idx, ver, mp.freeList.Len())
-		log.LogDebugf("index %v ver %v after deletion mp inode freeList len %v", idx, ver, mp.freeList.Len())
-		t.Logf("---------------------------------------------------------------------")
-		if idx == len(verArr)-2 {
-			break
+		for idx, ver := range verArr {
+			t.Logf("---------------------------------------------------------------------")
+			t.Logf("index %v ver %v try to deletion", idx, ver)
+			log.LogDebugf("index %v ver %v try to deletion", idx, ver)
+			t.Logf("---------------------------------------------------------------------")
+			testCleanSnapshot(t, ver)
+			t.Logf("---------------------------------------------------------------------")
+			t.Logf("index %v ver %v after deletion mp inode freeList len %v", idx, ver, mp.freeList.Len())
+			log.LogDebugf("index %v ver %v after deletion mp inode freeList len %v", idx, ver, mp.freeList.Len())
+			t.Logf("---------------------------------------------------------------------")
+			if idx == len(verArr)-2 {
+				break
+			}
 		}
 	}
+	delCurrent := func() {
+		t.Logf("---------------------------------------------------------------------")
+		t.Logf("--------testDeleteAll current -------------------------------------")
+		t.Logf("---------------------------------------------------------------------")
+		log.LogDebugf("try to deletion current")
+		testDeleteDirTree(t, 1, 0)
+		log.LogDebugf("try to deletion current finish")
+	}
 
-	t.Logf("---------------------------------------------------------------------")
-	t.Logf("--------testDeleteAll current -------------------------------------")
-	t.Logf("---------------------------------------------------------------------")
-	log.LogDebugf("try to deletion current")
-	testDeleteDirTree(t, 1, 0)
-	log.LogDebugf("try to deletion current finish")
+	if topFirst {
+		delCurrent()
+		delSnapshotList()
+	} else {
+		delSnapshotList()
+		delCurrent()
+	}
+
 	t.Logf("---------------------------------------------------------------------")
 	t.Logf("after deletion current layerr mp inode freeList len %v fileCnt %v dircnt %v", mp.freeList.Len(), fileCnt, dirCnt)
 	assert.True(t, mp.freeList.Len() == fileCnt+dirCnt)
@@ -1067,4 +1079,10 @@ func TestSnapshotDeletion(t *testing.T) {
 	testPrintAllInodeInfo(t)
 	t.Logf("---------------------------------------------")
 	//assert.True(t, false)
+}
+
+// create
+func TestSnapshotDeletion(t *testing.T) {
+	testSnapshotDeletion(t, true)
+	testSnapshotDeletion(t, false)
 }
