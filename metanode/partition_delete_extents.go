@@ -238,7 +238,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		}
 		cursor := binary.BigEndian.Uint64(buf[:8])
 		stat, _ := fp.Stat()
-		log.LogDebugf("[deleteExtentsFromList] vol %v mp %v o openFile %v file len %v", mp.GetVolName(), mp.config.PartitionId, file,
+		log.LogDebugf("[deleteExtentsFromList] vol %v mp %v o openFile %v file len %v cursor %v", mp.GetVolName(), mp.config.PartitionId, file,
 			stat.Size(), cursor)
 
 		log.LogDebugf("action[deleteExtentsFromList] get cursor %v", cursor)
