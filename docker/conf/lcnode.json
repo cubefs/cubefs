@@ -13,5 +13,7 @@
     "192.168.0.13:17010"
   ],
   "batchExpirationGetNum": "100",
-  "scanCheckInterval": "2"
+  "scanCheckInterval": "2",
+  "s3ScanRoutineNumPerTask": "100",
+  "snapShotRoutineNumPerTask": "100"
 }
