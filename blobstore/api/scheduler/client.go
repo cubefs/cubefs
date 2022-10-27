@@ -44,6 +44,8 @@ const (
 	PathUpdateVolume  = "/update/vol"
 )
 
+const defaultHostSyncIntervalMs = 3600000 // 1 hour
+
 var errNoServiceAvailable = errors.New("no service available")
 
 // IMigrator scheduler migrate task.
@@ -122,7 +124,7 @@ func New(cfg *Config, service cmapi.APIService, clusterID proto.ClusterID) ISche
 		return hosts, nil
 	}
 	if cfg.HostSyncIntervalMs == 0 {
-		cfg.HostSyncIntervalMs = 1000
+		cfg.HostSyncIntervalMs = defaultHostSyncIntervalMs
 	}
 	if cfg.HostRetry == 0 {
 		cfg.HostRetry = 1
