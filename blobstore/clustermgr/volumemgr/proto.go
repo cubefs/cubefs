@@ -99,8 +99,8 @@ func (vol *volume) canInsert() bool {
 	return vol.volInfoBase.Status == proto.VolumeStatusIdle
 }
 
-func (vol *volume) canAlloc(freezeThreshold uint64, allocatableScoreThreshold int) bool {
-	if vol.canInsert() && vol.volInfoBase.Free > freezeThreshold && vol.volInfoBase.HealthScore >= allocatableScoreThreshold {
+func (vol *volume) canAlloc(allocatableSize uint64, allocatableScoreThreshold int) bool {
+	if vol.canInsert() && vol.volInfoBase.Free > allocatableSize && vol.volInfoBase.HealthScore >= allocatableScoreThreshold {
 		return true
 	}
 	return false

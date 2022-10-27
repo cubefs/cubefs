@@ -539,9 +539,9 @@ func TestVolumeMgr_AllocVolume(t *testing.T) {
 		require.Nil(t, ret)
 	}
 
-	// failed case, only volume free space bigger than freezeThreshold can alloc
+	// failed case, only volume free space bigger than allocatableSize can alloc
 	{
-		mockVolumeMgr.allocator.freezeThreshold = 1 << 42
+		mockVolumeMgr.allocator.allocatableSize = 1 << 42
 		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
 		require.Error(t, err)
 		require.Nil(t, ret)
@@ -943,14 +943,14 @@ func TestVolumeMgr_PreAlloc(t *testing.T) {
 		diskLoad    int
 	}{
 		// first have 8 diskload=0 vid,alloc success
-		{codemode: 1, healthScore: 0, count: 2, lenVids: 2, diskLoad: 0},
-		{codemode: 1, healthScore: 0, count: 1, lenVids: 1, diskLoad: 0},
+		{codemode: 1, healthScore: 0, count: 2, lenVids: 2, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold / 2},
+		{codemode: 1, healthScore: 0, count: 1, lenVids: 1, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold / 2},
 		// prealloc's vid(diskload=0) num not match require,should add diskload
 		{codemode: 1, healthScore: 0, count: 2, lenVids: 2, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold},
 		// first add diskLoad,then add healthScore
 		{codemode: 1, healthScore: -3, count: 2, lenVids: 2, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold},
 		// all volume health not match,not add diskLoad
-		{codemode: 1, healthScore: -4, count: 5, lenVids: 0, diskLoad: 0},
+		{codemode: 1, healthScore: -4, count: 5, lenVids: 0, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold / 2},
 	}
 	for _, testCase := range testCases {
 		mockVolumeMgr.all.rangeVol(func(v *volume) error {

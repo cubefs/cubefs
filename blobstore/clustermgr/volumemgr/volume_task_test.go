@@ -72,7 +72,7 @@ func TestTaskProc(t *testing.T) {
 
 	allocConfig := allocConfig{
 		codeModes:       map[codemode.CodeMode]codeModeConf{1: {mode: 1}},
-		freezeThreshold: 0,
+		allocatableSize: 0,
 	}
 	volAllocator := newVolumeAllocator(allocConfig)
 	volMgr.allocator = volAllocator

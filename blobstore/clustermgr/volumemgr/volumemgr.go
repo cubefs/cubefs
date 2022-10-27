@@ -50,9 +50,10 @@ const (
 	defaultCheckExpiredVolumeIntervalS = 60
 	defaultFlushIntervalS              = 600
 	defaultApplyConcurrency            = 20
-	defaultMinAllocableVolumeCount     = 5
+	defaultMinAllocatableVolumeCount   = 5
 	defaultVolumeSliceMapNum           = 10
 	defaultListVolumeMaxCount          = 500
+	defaultAllocatableSize             = 1 << 30
 )
 
 // notify queue key definition
@@ -571,7 +572,7 @@ func (v *VolumeMgr) applyAllocVolume(ctx context.Context, vid proto.Vid, host st
 
 	allocatableScoreThreshold := volume.getScoreThreshold()
 	// when propose data, volume status may change , check to ensure volume can alloc,
-	if !volume.canAlloc(v.FreezeThreshold, allocatableScoreThreshold) {
+	if !volume.canAlloc(v.AllocatableSize, allocatableScoreThreshold) {
 		span.Debugf("volume can not alloc,volume info is %+v", volume.volInfoBase)
 		volume.lock.Unlock()
 		return

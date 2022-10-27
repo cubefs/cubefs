@@ -501,9 +501,9 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 				Epoch:      1,
 				NextEpoch:  1,
 				DiskID:     proto.DiskID(j%10 + 1),
-				Free:       1024 * 1024 * 1023,
-				Used:       1024,
-				Total:      1024 * 1024 * 1024,
+				Free:       1024 * 1024 * 1024 * 1023,
+				Used:       1024 * 1024 * 1024,
+				Total:      1024 * 1024 * 1024 * 1024,
 			}
 		}
 		vol := &volumedb.VolumeRecord{
@@ -512,10 +512,9 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 			CodeMode:    1,
 			Status:      proto.VolumeStatusIdle,
 			HealthScore: 0,
-			// Free:        1024,
-			Free:  1024 * 1024 * 1023,
-			Used:  21,
-			Total: 10240,
+			Free:        1024 * 1024 * 1024 * 1023,
+			Used:        1024 * 1024 * 1024,
+			Total:       1024 * 1024 * 1024 * 1024,
 		}
 
 		volumes = append(volumes, vol)

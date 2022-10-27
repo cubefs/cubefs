@@ -72,7 +72,7 @@ func (t *KvMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, co
 
 		case OperTypeDeleteKv:
 			kvDeleteArgs := &clustermgr.DeleteKvArgs{}
-			err = json.Unmarshal(datas[i], kvDeleteArgs)
+			err = json.Unmarshal(datas[idx], kvDeleteArgs)
 			if err != nil {
 				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
 				wg.Done()
