@@ -5,16 +5,21 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"hash/crc32"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/async"
+	"github.com/chubaofs/chubaofs/util/testutil"
 )
 
 func init() {
@@ -105,29 +110,25 @@ func TestExtentStore_PlaybackTinyDelete(t *testing.T) {
 		testTinyFileCount      int    = 1024
 		testTinyFileSize       int    = PageSize
 	)
-
-	var (
-		err         error
-		testBaseDir = path.Join(os.TempDir(), t.Name())
-	)
-
-	if err = os.MkdirAll(testBaseDir, os.ModePerm); err != nil {
-		t.Fatalf("prepare test dir %v failed: %v", testBaseDir, err)
-	}
+	var baseTestPath = testutil.InitTempTestPath(t)
+	t.Log(baseTestPath.Path())
 	defer func() {
-		// 结束清理测试数据
-		_ = os.RemoveAll(testBaseDir)
+		baseTestPath.Cleanup()
 	}()
 
+	var (
+		err error
+	)
+
 	var store *ExtentStore
-	if store, err = NewExtentStore(testBaseDir, testPartitionID, testStoreSize, testStoreCacheCapacity, nil, false); err != nil {
+	if store, err = NewExtentStore(baseTestPath.Path(), testPartitionID, testStoreSize, testStoreCacheCapacity, nil, false); err != nil {
 		t.Fatalf("init test store failed: %v", err)
 	}
 	// 准备小文件数据，向TinyExtent 1写入1024个小文件数据, 每个小文件size为1024.
 	var (
-		tinyFileData       = make([]byte, testTinyFileSize)
-		testFileDataCrc    = crc32.ChecksumIEEE(tinyFileData[:testTinyFileSize])
-		holes        = make([]*proto.TinyExtentHole, 0)
+		tinyFileData    = make([]byte, testTinyFileSize)
+		testFileDataCrc = crc32.ChecksumIEEE(tinyFileData[:testTinyFileSize])
+		holes           = make([]*proto.TinyExtentHole, 0)
 	)
 	for i := 0; i < testTinyFileCount; i++ {
 		off := int64(i * PageSize)
@@ -136,7 +137,7 @@ func TestExtentStore_PlaybackTinyDelete(t *testing.T) {
 			tinyFileData[:testTinyFileSize], testFileDataCrc, AppendWriteType, false); err != nil {
 			t.Fatalf("prepare tiny data [index: %v, off: %v, size: %v] failed: %v", i, off, size, err)
 		}
-		if i % 2 == 0 {
+		if i%2 == 0 {
 			continue
 		}
 		if err = store.RecordTinyDelete(testTinyExtentID, off, size); err != nil {
@@ -144,7 +145,7 @@ func TestExtentStore_PlaybackTinyDelete(t *testing.T) {
 		}
 		holes = append(holes, &proto.TinyExtentHole{
 			Offset: uint64(off),
-			Size: uint64(size),
+			Size:   uint64(size),
 		})
 	}
 	// 执行TinyDelete回放
@@ -154,7 +155,7 @@ func TestExtentStore_PlaybackTinyDelete(t *testing.T) {
 	// 验证回放后测试TinyExtent的洞是否可预期一致
 	var (
 		testTinyExtent *Extent
-		newOffset int64
+		newOffset      int64
 	)
 	if testTinyExtent, err = store.extentWithHeaderByExtentID(testTinyExtentID); err != nil {
 		t.Fatalf("load test tiny extent %v failed: %v", testTinyExtentID, err)
@@ -168,8 +169,183 @@ func TestExtentStore_PlaybackTinyDelete(t *testing.T) {
 		if err != nil {
 			t.Fatalf("check tiny extent avali offset failed: %v", err)
 		}
-		if hole.Offset + hole.Size != uint64(newOffset) {
+		if hole.Offset+hole.Size != uint64(newOffset) {
 			t.Fatalf("punch hole record [offset: %v, size: %v] not applied to extent.", hole.Offset, hole.Size)
 		}
 	}
+}
+
+func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
+	var testPath = testutil.InitTempTestPath(t)
+	defer testPath.Cleanup()
+
+	const (
+		partitionID       uint64 = 1
+		storageSize              = 1 * 1024 * 1024
+		cacheCapacity            = 10
+		writeWorkers             = 10
+		dataSizePreWrite         = 16
+		executionDuration        = 30 * time.Second
+	)
+
+	var testPartitionPath = path.Join(testPath.Path(), fmt.Sprintf("datapartition_%d", partitionID))
+	var storage *ExtentStore
+	var err error
+	if storage, err = NewExtentStore(testPartitionPath, partitionID, storageSize, cacheCapacity,
+		func(event CacheEvent, e *Extent) {}, true); err != nil {
+		t.Fatalf("Create extent store failed: %v", err)
+		return
+	}
+
+	storage.AsyncLoadExtentSize()
+	for {
+		if storage.IsFinishLoad() {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
+	var futures = make(map[string]*async.Future, 0)
+	var dataSize = int64(dataSizePreWrite)
+	var data = make([]byte, dataSize)
+	var dataCRC = crc32.ChecksumIEEE(data)
+	var ctx, cancel = context.WithCancel(context.Background())
+	// Start workers to write extents
+	for i := 0; i < writeWorkers; i++ {
+		var future = async.NewFuture()
+		go func(future *async.Future, ctx context.Context, cancelFunc context.CancelFunc) {
+			var err error
+			defer func() {
+				if err != nil {
+					cancelFunc()
+				}
+				future.Respond(nil, err)
+			}()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				var extentID uint64
+				if extentID, err = storage.NextExtentID(); err != nil {
+					return
+				}
+				if err = storage.Create(extentID, true); err != nil {
+					return
+				}
+				var offset int64 = 0
+				for offset+int64(dataSize) <= 64*1024*1024 {
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+					if err = storage.Write(context.Background(), extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
+						err = nil
+						break
+					}
+					offset += int64(dataSize)
+				}
+			}
+		}(future, ctx, cancel)
+		futures[fmt.Sprintf("WriteWorker-%d", i)] = future
+	}
+
+	// Start extents delete worker
+	{
+		var future = async.NewFuture()
+		go func(future *async.Future, ctx context.Context, cancelFunc context.CancelFunc) {
+			var err error
+			defer func() {
+				if err != nil {
+					cancelFunc()
+				}
+				future.Respond(nil, err)
+			}()
+			var batchDeleteTicker = time.NewTicker(1 * time.Second)
+			for {
+				select {
+				case <-batchDeleteTicker.C:
+				case <-ctx.Done():
+					return
+				}
+				var eibs []ExtentInfoBlock
+				if eibs, _, err = storage.GetAllWatermarks(proto.NormalExtentType, nil); err != nil {
+					return
+				}
+				for _, eib := range eibs {
+					_ = storage.MarkDelete(eib[FileID], 0, 0)
+				}
+			}
+		}(future, ctx, cancel)
+		futures["DeleteWorker"] = future
+	}
+
+	// Start control worker
+	{
+		var future = async.NewFuture()
+		go func(future *async.Future, ctx context.Context, cancelFunc context.CancelFunc) {
+			defer func() {
+				future.Respond(nil, nil)
+				var startTime = time.Now()
+				var stopTimer = time.NewTimer(executionDuration)
+				var displayTicker = time.NewTicker(time.Second * 10)
+				for {
+					select {
+					case <-stopTimer.C:
+						t.Logf("Execution finish.")
+						cancelFunc()
+						return
+					case <-displayTicker.C:
+						t.Logf("Execution time: %.0fs.", time.Now().Sub(startTime).Seconds())
+					case <-ctx.Done():
+						t.Logf("Execution aborted.")
+						return
+					}
+				}
+
+			}()
+		}(future, ctx, cancel)
+		futures["ControlWorker"] = future
+	}
+
+	for name, future := range futures {
+		if _, err = future.Response(); err != nil {
+			t.Fatalf("%v respond error: %v", name, err)
+		}
+	}
+
+	// 结果检查
+	{
+		// 计算本地文件系统中实际Size总和
+		var actualNormalExtentTotalUsed int64
+		var files []os.FileInfo
+		var extentFileRegexp = regexp.MustCompile("^(\\d)+$")
+		if files, err = ioutil.ReadDir(testPartitionPath); err != nil {
+			t.Fatalf("Stat test partition path %v failed, error message: %v", testPartitionPath, err)
+		}
+		for _, file := range files {
+			if extentFileRegexp.Match([]byte(file.Name())) {
+				actualNormalExtentTotalUsed += file.Size()
+			}
+		}
+
+		var eibs []ExtentInfoBlock
+		if eibs, _, err = storage.GetAllWatermarks(proto.AllExtentType, nil); err != nil {
+			t.Fatalf("Get extent info from storage failed, error message: %v", err)
+		}
+		var eibTotalUsed int64
+		for _, eib := range eibs {
+			eibTotalUsed += int64(eib[Size])
+		}
+
+		var storeUsedSize = storage.GetStoreUsedSize() // 存储引擎统计的使用Size总和
+
+		if !((actualNormalExtentTotalUsed == eibTotalUsed) && (eibTotalUsed == storeUsedSize)) {
+			t.Fatalf("Used size validation failed, actual total used %v, store used size %v, extent info total used %v", actualNormalExtentTotalUsed, storeUsedSize, eibTotalUsed)
+		}
+	}
+
+	storage.Close()
 }

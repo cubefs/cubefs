@@ -125,7 +125,7 @@ type ExtentStore struct {
 	baseExtentID             uint64 // TODO what is baseExtentID
 	baseExtentIDPersistCount uint64
 	//extentInfoMap                     sync.Map // map that stores all the extent information
-	extentMapSlice                    *MapSlice
+	infoStore                         *ExtentInfoStore
 	extentCnt                         int64
 	cache                             *ExtentCache // extent cache
 	mutex                             sync.Mutex
@@ -144,19 +144,10 @@ type ExtentStore struct {
 	verifyExtentFp                    *os.File
 	hasAllocSpaceExtentIDOnVerfiyFile uint64
 	loadStatus                        int32
-	normalExtentSize                  int64
 }
 
 func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0755)
-}
-
-func (s *ExtentStore) addNormalExtentSize(size int64) {
-	atomic.AddInt64(&s.normalExtentSize, size)
-}
-
-func (s *ExtentStore) subNormalExtentSize(size int64) {
-	atomic.AddInt64(&s.normalExtentSize, -size)
 }
 
 func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
@@ -164,7 +155,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	s = new(ExtentStore)
 	s.dataPath = dataDir
 	s.partitionID = partitionID
-	s.extentMapSlice = NewMapSlice(partitionID)
+	s.infoStore = NewExtentInfoStore(partitionID)
 	if err = MkdirAll(dataDir); err != nil {
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
@@ -209,33 +200,6 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 		atomic.StoreInt32(&s.loadStatus, LoadInProgress)
 	}
 	return
-}
-
-func (ei *ExtentInfoBlock) InitWithExtent(eid, size uint64, modTime time.Time) {
-	ei[FileID] = eid
-	ei[Size] = size
-	ei[ModifyTime] = uint64(modTime.Unix())
-}
-
-func (ei *ExtentInfoBlock) Init(size uint64, modTime time.Time) {
-	ei[Size] = size
-	ei[ModifyTime] = uint64(modTime.Unix())
-}
-
-func (ei *ExtentInfoBlock) UpdateExtentInfo(extent *Extent, crc uint32) {
-	if ei[ModifyTime] == 0 {
-		return
-	}
-	extent.Lock()
-	defer extent.Unlock()
-	if time.Now().Unix()-extent.ModifyTime() <= UpdateCrcInterval {
-		crc = 0
-	}
-	ei[Size] = uint64(extent.dataSize)
-	if !proto.IsTinyExtent(ei[FileID]) {
-		atomic.StoreUint64(&ei[Crc], uint64(crc))
-		ei[ModifyTime] = uint64(extent.ModifyTime())
-	}
 }
 
 // SnapShot returns the information of all the extents on the current data partition.
@@ -292,11 +256,10 @@ func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 			_ = e.Close()
 		}()
 	}
-	extInfo := ExtentInfoBlock{FileID: extentID}
-	extInfo.Init(0, time.Now())
-	s.extentMapSlice.Store(extentID, extInfo)
+	s.infoStore.Create(extentID)
+	s.infoStore.Update(extentID, 0, uint64(time.Now().Unix()), 0)
 	atomic.AddInt64(&s.extentCnt, 1)
-	s.UpdateBaseExtentID(extentID)
+	_ = s.UpdateBaseExtentID(extentID)
 	return
 }
 
@@ -325,7 +288,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		if extentID, isExtent = s.ExtentID(name); !isExtent {
 			continue
 		}
-		ei := ExtentInfoBlock{FileID: extentID}
+		s.infoStore.Create(extentID)
 		if proto.IsTinyExtent(extentID) {
 			name := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
 			info, statErr := os.Stat(name)
@@ -338,10 +301,8 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 			if watermark%PageSize != 0 {
 				watermark = watermark + (PageSize - watermark%PageSize)
 			}
-			ei.Init(uint64(watermark), info.ModTime())
+			s.infoStore.Update(extentID, uint64(watermark), uint64(info.ModTime().Unix()), 0)
 		}
-
-		s.extentMapSlice.Store(extentID, ei)
 		atomic.AddInt64(&s.extentCnt, 1)
 		if !proto.IsTinyExtent(extentID) && extentID > baseFileID {
 			baseFileID = extentID
@@ -361,7 +322,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 
 func (s *ExtentStore) AsyncLoadExtentSize() {
 
-	s.extentMapSlice.Range(func(extentID uint64, ei *ExtentInfoBlock) {
+	s.infoStore.Range(func(extentID uint64, ei *ExtentInfoBlock) {
 		if proto.IsTinyExtent(extentID) {
 			return
 		}
@@ -371,10 +332,7 @@ func (s *ExtentStore) AsyncLoadExtentSize() {
 			log.LogWarnf("asyncLoadExtentSize extentPath(%v) error(%v)", extentAbsPath, err)
 			return
 		}
-		if !ei.Loaded() {
-			ei.Init(uint64(info.Size()), info.ModTime())
-			s.addNormalExtentSize(int64(ei[Size]))
-		}
+		s.infoStore.Update(extentID, uint64(info.Size()), uint64(info.ModTime().Unix()), 0)
 	})
 
 	// Mark the load progress of this extent store has been finished.
@@ -386,7 +344,7 @@ func (s *ExtentStore) IsFinishLoad() bool {
 }
 
 func (s *ExtentStore) getExtentInfoByExtentID(eid uint64) (ei *ExtentInfoBlock, ok bool) {
-	ei, ok = s.extentMapSlice.Load(eid)
+	ei, ok = s.infoStore.Load(eid)
 	return
 }
 
@@ -412,21 +370,10 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 	if err != nil {
 		return err
 	}
-	// 若当前Extent是Normal，是追加写，并且该ExtentInfo已经被AsyncLoadExtentSize初始化完成。
-	// 说明Extent在前一个时刻的size已经被累加到了total used size中。则将增量size累加如total used size中。
-	if !proto.IsTinyExtent(extentID) && IsAppendWrite(writeType) && ei.Loaded() {
-		s.addNormalExtentSize(size)
-	}
-	ei.UpdateExtentInfo(e, 0)
-	s.updateExtentInfo(extentID, *ei)
+	s.infoStore.UpdateInfoFromExtent(e, 0)
 	return nil
 }
 
-func (s *ExtentStore) updateExtentInfo(extentID uint64, ei ExtentInfoBlock) {
-	if !proto.IsTinyExtent(extentID) && ei[FileID] == extentID {
-		s.extentMapSlice.Store(extentID, ei)
-	}
-}
 func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64) error {
 	if proto.IsTinyExtent(extentID) {
 		return nil
@@ -497,14 +444,8 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	if err = os.Remove(extentFilePath); err != nil {
 		return
 	}
-	// 若当前Extent是Normal，是追加写，并且该ExtentInfo已经被AsyncLoadExtentSize初始化完成。
-	// 说明Extent在前一个时刻的size已经被累加到了total used size中。则将文件size从total used size中进行扣减。
-	if ei.Loaded() {
-		s.subNormalExtentSize(int64(ei[Size]))
-	}
 	s.PersistenceHasDeleteExtent(extentID)
-	s.extentMapSlice.Delete(extentID)
-	ei[ModifyTime] = uint64(time.Now().Unix())
+	s.infoStore.Delete(extentID)
 	s.DeleteBlockCrc(extentID)
 
 	atomic.AddInt64(&s.extentCnt, -1)
@@ -573,7 +514,7 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 
 func (s *ExtentStore) GetAllWatermarks(extentType uint8, filter ExtentFilter) (extents []ExtentInfoBlock, tinyDeleteFileSize int64, err error) {
 	extents = make([]ExtentInfoBlock, 0)
-	s.extentMapSlice.RangeDist(extentType, func(extentID uint64, ei *ExtentInfoBlock) {
+	s.infoStore.RangeDist(extentType, func(extentID uint64, ei *ExtentInfoBlock) {
 		if filter != nil && !filter(ei) {
 			return
 		}
@@ -586,7 +527,7 @@ func (s *ExtentStore) GetAllWatermarks(extentType uint8, filter ExtentFilter) (e
 func (s *ExtentStore) GetAllWatermarksWithByteArr(extentType uint8, filter ExtentFilter) (tinyDeleteFileSize int64, data []byte, err error) {
 	needSize := 0
 	extents := make([]uint64, 0)
-	s.extentMapSlice.RangeDist(extentType, func(extentID uint64, ei *ExtentInfoBlock) {
+	s.infoStore.RangeDist(extentType, func(extentID uint64, ei *ExtentInfoBlock) {
 		if filter != nil && !filter(ei) {
 			return
 		}
@@ -599,7 +540,7 @@ func (s *ExtentStore) GetAllWatermarksWithByteArr(extentType uint8, filter Exten
 	index := 0
 
 	for _, eid := range extents {
-		ei, ok := s.extentMapSlice.Load(eid)
+		ei, ok := s.infoStore.Load(eid)
 		if !ok {
 			continue
 		}
@@ -617,7 +558,7 @@ func (s *ExtentStore) GetAllWatermarksWithByteArr(extentType uint8, filter Exten
 func (s *ExtentStore) GetAllExtentInfoWithByteArr(filter ExtentFilter) (data []byte, err error) {
 	needSize := 0
 	extents := make([]uint64, 0)
-	s.extentMapSlice.RangeDist(proto.AllExtentType, func(extentID uint64, ei *ExtentInfoBlock) {
+	s.infoStore.RangeDist(proto.AllExtentType, func(extentID uint64, ei *ExtentInfoBlock) {
 		if filter != nil && !filter(ei) {
 			return
 		}
@@ -629,7 +570,7 @@ func (s *ExtentStore) GetAllExtentInfoWithByteArr(filter ExtentFilter) (data []b
 	data = make([]byte, needSize)
 	index := 0
 	for _, eid := range extents {
-		ei, ok := s.extentMapSlice.Load(eid)
+		ei, ok := s.infoStore.Load(eid)
 		if !ok {
 			continue
 		}
@@ -646,14 +587,9 @@ func (s *ExtentStore) GetAllExtentInfoWithByteArr(filter ExtentFilter) (data []b
 
 func (s *ExtentStore) getTinyExtentInfo() (extents []ExtentInfoBlock) {
 	extents = make([]ExtentInfoBlock, 0)
-	var extentID uint64
-	for extentID = proto.TinyExtentStartID; extentID < proto.TinyExtentCount+proto.TinyExtentStartID; extentID++ {
-		ei, ok := s.getExtentInfoByExtentID(extentID)
-		if !ok {
-			continue
-		}
+	s.infoStore.RangeTinyExtent(func(_ uint64, ei *ExtentInfoBlock) {
 		extents = append(extents, *ei)
-	}
+	})
 	return
 }
 
@@ -767,7 +703,7 @@ func (s *ExtentStore) GetBrokenTinyExtent() (extentID uint64, err error) {
 
 // StoreSizeExtentID returns the size of the extent store
 func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
-	s.extentMapSlice.Range(func(extentID uint64, ei *ExtentInfoBlock) {
+	s.infoStore.Range(func(extentID uint64, ei *ExtentInfoBlock) {
 		if extentID <= maxExtentID {
 			totalSize += ei[Size]
 		}
@@ -779,7 +715,7 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 
 // StoreSizeExtentID returns the size of the extent store
 func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize uint64) {
-	s.extentMapSlice.Range(func(extentID uint64, ei *ExtentInfoBlock) {
+	s.infoStore.Range(func(extentID uint64, ei *ExtentInfoBlock) {
 		if ei[FileID] > maxExtentID {
 			maxExtentID = ei[FileID]
 		}
@@ -988,7 +924,7 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 	}()
 
 	needUpdateCrcExtents := make([]*ExtentInfoBlock, 0)
-	s.extentMapSlice.Range(func(extentID uint64, ei *ExtentInfoBlock) {
+	s.infoStore.Range(func(extentID uint64, ei *ExtentInfoBlock) {
 		if !proto.IsTinyExtent(ei[FileID]) && time.Now().Unix()-int64(ei[ModifyTime]) > UpdateCrcInterval &&
 			ei[Size] > 0 && ei[Crc] == 0 {
 			needUpdateCrcExtents = append(needUpdateCrcExtents, ei)
@@ -998,14 +934,11 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 	sort.Sort(ExtentInfoArr(needUpdateCrcExtents))
 	for _, ei := range needUpdateCrcExtents {
 		e, err := s.ExtentWithHeader(ei)
-		if err != nil || !ei.Loaded() {
-			continue
-		}
 		extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
 		if err != nil {
 			continue
 		}
-		ei.UpdateExtentInfo(e, extentCrc)
+		s.infoStore.UpdateInfoFromExtent(e, extentCrc)
 		time.Sleep(time.Millisecond * 100)
 	}
 }
@@ -1027,7 +960,7 @@ func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, dat
 	if err = e.TinyExtentRecover(data, offset, size, crc, isEmptyPacket); err != nil {
 		return err
 	}
-	ei.UpdateExtentInfo(e, 0)
+	s.infoStore.UpdateInfoFromExtent(e, 0)
 
 	return nil
 }
@@ -1117,14 +1050,14 @@ const (
 )
 
 func (s *ExtentStore) GetStoreUsedSize() (used int64) {
-	used = atomic.LoadInt64(&s.normalExtentSize)
+	used = int64(s.infoStore.NormalUsed())
 	for eid := proto.TinyExtentStartID; eid < proto.TinyExtentStartID+proto.TinyExtentCount; eid++ {
 		stat := new(syscall.Stat_t)
 		err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, eid), stat)
 		if err != nil {
 			continue
 		}
-		used += (stat.Blocks * DiskSectorSize)
+		used += stat.Blocks * DiskSectorSize
 	}
 	return
 }

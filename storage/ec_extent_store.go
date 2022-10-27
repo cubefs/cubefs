@@ -2,12 +2,13 @@ package storage
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/unit"
 	"hash/crc32"
 	"strings"
 	"syscall"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 func (s *ExtentStore) TinyExtentHolesAndAvaliSize(extentID uint64, offset int64) (holes []*proto.TinyExtentHole, extentAvaliSize uint64, err error) {
@@ -20,7 +21,7 @@ func (s *ExtentStore) TinyExtentHolesAndAvaliSize(extentID uint64, offset int64)
 	if !proto.IsTinyExtent(extentID) {
 		return nil, 0, fmt.Errorf("unavali extent(%v)", extentID)
 	}
-	ei, exist := s.extentMapSlice.Load(extentID)
+	ei, exist := s.infoStore.Load(extentID)
 	if !exist {
 		return nil, 0, proto.ExtentNotFoundError
 	}

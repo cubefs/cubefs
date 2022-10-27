@@ -3,12 +3,13 @@ package storage
 import (
 	"bytes"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"path"
 	"reflect"
 	"runtime"
 	"sync"
 	"testing"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 var nilExtentPtr *ExtentInfoBlock = nil
@@ -21,7 +22,7 @@ func initExtentInfo(id uint64) ExtentInfoBlock {
 }
 
 func TestBaseFunc(t *testing.T) {
-	ms := NewMapSlice(1)
+	ms := NewExtentInfoStore(1)
 	var tinyExtentID uint64 = 1
 	expectExtent := initExtentInfo(tinyExtentID)
 	ms.Store(tinyExtentID, expectExtent)
@@ -54,14 +55,14 @@ func TestBaseFunc(t *testing.T) {
 	assertEqual(t, normalExtentId2+1, dObj[Size])
 
 	ms.Delete(normalExtentId1)
-	assertEqual(t, uint64(1), ms.objDeletedCnt)
+	assertEqual(t, uint64(1), ms.normalDeletedCnt)
 	assertEqual(t, 2, ms.Len())
 	actualExtent, ok = ms.Load(normalExtentId1)
 	assertEqual(t, false, ok)
 	assertEqual(t, nilExtentPtr, actualExtent)
 
 	ms.Delete(normalExtentId2)
-	assertEqual(t, uint64(2), ms.objDeletedCnt)
+	assertEqual(t, uint64(2), ms.normalDeletedCnt)
 	assertEqual(t, 1, ms.Len())
 	actualExtent, ok = ms.Load(normalExtentId2)
 	assertEqual(t, false, ok)
@@ -69,7 +70,7 @@ func TestBaseFunc(t *testing.T) {
 }
 
 func TestTinyExtent(t *testing.T) {
-	ms := NewMapSlice(1)
+	ms := NewExtentInfoStore(1)
 	for i := 1; i < proto.TinyExtentCount+1; i++ {
 		ei := initExtentInfo(uint64(i))
 		ms.Store(uint64(i), ei)
@@ -77,7 +78,7 @@ func TestTinyExtent(t *testing.T) {
 		assertEqual(t, ms.tinyExtents[i], initExtentInfo(uint64(i)))
 	}
 	// before delete
-	assertEqual(t, uint64(0), ms.objDeletedCnt)
+	assertEqual(t, uint64(0), ms.normalDeletedCnt)
 	assertEqual(t, proto.TinyExtentCount, ms.Len())
 	ms.RangeTinyExtent(func(extentID uint64, ei *ExtentInfoBlock) {
 		if extentID == 0 {
@@ -92,7 +93,7 @@ func TestTinyExtent(t *testing.T) {
 	for _, deid := range deleteExtentId {
 		ms.Delete(deid)
 	}
-	assertEqual(t, uint64(0), ms.objDeletedCnt)
+	assertEqual(t, uint64(0), ms.normalDeletedCnt)
 	// after delete
 	assertEqual(t, proto.TinyExtentCount, ms.Len())
 	ms.RangeTinyExtent(func(extentID uint64, ei *ExtentInfoBlock) {
@@ -106,14 +107,14 @@ func TestTinyExtent(t *testing.T) {
 }
 
 func TestNormalExtent(t *testing.T) {
-	ms := NewMapSlice(1)
+	ms := NewExtentInfoStore(1)
 	normalCount := 1000
 	for i := proto.TinyExtentCount + 1; i < normalCount+proto.TinyExtentCount+1; i++ {
 		ms.Store(uint64(i), initExtentInfo(uint64(i)))
 	}
 	// before delete
 	assertEqual(t, normalCount, ms.Len())
-	assertEqual(t, uint64(0), ms.objDeletedCnt)
+	assertEqual(t, uint64(0), ms.normalDeletedCnt)
 	ms.RangeTinyExtent(func(extentID uint64, ei *ExtentInfoBlock) {
 		assertEqual(t, EmptyExtentBlock, *ei)
 	})
@@ -128,7 +129,7 @@ func TestNormalExtent(t *testing.T) {
 	}
 	// after delete
 	assertEqual(t, normalCount-len(deleteExtentId), ms.Len())
-	assertEqual(t, uint64(len(deleteExtentId)), ms.objDeletedCnt)
+	assertEqual(t, uint64(len(deleteExtentId)), ms.normalDeletedCnt)
 	ms.RangeNormalExtent(func(extentID uint64, ei *ExtentInfoBlock) {
 		for _, deid := range deleteExtentId {
 			if extentID == deid {
@@ -141,7 +142,7 @@ func TestNormalExtent(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	ms := NewMapSlice(1)
+	ms := NewExtentInfoStore(1)
 	var extentId uint64 = 999
 	ms.Store(extentId, initExtentInfo(extentId))
 	ms.Delete(extentId)
@@ -153,7 +154,7 @@ func TestDelete(t *testing.T) {
 func TestReduce(t *testing.T) {
 	var maxSize = 5000
 	var minExtentID = 100
-	ms := NewMapSlice(1)
+	ms := NewExtentInfoStore(1)
 	for i := 1; i < maxSize; i++ {
 		ms.Store(uint64(i), initExtentInfo(uint64(i)))
 	}
@@ -199,7 +200,7 @@ func TestReduce(t *testing.T) {
 }
 
 func TestRandomReduce(t *testing.T) {
-	ms := NewMapSlice(1)
+	ms := NewExtentInfoStore(1)
 	seq := []uint64{65, 66, 67, 89, 100}
 	for _, extentId := range seq {
 		ms.Store(extentId, initExtentInfo(extentId))
@@ -246,7 +247,7 @@ func TestRandomReduce(t *testing.T) {
 }
 
 func TestIter(t *testing.T) {
-	ms := NewMapSlice(1)
+	ms := NewExtentInfoStore(1)
 	seq := []uint64{9, 5, 2, 7, 1970, 1, 3, 654}
 	for _, v := range seq {
 		ms.Store(v, initExtentInfo(v))
@@ -287,7 +288,7 @@ func TestIter(t *testing.T) {
 }
 
 func TestMapSlice_RangeDist(t *testing.T) {
-	ms := NewMapSlice(1)
+	ms := NewExtentInfoStore(1)
 	extentSize := 10000
 	for i := 1; i <= extentSize; i++ {
 		ms.Store(uint64(i), initExtentInfo(uint64(i)))
@@ -335,7 +336,7 @@ func TestMapSlice_RangeDist(t *testing.T) {
 }
 
 func TestSpacedStore(t *testing.T) {
-	ms := NewMapSlice(1)
+	ms := NewExtentInfoStore(1)
 	maxSize := 20000
 	count := 0
 	for i := 1; i <= maxSize; i++ {
@@ -424,7 +425,7 @@ const (
 )
 
 var (
-	ems *MapSlice
+	ems *ExtentInfoStore
 )
 
 func Test_DeleteExtentData(t *testing.T) {
@@ -457,7 +458,7 @@ func Test_RangeAndReduceSametime(t *testing.T) {
 
 func InsertExtentData(t *testing.T) {
 	var wg sync.WaitGroup
-	ems = NewMapSlice(1)
+	ems = NewExtentInfoStore(1)
 	for i := 1; i < 8; i++ {
 		wg.Add(1)
 		go asyncInsertExtentData(t, i, &wg)
