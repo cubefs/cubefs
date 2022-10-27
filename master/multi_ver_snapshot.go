@@ -213,10 +213,15 @@ func (verMgr *VolVersionManager) checkSnapshotStrategy() {
 		return
 	}
 	verMgr.RUnlock()
-
-	if verMgr.strategy.UTime.Add(time.Minute * time.Duration(verMgr.strategy.Periodic)).Before(time.Now()) {
+	curTime := time.Now()
+	if verMgr.strategy.UTime.Add(time.Minute * time.Duration(verMgr.strategy.Periodic)).Before(curTime) {
 		log.LogDebugf("checkSnapshotStrategy.vol %v try create snapshot", verMgr.vol.Name)
 		if _, err := verMgr.createVer2PhaseTask(verMgr.c, uint64(time.Now().Unix()), proto.CreateVersion, verMgr.strategy.ForceUpdate); err != nil {
+			verEle := verMgr.multiVersionList[len(verMgr.multiVersionList)-1]
+			if verEle.Ctime.Add(time.Duration(2*verMgr.strategy.Periodic) * time.Hour).Before(curTime) {
+				msg := fmt.Sprintf("[checkSnapshotStrategy] last version %v status %v for %v hours than 2times periodic", verEle.Ver, verEle.Status, 2*verMgr.strategy.Periodic)
+				Warn(verMgr.c.Name, msg)
+			}
 			return
 		}
 		verMgr.strategy.UTime = time.Now()
@@ -231,6 +236,11 @@ func (verMgr *VolVersionManager) checkSnapshotStrategy() {
 		if verMgr.multiVersionList[0].Status != proto.VersionNormal {
 			log.LogDebugf("checkSnapshotStrategy.vol %v oldest ver %v status %v",
 				verMgr.vol.Name, verMgr.multiVersionList[0].Ver, verMgr.multiVersionList[0].Status)
+			if verMgr.multiVersionList[0].DelTime.Add(time.Duration(verMgr.strategy.Periodic) * time.Hour).Before(curTime) {
+				msg := fmt.Sprintf("[checkSnapshotStrategy] version %v in deleting status for %v hours than configure periodic [%v] hours",
+					verMgr.multiVersionList[0].Ver, verMgr.multiVersionList[0].Status, verMgr.strategy.Periodic)
+				Warn(verMgr.c.Name, msg)
+			}
 			verMgr.RUnlock()
 			return
 		}
@@ -272,7 +282,7 @@ func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpRespons
 		resp.Addr, partitionType, resp.Op, verMgr.prepareCommit.op)
 
 	if resp.Op != verMgr.prepareCommit.op {
-		log.LogErrorf("action[handleTaskRsp] vol %v op %v, inner op %v", verMgr.vol.Name, resp.Op, verMgr.prepareCommit.op)
+		log.LogWarnf("action[handleTaskRsp] vol %v op %v, inner op %v", verMgr.vol.Name, resp.Op, verMgr.prepareCommit.op)
 		return
 	}
 
