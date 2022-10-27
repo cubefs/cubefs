@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	_defaultCacheSize       = 1 << 17
+	_defaultCacheSize       = 1 << 20
 	_defaultCacheExpiration = int64(2 * time.Minute)
 )
 
