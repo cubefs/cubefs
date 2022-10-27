@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -204,7 +205,8 @@ func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList) 
 		}
 		_, exist := verMapMaster[info2.Ver]
 		if !exist {
-			err = fmt.Errorf("checkVerList.vol %v mp %v not found %v in master list", mp.config.VolName, mp.config.PartitionId, info2.Ver)
+			err = fmt.Errorf("[checkVerList] vol %v mp %v not found %v in master list", mp.config.VolName, mp.config.PartitionId, info2.Ver)
+			exporter.Warning(err.Error())
 			log.LogError(err)
 		}
 	}
@@ -218,8 +220,10 @@ func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList) 
 		if !exist {
 			mLen := len(mp.multiVersionList.VerList)
 			if mLen > 0 && vInfo.Ver > mp.multiVersionList.VerList[mLen-1].Ver {
-				log.LogWarnf("checkVerList.vol %v mp %v not found %v in mp list and append version %v",
+				expStr := fmt.Sprintf("checkVerList.vol %v mp %v not found %v in mp list and append version %v",
 					mp.config.VolName, mp.config.PartitionId, vInfo.Ver, vInfo)
+				log.LogWarnf("[checkVerList] vol %v", expStr)
+				exporter.Warning(expStr)
 				mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, vInfo)
 				mp.verSeq = vInfo.Ver
 			}

@@ -280,6 +280,7 @@ func (sender *AdminTaskManager) getToDoTasks() (tasks []*proto.AdminTask) {
 			task.SendTime = time.Now().Unix()
 			if task.OpCode == proto.OpVersionOperation {
 				log.LogInfof("action[getToDoTasks] get task to addr [%v]", task.OperatorAddr)
+				continue
 			}
 		}
 
