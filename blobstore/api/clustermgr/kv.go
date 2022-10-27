@@ -58,12 +58,12 @@ func (c *Client) GetKV(ctx context.Context, key string) (ret GetKvRet, err error
 }
 
 func (c *Client) DeleteKV(ctx context.Context, key string) (err error) {
-	err = c.PostWith(ctx, "/kv/delete/"+key, nil, &DeleteKvArgs{Key: key})
+	err = c.PostWith(ctx, "/kv/delete/"+key, nil, nil)
 	return
 }
 
 func (c *Client) SetKV(ctx context.Context, key string, value []byte) (err error) {
-	err = c.PostWith(ctx, "/kv/set", nil, &SetKvArgs{Key: key, Value: value})
+	err = c.PostWith(ctx, "/kv/set/"+key, nil, &SetKvArgs{Key: key, Value: value})
 	return
 }
 

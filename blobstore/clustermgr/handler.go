@@ -137,6 +137,8 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.POST("/kv/delete/:key", service.KvDelete, rpc.OptArgsURI())
 
+	rpc.POST("/kv/set/:key", service.KvSet, rpc.OptArgsBody())
+
 	rpc.POST("/kv/set", service.KvSet, rpc.OptArgsBody())
 
 	rpc.GET("/kv/list", service.KvList, rpc.OptArgsQuery())
