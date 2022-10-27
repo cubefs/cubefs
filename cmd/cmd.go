@@ -29,11 +29,10 @@ import (
 	"syscall"
 
 	"github.com/cubefs/cubefs/util/errors"
+	sysutil "github.com/cubefs/cubefs/util/sys"
 
 	"github.com/cubefs/cubefs/console"
 	"github.com/cubefs/cubefs/proto"
-
-	sysutil "github.com/cubefs/cubefs/util/sys"
 
 	"github.com/cubefs/cubefs/objectnode"
 
@@ -84,6 +83,7 @@ var (
 	configFile       = flag.String("c", "", "config file path")
 	configVersion    = flag.Bool("v", false, "show version")
 	configForeground = flag.Bool("f", false, "run foreground")
+	redirectSTD      = flag.Bool("redirect-std", true, "redirect standard output to file")
 )
 
 func interceptSignal(s common.Server) {
@@ -216,20 +216,29 @@ func main() {
 	}
 	defer log.LogFlush()
 
-	// Init output file
-	outputFilePath := path.Join(logDir, module, LoggerOutput)
-	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
-	if err != nil {
-		err = errors.NewErrorf("Fatal: failed to open output path - %v", err)
-		fmt.Println(err)
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
+	if *redirectSTD {
+		// Init output file
+		outputFilePath := path.Join(logDir, module, LoggerOutput)
+		outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+		if err != nil {
+			err = errors.NewErrorf("Fatal: failed to open output path - %v", err)
+			fmt.Println(err)
+			daemonize.SignalOutcome(err)
+			os.Exit(1)
+		}
+		defer func() {
+			outputFile.Sync()
+			outputFile.Close()
+		}()
+
+		syslog.SetOutput(outputFile)
+		if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+			err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)
+			syslog.Println(err)
+			daemonize.SignalOutcome(err)
+			os.Exit(1)
+		}
 	}
-	defer func() {
-		outputFile.Sync()
-		outputFile.Close()
-	}()
-	syslog.SetOutput(outputFile)
 
 	if buffersTotalLimit < 0 {
 		syslog.Printf("invalid fields, BuffersTotalLimit(%v) must larger or equal than 0\n", buffersTotalLimit)
@@ -237,13 +246,6 @@ func main() {
 	}
 
 	proto.InitBufferPool(buffersTotalLimit)
-
-	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
-		err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)
-		syslog.Println(err)
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
 
 	syslog.Printf("Hello, CubeFS Storage\n%s\n", Version)
 
