@@ -17,7 +17,6 @@ package cmd
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/sdk/data"
-	"github.com/chubaofs/chubaofs/storage"
 	atomic2 "go.uber.org/atomic"
 	"os"
 	"sort"
@@ -1291,9 +1290,6 @@ func checkDataPartitionRelica(c *master.MasterClient, partitionID uint64, checkT
 	}
 
 	for _, ekTmp := range dpDNInfo.Files {
-		if storage.IsTinyExtent(ekTmp[proto.ExtentInfoFileID]){
-			continue
-		}
 		if int64(ekTmp[proto.ExtentInfoModifyTime]) < specTime.Unix() || ekTmp[proto.ExtentInfoSize] == 0{
 			continue
 		}
@@ -1307,7 +1303,7 @@ func checkDataPartitionRelica(c *master.MasterClient, partitionID uint64, checkT
 		if _, ok := checkedExtent.LoadOrStore(fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId), true); ok {
 			continue
 		}
-		err1 := checkExtentReplicaInfo(c, dpMasterInfo.Replicas, ek, 0, checkType, ch)
+		err1 := checkExtentReplicaInfo(c, dpMasterInfo.Replicas, &ek, 0, dpMasterInfo.VolName, checkType, ch)
 		if err1 != nil {
 			failedExtents = append(failedExtents, ek.ExtentId)
 		}
