@@ -21,6 +21,9 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/blobstore/util/limit"
+	"github.com/cubefs/cubefs/blobstore/util/limit/count"
 )
 
 // Selector select hosts or something from somewhere.
@@ -33,6 +36,7 @@ type Selector interface {
 type selector struct {
 	sync.RWMutex
 
+	syncLock     limit.Limiter
 	interval     int64
 	lastUpdate   int64
 	nextIndex    int
@@ -56,6 +60,7 @@ func NewSelector(intervalMs int64, getter func() ([]string, error)) (Selector, e
 		nextIndex:    0,
 		cachedValues: values,
 		getter:       getter,
+		syncLock:     count.New(1),
 	}
 	return s, nil
 }
@@ -69,6 +74,7 @@ func MakeSelector(intervalMs int64, getter func() ([]string, error)) Selector {
 		nextIndex:    0,
 		cachedValues: values,
 		getter:       getter,
+		syncLock:     count.New(1),
 	}
 }
 
@@ -122,6 +128,11 @@ func (s *selector) GetRoundRobinN(n int) []string {
 }
 
 func (s *selector) sync() {
+	if err := s.syncLock.Acquire(); err != nil {
+		return
+	}
+	defer s.syncLock.Release()
+
 	values, err := s.getter()
 	if err != nil {
 		return
