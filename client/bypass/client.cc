@@ -5,8 +5,8 @@
  */
 
 static int close_cfs_fd(int fd) {
-    int is_need_release_file = 0;
-    int is_need_release_inode = 0;
+    bool release_file = false;
+    bool release_inode = false;
 
     pthread_rwlock_wrlock(&g_client_info.dup_fds_lock);
     auto dup_fd_it = g_client_info.dup_fds.find(fd);
@@ -28,12 +28,19 @@ static int close_cfs_fd(int fd) {
     pthread_mutex_lock(&f->file_lock);
     f->dup_ref--;
     if(f->dup_ref == 0) {
-        is_need_release_file = 1;
+        release_file = true;
     }
     pthread_mutex_unlock(&f->file_lock);
-    if(is_need_release_file == 0) {
+    if(!release_file) {
         pthread_rwlock_unlock(&g_client_info.open_files_lock);
         return 0;
+    }
+
+    if(strlen(g_client_info.replicate_path) > 0) {
+        int re = libc_close(fd);
+        if(re < 0) {
+            return re;
+        }
     }
 
     inode_info_t* inode_info = f->inode_info;
@@ -49,12 +56,12 @@ static int close_cfs_fd(int fd) {
 
     if (inode_info->fd_ref == 0) {
         g_client_info.open_inodes.erase(inode_info->inode);
-        is_need_release_inode = 1;
+        release_inode = true;
     }
     pthread_mutex_unlock(&inode_info->inode_lock);
     pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
 
-    if (is_need_release_inode) {
+    if (release_inode) {
         flush_inode(inode_info);
         release_inode_info(inode_info);
     }
@@ -66,29 +73,20 @@ int real_close(int fd) {
         return -1;
     }
     int re = -1;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = get_cfs_fd(fd);
-        }
-        re = libc_close(libc_fd);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         re = close_cfs_fd(fd);
     } else {
         re = libc_close(fd);
     }
 
-log:
     #if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
-    ; // labels can only be followed by statements
+    fd = fd & ~CFS_FD_MASK;
     pthread_rwlock_wrlock(&g_client_info.fd_path_lock);
     auto it = g_client_info.fd_path.find(fd);
+    #if defined(_CFS_DEBUG)
     log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, is_cfs, fd, it != g_client_info.fd_path.end() ? it->second : "", re);
+    #endif
     if(it != g_client_info.fd_path.end()) {
         free(it->second);
         g_client_info.fd_path.erase(it);
@@ -191,9 +189,10 @@ int real_openat(int dirfd, const char *pathname, int flags, ...) {
 
     bool is_cfs = false;
     char *path = NULL;
-    int libc_fd = dirfd;
+    char *local_path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
+        local_path = cat_path(g_client_info.replicate_path, path);
         is_cfs = (path != NULL);
     } else {
         is_cfs = fd_in_cfs(dirfd);
@@ -205,18 +204,15 @@ int real_openat(int dirfd, const char *pathname, int flags, ...) {
     const char *cfs_path = (path == NULL) ? pathname : path;
     int fd, fd_origin = -1;
     if(g_hook && is_cfs) {
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = dirfd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            fd = libc_openat(dirfd, local_path != NULL ? local_path : pathname, flags, mode);
+            if(fd < 0) {
+                goto log;
+            }
+            fd = cfs_errno(cfs_openat_fd(g_client_info.cfs_client_id, dirfd, cfs_path, flags, mode, fd));
+        } else {
+            fd = cfs_errno(cfs_openat(g_client_info.cfs_client_id, dirfd, cfs_path, flags, mode));
         }
-        fd = libc_openat(libc_fd, pathname, flags, mode);
-        if(fd < 0) {
-            goto log;
-        }
-        fd = cfs_errno(cfs_openat_fd(g_client_info.cfs_client_id, dirfd, cfs_path, flags, mode, fd));
-        #else
-        fd = cfs_errno(cfs_openat(g_client_info.cfs_client_id, dirfd, cfs_path, flags, mode));
-        #endif
         if(fd < 0) {
             goto log;
         }
@@ -246,6 +242,7 @@ int real_openat(int dirfd, const char *pathname, int flags, ...) {
 
 log:
     free(path);
+    free(local_path);
     #if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
     pthread_rwlock_wrlock(&g_client_info.fd_path_lock);
     g_client_info.fd_path[fd_origin] = strdup(pathname);
@@ -270,9 +267,11 @@ int real_renameat2(int olddirfd, const char *old_pathname,
         int newdirfd, const char *new_pathname, unsigned int flags) {
     bool is_cfs_old = false;
     char *old_path = NULL;
+    char *local_old_path = NULL;
     int libc_oldfd = olddirfd;
     if((old_pathname != NULL && old_pathname[0] == '/') || olddirfd == AT_FDCWD) {
         old_path = get_cfs_path(old_pathname);
+        local_old_path = cat_path(g_client_info.replicate_path, old_path);
         is_cfs_old = (old_path != NULL);
     } else {
         is_cfs_old = fd_in_cfs(olddirfd);
@@ -283,9 +282,11 @@ int real_renameat2(int olddirfd, const char *old_pathname,
 
     bool is_cfs_new = false;
     char *new_path = NULL;
+    char *local_new_path = NULL;
     int libc_newfd = newdirfd;
     if((new_pathname != NULL && new_pathname[0] == '/') || newdirfd == AT_FDCWD) {
         new_path = get_cfs_path(new_pathname);
+        local_new_path = cat_path(g_client_info.replicate_path, new_path);
         is_cfs_new = (new_path != NULL);
     } else {
         is_cfs_new = fd_in_cfs(newdirfd);
@@ -307,22 +308,24 @@ int real_renameat2(int olddirfd, const char *old_pathname,
             // other flags unimplemented
             goto log;
         }
-        #ifdef DUP_TO_LOCAL
-        if(libc_oldfd & CFS_FD_MASK) {
-            libc_oldfd = olddirfd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            if(libc_oldfd != AT_FDCWD && libc_oldfd & CFS_FD_MASK) {
+                libc_oldfd = olddirfd;
+            }
+            if(libc_newfd != AT_FDCWD && libc_newfd & CFS_FD_MASK) {
+                libc_newfd = newdirfd;
+            }
+            const char *local_old = (local_old_path != NULL ? local_old_path : old_pathname);
+            const char *local_new = (local_new_path != NULL ? local_new_path : new_pathname);
+            if(g_client_info.has_renameat2) {
+                re = libc_renameat2(libc_oldfd, local_old, libc_newfd, local_new, flags);
+            } else {
+                re = libc_renameat(libc_oldfd, local_old, libc_newfd, local_new);
+            }
+            if(re < 0) {
+                goto log;
+            }
         }
-        if(libc_newfd & CFS_FD_MASK) {
-            libc_newfd = newdirfd;
-        }
-        if(g_client_info.has_renameat2) {
-            re = libc_renameat2(libc_oldfd, old_pathname,libc_newfd, new_pathname, flags);
-        } else {
-            re = libc_renameat(libc_oldfd, old_pathname, libc_newfd, new_pathname);
-        }
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         re = cfs_errno(cfs_renameat(g_client_info.cfs_client_id, olddirfd, cfs_old_path, newdirfd, cfs_new_path));
     } else if(!g_hook || (!is_cfs_old && !is_cfs_new)) {
         if(g_client_info.has_renameat2) {
@@ -335,6 +338,8 @@ int real_renameat2(int olddirfd, const char *old_pathname,
 log:
     free(old_path);
     free(new_path);
+    free(local_old_path);
+    free(local_new_path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, olddirfd:%d, old_pathname:%s, is_cfs_old:%d, newdirfd:%d, new_pathname:%s, is_cfs_new:%d, flags:%#x, re:%d\n", __func__, olddirfd, old_pathname, is_cfs_old, newdirfd, new_pathname, is_cfs_new, flags, re);
     #endif
@@ -345,14 +350,15 @@ int real_truncate(const char *pathname, off_t length) {
     char *path = get_cfs_path(pathname);
     int re;
     if(g_hook && path != NULL) {
-        #ifdef DUP_TO_LOCAL
-        re = libc_truncate(pathname, length);
-        if(re < 0) {
-            goto log;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            char *local_path = cat_path(g_client_info.replicate_path, path);
+            re = libc_truncate(local_path, length);
+            free(local_path);
+            if(re < 0) {
+                goto log;
+            }
         }
-        #endif
         re = cfs_errno(cfs_truncate(g_client_info.cfs_client_id, path, length));
-        // 得到inode，修改size
     } else {
         re = libc_truncate(pathname, length);
     }
@@ -370,19 +376,15 @@ int real_ftruncate(int fd, off_t length) {
         return -1;
     }
     int re = -1;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_ftruncate(fd, length);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_ftruncate(libc_fd, length);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
@@ -403,19 +405,15 @@ log:
 
 int real_fallocate(int fd, int mode, off_t offset, off_t len) {
     int re;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_fallocate(fd, mode, offset, len);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_fallocate(libc_fd, mode, offset, len);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         re = cfs_errno(cfs_fallocate(g_client_info.cfs_client_id, fd, mode, offset, len));
     } else {
         re = libc_fallocate(fd, mode, offset, len);
@@ -432,19 +430,15 @@ log:
 
 int real_posix_fallocate(int fd, off_t offset, off_t len) {
     int re;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_posix_fallocate(fd, offset, len);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_posix_fallocate(libc_fd, offset, len);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         re = cfs_errno(cfs_posix_fallocate(g_client_info.cfs_client_id, fd, offset, len));
     } else {
         re = libc_posix_fallocate(fd, offset, len);
@@ -466,9 +460,10 @@ log:
 int real_mkdirat(int dirfd, const char *pathname, mode_t mode) {
     bool is_cfs = false;
     char *path = NULL;
-    int libc_fd = dirfd;
+    char *local_path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
+        local_path = cat_path(g_client_info.replicate_path, path);
         is_cfs = (path != NULL);
     } else {
         is_cfs = fd_in_cfs(dirfd);
@@ -480,15 +475,12 @@ int real_mkdirat(int dirfd, const char *pathname, mode_t mode) {
     const char *cfs_path = (path == NULL) ? pathname : path;
     int re;
     if(g_hook && is_cfs) {
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = dirfd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_mkdirat(dirfd, local_path != NULL ? local_path : pathname, mode);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_mkdirat(libc_fd, pathname, mode);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         re =cfs_errno(cfs_mkdirsat(g_client_info.cfs_client_id, dirfd, cfs_path, mode));
     } else {
         re = libc_mkdirat(dirfd, pathname, mode);
@@ -496,6 +488,7 @@ int real_mkdirat(int dirfd, const char *pathname, mode_t mode) {
 
 log:
     free(path);
+    free(local_path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, dirfd: %d, pathname:%s, mode:%d, re:%d\n", __func__, is_cfs, dirfd, pathname == NULL ? "" : pathname, mode, re);
     #endif
@@ -506,12 +499,14 @@ int real_rmdir(const char *pathname) {
     char *path = get_cfs_path(pathname);
     int re;
     if(g_hook && path != NULL) {
-        #ifdef DUP_TO_LOCAL
-        re = libc_rmdir(pathname);
-        if(re < 0) {
-            goto log;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            char *local_path = cat_path(g_client_info.replicate_path, path);
+            re = libc_rmdir(local_path);
+            free(local_path);
+            if(re < 0) {
+                goto log;
+            }
         }
-        #endif
         re = cfs_errno(cfs_rmdir(g_client_info.cfs_client_id, path));
     } else {
         re = libc_rmdir(pathname);
@@ -626,13 +621,15 @@ int real_chdir(const char *pathname) {
 
     cfs_path = get_cfs_path(abs_path);
     if(g_hook && cfs_path != NULL) {
-        #ifdef DUP_TO_LOCAL
-        re = libc_chdir(abs_path);
-        if(re < 0) {
-            free(abs_path);
-            goto log;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            char *local_path = cat_path(g_client_info.replicate_path, cfs_path);
+            re = libc_chdir(local_path);
+            free(local_path);
+            if(re < 0) {
+                free(abs_path);
+                goto log;
+            }
         }
-        #endif
         free(abs_path);
         re = cfs_errno(cfs_chdir(g_client_info.cfs_client_id, cfs_path));
         if(re == 0) {
@@ -664,7 +661,6 @@ log:
 int real_fchdir(int fd) {
     int re = -1;
     char *buf;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(!g_hook || !is_cfs) {
         re = libc_fchdir(fd);
@@ -675,15 +671,12 @@ int real_fchdir(int fd) {
     }
 
     fd = get_cfs_fd(fd);
-    #ifdef DUP_TO_LOCAL
-    if(libc_fd & CFS_FD_MASK) {
-        libc_fd = fd;
+    if(strlen(g_client_info.replicate_path) > 0) {
+        re = libc_fchdir(fd);
+        if(re < 0) {
+            goto log;
+        }
     }
-    re = libc_fchdir(libc_fd);
-    if(re < 0) {
-        goto log;
-    }
-    #endif
     buf = (char *) malloc(PATH_MAX);
     re = cfs_errno(cfs_fchdir(g_client_info.cfs_client_id, fd, buf, PATH_MAX));
     if (re == 0) {
@@ -710,8 +703,18 @@ DIR *real_opendir(const char *pathname) {
         free(path);
         return libc_opendir(pathname);
     }
+
     int fd;
-    fd = cfs_openat(g_client_info.cfs_client_id, AT_FDCWD, path, O_RDONLY | O_DIRECTORY, 0);
+    if(strlen(g_client_info.replicate_path) > 0) {
+        char *local_path = cat_path(g_client_info.replicate_path, path);
+        fd = libc_openat(AT_FDCWD, local_path, O_RDONLY | O_DIRECTORY);
+        if(fd < 0) {
+            return NULL;
+        }
+        fd = cfs_errno(cfs_openat_fd(g_client_info.cfs_client_id, AT_FDCWD, path, O_RDONLY | O_DIRECTORY, 0, fd));
+    } else {
+        fd = cfs_errno(cfs_openat(g_client_info.cfs_client_id, AT_FDCWD, path, O_RDONLY | O_DIRECTORY, 0));
+    }
     free(path);
 
     if(fd < 0) {
@@ -841,13 +844,13 @@ int real_closedir(DIR *dirp) {
         return -1;
     }
 
-    bool is_cfs = fd_in_cfs(dirp->fd);
     int re;
-    if(!g_hook || !is_cfs) {
-        re = libc_closedir(dirp);
-    } else {
+    bool is_cfs = fd_in_cfs(dirp->fd);
+    if(g_hook && is_cfs) {
         re = close_cfs_fd(dirp->fd);
         free(dirp);
+    } else {
+        re = libc_closedir(dirp);
     }
     return re;
 }
@@ -934,8 +937,10 @@ int real_linkat(int olddirfd, const char *old_pathname,
            int newdirfd, const char *new_pathname, int flags) {
     bool is_cfs_old = false;
     char *old_path = NULL;
+    char *local_old_path = NULL;
     if((old_pathname != NULL && old_pathname[0] == '/') || olddirfd == AT_FDCWD) {
         old_path = get_cfs_path(old_pathname);
+        local_old_path = cat_path(g_client_info.replicate_path, old_path);
         is_cfs_old = (old_path != NULL);
     } else {
         is_cfs_old = fd_in_cfs(olddirfd);
@@ -946,8 +951,10 @@ int real_linkat(int olddirfd, const char *old_pathname,
 
     bool is_cfs_new = false;
     char *new_path = NULL;
+    char *local_new_path = NULL;
     if((new_pathname != NULL && new_pathname[0] == '/') || newdirfd == AT_FDCWD) {
         new_path = get_cfs_path(new_pathname);
+        local_new_path = cat_path(g_client_info.replicate_path, new_path);
         is_cfs_new = (new_path != NULL);
     } else {
         is_cfs_new = fd_in_cfs(newdirfd);
@@ -960,11 +967,18 @@ int real_linkat(int olddirfd, const char *old_pathname,
     const char *cfs_new_path = (new_path == NULL) ? new_pathname : new_path;
     int re = -1;
     if(g_hook && is_cfs_old && is_cfs_new) {
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_linkat(olddirfd, local_old_path, newdirfd, local_new_path, flags);
+            if(re < 0) {
+                goto log;
+            }
+        }
         re = cfs_errno(cfs_linkat(g_client_info.cfs_client_id, olddirfd, cfs_old_path, newdirfd, cfs_new_path, flags));
     } else if(!g_hook || (!is_cfs_old && !is_cfs_new)) {
         re = libc_linkat(olddirfd, old_pathname, newdirfd, new_pathname, flags);
     }
 
+log:
     free(old_path);
     free(new_path);
     #ifdef _CFS_DEBUG
@@ -979,12 +993,15 @@ int real_symlinkat(const char *target, int dirfd, const char *linkpath) {
         errno = EINVAL;
         return -1;
     }
-    char *t = get_cfs_path(target);
+    char *cfs_target = get_cfs_path(target);
+    char *local_target = NULL;
     bool is_cfs = false;
-    char *path = NULL;
+    char *cfs_linkpath = NULL;
+    char *local_linkpath = NULL;
     if((linkpath != NULL && linkpath[0] == '/') || dirfd == AT_FDCWD) {
-        path = get_cfs_path(linkpath);
-        is_cfs = (path != NULL);
+        cfs_linkpath = get_cfs_path(linkpath);
+        local_linkpath = cat_path(g_client_info.replicate_path, cfs_linkpath);
+        is_cfs = (cfs_linkpath != NULL);
     } else {
         is_cfs = fd_in_cfs(dirfd);
         if(is_cfs)
@@ -992,14 +1009,22 @@ int real_symlinkat(const char *target, int dirfd, const char *linkpath) {
     }
 
     int re = -1;
-    if(g_hook && is_cfs && t != NULL) {
-        re = cfs_errno(cfs_symlinkat(g_client_info.cfs_client_id, t, dirfd, (path == NULL) ? linkpath : path));
+    if(g_hook && is_cfs && cfs_target != NULL) {
+        if(strlen(g_client_info.replicate_path) > 0) {
+            local_target = cat_path(g_client_info.replicate_path, cfs_target);
+            re = libc_symlinkat(local_target, dirfd, local_linkpath);
+            if(re < 0) {
+                goto log;
+            }
+        }
+        re = cfs_errno(cfs_symlinkat(g_client_info.cfs_client_id, cfs_target, dirfd, (cfs_linkpath == NULL) ? linkpath : cfs_linkpath));
     } else if(!g_hook || !is_cfs) {
         re = libc_symlinkat(target, dirfd, linkpath);
     }
 
-    free(t);
-    free(path);
+log:
+    free(cfs_target);
+    free(cfs_linkpath);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, target:%s, dirfd:%d, linkpath:%s, re:%d\n", __func__, target, dirfd, linkpath, re);
     #endif
@@ -1009,9 +1034,10 @@ int real_symlinkat(const char *target, int dirfd, const char *linkpath) {
 int real_unlinkat(int dirfd, const char *pathname, int flags) {
     bool is_cfs = false;
     char *path = NULL;
-    int libc_fd = dirfd;
+    char *local_path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
+        local_path = cat_path(g_client_info.replicate_path, path);
         is_cfs = (path != NULL);
     } else {
         is_cfs = fd_in_cfs(dirfd);
@@ -1022,15 +1048,12 @@ int real_unlinkat(int dirfd, const char *pathname, int flags) {
     const char *cfs_path = (path == NULL) ? pathname : path;
     int re;
     if(g_hook && is_cfs) {
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = dirfd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_unlinkat(dirfd, local_path != NULL ? local_path : pathname, flags);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_unlinkat(libc_fd, pathname, flags);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         re = cfs_errno(cfs_unlinkat(g_client_info.cfs_client_id, dirfd, cfs_path, flags));
     } else {
         re = libc_unlinkat(dirfd, pathname, flags);
@@ -1038,6 +1061,7 @@ int real_unlinkat(int dirfd, const char *pathname, int flags) {
 
 log:
     free(path);
+    free(local_path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, flags:%#x, re:%d\n", __func__, is_cfs, dirfd, pathname, flags, re);
     #endif
@@ -1103,9 +1127,23 @@ int real_stat(int ver, const char *pathname, struct stat *statbuf) {
                 statbuf->st_size = inode_info->size;
             }
         }
+        if(strlen(g_client_info.replicate_path) > 0) {
+            char *local_path = cat_path(g_client_info.replicate_path, path);
+            struct stat statbuf_local;
+            re = libc_stat(ver, local_path, &statbuf_local);
+            free(local_path);
+            if(re < 0) {
+                goto log;
+            }
+            if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, path != NULL, pathname, statbuf->st_size, statbuf_local.st_size);
+            }
+        }
     } else {
         re = libc_stat(ver, pathname, statbuf);
     }
+
+log:
     free(path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
@@ -1124,9 +1162,23 @@ int real_stat64(int ver, const char *pathname, struct stat64 *statbuf) {
                 statbuf->st_size = inode_info->size;
             }
         }
+        if(strlen(g_client_info.replicate_path) > 0) {
+            char *local_path = cat_path(g_client_info.replicate_path, path);
+            struct stat64 statbuf_local;
+            re = libc_stat64(ver, local_path, &statbuf_local);
+            free(local_path);
+            if(re < 0) {
+                goto log;
+            }
+            if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, path != NULL, pathname, statbuf->st_size, statbuf_local.st_size);
+            }
+        }
     } else {
         re = libc_stat64(ver, pathname, statbuf);
     }
+
+log:
     free(path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
@@ -1145,18 +1197,18 @@ int real_lstat(int ver, const char *pathname, struct stat *statbuf) {
                 statbuf->st_size = inode_info->size;
             }
         }
-        #ifdef DUP_TO_LOCAL
-        char *local_path = cat_path(LOCAL_PATH, path);
-        struct stat statbuf_local;
-        re = libc_lstat(ver, local_path, &statbuf_local);
-        free(local_path);
-        if(re < 0) {
-            goto log;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            char *local_path = cat_path(g_client_info.replicate_path, path);
+            struct stat statbuf_local;
+            re = libc_lstat(ver, local_path, &statbuf_local);
+            free(local_path);
+            if(re < 0) {
+                goto log;
+            }
+            if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, path != NULL, pathname, statbuf->st_size, statbuf_local.st_size);
+            }
         }
-        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, path != NULL, pathname, statbuf->st_size, statbuf_local.st_size);
-        }
-        #endif
     } else {
         re = libc_lstat(ver, pathname, statbuf);
     }
@@ -1180,18 +1232,18 @@ int real_lstat64(int ver, const char *pathname, struct stat64 *statbuf) {
                 statbuf->st_size = inode_info->size;
             }
         }
-        #ifdef DUP_TO_LOCAL
-        char *local_path = cat_path(LOCAL_PATH, path);
-        struct stat64 statbuf_local;
-        re = libc_lstat64(ver, local_path, &statbuf_local);
-        free(local_path);
-        if(re < 0) {
-            goto log;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            char *local_path = cat_path(g_client_info.replicate_path, path);
+            struct stat64 statbuf_local;
+            re = libc_lstat64(ver, local_path, &statbuf_local);
+            free(local_path);
+            if(re < 0) {
+                goto log;
+            }
+            if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, path != NULL, pathname, statbuf->st_size, statbuf_local.st_size);
+            }
         }
-        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, path != NULL, pathname, statbuf->st_size, statbuf_local.st_size);
-        }
-        #endif
     } else {
         re = libc_lstat64(ver, pathname, statbuf);
     }
@@ -1216,16 +1268,16 @@ int real_fstat(int ver, int fd, struct stat *statbuf) {
                 statbuf->st_size = inode_info->size;
             }
         }
-        #ifdef DUP_TO_LOCAL
-        struct stat statbuf_local;
-        re = libc_fstat(ver, fd, &statbuf_local);
-        if(re < 0) {
-            goto log;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            struct stat statbuf_local;
+            re = libc_fstat(ver, fd, &statbuf_local);
+            if(re < 0) {
+                goto log;
+            }
+            if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, st_size:%d, st_size_local:%d\n", __func__, is_cfs, fd, statbuf->st_size, statbuf_local.st_size);
+            }
         }
-        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, st_size:%d, st_size_local:%d\n", __func__, is_cfs, fd, statbuf->st_size, statbuf_local.st_size);
-        }
-        #endif
     } else {
         re = libc_fstat(ver, fd, statbuf);
     }
@@ -1249,16 +1301,16 @@ int real_fstat64(int ver, int fd, struct stat64 *statbuf) {
                 statbuf->st_size = inode_info->size;
             }
         }
-        #ifdef DUP_TO_LOCAL
-        struct stat64 statbuf_local;
-        re = libc_fstat64(ver, fd, &statbuf_local);
-        if(re < 0) {
-            goto log;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            struct stat64 statbuf_local;
+            re = libc_fstat64(ver, fd, &statbuf_local);
+            if(re < 0) {
+                goto log;
+            }
+            if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, st_size:%d, st_size_local:%d\n", __func__, is_cfs, fd, statbuf->st_size, statbuf_local.st_size);
+            }
         }
-        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, st_size:%d, st_size_local:%d\n", __func__, is_cfs, fd, statbuf->st_size, statbuf_local.st_size);
-        }
-        #endif
     } else {
         re = libc_fstat64(ver, fd, statbuf);
     }
@@ -1273,8 +1325,10 @@ log:
 int real_fstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf, int flags) {
     bool is_cfs = false;
     char *path = NULL;
+    char *local_path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
+        local_path = cat_path(g_client_info.replicate_path, path);
         is_cfs = (path != NULL);
     } else {
         is_cfs = fd_in_cfs(dirfd);
@@ -1292,39 +1346,36 @@ int real_fstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf,
                 statbuf->st_size = inode_info->size;
             }
         }
-        #ifdef DUP_TO_LOCAL
-        struct stat statbuf_local;
-        if(libc_fd != AT_FDCWD && libc_fd & CFS_FD_MASK) {
-            libc_fd = dirfd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            struct stat statbuf_local;
+            re = libc_fstatat(ver, dirfd, local_path != NULL ? local_path : pathname, &statbuf_local, flags);
+            if(re < 0) {
+                goto log;
+            }
+            if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, dirfd:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, is_cfs, dirfd, pathname, statbuf->st_size, statbuf_local.st_size);
+            }
         }
-        re = libc_fstatat(ver, libc_fd, local_path != NULL ? local_path : pathname, &statbuf_local, flags);
-        if(re < 0) {
-            goto log;
-        }
-        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, dirfd:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, is_cfs, dirfd, pathname, statbuf->st_size, statbuf_local.st_size);
-        }
-        #endif
     } else {
         re = libc_fstatat(ver, dirfd, pathname, statbuf, flags);
     }
 
 log:
     free(path);
+    free(local_path);
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, dirfd:%d, pathname:%s, re:%d\n", __func__, dirfd, pathname, re);
+    log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, re:%d\n", __func__, is_cfs, dirfd, pathname, re);
     #endif
     return re;
 }
 
 int real_fstatat64(int ver, int dirfd, const char *pathname, struct stat64 *statbuf, int flags) {
-    #ifdef _CFS_DEBUG
-    log_debug("hook %s\n", __func__);
-    #endif
     bool is_cfs = false;
     char *path = NULL;
+    char *local_path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
+        local_path = cat_path(g_client_info.replicate_path, path);
         is_cfs = (path != NULL);
     } else {
         is_cfs = fd_in_cfs(dirfd);
@@ -1342,26 +1393,27 @@ int real_fstatat64(int ver, int dirfd, const char *pathname, struct stat64 *stat
                 statbuf->st_size = inode_info->size;
             }
         }
-        #ifdef DUP_TO_LOCAL
-        struct stat64 statbuf_local;
-        if(libc_fd != AT_FDCWD && libc_fd & CFS_FD_MASK) {
-            libc_fd = dirfd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            struct stat64 statbuf_local;
+            re = libc_fstatat64(ver, dirfd, local_path != NULL ? local_path : pathname, &statbuf_local, flags);
+            free(local_path);
+            if(re < 0) {
+                goto log;
+            }
+            if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, dirfd:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, is_cfs, dirfd, pathname, statbuf->st_size, statbuf_local.st_size);
+            }
         }
-        re = libc_fstatat64(ver, libc_fd, local_path != NULL ? local_path : pathname, &statbuf_local, flags);
-        free(local_path);
-        if(re < 0) {
-            goto log;
-        }
-        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, dirfd:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, is_cfs, dirfd, pathname, statbuf->st_size, statbuf_local.st_size);
-        }
-        #endif
     } else {
         re = libc_fstatat64(ver, dirfd, pathname, statbuf, flags);
     }
 
 log:
     free(path);
+    free(local_path);
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, re:%d\n", __func__, is_cfs, dirfd, pathname, re);
+    #endif
     return re;
 }
 
@@ -1545,9 +1597,10 @@ int real_futimens(int fd, const struct timespec times[2]) {
 int real_faccessat(int dirfd, const char *pathname, int mode, int flags) {
     bool is_cfs = false;
     char *path = NULL;
-    int libc_fd = dirfd;
+    char *local_path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
+        local_path = cat_path(g_client_info.replicate_path, path);
         is_cfs = (path != NULL);
     } else {
         is_cfs = fd_in_cfs(dirfd);
@@ -1558,15 +1611,12 @@ int real_faccessat(int dirfd, const char *pathname, int mode, int flags) {
     const char *cfs_path = (path == NULL) ? pathname : path;
     int re;
     if(g_hook && is_cfs) {
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = dirfd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_faccessat(dirfd, local_path != NULL ? local_path : pathname, mode, flags);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_faccessat(libc_fd, pathname, mode, flags);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         re = cfs_errno(cfs_faccessat(g_client_info.cfs_client_id, dirfd, cfs_path, mode, flags));
     } else {
         re = libc_faccessat(dirfd, pathname, mode, flags);
@@ -1727,40 +1777,36 @@ int real_fcntl(int fd, int cmd, ...) {
     void *arg = va_arg(args, void *);
     va_end(args);
 
-    int re, re_old = 0;
-    int libc_fd = fd;
+    int re, newfd = 0;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
-        }
-        re = libc_fcntl(libc_fd, cmd, arg);
-        if(re < 0) {
-            goto log;
-        }
-        if(cmd == F_SETLK || cmd == F_SETLKW) {
-            re = cfs_fcntl_lock(g_client_info.cfs_client_id, fd, cmd, (struct flock *)arg);
-        } else if(cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC) {
-            re_old = re;
-            re = dup_fd(fd, re_old);
-            if(re != re_old) {
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_fcntl(fd, cmd, arg);
+            if(re < 0) {
                 goto log;
             }
+            if(cmd == F_SETLK || cmd == F_SETLKW) {
+                re = cfs_fcntl_lock(g_client_info.cfs_client_id, fd, cmd, (struct flock *)arg);
+            } else if(cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC) {
+                newfd = re;
+                re = dup_fd(fd, newfd);
+                if(re != newfd) {
+                    goto log;
+                }
+            } else {
+                re = cfs_fcntl(g_client_info.cfs_client_id, fd, cmd, (intptr_t)arg);
+            }
         } else {
-            re = cfs_fcntl(g_client_info.cfs_client_id, fd, cmd, (intptr_t)arg);
+            if(cmd == F_SETLK || cmd == F_SETLKW) {
+                re = cfs_fcntl_lock(g_client_info.cfs_client_id, fd, cmd, (struct flock *)arg);
+            } else if(cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC) {
+                int new_fd = gen_fd((long)arg);
+                re = dup_fd(fd, new_fd);
+            } else {
+                re = cfs_fcntl(g_client_info.cfs_client_id, fd, cmd, (intptr_t)arg);
+            }
         }
-        #else
-        if(cmd == F_SETLK || cmd == F_SETLKW) {
-            re = cfs_fcntl_lock(g_client_info.cfs_client_id, fd, cmd, (struct flock *)arg);
-        } else if(cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC) {
-            int new_fd = gen_fd((long)arg);
-            re = dup_fd(fd, new_fd);
-        } else {
-            re = cfs_fcntl(g_client_info.cfs_client_id, fd, cmd, (intptr_t)arg);
-        }
-        #endif
         re = cfs_errno(re);
     } else {
         re = libc_fcntl(fd, cmd, arg);
@@ -1771,21 +1817,14 @@ log:
     ; // labels can only be followed by statements
     map<int, string> cmd_str = {{F_DUPFD, "F_DUPFD"}, {F_DUPFD_CLOEXEC, "F_DUPFD_CLOEXEC"}, {F_GETFD, "F_GETFD"}, {F_SETFD, "F_SETFD"}, {F_GETFL, "F_GETFL"}, {F_SETFL, "F_SETFL"}, {F_SETLK, "F_SETLK"}, {F_GETLK, "F_GETLK"}};
     auto it = cmd_str.find(cmd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, cmd:%d(%s), arg:%u(%s), re:%d, re_old:%d\n", __func__, is_cfs, fd, cmd,
-    it != cmd_str.end() ? it->second.c_str() : "", (intptr_t)arg, (cmd==F_SETFL&&(intptr_t)arg&O_DIRECT)?"O_DIRECT":"", re, re_old);
+    log_debug("hook %s, is_cfs:%d, fd:%d, cmd:%d(%s), arg:%u(%s), re:%d, newfd:%d\n", __func__, is_cfs, fd, cmd,
+    it != cmd_str.end() ? it->second.c_str() : "", (intptr_t)arg, (cmd==F_SETFL&&(intptr_t)arg&O_DIRECT)?"O_DIRECT":"", re, newfd);
     #endif
     return re;
 }
 
 int close_fd(int fd) {
-    int libc_fd = fd;
     if(fd_in_cfs(fd)) {
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = get_cfs_fd(fd);
-        }
-        libc_close(libc_fd);
-        #endif
         return close_cfs_fd(fd);
     }
     return libc_close(fd);
@@ -1793,7 +1832,6 @@ int close_fd(int fd) {
 
 int real_dup(int oldfd) {
     bool is_cfs = fd_in_cfs(oldfd);
-    int libc_fd = oldfd;
     int re = -1;
     if (oldfd < 0) {
         goto log;
@@ -1803,7 +1841,9 @@ int real_dup(int oldfd) {
         oldfd = get_cfs_fd(oldfd);
         re = cfs_errno(cfs_alloc_fd(g_client_info.cfs_client_id));
         if(re > 0) {
-            re = dup_fd(oldfd, re);
+            // the dup fd should be distinct from any libc fd
+            int newfd = re | CFS_FD_MASK;
+            re = dup_fd(oldfd, newfd);
         }
     } else {
         re = libc_dup(oldfd);
@@ -1819,7 +1859,6 @@ log:
 int real_dup2(int oldfd, int newfd) {
     bool is_cfs = fd_in_cfs(oldfd);
     int re = newfd;
-    int libc_fd = oldfd;
     if (newfd == oldfd || newfd < 0)
         goto log;
 
@@ -1828,15 +1867,6 @@ int real_dup2(int oldfd, int newfd) {
 
     if(g_hook && is_cfs) {
         oldfd = get_cfs_fd(oldfd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = oldfd;
-        }
-        re = libc_dup2(libc_fd, newfd);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         re = dup_fd(oldfd, newfd);
     } else {
         re = libc_dup2(oldfd, newfd);
@@ -1852,7 +1882,6 @@ log:
 int real_dup3(int oldfd, int newfd, int flags) {
     bool is_cfs = fd_in_cfs(oldfd);
     int re = newfd;
-    int libc_fd = oldfd;
     if (newfd == oldfd || newfd < 0)
         goto log;
 
@@ -1861,15 +1890,6 @@ int real_dup3(int oldfd, int newfd, int flags) {
 
     if(g_hook && is_cfs) {
         oldfd = get_cfs_fd(oldfd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = oldfd;
-        }
-        re = libc_dup3(libc_fd, newfd, flags);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         re = dup_fd(oldfd, newfd);
     } else {
         re = libc_dup3(oldfd, newfd, flags);
@@ -1965,8 +1985,8 @@ ssize_t real_read(int fd, void *buf, size_t count) {
     size_t size = 0;
     ssize_t re = -1, re_local = 0, re_cache = 0;
 
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
+    char *buf_local = NULL;
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
         file_t *f = get_open_file(fd);
@@ -1974,20 +1994,17 @@ ssize_t real_read(int fd, void *buf, size_t count) {
             goto log;
         }
         offset = f->pos;
-        #ifdef DUP_TO_LOCAL
-        char *buf_local = (char *)malloc(count);
-        if(buf_local == NULL) {
-            re = -1;
-            goto log;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            buf_local = (char *)malloc(count);
+            if(buf_local == NULL) {
+                re = -1;
+                goto log;
+            }
+            if(libc_lseek(fd, offset, SEEK_SET) < 0) {
+                goto log;
+            }
+            re_local = libc_read(fd, buf_local, count);
         }
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
-        }
-        if(libc_lseek(libc_fd, offset, SEEK_SET) < 0) {
-            goto log;
-        }
-        re_local = libc_read(libc_fd, buf_local, count);
-        #endif
         bool hasRefreshed = false;
         size = f->inode_info->size;
         re_cache = read_cache(f->inode_info, offset, count, buf);
@@ -2019,30 +2036,22 @@ ssize_t real_read(int fd, void *buf, size_t count) {
         if(re > 0) {
             f->pos += re;
         }
-        #ifdef DUP_TO_LOCAL
-        // Reading from local and CFS may be concurrent with writing to local and CFS.
-        // There are two conditions in which data read from local and CFS may be different.
-        // 1. read local -> write local -> write CFS -> read CFS
-        // 2. write local -> read local -> read CFS -> write CFS
-        // In contition 2, write CFS may be concurrent with read CFS, resulting in last bytes read being zero.
-        ssize_t min_res = re_local < re ? re_local: re;
-        if(re_local > 0 && re > 0 && memcmp(buf, buf_local, min_res)) {
-            const char *fd_path = get_fd_path(fd);
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re_cfs:%d, re_local:%d\n", __func__, is_cfs, fd, fd_path, count, offset, re, re_local);
-            printf("CFS:\n");
-            for(int i = 0; i < re; i++) {
-                printf("%x ", ((unsigned char*)buf)[i]);
+        if(strlen(g_client_info.replicate_path) > 0) {
+            // Reading from local and CFS may be concurrent with writing to local and CFS.
+            // There are two conditions in which data read from local and CFS may be different.
+            // 1. read local -> write local -> write CFS -> read CFS
+            // 2. write local -> read local -> read CFS -> write CFS
+            // In contition 2, write CFS may be concurrent with read CFS, resulting in last bytes read being zero.
+            ssize_t min_res = re_local < re ? re_local: re;
+            if(re_local > 0 && re > 0 && memcmp(buf, buf_local, min_res)) {
+                const char *fd_path = get_fd_path(fd);
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re_cfs:%d, re_local:%d\n", __func__, is_cfs, fd, fd_path, count, offset, re, re_local);
+                find_diff_data(buf, buf_local, offset, min_res);
+                cfs_flush_log();
+                exit(1);
             }
-            printf("\nlocal:\n");
-            for(int i = 0; i < re_local; i++) {
-                printf("%x ", ((unsigned char*)buf_local)[i]);
-            }
-            printf("\n");
-            cfs_flush_log();
-            exit(1);
+            free(buf_local);
         }
-        free(buf_local);
-        #endif
     } else {
         #ifdef _CFS_DEBUG
         offset = lseek(fd, 0, SEEK_CUR);
@@ -2067,7 +2076,6 @@ ssize_t real_readv(int fd, const struct iovec *iov, int iovcnt) {
     }
     ssize_t re = -1;
     off_t offset;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
@@ -2079,44 +2087,33 @@ ssize_t real_readv(int fd, const struct iovec *iov, int iovcnt) {
         if(re > 0) {
             f->pos += re;
         }
-        #ifdef DUP_TO_LOCAL
-        if(re <= 0) {
-            goto log;
-        }
-        struct iovec iov_local[iovcnt];
-        for(int i = 0; i < iovcnt; i++) {
-            iov_local[i].iov_base = malloc(iov[i].iov_len);
-            iov_local[i].iov_len = iov[i].iov_len;
-        }
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
-        }
-        if(libc_lseek(libc_fd, offset, SEEK_SET) < 0) {
-            goto log;
-        }
-        re = libc_readv(libc_fd, iov_local, iovcnt);
-        if(re <= 0) {
-            goto log;
-        }
-        for(int i = 0; i < iovcnt; i++) {
-            if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
-                const char *fd_path = get_fd_path(fd);
-                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%ld, iovcnt:%d, iov_idx:%d, iov_len:%d\n", __func__, is_cfs, fd, fd_path, offset, iovcnt, i, iov[i].iov_len);
-                printf("CFS:\n");
-                for(int j = 0; j < iov[i].iov_len; j++) {
-                    printf("%x ", ((unsigned char*)iov[i].iov_base)[j]);
-                }
-                printf("\nlocal:\n");
-                for(int j = 0; j < iov[i].iov_len; j++) {
-                    printf("%x ", ((unsigned char*)iov_local[i].iov_base)[j]);
-                }
-                printf("\n");
-                cfs_flush_log();
-                exit(1);
+        if(strlen(g_client_info.replicate_path) > 0) {
+            if(re <= 0) {
+                goto log;
             }
-            free(iov_local[i].iov_base);
+            struct iovec iov_local[iovcnt];
+            for(int i = 0; i < iovcnt; i++) {
+                iov_local[i].iov_base = malloc(iov[i].iov_len);
+                iov_local[i].iov_len = iov[i].iov_len;
+            }
+            if(libc_lseek(fd, offset, SEEK_SET) < 0) {
+                goto log;
+            }
+            re = libc_readv(fd, iov_local, iovcnt);
+            if(re <= 0) {
+                goto log;
+            }
+            for(int i = 0; i < iovcnt; i++) {
+                if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
+                    const char *fd_path = get_fd_path(fd);
+                    log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%ld, iovcnt:%d, iov_idx:%d, iov_len:%d\n", __func__, is_cfs, fd, fd_path, offset, iovcnt, i, iov[i].iov_len);
+                    find_diff_data(iov[i].iov_base, iov_local[i].iov_base, offset, iov[i].iov_len);
+                    cfs_flush_log();
+                    exit(1);
+                }
+                free(iov_local[i].iov_base);
+            }
         }
-        #endif
     } else {
         re = libc_readv(fd, iov, iovcnt);
     }
@@ -2136,21 +2133,18 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
     }
     ssize_t re = -1, re_local = 0, re_cache = 0;
 
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
+    char *buf_local = NULL;
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        char *buf_local = (char *)malloc(count);
-        if(buf_local == NULL) {
-            re = -1;
-            goto log;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            buf_local = (char *)malloc(count);
+            if(buf_local == NULL) {
+                re = -1;
+                goto log;
+            }
+            re_local = libc_pread(fd, buf_local, count, offset);
         }
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
-        }
-        re_local = libc_pread(libc_fd, buf_local, count, offset);
-        #endif
         file_t *f = get_open_file(fd);
         if(f == NULL) {
             goto log;
@@ -2180,25 +2174,17 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
         } else {
             re = re_cache;
         }
-        #ifdef DUP_TO_LOCAL
-        ssize_t min_res = re_local < re ? re_local: re;
-        if(re_local > 0 && re > 0 && memcmp(buf, buf_local, min_res)) {
-            const char *fd_path = get_fd_path(fd);
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re_cfs:%d, re_local:%d\n", __func__, is_cfs, fd, fd_path, count, offset, re, re_local);
-            printf("CFS:\n");
-            for(int i = 0; i < re; i++) {
-                printf("%x ", ((unsigned char*)buf)[i]);
+        if(strlen(g_client_info.replicate_path) > 0) {
+            ssize_t min_res = re_local < re ? re_local: re;
+            if(re_local > 0 && re > 0 && memcmp(buf, buf_local, min_res)) {
+                const char *fd_path = get_fd_path(fd);
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re_cfs:%d, re_local:%d\n", __func__, is_cfs, fd, fd_path, count, offset, re, re_local);
+                find_diff_data(buf, buf_local, offset, min_res);
+                cfs_flush_log();
+                exit(1);
             }
-            printf("\nlocal:\n");
-            for(int i = 0; i < re_local; i++) {
-                printf("%x ", ((unsigned char*)buf_local)[i]);
-            }
-            printf("\n");
-            cfs_flush_log();
-            exit(1);
+            free(buf_local);
         }
-        free(buf_local);
-        #endif
     } else {
         re = libc_pread(fd, buf, count, offset);
     }
@@ -2214,46 +2200,34 @@ log:
 
 ssize_t real_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
     ssize_t re;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
         re = cfs_errno_ssize_t(cfs_preadv(g_client_info.cfs_client_id, fd, iov, iovcnt, offset));
-        #ifdef DUP_TO_LOCAL
-        if(re <= 0) {
-            goto log;
-        }
-        struct iovec iov_local[iovcnt];
-        for(int i = 0; i < iovcnt; i++) {
-            iov_local[i].iov_base = malloc(iov[i].iov_len);
-            iov_local[i].iov_len = iov[i].iov_len;
-        }
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
-        }
-        re = libc_preadv(libc_fd, iov_local, iovcnt, offset);
-        if(re <= 0) {
-            goto log;
-        }
-        for(int i = 0; i < iovcnt; i++) {
-            if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
-                const char *fd_path = get_fd_path(fd);
-                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%ld, iov_idx: %d\n", __func__, is_cfs, fd, fd_path, iovcnt, offset, i);
-                printf("CFS:\n");
-                for(int j = 0; j < iov[i].iov_len; j++) {
-                    printf("%x ", ((unsigned char*)iov[i].iov_base)[j]);
-                }
-                printf("\nlocal:\n");
-                for(int j = 0; j < iov[i].iov_len; j++) {
-                    printf("%x ", ((unsigned char*)iov_local[i].iov_base)[j]);
-                }
-                printf("\n");
-                cfs_flush_log();
-                exit(1);
+        if(strlen(g_client_info.replicate_path) > 0) {
+            if(re <= 0) {
+                goto log;
             }
-            free(iov_local[i].iov_base);
+            struct iovec iov_local[iovcnt];
+            for(int i = 0; i < iovcnt; i++) {
+                iov_local[i].iov_base = malloc(iov[i].iov_len);
+                iov_local[i].iov_len = iov[i].iov_len;
+            }
+            re = libc_preadv(fd, iov_local, iovcnt, offset);
+            if(re <= 0) {
+                goto log;
+            }
+            for(int i = 0; i < iovcnt; i++) {
+                if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
+                    const char *fd_path = get_fd_path(fd);
+                    log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%ld, iov_idx: %d\n", __func__, is_cfs, fd, fd_path, iovcnt, offset, i);
+                    find_diff_data(iov[i].iov_base, iov_local[i].iov_base, offset, iov[i].iov_len);
+                    cfs_flush_log();
+                    exit(1);
+                }
+                free(iov_local[i].iov_base);
+            }
         }
-        #endif
     } else {
         re = libc_preadv(fd, iov, iovcnt, offset);
     }
@@ -2281,19 +2255,15 @@ ssize_t real_write(int fd, const void *buf, size_t count) {
     size_t size = 0;
     ssize_t re = -1, re_cache = 0;
 
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_write(fd, buf, count);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_write(libc_fd, buf, count);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
@@ -2338,19 +2308,15 @@ ssize_t real_writev(int fd, const struct iovec *iov, int iovcnt) {
         return -1;
     }
     ssize_t re = -1;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_writev(fd, iov, iovcnt);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_writev(libc_fd, iov, iovcnt);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
@@ -2386,19 +2352,15 @@ ssize_t real_pwrite(int fd, const void *buf, size_t count, off_t offset) {
     }
     ssize_t re = -1, re_cache = 0;
 
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_pwrite(fd, buf, count, offset);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_pwrite(libc_fd, buf, count, offset);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
@@ -2434,19 +2396,15 @@ ssize_t real_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset) 
         return -1;
     }
     ssize_t re = -1;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_pwritev(fd, iov, iovcnt, offset);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_pwritev(libc_fd, iov, iovcnt, offset);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
@@ -2472,19 +2430,15 @@ off_t real_lseek(int fd, off_t offset, int whence) {
         return -1;
     }
     off_t re = -1, re_cfs = -1;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_lseek(fd, offset, whence);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_lseek(libc_fd, offset, whence);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
@@ -2496,12 +2450,10 @@ off_t real_lseek(int fd, off_t offset, int whence) {
             f->pos = f->inode_info->size + offset;
         }
         re_cfs = f->pos;
-        #ifdef DUP_TO_LOCAL
-        if(re_cfs != re) {
+        if(strlen(g_client_info.replicate_path) > 0 && re_cfs != re) {
             const char *fd_path = get_fd_path(fd);
             log_debug("hook %s, re from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%ld, whence:%d, re:%d, re_cfs:%d\n", __func__, is_cfs, fd, fd_path, offset, whence, re, re_cfs);
         }
-        #endif
         re = re_cfs;
     } else {
         re = libc_lseek(fd, offset, whence);
@@ -2523,8 +2475,9 @@ ssize_t real_sendfile(int out_fd, int in_fd, off_t *offset, size_t count) {
 
     bool is_cfs = fd_in_cfs(in_fd) || fd_in_cfs(out_fd);
     ssize_t re = -1;
+    void *buf = NULL;
     if(g_hook && is_cfs) {
-        void *buf = malloc(count);
+        buf = malloc(count);
         if(buf == NULL) {
             goto log;
         }
@@ -2542,6 +2495,7 @@ ssize_t real_sendfile(int out_fd, int in_fd, off_t *offset, size_t count) {
     }
 
 log:
+    free(buf);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, in_fd:%d, out_fd:%d, offset:%ld, count:%d, re:%d\n", __func__, is_cfs, in_fd, out_fd, offset == NULL ? -1 : *offset, count, re);
     #endif
@@ -2558,19 +2512,15 @@ int real_fdatasync(int fd) {
         return -1;
     }
     int re = -1;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_fdatasync(fd);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_fdatasync(libc_fd);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
@@ -2598,19 +2548,15 @@ int real_fsync(int fd) {
         return -1;
     }
     int re = -1;
-    int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        #ifdef DUP_TO_LOCAL
-        if(libc_fd & CFS_FD_MASK) {
-            libc_fd = fd;
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re = libc_fsync(fd);
+            if(re < 0) {
+                goto log;
+            }
         }
-        re = libc_fsync(libc_fd);
-        if(re < 0) {
-            goto log;
-        }
-        #endif
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
@@ -2824,6 +2770,13 @@ int start_libs(void *args) {
     g_client_info.ignore_path = client_config.ignore_path;
     if(g_client_info.ignore_path == NULL) {
         g_client_info.ignore_path = "";
+    }
+    g_client_info.replicate_path = client_config.replicate_path;
+    if(g_client_info.replicate_path == NULL) {
+        g_client_info.replicate_path = "";
+    }
+    if(strlen(g_client_info.replicate_path) > 0) {
+        #define DUP_TO_LOCAL
     }
 
     mount_point = getenv("CFS_MOUNT_POINT");

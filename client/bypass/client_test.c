@@ -3,6 +3,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -18,8 +19,6 @@
 #define clean_errno() (errno == 0 ? "None" : strerror(errno))
 #define log_error(M, ...) fprintf(stderr, "[ERROR] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, clean_errno(), ##__VA_ARGS__)
 #define assertf(A, M, ...) if(!(A)) {log_error(M, ##__VA_ARGS__); assert(A); }
-
-#define FD_MASK (1 << (sizeof(int)*8 - 2))
 
 void testOp(bool is_cfs, bool ignore, const char *file);
 void testReload();
@@ -96,10 +95,12 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     char cwd[PATH_LEN];      // root for this test
     char dir[PATH_LEN];      // temp dir
     char path[PATH_LEN];     // reame source file
+    char path1[PATH_LEN];    // another file
     char new_path[PATH_LEN]; // rename to file
     memset(cwd, '\0', PATH_LEN);
     memset(dir, '\0', PATH_LEN);
     memset(path, '\0', PATH_LEN);
+    memset(path1, '\0', PATH_LEN);
     memset(new_path, '\0', PATH_LEN);
     const char *tdir = "t";
     const char *new_file = "tmp1234";
@@ -110,24 +111,16 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     } else {
         assertf(getcwd(cwd, PATH_LEN), "getcwd returning NULL");
     }
-    strcat(dir, cwd);
-    strcat(dir, "/");
-    strcat(dir, tdir);
-    strcat(path, dir);
-    strcat(path, "/");
-    strcat(path, file);
-    strcat(new_path, dir);
-    strcat(new_path, "/");
-    strcat(new_path, new_file);
+    sprintf(dir, "%s/%s", cwd, tdir);
+    sprintf(path, "%s/%s", dir, file);
+    sprintf(path1, "%s/%s1", dir, file);
+    sprintf(new_path, "%s/%s", dir, new_file);
 
     #define LEN 2
     char wbuf[LEN] = "a";
     char rbuf[LEN];
     memset(rbuf, '\0', LEN);
-    int fd;
-    int dir_fd;
-    int tmp_fd;
-    int re;
+    int dir_fd, fd, tmp_fd, re;
     ssize_t size;
     off_t off;
 
@@ -145,7 +138,7 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     re = mkdir(dir, 0775);
     assertf(re == 0, "mkdir %s returning %d", dir, re);
     dir_fd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
-    assertf(!ignore && is_cfs ? dir_fd & FD_MASK : dir_fd, "open dir %s returning %d", dir, tmp_fd);
+    assertf(dir_fd > 0, "open dir %s returning %d", dir, dir_fd);
     re = chdir(cwd);
     tmp_dir = getcwd(NULL, 0);
     assertf(re == 0 && !strcmp(cwd, tmp_dir), "chdir %s returning %d %s", cwd, re, tmp_dir);
@@ -165,7 +158,7 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
 
     // readdir operations
     fd = openat(dir_fd, file, O_RDWR | O_CREAT, 0664);
-    assertf(!ignore && is_cfs ? fd & FD_MASK : fd, "openat %s returning %d", path, fd);
+    assertf(fd > 0, "openat %s returning %d", path, fd);
     close(fd);
     fd = openat(dir_fd, file, O_RDWR | O_CREAT | O_EXCL);
     assertf(fd == -1 && errno == EEXIST, "openat %s returning %d", path, fd);
@@ -174,7 +167,7 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     re = closedir(dirp);
     assertf(re == 0, "closedir returning %d", re);
     dir_fd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
-    assertf(!ignore && is_cfs ? dir_fd & FD_MASK : dir_fd, "open dir %s returning %d", dir, tmp_fd);
+    assertf(dir_fd > 0, "open dir %s returning %d", dir, dir_fd);
     dirp = opendir(dir);
     assertf(dirp != NULL, "opendir %s returning NULL", dir);
     struct dirent *dp;
@@ -194,7 +187,7 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
 
     // file operations
     fd = open(file, O_RDWR);
-    assertf(!ignore && is_cfs ? fd & FD_MASK : fd, "open %s returning %d", path, fd);
+    assertf(fd > 0, "open %s returning %d", path, fd);
     re = renameat(dir_fd, file, dir_fd, new_file);
     assertf(re == 0, "renameat firfd %d %s to %s returning %d", dirfd, file, new_file, re);
     tmp_fd = open(path, O_RDONLY);
@@ -216,6 +209,14 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     assertf(size == LEN-1, "write %s to %s at offset %d return %d", wbuf, path, LEN-1, size);
     size = pread(fd, rbuf, LEN-2, LEN);
     assertf(size == LEN-2 && strncmp(wbuf+1, rbuf, LEN-2) == 0, "pread %s from %s at offset %d returning %d", rbuf, path, LEN-1, size);
+
+    // sendfile
+    tmp_fd = open(path1, O_RDWR | O_CREAT, 0664);
+    assertf(tmp_fd > 0, "open %s returning %d", path1, tmp_fd);
+    off = lseek(fd, 0, SEEK_SET);
+    assertf(off == 0, "lseek returning %d", off);
+    size = sendfile(tmp_fd, fd, NULL, LEN-1);
+    assertf(size == LEN-1, "sendfile from %d to %d returning %d", fd, tmp_fd, size);
 
     // file attributes
     // CFS time precision is second, tv_nsec should be 0
@@ -248,10 +249,14 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     assertf(re == 0, "close dir fd %d returning %d", fd, re);
     re = close(fd);
     assertf(re == 0, "close fd %d returning %d", fd, re);
+    re = close(tmp_fd);
+    assertf(re == 0, "close fd %d returning %d", tmp_fd, re);
     re = lseek(fd, 0, SEEK_SET);
     assertf(re < 0, "lseek closed fd %d returning %d", fd, re);
     re = unlink(path);
     assertf(re == 0, "unlink %s returning %d", path, re);
+    re = unlink(path1);
+    assertf(re == 0, "unlink %s returning %d", path1, re);
     tmp_fd = open(path, O_RDONLY);
     assertf(tmp_fd < 0, "open unlinked %s wirt O_RDONLY returning %d", path, tmp_fd);
     re = rmdir(dir);
@@ -266,7 +271,7 @@ void testDup() {
     char *path = "dir";
     char *file = "file1";
     off_t off;
-    int dirfd, fd, newfd1, newfd2, newfd3;
+    int dirfd, dirfd1, fd, newfd1, newfd2, newfd3;
     ssize_t size;
     int res;
 
@@ -286,8 +291,13 @@ void testDup() {
     assertf(res == 0, "mkdir %s returning %d", dir, res);
     dirfd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
     assertf(dirfd > 0, "open dir %s returning %d", dir, dirfd);
-    fd = openat(dirfd, file, O_RDWR | O_CREAT, 0664);
+    dirfd1 = dup2(dirfd, 99);
+    assertf(dirfd1 > 0, "dup2 fd %d returning %d, expect 99", dirfd, dirfd1);
+    res = close(dirfd);
+    assertf(res == 0, "close fd %d returning %d, expect 0", dirfd, res);
+    fd = openat(dirfd1, file, O_RDWR | O_CREAT, 0664);
     assertf(fd > 0, "open %s/dir/file1 returning %d", mount, fd);
+
     size = write(fd, "test", 4);
     assertf(size == 4, "write test to fd returning %d, expect 4", size);
     newfd1 = dup(fd);
@@ -329,7 +339,7 @@ void testDup() {
     size = write(newfd2, "test", 4);
     assertf(size == -1, "write test to close fd returning %d, expect -1", size);
 
-    res = close(dirfd);
+    res = close(dirfd1);
     assertf(res == 0, "close dir returning %d", res);
 
     unlink(filepath);

@@ -28,10 +28,6 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef struct {
     int ignore_sighup;
     int ignore_sigterm;
@@ -281,8 +277,5 @@ static cfs_pwritev_t cfs_pwritev;
 static cfs_lseek_t cfs_lseek;
 static cfs_read_requests_t cfs_read_requests;
 static cfs_refresh_eks_t cfs_refresh_eks;
-#ifdef __cplusplus
-}
-#endif
 
 #endif

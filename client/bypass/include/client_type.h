@@ -40,6 +40,7 @@ typedef struct {
 typedef struct {
      char* mount_point;
      char* ignore_path;
+     char* replicate_path;
      char* log_dir;
      char* log_level;
      char* prof_port;
@@ -70,6 +71,7 @@ typedef struct {
 
     const char *mount_point;
     const char *ignore_path;
+    const char *replicate_path;
     pthread_t bg_pthread;
     void* sdk_handle;
     bool stop;

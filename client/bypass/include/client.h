@@ -161,6 +161,7 @@ int gen_fd(int start);
 file_t *get_open_file(int fd);
 inode_info_t *get_open_inode(ino_t ino);
 const char *get_fd_path(int fd);
+void find_diff_data(void *buf, void *buf_local, off_t offset, ssize_t size);
 void log_debug(const char* message, ...);
 
 #endif

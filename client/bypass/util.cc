@@ -17,6 +17,8 @@ int config_handler(void* user, const char* section,
         pconfig->mount_point = strdup(value);
     } else if (MATCH("", "ignorePath")) {
         pconfig->ignore_path = strdup(value);
+    } else if (MATCH("", "replicatePath")) {
+        pconfig->replicate_path = strdup(value);
     } else if (MATCH("", "logDir")) {
         pconfig->log_dir = strdup(value);
     } else if (MATCH("", "logLevel")) {
@@ -127,7 +129,9 @@ char *cat_path(const char *cwd, const char *pathname) {
         return NULL;
     }
 
-    int len = strlen(cwd) + strlen(pathname) + 2;
+    int len1 = strlen(cwd);
+    int len2 = strlen(pathname);
+    int len = len1 + len2 + 2;
     char *path = (char *)malloc(len);
     if(path == NULL) {
         return NULL;
@@ -135,7 +139,9 @@ char *cat_path(const char *cwd, const char *pathname) {
 
     memset(path, '\0', len);
     strcat(path, cwd);
-    strcat(path, "/");
+    if(len1 > 0 && len2 > 0 && pathname[0] != '/') {
+        strcat(path, "/");
+    }
     strcat(path, pathname);
     return path;
 }
@@ -179,22 +185,20 @@ char *get_cfs_path(const char *pathname) {
         free(real_path);
         return NULL;
     }
-    if(strncmp(real_path, g_client_info.mount_point, len) == 0) {
+    is_cfs = strncmp(real_path, g_client_info.mount_point, len) == 0 && (real_path[len] == '\0' || real_path[len] == '/');
+    if(is_cfs && real_path[len] == '/') {
         if(strlen(g_client_info.ignore_path) > 0) {
             char *token = strtok(ignore_path, ",");
             size_t len_token;
             while(token != NULL) {
                 len_token = strlen(token);
-                if(real_path[len] == '/' && strncmp(real_path+len+1, token, len_token) == 0 &&
+                if(strncmp(real_path+len+1, token, len_token) == 0 &&
                 (real_path[len+1+len_token] == '\0' || real_path[len+1+len_token] == '/')) {
                     is_cfs = false;
                     break;
                 }
-                is_cfs = true;
                 token = strtok(NULL, ",");
             }
-        } else if(real_path[len] == '\0' || real_path[len] == '/') {
-            is_cfs = true;
         }
     }
     free(ignore_path);
@@ -348,6 +352,32 @@ const char *get_fd_path(int fd) {
     const char *path = it != g_client_info.fd_path.end() ? it->second : "";
     pthread_rwlock_unlock(&g_client_info.fd_path_lock);
     return path;
+}
+
+void find_diff_data(void *buf, void *buf_local, off_t offset, ssize_t size) {
+    for(int i = 0; i < size; i++) {
+        if(((unsigned char*)buf)[i] == ((unsigned char*)buf_local)[i]) {
+            continue;
+        }
+        int j;
+        for(j = i; j < size; j++) {
+            if(((unsigned char*)buf)[j] == ((unsigned char*)buf_local)[j]) {
+                break;
+            }
+        }
+        printf("offset:%d-%d\n", offset + i, offset + j - 1);
+        printf("CFS:\n");
+        for(int k = i; k < j; k++) {
+            printf("%x ", ((unsigned char*)buf)[k]);
+        }
+        printf("\nlocal:\n");
+        for(int k = i; k < j; k++) {
+            printf("%x ", ((unsigned char*)buf_local)[k]);
+        }
+        printf("\n");
+        i = j;
+    }
+    printf("\n");
 }
 
 void log_debug(const char* message, ...) {
