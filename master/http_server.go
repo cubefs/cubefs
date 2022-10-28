@@ -314,6 +314,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetConLcNodeNum).
 		HandlerFunc(m.setConLcNodeNum)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetAllLcNodeInfo).
+		HandlerFunc(m.getAllLcNodeInfo)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
