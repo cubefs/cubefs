@@ -3604,6 +3604,25 @@ func (c *Cluster) setMaxConcurrentLcNodes(count uint64) (err error) {
 	return
 }
 
+func (c *Cluster) getAllLcNodeInfo() (rsp *proto.LcNodeInfoResponse, err error) {
+
+	rsp = &proto.LcNodeInfoResponse{
+		MaxConcurrentLcNodeNum: int(c.cfg.MaxConcurrentLcNodes),
+		RunningLcNodeNum:       c.lcNodeCount(),
+		Infos:                  make([]*proto.LcNodeStatInfo, 0),
+	}
+
+	c.lcMgr.lcNodes.Range(func(addr, value interface{}) bool {
+		ln := &proto.LcNodeStatInfo{
+			Addr: addr.(string),
+			Busy: c.lcMgr.lnStates.IsNodeBusy(addr.(string)),
+		}
+		rsp.Infos = append(rsp.Infos, ln)
+		return true
+	})
+	return
+}
+
 func (c *Cluster) clearVols() {
 	c.volMutex.Lock()
 	defer c.volMutex.Unlock()

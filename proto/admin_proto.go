@@ -81,7 +81,8 @@ const (
 	AdminSetDpDiscard                         = "/admin/setDpDiscard"
 	AdminGetDiscardDp                         = "/admin/getDiscardDp"
 
-	AdminSetConLcNodeNum = "/admin/setConLcNodeNum"
+	AdminSetConLcNodeNum  = "/admin/setConLcNodeNum"
+	AdminGetAllLcNodeInfo = "/admin/getAllLcNodeInfo"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -652,6 +653,17 @@ type LcNodeHeartbeatResponse struct {
 
 func (r *LcNodeHeartbeatResponse) IsLcNodeIdle() bool {
 	return len(r.S3ScanningTasks) == 0 && len(r.SnapshotScanningTasks) == 0
+}
+
+type LcNodeStatInfo struct {
+	Addr string
+	Busy bool
+}
+
+type LcNodeInfoResponse struct {
+	MaxConcurrentLcNodeNum int
+	RunningLcNodeNum       int
+	Infos                  []*LcNodeStatInfo
 }
 
 // DeleteFileRequest defines the request to delete a file.
