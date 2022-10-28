@@ -44,7 +44,6 @@ type Cluster struct {
 	badPartitionMutex   sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
 	leaderInfo          *LeaderInfo
 	cfg                 *clusterConfig
-	retainLogs          uint64
 	idAlloc             *IDAllocator
 	t                   *topology
 	dataNodeStatInfo    *nodeStatInfo
