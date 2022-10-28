@@ -341,7 +341,6 @@ func (m *Server) initFsm() {
 
 func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
-	m.cluster.retainLogs = m.retainLogs
 }
 
 func (m *Server) initUser() {
