@@ -4835,6 +4835,19 @@ func (m *Server) setConLcNodeNum(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set MaxConcurrentLcNodes to %v successfully", count)))
 }
 
+func (m *Server) getAllLcNodeInfo(w http.ResponseWriter, r *http.Request) {
+
+	var (
+		rsp *proto.LcNodeInfoResponse
+		err error
+	)
+	if rsp, err = m.cluster.getAllLcNodeInfo(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(rsp))
+}
+
 // handle tasks such as heartbeat，expiration scanning, etc.
 func (m *Server) handleLcNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	tr, err := parseRequestToGetTaskResponse(r)
