@@ -84,6 +84,15 @@ func (ns *nodesState) addTaskToNode(info lcnodeTaskInfo, nodeAddr string) {
 
 }
 
+func (ns *nodesState) IsNodeBusy(nodeAddr string) bool {
+	ns.RLock()
+	defer ns.RUnlock()
+	var working, idle bool
+	_, working = ns.workingNodes[nodeAddr]
+	_, idle = ns.idleNodes[nodeAddr]
+	return working && !idle
+}
+
 //func (ns *nodesState) AddTaskToNode(info *proto.S3ScanTaskInfo, maxConcurrentLcNodes uint64) (nodeAddr string, err error) {
 func (ns *nodesState) AddTaskToNode(info lcnodeTaskInfo, maxConcurrentLcNodes uint64) (nodeAddr string, err error) {
 	ns.Lock()

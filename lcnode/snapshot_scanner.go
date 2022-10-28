@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+const (
+	//snap scan type
+	SnapScanTypeAll       int = 0
+	SnapScanTypeOnlyFile  int = 1
+	SnapScanTypeOnlyDepth int = 2
+)
+
 type SnapshotScanner struct {
 	ID          string
 	Volume      string
@@ -71,8 +78,22 @@ func (s *SnapshotScanner) Stop() {
 }
 
 func (s *SnapshotScanner) Start() (err error) {
+	//1. first delete all files
+	if err = s.startScan(SnapScanTypeOnlyFile, true, false); err != nil {
+		return err
+	}
+	log.LogDebugf("startScan: first round files done!")
+	//2. depth first delete all dirs
+	if err = s.startScan(SnapScanTypeOnlyDepth, false, true); err != nil {
+		return err
+	}
+	log.LogDebugf("startScan: second round dirs done!")
+	return
+}
+
+func (s *SnapshotScanner) startScan(scanType int, syncWait bool, report bool) (err error) {
 	response := s.adminTask.Response.(*proto.SnapshotVerDelTaskResponse)
-	go s.scan()
+	go s.scan(scanType)
 
 	prefixDentry := &proto.ScanDentry{
 		Inode: proto.RootIno,
@@ -80,30 +101,44 @@ func (s *SnapshotScanner) Start() (err error) {
 	}
 	t := time.Now()
 	response.StartTime = &t
-	log.LogDebugf("startScan: first dir entry(%v) in!", prefixDentry)
+	log.LogDebugf("startScan: scan type(%v), first dir entry(%v) in!", scanType, prefixDentry)
 	s.inodeChan.In <- prefixDentry
 
-	go s.checkScanning()
+	if syncWait {
+		s.checkScanning(report)
+	} else {
+		go s.checkScanning(report)
+	}
+
 	return
 }
 
-func (s *SnapshotScanner) getDirJob(dentry *proto.ScanDentry) (job func()) {
+func (s *SnapshotScanner) getDirJob(dentry *proto.ScanDentry, scanType int) (job func()) {
 	//no need to lock
+
+	if scanType == SnapScanTypeOnlyDepth {
+		log.LogDebugf("getDirJob: Only depth first job ")
+		job = func() {
+			s.handlVerDelDepthFirst(dentry, scanType)
+		}
+		return
+	}
+
 	if s.inodeChan.Len()+snapShotRoutingNumPerTask > defaultMaxChanUnm {
 		log.LogDebugf("getDirJob: Depth first job")
 		job = func() {
-			s.handlVerDelDepthFirst(dentry)
+			s.handlVerDelDepthFirst(dentry, scanType)
 		}
 	} else {
 		log.LogDebugf("getDirJob: Breadth first job")
 		job = func() {
-			s.handlVerDel(dentry)
+			s.handlVerDel(dentry, scanType)
 		}
 	}
 	return
 }
 
-func (s *SnapshotScanner) scan() {
+func (s *SnapshotScanner) scan(scanType int) {
 	log.LogDebugf("Enter scan")
 	defer func() {
 		log.LogDebugf("Exit scan")
@@ -117,7 +152,7 @@ func (s *SnapshotScanner) scan() {
 				log.LogWarnf("inodeChan closed")
 			} else {
 				dentry := val.(*proto.ScanDentry)
-				job := s.getDirJob(dentry)
+				job := s.getDirJob(dentry, scanType)
 				_, err := s.rPoll.Submit(job)
 				if err != nil {
 					log.LogErrorf("handlVerDel failed, err(%v)", err)
@@ -127,7 +162,7 @@ func (s *SnapshotScanner) scan() {
 	}
 }
 
-func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
+func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry, scanType int) {
 	var (
 		children []proto.Dentry
 		ino      *proto.InodeInfo
@@ -208,7 +243,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 			}
 			//scanDentries = scanDentries[:0]
 			for _, dir := range dirs {
-				s.handlVerDelDepthFirst(dir)
+				s.handlVerDelDepthFirst(dir, scanType)
 			}
 
 			childrenNr := len(children)
@@ -224,21 +259,24 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 
 	}
 
-	if ino, err = s.mw.Delete_Ver_ll(dentry.ParentId, dentry.Name, false, s.getTaskVerSeq()); err != nil {
-		if dentry.ParentId >= 1 {
-			log.LogErrorf("action[handlVerDelDepthFirst] Delete_Ver_ll failed, dir(parent[%v] child name[%v]) verSeq[%v] err[%v]",
-				dentry.ParentId, dentry.Name, s.getTaskVerSeq(), err)
-			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+	if scanType != SnapScanTypeOnlyFile {
+		if ino, err = s.mw.Delete_Ver_ll(dentry.ParentId, dentry.Name, false, s.getTaskVerSeq()); err != nil {
+			if dentry.ParentId >= 1 {
+				log.LogErrorf("action[handlVerDelDepthFirst] Delete_Ver_ll failed, dir(parent[%v] child name[%v]) verSeq[%v] err[%v]",
+					dentry.ParentId, dentry.Name, s.getTaskVerSeq(), err)
+				atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			}
+		} else {
+			log.LogDebugf("action[handlVerDelDepthFirst] Delete_Ver_ll success, dir(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
+				dentry.ParentId, dentry.Name, s.getTaskVerSeq(), ino)
+			atomic.AddInt64(&s.currentStat.DirNum, 1)
+			atomic.AddInt64(&s.currentStat.TotalInodeNum, 1)
 		}
-	} else {
-		log.LogDebugf("action[handlVerDelDepthFirst] Delete_Ver_ll success, dir(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
-			dentry.ParentId, dentry.Name, s.getTaskVerSeq(), ino)
-		atomic.AddInt64(&s.currentStat.DirNum, 1)
-		atomic.AddInt64(&s.currentStat.TotalInodeNum, 1)
 	}
+
 }
 
-func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
+func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry, scanType int) {
 	var (
 		children []proto.Dentry
 		ino      *proto.InodeInfo
@@ -332,17 +370,19 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 
 	}
 
-	if ino, err = s.mw.Delete_Ver_ll(dentry.ParentId, dentry.Name, os.FileMode(dentry.Type).IsDir(), s.getTaskVerSeq()); err != nil {
-		if dentry.ParentId >= 1 {
-			log.LogErrorf("action[handlVerDel] Delete_Ver_ll failed, dir(parent[%v] child name[%v]) verSeq[%v] err[%v]",
-				dentry.ParentId, dentry.Name, s.getTaskVerSeq(), err)
-			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+	if scanType != SnapScanTypeOnlyFile {
+		if ino, err = s.mw.Delete_Ver_ll(dentry.ParentId, dentry.Name, os.FileMode(dentry.Type).IsDir(), s.getTaskVerSeq()); err != nil {
+			if dentry.ParentId >= 1 {
+				log.LogErrorf("action[handlVerDel] Delete_Ver_ll failed, dir(parent[%v] child name[%v]) verSeq[%v] err[%v]",
+					dentry.ParentId, dentry.Name, s.getTaskVerSeq(), err)
+				atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			}
+		} else {
+			log.LogDebugf("action[handlVerDel] Delete_Ver_ll success, dir(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
+				dentry.ParentId, dentry.Name, s.getTaskVerSeq(), ino)
+			atomic.AddInt64(&s.currentStat.DirNum, 1)
+			atomic.AddInt64(&s.currentStat.TotalInodeNum, 1)
 		}
-	} else {
-		log.LogDebugf("action[handlVerDel] Delete_Ver_ll success, dir(parent[%v] child name[%v]) verSeq[%v] ino[%v]",
-			dentry.ParentId, dentry.Name, s.getTaskVerSeq(), ino)
-		atomic.AddInt64(&s.currentStat.DirNum, 1)
-		atomic.AddInt64(&s.currentStat.TotalInodeNum, 1)
 	}
 
 }
@@ -352,7 +392,7 @@ func (s *SnapshotScanner) DoneScanning() bool {
 	return s.inodeChan.Len() == 0 && s.rPoll.RunningNum() == 0
 }
 
-func (s *SnapshotScanner) checkScanning() {
+func (s *SnapshotScanner) checkScanning(report bool) {
 	dur := time.Second * time.Duration(scanCheckInterval)
 	taskCheckTimer := time.NewTimer(dur)
 	for {
@@ -363,25 +403,28 @@ func (s *SnapshotScanner) checkScanning() {
 		case <-taskCheckTimer.C:
 			if s.DoneScanning() {
 				taskCheckTimer.Stop()
-				t := time.Now()
-				response := s.adminTask.Response.(*proto.SnapshotVerDelTaskResponse)
-				response.EndTime = &t
-				response.Status = proto.TaskSucceeds
-				response.Done = true
-				response.ID = s.ID
-				response.VolName = s.getTaskVolName()
-				response.VerSeq = s.getTaskVerSeq()
-				response.FileNum = s.currentStat.FileNum
-				response.DirNum = s.currentStat.DirNum
-				response.TotalInodeNum = s.currentStat.TotalInodeNum
-				response.ErrorSkippedNum = s.currentStat.ErrorSkippedNum
-				s.lcnode.scannerMutex.Lock()
-				delete(s.lcnode.snapshotScanners, s.ID)
-				s.Stop()
-				s.lcnode.scannerMutex.Unlock()
+				if report {
+					t := time.Now()
+					response := s.adminTask.Response.(*proto.SnapshotVerDelTaskResponse)
+					response.EndTime = &t
+					response.Status = proto.TaskSucceeds
+					response.Done = true
+					response.ID = s.ID
+					response.VolName = s.getTaskVolName()
+					response.VerSeq = s.getTaskVerSeq()
+					response.FileNum = s.currentStat.FileNum
+					response.DirNum = s.currentStat.DirNum
+					response.TotalInodeNum = s.currentStat.TotalInodeNum
+					response.ErrorSkippedNum = s.currentStat.ErrorSkippedNum
+					s.lcnode.scannerMutex.Lock()
+					delete(s.lcnode.snapshotScanners, s.ID)
+					s.Stop()
+					s.lcnode.scannerMutex.Unlock()
 
-				s.lcnode.respondToMaster(s.adminTask)
-				log.LogInfof("scan completed for task(%v)", s.adminTask)
+					s.lcnode.respondToMaster(s.adminTask)
+					log.LogInfof("scan completed for task(%v)", s.adminTask)
+				}
+
 				return
 			}
 			taskCheckTimer.Reset(dur)
