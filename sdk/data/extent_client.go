@@ -25,7 +25,6 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -469,7 +468,7 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	s.UpdateExpiredExtentCache(ctx)
 
 	read, hasHole, err = s.read(ctx, data, offset, size)
-	if err != nil && strings.Contains(err.Error(), storage.ExtentNotFoundError.Error()) {
+	if err != nil && strings.Contains(err.Error(), proto.ExtentNotFoundError.Error()) {
 		if !s.extents.IsExpired(1) {
 			return
 		}
@@ -695,8 +694,8 @@ func (c *ExtentClient) BackgroundExtentMerge() {
 			}
 			for _, inode := range inodes {
 				var (
-					finish 	bool
-					err		error
+					finish bool
+					err    error
 				)
 				c.OpenStream(inode, false, false)
 				for !finish {

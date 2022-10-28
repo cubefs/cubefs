@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -1172,7 +1171,7 @@ func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 	preEk := s.extents.Pre(uint64(offset))
 	if preEk == nil ||
 		s.dirtylist.Len() != 0 ||
-		storage.IsTinyExtent(preEk.ExtentId) ||
+		proto.IsTinyExtent(preEk.ExtentId) ||
 		preEk.FileOffset+uint64(preEk.Size) != uint64(offset) ||
 		int(preEk.Size)+int(preEk.ExtentOffset)+size > s.extentSize {
 		return false

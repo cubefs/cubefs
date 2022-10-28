@@ -95,10 +95,12 @@ var (
 	ErrHBaseOperation                  = errors.New("hbase operation error")
 	ErrCompactTagUnknow                = errors.New("compact tag unknow")
 	ErrCompactTagForbidden             = errors.New("compact tag forbidden")
-	ErrCompactTagOpened             = errors.New("compact cannot be opened when force row is closed, Please open force row first")
+	ErrCompactTagOpened                = errors.New("compact cannot be opened when force row is closed, Please open force row first")
 
 	ErrOperationDisabled = errors.New("operation have been disabled")
 	ErrVolInCreation     = errors.New("vol is in creation")
+
+	ExtentNotFoundError = errors.New("extent does not exist")
 )
 
 // http response error code and error message definitions
