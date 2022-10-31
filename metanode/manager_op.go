@@ -2452,6 +2452,7 @@ func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet,
 		}
 		opAgain bool
 	)
+	log.LogDebugf("action[opMultiVersionOp] volume %v op %v", req.VolumeID, req.Op)
 
 	go func() {
 		start := time.Now()
@@ -2472,7 +2473,7 @@ func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet,
 
 		if req.Op == proto.CreateVersionPrepare {
 			if err, opAgain = m.prepareCreateVersion(req); err != nil || opAgain {
-				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err.Error())
+				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err)
 				goto end
 			}
 		} else if req.Op == proto.CreateVersionCommit || req.Op == proto.DeleteVersion {
