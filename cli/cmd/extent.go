@@ -160,7 +160,7 @@ func newExtentGetCmd() *cobra.Command {
 			fmt.Printf("%-30v: %v\n", "Extent", extentID)
 			fmt.Printf("%-30v: %v\n", "Hosts", strings.Join(dp.Hosts, ","))
 			fmt.Println()
-			if storage.IsTinyExtent(extentID) {
+			if proto.IsTinyExtent(extentID) {
 				stdout("%v\n", formatTinyExtentTableHeader())
 			} else {
 				stdout("%v\n", formatNormalExtentTableHeader())
@@ -176,7 +176,7 @@ func newExtentGetCmd() *cobra.Command {
 					continue
 				}
 				md5Sum, _ := dataClient.ComputeExtentMd5(partitionID, extentID, 0, extent[proto.ExtentInfoSize]-uint64(proto.PageSize))
-				if storage.IsTinyExtent(extentID) {
+				if proto.IsTinyExtent(extentID) {
 					extentHoles, _ := dataClient.GetExtentHoles(partitionID, extentID)
 					stdout("%v\n", formatTinyExtent(r, extent, extentHoles, md5Sum))
 				} else {
@@ -191,7 +191,7 @@ func newExtentGetCmd() *cobra.Command {
 			}
 			blockSize := 128
 			var wrongBlocks []int
-			if !storage.IsTinyExtent(extentID) {
+			if !proto.IsTinyExtent(extentID) {
 				stdout("wrongBlocks:\n")
 				if wrongBlocks, err = checkExtentBlockCrc(dp.Replicas, client, partitionID, extentID); err != nil {
 					stdout("err: %v", err)
@@ -1173,7 +1173,7 @@ func idExist(id uint64, ids []uint64) bool {
 }
 
 func checkExtentReplicaInfo(c *sdk.MasterClient, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string, checkType int, rCh chan RepairExtentInfo) (err error) {
-	if storage.IsTinyExtent(ek.ExtentId) {
+	if proto.IsTinyExtent(ek.ExtentId) {
 		checkTinyExtentReplicaInfo(c, dataReplicas, ek, ino, volume, rCh)
 	} else {
 		checkNormalExtentReplicaInfo(c, dataReplicas, ek, ino, volume, checkType, rCh)
@@ -1345,11 +1345,11 @@ func checkInode(vol string, c *sdk.MasterClient, inode uint64, checkedExtent *sy
 		if len(ids) > 0 && !idExist(ek.PartitionId, ids) {
 			continue
 		}
-		if tinyOnly && storage.IsTinyExtent(ek.ExtentId) {
+		if tinyOnly && proto.IsTinyExtent(ek.ExtentId) {
 			extentCount++
 			continue
 		}
-		if !tinyOnly && !storage.IsTinyExtent(ek.ExtentId) {
+		if !tinyOnly && !proto.IsTinyExtent(ek.ExtentId) {
 			extentCount++
 		}
 	}
@@ -1359,11 +1359,11 @@ func checkInode(vol string, c *sdk.MasterClient, inode uint64, checkedExtent *sy
 			if len(ids) > 0 && !idExist(ek.PartitionId, ids) {
 				continue
 			}
-			if tinyOnly && storage.IsTinyExtent(ek.ExtentId) {
+			if tinyOnly && proto.IsTinyExtent(ek.ExtentId) {
 				ekCh <- ek
 				continue
 			}
-			if !tinyOnly && !storage.IsTinyExtent(ek.ExtentId) {
+			if !tinyOnly && !proto.IsTinyExtent(ek.ExtentId) {
 				ekCh <- ek
 			}
 		}
@@ -1515,7 +1515,7 @@ func checkExtentReplica(c *sdk.MasterClient, dataReplicas []*proto.DataReplica, 
 			extentMd5orCrc = fmt.Sprintf("%v", extentInfo[proto.ExtentInfoCrc])
 		case "md5":
 			var size uint64
-			if storage.IsTinyExtent(ek.ExtentId) {
+			if proto.IsTinyExtent(ek.ExtentId) {
 				var extent *proto.ExtentInfoBlock
 				extent, err = dataClient.GetExtentInfo(ek.PartitionId, ek.ExtentId)
 				if err != nil {
@@ -1727,7 +1727,7 @@ func validateDataPartitionTinyExtentCrc(dataPartition *proto.DataPartitionRespon
 	extentReplicaHostSizeMap := make(map[uint64]map[string]uint64, 0)
 	for replicaHost, partition := range dpReplicaInfos {
 		for _, extentInfo := range partition.Files {
-			if !storage.IsTinyExtent(extentInfo[storage.FileID]) {
+			if !proto.IsTinyExtent(extentInfo[storage.FileID]) {
 				continue
 			}
 			replicaSizeMap, ok := extentReplicaHostSizeMap[extentInfo[storage.FileID]]

@@ -126,9 +126,8 @@ func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, 
 	return
 }
 
-
 func (dp *DataPartition) getLocalExtentInfoForValidateCRC() (extents []storage.ExtentInfoBlock, err error) {
-	if !dp.ExtentStore().IsFinishLoad(){
+	if !dp.ExtentStore().IsFinishLoad() {
 		err = storage.PartitionIsLoaddingErr
 		return
 	}
@@ -222,7 +221,7 @@ func (dp *DataPartition) validateCRC(validateCRCTasks []*DataPartitionValidateCR
 			extentReplicaInfos = append(extentReplicaInfos, extentInfo)
 			extentReplicaSource[len(extentReplicaInfos)-1] = validateCRCTasks[i].Source
 		}
-		if storage.IsTinyExtent(extentID) {
+		if proto.IsTinyExtent(extentID) {
 			extentCrcInfo, crcNotEqual = dp.checkTinyExtentFile(extentReplicaInfos, extentReplicaSource)
 		} else {
 			extentCrcInfo, crcNotEqual = dp.checkNormalExtentFile(extentReplicaInfos, extentReplicaSource)

@@ -310,7 +310,7 @@ func (ecp *EcPartition) Read(ctx context.Context, extentId uint64, data []byte, 
 	var reader *dataSdk.ExtentReader
 	var readFunc readFunc
 	reader = dataSdk.NewExtentReader(0, ek, partition, true, false)
-	if storage.IsTinyExtent(extentId) {
+	if proto.IsTinyExtent(extentId) {
 		readFunc = reader.EcTinyExtentRead
 	} else {
 		readFunc = reader.Read

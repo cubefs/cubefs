@@ -7,7 +7,6 @@ import (
 	"github.com/chubaofs/chubaofs/ecstorage"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/ec"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -73,7 +72,7 @@ func (ee *ecStripe) repairReadStripeUnitData(readNodeAddr string, offset, curRea
 
 	// read from node
 	request := repl.NewExtentStripeRead(ee.partitionId, ee.extentID, offset, curReadSize)
-	if storage.IsTinyExtent(ee.extentID) {
+	if proto.IsTinyExtent(ee.extentID) {
 		request.Opcode = proto.OpEcTinyRepairRead
 	}
 

@@ -16,7 +16,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/storage"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"sort"
 	"strconv"
@@ -55,7 +55,7 @@ func (partition *DataPartition) doValidateCRC(liveReplicas []*DataReplica, clust
 		if err != nil {
 			continue
 		}
-		if storage.IsTinyExtent(extentID) {
+		if proto.IsTinyExtent(extentID) {
 			partition.checkTinyExtentFile(fc, liveReplicas, clusterID)
 		} else {
 			partition.checkExtentFile(fc, liveReplicas, clusterID)

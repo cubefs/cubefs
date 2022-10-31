@@ -61,32 +61,31 @@ type rndWrtOpItem struct {
 //  +------+----+------+------+------+------+------+
 
 const (
-	BinaryMarshalMagicVersion = 0xFF
+	BinaryMarshalMagicVersion        = 0xFF
 	RandomWriteRaftLogMagicVersionV3 = 0xF3
-	MaxRandomWriteOpItemPoolSize=32
+	MaxRandomWriteOpItemPoolSize     = 32
 )
 
 func MarshalRandWriteRaftLogV3(opcode uint8, extentID uint64, offset, size int64, data []byte, crc uint32) (result []byte, err error) {
-	if len(data)<proto.RandomWriteRaftLogV3HeaderSize{
-		return nil,fmt.Errorf("data too low for MarshalRandWriteRaftLogV3(%v)",len(data))
+	if len(data) < proto.RandomWriteRaftLogV3HeaderSize {
+		return nil, fmt.Errorf("data too low for MarshalRandWriteRaftLogV3(%v)", len(data))
 	}
 	var index int
-	binary.BigEndian.PutUint32(data[index:index+4],uint32(RandomWriteRaftLogMagicVersionV3))
-	index+=4
-	data[index]=opcode
-	index+=1
-	binary.BigEndian.PutUint64(data[index:index+8],extentID)
-	index+=8
-	binary.BigEndian.PutUint64(data[index:index+8],uint64(offset))
-	index+=8
-	binary.BigEndian.PutUint64(data[index:index+8],uint64(size))
-	index+=8
-	binary.BigEndian.PutUint32(data[index:index+4],uint32(crc))
-	index+=4
-	result=data
+	binary.BigEndian.PutUint32(data[index:index+4], uint32(RandomWriteRaftLogMagicVersionV3))
+	index += 4
+	data[index] = opcode
+	index += 1
+	binary.BigEndian.PutUint64(data[index:index+8], extentID)
+	index += 8
+	binary.BigEndian.PutUint64(data[index:index+8], uint64(offset))
+	index += 8
+	binary.BigEndian.PutUint64(data[index:index+8], uint64(size))
+	index += 8
+	binary.BigEndian.PutUint32(data[index:index+4], uint32(crc))
+	index += 4
+	result = data
 	return
 }
-
 
 func MarshalRandWriteRaftLog(opcode uint8, extentID uint64, offset, size int64, data []byte, crc uint32) (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
@@ -120,10 +119,10 @@ var (
 	RandomWriteOpItemPool [MaxRandomWriteOpItemPoolSize]*sync.Pool
 )
 
-func init(){
+func init() {
 	rand.Seed(time.Now().UnixNano())
-	for i:=0;i<MaxRandomWriteOpItemPoolSize;i++{
-		RandomWriteOpItemPool[i]=&sync.Pool{
+	for i := 0; i < MaxRandomWriteOpItemPoolSize; i++ {
+		RandomWriteOpItemPool[i] = &sync.Pool{
 			New: func() interface{} {
 				return new(rndWrtOpItem)
 			},
@@ -131,37 +130,36 @@ func init(){
 	}
 }
 
-func GetRandomWriteOpItem()(item *rndWrtOpItem) {
-	magic:=rand.Intn(MaxRandomWriteOpItemPoolSize)
-	item=RandomWriteOpItemPool[magic].Get().(*rndWrtOpItem)
-	item.magic=magic
-	item.size=0
-	item.crc=0
-	item.offset=0
-	item.extentID=0
-	item.opcode=0
-	item.data=nil
+func GetRandomWriteOpItem() (item *rndWrtOpItem) {
+	magic := rand.Intn(MaxRandomWriteOpItemPoolSize)
+	item = RandomWriteOpItemPool[magic].Get().(*rndWrtOpItem)
+	item.magic = magic
+	item.size = 0
+	item.crc = 0
+	item.offset = 0
+	item.extentID = 0
+	item.opcode = 0
+	item.data = nil
 	return
 }
 
-func PutRandomWriteOpItem(item *rndWrtOpItem){
-	if item==nil || item.magic==0 {
+func PutRandomWriteOpItem(item *rndWrtOpItem) {
+	if item == nil || item.magic == 0 {
 		return
 	}
-	item.size=0
-	item.crc=0
-	item.offset=0
-	item.extentID=0
-	item.opcode=0
-	item.data=nil
+	item.size = 0
+	item.crc = 0
+	item.offset = 0
+	item.extentID = 0
+	item.opcode = 0
+	item.data = nil
 	RandomWriteOpItemPool[item.magic].Put(item)
 }
-
 
 // RandomWriteSubmit submits the proposal to raft.
 func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 	var index int
-	version:=binary.BigEndian.Uint32(raw[index:index+4])
+	version := binary.BigEndian.Uint32(raw[index : index+4])
 	//index+=4
 	//if version==RandomWriteRaftLogMagicVersionV3{
 	//	return BinaryUnmarshalRandWriteRaftLogV3(raw)
@@ -199,38 +197,36 @@ func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 	return
 }
 
-
 // RandomWriteSubmit submits the proposal to raft.
 func BinaryUnmarshalRandWriteRaftLogV3(raw []byte) (opItem *rndWrtOpItem, err error) {
 	opItem = GetRandomWriteOpItem()
 	var index int
-	if len(raw)<proto.RandomWriteRaftLogV3HeaderSize{
-		err=fmt.Errorf("unavali RandomWriteRaftlog Header, raw len(%v)",len(raw))
+	if len(raw) < proto.RandomWriteRaftLogV3HeaderSize {
+		err = fmt.Errorf("unavali RandomWriteRaftlog Header, raw len(%v)", len(raw))
 	}
-	version:=binary.BigEndian.Uint32(raw[index:index+4])
-	index+=4
+	version := binary.BigEndian.Uint32(raw[index : index+4])
+	index += 4
 	if version != RandomWriteRaftLogMagicVersionV3 {
-		return nil,fmt.Errorf("unavali raftLogVersion %v",RandomWriteRaftLogMagicVersionV3)
+		return nil, fmt.Errorf("unavali raftLogVersion %v", RandomWriteRaftLogMagicVersionV3)
 	}
-	opItem.opcode=raw[index]
-	index+=1
-	opItem.extentID=binary.BigEndian.Uint64(raw[index:index+8])
-	index+=8
-	opItem.offset=int64(binary.BigEndian.Uint64(raw[index:index+8]))
-	index+=8
-	opItem.size=int64(binary.BigEndian.Uint64(raw[index:index+8]))
-	index+=8
-	opItem.crc=binary.BigEndian.Uint32(raw[index:index+4])
-	index+=4
-	if opItem.size+int64(index)!=int64(len(raw)){
-		err=fmt.Errorf("unavali RandomWriteRaftlog body, raw len(%v), has unmarshal(%v) opItemSize(%v)",len(raw),index,opItem.size )
-		return nil,err
+	opItem.opcode = raw[index]
+	index += 1
+	opItem.extentID = binary.BigEndian.Uint64(raw[index : index+8])
+	index += 8
+	opItem.offset = int64(binary.BigEndian.Uint64(raw[index : index+8]))
+	index += 8
+	opItem.size = int64(binary.BigEndian.Uint64(raw[index : index+8]))
+	index += 8
+	opItem.crc = binary.BigEndian.Uint32(raw[index : index+4])
+	index += 4
+	if opItem.size+int64(index) != int64(len(raw)) {
+		err = fmt.Errorf("unavali RandomWriteRaftlog body, raw len(%v), has unmarshal(%v) opItemSize(%v)", len(raw), index, opItem.size)
+		return nil, err
 	}
-	opItem.data = raw[index:int64(index)+opItem.size]
+	opItem.data = raw[index : int64(index)+opItem.size]
 
 	return
 }
-
 
 func UnmarshalOldVersionRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 	raftOpItem := new(RaftCmdItem)
@@ -273,7 +269,7 @@ func UnmarshalOldVersionRandWriteOpItem(raw []byte) (result *rndWrtOpItem, err e
 
 func (dp *DataPartition) checkWriteErrs(errMsg string) (ignore bool) {
 	// file has been deleted when applying the raft log
-	if strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) || strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) {
+	if strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) || strings.Contains(errMsg, proto.ExtentNotFoundError.Error()) {
 		return true
 	}
 	return false
@@ -324,43 +320,42 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 	return nil, io.EOF
 }
 
-
 const (
-	SkipLimit=true
-	NoSkipLimit=false
+	SkipLimit   = true
+	NoSkipLimit = false
 )
 
-func (dp *DataPartition)repairDataOnRandomWriteFromHost(extentID uint64,fromOffset,size uint64,host string) (err error){
-	remoteExtentInfo:=storage.ExtentInfoBlock{}
-	remoteExtentInfo[storage.FileID]=extentID
-	remoteExtentInfo[storage.Size]=fromOffset+size
-	err=dp.streamRepairExtent(nil,remoteExtentInfo,host,SkipLimit)
-	log.LogWarnf("repairDataFromHost extentID(%v) fromOffset(%v) size(%v) result(%v)",dp.applyRepairKey(int(extentID)),fromOffset,size,err)
+func (dp *DataPartition) repairDataOnRandomWriteFromHost(extentID uint64, fromOffset, size uint64, host string) (err error) {
+	remoteExtentInfo := storage.ExtentInfoBlock{}
+	remoteExtentInfo[storage.FileID] = extentID
+	remoteExtentInfo[storage.Size] = fromOffset + size
+	err = dp.streamRepairExtent(nil, remoteExtentInfo, host, SkipLimit)
+	log.LogWarnf("repairDataFromHost extentID(%v) fromOffset(%v) size(%v) result(%v)", dp.applyRepairKey(int(extentID)), fromOffset, size, err)
 	return err
 }
 
-func (dp *DataPartition)repairDataOnRandomWrite(extentID uint64,fromOffset,size uint64) (err error){
-	hosts:=dp.getReplicaClone()
-	addr,_:=dp.IsRaftLeader()
-	if addr!="" {
-		err=dp.repairDataOnRandomWriteFromHost(extentID,fromOffset,size,addr)
-		if err==nil{
+func (dp *DataPartition) repairDataOnRandomWrite(extentID uint64, fromOffset, size uint64) (err error) {
+	hosts := dp.getReplicaClone()
+	addr, _ := dp.IsRaftLeader()
+	if addr != "" {
+		err = dp.repairDataOnRandomWriteFromHost(extentID, fromOffset, size, addr)
+		if err == nil {
 			return
 		}
 	}
-	for _,h:=range hosts{
-		if h==addr {
+	for _, h := range hosts {
+		if h == addr {
 			continue
 		}
-		err=dp.repairDataOnRandomWriteFromHost(extentID,fromOffset,size,h)
-		if err==nil {
+		err = dp.repairDataOnRandomWriteFromHost(extentID, fromOffset, size, h)
+		if err == nil {
 			return
 		}
 	}
 	return
 }
 
-func(dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
+func (dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
 	var err error
 	defer func() {
 		if err != nil {
@@ -384,7 +379,7 @@ func(dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
 		httpAddr := fmt.Sprintf("%v:%v", strings.Split(h, ":")[0], profPort)
 		dataClient := data.NewDataHttpClient(httpAddr, false)
 		var extentBlock *proto.ExtentInfoBlock
-		for i := 0; i<3; i++ {
+		for i := 0; i < 3; i++ {
 			extentBlock, err = dataClient.GetExtentInfo(dp.partitionID, extentId)
 			if err == nil || strings.Contains(err.Error(), "e extent") && strings.Contains(err.Error(), "not exist") {
 				break
@@ -399,7 +394,7 @@ func(dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
 			err = nil
 		}
 	}
-	if notFoundErrCount == len(hosts) - 1 {
+	if notFoundErrCount == len(hosts)-1 {
 		return true
 	}
 	return false
@@ -437,7 +432,7 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		if dp.checkIsDiskError(err) {
 			return
 		}
-		if strings.Contains(err.Error(),storage.IllegalOverWriteError){
+		if strings.Contains(err.Error(), storage.IllegalOverWriteError) {
 			err = dp.repairDataOnRandomWrite(opItem.extentID, uint64(opItem.offset), uint64(opItem.size))
 			if err == nil {
 				continue
@@ -449,7 +444,7 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 			}
 			continue
 		}
-		if strings.Contains(err.Error(), storage.ExtentNotFoundError.Error()) {
+		if strings.Contains(err.Error(), proto.ExtentNotFoundError.Error()) {
 			log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
 			err = nil
 			return
@@ -485,7 +480,6 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 
 	return
 }
-
 
 // RandomWriteSubmit submits the proposal to raft.
 func (dp *DataPartition) RandomWriteSubmitV3(pkg *repl.Packet) (err error) {

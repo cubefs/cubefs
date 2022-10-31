@@ -15,8 +15,8 @@
 package datanode
 
 import (
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/storage"
 	"sync/atomic"
 )
 
@@ -43,7 +43,7 @@ func (s *DataNode) cleanupPkt(p *repl.Packet) {
 }
 
 func (s *DataNode) releaseExtent(p *repl.Packet) {
-	if p == nil || !storage.IsTinyExtent(p.ExtentID) || p.ExtentID <= 0 || atomic.LoadInt32(&p.IsReleased) == IsReleased {
+	if p == nil || !proto.IsTinyExtent(p.ExtentID) || p.ExtentID <= 0 || atomic.LoadInt32(&p.IsReleased) == IsReleased {
 		return
 	}
 	if !p.IsTinyExtentType() || !p.IsLeaderPacket() || !p.IsWriteOperation() || !p.IsForwardPkt() {

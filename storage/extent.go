@@ -27,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/unit"
 )
@@ -118,7 +119,7 @@ func (e *Extent) InitToFS() (err error) {
 			e.file.Close()
 		}
 	}()
-	if IsTinyExtent(e.extentID) {
+	if proto.IsTinyExtent(e.extentID) {
 		e.dataSize = 0
 		return
 	}
@@ -131,7 +132,7 @@ func (e *Extent) InitToFS() (err error) {
 func (e *Extent) RestoreFromFS() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0666); err != nil {
 		if strings.Contains(err.Error(), syscall.ENOENT.Error()) {
-			err = ExtentNotFoundError
+			err = proto.ExtentNotFoundError
 		}
 		return err
 	}
@@ -142,7 +143,7 @@ func (e *Extent) RestoreFromFS() (err error) {
 		err = fmt.Errorf("stat file %v: %v", e.file.Name(), err)
 		return
 	}
-	if IsTinyExtent(e.extentID) {
+	if proto.IsTinyExtent(e.extentID) {
 		watermark := info.Size()
 		if watermark%PageSize != 0 {
 			watermark = watermark + (PageSize - watermark%PageSize)
@@ -205,7 +206,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 
 // Write writes data to an extent.
 func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfoBlock) (err error) {
-	if IsTinyExtent(e.extentID) {
+	if proto.IsTinyExtent(e.extentID) {
 		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
 		return
 	}
@@ -253,7 +254,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 
 // Read reads data from an extent.
 func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
-	if IsTinyExtent(e.extentID) {
+	if proto.IsTinyExtent(e.extentID) {
 		return e.ReadTiny(data, offset, size, isRepairRead)
 	}
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
@@ -388,7 +389,7 @@ func (e *Extent) getRealBlockCnt() (blockNum int64) {
 func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, isEmptyPacket bool) (err error) {
 	e.Lock()
 	defer e.Unlock()
-	if !IsTinyExtent(e.extentID) {
+	if !proto.IsTinyExtent(e.extentID) {
 		return ParameterMismatchError
 	}
 	if offset%PageSize != 0 || offset != e.dataSize {

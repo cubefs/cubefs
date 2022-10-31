@@ -411,7 +411,7 @@ func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if storage.IsTinyExtent(uint64(extentID)) {
+	if proto.IsTinyExtent(uint64(extentID)) {
 		s.buildFailureResp(w, http.StatusBadRequest, "can not query tiny extent")
 		return
 	}

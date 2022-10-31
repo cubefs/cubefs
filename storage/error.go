@@ -28,7 +28,6 @@ var (
 	TryAgainError             = errors.New("try again")
 	CrcMismatchError          = errors.New("packet Crc is incorrect")
 	NoLeaderError             = errors.New("no raft leader")
-	ExtentNotFoundError       = errors.New("extent does not exist")
 	ExtentExistsError         = errors.New("extent already exists")
 	ExtentIsFullError         = errors.New("extent is full")
 	BrokenExtentError         = errors.New("extent has been broken")

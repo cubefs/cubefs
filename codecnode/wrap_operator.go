@@ -23,7 +23,6 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/storage"
 	echandler "github.com/chubaofs/chubaofs/util/ec"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
@@ -194,7 +193,7 @@ func (s *CodecServer) handleEcMigrationTask(p *repl.Packet) {
 				}
 			}
 			holes := make([]*proto.TinyExtentHole, 0)
-			if storage.IsTinyExtent(curExtentID) {
+			if proto.IsTinyExtent(curExtentID) {
 				if holes, ei.Size, err = ecp.GetTinyExtentHolesAndAvaliSize(curExtentID); err != nil {
 					return
 				}

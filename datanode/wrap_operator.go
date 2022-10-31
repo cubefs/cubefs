@@ -784,7 +784,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 			request.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
-	if !storage.IsTinyExtent(request.ExtentID) {
+	if !proto.IsTinyExtent(request.ExtentID) {
 		err = fmt.Errorf("unavali extentID(%v)", request.ExtentID)
 		return
 	}
@@ -884,7 +884,7 @@ func (s *DataNode) handleTinyExtentAvaliRead(request *repl.Packet, connect net.C
 			request.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
-	if !storage.IsTinyExtent(request.ExtentID) {
+	if !proto.IsTinyExtent(request.ExtentID) {
 		err = fmt.Errorf("unavali extentID (%v)", request.ExtentID)
 		return
 	}

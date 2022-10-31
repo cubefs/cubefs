@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/unit"
 	"hash/crc32"
@@ -942,7 +941,7 @@ func (e *EcNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn) {
 	ecStripe, _ := NewEcStripe(ep, stripeUnitSize, p.ExtentID)
 	readSize := uint64(p.Size)
 	extentOffset = uint64(p.ExtentOffset)
-	if storage.IsTinyExtent(p.ExtentID) {
+	if proto.IsTinyExtent(p.ExtentID) {
 		extentOffset = ep.getTinyExtentOffset(p.ExtentID, uint64(p.ExtentOffset))
 	}
 	log.LogDebugf("handleStreamReadPacket packet(%v) hosts(%v) extentOffset(%v) stripeUnitSize(%v) originExtentSize(%v) maxUnitSize(%v) datanum(%v)",

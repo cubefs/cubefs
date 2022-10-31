@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"hash/crc32"
 	"io"
@@ -1315,7 +1314,7 @@ func (ep *EcPartition) checkBlockCrc(extentId uint64, wg *sync.WaitGroup, isScru
 		return
 	}
 
-	if storage.IsTinyExtent(extentId) {
+	if proto.IsTinyExtent(extentId) {
 		repairRead = true
 	}
 	//calc stripeUnitSize
