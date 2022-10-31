@@ -205,6 +205,7 @@ func (ns *nodesState) RemoveNode(nodeAddr string) (taskInfos []lcnodeTaskInfo) {
 			taskInfos = append(taskInfos, info)
 		}
 	}
+	log.LogInfof("RemoveNode, %v tasks [%v] are still in processing on %v", len(taskInfos), taskInfos, nodeAddr)
 	delete(ns.idleNodes, nodeAddr)
 	delete(ns.workingNodes, nodeAddr)
 	return
@@ -226,6 +227,7 @@ func (vvi *VolVerInfos) AddVerInfo(vi *LcVerInfo) {
 	vvi.Lock()
 	defer vvi.Unlock()
 	if _, ok := vvi.ProcessingVerInfos[vi.Key()]; ok {
+		log.LogDebugf("VerInfo: %v is already in processing", vi)
 		return
 	}
 	vvi.VerInfos[vi.Key()] = vi
@@ -303,6 +305,29 @@ type snapshotDelManager struct {
 	idleNodeCh  chan struct{}
 	exitCh      chan struct{}
 	lcMgr       *lifecycleManager
+}
+
+func (m *snapshotDelManager) AddVerInfo(vi *LcVerInfo) {
+	m.lcMgr.snapshotMgr.volVerInfos.Lock()
+	defer m.lcMgr.snapshotMgr.volVerInfos.Unlock()
+	if _, ok := m.lcMgr.snapshotMgr.volVerInfos.ProcessingVerInfos[vi.Key()]; ok && m.isVerInfoInProcessing(vi) {
+		log.LogDebugf("VerInfo: %v is already in processing", vi)
+		return
+	}
+	m.lcMgr.snapshotMgr.volVerInfos.VerInfos[vi.Key()] = vi
+	log.LogDebugf("Adding VerInfo: %v", vi)
+}
+
+func (m *snapshotDelManager) isVerInfoInProcessing(vi *LcVerInfo) bool {
+	m.lcMgr.lnStates.RLock()
+	defer m.lcMgr.lnStates.RUnlock()
+	for nodeAddr, taskMap := range m.lcMgr.lnStates.workingNodes {
+		if _, ok := taskMap[vi.Key()]; ok {
+			log.LogDebugf("task %v is already in processing on %v", vi, nodeAddr)
+			return true
+		}
+	}
+	return false
 }
 
 func (m *snapshotDelManager) NotifyIdleLcNode() {
