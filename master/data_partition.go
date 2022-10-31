@@ -175,27 +175,44 @@ func (partition *DataPartition) createTaskToAddRaftMember(addPeer proto.Peer, le
 	return
 }
 
-func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Peer, force bool) (task *proto.AdminTask, leaderAddr string, err error) {
-	leaderAddr = partition.getLeaderAddr()
+func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removePeer proto.Peer, force bool) (err error) {
+
+	doWork := func(leaderAddr string) error {
+		log.LogInfof("action[createTaskToRemoveRaftMember] vol[%v],data partition[%v] removePeer %v leaderAddr %v", partition.VolName, partition.PartitionID, removePeer, leaderAddr)
+		req := newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer)
+		req.Force = force
+
+		task := proto.NewAdminTask(proto.OpRemoveDataPartitionRaftMember, leaderAddr, req)
+		partition.resetTaskID(task)
+
+		leaderDataNode, err := c.dataNode(leaderAddr)
+		if err != nil {
+			log.LogErrorf("action[createTaskToRemoveRaftMember] vol[%v],data partition[%v],err[%v]", partition.VolName, partition.PartitionID, err)
+			return err
+		}
+		if _, err = leaderDataNode.TaskManager.syncSendAdminTask(task); err != nil {
+			log.LogErrorf("action[createTaskToRemoveRaftMember] vol[%v],data partition[%v],err[%v]", partition.VolName, partition.PartitionID, err)
+			return err
+		}
+		return nil
+	}
+
+	leaderAddr := partition.getLeaderAddr()
 	if leaderAddr == "" {
-		if partition.ReplicaNum == 2 && force {
+		if force {
 			for _, replica := range partition.Replicas {
 				if replica.Addr != removePeer.Addr {
 					leaderAddr = replica.Addr
 				}
+				doWork(leaderAddr)
 			}
 		} else {
 			err = proto.ErrNoLeader
 			return
 		}
+	} else {
+		return doWork(leaderAddr)
 	}
-
-	req := newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer)
-	if partition.ReplicaNum == 2 && force {
-		req.Force = true
-	}
-	task = proto.NewAdminTask(proto.OpRemoveDataPartitionRaftMember, leaderAddr, req)
-	partition.resetTaskID(task)
 	return
 }
 
@@ -496,6 +513,8 @@ func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
 	}
 
 	if vol.dpReplicaNum != partition.ReplicaNum && !vol.NeedToLowerReplica {
+		log.LogDebugf("action[checkReplicaNum] volume %v partiton %v replicanum abnornal %v %v",
+			partition.VolName, partition.PartitionID, vol.dpReplicaNum, partition.ReplicaNum)
 		vol.NeedToLowerReplica = true
 	}
 }
