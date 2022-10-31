@@ -472,6 +472,11 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 		if !s.extents.IsExpired(1) {
 			return
 		}
+
+		err = s.IssueFlushRequest(ctx)
+		if err != nil {
+			return
+		}
 		if err = s.GetExtents(ctx); err != nil {
 			return
 		}

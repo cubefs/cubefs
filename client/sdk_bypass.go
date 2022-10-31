@@ -3296,11 +3296,11 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		offset = f.pos
 	}
 	n, hasHole, err := c.ec.Read(nil, f.ino, buffer, offset, len(buffer))
-	extentNotExist := err != nil && strings.Contains(err.Error(), proto.ExtentNotFoundError.Error())
-	if err != nil && err != io.EOF && !extentNotExist {
+	if err != nil && err != io.EOF {
 		return C.ssize_t(statusEIO)
 	}
-	if extentNotExist || n < int(size) || hasHole {
+	if n < int(size) || hasHole {
+		c.flush(nil, f.ino)
 		c.ec.RefreshExtentsCache(nil, f.ino)
 		n, _, err = c.ec.Read(nil, f.ino, buffer, offset, len(buffer))
 	}
