@@ -894,7 +894,7 @@ func TestVolumeMgr_UnlockVolume(t *testing.T) {
 	vol2 := mockVolumeMgr.all.getVol(2)
 	require.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
 	err := mockVolumeMgr.UnlockVolume(context.Background(), 2)
-	require.Error(t, err)
+	require.NoError(t, err)
 
 	// failed case: vid not exist
 	err = mockVolumeMgr.UnlockVolume(context.Background(), 55)

@@ -457,7 +457,13 @@ func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid) error {
 	}
 
 	vol.lock.RLock()
-	if !vol.canUnlock() {
+	status := vol.getStatus()
+	if status == proto.VolumeStatusUnlocking || status == proto.VolumeStatusIdle {
+		vol.lock.RUnlock()
+		return nil
+	}
+
+	if status == proto.VolumeStatusActive {
 		vol.lock.RUnlock()
 		span.Warnf("can't unlock volume, volume %d, current status(%d)", vid, vol.getStatus())
 		return apierrors.ErrUnlockNotAllow
@@ -481,6 +487,7 @@ func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid) error {
 		span.Errorf("raft propose error:%v", err)
 		return apierrors.ErrRaftPropose
 	}
+
 	return nil
 }
 
