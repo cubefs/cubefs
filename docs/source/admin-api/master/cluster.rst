@@ -212,7 +212,10 @@ Set node info of cluster.
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
 
+   "autoRepairRate", "uint64", "dataNode auto repair rate"
    "batchCount", "uint64", "metanode delete batch count"
    "deleteWorkerSleepMs", "uint64", "metanode delete worker sleep time with millisecond. if 0 for no sleep"
+   "loadFactor", "uint64", "load factor"
    "markDeleteRate", "uint64", "datanode batch markdelete limit rate. if 0 for no infinity limit"
+   "maxDpCntLimit", "uint64", "maximum number of dp on each datanode, default 3000, 0 represents setting to default"
 

@@ -92,6 +92,7 @@ const (
 	CliFlagDelWorkerSleepMs   = "deleteWorkerSleepMs"
 	CliFlagLoadFactor         = "loadFactor"
 	CliFlagMarkDelRate        = "markDeleteRate"
+	CliFlagMaxDpCntLimit      = "maxDpCntLimit"
 	CliFlagCrossZone          = "crossZone"
 	CliNormalZonesFirst       = "normalZonesFirst"
 	CliFlagCount              = "count"
