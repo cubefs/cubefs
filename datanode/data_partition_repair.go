@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"math"
 	"net"
 	"sync"
@@ -694,6 +695,12 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 					panic(recoverMesg)
 				}
 			}()
+			if currFixOffset+currRecoverySize > remoteExtentInfo[storage.Size] {
+				msg := fmt.Sprintf("action[streamRepairExtent] fix(%v_%v), streamRepairTinyExtent,remoteAvaliSize(%v) needRecoverySize(%v) currRecoverySize(%v), remoteExtentSize(%v), needRecoverySize is too big",
+					dp.partitionID, localExtentInfo[storage.FileID], remoteAvaliSize, currRecoverySize+currFixOffset, currRecoverySize, remoteExtentInfo[storage.Size])
+				exporter.Warning(msg)
+				//return errors.Trace(err, "streamRepairExtent repair data error ")
+			}
 			err = store.TinyExtentRecover(uint64(localExtentInfo[storage.FileID]), int64(currFixOffset), int64(currRecoverySize), reply.Data[:originalDataSize], reply.CRC, isEmptyResponse)
 			if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
 				log.LogInfof("streamRepairTinyExtent(%v) recover fininsh,remoteAvaliSize(%v) "+

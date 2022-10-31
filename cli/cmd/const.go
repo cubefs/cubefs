@@ -117,6 +117,7 @@ const (
 	CliFlagIsSmart              = "smart"
 	CliSmartRulesMode           = "smart-rules"
 	CliExtentDelByRocksKey      = "extentDelByRocks"
+	CliFlagHuman                = "human"
 	CliFlagRaft                 = "raft"
 	CliFlagCompactTag           = "compact"
 	CliFlagFollReadDelayInterval = "host-delay-interval"

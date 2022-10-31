@@ -145,6 +145,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DataNodeReqVolOpPartRate >= 0 {
 				msg += fmt.Sprintf("dataNodeReqVolOpPartRate: %d, volume: %s, opcode: %d, ", info.DataNodeReqVolOpPartRate, info.Volume, info.Opcode)
 			}
+			if info.DataNodeFlushFDInterval >= 0 {
+				msg += fmt.Sprintf("dataNodeFlushFDInterval: %d, ", info.DataNodeFlushFDInterval)
+			}
 			if info.ExtentMergeIno != "" {
 				msg += fmt.Sprintf("extentMergeIno: %s, volume: %s, ", info.ExtentMergeIno, info.Volume)
 			}
@@ -239,6 +242,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&info.MetaRocksFlushWalInterval, "metaRocksWalFlushInterval", 0, "Meta node RocksDB config:flush wal interval, unit:min")
 	cmd.Flags().Int64Var(&info.MetaRocksDisableFlushFlag, "metaRocksDisableWalFlush", -1, "Meta node RocksDB config:flush wal flag, 0: enable flush wal log, 1:disable flush wal log")
 	cmd.Flags().Uint64Var(&info.MetaRocksWalTTL, "metaRocksWalTTL", 0, "Meta node RocksDB config:wal_ttl_seconds")
+	cmd.Flags().Int64Var(&info.DataNodeFlushFDInterval, "dataNodeFlushFDInterval", 0, "datanode flush wal fd interval")
 	return cmd
 }
 

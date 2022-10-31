@@ -17,7 +17,6 @@ package cmd
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/sdk/data"
-	"github.com/chubaofs/chubaofs/storage"
 	atomic2 "go.uber.org/atomic"
 	"os"
 	"sort"
@@ -241,6 +240,7 @@ func newDataPartitionResetRecoverCmd(client *master.MasterClient) *cobra.Command
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 	var optRaft bool
+	var optHuman bool
 	var cmd = &cobra.Command{
 		Use:   CliOpInfo + " [DATA PARTITION ID]",
 		Short: cmdDataPartitionGetShort,
@@ -256,7 +256,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			if partition, err = client.AdminAPI().GetDataPartition("", partitionID); err != nil {
 				return
 			}
-			stdout(formatDataPartitionInfo(partition))
+			stdout(formatDataPartitionInfo(optHuman, partition))
 			if optRaft {
 				stdout("\n")
 				stdout("RaftInfo :\n")
@@ -284,6 +284,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			}
 		},
 	}
+	cmd.Flags().BoolVar(&optHuman, CliFlagHuman, true, "show used space by human read way")
 	cmd.Flags().BoolVar(&optRaft, CliFlagRaft, false, "show raft peer detail info")
 	return cmd
 }
@@ -573,7 +574,7 @@ func checkDataPartition(volName string, pid uint64, client *master.MasterClient,
 			time.Sleep(1 * time.Second)
 		}
 		if err1 != nil || dnPartition == nil {
-			errorReports = append(errorReports, fmt.Sprintf("get partition[%v] failed in addr[%v], err:%v", partition.PartitionID, addr, err))
+			errorReports = append(errorReports, fmt.Sprintf("get partition[%v] failed in addr[%v], err:%v", partition.PartitionID, addr, err1))
 			continue
 		}
 		//RaftStatus Only exists on leader
@@ -1289,9 +1290,6 @@ func checkDataPartitionRelica(c *master.MasterClient, partitionID uint64, checkT
 	}
 
 	for _, ekTmp := range dpDNInfo.Files {
-		if storage.IsTinyExtent(ekTmp[proto.ExtentInfoFileID]){
-			continue
-		}
 		if int64(ekTmp[proto.ExtentInfoModifyTime]) < specTime.Unix() || ekTmp[proto.ExtentInfoSize] == 0{
 			continue
 		}
@@ -1305,7 +1303,7 @@ func checkDataPartitionRelica(c *master.MasterClient, partitionID uint64, checkT
 		if _, ok := checkedExtent.LoadOrStore(fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId), true); ok {
 			continue
 		}
-		err1 := checkExtentReplicaInfo(c, dpMasterInfo.Replicas, ek, 0, checkType, ch)
+		err1 := checkExtentReplicaInfo(c, dpMasterInfo.Replicas, &ek, 0, dpMasterInfo.VolName, checkType, ch)
 		if err1 != nil {
 			failedExtents = append(failedExtents, ek.ExtentId)
 		}
