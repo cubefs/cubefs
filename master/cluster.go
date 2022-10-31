@@ -582,7 +582,8 @@ func (c *Cluster) getDeletingSnapshotVer() {
 					},
 					dTime: volVerInfo.DelTime,
 				}
-				c.lcMgr.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
+				//c.lcMgr.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
+				c.lcMgr.snapshotMgr.AddVerInfo(verInfo)
 			}
 		}
 	}
@@ -4028,12 +4029,12 @@ func (c *Cluster) delLcNode(nodeAddr string) (err error) {
 
 		c.lcMgr.snapshotMgr.volVerInfos.ReturnProcessingVerInfo(snapshotTaskIds)
 	}
-	c.lcMgr.lnMutex.Lock()
-	defer c.lcMgr.lnMutex.Unlock()
 
 	val, loaded := c.lcMgr.lcNodes.LoadAndDelete(nodeAddr)
 	if loaded {
 		ln := val.(*LcNode)
+		c.lcMgr.lnMutex.Lock()
+		defer c.lcMgr.lnMutex.Unlock()
 		if err = c.syncDeleteLcNode(ln); err != nil {
 			err = fmt.Errorf("action[delLcNode],clusterID[%v] lcNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
 			return
@@ -4044,17 +4045,11 @@ func (c *Cluster) delLcNode(nodeAddr string) (err error) {
 }
 
 func (c *Cluster) addLcNode(nodeAddr string) (id uint64, err error) {
-	c.lcMgr.lnMutex.Lock()
-	defer c.lcMgr.lnMutex.Unlock()
+
 	var ln *LcNode
 	if node, ok := c.lcMgr.lcNodes.Load(nodeAddr); ok {
 		ln = node.(*LcNode)
 		return ln.ID, nil
-	}
-
-	if c.lcNodeCount() >= int(c.cfg.MaxConcurrentLcNodes) {
-		err = errors.New("max concurrent LcNodes reached!")
-		goto errHandler
 	}
 
 	ln = newLcNode(nodeAddr, c.Name)
@@ -4064,16 +4059,27 @@ func (c *Cluster) addLcNode(nodeAddr string) (id uint64, err error) {
 	}
 	ln.ID = id
 	log.LogInfof("action[addLcNode] lcnode id[%v]", id)
-	if err = c.syncAddLcNode(ln); err != nil {
+	c.lcMgr.lnMutex.Lock()
+
+	if c.lcNodeCount() >= int(c.cfg.MaxConcurrentLcNodes) {
+		err = errors.New("max concurrent LcNodes reached!")
 		goto errHandler
 	}
 
+	if err = c.syncAddLcNode(ln); err != nil {
+		c.lcMgr.lnMutex.Unlock()
+		goto errHandler
+	}
 	c.lcMgr.lcNodes.Store(nodeAddr, ln)
+	c.lcMgr.lnMutex.Unlock()
+
 	log.LogInfof("action[addLcNode],clusterID[%v] lcNodeAddr:%v",
 		c.Name, nodeAddr)
 
+	c.lcMgr.lnStates.Lock()
 	delete(c.lcMgr.lnStates.workingNodes, nodeAddr)
 	c.lcMgr.lnStates.idleNodes[nodeAddr] = nodeAddr
+	c.lcMgr.lnStates.Unlock()
 	log.LogInfof("action[addLcNode], lcnode(%v) is set idle", nodeAddr)
 	return
 
