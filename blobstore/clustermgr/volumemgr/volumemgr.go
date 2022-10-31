@@ -622,12 +622,12 @@ func (v *VolumeMgr) applyExpireVolume(ctx context.Context, vids []proto.Vid) (er
 		vol.lock.Lock()
 		if vol.getStatus() == proto.VolumeStatusIdle {
 			vol.lock.Unlock()
-			return nil
+			continue
 		}
 		// double check if expired
 		if !vol.isExpired() {
 			vol.lock.Unlock()
-			return nil
+			continue
 		}
 
 		span.Debugf("volume info:  %#v expired,token is %#v", vol.volInfoBase, vol.token)
