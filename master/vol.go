@@ -375,8 +375,9 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 	}
 
 	dps := vol.cloneDataPartitionMap()
+	cnt := 0
 	for _, dp := range dps {
-		host := dp.getToBeDecommissionHost(int(dp.ReplicaNum))
+		host := dp.getToBeDecommissionHost(int(vol.dpReplicaNum))
 		if host == "" {
 			continue
 		}
@@ -387,6 +388,10 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 			}
 			log.LogErrorf("action[checkReplicaNum] removeOneReplicaByHost host [%v],vol[%v],err[%v]", host, vol.Name, err)
 			continue
+		}
+		cnt++
+		if cnt > 100 {
+			return
 		}
 	}
 	vol.NeedToLowerReplica = false

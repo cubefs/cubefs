@@ -1160,13 +1160,15 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p, req.Force)
 	if !isRaftLeader {
+		log.LogInfof("handlePacketToRemoveDataPartitionRaftMember return no leader")
 		return
 	}
 	if err = dp.CanRemoveRaftMember(req.RemovePeer, req.Force); err != nil {
+		log.LogInfof("handlePacketToRemoveDataPartitionRaftMember return err %v", err)
 		return
 	}
 
-	if dp.replicaNum == 2 && req.Force {
+	if req.Force {
 		cc := &raftProto.ConfChange{
 			Type: raftProto.ConfRemoveNode,
 			Peer: raftProto.Peer{
@@ -1232,7 +1234,7 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet, force 
 
 	// return NoLeaderError if leaderAddr is nil
 	if leaderAddr == "" {
-		if dp.replicaNum == 2 && force {
+		if force {
 			ok = true
 			log.LogInfof("action[forwardToRaftLeader] no leader but replica num %v continue", dp.replicaNum)
 			return
