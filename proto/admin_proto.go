@@ -1073,6 +1073,7 @@ type RateLimitInfo struct {
 	DataNodeReqVolOpRate        int64
 	DataNodeReqVolPartRate      int64
 	DataNodeReqVolOpPartRate    int64
+	DataNodeFlushFDInterval     int64
 	ClientReadVolRate           int64
 	ClientWriteVolRate          int64
 	ExtentMergeIno              string
