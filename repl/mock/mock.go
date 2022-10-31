@@ -2,7 +2,7 @@ package mock
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"hash/crc32"
 	"io"
 	"net"
@@ -118,7 +118,7 @@ func RunMockTest(config *MockTestConfig, t *testing.T) {
 		hostAddrs = append(hostAddrs, hostAddress)
 	}
 
-	repl.SetConnectPool(util.NewConnectPool())
+	repl.SetConnectPool(connpool.NewConnectPool())
 
 	// Start all mockHosts
 	for _, host := range mockHosts {

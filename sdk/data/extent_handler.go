@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 // State machines
@@ -40,7 +40,7 @@ const ConnectUpdateSecond = 30
 
 var (
 	gExtentHandlerID = uint64(0)
-	gMaxExtentSize   = util.ExtentSize
+	gMaxExtentSize   = unit.ExtentSize
 )
 
 // GetExtentHandlerID returns the extent handler ID.
@@ -62,10 +62,10 @@ type ExtentHandler struct {
 	status int32
 
 	// Created, filled and sent in Write.
-	packet      *Packet
-	packetMutex sync.RWMutex // for packet and packetList
-	cachePacket bool
-	packetList  []*Packet
+	packet                    *Packet
+	packetMutex               sync.RWMutex // for packet and packetList
+	cachePacket               bool
+	packetList                []*Packet
 	overwriteLocalPacketMutex sync.Mutex
 
 	// Updated in *write* method ONLY.
@@ -168,7 +168,7 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 	if eh.storeMode == proto.TinyExtentType {
 		blksize = eh.stream.tinySizeLimit()
 	} else {
-		blksize = util.BlockSize
+		blksize = unit.BlockSize
 	}
 
 	// If this write request is not continuous, and cannot be merged
@@ -182,12 +182,12 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 		return
 	}
 	if eh.stream.client.EnableWriteCache() &&
-		( (offset + uint64(size) > uint64(eh.stream.extentSize) + eh.fileOffset) || (eh.storeMode == proto.TinyExtentType && offset + uint64(size) > uint64(blksize)) ) {
+		((offset+uint64(size) > uint64(eh.stream.extentSize)+eh.fileOffset) || (eh.storeMode == proto.TinyExtentType && offset+uint64(size) > uint64(blksize))) {
 		err = errors.NewErrorf("ExtentHandler is full: offset(%v) size(%v) eh(%v)", offset, size, eh)
 		return
 	}
 
-	if eh.fileOffset + uint64(eh.size) != offset {
+	if eh.fileOffset+uint64(eh.size) != offset {
 		return eh.stream.WritePendingPacket(data, offset, size, direct)
 	}
 
@@ -200,7 +200,7 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 			//log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
 		}
 		packsize := int(eh.packet.Size)
-		write = util.Min(size-total, blksize-packsize)
+		write = unit.Min(size-total, blksize-packsize)
 		if write > 0 {
 			copy(eh.packet.Data[packsize:packsize+write], data[total:total+write])
 			eh.packet.Size += uint32(write)

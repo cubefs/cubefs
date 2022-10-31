@@ -33,10 +33,11 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const (
@@ -1061,10 +1062,10 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 
 func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size uint64, err error) {
 	var (
-		buf           = make([]byte, 2*util.BlockSize)
+		buf           = make([]byte, 2*unit.BlockSize)
 		readN, writeN int
 		offset        uint64
-		hashBuf       = make([]byte, 2*util.BlockSize)
+		hashBuf       = make([]byte, 2*unit.BlockSize)
 	)
 	for {
 		readN, err = reader.Read(buf)
@@ -1239,7 +1240,7 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) er
 	}
 
 	var n int
-	var tmp = make([]byte, 2*util.BlockSize)
+	var tmp = make([]byte, 2*unit.BlockSize)
 
 	for {
 		var rest = upper - uint64(offset)
@@ -1781,7 +1782,7 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 		if delimiter != "" {
 			var nonPrefixPart = strings.Replace(path, prefix, "", 1)
 			if idx := strings.Index(nonPrefixPart, delimiter); idx >= 0 {
-				var commonPrefix = prefix + util.SubString(nonPrefixPart, 0, idx) + delimiter
+				var commonPrefix = prefix + stringutil.SubString(nonPrefixPart, 0, idx) + delimiter
 				if prefixMap.contain(commonPrefix) {
 					continue
 				}
@@ -2187,8 +2188,8 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		readOffset  uint64
 		writeOffset uint64
 		readSize    int
-		buf         = make([]byte, 2*util.BlockSize)
-		hashBuf     = make([]byte, 2*util.BlockSize)
+		buf         = make([]byte, 2*unit.BlockSize)
+		hashBuf     = make([]byte, 2*unit.BlockSize)
 	)
 	for {
 		readSize = len(buf)
@@ -2382,7 +2383,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		Volume:            config.Volume,
 		Masters:           config.Masters,
 		FollowerRead:      true,
-		TinySize:          util.MB * 8,
+		TinySize:          unit.MB * 8,
 		OnInsertExtentKey: metaWrapper.InsertExtentKey,
 		OnGetExtents:      metaWrapper.GetExtents,
 		OnTruncate:        metaWrapper.Truncate,

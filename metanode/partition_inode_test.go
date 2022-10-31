@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"math"
 	"os"
 	"path"
@@ -18,14 +18,14 @@ import (
 )
 
 func mockMetaPartitionReplica(nodeID, partitionID uint64, storeMode proto.StoreMode, rootDir string) *metaPartition {
-	partitionDir := path.Join(rootDir, partitionPrefix + strconv.Itoa(int(partitionID)))
+	partitionDir := path.Join(rootDir, partitionPrefix+strconv.Itoa(int(partitionID)))
 	os.MkdirAll(partitionDir, 0666)
 	node := &MetaNode{
 		nodeId: nodeID,
 	}
 	manager := &metadataManager{
-		nodeId: 1,
-		metaNode: node,
+		nodeId:      1,
+		metaNode:    node,
 		rocksDBDirs: []string{rootDir},
 	}
 
@@ -42,17 +42,17 @@ func mockMetaPartitionReplica(nodeID, partitionID uint64, storeMode proto.StoreM
 	}
 
 	mp, err := CreateMetaPartition(config, manager)
-	if  err != nil {
+	if err != nil {
 		fmt.Printf("create meta partition failed:%s", err.Error())
 		return nil
 	}
 	return mp.(*metaPartition)
 }
 
-func mockMp(t *testing.T, dir string, leaderStoreMode proto.StoreMode) (leader, follower *metaPartition){
+func mockMp(t *testing.T, dir string, leaderStoreMode proto.StoreMode) (leader, follower *metaPartition) {
 	leaderRootDir := path.Join("./leader", dir)
 	os.RemoveAll(leaderRootDir)
-	if leader = mockMetaPartitionReplica(1, 1,  leaderStoreMode, leaderRootDir); leader == nil {
+	if leader = mockMetaPartitionReplica(1, 1, leaderStoreMode, leaderRootDir); leader == nil {
 		t.Errorf("mock metapartition failed")
 		return
 	}
@@ -60,7 +60,7 @@ func mockMp(t *testing.T, dir string, leaderStoreMode proto.StoreMode) (leader, 
 	followerRootDir := path.Join("./follower", dir)
 	os.RemoveAll(followerRootDir)
 	if follower = mockMetaPartitionReplica(1, 1,
-		(proto.StoreModeMem | proto.StoreModeRocksDb) - leaderStoreMode, followerRootDir); follower == nil {
+		(proto.StoreModeMem|proto.StoreModeRocksDb)-leaderStoreMode, followerRootDir); follower == nil {
 		t.Errorf("mock metapartition failed")
 		return
 	}
@@ -86,8 +86,8 @@ func releaseMp(leader, follower *metaPartition, dir string) {
 
 func CreateInodeInterTest(t *testing.T, leader, follower *metaPartition, start uint64) {
 	reqCreateInode := &proto.CreateInodeRequest{
-		Gid: 0,
-		Uid: 0,
+		Gid:  0,
+		Uid:  0,
 		Mode: 470,
 	}
 	resp := &Packet{}
@@ -128,7 +128,7 @@ func CreateInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 		return
 	}
 	err = leader.CreateInode(reqCreateInode, resp)
-	if resp.ResultCode ==  proto.OpOk {
+	if resp.ResultCode == proto.OpOk {
 		t.Errorf("same inode create failed")
 		return
 	}
@@ -142,7 +142,6 @@ func TestMetaPartition_CreateInodeCase01(t *testing.T) {
 	CreateInodeInterTest(t, leader, follower, 0)
 	releaseMp(leader, follower, dir)
 
-
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
 	CreateInodeInterTest(t, leader, follower, 0)
@@ -150,7 +149,7 @@ func TestMetaPartition_CreateInodeCase01(t *testing.T) {
 }
 
 func TestMetaPartition_CreateInodeNewCase01(t *testing.T) {
-	tests := []struct{
+	tests := []struct {
 		name      string
 		storeMode proto.StoreMode
 		rootDir   string
@@ -177,8 +176,8 @@ func TestMetaPartition_CreateInodeNewCase01(t *testing.T) {
 			}
 			defer releaseMetaPartition(mp)
 			reqCreateInode := &proto.CreateInodeRequest{
-				Gid: 0,
-				Uid: 0,
+				Gid:  0,
+				Uid:  0,
 				Mode: 470,
 			}
 			resp := &Packet{}
@@ -212,7 +211,7 @@ func TestMetaPartition_CreateInodeNewCase01(t *testing.T) {
 				return
 			}
 			err = mp.CreateInode(reqCreateInode, resp)
-			if resp.ResultCode ==  proto.OpOk {
+			if resp.ResultCode == proto.OpOk {
 				t.Errorf("same inode create failed")
 				return
 			}
@@ -228,8 +227,8 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 	}()
 
 	reqCreateInode := &proto.CreateInodeRequest{
-		Gid: 0,
-		Uid: 0,
+		Gid:  0,
+		Uid:  0,
 		Mode: 470,
 	}
 
@@ -255,7 +254,7 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 
 	inode, _ := leader.inodeTree.Get(10 + cursor)
 	if inode == nil {
-		t.Errorf("get inode (%v) failed, inode is null", start + 10 + leader.config.Cursor)
+		t.Errorf("get inode (%v) failed, inode is null", start+10+leader.config.Cursor)
 		return
 	}
 	inode.Type = uint32(os.ModeDir)
@@ -267,7 +266,7 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 
 	inode, _ = follower.inodeTree.Get(10 + cursor)
 	if inode == nil {
-		t.Errorf("get inode (%v) failed, inode is null", start + 10 + leader.config.Cursor)
+		t.Errorf("get inode (%v) failed, inode is null", start+10+leader.config.Cursor)
 		return
 	}
 	inode.Type = uint32(os.ModeDir)
@@ -275,19 +274,19 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 	_ = inodePut(follower.inodeTree, inode)
 
 	err = leader.UnlinkInode(reqUnlinkInode, resp)
-	if resp.ResultCode !=  proto.OpOk {
+	if resp.ResultCode != proto.OpOk {
 		t.Errorf("unlink inode test failed:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
 		return
 	}
 
 	err = leader.UnlinkInode(reqUnlinkInode, resp)
-	if resp.ResultCode !=  proto.OpOk {
+	if resp.ResultCode != proto.OpOk {
 		t.Errorf("unlink inode test failed:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
 		return
 	}
 
 	err = leader.UnlinkInode(reqUnlinkInode, resp)
-	if resp.ResultCode ==  proto.OpOk {
+	if resp.ResultCode == proto.OpOk {
 		t.Errorf("same inode create failed, inode link:%d", inode.NLink)
 		return
 	}
@@ -295,7 +294,7 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 
 	inode, _ = leader.inodeTree.Get(11 + cursor)
 	if inode == nil {
-		t.Errorf("get inode (%v) failed, inode is null", start + 11 + leader.config.Cursor)
+		t.Errorf("get inode (%v) failed, inode is null", start+11+leader.config.Cursor)
 		return
 	}
 	inode.SetDeleteMark()
@@ -303,7 +302,7 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 
 	inode, _ = follower.inodeTree.Get(11 + cursor)
 	if inode == nil {
-		t.Errorf("get inode (%v) failed, inode is null", start + 11 + leader.config.Cursor)
+		t.Errorf("get inode (%v) failed, inode is null", start+11+leader.config.Cursor)
 		return
 	}
 	inode.SetDeleteMark()
@@ -311,7 +310,7 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 
 	reqUnlinkInode.Inode = 11 + cursor
 	err = leader.UnlinkInode(reqUnlinkInode, resp)
-	if resp.ResultCode ==  proto.OpOk {
+	if resp.ResultCode == proto.OpOk {
 		t.Errorf("same inode create failed, inode link:%d", inode.NLink)
 		return
 	}
@@ -325,7 +324,6 @@ func TestMetaPartition_UnlinkInodeCase01(t *testing.T) {
 	UnlinkInodeInterTest(t, leader, follower, 0)
 	releaseMp(leader, follower, dir)
 
-
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
 	UnlinkInodeInterTest(t, leader, follower, 0)
@@ -334,8 +332,8 @@ func TestMetaPartition_UnlinkInodeCase01(t *testing.T) {
 
 func createInodesForTest(leader, follower *metaPartition, inodeCnt int, mode, uid, gid uint32) (inos []uint64, err error) {
 	reqCreateInode := &proto.CreateInodeRequest{
-		Gid: gid,
-		Uid: uid,
+		Gid:  gid,
+		Uid:  uid,
 		Mode: mode,
 	}
 
@@ -356,8 +354,8 @@ func createInodesForTest(leader, follower *metaPartition, inodeCnt int, mode, ui
 	}
 
 	//validate count and inode info
-	if leader.inodeTree.Count() != follower.inodeTree.Count(){
-		err = fmt.Errorf("create inode failed, leader and follower inode count not same, or mismatch expect," +
+	if leader.inodeTree.Count() != follower.inodeTree.Count() {
+		err = fmt.Errorf("create inode failed, leader and follower inode count not same, or mismatch expect,"+
 			" mem:%d, rocks:%d, expect:%v", leader.inodeTree.Count(), follower.inodeTree.Count(), inodeCnt)
 		return
 	}
@@ -444,6 +442,7 @@ func BatchInodeUnlinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 	return
 }
+
 //todo:test unlink batch when batchInodes include same inodeID
 func TestMetaPartition_UnlinkInodeBatch01(t *testing.T) {
 	//leader is mem mode
@@ -646,7 +645,6 @@ func TestMetaPartition_InodeGetCase01(t *testing.T) {
 	InodeGetInterGet(t, leader, follower)
 	releaseMp(leader, follower, dir)
 
-
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
 	InodeGetInterGet(t, leader, follower)
@@ -671,7 +669,7 @@ func BatchInodeGetInterTest(t *testing.T, leader, follower *metaPartition) {
 			return
 		}
 	}()
-	if inos, err = createInodesForTest(leader, follower, 100, 470, 0, 0); err != nil || len(inos) != 100{
+	if inos, err = createInodesForTest(leader, follower, 100, 470, 0, 0); err != nil || len(inos) != 100 {
 		t.Fatal(err)
 		return
 	}
@@ -720,7 +718,6 @@ func TestMetaPartition_BatchInodeGetCase01(t *testing.T) {
 	BatchInodeGetInterTest(t, leader, follower)
 	releaseMp(leader, follower, dir)
 
-
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
 	BatchInodeGetInterTest(t, leader, follower)
@@ -768,7 +765,7 @@ func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 	packet = &Packet{}
 	if _ = leader.CreateInodeLink(req, packet); packet.ResultCode != proto.OpInodeOutOfRange {
-		t.Errorf("create inode link for not exist inode failed, expect result code is OpInodeOutOfRange, " +
+		t.Errorf("create inode link for not exist inode failed, expect result code is OpInodeOutOfRange, "+
 			"but actual result is:0x%X", packet.ResultCode)
 		return
 	}
@@ -782,7 +779,7 @@ func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 	packet = &Packet{}
 	if _ = leader.CreateInodeLink(req, packet); packet.ResultCode != proto.OpNotExistErr {
-		t.Errorf("create inode link for mark delete inode failed, expect result code is OpNotExistErr, " +
+		t.Errorf("create inode link for mark delete inode failed, expect result code is OpNotExistErr, "+
 			"but actual result is:0x%X", packet.ResultCode)
 		return
 	}
@@ -795,7 +792,6 @@ func TestMetaPartition_CreateInodeLinkCase01(t *testing.T) {
 	leader, follower := mockMp(t, dir, proto.StoreModeMem)
 	CreateInodeLinkInterTest(t, leader, follower)
 	releaseMp(leader, follower, dir)
-
 
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
@@ -997,7 +993,6 @@ func TestMetaPartition_EvictInodeCase01(t *testing.T) {
 	EvictDirInodeInterTest(t, leader, follower)
 	releaseMp(leader, follower, dir)
 
-
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
 	EvictFileInodeInterTest(t, leader, follower)
@@ -1023,7 +1018,7 @@ func EvictBatchInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 			return
 		}
 	}()
-	if inos, err = createInodesForTest(leader, follower, 100, 470, 0, 0); err != nil || len(inos) != 100{
+	if inos, err = createInodesForTest(leader, follower, 100, 470, 0, 0); err != nil || len(inos) != 100 {
 		t.Fatal(err)
 		return
 	}
@@ -1090,7 +1085,6 @@ func TestMetaPartition_BatchEvictInodeCase01(t *testing.T) {
 	EvictBatchInodeInterTest(t, leader, follower)
 	releaseMp(leader, follower, dir)
 
-
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
 	EvictBatchInodeInterTest(t, leader, follower)
@@ -1111,13 +1105,13 @@ func SetAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 	modifyTime := time.Now().Unix()
 	accessTime := time.Now().Unix()
 	req := &proto.SetAttrRequest{
-		Inode: ino,
-		Mode: uint32(os.ModeDir),
-		Uid: 7,
-		Gid: 8,
+		Inode:      ino,
+		Mode:       uint32(os.ModeDir),
+		Uid:        7,
+		Gid:        8,
 		ModifyTime: modifyTime,
 		AccessTime: accessTime,
-		Valid: 31,
+		Valid:      31,
 	}
 	reqData, err = json.Marshal(req)
 	if err != nil {
@@ -1232,7 +1226,7 @@ func BatchDeleteInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 			return
 		}
 	}()
-	if inos, err = createInodesForTest(leader, follower, 100, 470, 0, 0); err != nil || len(inos) != 100{
+	if inos, err = createInodesForTest(leader, follower, 100, 470, 0, 0); err != nil || len(inos) != 100 {
 		t.Fatal(err)
 		return
 	}
@@ -1315,7 +1309,7 @@ func TestResetCursor_OutOfMaxEnd(t *testing.T) {
 	}
 	t.Logf("reset cursor:%d, status:%d, err:%v", mp.config.Cursor, status, err)
 
-	for i := 1; i <100; i++ {
+	for i := 1; i < 100; i++ {
 		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
 	}
 	req.NewCursor = 90
@@ -1348,7 +1342,7 @@ func TestResetCursor_LimitedAndForce(t *testing.T) {
 		CursorResetType: int(SubCursor),
 	}
 
-	for i := 1; i <100; i++ {
+	for i := 1; i < 100; i++ {
 		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
 	}
 
@@ -1389,20 +1383,20 @@ func TestResetCursor_CursorChange(t *testing.T) {
 		Force:       false,
 	}
 
-	for i := 1; i <100; i++ {
+	for i := 1; i < 100; i++ {
 		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
 	}
 	mp.config.Cursor = 99
 
 	go func() {
-		for i := 0; i < 100; i++{
+		for i := 0; i < 100; i++ {
 			mp.nextInodeID()
 			time.Sleep(time.Microsecond * 1)
 		}
 	}()
 	time.Sleep(time.Microsecond * 5)
 	err = mp.CursorReset(context.Background(), req)
-	t.Logf("reset cursor:%d, err:%v", mp.config.Cursor,  err)
+	t.Logf("reset cursor:%d, err:%v", mp.config.Cursor, err)
 
 	return
 }
@@ -1433,7 +1427,7 @@ func TestResetCursor_LeaderChange(t *testing.T) {
 		t.Errorf("cursor mismatch, expect:0, actual:%v", mp.config.Cursor)
 		return
 	}
-	t.Logf("reset cursor:%d, err:%v", mp.config.Cursor,  err)
+	t.Logf("reset cursor:%d, err:%v", mp.config.Cursor, err)
 
 	return
 }
@@ -1446,12 +1440,12 @@ func TestResetCursor_MPWriteStatus(t *testing.T) {
 	}
 	defer releaseMetaPartition(mp)
 
-	configTotalMem = 100 * util.GB
+	configTotalMem = 100 * unit.GB
 	defer func() {
 		configTotalMem = 0
 	}()
 
-	for i := 1; i <100; i++ {
+	for i := 1; i < 100; i++ {
 		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
 	}
 	mp.config.Cursor = 10000
@@ -1482,7 +1476,7 @@ func TestResetCursor_MPReadOnly(t *testing.T) {
 	}
 	defer releaseMetaPartition(mp)
 
-	for i := 1; i <100; i++ {
+	for i := 1; i < 100; i++ {
 		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
 	}
 
@@ -1506,7 +1500,7 @@ func TestResetCursor_MPReadOnly(t *testing.T) {
 		t.Errorf("error mismatch, expect:nil, actual:%v, mp status(%v)", err, status)
 		return
 	}
-	if mp.config.Cursor != maxInode.Inode + mpResetInoStep {
+	if mp.config.Cursor != maxInode.Inode+mpResetInoStep {
 		t.Errorf("cursor mismatch, expect:99, actual:%v", mp.config.Cursor)
 	}
 }
@@ -1519,7 +1513,7 @@ func TestResetCursor_SubCursorCase01(t *testing.T) {
 	}
 	defer releaseMetaPartition(mp)
 
-	for i := 1; i <100; i++ {
+	for i := 1; i < 100; i++ {
 		_, _, _ = inodeCreate(mp.inodeTree, NewInode(uint64(i), 0), false)
 	}
 
@@ -1542,7 +1536,7 @@ func TestResetCursor_SubCursorCase01(t *testing.T) {
 		t.Errorf("error mismatch, expect:nil, actual:%v, mp status(%v)", err, status)
 		return
 	}
-	if mp.config.Cursor != maxInode.Inode + 2000 {
+	if mp.config.Cursor != maxInode.Inode+2000 {
 		t.Errorf("cursor mismatch, expect:99, actual:%v", mp.config.Cursor)
 	}
 }
@@ -1557,7 +1551,7 @@ func TestResetCursor_AddCursorCase01(t *testing.T) {
 	configTotalMem = 100 * GB
 
 	req := &proto.CursorResetRequest{
-		PartitionId: 1,
+		PartitionId:     1,
 		CursorResetType: int(AddCursor),
 	}
 

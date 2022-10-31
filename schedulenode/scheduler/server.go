@@ -10,11 +10,11 @@ import (
 	"github.com/chubaofs/chubaofs/schedulenode/smart"
 	"github.com/chubaofs/chubaofs/sdk/hbase"
 	"github.com/chubaofs/chubaofs/sdk/mysql"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/iputil"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"github.com/chubaofs/chubaofs/util/ump"
 	"math"
 	"net/http"
@@ -917,7 +917,7 @@ func (s *ScheduleNode) moveTasksToHistory(tasks []*proto.Task, saveOld bool) (er
 func (s *ScheduleNode) parseConfig(cfg *config.Config) (err error) {
 	var regexpPort *regexp.Regexp
 	localIP := cfg.GetString(config.ConfigKeyLocalIP)
-	if util.IsStrEmpty(localIP) {
+	if stringutil.IsStrEmpty(localIP) {
 		if localIP, err = iputil.GetLocalIPByDial(); err != nil {
 			return
 		}
@@ -1025,25 +1025,25 @@ func (s *ScheduleNode) parseConfig(cfg *config.Config) (err error) {
 			}
 		}
 	}
-	if util.IsStrEmpty(mysqlUrl) {
+	if stringutil.IsStrEmpty(mysqlUrl) {
 		return fmt.Errorf("error: no mysql url")
 	}
-	if util.IsStrEmpty(mysqlUserName) {
+	if stringutil.IsStrEmpty(mysqlUserName) {
 		return fmt.Errorf("error: no mysql username")
 	}
-	if util.IsStrEmpty(mysqlDatabase) {
+	if stringutil.IsStrEmpty(mysqlDatabase) {
 		return fmt.Errorf("error: no mysql database")
 	}
-	if util.IsStrEmpty(mysqlPassword) && util.IsStrEmpty(passFilePath) {
+	if stringutil.IsStrEmpty(mysqlPassword) && stringutil.IsStrEmpty(passFilePath) {
 		return fmt.Errorf("error: mysql password and pass file path can not be both empty")
 	}
-	if util.IsStrEmpty(mysqlPassword) {
+	if stringutil.IsStrEmpty(mysqlPassword) {
 		mysqlPassword, err = mysql.ParsePassword(passFilePath, config.ConfigKeyEncryptPass)
 		if err != nil {
 			log.LogDebugf("[parseConfig] parse mysql password from encrypted file, err(%v)", err.Error())
 			return err
 		}
-		if util.IsStrEmpty(mysqlPassword) {
+		if stringutil.IsStrEmpty(mysqlPassword) {
 			return errors.New("parsed mysql password from encrypted file is empty")
 		}
 	}
@@ -1060,7 +1060,7 @@ func (s *ScheduleNode) parseConfig(cfg *config.Config) (err error) {
 
 	// parse HBase config for smart volume worker createTask function
 	hBaseUrl := cfg.GetString(config.ConfigKeyHBaseUrl)
-	if util.IsStrEmpty(hBaseUrl) {
+	if stringutil.IsStrEmpty(hBaseUrl) {
 		return fmt.Errorf("error: no hBase url")
 	}
 	s.hc = config.NewHBaseConfig(hBaseUrl)

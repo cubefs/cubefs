@@ -35,8 +35,8 @@ import (
 	"syscall"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const (
@@ -213,8 +213,8 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	return
 }
 
-func (ei *ExtentInfoBlock) InitWithExtent(eid,size uint64, modTime time.Time) {
-	ei[FileID]=eid
+func (ei *ExtentInfoBlock) InitWithExtent(eid, size uint64, modTime time.Time) {
+	ei[FileID] = eid
 	ei[Size] = size
 	ei[ModifyTime] = uint64(modTime.Unix())
 }
@@ -282,7 +282,7 @@ func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 		return err
 	}
 	e = NewExtent(name, extentID)
-	e.header = make([]byte, util.BlockHeaderSize)
+	e.header = make([]byte, unit.BlockHeaderSize)
 	err = e.InitToFS()
 	if err != nil {
 		return err
@@ -303,7 +303,7 @@ func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 }
 
 const (
-	BaseExtentAddNumOnInitExtentStore=1000
+	BaseExtentAddNumOnInitExtentStore = 1000
 )
 
 func (s *ExtentStore) initBaseFileID() (err error) {
@@ -352,7 +352,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	if baseFileID < MinExtentID {
 		baseFileID = MinExtentID
 	}
-	baseFileID+=BaseExtentAddNumOnInitExtentStore
+	baseFileID += BaseExtentAddNumOnInitExtentStore
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
 	if err = s.PersistenceBaseExtentID(baseFileID); err != nil {
 		return
@@ -433,14 +433,14 @@ func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64) er
 	if IsTinyExtent(extentID) {
 		return nil
 	}
-	if offset+size > util.BlockSize*util.BlockCount {
+	if offset+size > unit.BlockSize*unit.BlockCount {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
-	if offset >= util.BlockCount*util.BlockSize || size == 0 {
+	if offset >= unit.BlockCount*unit.BlockSize || size == 0 {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
 
-	//if size > util.BlockSize {
+	//if size > unit.BlockSize {
 	//	return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	//}
 	return nil
@@ -949,8 +949,8 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 		return
 	}
 	if !IsTinyExtent(extentID) {
-		e.header = make([]byte, util.BlockHeaderSize)
-		if _, err = s.verifyExtentFp.ReadAt(e.header, int64(extentID*util.BlockHeaderSize)); err != nil && err != io.EOF {
+		e.header = make([]byte, unit.BlockHeaderSize)
+		if _, err = s.verifyExtentFp.ReadAt(e.header, int64(extentID*unit.BlockHeaderSize)); err != nil && err != io.EOF {
 			return
 		}
 	}
@@ -968,12 +968,12 @@ func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	if err != nil {
 		return bcs, err
 	}
-	blockCnt = int(e.Size() / util.BlockSize)
-	if e.Size()%util.BlockSize != 0 {
+	blockCnt = int(e.Size() / unit.BlockSize)
+	if e.Size()%unit.BlockSize != 0 {
 		blockCnt += 1
 	}
 	for blockNo := 0; blockNo < blockCnt; blockNo++ {
-		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
+		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*unit.PerBlockCrcSize : (blockNo+1)*unit.PerBlockCrcSize])
 		bcs = append(bcs, &BlockCrc{BlockNo: blockNo, Crc: blockCrc})
 	}
 	sort.Sort(BlockCrcArr(bcs))
@@ -1194,4 +1194,3 @@ func (s *ExtentStore) GetRealBlockCnt(extentID uint64) (block int64, err error) 
 	block = e.getRealBlockCnt()
 	return
 }
-

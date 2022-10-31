@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -29,7 +28,10 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/cpu"
+	"github.com/chubaofs/chubaofs/util/diskusage"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/storage"
@@ -470,7 +472,7 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 	disks := s.space.GetDisks()
 	diskList := make([]interface{}, 0, len(disks))
 	for _, disk := range disks {
-		diskTotal, err := util.GetDiskTotal(disk.Path)
+		diskTotal, err := diskusage.GetDiskTotal(disk.Path)
 		if err != nil {
 			diskTotal = disk.Total
 		}
@@ -482,10 +484,10 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 			ReservedSpace uint    `json:"reservedSpaceGB"`
 		}{
 			Path:          disk.Path,
-			TotalTB:       util.FixedPoint(float64(diskTotal)/util.TB, 1),
-			UsedGB:        util.FixedPoint(float64(disk.Used)/util.GB, 1),
-			UsedRatio:     util.FixedPoint(float64(disk.Used)/float64(diskTotal), 1),
-			ReservedSpace: uint(disk.ReservedSpace / util.GB),
+			TotalTB:       unit.FixedPoint(float64(diskTotal)/unit.TB, 1),
+			UsedGB:        unit.FixedPoint(float64(disk.Used)/unit.GB, 1),
+			UsedRatio:     unit.FixedPoint(float64(disk.Used)/float64(diskTotal), 1),
+			ReservedSpace: uint(disk.ReservedSpace / unit.GB),
 		}
 		diskList = append(diskList, diskInfo)
 	}
@@ -508,7 +510,7 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		StartTime:      s.processStatInfo.ProcessStartTime,
 		CPUUsageList:   cpuUsageList,
 		MaxCPUUsage:    maxCPUUsage,
-		CPUCoreNumber:  util.GetCPUCoreNumber(),
+		CPUCoreNumber:  cpu.GetCPUCoreNumber(),
 		MemoryUsedList: memoryUsedGBList,
 		MaxMemoryUsed:  maxMemoryUsedGB,
 		MaxMemoryUsage: maxMemoryUsage,
@@ -976,7 +978,6 @@ func (s *DataNode) repairExtentBatch(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, resultMap)
 	return
 }
-
 
 func (s *DataNode) getExtentCrc(w http.ResponseWriter, r *http.Request) {
 	var (

@@ -5,30 +5,30 @@ import (
 	"fmt"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const (
 	PendingPacketFlushThreshold = 32
-	PendingPacketMaxLength		= 64
+	PendingPacketMaxLength      = 64
 )
 
 func (s *Streamer) WritePendingPacket(data []byte, offset uint64, size int, direct bool) (ek *proto.ExtentKey, err error) {
 	if len(s.pendingPacketList) > PendingPacketMaxLength {
 		return nil, fmt.Errorf("ExtentHandler: pending packet is full, offset(%v) size(%v) eh(%v)", offset, size, s.handler)
 	}
-	blksize := util.BlockSize
+	blksize := unit.BlockSize
 	var (
-		total, write 		int
-		pendingPacketIndex 	int
-		curPendingPacket	*Packet
+		total, write       int
+		pendingPacketIndex int
+		curPendingPacket   *Packet
 	)
 	// find index to insert
 	pendingPacketIndex = 0
 	for ; pendingPacketIndex < len(s.pendingPacketList); pendingPacketIndex++ {
 		pendingPacket := s.pendingPacketList[pendingPacketIndex]
-		if pendingPacket.KernelOffset + uint64(pendingPacket.Size) == offset {
+		if pendingPacket.KernelOffset+uint64(pendingPacket.Size) == offset {
 			curPendingPacket = pendingPacket
 			break
 		}
@@ -55,7 +55,7 @@ func (s *Streamer) WritePendingPacket(data []byte, offset uint64, size int, dire
 			}
 		}
 		packsize := int(curPendingPacket.Size)
-		write = util.Min(size-total, blksize-packsize)
+		write = unit.Min(size-total, blksize-packsize)
 		if write > 0 {
 			copy(curPendingPacket.Data[packsize:packsize+write], data[total:total+write])
 			curPendingPacket.Size += uint32(write)
@@ -71,7 +71,7 @@ func (s *Streamer) WritePendingPacket(data []byte, offset uint64, size int, dire
 		log.LogDebugf("ExtentHandler WritePendingPacket: eh(%v) origin pending list(%v) new list(%v)", s.handler, s.pendingPacketList, newPendingPacketList)
 	}
 	s.pendingPacketList = newPendingPacketList
-	ek = &proto.ExtentKey {
+	ek = &proto.ExtentKey{
 		FileOffset: uint64(offset),
 		Size:       uint32(size),
 	}
@@ -86,7 +86,7 @@ func (s *Streamer) FlushContinuousPendingPacket(ctx context.Context) (newPending
 		if log.IsDebugEnabled() {
 			log.LogDebugf("FlushContinuousPendingPacket: eh(%v) packet(%v) check pending packet(%v)", s.handler, s.handler.packet, pendingPacket)
 		}
-		if pendingPacket.KernelOffset != s.handler.fileOffset + uint64(s.handler.size) {
+		if pendingPacket.KernelOffset != s.handler.fileOffset+uint64(s.handler.size) {
 			newPendingPacketList = append(newPendingPacketList, pendingPacket)
 			continue
 		}
@@ -108,7 +108,7 @@ func (s *Streamer) FlushContinuousPendingPacket(ctx context.Context) (newPending
 func (s *Streamer) FlushAllPendingPacket(ctx context.Context) {
 	var pendingEh *ExtentHandler
 	for _, pendingPacket := range s.pendingPacketList {
-		if pendingEh != nil && pendingEh.fileOffset + uint64(pendingEh.size) != pendingPacket.KernelOffset {
+		if pendingEh != nil && pendingEh.fileOffset+uint64(pendingEh.size) != pendingPacket.KernelOffset {
 			pendingEh.setClosed()
 			pendingEh = nil
 		}
@@ -134,7 +134,7 @@ func (s *Streamer) OverwriteLocalPacket(req *ExtentRequest) bool {
 		if s.handler != nil {
 			s.handler.overwriteLocalPacketMutex.Lock()
 			if s.handler.packet != nil {
-				if req.FileOffset >= s.handler.packet.KernelOffset && req.FileOffset + uint64(req.Size) <= s.handler.packet.KernelOffset + uint64(s.handler.packet.Size)  {
+				if req.FileOffset >= s.handler.packet.KernelOffset && req.FileOffset+uint64(req.Size) <= s.handler.packet.KernelOffset+uint64(s.handler.packet.Size) {
 					s.doOverwriteLocalPacket(s.handler.packet, req)
 					s.handler.overwriteLocalPacketMutex.Unlock()
 					if log.IsDebugEnabled() {
@@ -146,7 +146,7 @@ func (s *Streamer) OverwriteLocalPacket(req *ExtentRequest) bool {
 			s.handler.overwriteLocalPacketMutex.Unlock()
 		}
 		for _, pendingPacket := range s.pendingPacketList {
-			if req.FileOffset >= pendingPacket.KernelOffset && req.FileOffset + uint64(req.Size) <= pendingPacket.KernelOffset + uint64(pendingPacket.Size)  {
+			if req.FileOffset >= pendingPacket.KernelOffset && req.FileOffset+uint64(req.Size) <= pendingPacket.KernelOffset+uint64(pendingPacket.Size) {
 				s.doOverwriteLocalPacket(pendingPacket, req)
 				if log.IsDebugEnabled() {
 					log.LogDebugf("OverwriteLocalPacket: eh(%v) packet(%v) request(%v) pendingPacketList(%v)",

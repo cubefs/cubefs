@@ -26,7 +26,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 type MockMetaServer struct {
@@ -250,8 +250,8 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 		resp.Result = err.Error()
 		goto end
 	}
-	resp.Total = 10 * util.GB
-	resp.Used = 1 * util.GB
+	resp.Total = 10 * unit.GB
+	resp.Used = 1 * unit.GB
 	// every partition used
 	mms.RLock()
 	for id, partition := range mms.partitions {
@@ -271,7 +271,7 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 	resp.ZoneName = mms.ZoneName
 	resp.Status = proto.TaskSucceeds
 	resp.RocksDBDiskInfo = []*proto.MetaNodeDiskInfo{
-		{Total: 1 * util.TB, Used: 12 * util.GB, Path: "/data0", UsageRatio: float64(12) / float64(1024)},
+		{Total: 1 * unit.TB, Used: 12 * unit.GB, Path: "/data0", UsageRatio: float64(12) / float64(1024)},
 	}
 end:
 	return mms.postResponseToMaster(adminTask, resp)

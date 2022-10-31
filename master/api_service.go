@@ -29,10 +29,10 @@ import (
 	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 // NodeView provides the view of the data or meta node.
@@ -299,7 +299,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaRocksLogReservedTime:            m.cluster.cfg.MetaRocksLogReservedTime,
 		MetaRocksLogReservedCnt:             m.cluster.cfg.MetaRocksLogReservedCnt,
 		MetaRocksFlushWalInterval:           m.cluster.cfg.MetaRocksFlushWalInterval,
-		MetaRocksDisableFlushFlag:            m.cluster.cfg.MetaRocksDisableFlushFlag,
+		MetaRocksDisableFlushFlag:           m.cluster.cfg.MetaRocksDisableFlushFlag,
 		MetaRocksWalTTL:                     m.cluster.cfg.MetaRocksWalTTL,
 	}
 
@@ -1763,7 +1763,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !forceROW && (compactTag == proto.CompactOpenName || compactTag == strconv.FormatBool(true)){
+	if !forceROW && (compactTag == proto.CompactOpenName || compactTag == strconv.FormatBool(true)) {
 		err = fmt.Errorf("compact cannot be opened when force row is closed. Please open force row first,compact tag is[%v]", compactTag)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1889,8 +1889,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		SmartRules:           vol.smartRules,
 		TotalSize:            stat.TotalSize,
 		UsedSize:             stat.UsedSize,
-		TotalSizeGB:          fmt.Sprintf("%.2f", float64(stat.TotalSize)/util.GB),
-		UsedSizeGB:           fmt.Sprintf("%.2f", float64(stat.UsedSize)/util.GB),
+		TotalSizeGB:          fmt.Sprintf("%.2f", float64(stat.TotalSize)/unit.GB),
+		UsedSizeGB:           fmt.Sprintf("%.2f", float64(stat.UsedSize)/unit.GB),
 		UsedRatio:            usedRatio,
 		FileAvgSize:          fileAvgSize,
 		CreateStatus:         vol.CreateStatus,
@@ -2169,7 +2169,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if vol != "" && len(vol) > 0{
+		if vol != "" && len(vol) > 0 {
 			err = m.cluster.setMetaNodeReqVolOpRateLimit(vol, v, op)
 		} else {
 			err = m.cluster.setMetaNodeReqOpRateLimit(v, op)
@@ -4081,13 +4081,13 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
 		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
-	proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB}
+		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return
 		}
 	}
-	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey,dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey}
+	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return
@@ -4325,7 +4325,7 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	stat = new(proto.VolStatInfo)
 	stat.Name = vol.Name
-	stat.TotalSize = vol.Capacity * util.GB
+	stat.TotalSize = vol.Capacity * unit.GB
 	stat.UsedSize = vol.totalUsedSpace()
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize

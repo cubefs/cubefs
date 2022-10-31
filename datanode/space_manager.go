@@ -25,8 +25,8 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 // SpaceManager manages the disk space.
@@ -318,7 +318,7 @@ func (manager *SpaceManager) minPartitionCnt() (d *Disk) {
 	)
 	minWeight = math.MaxFloat64
 	for _, disk := range manager.disks {
-		if disk.Available <= 5*util.GB || disk.Status != proto.ReadWrite {
+		if disk.Available <= 5*unit.GB || disk.Status != proto.ReadWrite {
 			continue
 		}
 		diskWeight := disk.getSelectWeight()
@@ -330,7 +330,7 @@ func (manager *SpaceManager) minPartitionCnt() (d *Disk) {
 	if minWeightDisk == nil {
 		return
 	}
-	if minWeightDisk.Available <= 5*util.GB || minWeightDisk.Status != proto.ReadWrite {
+	if minWeightDisk.Available <= 5*unit.GB || minWeightDisk.Status != proto.ReadWrite {
 		return
 	}
 	d = minWeightDisk

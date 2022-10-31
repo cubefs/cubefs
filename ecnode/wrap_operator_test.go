@@ -7,9 +7,9 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"hash/crc32"
 	"io/ioutil"
 	"net"
@@ -155,9 +155,9 @@ func (e *fakeEcNode) fakeCreateExtent(ep *EcPartition, t *testing.T, extentId ui
 func (e *fakeEcNode) fakeCreateECPartition(t *testing.T, partitionId uint64) (ep *EcPartition) {
 	req := &proto.CreateEcPartitionRequest{
 		PartitionID:   partitionId,
-		PartitionSize: uint64(5 * util.GB), // 5GB
+		PartitionSize: uint64(5 * unit.GB), // 5GB
 		VolumeID:      "testVol",
-		EcMaxUnitSize: 32 * util.MB, // 32 MB
+		EcMaxUnitSize: 32 * unit.MB, // 32 MB
 		DataNodeNum:   uint32(4),
 		ParityNodeNum: uint32(2),
 		Hosts:         e.Hosts,
@@ -1117,7 +1117,7 @@ func releasePartitions(addr string, t *testing.T) (err error) {
 }
 
 func setEcPartitionSize(addr string, partitionId uint64, t *testing.T) (err error) {
-	url := fmt.Sprintf("http://%s/setEcPartitionSize?partitionId=%v&size=%v", addr, partitionId, 1*util.GB)
+	url := fmt.Sprintf("http://%s/setEcPartitionSize?partitionId=%v&size=%v", addr, partitionId, 1*unit.GB)
 	_, err = getHttpRequestResp(url, t)
 	if err != nil {
 		t.Fatalf("http setEcPartitionSize error")

@@ -25,9 +25,9 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"golang.org/x/time/rate"
 )
 
@@ -174,7 +174,7 @@ retry:
 	client.dataWrapper.SetNearRead(config.NearRead)
 	client.tinySize = config.TinySize
 	if client.tinySize == 0 {
-		client.tinySize = util.DefaultTinySizeLimit
+		client.tinySize = unit.DefaultTinySizeLimit
 	}
 	client.SetExtentSize(config.ExtentSize)
 	client.autoFlush = config.AutoFlush
@@ -653,21 +653,21 @@ func (client *ExtentClient) CloseConnPool() {
 
 func (c *ExtentClient) SetExtentSize(size int) {
 	if size == 0 {
-		c.extentSize = util.ExtentSize
+		c.extentSize = unit.ExtentSize
 		return
 	}
-	if size > util.ExtentSize {
-		log.LogWarnf("too large extent size config %v, use default value %v", size, util.ExtentSize)
-		c.extentSize = util.ExtentSize
+	if size > unit.ExtentSize {
+		log.LogWarnf("too large extent size config %v, use default value %v", size, unit.ExtentSize)
+		c.extentSize = unit.ExtentSize
 		return
 	}
-	if size < util.MinExtentSize {
-		log.LogWarnf("too small extent size config %v, use default min value %v", size, util.MinExtentSize)
-		c.extentSize = util.MinExtentSize
+	if size < unit.MinExtentSize {
+		log.LogWarnf("too small extent size config %v, use default min value %v", size, unit.MinExtentSize)
+		c.extentSize = unit.MinExtentSize
 		return
 	}
 	if size&(size-1) != 0 {
-		for i := util.MinExtentSize; ; {
+		for i := unit.MinExtentSize; ; {
 			if i > size {
 				c.extentSize = i
 				break

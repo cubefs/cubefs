@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"strings"
 	"time"
 )
@@ -302,7 +302,7 @@ func SelectWorkers(workerType int, workerAddr string, limit, offset int) (worker
 		conditions = append(conditions, " worker_type = ?")
 		values = append(values, workerType)
 	}
-	if !util.IsStrEmpty(workerAddr) {
+	if !stringutil.IsStrEmpty(workerAddr) {
 		conditions = append(conditions, " worker_addr = ?")
 		values = append(values, workerAddr)
 	}

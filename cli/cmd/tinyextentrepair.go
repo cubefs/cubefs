@@ -1,12 +1,11 @@
 package cmd
 
 import (
-
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"math"
 	"os"
 	"strconv"
@@ -289,7 +288,7 @@ func checkTinyExtent(volume string, partitionID uint64, partitionHosts []string,
 				return false
 			}), partitionHosts)
 	}
-	if (maxHolesSize-minHolesSize) > thresholdMb*util.MB && maxExtentSize == minExtentSize {
+	if (maxHolesSize-minHolesSize) > thresholdMb*unit.MB && maxExtentSize == minExtentSize {
 		resultSize = fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v\n", volume, partitionID, extent, maxHolesSize-minHolesSize, maxExtentSize-minExtentSize, minHolesSize, minHolesSizeHost,
 			maxHolesSize, maxHolesSizeHost, formatExtentInfo(dpExtInfos, func(ext *DpExtInfo) bool {
 				if ext.HoleSize == minHolesSize {
@@ -298,7 +297,7 @@ func checkTinyExtent(volume string, partitionID uint64, partitionHosts []string,
 				return false
 			}), partitionHosts)
 	}
-	if (maxAvailSize-minAvailSize) > thresholdMb*util.MB && maxExtentSize == minExtentSize {
+	if (maxAvailSize-minAvailSize) > thresholdMb*unit.MB && maxExtentSize == minExtentSize {
 		resultAvailSize = fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v\n", volume, partitionID, extent, maxAvailSize-minAvailSize, maxExtentSize-minExtentSize, maxAvailSize, maxAvailSizeHost,
 			minAvailSize, minAvailSizeHost, formatExtentInfo(dpExtInfos, func(ext *DpExtInfo) bool {
 				if ext.AvailSize == maxAvailSize {
@@ -388,7 +387,7 @@ func (server *tinyExtentRepairServer) checkAndRepairTinyExtents(volume string, p
 		resultsSize += resultSize
 		resultsAvailSize += resultAvailSize
 	}
-	if (minSizeTinyInfo.maxSize > 0 && (maxSizeTinyInfo.maxSize/minSizeTinyInfo.maxSize > 50) && (maxSizeTinyInfo.maxSize-minSizeTinyInfo.maxSize > 100*util.MB)) || maxSizeTinyInfo.maxSize > 10*util.TB {
+	if (minSizeTinyInfo.maxSize > 0 && (maxSizeTinyInfo.maxSize/minSizeTinyInfo.maxSize > 50) && (maxSizeTinyInfo.maxSize-minSizeTinyInfo.maxSize > 100*unit.MB)) || maxSizeTinyInfo.maxSize > 10*unit.TB {
 		resultHugeExt = fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v\n", volume, partition.PartitionID, maxSizeTinyInfo.extentID, maxSizeTinyInfo.maxSize, maxSizeTinyInfo.minSize, minSizeTinyInfo.extentID, minSizeTinyInfo.maxSize, minSizeTinyInfo.minSize, partition.Hosts)
 	}
 	log.LogInfof("action[checkAndRepairTinyExtents] volume:%v, partition %v finish", volume, partition.PartitionID)

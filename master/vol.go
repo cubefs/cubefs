@@ -22,9 +22,10 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -120,10 +121,10 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.mpReplicaNum = mpReplicaNum
 	vol.Owner = owner
 	if dpSize == 0 {
-		dpSize = util.DefaultDataPartitionSize
+		dpSize = unit.DefaultDataPartitionSize
 	}
-	if dpSize < util.GB {
-		dpSize = util.DefaultDataPartitionSize
+	if dpSize < unit.GB {
+		dpSize = unit.DefaultDataPartitionSize
 	}
 	vol.ExtentCacheExpireSec = defaultExtentCacheExpireSec
 	vol.MinWritableMPNum = defaultVolMinWritableMPNum
@@ -259,8 +260,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 }
 
 func (vol *Vol) refreshOSSSecure() (key, secret string) {
-	vol.OSSAccessKey = util.RandomString(16, util.Numeric|util.LowerLetter|util.UpperLetter)
-	vol.OSSSecretKey = util.RandomString(32, util.Numeric|util.LowerLetter|util.UpperLetter)
+	vol.OSSAccessKey = stringutil.RandomString(16, stringutil.Numeric|stringutil.LowerLetter|stringutil.UpperLetter)
+	vol.OSSSecretKey = stringutil.RandomString(32, stringutil.Numeric|stringutil.LowerLetter|stringutil.UpperLetter)
 	return vol.OSSAccessKey, vol.OSSSecretKey
 }
 
@@ -628,7 +629,7 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	if vol.capacity() == 0 {
 		return
 	}
-	usedSpace := vol.totalUsedSpace() / util.GB
+	usedSpace := vol.totalUsedSpace() / unit.GB
 	if usedSpace >= vol.capacity() {
 		vol.setAllDataPartitionsToReadOnly()
 		return
@@ -652,7 +653,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 // Calculate the expansion number (the number of data partitions to be allocated to the given volume)
 func (vol *Vol) calculateExpansionNum() (count int) {
 	lackCount := float64(vol.MinWritableDPNum - vol.dataPartitions.readableAndWritableCnt)
-	c := float64(vol.Capacity) * float64(volExpansionRatio) * float64(util.GB) / float64(util.DefaultDataPartitionSize)
+	c := float64(vol.Capacity) * float64(volExpansionRatio) * float64(unit.GB) / float64(unit.DefaultDataPartitionSize)
 	if lackCount > c {
 		c = lackCount
 	}

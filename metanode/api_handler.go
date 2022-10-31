@@ -21,8 +21,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/cpu"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"hash/crc32"
 	"io"
 	"io/fs"
@@ -250,7 +251,7 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 		resp.Msg = err.Error()
 		return
 	}
-	snap :=	mp.(*metaPartition).db.OpenSnap()
+	snap := mp.(*metaPartition).db.OpenSnap()
 	defer mp.(*metaPartition).db.ReleaseSnap(snap)
 
 	buff.Reset()
@@ -258,7 +259,7 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 		val       []byte
 		delimiter = []byte{',', '\n'}
 		isFirst   = true
-		stKey	  []byte
+		stKey     []byte
 		endKey    []byte
 	)
 
@@ -266,7 +267,7 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 	endKey = make([]byte, 1)
 	stKey[0] = byte(prefixTable)
 	endKey[0] = byte(prefixTable + 1)
-	err = mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte)(bool, error) {
+	err = mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
 		ek := &proto.ExtentKey{}
 		switch prefixTable {
 		case ExtentDelTableV1:
@@ -320,10 +321,10 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 func (m *MetaNode) cleanDeleteEkHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, "OK")
 	defer func() {
-			data, _ := resp.Marshal()
-			if _, err := w.Write(data); err != nil {
-				log.LogErrorf("[getAllDeleteEkHandler] response %s", err)
-			}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getAllDeleteEkHandler] response %s", err)
+		}
 	}()
 
 	if err := r.ParseForm(); err != nil {
@@ -345,12 +346,12 @@ func (m *MetaNode) cleanDeleteEkHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	snap :=	mp.(*metaPartition).db.OpenSnap()
+	snap := mp.(*metaPartition).db.OpenSnap()
 	defer mp.(*metaPartition).db.ReleaseSnap(snap)
 
 	var (
-		stKey	  []byte
-		endKey    []byte
+		stKey  []byte
+		endKey []byte
 	)
 
 	stKey = make([]byte, 1)
@@ -363,7 +364,7 @@ func (m *MetaNode) cleanDeleteEkHandler(w http.ResponseWriter, r *http.Request) 
 		resp.Msg = err.Error()
 		return
 	}
-	err = mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte)(bool, error) {
+	err = mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
 		if k[0] != byte(ExtentDelTableV1) {
 			return false, nil
 		}
@@ -450,7 +451,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = snap.Range(InodeType, func(item interface{}) (bool, error) {
 		inode := item.(*Inode)
-		if inodeType != 0 &&  inode.Type != inodeType {
+		if inodeType != 0 && inode.Type != inodeType {
 			return true, nil
 		}
 
@@ -844,10 +845,10 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 			Status        int8    `json:"status"`
 		}{
 			Path:          disk.Path,
-			TotalTB:       util.FixedPoint(disk.Total/util.TB, 1),
-			UsedGB:        util.FixedPoint(disk.Used/util.GB, 1),
-			UsedRatio:     util.FixedPoint(disk.Used/disk.Total, 3),
-			ReservedSpace: disk.ReservedSpace / util.GB,
+			TotalTB:       unit.FixedPoint(disk.Total/unit.TB, 1),
+			UsedGB:        unit.FixedPoint(disk.Used/unit.GB, 1),
+			UsedRatio:     unit.FixedPoint(disk.Used/disk.Total, 3),
+			ReservedSpace: disk.ReservedSpace / unit.GB,
 			Status:        disk.Status,
 		}
 		diskList = append(diskList, diskInfo)
@@ -859,7 +860,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"statTime":         m.processStatInfo.ProcessStartTime,
 		"cpuUsageList":     cpuUsageList,
 		"maxCPUUsage":      maxCPUUsage,
-		"cpuCoreNumber":    util.GetCPUCoreNumber(),
+		"cpuCoreNumber":    cpu.GetCPUCoreNumber(),
 		"memoryUsedGBList": memoryUsedGBList,
 		"maxMemoryUsedGB":  maxMemoryUsedGB,
 		"maxMemoryUsage":   maxMemoryUsage,
@@ -951,7 +952,7 @@ func (m *MetaNode) getAllInodeId(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (m *MetaNode) getSnapshotCrc(w http.ResponseWriter, r *http.Request){
+func (m *MetaNode) getSnapshotCrc(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
@@ -970,12 +971,12 @@ func (m *MetaNode) getSnapshotCrc(w http.ResponseWriter, r *http.Request){
 		resp.Msg = err.Error()
 		return
 	}
-	rootDir := fmt.Sprintf("%s/partition_%v",m.metadataDir, pid)
+	rootDir := fmt.Sprintf("%s/partition_%v", m.metadataDir, pid)
 	crcFilePathSuffix := "snapshotCrc"
 	filepath := fmt.Sprintf("%s/%s", rootDir, crcFilePathSuffix)
 	file, err := os.Open(filepath)
-	if err != nil{
-		log.LogErrorf("open snapshotCrc file failed, err: %v",err)
+	if err != nil {
+		log.LogErrorf("open snapshotCrc file failed, err: %v", err)
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
 		return
@@ -985,12 +986,12 @@ func (m *MetaNode) getSnapshotCrc(w http.ResponseWriter, r *http.Request){
 	reader := bufio.NewReader(file)
 	buf := make([]byte, 128)
 	n, err := reader.Read(buf)
-	if err != nil && err != io.EOF{
-		log.LogErrorf("read snapshotCrc file failed, err: %v",err)
+	if err != nil && err != io.EOF {
+		log.LogErrorf("read snapshotCrc file failed, err: %v", err)
 	}
 	result := &proto.SnapshotCrdResponse{
-		LastSnapshotStr:     string(buf[:n]),
-		LocalAddr: m.localAddr,
+		LastSnapshotStr: string(buf[:n]),
+		LocalAddr:       m.localAddr,
 	}
 	resp.Code = http.StatusOK
 	resp.Msg = "OK"
@@ -1139,7 +1140,7 @@ func (m *MetaNode) getMetaDataCrcSum(w http.ResponseWriter, r *http.Request) {
 		cntSet    = make([]uint64, 0)
 		crcSumSet = make([]uint32, 0)
 	)
-	for t := DentryType; t < MaxType; t++{
+	for t := DentryType; t < MaxType; t++ {
 		crcSum, err = snap.CrcSum(t)
 		if err != nil {
 			resp.Code = http.StatusInternalServerError
@@ -1158,7 +1159,7 @@ func (m *MetaNode) getMetaDataCrcSum(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (m *MetaNode) getAllInodesCrcSum(w http.ResponseWriter, r *http.Request)  {
+func (m *MetaNode) getAllInodesCrcSum(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
 		pid uint64
@@ -1262,7 +1263,7 @@ func (m *MetaNode) cleanExpiredPartitions(w http.ResponseWriter, r *http.Request
 		reservedDays = 1
 	}
 
-	expiredCheck := (time.Now().Add(- 24 * time.Hour * time.Duration(reservedDays))).Unix()
+	expiredCheck := (time.Now().Add(-24 * time.Hour * time.Duration(reservedDays))).Unix()
 
 	cleanDirs := []string{m.metadataDir, m.raftDir}
 	cleanFailedDirs := make([]string, 0, len(cleanDirs))
@@ -1287,7 +1288,7 @@ func (m *MetaNode) cleanExpiredPartitions(w http.ResponseWriter, r *http.Request
 				continue
 			}
 			delTime := int64(0)
-			if delTime, err = strconv.ParseInt(mpInfo[len(mpInfo) - 1], 10, 64); err != nil {
+			if delTime, err = strconv.ParseInt(mpInfo[len(mpInfo)-1], 10, 64); err != nil {
 				continue
 			}
 
@@ -1473,7 +1474,7 @@ func (m *MetaNode) getAllDeletedInodesHandler(w http.ResponseWriter, r *http.Req
 
 	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
 		delInode := item.(*DeletedINode)
-		if inodeType != 0 &&  delInode.Inode.Type != inodeType {
+		if inodeType != 0 && delInode.Inode.Type != inodeType {
 			return true, nil
 		}
 
@@ -1793,7 +1794,7 @@ func (m *MetaNode) getExtentsByDeletedInodeHandler(w http.ResponseWriter,
 	return
 }
 
-func (m *MetaNode) getAllDeletedInodesCrcSum(w http.ResponseWriter, r *http.Request)  {
+func (m *MetaNode) getAllDeletedInodesCrcSum(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
 		pid uint64
@@ -2014,7 +2015,7 @@ func (m *MetaNode) getInodeWithMarkDeleteHandler(w http.ResponseWriter, r *http.
 		expired   bool
 		timestamp int64
 	)
-	ino, err :=  mp.(*metaPartition).inodeTree.Get(id)
+	ino, err := mp.(*metaPartition).inodeTree.Get(id)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -2038,7 +2039,6 @@ func (m *MetaNode) getInodeWithMarkDeleteHandler(w http.ResponseWriter, r *http.
 		expired = delIno.IsExpired
 		timestamp = delIno.Timestamp
 	}
-
 
 	ino.RLock()
 	defer ino.RUnlock()
@@ -2078,8 +2078,7 @@ func (m *MetaNode) getInodeWithMarkDeleteHandler(w http.ResponseWriter, r *http.
 	return
 }
 
-
-func (m *MetaNode)enableRocksDBSync(w http.ResponseWriter, r *http.Request) {
+func (m *MetaNode) enableRocksDBSync(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
 		pid uint64
@@ -2112,7 +2111,7 @@ func (m *MetaNode)enableRocksDBSync(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (m *MetaNode)reopenRocksDb(w http.ResponseWriter, r *http.Request) {
+func (m *MetaNode) reopenRocksDb(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
 		pid uint64

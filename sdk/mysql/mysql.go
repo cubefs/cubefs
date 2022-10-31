@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"database/sql"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	_ "github.com/go-sql-driver/mysql"
 	"io"
 	"os"
@@ -113,8 +113,8 @@ func ParsePassword(filePath, confKey string) (password string, err error) {
 		line = strings.ReplaceAll(line, " ", "")
 		line = strings.ReplaceAll(line, "\n", "")
 		index := strings.Index(line, "=")
-		name := util.SubString(line, 0, index)
-		value := util.SubString(line, index+1, len(line))
+		name := stringutil.SubString(line, 0, index)
+		value := stringutil.SubString(line, index+1, len(line))
 		if name == confKey {
 			log.LogDebugf("[ParsePassword] parsed value: %v", value)
 			return value, nil

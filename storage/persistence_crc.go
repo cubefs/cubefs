@@ -18,8 +18,8 @@ import (
 	"encoding/binary"
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 type BlockCrc struct {
@@ -40,10 +40,10 @@ type UpdateCrcFunc func(e *Extent, blockNo int, crc uint32) (err error)
 type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 
 func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
-	startIdx := blockNo * util.PerBlockCrcSize
-	endIdx := startIdx + util.PerBlockCrcSize
+	startIdx := blockNo * unit.PerBlockCrcSize
+	endIdx := startIdx + unit.PerBlockCrcSize
 	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], blockCrc)
-	verifyStart := startIdx + int(util.BlockHeaderSize*e.extentID)
+	verifyStart := startIdx + int(unit.BlockHeaderSize*e.extentID)
 	if _, err = s.verifyExtentFp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart)); err != nil {
 		return
 	}
@@ -53,17 +53,17 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 
 func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
 	err = fallocate(int(s.verifyExtentFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
-		int64(util.BlockHeaderSize*extentID), util.BlockHeaderSize)
+		int64(unit.BlockHeaderSize*extentID), unit.BlockHeaderSize)
 
 	return
 }
 
 func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
 	value := make([]byte, 8)
-	persistBaseExtentID := extentID+BaseExtentIDPersistStep
+	persistBaseExtentID := extentID + BaseExtentIDPersistStep
 	binary.BigEndian.PutUint64(value, persistBaseExtentID)
 	_, err = s.metadataFp.WriteAt(value, BaseExtentIDOffset)
-	if (atomic.AddUint64(&s.baseExtentIDPersistCount, 1) - 1) % BaseExtentIDSyncStep == 0 {
+	if (atomic.AddUint64(&s.baseExtentIDPersistCount, 1)-1)%BaseExtentIDSyncStep == 0 {
 		if err = s.metadataFp.Sync(); err != nil {
 			return
 		}
@@ -85,8 +85,8 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
 	if currExtentID > atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile) {
 		prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile))
 		endAllocSpaceExtentID := int64(prevAllocSpaceExtentID + 1000)
-		size := int64(1000 * util.BlockHeaderSize)
-		err := fallocate(int(s.verifyExtentFp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
+		size := int64(1000 * unit.BlockHeaderSize)
+		err := fallocate(int(s.verifyExtentFp.Fd()), 1, prevAllocSpaceExtentID*unit.BlockHeaderSize, size)
 		if err != nil {
 			return
 		}
@@ -99,7 +99,7 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
 		log.LogInfof("Action(PreAllocSpaceOnVerfiyFile) PartitionID(%v) currentExtent(%v)"+
 			"PrevAllocSpaceExtentIDOnVerifyFile(%v) EndAllocSpaceExtentIDOnVerifyFile(%v)"+
 			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
-			prevAllocSpaceExtentID*util.BlockHeaderSize+size)
+			prevAllocSpaceExtentID*unit.BlockHeaderSize+size)
 	}
 
 	return

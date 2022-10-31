@@ -34,11 +34,10 @@ import (
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
-
 )
 
 const partitionPrefix = "partition_"
@@ -71,7 +70,7 @@ type metadataManager struct {
 	rootDir            string
 	rocksDBDirs        []string
 	raftStore          raftstore.RaftStore
-	connPool           *util.ConnectPool
+	connPool           *connpool.ConnectPool
 	state              uint32
 	mu                 sync.RWMutex
 	partitions         map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
@@ -83,9 +82,9 @@ type metadataManager struct {
 }
 
 type MetaNodeVersion struct {
-	Major      int64
-	Minor      int64
-	Patch      int64
+	Major int64
+	Minor int64
+	Patch int64
 }
 
 func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
@@ -109,7 +108,6 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 
 	metric := exporter.NewTPCnt(p.GetOpMsg())
 	defer metric.Set(err)
-
 
 	//now := time.Now()
 	//defer func() {
@@ -621,7 +619,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		RootDir:            path.Join(m.rootDir, partitionPrefix+partitionId),
 		ConnPool:           m.connPool,
 		TrashRemainingDays: int32(request.TrashDays),
-		StoreMode: 	        request.StoreMode,
+		StoreMode:          request.StoreMode,
 		CreationType:       request.CreationType,
 	}
 	mpc.AfterStop = func() {
@@ -728,7 +726,7 @@ func (s *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string)
 		limiter.Wait(ctx)
 	}
 	pid := p.PartitionID
-	mp , err := s.GetPartition(pid)
+	mp, err := s.GetPartition(pid)
 	if err != nil {
 		return
 	}
@@ -776,7 +774,7 @@ func (m *metadataManager) StartPartition(id uint64) (err error) {
 		m.detachPartition(id)
 	}
 
-	if mpDirInfo, err = os.Stat(partitionConfig.RootDir); err != nil{
+	if mpDirInfo, err = os.Stat(partitionConfig.RootDir); err != nil {
 		err = fmt.Errorf("MP[%d] not exist", id)
 		return
 	}
@@ -846,7 +844,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 		raftStore:   conf.RaftStore,
 		partitions:  make(map[uint64]MetaPartition),
 		metaNode:    metaNode,
-		connPool:    util.NewConnectPool(),
+		connPool:    connpool.NewConnectPool(),
 		stopC:       make(chan bool, 0),
 		volTrashMap: make(map[string]int32),
 		rocksDBDirs: metaNode.rocksDirs,
@@ -856,7 +854,6 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 	}
 	return mm, nil
 }
-
 
 // isExpiredPartition return whether one partition is expired
 // if one partition does not exist in master, we decided that it is one expired partition
@@ -880,11 +877,11 @@ func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition 
 	return true
 }
 
-func NewMetaNodeVersion(version string) (*MetaNodeVersion) {
-	ver := &MetaNodeVersion{2,5, 0}
+func NewMetaNodeVersion(version string) *MetaNodeVersion {
+	ver := &MetaNodeVersion{2, 5, 0}
 	dotParts := strings.SplitN(version, ".", 3)
 	if len(dotParts) != 3 {
-		log.LogErrorf("[version: %s]'s length is  not right! ",version)
+		log.LogErrorf("[version: %s]'s length is  not right! ", version)
 	}
 	parsed := make([]int64, 3, 3)
 	if len(dotParts) < 3 {

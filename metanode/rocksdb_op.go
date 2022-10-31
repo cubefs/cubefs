@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"github.com/tecbot/gorocksdb"
 	"io/fs"
 	"os"
@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 )
 
-const(
-	DefLRUCacheSize       = 256 * util.MB
-	DefWriteBuffSize      = 4 * util.MB
+const (
+	DefLRUCacheSize       = 256 * unit.MB
+	DefWriteBuffSize      = 4 * unit.MB
 	DefRetryCount         = 3
 	DefMaxWriteBatchCount = 1000
 	DefWalSizeLimitMB     = 5
@@ -24,7 +24,7 @@ const(
 	DefMaxLogFileSize     = 1 //MB
 	DefLogFileRollTimeDay = 3 // 3 day
 	DefLogReservedCnt     = 3
-	DefWalTTL             = 60  //second
+	DefWalTTL             = 60 //second
 )
 
 var (
@@ -32,7 +32,7 @@ var (
 	rocksDBError  = fmt.Errorf("rocksdb operation error")
 )
 
-type  TableType byte
+type TableType byte
 
 const (
 	BaseInfoTable TableType = iota
@@ -47,7 +47,7 @@ const (
 )
 
 const (
-	SyncWalTable  = 255
+	SyncWalTable = 255
 )
 
 func getTableTypeKey(treeType TreeType) TableType {
@@ -94,31 +94,31 @@ type RocksDbInfo struct {
 	defFlushOption *gorocksdb.FlushOptions
 	defSyncOption  *gorocksdb.WriteOptions
 	db             *gorocksdb.DB
-	mutex		   sync.RWMutex
-	wait 		   sync.WaitGroup
-	state  		   uint32
+	mutex          sync.RWMutex
+	wait           sync.WaitGroup
+	state          uint32
 	syncCnt        uint64
 	SyncFlag       bool
 }
 
-func NewRocksDb() (dbInfo *RocksDbInfo){
+func NewRocksDb() (dbInfo *RocksDbInfo) {
 	dbInfo = &RocksDbInfo{
 		state: dbInitSt,
 	}
 	return
 }
 
-func (dbInfo *RocksDbInfo) ReleaseRocksDb() error{
+func (dbInfo *RocksDbInfo) ReleaseRocksDb() error {
 	dbInfo.mutex.Lock()
 	defer dbInfo.mutex.Unlock()
-	if dbInfo.db != nil || atomic.LoadUint32(&dbInfo.state) != dbClosedSt{
+	if dbInfo.db != nil || atomic.LoadUint32(&dbInfo.state) != dbClosedSt {
 		return fmt.Errorf("rocks db is using, can not release")
 	}
 
 	return os.RemoveAll(dbInfo.dir)
 }
 
-func (dbInfo *RocksDbInfo) CloseDb() (err error){
+func (dbInfo *RocksDbInfo) CloseDb() (err error) {
 	log.LogDebugf("close RocksDB, Path(%s), State(%v)", dbInfo.dir, atomic.LoadUint32(&dbInfo.state))
 
 	if ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbOpenedSt, dbClosingSt); !ok {
@@ -153,7 +153,7 @@ func (dbInfo *RocksDbInfo) CloseDb() (err error){
 	dbInfo.defFlushOption = nil
 	return
 }
-func (dbInfo *RocksDbInfo) CommitEmptyRecordToSyncWal (flushWal bool) {
+func (dbInfo *RocksDbInfo) CommitEmptyRecordToSyncWal(flushWal bool) {
 	var err error
 	dbInfo.syncCnt += 1
 	log.LogWarnf("db[%v] start sync, flush wal flag:%v", dbInfo.dir, flushWal)
@@ -234,9 +234,9 @@ func (dbInfo *RocksDbInfo) interOpenDb(dir string, walFileSize, walMemSize, logF
 	opts.SetCompression(gorocksdb.NoCompression)
 
 	opts.SetWalSizeLimitMb(walFileSize)
-	opts.SetMaxTotalWalSize(walMemSize * util.MB)
-	opts.SetMaxLogFileSize(int(logFileSize * util.MB))
-	opts.SetLogFileTimeToRoll(int (logReversed * 60 * 60 * 24))
+	opts.SetMaxTotalWalSize(walMemSize * unit.MB)
+	opts.SetMaxLogFileSize(int(logFileSize * unit.MB))
+	opts.SetLogFileTimeToRoll(int(logReversed * 60 * 60 * 24))
 	opts.SetKeepLogFileNum(int(logReversedCnt))
 	opts.SetWALTtlSeconds(walTTL)
 	//opts.SetParanoidChecks(true)
@@ -257,10 +257,10 @@ func (dbInfo *RocksDbInfo) interOpenDb(dir string, walFileSize, walMemSize, logF
 		return rocksDBError
 	}
 	dbInfo.dir = dir
-	dbInfo.defReadOption  = gorocksdb.NewDefaultReadOptions()
+	dbInfo.defReadOption = gorocksdb.NewDefaultReadOptions()
 	dbInfo.defWriteOption = gorocksdb.NewDefaultWriteOptions()
 	dbInfo.defFlushOption = gorocksdb.NewDefaultFlushOptions()
-	dbInfo.defSyncOption  = gorocksdb.NewDefaultWriteOptions()
+	dbInfo.defSyncOption = gorocksdb.NewDefaultWriteOptions()
 	dbInfo.SyncFlag = true
 	dbInfo.defSyncOption.SetSync(dbInfo.SyncFlag)
 
@@ -268,7 +268,7 @@ func (dbInfo *RocksDbInfo) interOpenDb(dir string, walFileSize, walMemSize, logF
 	return nil
 }
 
-func (dbInfo *RocksDbInfo) OpenDb(dir string, walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL uint64) (err error){
+func (dbInfo *RocksDbInfo) OpenDb(dir string, walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL uint64) (err error) {
 	ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbInitSt, dbOpenningSt)
 	ok = ok || atomic.CompareAndSwapUint32(&dbInfo.state, dbClosedSt, dbOpenningSt)
 	if !ok {
@@ -293,7 +293,7 @@ func (dbInfo *RocksDbInfo) OpenDb(dir string, walFileSize, walMemSize, logFileSi
 	return dbInfo.interOpenDb(dir, walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL)
 }
 
-func (dbInfo *RocksDbInfo) ReOpenDb(dir string, walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL uint64) (err error){
+func (dbInfo *RocksDbInfo) ReOpenDb(dir string, walFileSize, walMemSize, logFileSize, logReversed, logReversedCnt, walTTL uint64) (err error) {
 	if ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbClosedSt, dbOpenningSt); !ok {
 		if atomic.LoadUint32(&dbInfo.state) == dbOpenedSt {
 			//already opened
@@ -383,7 +383,7 @@ func (dbInfo *RocksDbInfo) descRangeWithIter(it *gorocksdb.Iterator, start []byt
 	return nil
 }
 
-func (dbInfo *RocksDbInfo)accessDb() error {
+func (dbInfo *RocksDbInfo) accessDb() error {
 	if atomic.LoadUint32(&dbInfo.state) != dbOpenedSt {
 		log.LogErrorf("[RocksDB Op] can not access db, db is not opened. Cur state:%v", dbInfo.state)
 		return accessDBError
@@ -399,12 +399,12 @@ func (dbInfo *RocksDbInfo)accessDb() error {
 	return nil
 }
 
-func (dbInfo *RocksDbInfo)releaseDb() {
+func (dbInfo *RocksDbInfo) releaseDb() {
 	dbInfo.mutex.RUnlock()
 	return
 }
 
-func (dbInfo *RocksDbInfo)OpenSnap() *gorocksdb.Snapshot {
+func (dbInfo *RocksDbInfo) OpenSnap() *gorocksdb.Snapshot {
 	if err := dbInfo.accessDb(); err != nil {
 		log.LogErrorf("[RocksDB Op] OpenSnap failed:%v", err)
 		return nil
@@ -415,7 +415,7 @@ func (dbInfo *RocksDbInfo)OpenSnap() *gorocksdb.Snapshot {
 	return dbInfo.db.NewSnapshot()
 }
 
-func (dbInfo *RocksDbInfo)ReleaseSnap(snap *gorocksdb.Snapshot) {
+func (dbInfo *RocksDbInfo) ReleaseSnap(snap *gorocksdb.Snapshot) {
 	if snap == nil {
 		return
 	}
@@ -425,7 +425,7 @@ func (dbInfo *RocksDbInfo)ReleaseSnap(snap *gorocksdb.Snapshot) {
 	return
 }
 
-func (dbInfo *RocksDbInfo)RangeWithSnap(start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte)(bool, error)) error  {
+func (dbInfo *RocksDbInfo) RangeWithSnap(start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) error {
 	if snap == nil {
 		return fmt.Errorf("invalid snapshot")
 	}
@@ -437,7 +437,7 @@ func (dbInfo *RocksDbInfo)RangeWithSnap(start, end []byte, snap *gorocksdb.Snaps
 	return dbInfo.rangeWithIter(it, start, end, cb)
 }
 
-func (dbInfo *RocksDbInfo)RangeWithSnapByPrefix(prefix, start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte)(bool, error)) error {
+func (dbInfo *RocksDbInfo) RangeWithSnapByPrefix(prefix, start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) error {
 	if snap == nil {
 		return fmt.Errorf("invalid snapshot")
 	}
@@ -449,7 +449,7 @@ func (dbInfo *RocksDbInfo)RangeWithSnapByPrefix(prefix, start, end []byte, snap 
 	return dbInfo.rangeWithIterByPrefix(it, prefix, start, end, cb)
 }
 
-func (dbInfo *RocksDbInfo)DescRangeWithSnap(start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte)(bool, error)) error  {
+func (dbInfo *RocksDbInfo) DescRangeWithSnap(start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) error {
 	if snap == nil {
 		return fmt.Errorf("invalid snapshot")
 	}
@@ -711,7 +711,7 @@ func (dbInfo *RocksDbInfo) CommitBatch(handle interface{}) (err error) {
 	return
 }
 
-func (dbInfo *RocksDbInfo) ReleaseBatchHandle(handle interface{})(err error) {
+func (dbInfo *RocksDbInfo) ReleaseBatchHandle(handle interface{}) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] ReleaseBatchHandle failed, err:%v", err)

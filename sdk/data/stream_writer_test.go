@@ -15,8 +15,8 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"golang.org/x/net/context"
 )
 
@@ -185,7 +185,7 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 		client:     testClient,
 		extents:    testExtentCache,
 		dirtylist:  NewDirtyExtentList(),
-		extentSize: util.ExtentSize,
+		extentSize: unit.ExtentSize,
 	}
 
 	testFieldsWithNilExtents := testFields
@@ -226,7 +226,7 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 			want:   false,
 		},
 		{
-			name:   "preEk.Size >= util.ExtentSize",
+			name:   "preEk.Size >= unit.ExtentSize",
 			fields: testFields,
 			args:   args{offset: 10240 + 1024*1024*128, size: 1024},
 			want:   false,
@@ -238,7 +238,7 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 			want:   false,
 		},
 		{
-			name:   "int(preEk.Size)+size > util.ExtentSize",
+			name:   "int(preEk.Size)+size > unit.ExtentSize",
 			fields: testFields,
 			args:   args{offset: 3072, size: 1024 * 1024 * 128},
 			want:   false,

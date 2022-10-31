@@ -24,14 +24,14 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 type ECNode struct {
 	DataNode
-	MaxDiskAvailSpace     uint64
+	MaxDiskAvailSpace  uint64
 	EcPartitionReports []*proto.EcPartitionReport
 }
 
@@ -52,7 +52,7 @@ func newEcNode(addr, httpPort, clusterID, zoneName, version string) *ECNode {
 	node.Carry = rand.Float64()
 	node.HttpPort = httpPort
 	node.ZoneName = zoneName
-	node.Version  = version
+	node.Version = version
 	node.TaskManager = newAdminTaskManager(addr, zoneName, clusterID)
 	return node
 }
@@ -492,7 +492,7 @@ func (ecNode *ECNode) isWriteAble() (ok bool) {
 	ecNode.RLock()
 	defer ecNode.RUnlock()
 
-	if ecNode.isActive == true && ecNode.AvailableSpace > 100*util.GB && ecNode.ToBeOffline == false && ecNode.ToBeMigrated == false{
+	if ecNode.isActive == true && ecNode.AvailableSpace > 100*unit.GB && ecNode.ToBeOffline == false && ecNode.ToBeMigrated == false {
 		ok = true
 	}
 
@@ -572,12 +572,11 @@ func (m *Server) updateEcClusterInfo(w http.ResponseWriter, r *http.Request) {
 	var value string
 	if value = r.FormValue(ecScrubEnableKey); value == "" {
 		ecScrubEnable = m.cluster.EcScrubEnable
-	}else {
+	} else {
 		if ecScrubEnable, err = strconv.ParseBool(value); err != nil {
 			return
 		}
 	}
-
 
 	if ecMaxScrubExtentsStr := r.FormValue(ecMaxScrubExtentsKey); ecMaxScrubExtentsStr != "" {
 		if ecMaxScrubExtents, err = strconv.Atoi(ecMaxScrubExtentsStr); err != nil {
@@ -585,7 +584,7 @@ func (m *Server) updateEcClusterInfo(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
-	}else {
+	} else {
 		ecMaxScrubExtents = int(m.cluster.EcMaxScrubExtents)
 	}
 
@@ -595,7 +594,7 @@ func (m *Server) updateEcClusterInfo(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
-	}else {
+	} else {
 		maxCodecConcurrent = m.cluster.MaxCodecConcurrent
 	}
 
@@ -605,7 +604,7 @@ func (m *Server) updateEcClusterInfo(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
-	}else {
+	} else {
 		ecScrubPeriod = int(m.cluster.EcScrubPeriod)
 	}
 
@@ -685,7 +684,7 @@ func (m *Server) updateVolEcInfo(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
-	}else {
+	} else {
 		ecMaxUnitSize = vol.EcMaxUnitSize
 	}
 
@@ -695,7 +694,7 @@ func (m *Server) updateVolEcInfo(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
-	}else {
+	} else {
 		ecSaveTime = vol.EcMigrationSaveTime
 	}
 
@@ -705,7 +704,7 @@ func (m *Server) updateVolEcInfo(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
-	}else {
+	} else {
 		ecWaitTime = vol.EcMigrationWaitTime
 	}
 
@@ -715,7 +714,7 @@ func (m *Server) updateVolEcInfo(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
-	}else {
+	} else {
 		ecTimeOut = vol.EcMigrationTimeOut
 	}
 
@@ -725,7 +724,7 @@ func (m *Server) updateVolEcInfo(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
-	}else {
+	} else {
 		ecRetryWait = vol.EcMigrationRetryWait
 	}
 
@@ -771,8 +770,8 @@ func (m *Server) DelDpAlreadyEc(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) DpMigrateEcById(w http.ResponseWriter, r *http.Request) {
 	var (
-		err error
-		id  uint64
+		err  error
+		id   uint64
 		test bool
 	)
 	if err = r.ParseForm(); err != nil {
@@ -877,7 +876,7 @@ func (m *Server) addEcDataReplica(w http.ResponseWriter, r *http.Request) {
 		newhosts = append(newhosts, host)
 	}
 
-	if !find {//if idx is replicaNum-1, can't find need append handle
+	if !find { //if idx is replicaNum-1, can't find need append handle
 		newhosts = append(newhosts, addr)
 	}
 
@@ -1000,10 +999,10 @@ func (c *Cluster) setEcNodeToOfflineState(startID, endID uint64, state bool, zon
 
 func (c *Cluster) updateEcClusterInfo(ecScrubEnable bool, ecMaxScrubExtents, ecScrubPeriod, maxCodecConcurrent int) (err error) {
 	var (
-		oldEcScrubEnbale     bool
-		oldEcMaxScrubExtents uint8
-		oldEcScrubPeriod     uint32
-		oldStartScrubTime    int64
+		oldEcScrubEnbale      bool
+		oldEcMaxScrubExtents  uint8
+		oldEcScrubPeriod      uint32
+		oldStartScrubTime     int64
 		oldMaxCodecConcurrent int
 	)
 	oldEcScrubEnbale = c.EcScrubEnable
@@ -1034,15 +1033,15 @@ func (c *Cluster) updateEcClusterInfo(ecScrubEnable bool, ecMaxScrubExtents, ecS
 
 func (c *Cluster) updateVolEcInfo(name string, ecEnable bool, ecDataNum, ecParityNum uint8, ecSaveTime, ecWaitTime, ecTimeOut, ecRetryWait int64, ecMaxUnitSize uint64) (err error) {
 	var (
-		vol                *Vol
-		oldEcEnable        bool
-		oldEcDataNum       uint8
-		oldEcParityNum     uint8
-		oldEcSaveTime      int64
-		oldEcWaitTime      int64
-		oldEcTimeOut       int64
-		oldEcRetryWait     int64
-		oldEcMaxUnitSize   uint64
+		vol              *Vol
+		oldEcEnable      bool
+		oldEcDataNum     uint8
+		oldEcParityNum   uint8
+		oldEcSaveTime    int64
+		oldEcWaitTime    int64
+		oldEcTimeOut     int64
+		oldEcRetryWait   int64
+		oldEcMaxUnitSize uint64
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVolEcInfo] err[%v]", err)
@@ -1056,19 +1055,19 @@ func (c *Cluster) updateVolEcInfo(name string, ecEnable bool, ecDataNum, ecParit
 	oldEcParityNum = vol.EcParityNum
 	oldEcSaveTime = vol.EcMigrationSaveTime
 	oldEcWaitTime = vol.EcMigrationWaitTime
-	oldEcTimeOut  = vol.EcMigrationTimeOut
+	oldEcTimeOut = vol.EcMigrationTimeOut
 	oldEcRetryWait = vol.EcMigrationRetryWait
 	oldEcMaxUnitSize = vol.EcMaxUnitSize
 
 	if ecSaveTime < defaultMinEcTime {
 		ecSaveTime = defaultMinEcTime
-	}//避免客户端还未拉取最新试图，dp已经被删除
+	} //避免客户端还未拉取最新试图，dp已经被删除
 	if ecWaitTime < defaultMinEcTime {
 		ecWaitTime = defaultMinEcTime
-	}//避免dp刚变为只读客户端还未拉取试图就被迁移，造成迁移过程中客户端仍可以对dp进行覆盖写导致迁移数据和dp数据不一致
+	} //避免dp刚变为只读客户端还未拉取试图就被迁移，造成迁移过程中客户端仍可以对dp进行覆盖写导致迁移数据和dp数据不一致
 	if ecRetryWait < defaultMinEcTime {
 		ecRetryWait = defaultMinEcTime
-	}//避免codec还未上报完成状态再次进行失败重传
+	} //避免codec还未上报完成状态再次进行失败重传
 	vol.EcEnable = ecEnable
 	vol.EcDataNum = ecDataNum
 	vol.EcParityNum = ecParityNum
@@ -1229,7 +1228,7 @@ func (c *Cluster) checkLackReplicaEcPartitions() (lackReplicaEcPartitions []*EcD
 		var eps *EcDataPartitionCache
 		eps = vol.ecDataPartitions
 		for _, ep := range eps.partitions {
-			if !proto.IsEcFinished(ep.EcMigrateStatus){
+			if !proto.IsEcFinished(ep.EcMigrateStatus) {
 				continue
 			}
 			if ep.ReplicaNum > uint8(len(ep.Hosts)) {
@@ -1302,8 +1301,8 @@ func (c *Cluster) clearEcNodes() {
 
 func (c *Cluster) updateEcNodeStatInfo() {
 	var (
-		total uint64
-		used  uint64
+		total              uint64
+		used               uint64
 		totalNodes         int
 		writableNodes      int
 		highUsedRatioNodes int
@@ -1329,8 +1328,8 @@ func (c *Cluster) updateEcNodeStatInfo() {
 		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add ecNode",
 			c.Name, usedRate, used, total))
 	}
-	c.ecNodeStatInfo.TotalGB = total / util.GB
-	usedGB := used / util.GB
+	c.ecNodeStatInfo.TotalGB = total / unit.GB
+	usedGB := used / unit.GB
 	c.ecNodeStatInfo.IncreasedGB = int64(usedGB) - int64(c.ecNodeStatInfo.UsedGB)
 	c.ecNodeStatInfo.UsedGB = usedGB
 	c.ecNodeStatInfo.UsedRatio = strconv.FormatFloat(usedRate, 'f', 3, 32)
@@ -1395,7 +1394,7 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 				continue
 			}
 
-			if ep.isEcFilesCatchUp() && ep.isEcDataCatchUp() && len(ep.ecReplicas) >= int(ep.DataUnitsNum + ep.ParityUnitsNum) {
+			if ep.isEcFilesCatchUp() && ep.isEcDataCatchUp() && len(ep.ecReplicas) >= int(ep.DataUnitsNum+ep.ParityUnitsNum) {
 				ep.RLock()
 				ep.isRecover = false
 				ep.PanicHosts = make([]string, 0)
@@ -1411,7 +1410,7 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 
 		newValue, _ := c.BadEcPartitionIds.Load(key)
 		newBadEcPartitionIds := newValue.([]uint64)
-		if len(newBadEcPartitionIds) != len(badEcPartitionIds) {//avoid new insert value deleted
+		if len(newBadEcPartitionIds) != len(badEcPartitionIds) { //avoid new insert value deleted
 			log.LogInfof("new value insert, wait next schedule handle, newBadEcPartitionIds(%v) badEcPartitionIds(%v)\n",
 				newBadEcPartitionIds, badEcPartitionIds)
 			return true

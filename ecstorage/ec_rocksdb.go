@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"github.com/tecbot/gorocksdb"
 	"os"
 	"sync"
@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	DefLRUCacheSize  = 256 * util.MB
-	DefWriteBuffSize = 4 * util.MB
+	DefLRUCacheSize  = 256 * unit.MB
+	DefWriteBuffSize = 4 * unit.MB
 )
 
 type EcRocksDbInfo struct {
@@ -149,8 +149,8 @@ func (dbInfo *EcRocksDbInfo) Del(key []byte) (err error) {
 
 func (ecDb *EcRocksDbInfo) GetEcBlockCrcInfo(partitionId, extentId, blockNo uint64) (crc, size uint32, exist bool, err error) {
 	var (
-		key     []byte
-		value   []byte
+		key   []byte
+		value []byte
 	)
 	key, err = MarshalCrcMapKey(CrcMapTable, partitionId, extentId, blockNo)
 	if err != nil {
@@ -172,8 +172,8 @@ func (ecDb *EcRocksDbInfo) GetEcBlockCrcInfo(partitionId, extentId, blockNo uint
 
 func (ecDb *EcRocksDbInfo) PersistenceEcBlockCrc(partitionId, extentId, blockNo uint64, size, crc uint32) (err error) {
 	var (
-		key     []byte
-		value   []byte
+		key       []byte
+		value     []byte
 		blockSize uint32
 	)
 
@@ -195,7 +195,7 @@ func (ecDb *EcRocksDbInfo) PersistenceEcBlockCrc(partitionId, extentId, blockNo 
 		if err != nil {
 			return
 		}
-	}else {
+	} else {
 		blockSize = size
 	}
 
@@ -296,7 +296,7 @@ func (ecDb *EcRocksDbInfo) ecRecordTinyDelete(partitionID, extentID, offset, siz
 		if exist {
 			return
 		}
-	}else if deleteStatus == TinyDeleting {
+	} else if deleteStatus == TinyDeleting {
 		exist := ecDb.checkHasDelete(partitionID, extentID, offset, hostIndex, TinyDeleted)
 		if exist {
 			return
@@ -316,7 +316,7 @@ func (ecDb *EcRocksDbInfo) ecRecordTinyDelete(partitionID, extentID, offset, siz
 		if err != nil {
 			return
 		}
-	}else {
+	} else {
 		err = ecDb.deleteTinyDelInfoKey(partitionID, extentID, offset, size, TinyDeleteMark, hostIndex)
 		if err != nil {
 			return
@@ -377,21 +377,20 @@ func (ecDb *EcRocksDbInfo) deleteMapInfo(mapTable, partitionID, extentId uint64)
 	return
 }
 
-func (ecDb *EcRocksDbInfo) tinyDelInfoRange(partitionID uint64, delStatus uint32, cb func(extentId, offset, size uint64, deleteStatus, hostIndex uint32) (err error)) (err error){
+func (ecDb *EcRocksDbInfo) tinyDelInfoRange(partitionID uint64, delStatus uint32, cb func(extentId, offset, size uint64, deleteStatus, hostIndex uint32) (err error)) (err error) {
 	var (
-		extentId  uint64
-		offset    uint64
-		size      uint64
+		extentId     uint64
+		offset       uint64
+		size         uint64
 		deleteStatus uint32
-		hostIndex uint32
-		keyPrefix []byte
-
+		hostIndex    uint32
+		keyPrefix    []byte
 	)
 	it := ecDb.db.NewIterator(ecDb.defReadOption)
 	defer it.Close()
 	if delStatus == BaseDeleteMark {
 		keyPrefix, err = MarshalTinyDelPartitionIdPrefixKey(TinyDeleteMapTable, partitionID)
-	}else {
+	} else {
 		keyPrefix, err = MarshalTinyDelStatusPrefixKey(TinyDeleteMapTable, partitionID, delStatus)
 	}
 	if err != nil {
@@ -418,8 +417,7 @@ func (ecDb *EcRocksDbInfo) tinyDelInfoRange(partitionID uint64, delStatus uint32
 	return
 }
 
-
-func (ecDb *EcRocksDbInfo) tinyDelInfoExtentIdRange(partitionID, extentId uint64, deleteStatus uint32, cb func(offset, size uint64, hostIndex uint32) (cbErr error)) (err error){
+func (ecDb *EcRocksDbInfo) tinyDelInfoExtentIdRange(partitionID, extentId uint64, deleteStatus uint32, cb func(offset, size uint64, hostIndex uint32) (cbErr error)) (err error) {
 	var (
 		offset    uint64
 		size      uint64

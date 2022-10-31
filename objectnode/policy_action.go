@@ -22,7 +22,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 
-	"github.com/chubaofs/chubaofs/util"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"github.com/google/uuid"
 )
 
@@ -34,7 +34,7 @@ func ActionToUniqueRouteName(action proto.Action) (name string) {
 	var id uuid.UUID
 	var err error
 	if id, err = uuid.NewRandom(); err != nil {
-		name = action.String() + ":" + util.RandomString(32, util.UpperLetter|util.LowerLetter)
+		name = action.String() + ":" + stringutil.RandomString(32, stringutil.UpperLetter|stringutil.LowerLetter)
 		return
 	}
 	name = action.String() + ":" + strings.ReplaceAll(id.String(), "-", "")

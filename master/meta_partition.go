@@ -15,7 +15,7 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/util"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"sync"
 
 	"fmt"
@@ -50,27 +50,27 @@ type MetaReplica struct {
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartition struct {
-	PartitionID   uint64
-	Start         uint64
-	End           uint64
-	MaxInodeID    uint64
-	InodeCount    uint64
-	DentryCount   uint64
-	MaxExistIno   uint64
-	Replicas      []*MetaReplica
-	ReplicaNum    uint8
-	LearnerNum    uint8
-	Status        int8
-	IsRecover     bool
-	volID         uint64
-	volName       string
-	Hosts         []string
-	Peers         []proto.Peer
-	Learners      []proto.Learner
-	MissNodes     map[string]int64 `graphql:"-"`
-	OfflinePeerID uint64
-	modifyTime    int64
-	lastOfflineTime         int64
+	PartitionID     uint64
+	Start           uint64
+	End             uint64
+	MaxInodeID      uint64
+	InodeCount      uint64
+	DentryCount     uint64
+	MaxExistIno     uint64
+	Replicas        []*MetaReplica
+	ReplicaNum      uint8
+	LearnerNum      uint8
+	Status          int8
+	IsRecover       bool
+	volID           uint64
+	volName         string
+	Hosts           []string
+	Peers           []proto.Peer
+	Learners        []proto.Learner
+	MissNodes       map[string]int64 `graphql:"-"`
+	OfflinePeerID   uint64
+	modifyTime      int64
+	lastOfflineTime int64
 	//PanicHosts records the hosts discard by reset peer action.
 	PanicHosts   []string
 	LoadResponse []*proto.MetaPartitionLoadResponse
@@ -1039,7 +1039,7 @@ func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 }
 
 var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string,
-	excludeNodeSets []uint64, zoneName string,  dstStoreMode proto.StoreMode) (oldAddr, addAddr string, err error) {
+	excludeNodeSets []uint64, zoneName string, dstStoreMode proto.StoreMode) (oldAddr, addAddr string, err error) {
 	var (
 		offlineZoneName     string
 		targetZoneName      string
@@ -1182,9 +1182,9 @@ func (mp *MetaPartition) getOfflineAndTargetZone(c *Cluster, volZoneName string,
 			return
 		}
 	}
-	intersect := util.Intersect(zoneList, currentZoneList)
-	projectiveToZoneList := util.Projective(zoneList, intersect)
-	projectiveToCurZoneList := util.Projective(currentZoneList, intersect)
+	intersect := stringutil.Intersect(zoneList, currentZoneList)
+	projectiveToZoneList := stringutil.Projective(zoneList, intersect)
+	projectiveToCurZoneList := stringutil.Projective(currentZoneList, intersect)
 	log.LogInfof("Current replica zoneList:%v, volume zoneName:%v ", currentZoneList, zoneList)
 	if len(projectiveToZoneList) == 0 || len(projectiveToCurZoneList) == 0 {
 		err = fmt.Errorf("action[getSourceAndTargetZone], Current replica zoneList:%v is consistent with the volume zoneName:%v, do not need to balance ", currentZoneList, zoneList)

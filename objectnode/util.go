@@ -23,8 +23,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 )
 
 const (
@@ -130,7 +130,7 @@ func splitPath(path string) (dirs []string, filename string) {
 }
 
 func tempFileName(origin string) string {
-	return "." + origin + tempFileNameSep + util.RandomString(16, util.LowerLetter|util.UpperLetter)
+	return "." + origin + tempFileNameSep + stringutil.RandomString(16, stringutil.LowerLetter|stringutil.UpperLetter)
 }
 
 func formatSimpleTime(time time.Time) string {

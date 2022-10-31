@@ -11,22 +11,22 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 type Rule struct {
-	offset 		uint64
-	size		int
-	writeCount	int
-	isFlush		bool
-	isOverWrite	bool
-	isRead		bool
+	offset      uint64
+	size        int
+	writeCount  int
+	isFlush     bool
+	isOverWrite bool
+	isRead      bool
 }
 
 type ExtentRule struct {
-	FileOffset	uint64
-	Size		uint32
+	FileOffset uint64
+	Size       uint32
 }
 
 func (rule *ExtentRule) String() string {
@@ -38,17 +38,17 @@ func (rule *ExtentRule) String() string {
 
 func TestStreamer_WritePendingPacket(t *testing.T) {
 	s := &Streamer{handler: &ExtentHandler{inode: 999, storeMode: proto.NormalExtentType}}
-	tests := []struct{
-		name           			string
-		writeOffset				uint64
-		writeSize				int
-		orgPendingPacketList	[]*Packet
+	tests := []struct {
+		name                    string
+		writeOffset             uint64
+		writeSize               int
+		orgPendingPacketList    []*Packet
 		expectPendingPacketList []*Packet
-	} {
+	}{
 		{
-			name: "test01",
-			writeOffset: 10,
-			writeSize: 128,
+			name:                 "test01",
+			writeOffset:          10,
+			writeSize:            128,
 			orgPendingPacketList: []*Packet{},
 			expectPendingPacketList: []*Packet{
 				newPacket(10, 128),
@@ -56,9 +56,9 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		},
 		{
 			// 插入头
-			name: "test02",
+			name:        "test02",
 			writeOffset: 5,
-			writeSize: 10,
+			writeSize:   10,
 			orgPendingPacketList: []*Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
@@ -73,9 +73,9 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		},
 		{
 			// 插入中间
-			name: "test03",
+			name:        "test03",
 			writeOffset: 160,
-			writeSize: 30,
+			writeSize:   30,
 			orgPendingPacketList: []*Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
@@ -90,9 +90,9 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		},
 		{
 			// 插入尾
-			name: "test04",
+			name:        "test04",
 			writeOffset: 500,
-			writeSize: 600,
+			writeSize:   600,
 			orgPendingPacketList: []*Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
@@ -107,9 +107,9 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		},
 		{
 			// 连接第一个packet
-			name: "test05",
+			name:        "test05",
 			writeOffset: 50,
-			writeSize: 50,
+			writeSize:   50,
 			orgPendingPacketList: []*Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
@@ -124,9 +124,9 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		},
 		{
 			// 写入第一个packet
-			name: "test06",
+			name:        "test06",
 			writeOffset: 150,
-			writeSize: 50,
+			writeSize:   50,
 			orgPendingPacketList: []*Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
@@ -140,9 +140,9 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		},
 		{
 			// 写入第一个packet + 跨packet
-			name: "test07",
+			name:        "test07",
 			writeOffset: 150,
-			writeSize: 128*1024,
+			writeSize:   128 * 1024,
 			orgPendingPacketList: []*Packet{
 				newPacket(100, 50),
 				newPacket(2*128*1024, 128*1024),
@@ -157,9 +157,9 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		},
 		{
 			// 写入第二个packet + 跨packet + 与第三个packet相接
-			name: "test08",
-			writeOffset: (2*128+64)*1024,
-			writeSize: (2*128-64)*1024,
+			name:        "test08",
+			writeOffset: (2*128 + 64) * 1024,
+			writeSize:   (2*128 - 64) * 1024,
 			orgPendingPacketList: []*Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 64*1024),
@@ -174,9 +174,9 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		},
 		{
 			// 接在第二个packet尾部 + 跨packet
-			name: "test09",
-			writeOffset: (2*128+64)*1024,
-			writeSize: 128*1024,
+			name:        "test09",
+			writeOffset: (2*128 + 64) * 1024,
+			writeSize:   128 * 1024,
 			orgPendingPacketList: []*Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 64*1024),
@@ -191,9 +191,9 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		},
 		{
 			// 接在第三个packet尾部
-			name: "test10",
-			writeOffset: (4*128+64)*1024,
-			writeSize: 64*1024,
+			name:        "test10",
+			writeOffset: (4*128 + 64) * 1024,
+			writeSize:   64 * 1024,
 			orgPendingPacketList: []*Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 64*1024),
@@ -207,9 +207,9 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		},
 		{
 			// 接在第三个packet之后
-			name: "test11",
-			writeOffset: 5*128*1024,
-			writeSize: 128*1024,
+			name:        "test11",
+			writeOffset: 5 * 128 * 1024,
+			writeSize:   128 * 1024,
 			orgPendingPacketList: []*Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 64*1024),
@@ -236,7 +236,7 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			}
 			// check ek
 			if ek.FileOffset != uint64(tt.writeOffset) || ek.Size != uint32(tt.writeSize) {
-				t.Fatalf("TestStreamer_WritePendingPacket: name(%v) expect offset(%v) but offset(%v) expect size(%v) but size(%v)", 
+				t.Fatalf("TestStreamer_WritePendingPacket: name(%v) expect offset(%v) but offset(%v) expect size(%v) but size(%v)",
 					tt.name, tt.writeOffset, ek.FileOffset, tt.writeSize, ek.Size)
 			}
 			// check pending packet list
@@ -265,7 +265,7 @@ func newPacket(offset uint64, size uint32) (packet *Packet) {
 	return packet
 }
 
-func TestStreamer_WriteFile_Pending(t *testing.T)  {
+func TestStreamer_WriteFile_Pending(t *testing.T) {
 	logDir := "/tmp/logs/cfs"
 	log.InitLog(logDir, "test", log.DebugLevel, nil)
 
@@ -275,7 +275,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T)  {
 		t.Fatalf("TestExtentHandler_PendingPacket: create wrapper err(%v)", err)
 	}
 	ec.SetEnableWriteCache(true)
-	ec.tinySize = util.DefaultTinySizeLimit
+	ec.tinySize = unit.DefaultTinySizeLimit
 	ec.dataWrapper.followerRead = false
 
 	// create local directory
@@ -290,233 +290,233 @@ func TestStreamer_WriteFile_Pending(t *testing.T)  {
 
 	fmt.Println("TestExtentHandler_PendingPacket: start test")
 
-	tests := []struct{
+	tests := []struct {
 		name           string
 		operationRules []*Rule
 		extentTypeList []*ExtentRule
-	} {
+	}{
 		{
-			name: 			"test01",
-			operationRules: 		[]*Rule {
-				{offset: 0, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 2*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 3*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
+			name: "test01",
+			operationRules: []*Rule{
+				{offset: 0, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 2 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 3 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
 			},
-			extentTypeList: []*ExtentRule{{FileOffset: 0, Size: 4*128*1024}},
+			extentTypeList: []*ExtentRule{{FileOffset: 0, Size: 4 * 128 * 1024}},
 		},
 		{
-			name: 			"test02",
-			operationRules: 		[]*Rule {
-				{offset: 128*1024, size: 128*1024, writeCount: 5, isFlush: false},
-				{offset: 10*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 8*128*1024, size: 128*1024, writeCount: 2, isFlush: false},
-				{offset: 6*128*1024, size: 128*1024, writeCount: 2, isFlush: false},
+			name: "test02",
+			operationRules: []*Rule{
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 5, isFlush: false},
+				{offset: 10 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 8 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
+				{offset: 6 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
 			},
-			extentTypeList: []*ExtentRule{{FileOffset: 128*1024, Size: 10*128*1024}},
+			extentTypeList: []*ExtentRule{{FileOffset: 128 * 1024, Size: 10 * 128 * 1024}},
 		},
 		{
-			name: 			"test02_flush_continuous_packet",
-			operationRules: 		[]*Rule {
-				{offset: 128*1024, size: 128*1024, writeCount: 5, isFlush: false},
-				{offset: 10*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 8*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 7*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 6*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 9*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
+			name: "test02_flush_continuous_packet",
+			operationRules: []*Rule{
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 5, isFlush: false},
+				{offset: 10 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 8 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 7 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 6 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 9 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
 			},
-			extentTypeList: []*ExtentRule{{FileOffset: 128*1024, Size: 10*128*1024}},
+			extentTypeList: []*ExtentRule{{FileOffset: 128 * 1024, Size: 10 * 128 * 1024}},
 		},
 		{
-			name: 			"test02_read_pending_packet",
-			operationRules: 		[]*Rule {
-				{offset: 128*1024, size: 128*1024, writeCount: 5, isFlush: false},
-				{offset: 10*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 8*128*1024, size: 128*1024, writeCount: 2, isFlush: false},
-				{offset: 9*128*1024, size: 2*128*1024, isRead: true},
-				{offset: 6*128*1024, size: 128*1024, writeCount: 2, isFlush: false},
+			name: "test02_read_pending_packet",
+			operationRules: []*Rule{
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 5, isFlush: false},
+				{offset: 10 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 8 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
+				{offset: 9 * 128 * 1024, size: 2 * 128 * 1024, isRead: true},
+				{offset: 6 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 128*1024, Size: 7*128*1024},
-				{FileOffset: 8*128*1024, Size: 3*128*1024},
+				{FileOffset: 128 * 1024, Size: 7 * 128 * 1024},
+				{FileOffset: 8 * 128 * 1024, Size: 3 * 128 * 1024},
 			},
 		},
 		{
-			name: 			"test02_read_extent",
-			operationRules: 		[]*Rule {
-				{offset: 128*1024, size: 128*1024, writeCount: 5, isFlush: false},
-				{offset: 10*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 8*128*1024, size: 128*1024, writeCount: 2, isFlush: false},
-				{offset: 3*128*1024, size: 2*128*1024, isRead: true},
-				{offset: 6*128*1024, size: 128*1024, writeCount: 2, isFlush: false},
+			name: "test02_read_extent",
+			operationRules: []*Rule{
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 5, isFlush: false},
+				{offset: 10 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 8 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
+				{offset: 3 * 128 * 1024, size: 2 * 128 * 1024, isRead: true},
+				{offset: 6 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
 			},
-			extentTypeList: []*ExtentRule{{FileOffset: 128*1024, Size: 10*128*1024}},
+			extentTypeList: []*ExtentRule{{FileOffset: 128 * 1024, Size: 10 * 128 * 1024}},
 		},
 		{
-			name: 			"test03",
-			operationRules: 		[]*Rule {
+			name: "test03",
+			operationRules: []*Rule{
 				// eh满了之后关闭，下一个包跳了offset
-				{offset: 128*1024, size: 128*1024, writeCount: 1020, isFlush: false},
-				{offset: 1030*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 1025*128*1024, size: 128*1024, writeCount: 5, isFlush: false},
-				{offset: 1021*128*1024, size: 128*1024, writeCount: 4, isFlush: false},
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 1020, isFlush: false},
+				{offset: 1030 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 1025 * 128 * 1024, size: 128 * 1024, writeCount: 5, isFlush: false},
+				{offset: 1021 * 128 * 1024, size: 128 * 1024, writeCount: 4, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 128*1024, Size: 1020*128*1024},
-				{FileOffset: 1021*128*1024, Size: 9*128*1024},
-				{FileOffset: 1030*128*1024, Size: 128*1024},
+				{FileOffset: 128 * 1024, Size: 1020 * 128 * 1024},
+				{FileOffset: 1021 * 128 * 1024, Size: 9 * 128 * 1024},
+				{FileOffset: 1030 * 128 * 1024, Size: 128 * 1024},
 			},
 		},
 		{
-			name: 			"test04",
-			operationRules: 		[]*Rule {
+			name: "test04",
+			operationRules: []*Rule{
 				// eh满了之后关闭，下一个包跳了offset
-				{offset: 128*1024, size: 128*1024, writeCount: 1020, isFlush: false},
-				{offset: 1022*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 1030*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 1021*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 1023*128*1024, size: 128*1024, writeCount: 2, isFlush: false},
-				{offset: 1027*128*1024, size: 128*1024, writeCount: 3, isFlush: false},
-				{offset: 1025*128*1024, size: 128*1024, writeCount: 2, isFlush: false},
-				{offset: 1031*128*1024, size: 128*1024, writeCount: 1024, isFlush: false},
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 1020, isFlush: false},
+				{offset: 1022 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 1030 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 1021 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 1023 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
+				{offset: 1027 * 128 * 1024, size: 128 * 1024, writeCount: 3, isFlush: false},
+				{offset: 1025 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
+				{offset: 1031 * 128 * 1024, size: 128 * 1024, writeCount: 1024, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 128*1024, Size: 1020*128*1024},
-				{FileOffset: 1021*128*1024, Size: 128*1024},
-				{FileOffset: 1022*128*1024, Size: 128*1024},
-				{FileOffset: 1023*128*1024, Size: 7*128*1024},
-				{FileOffset: 1030*128*1024, Size: 1024*128*1024},
-				{FileOffset: (1030+1024)*128*1024, Size: 128*1024},
+				{FileOffset: 128 * 1024, Size: 1020 * 128 * 1024},
+				{FileOffset: 1021 * 128 * 1024, Size: 128 * 1024},
+				{FileOffset: 1022 * 128 * 1024, Size: 128 * 1024},
+				{FileOffset: 1023 * 128 * 1024, Size: 7 * 128 * 1024},
+				{FileOffset: 1030 * 128 * 1024, Size: 1024 * 128 * 1024},
+				{FileOffset: (1030 + 1024) * 128 * 1024, Size: 128 * 1024},
 			},
 		},
 		{
-			name: 			"test05",
-			operationRules: 		[]*Rule {
-				{offset: 128*1024, size: 128*1024, writeCount: 4, isFlush: false},
-				{offset: 5*128*1024, size: 16*1024, writeCount: 1, isFlush: false},
-				{offset: 6*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 7*128*1024, size: 16*1024, writeCount: 7, isFlush: false},
-				{offset: 9*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: (7*128+7*16)*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: (8*128+7*16)*1024, size: 16*1024, writeCount: 1, isFlush: false},
-				{offset: (5*128+16)*1024, size: 112*1024, writeCount: 1, isFlush: false},
+			name: "test05",
+			operationRules: []*Rule{
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 4, isFlush: false},
+				{offset: 5 * 128 * 1024, size: 16 * 1024, writeCount: 1, isFlush: false},
+				{offset: 6 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 7 * 128 * 1024, size: 16 * 1024, writeCount: 7, isFlush: false},
+				{offset: 9 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: (7*128 + 7*16) * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: (8*128 + 7*16) * 1024, size: 16 * 1024, writeCount: 1, isFlush: false},
+				{offset: (5*128 + 16) * 1024, size: 112 * 1024, writeCount: 1, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 128*1024, Size: 9*128*1024},
+				{FileOffset: 128 * 1024, Size: 9 * 128 * 1024},
 			},
 		},
 		{
-			name: 			"overwrite_local_pending_packet_01",
-			operationRules: 		[]*Rule {
+			name: "overwrite_local_pending_packet_01",
+			operationRules: []*Rule{
 				// overwrite写本地多个pendingPacket
-				{offset: 128*1024, size: 128*1024, writeCount: 9, isFlush: false},
-				{offset: 12*128*1024, size: 128*1024, writeCount: 5, isFlush: false},
-				{offset: 15*128*1024, size: 128*1024, writeCount: 5, isFlush: false},	// overwrite 15*128*1024 ~ 17*128*1024
-				{offset: 20*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 10*128*1024, size: 128*1024, writeCount: 2, isFlush: false},
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 9, isFlush: false},
+				{offset: 12 * 128 * 1024, size: 128 * 1024, writeCount: 5, isFlush: false},
+				{offset: 15 * 128 * 1024, size: 128 * 1024, writeCount: 5, isFlush: false}, // overwrite 15*128*1024 ~ 17*128*1024
+				{offset: 20 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 10 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 128*1024, Size: 20*128*1024},
+				{FileOffset: 128 * 1024, Size: 20 * 128 * 1024},
 			},
 		},
 		{
-			name: 			"overwrite_local_pending_packet_02",
-			operationRules: 		[]*Rule {
+			name: "overwrite_local_pending_packet_02",
+			operationRules: []*Rule{
 				// overwrite写本地一个pendingPacket
-				{offset: 128*1024, size: 128*1024, writeCount: 9, isFlush: false},
-				{offset: 12*128*1024, size: 128*1024, writeCount: 5, isFlush: false},
-				{offset: 16*128*1024, size: 128*1024, writeCount: 4, isFlush: false},	// overwrite 16*128*1024 ~ 17*128*1024
-				{offset: 20*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 10*128*1024, size: 128*1024, writeCount: 2, isFlush: false},
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 9, isFlush: false},
+				{offset: 12 * 128 * 1024, size: 128 * 1024, writeCount: 5, isFlush: false},
+				{offset: 16 * 128 * 1024, size: 128 * 1024, writeCount: 4, isFlush: false}, // overwrite 16*128*1024 ~ 17*128*1024
+				{offset: 20 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 10 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 128*1024, Size: 20*128*1024},
+				{FileOffset: 128 * 1024, Size: 20 * 128 * 1024},
 			},
 		},
 		{
-			name: 			"overwrite_local_pending_packet_03",
-			operationRules: 		[]*Rule {
+			name: "overwrite_local_pending_packet_03",
+			operationRules: []*Rule{
 				// overwrite写本地多个pendingPacket
-				{offset: 128*1024, size: 128*1024, writeCount: 3, isFlush: false},
-				{offset: 4*128*1024, size: 16*1024, writeCount: 1, isFlush: false},
-				{offset: 7*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 5*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 6*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 9*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: (6*128-16)*1024, size: 32*1024, writeCount: 1, isFlush: false},	// overwrite (6*128-16)*1024 ~ (6*128+16)*1024
-				{offset: 11*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 10*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 8*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: (4*128+16)*1024, size: (128-16)*1024, writeCount: 1, isFlush: false},
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 3, isFlush: false},
+				{offset: 4 * 128 * 1024, size: 16 * 1024, writeCount: 1, isFlush: false},
+				{offset: 7 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 5 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 6 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 9 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: (6*128 - 16) * 1024, size: 32 * 1024, writeCount: 1, isFlush: false}, // overwrite (6*128-16)*1024 ~ (6*128+16)*1024
+				{offset: 11 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 10 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 8 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: (4*128 + 16) * 1024, size: (128 - 16) * 1024, writeCount: 1, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 128*1024, Size: 11*128*1024},
+				{FileOffset: 128 * 1024, Size: 11 * 128 * 1024},
 			},
 		},
 		{
-			name: 			"overwrite_local_eh_packet",
-			operationRules: 		[]*Rule {
+			name: "overwrite_local_eh_packet",
+			operationRules: []*Rule{
 				// overwrite写本地的eh.packet
-				{offset: 128*1024, size: 128*1024, writeCount: 9, isFlush: false},
-				{offset: 16*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 15*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 10*128*1024, size: 64*1024, writeCount: 1, isFlush: false},
-				{offset: (10*128+60)*1024, size: 128*1024, writeCount: 4, isFlush: false},		// overwrite (10*128+60)*1024 ~ (10*128+64)*1024
-				{offset: (14*128+60)*1024, size: (128-60)*1024, writeCount: 1, isFlush: false},
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 9, isFlush: false},
+				{offset: 16 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 15 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 10 * 128 * 1024, size: 64 * 1024, writeCount: 1, isFlush: false},
+				{offset: (10*128 + 60) * 1024, size: 128 * 1024, writeCount: 4, isFlush: false}, // overwrite (10*128+60)*1024 ~ (10*128+64)*1024
+				{offset: (14*128 + 60) * 1024, size: (128 - 60) * 1024, writeCount: 1, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 128*1024, Size: 16*128*1024},
+				{FileOffset: 128 * 1024, Size: 16 * 128 * 1024},
 			},
 		},
 		{
-			name: 			"overwrite_remote_eh_packet",
-			operationRules: 		[]*Rule {
+			name: "overwrite_remote_eh_packet",
+			operationRules: []*Rule{
 				// overwrite超过了eh.packet的范围，flush后写远程
-				{offset: 128*1024, size: 128*1024, writeCount: 3, isFlush: false},
-				{offset: 4*128*1024, size: 16*1024, writeCount: 1, isFlush: false},
-				{offset: 7*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 5*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 6*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 9*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: (4*128-16)*1024, size: 32*1024, writeCount: 1, isFlush: false},	// flush and overwrite (4*128-16)*1024 ~ (4*128+16)*1024
-				{offset: 8*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: (4*128+16)*1024, size: (128-16)*1024, writeCount: 1, isFlush: false},
+				{offset: 128 * 1024, size: 128 * 1024, writeCount: 3, isFlush: false},
+				{offset: 4 * 128 * 1024, size: 16 * 1024, writeCount: 1, isFlush: false},
+				{offset: 7 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 5 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 6 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 9 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: (4*128 - 16) * 1024, size: 32 * 1024, writeCount: 1, isFlush: false}, // flush and overwrite (4*128-16)*1024 ~ (4*128+16)*1024
+				{offset: 8 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: (4*128 + 16) * 1024, size: (128 - 16) * 1024, writeCount: 1, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 128*1024, Size: 4*128*1024},
-				{FileOffset: 5*128*1024, Size: 3*128*1024},
-				{FileOffset: 8*128*1024, Size: 1*128*1024},
-				{FileOffset: 9*128*1024, Size: 1*128*1024},
+				{FileOffset: 128 * 1024, Size: 4 * 128 * 1024},
+				{FileOffset: 5 * 128 * 1024, Size: 3 * 128 * 1024},
+				{FileOffset: 8 * 128 * 1024, Size: 1 * 128 * 1024},
+				{FileOffset: 9 * 128 * 1024, Size: 1 * 128 * 1024},
 			},
 		},
 		{
-			name: 			"tiny_pending_packet",
-			operationRules: 		[]*Rule {
-				{offset: 0, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 2*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 5*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 10*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 12*128*1024, size: 128*1024, writeCount: 1, isFlush: false},
+			name: "tiny_pending_packet",
+			operationRules: []*Rule{
+				{offset: 0, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 2 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 5 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 10 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 12 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 0, Size: 128*1024},
-				{FileOffset: 2*128*1024, Size: 128*1024},
-				{FileOffset: 5*128*1024, Size: 128*1024},
-				{FileOffset: 10*128*1024, Size: 128*1024},
-				{FileOffset: 12*128*1024, Size: 128*1024},
+				{FileOffset: 0, Size: 128 * 1024},
+				{FileOffset: 2 * 128 * 1024, Size: 128 * 1024},
+				{FileOffset: 5 * 128 * 1024, Size: 128 * 1024},
+				{FileOffset: 10 * 128 * 1024, Size: 128 * 1024},
+				{FileOffset: 12 * 128 * 1024, Size: 128 * 1024},
 			},
 		},
 		{
-			name: 			"pending_packet_length_max",
-			operationRules: 		[]*Rule {
-				{offset: 0, size: 128*1024, writeCount: 1, isFlush: false},
-				{offset: 2*128*1024, size: 128*1024, writeCount: 16, isFlush: false},
-				{offset: 20*128*1024, size: 128*1024, writeCount: 1024, isFlush: false},
+			name: "pending_packet_length_max",
+			operationRules: []*Rule{
+				{offset: 0, size: 128 * 1024, writeCount: 1, isFlush: false},
+				{offset: 2 * 128 * 1024, size: 128 * 1024, writeCount: 16, isFlush: false},
+				{offset: 20 * 128 * 1024, size: 128 * 1024, writeCount: 1024, isFlush: false},
 			},
 			extentTypeList: []*ExtentRule{
-				{FileOffset: 0, Size: 128*1024},
-				{FileOffset: 2*128*1024, Size: 16*128*1024},
-				{FileOffset: 20*128*1024, Size: 128*1024*1024},
+				{FileOffset: 0, Size: 128 * 1024},
+				{FileOffset: 2 * 128 * 1024, Size: 16 * 128 * 1024},
+				{FileOffset: 20 * 128 * 1024, Size: 128 * 1024 * 1024},
 			},
 		},
 	}
@@ -529,7 +529,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T)  {
 			}
 			defer localFile.Close()
 			// create CFS file
-			inodeInfo, err := mw.Create_ll(context.Background(), 1, "TestPendingPacket_" + tt.name, 0644, 0, 0, nil)
+			inodeInfo, err := mw.Create_ll(context.Background(), 1, "TestPendingPacket_"+tt.name, 0644, 0, 0, nil)
 			if err != nil {
 				t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)
 			}
@@ -646,7 +646,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T)  {
 	}
 }
 
-func TestStreamer_WriteFile_discontinuous(t *testing.T)  {
+func TestStreamer_WriteFile_discontinuous(t *testing.T) {
 	logDir := "/tmp/logs/cfs"
 	log.InitLog(logDir, "test", log.DebugLevel, nil)
 
@@ -656,7 +656,7 @@ func TestStreamer_WriteFile_discontinuous(t *testing.T)  {
 		t.Fatalf("TestExtentHandler_PendingPacket: create wrapper err(%v)", err)
 	}
 	ec.SetEnableWriteCache(true)
-	ec.tinySize = util.DefaultTinySizeLimit
+	ec.tinySize = unit.DefaultTinySizeLimit
 	inodeInfo, err := mw.Create_ll(context.Background(), 1, "TestStreamer_WriteFile_discontinuous", 0644, 0, 0, nil)
 	if err != nil {
 		t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)
@@ -674,7 +674,7 @@ func TestStreamer_WriteFile_discontinuous(t *testing.T)  {
 	}()
 	// discontinuous write
 	streamer.refcnt++
-	writeSize := 128*1024
+	writeSize := 128 * 1024
 	if err = writeLocalAndCFS(localFile, streamer, 0, writeSize); err != nil {
 		t.Fatalf("TestStreamer_WriteFile_discontinuous: err(%v)", err)
 		return

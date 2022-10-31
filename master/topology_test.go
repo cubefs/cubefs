@@ -3,8 +3,8 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"strings"
 	"testing"
 	"time"
@@ -13,9 +13,9 @@ import (
 func createDataNodeForTopo(addr, httpPort, zoneName string, ns *nodeSet) (dn *DataNode) {
 	dn = newDataNode(addr, httpPort, zoneName, "test", "1.0.0")
 	dn.ZoneName = zoneName
-	dn.Total = 1024 * util.GB
-	dn.Used = 10 * util.GB
-	dn.AvailableSpace = 1024 * util.GB
+	dn.Total = 1024 * unit.GB
+	dn.Used = 10 * unit.GB
+	dn.AvailableSpace = 1024 * unit.GB
 	dn.Carry = 0.9
 	dn.ReportTime = time.Now()
 	dn.isActive = true
@@ -56,9 +56,9 @@ func batchCreateMetaNodeForNodeSet(topo *topology, ns *nodeSet, zoneName, cluste
 func createDataNodeForNodeSet(addr, httpPort, zoneName, clusterID string, ns *nodeSet) (dn *DataNode) {
 	dn = newDataNode(addr, httpPort, zoneName, clusterID, "1.0.0")
 	dn.ZoneName = zoneName
-	dn.Total = 1024 * util.GB
-	dn.Used = 10 * util.GB
-	dn.AvailableSpace = 1024 * util.GB
+	dn.Total = 1024 * unit.GB
+	dn.Used = 10 * unit.GB
+	dn.AvailableSpace = 1024 * unit.GB
 	dn.Carry = 0.9
 	dn.ReportTime = time.Now()
 	dn.isActive = true
@@ -69,8 +69,8 @@ func createDataNodeForNodeSet(addr, httpPort, zoneName, clusterID string, ns *no
 func createMetaNodeForNodeSet(addr, zoneName, clusterID string, ns *nodeSet) (mn *MetaNode) {
 	mn = newMetaNode(addr, zoneName, clusterID, "1.0.0")
 	mn.ZoneName = zoneName
-	mn.Total = 1024 * util.GB
-	mn.Used = 10 * util.GB
+	mn.Total = 1024 * unit.GB
+	mn.Used = 10 * unit.GB
 	mn.Carry = 0.9
 	mn.ReportTime = time.Now()
 	mn.IsActive = true
@@ -381,25 +381,25 @@ func TestIDC(t *testing.T) {
 		t.FailNow()
 	}
 
-  err = server.cluster.t.deleteIDC(idc2Name, server.cluster)
-  if err == nil {
-    t.Errorf("idc: %v should not be deleted", idc2Name)
-    t.FailNow()
-  }
-  _, err = server.cluster.t.getIDC(idc2Name)
-  if err != nil {
-    t.Errorf("idc: %v err: %v.", idc2Name, err.Error())
-    t.FailNow()
-  }
+	err = server.cluster.t.deleteIDC(idc2Name, server.cluster)
+	if err == nil {
+		t.Errorf("idc: %v should not be deleted", idc2Name)
+		t.FailNow()
+	}
+	_, err = server.cluster.t.getIDC(idc2Name)
+	if err != nil {
+		t.Errorf("idc: %v err: %v.", idc2Name, err.Error())
+		t.FailNow()
+	}
 
-  err = server.cluster.t.deleteIDC(idc1Name, server.cluster)
-  if err != nil {
-    t.Errorf("idc: %v should be deleted", idc1Name)
-    t.FailNow()
-  }
-  _, err = server.cluster.t.getIDC(idc1Name)
-  if err == nil {
-    t.Errorf("idc: %v err: %v.", idc1Name, err.Error())
-    t.FailNow()
-  } 
+	err = server.cluster.t.deleteIDC(idc1Name, server.cluster)
+	if err != nil {
+		t.Errorf("idc: %v should be deleted", idc1Name)
+		t.FailNow()
+	}
+	_, err = server.cluster.t.getIDC(idc1Name)
+	if err == nil {
+		t.Errorf("idc: %v err: %v.", idc1Name, err.Error())
+		t.FailNow()
+	}
 }

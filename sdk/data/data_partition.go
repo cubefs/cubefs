@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -190,7 +190,7 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 				err  error
 			)
 			defer wg.Done()
-			if conn, err = util.DailTimeOut(addr, time.Duration(dp.ClientWrapper.connConfig.ConnectTimeoutNs)*time.Nanosecond); err != nil {
+			if conn, err = connpool.DailTimeOut(addr, time.Duration(dp.ClientWrapper.connConfig.ConnectTimeoutNs)*time.Nanosecond); err != nil {
 				log.LogWarnf("Dail to Host (%v) err(%v)", addr, err.Error())
 				if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
 					lock.Lock()
@@ -640,7 +640,7 @@ func getHostsWeight(first int, num int) (weight []int) {
 	total -= weight[0]
 	// except the lowest delay host, other host divide equally
 	for i := 1; i < num; i++ {
-		weight[i] = int(math.Ceil(float64(total)/float64(num-i)))
+		weight[i] = int(math.Ceil(float64(total) / float64(num-i)))
 		total -= weight[i]
 	}
 	return
@@ -655,7 +655,7 @@ func getHostByWeight(weight []int, hosts []string) (host string) {
 	left := 0
 	right := len(weight)
 	for left < right {
-		mid := (left + right)/2
+		mid := (left + right) / 2
 		if weight[mid] == target {
 			return hosts[mid]
 		} else if weight[mid] > target {

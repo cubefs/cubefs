@@ -33,8 +33,8 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/unit"
 
 	"github.com/chubaofs/chubaofs/ecstorage"
 	"github.com/chubaofs/chubaofs/proto"
@@ -93,27 +93,27 @@ type tinyFileRepairData struct {
 type EcPartition struct {
 	EcPartitionMetaData
 
-	partitionStatus                int
-	disk                           *Disk
-	ecNode                         *EcNode
-	path                           string
-	used                           uint64
-	extentStore                    *ecstorage.ExtentStore
-	storeC                         chan uint64
-	stopC                          chan bool
-	repairC                        chan struct{}
-	originTinyExtentDeleteMap      map[uint64][]*proto.TinyExtentHole
-	originTinyExtentDeleteMapLock  sync.RWMutex
-	originExtentSizeMap            sync.Map
-	replicasLock                   sync.RWMutex
-	intervalToUpdatePartitionSize  int64
-	intervalToUpdateReplicas       int64
-	loadExtentHeaderStatus         int
-	metaFileLock                   sync.Mutex
-	failScrubMapLock               sync.Mutex
-	isRecover                      bool
-	checkChunkData                 bool
-	ecMigrateStatus                uint8
+	partitionStatus               int
+	disk                          *Disk
+	ecNode                        *EcNode
+	path                          string
+	used                          uint64
+	extentStore                   *ecstorage.ExtentStore
+	storeC                        chan uint64
+	stopC                         chan bool
+	repairC                       chan struct{}
+	originTinyExtentDeleteMap     map[uint64][]*proto.TinyExtentHole
+	originTinyExtentDeleteMapLock sync.RWMutex
+	originExtentSizeMap           sync.Map
+	replicasLock                  sync.RWMutex
+	intervalToUpdatePartitionSize int64
+	intervalToUpdateReplicas      int64
+	loadExtentHeaderStatus        int
+	metaFileLock                  sync.Mutex
+	failScrubMapLock              sync.Mutex
+	isRecover                     bool
+	checkChunkData                bool
+	ecMigrateStatus               uint8
 }
 
 type EcTinyBlockStatus struct {
@@ -392,7 +392,6 @@ func LoadEcPartition(partitionDir string, disk *Disk) (ep *EcPartition, err erro
 		return
 	}
 
-
 	volumeID := strings.TrimSpace(metaData.VolumeID)
 	if len(volumeID) == 0 || metaData.PartitionID == 0 || metaData.PartitionSize == 0 {
 		return
@@ -504,16 +503,16 @@ func (ep *EcPartition) getLocalTinyDeletingInfo(extentId uint64) (deletingInfo *
 			return
 		}
 		deletingInfo = new(proto.TinyDelInfo)
-		deletingInfo.DeleteStatus   = ecstorage.TinyDeleting
-		deletingInfo.Offset         = offset
-		deletingInfo.Size           = size
-		deletingInfo.HostIndex      = hostIndex
+		deletingInfo.DeleteStatus = ecstorage.TinyDeleting
+		deletingInfo.Offset = offset
+		deletingInfo.Size = size
+		deletingInfo.HostIndex = hostIndex
 		return
 	})
 	return
 }
 
-func (ep *EcPartition) dailEcNode () (err error) {
+func (ep *EcPartition) dailEcNode() (err error) {
 	for _, host := range ep.Hosts {
 		if host == ep.ecNode.localServerAddr {
 			continue
@@ -541,7 +540,7 @@ func (ep *EcPartition) getRemoteTinyDeletingInfo(nodeAddr string, extentId uint6
 	request := repl.NewPacket(context.Background())
 	request.ReqID = proto.GenerateRequestID()
 	request.PartitionID = ep.PartitionID
-	request.ExtentID    = extentId
+	request.ExtentID = extentId
 	request.Opcode = proto.OpEcGetTinyDeletingInfo
 	err = DoRequest(request, nodeAddr, proto.ReadDeadlineTime, e)
 	if err != nil {
@@ -599,9 +598,7 @@ func (ep *EcPartition) getExtentsFromRemoteNode(nodeAddr string, e *EcNode) (rem
 	return
 }
 
-
-
-func (ep *EcPartition) tinyExtentDelete(delNodeAddr string, extentId, offset, size uint64) (err error){
+func (ep *EcPartition) tinyExtentDelete(delNodeAddr string, extentId, offset, size uint64) (err error) {
 	e := ep.ecNode
 	request := repl.NewPacket(context.Background())
 	request.ReqID = proto.GenerateRequestID()
@@ -631,11 +628,9 @@ func (ep *EcPartition) tinyExtentDelete(delNodeAddr string, extentId, offset, si
 	return
 }
 
-
-
 func (ep *EcPartition) getAllNeedHandleTinyDelInfo(needHandleExtentsInfo map[uint64]*proto.TinyDelInfo) (recordExtentsIdMap map[uint64]uint32, err error) {
-	var deletingInfo  *proto.TinyDelInfo
-	recordExtentsIdMap      = make(map[uint64]uint32)
+	var deletingInfo *proto.TinyDelInfo
+	recordExtentsIdMap = make(map[uint64]uint32)
 	ep.extentStore.TinyDelInfoRange(ecstorage.TinyDeleting, func(extentId, offset, size uint64, deleteStatus, hostIndex uint32) (err error) {
 		if _, ok := recordExtentsIdMap[extentId]; !ok {
 			recordExtentsIdMap[extentId] = deleteStatus
@@ -665,9 +660,9 @@ func (ep *EcPartition) getAllNeedHandleTinyDelInfo(needHandleExtentsInfo map[uin
 		}
 		if deletingParityNum == 0 {
 			continue
-		}else if deletingParityNum == ep.EcParityNum {
+		} else if deletingParityNum == ep.EcParityNum {
 			deletingInfo.NeedUpdateParity = false
-		}else {
+		} else {
 			deletingInfo.NeedUpdateParity = true
 		}
 		needHandleExtentsInfo[extentId] = deletingInfo
@@ -675,7 +670,7 @@ func (ep *EcPartition) getAllNeedHandleTinyDelInfo(needHandleExtentsInfo map[uin
 	return
 }
 
-func (ep *EcPartition) recordRemoteTinyDelStatus(remoteAddr string, extentId, offset, size uint64, deleteStatus, hostIndex uint32) (err error){
+func (ep *EcPartition) recordRemoteTinyDelStatus(remoteAddr string, extentId, offset, size uint64, deleteStatus, hostIndex uint32) (err error) {
 	e := ep.ecNode
 	request := repl.NewPacket(context.Background())
 	request.ReqID = proto.GenerateRequestID()
@@ -684,9 +679,9 @@ func (ep *EcPartition) recordRemoteTinyDelStatus(remoteAddr string, extentId, of
 	request.Opcode = proto.OpEcRecordTinyDelInfo
 	info := new(proto.TinyDelInfo)
 	info.DeleteStatus = deleteStatus
-	info.HostIndex    = hostIndex
-	info.Offset       = offset
-	info.Size         = size
+	info.HostIndex = hostIndex
+	info.Offset = offset
+	info.Size = size
 	request.Data, err = json.Marshal(info)
 	if err != nil {
 		return
@@ -758,7 +753,7 @@ func (ep *EcPartition) tinyAutoDeleteHandle() {
 		err = ep.tinyExtentDelHandle(extentId, deletingInfo.Offset, deletingInfo.Size, deletingInfo.HostIndex, deletingInfo.NeedUpdateParity)
 		if err == nil {
 			delete(needHandleExtentsInfo, extentId)
-		}else {
+		} else {
 			log.LogWarnf("tinyExtentDelHandle partition(%v) extent(%v) offset(%v) size(%v) err(%v)",
 				ep.PartitionID, extentId, deletingInfo.Offset, deletingInfo.Size, err)
 		}
@@ -766,7 +761,7 @@ func (ep *EcPartition) tinyAutoDeleteHandle() {
 	handleCount := uint8(0)
 	store.TinyDelInfoRange(ecstorage.TinyDeleteMark, func(extentId, offset, size uint64, deleteStatus, hostIndex uint32) (cbErr error) {
 		_, exist := needHandleExtentsInfo[extentId]
-		if exist {//is deleting, need handle first
+		if exist { //is deleting, need handle first
 			return
 		}
 		_, exist = recordExtentsIdMap[extentId]
@@ -779,17 +774,17 @@ func (ep *EcPartition) tinyAutoDeleteHandle() {
 		}
 		handleCount++
 		log.LogDebugf("tinyDeleteHandle delNode(%v) partition(%v) extent(%v) offset(%v) size(%v) ",
-			ep.Hosts[hostIndex], ep.PartitionID, extentId, offset, size )
+			ep.Hosts[hostIndex], ep.PartitionID, extentId, offset, size)
 		cbErr = ep.tinyExtentDelHandle(extentId, offset, size, hostIndex, true)
 		if cbErr != nil {
 			cbErr = errors.NewErrorf("tinyExtentDelHandle partition(%v) extent(%v) offset(%v) size(%v) err(%v)",
 				ep.PartitionID, extentId, offset, size, cbErr)
 			delInfo := &proto.TinyDelInfo{
-				ExtentId: extentId,
-				Offset: offset,
-				Size: size,
+				ExtentId:     extentId,
+				Offset:       offset,
+				Size:         size,
 				DeleteStatus: deleteStatus,
-				HostIndex: hostIndex,
+				HostIndex:    hostIndex,
 			}
 			needHandleExtentsInfo[extentId] = delInfo
 		}
@@ -1049,7 +1044,7 @@ func (ep *EcPartition) repairExtentData(extentId uint64, repairInfo *repairExten
 		if repairSize >= repairInfo.needRepairSize {
 			break
 		}
-		curRepairSize := util.Min(int(repairInfo.needRepairSize-repairSize), util.EcBlockSize)
+		curRepairSize := unit.Min(int(repairInfo.needRepairSize-repairSize), unit.EcBlockSize)
 		_, err = ecStripe.repairStripeData(stripeUnitFileOffset, uint64(curRepairSize), repairInfo, readFlag)
 		if err != nil {
 			return
@@ -1154,7 +1149,7 @@ func (ep *EcPartition) fillRepairExtentInfo(stripeUnitFileSize, offset, size, or
 
 func (ep *EcPartition) repairWriteToExtent(p *repl.Packet, size int64, data []byte, crc uint32, writeType int) (err error) {
 	store := ep.extentStore
-	if p.Size <= util.EcBlockSize {
+	if p.Size <= unit.EcBlockSize {
 		err = store.EcWrite(p.ExtentID, p.ExtentOffset, size, data, crc, writeType, p.IsSyncWrite())
 		ep.checkIsDiskError(err)
 	} else {
@@ -1164,7 +1159,7 @@ func (ep *EcPartition) repairWriteToExtent(p *repl.Packet, size int64, data []by
 			if writeSize <= 0 {
 				break
 			}
-			currSize := util.Min(int(writeSize), util.EcBlockSize)
+			currSize := unit.Min(int(writeSize), unit.EcBlockSize)
 			writeData := data[offset : offset+currSize]
 			writeCrc := crc32.ChecksumIEEE(writeData)
 			err = store.EcWrite(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), writeData, writeCrc, writeType, p.IsSyncWrite())
@@ -1181,7 +1176,7 @@ func (ep *EcPartition) repairWriteToExtent(p *repl.Packet, size int64, data []by
 
 func (ep *EcPartition) writeToExtent(p *repl.Packet, writeType int) (err error) {
 	store := ep.extentStore
-	if p.Size <= util.EcBlockSize {
+	if p.Size <= unit.EcBlockSize {
 		err = store.EcWrite(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, writeType, p.IsSyncWrite())
 		ep.checkIsDiskError(err)
 	} else {
@@ -1191,7 +1186,7 @@ func (ep *EcPartition) writeToExtent(p *repl.Packet, writeType int) (err error) 
 			if size <= 0 {
 				break
 			}
-			currSize := util.Min(int(size), util.EcBlockSize)
+			currSize := unit.Min(int(size), unit.EcBlockSize)
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
 			err = store.EcWrite(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, writeType, p.IsSyncWrite())
@@ -1260,14 +1255,14 @@ func (ep *EcPartition) checkDataCanRead(extentId, readOffset, readSize uint64) (
 		return
 	}
 	err = ep.extentStore.TinyDelInfoExtentIdRange(extentId, ecstorage.TinyDeleting, func(delOffset, delSize uint64, delHostIndex uint32) (cbErr error) {
-		if readOffset+readSize <= delOffset || readOffset >= delOffset + delSize {
+		if readOffset+readSize <= delOffset || readOffset >= delOffset+delSize {
 			return
-		}else {//read size contain deleting size
+		} else { //read size contain deleting size
 			//repair host isn't deletingHost can't repair.
-		//	if !ep.checkCanRepairRead(delHostIndex, repairHosts) {
-				cbErr = fmt.Errorf("host(%v) is deleting partition(%v) extent(%v) offset(%v) size(%v) need wait delete done",
-					ep.Hosts[delHostIndex], ep.PartitionID, extentId, delOffset, delSize)
-		//	}
+			//	if !ep.checkCanRepairRead(delHostIndex, repairHosts) {
+			cbErr = fmt.Errorf("host(%v) is deleting partition(%v) extent(%v) offset(%v) size(%v) need wait delete done",
+				ep.Hosts[delHostIndex], ep.PartitionID, extentId, delOffset, delSize)
+			//	}
 		}
 		return
 	})
@@ -1298,10 +1293,10 @@ func (ep *EcPartition) needFillFailScrubMap(err error, isScrubFailHandle bool) b
 
 func (ep *EcPartition) checkBlockCrc(extentId uint64, wg *sync.WaitGroup, isScrubFailHandle bool) {
 	var (
-		err       error
-		size      int
-		crc       uint32
-		repairRead  bool
+		err        error
+		size       int
+		crc        uint32
+		repairRead bool
 	)
 	defer func() {
 		if isScrubFailHandle && err == nil {
@@ -1339,7 +1334,7 @@ func (ep *EcPartition) checkBlockCrc(extentId uint64, wg *sync.WaitGroup, isScru
 			return
 		}
 
-		offset := int64(blockNum * util.EcBlockSize)
+		offset := int64(blockNum * unit.EcBlockSize)
 		data := make([]byte, blockSize)
 		size, crc, err = ep.extentStore.EcRead(ei.FileID, offset, int64(blockSize), data, repairRead)
 		if !ep.checkIsEofError(err, ecStripe, ei.OriginExtentSize, uint64(offset), uint64(blockSize)) {
@@ -1356,7 +1351,7 @@ func (ep *EcPartition) checkBlockCrc(extentId uint64, wg *sync.WaitGroup, isScru
 				if ep.needFillFailScrubMap(err, isScrubFailHandle) {
 					ep.putFailScrubExtents(extentId)
 				}
-			}else {
+			} else {
 				ep.ExtentStore().EcMarkDelete(ei.FileID, ep.NodeIndex, 0, 0)
 				err = fmt.Errorf("normal extent crc inconsist, markDelete extent")
 				return

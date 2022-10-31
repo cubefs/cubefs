@@ -8,10 +8,10 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/ec"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"github.com/shopspring/decimal"
 	"hash/crc32"
 	"sync"
@@ -60,8 +60,8 @@ func NewEcStripe(ep *EcPartition, stripeUnitSize uint64, extentID uint64) (*ecSt
 }
 
 func (ee *ecStripe) repairReadStripeUnitData(readNodeAddr string, offset, curReadSize uint64, readFlag int, repairInfo *repairExtentInfo) (data []byte, crc uint32, err error) {
-	if curReadSize == util.ReadBlockSize {
-		data, _ = proto.Buffers.Get(util.ReadBlockSize)
+	if curReadSize == unit.ReadBlockSize {
+		data, _ = proto.Buffers.Get(unit.ReadBlockSize)
 	} else {
 		data = make([]byte, curReadSize)
 	}
@@ -99,8 +99,8 @@ func (ee *ecStripe) repairReadStripeUnitData(readNodeAddr string, offset, curRea
 }
 
 func (ee *ecStripe) readStripeUnitData(readNodeAddr string, offset, curReadSize uint64, readFlag int) (data []byte, crc uint32, err error) {
-	if curReadSize == util.ReadBlockSize {
-		data, _ = proto.Buffers.Get(util.ReadBlockSize)
+	if curReadSize == unit.ReadBlockSize {
+		data, _ = proto.Buffers.Get(unit.ReadBlockSize)
 	} else {
 		data = make([]byte, curReadSize)
 	}
@@ -217,10 +217,10 @@ func isRepairHost(nodeAddr string, repairHosts []*repairHostInfo) (needRepair bo
 
 func (ee *ecStripe) readStripeData(stripeUnitFileOffset, needReadSize uint64, readFlag int) (data [][]byte, err error) {
 	var (
-		successDataNum int32
-		originExtentSize uint64
+		successDataNum     int32
+		originExtentSize   uint64
 		stripeUnitFileSize uint64
-	    repairInfo repairExtentInfo
+		repairInfo         repairExtentInfo
 	)
 	ecPartition := ee.ep
 	ecNodeNum := len(ecPartition.Hosts)

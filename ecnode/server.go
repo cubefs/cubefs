@@ -28,9 +28,10 @@ import (
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 )
@@ -41,7 +42,7 @@ var (
 
 const (
 	DefaultDiskMaxErr    = 1
-	DefaultDiskRetainMin = 5 * util.GB // GB
+	DefaultDiskRetainMin = 5 * unit.GB // GB
 )
 
 // Network protocol
@@ -51,7 +52,7 @@ const (
 
 var (
 	localIP, serverPort, cellName string
-	gConnPool                     = util.NewConnectPool()
+	gConnPool                     = connpool.NewConnectPool()
 	MasterClient                  = masterSDK.NewMasterClient(nil, false)
 )
 
@@ -60,8 +61,8 @@ const (
 	ConfigKeyDisks   = "disks"   // array
 	ConfigKeyCell    = "cell"    // string
 
-	defaultGetEcScrubInfo          = 30   //minute  //todo change hours
-	defaultScrubCheckInterval      = 60   //minute  //todo change hours
+	defaultGetEcScrubInfo          = 30  //minute  //todo change hours
+	defaultScrubCheckInterval      = 60  //minute  //todo change hours
 	defaultComputeCrcInterval      = 5   //minute
 	defaultAutoDeleteTinyInterval  = 3   //minute
 	defaultRepairInterval          = 2   //minute
@@ -251,7 +252,6 @@ func (e *EcNode) registerHandler() {
 	http.HandleFunc("/setMaxTinyDelCount", e.setMaxTinyDelCount)
 	http.HandleFunc("/setEcPartitionSize", e.setEcPartitionSize)
 
-
 	server.ListenAndServe()
 }
 
@@ -275,7 +275,7 @@ func (e *EcNode) register() {
 				localIP = string(ci.Ip)
 			}
 			e.localServerAddr = fmt.Sprintf("%s:%s", localIP, e.port)
-			if !util.IsIPV4(localIP) {
+			if !unit.IsIPV4(localIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					localIP, masterAddr)
 				timer.Reset(2 * time.Second)

@@ -8,10 +8,10 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -41,14 +41,14 @@ const (
 )
 
 type Extent struct {
-	ExtentID   uint64
-	Crc        uint32
-	Size       int64
+	ExtentID uint64
+	Crc      uint32
+	Size     int64
 }
 
 type DataPartition struct {
-	PartitionID   uint64
-	ExtentMap     map[uint64]*proto.ExtentInfoBlock
+	PartitionID uint64
+	ExtentMap   map[uint64]*proto.ExtentInfoBlock
 }
 
 var regexpDataPartitionDir, _ = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
@@ -84,8 +84,8 @@ type DataNodeAgent struct {
 	repairFunc         func(repairTask *repairTask) error
 
 	//afterRepairFunc ("/data1", "datapartition_2_128849018880")
-	afterRepairFunc    func(diskPath, partitionPath string) error
-	control            common.Control
+	afterRepairFunc func(diskPath, partitionPath string) error
+	control         common.Control
 }
 
 func NewServer() *DataNodeAgent {
@@ -106,7 +106,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if !ok {
 		return errors.New("Invalid Node Type!")
 	}
-
 
 	if err = m.parseConfig(cfg); err != nil {
 		return
@@ -180,7 +179,7 @@ func (m *DataNodeAgent) LoadDisk(cfg *config.Config) error {
 	return nil
 }
 
-func (m *DataNodeAgent) RepairExtentCrcOnDisk(diskPath string, hour int) (failedTasks, successTasks []*repairTask, err error){
+func (m *DataNodeAgent) RepairExtentCrcOnDisk(diskPath string, hour int) (failedTasks, successTasks []*repairTask, err error) {
 	failedTasks = make([]*repairTask, 0)
 	successTasks = make([]*repairTask, 0)
 	defer func() {
@@ -213,7 +212,7 @@ func (m *DataNodeAgent) RepairExtentCrcOnDisk(diskPath string, hour int) (failed
 	return
 }
 
-func (m *DataNodeAgent) repairPartition(diskPath, partitionDir string, persistPartitions []uint64, hour int) (failedTasks, successTasks []*repairTask, err error){
+func (m *DataNodeAgent) repairPartition(diskPath, partitionDir string, persistPartitions []uint64, hour int) (failedTasks, successTasks []*repairTask, err error) {
 	var (
 		partitionID       uint64
 		localExtents      map[uint64]*proto.ExtentInfoBlock
@@ -247,7 +246,7 @@ func (m *DataNodeAgent) repairPartition(diskPath, partitionDir string, persistPa
 	if err != nil {
 		return
 	}
-	localExtents, err = getNormalExtents(diskPath, partitionDir, int64(60 * 60 * hour))
+	localExtents, err = getNormalExtents(diskPath, partitionDir, int64(60*60*hour))
 	if err != nil {
 		return
 	}
@@ -256,9 +255,9 @@ func (m *DataNodeAgent) repairPartition(diskPath, partitionDir string, persistPa
 		return
 	}
 
-	quorum = int(partition.ReplicaNum) / 2 + 1
+	quorum = int(partition.ReplicaNum)/2 + 1
 	validExtents := prepareValidExtents(quorum, localExtents, remoteExtentsMaps)
-	repairTasks, err = m.prepareRepairExtentsTasks(localExtents, validExtents, diskPath + "/" + partitionDir, partitionID)
+	repairTasks, err = m.prepareRepairExtentsTasks(localExtents, validExtents, diskPath+"/"+partitionDir, partitionID)
 	if err != nil {
 		return
 	}
@@ -282,7 +281,7 @@ func (m *DataNodeAgent) repairPartition(diskPath, partitionDir string, persistPa
 	return
 }
 
-func (m *DataNodeAgent) getRemoteExtentInfo(partition *proto.DataPartitionInfo, partitionDir string) (remoteExtentsMaps []map[uint64]*proto.ExtentInfoBlock, err error){
+func (m *DataNodeAgent) getRemoteExtentInfo(partition *proto.DataPartitionInfo, partitionDir string) (remoteExtentsMaps []map[uint64]*proto.ExtentInfoBlock, err error) {
 	remoteExtentsMaps = make([]map[uint64]*proto.ExtentInfoBlock, 0)
 	var lock sync.Mutex
 	wg := sync.WaitGroup{}
@@ -295,7 +294,7 @@ func (m *DataNodeAgent) getRemoteExtentInfo(partition *proto.DataPartitionInfo, 
 			if host == m.localServerAddr {
 				return
 			}
-			dataAgentClient := data.NewDataHttpClient(ip[0] + ":" + m.agentProfPort, false)
+			dataAgentClient := data.NewDataHttpClient(ip[0]+":"+m.agentProfPort, false)
 			if extentsMap, err = dataAgentClient.FetchExtentsCrc(partitionDir); err != nil {
 				return
 			}
@@ -345,7 +344,7 @@ func (m *DataNodeAgent) prepareRepairExtentsTasks(localExtentsMap map[uint64]*pr
 		if _, ok := validExtents[ext[proto.FileID]]; !ok {
 			continue
 		}
-		if (ext[proto.Size] > 0 && validExtents[ext[proto.FileID]][proto.Size] > ext[proto.Size]) || (validExtents[ext[proto.FileID]][proto.Crc] != ext[proto.Crc] && validExtents[ext[proto.FileID]][proto.Size] == ext[proto.Size] ) {
+		if (ext[proto.Size] > 0 && validExtents[ext[proto.FileID]][proto.Size] > ext[proto.Size]) || (validExtents[ext[proto.FileID]][proto.Crc] != ext[proto.Crc] && validExtents[ext[proto.FileID]][proto.Size] == ext[proto.Size]) {
 			repairTasks = append(repairTasks, &repairTask{
 				ExtentDir:   extentDir,
 				PartitionID: partitionID,
@@ -369,7 +368,7 @@ func getNormalExtents(diskPath, partitionDir string, duration int64) (extentsMap
 	lock := sync.Mutex{}
 	for _, ef := range extListFd {
 		var (
-			eid uint64
+			eid  uint64
 			err1 error
 		)
 		if eid, err1 = strconv.ParseUint(ef.Name(), 10, 64); err1 != nil {
@@ -383,7 +382,7 @@ func getNormalExtents(diskPath, partitionDir string, duration int64) (extentsMap
 		go func(extentPath string, extentID uint64, nowTime, duration int64) {
 			defer func() {
 				wg.Done()
-				<- limitCh
+				<-limitCh
 			}()
 			extentInfo, err2 := packExtentInfo(extentPath, extentID, nowTime, duration)
 			if err2 != nil {
@@ -392,14 +391,14 @@ func getNormalExtents(diskPath, partitionDir string, duration int64) (extentsMap
 			lock.Lock()
 			defer lock.Unlock()
 			extentsMap[extentID] = extentInfo
-		}(diskPath + "/" + partitionDir + "/" + ef.Name(), eid, timeNow, duration)
+		}(diskPath+"/"+partitionDir+"/"+ef.Name(), eid, timeNow, duration)
 	}
 	wg.Wait()
 	log.LogInfof("action[getNormalExtents] partition path[%v] total extents[%v]", partitionDir, len(extentsMap))
 	return
 }
 
-func packExtentInfo(extentPath string, extentID uint64, timeNow int64, duration int64) (extentInfo *proto.ExtentInfoBlock, err error){
+func packExtentInfo(extentPath string, extentID uint64, timeNow int64, duration int64) (extentInfo *proto.ExtentInfoBlock, err error) {
 	efd, err := os.OpenFile(extentPath, os.O_RDONLY, 0644)
 	if err != nil {
 		log.LogErrorf("open file failed, extent:%v, err:%v", extentID, err)
@@ -409,7 +408,7 @@ func packExtentInfo(extentPath string, extentID uint64, timeNow int64, duration 
 	if err != nil {
 		return nil, err
 	}
-	if duration == 0 || stat.ModTime().Unix() >= timeNow - duration {
+	if duration == 0 || stat.ModTime().Unix() >= timeNow-duration {
 		crc, err1 := computeExtentCrc(efd, stat.Size())
 		if err1 != nil {
 			return nil, err1
@@ -427,22 +426,22 @@ func packExtentInfo(extentPath string, extentID uint64, timeNow int64, duration 
 
 func computeExtentCrc(fd *os.File, size int64) (crc uint32, err error) {
 	var blockCnt int
-	blockCnt = int(size / util.BlockSize)
-	if size%util.BlockSize != 0 {
+	blockCnt = int(size / unit.BlockSize)
+	if size%unit.BlockSize != 0 {
 		blockCnt += 1
 	}
-	crcData := make([]byte, blockCnt*util.PerBlockCrcSize)
+	crcData := make([]byte, blockCnt*unit.PerBlockCrcSize)
 	for blockNo := 0; blockNo < blockCnt; blockNo++ {
-		dataSize := math.Min(util.BlockSize, float64(size - int64(blockNo*util.BlockSize)))
+		dataSize := math.Min(unit.BlockSize, float64(size-int64(blockNo*unit.BlockSize)))
 		bdata := make([]byte, int(dataSize))
-		offset := int64(blockNo * util.BlockSize)
+		offset := int64(blockNo * unit.BlockSize)
 		var readN int
 		readN, err = fd.ReadAt(bdata[:int(dataSize)], offset)
 		if readN == 0 && err != nil {
 			break
 		}
 		blockCrc := crc32.ChecksumIEEE(bdata[:readN])
-		binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
+		binary.BigEndian.PutUint32(crcData[blockNo*unit.PerBlockCrcSize:(blockNo+1)*unit.PerBlockCrcSize], blockCrc)
 	}
 	crc = crc32.ChecksumIEEE(crcData)
 	if err != nil {
@@ -478,7 +477,6 @@ func (m *DataNodeAgent) getPersistPartitionsFromMaster() (dInfo *DataNodeInfo, e
 	dInfo = convert(dataNode)
 	return
 }
-
 
 func (m *DataNodeAgent) getPartitionFromMaster(id uint64) (partition *proto.DataPartitionInfo, err error) {
 	for i := 0; i < 3; i++ {
@@ -547,7 +545,7 @@ func (m *DataNodeAgent) registerAPIHandler() {
 }
 
 func (m *DataNodeAgent) moveExtentFileToBackup(pathStr string, partitionID, extentID uint64) (err error) {
-	rootPath := pathStr[ : strings.LastIndex(pathStr, "/")]
+	rootPath := pathStr[:strings.LastIndex(pathStr, "/")]
 	extentFilePath := path.Join(pathStr, strconv.Itoa(int(extentID)))
 	now := time.Now()
 	repairDirPath := path.Join(rootPath, repairDirStr, fmt.Sprintf("%d-%d-%d", now.Year(), now.Month(), now.Day()))
@@ -563,8 +561,8 @@ func (m *DataNodeAgent) moveExtentFileToBackup(pathStr string, partitionID, exte
 		return
 	}
 
-	file, err := os.OpenFile(extentFilePath, os.O_CREATE | os.O_RDWR | os.O_EXCL, 0666)
-	if  err != nil {
+	file, err := os.OpenFile(extentFilePath, os.O_CREATE|os.O_RDWR|os.O_EXCL, 0666)
+	if err != nil {
 		return
 	}
 	file.Close()
@@ -576,9 +574,9 @@ func (m *DataNodeAgent) repairCrc(w http.ResponseWriter, r *http.Request) {
 		diskStr    string
 		ttlHourStr string
 		err        error
-		modStr         string
-		forceStr       string
-		force          bool
+		modStr     string
+		forceStr   string
+		force      bool
 	)
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	defer func() {
@@ -611,7 +609,6 @@ func (m *DataNodeAgent) repairCrc(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-
 	modStr = r.FormValue(cfgMod)
 	switch modStr {
 	case "scan":
@@ -621,7 +618,7 @@ func (m *DataNodeAgent) repairCrc(w http.ResponseWriter, r *http.Request) {
 		}
 	case "repair":
 		//判断当前系统中datanode进程是否存活
-		dataNodeClient := data.NewDataHttpClient("127.0.0.1:" + m.dataNodePprofPort, false)
+		dataNodeClient := data.NewDataHttpClient("127.0.0.1:"+m.dataNodePprofPort, false)
 		_, err = dataNodeClient.GetPartitionsFromNode()
 		if err == nil {
 			if !force {
@@ -629,14 +626,14 @@ func (m *DataNodeAgent) repairCrc(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			m.beforeRepairFunc = func(partitionID uint64) (err error) {
-				dataClient := data.NewDataHttpClient("127.0.0.1:" + m.dataNodePprofPort, false)
+				dataClient := data.NewDataHttpClient("127.0.0.1:"+m.dataNodePprofPort, false)
 				if err = dataClient.StopPartition(partitionID); err != nil {
 					log.LogErrorf("stop partition[%v] failed, err:%v", partitionID, err)
 				}
 				return
 			}
 			m.afterRepairFunc = func(diskPath, partitionPath string) (err error) {
-				dataClient := data.NewDataHttpClient("127.0.0.1:" + m.dataNodePprofPort, false)
+				dataClient := data.NewDataHttpClient("127.0.0.1:"+m.dataNodePprofPort, false)
 				if err = dataClient.ReLoadPartition(partitionPath, diskPath); err != nil {
 					log.LogErrorf("reload disk[%v] partition[%v] failed, err:%v", diskPath, partitionPath, err)
 				}
@@ -657,10 +654,10 @@ func (m *DataNodeAgent) repairCrc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respData := &struct {
-		FailedTasks []*repairTask
+		FailedTasks  []*repairTask
 		SuccessTasks []*repairTask
 	}{
-		FailedTasks: make([]*repairTask, 0),
+		FailedTasks:  make([]*repairTask, 0),
 		SuccessTasks: make([]*repairTask, 0),
 	}
 	for _, disk := range m.disks {

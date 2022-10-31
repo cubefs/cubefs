@@ -1,7 +1,9 @@
 package statinfo
 
 import (
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/cpu"
+	"github.com/chubaofs/chubaofs/util/memory"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"os"
 	"sync"
 	"time"
@@ -53,17 +55,17 @@ func (s *ProcessStatInfo) UpdateMemoryInfo(pid int) {
 		memoryUsedGB float64
 		memoryUsage  float64
 	)
-	memoryUsed, err := util.GetProcessMemory(pid)
+	memoryUsed, err := memory.GetProcessMemory(pid)
 	if err != nil {
 		return
 	}
-	memoryTotal, _, err := util.GetMemInfo()
+	memoryTotal, _, err := memory.GetMemInfo()
 	if err != nil {
 		return
 	}
 	//reserves a decimal fraction
-	memoryUsage = util.FixedPoint(float64(memoryUsed)/float64(memoryTotal)*100, 1)
-	memoryUsedGB = util.FixedPoint(float64(memoryUsed)/util.GB, 1)
+	memoryUsage = unit.FixedPoint(float64(memoryUsed)/float64(memoryTotal)*100, 1)
+	memoryUsedGB = unit.FixedPoint(float64(memoryUsed)/unit.GB, 1)
 	s.RWMutex.Lock()
 	defer s.RWMutex.Unlock()
 	if len(s.MemUsedGBList) < CollectPointNumber {
@@ -81,12 +83,12 @@ func (s *ProcessStatInfo) UpdateMemoryInfo(pid int) {
 }
 
 func (s *ProcessStatInfo) UpdateCPUUsageInfo(pid int) {
-	cpuUsage, err := util.GetProcessCPUUsage(pid)
+	cpuUsage, err := cpu.GetProcessCPUUsage(pid)
 	if err != nil {
 		return
 	}
 	//reserves a decimal fraction
-	cpuUsage = util.FixedPoint(cpuUsage, 1)
+	cpuUsage = unit.FixedPoint(cpuUsage, 1)
 	s.RWMutex.Lock()
 	defer s.RWMutex.Unlock()
 	if len(s.CPUUsageList) < CollectPointNumber {

@@ -3,8 +3,8 @@ package storage
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"hash/crc32"
 	"strings"
 	"syscall"
@@ -103,9 +103,9 @@ func (s *ExtentStore) GetExtentCrc(extentId uint64) (crc uint32, err error) {
 				continue
 			}
 			currNeedReplySize = newEnd - newOffset
-			currReadSize = uint32(util.Min(int(currNeedReplySize), 128*util.MB))
+			currReadSize = uint32(unit.Min(int(currNeedReplySize), 128*unit.MB))
 		} else {
-			currReadSize = uint32(util.Min(int(needReadSize), 128*util.MB))
+			currReadSize = uint32(unit.Min(int(needReadSize), 128*unit.MB))
 		}
 
 		data := make([]byte, currReadSize)

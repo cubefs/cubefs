@@ -6,8 +6,8 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/schedulenode/smart"
 	"github.com/chubaofs/chubaofs/sdk/mysql"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/buf"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"net/http"
 	"net/http/httputil"
 	"strconv"
@@ -86,35 +86,35 @@ func (s *ScheduleNode) getTasks(w http.ResponseWriter, r *http.Request) {
 	}
 	cluster = r.FormValue(ParamKeyCluster)
 	volume = r.FormValue(ParamKeyVolume)
-	if !util.IsStrEmpty(r.FormValue(ParamKeyDPId)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyDPId)) {
 		if dpId, err = strconv.ParseUint(r.FormValue(ParamKeyDPId), 10, 64); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyDPId, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	if !util.IsStrEmpty(r.FormValue(ParamKeyMPid)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyMPid)) {
 		if mpId, err = strconv.ParseUint(r.FormValue(ParamKeyMPid), 10, 64); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyMPid, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	if !util.IsStrEmpty(r.FormValue(ParamKeyTaskType)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyTaskType)) {
 		if taskType, err = strconv.Atoi(r.FormValue(ParamKeyTaskType)); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyTaskType, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	if !util.IsStrEmpty(r.FormValue(ParamKeyLimit)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyLimit)) {
 		if limit, err = strconv.Atoi(r.FormValue(ParamKeyLimit)); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyLimit, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	if !util.IsStrEmpty(r.FormValue(ParamKeyOffset)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyOffset)) {
 		if offset, err = strconv.Atoi(r.FormValue(ParamKeyOffset)); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyOffset, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -148,35 +148,35 @@ func (s *ScheduleNode) getTaskHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	cluster = r.FormValue(ParamKeyCluster)
 	volume = r.FormValue(ParamKeyVolume)
-	if !util.IsStrEmpty(r.FormValue(ParamKeyDPId)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyDPId)) {
 		if dpId, err = strconv.ParseUint(r.FormValue(ParamKeyDPId), 10, 64); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyDPId, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	if !util.IsStrEmpty(r.FormValue(ParamKeyMPid)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyMPid)) {
 		if mpId, err = strconv.ParseUint(r.FormValue(ParamKeyMPid), 10, 64); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyMPid, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	if !util.IsStrEmpty(r.FormValue(ParamKeyTaskType)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyTaskType)) {
 		if taskType, err = strconv.Atoi(r.FormValue(ParamKeyTaskType)); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyTaskType, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	if !util.IsStrEmpty(r.FormValue(ParamKeyLimit)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyLimit)) {
 		if limit, err = strconv.Atoi(r.FormValue(ParamKeyLimit)); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyLimit, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	if !util.IsStrEmpty(r.FormValue(ParamKeyOffset)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyOffset)) {
 		if offset, err = strconv.Atoi(r.FormValue(ParamKeyOffset)); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyOffset, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -208,7 +208,7 @@ func (s *ScheduleNode) getWorkers(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !util.IsStrEmpty(r.FormValue(ParamKeyWorkerType)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyWorkerType)) {
 		if workerType, err = strconv.Atoi(r.FormValue(ParamKeyWorkerType)); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyWorkerType, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -216,14 +216,14 @@ func (s *ScheduleNode) getWorkers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	workerAddr = r.FormValue(ParamKeyWorkerAddr)
-	if !util.IsStrEmpty(r.FormValue(ParamKeyLimit)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyLimit)) {
 		if limit, err = strconv.Atoi(r.FormValue(ParamKeyLimit)); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyLimit, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	if !util.IsStrEmpty(r.FormValue(ParamKeyOffset)) {
+	if !stringutil.IsStrEmpty(r.FormValue(ParamKeyOffset)) {
 		if offset, err = strconv.Atoi(r.FormValue(ParamKeyOffset)); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", ParamKeyOffset, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -284,22 +284,22 @@ func (s *ScheduleNode) cleanTask(w http.ResponseWriter, r *http.Request) {
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if util.IsStrEmpty(r.FormValue(ParamKeyCluster)) {
+		if stringutil.IsStrEmpty(r.FormValue(ParamKeyCluster)) {
 			err = fmt.Errorf("param %v can not be empty", ParamKeyCluster)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if util.IsStrEmpty(r.FormValue(ParamKeyVolume)) {
+		if stringutil.IsStrEmpty(r.FormValue(ParamKeyVolume)) {
 			err = fmt.Errorf("param %v can not be empty", ParamKeyVolume)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if util.IsStrEmpty(r.FormValue(ParamKeyTaskType)) {
+		if stringutil.IsStrEmpty(r.FormValue(ParamKeyTaskType)) {
 			err = fmt.Errorf("param %v can not be empty", ParamKeyTaskType)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if util.IsStrEmpty(r.FormValue(ParamKeyTaskId)) {
+		if stringutil.IsStrEmpty(r.FormValue(ParamKeyTaskId)) {
 			err = fmt.Errorf("param %v can not be empty", ParamKeyTaskId)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
@@ -381,7 +381,7 @@ func (s *ScheduleNode) deleteFlowControl(w http.ResponseWriter, r *http.Request)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if util.IsStrEmpty(r.FormValue(ParamKeyTaskType)) {
+	if stringutil.IsStrEmpty(r.FormValue(ParamKeyTaskType)) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyTaskType)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -391,7 +391,7 @@ func (s *ScheduleNode) deleteFlowControl(w http.ResponseWriter, r *http.Request)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if util.IsStrEmpty(r.FormValue(ParamKeyFlowType)) {
+	if stringutil.IsStrEmpty(r.FormValue(ParamKeyFlowType)) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyFlowType)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -402,7 +402,7 @@ func (s *ScheduleNode) deleteFlowControl(w http.ResponseWriter, r *http.Request)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if util.IsStrEmpty(r.FormValue(ParamKeyFlowValue)) {
+	if stringutil.IsStrEmpty(r.FormValue(ParamKeyFlowValue)) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyFlowValue)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -494,7 +494,7 @@ func (s *ScheduleNode) deleteScheduleConfig(w http.ResponseWriter, r *http.Reque
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if util.IsStrEmpty(r.FormValue(ParamKeyConfigType)) {
+	if stringutil.IsStrEmpty(r.FormValue(ParamKeyConfigType)) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigType)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -510,7 +510,7 @@ func (s *ScheduleNode) deleteScheduleConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	confKey = r.FormValue(ParamKeyConfigKey)
-	if util.IsStrEmpty(confKey) {
+	if stringutil.IsStrEmpty(confKey) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigKey)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -533,7 +533,7 @@ func (s *ScheduleNode) selectScheduleConfig(w http.ResponseWriter, r *http.Reque
 		err      error
 		confType int
 	)
-	if util.IsStrEmpty(r.FormValue(ParamKeyConfigType)) {
+	if stringutil.IsStrEmpty(r.FormValue(ParamKeyConfigType)) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigType)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -590,7 +590,7 @@ func parseParamScheduleConfig(r *http.Request) (flow *proto.ScheduleConfig, err 
 		err = fmt.Errorf("parse form fail: %v", err)
 		return
 	}
-	if util.IsStrEmpty(r.FormValue(ParamKeyConfigType)) {
+	if stringutil.IsStrEmpty(r.FormValue(ParamKeyConfigType)) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigType)
 		return
 	}
@@ -603,12 +603,12 @@ func parseParamScheduleConfig(r *http.Request) (flow *proto.ScheduleConfig, err 
 		return
 	}
 	confKey = r.FormValue(ParamKeyConfigKey)
-	if util.IsStrEmpty(confKey) {
+	if stringutil.IsStrEmpty(confKey) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigKey)
 		return
 	}
 	confValue = r.FormValue(ParamKeyConfigValue)
-	if util.IsStrEmpty(confValue) {
+	if stringutil.IsStrEmpty(confValue) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigValue)
 		return
 	}
@@ -636,7 +636,7 @@ func parseParamFlowControl(r *http.Request) (flow *proto.FlowControl, err error)
 		err = fmt.Errorf("parse form fail: %v", err)
 		return
 	}
-	if util.IsStrEmpty(r.FormValue(ParamKeyTaskType)) {
+	if stringutil.IsStrEmpty(r.FormValue(ParamKeyTaskType)) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyTaskType)
 		return
 	}
@@ -644,7 +644,7 @@ func parseParamFlowControl(r *http.Request) (flow *proto.FlowControl, err error)
 		err = fmt.Errorf("parse param %v fail: %v", ParamKeyTaskType, err)
 		return
 	}
-	if util.IsStrEmpty(r.FormValue(ParamKeyFlowType)) {
+	if stringutil.IsStrEmpty(r.FormValue(ParamKeyFlowType)) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyFlowType)
 		return
 	}
@@ -653,12 +653,12 @@ func parseParamFlowControl(r *http.Request) (flow *proto.FlowControl, err error)
 		err = fmt.Errorf("invalid flow type: %v", flowType)
 		return
 	}
-	if util.IsStrEmpty(r.FormValue(ParamKeyFlowValue)) {
+	if stringutil.IsStrEmpty(r.FormValue(ParamKeyFlowValue)) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyFlowValue)
 		return
 	}
 	flowValue = r.FormValue(ParamKeyFlowValue)
-	if util.IsStrEmpty(r.FormValue(ParamKeyMaxNum)) {
+	if stringutil.IsStrEmpty(r.FormValue(ParamKeyMaxNum)) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyMaxNum)
 		return
 	}

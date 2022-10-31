@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/unit"
 
 	"encoding/binary"
 	"fmt"
@@ -200,24 +200,24 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 		}
 		var conn *net.TCPConn
 		if conn, err = gConnPool.GetConnect(target); err != nil {
-			err = errors.Trace(err, fmt.Sprintf("get connection failed: %v",err))
+			err = errors.Trace(err, fmt.Sprintf("get connection failed: %v", err))
 			return
 		}
 		defer func() {
 			gConnPool.PutConnectWithErr(conn, err)
 		}()
 		if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-			err = errors.Trace(err, fmt.Sprintf("write packet to connection failed %v",err))
+			err = errors.Trace(err, fmt.Sprintf("write packet to connection failed %v", err))
 			return
 		}
 		var reply = new(repl.Packet)
 		reply.SetCtx(ctx)
 		if err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime); err != nil {
-			err = errors.Trace(err, fmt.Sprintf("read reply from connection failed %v",err))
+			err = errors.Trace(err, fmt.Sprintf("read reply from connection failed %v", err))
 			return
 		}
 		if reply.ResultCode != proto.OpOk {
-			err = errors.Trace(err, fmt.Sprintf("reply result mesg: %v",reply.GetOpMsgWithReqAndResult()))
+			err = errors.Trace(err, fmt.Sprintf("reply result mesg: %v", reply.GetOpMsgWithReqAndResult()))
 			return
 		}
 		extents = make([]storage.ExtentInfoBlock, 0)
@@ -251,17 +251,17 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 			gConnPool.PutConnectWithErr(conn, err)
 		}()
 		if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-			err = errors.Trace(err, fmt.Sprintf("write packet to connection failed %v",err))
+			err = errors.Trace(err, fmt.Sprintf("write packet to connection failed %v", err))
 			return
 		}
 		var reply = new(repl.Packet)
 		reply.SetCtx(ctx)
 		if err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime); err != nil {
-			err = errors.Trace(err, fmt.Sprintf("read reply from connection failed %v",err))
+			err = errors.Trace(err, fmt.Sprintf("read reply from connection failed %v", err))
 			return
 		}
 		if reply.ResultCode != proto.OpOk {
-			err = errors.Trace(err, fmt.Sprintf("reply result mesg: %v",reply.GetOpMsgWithReqAndResult()))
+			err = errors.Trace(err, fmt.Sprintf("reply result mesg: %v", reply.GetOpMsgWithReqAndResult()))
 			return
 		}
 		if reply.Size%16 != 0 {
@@ -309,7 +309,7 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTasks [
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
 		source := repairTasks[0].ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
-		err := dp.streamRepairExtent(ctx, extentInfo, source,NoSkipLimit)
+		err := dp.streamRepairExtent(ctx, extentInfo, source, NoSkipLimit)
 		if err != nil {
 			err = errors.Trace(err, "DoRepairOnLeaderDisk %v", dp.applyRepairKey(int(extentInfo[storage.FileID])))
 			localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(extentInfo[storage.FileID]))
@@ -508,7 +508,7 @@ func (dp *DataPartition) NotifyExtentRepair(ctx context.Context, members []*Data
 func (dp *DataPartition) doStreamExtentFixRepairOnFollowerDisk(ctx context.Context, wg *sync.WaitGroup, remoteExtentInfo storage.ExtentInfoBlock, source string) {
 	defer wg.Done()
 
-	err := dp.streamRepairExtent(ctx, remoteExtentInfo, source,NoSkipLimit)
+	err := dp.streamRepairExtent(ctx, remoteExtentInfo, source, NoSkipLimit)
 
 	if err != nil {
 		err = errors.Trace(err, "doStreamExtentFixRepairOnFollowerDisk %v", dp.applyRepairKey(int(remoteExtentInfo[storage.FileID])))
@@ -546,12 +546,12 @@ func (dp *DataPartition) tryLockExtentRepair(extentID uint64) (release func(), s
 
 // The actual repair of an extent happens here.
 
-func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInfo storage.ExtentInfoBlock, source string,SkipLimit bool) (err error) {
+func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInfo storage.ExtentInfoBlock, source string, SkipLimit bool) (err error) {
 	release, success := dp.tryLockExtentRepair(remoteExtentInfo[storage.FileID])
-		if !success {
-			return
-		}
-		defer release()
+	if !success {
+		return
+	}
+	defer release()
 	store := dp.ExtentStore()
 	if !store.HasExtent(remoteExtentInfo[storage.FileID]) {
 		return
@@ -572,7 +572,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		if err != nil {
 			return errors.Trace(err, "streamRepairExtent Watermark error")
 		}
-	}else {
+	} else {
 		localExtentInfo, err = store.ForceWatermark(remoteExtentInfo[storage.FileID])
 		if err != nil {
 			return errors.Trace(err, "streamRepairExtent Watermark error")
@@ -591,20 +591,19 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 	if localExtentInfo[storage.Size] >= remoteExtentInfo[storage.Size] {
 		return nil
 	}
-	if !SkipLimit{
+	if !SkipLimit {
 		if !dp.Disk().canRepairOnDisk() {
 			return errors.Trace(err, "limit on apply disk repair task")
 		}
 		defer dp.Disk().finishRepairTask()
 	}
 
-
 	// size difference between the local extent and the remote extent
 	sizeDiff := remoteExtentInfo[storage.Size] - localExtentInfo[storage.Size]
 	request := repl.NewExtentRepairReadPacket(ctx, dp.partitionID, remoteExtentInfo[storage.FileID], int(localExtentInfo[storage.Size]), int(sizeDiff))
 	if storage.IsTinyExtent(remoteExtentInfo[storage.FileID]) {
 		if sizeDiff >= math.MaxUint32 {
-			sizeDiff = math.MaxUint32 - util.MB
+			sizeDiff = math.MaxUint32 - unit.MB
 		}
 		request = repl.NewTinyExtentRepairReadPacket(ctx, dp.partitionID, remoteExtentInfo[storage.FileID], int(localExtentInfo[storage.Size]), int(sizeDiff))
 	}
@@ -687,10 +686,10 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				currRecoverySize = binary.BigEndian.Uint64(reply.Arg[1:9])
 			}
 			defer func() {
-				if r:=recover();r!=nil {
-					recoverMesg:=fmt.Sprintf("repairKey(%v) reply(%v) isEmptyResponse(%v) " +
-						"currRecoverySize(%v) remoteAvaliSize(%v) currFixOffset(%v)",dp.applyRepairKey(int(reply.ExtentID)),
-						reply,isEmptyResponse,currRecoverySize,remoteAvaliSize,currFixOffset)
+				if r := recover(); r != nil {
+					recoverMesg := fmt.Sprintf("repairKey(%v) reply(%v) isEmptyResponse(%v) "+
+						"currRecoverySize(%v) remoteAvaliSize(%v) currFixOffset(%v)", dp.applyRepairKey(int(reply.ExtentID)),
+						reply, isEmptyResponse, currRecoverySize, remoteAvaliSize, currFixOffset)
 					log.LogErrorf(recoverMesg)
 					panic(recoverMesg)
 				}

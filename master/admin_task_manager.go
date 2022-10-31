@@ -24,7 +24,7 @@ import (
 	"net"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -47,7 +47,7 @@ type AdminTaskManager struct {
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
 	exitCh   chan struct{}
-	connPool *util.ConnectPool
+	connPool *connpool.ConnectPool
 }
 
 func newAdminTaskManager(targetAddr, targetZone, clusterID string) (sender *AdminTaskManager) {
@@ -58,7 +58,7 @@ func newAdminTaskManager(targetAddr, targetZone, clusterID string) (sender *Admi
 		clusterID:  clusterID,
 		TaskMap:    make(map[string]*proto.AdminTask),
 		exitCh:     make(chan struct{}, 1),
-		connPool:   util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout*1000),
+		connPool:   connpool.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout*1000),
 	}
 	go sender.process()
 

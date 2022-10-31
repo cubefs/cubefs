@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 
 	"golang.org/x/net/context"
 )
@@ -493,7 +493,7 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 	size := oriReq.Size
 
 	for total < size {
-		currSize := util.Min(size-total, util.OverWritePacketSizeLimit)
+		currSize := unit.Min(size-total, unit.OverWritePacketSizeLimit)
 		packet := NewROWPacket(ctx, dp, s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset+uint64(total), total, currSize)
 		if direct {
 			packet.Opcode = proto.OpSyncWrite
@@ -683,7 +683,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 		if direct {
 			reqPacket.Opcode = proto.OpSyncRandomWrite
 		}
-		packSize := util.Min(size-total, util.OverWritePacketSizeLimit)
+		packSize := unit.Min(size-total, unit.OverWritePacketSizeLimit)
 		reqPacket.Data = req.Data[total : total+packSize]
 		reqPacket.Size = uint32(packSize)
 		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])

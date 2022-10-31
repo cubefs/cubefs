@@ -28,9 +28,10 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	dataSdk "github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/storage"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const (
@@ -40,7 +41,7 @@ const (
 )
 
 var (
-	gConnPool  = util.NewConnectPool()
+	gConnPool  = connpool.NewConnectPool()
 	SdkMap     = make(map[string]*dataSdk.Wrapper)
 	SdkMapLock sync.Mutex
 )
@@ -99,19 +100,18 @@ func (ecp *EcPartition) GetOriginExtentInfo() (err error) {
 		arr := strings.Split(host, ":")
 		if num, err = fmt.Sscanf(arr[1], "%d", &MasterClient.DataNodeProfPort); num != 1 || err != nil {
 			log.LogWarnf("Get DataNodeProfPort[%v] err[%v]", host, err)
-			if index == 0 {//leader host bad, can't migrateEc
+			if index == 0 { //leader host bad, can't migrateEc
 				break
 			}
 			continue
 		}
 		if dnPartition, err = MasterClient.NodeAPI().DataNodeGetPartition(arr[0], ecp.PartitionId); err != nil {
 			log.LogWarnf("DataNode[%v] getPartition[%v] err[%v]", host, ecp.PartitionId, err)
-			if index == 0 {//leader host bad, can't migrateEc
+			if index == 0 { //leader host bad, can't migrateEc
 				break
 			}
 			continue
 		}
-
 
 		for _, ei := range dnPartition.Files {
 			leader, ok := extentInfoMap[ei[storage.FileID]]
@@ -351,7 +351,7 @@ func (ecp *EcPartition) Write(ctx context.Context, data [][]byte, extentId uint6
 				if size <= 0 {
 					break
 				}
-				curSize := util.Min(size, util.EcBlockSize)
+				curSize := unit.Min(size, unit.EcBlockSize)
 				curData := block[curOffset : curOffset+curSize]
 				if err = sendToEcNode(ctx, host, curData, ecp.PartitionId, extentId, offset+uint64(curOffset)); err != nil {
 					log.LogErrorf("sendToEcNode host(%v) PartitionId(%v) extentId(%v) offset(%v) size(%v) err(%v)",

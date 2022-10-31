@@ -22,9 +22,10 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 type BadDiskDataPartition struct {
@@ -691,7 +692,7 @@ func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Clus
 	replica.Status = proto.ReadWrite
 	replica.DiskPath = diskPath
 	replica.ReportTime = time.Now().Unix()
-	replica.Total = util.DefaultDataPartitionSize
+	replica.Total = unit.DefaultDataPartitionSize
 	var zone *Zone
 	zone, err = c.t.getZone(dataNode.ZoneName)
 	if err == nil {
@@ -860,7 +861,7 @@ func (partition *DataPartition) isDataCatchUp() (ok bool) {
 	partition.RLock()
 	defer partition.RUnlock()
 	minus := partition.getMinus()
-	return minus < util.GB
+	return minus < unit.GB
 }
 
 func (partition *DataPartition) allReplicaHasRecovered() (ok bool) {
@@ -879,12 +880,12 @@ func (partition *DataPartition) isDataCatchUpInStrictMode() (ok bool) {
 	partition.RLock()
 	defer partition.RUnlock()
 	minus := partition.getMinus()
-	if partition.used > 10*util.GB {
-		if minus < util.GB {
+	if partition.used > 10*unit.GB {
+		if minus < unit.GB {
 			return true
 		}
-	} else if partition.used > util.GB {
-		if minus < 500*util.MB {
+	} else if partition.used > unit.GB {
+		if minus < 500*unit.MB {
 			return true
 		}
 	} else {
@@ -892,7 +893,7 @@ func (partition *DataPartition) isDataCatchUpInStrictMode() (ok bool) {
 			return true
 		}
 		percent := minus / float64(partition.used)
-		if partition.used > util.MB {
+		if partition.used > unit.MB {
 			if percent < 0.5 {
 				return true
 			}
@@ -1116,9 +1117,9 @@ func (partition *DataPartition) getOfflineAndTargetZone(c *Cluster, zoneName str
 			return
 		}
 	}
-	intersect := util.Intersect(zoneList, currentZoneList)
-	projectiveToZoneList := util.Projective(zoneList, intersect)
-	projectiveToCurZoneList := util.Projective(currentZoneList, intersect)
+	intersect := stringutil.Intersect(zoneList, currentZoneList)
+	projectiveToZoneList := stringutil.Projective(zoneList, intersect)
+	projectiveToCurZoneList := stringutil.Projective(currentZoneList, intersect)
 	log.LogInfof("Current replica zoneList:%v, volume zoneName:%v ", currentZoneList, zoneList)
 	if len(projectiveToZoneList) == 0 || len(projectiveToCurZoneList) == 0 {
 		err = fmt.Errorf("action[getSourceAndTargetZone], Current replica zoneList:%v is consistent with the volume zoneName:%v, do not need to balance", currentZoneList, zoneList)
@@ -1183,9 +1184,9 @@ func (partition *DataPartition) getOfflineAndTargetZoneForSmartVol(c *Cluster, z
 		return
 	}
 
-	intersect := util.Intersect(idcList, currentIDCList)
-	projectiveToIDCList := util.Projective(idcList, intersect)
-	projectiveToCurrIDCList := util.Projective(currentIDCList, intersect)
+	intersect := stringutil.Intersect(idcList, currentIDCList)
+	projectiveToIDCList := stringutil.Projective(idcList, intersect)
+	projectiveToCurrIDCList := stringutil.Projective(currentIDCList, intersect)
 	log.LogInfof("[getOfflineAndTargetZoneForSmartVol], Current replica zoneList:%v, volume zoneName:%v ", currentIDCList, idcList)
 	if len(projectiveToIDCList) == 0 || len(projectiveToCurrIDCList) == 0 {
 		err = fmt.Errorf("action[getOfflineAndTargetZoneForSmartVol], Current replica zoneList:%v is consistent with the volume zoneName:%v,"+

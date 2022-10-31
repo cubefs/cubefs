@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/multipart"
 	raftproto "github.com/tiglabs/raft/proto"
 	"io/ioutil"
 	"math/rand"
@@ -19,7 +19,7 @@ import (
 )
 
 func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
-	tests := []struct{
+	tests := []struct {
 		name              string
 		partitionID       uint64
 		leaderStoreMode   proto.StoreMode
@@ -302,7 +302,7 @@ func mockForSnapshot(t *testing.T, mp *metaPartition, withTrashTest bool) (err e
 	//create extent del file
 	if !withTrashTest {
 		for index := 0; index < 5; index++ {
-			fileName := path.Join(mp.config.RootDir, prefixDelExtent + "_" + strconv.Itoa(index))
+			fileName := path.Join(mp.config.RootDir, prefixDelExtent+"_"+strconv.Itoa(index))
 			if _, err = os.Create(fileName); err != nil {
 				t.Errorf("create file[%s] failed:%v", fileName, err)
 				return
@@ -349,7 +349,7 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 	t := "dir"
 	ino := 2
 	ino2 := 12
-	for ; ino < 12; ino ++ {
+	for ; ino < 12; ino++ {
 		name := fmt.Sprintf("second_level_%s_%v", t, ino)
 		if _, _, err = mp.inodeTree.Create(dbHandle, NewInode(uint64(ino), mode), true); err != nil {
 			fmt.Printf("create inode[%v] failed, error:%v", ino, err)
@@ -371,7 +371,7 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 		}
 
 		//create third level
-		for i := 0; i < 5 ; i++ {
+		for i := 0; i < 5; i++ {
 			if _, _, err = mp.inodeTree.Create(dbHandle, NewInode(uint64(ino2), 1), true); err != nil {
 				fmt.Printf("create inode[%v] failed, error:%v", ino2, err)
 				return fmt.Errorf("create inode failed:%v", err)
@@ -402,10 +402,10 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 		parts := make([]*Part, 0, 10)
 		for partID := 1; partID <= 10; partID++ {
 			part := &Part{
-				ID: uint16(partID),
+				ID:         uint16(partID),
 				UploadTime: timeNow.Add(time.Second * time.Duration(partID)).Local(),
-				Inode: uint64(partID * 100),
-				Size: uint64(partID * 1000),
+				Inode:      uint64(partID * 100),
+				Size:       uint64(partID * 1000),
 			}
 			parts = append(parts, part)
 		}
@@ -417,10 +417,10 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 		}
 		p := fmt.Sprintf("/test_apply_snapshot/%v", index)
 		multipart := &Multipart{
-			key: p,
-			id: util.CreateMultipartID(10).String(),
-			parts: parts,
-			extend: extend,
+			key:      p,
+			id:       multipart.CreateMultipartID(10).String(),
+			parts:    parts,
+			extend:   extend,
 			initTime: timeNow.Local(),
 		}
 		if _, _, err = mp.multipartTree.Create(dbHandle, multipart, true); err != nil {
@@ -466,23 +466,23 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 		}
 	}
 
-	key  := make( []byte, dbExtentKeySize)
+	key := make([]byte, dbExtentKeySize)
 	updateKeyToNow(key)
 
 	batchHandle, _ := mp.db.CreateBatchHandler()
 	for index := 0; index < 100; index++ {
 		ek := proto.ExtentKey{
 			PartitionId: uint64(index),
-			ExtentId: uint64(index),
+			ExtentId:    uint64(index),
 		}
 		var valueBuff []byte
 		defBuff := make([]byte, 1)
 		valueBuff = defBuff
-		if index % 30 == 0 {
+		if index%30 == 0 {
 			valueBuff = make([]byte, 24)
 			delEk := proto.MetaDelExtentKey{InodeId: uint64(index),
-											TimeStamp: time.Now().Unix(),
-											SrcType: uint64(index / 30 % (delEkSrcTypeFromDelInode + 1))}
+				TimeStamp: time.Now().Unix(),
+				SrcType:   uint64(index / 30 % (delEkSrcTypeFromDelInode + 1))}
 			delEk.MarshDelEkValue(valueBuff)
 		}
 		keyBuff, _ := ek.MarshalDbKey()
@@ -622,12 +622,12 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		return false
 	}
 
-	stKey   := make([]byte, 1)
-	endKey  := make([]byte, 1)
+	stKey := make([]byte, 1)
+	endKey := make([]byte, 1)
 
-	stKey[0]  = byte(ExtentDelTable)
+	stKey[0] = byte(ExtentDelTable)
 	endKey[0] = byte(ExtentDelTable + 1)
-	if err := leaderMp.db.Range(stKey, endKey, func(k, v []byte)(bool, error) {
+	if err := leaderMp.db.Range(stKey, endKey, func(k, v []byte) (bool, error) {
 		value, tmpErr := followerMp.db.GetBytes(k)
 		if tmpErr != nil {
 			return false, tmpErr
@@ -639,11 +639,11 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 			delEkL.UnMarshDelEkValue(v)
 			delEkF.UnMarshDelEkValue(value)
 			t.Logf("leader:%d-%d-%d-%d, follower:%d-%d-%d-%d\n",
-					delEkL.InodeId, delEkL.SrcType, delEkL.TimeStamp, len(v),
-					delEkF.InodeId, delEkF.SrcType, delEkF.TimeStamp, len(value))
+				delEkL.InodeId, delEkL.SrcType, delEkL.TimeStamp, len(v),
+				delEkF.InodeId, delEkF.SrcType, delEkF.TimeStamp, len(value))
 		}
 
-		if bytes.Compare(v, value) == 0 && bytes.Compare(value, v) == 0{
+		if bytes.Compare(v, value) == 0 && bytes.Compare(value, v) == 0 {
 			return true, nil
 		}
 
@@ -656,7 +656,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 	return true
 }
 
-func compareExtentDeleteFile(leaderMp, followerMp *metaPartition) (bool, error){
+func compareExtentDeleteFile(leaderMp, followerMp *metaPartition) (bool, error) {
 	var fileNamesInLeader, fileNamesInFollower []string
 	//leader
 	fileInfos, err := ioutil.ReadDir(leaderMp.config.RootDir)

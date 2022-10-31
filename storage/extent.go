@@ -27,8 +27,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const (
@@ -50,7 +50,7 @@ type ExtentInfoBlock [4]uint64
 var EmptyExtentBlock = ExtentInfoBlock{}
 
 func (eiBlock ExtentInfoBlock) String() string {
-	return fmt.Sprintf("%v_%v_%v_%v", eiBlock[FileID], eiBlock[Size],eiBlock[Crc],eiBlock[ModifyTime])
+	return fmt.Sprintf("%v_%v_%v_%v", eiBlock[FileID], eiBlock[Size], eiBlock[Crc], eiBlock[ModifyTime])
 }
 
 func (ei *ExtentInfoBlock) Loaded() bool {
@@ -81,7 +81,7 @@ func NewExtent(name string, extentID uint64) *Extent {
 }
 
 func (e *Extent) IsOccurNewWrite() bool {
-	 return e.isOccurNewWrite==true
+	return e.isOccurNewWrite == true
 }
 
 // Close this extent and release FD.
@@ -216,18 +216,18 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	if err = e.checkWriteParameter(offset, size, writeType); err != nil {
 		return
 	}
-	e.isOccurNewWrite=true
+	e.isOccurNewWrite = true
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
-	blockNo := offset / util.BlockSize
-	offsetInBlock := offset % util.BlockSize
+	blockNo := offset / unit.BlockSize
+	offsetInBlock := offset % unit.BlockSize
 	defer func() {
 		if IsAppendWrite(writeType) {
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 		}
-		if IsRandomWrite(writeType) && offset+size>e.dataSize{
+		if IsRandomWrite(writeType) && offset+size > e.dataSize {
 			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 		}
 	}()
@@ -236,11 +236,11 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 			return
 		}
 	}
-	if offsetInBlock == 0 && size == util.BlockSize {
+	if offsetInBlock == 0 && size == unit.BlockSize {
 		err = crcFunc(e, int(blockNo), crc)
 		return
 	}
-	if offsetInBlock+size <= util.BlockSize {
+	if offsetInBlock+size <= unit.BlockSize {
 		err = crcFunc(e, int(blockNo), 0)
 		return
 	}
@@ -278,20 +278,20 @@ func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (c
 }
 
 func (e *Extent) checkOffsetAndSize(offset, size int64) error {
-	if offset+size > util.BlockSize*util.BlockCount {
+	if offset+size > unit.BlockSize*unit.BlockCount {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
-	if offset >= util.BlockCount*util.BlockSize || size == 0 {
+	if offset >= unit.BlockCount*unit.BlockSize || size == 0 {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
-	//if size > util.BlockSize {
+	//if size > unit.BlockSize {
 	//	return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	//}
 	return nil
 }
 
 const (
-	IllegalOverWriteError="illegal overwrite"
+	IllegalOverWriteError = "illegal overwrite"
 )
 
 func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
@@ -299,7 +299,7 @@ func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
 		return NewParameterMismatchErr(fmt.Sprintf("illegal append: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
 	}
 	if IsRandomWrite(writeType) && offset > e.dataSize {
-		return NewParameterMismatchErr(fmt.Sprintf("%v: offset=%v size=%v extentsize=%v",IllegalOverWriteError, offset, size, e.dataSize))
+		return NewParameterMismatchErr(fmt.Sprintf("%v: offset=%v size=%v extentsize=%v", IllegalOverWriteError, offset, size, e.dataSize))
 	}
 	return nil
 }
@@ -307,29 +307,29 @@ func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
 // Flush synchronizes data to the disk.
 func (e *Extent) Flush() (err error) {
 	err = e.file.Sync()
-	if err==nil {
-		e.isOccurNewWrite=false
+	if err == nil {
+		e.isOccurNewWrite = false
 	}
 	return
 }
 
 func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
 	var blockCnt int
-	blockCnt = int(e.Size() / util.BlockSize)
-	if e.Size()%util.BlockSize != 0 {
+	blockCnt = int(e.Size() / unit.BlockSize)
+	if e.Size()%unit.BlockSize != 0 {
 		blockCnt += 1
 	}
-	crcData := make([]byte, blockCnt*util.PerBlockCrcSize)
+	crcData := make([]byte, blockCnt*unit.PerBlockCrcSize)
 	for blockNo := 0; blockNo < blockCnt; blockNo++ {
-		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
+		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*unit.PerBlockCrcSize : (blockNo+1)*unit.PerBlockCrcSize])
 		if blockCrc != 0 {
-			binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
+			binary.BigEndian.PutUint32(crcData[blockNo*unit.PerBlockCrcSize:(blockNo+1)*unit.PerBlockCrcSize], blockCrc)
 			continue
 		}
-		bdata := make([]byte, util.BlockSize)
-		offset := int64(blockNo * util.BlockSize)
+		bdata := make([]byte, unit.BlockSize)
+		offset := int64(blockNo * unit.BlockSize)
 		var readN int
-		readN, err = e.file.ReadAt(bdata[:util.BlockSize], offset)
+		readN, err = e.file.ReadAt(bdata[:unit.BlockSize], offset)
 		if readN == 0 && err != nil {
 			break
 		}
@@ -338,7 +338,7 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 		if err != nil {
 			return
 		}
-		binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
+		binary.BigEndian.PutUint32(crcData[blockNo*unit.PerBlockCrcSize:(blockNo+1)*unit.PerBlockCrcSize], blockCrc)
 	}
 	crc = crc32.ChecksumIEEE(crcData)
 
@@ -346,7 +346,7 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 }
 
 const (
-	PageSize          = 4 * util.KB
+	PageSize          = 4 * unit.KB
 	FallocFLKeepSize  = 1
 	FallocFLPunchHole = 2
 )
@@ -438,11 +438,11 @@ func (e *Extent) tinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64, e
 	if err != nil {
 		return
 	}
-	//if newOffset-offset > util.BlockSize {
-	//	newOffset = offset + util.BlockSize
+	//if newOffset-offset > unit.BlockSize {
+	//	newOffset = offset + unit.BlockSize
 	//}
-	//if newEnd-newOffset > util.BlockSize {
-	//	newEnd = newOffset + util.BlockSize
+	//if newEnd-newOffset > unit.BlockSize {
+	//	newEnd = newOffset + unit.BlockSize
 	//}
 	if newEnd < newOffset {
 		err = fmt.Errorf("unavali TinyExtentAvaliOffset on SEEK_DATA or SEEK_HOLE   (%v) offset(%v) "+

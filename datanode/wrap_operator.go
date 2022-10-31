@@ -31,11 +31,11 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
 )
@@ -423,7 +423,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		return
 	}
 
-	if p.Size <= util.BlockSize {
+	if p.Size <= unit.BlockSize {
 		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data[0:p.Size], p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		partition.checkIsDiskError(err)
 	} else {
@@ -433,7 +433,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			if size <= 0 {
 				break
 			}
-			currSize := util.Min(int(size), util.BlockSize)
+			currSize := unit.Min(int(size), unit.BlockSize)
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
 			err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data[0:currSize], crc, storage.AppendWriteType, p.IsSyncWrite())
@@ -574,9 +574,9 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		err = nil
 		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
-		currReadSize := uint32(util.Min(int(needReplySize), util.ReadBlockSize))
-		if currReadSize == util.ReadBlockSize {
-			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
+		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
+		if currReadSize == unit.ReadBlockSize {
+			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
 		} else {
 			reply.Data = make([]byte, currReadSize)
 		}
@@ -599,7 +599,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		partition.checkIsDiskError(err)
 		p.CRC = reply.CRC
 		if err != nil {
-			if currReadSize == util.ReadBlockSize {
+			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
 			}
 			return
@@ -621,7 +621,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 			return netErr
 		}()
 		if err != nil {
-			if currReadSize == util.ReadBlockSize {
+			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
 			}
 			logContent := fmt.Sprintf("action[operatePacket] %v.",
@@ -631,7 +631,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		}
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
-		if currReadSize == util.ReadBlockSize {
+		if currReadSize == unit.ReadBlockSize {
 			proto.Buffers.Put(reply.Data)
 		}
 		logContent := fmt.Sprintf("action[operatePacket] %v.",
@@ -834,16 +834,16 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 			continue
 		}
 		currNeedReplySize := newEnd - newOffset
-		currReadSize := uint32(util.Min(int(currNeedReplySize), util.ReadBlockSize))
-		if currReadSize == util.ReadBlockSize {
-			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
+		currReadSize := uint32(unit.Min(int(currNeedReplySize), unit.ReadBlockSize))
+		if currReadSize == unit.ReadBlockSize {
+			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
 		} else {
 			reply.Data = make([]byte, currReadSize)
 		}
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
 		if err != nil {
-			if currReadSize == util.ReadBlockSize {
+			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
 			}
 			return
@@ -852,14 +852,14 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect, proto.WriteDeadlineTime); err != nil {
 			connect.Close()
-			if currReadSize == util.ReadBlockSize {
+			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
 			}
 			return
 		}
 		needReplySize -= int64(currReadSize)
 		offset += int64(currReadSize)
-		if currReadSize == util.ReadBlockSize {
+		if currReadSize == unit.ReadBlockSize {
 			proto.Buffers.Put(reply.Data)
 		}
 		logContent := fmt.Sprintf("action[operatePacket] %v.",
@@ -931,16 +931,16 @@ func (s *DataNode) handleTinyExtentAvaliRead(request *repl.Packet, connect net.C
 			log.LogErrorf(logContent)
 			break
 		}
-		currReadSize := uint32(util.Min(int(currNeedReplySize), util.ReadBlockSize))
-		if currReadSize == util.ReadBlockSize {
-			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
+		currReadSize := uint32(unit.Min(int(currNeedReplySize), unit.ReadBlockSize))
+		if currReadSize == unit.ReadBlockSize {
+			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
 		} else {
 			reply.Data = make([]byte, currReadSize)
 		}
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
 		if err != nil {
-			if currReadSize == util.ReadBlockSize {
+			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
 			}
 			return
@@ -949,14 +949,14 @@ func (s *DataNode) handleTinyExtentAvaliRead(request *repl.Packet, connect net.C
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect, proto.WriteDeadlineTime); err != nil {
 			connect.Close()
-			if currReadSize == util.ReadBlockSize {
+			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
 			}
 			return
 		}
 		needReplySize -= int64(currReadSize)
 		offset += int64(currReadSize)
-		if currReadSize == util.ReadBlockSize {
+		if currReadSize == unit.ReadBlockSize {
 			proto.Buffers.Put(reply.Data)
 		}
 		logContent := fmt.Sprintf("action[operatePacket] %v.",
@@ -993,7 +993,7 @@ func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connec
 			break
 		}
 		err = nil
-		currReadSize := uint32(util.Min(int(needReplySize), MaxSyncTinyDeleteBufferSize))
+		currReadSize := uint32(unit.Min(int(needReplySize), MaxSyncTinyDeleteBufferSize))
 		reply.Data = make([]byte, currReadSize)
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.ReadTinyDeleteRecords(offset, int64(currReadSize), reply.Data)

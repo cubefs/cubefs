@@ -24,9 +24,10 @@ import (
 	"runtime"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/diskusage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/memory"
 	raftProto "github.com/tiglabs/raft/proto"
 )
 
@@ -56,7 +57,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	}
 
 	for _, disk := range disks {
-		if disk.Status != util.ReadWrite {
+		if disk.Status != diskusage.ReadWrite {
 			resp.Status = proto.TaskFailed
 			resp.Result = fmt.Sprintf("disk :%s status is not read write", disk.Path)
 			goto end
@@ -65,7 +66,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 
 	// collect memory info
 	resp.Total = configTotalMem
-	resp.Used, err = util.GetProcessMemory(os.Getpid())
+	resp.Used, err = memory.GetProcessMemory(os.Getpid())
 	if err != nil {
 		adminTask.Status = proto.TaskFailed
 		goto end
@@ -105,7 +106,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			IsRecover:       partition.(*metaPartition).CreationType == proto.DecommissionedCreateDataPartition,
 		}
 		addr, isLeader := partition.IsLeader()
-		if addr == "" || partition.IsRaftHang(){
+		if addr == "" || partition.IsRaftHang() {
 			mpr.Status = proto.Unavailable
 		} else {
 			mpr.IsLeader = isLeader
@@ -123,7 +124,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			}
 
 			factor := float64(maxUsedPercent) / float64(100)
-			if FsCapInfo.Used > FsCapInfo.Total * factor {
+			if FsCapInfo.Used > FsCapInfo.Total*factor {
 				mpr.Status = proto.ReadOnly
 			}
 		}

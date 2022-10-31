@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/storage"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"hash/crc32"
 	//	"hash/crc32"
 	"net"
@@ -89,7 +89,7 @@ func (e *EcNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		e.handleRecordEcTinyDelInfo(p, c)
 	case proto.OpPersistTinyExtentDelete:
 		e.handlePersistTinyExtentDelete(p)
-	case proto.OpEcNodeDail://for host0 before tinyDelete, ping ParityNode
+	case proto.OpEcNodeDail: //for host0 before tinyDelete, ping ParityNode
 		p.PacketOkReply()
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
@@ -120,7 +120,7 @@ func (e *EcNode) handleEcTinyDeletePacket(p *repl.Packet, c net.Conn) {
 		p.PartitionID, p.ExtentID, remote)
 	ext := new(proto.TinyExtentDeleteRecord)
 	if err = json.Unmarshal(p.Data, ext); err != nil {
-			return
+		return
 	}
 	err = ep.extentStore.EcMarkDelete(p.ExtentID, ep.NodeIndex, int64(ext.ExtentOffset), int64(ext.Size))
 	if err == ecstorage.ExtentNotFoundError {
@@ -346,7 +346,7 @@ func (e *EcNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		}
 		err = e.handleEcMarkDeleteTinyExtent(p.ExtentID, ext.ExtentOffset, uint64(ext.Size), ep)
 	} else {
-		ep.extentStore.EcMarkDelete(p.ExtentID, ep.NodeIndex,0, 0)
+		ep.extentStore.EcMarkDelete(p.ExtentID, ep.NodeIndex, 0, 0)
 		ep.deleteOriginExtentSize(p.ExtentID)
 	}
 	if err == ecstorage.ExtentNotFoundError {
@@ -373,7 +373,6 @@ func (e *EcNode) handleRecordEcTinyDelInfo(p *repl.Packet, c net.Conn) {
 		err = proto.ErrNoAvailEcPartition
 		return
 	}
-
 
 	delInfo := new(proto.TinyDelInfo)
 	if err = json.Unmarshal(p.Data, delInfo); err != nil {
@@ -417,7 +416,7 @@ func (e *EcNode) handleEcBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 					continue
 				}
 			} else {
-				ep.extentStore.EcMarkDelete(ext.ExtentId, ep.NodeIndex,0, 0)
+				ep.extentStore.EcMarkDelete(ext.ExtentId, ep.NodeIndex, 0, 0)
 				ep.deleteOriginExtentSize(ext.ExtentId)
 			}
 		}
@@ -459,7 +458,6 @@ func (e *EcNode) handleGetAllWatermarks(p *repl.Packet) {
 
 }
 
-
 func (e *EcNode) handleGetTinyDeletingInfo(p *repl.Packet) {
 	var err error
 	defer func() {
@@ -474,7 +472,6 @@ func (e *EcNode) handleGetTinyDeletingInfo(p *repl.Packet) {
 		err = proto.ErrNoAvailEcPartition
 		return
 	}
-
 
 	extentDeletingInfo, err := ep.getLocalTinyDeletingInfo(p.ExtentID)
 	if err != nil {
@@ -958,7 +955,7 @@ func (e *EcNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn) {
 		nodeAddr := ecStripe.calcNode(extentOffset, stripeUnitSize)
 		stripeUnitFileOffset := ecStripe.calcStripeUnitFileOffset(extentOffset, stripeUnitSize)
 		curReadSize := ecStripe.calcCanReadSize(extentOffset, readSize, stripeUnitSize)
-		curReadSize = uint64(util.Min(int(curReadSize), util.ReadBlockSize))
+		curReadSize = uint64(unit.Min(int(curReadSize), unit.ReadBlockSize))
 		data, crc, readErr := ecStripe.readStripeUnitData(nodeAddr, stripeUnitFileOffset, curReadSize, proto.NormalRead)
 		log.LogDebugf("StreamRead reply packet: reqId(%v) PartitionID(%v) ExtentID(%v) nodeAddr(%v) ExtentOffset(%v) srtipeUnitFileOffset(%v) "+
 			"totalReadSize(%v) curReadSize(%v) actual dataSize(%v) crc(%v) err:%v",
@@ -986,7 +983,7 @@ func (e *EcNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn) {
 			msg := fmt.Sprintf("StreamRead write to client fail. ReqID(%v) PartitionID(%v) ExtentID(%v) ExtentOffset[%v] Size[%v] err:%v",
 				reply.ReqID, reply.PartitionID, reply.ExtentID, reply.ExtentOffset, reply.Size, err)
 			err = errors.New(msg)
-			if reply.Size == util.ReadBlockSize {
+			if reply.Size == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
 			}
 			return
@@ -994,7 +991,7 @@ func (e *EcNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn) {
 
 		extentOffset += curReadSize
 		readSize -= curReadSize
-		if reply.Size == util.ReadBlockSize {
+		if reply.Size == unit.ReadBlockSize {
 			proto.Buffers.Put(reply.Data)
 		}
 	}
