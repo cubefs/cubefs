@@ -37,7 +37,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  DataNode total     : %v GB\n", cv.DataNodeStatInfo.TotalGB))
 	sb.WriteString(fmt.Sprintf("  Volume count       : %v\n", len(cv.VolStatInfo)))
 	sb.WriteString(fmt.Sprintf("  EbsAddr            : %v\n", cp.EbsAddr))
-	sb.WriteString(fmt.Sprintf("  loadFactor         : %v\n", cn.LoadFactor))
+	sb.WriteString(fmt.Sprintf("  LoadFactor         : %v\n", cn.LoadFactor))
 	return sb.String()
 }
 
