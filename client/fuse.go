@@ -403,6 +403,7 @@ func main() {
 		_ = daemonize.SignalOutcome(nil)
 	}
 	defer fsConn.Close()
+	defer super.Close()
 
 	syslog.Printf("enable bcache %v", opt.EnableBcache)
 
@@ -695,6 +696,9 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.WriteThreads = GlobalMountOptions[proto.WriteThreads].GetInt64()
 	opt.BcacheDir = GlobalMountOptions[proto.BcacheDir].GetString()
 	//opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
+	opt.BcacheFilterFiles = GlobalMountOptions[proto.BcacheFilterFiles].GetString()
+	opt.BcacheBatchCnt = GlobalMountOptions[proto.BcacheBatchCnt].GetInt64()
+	opt.BcacheCheckIntervalS = GlobalMountOptions[proto.BcacheCheckIntervalS].GetInt64()
 	if _, err := os.Stat(bcache.UnixSocketPath); err == nil && opt.BcacheDir != "" {
 		opt.EnableBcache = true
 	}
