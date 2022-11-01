@@ -33,7 +33,6 @@ type BidRange struct {
 
 type BlobConfig struct {
 	BidAllocNums uint64 `json:"bid_alloc_nums"`
-	Host         string `json:"host"`
 }
 
 type allocatableBids struct {

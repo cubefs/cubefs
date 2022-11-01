@@ -151,12 +151,8 @@ func New(cfg Config, cmcli clustermgr.APIProxy) *Service {
 		Host:      cfg.Host,
 		Idc:       cfg.Idc,
 	}
-	if err := cmcli.RegisterService(
-		context.Background(),
-		node,
-		cfg.HeartbeatIntervalS,
-		cfg.HeartbeatTicks,
-		cfg.ExpiresTicks); err != nil {
+	if err := cmcli.RegisterService(context.Background(), node,
+		cfg.HeartbeatIntervalS, cfg.HeartbeatTicks, cfg.ExpiresTicks); err != nil {
 		log.Fatalf("proxy register to clustermgr error:%v", err)
 	}
 

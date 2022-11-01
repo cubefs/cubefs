@@ -45,6 +45,7 @@ const (
 type VolConfig struct {
 	ClusterID             proto.ClusterID `json:"cluster_id"`
 	Idc                   string          `json:"idc"`
+	Host                  string          `json:"host"`
 	RetainIntervalS       int64           `json:"retain_interval_s"`
 	DefaultAllocVolsNum   int             `json:"default_alloc_vols_num"`
 	InitVolumeNum         int             `json:"init_volume_num"`

@@ -433,6 +433,7 @@ func (s *Service) Get(c *rpc.Context) {
 
 	err = transfer()
 	if err != nil {
+		reportDownload(args.Location.ClusterID, "StatusOKError", "-")
 		span.Error("stream get transfer failed", errors.Detail(err))
 		return
 	}
