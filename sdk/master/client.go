@@ -238,13 +238,15 @@ func (c *MasterClient) httpRequest(method, url string, param, header map[string]
 		}
 		if isTimeOut {
 			client.Timeout = c.timeout
+		} else {
+			client.Timeout = 0
 		}
 	} else {
 		client.Timeout = c.timeout
 	}
 	var req *http.Request
 	fullUrl := c.mergeRequestUrl(url, param)
-	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) timeout(%v) bodyLength[%v].", method, fullUrl, client.Timeout, len(reqData))
+	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) timeout(%v) header(%v) bodyLength[%v].", method, fullUrl, client.Timeout, header, len(reqData))
 	if req, err = http.NewRequest(method, fullUrl, reader); err != nil {
 		return
 	}
