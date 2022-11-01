@@ -16,7 +16,10 @@ package fs
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util"
+	"golang.org/x/net/context"
 	"net/http"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -24,23 +27,20 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/blobstore/api/access"
 	"github.com/hashicorp/consul/api"
 
-	"golang.org/x/net/context"
-
+	"github.com/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/client/common"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
-
-	"github.com/cubefs/cubefs/blockcache/bcache"
-	"github.com/cubefs/cubefs/sdk/data/blobstore"
 )
 
 // Super defines the struct of a super block.
@@ -69,18 +69,25 @@ type Super struct {
 	suspendCh chan interface{}
 
 	//data lake
-	volType        int
-	ebsEndpoint    string
-	CacheAction    int
-	CacheThreshold int
-	EbsBlockSize   int
-	enableBcache   bool
-	bcacheDir      string
-	readThreads    int
-	writeThreads   int
-	bc             *bcache.BcacheClient
-	ebsc           *blobstore.BlobStoreClient
-	sc             *SummaryCache
+	volType             int
+	ebsEndpoint         string
+	CacheAction         int
+	CacheThreshold      int
+	EbsBlockSize        int
+	enableBcache        bool
+	bcacheDir           string
+	bcacheFilterFiles   string
+	bcacheCheckInterval int64
+	bcacheBatchCnt      int64
+
+	readThreads  int
+	writeThreads int
+	bc           *bcache.BcacheClient
+	ebsc         *blobstore.BlobStoreClient
+	sc           *SummaryCache
+
+	taskPool []common.TaskPool
+	closeC   chan struct{}
 }
 
 // Functions that Super needs to implement
@@ -90,9 +97,11 @@ var (
 )
 
 const BlobWriterIdleTimeoutPeriod = 10
+const DefaultTaskPoolSize = 30
 
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
+
 	s = new(Super)
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	var metaConfig = &meta.MetaConfig{
@@ -126,6 +135,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if opt.EnSyncWrite > 0 {
 		s.enSyncWrite = true
 	}
+
 	s.keepCache = opt.KeepCache
 	if opt.MaxStreamerLimit > 0 {
 		s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
@@ -139,6 +149,11 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.disableDcache = opt.DisableDcache
 	s.fsyncOnClose = opt.FsyncOnClose
 	s.enableXattr = opt.EnableXattr
+	s.bcacheCheckInterval = opt.BcacheCheckIntervalS
+	s.bcacheFilterFiles = opt.BcacheFilterFiles
+	s.bcacheBatchCnt = opt.BcacheBatchCnt
+	s.closeC = make(chan struct{}, 1)
+	s.taskPool = []common.TaskPool{common.New(DefaultTaskPoolSize, DefaultTaskPoolSize), common.New(DefaultTaskPoolSize, DefaultTaskPoolSize)}
 
 	if s.mw.EnableSummary {
 		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
@@ -147,7 +162,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if opt.MaxStreamerLimit > 0 {
 		DisableMetaCache = false
 		s.fsyncOnClose = false
-
 	}
 
 	if !strings.HasSuffix(opt.MountPoint, "/") {
@@ -159,6 +173,12 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if opt.BcacheDir != "" && !strings.HasSuffix(opt.BcacheDir, "/") {
 		opt.BcacheDir = opt.BcacheDir + "/"
 	}
+
+	// use block cache and default use mountPoint as bcache dir
+	if opt.EnableBcache && opt.BcacheDir == "" {
+		s.bcacheDir = opt.MountPoint
+	}
+
 	if s.bcacheDir == opt.MountPoint {
 		s.bcacheDir = "/"
 	} else {
@@ -246,6 +266,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
 		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
+
+	go s.loopSyncMeta()
+
 	return s, nil
 }
 
@@ -295,7 +318,7 @@ func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
 	if proto.OsMode(fakeInfo.Mode).IsDir() {
 		node = NewDir(s, fakeInfo, pino, "")
 	} else {
-		node = NewFile(s, fakeInfo, DefaultFlag, pino)
+		node = NewFile(s, fakeInfo, DefaultFlag, pino, "")
 		// The node is saved in FuseContextNodes list, that means
 		// the node is not evict. So we create a streamer for it,
 		// and streamer's refcnt is 0.
@@ -469,4 +492,160 @@ func (s *Super) Notify(stat fs.FSStatType, msg interface{}) {
 		s.sockaddr = ""
 		s.fslock.Unlock()
 	}
+}
+
+func (s *Super) loopSyncMeta() {
+	if s.bcacheDir == "" {
+		return
+	}
+	for {
+		finishC := s.syncMeta()
+		select {
+		case <-finishC:
+			time.Sleep(time.Second * time.Duration(s.bcacheCheckInterval))
+		case <-s.closeC:
+			return
+		}
+	}
+}
+
+func (s *Super) syncMeta() <-chan struct{} {
+
+	finishC := make(chan struct{})
+	start := time.Now()
+	cacheLen := s.ic.lruList.Len()
+
+	allInodes := func() <-chan uint64 {
+		out := make(chan uint64)
+		go func() {
+			for i := s.ic.lruList.Front(); i != nil; i = i.Next() {
+				oldInfo := i.Value.(*proto.InodeInfo)
+				out <- oldInfo.Inode
+			}
+			close(out)
+		}()
+		return out
+	}()
+
+	getChanged := func(in <-chan uint64, batchCnt int64) <-chan uint64 {
+		out := make(chan uint64)
+		changed := make([]uint64, 0)
+		s.taskPool[0].Run(func() {
+			tmpInodes := make([]uint64, 0, batchCnt)
+			for i := range in {
+				tmpInodes = append(tmpInodes, i)
+				if len(tmpInodes) == int(batchCnt) {
+					changed = append(changed, s.getModifyInodes(tmpInodes)...)
+					tmpInodes = tmpInodes[:0]
+				}
+			}
+			if len(tmpInodes) != 0 {
+				changed = append(changed, s.getModifyInodes(tmpInodes)...)
+			}
+			for i := range changed {
+				out <- changed[i]
+			}
+			close(out)
+		})
+		return out
+	}
+
+	batCh := make([]<-chan uint64, DefaultTaskPoolSize/3)
+	for i := range batCh {
+		batCh[i] = getChanged(allInodes, s.bcacheBatchCnt)
+	}
+
+	mergeChanged := func(cs []<-chan uint64) <-chan uint64 {
+		var wg sync.WaitGroup
+		out := make(chan uint64)
+		wg.Add(len(cs))
+		for _, c := range cs {
+			go func(c <-chan uint64) {
+				for n := range c {
+					out <- n
+				}
+				wg.Done()
+			}(c)
+		}
+		go func() {
+			wg.Wait()
+			close(out)
+		}()
+		return out
+	}
+
+	var changeCnt int
+
+	for ino := range mergeChanged(batCh) {
+		inode := ino
+		changeCnt++
+		log.LogDebugf("sync meta,inode:%d changed", inode)
+		s.ic.Delete(inode)
+		s.taskPool[1].Run(func() {
+			common.Timed(3, 100).On(func() error {
+				extents := s.ec.GetExtents(inode)
+				if err := s.ec.ForceRefreshExtentsCache(inode); err != nil {
+					if err != os.ErrNotExist {
+						log.LogErrorf("ForceRefreshExtentsCache failed:%v", err)
+					}
+				}
+				log.LogDebugf("inode:%d,extents is :%v", inode, extents)
+				for _, extent := range extents {
+					cacheKey := util.GenerateRepVolKey(s.volname, inode, extent.PartitionId, extent.ExtentId, extent.FileOffset)
+					// retry to make possible evict success
+					common.Timed(3, 100).On(func() error {
+						return s.bc.Evict(cacheKey)
+					})
+				}
+				return nil
+			})
+		})
+	}
+
+	log.LogDebugf("total cache cnt:%d,changedCnt:%d,sync meta cost:%v", cacheLen, changeCnt, time.Since(start))
+	close(finishC)
+
+	return finishC
+}
+
+func (s *Super) getModifyInodes(inodes []uint64) (changedNodes []uint64) {
+	inodeInfos := s.mw.BatchInodeGet(inodes)
+
+	// get deleted files
+	if len(inodeInfos) != len(inodes) {
+		changedNodes = append(changedNodes, getDelInodes(inodes, inodeInfos)...)
+		log.LogDebugf("len inodes is %d, len get inode infos is :%d, del inodes is:%v", len(inodes), len(inodeInfos), changedNodes)
+	}
+
+	for _, newInfo := range inodeInfos {
+		oldInfo := s.ic.Get(newInfo.Inode)
+		if oldInfo == nil {
+			continue
+		}
+		if !oldInfo.ModifyTime.Equal(newInfo.ModifyTime) || newInfo.Generation != s.ec.GetExtentCacheGen(newInfo.Inode) {
+			log.LogDebugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
+			changedNodes = append(changedNodes, newInfo.Inode)
+		} else {
+			log.LogDebugf("oldInfo:ino(%d) modifyTime(%v) gen(%d),newInfo:ino(%d) modifyTime(%d) gen(%d)", oldInfo.Inode, oldInfo.ModifyTime.Unix(), s.ec.GetExtentCacheGen(newInfo.Inode), newInfo.Inode, newInfo.ModifyTime.Unix(), newInfo.Generation)
+		}
+	}
+	return
+}
+
+func getDelInodes(src []uint64, act []*proto.InodeInfo) []uint64 {
+	delInodes := make([]uint64, 0)
+	m := make(map[uint64]struct{})
+	for _, iInfo := range act {
+		m[iInfo.Inode] = struct{}{}
+	}
+	for _, inode := range src {
+		if _, ok := m[inode]; !ok {
+			delInodes = append(delInodes, inode)
+		}
+	}
+	return delInodes
+}
+
+func (s *Super) Close() {
+	close(s.closeC)
 }

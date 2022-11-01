@@ -16,25 +16,21 @@ package fs
 
 import (
 	"fmt"
+	"golang.org/x/net/context"
 	"io"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
-	"github.com/cubefs/cubefs/util/stat"
-
-	"golang.org/x/net/context"
-
-	"sync"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-
-	"github.com/cubefs/cubefs/sdk/data/blobstore"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 // File defines the structure of a file.
@@ -43,6 +39,7 @@ type File struct {
 	info      *proto.InodeInfo
 	idle      int32
 	parentIno uint64
+	name      string
 	sync.RWMutex
 	fReader *blobstore.Reader
 	fWriter *blobstore.Writer
@@ -68,7 +65,7 @@ var (
 )
 
 // NewFile returns a new file.
-func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64) fs.Node {
+func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, name string) fs.Node {
 	if proto.IsCold(s.volType) {
 		var (
 			fReader    *blobstore.Reader
@@ -108,7 +105,7 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64) fs.Node {
 		log.LogDebugf("Trace NewFile:fReader(%v) fWriter(%v) ", fReader, fWriter)
 		return &File{super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino}
 	}
-	return &File{super: s, info: i, parentIno: pino}
+	return &File{super: s, info: i, parentIno: pino, name: name}
 }
 
 //get file parentPath
@@ -216,7 +213,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	log.LogDebugf("TRACE open ino(%v) info(%v)", ino, f.info)
 	start := time.Now()
 
-	if f.super.bcacheDir != "" {
+	if f.super.bcacheDir != "" && !f.filterFilesSuffix(f.super.bcacheFilterFiles) {
 		parentPath := f.getParentPath()
 		if parentPath != "" && !strings.HasSuffix(parentPath, "/") {
 			parentPath = parentPath + "/"
@@ -729,4 +726,25 @@ func (f *File) fileSizeVersion2(ino uint64) (size int, gen uint64) {
 
 	log.LogDebugf("TRACE fileSizeVersion2: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 	return
+}
+
+// return true mean this file will not cache in block cache
+func (f *File) filterFilesSuffix(filterFiles string) bool {
+	if f.name == "" {
+		log.LogWarnf("this file inode[%v], name is nil", f.info)
+		return true
+	}
+	if filterFiles == "" {
+		return false
+	}
+	suffixs := strings.Split(filterFiles, ";")
+	for _, suffix := range suffixs {
+		//.py means one type of file
+		suffix = "." + suffix
+		if suffix != "." && strings.Contains(f.name, suffix) {
+			log.LogDebugf("fileName:%s,filter:%s,suffix:%s,suffixs:%v", f.name, filterFiles, suffix, suffixs)
+			return true
+		}
+	}
+	return false
 }

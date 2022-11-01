@@ -176,7 +176,7 @@ func (c *BcacheClient) Put(key string, buf []byte) error {
 
 }
 
-func (c *BcacheClient) Evict(key string) {
+func (c *BcacheClient) Evict(key string) error {
 
 	req := &DelCacheRequest{CacheKey: key}
 	packet := NewBlockCachePacket()
@@ -184,13 +184,13 @@ func (c *BcacheClient) Evict(key string) {
 	err := packet.MarshalData(req)
 	if err != nil {
 		log.LogDebugf("del block cache: req(%v) err(%v)", req.CacheKey, err)
-		return
+		return err
 	}
 
 	conn, err := c.connPool.Get()
 	if err != nil {
 		log.LogDebugf("del block cache: get Conn failed, req(%v) err(%v)", req.CacheKey, err)
-		return
+		return err
 	}
 	defer func() {
 		c.connPool.Put(conn)
@@ -198,21 +198,21 @@ func (c *BcacheClient) Evict(key string) {
 
 	err = packet.WriteToConn(*conn)
 	if err != nil {
-		return
+		return err
 	}
 
 	err = packet.ReadFromConn(*conn, proto.NoReadDeadlineTime)
 	if err != nil {
-		return
+		return err
 	}
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		log.LogDebugf("del block cache: req(%v) err(%v) result(%v)", req.CacheKey, err, packet.GetResultMsg())
-		return
+		log.LogErrorf("del block cache: req(%v) err(%v) result(%v)", req.CacheKey, err, packet.GetResultMsg())
+		return err
 	}
-
-	return
+	log.LogDebugf("del block cache success: req(%v)", req.CacheKey)
+	return nil
 }
 
 func parseStatus(result uint8) (status int) {

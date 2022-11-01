@@ -57,6 +57,9 @@ const (
 	EbsBlockSize
 	EnableBcache
 	BcacheDir
+	BcacheFilterFiles
+	BcacheBatchCnt
+	BcacheCheckIntervalS
 	ReadThreads
 	WriteThreads
 	MetaSendTimeout
@@ -143,6 +146,9 @@ func InitMountOptions(opts []MountOption) {
 	opts[MetaSendTimeout] = MountOption{"metaSendTimeout", "Meta send timeout", "", int64(600)}
 	opts[BuffersTotalLimit] = MountOption{"buffersTotalLimit", "Send/Receive packets memory limit", "", int64(32768)} //default 4G
 	opts[MaxStreamerLimit] = MountOption{"maxStreamerLimit", "The maximum number of streamers", "", int64(0)}         // default 0
+	opts[BcacheFilterFiles] = MountOption{"bcacheFilterFiles", "The block cache filter files suffix", "", "py;pyx;sh;yaml;conf"}
+	opts[BcacheBatchCnt] = MountOption{"bcacheBatchCnt", "The block cache get meta count", "", int64(100000)}
+	opts[BcacheCheckIntervalS] = MountOption{"bcacheCheckIntervalS", "The block cache check interval", "", int64(300)}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -280,6 +286,9 @@ type MountOptions struct {
 	EbsBlockSize         int
 	EnableBcache         bool
 	BcacheDir            string
+	BcacheFilterFiles    string
+	BcacheCheckIntervalS int64
+	BcacheBatchCnt       int64
 	ReadThreads          int64
 	WriteThreads         int64
 	EnableSummary        bool
