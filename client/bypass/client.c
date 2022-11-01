@@ -1647,14 +1647,14 @@ log:
  */
 
 ssize_t real_read(int fd, void *buf, size_t count) {
+    #ifdef _CFS_DEBUG
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
+    #endif
     if(fd < 0) {
         return -1;
     }
 
-    struct timespec start, stop;
-    clock_gettime(CLOCK_REALTIME, &start);
-
-    int ump_act = -1;
     off_t offset = 0;
     size_t size = 0;
     ssize_t re = -1, re_local = 0, re_cache = 0;
@@ -1677,11 +1677,6 @@ ssize_t real_read(int fd, void *buf, size_t count) {
         file_t *f = get_open_file(fd);
         if(f == NULL) {
             goto log;
-        }
-        if(f->file_type == FILE_TYPE_BIN_LOG) {
-            ump_act = ump_cfs_read_binlog;
-        } else if(f->file_type == FILE_TYPE_RELAY_LOG) {
-            ump_act = ump_cfs_read_relaylog;
         }
         bool hasRefreshed = false;
         offset = f->pos;
@@ -1753,9 +1748,6 @@ ssize_t real_read(int fd, void *buf, size_t count) {
     }
 
 log:
-    if(ump_act != -1) {
-        cfs_ump(g_client_info.cfs_client_id, ump_act, start.tv_sec, start.tv_nsec);
-    }
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
     const char *fd_path = get_fd_path(fd);
@@ -1826,12 +1818,7 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
     if(fd < 0) {
         return -1;
     }
-
-    struct timespec start;
-    clock_gettime(CLOCK_REALTIME, &start);
-
     ssize_t re = -1, re_local = 0, re_cache = 0;
-    int ump_act = -1;
 
     int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
@@ -1852,13 +1839,6 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
         if(f == NULL) {
             goto log;
         }
-
-        if(f->file_type == FILE_TYPE_BIN_LOG) {
-            ump_act = ump_cfs_read_binlog;
-        } else if(f->file_type == FILE_TYPE_RELAY_LOG) {
-            ump_act = ump_cfs_read_relaylog;
-        }
-
         bool hasRefreshed = false;
         size_t size = f->inode_info->size;
         re_cache = read_cache(f->inode_info, offset, count, buf);
@@ -1914,10 +1894,6 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
     }
 
 log:
-    if(ump_act != -1) {
-        cfs_ump(g_client_info.cfs_client_id, ump_act, start.tv_sec, start.tv_nsec);
-    }
-
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
     const char *fd_path = get_fd_path(fd);
@@ -1973,17 +1949,18 @@ log:
 }
 
 ssize_t real_write(int fd, const void *buf, size_t count) {
+    #ifdef _CFS_DEBUG
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
+    #endif
+
     if(fd < 0) {
         return -1;
     }
 
-    struct timespec start, stop;
-    clock_gettime(CLOCK_REALTIME, &start);
-
     off_t offset = 0;
     size_t size = 0;
     ssize_t re = -1, re_cache = 0;
-    int ump_act = -1;
 
     int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
@@ -2001,13 +1978,6 @@ ssize_t real_write(int fd, const void *buf, size_t count) {
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
-
-        if(f->file_type == FILE_TYPE_BIN_LOG) {
-            ump_act = ump_cfs_write_binlog;
-        } else if(f->file_type == FILE_TYPE_RELAY_LOG) {
-            ump_act = ump_cfs_write_relaylog;
-        }
-
         if(f->flags&O_APPEND) {
             f->pos = f->inode_info->size;
         }
@@ -2034,10 +2004,6 @@ ssize_t real_write(int fd, const void *buf, size_t count) {
     }
 
 log:
-    if(ump_act != -1) {
-        cfs_ump(g_client_info.cfs_client_id, ump_act, start.tv_sec, start.tv_nsec);
-    }
-
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
     const char *fd_path = get_fd_path(fd);
@@ -2091,15 +2057,15 @@ log:
 }
 
 ssize_t real_pwrite(int fd, const void *buf, size_t count, off_t offset) {
+    #ifdef _CFS_DEBUG
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
+    #endif
+
     if(fd < 0) {
         return -1;
     }
-
-    struct timespec start, stop;
-    clock_gettime(CLOCK_REALTIME, &start);
-
     ssize_t re = -1, re_cache = 0;
-    int ump_act = -1;
 
     int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
@@ -2117,13 +2083,6 @@ ssize_t real_pwrite(int fd, const void *buf, size_t count, off_t offset) {
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
-
-        if(f->file_type == FILE_TYPE_BIN_LOG) {
-            ump_act = ump_cfs_write_binlog;
-        } else if(f->file_type == FILE_TYPE_RELAY_LOG) {
-            ump_act = ump_cfs_write_relaylog;
-        }
-
         re_cache = write_cache(f->inode_info, offset, count, buf);
         if(f->inode_info->cache_flag&FILE_CACHE_WRITE_THROUGH || re_cache < count) {
             if(re_cache < count) {
@@ -2141,10 +2100,6 @@ ssize_t real_pwrite(int fd, const void *buf, size_t count, off_t offset) {
     }
 
 log:
-    if(ump_act != -1) {
-        cfs_ump(g_client_info.cfs_client_id, ump_act, start.tv_sec, start.tv_nsec);
-    }
-
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
     const char *fd_path = get_fd_path(fd);

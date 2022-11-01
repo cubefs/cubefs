@@ -151,11 +151,6 @@ static const char *BIN_LOG_PREFIX = "mysql-bin.";
 static const char *REDO_LOG_PREFIX = "ib_logfile";
 static const char *RELAY_LOG_PREFIX = "relay-bin.";
 
-static const int ump_cfs_read_binlog = 25;
-static const int ump_cfs_read_relaylog = 26;
-static const int ump_cfs_write_binlog = 29;
-static const int ump_cfs_write_relaylog = 30;
-
 // hook or not, currently for test
 const bool g_hook = true;
 

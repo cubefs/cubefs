@@ -38,7 +38,6 @@ const (
 	ump_cfs_write
 	ump_cfs_write_redolog
 	ump_cfs_write_binlog
-	ump_cfs_write_relaylog
 	ump_cfs_write_pagecache
 )
 
@@ -80,7 +79,6 @@ func (c *client) initUmpKeys() {
 	umpKeyVolArr = append(umpKeyVolArr, fmt.Sprintf("%vcfs_write", volKeyPrefix))
 	umpKeyVolArr = append(umpKeyVolArr, fmt.Sprintf("%vcfs_write_redolog", volKeyPrefix))
 	umpKeyVolArr = append(umpKeyVolArr, fmt.Sprintf("%vcfs_write_binlog", volKeyPrefix))
-	umpKeyVolArr = append(umpKeyVolArr, fmt.Sprintf("%vcfs_write_relaylog", volKeyPrefix))
 	umpKeyVolArr = append(umpKeyVolArr, fmt.Sprintf("%vcfs_write_pagecache", volKeyPrefix))
 	umpKeyClusterArr = append(umpKeyClusterArr, fmt.Sprintf("%vcfs_close", clusterKeyPrefix))
 	umpKeyClusterArr = append(umpKeyClusterArr, fmt.Sprintf("%vcfs_open", clusterKeyPrefix))
@@ -112,7 +110,6 @@ func (c *client) initUmpKeys() {
 	umpKeyClusterArr = append(umpKeyClusterArr, fmt.Sprintf("%vcfs_write", clusterKeyPrefix))
 	umpKeyClusterArr = append(umpKeyClusterArr, fmt.Sprintf("%vcfs_write_redolog", clusterKeyPrefix))
 	umpKeyClusterArr = append(umpKeyClusterArr, fmt.Sprintf("%vcfs_write_binlog", clusterKeyPrefix))
-	umpKeyClusterArr = append(umpKeyClusterArr, fmt.Sprintf("%vcfs_write_relaylog", clusterKeyPrefix))
 	umpKeyClusterArr = append(umpKeyClusterArr, fmt.Sprintf("%vcfs_write_pagecache", clusterKeyPrefix))
 }
 

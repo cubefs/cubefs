@@ -3272,6 +3272,11 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	}
 
 	act := ump_cfs_read
+	if f.fileType == fileTypeBinlog {
+		act = ump_cfs_read_binlog
+	} else if f.fileType == fileTypeRelaylog {
+		act = ump_cfs_read_relaylog
+	}
 	//tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
 	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
@@ -3430,7 +3435,9 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	}
 	overWriteBuffer := false
 	act := ump_cfs_write
-	if f.fileType == fileTypeRedolog {
+	if f.fileType == fileTypeBinlog {
+		act = ump_cfs_write_binlog
+	} else if f.fileType == fileTypeRedolog {
 		act = ump_cfs_write_redolog
 		if c.app == appMysql8 || c.app == appCoralDB {
 			overWriteBuffer = true
