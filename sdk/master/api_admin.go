@@ -477,7 +477,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	return
 }
 
-func (api *AdminAPI) GetDeleteParas() (delParas map[string]string, err error) {
+func (api *AdminAPI) GetClusterParas() (delParas map[string]string, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetNodeInfo)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return

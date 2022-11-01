@@ -53,6 +53,7 @@ const (
 	nodeMarkDeleteRateKey         = "markDeleteRate"
 	nodeDeleteWorkerSleepMs       = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey         = "autoRepairRate"
+	nodeMaxDpCntLimit             = "maxDpCntLimit"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -64,7 +65,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			var cv *proto.ClusterView
 			var cn *proto.ClusterNodeInfo
 			var cp *proto.ClusterIP
-			var delPara map[string]string
+			var clusterPara map[string]string
 			if cv, err = client.AdminAPI().GetCluster(); err != nil {
 				errout("Error: %v", err)
 			}
@@ -76,14 +77,15 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			}
 			stdout("[Cluster]\n")
 			stdout(formatClusterView(cv, cn, cp))
-			if delPara, err = client.AdminAPI().GetDeleteParas(); err != nil {
+			if clusterPara, err = client.AdminAPI().GetClusterParas(); err != nil {
 				errout("Error: %v", err)
 			}
 
-			stdout(fmt.Sprintf("  BatchCount         : %v\n", delPara[nodeDeleteBatchCountKey]))
-			stdout(fmt.Sprintf("  MarkDeleteRate     : %v\n", delPara[nodeMarkDeleteRateKey]))
-			stdout(fmt.Sprintf("  DeleteWorkerSleepMs: %v\n", delPara[nodeDeleteWorkerSleepMs]))
-			stdout(fmt.Sprintf("  AutoRepairRate     : %v\n", delPara[nodeAutoRepairRateKey]))
+			stdout(fmt.Sprintf("  BatchCount         : %v\n", clusterPara[nodeDeleteBatchCountKey]))
+			stdout(fmt.Sprintf("  MarkDeleteRate     : %v\n", clusterPara[nodeMarkDeleteRateKey]))
+			stdout(fmt.Sprintf("  DeleteWorkerSleepMs: %v\n", clusterPara[nodeDeleteWorkerSleepMs]))
+			stdout(fmt.Sprintf("  AutoRepairRate     : %v\n", clusterPara[nodeAutoRepairRateKey]))
+			stdout(fmt.Sprintf("  MaxDpCntLimit      : %v\n", clusterPara[nodeMaxDpCntLimit]))
 			stdout("\n")
 		},
 	}
