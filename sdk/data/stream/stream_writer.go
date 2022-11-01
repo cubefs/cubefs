@@ -1,4 +1,4 @@
-// Copyright 2018 The CubeFS Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -290,10 +290,6 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 	ctx := context.Background()
 	s.client.writeLimiter.Wait(ctx)
 
-	if flags&proto.FlagsCache == 0 {
-		s.client.LimitManager.WriteAlloc(ctx, size)
-	}
-
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 
@@ -315,39 +311,31 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 		var writeSize int
 		if req.ExtentKey != nil {
 			writeSize, err = s.doOverwrite(req, direct)
-			cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
-			if _, ok := s.inflightEvictL1cache.Load(cacheKey); !ok && s.client.bcacheEnable {
-				go func(cacheKey string) {
-					s.inflightEvictL1cache.Store(cacheKey, true)
-					s.client.evictBcache(cacheKey)
-					s.inflightEvictL1cache.Delete(cacheKey)
-				}(cacheKey)
-				if s.client.bcacheEnable {
-					cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.ExtentId, uint64(req.FileOffset))
-					if _, ok := s.inflightEvictL1cache.Load(cacheKey); !ok {
-						go func(cacheKey string) {
-							s.inflightEvictL1cache.Store(cacheKey, true)
-							s.client.evictBcache(cacheKey)
-							s.inflightEvictL1cache.Delete(cacheKey)
-						}(cacheKey)
-					}
+			if s.client.bcacheEnable {
+				cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, uint64(req.FileOffset))
+				if _, ok := s.inflightEvictL1cache.Load(cacheKey); !ok {
+					go func(cacheKey string) {
+						s.inflightEvictL1cache.Store(cacheKey, true)
+						s.client.evictBcache(cacheKey)
+						s.inflightEvictL1cache.Delete(cacheKey)
+					}(cacheKey)
 				}
+			}
 
-			} else {
-				writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
-			}
-			if err != nil {
-				log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
-				break
-			}
-			total += writeSize
+		} else {
+			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
 		}
-		if filesize, _ := s.extents.Size(); offset+total > filesize {
-			s.extents.SetSize(uint64(offset+total), false)
-			log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
+		if err != nil {
+			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
+			break
 		}
-		log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
+		total += writeSize
 	}
+	if filesize, _ := s.extents.Size(); offset+total > filesize {
+		s.extents.SetSize(uint64(offset+total), false)
+		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
+	}
+	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
 	return
 }
 
