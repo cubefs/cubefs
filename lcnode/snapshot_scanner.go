@@ -14,9 +14,11 @@ import (
 
 const (
 	//snap scan type
-	SnapScanTypeAll       int = 0
-	SnapScanTypeOnlyFile  int = 1
-	SnapScanTypeOnlyDepth int = 2
+	SnapScanTypeAll             int = 0
+	SnapScanTypeOnlyFile        int = 1
+	SnapScanTypeOnlyDepth       int = 2
+	SnapScanTypeOnlyDir         int = 3
+	SnapScanTypeOnlyDirAndDepth int = 4
 )
 
 type SnapshotScanner struct {
@@ -87,7 +89,7 @@ func (s *SnapshotScanner) Start() (err error) {
 	}
 	log.LogDebugf("startScan: first round files done!")
 	//2. depth first delete all dirs
-	if err = s.startScan(SnapScanTypeOnlyDepth, false, true); err != nil {
+	if err = s.startScan(SnapScanTypeOnlyDirAndDepth, false, true); err != nil {
 		return err
 	}
 	log.LogDebugf("startScan: second round dirs done!")
@@ -124,7 +126,7 @@ func (s *SnapshotScanner) startScan(scanType int, syncWait bool, report bool) (e
 
 func (s *SnapshotScanner) getDirJob(dentry *proto.ScanDentry) (job func()) {
 	//no need to lock
-	if s.scanType == SnapScanTypeOnlyDepth {
+	if s.scanType == SnapScanTypeOnlyDepth || s.scanType == SnapScanTypeOnlyDirAndDepth {
 		log.LogDebugf("getDirJob: Only depth first job ")
 		job = func() {
 			s.handlVerDelDepthFirst(dentry)
@@ -182,8 +184,10 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 		marker := ""
 		done := false
 
+		onlyDir := s.scanType == SnapScanTypeOnlyDir || s.scanType == SnapScanTypeOnlyDirAndDepth
+
 		for !done {
-			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), false)
+			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), onlyDir)
 			if err != nil && err != syscall.ENOENT {
 				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
 					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), err)
@@ -300,8 +304,10 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 		marker := ""
 		done := false
 
+		onlyDir := s.scanType == SnapScanTypeOnlyDir || s.scanType == SnapScanTypeOnlyDirAndDepth
+
 		for !done {
-			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), false)
+			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), onlyDir)
 			if err != nil && err != syscall.ENOENT {
 				log.LogErrorf("action[handlVerDel] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
 					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), err)
