@@ -183,7 +183,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 		done := false
 
 		for !done {
-			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq())
+			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), false)
 			if err != nil && err != syscall.ENOENT {
 				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
 					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), err)
@@ -301,7 +301,7 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 		done := false
 
 		for !done {
-			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq())
+			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), false)
 			if err != nil && err != syscall.ENOENT {
 				log.LogErrorf("action[handlVerDel] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
 					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), err)
