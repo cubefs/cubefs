@@ -28,7 +28,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const (
@@ -157,11 +157,11 @@ func (e *Extent) ecTinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64,
 	if err != nil {
 		return
 	}
-	if newOffset-offset > util.EcBlockSize {
-		newOffset = offset + util.EcBlockSize
+	if newOffset-offset > unit.EcBlockSize {
+		newOffset = offset + unit.EcBlockSize
 	}
-	if newEnd-newOffset > util.EcBlockSize {
-		newEnd = newOffset + util.EcBlockSize
+	if newEnd-newOffset > unit.EcBlockSize {
+		newEnd = newOffset + unit.EcBlockSize
 	}
 	if newEnd < newOffset {
 		err = fmt.Errorf("unavali TinyExtentAvaliOffset on SEEK_DATA or SEEK_HOLE   (%v) offset(%v) "+
@@ -218,12 +218,12 @@ func (e *Extent) EcReadTiny(data []byte, size, offset int64, isRepairRead bool) 
 		if newOffset > offset {
 			holeSize := newOffset - offset
 			needReadSize -= holeSize
-			dataSize     += int(holeSize)
+			dataSize += int(holeSize)
 			offset += holeSize
 			continue
 		}
 
-		currReadSize := util.Min(int(newEnd-offset), int(needReadSize))
+		currReadSize := unit.Min(int(newEnd-offset), int(needReadSize))
 		successSize, err = e.file.ReadAt(data[dataSize:dataSize+currReadSize], offset)
 		if err != nil {
 			dataSize += successSize
@@ -398,10 +398,10 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 }
 
 func (e *Extent) checkOffsetAndSize(offset, size int64) error {
-	if offset+size > util.BlockSize*util.BlockCount {
+	if offset+size > unit.BlockSize*unit.BlockCount {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
-	if offset >= util.BlockCount*util.BlockSize || size == 0 {
+	if offset >= unit.BlockCount*unit.BlockSize || size == 0 {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
 	return nil
@@ -424,7 +424,7 @@ func (e *Extent) Flush() (err error) {
 }
 
 const (
-	PageSize          = 4 * util.KB
+	PageSize          = 4 * unit.KB
 	FallocFLKeepSize  = 1
 	FallocFLPunchHole = 2
 )
@@ -516,11 +516,11 @@ func (e *Extent) tinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64, e
 	if err != nil {
 		return
 	}
-	if newOffset-offset > util.BlockSize {
-		newOffset = offset + util.BlockSize
+	if newOffset-offset > unit.BlockSize {
+		newOffset = offset + unit.BlockSize
 	}
-	if newEnd-newOffset > util.BlockSize {
-		newEnd = newOffset + util.BlockSize
+	if newEnd-newOffset > unit.BlockSize {
+		newEnd = newOffset + unit.BlockSize
 	}
 	if newEnd < newOffset {
 		err = fmt.Errorf("unavali TinyExtentAvaliOffset on SEEK_DATA or SEEK_HOLE   (%v) offset(%v) "+

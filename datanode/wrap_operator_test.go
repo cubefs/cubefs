@@ -6,9 +6,9 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"hash/crc32"
 	"io/ioutil"
 	"net"
@@ -243,7 +243,7 @@ func PrepareDataPartition(extentCreate, dataPrepare bool, t *testing.T, partitio
 func (fdn *fakeDataNode) fakeCreateDataPartition(t *testing.T, partitionId uint64) (dp *DataPartition) {
 	req := &proto.CreateDataPartitionRequest{
 		PartitionId:   partitionId,
-		PartitionSize: 5 * util.GB, // 5GB
+		PartitionSize: 5 * unit.GB, // 5GB
 		VolumeId:      "testVol",
 		Hosts:         fdn.Hosts,
 		Members: []proto.Peer{
@@ -310,7 +310,7 @@ func (e *fakeDataNode) fakeCreateExtent(dp *DataPartition, t *testing.T, extentI
 }
 
 func (fdn *fakeDataNode) prepareTestData(t *testing.T, dp *DataPartition, extentId uint64) (crc uint32, err error) {
-	size := 1 * util.MB
+	size := 1 * unit.MB
 	data := make([]byte, size)
 	for i := 0; i < size; i++ {
 		data[i] = 1

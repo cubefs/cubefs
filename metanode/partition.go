@@ -33,9 +33,11 @@ import (
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/connpool"
+	"github.com/chubaofs/chubaofs/util/diskusage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/memory"
 	"github.com/chubaofs/chubaofs/util/statistics"
 	raftproto "github.com/tiglabs/raft/proto"
 )
@@ -71,32 +73,32 @@ func (sp sortedPeers) Swap(i, j int) {
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
-	PartitionId        uint64              `json:"partition_id"`
-	VolName            string              `json:"vol_name"`
-	Start              uint64              `json:"start"`    // Minimal Inode ID of this range. (Required during initialization)
-	End                uint64              `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
-	Peers              []proto.Peer        `json:"peers"`    // Peers information of the raftStore
-	Learners           []proto.Learner     `json:"learners"` // Learners information of the raftStore
-	TrashRemainingDays int32               `json:"-"`
-	Cursor             uint64              `json:"-"` // Cursor ID of the inode that have been assigned
-	NodeId             uint64              `json:"-"`
-	RootDir            string              `json:"-"`
-	RocksDBDir         string              `json:"rocksDb_dir"`
-	BeforeStart        func()              `json:"-"`
-	AfterStart         func()              `json:"-"`
-	BeforeStop         func()              `json:"-"`
-	AfterStop          func()              `json:"-"`
-	RaftStore          raftstore.RaftStore `json:"-"`
-	ConnPool           *util.ConnectPool   `json:"-"`
-	StoreMode          proto.StoreMode     `json:"store_mode"`
-	CreationType       int                 `json:"creation_type"`
+	PartitionId        uint64                `json:"partition_id"`
+	VolName            string                `json:"vol_name"`
+	Start              uint64                `json:"start"`    // Minimal Inode ID of this range. (Required during initialization)
+	End                uint64                `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
+	Peers              []proto.Peer          `json:"peers"`    // Peers information of the raftStore
+	Learners           []proto.Learner       `json:"learners"` // Learners information of the raftStore
+	TrashRemainingDays int32                 `json:"-"`
+	Cursor             uint64                `json:"-"` // Cursor ID of the inode that have been assigned
+	NodeId             uint64                `json:"-"`
+	RootDir            string                `json:"-"`
+	RocksDBDir         string                `json:"rocksDb_dir"`
+	BeforeStart        func()                `json:"-"`
+	AfterStart         func()                `json:"-"`
+	BeforeStop         func()                `json:"-"`
+	AfterStop          func()                `json:"-"`
+	RaftStore          raftstore.RaftStore   `json:"-"`
+	ConnPool           *connpool.ConnectPool `json:"-"`
+	StoreMode          proto.StoreMode       `json:"store_mode"`
+	CreationType       int                   `json:"creation_type"`
 
-	RocksWalFileSize       uint64			   `json:"rocks_wal_file_size"`
-	RocksWalMemSize        uint64			   `json:"rocks_wal_mem_size"`
-	RocksLogFileSize       uint64			   `json:"rocks_log_file_size"`
-	RocksLogReversedTime   uint64			   `json:"rocks_log_reversed"`
-	RocksLogReVersedCnt    uint64			   `json:"rocks_log_re_versed_cnt"`
-	RocksWalTTL            uint64              `json:"rocks_wal_ttl"`
+	RocksWalFileSize     uint64 `json:"rocks_wal_file_size"`
+	RocksWalMemSize      uint64 `json:"rocks_wal_mem_size"`
+	RocksLogFileSize     uint64 `json:"rocks_log_file_size"`
+	RocksLogReversedTime uint64 `json:"rocks_log_reversed"`
+	RocksLogReVersedCnt  uint64 `json:"rocks_log_re_versed_cnt"`
+	RocksWalTTL          uint64 `json:"rocks_wal_ttl"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -466,7 +468,7 @@ func (mp *metaPartition) selectRocksDBDir() (err error) {
 		}
 	}
 
-	dir, err = util.SelectDisk(mp.manager.rocksDBDirs)
+	dir, err = diskusage.SelectDisk(mp.manager.rocksDBDirs)
 	if err != nil {
 		log.LogErrorf("selectRocksDBDir, mp[%v] select failed(%v), so set root dir(%s) as rocksdb dir",
 			mp.config.PartitionId, err, mp.manager.rootDir)
@@ -520,7 +522,7 @@ func CreateMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (M
 	}
 
 	if err = mp.db.OpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
-						mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
+		mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
 		return nil, err
 	}
 
@@ -631,7 +633,7 @@ func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
 
 func (mp *metaPartition) calcMPStatus() (int, error) {
 	total := configTotalMem
-	used, err := util.GetProcessMemory(os.Getpid())
+	used, err := memory.GetProcessMemory(os.Getpid())
 	if err != nil {
 		return proto.Unavailable, err
 	}
@@ -1308,7 +1310,6 @@ func (mp *metaPartition) isTrashDisable() bool {
 	return mp.config.TrashRemainingDays <= 0
 }
 
-
 func (mp *metaPartition) HasMemStore() bool {
 	if (mp.config.StoreMode & proto.StoreModeMem) != 0 {
 		return true
@@ -1414,7 +1415,7 @@ func (mp *metaPartition) checkRecoverAfterStart() {
 	timer := time.NewTimer(0)
 	for {
 		select {
-		case <- timer.C:
+		case <-timer.C:
 			leaderAddr, ok := mp.IsLeader()
 			if ok {
 				log.LogInfof("CheckRecoverAfterStart mp[%v] is leader, skip check recover", mp.config.PartitionId)
@@ -1446,7 +1447,7 @@ func (mp *metaPartition) checkRecoverAfterStart() {
 			log.LogInfof("CheckRecoverAfterStart mp[%v] recover finish, applyID(leader:%v, current node:%v)",
 				mp.config.PartitionId, applyID, mp.applyID)
 			return
-		case <- mp.stopC:
+		case <-mp.stopC:
 			timer.Stop()
 			return
 

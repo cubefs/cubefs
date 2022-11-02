@@ -3,8 +3,8 @@ package storage
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"hash/crc32"
 	"strings"
 	"syscall"
@@ -17,12 +17,12 @@ func (s *ExtentStore) TinyExtentHolesAndAvaliSize(extentID uint64, offset int64)
 		dataOffset int64
 		holeOffset int64
 	)
-	if !IsTinyExtent(extentID) {
+	if !proto.IsTinyExtent(extentID) {
 		return nil, 0, fmt.Errorf("unavali extent(%v)", extentID)
 	}
 	ei, exist := s.extentMapSlice.Load(extentID)
 	if !exist {
-		return nil, 0, ExtentNotFoundError
+		return nil, 0, proto.ExtentNotFoundError
 	}
 	if e, err = s.ExtentWithHeader(ei); err != nil {
 		return
@@ -75,7 +75,7 @@ func (s *ExtentStore) GetExtentCrc(extentId uint64) (crc uint32, err error) {
 		needReadSize      uint64
 		extent            *Extent
 	)
-	if IsTinyExtent(extentId) {
+	if proto.IsTinyExtent(extentId) {
 		_, needReadSize, err = s.TinyExtentHolesAndAvaliSize(extentId, 0)
 	} else {
 		extent, err = s.loadExtentFromDisk(extentId, false)
@@ -90,7 +90,7 @@ func (s *ExtentStore) GetExtentCrc(extentId uint64) (crc uint32, err error) {
 		if needReadSize <= 0 {
 			break
 		}
-		if IsTinyExtent(extentId) {
+		if proto.IsTinyExtent(extentId) {
 			newOffset, newEnd, err = s.TinyExtentAvaliOffset(extentId, offset)
 			if err != nil {
 				return
@@ -103,9 +103,9 @@ func (s *ExtentStore) GetExtentCrc(extentId uint64) (crc uint32, err error) {
 				continue
 			}
 			currNeedReplySize = newEnd - newOffset
-			currReadSize = uint32(util.Min(int(currNeedReplySize), 128*util.MB))
+			currReadSize = uint32(unit.Min(int(currNeedReplySize), 128*unit.MB))
 		} else {
-			currReadSize = uint32(util.Min(int(needReadSize), 128*util.MB))
+			currReadSize = uint32(unit.Min(int(needReadSize), 128*unit.MB))
 		}
 
 		data := make([]byte, currReadSize)

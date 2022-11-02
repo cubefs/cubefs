@@ -19,9 +19,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"hash/crc32"
 	"io/ioutil"
 	"net/http"
@@ -202,11 +202,11 @@ func (e *EcNode) getTinyDelInfo(w http.ResponseWriter, r *http.Request) {
 	ep.extentStore.TinyDelInfoRange(ecstorage.BaseDeleteMark, func(extentId, offset, size uint64, deleteStatus, hostIndex uint32) (err error) {
 		if extentID == 0 || extentId == extentID {
 			delInfo := &proto.TinyDelInfo{
-				ExtentId: extentId,
+				ExtentId:     extentId,
 				DeleteStatus: deleteStatus,
-				Offset: offset,
-				Size: size,
-				HostIndex: hostIndex,
+				Offset:       offset,
+				Size:         size,
+				HostIndex:    hostIndex,
 			}
 			delInfos = append(delInfos, delInfo)
 		}
@@ -319,7 +319,7 @@ func checkExtentChunkData(ep *EcPartition, extentId uint64) (err error) {
 		if size >= extent.Size {
 			break
 		}
-		curSize := util.Min(int(extent.Size), util.EcBlockSize)
+		curSize := unit.Min(int(extent.Size), unit.EcBlockSize)
 		err = checkExtentParityData(ecStripe, ep, size, uint64(curSize), ecstorage.IsTinyExtent(extent.FileID))
 		if err != nil {
 			log.LogErrorf("checkExtentChunkData extent(%v) err(%v)", extent.FileID, err)
@@ -424,7 +424,7 @@ func (e *EcNode) getExtentCrc(w http.ResponseWriter, r *http.Request) {
 func (e *EcNode) setMaxTinyDelCount(w http.ResponseWriter, r *http.Request) {
 	var (
 		maxTinyDelCount uint64
-		err            error
+		err             error
 	)
 	if err = r.ParseForm(); err != nil {
 		e.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -442,9 +442,9 @@ func (e *EcNode) setMaxTinyDelCount(w http.ResponseWriter, r *http.Request) {
 
 func (e *EcNode) setEcPartitionSize(w http.ResponseWriter, r *http.Request) {
 	var (
-		size           uint64
-		partitionId    uint64
-		err            error
+		size        uint64
+		partitionId uint64
+		err         error
 	)
 	if err = r.ParseForm(); err != nil {
 		e.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -468,7 +468,7 @@ func (e *EcNode) setEcPartitionSize(w http.ResponseWriter, r *http.Request) {
 		e.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	
+
 	if size < ep.Used() {
 		err = errors.NewErrorf("partition(%v) setSize < used", partitionId)
 		e.buildFailureResp(w, http.StatusBadRequest, err.Error())

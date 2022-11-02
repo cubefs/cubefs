@@ -692,7 +692,7 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 		case <-dp.repairC:
 			repairTimer.Stop()
 			log.LogDebugf("partition(%v) execute manual data repair for all extent", dp.partitionID)
-			dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
+			dp.ExtentStore().MoveAllToBrokenTinyExtentC(proto.TinyExtentCount)
 			dp.runRepair(ctx, proto.TinyExtentType, false)
 			dp.runRepair(ctx, proto.NormalExtentType, false)
 			repairTimer.Reset(time.Minute)
@@ -778,7 +778,7 @@ func (dp *DataPartition) actualSize(path string, finfo os.FileInfo) (size int64)
 	if !isExtent {
 		return 0
 	}
-	if storage.IsTinyExtent(extentID) {
+	if proto.IsTinyExtent(extentID) {
 		stat := new(syscall.Stat_t)
 		err := syscall.Stat(fmt.Sprintf("%v/%v", path, finfo.Name()), stat)
 		if err != nil {
@@ -933,11 +933,11 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
-		if storage.IsTinyExtent(extentInfo[storage.FileID]) {
+		if proto.IsTinyExtent(extentInfo[storage.FileID]) {
 			continue
 		}
 
-		if !storage.IsTinyExtent(extentInfo[storage.FileID]) && !dp.ExtentStore().IsFinishLoad() {
+		if !proto.IsTinyExtent(extentInfo[storage.FileID]) && !dp.ExtentStore().IsFinishLoad() {
 			continue
 		}
 		if store.HasExtent(uint64(extentInfo[storage.FileID])) {
@@ -1069,8 +1069,8 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 			return
 		}
 		var index int
-		var allTinyDeleteRecordsArr [storage.TinyExtentCount + 1]TinyDeleteRecordArr
-		for currTinyExtentID := storage.TinyExtentStartID; currTinyExtentID < storage.TinyExtentStartID+storage.TinyExtentCount; currTinyExtentID++ {
+		var allTinyDeleteRecordsArr [proto.TinyExtentCount + 1]TinyDeleteRecordArr
+		for currTinyExtentID := proto.TinyExtentStartID; currTinyExtentID < proto.TinyExtentStartID+proto.TinyExtentCount; currTinyExtentID++ {
 			allTinyDeleteRecordsArr[currTinyExtentID] = make([]TinyDeleteRecord, 0)
 		}
 
@@ -1079,7 +1079,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 			extentID, offset, size := storage.UnMarshalTinyExtent(record)
 			localTinyDeleteFileSize += storage.DeleteTinyRecordSize
 			index++
-			if !storage.IsTinyExtent(extentID) {
+			if !proto.IsTinyExtent(extentID) {
 				continue
 			}
 			DeleteLimiterWait()
@@ -1090,13 +1090,13 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 			}
 			allTinyDeleteRecordsArr[extentID] = append(allTinyDeleteRecordsArr[extentID], dr)
 		}
-		for currTinyExtentID := storage.TinyExtentStartID; currTinyExtentID < storage.TinyExtentStartID+storage.TinyExtentCount; currTinyExtentID++ {
+		for currTinyExtentID := proto.TinyExtentStartID; currTinyExtentID < proto.TinyExtentStartID+proto.TinyExtentCount; currTinyExtentID++ {
 			currentDeleteRecords := allTinyDeleteRecordsArr[currTinyExtentID]
 			for _, dr := range currentDeleteRecords {
 				if dr.extentID != uint64(currTinyExtentID) {
 					continue
 				}
-				if !storage.IsTinyExtent(dr.extentID) {
+				if !proto.IsTinyExtent(dr.extentID) {
 					continue
 				}
 				log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, dr.extentID, dr.offset, dr.size)

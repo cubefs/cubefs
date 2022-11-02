@@ -18,7 +18,7 @@ type MapSlice struct {
 	idxMap        map[uint64]uint64
 	objSlice      []ExtentInfoBlock
 	objDeletedCnt uint64
-	tinyExtents   [TinyExtentCount + 1]ExtentInfoBlock
+	tinyExtents   [proto.TinyExtentCount + 1]ExtentInfoBlock
 }
 
 func NewMapSlice(partitionID uint64) *MapSlice {
@@ -30,7 +30,7 @@ func NewMapSlice(partitionID uint64) *MapSlice {
 }
 
 func (ms *MapSlice) Store(extentId uint64, extentBlock ExtentInfoBlock) {
-	if IsTinyExtent(extentId) {
+	if proto.IsTinyExtent(extentId) {
 		ms.tinyExtents[extentId] = extentBlock
 		return
 	}
@@ -48,13 +48,13 @@ func (ms *MapSlice) Store(extentId uint64, extentBlock ExtentInfoBlock) {
 }
 
 func (ms *MapSlice) Load(extentId uint64) (extentBlock *ExtentInfoBlock, ok bool) {
-	if IsTinyExtent(extentId) {
+	if proto.IsTinyExtent(extentId) {
 		extentBlock = &ms.tinyExtents[extentId]
-		if extentBlock[FileID] <=0 {
-			extentBlock=nil
+		if extentBlock[FileID] <= 0 {
+			extentBlock = nil
 			return
 		}
-		ok=true
+		ok = true
 		if extentBlock[FileID] != extentId {
 			err := fmt.Errorf("LoadMapSlice error:partitionID(%v) MapSlice ,"+
 				"loadExtent(%v) extentblock(%v)", ms.partitionID, extentId, ms.tinyExtents[extentId])
@@ -129,7 +129,7 @@ func (ms *MapSlice) Len() int {
 }
 
 func (ms *MapSlice) Delete(extentID uint64) {
-	if IsTinyExtent(extentID) {
+	if proto.IsTinyExtent(extentID) {
 		return
 	}
 	ms.mu.Lock()

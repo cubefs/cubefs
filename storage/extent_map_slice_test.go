@@ -16,7 +16,7 @@ var nilExtentPtr *ExtentInfoBlock = nil
 func initExtentInfo(id uint64) ExtentInfoBlock {
 	return ExtentInfoBlock{
 		FileID: id,
-		Size: id+1,
+		Size:   id + 1,
 	}
 }
 
@@ -70,7 +70,7 @@ func TestBaseFunc(t *testing.T) {
 
 func TestTinyExtent(t *testing.T) {
 	ms := NewMapSlice(1)
-	for i := 1; i < TinyExtentCount+1; i++ {
+	for i := 1; i < proto.TinyExtentCount+1; i++ {
 		ei := initExtentInfo(uint64(i))
 		ms.Store(uint64(i), ei)
 		assertEqual(t, ms.tinyExtents[i], ei)
@@ -78,7 +78,7 @@ func TestTinyExtent(t *testing.T) {
 	}
 	// before delete
 	assertEqual(t, uint64(0), ms.objDeletedCnt)
-	assertEqual(t, TinyExtentCount, ms.Len())
+	assertEqual(t, proto.TinyExtentCount, ms.Len())
 	ms.RangeTinyExtent(func(extentID uint64, ei *ExtentInfoBlock) {
 		if extentID == 0 {
 			t.Errorf("extentID:%v should not exist.", extentID)
@@ -94,7 +94,7 @@ func TestTinyExtent(t *testing.T) {
 	}
 	assertEqual(t, uint64(0), ms.objDeletedCnt)
 	// after delete
-	assertEqual(t, TinyExtentCount, ms.Len())
+	assertEqual(t, proto.TinyExtentCount, ms.Len())
 	ms.RangeTinyExtent(func(extentID uint64, ei *ExtentInfoBlock) {
 		if extentID == 0 {
 			t.Errorf("extentID:%v should not exist.", extentID)
@@ -108,7 +108,7 @@ func TestTinyExtent(t *testing.T) {
 func TestNormalExtent(t *testing.T) {
 	ms := NewMapSlice(1)
 	normalCount := 1000
-	for i := TinyExtentCount + 1; i < normalCount+TinyExtentCount+1; i++ {
+	for i := proto.TinyExtentCount + 1; i < normalCount+proto.TinyExtentCount+1; i++ {
 		ms.Store(uint64(i), initExtentInfo(uint64(i)))
 	}
 	// before delete
@@ -228,7 +228,7 @@ func TestRandomReduce(t *testing.T) {
 	for i := 1; i <= maxExtentId; i++ {
 		if i%5 == 0 {
 			ms.Delete(uint64(i))
-			if i > TinyExtentCount {
+			if i > proto.TinyExtentCount {
 				deleteCnt++
 			}
 		}
@@ -236,7 +236,7 @@ func TestRandomReduce(t *testing.T) {
 	if deleteCnt < reduceThresholdSize {
 		t.Fatalf("delete count is less than %v", reduceThresholdSize)
 	}
-	assertEqual(t, maxExtentId - deleteCnt, ms.Len())
+	assertEqual(t, maxExtentId-deleteCnt, ms.Len())
 	ms.Range(func(extentID uint64, ei *ExtentInfoBlock) {
 		eiLoad, _ := ms.Load(extentID)
 		assertEqual(t, extentID, ei[FileID])
@@ -307,7 +307,7 @@ func TestMapSlice_RangeDist(t *testing.T) {
 	assertEqual(t, extentSize, ms.Len())
 	count = 0
 	ms.RangeDist(proto.TinyExtentType, func(extentID uint64, ei *ExtentInfoBlock) {
-		if extentID <= 0 || extentID >= TinyExtentCount+1 {
+		if extentID <= 0 || extentID >= proto.TinyExtentCount+1 {
 			t.Fail()
 		}
 		eiLoad, _ := ms.Load(extentID)
@@ -316,12 +316,12 @@ func TestMapSlice_RangeDist(t *testing.T) {
 		assertEqual(t, *eiLoad, *ei)
 		count++
 	})
-	assertEqual(t, TinyExtentCount, count)
-	assertEqual(t, TinyExtentCount, ms.Len() - (extentSize - TinyExtentCount))
+	assertEqual(t, proto.TinyExtentCount, count)
+	assertEqual(t, proto.TinyExtentCount, ms.Len()-(extentSize-proto.TinyExtentCount))
 
 	count = 0
 	ms.RangeDist(proto.NormalExtentType, func(extentID uint64, ei *ExtentInfoBlock) {
-		if extentID < TinyExtentCount {
+		if extentID < proto.TinyExtentCount {
 			t.Fail()
 		}
 		eiLoad, _ := ms.Load(extentID)
@@ -330,8 +330,8 @@ func TestMapSlice_RangeDist(t *testing.T) {
 		assertEqual(t, *eiLoad, *ei)
 		count++
 	})
-	assertEqual(t, extentSize - TinyExtentCount, count)
-	assertEqual(t, extentSize - TinyExtentCount, ms.Len() - TinyExtentCount)
+	assertEqual(t, extentSize-proto.TinyExtentCount, count)
+	assertEqual(t, extentSize-proto.TinyExtentCount, ms.Len()-proto.TinyExtentCount)
 }
 
 func TestSpacedStore(t *testing.T) {
@@ -346,7 +346,7 @@ func TestSpacedStore(t *testing.T) {
 	}
 	assertEqual(t, count, ms.Len())
 	ms.Range(func(extentID uint64, ei *ExtentInfoBlock) {
-		if extentID <=0 || extentID > uint64(maxSize) {
+		if extentID <= 0 || extentID > uint64(maxSize) {
 			t.Fail()
 		}
 		eiLoad, _ := ms.Load(extentID)
@@ -356,10 +356,10 @@ func TestSpacedStore(t *testing.T) {
 	})
 
 	deleteCnt := 0
-	for i := 1; i <=maxSize ; i++ {
+	for i := 1; i <= maxSize; i++ {
 		if i%4 == 0 {
 			ms.Delete(uint64(i))
-			if i > TinyExtentCount {
+			if i > proto.TinyExtentCount {
 				deleteCnt++
 			}
 		}
@@ -367,9 +367,9 @@ func TestSpacedStore(t *testing.T) {
 	if deleteCnt < reduceThresholdSize {
 		t.Fatalf("delete count is less than %v", reduceThresholdSize)
 	}
-	assertEqual(t, count - deleteCnt, ms.Len())
+	assertEqual(t, count-deleteCnt, ms.Len())
 	ms.Range(func(extentID uint64, ei *ExtentInfoBlock) {
-		if extentID <=0 || extentID > uint64(maxSize) {
+		if extentID <= 0 || extentID > uint64(maxSize) {
 			t.Fail()
 		}
 		eiLoad, _ := ms.Load(extentID)
@@ -419,24 +419,22 @@ func objectsAreEqual(expected, actual interface{}) bool {
 	return bytes.Equal(exp, act)
 }
 
-
 const (
-	MaxExtentID=60000
+	MaxExtentID = 60000
 )
 
 var (
 	ems *MapSlice
 )
 
-
 func Test_DeleteExtentData(t *testing.T) {
 	InsertExtentData(t)
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go asyncDeleteExtentData(t,3,&wg)
+	go asyncDeleteExtentData(t, 3, &wg)
 	wg.Wait()
 	wg.Add(1)
-	go loadExtentInfoBlockArr(t,3,&wg)
+	go loadExtentInfoBlockArr(t, 3, &wg)
 	wg.Wait()
 }
 
@@ -447,7 +445,7 @@ func Test_RangeAndReduceSametime(t *testing.T) {
 	concurrentRange(t, &wg)
 	wg.Wait()
 	ems.Range(func(extentID uint64, ei *ExtentInfoBlock) {
-		if extentID <=0 || extentID >= MaxExtentID {
+		if extentID <= 0 || extentID >= MaxExtentID {
 			t.Fail()
 		}
 		eiLoad, _ := ems.Load(extentID)
@@ -459,10 +457,10 @@ func Test_RangeAndReduceSametime(t *testing.T) {
 
 func InsertExtentData(t *testing.T) {
 	var wg sync.WaitGroup
-	ems=NewMapSlice(1)
-	for i:=1;i<8;i++{
+	ems = NewMapSlice(1)
+	for i := 1; i < 8; i++ {
 		wg.Add(1)
-		go asyncInsertExtentData(t,i,&wg)
+		go asyncInsertExtentData(t, i, &wg)
 	}
 	wg.Wait()
 
@@ -495,90 +493,84 @@ func concurrentRange(t *testing.T, wg *sync.WaitGroup) {
 	}
 }
 
-func asyncInsertExtentData(t *testing.T,modNun int,wg *sync.WaitGroup) {
+func asyncInsertExtentData(t *testing.T, modNun int, wg *sync.WaitGroup) {
 	defer func() {
 		wg.Done()
 	}()
 	var count int
-	for i:=1;i<MaxExtentID;i++{
-		if i%modNun==0 {
-			eb:=ExtentInfoBlock{
-				FileID:uint64(i),
-				Size:uint64(i+1),
-				Crc:uint64(i+2),
-				ModifyTime:uint64(i+3),
+	for i := 1; i < MaxExtentID; i++ {
+		if i%modNun == 0 {
+			eb := ExtentInfoBlock{
+				FileID:     uint64(i),
+				Size:       uint64(i + 1),
+				Crc:        uint64(i + 2),
+				ModifyTime: uint64(i + 3),
 			}
-			ems.Store(uint64(i),eb)
+			ems.Store(uint64(i), eb)
 			count++
 		}
 	}
-	t.Logf("modNum(%v) insert success(%v) emsSumRecords(%v)",modNun,count,ems.Len())
+	t.Logf("modNum(%v) insert success(%v) emsSumRecords(%v)", modNun, count, ems.Len())
 }
 
-
-
-
-func asyncDeleteExtentData(t *testing.T,modNun int,wg *sync.WaitGroup) {
+func asyncDeleteExtentData(t *testing.T, modNun int, wg *sync.WaitGroup) {
 	defer func() {
 		wg.Done()
 	}()
 	var count int
-	for i:=1;i<MaxExtentID;i++{
-		if IsTinyExtent(uint64(i)){
+	for i := 1; i < MaxExtentID; i++ {
+		if proto.IsTinyExtent(uint64(i)) {
 			continue
 		}
-		if i%modNun==0 {
+		if i%modNun == 0 {
 			ems.Delete(uint64(i))
 			count++
 		}
 	}
-	t.Logf("modNum(%v) delete success(%v) emsSumRecords(%v)",modNun,count,ems.Len())
+	t.Logf("modNum(%v) delete success(%v) emsSumRecords(%v)", modNun, count, ems.Len())
 }
 
-
-
-func loadExtentInfoBlockArr(t *testing.T,modNun int,wg *sync.WaitGroup) {
+func loadExtentInfoBlockArr(t *testing.T, modNun int, wg *sync.WaitGroup) {
 	defer func() {
 		wg.Done()
 	}()
 	var count int
-	for i:=1;i<MaxExtentID;i++{
-		if i%modNun==0 {
-			if IsTinyExtent(uint64(i)) {
+	for i := 1; i < MaxExtentID; i++ {
+		if i%modNun == 0 {
+			if proto.IsTinyExtent(uint64(i)) {
 				continue
 			}
-			ei,_,err:=loadExtentInfoBlockAndCheck(t,uint64(i))
-			if err==nil {
-				t.Fatalf("extent(%v) has been delete,why can load(%v)",uint64(i),ei)
+			ei, _, err := loadExtentInfoBlockAndCheck(t, uint64(i))
+			if err == nil {
+				t.Fatalf("extent(%v) has been delete,why can load(%v)", uint64(i), ei)
 				t.FailNow()
 			}
 			count++
 		}
 	}
-	t.Logf("modNum(%v) load failed  count(%v) emsSumRecords(%v)",modNun,count,ems.Len())
+	t.Logf("modNum(%v) load failed  count(%v) emsSumRecords(%v)", modNun, count, ems.Len())
 }
 
-
-func loadExtentInfoBlockAndCheck(t *testing.T,eid uint64)(ei *ExtentInfoBlock,ok bool,err error) {
-	ei,ok=ems.Load(eid)
+func loadExtentInfoBlockAndCheck(t *testing.T, eid uint64) (ei *ExtentInfoBlock, ok bool, err error) {
+	ei, ok = ems.Load(eid)
 	if !ok {
-		err=fmt.Errorf("cannot load extent(%v),because not exsit",eid)
+		err = fmt.Errorf("cannot load extent(%v),because not exsit", eid)
 		return
 	}
-	if ei[FileID]!=uint64(eid) {
-		err=fmt.Errorf("check extentID failed :eid(%v) extentInfoBlock(%v)",eid,ei)
+	if ei[FileID] != uint64(eid) {
+		err = fmt.Errorf("check extentID failed :eid(%v) extentInfoBlock(%v)", eid, ei)
 		return
 	}
-	if ei[Size]!=uint64(eid+1) {
-		err=fmt.Errorf("check extent Size failed :eid(%v) extentInfoBlock(%v)",eid,ei)
+	if ei[Size] != uint64(eid+1) {
+		err = fmt.Errorf("check extent Size failed :eid(%v) extentInfoBlock(%v)", eid, ei)
 		return
 	}
-	if ei[Crc]!=uint64(eid+2) {
-		err=fmt.Errorf("check extent Crc failed :eid(%v) extentInfoBlock(%v)",eid,ei)
+	if ei[Crc] != uint64(eid+2) {
+		err = fmt.Errorf("check extent Crc failed :eid(%v) extentInfoBlock(%v)", eid, ei)
 		return
 	}
-	if ei[ModifyTime]!=uint64(eid+3) {
-		err=fmt.Errorf("check extent ModifyTime failed :eid(%v) extentInfoBlock(%v)",eid,ei)
+	if ei[ModifyTime] != uint64(eid+3) {
+		err = fmt.Errorf("check extent ModifyTime failed :eid(%v) extentInfoBlock(%v)", eid, ei)
 		return
 	}
 

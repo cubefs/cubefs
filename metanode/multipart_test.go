@@ -20,14 +20,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 )
 
 func TestMUPart_Bytes(t *testing.T) {
 	var (
 		id         uint16 = 1
 		uploadTime        = time.Now().Local()
-		md5               = util.RandomString(16, util.UpperLetter|util.Numeric)
+		md5               = stringutil.RandomString(16, stringutil.UpperLetter|stringutil.Numeric)
 		size       uint64 = 65536
 		inode      uint64 = 12345
 		err        error
@@ -58,7 +58,7 @@ func TestMUParts_Bytes(t *testing.T) {
 		part := &Part{
 			ID:         uint16(i),
 			UploadTime: time.Now().Local(),
-			MD5:        util.RandomString(16, util.UpperLetter|util.Numeric),
+			MD5:        stringutil.RandomString(16, stringutil.UpperLetter|stringutil.Numeric),
 			Size:       random.Uint64(),
 			Inode:      random.Uint64(),
 		}
@@ -83,7 +83,7 @@ func TestMUParts_Modify(t *testing.T) {
 		part := &Part{
 			ID:         uint16(i),
 			UploadTime: time.Now().Local(),
-			MD5:        util.RandomString(16, util.UpperLetter|util.Numeric),
+			MD5:        stringutil.RandomString(16, stringutil.UpperLetter|stringutil.Numeric),
 			Size:       random.Uint64(),
 			Inode:      random.Uint64(),
 		}
@@ -132,7 +132,7 @@ func TestMUSession_Bytes(t *testing.T) {
 	session1.extend = me
 	for i := 0; i < 100; i++ {
 		id := uint16(i)
-		md5 := util.RandomString(16, util.UpperLetter|util.Numeric)
+		md5 := stringutil.RandomString(16, stringutil.UpperLetter|stringutil.Numeric)
 		size := random.Uint64()
 		inode := random.Uint64()
 		session1.InsertPart(&Part{

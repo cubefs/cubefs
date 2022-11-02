@@ -49,9 +49,9 @@ type ExtentKey struct {
 // MarkDelExtentKey defines the extent key struct.
 type MetaDelExtentKey struct {
 	ExtentKey
-	InodeId      uint64
-	TimeStamp    int64
-	SrcType		 uint64
+	InodeId   uint64
+	TimeStamp int64
+	SrcType   uint64
 }
 
 func (k *MetaDelExtentKey) String() string {
@@ -61,7 +61,7 @@ func (k *MetaDelExtentKey) String() string {
 
 func (k *MetaDelExtentKey) MarshDelEkValue(buf []byte) {
 	binary.BigEndian.PutUint64(buf[0:8], k.InodeId)
-	binary.BigEndian.PutUint64(buf[8:16],  uint64(k.TimeStamp))
+	binary.BigEndian.PutUint64(buf[8:16], uint64(k.TimeStamp))
 	binary.BigEndian.PutUint64(buf[16:24], k.SrcType)
 
 	return
@@ -258,7 +258,6 @@ func (k *ExtentKey) MarshalBinaryV2() ([]byte, error) {
 	return data, nil
 }
 
-
 func (k *ExtentKey) EncodeBinary(data []byte) {
 	binary.BigEndian.PutUint64(data[0:8], k.FileOffset)
 	binary.BigEndian.PutUint64(data[8:16], k.PartitionId)
@@ -376,4 +375,14 @@ func PutExtentKeyToPool(ek *ExtentKey) {
 	if ek != nil {
 		extentPool[rand.Intn(ExtentKeyPoolCnt)].Put(ek)
 	}
+}
+
+const (
+	TinyExtentCount   = 64
+	TinyExtentStartID = 1
+)
+
+// IsTinyExtent checks if the given extent is tiny extent.
+func IsTinyExtent(extentID uint64) bool {
+	return extentID >= TinyExtentStartID && extentID < TinyExtentStartID+TinyExtentCount
 }

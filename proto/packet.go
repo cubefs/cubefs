@@ -27,8 +27,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/buf"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 var (
@@ -614,7 +614,7 @@ func (p *Packet) GetReqID() int64 {
 
 func (p *Packet) GetRespData() (msg string) {
 	if len(p.Data) > 0 && p.Size < uint32(len(p.Data)) {
-		msgLen := util.Min(int(p.Size), 512)
+		msgLen := unit.Min(int(p.Size), 512)
 		msg = string(p.Data[:msgLen])
 	}
 	return msg
@@ -634,7 +634,7 @@ func (p *Packet) MarshalHeader(out []byte) {
 	binary.BigEndian.PutUint64(out[25:33], p.ExtentID)
 	binary.BigEndian.PutUint64(out[33:41], uint64(p.ExtentOffset))
 	binary.BigEndian.PutUint64(out[41:49], uint64(p.ReqID))
-	binary.BigEndian.PutUint64(out[49:util.PacketHeaderSize], p.KernelOffset)
+	binary.BigEndian.PutUint64(out[49:unit.PacketHeaderSize], p.KernelOffset)
 	return
 }
 
@@ -656,7 +656,7 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.ExtentID = binary.BigEndian.Uint64(in[25:33])
 	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[33:41]))
 	p.ReqID = int64(binary.BigEndian.Uint64(in[41:49]))
-	p.KernelOffset = binary.BigEndian.Uint64(in[49:util.PacketHeaderSize])
+	p.KernelOffset = binary.BigEndian.Uint64(in[49:unit.PacketHeaderSize])
 
 	return nil
 }
@@ -678,9 +678,9 @@ func (p *Packet) UnmarshalData(v interface{}) error {
 
 // WriteToNoDeadLineConn writes through the connection without deadline.
 func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
-	header, err := Buffers.Get(util.PacketHeaderSize)
+	header, err := Buffers.Get(unit.PacketHeaderSize)
 	if err != nil {
-		header = make([]byte, util.PacketHeaderSize)
+		header = make([]byte, unit.PacketHeaderSize)
 	}
 	defer Buffers.Put(header)
 
@@ -715,9 +715,9 @@ func (p *Packet) WriteToConnNs(c net.Conn, timeoutNs int64) (err error) {
 }
 
 func (p *Packet) writeToConn(c net.Conn) (err error) {
-	header, err := Buffers.Get(util.PacketHeaderSize)
+	header, err := Buffers.Get(unit.PacketHeaderSize)
 	if err != nil {
-		header = make([]byte, util.PacketHeaderSize)
+		header = make([]byte, unit.PacketHeaderSize)
 	}
 	defer Buffers.Put(header)
 	p.MarshalHeader(header)
@@ -759,16 +759,16 @@ func (p *Packet) ReadFromConnNs(c net.Conn, timeoutNs int64) (err error) {
 }
 
 func (p *Packet) readFromConn(c net.Conn) (err error) {
-	header, err := Buffers.Get(util.PacketHeaderSize)
+	header, err := Buffers.Get(unit.PacketHeaderSize)
 	if err != nil {
-		header = make([]byte, util.PacketHeaderSize)
+		header = make([]byte, unit.PacketHeaderSize)
 	}
 	defer Buffers.Put(header)
 	var n int
 	if n, err = io.ReadFull(c, header); err != nil {
 		return
 	}
-	if n != util.PacketHeaderSize {
+	if n != unit.PacketHeaderSize {
 		return syscall.EBADMSG
 	}
 	if err = p.UnmarshalHeader(header); err != nil {

@@ -26,12 +26,14 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/diskusage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/memory"
 	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 var (
@@ -61,7 +63,7 @@ type MetaNode struct {
 	diskReservedSpace uint64
 	rocksDirs         []string
 	diskStopCh        chan struct{}
-	disks             map[string]*util.FsCapMon
+	disks             map[string]*diskusage.FsCapMon
 	control           common.Control
 }
 
@@ -197,7 +199,6 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		m.diskReservedSpace = defaultDiskReservedSpace
 	}
 
-
 	m.tickInterval = int(cfg.GetFloat(cfgTickIntervalMs))
 	if m.tickInterval <= 300 {
 		log.LogWarnf("get config [%s]:[%v] less than 300 so set it to 500 ", cfgTickIntervalMs, cfg.GetString(cfgTickIntervalMs))
@@ -215,8 +216,8 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	m.rocksDirs = cfg.GetStringSlice(cfgRocksDirs)
 
-	total, _, err := util.GetMemInfo()
-	if err == nil && configTotalMem > total-util.GB {
+	total, _, err := memory.GetMemInfo()
+	if err == nil && configTotalMem > total-unit.GB {
 		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
 	}
 

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"strconv"
 	"strings"
 	"time"
@@ -175,7 +175,7 @@ func UpdateTaskFailed(task *proto.Task, exceptionInfo string) (err error) {
 	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateTaskFailed)
 	defer metrics.Set(err)
 
-	exceptionInfo = util.SubStringByLength(exceptionInfo, DefaultTaskExceptionInfoLength)
+	exceptionInfo = stringutil.SubStringByLength(exceptionInfo, DefaultTaskExceptionInfoLength)
 
 	sqlCmd := "update tasks set task_status = ?, exception_info = ?, update_time = now() where task_id =?"
 	args := make([]interface{}, 0)
@@ -204,7 +204,7 @@ func UpdateTaskInfo(taskId uint64, taskInfo string) (err error) {
 	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateTaskInfo)
 	defer metrics.Set(err)
 
-	taskInfo = util.SubStringByLength(taskInfo, DefaultTaskTaskInfoLength)
+	taskInfo = stringutil.SubStringByLength(taskInfo, DefaultTaskTaskInfoLength)
 	sqlCmd := "update tasks set task_info = ?, update_time = now() where task_id =?"
 	args := make([]interface{}, 0)
 	args = append(args, taskInfo)
@@ -726,11 +726,11 @@ func SelectTasks(cluster, volume string, dpId, mpId uint64, taskType, limit, off
 	sqlCmd := fmt.Sprintf("select %s from tasks", taskColumns())
 	conditions := make([]string, 0)
 	values := make([]interface{}, 0)
-	if !util.IsStrEmpty(cluster) {
+	if !stringutil.IsStrEmpty(cluster) {
 		conditions = append(conditions, " cluster_name = ?")
 		values = append(values, cluster)
 	}
-	if !util.IsStrEmpty(volume) {
+	if !stringutil.IsStrEmpty(volume) {
 		conditions = append(conditions, " vol_name = ?")
 		values = append(values, volume)
 	}

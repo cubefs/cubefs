@@ -20,8 +20,8 @@ import (
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 // request with size greater than the threshold will not read ahead
@@ -95,9 +95,9 @@ func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes
 	readAhead := false
 	realReq := req
 	if er.readAhead && size <= readAheadThreshold &&
-		uint64(req.FileOffset)-req.ExtentKey.FileOffset+req.ExtentKey.ExtentOffset+uint64(util.BlockSize) <= uint64(req.ExtentKey.Size) {
+		uint64(req.FileOffset)-req.ExtentKey.FileOffset+req.ExtentKey.ExtentOffset+uint64(unit.BlockSize) <= uint64(req.ExtentKey.Size) {
 		readAhead = true
-		size = util.BlockSize
+		size = unit.BlockSize
 		data := make([]byte, size)
 		realReq = NewExtentRequest(req.FileOffset, size, data, req.ExtentKey)
 	}

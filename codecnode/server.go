@@ -24,10 +24,10 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 var (
@@ -36,7 +36,7 @@ var (
 )
 
 const (
-	ModuleName = "codecNode"
+	ModuleName           = "codecNode"
 	codecNodeLastVersion = proto.BaseVersion
 )
 
@@ -175,7 +175,7 @@ func (s *CodecServer) register(cfg *config.Config) {
 			if LocalIP == "" {
 				LocalIP = string(ci.Ip)
 			}
-			if !util.IsIPV4(LocalIP) {
+			if !unit.IsIPV4(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).", LocalIP, masterAddr)
 				timer.Reset(2 * time.Second)
 				continue

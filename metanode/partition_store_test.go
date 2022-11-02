@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/multipart"
 	"os"
 	"path"
 	"reflect"
@@ -237,8 +237,8 @@ func TestMetaPartition_storeInode(t *testing.T) {
 
 func TestMetaPartition_storeDentry(t *testing.T) {
 	var (
-		ino       uint64
-		i         uint64
+		ino uint64
+		i   uint64
 	)
 
 	filename := path.Join(rootdir, dentryFile)
@@ -254,7 +254,7 @@ func TestMetaPartition_storeDentry(t *testing.T) {
 		dentry := &Dentry{ParentId: 1, Inode: ino, Name: name}
 		tree.ReplaceOrInsert(dentry, false)
 		for i = 1; i < 5; i++ {
-			ino2 := ino * i + 1000
+			ino2 := ino*i + 1000
 			name = fmt.Sprintf("test_dentry_store_%v_%v", ino, ino2)
 			dentry = &Dentry{ParentId: ino, Inode: ino2, Name: name}
 			tree.ReplaceOrInsert(dentry, false)
@@ -305,7 +305,7 @@ func TestMetaPartition_storeDentry(t *testing.T) {
 			t.FailNow()
 		}
 		for i = 1; i < 5; i++ {
-			ino2 := ino * i + 1000
+			ino2 := ino*i + 1000
 			name = fmt.Sprintf("test_dentry_store_%v_%v", ino, ino2)
 			dentry, _ = mp.dentryTree.Get(ino, name)
 			if dentry == nil {
@@ -405,10 +405,10 @@ func TestMetaPartition_storeMultipart(t *testing.T) {
 		parts := make([]*Part, 0, 10)
 		for partID := 1; partID <= 10; partID++ {
 			part := &Part{
-				ID: uint16(partID),
+				ID:         uint16(partID),
 				UploadTime: timeNow.Add(time.Second * time.Duration(partID)).Local(),
-				Inode: uint64(partID * 100),
-				Size: uint64(partID * 1000),
+				Inode:      uint64(partID * 100),
+				Size:       uint64(partID * 1000),
 			}
 			parts = append(parts, part)
 		}
@@ -420,10 +420,10 @@ func TestMetaPartition_storeMultipart(t *testing.T) {
 		}
 		p := fmt.Sprintf("/test_multipart_store/%v", index)
 		multipart := &Multipart{
-			key: p,
-			id: util.CreateMultipartID(10).String(),
-			parts: parts,
-			extend: extend,
+			key:      p,
+			id:       multipart.CreateMultipartID(10).String(),
+			parts:    parts,
+			extend:   extend,
 			initTime: timeNow.Local(),
 		}
 		tree.ReplaceOrInsert(multipart, false)

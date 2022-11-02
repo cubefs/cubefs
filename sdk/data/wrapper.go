@@ -26,7 +26,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/scheduler"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/iputil"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -129,7 +129,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
 	streamConnPoolInitOnce.Do(func() {
-		StreamConnPool = util.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
+		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
 	})
 
 	w.wg.Add(4)

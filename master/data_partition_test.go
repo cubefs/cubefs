@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 func TestDataPartition(t *testing.T) {
@@ -120,7 +120,7 @@ func loadDataPartitionTest(dp *DataPartition, t *testing.T) {
 	extentFile.Name = "10"
 	extentFile.LastModify = 1562507765
 	for index, host := range dp.Hosts {
-		fm := newFileMetadata(uint32(404551221)+uint32(index), host, index, 2*util.MB)
+		fm := newFileMetadata(uint32(404551221)+uint32(index), host, index, 2*unit.MB)
 		tinyFile.MetadataArray = append(tinyFile.MetadataArray, fm)
 		extentFile.MetadataArray = append(extentFile.MetadataArray, fm)
 	}

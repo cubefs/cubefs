@@ -29,9 +29,9 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/storage"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"github.com/tiglabs/raft"
 )
 
@@ -101,7 +101,7 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
-	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
+	} else if strings.Contains(errMsg, proto.ExtentNotFoundError.Error()) ||
 		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
 		p.ResultCode = proto.OpNotExistErr
 	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
@@ -571,7 +571,7 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
-	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
+	} else if strings.Contains(errMsg, proto.ExtentNotFoundError.Error()) ||
 		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
 		p.ResultCode = proto.OpNotExistErr
 	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
@@ -601,9 +601,9 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBuff
 	} else {
 		c.SetReadDeadline(time.Time{})
 	}
-	header, err := proto.Buffers.Get(util.PacketHeaderSize)
+	header, err := proto.Buffers.Get(unit.PacketHeaderSize)
 	if err != nil {
-		header = make([]byte, util.PacketHeaderSize)
+		header = make([]byte, unit.PacketHeaderSize)
 	}
 	defer proto.Buffers.Put(header)
 	if _, err = io.ReadFull(c, header); err != nil {
@@ -632,8 +632,8 @@ func (p *Packet) allocateBufferFromPoolForReadConnnectBody(c net.Conn) (isUseBuf
 		return
 	}
 	p.OrgSize = int32(readSize)
-	if p.IsWriteOperation() && readSize <= util.BlockSize {
-		p.Data, _ = proto.Buffers.Get(util.BlockSize)
+	if p.IsWriteOperation() && readSize <= unit.BlockSize {
+		p.Data, _ = proto.Buffers.Get(unit.BlockSize)
 		_, err = io.ReadFull(c, p.Data[:readSize])
 		atomic.StoreInt64(&p.useDataPoolFlag, PacketUseDataPool)
 		isUseBufferPool = true

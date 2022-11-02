@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 func TestAutoCreateDataPartitions(t *testing.T) {
@@ -17,7 +17,7 @@ func TestAutoCreateDataPartitions(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	commonVol.Capacity = 300 * util.TB
+	commonVol.Capacity = 300 * unit.TB
 	dpCount := len(commonVol.dataPartitions.partitions)
 	commonVol.dataPartitions.readableAndWritableCnt = 0
 	server.cluster.DisableAutoAllocate = false
@@ -327,7 +327,7 @@ func markDeleteVol(name string, t *testing.T) {
 
 //func TestVolReduceReplicaNum(t *testing.T) {
 //	volName := "reduce-replica-num"
-//	vol, err := server.cluster.createVol(volName, volName, testZone2, 3, 3, util.DefaultDataPartitionSize,
+//	vol, err := server.cluster.createVol(volName, volName, testZone2, 3, 3, unit.DefaultDataPartitionSize,
 //		100, false, false, false, false)
 //	if err != nil {
 //		t.Error(err)
@@ -368,8 +368,8 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	name := "TestConcurrentReadWriteDataPartitionMap"
 	var volID uint64 = 1
 	var createTime = time.Now().Unix()
-	vol := newVol(volID, name, name, "", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
-		 defaultReplicaNum,false, false,
+	vol := newVol(volID, name, name, "", unit.DefaultDataPartitionSize, 100, defaultReplicaNum,
+		defaultReplicaNum, false, false,
 		false, true, false, false, false, false, createTime, createTime, "", "", "", 0,
 		0, 0, 0.0, 30, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
 		strings.Split(testSmartRules, ","), proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0})

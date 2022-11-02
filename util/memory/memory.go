@@ -12,11 +12,12 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package util
+package memory
 
 import (
 	"bufio"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"os"
 	"strconv"
 	"strings"
@@ -57,13 +58,13 @@ func GetMemInfo() (total, used uint64, err error) {
 		}
 		switch key {
 		case "MemTotal":
-			total = val * KB
+			total = val * unit.KB
 		case "MemFree":
-			free = val * KB
+			free = val * unit.KB
 		case "Buffers":
-			buffer = val * KB
+			buffer = val * unit.KB
 		case "Cached":
-			cached = val * KB
+			cached = val * unit.KB
 		}
 	}
 	used = total - free - buffer - cached
@@ -91,7 +92,7 @@ func GetProcessMemory(pid int) (used uint64, err error) {
 		if err != nil {
 			return
 		}
-		used = used * KB
+		used = used * unit.KB
 		break
 	}
 	return

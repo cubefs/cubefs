@@ -36,11 +36,12 @@ import (
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/repl"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 var (
@@ -49,7 +50,7 @@ var (
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
 
 	LocalIP, serverPort   string
-	gConnPool             = util.NewConnectPool()
+	gConnPool             = connpool.NewConnectPool()
 	MasterClient          = masterSDK.NewMasterClient(nil, false)
 	gHasLoadDataPartition bool
 )
@@ -59,9 +60,9 @@ const (
 	DefaultRaftDir           = "raft"
 	DefaultRaftLogsToRetain  = 1000 // Count of raft logs per data partition
 	DefaultDiskMaxErr        = 1
-	DefaultDiskReservedSpace = 5 * util.GB // GB
+	DefaultDiskReservedSpace = 5 * unit.GB // GB
 	DefaultDiskReservedRatio = float64(0.1)
-	DefaultDiskRetainMax     = 30 * util.GB // GB
+	DefaultDiskRetainMax     = 30 * unit.GB // GB
 )
 
 const (
@@ -314,7 +315,7 @@ func (s *DataNode) register(cfg *config.Config) {
 				LocalIP = string(ci.Ip)
 			}
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
-			if !util.IsIPV4(LocalIP) {
+			if !unit.IsIPV4(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
 				timer.Reset(2 * time.Second)

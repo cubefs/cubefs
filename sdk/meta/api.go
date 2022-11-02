@@ -29,8 +29,8 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/multipart"
 
 	"github.com/chubaofs/chubaofs/util/ump"
 )
@@ -854,7 +854,7 @@ func (mw *MetaWrapper) GetMultipart_ll(ctx context.Context, path, multipartId st
 		mpId  uint64
 		found bool
 	)
-	mpId, found = util.MultipartIDFromString(multipartId).PartitionID()
+	mpId, found = multipart.MultipartIDFromString(multipartId).PartitionID()
 	if !found {
 		log.LogDebugf("AddMultipartPart_ll: meta partition not found by multipart id, multipartId(%v), err(%v)", multipartId, err)
 		// If meta partition not found by multipart id, broadcast to all meta partitions to find it
@@ -880,7 +880,7 @@ func (mw *MetaWrapper) AddMultipartPart_ll(ctx context.Context, path, multipartI
 		mpId  uint64
 		found bool
 	)
-	mpId, found = util.MultipartIDFromString(multipartId).PartitionID()
+	mpId, found = multipart.MultipartIDFromString(multipartId).PartitionID()
 	if !found {
 		log.LogDebugf("AddMultipartPart_ll: meta partition not found by multipart id, multipartId(%v), err(%v)", multipartId, err)
 		// If meta partition not found by multipart id, broadcast to all meta partitions to find it
@@ -906,7 +906,7 @@ func (mw *MetaWrapper) RemoveMultipart_ll(ctx context.Context, path, multipartID
 		mpId  uint64
 		found bool
 	)
-	mpId, found = util.MultipartIDFromString(multipartID).PartitionID()
+	mpId, found = multipart.MultipartIDFromString(multipartID).PartitionID()
 	if !found {
 		log.LogDebugf("AddMultipartPart_ll: meta partition not found by multipart id, multipartId(%v), err(%v)", multipartID, err)
 		// If meta partition not found by multipart id, broadcast to all meta partitions to find it

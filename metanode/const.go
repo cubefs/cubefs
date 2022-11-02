@@ -16,7 +16,7 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -86,7 +86,7 @@ type (
 	// Client -> MetaNode
 	SetattrRequest = proto.SetAttrRequest
 	// Client -> MetaNode
-	GetAppliedIDReq = proto.GetAppliedIDRequest
+	GetAppliedIDReq   = proto.GetAppliedIDRequest
 	GetSnapshotCrcReq = proto.GetSnapshotCrcRequest
 
 	// Client -> MetaNode lookup
@@ -190,7 +190,7 @@ const (
 	defaultRaftDir                        = "raftDir"
 	defaultAuthTimeout                    = 5 // seconds
 	defaultMaxMetaPartitionInodeID uint64 = 1<<63 - 1
-	defaultDiskReservedSpace              = 5 * util.GB
+	defaultDiskReservedSpace              = 5 * unit.GB
 	metaDataFlockFile                     = ".MetaDataFlock"
 )
 
@@ -248,7 +248,7 @@ const (
 )
 
 const (
-	RaftHangTimeOut       = 60
+	RaftHangTimeOut          = 60
 	ProxyTryToLeaderRetryCnt = 1
 )
 

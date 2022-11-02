@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/multipart"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -33,7 +33,7 @@ func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet)
 	multipart, err = mp.multipartTree.RefGet(req.Path, req.MultipartId)
 	if err != nil {
 		if err == rocksDBError {
-			exporter.WarningRocksdbError(fmt.Sprintf("action[GetMultipart] clusterID[%s] volumeName[%s] partitionID[%v]" +
+			exporter.WarningRocksdbError(fmt.Sprintf("action[GetMultipart] clusterID[%s] volumeName[%s] partitionID[%v]"+
 				" get multipart failed witch rocksdb error[multipart path:%s, id:%s]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, req.Path, req.MultipartId))
 		}
@@ -137,11 +137,11 @@ func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *P
 func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error) {
 
 	var (
-		multipartId string
+		multipartId     string
 		storedMultipart *Multipart
 	)
 	for {
-		multipartId = util.CreateMultipartID(mp.config.PartitionId).String()
+		multipartId = multipart.CreateMultipartID(mp.config.PartitionId).String()
 		storedMultipart, err = mp.multipartTree.RefGet(req.Path, multipartId)
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))

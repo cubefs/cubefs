@@ -2,8 +2,8 @@ package proto
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/statistics"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"strings"
 	"testing"
 	"time"
@@ -40,19 +40,18 @@ func TestNewActionMetricsTaskInfo(t *testing.T) {
 	}
 	fmt.Println(taskInfo)
 
-
 	index := strings.Index(taskInfo, ":")
 	if index <= 0 {
 		t.Fatalf("parse task info failed, index is less then zero")
 	}
-	lpType := util.SubString(taskInfo, 0, index)
+	lpType := stringutil.SubString(taskInfo, 0, index)
 	if len(lpType) <= 0 {
 		t.Fatalf("parse task info layer type failed")
 	}
 	if lpType != LayerTypeActionMetricsString {
 		t.Fatalf("parse task info layer type failed")
 	}
-	taskInfoSubStr := util.SubString(taskInfo, index+1, len(taskInfo))
+	taskInfoSubStr := stringutil.SubString(taskInfo, index+1, len(taskInfo))
 	if len(taskInfoSubStr) <= 0 {
 		t.Fatalf("parse task info sub string failed")
 	}
@@ -85,19 +84,18 @@ func TestNewDPCreateTimeTaskInfo(t *testing.T) {
 	}
 	fmt.Println(taskInfo)
 
-
 	index := strings.Index(taskInfo, ":")
 	if index <= 0 {
 		t.Fatalf("parse task info failed, index is less then zero")
 	}
-	lpType := util.SubString(taskInfo, 0, index)
+	lpType := stringutil.SubString(taskInfo, 0, index)
 	if len(lpType) <= 0 {
 		t.Fatalf("parse task info layer type failed")
 	}
 	if lpType != LayerTypeDPCreateTimeString {
 		t.Fatalf("parse task info layer type is not expected")
 	}
-	taskInfoSubStr := util.SubString(taskInfo, index+1, len(taskInfo))
+	taskInfoSubStr := stringutil.SubString(taskInfo, index+1, len(taskInfo))
 	if len(taskInfoSubStr) <= 0 {
 		t.Fatalf("parse task info sub string failed")
 	}

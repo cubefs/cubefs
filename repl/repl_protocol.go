@@ -27,12 +27,13 @@ import (
 	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 var (
-	gConnPool       *util.ConnectPool
+	gConnPool       *connpool.ConnectPool
 	ReplProtocalMap sync.Map
 )
 
@@ -62,17 +63,17 @@ type ReplProtocol struct {
 	operatorFunc func(p *Packet, c *net.TCPConn) error // operator
 	postFunc     func(p *Packet) error                 // post-processing packet
 
-	replId             int64
-	startTime          int64
-	allThreadStats     []int
-	allThreadStatsLock sync.Mutex
-	getNumFromDataPool int64
-	putNumToDataPool   int64
+	replId               int64
+	startTime            int64
+	allThreadStats       []int
+	allThreadStatsLock   sync.Mutex
+	getNumFromDataPool   int64
+	putNumToDataPool     int64
 	getPacketFromPoolCnt int64
 	putPacketToPoolCnt   int64
-	isError            int32
-	remote             string
-	stopError          string
+	isError              int32
+	remote               string
+	stopError            string
 
 	forwardPacketCheckList     *list.List
 	forwardPacketCheckListLock sync.RWMutex
@@ -135,7 +136,7 @@ func (ft *FollowerTransport) PutRequestToSendCh(request *FollowerPacket) (err er
 	}
 }
 
-func SetConnectPool(cp *util.ConnectPool) {
+func SetConnectPool(cp *connpool.ConnectPool) {
 	gConnPool = cp
 }
 
@@ -148,7 +149,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 			if err := p.WriteToConn(ft.conn, proto.WriteDeadlineTime); err != nil {
 				p.DecDataPoolRefCnt()
 				p.Data = nil
-				p.errorCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v) firstError(%v)", ft.addr, err.Error(),ft.globalErr)
+				p.errorCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v) firstError(%v)", ft.addr, err.Error(), ft.globalErr)
 				_ = ft.conn.Close()
 				ft.setGlobalErrAndFirstErrPkg(p, err)
 				log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) ActionSendToFollowers(%v) error(%v)", ft.replId, ft.pkgOrder, ft.globalErr, ft.firstErrPkg, p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
@@ -157,7 +158,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 			p.Data = nil
 			p.DecDataPoolRefCnt()
 			if err := ft.PutRequestToRecvCh(p); err != nil {
-				p.errorCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v) firstError(%v)", ft.addr, err.Error(),ft.globalErr)
+				p.errorCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v) firstError(%v)", ft.addr, err.Error(), ft.globalErr)
 				_ = ft.conn.Close()
 				ft.setGlobalErrAndFirstErrPkg(p, err)
 				log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) ActionSendToFollowers(%v) error(%v)", ft.replId, ft.pkgOrder, ft.globalErr, ft.firstErrPkg, p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
@@ -314,10 +315,10 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet, remote str
 	rp.prepareFunc = prepareFunc
 	rp.operatorFunc = operatorFunc
 	rp.startTime = time.Now().Unix()
-	rp.getPacketFromPoolCnt=0
-	rp.putPacketToPoolCnt=0
-	rp.getNumFromDataPool=0
-	rp.putNumToDataPool=0
+	rp.getPacketFromPoolCnt = 0
+	rp.putPacketToPoolCnt = 0
+	rp.getNumFromDataPool = 0
+	rp.putNumToDataPool = 0
 	rp.postFunc = postFunc
 	rp.allThreadStats = make([]int, 3)
 	rp.exited = ReplRuning
@@ -351,7 +352,7 @@ func (rp *ReplProtocol) ServerConn() {
 			msg := fmt.Sprintf("ReplProtocol(%v): ServerConn: occurred panic. \n"+
 				"message: %v\n"+
 				"stack:\n%v",
-				rp.remote,r, string(debug.Stack()))
+				rp.remote, r, string(debug.Stack()))
 			log.LogCritical(msg)
 			exporter.WarningPanic(msg)
 			rp.exitGoRoutine(0)
@@ -403,11 +404,11 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	if isUsedBufferPool {
 		rp.addGetNumFromDataPoolCnt()
 	}
-	request.replSource=rp.remote
+	request.replSource = rp.remote
 	rp.addGetNumFromPacketPoolCnt()
 	if err != nil {
-		rp.forceCleanDataPoolFlag(request,"readPkgAndPrepare")
-		rp.forceCleanPacketPoolFlag(request,"readPkgAndPrepare")
+		rp.forceCleanDataPoolFlag(request, "readPkgAndPrepare")
+		rp.forceCleanPacketPoolFlag(request, "readPkgAndPrepare")
 		err = fmt.Errorf("%v local(%v)->remote(%v) recive error(%v)", ActionreadPkgAndPrepare, rp.sourceConn.LocalAddr().String(),
 			rp.sourceConn.RemoteAddr().String(), err)
 		return
@@ -430,11 +431,10 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		return
 	}
 	err = rp.putToBeProcess(request)
-	if err==nil {
+	if err == nil {
 		request.addPacketPoolRefCnt()
 		request.addDataPoolRefCnt()
 	}
-
 
 	return
 }
@@ -464,7 +464,7 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (err error) {
 		if transport, forwardErr = rp.allocateFollowersConns(request, index); forwardErr != nil {
 			rp.setGlobalErrAndFirstPkg(request, forwardErr)
 			log.LogErrorf("replID(%v) firstErrAndPkg(%v,%v),reqID(%v) Op(%v) forwardErr(%v)",
-				rp.replId, rp.globalErr, rp.firstErrPkg, request.ReqID, request.GetOpMsg(),forwardErr)
+				rp.replId, rp.globalErr, rp.firstErrPkg, request.ReqID, request.GetOpMsg(), forwardErr)
 			incFailure(forwardErr)
 			if failure > maxFailure {
 				err = forwardErr
@@ -482,7 +482,7 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (err error) {
 		if forwardErr = transport.Write(followerRequest); forwardErr != nil {
 			rp.setGlobalErrAndFirstPkg(request, forwardErr)
 			log.LogErrorf("replID(%v) firstErrAndPkg(%v,%v),reqID(%v) Op(%v) forwardErr(%v)",
-				rp.replId, rp.globalErr, rp.firstErrPkg, request.ReqID, request.GetOpMsg(),forwardErr)
+				rp.replId, rp.globalErr, rp.firstErrPkg, request.ReqID, request.GetOpMsg(), forwardErr)
 			incFailure(err)
 			if failure > maxFailure {
 				err = forwardErr
@@ -521,7 +521,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 			msg := fmt.Sprintf("ReplProtocol(%v): dealRequest(%v) OperatorAndForwardPktGoRoutine: occurred panic. \n"+
 				"message: %v\n"+
 				"stack:\n%v",
-				rp.remote,currRequest.GetUniqueLogId(), r,string(debug.Stack()))
+				rp.remote, currRequest.GetUniqueLogId(), r, string(debug.Stack()))
 			log.LogCritical(msg)
 			exporter.WarningPanic(msg)
 			rp.exitGoRoutine(1)
@@ -537,7 +537,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	for {
 		select {
 		case request := <-rp.toBeProcessedCh:
-			currRequest=request
+			currRequest = request
 			rp.processRequest(request)
 		case <-ticker.C:
 			rp.autoReleaseFollowerTransport()
@@ -589,7 +589,6 @@ func (rp *ReplProtocol) autoReleaseFollowerTransport() {
 	rp.lock.Unlock()
 }
 
-
 func (rp *ReplProtocol) putLeaderPacketToCheckList(request *Packet) {
 	if request.IsLeaderPacket() {
 		rp.packetListLock.Lock()
@@ -616,8 +615,8 @@ func (rp *ReplProtocol) checkForwardPacketPost() {
 	}
 	for e := rp.forwardPacketCheckList.Front(); e != nil; e = e.Next() {
 		p := e.Value.(*Packet)
-		if p.canPutToDataPool(){
-			rp.cleanDataPoolFlag(p,"checkForwardPacketPost")
+		if p.canPutToDataPool() {
+			rp.cleanDataPoolFlag(p, "checkForwardPacketPost")
 			rp.forwardPacketCheckList.Remove(e)
 			freeCnt++
 			continue
@@ -636,12 +635,12 @@ func (rp *ReplProtocol) checkForwardPacketPost() {
 
 }
 
-func (rp *ReplProtocol)exitGoRoutine(index int) {
+func (rp *ReplProtocol) exitGoRoutine(index int) {
 	rp.exitedMu.Lock()
 	rp.allThreadStatsLock.Lock()
 	rp.allThreadStats[index] = ReplProtocalThreadExit
 	rp.allThreadStatsLock.Unlock()
-	atomic.AddInt32(&rp.exited,-1)
+	atomic.AddInt32(&rp.exited, -1)
 	if atomic.LoadInt32(&rp.exited) == ReplHasExited {
 		_ = rp.sourceConn.Close()
 		rp.cleanResource()
@@ -655,7 +654,7 @@ func (rp *ReplProtocol) writeResponseToClientGoroutine() {
 			msg := fmt.Sprintf("ReplProtocol(%v): writeResponseToClientGoroutine: occurred panic. \n"+
 				"message: %v\n"+
 				"stack:\n%v",
-				rp.remote,r, string(debug.Stack()))
+				rp.remote, r, string(debug.Stack()))
 			log.LogCritical(msg)
 			exporter.WarningPanic(msg)
 			rp.exitGoRoutine(2)
@@ -701,7 +700,7 @@ func GetReplProtocolDetail() (allReplDetail []*ReplProtocalBufferDetail) {
 		rd.Addr = rp.sourceConn.RemoteAddr().String()
 		rd.Cnt = atomic.LoadInt64(&rp.getNumFromDataPool) - atomic.LoadInt64(&rp.putNumToDataPool)
 		rd.ReplID = rp.replId
-		rd.UseBytes = rd.Cnt * util.BlockSize
+		rd.UseBytes = rd.Cnt * unit.BlockSize
 		allReplDetail = append(allReplDetail, rd)
 		return true
 	})
@@ -786,16 +785,16 @@ func (rp *ReplProtocol) checkLocalResultAndReceiveAllFollowerResponse(request *P
 func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	var err error
 	defer func() {
-		rp.cleanDataPoolFlag(reply,"writeResponse")
-		rp.cleanPacketPoolFlag(reply,"writeResponse")
+		rp.cleanDataPoolFlag(reply, "writeResponse")
+		rp.cleanPacketPoolFlag(reply, "writeResponse")
 	}()
 	_ = rp.postFunc(reply)
 	if !reply.NeedReply {
 		return
 	}
 	if reply.IsErrPacket() {
-			err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
-				reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
+		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
+			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		log.LogErrorf(err.Error())
 	}
 
@@ -870,8 +869,8 @@ func (rp *ReplProtocol) cleanToBeProcessCh() {
 				return
 			}
 			_ = rp.postFunc(p)
-			rp.forceCleanDataPoolFlag(p,"cleanToBeProcessCh")
-			rp.forceCleanPacketPoolFlag(p,"cleanToBeProcessCh")
+			rp.forceCleanDataPoolFlag(p, "cleanToBeProcessCh")
+			rp.forceCleanPacketPoolFlag(p, "cleanToBeProcessCh")
 		default:
 			return
 		}
@@ -886,9 +885,9 @@ func (rp *ReplProtocol) cleanResponseCh() {
 				return
 			}
 			_ = rp.postFunc(p)
-			rp.forceCleanDataPoolFlag(p,"cleanResponseCh")
+			rp.forceCleanDataPoolFlag(p, "cleanResponseCh")
 			log.LogErrorf("Action[cleanResponseCh] request(%v) because (%v)", p.GetUniqueLogId(), rp.stopError)
-			rp.forceCleanPacketPoolFlag(p,"cleanResponseCh")
+			rp.forceCleanPacketPoolFlag(p, "cleanResponseCh")
 		default:
 			return
 		}
@@ -917,7 +916,7 @@ func (rp *ReplProtocol) loggingIsAllThreadsExit() {
 	log.LogErrorf("ReplProtocol(%v) not only allThreads  exit threadStats(%v)", rp.sourceConn.RemoteAddr(), threadStat)
 }
 
-func (rp *ReplProtocol) cleanDataPoolFlag(p *Packet,srcFunc string) {
+func (rp *ReplProtocol) cleanDataPoolFlag(p *Packet, srcFunc string) {
 	var ok bool
 	if !p.isUseDataPool() {
 		return
@@ -928,7 +927,7 @@ func (rp *ReplProtocol) cleanDataPoolFlag(p *Packet,srcFunc string) {
 	}
 }
 
-func (rp *ReplProtocol) cleanPacketPoolFlag(p *Packet,srcFunc string) {
+func (rp *ReplProtocol) cleanPacketPoolFlag(p *Packet, srcFunc string) {
 	var ok bool
 	if !p.isUsePacketPool() {
 		return
@@ -939,7 +938,7 @@ func (rp *ReplProtocol) cleanPacketPoolFlag(p *Packet,srcFunc string) {
 	}
 }
 
-func (rp *ReplProtocol) forceCleanDataPoolFlag(p *Packet,srcFunc string) {
+func (rp *ReplProtocol) forceCleanDataPoolFlag(p *Packet, srcFunc string) {
 	var ok bool
 	if !p.isUseDataPool() {
 		return
@@ -951,7 +950,7 @@ func (rp *ReplProtocol) forceCleanDataPoolFlag(p *Packet,srcFunc string) {
 
 }
 
-func (rp *ReplProtocol) forceCleanPacketPoolFlag(p *Packet,srcFunc string) {
+func (rp *ReplProtocol) forceCleanPacketPoolFlag(p *Packet, srcFunc string) {
 	var ok bool
 	if !p.isUsePacketPool() {
 		return
@@ -995,14 +994,14 @@ func (rp *ReplProtocol) cleanResource() {
 		request := e.Value.(*Packet)
 		_ = rp.postFunc(request)
 		log.LogErrorf("Action[cleanResource] request(%v) because (%v)", request.GetUniqueLogId(), rp.stopError)
-		rp.forceCleanDataPoolFlag(request,"cleanResourcePacketList")
-		rp.forceCleanPacketPoolFlag(request,"cleanResourcePacketList")
+		rp.forceCleanDataPoolFlag(request, "cleanResourcePacketList")
+		rp.forceCleanPacketPoolFlag(request, "cleanResourcePacketList")
 	}
 
 	for e := rp.forwardPacketCheckList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
-		rp.forceCleanDataPoolFlag(request,"cleanResourceforwardPacketCheckList")
-		rp.forceCleanPacketPoolFlag(request,"cleanResourceforwardPacketCheckList")
+		rp.forceCleanDataPoolFlag(request, "cleanResourceforwardPacketCheckList")
+		rp.forceCleanPacketPoolFlag(request, "cleanResourceforwardPacketCheckList")
 	}
 	rp.cleanResponseCh()
 	rp.packetList = list.New()
@@ -1010,15 +1009,14 @@ func (rp *ReplProtocol) cleanResource() {
 	rp.packetList = nil
 	rp.followerConnects = nil
 	rp.packetListLock.Unlock()
-	if atomic.LoadInt64(&rp.getNumFromDataPool)!=atomic.LoadInt64(&rp.putNumToDataPool) ||
-		atomic.LoadInt64(&rp.getPacketFromPoolCnt) !=atomic.LoadInt64(&rp.putPacketToPoolCnt) {
-		log.LogWarnf(fmt.Sprintf("repl(%v) ReplProtocol(%v) getNumFromDataPool(%v) putNumToDataPool(%v)" +
+	if atomic.LoadInt64(&rp.getNumFromDataPool) != atomic.LoadInt64(&rp.putNumToDataPool) ||
+		atomic.LoadInt64(&rp.getPacketFromPoolCnt) != atomic.LoadInt64(&rp.putPacketToPoolCnt) {
+		log.LogWarnf(fmt.Sprintf("repl(%v) ReplProtocol(%v) getNumFromDataPool(%v) putNumToDataPool(%v)"+
 			" getPacketFromPoolCnt(%v) putPacketToPoolCnt(%v)",
 			rp.replId, rp.sourceConn.RemoteAddr(), atomic.LoadInt64(&rp.getNumFromDataPool),
-			atomic.LoadInt64(&rp.putNumToDataPool),atomic.LoadInt64(&rp.getPacketFromPoolCnt),
+			atomic.LoadInt64(&rp.putNumToDataPool), atomic.LoadInt64(&rp.getPacketFromPoolCnt),
 			atomic.LoadInt64(&rp.putPacketToPoolCnt)))
 	}
-
 
 	ReplProtocalMap.Delete(rp.replId)
 

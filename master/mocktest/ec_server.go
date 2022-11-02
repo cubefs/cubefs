@@ -24,7 +24,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 type MockEcPartition struct {
@@ -168,7 +168,7 @@ func (ecs *MockEcServer) handleCreateEcPartition(conn net.Conn, p *proto.Packet,
 		PartitionID: req.PartitionID,
 		VolName:     req.VolumeID,
 		total:       req.PartitionSize,
-		used:        10 * util.GB,
+		used:        10 * unit.GB,
 		NodeIndex:   req.NodeIndex,
 	}
 	ecs.partitions = append(ecs.partitions, partition)
@@ -180,12 +180,12 @@ func (ecs *MockEcServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, task
 	responseAckOKToMaster(conn, pkg, nil)
 	response := &proto.EcNodeHeartbeatResponse{}
 	response.Status = proto.TaskSucceeds
-	response.Used = 5 * util.GB
-	response.Total = 1024 * util.GB
-	response.Available = 1024 * util.GB
+	response.Used = 5 * unit.GB
+	response.Total = 1024 * unit.GB
+	response.Available = 1024 * unit.GB
 	response.CreatedPartitionCnt = 3
-	response.TotalPartitionSize = 120 * util.GB
-	response.MaxCapacity = 800 * util.GB
+	response.TotalPartitionSize = 120 * unit.GB
+	response.MaxCapacity = 800 * unit.GB
 	response.CellName = ecs.zoneName
 
 	response.PartitionReports = make([]*proto.EcPartitionReport, 0)
@@ -194,8 +194,8 @@ func (ecs *MockEcServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, task
 		vr := &proto.EcPartitionReport{
 			PartitionID:     partition.PartitionID,
 			PartitionStatus: proto.ReadWrite,
-			Total:           120 * util.GB,
-			Used:            20 * util.GB,
+			Total:           120 * unit.GB,
+			Used:            20 * unit.GB,
 			DiskPath:        "/cfs",
 			ExtentCount:     10,
 			NeedCompare:     true,

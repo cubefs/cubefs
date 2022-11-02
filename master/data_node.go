@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 // DataNode stores all the information about a data node
@@ -36,9 +36,9 @@ type DataNode struct {
 	ReportTime                time.Time
 	isActive                  bool
 	sync.RWMutex              `graphql:"-"`
-	UsageRatio                float64 // used / total space
-	SelectedTimes             uint64 // number times that this datanode has been selected as the location for a data partition.
-	Carry                     float64 // carry is a factor used in cacluate the node's weight
+	UsageRatio                float64           // used / total space
+	SelectedTimes             uint64            // number times that this datanode has been selected as the location for a data partition.
+	Carry                     float64           // carry is a factor used in cacluate the node's weight
 	TaskManager               *AdminTaskManager `graphql:"-"`
 	DataPartitionReports      []*proto.PartitionReport
 	DataPartitionCount        uint32
@@ -113,7 +113,7 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
-	if dataNode.isActive == true && dataNode.AvailableSpace > 100*util.GB && dataNode.UsageRatio <= 0.95 &&
+	if dataNode.isActive == true && dataNode.AvailableSpace > 100*unit.GB && dataNode.UsageRatio <= 0.95 &&
 		dataNode.ToBeOffline == false && dataNode.ToBeMigrated == false {
 		ok = true
 	}

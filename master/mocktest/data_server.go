@@ -24,11 +24,11 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const (
-	defaultUsedSize = 20 * util.GB
+	defaultUsedSize = 20 * unit.GB
 )
 
 type MockDataServer struct {
@@ -267,13 +267,13 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 	responseAckOKToMaster(conn, pkg, nil)
 	response := &proto.DataNodeHeartbeatResponse{}
 	response.Status = proto.TaskSucceeds
-	response.Used = 5 * util.GB
-	response.Total = 1024 * util.GB
-	response.Available = 1024 * util.GB
+	response.Used = 5 * unit.GB
+	response.Total = 1024 * unit.GB
+	response.Available = 1024 * unit.GB
 	response.CreatedPartitionCnt = 3
-	response.TotalPartitionSize = 120 * util.GB
-	response.MaxCapacity = 800 * util.GB
-	response.RemainingCapacity = 800 * util.GB
+	response.TotalPartitionSize = 120 * unit.GB
+	response.MaxCapacity = 800 * unit.GB
+	response.RemainingCapacity = 800 * unit.GB
 
 	response.ZoneName = mds.zoneName
 	response.PartitionReports = make([]*proto.PartitionReport, 0)
@@ -283,7 +283,7 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 		vr := &proto.PartitionReport{
 			PartitionID:     partition.PartitionID,
 			PartitionStatus: proto.ReadWrite,
-			Total:           120 * util.GB,
+			Total:           120 * unit.GB,
 			Used:            defaultUsedSize,
 			DiskPath:        "/cfs",
 			ExtentCount:     10,
@@ -294,8 +294,8 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 		response.PartitionReports = append(response.PartitionReports, vr)
 	}
 	response.DiskInfos["/cfs"] = &proto.DiskInfo{
-		Total:         10 * util.TB,
-		Used:          8 * util.TB,
+		Total:         10 * unit.TB,
+		Used:          8 * unit.TB,
 		ReservedSpace: 0,
 		Status:        0,
 		Path:          "/cfs",
@@ -355,7 +355,7 @@ func buildSnapshot() (files []*proto.File) {
 	f1 := &proto.File{
 		Name:     "1",
 		Crc:      4045512210,
-		Size:     2 * util.MB,
+		Size:     2 * unit.MB,
 		Modified: 1562507765,
 	}
 	files = append(files, f1)
@@ -363,7 +363,7 @@ func buildSnapshot() (files []*proto.File) {
 	f2 := &proto.File{
 		Name:     "2",
 		Crc:      4045512210,
-		Size:     2 * util.MB,
+		Size:     2 * unit.MB,
 		Modified: 1562507765,
 	}
 	files = append(files, f2)
@@ -371,7 +371,7 @@ func buildSnapshot() (files []*proto.File) {
 	f3 := &proto.File{
 		Name:     "50000010",
 		Crc:      4045512210,
-		Size:     2 * util.MB,
+		Size:     2 * unit.MB,
 		Modified: 1562507765,
 	}
 	files = append(files, f3)

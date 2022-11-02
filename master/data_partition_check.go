@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64, dpWriteableThreshold float64,
@@ -150,7 +150,7 @@ func (partition *DataPartition) hasReplicaReachDiskUsageThreshold(diskUsageThres
 
 func (partition *DataPartition) canWrite() bool {
 	avail := partition.total - partition.used
-	if int64(avail) > 10*util.GB {
+	if int64(avail) > 10*unit.GB {
 		return true
 	}
 	return false
@@ -373,7 +373,7 @@ func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsag
 			diff = temp
 		}
 	}
-	if diff > float64(diffSpaceUsage) && diff < float64(util.DefaultDataPartitionSize) {
+	if diff > float64(diffSpaceUsage) && diff < float64(unit.DefaultDataPartitionSize) {
 		msg := fmt.Sprintf("action[checkReplicaSize] vol[%v],partition[%v] difference space usage [%v] larger than %v, ",
 			partition.VolName, partition.PartitionID, diff, diffSpaceUsage)
 		for _, dr := range partition.Replicas {

@@ -30,8 +30,8 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"github.com/gorilla/mux"
 )
 
@@ -122,7 +122,7 @@ func parseRequestAuthInfoV2(r *http.Request) (ra *requestAuthInfoV2, err error) 
 		return nil, errors.New("header has no prefix ")
 	}
 
-	credentialStr := util.SubString(authStr, len(RequestHeaderV2AuthorizationScheme), len(authStr))
+	credentialStr := stringutil.SubString(authStr, len(RequestHeaderV2AuthorizationScheme), len(authStr))
 	credentialStr = strings.Trim(credentialStr, " ")
 	credentials := strings.Split(credentialStr, ":")
 	if len(credentials) < 2 {

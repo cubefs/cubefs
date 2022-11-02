@@ -28,9 +28,9 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	authSDK "github.com/chubaofs/chubaofs/sdk/auth"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/auth"
 	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -109,7 +109,7 @@ type MetaWrapper struct {
 	ossBucketPolicy proto.BucketAccessPolicy
 	mc              *masterSDK.MasterClient
 	ac              *authSDK.AuthClient
-	conns           *util.ConnectPool
+	conns           *connpool.ConnectPool
 	connConfig      *proto.ConnConfig
 	volNotExists    bool
 
@@ -236,7 +236,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		}
 		break
 	}
-	mw.conns = util.NewConnectPoolWithTimeoutAndCap(0, 10, mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
+	mw.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
 
 	mw.wg.Add(2)
 	go mw.refresh()

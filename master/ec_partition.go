@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const (
@@ -344,7 +344,7 @@ func (ecdp *EcDataPartition) isEcDataCatchUp() (ok bool) {
 	ecdp.RLock()
 	defer ecdp.RUnlock()
 	minus := ecdp.getEcMinus()
-	return minus < util.GB
+	return minus < unit.GB
 }
 
 // Obtain all the ec partitions in a volume.
@@ -386,7 +386,7 @@ func (c *Cluster) addEcReplica(ecdp *EcDataPartition, index int, hosts []string)
 	if err = c.doCreateEcReplica(ecdp, ecNode, hosts); err != nil {
 		return
 	}
-	ecdp.hostsIdx[index] =  true
+	ecdp.hostsIdx[index] = true
 	return
 }
 
@@ -446,7 +446,7 @@ func (c *Cluster) createEcDataPartition(vol *Vol, dp *DataPartition) (ecdp *EcDa
 			return
 		}
 		ecNode.Lock()
-		ecNode.AvailableSpace    -= neededSpace
+		ecNode.AvailableSpace -= neededSpace
 		ecNode.MaxDiskAvailSpace -= neededSpace
 		ecNode.Unlock()
 	}
@@ -495,7 +495,7 @@ func (c *Cluster) createEcDataPartition(vol *Vol, dp *DataPartition) (ecdp *EcDa
 		wg.Wait()
 		goto errHandler
 	default:
-		ecdp.total = util.DefaultDataPartitionSize
+		ecdp.total = unit.DefaultDataPartitionSize
 		ecdp.Status = proto.ReadWrite
 		ecdp.NeededSpace = neededSpace
 		ecdp.LastUpdateTime = getDpLastUpdateTime(dp)
@@ -527,7 +527,6 @@ func (c *Cluster) decommissionEcDataPartition(offlineAddr string, ecdp *EcDataPa
 		index       int
 	)
 
-
 	dp, err := c.getDataPartitionByID(ecdp.PartitionID)
 	if err != nil {
 		return
@@ -536,7 +535,6 @@ func (c *Cluster) decommissionEcDataPartition(offlineAddr string, ecdp *EcDataPa
 		err = errors.NewErrorf("ecPartition(%v) is migrating, can't decommission", ecdp.PartitionID)
 		return
 	}
-
 
 	ecdp.RLock()
 	if ok := ecdp.hasHost(offlineAddr); !ok {
@@ -698,7 +696,7 @@ func (c *Cluster) loadEcPartitions() (err error) {
 		ep.isRecover = edpv.IsRecover
 		ep.Status = edpv.Status
 		ep.NeededSpace = edpv.NeededSpace
-		ep.PanicHosts  = edpv.PanicHosts
+		ep.PanicHosts = edpv.PanicHosts
 		ep.FinishEcTime = edpv.FinishEcTime
 		ep.LastUpdateTime = edpv.LastUpdateTime
 		for _, rv := range edpv.Replicas {
@@ -869,7 +867,7 @@ func (ecdp *EcDataPartition) afterCreation(nodeAddr, diskPath string, c *Cluster
 	replica.Status = proto.ReadOnly
 	replica.DiskPath = diskPath
 	replica.ReportTime = time.Now().Unix()
-	replica.Total = util.DefaultDataPartitionSize
+	replica.Total = unit.DefaultDataPartitionSize
 	ecdp.addEcReplica(replica)
 	ecdp.checkAndRemoveMissReplica(replica.Addr)
 	ecdp.addEcPeer(ecNode)

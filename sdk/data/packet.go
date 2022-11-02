@@ -28,8 +28,8 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 // Packet defines a wrapper of the packet in proto.
@@ -249,7 +249,7 @@ func (p *Packet) readFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 	if deadlineTimeNs != proto.NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(time.Duration(deadlineTimeNs) * time.Nanosecond))
 	}
-	header, _ := proto.Buffers.Get(util.PacketHeaderSize)
+	header, _ := proto.Buffers.Get(unit.PacketHeaderSize)
 	defer proto.Buffers.Put(header)
 	if _, err = io.ReadFull(c, header); err != nil {
 		return
@@ -301,7 +301,7 @@ func (p *Packet) Copy() *Packet {
 }
 
 func readToBuffer(c net.Conn, buf *[]byte, readSize int) (err error) {
-	if *buf == nil || readSize != util.BlockSize {
+	if *buf == nil || readSize != unit.BlockSize {
 		*buf = make([]byte, readSize)
 	}
 	_, err = io.ReadFull(c, (*buf)[:readSize])

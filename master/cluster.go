@@ -26,9 +26,9 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 // Cluster stores all the cluster-level information.
@@ -998,7 +998,7 @@ func (c *Cluster) createDataPartition(volName, designatedZoneName string) (dp *D
 		wg.Wait()
 		goto errHandler
 	default:
-		dp.total = util.DefaultDataPartitionSize
+		dp.total = unit.DefaultDataPartitionSize
 		dp.Status = proto.ReadWrite
 	}
 	if err = c.syncAddDataPartition(dp); err != nil {
@@ -3021,9 +3021,9 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 		mpLearnerNum            uint8
 	)
 	if size == 0 {
-		dataPartitionSize = util.DefaultDataPartitionSize
+		dataPartitionSize = unit.DefaultDataPartitionSize
 	} else {
-		dataPartitionSize = uint64(size) * util.GB
+		dataPartitionSize = uint64(size) * unit.GB
 	}
 	if zoneName == "" {
 		zoneName = DefaultZoneName

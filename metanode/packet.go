@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/storage"
 )
 
 type Packet struct {
@@ -62,7 +61,7 @@ func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.
 	p.Opcode = proto.OpMarkDelete
 	p.ExtentType = proto.NormalExtentType
 	p.PartitionID = uint64(dp.PartitionID)
-	if storage.IsTinyExtent(ext.ExtentId) {
+	if proto.IsTinyExtent(ext.ExtentId) {
 		p.ExtentType = proto.TinyExtentType
 		p.Data, _ = json.Marshal(ext)
 		p.Size = uint32(len(p.Data))
@@ -137,7 +136,7 @@ func NewPacketToDeleteEcExtent(ctx context.Context, dp *DataPartition, ext *prot
 	p.Opcode = proto.OpMarkDelete
 	p.ExtentType = proto.NormalExtentType
 	p.PartitionID = uint64(dp.PartitionID)
-	if storage.IsTinyExtent(ext.ExtentId) {
+	if proto.IsTinyExtent(ext.ExtentId) {
 		p.ExtentType = proto.TinyExtentType
 		p.Data, _ = json.Marshal(ext)
 		p.Size = uint32(len(p.Data))

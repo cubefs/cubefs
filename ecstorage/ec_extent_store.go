@@ -32,16 +32,16 @@ import (
 	"path"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const ( //rocksdb persist str
-	baseMapTable                    = uint64(iota)
-	OriginExtentSizeMapTable        //key: +partitionId+extentId                       value: extent size
-	TinyDeleteMapTable              //key: +partitionId+hostIndex+extentId+offset   value: delete info
-	OriginTinyDeleteMapTable        //key: +partitionId+extentId                    value: origin holes info
-	CrcMapTable                     //key: +partitionId+extentId+blockNum           value: crc and size
+	baseMapTable             = uint64(iota)
+	OriginExtentSizeMapTable //key: +partitionId+extentId                       value: extent size
+	TinyDeleteMapTable       //key: +partitionId+hostIndex+extentId+offset   value: delete info
+	OriginTinyDeleteMapTable //key: +partitionId+extentId                    value: origin holes info
+	CrcMapTable              //key: +partitionId+extentId+blockNum           value: crc and size
 )
 
 const (
@@ -52,11 +52,11 @@ const (
 )
 
 type EcTinyDeleteRecord struct {
-	ExtentID  uint64 `json:"extent_id"`
+	ExtentID     uint64 `json:"extent_id"`
 	DeleteStatus uint32 `json:"delete_status"`
-	HostIndex uint32 `json:"host_index"`
-	Offset    uint64 `json:"offset"`
-	Size      uint64 `json:"size"`
+	HostIndex    uint32 `json:"host_index"`
+	Offset       uint64 `json:"offset"`
+	Size         uint64 `json:"size"`
 }
 
 const (
@@ -125,7 +125,7 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 }
 
 const (
-	BaseExtentAddNumOnInitExtentStore=1000
+	BaseExtentAddNumOnInitExtentStore = 1000
 )
 
 func (s *ExtentStore) initBaseFileID() (err error) {
@@ -167,7 +167,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	if baseFileID < MinExtentID {
 		baseFileID = MinExtentID
 	}
-	baseFileID+=BaseExtentAddNumOnInitExtentStore
+	baseFileID += BaseExtentAddNumOnInitExtentStore
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
 	runtime.GC()
@@ -276,15 +276,15 @@ func (s *ExtentStore) EcWrite(extentID uint64, offset, size int64, data []byte, 
 func (s *ExtentStore) EcUpdateCrc(partitionId, extentId uint64, offset, size int64, crc uint32, crcFunc EcUpdateCrcFunc) (err error) {
 	var exist bool
 	blockSize := uint32(0)
-	blockNo := uint64(offset / util.EcBlockSize)
-	offsetInBlock := offset % util.EcBlockSize
+	blockNo := uint64(offset / unit.EcBlockSize)
+	offsetInBlock := offset % unit.EcBlockSize
 	_, blockSize, exist, err = s.ecDb.GetEcBlockCrcInfo(partitionId, extentId, blockNo)
 	if err != nil {
 		return
 	}
 
 	log.LogDebugf("EcUpdateCrc offset(%v) size(%v) blockSize(%v)",
-			offset, size, blockSize)
+		offset, size, blockSize)
 	if !exist {
 		err = crcFunc(partitionId, extentId, blockNo, uint32(size), crc)
 		return
@@ -296,7 +296,7 @@ func (s *ExtentStore) EcUpdateCrc(partitionId, extentId uint64, offset, size int
 	}
 
 	//delete tinyExtent update parityNode data trigger
-	if offsetInBlock+size <= util.EcBlockSize {
+	if offsetInBlock+size <= unit.EcBlockSize {
 		err = crcFunc(partitionId, extentId, blockNo, 0, 0)
 		return
 	}
@@ -313,15 +313,15 @@ func (s *ExtentStore) computeEcExtentCrc(partitionId, extentId, offset, size uin
 		blockCrc  uint32
 		exist     bool
 	)
-	blockStartNo := offset / util.EcBlockSize
+	blockStartNo := offset / unit.EcBlockSize
 	endIndex := offset + size
-	blockEndNo := (offset + size) / util.EcBlockSize
-	if endIndex%util.EcBlockSize != 0 {
+	blockEndNo := (offset + size) / unit.EcBlockSize
+	if endIndex%unit.EcBlockSize != 0 {
 		blockEndNo += 1
 	}
 
 	readN := 0
-	bdata := make([]byte, util.EcBlockSize)
+	bdata := make([]byte, unit.EcBlockSize)
 	e, err := s.extentWithHeaderByExtentID(extentId)
 	if err != nil {
 		return
@@ -342,8 +342,8 @@ func (s *ExtentStore) computeEcExtentCrc(partitionId, extentId, offset, size uin
 			continue
 		}
 
-		if blockCrc == 0 {//tiny block need update crc
-			blockOffset := int64(blockNo * util.EcBlockSize)
+		if blockCrc == 0 { //tiny block need update crc
+			blockOffset := int64(blockNo * unit.EcBlockSize)
 			_, blockCrc, err = e.EcReadTiny(bdata[:blockSize], int64(blockSize), blockOffset, true)
 			log.LogDebugf("computeEcExtentCrc extentId(%v) blockNo(%v) newCrc(%v)", e.extentID, blockNo, blockCrc)
 			if err != nil {
@@ -521,10 +521,10 @@ func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64) er
 	if IsTinyExtent(extentID) {
 		return nil
 	}
-	if offset+size > util.BlockSize*util.BlockCount {
+	if offset+size > unit.BlockSize*unit.BlockCount {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
-	if offset >= util.BlockCount*util.BlockSize || size == 0 {
+	if offset >= unit.BlockCount*unit.BlockSize || size == 0 {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
 	return nil
@@ -806,11 +806,11 @@ func (s *ExtentStore) GetAllEcTinyDeleteRecord() (tinyDeleteRecords []*EcTinyDel
 		log.LogDebugf("GetAllEcTinyDeleteRecord hostIndex(%v) extentId(%v) offset(%v) size(%v) deleteStatus(%v)",
 			hostIndex, extentId, offset, size, deleteStatus)
 		recordInfo := EcTinyDeleteRecord{
-			ExtentID:  extentId,
+			ExtentID:     extentId,
 			DeleteStatus: deleteStatus,
-			HostIndex: hostIndex,
-			Offset:    offset,
-			Size:      size,
+			HostIndex:    hostIndex,
+			Offset:       offset,
+			Size:         size,
 		}
 		tinyDeleteRecords = append(tinyDeleteRecords, &recordInfo)
 		return
@@ -892,7 +892,7 @@ func (s *ExtentStore) TinyDelInfoRange(deleteStatus uint32, cb func(extentId, of
 	return
 }
 
-func (s *ExtentStore) TinyDelInfoExtentIdRange(extentId uint64, deleteStatus uint32, cb func(offset, size uint64, hostIndex uint32) (err error)) (err error){
+func (s *ExtentStore) TinyDelInfoExtentIdRange(extentId uint64, deleteStatus uint32, cb func(offset, size uint64, hostIndex uint32) (err error)) (err error) {
 	err = s.ecDb.tinyDelInfoExtentIdRange(s.partitionID, extentId, deleteStatus, cb)
 	return
 }
@@ -901,5 +901,3 @@ func (s *ExtentStore) PersistBlockCrcRange(extentId uint64, cb func(blockNum uin
 	err = s.ecDb.persistBlockCrcRange(s.partitionID, extentId, cb)
 	return
 }
-
-

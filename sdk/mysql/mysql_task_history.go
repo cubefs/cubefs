@@ -4,16 +4,16 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"strings"
 	"time"
 )
 
 const (
-	ColumnTaskCreateTime    = "task_create_time"
-	ColumnTaskUpdateTime    = "task_update_time"
+	ColumnTaskCreateTime = "task_create_time"
+	ColumnTaskUpdateTime = "task_update_time"
 )
 
 // add task to task history table
@@ -78,11 +78,11 @@ func SelectTaskHistory(cluster, volume string, dpId, mpId uint64, taskType, limi
 	sqlCmd := fmt.Sprintf("select %s from task_history", taskHistoryColumns())
 	conditions := make([]string, 0)
 	values := make([]interface{}, 0)
-	if !util.IsStrEmpty(cluster) {
+	if !stringutil.IsStrEmpty(cluster) {
 		conditions = append(conditions, " cluster_name = ?")
 		values = append(values, cluster)
 	}
-	if !util.IsStrEmpty(volume) {
+	if !stringutil.IsStrEmpty(volume) {
 		conditions = append(conditions, " vol_name = ?")
 		values = append(values, volume)
 	}

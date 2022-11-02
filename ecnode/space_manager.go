@@ -27,9 +27,9 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const (
@@ -339,7 +339,7 @@ func (manager *SpaceManager) getMinUsageDisk(partitionSize uint64) (d *Disk) {
 
 	minWeight := math.MaxFloat64
 	for _, disk := range manager.disks {
-		if disk.Available <= 5*util.GB || disk.Status != proto.ReadWrite || disk.Unallocated < partitionSize {
+		if disk.Available <= 5*unit.GB || disk.Status != proto.ReadWrite || disk.Unallocated < partitionSize {
 			continue
 		}
 		diskWeight := float64(atomic.LoadUint64(&disk.Allocated)) / float64(disk.Total)
@@ -450,5 +450,3 @@ func (e *EcNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
 	}
 	return
 }
-
-

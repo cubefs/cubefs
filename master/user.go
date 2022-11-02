@@ -10,8 +10,8 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 )
 
 const (
@@ -62,11 +62,11 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 	}
 	var accessKey = param.AccessKey
 	if accessKey == "" {
-		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
+		accessKey = stringutil.RandomString(accessKeyLength, stringutil.Numeric|stringutil.LowerLetter|stringutil.UpperLetter)
 	}
 	var secretKey = param.SecretKey
 	if secretKey == "" {
-		secretKey = util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
+		secretKey = stringutil.RandomString(secretKeyLength, stringutil.Numeric|stringutil.LowerLetter|stringutil.UpperLetter)
 	}
 	var userType = param.Type
 	var description = param.Description
@@ -81,7 +81,7 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 	}
 	_, exist = u.AKStore.Load(accessKey)
 	for exist {
-		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
+		accessKey = stringutil.RandomString(accessKeyLength, stringutil.Numeric|stringutil.LowerLetter|stringutil.UpperLetter)
 		_, exist = u.AKStore.Load(accessKey)
 	}
 	userPolicy = proto.NewUserPolicy()

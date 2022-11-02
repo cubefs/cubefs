@@ -11,10 +11,10 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/hbase"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/mysql"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"sort"
 	"strconv"
 	"strings"
@@ -568,12 +568,12 @@ func (sv *SmartVolumeWorker) getHBaseMetrics(clusterId, volName string, smartEna
 	// because if data partition has not been created, the records from its creation time to the start time are empty, and it will be considered that there is no request
 	if startTimestamp < smartEnableTime {
 		log.LogInfof("[getHBaseMetrics] query start time early then volume smart rule effective time, cluster(%v), volume(%v), dp(%v), policy(%v), startTime(%v), smartEnableTime(%v)",
-			clusterId, volName, dp.PartitionID, policy.String(), util.FormatTimestamp(startTimestamp), util.FormatTimestamp(smartEnableTime))
+			clusterId, volName, dp.PartitionID, policy.String(), stringutil.FormatTimestamp(startTimestamp), stringutil.FormatTimestamp(smartEnableTime))
 		return nil, errors.New("query start time early then volume smart rule effective time")
 	}
 	if startTimestamp < dp.CreateTime {
 		log.LogInfof("[getHBaseMetrics] query start time early then create time, cluster(%v), volume(%v), dp(%v), policy(%v), startTime(%v), dpCreateTime(%v)",
-			clusterId, volName, dp.PartitionID, policy.String(), util.FormatTimestamp(startTimestamp), util.FormatTimestamp(dp.CreateTime))
+			clusterId, volName, dp.PartitionID, policy.String(), stringutil.FormatTimestamp(startTimestamp), stringutil.FormatTimestamp(dp.CreateTime))
 		return nil, errors.New("query start time early then create time")
 	}
 	if stopTime, err = getStopTime(policy.TimeType); err != nil {
@@ -723,12 +723,12 @@ func (sv *SmartVolumeWorker) unmarshallTaskInfo(taskInfo string) (sourceHosts []
 		log.LogErrorf("[unmarshallTaskInfo] parse task info failed, index is less then zero, taskInfo(%v)", taskInfo)
 		return nil, 0, 0, nil, errors.New("parse task info failed")
 	}
-	lpType := util.SubString(taskInfo, 0, index)
+	lpType := stringutil.SubString(taskInfo, 0, index)
 	if len(lpType) <= 0 {
 		log.LogErrorf("[unmarshallTaskInfo] parse task info layer type failed, taskInfo(%v)", taskInfo)
 		return nil, 0, 0, nil, errors.New("parse task info layer type failed")
 	}
-	taskInfoSubStr := util.SubString(taskInfo, index+1, len(taskInfo))
+	taskInfoSubStr := stringutil.SubString(taskInfo, index+1, len(taskInfo))
 	if len(taskInfoSubStr) <= 0 {
 		log.LogErrorf("[unmarshallTaskInfo] parse task info sub string failed, taskInfo(%v)", taskInfo)
 		return nil, 0, 0, nil, errors.New("parse task info sub string failed")
@@ -889,7 +889,7 @@ func (sv *SmartVolumeWorker) parseConfig(cfg *config.Config) (err error) {
 	}
 	// parse HBase config
 	hBaseUrl := cfg.GetString(config.ConfigKeyHBaseUrl)
-	if util.IsStrEmpty(hBaseUrl) {
+	if stringutil.IsStrEmpty(hBaseUrl) {
 		return fmt.Errorf("error: no hBase url")
 	}
 	sv.HBaseConfig = config.NewHBaseConfig(hBaseUrl)

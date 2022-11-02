@@ -1,4 +1,4 @@
-package util
+package cpu
 
 import (
 	"encoding/json"
@@ -40,7 +40,7 @@ func GetProcessCPUUsage(pid int) (usage float64, err error) {
 
 func GetCPUCoreNumber() (n int) {
 	var err error
-	defer func(){
+	defer func() {
 		if err != nil || n == 0 {
 			n, _ = cpu.Counts(false)
 		}

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"io"
 	"math"
 	"sync"
@@ -123,7 +123,7 @@ func (inodeTask *CmpInodeTask) ReadAndWriteEkData() (err error) {
 		writeN     int
 		readOffset = offset
 		readSize   uint64
-		buff       = make([]byte, util.BlockSize)
+		buff       = make([]byte, unit.BlockSize)
 		write      int
 		writeTotal int
 	)

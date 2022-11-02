@@ -20,8 +20,8 @@ import (
 	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"math"
 )
 
@@ -31,12 +31,12 @@ type volStatInfo = proto.VolStatInfo
 
 func newVolStatInfo(name string, total, used uint64, ratio string, enableToken, enableWriteCache bool) *volStatInfo {
 	return &volStatInfo{
-		Name:        		name,
-		TotalSize:   		total,
-		UsedSize:    		used,
-		UsedRatio:   		ratio,
-		EnableToken: 		enableToken,
-		EnableWriteCache: 	enableWriteCache,
+		Name:             name,
+		TotalSize:        total,
+		UsedSize:         used,
+		UsedRatio:        ratio,
+		EnableToken:      enableToken,
+		EnableWriteCache: enableWriteCache,
 	}
 }
 
@@ -76,8 +76,8 @@ func (c *Cluster) updateZoneStatInfo() {
 			if node.isActive && node.isWriteAble() {
 				zs.DataNodeStat.WritableNodes++
 			}
-			zs.DataNodeStat.Total += float64(node.Total) / float64(util.GB)
-			zs.DataNodeStat.Used += float64(node.Used) / float64(util.GB)
+			zs.DataNodeStat.Total += float64(node.Total) / float64(unit.GB)
+			zs.DataNodeStat.Used += float64(node.Used) / float64(unit.GB)
 			if node.UsageRatio >= defaultHighUsedRatioDataNodesThreshold {
 				highUsedRatioDataNodes++
 			}
@@ -97,8 +97,8 @@ func (c *Cluster) updateZoneStatInfo() {
 			if node.IsActive && node.isWritable(proto.StoreModeMem) {
 				zs.MetaNodeStat.WritableNodes++
 			}
-			zs.MetaNodeStat.Total += float64(node.Total) / float64(util.GB)
-			zs.MetaNodeStat.Used += float64(node.Used) / float64(util.GB)
+			zs.MetaNodeStat.Total += float64(node.Total) / float64(unit.GB)
+			zs.MetaNodeStat.Used += float64(node.Used) / float64(unit.GB)
 			if node.Ratio > defaultHighUsedRatioMetaNodesThreshold {
 				highUsedRatioMetaNodes++
 			}
@@ -149,8 +149,8 @@ func (c *Cluster) updateDataNodeStatInfo() {
 		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add dataNode",
 			c.Name, usedRate, used, total))
 	}
-	c.dataNodeStatInfo.TotalGB = total / util.GB
-	usedGB := used / util.GB
+	c.dataNodeStatInfo.TotalGB = total / unit.GB
+	usedGB := used / unit.GB
 	c.dataNodeStatInfo.IncreasedGB = int64(usedGB) - int64(c.dataNodeStatInfo.UsedGB)
 	c.dataNodeStatInfo.UsedGB = usedGB
 	c.dataNodeStatInfo.UsedRatio = strconv.FormatFloat(usedRate, 'f', 3, 32)
@@ -188,8 +188,8 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add metaNode",
 			c.Name, useRate, used, total))
 	}
-	c.metaNodeStatInfo.TotalGB = total / util.GB
-	newUsed := used / util.GB
+	c.metaNodeStatInfo.TotalGB = total / unit.GB
+	newUsed := used / unit.GB
 	c.metaNodeStatInfo.IncreasedGB = int64(newUsed) - int64(c.metaNodeStatInfo.UsedGB)
 	c.metaNodeStatInfo.UsedGB = newUsed
 	c.metaNodeStatInfo.UsedRatio = strconv.FormatFloat(useRate, 'f', 3, 32)
@@ -201,7 +201,7 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 func (c *Cluster) updateVolStatInfo() {
 	vols := c.copyVols()
 	for _, vol := range vols {
-		used, total := vol.totalUsedSpace(), vol.Capacity*util.GB
+		used, total := vol.totalUsedSpace(), vol.Capacity*unit.GB
 		if total <= 0 {
 			continue
 		}

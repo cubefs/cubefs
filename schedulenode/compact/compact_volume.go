@@ -5,8 +5,8 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -65,7 +65,7 @@ func NewCompVolume(name string, clusterName string, nodes []string, mcc *metaNod
 		Volume:              name,
 		Masters:             nodes,
 		FollowerRead:        true,
-		TinySize:            util.MB * 8,
+		TinySize:            unit.MB * 8,
 		OnInsertExtentKey:   metaWrapper.InsertExtentKey,
 		OnGetExtents:        metaWrapper.GetExtents,
 		OnTruncate:          metaWrapper.Truncate,
@@ -227,7 +227,7 @@ func (vol *CompactVolumeInfo) GetVolumeCompactView() *proto.VolumeCompactView {
 	for mpId := range vol.runingMpIds {
 		mpIds = append(mpIds, mpId)
 	}
-	sort.Slice(mpIds, func(i, j int) bool {return mpIds[i] < mpIds[j]})
+	sort.Slice(mpIds, func(i, j int) bool { return mpIds[i] < mpIds[j] })
 	return &proto.VolumeCompactView{
 		ClusterName:   vol.ClusterName,
 		Name:          vol.Name,

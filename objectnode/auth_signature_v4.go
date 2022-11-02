@@ -28,8 +28,8 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"github.com/gorilla/mux"
 )
 
@@ -309,11 +309,11 @@ func (req *signatureRequestV4) parseRequestHeaderV4(r *http.Request) (err error)
 	if authorizationValue != "" {
 		authorizationValue = strings.ReplaceAll(authorizationValue, " ", "")
 		credentialIndex := strings.Index(authorizationValue, credentialFlag)
-		algorithm := util.SubString(authorizationValue, len(HeaderNameAuthorization)+1, credentialIndex)
+		algorithm := stringutil.SubString(authorizationValue, len(HeaderNameAuthorization)+1, credentialIndex)
 		if algorithm != "" {
 			req.Algorithm = algorithm
 		}
-		credentialSignatureStr := util.SubString(authorizationValue, credentialIndex+len(credentialFlag), len(authorizationValue))
+		credentialSignatureStr := stringutil.SubString(authorizationValue, credentialIndex+len(credentialFlag), len(authorizationValue))
 		authorizationValues := strings.Split(credentialSignatureStr, ",")
 		if len(authorizationValues) < 2 {
 			log.LogInfof("decode signature error: %v  ", authorizationValue)
@@ -326,9 +326,9 @@ func (req *signatureRequestV4) parseRequestHeaderV4(r *http.Request) (err error)
 		}
 		signedHeadersStr := authorizationValues[1]
 		signatureStr := authorizationValues[2]
-		req.Signature = util.SubString(signatureStr, len(signatureFlag), len(signatureStr))
+		req.Signature = stringutil.SubString(signatureStr, len(signatureFlag), len(signatureStr))
 
-		signedHeadersStr = util.SubString(signedHeadersStr, len(signedHeadersFlag), len(signedHeadersStr))
+		signedHeadersStr = stringutil.SubString(signedHeadersStr, len(signedHeadersFlag), len(signedHeadersStr))
 		req.SignedHeaders = strings.Split(signedHeadersStr, ";")
 	}
 	return

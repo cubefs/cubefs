@@ -23,9 +23,10 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/connpool"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 )
 
 const (
@@ -57,7 +58,7 @@ type StreamConn struct {
 
 var (
 	streamConnPoolInitOnce sync.Once
-	StreamConnPool *util.ConnectPool
+	StreamConnPool         *connpool.ConnectPool
 )
 
 // NewStreamConn returns a new stream connection.
@@ -226,7 +227,7 @@ func (sc *StreamConn) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *Ex
 	readBytes = 0
 	for readBytes < int(reqPacket.Size) {
 		replyPacket := NewReply(reqPacket.Ctx(), reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
-		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)
+		bufSize := unit.Min(unit.ReadBlockSize, int(reqPacket.Size)-readBytes)
 		replyPacket.Data = req.Data[readBytes : readBytes+bufSize]
 		e := replyPacket.readFromConn(conn, sc.dp.ClientWrapper.connConfig.ReadTimeoutNs)
 		if e != nil {

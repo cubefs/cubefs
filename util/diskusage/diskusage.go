@@ -1,8 +1,9 @@
-package util
+package diskusage
 
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"github.com/shirou/gopsutil/disk"
 	"io/ioutil"
 	"math"
@@ -68,7 +69,7 @@ func NewFsMon(path string, isRocksDBDisk bool, reservedSpace uint64) (d *FsCapMo
 
 	d.ComputeUsage()
 	if isRocksDBDisk {
-		reservedSpace = uint64(math.Min(float64(reservedSpace), d.Total * DefReservedSpaceMaxRatio))
+		reservedSpace = uint64(math.Min(float64(reservedSpace), d.Total*DefReservedSpaceMaxRatio))
 	} else {
 		reservedSpace = 0
 	}
@@ -91,7 +92,7 @@ func (d *FsCapMon) UpdateReversedSpace(space uint64) {
 	if !d.IsRocksDBDisk {
 		return
 	}
-	reservedSpace := uint64(math.Min(float64(space * MB), d.Total * DefReservedSpaceMaxRatio))
+	reservedSpace := uint64(math.Min(float64(space*unit.MB), d.Total*DefReservedSpaceMaxRatio))
 	d.ReservedSpace = reservedSpace
 	return
 }
@@ -187,7 +188,7 @@ func (d *FsCapMon) CheckDiskStatus(interval time.Duration) {
 	}
 }
 
-func (d *FsCapMon) GetPartitionCount() (mpCount int){
+func (d *FsCapMon) GetPartitionCount() (mpCount int) {
 	dirs, _ := ioutil.ReadDir(d.Path)
 	for _, dir := range dirs {
 		if strings.HasPrefix(dir.Name(), "partition_") {
@@ -196,7 +197,6 @@ func (d *FsCapMon) GetPartitionCount() (mpCount int){
 	}
 	return
 }
-
 
 // score = 1/(1+exp(1-free/allfree)) + 1/(1+exp(num/allnum))
 func (ds *diskScore) computeScore(diskTotalAvail uint64, num int) {
@@ -210,7 +210,7 @@ func SelectDisk(dirs []string) (string, error) {
 
 	var (
 		sumAvail uint64
-		sumCount  int
+		sumCount int
 	)
 
 	for _, dir := range dirs {
@@ -221,7 +221,7 @@ func SelectDisk(dirs []string) (string, error) {
 		}
 		total := float64(fs.Blocks * uint64(fs.Bsize))
 		avail := float64(fs.Bavail * uint64(fs.Bsize))
-		if (total - avail) > total * MAXFsUsedFactor {
+		if (total - avail) > total*MAXFsUsedFactor {
 			log.LogWarnf("dir:[%s] not enough space:[%v] of disk so skip", dir, avail)
 			continue
 		}
