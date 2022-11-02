@@ -130,26 +130,29 @@ errHandler:
 }
 
 func (c *Cluster) handleLcNodeSnapshotScanResp(nodeAddr string, resp *proto.SnapshotVerDelTaskResponse) (err error) {
+
+	//1.mark done for VersionMgr
+	var vol *Vol
+	vol, err = c.getVol(resp.VolName)
+	if err != nil {
+		log.LogErrorf("action[handleLcNodeSnapshotScanResp] snapshot task(%v) scanning completed by %v, results(%v), volume(%v) is not found",
+			resp.ID, nodeAddr, resp, resp.VolName)
+		return
+	} else {
+		_ = vol.VersionMgr.DelVer(resp.VerSeq)
+	}
+
+	//2. mark done for snapshotMgr
 	taskInfo := &proto.DelVerTaskInfo{Id: resp.ID}
 	c.lcMgr.lnStates.ReleaseTask(taskInfo)
 
 	verInfo := c.lcMgr.snapshotMgr.volVerInfos.RemoveProcessingVerInfo(taskInfo.Id)
 	if verInfo != nil {
-		var vol *Vol
-		vol, err = c.getVol(resp.VolName)
-		if err != nil {
-			log.LogErrorf("action[handleLcNodeSnapshotScanResp] snapshot task(%v) scanning completed, results(%v), volume(%v) is not found",
-				taskInfo.Id, resp, resp.VolName)
-			return
-		}
-
-		_ = vol.VersionMgr.DelVer(resp.VerSeq)
-		//todo_lc: statistics??
-		log.LogInfof("action[handleLcNodeSnapshotScanResp] snapshot task(%v) volume(%v) verseq(%v) scanning completed, results(%v).",
-			taskInfo.Id, verInfo.VolName, verInfo.VerSeq, resp)
+		log.LogInfof("action[handleLcNodeSnapshotScanResp] snapshot task(%v) volume(%v) verseq(%v) scanning completed by %v, results(%v).",
+			taskInfo.Id, verInfo.VolName, verInfo.VerSeq, nodeAddr, resp)
 	} else {
-		log.LogErrorf("action[handleLcNodeSnapshotScanResp] snapshot task(%v) scanning completed, results(%v).",
-			taskInfo.Id, resp)
+		log.LogErrorf("action[handleLcNodeSnapshotScanResp] snapshot task(%v) scanning completed by %v, results(%v).",
+			taskInfo.Id, nodeAddr, resp)
 	}
 	return
 }
@@ -270,6 +273,11 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 			}
 			c.lcMgr.snapshotMgr.volVerInfos.Lock()
 			c.lcMgr.snapshotMgr.volVerInfos.TaskResults[task.Id] = tmpResp
+			if pInfo, ok := c.lcMgr.snapshotMgr.volVerInfos.ProcessingVerInfos[task.Id]; ok {
+				pInfo.updateTime = time.Now()
+				log.LogDebugf("action[handleLcNodeHeartbeatResp], snapshot scan taskid(%v) update time",
+					task.Id)
+			}
 			c.lcMgr.snapshotMgr.volVerInfos.Unlock()
 			log.LogDebugf("action[handleLcNodeHeartbeatResp], snapshot scan taskid(%v) rsp(%v)",
 				task.Id, tmpResp)

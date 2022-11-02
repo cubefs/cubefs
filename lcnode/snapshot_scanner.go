@@ -28,6 +28,8 @@ type SnapshotScanner struct {
 	inodeChan   *unboundedchan.UnboundedChan
 	rPoll       *routinepool.RoutinePool
 	currentStat proto.SnapshotStatistics
+	scanFunc    func()
+	scanType    int
 	stopC       chan bool
 }
 
@@ -55,6 +57,7 @@ func NewSnapshotScanner(adminTask *proto.AdminTask, l *LcNode) (*SnapshotScanner
 		inodeChan:   unboundedchan.NewUnboundedChan(defaultUChanInitCapacity),
 		rPoll:       routinepool.NewRoutinePool(snapShotRoutingNumPerTask),
 		currentStat: proto.SnapshotStatistics{},
+		scanType:    SnapScanTypeAll,
 		stopC:       make(chan bool, 0),
 	}
 	return scanner, nil
@@ -93,7 +96,13 @@ func (s *SnapshotScanner) Start() (err error) {
 
 func (s *SnapshotScanner) startScan(scanType int, syncWait bool, report bool) (err error) {
 	response := s.adminTask.Response.(*proto.SnapshotVerDelTaskResponse)
-	go s.scan(scanType)
+
+	s.scanType = scanType
+	if s.scanFunc == nil {
+		log.LogDebugf("startScan: start scanFunc")
+		s.scanFunc = s.scan
+		go s.scanFunc()
+	}
 
 	prefixDentry := &proto.ScanDentry{
 		Inode: proto.RootIno,
@@ -113,13 +122,12 @@ func (s *SnapshotScanner) startScan(scanType int, syncWait bool, report bool) (e
 	return
 }
 
-func (s *SnapshotScanner) getDirJob(dentry *proto.ScanDentry, scanType int) (job func()) {
+func (s *SnapshotScanner) getDirJob(dentry *proto.ScanDentry) (job func()) {
 	//no need to lock
-
-	if scanType == SnapScanTypeOnlyDepth {
+	if s.scanType == SnapScanTypeOnlyDepth {
 		log.LogDebugf("getDirJob: Only depth first job ")
 		job = func() {
-			s.handlVerDelDepthFirst(dentry, scanType)
+			s.handlVerDelDepthFirst(dentry)
 		}
 		return
 	}
@@ -127,18 +135,18 @@ func (s *SnapshotScanner) getDirJob(dentry *proto.ScanDentry, scanType int) (job
 	if s.inodeChan.Len()+snapShotRoutingNumPerTask > defaultMaxChanUnm {
 		log.LogDebugf("getDirJob: Depth first job")
 		job = func() {
-			s.handlVerDelDepthFirst(dentry, scanType)
+			s.handlVerDelDepthFirst(dentry)
 		}
 	} else {
 		log.LogDebugf("getDirJob: Breadth first job")
 		job = func() {
-			s.handlVerDel(dentry, scanType)
+			s.handlVerDel(dentry)
 		}
 	}
 	return
 }
 
-func (s *SnapshotScanner) scan(scanType int) {
+func (s *SnapshotScanner) scan() {
 	log.LogDebugf("Enter scan")
 	defer func() {
 		log.LogDebugf("Exit scan")
@@ -152,7 +160,7 @@ func (s *SnapshotScanner) scan(scanType int) {
 				log.LogWarnf("inodeChan closed")
 			} else {
 				dentry := val.(*proto.ScanDentry)
-				job := s.getDirJob(dentry, scanType)
+				job := s.getDirJob(dentry)
 				_, err := s.rPoll.Submit(job)
 				if err != nil {
 					log.LogErrorf("handlVerDel failed, err(%v)", err)
@@ -162,7 +170,7 @@ func (s *SnapshotScanner) scan(scanType int) {
 	}
 }
 
-func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry, scanType int) {
+func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 	var (
 		children []proto.Dentry
 		ino      *proto.InodeInfo
@@ -243,7 +251,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry, scanTy
 			}
 			//scanDentries = scanDentries[:0]
 			for _, dir := range dirs {
-				s.handlVerDelDepthFirst(dir, scanType)
+				s.handlVerDelDepthFirst(dir)
 			}
 
 			childrenNr := len(children)
@@ -259,7 +267,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry, scanTy
 
 	}
 
-	if scanType != SnapScanTypeOnlyFile {
+	if s.scanType != SnapScanTypeOnlyFile {
 		if ino, err = s.mw.Delete_Ver_ll(dentry.ParentId, dentry.Name, false, s.getTaskVerSeq()); err != nil {
 			if dentry.ParentId >= 1 {
 				log.LogErrorf("action[handlVerDelDepthFirst] Delete_Ver_ll failed, dir(parent[%v] child name[%v]) verSeq[%v] err[%v]",
@@ -276,7 +284,8 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry, scanTy
 
 }
 
-func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry, scanType int) {
+//func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry, scanType int) {
+func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 	var (
 		children []proto.Dentry
 		ino      *proto.InodeInfo
@@ -370,7 +379,7 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry, scanType int) {
 
 	}
 
-	if scanType != SnapScanTypeOnlyFile {
+	if s.scanType != SnapScanTypeOnlyFile {
 		if ino, err = s.mw.Delete_Ver_ll(dentry.ParentId, dentry.Name, os.FileMode(dentry.Type).IsDir(), s.getTaskVerSeq()); err != nil {
 			if dentry.ParentId >= 1 {
 				log.LogErrorf("action[handlVerDel] Delete_Ver_ll failed, dir(parent[%v] child name[%v]) verSeq[%v] err[%v]",
@@ -423,6 +432,8 @@ func (s *SnapshotScanner) checkScanning(report bool) {
 
 					s.lcnode.respondToMaster(s.adminTask)
 					log.LogInfof("scan completed for task(%v)", s.adminTask)
+				} else {
+					log.LogInfof("first round scan completed for task(%v) without report", s.adminTask)
 				}
 
 				return
