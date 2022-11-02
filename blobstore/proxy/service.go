@@ -19,13 +19,14 @@ import (
 	"net/http"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	api "github.com/cubefs/cubefs/blobstore/api/proxy"
+	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/config"
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	alloc "github.com/cubefs/cubefs/blobstore/proxy/allocator"
+	"github.com/cubefs/cubefs/blobstore/proxy/cacher"
 	"github.com/cubefs/cubefs/blobstore/proxy/mq"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -61,6 +62,7 @@ type Config struct {
 
 	alloc.BlobConfig
 	alloc.VolConfig
+	cacher.ConfigCache
 
 	HeartbeatIntervalS uint32            `json:"heartbeat_interval_s"` // proxy heartbeat interval to ClusterManager
 	HeartbeatTicks     uint32            `json:"heartbeat_ticks"`
@@ -90,9 +92,10 @@ type Service struct {
 	// mq
 	shardRepairMgr mq.ShardRepairHandler
 	blobDeleteMgr  mq.BlobDeleteHandler
-
 	// allocator
 	volumeMgr alloc.VolumeMgr
+	// cacher
+	cacher cacher.Cacher
 }
 
 func init() {
@@ -144,6 +147,11 @@ func New(cfg Config, cmcli clustermgr.APIProxy) *Service {
 		log.Fatalf("fail to new volumeMgr, error: %s", err.Error())
 	}
 
+	cacher, err := cacher.New(cfg.ClusterID, cfg.ConfigCache, cmcli)
+	if err != nil {
+		log.Fatalf("fail to new cacher, error: %s", err.Error())
+	}
+
 	// register to clustermgr
 	node := clustermgr.ServiceNode{
 		ClusterID: uint64(cfg.ClusterID),
@@ -159,6 +167,7 @@ func New(cfg Config, cmcli clustermgr.APIProxy) *Service {
 	return &Service{
 		Config:         cfg,
 		volumeMgr:      volumeMgr,
+		cacher:         cacher,
 		shardRepairMgr: shardRepairMgr,
 		blobDeleteMgr:  blobDeleteMgr,
 	}
@@ -166,7 +175,8 @@ func New(cfg Config, cmcli clustermgr.APIProxy) *Service {
 
 func NewHandler(service *Service) *rpc.Router {
 	router := rpc.New()
-	rpc.RegisterArgsParser(&api.ListVolsArgs{}, "json")
+	rpc.RegisterArgsParser(&proxy.ListVolsArgs{}, "json")
+	rpc.RegisterArgsParser(&proxy.CacheVolumeArgs{}, "json")
 
 	// POST /volume/alloc
 	// request  body:  json
@@ -183,6 +193,10 @@ func NewHandler(service *Service) *rpc.Router {
 	// POST /deletemsg
 	// request body: json
 	router.Handle(http.MethodPost, "/deletemsg", service.SendDeleteMessage, rpc.OptArgsBody())
+
+	// GET /cache/volume/{vid}?flush={flush}&version={version}
+	// response body: json
+	router.Handle(http.MethodGet, "/cache/volume/:vid", service.GetCacheVolume, rpc.OptArgsURI(), rpc.OptArgsQuery())
 
 	return router
 }

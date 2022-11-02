@@ -68,6 +68,7 @@ type APIAccess interface {
 // APIProxy sub of cluster manager api for allocator
 type APIProxy interface {
 	GetConfig(ctx context.Context, key string) (string, error)
+	GetVolumeInfo(ctx context.Context, args *GetVolumeArgs) (*VolumeInfo, error)
 	AllocVolume(ctx context.Context, args *AllocVolumeArgs) (AllocatedVolumeInfos, error)
 	AllocBid(ctx context.Context, args *BidScopeArgs) (*BidScopeRet, error)
 	RetainVolume(ctx context.Context, args *RetainVolumeArgs) (RetainVolumes, error)

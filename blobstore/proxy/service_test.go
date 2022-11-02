@@ -22,7 +22,6 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/golang/mock/gomock"
-	_ "github.com/peterbourgon/diskv/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -39,6 +38,8 @@ import (
 )
 
 var (
+	A = gomock.Any()
+
 	errCodeMode = errors.New("codeMode not exist")
 	errBidCount = errors.New("count too large")
 	ctx         = context.Background()
@@ -95,6 +96,20 @@ func newMockService(t *testing.T) *Service {
 			return nil, nil, nil
 		})
 
+	cacher := mock.NewMockCacher(ctr)
+	cacher.EXPECT().GetVolume(A, A).AnyTimes().DoAndReturn(
+		func(_ context.Context, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
+			volume := new(proxy.VersionVolume)
+			if args.Vid%2 == 0 {
+				volume.Vid = args.Vid
+				return volume, nil
+			}
+			if args.Flush {
+				return nil, errcode.ErrVolumeNotExist
+			}
+			return nil, errors.New("internal error")
+		})
+
 	return &Service{
 		Config: Config{
 			VolConfig: allocator.VolConfig{
@@ -104,6 +119,7 @@ func newMockService(t *testing.T) *Service {
 		shardRepairMgr: shardRepairMgr,
 		blobDeleteMgr:  blobDeleteMgr,
 		volumeMgr:      volumeMgr,
+		cacher:         cacher,
 	}
 }
 
@@ -279,6 +295,36 @@ func TestService_Allocator(t *testing.T) {
 	{
 		err := cli.GetWith(ctx, url+"/volume/list?code_mode=2", nil)
 		require.NoError(t, err)
+	}
+}
+
+func TestService_Cacher(t *testing.T) {
+	url := runMockService(newMockService(t)) + "/cache/volume/"
+	cli := newClient()
+	var volume clustermgr.VolumeInfo
+	{
+		err := cli.GetWith(ctx, url+"1024", &volume)
+		require.NoError(t, err)
+		require.Equal(t, proto.Vid(1024), volume.Vid)
+	}
+	{
+		err := cli.GetWith(ctx, url+"111", &volume)
+		require.Error(t, err)
+	}
+	{
+		err := cli.GetWith(ctx, url+"111?flush=0", &volume)
+		require.Error(t, err)
+		require.Equal(t, 500, rpc.DetectStatusCode(err))
+	}
+	{
+		err := cli.GetWith(ctx, url+"111?flush=1", &volume)
+		require.Error(t, err)
+		require.Equal(t, errcode.CodeVolumeNotExist, rpc.DetectStatusCode(err))
+	}
+	{
+		err := cli.GetWith(ctx, url+"111?flush=true", &volume)
+		require.Error(t, err)
+		require.Equal(t, errcode.CodeVolumeNotExist, rpc.DetectStatusCode(err))
 	}
 }
 

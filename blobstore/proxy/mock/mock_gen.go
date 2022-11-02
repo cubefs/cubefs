@@ -18,3 +18,4 @@ package mock
 
 //go:generate mockgen -destination=./mq_mock.go -package=mock -mock_names BlobDeleteHandler=MockBlobDeleteHandler,ShardRepairHandler=MockShardRepairHandler,Producer=MockProducer github.com/cubefs/cubefs/blobstore/proxy/mq BlobDeleteHandler,ShardRepairHandler,Producer
 //go:generate mockgen -destination=./allocator_mock.go -package=mock -mock_names BlobDeleteHandler=MockBlobDeleteHandler,ShardRepairHandler=MockShardRepairHandler,Producer=MockProducer github.com/cubefs/cubefs/blobstore/proxy/allocator VolumeMgr
+//go:generate mockgen -destination=./cacher_mock.go -package=mock -mock_names Cacher=MockCacher github.com/cubefs/cubefs/blobstore/proxy/cacher Cacher

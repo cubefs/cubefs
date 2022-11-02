@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
@@ -38,6 +39,27 @@ func TestClient_VolumeAlloc(t *testing.T) {
 	ret, err := cli.VolumeAlloc(context.Background(), mockServer.URL, args)
 	require.NoError(t, err)
 	require.Equal(t, make([]AllocRet, 0), ret)
+}
+
+func TestClient_GetCacheVolume(t *testing.T) {
+	cli := New(&Config{})
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"vid": 111, "units": [{"vuid": 425335980033}]}`))
+	}))
+	defer mockServer.Close()
+	for _, args := range []CacheVolumeArgs{
+		{Vid: 1, Version: 0, Flush: false},
+		{Vid: 1, Version: 0xb06bccdb, Flush: false},
+		{Vid: 2, Version: 0, Flush: true},
+		{Vid: 2, Version: 0xb06bccdb, Flush: true},
+	} {
+		volume, err := cli.GetCacheVolume(context.Background(), mockServer.URL, &args)
+		require.NoError(t, err)
+		require.Equal(t, proto.Vid(111), volume.Vid)
+		require.Equal(t, uint32(0), volume.Version)
+		require.Equal(t, uint32(0xb06bccdb), volume.GetVersion())
+	}
 }
 
 func TestLbClient_SendShardRepairMsg(t *testing.T) {
