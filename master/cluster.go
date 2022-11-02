@@ -587,8 +587,7 @@ func (c *Cluster) getDeletingSnapshotVer() {
 					},
 					dTime: volVerInfo.DelTime,
 				}
-				//c.lcMgr.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
-				c.lcMgr.snapshotMgr.AddVerInfo(verInfo)
+				c.lcMgr.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
 			}
 		}
 	}
