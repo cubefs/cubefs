@@ -111,10 +111,10 @@ func (t *RepairCrcTask) validTask() (err error) {
 }
 
 func (t *RepairCrcTask) executeVolumeTask() (err error) {
-	var cv *proto.ClusterView
+	var volsInfo []*proto.VolInfo
 	log.LogInfof("executeVolumeTask begin, taskID:%v ", t.TaskId)
 	for i := 1; i<20; i++ {
-		cv, err = t.mc.AdminAPI().GetCluster()
+		volsInfo, err = t.mc.AdminAPI().ListVols("")
 		if err == nil {
 			break
 		}
@@ -126,7 +126,7 @@ func (t *RepairCrcTask) executeVolumeTask() (err error) {
 	inodeConcurrency := t.LimitLevel
 	extentConcurrency := t.LimitLevel * 5
 	vols := make([]string, 0)
-	for _, v := range cv.VolStatInfo {
+	for _, v := range volsInfo {
 		if t.Filter.VolFilter != "" && !strings.Contains(v.Name, t.Filter.VolFilter) {
 			continue
 		}

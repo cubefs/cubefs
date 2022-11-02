@@ -32,14 +32,14 @@ func rangeAllDataPartitions(limit uint64, specifyVols []string, specifyIds []uin
 		}
 		return
 	}
-	cv, err := client.AdminAPI().GetCluster()
+	vols, err := client.AdminAPI().ListVols("")
 	if err != nil {
 		log.LogErrorf("err: %v", err)
 		return
 	}
-	log.LogInfof("action[rangeAllDataPartitions] cluster name: %v", cv.Name)
+	log.LogInfof("action[rangeAllDataPartitions] volCount: %v", len(vols))
 	scanLimitCh := make(chan bool, limit)
-	for _, v := range cv.VolStatInfo {
+	for _, v := range vols {
 		if specifyVols != nil && len(specifyVols) > 0 && !existString(specifyVols, v.Name) {
 			continue
 		}

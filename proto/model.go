@@ -191,10 +191,10 @@ type ClusterView struct {
 	EcScrubPeriod                       uint32
 	EcScrubStartTime                    int64
 	MaxCodecConcurrent                  int
+	VolCount                            int
 	DataNodeStatInfo                    *NodeStatInfo
 	MetaNodeStatInfo                    *NodeStatInfo
 	EcNodeStatInfo                      *NodeStatInfo
-	VolStatInfo                         []*VolStatInfo
 	BadPartitionIDs                     []BadPartitionView
 	BadMetaPartitionIDs                 []BadPartitionView
 	BadEcPartitionIDs                   []BadPartitionView

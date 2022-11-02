@@ -91,15 +91,15 @@ func newCompactCheckVolList(client *master.MasterClient) *cobra.Command {
 		Short: cmdCompactCheckVolShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var cv *proto.ClusterView
-			cv, err = client.AdminAPI().GetCluster()
+			var vols []*proto.VolInfo
+			vols, err = client.AdminAPI().ListVols("")
 			if err != nil {
-				errout("Get cluster info fail:\n%v\n", err)
+				errout("list vols fail:\n%v\n", err)
 			}
 			stdout("[the volume of has opened ROW]\n")
 			stdout("%v\n", formatCompactCheckVolViewTableHeader())
 			index := 1
-			for _, vol := range cv.VolStatInfo {
+			for _, vol := range vols {
 				volInfo, _ := client.AdminAPI().GetVolumeSimpleInfo(vol.Name)
 				if volInfo.CrossRegionHAType != proto.CrossRegionHATypeQuorum && !volInfo.ForceROW {
 					continue
@@ -319,12 +319,12 @@ func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
 			stdout("%v\n", formatCompactCheckFragViewTableHeader())
 			var volNames []string
 			if optVolName == all {
-				var cv *proto.ClusterView
-				cv, err = client.AdminAPI().GetCluster()
+				var vols []*proto.VolInfo
+				vols, err = client.AdminAPI().ListVols("")
 				if err != nil {
-					errout("get cluster err:%v", err)
+					errout("list vols err:%v", err)
 				}
-				for _, vol := range cv.VolStatInfo {
+				for _, vol := range vols {
 					volNames = append(volNames, vol.Name)
 				}
 			} else {

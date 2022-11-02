@@ -279,7 +279,6 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		DataNodes:                           make([]proto.NodeView, 0),
 		CodEcnodes:                          make([]proto.NodeView, 0),
 		EcNodes:                             make([]proto.NodeView, 0),
-		VolStatInfo:                         make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:                     make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:                 make([]proto.BadPartitionView, 0),
 		BadEcPartitionIDs:                   make([]proto.BadPartitionView, 0),
@@ -304,6 +303,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vols := m.cluster.allVolNames()
+	cv.VolCount = len(vols)
 	cv.MetaNodes = m.cluster.allMetaNodes()
 	cv.DataNodes = m.cluster.allDataNodes()
 	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo
@@ -311,14 +311,6 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv.CodEcnodes = m.cluster.allCodecNodes()
 	cv.EcNodes = m.cluster.allEcNodes()
 	cv.EcNodeStatInfo = m.cluster.ecNodeStatInfo
-	for _, name := range vols {
-		stat, ok := m.cluster.volStatInfo.Load(name)
-		if !ok {
-			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001", false, false))
-			continue
-		}
-		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))
-	}
 	m.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		path := key.(string)
@@ -4478,7 +4470,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			}
 			stat := volStat(vol)
 
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact())
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(), vol.enableToken, vol.enableWriteCache)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4507,7 +4499,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			stat := volStat(vol)
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact())
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(), vol.enableToken, vol.enableWriteCache)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4530,7 +4522,7 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		stat := volStat(vol)
-		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact())
+		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(), vol.enableToken, vol.enableWriteCache)
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))

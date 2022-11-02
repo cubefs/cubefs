@@ -1040,9 +1040,12 @@ type VolInfo struct {
 	SmartRules         []string
 	ForceROW           bool
 	CompactTag         uint8
+	EnableToken        bool
+	EnableWriteCache   bool
 }
 
-func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, remainingDays uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8) *VolInfo {
+func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, remainingDays uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
+	enableToken, enableWriteCache bool) *VolInfo {
 	return &VolInfo{
 		Name:               name,
 		Owner:              owner,
@@ -1055,6 +1058,8 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		SmartRules:         rules,
 		ForceROW:           forceRow,
 		CompactTag:         compactTag,
+		EnableToken:        enableToken,
+		EnableWriteCache:   enableWriteCache,
 	}
 }
 
