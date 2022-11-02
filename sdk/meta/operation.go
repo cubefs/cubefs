@@ -1167,7 +1167,7 @@ func (mw *MetaWrapper) readDir(mp *MetaPartition, parentID uint64) (status int, 
 }
 
 // read limit dentries start from
-func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from string, limit uint64, verSeq uint64, verDel bool) (status int, children []proto.Dentry, err error) {
+func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from string, limit uint64, verSeq uint64, verOpt uint8) (status int, children []proto.Dentry, err error) {
 	req := &proto.ReadDirLimitRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -1175,7 +1175,7 @@ func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from str
 		Marker:      from,
 		Limit:       limit,
 		VerSeq:      verSeq,
-		VerDel:      verDel,
+		VerOpt:      verOpt,
 	}
 
 	packet := proto.NewPacketReqID()
