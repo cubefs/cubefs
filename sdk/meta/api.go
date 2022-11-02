@@ -1153,7 +1153,7 @@ func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 }
 
 // Read limit count dentries with parentID, start from string
-func (mw *MetaWrapper) ReadDirLimitByVer(parentID uint64, from string, limit uint64, verSeq uint64) ([]proto.Dentry, error) {
+func (mw *MetaWrapper) ReadDirLimitByVer(parentID uint64, from string, limit uint64, verSeq uint64, is2nd bool) ([]proto.Dentry, error) {
 	if verSeq == 0 {
 		verSeq = math.MaxUint64
 	}
@@ -1162,8 +1162,12 @@ func (mw *MetaWrapper) ReadDirLimitByVer(parentID uint64, from string, limit uin
 	if parentMP == nil {
 		return nil, syscall.ENOENT
 	}
-
-	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, verSeq, true)
+	var opt uint8
+	opt |= uint8(proto.FlagsVerDel)
+	if is2nd {
+		opt |= uint8(proto.FlagsVerDelDir)
+	}
+	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, verSeq, opt)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1181,7 +1185,7 @@ func (mw *MetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint6
 		return nil, syscall.ENOENT
 	}
 
-	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, mw.VerReadSeq, false)
+	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, mw.VerReadSeq, 0)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
