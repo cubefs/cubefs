@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -287,8 +288,8 @@ func (mm *monitorMetrics) setVolMetrics() {
 			delete(deleteVolNames, volName)
 		}
 
-		mm.volTotalSpace.SetWithLabelValues(float64(volStatInfo.TotalSize), volName)
-		mm.volUsedSpace.SetWithLabelValues(float64(volStatInfo.UsedSize), volName)
+		mm.volTotalSpace.SetWithLabelValues(float64(volStatInfo.TotalSize)/float64(util.GB), volName)
+		mm.volUsedSpace.SetWithLabelValues(float64(volStatInfo.UsedSize)/float64(util.GB), volName)
 		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)
 		if e == nil {
 			mm.volUsage.SetWithLabelValues(usedRatio, volName)
