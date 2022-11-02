@@ -599,7 +599,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(opt.AutoInvalData),
 		fuse.FSName("cubefs-" + opt.Volname),
-		fuse.Subtype("cubes"),
+		fuse.Subtype("cubefs"),
 		fuse.LocalVolume(),
 		fuse.VolumeName("cubefs-" + opt.Volname)}
 
