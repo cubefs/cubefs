@@ -1,9 +1,15 @@
 package datanode
 
 import (
+	"context"
+	"fmt"
+	"github.com/chubaofs/chubaofs/datanode/mock"
 	"github.com/chubaofs/chubaofs/storage"
+	"os"
+	"path"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestValidateCRC(t *testing.T) {
@@ -162,5 +168,124 @@ func newExtentInfoForTest(fileID, size, crc uint64) storage.ExtentInfoBlock {
 		storage.FileID: fileID,
 		storage.Size:   size,
 		storage.Crc:    crc,
+	}
+}
+
+func TestIsGetConnectError(t *testing.T) {
+	err := fmt.Errorf("rand str %v op", errorGetConnect)
+	connectError := isGetConnectError(err)
+	if !connectError {
+		t.Errorf("action[TestIsGetConnectError] failed, isGetConnectError expect[%v] actual[%v]", true, connectError)
+	}
+	err = fmt.Errorf("rand str abc op")
+	connectError = isGetConnectError(err)
+	if connectError {
+		t.Errorf("action[TestIsGetConnectError] failed, isGetConnectError expect[%v] actual[%v]", false, connectError)
+	}
+}
+
+func TestIsConnectionRefusedFailure(t *testing.T) {
+	err := fmt.Errorf("rand str %v op", errorConnRefused)
+	connectRefusedFailure := isConnectionRefusedFailure(err)
+	if !connectRefusedFailure {
+		t.Errorf("action[TestIsConnectionRefusedFailure] failed, isConnectionRefusedFailure expect[%v] actual[%v]", true, connectRefusedFailure)
+	}
+	err = fmt.Errorf("rand str abc op")
+	connectRefusedFailure = isConnectionRefusedFailure(err)
+	if connectRefusedFailure {
+		t.Errorf("action[TestIsConnectionRefusedFailure] failed, isGetConnectError expect[%v] actual[%v]", false, connectRefusedFailure)
+	}
+}
+
+func TestIsIOTimeoutFailure(t *testing.T) {
+	err := fmt.Errorf("rand str %v op", errorIOTimeout)
+	ioTimeoutFailure := isIOTimeoutFailure(err)
+	if !ioTimeoutFailure {
+		t.Errorf("action[TestIsIOTimeoutFailure] failed, isIOTimeoutFailure expect[%v] actual[%v]", true, ioTimeoutFailure)
+	}
+	err = fmt.Errorf("rand str abc op")
+	ioTimeoutFailure = isIOTimeoutFailure(err)
+	if ioTimeoutFailure {
+		t.Errorf("action[TestIsIOTimeoutFailure] failed, isIOTimeoutFailure expect[%v] actual[%v]", false, ioTimeoutFailure)
+	}
+}
+
+func TestGetRemoteExtentInfoForValidateCRCWithRetry(t *testing.T) {
+	var (
+		ctx         = context.Background()
+		tcp         = mock.NewMockTcp(tcpPort)
+		err         error
+		extentFiles []storage.ExtentInfoBlock
+	)
+	err = tcp.Start()
+	if err != nil {
+		t.Fatalf("start mock tcp server failed: %v", err)
+	}
+	defer tcp.Stop()
+	dp := &DataPartition{
+		partitionID: 10,
+	}
+	mock.ReplyGetRemoteExtentInfoForValidateCRCCount = GetRemoteExtentInfoForValidateCRCRetryTimes
+	targetHost := fmt.Sprintf(":%v", tcpPort)
+	if extentFiles, err = dp.getRemoteExtentInfoForValidateCRCWithRetry(ctx, targetHost); err == nil {
+		t.Error("action[getRemoteExtentInfoForValidateCRCWithRetry] err should not be nil")
+	}
+	if extentFiles, err = dp.getRemoteExtentInfoForValidateCRCWithRetry(ctx, targetHost); err != nil {
+		t.Errorf("action[getRemoteExtentInfoForValidateCRCWithRetry] err:%v", err)
+	}
+	if uint64(len(extentFiles)) != mock.LocalCreateExtentId {
+		t.Errorf("action[getRemoteExtentInfoForValidateCRCWithRetry] extents length expect[%v] actual[%v]", mock.LocalCreateExtentId, len(extentFiles))
+	}
+}
+
+func TestValidateCrc(t *testing.T) {
+	var (
+		err         error
+		dp          *DataPartition
+		count       uint64 = 100
+		testBaseDir        = path.Join(os.TempDir(), t.Name())
+		extents     []storage.ExtentInfoBlock
+	)
+	_ = os.RemoveAll(testBaseDir)
+	dp = createDataPartition(1, count, testBaseDir, t)
+	defer func() {
+		_ = os.RemoveAll(testBaseDir)
+	}()
+	time.Sleep(time.Second*storage.ValidateCrcInterval + 1)
+	testCases := []struct {
+		name  string
+		class int
+	}{
+		{name: "getLocalExtentInfoForValidateCRC", class: 0},
+		{name: "runValidateCRC", class: 1},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			switch testCase.class {
+			case 0:
+				if extents, err = dp.getLocalExtentInfoForValidateCRC(); err != nil {
+					t.Errorf("action[getLocalExtentInfoForValidateCRC] err:%v", err)
+				}
+				if uint64(len(extents)) != count {
+					t.Errorf("action[getLocalExtentInfoForValidateCRC] extents length expect[%v] actual[%v]", count, len(extents))
+				}
+				var dp2 *DataPartition
+				if dp2, err = initDataPartition(testBaseDir, 2, false); err != nil {
+					t.Errorf("init data partition err:%v", err)
+				}
+				if extents, err = dp2.getLocalExtentInfoForValidateCRC(); err == nil || err.Error() != "partition is loadding" {
+					t.Errorf("action[getLocalExtentInfoForValidateCRC], err should not be equal to nil or err[%v]", err)
+				}
+			case 1:
+				tcp := mock.NewMockTcp(tcpPort)
+				err = tcp.Start()
+				if err != nil {
+					t.Fatalf("start mock tcp server failed: %v", err)
+				}
+				defer tcp.Stop()
+				mock.ReplyGetRemoteExtentInfoForValidateCRCCount = 0
+				dp.runValidateCRC(context.Background())
+			}
+		})
 	}
 }

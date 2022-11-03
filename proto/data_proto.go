@@ -100,3 +100,83 @@ type DataNodeDiskInfo struct {
 	FixTinyDeleteRecordLimit     uint64 `json:"fix_tiny_delete_record_limit"`
 	ExecutingFixTinyDeleteRecord uint64 `json:"executing_fix_tiny_delete_record"`
 }
+
+type DataNodeStats struct {
+	Total               uint64
+	Used                uint64
+	Available           uint64
+	TotalPartitionSize  uint64
+	RemainingCapacity   uint64
+	CreatedPartitionCnt uint64
+	MaxCapacity         uint64
+	HttpPort            string
+	ZoneName            string
+	PartitionReports    []*PartitionReport
+	Status              int
+	Result              string
+	BadDisks            []string
+	DiskInfos           map[string]*CfsDisk
+	Version             string
+}
+
+type CfsDisk struct {
+	Total         int64
+	Used          int64
+	ReservedSpace int64
+	Status        int
+	Path          string
+	UsageRatio    float64
+}
+
+type RaftStatus struct {
+	ID                uint64
+	NodeID            uint64
+	Leader            uint64
+	Term              uint64
+	Index             uint64
+	Commit            uint64
+	Applied           uint64
+	Vote              uint64
+	PendQueue         int
+	PendCmd           map[uint64]byte
+	RecvQueue         int
+	AppQueue          int
+	Stopped           bool
+	RestoringSnapshot bool
+	State             string // leader、follower、candidate
+	Replicas          map[uint64]*ReplicaStatus
+	Log               LogStatus
+}
+
+type StatInfo struct {
+	Type             string      `json:"type"`
+	Zone             string      `json:"zone"`
+	VersionInfo      VersionValue `json:"versionInfo"`
+	StartTime        string      `json:"startTime"`
+	CPUUsageList     []float64   `json:"cpuUsageList"`
+	MaxCPUUsage      float64     `json:"maxCPUUsage"`
+	CPUCoreNumber    int         `json:"cpuCoreNumber"`
+	MemoryUsedGBList []float64   `json:"memoryUsedGBList"`
+	MaxMemoryUsedGB  float64     `json:"maxMemoryUsedGB"`
+	MaxMemoryUsage   float64     `json:"maxMemoryUsage"`
+	DiskInfo         []struct {
+		Path            string  `json:"path"`
+		TotalTB         float64 `json:"totalTB"`
+		UsedGB          float64 `json:"usedGB"`
+		UsedRatio       float64 `json:"usedRatio"`
+		ReservedSpaceGB uint    `json:"reservedSpaceGB"`
+	} `json:"diskInfo"`
+}
+
+
+type ReplProtocalBufferDetail struct {
+	Addr     string
+	Cnt      int64
+	UseBytes int64
+	ReplID   int64
+}
+
+type ExtentCrc struct {
+	ExtentId uint64
+	CRC      uint32
+}

@@ -455,3 +455,203 @@ func (dc *DataHttpClient) FetchExtentsCrc(partitionPath string) (extentsMap map[
 	err = json.Unmarshal(d, &extentsMap)
 	return
 }
+
+func (dc *DataHttpClient) GetDatanodeStats() (stats *proto.DataNodeStats, err error){
+	var d []byte
+	for i := 0; i < 3; i++ {
+		req := newAPIRequest(http.MethodGet, "/stats")
+		d, err = dc.serveRequest(req)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	stats = new(proto.DataNodeStats)
+	if err = json.Unmarshal(d, stats); err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataHttpClient) GetRaftStatus(raftID uint64) (raftStatus *proto.RaftStatus, err error){
+	var d []byte
+	for i := 0; i < 3; i++ {
+		req := newAPIRequest(http.MethodGet, "/raftStatus")
+		req.addParam("raftID", strconv.FormatUint(raftID, 10))
+		d, err = dc.serveRequest(req)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	raftStatus = new(proto.RaftStatus)
+	if err = json.Unmarshal(d, raftStatus); err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataHttpClient) SetAutoRepairStatus(autoRepair bool) (autoRepairResult bool, err error){
+	var d []byte
+	for i := 0; i < 3; i++ {
+		req := newAPIRequest(http.MethodGet, "/setAutoRepairStatus")
+		req.addParam("autoRepair", strconv.FormatBool(autoRepair))
+		d, err = dc.serveRequest(req)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(d, &autoRepairResult); err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataHttpClient) ReleasePartitions(key string) (data string, err error){
+	var d []byte
+	for i := 0; i < 3; i++ {
+		req := newAPIRequest(http.MethodGet, "/releasePartitions")
+		req.addParam("key", key)
+		d, err = dc.serveRequest(req)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(d, &data); err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataHttpClient) GetStatInfo() (statInfo *proto.StatInfo, err error){
+	var d []byte
+	for i := 0; i < 3; i++ {
+		req := newAPIRequest(http.MethodGet, "/stat/info")
+		d, err = dc.serveRequest(req)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	statInfo = new(proto.StatInfo)
+	if err = json.Unmarshal(d, statInfo); err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataHttpClient) GetReplProtocolDetail() (details []*proto.ReplProtocalBufferDetail, err error){
+	var d []byte
+	for i := 0; i < 3; i++ {
+		req := newAPIRequest(http.MethodGet, "/getReplBufferDetail")
+		d, err = dc.serveRequest(req)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(d, &details); err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataHttpClient) MoveExtentFile(extent uint64, partitionPath string, partition uint64) (err error) {
+	params := make(map[string]string)
+	params["partition"] = strconv.FormatUint(partition, 10)
+	params["path"] = partitionPath
+	params["extent"] = strconv.FormatUint(extent, 10)
+
+	for i := 0; i < 3; i++ {
+		_, err = dc.RequestHttp(http.MethodGet, "/moveExtent", params)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataHttpClient) MoveExtentFileBatch(extents, partitionPath string, partition uint64) (resultMap map[uint64]string, err error) {
+	params := make(map[string]string)
+	params["partition"] = strconv.FormatUint(partition, 10)
+	params["path"] = partitionPath
+	params["extent"] = extents
+	d := make([]byte, 0)
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/moveExtentBatch", params)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	resultMap = make(map[uint64]string, 0)
+	if err = json.Unmarshal(d, &resultMap); err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataHttpClient) GetExtentCrc(partition, extent uint64) (crc proto.ExtentCrc, err error) {
+	params := make(map[string]string)
+	params["partitionId"] = strconv.FormatUint(partition, 10)
+	params["extentId"] = strconv.FormatUint(extent, 10)
+	d := make([]byte, 0)
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/extentCrc", params)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(d, &crc); err != nil {
+		return
+	}
+	crc.ExtentId = extent
+	return
+}
+
+func (dc *DataHttpClient) PlaybackPartitionTinyDelete(partition uint64) (err error) {
+	for i := 0; i < 3; i++ {
+		req := newAPIRequest(http.MethodGet, "/playbackTinyExtentMarkDelete")
+		req.addParam("partitionID", strconv.FormatUint(partition, 10))
+		_, err = dc.serveRequest(req)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	return
+}

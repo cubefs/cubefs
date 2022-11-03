@@ -371,6 +371,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpStreamFollowerRead"
 	case OpGetAllWatermarks:
 		m = "OpGetAllWatermarks"
+	case OpGetAllWatermarksV2:
+		m = "OpGetAllWatermarksV2"
 	case OpNotifyReplicasToRepair:
 		m = "OpNotifyReplicasToRepair"
 	case OpExtentRepairRead:
