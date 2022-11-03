@@ -38,7 +38,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	forceUpdate bool) (status uint8) {
 	status = proto.OpOk
 	item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
-	log.LogInfof("action[fsmCreateDentry] ParentId [%v] get nil, dentry name [%v], inode [%v]", dentry.ParentId, dentry.Name, dentry.Inode)
+
 	var parIno *Inode
 	if !forceUpdate {
 		if item == nil {

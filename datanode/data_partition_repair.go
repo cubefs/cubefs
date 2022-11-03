@@ -515,13 +515,16 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	if err != nil {
 		return errors.Trace(err, "streamRepairExtent get conn from host(%v) error", remoteExtentInfo.Source)
 	}
+
+	isNetError := false
 	defer func() {
-		dp.putRepairConn(conn, err != nil)
+		dp.putRepairConn(conn, isNetError)
 	}()
 
 	if err = request.WriteToConn(conn); err != nil {
 		err = errors.Trace(err, "streamRepairExtent send streamRead to host(%v) error", remoteExtentInfo.Source)
 		log.LogWarnf("action[streamRepairExtent] err(%v).", err)
+		isNetError = true
 		return
 	}
 	currFixOffset := localExtentInfo.Size
@@ -543,6 +546,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		// read 64k streaming repair packet
 		if err = reply.ReadFromConn(conn, 60); err != nil {
 			err = errors.Trace(err, "streamRepairExtent receive data error,localExtentSize(%v) remoteExtentSize(%v)", currFixOffset, remoteExtentInfo.Size)
+			isNetError = true
 			return
 		}
 
@@ -572,7 +576,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		loopTimes++
 
 		actualCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
-		if reply.CRC != crc32.ChecksumIEEE(reply.Data[:reply.Size]) {
+		if reply.CRC != actualCrc {
 			err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from (%v)"+
 				" remoteSize(%v) localSize(%v) request(%v) reply(%v) ", reply.CRC, actualCrc, dp.partitionID, remoteExtentInfo.String(),
 				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
