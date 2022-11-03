@@ -33,10 +33,6 @@ type Config struct {
 	Verbose  bool `json:"verbose" cache:"Flag-Verbose" help:"enable verbose mode"`
 	Vverbose bool `json:"vverbose" cache:"Flag-Vverbose" help:"enable verbose verbose mode"`
 
-	RedisAddrs []string `json:"redis_addrs" cache:"Key-RedisAddrs" help:"redis addrs"`
-	RedisUser  string   `json:"redis_user" cache:"Key-RedisUser" help:"redis username"`
-	RedisPass  string   `json:"redis_pass" cache:"Key-RedisPass" help:"redis password"`
-
 	ClusterMgrCluster map[string]string `json:"cm_cluster" cache:"Key-ClusterMgrCluster" help:"cluster manager addrs"`
 	ClusterMgrSecret  string            `json:"cm_secret" cache:"Key-ClusterMgrSecret" help:"cluster manager secret"`
 

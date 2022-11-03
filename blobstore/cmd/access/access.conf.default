@@ -67,13 +67,6 @@
                     "dial_timeout_ms": 2000
                 }
             },
-            "redis_client_config": {
-                "addrs": [
-                    "127.0.0.1:xxx"
-                ],
-                "password": "pass",
-                "username": "user"
-            },
             "service_punish_threshold": 3,
             "service_punish_valid_interval_s": 30,
             "consul_agent_addr": "127.0.0.1:8500",

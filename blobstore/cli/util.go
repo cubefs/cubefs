@@ -25,27 +25,13 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/fatih/color"
 
-	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/args"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
-	"github.com/cubefs/cubefs/blobstore/cli/config"
-	"github.com/cubefs/cubefs/blobstore/common/redis"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 )
-
-func newRedisCli(addrs ...string) *redis.ClusterClient {
-	if len(addrs) == 0 || (len(addrs) == 1 && addrs[0] == "") {
-		addrs = config.RedisAddrs()
-	}
-	return redis.NewClusterClient(&redis.ClusterConfig{
-		Addrs:    addrs,
-		Username: config.RedisUser(),
-		Password: config.RedisPass(),
-	})
-}
 
 func cmdTime(c *grumble.Context) error {
 	unix := c.Args.String("unix")
@@ -187,83 +173,6 @@ func registerUtil(app *grumble.App) {
 
 			fmt.Println(cfmt.LocationJoin(&loc, ""))
 			return nil
-		},
-	})
-
-	redisCommand := &grumble.Command{
-		Name: "redis",
-		Help: "redis tools",
-		Run: func(c *grumble.Context) error {
-			fmt.Println("redis-addrs:", config.RedisAddrs())
-			fmt.Println("redis-user :", config.RedisUser())
-			fmt.Println("redis-pass :", config.RedisPass())
-			fmt.Println()
-			fmt.Println("access volume prefix with access/volume/{cid}/{vid}")
-			return nil
-		},
-	}
-	utilCommand.AddCommand(redisCommand)
-	redisCommand.AddCommand(&grumble.Command{
-		Name:     "get",
-		Help:     "redis get <key>",
-		LongHelp: "redis get, access prefix access/volume/",
-		Args: func(a *grumble.Args) {
-			a.String("key", "redis key")
-		},
-		Flags: func(f *grumble.Flags) {
-			f.StringL("addr", "", "redis addr")
-		},
-		Run: func(c *grumble.Context) error {
-			key := c.Args.String("key")
-			cli := newRedisCli(c.Flags.String("addr"))
-
-			fmt.Println("Get Key:", key)
-			if strings.HasPrefix(key, "access/volume/") {
-				var val controller.VolumePhy
-				if err := cli.Get(common.CmdContext(), key, &val); err != nil {
-					return err
-				}
-				fmt.Println(common.Readable(val))
-				return nil
-			}
-
-			b, err := cli.ClusterClient.Get(common.CmdContext(), key).Bytes()
-			if err != nil {
-				return err
-			}
-			fmt.Println(string(b))
-			return nil
-		},
-	})
-	redisCommand.AddCommand(&grumble.Command{
-		Name:     "set",
-		Help:     "redis set <key> [value] [expiration]",
-		LongHelp: "redis set key, delete key if value is empty, expiration is duration string",
-		Args: func(a *grumble.Args) {
-			a.String("key", "redis key")
-			a.String("value", "redis value", grumble.Default(""))
-			a.String("expiration", "redis key expiration, duration string",
-				grumble.Default("0"))
-		},
-		Flags: func(f *grumble.Flags) {
-			f.StringL("addr", "", "redis addr")
-		},
-		Run: func(c *grumble.Context) error {
-			key := c.Args.String("key")
-			value := c.Args.String("value")
-			cli := newRedisCli(c.Flags.String("addr"))
-
-			if value == "" {
-				fmt.Println("Del Key:", common.Loaded.Sprint(key))
-				return cli.ClusterClient.Del(common.CmdContext(), key).Err()
-			}
-			expiration, err := time.ParseDuration(c.Args.String("expiration"))
-			if err != nil {
-				return err
-			}
-
-			fmt.Println("Set Key:", common.Loaded.Sprint(key), "expiration:", expiration)
-			return cli.Set(common.CmdContext(), key, value, expiration)
 		},
 	})
 }

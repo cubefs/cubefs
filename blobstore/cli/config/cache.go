@@ -71,10 +71,6 @@ func Vverbose() bool {
 	return false
 }
 
-func RedisAddrs() []string { return Get("Key-RedisAddrs").([]string) }
-func RedisUser() string    { return Get("Key-RedisUser").(string) }
-func RedisPass() string    { return Get("Key-RedisPass").(string) }
-
 // ClusterMgrClusters returns cluster manager clusters
 func ClusterMgrClusters() (clusters map[string][]string) {
 	clusters = make(map[string][]string)
