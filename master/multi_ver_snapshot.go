@@ -172,6 +172,7 @@ func (verMgr *VolVersionManager) DelVer(verSeq uint64) (err error) {
 			break
 		}
 	}
+	verMgr.Persist()
 	return
 }
 
