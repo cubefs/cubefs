@@ -553,7 +553,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	}
 	i.Reserved |= V3EnableSnapInodeFlag
 
-	log.LogInfof("action[MarshalInodeValue] inode %v Reserved %v", i.Inode, i.Reserved)
+	//log.LogInfof("action[MarshalInodeValue] inode %v Reserved %v", i.Inode, i.Reserved)
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
@@ -598,14 +598,14 @@ func (i *Inode) MarshalValue() (val []byte) {
 	buff.Grow(64)
 	i.RLock()
 
-	log.LogInfof("action[MarshalValue] inode %v current verseq %v, hist len (%v)", i.Inode, i.verSeq, len(i.multiVersions))
+	//	log.LogInfof("action[MarshalValue] inode %v current verseq %v, hist len (%v)", i.Inode, i.verSeq, len(i.multiVersions))
 	i.MarshalInodeValue(buff)
 	if err = binary.Write(buff, binary.BigEndian, int32(len(i.multiVersions))); err != nil {
 		panic(err)
 	}
 
 	for _, ino := range i.multiVersions {
-		log.LogInfof("action[MarshalValue] inode %v current verseq %v", ino.Inode, ino.verSeq)
+		//	log.LogInfof("action[MarshalValue] inode %v current verseq %v", ino.Inode, ino.verSeq)
 		ino.MarshalInodeValue(buff)
 	}
 

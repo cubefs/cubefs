@@ -267,7 +267,7 @@ func readSnapshot() (err error) {
 	)
 
 	log.LogDebugf("action[readSnapshot] ReadDirLimit_ll parent root verSeq %v", VerSeq)
-	parents, err = gMetaWrapper.ReadDirLimitByVer(2, "", math.MaxUint64, VerSeq) // one more for nextMarker
+	parents, err = gMetaWrapper.ReadDirLimitByVer(1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		log.LogErrorf("action[readSnapshot] parent root verSeq %v err %v", VerSeq, err)
 		return err
@@ -288,9 +288,10 @@ func cleanSnapshot() (err error) {
 		parents  []proto.Dentry
 		ino      *proto.InodeInfo
 	)
+	return readSnapshot()
 
 	log.LogDebugf("action[cleanSnapshot] ReadDirLimit_ll parent root verSeq %v", VerSeq)
-	parents, err = gMetaWrapper.ReadDirLimitByVer(1, "", math.MaxUint64, VerSeq) // one more for nextMarker
+	parents, err = gMetaWrapper.ReadDirLimitByVer(1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		log.LogErrorf("action[cleanSnapshot] parent root verSeq %v err %v", VerSeq, err)
 		return err
@@ -313,7 +314,7 @@ func cleanSnapshot() (err error) {
 		parent := parents[idx]
 		if proto.IsDir(parent.Type) {
 			log.LogDebugf("action[cleanSnapshot] try loop delete dir %v %v with verSeq %v", parent.Inode, parent.Name, VerSeq)
-			children, err = gMetaWrapper.ReadDirLimitByVer(parent.Inode, "", math.MaxUint64, VerSeq)
+			children, err = gMetaWrapper.ReadDirLimitByVer(parent.Inode, "", math.MaxUint64, VerSeq, false)
 			if err != nil && err != syscall.ENOENT {
 				log.LogErrorf("action[cleanSnapshot] parent %v verSeq %v err %v", parent.Name, VerSeq, err)
 				return err

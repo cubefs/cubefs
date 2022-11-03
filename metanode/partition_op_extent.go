@@ -224,8 +224,8 @@ func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList) 
 					mp.config.VolName, mp.config.PartitionId, vInfo.Ver, vInfo)
 				log.LogWarnf("[checkVerList] vol %v", expStr)
 				exporter.Warning(expStr)
-				mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, vInfo)
-				mp.verSeq = vInfo.Ver
+				//	mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, vInfo)
+				//	mp.verSeq = vInfo.Ver
 			}
 			continue
 		}
