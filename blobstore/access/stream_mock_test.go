@@ -34,7 +34,6 @@ import (
 	"time"
 
 	"github.com/afex/hystrix-go/hystrix"
-	"github.com/alicebob/miniredis/v2"
 	"github.com/golang/mock/gomock"
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
@@ -45,7 +44,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/ec"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/redis"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
@@ -78,16 +76,13 @@ var (
 
 	allCodeModes CodeModePairs
 
-	redismr  *miniredis.Miniredis
-	rediscli *redis.ClusterClient
-
 	cmcli             clustermgr.APIAccess
 	volumeGetter      controller.VolumeGetter
 	serviceController controller.ServiceController
 	cc                controller.ClusterController
 
 	clusterInfo *clustermgr.ClusterInfo
-	dataVolume  *clustermgr.VolumeInfo
+	dataVolume  *proxy.VersionVolume
 	dataAllocs  []proxy.AllocRet
 	dataNodes   map[string]clustermgr.ServiceInfo
 	dataDisks   map[proto.DiskID]blobnode.DiskInfo
@@ -289,7 +284,7 @@ func initMockData() {
 		Vid:      volumeID,
 	}
 
-	dataVolume = &clustermgr.VolumeInfo{
+	dataVolume = &proxy.VersionVolume{VolumeInfo: clustermgr.VolumeInfo{
 		VolumeInfoBase: clustermgr.VolumeInfoBase{
 			Vid:      volumeID,
 			CodeMode: codemode.EC6P6,
@@ -304,7 +299,7 @@ func initMockData() {
 			}
 			return
 		}(),
-	}
+	}}
 
 	proxyNodes := make([]clustermgr.ServiceNode, 32)
 	for idx := range proxyNodes {
@@ -349,7 +344,6 @@ func initMockData() {
 			}
 			return clustermgr.ServiceInfo{}, errNotFound
 		})
-	cli.EXPECT().GetVolumeInfo(gomock.Any(), gomock.Any()).AnyTimes().Return(dataVolume, nil)
 	cli.EXPECT().DiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
 			if val, ok := dataDisks[id]; ok {
@@ -359,12 +353,6 @@ func initMockData() {
 		})
 	cmcli = cli
 
-	redismr, _ = miniredis.Run()
-	if rand.Int()%2 == 0 {
-		rediscli = redis.NewClusterClient(&redis.ClusterConfig{
-			Addrs: []string{redismr.Addr()},
-		})
-	}
 	clusterInfo = &clustermgr.ClusterInfo{
 		Region:    "test-region",
 		ClusterID: clusterID,
@@ -376,7 +364,12 @@ func initMockData() {
 			IDC:       idc,
 			ReloadSec: 1000,
 		}, cmcli, nil)
-	volumeGetter, _ = controller.NewVolumeGetter(clusterID, cmcli, rediscli, 0)
+
+	ctr = gomock.NewController(&testing.T{})
+	proxycli := mocks.NewMockProxyClient(ctr)
+	proxycli.EXPECT().GetCacheVolume(gomock.Any(), gomock.Any(), gomock.Any()).
+		AnyTimes().Return(dataVolume, nil)
+	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxycli, 0)
 
 	ctr = gomock.NewController(&testing.T{})
 	c := NewMockClusterController(ctr)

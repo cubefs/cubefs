@@ -29,8 +29,8 @@ import (
 	"github.com/hashicorp/consul/api"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/redis"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -97,13 +97,12 @@ type ClusterController interface {
 // Region and RegionMagic are paired,
 // magic cannot change if one region was deployed.
 type ClusterConfig struct {
-	IDC               string              `json:"-"`
-	Region            string              `json:"region"`
-	RegionMagic       string              `json:"region_magic"`
-	ClusterReloadSecs int                 `json:"cluster_reload_secs"`
-	ServiceReloadSecs int                 `json:"service_reload_secs"`
-	CMClientConfig    cmapi.Config        `json:"clustermgr_client_config"`
-	RedisClientConfig redis.ClusterConfig `json:"redis_client_config"`
+	IDC               string       `json:"-"` // passing by stream config.
+	Region            string       `json:"region"`
+	RegionMagic       string       `json:"region_magic"`
+	ClusterReloadSecs int          `json:"cluster_reload_secs"`
+	ServiceReloadSecs int          `json:"service_reload_secs"`
+	CMClientConfig    cmapi.Config `json:"clustermgr_client_config"`
 
 	ServicePunishThreshold      uint32 `json:"service_punish_threshold"`
 	ServicePunishValidIntervalS int    `json:"service_punish_valid_interval_s"`
@@ -137,13 +136,14 @@ type clusterControllerImpl struct {
 	serviceMgrs     sync.Map
 	volumeGetters   sync.Map
 	roundRobinCount uint64 // a count for round robin
+	proxy           proxy.Cacher
 	stopCh          <-chan struct{}
 
 	config ClusterConfig
 }
 
 // NewClusterController returns a cluster controller
-func NewClusterController(cfg *ClusterConfig, stopCh <-chan struct{}) (ClusterController, error) {
+func NewClusterController(cfg *ClusterConfig, proxy proxy.Cacher, stopCh <-chan struct{}) (ClusterController, error) {
 	defaulter.LessOrEqual(&cfg.ClusterReloadSecs, int(3))
 
 	consulConf := api.DefaultConfig()
@@ -159,6 +159,7 @@ func NewClusterController(cfg *ClusterConfig, stopCh <-chan struct{}) (ClusterCo
 	controller := &clusterControllerImpl{
 		region:   cfg.Region,
 		kvClient: client,
+		proxy:    proxy,
 		stopCh:   stopCh,
 		config:   *cfg,
 	}
@@ -317,17 +318,6 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 			}
 		}
 
-		var redisCli *redis.ClusterClient
-		if len(c.config.RedisClientConfig.Addrs) > 0 {
-			redisCli = redis.NewClusterClient(&c.config.RedisClientConfig)
-		}
-		volumeGetter, err := NewVolumeGetter(clusterID, cmCli, redisCli, -1)
-		if err != nil {
-			removeThisCluster()
-			span.Warn("new volume getter failed", clusterID, err)
-			continue
-		}
-
 		serviceController, err := NewServiceController(ServiceConfig{
 			ClusterID:                   clusterID,
 			IDC:                         c.config.IDC,
@@ -338,6 +328,13 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 		if err != nil {
 			removeThisCluster()
 			span.Warn("new service manager failed", clusterID, err)
+			continue
+		}
+
+		volumeGetter, err := NewVolumeGetter(clusterID, serviceController, c.proxy, -1)
+		if err != nil {
+			removeThisCluster()
+			span.Warn("new volume getter failed", clusterID, err)
 			continue
 		}
 

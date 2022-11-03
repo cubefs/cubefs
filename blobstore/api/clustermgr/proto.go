@@ -60,7 +60,6 @@ type ClientAPI interface {
 type APIAccess interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetService(ctx context.Context, args GetServiceArgs) (ServiceInfo, error)
-	GetVolumeInfo(ctx context.Context, args *GetVolumeArgs) (*VolumeInfo, error)
 	DiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error)
 	ListDisk(ctx context.Context, options *ListOptionArgs) (ListDiskRet, error)
 }

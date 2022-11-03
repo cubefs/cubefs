@@ -227,13 +227,10 @@ func newCCStop() (controller.ClusterController, func()) {
 		MaxIdleConns:      4,
 		IdleConnTimeoutMs: 2,
 	}
-	if rand.Int31()%2 == 0 {
-		cfg.RedisClientConfig.Addrs = []string{redismr.Addr()}
-	}
 
 	stop := closer.New()
 	stopChs = append(stopChs, stop)
-	cc, err := controller.NewClusterController(&cfg, stop.Done())
+	cc, err := controller.NewClusterController(&cfg, proxycli, stop.Done())
 	if err != nil {
 		panic(err)
 	}
@@ -250,7 +247,7 @@ func TestAccessClusterNew(t *testing.T) {
 			{ClusterID: 1, Hosts: []string{hostAddr, hostAddr}},
 		},
 	}
-	clusterController, err := controller.NewClusterController(&cfg, nil)
+	clusterController, err := controller.NewClusterController(&cfg, proxycli, nil)
 	require.NotNil(t, clusterController)
 	require.Nil(t, err)
 	require.Equal(t, region, clusterController.Region())

@@ -20,15 +20,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/golang/mock/gomock"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/redis"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -46,9 +45,8 @@ var (
 	vid404      = proto.Vid(404)
 	errNotFound = errors.New("not found")
 
-	redismr  *miniredis.Miniredis
-	rediscli *redis.ClusterClient
 	cmcli    cmapi.APIAccess
+	proxycli proxy.Cacher
 
 	dataCalled  map[proto.Vid]int
 	dataNodes   map[string]cmapi.ServiceInfo
@@ -104,11 +102,6 @@ func init() {
 		},
 	}
 
-	redismr, _ = miniredis.Run()
-	rediscli = redis.NewClusterClient(&redis.ClusterConfig{
-		Addrs: []string{redismr.Addr()},
-	})
-
 	cli := mocks.NewMockClientAPI(C(&testing.T{}))
 	cli.EXPECT().GetConfig(A, A).AnyTimes().Return("abc", nil)
 	cli.EXPECT().GetService(A, A).AnyTimes().DoAndReturn(
@@ -117,17 +110,6 @@ func init() {
 				return val, nil
 			}
 			return cmapi.ServiceInfo{}, errNotFound
-		})
-	cli.EXPECT().GetVolumeInfo(A, A).AnyTimes().DoAndReturn(
-		func(ctx context.Context, args *cmapi.GetVolumeArgs) (*cmapi.VolumeInfo, error) {
-			if val, ok := dataVolumes[args.Vid]; ok {
-				dataCalled[args.Vid]++
-				if args.Vid == vid404 {
-					return nil, errcode.ErrVolumeNotExist
-				}
-				return &val, nil
-			}
-			return nil, errNotFound
 		})
 	cli.EXPECT().DiskInfo(A, A).AnyTimes().DoAndReturn(
 		func(ctx context.Context, id proto.DiskID) (*bnapi.DiskInfo, error) {
@@ -138,6 +120,24 @@ func init() {
 		})
 	cli.EXPECT().ListDisk(A, A).AnyTimes().Return(cmapi.ListDiskRet{}, nil)
 	cmcli = cli
+
+	pcli := mocks.NewMockProxyClient(C(&testing.T{}))
+	pcli.EXPECT().GetCacheVolume(A, A, A).AnyTimes().DoAndReturn(
+		func(_ context.Context, _ string, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
+			volume := new(proxy.VersionVolume)
+			vid := args.Vid
+			dataCalled[vid]++
+			if val, ok := dataVolumes[vid]; ok {
+				if vid == vid404 {
+					return nil, errcode.ErrVolumeNotExist
+				}
+				volume.VolumeInfo = val
+				volume.Version = volume.GetVersion()
+				return volume, nil
+			}
+			return nil, errNotFound
+		})
+	proxycli = pcli
 
 	initCluster()
 }

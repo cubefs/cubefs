@@ -228,7 +228,8 @@ func confCheck(cfg *StreamConfig) {
 // NewStreamHandler returns a stream handler
 func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 	confCheck(cfg)
-	clusterController, err := controller.NewClusterController(&cfg.ClusterConfig, stopCh)
+	proxyClient := proxy.New(&cfg.ProxyConfig)
+	clusterController, err := controller.NewClusterController(&cfg.ClusterConfig, proxyClient, stopCh)
 	if err != nil {
 		log.Fatalf("new cluster controller failed, err: %v", err)
 	}
@@ -238,7 +239,7 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 		clusterController: clusterController,
 
 		blobnodeClient: blobnode.New(&cfg.BlobnodeConfig),
-		proxyClient:    proxy.New(&cfg.ProxyConfig),
+		proxyClient:    proxyClient,
 
 		maxObjectSize: defaultMaxObjectSize,
 		StreamConfig:  *cfg,
