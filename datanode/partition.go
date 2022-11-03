@@ -938,6 +938,7 @@ func (dp *DataPartition) getRepairConn(target string) (net.Conn, error) {
 }
 
 func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
+	log.LogDebugf("action[putRepairConn], forceClose: %v", forceClose)
 	dp.dataNode.putRepairConnFunc(conn, forceClose)
 	return
 }
