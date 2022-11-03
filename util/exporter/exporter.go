@@ -83,10 +83,6 @@ func Init(role string, cfg *config.Config) {
 	EnablePid = cfg.GetBoolWithDefault(ConfigKeyEnablePid, false)
 	log.LogInfo("enable report partition id info? ", EnablePid)
 
-	if len(cfg.GetString(ConfigKeyPushAddr)) > 0 {
-		enablePush = true
-	}
-
 	port := cfg.GetInt64(ConfigKeyExporterPort)
 
 	if port < 0 {
