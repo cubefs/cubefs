@@ -759,6 +759,8 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 	} else {
 		reply.Size = uint32(replySize)
 	}
+	//redirect kernelOffset as crc of Arg
+	reply.KernelOffset = uint64(crc32.ChecksumIEEE(reply.Arg))
 	logContent := fmt.Sprintf("action[write empty repair packet] %v.",
 		reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
 	log.LogReadf(logContent)
@@ -767,7 +769,7 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 }
 
 func (s *DataNode) attachAvaliSizeOnTinyExtentRepairRead(reply *repl.Packet, avaliSize uint64) {
-	binary.BigEndian.PutUint64(reply.Arg[9:17], avaliSize)
+	binary.BigEndian.PutUint64(reply.Arg[9:TinyExtentRepairReadResponseArgLen], avaliSize)
 }
 
 // Handle handleTinyExtentRepairRead packet.

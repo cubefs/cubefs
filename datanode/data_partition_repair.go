@@ -683,6 +683,12 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				isEmptyResponse = reply.Arg[0] == EmptyResponse
 			}
 			if isEmptyResponse {
+				if reply.KernelOffset > 0 && reply.KernelOffset != uint64(crc32.ChecksumIEEE(reply.Arg)) {
+					err = fmt.Errorf("streamRepairExtent arg crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) fix from(%v) remoteAvaliSize(%v) "+
+						"hasRecoverySize(%v) currRecoverySize(%v) request(%v) reply(%v)", reply.KernelOffset, crc32.ChecksumIEEE(reply.Arg), dp.partitionID, remoteExtentInfo.String(),
+						source, remoteAvaliSize, hasRecoverySize+currRecoverySize, currRecoverySize, request.GetUniqueLogId(), reply.GetUniqueLogId())
+					return errors.Trace(err, "streamRepairExtent receive data error")
+				}
 				currRecoverySize = binary.BigEndian.Uint64(reply.Arg[1:9])
 			}
 			defer func() {
@@ -698,7 +704,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				msg := fmt.Sprintf("action[streamRepairExtent] fix(%v_%v), streamRepairTinyExtent,remoteAvaliSize(%v) currFixOffset(%v) currRecoverySize(%v), remoteExtentSize(%v), isEmptyResponse(%v), needRecoverySize is too big",
 					dp.partitionID, localExtentInfo[storage.FileID], remoteAvaliSize, currFixOffset, currRecoverySize, remoteExtentInfo[storage.Size], isEmptyResponse)
 				exporter.Warning(msg)
-				//return errors.Trace(err, "streamRepairExtent repair data error ")
+				return errors.Trace(err, "streamRepairExtent repair data error ")
 			}
 			err = store.TinyExtentRecover(uint64(localExtentInfo[storage.FileID]), int64(currFixOffset), int64(currRecoverySize), reply.Data[:originalDataSize], reply.CRC, isEmptyResponse)
 			if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
