@@ -35,6 +35,7 @@ import (
 // Cluster stores all the cluster-level information.
 type Cluster struct {
 	Name                string
+	CreateTime          int64
 	vols                map[string]*Vol
 	dataNodes           sync.Map
 	metaNodes           sync.Map
@@ -2859,6 +2860,18 @@ func (c *Cluster) setMaxDpCntLimit(val uint64) (err error) {
 		log.LogErrorf("action[MaxDpCntLimit] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MaxDpCntLimit, oldVal)
 		maxDpCntOneNode = uint32(oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setClusterCreateTime(createTime int64) (err error) {
+	oldVal := c.CreateTime
+	c.CreateTime = createTime
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClusterCreateTime] err[%v]", err)
+		c.CreateTime = oldVal
 		err = proto.ErrPersistenceByRaft
 		return
 	}

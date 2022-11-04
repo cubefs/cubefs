@@ -97,6 +97,7 @@ type MetaReplicaInfo struct {
 // ClusterView provides the view of a cluster.
 type ClusterView struct {
 	Name                string
+	CreateTime          string
 	LeaderAddr          string
 	DisableAutoAlloc    bool
 	MetaNodeThreshold   float32
