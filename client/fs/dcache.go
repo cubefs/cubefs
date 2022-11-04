@@ -21,7 +21,7 @@ import (
 
 // DentryCache defines the dentry cache.
 type DentryCache struct {
-	sync.Mutex
+	sync.RWMutex
 	cache      map[string]uint64
 	expiration time.Time
 }
@@ -51,8 +51,8 @@ func (dc *DentryCache) Get(name string) (uint64, bool) {
 		return 0, false
 	}
 
-	dc.Lock()
-	defer dc.Unlock()
+	dc.RLock()
+	defer dc.RUnlock()
 	if dc.expiration.Before(time.Now()) {
 		dc.cache = make(map[string]uint64)
 		return 0, false
