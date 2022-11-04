@@ -37,6 +37,7 @@ bash ./build.sh ${build_opt} &>> /tmp/cfs_build_output
 if [[ $? -eq 0 ]]; then
     echo -e "\033[32mdone\033[0m";
     mv bin/cfs-client /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client;
+    mv bin/cfs-client-inner /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client-inner;
     mv bin/libcfssdk.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfssdk.so;
     mv bin/libcfsc.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfsc.so;
     mv bin/libcfssdk_cshared.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfssdk_cshared.so;

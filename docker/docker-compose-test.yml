@@ -619,6 +619,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./bin/cfs-client-inner:/usr/lib64/cfs-client-inner:ro
             - ./bin/libcfssdk.so:/usr/lib64/libcfssdk.so:ro
             - ./bin/libcfsc.so:/usr/lib64/libcfsc.so:ro
             - ./bin/libcfsclient.so:/usr/lib64/libcfsclient.so:ro
@@ -650,6 +651,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./bin/cfs-client-inner:/usr/lib64/cfs-client-inner:ro
             - ./bin/libcfssdk.so:/usr/lib64/libcfssdk.so:ro
             - ./bin/libcfsc.so:/usr/lib64/libcfsc.so:ro
             - ./bin/libcfsclient.so:/usr/lib64/libcfsclient.so:ro
