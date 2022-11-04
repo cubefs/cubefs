@@ -29,7 +29,7 @@ type nodeStatInfo = proto.NodeStatInfo
 
 type volStatInfo = proto.VolStatInfo
 
-func newVolStatInfo(name string, total, used, cacheTotal, cacheUsed uint64) *volStatInfo {
+func newVolStatInfo(name string, total, used, cacheTotal, cacheUsed, inodeCount uint64) *volStatInfo {
 	usedRatio := strconv.FormatFloat(float64(used)/float64(total), 'f', 3, 32)
 	cacheUsedRatio := "0.00"
 	if cacheTotal > 0 {
@@ -44,6 +44,7 @@ func newVolStatInfo(name string, total, used, cacheTotal, cacheUsed uint64) *vol
 		CacheTotalSize: cacheTotal,
 		CacheUsedSize:  cacheUsed,
 		CacheUsedRatio: cacheUsedRatio,
+		InodeCount:     inodeCount,
 	}
 }
 
@@ -177,6 +178,11 @@ func (c *Cluster) updateVolStatInfo() {
 			cacheUsed, cacheTotal = 0, 0
 		}
 
-		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, cacheTotal, cacheUsed))
+		var inodeCount uint64
+		for _, mp := range vol.MetaPartitions {
+			inodeCount += mp.InodeCount
+		}
+
+		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, cacheTotal, cacheUsed, inodeCount))
 	}
 }
