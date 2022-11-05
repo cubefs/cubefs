@@ -33,4 +33,4 @@ For more usage:
 
     $ docker/run_docker.sh -h
 
-Prometheus and Grafana confg can be found in `docker/monitor` directory.
+Prometheus and Grafana config can be found in `docker/monitor` directory.
