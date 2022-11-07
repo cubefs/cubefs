@@ -186,6 +186,7 @@ func (d *Disk) computeUsage() (err error) {
 	fs := syscall.Statfs_t{}
 	err = syscall.Statfs(d.Path, &fs)
 	if err != nil {
+		log.LogErrorf("computeUsage. err %v", err)
 		return
 	}
 
@@ -218,6 +219,10 @@ func (d *Disk) computeUsage() (err error) {
 	for _, dp := range d.partitionMap {
 		allocatedSize += int64(dp.Size())
 	}
+
+	log.LogDebugf("computeUsage. fs info [%v,%v,%v,%v] total %v available %v DiskRdonlySpace %v ReservedSpace %v allocatedSize %v",
+		fs.Blocks, fs.Bsize, fs.Bavail, fs.Bfree, d.Total, d.Available, d.DiskRdonlySpace, d.ReservedSpace, allocatedSize)
+
 	atomic.StoreUint64(&d.Allocated, uint64(allocatedSize))
 	//  unallocated = math.Max(0, total - allocatedSize)
 	unallocated := total - allocatedSize
