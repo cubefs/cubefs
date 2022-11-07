@@ -41,6 +41,10 @@ func newLcNode(addr, clusterID string) (lcNode *LcNode) {
 	return
 }
 
+func (lcNode *LcNode) clean() {
+	lcNode.TaskManager.exitCh <- struct{}{}
+}
+
 func (lcNode *LcNode) checkLiveness() {
 	lcNode.Lock()
 	defer lcNode.Unlock()
