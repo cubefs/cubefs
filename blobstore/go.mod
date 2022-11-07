@@ -23,6 +23,7 @@ require (
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/klauspost/reedsolomon v1.9.2
 	github.com/opentracing/opentracing-go v1.2.0
+	github.com/peterbourgon/diskv/v3 v3.0.1
 	github.com/prometheus/client_golang v1.11.0
 	github.com/rs/xid v1.4.0
 	github.com/stretchr/testify v1.7.0
@@ -58,6 +59,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
+	github.com/google/btree v1.0.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.1 // indirect
 	github.com/hashicorp/go-hclog v0.12.0 // indirect

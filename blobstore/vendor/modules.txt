@@ -114,6 +114,9 @@ github.com/golang/protobuf/ptypes/timestamp
 # github.com/golang/snappy v0.0.1
 ## explicit
 github.com/golang/snappy
+# github.com/google/btree v1.0.0
+## explicit
+github.com/google/btree
 # github.com/google/uuid v1.3.0
 ## explicit
 github.com/google/uuid
@@ -181,6 +184,9 @@ github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
 github.com/opentracing/opentracing-go/mocktracer
+# github.com/peterbourgon/diskv/v3 v3.0.1
+## explicit; go 1.12
+github.com/peterbourgon/diskv/v3
 # github.com/pierrec/lz4 v0.0.0-20190327172049-315a67e90e41
 ## explicit
 github.com/pierrec/lz4
