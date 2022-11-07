@@ -174,7 +174,19 @@ func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 
 // ApplySnapshot implements the interface of raft.StateMachine
 func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
-	log.LogInfof(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
+	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] reset rocksdb before applying snapshot"))
+	snap := mf.store.RocksDBSnapshot()
+	defer mf.store.ReleaseSnapshot(snap)
+	it := mf.store.Iterator(snap)
+	defer it.Close()
+
+	for it.SeekToFirst(); it.Valid(); it.Next() {
+		key := string(it.Key().Data())
+		log.LogInfof("deleting Key: %v Value: %v", key, it.Value().Data())
+		mf.store.Del(key, true)
+	}
+
+	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	var data []byte
 	for err == nil {
 		if data, err = iterator.Next(); err != nil {
@@ -192,7 +204,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		goto errHandler
 	}
 	mf.snapshotHandler()
-	log.LogInfof(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
+	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
 	return nil
 errHandler:
 	log.LogError(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
