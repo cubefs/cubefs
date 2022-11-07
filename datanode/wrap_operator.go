@@ -502,9 +502,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
 
-		partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(p.Size))
-		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-
 		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
@@ -518,9 +515,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		if !shallDegrade {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
-
-		partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(p.Size))
-		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		if !shallDegrade {
@@ -541,9 +535,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			if !shallDegrade {
 				partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 			}
-
-			partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(currSize))
-			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
 			if !shallDegrade {
