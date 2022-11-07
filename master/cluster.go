@@ -4083,6 +4083,7 @@ func (c *Cluster) addLcNode(nodeAddr string) (id uint64, err error) {
 	c.lcMgr.lnMutex.Lock()
 
 	if c.lcNodeCount() >= int(c.cfg.MaxConcurrentLcNodes) {
+		c.lcMgr.lnMutex.Unlock()
 		err = errors.New("max concurrent LcNodes reached!")
 		goto errHandler
 	}
