@@ -288,8 +288,10 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 		return false, nil
 	}
 
-	log.LogDebugf("validateUrlBySignatureAlgorithmV2: parse signature info: requestID(%v) url(%v) accessKey(%v) signature(%v) expires(%v)",
-		GetRequestID(r), r.URL.String(), accessKey, signature, expires)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("validateUrlBySignatureAlgorithmV2: parse signature info: requestID(%v) url(%v) accessKey(%v) signature(%v) expires(%v)",
+			GetRequestID(r), r.URL.String(), accessKey, signature, expires)
+	}
 
 	// Checking access key
 
@@ -320,7 +322,9 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 
 	// check expires
 	if ok, _ := checkExpires(expires); !ok {
-		log.LogDebugf("validateUrlBySignatureAlgorithmV2: signature expired: requestID(%v) expires(%v)", GetRequestID(r), expires)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("validateUrlBySignatureAlgorithmV2: signature expired: requestID(%v) expires(%v)", GetRequestID(r), expires)
+		}
 		return false, nil
 	}
 
@@ -330,8 +334,10 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 	canonicalResourceQuery := getCanonicalQueryV2(canonicalResource, r.URL.Query().Encode())
 	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, secretKey, r.Header)
 	if calSignature != signature {
-		log.LogDebugf("validateUrlBySignatureAlgorithmV2: invalid signature: requestID(%v) client(%v) server(%v)",
-			GetRequestID(r), signature, calSignature)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("validateUrlBySignatureAlgorithmV2: invalid signature: requestID(%v) client(%v) server(%v)",
+				GetRequestID(r), signature, calSignature)
+		}
 		return false, nil
 	}
 

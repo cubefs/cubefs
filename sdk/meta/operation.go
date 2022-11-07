@@ -500,7 +500,7 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 	}
 }
 
-func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID uint64, prefix, marker string, count uint64) (status int, children []proto.Dentry, err error) {
+func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID uint64, prefix, marker string, count uint64) (status int, children []proto.Dentry, next string, err error) {
 
 	children = make([]proto.Dentry, 0)
 
@@ -568,8 +568,15 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 			}
 			noNeedToGetMoreResult = true
 		}
-		if count > 0 && count-uint64(len(children)) < validResultUpperIndex+1 {
-			validResultUpperIndex = count - uint64(len(children))
+		if count > 0 {
+			if remain := count - uint64(len(children)); remain < validResultUpperIndex {
+				validResultUpperIndex = remain
+				next = resp.Children[validResultUpperIndex].Name
+			} else if remain == validResultUpperIndex &&
+				validResultUpperIndex == uint64(len(resp.Children)) &&
+				(prefix == "" || (prefix != "" && strings.HasPrefix(resp.NextMarker, prefix))) {
+				next = resp.NextMarker
+			}
 		}
 		children = append(children, resp.Children[:validResultUpperIndex]...)
 		if resp.NextMarker == "" || (count > 0 && uint64(len(children)) >= count) || noNeedToGetMoreResult {
@@ -581,7 +588,7 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 		}
 		stepMarker = resp.NextMarker
 	}
-	return statusOK, children, nil
+	return statusOK, children, next, nil
 }
 
 //func (mw *MetaWrapper) appendExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, extent proto.ExtentKey) (status int, err error) {

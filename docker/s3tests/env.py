@@ -21,3 +21,4 @@ SECRET_KEY = 'TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd'
 BUCKET = 'ltptest'
 USE_SSL = False
 REGION = 'chubaofs01'
+MOUNT_POINT = '/cfs/mnt/'

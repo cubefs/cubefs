@@ -52,11 +52,15 @@ func (m PrefixMap) Prefixes() Prefixes {
 	return s
 }
 
-func (m PrefixMap) contain(prefix string) bool {
+func (m PrefixMap) Contain(prefix string) bool {
 	if _, ok := m[prefix]; ok {
 		return true
 	}
 	return false
+}
+
+func (m PrefixMap) Len() int {
+	return len(m)
 }
 
 type FSUpload struct {
