@@ -225,6 +225,7 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 	var (
 		lcNode *LcNode
 		logMsg string
+		infos  []lcnodeTaskInfo
 	)
 	log.LogDebugf("action[handleLcNodeHeartbeatResp] clusterID[%v] receive lcNode[%v] heartbeat", c.Name, nodeAddr)
 	if resp.Status != proto.TaskSucceeds {
@@ -277,15 +278,42 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 				pInfo.updateTime = time.Now()
 				log.LogDebugf("action[handleLcNodeHeartbeatResp], snapshot scan taskid(%v) update time",
 					task.Id)
+			} else {
+				//in case of master restart or leader changing, resume processing status
+				if vol, err := c.getVol(task.VolName); err == nil {
+					volVerInfoList := vol.VersionMgr.getVersionList()
+					for _, volVerInfo := range volVerInfoList.VerList {
+						if volVerInfo.Ver == task.VerSeq && volVerInfo.Status == proto.VersionDeleting {
+							pInfo := &ProcessingVerInfo{
+								LcVerInfo: LcVerInfo{
+									VerInfo: proto.VerInfo{
+										VolName: task.VolName,
+										VerSeq:  task.VerSeq,
+									},
+									dTime: volVerInfo.DelTime,
+								},
+								updateTime: time.Now(),
+							}
+							c.lcMgr.snapshotMgr.volVerInfos.ProcessingVerInfos[task.Id] = pInfo
+							log.LogInfof("action[handleLcNodeHeartbeatResp], task (%v)  processing status is resumed",
+								task.Id)
+						}
+					}
+				} else {
+					log.LogErrorf("action[handleLcNodeHeartbeatResp], snapshot scan vol(%v) not found", task.VolName)
+				}
 			}
 			c.lcMgr.snapshotMgr.volVerInfos.Unlock()
+			info := &proto.DelVerTaskInfo{Id: task.Key()}
+			infos = append(infos, info)
+
 			log.LogDebugf("action[handleLcNodeHeartbeatResp], snapshot scan taskid(%v) rsp(%v)",
 				task.Id, tmpResp)
 		}
+		c.lcMgr.lnStates.UpdateNodeRunningTask(nodeAddr, infos, true)
 	} else {
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is idle", nodeAddr)
-		var infos []lcnodeTaskInfo
-		c.lcMgr.lnStates.UpdateNodeTask(nodeAddr, infos)
+		c.lcMgr.lnStates.UpdateNodeRunningTask(nodeAddr, infos, false)
 		c.lcMgr.NotifyIdleLcNode()
 	}
 
