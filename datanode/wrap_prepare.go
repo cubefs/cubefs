@@ -92,6 +92,10 @@ func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 			return
 		}
 	}
+	if p.IsWriteOperation() {
+		dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(p.Size))
+		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+	}
 	return
 }
 
