@@ -113,29 +113,54 @@ func (ns *nodesState) AddTaskToNode(info lcnodeTaskInfo, maxConcurrentLcNodes ui
 	return
 }
 
-//func (ns *nodesState) UpdateNodeTask(nodeAddr string, infos []*proto.S3ScanTaskInfo) {
-func (ns *nodesState) UpdateNodeTask(nodeAddr string, infos []lcnodeTaskInfo) {
-	if len(infos) == 0 {
-		ns.Lock()
-		delete(ns.workingNodes, nodeAddr)
-		ns.idleNodes[nodeAddr] = nodeAddr
-		ns.Unlock()
-		return
-	}
+//func (ns *nodesState) UpdateNodeTask(nodeAddr string, infos []lcnodeTaskInfo) {
+//	if len(infos) == 0 {
+//		ns.Lock()
+//		delete(ns.workingNodes, nodeAddr)
+//		ns.idleNodes[nodeAddr] = nodeAddr
+//		ns.Unlock()
+//		return
+//	}
+//	ns.Lock()
+//	defer ns.Unlock()
+//
+//	if _, ok := ns.workingNodes[nodeAddr]; !ok {
+//		for _, info := range infos {
+//			ns.addTaskToNode(info, nodeAddr)
+//		}
+//		delete(ns.idleNodes, nodeAddr)
+//	} else {
+//		delete(ns.workingNodes, nodeAddr)
+//		for _, info := range infos {
+//			ns.addTaskToNode(info, nodeAddr)
+//		}
+//
+//	}
+//
+//}
+
+func (ns *nodesState) UpdateNodeRunningTask(nodeAddr string, infos []lcnodeTaskInfo, incrementUpdate bool) {
 	ns.Lock()
 	defer ns.Unlock()
-
-	if _, ok := ns.workingNodes[nodeAddr]; !ok {
-		for _, info := range infos {
-			ns.addTaskToNode(info, nodeAddr)
+	if !incrementUpdate {
+		if len(infos) == 0 {
+			delete(ns.workingNodes, nodeAddr)
+			ns.idleNodes[nodeAddr] = nodeAddr
+			return
+		} else {
+			delete(ns.workingNodes, nodeAddr)
+			for _, info := range infos {
+				ns.addTaskToNode(info, nodeAddr)
+			}
+			delete(ns.idleNodes, nodeAddr)
 		}
-		delete(ns.idleNodes, nodeAddr)
 	} else {
-		delete(ns.workingNodes, nodeAddr)
 		for _, info := range infos {
 			ns.addTaskToNode(info, nodeAddr)
 		}
-
+		if len(infos) != 0 {
+			delete(ns.idleNodes, nodeAddr)
+		}
 	}
 
 }
@@ -233,9 +258,11 @@ func (vvi *VolVerInfos) AddVerInfo(vi *LcVerInfo) {
 	vvi.Lock()
 	defer vvi.Unlock()
 	if pInfo, ok := vvi.ProcessingVerInfos[vi.Key()]; ok {
-		if time.Since(pInfo.updateTime) < time.Second*time.Duration(defaultNodeTimeOutSec) {
+		if time.Since(pInfo.updateTime) < time.Second*time.Duration(defaultIntervalToCheckDelVerTaskExpiration*defaultIntervalToCheck) {
 			log.LogDebugf("VerInfo: %v is already in processing", vi)
 			return
+		} else {
+			log.LogWarnf("VerInfo: %v is expired", vi)
 		}
 	}
 
