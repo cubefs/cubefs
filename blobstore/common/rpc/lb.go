@@ -262,6 +262,11 @@ func (c *lbClient) doCtx(ctx context.Context, r *http.Request) (resp *http.Respo
 	)
 
 	for i := 0; i < tryTimes; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
 		// get the available hosts
 		if index == len(hosts) || hosts == nil {
 			hosts = c.sel.GetAvailableHosts()

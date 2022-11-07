@@ -388,3 +388,16 @@ func TestLbClient_OneHostWithNotConfigTryTimes(t *testing.T) {
 	require.NotNil(t, result)
 	client.Close()
 }
+
+func TestLbClient_DoContextCancel(t *testing.T) {
+	cfg := newCfg([]string{testServer.URL}, nil)
+	client := NewLbClient(cfg, nil)
+	ctx := context.Background()
+	result := &ret{}
+	cancel, cancelFunc := context.WithCancel(ctx)
+	request, err := http.NewRequest(http.MethodPost, testServer.URL, nil)
+	require.NoError(t, err)
+	cancelFunc()
+	err = client.DoWith(cancel, request, result)
+	require.Error(t, err)
+}

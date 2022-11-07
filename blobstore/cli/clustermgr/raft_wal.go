@@ -174,8 +174,8 @@ func parse(filename string, printf func(format string, opts ...interface{})) err
 		} else {
 			data := entry.Data[8:]
 			proposeInfo := base.DecodeProposeInfo(data)
-			printf("term=%d index=%d module=%s opertype=%d data=%s \n",
-				entry.Term, entry.Index, proposeInfo.Module, proposeInfo.OperType, string(proposeInfo.Data))
+			printf("term=%d index=%d module=%s opertype=%d data=%s ReqID=%s\n",
+				entry.Term, entry.Index, proposeInfo.Module, proposeInfo.OperType, string(proposeInfo.Data), proposeInfo.Context.ReqID)
 		}
 	}
 }
