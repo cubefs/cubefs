@@ -323,6 +323,10 @@ func (mp *metaPartition) fsmSyncDelExtentsV2(data []byte) {
 	}
 
 	updateKeyToDate(key, extDeleteCursor)
+
+	if extDeleteCursor == 0 {
+		updateKeyToNow(key)
+	}
 	//Update the key to next day. ignore day 32 item as it will be deleted by next month
 	key[dayKeyIndex] += 1
 
@@ -427,7 +431,7 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 	handleItemFunc := func(k, v []byte) (bool, error) {
 
 		needDel := true
-		if retryList.Len() > maxRetryCnt {
+		if retryList.Len() >= maxRetryCnt {
 			//next term
 			return false, nil
 		}
