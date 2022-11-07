@@ -449,9 +449,18 @@ func (c *Cluster) scheduleToScanS3Expiration() {
 }
 
 func (c *Cluster) scheduleToDelSnapshotVer() {
+	//make sure resume all the processing ver deleting tasks before checking
+	waitTime := time.Second * defaultIntervalToCheck
+	waited := false
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
+				if !waited {
+					log.LogInfof("wait for %v seconds once after becoming leader to make sure all the ver deleting tasks are resumed",
+						waitTime)
+					time.Sleep(waitTime)
+					waited = true
+				}
 				c.getDeletingSnapshotVer()
 				c.checkSnapshotStrategy()
 			}
@@ -570,21 +579,25 @@ func (c *Cluster) scanS3Expiration() {
 }
 
 func (c *Cluster) getDeletingSnapshotVer() {
-	vols := c.allVols()
-	for volName, vol := range vols {
-		volVerInfoList := vol.VersionMgr.getVersionList()
-		for _, volVerInfo := range volVerInfoList.VerList {
-			if volVerInfo.Status == proto.VersionDeleting {
-				verInfo := &LcVerInfo{
-					VerInfo: proto.VerInfo{
-						VolName: volName,
-						VerSeq:  volVerInfo.Ver,
-					},
-					dTime: volVerInfo.DelTime,
+	if c.partition != nil && c.partition.IsRaftLeader() {
+		vols := c.allVols()
+		for volName, vol := range vols {
+			volVerInfoList := vol.VersionMgr.getVersionList()
+			for _, volVerInfo := range volVerInfoList.VerList {
+				if volVerInfo.Status == proto.VersionDeleting {
+					verInfo := &LcVerInfo{
+						VerInfo: proto.VerInfo{
+							VolName: volName,
+							VerSeq:  volVerInfo.Ver,
+						},
+						dTime: volVerInfo.DelTime,
+					}
+					c.lcMgr.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
 				}
-				c.lcMgr.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
 			}
 		}
+	} else {
+		log.LogWarnf("getDeletingSnapshotVer: master is not leader")
 	}
 }
 
@@ -3836,6 +3849,15 @@ func (c *Cluster) checkDecommissionDisk() {
 				}
 			}
 		}
+		return true
+	})
+}
+
+func (c *Cluster) clearLcNodes() {
+	c.lcMgr.lcNodes.Range(func(key, value interface{}) bool {
+		lcNode := value.(*LcNode)
+		c.lcMgr.lcNodes.Delete(key)
+		lcNode.clean()
 		return true
 	})
 }

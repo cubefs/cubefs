@@ -227,6 +227,7 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearTopology()
 	m.cluster.clearDataNodes()
 	m.cluster.clearMetaNodes()
+	m.cluster.clearLcNodes()
 	m.cluster.clearVols()
 	m.user.clearUserStore()
 	m.user.clearAKStore()

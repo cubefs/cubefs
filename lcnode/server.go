@@ -70,8 +70,12 @@ func (l *LcNode) StopScanners() {
 	l.scannerMutex.Lock()
 	defer l.scannerMutex.Unlock()
 	for _, s := range l.s3Scanners {
-		delete(l.s3Scanners, s.ID)
 		s.Stop()
+		delete(l.s3Scanners, s.ID)
+	}
+	for _, s := range l.snapshotScanners {
+		s.Stop()
+		delete(l.snapshotScanners, s.ID)
 	}
 }
 
