@@ -281,6 +281,9 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		err = rp.putResponse(request)
 		return
 	}
+
+
+
 	err = rp.putToBeProcess(request)
 
 	return

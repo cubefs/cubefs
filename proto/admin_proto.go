@@ -51,6 +51,7 @@ const (
 	AdminUpdateZoneExcludeRatio     = "/admin/updateZoneExcludeRatio"
 	AdminSetNodeRdOnly              = "/admin/setNodeRdOnly"
 	AdminSetDpRdOnly                = "/admin/setDpRdOnly"
+	AdminDataPartitionChangeLeader = "/dataPartition/changeleader"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -104,6 +105,7 @@ const (
 	AdminLoadMetaPartition         = "/metaPartition/load"
 	AdminDiagnoseMetaPartition     = "/metaPartition/diagnose"
 	AdminDecommissionMetaPartition = "/metaPartition/decommission"
+	AdminChangeMetaPartitionLeader = "/metaPartition/changeleader"
 	AdminAddMetaReplica            = "/metaReplica/add"
 	AdminDeleteMetaReplica         = "/metaReplica/delete"
 
