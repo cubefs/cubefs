@@ -54,6 +54,7 @@ var (
 	ErrValueType         = errors.New("value type not match this key")
 	ErrNotConfigPrevious = errors.New("level previously not config")
 	ErrNotConfigNow      = errors.New("level not config now")
+	ErrValueOutOfLimit   = errors.New("value out of limit")
 )
 
 type Config struct {
@@ -213,6 +214,9 @@ func (s *Service) reloadDiskConf(ctx context.Context, args *bnapi.ConfigReloadAr
 	if err != nil {
 		return ErrValueType
 	}
+	if value <= 0 || value > 10000 {
+		return ErrValueOutOfLimit
+	}
 	switch args.Key {
 	case "disk_bandwidth_MBPS":
 		qosConf.DiskBandwidthMBPS = value
@@ -238,6 +242,9 @@ func (s *Service) reloadLevelConf(ctx context.Context, args *bnapi.ConfigReloadA
 		if err != nil {
 			return ErrValueType
 		}
+		if value <= 0 || value > 10000 {
+			return ErrValueOutOfLimit
+		}
 	}
 	switch item {
 	case "bandwidth_MBPS":
@@ -248,6 +255,9 @@ func (s *Service) reloadLevelConf(ctx context.Context, args *bnapi.ConfigReloadA
 		factor, err := strconv.ParseFloat(args.Value, 64)
 		if err != nil {
 			return ErrValueType
+		}
+		if factor <= 0 || factor > 1 {
+			return ErrValueOutOfLimit
 		}
 		paraConf.Factor = factor
 	default:
