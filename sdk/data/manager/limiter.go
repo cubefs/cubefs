@@ -65,7 +65,7 @@ func (factor *LimitFactor) getNeedByMagnify(allocCnt uint32, magnify uint32) uin
 		return 0
 	}
 	if allocCnt > 1000 {
-		log.LogDebugf("action[getNeedByMagnify] allocCnt %v", allocCnt)
+		log.QosWriteDebugf("action[getNeedByMagnify] allocCnt %v", allocCnt)
 		magnify = defaultMagnifyFactor
 	}
 
@@ -79,8 +79,8 @@ func (factor *LimitFactor) getNeedByMagnify(allocCnt uint32, magnify uint32) uin
 }
 
 func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Future) {
-	//log.LogDebugf("action[alloc] type [%v] alloc [%v], tmp factor waitlist [%v] hitlimtcnt [%v] len [%v]", proto.QosTypeString(factor.factorType),
-	//	allocCnt, factor.waitList.Len(), factor.gidHitLimitCnt, factor.gridList.Len())
+	log.QosWriteDebugf("action[alloc] type [%v] alloc [%v], tmp factor waitlist [%v] hitlimtcnt [%v] len [%v]", proto.QosTypeString(factor.factorType),
+		allocCnt, factor.waitList.Len(), factor.gidHitLimitCnt, factor.gridList.Len())
 	atomic.AddUint64(&factor.valAllocApply, uint64(allocCnt))
 	if !factor.mgr.enable {
 		// used not accurate also fine, the purpose is get master's info
@@ -134,7 +134,7 @@ func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Futur
 				tmpTime := time.Now()
 				if factor.mgr.lastReqTime.Add(time.Duration(factor.mgr.ReqPeriod) * time.Second).Before(tmpTime) {
 					factor.mgr.lastReqTime = tmpTime
-					log.LogDebugf("CheckGrid factor [%v] unlock before active update simple vol view,gird id[%v] limit[%v] buffer [%v] used [%v]",
+					log.QosWriteDebugf("CheckGrid factor [%v] unlock before active update simple vol view,gird id[%v] limit[%v] buffer [%v] used [%v]",
 						proto.QosTypeString(factor.factorType), grid.ID, grid.limit, grid.buffer, grid.used)
 					// unlock need call here,UpdateSimpleVolView will lock again
 					grid.hitLimit = true
@@ -153,7 +153,7 @@ func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Futur
 }
 
 func (factor *LimitFactor) SetLimit(limitVal uint64, bufferVal uint64) {
-	log.LogDebugf("acton[SetLimit] factor type [%v] limitVal [%v] bufferVal [%v]", proto.QosTypeString(factor.factorType), limitVal, bufferVal)
+	log.QosWriteDebugf("acton[SetLimit] factor type [%v] limitVal [%v] bufferVal [%v]", proto.QosTypeString(factor.factorType), limitVal, bufferVal)
 	var grid *GridElement
 	factor.mgr.lastTimeOfSetLimit = time.Now()
 	factor.lock.Lock()
@@ -197,7 +197,7 @@ func (factor *LimitFactor) SetLimit(limitVal uint64, bufferVal uint64) {
 	}
 
 	grid = factor.gridList.Back().Value.(*GridElement)
-	log.LogDebugf("action[SetLimit] factor type [%v] gird id %v limit %v buffer %v",
+	log.QosWriteDebugf("action[SetLimit] factor type [%v] gird id %v limit %v buffer %v",
 		proto.QosTypeString(factor.factorType), grid.ID, grid.limit, grid.buffer)
 
 }
@@ -226,7 +226,7 @@ func (factor *LimitFactor) TryReleaseWaitList() {
 			val := tGrid.limit + tGrid.buffer - tUsed                        // uint may out range
 			if tGrid.limit+tGrid.buffer > tUsed && ele.used >= uint32(val) { // not atomic pretect,grid used may larger than limit and buffer
 				ele.used -= uint32(val)
-				log.LogDebugf("action[TryReleaseWaitList] type [%v] ele used reduce [%v] and left [%v]", proto.QosTypeString(factor.factorType), val, ele.used)
+				log.QosWriteDebugf("action[TryReleaseWaitList] type [%v] ele used reduce [%v] and left [%v]", proto.QosTypeString(factor.factorType), val, ele.used)
 				// atomic.AddUint64(&curGrid.used, tGrid.limit+ tGrid.buffer)
 				atomic.AddUint64(&tGrid.used, val)
 			}
@@ -238,7 +238,7 @@ func (factor *LimitFactor) TryReleaseWaitList() {
 			tGrid = gridIter.Value.(*GridElement)
 		}
 		atomic.AddUint64(&tGrid.used, uint64(ele.used))
-		log.LogDebugf("action[TryReleaseWaitList] type [%v] ele used [%v] consumed!", proto.QosTypeString(factor.factorType), ele.used)
+		log.QosWriteDebugf("action[TryReleaseWaitList] type [%v] ele used [%v] consumed!", proto.QosTypeString(factor.factorType), ele.used)
 		ele.future.Respond(true, nil)
 
 		value = value.Next()
@@ -268,7 +268,7 @@ func (factor *LimitFactor) CheckGrid() {
 			factor.mgr.lastTimeOfSetLimit, newGrid.time)
 	}
 	if factor.mgr.enable {
-		log.LogDebugf("action[CheckGrid] factor type:[%v] gridlistLen:[%v] waitlistLen:[%v] hitlimitcnt:[%v] "+
+		log.QosWriteDebugf("action[CheckGrid] factor type:[%v] gridlistLen:[%v] waitlistLen:[%v] hitlimitcnt:[%v] "+
 			"add new grid info girdid[%v] used:[%v] limit:[%v] buffer:[%v] time:[%v]",
 			proto.QosTypeString(factor.factorType), factor.gridList.Len(), factor.waitList.Len(), factor.gidHitLimitCnt,
 			newGrid.ID, newGrid.used, newGrid.limit, newGrid.buffer, newGrid.time)
@@ -280,12 +280,12 @@ func (factor *LimitFactor) CheckGrid() {
 		if firstGrid.hitLimit {
 			factor.gidHitLimitCnt--
 			if factor.mgr.enable {
-				log.LogDebugf("action[CheckGrid] factor [%v] after minus gidHitLimitCnt:[%v]",
+				log.QosWriteDebugf("action[CheckGrid] factor [%v] after minus gidHitLimitCnt:[%v]",
 					proto.QosTypeString(factor.factorType), factor.gidHitLimitCnt)
 			}
 		}
 		if factor.mgr.enable {
-			log.LogDebugf("action[CheckGrid] type:[%v] remove oldest grid id[%v] info buffer:[%v] limit:[%v] used[%v] from gridlist",
+			log.QosWriteDebugf("action[CheckGrid] type:[%v] remove oldest grid id[%v] info buffer:[%v] limit:[%v] used[%v] from gridlist",
 				proto.QosTypeString(factor.factorType), firstGrid.ID, firstGrid.buffer, firstGrid.limit, firstGrid.used)
 		}
 		factor.gridList.Remove(factor.gridList.Front())
@@ -408,7 +408,7 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 			//	reqUsed,
 			//	limit, limitFactor.gridList.Len())
 			if grid.Prev() == nil || griCnt >= girdCntOneSecond {
-				log.LogDebugf("action[[GetFlowInfo] type [%v] grid count %v reqused %v list len %v",
+				log.QosWriteDebugf("action[[GetFlowInfo] type [%v] grid count %v reqused %v list len %v",
 					proto.QosTypeString(factorType), griCnt, reqUsed, limitFactor.gridList.Len())
 				break
 			}
@@ -441,13 +441,13 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 		if limitFactor.waitList.Len() > 0 ||
 			!limitFactor.isSetLimitZero ||
 			factor.Used|factor.Need > 0 {
-			log.LogDebugf("action[GetFlowInfo] type [%v]  len [%v] isSetLimitZero [%v] used [%v] need [%v]", proto.QosTypeString(limitFactor.factorType),
+			log.QosWriteDebugf("action[GetFlowInfo] type [%v]  len [%v] isSetLimitZero [%v] used [%v] need [%v]", proto.QosTypeString(limitFactor.factorType),
 				limitFactor.waitList.Len(), limitFactor.isSetLimitZero, factor.Used, factor.Need)
 			validCliInfo = true
 		}
 
 		if griCnt > 0 {
-			log.LogDebugf("action[GetFlowInfo] type [%v] last commit[%v] report to master "+
+			log.QosWriteDebugf("action[GetFlowInfo] type [%v] last commit[%v] report to master "+
 				"with simpleClient limit info [%v,%v,%v,%v],host [%v], "+
 				"status [%v] grid [%v, %v, %v]",
 				proto.QosTypeString(limitFactor.factorType), limitFactor.valAllocLastCommit,
@@ -482,11 +482,11 @@ func (limitManager *LimitManager) ScheduleCheckGrid() {
 				return
 			case <-ticker.C:
 				cnt++
-				for _, limitFactor := range limitManager.limitMap {
+				for factorType, limitFactor := range limitManager.limitMap {
 					limitFactor.CheckGrid()
 					if cnt%girdCntOneSecond == 0 {
-						//log.LogDebugf("action[ScheduleCheckGrid] type [%v] factor apply val:[%v] commit val:[%v]",
-						//	proto.QosTypeString(factorType), atomic.LoadUint64(&limitFactor.valAllocApply), atomic.LoadUint64(&limitFactor.valAllocCommit))
+						log.QosWriteDebugf("action[ScheduleCheckGrid] type [%v] factor apply val:[%v] commit val:[%v]",
+							proto.QosTypeString(factorType), atomic.LoadUint64(&limitFactor.valAllocApply), atomic.LoadUint64(&limitFactor.valAllocCommit))
 						limitFactor.valAllocLastApply = atomic.LoadUint64(&limitFactor.valAllocLastApply)
 						limitFactor.valAllocLastCommit = atomic.LoadUint64(&limitFactor.valAllocCommit)
 						atomic.StoreUint64(&limitFactor.valAllocApply, 0)
@@ -522,7 +522,7 @@ func (limitManager *LimitManager) SetClientLimit(limit *proto.LimitRsp2Client) {
 	}
 	for factorType, magnify := range limit.Magnify {
 		if magnify > 0 && magnify != limitManager.limitMap[factorType].magnify {
-			log.LogDebugf("action[SetClientLimit] type [%v] update magnify [%v] to [%v]",
+			log.QosWriteDebugf("action[SetClientLimit] type [%v] update magnify [%v] to [%v]",
 				proto.QosTypeString(factorType), limitManager.limitMap[factorType].magnify, magnify)
 			limitManager.limitMap[factorType].magnify = magnify
 		}
@@ -545,7 +545,7 @@ func (limitManager *LimitManager) WaitN(ctx context.Context, lim *LimitFactor, n
 	var ret uint8
 	if ret, fut = lim.alloc(uint32(n)); ret == runNow {
 		atomic.AddUint64(&lim.valAllocCommit, uint64(n))
-		// log.LogDebugf("action[WaitN] type [%v] return now waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
+		log.QosWriteDebugf("action[WaitN] type [%v] return now waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
 		return nil
 	}
 
@@ -560,7 +560,7 @@ func (limitManager *LimitManager) WaitN(ctx context.Context, lim *LimitFactor, n
 		return
 	case <-respCh:
 		atomic.AddUint64(&lim.valAllocCommit, uint64(n))
-		// log.LogDebugf("action[WaitN] type [%v] return waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
+		log.QosWriteDebugf("action[WaitN] type [%v] return waitlistlen [%v]", proto.QosTypeString(lim.factorType), lim.waitList.Len())
 		return nil
 		//default:
 	}

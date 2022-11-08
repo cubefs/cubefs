@@ -259,6 +259,7 @@ type Log struct {
 	readLogger     *LogObject
 	updateLogger   *LogObject
 	criticalLogger *LogObject
+	qosLogger      *LogObject
 	level          Level
 	msgC           chan string
 	rotate         *LogRotate
@@ -273,6 +274,7 @@ var (
 	ReadLogFileName     = "_read.log"
 	UpdateLogFileName   = "_write.log"
 	CriticalLogFileName = "_critical.log"
+	QoSLogFileName      = "_qos.log"
 )
 
 var gLog *Log = nil
@@ -358,8 +360,8 @@ func (l *Log) initLog(logDir, module string, level Level) error {
 		return
 	}
 	var err error
-	logHandles := [...]**LogObject{&l.debugLogger, &l.infoLogger, &l.warnLogger, &l.errorLogger, &l.readLogger, &l.updateLogger, &l.criticalLogger}
-	logNames := [...]string{DebugLogFileName, InfoLogFileName, WarnLogFileName, ErrLogFileName, ReadLogFileName, UpdateLogFileName, CriticalLogFileName}
+	logHandles := [...]**LogObject{&l.debugLogger, &l.infoLogger, &l.warnLogger, &l.errorLogger, &l.readLogger, &l.updateLogger, &l.criticalLogger, &l.qosLogger}
+	logNames := [...]string{DebugLogFileName, InfoLogFileName, WarnLogFileName, ErrLogFileName, ReadLogFileName, UpdateLogFileName, CriticalLogFileName, QoSLogFileName}
 	for i := range logHandles {
 		if *logHandles[i], err = newLog(logNames[i]); err != nil {
 			return err
@@ -648,6 +650,32 @@ func LogReadf(format string, v ...interface{}) {
 	s := fmt.Sprintf(format, v...)
 	s = gLog.SetPrefix(s, levelPrefixes[5])
 	gLog.readLogger.Output(2, s)
+}
+
+// QosWrite
+func QosWrite(v ...interface{}) {
+	if gLog == nil {
+		return
+	}
+	if UpdateLevel&gLog.level != gLog.level {
+		return
+	}
+	s := fmt.Sprintln(v...)
+	s = gLog.SetPrefix(s, levelPrefixes[0])
+	gLog.qosLogger.Output(2, s)
+}
+
+// QosWriteDebugf TODO not used
+func QosWriteDebugf(format string, v ...interface{}) {
+	if gLog == nil {
+		return
+	}
+	if UpdateLevel&gLog.level != gLog.level {
+		return
+	}
+	s := fmt.Sprintf(format, v...)
+	s = gLog.SetPrefix(s, levelPrefixes[0])
+	gLog.qosLogger.Output(2, s)
 }
 
 // LogWrite
