@@ -15,16 +15,29 @@
 package blobnode
 
 import (
+	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
+
 	"github.com/desertbit/grumble"
 )
 
 // Register register blobnode.
 func Register(app *grumble.App) {
-	mainCommand := &grumble.Command{
+	blobnodeCommand := &grumble.Command{
 		Name: "blobnode",
 		Help: "blobnode tools",
 	}
-	app.AddCommand(mainCommand)
+	app.AddCommand(blobnodeCommand)
 
-	addCmdIOStat(mainCommand)
+	addCmdDisk(blobnodeCommand)
+	addCmdChunk(blobnodeCommand)
+	addCmdShard(blobnodeCommand)
+	addCmdIOStat(blobnodeCommand)
+}
+
+func blobnodeFlags(f *grumble.Flags) {
+	// readable
+	flags.VerboseRegister(f)
+
+	// host
+	f.StringL("host", "http://127.0.0.1:8889", "host of the blobnode")
 }
