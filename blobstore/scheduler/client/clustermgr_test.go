@@ -118,7 +118,7 @@ func TestClustermgrClient(t *testing.T) {
 
 		cli.client.(*MockClusterManager).EXPECT().UnlockVolume(any, any).Return(errcode.ErrUnlockNotAllow)
 		err = cli.UnlockVolume(ctx, proto.Vid(1))
-		require.NoError(t, err)
+		require.ErrorIs(t, errcode.ErrUnlockNotAllow, err)
 
 		cli.client.(*MockClusterManager).EXPECT().UnlockVolume(any, any).Return(errMock)
 		err = cli.UnlockVolume(ctx, proto.Vid(1))

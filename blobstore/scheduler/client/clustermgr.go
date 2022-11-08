@@ -29,7 +29,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -450,11 +449,6 @@ func (c *clustermgrClient) UnlockVolume(ctx context.Context, vid proto.Vid) (err
 	span.Debugf("unlock volume: args vid[%d]", vid)
 	err = c.client.UnlockVolume(ctx, &cmapi.UnlockVolumeArgs{Vid: vid})
 	span.Debugf("unlock volume ret: err[%+v]", err)
-	if rpc.DetectStatusCode(err) == errcode.CodeUnlockNotAllow {
-		span.Infof("unlock volume failed but deem lock success: err[%+v], code[%d]", err, rpc.DetectStatusCode(err))
-		return nil
-	}
-
 	return
 }
 
