@@ -24,6 +24,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -106,6 +107,18 @@ func newMockService(t *testing.T) *Service {
 			}
 			if args.Flush {
 				return nil, errcode.ErrVolumeNotExist
+			}
+			return nil, errors.New("internal error")
+		})
+	cacher.EXPECT().GetDisk(A, A).AnyTimes().DoAndReturn(
+		func(_ context.Context, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+			disk := new(blobnode.DiskInfo)
+			if args.DiskID%2 == 0 {
+				disk.DiskID = args.DiskID
+				return disk, nil
+			}
+			if args.Flush {
+				return nil, errcode.ErrCMDiskNotFound
 			}
 			return nil, errors.New("internal error")
 		})
@@ -298,7 +311,7 @@ func TestService_Allocator(t *testing.T) {
 	}
 }
 
-func TestService_Cacher(t *testing.T) {
+func TestService_CacherVolume(t *testing.T) {
 	url := runMockService(newMockService(t)) + "/cache/volume/"
 	cli := newClient()
 	var volume clustermgr.VolumeInfo
@@ -325,6 +338,31 @@ func TestService_Cacher(t *testing.T) {
 		err := cli.GetWith(ctx, url+"111?flush=true", &volume)
 		require.Error(t, err)
 		require.Equal(t, errcode.CodeVolumeNotExist, rpc.DetectStatusCode(err))
+	}
+}
+
+func TestService_CacherDisk(t *testing.T) {
+	url := runMockService(newMockService(t)) + "/cache/disk/"
+	cli := newClient()
+	var disk blobnode.DiskInfo
+	{
+		err := cli.GetWith(ctx, url+"1024", &disk)
+		require.NoError(t, err)
+		require.Equal(t, proto.DiskID(1024), disk.DiskID)
+	}
+	{
+		err := cli.GetWith(ctx, url+"111", nil)
+		require.Error(t, err)
+	}
+	{
+		err := cli.GetWith(ctx, url+"111?flush=0", nil)
+		require.Error(t, err)
+		require.Equal(t, 500, rpc.DetectStatusCode(err))
+	}
+	{
+		err := cli.GetWith(ctx, url+"111?flush=true", nil)
+		require.Error(t, err)
+		require.Equal(t, errcode.CodeCMDiskNotFound, rpc.DetectStatusCode(err))
 	}
 }
 

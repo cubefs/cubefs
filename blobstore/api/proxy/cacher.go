@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 
+	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
@@ -45,7 +46,14 @@ type CacheVolumeArgs struct {
 	Flush   bool      `json:"flush,omitempty"`
 }
 
+// CacheDiskArgs disk arguments.
+type CacheDiskArgs struct {
+	DiskID proto.DiskID `json:"disk_id"`
+	Flush  bool         `json:"flush,omitempty"`
+}
+
 // Cacher interface of proxy cache.
 type Cacher interface {
 	GetCacheVolume(ctx context.Context, host string, args *CacheVolumeArgs) (*VersionVolume, error)
+	GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (*blobnode.DiskInfo, error)
 }

@@ -344,13 +344,6 @@ func initMockData() {
 			}
 			return clustermgr.ServiceInfo{}, errNotFound
 		})
-	cli.EXPECT().DiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-			if val, ok := dataDisks[id]; ok {
-				return &val, nil
-			}
-			return nil, errNotFound
-		})
 	cmcli = cli
 
 	clusterInfo = &clustermgr.ClusterInfo{
@@ -358,17 +351,25 @@ func initMockData() {
 		ClusterID: clusterID,
 		Nodes:     []string{"node-1", "node-2", "node-3"},
 	}
-	serviceController, _ = controller.NewServiceController(
-		controller.ServiceConfig{
-			ClusterID: clusterID,
-			IDC:       idc,
-			ReloadSec: 1000,
-		}, cmcli, nil)
 
 	ctr = gomock.NewController(&testing.T{})
 	proxycli := mocks.NewMockProxyClient(ctr)
 	proxycli.EXPECT().GetCacheVolume(gomock.Any(), gomock.Any(), gomock.Any()).
 		AnyTimes().Return(dataVolume, nil)
+	proxycli.EXPECT().GetCacheDisk(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+			if val, ok := dataDisks[args.DiskID]; ok {
+				return &val, nil
+			}
+			return nil, errNotFound
+		})
+
+	serviceController, _ = controller.NewServiceController(
+		controller.ServiceConfig{
+			ClusterID: clusterID,
+			IDC:       idc,
+			ReloadSec: 1000,
+		}, cmcli, proxycli, nil)
 	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxycli, 0)
 
 	ctr = gomock.NewController(&testing.T{})

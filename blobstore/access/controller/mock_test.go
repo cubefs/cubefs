@@ -111,13 +111,6 @@ func init() {
 			}
 			return cmapi.ServiceInfo{}, errNotFound
 		})
-	cli.EXPECT().DiskInfo(A, A).AnyTimes().DoAndReturn(
-		func(ctx context.Context, id proto.DiskID) (*bnapi.DiskInfo, error) {
-			if val, ok := dataDisks[id]; ok {
-				return &val, nil
-			}
-			return nil, errNotFound
-		})
 	cli.EXPECT().ListDisk(A, A).AnyTimes().Return(cmapi.ListDiskRet{}, nil)
 	cmcli = cli
 
@@ -134,6 +127,13 @@ func init() {
 				volume.VolumeInfo = val
 				volume.Version = volume.GetVersion()
 				return volume, nil
+			}
+			return nil, errNotFound
+		})
+	pcli.EXPECT().GetCacheDisk(A, A, A).AnyTimes().DoAndReturn(
+		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*bnapi.DiskInfo, error) {
+			if val, ok := dataDisks[args.DiskID]; ok {
+				return &val, nil
 			}
 			return nil, errNotFound
 		})

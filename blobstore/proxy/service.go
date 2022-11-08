@@ -177,6 +177,7 @@ func NewHandler(service *Service) *rpc.Router {
 	router := rpc.New()
 	rpc.RegisterArgsParser(&proxy.ListVolsArgs{}, "json")
 	rpc.RegisterArgsParser(&proxy.CacheVolumeArgs{}, "json")
+	rpc.RegisterArgsParser(&proxy.CacheDiskArgs{}, "json")
 
 	// POST /volume/alloc
 	// request  body:  json
@@ -197,6 +198,9 @@ func NewHandler(service *Service) *rpc.Router {
 	// GET /cache/volume/{vid}?flush={flush}&version={version}
 	// response body: json
 	router.Handle(http.MethodGet, "/cache/volume/:vid", service.GetCacheVolume, rpc.OptArgsURI(), rpc.OptArgsQuery())
+	// GET /cache/disk/{disk_id}?flush={flush}
+	// response body: json
+	router.Handle(http.MethodGet, "/cache/disk/:disk_id", service.GetCacheDisk, rpc.OptArgsURI(), rpc.OptArgsQuery())
 
 	return router
 }

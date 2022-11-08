@@ -324,7 +324,7 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 			ReloadSec:                   c.config.ServiceReloadSecs,
 			ServicePunishThreshold:      c.config.ServicePunishThreshold,
 			ServicePunishValidIntervalS: c.config.ServicePunishValidIntervalS,
-		}, cmCli, c.stopCh)
+		}, cmCli, c.proxy, c.stopCh)
 		if err != nil {
 			removeThisCluster()
 			span.Warn("new service manager failed", clusterID, err)

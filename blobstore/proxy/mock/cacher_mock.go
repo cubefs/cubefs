@@ -8,6 +8,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	blobnode "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	proxy "github.com/cubefs/cubefs/blobstore/api/proxy"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -33,6 +34,21 @@ func NewMockCacher(ctrl *gomock.Controller) *MockCacher {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockCacher) EXPECT() *MockCacherMockRecorder {
 	return m.recorder
+}
+
+// GetDisk mocks base method.
+func (m *MockCacher) GetDisk(arg0 context.Context, arg1 *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDisk", arg0, arg1)
+	ret0, _ := ret[0].(*blobnode.DiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDisk indicates an expected call of GetDisk.
+func (mr *MockCacherMockRecorder) GetDisk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDisk", reflect.TypeOf((*MockCacher)(nil).GetDisk), arg0, arg1)
 }
 
 // GetVolume mocks base method.

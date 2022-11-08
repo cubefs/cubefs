@@ -113,7 +113,7 @@ func (c *cacher) getVolume(span trace.Span, vid proto.Vid) *expiryVolume {
 		c.volumeReport("memcache", "hit")
 		if vol, ok := val.(*expiryVolume); ok {
 			if !vol.Expired() {
-				span.Debug("hits at memory cache", vid)
+				span.Debug("hits at memory cache volume", vid)
 				return vol
 			}
 			c.volumeReport("memcache", "expired")
@@ -138,7 +138,7 @@ func (c *cacher) getVolume(span trace.Span, vid proto.Vid) *expiryVolume {
 	if !vol.Expired() {
 		c.volumeReport("diskv", "hit")
 		c.volumeCache.Set(vid, vol)
-		span.Debug("hits at diskv cache, set back to memory cache", vid)
+		span.Debug("hits at diskv cache, set back to memory cache volume", vid)
 		return vol
 	}
 

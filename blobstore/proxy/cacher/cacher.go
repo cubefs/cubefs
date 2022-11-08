@@ -23,6 +23,7 @@ import (
 	"github.com/peterbourgon/diskv/v3"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/memcache"
@@ -61,6 +62,8 @@ type ConfigCache struct {
 
 	VolumeCapacity    int `json:"volume_capacity"`
 	VolumeExpirationS int `json:"volume_expiration_seconds"`
+	DiskCapacity      int `json:"disk_capacity"`
+	DiskExpirationS   int `json:"disk_expiration_seconds"`
 }
 
 func diskvKeyVolume(vid proto.Vid) string {
@@ -88,14 +91,21 @@ func diskvPathTransform(key string) []string {
 // Cacher memory cache handlers.
 type Cacher interface {
 	GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error)
+	GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error)
 }
 
 // New returns a Cacher.
 func New(clusterID proto.ClusterID, config ConfigCache, cmClient clustermgr.APIProxy) (Cacher, error) {
 	defaulter.LessOrEqual(&config.VolumeCapacity, _defaultCapacity)
 	defaulter.LessOrEqual(&config.VolumeExpirationS, _defaultExpirationS)
+	defaulter.LessOrEqual(&config.DiskCapacity, _defaultCapacity)
+	defaulter.LessOrEqual(&config.DiskExpirationS, _defaultExpirationS)
 
 	vc, err := memcache.NewMemCache(context.Background(), config.VolumeCapacity)
+	if err != nil {
+		return nil, err
+	}
+	dc, err := memcache.NewMemCache(context.Background(), config.DiskCapacity)
 	if err != nil {
 		return nil, err
 	}
@@ -106,13 +116,15 @@ func New(clusterID proto.ClusterID, config ConfigCache, cmClient clustermgr.APIP
 		Transform:    diskvPathTransform,
 	})
 
+	concurrency := keycount.NewBlockingKeyCountLimit(_defaultClustermgrConcurrency)
 	return &cacher{
 		config:        config,
 		clusterID:     clusterID,
 		cmClient:      cmClient,
-		cmConcurrency: keycount.NewBlockingKeyCountLimit(_defaultClustermgrConcurrency),
+		cmConcurrency: concurrency,
 		singleRun:     new(singleflight.Group),
 		volumeCache:   vc,
+		diskCache:     dc,
 		diskv:         dv,
 	}, nil
 }
@@ -125,6 +137,7 @@ type cacher struct {
 
 	singleRun   *singleflight.Group
 	volumeCache *memcache.MemCache
+	diskCache   *memcache.MemCache
 
 	diskv *diskv.Diskv
 }

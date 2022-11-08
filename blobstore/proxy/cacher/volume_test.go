@@ -44,7 +44,11 @@ var (
 func newCacher(t gomock.TestReporter, expiration int) (Cacher, *mocks.MockClientAPI, func()) {
 	cmCli := mocks.NewMockClientAPI(C(t))
 	basePath := path.Join(os.TempDir(), fmt.Sprintf("proxy-cacher-%d", rand.Intn(1000)+1000))
-	cacher, _ := New(1, ConfigCache{DiskvBasePath: basePath, VolumeExpirationS: expiration}, cmCli)
+	cacher, _ := New(1, ConfigCache{
+		DiskvBasePath:     basePath,
+		VolumeExpirationS: expiration,
+		DiskExpirationS:   expiration,
+	}, cmCli)
 	return cacher, cmCli, func() { os.RemoveAll(basePath) }
 }
 

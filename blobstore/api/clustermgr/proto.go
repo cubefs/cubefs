@@ -60,7 +60,6 @@ type ClientAPI interface {
 type APIAccess interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetService(ctx context.Context, args GetServiceArgs) (ServiceInfo, error)
-	DiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error)
 	ListDisk(ctx context.Context, options *ListOptionArgs) (ListDiskRet, error)
 }
 
@@ -68,6 +67,7 @@ type APIAccess interface {
 type APIProxy interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetVolumeInfo(ctx context.Context, args *GetVolumeArgs) (*VolumeInfo, error)
+	DiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error)
 	AllocVolume(ctx context.Context, args *AllocVolumeArgs) (AllocatedVolumeInfos, error)
 	AllocBid(ctx context.Context, args *BidScopeArgs) (*BidScopeRet, error)
 	RetainVolume(ctx context.Context, args *RetainVolumeArgs) (RetainVolumes, error)

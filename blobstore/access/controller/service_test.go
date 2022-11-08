@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
@@ -48,7 +49,7 @@ var _, serviceCtx = trace.StartSpanFromContext(context.Background(), "TestAccess
 func TestAccessServiceNew(t *testing.T) {
 	{
 		sc, err := controller.NewServiceController(
-			controller.ServiceConfig{IDC: idc}, cmcli, nil)
+			controller.ServiceConfig{IDC: idc}, cmcli, proxycli, nil)
 		require.NoError(t, err)
 
 		_, err = sc.GetServiceHost(serviceCtx, serviceName)
@@ -56,7 +57,7 @@ func TestAccessServiceNew(t *testing.T) {
 	}
 	{
 		sc, err := controller.NewServiceController(
-			controller.ServiceConfig{IDC: idc + "x", ReloadSec: 1}, cmcli, nil)
+			controller.ServiceConfig{IDC: idc + "x", ReloadSec: 1}, cmcli, proxycli, nil)
 		require.NoError(t, err)
 
 		_, err = sc.GetServiceHost(serviceCtx, serviceName)
@@ -66,7 +67,7 @@ func TestAccessServiceNew(t *testing.T) {
 
 func TestAccessServiceGetServiceHost(t *testing.T) {
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, nil)
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, proxycli, nil)
 	require.NoError(t, err)
 
 	keys := make(hostSet)
@@ -86,7 +87,7 @@ func TestAccessServicePunishService(t *testing.T) {
 	stop := closer.New()
 	defer stop.Close()
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, stop.Done())
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, proxycli, stop.Done())
 	require.NoError(t, err)
 
 	{
@@ -128,7 +129,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 			ReloadSec:                   1,
 			ServicePunishThreshold:      threshold,
 			ServicePunishValidIntervalS: 2,
-		}, cmcli, stop.Done())
+		}, cmcli, proxycli, stop.Done())
 	require.NoError(t, err)
 
 	{
@@ -177,7 +178,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 
 func TestAccessServiceGetDiskHost(t *testing.T) {
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, nil)
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, proxycli, nil)
 	require.NoError(t, err)
 
 	{
@@ -205,19 +206,21 @@ func TestAccessServiceGetBrokenDiskHost(t *testing.T) {
 			}
 			return cmapi.ServiceInfo{}, errNotFound
 		})
-	cli.EXPECT().DiskInfo(A, A).AnyTimes().DoAndReturn(
-		func(ctx context.Context, id proto.DiskID) (*bnapi.DiskInfo, error) {
-			if val, ok := dataDisks[id]; ok {
+	cli.EXPECT().ListDisk(A, A).Times(6).Return(brokenRet, nil)
+
+	pcli := mocks.NewMockProxyClient(C(t))
+	pcli.EXPECT().GetCacheDisk(A, A, A).AnyTimes().DoAndReturn(
+		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*bnapi.DiskInfo, error) {
+			if val, ok := dataDisks[args.DiskID]; ok {
 				return &val, nil
 			}
 			return nil, errNotFound
 		})
-	cli.EXPECT().ListDisk(A, A).Times(6).Return(brokenRet, nil)
 
 	stop := closer.New()
 	defer stop.Close()
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1, LoadDiskInterval: 1}, cli, stop.Done())
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1, LoadDiskInterval: 1}, cli, pcli, stop.Done())
 	require.NoError(t, err)
 
 	{
@@ -282,7 +285,7 @@ func TestAccessServicePunishDisk(t *testing.T) {
 	stop := closer.New()
 	defer stop.Close()
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, stop.Done())
+		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, proxycli, stop.Done())
 	require.NoError(t, err)
 
 	{

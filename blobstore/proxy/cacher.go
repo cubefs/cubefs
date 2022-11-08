@@ -39,3 +39,23 @@ func (s *Service) GetCacheVolume(c *rpc.Context) {
 
 	c.RespondJSON(volume)
 }
+
+// GetCacheDisk returns disk info in cacher.
+func (s *Service) GetCacheDisk(c *rpc.Context) {
+	args := new(proxy.CacheDiskArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	disk, err := s.cacher.GetDisk(ctx, args)
+	if err != nil {
+		span := trace.SpanFromContextSafe(ctx)
+		span.Warnf("get disk args:%v error:%s", args, err.Error())
+		c.RespondError(err)
+		return
+	}
+
+	c.RespondJSON(disk)
+}

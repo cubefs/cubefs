@@ -26,6 +26,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
@@ -110,12 +111,14 @@ type serviceControllerImpl struct {
 	group        singleflight.Group
 	serviceLocks map[string]*sync.RWMutex
 	cmClient     clustermgr.APIAccess
+	proxy        proxy.Cacher
 
 	config ServiceConfig
 }
 
 // NewServiceController returns a service controller
-func NewServiceController(cfg ServiceConfig, cmCli clustermgr.APIAccess, stopCh <-chan struct{}) (ServiceController, error) {
+func NewServiceController(cfg ServiceConfig, cmCli clustermgr.APIAccess, proxy proxy.Cacher,
+	stopCh <-chan struct{}) (ServiceController, error) {
 	defaulter.Equal(&cfg.ServicePunishThreshold, defaultServicePinishThreshold)
 	defaulter.LessOrEqual(&cfg.ServicePunishValidIntervalS, defaultServicePinishValidIntervalS)
 	defaulter.LessOrEqual(&cfg.LoadDiskInterval, int(300))
@@ -126,6 +129,7 @@ func NewServiceController(cfg ServiceConfig, cmCli clustermgr.APIAccess, stopCh 
 			proto.ServiceNameProxy: &atomic.Value{},
 		},
 		cmClient: cmCli,
+		proxy:    proxy,
 		serviceLocks: map[string]*sync.RWMutex{
 			proto.ServiceNameProxy: {},
 		},
@@ -325,14 +329,22 @@ func (s *serviceControllerImpl) GetDiskHost(ctx context.Context, diskID proto.Di
 		}, nil
 	}
 	ret, err, _ := s.group.Do("get-diskinfo-"+diskID.ToString(), func() (interface{}, error) {
-		diskInfo, err := s.cmClient.DiskInfo(ctx, diskID)
+		hosts, err := s.GetServiceHosts(ctx, proto.ServiceNameProxy)
 		if err != nil {
 			return nil, err
 		}
-		return diskInfo, nil
+		for _, host := range hosts {
+			diskInfo, err := s.proxy.GetCacheDisk(ctx, host, &proxy.CacheDiskArgs{DiskID: diskID})
+			if err != nil {
+				span.Warnf("get disk %d from proxy %s error %s", diskID, host, err.Error())
+				continue
+			}
+			return diskInfo, nil
+		}
+		return nil, errors.New("try all proxy failed")
 	})
 	if err != nil {
-		span.Error("can't get disk host from clustermgr", err)
+		span.Error("can't get disk host from proxy", err)
 		return nil, errors.Base(err, "get disk info", diskID)
 	}
 	diskInfo := ret.(*blobnode.DiskInfo)

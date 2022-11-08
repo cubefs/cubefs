@@ -39,3 +39,7 @@ func (c *cacher) metricReport(service, name, action string) {
 func (c *cacher) volumeReport(name, action string) {
 	c.metricReport("volume", name, action)
 }
+
+func (c *cacher) diskReport(name, action string) {
+	c.metricReport("disk", name, action)
+}

@@ -27,7 +27,7 @@ import (
 )
 
 func proxyService() controller.ServiceController {
-	service, _ := controller.NewServiceController(controller.ServiceConfig{IDC: idc}, cmcli, nil)
+	service, _ := controller.NewServiceController(controller.ServiceConfig{IDC: idc}, cmcli, proxycli, nil)
 	return service
 }
 

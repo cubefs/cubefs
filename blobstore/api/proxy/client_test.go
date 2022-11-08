@@ -62,6 +62,23 @@ func TestClient_GetCacheVolume(t *testing.T) {
 	}
 }
 
+func TestClient_GetCacheDisk(t *testing.T) {
+	cli := New(&Config{})
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"disk_id": 9876}`))
+	}))
+	defer mockServer.Close()
+	for _, args := range []CacheDiskArgs{
+		{DiskID: 1, Flush: false},
+		{DiskID: 2, Flush: true},
+	} {
+		disk, err := cli.GetCacheDisk(context.Background(), mockServer.URL, &args)
+		require.NoError(t, err)
+		require.Equal(t, proto.DiskID(9876), disk.DiskID)
+	}
+}
+
 func TestLbClient_SendShardRepairMsg(t *testing.T) {
 	mqproxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(200)
