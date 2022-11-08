@@ -140,6 +140,13 @@ func (s *Service) rangeChunks(ctx context.Context, ds core.DiskAPI, cmVuidMaps m
 		return
 	}
 	for _, cs := range localChunks {
+		createTime := time.Unix(0, int64(cs.ChunkId.UnixTime()))
+		protectionPeriod := time.Duration(s.Conf.ChunkProtectionPeriodSec) * time.Second
+
+		if time.Since(createTime) < protectionPeriod {
+			span.Debugf("%s still in ctime protection", cs.ChunkId)
+			continue
+		}
 		vuid := cs.Vuid
 		vid := vuid.Vid()
 		index := vuid.Index()
@@ -166,14 +173,6 @@ func (s *Service) rangeChunks(ctx context.Context, ds core.DiskAPI, cmVuidMaps m
 func (s *Service) releaseEpochChunk(ctx context.Context, cs core.VuidMeta, ds core.DiskAPI, cmVuid proto.Vuid) {
 	span := trace.SpanFromContextSafe(ctx)
 	if cs.Vuid.Epoch() >= cmVuid.Epoch() {
-		return
-	}
-
-	createTime := time.Unix(0, int64(cs.ChunkId.UnixTime()))
-	protectionPeriod := time.Duration(s.Conf.ChunkProtectionPeriodSec) * time.Second
-
-	if time.Since(createTime) < protectionPeriod {
-		span.Debugf("%s still in ctime protection", cs.ChunkId)
 		return
 	}
 
