@@ -180,6 +180,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDecommissionMetaPartition).
 		HandlerFunc(m.decommissionMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminChangeMetaPartitionLeader).
+		HandlerFunc(m.changeMetaPartitionLeader)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientMetaPartitions).
 		HandlerFunc(m.getMetaPartitions)
@@ -236,6 +239,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreatePreLoadDataPartition).
 		HandlerFunc(m.createPreLoadDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+	Path(proto.AdminDataPartitionChangeLeader).
+		HandlerFunc(m.changeDataPartitionLeader)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminLoadDataPartition).
 		HandlerFunc(m.loadDataPartition)

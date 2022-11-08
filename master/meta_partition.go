@@ -573,6 +573,30 @@ func (mp *MetaPartition) tryToChangeLeader(c *Cluster, metaNode *MetaNode) (err 
 	return
 }
 
+func (mp *MetaPartition) tryToChangeLeaderByHost(host string) (err error) {
+	var metaNode *MetaNode
+	for _, r := range mp.Replicas {
+		if host == r.Addr {
+			metaNode = r.metaNode
+			break
+		}
+	}
+	if metaNode == nil {
+		return fmt.Errorf("host not found[%v]", host)
+	}
+	task, err := mp.createTaskToTryToChangeLeader(host)
+	if err != nil {
+		return
+	}
+	if err != nil {
+		return
+	}
+	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+		return
+	}
+	return
+}
+
 func (mp *MetaPartition) createTaskToTryToChangeLeader(addr string) (task *proto.AdminTask, err error) {
 	task = proto.NewAdminTask(proto.OpMetaPartitionTryToLeader, addr, nil)
 	resetMetaPartitionTaskID(task, mp.PartitionID)

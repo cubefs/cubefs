@@ -129,6 +129,27 @@ func (partition *DataPartition) addReplica(replica *DataReplica) {
 	partition.Replicas = append(partition.Replicas, replica)
 }
 
+func (partition *DataPartition) tryToChangeLeaderByHost(host string) (err error) {
+	var dataNode *DataNode
+	for _, r := range partition.Replicas {
+		if host == r.Addr {
+			dataNode = r.dataNode
+			break
+		}
+	}
+	if dataNode == nil {
+		return fmt.Errorf("host not found[%v]", host)
+	}
+	task, err := partition.createTaskToTryToChangeLeader(host)
+	if err != nil {
+		return
+	}
+	if _, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
+		return
+	}
+	return
+}
+
 func (partition *DataPartition) tryToChangeLeader(c *Cluster, dataNode *DataNode) (err error) {
 	task, err := partition.createTaskToTryToChangeLeader(dataNode.Addr)
 	if err != nil {

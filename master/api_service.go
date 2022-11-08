@@ -748,6 +748,39 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) changeDataPartitionLeader(w http.ResponseWriter, r *http.Request) {
+	var (
+		dp          *DataPartition
+		partitionID uint64
+		err         error
+		host        string
+	)
+	if partitionID, _, err = parseRequestToGetDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+
+	if host = r.FormValue(addrKey); host == "" {
+		err = keyNotFound(addrKey)
+		return
+	}
+	if !checkIp(host) {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
+		return
+	}
+	if err = dp.tryToChangeLeaderByHost(host); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	rstMsg := fmt.Sprintf(" changeDataPartitionLeader command sucess send to dest host but need check. ")
+	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
 func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		dp          *DataPartition
@@ -941,6 +974,44 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) changeMetaPartitionLeader(w http.ResponseWriter, r *http.Request) {
+	var (
+		mp          *MetaPartition
+		partitionID uint64
+		err         error
+		host        string
+	)
+	if partitionID, _, err = parseRequestToGetDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		log.LogErrorf("changeMetaPartitionLeader.err %v", err)
+		return
+	}
+
+	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+		log.LogErrorf("changeMetaPartitionLeader.err %v", proto.ErrMetaPartitionNotExists)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+
+	if host = r.FormValue(addrKey); host == "" {
+		err = keyNotFound(addrKey)
+		log.LogErrorf("changeMetaPartitionLeader.err %v", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if !checkIp(host) {
+		log.LogErrorf("changeMetaPartitionLeader.err addr not legal")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
+		return
+	}
+	if err = mp.tryToChangeLeaderByHost(host); err != nil {
+		log.LogErrorf("changeMetaPartitionLeader.err %v", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	rstMsg := fmt.Sprintf(" changeMetaPartitionLeader command sucess send to dest host but need check. ")
+	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
 // Decommission a data partition. This usually happens when disk error has been reported.
 // This function needs to be called manually by the admin.
 func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Request) {
