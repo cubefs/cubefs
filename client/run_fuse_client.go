@@ -1,6 +1,10 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -23,8 +27,13 @@ const (
 	MainBinary            = "/usr/lib64/cfs-client-inner"
 	ClientLib             = "/usr/lib64/libcfssdk.so"
 	GolangLib             = "/usr/lib64/libstd.so"
+	TmpLibsPath           = "/tmp/.cfs_client_fuse"
+	FuseLibsPath          = "/usr/lib64"
+	TarName               = "cfs-client-fuse.tar.gz"
+	CheckFile             = "checkfile"
 	MasterAddr            = "masterAddr"
 	AdminGetClientPkgAddr = "/clientPkgAddr/get"
+	RetryTimes            = 5
 )
 
 func main() {
@@ -40,9 +49,59 @@ func main() {
 			fmt.Printf("get downloadAddr from master err: %v\n", err)
 			os.Exit(1)
 		}
-		if err = downloadClientLibs(downloadAddr); err != nil {
-			fmt.Printf("download libs err: %v\n", err)
+
+		tmpPath := TmpLibsPath + fmt.Sprintf("%d", time.Now().Unix())
+		if err = os.MkdirAll(tmpPath, 0777); err != nil {
+			fmt.Printf("%v\n", err)
 			os.Exit(1)
+		}
+		defer os.RemoveAll(tmpPath)
+
+		if err = downloadClientPkg(downloadAddr, tmpPath, TarName); err != nil {
+			fmt.Printf("%v\n", err)
+			os.Exit(1)
+		}
+
+		var fileNames []string
+		if fileNames, err = untar(filepath.Join(tmpPath, TarName), tmpPath); err != nil {
+			fmt.Printf("Untar %s err: %v", TarName, err)
+			os.Exit(1)
+		}
+
+		var checkMap map[string]string
+		if checkMap, err = readCheckfile(filepath.Join(tmpPath, CheckFile)); err != nil {
+			fmt.Printf("Invalid checkfile: %v", err)
+			os.Exit(1)
+		}
+
+		if !checkFiles(fileNames, checkMap, tmpPath) {
+			fmt.Printf("check libs faild\n")
+			os.Exit(1)
+		}
+
+		for _, fileName := range fileNames {
+			if fileName == CheckFile {
+				continue
+			}
+
+			src := filepath.Join(tmpPath, fileName)
+			dst := filepath.Join(FuseLibsPath, fileName+".tmp")
+			if err = moveFile(src, dst); err != nil {
+				fmt.Printf("%v\n", err.Error())
+				os.Exit(1)
+			}
+		}
+
+		for _, fileName := range fileNames {
+			if fileName == CheckFile {
+				continue
+			}
+			src := filepath.Join(FuseLibsPath, fileName+".tmp")
+			dst := filepath.Join(FuseLibsPath, fileName)
+			if err = os.Rename(src, dst); err != nil {
+				fmt.Printf("%v\n", err.Error())
+				os.Exit(1)
+			}
 		}
 	}
 
@@ -145,41 +204,177 @@ func getClientDownloadAddr(masterAddr string) (string, error) {
 	return addr, err
 }
 
-func downloadClientLibs(addr string) error {
+func downloadClientPkg(addr, tmpPath, tarName string) (err error) {
 	var url string
-	for _, lib := range [3]string{MainBinary, GolangLib, ClientLib} {
-		fileName := filepath.Base(lib)
-		if addr[len(addr)-1] == '/' {
-			url = fmt.Sprintf("%s%s", addr, fileName)
+	var resp *http.Response
+	if addr[len(addr)-1] == '/' {
+		url = fmt.Sprintf("%s%s", addr, tarName)
+	} else {
+		url = fmt.Sprintf("%s/%s", addr, tarName)
+	}
+	for i := 0; i < RetryTimes; i++ {
+		resp, err = http.Get(url)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode == 200 {
+			err = nil
+			break
 		} else {
-			url = fmt.Sprintf("%s/%s", addr, fileName)
+			err = fmt.Errorf("Download %s error: %s", url, resp.Status)
+			resp.Body.Close()
+			continue
 		}
-		resp, err := http.Get(url)
+	}
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	dstFile := filepath.Join(tmpPath, tarName)
+	file, err := os.OpenFile(dstFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func moveFile(src, dst string) error {
+	if err := os.Rename(src, dst); err != nil {
+		input, err := ioutil.ReadFile(src)
 		if err != nil {
-			return fmt.Errorf("Download %s error: %v", url, err)
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != 200 {
-			return fmt.Errorf("Download %s error: %s", url, resp.Status)
+			return err
 		}
 
-		tmpFile := lib + ".tmp"
-		file, err := os.OpenFile(tmpFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+		err = ioutil.WriteFile(dst, input, 0755)
 		if err != nil {
-			return err
-		}
-
-		_, err = io.Copy(file, resp.Body)
-		if err != nil {
-			file.Close()
-			return err
-		}
-		if err = file.Close(); err != nil {
-			return err
-		}
-		if err := os.Rename(tmpFile, lib); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func untar(tarName, xpath string) ([]string, error) {
+	tarFile, err := os.Open(tarName)
+	if err != nil {
+		return nil, err
+	}
+	defer tarFile.Close()
+
+	tr := tar.NewReader(tarFile)
+	if strings.HasSuffix(tarName, ".gz") || strings.HasSuffix(tarName, ".gzip") {
+		gz, err := gzip.NewReader(tarFile)
+		if err != nil {
+			return nil, err
+		}
+		defer gz.Close()
+		tr = tar.NewReader(gz)
+	}
+
+	fileNames := make([]string, 0, 3)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		finfo := hdr.FileInfo()
+		if finfo.Mode().IsDir() {
+			continue
+		}
+
+		fileName := filepath.Join(xpath, hdr.Name)
+		file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, finfo.Mode().Perm())
+		if err != nil {
+			return nil, err
+		}
+
+		n, err := io.Copy(file, tr)
+		if err != nil {
+			file.Close()
+			return nil, err
+		}
+		if err = file.Close(); err != nil {
+			return nil, err
+		}
+
+		if n != finfo.Size() {
+			return nil, fmt.Errorf("unexpected bytes written: wrote %d, want %d", n, finfo.Size())
+		}
+		fileNames = append(fileNames, hdr.Name)
+	}
+	return fileNames, nil
+}
+
+func checkFiles(fileNames []string, checkMap map[string]string, tmpPath string) bool {
+	for _, fileName := range fileNames {
+		if fileName == CheckFile {
+			continue
+		}
+		expected, exist := checkMap[fileName]
+		if !exist {
+			fmt.Printf("checkFiles: find no expected checksum of %s\n", fileName)
+			return false
+		}
+		md5, err := getFileMd5(filepath.Join(tmpPath, fileName))
+		if err != nil {
+			fmt.Printf("checkFiles: get checksum of %s err: %v\n", fileName, err)
+			return false
+		}
+
+		if md5 != expected {
+			fmt.Printf("checkFiles: check md5 of %s failed. expected: %s, actually: %s\n", fileName, expected, md5)
+			return false
+		}
+	}
+	return true
+}
+
+func getFileMd5(fileName string) (string, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	md5h := md5.New()
+	io.Copy(md5h, file)
+
+	return hex.EncodeToString(md5h.Sum(nil)), nil
+}
+
+func readCheckfile(fileName string) (map[string]string, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	checkMap := make(map[string]string)
+
+	body, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, line := range strings.Split(string(body), "\n") {
+		field := strings.Fields(line)
+		if len(field) < 2 {
+			continue
+		}
+		checkMap[field[1]] = field[0]
+	}
+	return checkMap, nil
 }

@@ -33,16 +33,17 @@ const (
 	ControlSetUpgrade              = "/set/clientUpgrade"
 	ControlUnsetUpgrade            = "/unset/clientUpgrade"
 
-	aliveKey      = "alive"
-	volKey        = "vol"
-	inoKey        = "ino"
-	clientKey     = "client" // ip:port
-	versionKey    = "version"
-	MaxRetry      = 5
-	forceKey      = "force"
-	CheckFile     = "checkfile"
-	BypassTmpPath = "/tmp/.cfs_client_libs"
-	FuseLibsPath  = "/usr/lib64"
+	aliveKey     = "alive"
+	volKey       = "vol"
+	inoKey       = "ino"
+	clientKey    = "client" // ip:port
+	versionKey   = "version"
+	MaxRetry     = 5
+	forceKey     = "force"
+	CheckFile    = "checkfile"
+	TmpLibsPath  = "/tmp/.cfs_client_libs_"
+	FuseLibsPath = "/usr/lib64"
+	FuseLib      = "libcfssdk.so"
 )
 
 var (
@@ -223,16 +224,30 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	fileName := "libcfssdk.so"
-	version_name := fmt.Sprintf("libcfssdk_%s.so", version)
-	if err = downloadClientPkg(c.mc, version_name, FuseLibsPath); err != nil {
+	tmpPath := TmpLibsPath + fmt.Sprintf("%d", time.Now().Unix())
+	if err = os.MkdirAll(tmpPath, 0777); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer os.RemoveAll(tmpPath)
+
+	tarName := fmt.Sprintf("cfs-client-libs_%s.tar.gz", version)
+	_, err = downloadAndCheck(c.mc, tmpPath, tarName)
+	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	tmpfile := filepath.Join(FuseLibsPath, version_name)
-	dst := filepath.Join(FuseLibsPath, fileName)
-	if err = os.Rename(tmpfile, dst); err != nil {
+	src := filepath.Join(tmpPath, FuseLib)
+	dst := filepath.Join(FuseLibsPath, FuseLib+".tmp")
+	if err = moveFile(src, dst); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	src = dst
+	dst = filepath.Join(FuseLibsPath, FuseLib)
+	if err = os.Rename(src, dst); err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -284,44 +299,29 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	err = os.MkdirAll(BypassTmpPath, 0777)
+	tmpPath := TmpLibsPath + fmt.Sprintf("%d", time.Now().Unix())
+	err = os.MkdirAll(tmpPath, 0777)
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	defer os.RemoveAll(BypassTmpPath)
+	defer os.RemoveAll(tmpPath)
 
-	version_name := fmt.Sprintf("cfs-client-libs_%s.tar.gz", version)
-	if err = downloadClientPkg(c.mc, version_name, BypassTmpPath); err != nil {
+	tarName := fmt.Sprintf("cfs-client-libs_%s.tar.gz", version)
+	fileNames, err := downloadAndCheck(c.mc, tmpPath, tarName)
+	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	var fileNames []string
-	if fileNames, err = untar(filepath.Join(BypassTmpPath, version_name), BypassTmpPath); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Untar %s err: %v", version_name, err))
-		return
-	}
-
-	var checkMap map[string]string
-	if checkMap, err = readCheckfile(filepath.Join(BypassTmpPath, CheckFile)); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Invalid checkfile: %v", err))
-		return
-	}
-
-	if !checkFiles(fileNames, checkMap) {
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("check libs faild: %v", err))
-		return
-	}
-
-	libPath := filepath.Dir(c.configPath)
+	targetPath := filepath.Dir(c.configPath)
 	for _, fileName := range fileNames {
 		if fileName == CheckFile {
 			continue
 		}
 
-		src := filepath.Join(BypassTmpPath, fileName)
-		dst := filepath.Join(libPath, fileName+".tmp")
+		src := filepath.Join(tmpPath, fileName)
+		dst := filepath.Join(targetPath, fileName+".tmp")
 		if err = moveFile(src, dst); err != nil {
 			buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
@@ -332,8 +332,8 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		if fileName == CheckFile {
 			continue
 		}
-		src := filepath.Join(libPath, fileName+".tmp")
-		dst := filepath.Join(libPath, fileName)
+		src := filepath.Join(targetPath, fileName+".tmp")
+		dst := filepath.Join(targetPath, fileName)
 		if err = os.Rename(src, dst); err != nil {
 			buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
@@ -345,25 +345,59 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func downloadAndCheck(mc *master.MasterClient, tmpPath, tarName string) (fileNames []string, err error) {
+
+	if err = downloadClientPkg(mc, tarName, tmpPath); err != nil {
+		return nil, err
+	}
+
+	if fileNames, err = untar(filepath.Join(tmpPath, tarName), tmpPath); err != nil {
+		return nil, fmt.Errorf("Untar %s err: %v", tarName, err)
+	}
+
+	var checkMap map[string]string
+	if checkMap, err = readCheckfile(filepath.Join(tmpPath, CheckFile)); err != nil {
+		return nil, fmt.Errorf("Invalid checkfile: %v", err)
+	}
+
+	if !checkFiles(fileNames, checkMap, tmpPath) {
+		return nil, fmt.Errorf("check libs faild: %v", err)
+	}
+
+	return fileNames, nil
+
+}
+
 func downloadClientPkg(mc *master.MasterClient, fileName, downloadPath string) (err error) {
 	addr, err := mc.ClientAPI().GetClientPkgAddr()
 	if err != nil {
 		return err
 	}
 	var url string
+	var resp *http.Response
 	if addr[len(addr)-1] == '/' {
 		url = fmt.Sprintf("%s%s", addr, fileName)
 	} else {
 		url = fmt.Sprintf("%s/%s", addr, fileName)
 	}
-	resp, err := http.Get(url)
+	for i := 0; i < MaxRetry; i++ {
+		resp, err = http.Get(url)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode == 200 {
+			err = nil
+			break
+		} else {
+			err = fmt.Errorf("Download %s error: %s", url, resp.Status)
+			resp.Body.Close()
+			continue
+		}
+	}
 	if err != nil {
-		return fmt.Errorf("Download %s error: %v", url, err)
+		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("Download %s error: %s", url, resp.Status)
-	}
 
 	dstFile := filepath.Join(downloadPath, fileName)
 	file, err := os.OpenFile(dstFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
@@ -452,21 +486,24 @@ func untar(tarName, xpath string) ([]string, error) {
 	return fileNames, nil
 }
 
-func checkFiles(fileNames []string, checkMap map[string]string) bool {
+func checkFiles(fileNames []string, checkMap map[string]string, tmpPath string) bool {
 	for _, fileName := range fileNames {
 		if fileName == CheckFile {
 			continue
 		}
 		expected, exist := checkMap[fileName]
 		if !exist {
+			log.LogWarnf("checkFiles: find no expected checksum of %s\n", fileName)
 			return false
 		}
-		md5, err := getFileMd5(filepath.Join(BypassTmpPath, fileName))
+		md5, err := getFileMd5(filepath.Join(tmpPath, fileName))
 		if err != nil {
+			log.LogWarnf("checkFiles: get checksum of %s err: %v\n", fileName, err)
 			return false
 		}
 
 		if md5 != expected {
+			log.LogWarnf("checkFiles: check md5 of %s failed. expected: %s, actually: %s\n", fileName, expected, md5)
 			return false
 		}
 	}

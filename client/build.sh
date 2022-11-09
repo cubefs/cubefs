@@ -69,7 +69,8 @@ if [[ ${build_sdk} -eq 1 ]]; then
     echo "building sdk (libcfssdk.so, libcfssdk_cshared.so) commit: ${CommitID} ..."
     go build -ldflags "${goflag} -E main.main -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}' -X 'main.Debug=${Debug}'" -buildmode=plugin -linkshared -o ${bin}/libcfssdk.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http.go ${dir}/ump.go
     go build -ldflags "${goflag} -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}' -X 'main.Debug=${Debug}'" -buildmode=c-shared -o ${bin}/libcfssdk_cshared.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http.go ${dir}/ump.go
-    chmod a+rx ${bin}/libcfssdk.so ${bin}/libcfssdk_cshared.so
+    chmod a+rx ${bin}/libcfssdk.so
+    chmod a+rx ${bin}/libcfssdk_cshared.so
 fi
 if [[ ${build_client} -eq 1 ]]; then
     echo "building client (cfs-client cfs-client-inner libcfsclient.so libempty.so libcfsc.so) ..."
@@ -91,5 +92,13 @@ if [[ ${pack_libs} -eq 1 ]]; then
     md5sum libcfssdk.so > checkfile
     md5sum libcfsc.so >> checkfile
     tar -zcvf cfs-client-libs_${CommitID}.tar.gz  libcfssdk.so libcfsc.so checkfile
+
+    libstd=`ldd libcfssdk.so |grep libstd.so |awk '{print $3}'`
+    cp -f ${libstd} libstd.so
+    md5sum libcfssdk.so > checkfile
+    md5sum libstd.so >> checkfile
+    md5sum cfs-client-inner >> checkfile
+    tar -zcvf cfs-client-fuse.tar.gz libcfssdk.so libstd.so cfs-client-inner checkfile
+
     cd ~-
 fi
