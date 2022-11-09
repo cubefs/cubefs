@@ -2883,7 +2883,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	dpSelectorName, dpSelectorParm string,
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
-	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int) (err error) {
+	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
+	trashCleanInterval uint64) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3019,6 +3020,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.dpWriteableThreshold = dpWriteableThreshold
 	vol.FollowerReadDelayCfg = dpFolReadDelayCfg
 	vol.FollReadHostWeight = follReadHostWeight
+	vol.TrashCleanInterval = trashCleanInterval
 	if isSmart && !vol.isSmart {
 		vol.smartEnableTime = time.Now().Unix()
 	}
@@ -3696,6 +3698,11 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, val.(int64))
 	}
 
+	oldMetaTrashCleanInterval := atomic.LoadUint64(&c.cfg.MetaTrashCleanInterval)
+	if val, ok := params[proto.MetaTrashCleanIntervalKey]; ok {
+		atomic.StoreUint64(&c.cfg.MetaTrashCleanInterval, val.(uint64))
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3722,6 +3729,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaRocksFlushWalInterval, oldMetaRocksFlushWalInterval)
 		atomic.StoreUint64(&c.cfg.MetaRocksWalTTL, oldMetaRocksWalTTL)
 		atomic.StoreUint64(&c.cfg.MetaRocksDisableFlushFlag, oldMetaRocksDisableFlushWalFlag)
+		atomic.StoreUint64(&c.cfg.MetaTrashCleanInterval, oldMetaTrashCleanInterval)
 		atomic.StoreInt64(&c.cfg.MetaRaftLogSize, oldMetaRaftLogSize)
 		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, oldMetaRaftLogCap)
 		err = proto.ErrPersistenceByRaft

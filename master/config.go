@@ -138,6 +138,7 @@ type clusterConfig struct {
 	MetaRocksFlushWalInterval           uint64 //min
 	MetaRocksDisableFlushFlag           uint64   //default 0 flush, !=0 disable flush
 	MetaRocksWalTTL                     uint64 //second
+	MetaTrashCleanInterval              uint64
 	MetaRaftLogSize						int64  // MB
 	MetaRaftLogCap                      int64  //
 }

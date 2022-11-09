@@ -200,6 +200,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["apply_id"] = mp.GetAppliedID()
 	msg["raft_status"] = m.raftStore.RaftStatus(pid)
 	msg["trash_first_upd_time"] = mp.(*metaPartition).trashExpiresFirstUpdateTime
+	msg["trash_clean_interval_min"] = mp.(*metaPartition).getTrashCleanInterval() / time.Minute
 	raftPartition := mp.(*metaPartition).raftPartition
 	if raftPartition != nil {
 		msg["raft_log_size"] = raftPartition.GetWALFileSize()

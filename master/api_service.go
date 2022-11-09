@@ -324,6 +324,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaRocksFlushWalInterval:           m.cluster.cfg.MetaRocksFlushWalInterval,
 		MetaRocksDisableFlushFlag:           m.cluster.cfg.MetaRocksDisableFlushFlag,
 		MetaRocksWalTTL:                     m.cluster.cfg.MetaRocksWalTTL,
+		MetaTrashCleanInterval:              m.cluster.cfg.MetaTrashCleanInterval,
 		MetaRaftLogSize:                     m.cluster.cfg.MetaRaftLogSize,
 		MetaRaftLogCap:                      m.cluster.cfg.MetaRaftLogCap,
 	}
@@ -450,6 +451,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	metaRocksDBFlushWalInterval := atomic.LoadUint64(&m.cluster.cfg.MetaRocksFlushWalInterval)
 	metaRocksDBWalTTL := atomic.LoadUint64(&m.cluster.cfg.MetaRocksWalTTL)
 	metaRocksDBDisableFlush := atomic.LoadUint64(&m.cluster.cfg.MetaRocksDisableFlushFlag)
+	metaTrashCleanInterval := atomic.LoadUint64(&m.cluster.cfg.MetaTrashCleanInterval)
 	metaRaftLogSize := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogSize)
 	metaRaftLogCap  := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogCap)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
@@ -502,8 +504,9 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaRocksDisableFlushFlag:              metaRocksDBDisableFlush,
 		MetaRocksFlushWalInterval:              metaRocksDBFlushWalInterval,
 		MetaRocksWalTTL:                        metaRocksDBWalTTL,
-		MetaRaftLogSize: metaRaftLogSize,
-		MetaRaftCap:     metaRaftLogCap,
+		MetaTrashCleanInterval:                 metaTrashCleanInterval,
+		MetaRaftLogSize:                        metaRaftLogSize,
+		MetaRaftCap:                            metaRaftLogCap,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1652,6 +1655,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		compactTag           proto.CompactTag
 		dpFolReadDelayCfg    proto.DpFollowerReadDelayConfig
 		follReadHostWeight   int
+		trashInterVal        uint64
 	)
 	metrics := exporter.NewTPCnt(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1739,9 +1743,15 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	trashInterVal, err = parseTrashCleanInterval(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache, dpSelectorName, dpSelectorParm, ossBucketPolicy,
-		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight); err != nil {
+		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, trashInterVal); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2008,6 +2018,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		EcDataNum:            vol.EcDataNum,
 		EcParityNum:          vol.EcParityNum,
 		EcMaxUnitSize:        vol.EcMaxUnitSize,
+		TrashCleanInterval:   vol.TrashCleanInterval,
 	}
 }
 
@@ -3414,6 +3425,22 @@ func parseCompactTagToUpdateVol(r *http.Request, vol *Vol) (cTag proto.CompactTa
 	return
 }
 
+func parseTrashCleanInterval(r *http.Request, vol *Vol) (trashInterval uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	trashIntervalStr := r.FormValue(proto.MetaTrashCleanIntervalKey)
+	if trashIntervalStr == "" {
+		trashInterval = vol.TrashCleanInterval
+	} else {
+		trashInterval, err = strconv.ParseUint(trashIntervalStr, 10, 64)
+		if err != nil {
+			trashInterval = vol.TrashCleanInterval
+		}
+	}
+	return
+}
+
 func parseOSSBucketPolicyToUpdateVol(r *http.Request, vol *Vol) (ossBucketPolicy proto.BucketAccessPolicy, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -4251,7 +4278,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
 		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
-		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB}
+		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB, proto.MetaTrashCleanIntervalKey}
+
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return
@@ -4661,7 +4689,9 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			}
 			stat := volStat(vol)
 
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(), vol.enableToken, vol.enableWriteCache)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
+				vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
+				vol.enableToken, vol.enableWriteCache, vol.TrashCleanInterval)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4692,7 +4722,9 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			stat := volStat(vol)
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(), vol.enableToken, vol.enableWriteCache)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
+				vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
+				vol.enableToken, vol.enableWriteCache, vol.TrashCleanInterval)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4717,7 +4749,9 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		stat := volStat(vol)
-		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(), vol.enableToken, vol.enableWriteCache)
+		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
+			vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
+			vol.enableToken, vol.enableWriteCache, vol.TrashCleanInterval)
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))

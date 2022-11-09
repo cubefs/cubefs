@@ -1830,7 +1830,7 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	newZoneName := fmt.Sprintf("%s,%s,%s,%s", testZone1, testZone2, testZone3, testZone6)
 	// update to cross region vol
 	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, 0, 1, false, false, false, false, false, false,
-		true, false, false, buildAuthKey("cfs"), newZoneName, "0,0", "", 0, 1, 120, "default", 0, 0)
+		true, false, false, buildAuthKey("cfs"), newZoneName, "0,0", "", 0, 1, 120, "default", 0, 0, 0)
 	if err != nil {
 		t.Errorf("UpdateVolume err:%v", err)
 		return

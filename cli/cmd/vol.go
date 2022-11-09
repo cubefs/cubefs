@@ -314,6 +314,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optCompactTag           string
 		optFolReadDelayInterval int64
 		optLowestDelayHostWeight int
+		optTrashCleanInterval    int
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -590,6 +591,12 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  compact             : %v\n", vv.CompactTag))
 			}
 
+			if optTrashCleanInterval > -1 && uint64(optTrashCleanInterval) != vv.TrashCleanInterval {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  TrashCleanInteval  : %v -> %v\n", vv.TrashCleanInterval, optTrashCleanInterval))
+				vv.TrashCleanInterval = uint64(optTrashCleanInterval)
+			}
+
 			if err != nil {
 				return
 			}
@@ -612,7 +619,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
-				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight)
+				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval)
 			if err != nil {
 				return
 			}
@@ -650,6 +657,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optIsSmart, CliFlagIsSmart, "", "Enable the smart vol or not")
 	cmd.Flags().StringSliceVar(&smartRules, CliSmartRulesMode, []string{}, "Specify volume smart rules")
 	cmd.Flags().StringVar(&optCompactTag, CliFlagCompactTag, "", "Specify volume compact")
+	cmd.Flags().IntVar(&optTrashCleanInterval, CliOpVolTrashCleanInterval, -1, "specify trash clean interval, unit:min")
 	return cmd
 }
 

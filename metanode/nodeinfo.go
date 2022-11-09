@@ -38,6 +38,7 @@ type NodeInfo struct {
 	rocksFlushWalInterval  uint64				// min default 30min
 	rocksFlushWal          bool					// default true flush
 	rocksWalTTL            uint64				//second default 60
+	trashCleanInterval     uint64  //min
 	raftLogSizeFromMaster  int
 	raftLogCapFromMaster   int
 	raftLogSizeFromLoc     int
@@ -243,6 +244,15 @@ func (m *MetaNode) updateRaftParamFromLocal(logSize, cap int) {
 	return
 }
 
+func (m *MetaNode) updateTrashCleanInterval(interval uint64) {
+	if interval == nodeInfo.trashCleanInterval {
+		log.LogDebugf("[updateTrashCleanInterval] no need update")
+		return
+	}
+	nodeInfo.trashCleanInterval = interval
+	log.LogDebugf("[updateTrashCleanInterval] new value:%v", interval)
+}
+
 func getGlobalConfNodeInfo() *NodeInfo {
 	newInfo := *nodeInfo
 	return &newInfo
@@ -299,6 +309,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.updateRocksDBDiskReservedSpaceSpace(limitInfo.RocksDBDiskReservedSpace)
 	m.updateRocksDBConf(limitInfo)
 	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
+	m.updateTrashCleanInterval(limitInfo.MetaTrashCleanInterval)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

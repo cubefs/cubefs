@@ -305,6 +305,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	Capacity, ReplicaNum, storeMode, mpPercent, repPercent *uint64
 	EnableToken, ForceROW, EnableWriteCache                *bool
 	FollowerRead, Authenticate, AutoRepair                 *bool
+	TrashInterVal                                          *uint64
 }) (*Vol, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -371,6 +372,19 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		args.Description = &vol.description
 	}
 
+	if args.storeMode == nil {
+		tmp := uint64(vol.DefaultStoreMode)
+		args.storeMode = &tmp
+	}
+	if args.mpPercent == nil {
+		tmp := uint64(vol.MpLayout.PercentOfMP)
+		args.mpPercent = &tmp
+	}
+	if args.repPercent == nil {
+		tmp := uint64(vol.MpLayout.PercentOfReplica)
+		args.repPercent = &tmp
+	}
+
 	if !(*args.storeMode == uint64(proto.StoreModeMem) || *args.storeMode == uint64(proto.StoreModeRocksDb)) {
 		return nil, fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, *args.storeMode)
 	}
@@ -379,11 +393,15 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("mpPercent repPercent can only be [0-100],received is[%v - %v]", *args.mpPercent, *args.repPercent)
 	}
 
+	if args.TrashInterVal == nil {
+		args.TrashInterVal = &vol.TrashCleanInterval
+	}
+
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
 		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, vol.NearRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW,
 		vol.volWriteMutexEnable, false, *args.EnableWriteCache, vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType,
 		vol.dpWriteableThreshold, vol.trashRemainingDays, proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)},
-		vol.ExtentCacheExpireSec, vol.smartRules, vol.compactTag, vol.FollowerReadDelayCfg, vol.FollReadHostWeight); err != nil {
+		vol.ExtentCacheExpireSec, vol.smartRules, vol.compactTag, vol.FollowerReadDelayCfg, vol.FollReadHostWeight, *args.TrashInterVal); err != nil {
 		return nil, err
 	}
 

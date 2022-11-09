@@ -77,8 +77,15 @@ type metadataManager struct {
 	metaNode           *MetaNode
 	flDeleteBatchCount atomic.Value
 	stopC              chan bool
-	volTrashMap        map[string]int32
-	volTrashMapMutex   sync.Mutex
+	volConfMap         map[string]*VolumeConfig
+	volConfMapRWMutex  sync.RWMutex
+}
+
+type VolumeConfig struct {
+	Name               string
+	PartitionCount     int
+	TrashDay           int32
+	TrashCleanInterval uint64
 }
 
 type MetaNodeVersion struct {
@@ -288,7 +295,7 @@ func (m *metadataManager) Stop() {
 
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
-	m.updateVolsTrashDaysScheduler()
+	m.updateVolsConfScheduler()
 	go m.syncMetaPartitionsRocksDBWalLogScheduler()
 	err = m.startPartitions()
 	if err != nil {
@@ -350,22 +357,22 @@ func (m *metadataManager) syncMetaPartitionsRocksDBWalLogScheduler() {
 	}
 }
 
-func (m *metadataManager) updateVolsTrashDaysScheduler() {
+func (m *metadataManager) updateVolsConfScheduler() {
 	for {
-		err := m.updateVolsTrashDays()
+		err := m.updateVolConf()
 		if err == nil {
-			log.LogWarnf("updateVolsTrashDaysScheduler, vols: %v", len(m.volTrashMap))
+			log.LogWarnf("updateVolsConfScheduler, vols: %v", len(m.volConfMap))
 			break
 		}
-		log.LogWarnf("updateVolsTrashDaysScheduler, err: %v", err.Error())
+		log.LogWarnf("updateVolsConfScheduler, err: %v", err.Error())
 		time.Sleep(3 * time.Second)
 	}
 	go func() {
-		ticker := time.NewTicker(intervalToUpdateAllVolsTrashDays)
+		ticker := time.NewTicker(intervalToUpdateAllVolsConf)
 		for {
 			select {
 			case <-ticker.C:
-				m.updateVolsTrashDays()
+				m.updateVolConf()
 			case <-m.stopC:
 				ticker.Stop()
 				return
@@ -374,7 +381,7 @@ func (m *metadataManager) updateVolsTrashDaysScheduler() {
 	}()
 }
 
-func (m *metadataManager) updateVolsTrashDays() (err error) {
+func (m *metadataManager) updateVolConf() (err error) {
 	var vols []*proto.VolInfo
 	vols, err = masterClient.AdminAPI().ListVols("")
 	if err != nil {
@@ -384,32 +391,48 @@ func (m *metadataManager) updateVolsTrashDays() (err error) {
 	if len(vols) == 0 {
 		return
 	}
-	volMap := make(map[string]int32, 0)
+	volConfMap := make(map[string]*VolumeConfig, 0)
 	for _, vol := range vols {
-		volMap[vol.Name] = int32(vol.TrashRemainingDays)
-		log.LogDebugf("updateTrashExpiredTime: vol: %v, remaining days: %v", vol.Name, vol.TrashRemainingDays)
+		volConfMap[vol.Name] = &VolumeConfig{
+			Name:               vol.Name,
+			TrashDay:           int32(vol.TrashRemainingDays),
+			TrashCleanInterval: vol.TrashCleanInterval,
+		}
+		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, trashCleanInterval: %v",
+			vol.Name, vol.TrashRemainingDays, vol.TrashCleanInterval)
 	}
 
-	m.volTrashMapMutex.Lock()
-	m.volTrashMap = volMap
-	m.volTrashMapMutex.Unlock()
+	m.volConfMapRWMutex.Lock()
+	defer m.volConfMapRWMutex.Unlock()
+	m.volConfMap = volConfMap
 	return
 }
 
 func (m *metadataManager) getTrashDaysByVol(vol string) (days int32) {
-	ok := false
-	m.volTrashMapMutex.Lock()
-	days, ok = m.volTrashMap[vol]
-	if !ok {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	if volConf, ok := m.volConfMap[vol]; !ok {
 		days = -1
+	} else {
+		days = volConf.TrashDay
 	}
-	m.volTrashMapMutex.Unlock()
 	/*
 		if remaining > 0 {
 			remaining = time.Now().AddDate(0, 0, 0-int(remaining)).UnixNano() / 1000
 		}
 
 	*/
+	return
+}
+
+func (m *metadataManager) getTrashCleanInterval(vol string) (interval uint64) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	if volConf, ok := m.volConfMap[vol]; !ok {
+		interval = 0
+	} else {
+		interval = volConf.TrashCleanInterval
+	}
 	return
 }
 
@@ -853,7 +876,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 		metaNode:    metaNode,
 		connPool:    connpool.NewConnectPool(),
 		stopC:       make(chan bool, 0),
-		volTrashMap: make(map[string]int32),
+		volConfMap:  make(map[string]*VolumeConfig, 0),
 		rocksDBDirs: metaNode.rocksDirs,
 	}
 	if err := mm.loadPartitions(); err != nil {

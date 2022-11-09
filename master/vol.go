@@ -100,6 +100,7 @@ type Vol struct {
 	EcMigrationRetryWait int64
 	EcMaxUnitSize        uint64
 	ecDataPartitions     *EcDataPartitionCache
+	TrashCleanInterval   uint64
 	sync.RWMutex
 }
 
@@ -256,6 +257,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	}
 	vol.forceRowModifyTime = vv.ForceRowModifyTime
 	vol.compactTagModifyTime = vv.CompactTagModifyTime
+	vol.TrashCleanInterval = vv.TrashCleanInterval
 	return vol
 }
 
@@ -1124,6 +1126,7 @@ func (vol *Vol) backupConfig() *Vol {
 		compactTag:           vol.compactTag,
 		compactTagModifyTime: vol.compactTagModifyTime,
 		FollowerReadDelayCfg: vol.FollowerReadDelayCfg,
+		TrashCleanInterval :  vol.TrashCleanInterval,
 	}
 }
 
@@ -1163,6 +1166,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.smartRules = backupVol.smartRules
 	vol.compactTag = backupVol.compactTag
 	vol.compactTagModifyTime = backupVol.compactTagModifyTime
+	vol.TrashCleanInterval = backupVol.TrashCleanInterval
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

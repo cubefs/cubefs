@@ -69,6 +69,7 @@ func newRateLimitInfoCmd(client *master.MasterClient) *cobra.Command {
 
 func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	var info proto.RateLimitInfo
+	var opTrashCleanInterval int64
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdRateLimitSetShort,
@@ -195,6 +196,10 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.MetaRocksWalTTL > 0 {
 				msg += fmt.Sprintf("MN RocksDB Wal Log TTL       : %d, ", info.MetaRocksWalTTL)
 			}
+			if opTrashCleanInterval >= 0 {
+				info.MetaTrashCleanInterval = uint64(opTrashCleanInterval)
+				msg += fmt.Sprintf("MN trash clean interval : %d Min, ", info.MetaTrashCleanInterval)
+			}
 			if info.MetaRaftLogSize >= 0 {
 				msg += fmt.Sprintf("MN Raft log size MB  : %d, ", info.MetaRaftLogSize)
 			}
@@ -253,6 +258,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.MetaRaftLogCap, "metaRaftLogCap", -1, "meta node raft log cap")
 	cmd.Flags().Int64Var(&info.MetaRaftLogSize, "metaRaftLogSize", -1, "meta node raft log size[0:default, 4~32]")
 	cmd.Flags().Int64Var(&info.MetaRaftLogCap, "metaRaftLogCap", -1, "meta node raft log cap[0:default4, >=2]")
+	cmd.Flags().Int64Var(&opTrashCleanInterval, "metaTrashCleanInterval", -1, "meta node clean del inode interval, unit:min")
 	return cmd
 }
 
@@ -298,6 +304,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  (map[zone]limit)\n"))
 	sb.WriteString(fmt.Sprintf("  MonitorSummarySecond        : %v\n", info.MonitorSummarySec))
 	sb.WriteString(fmt.Sprintf("  MonitorReportSecond         : %v\n", info.MonitorReportSec))
+	sb.WriteString(fmt.Sprintf("  MetaTrashCleanInterval      : %v\n", info.MetaTrashCleanInterval))
 	sb.WriteString(fmt.Sprintf("  MetaRaftLogSize             : %v\n", info.MetaRaftLogSize))
 	sb.WriteString(fmt.Sprintf("  MetaRaftLogCap              : %v\n", info.MetaRaftCap))
 	return sb.String()

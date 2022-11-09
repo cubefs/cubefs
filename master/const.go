@@ -137,6 +137,7 @@ const (
 	dumpWaterLevelKey            = "metaNodeDumpWaterLevel"
 	monitorSummarySecondKey      = "monitorSummarySec"
 	monitorReportSecondKey       = "monitorReportSec"
+    volTrashCleanIntervalKey    = "trashCleanInterval"
 )
 
 const (

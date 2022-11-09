@@ -29,7 +29,7 @@ func TestLeaderRead(t *testing.T) {
 	volumeSimpleInfo, _ := testMc.AdminAPI().GetVolumeSimpleInfo("ltptest")
 	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
 		false, false, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
-		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0); err != nil {
+		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0); err != nil {
 		t.Fatalf("update followerRead to 'false' failed: err(%v) vol(ltptest)", err)
 	}
 	time.Sleep(70 * time.Second)
@@ -60,7 +60,7 @@ func TestLeaderRead(t *testing.T) {
 	}
 	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
 		true, false, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
-		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0); err != nil {
+		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0); err != nil {
 		t.Errorf("update followerRead to 'true' failed: err(%v) vol(ltptest)", err)
 	}
 }

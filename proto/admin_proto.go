@@ -229,6 +229,7 @@ const (
 	MetaRocksWalFlushIntervalKey = "metaRocksWalFlushInterval"
 	MetaRocksDisableFlushWalKey  = "metaRocksDisableFlushWal"
 	MetaRocksWalTTLKey           = "metaRocksWalTTL"
+	MetaTrashCleanIntervalKey    = "metaTrashCleanInterval"
 	MetaRaftLogSizeKey           = "metaRaftLogSize"
 	MetaRaftLogCapKey            = "metaRaftLogCap"
 )
@@ -490,6 +491,7 @@ type LimitInfo struct {
 	MetaRocksDisableFlushFlag  uint64               //0 flush, !=0 disable flush; default 0
 	MetaRaftLogSize            int64                // MB; 0 use default 8MB
 	MetaRaftCap                int64                // 0 use default 4
+	MetaTrashCleanInterval     uint64               //min
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1025,6 +1027,7 @@ type SimpleVolView struct {
 	EcTimeOut             int64
 	EcRetryWait           int64
 	EcMaxUnitSize         uint64
+	TrashCleanInterval    uint64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1048,10 +1051,11 @@ type VolInfo struct {
 	CompactTag         uint8
 	EnableToken        bool
 	EnableWriteCache   bool
+	TrashCleanInterval uint64
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, remainingDays uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
-	enableToken, enableWriteCache bool) *VolInfo {
+	enableToken, enableWriteCache bool, trashCleanInterval uint64) *VolInfo {
 	var usedRatio float64
 	if totalSize != 0 {
 		usedRatio = float64(usedSize) / float64(totalSize)
@@ -1071,6 +1075,7 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		EnableToken:        enableToken,
 		EnableWriteCache:   enableWriteCache,
 		UsedRatio:          usedRatio,
+		TrashCleanInterval: trashCleanInterval,
 	}
 }
 
@@ -1113,6 +1118,7 @@ type RateLimitInfo struct {
 	MetaRocksFlushWalInterval   uint64 //min
 	MetaRocksDisableFlushFlag   int64 //0 flush, !=0 disable flush
 	MetaRocksWalTTL             uint64
+	MetaTrashCleanInterval      uint64
 	MetaRaftLogSize				int64
 	MetaRaftLogCap				int64
 }

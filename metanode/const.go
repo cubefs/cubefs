@@ -217,15 +217,16 @@ const (
 
 const (
 	// interval of persisting in-memory data
-	intervalToPersistData            = time.Minute * 5
-	intervalToSyncCursor             = time.Minute * 1
-	intervalToUpdateAllVolsTrashDays = time.Minute * 5
-	intervalToUpdateVolTrashExpires  = time.Minute * 1
-	defSyncRocksDbWalLog             = time.Minute * 30
-	intervalSyncRocksDbWalLog        = time.Second * 2
-	defMinSyncRockDbWalLog           = time.Minute * 2
-	defRaftLogCap					 = 4
-	defRaftLogSize					 = util.MB * 8
+	intervalToPersistData           = time.Minute * 5
+	intervalToSyncCursor            = time.Minute * 1
+	intervalToUpdateAllVolsConf     = time.Minute * 5
+	intervalToUpdateVolTrashExpires = time.Minute * 1
+	defSyncRocksDbWalLog            = time.Minute * 30
+	intervalSyncRocksDbWalLog       = time.Second * 2
+	defMinSyncRockDbWalLog          = time.Minute * 2
+	defRaftLogCap                   = 4
+	defRaftLogSize                  = util.MB * 8
+	defIntervalToCleanTrash         = time.Minute * 5
 )
 
 const (

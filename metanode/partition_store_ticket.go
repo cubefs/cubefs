@@ -196,15 +196,27 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	}(mp.stopC)
 }
 
+func (mp *metaPartition) getTrashCleanInterval() (interval time.Duration) {
+	interval = defIntervalToCleanTrash
+	if nodeInfo.trashCleanInterval != 0 {
+		interval = time.Duration(nodeInfo.trashCleanInterval) * time.Minute
+	}
+	if mp.config.TrashCleanInterval != 0 {
+		interval = time.Duration(mp.config.TrashCleanInterval) * time.Minute
+	}
+	return
+}
+
 func (mp *metaPartition) startCleanTrashScheduler() {
-	cleanTrashTicker := time.NewTicker(1 * time.Hour)
+	cleanTrashTimer := time.NewTimer(mp.getTrashCleanInterval())
 	go func(stopC chan bool) {
 		for {
 			select {
 			case <-stopC:
-				cleanTrashTicker.Stop()
+				cleanTrashTimer.Stop()
 				return
-			case <-cleanTrashTicker.C:
+			case <-cleanTrashTimer.C:
+				cleanTrashTimer.Reset(mp.getTrashCleanInterval())
 				if _, ok := mp.IsLeader(); !ok {
 					continue
 				}
@@ -214,9 +226,9 @@ func (mp *metaPartition) startCleanTrashScheduler() {
 					continue
 				}
 
-				if time.Since(mp.trashExpiresFirstUpdateTime) < (intervalToUpdateAllVolsTrashDays + intervalToUpdateVolTrashExpires) {
+				if time.Since(mp.trashExpiresFirstUpdateTime) < (intervalToUpdateAllVolsConf + intervalToUpdateVolTrashExpires) {
 					log.LogDebugf("mp[%v] since trashExpiresFirstUpdateTime less than %v",
-						mp.config.PartitionId, intervalToUpdateAllVolsTrashDays + intervalToUpdateVolTrashExpires)
+						mp.config.PartitionId, intervalToUpdateAllVolsConf+ intervalToUpdateVolTrashExpires)
 					continue
 				}
 				err := mp.CleanExpiredDeletedDentry()
@@ -233,7 +245,7 @@ func (mp *metaPartition) startCleanTrashScheduler() {
 	}(mp.stopC)
 }
 
-func (mp *metaPartition) startUpdateTrashDaysScheduler() {
+func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 	for {
 		if mp.config.TrashRemainingDays > -1 {
 			break
@@ -259,7 +271,9 @@ func (mp *metaPartition) startUpdateTrashDaysScheduler() {
 					mp.trashExpiresFirstUpdateTime = time.Now()
 				}
 				mp.config.TrashRemainingDays = mp.manager.getTrashDaysByVol(mp.config.VolName)
-				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v", mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays)
+				mp.config.TrashCleanInterval = mp.manager.getTrashCleanInterval(mp.config.VolName)
+				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v, trashCleanInterval: %vMin",
+					mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays, mp.config.TrashCleanInterval)
 			}
 		}
 	}(mp.stopC)

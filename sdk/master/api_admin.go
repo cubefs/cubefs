@@ -392,7 +392,7 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 
 func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
 	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool, authKey, zoneName, mpLayout, smartRules string,
-	bucketPolicy, crossRegionHAType uint8, extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int) (err error) {
+	bucketPolicy, crossRegionHAType uint8, extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -418,6 +418,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("compactTag", compactTag)
 	request.addParam("hostDelayInterval", strconv.Itoa(int(hostDelayInterval)))
 	request.addParam("follReadHostWeight", strconv.Itoa(follReadHostWeight))
+	request.addParam(proto.MetaTrashCleanIntervalKey, strconv.FormatUint(trashCleanInterVal, 10))
 	if trashDays > -1 {
 		request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
 	}
@@ -725,6 +726,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.MetaRaftLogCap >= 0 {
 		request.addParam(proto.MetaRaftLogCapKey, strconv.FormatInt(info.MetaRaftLogCap, 10))
+	}
+	if info.MetaTrashCleanInterval >= 0 {
+		request.addParam(proto.MetaTrashCleanIntervalKey, strconv.FormatUint(info.MetaTrashCleanInterval, 10))
 	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)

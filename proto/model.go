@@ -227,6 +227,7 @@ type ClusterView struct {
 	MetaRocksWalTTL                     uint64
 	MetaRaftLogSize                     int64   //MB, 0 use meta default 8MB
 	MetaRaftLogCap                      int64   //MB, 0 use meta default 4
+	MetaTrashCleanInterval              uint64 //min
 }
 
 // NodeView provides the view of the data or meta node.

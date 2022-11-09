@@ -694,6 +694,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		MetaRocksFlushWalInterval:           m.cluster.cfg.MetaRocksFlushWalInterval,
 		MetaRocksDisableFlushFlag:           m.cluster.cfg.MetaRocksDisableFlushFlag,
 		MetaRocksWalTTL:                     m.cluster.cfg.MetaRocksWalTTL,
+		MetaTrashCleanInterval:              m.cluster.cfg.MetaTrashCleanInterval,
 	}
 
 	vols := m.cluster.allVolNames()
