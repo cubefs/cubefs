@@ -15,12 +15,34 @@
 package cacher
 
 import (
+	"fmt"
+	"math/rand"
+	"os"
+	"path"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
+
+var (
+	A = gomock.Any()
+	C = gomock.NewController
+)
+
+func newCacher(t gomock.TestReporter, expiration int) (Cacher, *mocks.MockClientAPI, func()) {
+	cmCli := mocks.NewMockClientAPI(C(t))
+	basePath := path.Join(os.TempDir(), fmt.Sprintf("proxy-cacher-%d", rand.Intn(1000)+1000))
+	cacher, _ := New(1, ConfigCache{
+		DiskvBasePath:     basePath,
+		VolumeExpirationS: expiration,
+		DiskExpirationS:   expiration,
+	}, cmCli)
+	return cacher, cmCli, func() { os.RemoveAll(basePath) }
+}
 
 func TestProxyCacherConfigVolume(t *testing.T) {
 	config := ConfigCache{}

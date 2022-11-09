@@ -42,7 +42,7 @@ func encodeDisk(v *expiryDisk) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func decodeDisk(data []byte) (*expiryDisk, error) {
+func decodeDisk(data []byte) (valueExpired, error) {
 	disk := new(expiryDisk)
 	err := json.Unmarshal(data, &disk)
 	return disk, err
@@ -88,12 +88,16 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*blobn
 	c.diskCache.Set(id, disk)
 
 	go func() {
+		key := diskvKeyDisk(id)
+		fullPath := c.DiskvFilename(key)
 		if data, err := encodeDisk(disk); err == nil {
-			if err := c.diskv.Write(diskvKeyDisk(id), data); err != nil {
-				span.Warnf("write to diskv disk_id:%d data:%s error:%s", id, string(data), err.Error())
+			if err := c.diskv.Write(key, data); err != nil {
+				span.Warnf("write diskv on path:%s data:<%s> error:%s", fullPath, string(data), err.Error())
+			} else {
+				span.Infof("write diskv on path:%s disk:<%s>", fullPath, string(data))
 			}
 		} else {
-			span.Warnf("encode disk_id:%d disk:%v error:%s", id, disk, err.Error())
+			span.Warnf("encode disk_id:%d disk:%+v error:%s", id, disk, err.Error())
 		}
 	}()
 
@@ -101,40 +105,11 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*blobn
 }
 
 func (c *cacher) getDisk(span trace.Span, id proto.DiskID) *expiryDisk {
-	if val := c.diskCache.Get(id); val != nil {
-		c.diskReport("memcache", "hit")
-		if disk, ok := val.(*expiryDisk); ok {
-			if !disk.Expired() {
-				span.Debug("hits at memory cache disk", id)
-				return disk
-			}
-			c.diskReport("memcache", "expired")
+	if val := c.getCachedValue(span, id, diskvKeyDisk(id),
+		c.diskCache, decodeDisk, c.diskReport); val != nil {
+		if value, ok := val.(*expiryDisk); ok {
+			return value
 		}
-	} else {
-		c.diskReport("memcache", "miss")
 	}
-
-	data, err := c.diskv.Read(diskvKeyDisk(id))
-	if err != nil {
-		c.diskReport("diskv", "miss")
-		span.Warnf("read from diskv disk_id:%d error:%s", id, err.Error())
-		return nil
-	}
-	disk, err := decodeDisk(data)
-	if err != nil {
-		c.diskReport("diskv", "error")
-		span.Warnf("decode diskv disk_id:%d data:%s error:%s", id, string(data), err.Error())
-		return nil
-	}
-
-	if !disk.Expired() {
-		c.diskReport("diskv", "hit")
-		c.diskCache.Set(id, disk)
-		span.Debug("hits at diskv cache, set back to memory cache disk", id)
-		return disk
-	}
-
-	c.diskReport("diskv", "expired")
-	span.Debugf("expired at diskv disk_id:%d expiryat:%d", id, disk.ExpiryAt)
 	return nil
 }

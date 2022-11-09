@@ -16,15 +16,11 @@ package cacher
 
 import (
 	"context"
-	"fmt"
-	"math/rand"
 	"os"
-	"path"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/peterbourgon/diskv/v3"
 	"github.com/stretchr/testify/require"
 
@@ -32,25 +28,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
-
-var (
-	A = gomock.Any()
-	C = gomock.NewController
-)
-
-func newCacher(t gomock.TestReporter, expiration int) (Cacher, *mocks.MockClientAPI, func()) {
-	cmCli := mocks.NewMockClientAPI(C(t))
-	basePath := path.Join(os.TempDir(), fmt.Sprintf("proxy-cacher-%d", rand.Intn(1000)+1000))
-	cacher, _ := New(1, ConfigCache{
-		DiskvBasePath:     basePath,
-		VolumeExpirationS: expiration,
-		DiskExpirationS:   expiration,
-	}, cmCli)
-	return cacher, cmCli, func() { os.RemoveAll(basePath) }
-}
 
 func TestProxyCacherVolumeUpdate(t *testing.T) {
 	c, cmCli, clean := newCacher(t, 2)
@@ -162,7 +141,7 @@ func TestProxyCacherVolumeCacheMiss(t *testing.T) {
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil).Times(3)
 	_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
 	require.NoError(t, err)
-	time.Sleep(time.Microsecond * 200) // waiting diskv write to disk
+	time.Sleep(time.Second) // waiting diskv write to disk
 
 	basePath := c.(*cacher).config.DiskvBasePath
 	{ // memory cache miss, load from diskv
@@ -171,7 +150,7 @@ func TestProxyCacherVolumeCacheMiss(t *testing.T) {
 		require.NoError(t, err)
 	}
 	{ // cannot decode diskv value
-		file, err := os.OpenFile(path.Join(basePath, "a7", "13", "volume-1"), os.O_RDWR, 0o644)
+		file, err := os.OpenFile(c.(*cacher).DiskvFilename(diskvKeyVolume(1)), os.O_RDWR, 0o644)
 		require.NoError(t, err)
 		file.Write([]byte("}}}}}"))
 		file.Close()

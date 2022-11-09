@@ -17,7 +17,6 @@ package cacher
 import (
 	"context"
 	"os"
-	"path"
 	"testing"
 	"time"
 
@@ -77,7 +76,7 @@ func TestProxyCacherDiskCacheMiss(t *testing.T) {
 	cmCli.EXPECT().DiskInfo(A, A).Return(&blobnode.DiskInfo{}, nil).Times(3)
 	_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
 	require.NoError(t, err)
-	time.Sleep(time.Microsecond * 200) // waiting diskv write to disk
+	time.Sleep(time.Second) // waiting diskv write to disk
 
 	basePath := c.(*cacher).config.DiskvBasePath
 	{ // memory cache miss, load from diskv
@@ -86,7 +85,7 @@ func TestProxyCacherDiskCacheMiss(t *testing.T) {
 		require.NoError(t, err)
 	}
 	{ // cannot decode diskv value
-		file, err := os.OpenFile(path.Join(basePath, "4d", "5f", "disk-1"), os.O_RDWR, 0o644)
+		file, err := os.OpenFile(c.(*cacher).DiskvFilename(diskvKeyDisk(1)), os.O_RDWR, 0o644)
 		require.NoError(t, err)
 		file.Write([]byte("}}}}}"))
 		file.Close()

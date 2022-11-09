@@ -16,6 +16,9 @@ package cacher
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"syscall"
 
 	"github.com/peterbourgon/diskv/v3"
 	"golang.org/x/sync/singleflight"
@@ -25,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/memcache"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
@@ -61,6 +65,10 @@ type ConfigCache struct {
 	VolumeExpirationS int `json:"volume_expiration_seconds"`
 	DiskCapacity      int `json:"disk_capacity"`
 	DiskExpirationS   int `json:"disk_expiration_seconds"`
+}
+
+type valueExpired interface {
+	Expired() bool
 }
 
 func diskvKeyVolume(vid proto.Vid) string {
@@ -123,4 +131,55 @@ type cacher struct {
 	diskCache   *memcache.MemCache
 
 	diskv *diskv.Diskv
+}
+
+func (c *cacher) DiskvFilename(key string) string {
+	pathKey := c.diskv.AdvancedTransform(key)
+	dir := filepath.Join(c.diskv.BasePath, filepath.Join(pathKey.Path...))
+	return filepath.Join(dir, pathKey.FileName)
+}
+
+func (c *cacher) getCachedValue(span trace.Span, id interface{}, key string,
+	memcacher *memcache.MemCache, decoder func([]byte) (valueExpired, error),
+	reporter func(string, string)) interface{} {
+	if val := memcacher.Get(id); val != nil {
+		if value, ok := val.(valueExpired); ok {
+			if !value.Expired() {
+				reporter("memcache", "hit")
+				span.Debugf("hits on memory cache key:%s id:%v", key, id)
+				return value
+			}
+			reporter("memcache", "expired")
+		}
+	}
+	reporter("memcache", "miss")
+
+	fullPath := c.DiskvFilename(key)
+	data, err := c.diskv.Read(key)
+	if err != nil {
+		reporter("diskv", "miss")
+		if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOENT {
+			span.Debugf("read from diskv key:%s path:%s no such file", key, fullPath)
+		} else {
+			span.Warnf("read from diskv key:%s path:%s %s", key, fullPath, err.Error())
+		}
+		return nil
+	}
+	value, err := decoder(data)
+	if err != nil {
+		reporter("diskv", "error")
+		span.Warnf("decode diskv path:%s data:<%s> %s", fullPath, string(data), err.Error())
+		return nil
+	}
+
+	if !value.Expired() {
+		reporter("diskv", "hit")
+		memcacher.Set(id, value)
+		span.Debugf("hits on diskv cache key:%s path:%s", key, fullPath)
+		return value
+	}
+
+	reporter("diskv", "expired")
+	span.Debugf("expired at diskv path:%s value:<%s>", fullPath, string(data))
+	return nil
 }

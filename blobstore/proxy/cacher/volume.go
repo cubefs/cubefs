@@ -42,7 +42,7 @@ func encodeVolume(v *expiryVolume) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func decodeVolume(data []byte) (*expiryVolume, error) {
+func decodeVolume(data []byte) (valueExpired, error) {
 	volume := new(expiryVolume)
 	err := json.Unmarshal(data, &volume)
 	return volume, err
@@ -96,12 +96,16 @@ func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*p
 	c.volumeCache.Set(vid, vol)
 
 	go func() {
+		key := diskvKeyVolume(vid)
+		fullPath := c.DiskvFilename(key)
 		if data, err := encodeVolume(vol); err == nil {
 			if err := c.diskv.Write(diskvKeyVolume(vid), data); err != nil {
-				span.Warnf("write to diskv vid:%d data:%s error:%s", vid, string(data), err.Error())
+				span.Warnf("write diskv on path:%s data:<%s> error:%s", fullPath, string(data), err.Error())
+			} else {
+				span.Infof("write diskv on path:%s volume:<%s>", fullPath, string(data))
 			}
 		} else {
-			span.Warnf("encode vid:%d volume:%v error:%s", vid, vol, err.Error())
+			span.Warnf("encode vid:%d volume:%+v error:%s", vid, vol, err.Error())
 		}
 	}()
 
@@ -109,40 +113,11 @@ func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*p
 }
 
 func (c *cacher) getVolume(span trace.Span, vid proto.Vid) *expiryVolume {
-	if val := c.volumeCache.Get(vid); val != nil {
-		c.volumeReport("memcache", "hit")
-		if vol, ok := val.(*expiryVolume); ok {
-			if !vol.Expired() {
-				span.Debug("hits at memory cache volume", vid)
-				return vol
-			}
-			c.volumeReport("memcache", "expired")
+	if val := c.getCachedValue(span, vid, diskvKeyVolume(vid),
+		c.volumeCache, decodeVolume, c.volumeReport); val != nil {
+		if value, ok := val.(*expiryVolume); ok {
+			return value
 		}
-	} else {
-		c.volumeReport("memcache", "miss")
 	}
-
-	data, err := c.diskv.Read(diskvKeyVolume(vid))
-	if err != nil {
-		c.volumeReport("diskv", "miss")
-		span.Warnf("read from diskv vid:%d error:%s", vid, err.Error())
-		return nil
-	}
-	vol, err := decodeVolume(data)
-	if err != nil {
-		c.volumeReport("diskv", "error")
-		span.Warnf("decode diskv vid:%d data:%s error:%s", vid, string(data), err.Error())
-		return nil
-	}
-
-	if !vol.Expired() {
-		c.volumeReport("diskv", "hit")
-		c.volumeCache.Set(vid, vol)
-		span.Debug("hits at diskv cache, set back to memory cache volume", vid)
-		return vol
-	}
-
-	c.volumeReport("diskv", "expired")
-	span.Debugf("expired at diskv vid:%d expiryat:%d", vid, vol.ExpiryAt)
 	return nil
 }
