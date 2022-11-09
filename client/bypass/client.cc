@@ -203,7 +203,7 @@ int real_openat(int dirfd, const char *pathname, int flags, ...) {
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    int fd, fd_origin;
+    int fd, fd_origin = -1;
     if(g_hook && is_cfs) {
         #ifdef DUP_TO_LOCAL
         if(libc_fd & CFS_FD_MASK) {
@@ -744,9 +744,6 @@ DIR *real_opendir(const char *pathname) {
 }
 
 DIR *real_fdopendir(int fd) {
-    #ifdef _CFS_DEBUG
-    log_debug("hook %s, fd:%d\n", __func__, fd);
-    #endif
     bool is_cfs = fd_in_cfs(fd);
     if(!g_hook || !is_cfs) {
         return libc_fdopendir(fd);
@@ -762,6 +759,9 @@ DIR *real_fdopendir(int fd) {
     dirp->size = 0;
     dirp->offset = 0;
     dirp->filepos = 0;
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, fd:%d\n", __func__, fd & ~CFS_FD_MASK);
+    #endif
     return dirp;
 }
 
@@ -1098,12 +1098,10 @@ int real_stat(int ver, const char *pathname, struct stat *statbuf) {
     if(g_hook && path != NULL) {
         re = cfs_errno(cfs_stat(g_client_info.cfs_client_id, path, statbuf));
         if(re == 0) {
-            pthread_rwlock_rdlock(&g_client_info.open_inodes_lock);
-            auto it = g_client_info.open_inodes.find(statbuf->st_ino);
-            if(it != g_client_info.open_inodes.end()) {
-                statbuf->st_size = it->second->size;
+            inode_info_t *inode_info = get_open_inode(statbuf->st_ino);
+            if(inode_info != NULL) {
+                statbuf->st_size = inode_info->size;
             }
-            pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
         }
     } else {
         re = libc_stat(ver, pathname, statbuf);
@@ -1120,13 +1118,11 @@ int real_stat64(int ver, const char *pathname, struct stat64 *statbuf) {
     int re;
     if(g_hook && path != NULL) {
         re = cfs_errno(cfs_stat64(g_client_info.cfs_client_id, path, statbuf));
-        if(re > 0) {
-            pthread_rwlock_rdlock(&g_client_info.open_inodes_lock);
-            auto it = g_client_info.open_inodes.find(statbuf->st_ino);
-            if(it != g_client_info.open_inodes.end()) {
-                statbuf->st_size = it->second->size;
+        if(re == 0) {
+            inode_info_t *inode_info = get_open_inode(statbuf->st_ino);
+            if(inode_info != NULL) {
+                statbuf->st_size = inode_info->size;
             }
-            pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
         }
     } else {
         re = libc_stat64(ver, pathname, statbuf);
@@ -1141,7 +1137,31 @@ int real_stat64(int ver, const char *pathname, struct stat64 *statbuf) {
 int real_lstat(int ver, const char *pathname, struct stat *statbuf) {
     char *path = get_cfs_path(pathname);
     int re;
-    re = (g_hook && path != NULL) ? cfs_errno(cfs_lstat(g_client_info.cfs_client_id, path, statbuf)) : libc_lstat(ver, pathname, statbuf);
+    if(g_hook && path != NULL) {
+        re = cfs_errno(cfs_lstat(g_client_info.cfs_client_id, path, statbuf));
+        if(re == 0) {
+            inode_info_t *inode_info = get_open_inode(statbuf->st_ino);
+            if(inode_info != NULL) {
+                statbuf->st_size = inode_info->size;
+            }
+        }
+        #ifdef DUP_TO_LOCAL
+        char *local_path = cat_path(LOCAL_PATH, path);
+        struct stat statbuf_local;
+        re = libc_lstat(ver, local_path, &statbuf_local);
+        free(local_path);
+        if(re < 0) {
+            goto log;
+        }
+        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, path != NULL, pathname, statbuf->st_size, statbuf_local.st_size);
+        }
+        #endif
+    } else {
+        re = libc_lstat(ver, pathname, statbuf);
+    }
+
+log:
     free(path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
@@ -1152,8 +1172,31 @@ int real_lstat(int ver, const char *pathname, struct stat *statbuf) {
 int real_lstat64(int ver, const char *pathname, struct stat64 *statbuf) {
     char *path = get_cfs_path(pathname);
     int re;
-    re = (g_hook && path != NULL) ? cfs_errno(cfs_lstat64(g_client_info.cfs_client_id, path, statbuf)) :
-             libc_lstat64(ver, pathname, statbuf);
+    if(g_hook && path != NULL) {
+        re = cfs_errno(cfs_lstat64(g_client_info.cfs_client_id, path, statbuf));
+        if(re == 0) {
+            inode_info_t *inode_info = get_open_inode(statbuf->st_ino);
+            if(inode_info != NULL) {
+                statbuf->st_size = inode_info->size;
+            }
+        }
+        #ifdef DUP_TO_LOCAL
+        char *local_path = cat_path(LOCAL_PATH, path);
+        struct stat64 statbuf_local;
+        re = libc_lstat64(ver, local_path, &statbuf_local);
+        free(local_path);
+        if(re < 0) {
+            goto log;
+        }
+        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, path != NULL, pathname, statbuf->st_size, statbuf_local.st_size);
+        }
+        #endif
+    } else {
+        re = libc_lstat64(ver, pathname, statbuf);
+    }
+
+log:
     free(path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
@@ -1164,7 +1207,30 @@ int real_lstat64(int ver, const char *pathname, struct stat64 *statbuf) {
 int real_fstat(int ver, int fd, struct stat *statbuf) {
     int re;
     bool is_cfs = fd_in_cfs(fd);
-    re = g_hook && is_cfs ? cfs_errno(cfs_fstat(g_client_info.cfs_client_id, get_cfs_fd(fd), statbuf)) : libc_fstat(ver, fd, statbuf);
+    if(g_hook && is_cfs) {
+        fd = get_cfs_fd(fd);
+        re = cfs_errno(cfs_fstat(g_client_info.cfs_client_id, fd, statbuf));
+        if(re == 0) {
+            inode_info_t *inode_info = get_open_inode(statbuf->st_ino);
+            if(inode_info != NULL) {
+                statbuf->st_size = inode_info->size;
+            }
+        }
+        #ifdef DUP_TO_LOCAL
+        struct stat statbuf_local;
+        re = libc_fstat(ver, fd, &statbuf_local);
+        if(re < 0) {
+            goto log;
+        }
+        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, st_size:%d, st_size_local:%d\n", __func__, is_cfs, fd, statbuf->st_size, statbuf_local.st_size);
+        }
+        #endif
+    } else {
+        re = libc_fstat(ver, fd, statbuf);
+    }
+
+log:
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs, fd, re);
     #endif
@@ -1174,8 +1240,30 @@ int real_fstat(int ver, int fd, struct stat *statbuf) {
 int real_fstat64(int ver, int fd, struct stat64 *statbuf) {
     int re;
     bool is_cfs = fd_in_cfs(fd);
-    re = g_hook && is_cfs ? cfs_errno(cfs_fstat64(g_client_info.cfs_client_id, get_cfs_fd(fd), statbuf)) :
-        libc_fstat64(ver, fd, statbuf);
+    if(g_hook && is_cfs) {
+        fd = get_cfs_fd(fd);
+        re = cfs_errno(cfs_fstat64(g_client_info.cfs_client_id, fd, statbuf));
+        if(re == 0) {
+            inode_info_t *inode_info = get_open_inode(statbuf->st_ino);
+            if(inode_info != NULL) {
+                statbuf->st_size = inode_info->size;
+            }
+        }
+        #ifdef DUP_TO_LOCAL
+        struct stat64 statbuf_local;
+        re = libc_fstat64(ver, fd, &statbuf_local);
+        if(re < 0) {
+            goto log;
+        }
+        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, st_size:%d, st_size_local:%d\n", __func__, is_cfs, fd, statbuf->st_size, statbuf_local.st_size);
+        }
+        #endif
+    } else {
+        re = libc_fstat64(ver, fd, statbuf);
+    }
+
+log:
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs, fd, re);
     #endif
@@ -1196,8 +1284,32 @@ int real_fstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf,
 
     const char *cfs_path = (path == NULL) ? pathname : path;
     int re;
-    re = g_hook && is_cfs ? cfs_errno(cfs_fstatat(g_client_info.cfs_client_id, dirfd, cfs_path, statbuf, flags)) :
-             libc_fstatat(ver, dirfd, pathname, statbuf, flags);
+    if(g_hook && is_cfs) {
+        re = cfs_errno(cfs_fstatat(g_client_info.cfs_client_id, dirfd, cfs_path, statbuf, flags));
+        if(re == 0) {
+            inode_info_t *inode_info = get_open_inode(statbuf->st_ino);
+            if(inode_info != NULL) {
+                statbuf->st_size = inode_info->size;
+            }
+        }
+        #ifdef DUP_TO_LOCAL
+        struct stat statbuf_local;
+        if(libc_fd != AT_FDCWD && libc_fd & CFS_FD_MASK) {
+            libc_fd = dirfd;
+        }
+        re = libc_fstatat(ver, libc_fd, local_path != NULL ? local_path : pathname, &statbuf_local, flags);
+        if(re < 0) {
+            goto log;
+        }
+        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, dirfd:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, is_cfs, dirfd, pathname, statbuf->st_size, statbuf_local.st_size);
+        }
+        #endif
+    } else {
+        re = libc_fstatat(ver, dirfd, pathname, statbuf, flags);
+    }
+
+log:
     free(path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, dirfd:%d, pathname:%s, re:%d\n", __func__, dirfd, pathname, re);
@@ -1222,8 +1334,33 @@ int real_fstatat64(int ver, int dirfd, const char *pathname, struct stat64 *stat
 
     const char *cfs_path = (path == NULL) ? pathname : path;
     int re;
-    re = g_hook && is_cfs ? cfs_errno(cfs_fstatat64(g_client_info.cfs_client_id, dirfd, cfs_path, statbuf, flags)) :
-        libc_fstatat64(ver, dirfd, pathname, statbuf, flags);
+    if(g_hook && is_cfs) {
+        re = cfs_errno(cfs_fstatat64(g_client_info.cfs_client_id, dirfd, cfs_path, statbuf, flags));
+        if(re == 0) {
+            inode_info_t *inode_info = get_open_inode(statbuf->st_ino);
+            if(inode_info != NULL) {
+                statbuf->st_size = inode_info->size;
+            }
+        }
+        #ifdef DUP_TO_LOCAL
+        struct stat64 statbuf_local;
+        if(libc_fd != AT_FDCWD && libc_fd & CFS_FD_MASK) {
+            libc_fd = dirfd;
+        }
+        re = libc_fstatat64(ver, libc_fd, local_path != NULL ? local_path : pathname, &statbuf_local, flags);
+        free(local_path);
+        if(re < 0) {
+            goto log;
+        }
+        if(statbuf->st_mode & S_IFREG && statbuf->st_size != statbuf_local.st_size) {
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, dirfd:%d, path:%s, st_size:%d, st_size_local:%d\n", __func__, is_cfs, dirfd, pathname, statbuf->st_size, statbuf_local.st_size);
+        }
+        #endif
+    } else {
+        re = libc_fstatat64(ver, dirfd, pathname, statbuf, flags);
+    }
+
+log:
     free(path);
     return re;
 }

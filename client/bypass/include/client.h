@@ -159,6 +159,7 @@ int get_cfs_fd(int fd);
 int dup_fd(int oldfd, int newfd);
 int gen_fd(int start);
 file_t *get_open_file(int fd);
+inode_info_t *get_open_inode(ino_t ino);
 const char *get_fd_path(int fd);
 void log_debug(const char* message, ...);
 

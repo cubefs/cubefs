@@ -184,6 +184,13 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     assertf(dp == NULL, "readdir errno %d", errno);
     re = closedir(dirp);
     assertf(re == 0, "closedir returning %d", re);
+    // donot close dirp to keep dir_fd open for following use
+    dirp = fdopendir(dir_fd);
+    assertf(dirp != NULL, "fdopendir %s returning NULL", dir);
+    while((dp = readdir(dirp)) && (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")));
+    assertf(dp != NULL && !strcmp(dp->d_name, file), "readdir returning %s", dp == NULL ? "" : dp->d_name);
+    dp = readdir(dirp);
+    assertf(dp == NULL, "readdir errno %d", errno);
 
     // file operations
     fd = open(file, O_RDWR);

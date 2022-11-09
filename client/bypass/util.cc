@@ -334,6 +334,14 @@ file_t *get_open_file(int fd) {
     return f;
 }
 
+inode_info_t *get_open_inode(ino_t ino) {
+    pthread_rwlock_rdlock(&g_client_info.open_inodes_lock);
+    auto it = g_client_info.open_inodes.find(ino);
+    inode_info_t *inode_info = (it != g_client_info.open_inodes.end() ? it->second : NULL);
+    pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
+    return inode_info;
+}
+
 const char *get_fd_path(int fd) {
     pthread_rwlock_rdlock(&g_client_info.fd_path_lock);
     auto it = g_client_info.fd_path.find(fd);
