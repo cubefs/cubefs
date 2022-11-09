@@ -208,7 +208,7 @@ func BenchmarkProxyDiskvHit(b *testing.B) {
 	c, cmCli, clean := newCacher(b, 0)
 	defer clean()
 	c.(*cacher).diskv.AdvancedTransform = func(s string) *diskv.PathKey {
-		return &diskv.PathKey{Path: diskvPathTransform(s), FileName: diskvKeyVolume(1)}
+		return &diskv.PathKey{Path: proxy.DiskvPathTransform(s), FileName: diskvKeyVolume(1)}
 	}
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil).AnyTimes()
 

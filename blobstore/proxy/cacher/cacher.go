@@ -16,9 +16,6 @@ package cacher
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
-	"strings"
 
 	"github.com/peterbourgon/diskv/v3"
 	"golang.org/x/sync/singleflight"
@@ -74,20 +71,6 @@ func diskvKeyDisk(diskID proto.DiskID) string {
 	return "disk-" + diskID.ToString()
 }
 
-// diskvPathTransform transform key to multi-level path.
-// eg: key(with '-') --> ~/hash(key)[0:2]/hash(key)[2:4]/key
-func diskvPathTransform(key string) []string {
-	paths := strings.SplitN(key, "-", 2)
-	if len(paths) < 2 {
-		return []string{}
-	}
-
-	sha := sha1.New()
-	sha.Write([]byte(key))
-	h := hex.EncodeToString(sha.Sum(nil))
-	return []string{h[0:2], h[2:4]}
-}
-
 // Cacher memory cache handlers.
 type Cacher interface {
 	GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error)
@@ -113,7 +96,7 @@ func New(clusterID proto.ClusterID, config ConfigCache, cmClient clustermgr.APIP
 		CacheSizeMax: 1 << 20,
 		BasePath:     config.DiskvBasePath,
 		TempDir:      config.DiskvTempDir,
-		Transform:    diskvPathTransform,
+		Transform:    proxy.DiskvPathTransform,
 	})
 
 	concurrency := keycount.NewBlockingKeyCountLimit(_defaultClustermgrConcurrency)

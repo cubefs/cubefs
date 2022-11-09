@@ -192,3 +192,22 @@ func TestLbClient_BlobDelete(t *testing.T) {
 	})
 	require.NoError(t, err)
 }
+
+func TestCacher_DiskvPathTransform(t *testing.T) {
+	for _, cs := range []struct {
+		key   string
+		paths []string
+	}{
+		{"", []string{}},
+		{"akey", []string{}},
+		{"-id", []string{"8b", "d5"}},
+		{"volume-", []string{"fc", "08"}},
+		{"volume-111", []string{"59", "90"}},
+		{"volume-111-", []string{"cb", "dc"}},
+		{"volume-111-10", []string{"cf", "77"}},
+		{"disk-111", []string{"a6", "51"}},
+		{"disk-111-10", []string{"17", "3a"}},
+	} {
+		require.Equal(t, cs.paths, DiskvPathTransform(cs.key))
+	}
+}

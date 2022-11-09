@@ -46,24 +46,3 @@ func TestProxyCacherConfigVolume(t *testing.T) {
 		require.Equal(t, cs.expExpiration, c.config.VolumeExpirationS)
 	}
 }
-
-func TestProxyCacherConfigPath(t *testing.T) {
-	for _, cs := range []struct {
-		key   string
-		paths []string
-	}{
-		{"", []string{}},
-		{"akey", []string{}},
-		{"-id", []string{"8b", "d5"}},
-		{"volume-", []string{"fc", "08"}},
-		{"volume-111", []string{"59", "90"}},
-		{"volume-111-", []string{"cb", "dc"}},
-		{"volume-111-10", []string{"cf", "77"}},
-		{"disk-111", []string{"a6", "51"}},
-		{"disk-111-10", []string{"17", "3a"}},
-		{diskvKeyVolume(111), []string{"59", "90"}},
-		{diskvKeyDisk(111), []string{"a6", "51"}},
-	} {
-		require.Equal(t, cs.paths, diskvPathTransform(cs.key))
-	}
-}

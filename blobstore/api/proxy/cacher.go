@@ -16,8 +16,11 @@ package proxy
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/binary"
+	"encoding/hex"
 	"hash/crc32"
+	"strings"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -56,4 +59,18 @@ type CacheDiskArgs struct {
 type Cacher interface {
 	GetCacheVolume(ctx context.Context, host string, args *CacheVolumeArgs) (*VersionVolume, error)
 	GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (*blobnode.DiskInfo, error)
+}
+
+// DiskvPathTransform transform key to multi-level path.
+// eg: key(with '{namespace}-{id}') --> ~/hash(key)[0:2]/hash(key)[2:4]/key
+func DiskvPathTransform(key string) []string {
+	paths := strings.SplitN(key, "-", 2)
+	if len(paths) < 2 {
+		return []string{}
+	}
+
+	sha := sha1.New()
+	sha.Write([]byte(key))
+	h := hex.EncodeToString(sha.Sum(nil))
+	return []string{h[0:2], h[2:4]}
 }
