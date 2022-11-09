@@ -31,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
+	"github.com/cubefs/cubefs/blobstore/cli/proxy"
 	"github.com/cubefs/cubefs/blobstore/cli/scheduler"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -122,4 +123,5 @@ func init() {
 	clustermgr.Register(App)
 	scheduler.Register(App)
 	blobnode.Register(App)
+	proxy.Register(App)
 }
