@@ -44,6 +44,9 @@ const (
 	TmpLibsPath  = "/tmp/.cfs_client_libs_"
 	FuseLibsPath = "/usr/lib64"
 	FuseLib      = "libcfssdk.so"
+	TarNamePre   = "cfs-client-libs"
+	ADM64        = "amd64"
+	ARM64        = "arm64"
 )
 
 var (
@@ -231,8 +234,7 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.RemoveAll(tmpPath)
 
-	tarName := fmt.Sprintf("cfs-client-libs_%s.tar.gz", version)
-	_, err = downloadAndCheck(c.mc, tmpPath, tarName)
+	_, err = downloadAndCheck(c.mc, tmpPath, version)
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -307,8 +309,7 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.RemoveAll(tmpPath)
 
-	tarName := fmt.Sprintf("cfs-client-libs_%s.tar.gz", version)
-	fileNames, err := downloadAndCheck(c.mc, tmpPath, tarName)
+	fileNames, err := downloadAndCheck(c.mc, tmpPath, version)
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -345,7 +346,16 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func downloadAndCheck(mc *master.MasterClient, tmpPath, tarName string) (fileNames []string, err error) {
+func downloadAndCheck(mc *master.MasterClient, tmpPath, version string) (fileNames []string, err error) {
+	var tarName string
+	if runtime.GOARCH == ADM64 {
+		tarName = fmt.Sprintf("%s_%s_%s.tar.gz", TarNamePre, ADM64, version)
+	} else if runtime.GOARCH == ARM64 {
+		tarName = fmt.Sprintf("%s_%s_%s.tar.gz", TarNamePre, ARM64, version)
+	} else {
+		err = fmt.Errorf("cpu arch %s not supported", runtime.GOARCH)
+		return nil, err
+	}
 
 	if err = downloadClientPkg(mc, tarName, tmpPath); err != nil {
 		return nil, err

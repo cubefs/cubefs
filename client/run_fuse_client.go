@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -29,11 +30,13 @@ const (
 	GolangLib             = "/usr/lib64/libstd.so"
 	TmpLibsPath           = "/tmp/.cfs_client_fuse"
 	FuseLibsPath          = "/usr/lib64"
-	TarName               = "cfs-client-fuse.tar.gz"
 	CheckFile             = "checkfile"
 	MasterAddr            = "masterAddr"
 	AdminGetClientPkgAddr = "/clientPkgAddr/get"
 	RetryTimes            = 5
+	TarNamePre            = "cfs-client-fuse"
+	ADM64                 = "amd64"
+	ARM64                 = "arm64"
 )
 
 func main() {
@@ -57,14 +60,23 @@ func main() {
 		}
 		defer os.RemoveAll(tmpPath)
 
-		if err = downloadClientPkg(downloadAddr, tmpPath, TarName); err != nil {
+		var tarName string
+		if runtime.GOARCH == ADM64 {
+			tarName = fmt.Sprintf("%s_%s.tar.gz", TarNamePre, ADM64)
+		} else if runtime.GOARCH == ARM64 {
+			tarName = fmt.Sprintf("%s_%s.tar.gz", TarNamePre, ARM64)
+		} else {
+			fmt.Printf("cpu arch %s not supported", runtime.GOARCH)
+			os.Exit(1)
+		}
+		if err = downloadClientPkg(downloadAddr, tmpPath, tarName); err != nil {
 			fmt.Printf("%v\n", err)
 			os.Exit(1)
 		}
 
 		var fileNames []string
-		if fileNames, err = untar(filepath.Join(tmpPath, TarName), tmpPath); err != nil {
-			fmt.Printf("Untar %s err: %v", TarName, err)
+		if fileNames, err = untar(filepath.Join(tmpPath, tarName), tmpPath); err != nil {
+			fmt.Printf("Untar %s err: %v", tarName, err)
 			os.Exit(1)
 		}
 
@@ -105,12 +117,19 @@ func main() {
 		}
 	}
 
-	args := []string{filepath.Base(MainBinary)}
-	args = append(args, os.Args[1:]...)
+	exeFile := os.Args[0]
+	if err := moveFile(MainBinary, exeFile+".tmp"); err != nil {
+		fmt.Printf("%v\n", err.Error())
+		os.Exit(1)
+	}
+	if err := os.Rename(exeFile+".tmp", exeFile); err != nil {
+		fmt.Printf("%v\n", err.Error())
+		os.Exit(1)
+	}
 	env := os.Environ()
-	execErr := syscall.Exec(MainBinary, args, env)
+	execErr := syscall.Exec(exeFile, os.Args, env)
 	if execErr != nil {
-		fmt.Printf("exec %s %v error: %v\n", MainBinary, args, execErr)
+		fmt.Printf("exec %s %v error: %v\n", exeFile, os.Args, execErr)
 		os.Exit(1)
 	}
 }

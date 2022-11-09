@@ -87,18 +87,25 @@ if [[ ${build_test} -eq 1 ]]; then
     gcc -std=c99 -g ${dir}/bypass/client_test.c -o ${bin}/test-bypass
 fi
 if [[ ${pack_libs} -eq 1 ]]; then
+    libTarName=cfs-client-libs_amd64_${CommitID}.tar.gz
+    fuseTarName=cfs-client-fuse_amd64.tar.gz
+    if [[ `arch` == "aarch64" ]] || [[ `arch` == "arm64" ]]; then
+        libTarName=cfs-client-libs_arm64_${CommitID}.tar.gz
+        fuseTarName=cfs-client-fuse_arm64.tar.gz
+    fi
+
     echo "pack libs, generate cfs-client-libs.tar.gz ..."
     cd ${bin}
     md5sum libcfssdk.so > checkfile
     md5sum libcfsc.so >> checkfile
-    tar -zcvf cfs-client-libs_${CommitID}.tar.gz  libcfssdk.so libcfsc.so checkfile
+    tar -zcvf ${libTarName} libcfssdk.so libcfsc.so checkfile
 
     libstd=`ldd libcfssdk.so |grep libstd.so |awk '{print $3}'`
     cp -f ${libstd} libstd.so
     md5sum libcfssdk.so > checkfile
     md5sum libstd.so >> checkfile
     md5sum cfs-client-inner >> checkfile
-    tar -zcvf cfs-client-fuse.tar.gz libcfssdk.so libstd.so cfs-client-inner checkfile
+    tar -zcvf ${fuseTarName} libcfssdk.so libstd.so cfs-client-inner checkfile
 
     cd ~-
 fi
