@@ -328,7 +328,7 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 		}
 	}
 
-	delExtents := existInode.AppendExtents(ctx, eks, ino.ModifyTime)
+	delExtents := existInode.InsertExtents(ctx, eks, ino.ModifyTime)
 	if err = mp.inodeTree.Put(dbHandle, existInode); err != nil {
 		status = proto.OpErr
 		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Put error:%v",
@@ -616,7 +616,7 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 			delEks := make([]proto.MetaDelExtentKey, 0)
 			timeStamp := time.Now().Unix()
 			for index := 0; index < len(delExtents); index++ {
-				delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(inodeId, delEkSrcTypeFromAppend, timeStamp))
+				delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(inodeId, delEkSrcTypeFromMerge, timeStamp))
 			}
 			select {
 			case mp.extDelCh <- delEks:
