@@ -253,7 +253,9 @@ run_unit_test() {
             ./datanode/... \
             ./metanode/... \
             ./objectnode/... \
-            ./schedulenode/... \
+            ./schedulenode/compact/... \
+            ./schedulenode/smart/... \
+            ./schedulenode/worker/... \
             ./codecnode/... \
             ./ecnode/... \
             ./storage/... \
