@@ -17,6 +17,7 @@ package metanode
 import (
 	"context"
 	"encoding/binary"
+	"github.com/chubaofs/chubaofs/util"
 	"time"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
@@ -31,6 +32,44 @@ type storeMsg struct {
 	snap       Snapshot
 }
 
+func (mp *metaPartition) updateRaftStorageParam() {
+	nodeCfg := getGlobalConfNodeInfo()
+	logSize := defRaftLogSize
+	logCap := defRaftLogCap
+	if nodeCfg.raftLogSizeFromMaster > 0 {
+		logSize = nodeCfg.raftLogSizeFromMaster * util.MB
+	}
+
+	if nodeCfg.raftLogSizeFromLoc  > 0 {
+		logSize = nodeCfg.raftLogSizeFromLoc * util.MB
+	}
+
+	if nodeCfg.raftLogCapFromMaster > 0 {
+		logCap = nodeCfg.raftLogCapFromMaster
+	}
+
+	if nodeCfg.raftLogCapFromLoc  > 0 {
+		logCap = nodeCfg.raftLogCapFromLoc
+	}
+
+	raftPartition := mp.raftPartition
+	if raftPartition == nil {
+		return
+	}
+
+	if logSize != 0 && logSize != raftPartition.GetWALFileSize() {
+		raftPartition.SetWALFileSize(logSize)
+		log.LogWarnf("[updateRaftStorageParam] partitionId=%d: File size :%d MB", mp.config.PartitionId, logSize / util.MB)
+	}
+
+	if logCap != 0 && logCap != raftPartition.GetWALFileCacheCapacity() {
+		raftPartition.SetWALFileCacheCapacity(logCap)
+		log.LogWarnf("[updateRaftStorageParam] partitionId=%d: File Cap :%d ", mp.config.PartitionId, logCap)
+	}
+
+	return
+}
+
 func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timer := time.NewTimer(time.Hour * 24 * 365)
 	timer.Stop()
@@ -43,6 +82,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		if err := mp.store(msg); err == nil {
 			// truncate raft log
 			if mp.raftPartition != nil {
+				mp.updateRaftStorageParam()
 				mp.raftPartition.Truncate(curIndex)
 				log.LogWarnf("[afterMetaPartitionStore] partitionId=%d: nowAppID"+
 					"=%d, applyID=%d", mp.config.PartitionId, curIndex,

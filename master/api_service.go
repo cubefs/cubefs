@@ -324,6 +324,8 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaRocksFlushWalInterval:           m.cluster.cfg.MetaRocksFlushWalInterval,
 		MetaRocksDisableFlushFlag:           m.cluster.cfg.MetaRocksDisableFlushFlag,
 		MetaRocksWalTTL:                     m.cluster.cfg.MetaRocksWalTTL,
+		MetaRaftLogSize:                     m.cluster.cfg.MetaRaftLogSize,
+		MetaRaftLogCap:                      m.cluster.cfg.MetaRaftLogCap,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -448,6 +450,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	metaRocksDBFlushWalInterval := atomic.LoadUint64(&m.cluster.cfg.MetaRocksFlushWalInterval)
 	metaRocksDBWalTTL := atomic.LoadUint64(&m.cluster.cfg.MetaRocksWalTTL)
 	metaRocksDBDisableFlush := atomic.LoadUint64(&m.cluster.cfg.MetaRocksDisableFlushFlag)
+	metaRaftLogSize := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogSize)
+	metaRaftLogCap  := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogCap)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
 	if dataNodeZoneName != "" {
@@ -498,6 +502,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaRocksDisableFlushFlag:              metaRocksDBDisableFlush,
 		MetaRocksFlushWalInterval:              metaRocksDBFlushWalInterval,
 		MetaRocksWalTTL:                        metaRocksDBWalTTL,
+		MetaRaftLogSize: metaRaftLogSize,
+		MetaRaftCap:     metaRaftLogCap,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -4251,7 +4257,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
-	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey}
+	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
+		proto.MetaRaftLogCapKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return

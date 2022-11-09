@@ -138,6 +138,8 @@ type clusterConfig struct {
 	MetaRocksFlushWalInterval           uint64 //min
 	MetaRocksDisableFlushFlag           uint64   //default 0 flush, !=0 disable flush
 	MetaRocksWalTTL                     uint64 //second
+	MetaRaftLogSize						int64  // MB
+	MetaRaftLogCap                      int64  //
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -172,6 +174,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.ExtentMergeIno = make(map[string][]uint64)
 	cfg.DataNodeRepairTaskCountZoneLimit = make(map[string]uint64)
 	cfg.ClientPkgAddr = defaultClientPkgAddr
+	cfg.MetaRaftLogSize = 0  //use meta node config value
+	cfg.MetaRaftLogCap =  0  // use meta node config value
 	return
 }
 

@@ -219,6 +219,8 @@ type ClusterView struct {
 	MetaRocksFlushWalInterval           uint64  //min
 	MetaRocksDisableFlushFlag           uint64  //0 flush, !=0 disable flush
 	MetaRocksWalTTL                     uint64
+	MetaRaftLogSize                     int64   //MB, 0 use meta default 8MB
+	MetaRaftLogCap                      int64   //MB, 0 use meta default 4
 }
 
 // NodeView provides the view of the data or meta node.

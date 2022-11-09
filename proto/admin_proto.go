@@ -229,6 +229,8 @@ const (
 	MetaRocksWalFlushIntervalKey = "metaRocksWalFlushInterval"
 	MetaRocksDisableFlushWalKey  = "metaRocksDisableFlushWal"
 	MetaRocksWalTTLKey           = "metaRocksWalTTL"
+	MetaRaftLogSizeKey           = "metaRaftLogSize"
+	MetaRaftLogCapKey            = "metaRaftLogCap"
 )
 
 const (
@@ -486,6 +488,8 @@ type LimitInfo struct {
 	MetaRocksFlushWalInterval  uint64				//min   30min
 	MetaRocksWalTTL			   uint64				//second  60s
 	MetaRocksDisableFlushFlag  uint64               //0 flush, !=0 disable flush; default 0
+	MetaRaftLogSize            int64                // MB; 0 use default 8MB
+	MetaRaftCap                int64                // 0 use default 4
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1109,6 +1113,8 @@ type RateLimitInfo struct {
 	MetaRocksFlushWalInterval   uint64 //min
 	MetaRocksDisableFlushFlag   int64 //0 flush, !=0 disable flush
 	MetaRocksWalTTL             uint64
+	MetaRaftLogSize				int64
+	MetaRaftLogCap				int64
 }
 
 type ConvertMode uint8

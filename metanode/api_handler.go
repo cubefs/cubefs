@@ -116,7 +116,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/reopenDb", m.reopenRocksDb)
 
 	http.HandleFunc("/getDeletedDentrys", m.getDeletedDentrysByParentInoHandler)
-
+	http.HandleFunc("/setRaftStorageParam", m.setRaftStorageParam)
 	return
 }
 
@@ -200,6 +200,11 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["apply_id"] = mp.GetAppliedID()
 	msg["raft_status"] = m.raftStore.RaftStatus(pid)
 	msg["trash_first_upd_time"] = mp.(*metaPartition).trashExpiresFirstUpdateTime
+	raftPartition := mp.(*metaPartition).raftPartition
+	if raftPartition != nil {
+		msg["raft_log_size"] = raftPartition.GetWALFileSize()
+		msg["raft_log_cap"] = raftPartition.GetWALFileCacheCapacity()
+	}
 	msg["now"] = time.Now()
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -834,6 +839,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 	//get process stat info
 	cpuUsageList, maxCPUUsage := m.processStatInfo.GetProcessCPUStatInfo()
 	memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := m.processStatInfo.GetProcessMemoryStatInfo()
+	nodeCfg := getGlobalConfNodeInfo()
 	//get disk info
 	disks := m.getDisks()
 	diskList := make([]interface{}, 0, len(disks))
@@ -867,6 +873,10 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"maxMemoryUsedGB":  maxMemoryUsedGB,
 		"maxMemoryUsage":   maxMemoryUsage,
 		"diskInfo":         diskList,
+		"raftLogSizeFromMaster": nodeCfg.raftLogSizeFromMaster,
+		"raftLogCapFromMaster":  nodeCfg.raftLogCapFromMaster,
+		"raftLogSizeFromLoc":    nodeCfg.raftLogSizeFromLoc,
+		"raftLogCapFromLoc":     nodeCfg.raftLogCapFromLoc,
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -2161,6 +2171,38 @@ func (m *MetaNode) reopenRocksDb(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (m *MetaNode) setRaftStorageParam(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[removeOldDelEKRecordFile] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	logSizeStr := r.FormValue("logSize")
+	logSize, err:= strconv.Atoi(logSizeStr)
+	if err != nil {
+	logSize = 0
+	}
+
+	logCapStr := r.FormValue("logCap")
+	logCap, err:= strconv.Atoi(logCapStr)
+	if err != nil {
+	logCap = 0
+	}
+
+	m.updateRaftParamFromLocal(logSize, logCap)
+	return
+}
+
 func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusSeeOther, "")
 	shouldResp := true
@@ -2177,8 +2219,8 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		resp.Code = http.StatusBadRequest
 		resp.Msg = err.Error()
 		return
-	}
 
+	}
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Code = http.StatusBadRequest

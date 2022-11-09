@@ -111,3 +111,17 @@ func (m MockPartition) FlushWAL(wait bool) error {
 func (m MockPartition) RaftConfig() *raft.Config {
 	return raft.DefaultConfig()
 }
+
+func (m MockPartition) SetWALFileSize(filesize int) {
+}
+
+func (m MockPartition) GetWALFileSize() int {
+	return 0
+}
+
+func (m MockPartition) SetWALFileCacheCapacity(capacity int) {
+}
+
+func (m MockPartition) GetWALFileCacheCapacity() int {
+	return 0
+}

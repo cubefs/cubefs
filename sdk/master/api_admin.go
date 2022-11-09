@@ -720,6 +720,12 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.MetaRocksWalTTL > 0 {
 		request.addParam(proto.MetaRocksWalTTLKey, strconv.FormatUint(info.MetaRocksWalTTL, 10))
 	}
+	if info.MetaRaftLogSize >= 0 {
+		request.addParam(proto.MetaRaftLogSizeKey, strconv.FormatInt(info.MetaRaftLogSize, 10))
+	}
+	if info.MetaRaftLogCap >= 0 {
+		request.addParam(proto.MetaRaftLogCapKey, strconv.FormatInt(info.MetaRaftLogCap, 10))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {

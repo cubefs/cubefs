@@ -3671,6 +3671,26 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaRocksDisableFlushFlag, val.(uint64))
 	}
 
+	oldMetaRaftLogSize := atomic.LoadInt64(&c.cfg.MetaRaftLogSize)
+	if val, ok := params[proto.MetaRaftLogSizeKey]; ok {
+		v := val.(int64)
+		if v < 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRaftLogSizeKey)
+			return
+		}
+		atomic.StoreInt64(&c.cfg.MetaRaftLogSize, val.(int64))
+	}
+
+	oldMetaRaftLogCap := atomic.LoadInt64(&c.cfg.MetaRaftLogCap)
+	if val, ok := params[proto.MetaRaftLogCapKey]; ok {
+		v := val.(int64)
+		if v < 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRaftLogCapKey)
+			return
+		}
+		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, val.(int64))
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3697,6 +3717,8 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaRocksFlushWalInterval, oldMetaRocksFlushWalInterval)
 		atomic.StoreUint64(&c.cfg.MetaRocksWalTTL, oldMetaRocksWalTTL)
 		atomic.StoreUint64(&c.cfg.MetaRocksDisableFlushFlag, oldMetaRocksDisableFlushWalFlag)
+		atomic.StoreInt64(&c.cfg.MetaRaftLogSize, oldMetaRaftLogSize)
+		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, oldMetaRaftLogCap)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

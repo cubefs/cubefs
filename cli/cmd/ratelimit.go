@@ -195,6 +195,12 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.MetaRocksWalTTL > 0 {
 				msg += fmt.Sprintf("MN RocksDB Wal Log TTL       : %d, ", info.MetaRocksWalTTL)
 			}
+			if info.MetaRaftLogSize >= 0 {
+				msg += fmt.Sprintf("MN Raft log size MB  : %d, ", info.MetaRaftLogSize)
+			}
+			if info.MetaRaftLogCap >= 0 {
+				msg += fmt.Sprintf("MN Raft log cap  : %d, ", info.MetaRaftLogCap)
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -243,6 +249,8 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.MetaRocksDisableFlushFlag, "metaRocksDisableWalFlush", -1, "Meta node RocksDB config:flush wal flag, 0: enable flush wal log, 1:disable flush wal log")
 	cmd.Flags().Uint64Var(&info.MetaRocksWalTTL, "metaRocksWalTTL", 0, "Meta node RocksDB config:wal_ttl_seconds")
 	cmd.Flags().Int64Var(&info.DataNodeFlushFDInterval, "dataNodeFlushFDInterval", 0, "datanode flush wal fd interval")
+	cmd.Flags().Int64Var(&info.MetaRaftLogSize, "metaRaftLogSize", -1, "meta node raft log size")
+	cmd.Flags().Int64Var(&info.MetaRaftLogCap, "metaRaftLogCap", -1, "meta node raft log cap")
 	return cmd
 }
 
@@ -288,5 +296,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  (map[zone]limit)\n"))
 	sb.WriteString(fmt.Sprintf("  MonitorSummarySecond        : %v\n", info.MonitorSummarySec))
 	sb.WriteString(fmt.Sprintf("  MonitorReportSecond         : %v\n", info.MonitorReportSec))
+	sb.WriteString(fmt.Sprintf("  MetaRaftLogSize             : %v\n", info.MetaRaftLogSize))
+	sb.WriteString(fmt.Sprintf("  MetaRaftLogCap              : %v\n", info.MetaRaftCap))
 	return sb.String()
 }
