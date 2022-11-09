@@ -53,6 +53,10 @@ const (
 	MetricDpNoLeader = "dp_no_leader"
 	MetricMissingMp  = "missing_mp"
 	MetricMpNoLeader = "mp_no_leader"
+	MetricDataPartitionCount       = "dataPartition_count"
+	MetricReplicaMissingDPCount    = "replica_missing_dp_count"
+	MetricDataNodesetInactiveCount = "data_nodeset_inactive_count"
+	MetricMetaNodesetInactiveCount = "meta_nodeset_inactive_count"
 )
 
 var WarnMetrics *warningMetrics
@@ -81,16 +85,24 @@ type monitorMetrics struct {
 	InactiveDataNodeInfo *exporter.GaugeVec
 	metaNodesInactive    *exporter.Gauge
 	InactiveMataNodeInfo *exporter.GaugeVec
+	dataPartitionCount       *exporter.Gauge
+	ReplicaMissingDPCount    *exporter.Gauge
+	dataNodesetInactiveCount *exporter.GaugeVec
+	metaNodesetInactiveCount *exporter.GaugeVec
 
 	volNames map[string]struct{}
 	badDisks map[string]string
+	nodesetInactiveDataNodesCount map[uint64]int64
+	nodesetInactiveMetaNodesCount map[uint64]int64
 	//volNamesMutex sync.Mutex
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
 	return &monitorMetrics{cluster: c,
-		volNames: make(map[string]struct{}),
-		badDisks: make(map[string]string),
+		volNames:                      make(map[string]struct{}),
+		badDisks:                      make(map[string]string),
+		nodesetInactiveDataNodesCount: make(map[uint64]int64),
+		nodesetInactiveMetaNodesCount: make(map[uint64]int64),
 	}
 }
 
@@ -151,6 +163,10 @@ func (mm *monitorMetrics) start() {
 	mm.dataNodesNotWritable = exporter.NewGauge(MetricDataNodesNotWritable)
 	mm.metaNodesNotWritable = exporter.NewGauge(MetricMetaNodesNotWritable)
 	mm.InactiveMataNodeInfo = exporter.NewGaugeVec(MetricInactiveMataNodeInfo, "", []string{"clusterName", "addr"})
+	mm.dataPartitionCount = exporter.NewGauge(MetricDataPartitionCount)
+	mm.ReplicaMissingDPCount = exporter.NewGauge(MetricReplicaMissingDPCount)
+	mm.dataNodesetInactiveCount = exporter.NewGaugeVec(MetricDataNodesetInactiveCount, "", []string{"nodeset"})
+	mm.metaNodesetInactiveCount = exporter.NewGaugeVec(MetricMetaNodesetInactiveCount, "", []string{"nodeset"})
 	go mm.statMetrics()
 }
 
@@ -192,10 +208,32 @@ func (mm *monitorMetrics) doStat() {
 	mm.setVolMetrics()
 	mm.setBadPartitionMetrics()
 	mm.setDiskErrorMetric()
-	mm.setInactiveDataNodesCount()
-	mm.setInactiveMetaNodesCount()
 	mm.setNotWritableDataNodesCount()
 	mm.setNotWritableMetaNodesCount()
+	mm.setInactiveDataNodesCountMetric()
+	mm.setInactiveMetaNodesCountMetric()
+	mm.setDpMetrics()
+}
+
+func (mm *monitorMetrics) setDpMetrics() {
+	dpCount := 0
+	missingReplicaDpCount := 0
+	vols := mm.cluster.copyVols()
+	for _, vol := range vols {
+		var dps *DataPartitionMap
+		dps = vol.dataPartitions
+		dpCount += len(dps.partitions)
+		for _, dp := range dps.partitions {
+			if dp.ReplicaNum > uint8(len(dp.liveReplicas(defaultDataPartitionTimeOutSec))) {
+				missingReplicaDpCount++
+			}
+		}
+	}
+
+	mm.dataPartitionCount.Set(float64(dpCount))
+	mm.ReplicaMissingDPCount.Set(float64(missingReplicaDpCount))
+
+	return
 }
 
 func (mm *monitorMetrics) setVolMetrics() {
@@ -312,8 +350,15 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 	}
 }
 
-func (mm *monitorMetrics) setInactiveMetaNodesCount() {
+func (mm *monitorMetrics) setInactiveMetaNodesCountMetric() {
 	var inactiveMetaNodesCount int64
+
+	deleteNodesetCount := make(map[uint64]int64)
+	for k, v := range mm.nodesetInactiveMetaNodesCount {
+		deleteNodesetCount[k] = v
+		delete(mm.nodesetInactiveMetaNodesCount, k)
+	}
+
 	mm.cluster.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode, ok := node.(*MetaNode)
 		if !ok {
@@ -322,14 +367,37 @@ func (mm *monitorMetrics) setInactiveMetaNodesCount() {
 		if !metaNode.IsActive {
 			inactiveMetaNodesCount++
 			mm.InactiveMataNodeInfo.SetWithLabelValues(1, mm.cluster.Name, metaNode.Addr)
+			mm.nodesetInactiveMetaNodesCount[metaNode.NodeSetID] = mm.nodesetInactiveMetaNodesCount[metaNode.NodeSetID] + 1
+			delete(deleteNodesetCount, metaNode.NodeSetID)
 		}
 		return true
 	})
 	mm.metaNodesInactive.Set(float64(inactiveMetaNodesCount))
+	for id, count := range mm.nodesetInactiveMetaNodesCount {
+		mm.metaNodesetInactiveCount.SetWithLabelValues(float64(count), strconv.FormatUint(id, 10))
+	}
+
+	for k, _ := range deleteNodesetCount {
+		mm.metaNodesetInactiveCount.DeleteLabelValues(strconv.FormatUint(k, 10))
+	}
 }
 
-func (mm *monitorMetrics) setInactiveDataNodesCount() {
-	var inactiveDataNodesCount int64
+func (mm *monitorMetrics) clearInactiveMetaNodesCountMetric() {
+	for k, _ := range mm.nodesetInactiveMetaNodesCount {
+		mm.metaNodesetInactiveCount.DeleteLabelValues(strconv.FormatUint(k, 10))
+	}
+}
+
+func (mm *monitorMetrics) setInactiveDataNodesCountMetric() {
+	var inactiveDataNodesCount uint64
+
+	deleteNodesetCount := make(map[uint64]int64)
+	for k, v := range mm.nodesetInactiveDataNodesCount {
+		log.LogErrorf("setInactiveDataNodesCountMetric, init deleteNodesetCount")
+		deleteNodesetCount[k] = v
+		delete(mm.nodesetInactiveDataNodesCount, k)
+	}
+
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
 		if !ok {
@@ -338,10 +406,25 @@ func (mm *monitorMetrics) setInactiveDataNodesCount() {
 		if !dataNode.isActive {
 			inactiveDataNodesCount++
 			mm.InactiveDataNodeInfo.SetWithLabelValues(1, mm.cluster.Name, dataNode.Addr)
+			mm.nodesetInactiveDataNodesCount[dataNode.NodeSetID] = mm.nodesetInactiveDataNodesCount[dataNode.NodeSetID] + 1
+			delete(deleteNodesetCount, dataNode.NodeSetID)
 		}
 		return true
 	})
 	mm.dataNodesInactive.Set(float64(inactiveDataNodesCount))
+	for id, count := range mm.nodesetInactiveDataNodesCount {
+		mm.dataNodesetInactiveCount.SetWithLabelValues(float64(count), strconv.FormatUint(id, 10))
+	}
+
+	for k, _ := range deleteNodesetCount {
+		mm.dataNodesetInactiveCount.DeleteLabelValues(strconv.FormatUint(k, 10))
+	}
+}
+
+func (mm *monitorMetrics) clearInactiveDataNodesCountMetric() {
+	for k, _ := range mm.nodesetInactiveDataNodesCount {
+		mm.dataNodesetInactiveCount.DeleteLabelValues(strconv.FormatUint(k, 10))
+	}
 }
 
 func (mm *monitorMetrics) setNotWritableMetaNodesCount() {
@@ -392,6 +475,8 @@ func (mm *monitorMetrics) clearDiskErrMetrics() {
 func (mm *monitorMetrics) resetAllMetrics() {
 	mm.clearVolMetrics()
 	mm.clearDiskErrMetrics()
+	mm.clearInactiveMetaNodesCountMetric()
+	mm.clearInactiveDataNodesCountMetric()
 
 	mm.dataNodesCount.Set(0)
 	mm.metaNodesCount.Set(0)
@@ -407,4 +492,6 @@ func (mm *monitorMetrics) resetAllMetrics() {
 	mm.metaNodesInactive.Set(0)
 	mm.dataNodesNotWritable.Set(0)
 	mm.metaNodesNotWritable.Set(0)
+	mm.dataPartitionCount.Set(0)
+	mm.ReplicaMissingDPCount.Set(0)
 }
