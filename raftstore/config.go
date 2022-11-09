@@ -80,6 +80,9 @@ type PartitionConfig struct {
 	AutoPromote bool
 
 	GetStartIndex GetStartIndexFunc
+
+	WALFileSize          int
+	WALFileCacheCapacity int
 }
 
 func (p PeerAddress) String() string {

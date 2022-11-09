@@ -36,6 +36,16 @@ func newLogFileCache(capacity int, f openFunc) *logFileCache {
 	}
 }
 
+func (lc *logFileCache) SetCapacity(capacity int) {
+	if capacity > 0 {
+		lc.capacity = capacity
+	}
+}
+
+func (lc *logFileCache) GetCapacity() int {
+	return lc.capacity
+}
+
 func (lc *logFileCache) Get(name logFileName) (lf *logEntryFile, err error) {
 	e, ok := lc.m[name]
 	if ok {

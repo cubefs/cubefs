@@ -224,6 +224,8 @@ const (
 	defSyncRocksDbWalLog             = time.Minute * 30
 	intervalSyncRocksDbWalLog        = time.Second * 2
 	defMinSyncRockDbWalLog           = time.Minute * 2
+	defRaftLogCap					 = 4
+	defRaftLogSize					 = util.MB * 8
 )
 
 const (

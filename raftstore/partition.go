@@ -93,14 +93,24 @@ type Partition interface {
 	RaftConfig() *raft.Config
 
 	FlushWAL(wait bool) error
+
+	SetWALFileSize(filesize int)
+
+	GetWALFileSize() int
+
+	SetWALFileCacheCapacity(capacity int)
+
+	GetWALFileCacheCapacity() int
 }
 
 // Default implementation of the Partition interface.
 type partition struct {
 	id      uint64
+	rc      *raft.RaftConfig
 	raft    *raft.RaftServer
 	walPath string
 	config  *PartitionConfig
+	ws      *wal.Storage
 }
 
 // ChaneMember submits member change event and information to raft log.
@@ -251,36 +261,82 @@ func (p *partition) RaftConfig() *raft.Config {
 }
 
 func (p *partition) Start() (err error) {
-	wc := &wal.Config{}
-	var ws *wal.Storage
-	ws, err = wal.NewStorage(p.walPath, wc)
+	var wc = &wal.Config{
+		FileCacheCapacity: p.config.WALFileCacheCapacity,
+		FileSize:          p.config.WALFileSize,
+	}
+	p.ws, err = wal.NewStorage(p.walPath, wc)
 	if err != nil {
 		return
 	}
 	var fi uint64
-	if fi, err = ws.FirstIndex(); err != nil {
+	if fi, err = p.ws.FirstIndex(); err != nil {
 		return
 	}
 	var li uint64
-	if li, err = ws.LastIndex(); err != nil {
+	if li, err = p.ws.LastIndex(); err != nil {
 		return
 	}
 	peers := make([]proto.Peer, 0)
 	for _, peerAddress := range p.config.Peers {
 		peers = append(peers, peerAddress.Peer)
 	}
-	rc := &raft.RaftConfig{
-		ID:           p.config.ID,
-		Peers:        peers,
-		Leader:       p.config.Leader,
-		Term:         p.config.Term,
-		Storage:      ws,
-		StateMachine: p.config.SM,
-		Applied:      p.config.GetStartIndex.Get(fi, li),
-		Learners:     p.config.Learners,
+	p.rc = &raft.RaftConfig{
+		ID:                p.config.ID,
+		Peers:             peers,
+		Leader:            p.config.Leader,
+		Term:              p.config.Term,
+		Storage:           p.ws,
+		StateMachine:      p.config.SM,
+		Applied:           p.config.GetStartIndex.Get(fi, li),
+		Learners:          p.config.Learners,
 	}
-	if err = p.raft.CreateRaft(rc); err != nil {
+	if err = p.raft.CreateRaft(p.rc); err != nil {
 		return
+	}
+	return
+}
+
+func (p *partition) SetWALFileSize(filesize int) {
+	if p != nil && p.config != nil {
+		p.config.WALFileSize = filesize
+		if p.ws != nil {
+			p.ws.SetFileSize(filesize)
+		}
+	}
+}
+
+func (p *partition) GetWALFileSize() (filesize int) {
+	if p != nil {
+		if p.ws != nil {
+			filesize = p.ws.GetFileSize()
+			return
+		}
+		if p.config != nil {
+			filesize = p.config.WALFileSize
+		}
+	}
+	return
+}
+
+func (p *partition) SetWALFileCacheCapacity(capacity int) {
+	if p != nil && p.config != nil {
+		p.config.WALFileCacheCapacity = capacity
+		if p.ws != nil {
+			p.ws.SetFileCacheCapacity(capacity)
+		}
+	}
+}
+
+func (p *partition) GetWALFileCacheCapacity() (capacity int) {
+	if p != nil {
+		if p.ws != nil {
+			capacity = p.ws.GetFileCacheCapacity()
+			return
+		}
+		if p.config != nil {
+			capacity = p.config.WALFileCacheCapacity
+		}
 	}
 	return
 }

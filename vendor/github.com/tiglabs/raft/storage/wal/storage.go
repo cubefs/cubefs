@@ -116,6 +116,34 @@ func (s *Storage) InitialState() (proto.HardState, error) {
 	return s.hardState, nil
 }
 
+func (s *Storage) SetFileSize(filesize int) {
+	if s != nil && s.ls != nil {
+		s.ls.SetFileSize(filesize)
+		logger.Debug("storage[%v] set file size to %v", s.ls.dir, filesize)
+	}
+}
+
+func (s *Storage) GetFileSize() (filesize int) {
+	if s != nil && s.ls != nil {
+		filesize = s.ls.GetFileSize()
+	}
+	return
+}
+
+func (s *Storage) SetFileCacheCapacity(capacity int) {
+	if s != nil && s.ls != nil {
+		s.ls.SetFileCacheCapacity(capacity)
+		logger.Debug("storage[%v] set file cache capacity to %v", s.ls.dir, capacity)
+	}
+}
+
+func (s *Storage) GetFileCacheCapacity() (capacity int) {
+	if s != nil && s.ls != nil {
+		capacity = s.ls.GetFileCacheCapacity()
+	}
+	return
+}
+
 // Entries returns a slice of log entries in the range [lo,hi), the hi is not inclusive.
 // MaxSize limits the total size of the log entries returned, but Entries returns at least one entry if any.
 // If lo <= CompactIndex,then return isCompact true.

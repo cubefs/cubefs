@@ -411,6 +411,9 @@ func (mp *metaPartition) startRaft() (err error) {
 		GetStartIndex: func(firstIndex, lastIndex uint64) (startIndex uint64) { return mp.applyID },
 	}
 	mp.raftPartition = mp.config.RaftStore.CreatePartition(pc)
+	/*meta node set raft log, default 4 files, 8MB per file*/
+	mp.raftPartition.SetWALFileSize(defRaftLogSize)
+	mp.raftPartition.SetWALFileCacheCapacity(defRaftLogCap)
 	err = mp.raftPartition.Start()
 	return
 }
