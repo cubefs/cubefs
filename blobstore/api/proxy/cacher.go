@@ -59,6 +59,10 @@ type CacheDiskArgs struct {
 type Cacher interface {
 	GetCacheVolume(ctx context.Context, host string, args *CacheVolumeArgs) (*VersionVolume, error)
 	GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (*blobnode.DiskInfo, error)
+	// Erase cache in proxy memory and diskv.
+	// Volume key is "volume-{vid}", and disk key is "disk-{disk_id}".
+	// Notice: Erase all if key is "ALL"!
+	Erase(ctx context.Context, host string, key string) error
 }
 
 // DiskvPathTransform transform key to multi-level path.

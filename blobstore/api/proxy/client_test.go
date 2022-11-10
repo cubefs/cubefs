@@ -79,6 +79,18 @@ func TestClient_GetCacheDisk(t *testing.T) {
 	}
 }
 
+func TestClient_GetCacheErase(t *testing.T) {
+	cli := New(&Config{})
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockServer.Close()
+	url := mockServer.URL
+	require.Error(t, cli.Erase(context.Background(), url+"x", "volume-111"))
+	require.NoError(t, cli.Erase(context.Background(), url, "disk-111"))
+	require.NoError(t, cli.Erase(context.Background(), url, "ALL"))
+}
+
 func TestLbClient_SendShardRepairMsg(t *testing.T) {
 	mqproxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(200)

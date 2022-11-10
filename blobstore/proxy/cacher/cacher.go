@@ -16,8 +16,12 @@ package cacher
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/peterbourgon/diskv/v3"
@@ -26,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/memcache"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -54,6 +59,9 @@ const (
 	_defaultExpirationS = 0 // 0 means no expiration
 
 	_defaultClustermgrConcurrency = 32
+
+	prefixKeyVolume = "volume-"
+	prefixKeyDisk   = "disk-"
 )
 
 // ConfigCache is setting of cache.
@@ -72,17 +80,41 @@ type valueExpired interface {
 }
 
 func diskvKeyVolume(vid proto.Vid) string {
-	return "volume-" + vid.ToString()
+	return prefixKeyVolume + vid.ToString()
 }
 
 func diskvKeyDisk(diskID proto.DiskID) string {
-	return "disk-" + diskID.ToString()
+	return prefixKeyDisk + diskID.ToString()
+}
+
+func parseID(key string) (uint32, error) {
+	var id string
+	switch {
+	case strings.HasPrefix(key, prefixKeyVolume):
+		id = key[len(prefixKeyVolume):]
+	case strings.HasPrefix(key, prefixKeyDisk):
+		id = key[len(prefixKeyDisk):]
+	}
+	if len(id) == 0 {
+		return 0, fmt.Errorf("invalid key %s", key)
+	}
+
+	i, err := strconv.Atoi(id)
+	if err != nil {
+		return 0, err
+	}
+	if i <= 0 || i >= math.MaxInt32 {
+		return 0, fmt.Errorf("invalid key %s", key)
+	}
+	return uint32(i), nil
 }
 
 // Cacher memory cache handlers.
 type Cacher interface {
 	GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error)
 	GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error)
+	// Erase remove all if key is "ALL".
+	Erase(ctx context.Context, key string) error
 }
 
 // New returns a Cacher.
@@ -114,6 +146,7 @@ func New(clusterID proto.ClusterID, config ConfigCache, cmClient clustermgr.APIP
 		cmClient:      cmClient,
 		cmConcurrency: concurrency,
 		singleRun:     new(singleflight.Group),
+		syncChan:      make(chan struct{}, 1),
 		volumeCache:   vc,
 		diskCache:     dc,
 		diskv:         dv,
@@ -127,10 +160,36 @@ type cacher struct {
 	cmConcurrency limit.Limiter
 
 	singleRun   *singleflight.Group
+	syncChan    chan struct{} // just for testing
 	volumeCache *memcache.MemCache
 	diskCache   *memcache.MemCache
 
 	diskv *diskv.Diskv
+}
+
+func (c *cacher) Erase(ctx context.Context, key string) error {
+	span := trace.SpanFromContextSafe(ctx)
+	if key == "ALL" {
+		span.Warn("to erase all memory cache and diskv")
+		c.volumeCache.Purge()
+		c.diskCache.Purge()
+		return c.diskv.EraseAll()
+	}
+
+	id, err := parseID(key)
+	if err != nil {
+		span.Infof("erase key:%s error:%s", key, err.Error())
+		return errcode.ErrIllegalArguments
+	}
+
+	switch {
+	case strings.HasPrefix(key, prefixKeyVolume):
+		c.volumeCache.Remove(proto.Vid(id))
+	case strings.HasPrefix(key, prefixKeyDisk):
+		c.diskCache.Remove(proto.DiskID(id))
+	}
+	span.Warnf("to erase key:%s path:%s", key, c.DiskvFilename(key))
+	return c.diskv.Erase(key)
 }
 
 func (c *cacher) DiskvFilename(key string) string {

@@ -16,6 +16,7 @@ package proxy
 
 import (
 	"github.com/desertbit/grumble"
+	"github.com/fatih/color"
 
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
@@ -72,6 +73,21 @@ func addCmdCacher(cmd *grumble.Command) {
 			}
 			fmt.Println(common.Readable(disk))
 			return nil
+		},
+	})
+	cacherCommand.AddCommand(&grumble.Command{
+		Name:  "erase",
+		Help:  "erase cache with key or all",
+		Flags: proxyFlags,
+		Args: func(a *grumble.Args) {
+			a.String("key", "key of diskv [volume-{vid} or disk-{disk_id} or ALL]")
+		},
+		Run: func(c *grumble.Context) error {
+			key := c.Args.String("key")
+			if !common.Confirm("to erase key: " + color.RedString("%s", key)) {
+				return nil
+			}
+			return proxyCli.Erase(common.CmdContext(), c.Flags.String(_host), key)
 		},
 	})
 }

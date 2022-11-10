@@ -36,6 +36,20 @@ func (m *MockCacher) EXPECT() *MockCacherMockRecorder {
 	return m.recorder
 }
 
+// Erase mocks base method.
+func (m *MockCacher) Erase(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Erase", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Erase indicates an expected call of Erase.
+func (mr *MockCacherMockRecorder) Erase(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Erase", reflect.TypeOf((*MockCacher)(nil).Erase), arg0, arg1)
+}
+
 // GetDisk mocks base method.
 func (m *MockCacher) GetDisk(arg0 context.Context, arg1 *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
 	m.ctrl.T.Helper()

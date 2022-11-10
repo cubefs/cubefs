@@ -15,6 +15,7 @@
 package cacher
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -24,6 +25,11 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
@@ -66,5 +72,56 @@ func TestProxyCacherConfigVolume(t *testing.T) {
 		c := getCacher()
 		require.Equal(t, cs.expCapacity, c.config.VolumeCapacity)
 		require.Equal(t, cs.expExpiration, c.config.VolumeExpirationS)
+	}
+}
+
+func TestProxyCacherErase(t *testing.T) {
+	c, cmCli, clean := newCacher(t, 0)
+	defer clean()
+	cc := c.(*cacher)
+
+	ctx, expErr := context.Background(), errcode.ErrIllegalArguments
+	for _, key := range []string{
+		"", "-", "abc", "namespace-", "-volume", "disk-not-a-number",
+		"volume-", "volume-0", "disk-2147483647", "disk-2147483648",
+	} {
+		require.ErrorIs(t, c.Erase(ctx, key), expErr)
+	}
+
+	{
+		cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil)
+		_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+		require.NoError(t, err)
+		<-cc.syncChan
+		require.NoError(t, c.Erase(ctx, diskvKeyVolume(1)))
+		require.Nil(t, cc.volumeCache.Get(proto.Vid(1)))
+		require.False(t, cc.diskv.Has(diskvKeyVolume(1)))
+	}
+	{
+		require.Error(t, c.Erase(ctx, diskvKeyDisk(1)))
+		require.Nil(t, cc.diskCache.Get(proto.DiskID(1)))
+		require.False(t, cc.diskv.Has(diskvKeyDisk(1)))
+	}
+
+	{
+		cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil)
+		cmCli.EXPECT().DiskInfo(A, A).Return(&blobnode.DiskInfo{}, nil)
+		_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+		require.NoError(t, err)
+		<-cc.syncChan
+		_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+		require.NoError(t, err)
+		<-cc.syncChan
+
+		require.NotNil(t, cc.volumeCache.Get(proto.Vid(1)))
+		require.NotNil(t, cc.diskCache.Get(proto.DiskID(1)))
+		require.True(t, cc.diskv.Has(diskvKeyVolume(1)))
+		require.True(t, cc.diskv.Has(diskvKeyDisk(1)))
+
+		require.NoError(t, c.Erase(ctx, "ALL"))
+		require.Nil(t, cc.volumeCache.Get(proto.Vid(1)))
+		require.Nil(t, cc.diskCache.Get(proto.DiskID(1)))
+		require.False(t, cc.diskv.Has(diskvKeyVolume(1)))
+		require.False(t, cc.diskv.Has(diskvKeyDisk(1)))
 	}
 }

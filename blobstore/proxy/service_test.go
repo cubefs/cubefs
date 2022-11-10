@@ -122,6 +122,13 @@ func newMockService(t *testing.T) *Service {
 			}
 			return nil, errors.New("internal error")
 		})
+	cacher.EXPECT().Erase(A, A).AnyTimes().DoAndReturn(
+		func(_ context.Context, key string) error {
+			if key == "ALL" {
+				return errors.New("internal error")
+			}
+			return nil
+		})
 
 	return &Service{
 		Config: Config{
@@ -363,6 +370,23 @@ func TestService_CacherDisk(t *testing.T) {
 		err := cli.GetWith(ctx, url+"111?flush=true", nil)
 		require.Error(t, err)
 		require.Equal(t, errcode.CodeCMDiskNotFound, rpc.DetectStatusCode(err))
+	}
+}
+
+func TestService_CacherErase(t *testing.T) {
+	url := runMockService(newMockService(t)) + "/cache/erase/"
+	cli := newClient()
+	{
+		resp, err := cli.Delete(ctx, url+"volume-10")
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+		resp.Body.Close()
+	}
+	{
+		resp, err := cli.Delete(ctx, url+"ALL")
+		require.NoError(t, err)
+		require.Equal(t, 500, resp.StatusCode)
+		resp.Body.Close()
 	}
 }
 

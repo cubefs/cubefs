@@ -71,7 +71,7 @@ func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*p
 	}
 	defer c.cmConcurrency.Release(keyVolumeConcurrency)
 
-	val, err, _ := c.singleRun.Do("volume-"+vid.ToString(), func() (interface{}, error) {
+	val, err, _ := c.singleRun.Do(diskvKeyVolume(vid), func() (interface{}, error) {
 		return c.cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: vid})
 	})
 	if err != nil {
@@ -106,6 +106,11 @@ func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*p
 			}
 		} else {
 			span.Warnf("encode vid:%d volume:%+v error:%s", vid, vol, err.Error())
+		}
+
+		select {
+		case c.syncChan <- struct{}{}:
+		default:
 		}
 	}()
 

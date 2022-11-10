@@ -76,7 +76,7 @@ func TestProxyCacherDiskCacheMiss(t *testing.T) {
 	cmCli.EXPECT().DiskInfo(A, A).Return(&blobnode.DiskInfo{}, nil).Times(3)
 	_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
 	require.NoError(t, err)
-	time.Sleep(time.Second) // waiting diskv write to disk
+	<-c.(*cacher).syncChan
 
 	basePath := c.(*cacher).config.DiskvBasePath
 	{ // memory cache miss, load from diskv

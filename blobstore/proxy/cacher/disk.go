@@ -65,7 +65,7 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*blobn
 	}
 	defer c.cmConcurrency.Release(keyDiskConcurrency)
 
-	val, err, _ := c.singleRun.Do("disk-"+id.ToString(), func() (interface{}, error) {
+	val, err, _ := c.singleRun.Do(diskvKeyDisk(id), func() (interface{}, error) {
 		return c.cmClient.DiskInfo(ctx, id)
 	})
 	if err != nil {
@@ -98,6 +98,11 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*blobn
 			}
 		} else {
 			span.Warnf("encode disk_id:%d disk:%+v error:%s", id, disk, err.Error())
+		}
+
+		select {
+		case c.syncChan <- struct{}{}:
+		default:
 		}
 	}()
 

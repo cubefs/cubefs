@@ -67,3 +67,11 @@ func (c *client) GetCacheDisk(ctx context.Context, host string, args *CacheDiskA
 	err = c.GetWith(ctx, url, &disk)
 	return
 }
+
+func (c *client) Erase(ctx context.Context, host string, key string) error {
+	resp, err := c.Delete(ctx, fmt.Sprintf("%s/cache/erase/%s", host, key))
+	if err != nil {
+		return err
+	}
+	return rpc.ParseData(resp, nil)
+}

@@ -59,3 +59,16 @@ func (s *Service) GetCacheDisk(c *rpc.Context) {
 
 	c.RespondJSON(disk)
 }
+
+// EraseCache remove cache in cacher.
+func (s *Service) EraseCache(c *rpc.Context) {
+	ctx := c.Request.Context()
+	key := c.Param.ByName("key")
+	if err := s.cacher.Erase(ctx, key); err != nil {
+		span := trace.SpanFromContextSafe(ctx)
+		span.Errorf("erase key:%s error:%s", key, err.Error())
+		c.RespondError(err)
+		return
+	}
+	c.Respond()
+}

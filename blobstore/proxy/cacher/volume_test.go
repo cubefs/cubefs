@@ -141,7 +141,7 @@ func TestProxyCacherVolumeCacheMiss(t *testing.T) {
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil).Times(3)
 	_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
 	require.NoError(t, err)
-	time.Sleep(time.Second) // waiting diskv write to disk
+	<-c.(*cacher).syncChan
 
 	basePath := c.(*cacher).config.DiskvBasePath
 	{ // memory cache miss, load from diskv

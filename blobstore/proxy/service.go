@@ -201,6 +201,7 @@ func NewHandler(service *Service) *rpc.Router {
 	// GET /cache/disk/{disk_id}?flush={flush}
 	// response body: json
 	router.Handle(http.MethodGet, "/cache/disk/:disk_id", service.GetCacheDisk, rpc.OptArgsURI(), rpc.OptArgsQuery())
+	router.Handle(http.MethodDelete, "/cache/erase/:key", service.EraseCache, rpc.OptArgsURI())
 
 	return router
 }
