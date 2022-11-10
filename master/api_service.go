@@ -879,6 +879,7 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		err         error
 		force       bool // now only used in two replicas in the scenario of no leader
 		raftForce   bool
+		vol         *Vol
 	)
 
 	if partitionID, addr, err = parseRequestToRemoveDataReplica(r); err != nil {
@@ -908,6 +909,14 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
+	if vol, err = m.cluster.getVol(dp.VolName); err != nil {
+		log.LogErrorf("action[updateVol] err[%v]", err)
+		err = proto.ErrVolNotExists
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	_ = vol.tryUpdateDpReplicaNum(m.cluster, dp)
 
 	msg = fmt.Sprintf("data partitionID :%v  delete replica [%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))

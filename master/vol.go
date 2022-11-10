@@ -365,6 +365,28 @@ func (vol *Vol) releaseDataPartitions(releaseCount int, afterLoadSeconds int64) 
 	log.LogInfo(msg)
 }
 
+func (vol *Vol) tryUpdateDpReplicaNum(c *Cluster, partition *DataPartition) (err error){
+	partition.RLock()
+	defer partition.RUnlock()
+
+	if partition.isRecover || vol.dpReplicaNum != 2 || partition.ReplicaNum != 3 || len(partition.Hosts) != 2 {
+		return
+	}
+
+	if partition.isSpecialReplicaCnt() {
+		partition.SingleDecommissionStatus = 0
+		partition.SingleDecommissionAddr = ""
+		return
+	}
+	oldReplicaNum := partition.ReplicaNum
+	partition.ReplicaNum = partition.ReplicaNum - 1
+
+	if err = c.syncUpdateDataPartition(partition); err != nil {
+		partition.ReplicaNum = oldReplicaNum
+	}
+	return
+}
+
 func (vol *Vol) checkReplicaNum(c *Cluster) {
 	if !vol.NeedToLowerReplica {
 		return
