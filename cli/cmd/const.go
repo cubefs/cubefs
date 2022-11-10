@@ -120,9 +120,10 @@ const (
 	ResourceMetaPartitionShortHand = "mp"
 
 	//version op
-	CliFlagVersionCreate = "verCreate"
-	CliFlagVersionList   = "verList"
-	CliFlagVersionDel    = "verDel"
+	CliFlagVersionCreate      = "verCreate"
+	CliFlagVersionList        = "verList"
+	CliFlagVersionDel         = "verDel"
+	CliFlagVersionSetStrategy = "verSetStrategy"
 )
 
 type MasterOp int
