@@ -4502,6 +4502,7 @@ func (m *Server) DelVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if name, err = extractName(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("volName %v not exist", name)))
 		return
 	}
 	if value = r.FormValue(verSeqKey); value == "" {
