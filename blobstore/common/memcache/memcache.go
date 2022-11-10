@@ -15,38 +15,33 @@
 package memcache
 
 import (
-	"context"
-
 	lru "github.com/hashicorp/golang-lru"
 )
 
 // MemCache memory cache with lru-2q
-//     ctx with logging
 type MemCache struct {
-	ctx   context.Context
-	cache *lru.TwoQueueCache
+	*lru.TwoQueueCache
 }
 
-// NewMemCache new memory cache with capacity size
-func NewMemCache(ctx context.Context, size int) (*MemCache, error) {
+// NewMemCache new memory cache with capacity size.
+func NewMemCache(size int) (*MemCache, error) {
 	cache, err := lru.New2Q(size)
 	if err != nil {
 		return nil, err
 	}
-	return &MemCache{ctx: ctx, cache: cache}, nil
+	return &MemCache{cache}, nil
 }
 
-// Get get by key, return nil if key doesn't exist or value is nil
+// Get by key, return nil if key doesn't exist or value is nil.
 func (mc *MemCache) Get(key interface{}) interface{} {
-	value, ok := mc.cache.Get(key)
+	value, ok := mc.TwoQueueCache.Get(key)
 	if !ok {
 		return nil
 	}
-
 	return value
 }
 
-// Set set to key with value, delete key if value is nil
+// Set key with value, delete key if value is nil.
 func (mc *MemCache) Set(key interface{}, value interface{}) {
-	mc.cache.Add(key, value)
+	mc.TwoQueueCache.Add(key, value)
 }

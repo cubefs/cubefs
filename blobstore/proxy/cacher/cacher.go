@@ -92,11 +92,11 @@ func New(clusterID proto.ClusterID, config ConfigCache, cmClient clustermgr.APIP
 	defaulter.LessOrEqual(&config.DiskCapacity, _defaultCapacity)
 	defaulter.LessOrEqual(&config.DiskExpirationS, _defaultExpirationS)
 
-	vc, err := memcache.NewMemCache(context.Background(), config.VolumeCapacity)
+	vc, err := memcache.NewMemCache(config.VolumeCapacity)
 	if err != nil {
 		return nil, err
 	}
-	dc, err := memcache.NewMemCache(context.Background(), config.DiskCapacity)
+	dc, err := memcache.NewMemCache(config.DiskCapacity)
 	if err != nil {
 		return nil, err
 	}

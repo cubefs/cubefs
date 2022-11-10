@@ -15,7 +15,6 @@
 package memcache_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,18 +23,18 @@ import (
 )
 
 func TestNewMemCache(t *testing.T) {
-	_, err := memcache.NewMemCache(context.TODO(), 1024)
+	_, err := memcache.NewMemCache(1024)
 	require.Nil(t, err)
 
 	// test 0 or -1
-	_, err = memcache.NewMemCache(context.TODO(), -1)
+	_, err = memcache.NewMemCache(-1)
 	require.Error(t, err)
-	_, err = memcache.NewMemCache(context.TODO(), 0)
+	_, err = memcache.NewMemCache(0)
 	require.Error(t, err)
 }
 
 func TestMemCacheGetSet(t *testing.T) {
-	mc, err := memcache.NewMemCache(context.TODO(), 4)
+	mc, err := memcache.NewMemCache(4)
 	require.Nil(t, err)
 
 	key, value := "foo", "bar"
@@ -47,8 +46,8 @@ func TestMemCacheGetSet(t *testing.T) {
 	require.Equal(t, value, val)
 }
 
-func TestMemCacheDel(t *testing.T) {
-	mc, err := memcache.NewMemCache(context.TODO(), 4)
+func TestMemCacheSetNil(t *testing.T) {
+	mc, err := memcache.NewMemCache(4)
 	require.Nil(t, err)
 
 	key, value := "foo", "bar"
@@ -70,12 +69,12 @@ func TestMemCacheDel(t *testing.T) {
 
 func BenchmarkNewMemCache(b *testing.B) {
 	for ii := 0; ii < b.N; ii++ {
-		memcache.NewMemCache(context.TODO(), 4)
+		memcache.NewMemCache(4)
 	}
 }
 
 func BenchmarkMemCacheGet(b *testing.B) {
-	mc, _ := memcache.NewMemCache(context.TODO(), 4)
+	mc, _ := memcache.NewMemCache(4)
 	key, value := "foo", "bar"
 	mc.Set(key, value)
 	for ii := 0; ii < b.N; ii++ {
@@ -84,7 +83,7 @@ func BenchmarkMemCacheGet(b *testing.B) {
 }
 
 func BenchmarkMemCacheSet(b *testing.B) {
-	mc, _ := memcache.NewMemCache(context.TODO(), 4)
+	mc, _ := memcache.NewMemCache(4)
 	key, value := "foo", "bar"
 	for ii := 0; ii < b.N; ii++ {
 		mc.Set(key, value)

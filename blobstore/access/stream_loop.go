@@ -36,7 +36,7 @@ type (
 var cacheVidAllocator *memcache.MemCache
 
 func init() {
-	mc, err := memcache.NewMemCache(context.Background(), 1<<15)
+	mc, err := memcache.NewMemCache(1 << 15)
 	if err != nil {
 		panic(err)
 	}

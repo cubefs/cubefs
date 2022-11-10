@@ -127,11 +127,11 @@ func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
 		expiration = _defaultCacheExpiration
 	}
 
-	mc, err := memcache.NewMemCache(ctx, _defaultCacheSize)
+	mc, err := memcache.NewMemCache(_defaultCacheSize)
 	if err != nil {
 		return nil, err
 	}
-	punishCache, err := memcache.NewMemCache(ctx, 1024)
+	punishCache, err := memcache.NewMemCache(1024)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, isCache bool)
 			punishedPhy.IsPunish = true
 			phy = &punishedPhy
 		} else {
-			v.punishCache.Set(id, nil)
+			v.punishCache.Remove(id)
 		}
 	}()
 
