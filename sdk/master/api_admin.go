@@ -783,9 +783,24 @@ func (api *AdminAPI) GetDiscardDataPartition() (DiscardDpInfos *proto.DiscardDat
 	return
 }
 
-func (api *AdminAPI) DeleteVersion(volName string) (err error) {
+func (api *AdminAPI) DeleteVersion(volName string, verSeq string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDelVersion)
 	request.addParam("name", volName)
+	request.addParam("verSeq", verSeq)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SetStrategy(volName string, periodic string, count string, enable string, force string) (err error) {
+
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetVerStrategy)
+	request.addParam("name", volName)
+	request.addParam("periodic", periodic)
+	request.addParam("count", count)
+	request.addParam("enable", enable)
+	request.addParam("force", force)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
