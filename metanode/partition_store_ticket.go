@@ -17,6 +17,7 @@ package metanode
 import (
 	"context"
 	"encoding/binary"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"time"
 
@@ -57,12 +58,13 @@ func (mp *metaPartition) updateRaftStorageParam() {
 		return
 	}
 
-	if logSize != 0 && logSize != raftPartition.GetWALFileSize() {
+	if logSize != 0 && logSize != raftPartition.GetWALFileSize() &&
+		logSize >= (proto.MinMetaRaftLogSize * util.MB ) && logSize <= (proto.MaxMetaRaftLogSize * util.MB) {
 		raftPartition.SetWALFileSize(logSize)
 		log.LogWarnf("[updateRaftStorageParam] partitionId=%d: File size :%d MB", mp.config.PartitionId, logSize / util.MB)
 	}
 
-	if logCap != 0 && logCap != raftPartition.GetWALFileCacheCapacity() {
+	if logCap != 0 && logCap != raftPartition.GetWALFileCacheCapacity() && logCap >= proto.MinMetaRaftLogCap {
 		raftPartition.SetWALFileCacheCapacity(logCap)
 		log.LogWarnf("[updateRaftStorageParam] partitionId=%d: File Cap :%d ", mp.config.PartitionId, logCap)
 	}

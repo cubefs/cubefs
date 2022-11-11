@@ -29,6 +29,12 @@ const (
 	ZoneStUnavailable       = 1
 )
 
+const (
+	MinMetaRaftLogSize   = 4 //MB
+	MaxMetaRaftLogSize   = 32 //MB
+	MinMetaRaftLogCap    = 2
+)
+
 // MetaNode defines the structure of a meta node
 type MetaNodeInfo struct {
 	ID                        uint64

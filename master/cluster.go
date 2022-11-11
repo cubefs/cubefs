@@ -3674,8 +3674,13 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	oldMetaRaftLogSize := atomic.LoadInt64(&c.cfg.MetaRaftLogSize)
 	if val, ok := params[proto.MetaRaftLogSizeKey]; ok {
 		v := val.(int64)
-		if v < 0 {
-			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRaftLogSizeKey)
+		if v != 0 && v < proto.MinMetaRaftLogSize {
+			err = errors.NewErrorf("parameter %s must be greater than %d", proto.MetaRaftLogSizeKey, proto.MinMetaRaftLogSize)
+			return
+		}
+
+		if v > proto.MaxMetaRaftLogSize {
+			err = errors.NewErrorf("parameter %s must be less than %d", proto.MaxMetaRaftLogSize, proto.MaxMetaRaftLogSize)
 			return
 		}
 		atomic.StoreInt64(&c.cfg.MetaRaftLogSize, val.(int64))
@@ -3684,8 +3689,8 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	oldMetaRaftLogCap := atomic.LoadInt64(&c.cfg.MetaRaftLogCap)
 	if val, ok := params[proto.MetaRaftLogCapKey]; ok {
 		v := val.(int64)
-		if v < 0 {
-			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRaftLogCapKey)
+		if v != 0 && v < proto.MinMetaRaftLogCap {
+			err = errors.NewErrorf("parameter %s must be greater than %d", proto.MetaRaftLogCapKey, proto.MinMetaRaftLogCap)
 			return
 		}
 		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, val.(int64))

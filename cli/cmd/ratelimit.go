@@ -251,6 +251,8 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.DataNodeFlushFDInterval, "dataNodeFlushFDInterval", 0, "datanode flush wal fd interval")
 	cmd.Flags().Int64Var(&info.MetaRaftLogSize, "metaRaftLogSize", -1, "meta node raft log size")
 	cmd.Flags().Int64Var(&info.MetaRaftLogCap, "metaRaftLogCap", -1, "meta node raft log cap")
+	cmd.Flags().Int64Var(&info.MetaRaftLogSize, "metaRaftLogSize", -1, "meta node raft log size[0:default, 4~32]")
+	cmd.Flags().Int64Var(&info.MetaRaftLogCap, "metaRaftLogCap", -1, "meta node raft log cap[0:default4, >=2]")
 	return cmd
 }
 
