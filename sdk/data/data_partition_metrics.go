@@ -170,18 +170,19 @@ func (w *Wrapper) dpFollowerReadDelayCollect() {
 }
 
 func (w *Wrapper) SummaryAndSortReadDelay() {
-	w.RLock()
-	dataPartitions := w.partitions
-	w.RUnlock()
-
 	sumMetrics := make([]*proto.ReadMetrics, 0)
-	for _, dp := range dataPartitions {
+	w.partitions.Range(func(key, value interface{}) bool {
+		dp := value.(*DataPartition)
+		if dp == nil {
+			fmt.Printf("SummaryAndSortReadDelay w.partitions.Range dp cast is nill")
+			return false
+		}
 		metrics := dp.RemoteReadMetricsSummary()
 		if metrics != nil {
 			sumMetrics = append(sumMetrics, metrics)
 		}
-	}
-
+		return true
+	})
 	w.GetAvgDelayAndSort(sumMetrics)
 }
 
@@ -225,9 +226,11 @@ func (w *Wrapper) SortAvgDelay(metrics *proto.ReadMetrics) (sortedHosts []string
 		return nil, err
 	}
 	// find dp's unvisited host, append to the tail
-	w.RLock()
-	dpAllHosts := w.partitions[dpId].Hosts
-	w.RUnlock()
+	dp, ok := w.partitions.Load(dpId)
+	if !ok {
+		return nil, fmt.Errorf("SortAvgDelay failed: dp(%v) isnot exist", dpId)
+	}
+	dpAllHosts := dp.(*DataPartition).Hosts
 
 	var unVisitedHosts []string
 	for _, host := range dpAllHosts {
@@ -261,19 +264,17 @@ func sortHostAvgDelayMap(hostsAvgDelay map[string]int64) (sortedHosts []string) 
 }
 
 func (w *Wrapper) updateDpReadMetrics(sortedHosts []string) {
-	w.RLock()
-	dataPartitions := w.partitions
-	w.RUnlock()
-	for _, dp := range dataPartitions {
+	w.partitions.Range(func(key, value interface{}) bool {
+		dp := value.(*DataPartition)
 		dp.UpdateReadMetricsHost(sortedHosts)
-	}
+		return true
+	})
 }
 
 func (w *Wrapper) clearDpReadMetrics() {
-	w.RLock()
-	dataPartitions := w.partitions
-	w.RUnlock()
-	for _, dp := range dataPartitions {
+	w.partitions.Range(func(key, value interface{}) bool {
+		dp := value.(*DataPartition)
 		dp.ClearReadMetrics()
-	}
+		return true
+	})
 }

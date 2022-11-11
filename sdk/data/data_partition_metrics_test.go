@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ func TestWrapper_SummaryAndSortReadDelay(t *testing.T) {
 		clusterName:               testCluster,
 		volName:                   testVol,
 		dpFollowerReadDelayConfig: &proto.DpFollowerReadDelayConfig{EnableCollect: true},
-		partitions:                make(map[uint64]*DataPartition),
+		partitions: 				new(sync.Map),
 	}
 
 	testDataPartitions = make([]*DataPartition, 6)
@@ -50,11 +51,12 @@ func TestWrapper_SummaryAndSortReadDelay(t *testing.T) {
 			},
 		}
 		testDataPartitions[i].PartitionID = uint64(i)
-		wrapper.partitions[uint64(i)] = testDataPartitions[i]
+		wrapper.partitions.Store(uint64(i), testDataPartitions[i])
 	}
 	wrapper.SummaryAndSortReadDelay()
 	// check sorted ReadMetrics
-	sortedHost := wrapper.partitions[0].ReadMetrics.SortedHost
+	dp, _ := wrapper.partitions.Load(uint64(0))
+	sortedHost :=  dp.(*DataPartition).ReadMetrics.SortedHost
 	testForHostDelay := []struct {
 		name string
 		host string
