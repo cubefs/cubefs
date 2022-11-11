@@ -63,3 +63,50 @@ func TestChunkReportArgs(t *testing.T) {
 		require.Equal(t, args.ChunkInfos[i].Size, decodeArgs.ChunkInfos[i].Size)
 	}
 }
+
+func TestEqual(t *testing.T) {
+	baseVolume := VolumeInfo{
+		Units:          []Unit{{Vuid: proto.Vuid(10000), DiskID: 1, Host: "127.0.0.1"}, {Vuid: proto.Vuid(10001), DiskID: 2, Host: "127.0.0.1"}},
+		VolumeInfoBase: VolumeInfoBase{Vid: 1, HealthScore: 0, Status: 0},
+	}
+
+	// health score not match
+	vol1 := VolumeInfo{
+		Units:          []Unit{{Vuid: proto.Vuid(10000), DiskID: 1, Host: "127.0.0.1"}, {Vuid: proto.Vuid(10001), DiskID: 2, Host: "127.0.0.1"}},
+		VolumeInfoBase: VolumeInfoBase{Vid: 1, HealthScore: -1, Status: 0},
+	}
+	// status not match
+	vol2 := VolumeInfo{
+		Units:          []Unit{{Vuid: proto.Vuid(10000), DiskID: 1, Host: "127.0.0.1"}, {Vuid: proto.Vuid(10001), DiskID: 2, Host: "127.0.0.1"}},
+		VolumeInfoBase: VolumeInfoBase{Vid: 1, HealthScore: 0, Status: 1},
+	}
+	// diskID not match
+	vol3 := VolumeInfo{
+		Units:          []Unit{{Vuid: proto.Vuid(10000), DiskID: 99, Host: "127.0.0.1"}, {Vuid: proto.Vuid(10001), DiskID: 2, Host: "127.0.0.1"}},
+		VolumeInfoBase: VolumeInfoBase{Vid: 1, HealthScore: 0, Status: 0},
+	}
+	// vuid not match
+	vol4 := VolumeInfo{
+		Units:          []Unit{{Vuid: proto.Vuid(20000), DiskID: 1, Host: "127.0.0.1"}, {Vuid: proto.Vuid(10001), DiskID: 2, Host: "127.0.0.1"}},
+		VolumeInfoBase: VolumeInfoBase{Vid: 1, HealthScore: 0, Status: 0},
+	}
+
+	vol5 := VolumeInfo{
+		Units:          []Unit{{Vuid: proto.Vuid(10000), DiskID: 1, Host: "127.0.0.1"}, {Vuid: proto.Vuid(10001), DiskID: 2, Host: "127.0.0.1"}},
+		VolumeInfoBase: VolumeInfoBase{Vid: 1, HealthScore: 0, Status: 0},
+	}
+
+	testCases := []struct {
+		vol   VolumeInfo
+		equal bool
+	}{
+		{vol1, false},
+		{vol2, false},
+		{vol3, false},
+		{vol4, false},
+		{vol5, true},
+	}
+	for _, ca := range testCases {
+		require.Equal(t, baseVolume.Equal(&ca.vol), ca.equal)
+	}
+}

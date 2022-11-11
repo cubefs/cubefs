@@ -52,7 +52,7 @@ const (
 	defaultApplyConcurrency            = 20
 	defaultMinAllocatableVolumeCount   = 5
 	defaultVolumeSliceMapNum           = 10
-	defaultListVolumeMaxCount          = 500
+	defaultListVolumeMaxCount          = 2000
 	defaultAllocatableSize             = 1 << 30
 )
 

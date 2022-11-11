@@ -18,6 +18,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -40,11 +41,21 @@ var (
 		},
 		[]string{"region", "cluster", "is_leader", "item"},
 	)
+	VolInconsistencyMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "blobstore",
+			Subsystem: "clusterMgr",
+			Name:      "vol_inconsistent",
+			Help:      "volume status or vuid inconsistent",
+		},
+		[]string{"region", "cluster", "is_leader", "item"},
+	)
 )
 
 func init() {
 	prometheus.MustRegister(raftStatMetric)
 	prometheus.MustRegister(diskHeartbeatChangeMetric)
+	prometheus.MustRegister(VolInconsistencyMetric)
 }
 
 func (s *Service) report(ctx context.Context) {
@@ -60,4 +71,12 @@ func (s *Service) report(ctx context.Context) {
 func (s *Service) reportHeartbeatChange(num float64) {
 	diskHeartbeatChangeMetric.Reset()
 	diskHeartbeatChangeMetric.WithLabelValues(s.Region, s.ClusterID.ToString()).Set(num)
+}
+
+func (s *Service) reportInConsistentVols(vids []proto.Vid) {
+	VolInconsistencyMetric.Reset()
+	isLeader := strconv.FormatBool(s.raftNode.IsLeader())
+	for _, vid := range vids {
+		VolInconsistencyMetric.WithLabelValues(s.Region, s.ClusterID.ToString(), isLeader, "vid").Set(float64(vid))
+	}
 }

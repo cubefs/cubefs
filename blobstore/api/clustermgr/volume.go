@@ -45,6 +45,23 @@ type VolumeInfo struct {
 	VolumeInfoBase
 }
 
+func (v *VolumeInfo) Equal(expected *VolumeInfo) bool {
+	if v.Status != expected.Status || v.HealthScore != expected.HealthScore {
+		return false
+	}
+
+	if len(v.Units) != len(expected.Units) {
+		return false
+	}
+
+	for i := range v.Units {
+		if v.Units[i].DiskID != expected.Units[i].DiskID || v.Units[i].Vuid != expected.Units[i].Vuid {
+			return false
+		}
+	}
+	return true
+}
+
 type VolumeInfoBase struct {
 	Vid            proto.Vid          `json:"vid"`
 	CodeMode       codemode.CodeMode  `json:"code_mode"`
