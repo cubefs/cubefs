@@ -74,7 +74,8 @@ int main(int argc, char **argv) {
     printf("Finish testDup\n");
     testUnlinkAndRename();
     printf("Finish test unlink and rename\n");
-    printf("Finish all tests.");
+    printf("Finish all tests.\n");
+    return 0;
 }
 
 void testReload() {
