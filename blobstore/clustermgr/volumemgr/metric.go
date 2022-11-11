@@ -78,7 +78,7 @@ func (v *VolumeMgr) reportVolRetainError(num float64) {
 }
 
 func (v *VolumeMgr) reportVolAllocOverDiskLoad(num float64) {
-	VolRetainMetric.Reset()
+	VolAllocMetric.Reset()
 	isLeader := strconv.FormatBool(v.raftServer.IsLeader())
 	VolAllocMetric.WithLabelValues(v.Region, v.ClusterID.ToString(), isLeader).Set(num)
 }

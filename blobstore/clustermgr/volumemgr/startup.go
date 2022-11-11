@@ -50,11 +50,11 @@ type VolumeMgrConfig struct {
 	ApplyConcurrency             uint32 `json:"apply_concurrency"`
 	MinAllocableVolumeCount      int    `json:"min_allocable_volume_count"`
 	AllocatableDiskLoadThreshold int    `json:"allocatable_disk_load_threshold"`
+	// the volume free size must big than AllocatableSize can alloc
+	AllocatableSize uint64 `json:"allocatable_size"`
 
 	// the volume in Proxy which free size small than FreezeThreshold treat filled
-	FreezeThreshold uint64 `json:"-"`
-	// the volume free size must big than AllocatableSize can alloc
-	AllocatableSize  uint64            `json:"-"`
+	FreezeThreshold  uint64            `json:"-"`
 	IDC              []string          `json:"-"`
 	UnavailableIDC   string            `json:"-"`
 	ChunkSize        uint64            `json:"-"`

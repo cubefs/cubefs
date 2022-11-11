@@ -183,8 +183,13 @@ func (a *volumeAllocator) VolumeFreeHealthCallback(ctx context.Context, vol *vol
 // volume status change event callback, idle change should Insert into volume allocator's idle head
 func (a *volumeAllocator) VolumeStatusIdleCallback(ctx context.Context, vol *volume) error {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("vid: %d set status idle callback, status is %d", vol.vid, vol.volInfoBase.Status)
-	a.idles[vol.volInfoBase.CodeMode].addAllocatable(vol)
+	allocatableScoreThreshold := a.codeModes[vol.volInfoBase.CodeMode].tactic.PutQuorum - a.getShardNum(vol.volInfoBase.CodeMode)
+	span.Debugf("vid: %d set status idle callback, status is %d,free is %d,health is %d", vol.vid, vol.volInfoBase.Status, vol.volInfoBase.Free, vol.volInfoBase.HealthScore)
+	if vol.canAlloc(a.allocatableSize, allocatableScoreThreshold) {
+		a.idles[vol.volInfoBase.CodeMode].addAllocatable(vol)
+	} else {
+		a.idles[vol.volInfoBase.CodeMode].addNotAllocatable(vol)
+	}
 
 	if vol.token != nil {
 		host, _, err := proto.DecodeToken(vol.token.tokenID)
