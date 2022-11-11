@@ -237,7 +237,7 @@ func (s *Service) reloadLevelConf(ctx context.Context, args *bnapi.ConfigReloadA
 		return ErrNotConfigPrevious
 	}
 	paraConf := qosConf.LevelConfigs[levelName]
-	if args.Key != "factor" {
+	if item != "factor" {
 		value, err = strconv.ParseInt(args.Value, 10, 64)
 		if err != nil {
 			return ErrValueType
