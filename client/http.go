@@ -20,7 +20,10 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
+
+	"gopkg.in/ini.v1"
 )
 
 const (
@@ -33,20 +36,22 @@ const (
 	ControlSetUpgrade              = "/set/clientUpgrade"
 	ControlUnsetUpgrade            = "/unset/clientUpgrade"
 
-	aliveKey     = "alive"
-	volKey       = "vol"
-	inoKey       = "ino"
-	clientKey    = "client" // ip:port
-	versionKey   = "version"
-	MaxRetry     = 5
-	forceKey     = "force"
-	CheckFile    = "checkfile"
-	TmpLibsPath  = "/tmp/.cfs_client_libs_"
-	FuseLibsPath = "/usr/lib64"
-	FuseLib      = "libcfssdk.so"
-	TarNamePre   = "cfs-client-libs"
-	ADM64        = "amd64"
-	ARM64        = "arm64"
+	aliveKey         = "alive"
+	volKey           = "vol"
+	inoKey           = "ino"
+	clientKey        = "client" // ip:port
+	versionKey       = "version"
+	MaxRetry         = 5
+	forceKey         = "force"
+	CheckFile        = "checkfile"
+	TmpLibsPath      = "/tmp/.cfs_client_libs_"
+	FuseLibsPath     = "/usr/lib64"
+	FuseLib          = "libcfssdk.so"
+	TarNamePre       = "cfs-client-libs"
+	ADM64            = "amd64"
+	ARM64            = "arm64"
+	fuseConfigType   = "json"
+	bypassConfigType = "ini"
 )
 
 var (
@@ -191,6 +196,52 @@ func broadcastRefreshExtentsHandleFunc(w http.ResponseWriter, r *http.Request) {
 	buildSuccessResp(w, "success")
 }
 
+func checkConfigFile(configFile, configFileType, volName, clusterName string) (err error) {
+	var (
+		actualVolName string
+		masterAddr    string
+		info          *proto.ClusterInfo
+	)
+	if configFileType == fuseConfigType {
+		cfg, err := config.LoadConfigFile(configFile)
+		if err != nil {
+			return err
+		}
+		opt, err := parseMountOption(cfg)
+		if err != nil {
+			return err
+		}
+		actualVolName = opt.Volname
+		masterAddr = opt.Master
+	}
+
+	if configFileType == bypassConfigType {
+		cfg, err := ini.Load(configFile)
+		if err != nil {
+			return err
+		}
+		actualVolName = cfg.Section("").Key("volName").String()
+		masterAddr = cfg.Section("").Key("masterAddr").String()
+	}
+
+	if actualVolName != volName {
+		err = fmt.Errorf("actual volName: %s, expect: %s", actualVolName, volName)
+		return
+	}
+
+	masters := strings.Split(masterAddr, ",")
+	mc := master.NewMasterClient(masters, false)
+	if info, err = mc.AdminAPI().GetClusterInfo(); err != nil {
+		err = fmt.Errorf("get cluster info fail: err(%v). Please check masterAddr %s and retry.", err, masterAddr)
+		return err
+	}
+	if info.Cluster != clusterName {
+		err = fmt.Errorf("actual clusterName: %s, expect: %s", info.Cluster, clusterName)
+		return
+	}
+	return nil
+}
+
 func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if err = r.ParseForm(); err != nil {
@@ -202,11 +253,7 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		buildFailureResp(w, http.StatusBadRequest, "Invalid version parameter.")
 		return
 	}
-	if version == "test" {
-		os.Setenv("RELOAD_CLIENT", version)
-		buildSuccessResp(w, "Set successful. Upgrading.")
-		return
-	}
+
 	if version == CommitID {
 		buildFailureResp(w, http.StatusBadRequest, "Current version is same to expected.")
 		return
@@ -220,12 +267,23 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err = checkConfigFile(c.configFile, fuseConfigType, c.volName, c.super.ClusterName()); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Invalid configFile %s: %v", c.configFile, err))
+		return
+	}
+
 	NextVersion = version
 	defer func() {
 		if err != nil {
 			NextVersion = ""
 		}
 	}()
+
+	if version == "test" {
+		os.Setenv("RELOAD_CLIENT", version)
+		buildSuccessResp(w, "Set successful. Upgrading.")
+		return
+	}
 
 	tmpPath := TmpLibsPath + fmt.Sprintf("%d", time.Now().Unix())
 	if err = os.MkdirAll(tmpPath, 0777); err != nil {
@@ -276,11 +334,7 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		buildFailureResp(w, http.StatusBadRequest, "Invalid version parameter.")
 		return
 	}
-	if version == "test" {
-		os.Setenv("RELOAD_CLIENT", version)
-		buildSuccessResp(w, "Set successful. Upgrading.")
-		return
-	}
+
 	if version == CommitID {
 		buildFailureResp(w, http.StatusBadRequest, "Current version is same to expected.")
 		return
@@ -294,12 +348,23 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err = checkConfigFile(c.configPath, bypassConfigType, c.volName, c.mw.Cluster()); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Invalid configFile %s: %v", c.configPath, err))
+		return
+	}
+
 	NextVersion = version
 	defer func() {
 		if err != nil {
 			NextVersion = ""
 		}
 	}()
+
+	if version == "test" {
+		os.Setenv("RELOAD_CLIENT", version)
+		buildSuccessResp(w, "Set successful. Upgrading.")
+		return
+	}
 
 	tmpPath := TmpLibsPath + fmt.Sprintf("%d", time.Now().Unix())
 	err = os.MkdirAll(tmpPath, 0777)

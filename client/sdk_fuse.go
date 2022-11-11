@@ -75,6 +75,7 @@ const (
 )
 
 type fClient struct {
+	configFile  string
 	moduleName  string
 	stopC       chan struct{}
 	super       *cfs.Super
@@ -115,6 +116,7 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) (err er
 		opt.Modulename = "fuseclient"
 	}
 	gClient = &fClient{
+		configFile: configFile,
 		moduleName: opt.Modulename,
 		stopC:      make(chan struct{}),
 		volName:    opt.Volname,
