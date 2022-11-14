@@ -333,7 +333,7 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 	writer.Header().Set("Content-Type", "application/octet-stream")
 	writer.Header().Set("Content-Length", strconv.FormatInt(meta.Size, 10))
 
-	if err := volume.ReadFile(path, writer, 0, uint64(meta.Size)); err != nil {
+	if _, err := volume.ReadFile(path, writer, 0, uint64(meta.Size)); err != nil {
 		return err
 	}
 

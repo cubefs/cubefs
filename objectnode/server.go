@@ -24,6 +24,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util/statistics"
+
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 
@@ -109,6 +111,8 @@ type ObjectNode struct {
 	disabledActions         proto.Actions // disabled actions
 
 	encodedRegion []byte
+
+	statistics sync.Map // volume(string) -> []*statistics.MonitorData
 
 	control common.Control
 }
@@ -221,6 +225,9 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 
 	exporter.Init(ci.Cluster, cfg.GetString("role"), cfg)
 	exporter.RegistConsul(cfg)
+
+	// Init SRE monitor
+	statistics.InitStatistics(cfg, ci.Cluster, statistics.ModelObjectNode, ci.Ip, o.reportSummary)
 
 	log.LogInfo("object subsystem start success")
 	return

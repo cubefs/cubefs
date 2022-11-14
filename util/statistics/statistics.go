@@ -17,24 +17,24 @@ const (
 )
 
 var (
-	StatisticsModule 	*Statistics
-	once             	sync.Once
-	targetCluster		string
-	targetModuleName	string
-	targetNodeAddr 		string
-	targetSummaryFunc 	func(reportTime int64) []*MonitorData
+	StatisticsModule  *Statistics
+	once              sync.Once
+	targetCluster     string
+	targetModuleName  string
+	targetNodeAddr    string
+	targetSummaryFunc func(reportTime int64) []*MonitorData
 )
 
 type Statistics struct {
-	cluster		 	string
-	module       	string
-	address      	string
-	sendList     	[]*MonitorData // store data per second
-	sendListLock 	sync.RWMutex
-	monitorAddr  	string
-	summarySecond	uint64
-	reportSecond 	uint64
-	stopC        	chan bool
+	cluster       string
+	module        string
+	address       string
+	sendList      []*MonitorData // store data per second
+	sendListLock  sync.RWMutex
+	monitorAddr   string
+	summarySecond uint64
+	reportSecond  uint64
+	stopC         chan bool
 }
 
 type MonitorData struct {
@@ -42,19 +42,19 @@ type MonitorData struct {
 	PartitionID uint64
 	Action      int
 	ActionStr   string
-	Size        uint64	// the num of read/write byte
+	Size        uint64 // the num of read/write byte
 	Count       uint64
 	ReportTime  int64
 	TimeStr     string
 	IsTotal     bool
-	DiskPath	string	// disk of dp
+	DiskPath    string // disk of dp
 }
 
 type ReportInfo struct {
-	Cluster	string
-	Addr   	string
-	Module 	string
-	Infos  	[]*MonitorData
+	Cluster string
+	Addr    string
+	Module  string
+	Infos   []*MonitorData
 }
 
 func (m *Statistics) String() string {
@@ -68,14 +68,14 @@ func (data *MonitorData) String() string {
 
 func newStatistics(monitorAddr, cluster, moduleName, nodeAddr string) *Statistics {
 	return &Statistics{
-		cluster:      	cluster,
-		module:       	moduleName,
-		address:      	nodeAddr,
-		monitorAddr:  	monitorAddr,
-		sendList:     	make([]*MonitorData, 0),
-		summarySecond: 	defaultSummarySecond,
-		reportSecond: 	defaultReportSecond,
-		stopC:        	make(chan bool),
+		cluster:       cluster,
+		module:        moduleName,
+		address:       nodeAddr,
+		monitorAddr:   monitorAddr,
+		sendList:      make([]*MonitorData, 0),
+		summarySecond: defaultSummarySecond,
+		reportSecond:  defaultReportSecond,
+		stopC:         make(chan bool),
 	}
 }
 
@@ -128,6 +128,8 @@ func InitMonitorData(module string) []*MonitorData {
 		num = len(ActionDataMap)
 	case ModelMetaNode:
 		num = len(ActionMetaMap)
+	case ModelObjectNode:
+		num = len(ActionObjectMap)
 	}
 	m := make([]*MonitorData, num)
 	for i := 0; i < num; i++ {
@@ -151,7 +153,7 @@ func (m *Statistics) summaryJob(summaryFunc func(reportTime int64) []*MonitorDat
 		}
 	}()
 	summaryTime := m.GetMonitorSummaryTime()
-	sumTicker := time.NewTicker(time.Duration(summaryTime)*time.Second)
+	sumTicker := time.NewTicker(time.Duration(summaryTime) * time.Second)
 	defer sumTicker.Stop()
 	log.LogInfof("Monitor: start summary job, ticker (%v)s", summaryTime)
 	for {
@@ -166,7 +168,7 @@ func (m *Statistics) summaryJob(summaryFunc func(reportTime int64) []*MonitorDat
 			newSummaryTime := m.GetMonitorSummaryTime()
 			if newSummaryTime > 0 && newSummaryTime != summaryTime {
 				summaryTime = newSummaryTime
-				sumTicker.Reset(time.Duration(newSummaryTime)*time.Second)
+				sumTicker.Reset(time.Duration(newSummaryTime) * time.Second)
 				log.LogInfof("Monitor: summaryJob reset ticker (%v)s", newSummaryTime)
 			}
 		case <-m.stopC:
@@ -183,7 +185,7 @@ func (m *Statistics) reportJob() {
 		}
 	}()
 	reportTime := m.GetMonitorReportTime()
-	reportTicker := time.NewTicker(time.Duration(reportTime)*time.Second)
+	reportTicker := time.NewTicker(time.Duration(reportTime) * time.Second)
 	defer reportTicker.Stop()
 	log.LogInfof("Monitor: start report job, ticker (%v)s", reportTime)
 	for {
@@ -197,7 +199,7 @@ func (m *Statistics) reportJob() {
 			newReportTime := m.GetMonitorReportTime()
 			if newReportTime > 0 && newReportTime != reportTime {
 				reportTime = newReportTime
-				reportTicker.Reset(time.Duration(newReportTime)*time.Second)
+				reportTicker.Reset(time.Duration(newReportTime) * time.Second)
 				log.LogInfof("Monitor: reportJob reset ticker (%v)s", newReportTime)
 			}
 		case <-m.stopC:
@@ -218,10 +220,10 @@ func (m *Statistics) currentSendList() []*MonitorData {
 
 func (m *Statistics) reportToMonitor(sendList []*MonitorData) {
 	report := &ReportInfo{
-		Cluster:	m.cluster,
-		Module: 	m.module,
-		Addr:   	m.address,
-		Infos:  	sendList,
+		Cluster: m.cluster,
+		Module:  m.module,
+		Addr:    m.address,
+		Infos:   sendList,
 	}
 	data, _ := json.Marshal(report)
 	m.sendToMonitor(data)

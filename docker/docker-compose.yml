@@ -45,6 +45,9 @@ services:
             - codecnode2
             - codecnode3
             - console1
+            - monitornode1
+            - monitornode2
+            - monitornode3
             - nginx
         networks:
             extnetwork:
@@ -545,6 +548,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json
         restart: on-failure
         privileged: true
@@ -565,6 +569,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json
         restart: on-failure
         privileged: true
@@ -585,6 +590,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json
         restart: on-failure
         privileged: true
@@ -594,6 +600,74 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.43
 
+    monitornode1:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "81"
+            - 9500
+        extra_hosts:
+            - "host-11-70-68-208:11.70.68.208"
+            - "host-11-90-65-115:11.90.65.115"
+            - "host-11-90-102-241:11.90.102.241"
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/monitornode1/log:/cfs/log
+            - ./conf/monitornode.json:/cfs/conf/monitornode.json
+            - ./script/start_monitornode.sh:/cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/monitornode.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.71
+
+    monitornode2:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "81"
+            - 9500
+        extra_hosts:
+            - "host-11-70-68-208:11.70.68.208"
+            - "host-11-90-65-115:11.90.65.115"
+            - "host-11-90-102-241:11.90.102.241"
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/monitornode2/log:/cfs/log
+            - ./conf/monitornode.json:/cfs/conf/monitornode.json
+            - ./script/start_monitornode.sh:/cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/monitornode.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.72
+
+    monitornode3:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "81"
+            - 9500
+        extra_hosts:
+            - "host-11-70-68-208:11.70.68.208"
+            - "host-11-90-65-115:11.90.65.115"
+            - "host-11-90-102-241:11.90.102.241"
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/monitornode3/log:/cfs/log
+            - ./conf/monitornode.json:/cfs/conf/monitornode.json
+            - ./script/start_monitornode.sh:/cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/monitornode.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.73
 
     console1:
         image: chubaofs/cfs-base:1.4
@@ -616,7 +690,7 @@ services:
         ports:
             - 9500
         volumes:
-            - ./bin:/cfs/bin:ro
+            - ./bin:/cfs/bin:rw
             - ./bin/cfs-client-inner:/usr/lib64/cfs-client-inner:ro
             - ./bin/libcfssdk.so:/usr/lib64/libcfssdk.so:ro
             - ./bin/libcfsc.so:/usr/lib64/libcfsc.so:ro

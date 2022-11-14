@@ -128,7 +128,9 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 	if _, err = w.Write(bytes); err != nil {
 		log.LogErrorf("createMultipleUploadHandler: write response body fail, requestID(%v) err(%v)",
 			GetRequestID(r), err)
+		return
 	}
+	o.recordAction(vol.Name(), StatisticsActionCreateMultipartUpload, 0)
 	return
 }
 
@@ -213,6 +215,7 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	// write header to response
 	w.Header()[HeaderNameContentLength] = []string{"0"}
 	w.Header()[HeaderNameETag] = []string{fsFileInfo.ETag}
+	o.recordAction(vol.Name(), StatisticsActionUploadPart, uint64(fsFileInfo.Size))
 	return
 }
 
@@ -339,7 +342,9 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err = w.Write(bytes); err != nil {
 		log.LogErrorf("listPartsHandler: write response body fail, requestID(%v) err(%v)",
 			GetRequestID(r), err)
+		return
 	}
+	o.recordAction(vol.Name(), StatisticsActionListParts, uint64(len(bytes)))
 	return
 }
 
@@ -487,7 +492,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 			GetRequestID(r), uploadId, param.Object())
 	}
 
-	response:
+response:
 	// write response
 	completeResult := CompleteMultipartResult{
 		Bucket: param.Bucket(),
@@ -510,6 +515,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		log.LogErrorf("completeMultipartUploadHandler: write response body fail, requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
+	o.recordAction(vol.Name(), StatisticsActionCompleteMultipartUpload, 0)
 	return
 }
 
@@ -565,6 +571,7 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	if log.IsDebugEnabled() {
 		log.LogDebugf("abortMultipartUploadHandler: Volume abort multipart, requestID(%v) uploadID(%v) path(%v)", GetRequestID(r), uploadId, param.Object())
 	}
+	o.recordAction(vol.Name(), StatisticsActionAbortMultipartUpload, 0)
 	return
 }
 
@@ -665,5 +672,6 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	_, _ = w.Write(bytes)
+	o.recordAction(vol.Name(), StatisticsActionListMultipartUploads, uint64(len(bytes)))
 	return
 }

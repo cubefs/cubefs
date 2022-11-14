@@ -31,6 +31,16 @@ func (m *Monitor) collect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if log.IsDebugEnabled() {
+		detailBuilder := strings.Builder{}
+		for _, data := range reportInfo.Infos {
+			detailBuilder.WriteString(fmt.Sprintf("\tdata[time: %v, volume: %v, partition: %v, action: %v(%v), count: %v, size: %v]\n",
+				time.Unix(data.ReportTime, 0).Format("2006-01-02 15:04:05"), data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size))
+		}
+		log.LogDebugf("collect report[cluster: %v, module: %v, addr: %v]:\n%v",
+			reportInfo.Cluster, reportInfo.Module, reportInfo.Addr, detailBuilder.String())
+	}
+
 	// send to jmq4
 	if m.mqProducer != nil && contains(m.clusters, reportInfo.Cluster) {
 		epoch := atomic.AddUint64(&m.mqProducer.epoch, 1)

@@ -1236,21 +1236,21 @@ func (v *Volume) loadUserDefinedMetadata(inode uint64) (metadata map[string]stri
 	return
 }
 
-func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) error {
+func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) (int, error) {
 	var err error
 
 	// read file data
 	var inoInfo *proto.InodeInfo
 	if inoInfo, err = v.mw.InodeGet_ll(context.Background(), ino); err != nil {
-		return err
+		return 0, err
 	}
 	if offset >= inoInfo.Size {
-		return nil
+		return 0, nil
 	}
 
 	if err = v.ec.OpenStreamWithSize(ino, offset+size); err != nil {
 		log.LogErrorf("ReadFile: data open stream fail, Inode(%v) err(%v)", ino, err)
-		return err
+		return 0, err
 	}
 	defer func() {
 		if closeErr := v.ec.CloseStream(context.Background(), ino); closeErr != nil {
@@ -1266,6 +1266,7 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) er
 	var n int
 	var tmp = make([]byte, 2*unit.BlockSize)
 
+	var totalWriteNumBytes int
 	for {
 		var rest = upper - uint64(offset)
 		if rest == 0 {
@@ -1281,31 +1282,33 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) er
 				v.name, ino, offset, size, err)
 			exporter.Warning(fmt.Sprintf("read data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, ino, offset, readSize, err))
-			return err
+			return 0, err
 		}
 		if n > 0 {
-			if _, err = writer.Write(tmp[:n]); err != nil {
-				return err
+			var num int
+			if num, err = writer.Write(tmp[:n]); err != nil {
+				return totalWriteNumBytes, err
 			}
 			offset += uint64(n)
+			totalWriteNumBytes += num
 		}
 		if n == 0 || err == io.EOF {
 			break
 		}
 	}
-	return nil
+	return totalWriteNumBytes, nil
 }
 
-func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) error {
+func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) (int, error) {
 	var err error
 
 	var ino uint64
 	var mode os.FileMode
 	if _, ino, _, mode, err = v.recursiveLookupTarget(path); err != nil {
-		return err
+		return 0, err
 	}
 	if mode.IsDir() {
-		return nil
+		return 0, nil
 	}
 	return v.ReadInode(ino, writer, offset, size)
 }

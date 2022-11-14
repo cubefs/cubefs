@@ -25,5 +25,6 @@
     "action:oss:CreateBucket",
     "action:oss:DeleteBucket"
   ],
-  "strict": true
+  "strict": true,
+  "monitorAddr": "monitor.chubao.io"
 }

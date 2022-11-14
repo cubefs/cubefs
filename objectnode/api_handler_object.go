@@ -347,7 +347,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			size = rangeUpper - rangeLower + 1
 		}
 	}
-	err = vol.ReadInode(fileInfo.Inode, w, offset, size)
+
+	var num int
+	num, err = vol.ReadInode(fileInfo.Inode, w, offset, size)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -361,6 +363,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		log.LogDebugf("getObjectHandler: Volume read file: requestID(%v) Volume(%v) path(%v) offset(%v) size(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), offset, size)
 	}
+	o.recordAction(vol.Name(), StatisticsActionGetObject, uint64(num))
 	return
 }
 
@@ -540,6 +543,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	for name, value := range fileInfo.Metadata {
 		w.Header()[HeaderNameXAmzMetaPrefix+name] = []string{value}
 	}
+	o.recordAction(vol.Name(), StatisticsActionHeadObject, 0)
 	return
 }
 
@@ -663,6 +667,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	if _, err = w.Write(bytesRes); err != nil {
 		log.LogErrorf("deleteObjectsHandler: write response body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 	}
+	o.recordAction(vol.Name(), StatisticsActionDeleteObject, 0)
 	return
 }
 
@@ -867,6 +872,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	_, _ = w.Write(bytes)
+	o.recordAction(vol.Name(), StatisticsActionCopyObject, uint64(fsFileInfo.Size))
 	return
 }
 
@@ -992,6 +998,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	_, _ = w.Write(bytes)
+	o.recordAction(vol.Name(), StatisticsActionListObjects, uint64(len(bytes)))
 
 	return
 }
@@ -1142,7 +1149,9 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	if _, err = w.Write(bytes); err != nil {
 		log.LogErrorf("getBucketVeHandler: write response body fail, requestID(%v) err(%v)", GetRequestID(r), err)
+		return
 	}
+	o.recordAction(vol.Name(), StatisticsActionListObjects, uint64(len(bytes)))
 	return
 }
 
@@ -1273,6 +1282,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// set response header
 	w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
 	w.Header()[HeaderNameContentLength] = []string{"0"}
+	o.recordAction(vol.Name(), StatisticsActionPutObject, uint64(fsFileInfo.Size))
 	return
 }
 
@@ -1324,6 +1334,7 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+	o.recordAction(vol.Name(), StatisticsActionDeleteObject, 0)
 	return
 }
 

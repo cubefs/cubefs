@@ -63,13 +63,19 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
-	// create table
-	if err = m.initHBaseTable(); err != nil {
-		return
+	// start hbase table management
+	if m.thriftAddr != "" {
+		if err = m.initHBaseTable(); err != nil {
+			return
+		}
 	}
-	if m.mqProducer, err = initMQProducer(m.jmqConfig); err != nil {
-		return
+	//
+	if m.jmqConfig != nil {
+		if m.mqProducer, err = initMQProducer(m.jmqConfig); err != nil {
+			return
+		}
 	}
+
 	// start http service
 	m.startHTTPService()
 
@@ -106,9 +112,6 @@ func (m *Monitor) parseConfig(cfg *config.Config) (err error) {
 	m.port = listen
 
 	thriftAddr := cfg.GetString(ConfigThriftAddr)
-	if thriftAddr == "" {
-		thriftAddr = defaultThriftAddr
-	}
 	m.thriftAddr = thriftAddr
 
 	namespace := cfg.GetString(ConfigNamespace)
@@ -128,14 +131,24 @@ func (m *Monitor) parseConfig(cfg *config.Config) (err error) {
 	}
 	m.queryIP = queryIP
 
-	m.jmqConfig = &JMQConfig{}
-	topic := cfg.GetString(ConfigTopic)
-	m.jmqConfig.topic = strings.Split(topic, ",")
-	m.jmqConfig.address = cfg.GetString(ConfigJMQAddress)
-	m.jmqConfig.clientID = cfg.GetString(ConfigJMQClientID)
-	m.jmqConfig.produceNum = cfg.GetInt64(ConfigProducerNum)
-	if m.jmqConfig.produceNum <= 0 {
-		m.jmqConfig.produceNum = defaultProducerNum
+	var (
+		jmqTopic    = cfg.GetString(ConfigTopic)
+		jmqAddress  = cfg.GetString(ConfigJMQAddress)
+		jmqClientID = cfg.GetString(ConfigJMQClientID)
+		producerNum = cfg.GetInt64(ConfigProducerNum)
+	)
+	if jmqTopic != "" && jmqAddress != "" && jmqClientID != "" {
+		m.jmqConfig = &JMQConfig{
+			topic:    strings.Split(jmqTopic, ","),
+			address:  jmqAddress,
+			clientID: jmqClientID,
+			produceNum: func() int64 {
+				if producerNum <= 0 {
+					return defaultProducerNum
+				}
+				return producerNum
+			}(),
+		}
 	}
 
 	m.splitRegionRules = getSplitRules(cfg.GetStringSlice(ConfigSplitRegion))
@@ -145,7 +158,12 @@ func (m *Monitor) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("action[parseConfig] load table expired time(%v).", TableClearTime)
 	log.LogInfof("action[parseConfig] load query ip(%v).", m.queryIP)
 	log.LogInfof("action[parseConfig] load thrift server address(%v).", m.thriftAddr)
-	log.LogInfof("action[parseConfig] load producer num(%v).", m.jmqConfig.produceNum)
+	if m.jmqConfig != nil {
+		log.LogInfof("action[parseConfig] load JMQ topics(%v).", m.jmqConfig.topic)
+		log.LogInfof("action[parseConfig] load JMQ address(%v).", m.jmqConfig.address)
+		log.LogInfof("action[parseConfig] load JMQ clientID(%v).", m.jmqConfig.clientID)
+		log.LogInfof("action[parseConfig] load producer num(%v).", m.jmqConfig.produceNum)
+	}
 	log.LogInfof("action[parseConfig] load splitRegionRules(%v).", m.splitRegionRules)
 	return
 }
