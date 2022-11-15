@@ -128,6 +128,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	if err = w.updateDataNodeStatus(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
+	err = nil
 	streamConnPoolInitOnce.Do(func() {
 		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
 	})
