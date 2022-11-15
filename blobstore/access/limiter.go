@@ -83,10 +83,15 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	if delay == 0 {
 		return
 	}
+
+	span := trace.SpanFromContextSafe(r.ctx)
+	if !reserve.OK() {
+		span.Warnf("reader exceeds limiter n:%d, burst:%d", n, r.rate.Burst())
+		return
+	}
 	t := time.NewTimer(delay)
 	defer t.Stop()
 
-	span := trace.SpanFromContextSafe(r.ctx)
 	// for access PUT request is Read from client
 	span.SetTag(_tagLimitedW, delay.Milliseconds())
 
@@ -123,10 +128,15 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	if delay == 0 {
 		return
 	}
+
+	span := trace.SpanFromContextSafe(w.ctx)
+	if !reserve.OK() {
+		span.Warnf("writer exceeds limiter n:%d, burst:%d", n, w.rate.Burst())
+		return
+	}
 	t := time.NewTimer(delay)
 	defer t.Stop()
 
-	span := trace.SpanFromContextSafe(w.ctx)
 	// for access GET request is Write to client
 	span.SetTag(_tagLimitedR, delay.Milliseconds())
 

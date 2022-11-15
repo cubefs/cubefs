@@ -88,7 +88,8 @@ func TestAccessLimitWriter(t *testing.T) {
 	}
 	errCh := make(chan error)
 	go func() {
-		_, err := w.Write(make([]byte, 1<<24))
+		w.Write(make([]byte, 1<<20))
+		_, err := w.Write(make([]byte, 1<<20))
 		errCh <- err
 	}()
 
@@ -97,6 +98,30 @@ func TestAccessLimitWriter(t *testing.T) {
 
 	err := <-errCh
 	require.Error(t, err)
+}
+
+func TestAccessLimitExceedBurst(t *testing.T) {
+	ctx := ctxWithName("TestAccessLimitExceedBurst")()
+	start := time.Now()
+	{
+		r := &Reader{
+			ctx:        ctx,
+			rate:       rate.NewLimiter(rate.Limit(1<<20), 1<<21),
+			underlying: &limitReader{size: 1 << 24},
+		}
+		_, err := r.Read(make([]byte, 1<<22))
+		require.NoError(t, err)
+	}
+	{
+		w := &Writer{
+			ctx:        ctx,
+			rate:       rate.NewLimiter(rate.Limit(1<<20), 1<<20),
+			underlying: &limitWriter{},
+		}
+		_, err := w.Write(make([]byte, 1<<22))
+		require.NoError(t, err)
+	}
+	require.Greater(t, int64(200), time.Since(start).Milliseconds())
 }
 
 func TestAccessLimiterBase(t *testing.T) {
