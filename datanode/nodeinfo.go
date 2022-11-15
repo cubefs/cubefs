@@ -10,6 +10,7 @@ import (
 const (
 	defaultMarkDeleteLimitRate  = rate.Inf
 	defaultMarkDeleteLimitBurst = 512
+	defaultIOLimitBurst = 512
 	UpdateNodeInfoTicket        = 1 * time.Minute
 )
 
