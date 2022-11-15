@@ -103,7 +103,11 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		var param = ParseRequestParam(r)
 		if param.Bucket() != "" {
 			var vol *Volume
-			if vol, err = o.getVol(param.Bucket()); err != nil {
+			if vol, err = o.getVol(param.Bucket()); err != nil && err == proto.ErrVolNotExists {
+				_ = NoSuchBucket.ServeResponse(w, r)
+				return
+			}
+			if err != nil {
 				log.LogErrorf("traceMiddleware: load volume fail: requestID(%v) volume(%v) err(%v)",
 					GetRequestID(r), param.Bucket(), err)
 				_ = InternalErrorCode(err).ServeResponse(w, r)
