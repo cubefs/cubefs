@@ -1,7 +1,6 @@
 package version
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
@@ -88,12 +87,12 @@ func reportVersion(cfg *config.Config, masterAddr []string, version string) (err
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("PUT", reportAddr, bytes.NewBuffer(data))
+	req, err := http.NewRequest("PUT", reportAddr, strings.NewReader(string(data)))
 	if err != nil {
 		log.LogErrorf("[reportVersion] create request failed, errorInfo(%v)", err)
 		return
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		log.LogErrorf("[reportVersion] execute request failed, errorInfo(%v)", err)

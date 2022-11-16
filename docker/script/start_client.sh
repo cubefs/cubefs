@@ -126,7 +126,7 @@ show_cluster_info() {
 
 start_client() {
     echo -n "Starting client   ... "
-    /cfs/bin/cfs-client -c /cfs/conf/client.json
+    /cfs/bin/cfs-client-inner -c /cfs/conf/client.json
     for((i=0; i<TryTimes; i++)) ; do
         sleep 2
         sta=$( mount | grep -q "$VolName on $MntPoint" ; echo $? )
