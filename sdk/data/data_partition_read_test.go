@@ -74,14 +74,16 @@ func TestNearRead(t *testing.T) {
 	dataWrapper.updateDataPartition(false)
 
 	dataWrapper.Lock()
-	for _, dp := range dataWrapper.partitions {
+	dataWrapper.partitions.Range(func(key, value interface{}) bool {
+		dp := value.(*DataPartition)
 		nearHosts := dataWrapper.sortHostsByDistance(dp.Hosts)
 		sc := NewStreamConn(dp, true)
 		fmt.Println("StreamConn String: ", sc)
 		if sc.currAddr != nearHosts[0] {
 			t.Errorf("NearRead: expect current nearest address(%v) but(%v)", nearHosts, sc.currAddr)
 		}
-	}
+		return true
+	})
 	dataWrapper.Unlock()
 	// verify sort near hosts
 	originLocalIP := LocalIP

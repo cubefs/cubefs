@@ -49,7 +49,7 @@ type Wrapper struct {
 	volName               string
 	masters               []string
 	volNotExists          bool
-	partitions            map[uint64]*DataPartition
+	partitions			  *sync.Map //key: dpID; value: *DataPartition
 	followerRead          bool
 	followerReadClientCfg bool
 	nearRead              bool
@@ -93,7 +93,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	w.mc = masterSDK.NewMasterClient(masters, false)
 	w.schedulerClient = scheduler.NewSchedulerClient(w.dpMetricsReportDomain, false)
 	w.volName = volName
-	w.partitions = make(map[uint64]*DataPartition)
+	w.partitions = new(sync.Map)
 	w.HostsStatus = make(map[string]bool)
 	w.connConfig = &proto.ConnConfig{
 		IdleTimeoutSec:   IdleConnTimeoutData,
@@ -295,7 +295,7 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	var dpv *proto.DataPartitionsView
 	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
 		if err == proto.ErrVolNotExists {
-			w.partitions = make(map[uint64]*DataPartition)
+			w.partitions = new(sync.Map)
 			w.volNotExists = true
 		}
 		log.LogWarnf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
@@ -350,8 +350,9 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	}
 
 	w.Lock()
-	old, ok := w.partitions[dp.PartitionID]
+	value, ok := w.partitions.Load(dp.PartitionID)
 	if ok {
+		old := value.(*DataPartition)
 		if old.Status != dp.Status || old.ReplicaNum != dp.ReplicaNum ||
 			old.EcMigrateStatus != dp.EcMigrateStatus || old.ecEnable != w.ecEnable ||
 			strings.Join(old.EcHosts, ",") != strings.Join(dp.EcHosts, ",") ||
@@ -376,7 +377,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		dp.Metrics = proto.NewDataPartitionMetrics()
 		dp.ReadMetrics = proto.NewDPReadMetrics()
 		dp.ecEnable = w.ecEnable
-		w.partitions[dp.PartitionID] = dp
+		w.partitions.Store(dp.PartitionID, dp)
 		log.LogInfof("updateDataPartition: new dp (%v) EcMigrateStatus (%v)", dp, dp.EcMigrateStatus)
 	}
 	w.Unlock()
@@ -418,19 +419,16 @@ func getDpInfoLeaderAddr(partition *proto.DataPartitionInfo) (leaderAddr string)
 }
 
 // GetDataPartition returns the data partition based on the given partition ID.
-func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
-	w.RLock()
-	defer w.RUnlock()
-	dp, ok := w.partitions[partitionID]
+func (w *Wrapper) GetDataPartition(partitionID uint64) (dp *DataPartition, err error) {
+	value, ok := w.partitions.Load(partitionID)
 	if !ok {
-		w.RUnlock()
 		w.getDataPartitionByPid(partitionID)
-		w.RLock()
-		dp, ok = w.partitions[partitionID]
+		value, ok = w.partitions.Load(partitionID)
 		if !ok {
 			return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
 		}
 	}
+	dp = value.(*DataPartition)
 	return dp, nil
 }
 

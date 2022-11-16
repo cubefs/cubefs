@@ -21,15 +21,15 @@ func TestWrapper_getDataPartitionByPid(t *testing.T) {
 
 	close(dataWrapper.stopC)
 
-	if len(dataWrapper.partitions) == 0 {
+	var validPids []uint64
+	dataWrapper.partitions.Range(func(key, value interface{}) bool {
+		pid := key.(uint64)
+		validPids = append(validPids, pid)
+		return true
+	})
+	if len(validPids) == 0 {
 		t.Fatalf("no valid data partition for test")
 	}
-	var validPids []uint64
-	for pid := range dataWrapper.partitions {
-		validPids = append(validPids, pid)
-	}
-
-	dataWrapper.partitions = make(map[uint64]*DataPartition, 0)
 
 	var invalidPid uint64
 	for _, pid := range validPids {
