@@ -110,4 +110,5 @@ func TestSetConsumeOffset(t *testing.T) {
 	require.NoError(t, err)
 	monitor.report()
 	time.Sleep(time.Second + 10*time.Microsecond)
+	monitor.Close()
 }
