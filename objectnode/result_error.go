@@ -29,7 +29,7 @@ type ErrorCode struct {
 func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) error {
 	// write status code to request context,
 	// traceMiddleWare send exception request to prometheus via status code
-	SetResponseStatusCode(r, code)
+	SetResponseStatusCode(r, code.StatusCode)
 	SetResponseErrorMessage(r, code.ErrorMessage)
 
 	var err error
@@ -58,6 +58,7 @@ func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) erro
 }
 
 func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
+	SetResponseStatusCode(r, http.StatusInternalServerError)
 	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.WriteHeader(http.StatusInternalServerError)
 	sb := strings.Builder{}

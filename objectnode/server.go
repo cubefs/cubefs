@@ -245,6 +245,7 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	router := mux.NewRouter().SkipClean(true)
 	o.registerApiRouters(router)
 	router.Use(
+		o.crashMiddleware,
 		o.expectMiddleware,
 		o.corsMiddleware,
 		o.traceMiddleware,

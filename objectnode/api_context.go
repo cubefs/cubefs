@@ -46,8 +46,8 @@ func GetActionFromContext(r *http.Request) (action proto.Action) {
 	return proto.ParseAction(mux.Vars(r)[ContextKeyRequestAction])
 }
 
-func SetResponseStatusCode(r *http.Request, code ErrorCode) {
-	mux.Vars(r)[ContextKeyStatusCode] = strconv.Itoa(code.StatusCode)
+func SetResponseStatusCode(r *http.Request, statusCode int) {
+	mux.Vars(r)[ContextKeyStatusCode] = strconv.Itoa(statusCode)
 }
 
 func GetStatusCodeFromContext(r *http.Request) int {

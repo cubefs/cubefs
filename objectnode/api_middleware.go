@@ -17,13 +17,15 @@ package objectnode
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/net/context"
 	"net/http"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/net/context"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"
@@ -59,8 +61,29 @@ func generateWarnDetail(r *http.Request, errorInfo string) string {
 	requestID = GetRequestID(r)
 	statusCode = GetStatusCodeFromContext(r)
 
-	return fmt.Sprintf("intenal error: status(%v) rerquestId(%v) action(%v) bucket(%v) object(%v) errorInfo(%v)",
+	return fmt.Sprintf("Intenal Error!\n"+
+		"Status: %v\n"+
+		"RerquestID: %v\n"+
+		"Action: %v\n"+
+		"Bucket: %v\n"+
+		"Object: %v\n"+
+		"Error: %v",
 		statusCode, requestID, action.Name(), bucket, object, errorInfo)
+}
+
+func (o *ObjectNode) crashMiddleware(next http.Handler) http.Handler {
+	var handlerFunc http.HandlerFunc = func(writer http.ResponseWriter, request *http.Request) {
+		defer func() {
+			if r := recover(); r != nil {
+				ServeInternalStaticErrorResponse(writer, request)
+				exporter.Warning(generateWarnDetail(request, fmt.Sprintf("panic: %v", r)))
+				log.LogCriticalf("Panic occurred: %v:\nCallstack:\n%v", r, string(debug.Stack()))
+				return
+			}
+		}()
+		next.ServeHTTP(writer, request)
+	}
+	return handlerFunc
 }
 
 // TraceMiddleware returns a middleware handler to trace request.
