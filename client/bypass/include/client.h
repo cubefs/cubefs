@@ -79,6 +79,7 @@ DIR *real_fdopendir(int fd);
 struct dirent *real_readdir(DIR *dirp);
 int real_closedir(DIR *dirp);
 char *real_realpath(const char *path, char *resolved_path);
+char *real_realpath_chk(const char *path, char *resolved_path, size_t resolvedlen);
 int real_linkat(int olddirfd, const char *old_pathname,
            int newdirfd, const char *new_pathname, int flags);
 int real_symlinkat(const char *target, int dirfd, const char *linkpath);

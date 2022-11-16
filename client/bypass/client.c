@@ -820,44 +820,58 @@ int real_closedir(DIR *dirp) {
     return re;
 }
 
+char *cfs_realpath(const char *cfs_path, char *resolved_path) {
+    struct stat statbuf;
+    int res1 = cfs_errno(cfs_lstat(g_client_info.cfs_client_id, cfs_path, &statbuf));
+    if(res1 == -1) {
+        errno = ENOENT;
+        return NULL;
+    }
+    char *res_path = resolved_path;
+    if(res_path == NULL) {
+        res_path = (char *)malloc(PATH_MAX);
+        memset(res_path, 0, PATH_MAX);
+    }
+    ssize_t res2 = cfs_errno_ssize_t(cfs_readlink(g_client_info.cfs_client_id, cfs_path, res_path, PATH_MAX));
+    if(res2 == -1) {
+        char *buf = cat_path(g_client_info.mount_point, cfs_path);
+        memcpy(res_path, buf, strlen(buf)+1);
+        free(buf);
+    } else {
+        if(res_path[0] != '/') {
+            errno = ENOENT;
+            res_path = NULL;
+        }
+    }
+    return res_path;
+}
+
+char *real_realpath_chk(const char *path, char *resolved_path, size_t resolvedlen) {
+    char *re = NULL;
+    char *cfs_path = get_cfs_path(path);
+    if(g_hook && cfs_path != NULL) {
+        re = cfs_realpath(cfs_path, resolved_path);
+    } else {
+        re = libc_realpath_chk(path, resolved_path, resolvedlen);
+    }
+    free(cfs_path);
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs: %d, pathname:%s, re:%s\n", __func__, cfs_path != NULL, path, re);
+    #endif
+    return re;
+}
+
 char *real_realpath(const char *path, char *resolved_path) {
     char *re = NULL;
-    char *clean_path = get_clean_path(path);
-    char *abs_path;
-    if(clean_path == NULL) {
-        goto log;
-    }
-
-    abs_path = clean_path;
-    if(path[0] != '/') {
-        char *cwd = getcwd(NULL, 0);
-        if(cwd == NULL) {
-            free(clean_path);
-            goto log;
-        }
-        abs_path = cat_path(cwd, clean_path);
-        free(cwd);
-        free(clean_path);
-        if(abs_path == NULL) {
-            goto log;
-        }
-    }
-    if(strlen(abs_path) >= PATH_MAX) {
-        free(abs_path);
-        errno = ENAMETOOLONG;
-        goto log;
-    }
-    if(resolved_path != NULL) {
-        memcpy(resolved_path, abs_path, strlen(abs_path)+1);
-        free(abs_path);
-        re = resolved_path;
+    char *cfs_path = get_cfs_path(path);
+    if(g_hook && cfs_path != NULL) {
+        re = cfs_realpath(cfs_path, resolved_path);
     } else {
-        re = abs_path;
+        re = libc_realpath(path, resolved_path);
     }
-
-log:
+    free(cfs_path);
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, path:%s, resolved_path:%s, re:%s\n", __func__, path == NULL ? "" : path, resolved_path == NULL ? "" : resolved_path, re == NULL ? "" : re);
+    log_debug("hook %s, is_cfs: %d, pathname:%s, re:%s\n", __func__, cfs_path != NULL, path, re);
     #endif
     return re;
 }

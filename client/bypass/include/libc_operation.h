@@ -50,6 +50,7 @@ typedef DIR *(*fdopendir_t)(int fd);
 typedef struct dirent *(*readdir_t)(DIR *dirp);
 typedef int (*closedir_t)(DIR *dirp);
 typedef char *(*realpath_t)(const char *path, char *resolved_path);
+typedef char *(*realpath_chk_t)(const char *buf, char *resolved, size_t resolvedlen);
 
 typedef int (*linkat_t)(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, int flags);
 typedef int (*symlinkat_t)(const char *target, int newdirfd, const char *linkpath);
@@ -134,6 +135,7 @@ DIR *libc_fdopendir(int fd);
 struct dirent *libc_readdir(DIR *dirp);
 int libc_closedir(DIR *dirp);
 char *libc_realpath(const char *path, char *resolved_path);
+char *libc_realpath_chk(const char *buf, char *resolved, size_t resolvedlen);
 int libc_linkat(int olddirfd, const char *oldpath,
                   int newdirfd, const char *newpath, int flags);
 int libc_symlinkat(const char *oldpath, int newdirfd, const char *newpath);

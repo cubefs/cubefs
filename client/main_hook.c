@@ -211,6 +211,11 @@ char *realpath(const char *path, char *resolved_path) {
     LOCK_RETURN_PTR(realpath(path, resolved_path), res);
 }
 
+char *__realpath_chk (const char *buf, char *resolved, size_t resolvedlen) {
+    char *res;
+    LOCK_RETURN_PTR(realpath_chk(buf, resolved, resolvedlen), res);
+}
+
 /*
  * Link operations
  */
@@ -646,6 +651,7 @@ static void init_cfsc_func(void *handle) {
     real_readdir = (readdir_t)dlsym(handle, "real_readdir");
     real_closedir = (closedir_t)dlsym(handle, "real_closedir");
     real_realpath = (realpath_t)dlsym(handle, "real_realpath");
+    real_realpath_chk = (realpath_chk_t)dlsym(handle, "real_realpath_chk");
 
     real_linkat = (linkat_t)dlsym(handle, "real_linkat");
     real_symlinkat = (symlinkat_t)dlsym(handle, "real_symlinkat");
