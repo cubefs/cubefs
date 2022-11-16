@@ -39,25 +39,6 @@ const (
 	SEEK_HOLE      = 4
 )
 
-const (
-	FileID = iota
-	Size
-	Crc
-	ModifyTime
-)
-
-type ExtentInfoBlock [4]uint64
-
-var EmptyExtentBlock = ExtentInfoBlock{}
-
-func (eiBlock ExtentInfoBlock) String() string {
-	return fmt.Sprintf("%v_%v_%v_%v", eiBlock[FileID], eiBlock[Size], eiBlock[Crc], eiBlock[ModifyTime])
-}
-
-func (ei *ExtentInfoBlock) Loaded() bool {
-	return ei[ModifyTime] > 0
-}
-
 // Extent is an implementation of Extent for local regular extent file data management.
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and Crc blocks of data blocks.
