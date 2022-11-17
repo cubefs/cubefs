@@ -151,6 +151,7 @@ static const uint8_t FILE_TYPE_RELAY_LOG = 3;
 static const char *BIN_LOG_PREFIX = "mysql-bin.";
 static const char *REDO_LOG_PREFIX = "ib_logfile";
 static const char *RELAY_LOG_PREFIX = "relay-bin.";
+static const int ump_cfs_read = 25;
 
 // hook or not, currently for test
 const bool g_hook = true;
@@ -557,6 +558,10 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
 	int req_count = cfs_read_requests(id, fd, buf, count, offset, req, max_count);
     ssize_t read = 0;
     bool has_err = req_count < 0;
+    struct timespec start;
+    if(!has_err) {
+        clock_gettime(CLOCK_REALTIME, &start);
+    }
     for(int i = 0; i < req_count; i++) {
         if(req[i].size == 0) {
             break;
@@ -599,6 +604,9 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
         if(re != req[i].size) {
             break;
         }
+    }
+    if(!has_err) {
+        cfs_ump(g_client_info.cfs_client_id, ump_cfs_read, start.tv_sec, start.tv_nsec);
     }
     free(req);
     #ifdef _CFS_DEBUG

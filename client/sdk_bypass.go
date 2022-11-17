@@ -1363,6 +1363,8 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		act = ump_cfs_flush_redolog
 	} else if f.fileType == fileTypeBinlog {
 		act = ump_cfs_flush_binlog
+	} else if f.fileType == fileTypeRelaylog {
+		act = ump_cfs_flush_relaylog
 	}
 	//tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
 	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
@@ -3436,6 +3438,8 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	act := ump_cfs_write
 	if f.fileType == fileTypeBinlog {
 		act = ump_cfs_write_binlog
+	} else if f.fileType == fileTypeRelaylog {
+		act = ump_cfs_write_relaylog
 	} else if f.fileType == fileTypeRedolog {
 		act = ump_cfs_write_redolog
 		if c.app == appMysql8 || c.app == appCoralDB {
@@ -3544,9 +3548,18 @@ func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size
 	if !exist {
 		return C.ssize_t(statusEINVAL)
 	}
+	f := c.getFileByInode(uint64(ino))
+	if f == nil {
+		return C.ssize_t(statusEBADFD)
+	}
 
 	overWriteBuffer := false
-	act := ump_cfs_write_pagecache
+	act := ump_cfs_write
+	if f.fileType == fileTypeBinlog {
+		act = ump_cfs_write_binlog
+	} else if f.fileType == fileTypeRelaylog {
+		act = ump_cfs_write_relaylog
+	}
 	//tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
 	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
@@ -4034,6 +4047,24 @@ func (c *client) releaseFD(fd uint) *file {
 	delete(c.fdmap, fd)
 	c.fdset.Clear(fd)
 	return f
+}
+
+func (c *client) getFileByInode(ino uint64) *file {
+	c.fdlock.Lock()
+	defer c.fdlock.Unlock()
+
+	fdmap, ok := c.inomap[ino]
+	if !ok {
+		return nil
+	}
+	for fd := range fdmap {
+		f, ok := c.fdmap[fd]
+		if !ok {
+			continue
+		}
+		return f
+	}
+	return nil
 }
 
 func (c *client) getInodeByPath(ctx context.Context, path string) (info *proto.InodeInfo, err error) {
