@@ -3,6 +3,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"math"
 	"net/http"
 	"strconv"
@@ -226,6 +227,8 @@ func (m *Server) decommissionEcPartition(w http.ResponseWriter, r *http.Request)
 		err         error
 	)
 
+	metrics := exporter.NewTPCnt(proto.AdminDecommissionEcPartitionUmpKey)
+	defer func() { metrics.Set(err) }()
 	if partitionID, addr, err = parseRequestToDecommissionEcPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -250,6 +253,8 @@ func (m *Server) getEcPartition(w http.ResponseWriter, r *http.Request) {
 		vol         *Vol
 		err         error
 	)
+	metrics := exporter.NewTPCnt(proto.AdminGetEcPartitionUmpKey)
+	defer func() { metrics.Set(err) }()
 	if partitionID, volName, err = parseRequestToGetEcPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -284,6 +289,8 @@ func (m *Server) diagnoseEcPartition(w http.ResponseWriter, r *http.Request) {
 		corruptEpIDs     []uint64
 		lackReplicaEpIDs []uint64
 	)
+	metrics := exporter.NewTPCnt(proto.AdminDiagnoseEcPartitionUmpKey)
+	defer func() { metrics.Set(err) }()
 	if inactiveNodes, corruptEps, err = m.cluster.checkCorruptEcPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 	}
@@ -355,6 +362,8 @@ func (m *Server) getEcPartitions(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 		err  error
 	)
+	metrics := exporter.NewTPCnt(proto.ClientEcPartitionsUmpKey)
+	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1329,6 +1338,8 @@ func (m *Server) setEcPartitionRollBack(w http.ResponseWriter, r *http.Request) 
 		ID        uint64
 		needDelEc bool
 	)
+	metrics := exporter.NewTPCnt(proto.AdminEcPartitionRollBackUmpKey)
+	defer func() { metrics.Set(err) }()
 	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

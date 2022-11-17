@@ -3,6 +3,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"io/ioutil"
 	"net/http"
 
@@ -16,6 +17,8 @@ func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		userInfo *proto.UserInfo
 		err      error
 	)
+	metrics := exporter.NewTPCnt(proto.UserCreateUmpKey)
+	defer func() { metrics.Set(err) }()
 	var bytes []byte
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -46,6 +49,8 @@ func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 		userID string
 		err    error
 	)
+	metrics := exporter.NewTPCnt(proto.UserDeleteUmpKey)
+	defer func() { metrics.Set(err) }()
 	if userID, err = parseUser(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -64,6 +69,8 @@ func (m *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		userInfo *proto.UserInfo
 		err      error
 	)
+	metrics := exporter.NewTPCnt(proto.UserUpdateUmpKey)
+	defer func() { metrics.Set(err) }()
 	var bytes []byte
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -91,6 +98,8 @@ func (m *Server) getUserAKInfo(w http.ResponseWriter, r *http.Request) {
 		userInfo *proto.UserInfo
 		err      error
 	)
+	metrics := exporter.NewTPCnt(proto.UserGetAKInfoUmpKey)
+	defer func() { metrics.Set(err) }()
 	if ak, err = parseAccessKey(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -108,6 +117,8 @@ func (m *Server) getUserInfo(w http.ResponseWriter, r *http.Request) {
 		userInfo *proto.UserInfo
 		err      error
 	)
+	metrics := exporter.NewTPCnt(proto.UserGetInfoUmpKey)
+	defer func() { metrics.Set(err) }()
 	if userID, err = parseUser(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -125,6 +136,8 @@ func (m *Server) updateUserPolicy(w http.ResponseWriter, r *http.Request) {
 		bytes    []byte
 		err      error
 	)
+	metrics := exporter.NewTPCnt(proto.UserUpdatePolicyUmpKey)
+	defer func() { metrics.Set(err) }()
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -151,6 +164,8 @@ func (m *Server) removeUserPolicy(w http.ResponseWriter, r *http.Request) {
 		bytes    []byte
 		err      error
 	)
+	metrics := exporter.NewTPCnt(proto.UserRemovePolicyUmpKey)
+	defer func() { metrics.Set(err) }()
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -176,6 +191,8 @@ func (m *Server) deleteUserVolPolicy(w http.ResponseWriter, r *http.Request) {
 		vol string
 		err error
 	)
+	metrics := exporter.NewTPCnt(proto.UserDeleteVolPolicyUmpKey)
+	defer func() { metrics.Set(err) }()
 	if vol, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -196,6 +213,8 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		userInfo *proto.UserInfo
 		err      error
 	)
+	metrics := exporter.NewTPCnt(proto.UserTransferVolUmpKey)
+	defer func() { metrics.Set(err) }()
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -234,6 +253,8 @@ func (m *Server) getAllUsers(w http.ResponseWriter, r *http.Request) {
 		users    []*proto.UserInfo
 		err      error
 	)
+	metrics := exporter.NewTPCnt(proto.UserListUmpKey)
+	defer func() { metrics.Set(err) }()
 	if keywords, err = parseKeywords(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -248,6 +269,8 @@ func (m *Server) getUsersOfVol(w http.ResponseWriter, r *http.Request) {
 		users   []string
 		err     error
 	)
+	metrics := exporter.NewTPCnt(proto.UsersOfVolUmpKey)
+	defer func() { metrics.Set(err) }()
 	if volName, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

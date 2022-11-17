@@ -15,14 +15,15 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
-	"fmt"
-	"time"
 	"encoding/base64"
-	"strconv"
-	"net/url"
-	"net/http"
+	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"net/http"
+	"net/url"
+	"strconv"
+	"time"
 )
 
 type TokenValue struct {
@@ -131,6 +132,8 @@ func (m *Server) addToken(w http.ResponseWriter, r *http.Request) {
 		msg       string
 		authKey   string
 	)
+	metrics := exporter.NewTPCnt(proto.TokenAddURIUmpKey)
+	defer func() { metrics.Set(err) }()
 	if name, tokenType, authKey, err = parseAddTokenPara(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -159,6 +162,8 @@ func (m *Server) updateToken(w http.ResponseWriter, r *http.Request) {
 		authKey   string
 		token     string
 	)
+	metrics := exporter.NewTPCnt(proto.TokenUpdateURIUmpKey)
+	defer func() { metrics.Set(err) }()
 	if name, tokenType, token, authKey, err = parseUpdateTokenPara(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -186,6 +191,8 @@ func (m *Server) deleteToken(w http.ResponseWriter, r *http.Request) {
 		msg     string
 		authKey string
 	)
+	metrics := exporter.NewTPCnt(proto.TokenDelURIUmpKey)
+	defer func() { metrics.Set(err) }()
 	if name, token, authKey, err = parseDeleteTokenPara(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -213,6 +220,8 @@ func (m *Server) getToken(w http.ResponseWriter, r *http.Request) {
 		tokenObj *proto.Token
 		vol      *Vol
 	)
+	metrics := exporter.NewTPCnt(proto.TokenGetURIUmpKey)
+	defer func() { metrics.Set(err) }()
 	if name, token, err = parseGetTokenPara(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

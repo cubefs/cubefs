@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"net/http"
 	"strconv"
 	"sync"
@@ -98,6 +99,8 @@ func (c *Cluster) checkCodecNodeHeartbeat() {
 
 func (m *Server) getAllCodecNodes(w http.ResponseWriter, r *http.Request) {
 	//todo add cache
+	metrics := exporter.NewTPCnt(proto.GetAllCodecNodesUmpKey)
+	defer func() { metrics.Set(nil) }()
 	nodes := make([]proto.CodecNodeClientView, 0)
 	m.cluster.codecNodes.Range(func(key, value interface{}) bool {
 		codecNode := value.(*CodecNode)
@@ -114,6 +117,8 @@ func (m *Server) addCodecNode(w http.ResponseWriter, r *http.Request) {
 		id       uint64
 		err      error
 	)
+	metrics := exporter.NewTPCnt(proto.AddCodecNodeUmpKey)
+	defer func() { metrics.Set(err) }()
 	if nodeAddr, version, err = parseAndExtractCodecNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -133,6 +138,8 @@ func (m *Server) getCodecNode(w http.ResponseWriter, r *http.Request) {
 		codecNodeInfo *proto.CodecNodeInfo
 		err           error
 	)
+	metrics := exporter.NewTPCnt(proto.GetCodecNodeUmpKey)
+	defer func() { metrics.Set(err) }()
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -162,6 +169,8 @@ func (m *Server) decommissionCodecNode(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
+	metrics := exporter.NewTPCnt(proto.DecommissionCodecNodeUmpKey)
+	defer func() { metrics.Set(err) }()
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -181,6 +190,8 @@ func (m *Server) decommissionCodecNode(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) handleCodecNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	tr, err := parseRequestToGetTaskResponse(r)
+	metrics := exporter.NewTPCnt(proto.GetCodecNodeTaskResponseUmpKey)
+	defer func() { metrics.Set(err) }()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
