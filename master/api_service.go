@@ -456,6 +456,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	metaTrashCleanInterval := atomic.LoadUint64(&m.cluster.cfg.MetaTrashCleanInterval)
 	metaRaftLogSize := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogSize)
 	metaRaftLogCap  := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogCap)
+	normalExtentDeleteExpireTime := atomic.LoadUint64(&m.cluster.cfg.DataNodeNormalExtentDeleteExpire)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
 	if dataNodeZoneName != "" {
@@ -478,6 +479,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		DataNodeRepairClusterTaskLimitOnDisk:   clusterRepairTaskCount,
 		DataNodeRepairSSDZoneTaskLimitOnDisk:   ssdZoneRepairTaskCount,
 		DataNodeFlushFDInterval:                dataNodeFlushFDInterval,
+		DataNodeNormalExtentDeleteExpire:       normalExtentDeleteExpireTime,
 		DataNodeRepairTaskCountZoneLimit:       m.cluster.cfg.DataNodeRepairTaskCountZoneLimit,
 		DataNodeReqZoneRateLimitMap:            m.cluster.cfg.DataNodeReqZoneRateLimitMap,
 		DataNodeReqZoneOpRateLimitMap:          m.cluster.cfg.DataNodeReqZoneOpRateLimitMap,
@@ -2421,7 +2423,7 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
 	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	resp[dataNodeFlushFDIntervalKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeFlushFDInterval)
-
+	resp[normalExtentDeleteExpireKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeNormalExtentDeleteExpire)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
 }
 
@@ -4376,7 +4378,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs,
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
-		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
+		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
 	    proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey}

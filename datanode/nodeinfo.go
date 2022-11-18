@@ -21,6 +21,7 @@ const (
 	DefaultFixTinyDeleteRecordLimitOnDisk = 1
 	DefaultRepairTaskLimitOnDisk          = 5
 	DefaultReqLimitBurst                  = 512
+	DefaultNormalExtentDeleteExpireTime   = 4 * 3600
 )
 
 var (
@@ -123,7 +124,7 @@ func (m *DataNode) updateNodeBaseInfo() {
 	m.space.SetDiskRepairTaskLimit(limitInfo.DataNodeRepairTaskLimitOnDisk)
 	m.space.SetForceFlushFDInterval(limitInfo.DataNodeFlushFDInterval)
 	m.space.SetSyncWALOnUnstableEnableState(limitInfo.DataSyncWALOnUnstableEnableState)
-
+	m.space.SetNormalExtentDeleteExpireTime(limitInfo.DataNodeNormalExtentDeleteExpire)
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)
 		statistics.StatisticsModule.UpdateMonitorReportTime(limitInfo.MonitorReportSec)

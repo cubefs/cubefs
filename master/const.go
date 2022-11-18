@@ -80,6 +80,7 @@ const (
 	objectVolActionRateKey       = "objectVolActionRate"
 	nodeDeleteWorkerSleepMs      = "deleteWorkerSleepMs"
 	dataNodeFlushFDIntervalKey   = "dataNodeFlushFDInterval"
+	normalExtentDeleteExpireKey  = "normalExtentDeleteExpire"
 	descriptionKey               = "description"
 	dpRecoverPoolSizeKey         = "dpRecoverPool"
 	mpRecoverPoolSizeKey         = "mpRecoverPool"
@@ -214,6 +215,7 @@ const (
 	minRateLimit                                       = 100
 	minPartRateLimit                                   = 1
 	minReadDirLimitNum                                 = 500000
+	minNormalExtentDeleteExpire                        = 10 * 60
 	diskErrDataPartitionOfflineBatchCount              = 200
 	defaultHighUsedRatioDataNodesThreshold             = 0.85
 	defaultHighUsedRatioMetaNodesThreshold             = 0.85

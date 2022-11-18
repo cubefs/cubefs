@@ -48,6 +48,7 @@ type SpaceManager struct {
 	// Parallel task limits on disk
 	fixTinyDeleteRecordLimitOnDisk uint64
 	repairTaskLimitOnDisk          uint64
+	normalExtentDeleteExpireTime   uint64
 	flushFDIntervalSec             uint32
 }
 
@@ -63,7 +64,7 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	space.dataNode = dataNode
 	space.fixTinyDeleteRecordLimitOnDisk = DefaultFixTinyDeleteRecordLimitOnDisk
 	space.repairTaskLimitOnDisk = DefaultRepairTaskLimitOnDisk
-
+	space.normalExtentDeleteExpireTime = DefaultNormalExtentDeleteExpireTime
 	go space.statUpdateScheduler()
 
 	return space
@@ -558,7 +559,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 
 func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
 	if newValue > 0 && manager.fixTinyDeleteRecordLimitOnDisk != newValue {
-		log.LogInfof("action[spaceManager] change DiskFixTinyDeleteRecordLimit from(%v) to(%v)", manager.repairTaskLimitOnDisk, newValue)
+		log.LogInfof("action[spaceManager] change DiskFixTinyDeleteRecordLimit from(%v) to(%v)", manager.fixTinyDeleteRecordLimitOnDisk, newValue)
 		manager.fixTinyDeleteRecordLimitOnDisk = newValue
 		manager.diskMutex.Lock()
 		for _, disk := range manager.disks {
@@ -605,4 +606,13 @@ func (manager *SpaceManager) SetSyncWALOnUnstableEnableState(enableState bool) {
 	}
 	log.LogInfof("action[spaceManager] change SyncWALOnUnstableEnableState from(%v) to(%v)", manager.raftStore.IsSyncWALOnUnstable(), enableState)
 	manager.raftStore.SetSyncWALOnUnstable(enableState)
+}
+func (manager *SpaceManager) SetNormalExtentDeleteExpireTime(newValue uint64) {
+	if newValue == 0 {
+		newValue = DefaultNormalExtentDeleteExpireTime
+	}
+	if newValue > 0 && manager.normalExtentDeleteExpireTime != newValue {
+		log.LogInfof("action[spaceManager] change normalExtentDeleteExpireTime from(%v) to(%v)", manager.normalExtentDeleteExpireTime, newValue)
+		manager.normalExtentDeleteExpireTime = newValue
+	}
 }

@@ -51,6 +51,7 @@ type clusterValue struct {
 	MetaNodeDeleteBatchCount            uint64
 	MetaNodeDeleteWorkerSleepMs         uint64
 	DataNodeFlushFDInterval             uint32
+	DataNodeNormalExtentDeleteExpire    uint64
 	ClientReadVolRateLimitMap           map[string]uint64
 	ClientWriteVolRateLimitMap          map[string]uint64
 	ClientVolOpRateLimitMap             map[string]map[uint8]int64
@@ -108,6 +109,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeDeleteBatchCount:            c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs:         c.cfg.MetaNodeDeleteWorkerSleepMs,
 		DataNodeFlushFDInterval:             c.cfg.DataNodeFlushFDInterval,
+		DataNodeNormalExtentDeleteExpire:    c.cfg.DataNodeNormalExtentDeleteExpire,
 		MetaNodeReadDirLimitNum:             c.cfg.MetaNodeReadDirLimitNum,
 		ClientReadVolRateLimitMap:           c.cfg.ClientReadVolRateLimitMap,
 		ClientWriteVolRateLimitMap:          c.cfg.ClientWriteVolRateLimitMap,
@@ -771,6 +773,9 @@ func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 func (c *Cluster) updateDataNodeFlushFDInterval(val uint32) {
 	atomic.StoreUint32(&c.cfg.DataNodeFlushFDInterval, val)
 }
+func (c *Cluster) updateNormalExtentDeleteExpire(val uint64) {
+	atomic.StoreUint64(&c.cfg.DataNodeNormalExtentDeleteExpire, val)
+}
 func (c *Cluster) updateRecoverPoolSize(dpPoolSize, mpPoolSize int32) {
 	if dpPoolSize == 0 {
 		dpPoolSize = defaultRecoverPoolSize
@@ -898,6 +903,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeFlushFDInterval(cv.DataNodeFlushFDInterval)
+		c.updateNormalExtentDeleteExpire(cv.DataNodeNormalExtentDeleteExpire)
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, cv.MetaNodeReqRateLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, cv.MetaNodeReadDirLimitNum)
 		c.cfg.MetaNodeReqOpRateLimitMap = cv.MetaNodeReqOpRateLimitMap

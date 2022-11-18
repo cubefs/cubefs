@@ -446,11 +446,12 @@ type ClusterInfo struct {
 }
 
 type LimitInfo struct {
-	Cluster                     string
-	MetaNodeDeleteBatchCount    uint64
-	MetaNodeDeleteWorkerSleepMs uint64
-	MetaNodeReadDirLimitNum     uint64
+	Cluster                          string
+	MetaNodeDeleteBatchCount         uint64
+	MetaNodeDeleteWorkerSleepMs      uint64
+	DataNodeNormalExtentDeleteExpire uint64
 
+	MetaNodeReadDirLimitNum          uint64
 	MetaNodeReqRateLimit             uint64
 	MetaNodeReqOpRateLimitMap        map[uint8]uint64
 	MetaNodeReqVolOpRateLimitMap     map[string]map[uint8]uint64
@@ -1115,6 +1116,7 @@ type RateLimitInfo struct {
 	DataNodeReqVolPartRate      int64
 	DataNodeReqVolOpPartRate    int64
 	DataNodeFlushFDInterval     int64
+	DNNormalExtentDeleteExpire  int64
 	ClientReadVolRate           int64
 	ClientWriteVolRate          int64
 	ExtentMergeIno              string

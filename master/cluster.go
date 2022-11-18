@@ -3559,6 +3559,15 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[dataNodeFlushFDIntervalKey]; ok {
 		atomic.StoreUint32(&c.cfg.DataNodeFlushFDInterval, uint32(val.(uint64)))
 	}
+	oldNormalExtentDeleteExpire := atomic.LoadUint64(&c.cfg.DataNodeNormalExtentDeleteExpire)
+	if val, ok := params[normalExtentDeleteExpireKey]; ok {
+		v := val.(uint64)
+		if v > 0 && v < minNormalExtentDeleteExpire {
+			err = errors.NewErrorf("parameter %s can't be less than %d(second)", normalExtentDeleteExpireKey, minNormalExtentDeleteExpire)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.DataNodeNormalExtentDeleteExpire, val.(uint64))
+	}
 	oldDpRecoverPoolSize := atomic.LoadInt32(&c.cfg.DataPartitionsRecoverPoolSize)
 	if val, ok := params[dpRecoverPoolSizeKey]; ok {
 		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, int32(val.(int64)))
@@ -3735,6 +3744,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, oldMetaNodeReadDirLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldDeleteWorkerSleepMs)
 		atomic.StoreUint32(&c.cfg.DataNodeFlushFDInterval, oldDataNodeFlushFDInterval)
+		atomic.StoreUint64(&c.cfg.DataNodeNormalExtentDeleteExpire, oldNormalExtentDeleteExpire)
 		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, oldDpRecoverPoolSize)
 		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpRecoverPoolSize)
 		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, oldExtentMergeSleepMs)

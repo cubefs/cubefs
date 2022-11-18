@@ -251,6 +251,7 @@ func (d *Disk) startScheduler() {
 			checkStatusTicker     = time.NewTicker(time.Minute * 2)
 			evictFDTicker         = time.NewTicker(time.Minute * 5)
 			forceEvictFDTicker    = time.NewTicker(time.Second * 10)
+			evictExtentDeleteCacheTicker = time.NewTicker(time.Minute * 10)
 		)
 		defer func() {
 			updateSpaceInfoTicker.Stop()
@@ -269,6 +270,8 @@ func (d *Disk) startScheduler() {
 				d.evictExpiredFileDescriptor()
 			case <-forceEvictFDTicker.C:
 				d.forceEvictFileDescriptor()
+			case <-evictExtentDeleteCacheTicker.C:
+				d.evictExpiredExtentDeleteCache()
 			}
 		}
 	}()
@@ -691,6 +694,22 @@ func (d *Disk) forceEvictFileDescriptor() {
 	}
 	log.LogDebugf("action[forceEvictFileDescriptor] disk(%v) evicted FD count [%v -> %v]",
 		d.Path, count, atomic.LoadInt64(&d.fdCount))
+}
+
+func (d *Disk) evictExpiredExtentDeleteCache() {
+	var expireTime uint64
+	log.LogDebugf("action[evictExpiredExtentDeleteCache] disk(%v) evict start", d.Path)
+	d.RLock()
+	expireTime = d.space.normalExtentDeleteExpireTime
+	var partitions = make([]*DataPartition, 0, len(d.partitionMap))
+	for _, partition := range d.partitionMap {
+		partitions = append(partitions, partition)
+	}
+	d.RUnlock()
+	for _, partition := range partitions {
+		partition.EvictExpiredExtentDeleteCache(int64(expireTime))
+	}
+	log.LogDebugf("action[evictExpiredExtentDeleteCache] disk(%v) evict end", d.Path)
 }
 
 func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {

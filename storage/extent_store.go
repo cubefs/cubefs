@@ -53,7 +53,6 @@ const (
 	ValidateCrcInterval      = 20 * RepairInterval
 	RandomWriteType          = 2
 	AppendWriteType          = 1
-
 	BaseExtentIDPersistStep = 500
 	BaseExtentIDSyncStep    = 400
 
@@ -144,6 +143,7 @@ type ExtentStore struct {
 	verifyExtentFp                    *os.File
 	hasAllocSpaceExtentIDOnVerfiyFile uint64
 	loadStatus                        int32
+	normalExtentDeleteMap             sync.Map
 }
 
 func MkdirAll(name string) (err error) {
@@ -447,7 +447,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	s.PersistenceHasDeleteExtent(extentID)
 	s.infoStore.Delete(extentID)
 	s.DeleteBlockCrc(extentID)
-
+	s.normalExtentDeleteMap.Store(extentID, time.Now().Unix())
 	atomic.AddInt64(&s.extentCnt, -1)
 	return
 }
@@ -862,6 +862,11 @@ func (s *ExtentStore) HasExtent(extentID uint64) (exist bool) {
 	return ok
 }
 
+// IsRecentDelete tells if the normal extent is deleted recently, true-it must has been deleted, false-it may not be deleted
+func (s *ExtentStore) IsRecentDelete(extentID uint64) (deleted bool) {
+	_, ok := s.normalExtentDeleteMap.Load(extentID)
+	return ok
+}
 // GetExtentCount returns the number of extents in the extentInfoMap
 func (s *ExtentStore) GetExtentCount() (count int) {
 	return int(atomic.LoadInt64(&s.extentCnt))
@@ -1072,6 +1077,16 @@ func (s *ExtentStore) ForceEvictCache(ratio Ratio) {
 
 func (s *ExtentStore) ForceFlushAllFD() (cnt int) {
 	return s.cache.FlushAllFD()
+}
+
+func (s *ExtentStore) EvictExpiredNormalExtentDeleteCache(expireTime int64) {
+	s.normalExtentDeleteMap.Range(func(key, value interface{}) bool {
+		timeDelete := value.(int64)
+		if timeDelete < time.Now().Unix() - expireTime {
+			s.normalExtentDeleteMap.Delete(key)
+		}
+		return true
+	})
 }
 
 func (s *ExtentStore) PlaybackTinyDelete() (err error) {

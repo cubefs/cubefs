@@ -305,9 +305,15 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTasks [
 		if !store.IsFinishLoad() {
 			continue
 		}
+		if store.IsRecentDelete(extentInfo[storage.FileID]) {
+			continue
+		}
 		store.Create(extentInfo[storage.FileID], true)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
+		if store.IsRecentDelete(extentInfo[storage.FileID]) {
+			continue
+		}
 		source := repairTasks[0].ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
 		err := dp.streamRepairExtent(ctx, extentInfo, source, NoSkipLimit)
 		if err != nil {

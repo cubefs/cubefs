@@ -148,6 +148,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DataNodeFlushFDInterval >= 0 {
 				msg += fmt.Sprintf("dataNodeFlushFDInterval: %d, ", info.DataNodeFlushFDInterval)
 			}
+			if info.DNNormalExtentDeleteExpire >= 0 {
+				msg += fmt.Sprintf("normalExtentDeleteExpire: %d, ", info.DNNormalExtentDeleteExpire)
+			}
 			if info.ExtentMergeIno != "" {
 				msg += fmt.Sprintf("extentMergeIno: %s, volume: %s, ", info.ExtentMergeIno, info.Volume)
 			}
@@ -274,6 +277,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.MetaRaftLogCap, "metaRaftLogCap", -1, "meta node raft log cap")
 	cmd.Flags().Int64Var(&info.MetaSyncWALEnableState, "metaSyncWALFlag", -1, "0:disable, 1:enable")
 	cmd.Flags().Int64Var(&info.DataSyncWALEnableState, "dataSyncWALFlag", -1, "0:disable, 1:enable")
+	cmd.Flags().Int64Var(&info.DNNormalExtentDeleteExpire, "dnNormalExtentDeleteExpire", 0, "datanode normal extent delete record expire time(second, >=600)")
 	return cmd
 }
 
@@ -325,6 +329,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  DeleteEKRecordFileMaxSize   : %vMB\n", info.DeleteEKRecordFileMaxMB))
 	sb.WriteString(fmt.Sprintf("  MetaSyncWalEnableState      : %s\n", formatEnabledDisabled(info.MetaSyncWALOnUnstableEnableState)))
 	sb.WriteString(fmt.Sprintf("  DataSyncWalEnableState      : %s\n", formatEnabledDisabled(info.DataSyncWALOnUnstableEnableState)))
+	sb.WriteString(fmt.Sprintf("  DNNormalExtentDeleteExpire  : %v\n", info.DataNodeNormalExtentDeleteExpire))
 	return sb.String()
 }
 

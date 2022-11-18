@@ -940,6 +940,9 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 		if !proto.IsTinyExtent(extentInfo[storage.FileID]) && !dp.ExtentStore().IsFinishLoad() {
 			continue
 		}
+		if store.IsRecentDelete(extentInfo[storage.FileID]) {
+			continue
+		}
 		if store.HasExtent(uint64(extentInfo[storage.FileID])) {
 			//info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size} todo
 			info := storage.ExtentInfoBlock{storage.FileID: extentInfo[storage.FileID], storage.Size: extentInfo[storage.Size]}
@@ -965,7 +968,9 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 	)
 	wg = new(sync.WaitGroup)
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
-
+		if store.IsRecentDelete(extentInfo[storage.FileID]) {
+			continue
+		}
 		if !store.HasExtent(extentInfo[storage.FileID]) {
 			continue
 		}
@@ -1186,4 +1191,11 @@ func (dp *DataPartition) EvictExpiredFileDescriptor() {
 
 func (dp *DataPartition) ForceEvictFileDescriptor(ratio storage.Ratio) {
 	dp.extentStore.ForceEvictCache(ratio)
+}
+
+func (dp *DataPartition) EvictExpiredExtentDeleteCache(expireTime int64) {
+	if expireTime == 0 {
+		expireTime = DefaultNormalExtentDeleteExpireTime
+	}
+	dp.extentStore.EvictExpiredNormalExtentDeleteCache(expireTime)
 }

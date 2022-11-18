@@ -60,13 +60,22 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 		Use:   CliOpInfo,
 		Short: cmdClusterInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			var cv *proto.ClusterView
+			var (
+				err error
+				cv *proto.ClusterView
+				nodeInfo *proto.LimitInfo
+			)
+
 			if cv, err = client.AdminAPI().GetCluster(); err != nil {
 				errout("Get cluster info fail:\n%v\n", err)
 			}
 			stdout("[Cluster]\n")
 			stdout(formatClusterView(cv))
+			if nodeInfo, err = client.AdminAPI().GetLimitInfo(""); err != nil {
+				errout("Get cluster info fail:\n%v\n", err)
+			}
+			stdout("\n")
+			stdout(formatClusterNodeInfo(nodeInfo))
 			stdout("\n")
 		},
 	}

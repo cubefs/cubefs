@@ -635,6 +635,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.DataNodeFlushFDInterval >= 0 {
 		request.addParam("dataNodeFlushFDInterval", strconv.FormatInt(info.DataNodeFlushFDInterval, 10))
 	}
+	if info.DNNormalExtentDeleteExpire >= 0 {
+		request.addParam("normalExtentDeleteExpire", strconv.FormatUint(uint64(info.DNNormalExtentDeleteExpire), 10))
+	}
 	if info.ClientReadVolRate >= 0 {
 		request.addParam("clientReadVolRate", strconv.FormatInt(info.ClientReadVolRate, 10))
 	}

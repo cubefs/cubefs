@@ -109,6 +109,7 @@ type clusterConfig struct {
 	DataNodeRepairTaskCountZoneLimit    map[string]uint64
 	MetaNodeDeleteWorkerSleepMs         uint64
 	DataNodeFlushFDInterval             uint32
+	DataNodeNormalExtentDeleteExpire    uint64
 	ClientReadVolRateLimitMap           map[string]uint64
 	ClientWriteVolRateLimitMap          map[string]uint64
 	ClientVolOpRateLimitMap             map[string]map[uint8]int64
