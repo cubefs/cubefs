@@ -17,6 +17,8 @@ package clustermgr
 import (
 	"context"
 	"fmt"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 type GetKvArgs struct {
@@ -58,7 +60,7 @@ func (c *Client) GetKV(ctx context.Context, key string) (ret GetKvRet, err error
 }
 
 func (c *Client) DeleteKV(ctx context.Context, key string) (err error) {
-	err = c.PostWith(ctx, "/kv/delete/"+key, nil, nil)
+	err = c.PostWith(ctx, "/kv/delete/"+key, nil, rpc.NoneBody)
 	return
 }
 

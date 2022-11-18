@@ -24,6 +24,7 @@ import (
 
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 const (
@@ -183,7 +184,7 @@ func (c *client) CreateChunk(ctx context.Context, host string, args *CreateChunk
 	urlStr := fmt.Sprintf("%v/chunk/create/diskid/%v/vuid/%v?chunksize=%v",
 		host, args.DiskID, args.Vuid, args.ChunkSize)
 
-	err = c.PostWith(ctx, urlStr, nil, nil)
+	err = c.PostWith(ctx, urlStr, nil, rpc.NoneBody)
 	return
 }
 
@@ -222,7 +223,7 @@ func (c *client) ReleaseChunk(ctx context.Context, host string, args *ChangeChun
 	}
 
 	urlStr := fmt.Sprintf("%v/chunk/release/diskid/%v/vuid/%v?force=%v", host, args.DiskID, args.Vuid, args.Force)
-	err = c.PostWith(ctx, urlStr, nil, nil)
+	err = c.PostWith(ctx, urlStr, nil, rpc.NoneBody)
 	return
 }
 
@@ -234,7 +235,7 @@ func (c *client) SetChunkReadonly(ctx context.Context, host string, args *Change
 
 	urlStr := fmt.Sprintf("%v/chunk/readonly/diskid/%v/vuid/%v", host, args.DiskID, args.Vuid)
 
-	err = c.PostWith(ctx, urlStr, nil, nil)
+	err = c.PostWith(ctx, urlStr, nil, rpc.NoneBody)
 	return
 }
 
@@ -245,7 +246,7 @@ func (c *client) SetChunkReadwrite(ctx context.Context, host string, args *Chang
 	}
 
 	urlStr := fmt.Sprintf("%v/chunk/readwrite/diskid/%v/vuid/%v", host, args.DiskID, args.Vuid)
-	err = c.PostWith(ctx, urlStr, nil, nil)
+	err = c.PostWith(ctx, urlStr, nil, rpc.NoneBody)
 	return
 }
 

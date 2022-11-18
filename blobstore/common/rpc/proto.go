@@ -137,6 +137,15 @@ type ProgressHandler interface {
 	Handler(http.ResponseWriter, *http.Request, func(http.ResponseWriter, *http.Request))
 }
 
+// NoneBody no body of request of response.
+var NoneBody Marshaler = noneBody{}
+
+type noneBody struct{}
+
+func (noneBody) Marshal() ([]byte, string, error) {
+	return []byte{}, "", nil
+}
+
 type marshalledBody struct {
 	ContentLength int
 	ContentType   string

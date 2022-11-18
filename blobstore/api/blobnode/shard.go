@@ -206,7 +206,7 @@ func (c *client) MarkDeleteShard(ctx context.Context, host string, args *DeleteS
 	}
 
 	urlStr := fmt.Sprintf("%v/shard/markdelete/diskid/%v/vuid/%v/bid/%v", host, args.DiskID, args.Vuid, args.Bid)
-	err = c.PostWith(ctx, urlStr, nil, nil)
+	err = c.PostWith(ctx, urlStr, nil, rpc.NoneBody)
 	return
 }
 
@@ -217,7 +217,7 @@ func (c *client) DeleteShard(ctx context.Context, host string, args *DeleteShard
 	}
 
 	urlStr := fmt.Sprintf("%v/shard/delete/diskid/%v/vuid/%v/bid/%v", host, args.DiskID, args.Vuid, args.Bid)
-	err = c.PostWith(ctx, urlStr, nil, nil)
+	err = c.PostWith(ctx, urlStr, nil, rpc.NoneBody)
 	return
 }
 

@@ -21,6 +21,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 type DiskInfoArgs struct {
@@ -99,7 +100,7 @@ type DiskAccessArgs struct {
 // DiskIDAlloc alloc diskID from cluster manager
 func (c *Client) AllocDiskID(ctx context.Context) (proto.DiskID, error) {
 	ret := &DiskIDAllocRet{}
-	err := c.PostWith(ctx, "/diskid/alloc", ret, nil)
+	err := c.PostWith(ctx, "/diskid/alloc", ret, rpc.NoneBody)
 	if err != nil {
 		return 0, err
 	}

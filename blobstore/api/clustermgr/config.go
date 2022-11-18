@@ -16,6 +16,8 @@ package clustermgr
 
 import (
 	"context"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 type ConfigArgs struct {
@@ -42,6 +44,6 @@ func (c *Client) SetConfig(ctx context.Context, args *ConfigSetArgs) (err error)
 }
 
 func (c *Client) DeleteConfig(ctx context.Context, key string) (err error) {
-	err = c.PostWith(ctx, "/config/delete?key="+key, nil, nil)
+	err = c.PostWith(ctx, "/config/delete?key="+key, nil, rpc.NoneBody)
 	return
 }

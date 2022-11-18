@@ -385,6 +385,14 @@ func TestServerResponseWith(t *testing.T) {
 	}
 	{
 		router := New()
+		router.Use(func(c *Context) {})
+		router.Handle(http.MethodGet, "/", func(c *Context) { c.RespondStatusData(255, NoneBody) })
+		w := resp(router)
+		require.Equal(t, 255, w.status)
+		require.Equal(t, "", string(w.body))
+	}
+	{
+		router := New()
 		router.Handle(http.MethodGet, "/", func(c *Context) {
 			c.RespondJSON(&marshalData{I: 11, S: "foo bar"})
 		})

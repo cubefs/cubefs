@@ -90,11 +90,13 @@ func callWithJSON(w http.ResponseWriter, req *http.Request) {
 	r := &ret{}
 	err := json.NewDecoder(req.Body).Decode(r)
 	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	r.Name = r.Name + "+Test"
 	marshal, err := json.Marshal(r)
 	if err != nil {
+		w.WriteHeader(http.StatusGatewayTimeout)
 		return
 	}
 	w.Write(marshal)
@@ -188,6 +190,12 @@ func TestClient_PostWithNoCrc(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "TestClient_PostWithNoCrc+Test", result.Name)
+}
+
+func TestClient_PostWithNoneBody(t *testing.T) {
+	ctx := context.Background()
+	err := simpleClient.PostWith(ctx, testServer.URL+"/json", nil, NoneBody)
+	require.Equal(t, DetectStatusCode(err), http.StatusBadRequest)
 }
 
 func TestClient_Delete(t *testing.T) {
