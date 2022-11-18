@@ -18,26 +18,27 @@ import (
 	"context"
 	"errors"
 	"io"
+	"time"
 
 	"github.com/dustin/go-humanize"
+	"golang.org/x/time/rate"
 
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/limitio"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/priority"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
 
 var ErrWrongConfig = errors.New("qos: wrong config item")
 
 // qos controller. controlling two dimensions:
-// - iops
-// - bps
+// - iopsLimiter
+// - bpsLimiter
 type LevelQos interface {
 	Writer(ctx context.Context, underlying io.Writer) io.Writer
 	WriterAt(ctx context.Context, underlying io.WriterAt) io.WriterAt
 	Reader(ctx context.Context, underlying io.Reader) io.Reader
 	ReaderAt(ctx context.Context, underlying io.ReaderAt) io.ReaderAt
-	GetLevelQosIns() *levelQos
-	Close() error
+	ChangeLevelQos(level string, conf Config)
 }
 
 type LevelGetter interface {
@@ -51,147 +52,101 @@ type LevelManager struct {
 }
 
 // Implementation of LevelQos interface
-// Note: iops and bps can be left unconfigured.
+// Note: iopsLimiter and bpsLimiter can be left unconfigured.
 // levelQos Control adaptive threshold
 type levelQos struct {
-	bps       limitio.Controller
-	iops      limitio.Controller
-	diskStat  iostat.IOViewer
-	threshold *Threshold
-}
-
-type rateReader struct {
-	underlying io.Reader
-	h          *levelQos
-}
-
-type rateReaderAt struct {
-	underlying io.ReaderAt
-	h          *levelQos
-}
-
-type rateWriter struct {
-	underlying io.Writer
-	h          *levelQos
-}
-
-type rateWriterAt struct {
-	underlying io.WriterAt
-	h          *levelQos
-}
-
-func (w *rateWriter) Write(p []byte) (written int, err error) {
-	w.h.adjustCapacity()
-	written, err = w.underlying.Write(p)
-	return
-}
-
-func (wt *rateWriterAt) WriteAt(p []byte, off int64) (n int, err error) {
-	wt.h.adjustCapacity()
-	n, err = wt.underlying.WriteAt(p, off)
-	return
-}
-
-func (r *rateReader) Read(p []byte) (n int, err error) {
-	r.h.adjustCapacity()
-	n, err = r.underlying.Read(p)
-	return
-}
-
-func (rt *rateReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
-	rt.h.adjustCapacity()
-	n, err = rt.underlying.ReadAt(p, off)
-	return
+	bpsLimiter  *rate.Limiter
+	iopsLimiter *rate.Limiter
+	diskStat    iostat.IOViewer
+	threshold   *Threshold
+	closer.Closer
 }
 
 func (l *levelQos) Writer(ctx context.Context, underlying io.Writer) io.Writer {
-	w := underlying
-
-	w = NewIOPSWriter(ctx, w, l.iops)
-	w = NewBpsWriter(ctx, w, l.bps)
-
-	return &rateWriter{
-		underlying: w,
-		h:          l,
+	return &rateLimiter{
+		ctx:      ctx,
+		writer:   underlying,
+		levelQos: l,
 	}
 }
 
-func (l *levelQos) GetLevelQosIns() *levelQos {
-	return l
-}
-
 func (l *levelQos) WriterAt(ctx context.Context, underlying io.WriterAt) io.WriterAt {
-	w := underlying
-
-	w = NewIOPSWriterAt(ctx, w, l.iops)
-	w = NewBpsWriterAt(ctx, w, l.bps)
-
-	return &rateWriterAt{
-		underlying: w,
-		h:          l,
+	return &rateLimiter{
+		ctx:      ctx,
+		writerAt: underlying,
+		levelQos: l,
 	}
 }
 
 func (l *levelQos) Reader(ctx context.Context, underlying io.Reader) io.Reader {
-	r := underlying
-
-	r = NewIOPSReader(ctx, r, l.iops)
-	r = NewBpsReader(ctx, r, l.bps)
-
-	return &rateReader{
-		underlying: r,
-		h:          l,
+	return &rateLimiter{
+		ctx:      ctx,
+		reader:   underlying,
+		levelQos: l,
 	}
 }
 
 func (l *levelQos) ReaderAt(ctx context.Context, underlying io.ReaderAt) io.ReaderAt {
-	r := underlying
-
-	r = NewIOPSReaderAt(ctx, r, l.iops)
-	r = NewBpsReaderAt(ctx, r, l.bps)
-
-	return &rateReaderAt{
-		underlying: r,
-		h:          l,
+	return &rateLimiter{
+		ctx:      ctx,
+		readerAt: underlying,
+		levelQos: l,
 	}
 }
 
-func (l *levelQos) Close() error {
-	if l.bps != nil {
-		return l.bps.Close()
+func (l *levelQos) updateCapacity() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	updatefn := func() {
+		if l.diskStat == nil || (l.iopsLimiter == nil && l.bpsLimiter == nil) {
+			return
+		}
+
+		rstat := l.diskStat.ReadStat()
+		wstat := l.diskStat.WriteStat()
+
+		bps := rstat.Bps + wstat.Bps
+		iops := rstat.Iops + wstat.Iops
+
+		if l.iopsLimiter != nil {
+			deepIops := int(float64(l.threshold.Iops) * l.threshold.Factor)
+			// iops is not in deep limit but disk real load is over threshold, will reset to deep limit threshold
+			if l.iopsLimiter.Burst() == 2*int(l.threshold.Iops) && iops > uint64(l.threshold.DiskIOPS) {
+				resetLimiter(l.iopsLimiter, deepIops)
+			}
+			// iops is in deep limit but disk real load is below threshold, will reset to original limit threshold
+			if l.iopsLimiter.Burst() != 2*int(l.threshold.Iops) && iops < uint64(l.threshold.DiskIOPS) {
+				resetLimiter(l.iopsLimiter, int(l.threshold.Iops))
+			}
+		}
+
+		if l.bpsLimiter != nil {
+			deepBps := int(float64(l.threshold.Bandwidth) * l.threshold.Factor)
+			// bps is not in deep limit but disk real load is over threshold, will reset to deep limit threshold
+			if l.bpsLimiter.Burst() == 2*int(l.threshold.Bandwidth) && bps > uint64(l.threshold.DiskBandwidth) {
+				resetLimiter(l.bpsLimiter, deepBps)
+			}
+			// bps is in deep limit but disk real load is below threshold, will reset to original limit threshold
+			if l.bpsLimiter.Burst() != 2*int(l.threshold.Bandwidth) && bps < uint64(l.threshold.DiskBandwidth) {
+				resetLimiter(l.bpsLimiter, int(l.threshold.Bandwidth))
+			}
+		}
 	}
-	if l.iops != nil {
-		return l.iops.Close()
+
+	for {
+		select {
+		case <-l.Done():
+			return
+		case <-ticker.C:
+			updatefn()
+		}
 	}
-	return nil
 }
 
-func (l *levelQos) adjustCapacity() {
-	if l.diskStat == nil || (l.iops == nil && l.bps == nil) {
-		return
-	}
-
-	rstat := l.diskStat.ReadStat()
-	wstat := l.diskStat.WriteStat()
-
-	bps := rstat.Bps + wstat.Bps
-	iops := rstat.Iops + wstat.Iops
-
-	if l.iops != nil {
-		capacity := int(l.threshold.Iops)
-		if iops > uint64(l.threshold.DiskIOPS) {
-			capacity = int(float64(l.threshold.Iops) * l.threshold.Factor)
-		}
-		l.iops.UpdateCapacity(capacity)
-	}
-
-	if l.bps != nil {
-		capacity := int(l.threshold.Bandwidth)
-		if bps > uint64(l.threshold.DiskBandwidth) {
-			capacity = int(float64(l.threshold.Bandwidth) * l.threshold.Factor)
-		}
-		l.bps.UpdateCapacity(capacity)
-	}
+func resetLimiter(limiter *rate.Limiter, capacity int) {
+	limiter.SetLimit(rate.Limit(capacity))
+	limiter.SetBurst(2 * capacity)
 }
 
 // get the controller of the specified priority
@@ -204,13 +159,15 @@ func (mgr *LevelManager) GetLevel(pri priority.Priority) LevelQos {
 	return mgr.levels[pri]
 }
 
-func NewLevelQos(threshold *Threshold, diskStat iostat.IOViewer) LevelQos {
+func NewLevelQos(threshold *Threshold, diskStat iostat.IOViewer) *levelQos {
 	qos := &levelQos{
 		diskStat:  diskStat,
 		threshold: threshold,
+		Closer:    closer.New(),
 	}
-	qos.bps = limitio.NewController(threshold.Bandwidth)
-	qos.iops = limitio.NewController(threshold.Iops)
+	qos.iopsLimiter = rate.NewLimiter(rate.Limit(threshold.Iops), 2*int(threshold.Iops))
+	qos.bpsLimiter = rate.NewLimiter(rate.Limit(threshold.Bandwidth), 2*int(threshold.Bandwidth))
+	go qos.updateCapacity()
 	return qos
 }
 
@@ -246,6 +203,6 @@ func NewLevelQosMgr(conf Config, diskStat iostat.IOViewer) (*LevelManager, error
 
 func (l *levelQos) ChangeLevelQos(level string, conf Config) {
 	l.threshold.reset(level, conf)
-	l.iops.UpdateCapacity(int(l.threshold.Iops))
-	l.bps.UpdateCapacity(int(l.threshold.Bandwidth))
+	resetLimiter(l.iopsLimiter, int(l.threshold.Iops))
+	resetLimiter(l.bpsLimiter, int(l.threshold.Bandwidth))
 }

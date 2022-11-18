@@ -40,6 +40,7 @@ const (
 	CodeInvalidChunkId   = 630
 	CodeTooManyChunks    = 632
 	CodeChunkInuse       = 633
+	CodeSizeOverBurst    = 634
 
 	CodeBidNotFound          = 651
 	CodeShardSizeTooLarge    = 652
@@ -75,6 +76,7 @@ var (
 	ErrInvalidChunkId   = Error(CodeInvalidChunkId)
 	ErrTooManyChunks    = Error(CodeTooManyChunks)
 	ErrChunkInuse       = Error(CodeChunkInuse)
+	ErrSizeOverBurst    = Error(CodeSizeOverBurst)
 
 	ErrNoSuchBid            = Error(CodeBidNotFound)
 	ErrShardSizeTooLarge    = Error(CodeShardSizeTooLarge)

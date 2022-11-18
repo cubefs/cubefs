@@ -17,7 +17,6 @@ package qos
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"io"
 	"io/ioutil"
 	"log"
@@ -43,55 +42,51 @@ var (
 func init() {
 	runtime.GOMAXPROCS(8)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-	rand.Read(_buffer)
 }
 
 func TestQoSControllerReader(t *testing.T) {
-	{
-		ctx := context.Background()
-		ioStat, _ := iostat.StatInit("", 0, true)
-		iom := &flow.IOFlowStat{}
-		iom[0] = ioStat
-		input := Threshold{
-			DiskBandwidth: 10 * 1024 * 1024,
-			DiskIOPS:      100,
+	ctx := context.Background()
+	ioStat, _ := iostat.StatInit("", 0, true)
+	iom := &flow.IOFlowStat{}
+	iom[0] = ioStat
+	input := Threshold{
+		DiskBandwidth: 10 * 1024 * 1024,
+		DiskIOPS:      1000,
 
-			ParaConfig: ParaConfig{
-				Bandwidth: 2 << 20,
-				Iops:      512,
-			},
-		}
-		diskIO := flow.NewDiskViewer(iom)
-		c := NewLevelQos(&input, diskIO)
-		r1 := c.Reader(ctx, ioStat.Reader(bytes.NewReader(_buffer)))
-		r2 := c.Reader(ctx, ioStat.Reader(bytes.NewReader(_buffer)))
-		defer c.Close()
-
-		b1 := make([]byte, _bufferSize)
-		b2 := make([]byte, _bufferSize)
-		wg := sync.WaitGroup{}
-		wg.Add(2)
-		go func() {
-			n, err := io.ReadFull(r1, b1)
-			require.NoError(t, err)
-			require.Equal(t, _bufferSize, int64(n))
-			wg.Done()
-		}()
-		go func() {
-			time.Sleep(1 * time.Second)
-			n, err := io.ReadFull(r2, b2)
-			require.NoError(t, err)
-			require.Equal(t, _bufferSize, int64(n))
-			wg.Done()
-		}()
-		now := time.Now()
-		wg.Wait()
-		elapsed := time.Since(now).Seconds()
-		require.True(t, math.Abs(4-elapsed) < 0.5)
-		require.Equal(t, _buffer, b1)
-		require.Equal(t, _buffer, b2)
+		ParaConfig: ParaConfig{
+			Bandwidth: 2 << 20,
+			Iops:      512,
+		},
 	}
+	diskIO := flow.NewDiskViewer(iom)
+	qos := NewLevelQos(&input, diskIO)
+	defer qos.Close()
+	r1 := qos.Reader(ctx, ioStat.Reader(bytes.NewReader(_buffer)))
+	r2 := qos.Reader(ctx, ioStat.Reader(bytes.NewReader(_buffer)))
+
+	b1 := make([]byte, _bufferSize)
+	b2 := make([]byte, _bufferSize)
+
+	now := time.Now()
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		n, err := io.ReadFull(r1, b1)
+		require.NoError(t, err)
+		require.Equal(t, _bufferSize, int64(n))
+		wg.Done()
+	}()
+	go func() {
+		n, err := io.ReadFull(r2, b2)
+		require.NoError(t, err)
+		require.Equal(t, _bufferSize, int64(n))
+		wg.Done()
+	}()
+	wg.Wait()
+	elapsed := time.Since(now).Seconds()
+	require.True(t, math.Abs(2-elapsed) < 0.5)
+	require.Equal(t, _buffer, b1)
+	require.Equal(t, _buffer, b2)
 }
 
 func TestQoSControllerReaderAt(t *testing.T) {
@@ -110,12 +105,12 @@ func TestQoSControllerReaderAt(t *testing.T) {
 			},
 		}
 		diskIO := flow.NewDiskViewer(iom)
-		c := NewLevelQos(&input, diskIO)
-		r1 := c.ReaderAt(ctx, ioStat.ReaderAt(bytes.NewReader(_buffer)))
-		r2 := c.ReaderAt(ctx, ioStat.ReaderAt(bytes.NewReader(_buffer)))
+		qos := NewLevelQos(&input, diskIO)
+		defer qos.Close()
+		r1 := qos.ReaderAt(ctx, ioStat.ReaderAt(bytes.NewReader(_buffer)))
+		r2 := qos.ReaderAt(ctx, ioStat.ReaderAt(bytes.NewReader(_buffer)))
 		sc1 := io.NewSectionReader(r1, 0, _bufferSize)
 		sc2 := io.NewSectionReader(r2, 0, _bufferSize)
-		defer c.Close()
 
 		b1 := make([]byte, _bufferSize)
 		b2 := make([]byte, _bufferSize)
@@ -128,7 +123,6 @@ func TestQoSControllerReaderAt(t *testing.T) {
 			wg.Done()
 		}()
 		go func() {
-			time.Sleep(1 * time.Second)
 			n, err := io.ReadFull(sc2, b2)
 			require.NoError(t, err)
 			require.Equal(t, _bufferSize, int64(n))
@@ -137,13 +131,13 @@ func TestQoSControllerReaderAt(t *testing.T) {
 		now := time.Now()
 		wg.Wait()
 		elapsed := time.Since(now).Seconds()
-		require.True(t, math.Abs(4-elapsed) < 0.5)
+		require.True(t, math.Abs(2-elapsed) < 0.5)
 		require.Equal(t, _buffer, b1)
 		require.Equal(t, _buffer, b2)
 	}
 }
 
-func TestBPSControllerWriter(t *testing.T) {
+func TestBpsLimitControllerWriter(t *testing.T) {
 	{
 		ctx := context.Background()
 		ioStat, _ := iostat.StatInit("", 0, true)
@@ -159,12 +153,12 @@ func TestBPSControllerWriter(t *testing.T) {
 			},
 		}
 		diskIO := flow.NewDiskViewer(iom)
-		h := NewLevelQos(&input, diskIO)
-		defer h.Close()
+		qos := NewLevelQos(&input, diskIO)
+		defer qos.Close()
 		b1 := new(bytes.Buffer)
 		b2 := new(bytes.Buffer)
-		w1 := h.Writer(ctx, ioStat.Writer(b1))
-		w2 := h.Writer(ctx, ioStat.Writer(b2))
+		w1 := qos.Writer(ctx, ioStat.Writer(b1))
+		w2 := qos.Writer(ctx, ioStat.Writer(b2))
 
 		wg := sync.WaitGroup{}
 		wg.Add(2)
@@ -175,7 +169,6 @@ func TestBPSControllerWriter(t *testing.T) {
 			wg.Done()
 		}()
 		go func() {
-			time.Sleep(1 * time.Second)
 			n, err := io.Copy(w2, bytes.NewReader(_buffer))
 			require.NoError(t, err)
 			require.Equal(t, _bufferSize, n)
@@ -185,13 +178,13 @@ func TestBPSControllerWriter(t *testing.T) {
 		now := time.Now()
 		wg.Wait()
 		elapsed := time.Since(now).Seconds()
-		require.True(t, math.Abs(4-elapsed) < 0.5)
+		require.True(t, math.Abs(2-elapsed) < 0.5)
 		require.Equal(t, _buffer, b1.Bytes())
 		require.Equal(t, _buffer, b2.Bytes())
 	}
 }
 
-func TestBPSControllerWriterAt(t *testing.T) {
+func TestBpsLimitControllerWriterAt(t *testing.T) {
 	ctx := context.Background()
 	ioStat, _ := iostat.StatInit("", 0, true)
 	iom := &flow.IOFlowStat{}
@@ -206,8 +199,8 @@ func TestBPSControllerWriterAt(t *testing.T) {
 		},
 	}
 	diskIO := flow.NewDiskViewer(iom)
-	c := NewLevelQos(&input, diskIO)
-	defer c.Close()
+	qos := NewLevelQos(&input, diskIO)
+	defer qos.Close()
 
 	workDir, err := ioutil.TempDir(os.TempDir(), "workDir")
 	require.NoError(t, err)
@@ -221,8 +214,8 @@ func TestBPSControllerWriterAt(t *testing.T) {
 	require.NoError(t, err)
 	b2, err := os.OpenFile(path2, os.O_CREATE|os.O_RDWR, 0o666)
 	require.NoError(t, err)
-	w1 := c.WriterAt(ctx, ioStat.WriterAt(b1))
-	w2 := c.WriterAt(ctx, ioStat.WriterAt(b2))
+	w1 := qos.WriterAt(ctx, ioStat.WriterAt(b1))
+	w2 := qos.WriterAt(ctx, ioStat.WriterAt(b2))
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
@@ -232,7 +225,6 @@ func TestBPSControllerWriterAt(t *testing.T) {
 		wg.Done()
 	}()
 	go func() {
-		time.Sleep(1 * time.Second)
 		n, err := w2.WriteAt(_buffer, 0)
 		require.NoError(t, err)
 		require.Equal(t, _bufferSize, int64(n))
@@ -241,5 +233,5 @@ func TestBPSControllerWriterAt(t *testing.T) {
 	now := time.Now()
 	wg.Wait()
 	elapsed := time.Since(now).Seconds()
-	require.True(t, math.Abs(4-elapsed) < 0.8)
+	require.True(t, math.Abs(2-elapsed) < 0.8)
 }

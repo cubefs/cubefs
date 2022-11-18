@@ -129,6 +129,7 @@ var errCodeMap = map[int]string{
 	CodeInvalidChunkId:   "chunk id is invalid",
 	CodeTooManyChunks:    "too many chunks",
 	CodeChunkInuse:       "chunk in use",
+	CodeSizeOverBurst:    "request size over limit burst",
 
 	CodeBidNotFound:          "bid not found",
 	CodeShardSizeTooLarge:    "shard size too large",

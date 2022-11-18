@@ -34,11 +34,11 @@ type Qos interface {
 	WriterAt(context.Context, bnapi.IOType, io.WriterAt) io.WriterAt
 	Writer(context.Context, bnapi.IOType, io.Writer) io.Writer
 	Reader(context.Context, bnapi.IOType, io.Reader) io.Reader
-	GetIOQosIns() (IOqos *IOQos)
+	GetLevelMgr() LevelGetter
 }
 
-func (qos *IOQos) GetIOQosIns() (IOqos *IOQos) {
-	return qos
+func (qos *IOQos) GetLevelMgr() LevelGetter {
+	return qos.LevelMgr
 }
 
 func (qos *IOQos) getiostat(iot bnapi.IOType) (ios iostat.StatMgrAPI) {

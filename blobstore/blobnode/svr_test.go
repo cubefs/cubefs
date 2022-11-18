@@ -30,6 +30,8 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -232,6 +234,36 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
 		Clustermgr:           cc,
 		HeartbeatIntervalSec: 600,
+	}
+	if path == "iopslimit" {
+		ioFlowStat, _ := flow.NewIOFlowStat("default", false)
+		ioview := flow.NewDiskViewer(ioFlowStat)
+		conf.DiskConfig.DataQos = qos.Config{
+			DiskBandwidthMBPS: 20,
+			DiskIOPS:          2,
+			LevelConfigs: qos.LevelConfig{"level0": qos.ParaConfig{
+				Iops:      2,
+				Bandwidth: 20,
+				Factor:    0.5,
+			}},
+			DiskViewer: ioview,
+			StatGetter: ioFlowStat,
+		}
+	}
+	if path == "bpslimit" {
+		ioFlowStat, _ := flow.NewIOFlowStat("default", false)
+		ioview := flow.NewDiskViewer(ioFlowStat)
+		conf.DiskConfig.DataQos = qos.Config{
+			DiskBandwidthMBPS: 1,
+			DiskIOPS:          100,
+			LevelConfigs: qos.LevelConfig{"level0": qos.ParaConfig{
+				Iops:      100,
+				Bandwidth: 1,
+				Factor:    0.5,
+			}},
+			DiskViewer: ioview,
+			StatGetter: ioFlowStat,
+		}
 	}
 	service, err := NewService(conf)
 	require.NoError(t, err)

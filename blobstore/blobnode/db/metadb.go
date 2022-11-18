@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	bncom "github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
@@ -72,8 +74,8 @@ type metadb struct {
 	delReqs   chan Request
 	config    MetaConfig
 
-	iostat  *flow.IOFlowStat     // io visualization
-	limiter []limitio.Controller // io control
+	iostat  *flow.IOFlowStat // io visualization
+	limiter []*rate.Limiter  // io limiter
 
 	closeCh chan struct{}
 	closed  bool
@@ -337,12 +339,23 @@ func (md *metadb) applyToken(ctx context.Context, iot bnapi.IOType) (n int64) {
 	if limiter == nil {
 		return
 	}
-
-	n, limited := limiter.Assign(1)
-	if limited {
-		addTrackTag(ctx, _limited)
+	now := time.Now()
+	reserve := limiter.ReserveN(now, 1)
+	delay := reserve.DelayFrom(now)
+	if delay == 0 {
+		return
 	}
-	return n
+	t := time.NewTimer(delay)
+	defer t.Stop()
+	addTrackTag(ctx, _limited)
+
+	select {
+	case <-t.C:
+		return
+	case <-ctx.Done():
+		reserve.Cancel()
+		return
+	}
 }
 
 func addTrackTag(ctx context.Context, name string) {
@@ -402,7 +415,7 @@ func newMetaDB(dirpath string, config MetaConfig) (md *metadb, err error) {
 	}
 
 	priLevels := pri.GetLevels()
-	md.limiter = make([]limitio.Controller, len(priLevels))
+	md.limiter = make([]*rate.Limiter, len(priLevels))
 
 	for priority, name := range priLevels {
 		para, exist := config.MetaQos[name]
@@ -410,7 +423,7 @@ func newMetaDB(dirpath string, config MetaConfig) (md *metadb, err error) {
 			// No flow control by default without configuration
 			continue
 		}
-		controller := limitio.NewController(para.Iops)
+		controller := rate.NewLimiter(rate.Limit(para.Iops), 2*int(para.Iops))
 		md.limiter[priority] = controller
 	}
 

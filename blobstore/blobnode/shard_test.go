@@ -228,6 +228,76 @@ func TestShardPutAndGet(t *testing.T) {
 	_, _ = client.PutShard(ctx, host, putShardArg)
 }
 
+func TestService_limit_iops(t *testing.T) {
+	service, _ := newTestBlobNodeService(t, "iopslimit")
+	defer cleanTestBlobNodeService(service)
+	host := runTestServer(service)
+	client := bnapi.New(&bnapi.Config{})
+	ctx := context.TODO()
+	diskID := proto.DiskID(101)
+	vuid := proto.Vuid(2001)
+	createChunkArg := &bnapi.CreateChunkArgs{
+		DiskID: diskID,
+		Vuid:   vuid,
+	}
+	err := client.CreateChunk(ctx, host, createChunkArg)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 1; i <= 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			shardData := []byte("testData")
+			_, err := client.PutShard(ctx, host, &bnapi.PutShardArgs{
+				DiskID: diskID,
+				Vuid:   vuid,
+				Bid:    proto.BlobID(i),
+				Size:   int64(len(shardData)),
+				Type:   bnapi.IOType(0),
+				Body:   bytes.NewReader(shardData),
+			})
+			require.NoError(t, err)
+		}(i)
+	}
+	wg.Wait()
+}
+
+func TestService_limit_bps(t *testing.T) {
+	service, _ := newTestBlobNodeService(t, "bpslimit")
+	defer cleanTestBlobNodeService(service)
+	host := runTestServer(service)
+	client := bnapi.New(&bnapi.Config{})
+	ctx := context.TODO()
+	diskID := proto.DiskID(101)
+	vuid := proto.Vuid(2001)
+	createChunkArg := &bnapi.CreateChunkArgs{
+		DiskID: diskID,
+		Vuid:   vuid,
+	}
+	err := client.CreateChunk(ctx, host, createChunkArg)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 1; i <= 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			shardData := make([]byte, 1*1024*1024)
+			_, err := client.PutShard(ctx, host, &bnapi.PutShardArgs{
+				DiskID: diskID,
+				Vuid:   vuid,
+				Bid:    proto.BlobID(i),
+				Size:   int64(len(shardData)),
+				Type:   bnapi.IOType(0),
+				Body:   bytes.NewReader(shardData),
+			})
+			require.NoError(t, err)
+		}(i)
+	}
+	wg.Wait()
+}
+
 func TestService_CmdShardStat_(t *testing.T) {
 	service, _ := newTestBlobNodeService(t, "TestService_CmdShardStat_")
 	defer cleanTestBlobNodeService(service)

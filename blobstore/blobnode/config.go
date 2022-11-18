@@ -192,7 +192,7 @@ func (s *Service) reloadQos(ctx context.Context, qosConf qos.Config) error {
 	priLevels := priority.GetLevels()
 	for pri, name := range priLevels {
 		for _, ds := range disks {
-			levelQos := ds.GetIoQos().GetIOQosIns().LevelMgr.GetLevel(priority.Priority(pri))
+			levelQos := ds.GetIoQos().GetLevelMgr().GetLevel(priority.Priority(pri))
 			if levelQos == nil {
 				if _, ok := qosConf.LevelConfigs[name]; ok {
 					return ErrNotConfigPrevious
@@ -202,7 +202,7 @@ func (s *Service) reloadQos(ctx context.Context, qosConf qos.Config) error {
 			if _, ok := qosConf.LevelConfigs[name]; !ok {
 				return ErrNotConfigNow
 			}
-			levelQos.GetLevelQosIns().ChangeLevelQos(name, qosConf)
+			levelQos.ChangeLevelQos(name, qosConf)
 		}
 	}
 	return nil
