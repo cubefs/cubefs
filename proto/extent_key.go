@@ -51,8 +51,8 @@ type ExtentKey struct {
 	CRC          uint32
 	//snapshot
 	VerSeq  uint64
-	ModGen  uint64
 	IsSplit bool
+	ModGen  uint64
 }
 
 func (k *ExtentKey) GenerateId() uint64 {
