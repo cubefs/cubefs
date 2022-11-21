@@ -45,14 +45,8 @@ func (m *MetaNode) upatePartitionMetrics(mp *metaPartition) {
 		exporter.Vol: mp.config.VolName,
 	}
 
-	it := mp.GetInodeTree()
-	itDentry := mp.getDentryTree()
-	if it != nil {
-		exporter.NewGauge("mpInodeCount").SetWithLabels(float64(it.Len()), labels)
-	}
-	if itDentry != nil {
-		exporter.NewGauge("mpDentryCount").SetWithLabels(float64(itDentry.Len()), labels)
-	}
+	exporter.NewGauge("mpInodeCount").SetWithLabels(float64(mp.GetInodeTreeLen()), labels)
+	exporter.NewGauge("mpDentryCount").SetWithLabels(float64(mp.GetDentryTreeLen()), labels)
 }
 
 func (m *MetaNode) collectPartitionMetrics() {

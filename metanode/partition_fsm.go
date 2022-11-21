@@ -170,8 +170,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp = mp.fsmSendToChan(msg.V)
 
 	case opFSMStoreTick:
-		inodeTree := mp.getInodeTree()
-		dentryTree := mp.getDentryTree()
+		inodeTree := mp.inodeTree.GetTree()
+		dentryTree := mp.dentryTree.GetTree()
 		extendTree := mp.extendTree.GetTree()
 		multipartTree := mp.multipartTree.GetTree()
 		msg := &storeMsg{
