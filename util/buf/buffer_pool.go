@@ -71,22 +71,24 @@ func NewNormalBufferPool() *sync.Pool {
 
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
-	headPools      []chan []byte
-	normalPools    []chan []byte
-	tinyPool   *sync.Pool
-	headPool   *sync.Pool
-	normalPool *sync.Pool
+	headPools   []chan []byte
+	normalPools []chan []byte
+	tinyPool    *sync.Pool
+	headPool    *sync.Pool
+	normalPool  *sync.Pool
 }
+
 var (
 	slotCnt = uint64(16)
 )
+
 // NewBufferPool returns a new buffered pool.
 func NewBufferPool() (bufferP *BufferPool) {
 	bufferP = &BufferPool{}
 
 	bufferP.headPools = make([]chan []byte, slotCnt)
 	bufferP.normalPools = make([]chan []byte, slotCnt)
-	for i:=0;i<int(slotCnt);i++  {
+	for i := 0; i < int(slotCnt); i++ {
 		bufferP.headPools[i] = make(chan []byte, HeaderBufferPoolSize/slotCnt)
 		bufferP.normalPools[i] = make(chan []byte, HeaderBufferPoolSize/slotCnt)
 	}
@@ -101,7 +103,7 @@ func (bufferP *BufferPool) getHead(id uint64) (data []byte) {
 	case data = <-bufferP.headPools[id%slotCnt]:
 		return
 	default:
-			return bufferP.headPool.Get().([]byte)
+		return bufferP.headPool.Get().([]byte)
 	}
 }
 

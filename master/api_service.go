@@ -1021,6 +1021,7 @@ func (m *Server) changeMetaPartitionLeader(w http.ResponseWriter, r *http.Reques
 	rstMsg := fmt.Sprintf(" changeMetaPartitionLeader command sucess send to dest host but need check. ")
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
+
 // Decommission a data partition. This usually happens when disk error has been reported.
 // This function needs to be called manually by the admin.
 func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Request) {

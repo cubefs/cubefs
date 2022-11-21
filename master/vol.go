@@ -365,7 +365,7 @@ func (vol *Vol) releaseDataPartitions(releaseCount int, afterLoadSeconds int64) 
 	log.LogInfo(msg)
 }
 
-func (vol *Vol) tryUpdateDpReplicaNum(c *Cluster, partition *DataPartition) (err error){
+func (vol *Vol) tryUpdateDpReplicaNum(c *Cluster, partition *DataPartition) (err error) {
 	partition.RLock()
 	defer partition.RUnlock()
 
