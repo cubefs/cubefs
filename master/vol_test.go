@@ -453,3 +453,27 @@ func TestVolBatchUpdateDps(t *testing.T) {
 		t.Errorf("expect manualDPCount is 0,but get :%v", manualDPCount)
 	}
 }
+
+func TestShrinkVolCapacity(t *testing.T) {
+	volName := commonVolName
+	vol, err := server.cluster.getVol(volName)
+	if err != nil || vol == nil {
+		t.Errorf("getVol:%v err:%v", volName, err)
+		return
+	}
+	newCapacity := vol.totalUsedSpace()/unit.GB + 10
+	t.Logf("newCapacity:%v vol Capacity:%v", newCapacity, vol.Capacity)
+	if newCapacity >= vol.Capacity {
+		t.Logf("newCapacity more than vol Capacity, need increase it")
+		reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
+			hostAddr, proto.AdminUpdateVol, commonVol.Name, newCapacity+1000, buildAuthKey("cfs"))
+		process(reqURL, t)
+	}
+	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
+		hostAddr, proto.AdminShrinkVolCapacity, commonVol.Name, newCapacity, buildAuthKey(vol.Owner))
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if vol.Capacity != newCapacity {
+		t.Errorf("expect Capacity is %v,but get :%v", newCapacity, vol.Capacity)
+	}
+}

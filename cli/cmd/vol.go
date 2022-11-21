@@ -63,6 +63,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolTransferCmd(client),
 		newVolAddDPCmd(client),
 		newVolSetCmd(client),
+		newVolShrinkCapacityCmd(client),
 		newVolPartitionCheckCmd(client),
 		newVolSetMinRWPartitionCmd(client),
 		newVolConvertTaskCmd(client),
@@ -651,6 +652,71 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optCompactTag, CliFlagCompactTag, "", "Specify volume compact")
 	return cmd
 }
+
+func newVolShrinkCapacityCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		optCapacity             uint64
+		optYes                  bool
+		confirmString           = strings.Builder{}
+		vv                      *proto.SimpleVolView
+	)
+	var cmd = &cobra.Command{
+		Use:   "shrinkCapacity [VOLUME NAME]",
+		Short: "Shrink capacity of the volume",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var isChange = false
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
+				return
+			}
+			confirmString.WriteString("Volume configuration changes:\n")
+			confirmString.WriteString(fmt.Sprintf("  Name                : %v\n", vv.Name))
+			if optCapacity > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB -> %v GB\n", vv.Capacity, optCapacity))
+				vv.Capacity = optCapacity
+			}
+			if !isChange {
+				stdout("No changes has been set.\n")
+				return
+			}
+			// ask user for confirm
+			if !optYes {
+				stdout(confirmString.String())
+				stdout("\nConfirm (yes/no)[yes]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" && len(userConfirm) != 0 {
+					err = fmt.Errorf("Abort by user.\n")
+					return
+				}
+			}
+			err = client.AdminAPI().ShrinkVolCapacity(vv.Name, calcAuthKey(vv.Owner), vv.Capacity)
+			if err != nil {
+				return
+			}
+			stdout("Volume capacity has been set successfully.\n")
+			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume capacity [Unit: GB]")
+	return cmd
+}
+
 func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 	var (
 		optMetaDetail bool

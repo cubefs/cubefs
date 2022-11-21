@@ -2830,6 +2830,51 @@ errHandler:
 	return
 }
 
+func (c *Cluster) shrinkVolCapacity(name, authKey string, newCapacity uint64) (err error) {
+	var (
+		vol           *Vol
+		oldCapacity   uint64
+		usedSpaceGB   float64
+		serverAuthKey string
+	)
+	if vol, err = c.getVol(name); err != nil {
+		log.LogErrorf("action[shrinkVolCapacity] err[%v]", err)
+		err = proto.ErrVolNotExists
+		goto errHandler
+	}
+	vol.Lock()
+	defer vol.Unlock()
+	serverAuthKey = vol.Owner
+	if !matchKey(serverAuthKey, authKey) {
+		return proto.ErrVolAuthKeyNotMatch
+	}
+
+	if newCapacity >= vol.Capacity {
+		err = fmt.Errorf("new capacity[%v] should less than vol capacity[%v]", newCapacity, vol.Capacity)
+		goto errHandler
+	}
+	usedSpaceGB = float64(vol.totalUsedSpace()) / unit.GB
+	if float64(newCapacity) < usedSpaceGB {
+		err = fmt.Errorf("new capacity[%v] less than used space[%.2f]", newCapacity, usedSpaceGB)
+		goto errHandler
+	}
+
+	oldCapacity = vol.Capacity
+	vol.Capacity = newCapacity
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.Capacity = oldCapacity
+		log.LogErrorf("action[shrinkVolCapacity] vol[%v] err[%v]", name, err)
+		err = proto.ErrPersistenceByRaft
+		goto errHandler
+	}
+	return
+errHandler:
+	err = fmt.Errorf("action[shrinkVolCapacity], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
+	return
+}
+
 func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum uint8,
 	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache bool,
 	dpSelectorName, dpSelectorParm string,

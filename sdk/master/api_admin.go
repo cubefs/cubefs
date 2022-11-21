@@ -427,6 +427,17 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	return
 }
 
+func (api *AdminAPI) ShrinkVolCapacity(volName, authKey string, capacity uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminShrinkVolCapacity)
+	request.addParam("name", volName)
+	request.addParam("authKey", authKey)
+	request.addParam("capacity", strconv.FormatUint(capacity, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetVolConvertSt)
 	request.addParam("name", volName)

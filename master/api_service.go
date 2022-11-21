@@ -1663,6 +1663,26 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) shrinkVolCapacity(w http.ResponseWriter, r *http.Request) {
+	var (
+		name     string
+		authKey  string
+		capacity int
+		err      error
+	)
+	if name, authKey, capacity, err = parseRequestToUpdateVolCapacity(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.shrinkVolCapacity(name, authKey, uint64(capacity)); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg := fmt.Sprintf("shrink vol[%v] capacity to:%v successfully", name, capacity)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
 func (m *Server) setVolConvertTaskState(w http.ResponseWriter, r *http.Request) {
 	var (
 		err      error
@@ -2968,6 +2988,28 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, replicaNum,
 			err = unmatchedKey(mpReplicaNumKey)
 			return
 		}
+	}
+	return
+}
+
+func parseRequestToUpdateVolCapacity(r *http.Request) (name, authKey string, capacity int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	capacityStr := r.FormValue(volCapacityKey)
+	if capacityStr == "" {
+		err = unmatchedKey(volCapacityKey)
+		return
+	}
+	if capacity, err = strconv.Atoi(capacityStr); err != nil || capacity <= 0 {
+		err = unmatchedKey(volCapacityKey)
+		return
 	}
 	return
 }

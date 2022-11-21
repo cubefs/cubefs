@@ -54,6 +54,7 @@ const (
 	AdminUpdateVolEcInfo           = "/vol/updateEcInfo"
 	AdminSetVolConvertSt           = "/vol/setConvertSate"
 	AdminVolBatchUpdateDps         = "/vol/batchUpdateDataPartitions"
+	AdminShrinkVolCapacity         = "/vol/shrinkCapacity"
 	AdminCreateVol                 = "/admin/createVol"
 	AdminGetVol                    = "/admin/getVol"
 	AdminClusterFreeze             = "/cluster/freeze"
