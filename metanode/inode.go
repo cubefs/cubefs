@@ -98,12 +98,6 @@ func (i *Inode) getTailVerInList() (verSeq uint64, found bool) {
 	return 0, false
 }
 
-type SplitExtentInfo struct {
-	PartitionId uint64
-	ExtentId    uint64
-	refCnt      uint64
-}
-
 // freelist clean inode get all exist extents info, deal special case for split key
 func (inode *Inode) GetAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*proto.ExtentKey) {
 
@@ -835,6 +829,20 @@ func (i *Inode) mergeExtentArr(extentKeysLeft []proto.ExtentKey, extentKeysRight
 	sortMergedExts := make([]proto.ExtentKey, 0, lCnt+rCnt)
 	lPos, rPos := 0, 0
 
+	doWork := func(keyArr *[]proto.ExtentKey) {
+		mLen := len(sortMergedExts)
+		if mLen > 0 && sortMergedExts[mLen-1].IsSequence(&(*keyArr)[lPos]) {
+			sortMergedExts[mLen-1].Size += (*keyArr)[lPos].Size
+			log.LogDebugf("mergeExtentArr. ek left %v right %v", sortMergedExts[mLen-1], (*keyArr)[lPos])
+			if !sortMergedExts[mLen-1].IsSplit || !(*keyArr)[lPos].IsSplit {
+				log.LogErrorf("ino %v ek merge left %v right %v not all split", i.Inode, sortMergedExts[mLen-1], (*keyArr)[lPos])
+			}
+			i.DecSplitEk(&(*keyArr)[lPos])
+		} else {
+			sortMergedExts = append(sortMergedExts, (*keyArr)[lPos])
+		}
+	}
+
 	for {
 		if lPos == lCnt {
 			sortMergedExts = append(sortMergedExts, extentKeysRight[rPos:]...)
@@ -844,31 +852,12 @@ func (i *Inode) mergeExtentArr(extentKeysLeft []proto.ExtentKey, extentKeysRight
 			sortMergedExts = append(sortMergedExts, extentKeysLeft[lPos:]...)
 			break
 		}
-		mLen := len(sortMergedExts)
-		if extentKeysLeft[lPos].FileOffset < extentKeysRight[rPos].FileOffset {
-			if mLen > 0 && sortMergedExts[mLen-1].IsSequence(&extentKeysLeft[lPos]) {
-				sortMergedExts[mLen-1].Size += extentKeysLeft[lPos].Size
-				log.LogDebugf("mergeExtentArr. ek left %v right %v", sortMergedExts[mLen-1], extentKeysLeft[lPos])
-				if !sortMergedExts[mLen-1].IsSplit || !extentKeysLeft[lPos].IsSplit {
-					log.LogErrorf("ino %v ek merge left %v right %v not all split", i.Inode, sortMergedExts[mLen-1], extentKeysLeft[lPos])
-				}
-				i.DecSplitEk(&extentKeysLeft[lPos])
 
-			} else {
-				sortMergedExts = append(sortMergedExts, extentKeysLeft[lPos])
-			}
+		if extentKeysLeft[lPos].FileOffset < extentKeysRight[rPos].FileOffset {
+			doWork(&extentKeysLeft)
 			lPos++
 		} else {
-			if mLen > 0 && sortMergedExts[mLen-1].IsSequence(&extentKeysRight[rPos]) {
-				sortMergedExts[mLen-1].Size += extentKeysRight[rPos].Size
-				log.LogDebugf("mergeExtentArr. ek left %v right %v", sortMergedExts[mLen-1], extentKeysRight[rPos])
-				if !sortMergedExts[mLen-1].IsSplit || !extentKeysRight[rPos].IsSplit {
-					log.LogErrorf("ino %v ek merge left %v right %v not all split", i.Inode, sortMergedExts[mLen-1], extentKeysRight[rPos])
-				}
-				i.DecSplitEk(&extentKeysRight[rPos])
-			} else {
-				sortMergedExts = append(sortMergedExts, extentKeysRight[rPos])
-			}
+			doWork(&extentKeysRight)
 			rPos++
 		}
 	}

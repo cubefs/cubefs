@@ -267,8 +267,9 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 	}
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, int(partition.ReplicaNum), peers, int(dataPartitionSize), leaderSize, hosts, createType, partitionType, decommissionedDisks, partition.VerSeq))
-
+		partition.VolName, partition.PartitionID, int(partition.ReplicaNum),
+		peers, int(dataPartitionSize), leaderSize, hosts, createType,
+		partitionType, decommissionedDisks, partition.VerSeq))
 	partition.resetTaskID(task)
 	return
 }

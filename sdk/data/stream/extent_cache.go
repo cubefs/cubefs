@@ -125,13 +125,6 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 	}
 }
 
-func (cache *ExtentCache) isSequnce(ekLeft *proto.ExtentKey, ekRight *proto.ExtentKey) bool {
-	return ekLeft.ExtentId == ekRight.ExtentId &&
-		ekLeft.VerSeq == ekRight.VerSeq &&
-		ekLeft.ExtentOffset+uint64(ekLeft.Size) == ekRight.ExtentOffset &&
-		ekLeft.FileOffset+uint64(ekLeft.Size) == ekRight.FileOffset
-}
-
 // Split extent key.
 func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKey) (err error) {
 	cache.Lock()
