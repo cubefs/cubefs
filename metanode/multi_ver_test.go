@@ -14,8 +14,6 @@ import (
 )
 
 var partitionId uint64 = 10
-var ModeDirType uint32 = 2147484141
-var ModFileType uint32 = 420
 var manager = &metadataManager{}
 var mp *metaPartition
 
@@ -29,16 +27,17 @@ var metaConf = &MetaPartitionConfig{
 }
 
 const (
-	ConfigKeyLogDir   = "logDir"
-	ConfigKeyLogLevel = "logLevel"
+	ConfigKeyLogDir          = "logDir"
+	ConfigKeyLogLevel        = "logLevel"
+	DirModeType       uint32 = 2147484141
 )
 
 var cfgJSON = `{
 		"role": "meta",
-		"logDir": "/tmp/chubaofs/Logs",
+		"logDir": "/tmp/cubefs/Logs",
 		"logLevel":"debug",
-		"walDir":"/tmp/chubaofs/raft",
-		"clusterName":"chubaofs"
+		"walDir":"/tmp/cubefs/raft",
+		"clusterName":"cubefs"
 	}`
 var tlog *testing.T
 
@@ -726,8 +725,8 @@ func TestDentry(t *testing.T) {
 	assert.True(t, isDentryEqual(&rspReadDir.Children[0], dirDen))
 
 	rspReadDir = testReadDirAll(t, 0, dirIno.Inode)
-
 	assert.True(t, len(rspReadDir.Children) == len(denArry))
+
 	for idx, info := range rspReadDir.Children {
 		t.Logf("getinfo:%v, expect:%v", info, denArry[idx])
 		assert.True(t, isDentryEqual(&info, denArry[idx]))

@@ -30,7 +30,6 @@ var mp1 *metaPartition
 var mp2 *metaPartition
 var mp3 *metaPartition
 
-//var DirModeType uint32 = 2147484141
 const FileModeType uint32 = 420
 
 const (
