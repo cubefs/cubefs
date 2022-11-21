@@ -146,7 +146,7 @@ func (mp *metaPartition) deleteWorker() {
 			}
 
 			//check inode nlink == 0 and deletMarkFlag unset
-			if inode, ok := mp.inodeTree.CopyGet(&Inode{Inode: ino}).(*Inode); ok {
+			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
 				if inode.ShouldDelayDelete() {
 					log.LogDebugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0", inode)
 					delayDeleteInos = append(delayDeleteInos, ino)
@@ -233,7 +233,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		ref := &Inode{Inode: ino}
-		inode, ok := mp.inodeTree.CopyGet(ref).(*Inode)
+		inode, ok := mp.inodeTree.Get(ref).(*Inode)
 		if !ok {
 			continue
 		}
