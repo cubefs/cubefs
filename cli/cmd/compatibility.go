@@ -127,7 +127,7 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 		return true
 	})
 	if err == nil {
-		stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTree().Len())
+		stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTreeLen())
 	}
 	return
 }
@@ -179,7 +179,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		return true
 	})
 	if err == nil {
-		stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTree().Len())
+		stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTreeLen())
 	}
 	return
 }

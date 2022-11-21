@@ -321,6 +321,14 @@ func (mp *metaPartition) GetInodeTree() *BTree {
 	return mp.inodeTree.GetTree()
 }
 
+// GetInodeTreeLen returns the inode tree length.
+func (mp *metaPartition) GetInodeTreeLen() int {
+	if mp.inodeTree == nil {
+		return 0
+	}
+	return mp.inodeTree.Len()
+}
+
 func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {
 	var bytes = make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, req.Inode)

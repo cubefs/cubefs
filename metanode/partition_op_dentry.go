@@ -239,3 +239,11 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 func (mp *metaPartition) GetDentryTree() *BTree {
 	return mp.dentryTree.GetTree()
 }
+
+// GetDentryTreeLen returns the dentry tree length.
+func (mp *metaPartition) GetDentryTreeLen() int {
+	if mp.dentryTree == nil {
+		return 0
+	}
+	return mp.dentryTree.Len()
+}
