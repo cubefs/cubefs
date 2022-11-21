@@ -149,11 +149,12 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			crossZone, _ := strconv.ParseBool(optCrossZone)
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
 			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
-			replicaNum, _ := strconv.Atoi(optReplicaNum)
+
 			if optReplicaNum == "" && optVolType == 1 {
-				replicaNum = 1
+				optReplicaNum = "1"
 			}
 			dpReadOnlyWhenVolFull, _ := strconv.ParseBool(optDpReadOnlyWhenVolFull)
+			replicaNum, _ := strconv.Atoi(optReplicaNum)
 
 			// ask user for confirm
 			if !optYes {
@@ -165,7 +166,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  DefaultPriority     : %v\n", normalZonesFirst)
 				stdout("  description         : %v\n", optBusiness)
 				stdout("  mpCount             : %v\n", optMPCount)
-				stdout("  replicaNum          : %v\n", replicaNum)
+				stdout("  replicaNum          : %v\n", optReplicaNum)
 				stdout("  size                : %v G\n", optSize)
 				stdout("  volType             : %v\n", optVolType)
 				stdout("  followerRead        : %v\n", followerRead)
@@ -191,7 +192,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, crossZone, normalZonesFirst, optBusiness,
-				optMPCount, replicaNum, optSize, optVolType, followerRead,
+				optMPCount, int(replicaNum), optSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull)
