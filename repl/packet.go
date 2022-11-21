@@ -90,6 +90,8 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errMsg, raft.ErrStopped.Error()) {
+		p.ResultCode = proto.OpTryOtherAddr
 	} else {
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}
@@ -305,6 +307,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
+		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errMsg, raft.ErrStopped.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else {
 		p.ResultCode = proto.OpIntraGroupNetErr
