@@ -205,8 +205,7 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 		}
 		// if any alive snapshot in mp dimension exist in seq scope from den to next ascend neighbor, dio snapshot be keep or else drop
 		startSeq := den.VerSeq
-		realIdx := idx - 1
-
+		realIdx := idx - 1 //index in history list layer
 		if realIdx == 0 {
 			endSeq = d.getVerSeq()
 		} else {

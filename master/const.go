@@ -295,20 +295,22 @@ const (
 	nodeSetGrpPrefix       = keySeparator + nodeSetGrpAcronym + keySeparator
 	DomainPrefix           = keySeparator + domainAcronym + keySeparator
 	zonePrefix             = keySeparator + zoneAcronym + keySeparator
-	apiLimiterPrefix       = keySeparator + apiLimiterAcronym + keySeparator
-	MultiVerPrefix         = keySeparator + "multiVer" + keySeparator
-	AclPrefix              = keySeparator + "acl" + keySeparator
-	UidPrefix              = keySeparator + "uid" + keySeparator
-	akAcronym              = "ak"
-	userAcronym            = "user"
-	volUserAcronym         = "voluser"
-	volNameAcronym         = "volname"
-	akPrefix               = keySeparator + akAcronym + keySeparator
-	userPrefix             = keySeparator + userAcronym + keySeparator
-	volUserPrefix          = keySeparator + volUserAcronym + keySeparator
-	volWarnUsedRatio       = 0.9
-	volCachePrefix         = keySeparator + volNameAcronym + keySeparator
-	quotaPrefix            = keySeparator + "quota" + keySeparator
-	lcNodePrefix           = keySeparator + lcNodeAcronym + keySeparator
-	lcConfPrefix           = keySeparator + lcConfigurationAcronym + keySeparator
+
+	apiLimiterPrefix = keySeparator + apiLimiterAcronym + keySeparator
+	MultiVerPrefix   = keySeparator + "multiVer" + keySeparator
+	AclPrefix        = keySeparator + "acl" + keySeparator
+	UidPrefix        = keySeparator + "uid" + keySeparator
+
+	akAcronym        = "ak"
+	userAcronym      = "user"
+	volUserAcronym   = "voluser"
+	volNameAcronym   = "volname"
+	akPrefix         = keySeparator + akAcronym + keySeparator
+	userPrefix       = keySeparator + userAcronym + keySeparator
+	volUserPrefix    = keySeparator + volUserAcronym + keySeparator
+	volWarnUsedRatio = 0.9
+	volCachePrefix   = keySeparator + volNameAcronym + keySeparator
+	quotaPrefix      = keySeparator + "quota" + keySeparator
+	lcNodePrefix     = keySeparator + lcNodeAcronym + keySeparator
+	lcConfPrefix     = keySeparator + lcConfigurationAcronym + keySeparator
 )
