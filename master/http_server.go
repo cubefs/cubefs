@@ -240,7 +240,7 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminCreatePreLoadDataPartition).
 		HandlerFunc(m.createPreLoadDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-	Path(proto.AdminDataPartitionChangeLeader).
+		Path(proto.AdminDataPartitionChangeLeader).
 		HandlerFunc(m.changeDataPartitionLeader)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminLoadDataPartition).
