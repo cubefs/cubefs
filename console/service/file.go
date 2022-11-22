@@ -32,7 +32,7 @@ type FileService struct {
 func NewFileService(objectNode string, masters []string, mc *client.MasterGClient) *FileService {
 	return &FileService{
 		manager:    NewVolumeManager(masters, true),
-		userClient: &user.UserClient{mc},
+		userClient: &user.UserClient{MasterGClient: mc},
 		objectNode: objectNode,
 	}
 }
@@ -60,7 +60,6 @@ func (fs *FileService) empty(ctx context.Context, args struct {
 		return false, fmt.Errorf("%v , [%v] , [%v] , [%v]", userInfo.Policy.Own_vols, userInfo.User_id, fs.userVolPerm(ctx, "root", "test"), v)
 	}
 
-	return args.Empty, nil
 }
 
 type ListFileInfo struct {
