@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/xid"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -222,4 +224,28 @@ func TestBalanceStatQueueTaskCnt(t *testing.T) {
 	require.Equal(t, 0, inited)
 	require.Equal(t, 0, prepared)
 	require.Equal(t, 0, completed)
+}
+
+func TestBalanceCheckAndClearJunkTasks(t *testing.T) {
+	{
+		mgr := newBalancer(t)
+		mgr.IMigrator.(*MockMigrater).EXPECT().DeletedTasks().Return([]DeletedTask{})
+		mgr.checkAndClearJunkTasks()
+	}
+	{
+		mgr := newBalancer(t)
+		mgr.IMigrator.(*MockMigrater).EXPECT().DeletedTasks().Return([]DeletedTask{
+			{DiskID: proto.DiskID(1), TaskID: xid.New().String(), DeletedTime: time.Now()},
+		})
+		mgr.checkAndClearJunkTasks()
+	}
+	{
+		mgr := newBalancer(t)
+		mgr.IMigrator.(*MockMigrater).EXPECT().DeletedTasks().Return([]DeletedTask{
+			{DiskID: proto.DiskID(1), TaskID: xid.New().String(), DeletedTime: time.Now().Add(-junkMigrationTaskProtectionWindow)},
+		})
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+		mgr.IMigrator.(*MockMigrater).EXPECT().ClearDeletedTaskByID(any, any).Return()
+		mgr.checkAndClearJunkTasks()
+	}
 }

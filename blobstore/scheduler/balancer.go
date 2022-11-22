@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -74,6 +75,7 @@ func NewBalanceMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVol
 func (mgr *BalanceMgr) Run() {
 	go mgr.collectTaskLoop()
 	mgr.IMigrator.Run()
+	go mgr.checkAndClearJunkTasksLoop()
 }
 
 // Close close balance task manager
@@ -207,4 +209,37 @@ func (mgr *BalanceMgr) selectBalanceVunit(ctx context.Context, diskID proto.Disk
 		}
 	}
 	return vuid, ErrNoBalanceVunit
+}
+
+// checkAndClearJunkTasksLoop due to network timeout, it may still have some junk migrate tasks in clustermgr,
+// and we need to clear those tasks later
+func (mgr *BalanceMgr) checkAndClearJunkTasksLoop() {
+	t := time.NewTicker(clearJunkMigrationTaskInterval)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-t.C:
+			mgr.checkAndClearJunkTasks()
+		case <-mgr.IMigrator.Done():
+			return
+		}
+	}
+}
+
+func (mgr *BalanceMgr) checkAndClearJunkTasks() {
+	span, ctx := trace.StartSpanFromContext(context.Background(), "balance.clearJunkTasks")
+
+	for _, task := range mgr.DeletedTasks() {
+		if time.Since(task.DeletedTime) < junkMigrationTaskProtectionWindow {
+			continue
+		}
+
+		span.Warnf("delete junk task: task_id[%s]", task.TaskID)
+		base.InsistOn(ctx, "delete junk task", func() error {
+			return mgr.clusterMgrCli.DeleteMigrateTask(ctx, task.TaskID)
+		})
+
+		mgr.ClearDeletedTaskByID(task.DiskID, task.TaskID)
+	}
 }

@@ -553,7 +553,14 @@ func TestDeletedTasks(t *testing.T) {
 			SourceDiskID: diskID1,
 		}
 		mgr.addDeletedTask(task1)
+		require.True(t, mgr.IsDeletedTask(task1))
+		require.Equal(t, 1, len(mgr.DeletedTasks()))
+
+		mgr.ClearDeletedTaskByID(task1.SourceDiskID, task1.TaskID)
+		require.Equal(t, 0, len(mgr.DeletedTasks()))
 		require.False(t, mgr.IsDeletedTask(task1))
+
+		mgr.ClearDeletedTaskByID(task1.SourceDiskID, task1.TaskID)
 	}
 }
 

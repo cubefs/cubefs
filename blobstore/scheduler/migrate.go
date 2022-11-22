@@ -91,7 +91,9 @@ type IMigrator interface {
 	GetMigratingDiskNum() int
 	IsMigratingDisk(diskID proto.DiskID) bool
 	ClearDeletedTasks(diskID proto.DiskID)
+	ClearDeletedTaskByID(diskID proto.DiskID, taskID string)
 	IsDeletedTask(task *proto.MigrateTask) bool
+	DeletedTasks() []DeletedTask
 	AddTask(ctx context.Context, task *proto.MigrateTask)
 	GetTask(ctx context.Context, taskID string) (*proto.MigrateTask, error)
 	ListAllTask(ctx context.Context) (tasks []*proto.MigrateTask, err error)
@@ -190,7 +192,7 @@ func (m *diskMigratingVuids) isMigratingDisk(diskID proto.DiskID) (ok bool) {
 	return
 }
 
-type migratedTasks map[string]struct{}
+type migratedTasks map[string]time.Time
 
 type diskMigratedTasks struct {
 	tasks map[proto.DiskID]migratedTasks
@@ -208,7 +210,7 @@ func (m *diskMigratedTasks) add(diskID proto.DiskID, taskID string) {
 	if m.tasks[diskID] == nil {
 		m.tasks[diskID] = make(migratedTasks)
 	}
-	m.tasks[diskID][taskID] = struct{}{}
+	m.tasks[diskID][taskID] = time.Now()
 	m.Unlock()
 }
 
@@ -225,6 +227,37 @@ func (m *diskMigratedTasks) delete(diskID proto.DiskID) {
 	m.Lock()
 	delete(m.tasks, diskID)
 	m.Unlock()
+}
+
+func (m *diskMigratedTasks) deleteByID(diskID proto.DiskID, taskID string) {
+	m.Lock()
+	tasks := m.tasks[diskID]
+	delete(tasks, taskID)
+	if len(tasks) == 0 {
+		delete(m.tasks, diskID)
+	}
+	m.Unlock()
+}
+
+type DeletedTask struct {
+	DiskID      proto.DiskID
+	TaskID      string
+	DeletedTime time.Time
+}
+
+func (m *diskMigratedTasks) list() (tasks []DeletedTask) {
+	m.RLock()
+	for diskID, deletedTasks := range m.tasks {
+		for taskID, deletedTime := range deletedTasks {
+			tasks = append(tasks, DeletedTask{
+				DiskID:      diskID,
+				TaskID:      taskID,
+				DeletedTime: deletedTime,
+			})
+		}
+	}
+	m.RUnlock()
+	return tasks
 }
 
 type migratedDisk struct {
@@ -736,14 +769,27 @@ func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *pro
 // ClearDeletedTasks clear tasks when disk is migrated
 func (mgr *MigrateMgr) ClearDeletedTasks(diskID proto.DiskID) {
 	switch mgr.taskType {
-	case proto.TaskTypeDiskDrop: // only disk drop task need to add
+	case proto.TaskTypeDiskDrop: // only disk drop task need to clear by disk
 		mgr.deletedTasks.delete(diskID)
+	}
+}
+
+// ClearDeletedTaskByID clear migrated task
+func (mgr *MigrateMgr) ClearDeletedTaskByID(diskID proto.DiskID, taskID string) {
+	switch mgr.taskType {
+	case proto.TaskTypeBalance: // only balance task need to clear by id
+		mgr.deletedTasks.deleteByID(diskID, taskID)
 	}
 }
 
 // IsDeletedTask return true if the task is deleted
 func (mgr *MigrateMgr) IsDeletedTask(task *proto.MigrateTask) bool {
 	return mgr.deletedTasks.exits(task.SourceDiskID, task.TaskID)
+}
+
+// DeletedTasks returns deleted tasks
+func (mgr *MigrateMgr) DeletedTasks() []DeletedTask {
+	return mgr.deletedTasks.list()
 }
 
 func (mgr *MigrateMgr) addMigratingVuid(diskID proto.DiskID, vuid proto.Vuid, taskID string) {
@@ -762,7 +808,7 @@ func (mgr *MigrateMgr) deleteMigratingVuid(diskID proto.DiskID, vuid proto.Vuid)
 
 func (mgr *MigrateMgr) addDeletedTask(task *proto.MigrateTask) {
 	switch mgr.taskType {
-	case proto.TaskTypeDiskDrop: // only disk drop task need to add
+	case proto.TaskTypeDiskDrop, proto.TaskTypeBalance: // only disk drop and balance task need to add
 		mgr.deletedTasks.add(task.SourceDiskID, task.TaskID)
 	}
 }
