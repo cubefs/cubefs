@@ -415,11 +415,18 @@ func (m *metadataManager) getTrashDaysByVol(vol string) (days int32) {
 
 // onStop stops each meta partitions.
 func (m *metadataManager) onStop() {
+	var wg sync.WaitGroup
 	if m.partitions != nil {
 		for _, partition := range m.partitions {
-			partition.Stop()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				partition.Stop()
+			}()
+
 		}
 	}
+	wg.Wait()
 	close(m.stopC)
 	return
 }
