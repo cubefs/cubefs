@@ -787,8 +787,6 @@ func (s *ExtentStore) GetHasDeleteTinyRecords() (extentDes []ExtentDeleted, err 
 		extentDes = append(extentDes, extent)
 		offset += DeleteTinyRecordSize
 	}
-
-	return
 }
 
 // NextExtentID returns the next extentID. When the client sends the request to create an extent,

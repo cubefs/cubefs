@@ -150,5 +150,4 @@ func (s *ExtentStore) GetHasDeleteExtent() (extentDes []ExtentDeleted, err error
 		offset += 8
 	}
 
-	return
 }
