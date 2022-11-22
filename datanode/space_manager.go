@@ -71,6 +71,12 @@ func (manager *SpaceManager) Stop() {
 	wg := sync.WaitGroup{}
 	partitionC := make(chan *DataPartition, parallelism)
 	wg.Add(1)
+
+	// Close raft store.
+	for _, partition := range manager.partitions {
+		partition.stopRaft()
+	}
+
 	go func(c chan<- *DataPartition) {
 		defer wg.Done()
 		for _, partition := range manager.partitions {
