@@ -138,6 +138,18 @@ func (rs *RaftServer) Stop() {
 	}
 }
 
+func (rs *RaftServer) SetSyncWALOnUnstable(enable bool) {
+	if enable != rs.config.SyncWALOnUnstable {
+		rs.config.SyncWALOnUnstable = enable
+		logger.Debug("server side [SyncWALOnUnstable] set to [%v]", enable)
+	}
+}
+
+func (rs *RaftServer) IsSyncWALOnUnstable() (enabled bool) {
+	enabled = rs.config.SyncWALOnUnstable
+	return
+}
+
 func (rs *RaftServer) CreateRaft(raftConfig *RaftConfig) error {
 	var (
 		raft *raft

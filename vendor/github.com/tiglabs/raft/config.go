@@ -113,6 +113,8 @@ type Config struct {
 	// LeaseCheck MUST be enabled if ReadOnlyOption is ReadOnlyLeaseBased.
 	ReadOnlyOption ReadOnlyOption
 	transport      Transport
+
+	SyncWALOnUnstable bool
 }
 
 // TransportConfig raft server transport config

@@ -34,6 +34,9 @@ type RaftStore interface {
 	RaftStatus(raftID uint64) (raftStatus *raft.Status)
 	NodeManager
 	RaftServer() *raft.RaftServer
+
+	SetSyncWALOnUnstable(enable bool)
+	IsSyncWALOnUnstable() (enabled bool)
 }
 
 type raftStore struct {
@@ -121,6 +124,7 @@ func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 	rc.RetainLogs = cfg.NumOfLogsToRetain
 	rc.TickInterval = time.Duration(cfg.TickInterval) * time.Millisecond
 	rc.ElectionTick = cfg.ElectionTick
+	rc.SyncWALOnUnstable = cfg.SyncWALOnUnstable
 	rs, err := raft.NewRaftServer(rc)
 	if err != nil {
 		return
@@ -162,5 +166,14 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition) {
 		)
 	}
 	p = newPartition(cfg, s.raftServer, walPath)
+	return
+}
+
+func (s *raftStore) SetSyncWALOnUnstable(enable bool) {
+	s.raftServer.SetSyncWALOnUnstable(enable)
+}
+
+func (s *raftStore) IsSyncWALOnUnstable() (enabled bool) {
+	enabled = s.raftServer.IsSyncWALOnUnstable()
 	return
 }
