@@ -125,7 +125,7 @@ type ExtentStore struct {
 	// blockSize                         int
 	partitionID                       uint64
 	verifyExtentFp                    *os.File
-	hasAllocSpaceExtentIDOnVerfiyFile uint64
+	hasAllocSpaceExtentIDOnVerifyFile uint64
 	hasDeleteNormalExtentsCache       sync.Map
 	partitionType                     int
 }
@@ -170,7 +170,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int) (
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
 	}
-	s.hasAllocSpaceExtentIDOnVerfiyFile = s.GetPreAllocSpaceExtentIDOnVerfiyFile()
+	s.hasAllocSpaceExtentIDOnVerifyFile = s.GetPreAllocSpaceExtentIDOnVerifyFile()
 	s.storeSize = storeSize
 	s.closeC = make(chan bool, 1)
 	s.closed = false
@@ -821,7 +821,7 @@ func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 		atomic.StoreUint64(&s.baseExtentID, id)
 		err = s.PersistenceBaseExtentID(atomic.LoadUint64(&s.baseExtentID))
 	}
-	s.PreAllocSpaceOnVerfiyFile(atomic.LoadUint64(&s.baseExtentID))
+	s.PreAllocSpaceOnVerifyFile(atomic.LoadUint64(&s.baseExtentID))
 
 	return
 }

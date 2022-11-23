@@ -160,7 +160,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 	case proto.OpRemoveDataPartitionRaftMember:
 		s.handlePacketToRemoveDataPartitionRaftMember(p)
 	case proto.OpDataPartitionTryToLeader:
-		s.handlePacketToDataPartitionTryToLeaderrr(p)
+		s.handlePacketToDataPartitionTryToLeader(p)
 	case proto.OpGetPartitionSize:
 		s.handlePacketToGetPartitionSize(p)
 	case proto.OpGetMaxExtentIDAndPartitionSize:
@@ -1144,8 +1144,8 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	p.PartitionID = req.PartitionId
 
 	if !dp.IsExsitReplica(req.RemovePeer.Addr) {
-		log.LogInfof("recive MasterCommand: %v "+
-			"RemoveRaftPeer(%v) has not exsit", string(reqData), req.RemovePeer.Addr)
+		log.LogInfof("receive MasterCommand: %v "+
+			"RemoveRaftPeer(%v) has not exist", string(reqData), req.RemovePeer.Addr)
 		return
 	}
 
@@ -1182,7 +1182,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	return
 }
 
-func (s *DataNode) handlePacketToDataPartitionTryToLeaderrr(p *repl.Packet) {
+func (s *DataNode) handlePacketToDataPartitionTryToLeader(p *repl.Packet) {
 	var (
 		err error
 	)

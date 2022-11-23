@@ -69,7 +69,7 @@ type qosRequestArgs struct {
 }
 
 type QosCtrlManager struct {
-	cliInfoMgrMap        map[uint64]*ClientInfoMgr     // cientid->client_reportinfo&&assign_limitinfo
+	cliInfoMgrMap        map[uint64]*ClientInfoMgr     // clientid->client_reportinfo&&assign_limitinfo
 	serverFactorLimitMap map[uint32]*ServerFactorLimit // vol qos data for iops w/r and flow w/r
 	defaultClientCnt     uint32
 	qosEnable            bool
@@ -450,7 +450,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 			nextStageNeed -= serverLimit.Buffer
 			nextStageUse += serverLimit.Buffer
 			serverLimit.Buffer = 0
-			log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] reset server buffer [%v] all clients nextStageNeed [%v] too nuch",
+			log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] reset server buffer [%v] all clients nextStageNeed [%v] too much",
 				qosManager.vol.Name, serverLimit.Buffer, nextStageNeed)
 		} else {
 			serverLimit.Buffer -= nextStageNeed
@@ -479,7 +479,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 			qosManager.vol.Name, proto.QosTypeString(factorType), serverLimit)
 
 		lastMagnify := serverLimit.LastMagnify
-		lastLimitRitio := serverLimit.LimitRate
+		lastLimitRatio := serverLimit.LimitRate
 		// master assigned limit and buffer not be used as expected,we need adjust the gap
 		if serverLimit.CliUsed < serverLimit.Total {
 			if serverLimit.LimitRate > -10.0 && serverLimit.LastMagnify < serverLimit.Total*10 {
@@ -499,7 +499,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 		serverLimit.LimitRate = serverLimit.LimitRate * float32(1-float64(serverLimit.LastMagnify)/float64(serverLimit.Allocated+serverLimit.NeedAfterAlloc))
 		log.QosWriteDebugf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] limitRatio [%v] updated to limitRatio [%v] by magnify [%v] lastMagnify [%v]",
 			qosManager.vol.Name, proto.QosTypeString(factorType),
-			lastLimitRitio, serverLimit.LimitRate, serverLimit.LastMagnify, lastMagnify)
+			lastLimitRatio, serverLimit.LimitRate, serverLimit.LastMagnify, lastMagnify)
 	} else {
 		serverLimit.LastMagnify = 0
 	}
@@ -530,7 +530,7 @@ func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 				assignInfo.UsedBuffer = uint64(float64(serverLimit.Buffer) * (float64(assignInfo.UsedLimit) / float64(serverLimit.Allocated)) * 0.5)
 			}
 
-			// buffer left may be quit large and we should not used up and doen't mean if buffer large than used limit line
+			// buffer left may be quit large and we should not use up and doesn't mean if buffer large than used limit line
 			if assignInfo.UsedBuffer > assignInfo.UsedLimit {
 				assignInfo.UsedBuffer = assignInfo.UsedLimit
 			}

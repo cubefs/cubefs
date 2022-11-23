@@ -153,7 +153,7 @@ func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Futur
 }
 
 func (factor *LimitFactor) SetLimit(limitVal uint64, bufferVal uint64) {
-	log.QosWriteDebugf("acton[SetLimit] factor type [%v] limitVal [%v] bufferVal [%v]", proto.QosTypeString(factor.factorType), limitVal, bufferVal)
+	log.QosWriteDebugf("action[SetLimit] factor type [%v] limitVal [%v] bufferVal [%v]", proto.QosTypeString(factor.factorType), limitVal, bufferVal)
 	var grid *GridElement
 	factor.mgr.lastTimeOfSetLimit = time.Now()
 	factor.lock.Lock()
