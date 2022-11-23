@@ -821,27 +821,54 @@ int real_closedir(DIR *dirp) {
 }
 
 char *cfs_realpath(const char *cfs_path, char *resolved_path) {
-    struct stat statbuf;
-    int res1 = cfs_errno(cfs_lstat(g_client_info.cfs_client_id, cfs_path, &statbuf));
-    if(res1 == -1) {
+    int res1 = cfs_errno(cfs_access(g_client_info.cfs_client_id, cfs_path, F_OK));
+    if(res1 < 0) {
         errno = ENOENT;
         return NULL;
     }
+
+    char *buf = NULL;
+    int buf_len = 0;
     char *res_path = resolved_path;
     if(res_path == NULL) {
         res_path = (char *)malloc(PATH_MAX);
         memset(res_path, 0, PATH_MAX);
     }
     ssize_t res2 = cfs_errno_ssize_t(cfs_readlink(g_client_info.cfs_client_id, cfs_path, res_path, PATH_MAX));
-    if(res2 == -1) {
-        char *buf = cat_path(g_client_info.mount_point, cfs_path);
-        memcpy(res_path, buf, strlen(buf)+1);
-        free(buf);
-    } else {
-        if(res_path[0] != '/') {
-            errno = ENOENT;
-            res_path = NULL;
+    if(res2 < 0) {
+        buf = cat_path(g_client_info.mount_point, &cfs_path[1]);
+        buf_len = strlen(buf);
+        if(buf_len >= PATH_MAX) {
+            errno = ENAMETOOLONG;
+        } else {
+            errno = 0;
         }
+    } else {
+        if(res_path[0] == '/') {
+            buf = cat_path(g_client_info.mount_point, &res_path[1]);
+            buf_len = strlen(g_client_info.mount_point) + res2;
+            if(buf_len >= PATH_MAX) {
+                errno = ENAMETOOLONG;
+            } else {
+                errno = 0;
+            }
+        } else {
+            errno = ENOENT;
+        }
+    }
+
+    if(errno != 0) {
+        if(buf != NULL) {
+            free(buf);
+        }
+        if(resolved_path == NULL) {
+            free(res_path);
+        }
+        res_path = NULL;
+    } else {
+        memcpy(res_path, buf, buf_len);
+        res_path[buf_len] = 0;
+        free(buf);
     }
     return res_path;
 }
@@ -926,6 +953,10 @@ int real_linkat(int olddirfd, const char *old_pathname,
 
 // symlink a CFS linkpath to ordinary file target is not allowed
 int real_symlinkat(const char *target, int dirfd, const char *linkpath) {
+    if(target[0] != '/') {
+        errno = EINVAL;
+        return -1;
+    }
     char *t = get_cfs_path(target);
     bool is_cfs = false;
     char *path = NULL;
@@ -996,21 +1027,32 @@ ssize_t real_readlinkat(int dirfd, const char *pathname, char *buf, size_t size)
     log_debug("hook %s\n", __func__);
     #endif
     bool is_cfs = false;
-    char *path = NULL;
+    char *cfs_path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
-        path = get_cfs_path(pathname);
-        is_cfs = (path != NULL);
+        cfs_path = get_cfs_path(pathname);
+        is_cfs = (cfs_path != NULL);
     } else {
         is_cfs = fd_in_cfs(dirfd);
         if(is_cfs)
             dirfd = get_cfs_fd(dirfd);
     }
 
-    const char *cfs_path = (path == NULL) ? pathname : path;
     ssize_t re;
-    re = g_hook && is_cfs ? cfs_errno_ssize_t(cfs_readlinkat(g_client_info.cfs_client_id, dirfd, cfs_path, buf, size)) :
-           libc_readlinkat(dirfd, pathname, buf, size);
-    free(path);
+    if(g_hook && is_cfs) {
+        re = cfs_errno_ssize_t(cfs_readlinkat(g_client_info.cfs_client_id, dirfd, cfs_path, buf, size));
+        if(re > 0 && buf[0] == '/') {
+            char* tmp_path = cat_path(g_client_info.mount_point, &buf[1]);
+            re = strlen(g_client_info.mount_point) + re;
+            if(re > size) {
+                re = size;
+            }
+            memcpy(buf, tmp_path, re);
+            free(tmp_path);
+        }
+    } else {
+        re = libc_readlinkat(dirfd, pathname, buf, size);
+    }
+    free(cfs_path);
     return re;
 }
 
