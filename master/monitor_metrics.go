@@ -39,6 +39,8 @@ const (
 	MetricVolUsedGB            = "vol_used_GB"
 	MetricVolUsageGB           = "vol_usage_ratio"
 	MetricVolMetaCount         = "vol_meta_count"
+	MetricBadMpCount           = "bad_mp_count"
+	MetricBadDpCount           = "bad_dp_count"
 	MetricDiskError            = "disk_error"
 	MetricDataNodesInactive    = "dataNodes_inactive"
 	MetricMetaNodesInactive    = "metaNodes_inactive"
@@ -59,6 +61,8 @@ type monitorMetrics struct {
 	volUsedSpace       *exporter.GaugeVec
 	volUsage           *exporter.GaugeVec
 	volMetaCount       *exporter.GaugeVec
+	badMpCount         *exporter.Gauge
+	badDpCount         *exporter.Gauge
 	diskError          *exporter.GaugeVec
 	dataNodesInactive  *exporter.Gauge
 	metaNodesInactive  *exporter.Gauge
@@ -89,6 +93,8 @@ func (mm *monitorMetrics) start() {
 	mm.volUsedSpace = exporter.NewGaugeVec(MetricVolUsedGB, "", []string{"volName"})
 	mm.volUsage = exporter.NewGaugeVec(MetricVolUsageGB, "", []string{"volName"})
 	mm.volMetaCount = exporter.NewGaugeVec(MetricVolMetaCount, "", []string{"volName", "type"})
+	mm.badMpCount = exporter.NewGauge(MetricBadMpCount)
+	mm.badDpCount = exporter.NewGauge(MetricBadDpCount)
 	mm.diskError = exporter.NewGaugeVec(MetricDiskError, "", []string{"addr", "path"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
@@ -131,6 +137,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.metaNodesUsed.Set(float64(mm.cluster.metaNodeStatInfo.UsedGB))
 	mm.metaNodesIncreased.Set(float64(mm.cluster.metaNodeStatInfo.IncreasedGB))
 	mm.setVolMetrics()
+	mm.setBadPartitionMetrics()
 	mm.setDiskErrorMetric()
 	mm.setInactiveDataNodesCount()
 	mm.setInactiveMetaNodesCount()
@@ -188,6 +195,22 @@ func (mm *monitorMetrics) setVolMetrics() {
 	for volName := range deleteVolNames {
 		mm.deleteVolMetric(volName)
 	}
+}
+
+func (mm *monitorMetrics) setBadPartitionMetrics() {
+	badMpCount := uint64(0)
+	mm.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		badMpCount += uint64(len(value.([]uint64)))
+		return true
+	})
+	mm.badMpCount.SetWithLabels(float64(badMpCount), map[string]string{"type": "bad_mp"})
+
+	badDpCount := uint64(0)
+	mm.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		badDpCount += uint64(len(value.([]uint64)))
+		return true
+	})
+	mm.badDpCount.SetWithLabels(float64(badDpCount), map[string]string{"type": "bad_dp"})
 }
 
 func (mm *monitorMetrics) deleteVolMetric(volName string) {
