@@ -153,7 +153,7 @@ const (
 	OpInodeFullErr       uint8 = 0xFB
 	OpTryOtherAddr       uint8 = 0xFC
 	OpNotPerm            uint8 = 0xFD
-	OpNotEmtpy           uint8 = 0xFE
+	OpNotEmpty           uint8 = 0xFE
 	OpOk                 uint8 = 0xF0
 
 	OpPing            uint8 = 0xFF
@@ -448,7 +448,7 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "TryOtherAddr"
 	case OpNotPerm:
 		m = "NotPerm"
-	case OpNotEmtpy:
+	case OpNotEmpty:
 		m = "DirNotEmpty"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)

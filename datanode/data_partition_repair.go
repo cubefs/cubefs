@@ -34,7 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-// DataPartitionRepairTask defines the reapir task for the data partition.
+// DataPartitionRepairTask defines the repair task for the data partition.
 type DataPartitionRepairTask struct {
 	TaskType                       uint8
 	addr                           string
@@ -81,7 +81,7 @@ func (dp *DataPartition) repair(extentType uint8) {
 	start := time.Now().UnixNano()
 	log.LogInfof("action[repair] partition(%v) start.", dp.partitionID)
 
-	var tinyExtents []uint64 // unsvailable extents 小文件写
+	var tinyExtents []uint64 // unavailable extents
 	if extentType == proto.TinyExtentType {
 		tinyExtents = dp.brokenTinyExtents()
 		if len(tinyExtents) == 0 {
@@ -118,7 +118,7 @@ func (dp *DataPartition) repair(extentType uint8) {
 	dp.DoRepair(repairTasks)
 	end := time.Now().UnixNano()
 
-	// every time we need to figureAnnotatef out which extents need to be repaired and which ones do not.
+	// every time we need to figure out which extents need to be repaired and which ones do not.
 	dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 
 	// error check
@@ -442,7 +442,7 @@ func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 	for i := 1; i < len(members); i++ {
 		if members[i] == nil || !dp.IsExsitReplica(members[i].addr) {
 			if members[i] != nil {
-				log.LogInfof("notify extend repair is change ,index(%v),pid(%v),task_member_add(%v),IsExsitReplica(%v)",
+				log.LogInfof("notify extend repair is change ,index(%v),pid(%v),task_member_add(%v),IsExistReplica(%v)",
 					i, dp.partitionID, members[i].addr, dp.IsExsitReplica(members[i].addr))
 			}
 			continue
@@ -599,7 +599,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 
 			err = store.TinyExtentRecover(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.Data, reply.CRC, isEmptyResponse)
 			if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
-				log.LogInfof("streamRepairTinyExtent(%v) recover fininsh,remoteAvaliSize(%v) "+
+				log.LogInfof("streamRepairTinyExtent(%v) recover finish,remoteAvaliSize(%v) "+
 					"hasRecoverySize(%v) currRecoverySize(%v)", dp.applyRepairKey(int(localExtentInfo.FileID)),
 					remoteAvaliSize, hasRecoverySize+currRecoverySize, currRecoverySize)
 				break
