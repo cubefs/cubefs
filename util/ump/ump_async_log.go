@@ -24,42 +24,6 @@ import (
 	"sync/atomic"
 )
 
-type FunctionTp struct {
-	Time         string `json:"time"`
-	Key          string `json:"key"`
-	HostName     string `json:"hostname"`
-	ProcessState string `json:"processState"`
-	ElapsedTime  string `json:"elapsedTime"`
-}
-
-type FunctionTpGroupBy struct {
-	//currTime     time.Time
-	//Time         string
-	Key string
-	//HostName     string
-	ProcessState string
-	//ElapsedTime  string
-	//Count        string
-
-	elapsedTime int64
-	count       int64
-}
-
-type SystemAlive struct {
-	Key      string `json:"key"`
-	HostName string `json:"hostname"`
-	Time     string `json:"time"`
-}
-
-type BusinessAlarm struct {
-	Time         string `json:"time"`
-	Key          string `json:"key"`
-	HostName     string `json:"hostname"`
-	BusinessType string `json:"type"`
-	Value        string `json:"value"`
-	Detail       string `json:"detail"`
-}
-
 const (
 	FunctionTpSufixx        = "tp.log"
 	FunctionTpGroupBySufixx = "groupby_tp.log"
@@ -272,7 +236,7 @@ func GetLocalIpAddr() (localAddr string, err error) {
 	return
 }
 
-func backGroudWrite() {
+func backGroudWriteLog() {
 	wg.Add(3)
 	//go FunctionTpLogWrite.backGroundWrite(FunctionTpType)
 	//go SystemAliveLogWrite.backGroundWrite(SystemAliveType)

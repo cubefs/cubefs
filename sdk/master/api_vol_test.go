@@ -3,9 +3,10 @@ package master
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"github.com/chubaofs/chubaofs/proto"
 	"strings"
 	"testing"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 var (
@@ -60,7 +61,7 @@ func TestUpdateVol(t *testing.T) {
 	trashDays := 15
 	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, trashDays, testStoreMode,
 		updateFollowerRead, false, false, false, false, false, false, false, false, authKey, testZoneName,
-		testMpLyout, "", 0, 0, 0, "default", 0, 0, 0, 0, 0)
+		testMpLyout, "", 0, 0, 0, "default", 0, 0, 0, 0, 0, proto.UmpCollectByUnkown)
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)
 		t.FailNow()

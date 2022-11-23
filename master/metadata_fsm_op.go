@@ -64,6 +64,7 @@ type clusterValue struct {
 	ExtentMergeSleepMs                  uint64
 	FixTinyDeleteRecordLimit            uint64
 	ClientPkgAddr                       string
+	UmpJmtpAddr                         string
 	EcScrubEnable                       bool
 	EcMaxScrubExtents                   uint8
 	EcScrubPeriod                       uint32
@@ -125,6 +126,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ExtentMergeSleepMs:                  c.cfg.ExtentMergeSleepMs,
 		FixTinyDeleteRecordLimit:            c.dnFixTinyDeleteRecordLimit,
 		ClientPkgAddr:                       c.cfg.ClientPkgAddr,
+		UmpJmtpAddr:                         c.cfg.UmpJmtpAddr,
 		EcScrubEnable:                       c.EcScrubEnable,
 		EcMaxScrubExtents:                   c.EcMaxScrubExtents,
 		EcScrubPeriod:                       c.EcScrubPeriod,
@@ -302,6 +304,7 @@ type volValue struct {
 	TrashCleanInterval   uint64
 	BatchDelInodeCnt     uint32
 	DelInodeInterval     uint32
+	UmpCollectWay        bsProto.UmpCollectBy
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -370,6 +373,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		TrashCleanInterval:   vol.TrashCleanInterval,
 		BatchDelInodeCnt:     vol.BatchDelInodeCnt,
 		DelInodeInterval:     vol.DelInodeInterval,
+		UmpCollectWay:        vol.UmpCollectWay,
 	}
 	return
 }
@@ -897,6 +901,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 			cv.FixTinyDeleteRecordLimit = 1
 		}
 		c.cfg.ClientPkgAddr = cv.ClientPkgAddr
+		c.cfg.UmpJmtpAddr = cv.UmpJmtpAddr
 		c.EcScrubEnable = cv.EcScrubEnable
 		c.EcScrubPeriod = cv.EcScrubPeriod
 		if c.EcScrubPeriod == 0 {

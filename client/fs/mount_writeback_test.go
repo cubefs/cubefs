@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	ltptestVol		= "ltptest"
-	ltptestMaster 	= []string{"192.168.0.11:17010","192.168.0.12:17010","192.168.0.13:17010"}
+	ltptestVol    = "ltptest"
+	ltptestMaster = []string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}
 )
 
 func Test_EnableJdosKernelWriteBack(t *testing.T) {
@@ -32,9 +32,9 @@ func Test_EnableJdosKernelWriteBack(t *testing.T) {
 	f.Close()
 
 	tests := []struct {
-		name                string
-		volWriteCache		bool
-		expectFileContent 	string
+		name              string
+		volWriteCache     bool
+		expectFileContent string
 	}{
 		{
 			"test_on",
@@ -60,7 +60,7 @@ func Test_EnableJdosKernelWriteBack(t *testing.T) {
 				int(volInfo.TrashRemainingDays), int(volInfo.DefaultStoreMode), volInfo.FollowerRead, false, false,
 				false, false, false, false, false, tt.volWriteCache, calcAuthKey("ltptest"),
 				"default", "0,0", "", 0, 0, 60, volInfo.CompactTag,
-				0, 0, 0, 0, 0)
+				0, 0, 0, 0, 0, volInfo.UmpCollectWay)
 			if err != nil {
 				t.Errorf("Test_EnableJdosKernelWriteBack update vol err: %v test(%v)", err, tt)
 				return
@@ -77,8 +77,8 @@ func Test_EnableJdosKernelWriteBack(t *testing.T) {
 			}
 			// verify file
 			var (
-				controlFile	*os.File
-				readBytes	[]byte
+				controlFile *os.File
+				readBytes   []byte
 			)
 			if controlFile, err = os.OpenFile(JdosKernelWriteBackControlFile, os.O_RDONLY, 0644); err != nil {
 				t.Errorf("Test_EnableJdosKernelWriteBack open file err: %v test(%v)", err, tt)

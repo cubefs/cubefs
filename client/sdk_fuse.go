@@ -138,6 +138,7 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	} else {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
+	ump.UmpCollectWay = proto.UmpCollectBy(opt.UmpCollectWay)
 
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, opt.Volname, level, log.NewClientLogRotate())
@@ -271,6 +272,8 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	http.HandleFunc("/version", GetVersionHandleFunc)
 	http.HandleFunc(ControlSetUpgrade, gClient.SetClientUpgrade)
 	http.HandleFunc(ControlUnsetUpgrade, UnsetClientUpgrade)
+	http.HandleFunc(ControlCommandGetUmpCollectWay, GetUmpCollectWay)
+	http.HandleFunc(ControlCommandSetUmpCollectWay, SetUmpCollectWay)
 	var server *http.Server
 
 	gClient.wg.Add(2)
@@ -304,7 +307,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 		server.Shutdown(context.Background())
 	}()
 
-	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), gClient.moduleName), "jdos_chubaofs_node"); err != nil {
+	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), gClient.moduleName), "jdos_chubaofs_node", super.UmpJmtpAddr()); err != nil {
 		return
 	}
 
@@ -425,6 +428,11 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		return nil, errors.Trace(err, "invalide mount point (%v) ", opt.MountPoint)
 	}
 	opt.MountPoint = absMnt
+	collectWay := GlobalMountOptions[proto.UmpCollectWay].GetInt64()
+	if collectWay <= proto.UmpCollectByUnkown || collectWay > proto.UmpCollectByJmtpClient {
+		collectWay = proto.UmpCollectByFile
+	}
+	opt.UmpCollectWay = collectWay
 	return opt, nil
 }
 

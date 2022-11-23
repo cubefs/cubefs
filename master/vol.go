@@ -104,12 +104,13 @@ type Vol struct {
 	TrashCleanInterval   uint64
 	BatchDelInodeCnt     uint32
 	DelInodeInterval     uint32
+	UmpCollectWay        proto.UmpCollectBy
 	sync.RWMutex
 }
 
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
-	createTime, smartEnableTime int64, description, dpSelectorName,	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType,
+	createTime, smartEnableTime int64, description, dpSelectorName, dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType,
 	dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32, defStoreMode proto.StoreMode,
 	convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag,
 	dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32) (vol *Vol) {
@@ -1137,9 +1138,10 @@ func (vol *Vol) backupConfig() *Vol {
 		compactTag:           vol.compactTag,
 		compactTagModifyTime: vol.compactTagModifyTime,
 		FollowerReadDelayCfg: vol.FollowerReadDelayCfg,
-		TrashCleanInterval : vol.TrashCleanInterval,
-		BatchDelInodeCnt:    vol.BatchDelInodeCnt,
-		DelInodeInterval:    vol.DelInodeInterval,
+		TrashCleanInterval:   vol.TrashCleanInterval,
+		BatchDelInodeCnt:     vol.BatchDelInodeCnt,
+		DelInodeInterval:     vol.DelInodeInterval,
+		UmpCollectWay:        vol.UmpCollectWay,
 	}
 }
 
@@ -1182,6 +1184,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.TrashCleanInterval = backupVol.TrashCleanInterval
 	vol.BatchDelInodeCnt = backupVol.BatchDelInodeCnt
 	vol.DelInodeInterval = backupVol.DelInodeInterval
+	vol.UmpCollectWay = backupVol.UmpCollectWay
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

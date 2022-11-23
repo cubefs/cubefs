@@ -3,10 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/cli/repaircrc/repaircrc_server"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
 	syslog "log"
 	"net"
 	"net/http"
@@ -14,14 +10,20 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"github.com/chubaofs/chubaofs/cli/repaircrc/repaircrc_server"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/ump"
+)
+
+var (
+	configFile = flag.String("c", "", "config file path")
 )
 var (
-	configFile       = flag.String("c", "", "config file path")
-)
-var (
-	configKeyLogDir     = "logDir"
-	configKeyLogLevel   = "logLevel"
-	configKeyProfPort   = "prof"
+	configKeyLogDir   = "logDir"
+	configKeyLogLevel = "logLevel"
+	configKeyProfPort = "prof"
 )
 
 func main() {
@@ -69,7 +71,7 @@ func run() error {
 	}
 	defer log.LogFlush()
 
-	if err = ump.InitUmp("check_crc", "jdos_chubaofs-node"); err != nil {
+	if err = ump.InitUmp("check_crc", "jdos_chubaofs-node", ""); err != nil {
 		log.LogErrorf("init ump failed: %v", err)
 		log.LogFlush()
 		syslog.Printf("Fatal: init ump failed: %v ", err)

@@ -42,6 +42,7 @@ type Super struct {
 	modulename  string
 	volname     string
 	owner       string
+	umpJmtpAddr string
 	ic          *cache.InodeCache
 	mw          *meta.MetaWrapper
 	ec          *data.ExtentClient
@@ -257,6 +258,27 @@ func (s *Super) GetOpRate(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(s.mw.GetOpLimitRate()))
 }
 
+func (s *Super) GetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(fmt.Sprintf("%d", ump.UmpCollectWay)))
+}
+
+func (s *Super) SetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	if way := r.FormValue("way"); way != "" {
+		val, err := strconv.Atoi(way)
+		if err != nil {
+			w.Write([]byte("Set ump collect way failed\n"))
+		} else {
+			ump.UmpCollectWay = proto.UmpCollectBy(val)
+			w.Write([]byte(fmt.Sprintf("Set ump collect way to %v successfully\n", val)))
+		}
+	}
+}
+
 func (s *Super) EnableWriteCache() bool {
 	return s.ec.EnableWriteCache()
 }
@@ -353,4 +375,8 @@ func (s *Super) EnableJdosKernelWriteBack(enable bool) (err error) {
 		return
 	}
 	return
+}
+
+func (s *Super) UmpJmtpAddr() string {
+	return s.ec.UmpJmtpAddr()
 }

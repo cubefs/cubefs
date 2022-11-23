@@ -22,6 +22,7 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/ump"
 
 	"gopkg.in/ini.v1"
 )
@@ -35,6 +36,9 @@ const (
 	ControlGetReadStatus           = "/get/readstatus"
 	ControlSetUpgrade              = "/set/clientUpgrade"
 	ControlUnsetUpgrade            = "/unset/clientUpgrade"
+
+	ControlCommandGetUmpCollectWay = "/umpCollectWay/get"
+	ControlCommandSetUmpCollectWay = "/umpCollectWay/set"
 
 	aliveKey         = "alive"
 	volKey           = "vol"
@@ -781,4 +785,25 @@ func buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string
 		return
 	}
 	_, _ = w.Write(jsonBody)
+}
+
+func GetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(fmt.Sprintf("%v\n", proto.UmpCollectByStr(ump.UmpCollectWay))))
+}
+
+func SetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	if way := r.FormValue("way"); way != "" {
+		val, err := strconv.Atoi(way)
+		if err != nil {
+			w.Write([]byte("Set ump collect way failed\n"))
+		} else {
+			ump.UmpCollectWay = proto.UmpCollectBy(val)
+			w.Write([]byte(fmt.Sprintf("Set ump collect way to %v successfully\n", proto.UmpCollectByStr(proto.UmpCollectBy(val)))))
+		}
+	}
 }

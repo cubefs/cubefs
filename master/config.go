@@ -125,6 +125,7 @@ type clusterConfig struct {
 	DataPartitionsRecoverPoolSize       int32
 	MetaPartitionsRecoverPoolSize       int32
 	ClientPkgAddr                       string
+	UmpJmtpAddr                         string
 	MetaNodeRocksdbDiskThreshold        float32
 	MetaNodeMemModeRocksdbDiskThreshold float32
 	MetaNodeDumpWaterLevel              uint64

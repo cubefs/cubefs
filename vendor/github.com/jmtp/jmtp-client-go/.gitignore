@@ -1,0 +1,7 @@
+/build
+/telegraf
+/telegraf.exe
+/telegraf.gz
+/vendor
+.idea/*
+.DS_Store

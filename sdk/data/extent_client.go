@@ -755,3 +755,7 @@ func (c *ExtentClient) EnableWriteCache() bool {
 func (c *ExtentClient) SetEnableWriteCache(writeCache bool) {
 	c.dataWrapper.enableWriteCache = writeCache
 }
+
+func (c *ExtentClient) UmpJmtpAddr() string {
+	return c.dataWrapper.umpJmtpAddr
+}

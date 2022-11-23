@@ -1,66 +1,35 @@
 package ump
 
 import (
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-)
 
-const (
-	elapsedTimeCountSeparator = ","
-	logStartMarker            = "@"
-	logFormatVersion          = "629"
+	"github.com/chubaofs/chubaofs/proto"
 )
-
-type LogFormatV629 struct {
-	Time     int64               `json:"t"`
-	HostName string              `json:"h"`
-	AppName  string              `json:"a"`
-	Version  string              `json:"v"`
-	Logs     []map[string]string `json:"l"`
-}
 
 func (lw *LogWrite) backGroupWriteForGroupByTPV629() {
 	defer wg.Done()
 	for {
+		if UmpCollectWay != proto.UmpCollectByFile {
+			time.Sleep(10 * time.Second)
+		}
 		select {
 		case <-lw.stopC:
 			lw.logFp.Close()
 			return
 		default:
 			var body []byte
-
 			FunctionTPKeyMap.Range(func(key, value interface{}) bool {
-				umpLog := &LogFormatV629{
-					Time:     time.Now().Unix(),
-					HostName: HostName,
-					AppName:  AppName,
-					Version:  logFormatVersion,
-					Logs:     make([]map[string]string, 0),
+				if UmpCollectWay != proto.UmpCollectByFile {
+					return false
 				}
 				v, ok := value.(*sync.Map)
 				if !ok {
 					return true
 				}
 				FunctionTPKeyMap.Delete(key)
-				elapsedMap := make(map[string]string, 0)
-				var elapsedTimeCountStr strings.Builder
-				v.Range(func(key1, value1 interface{}) bool {
-					elapsedTime := key1.(int64)
-					elapsedTimeCountStr.WriteString(strconv.Itoa(int(elapsedTime)))
-					elapsedTimeCountStr.WriteString(elapsedTimeCountSeparator)
-					tpObj := value1.(*FunctionTpGroupBy)
-					elapsedTimeCountStr.WriteString(strconv.Itoa(int(tpObj.count)))
-					elapsedTimeCountStr.WriteString(elapsedTimeCountSeparator)
-					return true
-				})
-				timeCount := strings.TrimSuffix(elapsedTimeCountStr.String(), elapsedTimeCountSeparator)
-				elapsedMap["e"] = timeCount
-				elapsedMap["k"] = key.(string)
-				umpLog.Logs = append(umpLog.Logs, elapsedMap)
-
+				umpLog, _ := functionTPToLogFormat(key.(string), v)
 				err := lw.jsonEncoder.Encode(umpLog)
 				if err != nil {
 					return true
@@ -98,17 +67,8 @@ func (lw *LogWrite) backGroupAliveWriteV629() {
 			aliveKeyMap.Store(alive.Key, "")
 		case <-ticker.C:
 			aliveKeyMap.Range(func(key, value interface{}) bool {
-				umpLog := &LogFormatV629{
-					Time:     time.Now().Unix(),
-					HostName: HostName,
-					AppName:  AppName,
-					Version:  logFormatVersion,
-					Logs:     make([]map[string]string, 0),
-				}
 				aliveKeyMap.Delete(key)
-				keyMap := make(map[string]string, 0)
-				keyMap["k"] = key.(string)
-				umpLog.Logs = append(umpLog.Logs, keyMap)
+				umpLog := aliveToLogFormat(key.(string))
 				err := lw.jsonEncoder.Encode(umpLog)
 				if err != nil {
 					return true
@@ -145,20 +105,8 @@ func (lw *LogWrite) backGroupBusinessWriteV629() {
 			businessKeyMap.Store(alarmLog.Key, alarmLog.Detail)
 		case <-ticker.C:
 			businessKeyMap.Range(func(key, value interface{}) bool {
-				umpLog := &LogFormatV629{
-					Time:     time.Now().Unix(),
-					HostName: HostName,
-					AppName:  AppName,
-					Version:  logFormatVersion,
-					Logs:     make([]map[string]string, 0),
-				}
 				businessKeyMap.Delete(key)
-				keyMap := make(map[string]string, 0)
-				keyMap["k"] = key.(string)
-				keyMap["ty"] = "0"
-				keyMap["v"] = "0"
-				keyMap["d"] = value.(string)
-				umpLog.Logs = append(umpLog.Logs, keyMap)
+				umpLog := alarmToLogFormat(key.(string), value.(string))
 				err := lw.jsonEncoder.Encode(umpLog)
 				if err != nil {
 					return true

@@ -48,6 +48,7 @@ type Wrapper struct {
 	clusterName           string
 	volName               string
 	masters               []string
+	umpJmtpAddr           string
 	volNotExists          bool
 	partitions            *sync.Map //key: dpID; value: *DataPartition
 	followerRead          bool
@@ -269,6 +270,9 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.quorum = view.Quorum
 	w.ecEnable = view.EcEnable
 	w.extentCacheExpireSec = view.ExtentCacheExpireSec
+	if view.UmpCollectWay != proto.UmpCollectByUnkown {
+		ump.UmpCollectWay = view.UmpCollectWay
+	}
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
@@ -364,6 +368,11 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	if w.nearRead != view.NearRead {
 		log.LogInfof("updateSimpleVolView: update nearRead from old(%v) to new(%v)", w.nearRead, view.NearRead)
 		w.nearRead = view.NearRead
+	}
+
+	if ump.UmpCollectWay != view.UmpCollectWay && view.UmpCollectWay != proto.UmpCollectByUnkown {
+		log.LogInfof("updateSimpleVolView: update umpCollectWay from old(%v) to new(%v)", ump.UmpCollectWay, view.UmpCollectWay)
+		ump.UmpCollectWay = view.UmpCollectWay
 	}
 
 	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm || w.quorum != view.Quorum {
@@ -610,6 +619,7 @@ func (w *Wrapper) _updateDataNodeStatus(cv *proto.ClusterView) {
 		w.schedulerClient.UpdateSchedulerDomain(w.dpMetricsReportDomain)
 	}
 
+	w.umpJmtpAddr = cv.UmpJmtpAddr
 	return
 }
 

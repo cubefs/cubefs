@@ -19,10 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/storage"
-	"github.com/chubaofs/chubaofs/util/bitset"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -31,6 +27,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/storage"
+	"github.com/chubaofs/chubaofs/util/bitset"
+	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/cli/api"
 	"github.com/chubaofs/chubaofs/metanode"
@@ -296,35 +297,36 @@ const (
 
 func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optCapacity             uint64
-		optReplicas             int
-		optMpReplicas           int
-		optTrashDays            int
-		optStoreMode            int
-		optFollowerRead         string
-		optVolWriteMutex        string
-		optNearRead             string
-		optForceROW             string
-		optEnableWriteCache     string
-		optAuthenticate         string
-		optEnableToken          string
-		optAutoRepair           string
-		optBucketPolicy         string
-		optCrossRegionHAType    string
-		optZoneName             string
-		optLayout               string
-		optExtentCacheExpireSec int64
-		optYes                  bool
-		confirmString           = strings.Builder{}
-		vv                      *proto.SimpleVolView
-		optIsSmart              string
-		smartRules              []string
-		optCompactTag           string
-		optFolReadDelayInterval int64
+		optCapacity              uint64
+		optReplicas              int
+		optMpReplicas            int
+		optTrashDays             int
+		optStoreMode             int
+		optFollowerRead          string
+		optVolWriteMutex         string
+		optNearRead              string
+		optForceROW              string
+		optEnableWriteCache      string
+		optAuthenticate          string
+		optEnableToken           string
+		optAutoRepair            string
+		optBucketPolicy          string
+		optCrossRegionHAType     string
+		optZoneName              string
+		optLayout                string
+		optExtentCacheExpireSec  int64
+		optYes                   bool
+		confirmString            = strings.Builder{}
+		vv                       *proto.SimpleVolView
+		optIsSmart               string
+		smartRules               []string
+		optCompactTag            string
+		optFolReadDelayInterval  int64
 		optLowestDelayHostWeight int
 		optTrashCleanInterval    int
 		optBatchDelInodeCnt      int
 		optDelInodeInterval      int
+		optUmpCollectWay         int
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -619,6 +621,14 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.DelInodeInterval = uint32(optDelInodeInterval)
 			}
 
+			if optUmpCollectWay >= 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  UmpCollectWay            : %v -> %v\n", vv.UmpCollectWay, optUmpCollectWay))
+				vv.UmpCollectWay = proto.UmpCollectBy(optUmpCollectWay)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  UmpCollectWay            : %v\n", vv.UmpCollectWay))
+			}
+
 			if err != nil {
 				return
 			}
@@ -641,7 +651,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
-				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval)
+				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, proto.UmpCollectBy(optUmpCollectWay))
 			if err != nil {
 				return
 			}
@@ -682,15 +692,16 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optTrashCleanInterval, CliOpVolTrashCleanInterval, -1, "specify trash clean interval, unit:min")
 	cmd.Flags().IntVar(&optBatchDelInodeCnt, CliOpVolBatchDelInodeCnt, -1, "specify batch del inode count")
 	cmd.Flags().IntVar(&optDelInodeInterval, CliOpVolDelInodeInterval, -1, "specify del inode interval, unit:ms")
+	cmd.Flags().IntVar(&optUmpCollectWay, CliFlagUmpCollectWay, proto.UmpCollectByUnkown, "Set ump collect way: 0 unknown 1 file 2 jmtp client")
 	return cmd
 }
 
 func newVolShrinkCapacityCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optCapacity             uint64
-		optYes                  bool
-		confirmString           = strings.Builder{}
-		vv                      *proto.SimpleVolView
+		optCapacity   uint64
+		optYes        bool
+		confirmString = strings.Builder{}
+		vv            *proto.SimpleVolView
 	)
 	var cmd = &cobra.Command{
 		Use:   "shrinkCapacity [VOLUME NAME]",
@@ -1612,7 +1623,7 @@ func newVolEcPartitionsChunkConsistency(client *master.MasterClient) *cobra.Comm
 }
 
 const (
-	cmdVolSetChildFileMaxCountCmdUse = "set-child-file-max-count [VOLUME]"
+	cmdVolSetChildFileMaxCountCmdUse   = "set-child-file-max-count [VOLUME]"
 	cmdVolSetChildFileMaxCountCmdShort = "set child file max count"
 )
 
@@ -1685,8 +1696,8 @@ func newVolSetChildFileMaxCountCmd(client *master.MasterClient) *cobra.Command {
 
 var (
 	optParallelMpCnt, optParallelInodeCnt int64
-	mistakeDeleteEKInfoPattern = "%-20v    %-20v\n"
-	mistakeDeleteEKInfoHeader  = fmt.Sprintf(mistakeDeleteEKInfoPattern, "DP ID", "EXTENTS ID")
+	mistakeDeleteEKInfoPattern            = "%-20v    %-20v\n"
+	mistakeDeleteEKInfoHeader             = fmt.Sprintf(mistakeDeleteEKInfoPattern, "DP ID", "EXTENTS ID")
 )
 
 type ExtentInfo struct {
@@ -1822,7 +1833,7 @@ func getExtentsByMPs(client *master.MasterClient, volumeName string) (
 	go func() {
 		defer resultWaitGroup.Done()
 		for {
-			e, ok := <- extCh
+			e, ok := <-extCh
 			if e == nil && !ok {
 				break
 			}
@@ -1850,12 +1861,12 @@ func getExtentsByMPs(client *master.MasterClient, volumeName string) (
 	}()
 
 	var wg sync.WaitGroup
-	for index := 0 ; index < int(optParallelMpCnt); index++ {
+	for index := 0; index < int(optParallelMpCnt); index++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for {
-				mpID, ok := <- mpIDCh
+				mpID, ok := <-mpIDCh
 				if !ok {
 					break
 				}
@@ -1886,7 +1897,7 @@ func getExtentsByMPs(client *master.MasterClient, volumeName string) (
 				if len(addrs) == 0 {
 					var (
 						maxInodeCount uint64 = 0
-						leaderAddr = ""
+						leaderAddr           = ""
 					)
 
 					for _, replica := range metaPartitionInfo.Replicas {
@@ -1920,7 +1931,7 @@ func getExtentsByMPs(client *master.MasterClient, volumeName string) (
 				}
 				if errorInfo != nil {
 					errorCh <- errorInfo
-					log.LogErrorf("action[getExtentsByMPs] get volume [%s] extent id list " +
+					log.LogErrorf("action[getExtentsByMPs] get volume [%s] extent id list "+
 						"from mp[%v] failed: %v", volumeName, mpID, errorInfo)
 					continue
 				}
@@ -1932,7 +1943,7 @@ func getExtentsByMPs(client *master.MasterClient, volumeName string) (
 	resultWaitGroup.Wait()
 
 	select {
-	case e := <- errorCh:
+	case e := <-errorCh:
 		//meta info must be complete
 		log.LogErrorf("get extent id list from meta partition failed:%v", e)
 		err = errors.NewErrorf("get extent id list from meta partition failed:%v", e)
@@ -1943,7 +1954,6 @@ func getExtentsByMPs(client *master.MasterClient, volumeName string) (
 	return
 }
 
-
 func getExtentsFromMetaPartition(mpId uint64, leaderAddr string, ExtentInfoCh chan *ExtentInfo) (err error) {
 	leaderInfo := strings.Split(leaderAddr, ":")
 	if len(leaderInfo) < 2 {
@@ -1952,9 +1962,9 @@ func getExtentsFromMetaPartition(mpId uint64, leaderAddr string, ExtentInfoCh ch
 	host := leaderInfo[0] + ":" + strconv.Itoa(int(client.MetaNodeProfPort))
 	metaHttpClient := meta.NewMetaHttpClient(host, false)
 	var (
-		inodesID       []uint64
-		allInodeIDs    *proto.MpAllInodesId
-		wg             sync.WaitGroup
+		inodesID    []uint64
+		allInodeIDs *proto.MpAllInodesId
+		wg          sync.WaitGroup
 	)
 	allInodeIDs, err = metaHttpClient.ListAllInodesId(mpId, 0, 0, 0)
 	if err != nil {
@@ -1980,12 +1990,12 @@ func getExtentsFromMetaPartition(mpId uint64, leaderAddr string, ExtentInfoCh ch
 	defer func() {
 		close(errorCh)
 	}()
-	for i := 0; i < int(optParallelInodeCnt) ; i++ {
+	for i := 0; i < int(optParallelInodeCnt); i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for {
-				inodeID, ok := <- inodeIDCh
+				inodeID, ok := <-inodeIDCh
 				if !ok {
 					break
 				}
@@ -1993,7 +2003,7 @@ func getExtentsFromMetaPartition(mpId uint64, leaderAddr string, ExtentInfoCh ch
 				getExtentsResp, errInfo := metaHttpClient.GetExtentKeyByInodeId(mpId, inodeID)
 				if errInfo != nil {
 					errorCh <- errInfo
-					log.LogErrorf("action[getExtentsFromMetaPartition] get mp[%v] extent " +
+					log.LogErrorf("action[getExtentsFromMetaPartition] get mp[%v] extent "+
 						"key by inode id[%v] failed: %v", mpId, inodeID, errInfo)
 					continue
 				}
@@ -2052,7 +2062,6 @@ func getExtentsByDPs(client *master.MasterClient, volumeName string) (dataExtent
 	log.LogInfof("volume:%s, data extents map count:%v", volumeName, len(dataExtentsMap))
 	return
 }
-
 
 func getExtentsByDataPartition(dpId uint64, dataNodeAddr string) (extentsID []uint64, err error) {
 	var dpView *DataPartition

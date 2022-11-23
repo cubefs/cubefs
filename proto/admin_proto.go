@@ -1043,6 +1043,7 @@ type SimpleVolView struct {
 	TrashCleanInterval    uint64
 	BatchDelInodeCnt     uint32
 	DelInodeInterval     uint32
+	UmpCollectWay         UmpCollectBy
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

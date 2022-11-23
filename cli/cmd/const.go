@@ -120,6 +120,7 @@ const (
 	CliFlagHuman                = "human"
 	CliFlagRaft                 = "raft"
 	CliFlagCompactTag           = "compact"
+	CliFlagUmpCollectWay        = "ump-collect-way"
 	CliFlagFollReadDelayInterval = "host-delay-interval"
 	CliFlagFollReadHostWeight    = "set-host-weight"
 

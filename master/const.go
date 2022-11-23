@@ -142,6 +142,8 @@ const (
 	volBatchDelInodeCntKey       = "batchDelInodeCnt"
 	volDelInodeIntervalKey       = "delInodeInterval"
 	dataNodeFlushFDParallelismOnDiskKey = "dataNodeFlushFDParallelism"
+	umpCollectWayKey                    = "umpCollectWay"
+	umpJmtpAddrKey                      = "umpJmtpAddr"
 )
 
 const (

@@ -213,6 +213,7 @@ type ClusterView struct {
 	DataNodeBadDisks                    []DataNodeBadDisksView
 	SchedulerDomain                     string // todo
 	ClientPkgAddr                       string
+	UmpJmtpAddr                         string
 	MetaNodeRocksdbDiskThreshold        float32
 	MetaNodeMemModeRocksdbDiskThreshold float32
 	RocksDBDiskReservedSpace            uint64
@@ -222,8 +223,8 @@ type ClusterView struct {
 	MetaRocksLogSize                    uint64 //MB
 	MetaRocksLogReservedTime            uint64 //day
 	MetaRocksLogReservedCnt             uint64
-	MetaRocksFlushWalInterval           uint64  //min
-	MetaRocksDisableFlushFlag           uint64  //0 flush, !=0 disable flush
+	MetaRocksFlushWalInterval           uint64 //min
+	MetaRocksDisableFlushFlag           uint64 //0 flush, !=0 disable flush
 	MetaRocksWalTTL                     uint64
 	MetaDelEKRecordFileMaxMB            uint64 //MB
 	MetaTrashCleanInterval              uint64 //second

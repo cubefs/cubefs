@@ -40,6 +40,7 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  Dp recover pool  : %v\n", cv.DpRecoverPool))
 	sb.WriteString(fmt.Sprintf("  Mp recover pool  : %v\n", cv.MpRecoverPool))
 	sb.WriteString(fmt.Sprintf("  Client pkg addr  : %v\n", cv.ClientPkgAddr))
+	sb.WriteString(fmt.Sprintf("  UMP jmtp addr    : %v\n", cv.UmpJmtpAddr))
 	sb.WriteString(fmt.Sprintf("  EcNode count     : %v\n", len(cv.EcNodes)))
 	if cv.EcNodeStatInfo != nil {
 		sb.WriteString(fmt.Sprintf("  EcNode used      : %v GB\n", cv.EcNodeStatInfo.UsedGB))
@@ -171,6 +172,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  writable dp count    : %v\n", svv.RwDpCnt))
 	sb.WriteString(fmt.Sprintf("  min writable mp num  : %v\n", svv.MinWritableMPNum))
 	sb.WriteString(fmt.Sprintf("  min writable dp num  : %v\n", svv.MinWritableDPNum))
+	sb.WriteString(fmt.Sprintf("  ump collect way      : %v\n", proto.UmpCollectByStr(svv.UmpCollectWay)))
 	sb.WriteString(fmt.Sprintf("  smart                : %s\n", formatEnabledDisabled(svv.IsSmart)))
 	sb.WriteString(fmt.Sprintf("  smart enable time    : %v\n", svv.SmartEnableTime))
 	sb.WriteString(fmt.Sprintf("  smart rules          : %v\n", strings.Join(svv.SmartRules, ",")))
@@ -1157,8 +1159,6 @@ func formatNormalExtent(r *proto.DataReplica, extent *proto.ExtentInfoBlock, md5
 	}
 	return fmt.Sprintf(normalExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, extent[proto.ExtentInfoSize], extent[proto.ExtentInfoCrc], md5Sum, formatTime(int64(extent[proto.ExtentInfoModifyTime])))
 }
-
-
 
 func formatClusterNodeInfo(info *proto.LimitInfo) string {
 	var sb = strings.Builder{}

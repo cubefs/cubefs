@@ -412,7 +412,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		vol.volWriteMutexEnable, false, *args.EnableWriteCache, vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType,
 		vol.dpWriteableThreshold, vol.trashRemainingDays, proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)},
 		vol.ExtentCacheExpireSec, vol.smartRules, vol.compactTag, vol.FollowerReadDelayCfg, vol.FollReadHostWeight, *args.TrashInterVal,
-		*args.batchDelInodeCnt, *args.delInodeInterval); err != nil {
+		*args.batchDelInodeCnt, *args.delInodeInterval, vol.UmpCollectWay); err != nil {
 		return nil, err
 	}
 

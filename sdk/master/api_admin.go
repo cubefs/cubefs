@@ -393,7 +393,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool,
 	authKey, zoneName, mpLayout, smartRules string, bucketPolicy, crossRegionHAType uint8,
 	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64,
-	batchDelInodeCnt, delInodeInterval uint32) (err error) {
+	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -425,6 +425,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	if trashDays > -1 {
 		request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
 	}
+	request.addParam("umpCollectWay", strconv.Itoa(int(umpCollectWay)))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -736,13 +737,13 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.MetaDelEKRecordFileMaxMB > 0 {
 		request.addParam(proto.MetaDelEKRecordFileMaxMB, strconv.FormatUint(info.MetaDelEKRecordFileMaxMB, 10))
 	}
-	if info.MetaTrashCleanInterval >0 {
+	if info.MetaTrashCleanInterval > 0 {
 		request.addParam(proto.MetaTrashCleanIntervalKey, strconv.FormatUint(info.MetaTrashCleanInterval, 10))
 	}
-	if info.MetaRaftLogSize >0 {
+	if info.MetaRaftLogSize > 0 {
 		request.addParam(proto.MetaRaftLogSizeKey, strconv.FormatInt(info.MetaRaftLogSize, 10))
 	}
-	if info.MetaRaftLogCap >0 {
+	if info.MetaRaftLogCap > 0 {
 		request.addParam(proto.MetaRaftLogCapKey, strconv.FormatInt(info.MetaRaftLogCap, 10))
 	}
 	if info.DataSyncWALEnableState == 0 || info.DataSyncWALEnableState == 1 {

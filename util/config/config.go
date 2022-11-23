@@ -230,6 +230,24 @@ func (c *Config) CheckAndGetString(key string) (string, bool) {
 	return "", false
 }
 
+// convert as many types as possible to int64, for intergers in config file may be parsed as float in previous operations
+func (c *Config) CheckAndGetInt64(key string) (int64, bool) {
+	x, present := c.data[key]
+	if !present {
+		return 0, false
+	}
+	result, isString := x.(string)
+	if !isString {
+		result = fmt.Sprintf("%v", x)
+	}
+	val, err := strconv.Atoi(result)
+	if err != nil {
+		return 0, false
+	} else {
+		return int64(val), true
+	}
+}
+
 // GetBool returns a bool value for the config key.
 func (c *Config) CheckAndGetBool(key string) (bool, bool) {
 	x, present := c.data[key]

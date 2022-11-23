@@ -18,6 +18,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type TpObject struct {
@@ -61,24 +64,39 @@ var (
 	FunctionTPMapCount = 16
 	FuncationTPMap     []sync.Map
 	FunctionTPKeyMap   *sync.Map
+	UmpCollectWay      proto.UmpCollectBy
+	jmtpWrite          *JmtpWrite
 )
 
 func init() {
 	FuncationTPMap = make([]sync.Map, FunctionTPMapCount)
 	FunctionTPKeyMap = new(sync.Map)
+	UmpCollectWay = proto.UmpCollectByFile
 }
 
-func InitUmp(module, appName string) (err error) {
+func InitUmp(module, appName string, jmtpAddr string) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("InitUmp err(%v)", err)
+		}
+	}()
+	AppName = appName
 	if err = initLogName(module); err != nil {
 		return
 	}
-	AppName = appName
-	backGroudWrite()
+	if jmtpWrite, err = NewJmtpWrite(jmtpAddr); err != nil {
+		return
+	}
+	backGroudWriteLog()
 	return nil
 }
 
 func StopUmp() {
 	stopLogWriter()
+	if jmtpWrite != nil {
+		jmtpWrite.stop()
+	}
+	jmtpWrite = nil
 	FuncationTPMap = nil
 	AlarmPool = nil
 	TpObjectPool = nil
@@ -228,8 +246,12 @@ func Alive(key string) {
 	alive.HostName = HostName
 	alive.Key = key
 	alive.Time = time.Now().Format(LogTimeForMat)
+	ch := SystemAliveLogWrite.logCh
+	if UmpCollectWay == proto.UmpCollectByJmtpClient {
+		ch = jmtpWrite.aliveCh
+	}
 	select {
-	case SystemAliveLogWrite.logCh <- alive:
+	case ch <- alive:
 	default:
 	}
 	return
@@ -251,23 +273,34 @@ func Alarm(key, detail string) {
 		alarm.Detail = string(rs[0:510])
 	}
 
+	inflight := &BusinessAlarmLogWrite.inflight
+	ch := BusinessAlarmLogWrite.logCh
+	if UmpCollectWay == proto.UmpCollectByJmtpClient {
+		inflight = &jmtpWrite.inflight
+		ch = jmtpWrite.aliveCh
+	}
 	select {
-	case BusinessAlarmLogWrite.logCh <- alarm:
-		atomic.AddInt32(&BusinessAlarmLogWrite.inflight, 1)
+	case ch <- alarm:
+		atomic.AddInt32(inflight, 1)
 	default:
 	}
 	return
 }
 
 func FlushAlarm() {
-	if atomic.LoadInt32(&BusinessAlarmLogWrite.inflight) <= 0 {
+	flushAlarm(&BusinessAlarmLogWrite.inflight, BusinessAlarmLogWrite.empty)
+	flushAlarm(&jmtpWrite.inflight, jmtpWrite.empty)
+}
+
+func flushAlarm(inflight *int32, empty chan struct{}) {
+	if atomic.LoadInt32(inflight) <= 0 {
 		return
 	}
 
 	for {
 		select {
-		case <-BusinessAlarmLogWrite.empty:
-			if atomic.LoadInt32(&BusinessAlarmLogWrite.inflight) <= 0 {
+		case <-empty:
+			if atomic.LoadInt32(inflight) <= 0 {
 				return
 			}
 		}

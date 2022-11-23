@@ -2884,7 +2884,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
 	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
-	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32) (err error) {
+	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3047,6 +3047,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		err = fmt.Errorf(" valid force row or compact for vol: %v, err: %v", name, err.Error())
 		goto errHandler
 	}
+	vol.UmpCollectWay = umpCollectWay
 	if err = c.syncUpdateVol(vol); err != nil {
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
@@ -3066,7 +3067,7 @@ errHandler:
 func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity,
 	trashDays int, ecDataNum, ecParityNum uint8, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,
 	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
-	childFileMaxCnt uint32,	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string,
+	childFileMaxCnt uint32, storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string,
 	compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
@@ -3739,6 +3740,12 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DataSyncWALOnUnstableEnableState = val.(bool)
 	}
 
+	oldUmpJmtpUrl := c.cfg.UmpJmtpAddr
+	if val, ok := params[umpJmtpAddrKey]; ok {
+		v := val.(string)
+		c.cfg.UmpJmtpAddr = v
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3773,6 +3780,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, oldMetaRaftLogCap)
 		c.cfg.DataSyncWALOnUnstableEnableState = oldDataSyncWALEnableState
 		c.cfg.MetaSyncWALOnUnstableEnableState = oldMetaSyncWALEnableState
+		c.cfg.UmpJmtpAddr = oldUmpJmtpUrl
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -5412,8 +5420,8 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 
 func (c *Cluster) setVolChildFileMaxCount(name string, newChildFileMaxCount uint32) (err error) {
 	var (
-		vol           *Vol
-		oldMaxCount   uint32
+		vol         *Vol
+		oldMaxCount uint32
 	)
 
 	if vol, err = c.getVol(name); err != nil {

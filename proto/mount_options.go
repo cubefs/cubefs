@@ -56,6 +56,7 @@ const (
 	DeleteProcessAbsoPath
 	NoBatchGetInodeOnReaddir
 	ReadAheadSize
+	UmpCollectWay
 
 	MaxMountOption
 )
@@ -66,7 +67,7 @@ const (
 	ListenPort       = "listen"
 	HttpPort         = "prof"
 	ObjectNodeDomain = "objectNodeDomain"
-	MaxReadAhead 	 = 512 * 1024
+	MaxReadAhead     = 512 * 1024
 )
 
 type MountOption struct {
@@ -136,7 +137,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[ExtentSize] = MountOption{"extentSize", "set extentSize for client", "", int64(0)}
 	opts[AutoFlush] = MountOption{"autoFlush", "set autoFlush for client", "", true}
 	opts[DeleteProcessAbsoPath] = MountOption{"delProcessAbsoPath", "the absolute path of the process which is allowed to delete files", "", ""}
-
+	opts[UmpCollectWay] = MountOption{"umpCollectWay", "1: by file, 2: by jmtp client", "", int64(UmpCollectByFile)}
 	//	for i := 0; i < MaxMountOption; i++ {
 	//		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	//	}
@@ -161,8 +162,8 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 			if opts[i].cmdlineValue != "" {
 				opts[i].value = parseInt64(opts[i].cmdlineValue)
 			} else {
-				if value, present := cfg.CheckAndGetString(opts[i].keyword); present {
-					opts[i].value = parseInt64(value)
+				if value, present := cfg.CheckAndGetInt64(opts[i].keyword); present {
+					opts[i].value = value
 				} else {
 					opts[i].value = v
 				}
@@ -274,5 +275,6 @@ type MountOptions struct {
 	AutoFlush                bool
 	DelProcessPath           string
 	NoBatchGetInodeOnReaddir bool
-	ReadAheadSize			 int64
+	ReadAheadSize            int64
+	UmpCollectWay            int64
 }

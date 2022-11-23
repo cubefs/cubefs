@@ -585,6 +585,8 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		http.HandleFunc(ControlGetReadStatus, getReadStatus)
 		http.HandleFunc(ControlSetUpgrade, SetClientUpgrade)
 		http.HandleFunc(ControlUnsetUpgrade, UnsetClientUpgrade)
+		http.HandleFunc(ControlCommandGetUmpCollectWay, GetUmpCollectWay)
+		http.HandleFunc(ControlCommandSetUmpCollectWay, SetUmpCollectWay)
 		server := &http.Server{Addr: fmt.Sprintf(":%v", gClientManager.profPort)}
 		gClientManager.wg.Add(2)
 		go func() {
@@ -1396,10 +1398,10 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	} else if f.fileType == fileTypeRelaylog {
 		act = ump_cfs_flush_relaylog
 	}
-	//tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
+	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
 	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
-		//ump.AfterTPUs(tpObject1, nil)
+		ump.AfterTPUs(tpObject1, nil)
 		ump.AfterTPUs(tpObject2, nil)
 	}()
 
@@ -3308,10 +3310,10 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	} else if f.fileType == fileTypeRelaylog {
 		act = ump_cfs_read_relaylog
 	}
-	//tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
+	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
 	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
-		//ump.AfterTPUs(tpObject1, nil)
+		ump.AfterTPUs(tpObject1, nil)
 		ump.AfterTPUs(tpObject2, nil)
 	}()
 
@@ -3479,10 +3481,10 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	if off < 0 && off != C.off_t(autoOffset) {
 		return C.ssize_t(statusEINVAL)
 	}
-	//tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
+	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
 	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
-		//ump.AfterTPUs(tpObject1, nil)
+		ump.AfterTPUs(tpObject1, nil)
 		ump.AfterTPUs(tpObject2, nil)
 	}()
 
@@ -3905,7 +3907,7 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 	c.ec = ec
 
 	// metric
-	if err = ump.InitUmp(gClientManager.moduleName, "jdos_chubaofs-node"); err != nil {
+	if err = ump.InitUmp(gClientManager.moduleName, "jdos_chubaofs-node", ec.UmpJmtpAddr()); err != nil {
 		syslog.Println(err)
 		return
 	}
