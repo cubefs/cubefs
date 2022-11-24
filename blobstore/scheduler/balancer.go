@@ -17,11 +17,13 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sort"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
@@ -234,11 +236,19 @@ func (mgr *BalanceMgr) checkAndClearJunkTasks() {
 		if time.Since(task.DeletedTime) < junkMigrationTaskProtectionWindow {
 			continue
 		}
-
-		span.Warnf("delete junk task: task_id[%s]", task.TaskID)
-		base.InsistOn(ctx, "delete junk task", func() error {
-			return mgr.clusterMgrCli.DeleteMigrateTask(ctx, task.TaskID)
-		})
+		_, err := mgr.clusterMgrCli.GetMigrateTask(ctx, proto.TaskTypeBalance, task.TaskID)
+		if err != nil {
+			if rpc.DetectStatusCode(err) != http.StatusNotFound {
+				span.Errorf("get balance task from clustermanager failed: err[%+v]", err)
+				continue
+			}
+			// means there is no junk task and only delete task from memory
+		} else { // delete junk task when exists
+			span.Warnf("delete junk task: task_id[%s]", task.TaskID)
+			base.InsistOn(ctx, "delete junk task", func() error {
+				return mgr.clusterMgrCli.DeleteMigrateTask(ctx, task.TaskID)
+			})
+		}
 
 		mgr.ClearDeletedTaskByID(task.DiskID, task.TaskID)
 	}
