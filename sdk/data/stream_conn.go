@@ -46,6 +46,8 @@ const (
 	WriteTimeoutData     = 3
 
 	hostErrAccessTimeout = 300 // second
+
+	StreamRetryTimeout	 = 10 * time.Minute
 )
 
 type GetReplyFunc func(conn *net.TCPConn) (err error, again bool)

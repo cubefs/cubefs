@@ -589,6 +589,10 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet, errmsg string) error {
 		time.Sleep(1 * time.Second)
 	}
 
+	if packet.errCount >= MaxPacketErrorCount {
+		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
+	}
+
 	handler := eh.recoverHandler
 	if handler == nil {
 		// Always use normal extent store mode for recovery.
@@ -629,6 +633,7 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 
 	exclude := make(map[string]struct{})
 	loopCount := 0
+	start := time.Now()
 
 	// loop for creating extent until successfully
 	for {
@@ -637,6 +642,10 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 			log.LogWarnf("allocateExtent: try (%v)th times because of failing to create extent, eh(%v) exclude(%v)", loopCount, eh, exclude)
 			umpMsg := fmt.Sprintf("create extent failed, eh(%v), try count(%v)", eh, loopCount)
 			handleUmpAlarm(eh.stream.client.dataWrapper.clusterName, eh.stream.client.dataWrapper.volName, "allocateExtent", umpMsg)
+		}
+		if time.Since(start) > StreamRetryTimeout {
+			log.LogWarnf("allocateExtent failed: retry (%v)th times err(%v) exclude(%v) eh(%v)", loopCount, err, exclude, eh)
+			break
 		}
 		if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude); err != nil {
 			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v) err(%v)", eh, exclude,
@@ -680,6 +689,15 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 		//log.LogDebugf("ExtentHandler allocateExtent exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
 		return nil
 	}
+
+	log.LogWarnf("allocateExtent failed: hit max retry time(%v) err(%v) eh(%v)", StreamRetryTimeout, err, eh)
+	errmsg := fmt.Sprintf("allocateExtent failed: hit max retry time")
+	if err != nil {
+		err = errors.Trace(err, errmsg)
+	} else {
+		err = errors.New(errmsg)
+	}
+	return err
 }
 
 //func (eh *ExtentHandler) createConnection(dp *DataPartition) (*net.TCPConn, error) {

@@ -458,6 +458,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 	}
 	var errmsg string
 	tryCount := 0
+	start := time.Now()
 	for {
 		tryCount++
 		if tryCount%100 == 0 {
@@ -479,6 +480,10 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 		}
 		errmsg = fmt.Sprintf("doOverWrite and doROW err(%v) inode(%v) req(%v) try count(%v)", err, s.inode, req, tryCount)
 		handleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
+		if time.Since(start) > StreamRetryTimeout {
+			log.LogWarnf("doOverWriteOrROW failed: retry timeout ino(%v) err(%v) req(%v)", s.inode, err, req)
+			break
+		}
 		time.Sleep(1 * time.Second)
 	}
 	return writeSize, isROW, err

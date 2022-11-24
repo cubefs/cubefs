@@ -54,6 +54,10 @@ var (
 	AttrValidDuration = 30 * time.Second
 )
 
+var (
+	JdosKernelWriteBackControlFile = "/proc/sys/kernel/enable_fuse_cgwb"
+)
+
 // ParseError returns the error type.
 func ParseError(err error) fuse.Errno {
 	switch v := err.(type) {
