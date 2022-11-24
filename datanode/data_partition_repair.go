@@ -18,11 +18,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"math"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/chubaofs/chubaofs/util/unit"
 
@@ -310,21 +311,36 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTasks [
 		}
 		store.Create(extentInfo[storage.FileID], true)
 	}
+	var allReplicas = dp.getReplicaClone()
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
 		if store.IsRecentDelete(extentInfo[storage.FileID]) {
 			continue
 		}
-		source := repairTasks[0].ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
-		err := dp.streamRepairExtent(ctx, extentInfo, source, NoSkipLimit)
-		if err != nil {
-			err = errors.Trace(err, "DoRepairOnLeaderDisk %v", dp.applyRepairKey(int(extentInfo[storage.FileID])))
-			localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(extentInfo[storage.FileID]))
-			if opErr != nil {
-				err = errors.Trace(err, opErr.Error())
+		majorSource := repairTasks[0].ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
+		sources := []string{
+			majorSource,
+		}
+		if len(allReplicas) > 0 {
+			for _, replica := range allReplicas[1:] {
+				if replica != majorSource {
+					sources = append(sources, replica)
+				}
 			}
-			err = errors.Trace(err, "partition(%v) remote(%v) local(%v)",
-				dp.partitionID, extentInfo, localExtentInfo)
-			log.LogWarnf("action[DoRepairOnLeaderDisk] err(%v).", err)
+		}
+		for _, source := range sources {
+			err := dp.streamRepairExtent(ctx, extentInfo, source, NoSkipLimit)
+			if err != nil {
+				err = errors.Trace(err, "DoRepairOnLeaderDisk %v", dp.applyRepairKey(int(extentInfo[storage.FileID])))
+				localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(extentInfo[storage.FileID]))
+				if opErr != nil {
+					err = errors.Trace(err, opErr.Error())
+				}
+				err = errors.Trace(err, "partition(%v) remote(%v) local(%v)",
+					dp.partitionID, extentInfo, localExtentInfo)
+				log.LogWarnf("action[DoRepairOnLeaderDisk] err(%v).", err)
+				continue
+			}
+			break
 		}
 	}
 }
@@ -511,20 +527,24 @@ func (dp *DataPartition) NotifyExtentRepair(ctx context.Context, members []*Data
 }
 
 // DoStreamExtentFixRepair executes the repair on the followers.
-func (dp *DataPartition) doStreamExtentFixRepairOnFollowerDisk(ctx context.Context, wg *sync.WaitGroup, remoteExtentInfo storage.ExtentInfoBlock, source string) {
+func (dp *DataPartition) doStreamExtentFixRepairOnFollowerDisk(ctx context.Context, wg *sync.WaitGroup, remoteExtentInfo storage.ExtentInfoBlock, sources []string) {
 	defer wg.Done()
 
-	err := dp.streamRepairExtent(ctx, remoteExtentInfo, source, NoSkipLimit)
-
-	if err != nil {
-		err = errors.Trace(err, "doStreamExtentFixRepairOnFollowerDisk %v", dp.applyRepairKey(int(remoteExtentInfo[storage.FileID])))
-		localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(remoteExtentInfo[storage.FileID]))
-		if opErr != nil {
-			err = errors.Trace(err, opErr.Error())
+	var err error
+	for _, source := range sources {
+		err = dp.streamRepairExtent(ctx, remoteExtentInfo, source, NoSkipLimit)
+		if err != nil {
+			err = errors.Trace(err, "doStreamExtentFixRepairOnFollowerDisk %v", dp.applyRepairKey(int(remoteExtentInfo[storage.FileID])))
+			localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(remoteExtentInfo[storage.FileID]))
+			if opErr != nil {
+				err = errors.Trace(err, opErr.Error())
+			}
+			err = errors.Trace(err, "partition(%v) remote(%v) local(%v)",
+				dp.partitionID, remoteExtentInfo, localExtentInfo)
+			log.LogWarnf("action[doStreamExtentFixRepairOnFollowerDisk] err(%v).", err)
+			continue
 		}
-		err = errors.Trace(err, "partition(%v) remote(%v) local(%v)",
-			dp.partitionID, remoteExtentInfo, localExtentInfo)
-		log.LogWarnf("action[doStreamExtentFixRepairOnFollowerDisk] err(%v).", err)
+		break
 	}
 }
 

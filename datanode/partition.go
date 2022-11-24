@@ -829,9 +829,9 @@ func (dp *DataPartition) String() (m string) {
 // runRepair launches the repair of extents.
 func (dp *DataPartition) runRepair(ctx context.Context, extentType uint8, fetchReplicas bool) {
 
-	if dp.partitionStatus == proto.Unavailable {
+/*	if dp.partitionStatus == proto.Unavailable {
 		return
-	}
+	}*/
 	if fetchReplicas {
 		if err := dp.updateReplicas(false); err != nil {
 			log.LogErrorf("action[runRepair] partition(%v) err(%v).", dp.partitionID, err)
@@ -966,6 +966,8 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 		wg           *sync.WaitGroup
 		recoverIndex int
 	)
+	localAddr := fmt.Sprintf("%v:%v", LocalIP, LocalServerPort)
+	allReplicas := dp.getReplicaClone()
 	wg = new(sync.WaitGroup)
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
 		if store.IsRecentDelete(extentInfo[storage.FileID]) {
@@ -975,9 +977,19 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 			continue
 		}
 		wg.Add(1)
-		source := repairTask.ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
+		majorSource := repairTask.ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
+		sources := []string{
+			majorSource,
+		}
+		for _, replica := range allReplicas {
+			if replica == majorSource || replica == localAddr {
+				continue
+			}
+			sources = append(sources, replica)
+		}
+
 		// repair the extents
-		go dp.doStreamExtentFixRepairOnFollowerDisk(context.Background(), wg, extentInfo, source)
+		go dp.doStreamExtentFixRepairOnFollowerDisk(context.Background(), wg, extentInfo, sources)
 		recoverIndex++
 
 		if recoverIndex%NumOfFilesToRecoverInParallel == 0 {

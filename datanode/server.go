@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/statinfo"
 	"net"
 	"net/http"
 	"os"
@@ -30,6 +29,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/statinfo"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
@@ -49,7 +50,8 @@ var (
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
 
-	LocalIP, serverPort   string
+	LocalIP               string
+	LocalServerPort       string
 	gConnPool             = connpool.NewConnectPool()
 	MasterClient          = masterSDK.NewMasterClient(nil, false)
 	gHasLoadDataPartition bool
@@ -206,7 +208,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(proto.ListenPort)
-	serverPort = port
+	LocalServerPort = port
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
 		return fmt.Errorf("Err:no port")
 	}
