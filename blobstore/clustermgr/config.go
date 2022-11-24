@@ -47,9 +47,12 @@ func (s *Service) ConfigGet(c *rpc.Context) {
 	}
 
 	ret, err := s.ConfigMgr.Get(ctx, args.Key)
-	if err == os.ErrNotExist {
-		span.Errorf("config get err: %v", err)
-		c.RespondError(apierrors.ErrNotFound)
+	if err != nil {
+		span.Errorf("config get error: %v", err)
+		if err == os.ErrNotExist {
+			err = apierrors.ErrNotFound
+		}
+		c.RespondError(err)
 		return
 	}
 	c.RespondJSON(ret)
