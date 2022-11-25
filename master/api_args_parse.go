@@ -361,15 +361,19 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if replicaNum != 0 && replicaNum != int(vol.dpReplicaNum) {
-		if replicaNum != 2 || vol.dpReplicaNum != 3 {
-			err = fmt.Errorf("replicaNum cann't be changed(3 to 2 is allowed)")
+		if replicaNum != int(vol.dpReplicaNum)-1 {
+			err = fmt.Errorf("replicaNum only need be reduced one replica one time")
 			return
 		}
 		if !proto.IsHot(vol.VolType) {
 			err = fmt.Errorf("vol type(%v) replicaNum cann't be changed", vol.VolType)
 			return
 		}
-		vol.dpReplicaNum = 2
+		if ok, dpArry := vol.isOkUpdateRepCnt(); !ok {
+			err = fmt.Errorf("vol have dataPartitions[%v] with inconsistent dataPartitions cnt to volume's ", dpArry)
+			return
+		}
+		vol.dpReplicaNum = uint8(replicaNum)
 	}
 
 	if proto.IsCold(vol.VolType) {
