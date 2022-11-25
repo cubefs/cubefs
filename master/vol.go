@@ -396,6 +396,25 @@ func (vol *Vol) tryUpdateDpReplicaNum(c *Cluster, partition *DataPartition) (err
 	return
 }
 
+func (vol *Vol) isOkUpdateRepCnt() (ok bool, rsp []uint64) {
+
+	if proto.IsCold(vol.VolType) {
+		return
+	}
+	ok = true
+	dps := vol.cloneDataPartitionMap()
+	for _, dp := range dps {
+		if vol.dpReplicaNum != dp.ReplicaNum {
+			rsp = append(rsp, dp.PartitionID)
+			ok = false
+			if len(rsp) > 20 {
+				return
+			}
+		}
+	}
+	return ok, rsp
+}
+
 func (vol *Vol) checkReplicaNum(c *Cluster) {
 	if !vol.NeedToLowerReplica {
 		return
@@ -412,7 +431,7 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 		if host == "" {
 			continue
 		}
-		if err = dp.removeOneReplicaByHost(c, host); err != nil {
+		if err = dp.removeOneReplicaByHost(c, host, vol.dpReplicaNum == dp.ReplicaNum); err != nil {
 			if dp.isSpecialReplicaCnt() && len(dp.Hosts) > 1 {
 				log.LogWarnf("action[checkReplicaNum] removeOneReplicaByHost host [%v],vol[%v],err[%v]", host, vol.Name, err)
 				continue

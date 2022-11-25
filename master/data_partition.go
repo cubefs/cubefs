@@ -820,14 +820,14 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 	return
 }
 
-func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
+func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string, isReplicaNormal bool) (err error) {
 	if err = c.removeDataReplica(partition, host, false, false); err != nil {
 		return
 	}
 
 	partition.RLock()
 	defer partition.RUnlock()
-	if partition.isSpecialReplicaCnt() {
+	if partition.isSpecialReplicaCnt() && isReplicaNormal {
 		partition.SingleDecommissionStatus = 0
 		partition.SingleDecommissionAddr = ""
 		return
