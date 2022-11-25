@@ -18,7 +18,7 @@ import (
 	"context"
 	"encoding/binary"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"time"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
@@ -38,11 +38,11 @@ func (mp *metaPartition) updateRaftStorageParam() {
 	logSize := defRaftLogSize
 	logCap := defRaftLogCap
 	if nodeCfg.raftLogSizeFromMaster > 0 {
-		logSize = nodeCfg.raftLogSizeFromMaster * util.MB
+		logSize = nodeCfg.raftLogSizeFromMaster * unit.MB
 	}
 
 	if nodeCfg.raftLogSizeFromLoc  > 0 {
-		logSize = nodeCfg.raftLogSizeFromLoc * util.MB
+		logSize = nodeCfg.raftLogSizeFromLoc * unit.MB
 	}
 
 	if nodeCfg.raftLogCapFromMaster > 0 {
@@ -59,9 +59,9 @@ func (mp *metaPartition) updateRaftStorageParam() {
 	}
 
 	if logSize != 0 && logSize != raftPartition.GetWALFileSize() &&
-		logSize >= (proto.MinMetaRaftLogSize * util.MB ) && logSize <= (proto.MaxMetaRaftLogSize * util.MB) {
+		logSize >= (proto.MinMetaRaftLogSize * unit.MB ) && logSize <= (proto.MaxMetaRaftLogSize * unit.MB) {
 		raftPartition.SetWALFileSize(logSize)
-		log.LogWarnf("[updateRaftStorageParam] partitionId=%d: File size :%d MB", mp.config.PartitionId, logSize / util.MB)
+		log.LogWarnf("[updateRaftStorageParam] partitionId=%d: File size :%d MB", mp.config.PartitionId, logSize / unit.MB)
 	}
 
 	if logCap != 0 && logCap != raftPartition.GetWALFileCacheCapacity() && logCap >= proto.MinMetaRaftLogCap {

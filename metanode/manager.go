@@ -46,6 +46,7 @@ const ExpiredPartitionPrefix = "expired_"
 // MetadataManager manages all the meta partitions.
 type MetadataManager interface {
 	Start() error
+	FailOverLeaderMp()
 	Stop()
 	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
@@ -285,6 +286,71 @@ func (m *metadataManager) Start() (err error) {
 	return
 }
 
+func (m *metadataManager) dealFailOverLeaderMp(mpIdArr []uint64) (leaderCnt uint64){
+	FailOverCh := make(chan uint64, defParallelFailOverCnt)
+	var wg sync.WaitGroup
+	leaderCnt = 0
+	log.LogErrorf("fail over need check mp count:%d", len(mpIdArr))
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for _, pid := range mpIdArr {
+			partition, err := m.getPartition(pid)
+			if err != nil {
+				continue
+			}
+			if _, ok := partition.IsLeader(); ok {
+				FailOverCh<-pid
+				//partition.(*metaPartition).tryToGiveUpLeader()
+				atomic.AddUint64(&leaderCnt, 1)
+			}
+		}
+		close(FailOverCh)
+		log.LogErrorf("fail over lear mp count:%d", leaderCnt)
+	}()
+
+	for i := 0; i < defParallelFailOverCnt; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ;; {
+				pid, ok := <-FailOverCh
+				if !ok {
+					return
+				}
+				partition, err := m.getPartition(pid)
+				if err != nil {
+					continue
+				}
+				if _, ok := partition.IsLeader(); ok {
+					log.LogErrorf("fail over lear mp [%d]", pid)
+					partition.(*metaPartition).tryToGiveUpLeader()
+				}
+			}
+
+		}()
+	}
+	wg.Wait()
+	return
+}
+
+func (m *metadataManager) FailOverLeaderMp() {
+	mpIdArray := make([]uint64, 0)
+	m.Range(func(pid uint64, p MetaPartition) bool {
+		mpIdArray = append(mpIdArray, pid)
+		return true
+	})
+
+	for i := 0; i < defTryFailOverCnt; i++ {
+		leaderCnt := m.dealFailOverLeaderMp(mpIdArray)
+		log.LogErrorf("fail over %d partitions", leaderCnt)
+		if leaderCnt == 0 {
+			break
+		}
+		time.Sleep(intervalFailOverLeader)
+	}
+}
+
 // Stop stops the metadata manager.
 func (m *metadataManager) Stop() {
 	if atomic.CompareAndSwapUint32(&m.state, common.StateRunning, common.StateShutdown) {
@@ -439,6 +505,7 @@ func (m *metadataManager) getTrashCleanInterval(vol string) (interval uint64) {
 // onStop stops each meta partitions.
 func (m *metadataManager) onStop() {
 	var wg sync.WaitGroup
+	start := time.Now()
 	if m.partitions != nil {
 		for _, partition := range m.partitions {
 			wg.Add(1)
@@ -450,6 +517,8 @@ func (m *metadataManager) onStop() {
 		}
 	}
 	wg.Wait()
+	log.LogErrorf("stop partitions cost:%v", time.Since(start))
+
 	close(m.stopC)
 	return
 }

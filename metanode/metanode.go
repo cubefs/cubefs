@@ -168,6 +168,7 @@ func doShutdown(s common.Server) {
 	}
 	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
+	m.failOverLeaderMp()
 	m.stopServer()
 	m.stopMetaManager()
 	m.stopRaftServer()
@@ -307,6 +308,12 @@ func (m *MetaNode) loadMetaPartitions() (err error) {
 	}
 	log.LogInfof("load metadata manager finish.")
 	return
+}
+
+func (m *MetaNode) failOverLeaderMp() {
+	if m.metadataManager != nil {
+		m.metadataManager.FailOverLeaderMp()
+	}
 }
 
 func (m *MetaNode) stopMetaManager() {

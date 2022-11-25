@@ -3682,7 +3682,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		}
 
 		if v > proto.MaxMetaRaftLogSize {
-			err = errors.NewErrorf("parameter %s must be less than %d", proto.MaxMetaRaftLogSize, proto.MaxMetaRaftLogSize)
+			err = errors.NewErrorf("parameter %s must be less than %d", proto.MetaRaftLogSizeKey, proto.MaxMetaRaftLogSize)
 			return
 		}
 		atomic.StoreInt64(&c.cfg.MetaRaftLogSize, val.(int64))

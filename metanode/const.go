@@ -225,8 +225,12 @@ const (
 	intervalSyncRocksDbWalLog       = time.Second * 2
 	defMinSyncRockDbWalLog          = time.Minute * 2
 	defRaftLogCap                   = 4
-	defRaftLogSize                  = util.MB * 8
+	defRaftLogSize                  = unit.MB * 8
 	defIntervalToCleanTrash         = time.Minute * 5
+
+	intervalFailOverLeader          = time.Second
+	defTryFailOverCnt               = 3
+	defParallelFailOverCnt          = 10
 )
 
 const (

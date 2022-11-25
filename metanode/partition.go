@@ -368,6 +368,9 @@ func (mp *metaPartition) onStart() (err error) {
 }
 
 func (mp *metaPartition) onStop() {
+	if _, ok := mp.IsLeader(); ok {
+		mp.tryToGiveUpLeader()
+	}
 	mp.stopRaft()
 	mp.stop()
 	mp.db.CloseDb()
@@ -1160,6 +1163,9 @@ func (mp *metaPartition) IsExistLearner(learner proto.Learner) bool {
 }
 
 func (mp *metaPartition) TryToLeader(groupID uint64) error {
+	if mp.raftPartition == nil {
+		return errors.NewErrorf("partition[%v] is not start", mp.config.PartitionId)
+	}
 	return mp.raftPartition.TryToLeader(groupID)
 }
 
