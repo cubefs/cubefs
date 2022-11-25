@@ -427,7 +427,14 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		dp.Disk().space.DeletePartition(dp.partitionID)
 		isUpdated = false
 	}
-	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+	// update dp replicas after removing a raft node
+	if isUpdated {
+		dp.replicasLock.Lock()
+		dp.replicas = make([]string, len(dp.config.Hosts))
+		copy(dp.replicas, dp.config.Hosts)
+		dp.replicasLock.Unlock()
+	}
+	log.LogInfof("Finish RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
 
 	return
