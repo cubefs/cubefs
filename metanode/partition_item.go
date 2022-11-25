@@ -198,6 +198,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	// start data producer
 	go func(iter *MetaItemIterator) {
 		defer func() {
+			si.db.ReleaseSnap(si.snap)
+			si.treeSnap.Close()
 			close(iter.dataCh)
 			close(iter.errorCh)
 		}()
@@ -306,8 +308,6 @@ func (si *MetaItemIterator) ApplyIndex() uint64 {
 func (si *MetaItemIterator) Close() {
 	si.closeOnce.Do(func() {
 		close(si.closeCh)
-		si.db.ReleaseSnap(si.snap)
-		si.treeSnap.Close()
 	})
 	return
 }

@@ -1205,7 +1205,7 @@ func (mp *metaPartition) Reset() (err error) {
 	mp.config.Cursor = 0
 	mp.applyID = 0
 	mp.db.CloseDb()
-	mp.db.ReleaseRocksDb()
+	//mp.db.ReleaseRocksDb()
 
 	// remove files
 	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile}
@@ -1233,7 +1233,7 @@ func (mp *metaPartition) Expired() (err error) {
 	mp.config.Cursor = 0
 	mp.applyID = 0
 	mp.db.CloseDb()
-	mp.db.ReleaseRocksDb()
+	//mp.db.ReleaseRocksDb()
 
 	currentPath := path.Clean(mp.config.RootDir)
 

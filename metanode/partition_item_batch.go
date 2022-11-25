@@ -126,6 +126,8 @@ func newBatchMetaItemIterator(mp *metaPartition, snapV SnapshotVersion) (si *Bat
 	// start data producer
 	go func(iter *BatchMetaItemIterator) {
 		defer func() {
+			si.db.ReleaseSnap(si.rocksDBSnap)
+			si.treeSnap.Close()
 			close(iter.dataCh)
 			close(iter.errorCh)
 		}()
@@ -268,8 +270,6 @@ func (si *BatchMetaItemIterator) ApplyIndex() uint64 {
 func (si *BatchMetaItemIterator) Close() {
 	si.closeOnce.Do(func() {
 		close(si.closeCh)
-		si.db.ReleaseSnap(si.rocksDBSnap)
-		si.treeSnap.Close()
 	})
 	return
 }
@@ -286,6 +286,7 @@ func (si *BatchMetaItemIterator) Next() (data []byte, err error) {
 			binary.BigEndian.PutUint32(crcBuff, si.snapshotSign.Sum32())
 			snap := NewMetaItem(opFSMSnapShotCrc, nil, crcBuff)
 			if data, err = snap.MarshalBinary(); err != nil{
+				log.LogErrorf("Item Iterator: snap marshal binary failed:%v, dir:%s", err, si.fileRootDir)
 				si.err = err
 				si.Close()
 			}
@@ -310,11 +311,13 @@ func (si *BatchMetaItemIterator) Next() (data []byte, err error) {
 		}
 		if item == nil || !open {
 			err, si.err = io.EOF, io.EOF
+			log.LogErrorf("Item Iterator: snap finish:%v, dir:%s", err, si.fileRootDir)
 			si.Close()
 			break
 		}
 		if err != nil {
 			si.err = err
+			log.LogErrorf("Item Iterator: receive error:%v, dir:%s", err, si.fileRootDir)
 			si.Close()
 			break
 		}
@@ -362,11 +365,13 @@ func (si *BatchMetaItemIterator) Next() (data []byte, err error) {
 	val, err = mulItems.Marshal()
 	if err != nil {
 		si.err = err
+		log.LogErrorf("Item Iterator: multi item marshal failed:%v, dir:%s", err, si.fileRootDir)
 		si.Close()
 		return
 	}
 	snap = NewMetaItem(opFSMBatchCreate, nil, val)
 	if data, err = snap.MarshalBinary(); err != nil {
+		log.LogErrorf("Item Iterator: snap marshal failed:%v, dir:%s", err, si.fileRootDir)
 		si.err = err
 		si.Close()
 		return
