@@ -37,6 +37,7 @@ const (
 	EC3P3         CodeMode = 11
 	EC10P4        CodeMode = 12
 	EC6P3         CodeMode = 13
+	EC12P9        CodeMode = 14
 	// for test
 	EC6P6L9  CodeMode = 200
 	EC6P8L10 CodeMode = 201
@@ -53,8 +54,12 @@ const (
 // The tactic is fixed pairing with one codemode.
 // Add a new codemode if you want other features.
 var constCodeModeTactic = map[CodeMode]Tactic{
-	EC15P12:   {N: 15, M: 12, L: 0, AZCount: 3, PutQuorum: 24, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC6P6:     {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize2KB},
+	// three az
+	EC15P12: {N: 15, M: 12, L: 0, AZCount: 3, PutQuorum: 24, GetQuorum: 0, MinShardSize: alignSize2KB},
+	EC6P6:   {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize2KB},
+	EC12P9:  {N: 12, M: 9, L: 0, AZCount: 3, PutQuorum: 20, GetQuorum: 0, MinShardSize: alignSize2KB},
+
+	// two az
 	EC16P20L2: {N: 16, M: 20, L: 2, AZCount: 2, PutQuorum: 34, GetQuorum: 0, MinShardSize: alignSize2KB},
 	EC6P10L2:  {N: 6, M: 10, L: 2, AZCount: 2, PutQuorum: 14, GetQuorum: 0, MinShardSize: alignSize2KB},
 
@@ -89,6 +94,7 @@ var constName2CodeMode = map[CodeModeName]CodeMode{
 	"EC6P3":         EC6P3,
 	"EC6P6L9":       EC6P6L9,
 	"EC6P8L10":      EC6P8L10,
+	"EC12P9":        EC12P9,
 }
 
 var constCodeMode2Name = map[CodeMode]CodeModeName{
@@ -107,6 +113,7 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 	EC6P3:         "EC6P3",
 	EC6P6L9:       "EC6P6L9",
 	EC6P8L10:      "EC6P8L10",
+	EC12P9:        "EC12P9",
 }
 
 //vol layout ep:EC6P10L2
@@ -163,6 +170,7 @@ func init() {
 	}{
 		{Mode: EC15P12, Size: alignSize2KB},
 		{Mode: EC6P6, Size: alignSize2KB},
+		{Mode: EC12P9, Size: alignSize2KB},
 		{Mode: EC16P20L2, Size: alignSize2KB},
 		{Mode: EC6P10L2, Size: alignSize2KB},
 

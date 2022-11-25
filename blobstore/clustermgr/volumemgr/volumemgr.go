@@ -328,7 +328,7 @@ func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, cou
 	data, err := json.Marshal(allocArgs)
 	if err != nil {
 		isAllocSucc = false
-		span.Errorf("marshal data error,args:%#v", allocArgs)
+		span.Errorf("marshal data error,args:%+v", allocArgs)
 		return nil, err
 	}
 
@@ -343,7 +343,7 @@ func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, cou
 	value, _ := v.pendingEntries.Load(pendingKey)
 	if value == nil {
 		isAllocSucc = false
-		span.Errorf("load pending entry error")
+		span.Error("load pending entry error")
 		return nil, errors.New("propose success without set pending key")
 	}
 	ret = value.(*cm.AllocatedVolumeInfos)
@@ -366,6 +366,7 @@ func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, cou
 	}
 
 	if len(allocatedVidM) == 0 {
+		span.Errorf("no available volume, alloc args:%+v, alloc volume is:%d", allocArgs, len(ret.AllocVolumeInfos))
 		return nil, apierrors.ErrNoAvailableVolume
 	}
 
@@ -580,7 +581,7 @@ func (v *VolumeMgr) applyAllocVolume(ctx context.Context, vid proto.Vid, host st
 	allocatableScoreThreshold := volume.getScoreThreshold()
 	// when propose data, volume status may change , check to ensure volume can alloc,
 	if !volume.canAlloc(v.AllocatableSize, allocatableScoreThreshold) {
-		span.Debugf("volume can not alloc,volume info is %+v", volume.volInfoBase)
+		span.Warnf("volume can not alloc,volume info is %+v", volume.volInfoBase)
 		volume.lock.Unlock()
 		return
 	}
