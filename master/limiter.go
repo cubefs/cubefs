@@ -114,7 +114,7 @@ func (qosManager *QosCtrlManager) volUpdateLimit(limitArgs *qosArgs) {
 	//}
 	if limitArgs.flowWVal != 0 {
 		qosManager.serverFactorLimitMap[proto.FlowWriteType].Total = limitArgs.flowWVal
-		qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
+		qosManager.serverFactorLimitMap[proto.FlowWriteType].LastMagnify = 0
 		qosManager.serverFactorLimitMap[proto.FlowWriteType].Buffer = limitArgs.flowWVal
 	}
 	if limitArgs.flowRVal != 0 {
