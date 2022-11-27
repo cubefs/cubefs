@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -72,6 +72,7 @@ func (s *Stats) updateMetrics(
 	maxWeightsForCreatePartition, dataPartitionCnt uint64) {
 	s.Lock()
 	defer s.Unlock()
+
 	s.Total = total
 	s.Used = used
 	s.Available = available

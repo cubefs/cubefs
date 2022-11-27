@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,17 +16,18 @@ package repl
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/tiglabs/raft"
 )
 
 var (
@@ -88,6 +89,8 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
+		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errMsg, raft.ErrStopped.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else {
 		p.ResultCode = proto.OpIntraGroupNetErr
@@ -160,6 +163,7 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	p.OrgBuffer = p.Data
 	if followerNum > 0 {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
+		log.LogInfof("action[resolveFollowersAddr] %v", p.followersAddrs)
 	}
 	if p.RemainingFollowers < 0 {
 		err = ErrBadNodes
@@ -304,6 +308,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errMsg, raft.ErrStopped.Error()) {
+		p.ResultCode = proto.OpTryOtherAddr
 	} else {
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}
@@ -377,13 +383,19 @@ func (p *Packet) IsMasterCommand() bool {
 }
 
 func (p *Packet) IsForwardPacket() bool {
-	r := p.RemainingFollowers > 0
+	r := p.RemainingFollowers > 0 && !p.isSpecialReplicaCnttePacket()
+	return r
+}
+
+func (p *Packet) isSpecialReplicaCnttePacket() bool {
+	r := p.RemainingFollowers == 127
 	return r
 }
 
 // A leader packet is the packet send to the leader and does not require packet forwarding.
 func (p *Packet) IsLeaderPacket() (ok bool) {
-	if p.IsForwardPkt() && (p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
+	if (p.IsForwardPkt() || p.isSpecialReplicaCnttePacket()) &&
+		(p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
 		ok = true
 	}
 

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ type MetaReplica struct {
 	Addr        string
 	start       uint64 // lower bound of the inode id
 	end         uint64 // upper bound of the inode id
+	dataSize    uint64
 	nodeID      uint64
 	MaxInodeID  uint64
 	InodeCount  uint64
@@ -150,14 +151,17 @@ func (mp *MetaPartition) canSplit(end uint64) (err error) {
 		err = fmt.Errorf(msg)
 		return
 	}
+
 	if end <= mp.MaxInodeID {
 		err = fmt.Errorf("next meta partition start must be larger than %v", mp.MaxInodeID)
 		return
 	}
+
 	if _, err = mp.getMetaReplicaLeader(); err != nil {
 		log.LogWarnf("action[updateInodeIDRange] vol[%v] id[%v] no leader", mp.volName, mp.PartitionID)
 		return
 	}
+
 	return
 }
 
@@ -174,6 +178,18 @@ func (mp *MetaPartition) addUpdateMetaReplicaTask(c *Cluster) (err error) {
 	c.addMetaNodeTasks(tasks)
 	log.LogWarnf("action[addUpdateMetaReplicaTask] partitionID[%v] end[%v] success", mp.PartitionID, mp.End)
 	return
+}
+
+func (mp *MetaPartition) dataSize() uint64 {
+
+	maxSize := uint64(0)
+	for _, mr := range mp.Replicas {
+		if maxSize < mr.dataSize {
+			maxSize = mr.dataSize
+		}
+	}
+
+	return maxSize
 }
 
 func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
@@ -241,7 +257,10 @@ func (mp *MetaPartition) checkLeader() {
 func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64) (doSplit bool) {
 	mp.Lock()
 	defer mp.Unlock()
+
+	mp.checkReplicas()
 	liveReplicas := mp.getLiveReplicas()
+
 	if len(liveReplicas) <= replicaNum/2 {
 		mp.Status = proto.Unavailable
 	} else {
@@ -249,27 +268,28 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		if err != nil {
 			mp.Status = proto.Unavailable
 		}
+
 		mp.Status = mr.Status
 		for _, replica := range liveReplicas {
 			if replica.Status == proto.ReadOnly {
 				mp.Status = proto.ReadOnly
 			}
+
 			if mr.metaNode == nil {
 				continue
 			}
+
 			if !mr.metaNode.reachesThreshold() && mp.InodeCount < defaultMetaPartitionInodeIDStep {
 				continue
 			}
+
 			if mp.PartitionID == maxPartitionID {
-				msg := fmt.Sprintf("split[checkStatus] need split,id:%v,status:%v,replicaNum:%v,InodeCount:%v",
-					mp.PartitionID, mp.Status, mp.ReplicaNum, mp.InodeCount)
-				log.LogInfo(msg)
+				log.LogInfof("split[checkStatus] need split,id:%v,status:%v,replicaNum:%v,InodeCount:%v", mp.PartitionID, mp.Status, mp.ReplicaNum, mp.InodeCount)
 				doSplit = true
 			} else {
 				if mr.metaNode.reachesThreshold() || mp.End-mp.MaxInodeID > 2*defaultMetaPartitionInodeIDStep {
-					msg := fmt.Sprintf("split[checkStatus],change state,id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v, inodeCount:%v, MaxInodeID:%v, start:%v, end:%v",
+					log.LogInfof("split[checkStatus],change state,id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v, inodeCount:%v, MaxInodeID:%v, start:%v, end:%v",
 						mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts, mp.InodeCount, mp.MaxInodeID, mp.Start, mp.End)
-					log.LogInfo(msg)
 					mp.Status = proto.ReadOnly
 				}
 			}
@@ -279,12 +299,14 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 	if mp.PartitionID >= maxPartitionID && mp.Status == proto.ReadOnly {
 		mp.Status = proto.ReadWrite
 	}
+
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
 		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v",
 			mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts)
 		log.LogInfo(msg)
 		Warn(clusterID, msg)
 	}
+
 	return
 }
 
@@ -396,11 +418,21 @@ func (mp *MetaPartition) getLiveReplicasAddr(liveReplicas []*MetaReplica) (addrs
 	}
 	return
 }
+
 func (mp *MetaPartition) getLiveReplicas() (liveReplicas []*MetaReplica) {
 	liveReplicas = make([]*MetaReplica, 0)
 	for _, mr := range mp.Replicas {
 		if mr.isActive() {
 			liveReplicas = append(liveReplicas, mr)
+		}
+	}
+	return
+}
+
+func (mp *MetaPartition) checkReplicas() {
+	for _, mr := range mp.Replicas {
+		if !mr.isActive() {
+			mr.Status = proto.Unavailable
 		}
 	}
 	return
@@ -466,7 +498,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 				lastReportTime = metaNode.ReportTime
 				isActive = metaNode.IsActive
 			}
-			msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
+			msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on node:%v  "+
 				"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 				clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
 			Warn(clusterID, msg)
@@ -477,7 +509,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 
 	for _, addr := range mp.Hosts {
 		if mp.isMissingReplica(addr) && mp.shouldReportMissingReplica(addr, interval) {
-			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
+			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on node:%v  "+
 				"miss time  > %v ",
 				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
 			Warn(clusterID, msg)
@@ -532,6 +564,30 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 
 func (mp *MetaPartition) tryToChangeLeader(c *Cluster, metaNode *MetaNode) (err error) {
 	task, err := mp.createTaskToTryToChangeLeader(metaNode.Addr)
+	if err != nil {
+		return
+	}
+	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+		return
+	}
+	return
+}
+
+func (mp *MetaPartition) tryToChangeLeaderByHost(host string) (err error) {
+	var metaNode *MetaNode
+	for _, r := range mp.Replicas {
+		if host == r.Addr {
+			metaNode = r.metaNode
+			break
+		}
+	}
+	if metaNode == nil {
+		return fmt.Errorf("host not found[%v]", host)
+	}
+	task, err := mp.createTaskToTryToChangeLeader(host)
+	if err != nil {
+		return
+	}
 	if err != nil {
 		return
 	}
@@ -640,6 +696,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.MaxInodeID = mgr.MaxInodeID
 	mr.InodeCount = mgr.InodeCnt
 	mr.DentryCount = mgr.DentryCnt
+	mr.dataSize = mgr.Size
 	mr.setLastReportTime()
 
 	if mr.metaNode.RdOnly && mr.Status == proto.ReadWrite {

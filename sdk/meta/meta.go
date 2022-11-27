@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/util/auth"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -77,6 +78,7 @@ type MetaConfig struct {
 	ValidateOwner    bool
 	OnAsyncTaskError AsyncTaskErrorFunc
 	EnableSummary    bool
+	MetaSendTimeout  int64
 }
 
 type MetaWrapper struct {
@@ -121,14 +123,15 @@ type MetaWrapper struct {
 	closeCh   chan struct{}
 	closeOnce sync.Once
 
-	// Used to signal the go routines which are waiting for partition view update
+	// Allocated to signal the go routines which are waiting for partition view update
 	partMutex sync.Mutex
 	partCond  *sync.Cond
 
-	// Used to trigger and throttle instant partition updates
+	// Allocated to trigger and throttle instant partition updates
 	forceUpdate      chan struct{}
 	forceUpdateLimit *rate.Limiter
 	EnableSummary    bool
+	metaSendTimeout  int64
 }
 
 //the ticket from authnode
@@ -164,6 +167,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.ownerValidation = config.ValidateOwner
 	mw.mc = masterSDK.NewMasterClient(config.Masters, false)
 	mw.onAsyncTaskError = config.OnAsyncTaskError
+	mw.metaSendTimeout = config.MetaSendTimeout
 	mw.conns = util.NewConnectPool()
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
@@ -179,6 +183,10 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		err = mw.initMetaWrapper()
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
+		if err != nil {
+			log.LogErrorf("initMetaWrapper failed, err %s", err.Error())
+		}
+
 		if err == proto.ErrVolNotExists {
 			return nil, err
 		}

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,6 +25,9 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
+
 	"os"
 
 	"github.com/cubefs/cubefs/proto"
@@ -34,7 +37,9 @@ import (
 
 var (
 	// RegexpDataPartitionDir validates the directory name of a data partition.
-	RegexpDataPartitionDir, _ = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
+	RegexpDataPartitionDir, _    = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
+	RegexpCachePartitionDir, _   = regexp.Compile("^cachepartition_(\\d)+_(\\d)+$")
+	RegexpPreLoadPartitionDir, _ = regexp.Compile("^preloadpartition_(\\d)+_(\\d)+$")
 )
 
 const ExpiredPartitionPrefix = "expired_"
@@ -62,6 +67,8 @@ type Disk struct {
 	syncTinyDeleteRecordFromLeaderOnEveryDisk chan bool
 	space                                     *SpaceManager
 	dataNode                                  *DataNode
+
+	limitFactor map[uint32]*rate.Limiter
 }
 
 const (
@@ -84,7 +91,45 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
+
+	d.limitFactor = make(map[uint32]*rate.Limiter, 0)
+	d.limitFactor[proto.FlowReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+
 	return
+}
+
+func (d *Disk) updateQosLimiter() {
+	if d.dataNode.diskFlowReadLimit > 0 {
+		d.limitFactor[proto.FlowReadType].SetLimit(rate.Limit(d.dataNode.diskFlowReadLimit))
+	}
+	if d.dataNode.diskFlowWriteLimit > 0 {
+		d.limitFactor[proto.FlowWriteType].SetLimit(rate.Limit(d.dataNode.diskFlowWriteLimit))
+	}
+	if d.dataNode.diskIopsReadLimit > 0 {
+		d.limitFactor[proto.IopsReadType].SetLimit(rate.Limit(d.dataNode.diskIopsReadLimit))
+	}
+	if d.dataNode.diskIopsWriteLimit > 0 {
+		d.limitFactor[proto.IopsWriteType].SetLimit(rate.Limit(d.dataNode.diskIopsWriteLimit))
+	}
+
+	for i := proto.IopsReadType; i < proto.FlowWriteType; i++ {
+		log.LogInfof("action[updateQosLimiter] type %v limit %v", proto.QosTypeString(i), d.limitFactor[i].Limit())
+	}
+	log.LogInfof("action[updateQosLimiter] flowRead %v flowrite %v iopsread %v iposwrite %v",
+		d.dataNode.diskFlowReadLimit, d.dataNode.diskFlowWriteLimit, d.dataNode.diskIopsReadLimit, d.dataNode.diskIopsWriteLimit)
+}
+
+func (d *Disk) allocCheckLimit(factorType uint32, used uint32) error {
+	if !(d.dataNode.diskQosEnableFromMaster && d.dataNode.diskQosEnable) {
+		return nil
+	}
+
+	ctx := context.Background()
+	d.limitFactor[factorType].WaitN(ctx, int(used))
+	return nil
 }
 
 // PartitionCount returns the number of partitions in the partition map.
@@ -119,6 +164,8 @@ func (d *Disk) computeUsage() (err error) {
 		return
 	}
 
+	repairSize := uint64(d.repairAllocSize())
+
 	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize) - d.PreReserveSpace))
 	total := int64(fs.Blocks*uint64(fs.Bsize) - d.DiskRdonlySpace)
 	if total < 0 {
@@ -127,14 +174,15 @@ func (d *Disk) computeUsage() (err error) {
 	d.Total = uint64(total)
 
 	//  available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.PreReserveSpace))
-	available := int64(fs.Bavail*uint64(fs.Bsize) - d.DiskRdonlySpace)
+	available := int64(fs.Bavail*uint64(fs.Bsize) - d.DiskRdonlySpace - repairSize)
 	if available < 0 {
 		available = 0
 	}
 	d.Available = uint64(available)
 
 	//  used := math.Max(0, int64(total - available))
-	free := int64(fs.Bfree*uint64(fs.Bsize) - d.DiskRdonlySpace)
+	free := int64(fs.Bfree*uint64(fs.Bsize) - d.DiskRdonlySpace - repairSize)
+
 	used := int64(total - free)
 	if used < 0 {
 		used = 0
@@ -161,6 +209,19 @@ func (d *Disk) computeUsage() (err error) {
 	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)", d.Path, d.Total, d.Available, d.Used)
 
 	return
+}
+
+func (d *Disk) repairAllocSize() int {
+	allocSize := 0
+	for _, dp := range d.partitionMap {
+		if dp.DataPartitionCreateType == proto.NormalCreateDataPartition || dp.leaderSize <= dp.used {
+			continue
+		}
+
+		allocSize += dp.leaderSize - dp.used
+	}
+
+	return allocSize
 }
 
 func (d *Disk) incReadErrCnt() {
@@ -253,19 +314,25 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	if err = syscall.Statfs(d.Path, &statsInfo); err != nil {
 		d.incReadErrCnt()
 	}
+
 	if d.Status == proto.Unavailable {
+
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		log.LogErrorf(mesg)
 		exporter.Warning(mesg)
 		d.ForceExitRaftStore()
+
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
+
 	} else {
 		d.Status = proto.ReadWrite
 	}
+
 	log.LogDebugf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
 		"restSize(%v) preRestSize (%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
 		d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.DiskRdonlySpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
+
 	return
 }
 
@@ -330,7 +397,9 @@ func unmarshalPartitionName(name string) (partitionID uint64, partitionSize int,
 }
 
 func (d *Disk) isPartitionDir(filename string) (isPartitionDir bool) {
-	isPartitionDir = RegexpDataPartitionDir.MatchString(filename)
+	isPartitionDir = RegexpDataPartitionDir.MatchString(filename) ||
+		RegexpCachePartitionDir.MatchString(filename) ||
+		RegexpPreLoadPartitionDir.MatchString(filename)
 	return
 }
 
@@ -419,6 +488,18 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 
 func (d *Disk) AddSize(size uint64) {
 	atomic.AddUint64(&d.Allocated, size)
+}
+
+func (d *Disk) updateDisk(allocSize uint64) {
+	d.Lock()
+	defer d.Unlock()
+
+	if d.Available < allocSize {
+		d.Status = proto.ReadOnly
+		d.Available = 0
+		return
+	}
+	d.Available = d.Available - allocSize
 }
 
 func (d *Disk) getSelectWeight() float64 {

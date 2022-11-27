@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -157,7 +157,7 @@ func (m *Server) initFsm() {
 	m.fsm.restore()
 }
 
-func (m *Server) createRaftServer() (err error) {
+func (m *Server) createRaftServer(cfg *config.Config) (err error) {
 	raftCfg := &raftstore.Config{
 		NodeID:            m.id,
 		RaftPath:          m.walDir,
@@ -167,7 +167,7 @@ func (m *Server) createRaftServer() (err error) {
 		TickInterval:      m.tickInterval,
 		ElectionTick:      m.electionTick,
 	}
-	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
+	if m.raftStore, err = raftstore.NewRaftStore(raftCfg, cfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
 	m.initFsm()
@@ -195,7 +195,8 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		log.LogErrorf("Start: init RocksDB fail: err(%v)", err)
 		return
 	}
-	if err = m.createRaftServer(); err != nil {
+
+	if err = m.createRaftServer(cfg); err != nil {
 		log.LogError(errors.Stack(err))
 		return
 	}

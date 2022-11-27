@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/util/keystore"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft/proto"
 )
 
 // RaftCmd defines the Raft commands.

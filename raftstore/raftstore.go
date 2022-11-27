@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,11 +22,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tiglabs/raft"
-	"github.com/tiglabs/raft/logger"
-	"github.com/tiglabs/raft/proto"
-	"github.com/tiglabs/raft/storage/wal"
-	raftlog "github.com/tiglabs/raft/util/log"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/storage/wal"
+	raftlog "github.com/cubefs/cubefs/depends/tiglabs/raft/util/log"
+	utilConfig "github.com/cubefs/cubefs/util/config"
 )
 
 // RaftStore defines the interface for the raft store.
@@ -95,10 +96,11 @@ func newRaftLogger(dir string) {
 }
 
 // NewRaftStore returns a new raft store instance.
-func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
+func NewRaftStore(cfg *Config, extendCfg *utilConfig.Config) (mr RaftStore, err error) {
 	resolver := NewNodeResolver()
 
 	newRaftLogger(cfg.RaftPath)
+	setMonitorConf(extendCfg)
 
 	rc := raft.DefaultConfig()
 	rc.NodeID = cfg.NodeID

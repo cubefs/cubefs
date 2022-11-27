@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	cfsProto "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft/proto"
 )
 
 // LeaderInfo represents the leader's information
@@ -112,20 +112,19 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.loadClusterValue(); err != nil {
 		panic(err)
 	}
-
-	if m.cluster.FaultDomain {
-		if err = m.cluster.loadNodeSetGrps(); err != nil {
-			panic(err)
-		}
-	}
 	var loadDomain bool
 	if m.cluster.FaultDomain { // try load exclude
 		if loadDomain, err = m.cluster.loadZoneDomain(); err != nil {
 			log.LogInfof("action[putZoneDomain] err[%v]", err)
 			panic(err)
 		}
-		if loadDomain { // if load success,start grp manager ,load nodeset can trigger build ns grps
-			m.cluster.nodeSetGrpManager.start()
+		if err = m.cluster.loadNodeSetGrps(); err != nil {
+			panic(err)
+		}
+		if loadDomain {
+			// if load success the domain already init before this startup,
+			// start grp manager ,load nodeset can trigger build ns grps
+			m.cluster.domainManager.start()
 		}
 	}
 
@@ -140,8 +139,8 @@ func (m *Server) loadMetadata() {
 				log.LogInfof("action[putZoneDomain] err[%v]", err)
 				panic(err)
 			}
+			m.cluster.domainManager.start()
 		}
-		m.cluster.nodeSetGrpManager.start()
 	}
 
 	if err = m.cluster.loadDataNodes(); err != nil {
@@ -149,6 +148,10 @@ func (m *Server) loadMetadata() {
 	}
 
 	if err = m.cluster.loadMetaNodes(); err != nil {
+		panic(err)
+	}
+
+	if err = m.cluster.loadZoneValue(); err != nil {
 		panic(err)
 	}
 

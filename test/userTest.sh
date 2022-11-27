@@ -606,7 +606,7 @@ check_msg "\"perm:builtin:ReadOnly\"" 45
 mount_dir "user11" "test6"
 #sleep 1m
 df -h >return_Info.json
-check_msg "chubaofs-test6  1.0G     0  1.0G   0% /cfs/mnt" 45 
+check_msg "cubefs-test6  1.0G     0  1.0G   0% /cfs/mnt" 45
 #check whether the permission is ReadOnly
 mkdir -p  /cfs/mnt/a 2>return_Info.json
 check_msg "mkdir: cannot create directory ‘/cfs/mnt/a’: Read-only file system" 45 
@@ -629,7 +629,7 @@ mount_dir "user13" "test7"
 #cat return_Info.json
 sleep 10s
 df -h >return_Info.json
-check_msg "chubaofs-test7  1.0G     0  1.0G   0% /cfs/mnt"
+check_msg "cubefs-test7  1.0G     0  1.0G   0% /cfs/mnt"
 mkdir -p /cfs/mnt/a 
 ls -a /cfs/mnt >return_Info.json
 check_msg "a" 46
@@ -676,7 +676,7 @@ umount_dir
    #mount subdir
 mount_subdir "user16" "test10" "/a/b"
 df -h >return_Info.json
-check_msg "chubaofs-test10  1.0G     0  1.0G   0% /cfs/mnt" 48 5
+check_msg "cubefs-test10  1.0G     0  1.0G   0% /cfs/mnt" 48 5
 #check whether the permission is ReadOnly
 mkdir -p  /cfs/mnt/a 2>return_Info.json
 check_msg "mkdir: cannot create directory ‘/cfs/mnt/a’: Read-only file system" 48 6
@@ -709,13 +709,13 @@ umount_dir
   #mount subdir
 mount_subdir "user490" "test49" "/a/b"
 df -h >return_Info.json
-check_msg "chubaofs-test49  1.0G     0  1.0G   0% /cfs/mnt" 49 5
+check_msg "cubefs-test49  1.0G     0  1.0G   0% /cfs/mnt" 49 5
 mkdir -p /cfs/mnt/c
 umount_dir
 #mount
 mount_subdir "user490" "test49" "/a/b/c" 
 df -h >return_Info.json
-check_msg "chubaofs-test49  1.0G     0  1.0G   0% /cfs/mnt" 49 6
+check_msg "cubefs-test49  1.0G     0  1.0G   0% /cfs/mnt" 49 6
 umount_dir
   #clear subdir on vol 
 mount_dir  "user49" "test49"
@@ -743,7 +743,7 @@ check_msg "\"perm:builtin:/e/f:/g/h:Writable\"" 50 4
   #create subdir  on vol
 mount_dir "user50" "test50"
 df -h>return_Info.json
-check_msg "chubaofs-test50  1.0G     0  1.0G   0% /cfs/mnt"
+check_msg "cubefs-test50  1.0G     0  1.0G   0% /cfs/mnt"
 mkdir -p /cfs/mnt/e/f
 mkdir -p /cfs/mnt/g/h
 #echo "first umount"
@@ -751,20 +751,20 @@ umount_dir
   #mount subdir
 mount_subdir "user20" "test50" "/e/f"
 df -h >return_Info.json
-check_msg "chubaofs-test50  1.0G     0  1.0G   0% /cfs/mnt" 50 5
+check_msg "cubefs-test50  1.0G     0  1.0G   0% /cfs/mnt" 50 5
 #echo "second umount"
 umount_dir
 mount_subdir "user20" "test50" "/g/h"
 #cat /cfs/log/client/output.log
 sleep 5s
 df -h >return_Info.json
-check_msg "chubaofs-test50  1.0G     0  1.0G   0% /cfs/mnt" 50 6
+check_msg "cubefs-test50  1.0G     0  1.0G   0% /cfs/mnt" 50 6
 #echo "third umount"
 umount_dir
  #clear subdir on vol
 mount_dir "user50" "test50"
 df -h>return_Info.json
-check_msg "chubaofs-test50  1.0G     0  1.0G   0% /cfs/mnt" 50 8
+check_msg "cubefs-test50  1.0G     0  1.0G   0% /cfs/mnt" 50 8
 rm -rf /e
 rm -rf /g
 #echo "last umount"
@@ -844,7 +844,7 @@ check_msg "\"test54\": \[" 54 3
 check_msg "\"perm:builtin:Writable\"" 54 4
 mount_dir "user540" "test54"
 df -h >return_Info.json
-check_msg "chubaofs-test54  1.0G     0  1.0G   0% /cfs/mnt"
+check_msg "cubefs-test54  1.0G     0  1.0G   0% /cfs/mnt"
 umount_dir
  #remove policy and check mount
 test_rmpolicy "user540" "test54"
@@ -875,7 +875,7 @@ check_msg "success" 55 9
   #mount the other one
 mount_dir "user550" "test55x"
 df -h >return_Info.json
-check_msg "chubaofs-test55x  1.0G     0  1.0G   0% /cfs/mnt"  55 10
+check_msg "cubefs-test55x  1.0G     0  1.0G   0% /cfs/mnt"  55 10
 umount_dir
  #delete two vol
 cal_md5 'user55'
@@ -958,7 +958,7 @@ cat /cfs/log/client/output.log >return_Info.json
 check_msg "check permission failed:  no permission" 61 7
 mount_dir "user610" "test61"
 df -h >return_Info.json
-check_msg "chubaofs-test61  1.0G     0  1.0G   0% /cfs/mnt" 61 9
+check_msg "cubefs-test61  1.0G     0  1.0G   0% /cfs/mnt" 61 9
 umount_dir
 cal_md5 "user610"
 test_operation "/vol/delete?name=test61&authKey=$md5"
@@ -978,7 +978,7 @@ check_msg "test62"  62 6
  #check mount
 mount_dir "user62" "test62"
 df -h >return_Info.json
-check_msg "chubaofs-test62  1.0G     0  1.0G   0% /cfs/mnt" 62 7
+check_msg "cubefs-test62  1.0G     0  1.0G   0% /cfs/mnt" 62 7
 umount_dir
 cal_md5 'user620'
 test_operation "/vol/delete?name=test62&authKey=$md5"

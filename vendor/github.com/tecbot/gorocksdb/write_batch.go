@@ -24,7 +24,7 @@ func WriteBatchFrom(data []byte) *WriteBatch {
 	return NewNativeWriteBatch(C.rocksdb_writebatch_create_from(byteToChar(data), C.size_t(len(data))))
 }
 
-// PutConnect queues a key-value pair.
+// Put queues a key-value pair.
 func (wb *WriteBatch) Put(key, value []byte) {
 	cKey := byteToChar(key)
 	cValue := byteToChar(value)
@@ -86,7 +86,7 @@ func (wb *WriteBatch) NewIterator() *WriteBatchIterator {
 	return &WriteBatchIterator{data: data[12:]}
 }
 
-// Clear removes all the enqueued PutConnect and Deletes.
+// Clear removes all the enqueued Put and Deletes.
 func (wb *WriteBatch) Clear() {
 	C.rocksdb_writebatch_clear(wb.c)
 }

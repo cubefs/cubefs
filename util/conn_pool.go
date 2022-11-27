@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ func NewConnectPool() (cp *ConnectPool) {
 	cp = &ConnectPool{
 		pools:          make(map[string]*Pool),
 		mincap:         5,
-		maxcap:         80,
+		maxcap:         500,
 		timeout:        int64(time.Second * ConnectIdleTime),
 		connectTimeout: defaultConnectTimeout,
 		closeCh:        make(chan struct{}),

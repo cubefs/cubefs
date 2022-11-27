@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,6 +50,8 @@ type AdminTaskManager struct {
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
 
+	proto.InitBufferPool(int64(32768))
+
 	sender = &AdminTaskManager{
 		targetAddr: targetAddr,
 		clusterID:  clusterID,
@@ -94,10 +96,10 @@ func (sender *AdminTaskManager) getToBeDeletedTasks() (delTasks []*proto.AdminTa
 
 	for _, task := range sender.TaskMap {
 		if task.CheckTaskTimeOut() {
-			log.LogWarnf(fmt.Sprintf("clusterID[%v] %v has no response util time out",
+			log.LogWarnf(fmt.Sprintf("clusterID[%v] %v has no response until time out",
 				sender.clusterID, task.ID))
 			if task.SendTime > 0 {
-				Warn(sender.clusterID, fmt.Sprintf("clusterID[%v] %v has no response util time out",
+				Warn(sender.clusterID, fmt.Sprintf("clusterID[%v] %v has no response until time out",
 					sender.clusterID, task.ID))
 			}
 

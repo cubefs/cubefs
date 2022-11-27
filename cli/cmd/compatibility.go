@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,12 +16,13 @@ package cmd
 
 import (
 	"fmt"
+	"reflect"
+	"strconv"
+
 	"github.com/cubefs/cubefs/cli/api"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/spf13/cobra"
-	"reflect"
-	"strconv"
 )
 
 const (
@@ -79,6 +80,9 @@ func newMetaCompatibilityCmd() *cobra.Command {
 				PartitionId: id,
 			}
 			mp := metanode.NewMetaPartition(mpcfg, nil)
+			if mp == nil {
+				return
+			}
 			err = mp.LoadSnapshot(snapshotPath)
 			if err != nil {
 				return

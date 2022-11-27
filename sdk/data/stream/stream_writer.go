@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -169,6 +169,12 @@ func (s *Streamer) IssueEvictRequest() error {
 func (s *Streamer) server() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
+	defer func() {
+		if !s.client.disableMetaCache {
+			close(s.request)
+			s.request = nil
+		}
+	}()
 
 	for {
 		select {
@@ -183,12 +189,17 @@ func (s *Streamer) server() {
 		case <-t.C:
 			s.traverse()
 			if s.refcnt <= 0 {
+
 				s.client.streamerLock.Lock()
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
-					delete(s.client.streamers, s.inode)
-					if s.client.evictIcache != nil {
-						s.client.evictIcache(s.inode)
+					if s.client.disableMetaCache {
+						delete(s.client.streamers, s.inode)
+						if s.client.evictIcache != nil {
+							s.client.evictIcache(s.inode)
+						}
 					}
+
+					s.isOpen = false
 					s.client.streamerLock.Unlock()
 
 					// fail the remaining requests in such case
@@ -197,6 +208,7 @@ func (s *Streamer) server() {
 					return
 				}
 				s.client.streamerLock.Unlock()
+
 				s.idle++
 			}
 		}
@@ -278,6 +290,10 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 	ctx := context.Background()
 	s.client.writeLimiter.Wait(ctx)
 
+	if flags&proto.FlagsCache == 0 {
+		s.client.LimitManager.WriteAlloc(ctx, size)
+	}
+
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 
@@ -299,6 +315,14 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 		var writeSize int
 		if req.ExtentKey != nil {
 			writeSize, err = s.doOverwrite(req, direct)
+			cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
+			if _, ok := s.inflightEvictL1cache.Load(cacheKey); !ok && s.client.bcacheEnable {
+				go func(cacheKey string) {
+					s.inflightEvictL1cache.Store(cacheKey, true)
+					s.client.evictBcache(cacheKey)
+					s.inflightEvictL1cache.Delete(cacheKey)
+				}(cacheKey)
+			}
 		} else {
 			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
 		}
@@ -343,6 +367,11 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		return
 	}
 
+	retry := true
+	if proto.IsCold(s.client.volumeType) {
+		retry = false
+	}
+
 	sc := NewStreamConn(dp, false)
 
 	for total < size {
@@ -356,7 +385,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
 
 		replyPacket := new(Packet)
-		err = sc.Send(reqPacket, func(conn *net.TCPConn) (error, bool) {
+		err = sc.Send(retry, reqPacket, func(conn *net.TCPConn) (error, bool) {
 			e := replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
 			if e != nil {
 				log.LogWarnf("Stream Writer doOverwrite: ino(%v) failed to read from connect, req(%v) err(%v)", s.inode, reqPacket, e)
@@ -390,7 +419,6 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 		total += packSize
 	}
-
 	return
 }
 
@@ -402,51 +430,78 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 
 	// Small files are usually written in a single write, so use tiny extent
 	// store only for the first write operation.
-	if offset > 0 {
+	if offset > 0 || offset+size > s.tinySizeLimit() {
 		storeMode = proto.NormalExtentType
 	} else {
 		storeMode = proto.TinyExtentType
 	}
 
 	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
+	if proto.IsHot(s.client.volumeType) {
+		if storeMode == proto.NormalExtentType && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset) {
+			if currentEK := s.extents.GetEnd(uint64(offset)); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
+				s.closeOpenHandler()
 
-	if s.handler == nil && storeMode == proto.NormalExtentType {
-		if currentEK := s.extents.GetEnd(uint64(offset)); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
-			handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
-			handler.key = &proto.ExtentKey{
-				FileOffset:   currentEK.FileOffset,
-				PartitionId:  currentEK.PartitionId,
-				ExtentId:     currentEK.ExtentId,
-				ExtentOffset: currentEK.ExtentOffset,
-				Size:         currentEK.Size,
+				log.LogDebugf("doWrite: found ek in ExtentCache, offset(%v) size(%v), ekoffset(%v) eksize(%v)",
+					offset, size, currentEK.FileOffset, currentEK.Size)
+				_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
+				if pidErr == nil {
+					handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
+					handler.key = &proto.ExtentKey{
+						FileOffset:   currentEK.FileOffset,
+						PartitionId:  currentEK.PartitionId,
+						ExtentId:     currentEK.ExtentId,
+						ExtentOffset: currentEK.ExtentOffset,
+						Size:         currentEK.Size,
+					}
+					s.handler = handler
+					s.dirty = false
+					log.LogDebugf("doWrite: currentEK.PartitionId(%v) found", currentEK.PartitionId)
+				} else {
+					log.LogDebugf("doWrite: currentEK.PartitionId(%v) not found", currentEK.PartitionId)
+				}
+
+			} else {
+				log.LogDebugf("doWrite: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
 			}
-			s.handler = handler
-			s.dirty = false
 		}
-	}
+		for i := 0; i < MaxNewHandlerRetry; i++ {
+			if s.handler == nil {
+				s.handler = NewExtentHandler(s, offset, storeMode, 0)
+				s.dirty = false
+			} else if s.handler.storeMode != storeMode {
+				// store mode changed, so close open handler and start a new one
+				s.closeOpenHandler()
+				continue
+			}
+			ek, err = s.handler.write(data, offset, size, direct)
+			if err == nil && ek != nil {
+				if !s.dirty {
+					s.dirtylist.Put(s.handler)
+					s.dirty = true
+				}
+				break
+			}
 
-	for i := 0; i < MaxNewHandlerRetry; i++ {
-		if s.handler == nil {
-			s.handler = NewExtentHandler(s, offset, storeMode, 0)
-			s.dirty = false
-		} else if s.handler.storeMode != storeMode {
-			// store mode changed, so close open handler and start a new one
+			log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
+				s.inode, offset, size, storeMode, err)
+
 			s.closeOpenHandler()
-			continue
 		}
-
+	} else {
+		s.handler = NewExtentHandler(s, offset, storeMode, 0)
+		s.dirty = false
 		ek, err = s.handler.write(data, offset, size, direct)
 		if err == nil && ek != nil {
 			if !s.dirty {
 				s.dirtylist.Put(s.handler)
 				s.dirty = true
 			}
-			break
 		}
 
 		log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
 			s.inode, offset, size, storeMode, err)
-		s.closeOpenHandler()
+		err = s.closeOpenHandler()
 	}
 
 	if err != nil || ek == nil {
@@ -534,7 +589,7 @@ func (s *Streamer) traverse() (err error) {
 	return
 }
 
-func (s *Streamer) closeOpenHandler() {
+func (s *Streamer) closeOpenHandler() (err error) {
 	// just in case to avoid infinite loop
 	var cnt int = 2 * MaxPacketErrorCount
 
@@ -545,7 +600,7 @@ func (s *Streamer) closeOpenHandler() {
 			handler.flushPacket()
 		} else {
 			// TODO unhandled error
-			handler.flush()
+			err = s.handler.flush()
 		}
 		handler = handler.recoverHandler
 		cnt--
@@ -559,6 +614,7 @@ func (s *Streamer) closeOpenHandler() {
 		}
 		s.handler = nil
 	}
+	return err
 }
 
 func (s *Streamer) open() {
@@ -583,7 +639,9 @@ func (s *Streamer) evict() error {
 		s.client.streamerLock.Unlock()
 		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v)", s, s.refcnt))
 	}
-	delete(s.client.streamers, s.inode)
+	if s.client.disableMetaCache {
+		delete(s.client.streamers, s.inode)
+	}
 	s.client.streamerLock.Unlock()
 	return nil
 }
@@ -620,7 +678,7 @@ func (s *Streamer) truncate(size int) error {
 	}
 
 	s.extents.TruncDiscard(uint64(size))
-	return s.GetExtents()
+	return s.GetExtentsForce()
 }
 
 func (s *Streamer) tinySizeLimit() int {

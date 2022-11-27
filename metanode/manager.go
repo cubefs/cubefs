@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -105,8 +105,6 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		metric.SetWithLabels(err, labels)
 	}()
 
-	log.LogDebugf("HandleMetadataOperation input info op (%s), remote %s", p.GetOpMsg(), remoteAddr)
-
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
 		err = m.opCreateInode(conn, p, remoteAddr)
@@ -150,6 +148,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaExtentAddWithCheck(conn, p, remoteAddr)
 	case proto.OpMetaExtentsList:
 		err = m.opMetaExtentsList(conn, p, remoteAddr)
+	case proto.OpMetaObjExtentsList:
+		err = m.opMetaObjExtentsList(conn, p, remoteAddr)
 	case proto.OpMetaExtentsDel:
 		err = m.opMetaExtentsDel(conn, p, remoteAddr)
 	case proto.OpMetaTruncate:
@@ -178,6 +178,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaBatchDeleteInode(conn, p, remoteAddr)
 	case proto.OpMetaBatchExtentsAdd:
 		err = m.opMetaBatchExtentsAdd(conn, p, remoteAddr)
+	case proto.OpMetaBatchObjExtentsAdd:
+		err = m.opMetaBatchObjExtentsAdd(conn, p, remoteAddr)
+	case proto.OpMetaClearInodeCache:
+		err = m.opMetaClearInodeCache(conn, p, remoteAddr)
 	// operations for extend attributes
 	case proto.OpMetaSetXAttr:
 		err = m.opMetaSetXAttr(conn, p, remoteAddr)
@@ -189,8 +193,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaRemoveXAttr(conn, p, remoteAddr)
 	case proto.OpMetaListXAttr:
 		err = m.opMetaListXAttr(conn, p, remoteAddr)
-	case proto.OpMetaUpdateSummaryInfo:
-		err = m.opMetaUpdateSummaryInfo(conn, p, remoteAddr)
+	case proto.OpMetaUpdateXAttr:
+		err = m.opMetaUpdateXAttr(conn, p, remoteAddr)
 	// operations for multipart session
 	case proto.OpCreateMultipart:
 		err = m.opCreateMultipart(conn, p, remoteAddr)
@@ -343,10 +347,11 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 
 				partitionConfig := &MetaPartitionConfig{
-					NodeId:    m.nodeId,
-					RaftStore: m.raftStore,
-					RootDir:   path.Join(m.rootDir, fileName),
-					ConnPool:  m.connPool,
+					PartitionId: id,
+					NodeId:      m.nodeId,
+					RaftStore:   m.raftStore,
+					RootDir:     path.Join(m.rootDir, fileName),
+					ConnPool:    m.connPool,
 				}
 				partitionConfig.AfterStop = func() {
 					m.detachPartition(id)
@@ -366,6 +371,10 @@ func (m *metadataManager) loadPartitions() (err error) {
 					errload = nil
 				}
 				partition := NewMetaPartition(partitionConfig, m)
+				if partition == nil {
+					log.LogErrorf("loadPartitions: NewMetaPartition is nil")
+					return
+				}
 				errload = m.attachPartition(id, partition)
 				if errload != nil {
 					log.LogErrorf("load partition id=%d failed: %s.",
@@ -438,6 +447,10 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	}
 
 	partition := NewMetaPartition(mpc, m)
+	if partition == nil {
+		err = errors.NewErrorf("[createPartition] partition is nil")
+		return
+	}
 	if err = partition.PersistMetadata(); err != nil {
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
 		return

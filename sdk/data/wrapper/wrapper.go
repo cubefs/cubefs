@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,11 +37,19 @@ type DataPartitionView struct {
 	DataPartitions []*DataPartition
 }
 
+type SimpleClientInfo interface {
+	GetFlowInfo() (*proto.ClientReportLimitInfo, bool)
+	UpdateFlowInfo(limit *proto.LimitRsp2Client)
+	SetClientID(id uint64) error
+}
+
 // Wrapper TODO rename. This name does not reflect what it is doing.
 type Wrapper struct {
 	sync.RWMutex
 	clusterName           string
 	volName               string
+	volType               int
+	EnablePosixAcl        bool
 	masters               []string
 	partitions            map[uint64]*DataPartition
 	followerRead          bool
@@ -57,10 +65,11 @@ type Wrapper struct {
 	dpSelector DataPartitionSelector
 
 	HostsStatus map[string]bool
+	preload     bool
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err error) {
+func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, masters []string, preload bool) (w *Wrapper, err error) {
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
 	w.masters = masters
@@ -68,14 +77,19 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	w.volName = volName
 	w.partitions = make(map[uint64]*DataPartition)
 	w.HostsStatus = make(map[string]bool)
+	w.preload = preload
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
-	if err = w.getSimpleVolView(); err != nil {
+
+	if err = w.GetSimpleVolView(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
+
+	w.UploadFlowInfo(clientInfo, true)
+
 	if err = w.initDpSelector(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init initDpSelector failed, [%v]", err)
 	}
@@ -86,6 +100,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	if err = w.updateDataNodeStatus(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
+	go w.uploadFlowInfoByTick(clientInfo)
 	go w.update()
 	return
 }
@@ -117,23 +132,38 @@ func (w *Wrapper) updateClusterInfo() (err error) {
 	return
 }
 
-func (w *Wrapper) getSimpleVolView() (err error) {
+func (w *Wrapper) GetSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
-		log.LogWarnf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+		log.LogWarnf("GetSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
 	w.followerRead = view.FollowerRead
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
+	w.volType = view.VolType
+	w.EnablePosixAcl = view.EnablePosixAcl
 
-	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
+	log.LogInfof("GetSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
 		"dpSelectorParm(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
 		view.DpCnt, view.FollowerRead, view.CreateTime, view.DpSelectorName, view.DpSelectorParm)
-	return nil
+
+	return
+}
+
+func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
+	ticker := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			w.UploadFlowInfo(clientInfo, false)
+		case <-w.stopC:
+			return
+		}
+	}
 }
 
 func (w *Wrapper) update() {
@@ -141,7 +171,7 @@ func (w *Wrapper) update() {
 	for {
 		select {
 		case <-ticker.C:
-			w.updateSimpleVolView()
+			w.UpdateSimpleVolView()
 			w.updateDataPartition(false)
 			w.updateDataNodeStatus()
 		case <-w.stopC:
@@ -150,7 +180,34 @@ func (w *Wrapper) update() {
 	}
 }
 
-func (w *Wrapper) updateSimpleVolView() (err error) {
+func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (err error) {
+	var limitRsp *proto.LimitRsp2Client
+	log.LogInfof("action[UploadFlowInfo] tick!")
+	flowInfo, isNeedReport := clientInfo.GetFlowInfo()
+	if !isNeedReport {
+		log.LogInfof("action[UploadFlowInfo] no need report!")
+		return nil
+	}
+
+	if limitRsp, err = w.mc.AdminAPI().UploadFlowInfo(w.volName, flowInfo); err != nil {
+		log.LogWarnf("UpdateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+		return
+	}
+	log.LogInfof("action[UploadFlowInfo] init %v get rsp id [%v]", init, limitRsp.ID)
+	if init {
+		if limitRsp.ID == 0 {
+			err = fmt.Errorf("init client get id 0")
+			log.LogInfof("action[UploadFlowInfo] err %v", err.Error())
+			return
+		}
+		log.LogInfof("action[UploadFlowInfo] get id %v", limitRsp.ID)
+		clientInfo.SetClientID(limitRsp.ID)
+	}
+	clientInfo.UpdateFlowInfo(limitRsp)
+	return
+}
+
+func (w *Wrapper) UpdateSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
@@ -158,13 +215,13 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	}
 
 	if w.followerRead != view.FollowerRead && !w.followerReadClientCfg {
-		log.LogInfof("updateSimpleVolView: update followerRead from old(%v) to new(%v)",
+		log.LogDebugf("UpdateSimpleVolView: update followerRead from old(%v) to new(%v)",
 			w.followerRead, view.FollowerRead)
 		w.followerRead = view.FollowerRead
 	}
 
 	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm {
-		log.LogInfof("updateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v)",
+		log.LogDebugf("UpdateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v)",
 			w.dpSelectorName, w.dpSelectorParm, view.DpSelectorName, view.DpSelectorParm)
 		w.Lock()
 		w.dpSelectorName = view.DpSelectorName
@@ -185,6 +242,9 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 		}
 	}
 
+	if proto.IsCold(w.volType) {
+		w.clearPartitions()
+	}
 	rwPartitionGroups := make([]*DataPartition, 0)
 	for index, partition := range DataPartitions {
 		if partition == nil {
@@ -197,6 +257,10 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 		}
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
+		//do not insert preload dp in cold vol
+		if proto.IsCold(w.volType) && proto.IsPreLoadDp(dp.PartitionType) {
+			continue
+		}
 		if dp.Status == proto.ReadWrite {
 			dp.MetricsRefresh()
 			rwPartitionGroups = append(rwPartitionGroups, dp)
@@ -204,7 +268,7 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 	}
 
 	// isInit used to identify whether this call is caused by mount action
-	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt) {
+	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1))) {
 		w.refreshDpSelector(rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
@@ -215,7 +279,9 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 }
 
 func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
-
+	if w.preload {
+		return
+	}
 	var dpv *proto.DataPartitionsView
 	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
 		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
@@ -223,6 +289,10 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	}
 	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
 	return w.updateDataPartitionByRsp(isInit, dpv.DataPartitions)
+}
+
+func (w *Wrapper) UpdateDataPartition() (err error) {
+	return w.updateDataPartition(false)
 }
 
 // getDataPartition will call master to get data partition info which not include in  cache updated by
@@ -257,6 +327,41 @@ func (w *Wrapper) getDataPartition(isInit bool, dpId uint64) (err error) {
 	return w.updateDataPartitionByRsp(isInit, DataPartitions)
 }
 
+func (w *Wrapper) clearPartitions() {
+	w.Lock()
+	defer w.Unlock()
+	w.partitions = make(map[uint64]*DataPartition)
+}
+
+func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
+	var dpv *proto.DataPartitionsView
+
+	if dpv, err = w.mc.AdminAPI().CreatePreLoadDataPartition(volName, count, capacity, ttl, zones); err != nil {
+		log.LogWarnf("CreatePreLoadDataPartition fail: err(%v)", err)
+		return
+	}
+	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
+		return &DataPartition{
+			DataPartitionResponse: *response,
+			ClientWrapper:         w,
+		}
+	}
+	rwPartitionGroups := make([]*DataPartition, 0)
+	for _, partition := range dpv.DataPartitions {
+		dp := convert(partition)
+		if proto.IsCold(w.volType) && !proto.IsPreLoadDp(dp.PartitionType) {
+			continue
+		}
+		log.LogInfof("updateDataPartition: dp(%v)", dp)
+		w.replaceOrInsertPartition(dp)
+		dp.MetricsRefresh()
+		rwPartitionGroups = append(rwPartitionGroups, dp)
+	}
+
+	w.refreshDpSelector(rwPartitionGroups)
+	return nil
+}
+
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	var (
 		oldstatus int8
@@ -287,7 +392,7 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	w.RLock()
 	defer w.RUnlock()
 	dp, ok := w.partitions[partitionID]
-	if !ok {
+	if !ok && !proto.IsCold(w.volType) { // cache miss && hot volume
 		err := w.getDataPartition(false, partitionID)
 		if err == nil {
 			dp, ok = w.partitions[partitionID]
@@ -296,6 +401,9 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 			}
 			return dp, nil
 		}
+		return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
+	}
+	if !ok {
 		return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
 	}
 	return dp, nil

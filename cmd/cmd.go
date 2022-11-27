@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,11 +29,10 @@ import (
 	"syscall"
 
 	"github.com/cubefs/cubefs/util/errors"
+	sysutil "github.com/cubefs/cubefs/util/sys"
 
 	"github.com/cubefs/cubefs/console"
 	"github.com/cubefs/cubefs/proto"
-
-	sysutil "github.com/cubefs/cubefs/util/sys"
 
 	"github.com/cubefs/cubefs/objectnode"
 
@@ -50,11 +49,12 @@ import (
 )
 
 const (
-	ConfigKeyRole       = "role"
-	ConfigKeyLogDir     = "logDir"
-	ConfigKeyLogLevel   = "logLevel"
-	ConfigKeyProfPort   = "prof"
-	ConfigKeyWarnLogDir = "warnLogDir"
+	ConfigKeyRole              = "role"
+	ConfigKeyLogDir            = "logDir"
+	ConfigKeyLogLevel          = "logLevel"
+	ConfigKeyProfPort          = "prof"
+	ConfigKeyWarnLogDir        = "warnLogDir"
+	ConfigKeyBuffersTotalLimit = "buffersTotalLimit"
 )
 
 const (
@@ -83,6 +83,7 @@ var (
 	configFile       = flag.String("c", "", "config file path")
 	configVersion    = flag.Bool("v", false, "show version")
 	configForeground = flag.Bool("f", false, "run foreground")
+	redirectSTD      = flag.Bool("redirect-std", true, "redirect standard output to file")
 )
 
 func interceptSignal(s common.Server) {
@@ -156,6 +157,7 @@ func main() {
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
+	buffersTotalLimit := cfg.GetInt64(ConfigKeyBuffersTotalLimit)
 
 	// Init server instance with specified role configuration.
 	var (
@@ -214,29 +216,38 @@ func main() {
 	}
 	defer log.LogFlush()
 
-	// Init output file
-	outputFilePath := path.Join(logDir, module, LoggerOutput)
-	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
-	if err != nil {
-		err = errors.NewErrorf("Fatal: failed to open output path - %v", err)
-		fmt.Println(err)
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-	defer func() {
-		outputFile.Sync()
-		outputFile.Close()
-	}()
-	syslog.SetOutput(outputFile)
+	if *redirectSTD {
+		// Init output file
+		outputFilePath := path.Join(logDir, module, LoggerOutput)
+		outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+		if err != nil {
+			err = errors.NewErrorf("Fatal: failed to open output path - %v", err)
+			fmt.Println(err)
+			daemonize.SignalOutcome(err)
+			os.Exit(1)
+		}
+		defer func() {
+			outputFile.Sync()
+			outputFile.Close()
+		}()
 
-	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
-		err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)
-		syslog.Println(err)
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
+		syslog.SetOutput(outputFile)
+		if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+			err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)
+			syslog.Println(err)
+			daemonize.SignalOutcome(err)
+			os.Exit(1)
+		}
 	}
 
-	syslog.Printf("Hello, ChubaoFS Storage\n%s\n", Version)
+	if buffersTotalLimit < 0 {
+		syslog.Printf("invalid fields, BuffersTotalLimit(%v) must larger or equal than 0\n", buffersTotalLimit)
+		return
+	}
+
+	proto.InitBufferPool(buffersTotalLimit)
+
+	syslog.Printf("Hello, CubeFS Storage\n%s\n", Version)
 
 	err = modifyOpenFiles()
 	if err != nil {
@@ -274,7 +285,7 @@ func main() {
 	err = server.Start(cfg)
 	if err != nil {
 		log.LogFlush()
-		err = errors.NewErrorf("Fatal: failed to start the ChubaoFS %s daemon err %v - ", role, err)
+		err = errors.NewErrorf("Fatal: failed to start the CubeFS %s daemon err %v - ", role, err)
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)

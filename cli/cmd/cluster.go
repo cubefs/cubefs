@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ const (
 	cmdClusterShort = "Manage cluster components"
 )
 
-func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Command {
+func (cmd *CubeFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Command {
 	var clusterCmd = &cobra.Command{
 		Use:   cmdClusterUse,
 		Short: cmdClusterShort,
@@ -38,21 +38,22 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 		newClusterStatCmd(client),
 		newClusterFreezeCmd(client),
 		newClusterSetThresholdCmd(client),
-		newClusterDeleteParasCmd(client),
+		newClusterSetParasCmd(client),
 	)
 	return clusterCmd
 }
 
 const (
-	cmdClusterInfoShort      = "Show cluster summary information"
-	cmdClusterStatShort      = "Show cluster status information"
-	cmdClusterFreezeShort    = "Freeze cluster"
-	cmdClusterThresholdShort = "Set memory threshold of metanodes"
-	cmdClusterDelParaShort   = "Set delete parameters"
-	nodeDeleteBatchCountKey  = "batchCount"
-	nodeMarkDeleteRateKey    = "markDeleteRate"
-	nodeDeleteWorkerSleepMs  = "deleteWorkerSleepMs"
-	nodeAutoRepairRateKey    = "autoRepairRate"
+	cmdClusterInfoShort           = "Show cluster summary information"
+	cmdClusterStatShort           = "Show cluster status information"
+	cmdClusterFreezeShort         = "Freeze cluster"
+	cmdClusterThresholdShort      = "Set memory threshold of metanodes"
+	cmdClusterSetClusterInfoShort = "Set cluster parameters"
+	nodeDeleteBatchCountKey       = "batchCount"
+	nodeMarkDeleteRateKey         = "markDeleteRate"
+	nodeDeleteWorkerSleepMs       = "deleteWorkerSleepMs"
+	nodeAutoRepairRateKey         = "autoRepairRate"
+	nodeMaxDpCntLimit             = "maxDpCntLimit"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -62,19 +63,29 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var cv *proto.ClusterView
-			var delPara map[string]string
+			var cn *proto.ClusterNodeInfo
+			var cp *proto.ClusterIP
+			var clusterPara map[string]string
 			if cv, err = client.AdminAPI().GetCluster(); err != nil {
 				errout("Error: %v", err)
 			}
-			stdout("[Cluster]\n")
-			stdout(formatClusterView(cv))
-			if delPara, err = client.AdminAPI().GetDeleteParas(); err != nil {
+			if cn, err = client.AdminAPI().GetClusterNodeInfo(); err != nil {
 				errout("Error: %v", err)
 			}
-			stdout(fmt.Sprintf("  BatchCount         : %v\n", delPara[nodeDeleteBatchCountKey]))
-			stdout(fmt.Sprintf("  MarkDeleteRate     : %v\n", delPara[nodeMarkDeleteRateKey]))
-			stdout(fmt.Sprintf("  DeleteWorkerSleepMs: %v\n", delPara[nodeDeleteWorkerSleepMs]))
-			stdout(fmt.Sprintf("  AutoRepairRate     : %v\n", delPara[nodeAutoRepairRateKey]))
+			if cp, err = client.AdminAPI().GetClusterIP(); err != nil {
+				errout("Error: %v", err)
+			}
+			stdout("[Cluster]\n")
+			stdout(formatClusterView(cv, cn, cp))
+			if clusterPara, err = client.AdminAPI().GetClusterParas(); err != nil {
+				errout("Error: %v", err)
+			}
+
+			stdout(fmt.Sprintf("  BatchCount         : %v\n", clusterPara[nodeDeleteBatchCountKey]))
+			stdout(fmt.Sprintf("  MarkDeleteRate     : %v\n", clusterPara[nodeMarkDeleteRateKey]))
+			stdout(fmt.Sprintf("  DeleteWorkerSleepMs: %v\n", clusterPara[nodeDeleteWorkerSleepMs]))
+			stdout(fmt.Sprintf("  AutoRepairRate     : %v\n", clusterPara[nodeAutoRepairRateKey]))
+			stdout(fmt.Sprintf("  MaxDpCntLimit      : %v\n", clusterPara[nodeMaxDpCntLimit]))
 			stdout("\n")
 		},
 	}
@@ -114,11 +125,11 @@ func newClusterFreezeCmd(client *master.MasterClient) *cobra.Command {
 		Short:     cmdClusterFreezeShort,
 		Args:      cobra.MinimumNArgs(1),
 		Long: `Turn on or off the automatic allocation of the data partitions. 
-If 'freeze=false', ChubaoFS WILL automatically allocate new data partitions for the volume when:
+If 'freeze=false', CubeFS WILL automatically allocate new data partitions for the volume when:
   1. the used space is below the max capacity,
   2. and the number of r&w data partition is less than 20.
 		
-If 'freeze=true', ChubaoFS WILL NOT automatically allocate new data partitions `,
+If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err    error
@@ -180,11 +191,11 @@ If the memory usage reaches this threshold, all the mata partition will be readO
 	return cmd
 }
 
-func newClusterDeleteParasCmd(client *master.MasterClient) *cobra.Command {
-	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs string
+func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
+	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs, optLoadFactor, opMaxDpCntLimit string
 	var cmd = &cobra.Command{
-		Use:   CliOpSetDelRate,
-		Short: cmdClusterDelParaShort,
+		Use:   CliOpSetCluster,
+		Short: cmdClusterSetClusterInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err error
@@ -195,16 +206,18 @@ func newClusterDeleteParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 
-			if err = client.AdminAPI().SetDeleteParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs, optAutoRepairRate); err != nil {
+			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs, optAutoRepairRate, optLoadFactor, opMaxDpCntLimit); err != nil {
 				return
 			}
-			stdout("Delete parameters has been set successfully. \n")
+			stdout("Cluster parameters has been set successfully. \n")
 		},
 	}
-	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
 	cmd.Flags().StringVar(&optDelBatchCount, CliFlagDelBatchCount, "", "MetaNode delete batch count")
-	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
+	cmd.Flags().StringVar(&optLoadFactor, CliFlagLoadFactor, "", "Load Factor")
 	cmd.Flags().StringVar(&optMarkDeleteRate, CliFlagMarkDelRate, "", "DataNode batch mark delete limit rate. if 0 for no infinity limit")
+	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
+	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
+	cmd.Flags().StringVar(&opMaxDpCntLimit, CliFlagMaxDpCntLimit, "", "Maximum number of dp on each datanode, default 3000, 0 represents setting to default")
 
 	return cmd
 }

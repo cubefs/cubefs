@@ -1,9 +1,9 @@
 Run Cluster on Docker
 -----------------------
 
-Under the docker directory, a helper tool called run_docker.sh is provided to run ChubaoFS with docker-compose.
+Under the docker directory, a helper tool called run_docker.sh is provided to run CubeFS with docker-compose.
 
-To start a minimal ChubaoFS cluster from scratch, note that **/data/disk** is arbitrary, and make sure there are at least 30G available space.
+To start a minimal CubeFS cluster from scratch, note that **/data/disk** is arbitrary, and make sure there are at least 30G available space.
 
 .. code-block:: bash
 
@@ -13,7 +13,7 @@ If client starts successfully, use `mount` command in client docker shell to che
 
 .. code-block:: bash
 
-    $ mount | grep chubaofs
+    $ mount | grep cubefs
 
 Open http://127.0.0.1:3000 in browser, login with `admin/123456` to view grafana monitor metrics.
 
@@ -33,4 +33,4 @@ For more usage:
 
     $ docker/run_docker.sh -h
 
-Prometheus and Grafana confg can be found in `docker/monitor` directory.
+Prometheus and Grafana config can be found in `docker/monitor` directory.

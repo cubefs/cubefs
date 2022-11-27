@@ -6,12 +6,14 @@
   "listen": "17010",
   "prof": "17020",
   "peers": "1:192.168.0.11:17010,2:192.168.0.12:17010,3:192.168.0.13:17010",
-  "retainLogs": "2",
+  "retainLogs": "20000",
   "consulAddr": "http://192.168.0.101:8500",
   "exporterPort": 9500,
   "logLevel": "debug",
   "logDir": "/cfs/log",
   "walDir": "/cfs/data/wal",
   "storeDir": "/cfs/data/store",
-  "metaNodeReservedMem": "67108864"
+  "metaNodeReservedMem": "67108864",
+  "fake_ebsAddr":"192.168.0.233:8500",
+  "fake_ebsServicePath":"access"
 }

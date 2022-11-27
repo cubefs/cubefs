@@ -27,34 +27,38 @@ func TestMetaPartition(t *testing.T) {
 }
 
 func createMetaPartition(vol *Vol, t *testing.T) {
-	server.cluster.DisableAutoAllocate = false
 	maxPartitionID := commonVol.maxPartitionID()
 	mp, err := commonVol.metaPartition(maxPartitionID)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+
 	var start uint64
 	start = mp.Start + defaultMetaPartitionInodeIDStep
 	reqURL := fmt.Sprintf("%v%v?name=%v&start=%v",
 		hostAddr, proto.AdminCreateMetaPartition, vol.Name, start)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+
 	if start < mp.MaxInodeID {
 		start = mp.MaxInodeID
 	}
+
 	start = start + defaultMetaPartitionInodeIDStep
 	vol, err = server.cluster.getVol(vol.Name)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+
 	maxPartitionID = vol.maxPartitionID()
 	mp, err = vol.metaPartition(maxPartitionID)
 	if err != nil {
 		t.Errorf("createMetaPartition,err [%v]", err)
 		return
 	}
+
 	start = start + 1
 	if mp.Start != start {
 		t.Errorf("expect start[%v],mp.start[%v],not equal", start, mp.Start)

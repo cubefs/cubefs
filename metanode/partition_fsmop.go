@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -141,25 +142,28 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 }
 
 func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
+
 	fileName := string(buf)
-	infos, err := os.ReadDir(mp.config.RootDir)
+	log.LogWarnf("[delOldExtentFile] del extent file(%s), mp(%d)", fileName, mp.config.PartitionId)
+
+	infos, err := ioutil.ReadDir(mp.config.RootDir)
 	if err != nil {
 		return
 	}
+
+	infos = sortDelExtFileInfo(infos)
+	tgtIdx := getDelExtFileIdx(fileName)
+
 	for _, f := range infos {
-		if f.IsDir() {
-			continue
+		idx := getDelExtFileIdx(f.Name())
+		if idx > tgtIdx {
+			break
 		}
-		if !strings.HasPrefix(f.Name(), prefixDelExtent) {
-			continue
-		}
-		if f.Name() <= fileName {
-			// TODO Unhandled errors
-			os.Remove(path.Join(mp.config.RootDir, f.Name()))
-			continue
-		}
-		break
+
+		log.LogWarnf("[delOldExtentFile] del extent file(%s), mp(%d)", f.Name(), mp.config.PartitionId)
+		os.Remove(path.Join(mp.config.RootDir, f.Name()))
 	}
+
 	return
 }
 
@@ -171,6 +175,7 @@ func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 		cursor   int64
 	)
 	_, err = fmt.Sscanf(str, "%s %d", &fileName, &cursor)
+	log.LogInfof("[setExtentDeleteFileCursor] &fileName_&cursor(%s), mp(%d)", str, mp.config.PartitionId)
 	if err != nil {
 		return
 	}

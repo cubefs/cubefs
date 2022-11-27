@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,15 +57,20 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				continue
 			}
 
-			vol, err := c.getVol(partition.VolName)
+			_, err = c.getVol(partition.VolName)
 			if err != nil {
 				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],partitionID[%v] vol(%s) is not exist",
 					c.Name, partitionID, partition.VolName))
 				continue
 			}
-
-			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
+			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replics %v conf replics num %v",
+				partition.PartitionID, partition.isSpecialReplicaCnt(), len(partition.Replicas), int(partition.ReplicaNum))
+			if len(partition.Replicas) == 0 ||
+				(!partition.isSpecialReplicaCnt() && len(partition.Replicas) < int(partition.ReplicaNum)) ||
+				(partition.isSpecialReplicaCnt() && len(partition.Replicas) > int(partition.ReplicaNum)) {
 				newBadDpIds = append(newBadDpIds, partitionID)
+				log.LogInfof("action[checkDiskRecoveryProgress] dp %v newBadDpIds [%v] replics %v conf replics num %v",
+					partition.PartitionID, newBadDpIds, len(partition.Replicas), int(partition.ReplicaNum))
 				continue
 			}
 
@@ -92,16 +97,19 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 	})
 }
 
-func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPartitions []*DataPartition) (err error) {
+func (c *Cluster) decommissionDisk(dataNode *DataNode, raftForce bool, badDiskPath string, badPartitions []*DataPartition) (err error) {
 	msg := fmt.Sprintf("action[decommissionDisk], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
 	log.LogWarn(msg)
 
 	for _, dp := range badPartitions {
-		if err = c.decommissionDataPartition(dataNode.Addr, dp, diskOfflineErr); err != nil {
-			return
-		}
+		go func(dp *DataPartition) {
+			if err = c.decommissionDataPartition(dataNode.Addr, dp, raftForce, diskOfflineErr); err != nil {
+				return
+			}
+		}(dp)
+
 	}
-	msg = fmt.Sprintf("action[decommissionDisk],clusterID[%v] Node[%v] OffLine success",
+	msg = fmt.Sprintf("action[decommissionDisk],clusterID[%v] node[%v] OffLine success",
 		c.Name, dataNode.Addr)
 	Warn(c.Name, msg)
 	return

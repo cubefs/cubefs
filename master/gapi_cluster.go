@@ -5,10 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/schemabuilder"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -16,6 +12,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
 
 type ClusterService struct {
@@ -200,7 +201,7 @@ func (m *ClusterService) decommissionDisk(ctx context.Context, args struct {
 	}
 	rstMsg := fmt.Sprintf("receive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
 		node.Addr, args.DiskPath, badPartitionIds)
-	if err = m.cluster.decommissionDisk(node, args.DiskPath, badPartitions); err != nil {
+	if err = m.cluster.decommissionDisk(node, false, args.DiskPath, badPartitions); err != nil {
 		return nil, err
 	}
 	Warn(m.cluster.Name, rstMsg)
@@ -218,10 +219,10 @@ func (m *ClusterService) decommissionDataNode(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionDataNode(node); err != nil {
+	if err := m.cluster.decommissionDataNode(node, false); err != nil {
 		return nil, err
 	}
-	rstMsg := fmt.Sprintf("decommission data node [%v] successfully", args.OffLineAddr)
+	rstMsg := fmt.Sprintf("decommission data node [%v] submited,please check laster!", args.OffLineAddr)
 
 	return proto.Success(rstMsg), nil
 }
@@ -630,7 +631,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {
-			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001"))
+			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, 0, 0, 0))
 			continue
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))

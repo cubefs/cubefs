@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,6 +32,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	blog "github.com/cubefs/blobstore/util/log"
 )
 
 type Level uint8
@@ -80,6 +82,24 @@ func (f RolledFile) Len() int {
 
 func (f RolledFile) Swap(i, j int) {
 	f[i], f[j] = f[j], f[i]
+}
+
+func setBlobLogLevel(loglevel Level) {
+	blevel := blog.Lwarn
+	switch loglevel {
+	case DebugLevel:
+		blevel = blog.Ldebug
+	case InfoLevel:
+		blevel = blog.Linfo
+	case WarnLevel:
+		blevel = blog.Lwarn
+	case ErrorLevel:
+		blevel = blog.Lerror
+	default:
+		blevel = blog.Lwarn
+	}
+
+	blog.SetOutputLevel(blevel)
 }
 
 type asyncWriter struct {
@@ -239,6 +259,7 @@ type Log struct {
 	readLogger     *LogObject
 	updateLogger   *LogObject
 	criticalLogger *LogObject
+	qosLogger      *LogObject
 	level          Level
 	msgC           chan string
 	rotate         *LogRotate
@@ -253,6 +274,7 @@ var (
 	ReadLogFileName     = "_read.log"
 	UpdateLogFileName   = "_write.log"
 	CriticalLogFileName = "_critical.log"
+	QoSLogFileName      = "_qos.log"
 )
 
 var gLog *Log = nil
@@ -304,6 +326,7 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	go l.checkLogRotation(dir, module)
 
 	gLog = l
+	setBlobLogLevel(level)
 	return l, nil
 }
 
@@ -337,8 +360,8 @@ func (l *Log) initLog(logDir, module string, level Level) error {
 		return
 	}
 	var err error
-	logHandles := [...]**LogObject{&l.debugLogger, &l.infoLogger, &l.warnLogger, &l.errorLogger, &l.readLogger, &l.updateLogger, &l.criticalLogger}
-	logNames := [...]string{DebugLogFileName, InfoLogFileName, WarnLogFileName, ErrLogFileName, ReadLogFileName, UpdateLogFileName, CriticalLogFileName}
+	logHandles := [...]**LogObject{&l.debugLogger, &l.infoLogger, &l.warnLogger, &l.errorLogger, &l.readLogger, &l.updateLogger, &l.criticalLogger, &l.qosLogger}
+	logNames := [...]string{DebugLogFileName, InfoLogFileName, WarnLogFileName, ErrLogFileName, ReadLogFileName, UpdateLogFileName, CriticalLogFileName, QoSLogFileName}
 	for i := range logHandles {
 		if *logHandles[i], err = newLog(logNames[i]); err != nil {
 			return err
@@ -416,6 +439,7 @@ func SetLogLevel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	gLog.level = Level(level)
+	setBlobLogLevel(level)
 	buildSuccessResp(w, "set log level success")
 }
 
@@ -628,6 +652,32 @@ func LogReadf(format string, v ...interface{}) {
 	gLog.readLogger.Output(2, s)
 }
 
+// QosWrite
+func QosWrite(v ...interface{}) {
+	if gLog == nil {
+		return
+	}
+	if UpdateLevel&gLog.level != gLog.level {
+		return
+	}
+	s := fmt.Sprintln(v...)
+	s = gLog.SetPrefix(s, levelPrefixes[0])
+	gLog.qosLogger.Output(2, s)
+}
+
+// QosWriteDebugf TODO not used
+func QosWriteDebugf(format string, v ...interface{}) {
+	if gLog == nil {
+		return
+	}
+	if UpdateLevel&gLog.level != gLog.level {
+		return
+	}
+	s := fmt.Sprintf(format, v...)
+	s = gLog.SetPrefix(s, levelPrefixes[0])
+	gLog.qosLogger.Output(2, s)
+}
+
 // LogWrite
 func LogWrite(v ...interface{}) {
 	if gLog == nil {
@@ -673,7 +723,7 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		}
 		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
 		diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
-		err := l.removeLogFile(logDir, diskSpaceLeft)
+		err := l.removeLogFile(logDir, diskSpaceLeft, module)
 		if err != nil {
 			time.Sleep(DefaultRollingInterval)
 			continue
@@ -698,14 +748,14 @@ func (l *Log) checkLogRotation(logDir, module string) {
 	}
 }
 
-func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64) bool {
+func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64, module string) bool {
 	if diskSpaceLeft <= 0 {
-		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RolledExtension)
+		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RolledExtension) && strings.HasPrefix(info.Name(), module)
 	}
-	return time.Since(info.ModTime()) > MaxReservedDays && strings.HasSuffix(info.Name(), RolledExtension)
+	return time.Since(info.ModTime()) > MaxReservedDays && strings.HasSuffix(info.Name(), RolledExtension) && strings.HasPrefix(info.Name(), module)
 }
 
-func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64) (err error) {
+func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64, module string) (err error) {
 	// collect free file list
 	fInfos, err := ioutil.ReadDir(logDir)
 	if err != nil {
@@ -714,7 +764,7 @@ func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64) (err error) {
 	}
 	var needDelFiles RolledFile
 	for _, info := range fInfos {
-		if DeleteFileFilter(info, diskSpaceLeft) {
+		if DeleteFileFilter(info, diskSpaceLeft, module) {
 			needDelFiles = append(needDelFiles, info)
 		}
 	}

@@ -72,7 +72,7 @@ func (db *TransactionDB) TransactionBegin(
 		db.c, opts.c, transactionOpts.c, nil))
 }
 
-// GetConnect returns the data associated with the key from the database.
+// Get returns the data associated with the key from the database.
 func (db *TransactionDB) Get(opts *ReadOptions, key []byte) (*Slice, error) {
 	var (
 		cErr    *C.char
@@ -89,7 +89,7 @@ func (db *TransactionDB) Get(opts *ReadOptions, key []byte) (*Slice, error) {
 	return NewSlice(cValue, cValLen), nil
 }
 
-// PutConnect writes data associated with a key to the database.
+// Put writes data associated with a key to the database.
 func (db *TransactionDB) Put(opts *WriteOptions, key, value []byte) error {
 	var (
 		cErr   *C.char

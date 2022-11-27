@@ -1,4 +1,4 @@
-# Copyright 2020 The ChubaoFS Authors.
+# Copyright 2020 The CubeFS Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ def random_bytes(length):
     :param length:
     :return: bytes content
     """
-    f = open('/dev/random', 'rb')
+    f = open('/dev/urandom', 'rb')
     data = f.read(length)
     f.close()
     return data

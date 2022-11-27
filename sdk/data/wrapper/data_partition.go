@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@ type DataPartition struct {
 	// Will not be changed
 	proto.DataPartitionResponse
 	RandomWrite   bool
-	PartitionType string
 	NearHosts     []string
 	ClientWrapper *Wrapper
 	Metrics       *DataPartitionMetrics
@@ -121,8 +120,8 @@ func NewDataPartitionMetrics() *DataPartitionMetrics {
 
 // String returns the string format of the data partition.
 func (dp *DataPartition) String() string {
-	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v) NearHosts(%v)",
-		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts, dp.NearHosts)
+	return fmt.Sprintf("PartitionID(%v) Type(%v), Status(%v) ReplicaNum(%v) Hosts(%v) NearHosts(%v)",
+		dp.PartitionID, dp.PartitionType, dp.Status, dp.ReplicaNum, dp.Hosts, dp.NearHosts)
 }
 
 func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {

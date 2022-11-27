@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,13 +16,15 @@ package stream
 
 import (
 	"fmt"
+	"hash/crc32"
+	"net"
+	"strings"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"hash/crc32"
-	"net"
 )
 
 // ExtentReader defines the struct of the extent reader.
@@ -31,15 +33,17 @@ type ExtentReader struct {
 	key          *proto.ExtentKey
 	dp           *wrapper.DataPartition
 	followerRead bool
+	retryRead    bool
 }
 
 // NewExtentReader returns a new extent reader.
-func NewExtentReader(inode uint64, key *proto.ExtentKey, dp *wrapper.DataPartition, followerRead bool) *ExtentReader {
+func NewExtentReader(inode uint64, key *proto.ExtentKey, dp *wrapper.DataPartition, followerRead bool, retryRead bool) *ExtentReader {
 	return &ExtentReader{
 		inode:        inode,
 		key:          key,
 		dp:           dp,
 		followerRead: followerRead,
+		retryRead:    retryRead,
 	}
 }
 
@@ -59,13 +63,14 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 
 	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 
-	err = sc.Send(reqPacket, func(conn *net.TCPConn) (error, bool) {
+	err = sc.Send(reader.retryRead, reqPacket, func(conn *net.TCPConn) (error, bool) {
 		readBytes = 0
 		for readBytes < size {
 			replyPacket := NewReply(reqPacket.ReqID, reader.dp.PartitionID, reqPacket.ExtentID)
 			bufSize := util.Min(util.ReadBlockSize, size-readBytes)
 			replyPacket.Data = req.Data[readBytes : readBytes+bufSize]
 			e := replyPacket.readFromConn(conn, proto.ReadDeadlineTime)
+
 			if e != nil {
 				log.LogWarnf("Extent Reader Read: failed to read from connect, ino(%v) req(%v) readBytes(%v) err(%v)", reader.inode, reqPacket, readBytes, e)
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
@@ -80,6 +85,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 
 			e = reader.checkStreamReply(reqPacket, replyPacket)
 			if e != nil {
+				log.LogWarnf("checkStreamReply failed:(%v)", replyPacket.GetResultMsg())
 				// Dont change the error message, since the caller will
 				// check if it is NotLeaderErr.
 				return e, false
@@ -91,7 +97,12 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	})
 
 	if err != nil {
-		log.LogErrorf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
+		//if cold vol and cach is invaild
+		if !reader.retryRead && (err == TryOtherAddrError || strings.Contains(err.Error(), "ExistErr")) {
+			log.LogWarnf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
+		} else {
+			log.LogErrorf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
+		}
 	}
 
 	log.LogDebugf("ExtentReader Read exit: req(%v) reqPacket(%v) readBytes(%v) err(%v)", req, reqPacket, readBytes, err)

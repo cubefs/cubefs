@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -108,8 +108,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	us := &UserService{user: m.user, cluster: m.cluster}
 	m.registerHandler(router, proto.AdminUserAPI, us.Schema())
 
-	vs := &VolumeService{user: m.user, cluster: m.cluster}
-	m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
+	//vs := &VolumeService{user: m.user, cluster: m.cluster}
+	//m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
 
 	// cluster management APIs
 	router.NewRoute().Name(proto.AdminGetIP).
@@ -128,6 +128,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.RemoveRaftNode).
 		HandlerFunc(m.removeRaftNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RaftStatus).
+		HandlerFunc(m.getRaftStatus)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminClusterStat).HandlerFunc(m.clusterStat)
 
 	// volume management APIs
@@ -177,12 +180,42 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDecommissionMetaPartition).
 		HandlerFunc(m.decommissionMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminChangeMetaPartitionLeader).
+		HandlerFunc(m.changeMetaPartitionLeader)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientMetaPartitions).
 		HandlerFunc(m.getMetaPartitions)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientMetaPartition).
 		HandlerFunc(m.getMetaPartition)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpload).
+		HandlerFunc(m.qosUpload)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosGetStatus).
+		HandlerFunc(m.getQosStatus)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosGetClientsLimitInfo).
+		HandlerFunc(m.getClientQosInfo)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpdate).
+		HandlerFunc(m.QosUpdate)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpdateZoneLimit).
+		HandlerFunc(m.QosUpdateZoneLimit)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosGetZoneLimitInfo).
+		HandlerFunc(m.QosGetZoneLimit)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpdateMasterLimit).
+		HandlerFunc(m.getQosUpdateMasterLimit)
+	//router.NewRoute().Methods(http.MethodGet).
+	//	Path(proto.QosUpdateMagnify).
+	//	HandlerFunc(m.QosUpdateMagnify)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpdateClientParam).
+		HandlerFunc(m.QosUpdateClientParam)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreateMetaPartition).
 		HandlerFunc(m.createMetaPartition)
@@ -203,6 +236,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreateDataPartition).
 		HandlerFunc(m.createDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreatePreLoadDataPartition).
+		HandlerFunc(m.createPreLoadDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDataPartitionChangeLeader).
+		HandlerFunc(m.changeDataPartitionLeader)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminLoadDataPartition).
 		HandlerFunc(m.loadDataPartition)
@@ -251,12 +290,18 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddDataNode).
 		HandlerFunc(m.addDataNode)
+
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionDataNode).
 		HandlerFunc(m.decommissionDataNode)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.MigrateDataNode).
 		HandlerFunc(m.migrateDataNodeHandler)
+
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.CancelDecommissionDataNode).
+		HandlerFunc(m.cancelDecommissionDataNode)
+
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetDataNode).
 		HandlerFunc(m.getDataNode)
@@ -293,6 +338,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeRdOnly).
 		HandlerFunc(m.setNodeRdOnlyHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetDpRdOnly).
+		HandlerFunc(m.setDpRdOnlyHandler)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).

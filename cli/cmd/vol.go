@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolCreateCmd(client),
 		newVolExpandCmd(client),
 		newVolShrinkCmd(client),
-		newVolSetCmd(client),
+		newVolUpdateCmd(client),
 		newVolInfoCmd(client),
 		newVolDeleteCmd(client),
 		newVolTransferCmd(client),
@@ -85,26 +85,52 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdVolCreateUse             = "create [VOLUME NAME] [USER ID]"
-	cmdVolCreateShort           = "Create a new volume"
-	cmdVolDefaultMPCount        = 3
-	cmdVolDefaultDPSize         = 120
-	cmdVolDefaultCapacity       = 10 // 100GB
-	cmdVolDefaultReplicas       = 3
-	cmdVolDefaultFollowerReader = true
-	cmdVolDefaultZoneName       = ""
-	cmdVolDefaultCrossZone      = false
+	cmdVolCreateUse               = "create [VOLUME NAME] [USER ID]"
+	cmdVolCreateShort             = "Create a new volume"
+	cmdVolDefaultMPCount          = 3
+	cmdVolDefaultDPSize           = 120
+	cmdVolDefaultCapacity         = 10 // 100GB
+	cmdVolDefaultReplicas         = 3
+	cmdVolDefaultFollowerReader   = true
+	cmdVolDefaultZoneName         = ""
+	cmdVolDefaultCrossZone        = "false"
+	cmdVolDefaultBusiness         = ""
+	cmdVolDefaultReplicaNum       = 3
+	cmdVolDefaultSize             = 120
+	cmdVolDefaultVolType          = 0
+	cmdVolDefaultFollowerRead     = "true"
+	cmdVolDefaultCacheRuleKey     = ""
+	cmdVolDefaultEbsBlkSize       = 8 * 1024 * 1024
+	cmdVolDefaultCacheCapacity    = 0
+	cmdVolDefaultCacheAction      = 0
+	cmdVolDefaultCacheThreshold   = 10 * 1024 * 1024
+	cmdVolDefaultCacheTTL         = 30
+	cmdVolDefaultCacheHighWater   = 80
+	cmdVolDefaultCacheLowWater    = 60
+	cmdVolDefaultCacheLRUInterval = 5
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
-	var optMPCount int
-	var optDPSize uint64
 	var optCapacity uint64
-	var optReplicas int
-	var optFollowerRead bool
-	var optYes bool
-	var optCrossZone bool
+	var optCrossZone string
+	var optNormalZonesFirst string
+	var optBusiness string
+	var optMPCount int
+	var optReplicaNum string
+	var optSize int
+	var optVolType int
+	var optFollowerRead string
 	var optZoneName string
+	var optCacheRuleKey string
+	var optEbsBlkSize int
+	var optCacheCap int
+	var optCacheAction int
+	var optCacheThreshold int
+	var optCacheTTL int
+	var optCacheHighWater int
+	var optCacheLowWater int
+	var optCacheLRUInterval int
+	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -118,18 +144,37 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 					errout("Error: %v", err)
 				}
 			}()
+			crossZone, _ := strconv.ParseBool(optCrossZone)
+			followerRead, _ := strconv.ParseBool(optFollowerRead)
+			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
+			replicaNum := 3
+			if optReplicaNum == "" && optVolType == 1 {
+				replicaNum = 1
+			}
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
 				stdout("  Name                : %v\n", volumeName)
 				stdout("  Owner               : %v\n", userID)
-				stdout("  Data partition size : %v GB\n", optDPSize)
-				stdout("  Meta partition count: %v\n", optMPCount)
-				stdout("  Capacity            : %v GB\n", optCapacity)
-				stdout("  Replicas            : %v\n", optReplicas)
-				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
-				stdout("  ZoneName            : %v\n", optZoneName)
-				stdout("  CrossZone            : %v\n", optCrossZone)
+				stdout("  capacity            : %v G\n", optCapacity)
+				stdout("  crossZone           : %v\n", crossZone)
+				stdout("  DefaultPriority     : %v\n", normalZonesFirst)
+				stdout("  description         : %v\n", optBusiness)
+				stdout("  mpCount             : %v\n", optMPCount)
+				stdout("  replicaNum          : %v\n", replicaNum)
+				stdout("  size                : %v G\n", optSize)
+				stdout("  volType             : %v\n", optVolType)
+				stdout("  followerRead        : %v\n", followerRead)
+				stdout("  zoneName            : %v\n", optZoneName)
+				stdout("  cacheRuleKey        : %v\n", optCacheRuleKey)
+				stdout("  ebsBlkSize          : %v byte\n", optEbsBlkSize)
+				stdout("  cacheCapacity       : %v G\n", optCacheCap)
+				stdout("  cacheAction         : %v\n", optCacheAction)
+				stdout("  cacheThreshold      : %v byte\n", optCacheThreshold)
+				stdout("  cacheTTL            : %v day\n", optCacheTTL)
+				stdout("  cacheHighWater      : %v\n", optCacheHighWater)
+				stdout("  cacheLowWater       : %v\n", optCacheLowWater)
+				stdout("  cacheLRUInterval    : %v min\n", optCacheLRUInterval)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -139,9 +184,12 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			err = client.AdminAPI().CreateVolume(
-				volumeName, userID, optMPCount, optDPSize,
-				optCapacity, optReplicas, optFollowerRead, optZoneName, optCrossZone)
+			err = client.AdminAPI().CreateVolName(
+				volumeName, userID, optCapacity, crossZone, normalZonesFirst, optBusiness,
+				optMPCount, replicaNum, optSize, optVolType, followerRead,
+				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
+				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
+				optCacheLowWater, optCacheLRUInterval)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -150,34 +198,55 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().IntVar(&optMPCount, CliFlagMetaPartitionCount, cmdVolDefaultMPCount, "Specify init meta partition count")
-	cmd.Flags().Uint64Var(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify size of data partition size [Unit: GB]")
-	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
-	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify data partition replicas number")
-	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower")
+	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity")
+	cmd.Flags().StringVar(&optCrossZone, CliFlagCrossZone, cmdVolDefaultCrossZone, "Disable cross zone")
+	cmd.Flags().StringVar(&optNormalZonesFirst, CliNormalZonesFirst, cmdVolDefaultCrossZone, "Write to normal zone first")
+	cmd.Flags().StringVar(&optBusiness, CliFlagBusiness, cmdVolDefaultBusiness, "Description")
+	cmd.Flags().IntVar(&optMPCount, CliFlagMPCount, cmdVolDefaultMPCount, "Specify init meta partition count")
+	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
+	cmd.Flags().IntVar(&optSize, CliFlagSize, cmdVolDefaultSize, "Specify data partition size[Unit: GB]")
+	cmd.Flags().IntVar(&optVolType, CliFlagVolType, cmdVolDefaultVolType, "Type of volume (default 0)")
+	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, cmdVolDefaultFollowerRead, "Enable read form replica follower")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
+	cmd.Flags().StringVar(&optCacheRuleKey, CliFlagCacheRuleKey, cmdVolDefaultCacheRuleKey, "Anything that match this field will be written to the cache")
+	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlk Size[Unit: byte]")
+	cmd.Flags().IntVar(&optCacheCap, CliFlagCacheCapacity, cmdVolDefaultCacheCapacity, "Specify low volume capacity[Unit: GB]")
+	cmd.Flags().IntVar(&optCacheAction, CliFlagCacheAction, cmdVolDefaultCacheAction, "Specify low volume cacheAction (default 0)")
+	cmd.Flags().IntVar(&optCacheThreshold, CliFlagCacheThreshold, cmdVolDefaultCacheThreshold, "Specify cache threshold[Unit: byte]")
+	cmd.Flags().IntVar(&optCacheTTL, CliFlagCacheTTL, cmdVolDefaultCacheTTL, "Specify cache expiration time[Unit: day]")
+	cmd.Flags().IntVar(&optCacheHighWater, CliFlagCacheHighWater, cmdVolDefaultCacheHighWater, "")
+	cmd.Flags().IntVar(&optCacheLowWater, CliFlagCacheLowWater, cmdVolDefaultCacheLowWater, "")
+	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, cmdVolDefaultCacheLRUInterval, "Specify interval expiration time[Unit: min]")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
-	cmd.Flags().BoolVar(&optCrossZone, CliFlagCrossZone, cmdVolDefaultCrossZone, "Disable cross zone")
 
 	return cmd
 }
 
 const (
-	cmdVolSetShort = "Set configuration of the volume"
+	cmdVolSetShort    = "Set configuration of the volume"
+	cmdVolUpdateShort = "Update configuration of the volume"
 )
 
-func newVolSetCmd(client *master.MasterClient) *cobra.Command {
-	var optCapacity uint64
-	var optReplicas int
-	var optFollowerRead string
-	var optAuthenticate string
+func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
+	var optDescription string
+	var optCacheRule string
 	var optZoneName string
+	var optCapacity uint64
+	var optFollowerRead string
+	var optEbsBlkSize int
+	var optCacheCap string
+	var optCacheAction string
+	var optCacheThreshold int
+	var optCacheTTL int
+	var optCacheHighWater int
+	var optCacheLowWater int
+	var optCacheLRUInterval int
 	var optYes bool
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
 	var cmd = &cobra.Command{
-		Use:   CliOpSet + " [VOLUME NAME]",
-		Short: cmdVolSetShort,
+		Use:   CliOpUpdate + " [VOLUME NAME]",
+		Short: cmdVolUpdateShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
@@ -193,19 +262,29 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			}
 			confirmString.WriteString("Volume configuration changes:\n")
 			confirmString.WriteString(fmt.Sprintf("  Name                : %v\n", vv.Name))
+			if optDescription != "" {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Description         : %v -> %v \n", vv.Description, optDescription))
+				vv.Description = optDescription
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Description         : %v \n", vv.Description))
+			}
+			if vv.CrossZone == false && "" != optZoneName {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
+				vv.ZoneName = optZoneName
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
+			}
+			if vv.CrossZone == true && "" != optZoneName {
+				err = fmt.Errorf("Can not set zone name of the volume that cross zone\n")
+			}
 			if optCapacity > 0 {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB -> %v GB\n", vv.Capacity, optCapacity))
 				vv.Capacity = optCapacity
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB\n", vv.Capacity))
-			}
-			if optReplicas > 0 {
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  Replicas            : %v -> %v\n", vv.DpReplicaNum, optReplicas))
-				vv.DpReplicaNum = uint8(optReplicas)
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  Replicas            : %v\n", vv.DpReplicaNum))
 			}
 			if optFollowerRead != "" {
 				isChange = true
@@ -218,28 +297,110 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
 			}
-
-			if optAuthenticate != "" {
-				isChange = true
-				var enable bool
-				if enable, err = strconv.ParseBool(optAuthenticate); err != nil {
+			if optEbsBlkSize > 0 {
+				if vv.VolType == 0 {
+					err = fmt.Errorf("ebs-blk-size not support in hot vol\n")
 					return
 				}
-				confirmString.WriteString(fmt.Sprintf("  Authenticate        : %v -> %v\n", formatEnabledDisabled(vv.Authenticate), formatEnabledDisabled(enable)))
-				vv.Authenticate = enable
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  Authenticate        : %v\n", formatEnabledDisabled(vv.Authenticate)))
-			}
-			if vv.CrossZone == false && "" != optZoneName {
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
-				vv.ZoneName = optZoneName
+				confirmString.WriteString(fmt.Sprintf("  EbsBlkSize          : %v byte -> %v byte\n", vv.ObjBlockSize, optEbsBlkSize))
+				vv.ObjBlockSize = optEbsBlkSize
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
+				confirmString.WriteString(fmt.Sprintf("  EbsBlkSize          : %v byte\n", vv.ObjBlockSize))
 			}
-			if vv.CrossZone == true && "" != optZoneName {
-				err = fmt.Errorf("Can not set zone name of the volume that cross zone\n")
+			if optCacheCap != "" {
+				if vv.VolType == 0 {
+					err = fmt.Errorf("cache-capacity not support in hot vol\n")
+					return
+				}
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB -> %v GB\n", vv.CacheCapacity, optCacheCap))
+				intNum, _ := strconv.Atoi(optCacheCap)
+				vv.CacheCapacity = uint64(intNum)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB\n", vv.CacheCapacity))
 			}
+			if optCacheAction != "" {
+				if vv.VolType == 0 {
+					err = fmt.Errorf("cache-action not support in hot vol\n")
+					return
+				}
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  CacheAction         : %v  -> %v \n", vv.CacheAction, optCacheAction))
+				vv.CacheAction, err = strconv.Atoi(optCacheAction)
+				if err != nil {
+					return
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  CacheAction         : %v \n", vv.CacheAction))
+			}
+			if optCacheRule != "" {
+				if vv.VolType == 0 {
+					err = fmt.Errorf("cache-rule not support in hot vol\n")
+					return
+				}
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  CacheRule         : %v -> %v \n", vv.CacheRule, optCacheRule))
+				vv.CacheRule = optCacheRule
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  CacheRule        : %v \n", vv.CacheAction))
+			}
+			if optCacheThreshold > 0 {
+				if vv.VolType == 0 {
+					err = fmt.Errorf("cache-threshold not support in hot vol\n")
+					return
+				}
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  CacheThreshold      : %v byte -> %v byte \n", vv.CacheThreshold, optCacheThreshold))
+				vv.CacheThreshold = optCacheThreshold
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  CacheThreshold      : %v byte\n", vv.CacheThreshold))
+			}
+			if optCacheTTL > 0 {
+				if vv.VolType == 0 {
+					err = fmt.Errorf("cache-ttl not support in hot vol\n")
+					return
+				}
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  CacheTTL            : %v day -> %v day \n", vv.CacheTtl, optCacheTTL))
+				vv.CacheTtl = optCacheTTL
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  CacheTTL            : %v day\n", vv.CacheTtl))
+			}
+			if optCacheHighWater > 0 {
+				if vv.VolType == 0 {
+					err = fmt.Errorf("cache-high-water not support in hot vol\n")
+					return
+				}
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  CacheHighWater      : %v  -> %v  \n", vv.CacheHighWater, optCacheHighWater))
+				vv.CacheHighWater = optCacheHighWater
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  CacheHighWater      : %v \n", vv.CacheHighWater))
+			}
+			if optCacheLowWater > 0 {
+				if vv.VolType == 0 {
+					err = fmt.Errorf("cache-low-water not support in hot vol\n")
+					return
+				}
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  CacheLowWater       : %v  -> %v  \n", vv.CacheLowWater, optCacheLowWater))
+				vv.CacheLowWater = optCacheLowWater
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  CacheLowWater       : %v \n", vv.CacheLowWater))
+			}
+			if optCacheLRUInterval > 0 {
+				if vv.VolType == 0 {
+					err = fmt.Errorf("cache-lru-interval not support in hot vol\n")
+					return
+				}
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  CacheLRUInterval    : %v min -> %v min \n", vv.CacheLruInterval, optCacheLRUInterval))
+				vv.CacheLruInterval = optCacheLRUInterval
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  CacheLRUInterval    : %v min\n", vv.CacheLruInterval))
+			}
+
 			if err != nil {
 				return
 			}
@@ -258,13 +419,15 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum),
-				vv.FollowerRead, vv.Authenticate, calcAuthKey(vv.Owner), vv.ZoneName)
+			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Description, calcAuthKey(vv.Owner), vv.ZoneName,
+				vv.Capacity, vv.FollowerRead, vv.ObjBlockSize, vv.CacheCapacity, vv.CacheAction, vv.CacheThreshold, vv.CacheTtl,
+				vv.CacheHighWater, vv.CacheLowWater, vv.CacheLruInterval, vv.CacheRule)
 			if err != nil {
 				return
 			}
-			stdout("Volume configuration has been set successfully.\n")
+			stdout("Volume configuration has been update successfully.\n")
 			return
+
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -273,13 +436,23 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume capacity [Unit: GB]")
-	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, 0, "Specify data partition replicas number")
-	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower")
-	cmd.Flags().StringVar(&optAuthenticate, CliFlagAuthenticate, "", "Enable authenticate")
+	cmd.Flags().StringVar(&optDescription, CliFlagDescription, "", "The description of volume")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "Specify volume zone name")
+	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume datanode capacity [Unit: GB]")
+	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower (default false)")
+	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, 0, "Specify ebsBlk Size[Unit: byte]")
+	cmd.Flags().StringVar(&optCacheCap, CliFlagCacheCapacity, "", "Specify low volume capacity[Unit: GB]")
+	cmd.Flags().StringVar(&optCacheAction, CliFlagCacheAction, "", "Specify low volume cacheAction (default 0)")
+	cmd.Flags().IntVar(&optCacheThreshold, CliFlagCacheThreshold, 0, "Specify cache threshold[Unit: byte] (default 10M)")
+	cmd.Flags().IntVar(&optCacheTTL, CliFlagCacheTTL, 0, "Specify cache expiration time[Unit: day] (default 30)")
+	cmd.Flags().IntVar(&optCacheHighWater, CliFlagCacheHighWater, 0, " (default 80)")
+	cmd.Flags().IntVar(&optCacheLowWater, CliFlagCacheLowWater, 0, " (default 60)")
+	cmd.Flags().StringVar(&optCacheRule, CliFlagCacheRule, "", "Specify cache rule")
+	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, 0, "Specify interval expiration time[Unit: min] (default 5)")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+
 	return cmd
+
 }
 
 const (
@@ -402,7 +575,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 				return
 			}
-			stdout("Delete volume success.\n")
+			stdout("Volume has been deleted successfully.\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -472,6 +645,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			if _, err = client.UserAPI().TransferVol(&param); err != nil {
 				return
 			}
+			stdout("Volume has been transferred successfully.\n")
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
@@ -509,6 +683,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().CreateDataPartition(volume, int(count)); err != nil {
 				return
 			}
+			stdout("Add dp successfully.\n")
 			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -558,6 +733,7 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 			if err = volume.excuteHttp(); err != nil {
 				return
 			}
+			stdout("Volume capacity has been set successfully.\n")
 			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

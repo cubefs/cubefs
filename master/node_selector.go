@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -105,6 +105,9 @@ func getMetaNodeMaxTotal(metaNodes *sync.Map) (maxTotal uint64) {
 func getDataNodeMaxTotal(dataNodes *sync.Map) (maxTotal uint64) {
 	dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
+		if dataNode.ToBeOffline == true {
+			return true
+		}
 		if dataNode.Total > maxTotal {
 			maxTotal = dataNode.Total
 		}
@@ -116,22 +119,21 @@ func getDataNodeMaxTotal(dataNodes *sync.Map) (maxTotal uint64) {
 type GetCarryNodes func(maxTotal uint64, excludeHosts []string, nodes *sync.Map) (weightedNodes SortedWeightedNodes, availCount int)
 
 func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
+	log.LogInfof("getAllCarryMetaNodes")
 	nodes = make(SortedWeightedNodes, 0)
 	metaNodes.Range(func(key, value interface{}) bool {
-		log.LogInfof("[getAllCarryMetaNodes] getAllCarryMetaNodes [%v] ", key)
+		log.LogInfof("getAllCarryMetaNodes [%v] ", key)
 		metaNode := value.(*MetaNode)
-		if contains(excludeHosts, metaNode.Addr) {
-			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is excludeHosts", metaNode.Addr)
+		if contains(excludeHosts, metaNode.Addr) == true {
+			log.LogInfof("metaNode [%v] is excludeHosts", metaNode.Addr)
 			return true
 		}
-
-		if !metaNode.isWritable() {
-			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is not writeable", metaNode.Addr)
+		if metaNode.isWritable() == false {
+			log.LogInfof("metaNode [%v] is not writeable", metaNode.Addr)
 			return true
 		}
-
-		if metaNode.isCarryNode() {
-			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is CarryNode", metaNode.Addr)
+		if metaNode.isCarryNode() == true {
+			log.LogInfof("metaNode [%v] is CarryNode", metaNode.Addr)
 			availCount++
 		}
 		nt := new(weightedNode)
@@ -143,6 +145,7 @@ func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *syn
 		}
 		nt.Ptr = metaNode
 		nodes = append(nodes, nt)
+		log.LogInfof("getAllCarryMetaNodes append [%v] ", nt.ID)
 		return true
 	})
 
@@ -152,22 +155,27 @@ func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *syn
 func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes *sync.Map) (nodeTabs SortedWeightedNodes, availCount int) {
 	nodeTabs = make(SortedWeightedNodes, 0)
 	dataNodes.Range(func(key, value interface{}) bool {
+
 		dataNode := value.(*DataNode)
 		if contains(excludeHosts, dataNode.Addr) {
 			log.LogInfof("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			log.LogDebugf("contains return")
 			return true
 		}
-
-		if !dataNode.isWriteAble() {
-			log.LogInfof("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable", dataNode.Addr)
+		if !dataNode.canAllocDp() {
+			log.LogInfof("dataNode [%v] is not writeable, offline %v, dpCnt %d", dataNode.Addr, dataNode.ToBeOffline, dataNode.DataPartitionCount)
 			log.LogDebugf("isWritable return")
 			return true
 		}
 
+		if !dataNode.canAlloc() {
+			log.LogInfof("dataNode [%v] is overSold", dataNode.Addr)
+			return true
+		}
 		if dataNode.isAvailCarryNode() {
 			availCount++
 		}
+
 		nt := new(weightedNode)
 		nt.Carry = dataNode.Carry
 		nt.Weight = float64(dataNode.AvailableSpace) / float64(maxTotal)

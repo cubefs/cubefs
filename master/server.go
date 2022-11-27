@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,21 +35,25 @@ import (
 
 // configuration keys
 const (
-	ClusterName        = "clusterName"
-	ID                 = "id"
-	IP                 = "ip"
-	Port               = "port"
-	LogLevel           = "logLevel"
-	WalDir             = "walDir"
-	StoreDir           = "storeDir"
-	GroupID            = 1
-	ModuleName         = "master"
-	CfgRetainLogs      = "retainLogs"
-	DefaultRetainLogs  = 20000
-	cfgTickInterval    = "tickInterval"
-	cfgRaftRecvBufSize = "raftRecvBufSize"
-	cfgElectionTick    = "electionTick"
-	SecretKey          = "masterServiceKey"
+	ClusterName          = "clusterName"
+	ID                   = "id"
+	IP                   = "ip"
+	Port                 = "port"
+	LogLevel             = "logLevel"
+	WalDir               = "walDir"
+	StoreDir             = "storeDir"
+	EbsAddrKey           = "ebsAddr"
+	BStoreAddrKey        = "bStoreAddr"
+	EbsServicePathKey    = "ebsServicePath"
+	BStoreServicePathKey = "bStoreServicePath"
+	GroupID              = 1
+	ModuleName           = "master"
+	CfgRetainLogs        = "retainLogs"
+	DefaultRetainLogs    = 20000
+	cfgTickInterval      = "tickInterval"
+	cfgRaftRecvBufSize   = "raftRecvBufSize"
+	cfgElectionTick      = "electionTick"
+	SecretKey            = "masterServiceKey"
 )
 
 var (
@@ -59,7 +63,40 @@ var (
 
 	useConnPool = true //for test
 	gConfig     *clusterConfig
+
+	maxDpCntOneNode = uint32(3000)
 )
+
+var overSoldFactor = defaultOverSoldFactor
+
+func overSoldLimit() bool {
+	if overSoldFactor <= 0 {
+		return false
+	}
+
+	return true
+}
+
+func overSoldCap(cap uint64) uint64 {
+	if overSoldFactor <= 0 {
+		return cap
+	}
+
+	return uint64(float32(cap) * overSoldFactor)
+}
+
+func setOverSoldFactor(factor float32) {
+	if factor != overSoldFactor {
+		overSoldFactor = factor
+	}
+}
+func dpCntOneNodeLimit() uint32 {
+	if maxDpCntOneNode <= 0 {
+		return 3000
+	}
+
+	return maxDpCntOneNode
+}
 
 // Server represents the server in a cluster
 type Server struct {
@@ -69,6 +106,8 @@ type Server struct {
 	port            string
 	walDir          string
 	storeDir        string
+	bStoreAddr      string
+	servicePath     string
 	retainLogs      uint64
 	tickInterval    int
 	raftRecvBufSize int
@@ -107,7 +146,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 
-	if err = m.createRaftServer(); err != nil {
+	if err = m.createRaftServer(cfg); err != nil {
 		log.LogError(errors.Stack(err))
 		return
 	}
@@ -145,19 +184,30 @@ func (m *Server) Sync() {
 }
 
 func (m *Server) checkConfig(cfg *config.Config) (err error) {
+
 	m.clusterName = cfg.GetString(ClusterName)
 	m.ip = cfg.GetString(IP)
 	m.port = cfg.GetString(proto.ListenPort)
 	m.walDir = cfg.GetString(WalDir)
 	m.storeDir = cfg.GetString(StoreDir)
+	m.bStoreAddr = cfg.GetString(BStoreAddrKey)
+	if m.bStoreAddr == "" {
+		m.bStoreAddr = cfg.GetString(EbsAddrKey)
+	}
+	m.servicePath = cfg.GetString(BStoreServicePathKey)
+	if m.servicePath == "" {
+		m.servicePath = cfg.GetString(EbsServicePathKey)
+	}
 	peerAddrs := cfg.GetString(cfgPeers)
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
 		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (ip,listen,walDir,storeDir,clusterName) is null",
 			m.ip, m.port, m.walDir, m.storeDir, m.clusterName, peerAddrs)
 	}
+
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}
+
 	m.config.faultDomain = cfg.GetBoolWithDefault(faultDomain, false)
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
 	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
@@ -181,11 +231,11 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
 
+	m.config.DefaultNormalZoneCnt = defaultNodeSetGrpBatchCnt
 	m.config.DomainBuildAsPossible = cfg.GetBoolWithDefault(cfgDomainBuildAsPossible, false)
-	m.config.DomainNodeGrpBatchCnt = defaultNodeSetGrpBatchCnt
 	domainBatchGrpCnt := cfg.GetString(cfgDomainBatchGrpCnt)
 	if domainBatchGrpCnt != "" {
-		if m.config.DomainNodeGrpBatchCnt, err = strconv.Atoi(domainBatchGrpCnt); err != nil {
+		if m.config.DefaultNormalZoneCnt, err = strconv.Atoi(domainBatchGrpCnt); err != nil {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
@@ -251,7 +301,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	return
 }
 
-func (m *Server) createRaftServer() (err error) {
+func (m *Server) createRaftServer(cfg *config.Config) (err error) {
 	raftCfg := &raftstore.Config{
 		NodeID:            m.id,
 		RaftPath:          m.walDir,
@@ -262,7 +312,7 @@ func (m *Server) createRaftServer() (err error) {
 		ElectionTick:      m.electionTick,
 		RecvBufSize:       m.raftRecvBufSize,
 	}
-	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
+	if m.raftStore, err = raftstore.NewRaftStore(raftCfg, cfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
 	syslog.Printf("peers[%v],tickInterval[%v],electionTick[%v]\n", m.config.peers, m.tickInterval, m.electionTick)
@@ -291,7 +341,6 @@ func (m *Server) initFsm() {
 
 func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
-	m.cluster.retainLogs = m.retainLogs
 }
 
 func (m *Server) initUser() {

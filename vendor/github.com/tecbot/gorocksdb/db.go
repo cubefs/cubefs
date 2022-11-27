@@ -214,7 +214,7 @@ func (db *DB) Name() string {
 	return db.name
 }
 
-// GetConnect returns the data associated with the key from the database.
+// Get returns the data associated with the key from the database.
 func (db *DB) Get(opts *ReadOptions, key []byte) (*Slice, error) {
 	var (
 		cErr    *C.char
@@ -229,7 +229,7 @@ func (db *DB) Get(opts *ReadOptions, key []byte) (*Slice, error) {
 	return NewSlice(cValue, cValLen), nil
 }
 
-// GetBytes is like GetConnect but returns a copy of the data.
+// GetBytes is like Get but returns a copy of the data.
 func (db *DB) GetBytes(opts *ReadOptions, key []byte) ([]byte, error) {
 	var (
 		cErr    *C.char
@@ -263,7 +263,7 @@ func (db *DB) GetCF(opts *ReadOptions, cf *ColumnFamilyHandle, key []byte) (*Sli
 	return NewSlice(cValue, cValLen), nil
 }
 
-// PutConnect writes data associated with a key to the database.
+// Put writes data associated with a key to the database.
 func (db *DB) Put(opts *WriteOptions, key, value []byte) error {
 	var (
 		cErr   *C.char

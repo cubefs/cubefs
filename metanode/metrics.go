@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -41,11 +41,17 @@ func (m *MetaNode) startStat() {
 
 func (m *MetaNode) upatePartitionMetrics(mp *metaPartition) {
 	labels := map[string]string{
-		"partid": fmt.Sprintf("%d", mp.config.PartitionId),
+		"partid":     fmt.Sprintf("%d", mp.config.PartitionId),
+		exporter.Vol: mp.config.VolName,
 	}
+
 	it := mp.GetInodeTree()
+	itDentry := mp.getDentryTree()
 	if it != nil {
 		exporter.NewGauge("mpInodeCount").SetWithLabels(float64(it.Len()), labels)
+	}
+	if itDentry != nil {
+		exporter.NewGauge("mpDentryCount").SetWithLabels(float64(itDentry.Len()), labels)
 	}
 }
 

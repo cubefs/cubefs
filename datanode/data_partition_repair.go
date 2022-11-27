@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,20 +15,21 @@
 package datanode
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"math"
 	"net"
 	"sync"
 	"time"
 
-	"encoding/binary"
+	"github.com/cubefs/cubefs/util"
+
 	"fmt"
 	"hash/crc32"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -78,8 +79,7 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteRec
 //   add it to the tobeRepaired list, and generate the corresponding tasks.
 func (dp *DataPartition) repair(extentType uint8) {
 	start := time.Now().UnixNano()
-	log.LogInfof("action[repair] partition(%v) start.",
-		dp.partitionID)
+	log.LogInfof("action[repair] partition(%v) start.", dp.partitionID)
 
 	var tinyExtents []uint64 // unsvailable extents 小文件写
 	if extentType == proto.TinyExtentType {
@@ -100,7 +100,7 @@ func (dp *DataPartition) repair(extentType uint8) {
 		dp.moveToBrokenTinyExtentC(extentType, tinyExtents)
 		return
 	}
-
+	log.LogInfof("action[repair] partition(%v) before prepareRepairTasks", dp.partitionID)
 	// compare all the extents in the replicas to compute the good and bad ones
 	availableTinyExtents, brokenTinyExtents := dp.prepareRepairTasks(repairTasks)
 
@@ -140,6 +140,7 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 		return err
 	}
 	// new repair task for the leader
+	log.LogInfof("buildDataPartitionRepairTask dp %v, extent type %v, len extent %v, replica size %v", dp.partitionID, extentType, len(extents), len(replica))
 	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, replica[0], replica[0])
 	repairTasks[0].addr = replica[0]
 
@@ -150,6 +151,7 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, replica[index], err)
 			continue
 		}
+		log.LogInfof("buildDataPartitionRepairTask dp %v,add new add %v,  extent type %v", dp.partitionID, replica[index], extentType)
 		repairTasks[index] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, replica[index], replica[0])
 		repairTasks[index].addr = replica[index]
 	}
@@ -235,6 +237,9 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 		if dp.ExtentStore().IsDeletedNormalExtent(extentInfo.FileID) {
 			continue
 		}
+
+		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
 		store.Create(extentInfo.FileID)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
@@ -294,6 +299,7 @@ func (dp *DataPartition) brokenTinyExtents() (brokenTinyExtents []uint64) {
 func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTask) (availableTinyExtents []uint64, brokenTinyExtents []uint64) {
 	extentInfoMap := make(map[uint64]*storage.ExtentInfo)
 	deleteExtents := make(map[uint64]bool)
+	log.LogInfof("action[prepareRepairTasks] dp %v task len %v", dp.partitionID, len(repairTasks))
 	for index := 0; index < len(repairTasks); index++ {
 		repairTask := repairTasks[index]
 		if repairTask == nil {
@@ -522,7 +528,13 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	var (
 		hasRecoverySize uint64
 	)
+	var loopTimes uint64
 	for currFixOffset < remoteExtentInfo.Size {
+
+		if !dp.Disk().CanWrite() {
+			return fmt.Errorf("disk is full, can't do repair write any more")
+		}
+
 		if currFixOffset >= remoteExtentInfo.Size {
 			break
 		}
@@ -552,10 +564,13 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				"request(%v) reply(%v) localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, remoteExtentInfo.Size)
 			return
 		}
+		if loopTimes%100 == 0 {
+			log.LogInfof(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
+				" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
+				remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId()))
+		}
+		loopTimes++
 
-		log.LogInfof(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
-			" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
-			remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId()))
 		actualCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
 		if reply.CRC != actualCrc {
 			err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from (%v)"+
@@ -578,6 +593,10 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				currRecoverySize = binary.BigEndian.Uint64(reply.Arg[1:9])
 				reply.Size = uint32(currRecoverySize)
 			}
+
+			dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(reply.Size))
+			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
 			err = store.TinyExtentRecover(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.Data, reply.CRC, isEmptyResponse)
 			if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
 				log.LogInfof("streamRepairTinyExtent(%v) recover fininsh,remoteAvaliSize(%v) "+
@@ -586,6 +605,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				break
 			}
 		} else {
+			dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(reply.Size))
+			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
 			err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, storage.AppendWriteType, BufferWrite)
 		}
 
@@ -597,6 +619,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		hasRecoverySize += uint64(reply.Size)
 		currFixOffset += uint64(reply.Size)
 		if currFixOffset >= remoteExtentInfo.Size {
+			log.LogWarnf(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
+				" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
+				remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId()))
 			break
 		}
 

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,11 +20,12 @@ import (
 	"net"
 	"sync"
 
+	"sync/atomic"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
-	"sync/atomic"
-	"time"
 )
 
 var (
@@ -280,6 +281,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		err = rp.putResponse(request)
 		return
 	}
+
 	err = rp.putToBeProcess(request)
 
 	return
@@ -389,7 +391,6 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 		}
 
 	}
-	return
 }
 
 // Write a reply to the client.
@@ -401,7 +402,11 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		log.LogErrorf(err.Error())
+		if reply.ResultCode == proto.OpNotExistErr {
+			log.LogInfof(err.Error())
+		} else {
+			log.LogErrorf(err.Error())
+		}
 		rp.Stop()
 	}
 

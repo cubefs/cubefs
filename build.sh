@@ -54,7 +54,7 @@ get_rocksdb_compress_dep() {
     cd ${RootPath}/vendor/dep
 
     if [ ! -d "${RootPath}/vendor/dep/zlib-1.2.11" ]; then
-        wget http://www.zlib.net/zlib-1.2.11.tar.gz
+        wget https://zlib.net/fossils/zlib-1.2.11.tar.gz
         tar zxf zlib-1.2.11.tar.gz
     fi
 

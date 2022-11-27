@@ -1,4 +1,4 @@
-// Copyright 2020 The Chubao Authors.
+// Copyright 2020 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ func NewRootCmd() *cobra.Command {
 	var optShowVersion bool
 	var c = &cobra.Command{
 		Use:   path.Base(os.Args[0]),
-		Short: "ChubaoFS fsck tool",
+		Short: "CubeFS fsck tool",
 		Args:  cobra.MinimumNArgs(0),
 		Run: func(cmd *cobra.Command, args []string) {
 			if optShowVersion {

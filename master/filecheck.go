@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,11 +16,13 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util/log"
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // Recover a file if it has bad CRC or it has been timed out before.
@@ -50,6 +52,10 @@ func (partition *DataPartition) validateCRC(clusterID string) {
 }
 
 func (partition *DataPartition) doValidateCRC(liveReplicas []*DataReplica, clusterID string) {
+	if !proto.IsNormalDp(partition.PartitionType) {
+		return
+	}
+
 	for _, fc := range partition.FileInCoreMap {
 		extentID, err := strconv.ParseUint(fc.Name, 10, 64)
 		if err != nil {
@@ -123,7 +129,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 	sort.Sort((fileCrcSorter)(fileCrcArr))
 	maxCountFileCrcIndex := len(fileCrcArr) - 1
 	if fileCrcArr[maxCountFileCrcIndex].count == 1 {
-		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  ExtentOffset different between all Node  "+
+		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  ExtentOffset different between all node  "+
 			" it can not repair it ", clusterID, partition.PartitionID, fc.Name)
 		msg += (fileCrcSorter)(fileCrcArr).log()
 		Warn(clusterID, msg)

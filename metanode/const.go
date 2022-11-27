@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -65,6 +65,7 @@ type (
 	ReadDirResp      = proto.ReadDirResponse
 	ReadDirOnlyResp  = proto.ReadDirOnlyResponse
 	ReadDirLimitResp = proto.ReadDirLimitResponse
+
 	// MetaNode -> Client lookup
 	LookupReq = proto.LookupRequest
 	// Client -> MetaNode lookup
@@ -125,6 +126,13 @@ const (
 	opFSMExtentsAddWithCheck
 
 	opFSMUpdateSummaryInfo
+	opFSMUpdateXAttr
+	opFSMObjExtentsAdd
+	// opFSMExtentsDel
+	opFSMExtentsEmpty
+
+	opFSMClearInodeCache
+	opFSMSentToChan
 )
 
 var (
@@ -169,6 +177,8 @@ const (
 	// interval of persisting in-memory data
 	intervalToPersistData = time.Minute * 5
 	intervalToSyncCursor  = time.Minute * 1
+
+	defaultDelExtentsCnt = 100000
 )
 
 const (

@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"testing"
 
+	rproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
-	rproto "github.com/tiglabs/raft/proto"
 )
 
 func TestHandleLeaderChange(t *testing.T) {

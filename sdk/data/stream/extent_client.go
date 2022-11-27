@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,26 +15,32 @@
 package stream
 
 import (
+	"container/list"
+	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/data/manager"
+	"golang.org/x/time/rate"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/sdk/meta"
-
-	"golang.org/x/time/rate"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64) error
 type EvictIcacheFunc func(inode uint64)
+type LoadBcacheFunc func(key string, buf []byte, offset uint64, size uint32) (int, error)
+type CacheBcacheFunc func(key string, buf []byte) error
+type EvictBacheFunc func(key string)
 
 const (
 	MaxMountRetryLimit = 5
@@ -45,6 +51,12 @@ const (
 
 	defaultWriteLimitRate  = rate.Inf
 	defaultWriteLimitBurst = 128
+
+	defaultStreamerLimit = 100000
+	defMaxStreamerLimit  = 10000000
+	kHighWatermarkPct    = 1.01
+	slowStreamerEvictNum = 10
+	fastStreamerEvictNum = 10000
 )
 
 var (
@@ -81,39 +93,122 @@ func init() {
 
 type ExtentConfig struct {
 	Volume            string
+	VolumeType        int
 	Masters           []string
 	FollowerRead      bool
 	NearRead          bool
+	Preload           bool
 	ReadRate          int64
 	WriteRate         int64
+	BcacheEnable      bool
+	BcacheDir         string
+	MaxStreamerLimit  int64
 	OnAppendExtentKey AppendExtentKeyFunc
 	OnGetExtents      GetExtentsFunc
 	OnTruncate        TruncateFunc
 	OnEvictIcache     EvictIcacheFunc
+	OnLoadBcache      LoadBcacheFunc
+	OnCacheBcache     CacheBcacheFunc
+	OnEvictBcache     EvictBacheFunc
+
+	DisableMetaCache bool
 }
 
 // ExtentClient defines the struct of the extent client.
 type ExtentClient struct {
-	streamers    map[uint64]*Streamer
-	streamerLock sync.Mutex
+	streamers        map[uint64]*Streamer
+	streamerList     *list.List
+	streamerLock     sync.Mutex
+	maxStreamerLimit int
 
 	readLimiter  *rate.Limiter
 	writeLimiter *rate.Limiter
 
+	disableMetaCache bool
+
+	volumeType      int
+	volumeName      string
+	bcacheEnable    bool
+	bcacheDir       string
+	BcacheHealth    bool
+	preload         bool
+	LimitManager    *manager.LimitManager
 	dataWrapper     *wrapper.Wrapper
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
 	evictIcache     EvictIcacheFunc //May be null, must check before using
+	loadBcache      LoadBcacheFunc
+	cacheBcache     CacheBcacheFunc
+	evictBcache     EvictBacheFunc
+	inflightL1cache sync.Map
+}
+
+func (client *ExtentClient) evictStreamer() bool {
+	// remove from list
+	item := client.streamerList.Back()
+	if item == nil {
+		return false
+	}
+
+	client.streamerList.Remove(item)
+	ino := item.Value.(uint64)
+
+	s, ok := client.streamers[ino]
+	if !ok {
+		return true
+	}
+
+	if s.isOpen {
+		client.streamerList.PushFront(ino)
+		return true
+	}
+
+	delete(s.client.streamers, s.inode)
+	return true
+}
+
+func (client *ExtentClient) batchEvictStramer(batchCnt int) {
+	client.streamerLock.Lock()
+	defer client.streamerLock.Unlock()
+
+	for cnt := 0; cnt < batchCnt; cnt++ {
+		ok := client.evictStreamer()
+		if !ok {
+			break
+		}
+	}
+
+}
+
+func (client *ExtentClient) backgroundEvictStream() {
+	t := time.NewTicker(2 * time.Second)
+	for range t.C {
+		start := time.Now()
+		streamerSize := client.streamerList.Len()
+		highWatermark := int(float32(client.maxStreamerLimit) * kHighWatermarkPct)
+		for streamerSize > client.maxStreamerLimit {
+			// fast evict
+			if streamerSize > highWatermark {
+				client.batchEvictStramer(fastStreamerEvictNum)
+			} else {
+				client.batchEvictStramer(slowStreamerEvictNum)
+			}
+			streamerSize = client.streamerList.Len()
+			log.LogInfof("batch evict cnt(%d), cost(%d), now(%d)", 1, time.Since(start).Microseconds(), streamerSize)
+		}
+		log.LogInfof("streamer total cnt(%d), cost(%d) ns", streamerSize, time.Since(start).Nanoseconds())
+	}
 }
 
 // NewExtentClient returns a new extent client.
 func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	client = new(ExtentClient)
-
+	client.LimitManager = manager.NewLimitManager(client)
+	client.LimitManager.WrapperUpdate = client.UploadFlowInfo
 	limit := MaxMountRetryLimit
 retry:
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(config.Volume, config.Masters)
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload)
 	if err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init data wrapper failed!")
@@ -131,6 +226,16 @@ retry:
 	client.evictIcache = config.OnEvictIcache
 	client.dataWrapper.InitFollowerRead(config.FollowerRead)
 	client.dataWrapper.SetNearRead(config.NearRead)
+	client.loadBcache = config.OnLoadBcache
+	client.cacheBcache = config.OnCacheBcache
+	client.evictBcache = config.OnEvictBcache
+	client.volumeType = config.VolumeType
+	client.volumeName = config.Volume
+	client.bcacheEnable = config.BcacheEnable
+	client.bcacheDir = config.BcacheDir
+	client.BcacheHealth = true
+	client.preload = config.Preload
+	client.disableMetaCache = config.DisableMetaCache
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {
@@ -143,10 +248,48 @@ retry:
 	} else {
 		writeLimit = rate.Limit(config.WriteRate)
 	}
-
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
 
+	if config.MaxStreamerLimit <= 0 {
+		client.disableMetaCache = true
+		return
+	}
+
+	if config.MaxStreamerLimit <= defaultStreamerLimit {
+		client.maxStreamerLimit = defaultStreamerLimit
+	} else if config.MaxStreamerLimit > defMaxStreamerLimit {
+		client.maxStreamerLimit = defMaxStreamerLimit
+	} else {
+		client.maxStreamerLimit = int(config.MaxStreamerLimit)
+	}
+
+	client.maxStreamerLimit += fastStreamerEvictNum
+
+	log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
+	client.streamerList = list.New()
+	go client.backgroundEvictStream()
+
+	return
+}
+
+func (client *ExtentClient) GetEnablePosixAcl() bool {
+	return client.dataWrapper.EnablePosixAcl
+}
+
+func (client *ExtentClient) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
+	log.LogInfof("action[ExtentClient.GetFlowInfo]")
+	return client.LimitManager.GetFlowInfo()
+}
+
+func (client *ExtentClient) UpdateFlowInfo(limit *proto.LimitRsp2Client) {
+	log.LogInfof("action[UpdateFlowInfo.UpdateFlowInfo]")
+	client.LimitManager.SetClientLimit(limit)
+	return
+}
+
+func (client *ExtentClient) SetClientID(id uint64) (err error) {
+	client.LimitManager.ID = id
 	return
 }
 
@@ -157,6 +300,36 @@ func (client *ExtentClient) OpenStream(inode uint64) error {
 	if !ok {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
+		if !client.disableMetaCache {
+			client.streamerList.PushFront(inode)
+		}
+	}
+	if !s.isOpen && !client.disableMetaCache {
+		s.isOpen = true
+		log.LogDebugf("open stream again, ino(%v)", s.inode)
+		s.request = make(chan interface{}, 64)
+		go s.server()
+	}
+	return s.IssueOpenRequest()
+}
+
+// Open request shall grab the lock until request is sent to the request channel
+func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache bool) error {
+	client.streamerLock.Lock()
+	s, ok := client.streamers[inode]
+	if !ok {
+		s = NewStreamer(client, inode)
+		client.streamers[inode] = s
+		if !client.disableMetaCache {
+			client.streamerList.PushFront(inode)
+		}
+	}
+	s.needBCache = needBCache
+	if !s.isOpen && !client.disableMetaCache {
+		s.isOpen = true
+		log.LogDebugf("open stream again, ino(%v)", s.inode)
+		s.request = make(chan interface{}, 64)
+		go s.server()
 	}
 	return s.IssueOpenRequest()
 }
@@ -180,12 +353,18 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 		client.streamerLock.Unlock()
 		return nil
 	}
-	err := s.IssueEvictRequest()
-	if err != nil {
-		return err
+	if s.isOpen {
+		s.isOpen = false
+		err := s.IssueEvictRequest()
+		if err != nil {
+			return err
+		}
+		s.done <- struct{}{}
+	} else {
+		delete(s.client.streamers, s.inode)
+		s.client.streamerLock.Unlock()
 	}
 
-	s.done <- struct{}{}
 	return nil
 }
 
@@ -221,7 +400,6 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int) {
 // Write writes the data.
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int) (write int, err error) {
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
-
 	s := client.GetStreamer(inode)
 	if s == nil {
 		log.LogErrorf("Prefix(%v): stream is not opened yet", prefix)
@@ -278,6 +456,8 @@ func (client *ExtentClient) Flush(inode uint64) error {
 }
 
 func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {
+	//log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v).", inode, len(data), offset, size)
+	//t1 := time.Now()
 	if size == 0 {
 		return
 	}
@@ -298,7 +478,82 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 	}
 
 	read, err = s.read(data, offset, size)
+	// log.LogErrorf("======> ExtentClient Read Exit, inode(%v), time[%v us].", inode, time.Since(t1).Microseconds())
 	return
+}
+
+func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data []byte, offset int, size int) (read int, err error, isStream bool) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("read-extent", err, bgTime, 1)
+	}()
+
+	var reader *ExtentReader
+	var req *ExtentRequest
+	if size == 0 {
+		return
+	}
+
+	s := client.GetStreamer(inode)
+	if s == nil {
+		err = fmt.Errorf("Read: stream is not opened yet, ino(%v) ek(%v)", inode, ek)
+		return
+	}
+	err = s.IssueFlushRequest()
+	if err != nil {
+		return
+	}
+	reader, err = s.GetExtentReader(ek)
+	if err != nil {
+		return
+	}
+
+	var needCache = false
+	cacheKey := util.GenerateKey(s.client.volumeName, s.inode, ek.FileOffset)
+	if _, ok := client.inflightL1cache.Load(cacheKey); !ok && client.shouldBcache() {
+		client.inflightL1cache.Store(cacheKey, true)
+		needCache = true
+	}
+	defer client.inflightL1cache.Delete(cacheKey)
+
+	// do cache.
+	if needCache {
+		//read full extent
+		buf := make([]byte, ek.Size)
+		req = NewExtentRequest(int(ek.FileOffset), int(ek.Size), buf, ek)
+		read, err = reader.Read(req)
+		if err != nil {
+			return
+		}
+		read = copy(data, req.Data[offset:offset+size])
+		if client.cacheBcache != nil {
+			buf := make([]byte, len(req.Data))
+			copy(buf, req.Data)
+			go func() {
+				log.LogDebugf("ReadExtent L2->L1 Enter cacheKey(%v),client.shouldBcache(%v),needCache(%v)", cacheKey, client.shouldBcache(), needCache)
+				if err := client.cacheBcache(cacheKey, buf); err != nil {
+					client.BcacheHealth = false
+					log.LogDebugf("ReadExtent L2->L1 failed, err(%v), set BcacheHealth to false.", err)
+				}
+				log.LogDebugf("ReadExtent L2->L1 Exit cacheKey(%v),client.BcacheHealth(%v),needCache(%v)", cacheKey, client.BcacheHealth, needCache)
+			}()
+		}
+		return
+	} else {
+		//read data by offset:size
+		req = NewExtentRequest(int(ek.FileOffset)+offset, size, data, ek)
+		ctx := context.Background()
+		s.client.readLimiter.Wait(ctx)
+		s.client.LimitManager.ReadAlloc(ctx, size)
+		isStream = true
+
+		read, err = reader.Read(req)
+		if err != nil {
+			return
+		}
+		read = copy(data, req.Data)
+		return
+	}
 }
 
 // GetStreamer returns the streamer.
@@ -309,11 +564,20 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	if !ok {
 		return nil
 	}
+	if !s.isOpen {
+		s.isOpen = true
+		s.request = make(chan interface{}, 64)
+		go s.server()
+	}
 	return s
 }
 
 func (client *ExtentClient) GetRate() string {
 	return fmt.Sprintf("read: %v\nwrite: %v\n", getRate(client.readLimiter), getRate(client.writeLimiter))
+}
+
+func (client *ExtentClient) shouldBcache() bool {
+	return client.bcacheEnable && client.BcacheHealth
 }
 
 func getRate(lim *rate.Limiter) string {
@@ -355,4 +619,31 @@ func (client *ExtentClient) Close() error {
 	}
 	client.dataWrapper.Stop()
 	return nil
+}
+
+func (client *ExtentClient) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
+	return client.dataWrapper.AllocatePreLoadDataPartition(volName, count, capacity, ttl, zones)
+}
+
+func (client *ExtentClient) CheckDataPartitionExsit(partitionID uint64) error {
+	_, err := client.dataWrapper.GetDataPartition(partitionID)
+	return err
+}
+
+func (client *ExtentClient) GetDataPartitionForWrite() error {
+	exclude := make(map[string]struct{})
+	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude)
+	return err
+}
+
+func (client *ExtentClient) UpdateDataPartitionForColdVolume() error {
+	return client.dataWrapper.UpdateDataPartition()
+}
+
+func (client *ExtentClient) IsPreloadMode() bool {
+	return client.preload
+}
+
+func (client *ExtentClient) UploadFlowInfo(clientInfo wrapper.SimpleClientInfo) error {
+	return client.dataWrapper.UploadFlowInfo(clientInfo, false)
 }

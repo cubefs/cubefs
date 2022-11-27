@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ import (
 	"strconv"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
-	"github.com/tiglabs/raft"
 )
 
 var (
@@ -197,8 +197,12 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount:            len(files),
 		Replicas:             partition.Replicas(),
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
-		RaftStatus:           partition.raftPartition.Status(),
 	}
+
+	if partition.isNormalType() {
+		result.RaftStatus = partition.raftPartition.Status()
+	}
+
 	s.buildSuccessResp(w, result)
 }
 
@@ -322,6 +326,25 @@ func (s *DataNode) getNormalDeleted(w http.ResponseWriter, r *http.Request) {
 
 	s.buildSuccessResp(w, extentInfo)
 	return
+}
+
+func (s *DataNode) setQosEnable() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var (
+			err    error
+			enable bool
+		)
+		if err = r.ParseForm(); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if enable, err = strconv.ParseBool(r.FormValue("enable")); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		s.diskQosEnable = enable
+		s.buildSuccessResp(w, "success")
+	}
 }
 
 func (s *DataNode) getSmuxPoolStat() func(http.ResponseWriter, *http.Request) {

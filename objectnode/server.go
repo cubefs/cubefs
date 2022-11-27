@@ -1,4 +1,4 @@
-// Copyright 2019 The ChubaoFS Authors.
+// Copyright 2019 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -192,7 +192,7 @@ func (o *ObjectNode) updateRegion(region string) {
 func handleStart(s common.Server, cfg *config.Config) (err error) {
 	o, ok := s.(*ObjectNode)
 	if !ok {
-		return errors.New("Invalid Node Type!")
+		return errors.New("Invalid node Type!")
 	}
 	// parse config
 	if err = o.loadConfig(cfg); err != nil {

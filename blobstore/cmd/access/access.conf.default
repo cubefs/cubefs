@@ -1,0 +1,106 @@
+{
+    "max_procs": 0,
+    "shutdown_timeout_s": 30,
+    "log": {
+        "level": "info",
+        "filename": "./run/logs/access.log",
+        "maxsize": 1024,
+        "maxage": 7,
+        "maxbackups": 7
+    },
+    "bind_addr": ":9500",
+    "service_register": {
+        "consul_addr": "127.0.0.1:8500",
+        "node": "nodename",
+        "service_ip": "service_ip"
+    },
+    "limit": {
+        "name_rps": {
+            "alloc": 0,
+            "put": 0,
+            "putat": 0,
+            "get": 0,
+            "delete": 0,
+            "sign": 0
+        },
+        "reader_mbps": 0,
+        "writer_mbps": 0
+    },
+    "stream": {
+        "idc": "idc",
+        "max_blob_size": 4194304,
+        "mem_pool_size_classes": {
+            "2048": 81920,
+            "24576": 40960,
+            "65536": 40960,
+            "524288": 20480,
+            "2097152": 10240,
+            "8389632": 4096,
+            "16777216": 1024,
+            "33554432": 512,
+            "67108864": 64
+        },
+        "code_mode_put_quorums": {
+            "1": 24,
+            "2": 11,
+            "3": 34,
+            "4": 14
+        },
+        "alloc_retry_interval_ms": 100,
+        "alloc_retry_times": 3,
+        "encoder_concurrency": 1000,
+        "encoder_enableverify": true,
+        "min_read_shards_x": 1,
+        "shard_crc_disabled": false,
+        "cluster_config": {
+            "region": "region",
+            "region_magic": "",
+            "cluster_reload_secs": 3,
+            "clustermgr_client_config": {
+                "client_timeout_ms": 3000,
+                "hosts": [],
+                "transport_config": {
+                    "auth": {
+                        "enable_auth": true,
+                        "secret": "secret key"
+                    },
+                    "dial_timeout_ms": 2000
+                }
+            },
+            "redis_client_config": {
+                "addrs": [
+                    "127.0.0.1:xxx"
+                ],
+                "password": "pass",
+                "username": "user"
+            },
+            "service_punish_threshold": 3,
+            "service_punish_valid_interval_s": 30,
+            "consul_agent_addr": "127.0.0.1:8500",
+            "service_reload_secs": 3
+        },
+        "disk_punish_interval_s": 60,
+        "disk_timeout_punish_interval_s": 6,
+        "service_punish_interval_s": 60,
+        "blobnode_config": {
+            "client_timeout_ms": 10000
+        },
+        "proxy_config": {
+            "client_timeout_ms": 5000
+        },
+        "alloc_command_config": {
+            "error_percent_threshold": 50,
+            "max_concurrent_requests": 10240,
+            "request_volume_threshold": 100,
+            "sleep_window": 2000,
+            "timeout": 30000
+        },
+        "rw_command_config": {
+            "error_percent_threshold": 80,
+            "max_concurrent_requests": 102400,
+            "request_volume_threshold": 1000,
+            "sleep_window": 5000,
+            "timeout": 600000
+        }
+    }
+}

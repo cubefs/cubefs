@@ -1,17 +1,17 @@
-# ChubaoFS Security Process Email Templates
+# CubeFS Security Process Email Templates
 
 This is a collection of email templates to handle various situations the security team encounters.
 
 ## Upcoming security release
 
 ```
-Subject: Upcoming security release of ChubaoFS $VERSION
-To: chubaofs-users@groups.io
+Subject: Upcoming security release of CubeFS $VERSION
+To: cubefs-users@groups.io
 
-Hello ChubaoFS Community,
+Hello CubeFS Community,
 
-The ChubaoFS Product Security Committee and maintainers would like to announce the forthcoming release
-of ChubaoFS $VERSION.
+The CubeFS Product Security Committee and maintainers would like to announce the forthcoming release
+of CubeFS $VERSION.
 
 This release will be made available on the $ORDINALDAY of $MONTH $YEAR at
 $PDTHOUR PDT ($GMTHOUR GMT). This release will fix $NUMDEFECTS security
@@ -25,18 +25,18 @@ Thanks to $REPORTER, $DEVELOPERS, and the $RELEASELEADS for the coordination is 
 
 Thanks,
 
-$PERSON on behalf of the ChubaoFS Product Security Committee and maintainers
+$PERSON on behalf of the CubeFS Product Security Committee and maintainers
 ```
 
 ## Security Fix Announcement
 
 ```
-Subject: Security release of ChubaoFS $VERSION is now available
-To: chubaofs-users@groups.io
+Subject: Security release of CubeFS $VERSION is now available
+To: cubefs-users@groups.io
 
-Hello ChubaoFS Community,
+Hello CubeFS Community,
 
-The Product Security Committee and maintainers would like to announce the availability of ChubaoFS $VERSION.
+The Product Security Committee and maintainers would like to announce the availability of CubeFS $VERSION.
 This addresses the following CVE(s):
 
 * CVE-YEAR-ABCDEF (CVSS score $CVSS): $CVESUMMARY
@@ -60,7 +60,7 @@ vulnerable in practice. -->
 
 **How do I upgrade?**
 
-Follow the upgrade instructions at https://chubaofs.readthedocs.io
+Follow the upgrade instructions at https://cubefs.readthedocs.io/en/latest/
 
 **Vulnerability Details**
 
@@ -82,5 +82,5 @@ coordination in making this release.
 
 Thanks,
 
-$PERSON on behalf of the ChubaoFS Product Security Committee and maintainers
+$PERSON on behalf of the CubeFS Product Security Committee and maintainers
 ```

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@
 package metanode
 
 import (
+	"github.com/xtaci/smux"
 	syslog "log"
 	"os"
-	"smux"
 	"strings"
 	"time"
 
@@ -113,7 +113,7 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 func doStart(s common.Server, cfg *config.Config) (err error) {
 	m, ok := s.(*MetaNode)
 	if !ok {
-		return errors.New("Invalid Node Type!")
+		return errors.New("Invalid node Type!")
 	}
 	if err = m.parseConfig(cfg); err != nil {
 		return
@@ -122,7 +122,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	if err = m.startRaftServer(); err != nil {
+	if err = m.startRaftServer(cfg); err != nil {
 		return
 	}
 	if err = m.newMetaManager(); err != nil {

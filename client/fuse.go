@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,19 +38,24 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blockcache/bcache"
+
+	"github.com/cubefs/cubefs/util/buf"
+
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 
 	sysutil "github.com/cubefs/cubefs/util/sys"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
 	cfs "github.com/cubefs/cubefs/client/fs"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
 )
@@ -59,6 +64,8 @@ const (
 	MaxReadAhead = 512 * 1024
 
 	defaultRlimit uint64 = 1024000
+
+	UpdateConfInterval = 2 * time.Minute
 )
 
 const (
@@ -77,8 +84,8 @@ const (
 	Role                       = "Client"
 
 	DefaultIP            = "127.0.0.1"
-	DynamicUDSNameFormat = "/tmp/ChubaoFS-fdstore-%v.sock"
-	DefaultUDSName       = "/tmp/ChubaoFS-fdstore.sock"
+	DynamicUDSNameFormat = "/tmp/CubeFS-fdstore-%v.sock"
+	DefaultUDSName       = "/tmp/CubeFS-fdstore.sock"
 
 	DefaultLogPath = "/var/log/chubaofs"
 )
@@ -272,8 +279,17 @@ func main() {
 
 	cfg, _ := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
+
 	if err != nil {
 		err = errors.NewErrorf("parse mount opt failed: %v\n", err)
+		fmt.Println(err)
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+	//load  conf from master
+	err = loadConfFromMaster(opt)
+	if err != nil {
+		err = errors.NewErrorf("parse mount opt from master failed: %v\n", err)
 		fmt.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
@@ -295,7 +311,21 @@ func main() {
 	}
 	defer log.LogFlush()
 
-	outputFilePath := path.Join(opt.Logpath, opt.Volname, LoggerOutput)
+	_, err = stat.NewStatistic(opt.Logpath, LoggerPrefix, int64(stat.DefaultStatLogSize),
+		stat.DefaultTimeOutUs, true)
+	if err != nil {
+		err = errors.NewErrorf("Init stat log fail: %v\n", err)
+		fmt.Println(err)
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+	stat.ClearStat()
+
+	proto.InitBufferPool(opt.BuffersTotalLimit)
+	if proto.IsCold(opt.VolType) {
+		buf.InitCachePool(opt.EbsBlockSize)
+	}
+	outputFilePath := path.Join(opt.Logpath, LoggerPrefix, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
 		err = errors.NewErrorf("Open output file failed: %v\n", err)
@@ -310,7 +340,7 @@ func main() {
 	syslog.SetOutput(outputFile)
 
 	if *configRestoreFuse {
-		syslog.Println("Need restore fuse")
+		syslog.Println("NeedAfterAlloc restore fuse")
 		opt.NeedRestoreFuse = true
 	}
 
@@ -373,6 +403,8 @@ func main() {
 		_ = daemonize.SignalOutcome(nil)
 	}
 	defer fsConn.Close()
+
+	syslog.Printf("enable bcache %v", opt.EnableBcache)
 
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
@@ -535,6 +567,28 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		return
 	}
 
+	go func() {
+		t := time.NewTicker(UpdateConfInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				log.LogDebugf("UpdateVolConf: start load conf from master")
+				if proto.IsCold(opt.VolType) {
+					var mc = master.NewMasterClientFromString(opt.Master, false)
+					var volumeInfo *proto.SimpleVolView
+					volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+					if err != nil {
+						return
+					}
+					super.CacheAction = volumeInfo.CacheAction
+					super.CacheThreshold = volumeInfo.CacheThreshold
+					super.EbsBlockSize = volumeInfo.ObjBlockSize
+				}
+			}
+		}
+	}()
+
 	if err = ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName), opt.UmpDatadir); err != nil {
 		return
 	}
@@ -544,10 +598,10 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		fuse.MaxReadahead(MaxReadAhead),
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(opt.AutoInvalData),
-		fuse.FSName("chubaofs-" + opt.Volname),
-		fuse.Subtype("chubaofs"),
+		fuse.FSName("cubefs-" + opt.Volname),
+		fuse.Subtype("cubefs"),
 		fuse.LocalVolume(),
-		fuse.VolumeName("chubaofs-" + opt.Volname)}
+		fuse.VolumeName("cubefs-" + opt.Volname)}
 
 	if opt.Rdonly {
 		options = append(options, fuse.ReadOnly())
@@ -559,6 +613,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 
 	if opt.EnablePosixACL {
 		options = append(options, fuse.PosixACL())
+		options = append(options, fuse.DefaultPermissions())
 	}
 
 	if opt.EnableUnixPermission {
@@ -635,11 +690,24 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnablePosixACL = GlobalMountOptions[proto.EnablePosixACL].GetBool()
 	opt.EnableSummary = GlobalMountOptions[proto.EnableSummary].GetBool()
 	opt.EnableUnixPermission = GlobalMountOptions[proto.EnableUnixPermission].GetBool()
+	opt.ReadThreads = GlobalMountOptions[proto.ReadThreads].GetInt64()
+	opt.WriteThreads = GlobalMountOptions[proto.WriteThreads].GetInt64()
+	opt.BcacheDir = GlobalMountOptions[proto.BcacheDir].GetString()
+	//opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
+	if _, err := os.Stat(bcache.UnixSocketPath); err == nil && opt.BcacheDir != "" {
+		opt.EnableBcache = true
+	}
+	opt.BuffersTotalLimit = GlobalMountOptions[proto.BuffersTotalLimit].GetInt64()
+	opt.MetaSendTimeout = GlobalMountOptions[proto.MetaSendTimeout].GetInt64()
+	opt.MaxStreamerLimit = GlobalMountOptions[proto.MaxStreamerLimit].GetInt64()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
 	}
 
+	if opt.BuffersTotalLimit < 0 {
+		return nil, errors.New(fmt.Sprintf("invalid fields, BuffersTotalLimit(%v) must larger or equal than 0", opt.BuffersTotalLimit))
+	}
 	return opt, nil
 }
 
@@ -704,4 +772,26 @@ func changeRlimit(val uint64) {
 
 func freeOSMemory(w http.ResponseWriter, r *http.Request) {
 	debug.FreeOSMemory()
+}
+
+func loadConfFromMaster(opt *proto.MountOptions) (err error) {
+	var mc = master.NewMasterClientFromString(opt.Master, false)
+	var volumeInfo *proto.SimpleVolView
+	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+	if err != nil {
+		return
+	}
+	opt.VolType = volumeInfo.VolType
+	opt.EbsBlockSize = volumeInfo.ObjBlockSize
+	opt.CacheAction = volumeInfo.CacheAction
+	opt.CacheThreshold = volumeInfo.CacheThreshold
+
+	var clusterInfo *proto.ClusterInfo
+	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
+	if err != nil {
+		return
+	}
+	opt.EbsEndpoint = clusterInfo.EbsAddr
+	opt.EbsServicePath = clusterInfo.ServicePath
+	return
 }

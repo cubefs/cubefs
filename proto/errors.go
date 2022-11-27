@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ var (
 	ErrVolAuthKeyNotMatch              = errors.New("client and server auth key do not match")
 	ErrAuthKeyStoreError               = errors.New("auth keystore error")
 	ErrAuthAPIAccessGenRespError       = errors.New("auth API access response error")
-	ErrAuthOSCapsOpGenRespError        = errors.New("auth Object Storage Node API response error")
+	ErrAuthOSCapsOpGenRespError        = errors.New("auth Object Storage node API response error")
 	ErrKeyNotExists                    = errors.New("key not exists")
 	ErrDuplicateKey                    = errors.New("duplicate key")
 	ErrAccessKeyNotExists              = errors.New("access key not exists")

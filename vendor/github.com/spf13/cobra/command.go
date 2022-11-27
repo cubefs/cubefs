@@ -25,7 +25,7 @@ import (
 	"sort"
 	"strings"
 
-	flag "github.com/spf13/pflag"
+	flag "github.com/cubefs/cubefs/depends/spf13/pflag"
 )
 
 // FParseErrWhitelist configures Flag parse errors to be ignored

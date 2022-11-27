@@ -129,6 +129,10 @@ func New(degree int) *BTree {
 	return NewWithFreeList(degree, NewFreeList(DefaultFreeListSize))
 }
 
+func NewWithSize(degree, initSize int) *BTree {
+	return NewWithFreeList(degree, NewFreeList(initSize))
+}
+
 // NewWithFreeList creates a new B-Tree that uses the given node free list.
 func NewWithFreeList(degree int, f *FreeList) *BTree {
 	if degree <= 1 {
@@ -582,7 +586,7 @@ func (n *node) iterate(dir direction, start, stop Item, includeStart bool, hit b
 	return hit, true
 }
 
-// Used for testing/debugging purposes.
+// Allocated for testing/debugging purposes.
 func (n *node) print(w io.Writer, level int) {
 	fmt.Fprintf(w, "%sNODE:%v\n", strings.Repeat("  ", level), n.items)
 	for _, c := range n.children {

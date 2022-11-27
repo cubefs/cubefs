@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,6 +52,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getPartitionById", m.getPartitionByIDHandler)
 	http.HandleFunc("/getInode", m.getInodeHandler)
 	http.HandleFunc("/getExtentsByInode", m.getExtentsByInodeHandler)
+	http.HandleFunc("/getEbsExtentsByInode", m.getEbsExtentsByInodeHandler)
 	// get all inodes of the partitionID
 	http.HandleFunc("/getAllInodes", m.getAllInodesHandler)
 	// get dentry information
@@ -120,6 +121,11 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	leader, _ := mp.IsLeader()
 	msg["leaderAddr"] = leader
 	conf := mp.GetBaseConfig()
+	msg["partition_id"] = conf.PartitionId
+	msg["partition_type"] = conf.PartitionType
+	msg["vol_name"] = conf.VolName
+	msg["start"] = conf.Start
+	msg["end"] = conf.End
 	msg["peers"] = conf.Peers
 	msg["nodeId"] = conf.NodeId
 	msg["cursor"] = conf.Cursor
@@ -251,6 +257,50 @@ func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) 
 
 	raftStatus := m.raftStore.RaftStatus(raftID)
 	resp.Data = raftStatus
+}
+
+func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter,
+	r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getEbsExtentsByInodeHandler] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	req := &proto.GetExtentsRequest{
+		PartitionID: pid,
+		Inode:       id,
+	}
+	p := &Packet{}
+	if err = mp.ObjExtentsList(req, p); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMsg()
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
+	return
 }
 
 func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,

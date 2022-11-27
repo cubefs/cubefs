@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,11 +19,12 @@ import (
 	"strconv"
 
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 )
 
 // StartRaftServer initializes the address resolver and the raftStore server instance.
-func (m *MetaNode) startRaftServer() (err error) {
+func (m *MetaNode) startRaftServer(cfg *config.Config) (err error) {
 	_, err = os.Stat(m.raftDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -48,7 +49,7 @@ func (m *MetaNode) startRaftServer() (err error) {
 		RecvBufSize:       m.raftRecvBufSize,
 		NumOfLogsToRetain: raftstore.DefaultNumOfLogsToRetain * 2,
 	}
-	m.raftStore, err = raftstore.NewRaftStore(raftConf)
+	m.raftStore, err = raftstore.NewRaftStore(raftConf, cfg)
 	if err != nil {
 		err = errors.NewErrorf("new raftStore: %s", err.Error())
 	}

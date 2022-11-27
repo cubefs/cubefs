@@ -1,10 +1,10 @@
 Q&A
 ==============
 
-- If you are new to ChubaoFS and want to start quickly, please refer to :doc:`user-guide/docker`
-- If you are interested in ChubaoFS and want to conduct a performance test before applying it in the product environment, please refer to :doc:`evaluation`
-- If you have completed the assessment of ChubaoFS and want to put it into product environment, and want to learn how to carry out capacity planning and environment preparing, please refer to :doc:`env`
-- If you want to know about best practices of ChubaoFS, please refer to :doc:`use-case`
+- If you are new to CubeFS and want to start quickly, please refer to :doc:`user-guide/docker`
+- If you are interested in CubeFS and want to conduct a performance test before applying it in the product environment, please refer to :doc:`evaluation`
+- If you have completed the assessment of CubeFS and want to put it into product environment, and want to learn how to carry out capacity planning and environment preparing, please refer to :doc:`env`
+- If you want to know about best practices of CubeFS, please refer to :doc:`use-case`
 - If you encounter some problems in the product environment, the following content may help to solve your problems.
 
 For the convenience of description, we define the following keyword abbreviations
@@ -23,7 +23,7 @@ For the convenience of description, we define the following keyword abbreviation
 Compile
 ----------
 
-1. Compile ChubaoFS on one machine, but it cannot be started when deployed to other machines.
+1. Compile CubeFS on one machine, but it cannot be started when deployed to other machines.
 
 First please make sure to use the ``PORTABLE=1 make static_lib`` command to compile RocksDB, then use the ``ldd`` command to check whether the dependent libraries are installed on the machine. After installing the missing libraries, execute the ``ldconfig`` command.
 
@@ -120,7 +120,7 @@ It is recommended set `reserved space` in the dn startup json file, it is behind
 Performance of Data and Metadata
 ----------------------------------
 
-1. How does ChubaoFS compare with its alternatives ?
+1. How does CubeFS compare with its alternatives ?
 
 - Ceph
 
@@ -130,26 +130,26 @@ Ceph (e.g., various storage backends) also make it very complicated and difficul
 - GFS and HDFS
 
 GFS and its open source implementation HDFS (https://github.com/apache/hadoop) are designed for storing large files with sequential access.
-Both of them adopt the master-slave architecture, where the single master stores all the file metadata. Unlike GFS and HDFS, ChubaoFS employs  a separate  metadata subsystem  to provide a scalable solution for   the  metadata storage so that the resource manager has less chance to become the bottleneck.
+Both of them adopt the master-slave architecture, where the single master stores all the file metadata. Unlike GFS and HDFS, CubeFS employs  a separate  metadata subsystem  to provide a scalable solution for   the  metadata storage so that the resource manager has less chance to become the bottleneck.
 
 - Hadoop Ozone
 
 Hadoop Ozone is a scalable distributed object storage system designed for Hadoop. It was originally proposed to solve the problem of HDFS namenode expansion. It reconstructs the namenode metadata management part of hdfs and reuses the datanode of hdfs.
-ChubaoFS has many of the same design concepts like ozone such as: supporting for volume isolation, compatible with both raft/master-slave synchronous replication mechanisms, implenting for s3-compatible interfaces. In addition, ChubaoFS's POSIX fuse-client interface supports random file reading and writing, and optimizes reading and writing of small files.
+CubeFS has many of the same design concepts like ozone such as: supporting for volume isolation, compatible with both raft/master-slave synchronous replication mechanisms, implenting for s3-compatible interfaces. In addition, ChubaoFS's POSIX fuse-client interface supports random file reading and writing, and optimizes reading and writing of small files.
 
 - Haystack
 
 Haystack from Facebook takes after log-structured filesystems to serve long tail of requests seen by sharing photos in a large social network. The key insight is to avoid disk operations when accessing metadata.
-ChubaoFS adopts similar ideas by putting the file metadata into the main memory.
+CubeFS adopts similar ideas by putting the file metadata into the main memory.
 
 However, different from Haystack,  the actually physical offsets instead of logical indices of the file contents are stored in the memory,
 and deleting a  file  is achieved by the punch hole interface provided by the underlying file system instead of relying on the garbage collector to perform merging and compacting regularly for more efficient disk utilization. In addition, Haystack does not guarantee the strong consistency among the replicas when deleting the files, and it needs to perform merging and compacting regularly for more efficient disk utilization, which could be a performance killer.
-ChubaoFS takes a different design principle to separate the storage of file metadata and contents. In this way, we can have more flexible and cost-effective deployments of meta and data nodes.
+CubeFS takes a different design principle to separate the storage of file metadata and contents. In this way, we can have more flexible and cost-effective deployments of meta and data nodes.
 
 - Public Cloud
 
 Windows Azure Storage (https://azure.microsoft.com/en-us/) is a cloud storage system that provides strong consistency and multi-tenancy to the clients.
-Different from ChubaoFS, it builds an extra partition layer to handle random writes before streaming data into the lower level.
+Different from CubeFS, it builds an extra partition layer to handle random writes before streaming data into the lower level.
 AWS EFS (https://aws.amazon.com/efs/) is a cloud storage service  that provides scalable and elastic file storage.
 Depending on the use cases, there could be a considerable amount of cost associated with using these cloud storage services.
 
@@ -159,7 +159,7 @@ GlusterFS (https://www.gluster.org/) is a scalable distributed file system that 
 
 2. If the scale of metadata is huge, how to improve cluster performance?
 
-The metadata of ChubaoFS is stored in the memory. Expanding memory of the mn or expanding the amount of mn horizontally will significantly improve the metadata performance and support a large number of small files.
+The metadata of CubeFS is stored in the memory. Expanding memory of the mn or expanding the amount of mn horizontally will significantly improve the metadata performance and support a large number of small files.
 
 3. If a dn/mn is added to the cluster, will it be automatically rebalanced, for example the dp/mp on the old node are migrated to the new node?
 
@@ -197,7 +197,7 @@ Capacity Management
 
 2. How to optimize the read/write performance from the Volume side？
 
-The more dp that can be read and written, the better read and write performance of the Volume. ChubaoFS adopts a dynamic space allocation mechanism. After creating a Volume, it will pre-allocate a certain data partition dp for the Volume. When the number of dp that can be read and written is less than 10, the dp number will be automatically expanded by a step of 10. If you want to manually increase the number of readable and writable dp, you can use the following command:
+The more dp that can be read and written, the better read and write performance of the Volume. CubeFS adopts a dynamic space allocation mechanism. After creating a Volume, it will pre-allocate a certain data partition dp for the Volume. When the number of dp that can be read and written is less than 10, the dp number will be automatically expanded by a step of 10. If you want to manually increase the number of readable and writable dp, you can use the following command:
 
 .. code-block:: bash
 
@@ -240,7 +240,7 @@ Most of the parameters in the cluster have default values, and the default zone 
 
 3. The meaning of NodeSet？
 
-Each zone will have several NodeSets, and each NodeSet can carry 18 nodes by default. Because ChubaoFS implements multi-raft, each node starts a raft server process, and each raft server manages m raft instances on the node. If the other replication group members of these raft members are distributed on N nodes, then the raft heartbeat will be transmitted between N nodes. As the cluster scale expands, N will become larger. Through the NodeSet restriction, the heartbeat is relatively independent within the NodeSet, which avoids the heartbeat storm of the cluster dimension. We use the multi raft and nodeset mechanisms together to avoid the problem of the raft heartbeat storm.
+Each zone will have several NodeSets, and each NodeSet can carry 18 nodes by default. Because CubeFS implements multi-raft, each node starts a raft server process, and each raft server manages m raft instances on the node. If the other replication group members of these raft members are distributed on N nodes, then the raft heartbeat will be transmitted between N nodes. As the cluster scale expands, N will become larger. Through the NodeSet restriction, the heartbeat is relatively independent within the NodeSet, which avoids the heartbeat storm of the cluster dimension. We use the multi raft and nodeset mechanisms together to avoid the problem of the raft heartbeat storm.
 
 .. image:: pic/nodeset.png
    :align: center
@@ -307,7 +307,7 @@ Upgrade
 
 1.	Steps
 
-    a. Download and unzip the latest binary file compression package from ChubaoFS official website https://github.com/cubefs/cubefs/releases
+    a. Download and unzip the latest binary file compression package from CubeFS official website https://github.com/cubefs/cubefs/releases
     b. Freeze the cluster
 
     .. code-block:: bash
@@ -446,7 +446,7 @@ Supported `log-level`: `debug,info,warn,error,critical,read,write,fatal`
 
     .. code-block:: bash
 
-        clusterID[xxx] addr[xxx]_op[xx] has no response util time out
+        clusterID[xxx] addr[xxx]_op[xx] has no response until time out
 
     Analysis:The response timed out when the Master sends the [Op] command to mn or dn, check the network between Master and mn/dn; check whether the dn/mn service process is alive.
 
@@ -592,9 +592,9 @@ Fuse Client
         - Because the client reads and writes files through the http protocol, please check whether the network status is healthy
         - Check whether there is an overloaded mn, whether the mn process is hanging, you can restart mn, or expand a new mn to the cluster and take the mp on the overloaded mn decommission to relieve the pressure of mn
 
-4.	Does ChubaoFS provide strong consistence guarantees?
+4.	Does CubeFS provide strong consistence guarantees?
 
-No.ChubaoFS has relaxed POSIX consistency semantics, i.e., instead of providing strong consistency guarantees, it only ensures sequential consistency for file/directory operations, and does not have any leasing mechanism to prevent multiple clients writing to the same file/directory. It depends on the upperlevel application to maintain a more restrict consistency level if necessary.
+No.CubeFS has relaxed POSIX consistency semantics, i.e., instead of providing strong consistency guarantees, it only ensures sequential consistency for file/directory operations, and does not have any leasing mechanism to prevent multiple clients writing to the same file/directory. It depends on the upperlevel application to maintain a more restrict consistency level if necessary.
 
 5.	Is it feasible to kill the client to directly stop the client service
 

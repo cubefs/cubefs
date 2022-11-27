@@ -4,7 +4,7 @@ Console
 How To Start Console
 ---------------------
 
-Start a Console process by execute the server binary of ChubaoFS you built with ``-c`` argument and specify configuration file.
+Start a Console process by execute the server binary of CubeFS you built with ``-c`` argument and specify configuration file.
 
 .. code-block:: bash
 
@@ -53,5 +53,5 @@ Notice
 
   * add `127.0.0.1 console.chubao.io grafana.chubao.io` in `/etc/hosts`
   * you can visit it by `http://127.0.0.1:80`
-  * in console default user is `root` default password is `ChubaoFSRoot`
-  * If you are upgrading your ChubaoFS from v2.0.0 or earlier version, the password may not be compatible, you can use `curl -H "Content-Type:application/json" -X POST --data '{"id":"testuser","pwd":"12345","type":2}' "http://10.196.59.198:17010/user/create"` to create new user to use it
+  * in console default user is `root` default password is `CubeFSRoot`
+  * If you are upgrading your CubeFS from v2.0.0 or earlier version, the password may not be compatible, you can use `curl -H "Content-Type:application/json" -X POST --data '{"id":"testuser","pwd":"12345","type":2}' "http://10.196.59.198:17010/user/create"` to create new user to use it
