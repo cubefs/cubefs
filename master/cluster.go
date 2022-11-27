@@ -2434,6 +2434,11 @@ func (c *Cluster) checkZoneName(name string,
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
 func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
+	if c.DisableAutoAllocate {
+		log.LogWarn("the cluster is frozen")
+		return nil, fmt.Errorf("the cluster is frozen, can not create volume")
+	}
+
 	var (
 		readWriteDataPartitions int
 	)
