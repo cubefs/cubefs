@@ -21,8 +21,9 @@
 
 void testOp(bool is_cfs, bool ignore);
 void testReload();
-void testDup(bool is_cfs);
+void testDup();
 void testUnlinkAndRename();
+void testSymlink();
 int main(int argc, char **argv) {
     bool is_cfs = true;
     bool ignore = false;
@@ -74,6 +75,8 @@ int main(int argc, char **argv) {
     printf("Finish testDup\n");
     testUnlinkAndRename();
     printf("Finish test unlink and rename\n");
+    testSymlink();
+    printf("Finish test symlink\n");
     printf("Finish all tests.\n");
     return 0;
 }
@@ -236,7 +239,7 @@ void testOp(bool is_cfs, bool ignore) {
     assertf(dir_fd < 0, "open removed dir %s returning %d", dir, dir_fd);
 }
 
-void testDup(bool is_cfs) {
+void testDup() {
     #define PATH_LEN 100
     char *mount = getenv("CFS_MOUNT_POINT");
     char *path = "dir";
@@ -359,5 +362,78 @@ void testUnlinkAndRename() {
 
     close(fd_1);
     close(fd_2);
+}
 
+void testSymlink() {
+    #define PATH_LEN 100
+    char *mount = getenv("CFS_MOUNT_POINT");
+    char *path = "dir2";
+    char *file1 = "file1";
+    char *file2 = "file2";
+    char *file3 = "file3";
+    int res, fd;
+    ssize_t size;
+    char buf[PATH_LEN] = {0};
+    struct stat statbuf;
+    char *p;
+
+    char dir[PATH_LEN] = {0};
+    strcat(dir, mount);
+    strcat(dir, "/");
+    strcat(dir, path);
+
+    char filepath1[PATH_LEN] = {0};
+    strcat(filepath1, dir);
+    strcat(filepath1, "/");
+    strcat(filepath1, file1);
+    unlink(filepath1);
+
+    char filepath2[PATH_LEN] = {0};
+    strcat(filepath2, dir);
+    strcat(filepath2, "/");
+    strcat(filepath2, file2);
+    unlink(filepath2);
+
+    char filepath3[PATH_LEN] = {0};
+    strcat(filepath3, dir);
+    strcat(filepath3, "/");
+    strcat(filepath3, file3);
+    unlink(filepath3);
+
+    rmdir(dir);
+
+    res = mkdir(dir, 0775);
+    assertf(res == 0, "mkdir %s returning %d", dir, res);
+    fd = open(filepath1, O_RDWR | O_CREAT, 0664);
+    assertf(fd > 0, "open %s returning %d", filepath1, fd);
+    size = write(fd, "test", 4);
+    assertf(size == 4, "write test to fd returning %d, expect 4", size);
+    res = close(fd);
+    assertf(res == 0, "close fd %d returning %d, expect 0", fd, res);
+
+    res = symlink(filepath1, filepath2);
+    assertf(res == 0, "symlink %s to %s returning %d, expect 0", filepath2, filepath1, res);
+    res = symlink(file1, filepath3); // target file must use abspath
+    assertf(res == -1, "symlink %s to %s returning %d, expect -1", filepath3, file1, res);
+
+    res = access(filepath1, F_OK);
+    assertf(res == 0, "access %s returing %d, expect 0", filepath1, res);
+    res = access(filepath2, F_OK);
+    assertf(res == 0, "access symlink %s returing %d, expect 0", filepath2, res);
+
+    size = readlink(filepath1, buf, PATH_LEN);
+    assertf(size == -1, "readlink %s returning %d, expect -1", filepath1, size);
+    size = readlink(filepath2, buf, PATH_LEN);
+    assertf(size == strlen(filepath1), "readlink symlink %s returning %d, expect %d", filepath2, size, strlen(filepath1));
+    assertf(memcmp(buf, filepath1, size) == 0, "readlink symlink %s returning %s, expect %s", filepath2, buf, filepath1);
+
+    res = stat(filepath1, &statbuf);
+    assertf(res == 0, "stat %s returning %d, expect 0", filepath1, res);
+    res = stat(filepath2, &statbuf);
+    assertf(res == 0, "stat symlink %s returning %d, expect 0", filepath2, res);
+
+    p = realpath(filepath1, buf);
+    assertf(memcmp(p, filepath1, strlen(filepath1)) == 0, "realpath %s returning %s, expect %s", filepath1, p, filepath1);
+    p = realpath(filepath2, buf);
+    assertf(memcmp(p, filepath1, strlen(filepath1)) == 0, "realpath %s returning %s, expect %s", filepath2, p, filepath1);
 }

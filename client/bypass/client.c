@@ -820,44 +820,85 @@ int real_closedir(DIR *dirp) {
     return re;
 }
 
+char *cfs_realpath(const char *cfs_path, char *resolved_path) {
+    int res1 = cfs_errno(cfs_access(g_client_info.cfs_client_id, cfs_path, F_OK));
+    if(res1 < 0) {
+        errno = ENOENT;
+        return NULL;
+    }
+
+    char *buf = NULL;
+    int buf_len = 0;
+    char *res_path = resolved_path;
+    if(res_path == NULL) {
+        res_path = (char *)malloc(PATH_MAX);
+        memset(res_path, 0, PATH_MAX);
+    }
+    ssize_t res2 = cfs_errno_ssize_t(cfs_readlink(g_client_info.cfs_client_id, cfs_path, res_path, PATH_MAX));
+    if(res2 < 0) {
+        buf = cat_path(g_client_info.mount_point, &cfs_path[1]);
+        buf_len = strlen(buf);
+        if(buf_len >= PATH_MAX) {
+            errno = ENAMETOOLONG;
+        } else {
+            errno = 0;
+        }
+    } else {
+        if(res_path[0] == '/') {
+            buf = cat_path(g_client_info.mount_point, &res_path[1]);
+            buf_len = strlen(g_client_info.mount_point) + res2;
+            if(buf_len >= PATH_MAX) {
+                errno = ENAMETOOLONG;
+            } else {
+                errno = 0;
+            }
+        } else {
+            errno = ENOENT;
+        }
+    }
+
+    if(errno != 0) {
+        if(buf != NULL) {
+            free(buf);
+        }
+        if(resolved_path == NULL) {
+            free(res_path);
+        }
+        res_path = NULL;
+    } else {
+        memcpy(res_path, buf, buf_len);
+        res_path[buf_len] = 0;
+        free(buf);
+    }
+    return res_path;
+}
+
+char *real_realpath_chk(const char *path, char *resolved_path, size_t resolvedlen) {
+    char *re = NULL;
+    char *cfs_path = get_cfs_path(path);
+    if(g_hook && cfs_path != NULL) {
+        re = cfs_realpath(cfs_path, resolved_path);
+    } else {
+        re = libc_realpath_chk(path, resolved_path, resolvedlen);
+    }
+    free(cfs_path);
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs: %d, pathname:%s, re:%s\n", __func__, cfs_path != NULL, path, re);
+    #endif
+    return re;
+}
+
 char *real_realpath(const char *path, char *resolved_path) {
     char *re = NULL;
-    char *clean_path = get_clean_path(path);
-    char *abs_path;
-    if(clean_path == NULL) {
-        goto log;
-    }
-
-    abs_path = clean_path;
-    if(path[0] != '/') {
-        char *cwd = getcwd(NULL, 0);
-        if(cwd == NULL) {
-            free(clean_path);
-            goto log;
-        }
-        abs_path = cat_path(cwd, clean_path);
-        free(cwd);
-        free(clean_path);
-        if(abs_path == NULL) {
-            goto log;
-        }
-    }
-    if(strlen(abs_path) >= PATH_MAX) {
-        free(abs_path);
-        errno = ENAMETOOLONG;
-        goto log;
-    }
-    if(resolved_path != NULL) {
-        memcpy(resolved_path, abs_path, strlen(abs_path)+1);
-        free(abs_path);
-        re = resolved_path;
+    char *cfs_path = get_cfs_path(path);
+    if(g_hook && cfs_path != NULL) {
+        re = cfs_realpath(cfs_path, resolved_path);
     } else {
-        re = abs_path;
+        re = libc_realpath(path, resolved_path);
     }
-
-log:
+    free(cfs_path);
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, path:%s, resolved_path:%s, re:%s\n", __func__, path == NULL ? "" : path, resolved_path == NULL ? "" : resolved_path, re == NULL ? "" : re);
+    log_debug("hook %s, is_cfs: %d, pathname:%s, re:%s\n", __func__, cfs_path != NULL, path, re);
     #endif
     return re;
 }
@@ -912,6 +953,10 @@ int real_linkat(int olddirfd, const char *old_pathname,
 
 // symlink a CFS linkpath to ordinary file target is not allowed
 int real_symlinkat(const char *target, int dirfd, const char *linkpath) {
+    if(target[0] != '/') {
+        errno = EINVAL;
+        return -1;
+    }
     char *t = get_cfs_path(target);
     bool is_cfs = false;
     char *path = NULL;
@@ -982,21 +1027,32 @@ ssize_t real_readlinkat(int dirfd, const char *pathname, char *buf, size_t size)
     log_debug("hook %s\n", __func__);
     #endif
     bool is_cfs = false;
-    char *path = NULL;
+    char *cfs_path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
-        path = get_cfs_path(pathname);
-        is_cfs = (path != NULL);
+        cfs_path = get_cfs_path(pathname);
+        is_cfs = (cfs_path != NULL);
     } else {
         is_cfs = fd_in_cfs(dirfd);
         if(is_cfs)
             dirfd = get_cfs_fd(dirfd);
     }
 
-    const char *cfs_path = (path == NULL) ? pathname : path;
     ssize_t re;
-    re = g_hook && is_cfs ? cfs_errno_ssize_t(cfs_readlinkat(g_client_info.cfs_client_id, dirfd, cfs_path, buf, size)) :
-           libc_readlinkat(dirfd, pathname, buf, size);
-    free(path);
+    if(g_hook && is_cfs) {
+        re = cfs_errno_ssize_t(cfs_readlinkat(g_client_info.cfs_client_id, dirfd, cfs_path, buf, size));
+        if(re > 0 && buf[0] == '/') {
+            char* tmp_path = cat_path(g_client_info.mount_point, &buf[1]);
+            re = strlen(g_client_info.mount_point) + re;
+            if(re > size) {
+                re = size;
+            }
+            memcpy(buf, tmp_path, re);
+            free(tmp_path);
+        }
+    } else {
+        re = libc_readlinkat(dirfd, pathname, buf, size);
+    }
+    free(cfs_path);
     return re;
 }
 
@@ -1663,6 +1719,11 @@ ssize_t real_read(int fd, void *buf, size_t count) {
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
+        file_t *f = get_open_file(fd);
+        if(f == NULL) {
+            goto log;
+        }
+        offset = f->pos;
         #ifdef DUP_TO_LOCAL
         char *buf_local = (char *)malloc(count);
         if(buf_local == NULL) {
@@ -1672,14 +1733,12 @@ ssize_t real_read(int fd, void *buf, size_t count) {
         if(libc_fd & CFS_FD_MASK) {
             libc_fd = fd;
         }
-        re_local = libc_read(libc_fd, buf_local, count);
-        #endif
-        file_t *f = get_open_file(fd);
-        if(f == NULL) {
+        if(libc_lseek(libc_fd, offset, SEEK_SET) < 0) {
             goto log;
         }
+        re_local = libc_read(libc_fd, buf_local, count);
+        #endif
         bool hasRefreshed = false;
-        offset = f->pos;
         size = f->inode_info->size;
         re_cache = read_cache(f->inode_info, offset, count, buf);
         // If the read range exceed the current file size, refresh ek in case of the file being appended by other clients.
@@ -1716,27 +1775,21 @@ ssize_t real_read(int fd, void *buf, size_t count) {
         // 1. read local -> write local -> write CFS -> read CFS
         // 2. write local -> read local -> read CFS -> write CFS
         // In contition 2, write CFS may be concurrent with read CFS, resulting in last bytes read being zero.
-        if(re_local > 0 && re > 0 && memcmp(buf, buf_local, re)) {
+        ssize_t min_res = re_local < re ? re_local: re;
+        if(re_local > 0 && re > 0 && memcmp(buf, buf_local, min_res)) {
             const char *fd_path = get_fd_path(fd);
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d\n", __func__, is_cfs, fd, fd_path, count, offset, re);
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re_cfs:%d, re_local:%d\n", __func__, is_cfs, fd, fd_path, count, offset, re, re_local);
             printf("CFS:\n");
-            int total = 0;
             for(int i = 0; i < re; i++) {
-                if(++total > 1024) {
-                    break;
-                }
                 printf("%x ", ((unsigned char*)buf)[i]);
             }
             printf("\nlocal:\n");
-            total = 0;
-            for(int i = 0; i < re; i++) {
-                if(++total > 1024) {
-                    break;
-                }
+            for(int i = 0; i < re_local; i++) {
                 printf("%x ", ((unsigned char*)buf_local)[i]);
             }
             printf("\n");
             cfs_flush_log();
+            exit(1);
         }
         free(buf_local);
         #endif
@@ -1763,6 +1816,7 @@ ssize_t real_readv(int fd, const struct iovec *iov, int iovcnt) {
         return -1;
     }
     ssize_t re = -1;
+    off_t offset;
     int libc_fd = fd;
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
@@ -1770,6 +1824,7 @@ ssize_t real_readv(int fd, const struct iovec *iov, int iovcnt) {
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
+        offset = f->pos;
         re = cfs_errno_ssize_t(cfs_preadv(g_client_info.cfs_client_id, fd, iov, iovcnt, f->pos));
         if(re > 0) {
             f->pos += re;
@@ -1786,17 +1841,28 @@ ssize_t real_readv(int fd, const struct iovec *iov, int iovcnt) {
         if(libc_fd & CFS_FD_MASK) {
             libc_fd = fd;
         }
-        off_t offset = lseek(libc_fd, 0, SEEK_CUR);
+        if(libc_lseek(libc_fd, offset, SEEK_SET) < 0) {
+            goto log;
+        }
         re = libc_readv(libc_fd, iov_local, iovcnt);
         if(re <= 0) {
             goto log;
         }
         for(int i = 0; i < iovcnt; i++) {
             if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
-                re = -1;
-                cfs_flush_log();
                 const char *fd_path = get_fd_path(fd);
                 log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%ld, iovcnt:%d, iov_idx:%d, iov_len:%d\n", __func__, is_cfs, fd, fd_path, offset, iovcnt, i, iov[i].iov_len);
+                printf("CFS:\n");
+                for(int j = 0; j < iov[i].iov_len; j++) {
+                    printf("%x ", ((unsigned char*)iov[i].iov_base)[j]);
+                }
+                printf("\nlocal:\n");
+                for(int j = 0; j < iov[i].iov_len; j++) {
+                    printf("%x ", ((unsigned char*)iov_local[i].iov_base)[j]);
+                }
+                printf("\n");
+                cfs_flush_log();
+                exit(1);
             }
             free(iov_local[i].iov_base);
         }
@@ -1865,27 +1931,21 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
             re = re_cache;
         }
         #ifdef DUP_TO_LOCAL
-        if(re_local > 0 && re > 0 && memcmp(buf, buf_local, re)) {
+        ssize_t min_res = re_local < re ? re_local: re;
+        if(re_local > 0 && re > 0 && memcmp(buf, buf_local, min_res)) {
             const char *fd_path = get_fd_path(fd);
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d\n", __func__, is_cfs, fd, fd_path, count, offset, re);
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re_cfs:%d, re_local:%d\n", __func__, is_cfs, fd, fd_path, count, offset, re, re_local);
             printf("CFS:\n");
-            int total = 0;
             for(int i = 0; i < re; i++) {
-                if(++total > 1024) {
-                    break;
-                }
                 printf("%x ", ((unsigned char*)buf)[i]);
             }
             printf("\nlocal:\n");
-            total = 0;
-            for(int i = 0; i < re; i++) {
-                if(++total > 1024) {
-                    break;
-                }
+            for(int i = 0; i < re_local; i++) {
                 printf("%x ", ((unsigned char*)buf_local)[i]);
             }
             printf("\n");
             cfs_flush_log();
+            exit(1);
         }
         free(buf_local);
         #endif
@@ -1927,10 +1987,19 @@ ssize_t real_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
         }
         for(int i = 0; i < iovcnt; i++) {
             if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
-                re = -1;
-                cfs_flush_log();
                 const char *fd_path = get_fd_path(fd);
                 log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%ld, iov_idx: %d\n", __func__, is_cfs, fd, fd_path, iovcnt, offset, i);
+                printf("CFS:\n");
+                for(int j = 0; j < iov[i].iov_len; j++) {
+                    printf("%x ", ((unsigned char*)iov[i].iov_base)[j]);
+                }
+                printf("\nlocal:\n");
+                for(int j = 0; j < iov[i].iov_len; j++) {
+                    printf("%x ", ((unsigned char*)iov_local[i].iov_base)[j]);
+                }
+                printf("\n");
+                cfs_flush_log();
+                exit(1);
             }
             free(iov_local[i].iov_base);
         }

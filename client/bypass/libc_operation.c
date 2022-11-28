@@ -33,6 +33,7 @@ static fdopendir_t func_fdopendir;
 static readdir_t func_readdir;
 static closedir_t func_closedir;
 static realpath_t func_realpath;
+static realpath_chk_t func_realpath_chk;
 
 static linkat_t func_linkat;
 static symlinkat_t func_symlinkat;
@@ -229,6 +230,14 @@ char *libc_realpath(const char *path, char *resolved_path) {
     }
     return func_realpath(path, resolved_path);
 }
+
+char *libc_realpath_chk(const char *buf, char *resolved, size_t resolvedlen) {
+    if(func_realpath_chk == NULL) {
+        func_realpath_chk = (realpath_chk_t)dlsym(RTLD_NEXT, "__realpath_chk");
+    }
+    return func_realpath_chk(buf, resolved, resolvedlen);
+}
+
 
 int libc_linkat(int olddirfd, const char *oldpath,
                   int newdirfd, const char *newpath, int flags) {

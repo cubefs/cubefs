@@ -28,6 +28,7 @@ static fdopendir_t real_fdopendir;
 static readdir_t real_readdir;
 static closedir_t real_closedir;
 static realpath_t real_realpath;
+static realpath_chk_t real_realpath_chk;
 
 static linkat_t real_linkat;
 static symlinkat_t real_symlinkat;
