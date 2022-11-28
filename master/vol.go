@@ -519,8 +519,8 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) (writableMpCount int) {
 	)
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID)
-		if doSplit {
-			nextStart := mp.Start + mp.MaxInodeID + defaultMetaPartitionInodeIDStep
+		if doSplit && mp.MaxInodeID != 0 {
+			nextStart := mp.MaxInodeID + defaultMetaPartitionInodeIDStep
 			if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
 				Warn(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]", c.Name, vol.Name, mp.PartitionID, err))
 			}
