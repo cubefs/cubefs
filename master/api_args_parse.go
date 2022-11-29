@@ -1312,3 +1312,29 @@ func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err e
 	}
 	return strconv.ParseUint(value, 10, 64)
 }
+
+func parseSetConfigParam(r *http.Request) (key string, value string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if value = r.FormValue(cfgmetaPartitionInodeIdStep); value == "" {
+		err = keyNotFound("config")
+		return
+	}
+	key = cfgmetaPartitionInodeIdStep
+	log.LogInfo("parseSetConfigParam success.")
+	return
+}
+
+func parseGetConfigParam(r *http.Request) (key string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if key = r.FormValue(configKey); key == "" {
+		err = keyNotFound("config")
+		return
+	}
+	log.LogInfo("parseGetConfigParam success.")
+	return
+}
