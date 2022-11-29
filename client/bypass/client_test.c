@@ -298,6 +298,9 @@ void testDup() {
 
     size = write(newfd2, "test", 4);
     assertf(size == -1, "write test to close fd returning %d, expect -1", size);
+
+    res = close(dirfd);
+    assertf(res == 0, "close dir returning %d", res);
 }
 
 void testUnlinkAndRename() {
