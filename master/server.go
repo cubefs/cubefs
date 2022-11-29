@@ -298,6 +298,12 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
+	metaPartitionInodeIdStep := cfg.GetString(cfgmetaPartitionInodeIdStep)
+	if metaPartitionInodeIdStep != "" {
+		if m.config.MetaPartitionInodeIdStep, err = strconv.ParseUint(metaPartitionInodeIdStep, 10, 0); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.electionTick = int(cfg.GetFloat(cfgElectionTick))

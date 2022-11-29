@@ -143,13 +143,13 @@ func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
 }
 
 //canSplit caller must be add lock
-func (mp *MetaPartition) canSplit(end uint64) (err error) {
+func (mp *MetaPartition) canSplit(end uint64, metaPartitionInodeIdStep uint64) (err error) {
 	if end < mp.Start {
 		err = fmt.Errorf("end[%v] less than mp.start[%v]", end, mp.Start)
 		return
 	}
 	// overflow
-	if end > (defaultMaxMetaPartitionInodeID - defaultMetaPartitionInodeIDStep) {
+	if end > (defaultMaxMetaPartitionInodeID - metaPartitionInodeIdStep) {
 		msg := fmt.Sprintf("action[updateInodeIDRange] vol[%v] partitionID[%v] nextStart[%v] "+
 			"to prevent overflow ,not update end", mp.volName, mp.PartitionID, end)
 		log.LogWarn(msg)
@@ -274,7 +274,7 @@ func (mp *MetaPartition) checkLeader(clusterID string) {
 	return
 }
 
-func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64) (doSplit bool) {
+func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64, metaPartitionInodeIdStep uint64) (doSplit bool) {
 	mp.Lock()
 	defer mp.Unlock()
 
@@ -299,7 +299,7 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 				continue
 			}
 
-			if !mr.metaNode.reachesThreshold() && mp.InodeCount < defaultMetaPartitionInodeIDStep {
+			if !mr.metaNode.reachesThreshold() && mp.InodeCount < metaPartitionInodeIdStep {
 				continue
 			}
 
@@ -307,7 +307,7 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 				log.LogInfof("split[checkStatus] need split,id:%v,status:%v,replicaNum:%v,InodeCount:%v", mp.PartitionID, mp.Status, mp.ReplicaNum, mp.InodeCount)
 				doSplit = true
 			} else {
-				if mr.metaNode.reachesThreshold() || mp.End-mp.MaxInodeID > 2*defaultMetaPartitionInodeIDStep {
+				if mr.metaNode.reachesThreshold() || mp.End-mp.MaxInodeID > 2*metaPartitionInodeIdStep {
 					log.LogInfof("split[checkStatus],change state,id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v, inodeCount:%v, MaxInodeID:%v, start:%v, end:%v",
 						mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts, mp.InodeCount, mp.MaxInodeID, mp.Start, mp.End)
 					mp.Status = proto.ReadOnly

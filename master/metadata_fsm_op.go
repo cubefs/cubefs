@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"golang.org/x/time/rate"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	bsProto "github.com/cubefs/cubefs/proto"
@@ -53,6 +54,7 @@ type clusterValue struct {
 	FileStatsEnable             bool
 	ClusterUuid                 string
 	ClusterUuidEnable           bool
+	MetaPartitionInodeIdStep    uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -76,6 +78,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		FileStatsEnable:             c.fileStatsEnable,
 		ClusterUuid:                 c.clusterUuid,
 		ClusterUuidEnable:           c.clusterUuidEnable,
+		MetaPartitionInodeIdStep:    c.cfg.MetaPartitionInodeIdStep,
 	}
 	return cv
 }
@@ -841,6 +844,10 @@ func (c *Cluster) updateMaxDpCntLimit(val uint64) {
 	atomic.StoreUint64(&c.cfg.MaxDpCntLimit, val)
 }
 
+func (c *Cluster) updateInodeIdStep(val uint64) {
+	atomic.StoreUint64(&c.cfg.MetaPartitionInodeIdStep, val)
+}
+
 func (c *Cluster) loadZoneValue() (err error) {
 	var ok bool
 	result, err := c.fsm.store.SeekForPrefix([]byte(zonePrefix))
@@ -948,6 +955,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		c.updateDataNodeAutoRepairLimit(cv.DataNodeAutoRepairLimitRate)
 		c.updateMaxDpCntLimit(cv.MaxDpCntLimit)
+		c.updateInodeIdStep(cv.MetaPartitionInodeIdStep)
 
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 
