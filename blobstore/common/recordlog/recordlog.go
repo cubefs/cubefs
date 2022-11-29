@@ -24,7 +24,11 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/largefile"
 )
 
-const DefaultBufferSizeKB = 16
+const (
+	DefaultBufferSizeKB = 16
+	DefaultBackup       = 20
+	DefaultChunkBits    = 29
+)
 
 type Encoder interface {
 	Encode(v interface{}) error
@@ -47,6 +51,7 @@ func (e *NopEncoder) Close() error {
 // recode log encode
 type Config struct {
 	Dir       string `json:"dir"`
+	Backup    int    `json:"backup"`
 	ChunkBits uint   `json:"chunkbits"`
 }
 
@@ -62,10 +67,17 @@ func NewEncoder(conf *Config) (e Encoder, err error) {
 	if conf == nil {
 		return &NopEncoder{}, nil
 	}
+	if conf.Backup <= 0 {
+		conf.Backup = DefaultBackup
+	}
+	if conf.ChunkBits == 0 {
+		conf.ChunkBits = DefaultChunkBits
+	}
 	var f largefile.LargeFile
 	conf2 := largefile.Config{
 		Path:              conf.Dir,
 		FileChunkSizeBits: conf.ChunkBits,
+		Backup:            conf.Backup,
 		Suffix:            ".log",
 	}
 
@@ -109,10 +121,16 @@ func NewDecoder(conf *Config) (d Decoder, err error) {
 	if conf == nil {
 		return nil, errors.New("conf is nil")
 	}
-
+	if conf.Backup <= 0 {
+		conf.Backup = DefaultBackup
+	}
+	if conf.ChunkBits == 0 {
+		conf.ChunkBits = DefaultChunkBits
+	}
 	conf2 := largefile.Config{
 		Path:              conf.Dir,
 		FileChunkSizeBits: conf.ChunkBits,
+		Backup:            conf.Backup,
 		Suffix:            ".log",
 	}
 
