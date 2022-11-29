@@ -282,7 +282,7 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 		if index != 0 {
 			start = end + 1
 		}
-		end = defaultMetaPartitionInodeIDStep * uint64(index+1)
+		end = gConfig.MetaPartitionInodeIdStep * uint64(index+1)
 		if index == count-1 {
 			end = defaultMaxMetaPartitionInodeID
 		}
@@ -449,7 +449,8 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var tasks []*proto.AdminTask
-	vol.checkSplitMetaPartition(c)
+	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
+	vol.checkSplitMetaPartition(c, metaPartitionInodeIdStep)
 	maxPartitionID := vol.maxPartitionID()
 	mps := vol.cloneMetaPartitionMap()
 	var (
@@ -457,12 +458,12 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		err     error
 	)
 	for _, mp := range mps {
-		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID)
+		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep)
 		if doSplit {
-			nextStart := mp.MaxInodeID + defaultMetaPartitionInodeIDStep
+			nextStart := mp.MaxInodeID + metaPartitionInodeIdStep
 			log.LogInfof(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits start[%v] maxinodeid:[%v] default step:[%v],nextStart[%v]",
-				c.Name, vol.Name, mp.PartitionID, mp.Start, mp.MaxInodeID, defaultMetaPartitionInodeIDStep, nextStart))
-			if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
+				c.Name, vol.Name, mp.PartitionID, mp.Start, mp.MaxInodeID, metaPartitionInodeIdStep, nextStart))
+			if err = vol.splitMetaPartition(c, mp, nextStart, metaPartitionInodeIdStep); err != nil {
 				Warn(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]", c.Name, vol.Name, mp.PartitionID, err))
 			}
 		}
@@ -476,7 +477,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	c.addMetaNodeTasks(tasks)
 }
 
-func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
+func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeIdStep uint64) {
 	maxPartitionID := vol.maxPartitionID()
 
 	vol.mpsLock.RLock()
@@ -505,8 +506,8 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
 		Warn(c.Name, msg)
 		return
 	}
-	end := partition.MaxInodeID + defaultMetaPartitionInodeIDStep
-	if err := vol.splitMetaPartition(c, partition, end); err != nil {
+	end := partition.MaxInodeID + metaPartitionInodeIdStep
+	if err := vol.splitMetaPartition(c, partition, end, metaPartitionInodeIdStep); err != nil {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta partition[%v] failed,err[%v]\n",
 			partition.PartitionID, err)
 		Warn(c.Name, msg)
@@ -1007,11 +1008,11 @@ func (vol *Vol) String() string {
 		vol.Name, vol.dpReplicaNum, vol.mpReplicaNum, vol.Capacity, vol.Status)
 }
 
-func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (nextMp *MetaPartition, err error) {
+func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64) (nextMp *MetaPartition, err error) {
 	mp.Lock()
 	defer mp.Unlock()
 
-	if err = mp.canSplit(end); err != nil {
+	if err = mp.canSplit(end, metaPartitionInodeIdStep); err != nil {
 		return
 	}
 
@@ -1049,7 +1050,7 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) 
 	return
 }
 
-func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (err error) {
+func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64) (err error) {
 	if c.DisableAutoAllocate {
 		return
 	}
@@ -1063,7 +1064,7 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (e
 		return
 	}
 
-	nextMp, err := vol.doSplitMetaPartition(c, mp, end)
+	nextMp, err := vol.doSplitMetaPartition(c, mp, end, metaPartitionInodeIdStep)
 	if err != nil {
 		return
 	}

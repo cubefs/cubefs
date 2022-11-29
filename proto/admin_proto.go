@@ -61,6 +61,8 @@ const (
 	AdminUpdateZoneExcludeRatio               = "/admin/updateZoneExcludeRatio"
 	AdminSetNodeRdOnly                        = "/admin/setNodeRdOnly"
 	AdminSetDpRdOnly                          = "/admin/setDpRdOnly"
+	AdminSetConfig                            = "/admin/setConfig"
+	AdminGetConfig                            = "/admin/getConfig"
 	AdminDataPartitionChangeLeader            = "/dataPartition/changeleader"
 	AdminChangeMasterLeader                   = "/master/changeleader"
 	AdminOpFollowerPartitionsRead             = "/master/opFollowerPartitionRead"

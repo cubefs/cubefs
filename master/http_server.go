@@ -184,6 +184,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.RaftStatus).
 		HandlerFunc(m.getRaftStatus)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminClusterStat).HandlerFunc(m.clusterStat)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetConfig).
+		HandlerFunc(m.setConfigHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetConfig).
+		HandlerFunc(m.getConfigHandler)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateDecommissionLimit).

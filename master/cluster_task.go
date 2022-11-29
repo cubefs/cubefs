@@ -1052,13 +1052,14 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		return
 	}
 	var end uint64
+	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
 	if mr.MaxInodeID <= 0 {
-		end = mr.Start + defaultMetaPartitionInodeIDStep
+		end = mr.Start + metaPartitionInodeIdStep
 	} else {
-		end = mr.MaxInodeID + defaultMetaPartitionInodeIDStep
+		end = mr.MaxInodeID + metaPartitionInodeIdStep
 	}
 	log.LogWarnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
-	if err = vol.splitMetaPartition(c, mp, end); err != nil {
+	if err = vol.splitMetaPartition(c, mp, end, metaPartitionInodeIdStep); err != nil {
 		log.LogError(err)
 	}
 	return

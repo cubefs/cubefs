@@ -18,23 +18,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/stat"
 	"math"
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"golang.org/x/time/rate"
-
-	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 func apiToMetricsName(api string) (reqMetricName string) {
@@ -4330,4 +4329,71 @@ func FormatFloatFloor(num float64, decimal int) (float64, error) {
 
 	res := strconv.FormatFloat(math.Floor(num*d)/d, 'f', -1, 64)
 	return strconv.ParseFloat(res, 64)
+}
+
+func (m *Server) setConfigHandler(w http.ResponseWriter, r *http.Request) {
+	key, value, err := parseSetConfigParam(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	log.LogInfof("[setConfigHandler] set config key[%v], value[%v]", key, value)
+
+	err = m.setConfig(key, value)
+	if err != nil {
+		log.LogErrorf("[setConfigHandler] set config key[%v], value[%v], err (%s)", key, value, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set config key[%v], value[%v] success", key, value)))
+	return
+}
+
+func (m *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
+	key, err := parseGetConfigParam(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	log.LogInfof("[getConfigHandler] get config key[%v]", key)
+	value, err := m.getConfig(key)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(value))
+}
+
+func (m *Server) setConfig(key string, value string) (err error) {
+	var metaPartitionInodeIdStep uint64
+	if key == cfgmetaPartitionInodeIdStep {
+		if metaPartitionInodeIdStep, err = strconv.ParseUint(value, 10, 64); err != nil {
+			return err
+		}
+		oldValue := m.config.MetaPartitionInodeIdStep
+		m.config.MetaPartitionInodeIdStep = metaPartitionInodeIdStep
+		if err = m.cluster.syncPutCluster(); err != nil {
+			m.config.MetaPartitionInodeIdStep = oldValue
+			log.LogErrorf("setConfig syncPutCluster fail err %v", err)
+			return err
+		}
+	} else {
+		err = keyNotFound("config")
+	}
+	return err
+}
+
+func (m *Server) getConfig(key string) (value string, err error) {
+
+	if key == cfgmetaPartitionInodeIdStep {
+		v := m.config.MetaPartitionInodeIdStep
+		value = strconv.FormatUint(v, 10)
+	} else {
+		err = keyNotFound("config")
+	}
+	return value, err
 }

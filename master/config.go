@@ -42,6 +42,7 @@ const (
 	faultDomain                         = "faultDomain"
 	cfgDomainBatchGrpCnt                = "faultDomainGrpBatchCnt"
 	cfgDomainBuildAsPossible            = "faultDomainBuildAsPossible"
+	cfgmetaPartitionInodeIdStep         = "metaPartitionInodeIdStep"
 )
 
 //default value
@@ -111,6 +112,7 @@ type clusterConfig struct {
 	DataPartitionUsageThreshold         float64
 	QosMasterAcceptLimit                uint64
 	DirChildrenNumLimit                 uint32
+	MetaPartitionInodeIdStep            uint64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -131,6 +133,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.diffSpaceUsage = defaultDiffSpaceUsage
 	cfg.QosMasterAcceptLimit = defaultMasterMinQosAccept
 	cfg.DirChildrenNumLimit = pt.DefaultDirChildrenNumLimit
+	cfg.MetaPartitionInodeIdStep = defaultMetaPartitionInodeIDStep
 	return
 }
 
