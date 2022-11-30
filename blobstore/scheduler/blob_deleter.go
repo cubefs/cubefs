@@ -565,19 +565,19 @@ func (d *deleteTopicConsumer) hasBrokenDisk(vid proto.Vid) bool {
 }
 
 func (d *deleteTopicConsumer) deleteWithCheckVolConsistency(ctx context.Context, vid proto.Vid, bid proto.BlobID) error {
-	return DoubleCheckedRun(ctx, d.clusterTopology, vid, func(info *client.VolumeInfoSimple) error {
+	return DoubleCheckedRun(ctx, d.clusterTopology, vid, func(info *client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) {
 		return d.deleteBlob(ctx, info, bid)
 	})
 }
 
-func (d *deleteTopicConsumer) deleteBlob(ctx context.Context, volInfo *client.VolumeInfoSimple, bid proto.BlobID) (err error) {
-	newVol, err := d.markDelBlob(ctx, volInfo, bid)
+func (d *deleteTopicConsumer) deleteBlob(ctx context.Context, volInfo *client.VolumeInfoSimple, bid proto.BlobID) (newVol *client.VolumeInfoSimple, err error) {
+	newVol, err = d.markDelBlob(ctx, volInfo, bid)
 	if err != nil {
 		return
 	}
 
-	_, err = d.delBlob(ctx, newVol, bid)
-	return err
+	newVol, err = d.delBlob(ctx, newVol, bid)
+	return
 }
 
 func (d *deleteTopicConsumer) markDelBlob(ctx context.Context, volInfo *client.VolumeInfoSimple, bid proto.BlobID) (*client.VolumeInfoSimple, error) {

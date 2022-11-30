@@ -24,6 +24,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -233,4 +234,76 @@ func TestNewShardRepairMgr(t *testing.T) {
 
 	_, err = NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli)
 	require.Error(t, err)
+}
+
+func TestTryRepair(t *testing.T) {
+	ctx := context.Background()
+	ctr := gomock.NewController(t)
+	volume := MockGenVolInfo(proto.Vid(1), codemode.EC3P3, proto.VolumeStatusActive)
+	{
+		// no host for shard repair
+		mgr := newShardRepairMgr(t)
+		selector := mocks.NewMockSelector(ctr)
+		selector.EXPECT().GetRandomN(any).Return(nil)
+		mgr.blobnodeSelector = selector
+		doneVolume, err := mgr.tryRepair(ctx, volume, proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{0}})
+		require.ErrorIs(t, err, ErrBlobnodeServiceUnavailable)
+		require.True(t, doneVolume.EqualWith(volume))
+	}
+	{
+		// repair success
+		mgr := newShardRepairMgr(t)
+		doneVolume, err := mgr.tryRepair(ctx, volume, proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{0}})
+		require.NoError(t, err)
+		require.True(t, doneVolume.EqualWith(volume))
+	}
+	{
+		// repair failed and update volume failed
+		mgr := newShardRepairMgr(t)
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(errcode.ErrDestReplicaBad)
+		mgr.blobnodeCli = blobnode
+
+		clusterTopology := NewMockClusterTopology(ctr)
+		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, ErrFrequentlyUpdate)
+		mgr.clusterTopology = clusterTopology
+
+		doneVolume, err := mgr.tryRepair(ctx, volume, proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{0}})
+		require.ErrorIs(t, err, errcode.ErrDestReplicaBad)
+		require.True(t, doneVolume.EqualWith(volume))
+	}
+	{
+		// repair failed and update volume success, volume not change
+		mgr := newShardRepairMgr(t)
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(errcode.ErrDestReplicaBad)
+		mgr.blobnodeCli = blobnode
+
+		clusterTopology := NewMockClusterTopology(ctr)
+		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, nil)
+		mgr.clusterTopology = clusterTopology
+
+		doneVolume, err := mgr.tryRepair(ctx, volume, proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{0}})
+		require.ErrorIs(t, err, errcode.ErrDestReplicaBad)
+		require.True(t, doneVolume.EqualWith(volume))
+	}
+	{
+		// repair failed and update volume success, volume change and repair success
+		mgr := newShardRepairMgr(t)
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(errcode.ErrDestReplicaBad)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil)
+		mgr.blobnodeCli = blobnode
+
+		clusterTopology := NewMockClusterTopology(ctr)
+		newVolume := MockGenVolInfo(proto.Vid(1), codemode.EC3P3, proto.VolumeStatusActive)
+		newVolume.VunitLocations[5].Vuid += 1
+		clusterTopology.EXPECT().UpdateVolume(any).Return(newVolume, nil)
+		mgr.clusterTopology = clusterTopology
+
+		doneVolume, err := mgr.tryRepair(ctx, volume, proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{0}})
+		require.NoError(t, err)
+		require.False(t, doneVolume.EqualWith(volume))
+		require.True(t, doneVolume.EqualWith(newVolume))
+	}
 }

@@ -352,21 +352,21 @@ func (s *ShardRepairMgr) handleOneMsg(ctx context.Context, msg *sarama.ConsumerM
 }
 
 func (s *ShardRepairMgr) repairWithCheckVolConsistency(ctx context.Context, repairMsg proto.ShardRepairMsg) error {
-	return DoubleCheckedRun(ctx, s.clusterTopology, repairMsg.Vid, func(info *client.VolumeInfoSimple) error {
+	return DoubleCheckedRun(ctx, s.clusterTopology, repairMsg.Vid, func(info *client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) {
 		return s.tryRepair(ctx, info, repairMsg)
 	})
 }
 
-func (s *ShardRepairMgr) tryRepair(ctx context.Context, volInfo *client.VolumeInfoSimple, repairMsg proto.ShardRepairMsg) error {
+func (s *ShardRepairMgr) tryRepair(ctx context.Context, volInfo *client.VolumeInfoSimple, repairMsg proto.ShardRepairMsg) (*client.VolumeInfoSimple, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	err := s.repairShard(ctx, volInfo, repairMsg)
+	newVol, err := s.repairShard(ctx, volInfo, repairMsg)
 	if err == nil {
-		return nil
+		return newVol, nil
 	}
 
 	if err == ErrBlobnodeServiceUnavailable {
-		return err
+		return volInfo, err
 	}
 
 	newVol, err1 := s.clusterTopology.UpdateVolume(volInfo.Vid)
@@ -374,23 +374,20 @@ func (s *ShardRepairMgr) tryRepair(ctx context.Context, volInfo *client.VolumeIn
 		// if update volInfo failed or volInfo not updated, don't need retry
 		span.Warnf("new volInfo is same or clusterTopology.UpdateVolume failed: vid[%d], vol cache update err[%+v], repair err[%+v]",
 			volInfo.Vid, err1, err)
-		return err
+		return volInfo, err
 	}
 
-	if newVol.EqualWith(volInfo) {
-		span.Errorf("volInfo not updated: volInfo[%+v], newVolInfo[%+v]", volInfo, newVol)
-	}
 	return s.repairShard(ctx, newVol, repairMsg)
 }
 
-func (s *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.VolumeInfoSimple, repairMsg proto.ShardRepairMsg) (err error) {
+func (s *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.VolumeInfoSimple, repairMsg proto.ShardRepairMsg) (*client.VolumeInfoSimple, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Infof("repair shard: msg[%+v], vol info[%+v]", repairMsg, volInfo)
 
 	hosts := s.blobnodeSelector.GetRandomN(1)
 	if len(hosts) == 0 {
-		return ErrBlobnodeServiceUnavailable
+		return volInfo, ErrBlobnodeServiceUnavailable
 	}
 	workerHost := hosts[0]
 
@@ -402,16 +399,16 @@ func (s *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.Volume
 		Reason:   repairMsg.Reason,
 	}
 
-	err = s.blobnodeCli.RepairShard(ctx, workerHost, task)
+	err := s.blobnodeCli.RepairShard(ctx, workerHost, task)
 	if err == nil {
-		return nil
+		return volInfo, nil
 	}
 
 	if isOrphanShard(err) {
 		s.saveOrphanShard(ctx, repairMsg)
 	}
 
-	return err
+	return volInfo, err
 }
 
 func (s *ShardRepairMgr) saveOrphanShard(ctx context.Context, repairMsg proto.ShardRepairMsg) {

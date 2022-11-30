@@ -482,28 +482,29 @@ func (c *VolumeCache) UpdateVolume(vid proto.Vid) (*client.VolumeInfoSimple, err
 //
 // if delete on old relation, there will has garbage shard in new chunk. ==> garbage shard
 // if repair on old relation, there still is missing shard in new chunk. ==> missing shard
-func DoubleCheckedRun(ctx context.Context, c IClusterTopology, vid proto.Vid, task func(*client.VolumeInfoSimple) error) error {
+func DoubleCheckedRun(ctx context.Context, c IClusterTopology, vid proto.Vid, task func(*client.VolumeInfoSimple) (*client.VolumeInfoSimple, error)) error {
 	span := trace.SpanFromContextSafe(ctx)
-	vol, err := c.GetVolume(vid)
+	volume, err := c.GetVolume(vid)
 	if err != nil {
 		return err
 	}
 
 	for range [3]struct{}{} {
-		if err := task(vol); err != nil {
-			return err
-		}
-
-		newVol, err := c.GetVolume(vol.Vid)
+		taskDoneVolume, err := task(volume)
 		if err != nil {
 			return err
 		}
-		if newVol.EqualWith(vol) {
+
+		newVolume, err := c.GetVolume(volume.Vid)
+		if err != nil {
+			return err
+		}
+		if taskDoneVolume.EqualWith(newVolume) {
 			return nil
 		}
 
-		span.Warnf("volume changed from [%+v] to [%+v]", vol, newVol)
-		vol = newVol
+		span.Warnf("volume changed from [%+v] to [%+v]", volume, newVolume)
+		volume = newVolume
 	}
 	return errVolumeMissmatch
 }

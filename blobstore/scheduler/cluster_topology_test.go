@@ -19,11 +19,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
-
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 )
@@ -191,46 +190,70 @@ func TestVolumeCache(t *testing.T) {
 func TestDoubleCheckedRun(t *testing.T) {
 	ctr := gomock.NewController(t)
 	ctx := context.Background()
+	volume := &client.VolumeInfoSimple{Vid: proto.Vid(1)}
 	{
+		// get volume failed and return
 		c := NewMockClusterTopology(ctr)
 		c.EXPECT().GetVolume(any).Return(nil, errMock)
-		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) error { return nil })
+		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) { return volume, nil })
 		require.ErrorIs(t, err, errMock)
 	}
 	{
+		// do task failed and not check again
 		c := NewMockClusterTopology(ctr)
 		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{}, nil)
-		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) error { return errMock })
+		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) { return volume, errMock })
 		require.ErrorIs(t, err, errMock)
 	}
 	{
+		// do task success and check task: get volume failed in check phase
 		c := NewMockClusterTopology(ctr)
 		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{}, nil)
 		c.EXPECT().GetVolume(any).Return(nil, errMock)
-		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) error { return nil })
+		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) { return volume, nil })
 		require.ErrorIs(t, err, errMock)
 	}
 	{
+		// do task success and check task: volume change after task done and do it again
 		c := NewMockClusterTopology(ctr)
-		c.EXPECT().GetVolume(any).Times(2).Return(&client.VolumeInfoSimple{}, nil)
-		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) error { return nil })
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{}, nil)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{}, nil)
+		c.EXPECT().GetVolume(any).Return(volume, nil)
+		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) { return volume, nil })
 		require.NoError(t, err)
 	}
 	{
+		// do task success and check task: volume change when doing task, and no need to do it
 		c := NewMockClusterTopology(ctr)
+		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{}, nil)
+		c.EXPECT().GetVolume(any).Return(volume, nil)
+		err := DoubleCheckedRun(ctx, c, 1, func(*client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) { return volume, nil })
+		require.NoError(t, err)
+	}
+	{
+		// do task success and check task: max times retry
+		c := NewMockClusterTopology(ctr)
+		retry := 0
 		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 1}}}, nil)
 		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 2}}}, nil)
 		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 2}}}, nil)
-		err := DoubleCheckedRun(context.Background(), c, 1, func(*client.VolumeInfoSimple) error { return nil })
+		err := DoubleCheckedRun(context.Background(), c, 1, func(*client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) {
+			retry++
+			if retry == 2 {
+				return &client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 2}}}, nil
+			}
+			return volume, nil
+		})
 		require.NoError(t, err)
 	}
 	{
+		// do task success and check task: max times retry and do task failed
 		c := NewMockClusterTopology(ctr)
 		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 1}}}, nil)
 		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 2}}}, nil)
 		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 3}}}, nil)
 		c.EXPECT().GetVolume(any).Return(&client.VolumeInfoSimple{Vid: 1, VunitLocations: []proto.VunitLocation{{Vuid: 4}}}, nil)
-		err := DoubleCheckedRun(context.Background(), c, 1, func(*client.VolumeInfoSimple) error { return nil })
+		err := DoubleCheckedRun(context.Background(), c, 1, func(*client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) { return volume, nil })
 		require.ErrorIs(t, err, errVolumeMissmatch)
 	}
 }

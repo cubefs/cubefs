@@ -26,6 +26,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -128,7 +129,7 @@ func TestDeleteTopicConsumer(t *testing.T) {
 		mockTopicConsumeDelete.consumeAndDelete(consumer, 2)
 	}
 	{
-		// return 2 diff messages adn consume success
+		// return 2 diff messages and consume success
 		consumer.EXPECT().ConsumeMessages(any, any).DoAndReturn(
 			func(ctx context.Context, msgCnt int) (msgs []*sarama.ConsumerMessage) {
 				msg := proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "msg1"}
@@ -443,5 +444,75 @@ func TestAllowDeleting(t *testing.T) {
 		waitTime, ok := topicConsumer.allowDeleting(test.now)
 		require.Equal(t, test.ok, ok)
 		require.Equal(t, test.waitTime, waitTime)
+	}
+}
+
+func TestDeleteBlob(t *testing.T) {
+	ctx := context.Background()
+	ctr := gomock.NewController(t)
+	volume := MockGenVolInfo(proto.Vid(1), codemode.EC3P3, proto.VolumeStatusActive)
+	{
+		// mark delete failed
+		mockTopicConsumeDelete := newDeleteTopicConsumer(t)
+		blobnodeCli := NewMockBlobnodeAPI(ctr)
+		blobnodeCli.EXPECT().MarkDelete(any, any, any).AnyTimes().Return(errMock)
+		mockTopicConsumeDelete.blobnodeCli = blobnodeCli
+
+		doneVolume, err := mockTopicConsumeDelete.deleteBlob(ctx, volume, proto.BlobID(1))
+		require.ErrorIs(t, err, errMock)
+		require.True(t, doneVolume.EqualWith(volume))
+	}
+	{
+		// mark delete failed and need update volume cache: update cache failed
+		mockTopicConsumeDelete := newDeleteTopicConsumer(t)
+		blobnodeCli := NewMockBlobnodeAPI(ctr)
+		blobnodeCli.EXPECT().MarkDelete(any, any, any).Times(5).Return(nil)
+		blobnodeCli.EXPECT().MarkDelete(any, any, any).Return(errcode.ErrNoSuchVuid)
+		mockTopicConsumeDelete.blobnodeCli = blobnodeCli
+
+		clusterTopology := NewMockClusterTopology(ctr)
+		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, ErrFrequentlyUpdate)
+		mockTopicConsumeDelete.clusterTopology = clusterTopology
+
+		doneVolume, err := mockTopicConsumeDelete.deleteBlob(ctx, volume, proto.BlobID(1))
+		require.ErrorIs(t, err, errcode.ErrNoSuchVuid)
+		require.True(t, doneVolume.EqualWith(volume))
+	}
+	{
+		// mark delete failed and need update volume cache: update cache success but volume not change
+		mockTopicConsumeDelete := newDeleteTopicConsumer(t)
+		blobnodeCli := NewMockBlobnodeAPI(ctr)
+		blobnodeCli.EXPECT().MarkDelete(any, any, any).Times(5).Return(nil)
+		blobnodeCli.EXPECT().MarkDelete(any, any, any).Return(errcode.ErrNoSuchVuid)
+		mockTopicConsumeDelete.blobnodeCli = blobnodeCli
+
+		clusterTopology := NewMockClusterTopology(ctr)
+		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, nil)
+		mockTopicConsumeDelete.clusterTopology = clusterTopology
+
+		doneVolume, err := mockTopicConsumeDelete.deleteBlob(ctx, volume, proto.BlobID(1))
+		require.ErrorIs(t, err, errcode.ErrNoSuchVuid)
+		require.True(t, doneVolume.EqualWith(volume))
+	}
+	{
+		// mark delete and delete success
+		mockTopicConsumeDelete := newDeleteTopicConsumer(t)
+		blobnodeCli := NewMockBlobnodeAPI(ctr)
+		blobnodeCli.EXPECT().MarkDelete(any, any, any).Times(5).Return(nil)
+		blobnodeCli.EXPECT().MarkDelete(any, any, any).Return(errcode.ErrNoSuchVuid)
+		blobnodeCli.EXPECT().MarkDelete(any, any, any).Return(nil)
+		blobnodeCli.EXPECT().Delete(any, any, any).Times(6).Return(nil)
+		mockTopicConsumeDelete.blobnodeCli = blobnodeCli
+
+		clusterTopology := NewMockClusterTopology(ctr)
+		newVolume := MockGenVolInfo(proto.Vid(1), codemode.EC3P3, proto.VolumeStatusActive)
+		newVolume.VunitLocations[5].Vuid += 1
+		clusterTopology.EXPECT().UpdateVolume(any).Return(newVolume, nil)
+		mockTopicConsumeDelete.clusterTopology = clusterTopology
+
+		doneVolume, err := mockTopicConsumeDelete.deleteBlob(ctx, volume, proto.BlobID(1))
+		require.NoError(t, err)
+		require.False(t, doneVolume.EqualWith(volume))
+		require.True(t, doneVolume.EqualWith(newVolume))
 	}
 }
