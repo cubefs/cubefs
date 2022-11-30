@@ -510,10 +510,14 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 			if vol.FollowerRead {
 				hbReq.FLReadVols = append(hbReq.FLReadVols, vol.Name)
 			}
+			spaceInfo := vol.uidSpaceManager.getSpaceOp()
+			hbReq.UidLimitInfo = append(hbReq.UidLimitInfo, spaceInfo...)
 		}
+
 		tasks = append(tasks, task)
 		return true
 	})
+
 	c.addMetaNodeTasks(tasks)
 }
 
@@ -2562,6 +2566,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	vol.aclMgr.init(c, vol)
+	vol.initUidSpaceManager(c)
 
 	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
 

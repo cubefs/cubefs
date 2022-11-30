@@ -1675,7 +1675,7 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 		return
 	}
 
-	log.LogDebugf("[getAvailNodeHosts] get node host, zone(%s), nodeType(%d)", zone.name, nodeType)
+	log.LogDebugf("[x] get node host, zone(%s), nodeType(%d)", zone.name, nodeType)
 
 	if nodeType == TypeDataPartition {
 		ns, err := zone.allocNodeSetForDataNode(excludeNodeSets, uint8(replicaNum))

@@ -14,7 +14,9 @@
 
 package proto
 
-import "github.com/cubefs/cubefs/util"
+import (
+	"github.com/cubefs/cubefs/util"
+)
 
 // api
 const (
@@ -98,7 +100,9 @@ const (
 	QosUpdateMasterLimit   = "/qos/masterLimit"
 
 	// acl api
-	AdminACL     = "/admin/aclOp"
+	AdminACL = "/admin/aclOp"
+	// uid api
+	AdminUid = "/admin/uidOp"
 
 	//raft node APIs
 	AddRaftNode    = "/raftNode/add"
@@ -284,18 +288,23 @@ type RegisterMetaNodeResp struct {
 	ID uint64
 }
 
-
-
 type AclIpInfo struct {
 	Ip    string
 	CTime int64
 }
 
 type AclRsp struct {
-	Info			string
-	OK              bool
-	List            []*AclIpInfo
-	Reserve         string
+	Info    string
+	OK      bool
+	List    []*AclIpInfo
+	Reserve string
+}
+
+type UidSpaceRsp struct {
+	Info        string
+	OK          bool
+	UidSpaceArr []*UidSpaceInfo
+	Reserve     string
 }
 
 // ClusterInfo defines the cluster infomation.
@@ -419,6 +428,10 @@ type LoadMetaPartitionMetricResponse struct {
 	Result   string
 }
 
+type UidLimitToMetaNode struct {
+	UidLimitInfo []*UidSpaceInfo
+}
+
 type QosToDataNode struct {
 	EnableDiskQos     bool
 	QosIopsReadLimit  uint64
@@ -433,6 +446,7 @@ type HeartBeatRequest struct {
 	MasterAddr string
 	FLReadVols []string
 	QosToDataNode
+	UidLimitToMetaNode
 }
 
 // PartitionReport defines the partition report.
@@ -487,6 +501,7 @@ type MetaPartitionReport struct {
 	InodeCnt    uint64
 	DentryCnt   uint64
 	FreeListLen uint64
+	UidInfo     []*UidReportSpaceInfo
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -739,6 +754,11 @@ func NewLimitRsp2Client() *LimitRsp2Client {
 	return limit
 }
 
+type UidSimpleInfo struct {
+	UID     uint32
+	Limited bool
+}
+
 // SimpleVolView defines the simple view of a volume
 type SimpleVolView struct {
 	ID                    uint64
@@ -781,6 +801,7 @@ type SimpleVolView struct {
 	CacheTtl         int
 	CacheRule        string
 	PreloadCapacity  uint64
+	Uids             []UidSimpleInfo
 }
 
 type NodeSetInfo struct {

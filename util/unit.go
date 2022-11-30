@@ -43,11 +43,19 @@ const (
 )
 
 const (
-	AclListIP 	= 0
-	AclAddIP 	= 1
-	AclDelIP 	= 2
-	AclCheckIP 	= 3
+	AclListIP  = 0
+	AclAddIP   = 1
+	AclDelIP   = 2
+	AclCheckIP = 3
 )
+
+const (
+	UidLimitList = 0
+	UidAddLimit  = 1
+	UidDel       = 2
+	UidGetLimit  = 3
+)
+
 const (
 	DefaultTinySizeLimit = 1 * MB // TODO explain tiny extent?
 )

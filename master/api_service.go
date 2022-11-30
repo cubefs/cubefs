@@ -281,22 +281,94 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(cs))
 }
 
-func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
+func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	var (
-		ip   	string
+		uid     uint64
 		err     error
 		volName string
 		vol     *Vol
 		op      uint64
 		value   string
-		ok,res      bool
-		ipList  []*proto.AclIpInfo
+		capSize uint64
+		uidList []*proto.UidSpaceInfo
+		uidInfo *proto.UidSpaceInfo
+		ok      bool
 	)
 	if volName, err = extractName(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
+	if value = r.FormValue(OperateKey); value == "" {
+		err = keyNotFound(OperateKey)
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+
+	op, err = strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parseUintParam %s-%s is not legal, err %s", OperateKey, value, err.Error())
+		return
+	}
+
+	if op != util.UidLimitList {
+		if uid, err = extractUint64(r, UIDKey); err != nil {
+			err = keyNotFound(UIDKey)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	if op == util.UidAddLimit {
+		if capSize, err = extractPositiveUint64(r, CapacityKey); err != nil {
+			err = keyNotFound(CapacityKey)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	log.LogDebugf("uidOperate. name %v op %v uid %v", volName, op, uid)
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		log.LogDebugf("aclOperate. name %v not found", volName)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	ok = true
+	switch op {
+	case util.UidGetLimit:
+		ok, uidInfo = vol.uidSpaceManager.checkUid(uint32(uid))
+		uidList = append(uidList, uidInfo)
+	case util.AclAddIP:
+		ok = vol.uidSpaceManager.addUid(uint32(uid), capSize)
+	case util.AclDelIP:
+		ok = vol.uidSpaceManager.removeUid(uint32(uid))
+	case util.AclListIP:
+		uidList = vol.uidSpaceManager.listAll()
+	}
+
+	rsp := &proto.UidSpaceRsp{
+		OK:          ok,
+		UidSpaceArr: uidList,
+	}
+
+	_ = sendOkReply(w, r, newSuccessHTTPReply(rsp))
+	return
+}
+
+func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
+	var (
+		ip      string
+		err     error
+		volName string
+		vol     *Vol
+		op      uint64
+		value   string
+		ok, res bool
+		ipList  []*proto.AclIpInfo
+	)
+	if volName, err = extractName(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 
 	if value = r.FormValue(OperateKey); value == "" {
 		err = keyNotFound(OperateKey)
@@ -330,6 +402,9 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("inner error")))
 			return
 		}
+		if len(ipList) > 0 {
+			ok = false
+		}
 	case util.AclAddIP, util.AclDelIP:
 		if opAclRes != nil {
 			if err, res = opAclRes.(error); !res {
@@ -345,8 +420,8 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rsp := &proto.AclRsp{
-		OK: ok,
-		List:ipList,
+		OK:   ok,
+		List: ipList,
 	}
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rsp))
 	return
@@ -1908,7 +1983,7 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(volView))
 }
 
-func newSimpleView(vol *Vol) *proto.SimpleVolView {
+func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 	var (
 		volInodeCount  uint64
 		volDentryCount uint64
@@ -1921,7 +1996,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		volInodeCount = volInodeCount + mp.InodeCount
 	}
 	maxPartitionID := vol.maxPartitionID()
-	return &proto.SimpleVolView{
+
+	view = &proto.SimpleVolView{
 		ID:                    vol.ID,
 		Name:                  vol.Name,
 		Owner:                 vol.Owner,
@@ -1960,6 +2036,16 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		CacheRule:             vol.CacheRule,
 		PreloadCapacity:       vol.getPreloadCapacity(),
 	}
+
+	vol.uidSpaceManager.RLock()
+	defer vol.uidSpaceManager.RUnlock()
+	for _, uid := range vol.uidSpaceManager.uidInfo {
+		view.Uids = append(view.Uids, proto.UidSimpleInfo{
+			UID:     uid.Uid,
+			Limited: uid.Limited,
+		})
+	}
+	return
 }
 
 func checkIp(addr string) bool {

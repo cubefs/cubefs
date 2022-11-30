@@ -60,6 +60,22 @@ struct cfs_dirent {
     uint32_t     nameLen;
 };
 
+struct cfs_hdfs_stat_info {
+    uint64_t size;
+    uint64_t atime;
+    uint64_t mtime;
+    uint32_t atime_nsec;
+    uint32_t mtime_nsec;
+    mode_t   mode;
+};
+
+struct cfs_dirent_info {
+    struct   cfs_hdfs_stat_info stat;
+    char     d_type;
+    char     name[256];
+    uint32_t     nameLen;
+};
+
 
 #line 1 "cgo-generated-wrapper"
 
@@ -127,6 +143,7 @@ extern ssize_t cfs_read(int64_t id, int fd, void* buf, size_t size, off_t off);
 extern int cfs_batch_get_inodes(int64_t id, int fd, void* iids, GoSlice stats, int count);
 extern int cfs_refreshsummary(int64_t id, char* path, int goroutine_num);
 extern int cfs_readdir(int64_t id, int fd, GoSlice dirents, int count);
+extern int cfs_lsdir(int64_t id, int fd, GoSlice direntsInfo, int count);
 extern int cfs_mkdirs(int64_t id, char* path, mode_t mode);
 extern int cfs_rmdir(int64_t id, char* path);
 extern int cfs_unlink(int64_t id, char* path);

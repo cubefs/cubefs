@@ -8,18 +8,18 @@ import (
 )
 
 const (
-	cmdAclUse   = "acl [COMMAND]"
-	cmdAclShort = "Manage cluster volumes acl black list"
-	cmdAclAddShort = "add volume acl ip"
-	cmdAclDelShort = "del volume acl ip"
-	cmdAclListShort = "list volume acl ip list"
-	cmdAclCheckShort = "check volume acl ip"
+	cmdAclUse        = "acl [COMMAND]"
+	cmdAclShort      = "Manage cluster volumes acl black list"
+	cmdAclAddShort   = "add volume ip"
+	cmdAclDelShort   = "del volume ip"
+	cmdAclListShort  = "list volume ip list"
+	cmdAclCheckShort = "check volume ip"
 
 	//acl op
-	CliAclAdd = "aclAdd"
-	cliAclListShort   = "aclList"
-	CliAclDel    = "aclDel"
-	CliAclCheck    = "aclCheck"
+	CliAclAdd       = "add"
+	cliAclListShort = "list"
+	CliAclDel       = "del"
+	CliAclCheck     = "check"
 )
 
 func newAclCmd(client *master.MasterClient) *cobra.Command {
@@ -56,7 +56,7 @@ func newAclAddCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 			var aclInfo *proto.AclRsp
-			if aclInfo, err = client.UserAPI().AclOperation(args[0],  args[1], util.AclAddIP); err != nil || !aclInfo.OK {
+			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclAddIP); err != nil || !aclInfo.OK {
 				return
 			}
 			stdout("success!\n")
@@ -73,12 +73,12 @@ func newAclListCmd(client *master.MasterClient) *cobra.Command {
 		Short:   cmdAclListShort,
 		Aliases: []string{"list"},
 		Run: func(cmd *cobra.Command, args []string) {
-			var volumeName = args[0]
-			var err error
 			if len(args) == 0 {
 				stdout("need volume name\n")
 				return
 			}
+			var volumeName = args[0]
+			var err error
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)
@@ -147,7 +147,7 @@ func newAclCheckCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 			var aclInfo *proto.AclRsp
-			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclCheckIP); err !=nil || !aclInfo.OK {
+			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclCheckIP); err != nil || !aclInfo.OK {
 				return
 			}
 			stdout("%v\n", volumeAclTableHeader)

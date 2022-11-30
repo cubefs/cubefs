@@ -16,6 +16,9 @@ package wrapper
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/ump"
+	syslog "log"
 	"net"
 	"strings"
 	"sync"
@@ -65,7 +68,10 @@ type Wrapper struct {
 	dpSelector DataPartitionSelector
 
 	HostsStatus map[string]bool
+	Uids        map[uint32]*proto.UidSimpleInfo
+	UidLock     sync.RWMutex
 	preload     bool
+	LocalIp     string
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -78,6 +84,12 @@ func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, master
 	w.partitions = make(map[uint64]*DataPartition)
 	w.HostsStatus = make(map[string]bool)
 	w.preload = preload
+
+	if w.LocalIp, err = ump.GetLocalIpAddr(); err != nil {
+		err = errors.Trace(err, "NewDataPartitionWrapper:")
+		return
+	}
+
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -101,6 +113,7 @@ func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, master
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
 	go w.uploadFlowInfoByTick(clientInfo)
+	go w.updateSimpleVolViewByTick()
 	go w.update()
 	return
 }
@@ -132,6 +145,19 @@ func (w *Wrapper) updateClusterInfo() (err error) {
 	return
 }
 
+func (w *Wrapper) UpdateUidsView(view *proto.SimpleVolView) {
+	w.UidLock.Lock()
+	defer w.UidLock.Unlock()
+	w.Uids = make(map[uint32]*proto.UidSimpleInfo)
+	for _, uid := range view.Uids {
+		if uid.Limited == false {
+			continue
+		}
+		w.Uids[uid.UID] = &uid
+	}
+	log.LogDebugf("uid info be updated to %v", view.Uids)
+}
+
 func (w *Wrapper) GetSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 
@@ -144,12 +170,13 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 	w.dpSelectorParm = view.DpSelectorParm
 	w.volType = view.VolType
 	w.EnablePosixAcl = view.EnablePosixAcl
+	w.UpdateUidsView(view)
 
-	log.LogInfof("GetSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
+	log.LogDebugf("GetSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
-		"dpSelectorParm(%v)",
+		"dpSelectorParm(%v) uids(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
-		view.DpCnt, view.FollowerRead, view.CreateTime, view.DpSelectorName, view.DpSelectorParm)
+		view.DpCnt, view.FollowerRead, view.CreateTime, view.DpSelectorName, view.DpSelectorParm, view.Uids)
 
 	return
 }
@@ -166,14 +193,35 @@ func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
 	}
 }
 
+// uid need get uids info by volView with high frequency, but if no uid works
+// use 1 minute is fine
+func (w *Wrapper) updateSimpleVolViewByTick() {
+	ticker := time.NewTicker(10 * time.Second)
+	var tickCnt uint16
+	for {
+		select {
+		case <-ticker.C:
+			if len(w.Uids) == 0 && tickCnt%6 != 0 {
+				tickCnt++
+				continue
+			}
+			w.UpdateSimpleVolView()
+			tickCnt++
+		case <-w.stopC:
+			return
+		}
+	}
+}
+
 func (w *Wrapper) update() {
 	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-ticker.C:
 			w.UpdateSimpleVolView()
-			w.updateDataPartition(true)
+			w.updateDataPartition(false)
 			w.updateDataNodeStatus()
+			w.CheckPermission()
 		case <-w.stopC:
 			return
 		}
@@ -207,12 +255,23 @@ func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (err er
 	return
 }
 
+func (w *Wrapper) CheckPermission() {
+	if info, err := w.mc.UserAPI().AclOperation(w.volName, w.LocalIp, util.AclCheckIP); err != nil {
+		syslog.Println(err)
+	} else if !info.OK {
+		syslog.Println(err)
+		log.LogFatal("Client Addr not allowed to access CubeFS Cluster!")
+	}
+}
+
 func (w *Wrapper) UpdateSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
+
+	w.UpdateUidsView(view)
 
 	if w.followerRead != view.FollowerRead && !w.followerReadClientCfg {
 		log.LogDebugf("UpdateSimpleVolView: update followerRead from old(%v) to new(%v)",

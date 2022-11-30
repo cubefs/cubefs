@@ -742,7 +742,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 
 func checkPermission(opt *proto.MountOptions) (err error) {
 	var mc = master.NewMasterClientFromString(opt.Master, false)
-	localIP,_ := ump.GetLocalIpAddr()
+	localIP, _ := ump.GetLocalIpAddr()
 	if info, err := mc.UserAPI().AclOperation(opt.Volname, localIP, util.AclCheckIP); err != nil || !info.OK {
 		syslog.Println(err)
 		return proto.ErrNoAclPermission

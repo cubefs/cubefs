@@ -152,18 +152,28 @@ func formatVolInfoTableRow(vi *proto.VolInfo) string {
 }
 
 var (
-	volumeVersionPattern = "%-20v    %-40v    %-8v    %-8v"
-	volumeVersionTableHeader  = fmt.Sprintf(volumeVersionPattern, "VER", "CTIME", "STATUS", "OTHER")
+	volumeVersionPattern     = "%-20v    %-40v    %-8v    %-8v"
+	volumeVersionTableHeader = fmt.Sprintf(volumeVersionPattern, "VER", "CTIME", "STATUS", "OTHER")
 )
 
 var (
-	volumeAclPattern = "%-20v    %-40v    %-8v"
-	volumeAclTableHeader  = fmt.Sprintf(volumeAclPattern, "IP", "CTIME", "OTHER")
+	volumeAclPattern     = "%-20v    %-40v    %-8v"
+	volumeAclTableHeader = fmt.Sprintf(volumeAclPattern, "IP", "CTIME", "OTHER")
 )
 
 func formatAclInfoTableRow(aclInfo *proto.AclIpInfo) string {
 	return fmt.Sprintf(volumeAclPattern,
 		aclInfo.Ip, time.Unix(aclInfo.CTime, 0).Format(time.RFC1123), "")
+}
+
+var (
+	volumeUidPattern     = "%-20v    %-40v     %-8v   %-8v   %-8v    %-8v"
+	volumeUidTableHeader = fmt.Sprintf(volumeUidPattern, "UID", "CTIME", "ENABLED", "LIMITED", "LIMITSIZE", "USED")
+)
+
+func formatUidInfoTableRow(uidInfo *proto.UidSpaceInfo) string {
+	return fmt.Sprintf(volumeUidPattern,
+		uidInfo.Uid, time.Unix(uidInfo.CTime, 0).Format(time.RFC1123), uidInfo.Enabled, uidInfo.Limited, uidInfo.LimitSize, uidInfo.UsedSize)
 }
 
 var (

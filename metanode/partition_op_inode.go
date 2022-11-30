@@ -68,7 +68,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		return
 	}
 	var (
-		status = proto.OpNotExistErr
+		status = resp.(uint8)
 		reply  []byte
 	)
 	if resp.(uint8) == proto.OpOk {

@@ -79,6 +79,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 
 		m.Range(func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
+			partition.SetUidLimit(req.UidLimitInfo)
 			mConf := partition.GetBaseConfig()
 			mpr := &proto.MetaPartitionReport{
 				PartitionID: mConf.PartitionId,
@@ -91,6 +92,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				InodeCnt:    uint64(partition.GetInodeTreeLen()),
 				DentryCnt:   uint64(partition.GetDentryTreeLen()),
 				FreeListLen: uint64(partition.GetFreeListLen()),
+				UidInfo:     partition.GetUidInfo(),
 			}
 			addr, isLeader := partition.IsLeader()
 			if addr == "" {

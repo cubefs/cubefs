@@ -144,6 +144,19 @@ type ExtentClient struct {
 	inflightL1cache sync.Map
 }
 
+func (client *ExtentClient) UidIsLimited(uid uint32) bool {
+	client.dataWrapper.UidLock.RLock()
+	defer client.dataWrapper.UidLock.RUnlock()
+	if uInfo, ok := client.dataWrapper.Uids[uid]; ok {
+		if uInfo.Limited {
+			log.LogDebugf("uid %v is limited", uid)
+			return true
+		}
+	}
+	log.LogDebugf("uid %v is not limited", uid)
+	return false
+}
+
 func (client *ExtentClient) evictStreamer() bool {
 	// remove from list
 	item := client.streamerList.Back()
