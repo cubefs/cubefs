@@ -311,6 +311,14 @@ func main() {
 	}
 	defer log.LogFlush()
 
+	if _, err = os.Stat(opt.MountPoint); err != nil {
+		if err = os.Mkdir(opt.MountPoint, os.ModePerm); err != nil {
+			err = errors.NewErrorf("Init.MountPoint mkdir failed error %v\n", err)
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	}
+
 	_, err = stat.NewStatistic(opt.Logpath, LoggerPrefix, int64(stat.DefaultStatLogSize),
 		stat.DefaultTimeOutUs, true)
 	if err != nil {
@@ -669,7 +677,6 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	if err != nil {
 		return nil, errors.Trace(err, "invalide mount point (%v) ", rawmnt)
 	}
-
 	opt.Volname = GlobalMountOptions[proto.VolName].GetString()
 	opt.Owner = GlobalMountOptions[proto.Owner].GetString()
 	opt.Master = GlobalMountOptions[proto.Master].GetString()
