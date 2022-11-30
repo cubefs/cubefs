@@ -176,6 +176,16 @@ func formatAclInfoTableRow(aclInfo *proto.AclIpInfo) string {
 }
 
 var (
+	volumeUidPattern     = "%-20v    %-40v     %-8v   %-8v   %-8v    %-8v"
+	volumeUidTableHeader = fmt.Sprintf(volumeUidPattern, "UID", "CTIME", "ENABLED", "LIMITED", "LIMITSIZE", "USED")
+)
+
+func formatUidInfoTableRow(uidInfo *proto.UidSpaceInfo) string {
+	return fmt.Sprintf(volumeUidPattern,
+		uidInfo.Uid, time.Unix(uidInfo.CTime, 0).Format(time.RFC1123), uidInfo.Enabled, uidInfo.Limited, uidInfo.LimitSize, uidInfo.UsedSize)
+}
+
+var (
 	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
 		"ID", "REPLICAS", "STATUS", "ISRECOVER", "LEADER", "MEMBERS")

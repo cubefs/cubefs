@@ -415,6 +415,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	var size int
 	if proto.IsHot(f.super.volType) {
 		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
+		if ok := f.super.ec.UidIsLimited(req.Uid); ok {
+			return syscall.ENOSPC
+		}
 		size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags)
 	} else {
 		atomic.StoreInt32(&f.idle, 0)

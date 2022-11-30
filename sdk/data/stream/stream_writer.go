@@ -284,6 +284,8 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 		filesize, _ := s.extents.Size()
 		offset = filesize
 	}
+	s.client.dataWrapper.RLock()
+	defer s.client.dataWrapper.RUnlock()
 
 	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 

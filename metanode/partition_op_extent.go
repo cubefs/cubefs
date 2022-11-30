@@ -98,6 +98,15 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	return
 }
 
+func (mp *metaPartition) SetUidLimit(info []*proto.UidSpaceInfo) {
+	mp.uidManager.volName = mp.config.VolName
+	mp.uidManager.setUidAcl(info)
+}
+
+func (mp *metaPartition) GetUidInfo() (info []*proto.UidReportSpaceInfo) {
+	return mp.uidManager.getAllUidSpace()
+}
+
 // ExtentsList returns the list of extents.
 func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)

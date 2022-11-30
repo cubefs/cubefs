@@ -205,7 +205,7 @@ func (se *SortedExtents) AppendWithCheck(ek proto.ExtentKey, discard []proto.Ext
 	return
 }
 
-func (se *SortedExtents) Truncate(offset uint64) (deleteExtents []proto.ExtentKey) {
+func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentKey)) (deleteExtents []proto.ExtentKey) {
 	var endIndex int
 
 	se.Lock()
@@ -231,6 +231,9 @@ func (se *SortedExtents) Truncate(offset uint64) (deleteExtents []proto.ExtentKe
 	if numKeys > 0 {
 		lastKey := &se.eks[numKeys-1]
 		if lastKey.FileOffset+uint64(lastKey.Size) > offset {
+			if doOnLastKey != nil {
+				doOnLastKey(&proto.ExtentKey{Size: uint32(lastKey.FileOffset + uint64(lastKey.Size) - offset)})
+			}
 			lastKey.Size = uint32(offset - lastKey.FileOffset)
 		}
 	}
@@ -263,6 +266,21 @@ func (se *SortedExtents) Len() int {
 	se.RLock()
 	defer se.RUnlock()
 	return len(se.eks)
+}
+
+// Returns the file size
+func (se *SortedExtents) LayerSize() (layerSize uint64) {
+	se.RLock()
+	defer se.RUnlock()
+
+	last := len(se.eks)
+	if last <= 0 {
+		return uint64(0)
+	}
+	for _, ek := range se.eks {
+		layerSize += uint64(ek.Size)
+	}
+	return
 }
 
 // Returns the file size

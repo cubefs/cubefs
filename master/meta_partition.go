@@ -65,6 +65,7 @@ type MetaPartition struct {
 	MissNodes      map[string]int64
 	LoadResponse   []*proto.MetaPartitionLoadResponse
 	offlineMutex   sync.RWMutex
+	uidInfo        []*proto.UidReportSpaceInfo
 	EqualCheckPass bool
 	sync.RWMutex
 }
@@ -396,6 +397,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.setDentryCount()
 	mp.setFreeListLen()
 	mp.removeMissingReplica(metaNode.Addr)
+	mp.setUidInfo(mgr)
 }
 
 func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err error) {
@@ -790,6 +792,14 @@ func (mp *MetaPartition) activeMaxInodeSimilar() bool {
 	}
 
 	return minus < defaultMinusOfMaxInodeID
+}
+
+func (mp *MetaPartition) setUidInfo(mgr *proto.MetaPartitionReport) {
+	if !mgr.IsLeader {
+		return
+	}
+
+	mp.uidInfo = mgr.UidInfo
 }
 
 func (mp *MetaPartition) setMaxInodeID() {

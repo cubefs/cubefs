@@ -463,6 +463,11 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	return
 }
 
+func (i *Inode) GetSpaceSize() (extSize uint64) {
+	extSize += i.Extents.LayerSize()
+	return
+}
+
 // AppendExtents append the extent to the btree.
 func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64, volType int) (delExtents []proto.ExtentKey) {
 	if proto.IsCold(volType) {
@@ -524,9 +529,9 @@ func (i *Inode) AppendExtentWithCheck(ek proto.ExtentKey, ct int64, discardExten
 	return
 }
 
-func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.ExtentKey) {
+func (i *Inode) ExtentsTruncate(length uint64, ct int64, doOnLastKey func(*proto.ExtentKey)) (delExtents []proto.ExtentKey) {
 	i.Lock()
-	delExtents = i.Extents.Truncate(length)
+	delExtents = i.Extents.Truncate(length, doOnLastKey)
 	i.Size = length
 	i.ModifyTime = ct
 	i.Generation++

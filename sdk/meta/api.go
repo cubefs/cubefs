@@ -156,6 +156,8 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 		if err == nil && status == statusOK {
 			goto create_dentry
 		}
+		log.LogErrorf("Create_ll status %v", status)
+		return nil, statusToErrno(status)
 	}
 	return nil, syscall.ENOMEM
 

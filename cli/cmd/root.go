@@ -62,6 +62,7 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 		newConfigCmd(),
 		newZoneCmd(client),
 		newAclCmd(client),
+		newUidCmd(client),
 	)
 	return cmd
 }
