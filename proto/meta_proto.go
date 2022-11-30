@@ -48,3 +48,21 @@ type CreateMetaPartitionResponse struct {
 	Status      uint8
 	Result      string
 }
+
+type UidSpaceInfo struct {
+	VolName   string
+	Uid       uint32
+	CTime     int64
+	Enabled   bool
+	Limited   bool
+	UsedSize  uint64
+	LimitSize uint64
+	Rsv       string
+}
+
+type UidReportSpaceInfo struct {
+	Uid   uint32
+	Size  uint64
+	Rsv   string
+	MTime int64
+}

@@ -669,6 +669,33 @@ func (c *Cluster) loadAclList(vol *Vol) (err error) {
 	return
 }
 
+func (c *Cluster) syncUidSpaceList(vol *Vol, val []byte) (err error) {
+	log.LogDebugf("syncUidSpaceList vol %v vallen %v", vol.Name, len(val))
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncUid
+	metadata.K = UidPrefix + strconv.FormatUint(vol.ID, 10)
+	metadata.V = val
+
+	return c.submit(metadata)
+}
+
+func (c *Cluster) loadUidSpaceList(vol *Vol) (err error) {
+	key := UidPrefix + strconv.FormatUint(vol.ID, 10)
+	result, err := c.fsm.store.SeekForPrefix([]byte(key))
+	if err != nil {
+		log.LogErrorf("action[loadUidSpaceList] err %v", err)
+		return
+	}
+
+	log.LogDebugf("loadUidSpaceList vol %v rocksdb value count %v", vol.Name, len(result))
+
+	vol.initUidSpaceManager(c)
+	for _, value := range result {
+		return vol.uidSpaceManager.load(c, value)
+	}
+	return
+}
+
 // key=#mp#volID#metaPartitionID,value=json.Marshal(metaPartitionValue)
 func (c *Cluster) syncAddMetaPartition(mp *MetaPartition) (err error) {
 	return c.putMetaPartitionInfo(opSyncAddMetaPartition, mp)
@@ -1218,7 +1245,12 @@ func (c *Cluster) loadVols() (err error) {
 		vol := newVolFromVolValue(vv)
 		vol.Status = vv.Status
 		if err = c.loadAclList(vol); err != nil {
-			log.LogInfof("action[loadVols],vol[%v] load ver manager error %v", vol.Name, err)
+			log.LogInfof("action[loadVols],vol[%v] load acl manager error %v", vol.Name, err)
+			continue
+		}
+
+		if err = c.loadUidSpaceList(vol); err != nil {
+			log.LogInfof("action[loadVols],vol[%v] load uid manager error %v", vol.Name, err)
 			continue
 		}
 

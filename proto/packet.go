@@ -141,6 +141,7 @@ const (
 	OpMetaBatchEvictInode   uint8 = 0x93
 
 	// Commons
+	OpNoSpaceErr         uint8 = 0xEE
 	OpDirQuota           uint8 = 0xF1
 	OpConflictExtentsErr uint8 = 0xF2
 	OpIntraGroupNetErr   uint8 = 0xF3
@@ -455,6 +456,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "DirNotEmpty"
 	case OpDirQuota:
 		m = "OpDirQuota"
+	case OpNoSpaceErr:
+		m = "NoSpaceErr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}

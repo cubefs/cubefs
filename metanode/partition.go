@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -173,6 +174,8 @@ type OpMultipart interface {
 	AppendMultipart(req *proto.AddMultipartPartRequest, p *Packet) (err error)
 	RemoveMultipart(req *proto.RemoveMultipartRequest, p *Packet) (err error)
 	ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error)
+	GetUidInfo() (info []*proto.UidReportSpaceInfo)
+	SetUidLimit(info []*proto.UidSpaceInfo)
 }
 
 // OpMeta defines the interface for the metadata operations.
@@ -216,6 +219,188 @@ type MetaPartition interface {
 	ForceSetMetaPartitionToFininshLoad()
 }
 
+type UidManager struct {
+	accumDelta        *sync.Map
+	accumBase         *sync.Map
+	accumRebuildDelta *sync.Map // snapshot redoLog
+	accumRebuildBase  *sync.Map // snapshot mirror
+	uidAcl            *sync.Map
+	lastUpdateTime    time.Time
+	enable            bool
+	rbuilding         bool
+	volName           string
+	acLock            sync.RWMutex
+	mpID              uint64
+}
+
+func NewUidMgr(volName string, mpID uint64) (mgr *UidManager) {
+	mgr = &UidManager{
+		volName:           volName,
+		mpID:              mpID,
+		accumDelta:        new(sync.Map),
+		accumBase:         new(sync.Map),
+		accumRebuildDelta: new(sync.Map),
+		accumRebuildBase:  new(sync.Map),
+		uidAcl:            new(sync.Map),
+	}
+	var uid uint32
+	mgr.uidAcl.Store(uid, false)
+	log.LogDebugf("NewUidMgr init")
+	return
+}
+
+func (uMgr *UidManager) addUidSpace(uid uint32, inode uint64, eks []proto.ExtentKey) (status uint8) {
+	uMgr.acLock.Lock()
+	defer uMgr.acLock.Unlock()
+
+	status = proto.OpOk
+	if uMgr.getUidAcl(uid) {
+		log.LogWarnf("addUidSpace.vol %v mp[%v] uid %v be set full", uMgr.mpID, uMgr.volName, uid)
+		return proto.OpNoSpaceErr
+	}
+	if eks == nil {
+		return
+	}
+	var size int64
+	for _, ek := range eks {
+		size += int64(ek.Size)
+	}
+	log.LogDebugf("addUidSpace. mp[%v] uid %v accumDelta size %v", uMgr.mpID, uid, size)
+	if val, ok := uMgr.accumDelta.Load(uid); ok {
+		size += val.(int64)
+	}
+	uMgr.accumDelta.Store(uid, size)
+	log.LogDebugf("addUidSpace. mp[%v] uid %v accumDelta Store size %v", uMgr.mpID, uid, size)
+
+	if uMgr.rbuilding {
+		if val, ok := uMgr.accumRebuildDelta.Load(uid); ok {
+			size += val.(int64)
+		}
+		uMgr.accumRebuildDelta.Store(uid, size)
+	}
+	return
+}
+
+func (uMgr *UidManager) doMinusUidSpace(uid uint32, inode uint64, size uint64) {
+	log.LogDebugf("doMinusUidSpace. mp[%v] inode %v uid %v size %v", uMgr.mpID, inode, uid, size)
+	uMgr.acLock.Lock()
+	defer uMgr.acLock.Unlock()
+
+	doWork := func(delta *sync.Map) {
+		var rsvSize int64
+		if val, ok := delta.Load(uid); ok {
+			delta.Store(uid, val.(int64)-int64(size))
+		} else {
+			rsvSize -= int64(size)
+			log.LogDebugf("doMinusUidSpace. mp[%v] uid %v accumDelta now size %v", uMgr.mpID, uid, rsvSize)
+			delta.Store(uid, rsvSize)
+		}
+	}
+	doWork(uMgr.accumDelta)
+	if uMgr.rbuilding {
+		doWork(uMgr.accumRebuildDelta)
+	}
+}
+
+func (uMgr *UidManager) minusUidSpace(uid uint32, inode uint64, eks []proto.ExtentKey) {
+	var size uint64
+	for _, ek := range eks {
+		size += uint64(ek.Size)
+	}
+	uMgr.doMinusUidSpace(uid, inode, size)
+}
+
+func (uMgr *UidManager) getUidAcl(uid uint32) (enable bool) {
+	log.LogDebugf("getUidAcl. uid %v", uid)
+	if val, ok := uMgr.uidAcl.Load(uid); ok {
+		enable = val.(bool)
+		log.LogDebugf("getUidAcl. uid %v", enable)
+	}
+	return
+}
+
+func (uMgr *UidManager) setUidAcl(info []*proto.UidSpaceInfo) {
+	uMgr.acLock.Lock()
+	defer uMgr.acLock.Unlock()
+
+	uMgr.uidAcl = new(sync.Map)
+	log.LogDebugf("setUidAcl.vol %v info size %v", uMgr.volName, len(info))
+	for _, uidInfo := range info {
+		if uidInfo.VolName != uMgr.volName {
+			log.LogErrorf("setUidAcl.vol %v:%v not equal uid %v be set enable %v", uMgr.volName, uidInfo.VolName, uidInfo.Uid, uidInfo.Limited)
+			continue
+		}
+		log.LogDebugf("setUidAcl.vol %v uid %v be set enable %v", uMgr.volName, uidInfo.Uid, uidInfo.Limited)
+		uMgr.uidAcl.Store(uidInfo.Uid, uidInfo.Limited)
+	}
+}
+
+func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
+	uMgr.acLock.RLock()
+	defer uMgr.acLock.RUnlock()
+
+	var ok bool
+
+	uMgr.accumDelta.Range(func(key, value interface{}) bool {
+		var size int64
+		size += value.(int64)
+		log.LogDebugf("getAllUidSpace. mp[%v] accumBase key %v size %v", uMgr.mpID, key.(uint32), size)
+		if baseInfo, ok := uMgr.accumBase.Load(key.(uint32)); ok {
+			size += baseInfo.(int64)
+			if size < 0 {
+				log.LogErrorf("getAllUidSpace. mp[%v] uid %v size small than 0 %v, old %v, new %v", uMgr.mpID, key.(uint32), size, value.(int64), baseInfo.(int64))
+				return false
+			}
+			log.LogDebugf("getAllUidSpace. mp[%v] accumBase key %v size %v", uMgr.mpID, key.(uint32), size)
+		}
+		uMgr.accumBase.Store(key.(uint32), size)
+		log.LogDebugf("getAllUidSpace. mp[%v] accumBase key %v plus size %v", uMgr.mpID, key.(uint32), size)
+		return true
+	})
+
+	uMgr.accumDelta = new(sync.Map)
+
+	uMgr.accumBase.Range(func(key, value interface{}) bool {
+		var size int64
+		if size, ok = value.(int64); !ok {
+			log.LogErrorf("getAllUidSpace. mp[%v] accumBase key %v size type %v", uMgr.mpID, reflect.TypeOf(key), reflect.TypeOf(value))
+			return false
+		}
+		rsp = append(rsp, &proto.UidReportSpaceInfo{
+			Uid:  key.(uint32),
+			Size: uint64(size),
+		})
+		log.LogDebugf("getAllUidSpace. mp[%v] accumBase uid %v size %v", uMgr.mpID, key.(uint32), size)
+		return true
+	})
+
+	return
+}
+
+func (uMgr *UidManager) accumRebuildStart() {
+	uMgr.rbuilding = true
+}
+
+func (uMgr *UidManager) accumRebuildFin() {
+	uMgr.acLock.Lock()
+	defer uMgr.acLock.Unlock()
+	log.LogDebugf("accumRebuildFin rebuild %v:%v", uMgr.accumRebuildBase, uMgr.accumRebuildDelta)
+	uMgr.accumBase = uMgr.accumRebuildBase
+	uMgr.accumDelta = uMgr.accumRebuildDelta
+	uMgr.accumRebuildBase = new(sync.Map)
+	uMgr.accumRebuildDelta = new(sync.Map)
+	uMgr.rbuilding = false
+}
+
+func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum *sync.Map) {
+	size := ino.GetSpaceSize()
+	if val, ok := accum.Load(ino.Uid); ok {
+		size += uint64(val.(int64))
+	}
+
+	accum.Store(ino.Uid, int64(size))
+}
+
 // metaPartition manages the range of the inode IDs.
 // When a new inode is requested, it allocates a new inode id for this inode if possible.
 // States:
@@ -245,8 +430,23 @@ type metaPartition struct {
 	ebsClient              *blobstore.BlobStoreClient
 	volType                int
 	isFollowerRead         bool
+	uidManager             *UidManager
 	xattrLock              sync.Mutex
 	fileRange              []int64
+}
+
+func (mp *metaPartition) acucumRebuildStart() {
+	mp.uidManager.accumRebuildStart()
+}
+func (mp *metaPartition) acucumRebuildFin() {
+	mp.uidManager.accumRebuildFin()
+}
+func (mp *metaPartition) acucumUidSizeByStore(ino *Inode) {
+	mp.uidManager.accumInoUidSize(ino, mp.uidManager.accumRebuildBase)
+}
+
+func (mp *metaPartition) acucumUidSizeByLoad(ino *Inode) {
+	mp.uidManager.accumInoUidSize(ino, mp.uidManager.accumBase)
 }
 
 func (mp *metaPartition) updateSize() {
@@ -499,6 +699,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		extReset:      make(chan struct{}),
 		vol:           NewVol(),
 		manager:       manager,
+		uidManager:    NewUidMgr(conf.VolName, conf.PartitionId),
 	}
 	return mp
 }

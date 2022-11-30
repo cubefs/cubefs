@@ -90,6 +90,7 @@ type Vol struct {
 	qosManager            *QosCtrlManager
 	DpReadOnlyWhenVolFull bool
 	aclMgr                AclManager
+	uidSpaceManager       *UidSpaceManager
 	volLock               sync.RWMutex
 }
 

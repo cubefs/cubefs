@@ -136,6 +136,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}
+		mp.acucumUidSizeByLoad(ino)
 
 		mp.size += ino.Size
 
@@ -406,8 +407,10 @@ func (mp *metaPartition) storeInode(rootDir string,
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
 	mp.fileRange = make([]int64, MaxRangeType)
+	mp.acucumRebuildStart()
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
+		mp.acucumUidSizeByStore(ino)
 
 		if data, err = ino.Marshal(); err != nil {
 			return false
@@ -433,7 +436,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 		}
 		return true
 	})
-
+	mp.acucumRebuildFin()
 	crc = sign.Sum32()
 	mp.size = size
 

@@ -95,6 +95,26 @@ func (api *UserAPI) AclOperation(volName string, localIP string, op uint32) (acl
 	return
 }
 
+func (api *UserAPI) UidOperation(volName string, uid string, op uint32, val string) (uidInfo *proto.UidSpaceRsp, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminUid)
+	request.addParam("name", volName)
+	request.addParam("uid", uid)
+	request.addParam("op", strconv.Itoa(int(op)))
+	request.addParam("capacity", val)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		fmt.Fprintf(os.Stdout, "UidOperation serveRequest err %v\n", err)
+		return
+	}
+	uidInfo = &proto.UidSpaceRsp{}
+	if err = json.Unmarshal(data, uidInfo); err != nil {
+		fmt.Fprintf(os.Stdout, "UidOperation Unmarshal err %v\n", err)
+		return
+	}
+
+	return
+}
+
 func (api *UserAPI) GetUserInfo(userID string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserGetInfo)
 	request.addParam("user", userID)

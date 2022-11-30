@@ -11,6 +11,173 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+type UidSpaceManager struct {
+	volName        string
+	mpSpaceMetrics map[uint64][]*proto.UidReportSpaceInfo
+	uidInfo        map[uint32]*proto.UidSpaceInfo
+	c              *Cluster
+	vol            *Vol
+	sync.RWMutex
+}
+
+type UidSpaceFsm struct {
+	UidSpaceArr []*proto.UidSpaceInfo
+}
+
+func (vol *Vol) initUidSpaceManager(c *Cluster) {
+	vol.uidSpaceManager = &UidSpaceManager{
+		c:              c,
+		vol:            vol,
+		volName:        vol.Name,
+		mpSpaceMetrics: make(map[uint64][]*proto.UidReportSpaceInfo),
+		uidInfo:        make(map[uint32]*proto.UidSpaceInfo),
+	}
+}
+
+func (uMgr *UidSpaceManager) addUid(uid uint32, size uint64) bool {
+	uMgr.uidInfo[uid] = &proto.UidSpaceInfo{
+		LimitSize: size,
+		VolName:   uMgr.volName,
+		Uid:       uid,
+		Enabled:   true,
+	}
+
+	uMgr.persist()
+	uMgr.listAll()
+	return true
+}
+
+func (uMgr *UidSpaceManager) removeUid(uid uint32) bool {
+	uMgr.Lock()
+	defer uMgr.Unlock()
+
+	if _, ok := uMgr.uidInfo[uid]; !ok {
+		log.LogErrorf("UidSpaceManager.vol %v del %v failed", uMgr.volName, uid)
+		return true
+	}
+	uMgr.uidInfo[uid].Enabled = false
+	uMgr.uidInfo[uid].Limited = false
+	uMgr.persist()
+	log.LogDebugf("UidSpaceManager.vol %v del %v success", uMgr.volName, uid)
+	return true
+}
+
+func (uMgr *UidSpaceManager) checkUid(uid uint32) (ok bool, uidInfo *proto.UidSpaceInfo) {
+	uidInfo, ok = uMgr.uidInfo[uid]
+	return
+}
+
+func (uMgr *UidSpaceManager) listAll() (rsp []*proto.UidSpaceInfo) {
+	log.LogDebugf("UidSpaceManager. listAll vol %v, info %v", uMgr.volName, len(uMgr.uidInfo))
+	for _, t := range uMgr.uidInfo {
+		log.LogDebugf("UidSpaceManager. listAll vol %v, uid %v, info %v", t.VolName, t.Uid, t)
+		rsp = append(rsp, t)
+	}
+	return
+}
+
+func (uMgr *UidSpaceManager) persist() (err error) {
+	log.LogDebugf("vol %v UidSpaceManager persist", uMgr.volName)
+	var uidFsm UidSpaceFsm
+	for _, t := range uMgr.uidInfo {
+		uidFsm.UidSpaceArr = append(uidFsm.UidSpaceArr, t)
+	}
+
+	var val []byte
+	if val, err = json.Marshal(uidFsm); err != nil {
+		log.LogErrorf("UidSpaceManager vol %v uid persist error %v", uMgr.vol.Name, err)
+		return
+	}
+	if err = uMgr.c.syncUidSpaceList(uMgr.vol, val); err != nil {
+		log.LogErrorf("UidSpaceManager vol %v uid persist syncUidList error %v", uMgr.vol.Name, err)
+		return
+	}
+	return
+}
+
+func (uMgr *UidSpaceManager) load(c *Cluster, val []byte) (err error) {
+	log.LogDebugf("vol %v UidSpaceManager load", uMgr.volName)
+	uMgr.c = c
+	uidFsm := &UidSpaceFsm{}
+	if err = json.Unmarshal(val, uidFsm); err != nil {
+		log.LogErrorf("UidSpaceManager vol %v Unmarshal error %v", uMgr.volName, err)
+		return
+	}
+	for _, info := range uidFsm.UidSpaceArr {
+		uMgr.uidInfo[info.Uid] = info
+		log.LogDebugf("vol %v uid %v load usedSize %v limit %v enabled %v", uMgr.volName, info.Uid, info.UsedSize, info.LimitSize, info.Limited)
+	}
+	return
+}
+
+func (uMgr *UidSpaceManager) getSpaceOp() (rsp []*proto.UidSpaceInfo) {
+	for _, info := range uMgr.uidInfo {
+		rsp = append(rsp, info)
+		log.LogDebugf("getSpaceOp. vol %v uid %v enabled %v", info.VolName, info.Uid, info.Limited)
+	}
+	return
+}
+
+func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
+	uMgr.Lock()
+	defer uMgr.Unlock()
+	id := report.PartitionID
+	uMgr.mpSpaceMetrics[id] = report.UidInfo
+	log.LogDebugf("vol %v volUidUpdate.mpID %v set uid %v. uid list size %v", uMgr.volName, id, report.UidInfo, len(uMgr.uidInfo))
+
+	for _, info := range uMgr.uidInfo {
+		info.UsedSize = 0
+	}
+
+	uidInfo := make(map[uint32]*proto.UidSpaceInfo)
+	for mpId, info := range uMgr.mpSpaceMetrics {
+		log.LogDebugf("vol %v volUidUpdate. reCalc mpId %v info %v", uMgr.volName, mpId, len(info))
+		for _, space := range info {
+			if _, ok := uMgr.uidInfo[space.Uid]; !ok {
+				log.LogDebugf("vol %v volUidUpdate.uid %v not found", uMgr.volName, space.Uid)
+				uMgr.uidInfo[space.Uid] = &proto.UidSpaceInfo{
+					VolName: uMgr.volName,
+					Uid:     space.Uid,
+					CTime:   time.Now().Unix(),
+				}
+			}
+			if _, ok := uidInfo[space.Uid]; !ok {
+				uidInfo[space.Uid] = &(*uMgr.uidInfo[space.Uid])
+			}
+
+			log.LogDebugf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
+			uidInfo[space.Uid].UsedSize += space.Size
+			if !uidInfo[space.Uid].Enabled {
+				uidInfo[space.Uid].Limited = false
+				continue
+			}
+			if uidInfo[space.Uid].UsedSize > uMgr.uidInfo[space.Uid].LimitSize {
+				uidInfo[space.Uid].Limited = true
+				log.LogWarnf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
+			} else {
+				uidInfo[space.Uid].Limited = false
+				log.LogWarnf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
+			}
+		}
+	}
+
+	log.LogDebugf("vol %v volUidUpdate.mpID %v set uid %v. uid list size %v", uMgr.volName, id, report.UidInfo, len(uMgr.uidInfo))
+	for _, info := range uidInfo {
+		if _, ok := uMgr.uidInfo[info.Uid]; !ok {
+			log.LogErrorf("volUidUpdate.uid %v not found", info.Uid)
+			continue
+		}
+		uMgr.uidInfo[info.Uid] = info
+	}
+	for _, info := range uMgr.uidInfo {
+		if info.UsedSize == 0 {
+			info.Limited = false
+		}
+	}
+	log.LogDebugf("volUidUpdate.mpID %v set uid %v. uid list size %v", id, report.UidInfo, len(uMgr.uidInfo))
+
+}
+
 type ServerFactorLimit struct {
 	Name           string
 	Type           uint32
@@ -754,7 +921,7 @@ func (acl *AclManager) listAll() (val []*proto.AclIpInfo) {
 }
 
 func (acl *AclManager) checkIp(ip string) (val []*proto.AclIpInfo) {
-	log.LogDebugf("checkIp %v", ip)
+	log.LogDebugf("vol %v checkIp %v", ip, acl.vol.Name)
 	if info, ok := acl.aclIps[ip]; ok {
 		log.LogDebugf("vol %v checkIp ip %v", ip, acl.vol.Name)
 		val = append(val, info)
@@ -763,7 +930,7 @@ func (acl *AclManager) checkIp(ip string) (val []*proto.AclIpInfo) {
 }
 
 func (acl *AclManager) addIp(ip string) (err error) {
-	log.LogDebugf("addIp %v", ip)
+	log.LogDebugf("vol %v acl addIp %v", acl.vol.Name, ip)
 	if _, ok := acl.aclIps[ip]; ok {
 		return
 	}
@@ -776,13 +943,13 @@ func (acl *AclManager) addIp(ip string) (err error) {
 }
 
 func (acl *AclManager) removeIp(ip string) (err error) {
-	log.LogDebugf("removeIp %v", ip)
+	log.LogDebugf("vol %v acl removeIp %v", acl.vol.Name, ip)
 	delete(acl.aclIps, ip)
 	return acl.persist()
 }
 
 func (acl *AclManager) persist() (err error) {
-	log.LogDebugf("persist")
+	log.LogDebugf("vol %v acl persist", acl.vol.Name)
 	var aclFsm AclFsm
 	for _, t := range acl.aclIps {
 		aclFsm.AclIpArr = append(aclFsm.AclIpArr, t)
@@ -801,11 +968,11 @@ func (acl *AclManager) persist() (err error) {
 }
 
 func (acl *AclManager) load(c *Cluster, val []byte) (err error) {
-	log.LogDebugf("load")
+	log.LogDebugf("vol %v acl load meta", acl.vol.Name)
 	acl.c = c
 	aclFsm := &AclFsm{}
 	if err = json.Unmarshal(val, aclFsm); err != nil {
-		log.LogErrorf("vol %v acl load %v", acl.vol.Name)
+		log.LogErrorf("vol %v acl load %v", acl.vol.Name, err)
 		return
 	}
 	for _, info := range aclFsm.AclIpArr {
