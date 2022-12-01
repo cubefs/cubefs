@@ -15,6 +15,7 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -34,6 +35,7 @@ import (
 // Cluster stores all the cluster-level information.
 type Cluster struct {
 	Name                       string
+	responseCache              []byte
 	vols                       map[string]*Vol
 	dataNodes                  sync.Map
 	metaNodes                  sync.Map
@@ -129,6 +131,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 }
 
 func (c *Cluster) scheduleTask() {
+	c.scheduleToUpdateClusterViewResponseCache()
 	c.scheduleToCheckDataPartitions()
 	c.scheduleToLoadDataPartitions()
 	c.scheduleToCheckReleaseDataPartitions()
@@ -5197,5 +5200,133 @@ func checkForceRowAndCompact(vol *Vol, forceRowChange, compactTagChange bool) (e
 			err = fmt.Errorf("compact cannot be opened when force row is opened for less than %v minutes, Please open force row first", proto.ForceRowClosedTimeDuration/60)
 		}
 	}
+	return
+}
+
+func (c *Cluster) scheduleToUpdateClusterViewResponseCache() {
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.updateClusterViewResponseCache()
+			}
+			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
+		}
+	}()
+}
+
+func (c *Cluster) getClusterViewResponseCache() (responseCache []byte) {
+	if len(c.responseCache) == 0 {
+		c.updateClusterViewResponseCache()
+	}
+	return c.responseCache
+}
+
+func (c *Cluster) updateClusterViewResponseCache() {
+	cv := c.getClusterView()
+	reply := newSuccessHTTPReply(cv)
+	responseCache, err := json.Marshal(reply)
+	if err != nil {
+		msg := fmt.Sprintf("action[updateClusterViewResponseCache] json marshal err:%v", err)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+	c.responseCache = responseCache
+	return
+}
+
+func (c *Cluster) clearClusterViewResponseCache() {
+	c.responseCache = nil
+}
+
+func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
+	cv = &proto.ClusterView{
+		Name:                                c.Name,
+		LeaderAddr:                          c.leaderInfo.addr,
+		DisableAutoAlloc:                    c.DisableAutoAllocate,
+		AutoMergeNodeSet:                    c.AutoMergeNodeSet,
+		NodeSetCapacity:                     c.cfg.nodeSetCapacity,
+		MetaNodeThreshold:                   c.cfg.MetaNodeThreshold,
+		DpRecoverPool:                       c.cfg.DataPartitionsRecoverPoolSize,
+		MpRecoverPool:                       c.cfg.MetaPartitionsRecoverPoolSize,
+		ClientPkgAddr:                       c.cfg.ClientPkgAddr,
+		Applied:                             c.fsm.applied,
+		MaxDataPartitionID:                  c.idAlloc.dataPartitionID,
+		MaxMetaNodeID:                       c.idAlloc.commonID,
+		MaxMetaPartitionID:                  c.idAlloc.metaPartitionID,
+		MetaNodeRocksdbDiskThreshold:        c.cfg.MetaNodeRocksdbDiskThreshold,
+		MetaNodeMemModeRocksdbDiskThreshold: c.cfg.MetaNodeMemModeRocksdbDiskThreshold,
+		MetaNodes:                           make([]proto.NodeView, 0),
+		DataNodes:                           make([]proto.NodeView, 0),
+		CodEcnodes:                          make([]proto.NodeView, 0),
+		EcNodes:                             make([]proto.NodeView, 0),
+		BadPartitionIDs:                     make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs:                 make([]proto.BadPartitionView, 0),
+		BadEcPartitionIDs:                   make([]proto.BadPartitionView, 0),
+		MigratedDataPartitions:              make([]proto.BadPartitionView, 0),
+		MigratedMetaPartitions:              make([]proto.BadPartitionView, 0),
+		DataNodeBadDisks:                    make([]proto.DataNodeBadDisksView, 0),
+		EcScrubEnable:                       c.EcScrubEnable,
+		EcMaxScrubExtents:                   c.EcMaxScrubExtents,
+		EcScrubPeriod:                       c.EcScrubPeriod,
+		EcScrubStartTime:                    c.EcStartScrubTime,
+		MaxCodecConcurrent:                  c.MaxCodecConcurrent,
+		RocksDBDiskReservedSpace:            c.cfg.RocksDBDiskReservedSpace,
+		LogMaxMB:                            c.cfg.LogMaxSize,
+		MetaRockDBWalFileSize:               c.cfg.MetaRockDBWalFileSize,
+		MetaRocksWalMemSize:                 c.cfg.MetaRocksWalMemSize,
+		MetaRocksLogSize:                    c.cfg.MetaRocksLogSize,
+		MetaRocksLogReservedTime:            c.cfg.MetaRocksLogReservedTime,
+		MetaRocksLogReservedCnt:             c.cfg.MetaRocksLogReservedCnt,
+		MetaRocksFlushWalInterval:           c.cfg.MetaRocksFlushWalInterval,
+		MetaRocksDisableFlushFlag:           c.cfg.MetaRocksDisableFlushFlag,
+		MetaRocksWalTTL:                     c.cfg.MetaRocksWalTTL,
+	}
+
+	vols := c.allVolNames()
+	cv.VolCount = len(vols)
+	cv.MetaNodes = c.allMetaNodes()
+	cv.DataNodes = c.allDataNodes()
+	cv.DataNodeStatInfo = c.dataNodeStatInfo
+	cv.MetaNodeStatInfo = c.metaNodeStatInfo
+	cv.CodEcnodes = c.allCodecNodes()
+	cv.EcNodes = c.allEcNodes()
+	cv.EcNodeStatInfo = c.ecNodeStatInfo
+	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		badDataPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badDataPartitionIds}
+		cv.BadPartitionIDs = append(cv.BadPartitionIDs, bpv)
+		return true
+	})
+	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		badPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
+		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, bpv)
+		return true
+	})
+	c.BadEcPartitionIds.Range(func(key, value interface{}) bool {
+		badEcPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badEcPartitionIds}
+		cv.BadEcPartitionIDs = append(cv.BadEcPartitionIDs, bpv)
+		return true
+	})
+	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
+		badPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
+		cv.MigratedDataPartitions = append(cv.MigratedDataPartitions, bpv)
+		return true
+	})
+	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
+		badPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
+		cv.MigratedMetaPartitions = append(cv.MigratedMetaPartitions, bpv)
+		return true
+	})
+	cv.DataNodeBadDisks = c.getDataNodeBadDisks()
 	return
 }

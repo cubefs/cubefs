@@ -278,6 +278,11 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	metrics := exporter.NewTPCnt(proto.AdminGetClusterUmpKey)
 	defer func() { metrics.Set(nil) }()
+	responseCache := m.cluster.getClusterViewResponseCache()
+	if len(responseCache) != 0 {
+		send(w, r, responseCache)
+		return
+	}
 	cv := &proto.ClusterView{
 		Name:                                m.cluster.Name,
 		LeaderAddr:                          m.leaderInfo.addr,

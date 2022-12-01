@@ -174,6 +174,7 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearEcNodes()
 	m.cluster.clearMigrateTask()
 	m.cluster.clearVols()
+	m.cluster.clearClusterViewResponseCache()
 	m.user.clearUserStore()
 	m.user.clearAKStore()
 	m.user.clearVolUsers()

@@ -24,6 +24,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -298,6 +299,32 @@ func stopMetaServer(mms *mocktest.MockMetaServer) {
 	mn, _ := server.cluster.metaNode(mms.TcpAddr)
 	server.cluster.deleteMetaNodeFromCache(mn)
 	mms.Stop()
+}
+
+func TestGetClusterView(t *testing.T) {
+	server.cluster.responseCache = nil
+	clusterView, err := mc.AdminAPI().GetCluster()
+	if err != nil {
+		t.Error(err)
+	}
+	if len(server.cluster.responseCache) == 0 {
+		t.Errorf("responseCache should not be empty")
+	}
+	var body = &struct {
+		Code int32           `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}{}
+	if err = json.Unmarshal(server.cluster.responseCache, body); err != nil {
+		t.Errorf("unmarshal response cache err:%v", err)
+	}
+	cv := &proto.ClusterView{}
+	if err = json.Unmarshal(body.Data, &cv); err != nil {
+		t.Errorf("unmarshal data err:%v", err)
+	}
+	if !reflect.DeepEqual(clusterView, cv) {
+		t.Errorf("clusterView not equal clusterView:%v cv:%v", clusterView, cv)
+	}
 }
 
 func TestSetMetaNodeThreshold(t *testing.T) {
