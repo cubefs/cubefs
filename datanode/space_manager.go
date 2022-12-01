@@ -215,7 +215,7 @@ func (manager *SpaceManager) updateMetrics() {
 	maxCapacityToCreatePartition = 0
 	for _, d := range manager.disks {
 		if d.Status == proto.Unavailable {
-			log.LogWarnf("disk is broken, not stat disk useage, diskpath %s", d.Path)
+			log.LogInfof("disk is broken, not stat disk useage, diskpath %s", d.Path)
 			continue
 		}
 

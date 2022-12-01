@@ -772,7 +772,8 @@ func (s *DataNode) shallDegrade() bool {
 }
 
 func IsDiskErr(errMsg string) bool {
-	if strings.Contains(errMsg, syscall.EIO.Error()) || strings.Contains(errMsg, syscall.EROFS.Error()) {
+	if strings.Contains(errMsg, syscall.EIO.Error()) || strings.Contains(errMsg, syscall.EROFS.Error()) ||
+		strings.Contains(errMsg, syscall.EACCES.Error()) {
 		return true
 	}
 

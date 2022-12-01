@@ -303,6 +303,7 @@ func (d *Disk) triggerDiskError(err error) {
 	if err == nil {
 		return
 	}
+	log.LogWarnf("triggerDiskError disk err %s", err.Error())
 	if IsDiskErr(err.Error()) {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		exporter.Warning(mesg)
