@@ -676,15 +676,29 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) {
 }
 
 func (m *metadataManager) startPartitions() (err error) {
+	var wg sync.WaitGroup
+	start := time.Now()
+	failCnt := uint64(0)
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for id, partition := range m.partitions {
-		if err = partition.Start(); err != nil {
-			log.LogErrorf("partition[%v] start failed: %v", id, err)
-			return
-		}
-		log.LogInfof("partition[%v] start success", id)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if pErr := partition.Start(); pErr != nil {
+				log.LogErrorf("partition[%v] start failed: %v", id, pErr)
+				atomic.AddUint64(&failCnt, 1)
+				return
+			}
+			log.LogInfof("partition[%v] start success", id)
+		}()
 	}
+	wg.Wait()
+	if failCnt != 0 {
+		log.LogErrorf("start %d partitions failed", failCnt)
+		return errors.NewErrorf("start %d partitions failed", failCnt)
+	}
+	log.LogInfof("start %d partitions cost :%v", len(m.partitions), time.Since(start))
 	return
 }
 
