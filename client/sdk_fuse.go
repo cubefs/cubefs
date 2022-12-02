@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	syslog "log"
 	"net/http"
@@ -35,12 +36,12 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 	cfs "github.com/chubaofs/chubaofs/client/fs"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util/config"
@@ -87,7 +88,16 @@ type fClient struct {
 	volName     string
 	readonly    bool
 	mc          *master.MasterClient
+	mw          *meta.MetaWrapper
+	ec          *data.ExtentClient
 	stderrFd    int
+}
+
+type FuseClientState struct {
+	FuseState  *fs.FuseContext
+	MetaState  *meta.MetaState
+	DataState  *data.DataState
+	SuperState *cfs.SuperState
 }
 
 var GlobalMountOptions []proto.MountOption
@@ -101,7 +111,7 @@ func init() {
 	proto.InitMountOptions(GlobalMountOptions)
 }
 
-func StartClient(configFile string, fuseFd *os.File, clientState []byte) (err error) {
+func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (err error) {
 
 	/*
 	 * We are in daemon from here.
@@ -169,27 +179,25 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) (err er
 
 	registerInterceptedSignal()
 
-	first_start := clientState == nil
-	tryTime := MaxRequestMasterRetry
+	clientState := &FuseClientState{}
+	first_start := clientStateBytes == nil
 	if first_start {
-		tryTime = 1
-	}
-	for i := 0; i < tryTime; i++ {
-		if err = checkPermission(opt); err == nil || err == proto.ErrNoPermission {
-			break
+		if err = checkPermission(opt); err != nil {
+			syslog.Println("check permission failed: ", err)
+			log.LogFlush()
+			return err
 		}
-		syslog.Println("check permission failed: ", err)
-		time.Sleep(RequestMasterRetryInterval)
-	}
-	if err != nil {
-		syslog.Println("check permission failed: ", err)
-		log.LogFlush()
-		return err
+	} else {
+		if err = json.Unmarshal(clientStateBytes, clientState); err != nil {
+			syslog.Printf("Unmarshal clientState err: %v, clientState: %s\n", err, string(clientStateBytes))
+			log.LogFlush()
+			return err
+		}
 	}
 
 	gClient.readonly = opt.Rdonly
 
-	fsConn, err := mount(opt, fuseFd)
+	fsConn, err := mount(opt, fuseFd, first_start, clientState)
 	if err != nil {
 		syslog.Println("mount failed: ", err)
 		log.LogFlush()
@@ -204,16 +212,27 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) (err er
 	go version.ReportVersionSchedule(cfg, masters, versionInfo, gClient.stopC, &gClient.wg)
 	go func() {
 		defer gClient.wg.Done()
+		var fuseState *fs.FuseContext
+		if !first_start {
+			fuseState = clientState.FuseState
+		}
 		gClient.fuseServer = fs.New(fsConn, nil)
-		if gClient.clientState, err = gClient.fuseServer.Serve(gClient.super, clientState); err != nil {
+		if fuseState, err = gClient.fuseServer.Serve(gClient.super, fuseState); err != nil {
 			log.LogFlush()
 			syslog.Printf("fs Serve returns err(%v)", err)
 			os.Exit(1)
 		}
-		if gClient.clientState == nil {
+		if fuseState == nil {
 			log.LogFlush()
 			os.Exit(0)
 		}
+		currState := FuseClientState{fuseState, gClient.mw.GetMetaState(), gClient.ec.GetDataState(), gClient.super.GetSuperState()}
+		state, err := json.Marshal(currState)
+		if err != nil {
+			syslog.Printf("Marshal clientState err(%v), clientState(%v)\n", err, currState)
+			os.Exit(1)
+		}
+		gClient.clientState = state
 	}()
 
 	<-fsConn.Ready
@@ -229,14 +248,21 @@ func dumpVersion() string {
 	return fmt.Sprintf("\nChubaoFS Client\nBranch: %s\nCommit: %s\nBuild: %s %s %s %s\n", BranchName, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 }
 
-func mount(opt *proto.MountOptions, fuseFd *os.File) (fsConn *fuse.Conn, err error) {
-	super, err := cfs.NewSuper(opt)
+func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientState *FuseClientState) (fsConn *fuse.Conn, err error) {
+	var super *cfs.Super
+	if first_start {
+		super, err = cfs.NewSuper(opt, first_start, nil, nil, nil)
+	} else {
+		super, err = cfs.NewSuper(opt, first_start, clientState.MetaState, clientState.DataState, clientState.SuperState)
+	}
 	if err != nil {
 		log.LogError(errors.Stack(err))
 		return
 	}
 
 	gClient.super = super
+	gClient.mw = super.MetaWrapper()
+	gClient.ec = super.ExtentClient()
 	http.HandleFunc(ControlCommandSetRate, super.SetRate)
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
 	http.HandleFunc(ControlCommandGetOpRate, super.GetOpRate)
@@ -494,7 +520,7 @@ func StopClient() (clientState []byte) {
 	clientState = gClient.clientState
 
 	gClient.super.Close()
-	syslog.Printf("Stop fuse client successfully.")
+	syslog.Println("Stop fuse client successfully.")
 
 	sysutil.RedirectFD(gClient.stderrFd, int(os.Stderr.Fd()))
 	gClient.outputFile.Sync()
@@ -506,6 +532,19 @@ func StopClient() (clientState []byte) {
 
 	runtime.GC()
 	return
+}
+
+func SaveVolumeState() bool {
+	var err error
+	if err = gClient.mw.SaveState(); err != nil {
+		syslog.Printf("save meta state failed: %v\n", err)
+		return false
+	}
+	if err = gClient.ec.SaveState(); err != nil {
+		syslog.Printf("save data state failed: %v\n", err)
+		return false
+	}
+	return true
 }
 
 func main() {}

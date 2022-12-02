@@ -157,6 +157,18 @@ type MetaWrapper struct {
 	limitMapMutex sync.RWMutex
 	// infinite retry send to mp
 	InfiniteRetry bool
+	metaState     *MetaState
+}
+
+type MetaState struct {
+	Ticket_Ticket     string
+	Ticket_SessionKey string
+	Cluster           string
+	LocalIP           string
+	TotalSize         uint64
+	UsedSize          uint64
+	VolNotExists      bool
+	View              *proto.VolView
 }
 
 //the ticket from authnode
@@ -244,6 +256,115 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	go mw.startUpdateLimiterConfig()
 
 	return mw, nil
+}
+
+func RebuildMetaWrapper(config *MetaConfig, metaState *MetaState) *MetaWrapper {
+	mw := new(MetaWrapper)
+	mw.closeCh = make(chan struct{}, 1)
+
+	if config.Authenticate {
+		var ticketMess = config.TicketMess
+		mw.ac = authSDK.NewAuthClient(ticketMess.TicketHosts, ticketMess.EnableHTTPS, ticketMess.CertFile)
+		mw.authenticate = config.Authenticate
+		mw.accessToken.Ticket = metaState.Ticket_Ticket
+		mw.accessToken.ClientID = config.Owner
+		mw.accessToken.ServiceID = proto.MasterServiceID
+		mw.sessionKey = metaState.Ticket_SessionKey
+		mw.ticketMess = ticketMess
+	}
+
+	mw.modulename = config.Modulename
+	mw.volname = config.Volume
+	mw.owner = config.Owner
+	mw.ownerValidation = config.ValidateOwner
+	mw.mc = masterSDK.NewMasterClient(config.Masters, false)
+	mw.onAsyncTaskError = config.OnAsyncTaskError
+	mw.partitions = make(map[uint64]*MetaPartition)
+	mw.ranges = btree.New(32)
+	mw.rwPartitions = make([]*MetaPartition, 0)
+	mw.partCond = sync.NewCond(&mw.partMutex)
+	mw.forceUpdate = make(chan struct{}, 1)
+	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
+	mw.InfiniteRetry = config.InfiniteRetry
+	mw.opLimiter = make(map[uint8]*rate.Limiter)
+	mw.actionLimiter = make(map[proto.Action]*rate.Limiter)
+	mw.connConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   IdleConnTimeoutMeta,
+		ConnectTimeoutNs: ConnectTimeoutMetaMs * int64(time.Millisecond),
+		WriteTimeoutNs:   WriteTimeoutMeta * int64(time.Second),
+		ReadTimeoutNs:    ReadTimeoutMeta * int64(time.Second),
+	}
+
+	mw.cluster = metaState.Cluster
+	mw.localIP = metaState.LocalIP
+	atomic.StoreUint64(&mw.totalSize, metaState.TotalSize)
+	atomic.StoreUint64(&mw.usedSize, metaState.UsedSize)
+	mw.volNotExists = metaState.VolNotExists
+	if !mw.volNotExists {
+		view := mw.convertVolumeView(metaState.View)
+		rwPartitions := make([]*MetaPartition, 0)
+		for _, mp := range view.MetaPartitions {
+			mw.replaceOrInsertPartition(mp)
+			log.LogInfof("updateMetaPartition: mp(%v)", mp)
+			if mp.Status == proto.ReadWrite {
+				rwPartitions = append(rwPartitions, mp)
+			}
+		}
+		mw.ossSecure = view.OSSSecure
+		mw.ossBucketPolicy = view.OSSBucketPolicy
+		mw.volCreateTime = view.CreateTime
+		mw.crossRegionHAType = view.CrossRegionHAType
+		mw.updateConnConfig(view.ConnConfig)
+
+		if len(rwPartitions) > 0 {
+			mw.Lock()
+			mw.rwPartitions = rwPartitions
+			mw.Unlock()
+		}
+	}
+
+	mw.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
+
+	mw.wg.Add(2)
+	go mw.refresh()
+	go mw.startUpdateLimiterConfig()
+	return mw
+}
+
+func (mw *MetaWrapper) SaveState() error {
+	metaState := new(MetaState)
+	metaState.Ticket_Ticket = mw.Ticket.Ticket
+	metaState.Ticket_SessionKey = mw.Ticket.SessionKey
+	metaState.Cluster = mw.cluster
+	metaState.LocalIP = mw.localIP
+	metaState.TotalSize = mw.totalSize
+	metaState.UsedSize = mw.usedSize
+	metaState.VolNotExists = mw.volNotExists
+
+	var (
+		err  error
+		view *proto.VolView
+	)
+	for limit := 0; limit < MaxMountRetryLimit; limit++ {
+		view, err = mw.fetchVolumeView()
+		if err != nil {
+			if err == proto.ErrVolNotExists {
+				metaState.VolNotExists = true
+				break
+			}
+		} else {
+			metaState.View = view
+			break
+		}
+	}
+	if err == nil {
+		mw.metaState = metaState
+	}
+	return err
+}
+
+func (mw *MetaWrapper) GetMetaState() *MetaState {
+	return mw.metaState
 }
 
 func (mw *MetaWrapper) initMetaWrapper() (err error) {

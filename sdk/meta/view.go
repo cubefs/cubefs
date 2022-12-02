@@ -54,8 +54,7 @@ type OSSSecure struct {
 
 type VolStatInfo = proto.VolStatInfo
 
-func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
-	var vv *proto.VolView
+func (mw *MetaWrapper) fetchVolumeView() (vv *proto.VolView, err error) {
 	if mw.ownerValidation {
 		var authKey string
 		if authKey, err = calculateAuthKey(mw.owner); err != nil {
@@ -87,6 +86,10 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			return
 		}
 	}
+	return
+}
+
+func (mw *MetaWrapper) convertVolumeView(vv *proto.VolView) (view *VolumeView) {
 	var convert = func(volView *proto.VolView) *VolumeView {
 		result := &VolumeView{
 			Name:              volView.Name,
@@ -146,7 +149,8 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 }
 
 func (mw *MetaWrapper) updateMetaPartitions() error {
-	view, err := mw.fetchVolumeView()
+	var view *VolumeView
+	vv, err := mw.fetchVolumeView()
 	if err != nil {
 		log.LogInfof("error: %v", err.Error())
 		if err == proto.ErrVolNotExists {
@@ -155,6 +159,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		}
 		return err
 	} else {
+		view = mw.convertVolumeView(vv)
 		mw.volNotExists = false
 	}
 

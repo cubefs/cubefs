@@ -141,6 +141,7 @@ type ExtentClient struct {
 	extentMergeIno     []uint64
 	extentMergeChan    chan struct{}
 	ExtentMergeSleepMs uint64
+	dataState          *DataState
 }
 
 const (
@@ -148,19 +149,23 @@ const (
 )
 
 // NewExtentClient returns a new extent client.
-func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
+func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *ExtentClient, err error) {
 	client = new(ExtentClient)
 
-	limit := MaxMountRetryLimit
-retry:
-	client.dataWrapper, err = NewDataPartitionWrapper(config.Volume, config.Masters)
-	if err != nil {
-		if limit <= 0 {
-			return nil, errors.Trace(err, "Init data wrapper failed!")
-		} else {
-			limit--
-			time.Sleep(MountRetryInterval)
-			goto retry
+	if dataState != nil {
+		client.dataWrapper = RebuildDataPartitionWrapper(config.Volume, config.Masters, dataState)
+	} else {
+		limit := MaxMountRetryLimit
+	retry:
+		client.dataWrapper, err = NewDataPartitionWrapper(config.Volume, config.Masters)
+		if err != nil {
+			if limit <= 0 {
+				return nil, errors.Trace(err, "Init data wrapper failed!")
+			} else {
+				limit--
+				time.Sleep(MountRetryInterval)
+				goto retry
+			}
 		}
 	}
 	client.metaWrapper = config.MetaWrapper
@@ -219,6 +224,14 @@ retry:
 		go client.BackgroundExtentMerge()
 	}
 	return
+}
+
+func (client *ExtentClient) SaveState() error {
+	return client.dataWrapper.saveState()
+}
+
+func (client *ExtentClient) GetDataState() *DataState {
+	return client.dataWrapper.dataState
 }
 
 // Open request shall grab the lock until request is sent to the request channel

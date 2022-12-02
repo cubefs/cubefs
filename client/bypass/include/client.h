@@ -135,6 +135,7 @@ int real_fsync(int fd);
 
 int start_libs(void*);
 void* stop_libs();
+bool save_volume_state();
 void flush_logs();
 #ifdef __cplusplus
 }

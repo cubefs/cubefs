@@ -49,7 +49,7 @@ type Wrapper struct {
 	volName               string
 	masters               []string
 	volNotExists          bool
-	partitions			  *sync.Map //key: dpID; value: *DataPartition
+	partitions            *sync.Map //key: dpID; value: *DataPartition
 	followerRead          bool
 	followerReadClientCfg bool
 	nearRead              bool
@@ -83,6 +83,16 @@ type Wrapper struct {
 
 	dpFollowerReadDelayConfig *proto.DpFollowerReadDelayConfig
 	dpLowestDelayHostWeight   int
+	dataState                 *DataState
+}
+
+type DataState struct {
+	ClusterName  string
+	LocalIP      string
+	VolNotExists bool
+	VolView      *proto.SimpleVolView
+	DpView       *proto.DataPartitionsView
+	ClusterView  *proto.ClusterView
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -139,6 +149,115 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	go w.ScheduleDataPartitionMetricsReport()
 	go w.dpFollowerReadDelayCollect()
 
+	return
+}
+
+func RebuildDataPartitionWrapper(volName string, masters []string, dataState *DataState) (w *Wrapper) {
+	w = new(Wrapper)
+	w.stopC = make(chan struct{})
+	w.masters = masters
+	w.mc = masterSDK.NewMasterClient(masters, false)
+	w.schedulerClient = scheduler.NewSchedulerClient(w.dpMetricsReportDomain, false)
+	w.volName = volName
+	w.partitions = new(sync.Map)
+	w.HostsStatus = make(map[string]bool)
+	w.connConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   IdleConnTimeoutData,
+		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
+		WriteTimeoutNs:   WriteTimeoutData * int64(time.Second),
+		ReadTimeoutNs:    ReadTimeoutData * int64(time.Second),
+	}
+	w.dpMetricsReportConfig = &proto.DpMetricsReportConfig{
+		EnableReport:      false,
+		ReportIntervalSec: defaultMetricReportSec,
+		FetchIntervalSec:  defaultMetricFetchSec,
+	}
+	w.dpFollowerReadDelayConfig = &proto.DpFollowerReadDelayConfig{
+		EnableCollect:        true,
+		DelaySummaryInterval: followerReadDelaySummaryInterval,
+	}
+	w.clusterName = dataState.ClusterName
+	LocalIP = dataState.LocalIP
+
+	view := dataState.VolView
+	w.followerRead = view.FollowerRead
+	w.nearRead = view.NearRead
+	w.forceROW = view.ForceROW
+	w.dpSelectorName = view.DpSelectorName
+	w.dpSelectorParm = view.DpSelectorParm
+	w.crossRegionHAType = view.CrossRegionHAType
+	w.quorum = view.Quorum
+	w.ecEnable = view.EcEnable
+	w.extentCacheExpireSec = view.ExtentCacheExpireSec
+	w.updateConnConfig(view.ConnConfig)
+	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
+	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
+	w.initDpSelector()
+
+	w.volNotExists = dataState.VolNotExists
+	if !w.volNotExists {
+		w.convertDataPartition(dataState.DpView, true)
+	}
+
+	w._updateDataNodeStatus(dataState.ClusterView)
+
+	streamConnPoolInitOnce.Do(func() {
+		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
+	})
+
+	w.wg.Add(4)
+	go w.update()
+	go w.updateCrossRegionHostStatus()
+	go w.ScheduleDataPartitionMetricsReport()
+	go w.dpFollowerReadDelayCollect()
+
+	return
+}
+
+func (w *Wrapper) saveState() (err error) {
+	dataState := new(DataState)
+	dataState.ClusterName = w.clusterName
+	dataState.LocalIP = LocalIP
+
+	var (
+		volView     *proto.SimpleVolView
+		dpView      *proto.DataPartitionsView
+		clusterView *proto.ClusterView
+	)
+	for limit := 0; limit < MaxMountRetryLimit; limit++ {
+		if dataState.VolView == nil {
+			if volView, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
+				log.LogWarnf("save data state: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+				continue
+			} else {
+				dataState.VolView = volView
+			}
+		}
+		if dataState.DpView == nil {
+			if dpView, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
+				if err == proto.ErrVolNotExists {
+					dataState.VolNotExists = true
+				} else {
+					log.LogWarnf("save data state: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+					continue
+				}
+			} else {
+				dataState.VolNotExists = false
+				dataState.DpView = dpView
+			}
+		}
+		if dataState.ClusterView == nil {
+			if clusterView, err = w.mc.AdminAPI().GetCluster(); err != nil {
+				log.LogWarnf("save data state: get cluster fail: err(%v)", err)
+				continue
+			} else {
+				dataState.ClusterView = clusterView
+			}
+		}
+	}
+	if err == nil {
+		w.dataState = dataState
+	}
 	return
 }
 
@@ -294,6 +413,13 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 
 func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	var dpv *proto.DataPartitionsView
+	if dpv, err = w.fetchDataPartition(); err != nil {
+		return
+	}
+	return w.convertDataPartition(dpv, isInit)
+}
+
+func (w *Wrapper) fetchDataPartition() (dpv *proto.DataPartitionsView, err error) {
 	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
 		if err == proto.ErrVolNotExists {
 			w.partitions = new(sync.Map)
@@ -305,7 +431,10 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		w.volNotExists = false
 	}
 	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
+	return
+}
 
+func (w *Wrapper) convertDataPartition(dpv *proto.DataPartitionsView, isInit bool) (err error) {
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
 			DataPartitionResponse: *response,
@@ -440,12 +569,22 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (dp *DataPartition, err e
 
 func (w *Wrapper) updateDataNodeStatus() (err error) {
 	var cv *proto.ClusterView
+	if cv, err = w.fetchClusterView(); err != nil {
+		return
+	}
+	w._updateDataNodeStatus(cv)
+	return
+}
+
+func (w *Wrapper) fetchClusterView() (cv *proto.ClusterView, err error) {
 	cv, err = w.mc.AdminAPI().GetCluster()
 	if err != nil {
 		log.LogWarnf("updateDataNodeStatus: get cluster fail: err(%v)", err)
-		return
 	}
+	return
+}
 
+func (w *Wrapper) _updateDataNodeStatus(cv *proto.ClusterView) {
 	newHostsStatus := make(map[string]bool)
 	for _, node := range cv.DataNodes {
 		newHostsStatus[node.Addr] = node.Status

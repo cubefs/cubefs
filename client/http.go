@@ -284,6 +284,11 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		buildSuccessResp(w, "Set successful. Upgrading.")
 		return
 	}
+	if version == "reload" {
+		os.Setenv("RELOAD_CLIENT", "1")
+		buildSuccessResp(w, "Set successful. Upgrading.")
+		return
+	}
 
 	tmpPath := TmpLibsPath + fmt.Sprintf("%d", time.Now().Unix())
 	if err = os.MkdirAll(tmpPath, 0777); err != nil {
@@ -362,6 +367,11 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 
 	if version == "test" {
 		os.Setenv("RELOAD_CLIENT", version)
+		buildSuccessResp(w, "Set successful. Upgrading.")
+		return
+	}
+	if version == "reload" {
+		os.Setenv("RELOAD_CLIENT", "1")
 		buildSuccessResp(w, "Set successful. Upgrading.")
 		return
 	}

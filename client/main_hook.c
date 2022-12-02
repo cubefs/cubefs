@@ -630,6 +630,7 @@ static void init() {
 static void init_cfsc_func(void *handle) {
     start_libs = (start_libs_t)dlsym(handle, "start_libs");
     stop_libs = (stop_libs_t)dlsym(handle, "stop_libs");
+    save_volume_state = (save_volume_state_t)dlsym(handle, "save_volume_state");
     flush_logs = (flush_logs_t)dlsym(handle, "flush_logs");
 
     real_openat = (openat_t)dlsym(handle, "real_openat");
@@ -724,6 +725,9 @@ static void *update_dynamic_libs(void* handle) {
         if (strcmp(reload, "1") != 0 && strcmp(reload, "test") != 0)
             continue;
 
+        if (!save_volume_state()) {
+            continue;
+        }
         pthread_rwlock_wrlock(&update_rwlock);
         reload = getenv("RELOAD_CLIENT");
         if (reload == NULL) {

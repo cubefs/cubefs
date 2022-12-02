@@ -88,10 +88,12 @@ static fsync_t real_fsync;
 
 typedef int (*start_libs_t)(void *client_state);
 typedef void* (*stop_libs_t)();
+typedef bool (*save_volume_state_t)();
 typedef void (*flush_logs_t)();
 
 static start_libs_t start_libs;
 static stop_libs_t stop_libs;
+static save_volume_state_t save_volume_state;
 static flush_logs_t flush_logs;
 
 static void init();

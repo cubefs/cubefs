@@ -2411,6 +2411,7 @@ static void init_cfs_func(void *handle) {
     cfs_new_client = (cfs_new_client_t)dlsym(handle, "cfs_new_client");
     cfs_close_client = (cfs_close_client_t)dlsym(handle, "cfs_close_client");
     cfs_sdk_state = (cfs_sdk_state_t)dlsym(handle, "cfs_sdk_state");
+    cfs_save_volume_state = (cfs_save_volume_state_t)dlsym(handle, "cfs_save_volume_state");
     cfs_flush_log = (cfs_flush_log_t)dlsym(handle, "cfs_flush_log");
     cfs_ump = (cfs_ump_t)dlsym(handle, "cfs_ump");
 
@@ -2705,4 +2706,9 @@ err:
     if(dup_fds != NULL) free(dup_fds);
     if(files != NULL) free(files);
     return NULL;
+}
+
+bool save_volume_state() {
+    int re = cfs_save_volume_state(g_client_info.cfs_client_id);
+    return re == 0;
 }

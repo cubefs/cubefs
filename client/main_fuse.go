@@ -19,9 +19,10 @@ var (
 )
 
 var (
-	startClient func(string, *os.File, []byte) error
-	stopClient  func() []byte
-	getFuseFd   func() *os.File
+	startClient     func(string, *os.File, []byte) error
+	stopClient      func() []byte
+	getFuseFd       func() *os.File
+	saveVolumeState func() bool
 )
 
 const (
@@ -37,6 +38,9 @@ func loadSym(handle *plugin.Plugin) {
 
 	sym, _ = handle.Lookup("GetFuseFd")
 	getFuseFd = sym.(func() *os.File)
+
+	sym, _ = handle.Lookup("SaveVolumeState")
+	saveVolumeState = sym.(func() bool)
 }
 
 func main() {
@@ -71,6 +75,9 @@ func main() {
 			continue
 		}
 
+		if !saveVolumeState() {
+			continue
+		}
 		clientState := stopClient()
 		plugin.Close(ClientLib)
 		if reload == "test" {

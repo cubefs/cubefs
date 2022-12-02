@@ -192,7 +192,7 @@ func TestConsistenceRead(t *testing.T) {
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
 		TinySize:          NoUseTinyExtent,
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("NewExtentClient failed: err(%v) vol(%v)", err, ltptestVolume)
 	}
 
