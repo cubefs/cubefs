@@ -224,6 +224,8 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 	}
 	if _, err = manager.GetDisk(path); err != nil {
 		disk = NewDisk(path, reservedSpace, maxErrCnt, diskFDLimit, manager)
+		disk.SetFixTinyDeleteRecordLimitOnDisk(manager.fixTinyDeleteRecordLimitOnDisk)
+		disk.SetRepairTaskLimitOnDisk(manager.repairTaskLimitOnDisk)
 		startTime := time.Now()
 		disk.RestorePartition(visitor, DiskLoadPartitionParallelism)
 		log.LogInfof("disk(%v) load compete cost(%v)", path, time.Since(startTime))
@@ -558,6 +560,11 @@ func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
 	if newValue > 0 && manager.fixTinyDeleteRecordLimitOnDisk != newValue {
 		log.LogInfof("action[spaceManager] change DiskFixTinyDeleteRecordLimit from(%v) to(%v)", manager.repairTaskLimitOnDisk, newValue)
 		manager.fixTinyDeleteRecordLimitOnDisk = newValue
+		manager.diskMutex.Lock()
+		for _, disk := range manager.disks {
+			disk.SetFixTinyDeleteRecordLimitOnDisk(newValue)
+		}
+		manager.diskMutex.Unlock()
 	}
 	return
 }
@@ -574,6 +581,11 @@ func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
 	if newValue > 0 && manager.repairTaskLimitOnDisk != newValue {
 		log.LogInfof("action[spaceManager] change DiskRepairTaskLimit from(%v) to(%v)", manager.repairTaskLimitOnDisk, newValue)
 		manager.repairTaskLimitOnDisk = newValue
+		manager.diskMutex.Lock()
+		for _, disk := range manager.disks {
+			disk.SetRepairTaskLimitOnDisk(newValue)
+		}
+		manager.diskMutex.Unlock()
 	}
 }
 
