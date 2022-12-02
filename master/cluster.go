@@ -5316,6 +5316,9 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		MetaRocksFlushWalInterval:           c.cfg.MetaRocksFlushWalInterval,
 		MetaRocksDisableFlushFlag:           c.cfg.MetaRocksDisableFlushFlag,
 		MetaRocksWalTTL:                     c.cfg.MetaRocksWalTTL,
+		MetaRaftLogSize:                     c.cfg.MetaRaftLogSize,
+		MetaRaftLogCap:                      c.cfg.MetaRaftLogCap,
+		MetaTrashCleanInterval:              c.cfg.MetaTrashCleanInterval,
 	}
 
 	vols := c.allVolNames()

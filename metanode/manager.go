@@ -683,15 +683,15 @@ func (m *metadataManager) startPartitions() (err error) {
 	defer m.mu.RUnlock()
 	for id, partition := range m.partitions {
 		wg.Add(1)
-		go func() {
+		go func(pid uint64, mp MetaPartition) {
 			defer wg.Done()
-			if pErr := partition.Start(); pErr != nil {
-				log.LogErrorf("partition[%v] start failed: %v", id, pErr)
+			if pErr := mp.Start(); pErr != nil {
+				log.LogErrorf("partition[%v] start failed: %v", pid, pErr)
 				atomic.AddUint64(&failCnt, 1)
 				return
 			}
-			log.LogInfof("partition[%v] start success", id)
-		}()
+			log.LogInfof("partition[%v] start success", pid)
+		}(id , partition)
 	}
 	wg.Wait()
 	if failCnt != 0 {

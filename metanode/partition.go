@@ -954,12 +954,18 @@ func (mp *metaPartition) UpdatePeers(peers []proto.Peer) {
 
 // DeleteRaft deletes the raft partition.
 func (mp *metaPartition) DeleteRaft() (err error) {
+	if mp.raftPartition == nil {
+		return errors.NewErrorf("partition [%d] is not start", mp.config.PartitionId)
+	}
 	err = mp.raftPartition.Delete()
 	return
 }
 
 // ExpiredRaft deletes the raft partition.
 func (mp *metaPartition) ExpiredRaft() (err error) {
+	if mp.raftPartition == nil {
+		return errors.NewErrorf("partition [%d] is not start", mp.config.PartitionId)
+	}
 	err = mp.raftPartition.Expired()
 	return
 }
@@ -991,12 +997,18 @@ func (mp *metaPartition) isInoOutOfRange(inodeId uint64) (outOfRange bool, err e
 
 // ChangeMember changes the raft member with the specified one.
 func (mp *metaPartition) ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error) {
+	if mp.raftPartition == nil {
+		return nil, errors.NewErrorf("partition [%d] is not start", mp.config.PartitionId)
+	}
 	resp, err = mp.raftPartition.ChangeMember(changeType, peer, context)
 	return
 }
 
 // ResetMebmer reset the raft members with new peers, be carefull !
 func (mp *metaPartition) ResetMember(peers []raftproto.Peer, context []byte) (err error) {
+	if mp.raftPartition == nil {
+		return errors.NewErrorf("partition [%d] is not start", mp.config.PartitionId)
+	}
 	err = mp.raftPartition.ResetMember(peers, context)
 	return
 }
