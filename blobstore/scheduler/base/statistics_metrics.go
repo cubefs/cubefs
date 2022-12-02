@@ -390,5 +390,5 @@ func errStrFormat(err error) string {
 	}
 
 	strSlice := strings.Split(err.Error(), ":")
-	return strSlice[len(strSlice)-1]
+	return strings.TrimSpace(strSlice[len(strSlice)-1])
 }

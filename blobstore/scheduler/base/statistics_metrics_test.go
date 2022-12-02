@@ -97,7 +97,7 @@ func TestErrStrFormat(t *testing.T) {
 	err2 := errors.New("fake error")
 	var err3 error
 
-	require.Equal(t, " EOF", errStrFormat(err1))
+	require.Equal(t, "EOF", errStrFormat(err1))
 	require.Equal(t, "fake error", errStrFormat(err2))
 	require.Equal(t, "", errStrFormat(err3))
 }
