@@ -1034,6 +1034,8 @@ type SimpleVolView struct {
 	EcMaxUnitSize         uint64
 	ChildFileMaxCount     uint32
 	TrashCleanInterval    uint64
+	BatchDelInodeCnt     uint32
+	DelInodeInterval     uint32
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1059,11 +1061,13 @@ type VolInfo struct {
 	EnableWriteCache   bool
 	ChildFileMaxCnt    uint32
 	TrashCleanInterval uint64
+	BatchInodeDelCnt   uint32
+	DelInodeInterval   uint32
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,
 	remainingDays uint32, childFileMaxCnt uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
-	trashCleanInterval uint64, enableToken, enableWriteCache bool) *VolInfo {
+	trashCleanInterval uint64, enableToken, enableWriteCache bool, batchDelIndeCnt, delInodeInterval uint32) *VolInfo {
 	var usedRatio float64
 	if totalSize != 0 {
 		usedRatio = float64(usedSize) / float64(totalSize)
@@ -1085,6 +1089,8 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		UsedRatio:          usedRatio,
 		ChildFileMaxCnt:    childFileMaxCnt,
 		TrashCleanInterval: trashCleanInterval,
+		BatchInodeDelCnt:   batchDelIndeCnt,
+		DelInodeInterval:   delInodeInterval,
 	}
 }
 

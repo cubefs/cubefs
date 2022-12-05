@@ -88,6 +88,8 @@ type VolumeConfig struct {
 	TrashDay           int32
 	ChildFileMaxCnt    uint32
 	TrashCleanInterval uint64
+	BatchDelInodeCnt   uint32
+	DelInodeInterval   uint32
 }
 
 type MetaNodeVersion struct {
@@ -465,6 +467,8 @@ func (m *metadataManager) updateVolConf() (err error) {
 			TrashDay:           int32(vol.TrashRemainingDays),
 			ChildFileMaxCnt:    vol.ChildFileMaxCnt,
 			TrashCleanInterval: vol.TrashCleanInterval,
+			BatchDelInodeCnt:   vol.BatchInodeDelCnt,
+			DelInodeInterval:   vol.DelInodeInterval,
 		}
 		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v",
 			vol.Name, vol.TrashRemainingDays, vol.ChildFileMaxCnt, vol.TrashCleanInterval)
@@ -512,6 +516,30 @@ func (m *metadataManager) getTrashCleanInterval(vol string) (interval uint64) {
 	} else {
 		interval = volConf.TrashCleanInterval
 	}
+	return
+}
+
+func (m *metadataManager) getBatchDelInodeCnt(vol string) (batchDelInodeCnt uint64) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	if volConf, ok := m.volConfMap[vol]; !ok {
+		batchDelInodeCnt = 0
+	} else {
+		batchDelInodeCnt = uint64(volConf.BatchDelInodeCnt)
+	}
+
+	return
+}
+
+func (m *metadataManager) getDelInodeInterval(vol string) (interval uint64) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	if volConf, ok := m.volConfMap[vol]; !ok {
+		interval = 0
+	} else {
+		interval = uint64(volConf.DelInodeInterval)
+	}
+
 	return
 }
 

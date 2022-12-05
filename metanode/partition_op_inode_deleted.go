@@ -347,7 +347,7 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 
 	total := 0
 	defer log.LogDebugf("[CleanExpiredDeletedINode], cleaned %v until %v", total, expires)
-	batch := 128
+	batch := int(mp.GetBatchDelInodeCnt() * 2)
 	inos := make([]uint64, 0, batch)
 	snap := mp.GetSnapShot()
 	if snap == nil {

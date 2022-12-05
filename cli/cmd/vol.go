@@ -148,6 +148,7 @@ const (
 	cmdVolDefaultEcDataNum      = 4
 	cmdVolDefaultEcParityNum    = 2
 	cmdVolDefaultEcEnable       = false
+	cmdVolDefaultMaxChildrenCnt = 100 * 10000
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -174,6 +175,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var smartRules []string
 	var optCompactTag bool
 	var optFolReadDelayInterval int64
+	var optMaxChildrenCnt   uint64
+	var optBatchDelInodeCnt uint64
+	var optDelInodeInterval uint64
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -222,7 +226,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Cross Region HA     : %s\n", proto.CrossRegionHAType(optCrossRegionHAType))
 				stdout("  Auto repair         : %v\n", formatEnabledDisabled(optAutoRepair))
 				stdout("  Volume write mutex  : %v\n", formatEnabledDisabled(optVolWriteMutex))
-
 				stdout("  ZoneName            : %v\n", optZoneName)
 				stdout("  Store mode          : %v\n", storeMode.Str())
 				stdout("  Meta layout         : %v - %v\n", num1, num2)
@@ -230,6 +233,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Smart Rules         : %v\n", strings.Join(smartRules, ","))
 				stdout("  Compact             : %v\n", formatEnabledDisabled(optCompactTag))
 				stdout("  FolReadDelayInterval: %v\n", optFolReadDelayInterval)
+				stdout("  MaxChildrenCnt      : %v\n", optMaxChildrenCnt)
+				stdout("  BatchDelInodeCnt    : %v\n", optBatchDelInodeCnt)
+				stdout("  DelInodeInterval    : %v\n", optDelInodeInterval)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -241,7 +247,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
 				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart, optEnableWriteCache,
-				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag), optEcDataNum, optEcParityNum, optEcEnable, optFolReadDelayInterval)
+				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag), optEcDataNum,
+				optEcParityNum, optEcEnable, optFolReadDelayInterval, optMaxChildrenCnt, optBatchDelInodeCnt, optDelInodeInterval)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
@@ -273,6 +280,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint8Var(&optEcDataNum, CliFlagEcDataNum, cmdVolDefaultEcDataNum, "Specify ec data units number")
 	cmd.Flags().Uint8Var(&optEcParityNum, CliFlagEcParityNum, cmdVolDefaultEcParityNum, "Specify ec parity units number")
 	cmd.Flags().BoolVar(&optEcEnable, CliFlagEcEnable, cmdVolDefaultEcEnable, "Enable ec partiton backup")
+	cmd.Flags().Uint64Var(&optMaxChildrenCnt, CliOpVolMaxChildrenCnt, cmdVolDefaultMaxChildrenCnt, "Specify max children cnt [default : 100W]")
+	cmd.Flags().Uint64Var(&optBatchDelInodeCnt, CliOpVolBatchDelInodeCnt, 0, "Specify batch del inode cnt [default :0 use meta node default 128]")
+	cmd.Flags().Uint64Var(&optDelInodeInterval, CliOpVolDelInodeInterval, 0, "Specify del inodes interval  [Unit: ms, default 0]")
 	return cmd
 }
 
@@ -316,6 +326,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optFolReadDelayInterval int64
 		optLowestDelayHostWeight int
 		optTrashCleanInterval    int
+		optBatchDelInodeCnt      int
+		optDelInodeInterval      int
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -598,6 +610,18 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.TrashCleanInterval = uint64(optTrashCleanInterval)
 			}
 
+			if optBatchDelInodeCnt > -1 && uint32(optBatchDelInodeCnt) != vv.BatchDelInodeCnt {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  BatchDelInodeCnt   : %v -> %v\n", vv.BatchDelInodeCnt, optBatchDelInodeCnt))
+				vv.BatchDelInodeCnt = uint32(optBatchDelInodeCnt)
+			}
+
+			if optDelInodeInterval > -1 && uint32(optDelInodeInterval) != vv.DelInodeInterval {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  DelInodeInterval   : %v -> %v\n", vv.DelInodeInterval, optDelInodeInterval))
+				vv.DelInodeInterval = uint32(optDelInodeInterval)
+			}
+
 			if err != nil {
 				return
 			}
@@ -620,7 +644,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
-				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval)
+				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval)
 			if err != nil {
 				return
 			}
@@ -659,6 +683,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringSliceVar(&smartRules, CliSmartRulesMode, []string{}, "Specify volume smart rules")
 	cmd.Flags().StringVar(&optCompactTag, CliFlagCompactTag, "", "Specify volume compact")
 	cmd.Flags().IntVar(&optTrashCleanInterval, CliOpVolTrashCleanInterval, -1, "specify trash clean interval, unit:min")
+	cmd.Flags().IntVar(&optBatchDelInodeCnt, CliOpVolBatchDelInodeCnt, -1, "specify batch del inode count")
+	cmd.Flags().IntVar(&optDelInodeInterval, CliOpVolDelInodeInterval, -1, "specify del inode interval, unit:ms")
 	return cmd
 }
 

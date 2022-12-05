@@ -102,13 +102,17 @@ type Vol struct {
 	ecDataPartitions     *EcDataPartitionCache
 	ChildFileMaxCount    uint32
 	TrashCleanInterval   uint64
+	BatchDelInodeCnt     uint32
+	DelInodeInterval     uint32
 	sync.RWMutex
 }
 
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool, createTime, smartEnableTime int64, description, dpSelectorName,
-	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32,
-	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig) (vol *Vol) {
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
+	createTime, smartEnableTime int64, description, dpSelectorName,	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType,
+	dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32, defStoreMode proto.StoreMode,
+	convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag,
+	dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.ecDataPartitions = newEcDataPartitionCache(vol)
@@ -181,6 +185,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.EcMigrationRetryWait = defaultEcMigrationRetryWait
 	vol.EcMaxUnitSize = defaultEcMaxUnitSize
 	vol.ChildFileMaxCount = childFileMaxCnt
+	vol.BatchDelInodeCnt = batchDelInodeCnt
+	vol.DelInodeInterval = delInodeInterval
 	return
 }
 
@@ -218,7 +224,9 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.MpLayout,
 		vv.SmartRules,
 		vv.CompactTag,
-		vv.FollowerReadDelayCfg)
+		vv.FollowerReadDelayCfg,
+		vv.BatchDelInodeCnt,
+		vv.DelInodeInterval)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -1130,6 +1138,8 @@ func (vol *Vol) backupConfig() *Vol {
 		compactTagModifyTime: vol.compactTagModifyTime,
 		FollowerReadDelayCfg: vol.FollowerReadDelayCfg,
 		TrashCleanInterval : vol.TrashCleanInterval,
+		BatchDelInodeCnt:    vol.BatchDelInodeCnt,
+		DelInodeInterval:    vol.DelInodeInterval,
 	}
 }
 
@@ -1170,6 +1180,8 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.compactTag = backupVol.compactTag
 	vol.compactTagModifyTime = backupVol.compactTagModifyTime
 	vol.TrashCleanInterval = backupVol.TrashCleanInterval
+	vol.BatchDelInodeCnt = backupVol.BatchDelInodeCnt
+	vol.DelInodeInterval = backupVol.DelInodeInterval
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

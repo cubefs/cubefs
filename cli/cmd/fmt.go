@@ -179,6 +179,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  LowestDelay Host Weight: %v%%\n", svv.FolReadHostWeight))
 	sb.WriteString(fmt.Sprintf("  Child File Max Count : %v\n", svv.ChildFileMaxCount))
 	sb.WriteString(fmt.Sprintf("  Trash clean interval : %v\n", svv.TrashCleanInterval))
+	sb.WriteString(fmt.Sprintf("  Batch del inode cnt  : %v\n", svv.BatchDelInodeCnt))
+	sb.WriteString(fmt.Sprintf("  Del ino interval(ms) : %v\n", svv.DelInodeInterval))
 	return sb.String()
 }
 

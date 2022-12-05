@@ -291,6 +291,8 @@ type volValue struct {
 	EcEnable             bool
 	ChildFileMaxCnt      uint32
 	TrashCleanInterval   uint64
+	BatchDelInodeCnt     uint32
+	DelInodeInterval     uint32
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -357,6 +359,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		EcMaxUnitSize:        vol.EcMaxUnitSize,
 		ChildFileMaxCnt:      vol.ChildFileMaxCount,
 		TrashCleanInterval:   vol.TrashCleanInterval,
+		BatchDelInodeCnt:     vol.BatchDelInodeCnt,
+		DelInodeInterval:     vol.DelInodeInterval,
 	}
 	return
 }

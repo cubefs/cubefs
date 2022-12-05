@@ -2884,7 +2884,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
 	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
-	trashCleanInterval uint64) (err error) {
+	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3021,6 +3021,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.FollowerReadDelayCfg = dpFolReadDelayCfg
 	vol.FollReadHostWeight = follReadHostWeight
 	vol.TrashCleanInterval = trashCleanInterval
+	vol.BatchDelInodeCnt = batchDelInodeCnt
+	vol.DelInodeInterval = delInodeInterval
 	if isSmart && !vol.isSmart {
 		vol.smartEnableTime = time.Now().Unix()
 	}
@@ -3061,10 +3063,11 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, trashDays int, ecDataNum, ecParityNum uint8,
-	ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
-	crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64, childFileMaxCnt uint32,
-	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity,
+	trashDays int, ecDataNum, ecParityNum uint8, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,
+	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
+	childFileMaxCnt uint32,	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string,
+	compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -3108,7 +3111,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
 		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
-		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg); err != nil {
+		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -3137,10 +3140,12 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum, trashDays int, dataNum, parityNum uint8,
-	enableEc, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
-	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, childFileMaxCnt uint32,
-	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum,
+	trashDays int, dataNum, parityNum uint8, enableEc, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,
+	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8,
+	dpWriteableThreshold float64, childFileMaxCnt uint32, storeMode proto.StoreMode, convertSt proto.VolConvertState,
+	mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
+	batchDelInodeCnt, delInodeInterval uint32) (vol *Vol, err error) {
 	var (
 		id              uint64
 		smartEnableTime int64
@@ -3170,8 +3175,10 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 		smartEnableTime = createTime
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
-		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, createTime, smartEnableTime, description, "", "",
-		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), childFileMaxCnt, storeMode, convertSt, mpLayout, smartRules, compactTag, dpFolReadDelayCfg)
+		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, createTime,
+		smartEnableTime, description, "", "", crossRegionHAType, dpLearnerNum, mpLearnerNum,
+		dpWriteableThreshold, uint32(trashDays), childFileMaxCnt, storeMode, convertSt, mpLayout, smartRules, compactTag,
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval)
 	vol.EcDataNum = dataNum
 	vol.EcParityNum = parityNum
 	vol.EcEnable = enableEc

@@ -138,6 +138,8 @@ const (
 	monitorSummarySecondKey      = "monitorSummarySec"
 	monitorReportSecondKey       = "monitorReportSec"
 	volTrashCleanIntervalKey     = "trashCleanInterval"
+	volBatchDelInodeCntKey       = "batchDelInodeCnt"
+	volDelInodeIntervalKey       = "delInodeInterval"
 )
 
 const (
