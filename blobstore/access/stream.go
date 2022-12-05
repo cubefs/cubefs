@@ -228,9 +228,17 @@ func confCheck(cfg *StreamConfig) {
 // NewStreamHandler returns a stream handler
 func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 	confCheck(cfg)
+	handler, err := newStreamHandler(cfg, stopCh)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return handler
+}
+
+func newStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (StreamHandler, error) {
 	clusterController, err := controller.NewClusterController(&cfg.ClusterConfig)
 	if err != nil {
-		log.Fatalf("new cluster controller failed, err: %v", err)
+		return nil, fmt.Errorf("new cluster controller failed, err: %s", err)
 	}
 
 	handler := &Handler{
@@ -246,15 +254,15 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 
 	rawCodeModePolicies, err := handler.clusterController.GetConfig(context.Background(), proto.CodeModeConfigKey)
 	if err != nil {
-		log.Fatal("get codemode policy from cluster manager failed, err: ", err)
+		return nil, fmt.Errorf("get codemode policy from cluster manager failed, err: %s", err)
 	}
 	codeModePolicies := make([]codemode.Policy, 0)
 	err = json.Unmarshal([]byte(rawCodeModePolicies), &codeModePolicies)
 	if err != nil {
-		log.Fatal("json decode codemode policy failed, err: ", err)
+		return nil, fmt.Errorf("json decode codemode policy failed, err: %s", err)
 	}
 	if len(codeModePolicies) <= 0 {
-		log.Fatal("invalid codemode policy raw: ", rawCodeModePolicies)
+		return nil, fmt.Errorf("invalid codemode policy raw: %v", rawCodeModePolicies)
 	}
 
 	allCodeModes := make(CodeModePairs)
@@ -292,7 +300,7 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) StreamHandler {
 	handler.discardVidChan = make(chan discardVid, 8)
 	handler.stopCh = stopCh
 	handler.loopDiscardVids()
-	return handler
+	return handler, nil
 }
 
 // Delete delete all blobs in this location
