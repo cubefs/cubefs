@@ -37,8 +37,14 @@ func TestDataPartitionAPI(t *testing.T) {
 		t.Fatalf("datanodes[] len < 1")
 	}
 	nodes := cv.DataNodes
-	maxDataPartitionID := cv.MaxDataPartitionID
-	testDataPartitionID := maxDataPartitionID
+	dps, err := testMc.ClientAPI().GetDataPartitions(testVolName)
+	if err != nil {
+		t.Error(err.Error())
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Errorf("get datapartitions failed, the dataPartition count is 0")
+	}
+	testDataPartitionID := dps.DataPartitions[0].PartitionID
 
 	//Get Data Partition info
 	var dataPartitionInfo *proto.DataPartitionInfo

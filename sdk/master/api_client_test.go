@@ -14,6 +14,7 @@ func TestGetDataPartitions(t *testing.T) {
 }
 
 func TestGetMetaPartition(t *testing.T) {
+	testVolName := "ltptest"
 	// get meta node info
 	cv, err := testMc.AdminAPI().GetCluster()
 	if err != nil {
@@ -22,8 +23,14 @@ func TestGetMetaPartition(t *testing.T) {
 	if len(cv.MetaNodes) < 1 {
 		t.Fatalf("metanodes[] len < 1")
 	}
-	maxMetaPartitionId := cv.MaxMetaPartitionID
-	testMetaPartitionID := maxMetaPartitionId
+	mps, err := testMc.ClientAPI().GetMetaPartitions(testVolName)
+	if err != nil {
+		t.Error(err.Error())
+	}
+	if len(mps) == 0 {
+		t.Errorf("get metapartitions failed, the metapartitions count is 0")
+	}
+	testMetaPartitionID := mps[0].PartitionID
 	_, err = testMc.ClientAPI().GetMetaPartition(testMetaPartitionID)
 	if err != nil {
 		t.Fatalf("GetMetaPartition failed, err %v", err)

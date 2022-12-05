@@ -31,9 +31,14 @@ func TestMetaPartitionAPI(t *testing.T) {
 		t.Fatalf("metanodes[] len < 1")
 	}
 	nodes := cv.MetaNodes
-	maxMetaPartitionId := cv.MaxMetaPartitionID
-
-	testMetaPartitionID := maxMetaPartitionId
+	mps, err := testMc.ClientAPI().GetMetaPartitions(testVolName)
+	if err != nil {
+		t.Error(err.Error())
+	}
+	if len(mps) == 0 {
+		t.Errorf("get metapartitions failed, the metapartitions count is 0")
+	}
+	testMetaPartitionID := mps[0].PartitionID
 
 	//Get Meta Partition Info
 	var metaPartitionInfo *proto.MetaPartitionInfo
@@ -110,6 +115,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 
 func TestMetaLearner(t *testing.T) {
 	var err error
+	testVolName := "ltptest"
 	// get meta node info
 	var cv *proto.ClusterView
 	cv, err = testMc.AdminAPI().GetCluster()
@@ -120,13 +126,14 @@ func TestMetaLearner(t *testing.T) {
 		t.Fatalf("metanodes[] len < 1")
 	}
 	nodes := cv.MetaNodes
-	maxMetaPartitionId := cv.MaxMetaPartitionID
-	var testMetaPartitionID uint64
-	if maxMetaPartitionId >= 1 {
-		testMetaPartitionID = 1
-	} else {
-		t.Fatalf("maxMetaPartitionID is not correct")
+	mps, err := testMc.ClientAPI().GetMetaPartitions(testVolName)
+	if err != nil {
+		t.Error(err.Error())
 	}
+	if len(mps) == 0 {
+		t.Errorf("get metapartitions failed, the metapartitions count is 0")
+	}
+	testMetaPartitionID := mps[0].PartitionID
 
 	//Get Meta Partition Info
 	var metaPartitionInfo *proto.MetaPartitionInfo
