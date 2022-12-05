@@ -299,6 +299,11 @@ func handleGet(c *rpc.Context) {
 		return
 	}
 
+	if args.Location.Size == 100 {
+		c.RespondStatus(http.StatusBadRequest)
+		return
+	}
+
 	if !verifyCrc(&args.Location) {
 		c.RespondStatus(http.StatusForbidden)
 		return
@@ -539,6 +544,10 @@ func TestAccessClientPutGet(t *testing.T) {
 		io.ReadFull(body, buff)
 		require.Equal(t, crcExpected, crc32.ChecksumIEEE(buff))
 	}
+
+	// test code 400
+	_, err := client.Get(randCtx(), &access.GetArgs{Location: access.Location{Size: 100}, ReadSize: uint64(100)})
+	require.Error(t, err)
 }
 
 func TestAccessClientPutAtBase(t *testing.T) {
