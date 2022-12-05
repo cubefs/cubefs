@@ -265,7 +265,6 @@ func (d *Disk) startScheduler() {
 				d.updateSpaceInfo()
 			case <-checkStatusTicker.C:
 				d.checkDiskStatus()
-				d.updateTaskExecutionLimit()
 			case <-evictFDTicker.C:
 				d.evictExpiredFileDescriptor()
 			case <-forceEvictFDTicker.C:
@@ -290,16 +289,21 @@ func (d *Disk) autoComputeExtentCrc() {
 	}
 }
 
-func (d *Disk) updateTaskExecutionLimit() {
+func (d *Disk) SetFixTinyDeleteRecordLimitOnDisk(value uint64) {
 	d.limitLock.Lock()
 	defer d.limitLock.Unlock()
-	if d.fixTinyDeleteRecordLimit != d.space.fixTinyDeleteRecordLimitOnDisk {
-		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change fixTinyDeleteRecordLimit from(%v) to(%v)", d.Path, d.fixTinyDeleteRecordLimit, d.space.fixTinyDeleteRecordLimitOnDisk)
-		d.fixTinyDeleteRecordLimit = d.space.fixTinyDeleteRecordLimitOnDisk
+	if d.fixTinyDeleteRecordLimit != value {
+		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change fixTinyDeleteRecordLimit from(%v) to(%v)", d.Path, d.fixTinyDeleteRecordLimit, value)
+		d.fixTinyDeleteRecordLimit = value
 	}
-	if d.repairTaskLimit != d.space.repairTaskLimitOnDisk {
-		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change repairTaskLimit from(%v) to(%v)", d.Path, d.repairTaskLimit, d.space.repairTaskLimitOnDisk)
-		d.repairTaskLimit = d.space.repairTaskLimitOnDisk
+}
+
+func (d *Disk) SetRepairTaskLimitOnDisk(value uint64) {
+	d.limitLock.Lock()
+	defer d.limitLock.Unlock()
+	if d.repairTaskLimit != value {
+		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change repairTaskLimit from(%v) to(%v)", d.Path, d.repairTaskLimit, value)
+		d.repairTaskLimit = value
 	}
 }
 
