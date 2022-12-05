@@ -732,6 +732,9 @@ func (c *client) Get(ctx context.Context, args *GetArgs) (body io.ReadCloser, er
 	if err != nil {
 		return nil, err
 	}
+	if resp.StatusCode >= 400 {
+		return nil, rpc.NewError(resp.StatusCode, "StatusCode", fmt.Errorf("code: %d", resp.StatusCode))
+	}
 
 	return resp.Body, nil
 }
