@@ -17,6 +17,7 @@ package fs
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -290,4 +291,33 @@ func (s *Super) Close() {
 	}
 	s.ic.Stop()
 	s.wg.Wait()
+}
+
+func (s *Super) EnableJdosKernelWriteBack(enable bool) (err error) {
+	var (
+		file 		*os.File
+	)
+	if file, err = os.OpenFile(JdosKernelWriteBackControlFile, os.O_RDWR, 0644); err != nil {
+		if os.IsNotExist(err) {
+			log.LogInfof("EnableJdosKernelWriteBack: kernel control file(%v) is not exist", JdosKernelWriteBackControlFile)
+			return nil
+		}
+		return
+	}
+	defer func() {
+		errClose := file.Close()
+		if err == nil {
+			err = errClose
+		}
+	}()
+	var enableWriteBack string
+	if enable {
+		enableWriteBack = "1"
+	} else {
+		enableWriteBack = "0"
+	}
+	if _, err = file.WriteAt([]byte(enableWriteBack), 0); err != nil {
+		return
+	}
+	return
 }

@@ -389,6 +389,9 @@ func (mw *MetaWrapper) checkLimiter(ctx context.Context, opCode uint8) error {
 		if limiter.Burst() == 0 {
 			return syscall.EPERM
 		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
 		limitErr := limiter.Wait(ctx)
 		log.LogDebugf("check limiter end: op(%v) limit(%v) burst(%v) err(%v)", opCode, limiter.Limit(), limiter.Burst(), limitErr)
 	}

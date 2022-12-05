@@ -259,6 +259,7 @@ run_unit_test() {
             ./codecnode/... \
             ./ecnode/... \
             ./storage/... \
+            ./client/fs/... \
             ./sdk/data/... \
             ./sdk/meta/... \
             ./sdk/master/... \
