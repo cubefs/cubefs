@@ -204,9 +204,28 @@ func confCheck(cfg *StreamConfig) {
 	defaulter.LessOrEqual(&cfg.EncoderConcurrency, defaultEncoderConcurrency)
 	defaulter.LessOrEqual(&cfg.MinReadShardsX, defaultMinReadShardsX)
 
-	defaulter.LessOrEqual(&cfg.ClusterConfig.CMClientConfig.Config.ClientTimeoutMs, defaultTimeoutClusterMgr)
-	defaulter.LessOrEqual(&cfg.BlobnodeConfig.ClientTimeoutMs, defaultTimeoutBlobnode)
-	defaulter.LessOrEqual(&cfg.ProxyConfig.ClientTimeoutMs, defaultTimeoutProxy)
+	{
+		rpcCfg := &cfg.ClusterConfig.CMClientConfig.Config
+		defaulter.LessOrEqual(&rpcCfg.ClientTimeoutMs, int64(3*1000))
+		defaulter.LessOrEqual(&rpcCfg.Tc.MaxConnsPerHost, int(2))
+		defaulter.LessOrEqual(&rpcCfg.Tc.MaxIdleConns, int(4))
+		defaulter.LessOrEqual(&rpcCfg.Tc.IdleConnTimeoutMs, int64(30*1000))
+	}
+	{
+		rpcCfg := &cfg.BlobnodeConfig
+		defaulter.LessOrEqual(&rpcCfg.ClientTimeoutMs, int64(3*1000))
+		defaulter.LessOrEqual(&rpcCfg.Tc.MaxConnsPerHost, int(5))
+		defaulter.LessOrEqual(&rpcCfg.Tc.MaxIdleConns, int(10))
+		defaulter.LessOrEqual(&rpcCfg.Tc.IdleConnTimeoutMs, int64(30*1000))
+	}
+	{
+		rpcCfg := &cfg.ProxyConfig
+		defaulter.LessOrEqual(&rpcCfg.ClientTimeoutMs, int64(10*1000))
+		defaulter.LessOrEqual(&rpcCfg.Tc.MaxConnsPerHost, int(50))
+		defaulter.LessOrEqual(&rpcCfg.Tc.MaxIdleConns, int(1000))
+		defaulter.LessOrEqual(&rpcCfg.Tc.MaxIdleConnsPerHost, int(20))
+		defaulter.LessOrEqual(&rpcCfg.Tc.IdleConnTimeoutMs, int64(30*1000))
+	}
 
 	hc := cfg.AllocCommandConfig
 	defaulter.LessOrEqual(&hc.Timeout, defaultAllocatorTimeout)

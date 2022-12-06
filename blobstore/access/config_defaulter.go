@@ -24,11 +24,6 @@ const (
 	defaultEncoderConcurrency     int = 1000
 	defaultMinReadShardsX         int = 1
 
-	// client timeout ms
-	defaultTimeoutClusterMgr int64 = 1000 * 3
-	defaultTimeoutProxy      int64 = 1000 * 5
-	defaultTimeoutBlobnode   int64 = 1000 * 5
-
 	defaultAllocatorErrorPercentThreshold  int = 50
 	defaultAllocatorMaxConcurrentRequests  int = 10240
 	defaultAllocatorRequestVolumeThreshold int = 100
