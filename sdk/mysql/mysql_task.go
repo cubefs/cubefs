@@ -223,6 +223,31 @@ func UpdateTaskInfo(taskId uint64, taskInfo string) (err error) {
 	return
 }
 
+func UpdateTaskUpdateTime(taskId uint64) (err error) {
+	var (
+		rs   sql.Result
+		nums int64
+	)
+	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateTaskUpdateTime)
+	defer metrics.Set(err)
+
+	sqlCmd := "update tasks set update_time = now() where task_id =?"
+	args := make([]interface{}, 0)
+	args = append(args, taskId)
+	if rs, err = Transaction(sqlCmd, args); err != nil {
+		log.LogErrorf("update task update time has exception, taskId(%v), err(%v)", taskId, err)
+		return
+	}
+	if nums, err = rs.RowsAffected(); err != nil {
+		return
+	}
+	if nums <= 0 {
+		log.LogErrorf("update task update time has exception, affected rows less then one, taskId(%v)", taskId)
+		return errors.New("affected rows less then one")
+	}
+	return
+}
+
 // select task task via task id
 func SelectTask(taskId int64) (task *proto.Task, err error) {
 	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectTask)

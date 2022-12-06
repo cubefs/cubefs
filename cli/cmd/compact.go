@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -116,6 +117,7 @@ const (
 	cmdCompactCloseUse   = "close"
 	cmdCompactCloseShort = "close volume compact"
 	all                  = "all"
+	no                   = "no"
 )
 
 type volumeOwner struct {
@@ -280,30 +282,59 @@ const (
 	CliFlagEkMinLength       = "ek-min-length"
 	CliFlagEkMaxAvgSize      = "ek-max-avg-size"
 	CliFlagInodeMinSize      = "inode-min-size"
+	CliFlagSaveOverlap       = "save-overlap"
+	CliFlagSaveFragment      = "save-frag"
+	CliVolumeConcurrency     = "volume-con"
+	CliMpConcurrency         = "mp-con"
+	CliInodeConcurrency      = "inode-con"
+	CliFlagSizeRange         = "size-range"
 )
 
+const (
+	overlapTitle    = "volume,mpId,inodeId,ct,mt,preEkEnd,nextEkOffset\n"
+	overlapFileName = "overlap.csv"
+	// volume名称 mp数量 inode数量 ek总数 平均ek数 平均ek大小 文件平均大小 ek链最长inodeId ek链最长的长度 ek链最长文件大小 ek链最长文件ek平均大小
+	fragmentFileName = "fragment.csv"
+)
+
+type EkBaseInfo struct {
+	inodeCount     uint64
+	totalEk        uint64
+	totalInodeSize uint64
+	avgEk          uint64
+	avgInodeSize   uint64
+	avgEkSize      uint64
+}
+
 type EkInfo struct {
-	inodeCount            uint64
 	mpCount               int
-	totalEk               uint64
-	avgEk                 uint64
 	needCompactInodeCount uint64
 	needCompactEkCount    uint64
+	maxEkLen              uint64
+	maxEkLenInodeId       uint64
+	maxEkLenInodeSize     uint64
 }
 
 var (
-	ekInfos      = make(map[string]*EkInfo, 0)
-	ekInfosMutex sync.RWMutex
-    overlapInode strings.Builder
+	ekBaseInfos       = make(map[string][]*EkBaseInfo, 0)
+	ekInfos           = make(map[string]*EkInfo, 0)
+	ekInfosMutex      sync.RWMutex
+	overlapInode      strings.Builder
 	overlapInodeMutex sync.Mutex
 )
 
 func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optVolName      string
-		optEkMinLength  uint64
-		optEkMaxAvgSize uint64
-		optInodeMinSize uint64
+		optVolName           string
+		optEkMinLength       uint64
+		optEkMaxAvgSize      uint64
+		optInodeMinSize      uint64
+		optSaveOverlap       bool
+		optSaveFragment      bool
+		optVolumeConcurrency uint64
+		optMpConcurrency     uint64
+		optInodeConcurrency  uint64
+		optSizeRange         string
 	)
 	var cmd = &cobra.Command{
 		Use:   cmdCompactCheckFragUse,
@@ -315,7 +346,7 @@ func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
 				errout("Please input volume name")
 			}
 			stdout("[check inode fragmentation]\n")
-			stdout("ekMinLength:%v ekMaxAvgSize:%vMB\n", optEkMinLength, optEkMaxAvgSize)
+			stdout("ekMinLength:%v ekMaxAvgSize:%vMB volumeConcurrency:%v mpConcurrency:%v inodeConcurrency:%v\n", optEkMinLength, optEkMaxAvgSize, optVolumeConcurrency, optMpConcurrency, optInodeConcurrency)
 			stdout("%v\n", formatCompactCheckFragViewTableHeader())
 			var volNames []string
 			if optVolName == all {
@@ -330,8 +361,14 @@ func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				volNames = strings.Split(optVolName, ",")
 			}
+			var sizeRanges []int
+			if optSizeRange != no {
+				sizeRanges = sizeRangeStrToInt(optSizeRange)
+			}
+			// create result file
+			createResultFile(optSaveOverlap, optSaveFragment, sizeRanges)
 			var wg sync.WaitGroup
-			ch := make(chan struct{}, 2)
+			ch := make(chan struct{}, optVolumeConcurrency)
 			for i, volName := range volNames {
 				var mps []*proto.MetaPartitionView
 				if mps, err = client.ClientAPI().GetMetaPartitions(volName); err != nil {
@@ -342,27 +379,16 @@ func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
 				ch <- struct{}{}
 				go func(i int, volName string, mps []*proto.MetaPartitionView) {
 					defer func() {
+						if optSaveFragment {
+							writeVolumeFragToFile(volName)
+						}
 						wg.Done()
-						<- ch
+						<-ch
 					}()
-					checkMps(i, volName, mps, client, optEkMinLength, optEkMaxAvgSize*1024*1024, optInodeMinSize)
+					checkMps(i, volName, mps, client, optEkMinLength, optEkMaxAvgSize*1024*1024, optInodeMinSize, optMpConcurrency, optInodeConcurrency, optSaveOverlap, sizeRanges)
 				}(i, volName, mps)
 			}
 			wg.Wait()
-			for volume, ekInfo := range ekInfos {
-				if ekInfo.inodeCount == 0 {
-					continue
-				}
-				ekInfo.avgEk = ekInfo.totalEk / ekInfo.inodeCount
-				stdout("volume:%v\n", volume)
-				if ekInfo.needCompactInodeCount == 0 {
-					stdout("needCompactInodeCount:%v needCompactEkCount:%v\n", ekInfo.needCompactInodeCount, ekInfo.needCompactEkCount)
-				} else {
-					stdout("needCompactInodeCount:%v needCompactEkCount:%v needCompactAvgEk:%v\n", ekInfo.needCompactInodeCount, ekInfo.needCompactEkCount, ekInfo.needCompactEkCount/ekInfo.needCompactInodeCount)
-				}
-				stdout("ekInfo: mpCount(%v) inodeCount(%v) totalEk(%v) avgEk(%v)\n", ekInfo.mpCount, ekInfo.inodeCount, ekInfo.totalEk, ekInfo.avgEk)
-			}
-			//saveOverlapResult("overlap.csv", overlapInode.String())
 			stdout("check volume inode fragmentation end.\n")
 			return
 		},
@@ -372,10 +398,129 @@ func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optEkMinLength, CliFlagEkMinLength, ekMinLength, "ek min length")
 	cmd.Flags().Uint64Var(&optEkMaxAvgSize, CliFlagEkMaxAvgSize, ekMaxAvgSize, "ek max avg size, uint MB")
 	cmd.Flags().Uint64Var(&optInodeMinSize, CliFlagInodeMinSize, inodeMinSize, "inode min size, uint Byte")
+	cmd.Flags().BoolVar(&optSaveOverlap, CliFlagSaveOverlap, false, "save overlap file")
+	cmd.Flags().BoolVar(&optSaveFragment, CliFlagSaveFragment, false, "save fragment file")
+	cmd.Flags().Uint64Var(&optVolumeConcurrency, CliVolumeConcurrency, 2, "volume concurrency")
+	cmd.Flags().Uint64Var(&optMpConcurrency, CliMpConcurrency, 5, "mp concurrency")
+	cmd.Flags().Uint64Var(&optInodeConcurrency, CliInodeConcurrency, 20, "inode concurrency")
+	cmd.Flags().StringVar(&optSizeRange, CliFlagSizeRange, "1,128", "Specify range, can split by comma")
 	return cmd
 }
 
-func saveOverlapResult(filePath, result string) {
+func sizeRangeStrToInt(sizeRange string) (sizeRanges []int) {
+	for _, sr := range strings.Split(sizeRange, ",") {
+		var v int
+		var err error
+		v, err = strconv.Atoi(sr)
+		if err != nil {
+			errout("sizeRanges str to int,err: %v", err)
+		}
+		if v > 0 {
+			sizeRanges = append(sizeRanges, v)
+		}
+	}
+	m := make(map[int]struct{}, 0)
+	for _, v := range sizeRanges {
+		m[v] = struct{}{}
+	}
+	sizeRanges = sizeRanges[:0]
+	for k := range m {
+		sizeRanges = append(sizeRanges, k)
+	}
+	sort.Slice(sizeRanges, func(i, j int) bool {
+		return sizeRanges[i] < sizeRanges[j]
+	})
+	return
+}
+
+func writeVolumeFragToFile(volume string) {
+	ekInfosMutex.RLock()
+	defer ekInfosMutex.RUnlock()
+	var (
+		ekBaseInfo      []*EkBaseInfo
+		ekInfo          *EkInfo
+		ok              bool
+		totalInodeCount uint64
+		totalEk         uint64
+	)
+	if ekBaseInfo, ok = ekBaseInfos[volume]; ok {
+		for _, baseInfo := range ekBaseInfo {
+			if baseInfo.inodeCount == 0 {
+				continue
+			}
+			totalInodeCount += baseInfo.inodeCount
+			totalEk += baseInfo.totalEk
+			baseInfo.avgEk = baseInfo.totalEk / baseInfo.inodeCount
+			baseInfo.avgInodeSize = baseInfo.totalInodeSize / baseInfo.inodeCount
+			baseInfo.avgEkSize = baseInfo.totalInodeSize / baseInfo.totalEk
+		}
+		if totalInodeCount == 0 {
+			return
+		}
+	}
+	if ekInfo, ok = ekInfos[volume]; !ok {
+		return
+	}
+	if ekInfo.needCompactInodeCount == 0 {
+		stdout("needCompactInodeCount:%v needCompactEkCount:%v\n", ekInfo.needCompactInodeCount, ekInfo.needCompactEkCount)
+	} else {
+		stdout("needCompactInodeCount:%v needCompactEkCount:%v needCompactAvgEk:%v\n", ekInfo.needCompactInodeCount, ekInfo.needCompactEkCount, ekInfo.needCompactEkCount/ekInfo.needCompactInodeCount)
+	}
+	var ekBaseInfoStr string
+	for i, baseInfo := range ekBaseInfo {
+		base := fmt.Sprintf("%v,%v,%v,%v", baseInfo.inodeCount, baseInfo.avgEk, baseInfo.avgEkSize, baseInfo.avgInodeSize)
+		if i != len(ekBaseInfo)-1 {
+			ekBaseInfoStr += base + ","
+		} else {
+			ekBaseInfoStr += base
+		}
+	}
+	maxLenAvgEkSize := ekInfo.maxEkLenInodeSize / ekInfo.maxEkLen
+	fragmentLevel := calFragmentLevel(ekInfo.maxEkLen, maxLenAvgEkSize)
+	volumeFrgResult := fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v\n",
+		volume, ekInfo.mpCount, totalInodeCount, totalEk, totalEk/totalInodeCount, ekInfo.maxEkLenInodeId, ekInfo.maxEkLen, ekInfo.maxEkLenInodeSize, maxLenAvgEkSize, fragmentLevel, ekBaseInfoStr)
+	saveCsvResult(fragmentFileName, volumeFrgResult)
+}
+
+func createResultFile(saveOverlap, saveFragment bool, sizeRanges []int) {
+	if saveOverlap {
+		saveCsvTitles(overlapTitle, overlapFileName)
+	}
+	if saveFragment {
+		var groupStr string
+		if len(sizeRanges) == 0 {
+			groupStr += fmt.Sprintf("inodeCount,avgEk,avgEkSize,avgInodeSize")
+		} else if len(sizeRanges) == 1 {
+			groupStr += fmt.Sprintf("\"(0,%vMB]\" inodeCount,\"(0,%vMB]\" avgEk,\"(0,%vMB]\" avgEkSize,\"(0,%vMB]\" avgInodeSize,", sizeRanges[0], sizeRanges[0], sizeRanges[0], sizeRanges[0])
+			groupStr += fmt.Sprintf("\"(%vMB,∞)\" inodeCount,\"(%vMB,∞)\" avgEk,\"(%vMB,∞)\" avgEkSize,\"(%vMB,∞)\" avgInodeSize", sizeRanges[0], sizeRanges[0], sizeRanges[0], sizeRanges[0])
+		} else {
+			for i, sizeRange := range sizeRanges {
+				if i == 0 {
+					groupStr += fmt.Sprintf("\"(0,%vMB]\" inodeCount,\"(0,%vMB]\" avgEk,\"(0,%vMB]\" avgEkSize,\"(0,%vMB]\" avgInodeSize,", sizeRange, sizeRange, sizeRange, sizeRange)
+				} else if i < len(sizeRanges)-1 {
+					groupStr += fmt.Sprintf("\"(%v,%vMB]\" inodeCount,\"(%v,%vMB]\" avgEk,\"(%v,%vMB]\" avgEkSize,\"(%v,%vMB]\" avgInodeSize,", sizeRanges[i-1], sizeRange, sizeRanges[i-1], sizeRange, sizeRanges[i-1], sizeRange, sizeRanges[i-1], sizeRange)
+				} else {
+					groupStr += fmt.Sprintf("\"(%v,%vMB]\" inodeCount,\"(%v,%vMB]\" avgEk,\"(%v,%vMB]\" avgEkSize,\"(%v,%vMB]\" avgInodeSize,", sizeRanges[i-1], sizeRange, sizeRanges[i-1], sizeRange, sizeRanges[i-1], sizeRange, sizeRanges[i-1], sizeRange)
+					groupStr += fmt.Sprintf("\"(%vMB,∞)\" inodeCount,\"(%vMB,∞)\" avgEk,\"(%vMB,∞)\" avgEkSize,\"(%vMB,∞)\" avgInodeSize", sizeRange, sizeRange, sizeRange, sizeRange)
+				}
+			}
+		}
+		fragmentTitle := fmt.Sprintf("volume,mpCount,totalInodeCount,totalEk,avgEk,maxEkLenInodeId,maxEkLen,maxEkLenInodeSize,maxLenAvgEkSize,fragment level,%v\n", groupStr)
+		saveCsvTitles(fragmentTitle, fragmentFileName)
+	}
+}
+
+func calFragmentLevel(maxEkLen, maxLenAvgEkSize uint64) string {
+	if maxEkLen > 100 && maxLenAvgEkSize < 1*1024*1024 {
+		return "高"
+	} else if maxEkLen > 100 && maxLenAvgEkSize < 5*1024*1024 {
+		return "中"
+	} else {
+		return "低"
+	}
+}
+
+func saveCsvTitles(titles, filePath string) {
 	if filePath == "" {
 		return
 	}
@@ -385,54 +530,87 @@ func saveOverlapResult(filePath, result string) {
 	}
 	defer fd.Close()
 	buf := make([]byte, 0)
-	fdContent := fmt.Sprint("volume,mpId,inodeId,ct,mt,preEkEnd,nextEkOffset\n")
+	fdContent := titles
 	buf = append(buf, []byte(fdContent)...)
+	fd.Write(buf)
+}
+
+func saveCsvResult(filePath, result string) {
+	if filePath == "" {
+		return
+	}
+	fd, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return
+	}
+	defer fd.Close()
+	buf := make([]byte, 0)
 	buf = append(buf, []byte(result)...)
 	fd.Write(buf)
 }
 
-func checkMps(index int, volName string, mps []*proto.MetaPartitionView, client *master.MasterClient, ekMinLength, ekMaxAvgSize, inodeMinSize uint64) {
+func checkMps(index int, volName string, mps []*proto.MetaPartitionView, client *master.MasterClient,
+	ekMinLength, ekMaxAvgSize, inodeMinSize, mpConcurrency, inodeConcurrency uint64, saveOverlapFile bool, sizeRanges []int) {
 	stdout("index:%v volume:%v\n", index, volName)
+	ekInfosMutex.Lock()
+	ekBaseInfos[volName] = make([]*EkBaseInfo, len(sizeRanges)+1)
+	for i := 0; i < len(sizeRanges)+1; i++ {
+		ekBaseInfos[volName][i] = &EkBaseInfo{}
+	}
 	ekInfos[volName] = &EkInfo{
 		mpCount: len(mps),
 	}
+	ekInfosMutex.Unlock()
+	var wg sync.WaitGroup
+	var ch = make(chan struct{}, mpConcurrency)
 	for _, mp := range mps {
-		var mpInfo *proto.MetaPartitionInfo
-		var err error
-		if mpInfo, err = client.ClientAPI().GetMetaPartition(mp.PartitionID); err != nil {
-			stdout("Volume(%v) mpId(%v) get MetaPartition failed, err:%v\n", volName, mp.PartitionID, err)
-			continue
-		}
-		leaderAddr := getLeaderAddr(mpInfo.Replicas)
-		var leaderNodeInfo *proto.MetaNodeInfo
-		if leaderNodeInfo, err = client.NodeAPI().GetMetaNode(leaderAddr); err != nil {
-			stdout("Volume(%v) mpId(%v) leaderAddr(%v) get metaNode info failed:%v\n", volName, mp.PartitionID, leaderAddr, err)
-			continue
-		}
-		if leaderNodeInfo.ProfPort == "" {
-			leaderNodeInfo.ProfPort = "9092"
-		}
-		leaderIpPort := strings.Split(leaderNodeInfo.Addr, ":")[0] + ":" + leaderNodeInfo.ProfPort
-		metaAdminApi := meta.NewMetaHttpClient(leaderIpPort, false)
-		var inodeIds *proto.MpAllInodesId
-		if inodeIds, err = getMpInodeIds(mpInfo.PartitionID, metaAdminApi); err != nil {
-			stdout("Volume(%v) mpId(%v) leaderIpPort(%v) get MpInodeIds info failed:%v\n", volName, mp.PartitionID, leaderIpPort, err)
-			continue
-		}
-		inodeInfoCheck(mp.PartitionID, inodeIds.Inodes, leaderIpPort, volName, ekMinLength, ekMaxAvgSize, inodeMinSize)
+		wg.Add(1)
+		ch <- struct{}{}
+		go func(mp *proto.MetaPartitionView) {
+			defer func() {
+				wg.Done()
+				<- ch
+			}()
+			var mpInfo *proto.MetaPartitionInfo
+			var err error
+			if mpInfo, err = client.ClientAPI().GetMetaPartition(mp.PartitionID); err != nil {
+				stdout("Volume(%v) mpId(%v) get MetaPartition failed, err:%v\n", volName, mp.PartitionID, err)
+				return
+			}
+			leaderAddr := getLeaderAddr(mpInfo.Replicas)
+			var leaderNodeInfo *proto.MetaNodeInfo
+			if leaderNodeInfo, err = client.NodeAPI().GetMetaNode(leaderAddr); err != nil {
+				stdout("Volume(%v) mpId(%v) leaderAddr(%v) get metaNode info failed:%v\n", volName, mp.PartitionID, leaderAddr, err)
+				return
+			}
+			if leaderNodeInfo.ProfPort == "" {
+				leaderNodeInfo.ProfPort = "9092"
+			}
+			leaderIpPort := strings.Split(leaderNodeInfo.Addr, ":")[0] + ":" + leaderNodeInfo.ProfPort
+			metaAdminApi := meta.NewMetaHttpClient(leaderIpPort, false)
+			var inodeIds *proto.MpAllInodesId
+			if inodeIds, err = getMpInodeIds(mpInfo.PartitionID, metaAdminApi); err != nil {
+				stdout("Volume(%v) mpId(%v) leaderIpPort(%v) get MpInodeIds info failed:%v\n", volName, mp.PartitionID, leaderIpPort, err)
+				return
+			}
+			inodeInfoCheck(mp.PartitionID, inodeIds.Inodes, leaderIpPort, volName, ekMinLength, ekMaxAvgSize, inodeMinSize, inodeConcurrency, sizeRanges)
+		}(mp)
 	}
+	wg.Wait()
 
-	overlapInodeMutex.Lock()
-	if overlapInode.String() != "" {
-		saveOverlapResult("overlap.csv", overlapInode.String())
+	if saveOverlapFile {
+		overlapInodeMutex.Lock()
+		if overlapInode.String() != "" {
+			saveCsvResult(overlapFileName, overlapInode.String())
+		}
+		overlapInode.Reset()
+		overlapInodeMutex.Unlock()
 	}
-	overlapInode.Reset()
-	overlapInodeMutex.Unlock()
 }
 
-func inodeInfoCheck(mpId uint64, inodes []uint64, leaderIpPort string, volName string, ekMinLength, ekMaxAvgSize, inodeMinSize uint64) {
+func inodeInfoCheck(mpId uint64, inodes []uint64, leaderIpPort string, volName string, ekMinLength, ekMaxAvgSize, inodeMinSize, inodeConcurrency uint64, sizeRanges []int) {
 	var wg sync.WaitGroup
-	var ch = make(chan struct{}, 20)
+	var ch = make(chan struct{}, inodeConcurrency)
 	for _, inode := range inodes {
 		wg.Add(1)
 		ch <- struct{}{}
@@ -455,7 +633,7 @@ func inodeInfoCheck(mpId uint64, inodes []uint64, leaderIpPort string, volName s
 				return
 			}
 			stdoutOverlapInode(leaderIpPort, volName, mpId, inode, extentInfo)
-			addEKData(volName, uint64(extLength))
+			addEKData(volName, uint64(extLength), extentInfo.Size, inode, sizeRanges)
 			if extentInfo.Size <= inodeMinSize {
 				return
 			}
@@ -474,10 +652,10 @@ func stdoutOverlapInode(leaderIpPort string, volName string, mpId, inode uint64,
 		return
 	}
 	for i, extent := range extentInfo.Extents {
-		if i >= len(extentInfo.Extents) - 1 {
+		if i >= len(extentInfo.Extents)-1 {
 			break
 		}
-		if extent.FileOffset + uint64(extent.Size) > extentInfo.Extents[i+1].FileOffset {
+		if extent.FileOffset+uint64(extent.Size) > extentInfo.Extents[i+1].FileOffset {
 			var ct, mt string
 			var inodeInfo *proto.InodeInfoView
 			var err error
@@ -488,39 +666,95 @@ func stdoutOverlapInode(leaderIpPort string, volName string, mpId, inode uint64,
 			}
 			overlapInodeMutex.Lock()
 			// volume mpId inodeId ct mt preEkEnd nextEkOffset
-			overlapInode.WriteString(fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v\n", volName, mpId, inode, ct, mt, extent.FileOffset + uint64(extent.Size), extentInfo.Extents[i+1].FileOffset))
+			overlapInode.WriteString(fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v\n", volName, mpId, inode, ct, mt, extent.FileOffset+uint64(extent.Size), extentInfo.Extents[i+1].FileOffset))
 			overlapInodeMutex.Unlock()
 			break
 		}
 	}
 }
 
-func addEKData(volName string, extLength uint64) {
+func addEKData(volName string, extLength uint64, inodeSize uint64, inodeId uint64, sizeRanges []int) {
 	ekInfosMutex.Lock()
-	if ekInfo, ok := ekInfos[volName]; ok {
-		ekInfo.inodeCount++
-		ekInfo.totalEk += extLength
+	defer ekInfosMutex.Unlock()
+	index := calSizeRangeIndex(inodeSize, sizeRanges)
+	if ekBaseInfo, ok := ekBaseInfos[volName]; ok {
+		ekBaseInfo[index].inodeCount++
+		ekBaseInfo[index].totalEk += extLength
+		ekBaseInfo[index].totalInodeSize += inodeSize
 	} else {
-		ekInfos[volName] = &EkInfo{
-			inodeCount: 1,
-			totalEk:    extLength,
+		ekBaseInfos[volName] = make([]*EkBaseInfo, len(sizeRanges)+1)
+		for i := 0; i < len(sizeRanges)+1; i++ {
+			ekBaseInfos[volName][i] = &EkBaseInfo{}
+		}
+		ekBaseInfos[volName][index] = &EkBaseInfo{
+			inodeCount:     1,
+			totalEk:        extLength,
+			totalInodeSize: inodeSize,
 		}
 	}
-	ekInfosMutex.Unlock()
+	if ekInfo, ok := ekInfos[volName]; ok {
+		if ekInfo.maxEkLen < extLength {
+			ekInfo.maxEkLen = extLength
+			ekInfo.maxEkLenInodeId = inodeId
+			ekInfo.maxEkLenInodeSize = inodeSize
+		}
+	} else {
+		ekInfos[volName] = &EkInfo{
+			maxEkLen:          extLength,
+			maxEkLenInodeId:   inodeId,
+			maxEkLenInodeSize: inodeSize,
+		}
+	}
+}
+
+func calSizeRangeIndex(inodeSize uint64, sizeRanges []int) int {
+	if inodeSize == 0 {
+		return -1
+	}
+	if len(sizeRanges) == 1 {
+		if inodeSize <= uint64(sizeRanges[0])*1024*1024 {
+			return 0
+		}
+		if inodeSize > uint64(sizeRanges[0])*1024*1024 {
+			return 1
+		}
+	}
+	for i, sr := range sizeRanges {
+		if i == 0 {
+			if inodeSize <= uint64(sr)*1024*1024 {
+				return 0
+			}
+			if inodeSize > uint64(sr)*1024*1024 && inodeSize <= uint64(sizeRanges[i+1])*1024*1024 {
+				return 1
+			}
+		} else if i == len(sizeRanges)-1 {
+			if inodeSize > uint64(sr)*1024*1024 {
+				return i + 1
+			}
+			if inodeSize > uint64(sizeRanges[i-1])*1024*1024 && inodeSize <= uint64(sr)*1024*1024 {
+				return i
+			}
+		} else {
+			if inodeSize <= uint64(sr)*1024*1024 && inodeSize > uint64(sizeRanges[i-1])*1024*1024 {
+				return i
+			}
+		}
+	}
+	return 0
 }
 
 func addNeedCompactInodeSizeData(volName string, needCompactEkCount uint64) {
 	ekInfosMutex.Lock()
+	defer ekInfosMutex.Unlock()
 	if ekInfo, ok := ekInfos[volName]; ok {
 		ekInfo.needCompactInodeCount++
 		ekInfo.needCompactEkCount += needCompactEkCount
 	} else {
 		ekInfos[volName] = &EkInfo{
 			needCompactInodeCount: 1,
-			needCompactEkCount: needCompactEkCount,
+			needCompactEkCount:    needCompactEkCount,
 		}
 	}
-	ekInfosMutex.Unlock()
 }
 
 func getLeaderAddr(replicas []*proto.MetaReplicaInfo) (leaderAddr string) {
