@@ -296,7 +296,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			}
 
 			if needUpdate {
-				log.LogWarnf("action[handleHeartbeatPacket] master change disk qos limit to [%v, %v ,%v, %v]",
+				log.LogWarnf("action[handleHeartbeatPacket] master change disk qos limit to [flowWrite %v, flowRead %v, iopsWrite %v, iopsRead %v]",
 					s.diskFlowWriteLimit,
 					s.diskFlowReadLimit,
 					s.diskIopsWriteLimit,
