@@ -1,3 +1,7 @@
+# github.com/afex/hystrix-go v0.0.0-20180502004556-fa1af6a1f4f5
+github.com/afex/hystrix-go/hystrix
+github.com/afex/hystrix-go/hystrix/metric_collector
+github.com/afex/hystrix-go/hystrix/rolling
 # github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da
 github.com/armon/go-metrics
 # github.com/aws/aws-sdk-go v1.33.1
@@ -57,29 +61,67 @@ github.com/brahma-adshonor/gohook
 github.com/cespare/xxhash/v2
 # github.com/cubefs/cubefs/blobstore v0.0.0-00010101000000-000000000000 => ./blobstore
 ## explicit
+github.com/cubefs/cubefs/blobstore/access
+github.com/cubefs/cubefs/blobstore/access/controller
 github.com/cubefs/cubefs/blobstore/api/access
+github.com/cubefs/cubefs/blobstore/api/blobnode
+github.com/cubefs/cubefs/blobstore/api/clustermgr
+github.com/cubefs/cubefs/blobstore/api/proxy
+github.com/cubefs/cubefs/blobstore/cmd
 github.com/cubefs/cubefs/blobstore/common/codemode
+github.com/cubefs/cubefs/blobstore/common/config
+github.com/cubefs/cubefs/blobstore/common/consul
 github.com/cubefs/cubefs/blobstore/common/crc32block
+github.com/cubefs/cubefs/blobstore/common/ec
 github.com/cubefs/cubefs/blobstore/common/errors
+github.com/cubefs/cubefs/blobstore/common/memcache
+github.com/cubefs/cubefs/blobstore/common/profile
 github.com/cubefs/cubefs/blobstore/common/proto
+github.com/cubefs/cubefs/blobstore/common/raftserver
+github.com/cubefs/cubefs/blobstore/common/raftserver/wal
+github.com/cubefs/cubefs/blobstore/common/redis
 github.com/cubefs/cubefs/blobstore/common/resourcepool
 github.com/cubefs/cubefs/blobstore/common/rpc
+github.com/cubefs/cubefs/blobstore/common/rpc/auditlog
 github.com/cubefs/cubefs/blobstore/common/rpc/auth
 github.com/cubefs/cubefs/blobstore/common/trace
+github.com/cubefs/cubefs/blobstore/common/uptoken
 github.com/cubefs/cubefs/blobstore/util/bytespool
+github.com/cubefs/cubefs/blobstore/util/closer
 github.com/cubefs/cubefs/blobstore/util/defaulter
 github.com/cubefs/cubefs/blobstore/util/errors
+github.com/cubefs/cubefs/blobstore/util/graceful
+github.com/cubefs/cubefs/blobstore/util/largefile
+github.com/cubefs/cubefs/blobstore/util/limit
+github.com/cubefs/cubefs/blobstore/util/limit/count
 github.com/cubefs/cubefs/blobstore/util/log
 github.com/cubefs/cubefs/blobstore/util/retry
+github.com/cubefs/cubefs/blobstore/util/selector
 github.com/cubefs/cubefs/blobstore/util/task
 github.com/cubefs/cubefs/blobstore/util/version
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
+# github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
+github.com/dgryski/go-rendezvous
 # github.com/edsrzf/mmap-go v1.1.0
 ## explicit
 github.com/edsrzf/mmap-go
 # github.com/fatih/color v1.13.0
 github.com/fatih/color
+# github.com/go-playground/locales v0.14.0
+github.com/go-playground/locales
+github.com/go-playground/locales/currency
+# github.com/go-playground/universal-translator v0.18.0
+github.com/go-playground/universal-translator
+# github.com/go-redis/redis/v8 v8.11.4
+github.com/go-redis/redis/v8
+github.com/go-redis/redis/v8/internal
+github.com/go-redis/redis/v8/internal/hashtag
+github.com/go-redis/redis/v8/internal/hscan
+github.com/go-redis/redis/v8/internal/pool
+github.com/go-redis/redis/v8/internal/proto
+github.com/go-redis/redis/v8/internal/rand
+github.com/go-redis/redis/v8/internal/util
 # github.com/gogo/protobuf v1.3.2
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/proto
@@ -125,6 +167,7 @@ github.com/hashicorp/go-immutable-radix
 # github.com/hashicorp/go-rootcerts v1.0.2
 github.com/hashicorp/go-rootcerts
 # github.com/hashicorp/golang-lru v0.5.4
+github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
 # github.com/hashicorp/serf v0.9.6
 github.com/hashicorp/serf/coordinate
@@ -137,6 +180,12 @@ github.com/jacobsa/daemonize
 github.com/jmespath/go-jmespath
 # github.com/julienschmidt/httprouter v1.3.0
 github.com/julienschmidt/httprouter
+# github.com/klauspost/cpuid v1.3.1
+github.com/klauspost/cpuid
+# github.com/klauspost/reedsolomon v1.9.2
+github.com/klauspost/reedsolomon
+# github.com/leodido/go-urn v1.2.1
+github.com/leodido/go-urn
 # github.com/mattn/go-colorable v0.1.9
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.14
@@ -202,6 +251,12 @@ github.com/tecbot/gorocksdb
 # github.com/xtaci/smux v1.5.16
 ## explicit
 github.com/xtaci/smux
+# go.etcd.io/etcd/raft/v3 v3.5.1
+go.etcd.io/etcd/raft/v3
+go.etcd.io/etcd/raft/v3/confchange
+go.etcd.io/etcd/raft/v3/quorum
+go.etcd.io/etcd/raft/v3/raftpb
+go.etcd.io/etcd/raft/v3/tracker
 # golang.org/x/arch v0.0.0-20190312162104-788fe5ffcd8c
 golang.org/x/arch/x86/x86asm
 # golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d
@@ -215,6 +270,7 @@ golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
 # golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 golang.org/x/sync/errgroup
+golang.org/x/sync/singleflight
 # golang.org/x/sys v0.0.0-20220209214540-3681064d5158
 ## explicit
 golang.org/x/sys/internal/unsafeheader
@@ -306,6 +362,8 @@ google.golang.org/protobuf/types/descriptorpb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
+# gopkg.in/go-playground/validator.v9 v9.31.0
+gopkg.in/go-playground/validator.v9
 # gopkg.in/natefinch/lumberjack.v2 v2.0.0
 gopkg.in/natefinch/lumberjack.v2
 # gopkg.in/yaml.v2 v2.4.0
