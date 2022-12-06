@@ -17,9 +17,11 @@ package blobstore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"time"
 
+	stream "github.com/cubefs/cubefs/blobstore/access"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	ebsproto "github.com/cubefs/cubefs/blobstore/common/proto"
@@ -38,14 +40,56 @@ const (
 
 type BlobStoreClient struct {
 	client access.API
+	sdk    stream.SDK
 }
 
 func NewEbsClient(cfg access.Config) (*BlobStoreClient, error) {
-
 	cli, err := access.New(cfg)
 	return &BlobStoreClient{
 		client: cli,
 	}, err
+}
+
+// NewEbsSDK return BlobStoreClient with sdk.
+//
+// TODO: required config items:
+// stream.StreamConfig.IDC = "required"
+// stream.StreamConfig.ClusterConfig.ConsulAgentAddr = "required"
+// stream.StreamConfig.ClusterConfig.Region = "required"
+// stream.StreamConfig.ClusterConfig.RegionMagic = "required"
+//
+// TODO: Redirect logger of "github.com/cubefs/cubefs/blobstore/util/log"
+func NewEbsSDK(cfg stream.StreamConfig) (*BlobStoreClient, error) {
+	sdk, err := stream.NewSDK(cfg)
+	return &BlobStoreClient{sdk: sdk}, err
+}
+
+func (ebs *BlobStoreClient) get(ctx context.Context, buf []byte, loc access.Location, offset uint64, size uint64) (readN int, err error) {
+	if ebs.sdk != nil {
+		w := &limitedWriter{buffer: buf}
+		if err = ebs.sdk.Get(ctx, w, &loc, size, offset); err != nil {
+			return
+		}
+		if w.Len() != len(buf) {
+			return w.Len(), io.ErrShortBuffer
+		}
+		return w.Len(), nil
+	} else if ebs.client != nil {
+		var body io.ReadCloser
+		defer func() {
+			if body != nil {
+				body.Close()
+			}
+		}()
+		body, err = ebs.client.Get(ctx, &access.GetArgs{Location: loc, Offset: offset, ReadSize: size})
+		if err != nil {
+			return 0, err
+		}
+		readN, err = io.ReadFull(body, buf)
+		return
+	}
+	err = errors.New("not implement interface get")
+	return
 }
 
 func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte, offset uint64, size uint64, oek proto.ObjExtentKey) (readN int, err error) {
@@ -83,17 +127,8 @@ func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte
 	}
 	//func get has retry
 	log.LogDebugf("TRACE Ebs Read,oek(%v) loc(%v)", oek, loc)
-	var (
-		body io.ReadCloser
-	)
-	defer func() {
-		if body != nil {
-			body.Close()
-		}
-	}()
 	for i := 0; i < MaxRetryTimes; i++ {
-		body, err = ebs.client.Get(ctx, &access.GetArgs{Location: loc, Offset: offset, ReadSize: size})
-		if err == nil {
+		if readN, err = ebs.get(ctx, buf, loc, offset, size); err == nil {
 			break
 		}
 		log.LogWarnf("TRACE Ebs Read,oek(%v), err(%v), requestId(%v),retryTimes(%v)", oek, err, requestId, i)
@@ -104,14 +139,24 @@ func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte
 		return 0, err
 	}
 
-	readN, err = io.ReadFull(body, buf)
-	if err != nil {
-		log.LogErrorf("TRACE Ebs Read,oek(%v), err(%v), requestId(%v)", oek, err, requestId)
-		return 0, err
-	}
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Ebs Read Exit,oek(%v) readN(%v),bufLen(%v),consume(%v)ns", oek, readN, len(buf), elapsed.Nanoseconds())
 	return readN, nil
+}
+
+func (ebs *BlobStoreClient) put(ctx context.Context, body io.Reader, size int64) (location access.Location, err error) {
+	if ebs.sdk != nil {
+		var loc *access.Location
+		if loc, err = ebs.sdk.Put(ctx, body, size, nil); err == nil {
+			location = *loc
+		}
+		return
+	} else if ebs.client != nil {
+		location, _, err = ebs.client.Put(ctx, &access.PutArgs{Size: int64(size), Body: body})
+		return
+	}
+	err = errors.New("not implement interface put")
+	return
 }
 
 func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []byte, size uint32) (location access.Location, err error) {
@@ -130,10 +175,7 @@ func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []by
 	}()
 
 	for i := 0; i < MaxRetryTimes; i++ {
-		location, _, err = ebs.client.Put(ctx, &access.PutArgs{
-			Size: int64(size),
-			Body: bytes.NewReader(data),
-		})
+		location, err = ebs.put(ctx, bytes.NewReader(data), int64(size))
 		if err == nil {
 			break
 		}
@@ -147,6 +189,21 @@ func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []by
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Ebs Write Exit,requestId(%v)  len(%v) consume(%v)ns", requestId, len(data), elapsed.Nanoseconds())
 	return location, nil
+}
+
+func (ebs *BlobStoreClient) del(ctx context.Context, locs []access.Location) (err error) {
+	if ebs.sdk != nil {
+		for _, loc := range locs {
+			if err = ebs.sdk.Delete(ctx, &loc); err != nil {
+				return
+			}
+		}
+		return nil
+	} else if ebs.client != nil {
+		_, err = ebs.client.Delete(ctx, &access.DeleteArgs{Locations: locs})
+		return
+	}
+	return errors.New("not implement interface delete")
 }
 
 func (ebs *BlobStoreClient) Delete(oeks []proto.ObjExtentKey) (err error) {
@@ -192,8 +249,7 @@ func (ebs *BlobStoreClient) Delete(oeks []proto.ObjExtentKey) (err error) {
 	}()
 
 	elapsed := time.Since(start)
-	_, err = ebs.client.Delete(ctx, &access.DeleteArgs{Locations: locs})
-	if err != nil {
+	if err = ebs.del(ctx, locs); err != nil {
 		log.LogErrorf("[EbsDelete] Ebs delete error, id(%v), consume(%v)ns, err(%v)", requestId, elapsed.Nanoseconds(), err.Error())
 		return err
 	}
@@ -214,4 +270,22 @@ func createOPMetric(buf []byte, tag string) string {
 		return tag + "1M_4M"
 	}
 	return tag + "4M_8M"
+}
+
+type limitedWriter struct {
+	buffer []byte
+	offset int
+}
+
+func (w *limitedWriter) Write(p []byte) (n int, err error) {
+	if w.offset+len(p) > len(w.buffer) {
+		return 0, errors.New("write over buffer size")
+	}
+	n = copy(w.buffer[w.offset:], p)
+	w.offset += n
+	return
+}
+
+func (w *limitedWriter) Len() int {
+	return w.offset
 }
