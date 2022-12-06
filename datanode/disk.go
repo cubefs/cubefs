@@ -118,7 +118,7 @@ func (d *Disk) updateQosLimiter() {
 	for i := proto.IopsReadType; i < proto.FlowWriteType; i++ {
 		log.LogInfof("action[updateQosLimiter] type %v limit %v", proto.QosTypeString(i), d.limitFactor[i].Limit())
 	}
-	log.LogInfof("action[updateQosLimiter] flowRead %v flowrite %v iopsread %v iposwrite %v",
+	log.LogInfof("action[updateQosLimiter] flowRead %v flowWrite %v iopsRead %v iopsWrite %v",
 		d.dataNode.diskFlowReadLimit, d.dataNode.diskFlowWriteLimit, d.dataNode.diskIopsReadLimit, d.dataNode.diskIopsWriteLimit)
 }
 
@@ -235,17 +235,17 @@ func (d *Disk) incWriteErrCnt() {
 func (d *Disk) startScheduleToUpdateSpaceInfo() {
 	go func() {
 		updateSpaceInfoTicker := time.NewTicker(5 * time.Second)
-		checkStatusTickser := time.NewTicker(time.Minute * 2)
+		checkStatusTicker := time.NewTicker(time.Minute * 2)
 		defer func() {
 			updateSpaceInfoTicker.Stop()
-			checkStatusTickser.Stop()
+			checkStatusTicker.Stop()
 		}()
 		for {
 			select {
 			case <-updateSpaceInfoTicker.C:
 				d.computeUsage()
 				d.updateSpaceInfo()
-			case <-checkStatusTickser.C:
+			case <-checkStatusTicker.C:
 				d.checkDiskStatus()
 			}
 		}
