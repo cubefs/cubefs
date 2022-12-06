@@ -6,8 +6,6 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -22,6 +20,7 @@ type RepairCrcTask struct {
 	ModifyTimeMin string       `json:"modify_time_min"`
 	ModifyTimeMax string       `json:"modify_time_max"`
 	RepairType    RepairType   `json:"repair_type"`
+	CheckTiny     bool          `json:"check_tiny"`
 	NodeAddress   string       `json:"node_address"`
 	mc            *master.MasterClient
 	stopC         chan bool
@@ -53,6 +52,7 @@ const (
 const (
 	defaultIntervalHour = 24
 )
+
 
 func NewRepairTask() *RepairCrcTask {
 	return &RepairCrcTask{
@@ -111,8 +111,14 @@ func (t *RepairCrcTask) validTask() (err error) {
 }
 
 func (t *RepairCrcTask) executeVolumeTask() (err error) {
-	var volsInfo []*proto.VolInfo
+	var (
+		volsInfo []*proto.VolInfo
+		para      *cmd.CheckParam
+	)
 	log.LogInfof("executeVolumeTask begin, taskID:%v ", t.TaskId)
+	defer func() {
+		log.LogInfof("executeVolumeTask end, taskID:%v ", t.TaskId)
+	}()
 	for i := 1; i<20; i++ {
 		volsInfo, err = t.mc.AdminAPI().ListVols("")
 		if err == nil {
@@ -124,7 +130,7 @@ func (t *RepairCrcTask) executeVolumeTask() (err error) {
 	}
 	mpConcurrency := t.LimitLevel
 	inodeConcurrency := t.LimitLevel
-	extentConcurrency := t.LimitLevel * 5
+	extentConcurrency := t.LimitLevel
 	vols := make([]string, 0)
 	for _, v := range volsInfo {
 		if t.Filter.VolFilter != "" && !strings.Contains(v.Name, t.Filter.VolFilter) {
@@ -135,28 +141,26 @@ func (t *RepairCrcTask) executeVolumeTask() (err error) {
 		}
 		vols = append(vols, v.Name)
 	}
-	cmd.CheckVols(vols, t.mc, t.ModifyTimeMin, t.ModifyTimeMax, "", make([]uint64, 0), 0, false, false, uint64(mpConcurrency), uint64(inodeConcurrency), uint64(extentConcurrency), checkTypeExtentReplica, make([]uint64, 0), repairFunc)
-	log.LogInfof("executeVolumeTask end, taskID:%v ", t.TaskId)
-
+	para, err = cmd.NewCheckParam(false, false, uint64(mpConcurrency), uint64(inodeConcurrency), uint64(extentConcurrency), checkTypeExtentReplica, t.ModifyTimeMin, t.ModifyTimeMax, 0, make([]uint64, 0), make([]uint64, 0))
+	if err != nil {
+		return
+	}
+	var checkStop = func() bool {
+		select {
+		case <- t.stopC:
+			return true
+		default:
+			return false
+		}
+	}
+	cmd.CheckVols(vols, t.mc, para,"", checkStop)
 	return
 
 }
 
 func (t *RepairCrcTask) executeDataNodeTask() (err error) {
 	log.LogInfof("executeDataNodeTask begin, taskID:%v ", t.TaskId)
-	cmd.CheckDataNodeCrc(t.NodeAddress, t.mc, uint64(t.LimitLevel * 5), checkTypeExtentReplica, t.ModifyTimeMin, repairFunc)
+	cmd.CheckDataNodeCrc(t.NodeAddress, t.mc, uint64(t.LimitLevel), checkTypeExtentReplica, t.ModifyTimeMin, t.CheckTiny)
 	log.LogInfof("executeDataNodeTask end, taskID:%v ", t.TaskId)
 	return
-}
-
-var repairFunc = func(rExtent cmd.RepairExtentInfo, repairFD *os.File, canNotRepairFD *os.File) {
-	if len(rExtent.Hosts) == 1 {
-		msg := fmt.Sprintf("found bad crc extent, it will be automatically repaired later: %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0])
-		ump.Alarm("check_crc_server", msg)
-		repairFD.WriteString(fmt.Sprintf("%v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0]))
-	} else {
-		msg := fmt.Sprintf("found bad crc more than 1, please check again: %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts)
-		ump.Alarm("check_crc_server", msg)
-		canNotRepairFD.WriteString(fmt.Sprintf("%v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts))
-	}
 }
