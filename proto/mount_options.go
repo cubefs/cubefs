@@ -274,7 +274,6 @@ type MountOptions struct {
 	EnablePosixACL       bool
 	VolType              int
 	EbsEndpoint          string
-	EbsServicePath       string
 	CacheAction          int
 	CacheThreshold       int
 	EbsBlockSize         int

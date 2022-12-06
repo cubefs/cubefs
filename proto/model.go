@@ -130,7 +130,6 @@ type ClusterIP struct {
 	//DataNodeAutoRepairLimitRate int
 	//Ip 							string
 	EbsAddr string
-	//ServicePath 				string
 }
 
 // NodeView provides the view of the data or meta node.

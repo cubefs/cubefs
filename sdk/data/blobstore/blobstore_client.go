@@ -17,6 +17,8 @@ package blobstore
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"time"
@@ -50,15 +52,25 @@ func NewEbsClient(cfg access.Config) (*BlobStoreClient, error) {
 	}, err
 }
 
+// ParseStreamConfig parse stream config from base64.
+func ParseStreamConfig(baseString string) (cfg stream.StreamConfig, err error) {
+	b, err := base64.StdEncoding.DecodeString(baseString)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(b, &cfg)
+	return
+}
+
 // NewEbsSDK return BlobStoreClient with sdk.
 //
-// TODO: required config items:
+// Notice: required config items:
 // stream.StreamConfig.IDC = "required"
 // stream.StreamConfig.ClusterConfig.ConsulAgentAddr = "required"
 // stream.StreamConfig.ClusterConfig.Region = "required"
 // stream.StreamConfig.ClusterConfig.RegionMagic = "required"
 //
-// TODO: Redirect logger of "github.com/cubefs/cubefs/blobstore/util/log"
+// Notice: Redirect logger of "github.com/cubefs/cubefs/blobstore/util/log"
 func NewEbsSDK(cfg stream.StreamConfig) (*BlobStoreClient, error) {
 	sdk, err := stream.NewSDK(cfg)
 	return &BlobStoreClient{sdk: sdk}, err

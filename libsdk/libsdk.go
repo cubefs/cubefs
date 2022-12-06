@@ -91,6 +91,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	blog "github.com/cubefs/cubefs/blobstore/util/log"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/cubefs/cubefs/blockcache/bcache"
@@ -219,7 +220,7 @@ type client struct {
 	logDir           string
 	logLevel         string
 	ebsEndpoint      string
-	servicePath      string
+	ebsStreamConfig  string
 	volType          int
 	cacheAction      int
 	ebsBlockSize     int
@@ -1106,7 +1107,19 @@ func (c *client) start() (err error) {
 		c.bc = bcache.NewBcacheClient()
 	}
 	var ebsc *blobstore.BlobStoreClient
-	if c.ebsEndpoint != "" {
+	if baseStr := c.ebsStreamConfig; baseStr != "" {
+		cfg, pErr := blobstore.ParseStreamConfig(baseStr)
+		if pErr != nil {
+			err = errors.NewErrorf("parse ebs stream config(%s): %v", baseStr, pErr)
+			return
+		}
+		if ebsc, err = blobstore.NewEbsSDK(cfg); err != nil {
+			return
+		}
+		blog.SetOutput(&access.Logger{
+			Filename: gopath.Join(c.logDir, "libcfs/ebs.log"),
+		})
+	} else if c.ebsEndpoint != "" {
 		if ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
@@ -1391,7 +1404,7 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 		return
 	}
 	c.ebsEndpoint = clusterInfo.EbsAddr
-	c.servicePath = clusterInfo.ServicePath
+	c.ebsStreamConfig = clusterInfo.EbsStreamConfig
 	c.cluster = clusterInfo.Cluster
 	buf.InitCachePool(c.ebsBlockSize)
 	return

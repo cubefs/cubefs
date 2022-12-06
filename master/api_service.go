@@ -252,7 +252,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DataNodeAutoRepairLimitRate: autoRepairRate,
 		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 		EbsAddr:                     m.bStoreAddr,
-		ServicePath:                 m.servicePath,
+		EbsStreamConfig:             m.bStoreStreamCfg,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))

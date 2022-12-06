@@ -35,25 +35,25 @@ import (
 
 // configuration keys
 const (
-	ClusterName          = "clusterName"
-	ID                   = "id"
-	IP                   = "ip"
-	Port                 = "port"
-	LogLevel             = "logLevel"
-	WalDir               = "walDir"
-	StoreDir             = "storeDir"
-	EbsAddrKey           = "ebsAddr"
-	BStoreAddrKey        = "bStoreAddr"
-	EbsServicePathKey    = "ebsServicePath"
-	BStoreServicePathKey = "bStoreServicePath"
-	GroupID              = 1
-	ModuleName           = "master"
-	CfgRetainLogs        = "retainLogs"
-	DefaultRetainLogs    = 20000
-	cfgTickInterval      = "tickInterval"
-	cfgRaftRecvBufSize   = "raftRecvBufSize"
-	cfgElectionTick      = "electionTick"
-	SecretKey            = "masterServiceKey"
+	ClusterName        = "clusterName"
+	ID                 = "id"
+	IP                 = "ip"
+	Port               = "port"
+	LogLevel           = "logLevel"
+	WalDir             = "walDir"
+	StoreDir           = "storeDir"
+	GroupID            = 1
+	ModuleName         = "master"
+	CfgRetainLogs      = "retainLogs"
+	DefaultRetainLogs  = 20000
+	cfgTickInterval    = "tickInterval"
+	cfgRaftRecvBufSize = "raftRecvBufSize"
+	cfgElectionTick    = "electionTick"
+	SecretKey          = "masterServiceKey"
+
+	EbsAddrKey            = "ebsAddr"
+	BStoreAddrKey         = "bStoreAddr"
+	BStoreStreamConfigKey = "bStoreStreamConfig" // base64 string of ebs stream config json.
 )
 
 var (
@@ -107,7 +107,7 @@ type Server struct {
 	walDir          string
 	storeDir        string
 	bStoreAddr      string
-	servicePath     string
+	bStoreStreamCfg string
 	retainLogs      uint64
 	tickInterval    int
 	raftRecvBufSize int
@@ -194,10 +194,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.bStoreAddr == "" {
 		m.bStoreAddr = cfg.GetString(EbsAddrKey)
 	}
-	m.servicePath = cfg.GetString(BStoreServicePathKey)
-	if m.servicePath == "" {
-		m.servicePath = cfg.GetString(EbsServicePathKey)
-	}
+	m.bStoreStreamCfg = cfg.GetString(BStoreStreamConfigKey)
 	peerAddrs := cfg.GetString(cfgPeers)
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
 		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (ip,listen,walDir,storeDir,clusterName) is null",

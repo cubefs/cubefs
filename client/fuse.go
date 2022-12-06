@@ -792,6 +792,5 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 		return
 	}
 	opt.EbsEndpoint = clusterInfo.EbsAddr
-	opt.EbsServicePath = clusterInfo.ServicePath
 	return
 }

@@ -163,7 +163,7 @@ type ClusterInfo struct {
 	DataNodeDeleteLimitRate     uint64
 	DataNodeAutoRepairLimitRate uint64
 	EbsAddr                     string
-	ServicePath                 string
+	EbsStreamConfig             string
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
