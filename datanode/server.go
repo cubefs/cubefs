@@ -202,7 +202,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 
 	// check local partition compare with master ,if lack,then not start
-	if err = s.checkLocalPartitionMatchWithMaster(); err != nil {
+	if err = s.checkLocalPartitionMatchWithMasterWhenStartDN(); err != nil {
 		log.LogError(err)
 		exporter.Warning(err.Error())
 		return
@@ -222,6 +222,9 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	go s.startUpdateNodeInfo()
 
+	// start metrics (LackDpCount, etc.)
+	s.startMetrics()
+
 	return
 }
 
@@ -230,6 +233,7 @@ func doShutdown(server common.Server) {
 	if !ok {
 		return
 	}
+	s.closeMetrics()
 	close(s.stopC)
 	s.space.Stop()
 	s.stopUpdateNodeInfo()
@@ -396,7 +400,21 @@ type DataNodeInfo struct {
 	PersistenceDataPartitions []uint64
 }
 
-func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
+func (s *DataNode) checkLocalPartitionMatchWithMasterWhenStartDN() (err error) {
+	lackPartitions := make([]uint64, 0)
+	lackPartitions, err = s.checkLocalPartitionMatchWithMaster()
+	if err != nil {
+		return
+	}
+	if len(lackPartitions) > 0 {
+		err = fmt.Errorf("LackPartitions %v on datanode %v,datanode cannot start", lackPartitions, s.localServerAddr)
+		log.LogErrorf(err.Error())
+		return
+	}
+	return
+}
+
+func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64, err error) {
 	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
@@ -429,7 +447,6 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 	if len(lackPartitionsNeedCheck) == 0 {
 		return
 	}
-	lackPartitions := make([]uint64, 0)
 	for _, lackPartitionID := range lackPartitionsNeedCheck {
 		var dp *proto.DataPartitionInfo
 		for i := 0; i < 3; i++ {
@@ -448,11 +465,6 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 		}
 		log.LogInfof("action[checkLocalPartitionMatchWithMaster] dp [%v] replicaNum [%v] ignore local error", dp.PartitionID, dp.ReplicaNum)
 	}
-	if len(lackPartitions) == 0 {
-		return
-	}
-	err = fmt.Errorf("LackPartitions %v on datanode %v,datanode cannot start", lackPartitions, s.localServerAddr)
-	log.LogErrorf(err.Error())
 	return
 }
 
