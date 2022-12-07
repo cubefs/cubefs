@@ -16,11 +16,13 @@ package cacher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -39,9 +41,24 @@ var (
 	C = gomock.NewController
 )
 
+func TestMain(m *testing.M) {
+	basePath := path.Join(os.TempDir(), "proxy-cacher")
+	os.RemoveAll(basePath)
+	exitCode := m.Run()
+	time.Sleep(500 * time.Millisecond)
+	os.RemoveAll(basePath)
+	os.Exit(exitCode)
+}
+
 func newCacher(t gomock.TestReporter, expiration int) (Cacher, *mocks.MockClientAPI, func()) {
 	cmCli := mocks.NewMockClientAPI(C(t))
-	basePath := path.Join(os.TempDir(), fmt.Sprintf("proxy-cacher-%d", rand.Intn(1000)+1000))
+	var basePath string
+	for {
+		basePath = path.Join(os.TempDir(), "proxy-cacher", fmt.Sprintf("%d", rand.Intn(10000)+10000))
+		if _, err := os.Stat(basePath); err != nil && errors.Is(err, os.ErrNotExist) {
+			break
+		}
+	}
 	cacher, _ := New(1, ConfigCache{
 		DiskvBasePath:     basePath,
 		VolumeExpirationS: expiration,

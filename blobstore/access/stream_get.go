@@ -497,7 +497,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 
 	if err != nil {
 		if err == errPunishedDisk || err == errCanceledReadShard {
-			span.Debugf("read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
+			span.Warnf("read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
 			return shardResult
 		}
 		span.Warnf("read %s on %s: %s", blob.ID(), vuid.ID(), errors.Detail(err))
@@ -650,7 +650,7 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 		// EIO and Readonly error, then we need to punish disk in local and no need to retry
 		case errcode.CodeDiskBroken, errcode.CodeVUIDReadonly:
 			h.punishDisk(ctx, clusterID, diskID, host, "BrokenOrRO")
-			span.Infof("punish disk:%d on:%s cos:blobnode/%d", diskID, host, code)
+			span.Warnf("punish disk:%d on:%s cos:blobnode/%d", diskID, host, code)
 			return true, fmt.Errorf("punished disk (%d %s)", diskID, host)
 
 		// vuid not found means the reflection between vuid and diskID has change,
@@ -680,7 +680,7 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 			}
 
 			h.punishDiskWith(ctx, clusterID, diskID, host, "NotFound")
-			span.Debugf("punish threshold disk:%d cos:blobnode/%d", diskID, code)
+			span.Warnf("punish threshold disk:%d cos:blobnode/%d", diskID, code)
 		}
 
 		// do not retry on timeout then punish threshold this disk

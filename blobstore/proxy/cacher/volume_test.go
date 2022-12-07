@@ -94,30 +94,27 @@ func TestProxyCacherVolumeFlush(t *testing.T) {
 func TestProxyCacherVolumeSingle(t *testing.T) {
 	c, cmCli, clean := newCacher(t, 0)
 	defer clean()
+
+	done := make(chan struct{})
 	cmCli.EXPECT().GetVolumeInfo(A, A).DoAndReturn(
 		func(_ context.Context, _ *clustermgr.GetVolumeArgs) (*clustermgr.VolumeInfo, error) {
-			time.Sleep(time.Second)
+			<-done
 			return &clustermgr.VolumeInfo{}, nil
-		}).Times(3)
+		})
 
 	var wg sync.WaitGroup
-	wg.Add(_defaultClustermgrConcurrency)
-	for range [_defaultClustermgrConcurrency]struct{}{} {
+	const n = _defaultClustermgrConcurrency
+	wg.Add(n)
+	for range [n]struct{}{} {
 		go func() {
 			c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
 			wg.Done()
 		}()
 	}
+	time.Sleep(200 * time.Millisecond)
+	close(done)
 	wg.Wait()
-
-	wg.Add(_defaultClustermgrConcurrency + 1)
-	for range [_defaultClustermgrConcurrency + 1]struct{}{} {
-		go func() {
-			c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 2})
-			wg.Done()
-		}()
-	}
-	wg.Wait()
+	time.Sleep(200 * time.Millisecond)
 }
 
 func TestProxyCacherVolumeError(t *testing.T) {

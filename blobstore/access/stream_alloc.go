@@ -138,7 +138,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.Code
 		allocRets, err = h.proxyClient.VolumeAlloc(ctx, host, &args)
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
-				span.Info("punish unreachable proxy host:", host)
+				span.Warn("punish unreachable proxy host:", host)
 				reportUnhealth(clusterID, "punish", serviceProxy, host, "Timeout")
 				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
 			}
