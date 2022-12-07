@@ -16,22 +16,42 @@ package datanode
 
 import (
 	"fmt"
-
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
+	"time"
 )
 
 const (
+	StatPeriod                 = time.Minute * time.Duration(1)
 	MetricPartitionIOName      = "dataPartitionIO"
 	MetricPartitionIOBytesName = "dataPartitionIOBytes"
+	MetricLackDpCount          = "lackDataPartitionCount"
 )
 
 type DataNodeMetrics struct {
+	dataNode      *DataNode
+	stopC         chan struct{}
 	MetricIOBytes *exporter.Counter
+	lackDpCount   *exporter.Gauge
 }
 
 func (d *DataNode) registerMetrics() {
-	d.metrics = &DataNodeMetrics{}
+	d.metrics = &DataNodeMetrics{
+		dataNode: d,
+		stopC:    make(chan struct{}),
+	}
 	d.metrics.MetricIOBytes = exporter.NewCounter(MetricPartitionIOBytesName)
+	d.metrics.lackDpCount = exporter.NewGauge(MetricLackDpCount)
+}
+
+func (d *DataNode) startMetrics() {
+	go d.metrics.statMetrics()
+	log.LogInfof("startMetrics")
+}
+
+func (d *DataNode) closeMetrics() {
+	close(d.metrics.stopC)
+	log.LogInfof("closeMetrics")
 }
 
 func GetIoMetricLabels(partition *DataPartition, tp string) map[string]string {
@@ -44,4 +64,38 @@ func GetIoMetricLabels(partition *DataPartition, tp string) map[string]string {
 	}
 
 	return labels
+}
+
+func (dm *DataNodeMetrics) statMetrics() {
+	ticker := time.NewTicker(StatPeriod)
+
+	for {
+		select {
+		case <-dm.stopC:
+			ticker.Stop()
+			log.LogInfof("stop metrics ticker")
+			return
+		case <-ticker.C:
+			dm.doStat()
+		}
+	}
+}
+
+func (dm *DataNodeMetrics) doStat() {
+	dm.setLackDpCountMetrics()
+}
+
+func (dm *DataNodeMetrics) setLackDpCountMetrics() {
+	lackPartitions := make([]uint64, 0)
+	var err error
+	lackPartitions, err = dm.dataNode.checkLocalPartitionMatchWithMaster()
+	if err != nil {
+		log.LogError(err)
+		exporter.Warning(err.Error())
+	}
+	if len(lackPartitions) > 0 {
+		err = fmt.Errorf("LackPartitions %v on datanode %v", lackPartitions, dm.dataNode.localServerAddr)
+		log.LogErrorf(err.Error())
+	}
+	dm.lackDpCount.SetWithLabels(float64(len(lackPartitions)), map[string]string{"type": "lack_dp"})
 }
