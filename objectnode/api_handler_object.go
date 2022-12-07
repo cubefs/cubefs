@@ -22,6 +22,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -630,9 +631,13 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 
 func parseCopySourceInfo(r *http.Request) (sourceBucket, sourceObject string) {
 	var copySource = r.Header.Get(HeaderNameXAmzCopySource)
+	if s, err := url.PathUnescape(copySource); err == nil {
+		copySource = s
+	}
 	if strings.HasPrefix(copySource, "/") {
 		copySource = copySource[1:]
 	}
+
 	position := strings.Index(copySource, "/")
 	var bucket, object string
 	if position >= 0 {
@@ -641,6 +646,7 @@ func parseCopySourceInfo(r *http.Request) (sourceBucket, sourceObject string) {
 			object = copySource[position+1:]
 		}
 	}
+
 	sourceBucket = bucket
 	sourceObject = object
 	return
