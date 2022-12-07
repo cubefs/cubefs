@@ -593,9 +593,12 @@ func (s *Super) syncMeta() <-chan struct{} {
 				for _, extent := range extents {
 					cacheKey := util.GenerateRepVolKey(s.volname, inode, extent.PartitionId, extent.ExtentId, extent.FileOffset)
 					// retry to make possible evict success
-					common.Timed(3, 100).On(func() error {
-						return s.bc.Evict(cacheKey)
-					})
+					if s.bc != nil {
+						common.Timed(3, 100).On(func() error {
+							return s.bc.Evict(cacheKey)
+						})
+					}
+
 				}
 				return nil
 			})
