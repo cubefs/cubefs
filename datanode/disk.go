@@ -37,12 +37,16 @@ import (
 
 var (
 	// RegexpDataPartitionDir validates the directory name of a data partition.
-	RegexpDataPartitionDir, _    = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
-	RegexpCachePartitionDir, _   = regexp.Compile("^cachepartition_(\\d)+_(\\d)+$")
-	RegexpPreLoadPartitionDir, _ = regexp.Compile("^preloadpartition_(\\d)+_(\\d)+$")
+	RegexpDataPartitionDir, _        = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
+	RegexpCachePartitionDir, _       = regexp.Compile("^cachepartition_(\\d)+_(\\d)+$")
+	RegexpPreLoadPartitionDir, _     = regexp.Compile("^preloadpartition_(\\d)+_(\\d)+$")
+	RegexpExpiredDataPartitionDir, _ = regexp.Compile("^expired_datapartition_(\\d)+_(\\d)+$")
 )
 
-const ExpiredPartitionPrefix = "expired_"
+const (
+	ExpiredPartitionPrefix    = "expired_"
+	ExpiredPartitionExistTime = time.Hour * time.Duration(24*7)
+)
 
 // Disk represents the structure of the disk
 type Disk struct {
@@ -403,6 +407,11 @@ func (d *Disk) isPartitionDir(filename string) (isPartitionDir bool) {
 	return
 }
 
+func (d *Disk) isExpiredPartitionDir(filename string) (isExpiredPartitionDir bool) {
+	isExpiredPartitionDir = RegexpExpiredDataPartitionDir.MatchString(filename)
+	return
+}
+
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
 func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
@@ -438,10 +447,18 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		return
 	}
 
-	var wg sync.WaitGroup
+	var (
+		wg                            sync.WaitGroup
+		toDeleteExpiredPartitionNames = make([]string, 0)
+	)
 	for _, fileInfo := range fileInfoList {
 		filename := fileInfo.Name()
 		if !d.isPartitionDir(filename) {
+			if d.isExpiredPartitionDir(filename) {
+				name := path.Join(d.Path, filename)
+				toDeleteExpiredPartitionNames = append(toDeleteExpiredPartitionNames, name)
+				log.LogInfof("action[RestorePartition]: find expired partition on path(%s)", name)
+			}
 			continue
 		}
 
@@ -459,6 +476,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			oldName := path.Join(d.Path, filename)
 			newName := path.Join(d.Path, ExpiredPartitionPrefix+filename)
 			os.Rename(oldName, newName)
+			toDeleteExpiredPartitionNames = append(toDeleteExpiredPartitionNames, newName)
 			continue
 		}
 
@@ -483,7 +501,58 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 
 		}(partitionID, filename)
 	}
+
+	log.LogInfof("action[RestorePartition] expiredPartitions %v", toDeleteExpiredPartitionNames)
+	if len(toDeleteExpiredPartitionNames) > 0 {
+
+		notDeletedExpiredPartitionNames := d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
+
+		if len(notDeletedExpiredPartitionNames) > 0 {
+			go func(toDeleteExpiredPartitions []string) {
+				ticker := time.NewTicker(ExpiredPartitionExistTime)
+				log.LogInfof("action[RestorePartition] delete expiredPartitions automatically start, toDeleteExpiredPartitions %v", toDeleteExpiredPartitions)
+				for {
+					select {
+					case <-ticker.C:
+						d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
+						ticker.Stop()
+						log.LogInfof("action[RestorePartition] delete expiredPartitions automatically finish")
+					}
+				}
+			}(notDeletedExpiredPartitionNames)
+		}
+	}
 	wg.Wait()
+}
+
+func (d *Disk) deleteExpiredPartitions(toDeleteExpiredPartitionNames []string) (notDeletedExpiredPartitionNames []string) {
+	notDeletedExpiredPartitionNames = make([]string, 0)
+	for _, partitionName := range toDeleteExpiredPartitionNames {
+		dirName, fileName := path.Split(partitionName)
+		if !d.isExpiredPartitionDir(fileName) {
+			log.LogInfof("action[deleteExpiredPartitions] partition %v on %v is not expiredPartition", fileName, dirName)
+			continue
+		}
+		dirInfo, err := os.Stat(partitionName)
+		if err != nil {
+			log.LogErrorf("action[deleteExpiredPartitions] stat expiredPartition %v fail, err(%v)", partitionName, err)
+			continue
+		}
+		dirStat := dirInfo.Sys().(*syscall.Stat_t)
+		nowTime := time.Now().Unix()
+		expiredTime := dirStat.Ctim.Sec
+		if nowTime-expiredTime >= int64(ExpiredPartitionExistTime.Seconds()) {
+			err := os.RemoveAll(partitionName)
+			if err != nil {
+				log.LogErrorf("action[deleteExpiredPartitions] delete expiredPartition %v automatically fail, err(%v)", partitionName, err)
+				continue
+			}
+			log.LogInfof("action[deleteExpiredPartitions] delete expiredPartition %v automatically", partitionName)
+		} else {
+			notDeletedExpiredPartitionNames = append(notDeletedExpiredPartitionNames, partitionName)
+		}
+	}
+	return
 }
 
 func (d *Disk) AddSize(size uint64) {
