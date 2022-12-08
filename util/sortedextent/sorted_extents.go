@@ -629,17 +629,19 @@ func (s ExtentKeySet) search(ek *proto.ExtentKey) (i int, found bool) {
 }
 
 func (s *ExtentKeySet) Put(ek *proto.ExtentKey) {
-	if _, found := s.search(ek); !found {
-		*s = append(*s, *ek)
-		s.sort()
-	}
+	*s = append(*s, *ek)
+	//if _, found := s.search(ek); !found {
+	//	*s = append(*s, *ek)
+	//	s.sort()
+	//}
 }
 
 func (s *ExtentKeySet) Put2(ek proto.ExtentKey) {
-	if _, found := s.search(&ek); !found {
-		*s = append(*s, ek)
-		s.sort()
-	}
+	*s = append(*s, ek)
+	//if _, found := s.search(&ek); !found {
+	//	*s = append(*s, ek)
+	//	s.sort()
+	//}
 }
 
 func (s ExtentKeySet) Has(ek *proto.ExtentKey) (has bool) {
@@ -670,10 +672,26 @@ func (s *ExtentKeySet) Reset() {
 	*s = (*s)[:0]
 }
 
+func (s *ExtentKeySet) dup() {
+	s.sort()
+	lastEk := proto.ExtentKey{}
+	newSet := make([]proto.ExtentKey, 0)
+	for _, ek := range *s {
+		if ek.PartitionId == lastEk.PartitionId && ek.ExtentId == lastEk.ExtentId {
+			continue
+		}
+		newSet = append(newSet, ek)
+		lastEk = ek
+	}
+	*s = newSet
+}
+
 func (s *ExtentKeySet) GetDelExtentKeys(eks []proto.ExtentKey) []proto.ExtentKey {
 	if s.Length() == 0 {
 		return nil
 	}
+
+	s.dup()
 
 	for i := 0; i < len(eks); i++ {
 		s.Remove(&eks[i])

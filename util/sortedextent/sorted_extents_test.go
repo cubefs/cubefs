@@ -7,8 +7,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+)
+
+const (
+	maxTruncateEKLen = 100 * 10000 			//
+	maxTruncateEKCount = 100
 )
 
 func TestAppend01(t *testing.T) {
@@ -180,6 +186,46 @@ func TestTruncate01(t *testing.T) {
 		se.Size() != 500 {
 		t.Fail()
 	}
+}
+
+func TestTruncate02(t *testing.T) {
+	se := NewSortedExtents()
+
+	for i := uint64(0); i < maxTruncateEKLen; i++ {
+		se.eks = append(se.eks, proto.ExtentKey{FileOffset: i * 100, Size: 100, PartitionId: i + 1, ExtentId: i + 1})
+	}
+	t.Logf("before truncate eks len: %v", se.Len())
+	start := time.Now()
+	delExtents := se.Truncate(500)
+	cost := time.Since(start)
+	if se.Len() != 5 || len(delExtents) != maxTruncateEKLen - 5 {
+		t.Errorf("truncate error, se len(exp:%d, now:%d), del len(exp:%d, now:%d)", 5, se.Len(), maxTruncateEKLen - 5, len(delExtents))
+	}
+	if cost > time.Second * 3 {
+		t.Errorf("truncate %d eks timeout(3s), cost:%v", len(delExtents), cost)
+		return
+	}
+	t.Logf("after  truncate eks len: %v, del len:%d, cost:%v", se.Len(), len(delExtents), cost)
+}
+
+func TestTruncate03(t *testing.T) {
+	se := NewSortedExtents()
+
+	for i := uint64(0); i < maxTruncateEKLen; i++ {
+		se.eks = append(se.eks, proto.ExtentKey{FileOffset: i * 100, Size: 100, PartitionId: i % maxTruncateEKCount + 1, ExtentId: i % maxTruncateEKCount + 1})
+	}
+	t.Logf("before truncate eks len: %v", se.Len())
+	start := time.Now()
+	delExtents := se.Truncate(500)
+	cost := time.Since(start)
+	if se.Len() != 5 || len(delExtents) != maxTruncateEKCount - 5 {
+		t.Errorf("truncate error, se len(exp:%d, now:%d), del len(exp:%d, now:%d)", 5, se.Len(), maxTruncateEKCount - 5, len(delExtents))
+	}
+	if cost > time.Second * 3 {
+		t.Errorf("truncate %d eks timeout(3s), cost:%v", len(delExtents), cost)
+		return
+	}
+	t.Logf("after  truncate eks len: %v, del len:%d, cost:%v", se.Len(), len(delExtents), cost)
 }
 
 // Scenario:
