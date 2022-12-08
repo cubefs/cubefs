@@ -38,7 +38,7 @@ func mockINode(id uint64) *Inode {
 		ek.ExtentId = i
 		ek.CRC = uint32(10 * i)
 		ek.PartitionId = i
-		ino.Extents.Insert(nil, ek)
+		ino.Extents.Insert(nil, ek, id)
 	}
 	return ino
 }

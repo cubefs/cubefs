@@ -263,7 +263,7 @@ func (mp *metaPartition) recordInodeDeleteEkInfo(info *Inode) {
 
 	info.Extents.Range(func(ek proto.ExtentKey) bool {
 
-		delEk := ek.ConvertToMetaDelEk(info.Inode, delEkSrcTypeFromDelInode, timeStamp)
+		delEk := ek.ConvertToMetaDelEk(info.Inode, uint64(proto.DelEkSrcTypeFromDelInode), timeStamp)
 		ekBuff := make([]byte, proto.ExtentDbKeyLengthWithIno)
 		delEk.MarshalDeleteEKRecord(ekBuff)
 		data = append(data, ekBuff...)

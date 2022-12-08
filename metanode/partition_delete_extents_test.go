@@ -38,7 +38,7 @@ func generateEk(num int) (eks []proto.MetaDelExtentKey){
 			},
 			InodeId: uint64(i),
 			TimeStamp: int64(i),
-			SrcType: uint64(i % (delEkSrcTypeFromDelInode + 1))})
+			SrcType: uint64(i % (proto.DelEkSrcTypeFromDelInode + 1))})
 	}
 	return
 }

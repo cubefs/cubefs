@@ -28,8 +28,8 @@ func TestInode_V1Marshal(t *testing.T) {
 	}
 	var ctx = context.Background()
 
-	i.Extents.Append(ctx, proto.ExtentKey{FileOffset: 0, PartitionId: 12, ExtentId: 1, ExtentOffset: 100, Size: 1000, CRC: 0})
-	i.Extents.Append(ctx, proto.ExtentKey{FileOffset: 1000, PartitionId: 12, ExtentId: 2, ExtentOffset: 100, Size: 1000, CRC: 0})
+	i.Extents.Append(ctx, proto.ExtentKey{FileOffset: 0, PartitionId: 12, ExtentId: 1, ExtentOffset: 100, Size: 1000, CRC: 0}, i.Inode)
+	i.Extents.Append(ctx, proto.ExtentKey{FileOffset: 1000, PartitionId: 12, ExtentId: 2, ExtentOffset: 100, Size: 1000, CRC: 0}, i.Inode)
 	raw, _ := i.Marshal()
 
 	inodeRestoreExpect := &Inode{}
@@ -68,8 +68,8 @@ func TestInode_V2Marshal(t *testing.T) {
 		Extents:    se.NewSortedExtents(),
 	}
 	var ctx = context.Background()
-	i.Extents.Append(ctx, proto.ExtentKey{FileOffset: 0, PartitionId: 12, ExtentId: 1, ExtentOffset: 100, Size: 1000, CRC: 0})
-	i.Extents.Append(ctx, proto.ExtentKey{FileOffset: 1000, PartitionId: 12, ExtentId: 2, ExtentOffset: 100, Size: 1000, CRC: 0})
+	i.Extents.Append(ctx, proto.ExtentKey{FileOffset: 0, PartitionId: 12, ExtentId: 1, ExtentOffset: 100, Size: 1000, CRC: 0}, i.Inode)
+	i.Extents.Append(ctx, proto.ExtentKey{FileOffset: 1000, PartitionId: 12, ExtentId: 2, ExtentOffset: 100, Size: 1000, CRC: 0}, i.Inode)
 
 	raw, _ := i.MarshalV2()
 	inodeRestore := &Inode{}

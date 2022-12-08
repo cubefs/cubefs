@@ -84,7 +84,7 @@ func genInode(t *testing.T, mp *metaPartition, cnt uint64) uint64 {
 			for j := 0; j < 10; j++ {
 				ino.Extents.Append(context.Background(), proto.ExtentKey{FileOffset: uint64(j) * 1024 * 4,
 					PartitionId: rand.Uint64(), ExtentId: rand.Uint64(),
-					ExtentOffset: rand.Uint64(), Size: rand.Uint32(), CRC:0})
+					ExtentOffset: rand.Uint64(), Size: rand.Uint32(), CRC:0}, ino.Inode)
 			}
 		}
 		if _, ok, err := inodeCreate(mp.inodeTree, ino, false); err != nil || !ok {

@@ -68,12 +68,6 @@ const (
 	InodeDelExtentKeyList             = "inodeDeleteExtentList.tmp"
 	PrefixInodeDelExtentKeyListBackup = "inodeDeleteExtentList."
 
-	delEkSrcTypeFromTruncate = 0
-	delEkSrcTypeFromInsert   = 1
-	delEkSrcTypeFromAppend   = 2
-	delEkSrcTypeFromMerge    = 3
-	delEkSrcTypeFromDelInode = 4
-
 	defDeleteEKRecordFilesMaxTotalSize = 60 * unit.MB
 
 	MaxMetaDataDiskUsedFactor = 0.5

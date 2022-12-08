@@ -39,7 +39,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		ino.Flag = proto.CheckPreExtentExist
 	}
 	ext := req.Extent
-	ino.Extents.Append(p.Ctx(), ext)
+	ino.Extents.Append(p.Ctx(), ext, ino.Inode)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -67,7 +67,7 @@ func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Pack
 	if req.IsPreExtent {
 		ino.Flag = proto.CheckPreExtentExist
 	}
-	ino.Extents.Insert(p.Ctx(), ext)
+	ino.Extents.Insert(p.Ctx(), ext, ino.Inode)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -170,7 +170,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 	}
 	extents := req.Extents
 	for _, extent := range extents {
-		ino.Extents.Append(p.Ctx(), extent)
+		ino.Extents.Append(p.Ctx(), extent, ino.Inode)
 	}
 	val, err := ino.Marshal()
 	if err != nil {

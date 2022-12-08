@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -76,7 +75,7 @@ func (se *SortedExtents) MarshalBinaryV2() ([]byte, error) {
 	return data, nil
 }
 
-func (se *SortedExtents) UnmarshalBinary(ctx context.Context, data []byte) error {
+func (se *SortedExtents) UnmarshalBinary(ctx context.Context, data []byte, ino uint64) error {
 	var ek proto.ExtentKey
 
 	buf := bytes.NewBuffer(data)
@@ -87,12 +86,12 @@ func (se *SortedExtents) UnmarshalBinary(ctx context.Context, data []byte) error
 		if err := ek.UnmarshalBinary(buf); err != nil {
 			return err
 		}
-		se.Append(ctx, ek)
+		se.Append(ctx, ek, ino)
 	}
 	return nil
 }
 
-func (se *SortedExtents) UnmarshalBinaryV2(ctx context.Context, data []byte) error {
+func (se *SortedExtents) UnmarshalBinaryV2(ctx context.Context, data []byte, ino uint64) error {
 	var ek proto.ExtentKey
 	for start := 0; start < len(data); {
 		if len(data[start:]) < proto.ExtentLength {
@@ -101,7 +100,7 @@ func (se *SortedExtents) UnmarshalBinaryV2(ctx context.Context, data []byte) err
 		if err := ek.UnmarshalBinaryV2(data[start : start+proto.ExtentLength]); err != nil {
 			return err
 		}
-		se.Append(ctx, ek)
+		se.Append(ctx, ek, ino)
 		start += proto.ExtentLength
 	}
 	return nil
@@ -120,7 +119,7 @@ func (se *SortedExtents) UnmarshalBinaryV2(ctx context.Context, data []byte) err
 //   3.TestSortedExtents_Insert03
 //   4.TestSortedExtents_Insert04
 // These test cases cover 100% of the this method.
-func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
+func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey,ino uint64) (deleteExtents []proto.MetaDelExtentKey) {
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
 
@@ -291,7 +290,7 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 			//   ek.FileOffset <= cur.FileOffset <= cur.FileOffset+cur.Size <= ek.FileOffset+ek.Size
 			//
 			// In this case the cur need be remove from extent key chan (se.eks).
-			set.Put(cur)
+			set.Put(cur, ino, uint64(proto.DelEkSrcTypeFromInsert))
 			if index == len(se.eks)-1 {
 				se.eks = se.eks[:index]
 			} else {
@@ -375,7 +374,7 @@ func (se *SortedExtents) maybeMergeWithPrev(index int) (merged bool) {
 	return
 }
 
-func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) ([]proto.ExtentKey) {
+func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey, ino uint64) ([]proto.MetaDelExtentKey) {
 	endOffset := ek.FileOffset + uint64(ek.Size)
 	var deleteExtents []proto.ExtentKey
 
@@ -439,20 +438,19 @@ func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) ([]prot
 	for _, key := range invalidExtents {
 		if key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId {
 			deleteExtents = append(deleteExtents, key)
-			set.Put2(key)
+			set.Put2(&key, ino, uint64(proto.DelEkSrcTypeFromAppend))
 		}
 	}
 
 	return set.GetDelExtentKeys(se.eks)
 }
 
-func (se *SortedExtents) Truncate(offset uint64) ([]proto.ExtentKey) {
+func (se *SortedExtents) Truncate(offset, ino uint64) ([]proto.MetaDelExtentKey) {
 	var endIndex int
 	var deleteExtents []proto.ExtentKey
 
 	se.Lock()
 	defer se.Unlock()
-	set := NewExtentKeySet()
 
 	endIndex = -1
 	for idx, key := range se.eks {
@@ -470,8 +468,15 @@ func (se *SortedExtents) Truncate(offset uint64) ([]proto.ExtentKey) {
 		se.eks = se.eks[:endIndex]
 	}
 
+	var delEks DelEkSet
+	if len(deleteExtents) > maxDelExtentSetSize {
+		delEks = NewDelExtentKeyMap(len(deleteExtents))//NewExtentKeySet()//NewDelExtentKeyBtree()
+	} else {
+		delEks = NewExtentKeySet()
+	}
+
 	for i:= 0; i < len(deleteExtents); i++ {
-		set.Put2(deleteExtents[i])
+		delEks.Put2(&deleteExtents[i], ino, uint64(proto.DelEkSrcTypeFromTruncate))
 	}
 
 	numKeys := len(se.eks)
@@ -482,7 +487,7 @@ func (se *SortedExtents) Truncate(offset uint64) ([]proto.ExtentKey) {
 		}
 	}
 
-	return set.GetDelExtentKeys(se.eks)
+	return delEks.GetDelExtentKeys(se.eks)
 }
 
 func (se *SortedExtents) Len() int {
@@ -610,102 +615,6 @@ func findFirstOverlapPosition(eks []proto.ExtentKey, ek *proto.ExtentKey) int {
 	return -1
 }
 
-type ExtentKeySet []proto.ExtentKey
-
-func (s ExtentKeySet) sort() {
-	sort.SliceStable(s, func(i, j int) bool {
-		return s[i].PartitionId < s[j].PartitionId ||
-			(s[i].PartitionId == s[j].PartitionId &&
-				s[i].ExtentId < s[j].ExtentId)
-	})
-}
-
-func (s ExtentKeySet) search(ek *proto.ExtentKey) (i int, found bool) {
-	i = sort.Search(len(s), func(i int) bool {
-		return ek.PartitionId < s[i].PartitionId || (ek.PartitionId == s[i].PartitionId && ek.ExtentId <= s[i].ExtentId)
-	})
-	found = i >= 0 && i < len(s) && ek.PartitionId == s[i].PartitionId && ek.ExtentId == s[i].ExtentId
-	return
-}
-
-func (s *ExtentKeySet) Put(ek *proto.ExtentKey) {
-	*s = append(*s, *ek)
-	//if _, found := s.search(ek); !found {
-	//	*s = append(*s, *ek)
-	//	s.sort()
-	//}
-}
-
-func (s *ExtentKeySet) Put2(ek proto.ExtentKey) {
-	*s = append(*s, ek)
-	//if _, found := s.search(&ek); !found {
-	//	*s = append(*s, ek)
-	//	s.sort()
-	//}
-}
-
-func (s ExtentKeySet) Has(ek *proto.ExtentKey) (has bool) {
-	_, has = s.search(ek)
-	return
-}
-
-func (s *ExtentKeySet) Remove(ek *proto.ExtentKey) {
-	if i, found := s.search(ek); found {
-		if i == len(*s)-1 {
-			*s = (*s)[:i]
-			return
-		}
-		*s = append((*s)[:i], (*s)[i+1:]...)
-	}
-	return
-}
-
-func (s ExtentKeySet) ToExtentKeys() []proto.ExtentKey {
-	return s
-}
-
-func (s ExtentKeySet) Length() int {
-	return len(s)
-}
-
-func (s *ExtentKeySet) Reset() {
-	*s = (*s)[:0]
-}
-
-func (s *ExtentKeySet) dup() {
-	s.sort()
-	lastEk := proto.ExtentKey{}
-	newSet := make([]proto.ExtentKey, 0)
-	for _, ek := range *s {
-		if ek.PartitionId == lastEk.PartitionId && ek.ExtentId == lastEk.ExtentId {
-			continue
-		}
-		newSet = append(newSet, ek)
-		lastEk = ek
-	}
-	*s = newSet
-}
-
-func (s *ExtentKeySet) GetDelExtentKeys(eks []proto.ExtentKey) []proto.ExtentKey {
-	if s.Length() == 0 {
-		return nil
-	}
-
-	s.dup()
-
-	for i := 0; i < len(eks); i++ {
-		s.Remove(&eks[i])
-		if s.Length() == 0 {
-			break
-		}
-	}
-	return s.ToExtentKeys()
-}
-
-func NewExtentKeySet() ExtentKeySet {
-	return ExtentKeySet(make([]proto.ExtentKey, 0))
-}
-
 func (se *SortedExtents) findEkIndex(ek *proto.ExtentKey) (int, bool) {
 	l := 0
 	r := len(se.eks) - 1
@@ -722,7 +631,7 @@ func (se *SortedExtents) findEkIndex(ek *proto.ExtentKey) (int, bool) {
 	return -1, false
 }
 
-func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKey) (deleteExtents []proto.ExtentKey, merged bool, msg string) {
+func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKey, ino uint64) (deleteExtents []proto.MetaDelExtentKey, merged bool, msg string) {
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
 	set := NewExtentKeySet()
@@ -761,18 +670,18 @@ func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKe
 	se.eks = append(se.eks, upper...)
 	// Filter the EK that should be deleted
 	for _, ek := range oldEks {
-		set.Put(&ek)
+		set.Put(&ek, ino, uint64(proto.DelEkSrcTypeFromMerge))
 	}
 	deleteExtents = set.GetDelExtentKeys(se.eks)
 	return deleteExtents, true, ""
 }
 
-func (se *SortedExtents) DelNewExtent(newEks []proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
+func (se *SortedExtents) DelNewExtent(newEks []proto.ExtentKey, ino uint64) (deleteExtents []proto.MetaDelExtentKey) {
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
 	set := NewExtentKeySet()
 	for _, ek := range newEks {
-		set.Put(&ek)
+		set.Put(&ek, ino, uint64(proto.DelEkSrcTypeFromMerge))
 	}
 	return set.GetDelExtentKeys(se.eks)
 }

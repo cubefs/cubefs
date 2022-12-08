@@ -482,7 +482,7 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 			valueBuff = make([]byte, 24)
 			delEk := proto.MetaDelExtentKey{InodeId: uint64(index),
 				TimeStamp: time.Now().Unix(),
-				SrcType:   uint64(index / 30 % (delEkSrcTypeFromDelInode + 1))}
+				SrcType:   uint64(index / 30 % (proto.DelEkSrcTypeFromDelInode + 1))}
 			delEk.MarshDelEkValue(valueBuff)
 		}
 		keyBuff, _ := ek.MarshalDbKey()

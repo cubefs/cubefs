@@ -34,6 +34,12 @@ var (
 	ExtentValueLen           = 24
 	InvalidKey               = errors.New("invalid key error")
 	DelEKRecordLen           = 32
+
+	DelEkSrcTypeFromTruncate = 0
+	DelEkSrcTypeFromInsert   = 1
+	DelEkSrcTypeFromAppend   = 2
+	DelEkSrcTypeFromMerge    = 3
+	DelEkSrcTypeFromDelInode = 4
 )
 
 // ExtentKey defines the extent key struct.
@@ -119,6 +125,20 @@ func (k *MetaDelExtentKey) MarshalDeleteEKRecord(data []byte) {
 	binary.BigEndian.PutUint64(data[48:56], uint64(k.TimeStamp))
 	binary.BigEndian.PutUint64(data[56:64], k.SrcType)
 	return
+}
+
+// Less defines the less comparator.
+func (k *MetaDelExtentKey) Less(than btree.Item) bool {
+	that := than.(*MetaDelExtentKey)
+	if k.PartitionId < that.PartitionId || (k.PartitionId == that.PartitionId && k.ExtentId < that.ExtentId) {
+		return true
+	}
+	return false
+}
+
+// Marshal marshals the extent key.
+func (k *MetaDelExtentKey) Copy() btree.Item {
+	return k
 }
 
 func (k ExtentKey) ConvertToMetaDelEk(ino, srcType uint64, delTime int64) *MetaDelExtentKey {

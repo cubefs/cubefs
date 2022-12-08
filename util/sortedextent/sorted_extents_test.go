@@ -20,10 +20,10 @@ const (
 func TestAppend01(t *testing.T) {
 	ctx := context.Background()
 	se := NewSortedExtents()
-	se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1})
-	se.Append(ctx, proto.ExtentKey{FileOffset: 2000, Size: 1000, ExtentId: 2})
-	se.Append(ctx, proto.ExtentKey{FileOffset: 4000, Size: 1000, ExtentId: 3})
-	se.Append(ctx, proto.ExtentKey{FileOffset: 3000, Size: 500, ExtentId: 4})
+	se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, 1)
+	se.Append(ctx, proto.ExtentKey{FileOffset: 2000, Size: 1000, ExtentId: 2}, 1)
+	se.Append(ctx, proto.ExtentKey{FileOffset: 4000, Size: 1000, ExtentId: 3}, 1)
+	se.Append(ctx, proto.ExtentKey{FileOffset: 3000, Size: 500, ExtentId: 4}, 1)
 	t.Logf("\neks: %v\n", se.eks)
 	if se.Size() != 5000 || len(se.eks) != 4 || se.eks[2].ExtentId != 4 {
 		t.Fail()
@@ -35,13 +35,13 @@ func TestAppend01(t *testing.T) {
 func TestAppend02(t *testing.T) {
 	ctx := context.Background()
 	se := NewSortedExtents()
-	delExtents := se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1})
-	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 2000, ExtentId: 1})
+	delExtents := se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, 1)
+	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 2000, ExtentId: 1}, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	if len(delExtents) != 0 || se.Size() != 2000 {
 		t.Fail()
 	}
-	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 2000, ExtentId: 2})
+	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 2000, ExtentId: 2}, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	if len(delExtents) != 1 || delExtents[0].ExtentId != 1 || se.eks[0].ExtentId != 2 {
 		t.Fail()
@@ -52,9 +52,9 @@ func TestAppend02(t *testing.T) {
 func TestAppend03(t *testing.T) {
 	ctx := context.Background()
 	se := NewSortedExtents()
-	delExtents := se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1})
+	delExtents := se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 2})
+	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 2}, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	if len(delExtents) != 1 || delExtents[0].ExtentId != 1 ||
 		se.eks[0].ExtentId != 2 || se.Size() != 1000 {
@@ -68,13 +68,13 @@ func TestAppend03(t *testing.T) {
 func TestAppend04(t *testing.T) {
 	ctx := context.Background()
 	se := NewSortedExtents()
-	delExtents := se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1})
+	delExtents := se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 1000, Size: 1000, ExtentId: 2})
+	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 1000, Size: 1000, ExtentId: 2}, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 1500, Size: 4000, ExtentId: 3})
+	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 1500, Size: 4000, ExtentId: 3}, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 500, Size: 4000, ExtentId: 4})
+	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 500, Size: 4000, ExtentId: 4}, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	if len(delExtents) != 1 || delExtents[0].ExtentId != 2 ||
 		len(se.eks) != 3 || se.Size() != 5500 ||
@@ -135,7 +135,7 @@ func TestAppend05(t *testing.T) {
 		t.Logf("\n*******This ek will panic: cal end:%d, eks len:%d********\n\n", start+len(invalid), len(se.eks))
 	}
 
-	se.Append(ctx, ek)
+	se.Append(ctx, ek, 1)
 	t.Logf("\neks: %v", se.eks)
 
 	t.Logf("%v\n", se.Size())
@@ -166,7 +166,7 @@ func TestAppend06(t *testing.T) {
 	if start+len(invalid) > len(se.eks) {
 		t.Logf("\n*******This ek will panic: cal end:%d, eks len:%d********\n\n", start+len(invalid), len(se.eks))
 	}
-	se.Append(ctx, ek)
+	se.Append(ctx, ek, 1)
 	t.Logf("\neks: %v", se.eks)
 
 	t.Logf("%v\n", se.Size())
@@ -175,11 +175,11 @@ func TestAppend06(t *testing.T) {
 func TestTruncate01(t *testing.T) {
 	ctx := context.Background()
 	se := NewSortedExtents()
-	delExtents := se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1})
+	delExtents := se.Append(ctx, proto.ExtentKey{FileOffset: 0, Size: 1000, ExtentId: 1}, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 2000, Size: 1000, ExtentId: 2})
+	delExtents = se.Append(ctx, proto.ExtentKey{FileOffset: 2000, Size: 1000, ExtentId: 2}, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	delExtents = se.Truncate(500)
+	delExtents = se.Truncate(500, 1)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	if len(delExtents) != 1 || delExtents[0].ExtentId != 2 ||
 		len(se.eks) != 1 || se.eks[0].ExtentId != 1 ||
@@ -190,13 +190,12 @@ func TestTruncate01(t *testing.T) {
 
 func TestTruncate02(t *testing.T) {
 	se := NewSortedExtents()
-
 	for i := uint64(0); i < maxTruncateEKLen; i++ {
 		se.eks = append(se.eks, proto.ExtentKey{FileOffset: i * 100, Size: 100, PartitionId: i + 1, ExtentId: i + 1})
 	}
 	t.Logf("before truncate eks len: %v", se.Len())
 	start := time.Now()
-	delExtents := se.Truncate(500)
+	delExtents := se.Truncate(500, 1)
 	cost := time.Since(start)
 	if se.Len() != 5 || len(delExtents) != maxTruncateEKLen - 5 {
 		t.Errorf("truncate error, se len(exp:%d, now:%d), del len(exp:%d, now:%d)", 5, se.Len(), maxTruncateEKLen - 5, len(delExtents))
@@ -216,7 +215,7 @@ func TestTruncate03(t *testing.T) {
 	}
 	t.Logf("before truncate eks len: %v", se.Len())
 	start := time.Now()
-	delExtents := se.Truncate(500)
+	delExtents := se.Truncate(500, 1)
 	cost := time.Since(start)
 	if se.Len() != 5 || len(delExtents) != maxTruncateEKCount - 5 {
 		t.Errorf("truncate error, se len(exp:%d, now:%d), del len(exp:%d, now:%d)", 5, se.Len(), maxTruncateEKCount - 5, len(delExtents))
@@ -284,9 +283,9 @@ func TestSortedExtents_Insert01(t *testing.T) {
 	ctx := context.Background()
 	se := NewSortedExtents()
 
-	delEks := make([]proto.ExtentKey, 0)
+	delEks := make([]proto.MetaDelExtentKey, 0)
 	for _, ek := range order {
-		delEks = append(delEks, se.Insert(ctx, ek)...)
+		delEks = append(delEks, se.Insert(ctx, ek, 1)...)
 	}
 
 	// Validate result
@@ -365,9 +364,9 @@ func TestSortedExtents_Insert02(t *testing.T) {
 
 	ctx := context.Background()
 	se := NewSortedExtents()
-	delEks := make([]proto.ExtentKey, 0)
+	delEks := make([]proto.MetaDelExtentKey, 0)
 	for _, ek := range order {
-		delEks = append(delEks, se.Insert(ctx, ek)...)
+		delEks = append(delEks, se.Insert(ctx, ek, 1)...)
 	}
 
 	// Validate result
@@ -385,7 +384,7 @@ func TestSortedExtents_Insert02(t *testing.T) {
 	}
 
 	for i := 0; i < len(expectedDelEks); i++ {
-		if !reflect.DeepEqual(delEks[i], expectedDelEks[i]) {
+		if !reflect.DeepEqual(delEks[i].ExtentKey, expectedDelEks[i]) {
 			t.Fatalf("deleted ek[%v] mismatch: expect %v, actual %v", i, expectedDelEks[i], delEks[i])
 		}
 	}
@@ -465,9 +464,9 @@ func TestSortedExtents_Insert03(t *testing.T) {
 	ctx := context.Background()
 	se := NewSortedExtents()
 
-	delEks := make([]proto.ExtentKey, 0)
+	delEks := make([]proto.MetaDelExtentKey, 0)
 	for _, ek := range order {
-		delEks = append(delEks, se.Insert(ctx, ek)...)
+		delEks = append(delEks, se.Insert(ctx, ek, 1)...)
 	}
 	// Validate result
 	if len(se.eks) != len(expectedEks) {
@@ -483,7 +482,7 @@ func TestSortedExtents_Insert03(t *testing.T) {
 	}
 
 	if len(delEks) != len(expectedDelEks) {
-		t.Fatalf("number of delete extents mismatch: expect %v, actual %v", len(expectedDelEks), len(delEks))
+		t.Fatalf("number of delete extents mismatch: expect %v, actual %v, del set:%v", len(expectedDelEks), len(delEks), delEks)
 	}
 
 	for i := 0; i < len(expectedDelEks); i++ {
@@ -547,9 +546,9 @@ func TestSortedExtents_Insert04(t *testing.T) {
 
 	ctx := context.Background()
 	se := NewSortedExtents()
-	delEks := make([]proto.ExtentKey, 0)
+	delEks := make([]proto.MetaDelExtentKey, 0)
 	for _, ek := range order {
-		delEks = append(delEks, se.Insert(ctx, ek)...)
+		delEks = append(delEks, se.Insert(ctx, ek, 1)...)
 	}
 
 	// Validate result
@@ -623,9 +622,9 @@ func TestSortedExtents_Insert05(t *testing.T) {
 
 	ctx := context.Background()
 	se := NewSortedExtents()
-	delEks := make([]proto.ExtentKey, 0)
+	delEks := make([]proto.MetaDelExtentKey, 0)
 	for _, ek := range order {
-		delEks = append(delEks, se.Insert(ctx, ek)...)
+		delEks = append(delEks, se.Insert(ctx, ek, 1)...)
 	}
 
 	// Validate result
@@ -694,9 +693,9 @@ func TestSortedExtents_Insert06(t *testing.T) {
 
 	ctx := context.Background()
 	se := NewSortedExtents()
-	delEks := make([]proto.ExtentKey, 0)
+	delEks := make([]proto.MetaDelExtentKey, 0)
 	for _, ek := range order {
-		delEks = append(delEks, se.Insert(ctx, ek)...)
+		delEks = append(delEks, se.Insert(ctx, ek, 1)...)
 	}
 
 	// Validate result
@@ -772,9 +771,9 @@ func TestSortedExtents_Insert07(t *testing.T) {
 
 	ctx := context.Background()
 	se := NewSortedExtents()
-	delEks := make([]proto.ExtentKey, 0)
+	delEks := make([]proto.MetaDelExtentKey, 0)
 	for _, ek := range order {
-		delEks = append(delEks, se.Insert(ctx, ek)...)
+		delEks = append(delEks, se.Insert(ctx, ek, 1)...)
 	}
 
 	// Validate result
@@ -792,7 +791,7 @@ func TestSortedExtents_Insert07(t *testing.T) {
 	}
 
 	for i := 0; i < len(expectedDelEks); i++ {
-		if !reflect.DeepEqual(delEks[i], expectedDelEks[i]) {
+		if !reflect.DeepEqual(delEks[i].ExtentKey, expectedDelEks[i]) {
 			t.Fatalf("deleted ek[%v] mismatch: expect %v, actual %v", i, expectedDelEks[i], delEks[i])
 		}
 	}
@@ -812,7 +811,7 @@ ExtentTruncate:98304
 `
 	var err error
 	var eks = NewSortedExtents()
-	var deletedEks = make([]proto.ExtentKey, 0)
+	var deletedEks = make([]proto.MetaDelExtentKey, 0)
 	for _, operation := range strings.Split(operations, "\n") {
 		operation = strings.TrimSpace(operation)
 		if len(operation) == 0 {
@@ -846,13 +845,13 @@ ExtentTruncate:98304
 				t.Fatalf("Parse Size from %v failed: %v", operation, err)
 			}
 			ek.Size = uint32(size)
-			deletedEks = append(deletedEks, eks.Insert(context.Background(), ek)...)
+			deletedEks = append(deletedEks, eks.Insert(context.Background(), ek, 1)...)
 		case "ExtentTruncate":
 			var size uint64
 			if size, err = strconv.ParseUint(parts[1], 10, 64); err != nil {
 				t.Fatalf("Parse truncate offset failed: %v", err)
 			}
-			deletedEks = append(deletedEks, eks.Truncate(size)...)
+			deletedEks = append(deletedEks, eks.Truncate(size, 1)...)
 		}
 	}
 	eks.Range(func(ek proto.ExtentKey) bool {
@@ -876,7 +875,7 @@ func BenchmarkSortedExtents_Insert(b *testing.B) {
 			ExtentId:     uint64(i + 1),
 			ExtentOffset: 0,
 			Size:         100,
-		})
+		}, 1)
 	}
 	b.ReportAllocs()
 }
@@ -892,7 +891,7 @@ func BenchmarkSortedExtents_Append(b *testing.B) {
 			ExtentId:     uint64(i + 1),
 			ExtentOffset: 0,
 			Size:         100,
-		})
+		}, 1)
 	}
 	b.ReportAllocs()
 }
@@ -904,7 +903,7 @@ func TestSortedExtents_findEkIndex(t *testing.T) {
 	for i := 0; i < length; i++ {
 		se.Append(ctx, proto.ExtentKey{
 			FileOffset: uint64(i),
-		})
+		}, 1)
 	}
 	for i := 0; i < length; i++ {
 		ek := &proto.ExtentKey{FileOffset: uint64(i)}
@@ -935,7 +934,7 @@ func TestSortedExtents_Merge1(t *testing.T) {
 		{FileOffset: 33, Size: 3, PartitionId: 12, ExtentId: 12},
 	}
 	for _, ek := range srcEks {
-		se.Append(ctx, ek)
+		se.Append(ctx, ek, 1)
 	}
 	newEk := proto.ExtentKey{FileOffset: 0, Size: 11, PartitionId: 100, ExtentId: 1}
 	oldEks := []proto.ExtentKey{
@@ -944,7 +943,7 @@ func TestSortedExtents_Merge1(t *testing.T) {
 		{FileOffset: 3, Size: 3, PartitionId: 4, ExtentId: 4},
 		{FileOffset: 6, Size: 4, PartitionId: 5, ExtentId: 5},
 	}
-	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
 	if !merged {
 		t.Fatalf("There should be no error, current error:%v", msg)
 	}
@@ -956,7 +955,7 @@ func TestSortedExtents_Merge1(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	deleteExtents, merged, msg = se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	deleteExtents, merged, msg = se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
 	if !merged {
 		t.Fatalf("There should be no error, current error:%v", msg)
 	}
@@ -982,7 +981,7 @@ func TestSortedExtents_Merge2(t *testing.T) {
 		{FileOffset: 33, Size: 3, PartitionId: 12, ExtentId: 12},
 	}
 	for _, ek := range srcEks {
-		se.Append(ctx, ek)
+		se.Append(ctx, ek, 1)
 	}
 	newEk := proto.ExtentKey{FileOffset: 0, Size: 11, PartitionId: 100, ExtentId: 1}
 	shouldNotContainEk := proto.ExtentKey{FileOffset: 6, Size: 4, PartitionId: 12, ExtentId: 12}
@@ -992,7 +991,7 @@ func TestSortedExtents_Merge2(t *testing.T) {
 		{FileOffset: 3, Size: 3, PartitionId: 4, ExtentId: 4},
 		shouldNotContainEk,
 	}
-	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
 	if !merged {
 		t.Fatalf("There should be no error, current error:%v", msg)
 	}
@@ -1023,7 +1022,7 @@ func TestSortedExtents_Merge3(t *testing.T) {
 		{FileOffset: 33, Size: 3, PartitionId: 12, ExtentId: 12},
 	}
 	for _, ek := range srcEks {
-		se.Append(ctx, ek)
+		se.Append(ctx, ek, 1)
 	}
 	newEk := proto.ExtentKey{FileOffset: 0, Size: 11, PartitionId: 100, ExtentId: 1}
 	shouldNotContainEk1 := proto.ExtentKey{FileOffset: 3, Size: 3, PartitionId: 11, ExtentId: 11}
@@ -1034,7 +1033,7 @@ func TestSortedExtents_Merge3(t *testing.T) {
 		shouldNotContainEk1,
 		shouldNotContainEk2,
 	}
-	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
 	if !merged {
 		t.Fatalf("Merge should have no error, current error:%v", msg)
 	}
@@ -1068,7 +1067,7 @@ func TestSortedExtents_Merge4(t *testing.T) {
 		{FileOffset: 33, Size: 3, PartitionId: 12, ExtentId: 12},
 	}
 	for _, ek := range srcEks {
-		se.Append(ctx, ek)
+		se.Append(ctx, ek, 1)
 	}
 	newEk := proto.ExtentKey{FileOffset: 0, Size: 18, PartitionId: 100, ExtentId: 1}
 	oldEks := []proto.ExtentKey{
@@ -1077,7 +1076,7 @@ func TestSortedExtents_Merge4(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	_, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	_, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
 	fmt.Println(msg)
 	if merged {
 		t.Fatalf("Merge should hava error")
@@ -1088,7 +1087,7 @@ func TestSortedExtents_Merge4(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	_, merged, msg = se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	_, merged, msg = se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
 	fmt.Println(msg)
 	if merged {
 		t.Fatalf("Merge should hava error")
@@ -1112,7 +1111,7 @@ func TestSortedExtents_Merge5(t *testing.T) {
 		{FileOffset: 33, Size: 3, PartitionId: 12, ExtentId: 12},
 	}
 	for _, ek := range srcEks {
-		se.Append(ctx, ek)
+		se.Append(ctx, ek, 1)
 	}
 	newEk := proto.ExtentKey{FileOffset: 4, Size: 18, PartitionId: 100, ExtentId: 1}
 	oldEks := []proto.ExtentKey{
@@ -1121,7 +1120,7 @@ func TestSortedExtents_Merge5(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	_, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	_, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
 	fmt.Println(msg)
 	if merged {
 		t.Fatalf("Merge should hava error")

@@ -175,11 +175,11 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 	ek5 := proto.ExtentKey{FileOffset: 10240, PartitionId: 5, ExtentId: 1005, ExtentOffset: 0, Size: 1024 * 1024 * 128}
 
 	testExtentCache := NewExtentCache(1)
-	testExtentCache.root.Insert(nil, ek1)
-	testExtentCache.root.Insert(nil, ek2)
-	testExtentCache.root.Insert(nil, ek3)
-	testExtentCache.root.Insert(nil, ek4)
-	testExtentCache.root.Insert(nil, ek5)
+	testExtentCache.root.Insert(nil, ek1, testExtentCache.inode)
+	testExtentCache.root.Insert(nil, ek2, testExtentCache.inode)
+	testExtentCache.root.Insert(nil, ek3, testExtentCache.inode)
+	testExtentCache.root.Insert(nil, ek4, testExtentCache.inode)
+	testExtentCache.root.Insert(nil, ek5, testExtentCache.inode)
 
 	testFields := fields{
 		client:     testClient,
