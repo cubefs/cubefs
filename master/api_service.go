@@ -3524,7 +3524,7 @@ func parseDefaultBatchDelInodeCntToUpdateVol(r *http.Request, vol *Vol) (batchDe
 	}
 
 	var valTemp uint64
-	valTemp, err = strconv.ParseUint(val, 10, 32)
+	valTemp, err = strconv.ParseUint(val, 10, 64)
 	if err != nil {
 		return
 	}
@@ -3546,7 +3546,7 @@ func parseDefaultDelInodeIntervalToUpdateVol(r *http.Request, vol *Vol) (delInod
 	}
 
 	var valTemp uint64
-	valTemp, err = strconv.ParseUint(val, 10, 32)
+	valTemp, err = strconv.ParseUint(val, 10, 64)
 	if err != nil {
 		return
 	}
@@ -3720,17 +3720,16 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	var value string
 	if value = r.FormValue(ecEnableKey); value == "" {
 		enableEc = defaultEcEnable
-		return
-	}
-	if enableEc, err = strconv.ParseBool(value); err != nil {
+	} else if enableEc, err = strconv.ParseBool(value); err != nil {
+		err = unmatchedKey(ecEnableKey)
 		return
 	}
 
 	var maxCount uint64
 	if value = r.FormValue(proto.ChildFileMaxCountKey); value == "" {
-		childFileMaxCnt = defaultChildFileMaxCount
-		return
-	} else if maxCount, err = strconv.ParseUint(value, 10, 32); err != nil {
+		maxCount = defaultChildFileMaxCount
+	} else if maxCount, err = strconv.ParseUint(value, 10, 64); err != nil {
+		err = unmatchedKey(proto.ChildFileMaxCountKey)
 		return
 	}
 	childFileMaxCnt = uint32(maxCount)
@@ -3738,7 +3737,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	var tmpBatchDelInodeCnt uint64
 	if batchDelInodeCntStr := r.FormValue(volBatchDelInodeCntKey); batchDelInodeCntStr == "" {
 		tmpBatchDelInodeCnt = 0
-	} else if tmpBatchDelInodeCnt, err = strconv.ParseUint(batchDelInodeCntStr, 10, 32); err != nil {
+	} else if tmpBatchDelInodeCnt, err = strconv.ParseUint(batchDelInodeCntStr, 10, 64); err != nil {
 		err = unmatchedKey(volBatchDelInodeCntKey)
 		return
 	}
@@ -3747,7 +3746,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	var tmpDelInodeInterval uint64
 	if delInodeIntervalStr := r.FormValue(volDelInodeIntervalKey); delInodeIntervalStr == "" {
 		tmpDelInodeInterval = 0
-	} else if tmpDelInodeInterval, err = strconv.ParseUint(delInodeIntervalStr, 10, 32); err != nil {
+	} else if tmpDelInodeInterval, err = strconv.ParseUint(delInodeIntervalStr, 10, 64); err != nil {
 		err = unmatchedKey(volDelInodeIntervalKey)
 		return
 	}
@@ -5733,7 +5732,7 @@ func (m *Server) setVolChildFileMaxCount(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	value := r.FormValue(proto.ChildFileMaxCountKey)
-	maxCount, err = strconv.ParseUint(value, 10, 32)
+	maxCount, err = strconv.ParseUint(value, 10, 64)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
