@@ -139,13 +139,13 @@ func (mp *metaPartition) deleteWorker() {
 		batchCount := DeleteBatchCount()
 		delayDeleteInos := make([]uint64, 0)
 		for idx = 0; idx < int(batchCount); idx++ {
-			// batch get free inoded from the freeList
+			// batch get free inode from the freeList
 			ino := mp.freeList.Pop()
 			if ino == 0 {
 				break
 			}
 
-			//check inode nlink == 0 and deletMarkFlag unset
+			//check inode nlink == 0 and deleteMarkFlag unset
 			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
 				if inode.ShouldDelayDelete() {
 					log.LogDebugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0", inode)
@@ -179,7 +179,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		lock sync.Mutex
 	)
 
-	//wait all Partition do BatchDeleteExtents fininsh
+	//wait all Partition do BatchDeleteExtents finish
 	for partitionID, extents := range partitionDeleteExtents {
 		wg.Add(1)
 		go func(partitionID uint64, extents []*proto.ExtentKey) {

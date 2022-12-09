@@ -205,6 +205,7 @@ type MetaPartition interface {
 	Start() error
 	Stop()
 	DataSize() uint64
+	GetFreeListLen() int
 	OpMeta
 	LoadSnapshot(path string) error
 	ForceSetMetaPartitionToLoadding()
@@ -276,6 +277,10 @@ func (mp *metaPartition) ForceSetMetaPartitionToFininshLoad() {
 
 func (mp *metaPartition) DataSize() uint64 {
 	return mp.size
+}
+
+func (mp *metaPartition) GetFreeListLen() int {
+	return mp.freeList.Len()
 }
 
 // Start starts a meta partition.

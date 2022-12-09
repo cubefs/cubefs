@@ -77,6 +77,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				Size:        partition.DataSize(),
 				InodeCnt:    uint64(partition.GetInodeTreeLen()),
 				DentryCnt:   uint64(partition.GetDentryTreeLen()),
+				FreeListLen: uint64(partition.GetFreeListLen()),
 			}
 			addr, isLeader := partition.IsLeader()
 			if addr == "" {
