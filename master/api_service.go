@@ -3046,6 +3046,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.MaxInodeID = mp.MaxInodeID
 	mpView.InodeCount = mp.InodeCount
 	mpView.DentryCount = mp.DentryCount
+	mpView.FreeListLen = mp.FreeListLen
 	mpView.IsRecover = mp.IsRecover
 	return
 }

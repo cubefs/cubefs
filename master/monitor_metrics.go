@@ -181,15 +181,18 @@ func (mm *monitorMetrics) setVolMetrics() {
 		inodeCount := uint64(0)
 		dentryCount := uint64(0)
 		mpCount := uint64(0)
+		freeListLen := uint64(0)
 		for _, mpv := range vol.getMetaPartitionsView() {
 			inodeCount += mpv.InodeCount
 			dentryCount += mpv.DentryCount
 			mpCount += 1
+			freeListLen += mpv.FreeListLen
 		}
 		mm.volMetaCount.SetWithLabelValues(float64(inodeCount), volName, "inode")
 		mm.volMetaCount.SetWithLabelValues(float64(dentryCount), volName, "dentry")
 		mm.volMetaCount.SetWithLabelValues(float64(mpCount), volName, "mp")
 		mm.volMetaCount.SetWithLabelValues(float64(vol.getDataPartitionsCount()), volName, "dp")
+		mm.volMetaCount.SetWithLabelValues(float64(freeListLen), volName, "freeList")
 	}
 
 	for volName := range deleteVolNames {
@@ -221,6 +224,7 @@ func (mm *monitorMetrics) deleteVolMetric(volName string) {
 	mm.volMetaCount.DeleteLabelValues(volName, "dentry")
 	mm.volMetaCount.DeleteLabelValues(volName, "mp")
 	mm.volMetaCount.DeleteLabelValues(volName, "dp")
+	mm.volMetaCount.DeleteLabelValues(volName, "freeList")
 }
 
 func (mm *monitorMetrics) setDiskErrorMetric() {
