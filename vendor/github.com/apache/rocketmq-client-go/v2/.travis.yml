@@ -1,0 +1,35 @@
+language: go
+
+go:
+  - "1.11.x"
+  - "1.12.x"
+  - "1.13.x"
+go_import_path: github.com/apache/rocketmq-client-go/v2
+env:
+  global:
+    - NAME_SERVER_ADDRESS=127.0.0.1:9876
+    - BROKER_ADDRESS=127.0.0.1:10911
+    - TOPIC=test
+    - GROUP=testGroup
+    - GO111MODULE=on
+    - HOME=$TRAVIS_HOME
+  matrix:
+    - OS_TYPE=centos OS_VERSION=7
+
+before_script:
+  - export PROJECT_PATH=`pwd`
+  - cd ${TRAVIS_HOME}
+  - wget https://archive.apache.org/dist/rocketmq/4.6.0/rocketmq-all-4.6.0-bin-release.zip
+  - unzip rocketmq-all-4.6.0-bin-release.zip
+  - cd rocketmq-all-4.6.0-bin-release
+  - perl -i -pe's/-Xms8g -Xmx8g -Xmn4g/-Xms2g -Xmx2g -Xmn1g/g' bin/runbroker.sh
+  - nohup sh bin/mqnamesrv &
+  - nohup sh bin/mqbroker -n localhost:9876 &
+
+script:
+  - cd ${PROJECT_PATH}
+  #- go fmt ./... && [[ -z `git status -s` ]]
+  - go test ./... -coverprofile=coverage.txt -covermode=atomic
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash) || echo 'Codecov failed to upload'

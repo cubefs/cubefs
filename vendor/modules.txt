@@ -1,3 +1,14 @@
+# github.com/apache/rocketmq-client-go/v2 v2.1.1-rc3
+## explicit
+github.com/apache/rocketmq-client-go/v2
+github.com/apache/rocketmq-client-go/v2/consumer
+github.com/apache/rocketmq-client-go/v2/errors
+github.com/apache/rocketmq-client-go/v2/internal
+github.com/apache/rocketmq-client-go/v2/internal/remote
+github.com/apache/rocketmq-client-go/v2/internal/utils
+github.com/apache/rocketmq-client-go/v2/primitive
+github.com/apache/rocketmq-client-go/v2/producer
+github.com/apache/rocketmq-client-go/v2/rlog
 # github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da
 github.com/armon/go-metrics
 # github.com/aws/aws-sdk-go v1.33.1
@@ -77,6 +88,13 @@ github.com/davecgh/go-spew/spew
 # github.com/edsrzf/mmap-go v1.1.0
 ## explicit
 github.com/edsrzf/mmap-go
+# github.com/emirpasic/gods v1.12.0
+github.com/emirpasic/gods/containers
+github.com/emirpasic/gods/maps
+github.com/emirpasic/gods/maps/treemap
+github.com/emirpasic/gods/trees
+github.com/emirpasic/gods/trees/redblacktree
+github.com/emirpasic/gods/utils
 # github.com/fatih/color v1.13.0
 github.com/fatih/color
 # github.com/gogo/protobuf v1.3.2
@@ -85,6 +103,8 @@ github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
 github.com/gogo/protobuf/sortkeys
 github.com/gogo/protobuf/types
+# github.com/golang/mock v1.6.0
+github.com/golang/mock/gomock
 # github.com/golang/protobuf v1.5.2
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes
@@ -134,8 +154,12 @@ github.com/inconshreveable/mousetrap
 github.com/jacobsa/daemonize
 # github.com/jmespath/go-jmespath v0.3.0
 github.com/jmespath/go-jmespath
+# github.com/json-iterator/go v1.1.12
+github.com/json-iterator/go
 # github.com/julienschmidt/httprouter v1.3.0
 github.com/julienschmidt/httprouter
+# github.com/konsorten/go-windows-terminal-sequences v1.0.3
+github.com/konsorten/go-windows-terminal-sequences
 # github.com/mattn/go-colorable v0.1.9
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.14
@@ -146,10 +170,18 @@ github.com/matttproud/golang_protobuf_extensions/pbutil
 github.com/mitchellh/go-homedir
 # github.com/mitchellh/mapstructure v1.1.2
 github.com/mitchellh/mapstructure
+# github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
+github.com/modern-go/concurrent
+# github.com/modern-go/reflect2 v1.0.2
+github.com/modern-go/reflect2
 # github.com/opentracing/opentracing-go v1.2.0
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
+# github.com/patrickmn/go-cache v2.1.0+incompatible
+github.com/patrickmn/go-cache
+# github.com/pkg/errors v0.9.1
+github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v1.11.0
@@ -182,15 +214,21 @@ github.com/samsarahq/thunder/internal
 github.com/samsarahq/thunder/internal/filter
 github.com/samsarahq/thunder/reactive
 github.com/samsarahq/thunder/thunderpb
+# github.com/satori/go.uuid v1.2.0
+github.com/satori/go.uuid
 # github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 ## explicit
 github.com/shurcooL/httpfs/vfsutil
 # github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
 ## explicit
 github.com/shurcooL/vfsgen
+# github.com/sirupsen/logrus v1.6.0
+github.com/sirupsen/logrus
 # github.com/spf13/cobra v0.0.0-00010101000000-000000000000 => ./depends/spf13/cobra
 ## explicit
 github.com/spf13/cobra
+# github.com/stathat/consistent v1.0.0
+github.com/stathat/consistent
 # github.com/stretchr/testify v1.7.0
 ## explicit
 github.com/stretchr/testify/assert
@@ -198,9 +236,17 @@ github.com/stretchr/testify/require
 # github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c => github.com/tecbot/gorocksdb v0.0.0-20171109104638-15d543158317
 ## explicit
 github.com/tecbot/gorocksdb
+# github.com/tidwall/gjson v1.13.0
+github.com/tidwall/gjson
+# github.com/tidwall/match v1.1.1
+github.com/tidwall/match
+# github.com/tidwall/pretty v1.2.0
+github.com/tidwall/pretty
 # github.com/xtaci/smux v1.5.16
 ## explicit
 github.com/xtaci/smux
+# go.uber.org/atomic v1.7.0
+go.uber.org/atomic
 # golang.org/x/arch v0.0.0-20190312162104-788fe5ffcd8c
 golang.org/x/arch/x86/x86asm
 # golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d
@@ -214,7 +260,7 @@ golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
 # golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.0.0-20220209214540-3681064d5158
+# golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
 ## explicit
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
@@ -305,6 +351,13 @@ google.golang.org/protobuf/types/descriptorpb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
+# gopkg.in/mgo.v2 v2.0.0-20190816093944-a6b53ec6cb22
+## explicit
+gopkg.in/mgo.v2
+gopkg.in/mgo.v2/bson
+gopkg.in/mgo.v2/internal/json
+gopkg.in/mgo.v2/internal/sasl
+gopkg.in/mgo.v2/internal/scram
 # gopkg.in/natefinch/lumberjack.v2 v2.0.0
 gopkg.in/natefinch/lumberjack.v2
 # gopkg.in/yaml.v2 v2.4.0

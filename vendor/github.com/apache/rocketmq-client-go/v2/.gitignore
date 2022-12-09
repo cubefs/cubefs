@@ -1,0 +1,5 @@
+.idea
+vendor/
+coverage.txt
+examples/test
+/.vscode

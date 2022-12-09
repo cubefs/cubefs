@@ -11,6 +11,7 @@ replace (
 )
 
 require (
+	github.com/apache/rocketmq-client-go/v2 v2.1.1-rc3
 	github.com/aws/aws-sdk-go v1.33.1
 	github.com/bits-and-blooms/bitset v1.2.1
 	github.com/brahma-adshonor/gohook v1.1.9
@@ -32,7 +33,8 @@ require (
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
 	github.com/xtaci/smux v1.5.16
 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d
-	golang.org/x/sys v0.0.0-20220209214540-3681064d5158
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
+	gopkg.in/mgo.v2 v2.0.0-20190816093944-a6b53ec6cb22
 	gopkg.in/yaml.v2 v2.4.0
 )
