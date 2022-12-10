@@ -307,7 +307,7 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 	}
 
 	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
-	c.readProcErrMap = make(map[string]int)
+	c.readProcs = make(map[string]string)
 
 	// Just skip fd 0, 1, 2, to avoid confusion.
 	c.fdset.Set(0).Set(1).Set(2)
@@ -331,7 +331,7 @@ func parsePaths(str string) (res []string) {
 func rebuild_client_state(c *client, clientState *ClientState) {
 	c.cwd = clientState.Cwd
 	c.readOnly = clientState.ReadOnly
-	c.readProcErrMap = clientState.ReadProcErrMap
+	c.readProcs = clientState.ReadProcs
 
 	for _, v := range clientState.Files {
 		f := &file{fd: v.Fd, ino: v.Ino, flags: v.Flags, mode: v.Mode, size: v.Size, pos: v.Pos, path: v.Path, target: []byte(v.Target), locked: v.Locked}
@@ -439,7 +439,7 @@ type client struct {
 	followerRead bool
 	app          string
 
-	readProcErrMap  map[string]int // key: ip:port, value: count of error
+	readProcs       map[string]string // key: ip:port, value: register time
 	readProcMapLock sync.Mutex
 
 	masterClient    string
@@ -495,10 +495,10 @@ type SDKState struct {
 }
 
 type ClientState struct {
-	ReadOnly       bool
-	ReadProcErrMap map[string]int
-	Cwd            string
-	Files          []FileState
+	ReadOnly  bool
+	ReadProcs map[string]string
+	Cwd       string
+	Files     []FileState
 }
 
 /*
@@ -756,7 +756,7 @@ func cfs_sdk_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
 func (c *client) clientState() *ClientState {
 	clientState := new(ClientState)
 	clientState.ReadOnly = c.readOnly
-	clientState.ReadProcErrMap = c.readProcErrMap
+	clientState.ReadProcs = c.readProcs
 	clientState.Cwd = c.cwd
 
 	c.fdlock.Lock()
@@ -4218,13 +4218,8 @@ func (c *client) closeStream(f *file) {
 
 func (c *client) broadcastAllReadProcess(ino uint64) {
 	c.readProcMapLock.Lock()
-	log.LogInfof("broadcastAllReadProcess: readProcessMap(%v)", c.readProcErrMap)
-	for readClient, errCount := range c.readProcErrMap {
-		if errCount > 3 {
-			log.LogInfof("broadcastAllReadProcess: unregister readClient: %s", readClient)
-			delete(c.readProcErrMap, readClient)
-			continue
-		}
+	log.LogInfof("broadcastAllReadProcess: readProcessMap(%v)", c.readProcs)
+	for readClient, _ := range c.readProcs {
 		c.broadcastRefreshExtents(readClient, ino)
 	}
 	c.readProcMapLock.Unlock()

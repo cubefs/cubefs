@@ -671,10 +671,12 @@ func registerReadProcStatusHandleFunc(w http.ResponseWriter, r *http.Request) {
 
 	c.readProcMapLock.Lock()
 	if alive {
-		c.readProcErrMap[readClient] = 0
+		if _, ok := c.readProcs[readClient]; !ok {
+			c.readProcs[readClient] = time.Now().Format("2006-01-02 15:04:05")
+		}
 		log.LogInfof("registerReadClient: %s", readClient)
 	} else {
-		delete(c.readProcErrMap, readClient)
+		delete(c.readProcs, readClient)
 		log.LogInfof("unregisterReadClient: %s", readClient)
 	}
 	c.readProcMapLock.Unlock()
@@ -685,10 +687,7 @@ func (c *client) broadcastRefreshExtents(readClient string, inode uint64) {
 	url := fmt.Sprintf("http://%s%s?%s=%s&%s=%d", readClient, ControlBroadcastRefreshExtents, volKey, c.volName, inoKey, inode)
 	reply, err := sendWithRetry(url, MaxRetry)
 	if err != nil {
-		c.readProcErrMap[readClient]++
 		log.LogErrorf("broadcastRefreshExtents: failed, send url(%v) err(%v) reply(%v)", url, err, reply)
-	} else {
-		c.readProcErrMap[readClient] = 0
 	}
 }
 
@@ -712,7 +711,7 @@ func getReadProcsHandleFunc(w http.ResponseWriter, r *http.Request) {
 	}
 	var encoded []byte
 	c.readProcMapLock.Lock()
-	encoded, _ = json.Marshal(&c.readProcErrMap)
+	encoded, _ = json.Marshal(&c.readProcs)
 	c.readProcMapLock.Unlock()
 	w.Write(encoded)
 	return
