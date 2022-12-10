@@ -14,7 +14,7 @@
 
 package stat
 
-import "C"
+// import "C"
 import (
 	"bufio"
 	"errors"

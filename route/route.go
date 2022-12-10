@@ -278,7 +278,7 @@ type AddVolReq struct {
 }
 
 func (a *AddVolReq) IsValid() bool {
-	if a.VolId == 0 || a.GroupId == 0 {
+	if a.VolId == 0 {
 		return false
 	}
 	return true

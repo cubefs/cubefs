@@ -76,7 +76,6 @@ import "C"
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/buf"
 	"io"
 	syslog "log"
 	"os"
@@ -89,6 +88,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"unsafe"
+
+	"github.com/cubefs/cubefs/util/buf"
 
 	"github.com/cubefs/blobstore/api/access"
 	"github.com/cubefs/blobstore/common/trace"
@@ -1338,7 +1339,7 @@ func (c *client) flush(f *file) error {
 }
 
 func (c *client) truncate(f *file, size int) error {
-	err := c.ec.Truncate(c.mw, f.pino, f.ino, size)
+	err := c.ec.TruncateEx(c.mw, f.pino, f.ino, size)
 	if err != nil {
 		return err
 	}

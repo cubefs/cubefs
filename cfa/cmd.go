@@ -28,12 +28,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/cubefs/cubefs/authnode"
-	"github.com/cubefs/cubefs/console"
-	"github.com/cubefs/cubefs/datanode"
-	"github.com/cubefs/cubefs/master"
-	"github.com/cubefs/cubefs/metanode"
-	"github.com/cubefs/cubefs/objectnode"
 	"github.com/cubefs/cubefs/proxy"
 	"github.com/cubefs/cubefs/route"
 	"github.com/cubefs/cubefs/util/errors"
@@ -60,25 +54,13 @@ const (
 )
 
 const (
-	RoleMaster  = "master"
-	RoleMeta    = "metanode"
-	RoleData    = "datanode"
-	RoleAuth    = "authnode"
-	RoleObject  = "objectnode"
-	RoleConsole = "console"
-	RoleProxy   = "proxy"
-	RoleRoute   = "route"
+	RoleProxy = "proxy"
+	RoleRoute = "route"
 )
 
 const (
-	ModuleMaster  = "master"
-	ModuleMeta    = "metaNode"
-	ModuleData    = "dataNode"
-	ModuleAuth    = "authNode"
-	ModuleObject  = "objectNode"
-	ModuleConsole = "console"
-	ModeuleProxy  = "proxy"
-	ModeuleRoute  = "route"
+	ModeuleProxy = "proxy"
+	ModeuleRoute = "route"
 )
 
 const (
@@ -170,24 +152,6 @@ func main() {
 		module string
 	)
 	switch role {
-	case RoleMeta:
-		server = metanode.NewServer()
-		module = ModuleMeta
-	case RoleMaster:
-		server = master.NewServer()
-		module = ModuleMaster
-	case RoleData:
-		server = datanode.NewServer()
-		module = ModuleData
-	case RoleAuth:
-		server = authnode.NewServer()
-		module = ModuleAuth
-	case RoleObject:
-		server = objectnode.NewServer()
-		module = ModuleObject
-	case RoleConsole:
-		server = console.NewServer()
-		module = ModuleConsole
 	case RoleProxy:
 		server = proxy.NewServer()
 		module = ModeuleProxy

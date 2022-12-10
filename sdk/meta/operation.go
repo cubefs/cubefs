@@ -487,6 +487,55 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 	return statusOK, resp.Info, nil
 }
 
+func (mw *MetaWrapper) batchIgetWithErr(mp *MetaPartition, inodes []uint64) (infos []*proto.InodeInfo, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("batchIgetWithErr", err, bgTime, 1)
+	}()
+
+	req := &proto.BatchInodeGetRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inodes:      inodes,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchInodeGet
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batchIgetWithErr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("batchIgetWithErr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.BatchInodeGetResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("batchIgetWithErr: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+
+	infos = resp.Infos
+	return
+}
+
 func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, respCh chan []*proto.InodeInfo) {
 	defer wg.Done()
 	var (

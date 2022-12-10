@@ -379,7 +379,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 
 			// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
-			err = f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Offset)+reqlen)
+			err = f.super.ec.TruncateEx(f.super.mw, f.parentIno, ino, int(req.Offset)+reqlen)
 			if err == nil {
 				resp.Size = reqlen
 			}
@@ -539,7 +539,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
-		if err := f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Size)); err != nil {
+		if err := f.super.ec.TruncateEx(f.super.mw, f.parentIno, ino, int(req.Size)); err != nil {
 			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}

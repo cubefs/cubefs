@@ -552,6 +552,7 @@ func LogErrorf(format string, v ...interface{}) {
 	s = gLog.SetPrefix(s, levelPrefixes[3])
 	gLog.errorLogger.Print(s)
 	gLog.infoLogger.Output(2, s)
+	gLog.debugLogger.Output(2, s)
 }
 
 // LogDebug logs the debug information.

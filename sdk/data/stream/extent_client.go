@@ -18,11 +18,12 @@ import (
 	"container/list"
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data/manager"
-	"golang.org/x/time/rate"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/sdk/data/manager"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
@@ -420,8 +421,8 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 	return
 }
 
-func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, inode uint64, size int) error {
-	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
+func (client *ExtentClient) TruncateEx(mw *meta.MetaWrapper, parentIno uint64, inode uint64, size int) error {
+	prefix := fmt.Sprintf("TruncateEx{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
 	if s == nil {
 		log.LogErrorf("Prefix(%v): stream is not opened yet", prefix)
@@ -443,6 +444,22 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 		go mw.UpdateSummary_ll(parentIno, 0, 0, int64(size)-int64(oldSize))
 	}
 
+	return err
+}
+
+func (client *ExtentClient) Truncate(inode uint64, size int) error {
+	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
+	s := client.GetStreamer(inode)
+	if s == nil {
+		log.LogErrorf("Prefix(%v): stream is not opened yet", prefix)
+		return syscall.EBADF
+	}
+	var err error
+	err = s.IssueTruncRequest(size)
+	if err != nil {
+		err = errors.Trace(err, prefix)
+		log.LogError(errors.Stack(err))
+	}
 	return err
 }
 

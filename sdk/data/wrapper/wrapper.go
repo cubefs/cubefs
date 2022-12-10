@@ -100,7 +100,7 @@ func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, master
 	if err = w.updateDataNodeStatus(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
-	go w.uploadFlowInfoByTick(clientInfo)
+	// go w.uploadFlowInfoByTick(clientInfo)
 	go w.update()
 	return
 }

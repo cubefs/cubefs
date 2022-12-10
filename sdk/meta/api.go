@@ -216,6 +216,59 @@ func (mw *MetaWrapper) doInodeGet(inode uint64) (*proto.InodeInfo, error) {
 	return info, nil
 }
 
+func (mw *MetaWrapper) BatchInodeGetWith(inodes []uint64) (batchInfos []*proto.InodeInfo, err error) {
+	var wg sync.WaitGroup
+
+	resp := make(chan []*proto.InodeInfo, BatchIgetRespBuf)
+	candidates := make(map[uint64][]uint64)
+
+	// Target partition does not have to be very accurate.
+	for _, ino := range inodes {
+		mp := mw.getPartitionByInode(ino)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]uint64, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], ino)
+	}
+
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(nodes []uint64) {
+			defer wg.Done()
+			subInfos, err1 := mw.batchIgetWithErr(mp, nodes)
+			if err1 != nil {
+				err = fmt.Errorf("invoke batchIgetWithErr failed, err %s", err1.Error())
+				return
+			}
+
+			resp <- subInfos
+		}(inos)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resp)
+	}()
+
+	if err != nil {
+		return
+	}
+
+	for infos := range resp {
+		batchInfos = append(batchInfos, infos...)
+	}
+
+	log.LogDebugf("BatchInodeGet: inodesCnt(%d)", len(inodes))
+	return batchInfos, nil
+}
+
 func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 	var wg sync.WaitGroup
 
