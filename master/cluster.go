@@ -2314,8 +2314,8 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 	}
 
 	volUsedSpace = vol.totalUsedSpace()
-	if float64(newArgs.capacity*util.GB) < float64(volUsedSpace)*1.2 && newArgs.capacity != vol.Capacity {
-		err = fmt.Errorf("capacity[%v] has to be 20 percent larger than the used space[%v]", newArgs.capacity,
+	if float64(newArgs.capacity*util.GB) < float64(volUsedSpace)*1.01 && newArgs.capacity != vol.Capacity {
+		err = fmt.Errorf("capacity[%v] has to be 1 percent larger than the used space[%v]", newArgs.capacity,
 			volUsedSpace/util.GB)
 		goto errHandler
 	}
