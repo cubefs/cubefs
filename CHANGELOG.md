@@ -1,3 +1,199 @@
+## Release v3.2.0 - 2022/10/14
+
+### **UPGRAGDE NOTICE**
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+
+If your Blobstore version is v1.1.0 or before which built with cubefs-blobstore (https://github.com/cubefs/cubefs-blobstore) , please refer to UPGRADE to v3.2.0 following these steps #1556. 
+
+
+### **Main Feature**
+* Merge data subsystem blobstore(ec) to main branch.
+* `blobstore`: Merge some service modules  #1563
+
+
+### **Enhance**
+* `blobstore`: ClusterMgr support simple key-value persistent storage #1566
+* `blobstore`: Remove blobstore's dependency on monogdb #1493
+* `blobstore`: Remove blobstore's dependency on consul #1507
+* `blobstore`: Support audit log filtering #1506
+
+
+### **Bugfix**
+* `blobstore`: Blobnode use the same erasure encoder and buff-pool libraries as Access #1498
+* `blobstore`: Separate flow control for repair and migration traffic #1508
+* `blobstore`: Retry http body under rpc request #1567
+
+
+
+## Release v3.1.2 - 2022/10/13
+
+### **UPGRAGDE NOTICE**
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+
+
+### **Bugfix**
+* `master`: add leaderSize param in create partition req  #1456 
+
+
+### **Enhance**
+* `master`: support decommission broken replica for 2-replica no leader dp   #1456 
+* `datanode`: in case disk full, repair size is also thought as used size   #1456 
+* `raft`: raftstore.monitor can be optimized    #1543 
+
+
+## Release v3.1.1 - 2022/10/08
+
+### **UPGRAGDE NOTICE**
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+
+
+### **Bugfix**
+* `metanode`: Show metapartition id correctly  #1554
+* `metanode`: remove redundant memcopy when reading raft snapshot   #1552
+
+
+### **Enhance**
+* `master`: update metanode or datanode id need drop old one before   #1555
+* `metanode`: add metric mpDentryCount   #1553
+* `datanode`: fallocate return interrupt err try again    #1551
+
+
+## Release v3.1.0 - 2022/08/23
+
+### **UPGRAGDE NOTICE**
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+
+
+### **Main Feature**
+* `master\client\datanode`: ：Provide QoS services to enhance multi-tenant isolation #1447
+* `client`: Caching acceleration #1446
+* `master\datanode`: Support two replicas data storage #1389
+* `master`: Add vol label in cfs_metanode_mpInodeCount #1482
+* `client`: Support config posixAcl for volmue #1485
+* `master`: Add datapartition count limit for datanode. #1481
+
+### **Bugfix**
+* `datanode`: TinyDeleteRecord file will be very big when one replica is down #1433
+* `client`: EnablePosixACL is not vaild in centos system #1393
+* `blockcache`:Blockcache memory overflow and be killed #1422
+* `yum source`: Yum install script fails due to missing packages #1410
+* `unit test`: S3test random path busy to produce data and timeout #1515
+* `master`: Zone name check not strict enough while crossZone enabled #1479
+* `datanode\master`: Avoid writing operation failed because of disk full #1519
+
+
+### **Enhance**
+* `master`: Enable volume update from 3 to 2 replics  #1516
+
+ 
+
+
+
+## Release v2.5.2 - 2022/06/27
+
+UPGRAGDE NOTICE
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+
+### **Main Feature**
+* `master`: support to delete data replica with force   #1258
+
+### **Bugfix**
+* `master`: revert the deletion process in the tiny extent to avoid deletion failure caused by different logical and physical sizes   #1439
+* `master`: add metapartition replica check to fix replicas status still writeable while metanode unavalible #1440
+
+
+
+## Release v3.0.0 - 2022/04/22
+
+### **UPGRAGDE NOTICE**
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+
+### Notice
+This is a significant release based on master branch with a lot of code mainly to support multi layer data layer including blobstore (Erasure-Code) storage, blobstore supports erasure coding storage method(https://github.com/cubeFS/cubefs-blobstore) to support low frequency volume and reduce cost .
+
+Before this we released v3.0.0-beta based on release v2.4.0 (https://github.com/cubeFS/cubefs/releases/tag/v3.0.0-beta) , which make volume can be create as standard(3 replica) or low frequency access type(Erasure-Code), but not support multi data layer. 
+
+Release formal version release-v3.0.0 which based on the newest master commit, below is a list of the main features.
+1) BlobStore subsystem which supports erasure coding storage.   #212
+2) multicache layer, 1st level:client local read cache; 2nd level:hot pool replica; 3nd level:code pool based on erasure code.  #1291 
+3) single data replica supported. releated project: https://github.com/oppo-bigdata/shuttle  used for remote shuffle. #1227 
+4) client hot online restart(experimental).
+5) optimization reduce extents fragmentation.  #1318 
+6) manage third part library with go mod.
+
+Please refer to the documentation for details,the content already updated.
+English version : https://cubefs.readthedocs.io/en/latest/overview.html
+Chinese version: https://cubefs.readthedocs.io/zh_CN/latest/
+
+
+### **Main Feature**
+* `log`: support write ebs log to file and update ebs log level    #212
+* `client\datanode\master`: support one replica of data storage   #1227
+* `master`: support get master's raft status info  #1227
+* `master`: support preload data from blobstore to cubefs  #212
+* `client`: client local read cache #212
+* `client`: Time-consuming statistics of client sdk interface
+* `client`: client support blobstore #212
+* `client`: support ebs index #212
+* `master`: support different type dataparitition(normal dp,cache dp,preload dp) #212
+* `master`: support mulit volume type(replcias volume,ec volume) #212
+* `project`: enable go mod and update vendor #1343
+* `datanode`: intruduce metrics degrade level to datanode  #1438
+* `master`: not do ttl & updateSize for hot vol #212
+* `compile`: change go mod version from 1.14 to 1.16 and consistent with compile  #1343
+* `compile`: enable go mod and update vendor  #1343
+* `project`: change from chubaofs to cubefs  #1343
+
+### **Bugfix**
+* `master`: single replica create volume should set followeread with true  #1227
+* `raft`: raft snapshot still running while peer remove happened which lead to the snapshot gorutine cann't end.  #1227
+* `master`: Refactor finding partitins to be offlined  #1189
+* `master`: Avoid race syncing node's info when setting rdonly  #1189
+* `client`: follow recover handlers when closing open handler  #1316
+* `master`: remove 5 GB left limit for disk to create datapartition        #1189
+* `server`: if server recive kill-signal before being running-state, server will can't be killed graceful       #1261
+
+
+### **Enhance**
+* `master`: not do ttl & updateSize for hot vol           #212
+* `master`: support disk, datanode, metanode decommission
+* `client`: add cli-command for cold volume     #212 
+* `master`: ec-volume can't be deleted if size not equal 0   #212   
+* `client`: add cfs-cli request parameters   #212
+* `client`: add scan cli             #212
+* `master`: add volume type to newVolCreateCmd         #212
+* `master`: not support force delete cold volume             #212
+* `datanode`: add cfg diskRdonlySpace for datanode      #1353
+* `datanode`: use os.ReadDir instead of ioutil.ReadDir  #1438
+* `datanode`: improve performance of write. data allocated didn't put back to buffer pool    #1438
+* `datanode`: reduce datanode cpu usage               #1438
+* `datanode`: remove unnecessary json unmarshal when getting local extents         #1438
+* `datanode`: reduce datanode cpu usage by eliminate file seeks   #1438
+* `client`: mitigate the pain of extents fragmentation  #1318
+
+
+
+
+## Release v2.5.1 - 2022/01/26
+
+### _**UPGRAGDE NOTICE**_
+
+If your ChubaoFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+### Notice
+* this release mainly used to optimize datanode cpu usage 
+
+### Feature
+* `datanode` feat: intruduce metrics degrade level to datanode [#1234]
+
+### Bugfix
+* `datanode` remove 5 GB left limit for disk to create datapartition[#1345]
+* `fuse client` follow recover handlers when closing open handler[#1344]
+
+### Enhance
+
+* `datanode` improve performance of write. data allocated didn't put back to buffer pool  [#1346]
+* `datanode` remove unnecessary json unmarshal when getting local extents  [#1346]
+
 ## Release v2.5.0 - 2022/01/06
 
 ### **UPGRAGDE NOTICE**
@@ -114,7 +310,7 @@ Set “faultDomainBuildAsPossible”  true, default is false
 **3) Need add configuration items to use domain resources when creating a new volume according to the table below. By default, the original  zone resources are used first if it’s avaliable**
 
 | Cluster:faultDomain | Vol:crossZone | Vol:defaultPriority | Rules for volume to use domain |
-| ------ | ------ | ------ |------ |
+h| ------ | ------ | ------ |------ |
 | N | N/A | N/A | Do not support domain |
 | Y | N | N/A | Write origin resources first before fault domain until origin reach threshold |
 | Y | Y |  N | Write fault domain only |
