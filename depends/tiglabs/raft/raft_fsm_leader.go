@@ -437,10 +437,9 @@ func (r *raftFsm) sendAppend(to uint64) {
 		m.SnapshotMeta = snapMeta
 		pr.becomeSnapshot(snapMeta.Index)
 
-		if logger.IsEnableDebug() {
-			logger.Debug("[raft->sendAppend][%v][firstindex: %d, commit: %d] sent snapshot[index: %d, term: %d] to [%v][%s]",
-				r.id, fi, r.raftLog.committed, snapMeta.Index, snapMeta.Term, to, pr)
-		}
+		logger.Debug("[raft->sendAppend][%v][firstindex: %d, commit: %d] sent snapshot[index: %d, term: %d] to [%v][%s]",
+			r.id, fi, r.raftLog.committed, snapMeta.Index, snapMeta.Term, to, pr)
+
 	} else {
 		m = proto.GetMessage()
 		m.Type = proto.ReqMsgAppend

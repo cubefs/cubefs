@@ -383,7 +383,7 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, atomic.LoadUint64(&mp.config.Cursor))); err != nil {
 		return
 	}
-	log.LogInfof("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v)",
+	log.LogWarnf("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.applyIndex)
 	return
 }

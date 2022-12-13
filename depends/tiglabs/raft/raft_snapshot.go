@@ -174,9 +174,7 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 		s.maybeChange(true)
 	}
 	if !s.raftFsm.checkSnapshot(req.header.SnapshotMeta) {
-		if logger.IsEnableWarn() {
-			logger.Warn("raft %v [commit: %d] ignored snapshot [index: %d, term: %d].", s.raftFsm.id, s.raftFsm.raftLog.committed, req.header.SnapshotMeta.Index, req.header.SnapshotMeta.Term)
-		}
+		logger.Warn("raft %v [commit: %d] ignored snapshot [index: %d, term: %d].", s.raftFsm.id, s.raftFsm.raftLog.committed, req.header.SnapshotMeta.Index, req.header.SnapshotMeta.Term)
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgAppend
 		nmsg.To = req.header.From
@@ -199,10 +197,10 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 	s.curApplied.Set(req.header.SnapshotMeta.Index)
 
 	// send snapshot response message
-	if logger.IsEnableDebug() {
-		logger.Warn("raft %v [commit: %d] restored snapshot [index: %d, term: %d]",
-			s.raftFsm.id, s.raftFsm.raftLog.committed, req.header.SnapshotMeta.Index, req.header.SnapshotMeta.Term)
-	}
+
+	logger.Warn("raft %v [commit: %d] restored snapshot [index: %d, term: %d]",
+		s.raftFsm.id, s.raftFsm.raftLog.committed, req.header.SnapshotMeta.Index, req.header.SnapshotMeta.Term)
+
 	nmsg := proto.GetMessage()
 	nmsg.Type = proto.RespMsgAppend
 	nmsg.To = req.header.From
