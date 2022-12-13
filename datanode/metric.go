@@ -26,13 +26,23 @@ const (
 	MetricPartitionIOName      = "dataPartitionIO"
 	MetricPartitionIOBytesName = "dataPartitionIOBytes"
 	MetricLackDpCount          = "lackDataPartitionCount"
+	MetricCapacityToCreateDp   = "capacityToCreateDp"
+	MetricConnectionCnt        = "connectionCnt"
+	MetricDpCount              = "dataPartitionCount"
+	MetricTotalDpSize          = "totalDpSize"
+	MetricCapacity             = "capacity"
 )
 
 type DataNodeMetrics struct {
-	dataNode      *DataNode
-	stopC         chan struct{}
-	MetricIOBytes *exporter.Counter
-	lackDpCount   *exporter.Gauge
+	dataNode                 *DataNode
+	stopC                    chan struct{}
+	MetricIOBytes            *exporter.Counter
+	MetricLackDpCount        *exporter.Gauge
+	MetricCapacityToCreateDp *exporter.GaugeVec
+	MetricConnectionCnt      *exporter.Gauge
+	MetricDpCount            *exporter.Gauge
+	MetricTotalDpSize        *exporter.Gauge
+	MetricCapacity           *exporter.GaugeVec
 }
 
 func (d *DataNode) registerMetrics() {
@@ -41,7 +51,12 @@ func (d *DataNode) registerMetrics() {
 		stopC:    make(chan struct{}),
 	}
 	d.metrics.MetricIOBytes = exporter.NewCounter(MetricPartitionIOBytesName)
-	d.metrics.lackDpCount = exporter.NewGauge(MetricLackDpCount)
+	d.metrics.MetricLackDpCount = exporter.NewGauge(MetricLackDpCount)
+	d.metrics.MetricCapacityToCreateDp = exporter.NewGaugeVec(MetricCapacityToCreateDp, "", []string{"type"})
+	d.metrics.MetricConnectionCnt = exporter.NewGauge(MetricConnectionCnt)
+	d.metrics.MetricDpCount = exporter.NewGauge(MetricDpCount)
+	d.metrics.MetricTotalDpSize = exporter.NewGauge(MetricTotalDpSize)
+	d.metrics.MetricCapacity = exporter.NewGaugeVec(MetricCapacity, "", []string{"type"})
 }
 
 func (d *DataNode) startMetrics() {
@@ -83,6 +98,11 @@ func (dm *DataNodeMetrics) statMetrics() {
 
 func (dm *DataNodeMetrics) doStat() {
 	dm.setLackDpCountMetrics()
+	dm.setCapacityToCreateDpMetrics()
+	dm.setConnectionCntMetrics()
+	dm.setDpCountMetrics()
+	dm.setTotalDpSizeMetrics()
+	dm.setCapacityMetrics()
 }
 
 func (dm *DataNodeMetrics) setLackDpCountMetrics() {
@@ -97,5 +117,36 @@ func (dm *DataNodeMetrics) setLackDpCountMetrics() {
 		err = fmt.Errorf("LackPartitions %v on datanode %v", lackPartitions, dm.dataNode.localServerAddr)
 		log.LogErrorf(err.Error())
 	}
-	dm.lackDpCount.SetWithLabels(float64(len(lackPartitions)), map[string]string{"type": "lack_dp"})
+	dm.MetricLackDpCount.SetWithLabels(float64(len(lackPartitions)), map[string]string{"type": "lack_dp"})
+}
+
+func (dm *DataNodeMetrics) setCapacityToCreateDpMetrics() {
+	remainingCapacityToCreateDp := dm.dataNode.space.stats.RemainingCapacityToCreatePartition
+	maxCapacityToCreateDp := dm.dataNode.space.stats.MaxCapacityToCreatePartition
+	dm.MetricCapacityToCreateDp.SetWithLabelValues(float64(remainingCapacityToCreateDp), "remaining")
+	dm.MetricCapacityToCreateDp.SetWithLabelValues(float64(maxCapacityToCreateDp), "max")
+}
+
+func (dm *DataNodeMetrics) setConnectionCntMetrics() {
+	connectionCnt := dm.dataNode.space.stats.ConnectionCnt
+	dm.MetricConnectionCnt.Set(float64(connectionCnt))
+}
+
+func (dm *DataNodeMetrics) setDpCountMetrics() {
+	dpCount := dm.dataNode.space.stats.CreatedPartitionCnt
+	dm.MetricDpCount.Set(float64(dpCount))
+}
+
+func (dm *DataNodeMetrics) setTotalDpSizeMetrics() {
+	totalDpSize := dm.dataNode.space.stats.TotalPartitionSize
+	dm.MetricTotalDpSize.Set(float64(totalDpSize))
+}
+
+func (dm *DataNodeMetrics) setCapacityMetrics() {
+	total := dm.dataNode.space.stats.Total
+	used := dm.dataNode.space.stats.Used
+	available := dm.dataNode.space.stats.Available
+	dm.MetricCapacity.SetWithLabelValues(float64(total), "total")
+	dm.MetricCapacity.SetWithLabelValues(float64(used), "used")
+	dm.MetricCapacity.SetWithLabelValues(float64(available), "available")
 }
