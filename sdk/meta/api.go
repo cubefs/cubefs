@@ -93,6 +93,88 @@ func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 }
 
 func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
+	if mw.EnableTransaction {
+		return mw.txCreate_ll(parentID, name, mode, uid, gid, target)
+	} else {
+		return mw.create_ll(parentID, name, mode, uid, gid, target)
+	}
+}
+
+func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
+	var (
+		status       int
+		err          error
+		info         *proto.InodeInfo
+		mp           *MetaPartition
+		rwPartitions []*MetaPartition
+	)
+
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		log.LogErrorf("txCreate_ll: No parent partition, parentID(%v)", parentID)
+		return nil, syscall.ENOENT
+	}
+	rwPartitions = mw.getRWPartitions()
+	length := len(rwPartitions)
+	var tx *Transaction
+
+	defer func() {
+		if tx != nil {
+			go tx.OnDone(err, mw)
+		}
+	}()
+
+	epoch := atomic.AddUint64(&mw.epoch, 1)
+	for i := 0; i < length; i++ {
+		index := (int(epoch) + i) % length
+		mp = rwPartitions[index]
+
+		//tx, err = NewCreateTransaction(parentMP.LeaderAddr, parentID, name, parentMP.PartitionID, defaultTransactionTimeout)
+		tx, err = NewCreateTransaction(parentMP, parentID, name, defaultTransactionTimeout)
+		if err != nil {
+			return nil, syscall.EAGAIN
+		}
+
+		status, info, err = mw.txIcreate(tx, mp, mode, uid, gid, target)
+		if err == nil && status == statusOK {
+			goto create_dentry
+		} else {
+			//todo_tx: sync cancel previous transaction before retry
+			tx.Rollback(mw)
+		}
+	}
+	return nil, syscall.ENOMEM
+
+create_dentry:
+	log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
+	//todo_tx: test
+	//err = errors.New("mock test failed")
+	//return nil, err
+	status, err = mw.txDcreate(tx, parentMP, parentID, name, info.Inode, mode)
+	if err != nil {
+		return nil, statusToErrno(status)
+	}
+	//todo_tx: test
+	//err = errors.New("mock test failed")
+	//return nil, err
+	if mw.EnableSummary {
+		var filesInc, dirsInc int64
+		if proto.IsDir(mode) {
+			dirsInc = 1
+		} else {
+			filesInc = 1
+		}
+		//go mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
+		job := func() {
+			mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
+		}
+		tx.SetOnCommit(job)
+	}
+	log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
+	return info, nil
+}
+
+func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
 	var (
 		status       int
 		err          error
@@ -352,11 +434,15 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 	return xattrs, nil
 }
 
-/*
- * Note that the return value of InodeInfo might be nil without error,
- * and the caller should make sure InodeInfo is valid before using it.
- */
 func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
+	if mw.EnableTransaction {
+		return mw.txDelete_ll(parentID, name, isDir)
+	} else {
+		return mw.delete_ll(parentID, name, isDir)
+	}
+}
+
+func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
 	var (
 		status int
 		inode  uint64
@@ -368,7 +454,110 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*pro
 
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
-		log.LogErrorf("Delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
+		log.LogErrorf("txDelete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
+		return nil, syscall.ENOENT
+	}
+
+	var tx *Transaction
+	defer func() {
+		if tx != nil {
+			go tx.OnDone(err, mw)
+		}
+	}()
+
+	status, inode, mode, err = mw.lookup(parentMP, parentID, name)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+
+	mp = mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("txDelete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+		return nil, nil
+	}
+
+	if isDir {
+		if !proto.IsDir(mode) {
+			return nil, syscall.EINVAL
+		}
+		/*mp = mw.getPartitionByInode(inode)
+		if mp == nil {
+			log.LogErrorf("txDelete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+			return nil, syscall.EAGAIN
+		}*/
+		status, info, err = mw.iget(mp, inode)
+		if err != nil || status != statusOK {
+			return nil, statusToErrno(status)
+		}
+		if info == nil || info.Nlink > 2 {
+			return nil, syscall.ENOTEMPTY
+		}
+	}
+
+	tx, err = NewDeleteTransaction(parentMP, parentID, name, mp, inode, defaultTransactionTimeout)
+	//tx, err = NewDeleteTransaction(parentMP, parentID, name, defaultTransactionTimeout)
+
+	status, inode, err = mw.txDdelete(tx, parentMP, parentID, name)
+	if err != nil || status != statusOK {
+		if status == statusNoent {
+			return nil, nil
+		}
+		return nil, statusToErrno(status)
+	}
+
+	//todo_tx: test
+	//log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
+	//err = errors.New("mock test failed")
+	//return nil, err
+
+	status, info, err = mw.txIunlink(tx, mp, inode)
+	if err != nil || status != statusOK {
+		return info, err
+	}
+	//todo_tx: test
+	//log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
+	//err = errors.New("mock test failed")
+	//return nil, err
+
+	if mw.EnableSummary {
+		var job func()
+		//go func() {
+		if proto.IsDir(mode) {
+			job = func() {
+				mw.UpdateSummary_ll(parentID, 0, -1, 0)
+			}
+			//mw.UpdateSummary_ll(parentID, 0, -1, 0)
+		} else {
+			job = func() {
+				mw.UpdateSummary_ll(parentID, -1, 0, -int64(info.Size))
+			}
+			//mw.UpdateSummary_ll(parentID, -1, 0, -int64(info.Size))
+		}
+		//}()
+
+		tx.SetOnCommit(job)
+	}
+
+	return info, nil
+}
+
+/*
+ * Note that the return value of InodeInfo might be nil without error,
+ * and the caller should make sure InodeInfo is valid before using it.
+ */
+func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
+	var (
+		status int
+		inode  uint64
+		mode   uint32
+		err    error
+		info   *proto.InodeInfo
+		mp     *MetaPartition
+	)
+
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		log.LogErrorf("delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
 		return nil, syscall.ENOENT
 	}
 
@@ -382,7 +571,7 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*pro
 		}
 		mp = mw.getPartitionByInode(inode)
 		if mp == nil {
-			log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+			log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
 			return nil, syscall.EAGAIN
 		}
 		status, info, err = mw.iget(mp, inode)
@@ -405,7 +594,7 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*pro
 	// dentry is deleted successfully but inode is not, still returns success.
 	mp = mw.getPartitionByInode(inode)
 	if mp == nil {
-		log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+		log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
 		return nil, nil
 	}
 
@@ -428,6 +617,160 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*pro
 }
 
 func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, overwritten bool) (err error) {
+	if mw.EnableTransaction {
+		return mw.txRename_ll(srcParentID, srcName, dstParentID, dstName, overwritten)
+	} else {
+		return mw.rename_ll(srcParentID, srcName, dstParentID, dstName, overwritten)
+	}
+}
+
+func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, overwritten bool) (err error) {
+	var tx *Transaction
+	defer func() {
+		if tx != nil {
+			go tx.OnDone(err, mw)
+		}
+	}()
+
+	srcParentMP := mw.getPartitionByInode(srcParentID)
+	if srcParentMP == nil {
+		return syscall.ENOENT
+	}
+	dstParentMP := mw.getPartitionByInode(dstParentID)
+	if dstParentMP == nil {
+		return syscall.ENOENT
+	}
+	// look up for the src ino
+	status, srcInode, srcMode, err := mw.lookup(srcParentMP, srcParentID, srcName)
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+
+	tx, err = NewRenameTransaction(srcParentMP, srcParentID, srcName, dstParentMP, dstParentID, dstName, defaultTransactionTimeout)
+
+	var srcInodeInfo *proto.InodeInfo
+	var dstInodeInfo *proto.InodeInfo
+	var oldInode uint64
+
+	status, dstInode, dstMode, err := mw.lookup(dstParentMP, dstParentID, dstName)
+	if err == nil && status == statusOK {
+
+		// Note that only regular files are allowed to be overwritten.
+		if !proto.IsRegular(dstMode) {
+			return syscall.EEXIST
+		}
+
+		if proto.IsDir(srcMode) {
+			return syscall.ENOTDIR
+		}
+
+		if !overwritten {
+			return syscall.EEXIST
+		}
+
+		oldInodeMP := mw.getPartitionByInode(dstInode)
+		if oldInodeMP == nil {
+			return syscall.EAGAIN
+		}
+
+		RenameTxReplaceInode(tx, oldInodeMP, dstInode)
+		status, oldInode, err = mw.txDupdate(tx, dstParentMP, dstParentID, dstName, srcInode)
+		if err != nil {
+			return syscall.EAGAIN
+		}
+
+		if mw.EnableSummary {
+			dstInodeInfo, _ = mw.InodeGet_ll(oldInode)
+		}
+
+		status, _, err = mw.txIunlink(tx, oldInodeMP, oldInode)
+		if err != nil || status != statusOK {
+			return err
+		}
+
+		log.LogDebugf("txRename_ll: tx(%v), pid:%v, name:%v, old(ino:%v) is replaced by src(new ino:%v)",
+			tx.txInfo, dstParentID, dstName, dstInode, srcInode)
+
+		//todo_tx: test
+		//log.LogDebugf("txRename_ll: tx.txInfo(%v)", tx.txInfo)
+		//return syscall.EAGAIN
+
+	} else if status == statusNoent {
+		status, err = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode)
+		if err != nil {
+			//todo_tx: check process for error
+			return statusToErrno(status)
+		}
+
+		//todo_tx: test
+		//log.LogDebugf("txRename_ll: tx.txInfo(%v)", tx.txInfo)
+		//return syscall.EAGAIN
+
+		if mw.EnableSummary {
+			srcInodeInfo, _ = mw.InodeGet_ll(srcInode)
+		}
+	}
+
+	//var inode uint64
+	status, _, err = mw.txDdelete(tx, srcParentMP, srcParentID, srcName)
+	if err != nil || status != statusOK {
+		if status == statusNoent {
+			return nil
+		}
+		return statusToErrno(status)
+	}
+
+	//update summary
+	var job func()
+	if dstInode != 0 {
+		log.LogDebugf("txRename_ll: update summary when inode is replaced")
+		if mw.EnableSummary {
+			sizeInc := srcInodeInfo.Size - dstInodeInfo.Size
+			/*go func() {
+				mw.UpdateSummary_ll(srcParentID, -1, 0, -int64(srcInodeInfo.Size))
+				mw.UpdateSummary_ll(dstParentID, 0, 0, int64(sizeInc))
+			}()*/
+			job = func() {
+				mw.UpdateSummary_ll(srcParentID, -1, 0, -int64(srcInodeInfo.Size))
+				mw.UpdateSummary_ll(dstParentID, 0, 0, int64(sizeInc))
+			}
+			tx.SetOnCommit(job)
+		}
+	} else {
+
+		if mw.EnableSummary {
+			sizeInc := int64(srcInodeInfo.Size)
+			if proto.IsRegular(srcMode) {
+				log.LogDebugf("txRename_ll: update summary when file dentry is replaced")
+				// file
+				/*go func() {
+					mw.UpdateSummary_ll(srcParentID, -1, 0, -sizeInc)
+					mw.UpdateSummary_ll(dstParentID, 1, 0, sizeInc)
+				}()*/
+				job = func() {
+					mw.UpdateSummary_ll(srcParentID, -1, 0, -sizeInc)
+					mw.UpdateSummary_ll(dstParentID, 1, 0, sizeInc)
+				}
+			} else {
+				log.LogDebugf("txRename_ll: update summary when dir dentry is replaced")
+				// dir
+				/*go func() {
+					mw.UpdateSummary_ll(srcParentID, 0, -1, 0)
+					mw.UpdateSummary_ll(dstParentID, 0, 1, 0)
+				}()*/
+				job = func() {
+					mw.UpdateSummary_ll(srcParentID, 0, -1, 0)
+					mw.UpdateSummary_ll(dstParentID, 0, 1, 0)
+				}
+			}
+			tx.SetOnCommit(job)
+		}
+
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, overwritten bool) (err error) {
 	var oldInode uint64
 
 	srcParentMP := mw.getPartitionByInode(srcParentID)
@@ -589,6 +932,7 @@ func (mw *MetaWrapper) DentryCreate_ll(parentID uint64, name string, inode uint6
 	return nil
 }
 
+//todo_tx:
 func (mw *MetaWrapper) DentryUpdate_ll(parentID uint64, name string, inode uint64) (oldInode uint64, err error) {
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
@@ -729,6 +1073,49 @@ func (mw *MetaWrapper) Truncate(inode, size uint64) error {
 }
 
 func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.InodeInfo, error) {
+	if mw.EnableTransaction {
+		return mw.txLink(parentID, name, ino)
+	} else {
+		return mw.link(parentID, name, ino)
+	}
+}
+
+func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64) (*proto.InodeInfo, error) {
+	var err error
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		log.LogErrorf("txLink: No parent partition, parentID(%v)", parentID)
+		return nil, syscall.ENOENT
+	}
+
+	mp := mw.getPartitionByInode(ino)
+	if mp == nil {
+		log.LogErrorf("txLink: No target inode partition, ino(%v)", ino)
+		return nil, syscall.ENOENT
+	}
+	var tx *Transaction
+
+	defer func() {
+		if tx != nil {
+			go tx.OnDone(err, mw)
+		}
+	}()
+	tx, err = NewLinkTransaction(parentMP, parentID, name,
+		mp, ino, defaultTransactionTimeout)
+
+	status, info, err := mw.txIlink(tx, mp, ino)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+
+	status, err = mw.txDcreate(tx, parentMP, parentID, name, ino, info.Mode)
+	if err != nil {
+		return nil, statusToErrno(status)
+	}
+	return info, nil
+}
+
+func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64) (*proto.InodeInfo, error) {
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		log.LogErrorf("Link: No parent partition, parentID(%v)", parentID)

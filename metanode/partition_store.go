@@ -42,7 +42,11 @@ const (
 	dentryFile      = "dentry"
 	extendFile      = "extend"
 	multipartFile   = "multipart"
+	txInfoFile      = "tx_info"
+	txRbInodeFile   = "tx_rb_inode"
+	txRbDentryFile  = "tx_rb_dentry"
 	applyIDFile     = "apply"
+	TxIDFile        = "transactionID"
 	SnapshotSign    = ".sign"
 	metadataFile    = "meta"
 	metadataFileTmp = ".meta"
@@ -333,6 +337,214 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	return
 }
 
+func (mp *metaPartition) loadTxRbDentry(rootDir string) (err error) {
+	var numTxRbDentry uint64
+	defer func() {
+		if err == nil {
+			log.LogInfof("loadTxRbDentry: load complete: partitonID(%v) volume(%v) numInodes(%v)",
+				mp.config.PartitionId, mp.config.VolName, numTxRbDentry)
+		}
+	}()
+	filename := path.Join(rootDir, txRbDentryFile)
+	if _, err = os.Stat(filename); err != nil {
+		err = nil
+		return
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		err = errors.NewErrorf("[loadTxRbDentry] OpenFile: %s", err.Error())
+		return
+	}
+	defer fp.Close()
+	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	txBuf := make([]byte, 4)
+
+	for {
+		txBuf = txBuf[:4]
+		// first read length
+		_, err = io.ReadFull(reader, txBuf)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				return
+			}
+			err = errors.NewErrorf("[loadTxRbDentry] ReadHeader: %s", err.Error())
+			return
+		}
+		length := binary.BigEndian.Uint32(txBuf)
+
+		// next read body
+		if uint32(cap(txBuf)) >= length {
+			txBuf = txBuf[:length]
+		} else {
+			txBuf = make([]byte, length)
+		}
+		_, err = io.ReadFull(reader, txBuf)
+		if err != nil {
+			err = errors.NewErrorf("[loadTxRbDentry] ReadBody: %s", err.Error())
+			return
+		}
+
+		txRbDentry := NewTxRollbackDentry(nil, nil, 0)
+		if err = txRbDentry.Unmarshal(txBuf); err != nil {
+			err = errors.NewErrorf("[loadTxRbDentry] Unmarshal: %s", err.Error())
+			return
+		}
+		mp.txProcessor.txResource.txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
+		numTxRbDentry++
+	}
+}
+
+func (mp *metaPartition) loadTxRbInode(rootDir string) (err error) {
+	var numTxRbInode uint64
+	defer func() {
+		if err == nil {
+			log.LogInfof("loadTxRbInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
+				mp.config.PartitionId, mp.config.VolName, numTxRbInode)
+		}
+	}()
+	filename := path.Join(rootDir, txRbInodeFile)
+	if _, err = os.Stat(filename); err != nil {
+		err = nil
+		return
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		err = errors.NewErrorf("[loadTxRbInode] OpenFile: %s", err.Error())
+		return
+	}
+	defer fp.Close()
+	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	txBuf := make([]byte, 4)
+
+	for {
+		txBuf = txBuf[:4]
+		// first read length
+		_, err = io.ReadFull(reader, txBuf)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				return
+			}
+			err = errors.NewErrorf("[loadTxRbInode] ReadHeader: %s", err.Error())
+			return
+		}
+		length := binary.BigEndian.Uint32(txBuf)
+
+		// next read body
+		if uint32(cap(txBuf)) >= length {
+			txBuf = txBuf[:length]
+		} else {
+			txBuf = make([]byte, length)
+		}
+		_, err = io.ReadFull(reader, txBuf)
+		if err != nil {
+			err = errors.NewErrorf("[loadTxRbInode] ReadBody: %s", err.Error())
+			return
+		}
+
+		txRbInode := NewTxRollbackInode(nil, nil, 0)
+		if err = txRbInode.Unmarshal(txBuf); err != nil {
+			err = errors.NewErrorf("[loadTxRbInode] Unmarshal: %s", err.Error())
+			return
+		}
+		mp.txProcessor.txResource.txRollbackInodes[txRbInode.inode.Inode] = txRbInode
+		numTxRbInode++
+	}
+}
+
+func (mp *metaPartition) loadTxInfo(rootDir string) (err error) {
+	var numTxInfos uint64
+	defer func() {
+		if err == nil {
+			log.LogInfof("loadTxInfo: load complete: partitonID(%v) volume(%v) numInodes(%v)",
+				mp.config.PartitionId, mp.config.VolName, numTxInfos)
+		}
+	}()
+	filename := path.Join(rootDir, txInfoFile)
+	if _, err = os.Stat(filename); err != nil {
+		err = nil
+		return
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		err = errors.NewErrorf("[loadInode] OpenFile: %s", err.Error())
+		return
+	}
+	defer fp.Close()
+	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	txBuf := make([]byte, 4)
+
+	for {
+		txBuf = txBuf[:4]
+		// first read length
+		_, err = io.ReadFull(reader, txBuf)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				return
+			}
+			err = errors.NewErrorf("[loadTxInfo] ReadHeader: %s", err.Error())
+			return
+		}
+		length := binary.BigEndian.Uint32(txBuf)
+
+		// next read body
+		if uint32(cap(txBuf)) >= length {
+			txBuf = txBuf[:length]
+		} else {
+			txBuf = make([]byte, length)
+		}
+		_, err = io.ReadFull(reader, txBuf)
+		if err != nil {
+			err = errors.NewErrorf("[loadTxInfo] ReadBody: %s", err.Error())
+			return
+		}
+
+		txInfo := proto.NewTransactionInfo(0, proto.TxTypeUndefined)
+		if err = txInfo.Unmarshal(txBuf); err != nil {
+			err = errors.NewErrorf("[loadTxInfo] Unmarshal: %s", err.Error())
+			return
+		}
+		mp.txProcessor.txManager.transactions[txInfo.TxID] = txInfo
+		numTxInfos++
+	}
+}
+
+func (mp *metaPartition) loadTxID(rootDir string) (err error) {
+	filename := path.Join(rootDir, TxIDFile)
+	if _, err = os.Stat(filename); err != nil {
+		err = nil
+		return
+	}
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		if err == os.ErrNotExist {
+			err = nil
+			return
+		}
+		err = errors.NewErrorf("[loadTxID] OpenFile: %s", err.Error())
+		return
+	}
+	if len(data) == 0 {
+		err = errors.NewErrorf("[loadTxID]: TxID is empty")
+		return
+	}
+	var txId uint64
+	_, err = fmt.Sscanf(string(data), "%d", &txId)
+	if err != nil {
+		err = errors.NewErrorf("[loadTxID] ReadTxID: %s", err.Error())
+		return
+	}
+
+	if txId > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
+		mp.txProcessor.txManager.txIdAlloc.setTransactionID(txId)
+	}
+	log.LogInfof("loadTxID: load complete: partitionID(%v) volume(%v) txId(%v) filename(%v)",
+		mp.config.PartitionId, mp.config.VolName, mp.txProcessor.txManager.txIdAlloc.getTransactionID(), filename)
+	return
+}
+
 func (mp *metaPartition) persistMetadata() (err error) {
 	if err = mp.config.checkMeta(); err != nil {
 		err = errors.NewErrorf("[persistMetadata]->%s", err.Error())
@@ -384,6 +596,149 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	}
 	log.LogWarnf("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.applyIndex)
+	return
+}
+
+func (mp *metaPartition) storeTxID(rootDir string, sm *storeMsg) (err error) {
+	filename := path.Join(rootDir, TxIDFile)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
+		O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = fp.Sync()
+		fp.Close()
+	}()
+	if _, err = fp.WriteString(fmt.Sprintf("%d", sm.txId)); err != nil {
+		return
+	}
+	log.LogInfof("storeTxID: store complete: partitionID(%v) volume(%v) txId(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.txId)
+	return
+}
+
+func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint32, err error) {
+	filename := path.Join(rootDir, txRbDentryFile)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = fp.Sync()
+		// TODO Unhandled errors
+		fp.Close()
+	}()
+
+	var data []byte
+	lenBuf := make([]byte, 4)
+	sign := crc32.NewIEEE()
+
+	for _, rbDentry := range sm.txRollbackDentries {
+		if data, err = rbDentry.Marshal(); err != nil {
+			break
+		}
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+		if _, err = fp.Write(lenBuf); err != nil {
+			break
+		}
+		if _, err = sign.Write(lenBuf); err != nil {
+			break
+		}
+
+		if _, err = fp.Write(data); err != nil {
+			break
+		}
+		if _, err = sign.Write(data); err != nil {
+			break
+		}
+	}
+	crc = sign.Sum32()
+	log.LogInfof("storeTxRbDentry: store complete: partitoinID(%v) volume(%v) numRbDentry(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, len(sm.txRollbackDentries), crc)
+	return
+}
+
+func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint32, err error) {
+	filename := path.Join(rootDir, txRbInodeFile)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = fp.Sync()
+		// TODO Unhandled errors
+		fp.Close()
+	}()
+
+	var data []byte
+	lenBuf := make([]byte, 4)
+	sign := crc32.NewIEEE()
+
+	for _, rbInode := range sm.txRollbackInodes {
+		if data, err = rbInode.Marshal(); err != nil {
+			break
+		}
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+		if _, err = fp.Write(lenBuf); err != nil {
+			break
+		}
+		if _, err = sign.Write(lenBuf); err != nil {
+			break
+		}
+
+		if _, err = fp.Write(data); err != nil {
+			break
+		}
+		if _, err = sign.Write(data); err != nil {
+			break
+		}
+	}
+	crc = sign.Sum32()
+	log.LogInfof("storeTxRbInode: store complete: partitoinID(%v) volume(%v) numRbInode(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, len(sm.txRollbackInodes), crc)
+	return
+}
+
+func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, err error) {
+	filename := path.Join(rootDir, txInfoFile)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = fp.Sync()
+		// TODO Unhandled errors
+		fp.Close()
+	}()
+
+	var data []byte
+	lenBuf := make([]byte, 4)
+	sign := crc32.NewIEEE()
+
+	for _, tx := range sm.transactions {
+		if data, err = tx.Marshal(); err != nil {
+			break
+		}
+
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+		if _, err = fp.Write(lenBuf); err != nil {
+			break
+		}
+		if _, err = sign.Write(lenBuf); err != nil {
+			break
+		}
+
+		if _, err = fp.Write(data); err != nil {
+			break
+		}
+		if _, err = sign.Write(data); err != nil {
+			break
+		}
+	}
+	crc = sign.Sum32()
+	log.LogInfof("storeTxInfo: store complete: partitoinID(%v) volume(%v) numTxs(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, len(sm.transactions), crc)
 	return
 }
 

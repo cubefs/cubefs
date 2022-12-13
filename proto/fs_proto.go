@@ -167,6 +167,46 @@ type CreateInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+// TxCreateInodeRequest defines the request to create an inode with transaction info.
+type TxCreateInodeRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	Mode        uint32           `json:"mode"`
+	Uid         uint32           `json:"uid"`
+	Gid         uint32           `json:"gid"`
+	Target      []byte           `json:"tgt"`
+	TxInfo      *TransactionInfo `json:"tx"`
+}
+
+// TxCreateInodeResponse defines the response with transaction info to the request of creating an inode.
+type TxCreateInodeResponse struct {
+	Info   *InodeInfo       `json:"info"`
+	TxInfo *TransactionInfo `json:"tx"`
+}
+
+const (
+	TxCommit int = 1 << iota
+	TxRollback
+)
+
+type TxApplyRequest struct {
+	TxID        string `json:"tx"`
+	TmID        uint64 `json:"tmid"`
+	TxApplyType int    `json:"type"`
+}
+
+type TxInodeApplyRequest struct {
+	TxID        string `json:"txid"`
+	Inode       uint64 `json:"ino"`
+	TxApplyType int    `json:"type"`
+}
+
+type TxDentryApplyRequest struct {
+	TxID        string `json:"txid"`
+	DenKey      string `json:"denkey"`
+	TxApplyType int    `json:"type"`
+}
+
 // LinkInodeRequest defines the request to link an inode.
 type LinkInodeRequest struct {
 	VolName     string `json:"vol"`
@@ -179,6 +219,18 @@ type LinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+type TxLinkInodeRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	Inode       uint64           `json:"ino"`
+	TxInfo      *TransactionInfo `json:"tx"`
+}
+
+type TxLinkInodeResponse struct {
+	Info   *InodeInfo       `json:"info"`
+	TxInfo *TransactionInfo `json:"tx"`
+}
+
 type ClearInodeCacheRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -187,6 +239,19 @@ type ClearInodeCacheRequest struct {
 
 type ClearInodeCacheResponse struct {
 	Info *InodeInfo `json:"info"`
+}
+
+type TxUnlinkInodeRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	Inode       uint64           `json:"ino"`
+	Evict       bool             `json:"evict"`
+	TxInfo      *TransactionInfo `json:"tx"`
+}
+
+type TxUnlinkInodeResponse struct {
+	Info   *InodeInfo       `json:"info"`
+	TxInfo *TransactionInfo `json:"tx"`
 }
 
 // UnlinkInodeRequest defines the request to unlink an inode.
@@ -240,6 +305,21 @@ type CreateDentryRequest struct {
 	Mode        uint32 `json:"mode"`
 }
 
+// TxCreateDentryRequest defines the request to create a dentry.
+type TxCreateDentryRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	ParentID    uint64           `json:"pino"`
+	Inode       uint64           `json:"ino"`
+	Name        string           `json:"name"`
+	Mode        uint32           `json:"mode"`
+	TxInfo      *TransactionInfo `json:"tx"`
+}
+
+type TxCreateDentryResponse struct {
+	TxInfo *TransactionInfo `json:"tx"`
+}
+
 // UpdateDentryRequest defines the request to update a dentry.
 type UpdateDentryRequest struct {
 	VolName     string `json:"vol"`
@@ -252,6 +332,33 @@ type UpdateDentryRequest struct {
 // UpdateDentryResponse defines the response to the request of updating a dentry.
 type UpdateDentryResponse struct {
 	Inode uint64 `json:"ino"` // old inode number
+}
+
+type TxUpdateDentryRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	ParentID    uint64           `json:"pino"`
+	Name        string           `json:"name"`
+	Inode       uint64           `json:"ino"` // new inode number
+	TxInfo      *TransactionInfo `json:"tx"`
+}
+
+type TxUpdateDentryResponse struct {
+	Inode  uint64           `json:"ino"` // old inode number
+	TxInfo *TransactionInfo `json:"tx"`
+}
+
+type TxDeleteDentryRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	ParentID    uint64           `json:"pino"`
+	Name        string           `json:"name"`
+	TxInfo      *TransactionInfo `json:"tx"`
+}
+
+type TxDeleteDentryResponse struct {
+	Inode  uint64           `json:"ino"`
+	TxInfo *TransactionInfo `json:"tx"`
 }
 
 // DeleteDentryRequest define the request tp delete a dentry.

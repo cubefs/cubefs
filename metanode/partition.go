@@ -129,6 +129,9 @@ type OpInode interface {
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 	ClearInodeCache(req *proto.ClearInodeCacheRequest, p *Packet) (err error)
+	TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet) (err error)
+	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error)
+	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet) (err error)
 }
 
 type OpExtend interface {
@@ -154,6 +157,18 @@ type OpDentry interface {
 	Lookup(req *LookupReq, p *Packet) (err error)
 	GetDentryTree() *BTree
 	GetDentryTreeLen() int
+	TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet) (err error)
+	TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet) (err error)
+	TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Packet) (err error)
+}
+
+type OpTransaction interface {
+	TxCommit(req *proto.TxApplyRequest, p *Packet) (err error)
+	TxInodeCommit(req *proto.TxInodeApplyRequest, p *Packet) (err error)
+	TxDentryCommit(req *proto.TxDentryApplyRequest, p *Packet) (err error)
+	TxRollback(req *proto.TxApplyRequest, p *Packet) (err error)
+	TxInodeRollback(req *proto.TxInodeApplyRequest, p *Packet) (err error)
+	TxDentryRollback(req *proto.TxDentryApplyRequest, p *Packet) (err error)
 }
 
 // OpExtent defines the interface for the extent operations.
@@ -186,6 +201,7 @@ type OpMeta interface {
 	OpPartition
 	OpExtend
 	OpMultipart
+	OpTransaction
 }
 
 // OpPartition defines the interface for the partition operations.
@@ -409,12 +425,13 @@ func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum *sync.Map) {
 //  +-----+             +-------+
 type metaPartition struct {
 	config                 *MetaPartitionConfig
-	size                   uint64 // For partition all file size
-	applyID                uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	dentryTree             *BTree
-	inodeTree              *BTree // btree for inodes
-	extendTree             *BTree // btree for inode extend (XAttr) management
-	multipartTree          *BTree // collection for multipart management
+	size                   uint64                // For partition all file size
+	applyID                uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	dentryTree             *BTree                // btree for dentries
+	inodeTree              *BTree                // btree for inodes
+	extendTree             *BTree                // btree for inode extend (XAttr) management
+	multipartTree          *BTree                // collection for multipart management
+	txProcessor            *TransactionProcessor // transction processor
 	raftPartition          raftstore.Partition
 	stopC                  chan bool
 	storeChan              chan *storeMsg
@@ -701,6 +718,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		manager:       manager,
 		uidManager:    NewUidMgr(conf.VolName, conf.PartitionId),
 	}
+	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp
 }
 
@@ -776,6 +794,27 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	if err = mp.loadMultipart(snapshotPath); err != nil {
 		return
 	}
+
+	if err = mp.loadTxInfo(snapshotPath); err != nil {
+		return
+	}
+
+	if err = mp.loadTxRbInode(snapshotPath); err != nil {
+		return
+	}
+
+	if err = mp.loadTxRbDentry(snapshotPath); err != nil {
+		return
+	}
+
+	if err = mp.loadApplyID(snapshotPath); err != nil {
+		return
+	}
+
+	if err = mp.loadTxID(snapshotPath); err != nil {
+		return
+	}
+
 	err = mp.loadApplyID(snapshotPath)
 	return
 }
@@ -796,7 +835,11 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 		mp.loadDentry,
 		mp.loadExtend,
 		mp.loadMultipart,
+		mp.loadTxInfo,
+		mp.loadTxRbInode,
+		mp.loadTxRbDentry,
 		mp.loadApplyID,
+		mp.loadTxID,
 	}
 
 	errs := make([]error, 0)
@@ -845,6 +888,9 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		mp.storeDentry,
 		mp.storeExtend,
 		mp.storeMultipart,
+		mp.storeTxInfo,
+		mp.storeTxRbInode,
+		mp.storeTxRbDentry,
 	}
 	for _, storeFunc := range storeFuncs {
 		var crc uint32
@@ -858,6 +904,9 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	}
 	log.LogWarnf("metaPartition store apply %v", sm.applyIndex)
 	if err = mp.storeApplyID(tmpDir, sm); err != nil {
+		return
+	}
+	if err = mp.storeTxID(tmpDir, sm); err != nil {
 		return
 	}
 	// write crc to file
@@ -1008,9 +1057,17 @@ func (mp *metaPartition) Reset() (err error) {
 	mp.dentryTree.Reset()
 	mp.config.Cursor = 0
 	mp.applyID = 0
+	mp.txProcessor.txManager.txIdAlloc.setTransactionID(0)
+	mp.txProcessor.txManager.Lock()
+	mp.txProcessor.txManager.transactions = make(map[string]*proto.TransactionInfo, 0)
+	mp.txProcessor.txManager.Unlock()
+	mp.txProcessor.txResource.Lock()
+	mp.txProcessor.txResource.txRollbackInodes = make(map[uint64]*TxRollbackInode, 0)
+	mp.txProcessor.txResource.txRollbackDentries = make(map[string]*TxRollbackDentry, 0)
+	mp.txProcessor.txResource.Unlock()
 
 	// remove files
-	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile}
+	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile, TxIDFile}
 	for _, filename := range filenames {
 		filepath := path.Join(mp.config.RootDir, filename)
 		if err = os.Remove(filepath); err != nil {
@@ -1146,4 +1203,10 @@ func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
 		}
 		return true
 	})
+}
+
+func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) {
+	txInfo.TxID = mp.txProcessor.txManager.nextTxID()
+	txInfo.TmID = int64(mp.config.PartitionId)
+	txInfo.CreateTime = time.Now().Unix()
 }
