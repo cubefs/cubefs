@@ -93,11 +93,14 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 	for _, p := range raftConfig.Peers {
 		r.replicas[p.ID] = newReplica(p, 0)
 	}
+
 	if !hs.IsEmpty() {
 		if raftConfig.Applied > r.raftLog.lastIndex() {
+			logger.Info("newRaft[%v] update [applied: %d, to lastindex: %d]", r.id, raftConfig.Applied, raftlog.lastIndex())
 			raftConfig.Applied = r.raftLog.lastIndex()
 		}
 		if hs.Commit > r.raftLog.lastIndex() {
+			logger.Info("newRaft[%v] update [hardState commit: %d, to lastindex: %d]", r.id, hs.Commit, raftlog.lastIndex())
 			hs.Commit = r.raftLog.lastIndex()
 		}
 		if err := r.loadState(hs); err != nil {

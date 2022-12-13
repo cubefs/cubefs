@@ -605,6 +605,7 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
+	log.LogWarnf("metaPartition store apply %v", sm.applyIndex)
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
 		// TODO Unhandled errors
@@ -638,6 +639,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		}
 		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
+	log.LogWarnf("metaPartition store apply %v", sm.applyIndex)
 	if err = mp.storeApplyID(tmpDir, sm); err != nil {
 		return
 	}

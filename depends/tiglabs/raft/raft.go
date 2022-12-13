@@ -501,6 +501,7 @@ func (s *raft) status() *Status {
 }
 
 func (s *raft) truncate(index uint64) {
+	logger.Debug("raft[%v] truncate index %v", s.raftFsm.id, index)
 	if s.restoringSnapshot.Get() {
 		return
 	}
