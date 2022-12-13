@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/cubefs/cubefs/proto"
 )
 
 // Dentry wraps necessary properties of the `dentry` information in file system.
@@ -46,6 +47,184 @@ type Dentry struct {
 }
 
 type DentryBatch []*Dentry
+
+type TxDentry struct {
+	Dentry *Dentry
+	TxInfo *proto.TransactionInfo
+}
+
+func NewTxDentry(parentID uint64, name string, ino uint64, mode uint32, txInfo *proto.TransactionInfo) *TxDentry {
+	dentry := &Dentry{
+		ParentId: parentID,
+		Name:     name,
+		Inode:    ino,
+		Type:     mode,
+	}
+
+	txDentry := &TxDentry{
+		Dentry: dentry,
+		TxInfo: txInfo,
+	}
+	return txDentry
+}
+
+func (td *TxDentry) Marshal() (result []byte, err error) {
+	buff := bytes.NewBuffer(make([]byte, 0))
+	bs, err := td.Dentry.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+		return nil, err
+	}
+	if _, err := buff.Write(bs); err != nil {
+		return nil, err
+	}
+
+	bs, err = td.TxInfo.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+		return nil, err
+	}
+	if _, err := buff.Write(bs); err != nil {
+		return nil, err
+	}
+	result = buff.Bytes()
+	return
+}
+
+func (td *TxDentry) Unmarshal(raw []byte) (err error) {
+	buff := bytes.NewBuffer(raw)
+	var dataLen uint32
+	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+		return
+	}
+	data := make([]byte, int(dataLen))
+	if _, err = buff.Read(data); err != nil {
+		return
+	}
+
+	dentry := &Dentry{}
+	if err = dentry.Unmarshal(data); err != nil {
+		return
+	}
+	td.Dentry = dentry
+
+	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+		return
+	}
+	data = make([]byte, int(dataLen))
+	if _, err = buff.Read(data); err != nil {
+		return
+	}
+	txInfo := proto.NewTransactionInfo(0, proto.TxTypeUndefined)
+	if err = txInfo.Unmarshal(data); err != nil {
+		return
+	}
+	td.TxInfo = txInfo
+	return
+}
+
+type TxUpdateDentry struct {
+	OldDentry *Dentry
+	NewDentry *Dentry
+	TxInfo    *proto.TransactionInfo
+}
+
+func NewTxUpdateDentry(oldDentry *Dentry, newDentry *Dentry, txInfo *proto.TransactionInfo) *TxUpdateDentry {
+	txUpdateDentry := &TxUpdateDentry{
+		OldDentry: oldDentry,
+		NewDentry: newDentry,
+		TxInfo:    txInfo,
+	}
+	return txUpdateDentry
+}
+
+func (td *TxUpdateDentry) Marshal() (result []byte, err error) {
+	buff := bytes.NewBuffer(make([]byte, 0))
+	bs, err := td.OldDentry.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+		return nil, err
+	}
+	if _, err := buff.Write(bs); err != nil {
+		return nil, err
+	}
+
+	bs, err = td.NewDentry.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+		return nil, err
+	}
+	if _, err := buff.Write(bs); err != nil {
+		return nil, err
+	}
+
+	bs, err = td.TxInfo.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+		return nil, err
+	}
+	if _, err := buff.Write(bs); err != nil {
+		return nil, err
+	}
+	result = buff.Bytes()
+	return
+}
+
+func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
+	buff := bytes.NewBuffer(raw)
+	var dataLen uint32
+	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+		return
+	}
+	data := make([]byte, int(dataLen))
+	if _, err = buff.Read(data); err != nil {
+		return
+	}
+
+	oldDentry := &Dentry{}
+	if err = oldDentry.Unmarshal(data); err != nil {
+		return
+	}
+	td.OldDentry = oldDentry
+
+	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+		return
+	}
+	data = make([]byte, int(dataLen))
+	if _, err = buff.Read(data); err != nil {
+		return
+	}
+
+	newDentry := &Dentry{}
+	if err = newDentry.Unmarshal(data); err != nil {
+		return
+	}
+	td.NewDentry = newDentry
+
+	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+		return
+	}
+	data = make([]byte, int(dataLen))
+	if _, err = buff.Read(data); err != nil {
+		return
+	}
+	txInfo := proto.NewTransactionInfo(0, proto.TxTypeUndefined)
+	if err = txInfo.Unmarshal(data); err != nil {
+		return
+	}
+	td.TxInfo = txInfo
+	return
+}
 
 // Marshal marshals a dentry into a byte array.
 func (d *Dentry) Marshal() (result []byte, err error) {

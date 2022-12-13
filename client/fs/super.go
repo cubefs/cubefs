@@ -109,14 +109,15 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	var metaConfig = &meta.MetaConfig{
-		Volume:          opt.Volname,
-		Owner:           opt.Owner,
-		Masters:         masters,
-		Authenticate:    opt.Authenticate,
-		TicketMess:      opt.TicketMess,
-		ValidateOwner:   opt.Authenticate || opt.AccessKey == "",
-		EnableSummary:   opt.EnableSummary && opt.EnableXattr,
-		MetaSendTimeout: opt.MetaSendTimeout,
+		Volume:            opt.Volname,
+		Owner:             opt.Owner,
+		Masters:           masters,
+		Authenticate:      opt.Authenticate,
+		TicketMess:        opt.TicketMess,
+		ValidateOwner:     opt.Authenticate || opt.AccessKey == "",
+		EnableSummary:     opt.EnableSummary && opt.EnableXattr,
+		MetaSendTimeout:   opt.MetaSendTimeout,
+		EnableTransaction: opt.EnableTransaction,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
@@ -714,4 +715,9 @@ func getDelInodes(src []uint64, act []*proto.InodeInfo) []uint64 {
 
 func (s *Super) Close() {
 	close(s.closeC)
+}
+
+func (s *Super) SetTransaction(enable bool) {
+	log.LogDebugf("SetTransaction: %v", enable)
+	s.mw.EnableTransaction = enable
 }

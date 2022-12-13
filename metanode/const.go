@@ -133,6 +133,24 @@ const (
 
 	opFSMClearInodeCache
 	opFSMSentToChan
+
+	// transaction
+	opFSMTxCreateInode
+	opFSMTxCreateDentry
+	opFSMTxCommit
+	opFSMTxInodeCommit
+	opFSMTxDentryCommit
+	opFSMTxRollback
+	opFSMTxInodeRollback
+	opFSMTxDentryRollback
+	opFSMTxDeleteDentry
+	opFSMTxUnlinkInode
+	opFSMTxUpdateDentry
+	opFSMTxCreateLinkInode
+	// transaction snapshot
+	opFSMTxSnapshot
+	opFSMTxRbInodeSnapshot
+	opFSMTxRbDentrySnapshot
 )
 
 var (

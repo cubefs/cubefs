@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/binary"
+	"github.com/cubefs/cubefs/proto"
 	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
@@ -25,12 +26,16 @@ import (
 )
 
 type storeMsg struct {
-	command       uint32
-	applyIndex    uint64
-	inodeTree     *BTree
-	dentryTree    *BTree
-	extendTree    *BTree
-	multipartTree *BTree
+	command            uint32
+	applyIndex         uint64
+	txId               uint64
+	inodeTree          *BTree
+	dentryTree         *BTree
+	extendTree         *BTree
+	multipartTree      *BTree
+	transactions       map[string]*proto.TransactionInfo
+	txRollbackInodes   map[uint64]*TxRollbackInode
+	txRollbackDentries map[string]*TxRollbackDentry
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {

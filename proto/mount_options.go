@@ -282,6 +282,7 @@ type MountOptions struct {
 	EnableXattr          bool
 	NearRead             bool
 	EnablePosixACL       bool
+	EnableTransaction    bool
 	VolType              int
 	EbsEndpoint          string
 	EbsServicePath       string

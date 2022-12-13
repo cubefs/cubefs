@@ -598,24 +598,25 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	}
 
 	go func() {
+		var mc = master.NewMasterClientFromString(opt.Master, false)
 		t := time.NewTicker(UpdateConfInterval)
 		defer t.Stop()
 		for {
 			select {
 			case <-t.C:
-				log.LogDebugf("UpdateVolConf: start load conf from master")
-				var mc = master.NewMasterClientFromString(opt.Master, false)
+				log.LogDebugf("UpdateVolConf: load conf from master")
+
+				var volumeInfo *proto.SimpleVolView
+				volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+				if err != nil {
+					return
+				}
+				super.SetTransaction(volumeInfo.EnableTransaction)
 				if proto.IsCold(opt.VolType) {
-					var volumeInfo *proto.SimpleVolView
-					volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
-					if err != nil {
-						return
-					}
 					super.CacheAction = volumeInfo.CacheAction
 					super.CacheThreshold = volumeInfo.CacheThreshold
 					super.EbsBlockSize = volumeInfo.ObjBlockSize
 				}
-
 			}
 		}
 	}()
@@ -825,6 +826,7 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.EbsBlockSize = volumeInfo.ObjBlockSize
 	opt.CacheAction = volumeInfo.CacheAction
 	opt.CacheThreshold = volumeInfo.CacheThreshold
+	opt.EnableTransaction = volumeInfo.EnableTransaction
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()

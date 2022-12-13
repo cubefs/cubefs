@@ -210,6 +210,32 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opAppendMultipart(conn, p, remoteAddr)
 	case proto.OpGetMultipart:
 		err = m.opGetMultipart(conn, p, remoteAddr)
+
+	// operations for transactions
+	case proto.OpMetaTxCreateInode:
+		err = m.opTxCreateInode(conn, p, remoteAddr)
+	case proto.OpMetaTxCreateDentry:
+		err = m.opTxCreateDentry(conn, p, remoteAddr)
+	case proto.OpTxCommit:
+		err = m.opTxCommit(conn, p, remoteAddr)
+	case proto.OpTxInodeCommit:
+		err = m.opTxInodeCommit(conn, p, remoteAddr)
+	case proto.OpTxDentryCommit:
+		err = m.opTxDentryCommit(conn, p, remoteAddr)
+	case proto.OpTxRollback:
+		err = m.opTxRollback(conn, p, remoteAddr)
+	case proto.OpTxInodeRollback:
+		err = m.opTxInodeRollback(conn, p, remoteAddr)
+	case proto.OpTxDentryRollback:
+		err = m.opTxDentryRollback(conn, p, remoteAddr)
+	case proto.OpMetaTxDeleteDentry:
+		err = m.opTxDeleteDentry(conn, p, remoteAddr)
+	case proto.OpMetaTxUnlinkInode:
+		err = m.opTxMetaUnlinkInode(conn, p, remoteAddr)
+	case proto.OpMetaTxUpdateDentry:
+		err = m.opTxUpdateDentry(conn, p, remoteAddr)
+	case proto.OpMetaTxLinkInode:
+		err = m.opTxMetaLinkInode(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())

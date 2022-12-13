@@ -35,6 +35,35 @@ func NewInodeResponse() *InodeResponse {
 }
 
 // Create and inode and attach it to the inode tree.
+func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode) (status uint8) {
+	status = proto.OpOk
+	//1.if mpID == -1, register transaction in transaction manager
+	//if txIno.TxInfo.TxID != "" && txIno.TxInfo.TmID == -1 {
+	_ = mp.txProcessor.txManager.registerTransaction(txIno.TxInfo)
+	//}
+	//2.register rollback item
+
+	//inodeInfo := mp.txProcessor.txManager.getTxInodeInfo(txIno.TxInfo.TxID, txIno.Inode.Inode)
+	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
+	if !ok {
+		status = proto.OpTxInodeInfoNotExistErr
+		return
+	}
+	rbInode := NewTxRollbackInode(txIno.Inode, inodeInfo, TxDelete)
+	if err := mp.txProcessor.txResource.addTxRollbackInode(rbInode); err != nil {
+		status = proto.OpTxConflictErr
+		return
+	}
+	//3.insert inode in inode tree
+	if _, ok := mp.inodeTree.ReplaceOrInsert(txIno.Inode, false); !ok {
+		status = proto.OpExistErr
+		return
+	}
+
+	return
+}
+
+// Create and inode and attach it to the inode tree.
 func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	log.LogDebugf("action[fsmCreateInode] inode  %v be created", ino.Inode)
 
@@ -47,6 +76,30 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 		status = proto.OpExistErr
 	}
 	return
+}
+
+func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeResponse) {
+	resp = NewInodeResponse()
+	resp.Status = proto.OpOk
+	//1.if mpID == -1, register transaction in transaction manager
+	//if txIno.TxInfo.TxID != "" && txIno.TxInfo.TmID == -1 {
+	_ = mp.txProcessor.txManager.registerTransaction(txIno.TxInfo)
+	//}
+
+	//2.register rollback item
+	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
+	if !ok {
+		resp.Status = proto.OpTxInodeInfoNotExistErr
+		return
+	}
+
+	rbInode := NewTxRollbackInode(txIno.Inode, inodeInfo, TxUpdate)
+	if err := mp.txProcessor.txResource.addTxRollbackInode(rbInode); err != nil {
+		resp.Status = proto.OpTxConflictErr
+		return
+	}
+
+	return mp.fsmCreateLinkInode(txIno.Inode)
 }
 
 func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
@@ -111,6 +164,35 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
 // Ascend is the wrapper of inodeTree.Ascend
 func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
 	mp.inodeTree.Ascend(f)
+}
+
+func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) {
+	resp = NewInodeResponse()
+	resp.Status = proto.OpOk
+
+	defer func() {
+		if txIno.TxInfo.TxType == proto.TxTypeRename && resp.Status == proto.OpOk {
+			mp.fsmEvictInode(txIno.Inode)
+		}
+	}()
+
+	//1.if mpID == -1, register transaction in transaction manager
+	//if txIno.TxInfo.TxID != "" && txIno.TxInfo.TmID == -1 {
+	_ = mp.txProcessor.txManager.registerTransaction(txIno.TxInfo)
+	//}
+	//2.register rollback item
+	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
+	if !ok {
+		resp.Status = proto.OpTxInodeInfoNotExistErr
+		return
+	}
+	rbInode := NewTxRollbackInode(txIno.Inode, inodeInfo, TxAdd)
+	if err := mp.txProcessor.txResource.addTxRollbackInode(rbInode); err != nil {
+		resp.Status = proto.OpTxConflictErr
+		return
+	}
+
+	return mp.fsmUnlinkInode(txIno.Inode)
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.

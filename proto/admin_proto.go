@@ -786,6 +786,7 @@ type SimpleVolView struct {
 	CreateTime            string
 	EnableToken           bool
 	EnablePosixAcl        bool
+	EnableTransaction     bool
 	Description           string
 	DpSelectorName        string
 	DpSelectorParm        string

@@ -39,6 +39,7 @@ type VolVarargs struct {
 	dpReplicaNum          uint8
 	enablePosixAcl        bool
 	dpReadOnlyWhenVolFull bool
+	enableTransaction     bool
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -74,6 +75,7 @@ type Vol struct {
 	domainOn              bool
 	defaultPriority       bool // old default zone first
 	enablePosixAcl        bool
+	enableTransaction     bool
 	zoneName              string
 	MetaPartitions        map[uint64]*MetaPartition `graphql:"-"`
 	mpsLock               sync.RWMutex
@@ -1178,6 +1180,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.authenticate = args.authenticate
 	vol.enablePosixAcl = args.enablePosixAcl
 	vol.DpReadOnlyWhenVolFull = args.dpReadOnlyWhenVolFull
+	vol.enableTransaction = args.enableTransaction
 
 	if proto.IsCold(vol.VolType) {
 		coldArgs := args.coldArgs
