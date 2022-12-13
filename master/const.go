@@ -80,6 +80,7 @@ const (
 	forceKey                = "force"
 	raftForceDelKey         = "raftForceDel"
 	enablePosixAclKey       = "enablePosixAcl"
+	enableTransactionKey    = "enableTransaction"
 	QosEnableKey            = "qosEnable"
 	DiskEnableKey           = "diskenable"
 	IopsWKey                = "iopsWKey"

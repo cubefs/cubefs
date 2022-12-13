@@ -245,6 +245,7 @@ type volValue struct {
 	CacheRule        string
 
 	EnablePosixAcl                                         bool
+	EnableTransaction                                      bool
 	VolQosEnable                                           bool
 	DiskQosEnable                                          bool
 	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64
@@ -280,6 +281,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DpSelectorParm:    vol.dpSelectorParm,
 		DefaultPriority:   vol.defaultPriority,
 		EnablePosixAcl:    vol.enablePosixAcl,
+		EnableTransaction: vol.enableTransaction,
 
 		VolType:             vol.VolType,
 		EbsBlkSize:          vol.EbsBlkSize,

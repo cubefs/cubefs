@@ -76,6 +76,85 @@ type Inode struct {
 
 type InodeBatch []*Inode
 
+type TxInode struct {
+	Inode  *Inode
+	TxInfo *proto.TransactionInfo
+}
+
+func NewTxInode(mpAddr string, ino uint64, t uint32, mpID uint64, txInfo *proto.TransactionInfo) *TxInode {
+	ti := &TxInode{
+		Inode:  NewInode(ino, t),
+		TxInfo: txInfo,
+	}
+
+	if ti.TxInfo != nil {
+		txInodeInfo := proto.NewTxInodeInfo(mpAddr, ino, mpID)
+		ti.TxInfo.TxInodeInfos[txInodeInfo.GetKey()] = txInodeInfo
+	}
+
+	return ti
+}
+
+func (ti *TxInode) Marshal() (result []byte, err error) {
+	buff := bytes.NewBuffer(make([]byte, 0))
+
+	bs, err := ti.Inode.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+		return nil, err
+	}
+	if _, err := buff.Write(bs); err != nil {
+		return nil, err
+	}
+
+	bs, err = ti.TxInfo.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+		return nil, err
+	}
+	if _, err := buff.Write(bs); err != nil {
+		return nil, err
+	}
+	result = buff.Bytes()
+	return
+}
+
+func (ti *TxInode) Unmarshal(raw []byte) (err error) {
+	buff := bytes.NewBuffer(raw)
+
+	var dataLen uint32
+	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+		return
+	}
+	data := make([]byte, int(dataLen))
+	if _, err = buff.Read(data); err != nil {
+		return
+	}
+	ino := NewInode(0, 0)
+	if err = ino.Unmarshal(data); err != nil {
+		return
+	}
+	ti.Inode = ino
+
+	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+		return
+	}
+	data = make([]byte, int(dataLen))
+	if _, err = buff.Read(data); err != nil {
+		return
+	}
+	txInfo := proto.NewTransactionInfo(0, proto.TxTypeUndefined)
+	if err = txInfo.Unmarshal(data); err != nil {
+		return
+	}
+	ti.TxInfo = txInfo
+	return
+}
+
 // String returns the string format of the inode.
 func (i *Inode) String() string {
 	i.RLock()

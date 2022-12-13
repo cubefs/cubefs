@@ -140,6 +140,20 @@ const (
 	OpMetaBatchUnlinkInode  uint8 = 0x92
 	OpMetaBatchEvictInode   uint8 = 0x93
 
+	//Transaction Operations: Client -> MetaNode.
+	OpMetaTxCreateInode  uint8 = 0xA0
+	OpMetaTxUnlinkInode  uint8 = 0xA1
+	OpMetaTxCreateDentry uint8 = 0xA2
+	OpTxCommit           uint8 = 0xA3
+	OpTxInodeCommit      uint8 = 0xA4
+	OpTxDentryCommit     uint8 = 0xA5
+	OpTxRollback         uint8 = 0xA6
+	OpTxInodeRollback    uint8 = 0xA7
+	OpTxDentryRollback   uint8 = 0xA8
+	OpMetaTxDeleteDentry uint8 = 0xA9
+	OpMetaTxUpdateDentry uint8 = 0xAA
+	OpMetaTxLinkInode    uint8 = 0xAB
+
 	// Commons
 	OpNoSpaceErr         uint8 = 0xEE
 	OpDirQuota           uint8 = 0xF1
@@ -170,6 +184,18 @@ const (
 	OpMetaClearInodeCache    uint8 = 0xD1
 	OpMetaBatchSetXAttr      uint8 = 0xD2
 	OpMetaGetAllXAttr        uint8 = 0xD3
+
+	//transaction error
+	OpTxInodeInfoNotExistErr  uint8 = 0xE0
+	OpTxConflictErr           uint8 = 0xE1
+	OpTxDentryInfoNotExistErr uint8 = 0xE2
+	OpTxRbInodeNotExistErr    uint8 = 0xE3
+	OpTxRbDentryNotExistErr   uint8 = 0xE4
+	OpTxInfoNotExistErr       uint8 = 0xE5
+	OpTxInternalErr           uint8 = 0xE6
+	OpTxCommitItemErr         uint8 = 0xE7
+	OpTxRollbackItemErr       uint8 = 0xE8
+	OpTxRollbackUnknownRbType uint8 = 0xE9
 )
 
 const (
@@ -415,6 +441,30 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpBatchDeleteExtent"
 	case OpMetaClearInodeCache:
 		m = "OpMetaClearInodeCache"
+	case OpMetaTxCreateInode:
+		m = "OpMetaTxCreateInode"
+	case OpMetaTxCreateDentry:
+		m = "OpMetaTxCreateDentry"
+	case OpTxCommit:
+		m = "OpTxCommit"
+	case OpTxInodeCommit:
+		m = "OpTxInodeCommit"
+	case OpTxDentryCommit:
+		m = "OpTxDentryCommit"
+	case OpTxRollback:
+		m = "OpTxRollback"
+	case OpTxInodeRollback:
+		m = "OpTxInodeRollback"
+	case OpTxDentryRollback:
+		m = "OpTxDentryRollback"
+	case OpMetaTxDeleteDentry:
+		m = "OpMetaTxDeleteDentry"
+	case OpMetaTxUnlinkInode:
+		m = "OpMetaTxUnlinkInode"
+	case OpMetaTxUpdateDentry:
+		m = "OpMetaTxUpdateDentry"
+	case OpMetaTxLinkInode:
+		m = "OpMetaTxLinkInode"
 	}
 	return
 }
@@ -458,6 +508,16 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpDirQuota"
 	case OpNoSpaceErr:
 		m = "NoSpaceErr"
+	case OpTxInodeInfoNotExistErr:
+		m = "OpTxInodeInfoNotExistErr"
+	case OpTxConflictErr:
+		m = "TransactionConflict"
+	case OpTxDentryInfoNotExistErr:
+		m = "OpTxDentryInfoNotExistErr"
+	case OpTxRbInodeNotExistErr:
+		m = "OpTxRbInodeNotExistEr"
+	case OpTxRbDentryNotExistErr:
+		m = "OpTxRbDentryNotExistEr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}

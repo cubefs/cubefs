@@ -50,6 +50,8 @@ const (
 	statusConflictExtents
 	statusOpDirQuota
 	statusNoSpace
+	statusTxInodeInfoNotExist
+	statusTxConflict
 )
 
 const (
@@ -72,15 +74,16 @@ func (f AsyncTaskErrorFunc) OnError(err error) {
 }
 
 type MetaConfig struct {
-	Volume           string
-	Owner            string
-	Masters          []string
-	Authenticate     bool
-	TicketMess       auth.TicketMess
-	ValidateOwner    bool
-	OnAsyncTaskError AsyncTaskErrorFunc
-	EnableSummary    bool
-	MetaSendTimeout  int64
+	Volume            string
+	Owner             string
+	Masters           []string
+	Authenticate      bool
+	TicketMess        auth.TicketMess
+	ValidateOwner     bool
+	OnAsyncTaskError  AsyncTaskErrorFunc
+	EnableSummary     bool
+	MetaSendTimeout   int64
+	EnableTransaction bool
 }
 
 type MetaWrapper struct {
@@ -135,6 +138,7 @@ type MetaWrapper struct {
 	EnableSummary       bool
 	metaSendTimeout     int64
 	DirChildrenNumLimit uint32
+	EnableTransaction   bool
 }
 
 //the ticket from authnode
@@ -180,6 +184,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.EnableSummary = config.EnableSummary
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
+	mw.EnableTransaction = config.EnableTransaction
 
 	limit := MaxMountRetryLimit
 
@@ -285,6 +290,10 @@ func parseStatus(result uint8) (status int) {
 		status = statusOpDirQuota
 	case proto.OpNoSpaceErr:
 		status = statusNoSpace
+	case proto.OpTxInodeInfoNotExistErr:
+		status = statusTxInodeInfoNotExist
+	case proto.OpTxConflictErr:
+		status = statusTxConflict
 	default:
 		status = statusError
 	}
@@ -316,6 +325,11 @@ func statusToErrno(status int) error {
 		return syscall.EDQUOT
 	case statusNoSpace:
 		return syscall.ENOSPC
+	case statusTxInodeInfoNotExist:
+		return syscall.EAGAIN
+	case statusTxConflict:
+		return syscall.EAGAIN
+
 	default:
 	}
 	return syscall.EIO

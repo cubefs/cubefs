@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -45,6 +46,52 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	return true
 }
+
+func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo) (resp *proto.TxCreateInodeResponse) {
+	inoInfo := &proto.InodeInfo{
+		Inode:      inode.Inode,
+		Mode:       inode.Type,
+		Nlink:      inode.NLink,
+		Size:       inode.Size,
+		Uid:        inode.Uid,
+		Gid:        inode.Gid,
+		Generation: inode.Generation,
+		ModifyTime: time.Unix(inode.ModifyTime, 0),
+		CreateTime: time.Unix(inode.CreateTime, 0),
+		AccessTime: time.Unix(inode.AccessTime, 0),
+		Target:     nil,
+	}
+	if length := len(inode.LinkTarget); length > 0 {
+		inoInfo.Target = make([]byte, length)
+		copy(inoInfo.Target, inode.LinkTarget)
+	}
+
+	resp = &proto.TxCreateInodeResponse{
+		Info:   inoInfo,
+		TxInfo: txInfo,
+	}
+	return
+}
+
+/*func txReplyInfo(resp *proto.TxCreateInodeResponse, txInode *TxInode) bool {
+	resp.Info.Inode = txInode.Inode.Inode
+	resp.Info.Mode = txInode.Inode.Type
+	resp.Info.Size = txInode.Inode.Size
+	resp.Info.Nlink = txInode.Inode.NLink
+	resp.Info.Uid = txInode.Inode.Uid
+	resp.Info.Gid = txInode.Inode.Gid
+	resp.Info.Generation = txInode.Inode.Generation
+	if length := len(txInode.Inode.LinkTarget); length > 0 {
+		resp.Info.Target = make([]byte, length)
+		copy(resp.Info.Target, txInode.Inode.LinkTarget)
+	}
+	resp.Info.CreateTime = time.Unix(txInode.Inode.CreateTime, 0)
+	resp.Info.AccessTime = time.Unix(txInode.Inode.AccessTime, 0)
+	resp.Info.ModifyTime = time.Unix(txInode.Inode.ModifyTime, 0)
+
+	//resp.TxInfo = txInode.TxInfo
+	return true
+}*/
 
 // CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
@@ -82,6 +129,67 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 				status = proto.OpErr
 				reply = []byte(err.Error())
 			}
+		}
+	}
+	p.PacketErrorWithBody(status, reply)
+	return
+}
+
+func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error) {
+
+	txInfo := req.TxInfo.Copy()
+	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
+		txInfo.TmID = int64(mp.config.PartitionId)
+		txInfo.CreateTime = time.Now().Unix()
+	} else {
+		//todo_tx:RM
+	}*/
+
+	if !txInfo.IsInitialized() {
+		mp.initTxInfo(txInfo)
+	}
+
+	ino := NewInode(req.Inode, 0)
+	inoResp := mp.getInode(ino)
+	if inoResp.Status != proto.OpOk {
+		p.PacketErrorWithBody(inoResp.Status, nil)
+		return
+	}
+	ti := &TxInode{
+		Inode:  inoResp.Msg,
+		TxInfo: txInfo,
+	}
+
+	val, err := ti.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	r, err := mp.submit(opFSMTxUnlinkInode, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	msg := r.(*InodeResponse)
+	status := msg.Status
+	var reply []byte
+	if status == proto.OpOk {
+		var rstTxInfo *proto.TransactionInfo
+		if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+			rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		} else {
+			rstTxInfo = req.TxInfo
+		}
+		//rstTxInfo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		resp := &proto.TxUnlinkInodeResponse{
+			Info:   &proto.InodeInfo{},
+			TxInfo: rstTxInfo,
+		}
+		replyInfo(resp.Info, msg.Msg)
+		if reply, err = json.Marshal(resp); err != nil {
+			status = proto.OpErr
+			reply = []byte(err.Error())
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
@@ -215,6 +323,71 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		return
 	}
 	p.PacketOkWithBody(data)
+	return
+}
+
+func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet) (err error) {
+	txInfo := req.TxInfo.Copy()
+	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
+		txInfo.TmID = int64(mp.config.PartitionId)
+		txInfo.CreateTime = time.Now().Unix()
+	} else {
+		//todo_tx:RM
+	}*/
+
+	if !txInfo.IsInitialized() {
+		mp.initTxInfo(txInfo)
+	}
+
+	ino := NewInode(req.Inode, 0)
+	inoResp := mp.getInode(ino)
+	if inoResp.Status != proto.OpOk {
+		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
+		return
+	}
+	ti := &TxInode{
+		Inode:  inoResp.Msg,
+		TxInfo: txInfo,
+	}
+
+	val, err := ti.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
+	resp, err := mp.submit(opFSMTxCreateLinkInode, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	retMsg := resp.(*InodeResponse)
+	status := proto.OpNotExistErr
+	var reply []byte
+	if retMsg.Status == proto.OpOk {
+		var rstTxInfo *proto.TransactionInfo
+		if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+			rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		} else {
+			rstTxInfo = req.TxInfo
+		}
+		//rstTxInfo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		resp := &proto.TxLinkInodeResponse{
+			Info:   &proto.InodeInfo{},
+			TxInfo: rstTxInfo,
+		}
+		if replyInfo(resp.Info, retMsg.Msg) {
+			status = proto.OpOk
+			reply, err = json.Marshal(resp)
+			if err != nil {
+				status = proto.OpErr
+				reply = []byte(err.Error())
+			}
+		}
+
+	}
+	p.PacketErrorWithBody(status, reply)
 	return
 }
 
@@ -386,5 +559,84 @@ func (mp *metaPartition) ClearInodeCache(req *proto.ClearInodeCacheRequest, p *P
 		return
 	}
 	p.PacketErrorWithBody(resp.(uint8), nil)
+	return
+}
+
+// TxCreateInode returns a new inode.
+func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet) (err error) {
+	inoID, err := mp.nextInodeID()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
+		return
+	}
+
+	txInfo := req.TxInfo.Copy()
+	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
+		txInfo.TmID = int64(mp.config.PartitionId)
+		txInfo.CreateTime = time.Now().Unix()
+	} else {
+		//todo_tx:RM
+	}*/
+
+	if !txInfo.IsInitialized() {
+		mp.initTxInfo(txInfo)
+	}
+
+	mpIp := mp.manager.metaNode.localAddr
+	mpPort := mp.manager.metaNode.listen
+	mpAddr := fmt.Sprintf("%s:%s", mpIp, mpPort)
+	txIno := NewTxInode(mpAddr, inoID, req.Mode, req.PartitionID, txInfo)
+	log.LogDebugf("NewTxInode: TxInode: %v", txIno)
+	txIno.Inode.Uid = req.Uid
+	txIno.Inode.Gid = req.Gid
+	txIno.Inode.LinkTarget = req.Target
+
+	val, err := txIno.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	status, err := mp.submit(opFSMTxCreateInode, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	var (
+		//status = proto.OpNotExistErr
+		reply []byte
+	)
+
+	var rstTxInfo *proto.TransactionInfo
+	if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+		log.LogDebugf("TxCreateInode: getTransaction")
+		rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	} else {
+		log.LogDebugf("TxCreateInode: getTransaction from req")
+		rstTxInfo = req.TxInfo
+	}
+
+	if status.(uint8) == proto.OpOk {
+		/*resp := &proto.TxCreateInodeResponse{
+			Info:   &proto.InodeInfo{},
+			TxInfo: rstTxInfo,
+		}
+		if txReplyInfo(resp, txIno) {
+			status = proto.OpOk
+			reply, err = json.Marshal(resp)
+			if err != nil {
+				status = proto.OpErr
+				reply = []byte(err.Error())
+			}
+		}*/
+		resp := txReplyInfo(txIno.Inode, rstTxInfo)
+		status = proto.OpOk
+		reply, err = json.Marshal(resp)
+		if err != nil {
+			status = proto.OpErr
+			reply = []byte(err.Error())
+		}
+	}
+	p.PacketErrorWithBody(status.(uint8), reply)
 	return
 }
