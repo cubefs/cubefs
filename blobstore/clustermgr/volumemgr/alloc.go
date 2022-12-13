@@ -277,6 +277,7 @@ RETRY:
 		// go to the end, first retry with high disk load volume
 		// second  lower health score volume
 		if index == availableVolCount-1 {
+			span.Infof("assignable volume length is %d", len(assignable))
 			if len(assignable) == 0 {
 				span.Warnf("has no assignable volume,enableDiskLoad:%v,diskLoadThreshold:%d", isEnableDiskLoad, diskLoadThreshold)
 				break
@@ -294,6 +295,8 @@ RETRY:
 		}
 		index++
 	}
+
+	span.Infof("optional vids length is %d, vids is %v", len(optionalVids), optionalVids)
 	if a.isEnableDiskLoad() {
 		optionalVids = a.sortVidByLoad(mode, optionalVids)
 	}

@@ -172,6 +172,7 @@ func setUp() (*rpc.Router, []rpc.ProgressHandler) {
 }
 
 func tearDown() {
+	service.Close()
 }
 
 func New(cfg *Config) (*Service, error) {
