@@ -141,7 +141,6 @@ type ExtentClient struct {
 	extentMergeIno     []uint64
 	extentMergeChan    chan struct{}
 	ExtentMergeSleepMs uint64
-	dataState          *DataState
 }
 
 const (
@@ -226,12 +225,13 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	return
 }
 
-func (client *ExtentClient) SaveState() error {
-	return client.dataWrapper.saveState()
+func RebuildExtentClient(config *ExtentConfig, dataState *DataState) (client *ExtentClient) {
+	client, _ = NewExtentClient(config, dataState)
+	return
 }
 
-func (client *ExtentClient) GetDataState() *DataState {
-	return client.dataWrapper.dataState
+func (client *ExtentClient) SaveDataState() *DataState {
+	return client.dataWrapper.saveDataState()
 }
 
 // Open request shall grab the lock until request is sent to the request channel

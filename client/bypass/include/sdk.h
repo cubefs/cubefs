@@ -84,7 +84,6 @@ typedef void (*cfs_sdk_close_t)();
 typedef int64_t (*cfs_new_client_t)(const cfs_config_t *conf, const char *config_path, char *str);
 typedef void (*cfs_close_client_t)(int64_t id);
 typedef size_t (*cfs_sdk_state_t)(int64_t id, char *buf, int size);
-typedef int (*cfs_save_volume_state_t)(int64_t id);
 /*
  * Log is cached by default, will only be flushed when client close.
  * Call this function manually when necessary.
@@ -208,7 +207,6 @@ static cfs_sdk_close_t cfs_sdk_close;
 static cfs_new_client_t cfs_new_client;
 static cfs_close_client_t cfs_close_client;
 static cfs_sdk_state_t cfs_sdk_state;
-static cfs_save_volume_state_t cfs_save_volume_state;
 static cfs_flush_log_t cfs_flush_log;
 static cfs_ump_t cfs_ump;
 

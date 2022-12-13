@@ -83,7 +83,6 @@ type Wrapper struct {
 
 	dpFollowerReadDelayConfig *proto.DpFollowerReadDelayConfig
 	dpLowestDelayHostWeight   int
-	dataState                 *DataState
 }
 
 type DataState struct {
@@ -214,51 +213,16 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	return
 }
 
-func (w *Wrapper) saveState() (err error) {
+func (w *Wrapper) saveDataState() *DataState {
 	dataState := new(DataState)
 	dataState.ClusterName = w.clusterName
 	dataState.LocalIP = LocalIP
 
-	var (
-		volView     *proto.SimpleVolView
-		dpView      *proto.DataPartitionsView
-		clusterView *proto.ClusterView
-	)
-	for limit := 0; limit < MaxMountRetryLimit; limit++ {
-		if dataState.VolView == nil {
-			if volView, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
-				log.LogWarnf("save data state: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
-				continue
-			} else {
-				dataState.VolView = volView
-			}
-		}
-		if dataState.DpView == nil {
-			if dpView, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
-				if err == proto.ErrVolNotExists {
-					dataState.VolNotExists = true
-				} else {
-					log.LogWarnf("save data state: get data partitions fail: volume(%v) err(%v)", w.volName, err)
-					continue
-				}
-			} else {
-				dataState.VolNotExists = false
-				dataState.DpView = dpView
-			}
-		}
-		if dataState.ClusterView == nil {
-			if clusterView, err = w.mc.AdminAPI().GetCluster(); err != nil {
-				log.LogWarnf("save data state: get cluster fail: err(%v)", err)
-				continue
-			} else {
-				dataState.ClusterView = clusterView
-			}
-		}
-	}
-	if err == nil {
-		w.dataState = dataState
-	}
-	return
+	dataState.VolView = w.saveSimpleVolView()
+	dataState.DpView = w.saveDataPartition()
+	dataState.ClusterView = w.saveClusterView()
+
+	return dataState
 }
 
 func (w *Wrapper) Stop() {
@@ -316,6 +280,37 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 		view.DpCnt, view.FollowerRead, view.ForceROW, view.EnableWriteCache, view.CreateTime, view.DpSelectorName, view.DpSelectorParm,
 		view.Quorum, view.ExtentCacheExpireSec, view.DpFolReadDelayConfig)
 	return nil
+}
+
+func (w *Wrapper) saveSimpleVolView() *proto.SimpleVolView {
+	view := &proto.SimpleVolView{
+		FollowerRead:         w.followerRead,
+		NearRead:             w.nearRead,
+		ForceROW:             w.forceROW,
+		DpSelectorName:       w.dpSelectorName,
+		DpSelectorParm:       w.dpSelectorParm,
+		CrossRegionHAType:    w.crossRegionHAType,
+		Quorum:               w.quorum,
+		EcEnable:             w.ecEnable,
+		ExtentCacheExpireSec: w.extentCacheExpireSec,
+	}
+	view.ConnConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   w.connConfig.IdleTimeoutSec,
+		ConnectTimeoutNs: w.connConfig.ConnectTimeoutNs,
+		WriteTimeoutNs:   w.connConfig.WriteTimeoutNs,
+		ReadTimeoutNs:    w.connConfig.ReadTimeoutNs,
+	}
+
+	view.DpMetricsReportConfig = &proto.DpMetricsReportConfig{
+		EnableReport:      w.dpMetricsReportConfig.EnableReport,
+		ReportIntervalSec: w.dpMetricsReportConfig.ReportIntervalSec,
+		FetchIntervalSec:  w.dpMetricsReportConfig.FetchIntervalSec,
+	}
+	view.DpFolReadDelayConfig = proto.DpFollowerReadDelayConfig{
+		EnableCollect:        w.dpFollowerReadDelayConfig.EnableCollect,
+		DelaySummaryInterval: w.dpFollowerReadDelayConfig.DelaySummaryInterval,
+	}
+	return view
 }
 
 func (w *Wrapper) update() {
@@ -468,6 +463,18 @@ func (w *Wrapper) convertDataPartition(dpv *proto.DataPartitionsView, isInit boo
 	return err
 }
 
+func (w *Wrapper) saveDataPartition() *proto.DataPartitionsView {
+	dpv := &proto.DataPartitionsView{
+		DataPartitions: make([]*proto.DataPartitionResponse, 0),
+	}
+	w.partitions.Range(func(k, v interface{}) bool {
+		dp := v.(*DataPartition)
+		dpv.DataPartitions = append(dpv.DataPartitions, &dp.DataPartitionResponse)
+		return true
+	})
+	return dpv
+}
+
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	if w.CrossRegionHATypeQuorum() {
 		w.initCrossRegionHostStatus(dp)
@@ -604,6 +611,17 @@ func (w *Wrapper) _updateDataNodeStatus(cv *proto.ClusterView) {
 	}
 
 	return
+}
+
+func (w *Wrapper) saveClusterView() *proto.ClusterView {
+	cv := &proto.ClusterView{
+		DataNodes:       make([]proto.NodeView, 0, len(w.HostsStatus)),
+		SchedulerDomain: w.dpMetricsReportDomain,
+	}
+	for addr, status := range w.HostsStatus {
+		cv.DataNodes = append(cv.DataNodes, proto.NodeView{Addr: addr, Status: status})
+	}
+	return cv
 }
 
 func (w *Wrapper) SetNearRead(nearRead bool) {

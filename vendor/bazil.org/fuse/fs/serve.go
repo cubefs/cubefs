@@ -416,7 +416,7 @@ type FuseContext struct {
 	HandleList []*ContextHandle
 }
 
-func (s *Server) getFuseContext() (fuseContext *FuseContext) {
+func (s *Server) saveFuseContext() (fuseContext *FuseContext) {
 	var (
 		ncount int
 		hcount int
@@ -454,11 +454,11 @@ func (s *Server) getFuseContext() (fuseContext *FuseContext) {
 		handleid := skip + uint64(i)
 		if hdl, ok := sh.handle.(HandleFlusher); ok {
 			if err = hdl.Flush(nil, nil); err != nil {
-				cfslog.LogErrorf("getFuseContext: flush handle err. Inode %v, err: %v\n",
+				cfslog.LogErrorf("saveFuseContext: flush handle err. Inode %v, err: %v\n",
 					s.node[sh.nodeID].inode, err)
 			}
 		}
-		cfslog.LogDebugf("getFuseContext. Opened inode: %d, nodeID: %d\n", s.node[sh.nodeID].inode, sh.nodeID)
+		cfslog.LogDebugf("saveFuseContext. Opened inode: %d, nodeID: %d\n", s.node[sh.nodeID].inode, sh.nodeID)
 		ch := &ContextHandle{handleid, uint64(sh.nodeID)}
 		handleList = append(handleList, ch)
 		hcount++
@@ -467,7 +467,7 @@ func (s *Server) getFuseContext() (fuseContext *FuseContext) {
 	fuseContext = new(FuseContext)
 	fuseContext.NodeList = nodeList
 	fuseContext.HandleList = handleList
-	cfslog.LogDebugf("getFuseContext. Node count: %d  Handle count: %d\n", ncount, hcount)
+	cfslog.LogDebugf("saveFuseContext. Node count: %d  Handle count: %d\n", ncount, hcount)
 	return
 }
 
@@ -557,7 +557,7 @@ func (s *Server) Serve(fs FS, fuseContext *FuseContext) (*FuseContext, error) {
 	for {
 		if s.stop {
 			s.wg.Wait()
-			return s.getFuseContext(), nil
+			return s.saveFuseContext(), nil
 		}
 		req, err := s.conn.ReadRequest()
 		if err != nil {

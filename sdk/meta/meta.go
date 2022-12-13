@@ -157,7 +157,6 @@ type MetaWrapper struct {
 	limitMapMutex sync.RWMutex
 	// infinite retry send to mp
 	InfiniteRetry bool
-	metaState     *MetaState
 }
 
 type MetaState struct {
@@ -331,7 +330,7 @@ func RebuildMetaWrapper(config *MetaConfig, metaState *MetaState) *MetaWrapper {
 	return mw
 }
 
-func (mw *MetaWrapper) SaveState() error {
+func (mw *MetaWrapper) SaveMetaState() *MetaState {
 	metaState := new(MetaState)
 	metaState.Ticket_Ticket = mw.Ticket.Ticket
 	metaState.Ticket_SessionKey = mw.Ticket.SessionKey
@@ -340,31 +339,8 @@ func (mw *MetaWrapper) SaveState() error {
 	metaState.TotalSize = mw.totalSize
 	metaState.UsedSize = mw.usedSize
 	metaState.VolNotExists = mw.volNotExists
-
-	var (
-		err  error
-		view *proto.VolView
-	)
-	for limit := 0; limit < MaxMountRetryLimit; limit++ {
-		view, err = mw.fetchVolumeView()
-		if err != nil {
-			if err == proto.ErrVolNotExists {
-				metaState.VolNotExists = true
-				break
-			}
-		} else {
-			metaState.View = view
-			break
-		}
-	}
-	if err == nil {
-		mw.metaState = metaState
-	}
-	return err
-}
-
-func (mw *MetaWrapper) GetMetaState() *MetaState {
-	return mw.metaState
+	metaState.View = mw.saveVolView()
+	return metaState
 }
 
 func (mw *MetaWrapper) initMetaWrapper() (err error) {

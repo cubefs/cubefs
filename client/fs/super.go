@@ -87,6 +87,7 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		TicketMess:    opt.TicketMess,
 		ValidateOwner: true,
 	}
+
 	if first_start {
 		s.mw, err = meta.NewMetaWrapper(metaConfig)
 		if err != nil {
@@ -95,11 +96,13 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 	} else {
 		s.mw = meta.RebuildMetaWrapper(metaConfig, metaState)
 	}
+
 	inodeExpiration := DefaultInodeExpiration
 	if opt.IcacheTimeout >= 0 {
 		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
 	}
 	s.ic = cache.NewInodeCache(inodeExpiration, MaxInodeCache, cache.BgEvictionInterval, true)
+
 	var extentConfig = &data.ExtentConfig{
 		Volume:                   opt.Volname,
 		Masters:                  masters,
@@ -117,10 +120,15 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		OnTruncate:               s.mw.Truncate,
 		OnEvictIcache:            s.ic.Delete,
 	}
-	s.ec, err = data.NewExtentClient(extentConfig, dataState)
-	if err != nil {
-		return nil, errors.Trace(err, "NewExtentClient failed!")
+	if first_start {
+		s.ec, err = data.NewExtentClient(extentConfig, nil)
+		if err != nil {
+			return nil, errors.Trace(err, "NewExtentClient failed!")
+		}
+	} else {
+		s.ec = data.RebuildExtentClient(extentConfig, dataState)
 	}
+
 	s.modulename = opt.Modulename
 	s.volname = opt.Volname
 	s.owner = opt.Owner
@@ -165,7 +173,7 @@ func (s *Super) ExtentClient() *data.ExtentClient {
 	return s.ec
 }
 
-func (s *Super) GetSuperState() *SuperState {
+func (s *Super) SaveSuperState() *SuperState {
 	return &SuperState{s.rootIno}
 }
 

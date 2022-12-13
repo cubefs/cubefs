@@ -65,7 +65,7 @@ type Streamer struct {
 	readAhead    bool
 	extentReader *ExtentReader
 
-	writeLock sync.Mutex
+	writeLock         sync.Mutex
 	pendingPacketList []*Packet
 }
 

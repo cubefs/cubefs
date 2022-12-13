@@ -328,7 +328,7 @@ func parsePaths(str string) (res []string) {
 	return
 }
 
-func rebuild_client_state(c *client, clientState *ClientState) {
+func (c *client) rebuild_client_state(clientState *ClientState) {
 	c.cwd = clientState.Cwd
 	c.readOnly = clientState.ReadOnly
 	c.readProcs = clientState.ReadProcs
@@ -673,7 +673,7 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 	}
 
 	if !first_start {
-		rebuild_client_state(c, sdkState.ClientState)
+		c.rebuild_client_state(sdkState.ClientState)
 	}
 	putClient(c.id, c)
 	return C.int64_t(c.id)
@@ -742,7 +742,7 @@ func cfs_sdk_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
 		return 0
 	}
 
-	sdkState := SDKState{c.clientState(), c.mw.GetMetaState(), c.ec.GetDataState()}
+	sdkState := SDKState{c.saveClientState(), c.mw.SaveMetaState(), c.ec.SaveDataState()}
 	state, err := json.Marshal(sdkState)
 	if err != nil {
 		log.LogErrorf("Marshal sdkState err(%v), sdkState(%v)\n", err, sdkState)
@@ -753,7 +753,7 @@ func cfs_sdk_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
 	return C.size_t(len(c.sdkState) + 1)
 }
 
-func (c *client) clientState() *ClientState {
+func (c *client) saveClientState() *ClientState {
 	clientState := new(ClientState)
 	clientState.ReadOnly = c.readOnly
 	clientState.ReadProcs = c.readProcs
@@ -784,24 +784,6 @@ func (c *client) clientState() *ClientState {
 
 	clientState.Files = files
 	return clientState
-}
-
-//export cfs_save_volume_state
-func cfs_save_volume_state(id C.int64_t) (re C.int) {
-	c, exist := getClient(int64(id))
-	if !exist {
-		return statusEINVAL
-	}
-	var err error
-	if err = c.mw.SaveState(); err != nil {
-		syslog.Printf("save meta state failed: %v\n", err)
-		return statusEINVAL
-	}
-	if err = c.ec.SaveState(); err != nil {
-		syslog.Printf("save data state failed: %v\n", err)
-		return statusEINVAL
-	}
-	return statusOK
 }
 
 //export cfs_ump
@@ -3866,66 +3848,52 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 
 	masters := strings.Split(c.masterAddr, ",")
 	c.mc = master.NewMasterClient(masters, false)
-	var mw *meta.MetaWrapper
-	var ec *data.ExtentClient
-
 	if first_start {
 		if err = c.checkVolWriteMutex(); err != nil {
 			syslog.Printf("checkVolWriteMutex error: %v\n", err)
 			return
 		}
-
-		if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
-			Modulename:    gClientManager.moduleName,
-			Volume:        c.volName,
-			Masters:       masters,
-			ValidateOwner: true,
-			Owner:         c.owner,
-			InfiniteRetry: true,
-		}); err != nil {
-			syslog.Println(err)
-			return
-		}
-
-		if ec, err = data.NewExtentClient(&data.ExtentConfig{
-			Volume:            c.volName,
-			Masters:           masters,
-			FollowerRead:      c.followerRead,
-			OnInsertExtentKey: mw.InsertExtentKey,
-			OnGetExtents:      mw.GetExtents,
-			OnTruncate:        mw.Truncate,
-			TinySize:          data.NoUseTinyExtent,
-			AutoFlush:         c.autoFlush,
-			MetaWrapper:       mw,
-			ExtentMerge:       isMysql(),
-		}, nil); err != nil {
+	}
+	var mw *meta.MetaWrapper
+	metaConfig := &meta.MetaConfig{
+		Modulename:    gClientManager.moduleName,
+		Volume:        c.volName,
+		Masters:       masters,
+		ValidateOwner: true,
+		Owner:         c.owner,
+		InfiniteRetry: true,
+	}
+	if first_start {
+		if mw, err = meta.NewMetaWrapper(metaConfig); err != nil {
 			syslog.Println(err)
 			return
 		}
 	} else {
-		mw = meta.RebuildMetaWrapper(&meta.MetaConfig{
-			Modulename:    gClientManager.moduleName,
-			Volume:        c.volName,
-			Masters:       masters,
-			ValidateOwner: true,
-			Owner:         c.owner,
-			InfiniteRetry: true,
-		}, sdkState.MetaState)
-		ec, err = data.NewExtentClient(&data.ExtentConfig{
-			Volume:            c.volName,
-			Masters:           masters,
-			FollowerRead:      c.followerRead,
-			OnInsertExtentKey: mw.InsertExtentKey,
-			OnGetExtents:      mw.GetExtents,
-			OnTruncate:        mw.Truncate,
-			TinySize:          data.NoUseTinyExtent,
-			AutoFlush:         c.autoFlush,
-			MetaWrapper:       mw,
-			ExtentMerge:       isMysql(),
-		}, sdkState.DataState)
+		mw = meta.RebuildMetaWrapper(metaConfig, sdkState.MetaState)
 	}
-
 	c.mw = mw
+
+	var ec *data.ExtentClient
+	extentConfig := &data.ExtentConfig{
+		Volume:            c.volName,
+		Masters:           masters,
+		FollowerRead:      c.followerRead,
+		OnInsertExtentKey: mw.InsertExtentKey,
+		OnGetExtents:      mw.GetExtents,
+		OnTruncate:        mw.Truncate,
+		TinySize:          data.NoUseTinyExtent,
+		AutoFlush:         c.autoFlush,
+		MetaWrapper:       mw,
+		ExtentMerge:       isMysql(),
+	}
+	if first_start {
+		if ec, err = data.NewExtentClient(extentConfig, nil); err != nil {
+			syslog.Println(err)
+			return
+		}
+	} else {
+		ec = data.RebuildExtentClient(extentConfig, sdkState.DataState)
+	}
 	c.ec = ec
 
 	// metric

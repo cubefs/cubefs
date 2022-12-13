@@ -226,7 +226,7 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 			log.LogFlush()
 			os.Exit(0)
 		}
-		currState := FuseClientState{fuseState, gClient.mw.GetMetaState(), gClient.ec.GetDataState(), gClient.super.GetSuperState()}
+		currState := FuseClientState{fuseState, gClient.mw.SaveMetaState(), gClient.ec.SaveDataState(), gClient.super.SaveSuperState()}
 		state, err := json.Marshal(currState)
 		if err != nil {
 			syslog.Printf("Marshal clientState err(%v), clientState(%v)\n", err, currState)
@@ -532,19 +532,6 @@ func StopClient() (clientState []byte) {
 
 	runtime.GC()
 	return
-}
-
-func SaveVolumeState() bool {
-	var err error
-	if err = gClient.mw.SaveState(); err != nil {
-		syslog.Printf("save meta state failed: %v\n", err)
-		return false
-	}
-	if err = gClient.ec.SaveState(); err != nil {
-		syslog.Printf("save data state failed: %v\n", err)
-		return false
-	}
-	return true
 }
 
 func main() {}

@@ -122,6 +122,39 @@ func (mw *MetaWrapper) convertVolumeView(vv *proto.VolView) (view *VolumeView) {
 	return
 }
 
+func (mw *MetaWrapper) saveVolView() *proto.VolView {
+	vv := &proto.VolView{
+		MetaPartitions: make([]*proto.MetaPartitionView, 0, len(mw.partitions)),
+	}
+	for _, mp := range mw.partitions {
+		view := &proto.MetaPartitionView{
+			PartitionID: mp.PartitionID,
+			Start:       mp.Start,
+			End:         mp.End,
+			Members:     mp.Members,
+			Learners:    mp.Learners,
+			LeaderAddr:  mp.LeaderAddr,
+			Status:      mp.Status,
+		}
+		vv.MetaPartitions = append(vv.MetaPartitions, view)
+	}
+	if mw.ossSecure != nil {
+		vv.OSSSecure = &proto.OSSSecure{}
+		vv.OSSSecure.AccessKey = mw.ossSecure.AccessKey
+		vv.OSSSecure.SecretKey = mw.ossSecure.SecretKey
+	}
+	vv.OSSBucketPolicy = mw.ossBucketPolicy
+	vv.CreateTime = mw.volCreateTime
+	vv.CrossRegionHAType = mw.crossRegionHAType
+	vv.ConnConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   mw.connConfig.IdleTimeoutSec,
+		ConnectTimeoutNs: mw.connConfig.ConnectTimeoutNs,
+		WriteTimeoutNs:   mw.connConfig.WriteTimeoutNs,
+		ReadTimeoutNs:    mw.connConfig.ReadTimeoutNs,
+	}
+	return vv
+}
+
 // fetch and update cluster info if successful
 func (mw *MetaWrapper) updateClusterInfo() (err error) {
 	var info *proto.ClusterInfo
