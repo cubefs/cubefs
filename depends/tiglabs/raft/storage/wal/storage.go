@@ -212,6 +212,9 @@ func (s *Storage) Truncate(index uint64) error {
 		truncIndex: index,
 		truncTerm:  term,
 	}
+
+	logger.Debug("Storage truncate index %v term %v", index, term)
+
 	if err = s.metafile.SaveTruncateMeta(meta); err != nil {
 		return err
 	}
