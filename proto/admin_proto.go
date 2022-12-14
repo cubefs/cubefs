@@ -1036,6 +1036,7 @@ type VolInfo struct {
 	Status             uint8
 	TotalSize          uint64
 	UsedSize           uint64
+	UsedRatio          float64
 	TrashRemainingDays uint32
 	IsSmart            bool
 	SmartRules         []string
@@ -1047,6 +1048,10 @@ type VolInfo struct {
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, remainingDays uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
 	enableToken, enableWriteCache bool) *VolInfo {
+	var usedRatio float64
+	if totalSize != 0 {
+		usedRatio = float64(usedSize) / float64(totalSize)
+	}
 	return &VolInfo{
 		Name:               name,
 		Owner:              owner,
@@ -1061,6 +1066,7 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		CompactTag:         compactTag,
 		EnableToken:        enableToken,
 		EnableWriteCache:   enableWriteCache,
+		UsedRatio:          usedRatio,
 	}
 }
 

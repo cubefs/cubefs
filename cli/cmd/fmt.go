@@ -219,13 +219,13 @@ func formatVolumeStatus(status uint8) string {
 }
 
 var (
-	volumeInfoTablePattern = "%-63v    %-20v    %-8v    %-8v    %-8v    %-10v   %-45v"
-	volumeInfoTableHeader  = fmt.Sprintf(volumeInfoTablePattern, "VOLUME", "OWNER", "USED", "TOTAL", "STATUS", "IS SMART", "CREATE TIME")
+	volumeInfoTablePattern = "%-63v    %-20v    %-8v    %-8v    %-10v    %-8v    %-10v   %-45v"
+	volumeInfoTableHeader  = fmt.Sprintf(volumeInfoTablePattern, "VOLUME", "OWNER", "USED", "TOTAL", "USED RATIO", "STATUS", "IS SMART", "CREATE TIME")
 )
 
 func formatVolInfoTableRow(vi *proto.VolInfo) string {
 	return fmt.Sprintf(volumeInfoTablePattern,
-		vi.Name, vi.Owner, formatSize(vi.UsedSize), formatSize(vi.TotalSize),
+		vi.Name, vi.Owner, formatSize(vi.UsedSize), formatSize(vi.TotalSize), formatFloat(vi.UsedRatio),
 		formatVolumeStatus(vi.Status), vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 
