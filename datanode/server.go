@@ -526,6 +526,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	c.SetNoDelay(true)
 	packetProcessor := repl.NewReplProtocol(conn, s.Prepare, s.OperatePacket, s.Post)
 	packetProcessor.ServerConn()
+	space.Stats().RemoveConnection()
 }
 
 func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
@@ -577,7 +578,10 @@ func (s *DataNode) serveSmuxConn(conn net.Conn) {
 		log.LogErrorf("action[serveSmuxConn] failed to serve smux connection, addr(%v), err(%v)", c.RemoteAddr(), err)
 		return
 	}
-	defer sess.Close()
+	defer func() {
+		sess.Close()
+		space.Stats().RemoveConnection()
+	}()
 	for {
 		stream, err := sess.AcceptStream()
 		if err != nil {
