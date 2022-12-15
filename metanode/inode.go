@@ -562,7 +562,7 @@ func (i *Inode) GetNLink() uint32 {
 
 func (i *Inode) IsTempFile() bool {
 	i.RLock()
-	ok := i.NLink == 0
+	ok := i.NLink == 0 && !proto.IsDir(i.Type)
 	i.RUnlock()
 	return ok
 }
