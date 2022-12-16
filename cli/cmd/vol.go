@@ -175,7 +175,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var smartRules []string
 	var optCompactTag bool
 	var optFolReadDelayInterval int64
-	var optMaxChildrenCnt   uint64
 	var optBatchDelInodeCnt uint64
 	var optDelInodeInterval uint64
 	var cmd = &cobra.Command{
@@ -233,7 +232,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Smart Rules         : %v\n", strings.Join(smartRules, ","))
 				stdout("  Compact             : %v\n", formatEnabledDisabled(optCompactTag))
 				stdout("  FolReadDelayInterval: %v\n", optFolReadDelayInterval)
-				stdout("  MaxChildrenCnt      : %v\n", optMaxChildrenCnt)
 				stdout("  BatchDelInodeCnt    : %v\n", optBatchDelInodeCnt)
 				stdout("  DelInodeInterval    : %v\n", optDelInodeInterval)
 				stdout("\nConfirm (yes/no)[yes]: ")
@@ -280,7 +278,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint8Var(&optEcDataNum, CliFlagEcDataNum, cmdVolDefaultEcDataNum, "Specify ec data units number")
 	cmd.Flags().Uint8Var(&optEcParityNum, CliFlagEcParityNum, cmdVolDefaultEcParityNum, "Specify ec parity units number")
 	cmd.Flags().BoolVar(&optEcEnable, CliFlagEcEnable, cmdVolDefaultEcEnable, "Enable ec partiton backup")
-	cmd.Flags().Uint64Var(&optMaxChildrenCnt, CliOpVolMaxChildrenCnt, cmdVolDefaultMaxChildrenCnt, "Specify max children cnt [default : 100W]")
 	cmd.Flags().Uint64Var(&optBatchDelInodeCnt, CliOpVolBatchDelInodeCnt, 0, "Specify batch del inode cnt [default :0 use meta node default 128]")
 	cmd.Flags().Uint64Var(&optDelInodeInterval, CliOpVolDelInodeInterval, 0, "Specify del inodes interval  [Unit: ms, default 0]")
 	return cmd

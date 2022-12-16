@@ -1818,7 +1818,7 @@ func TestCreateVolForUpdateToCrossRegionVol(t *testing.T) {
 	process(reqURL, t)
 	// create a normal vol
 	err := mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, 1,
-		false, false, false, true, false, false, zoneName, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		false, false, false, true, false, false, zoneName, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -2531,7 +2531,7 @@ func TestSmartVolRules(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 3, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -2670,7 +2670,7 @@ func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 3, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -2783,7 +2783,7 @@ func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -2896,7 +2896,7 @@ func TestGetTargetAddressForDataPartitionSmartCase2(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3019,7 +3019,7 @@ func TestGetTargetAddressForDataPartitionSmartCase3(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
-		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3144,7 +3144,7 @@ func TestGetTargetAddressForDataPartitionSmartCase4(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
-		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3288,7 +3288,7 @@ func TestGetTargetAddressForDataPartitionSmartCase5(t *testing.T) {
 
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
-		fmt.Sprintf("%v,%v", testZone2, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		fmt.Sprintf("%v,%v", testZone2, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3506,7 +3506,7 @@ func TestGetTargetAddressForDataPartitionSmartCase6(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
-		fmt.Sprintf("%v,%v,%v", testZone1, testZone3, testZone7), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		fmt.Sprintf("%v,%v,%v", testZone1, testZone3, testZone7), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3712,7 +3712,7 @@ func TestGetTargetAddressForDataPartitionSmartCase7(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 5, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
-		fmt.Sprintf("%v,%v,%v", testZone1, testZone9, testZone3), "", testSmartRules, 1, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		fmt.Sprintf("%v,%v,%v", testZone1, testZone9, testZone3), "", testSmartRules, 1, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3804,7 +3804,7 @@ func TestFreezeDataPartition(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, 0)
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		t.FailNow()

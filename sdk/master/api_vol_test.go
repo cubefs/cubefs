@@ -33,7 +33,7 @@ var (
 func TestVolCreate(t *testing.T) {
 	t.Skipf("This case skiped cause timeout problem.")
 	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testEnableWriteCache, testZoneName, testMpLyout, "", 0, proto.CompactDefaultName, 4, 2, false, 0, 0, 0, 0)
+		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testEnableWriteCache, testZoneName, testMpLyout, "", 0, proto.CompactDefaultName, 4, 2, false, 0, 0, 0)
 	if err != nil {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, testVolName)
 	}
