@@ -176,7 +176,7 @@ func newExtentGetCmd() *cobra.Command {
 					continue
 				}
 				var md5Sum string
-				if extent[proto.ExtentInfoSize] < 16 * unit.TB {
+				if extent[proto.ExtentInfoSize] < 16 * unit.GB {
 					md5Sum, err = dataClient.ComputeExtentMd5(partitionID, extentID, 0, extent[proto.ExtentInfoSize]-uint64(proto.PageSize))
 					if err != nil {
 						md5Sum = "null"
@@ -619,6 +619,7 @@ func searchExtent(dps []uint64, extents []uint64, extentOffset uint, size uint, 
 				if err != nil {
 					stdout("get extents error: %v, inode: %d\n", err, inode)
 					wg.Done()
+					idx++
 					continue
 				}
 				for _, ek := range extentsResp.Extents {
