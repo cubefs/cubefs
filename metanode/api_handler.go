@@ -289,7 +289,6 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 			ek.Size = binary.BigEndian.Uint32(k[28:32])
 		case ExtentDelTable:
 			err = ek.UnmarshalDbKey(k[8:])
-			break
 		default:
 			break
 		}
@@ -297,7 +296,22 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			return false, err
 		}
-		val, err = json.Marshal(ek)
+		delEkInfo := &struct {
+			proto.ExtentKey
+			DelTime uint64
+		}{
+			proto.ExtentKey{
+				FileOffset:   ek.FileOffset,
+				PartitionId:  ek.PartitionId,
+				ExtentId:     ek.ExtentId,
+				ExtentOffset: ek.ExtentOffset,
+				Size: ek.Size,
+				CRC: ek.CRC,
+			},
+			getDateInKey(k),
+		}
+
+		val, err = json.Marshal(delEkInfo)
 		if err != nil {
 			return false, err
 		}

@@ -246,7 +246,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
 				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart, optEnableWriteCache,
 				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag), optEcDataNum,
-				optEcParityNum, optEcEnable, optFolReadDelayInterval, optMaxChildrenCnt, optBatchDelInodeCnt, optDelInodeInterval)
+				optEcParityNum, optEcEnable, optFolReadDelayInterval, optBatchDelInodeCnt, optDelInodeInterval)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
