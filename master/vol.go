@@ -89,8 +89,8 @@ type Vol struct {
 	domainId              uint64
 	qosManager            *QosCtrlManager
 	DpReadOnlyWhenVolFull bool
-
-	volLock sync.RWMutex
+	aclMgr                AclManager
+	volLock               sync.RWMutex
 }
 
 func newVol(vv volValue) (vol *Vol) {

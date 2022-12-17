@@ -160,6 +160,10 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetCluster).
 		HandlerFunc(m.getCluster)
+	router.NewRoute().Name(proto.AdminACL).
+		Methods(http.MethodGet).
+		Path(proto.AdminACL).
+		HandlerFunc(m.aclOperate)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetClusterInfo).
 		HandlerFunc(m.setClusterInfo)

@@ -19,6 +19,7 @@ import "github.com/cubefs/cubefs/util"
 // api
 const (
 	// Admin APIs
+
 	AdminGetMasterApiList                     = "/admin/getMasterApiList"
 	AdminSetApiQpsLimit                       = "/admin/setApiQpsLimit"
 	AdminGetApiQpsLimit                       = "/admin/getApiQpsLimit"
@@ -71,6 +72,7 @@ const (
 	AdminSetClusterUuidEnable                 = "/admin/setClusterUuidEnable"
 	AdminGetClusterUuid                       = "/admin/getClusterUuid"
 	AdminGenerateClusterUuid                  = "/admin/generateClusterUuid"
+
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -101,6 +103,9 @@ const (
 	QosUpdateZoneLimit     = "/qos/updateZoneLimit" // include disk enable
 	QosUpload              = "/admin/qosUpload"
 	QosUpdateMasterLimit   = "/qos/masterLimit"
+
+	// acl api
+	AdminACL = "/admin/aclOp"
 
 	//raft node APIs
 	AddRaftNode    = "/raftNode/add"
@@ -284,6 +289,18 @@ type HTTPReply struct {
 // RegisterMetaNodeResp defines the response to register a meta node.
 type RegisterMetaNodeResp struct {
 	ID uint64
+}
+
+type AclIpInfo struct {
+	Ip    string
+	CTime int64
+}
+
+type AclRsp struct {
+	Info    string
+	OK      bool
+	List    []*AclIpInfo
+	Reserve string
 }
 
 // ClusterInfo defines the cluster infomation.

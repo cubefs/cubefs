@@ -46,6 +46,12 @@ const (
 )
 
 const (
+	AclListIP  = 0
+	AclAddIP   = 1
+	AclDelIP   = 2
+	AclCheckIP = 3
+)
+const (
 	DefaultTinySizeLimit = 1 * MB // TODO explain tiny extent?
 )
 

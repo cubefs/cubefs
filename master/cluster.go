@@ -487,6 +487,9 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 		}
 	}()
 }
+func (c *Cluster) passAclCheck(ip string) {
+
+}
 
 func (c *Cluster) checkLeaderAddr() {
 	leaderID, _ := c.partition.LeaderTerm()
@@ -2706,6 +2709,8 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	if vol, err = c.doCreateVol(req); err != nil {
 		goto errHandler
 	}
+
+	vol.aclMgr.init(c, vol)
 
 	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
 

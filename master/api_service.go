@@ -283,6 +283,76 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(cs))
 }
 
+func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
+	var (
+		ip      string
+		err     error
+		volName string
+		vol     *Vol
+		op      uint64
+		value   string
+		ok, res bool
+		ipList  []*proto.AclIpInfo
+	)
+	if volName, err = extractName(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if value = r.FormValue(OperateKey); value == "" {
+		err = keyNotFound(OperateKey)
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+
+	op, err = strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parseUintParam %s-%s is not legal, err %s", OperateKey, value, err.Error())
+		return
+	}
+
+	if op != util.AclListIP {
+		if ip = r.FormValue(IPKey); ip == "" {
+			err = keyNotFound(IPKey)
+			sendErrReply(w, r, newErrHTTPReply(err))
+		}
+	}
+
+	log.LogDebugf("aclOperate. name %v op %v ip %v", volName, op, ip)
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		log.LogDebugf("aclOperate. name %v not found", volName)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	ok = true
+	opAclRes := vol.aclMgr.aclOperate(op, ip)
+	switch op {
+	case util.AclCheckIP:
+		if ipList, res = opAclRes.([]*proto.AclIpInfo); !res {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("inner error")))
+			return
+		}
+	case util.AclAddIP, util.AclDelIP:
+		if opAclRes != nil {
+			if err, res = opAclRes.(error); !res {
+				sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("inner error")))
+				return
+			}
+		}
+	case util.AclListIP:
+		if ipList, res = opAclRes.([]*proto.AclIpInfo); !res {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("inner error")))
+			return
+		}
+	}
+
+	rsp := &proto.AclRsp{
+		OK:   ok,
+		List: ipList,
+	}
+	_ = sendOkReply(w, r, newSuccessHTTPReply(rsp))
+	return
+}
+
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetCluster))
 	defer func() {

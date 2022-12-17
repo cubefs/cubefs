@@ -95,6 +95,9 @@ const (
 	TimeOut                 = "timeout"
 	CountByMeta             = "countByMeta"
 	dpReadOnlyWhenVolFull   = "dpReadOnlyWhenVolFull"
+	PeriodicKey             = "periodic"
+	IPKey                   = "ip"
+	OperateKey              = "op"
 )
 
 const (
@@ -219,6 +222,7 @@ const (
 	opSyncAddDecommissionDisk       uint32 = 0x28
 	opSyncDeleteDecommissionDisk    uint32 = 0x29
 	opSyncUpdateDecommissionDisk    uint32 = 0x2A
+	opSyncAcl                       uint32 = 0x36
 )
 
 const (
@@ -261,4 +265,5 @@ const (
 	volCachePrefix          = keySeparator + volNameAcronym + keySeparator
 	DecommissionDiskAcronym = "dd"
 	DecommissionDiskPrefix  = keySeparator + DecommissionDiskAcronym + keySeparator
+	AclPrefix               = keySeparator + "acl" + keySeparator
 )
