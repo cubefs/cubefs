@@ -1,6 +1,7 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -704,4 +705,112 @@ func (vol *Vol) volQosUpdateMagnify(c *Cluster, magnifyArgs *qosArgs) error {
 func (vol *Vol) volQosUpdateLimit(c *Cluster, limitArgs *qosArgs) error {
 	vol.qosManager.volUpdateLimit(limitArgs)
 	return c.syncUpdateVol(vol)
+}
+
+type AclManager struct {
+	aclIps		map[string]*proto.AclIpInfo
+	c			*Cluster
+	vol			*Vol
+	sync.RWMutex
+}
+
+type AclFsm struct {
+	AclIpArr []*proto.AclIpInfo
+}
+
+func (acl *AclManager) init(c *Cluster, vol *Vol) {
+	acl.c = c
+	acl.vol = vol
+	acl.aclIps = make(map[string]*proto.AclIpInfo)
+}
+
+func (acl *AclManager) aclOperate(op uint64, ip string) interface{} {
+	acl.Lock()
+	defer acl.Unlock()
+
+	switch op {
+	case util.AclAddIP:
+		return acl.addIp(ip)
+	case util.AclDelIP:
+		return acl.removeIp(ip)
+	case util.AclCheckIP:
+		return acl.checkIp(ip)
+	case util.AclListIP:
+		return acl.listAll()
+	default:
+		err := fmt.Errorf("aclOperate op %v not found", op)
+		return err
+	}
+}
+
+func (acl *AclManager) listAll() (val []*proto.AclIpInfo) {
+	log.LogDebugf("vol %v listAll", acl.vol.Name)
+	for ip, info := range acl.aclIps {
+		log.LogDebugf("vol %v listAll ip %v", ip, acl.vol.Name)
+		val = append(val, info)
+	}
+
+	return
+}
+
+func (acl *AclManager) checkIp(ip string) (val []*proto.AclIpInfo){
+	log.LogDebugf("checkIp %v", ip)
+	if info, ok := acl.aclIps[ip]; ok {
+		log.LogDebugf("vol %v checkIp ip %v", ip, acl.vol.Name)
+		val = append(val, info)
+	}
+	return
+}
+
+func (acl *AclManager) addIp(ip string) (err error){
+	log.LogDebugf("addIp %v", ip)
+	if _, ok := acl.aclIps[ip]; ok {
+		return
+	}
+	acl.aclIps[ip] = &proto.AclIpInfo{
+		Ip:    ip,
+		CTime: time.Now().Unix(),
+	}
+
+	return acl.persist()
+}
+
+func (acl *AclManager) removeIp(ip string) (err error){
+	log.LogDebugf("removeIp %v", ip)
+	delete(acl.aclIps, ip)
+	return acl.persist()
+}
+
+func (acl *AclManager) persist() (err error){
+	log.LogDebugf("persist")
+	var aclFsm AclFsm
+	for _, t := range acl.aclIps {
+		aclFsm.AclIpArr = append(aclFsm.AclIpArr, t)
+	}
+
+	var val []byte
+	if val, err = json.Marshal(aclFsm); err != nil {
+		log.LogErrorf("vol %v acl persist error %v", acl.vol.Name, err)
+		return
+	}
+	if err = acl.c.syncAclList(acl.vol, val); err != nil {
+		log.LogErrorf("vol %v acl persist syncAclList error %v", acl.vol.Name, err)
+		return
+	}
+	return
+}
+
+func (acl *AclManager) load(c *Cluster, val []byte) (err error) {
+	log.LogDebugf("load")
+	acl.c = c
+	aclFsm := &AclFsm{}
+	if err = json.Unmarshal(val, aclFsm); err != nil {
+		log.LogErrorf("vol %v acl load %v", acl.vol.Name)
+		return
+	}
+	for _, info := range aclFsm.AclIpArr {
+		acl.aclIps[info.Ip] = info
+		log.LogDebugf("vol %v acl load %v", acl.vol.Name, info.Ip)
+	}
+	return
 }

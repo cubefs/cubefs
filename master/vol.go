@@ -89,7 +89,7 @@ type Vol struct {
 	domainId              uint64
 	qosManager            *QosCtrlManager
 	DpReadOnlyWhenVolFull bool
-
+	aclMgr             AclManager
 	volLock sync.RWMutex
 }
 
