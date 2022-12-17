@@ -161,6 +161,21 @@ func formatVolInfoTableRow(vi *proto.VolInfo) string {
 }
 
 var (
+	volumeVersionPattern     = "%-20v    %-40v    %-8v    %-8v"
+	volumeVersionTableHeader = fmt.Sprintf(volumeVersionPattern, "VER", "CTIME", "STATUS", "OTHER")
+)
+
+var (
+	volumeAclPattern     = "%-20v    %-40v    %-8v"
+	volumeAclTableHeader = fmt.Sprintf(volumeAclPattern, "IP", "CTIME", "OTHER")
+)
+
+func formatAclInfoTableRow(aclInfo *proto.AclIpInfo) string {
+	return fmt.Sprintf(volumeAclPattern,
+		aclInfo.Ip, time.Unix(aclInfo.CTime, 0).Format(time.RFC1123), "")
+}
+
+var (
 	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
 		"ID", "REPLICAS", "STATUS", "ISRECOVER", "LEADER", "MEMBERS")

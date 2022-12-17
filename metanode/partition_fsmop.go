@@ -71,13 +71,16 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 	status = proto.OpOk
 	oldEnd := mp.config.End
 	mp.config.End = end
-	defer func() {
-		if err != nil {
-			mp.config.End = oldEnd
-			status = proto.OpDiskErr
-		}
-	}()
-	err = mp.PersistMetadata()
+
+	if end < mp.config.Cursor {
+		status = proto.OpAgain
+		mp.config.End = oldEnd
+		return
+	}
+	if err = mp.PersistMetadata(); err != nil {
+		status = proto.OpDiskErr
+		mp.config.End = oldEnd
+	}
 	return
 }
 

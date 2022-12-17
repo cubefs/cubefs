@@ -410,6 +410,20 @@ func (api *AdminAPI) GetVolumeSimpleInfoWithFlowInfo(volName string) (vv *proto.
 	return
 }
 
+// access control list
+func (api *AdminAPI) CheckACL() (ci *proto.ClusterInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminACL)
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	ci = &proto.ClusterInfo{}
+	if err = json.Unmarshal(buf, &ci); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) GetClusterInfo() (ci *proto.ClusterInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetIP)
 	var buf []byte

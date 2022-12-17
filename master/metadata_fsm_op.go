@@ -642,6 +642,33 @@ func (c *Cluster) syncPutVolInfo(opType uint32, vol *Vol) (err error) {
 	return c.submit(metadata)
 }
 
+func (c *Cluster) syncAclList(vol *Vol, val []byte) (err error) {
+	log.LogDebugf("syncAclList vol %v vallen %v", vol.Name, len(val))
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncAcl
+	metadata.K = AclPrefix + strconv.FormatUint(vol.ID, 10)
+	metadata.V = val
+
+	return c.submit(metadata)
+}
+
+func (c *Cluster) loadAclList(vol *Vol) (err error) {
+	key := AclPrefix + strconv.FormatUint(vol.ID, 10)
+	result, err := c.fsm.store.SeekForPrefix([]byte(key))
+	if err != nil {
+		log.LogErrorf("action[loadAclList] err %v", err)
+		return
+	}
+
+	log.LogDebugf("loadAclList vol %v rocksdb value count %v", vol.Name, len(result))
+
+	vol.aclMgr.init(c, vol)
+	for _, value := range result {
+		return vol.aclMgr.load(c, value)
+	}
+	return
+}
+
 // key=#mp#volID#metaPartitionID,value=json.Marshal(metaPartitionValue)
 func (c *Cluster) syncAddMetaPartition(mp *MetaPartition) (err error) {
 	return c.putMetaPartitionInfo(opSyncAddMetaPartition, mp)
@@ -1190,6 +1217,11 @@ func (c *Cluster) loadVols() (err error) {
 		}
 		vol := newVolFromVolValue(vv)
 		vol.Status = vv.Status
+		if err = c.loadAclList(vol); err != nil {
+			log.LogInfof("action[loadVols],vol[%v] load ver manager error %v", vol.Name, err)
+			continue
+		}
+
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
 	}
