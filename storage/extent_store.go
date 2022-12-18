@@ -209,7 +209,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 		normalExtentSnapshot, tinyExtentSnapshot []ExtentInfoBlock
 	)
 
-	if normalExtentSnapshot, _, err = s.GetAllWatermarks(proto.NormalExtentType, NormalExtentFilter()); err != nil {
+	if normalExtentSnapshot, err = s.GetAllWatermarks(proto.NormalExtentType, NormalExtentFilter()); err != nil {
 		return
 	}
 
@@ -511,8 +511,7 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 }
 
 // GetAllWatermarks returns all the watermarks.
-
-func (s *ExtentStore) GetAllWatermarks(extentType uint8, filter ExtentFilter) (extents []ExtentInfoBlock, tinyDeleteFileSize int64, err error) {
+func (s *ExtentStore) GetAllWatermarks(extentType uint8, filter ExtentFilter) (extents []ExtentInfoBlock, err error) {
 	extents = make([]ExtentInfoBlock, 0)
 	s.infoStore.RangeDist(extentType, func(extentID uint64, ei *ExtentInfoBlock) {
 		if filter != nil && !filter(ei) {
@@ -520,7 +519,6 @@ func (s *ExtentStore) GetAllWatermarks(extentType uint8, filter ExtentFilter) (e
 		}
 		extents = append(extents, *ei)
 	})
-	tinyDeleteFileSize, err = s.LoadTinyDeleteFileOffset()
 	return
 }
 
@@ -1080,13 +1078,16 @@ func (s *ExtentStore) ForceFlushAllFD() (cnt int) {
 }
 
 func (s *ExtentStore) EvictExpiredNormalExtentDeleteCache(expireTime int64) {
+	var count int
 	s.normalExtentDeleteMap.Range(func(key, value interface{}) bool {
 		timeDelete := value.(int64)
 		if timeDelete < time.Now().Unix() - expireTime {
 			s.normalExtentDeleteMap.Delete(key)
+			count++
 		}
 		return true
 	})
+	log.LogDebugf("action[EvictExpiredNormalExtentDeleteCache] Partition(%d) (%d) extent delete cache has been evicted.", s.partitionID, count)
 }
 
 func (s *ExtentStore) PlaybackTinyDelete() (err error) {

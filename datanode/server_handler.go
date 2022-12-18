@@ -310,8 +310,13 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if files, tinyDeleteRecordSize, err = partition.ExtentStore().GetAllWatermarks(proto.AllExtentType, nil); err != nil {
+	if files, err = partition.ExtentStore().GetAllWatermarks(proto.AllExtentType, nil); err != nil {
 		err = fmt.Errorf("get watermark fail: %v", err)
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if tinyDeleteRecordSize, err = partition.ExtentStore().LoadTinyDeleteFileOffset(); err != nil {
+		err = fmt.Errorf("load tiny delete file offset fail: %v", err)
 		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
 	}

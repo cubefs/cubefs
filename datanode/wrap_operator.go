@@ -661,12 +661,12 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 			err = storage.PartitionIsLoaddingErr
 			return
 		}
-		fInfoList, _, err = store.GetAllWatermarks(p.ExtentType, storage.NormalExtentFilter())
+		fInfoList, err = store.GetAllWatermarks(p.ExtentType, storage.NormalExtentFilter())
 	} else {
 		extents := make([]uint64, 0)
 		err = json.Unmarshal(p.Data, &extents)
 		if err == nil {
-			fInfoList, _, err = store.GetAllWatermarks(p.ExtentType, storage.TinyExtentFilter(extents))
+			fInfoList, err = store.GetAllWatermarks(p.ExtentType, storage.TinyExtentFilter(extents))
 		}
 	}
 	buf, err = json.Marshal(fInfoList)

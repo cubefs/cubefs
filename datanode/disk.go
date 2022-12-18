@@ -258,6 +258,7 @@ func (d *Disk) startScheduler() {
 			checkStatusTicker.Stop()
 			evictFDTicker.Stop()
 			forceEvictFDTicker.Stop()
+			evictExtentDeleteCacheTicker.Stop()
 		}()
 		for {
 			select {

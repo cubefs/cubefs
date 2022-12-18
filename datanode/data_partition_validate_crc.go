@@ -131,7 +131,7 @@ func (dp *DataPartition) getLocalExtentInfoForValidateCRC() (extents []storage.E
 		err = storage.PartitionIsLoaddingErr
 		return
 	}
-	extents, _, err = dp.extentStore.GetAllWatermarks(proto.AllExtentType, storage.ExtentFilterForValidateCRC())
+	extents, err = dp.extentStore.GetAllWatermarks(proto.AllExtentType, storage.ExtentFilterForValidateCRC())
 	if err != nil {
 		err = fmt.Errorf("getLocalExtentInfoForValidateCRC DataPartition(%v) err:%v", dp.partitionID, err)
 		return

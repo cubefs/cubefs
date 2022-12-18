@@ -36,7 +36,7 @@ func TestGetLocalExtentInfo(t *testing.T) {
 	tinyExtents := []uint64{1, 2, 3, 10}
 	var extents []storage.ExtentInfoBlock
 	var leaderTinyDeleteRecordFileSize int64
-	if extents, leaderTinyDeleteRecordFileSize, err = dp.getLocalExtentInfo(proto.TinyExtentType, tinyExtents); err != nil {
+	if extents, err = dp.getLocalExtentInfo(proto.TinyExtentType, tinyExtents); err != nil {
 		t.Fatalf("get local extent info, extentType:%v err:%v", proto.TinyExtentType, err)
 	}
 	if len(extents) != len(tinyExtents) {
@@ -45,7 +45,7 @@ func TestGetLocalExtentInfo(t *testing.T) {
 	if leaderTinyDeleteRecordFileSize != int64(24) {
 		t.Fatalf("leaderTinyDeleteRecordFileSize expect:%v, actual:%v", 24, leaderTinyDeleteRecordFileSize)
 	}
-	if extents, leaderTinyDeleteRecordFileSize, err = dp.getLocalExtentInfo(proto.NormalExtentType, tinyExtents); err != nil {
+	if extents, err = dp.getLocalExtentInfo(proto.NormalExtentType, tinyExtents); err != nil {
 		t.Fatalf("get local extent info, extentType:%v err:%v", proto.TinyExtentType, err)
 	}
 	if len(extents) != int(count) {
@@ -55,7 +55,7 @@ func TestGetLocalExtentInfo(t *testing.T) {
 	if dp, err = initDataPartition(testBaseDir, 2, false); err != nil {
 		t.Fatalf("init data partition err:%v", err)
 	}
-	if _, _, err = dp.getLocalExtentInfo(proto.NormalExtentType, tinyExtents); err == nil {
+	if _, err = dp.getLocalExtentInfo(proto.NormalExtentType, tinyExtents); err == nil {
 		t.Fatalf("get local extent info, extentType:%v err equal nil", proto.TinyExtentType)
 	}
 }
@@ -333,7 +333,7 @@ func TestDoStreamExtentFixRepairOnFollowerDisk(t *testing.T) {
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
 		wg.Add(1)
 		source := repairTasks[0].ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
-		go dp.doStreamExtentFixRepairOnFollowerDisk(ctx, wg, extentInfo, source)
+		go dp.doStreamExtentFixRepairOnFollowerDisk(ctx, wg, extentInfo, []string{source})
 	}
 	wg.Wait()
 	// 比较修复后extent水位

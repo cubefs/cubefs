@@ -271,7 +271,7 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 					return
 				}
 				var eibs []ExtentInfoBlock
-				if eibs, _, err = storage.GetAllWatermarks(proto.NormalExtentType, nil); err != nil {
+				if eibs, err = storage.GetAllWatermarks(proto.NormalExtentType, nil); err != nil {
 					return
 				}
 				for _, eib := range eibs {
@@ -332,7 +332,7 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 		}
 
 		var eibs []ExtentInfoBlock
-		if eibs, _, err = storage.GetAllWatermarks(proto.AllExtentType, nil); err != nil {
+		if eibs, err = storage.GetAllWatermarks(proto.AllExtentType, nil); err != nil {
 			t.Fatalf("Get extent info from storage failed, error message: %v", err)
 		}
 		var eibTotalUsed int64

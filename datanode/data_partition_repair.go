@@ -144,10 +144,14 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 }
 
 func (dp *DataPartition) buildDataPartitionRepairTask(ctx context.Context, repairTasks []*DataPartitionRepairTask, replicas []string, extentType uint8, tinyExtents []uint64) (err error) {
+	var leaderTinyDeleteRecordFileSize int64
 	// get the local extent info
-	extents, leaderTinyDeleteRecordFileSize, err := dp.getLocalExtentInfo(extentType, tinyExtents)
+	extents, err := dp.getLocalExtentInfo(extentType, tinyExtents)
 	if err != nil {
 		return err
+	}
+	if !(dp.partitionStatus == proto.Unavailable) {
+		leaderTinyDeleteRecordFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset()
 	}
 	leaderAddr := replicas[0]
 	// new repair task for the leader
@@ -169,15 +173,15 @@ func (dp *DataPartition) buildDataPartitionRepairTask(ctx context.Context, repai
 	return
 }
 
-func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []storage.ExtentInfoBlock, leaderTinyDeleteRecordFileSize int64, err error) {
+func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []storage.ExtentInfoBlock, err error) {
 	if extentType == proto.NormalExtentType {
 		if !dp.ExtentStore().IsFinishLoad() {
 			err = storage.PartitionIsLoaddingErr
 		} else {
-			extents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(extentType, storage.NormalExtentFilter())
+			extents, err = dp.extentStore.GetAllWatermarks(extentType, storage.NormalExtentFilter())
 		}
 	} else {
-		extents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(extentType, storage.TinyExtentFilter(tinyExtents))
+		extents, err = dp.extentStore.GetAllWatermarks(extentType, storage.TinyExtentFilter(tinyExtents))
 	}
 	if err != nil {
 		err = errors.Trace(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
