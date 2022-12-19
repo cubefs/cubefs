@@ -242,25 +242,25 @@ func (m *MetaNode) updateTrashCleanInterval(interval uint64) {
 	log.LogDebugf("[updateTrashCleanInterval] new value:%v", interval)
 }
 
-func (m *MetaNode) updateRaftParamFromMaster(logSize, cap int) {
+func (m *MetaNode) updateRaftParamFromMaster(logSize, logCap int) {
 	if logSize >= 0 && logSize != nodeInfo.raftLogSizeFromMaster {
 		nodeInfo.raftLogSizeFromMaster = logSize
 	}
 
-	if cap >= 0 && cap != nodeInfo.raftLogCapFromMaster {
-		nodeInfo.raftLogCapFromMaster = cap
+	if logCap >= 0 && logCap != nodeInfo.raftLogCapFromMaster {
+		nodeInfo.raftLogCapFromMaster = logCap
 	}
 
 	return
 }
 
-func (m *MetaNode) updateRaftParamFromLocal(logSize, cap int) {
+func (m *MetaNode) updateRaftParamFromLocal(logSize, logCap int) {
 	if logSize >= 0 && logSize != nodeInfo.raftLogSizeFromLoc {
 		nodeInfo.raftLogSizeFromLoc = logSize
 	}
 
-	if cap >= 0 && cap != nodeInfo.raftLogCapFromLoc {
-		nodeInfo.raftLogCapFromLoc = cap
+	if logCap >= 0 && logCap != nodeInfo.raftLogCapFromLoc {
+		nodeInfo.raftLogCapFromLoc = logCap
 	}
 
 	return
