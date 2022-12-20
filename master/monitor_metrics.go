@@ -219,6 +219,7 @@ func (mm *monitorMetrics) setBadPartitionMetrics() {
 		return true
 	})
 	mm.badMpCount.SetWithLabels(float64(badMpCount), map[string]string{"type": "bad_mp"})
+	mm.cluster.BadMPCount = badMpCount
 
 	badDpCount := uint64(0)
 	mm.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
@@ -226,6 +227,7 @@ func (mm *monitorMetrics) setBadPartitionMetrics() {
 		return true
 	})
 	mm.badDpCount.SetWithLabels(float64(badDpCount), map[string]string{"type": "bad_dp"})
+	mm.cluster.BadDPCount = badDpCount
 }
 
 func (mm *monitorMetrics) deleteVolMetric(volName string) {

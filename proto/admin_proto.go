@@ -327,6 +327,7 @@ type DataNodeHeartbeatResponse struct {
 	Status              uint8
 	Result              string
 	BadDisks            []string
+	LackDataPartitions  []uint64
 }
 
 // MetaPartitionReport defines the meta partition report.

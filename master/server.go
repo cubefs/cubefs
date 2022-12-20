@@ -301,6 +301,12 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.config.NodeStaleSec < defaultNodeStaleSec {
 		m.config.NodeStaleSec = defaultNodeStaleSec
 	}
+	if m.config.DecommissionDnLimit < defaultDecommissionDnLimit {
+		m.config.DecommissionDnLimit = defaultDecommissionDnLimit
+	}
+	if m.config.DecommissionDpLimit < defaultDecommissionDpLimit {
+		m.config.DecommissionDpLimit = defaultDecommissionDpLimit
+	}
 	return
 }
 

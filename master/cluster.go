@@ -54,6 +54,8 @@ type Cluster struct {
 	domainManager        *DomainManager
 	BadDataPartitionIds  *sync.Map
 	BadMetaPartitionIds  *sync.Map
+	BadDPCount           uint64
+	BadMPCount           uint64
 	DisableAutoAllocate  bool
 	FaultDomain          bool
 	needFaultDomain      bool // FaultDomain is true and normal zone aleady used up
@@ -506,6 +508,7 @@ func (c *Cluster) scheduleToDecommission() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.decommissionDatanodes()
+				c.decommissionDataPartitions()
 			}
 			time.Sleep(5 * time.Minute)
 		}
@@ -521,9 +524,8 @@ func (c *Cluster) decommissionDatanodes() {
 		}
 	}()
 
-	// Config this
-	if c.dataNodesToBeOffline > 1 {
-		log.LogInfof("the number of decommissioning datanodes are exceeds 1")
+	if c.dataNodesToBeOffline > c.cfg.DecommissionDnLimit {
+		log.LogInfof("the number of decommissioning datanodes are exceeds %v", c.cfg.DecommissionDnLimit)
 		return
 	}
 
@@ -535,6 +537,38 @@ func (c *Cluster) decommissionDatanodes() {
 		}
 		if dataNode.isStale && !dataNode.ToBeOffline {
 			c.migrateDataNode(dataNode.Addr, "", 0, false)
+		}
+		return true
+	})
+}
+
+func (c *Cluster) decommissionDataPartitions() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("decommission dataPartitions occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"decommission dataPartitions occurred panic")
+		}
+	}()
+
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		if dataNode.ToBeOffline {
+			log.LogDebugf("datanode: [%v] is in state ToBeOffline", dataNode.Addr)
+			return true
+		}
+
+		if c.BadDPCount > c.cfg.DecommissionDpLimit {
+			log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
+			return true
+		}
+
+		for _, lackDataPartition := range dataNode.LackDataPartitions {
+			dp, err := c.getDataPartitionByID(lackDataPartition)
+			if err != nil {
+				log.LogWarnf("decommission dataPartition: [%v] from datanode: [%v] failed, err: [%v]", lackDataPartition, dataNode.Addr, err)
+			}
+			c.decommissionDataPartition(dataNode.Addr, dp, false, handleDataPartitionOfflineErr)
 		}
 		return true
 	})

@@ -367,6 +367,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.MaxCapacity = stat.MaxCapacityToCreatePartition
 	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
 	response.BadDisks = make([]string, 0)
+	response.LackDataPartitions = make([]uint64, 0)
 	response.StartTime = s.startTime
 	stat.Unlock()
 
@@ -397,4 +398,10 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			response.BadDisks = append(response.BadDisks, d.Path)
 		}
 	}
+
+	lackPartitions, err := s.checkLocalPartitionMatchWithMaster()
+	if err != nil {
+		log.LogWarn(err)
+	}
+	response.LackDataPartitions = lackPartitions
 }
