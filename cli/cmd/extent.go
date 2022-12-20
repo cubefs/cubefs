@@ -175,7 +175,15 @@ func newExtentGetCmd() *cobra.Command {
 				if err1 != nil {
 					continue
 				}
-				md5Sum, _ := dataClient.ComputeExtentMd5(partitionID, extentID, 0, extent[proto.ExtentInfoSize]-uint64(proto.PageSize))
+				var md5Sum string
+				if extent[proto.ExtentInfoSize] < 16 * unit.GB {
+					md5Sum, err = dataClient.ComputeExtentMd5(partitionID, extentID, 0, extent[proto.ExtentInfoSize]-uint64(proto.PageSize))
+					if err != nil {
+						md5Sum = "null"
+					}
+				} else {
+					md5Sum = "null"
+				}
 				if proto.IsTinyExtent(extentID) {
 					extentHoles, _ := dataClient.GetExtentHoles(partitionID, extentID)
 					stdout("%v\n", formatTinyExtent(r, extent, extentHoles, md5Sum))
@@ -382,7 +390,7 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 	var (
 		use               string
 		short             string
-		path              string
+		specifyPath       string
 		inodeStr          string
 		metaPartitionId   uint64
 		tinyOnly          bool
@@ -420,17 +428,19 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				vol    = args[0]
-				inodes []uint64
+				err           error
+				para          *CheckParam
+				vol           = args[0]
+				specifyInodes []uint64
 			)
 			if len(inodeStr) > 0 {
 				inodeSlice := strings.Split(inodeStr, ",")
 				for _, inode := range inodeSlice {
-					ino, err := strconv.Atoi(inode)
-					if err != nil {
+					ino, err1 := strconv.Atoi(inode)
+					if err1 != nil {
 						continue
 					}
-					inodes = append(inodes, uint64(ino))
+					specifyInodes = append(specifyInodes, uint64(ino))
 				}
 			}
 
@@ -441,7 +451,14 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 			} else {
 				vols = append(vols, vol)
 			}
-			CheckVols(vols, client, modifyTimeMin, modifyTimeMax, "", inodes, 0, tinyOnly, tinyInUse, mpConcurrency, inodeConcurrency, extentConcurrency, checkTypeExtentReplica, ids, dealResultFunc)
+			para, err = NewCheckParam(tinyOnly, tinyInUse, mpConcurrency, inodeConcurrency, extentConcurrency, checkTypeExtentReplica, modifyTimeMin, modifyTimeMax, metaPartitionId, specifyInodes, ids)
+			if err != nil {
+				return
+			}
+			CheckVols(vols, client, para, specifyPath, func() bool {
+				return false
+			})
+			fmt.Printf("results saved in local file")
 			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -452,7 +469,7 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&path, "path", "", "path")
+	cmd.Flags().StringVar(&specifyPath, "path", "", "path")
 	cmd.Flags().StringVar(&inodeStr, "inode", "", "comma separated inodes")
 	cmd.Flags().Uint64Var(&metaPartitionId, "mp", 0, "meta partition id")
 	cmd.Flags().BoolVar(&tinyOnly, "tinyOnly", false, "check tiny extents only")
@@ -469,60 +486,27 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 	return cmd
 }
 
-var dealResultFunc = func(rExtent RepairExtentInfo, repairFD *os.File, canNotRepairFD *os.File) {
-	if len(rExtent.Hosts) == 1 {
-		repairFD.WriteString(fmt.Sprintf("%v %v %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0], rExtent.Inode, rExtent.Volume))
-	} else {
-		canNotRepairFD.WriteString(fmt.Sprintf("%v %v %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts, rExtent.Inode, rExtent.Volume))
-	}
-}
-
-func CheckVols(vols []string, c *sdk.MasterClient, modifyTimeMin, modifyTimeMax string, path string, inodes []uint64, metaPartitionId uint64, tinyOnly, tinyInUse bool, mpConcurrency uint64, inodeConcurrency uint64, extentConcurrency uint64, checkType int, ids []uint64, repairFunc func(rExtent RepairExtentInfo, repairFD *os.File, canNotRepairFD *os.File)) {
-	var modifyTimestampMin, modifyTimestampMax int64
-	if modifyTimeMin != "" {
-		minParsedTime, err1 := time.Parse("2006-01-02 15:04:05", modifyTimeMin)
-		if err1 != nil {
-			fmt.Println(err1)
-			return
-		}
-		modifyTimestampMin = minParsedTime.Unix()
-	}
-	if modifyTimeMax != "" {
-		maxParsedTime, err1 := time.Parse("2006-01-02 15:04:05", modifyTimeMax)
-		if err1 != nil {
-			fmt.Println(err1)
-			return
-		}
-		modifyTimestampMax = maxParsedTime.Unix()
-	}
-	rCh := make(chan RepairExtentInfo, 1024)
-	defer close(rCh)
-	go func() {
-		repairFD, _ := os.OpenFile(fmt.Sprintf("repair_extents_%v_%v", c.Nodes()[0], time.Now().Format("2006010215")), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		canNotRepairFD, _ := os.OpenFile(fmt.Sprintf("can_not_repair_extents_%v_%v", c.Nodes()[0], time.Now().Format("2006010215")), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		defer repairFD.Close()
-		defer canNotRepairFD.Close()
-		for {
-			select {
-			case rExtent := <-rCh:
-				if rExtent.PartitionID == 0 && rExtent.ExtentID == 0 {
-					return
-				}
-				repairFunc(rExtent, repairFD, canNotRepairFD)
-			}
+func CheckVols(vols []string, c *sdk.MasterClient, para *CheckParam, path string, stopFunc func() bool) {
+	var err error
+	defer func() {
+		if err != nil {
+			log.LogErrorf("CheckVols error: %v", err)
 		}
 	}()
+
+	rp := NewRepairPersist(c.Nodes()[0])
+	go rp.persistResult()
+	defer rp.close()
 	for _, v := range vols {
-		switch checkType {
-		case checkTypeExtentReplica, checkTypeExtentLength, checkTypeInodeEk, checkTypeInodeNlink:
-			CheckVol(v, c, path, inodes, metaPartitionId, tinyOnly, tinyInUse, mpConcurrency, inodeConcurrency, extentConcurrency, checkType, modifyTimestampMin, modifyTimestampMax, ids, rCh)
-		case checkTypeExtentCrc:
-			checkVolExtentCrc(c, v, tinyOnly, unit.MB*5)
+		if stopFunc() {
+			break
 		}
-	}
-	rCh <- RepairExtentInfo{
-		PartitionID: 0,
-		ExtentID:    0,
+		switch para.checkType {
+		case checkTypeExtentReplica, checkTypeExtentLength, checkTypeInodeEk, checkTypeInodeNlink:
+			CheckVol(v, c, path, para, rp.rCh, stopFunc)
+		case checkTypeExtentCrc:
+			checkVolExtentCrc(c, v, para.tinyOnly, unit.MB*5)
+		}
 	}
 }
 
@@ -609,7 +593,7 @@ func searchExtent(dps []uint64, extents []uint64, extentOffset uint, size uint, 
 	if err != nil {
 		return
 	}
-	inodes, err := getFileInodesByMp(mps, 0, concurrency, 0, 0, client.MetaNodeProfPort)
+	inodes, err := getFileInodesByMp(mps, 0, concurrency, 0, 0, client.MetaNodeProfPort, true)
 	extentMap := make(map[string]bool)
 	var dp uint64
 	for i := 0; i < len(extents); i++ {
@@ -635,6 +619,7 @@ func searchExtent(dps []uint64, extents []uint64, extentOffset uint, size uint, 
 				if err != nil {
 					stdout("get extents error: %v, inode: %d\n", err, inode)
 					wg.Done()
+					idx++
 					continue
 				}
 				for _, ek := range extentsResp.Extents {
@@ -809,7 +794,7 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, dpC
 	if active {
 		inodes, err = getAllInodesByPath(client, vol, "")
 	} else {
-		inodes, err = getFileInodesByMp(mps, 0, mpConcurrency, 0, 0, client.MetaNodeProfPort)
+		inodes, err = getFileInodesByMp(mps, 0, mpConcurrency, 0, 0, client.MetaNodeProfPort, true)
 	}
 	if err != nil {
 		stdout("get all inodes error: %v\n", err)
@@ -913,32 +898,77 @@ func batchDeleteExtent(partitionId uint64, extents []uint64) (err error) {
 	return
 }
 
-func CheckVol(vol string, c *sdk.MasterClient, path string, inodes []uint64, metaPartitionId uint64, tinyOnly, tinyInUse bool, mpConcurrency uint64, inodeConcurrency uint64, extentConcurrency uint64, checkType int, modifyTimeMin int64, modifyTimeMax int64, ids []uint64, rCh chan RepairExtentInfo) {
+type CheckParam struct {
+	tinyOnly          bool
+	tinyInUse         bool
+	mpConcurrency     uint64
+	inodeConcurrency  uint64
+	extentConcurrency uint64
+	metaPartitionId   uint64
+	checkType         int
+	specifyInodes     []uint64
+	specifyDps	      []uint64
+	modifyTimeMin     time.Time
+	modifyTimeMax     time.Time
+}
+
+func NewCheckParam(tinyOnly, tinyInUse bool, mpConcurrency, inodeConcurrency, extentConcurrency uint64, checkType int, modifyTimeMin, modifyTimeMax string, metaPartitionId uint64, specifyInodes, specifyDps []uint64) (cfg *CheckParam, err error) {
+	var (
+		modifyTimestampMin, modifyTimestampMax time.Time
+	)
+	if modifyTimestampMin, err = parseTime(modifyTimeMin); err != nil {
+		return
+	}
+	if modifyTimestampMax, err = parseTime(modifyTimeMax); err != nil {
+		return
+	}
+	cfg = &CheckParam{
+		tinyOnly: tinyOnly,
+		tinyInUse: tinyInUse,
+		mpConcurrency: mpConcurrency,
+		inodeConcurrency: inodeConcurrency,
+		extentConcurrency: extentConcurrency,
+		checkType: checkType,
+		modifyTimeMin: modifyTimestampMin,
+		modifyTimeMax: modifyTimestampMax,
+		metaPartitionId: metaPartitionId,
+		specifyInodes: specifyInodes,
+		specifyDps: specifyDps,
+	}
+	return
+}
+
+func CheckVol(vol string, c *sdk.MasterClient, path string, param *CheckParam, rCh chan RepairExtentInfo, stopFunc func() bool) {
+	var (
+		checkedExtent *sync.Map
+		wg sync.WaitGroup
+		inodes []uint64
+	)
 	defer func() {
-		msg := fmt.Sprintf("checkVol, vol:%s, path%s", vol, path)
+		msg := fmt.Sprintf("checkVol, cluster:%s, vol:%s, path%s", c.Nodes()[0], vol, path)
 		if r := recover(); r != nil {
 			var stack string
 			stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			log.LogCritical("%s%s\n", msg, stack)
 		}
 	}()
-	var checkedExtent *sync.Map
 	checkedExtent = new(sync.Map)
-	log.LogInfof("begin check, vol:%s, path:%v\n", vol, path)
+	log.LogInfof("begin check, cluster:%s, vol:%s, path:%v", c.Nodes()[0], vol, path)
 	mps, err := c.ClientAPI().GetMetaPartitions(vol)
 	if err != nil {
 		return
 	}
-	if len(inodes) == 0 && path != "" {
+	if len(param.specifyInodes) == 0 && path != "" {
 		inodes, _ = getAllInodesByPath(c, vol, path)
+	} else {
+		inodes = param.specifyInodes
 	}
 	if len(inodes) > 0 {
-		checkInodes(checkedExtent, vol, mps, c, inodes, tinyOnly, tinyInUse, inodeConcurrency, extentConcurrency, checkType, ids, rCh)
-		log.LogInfof("finish check, vol:%s\n", vol)
+		checkInodes(checkedExtent, vol, mps, c, inodes, param, rCh, stopFunc)
+		log.LogInfof("finish check, cluster:%s, vol:%s", c.Nodes()[0], vol)
 		return
 	}
 
-	var wg sync.WaitGroup
 	mpCh := make(chan uint64, 1000)
 	wg.Add(len(mps))
 	go func() {
@@ -948,36 +978,39 @@ func CheckVol(vol string, c *sdk.MasterClient, path string, inodes []uint64, met
 		close(mpCh)
 	}()
 
-	for i := 0; i < int(mpConcurrency); i++ {
+	for i := 0; i < int(param.mpConcurrency); i++ {
 		go func(checked *sync.Map) {
 			for mp := range mpCh {
-				if metaPartitionId > 0 && mp != metaPartitionId {
+				if stopFunc() {
 					wg.Done()
 					continue
 				}
-				log.LogInfof("begin check, vol:%s, mpId: %d\n", vol, mp)
-				log.LogDebugf("begin check, vol:%s, mpId: %d", vol, mp)
-				if checkType == checkTypeInodeNlink {
-					checkVolNlink(c, mps, mp, modifyTimeMin, modifyTimeMax)
+				var mpInodes []uint64
+				if param.metaPartitionId > 0 && mp != param.metaPartitionId {
+					wg.Done()
+					continue
+				}
+				log.LogInfof("begin check, cluster:%s, vol:%s, mpId: %d", c.Nodes()[0], vol, mp)
+				if param.checkType == checkTypeInodeNlink {
+					checkVolNlink(c, mps, mp, param.modifyTimeMin.Unix(), param.modifyTimeMax.Unix())
 				} else {
-					inodes, err = getFileInodesByMp(mps, mp, 1, modifyTimeMin, modifyTimeMax, c.MetaNodeProfPort)
+					mpInodes, err = getFileInodesByMp(mps, mp, 1, param.modifyTimeMin.Unix(), param.modifyTimeMax.Unix(), c.MetaNodeProfPort, false)
 					if err != nil {
 						wg.Done()
 						continue
 					}
-					log.LogDebugf("checkVol mp:%v, inode length:%v", mp, len(inodes))
-					if len(inodes) > 0 {
-						checkInodes(checked, vol, mps, c, inodes, tinyOnly, tinyInUse, inodeConcurrency, extentConcurrency, checkType, ids, rCh)
+					log.LogDebugf("checkVol cluster:%s, mp:%v, inode length:%v", c.Nodes()[0], mp, len(mpInodes))
+					if len(mpInodes) > 0 {
+						checkInodes(checked, vol, mps, c, mpInodes, param, rCh, stopFunc)
 					}
 				}
-				log.LogInfof("finish check, vol:%s, mpId: %d\n", vol, mp)
-				log.LogDebugf("finish check, vol:%s, mpId: %d\n", vol, mp)
+				log.LogInfof("finish check, cluster:%s, vol:%s, mpId: %d", c.Nodes()[0], vol, mp)
 				wg.Done()
 			}
 		}(checkedExtent)
 	}
 	wg.Wait()
-	log.LogInfof("finish check vol, vol:%s\n", vol)
+	log.LogInfof("finish check volume, cluster:%s, vol:%s", c.Nodes()[0], vol)
 }
 
 func checkVolNlink(c *sdk.MasterClient, mps []*proto.MetaPartitionView, metaPartitionId uint64, modifyTimeMin int64, modifyTimeMax int64) {
@@ -1027,7 +1060,7 @@ func checkVolNlink(c *sdk.MasterClient, mps []*proto.MetaPartitionView, metaPart
 	}
 }
 
-func checkInodes(checkedExtent *sync.Map, vol string, mps []*proto.MetaPartitionView, c *sdk.MasterClient, inodes []uint64, tinyOnly bool, tinyInUse bool, inodeConcurrency uint64, extentConcurrency uint64, checkType int, ids []uint64, rCh chan RepairExtentInfo) {
+func checkInodes(checkedExtent *sync.Map, vol string, mps []*proto.MetaPartitionView, c *sdk.MasterClient, inodes []uint64, param *CheckParam, rCh chan RepairExtentInfo, stopFunc func() bool) {
 	var (
 		wg sync.WaitGroup
 	)
@@ -1039,14 +1072,17 @@ func checkInodes(checkedExtent *sync.Map, vol string, mps []*proto.MetaPartition
 		}
 		close(inoCh)
 	}()
-	for i := 0; i < int(inodeConcurrency); i++ {
+	for i := 0; i < int(param.inodeConcurrency); i++ {
 		go func(mc *sdk.MasterClient, extentMap *sync.Map) {
 			for ino := range inoCh {
-				if checkType == checkTypeInodeEk {
+				if stopFunc() {
+					wg.Done()
+					continue
+				}
+				if param.checkType == checkTypeInodeEk {
 					checkInodeEk(ino, mc, mps)
 				} else {
-					log.LogDebugf("checkInode: vol(%v), inode(%v)\n", vol, ino)
-					checkInode(vol, mc, ino, extentMap, tinyOnly, tinyInUse, extentConcurrency, checkType, mps, ids, rCh)
+					checkInode(vol, mc, ino, extentMap, param, mps, rCh)
 				}
 				wg.Done()
 			}
@@ -1099,7 +1135,7 @@ func getChildInodesByParent(mw *meta.MetaWrapper, vol string, parent uint64) (in
 	return
 }
 
-func getFileInodesByMp(mps []*proto.MetaPartitionView, metaPartitionId uint64, concurrency uint64, modifyTimeMin int64, modifyTimeMax int64, metaProf uint16) (inodes []uint64, err error) {
+func getFileInodesByMp(mps []*proto.MetaPartitionView, metaPartitionId uint64, concurrency uint64, modifyTimeMin int64, modifyTimeMax int64, metaProf uint16, exit bool) (inodes []uint64, err error) {
 	var (
 		mpCount uint64
 		wg      sync.WaitGroup
@@ -1134,7 +1170,9 @@ func getFileInodesByMp(mps []*proto.MetaPartitionView, metaPartitionId uint64, c
 				inos, err = mtClient.GetAllInodes(mp.PartitionID)
 				if err != nil {
 					stdout("get inodes error: %v, mp: %d\n", err, mp.PartitionID)
-					os.Exit(0)
+					if exit {
+						os.Exit(0)
+					}
 					wg.Done()
 					return
 				}
@@ -1172,12 +1210,14 @@ func idExist(id uint64, ids []uint64) bool {
 	return false
 }
 
-func checkExtentReplicaInfo(c *sdk.MasterClient, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string, checkType int, rCh chan RepairExtentInfo) (err error) {
-	if proto.IsTinyExtent(ek.ExtentId) {
-		checkTinyExtentReplicaInfo(c, dataReplicas, ek, ino, volume, rCh)
-	} else {
-		checkNormalExtentReplicaInfo(c, dataReplicas, ek, ino, volume, checkType, rCh)
+func checkExtentReplicaInfo(c *sdk.MasterClient, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string, checkType int, rCh chan RepairExtentInfo, checkTiny bool) (err error) {
+	if checkTiny {
+		if proto.IsTinyExtent(ek.ExtentId) {
+			err = checkTinyExtentReplicaInfo(c, dataReplicas, ek, ino, volume, rCh)
+		}
+		return
 	}
+	err = checkNormalExtentReplicaInfo(c, dataReplicas, ek, ino, volume, checkType, rCh)
 	return
 }
 
@@ -1191,21 +1231,21 @@ func checkNormalExtentReplicaInfo(c *sdk.MasterClient, dataReplicas []*proto.Dat
 	var same bool
 	var wrongBlocks []int
 	if wrongBlocks, err = checkExtentBlockCrc(dataReplicas, c, ek.PartitionId, ek.ExtentId); err != nil {
-		log.LogErrorf("checkNormalExtentReplicaInfo failed, partition:%v, extent:%v, err:%v\n", ek.PartitionId, ek.ExtentId, err)
+		log.LogErrorf("checkNormalExtentReplicaInfo failed, cluster:%s, partition:%v, extent:%v, err:%v", c.Nodes()[0], ek.PartitionId, ek.ExtentId, err)
 		return
 	}
 	if len(wrongBlocks) == 0 {
-		log.LogInfof("action[checkNormalExtentReplicaInfo] partition:%v, extent:%v, inode:%v, check same at block crc check", ek.PartitionId, ek.ExtentId, ino)
+		log.LogInfof("action[checkNormalExtentReplicaInfo] cluster:%s partition:%v, extent:%v, inode:%v, check same at block crc check", c.Nodes()[0], ek.PartitionId, ek.ExtentId, ino)
 		return
 	}
 	if len(wrongBlocks) > 100 {
 		for i := 0; i < 5; i++ {
 			if _, output, same, err = checkExtentReplica(c, dataReplicas, ek, "md5"); err != nil {
-				log.LogErrorf("checkNormalExtentReplicaInfo failed, partition:%v, extent:%v, err:%v\n", ek.PartitionId, ek.ExtentId, err)
+				log.LogErrorf("checkNormalExtentReplicaInfo failed, cluster:%s, partition:%v, extent:%v, err:%v", c.Nodes()[0], ek.PartitionId, ek.ExtentId, err)
 				return
 			}
 			if same {
-				log.LogInfof("action[checkNormalExtentReplicaInfo] partition:%v, extent:%v, inode:%v, check same at md5 check", ek.PartitionId, ek.ExtentId, ino)
+				log.LogInfof("action[checkNormalExtentReplicaInfo] cluster:%s partition:%v, extent:%v, inode:%v, check same at md5 check", c.Nodes()[0], ek.PartitionId, ek.ExtentId, ino)
 				return
 			}
 			time.Sleep(time.Second)
@@ -1235,7 +1275,7 @@ func checkNormalExtentReplicaInfo(c *sdk.MasterClient, dataReplicas []*proto.Dat
 				}
 				addrMap[addr] += 1
 			}
-			log.LogWarnf(output)
+			log.LogWarnf("cluster:" + c.Nodes()[0] + " " + output)
 		}
 		if len(addrMap) > 0 {
 			repairHost := make([]string, 0)
@@ -1252,9 +1292,9 @@ func checkNormalExtentReplicaInfo(c *sdk.MasterClient, dataReplicas []*proto.Dat
 				}
 			} else {
 				if len(repairHost) == 1 {
-					log.LogWarnf("autoRepairExtent: %v %v %v %v %v\n", ek.PartitionId, ek.ExtentId, repairHost[0], ino, volume)
+					log.LogWarnf("cluster:%s autoRepairExtent: %v %v %v %v %v", c.Nodes()[0], ek.PartitionId, ek.ExtentId, repairHost[0], ino, volume)
 				} else {
-					log.LogWarnf("canNotAutoRepairExtent: %v %v %v %v %v\n", ek.PartitionId, ek.ExtentId, repairHost, ino, volume)
+					log.LogWarnf("cluster:%s canNotAutoRepairExtent: %v %v %v %v %v", c.Nodes()[0], ek.PartitionId, ek.ExtentId, repairHost, ino, volume)
 				}
 			}
 		}
@@ -1326,44 +1366,45 @@ func retryCheckBlockMd5(dataReplicas []*proto.DataReplica, c *sdk.MasterClient, 
 	return wrongBlocks, nil
 }
 
-func checkInode(vol string, c *sdk.MasterClient, inode uint64, checkedExtent *sync.Map, tinyOnly bool, tinyInUse bool, concurrency uint64, checkType int, mps []*proto.MetaPartitionView, ids []uint64, rCh chan RepairExtentInfo) {
-	var err error
+func checkInode(vol string, c *sdk.MasterClient, inode uint64, checkedExtent *sync.Map, param *CheckParam, mps []*proto.MetaPartitionView, rCh chan RepairExtentInfo) {
 	var (
+		err         error
 		extentsResp *proto.GetExtentsResponse
 		errCount    int = 0
 		wg          sync.WaitGroup
 	)
 	extentsResp, err = getExtentsByInode(inode, mps, c.MetaNodeProfPort)
 	if err != nil {
+		log.LogErrorf("check inode failed, cluster:%s, vol:%s, inode: %d, extent count: %d, err:%v", c.Nodes()[0], vol, inode, err)
 		return
 	}
 
-	log.LogInfof("begin check, vol:%s, inode: %d, extent count: %d\n", vol, inode, len(extentsResp.Extents))
+	log.LogInfof("begin check inode, cluster:%s, vol:%s, inode: %d, extent count: %d", c.Nodes()[0], vol, inode, len(extentsResp.Extents))
 	ekCh := make(chan proto.ExtentKey)
 	extentCount := 0
 	for _, ek := range extentsResp.Extents {
-		if len(ids) > 0 && !idExist(ek.PartitionId, ids) {
+		if len(param.specifyDps) > 0 && !idExist(ek.PartitionId, param.specifyDps) {
 			continue
 		}
-		if tinyOnly && proto.IsTinyExtent(ek.ExtentId) {
+		if param.tinyOnly && proto.IsTinyExtent(ek.ExtentId) {
 			extentCount++
 			continue
 		}
-		if !tinyOnly && !proto.IsTinyExtent(ek.ExtentId) {
+		if !param.tinyOnly && !proto.IsTinyExtent(ek.ExtentId) {
 			extentCount++
 		}
 	}
 	wg.Add(extentCount)
 	go func() {
 		for _, ek := range extentsResp.Extents {
-			if len(ids) > 0 && !idExist(ek.PartitionId, ids) {
+			if len(param.specifyDps) > 0 && !idExist(ek.PartitionId, param.specifyDps) {
 				continue
 			}
-			if tinyOnly && proto.IsTinyExtent(ek.ExtentId) {
+			if param.tinyOnly && proto.IsTinyExtent(ek.ExtentId) {
 				ekCh <- ek
 				continue
 			}
-			if !tinyOnly && !proto.IsTinyExtent(ek.ExtentId) {
+			if !param.tinyOnly && !proto.IsTinyExtent(ek.ExtentId) {
 				ekCh <- ek
 			}
 		}
@@ -1371,34 +1412,35 @@ func checkInode(vol string, c *sdk.MasterClient, inode uint64, checkedExtent *sy
 	}()
 	//extent may be duplicated in extentsResp.Extents
 	var idx int32
-	for i := 0; i < int(concurrency); i++ {
+	for i := 0; i < int(param.extentConcurrency); i++ {
 		go func(mc *sdk.MasterClient, extent *sync.Map, ino uint64, volume string) {
 			for ek := range ekCh {
-
-				switch checkType {
+				switch param.checkType {
 				case checkTypeExtentReplica:
 					var ekStr string
-					if tinyInUse {
-						ekStr = fmt.Sprintf("%d-%d-%d-%d", ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.Size)
-					} else {
-						ekStr = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
-					}
-					if _, ok := extent.LoadOrStore(ekStr, true); ok {
-						wg.Done()
-						continue
+					if !param.tinyOnly {
+						if param.tinyInUse {
+							ekStr = fmt.Sprintf("%d-%d-%d-%d", ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.Size)
+						} else {
+							ekStr = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
+						}
+						if _, ok := extent.LoadOrStore(ekStr, true); ok {
+							wg.Done()
+							continue
+						}
 					}
 					var partition *proto.DataPartitionInfo
 					for j := 0; j == 0 || j < 3 && err != nil; j++ {
 						partition, err = mc.AdminAPI().GetDataPartition("", ek.PartitionId)
 					}
 					if err != nil || partition == nil {
-						log.LogErrorf("checkFailedExtent: %v %v, err:%v\n", ek.PartitionId, ek.ExtentId, err)
+						log.LogErrorf("checkFailedExtent, cluster:%s, dp:%v, extent:%v, err:%v", c.Nodes()[0], ek.PartitionId, ek.ExtentId, err)
 						wg.Done()
 						continue
 					}
-					err = checkExtentReplicaInfo(c, partition.Replicas, &ek, ino, volume, 0, rCh)
+					err = checkExtentReplicaInfo(c, partition.Replicas, &ek, ino, volume, 0, rCh, param.tinyOnly)
 					if err != nil {
-						log.LogErrorf("checkFailedExtent: %v %v, err:%v\n", ek.PartitionId, ek.ExtentId, err)
+						log.LogErrorf("checkFailedExtent, cluster:%s, dp:%v, extent:%v, err:%v", c.Nodes()[0], ek.PartitionId, ek.ExtentId, err)
 					}
 				case checkTypeExtentLength:
 					checkExtentLength(c, &ek, extent)
@@ -1406,14 +1448,14 @@ func checkInode(vol string, c *sdk.MasterClient, inode uint64, checkedExtent *sy
 
 				atomic.AddInt32(&idx, 1)
 				if idx%100 == 0 {
-					log.LogInfof("%d extents checked\n", idx)
+					log.LogInfof("cluster:%s, vol:%s, inode: %d, %d extents checked", c.Nodes()[0], vol, inode, idx)
 				}
 				wg.Done()
 			}
 		}(c, checkedExtent, inode, vol)
 	}
 	wg.Wait()
-	log.LogInfof("finish check, vol:%s, inode: %d, err count: %d\n", vol, inode, errCount)
+	log.LogInfof("finish check, cluster:%s, vol:%s, inode: %d, err count: %d\n", c.Nodes()[0], vol, inode, errCount)
 }
 
 func checkInodeEk(inode uint64, c *sdk.MasterClient, mps []*proto.MetaPartitionView) {
@@ -1488,8 +1530,6 @@ func checkExtentBlockCrc(dataReplicas []*proto.DataReplica, c *sdk.MasterClient,
 func checkExtentReplica(c *sdk.MasterClient, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, mod string) (badAddrs []string, output string, same bool, err error) {
 	var (
 		ok bool
-	)
-	var (
 		replicas = make([]struct {
 			partitionId uint64
 			extentId    uint64
@@ -1514,23 +1554,15 @@ func checkExtentReplica(c *sdk.MasterClient, dataReplicas []*proto.DataReplica, 
 			}
 			extentMd5orCrc = fmt.Sprintf("%v", extentInfo[proto.ExtentInfoCrc])
 		case "md5":
-			var size uint64
+			var (
+				size   uint32
+				offset uint64
+			)
 			if proto.IsTinyExtent(ek.ExtentId) {
-				var extent *proto.ExtentInfoBlock
-				extent, err = dataClient.GetExtentInfo(ek.PartitionId, ek.ExtentId)
-				if err != nil {
-					log.LogErrorf("GetExtentInfo datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
-					return
-				}
-				if extent[proto.ExtentInfoSize] <= uint64(proto.PageSize) {
-					log.LogWarnf("action[checkExtentReplica] dp: %d, extent: %d, size: %d size less than 4K, skip check\n", ek.PartitionId, ek.ExtentId, extent[proto.ExtentInfoSize])
-					return badAddrs, "", true, nil
-				}
-				size = extent[proto.ExtentInfoSize] - uint64(proto.PageSize)
-			} else {
-				size = 0
+				offset = ek.ExtentOffset
+				size = ek.Size
 			}
-			extentMd5orCrc, err = dataClient.ComputeExtentMd5(ek.PartitionId, ek.ExtentId, 0, size)
+			extentMd5orCrc, err = dataClient.ComputeExtentMd5(ek.PartitionId, ek.ExtentId, offset, uint64(size))
 			if err != nil {
 				log.LogErrorf("getExtentMd5 datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
 				return
@@ -1570,6 +1602,8 @@ func checkExtentReplica(c *sdk.MasterClient, dataReplicas []*proto.DataReplica, 
 type RepairExtentInfo struct {
 	PartitionID uint64
 	ExtentID    uint64
+	Offset      uint64
+	Size        uint64
 	Hosts       []string
 	Inode       uint64
 	Volume      string
@@ -1602,7 +1636,7 @@ func checkExtentReplicaByBlock(dataReplicas []*proto.DataReplica, c *sdk.MasterC
 			extentMd5, err = dataClient.ComputeExtentMd5(ek.PartitionId, ek.ExtentId, uint64(offset), uint64(size))
 		}
 		if err != nil {
-			log.LogErrorf("getExtentMd5 datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
+			log.LogErrorf("checkExtentReplicaByBlock, cluster:%s, getExtentMd5 datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", c.Nodes()[0], datanode, ek.PartitionId, ek.ExtentId, err)
 			return
 		}
 		replicas[idx].partitionId = ek.PartitionId
@@ -2012,6 +2046,7 @@ func getExtentInfo(dp *proto.DataPartitionInfo, client *sdk.MasterClient) (exten
 func newExtentCheckByIdCmd(mc *sdk.MasterClient) *cobra.Command {
 	var partitionID uint64
 	var extentID uint64
+	var checkTiny bool
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckExtentReplicaShort,
@@ -2033,7 +2068,7 @@ func newExtentCheckByIdCmd(mc *sdk.MasterClient) *cobra.Command {
 			ek := proto.ExtentKey{
 				PartitionId: partitionID, ExtentId: extentID, Size: uint32(ekInfo[proto.ExtentInfoSize]),
 			}
-			checkExtentReplicaInfo(mc, dpInfo.Replicas, &ek, 0, dpInfo.VolName, 0, nil)
+			checkExtentReplicaInfo(mc, dpInfo.Replicas, &ek, 0, dpInfo.VolName, 0, nil, checkTiny)
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -2044,7 +2079,7 @@ func newExtentCheckByIdCmd(mc *sdk.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().Uint64Var(&partitionID, "pid", 0, "Specify partition id")
 	cmd.Flags().Uint64Var(&extentID, "eid", 0, "Specify extent id")
-
+	cmd.Flags().BoolVar(&checkTiny, "check-tiny", false, "check tiny extent")
 	return cmd
 }
 
