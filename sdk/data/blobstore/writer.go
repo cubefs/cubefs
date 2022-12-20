@@ -191,6 +191,8 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 	writer.fileOffset = 0
 	writer.err = make(chan *wSliceErr)
 
+	oeks := make([]proto.ObjExtentKey, 0)
+
 	writeBuff := func() {
 		bufSize := len(writer.buf)
 		log.LogDebugf("writeBuff: bufSize(%v), leftToWrite(%v), err(%v)", bufSize, leftToWrite, err)
@@ -227,7 +229,7 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 					writer.Unlock()
 					return
 				}
-				oeks := make([]proto.ObjExtentKey, 0)
+				/*oeks := make([]proto.ObjExtentKey, 0)
 				//update meta
 				oeks = append(oeks, wSlice.objExtentKey)
 				if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
@@ -245,10 +247,11 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 					writer.err <- wErr
 					writer.Unlock()
 					return
-				}
+				}*/
 
 				writer.cacheLevel2(wSlice)
 			}
+			oeks = append(oeks, wSlice.objExtentKey)
 			exec.Run(write)
 		}
 	}
@@ -300,6 +303,12 @@ LOOP:
 			break
 		}
 	}
+
+	if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
+		log.LogErrorf("WriteFromReader error,meta append ebsc extent keys fail,ino(%v), err(%v)", writer.ino, err)
+		return
+	}
+
 	size = uint64(writer.fileOffset)
 	atomic.AddUint64(&writer.fileSize, size)
 	return
