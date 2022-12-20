@@ -306,6 +306,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		DataNodes:                           make([]proto.NodeView, 0),
 		CodEcnodes:                          make([]proto.NodeView, 0),
 		EcNodes:                             make([]proto.NodeView, 0),
+		FlashNodes:                          make([]proto.NodeView, 0),
 		BadPartitionIDs:                     make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:                 make([]proto.BadPartitionView, 0),
 		BadEcPartitionIDs:                   make([]proto.BadPartitionView, 0),
@@ -343,6 +344,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
 	cv.CodEcnodes = m.cluster.allCodecNodes()
 	cv.EcNodes = m.cluster.allEcNodes()
+	cv.FlashNodes = m.cluster.allFlashNodes()
 	cv.EcNodeStatInfo = m.cluster.ecNodeStatInfo
 	m.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionId := value.(uint64)
@@ -540,6 +542,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		TrashItemCleanMaxCountEachTime:         trashCleanMaxCount,
 		TrashCleanDurationEachTime:             trashCleanDuartion,
 		DeleteMarkDelVolInterval:               m.cluster.cfg.DeleteMarkDelVolInterval,
+		RemoteCacheBoostEnable:                 m.cluster.cfg.RemoteCacheBoostEnable,
+
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1700,6 +1704,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		trashCleanDuration     int32
 		trashItemCleanMaxCount int32
+
+		remoteCacheBoostPath       string
+		remoteCacheBoostEnable     bool
+		remoteCacheAutoPrepare     bool
+		remoteCacheTTL             int64
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1788,6 +1797,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, err = parseCacheToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 
 	trashInterVal, err = parseTrashCleanInterval(r, vol)
 	if err != nil {
@@ -1824,7 +1838,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
-		enableBitMapAllocator); err != nil {
+		enableBitMapAllocator,
+		remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2110,6 +2125,10 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		FinalVolStatus:        vol.FinalVolStatus,
 		RenameConvertStatus:   vol.RenameConvertStatus,
 		MarkDeleteTime:        vol.MarkDeleteTime,
+		RemoteCacheBoostPath:       vol.RemoteCacheBoostPath,
+		RemoteCacheBoostEnable:     vol.RemoteCacheBoostEnable,
+		RemoteCacheAutoPrepare:     vol.RemoteCacheAutoPrepare,
+		RemoteCacheTTL:             vol.RemoteCacheTTL,
 	}
 }
 
@@ -3650,6 +3669,49 @@ func parseDefaultTrashDaysToUpdateVol(r *http.Request, vol *Vol) (remaining uint
 	return
 }
 
+func parseCacheToUpdateVol(r *http.Request, vol *Vol) (remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	remoteCacheBoostPath = r.FormValue(remoteCacheBoostPathKey)
+	if remoteCacheBoostPath == "" {
+		remoteCacheBoostPath = vol.RemoteCacheBoostPath
+	}
+
+	remoteCacheBoostEnableStr := r.FormValue(remoteCacheBoostEnableKey)
+	if remoteCacheBoostEnableStr == "" {
+		remoteCacheBoostEnable = vol.RemoteCacheBoostEnable
+	} else {
+		if remoteCacheBoostEnable, err = strconv.ParseBool(remoteCacheBoostEnableStr); err != nil {
+			return
+		}
+	}
+
+	remoteCacheAutoPrepareStr := r.FormValue(remoteCacheAutoPrepareKey)
+	if remoteCacheAutoPrepareStr == "" {
+		remoteCacheAutoPrepare = vol.RemoteCacheAutoPrepare
+	} else {
+		if remoteCacheAutoPrepare, err = strconv.ParseBool(remoteCacheAutoPrepareStr); err != nil {
+			return
+		}
+	}
+
+	remoteCacheTTLStr := r.FormValue(remoteCacheTTLKey)
+	if remoteCacheTTLStr == "" {
+		remoteCacheTTL = vol.RemoteCacheTTL
+	} else {
+		if remoteCacheTTL, err = strconv.ParseInt(remoteCacheTTLStr, 10, 64); err != nil {
+			err = unmatchedKey(remoteCacheTTLKey)
+			return
+		}
+		if remoteCacheTTL < 0 {
+			err = unmatchedKey(remoteCacheTTLKey)
+			return
+		}
+	}
+	return
+}
+
 func parseDefaultBatchDelInodeCntToUpdateVol(r *http.Request, vol *Vol) (batchDelInodeCnt uint32, err error) {
 	err = r.ParseForm()
 	if err != nil {
@@ -4543,7 +4605,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
-	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey, proto.AutoUpPartitionReplicaNumKey}
+	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey, proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey}
 	for _, key := range boolKey {
 		if err = parseBoolKey(params, key, r); err != nil {
 			return
@@ -6231,6 +6293,34 @@ func extractNewName(r *http.Request) (newName string, err error) {
 	}
 	if strings.HasPrefix(newName, markDeleteVolByRenamePrefix) {
 		err = fmt.Errorf("new name can not contains prefix:%v", markDeleteVolByRenamePrefix)
+		return
+	}
+	return
+}
+
+func parseAndExtractFlashNode(r *http.Request) (nodeAddr string, state bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	nodeAddr, err = extractNodeAddr(r)
+	if err != nil {
+		return
+	}
+	state, err = strconv.ParseBool(r.FormValue(stateKey))
+	return
+}
+
+func extractGetAllFlashNodes(r *http.Request) (status bool) {
+	var (
+		value string
+		err error
+	)
+	if value = r.FormValue("getAllFlashNodes"); value == "" {
+		status = false
+		return
+	}
+	if status, err = strconv.ParseBool(value); err != nil {
+		status = false
 		return
 	}
 	return

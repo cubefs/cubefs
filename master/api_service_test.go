@@ -29,14 +29,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -113,6 +112,14 @@ const (
 	mcs1Addr = "127.0.0.1:10201"
 	mcs2Addr = "127.0.0.1:10202"
 	mcs3Addr = "127.0.0.1:10203"
+
+	mfs1Addr = "127.0.0.1:10501"
+	mfs2Addr = "127.0.0.1:10502"
+	mfs3Addr = "127.0.0.1:10503"
+	mfs4Addr = "127.0.0.1:10504"
+	mfs5Addr = "127.0.0.1:10505"
+	mfs6Addr = "127.0.0.1:10506"
+	mfs7Addr = "127.0.0.1:10507"
 )
 
 var server = createDefaultMasterServerForTest()
@@ -188,6 +195,14 @@ func createDefaultMasterServerForTest() *Server {
 	addCodecServer(mcs1Addr, httpPort, testZone1)
 	addCodecServer(mcs2Addr, httpPort, testZone1)
 	addCodecServer(mcs3Addr, httpPort, testZone1)
+	//add flash node
+	addFlashServer(mfs1Addr, testZone1)
+	addFlashServer(mfs2Addr, testZone1)
+	addFlashServer(mfs3Addr, testZone1)
+	addFlashServer(mfs4Addr, testZone2)
+	addFlashServer(mfs5Addr, testZone2)
+	addFlashServer(mfs6Addr, testZone2)
+	addFlashServer(mfs7Addr, testZone2)
 	time.Sleep(5 * time.Second)
 	testServer.cluster.cfg = newClusterConfig()
 	testServer.cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
@@ -197,6 +212,7 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.checkMetaNodeHeartbeat()
 	testServer.cluster.checkEcNodeHeartbeat()
 	testServer.cluster.checkCodecNodeHeartbeat()
+	testServer.cluster.checkFlashNodeHeartbeat()
 	testServer.cluster.cfg.nodeSetCapacity = defaultNodeSetCapacity
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
@@ -1636,7 +1652,8 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	newZoneName := fmt.Sprintf("%s,%s,%s,%s", testZone1, testZone2, testZone3, testZone6)
 	// update to cross region vol
 	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, 0, 1, false, false, false, false, false, false,
-		true, false, false, buildAuthKey("cfs"), newZoneName, "0,0", "", 0, 1, 120, "default", 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false)
+		true, false, false, buildAuthKey("cfs"), newZoneName, "0,0", "", 0, 1, 120, "default", 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
+		"", false, false, 0)
 	if !assert.NoErrorf(t, err, "UpdateVolume err:%v", err) {
 		return
 	}
@@ -3662,4 +3679,140 @@ func TestSetAutoUpdatePartitionReplicaNum(t *testing.T) {
 		}
 		assert.Equal(t, limitInfo.AutoUpdatePartitionReplicaNum, testCase.Expect)
 	}
+}
+
+func addFlashServer(addr, zoneName string) (mfs *mocktest.MockFlashNodeServer) {
+	mfs = mocktest.NewMockFlashNodeServer(addr, zoneName)
+	mfs.Start()
+	return mfs
+}
+
+func TestGetFlashNode(t *testing.T) {
+	testCases := []struct {
+		NodeAddr string
+		ZoneName string
+	}{
+		{mfs1Addr, testZone1},
+		{mfs2Addr, testZone1},
+		{mfs3Addr, testZone1},
+		{mfs4Addr, testZone2},
+		{mfs5Addr, testZone2},
+		{mfs6Addr, testZone2},
+		{mfs7Addr, testZone2},
+	}
+	for _, testCase := range testCases {
+		flashNodeViewInfo, err := mc.NodeAPI().GetFlashNode(testCase.NodeAddr)
+		if !assert.NoError(t, err) {
+			continue
+		}
+		msg := fmt.Sprintf("expect Addr,ZoneName:(%v,%v), but get:(%v,%v)", testCase.NodeAddr, testCase.ZoneName,
+			flashNodeViewInfo.Addr, flashNodeViewInfo.ZoneName)
+		if !assert.Equalf(t, testCase.NodeAddr, flashNodeViewInfo.Addr, msg) || !assert.Equalf(t, testCase.ZoneName, flashNodeViewInfo.ZoneName, msg) {
+			continue
+		}
+		t.Logf("flashNode Info:%v", *flashNodeViewInfo)
+	}
+}
+
+func TestSetFlashNode(t *testing.T) {
+	testCases := []struct {
+		NodeAddr string
+		ZoneName string
+	}{
+		{mfs1Addr, testZone1},
+	}
+	testAddr := testCases[0].NodeAddr
+	flashNodeViewInfo, err := mc.NodeAPI().GetFlashNode(testAddr)
+	if !assert.NoError(t, err) {
+			return
+	}
+
+	if !assert.Equalf(t, defaultFlashNodeOnlineState, flashNodeViewInfo.IsEnable, "expect defaultFlashNodeOnlineState:%v", defaultFlashNodeOnlineState) {
+		return
+	}
+	err = mc.NodeAPI().SetFlashNodeState(testAddr, "false")
+	if !assert.NoError(t, err) {
+		return
+	}
+	flashNodeViewInfo, err = mc.NodeAPI().GetFlashNode(testAddr)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	assert.Equalf(t, false, flashNodeViewInfo.IsEnable, "expect isEnable:false")
+}
+
+func TestUpdateVolCacheConfig(t *testing.T) {
+	if err := updateVolCacheConfig(commonVolName, "", true, false, 0); err != nil {
+		t.Error(err)
+		return
+	}
+	if err := updateVolCacheConfig(commonVolName, "/cache", true, true, 100); err != nil {
+		t.Error(err)
+		return
+	}
+	if err := updateVolCacheConfig(commonVolName, "/cache/cnn", true, false, 500); err != nil {
+		t.Error(err)
+		return
+	}
+	if err := updateVolCacheConfig(commonVolName, "/", false, false, 0); err != nil {
+		t.Error(err)
+		return
+	}
+}
+
+func updateVolCacheConfig(volName, remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64) (err error) {
+	vv, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		return
+	}
+	err = mc.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
+		int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
+		vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, false, buildAuthKey(vv.Owner), vv.ZoneName, fmt.Sprintf("%v,%v", vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica), strings.Join(vv.SmartRules, ","),
+		uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag, vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight,
+		0, 0, 0, proto.UmpCollectByUnkown, -1, -1, false, 0,
+		remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL)
+	if err != nil {
+		return
+	}
+	vv, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		return
+	}
+	if vv.RemoteCacheBoostPath != remoteCacheBoostPath {
+		return fmt.Errorf("expect RemoteCacheBoostPath:%v but get:%v", remoteCacheBoostPath, vv.RemoteCacheBoostPath)
+	}
+	if vv.RemoteCacheBoostEnable != remoteCacheBoostEnable {
+		return fmt.Errorf("expect RemoteCacheBoostEnable:%v but get:%v", remoteCacheBoostEnable, vv.RemoteCacheBoostEnable)
+	}
+	if vv.RemoteCacheAutoPrepare != remoteCacheAutoPrepare {
+		return fmt.Errorf("expect RemoteCacheAutoPrepare:%v but get:%v", remoteCacheAutoPrepare, vv.RemoteCacheAutoPrepare)
+	}
+	if vv.RemoteCacheTTL != remoteCacheTTL {
+		return fmt.Errorf("expect RemoteCacheTTL:%v but get:%v", remoteCacheTTL, vv.RemoteCacheTTL)
+	}
+	return
+}
+
+func TestSetRemoteCacheHandler(t *testing.T) {
+	remoteCacheEnableState := 1
+	reqURL := fmt.Sprintf("%v%v?remoteCacheBoostEnable=%v", hostAddr, proto.AdminSetNodeInfo, remoteCacheEnableState)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if server.cluster.cfg.RemoteCacheBoostEnable != true {
+		t.Errorf("set remoteCacheEnableState to %v failed", remoteCacheEnableState)
+		return
+	}
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	fmt.Println(reqURL)
+	reply := processReturnRawReply(reqURL, t)
+	limitInfo := &proto.LimitInfo{}
+
+	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
+		t.Errorf("unmarshal limitinfo failed,err:%v", err)
+	}
+	if limitInfo.RemoteCacheBoostEnable != true {
+		t.Errorf("remoteCacheEnableState expect:true,real:%v", limitInfo.RemoteCacheBoostEnable)
+	}
+
 }

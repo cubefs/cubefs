@@ -17,7 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
@@ -434,13 +434,13 @@ func getDiskPath(nodeAddr string, prof uint16, dp uint64) (diskPath string, err 
 }
 func getDataPartitionInfo(nodeAddr string, prof uint16, dp uint64) (dn *proto.DNDataPartitionInfo, err error) {
 	datanodeAddr := fmt.Sprintf("%s:%d", strings.Split(nodeAddr, ":")[0], prof)
-	dataClient := data.NewDataHttpClient(datanodeAddr, false)
+	dataClient := http_client.NewDataClient(datanodeAddr, false)
 	dn, err = dataClient.GetPartitionFromNode(dp)
 	return
 }
 func getDataNodeDiskMap(nodeAddr string, prof uint16, limit uint64) (diskMap map[string]chan bool, err error) {
 	datanodeAddr := fmt.Sprintf("%s:%d", strings.Split(nodeAddr, ":")[0], prof)
-	dataClient := data.NewDataHttpClient(datanodeAddr, false)
+	dataClient := http_client.NewDataClient(datanodeAddr, false)
 
 	diskInfo, err := dataClient.GetDisks()
 	if err != nil {

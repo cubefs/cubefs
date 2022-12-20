@@ -82,3 +82,19 @@ var ActionMetaMap = map[int]string{
 	ActionMetaTruncate:      "truncate",
 	ActionMetaExtentsInsert: "insertExtent",
 }
+
+const (
+	ActionCacheRead = iota
+	ActionCachePrepare
+	ActionCacheEvict
+	ActionCacheHit
+	ActionCacheMiss
+)
+
+var ActionFlashMap = map[int]string{
+	ActionCacheRead:    "read",
+	ActionCachePrepare: "prepare",
+	ActionCacheEvict:   "evict",
+	ActionCacheHit:     "hit",
+	ActionCacheMiss:    "miss",
+}

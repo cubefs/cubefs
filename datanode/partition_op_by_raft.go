@@ -27,7 +27,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
-	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -372,7 +372,7 @@ func (dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
 			continue
 		}
 		httpAddr := fmt.Sprintf("%v:%v", strings.Split(h, ":")[0], profPort)
-		dataClient := data.NewDataHttpClient(httpAddr, false)
+		dataClient := http_client.NewDataClient(httpAddr, false)
 		var extentBlock *proto.ExtentInfoBlock
 		for i := 0; i < 3; i++ {
 			extentBlock, err = dataClient.GetExtentInfo(dp.partitionID, extentId)

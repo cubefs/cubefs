@@ -131,6 +131,8 @@ func InitMonitorData(module string) []*MonitorData {
 		num = len(proto.ActionMetaMap)
 	case ModelObjectNode:
 		num = len(ActionObjectMap)
+	case ModelFlashNode:
+		num = len(proto.ActionFlashMap)
 	}
 	m := make([]*MonitorData, num)
 	for i := 0; i < num; i++ {

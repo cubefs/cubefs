@@ -49,6 +49,7 @@ def analyze_coverage():
         "datanode",
         "objectnode",
         "codecnode",
+        "cache_engine"
         "ecnode",
         "util",
     ]
@@ -102,6 +103,7 @@ def exclude_package_filter(content):
         "github.com/cubefs/cubefs/convertnode/",
         "github.com/cubefs/cubefs/schedulenode/",
         "github.com/cubefs/cubefs/metanode/",
+        "github.com/cubefs/cubefs/flashnode/",
         "github.com/cubefs/cubefs/master/",
         "github.com/cubefs/cubefs/ecnode/",
         "github.com/cubefs/cubefs/sdk/graphql/",

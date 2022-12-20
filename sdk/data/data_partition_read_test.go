@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
@@ -59,7 +60,8 @@ func TestNearRead(t *testing.T) {
 	volumeSimpleInfo, _ := testMc.AdminAPI().GetVolumeSimpleInfo("ltptest")
 	if err := testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
 		true, false, true, false, false, false, false, false, false, calcAuthKey("ltptest"),
-		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false); err != nil {
+		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
+		"", false, false, 0); err != nil {
 		t.Fatalf("update followerRead and nearRead to 'true' failed: err(%v) vol(ltptest)", err)
 	}
 	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, masters)
@@ -166,7 +168,8 @@ func TestNearRead(t *testing.T) {
 	LocalIP = originLocalIP
 	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
 		false, false, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
-		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false); err != nil {
+		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
+		"", false, false, 0); err != nil {
 		t.Errorf("update followerRead and nearRead to 'false' failed: err(%v) vol(ltptest)", err)
 	}
 }
@@ -211,7 +214,7 @@ func TestConsistenceRead(t *testing.T) {
 	eks := streamer.extents.List()
 	for _, ek := range eks {
 		data := make([]byte, ek.Size)
-		req := NewExtentRequest(ek.FileOffset, int(ek.Size), data, &ek)
+		req := NewExtentRequest(ek.FileOffset, int(ek.Size), data, 0, uint64(ek.Size), &ek)
 		reqPacket := common.NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, false)
 		partition, getErr := streamer.client.dataWrapper.GetDataPartition(ek.PartitionId)
 		if getErr != nil {

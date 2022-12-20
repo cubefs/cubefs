@@ -8,6 +8,7 @@ const (
 	ModelDataNode   = "datanode"
 	ModelMetaNode   = "metanode"
 	ModelObjectNode = "objectnode"
+	ModelFlashNode  = "flashnode"
 )
 
 const (

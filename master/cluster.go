@@ -84,6 +84,8 @@ type Cluster struct {
 	ecNodes                    sync.Map
 	cnMutex                    sync.RWMutex
 	enMutex                    sync.RWMutex // ec node mutex
+	flashNodeTopo              *flashNodeTopology
+	flashGroupRespCache        []byte
 	isLeader                   atomic2.Bool
 	heartbeatHandleChan        chan *HeartbeatTask
 }
@@ -145,6 +147,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.MaxCodecConcurrent = defaultMaxCodecConcurrent
 	c.EcStartScrubTime = time.Now().Unix()
 	c.heartbeatHandleChan = make(chan *HeartbeatTask, defaultHeartbeatHandleChanCap)
+	c.flashNodeTopo = newFlashNodeTopology()
 	return
 }
 
@@ -171,6 +174,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckEcDataPartitions()
 	c.scheduleToMigrationEc()
 	c.scheduleToCheckUpdatePartitionReplicaNum()
+	c.scheduleToUpdateFlashGroupRespCache()
 
 }
 
@@ -349,6 +353,15 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkCodecNodeHeartbeat()
+			}
+			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
+		}
+	}()
+
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkFlashNodeHeartbeat()
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
@@ -2917,7 +2930,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
 	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
 	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod,
-	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool) (err error) {
+	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
+	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3076,6 +3090,10 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		goto errHandler
 	}
 	vol.UmpCollectWay = umpCollectWay
+	vol.RemoteCacheBoostPath = remoteCacheBoostPath
+	vol.RemoteCacheBoostEnable = remoteCacheBoostEnable
+	vol.RemoteCacheAutoPrepare = remoteCacheAutoPrepare
+	vol.RemoteCacheTTL = remoteCacheTTL
 	if err = c.syncUpdateVol(vol); err != nil {
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
@@ -3822,6 +3840,11 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DeleteMarkDelVolInterval = val.(int64)
 	}
 
+	oldRemoteCacheBoostEnable := c.cfg.RemoteCacheBoostEnable
+	if val, ok := params[proto.RemoteCacheBoostEnableKey]; ok {
+		c.cfg.RemoteCacheBoostEnable = val.(bool)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3865,6 +3888,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.TrashCleanDurationEachTime, oldTrashCleanDuration)
 		atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, oldTrashCleanMaxCount)
 		c.cfg.DeleteMarkDelVolInterval = oldDeleteMarkDelVolInterval
+		c.cfg.RemoteCacheBoostEnable = oldRemoteCacheBoostEnable
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -5438,6 +5462,7 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		DataNodes:                           make([]proto.NodeView, 0),
 		CodEcnodes:                          make([]proto.NodeView, 0),
 		EcNodes:                             make([]proto.NodeView, 0),
+		FlashNodes:                          make([]proto.NodeView, 0),
 		BadPartitionIDs:                     make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:                 make([]proto.BadPartitionView, 0),
 		BadEcPartitionIDs:                   make([]proto.BadPartitionView, 0),
@@ -5475,6 +5500,7 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 	cv.MetaNodeStatInfo = c.metaNodeStatInfo
 	cv.CodEcnodes = c.allCodecNodes()
 	cv.EcNodes = c.allEcNodes()
+	cv.FlashNodes = c.allFlashNodes()
 	cv.EcNodeStatInfo = c.ecNodeStatInfo
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionId := value.(uint64)
@@ -5937,3 +5963,13 @@ func (c *Cluster) clearRenamedOldVolAndResetNewVolStatus(oldVol, newRenamedVol *
 	return
 }
 
+
+func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
+	flashNodes = make([]proto.NodeView, 0)
+	c.flashNodeTopo.flashNodeMap.Range(func(addr, node interface{}) bool {
+		flashNode := node.(*FlashNode)
+		flashNodes = append(flashNodes, proto.NodeView{Addr: flashNode.Addr, Status: flashNode.IsActive, ID: flashNode.ID, IsWritable: flashNode.isWriteAble(), Version: flashNode.Version})
+		return true
+	})
+	return
+}

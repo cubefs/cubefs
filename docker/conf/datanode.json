@@ -20,5 +20,6 @@
   ],
   "tracingSamplerType": "const",
   "tracingSamplerParam": 1,
-  "tracingReportAddr": "172.20.189.87:6831"
+  "tracingReportAddr": "172.20.189.87:6831",
+  "monitorAddr": "monitor.chubao.io"
 }

@@ -23,11 +23,14 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+
+	"github.com/bits-and-blooms/bloom"
 	"golang.org/x/time/rate"
 )
 
@@ -168,6 +171,11 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 		}
 	}
 	client.metaWrapper = config.MetaWrapper
+	client.dataWrapper.SetMetaWrapper(client.metaWrapper)
+	if client.metaWrapper != nil {
+		client.metaWrapper.RemoteCacheBloom = client.RemoteCacheBloom
+	}
+	client.dataWrapper.initRemoteCache()
 
 	client.streamerConcurrentMap = InitConcurrentStreamerMap()
 	client.insertExtentKey = config.OnInsertExtentKey
@@ -571,7 +579,7 @@ func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
 		if r := recover(); r != nil {
 			log.LogErrorf("updateDataLimitConfig panic: err(%v) stack(%v)", r, string(debug.Stack()))
 			msg := fmt.Sprintf("updateDataLimitConfig panic: err(%v)", r)
-			handleUmpAlarm(client.dataWrapper.clusterName, client.dataWrapper.volName, "updateDataLimitConfig", msg)
+			common.HandleUmpAlarm(client.dataWrapper.clusterName, client.dataWrapper.volName, "updateDataLimitConfig", msg)
 			err = errors.New(msg)
 		}
 	}()
@@ -633,6 +641,7 @@ func (client *ExtentClient) updateConfig() {
 		client.extentMergeIno = limitInfo.ExtentMergeIno[client.dataWrapper.volName]
 		client.ExtentMergeSleepMs = limitInfo.ExtentMergeSleepMs
 	}
+	client.dataWrapper.setClusterBoostEnable(limitInfo.RemoteCacheBoostEnable)
 }
 
 func (client *ExtentClient) Close(ctx context.Context) error {
@@ -757,4 +766,8 @@ func (c *ExtentClient) SetEnableWriteCache(writeCache bool) {
 
 func (c *ExtentClient) UmpJmtpAddr() string {
 	return c.dataWrapper.umpJmtpAddr
+}
+
+func (c *ExtentClient) RemoteCacheBloom() *bloom.BloomFilter {
+	return c.dataWrapper.remoteCache.GetRemoteCacheBloom()
 }

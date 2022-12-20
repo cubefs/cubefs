@@ -52,6 +52,7 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 	mc.DataNodeProfPort = cfg.DataNodeProfPort
 	mc.MetaNodeProfPort = cfg.MetaNodeProfPort
 	mc.EcNodeProfPort = cfg.EcNodeProfPort
+	mc.FlashNodeProfPort = cfg.FlashNodeProfPort
 	var monitorCli = monitor.NewMonitorClient(cfg.MonitorAddr, false)
 	cc := convert.NewConvertClient(cfg.ConvertAddr, false)
 	cfsRootCmd := cmd.NewRootCmd(mc, monitorCli, cc)

@@ -31,6 +31,9 @@ services:
             - datanode2
             - datanode3
             - datanode4
+            - flashnode1
+            - flashnode2
+            - flashnode3
             - objectnode1
             - objectnode2
             - objectnode3
@@ -236,6 +239,7 @@ services:
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./conf/dataAgent.json:/cfs/conf/dataAgent.json
             - ./script/start_dataagent.sh:/cfs/script/start_agent.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json
         restart: on-failure
         privileged: true
@@ -261,6 +265,7 @@ services:
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./conf/dataAgent.json:/cfs/conf/dataAgent.json
             - ./script/start_dataagent.sh:/cfs/script/start_agent.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json
         restart: on-failure
         privileged: true
@@ -286,6 +291,7 @@ services:
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./conf/dataAgent.json:/cfs/conf/dataAgent.json
             - ./script/start_dataagent.sh:/cfs/script/start_agent.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json
         restart: on-failure
         privileged: true
@@ -311,6 +317,7 @@ services:
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./conf/dataAgent.json:/cfs/conf/dataAgent.json
             - ./script/start_dataagent.sh:/cfs/script/start_agent.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json
         restart: on-failure
         privileged: true
@@ -319,6 +326,75 @@ services:
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.34
+
+    flashnode1:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "17710"
+            - "17720"
+            - "17730"
+            - "17740"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/flashnode1/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
+            - ./conf/flashnode.json:/cfs/conf/flashnode.json
+            - ./conf/hosts:/etc/hosts:ro
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/flashnode.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.121
+
+    flashnode2:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "17710"
+            - "17720"
+            - "17730"
+            - "17740"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/flashnode2/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
+            - ./conf/flashnode.json:/cfs/conf/flashnode.json
+            - ./conf/hosts:/etc/hosts:ro
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/flashnode.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.122
+
+    flashnode3:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "17710"
+            - "17720"
+            - "17730"
+            - "17740"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/flashnode3/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
+            - ./conf/flashnode.json:/cfs/conf/flashnode.json
+            - ./conf/hosts:/etc/hosts:ro
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/flashnode.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.123
 
     ecnode1:
         image: chubaofs/cfs-base:1.4

@@ -42,6 +42,7 @@ var (
   "dnProf": 17320,
   "mnProf": 17220,
   "enProf": 17520,
+  "fnProf": 17720,
   "convertAddr": "",
   "convertNodeDBConfig": {
     "path": "",
@@ -65,6 +66,7 @@ type Config struct {
 	DataNodeProfPort    uint16               `json:"dnProf"`
 	MetaNodeProfPort    uint16               `json:"mnProf"`
 	EcNodeProfPort      uint16               `json:"enProf"`
+	FlashNodeProfPort   uint16               `json:"fnProf"`
 	ConvertAddr         string               `json:"convertAddr"`
 	ConvertNodeDBConfig convertnode.DBConfig `json:"convertNodeDBConfig"`
 	IsDbBack            int8                 `json:"isDbBack"`
@@ -91,6 +93,7 @@ func newConfigSetCmd() *cobra.Command {
 	var optDNProfPort uint16
 	var optMNProfPort uint16
 	var optENProfPort uint16
+	var optFNProfPort uint16
 	var optConvertHost string
 	var optConvertNodeDBAddr string
 	var optConvertNodeDBName string
@@ -106,7 +109,7 @@ func newConfigSetCmd() *cobra.Command {
 			var monitorHosts string
 			var config *Config
 			var err error
-			if optMasterHost == "" && optMonitorHost == "" && optDNProfPort == 0 && optMNProfPort == 0 && optENProfPort == 0 && len(optConvertHost) == 0 &&
+			if optMasterHost == "" && optMonitorHost == "" && optDNProfPort == 0 && optMNProfPort == 0 && optENProfPort == 0 && optFNProfPort == 0 && len(optConvertHost) == 0 &&
 				optConvertNodeDBAddr == "" && optConvertNodeDBUserName == "" && optConvertNodeDBPassword == "" && optIsDbBack == -1 {
 				stdout(fmt.Sprintf("No changes has been set. Input 'cfs-cli config set -h' for help.\n"))
 				return
@@ -135,6 +138,9 @@ func newConfigSetCmd() *cobra.Command {
 			}
 			if optENProfPort > 0 {
 				config.EcNodeProfPort = optENProfPort
+			}
+			if optFNProfPort > 0 {
+				config.FlashNodeProfPort = optFNProfPort
 			}
 			if len(optConvertHost) > 0 {
 				config.ConvertAddr = optConvertHost
@@ -165,6 +171,7 @@ func newConfigSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&optMonitorHost, "monitorAddr", "", "Specify monitor address [{HOST}:{PORT}]")
 	cmd.Flags().Uint16Var(&optDNProfPort, "dnProf", 0, "Specify prof port for DataNode")
 	cmd.Flags().Uint16Var(&optMNProfPort, "mnProf", 0, "Specify prof port for MetaNode")
+	cmd.Flags().Uint16Var(&optFNProfPort, "fnProf", 0, "Specify prof port for FlashNode")
 	cmd.Flags().StringVar(&optConvertHost, "convertAddr", "", "Specify convert address [{HOST}:{PORT}]")
 	cmd.Flags().StringVar(&optConvertNodeDBAddr, "convertNodeDBAddr", "", "Specify convert node database address")
 	cmd.Flags().StringVar(&optConvertNodeDBName, "convertNodeDBName", "", "Specify convert node database name")

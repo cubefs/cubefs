@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -24,7 +25,7 @@ func (w *Wrapper) ScheduleDataPartitionMetricsReport() {
 		if r := recover(); r != nil {
 			log.LogErrorf("ScheduleDataPartitionMetricsReport panic: err(%v) stack(%v)", r, string(debug.Stack()))
 			msg := fmt.Sprintf("ScheduleDataPartitionMetricsReport panic: err(%v)", r)
-			handleUmpAlarm(w.clusterName, w.volName, "ScheduleDataPartitionMetricsReport", msg)
+			common.HandleUmpAlarm(w.clusterName, w.volName, "ScheduleDataPartitionMetricsReport", msg)
 		}
 	}()
 	reportIntervalSec := w.dpMetricsReportConfig.ReportIntervalSec
@@ -62,7 +63,7 @@ func (w *Wrapper) reportMetrics() {
 		if r := recover(); r != nil {
 			log.LogErrorf("reportMetrics panic: err(%v) stack(%v)", r, string(debug.Stack()))
 			msg := fmt.Sprintf("reportMetrics panic: err(%v)", r)
-			handleUmpAlarm(w.clusterName, w.volName, "reportMetrics", msg)
+			common.HandleUmpAlarm(w.clusterName, w.volName, "reportMetrics", msg)
 		}
 	}()
 	if w.dpMetricsReportConfig.EnableReport && w.dpMetricsFetchErrCount <= metricFetchMaxErrCount {
@@ -88,7 +89,7 @@ func (w *Wrapper) refreshMetrics() {
 		if r := recover(); r != nil {
 			log.LogErrorf("refreshMetrics panic: err(%v) stack(%v)", r, string(debug.Stack()))
 			msg := fmt.Sprintf("refreshMetrics panic: err(%v)", r)
-			handleUmpAlarm(w.clusterName, w.volName, "refreshMetrics", msg)
+			common.HandleUmpAlarm(w.clusterName, w.volName, "refreshMetrics", msg)
 		}
 	}()
 	var (
@@ -131,7 +132,7 @@ func (w *Wrapper) dpFollowerReadDelayCollect() {
 		if r := recover(); r != nil {
 			log.LogErrorf("dpFollowerReadDelaySummary panic: err(%v) stack(%v)", r, string(debug.Stack()))
 			msg := fmt.Sprintf("dpFollowerReadDelaySummary panic: err(%v)", r)
-			handleUmpAlarm(w.clusterName, w.volName, "dpFollowerReadDelaySummary", msg)
+			common.HandleUmpAlarm(w.clusterName, w.volName, "dpFollowerReadDelaySummary", msg)
 		}
 	}()
 	var (

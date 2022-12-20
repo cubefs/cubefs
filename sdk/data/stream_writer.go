@@ -406,7 +406,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 		rowFlag   bool
 	)
 	if !s.enableOverwrite() && len(requests) > 1 {
-		req := NewExtentRequest(offset, size, data, nil)
+		req := NewExtentRequest(offset, size, data, 0, uint64(size), nil)
 		writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct)
 		total += writeSize
 	} else {
@@ -480,7 +480,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 			break
 		}
 		errmsg = fmt.Sprintf("doOverWrite and doROW err(%v) inode(%v) req(%v) try count(%v)", err, s.inode, req, tryCount)
-		handleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
+		common.HandleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
 		if time.Since(start) > StreamRetryTimeout {
 			log.LogWarnf("doOverWriteOrROW failed: retry timeout ino(%v) err(%v) req(%v)", s.inode, err, req)
 			break
@@ -491,7 +491,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 }
 
 func (s *Streamer) enableOverwrite() bool {
-	return !s.isForceROW() && !s.client.dataWrapper.CrossRegionHATypeQuorum()
+	return !s.isForceROW() && !s.client.dataWrapper.CrossRegionHATypeQuorum() && !s.enableRemoteCache()
 }
 
 func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp *DataPartition, extID int,
@@ -663,6 +663,10 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 
 	log.LogDebugf("doROW: inode %v, total %v, oriReq %v, newEK %v", s.inode, total, oriReq, newEK)
 
+	if s.enableCacheAutoPrepare() {
+		s.prepareRemoteCache(ctx, newEK)
+	}
+
 	return
 }
 
@@ -760,7 +764,10 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset uint64, size
 			log.LogDebugf("doWrite: offset(%v) size(%v) err(%v) eh(%v) packet(%v) pendingPacketList length(%v)",
 				offset, size, err, s.handler, s.handler.packet, len(s.pendingPacketList))
 		}
-		s.closeOpenHandler(ctx)
+		if err = s.closeOpenHandler(ctx); err != nil {
+			log.LogErrorf("doWrite: flush before close handler err: %v", err)
+			break
+		}
 	}
 
 	if err != nil || ek == nil {
@@ -906,7 +913,7 @@ func (s *Streamer) traverse() (err error) {
 	return
 }
 
-func (s *Streamer) closeOpenHandler(ctx context.Context) {
+func (s *Streamer) closeOpenHandler(ctx context.Context) (err error) {
 	if s.handler != nil {
 		s.handlerMutex.Lock()
 		defer s.handlerMutex.Unlock()
@@ -915,7 +922,9 @@ func (s *Streamer) closeOpenHandler(ctx context.Context) {
 			s.handler.flushPacket(ctx)
 		} else {
 			// flush all handler when close current handler, to prevent extent key overwriting
-			s.flush(ctx, true)
+			if err = s.flush(ctx, true); err != nil {
+				return
+			}
 		}
 
 		if !s.dirty {
@@ -925,6 +934,7 @@ func (s *Streamer) closeOpenHandler(ctx context.Context) {
 		}
 		s.handler = nil
 	}
+	return
 }
 
 func (s *Streamer) open() {

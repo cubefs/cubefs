@@ -174,6 +174,12 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.loadMigrateTask(); err != nil {
 		panic(err)
 	}
+	if err = m.cluster.loadFlashGroups(); err != nil {
+		panic(err)
+	}
+	if err = m.cluster.loadFlashNodes(); err != nil {
+		panic(err)
+	}
 	log.LogInfo("action[loadMetadata] end")
 
 	log.LogInfo("action[loadUserInfo] begin")
@@ -201,7 +207,11 @@ func (m *Server) clearMetadata() {
 	m.user.clearUserStore()
 	m.user.clearAKStore()
 	m.user.clearVolUsers()
+	m.cluster.flashNodeTopo.clear()
+	m.cluster.clearFlashGroupResponseCache()
+
 	m.cluster.t = newTopology()
+	m.cluster.flashNodeTopo = newFlashNodeTopology()
 }
 
 func (m *Server) refreshUser() (err error) {

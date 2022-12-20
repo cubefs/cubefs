@@ -100,7 +100,7 @@ func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes
 		readAhead = true
 		size = unit.BlockSize
 		data := make([]byte, size)
-		realReq = NewExtentRequest(req.FileOffset, size, data, req.ExtentKey)
+		realReq = NewExtentRequest(req.FileOffset, size, data, 0, uint64(unit.BlockSize), req.ExtentKey)
 	}
 
 	reqPacket := common.NewReadPacket(ctx, er.key, offset, size, er.inode, req.FileOffset, er.followerRead)
@@ -134,7 +134,7 @@ func (er *ExtentReader) read(dp *DataPartition, reqPacket *common.Packet, req *E
 		}
 		log.LogWarnf("read error: read EC failed, read data from replicate, err(%v)", err)
 		errMsg := fmt.Sprintf("read EC failed inode(%v) req(%v)", er.inode, req)
-		handleUmpAlarm(dp.ClientWrapper.clusterName, dp.ClientWrapper.volName, "ecRead", errMsg)
+		common.HandleUmpAlarm(dp.ClientWrapper.clusterName, dp.ClientWrapper.volName, "ecRead", errMsg)
 	}
 	if !followerRead {
 		sc, readBytes, err = dp.LeaderRead(reqPacket, req)

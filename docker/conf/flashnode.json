@@ -1,0 +1,17 @@
+{
+  "role": "flashnode",
+  "listen": "17710",
+  "prof": "17720",
+  "logDir": "/cfs/log",
+  "logLevel": "debug",
+  "totalMem": "5368709120",
+  "masterAddr": [
+    "192.168.0.11:17010",
+    "192.168.0.12:17010",
+    "192.168.0.13:17010"
+  ],
+  "tracingSamplerType": "const",
+  "tracingSamplerParam": 1,
+  "tracingReportAddr": "172.20.189.87:6831",
+  "monitorAddr": "monitor.chubao.io"
+}

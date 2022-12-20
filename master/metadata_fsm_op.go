@@ -100,6 +100,7 @@ type clusterValue struct {
 	TrashCleanDurationEachTime          int32
 	TrashItemCleanMaxCountEachTime      int32
 	DeleteMarkDelVolInterval            int64
+	RemoteCacheBoostEnable              bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -170,6 +171,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		TrashItemCleanMaxCountEachTime:      c.cfg.TrashItemCleanMaxCountEachTime,
 		TrashCleanDurationEachTime:          c.cfg.TrashCleanDurationEachTime,
 		DeleteMarkDelVolInterval:            c.cfg.DeleteMarkDelVolInterval,
+		RemoteCacheBoostEnable:              c.cfg.RemoteCacheBoostEnable,
 	}
 	return cv
 }
@@ -333,6 +335,11 @@ type volValue struct {
 	FinalVolStatus        uint8
 	RenameConvertStatus   bsProto.VolRenameConvertStatus
 	MarkDeleteTime        int64
+
+	RemoteCacheBoostPath       string
+	RemoteCacheBoostEnable     bool
+	RemoteCacheAutoPrepare     bool
+	RemoteCacheTTL             int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -412,6 +419,11 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FinalVolStatus:        vol.FinalVolStatus,
 		RenameConvertStatus:   vol.RenameConvertStatus,
 		MarkDeleteTime:        vol.MarkDeleteTime,
+
+		RemoteCacheBoostPath:       vol.RemoteCacheBoostPath,
+		RemoteCacheBoostEnable:     vol.RemoteCacheBoostEnable,
+		RemoteCacheAutoPrepare:     vol.RemoteCacheAutoPrepare,
+		RemoteCacheTTL:             vol.RemoteCacheTTL,
 	}
 	return
 }
@@ -1102,6 +1114,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 			atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, cv.TrashItemCleanMaxCountEachTime)
 		}
 		c.cfg.DeleteMarkDelVolInterval = cv.DeleteMarkDelVolInterval
+		c.cfg.RemoteCacheBoostEnable = cv.RemoteCacheBoostEnable
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

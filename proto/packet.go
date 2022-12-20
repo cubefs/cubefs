@@ -29,6 +29,7 @@ import (
 
 	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/unit"
+	pb "github.com/gogo/protobuf/proto"
 )
 
 var (
@@ -81,10 +82,6 @@ const (
 	OpTinyExtentAvaliRead            uint8 = 0x19
 	OpEcTinyDelInfoRead                    = OpReadTinyDeleteRecord
 
-	// Operations client-->datanode
-	OpRandomWriteV3     uint8 = 0x50
-	OpSyncRandomWriteV3 uint8 = 0x51
-
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
 	OpMetaUnlinkInode   uint8 = 0x21
@@ -104,22 +101,6 @@ const (
 	OpMetaEvictInode    uint8 = 0x2F
 	OpMetaSetattr       uint8 = 0x30
 	OpMetaReleaseOpen   uint8 = 0x31
-
-	OpMetaRecoverDeletedDentry      uint8 = 0x80
-	OpMetaRecoverDeletedInode       uint8 = 0x81
-	OpMetaCleanDeletedDentry        uint8 = 0x82
-	OpMetaCleanDeletedInode         uint8 = 0x83
-	OpMetaCleanExpiredDentry        uint8 = 0x84
-	OpMetaCleanExpiredInode         uint8 = 0x85
-	OpMetaLookupForDeleted          uint8 = 0x86
-	OpMetaGetDeletedInode           uint8 = 0x87
-	OpMetaBatchGetDeletedInode      uint8 = 0x88
-	OpMetaReadDeletedDir            uint8 = 0x89
-	OpMetaStatDeletedFileInfo       uint8 = 0x8A
-	OpMetaBatchRecoverDeletedDentry uint8 = 0x8B
-	OpMetaBatchRecoverDeletedInode  uint8 = 0x8C
-	OpMetaBatchCleanDeletedDentry   uint8 = 0x8D
-	OpMetaBatchCleanDeletedInode    uint8 = 0x8E
 
 	//Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaFreeInodesOnRaftFollower uint8 = 0x32
@@ -156,6 +137,10 @@ const (
 
 	OpAddVirtualMetaPartition uint8 = 0x5A //添加虚拟mp的逻辑发生变化，防止master升级后使用旧的op code给metanode发送添加虚拟mp的请求
 
+	// Operations client-->datanode
+	OpRandomWriteV3     uint8 = 0x50
+	OpSyncRandomWriteV3 uint8 = 0x51
+
 	// Operations: Master -> DataNode
 	OpCreateDataPartition             uint8 = 0x60
 	OpDeleteDataPartition             uint8 = 0x61
@@ -173,13 +158,28 @@ const (
 	OpResetDataPartitionRaftMember    uint8 = 0x6D
 
 	// Operations: MultipartInfo
-	OpCreateMultipart  uint8 = 0x70
-	OpGetMultipart     uint8 = 0x71
-	OpAddMultipartPart uint8 = 0x72
-	OpRemoveMultipart  uint8 = 0x73
-	OpListMultiparts   uint8 = 0x74
-
+	OpCreateMultipart   uint8 = 0x70
+	OpGetMultipart      uint8 = 0x71
+	OpAddMultipartPart  uint8 = 0x72
+	OpRemoveMultipart   uint8 = 0x73
+	OpListMultiparts    uint8 = 0x74
 	OpBatchDeleteExtent uint8 = 0x75 // SDK to MetaNode
+
+	OpMetaRecoverDeletedDentry      uint8 = 0x80
+	OpMetaRecoverDeletedInode       uint8 = 0x81
+	OpMetaCleanDeletedDentry        uint8 = 0x82
+	OpMetaCleanDeletedInode         uint8 = 0x83
+	OpMetaCleanExpiredDentry        uint8 = 0x84
+	OpMetaCleanExpiredInode         uint8 = 0x85
+	OpMetaLookupForDeleted          uint8 = 0x86
+	OpMetaGetDeletedInode           uint8 = 0x87
+	OpMetaBatchGetDeletedInode      uint8 = 0x88
+	OpMetaReadDeletedDir            uint8 = 0x89
+	OpMetaStatDeletedFileInfo       uint8 = 0x8A
+	OpMetaBatchRecoverDeletedDentry uint8 = 0x8B
+	OpMetaBatchRecoverDeletedInode  uint8 = 0x8C
+	OpMetaBatchCleanDeletedDentry   uint8 = 0x8D
+	OpMetaBatchCleanDeletedInode    uint8 = 0x8E
 
 	//Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaBatchDeleteInode  uint8 = 0x90
@@ -215,6 +215,11 @@ const (
 	OpEcGetTinyDeletingInfo           uint8 = 0xBE
 	OpEcRecordTinyDelInfo             uint8 = 0xBF
 	OpEcNodeDail                      uint8 = 0xC0
+
+	// Distributed cache related OP codes.
+	OpFlashNodeHeartbeat uint8 = 0xD0
+	OpCacheRead          uint8 = 0xD1
+	OpCachePrepare       uint8 = 0xD2
 
 	// Commons
 	OpInodeMergeErr    uint8 = 0xF1
@@ -569,6 +574,12 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaGetCmpInode"
 	case OpMetaInodeMergeEks:
 		m = "OpMetaInodeMergeEks"
+	case OpFlashNodeHeartbeat:
+		m = "OpFlashNodeHeartbeat"
+	case OpCacheRead:
+		m = "OpCacheRead"
+	case OpCachePrepare:
+		m = "OpCachePrepare"
 	}
 	return
 }
@@ -682,6 +693,20 @@ func (p *Packet) MarshalData(v interface{}) error {
 // UnmarshalData unmarshals the packet data.
 func (p *Packet) UnmarshalData(v interface{}) error {
 	return json.Unmarshal(p.Data, v)
+}
+
+func (p *Packet) MarshalDataPb(m pb.Message) error {
+	data, err := pb.Marshal(m)
+	if err == nil {
+		p.Data = data
+		p.Size = uint32(len(p.Data))
+		//p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+	}
+	return err
+}
+
+func (p *Packet) UnmarshalDataPb(m pb.Message) error {
+	return pb.Unmarshal(p.Data, m)
 }
 
 // WriteToNoDeadLineConn writes through the connection without deadline.

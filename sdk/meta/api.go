@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/bloomfilter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/multipart"
 )
@@ -123,11 +124,19 @@ func (mw *MetaWrapper) Statfs() (total, used uint64) {
 	return
 }
 
-func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name string, mode, uid, gid uint32, target []byte) (info *proto.InodeInfo, err error) {
+	defer func() {
+		if info != nil {
+			if mw.RemoteCacheBloom != nil {
+				cacheBloom := mw.RemoteCacheBloom()
+				if bloomfilter.CheckUint64Exist(cacheBloom, parentID) {
+					bloomfilter.AddUint64ToBloom(cacheBloom, info.Inode)
+				}
+			}
+		}
+	}()
 	var (
 		status int
-		err    error
-		info   *proto.InodeInfo
 		mp     *MetaPartition
 	)
 
@@ -238,6 +247,17 @@ func (mw *MetaWrapper) InodeNotExist(ctx context.Context, inode uint64) bool {
 }
 
 func (mw *MetaWrapper) Lookup_ll(ctx context.Context, parentID uint64, name string) (inode uint64, mode uint32, err error) {
+	defer func() {
+		if err == nil {
+			if mw.RemoteCacheBloom != nil {
+				cacheBloom := mw.RemoteCacheBloom()
+				if bloomfilter.CheckUint64Exist(cacheBloom, parentID) {
+					bloomfilter.AddUint64ToBloom(cacheBloom, inode)
+				}
+			}
+		}
+	}()
+
 	if mw.VolNotExists() {
 		return 0, 0, proto.ErrVolNotExists
 	}

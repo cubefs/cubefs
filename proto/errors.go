@@ -102,6 +102,7 @@ var (
 
 	ExtentNotFoundError = errors.New("extent does not exist")
 	ErrGetExtentsFailed = errors.New("get extents failed")
+	ErrTmpfsNoSpace      = errors.New("no space left on device")
 )
 
 // http response error code and error message definitions
@@ -176,6 +177,7 @@ const (
 	ErrCodeNoZoneToCreateECPartition
 	ErrCodeDataPartitionNotMigrating
 	ErrCodeGetExtentsFailed
+	ErrCodeTmpfsNoSpace
 )
 
 // Err2CodeMap error map to code
@@ -246,6 +248,7 @@ var Err2CodeMap = map[error]int32{
 	ErrHBaseOperation:                  ErrCodeHBaseOperation,
 	ErrVolInCreation:                   ErrCodeVolInCreation,
 	ErrGetExtentsFailed:                ErrCodeGetExtentsFailed,
+	ErrTmpfsNoSpace:                    ErrCodeTmpfsNoSpace,
 }
 
 func ParseErrorCode(code int32) error {
@@ -323,6 +326,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeHBaseOperation:                  ErrHBaseOperation,
 	ErrCodeVolInCreation:                   ErrVolInCreation,
 	ErrCodeGetExtentsFailed:                ErrGetExtentsFailed,
+	ErrCodeTmpfsNoSpace:                    ErrTmpfsNoSpace,
 }
 
 type GeneralResp struct {

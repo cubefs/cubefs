@@ -337,6 +337,10 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optEnableBitMapAllocator string
 		optTrashCleanDuration    int32
 		optTrashCleanMaxCount    int32
+		optRemoteCacheBoostPath        string
+		optRemoteCacheBoostEnable      string
+		optRemoteCacheAutoPrepare      string
+		optRemoteCacheTTL              int64
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -612,6 +616,42 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  compact             : %v\n", vv.CompactTag))
 			}
+			if optRemoteCacheBoostPath != "" {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostPath      : %v -> %v\n", vv.RemoteCacheBoostPath, optRemoteCacheBoostPath))
+				vv.RemoteCacheBoostPath = optRemoteCacheBoostPath
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostPath      : %v\n", vv.RemoteCacheBoostPath))
+			}
+			if optRemoteCacheBoostEnable != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optRemoteCacheBoostEnable); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable    : %v -> %v\n", formatEnabledDisabled(vv.RemoteCacheBoostEnable), formatEnabledDisabled(enable)))
+				vv.RemoteCacheBoostEnable = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable    : %v\n", formatEnabledDisabled(vv.RemoteCacheBoostEnable)))
+			}
+			if optRemoteCacheAutoPrepare != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optRemoteCacheAutoPrepare); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  RemoteCacheAutoPrepare    : %v -> %v\n", formatEnabledDisabled(vv.RemoteCacheAutoPrepare), formatEnabledDisabled(enable)))
+				vv.RemoteCacheAutoPrepare = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  RemoteCacheAutoPrepare    : %v\n", formatEnabledDisabled(vv.RemoteCacheAutoPrepare)))
+			}
+			if optRemoteCacheTTL > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Cache TTL           : %v -> %v\n", vv.RemoteCacheTTL, optRemoteCacheTTL))
+				vv.RemoteCacheTTL = optRemoteCacheTTL
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Cache TTL           : %v\n", vv.RemoteCacheTTL))
+			}
 
 			if optTrashCleanInterval > -1 && uint64(optTrashCleanInterval) != vv.TrashCleanInterval {
 				isChange = true
@@ -694,7 +734,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
 				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
-				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator)
+				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator,
+				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL)
 			if err != nil {
 				return
 			}
@@ -739,6 +780,10 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableBitMapAllocator, CliFlagBitMapAllocatorSt, "", "enable/disable bit map allocator")
 	cmd.Flags().Int32Var(&optTrashCleanDuration, CliFlagTrashCleanDuration, -1, "Trash clean duration, unit:min")
 	cmd.Flags().Int32Var(&optTrashCleanMaxCount, CliFlagTrashCleanMaxCount, -1, "Trash clean max count")
+	cmd.Flags().StringVar(&optRemoteCacheBoostPath, CliFlagRemoteCacheBoostPath, "", "cache boost path")
+	cmd.Flags().StringVar(&optRemoteCacheBoostEnable, CliFlagRemoteCacheBoostEnable, "", "enable cache boost")
+	cmd.Flags().StringVar(&optRemoteCacheAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "enable cache auto prepare")
+	cmd.Flags().Int64Var(&optRemoteCacheTTL, CliFlagRemoteCacheTTL, 0, "Cache TTL")
 	return cmd
 }
 

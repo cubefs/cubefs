@@ -50,15 +50,16 @@ const (
 
 type MasterClient struct {
 	sync.RWMutex
-	masters          []string
-	useSSL           bool
-	timeout          time.Duration
-	leaderAddr       string
-	nodeAddr         string
-	ClientType       ClientType
-	DataNodeProfPort uint16
-	MetaNodeProfPort uint16
-	EcNodeProfPort   uint16
+	masters           []string
+	useSSL            bool
+	timeout           time.Duration
+	leaderAddr        string
+	nodeAddr          string
+	ClientType        ClientType
+	DataNodeProfPort  uint16
+	MetaNodeProfPort  uint16
+	EcNodeProfPort    uint16
+	FlashNodeProfPort uint16
 
 	adminAPI  *AdminAPI
 	clientAPI *ClientAPI

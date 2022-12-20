@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"math/rand"
 	"net"
@@ -56,8 +57,8 @@ func (p *Packet) String() string {
 	if p == nil {
 		return ""
 	}
-	return fmt.Sprintf("ResultCode(%v)ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)",
-		p.GetResultMsg(), p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC)
+	return fmt.Sprintf("ResultCode(%v)ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)Data_len(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)",
+		p.GetResultMsg(), p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, len(p.Data), p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC)
 }
 
 // NewWritePacket returns a new write packet.
@@ -182,6 +183,16 @@ func NewReadPacket(ctx context.Context, key *proto.ExtentKey, extentOffset, size
 	return p
 }
 
+func NewCachePacket(ctx context.Context, inode uint64, opcode uint8) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	p.inode = inode
+	p.Opcode = opcode
+	return p
+
+}
+
 // NewCreateExtentPacket returns a new packet to create extent.
 func NewCreateExtentPacket(ctx context.Context, partitionID uint64, hosts []string, quorum int, inode uint64) *Packet {
 	p := new(Packet)
@@ -222,6 +233,12 @@ func NewReply(ctx context.Context, reqID int64, partitionID uint64, extentID uin
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
 	p.SetCtx(ctx)
+	return p
+}
+
+func NewCacheReply(ctx context.Context) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
 	return p
 }
 
@@ -316,4 +333,21 @@ func NewTinyExtentReadPacket(ctx context.Context, partitionID uint64, extentID u
 	p.SetCtx(ctx)
 
 	return
+}
+
+func CheckReadReplyValid(request *Packet, reply *Packet) (err error) {
+	if reply.ResultCode != proto.OpOk {
+		err = errors.New(fmt.Sprintf("checkReadReplyValid: ResultCode(%v) NOK", reply.GetResultMsg()))
+		return
+	}
+	if !request.IsValidReadReply(reply) {
+		err = errors.New(fmt.Sprintf("checkReadReplyValid: inconsistent req and reply, req(%v) reply(%v)", request, reply))
+		return
+	}
+	expectCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
+	if reply.CRC != expectCrc {
+		err = errors.New(fmt.Sprintf("checkReadReplyValid: inconsistent CRC, expectCRC(%v) replyCRC(%v)", expectCrc, reply.CRC))
+		return
+	}
+	return nil
 }

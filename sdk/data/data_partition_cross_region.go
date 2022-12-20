@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
@@ -115,7 +116,7 @@ func (w *Wrapper) updateCrossRegionHostStatusWithRecover() (err error) {
 		if r := recover(); r != nil {
 			log.LogErrorf("updateCrossRegionHostStatus panic: err(%v) stack(%v)", r, string(debug.Stack()))
 			msg := fmt.Sprintf("updateCrossRegionHostStatus panic: err(%v)", r)
-			handleUmpAlarm(w.clusterName, w.volName, "updateCrossRegionHostStatus", msg)
+			common.HandleUmpAlarm(w.clusterName, w.volName, "updateCrossRegionHostStatus", msg)
 			err = errors.New(msg)
 		}
 	}()

@@ -19,6 +19,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,6 +32,60 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
+
+type hostPingElapsed struct {
+	host    string
+	elapsed time.Duration
+}
+
+type PingElapsedSortedHosts struct {
+	sortedHosts  []string
+	updateTSUnix int64 // Timestamp (unix second) of latest update.
+	getHosts     func() (hosts []string)
+	getElapsed   func(host string) (elapsed time.Duration, ok bool)
+}
+
+func (h *PingElapsedSortedHosts) isNeedUpdate() bool {
+	return h.updateTSUnix == 0 || time.Now().Unix()-h.updateTSUnix > 10
+}
+
+func (h *PingElapsedSortedHosts) update(getHosts func() []string, getElapsed func(host string) (time.Duration, bool)) []string {
+	var hosts = getHosts()
+	hostElapses := make([]*hostPingElapsed, 0, len(hosts))
+	for _, host := range hosts {
+		var hostElapsed *hostPingElapsed
+		if elapsed, ok := getElapsed(host); ok {
+			hostElapsed = &hostPingElapsed{host: host, elapsed: elapsed}
+		} else {
+			hostElapsed = &hostPingElapsed{host: host, elapsed: time.Duration(0)}
+		}
+		hostElapses = append(hostElapses, hostElapsed)
+	}
+	sort.SliceStable(hostElapses, func(i, j int) bool {
+		return hostElapses[j].elapsed == 0 || hostElapses[i].elapsed < hostElapses[j].elapsed
+	})
+	sorted := make([]string, len(hostElapses))
+	for i, hotElapsed := range hostElapses {
+		sorted[i] = hotElapsed.host
+	}
+	h.sortedHosts = sorted
+	h.updateTSUnix = time.Now().Unix()
+	return sorted
+}
+
+func (h *PingElapsedSortedHosts) GetSortedHosts() []string {
+	if h.isNeedUpdate() {
+		return h.update(h.getHosts, h.getElapsed)
+	}
+	return h.sortedHosts
+}
+
+func NewPingElapsedSortHosts(getHosts func() []string, getElapsed func(host string) (time.Duration, bool)) *PingElapsedSortedHosts {
+	return &PingElapsedSortedHosts{
+		getHosts: getHosts,
+		getElapsed: getElapsed,
+	}
+}
 
 // DataPartition defines the wrapper of the data partition.
 type DataPartition struct {
@@ -45,6 +100,8 @@ type DataPartition struct {
 	hostErrMap         sync.Map //key: host; value: last error access time
 	ecEnable           bool
 	ReadMetrics        *proto.ReadMetrics
+
+	pingElapsedSortedHosts *PingElapsedSortedHosts
 }
 
 // If the connection fails, take punitive measures. Punish time is 5s.
@@ -666,4 +723,154 @@ func getHostByWeight(weight []int, hosts []string) (host string) {
 		}
 	}
 	return hosts[left]
+}
+
+type HostDelay struct {
+	host  string
+	delay time.Duration
+}
+
+func (this *HostDelay) Less(that *HostDelay) bool {
+	if that.delay == time.Duration(0) {
+		return true
+	}
+	return this.delay < that.delay
+}
+
+func (dp *DataPartition) sortHostsByPingtime() []string {
+	var (
+		items  = make([]*HostDelay, 0)
+		sorted = make([]string, 0)
+	)
+	for _, host := range dp.Hosts {
+		var item *HostDelay
+		if delay, ok := dp.ClientWrapper.HostsDelay.Load(host); ok {
+			item = &HostDelay{host, delay.(time.Duration)}
+		} else {
+			item = &HostDelay{host, time.Duration(0)}
+		}
+		items = append(items, item)
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Less(items[j])
+	})
+	for _, item := range items {
+		sorted = append(sorted, item.host)
+	}
+	return sorted
+}
+
+func (dp *DataPartition) sortHostsByPingElapsed() []string {
+	if dp.pingElapsedSortedHosts == nil {
+		var getHosts = func() []string {
+			return dp.Hosts
+		}
+		var getElapsed = func (host string) (time.Duration, bool) {
+			delay, ok := dp.ClientWrapper.HostsDelay.Load(host)
+			if !ok {
+				return 0, false
+			}
+			return delay.(time.Duration), true
+		}
+		dp.pingElapsedSortedHosts = NewPingElapsedSortHosts(getHosts, getElapsed)
+	}
+	return dp.pingElapsedSortedHosts.GetSortedHosts()
+}
+
+func (dp *DataPartition) getNearestHost() string {
+	hostsStatus := dp.ClientWrapper.HostsStatus
+	for _, addr := range dp.NearHosts {
+		status, ok := hostsStatus[addr]
+		if ok {
+			if !status {
+				continue
+			}
+		}
+		return addr
+	}
+	return dp.GetLeaderAddr()
+}
+
+func (dp *DataPartition) getFollowerReadHost() string {
+	if len(dp.Hosts) > 0 {
+		// if enableCollect is false, use getEpoch; unless, getLowest
+		if dp.ClientWrapper.dpFollowerReadDelayConfig.EnableCollect {
+			err, host := dp.getLowestReadDelayHost(dp.PartitionID)
+			if err == nil {
+				return host
+			}
+			log.LogWarnf("getFollowerReadHost err:(%v)", err)
+		}
+		err, host := dp.getEpochReadHost(dp.Hosts)
+		if err == nil {
+			return host
+		}
+	}
+	return dp.GetLeaderAddr()
+}
+
+// sortByStatus will return hosts list sort by host status for DataPartition.
+// The order from front to back is "status(true)/status(false)/failedHost".
+func sortByStatus(dp *DataPartition, failedHost string) (hosts []string) {
+	var inactiveHosts []string
+	hostsStatus := dp.ClientWrapper.HostsStatus
+	var dpHosts []string
+	if dp.ClientWrapper.CrossRegionHATypeQuorum() {
+		dpHosts = dp.getSortedCrossRegionHosts()
+	} else if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() {
+		dpHosts = dp.NearHosts
+	}
+	if len(dpHosts) == 0 {
+		dpHosts = dp.Hosts
+	}
+
+	for _, addr := range dpHosts {
+		if addr == failedHost {
+			continue
+		}
+		status, ok := hostsStatus[addr]
+		if ok {
+			if status {
+				hosts = append(hosts, addr)
+			} else {
+				inactiveHosts = append(inactiveHosts, addr)
+			}
+		} else {
+			inactiveHosts = append(inactiveHosts, addr)
+			log.LogWarnf("sortByStatus: can not find host[%v] in HostsStatus, dp[%d]", addr, dp.PartitionID)
+		}
+	}
+
+	sortByAccessErrTs(dp, hosts)
+
+	hosts = append(hosts, inactiveHosts...)
+	hosts = append(hosts, failedHost)
+
+	log.LogDebugf("sortByStatus: dp(%v) sortedHost(%v) failedHost(%v)", dp, hosts, failedHost)
+
+	return
+}
+
+func sortByAccessErrTs(dp *DataPartition, hosts []string) {
+
+	for _, host := range hosts {
+		ts, ok := dp.hostErrMap.Load(host)
+		if ok && time.Now().UnixNano()-ts.(int64) > HostErrAccessTimeout*1e9 {
+			dp.hostErrMap.Delete(host)
+		}
+	}
+
+	sort.Slice(hosts, func(i, j int) bool {
+		var iTime, jTime int64
+		iTs, ok := dp.hostErrMap.Load(hosts[i])
+		if ok {
+			iTime = iTs.(int64)
+		}
+		jTs, ok := dp.hostErrMap.Load(hosts[j])
+		if ok {
+			jTime = jTs.(int64)
+		}
+		return iTime < jTime
+	})
 }

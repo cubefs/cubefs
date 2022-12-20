@@ -236,6 +236,7 @@ type ClusterView struct {
 	DataNodes                           []NodeView
 	CodEcnodes                          []NodeView
 	EcNodes                             []NodeView
+	FlashNodes                          []NodeView
 	DataNodeBadDisks                    []DataNodeBadDisksView
 	SchedulerDomain                     string // todo
 	ClientPkgAddr                       string

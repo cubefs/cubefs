@@ -406,6 +406,49 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminDNStopMigrating).
 		HandlerFunc(m.DNStopMigrating)
 
+	// APIs for FlashNode
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetAllFlashNodes).
+		HandlerFunc(m.getAllFlashNodes)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddFlashNode).
+		HandlerFunc(m.addFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DecommissionFlashNode).
+		HandlerFunc(m.decommissionFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetFlashNode).
+		HandlerFunc(m.getFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetFlashNode).
+		HandlerFunc(m.setFlashNode)
+
+	// APIs for FlashGroup
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreateFlashGroup).
+		HandlerFunc(m.createFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetFlashGroup).
+		HandlerFunc(m.setFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminFlashGroupAddFlashNode).
+		HandlerFunc(m.flashGroupAddFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminListFlashGroups).
+		HandlerFunc(m.listFlashGroups)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.ClientFlashGroups).
+		HandlerFunc(m.clientFlashGroups)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetFlashGroup).
+		HandlerFunc(m.getFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminRemoveFlashGroup).
+		HandlerFunc(m.removeFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminFlashGroupRemoveFlashNode).
+		HandlerFunc(m.flashGroupRemoveFlashNode)
+
 	// APIs for CodecNodes
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetAllCodecNodes).

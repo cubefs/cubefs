@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"net"
 	"strings"
 	"sync"
@@ -141,7 +141,7 @@ func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, 
 func (dp *DataPartition) isRecover() (isRecover bool, err error) {
 	var replyNum uint8
 	isRecover, replyNum = dp.getRemoteReplicaRecoverStatus(context.Background())
-	if int(replyNum) < len(dp.config.Hosts) / 2 {
+	if int(replyNum) < len(dp.config.Hosts)/2 {
 		err = fmt.Errorf("reply from remote replica is no enough")
 		return
 	}
@@ -199,7 +199,7 @@ func (dp *DataPartition) isRemotePartitionRecover(target string) (isRecover bool
 	}
 	profPort := dp.disk.space.dataNode.httpPort
 	httpAddr := fmt.Sprintf("%v:%v", strings.Split(target, ":")[0], profPort)
-	dataClient := data.NewDataHttpClient(httpAddr, false)
+	dataClient := http_client.NewDataClient(httpAddr, false)
 	var dpInfo *proto.DNDataPartitionInfo
 	for i := 0; i < 3; i++ {
 		dpInfo, err = dataClient.GetPartitionSimple(dp.partitionID)

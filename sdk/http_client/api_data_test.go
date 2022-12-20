@@ -1,4 +1,4 @@
-package data
+package http_client
 
 import (
 	"crypto/md5"
@@ -17,7 +17,7 @@ const (
 )
 
 var (
-	dataClient = NewDataHttpClient(datanodeAddr, false)
+	dataClient   = NewDataClient(datanodeAddr, false)
 	partitionIds []uint64
 )
 
@@ -37,9 +37,9 @@ func init() {
 func TestComputeExtentMd5(t *testing.T) {
 	var (
 		partitionID uint64 = 1
-		extentID uint64 = 1
-		offset uint64 = 0
-		size uint64 = 0
+		extentID    uint64 = 1
+		offset      uint64 = 0
+		size        uint64 = 0
 	)
 	for _, pId := range partitionIds {
 		md5Remote, err := dataClient.ComputeExtentMd5(pId, extentID, offset, size)
@@ -150,7 +150,7 @@ func TestRepairExtent(t *testing.T) {
 		partitionPath := fmt.Sprintf("/cfs/disk/datapartition_%v_128849018880", pId)
 		err := dataClient.RepairExtent(1, partitionPath, pId)
 		if err != nil {
-			t.Fatalf("RepairExtent partition:%v extent:%v partitionPath:%v, err:%v", pId, 1, partitionPath,  err)
+			t.Fatalf("RepairExtent partition:%v extent:%v partitionPath:%v, err:%v", pId, 1, partitionPath, err)
 		}
 	}
 }
@@ -236,7 +236,7 @@ func TestMoveExtentFile(t *testing.T) {
 		partitionPath := fmt.Sprintf("/cfs/disk/datapartition_%v_128849018880", pId)
 		err := dataClient.MoveExtentFile(1, partitionPath, pId)
 		if err != nil {
-			t.Fatalf("MoveExtentFile partition:%v extent:%v partitionPath:%v, err:%v", pId, 1, partitionPath,  err)
+			t.Fatalf("MoveExtentFile partition:%v extent:%v partitionPath:%v, err:%v", pId, 1, partitionPath, err)
 		}
 	}
 }
@@ -281,4 +281,3 @@ func generateAuthKey() string {
 	cipherStr := h.Sum(nil)
 	return hex.EncodeToString(cipherStr)
 }
-

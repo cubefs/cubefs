@@ -435,7 +435,8 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	authKey, zoneName, mpLayout, smartRules string, bucketPolicy, crossRegionHAType uint8,
 	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64,
 	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod, trashCleanDuration, trashCleanMaxCount int32,
-	enableBitMapAllocator bool) (err error) {
+	enableBitMapAllocator bool,
+	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -475,6 +476,10 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	if trashCleanMaxCount >= 0 {
 		request.addParam(proto.TrashItemCleanMaxCountKey, strconv.FormatInt(int64(trashCleanMaxCount), 10))
 	}
+	request.addParam("remoteCacheBoostPath", remoteCacheBoostPath)
+	request.addParam("remoteCacheBoostEnable", strconv.FormatBool(remoteCacheBoostEnable))
+	request.addParam("remoteCacheAutoPrepare", strconv.FormatBool(remoteCacheAutoPrepare))
+	request.addParam("remoteCacheTTL", strconv.FormatInt(remoteCacheTTL, 10))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -822,6 +827,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.DeleteMarkDelVolInterval >= 0 {
 		request.addParam(proto.DeleteMarkDelVolIntervalKey, strconv.FormatInt(info.DeleteMarkDelVolInterval, 10))
+	}
+	if info.RemoteCacheBoostEnableState == 0 || info.RemoteCacheBoostEnableState == 1 {
+		request.addParam(proto.RemoteCacheBoostEnableKey, strconv.FormatInt(info.RemoteCacheBoostEnableState, 10))
 	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
@@ -1211,4 +1219,127 @@ func (api *AdminAPI) SetVolChildFileMaxCount(volName string, maxCount uint32) (r
 		return
 	}
 	return string(data), nil
+}
+
+func (api *AdminAPI) CreateFlashGroup(slots string) (fgView proto.FlashGroupAdminView, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminCreateFlashGroup)
+	request.addParam("slots", slots)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	if err = json.Unmarshal(buf, &fgView); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SetFlashGroup(flashGroupID uint64, isActive bool) (fgView proto.FlashGroupAdminView, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetFlashGroup)
+	request.addParam("id", strconv.FormatUint(flashGroupID, 10))
+	request.addParam("enable", strconv.FormatBool(isActive))
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	if err = json.Unmarshal(buf, &fgView); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetFlashGroup(flashGroupID uint64) (fgView proto.FlashGroupAdminView, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetFlashGroup)
+	request.addParam("id", strconv.FormatUint(flashGroupID, 10))
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	if err = json.Unmarshal(buf, &fgView); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) RemoveFlashGroup(flashGroupID uint64) (result string, err error) {
+	var data []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminRemoveFlashGroup)
+	request.addParam("id", strconv.FormatUint(flashGroupID, 10))
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) FlashGroupAddFlashNode(flashGroupID uint64, count int, zoneName, addr string) (fgView proto.FlashGroupAdminView, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminFlashGroupAddFlashNode)
+	request.addParam("id", strconv.FormatUint(flashGroupID, 10))
+	request.addParam("count", strconv.Itoa(count))
+	request.addParam("zoneName", zoneName)
+	request.addParam("addr", addr)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	if err = json.Unmarshal(buf, &fgView); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) FlashGroupRemoveFlashNode(flashGroupID uint64, count int, zoneName, addr string) (fgView proto.FlashGroupAdminView, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminFlashGroupRemoveFlashNode)
+	request.addParam("id", strconv.FormatUint(flashGroupID, 10))
+	request.addParam("count", strconv.Itoa(count))
+	request.addParam("zoneName", zoneName)
+	request.addParam("addr", addr)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	if err = json.Unmarshal(buf, &fgView); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) ListFlashGroups(isActive, listAllStatus bool) (fgView proto.FlashGroupsAdminView, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminListFlashGroups)
+	if !listAllStatus {
+		request.addParam("enable", strconv.FormatBool(isActive))
+	}
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	if err = json.Unmarshal(buf, &fgView); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) ClientFlashGroups() (fgView *proto.FlashGroupView, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.ClientFlashGroups)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	fgView = &proto.FlashGroupView{}
+	if err = json.Unmarshal(buf, fgView); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetAllFlashNodes(getAllFlashNodes bool) (zoneFlashNodes map[string][]*proto.FlashNodeViewInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.GetAllFlashNodes)
+	request.addParam("getAllFlashNodes", strconv.FormatBool(getAllFlashNodes))
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	if err = json.Unmarshal(buf, &zoneFlashNodes); err != nil {
+		return
+	}
+	return
 }

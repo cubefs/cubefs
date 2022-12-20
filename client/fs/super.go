@@ -123,6 +123,7 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		OnGetExtents:             s.mw.GetExtents,
 		OnTruncate:               s.mw.Truncate,
 		OnEvictIcache:            s.ic.Delete,
+		MetaWrapper:              s.mw,
 	}
 	if first_start {
 		s.ec, err = data.NewExtentClient(extentConfig, nil)

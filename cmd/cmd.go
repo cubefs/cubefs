@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/codecnode"
 	"github.com/cubefs/cubefs/convertnode"
 	"github.com/cubefs/cubefs/ecnode"
+	"github.com/cubefs/cubefs/flashnode"
 	"github.com/cubefs/cubefs/schedulenode/compact"
 	"github.com/cubefs/cubefs/schedulenode/scheduler"
 	"github.com/cubefs/cubefs/schedulenode/smart"
@@ -65,24 +66,27 @@ const (
 )
 
 const (
-	RoleMaster   = "master"
-	RoleMeta     = "metanode"
-	RoleData     = "datanode"
-	RoleObject   = "objectnode"
-	RoleConsole  = "console"
-	RoleMonitor  = "monitor"
-	RoleConvert  = "convert"
-	RoleSchedule = "schedulenode"
-	RoleSmart    = "smartvolume"
-	RoleCompact  = "compact"
-	RoleCodec    = "codecnode"
-	RoleEc       = "ecnode"
+	RoleMaster    = "master"
+	RoleMeta      = "metanode"
+	RoleData      = "datanode"
+	RoleFlash     = "flashnode"
+	RoleObject    = "objectnode"
+	RoleConsole   = "console"
+	RoleMonitor   = "monitor"
+	RoleConvert   = "convert"
+	RoleSchedule  = "schedulenode"
+	RoleSmart     = "smartvolume"
+	RoleCompact   = "compact"
+	RoleDataAgent = "dataAgent"
+	RoleCodec     = "codecnode"
+	RoleEc        = "ecnode"
 )
 
 const (
 	ModuleMaster    = "master"
 	ModuleMeta      = "metaNode"
 	ModuleData      = "dataNode"
+	ModuleFlash     = "flashNode"
 	ModuleObject    = "objectNode"
 	ModuleConsole   = "console"
 	ModuleMonitor   = "monitor"
@@ -222,6 +226,9 @@ func run() error {
 	case RoleData:
 		server = datanode.NewServer()
 		module = ModuleData
+	case RoleFlash:
+		server = flashnode.NewServer()
+		module = ModuleFlash
 	case RoleObject:
 		server = objectnode.NewServer()
 		module = ModuleObject

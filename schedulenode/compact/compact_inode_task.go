@@ -378,7 +378,7 @@ func (inodeTask *CmpInodeTask) DealActionErr(errCode int, err error) {
 }
 
 func (inodeTask *CmpInodeTask) UpdateTime() {
-	if time.Now().Unix() - inodeTask.lastUpdateTime > 10*60  {
+	if time.Now().Unix()-inodeTask.lastUpdateTime > 10*60 {
 		if updateErr := mysql.UpdateTaskUpdateTime(inodeTask.cmpMpTask.task.TaskId); updateErr != nil {
 			log.LogErrorf("UpdateTaskUpdateTime to mysql failed, tasks(%v), err(%v)", inodeTask.cmpMpTask.task, updateErr)
 		}

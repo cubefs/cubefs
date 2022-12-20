@@ -225,8 +225,9 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 	// This is just a local cache to prepare write requests.
 	// Partition and extent are not allocated.
 	ek = &proto.ExtentKey{
-		FileOffset: eh.fileOffset,
-		Size:       uint32(eh.size),
+		FileOffset:   offset,
+		ExtentOffset: offset - eh.fileOffset + uint64(eh.extentOffset),
+		Size:         uint32(size),
 	}
 	return ek, nil
 }
@@ -556,6 +557,9 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 		log.LogDebugf("appendExtentKey exit: eh(%v) key(%v) dirty(%v) err(%v)", eh, eh.key, eh.dirty, err)
 	}
 
+	if ek.PartitionId > 0 && eh.stream.enableCacheAutoPrepare() {
+		eh.stream.prepareRemoteCache(ctx, ek)
+	}
 	return
 }
 

@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"math"
@@ -126,7 +126,7 @@ func (server *tinyExtentRepairServer) doRepair(needRepairExtents []*ExtentRepair
 		break
 	}
 	sdnHost := fmt.Sprintf("%v:%v", strings.Split(repairHost, ":")[0], client.DataNodeProfPort)
-	dnHelper := data.NewDataHttpClient(sdnHost, false)
+	dnHelper := http_client.NewDataClient(sdnHost, false)
 
 	dp, err = dnHelper.GetPartitionFromNode(pid)
 	if err != nil {
@@ -221,7 +221,7 @@ func checkTinyExtent(volume string, partitionID uint64, partitionHosts []string,
 
 	for _, h := range partitionHosts {
 		sdnHost := fmt.Sprintf("%v:%v", strings.Split(h, ":")[0], client.DataNodeProfPort)
-		dnHelper := data.NewDataHttpClient(sdnHost, false)
+		dnHelper := http_client.NewDataClient(sdnHost, false)
 		var ehs *proto.DNTinyExtentInfo
 		var ext *proto.ExtentInfoBlock
 		ehs, err = dnHelper.GetExtentHoles(partitionID, extent)

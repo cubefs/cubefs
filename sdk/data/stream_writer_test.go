@@ -464,7 +464,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 		t.Fatalf("TestWrite_DataConsistency failed: expect host(%v) at the end but hosts(%v)", sc.dp.Hosts[len(sc.dp.Hosts)-2], host)
 	}
 	data := make([]byte, size)
-	req := NewExtentRequest(fileOffset, size, data, &ek)
+	req := NewExtentRequest(fileOffset, size, data, 0, uint64(size), &ek)
 	reqPacket := common.NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, true)
 	// read from three replicas, check if same
 	readMap := make(map[string]string)

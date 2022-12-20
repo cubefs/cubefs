@@ -159,6 +159,7 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	if err != nil {
 		return err
 	}
+	_ = os.Chmod(outputFilePath, 0666)
 	defer func() {
 		if err != nil {
 			syslog.Printf("start fuse client failed: err(%v)\n", err)

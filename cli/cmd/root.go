@@ -70,6 +70,8 @@ func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient, cc 
 		newConvertNodeCmd(cc),
 		newIdcCommand(client),
 		newCompactCmd(client),
+		newFlashGroupCommand(client),
+		newFlashNodeCommand(client),
 	)
 	return cmd
 }

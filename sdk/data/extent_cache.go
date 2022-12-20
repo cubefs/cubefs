@@ -48,13 +48,16 @@ func (er *ExtentRequest) String() string {
 }
 
 // NewExtentRequest returns a new extent request.
-func NewExtentRequest(offset uint64, size int, data []byte, ek *proto.ExtentKey) *ExtentRequest {
-	return &ExtentRequest{
+func NewExtentRequest(offset uint64, size int, data []byte, start, end uint64, ek *proto.ExtentKey) *ExtentRequest {
+	req := &ExtentRequest{
 		FileOffset: offset,
 		Size:       size,
-		Data:       data,
 		ExtentKey:  ek,
 	}
+	if data != nil {
+		req.Data = data[start:end]
+	}
+	return req
 }
 
 // ExtentCache defines the struct of the extent cache.
@@ -216,20 +219,20 @@ func (cache *ExtentCache) PrepareRequests(offset uint64, size int, data []byte) 
 				return false
 			} else if end < ekEnd {
 				// add hole (start, ekStart)
-				req := NewExtentRequest(start, int(ekStart-start), data[start-offset:ekStart-offset], nil)
+				req := NewExtentRequest(start, int(ekStart-start), data, start-offset, ekStart-offset, nil)
 				requests = append(requests, req)
 				// add non-hole (ekStart, end)
-				req = NewExtentRequest(ekStart, int(end-ekStart), data[ekStart-offset:end-offset], &ek)
+				req = NewExtentRequest(ekStart, int(end-ekStart), data, ekStart-offset, end-offset, &ek)
 				requests = append(requests, req)
 				start = end
 				return false
 			} else {
 				// add hole (start, ekStart)
-				req := NewExtentRequest(start, int(ekStart-start), data[start-offset:ekStart-offset], nil)
+				req := NewExtentRequest(start, int(ekStart-start), data, start-offset, ekStart-offset, nil)
 				requests = append(requests, req)
 
 				// add non-hole (ekStart, ekEnd)
-				req = NewExtentRequest(ekStart, int(ekEnd-ekStart), data[ekStart-offset:ekEnd-offset], &ek)
+				req = NewExtentRequest(ekStart, int(ekEnd-ekStart), data, ekStart-offset, ekEnd-offset, &ek)
 				requests = append(requests, req)
 
 				start = ekEnd
@@ -238,13 +241,13 @@ func (cache *ExtentCache) PrepareRequests(offset uint64, size int, data []byte) 
 		} else if start < ekEnd {
 			if end <= ekEnd {
 				// add non-hole (start, end)
-				req := NewExtentRequest(start, int(end-start), data[start-offset:end-offset], &ek)
+				req := NewExtentRequest(start, int(end-start), data, start-offset, end-offset, &ek)
 				requests = append(requests, req)
 				start = end
 				return false
 			} else {
 				// add non-hole (start, ekEnd), start = ekEnd
-				req := NewExtentRequest(start, int(ekEnd-start), data[start-offset:ekEnd-offset], &ek)
+				req := NewExtentRequest(start, int(ekEnd-start), data, start-offset, ekEnd-offset, &ek)
 				requests = append(requests, req)
 				start = ekEnd
 				return true
@@ -259,7 +262,7 @@ func (cache *ExtentCache) PrepareRequests(offset uint64, size int, data []byte) 
 			log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
 		}
 		// add hole (start, end)
-		req := NewExtentRequest(start, int(end-start), data[start-offset:end-offset], nil)
+		req := NewExtentRequest(start, int(end-start), data, start-offset, end-offset, nil)
 		requests = append(requests, req)
 	}
 
@@ -280,7 +283,7 @@ func (cache *ExtentCache) prepareMergeRequests() (readRequests []*ExtentRequest,
 	cache.root.Range(func(ek proto.ExtentKey) bool {
 		if total+ek.Size > mergedToSize || (preEk != nil && ek.FileOffset != preEk.FileOffset+uint64(preEk.Size)) {
 			if len(readRequests) > 1 {
-				writeRequest = NewExtentRequest(readRequests[0].FileOffset, int(total), data[:total], nil)
+				writeRequest = NewExtentRequest(readRequests[0].FileOffset, int(total), data, 0, uint64(total), nil)
 				return false
 			} else if len(readRequests) == 1 {
 				readRequests = readRequests[:0]
@@ -292,7 +295,7 @@ func (cache *ExtentCache) prepareMergeRequests() (readRequests []*ExtentRequest,
 			}
 		}
 
-		req = NewExtentRequest(ek.FileOffset, int(ek.Size), data[total:total+ek.Size], &ek)
+		req = NewExtentRequest(ek.FileOffset, int(ek.Size), data, uint64(total), uint64(total+ek.Size), &ek)
 		readRequests = append(readRequests, req)
 		total += ek.Size
 		preEk = &ek
@@ -300,7 +303,7 @@ func (cache *ExtentCache) prepareMergeRequests() (readRequests []*ExtentRequest,
 	})
 	if writeRequest == nil {
 		if len(readRequests) > 1 {
-			writeRequest = NewExtentRequest(readRequests[0].FileOffset, int(total), data[:total], nil)
+			writeRequest = NewExtentRequest(readRequests[0].FileOffset, int(total), data, 0, uint64(total), nil)
 		} else {
 			readRequests = readRequests[:0]
 		}

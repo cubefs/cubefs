@@ -24,7 +24,10 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
+	"github.com/cubefs/cubefs/sdk/flash"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/sdk/scheduler"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
@@ -42,6 +45,8 @@ var (
 const (
 	VolNotExistInterceptThresholdMin = 60 * 24
 	VolNotExistClearViewThresholdMin = 0
+
+	RefreshHostLatencyInterval = time.Hour
 )
 
 type DataPartitionView struct {
@@ -67,6 +72,7 @@ type Wrapper struct {
 	dpSelectorName        string
 	dpSelectorParm        string
 	mc                    *masterSDK.MasterClient
+	metaWrapper           *meta.MetaWrapper
 	stopOnce              sync.Once
 	stopC                 chan struct{}
 	wg                    sync.WaitGroup
@@ -90,6 +96,13 @@ type Wrapper struct {
 
 	dpFollowerReadDelayConfig *proto.DpFollowerReadDelayConfig
 	dpLowestDelayHostWeight   int
+	clusterEnableCache        bool
+	enableRemoteCache         bool
+	cacheBoostPath            string
+	enableCacheAutoPrepare    bool
+	cacheTTL                  int64
+	remoteCache               *flash.RemoteCache
+	HostsDelay                sync.Map
 }
 
 type DataState struct {
@@ -144,8 +157,9 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	if err = w.updateDataNodeStatus(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
+
 	err = nil
-	streamConnPoolInitOnce.Do(func() {
+	StreamConnPoolInitOnce.Do(func() {
 		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
 	})
 
@@ -207,7 +221,7 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 
 	w._updateDataNodeStatus(dataState.ClusterView)
 
-	streamConnPoolInitOnce.Do(func() {
+	StreamConnPoolInitOnce.Do(func() {
 		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
 	})
 
@@ -217,6 +231,32 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	go w.ScheduleDataPartitionMetricsReport()
 	go w.dpFollowerReadDelayCollect()
 
+	return
+}
+
+func (w *Wrapper) setClusterBoostEnable(enableBoost bool) {
+	w.clusterEnableCache = enableBoost
+}
+
+func (w *Wrapper) EnableRemoteCache() bool {
+	return w.enableRemoteCache && w.clusterEnableCache
+}
+
+func (w *Wrapper) initRemoteCache() (err error) {
+	if w.EnableRemoteCache() && w.remoteCache == nil {
+		cacheConfig := &flash.CacheConfig{
+			Cluster: w.clusterName,
+			Volume:  w.volName,
+			Masters: w.masters,
+			MW:      w.metaWrapper,
+		}
+		if w.remoteCache, err = flash.NewRemoteCache(cacheConfig); err != nil {
+			return
+		}
+		if !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
+			w.cacheBoostPath = ""
+		}
+	}
 	return
 }
 
@@ -235,6 +275,9 @@ func (w *Wrapper) saveDataState() *DataState {
 
 func (w *Wrapper) Stop() {
 	w.stopOnce.Do(func() {
+		if w.remoteCache != nil {
+			w.remoteCache.Stop()
+		}
 		close(w.stopC)
 		w.wg.Wait()
 	})
@@ -287,6 +330,10 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	if view.UmpCollectWay != exporter.UMPCollectMethodUnknown {
 		exporter.SetUMPCollectMethod(view.UmpCollectWay)
 	}
+	w.enableRemoteCache = view.RemoteCacheBoostEnable
+	w.cacheBoostPath = view.RemoteCacheBoostPath
+	w.enableCacheAutoPrepare = view.RemoteCacheAutoPrepare
+	w.cacheTTL = view.RemoteCacheTTL
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
@@ -347,12 +394,20 @@ func (w *Wrapper) updateWithRecover() (err error) {
 		if r := recover(); r != nil {
 			log.LogErrorf("updateWithRecover panic: err(%v) stack(%v)", r, string(debug.Stack()))
 			msg := fmt.Sprintf("updateDataInfo panic: err(%v)", r)
-			handleUmpAlarm(w.clusterName, w.volName, "updateDataInfo", msg)
+			common.HandleUmpAlarm(w.clusterName, w.volName, "updateDataInfo", msg)
 			err = errors.New(msg)
 		}
 	}()
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
+
+	refreshLatency := time.NewTimer(0)
+	defer refreshLatency.Stop()
+
+	var (
+		retryHosts map[string]bool
+		hostsLock  sync.Mutex
+	)
 	for {
 		select {
 		case <-w.stopC:
@@ -361,8 +416,61 @@ func (w *Wrapper) updateWithRecover() (err error) {
 			w.updateSimpleVolView()
 			w.updateDataPartition(false)
 			w.updateDataNodeStatus()
+
+			hostsLock.Lock()
+			retryHosts = w.retryHostsPingtime(retryHosts)
+			hostsLock.Unlock()
+
+		case <-refreshLatency.C:
+			hostsLock.Lock()
+			retryHosts = w.updateHostsPingtime()
+			hostsLock.Unlock()
+
+			refreshLatency.Reset(RefreshHostLatencyInterval)
 		}
 	}
+}
+
+func (w *Wrapper) updateHostsPingtime() map[string]bool {
+	failedHosts := make(map[string]bool)
+	allHosts := make(map[string]bool)
+	w.partitions.Range(func(id, value interface{}) bool {
+		dp := value.(*DataPartition)
+		for _, host := range dp.Hosts {
+			if _, ok := allHosts[host]; ok {
+				continue
+			}
+			allHosts[host] = true
+			avgTime, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingTimeout*pingCount)
+			if err != nil {
+				avgTime = time.Duration(0)
+				failedHosts[host] = true
+				log.LogWarnf("updateHostsPingtime: host(%v) err(%v)", host, err)
+			} else {
+				log.LogDebugf("updateHostsPingtime: host(%v) ping time(%v)", host, avgTime)
+			}
+			w.HostsDelay.Store(host, avgTime)
+		}
+		return true
+	})
+	return failedHosts
+}
+
+func (w *Wrapper) retryHostsPingtime(retryHosts map[string]bool) map[string]bool {
+	if retryHosts == nil || len(retryHosts) == 0 {
+		return nil
+	}
+	failedHosts := make(map[string]bool)
+	for host, _ := range retryHosts {
+		avgTime, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingTimeout*pingCount)
+		if err != nil {
+			avgTime = time.Duration(0)
+			failedHosts[host] = true
+		} else {
+			w.HostsDelay.Store(host, avgTime)
+		}
+	}
+	return failedHosts
 }
 
 func (w *Wrapper) updateSimpleVolView() (err error) {
@@ -419,6 +527,41 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		log.LogInfof("updateSimpleVolView: update EcEnable from old(%v) to new(%v)", w.ecEnable, view.EcEnable)
 		w.ecEnable = view.EcEnable
 	}
+
+	if w.enableRemoteCache != view.RemoteCacheBoostEnable {
+		log.LogInfof("updateSimpleVolView: update RemoteCacheBoostEnable from old(%v) to new(%v)", w.enableRemoteCache, view.RemoteCacheBoostEnable)
+		w.enableRemoteCache = view.RemoteCacheBoostEnable
+	}
+
+	if w.enableRemoteCache && w.remoteCache == nil {
+		if err = w.initRemoteCache(); err != nil {
+			log.LogErrorf("updateSimpleVolView: NewRemoteCache failed, [%v]", err)
+		}
+	}
+
+	if !w.enableRemoteCache && w.remoteCache != nil {
+		w.remoteCache.Stop()
+		w.remoteCache = nil
+	}
+
+	if w.cacheBoostPath != view.RemoteCacheBoostPath {
+		log.LogInfof("updateSimpleVolView: update RemoteCacheBoostPath from old(%v) to new(%v)", w.cacheBoostPath, view.RemoteCacheBoostPath)
+		w.cacheBoostPath = view.RemoteCacheBoostPath
+		if !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
+			w.cacheBoostPath = ""
+		}
+	}
+
+	if w.enableCacheAutoPrepare != view.RemoteCacheAutoPrepare {
+		log.LogInfof("updateSimpleVolView: update RemoteCacheAutoPrepare from old(%v) to new(%v)", w.enableCacheAutoPrepare, view.RemoteCacheAutoPrepare)
+		w.enableCacheAutoPrepare = view.RemoteCacheAutoPrepare
+	}
+
+	if w.cacheTTL != view.RemoteCacheTTL {
+		log.LogInfof("updateSimpleVolView: update RemoteCacheTTL from old(%d) to new(%d)", w.cacheTTL, view.RemoteCacheTTL)
+		w.cacheTTL = view.RemoteCacheTTL
+	}
+
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
@@ -674,6 +817,10 @@ func (w *Wrapper) SetNearRead(nearRead bool) {
 
 func (w *Wrapper) NearRead() bool {
 	return w.nearRead
+}
+
+func (w *Wrapper) SetMetaWrapper(metaWrapper *meta.MetaWrapper) {
+	w.metaWrapper = metaWrapper
 }
 
 func (w *Wrapper) SetConnConfig() {

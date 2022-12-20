@@ -16,7 +16,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"os"
 	"sort"
 	"strconv"
@@ -269,7 +269,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 				for _, p := range partition.Peers {
 					var dnPartition *proto.DNDataPartitionInfo
 					datanodeAddr := fmt.Sprintf("%s:%d", strings.Split(p.Addr, ":")[0], client.DataNodeProfPort)
-					dataClient := data.NewDataHttpClient(datanodeAddr, false)
+					dataClient := http_client.NewDataClient(datanodeAddr, false)
 					//check dataPartition by dataNode api
 					for i := 0; i < 3; i++ {
 						if dnPartition, err = dataClient.GetPartitionFromNode(partitionID); err == nil {
@@ -693,7 +693,7 @@ func newDataPartitionStopCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			dHost := fmt.Sprintf("%v:%v", strings.Split(address, ":")[0], client.DataNodeProfPort)
-			dataClient := data.NewDataHttpClient(dHost, false)
+			dataClient := http_client.NewDataClient(dHost, false)
 			err = dataClient.StopPartition(partitionID)
 			if err != nil {
 				return
@@ -752,7 +752,7 @@ func newDataPartitionReloadCmd(client *master.MasterClient) *cobra.Command {
 			partitionPath := fmt.Sprintf("datapartition_%v_%v", partitionID, dp.Replicas[0].Total)
 
 			dHost := fmt.Sprintf("%v:%v", strings.Split(address, ":")[0], client.DataNodeProfPort)
-			dataClient := data.NewDataHttpClient(dHost, false)
+			dataClient := http_client.NewDataClient(dHost, false)
 			err = dataClient.ReLoadPartition(partitionPath, diskPath)
 			if err != nil {
 				return

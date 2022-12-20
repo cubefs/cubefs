@@ -60,7 +60,8 @@ func Test_EnableJdosKernelWriteBack(t *testing.T) {
 				int(volInfo.TrashRemainingDays), int(volInfo.DefaultStoreMode), volInfo.FollowerRead, false, false,
 				false, false, false, false, false, tt.volWriteCache, calcAuthKey("ltptest"),
 				"default", "0,0", "", 0, 0, 60, volInfo.CompactTag,
-				0, 0, 0, 0, 0, volInfo.UmpCollectWay, -1, -1, false)
+				0, 0, 0, 0, 0, volInfo.UmpCollectWay, -1, -1, false,
+				"", false, false, 0)
 			if err != nil {
 				t.Errorf("Test_EnableJdosKernelWriteBack update vol err: %v test(%v)", err, tt)
 				return

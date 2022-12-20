@@ -20,6 +20,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -424,4 +425,61 @@ func (api *NodeAPI) StopMigratingByDataNode(datanode string) string {
 		return fmt.Sprintf("StopMigratingByDataNode fail:%v\n", err)
 	}
 	return string(data)
+}
+
+func (api *NodeAPI) AddFlashNode(serverAddr, zoneName, version string) (id uint64, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AddFlashNode)
+	request.addParam("addr", serverAddr)
+	request.addParam("zoneName", zoneName)
+	request.addParam("version", version)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
+
+func (api *NodeAPI) FlashNodeDecommission(nodeAddr string) (result string, err error) {
+	var data []byte
+	var request = newAPIRequest(http.MethodGet, proto.DecommissionFlashNode)
+	request.addParam("addr", nodeAddr)
+	request.addHeader("isTimeOut", "false")
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *NodeAPI) GetFlashNode(serverHost string) (node *proto.FlashNodeViewInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.GetFlashNode)
+	request.addParam("addr", serverHost)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	node = &proto.FlashNodeViewInfo{}
+	if err = json.Unmarshal(buf, &node); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) SetFlashNodeState(addr, state string) (err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetFlashNode)
+	request.addParam("addr", addr)
+	request.addParam("state", state)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	var msg string
+	if err = json.Unmarshal(buf, &msg); err != nil {
+		return
+	}
+
+	if !strings.Contains(msg, "success") {
+		err = fmt.Errorf("set flashNodeState failed: %v", msg)
+	}
+	return
 }

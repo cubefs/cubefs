@@ -119,6 +119,10 @@ type Vol struct {
 	FinalVolStatus       uint8
 	RenameConvertStatus  proto.VolRenameConvertStatus
 	MarkDeleteTime       int64
+	RemoteCacheBoostPath       string
+	RemoteCacheBoostEnable     bool
+	RemoteCacheAutoPrepare     bool
+	RemoteCacheTTL             int64
 	sync.RWMutex
 }
 
@@ -296,6 +300,10 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.FinalVolStatus = vv.FinalVolStatus
 	vol.RenameConvertStatus = vv.RenameConvertStatus
 	vol.MarkDeleteTime = vv.MarkDeleteTime
+	vol.RemoteCacheBoostPath = vv.RemoteCacheBoostPath
+	vol.RemoteCacheBoostEnable = vv.RemoteCacheBoostEnable
+	vol.RemoteCacheAutoPrepare = vv.RemoteCacheAutoPrepare
+	vol.RemoteCacheTTL = vv.RemoteCacheTTL
 	return vol
 }
 
@@ -1235,6 +1243,10 @@ func (vol *Vol) backupConfig() *Vol {
 		EnableBitMapAllocator:      vol.EnableBitMapAllocator,
 		CleanTrashDurationEachTime: vol.CleanTrashDurationEachTime,
 		TrashCleanMaxCountEachTime: vol.TrashCleanMaxCountEachTime,
+		RemoteCacheBoostPath:       vol.RemoteCacheBoostPath,
+		RemoteCacheBoostEnable:     vol.RemoteCacheBoostEnable,
+		RemoteCacheAutoPrepare:     vol.RemoteCacheAutoPrepare,
+		RemoteCacheTTL:             vol.RemoteCacheTTL,
 	}
 }
 
@@ -1282,6 +1294,10 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.EnableBitMapAllocator = backupVol.EnableBitMapAllocator
 	vol.TrashCleanMaxCountEachTime = backupVol.TrashCleanMaxCountEachTime
 	vol.CleanTrashDurationEachTime = backupVol.CleanTrashDurationEachTime
+	vol.RemoteCacheBoostPath = backupVol.RemoteCacheBoostPath
+	vol.RemoteCacheBoostEnable = backupVol.RemoteCacheBoostEnable
+	vol.RemoteCacheAutoPrepare = backupVol.RemoteCacheAutoPrepare
+	vol.RemoteCacheTTL = backupVol.RemoteCacheTTL
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

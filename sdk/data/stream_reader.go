@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/net/context"
 )
@@ -123,11 +124,10 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 
 func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size int) (total int, hasHole bool, err error) {
 	var (
-		readBytes       int
-		reader          *ExtentReader
-		requests        []*ExtentRequest
-		revisedRequests []*ExtentRequest
-		fileSize        uint64
+		requests          []*ExtentRequest
+		revisedRequests   []*ExtentRequest
+		cacheReadRequests []*proto.CacheReadRequest
+		fileSize          uint64
 	)
 	ctx = context.Background()
 	if s.client.readRate > 0 {
@@ -139,15 +139,6 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 		if req.ExtentKey == nil || req.ExtentKey.PartitionId > 0 {
 			continue
 		}
-		read, skipFlush := s.readFromCache(req)
-		total += read
-		if total == size {
-			return
-		}
-		if skipFlush {
-			break
-		}
-
 		s.writeLock.Lock()
 		if err = s.IssueFlushRequest(ctx); err != nil {
 			s.writeLock.Unlock()
@@ -157,55 +148,65 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 		s.writeLock.Unlock()
 		break
 	}
-
 	if revisedRequests != nil {
 		requests = revisedRequests
 	}
+	holeSize, ioErr := s.readHoles(requests, fileSize)
+	if ioErr != nil && ioErr != io.EOF {
+		log.LogErrorf("Stream read failed: err:(%v)", ioErr)
+		return 0, false, ioErr
+	}
+	hasHole = holeSize > 0
+	total += holeSize
+
+	if s.enableRemoteCache() {
+		cacheReadRequests, err = s.prepareCacheRequests(offset, uint64(size), data)
+		if err == nil {
+			var read int
+			if read, err = s.readFromRemoteCache(ctx, offset, uint64(size), cacheReadRequests); err == nil {
+				return read, hasHole, ioErr
+			}
+		}
+		log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, offset, size, err)
+	}
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", s.inode, offset, size, requests, fileSize)
+		log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) filesize(%v)", s.inode, offset, size, fileSize)
 	}
+
+	var read int
+	if read, err = s.readFromDataNode(ctx, requests, offset, uint64(size)); err != nil {
+		log.LogErrorf("Stream read: readFromDataNode err, ino(%v), userExpectOffset(%v) userExpectSize(%v) requests(%v) err(%v)", s.inode, offset, size, requests, err)
+	} else {
+		total += read
+		err = ioErr
+	}
+	return
+}
+
+func (s *Streamer) readHoles(requests []*ExtentRequest, fileSize uint64) (read int, err error) {
 	for _, req := range requests {
 		if req.ExtentKey == nil {
-			hasHole = true
-			for i := range req.Data {
-				req.Data[i] = 0
-			}
-
-			if req.FileOffset+uint64(req.Size) > fileSize {
-				if req.FileOffset >= fileSize {
-					return
-				}
-				req.Size = int(fileSize - req.FileOffset)
-				total += req.Size
+			if req.FileOffset >= fileSize {
 				err = io.EOF
-				if total == 0 {
-					log.LogWarnf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) filesize(%v)", s.inode, offset, size, req, fileSize)
-				}
 				return
 			}
-
-			// Reading a hole, just fill zero
-			total += req.Size
+			for i := 0; i < req.Size; i++ {
+				req.Data[i] = 0
+			}
+			if req.FileOffset+uint64(req.Size) > fileSize {
+				req.Size = int(fileSize - req.FileOffset)
+				read += req.Size
+				err = io.EOF
+				return
+			}
+			read += req.Size
 			if log.IsDebugEnabled() {
-				log.LogDebugf("Stream read hole: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) total(%v)", s.inode, offset, size, req, total)
+				log.LogDebugf("Stream readHoles: ino(%v) req(%v) fileSize(%v)", s.inode, req, fileSize)
 			}
-		} else if req.ExtentKey.PartitionId > 0 {
-			reader, err = s.GetExtentReader(req.ExtentKey)
-			if err != nil {
-				break
-			}
-			readBytes, err = reader.Read(ctx, req)
-			if log.IsDebugEnabled() {
-				log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset, size, req, readBytes, err)
-			}
-			total += readBytes
-			if err != nil || readBytes < req.Size {
-				if total == 0 {
-					log.LogWarnf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset, size, req, readBytes, err)
-				}
-				break
-			}
+		} else if req.ExtentKey.PartitionId == 0 {
+			err = fmt.Errorf("readHoles: unexpected temporary ek(%v) inode(%v)", req.ExtentKey, s.inode)
+			return
 		}
 	}
 	return
@@ -299,6 +300,35 @@ func (s *Streamer) readFromCache(req *ExtentRequest) (read int, skipFlush bool) 
 	copy(req.Data[read:read+dataLen], s.handler.packet.Data[offset:offset+dataLen])
 	read += dataLen
 	remainSize -= dataLen
+	return
+}
+
+func (s *Streamer) readFromDataNode(ctx context.Context, requests []*ExtentRequest, offset, size uint64) (read int, err error) {
+	var tp = exporter.NewVolumeTPUs("dataRead", s.client.dataWrapper.volName)
+	defer func() {
+		tp.Set(err)
+	}()
+
+	var reader *ExtentReader
+	for _, req := range requests {
+		if req.ExtentKey == nil || req.ExtentKey.PartitionId == 0 {
+			continue
+		}
+		var readBytes int
+		reader, err = s.GetExtentReader(req.ExtentKey)
+		if err != nil {
+			break
+		}
+		readBytes, err = reader.Read(ctx, req)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("Stream readFromDataNode: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset, size, req, readBytes, err)
+		}
+		read += readBytes
+		if err != nil || readBytes < req.Size {
+			log.LogWarnf("Stream readFromDataNode: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset, size, req, readBytes, err)
+			break
+		}
+	}
 	return
 }
 

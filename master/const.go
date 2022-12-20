@@ -145,10 +145,15 @@ const (
 	umpCollectWayKey                    = "umpCollectWay"
 	umpJmtpAddrKey                      = "umpJmtpAddr"
 	umpJmtpBatchKey                     = "umpJmtpBatch"
+	remoteCacheBoostPathKey            = "remoteCacheBoostPath"
+	remoteCacheBoostEnableKey          = "remoteCacheBoostEnable"
+	remoteCacheAutoPrepareKey          = "remoteCacheAutoPrepare"
+	remoteCacheTTLKey                  = "remoteCacheTTL"
 	appKey                              = "app"
 	slavesKey                           = "slaves"
 	addSlaveKey                         = "addslave"
 	newNameKey                          = "newName"
+	fgSlotsKey                            = "slots"
 )
 
 const (
@@ -273,6 +278,12 @@ const (
 	volDefaultMaxCapacityRatioForReservedTrashSpace    = 1.5
 	volLowCapThresholdForReservedTrashSpace            = 20 * 1024 // GB
 	volLowCapMaxCapacityRatioForReservedTrashSpace     = 2
+	defaultFlashNodeOnlineState                        = true
+)
+
+const (
+	unusedFlashNodeFlashGroupID = 0
+	defaultFlashGroupSlotsCount = 128
 )
 
 const (
@@ -341,6 +352,13 @@ const (
 	opSyncAddMigrateTask    uint32 = 0x38
 	opSyncDeleteMigrateTask uint32 = 0x39
 	opSyncUpdateMigrateTask uint32 = 0x3A
+
+	opSyncAddFlashNode      uint32 = 0x40
+	opSyncDeleteFlashNode   uint32 = 0x41
+	opSyncUpdateFlashNode   uint32 = 0x42
+	opSyncAddFlashGroup     uint32 = 0x43
+	opSyncDeleteFlashGroup  uint32 = 0x44
+	opSyncUpdateFlashGroup  uint32 = 0x45
 )
 
 const (
@@ -378,6 +396,10 @@ const (
 	ecNodePrefix               = keySeparator + ecNodeAcronym + keySeparator
 	migratePrefix              = keySeparator + migrateAcronym + keySeparator
 	ecPartitionPrefix          = keySeparator + ecPartitionAcronym + keySeparator
+	flashNodeAcronym           = "fn"
+	flashNodePrefix            = keySeparator + flashNodeAcronym + keySeparator
+	flashGroupAcronym          = "fg"
+	flashGroupPrefix           = keySeparator + flashGroupAcronym + keySeparator
 
 	akAcronym      = "ak"
 	userAcronym    = "user"

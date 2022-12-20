@@ -213,6 +213,23 @@ const (
 	AdminAddEcReplica            = "/ecReplica/add"
 	ClientEcPartitions           = "/client/ecPartitions"
 
+	//FlashNode API
+	AddFlashNode          = "/flashNode/add"
+	GetAllFlashNodes      = "/flashNode/getAllNodes"
+	DecommissionFlashNode = "/flashNode/decommission"
+	GetFlashNode          = "/flashNode/get"
+	AdminSetFlashNode     = "/flashNode/set"
+
+	//FlashGroup API
+	AdminCreateFlashGroup          = "/flashGroup/create"
+	AdminSetFlashGroup             = "/flashGroup/set"
+	AdminGetFlashGroup             = "/flashGroup/get"
+	AdminRemoveFlashGroup          = "/flashGroup/remove"
+	AdminFlashGroupAddFlashNode    = "/flashGroup/addFlashNode"
+	AdminFlashGroupRemoveFlashNode = "/flashGroup/removeFlashNode"
+	AdminListFlashGroups           = "/flashGroup/list"
+	ClientFlashGroups              = "/client/flashGroups"
+
 	//graphql api for header
 	HeadAuthorized  = "Authorization"
 	ParamAuthorized = "_authorization"
@@ -253,6 +270,7 @@ const (
 	TrashItemCleanMaxCountKey      = "trashItemCleanMaxCount"
 	TrashCleanDurationKey          = "trashItemCleanDuration"
 	DeleteMarkDelVolIntervalKey    = "deleteMarkDelVolInterval"
+	RemoteCacheBoostEnableKey      = "remoteCacheBoostEnable"
 )
 
 const (
@@ -547,6 +565,7 @@ type LimitInfo struct {
 	DataSyncWALOnUnstableEnableState bool
 	DisableStrictVolZone             bool
 	AutoUpdatePartitionReplicaNum    bool
+	RemoteCacheBoostEnable           bool
 
 	BitMapAllocatorMaxUsedFactor float64
 	BitMapAllocatorMinFreeFactor float64
@@ -1116,6 +1135,11 @@ type SimpleVolView struct {
 	FinalVolStatus        uint8
 	RenameConvertStatus   VolRenameConvertStatus
 	MarkDeleteTime        int64
+
+	RemoteCacheBoostEnable bool
+	RemoteCacheBoostPath   string
+	RemoteCacheAutoPrepare bool
+	RemoteCacheTTL         int64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1235,6 +1259,7 @@ type RateLimitInfo struct {
 	TrashCleanDurationEachTime       int32
 	TrashCleanMaxCountEachTime       int32
 	DeleteMarkDelVolInterval         int64
+	RemoteCacheBoostEnableState      int64
 }
 
 type ConvertMode uint8
@@ -1437,3 +1462,12 @@ type VolWriteMutexInfo struct {
 	Holder string
 	Slaves map[string]string
 }
+
+// FlashNodeHeartbeatResponse defines the response to the flash node heartbeat.
+type FlashNodeHeartbeatResponse struct {
+	Status   uint8  `json:"s"`
+	Result   string `json:"r"`
+	Version  string `json:"v"`
+	ZoneName string `json:"z"`
+}
+

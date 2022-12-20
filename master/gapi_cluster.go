@@ -681,6 +681,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		MetaNodeMemModeRocksdbDiskThreshold: m.cluster.cfg.MetaNodeMemModeRocksdbDiskThreshold,
 		MetaNodes:                           make([]proto.NodeView, 0),
 		DataNodes:                           make([]proto.NodeView, 0),
+		FlashNodes:                          make([]proto.NodeView, 0),
 		BadPartitionIDs:                     make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:                 make([]proto.BadPartitionView, 0),
 		DataNodeBadDisks:                    make([]proto.DataNodeBadDisksView, 0),
@@ -704,6 +705,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	cv.VolCount = len(vols)
 	cv.MetaNodes = m.cluster.allMetaNodes()
 	cv.DataNodes = m.cluster.allDataNodes()
+	cv.FlashNodes = m.cluster.allFlashNodes()
 	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo
 	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
 	cv.DataNodeBadDisks = m.cluster.getDataNodeBadDisks()

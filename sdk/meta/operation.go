@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/bloomfilter"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -515,6 +516,18 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 }
 
 func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID uint64, prefix, marker string, count uint64) (status int, children []proto.Dentry, next string, err error) {
+	defer func() {
+		if err == nil {
+			if mw.RemoteCacheBloom != nil {
+				cacheBloom := mw.RemoteCacheBloom()
+				if bloomfilter.CheckUint64Exist(cacheBloom, parentID) {
+					for _, c := range children {
+						bloomfilter.AddUint64ToBloom(cacheBloom, c.Inode)
+					}
+				}
+			}
+		}
+	}()
 
 	children = make([]proto.Dentry, 0)
 

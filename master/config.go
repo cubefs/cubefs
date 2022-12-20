@@ -156,6 +156,7 @@ type clusterConfig struct {
 	TrashCleanDurationEachTime          int32
 	TrashItemCleanMaxCountEachTime      int32
 	DeleteMarkDelVolInterval            int64
+	RemoteCacheBoostEnable              bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

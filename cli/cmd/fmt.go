@@ -196,6 +196,10 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  old vol name         : %v\n", svv.OldVolName))
 	sb.WriteString(fmt.Sprintf("  final vol status     : %v\n", svv.FinalVolStatus))
 	sb.WriteString(fmt.Sprintf("  mark delete time     : %v\n", formatTime(svv.MarkDeleteTime)))
+	sb.WriteString(fmt.Sprintf("  RemoteCacheBoostPath  : %v\n", svv.RemoteCacheBoostPath))
+	sb.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable: %v\n", svv.RemoteCacheBoostEnable))
+	sb.WriteString(fmt.Sprintf("  RemoteCacheAutoPrepare: %v\n", svv.RemoteCacheAutoPrepare))
+	sb.WriteString(fmt.Sprintf("  RemoteCacheTTL        : %v\n", svv.RemoteCacheTTL))
 	return sb.String()
 }
 
@@ -1202,4 +1206,38 @@ func formatTrashVolInfoTableRow(svv *proto.SimpleVolView, vi *proto.VolInfo) str
 		svv.Name, svv.OldVolName, time.Unix(svv.MarkDeleteTime, 0).Local().Format(time.RFC1123), svv.Owner,
 		formatVolumeStatus(svv.Status), formatSize(svv.UsedSize),
 		time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
+}
+
+var flashNodeViewTableRowPattern = "%-12v    %-12v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v"
+
+func formatFlashNodeViewTableHeader() string {
+	return fmt.Sprintf(flashNodeViewTableRowPattern, "ZONE", "ID", "ADDRESS", "VERSION", "IsActive", "FlashGroupID", "HitRate", "Evicts", "ReportTime", "IsEnable")
+}
+
+func formatFlashNodeDetail(fn *proto.FlashNodeViewInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", fn.ID))
+	sb.WriteString(fmt.Sprintf("  ADDRESS             : %v\n", fn.Addr))
+	sb.WriteString(fmt.Sprintf("  VERSION             : %v\n", fn.Version))
+	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", fn.IsActive))
+	sb.WriteString(fmt.Sprintf("  FlashGroupID        : %v\n", fn.FlashGroupID))
+	sb.WriteString(fmt.Sprintf("  ReportTime          : %v\n", fn.ReportTime))
+	sb.WriteString(fmt.Sprintf("  ZONE                : %v\n", fn.ZoneName))
+	sb.WriteString(fmt.Sprintf("  IsEnable            : %v\n", fn.IsEnable))
+	return sb.String()
+}
+
+var formatFlashGroupViewPattern = "%-6v    %-18v    %-18v    %-18v"
+
+func formatFlashGroupViewHeader() string {
+	return fmt.Sprintf(formatFlashGroupViewPattern, "ID", "STATUS", "FlashNodeCount", "SLOTS")
+}
+
+func formatFlashGroupDetail(fg proto.FlashGroupAdminView) string {
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", fg.ID))
+	sb.WriteString(fmt.Sprintf("  Status              : %v\n", fg.Status))
+	sb.WriteString(fmt.Sprintf("  Slots               : %v\n", fg.Slots))
+	sb.WriteString(fmt.Sprintf("  FlashNodeCount      : %v\n", fg.FlashNodeCount))
+	return sb.String()
 }

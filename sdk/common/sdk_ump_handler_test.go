@@ -1,4 +1,4 @@
-package data
+package common
 
 import "testing"
 
@@ -7,5 +7,5 @@ func TestHandleUmpAlarm(t *testing.T) {
 	vol := "ltptest"
 	act := "test act"
 	msg := "this is a message"
-	handleUmpAlarm(cluster, vol, act, msg)
+	HandleUmpAlarm(cluster, vol, act, msg)
 }

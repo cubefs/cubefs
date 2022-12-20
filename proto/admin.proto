@@ -1,0 +1,43 @@
+// protoc --proto_path=./vendor/:./proto/  --gofast_out=./proto/   admin.proto
+syntax = "proto3";
+package proto;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+message DataSource {
+  option (gogoproto.goproto_stringer) = false;
+
+  uint64          FileOffset   = 1;
+  uint64          PartitionID  = 2;
+  uint64          ExtentID     = 3;
+  uint64          ExtentOffset = 4;
+  uint64          Size         = 5;
+  repeated string Hosts        = 6;
+}
+
+message CacheRequest {
+  option (gogoproto.goproto_stringer) = false;
+
+  string              Volume          = 1;
+  uint64              Inode           = 2;
+  uint64              FixedFileOffset = 3;
+  uint32              Version         = 4;
+  repeated DataSource Sources         = 5;
+  int64               TTL             = 6;
+}
+
+message CacheReadRequest {
+  option (gogoproto.goproto_stringer) = false;
+
+  CacheRequest CacheRequest = 1;
+  uint64       Offset       = 2;
+  uint64       Size         = 3;
+  bytes        Data         = 4 [deprecated=true] ;
+}
+
+message CachePrepareRequest {
+  option (gogoproto.goproto_stringer) = false;
+
+  CacheRequest    CacheRequest = 1;
+  repeated string FlashNodes   = 2;
+}

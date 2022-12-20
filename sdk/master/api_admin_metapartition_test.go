@@ -97,7 +97,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 	//Delete Meta Replica
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().DeleteMetaReplica(testMetaPartitionID, newAddr)
-		time.Sleep(time.Duration(1) * time.Second)
+		time.Sleep(time.Duration(1+i/2) * time.Second)
 	}
 	//if err != nil {
 	//	t.Fatalf("DeleteMetaReplica failed, err %v", err)
@@ -106,7 +106,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 	//Add Meta Replica
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().AddMetaReplica(testMetaPartitionID, nonLeaderAddr, 0, 0)
-		time.Sleep(time.Duration(1) * time.Second)
+		time.Sleep(time.Duration(1+i/2) * time.Second)
 	}
 	//if err != nil {
 	//	t.Fatalf("AddMetaReplica failed, %v", err)

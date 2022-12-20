@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -133,6 +134,7 @@ func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 
 func newExtentGetCmd() *cobra.Command {
 	var checkRetry bool
+	var getMd5 bool
 	var cmd = &cobra.Command{
 		Use:   cmdExtentInfo,
 		Short: cmdExtentInfoShort,
@@ -170,7 +172,7 @@ func newExtentGetCmd() *cobra.Command {
 			minSize := uint64(math.MaxUint64)
 			for _, r := range dp.Replicas {
 				dHost := fmt.Sprintf("%v:%v", strings.Split(r.Addr, ":")[0], client.DataNodeProfPort)
-				dataClient := data.NewDataHttpClient(dHost, false)
+				dataClient := http_client.NewDataClient(dHost, false)
 
 				extent, err1 := dataClient.GetExtentInfo(partitionID, extentID)
 				if err1 != nil {
@@ -262,6 +264,7 @@ func newExtentGetCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&checkRetry, "check-retry", false, "check extent more times for accuracy")
+	cmd.Flags().BoolVar(&getMd5, "check-md5", false, "get extent md5 info")
 	return cmd
 }
 
@@ -341,7 +344,7 @@ func repairExtents(host string, partitionID uint64, extentIDs []uint64) {
 		return
 	}
 	dHost := fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], client.DataNodeProfPort)
-	dataClient := data.NewDataHttpClient(dHost, false)
+	dataClient := http_client.NewDataClient(dHost, false)
 	partition, err := dataClient.GetPartitionFromNode(partitionID)
 	if err != nil {
 		fmt.Printf("repair failed: %v %v %v\n", partitionID, extentIDs, host)
@@ -1503,7 +1506,7 @@ func checkExtentBlockCrc(dataReplicas []*proto.DataReplica, c *sdk.MasterClient,
 	wrongBlocks = make([]int, 0)
 	for idx, replica := range dataReplicas {
 		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], c.DataNodeProfPort)
-		dataClient := data.NewDataHttpClient(datanode, false)
+		dataClient := http_client.NewDataClient(datanode, false)
 
 		var extentBlocks []*proto.BlockCrc
 		extentBlocks, err = dataClient.GetExtentBlockCrc(partitionId, extentId)
@@ -1548,7 +1551,7 @@ func checkExtentReplica(c *sdk.MasterClient, dataReplicas []*proto.DataReplica, 
 	badAddrs = make([]string, 0)
 	for idx, replica := range dataReplicas {
 		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], c.DataNodeProfPort)
-		dataClient := data.NewDataHttpClient(datanode, false)
+		dataClient := http_client.NewDataClient(datanode, false)
 		switch mod {
 		case "crc":
 			var extentInfo *proto.ExtentInfoBlock
@@ -1637,7 +1640,7 @@ func checkExtentReplicaByBlock(dataReplicas []*proto.DataReplica, c *sdk.MasterC
 	}
 	for idx, replica := range dataReplicas {
 		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], c.DataNodeProfPort)
-		dataClient := data.NewDataHttpClient(datanode, false)
+		dataClient := http_client.NewDataClient(datanode, false)
 		for j := 0; j == 0 || j < 3 && err != nil; j++ {
 			extentMd5, err = dataClient.ComputeExtentMd5(ek.PartitionId, ek.ExtentId, uint64(offset), uint64(size))
 		}
@@ -1690,7 +1693,7 @@ func checkExtentLength(c *sdk.MasterClient, ek *proto.ExtentKey, checkedExtent *
 	}
 
 	datanode := fmt.Sprintf("%s:%d", strings.Split(partition.Replicas[0].Addr, ":")[0], c.DataNodeProfPort)
-	dataClient := data.NewDataHttpClient(datanode, false)
+	dataClient := http_client.NewDataClient(datanode, false)
 	extent, err = dataClient.GetExtentInfo(ek.PartitionId, ek.ExtentId)
 	if err != nil {
 		stdout("getExtentFromData ERROR: %v, datanode: %v, PartitionId: %v, ExtentId: %v\n", err, datanode, ek.PartitionId, ek.ExtentId)
@@ -1974,7 +1977,7 @@ func readExtent(dp *proto.DataPartitionResponse, addr string, extentId uint64, d
 	dataPartition.ClientWrapper.SetDpFollowerReadDelayConfig(false, 60)
 	sc := data.NewStreamConnWithAddr(dataPartition, addr)
 	reqPacket := common.NewReadPacket(ctx, ek, int(offset), size, 0, offset, true)
-	req := data.NewExtentRequest(0, 0, d, nil)
+	req := data.NewExtentRequest(0, 0, d, 0, uint64(size), nil)
 	_, _, _, err = dataPartition.SendReadCmdToDataPartition(sc, reqPacket, req)
 	return
 }
@@ -2069,7 +2072,7 @@ func newExtentCheckByIdCmd(mc *sdk.MasterClient) *cobra.Command {
 			}
 
 			dpAddr := fmt.Sprintf("%s:%d", strings.Split(dpInfo.Hosts[0], ":")[0], mc.DataNodeProfPort)
-			dataClient := data.NewDataHttpClient(dpAddr, false)
+			dataClient := http_client.NewDataClient(dpAddr, false)
 			ekInfo, _ := dataClient.GetExtentInfo(partitionID, extentID)
 			ek := proto.ExtentKey{
 				PartitionId: partitionID, ExtentId: extentID, Size: uint32(ekInfo[proto.ExtentInfoSize]),

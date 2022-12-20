@@ -252,6 +252,11 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DeleteMarkDelVolInterval >= 0 {
 				msg += fmt.Sprintf("DeleteMarkDelVolInterval     : %v, ", info.DeleteMarkDelVolInterval)
 			}
+			if info.RemoteCacheBoostEnableState == 0 {
+				msg += fmt.Sprintf("RemoteCacheBoostEnable      : disable, ")
+			} else if info.RemoteCacheBoostEnableState == 1 {
+				msg += fmt.Sprintf("RemoteCacheBoostEnable      : enable, ")
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -315,6 +320,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int32Var(&info.TrashCleanDurationEachTime, "trashCleanMaxDurationEachTime", -1, "trash clean max duration for each time")
 	cmd.Flags().Int32Var(&info.TrashCleanMaxCountEachTime, "trashCleanMaxCountEachTime", -1, "trash clean max count for each time")
 	cmd.Flags().Int64Var(&info.DeleteMarkDelVolInterval, "deleteMarkDelVolInterval", -1, "delete mark del vol interval, unit is seconds.")
+	cmd.Flags().Int64Var(&info.RemoteCacheBoostEnableState, "RemoteCacheBoostEnable", -1, "set cluster RemoteCacheBoostEnable, 0:disable, 1:enable")
 	return cmd
 }
 
@@ -378,6 +384,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxDurationEachTime    : %v\n", info.TrashCleanDurationEachTime))
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxCountEachTime       : %v\n", info.TrashItemCleanMaxCountEachTime))
 	sb.WriteString(fmt.Sprintf("  DeleteMarkDelVolInterval         : %v(%v sec)\n", formatTimeInterval(info.DeleteMarkDelVolInterval), info.DeleteMarkDelVolInterval))
+	sb.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable           : %v\n", info.RemoteCacheBoostEnable))
 	return sb.String()
 }
 

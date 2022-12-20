@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bits-and-blooms/bloom"
 	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
@@ -81,6 +82,7 @@ const (
 	MasterNoCacheAPIRetryTimeout = 5 * time.Minute
 )
 
+type RemoteCacheBloomFunc func() *bloom.BloomFilter
 type AsyncTaskErrorFunc func(err error)
 
 func (f AsyncTaskErrorFunc) OnError(err error) {
@@ -160,7 +162,8 @@ type MetaWrapper struct {
 	actionLimiter map[proto.Action]*rate.Limiter
 	limitMapMutex sync.RWMutex
 	// infinite retry send to mp
-	InfiniteRetry bool
+	InfiniteRetry    bool
+	RemoteCacheBloom RemoteCacheBloomFunc
 }
 
 type MetaState struct {
