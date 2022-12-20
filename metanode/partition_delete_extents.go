@@ -398,10 +398,14 @@ func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retr
 	return nil
 }
 
-func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
+func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor uint64, err error) {
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
+	cur := generalDateKey()
+	cnt := 0
 	var delHandle interface{}
+
+	delCursor = cur
 	delHandle, err = mp.db.CreateBatchHandler()
 	if err != nil {
 		log.LogErrorf("[cleanExpiredExtents] partition[%v] create batch handler failed:%v", mp.config.PartitionId, err)
@@ -414,14 +418,17 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 	log.LogInfof("Mp[%d] leader run once clean extent, now err extents:%v", mp.config.PartitionId, retryList.Len())
 
 	defer func() {
+		if retryList.Len() < maxRetryCnt {
+			delCursor = cur
+		}
+
 		if err != nil {
 			log.LogWarnf("Mp[%d] leader run once clean extent, now err extents:%v, failed:%s", mp.config.PartitionId, retryList.Len(), err.Error())
 			return
 		}
 	}()
 
-	cur := generalDateKey()
-	cnt := 0
+
 	handleItemFunc := func(k, v []byte) (bool, error) {
 
 		needDel := true
@@ -436,9 +443,11 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 			ek.UnMarshDelEkValue(v)
 		}
 
-		if k[0] != byte(ExtentDelTable) || getDateInKey(k) > cur {
+		ekDelTimeStamp := getDateInKey(k)
+		if k[0] != byte(ExtentDelTable) || ekDelTimeStamp > cur {
 			return false, nil
 		}
+		delCursor = ekDelTimeStamp
 
 		if err = ek.UnmarshalDbKey(k[8:]); err != nil {
 			return false, err
@@ -487,16 +496,16 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 		if delHandle != nil {
 			_ = mp.db.ReleaseBatchHandle(delHandle)
 		}
-		return err
+		return
 	}
 
 	if err = mp.db.CommitBatchAndRelease(delHandle); err != nil {
 		_ = mp.db.ReleaseBatchHandle(delHandle)
 		log.LogErrorf("[cleanExpiredExtents] partitionId=%d, commit batch and release handle failed: %s", mp.config.PartitionId, err.Error())
-		return err
+		return
 	}
 	log.LogInfof("Mp[%d] leader clean expired extents[%d], now err extents:%v, success", mp.config.PartitionId, cnt, retryList.Len())
-	return nil
+	return
 }
 
 func (mp *metaPartition) renameDeleteEKRecordFile(curFileName string, prefixName string) {
@@ -722,10 +731,11 @@ func (mp *metaPartition) deleteExtentsFromDb() {
 			}
 
 			log.LogInfof("Mp[%d] leader clean extents before:%v", mp.config.PartitionId, extDeletedCursor)
-			if err := mp.cleanExpiredExtents(retryList); err != nil {
+			delCursor, err := mp.cleanExpiredExtents(retryList)
+			if err != nil {
 				continue
 			}
-			if err := mp.syncDelExtentsToFollowers(extDeletedCursor, retryList); err != nil {
+			if err := mp.syncDelExtentsToFollowers(delCursor, retryList); err != nil {
 				continue
 			}
 
@@ -738,7 +748,7 @@ func (mp *metaPartition) deleteExtentsFromDb() {
 				continue
 			}
 
-			if err := mp.cleanExpiredExtents(retryList); err != nil {
+			if _, err := mp.cleanExpiredExtents(retryList); err != nil {
 				log.LogWarnf("Mp[%d] del extent failed:%s", mp.config.PartitionId, err.Error())
 			}
 
