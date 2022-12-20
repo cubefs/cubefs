@@ -124,7 +124,7 @@ def exclude_package_filter(content):
         "github.com/chubaofs/chubaofs/util/ec/",
         "github.com/chubaofs/chubaofs/util/cryptoutil/",
         "github.com/chubaofs/chubaofs/util/caps/",
-        "github.com/chubaofs/chubaofs/util/config/"
+        "github.com/chubaofs/chubaofs/util/config/",
         "github.com/chubaofs/chubaofs/raftstore/rafttest/",
     ]
     for package in exclude_packages:
