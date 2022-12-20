@@ -55,6 +55,7 @@ const (
 	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck // in terms of seconds
 	noHeartBeatTimes                           = 3                           // number of times that no heartbeat reported
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
+	defaultNodeStaleSec                        = 10 * 60
 	defaultDataPartitionTimeOutSec             = 5 * defaultIntervalToCheckHeartbeat
 	defaultMissingDataPartitionInterval        = 24 * 3600
 
@@ -82,6 +83,7 @@ var AddrDatabase = make(map[uint64]string)
 type clusterConfig struct {
 	secondsToFreeDataPartitionAfterLoad int64
 	NodeTimeOutSec                      int64
+	NodeStaleSec                        int64
 	MissingDataPartitionInterval        int64
 	DataPartitionTimeOutSec             int64
 	IntervalToAlarmMissingDataPartition int64

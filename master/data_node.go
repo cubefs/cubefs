@@ -37,6 +37,7 @@ type DataNode struct {
 	StartTime                 int64
 	LastUpdateTime            time.Time
 	isActive                  bool
+	isStale                   bool
 	sync.RWMutex              `graphql:"-"`
 	UsageRatio                float64           // used / total space
 	SelectedTimes             uint64            // number times that this datanode has been selected as the location for a data partition.
@@ -69,7 +70,7 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	return
 }
 
-func (dataNode *DataNode) checkLiveness() {
+func (dataNode *DataNode) checkLiveness(c *Cluster) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	log.LogInfof("action[checkLiveness] datanode[%v] report time[%v],since report time[%v], need gap [%v]",
@@ -77,7 +78,13 @@ func (dataNode *DataNode) checkLiveness() {
 	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		dataNode.isActive = false
 	}
-
+	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(c.cfg.NodeStaleSec) {
+		dataNode.isStale = true
+		log.LogInfof("action[checkLiveness] datanode[%v] is stale, report time[%v]", dataNode.Addr, dataNode.ReportTime)
+	} else if dataNode.isStale {
+		dataNode.isStale = false
+		log.LogInfof("action[checkLiveness] datanode[%v] is recover, report time[%v]", dataNode.Addr, dataNode.ReportTime)
+	}
 	return
 }
 

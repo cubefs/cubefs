@@ -46,6 +46,7 @@ const (
 	MetricMetaNodesInactive    = "metaNodes_inactive"
 	MetricDataNodesNotWritable = "dataNodes_not_writable"
 	MetricMetaNodesNotWritable = "metaNodes_not_writable"
+	MetricDataNodesToBeOffline = "dataNodes_to_be_offline"
 )
 
 type monitorMetrics struct {
@@ -70,6 +71,7 @@ type monitorMetrics struct {
 	metaNodesInactive    *exporter.Gauge
 	dataNodesNotWritable *exporter.Gauge
 	metaNodesNotWritable *exporter.Gauge
+	dataNodesToBeOffline *exporter.Gauge
 
 	volNames map[string]struct{}
 	badDisks map[string]string
@@ -104,6 +106,7 @@ func (mm *monitorMetrics) start() {
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
 	mm.dataNodesNotWritable = exporter.NewGauge(MetricDataNodesNotWritable)
 	mm.metaNodesNotWritable = exporter.NewGauge(MetricMetaNodesNotWritable)
+	mm.dataNodesToBeOffline = exporter.NewGauge(MetricDataNodesToBeOffline)
 	go mm.statMetrics()
 }
 
@@ -149,6 +152,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setInactiveMetaNodesCount()
 	mm.setNotWritableDataNodesCount()
 	mm.setNotWritableMetaNodesCount()
+	mm.setToBeOfflineDataNodesCount()
 }
 
 func (mm *monitorMetrics) setVolMetrics() {
@@ -325,6 +329,22 @@ func (mm *monitorMetrics) setNotWritableDataNodesCount() {
 	mm.dataNodesNotWritable.Set(float64(notWritabelDataNodesCount))
 }
 
+func (mm *monitorMetrics) setToBeOfflineDataNodesCount() {
+	var toBeOfflineDataNodesCount int64
+	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode, ok := node.(*DataNode)
+		if !ok {
+			return true
+		}
+		if dataNode.ToBeOffline {
+			toBeOfflineDataNodesCount++
+		}
+		return true
+	})
+	mm.dataNodesToBeOffline.Set(float64(toBeOfflineDataNodesCount))
+	mm.cluster.dataNodesToBeOffline = toBeOfflineDataNodesCount
+}
+
 func (mm *monitorMetrics) clearVolMetrics() {
 	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
 		if volName, ok := key.(string); ok {
@@ -358,4 +378,5 @@ func (mm *monitorMetrics) resetAllMetrics() {
 	mm.metaNodesInactive.Set(0)
 	mm.dataNodesNotWritable.Set(0)
 	mm.metaNodesNotWritable.Set(0)
+	mm.dataNodesToBeOffline.Set(0)
 }

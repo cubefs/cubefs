@@ -33,38 +33,39 @@ import (
 
 // Cluster stores all the cluster-level information.
 type Cluster struct {
-	Name                string
-	vols                map[string]*Vol
-	dataNodes           sync.Map
-	metaNodes           sync.Map
-	volMutex            sync.RWMutex // volume mutex
-	createVolMutex      sync.RWMutex // create volume mutex
-	mnMutex             sync.RWMutex // meta node mutex
-	dnMutex             sync.RWMutex // data node mutex
-	badPartitionMutex   sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
-	leaderInfo          *LeaderInfo
-	cfg                 *clusterConfig
-	idAlloc             *IDAllocator
-	t                   *topology
-	dataNodeStatInfo    *nodeStatInfo
-	metaNodeStatInfo    *nodeStatInfo
-	zoneStatInfos       map[string]*proto.ZoneStat
-	volStatInfo         sync.Map
-	domainManager       *DomainManager
-	BadDataPartitionIds *sync.Map
-	BadMetaPartitionIds *sync.Map
-	DisableAutoAllocate bool
-	FaultDomain         bool
-	needFaultDomain     bool // FaultDomain is true and normal zone aleady used up
-	fsm                 *MetadataFsm
-	partition           raftstore.Partition
-	MasterSecretKey     []byte
-	lastZoneIdxForNode  int
-	zoneIdxMux          sync.Mutex //
-	zoneList            []string
-	followerReadManager *followerReadManager
-	diskQosEnable       bool
-	QosAcceptLimit      *rate.Limiter
+	Name                 string
+	vols                 map[string]*Vol
+	dataNodes            sync.Map
+	metaNodes            sync.Map
+	dataNodesToBeOffline int64
+	volMutex             sync.RWMutex // volume mutex
+	createVolMutex       sync.RWMutex // create volume mutex
+	mnMutex              sync.RWMutex // meta node mutex
+	dnMutex              sync.RWMutex // data node mutex
+	badPartitionMutex    sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
+	leaderInfo           *LeaderInfo
+	cfg                  *clusterConfig
+	idAlloc              *IDAllocator
+	t                    *topology
+	dataNodeStatInfo     *nodeStatInfo
+	metaNodeStatInfo     *nodeStatInfo
+	zoneStatInfos        map[string]*proto.ZoneStat
+	volStatInfo          sync.Map
+	domainManager        *DomainManager
+	BadDataPartitionIds  *sync.Map
+	BadMetaPartitionIds  *sync.Map
+	DisableAutoAllocate  bool
+	FaultDomain          bool
+	needFaultDomain      bool // FaultDomain is true and normal zone aleady used up
+	fsm                  *MetadataFsm
+	partition            raftstore.Partition
+	MasterSecretKey      []byte
+	lastZoneIdxForNode   int
+	zoneIdxMux           sync.Mutex //
+	zoneList             []string
+	followerReadManager  *followerReadManager
+	diskQosEnable        bool
+	QosAcceptLimit       *rate.Limiter
 }
 
 type followerReadManager struct {
@@ -164,6 +165,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToReduceReplicaNum()
 	c.scheduleToCheckNodeSetGrpManagerStatus()
 	c.scheduleToCheckFollowerReadCache()
+	c.scheduleToDecommission()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -421,7 +423,7 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 	tasks := make([]*proto.AdminTask, 0)
 	c.dataNodes.Range(func(addr, dataNode interface{}) bool {
 		node := dataNode.(*DataNode)
-		node.checkLiveness()
+		node.checkLiveness(c)
 		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable)
 		tasks = append(tasks, task)
 		return true
@@ -497,6 +499,45 @@ func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
 	dataNodes := c.getNotConsistentIDDataNodes()
 	nodes = append(nodes, dataNodes...)
 	return
+}
+
+func (c *Cluster) scheduleToDecommission() {
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.decommissionDatanodes()
+			}
+			time.Sleep(5 * time.Minute)
+		}
+	}()
+}
+
+func (c *Cluster) decommissionDatanodes() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("decommission datanodes occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"decommission datanodes occurred panic")
+		}
+	}()
+
+	// Config this
+	if c.dataNodesToBeOffline > 1 {
+		log.LogInfof("the number of decommissioning datanodes are exceeds 1")
+		return
+	}
+
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		if dataNode.ToBeOffline {
+			log.LogDebugf("datanode: [%v] is in state ToBeOffline", dataNode.Addr)
+			return true
+		}
+		if dataNode.isStale && !dataNode.ToBeOffline {
+			c.migrateDataNode(dataNode.Addr, "", 0, false)
+		}
+		return true
+	})
 }
 
 func (c *Cluster) getNotConsistentIDMetaNodes() (metaNodes []*InvalidNodeView) {
