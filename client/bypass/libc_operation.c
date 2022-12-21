@@ -224,9 +224,12 @@ int libc_closedir(DIR *dirp) {
     return func_closedir(dirp);
 }
 
+// 使用dlsym(handle, "realpath")，会导出<realpath@@GLIBC_2.3>，当文件不存在时，errno=2
+// 使用dlsym(RTLD_NEXT, "realpath")，会导出<realpath@GLIBC_2.2.5>，当文件不存在时，errno=22
 char *libc_realpath(const char *path, char *resolved_path) {
     if(func_realpath == NULL) {
-        func_realpath = (realpath_t)dlsym(RTLD_NEXT, "realpath");
+        void *handle = dlopen("libc.so.6", RTLD_LAZY);
+        func_realpath = (realpath_t)dlsym(handle, "realpath");
     }
     return func_realpath(path, resolved_path);
 }
