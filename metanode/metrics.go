@@ -65,6 +65,7 @@ func (m *MetaNode) collectPartitionMetrics() {
 				}
 				manager.mu.RUnlock()
 			}
+			exporter.NewGauge("connectionCnt").Set(float64(m.connectionCnt))
 		}
 	}
 }

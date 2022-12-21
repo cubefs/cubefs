@@ -64,7 +64,11 @@ func (m *MetaNode) stopServer() {
 
 // Read data from the specified tcp connection until the connection is closed by the remote or the tcp service is down.
 func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
-	defer conn.Close()
+	defer func() {
+		conn.Close()
+		m.RemoveConnection()
+	}()
+	m.AddConnection()
 	c := conn.(*net.TCPConn)
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
@@ -139,7 +143,11 @@ func (m *MetaNode) stopSmuxServer() {
 }
 
 func (m *MetaNode) serveSmuxConn(conn net.Conn, stopC chan uint8) {
-	defer conn.Close()
+	defer func() {
+		conn.Close()
+		m.RemoveConnection()
+	}()
+	m.AddConnection()
 	c := conn.(*net.TCPConn)
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
