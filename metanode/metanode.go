@@ -19,6 +19,7 @@ import (
 	syslog "log"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
@@ -65,6 +66,7 @@ type MetaNode struct {
 	metrics           *MetaNodeMetrics
 	tickInterval      int
 	raftRecvBufSize   int
+	connectionCnt     int64
 
 	control common.Control
 }
@@ -381,4 +383,14 @@ func NewServer() *MetaNode {
 func getClusterInfo() (ci *proto.ClusterInfo, err error) {
 	ci, err = masterClient.AdminAPI().GetClusterInfo()
 	return
+}
+
+// AddConnection adds a connection.
+func (m *MetaNode) AddConnection() {
+	atomic.AddInt64(&m.connectionCnt, 1)
+}
+
+// RemoveConnection removes a connection.
+func (m *MetaNode) RemoveConnection() {
+	atomic.AddInt64(&m.connectionCnt, -1)
 }
