@@ -530,9 +530,16 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 	ino := f.info.Inode
 	start := time.Now()
-	//todo use master.proto
 	if req.Valid.Size() && proto.IsHot(f.super.volType) {
-		if err = f.super.ec.Flush(ino); err != nil {
+		// when use trunc param in open request through nfs client and mount on cfs mountPoint, cfs client may not recv open message but only setAttr,
+		// the streamer may not open and cause io error finally,so do a open no matter the stream be opened or not
+		if err := f.super.ec.OpenStream(ino); err != nil {
+			log.LogErrorf("Setattr: OpenStream ino(%v) size(%v) err(%v)", ino, req.Size, err)
+			return ParseError(err)
+		}
+		defer f.super.ec.CloseStream(ino)
+
+		if err := f.super.ec.Flush(ino); err != nil {
 			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
