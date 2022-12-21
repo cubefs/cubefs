@@ -2331,8 +2331,8 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		resp.Code = http.StatusBadRequest
 		resp.Msg = err.Error()
 		return
-
 	}
+
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Code = http.StatusBadRequest
