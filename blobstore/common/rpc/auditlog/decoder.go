@@ -140,7 +140,7 @@ func (d *defaultDecoder) DecodeReq(req *http.Request) *DecodedReq {
 				req.Body = ReadCloser{bytes.NewReader(buff), req.Body}
 				// check if request body is valid or not, and do not print invalid request body in audit log
 				if json.Valid(buff) {
-					decodedReq.Params = buff
+					decodedReq.Params = compactNewline(buff)
 				}
 			}
 		}
@@ -159,4 +159,16 @@ func (d *defaultDecoder) readFull(req *http.Request) ([]byte, error) {
 		return nil, err
 	}
 	return buff, nil
+}
+
+// compactNewline json compact if buffer has '\n'(0x0a).
+func compactNewline(src []byte) []byte {
+	if bytes.IndexByte(src, 0x0a) < 0 {
+		return src
+	}
+	newBuff := bytes.NewBuffer(make([]byte, 0, len(src)))
+	if err := json.Compact(newBuff, src); err == nil {
+		return newBuff.Bytes()
+	}
+	return src
 }

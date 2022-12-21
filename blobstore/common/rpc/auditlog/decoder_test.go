@@ -15,6 +15,7 @@
 package auditlog
 
 import (
+	"bytes"
 	"net/http"
 	"strings"
 	"testing"
@@ -38,4 +39,23 @@ func TestDefaultDecoder_DecodeReq(t *testing.T) {
 	request.Header.Set("Content-Type", rpc.MIMEPOSTForm)
 	decodeReq = decoder.DecodeReq(request)
 	require.NotNil(t, decodeReq)
+}
+
+func TestDefaultDecoder_RequestCompact(t *testing.T) {
+	dst := []byte(`{"str":"aaa\nbbb","idx":10}`)
+	for _, src := range [][]byte{
+		[]byte(`{"str":"aaa\nbbb","idx":10}`),
+		[]byte(`{"str": "aaa\nbbb",
+                 "idx": 10}`),
+		[]byte(`{
+	"str": "aaa\nbbb",
+"idx": 10
+}`),
+		[]byte(`    {
+                "str": "aaa\nbbb",
+                "idx": 10
+            }`),
+	} {
+		require.True(t, bytes.Equal(compactNewline(src), dst))
+	}
 }
