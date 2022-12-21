@@ -248,7 +248,7 @@ const (
 	defaultDataNodeHttpPort                            = "17320"
 	defaultSSDZoneTaskLimit                            = 20
 	defaultFollReadHostWeight                          = 0
-	defaultChildFileMaxCount                           = 1000000
+	defaultChildFileMaxCount                           = 2000 * 10000    //default 2kw
 )
 
 const (
