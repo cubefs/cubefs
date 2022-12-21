@@ -115,6 +115,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/enableRocksDBSync", m.enableRocksDBSync)
 	http.HandleFunc("/reopenDb", m.reopenRocksDb)
 
+	http.HandleFunc("/getDeletedDentrys", m.getDeletedDentrysByParentInoHandler)
+
 	return
 }
 
@@ -2155,6 +2157,104 @@ func (m *MetaNode) reopenRocksDb(w http.ResponseWriter, r *http.Request) {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = "reopen db failed " + err.Error()
 		return
+	}
+	return
+}
+
+func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusSeeOther, "")
+	shouldResp := true
+	defer func() {
+		if shouldResp {
+			data, _ := resp.Marshal()
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getDeletedDentrysByParentInoHandler] response %s", err)
+			}
+		}
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	parentIno, err := strconv.ParseUint(r.FormValue("pIno"), 10, 64)
+	if err != nil || parentIno == 0 {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	batchNum, err := strconv.ParseInt(r.FormValue("batch"), 10, 16)
+	if err != nil {
+		batchNum = proto.ReadDeletedDirBatchNum
+	}
+	prev := r.FormValue("prev")
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	buff := bytes.NewBufferString(`{"data":[`)
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	buff.Reset()
+	var (
+		val           []byte
+		delimiter   = []byte{',', '\n'}
+		count int64 = 0
+	)
+	prefix := newPrimaryDeletedDentry(parentIno, "", 0, 0)
+	start := newPrimaryDeletedDentry(parentIno, prev, 0, 0)
+	end := newPrimaryDeletedDentry(parentIno+1, "", 0, 0)
+	isFirst := true
+	skipFirst := false
+	if len(prev) > 0 {
+		skipFirst = true
+	}
+	err = mp.(*metaPartition).dentryDeletedTree.RangeWithPrefix(prefix, start, end, func(dd *DeletedDentry) (bool, error) {
+		count++
+		if count == 1 && skipFirst {
+			return true, nil
+		}
+		val, err = json.Marshal(dd)
+		if err != nil {
+			return false, err
+		}
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false, err
+			}
+		} else {
+			isFirst = false
+		}
+		if _, err = w.Write(val); err != nil {
+			return false, err
+		}
+		if count == batchNum {
+			return false, nil
+		}
+		return true, nil
+	})
+	shouldResp = false
+	if err != nil {
+		buff.WriteString(fmt.Sprintf(`], "code": %v, "msg": "%s"}`, http.StatusInternalServerError, err.Error()))
+	} else {
+		buff.WriteString(`], "code": 200, "msg": "OK"}`)
+	}
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getDeletedDentrysByParentInoHandler] response %s", err)
 	}
 	return
 }
