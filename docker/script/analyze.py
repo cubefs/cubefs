@@ -98,7 +98,6 @@ def exclude_package_filter(content):
         "github.com/chubaofs/chubaofs/objectnode/",
         "github.com/chubaofs/chubaofs/proto/",
         "github.com/chubaofs/chubaofs/vendor/",
-        "github.com/chubaofs/chubaofs/datanodeAgent/",
         "github.com/chubaofs/chubaofs/ecstorage/",
         "github.com/chubaofs/chubaofs/convertnode/",
         "github.com/chubaofs/chubaofs/schedulenode/",
