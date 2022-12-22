@@ -94,6 +94,7 @@ const (
 	MigrateDataNode                = "/dataNode/migrate"
 	CancelDecommissionDataNode     = "/dataNode/cancelDecommission"
 	DecommissionDisk               = "/disk/decommission"
+	RecommissionDisk               = "/disk/recommission"
 	GetDataNode                    = "/dataNode/get"
 	AddMetaNode                    = "/metaNode/add"
 	DecommissionMetaNode           = "/metaNode/decommission"
@@ -168,16 +169,17 @@ type ClusterInfo struct {
 
 // CreateDataPartitionRequest defines the request to create a data partition.
 type CreateDataPartitionRequest struct {
-	PartitionTyp  int
-	PartitionId   uint64
-	PartitionSize int
-	ReplicaNum    int
-	VolumeId      string
-	IsRandomWrite bool
-	Members       []Peer
-	Hosts         []string
-	CreateType    int
-	LeaderSize    int
+	PartitionTyp        int
+	PartitionId         uint64
+	PartitionSize       int
+	ReplicaNum          int
+	VolumeId            string
+	IsRandomWrite       bool
+	Members             []Peer
+	Hosts               []string
+	CreateType          int
+	LeaderSize          int
+	DecommissionedDisks []string
 }
 
 // CreateDataPartitionResponse defines the response to the request of creating a data partition.
@@ -695,7 +697,7 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 	}
 }
 
-//ZoneView define the view of zone
+// ZoneView define the view of zone
 type ZoneView struct {
 	Name    string
 	Status  string

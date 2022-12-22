@@ -30,17 +30,19 @@ import (
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, replicaNum int, members []proto.Peer,
-	dataPartitionSize, leaderSize int, hosts []string, createType int, partitionType int) (req *proto.CreateDataPartitionRequest) {
+	dataPartitionSize, leaderSize int, hosts []string, createType int, partitionType int,
+	decommissionedDisks []string) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
-		PartitionTyp:  partitionType,
-		PartitionId:   ID,
-		PartitionSize: dataPartitionSize,
-		ReplicaNum:    replicaNum,
-		VolumeId:      volName,
-		Members:       members,
-		Hosts:         hosts,
-		CreateType:    createType,
-		LeaderSize:    leaderSize,
+		PartitionTyp:        partitionType,
+		PartitionId:         ID,
+		PartitionSize:       dataPartitionSize,
+		ReplicaNum:          replicaNum,
+		VolumeId:            volName,
+		Members:             members,
+		Hosts:               hosts,
+		CreateType:          createType,
+		LeaderSize:          leaderSize,
+		DecommissionedDisks: decommissionedDisks,
 	}
 	return
 }

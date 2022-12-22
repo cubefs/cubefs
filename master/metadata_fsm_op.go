@@ -247,20 +247,22 @@ func newVolValueFromBytes(raw []byte) (*volValue, error) {
 }
 
 type dataNodeValue struct {
-	ID        uint64
-	NodeSetID uint64
-	Addr      string
-	ZoneName  string
-	RdOnly    bool
+	ID                  uint64
+	NodeSetID           uint64
+	Addr                string
+	ZoneName            string
+	RdOnly              bool
+	DecommissionedDisks []string
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 	return &dataNodeValue{
-		ID:        dataNode.ID,
-		NodeSetID: dataNode.NodeSetID,
-		Addr:      dataNode.Addr,
-		ZoneName:  dataNode.ZoneName,
-		RdOnly:    dataNode.RdOnly,
+		ID:                  dataNode.ID,
+		NodeSetID:           dataNode.NodeSetID,
+		Addr:                dataNode.Addr,
+		ZoneName:            dataNode.ZoneName,
+		RdOnly:              dataNode.RdOnly,
+		DecommissionedDisks: dataNode.getDecommissionedDisks(),
 	}
 }
 
@@ -383,7 +385,7 @@ func (m *RaftCmd) setOpType() {
 	}
 }
 
-//key=#c#name
+// key=#c#name
 func (c *Cluster) syncPutCluster() (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncPutCluster
@@ -469,7 +471,7 @@ func (c *Cluster) submit(metadata *RaftCmd) (err error) {
 	return
 }
 
-//key=#vol#volID,value=json.Marshal(vv)
+// key=#vol#volID,value=json.Marshal(vv)
 func (c *Cluster) syncAddVol(vol *Vol) (err error) {
 	return c.syncPutVolInfo(opSyncAddVol, vol)
 }
@@ -910,6 +912,9 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		dataNode.RdOnly = dnv.RdOnly
+		for _, disk := range dnv.DecommissionedDisks {
+			dataNode.addDecommissionedDisk(disk)
+		}
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {

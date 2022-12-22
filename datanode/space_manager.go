@@ -231,15 +231,23 @@ func (manager *SpaceManager) updateMetrics() {
 		remainingCapacityToCreatePartition, maxCapacityToCreatePartition, partitionCnt)
 }
 
-func (manager *SpaceManager) minPartitionCnt() (d *Disk) {
+func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string) (d *Disk) {
 	manager.diskMutex.Lock()
 	defer manager.diskMutex.Unlock()
 	var (
 		minWeight     float64
 		minWeightDisk *Disk
 	)
+	decommissionedDiskMap := make(map[string]struct{})
+	for _, disk := range decommissionedDisks {
+		decommissionedDiskMap[disk] = struct{}{}
+	}
 	minWeight = math.MaxFloat64
 	for _, disk := range manager.disks {
+		if _, ok := decommissionedDiskMap[disk.Path]; ok {
+			log.LogInfof("action[minPartitionCnt] exclude decommissioned disk[%v]", disk.Path)
+			continue
+		}
 		if disk.Status != proto.ReadWrite {
 			continue
 		}
@@ -316,7 +324,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		}
 		return
 	}
-	disk := manager.minPartitionCnt()
+	disk := manager.minPartitionCnt(request.DecommissionedDisks)
 	if disk == nil {
 		return nil, ErrNoSpaceToCreatePartition
 	}

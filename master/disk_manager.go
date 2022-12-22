@@ -97,6 +97,30 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 	})
 }
 
+func (c *Cluster) addAndSyncDecommissionedDisk(dataNode *DataNode, diskPath string) (err error) {
+	if exist := dataNode.addDecommissionedDisk(diskPath); exist {
+		return
+	}
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		dataNode.deleteDecommissionedDisk(diskPath)
+		return
+	}
+	log.LogInfof("action[addAndSyncDecommissionedDisk] finish, remaining decommissioned disks[%v], dataNode[%v]", dataNode.getDecommissionedDisks(), dataNode.Addr)
+	return
+}
+
+func (c *Cluster) deleteAndSyncDecommissionedDisk(dataNode *DataNode, diskPath string) (err error) {
+	if exist := dataNode.deleteDecommissionedDisk(diskPath); !exist {
+		return
+	}
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		dataNode.addDecommissionedDisk(diskPath)
+		return
+	}
+	log.LogInfof("action[deleteAndSyncDecommissionedDisk] finish, remaining decommissioned disks[%v], dataNode[%v]", dataNode.getDecommissionedDisks(), dataNode.Addr)
+	return
+}
+
 func (c *Cluster) decommissionDisk(dataNode *DataNode, raftForce bool, badDiskPath string, badPartitions []*DataPartition) (err error) {
 	msg := fmt.Sprintf("action[decommissionDisk], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
 	log.LogWarn(msg)

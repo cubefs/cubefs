@@ -66,7 +66,7 @@ func newNodeSetView(dataNodeLen, metaNodeLen int) *NodeSetView {
 	return &NodeSetView{DataNodes: make([]proto.NodeView, 0), MetaNodes: make([]proto.NodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
 }
 
-//ZoneView define the view of zone
+// ZoneView define the view of zone
 type ZoneView struct {
 	Name    string
 	Status  string
@@ -99,12 +99,12 @@ func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 
 // Turn on or off the automatic allocation of the data partitions.
 // If DisableAutoAllocate == off, then we WILL NOT automatically allocate new data partitions for the volume when:
-// 	1. the used space is below the max capacity,
-//	2. and the number of r&w data partition is less than 20.
+//  1. the used space is below the max capacity,
+//  2. and the number of r&w data partition is less than 20.
 //
 // If DisableAutoAllocate == on, then we WILL automatically allocate new data partitions for the volume when:
-// 	1. the used space is below the max capacity,
-//	2. and the number of r&w data partition is less than 20.
+//  1. the used space is below the max capacity,
+//  2. and the number of r&w data partition is less than 20.
 func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 	var (
 		status bool
@@ -2428,11 +2428,13 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 }
 
 // Decommission a disk. This will decommission all the data partitions on this disk.
+// If parameter diskDisable is true, creating data partitions on this disk will be not allowed.
 func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	var (
 		node                  *DataNode
 		rstMsg                string
 		offLineAddr, diskPath string
+		diskDisable           bool
 		err                   error
 		limit                 int
 		raftForce             bool
@@ -2440,7 +2442,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		badPartitions         []*DataPartition
 	)
 
-	if offLineAddr, diskPath, limit, err = parseReqToDecoDisk(r); err != nil {
+	if offLineAddr, diskPath, diskDisable, limit, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2456,6 +2458,12 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	badPartitions = node.badPartitions(diskPath, m.cluster)
 	if len(badPartitions) == 0 {
+		if diskDisable {
+			if err = m.cluster.addAndSyncDecommissionedDisk(node, diskPath); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
 		rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] no any partitions on disk[%v],offline successfully",
 			node.Addr, diskPath)
 		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
@@ -2476,6 +2484,45 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
+	if diskDisable {
+		if err = m.cluster.addAndSyncDecommissionedDisk(node, diskPath); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	Warn(m.clusterName, rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+// Recommission a disk which is set disable when decommissioning. This will allow creating data partitions on this disk again.
+func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		node                 *DataNode
+		rstMsg               string
+		onLineAddr, diskPath string
+		err                  error
+	)
+
+	if onLineAddr, diskPath, err = parseReqToRecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if node, err = m.cluster.dataNode(onLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	if err = m.cluster.deleteAndSyncDecommissionedDisk(node, diskPath); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	rstMsg = fmt.Sprintf("receive recommissionDisk node[%v] disk[%v], and recommission successfully",
+		node.Addr, diskPath)
+
 	Warn(m.clusterName, rstMsg)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
@@ -2816,7 +2863,28 @@ func (m *Server) getRaftStatus(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(data))
 }
 
-func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, limit int, err error) {
+func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, diskDisable bool, limit int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	nodeAddr, err = extractNodeAddr(r)
+	if err != nil {
+		return
+	}
+	diskPath, err = extractDiskPath(r)
+	if err != nil {
+		return
+	}
+	diskDisable, err = extractDiskDisable(r)
+	if err != nil {
+		return
+	}
+
+	limit, err = parseUintParam(r, countKey)
+	return
+}
+
+func parseReqToRecoDisk(r *http.Request) (nodeAddr, diskPath string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2829,7 +2897,6 @@ func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, limit int, 
 		return
 	}
 
-	limit, err = parseUintParam(r, countKey)
 	return
 }
 

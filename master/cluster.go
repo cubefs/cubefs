@@ -1052,11 +1052,11 @@ errHandler:
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition,
 	peers []proto.Peer, hosts []string, createType int, partitionType int) (diskPath string, err error) {
 	log.LogInfof("action[syncCreateDataPartitionToDataNode] dp [%v] createtype[%v], partitionType[%v]", dp.PartitionID, createType, partitionType)
-	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts, createType, partitionType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return
 	}
+	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts, createType, partitionType, dataNode.getDecommissionedDisks())
 	var resp *proto.Packet
 	if resp, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
 		return
@@ -1078,10 +1078,10 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 	return
 }
 
-//decideZoneNum
-//if vol is not cross zone, return 1
-//if vol enable cross zone and the zone number of cluster less than defaultReplicaNum return 2
-//otherwise, return defaultReplicaNum
+// decideZoneNum
+// if vol is not cross zone, return 1
+// if vol enable cross zone and the zone number of cluster less than defaultReplicaNum return 2
+// otherwise, return defaultReplicaNum
 func (c *Cluster) decideZoneNum(crossZone bool) (zoneNum int) {
 	if !crossZone {
 		return 1

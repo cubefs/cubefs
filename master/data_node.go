@@ -48,6 +48,7 @@ type DataNode struct {
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
+	DecommissionedDisks       sync.Map
 	ToBeOffline               bool
 	RdOnly                    bool
 	MigrateLock               sync.RWMutex
@@ -226,5 +227,27 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos b
 	request.QosFlowReadLimit = dataNode.QosFlowRLimit
 	request.QosFlowWriteLimit = dataNode.QosFlowWLimit
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
+	return
+}
+
+func (dataNode *DataNode) addDecommissionedDisk(diskPath string) (exist bool) {
+	_, exist = dataNode.DecommissionedDisks.LoadOrStore(diskPath, struct{}{})
+	log.LogInfof("action[addDecommissionedDisk] finish, exist[%v], decommissioned disk[%v], dataNode[%v]", exist, diskPath, dataNode.Addr)
+	return
+}
+
+func (dataNode *DataNode) deleteDecommissionedDisk(diskPath string) (exist bool) {
+	_, exist = dataNode.DecommissionedDisks.LoadAndDelete(diskPath)
+	log.LogInfof("action[deleteDecommissionedDisk] finish, exist[%v], decommissioned disk[%v], dataNode[%v]", exist, diskPath, dataNode.Addr)
+	return
+}
+
+func (dataNode *DataNode) getDecommissionedDisks() (decommissionedDisks []string) {
+	dataNode.DecommissionedDisks.Range(func(key, value interface{}) bool {
+		if diskPath, ok := key.(string); ok {
+			decommissionedDisks = append(decommissionedDisks, diskPath)
+		}
+		return true
+	})
 	return
 }
