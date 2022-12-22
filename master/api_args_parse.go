@@ -699,6 +699,15 @@ func extractDiskPath(r *http.Request) (diskPath string, err error) {
 	return
 }
 
+func extractDiskDisable(r *http.Request) (diskDisable bool, err error) {
+	var value string
+	if value = r.FormValue(DiskDisableKey); value == "" {
+		diskDisable = false
+		return
+	}
+	return strconv.ParseBool(value)
+}
+
 func parseRequestToLoadMetaPartition(r *http.Request) (partitionID uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

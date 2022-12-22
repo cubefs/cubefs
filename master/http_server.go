@@ -309,6 +309,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.DecommissionDisk).
 		HandlerFunc(m.decommissionDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RecommissionDisk).
+		HandlerFunc(m.recommissionDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeInfo).
 		HandlerFunc(m.setNodeInfoHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

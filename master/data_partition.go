@@ -238,7 +238,7 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removeP
 }
 
 func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64,
-	peers []proto.Peer, hosts []string, createType int, partitionType int) (task *proto.AdminTask) {
+	peers []proto.Peer, hosts []string, createType int, partitionType int, decommissionedDisks []string) (task *proto.AdminTask) {
 
 	leaderSize := 0
 	if createType == proto.DecommissionedCreateDataPartition {
@@ -247,7 +247,7 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
 		partition.VolName, partition.PartitionID, int(partition.ReplicaNum),
-		peers, int(dataPartitionSize), leaderSize, hosts, createType, partitionType))
+		peers, int(dataPartitionSize), leaderSize, hosts, createType, partitionType, decommissionedDisks))
 
 	partition.resetTaskID(task)
 	return
