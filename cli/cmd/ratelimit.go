@@ -308,5 +308,6 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  MetaTrashCleanInterval      : %v\n", info.MetaTrashCleanInterval))
 	sb.WriteString(fmt.Sprintf("  MetaRaftLogSize             : %v\n", info.MetaRaftLogSize))
 	sb.WriteString(fmt.Sprintf("  MetaRaftLogCap              : %v\n", info.MetaRaftCap))
+	sb.WriteString(fmt.Sprintf("  DeleteEKRecordFileMaxSize   : %vMB\n", info.DeleteEKRecordFileMaxMB))
 	return sb.String()
 }
