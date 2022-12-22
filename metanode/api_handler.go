@@ -2222,6 +2222,7 @@ func (m *MetaNode) setDelEKRecordFilesMaxTotalSize(w http.ResponseWriter, r *htt
 	}
 	atomic.StoreUint64(&nodeInfo.delEKFileLocalMaxMB, maxTotalMB*unit.MB)
 	if maxTotalMB == 0 {
+		DeleteEKRecordFilesMaxTotalSize.Store(defDeleteEKRecordFilesMaxTotalSize*unit.MB)
 		return
 	}
 	DeleteEKRecordFilesMaxTotalSize.Store(maxTotalMB*unit.MB)
