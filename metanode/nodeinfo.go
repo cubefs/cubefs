@@ -266,6 +266,14 @@ func (m *MetaNode) updateRaftParamFromLocal(logSize, logCap int) {
 	return
 }
 
+func (m *MetaNode) updateSyncWALOnUnstableEnableState(enableState bool) {
+	if m.raftStore.IsSyncWALOnUnstable() == enableState {
+		return
+	}
+	log.LogInfof("updateSyncWALOnUnstableFlag, enable sync WAL flag: %v -> %v", m.raftStore.IsSyncWALOnUnstable(), enableState)
+	m.raftStore.SetSyncWALOnUnstable(enableState)
+}
+
 func getGlobalConfNodeInfo() *NodeInfo {
 	newInfo := *nodeInfo
 	return &newInfo
@@ -324,6 +332,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.updateDeleteEKRecordFilesMaxSize(limitInfo.DeleteEKRecordFileMaxMB)
 	m.updateTrashCleanInterval(limitInfo.MetaTrashCleanInterval)
 	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
+	m.updateSyncWALOnUnstableEnableState(limitInfo.MetaSyncWALOnUnstableEnableState)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

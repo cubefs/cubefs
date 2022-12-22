@@ -85,7 +85,6 @@ type PartitionConfig struct {
 
 	WALFileSize          int
 	WALFileCacheCapacity int
-	SyncWALOnUnstable    bool
 }
 
 func (p PeerAddress) String() string {

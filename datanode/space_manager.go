@@ -598,3 +598,11 @@ func (manager *SpaceManager) SetForceFlushFDInterval(newValue uint32) {
 		manager.flushFDIntervalSec = newValue
 	}
 }
+
+func (manager *SpaceManager) SetSyncWALOnUnstableEnableState(enableState bool) {
+	if enableState == manager.raftStore.IsSyncWALOnUnstable() {
+		return
+	}
+	log.LogInfof("action[spaceManager] change SyncWALOnUnstableEnableState from(%v) to(%v)", manager.raftStore.IsSyncWALOnUnstable(), enableState)
+	manager.raftStore.SetSyncWALOnUnstable(enableState)
+}

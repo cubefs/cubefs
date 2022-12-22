@@ -208,6 +208,18 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.MetaRaftLogCap >= 0 {
 				msg += fmt.Sprintf("MN Raft log cap  : %d, ", info.MetaRaftLogCap)
 			}
+			if info.MetaSyncWALEnableState == 0 {
+				msg += fmt.Sprintf("MN WAL Sync On Unstable      : disable, ")
+			} else if info.MetaSyncWALEnableState == 1 {
+				msg += fmt.Sprintf("MN WAL Sync On Unstable      : enable, ")
+			}
+
+			if info.DataSyncWALEnableState == 0 {
+				msg += fmt.Sprintf("DN WAL Sync On Unstable      : disable, ")
+			} else if info.DataSyncWALEnableState == 1 {
+				msg += fmt.Sprintf("DN WAL Sync On Unstable      : enable, ")
+			}
+
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -260,6 +272,8 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&info.MetaTrashCleanInterval, "metaTrashCleanInterval", 0, "meta node clean del inode interval, unit:min")
 	cmd.Flags().Int64Var(&info.MetaRaftLogSize, "metaRaftLogSize", -1, "meta node raft log size")
 	cmd.Flags().Int64Var(&info.MetaRaftLogCap, "metaRaftLogCap", -1, "meta node raft log cap")
+	cmd.Flags().Int64Var(&info.MetaSyncWALEnableState, "metaSyncWALFlag", -1, "0:disable, 1:enable")
+	cmd.Flags().Int64Var(&info.DataSyncWALEnableState, "dataSyncWALFlag", -1, "0:disable, 1:enable")
 	return cmd
 }
 
@@ -309,5 +323,8 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  MetaRaftLogSize             : %v\n", info.MetaRaftLogSize))
 	sb.WriteString(fmt.Sprintf("  MetaRaftLogCap              : %v\n", info.MetaRaftCap))
 	sb.WriteString(fmt.Sprintf("  DeleteEKRecordFileMaxSize   : %vMB\n", info.DeleteEKRecordFileMaxMB))
+	sb.WriteString(fmt.Sprintf("  MetaSyncWalEnableState      : %s\n", formatEnabledDisabled(info.MetaSyncWALOnUnstableEnableState)))
+	sb.WriteString(fmt.Sprintf("  DataSyncWalEnableState      : %s\n", formatEnabledDisabled(info.DataSyncWALOnUnstableEnableState)))
 	return sb.String()
 }
+

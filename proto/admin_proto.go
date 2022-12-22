@@ -236,6 +236,8 @@ const (
 	MetaTrashCleanIntervalKey    = "metaTrashCleanInterval"
 	MetaRaftLogSizeKey           = "metaRaftLogSize"
 	MetaRaftLogCapKey            = "metaRaftLogCap"
+	MetaSyncWalEnableStateKey    = "metaWalSyncEnableState"
+	DataSyncWalEnableStateKey    = "dataWalSyncEnableState"
 )
 
 const (
@@ -497,6 +499,9 @@ type LimitInfo struct {
 	MetaTrashCleanInterval     uint64				//second
 	MetaRaftLogSize            int64
 	MetaRaftCap				   int64
+
+	MetaSyncWALOnUnstableEnableState bool
+	DataSyncWALOnUnstableEnableState bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1137,6 +1142,8 @@ type RateLimitInfo struct {
 	MetaTrashCleanInterval      uint64
 	MetaRaftLogSize				int64
 	MetaRaftLogCap				int64
+	MetaSyncWALEnableState      int64
+	DataSyncWALEnableState      int64
 }
 
 type ConvertMode uint8

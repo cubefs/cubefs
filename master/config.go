@@ -142,6 +142,8 @@ type clusterConfig struct {
 	MetaTrashCleanInterval              uint64
 	MetaRaftLogSize						int64  // MB
 	MetaRaftLogCap                      int64  //
+	MetaSyncWALOnUnstableEnableState    bool
+	DataSyncWALOnUnstableEnableState    bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

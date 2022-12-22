@@ -3715,6 +3715,16 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, val.(int64))
 	}
 
+	oldMetaSyncWALEnableState := c.cfg.MetaSyncWALOnUnstableEnableState
+	if val, ok := params[proto.MetaSyncWalEnableStateKey]; ok {
+		c.cfg.MetaSyncWALOnUnstableEnableState = val.(bool)
+	}
+
+	oldDataSyncWALEnableState := c.cfg.DataSyncWALOnUnstableEnableState
+	if val, ok := params[proto.DataSyncWalEnableStateKey]; ok {
+		c.cfg.DataSyncWALOnUnstableEnableState = val.(bool)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3745,6 +3755,8 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaTrashCleanInterval, oldMetaTrashCleanInterval)
 		atomic.StoreInt64(&c.cfg.MetaRaftLogSize, oldMetaRaftLogSize)
 		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, oldMetaRaftLogCap)
+		c.cfg.DataSyncWALOnUnstableEnableState = oldDataSyncWALEnableState
+		c.cfg.MetaSyncWALOnUnstableEnableState = oldMetaSyncWALEnableState
 		err = proto.ErrPersistenceByRaft
 		return
 	}

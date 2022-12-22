@@ -146,7 +146,6 @@ type RaftConfig struct {
 	Storage      storage.Storage
 	StateMachine StateMachine
 	Learners     []proto.Learner
-	SyncWALOnUnstable bool
 }
 
 // DefaultConfig returns a Config with usable defaults.

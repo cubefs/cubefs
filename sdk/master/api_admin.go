@@ -740,6 +740,12 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.MetaRaftLogCap >0 {
 		request.addParam(proto.MetaRaftLogCapKey, strconv.FormatInt(info.MetaRaftLogCap, 10))
 	}
+	if info.DataSyncWALEnableState == 0 || info.DataSyncWALEnableState == 1 {
+		request.addParam(proto.DataSyncWalEnableStateKey, strconv.FormatInt(info.DataSyncWALEnableState, 10))
+	}
+	if info.MetaSyncWALEnableState == 0 || info.MetaSyncWALEnableState == 1 {
+		request.addParam(proto.MetaSyncWalEnableStateKey, strconv.FormatInt(info.MetaSyncWALEnableState, 10))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {

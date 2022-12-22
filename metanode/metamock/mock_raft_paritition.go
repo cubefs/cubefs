@@ -125,11 +125,3 @@ func (m MockPartition) SetWALFileCacheCapacity(capacity int) {
 func (m MockPartition) GetWALFileCacheCapacity() int {
 	return 0
 }
-
-func (m MockPartition) SetSyncWALOnUnstable(enabled bool) {
-	return
-}
-
-func (m MockPartition) IsSyncWALOnUnstable() bool {
-	return false
-}

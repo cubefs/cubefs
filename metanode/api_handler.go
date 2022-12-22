@@ -898,6 +898,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"raftLogCapFromLoc":     nodeCfg.raftLogCapFromLoc,
 		"trashCleanInterval":    nodeCfg.trashCleanInterval,
 		"delEKRecordFileMaxMB":  DeleteEKRecordFilesMaxTotalSize.Load() / unit.MB,
+		"raftWALSyncEnableState":m.raftStore.IsSyncWALOnUnstable(),
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK

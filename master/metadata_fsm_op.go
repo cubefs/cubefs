@@ -85,6 +85,8 @@ type clusterValue struct {
 	MetaTrashCleanInterval              uint64
 	MetaRaftLogSize                     int64
 	MetaRaftLogCap                      int64
+	MetaSyncWALEnableState              bool
+	DataSyncWALEnableState              bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -142,6 +144,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaTrashCleanInterval:              c.cfg.MetaTrashCleanInterval,
 		MetaRaftLogSize:                     c.cfg.MetaRaftLogSize,
 		MetaRaftLogCap:                      c.cfg.MetaRaftLogCap,
+		MetaSyncWALEnableState:              c.cfg.MetaSyncWALOnUnstableEnableState,
+		DataSyncWALEnableState:              c.cfg.DataSyncWALOnUnstableEnableState,
 	}
 	return cv
 }
@@ -985,6 +989,8 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.MetaRaftLogCap != 0 {
 			atomic.StoreInt64(&c.cfg.MetaRaftLogCap, cv.MetaRaftLogCap)
 		}
+		c.cfg.DataSyncWALOnUnstableEnableState = cv.DataSyncWALEnableState
+		c.cfg.MetaSyncWALOnUnstableEnableState = cv.MetaSyncWALEnableState
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

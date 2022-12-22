@@ -508,8 +508,10 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaRocksWalTTL:                        metaRocksDBWalTTL,
 		DeleteEKRecordFileMaxMB:                metaDeleteEKRecordFilesMaxTotalSize,
 		MetaTrashCleanInterval:                 metaTrashCleanInterval,
-		MetaRaftLogSize: metaRaftLogSize,
-		MetaRaftCap:     metaRaftLogCap,
+		MetaRaftLogSize:                        metaRaftLogSize,
+		MetaRaftCap:                            metaRaftLogCap,
+		MetaSyncWALOnUnstableEnableState:       m.cluster.cfg.MetaSyncWALOnUnstableEnableState,
+		DataSyncWALOnUnstableEnableState:       m.cluster.cfg.DataSyncWALOnUnstableEnableState,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -4390,6 +4392,12 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
+	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey}
+	for _, key := range boolKey {
+		if err = parseBoolKey(params, key, r); err != nil {
+			return
+		}
+	}
 	if len(params) == 0 {
 		err = errors.NewErrorf("no valid parameters")
 		return
@@ -4414,6 +4422,19 @@ func parseIntKey(params map[string]interface{}, key string, r *http.Request) (er
 	if value := r.FormValue(key); value != "" {
 		var val = int64(0)
 		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(key)
+			return
+		}
+		params[key] = val
+	}
+	return
+}
+
+func parseBoolKey(params map[string]interface{}, key string, r *http.Request) (err error) {
+	if value := r.FormValue(key); value != "" {
+		var val bool
+		val, err = strconv.ParseBool(value)
 		if err != nil {
 			err = unmatchedKey(key)
 			return
