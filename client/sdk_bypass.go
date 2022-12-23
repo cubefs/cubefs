@@ -666,9 +666,17 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 			syslog.Printf("Unmarshal sdkState err(%v), sdkState(%s)\n", err, C.GoString(str))
 			return C.int64_t(statusEIO)
 		}
+		if sdkState.ClientState == nil {
+			sdkState.ClientState = &ClientState{}
+			err = json.Unmarshal([]byte(C.GoString(str)), sdkState.ClientState)
+			if err != nil {
+				syslog.Printf("Unmarshal sdkState err(%v), sdkState(%s)\n", err, C.GoString(str))
+				return C.int64_t(statusEIO)
+			}
+		}
 	}
 	c := newClient(conf, C.GoString(configPath))
-	if err := c.start(first_start, sdkState); err != nil {
+	if err := c.start(sdkState.MetaState == nil, sdkState); err != nil {
 		return C.int64_t(statusEIO)
 	}
 
