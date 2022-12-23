@@ -128,7 +128,7 @@ func (cache *ExtentCache) Insert(ek *proto.ExtentKey, sync bool) {
 
 func (cache *ExtentCache) insert(ek *proto.ExtentKey, sync bool) {
 	ekEnd := ek.FileOffset + uint64(ek.Size)
-	deleteExtents := cache.root.Insert(nil, *ek)
+	deleteExtents := cache.root.Insert(nil, *ek, cache.inode)
 
 	if sync {
 		cache.gen++

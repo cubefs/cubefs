@@ -167,7 +167,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 			Extents:    se.NewSortedExtents(),
 		}
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
-			localInode.Extents.Append(context.Background(), ek)
+			localInode.Extents.Append(context.Background(), ek, inode.Inode)
 			return true
 		})
 		if !reflect.DeepEqual(oldInode, localInode) {

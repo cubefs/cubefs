@@ -1,6 +1,7 @@
 package metanode
 
 import (
+	"github.com/chubaofs/chubaofs/util/unit"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -38,6 +39,12 @@ type NodeInfo struct {
 	rocksFlushWalInterval  uint64				// min default 30min
 	rocksFlushWal          bool					// default true flush
 	rocksWalTTL            uint64				//second default 60
+	trashCleanInterval     uint64  //min
+	delEKFileLocalMaxMB    uint64
+	raftLogSizeFromMaster  int
+	raftLogCapFromMaster   int
+	raftLogSizeFromLoc     int
+	raftLogCapFromLoc      int
 }
 
 var (
@@ -215,6 +222,58 @@ func (m *MetaNode) updateRocksDBConf(info *proto.LimitInfo) {
 	}
 }
 
+func (m *MetaNode) updateDeleteEKRecordFilesMaxSize(maxMB uint64) {
+	if maxMB == 0 || DeleteEKRecordFilesMaxTotalSize.Load() == maxMB * unit.MB {
+		log.LogDebugf("[updateDeleteEKRecordFilesMaxSize] no need update")
+		return
+	}
+	if atomic.LoadUint64(&nodeInfo.delEKFileLocalMaxMB) == 0 {
+		DeleteEKRecordFilesMaxTotalSize.Store(maxMB * unit.MB)
+		log.LogDebugf("[updateDeleteEKRecordFilesMaxSize] new value:%vMB", maxMB)
+	}
+}
+
+func (m *MetaNode) updateTrashCleanInterval(interval uint64) {
+	if interval == 0 || interval == nodeInfo.trashCleanInterval {
+		log.LogDebugf("[updateTrashCleanInterval] no need update")
+		return
+	}
+	nodeInfo.trashCleanInterval = interval
+	log.LogDebugf("[updateTrashCleanInterval] new value:%v", interval)
+}
+
+func (m *MetaNode) updateRaftParamFromMaster(logSize, logCap int) {
+	if logSize >= 0 && logSize != nodeInfo.raftLogSizeFromMaster {
+		nodeInfo.raftLogSizeFromMaster = logSize
+	}
+
+	if logCap >= 0 && logCap != nodeInfo.raftLogCapFromMaster {
+		nodeInfo.raftLogCapFromMaster = logCap
+	}
+
+	return
+}
+
+func (m *MetaNode) updateRaftParamFromLocal(logSize, logCap int) {
+	if logSize >= 0 && logSize != nodeInfo.raftLogSizeFromLoc {
+		nodeInfo.raftLogSizeFromLoc = logSize
+	}
+
+	if logCap >= 0 && logCap != nodeInfo.raftLogCapFromLoc {
+		nodeInfo.raftLogCapFromLoc = logCap
+	}
+
+	return
+}
+
+func (m *MetaNode) updateSyncWALOnUnstableEnableState(enableState bool) {
+	if m.raftStore.IsSyncWALOnUnstable() == enableState {
+		return
+	}
+	log.LogInfof("updateSyncWALOnUnstableFlag, enable sync WAL flag: %v -> %v", m.raftStore.IsSyncWALOnUnstable(), enableState)
+	m.raftStore.SetSyncWALOnUnstable(enableState)
+}
+
 func getGlobalConfNodeInfo() *NodeInfo {
 	newInfo := *nodeInfo
 	return &newInfo
@@ -270,6 +329,10 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	updateLogMaxSize(limitInfo.LogMaxSize)
 	m.updateRocksDBDiskReservedSpaceSpace(limitInfo.RocksDBDiskReservedSpace)
 	m.updateRocksDBConf(limitInfo)
+	m.updateDeleteEKRecordFilesMaxSize(limitInfo.DeleteEKRecordFileMaxMB)
+	m.updateTrashCleanInterval(limitInfo.MetaTrashCleanInterval)
+	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
+	m.updateSyncWALOnUnstableEnableState(limitInfo.MetaSyncWALOnUnstableEnableState)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

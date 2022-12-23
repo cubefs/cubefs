@@ -22,7 +22,7 @@ func ApplyMock(elem interface{},command []byte, index uint64) (resp interface{},
 func mockMetaPartition(partitionID uint64, metaNodeID uint64, storeMode proto.StoreMode, rootDir string, applyFunc metamock.ApplyFunc) (*metaPartition, error) {
 	_ = os.RemoveAll(rootDir)
 	_ = os.MkdirAll(rootDir, 0666)
-	node := &MetaNode{nodeId: metaNodeID}
+	node := &MetaNode{nodeId: metaNodeID, metadataDir: rootDir}
 	manager := &metadataManager{nodeId: metaNodeID, rocksDBDirs: []string{rootDir}, metaNode: node}
 	conf := &MetaPartitionConfig{
 		RocksDBDir:  rootDir,
@@ -84,7 +84,7 @@ func genInode(t *testing.T, mp *metaPartition, cnt uint64) uint64 {
 			for j := 0; j < 10; j++ {
 				ino.Extents.Append(context.Background(), proto.ExtentKey{FileOffset: uint64(j) * 1024 * 4,
 					PartitionId: rand.Uint64(), ExtentId: rand.Uint64(),
-					ExtentOffset: rand.Uint64(), Size: rand.Uint32(), CRC:0})
+					ExtentOffset: rand.Uint64(), Size: rand.Uint32(), CRC:0}, ino.Inode)
 			}
 		}
 		if _, ok, err := inodeCreate(mp.inodeTree, ino, false); err != nil || !ok {

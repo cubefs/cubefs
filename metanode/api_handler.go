@@ -34,6 +34,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -114,9 +115,10 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 
 	http.HandleFunc("/enableRocksDBSync", m.enableRocksDBSync)
 	http.HandleFunc("/reopenDb", m.reopenRocksDb)
-
+	http.HandleFunc("/setDelEKRecordFilesMaxTotalMB", m.setDelEKRecordFilesMaxTotalSize)
+	http.HandleFunc("/removeOldDelEkRecordFile", m.removeOldDelEKRecordFile)
+	http.HandleFunc("/setRaftStorageParam", m.setRaftStorageParam)
 	http.HandleFunc("/getDeletedDentrys", m.getDeletedDentrysByParentInoHandler)
-
 	return
 }
 
@@ -200,6 +202,14 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["apply_id"] = mp.GetAppliedID()
 	msg["raft_status"] = m.raftStore.RaftStatus(pid)
 	msg["trash_first_upd_time"] = mp.(*metaPartition).trashExpiresFirstUpdateTime
+	msg["trash_clean_interval_min"] = mp.(*metaPartition).getTrashCleanInterval() / time.Minute
+	msg["batch_del_inode_cnt"] = mp.(*metaPartition).GetBatchDelInodeCnt()
+	msg["del_inode_interval_ms"] = mp.(*metaPartition).GetDelInodeInterval()
+	raftPartition := mp.(*metaPartition).raftPartition
+	if raftPartition != nil {
+		msg["raft_log_size"] = raftPartition.GetWALFileSize()
+		msg["raft_log_cap"] = raftPartition.GetWALFileCacheCapacity()
+	}
 	msg["now"] = time.Now()
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -279,7 +289,6 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 			ek.Size = binary.BigEndian.Uint32(k[28:32])
 		case ExtentDelTable:
 			err = ek.UnmarshalDbKey(k[8:])
-			break
 		default:
 			break
 		}
@@ -287,7 +296,22 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			return false, err
 		}
-		val, err = json.Marshal(ek)
+		delEkInfo := &struct {
+			proto.ExtentKey
+			DelTime uint64
+		}{
+			proto.ExtentKey{
+				FileOffset:   ek.FileOffset,
+				PartitionId:  ek.PartitionId,
+				ExtentId:     ek.ExtentId,
+				ExtentOffset: ek.ExtentOffset,
+				Size: ek.Size,
+				CRC: ek.CRC,
+			},
+			getDateInKey(k),
+		}
+
+		val, err = json.Marshal(delEkInfo)
 		if err != nil {
 			return false, err
 		}
@@ -834,6 +858,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 	//get process stat info
 	cpuUsageList, maxCPUUsage := m.processStatInfo.GetProcessCPUStatInfo()
 	memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := m.processStatInfo.GetProcessMemoryStatInfo()
+	nodeCfg := getGlobalConfNodeInfo()
 	//get disk info
 	disks := m.getDisks()
 	diskList := make([]interface{}, 0, len(disks))
@@ -867,6 +892,13 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"maxMemoryUsedGB":  maxMemoryUsedGB,
 		"maxMemoryUsage":   maxMemoryUsage,
 		"diskInfo":         diskList,
+		"raftLogSizeFromMaster": nodeCfg.raftLogSizeFromMaster,
+		"raftLogCapFromMaster":  nodeCfg.raftLogCapFromMaster,
+		"raftLogSizeFromLoc":    nodeCfg.raftLogSizeFromLoc,
+		"raftLogCapFromLoc":     nodeCfg.raftLogCapFromLoc,
+		"trashCleanInterval":    nodeCfg.trashCleanInterval,
+		"delEKRecordFileMaxMB":  DeleteEKRecordFilesMaxTotalSize.Load() / unit.MB,
+		"raftWALSyncEnableState":m.raftStore.IsSyncWALOnUnstable(),
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -2161,15 +2193,136 @@ func (m *MetaNode) reopenRocksDb(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r *http.Request) {
-	resp := NewAPIResponse(http.StatusSeeOther, "")
-	shouldResp := true
+func (m *MetaNode) setDelEKRecordFilesMaxTotalSize(w http.ResponseWriter, r *http.Request) {
+	var (
+		err        error
+		maxTotalMB uint64
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
 	defer func() {
-		if shouldResp {
-			data, _ := resp.Marshal()
-			if _, err := w.Write(data); err != nil {
-				log.LogErrorf("[getDeletedDentrysByParentInoHandler] response %s", err)
-			}
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[setDelEKRecordFilesMaxTotalSize] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if maxTotalMB, err = strconv.ParseUint(r.FormValue("maxTotalMB"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if maxTotalMB < 0 {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("maxTotalMB value invalid:%v", maxTotalMB)
+		return
+	}
+	atomic.StoreUint64(&nodeInfo.delEKFileLocalMaxMB, maxTotalMB*unit.MB)
+	if maxTotalMB == 0 {
+		DeleteEKRecordFilesMaxTotalSize.Store(defDeleteEKRecordFilesMaxTotalSize*unit.MB)
+		return
+	}
+	DeleteEKRecordFilesMaxTotalSize.Store(maxTotalMB*unit.MB)
+	return
+}
+
+func (m *MetaNode) removeOldDelEKRecordFile(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+		mp  MetaPartition
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[removeOldDelEKRecordFile] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pidStr := r.FormValue("pid")
+	if pidStr != "" {
+		if pid, err = strconv.ParseUint(pidStr, 10, 64); err != nil {
+			resp.Code = http.StatusBadRequest
+			resp.Msg = err.Error()
+			return
+		}
+		if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+			resp.Code = http.StatusNotFound
+			resp.Msg = err.Error()
+			return
+		}
+		mp.(*metaPartition).removeOldDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup, true)
+		mp.(*metaPartition).removeOldDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup, true)
+		return
+	}
+
+	pidArray := make([]uint64, 0)
+	//get all pid
+	m.metadataManager.(*metadataManager).Range(func(i uint64, p MetaPartition) bool {
+		pidArray = append(pidArray, i)
+		return true
+	})
+
+	for _, id := range pidArray {
+		partition, err := m.metadataManager.GetPartition(id)
+		if err != nil {
+			continue
+		}
+		partition.(*metaPartition).removeOldDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup, true)
+		partition.(*metaPartition).removeOldDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup, true)
+	}
+	return
+}
+
+func (m *MetaNode) setRaftStorageParam(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[removeOldDelEKRecordFile] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	logSizeStr := r.FormValue("logSize")
+	logSize, err:= strconv.Atoi(logSizeStr)
+	if err != nil {
+	logSize = 0
+	}
+
+	logCapStr := r.FormValue("logCap")
+	logCap, err:= strconv.Atoi(logCapStr)
+	if err != nil {
+	logCap = 0
+	}
+
+	m.updateRaftParamFromLocal(logSize, logCap)
+	return
+}
+
+func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getDeletedDentrysByParentInoHandler] response %s", err)
 		}
 	}()
 
@@ -2193,7 +2346,7 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		return
 	}
 	batchNum, err := strconv.ParseInt(r.FormValue("batch"), 10, 16)
-	if err != nil {
+	if err != nil || batchNum > proto.ReadDeletedDirBatchNum {
 		batchNum = proto.ReadDeletedDirBatchNum
 	}
 	prev := r.FormValue("prev")
@@ -2203,22 +2356,13 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		resp.Msg = err.Error()
 		return
 	}
-	buff := bytes.NewBufferString(`{"data":[`)
-	if _, err = w.Write(buff.Bytes()); err != nil {
-		resp.Code = http.StatusInternalServerError
-		resp.Msg = err.Error()
-		return
-	}
-	buff.Reset()
 	var (
-		val           []byte
-		delimiter   = []byte{',', '\n'}
 		count int64 = 0
+		ddentrys    = make([]*DeletedDentry, 0)
 	)
 	prefix := newPrimaryDeletedDentry(parentIno, "", 0, 0)
 	start := newPrimaryDeletedDentry(parentIno, prev, 0, 0)
 	end := newPrimaryDeletedDentry(parentIno+1, "", 0, 0)
-	isFirst := true
 	skipFirst := false
 	if len(prev) > 0 {
 		skipFirst = true
@@ -2228,33 +2372,18 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		if count == 1 && skipFirst {
 			return true, nil
 		}
-		val, err = json.Marshal(dd)
-		if err != nil {
-			return false, err
-		}
-		if !isFirst {
-			if _, err = w.Write(delimiter); err != nil {
-				return false, err
-			}
-		} else {
-			isFirst = false
-		}
-		if _, err = w.Write(val); err != nil {
-			return false, err
-		}
+		ddentrys = append(ddentrys, dd)
 		if count == batchNum {
 			return false, nil
 		}
 		return true, nil
 	})
-	shouldResp = false
+
 	if err != nil {
-		buff.WriteString(fmt.Sprintf(`], "code": %v, "msg": "%s"}`, http.StatusInternalServerError, err.Error()))
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
 	} else {
-		buff.WriteString(`], "code": 200, "msg": "OK"}`)
-	}
-	if _, err = w.Write(buff.Bytes()); err != nil {
-		log.LogErrorf("[getDeletedDentrysByParentInoHandler] response %s", err)
+		resp.Data = ddentrys
 	}
 	return
 }

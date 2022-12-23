@@ -46,6 +46,7 @@ const ExpiredPartitionPrefix = "expired_"
 // MetadataManager manages all the meta partitions.
 type MetadataManager interface {
 	Start() error
+	FailOverLeaderMp()
 	Stop()
 	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
@@ -77,8 +78,18 @@ type metadataManager struct {
 	metaNode           *MetaNode
 	flDeleteBatchCount atomic.Value
 	stopC              chan bool
-	volTrashMap        map[string]int32
-	volTrashMapMutex   sync.Mutex
+	volConfMap         map[string]*VolumeConfig
+	volConfMapRWMutex  sync.RWMutex
+}
+
+type VolumeConfig struct {
+	Name               string
+	PartitionCount     int
+	TrashDay           int32
+	ChildFileMaxCnt    uint32
+	TrashCleanInterval uint64
+	BatchDelInodeCnt   uint32
+	DelInodeInterval   uint32
 }
 
 type MetaNodeVersion struct {
@@ -278,6 +289,71 @@ func (m *metadataManager) Start() (err error) {
 	return
 }
 
+func (m *metadataManager) dealFailOverLeaderMp(mpIdArr []uint64) (leaderCnt uint64){
+	FailOverCh := make(chan uint64, defParallelFailOverCnt)
+	var wg sync.WaitGroup
+	leaderCnt = 0
+	log.LogErrorf("fail over need check mp count:%d", len(mpIdArr))
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for _, pid := range mpIdArr {
+			partition, err := m.getPartition(pid)
+			if err != nil {
+				continue
+			}
+			if _, ok := partition.IsLeader(); ok {
+				FailOverCh<-pid
+				//partition.(*metaPartition).tryToGiveUpLeader()
+				atomic.AddUint64(&leaderCnt, 1)
+			}
+		}
+		close(FailOverCh)
+		log.LogErrorf("fail over lear mp count:%d", leaderCnt)
+	}()
+
+	for i := 0; i < defParallelFailOverCnt; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ;; {
+				pid, ok := <-FailOverCh
+				if !ok {
+					return
+				}
+				partition, err := m.getPartition(pid)
+				if err != nil {
+					continue
+				}
+				if _, ok := partition.IsLeader(); ok {
+					log.LogErrorf("fail over lear mp [%d]", pid)
+					partition.(*metaPartition).tryToGiveUpLeader()
+				}
+			}
+
+		}()
+	}
+	wg.Wait()
+	return
+}
+
+func (m *metadataManager) FailOverLeaderMp() {
+	mpIdArray := make([]uint64, 0)
+	m.Range(func(pid uint64, p MetaPartition) bool {
+		mpIdArray = append(mpIdArray, pid)
+		return true
+	})
+
+	for i := 0; i < defTryFailOverCnt; i++ {
+		leaderCnt := m.dealFailOverLeaderMp(mpIdArray)
+		log.LogErrorf("fail over %d partitions", leaderCnt)
+		if leaderCnt == 0 {
+			break
+		}
+		time.Sleep(intervalFailOverLeader)
+	}
+}
+
 // Stop stops the metadata manager.
 func (m *metadataManager) Stop() {
 	if atomic.CompareAndSwapUint32(&m.state, common.StateRunning, common.StateShutdown) {
@@ -288,7 +364,7 @@ func (m *metadataManager) Stop() {
 
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
-	m.updateVolsTrashDaysScheduler()
+	m.updateVolsConfScheduler()
 	go m.syncMetaPartitionsRocksDBWalLogScheduler()
 	err = m.startPartitions()
 	if err != nil {
@@ -350,22 +426,22 @@ func (m *metadataManager) syncMetaPartitionsRocksDBWalLogScheduler() {
 	}
 }
 
-func (m *metadataManager) updateVolsTrashDaysScheduler() {
+func (m *metadataManager) updateVolsConfScheduler() {
 	for {
-		err := m.updateVolsTrashDays()
+		err := m.updateVolConf()
 		if err == nil {
-			log.LogWarnf("updateVolsTrashDaysScheduler, vols: %v", len(m.volTrashMap))
+			log.LogWarnf("updateVolsConfScheduler, vols: %v", len(m.volConfMap))
 			break
 		}
-		log.LogWarnf("updateVolsTrashDaysScheduler, err: %v", err.Error())
+		log.LogWarnf("updateVolsConfScheduler, err: %v", err.Error())
 		time.Sleep(3 * time.Second)
 	}
 	go func() {
-		ticker := time.NewTicker(intervalToUpdateAllVolsTrashDays)
+		ticker := time.NewTicker(intervalToUpdateAllVolsConf)
 		for {
 			select {
 			case <-ticker.C:
-				m.updateVolsTrashDays()
+				m.updateVolConf()
 			case <-m.stopC:
 				ticker.Stop()
 				return
@@ -374,7 +450,7 @@ func (m *metadataManager) updateVolsTrashDaysScheduler() {
 	}()
 }
 
-func (m *metadataManager) updateVolsTrashDays() (err error) {
+func (m *metadataManager) updateVolConf() (err error) {
 	var vols []*proto.VolInfo
 	vols, err = masterClient.AdminAPI().ListVols("")
 	if err != nil {
@@ -384,26 +460,34 @@ func (m *metadataManager) updateVolsTrashDays() (err error) {
 	if len(vols) == 0 {
 		return
 	}
-	volMap := make(map[string]int32, 0)
+	volConfMap := make(map[string]*VolumeConfig, 0)
 	for _, vol := range vols {
-		volMap[vol.Name] = int32(vol.TrashRemainingDays)
-		log.LogDebugf("updateTrashExpiredTime: vol: %v, remaining days: %v", vol.Name, vol.TrashRemainingDays)
+		volConfMap[vol.Name] = &VolumeConfig{
+			Name:               vol.Name,
+			TrashDay:           int32(vol.TrashRemainingDays),
+			ChildFileMaxCnt:    vol.ChildFileMaxCnt,
+			TrashCleanInterval: vol.TrashCleanInterval,
+			BatchDelInodeCnt:   vol.BatchInodeDelCnt,
+			DelInodeInterval:   vol.DelInodeInterval,
+		}
+		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v",
+			vol.Name, vol.TrashRemainingDays, vol.ChildFileMaxCnt, vol.TrashCleanInterval)
 	}
 
-	m.volTrashMapMutex.Lock()
-	m.volTrashMap = volMap
-	m.volTrashMapMutex.Unlock()
+	m.volConfMapRWMutex.Lock()
+	defer m.volConfMapRWMutex.Unlock()
+	m.volConfMap = volConfMap
 	return
 }
 
 func (m *metadataManager) getTrashDaysByVol(vol string) (days int32) {
-	ok := false
-	m.volTrashMapMutex.Lock()
-	days, ok = m.volTrashMap[vol]
-	if !ok {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	if volConf, ok := m.volConfMap[vol]; !ok {
 		days = -1
+	} else {
+		days = volConf.TrashDay
 	}
-	m.volTrashMapMutex.Unlock()
 	/*
 		if remaining > 0 {
 			remaining = time.Now().AddDate(0, 0, 0-int(remaining)).UnixNano() / 1000
@@ -413,13 +497,69 @@ func (m *metadataManager) getTrashDaysByVol(vol string) (days int32) {
 	return
 }
 
+func (m *metadataManager) getChildFileMaxCount(vol string) (maxCount uint32) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	if volConf, ok := m.volConfMap[vol]; !ok {
+		maxCount = 0
+	} else {
+		maxCount = volConf.ChildFileMaxCnt
+	}
+	return
+}
+
+func (m *metadataManager) getTrashCleanInterval(vol string) (interval uint64) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	if volConf, ok := m.volConfMap[vol]; !ok {
+		interval = 0
+	} else {
+		interval = volConf.TrashCleanInterval
+	}
+	return
+}
+
+func (m *metadataManager) getBatchDelInodeCnt(vol string) (batchDelInodeCnt uint64) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	if volConf, ok := m.volConfMap[vol]; !ok {
+		batchDelInodeCnt = 0
+	} else {
+		batchDelInodeCnt = uint64(volConf.BatchDelInodeCnt)
+	}
+
+	return
+}
+
+func (m *metadataManager) getDelInodeInterval(vol string) (interval uint64) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	if volConf, ok := m.volConfMap[vol]; !ok {
+		interval = 0
+	} else {
+		interval = uint64(volConf.DelInodeInterval)
+	}
+
+	return
+}
+
 // onStop stops each meta partitions.
 func (m *metadataManager) onStop() {
+	var wg sync.WaitGroup
+	start := time.Now()
 	if m.partitions != nil {
 		for _, partition := range m.partitions {
-			partition.Stop()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				partition.Stop()
+			}()
+
 		}
 	}
+	wg.Wait()
+	log.LogErrorf("stop partitions cost:%v", time.Since(start))
+
 	close(m.stopC)
 	return
 }
@@ -577,15 +717,29 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) {
 }
 
 func (m *metadataManager) startPartitions() (err error) {
+	var wg sync.WaitGroup
+	start := time.Now()
+	failCnt := uint64(0)
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for id, partition := range m.partitions {
-		if err = partition.Start(); err != nil {
-			log.LogErrorf("partition[%v] start failed: %v", id, err)
-			return
-		}
-		log.LogInfof("partition[%v] start success", id)
+		wg.Add(1)
+		go func(pid uint64, mp MetaPartition) {
+			defer wg.Done()
+			if pErr := mp.Start(); pErr != nil {
+				log.LogErrorf("partition[%v] start failed: %v", pid, pErr)
+				atomic.AddUint64(&failCnt, 1)
+				return
+			}
+			log.LogInfof("partition[%v] start success", pid)
+		}(id , partition)
 	}
+	wg.Wait()
+	if failCnt != 0 {
+		log.LogErrorf("start %d partitions failed", failCnt)
+		return errors.NewErrorf("start %d partitions failed", failCnt)
+	}
+	log.LogInfof("start %d partitions cost :%v", len(m.partitions), time.Since(start))
 	return
 }
 
@@ -846,7 +1000,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 		metaNode:    metaNode,
 		connPool:    connpool.NewConnectPool(),
 		stopC:       make(chan bool, 0),
-		volTrashMap: make(map[string]int32),
+		volConfMap:  make(map[string]*VolumeConfig, 0),
 		rocksDBDirs: metaNode.rocksDirs,
 	}
 	if err := mm.loadPartitions(); err != nil {

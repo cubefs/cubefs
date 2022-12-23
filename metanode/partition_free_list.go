@@ -17,10 +17,12 @@ package metanode
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -82,6 +84,8 @@ func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsVi
 }
 
 func (mp *metaPartition) updateVolWorker() {
+	rand.Seed(time.Now().Unix())
+	time.Sleep(time.Duration(rand.Intn(int(UpdateVolTicket))))
 	t := time.NewTicker(UpdateVolTicket)
 	var convert = func(view *proto.DataPartitionsView) *DataPartitionsView {
 		newView := &DataPartitionsView{
@@ -116,6 +120,25 @@ const (
 	MaxSleepCnt          = 10
 )
 
+func (mp *metaPartition) GetDelInodeInterval() uint64{
+	interval := mp.manager.getDelInodeInterval(mp.config.VolName)
+	clusterWaitValue := atomic.LoadUint64(&deleteWorkerSleepMs)
+	if interval == 0 {
+		interval = clusterWaitValue
+	}
+	return interval
+}
+
+func (mp *metaPartition) GetBatchDelInodeCnt() uint64{
+	clusterDelCnt := DeleteBatchCount()   // default 128
+	batchDelCnt := mp.manager.getBatchDelInodeCnt(mp.config.VolName)
+	if batchDelCnt == 0 {
+		batchDelCnt = clusterDelCnt
+	}
+
+	return batchDelCnt
+}
+
 func (mp *metaPartition) deleteWorker() {
 	var (
 		idx      uint64
@@ -145,7 +168,9 @@ func (mp *metaPartition) deleteWorker() {
 			continue
 		}
 
-		DeleteWorkerSleepMs()
+		//DeleteWorkerSleepMs()
+		interval := mp.GetDelInodeInterval()
+		time.Sleep(time.Duration(interval) * time.Millisecond)
 
 		//TODO: add sleep time value
 		isForceDeleted := sleepCnt%MaxSleepCnt == 0
@@ -155,7 +180,7 @@ func (mp *metaPartition) deleteWorker() {
 			continue
 		}
 
-		batchCount := DeleteBatchCount()
+		batchCount := mp.GetBatchDelInodeCnt()//
 		for idx = 0; idx < batchCount; idx++ {
 			// batch get free inoded from the freeList
 			ino := mp.freeList.Pop()
@@ -238,7 +263,7 @@ func (mp *metaPartition) recordInodeDeleteEkInfo(info *Inode) {
 
 	info.Extents.Range(func(ek proto.ExtentKey) bool {
 
-		delEk := ek.ConvertToMetaDelEk(info.Inode, delEkSrcTypeFromDelInode, timeStamp)
+		delEk := ek.ConvertToMetaDelEk(info.Inode, uint64(proto.DelEkSrcTypeFromDelInode), timeStamp)
 		ekBuff := make([]byte, proto.ExtentDbKeyLengthWithIno)
 		delEk.MarshalDeleteEKRecord(ekBuff)
 		data = append(data, ekBuff...)

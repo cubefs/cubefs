@@ -324,6 +324,10 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaRocksFlushWalInterval:           m.cluster.cfg.MetaRocksFlushWalInterval,
 		MetaRocksDisableFlushFlag:           m.cluster.cfg.MetaRocksDisableFlushFlag,
 		MetaRocksWalTTL:                     m.cluster.cfg.MetaRocksWalTTL,
+		MetaDelEKRecordFileMaxMB:            m.cluster.cfg.DeleteEKRecordFilesMaxSize,
+		MetaTrashCleanInterval:              m.cluster.cfg.MetaTrashCleanInterval,
+		MetaRaftLogSize:                     m.cluster.cfg.MetaRaftLogSize,
+		MetaRaftLogCap:                      m.cluster.cfg.MetaRaftLogCap,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -448,6 +452,10 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	metaRocksDBFlushWalInterval := atomic.LoadUint64(&m.cluster.cfg.MetaRocksFlushWalInterval)
 	metaRocksDBWalTTL := atomic.LoadUint64(&m.cluster.cfg.MetaRocksWalTTL)
 	metaRocksDBDisableFlush := atomic.LoadUint64(&m.cluster.cfg.MetaRocksDisableFlushFlag)
+	metaDeleteEKRecordFilesMaxTotalSize := atomic.LoadUint64(&m.cluster.cfg.DeleteEKRecordFilesMaxSize)
+	metaTrashCleanInterval := atomic.LoadUint64(&m.cluster.cfg.MetaTrashCleanInterval)
+	metaRaftLogSize := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogSize)
+	metaRaftLogCap  := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogCap)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
 	if dataNodeZoneName != "" {
@@ -498,6 +506,12 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaRocksDisableFlushFlag:              metaRocksDBDisableFlush,
 		MetaRocksFlushWalInterval:              metaRocksDBFlushWalInterval,
 		MetaRocksWalTTL:                        metaRocksDBWalTTL,
+		DeleteEKRecordFileMaxMB:                metaDeleteEKRecordFilesMaxTotalSize,
+		MetaTrashCleanInterval:                 metaTrashCleanInterval,
+		MetaRaftLogSize:                        metaRaftLogSize,
+		MetaRaftCap:                            metaRaftLogCap,
+		MetaSyncWALOnUnstableEnableState:       m.cluster.cfg.MetaSyncWALOnUnstableEnableState,
+		DataSyncWALOnUnstableEnableState:       m.cluster.cfg.DataSyncWALOnUnstableEnableState,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1646,6 +1660,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		compactTag           proto.CompactTag
 		dpFolReadDelayCfg    proto.DpFollowerReadDelayConfig
 		follReadHostWeight   int
+		trashInterVal        uint64
+		batchDelInodeCnt     uint32
+		delInodeInterval     uint32
 	)
 	metrics := exporter.NewTPCnt(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1733,9 +1750,30 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	trashInterVal, err = parseTrashCleanInterval(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	batchDelInodeCnt, err = parseDefaultBatchDelInodeCntToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	delInodeInterval, err = parseDefaultDelInodeIntervalToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
-		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache, dpSelectorName, dpSelectorParm, ossBucketPolicy,
-		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight); err != nil {
+		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
+		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
+		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight,
+		trashInterVal, batchDelInodeCnt, delInodeInterval); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1826,12 +1864,16 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		smartRules           []string
 		compactTag           string
 		dpFolReadDelayCfg    proto.DpFollowerReadDelayConfig
+		childFileMaxCnt      uint32
+		batchDelInodeCnt     uint32
+		delInodeInterval     uint32
 	)
 
 	metrics := exporter.NewTPCnt(proto.AdminCreateVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
-		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, err = parseRequestToCreateVol(r); err != nil {
+		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1874,7 +1916,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
 		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
-		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg); err != nil {
+		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2002,6 +2044,10 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		EcDataNum:            vol.EcDataNum,
 		EcParityNum:          vol.EcParityNum,
 		EcMaxUnitSize:        vol.EcMaxUnitSize,
+		ChildFileMaxCount:    vol.ChildFileMaxCount,
+		TrashCleanInterval:   vol.TrashCleanInterval,
+		BatchDelInodeCnt:     vol.BatchDelInodeCnt,
+		DelInodeInterval:     vol.DelInodeInterval,
 	}
 }
 
@@ -3408,6 +3454,22 @@ func parseCompactTagToUpdateVol(r *http.Request, vol *Vol) (cTag proto.CompactTa
 	return
 }
 
+func parseTrashCleanInterval(r *http.Request, vol *Vol) (trashInterval uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	trashIntervalStr := r.FormValue(proto.MetaTrashCleanIntervalKey)
+	if trashIntervalStr == "" {
+		trashInterval = vol.TrashCleanInterval
+	} else {
+		trashInterval, err = strconv.ParseUint(trashIntervalStr, 10, 64)
+		if err != nil {
+			trashInterval = vol.TrashCleanInterval
+		}
+	}
+	return
+}
+
 func parseOSSBucketPolicyToUpdateVol(r *http.Request, vol *Vol) (ossBucketPolicy proto.BucketAccessPolicy, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -3451,11 +3513,56 @@ func parseDefaultTrashDaysToUpdateVol(r *http.Request, vol *Vol) (remaining uint
 	return
 }
 
+func parseDefaultBatchDelInodeCntToUpdateVol(r *http.Request, vol *Vol) (batchDelInodeCnt uint32, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+
+	val := r.FormValue(volBatchDelInodeCntKey)
+	if val == "" {
+		batchDelInodeCnt = vol.BatchDelInodeCnt
+		return
+	}
+
+	var valTemp uint64
+	valTemp, err = strconv.ParseUint(val, 10, 64)
+	if err != nil {
+		return
+	}
+
+	batchDelInodeCnt = uint32(valTemp)
+	return
+}
+
+func parseDefaultDelInodeIntervalToUpdateVol(r *http.Request, vol *Vol) (delInodeInterVal uint32, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+
+	val := r.FormValue(volDelInodeIntervalKey)
+	if val == "" {
+		delInodeInterVal = vol.DelInodeInterval
+		return
+	}
+
+	var valTemp uint64
+	valTemp, err = strconv.ParseUint(val, 10, 64)
+	if err != nil {
+		return
+	}
+
+	delInodeInterVal = uint32(valTemp)
+	return
+}
+
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
-	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64,
-	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, err error) {
+	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, childFileMaxCnt uint32,
+	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
+	batchDelInodeCnt, delInodeInterval uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3615,11 +3722,37 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	var value string
 	if value = r.FormValue(ecEnableKey); value == "" {
 		enableEc = defaultEcEnable
+	} else if enableEc, err = strconv.ParseBool(value); err != nil {
+		err = unmatchedKey(ecEnableKey)
 		return
 	}
-	if enableEc, err = strconv.ParseBool(value); err != nil {
+
+	var maxCount uint64
+	if value = r.FormValue(proto.ChildFileMaxCountKey); value == "" {
+		maxCount = defaultChildFileMaxCount
+	} else if maxCount, err = strconv.ParseUint(value, 10, 64); err != nil {
+		err = unmatchedKey(proto.ChildFileMaxCountKey)
 		return
 	}
+	childFileMaxCnt = uint32(maxCount)
+
+	var tmpBatchDelInodeCnt uint64
+	if batchDelInodeCntStr := r.FormValue(volBatchDelInodeCntKey); batchDelInodeCntStr == "" {
+		tmpBatchDelInodeCnt = 0
+	} else if tmpBatchDelInodeCnt, err = strconv.ParseUint(batchDelInodeCntStr, 10, 64); err != nil {
+		err = unmatchedKey(volBatchDelInodeCntKey)
+		return
+	}
+	batchDelInodeCnt = uint32(tmpBatchDelInodeCnt)
+
+	var tmpDelInodeInterval uint64
+	if delInodeIntervalStr := r.FormValue(volDelInodeIntervalKey); delInodeIntervalStr == "" {
+		tmpDelInodeInterval = 0
+	} else if tmpDelInodeInterval, err = strconv.ParseUint(delInodeIntervalStr, 10, 64); err != nil {
+		err = unmatchedKey(volDelInodeIntervalKey)
+		return
+	}
+	delInodeInterval = uint32(tmpDelInodeInterval)
 	return
 }
 
@@ -4245,15 +4378,23 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
 		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
-		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB}
+		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
+	    proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return
 		}
 	}
-	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey}
+	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
+		proto.MetaRaftLogCapKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
+			return
+		}
+	}
+	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey}
+	for _, key := range boolKey {
+		if err = parseBoolKey(params, key, r); err != nil {
 			return
 		}
 	}
@@ -4281,6 +4422,19 @@ func parseIntKey(params map[string]interface{}, key string, r *http.Request) (er
 	if value := r.FormValue(key); value != "" {
 		var val = int64(0)
 		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(key)
+			return
+		}
+		params[key] = val
+	}
+	return
+}
+
+func parseBoolKey(params map[string]interface{}, key string, r *http.Request) (err error) {
+	if value := r.FormValue(key); value != "" {
+		var val bool
+		val, err = strconv.ParseBool(value)
 		if err != nil {
 			err = unmatchedKey(key)
 			return
@@ -4654,7 +4808,9 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			}
 			stat := volStat(vol)
 
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(), vol.enableToken, vol.enableWriteCache)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
+				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules,	vol.ForceROW, vol.compact(),
+				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4685,7 +4841,9 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			stat := volStat(vol)
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(), vol.enableToken, vol.enableWriteCache)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
+				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
+				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4710,7 +4868,9 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		stat := volStat(vol)
-		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(), vol.enableToken, vol.enableWriteCache)
+		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
+			vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
+			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval)
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
@@ -5577,3 +5737,33 @@ func parseRequestToSetCompactVol(r *http.Request) (name, compactTag, authKey str
 
 	return
 }
+
+func (m *Server) setVolChildFileMaxCount(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName    string
+		maxCount   uint64
+		err        error
+	)
+	if volName, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if _, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	value := r.FormValue(proto.ChildFileMaxCountKey)
+	maxCount, err = strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	err = m.cluster.setVolChildFileMaxCount(volName, uint32(maxCount))
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set vol[%v] childFileMaxCount to %v  successfully",
+		volName, maxCount)))
+}
+

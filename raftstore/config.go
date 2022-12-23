@@ -48,6 +48,8 @@ type Config struct {
 	// We suggest to use ElectionTick = 10 * HeartbeatTick to avoid unnecessary leader switching.
 	// The default value is 1s.
 	ElectionTick int
+
+	SyncWALOnUnstable bool
 }
 
 // PeerAddress defines the set of addresses that will be used by the peers.
@@ -80,6 +82,9 @@ type PartitionConfig struct {
 	AutoPromote bool
 
 	GetStartIndex GetStartIndexFunc
+
+	WALFileSize          int
+	WALFileCacheCapacity int
 }
 
 func (p PeerAddress) String() string {

@@ -150,6 +150,10 @@ const (
 	CliResourceEcNode          = "ecnode"
 	CliResourceCodecnodeNode   = "codecnode"
 	CliOpCheckReplica          = "check-replica"
+	CliOpVolTrashCleanInterval = "trash-clean-interval"
+	CliOpVolMaxChildrenCnt     = "max-children-cnt"
+	CliOpVolBatchDelInodeCnt   = "batch-del-inode-cnt"
+	CliOpVolDelInodeInterval   = "del-inode-interval"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

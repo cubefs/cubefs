@@ -7,8 +7,15 @@ import (
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
 	raftproto "github.com/tiglabs/raft/proto"
+	"github.com/tiglabs/raft/util"
+	"github.com/chubaofs/chubaofs/util/diskusage"
+	"io/fs"
 	"os"
+	"path"
 	"strconv"
+	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -29,9 +36,9 @@ func generateEk(num int) (eks []proto.MetaDelExtentKey){
 				ExtentOffset: uint64(i),
 				CRC: uint32(i),
 			},
-									InodeId: uint64(i),
-									TimeStamp: int64(i),
-									SrcType: uint64(i % (delEkSrcTypeFromDelInode + 1))})
+			InodeId: uint64(i),
+			TimeStamp: int64(i),
+			SrcType: uint64(i % (proto.DelEkSrcTypeFromDelInode + 1))})
 	}
 	return
 }
@@ -84,17 +91,19 @@ func checkRocksDBEks(t *testing.T, mp *metaPartition, eks []proto.MetaDelExtentK
 		ek.UnMarshDelEkValue(v)
 
 		if date[dayKeyIndex] != k[dayKeyIndex] {
-			t.Errorf("check rocks db failed: date prefix failed, want key:%v, but now:%v", date, k)
+			t.Errorf("check rocks db failed[%s]: date prefix failed, want key:%v, but now:%v", mp.db.dir, date, k)
+			panic(nil)
 		}
 		if ek.String() != eks[cnt].String() {
-			t.Errorf("check rocks db failed: ek failed, want key:%v, but now:%v", eks[cnt], ek)
+			t.Errorf("check rocks db failed[%s]: ek failed, want key:%v, but now:%v", mp.db.dir, eks[cnt].String(), ek.String())
+			panic(nil)
 		}
 		cnt++
 		return true, nil
 	})
 
 	if cnt < len(eks) {
-		t.Errorf("check rocks db failed: total count falied")
+		t.Errorf("check rocks db failed[%s]: total count falied", mp.db.dir)
 	}
 
 	return cnt
@@ -118,8 +127,9 @@ func getRocksDbCnt(t *testing.T, mp *metaPartition)(int) {
 	return cnt
 }
 
-func AddExtentsToDB(t *testing.T, num int) {
-	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMockWithNull)
+func AddExtentsToDB(t *testing.T, num, pid int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	mp, err := mockMetaPartition(uint64(pid), 1, proto.StoreModeMem, "./partition_"+strconv.Itoa(pid), ApplyMockWithNull)
 	//mp, err := mockMP()
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
@@ -140,19 +150,23 @@ func AddExtentsToDB(t *testing.T, num int) {
 	if cnt != num {
 		t.Errorf("check cnt failed, want:%d, now:%d", num, cnt)
 	}
+	t.Logf("Add ek test case[%v] finished", num)
 }
 
 func TestAddExtentsToDB(t *testing.T) {
 	var addDelEk []int = []int {0, 1, 10, 51, 100, 120, 1000}
-	for _, test := range addDelEk {
-		AddExtentsToDB(t, test)
-		t.Logf("Add ek test case[%v] finished", test)
+	var wg sync.WaitGroup
+	for index, test := range addDelEk {
+		wg.Add(1)
+		go AddExtentsToDB(t, test, index + 1, &wg)
 	}
+	wg.Wait()
 }
 
-func LeaderCleanExpiredEk(t *testing.T, num int) {
+func LeaderCleanExpiredEk(t *testing.T, num, pid int, wg *sync.WaitGroup) {
 	fmt.Printf("start clean expired, ek number:%v\n", num)
-	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMockWithNull)
+	defer wg.Done()
+	mp, err := mockMetaPartition(uint64(pid), 1, proto.StoreModeMem, "./partition_"+strconv.Itoa(pid), ApplyMockWithNull)
 	//mp, err := mockMP()
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
@@ -185,18 +199,22 @@ func LeaderCleanExpiredEk(t *testing.T, num int) {
 	if cnt != num {
 		t.Errorf("check cnt failed, want:%d, now:%d", num, cnt)
 	}
+	t.Logf("leader clean ek test case[%v] finished", num)
 }
 
 func TestLeaderCleanExpiredEk(t *testing.T) {
 	var addDelEk []int = []int {0, 1, 10, 51, 100, 120, 1000}
-	for _, test := range addDelEk {
-		LeaderCleanExpiredEk(t, test)
-		t.Logf("leader clean ek test case[%v] finished", test)
+	var wg sync.WaitGroup
+	for index, test := range addDelEk {
+		wg.Add(1)
+		go LeaderCleanExpiredEk(t, test, index + 1, &wg)
 	}
+	wg.Wait()
 }
 
-func FollowerSyncExpiredEk(t *testing.T, num int) {
-	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMockWithNull)
+func FollowerSyncExpiredEk(t *testing.T, num, pid int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	mp, err := mockMetaPartition(uint64(pid), uint64(pid), proto.StoreModeMem, "./partition_"+strconv.Itoa(pid), ApplyMockWithNull)
 	//mp, err := mockMP()
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
@@ -204,7 +222,7 @@ func FollowerSyncExpiredEk(t *testing.T, num int) {
 	defer releaseMetaPartition(mp)
 
 	mockPartition := mp.raftPartition.(*metamock.MockPartition)
-	mockPartition.Id = 2
+	mockPartition.Id = uint64(pid + 1)
 	mp.startToDeleteExtents()
 
 	//gen eks
@@ -267,18 +285,22 @@ func FollowerSyncExpiredEk(t *testing.T, num int) {
 	if cnt != num {
 		t.Errorf("check cnt failed, want:%d, now:%d", num, cnt)
 	}
+	t.Logf("follower clean ek test case[%v] finished", num)
 }
 
 func TestFollowerSyncExpiredEk(t *testing.T) {
 	var addDelEk []int = []int {0, 1, 10, 51, 100, 120, 1000}
-	for _, test := range addDelEk {
-		FollowerSyncExpiredEk(t, test)
-		t.Logf("follower clean ek test case[%v] finished", test)
+	var wg sync.WaitGroup
+	for index, test := range addDelEk {
+		wg.Add(1)
+		go FollowerSyncExpiredEk(t, test, index + 1, &wg)
 	}
+	wg.Wait()
 }
 
-func SnapResetDb(t *testing.T, num int) {
-	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMockWithNull)
+func SnapResetDb(t *testing.T, num, pid int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	mp, err := mockMetaPartition(uint64(pid), uint64(pid), proto.StoreModeMem, "./partition_" + strconv.Itoa(pid), ApplyMockWithNull)
 	//mp, err := mockMP()
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
@@ -325,19 +347,23 @@ func SnapResetDb(t *testing.T, num int) {
 	if cnt != num {
 		t.Errorf("check cnt failed, want:%d, now:%d", num, cnt)
 	}
+	t.Logf("snap reset db test case[%v] finished", num)
 }
 
 func TestSnapResetDb(t *testing.T) {
 	var addDelEk []int = []int {0, 1, 10, 51, 100, 120, 1000}
-	for _, test := range addDelEk {
-		SnapResetDb(t, test)
-		t.Logf("snap reset db test case[%v] finished", test)
+	var wg sync.WaitGroup
+	for index, test := range addDelEk {
+		wg.Add(1)
+		go SnapResetDb(t, test, index + 1, &wg)
 	}
+	wg.Wait()
 }
 
-func applySnapshot(t *testing.T, num int, rocksEnable bool) {
-	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMock)
-	mp2, err := mockMetaPartition(2, 1, proto.StoreModeMem, "./partition_2", ApplyMock)
+func applySnapshot(t *testing.T, num int, rocksEnable bool, pid int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	mp, err := mockMetaPartition(uint64(pid), 1, proto.StoreModeMem, "./partition_" + strconv.Itoa(pid), ApplyMock)
+	mp2, err := mockMetaPartition(uint64(pid + 1), 1, proto.StoreModeMem, "./partition_" + strconv.Itoa(pid + 1), ApplyMock)
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
 	}
@@ -357,7 +383,7 @@ func applySnapshot(t *testing.T, num int, rocksEnable bool) {
 	//add eks to db
 	time.Sleep(time.Second)
 	checkRocksDBEks(t, mp, eks, key)
-	mockPartition.Id = 2
+	mockPartition.Id = mockPartition.Id + 1
 	var snapV uint32 = 0
 	var si raftproto.SnapIterator
 	if rocksEnable {
@@ -386,17 +412,289 @@ func applySnapshot(t *testing.T, num int, rocksEnable bool) {
 		metaItem.Close()
 	}
 	time.Sleep(time.Second)
+	t.Logf("snap reset db test case[rocksdb:%v, cnt:%v] finished", rocksEnable, num)
 }
 
 func TestApplySnapshot(t *testing.T) {
 	var addDelEk []int = []int {0, 1, 10, 51, 100, 120, 1000}
-	for _, test := range addDelEk {
-		applySnapshot(t, test, false)
-		t.Logf("snap reset db test case[%v] finished", test)
+	var wg sync.WaitGroup
+	for index, test := range addDelEk {
+		wg.Add(1)
+		go applySnapshot(t, test, false, (index  + 1) * 2, &wg)
+	}
+	wg.Wait()
+
+	for index, test := range addDelEk {
+		wg.Add(1)
+		go applySnapshot(t, test, true, (index  + 1) * 2, &wg)
+	}
+	wg.Wait()
+}
+
+func extentDelFailedRetryTest(t *testing.T, num int, pid int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	mp, err := mockMetaPartition(uint64(pid), 1, proto.StoreModeMem, "./partition_" + strconv.Itoa(pid), ApplyMock)
+	mp2, err := mockMetaPartition(uint64(pid + 1), 1, proto.StoreModeMem, "./partition_" + strconv.Itoa(pid + 1), ApplyMock)
+	if err != nil {
+		t.Fatalf("create mp failed:%s", err.Error())
+	}
+	defer func() {
+		releaseMetaPartition(mp)
+		releaseMetaPartition(mp2)
+	}()
+
+	/*set mp2 follower*/
+	mockPartition := mp.raftPartition.(*metamock.MockPartition)
+	mockPartition2 := mp2.raftPartition.(*metamock.MockPartition)
+	mockPartition2.Id = mockPartition2.Id + 1
+
+	//mockPartition.Mp = append(mockPartition.Mp, mp)
+	mockPartition.Mp = append(mockPartition.Mp, mp2)
+
+	mp.startToDeleteExtents()
+	mp2.startToDeleteExtents()
+
+
+	//gen eks
+	key := make([]byte, dbExtentKeySize)
+	eks := generateEk(num)
+	updateKeyToNow(key)
+
+	mp.extDelCh<-eks
+	mp2.extDelCh<-eks
+	//add eks to db
+	time.Sleep(time.Second)
+	checkRocksDBEks(t, mp, eks, key)
+	checkRocksDBEks(t, mp2, eks, key)
+
+	//wait 2 times auto del
+	time.Sleep(time.Second * 150)
+	delCursor := generalDateKey()
+	delCursor += 1
+	mp.extDelCursor <- delCursor
+	mp2.extDelCursor <- delCursor
+	time.Sleep(time.Second)
+	key[dayKeyIndex] += 1
+	checkRocksDBEks(t, mp, eks, key)
+	checkRocksDBEks(t, mp2, eks, key)
+	t.Logf("extent Del Failed Retry test case[cnt:%v] finished", num)
+}
+
+//func TestExtentAutoDel(t *testing.T) {
+//	//t.Parallel()
+//	var wg sync.WaitGroup
+//	wg.Add(1)
+//	extentDelFailedRetryTest(t, 2000, 1, &wg)
+//	wg.Wait()
+//}
+
+func createTestDeleteEKRecordsFile(count int, dir string) (err error) {
+	for count > 0 {
+		var fp *os.File
+		fileName := path.Join(dir, prefixDelExtentKeyListBackup + time.Now().Format(proto.TimeFormat2))
+		fp, err = os.Create(fileName)
+		if err != nil {
+			return
+		}
+		err = syscall.Fallocate(int(fp.Fd()), 0, 0, 64 * defMaxDelEKRecord)
+		if err != nil {
+			fp.Close()
+			return
+		}
+		fp.Close()
+		time.Sleep(1 * time.Second)
+		count--
+	}
+	time.Sleep(1 * time.Second)
+	if _, err = os.Create(path.Join(dir, delExtentKeyList)); err != nil {
+		return
+	}
+	return
+}
+
+func TestRemoveOldDeleteEKRecordFileCase01(t *testing.T) {
+	DeleteEKRecordFilesMaxTotalSize.Store(20 * util.MB)
+	rootDir := "./test_remove_old_file"
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, rootDir, ApplyMockWithNull)
+	if err != nil {
+		t.Errorf("mock metapartition failed:%v", err)
+		return
 	}
 
-	for _, test := range addDelEk {
-		applySnapshot(t, test, true)
-		t.Logf("snap reset db test case[%v] finished", test)
+	if mp == nil {
+		t.Errorf("mock mp is nil")
+		return
+	}
+	defer releaseMetaPartition(mp)
+	mp.manager.metaNode.disks = make(map[string]*diskusage.FsCapMon, 0)
+	mp.manager.metaNode.disks[rootDir] = &diskusage.FsCapMon{
+		Path:          rootDir,
+		IsRocksDBDisk: false,
+		ReservedSpace: 0,
+		Total:         100,
+		Used:          60,
+		Available:     0,
+		Status:        0,
+		MPCount:       0,
+	}
+
+	//create delete record ek file
+	err = createTestDeleteEKRecordsFile(2, mp.config.RootDir)
+	if err != nil {
+		t.Errorf("create test file failed:%v", err)
+		return
+	}
+
+	mp.removeOldDeleteEKRecordFile(delExtentKeyList,  prefixDelExtentKeyListBackup,false)
+	var files []fs.DirEntry
+	files, err = os.ReadDir(mp.config.RootDir)
+	if err != nil {
+		t.Errorf("read dir failed:%v", err)
+		return
+	}
+	cnt := 0
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), prefixDelExtentKeyListBackup) && file.Name() != delExtentKeyList {
+			cnt++
+		}
+	}
+	if cnt != 2 {
+		t.Errorf("expect file count:5, actual:%v", cnt)
+		return
+	}
+
+	if _, err = os.Stat(path.Join(mp.config.RootDir, delExtentKeyList)); err == nil {
+		return
+	} else {
+		if os.IsNotExist(err) {
+			t.Errorf("%s has been deleted", delExtentKeyList)
+			return
+		}
+		t.Errorf("stat %s error:%v", delExtentKeyList, err)
 	}
 }
+
+func TestRemoveOldDeleteEKRecordFileCase02(t *testing.T) {
+	DeleteEKRecordFilesMaxTotalSize.Store(20 * util.MB)
+	rootDir := "./test_remove_old_file"
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, rootDir, ApplyMockWithNull)
+	if err != nil {
+		t.Errorf("mock metapartition failed:%v", err)
+		return
+	}
+
+	if mp == nil {
+		t.Errorf("mock mp is nil")
+		return
+	}
+	defer releaseMetaPartition(mp)
+	mp.manager.metaNode.disks = make(map[string]*diskusage.FsCapMon, 0)
+	mp.manager.metaNode.disks[rootDir] = &diskusage.FsCapMon{
+		Path:          rootDir,
+		IsRocksDBDisk: false,
+		ReservedSpace: 0,
+		Total:         100,
+		Used:          40,
+		Available:     0,
+		Status:        0,
+		MPCount:       0,
+	}
+
+	//create delete record ek file
+	err = createTestDeleteEKRecordsFile(5, mp.config.RootDir)
+	if err != nil {
+		t.Errorf("create test file failed:%v", err)
+		return
+	}
+
+	mp.removeOldDeleteEKRecordFile(delExtentKeyList,  prefixDelExtentKeyListBackup,false)
+	var files []fs.DirEntry
+	files, err = os.ReadDir(mp.config.RootDir)
+	if err != nil {
+		t.Errorf("read dir failed:%v", err)
+		return
+	}
+	cnt := 0
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), prefixDelExtentKeyListBackup) && file.Name() != delExtentKeyList {
+			cnt++
+		}
+	}
+	if cnt != 5 {
+		t.Errorf("expect file count:5, actual:%v", cnt)
+		return
+	}
+
+	if _, err = os.Stat(path.Join(mp.config.RootDir, delExtentKeyList)); err == nil {
+		return
+	} else {
+		if os.IsNotExist(err) {
+			t.Errorf("%s has been deleted", delExtentKeyList)
+			return
+		}
+		t.Errorf("stat %s error:%v", delExtentKeyList, err)
+	}
+}
+
+func TestRemoveOldDeleteEKRecordFileCase03(t *testing.T) {
+	DeleteEKRecordFilesMaxTotalSize.Store(20 * util.MB)
+	rootDir := "./test_remove_old_file"
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, rootDir, ApplyMockWithNull)
+	if err != nil {
+		t.Errorf("mock metapartition failed:%v", err)
+		return
+	}
+
+	if mp == nil {
+		t.Errorf("mock mp is nil")
+		return
+	}
+	defer releaseMetaPartition(mp)
+	mp.manager.metaNode.disks = make(map[string]*diskusage.FsCapMon, 0)
+	mp.manager.metaNode.disks[rootDir] = &diskusage.FsCapMon{
+		Path:          rootDir,
+		IsRocksDBDisk: false,
+		ReservedSpace: 0,
+		Total:         100,
+		Used:          60,
+		Available:     0,
+		Status:        0,
+		MPCount:       0,
+	}
+
+	//create delete record ek file
+	err = createTestDeleteEKRecordsFile(5, mp.config.RootDir)
+	if err != nil {
+		t.Errorf("create test file failed:%v", err)
+		return
+	}
+
+	mp.removeOldDeleteEKRecordFile(delExtentKeyList,  prefixDelExtentKeyListBackup,false)
+	var files []fs.DirEntry
+	files, err = os.ReadDir(mp.config.RootDir)
+	if err != nil {
+		t.Errorf("read dir failed:%v", err)
+		return
+	}
+	cnt := 0
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), prefixDelExtentKeyListBackup) && file.Name() != delExtentKeyList {
+			cnt++
+		}
+	}
+	if cnt != 3 {
+		t.Errorf("expect file count:3, actual:%v", cnt)
+		return
+	}
+
+	if _, err = os.Stat(path.Join(mp.config.RootDir, delExtentKeyList)); err == nil {
+		return
+	} else {
+		if os.IsNotExist(err) {
+			t.Errorf("%s has been deleted", delExtentKeyList)
+			return
+		}
+		t.Errorf("stat %s error:%v", delExtentKeyList, err)
+	}
+}
+

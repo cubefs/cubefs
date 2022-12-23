@@ -20,8 +20,11 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/unit"
 	"github.com/spf13/cast"
+	"go.uber.org/atomic"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path"
@@ -65,15 +68,14 @@ const (
 	InodeDelExtentKeyList             = "inodeDeleteExtentList.tmp"
 	PrefixInodeDelExtentKeyListBackup = "inodeDeleteExtentList."
 
-	delEkSrcTypeFromTruncate = 0
-	delEkSrcTypeFromInsert   = 1
-	delEkSrcTypeFromAppend   = 2
-	delEkSrcTypeFromMerge    = 3
-	delEkSrcTypeFromDelInode = 4
+	defDeleteEKRecordFilesMaxTotalSize = 60 * unit.MB
+
+	MaxMetaDataDiskUsedFactor = 0.5
 )
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 var writeDeleteExtentsLock = &sync.Mutex{}
+var DeleteEKRecordFilesMaxTotalSize = atomic.NewUint64(defDeleteEKRecordFilesMaxTotalSize)
 
 func (mp *metaPartition) initResouce() {
 	mp.addBatchKey = make([]byte, dbExtentKeySize*maxItemsPerBatch)
@@ -315,6 +317,10 @@ func (mp *metaPartition) fsmSyncDelExtentsV2(data []byte) {
 	}
 
 	updateKeyToDate(key, extDeleteCursor)
+
+	if extDeleteCursor == 0 {
+		updateKeyToNow(key)
+	}
 	//Update the key to next day. ignore day 32 item as it will be deleted by next month
 	key[dayKeyIndex] += 1
 
@@ -323,12 +329,16 @@ func (mp *metaPartition) fsmSyncDelExtentsV2(data []byte) {
 		log.LogWarnf("Mp[%d] follower recv sync extent delete info, date:%d; commit retry eks failed:%s", mp.config.PartitionId, extDeleteCursor, err.Error())
 	}
 
-	if _, ok := mp.IsLeader(); !ok {
-		select {
-		case mp.extDelCursor <- extDeleteCursor:
-		default:
+	if extDeleteCursor != 0 {
+		//0 just sync failed ek, ignore clean local
+		if _, ok := mp.IsLeader(); !ok {
+			select {
+			case mp.extDelCursor <- extDeleteCursor:
+			default:
+			}
 		}
 	}
+
 	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, err count:%d finished", mp.config.PartitionId, extDeleteCursor, len(eks))
 	return
 }
@@ -388,10 +398,14 @@ func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retr
 	return nil
 }
 
-func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
+func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor uint64, err error) {
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
+	cur := generalDateKey()
+	cnt := 0
 	var delHandle interface{}
+
+	delCursor = cur
 	delHandle, err = mp.db.CreateBatchHandler()
 	if err != nil {
 		log.LogErrorf("[cleanExpiredExtents] partition[%v] create batch handler failed:%v", mp.config.PartitionId, err)
@@ -404,18 +418,21 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 	log.LogInfof("Mp[%d] leader run once clean extent, now err extents:%v", mp.config.PartitionId, retryList.Len())
 
 	defer func() {
+		if retryList.Len() < maxRetryCnt {
+			delCursor = cur
+		}
+
 		if err != nil {
 			log.LogWarnf("Mp[%d] leader run once clean extent, now err extents:%v, failed:%s", mp.config.PartitionId, retryList.Len(), err.Error())
 			return
 		}
 	}()
 
-	cur := generalDateKey()
-	cnt := 0
+
 	handleItemFunc := func(k, v []byte) (bool, error) {
 
 		needDel := true
-		if retryList.Len() > maxRetryCnt {
+		if retryList.Len() >= maxRetryCnt {
 			//next term
 			return false, nil
 		}
@@ -426,9 +443,11 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 			ek.UnMarshDelEkValue(v)
 		}
 
-		if k[0] != byte(ExtentDelTable) || getDateInKey(k) > cur {
+		ekDelTimeStamp := getDateInKey(k)
+		if k[0] != byte(ExtentDelTable) || ekDelTimeStamp > cur {
 			return false, nil
 		}
+		delCursor = ekDelTimeStamp
 
 		if err = ek.UnmarshalDbKey(k[8:]); err != nil {
 			return false, err
@@ -477,16 +496,16 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 		if delHandle != nil {
 			_ = mp.db.ReleaseBatchHandle(delHandle)
 		}
-		return err
+		return
 	}
 
 	if err = mp.db.CommitBatchAndRelease(delHandle); err != nil {
 		_ = mp.db.ReleaseBatchHandle(delHandle)
 		log.LogErrorf("[cleanExpiredExtents] partitionId=%d, commit batch and release handle failed: %s", mp.config.PartitionId, err.Error())
-		return err
+		return
 	}
 	log.LogInfof("Mp[%d] leader clean expired extents[%d], now err extents:%v, success", mp.config.PartitionId, cnt, retryList.Len())
-	return nil
+	return
 }
 
 func (mp *metaPartition) renameDeleteEKRecordFile(curFileName string, prefixName string) {
@@ -505,6 +524,65 @@ func (mp *metaPartition) renameDeleteEKRecordFile(curFileName string, prefixName
 		log.LogErrorf("[renameDeleteEKRecordFile] stat delExtentListDir(%s) failed:%v", delExtentListDir, err)
 		return
 	}
+	mp.removeOldDeleteEKRecordFile(curFileName, prefixName, false)
+	return
+}
+
+func (mp *metaPartition) removeOldDeleteEKRecordFile(curFileName, prefixName string, forceRemove bool) {
+	var metaDataDiskUsedRatio float64
+	if metaDataDisk, ok := mp.manager.metaNode.disks[mp.manager.metaNode.metadataDir]; ok {
+		metaDataDiskUsedRatio = metaDataDisk.Used/metaDataDisk.Total
+	}
+	if metaDataDiskUsedRatio < MaxMetaDataDiskUsedFactor && !forceRemove {
+		log.LogDebugf("[removeOldDeleteEKRecordFile] meta data disk used ratio:%v", metaDataDiskUsedRatio)
+		return
+	}
+
+	deleteEKRecordFilesMaxTotalSize := DeleteEKRecordFilesMaxTotalSize.Load()
+	filesInfo, err := ioutil.ReadDir(mp.config.RootDir)
+	if err != nil {
+		log.LogErrorf("[removeOldDeleteEKRecordFile] read root dir %s failed:%v", mp.config.RootDir, err)
+		return
+	}
+	totalSize := int64(0)
+	canDelFiles := make([]fs.FileInfo, 0, len(filesInfo))
+	for _, fileInfo := range filesInfo {
+		if fileInfo.IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(fileInfo.Name(), prefixName) {
+			continue
+		}
+		if fileInfo.Name() == curFileName {
+			continue
+		}
+		canDelFiles = append(canDelFiles, fileInfo)
+		totalSize += fileInfo.Size()
+	}
+
+	if uint64(totalSize) <= deleteEKRecordFilesMaxTotalSize {
+		log.LogDebugf("[removeOldDeleteEKRecordFile] mp(%v) prefixName(%s) no need remove old file, total size:%v",
+			mp.config.PartitionId, prefixName, totalSize)
+		return
+	}
+
+	sort.Slice(canDelFiles, func(i, j int) bool {
+		return canDelFiles[i].ModTime().Before(canDelFiles[j].ModTime())
+	})
+
+	delSize := int64(0)
+	for _, canDelFile := range canDelFiles {
+		if err = os.Remove(path.Join(mp.config.RootDir, canDelFile.Name())); err != nil {
+			log.LogErrorf("failed delete log file %s", canDelFile.Name())
+			continue
+		}
+		delSize += canDelFile.Size()
+		if totalSize - delSize < int64(deleteEKRecordFilesMaxTotalSize) {
+			break
+		}
+	}
+	log.LogDebugf("[removeOldDeleteEKRecordFile] mp(%v) prefixName(%s) file total size after remove:%v",
+		mp.config.PartitionId, prefixName, totalSize-delSize)
 	return
 }
 
@@ -653,10 +731,11 @@ func (mp *metaPartition) deleteExtentsFromDb() {
 			}
 
 			log.LogInfof("Mp[%d] leader clean extents before:%v", mp.config.PartitionId, extDeletedCursor)
-			if err := mp.cleanExpiredExtents(retryList); err != nil {
+			delCursor, err := mp.cleanExpiredExtents(retryList)
+			if err != nil {
 				continue
 			}
-			if err := mp.syncDelExtentsToFollowers(extDeletedCursor, retryList); err != nil {
+			if err := mp.syncDelExtentsToFollowers(delCursor, retryList); err != nil {
 				continue
 			}
 
@@ -669,8 +748,14 @@ func (mp *metaPartition) deleteExtentsFromDb() {
 				continue
 			}
 
-			if err := mp.cleanExpiredExtents(retryList); err != nil {
+			if _, err := mp.cleanExpiredExtents(retryList); err != nil {
 				log.LogWarnf("Mp[%d] del extent failed:%s", mp.config.PartitionId, err.Error())
+			}
+
+			if retryList.Len() > (maxRetryCnt / 2) {
+				if err := mp.syncDelExtentsToFollowers(0, retryList); err == nil {
+					retryList = list.New()
+				}
 			}
 			delTimer.Reset(leaderDelTimerValue)
 		}

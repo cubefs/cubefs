@@ -328,7 +328,7 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 		}
 	}
 
-	delExtents := existInode.AppendExtents(ctx, eks, ino.ModifyTime)
+	delExtents := existInode.InsertExtents(ctx, eks, ino.ModifyTime)
 	if err = mp.inodeTree.Put(dbHandle, existInode); err != nil {
 		status = proto.OpErr
 		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Put error:%v",
@@ -344,15 +344,10 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	log.LogInfof("fsm(%v) AppendExtents inode(%v) exts(%v) extDelChLen(%v)", mp.config.PartitionId, existInode.Inode, delExtents, len(mp.extDelCh))
 
-	delEks := make([]proto.MetaDelExtentKey, 0)
-	timeStamp := time.Now().Unix()
-	for index := 0; index < len(delExtents); index++ {
-		delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(existInode.Inode, delEkSrcTypeFromAppend, timeStamp))
-	}
 	select {
-	case mp.extDelCh <- delEks:
+	case mp.extDelCh <- delExtents:
 	default:
-		log.LogWarnf("fsm(%v) AppendExtents inode(%v) delEks(%v)", mp.config.PartitionId, existInode.Inode, delEks)
+		log.LogWarnf("fsm(%v) AppendExtents inode(%v) delEks(%v)", mp.config.PartitionId, existInode.Inode, delExtents)
 	}
 	return
 }
@@ -408,15 +403,10 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	log.LogInfof("fsm(%v) InsertExtents inode(%v) eks(insert: %v, deleted: %v) size(old: %v, new: %v) extDelChLen(%v)",
 		mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize, len(mp.extDelCh))
-	delEks := make([]proto.MetaDelExtentKey, 0)
-	timeStamp := time.Now().Unix()
-	for index := 0; index < len(delExtents); index++ {
-		delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(existIno.Inode, delEkSrcTypeFromInsert, timeStamp))
-	}
 	select {
-	case mp.extDelCh <- delEks:
+	case mp.extDelCh <- delExtents:
 	default:
-		log.LogWarnf("fsm(%v) InsertExtents inode(%v) delEks(%v)", mp.config.PartitionId, existIno.Inode, delEks)
+		log.LogWarnf("fsm(%v) InsertExtents inode(%v) delEks(%v)", mp.config.PartitionId, existIno.Inode, delExtents)
 	}
 	return
 }
@@ -478,15 +468,10 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 	// now we should delete the extent
 	log.LogInfof("fsm(%v) ExtentsTruncate inode(%v) size(old: %v, new: %v, req: %v) delExtents(%v) extDelChLen(%v)",
 		mp.config.PartitionId, i.Inode, oldSize, newSize, ino.Size, delExtents, len(mp.extDelCh))
-	delEks := make([]proto.MetaDelExtentKey, 0)
-	timeStamp := time.Now().Unix()
-	for index := 0; index < len(delExtents); index++ {
-		delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(ino.Inode, delEkSrcTypeFromTruncate, timeStamp))
-	}
 	select {
-	case mp.extDelCh <- delEks:
+	case mp.extDelCh <- delExtents:
 	default:
-		log.LogWarnf("fsm(%v) ExtentsTruncate inode(%v) delEks(%v)", mp.config.PartitionId, i.Inode, delEks)
+		log.LogWarnf("fsm(%v) ExtentsTruncate inode(%v) delEks(%v)", mp.config.PartitionId, i.Inode, delExtents)
 	}
 	return
 }
@@ -609,19 +594,27 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 	inodeId := im.Inode
 	newExtents := im.NewExtents
 	oldExtents := im.OldExtents
+	var delExtents []proto.MetaDelExtentKey
 
-	var delExtents = newExtents
+	//var delExtents = newExtents
 	defer func() {
-		if len(delExtents) > 0 {
-			delEks := make([]proto.MetaDelExtentKey, 0)
-			timeStamp := time.Now().Unix()
-			for index := 0; index < len(delExtents); index++ {
-				delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(inodeId, delEkSrcTypeFromAppend, timeStamp))
+		if status != proto.OpOk {
+			//err, clear del extents array, reset to new eks
+			delExtents = delExtents[:0]
+			for _, ek := range newExtents {
+				delExtents = append(delExtents, *ek.ConvertToMetaDelEk(inodeId, uint64(proto.DelEkSrcTypeFromMerge), time.Now().Unix()))
 			}
+		}
+		if len(delExtents) > 0 {
+			//delEks := make([]proto.MetaDelExtentKey, 0)
+			//timeStamp := time.Now().Unix()
+			//for index := 0; index < len(delExtents); index++ {
+			//	delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(inodeId, delEkSrcTypeFromMerge, timeStamp))
+			//}
 			select {
-			case mp.extDelCh <- delEks:
+			case mp.extDelCh <- delExtents:
 			default:
-				log.LogWarnf("fsm(%v) ExtentsMerge inode(%v) delEks(%v)", mp.config.PartitionId, inodeId, delEks)
+				log.LogWarnf("fsm(%v) ExtentsMerge inode(%v) delEks(%v)", mp.config.PartitionId, inodeId, delExtents)
 			}
 			log.LogInfof("fsm(%v) ExtentsMerge inode(%v) delExtents(%v) newExtents(%v) extDelChLen(%v)",
 				mp.config.PartitionId, inodeId, delExtents, newExtents, len(mp.extDelCh))
@@ -651,19 +644,19 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 	if !merged {
 		log.LogWarnf("InodeMergeFailed inode(%v) merge msg(%v)", inodeId, msg)
 		status = proto.OpInodeMergeErr
-		delExtents = newExtents
+		//delExtents = newExtents
 		return
 	}
 	if err = mp.inodeTree.Put(dbHandle, ino); err != nil {
 		status = proto.OpErr
-		delExtents = newExtents
+		//delExtents = newExtents
 		return
 	}
 	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
 		log.LogErrorf("fsm(%v) action(MergeExtents) inode(%v) oldEks(%v) newEks(%v) Commit error:%v",
 			mp.config.PartitionId, ino.Inode, oldExtents, newExtents, err)
 		status = proto.OpErr
-		delExtents = newExtents
+		//delExtents = newExtents
 		return
 	}
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)

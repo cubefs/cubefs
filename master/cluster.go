@@ -2883,7 +2883,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	dpSelectorName, dpSelectorParm string,
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
-	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int) (err error) {
+	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
+	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3019,6 +3020,9 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.dpWriteableThreshold = dpWriteableThreshold
 	vol.FollowerReadDelayCfg = dpFolReadDelayCfg
 	vol.FollReadHostWeight = follReadHostWeight
+	vol.TrashCleanInterval = trashCleanInterval
+	vol.BatchDelInodeCnt = batchDelInodeCnt
+	vol.DelInodeInterval = delInodeInterval
 	if isSmart && !vol.isSmart {
 		vol.smartEnableTime = time.Now().Unix()
 	}
@@ -3059,10 +3063,11 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, trashDays int, ecDataNum, ecParityNum uint8,
-	ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
-	crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
-	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity,
+	trashDays int, ecDataNum, ecParityNum uint8, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,
+	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
+	childFileMaxCnt uint32,	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string,
+	compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -3106,7 +3111,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
 		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
-		storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg); err != nil {
+		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -3135,10 +3140,12 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum, trashDays int, dataNum, parityNum uint8,
-	enableEc, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
-	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64,
-	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum,
+	trashDays int, dataNum, parityNum uint8, enableEc, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,
+	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8,
+	dpWriteableThreshold float64, childFileMaxCnt uint32, storeMode proto.StoreMode, convertSt proto.VolConvertState,
+	mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
+	batchDelInodeCnt, delInodeInterval uint32) (vol *Vol, err error) {
 	var (
 		id              uint64
 		smartEnableTime int64
@@ -3168,8 +3175,10 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 		smartEnableTime = createTime
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
-		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, createTime, smartEnableTime, description, "", "",
-		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout, smartRules, compactTag, dpFolReadDelayCfg)
+		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, createTime,
+		smartEnableTime, description, "", "", crossRegionHAType, dpLearnerNum, mpLearnerNum,
+		dpWriteableThreshold, uint32(trashDays), childFileMaxCnt, storeMode, convertSt, mpLayout, smartRules, compactTag,
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval)
 	vol.EcDataNum = dataNum
 	vol.EcParityNum = parityNum
 	vol.EcEnable = enableEc
@@ -3671,6 +3680,51 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaRocksDisableFlushFlag, val.(uint64))
 	}
 
+	oldMetaDelEKRecordFileMaxMB := atomic.LoadUint64(&c.cfg.DeleteEKRecordFilesMaxSize)
+	if val, ok := params[proto.MetaDelEKRecordFileMaxMB]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaDelEKRecordFileMaxMB)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.DeleteEKRecordFilesMaxSize, val.(uint64))
+	}
+
+	oldMetaTrashCleanInterval := atomic.LoadUint64(&c.cfg.MetaTrashCleanInterval)
+	if val, ok := params[proto.MetaTrashCleanIntervalKey]; ok {
+		atomic.StoreUint64(&c.cfg.MetaTrashCleanInterval, val.(uint64))
+	}
+
+	oldMetaRaftLogSize := atomic.LoadInt64(&c.cfg.MetaRaftLogSize)
+	if val, ok := params[proto.MetaRaftLogSizeKey]; ok {
+		v := val.(int64)
+		if v != 0 && v < proto.MinMetaRaftLogSize {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.MetaRaftLogSizeKey)
+			return
+		}
+		atomic.StoreInt64(&c.cfg.MetaRaftLogSize, val.(int64))
+	}
+
+	oldMetaRaftLogCap := atomic.LoadInt64(&c.cfg.MetaRaftLogCap)
+	if val, ok := params[proto.MetaRaftLogCapKey]; ok {
+		v := val.(int64)
+		if v != 0 && v < proto.MinMetaRaftLogCap {
+			err = errors.NewErrorf("parameter %s must be greater than %d", proto.MetaRaftLogCapKey, proto.MinMetaRaftLogCap)
+			return
+		}
+		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, val.(int64))
+	}
+
+	oldMetaSyncWALEnableState := c.cfg.MetaSyncWALOnUnstableEnableState
+	if val, ok := params[proto.MetaSyncWalEnableStateKey]; ok {
+		c.cfg.MetaSyncWALOnUnstableEnableState = val.(bool)
+	}
+
+	oldDataSyncWALEnableState := c.cfg.DataSyncWALOnUnstableEnableState
+	if val, ok := params[proto.DataSyncWalEnableStateKey]; ok {
+		c.cfg.DataSyncWALOnUnstableEnableState = val.(bool)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3697,6 +3751,12 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaRocksFlushWalInterval, oldMetaRocksFlushWalInterval)
 		atomic.StoreUint64(&c.cfg.MetaRocksWalTTL, oldMetaRocksWalTTL)
 		atomic.StoreUint64(&c.cfg.MetaRocksDisableFlushFlag, oldMetaRocksDisableFlushWalFlag)
+		atomic.StoreUint64(&c.cfg.DeleteEKRecordFilesMaxSize, oldMetaDelEKRecordFileMaxMB)
+		atomic.StoreUint64(&c.cfg.MetaTrashCleanInterval, oldMetaTrashCleanInterval)
+		atomic.StoreInt64(&c.cfg.MetaRaftLogSize, oldMetaRaftLogSize)
+		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, oldMetaRaftLogCap)
+		c.cfg.DataSyncWALOnUnstableEnableState = oldDataSyncWALEnableState
+		c.cfg.MetaSyncWALOnUnstableEnableState = oldMetaSyncWALEnableState
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -5281,6 +5341,9 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		MetaRocksFlushWalInterval:           c.cfg.MetaRocksFlushWalInterval,
 		MetaRocksDisableFlushFlag:           c.cfg.MetaRocksDisableFlushFlag,
 		MetaRocksWalTTL:                     c.cfg.MetaRocksWalTTL,
+		MetaRaftLogSize:                     c.cfg.MetaRaftLogSize,
+		MetaRaftLogCap:                      c.cfg.MetaRaftLogCap,
+		MetaTrashCleanInterval:              c.cfg.MetaTrashCleanInterval,
 	}
 
 	vols := c.allVolNames()
@@ -5328,5 +5391,42 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		return true
 	})
 	cv.DataNodeBadDisks = c.getDataNodeBadDisks()
+	return
+}
+
+func (c *Cluster) setVolChildFileMaxCount(name string, newChildFileMaxCount uint32) (err error) {
+	var (
+		vol           *Vol
+		oldMaxCount   uint32
+	)
+
+	if vol, err = c.getVol(name); err != nil {
+		log.LogErrorf("action[setVolChildFileMaxCount] err[%v]", err)
+		err = proto.ErrVolNotExists
+		err = fmt.Errorf("action[setVolChildFileMaxCount], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+		goto errHandler
+	}
+
+	vol.Lock()
+	defer vol.Unlock()
+
+	oldMaxCount = vol.ChildFileMaxCount
+	if oldMaxCount == newChildFileMaxCount {
+		return nil
+	}
+
+	vol.ChildFileMaxCount = newChildFileMaxCount
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.ChildFileMaxCount = oldMaxCount
+		log.LogErrorf("action[setVolChildFileMaxCount] vol[%v] err[%v]", name, err)
+		err = proto.ErrPersistenceByRaft
+		goto errHandler
+	}
+	return
+
+errHandler:
+	err = fmt.Errorf("action[setVolChildFileMaxCount], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
 	return
 }

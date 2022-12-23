@@ -93,6 +93,29 @@ func (ls *logEntryStorage) open() error {
 	return nil
 }
 
+func (ls *logEntryStorage) SetFileSize(filesize int) {
+	if ls.filesize != filesize {
+		ls.filesize = filesize
+	}
+}
+
+func (ls *logEntryStorage) GetFileSize() int {
+	return ls.filesize
+}
+
+func (ls *logEntryStorage) SetFileCacheCapacity(capacity int) {
+	if ls != nil && ls.cache != nil {
+		ls.cache.SetCapacity(capacity)
+	}
+}
+
+func (ls *logEntryStorage) GetFileCacheCapacity() int {
+	if ls != nil && ls.cache != nil {
+		return ls.cache.GetCapacity()
+	}
+	return 0
+}
+
 func (ls *logEntryStorage) Term(i uint64) (term uint64, isCompact bool, err error) {
 	lf, err := ls.locateFile(i)
 	if err != nil {
@@ -219,6 +242,7 @@ func (ls *logEntryStorage) TruncateFront(index uint64) error {
 
 // TruncateAll 清空
 func (ls *logEntryStorage) TruncateAll() error {
+	ls.cache.Clean(true)
 	for _, f := range ls.logfiles {
 		if err := ls.remove(f); err != nil {
 			return err

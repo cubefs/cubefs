@@ -81,6 +81,12 @@ type clusterValue struct {
 	MetaRocksFlushWalInterval           uint64  //min
 	MetaRocksDisableFlushFlag           uint64  //0 flush, !=0 disable flush
 	MetaRocksWalTTL                     uint64
+	MetaDelEKRecordFileMaxMB            uint64 //MB
+	MetaTrashCleanInterval              uint64
+	MetaRaftLogSize                     int64
+	MetaRaftLogCap                      int64
+	MetaSyncWALEnableState              bool
+	DataSyncWALEnableState              bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -134,6 +140,12 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaRocksFlushWalInterval:           c.cfg.MetaRocksFlushWalInterval,
 		MetaRocksDisableFlushFlag:           c.cfg.MetaRocksDisableFlushFlag,
 		MetaRocksWalTTL:                     c.cfg.MetaRocksWalTTL,
+		MetaDelEKRecordFileMaxMB:            c.cfg.DeleteEKRecordFilesMaxSize,
+		MetaTrashCleanInterval:              c.cfg.MetaTrashCleanInterval,
+		MetaRaftLogSize:                     c.cfg.MetaRaftLogSize,
+		MetaRaftLogCap:                      c.cfg.MetaRaftLogCap,
+		MetaSyncWALEnableState:              c.cfg.MetaSyncWALOnUnstableEnableState,
+		DataSyncWALEnableState:              c.cfg.DataSyncWALOnUnstableEnableState,
 	}
 	return cv
 }
@@ -281,6 +293,10 @@ type volValue struct {
 	EcRetryWait          int64
 	EcMaxUnitSize        uint64
 	EcEnable             bool
+	ChildFileMaxCnt      uint32
+	TrashCleanInterval   uint64
+	BatchDelInodeCnt     uint32
+	DelInodeInterval     uint32
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -345,6 +361,10 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		EcTimeOut:            vol.EcMigrationTimeOut,
 		EcRetryWait:          vol.EcMigrationRetryWait,
 		EcMaxUnitSize:        vol.EcMaxUnitSize,
+		ChildFileMaxCnt:      vol.ChildFileMaxCount,
+		TrashCleanInterval:   vol.TrashCleanInterval,
+		BatchDelInodeCnt:     vol.BatchDelInodeCnt,
+		DelInodeInterval:     vol.DelInodeInterval,
 	}
 	return
 }
@@ -957,6 +977,20 @@ func (c *Cluster) loadClusterValue() (err error) {
 		atomic.StoreUint64(&c.cfg.MetaRocksFlushWalInterval, cv.MetaRocksFlushWalInterval)
 		atomic.StoreUint64(&c.cfg.MetaRocksDisableFlushFlag, cv.MetaRocksDisableFlushFlag)
 		atomic.StoreUint64(&c.cfg.MetaRocksWalTTL, cv.MetaRocksWalTTL)
+		if cv.MetaDelEKRecordFileMaxMB != 0 {
+			atomic.StoreUint64(&c.cfg.DeleteEKRecordFilesMaxSize, cv.MetaDelEKRecordFileMaxMB)
+		}
+		if cv.MetaTrashCleanInterval != 0 {
+			atomic.StoreUint64(&c.cfg.MetaTrashCleanInterval, cv.MetaTrashCleanInterval)
+		}
+		if cv.MetaRaftLogSize != 0 {
+			atomic.StoreInt64(&c.cfg.MetaRaftLogSize, cv.MetaRaftLogSize)
+		}
+		if cv.MetaRaftLogCap != 0 {
+			atomic.StoreInt64(&c.cfg.MetaRaftLogCap, cv.MetaRaftLogCap)
+		}
+		c.cfg.DataSyncWALOnUnstableEnableState = cv.DataSyncWALEnableState
+		c.cfg.MetaSyncWALOnUnstableEnableState = cv.MetaSyncWALEnableState
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

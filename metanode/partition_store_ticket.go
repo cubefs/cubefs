@@ -17,6 +17,9 @@ package metanode
 import (
 	"context"
 	"encoding/binary"
+	"github.com/chubaofs/chubaofs/proto"
+
+	"github.com/chubaofs/chubaofs/util/unit"
 	"time"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
@@ -31,6 +34,45 @@ type storeMsg struct {
 	snap       Snapshot
 }
 
+func (mp *metaPartition) updateRaftStorageParam() {
+	nodeCfg := getGlobalConfNodeInfo()
+	logSize := defRaftLogSize
+	logCap := defRaftLogCap
+	if nodeCfg.raftLogSizeFromMaster > 0 {
+		logSize = nodeCfg.raftLogSizeFromMaster * unit.MB
+	}
+
+	if nodeCfg.raftLogSizeFromLoc  > 0 {
+		logSize = nodeCfg.raftLogSizeFromLoc * unit.MB
+	}
+
+	if nodeCfg.raftLogCapFromMaster > 0 {
+		logCap = nodeCfg.raftLogCapFromMaster
+	}
+
+	if nodeCfg.raftLogCapFromLoc  > 0 {
+		logCap = nodeCfg.raftLogCapFromLoc
+	}
+
+	raftPartition := mp.raftPartition
+	if raftPartition == nil {
+		return
+	}
+
+	if logSize != 0 && logSize != raftPartition.GetWALFileSize() &&
+		logSize >= (proto.MinMetaRaftLogSize * unit.MB ) && logSize <= (proto.MaxMetaRaftLogSize * unit.MB) {
+		raftPartition.SetWALFileSize(logSize)
+		log.LogWarnf("[updateRaftStorageParam] partitionId=%d: File size :%d MB", mp.config.PartitionId, logSize / unit.MB)
+	}
+
+	if logCap != 0 && logCap != raftPartition.GetWALFileCacheCapacity() && logCap >= proto.MinMetaRaftLogCap {
+		raftPartition.SetWALFileCacheCapacity(logCap)
+		log.LogWarnf("[updateRaftStorageParam] partitionId=%d: File Cap :%d ", mp.config.PartitionId, logCap)
+	}
+
+	return
+}
+
 func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timer := time.NewTimer(time.Hour * 24 * 365)
 	timer.Stop()
@@ -43,6 +85,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		if err := mp.store(msg); err == nil {
 			// truncate raft log
 			if mp.raftPartition != nil {
+				mp.updateRaftStorageParam()
 				mp.raftPartition.Truncate(curIndex)
 				log.LogWarnf("[afterMetaPartitionStore] partitionId=%d: nowAppID"+
 					"=%d, applyID=%d", mp.config.PartitionId, curIndex,
@@ -154,15 +197,27 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	}(mp.stopC)
 }
 
+func (mp *metaPartition) getTrashCleanInterval() (interval time.Duration) {
+	interval = defIntervalToCleanTrash
+	if nodeInfo.trashCleanInterval != 0 {
+		interval = time.Duration(nodeInfo.trashCleanInterval) * time.Minute
+	}
+	if mp.config.TrashCleanInterval != 0 {
+		interval = time.Duration(mp.config.TrashCleanInterval) * time.Minute
+	}
+	return
+}
+
 func (mp *metaPartition) startCleanTrashScheduler() {
-	cleanTrashTicker := time.NewTicker(1 * time.Hour)
+	cleanTrashTimer := time.NewTimer(mp.getTrashCleanInterval())
 	go func(stopC chan bool) {
 		for {
 			select {
 			case <-stopC:
-				cleanTrashTicker.Stop()
+				cleanTrashTimer.Stop()
 				return
-			case <-cleanTrashTicker.C:
+			case <-cleanTrashTimer.C:
+				cleanTrashTimer.Reset(mp.getTrashCleanInterval())
 				if _, ok := mp.IsLeader(); !ok {
 					continue
 				}
@@ -172,9 +227,9 @@ func (mp *metaPartition) startCleanTrashScheduler() {
 					continue
 				}
 
-				if time.Since(mp.trashExpiresFirstUpdateTime) < (intervalToUpdateAllVolsTrashDays + intervalToUpdateVolTrashExpires) {
+				if time.Since(mp.trashExpiresFirstUpdateTime) < (intervalToUpdateAllVolsConf + intervalToUpdateVolTrashExpires) {
 					log.LogDebugf("mp[%v] since trashExpiresFirstUpdateTime less than %v",
-						mp.config.PartitionId, intervalToUpdateAllVolsTrashDays + intervalToUpdateVolTrashExpires)
+						mp.config.PartitionId, intervalToUpdateAllVolsConf+ intervalToUpdateVolTrashExpires)
 					continue
 				}
 				err := mp.CleanExpiredDeletedDentry()
@@ -191,7 +246,7 @@ func (mp *metaPartition) startCleanTrashScheduler() {
 	}(mp.stopC)
 }
 
-func (mp *metaPartition) startUpdateTrashDaysScheduler() {
+func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 	for {
 		if mp.config.TrashRemainingDays > -1 {
 			break
@@ -217,7 +272,10 @@ func (mp *metaPartition) startUpdateTrashDaysScheduler() {
 					mp.trashExpiresFirstUpdateTime = time.Now()
 				}
 				mp.config.TrashRemainingDays = mp.manager.getTrashDaysByVol(mp.config.VolName)
-				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v", mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays)
+				mp.config.ChildFileMaxCount = mp.manager.getChildFileMaxCount(mp.config.VolName)
+				mp.config.TrashCleanInterval = mp.manager.getTrashCleanInterval(mp.config.VolName)
+				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v, childFileMaxCount: %v, trashCleanInterval: %vMin",
+					mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays, mp.config.ChildFileMaxCount, mp.config.TrashCleanInterval)
 			}
 		}
 	}(mp.stopC)

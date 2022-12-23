@@ -409,7 +409,7 @@ func (i *Inode) UnmarshalV2(ctx context.Context, raw []byte) (err error) {
 	if i.Extents == nil {
 		i.Extents = se.NewSortedExtents()
 	}
-	if err = i.Extents.UnmarshalBinaryV2(ctx, raw[offset:]); err != nil {
+	if err = i.Extents.UnmarshalBinaryV2(ctx, raw[offset:], i.Inode); err != nil {
 		return
 	}
 	return
@@ -470,7 +470,7 @@ func (i *Inode) UnmarshalValueV2(ctx context.Context, raw []byte) (err error) {
 	if i.Extents == nil {
 		i.Extents = se.NewSortedExtents()
 	}
-	if err = i.Extents.UnmarshalBinaryV2(ctx, raw[offset:]); err != nil {
+	if err = i.Extents.UnmarshalBinaryV2(ctx, raw[offset:], i.Inode); err != nil {
 		return
 	}
 	return nil
@@ -636,19 +636,19 @@ func (i *Inode) UnmarshalValue(ctx context.Context, val []byte) (err error) {
 	if i.Extents == nil {
 		i.Extents = se.NewSortedExtents()
 	}
-	if err = i.Extents.UnmarshalBinary(ctx, buff.Bytes()); err != nil {
+	if err = i.Extents.UnmarshalBinary(ctx, buff.Bytes(), i.Inode); err != nil {
 		return
 	}
 	return
 }
 
 // AppendExtents append the extent to the btree.
-func (i *Inode) AppendExtents(ctx context.Context, eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
+func (i *Inode) AppendExtents(ctx context.Context, eks []proto.ExtentKey, ct int64) (delExtents []proto.MetaDelExtentKey) {
 
 	i.Lock()
 	oldFileSize := i.Extents.Size()
 	for _, ek := range eks {
-		delItems := i.Extents.Append(ctx, ek)
+		delItems := i.Extents.Append(ctx, ek, i.Inode)
 		size := i.Extents.Size()
 		if i.Size < size {
 			i.Size = size
@@ -664,7 +664,7 @@ func (i *Inode) AppendExtents(ctx context.Context, eks []proto.ExtentKey, ct int
 	return
 }
 
-func (i *Inode) InsertExtents(ctx context.Context, eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
+func (i *Inode) InsertExtents(ctx context.Context, eks []proto.ExtentKey, ct int64) (delExtents []proto.MetaDelExtentKey) {
 	if len(eks) == 0 {
 		return
 	}
@@ -673,7 +673,7 @@ func (i *Inode) InsertExtents(ctx context.Context, eks []proto.ExtentKey, ct int
 	defer i.Unlock()
 
 	for _, ek := range eks {
-		delExtents = append(delExtents, i.Extents.Insert(ctx, ek)...)
+		delExtents = append(delExtents, i.Extents.Insert(ctx, ek, i.Inode)...)
 	}
 	i.Size = uint64(math.Max(float64(i.Size), float64(i.Extents.Size())))
 	i.ModifyTime = ct
@@ -682,9 +682,9 @@ func (i *Inode) InsertExtents(ctx context.Context, eks []proto.ExtentKey, ct int
 	return
 }
 
-func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.ExtentKey) {
+func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.MetaDelExtentKey) {
 	i.Lock()
-	delExtents = i.Extents.Truncate(length)
+	delExtents = i.Extents.Truncate(length, i.Inode)
 	i.Size = length
 	i.ModifyTime = ct
 	i.Generation++
@@ -692,19 +692,19 @@ func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.Ext
 	return
 }
 
-func (i *Inode) MergeExtents(newEks []proto.ExtentKey, oldEks []proto.ExtentKey) (delExtents []proto.ExtentKey, merged bool, msg string) {
+func (i *Inode) MergeExtents(newEks []proto.ExtentKey, oldEks []proto.ExtentKey) (delExtents []proto.MetaDelExtentKey, merged bool, msg string) {
 	i.Lock()
 	defer i.Unlock()
-	if delExtents, merged, msg = i.Extents.Merge(newEks, oldEks); merged {
+	if delExtents, merged, msg = i.Extents.Merge(newEks, oldEks, i.Inode); merged {
 		i.Generation++
 	}
 	return
 }
 
-func (i *Inode) DelNewExtents(newEks []proto.ExtentKey) (delExtents []proto.ExtentKey) {
+func (i *Inode) DelNewExtents(newEks []proto.ExtentKey) (delExtents []proto.MetaDelExtentKey) {
 	i.Lock()
 	defer i.Unlock()
-	delExtents = i.Extents.DelNewExtent(newEks)
+	delExtents = i.Extents.DelNewExtent(newEks, i.Inode)
 	return
 }
 

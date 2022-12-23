@@ -90,3 +90,60 @@ func TestLogEntryStorage_AsyncRotateWithTruncateBack(t *testing.T) {
 		t.Fatalf("save entry [index:%v] fail: %v", endI-2, err)
 	}
 }
+
+func TestLogEntryStorage_TruncateAll(t *testing.T) {
+	var err error
+	var testPath = path.Join(os.TempDir(), "TestLogEntryStorage_TruncateAll")
+	_ = os.RemoveAll(testPath)
+	if err = os.MkdirAll(testPath, os.ModePerm); err != nil {
+		t.Fatalf("prepare test path fail: %v", err)
+	}
+	var ls *logEntryStorage
+	if ls, err = openLogStorage(testPath, &Storage{c: &Config{SyncRotate: true}}); err != nil {
+		t.Fatalf("open log storage fail: %v", err)
+	}
+	defer ls.Close()
+
+	var data = make([]byte, 1024)
+	for i := uint64(1); i <= 2; i++ {
+		if err = ls.saveEntry(context.Background(), &proto.Entry{Index: i, Term: 1, Data: data}); err != nil {
+			t.Fatalf("save entry [index: 1, term: 1] fail: %v", err)
+		}
+	}
+
+	if err = ls.rotate(context.Background()); err != nil {
+		t.Fatalf("rotate fail: %v", err)
+	}
+
+	var li, lt uint64
+	li = ls.LastIndex()
+	if lt, _, err = ls.Term(li); err != nil {
+		t.Fatalf("get term for last index %v fail: %v", li, err)
+	}
+	if li != 2 || lt != 1 {
+		t.Fatalf("last index or term mismatch, expect [index: 2, term: 1], actual [index: %v, term: %v]", li, lt)
+	}
+
+	if err = ls.TruncateAll(); err != nil {
+		t.Fatalf("truncate all fail: %v", err)
+	}
+
+	for i := uint64(1); i <= 3; i++ {
+		if err = ls.saveEntry(context.Background(), &proto.Entry{Index: i, Term: 2, Data: data}); err != nil {
+			t.Fatalf("save entry [index: 1, term: 1] fail: %v", err)
+		}
+	}
+
+	if err = ls.rotate(context.Background()); err != nil {
+		t.Fatalf("rotate fail: %v", err)
+	}
+
+	li = ls.LastIndex()
+	if lt, _, err = ls.Term(li); err != nil {
+		t.Fatalf("get term for last index %v fail: %v", li, err)
+	}
+	if li != 3 || lt != 2 {
+		t.Fatalf("last index or term mismatch, expect [index: 3, term: 2], actual [index: %v, term: %v]", li, lt)
+	}
+
+}

@@ -361,7 +361,7 @@ func (di *DeletedINode) UnmarshalValue(ctx context.Context, val []byte) (err err
 		if err != nil {
 			return
 		}
-		if err = di.Extents.UnmarshalBinary(ctx, extentBytes); err != nil {
+		if err = di.Extents.UnmarshalBinary(ctx, extentBytes, di.Inode.Inode); err != nil {
 			return
 		}
 	}

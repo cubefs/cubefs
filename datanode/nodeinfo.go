@@ -122,6 +122,7 @@ func (m *DataNode) updateNodeBaseInfo() {
 	}
 	m.space.SetDiskRepairTaskLimit(limitInfo.DataNodeRepairTaskLimitOnDisk)
 	m.space.SetForceFlushFDInterval(limitInfo.DataNodeFlushFDInterval)
+	m.space.SetSyncWALOnUnstableEnableState(limitInfo.DataSyncWALOnUnstableEnableState)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

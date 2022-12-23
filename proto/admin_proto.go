@@ -80,6 +80,7 @@ const (
 	AdminStatTrash                 = "/admin/trash/stat"
 	AdminSetClientPkgAddr          = "/clientPkgAddr/set"
 	AdminGetClientPkgAddr          = "/clientPkgAddr/get"
+	AdminSetVolChildMaxCnt         = "/vol/setChildMaxCnt"
 
 	AdminSmartVolList = "/admin/smartVol/list"
 
@@ -229,6 +230,14 @@ const (
 	MetaRocksWalFlushIntervalKey = "metaRocksWalFlushInterval"
 	MetaRocksDisableFlushWalKey  = "metaRocksDisableFlushWal"
 	MetaRocksWalTTLKey           = "metaRocksWalTTL"
+	ChildFileMaxCountKey         = "childFileMaxCount"
+	NameKey                      = "name"
+	MetaDelEKRecordFileMaxMB     = "metaDelEKRecordFileMaxMB"
+	MetaTrashCleanIntervalKey    = "metaTrashCleanInterval"
+	MetaRaftLogSizeKey           = "metaRaftLogSize"
+	MetaRaftLogCapKey            = "metaRaftLogCap"
+	MetaSyncWalEnableStateKey    = "metaWalSyncEnableState"
+	DataSyncWalEnableStateKey    = "dataWalSyncEnableState"
 )
 
 const (
@@ -486,6 +495,13 @@ type LimitInfo struct {
 	MetaRocksFlushWalInterval  uint64				//min   30min
 	MetaRocksWalTTL			   uint64				//second  60s
 	MetaRocksDisableFlushFlag  uint64               //0 flush, !=0 disable flush; default 0
+	DeleteEKRecordFileMaxMB    uint64               //MB
+	MetaTrashCleanInterval     uint64				//second
+	MetaRaftLogSize            int64
+	MetaRaftCap				   int64
+
+	MetaSyncWALOnUnstableEnableState bool
+	DataSyncWALOnUnstableEnableState bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1021,6 +1037,10 @@ type SimpleVolView struct {
 	EcTimeOut             int64
 	EcRetryWait           int64
 	EcMaxUnitSize         uint64
+	ChildFileMaxCount     uint32
+	TrashCleanInterval    uint64
+	BatchDelInodeCnt     uint32
+	DelInodeInterval     uint32
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1044,10 +1064,15 @@ type VolInfo struct {
 	CompactTag         uint8
 	EnableToken        bool
 	EnableWriteCache   bool
+	ChildFileMaxCnt    uint32
+	TrashCleanInterval uint64
+	BatchInodeDelCnt   uint32
+	DelInodeInterval   uint32
 }
 
-func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, remainingDays uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
-	enableToken, enableWriteCache bool) *VolInfo {
+func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,
+	remainingDays uint32, childFileMaxCnt uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
+	trashCleanInterval uint64, enableToken, enableWriteCache bool, batchDelIndeCnt, delInodeInterval uint32) *VolInfo {
 	var usedRatio float64
 	if totalSize != 0 {
 		usedRatio = float64(usedSize) / float64(totalSize)
@@ -1067,6 +1092,10 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		EnableToken:        enableToken,
 		EnableWriteCache:   enableWriteCache,
 		UsedRatio:          usedRatio,
+		ChildFileMaxCnt:    childFileMaxCnt,
+		TrashCleanInterval: trashCleanInterval,
+		BatchInodeDelCnt:   batchDelIndeCnt,
+		DelInodeInterval:   delInodeInterval,
 	}
 }
 
@@ -1109,6 +1138,12 @@ type RateLimitInfo struct {
 	MetaRocksFlushWalInterval   uint64 //min
 	MetaRocksDisableFlushFlag   int64 //0 flush, !=0 disable flush
 	MetaRocksWalTTL             uint64
+	MetaDelEKRecordFileMaxMB    uint64
+	MetaTrashCleanInterval      uint64
+	MetaRaftLogSize				int64
+	MetaRaftLogCap				int64
+	MetaSyncWALEnableState      int64
+	DataSyncWALEnableState      int64
 }
 
 type ConvertMode uint8

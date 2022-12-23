@@ -1013,7 +1013,7 @@ func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, n
 // HandleFatalEvent handles the fatal errors.
 func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 	// Panic while fatal event happen.
-	exporter.Warning(fmt.Sprintf("action[HandleFatalEvent] err[%v].", err))
+	exporter.WarningCritical(fmt.Sprintf("action[HandleFatalEvent] err[%v].", err))
 	log.LogFatalf("action[HandleFatalEvent] err[%v].", err)
 	panic(err.Err)
 }

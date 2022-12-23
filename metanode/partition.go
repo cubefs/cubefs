@@ -92,6 +92,8 @@ type MetaPartitionConfig struct {
 	ConnPool           *connpool.ConnectPool `json:"-"`
 	StoreMode          proto.StoreMode       `json:"store_mode"`
 	CreationType       int                   `json:"creation_type"`
+	ChildFileMaxCount  uint32                `json:"-"`
+	TrashCleanInterval uint64                `json:"-"`
 
 	RocksWalFileSize     uint64 `json:"rocks_wal_file_size"`
 	RocksWalMemSize      uint64 `json:"rocks_wal_mem_size"`
@@ -362,11 +364,12 @@ func (mp *metaPartition) onStart() (err error) {
 		go mp.checkRecoverAfterStart()
 	}
 	mp.startCleanTrashScheduler()
-	mp.startUpdateTrashDaysScheduler()
+	mp.startUpdatePartitionConfigScheduler()
 	return
 }
 
 func (mp *metaPartition) onStop() {
+	mp.tryToGiveUpLeader()
 	mp.stopRaft()
 	mp.stop()
 	mp.db.CloseDb()
@@ -411,6 +414,9 @@ func (mp *metaPartition) startRaft() (err error) {
 		GetStartIndex: func(firstIndex, lastIndex uint64) (startIndex uint64) { return mp.applyID },
 	}
 	mp.raftPartition = mp.config.RaftStore.CreatePartition(pc)
+	/*meta node set raft log, default 4 files, 8MB per file*/
+	mp.raftPartition.SetWALFileSize(defRaftLogSize)
+	mp.raftPartition.SetWALFileCacheCapacity(defRaftLogCap)
 	err = mp.raftPartition.Start()
 	return
 }
@@ -947,12 +953,18 @@ func (mp *metaPartition) UpdatePeers(peers []proto.Peer) {
 
 // DeleteRaft deletes the raft partition.
 func (mp *metaPartition) DeleteRaft() (err error) {
+	if mp.raftPartition == nil {
+		return errors.NewErrorf("partition [%d] is not start", mp.config.PartitionId)
+	}
 	err = mp.raftPartition.Delete()
 	return
 }
 
 // ExpiredRaft deletes the raft partition.
 func (mp *metaPartition) ExpiredRaft() (err error) {
+	if mp.raftPartition == nil {
+		return errors.NewErrorf("partition [%d] is not start", mp.config.PartitionId)
+	}
 	err = mp.raftPartition.Expired()
 	return
 }
@@ -984,12 +996,18 @@ func (mp *metaPartition) isInoOutOfRange(inodeId uint64) (outOfRange bool, err e
 
 // ChangeMember changes the raft member with the specified one.
 func (mp *metaPartition) ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error) {
+	if mp.raftPartition == nil {
+		return nil, errors.NewErrorf("partition [%d] is not start", mp.config.PartitionId)
+	}
 	resp, err = mp.raftPartition.ChangeMember(changeType, peer, context)
 	return
 }
 
 // ResetMebmer reset the raft members with new peers, be carefull !
 func (mp *metaPartition) ResetMember(peers []raftproto.Peer, context []byte) (err error) {
+	if mp.raftPartition == nil {
+		return errors.NewErrorf("partition [%d] is not start", mp.config.PartitionId)
+	}
 	err = mp.raftPartition.ResetMember(peers, context)
 	return
 }
@@ -1156,6 +1174,9 @@ func (mp *metaPartition) IsExistLearner(learner proto.Learner) bool {
 }
 
 func (mp *metaPartition) TryToLeader(groupID uint64) error {
+	if mp.raftPartition == nil {
+		return errors.NewErrorf("partition[%v] is not start", mp.config.PartitionId)
+	}
 	return mp.raftPartition.TryToLeader(groupID)
 }
 
@@ -1201,7 +1222,7 @@ func (mp *metaPartition) Reset() (err error) {
 	mp.config.Cursor = 0
 	mp.applyID = 0
 	mp.db.CloseDb()
-	mp.db.ReleaseRocksDb()
+	//mp.db.ReleaseRocksDb()
 
 	// remove files
 	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile}
@@ -1229,7 +1250,7 @@ func (mp *metaPartition) Expired() (err error) {
 	mp.config.Cursor = 0
 	mp.applyID = 0
 	mp.db.CloseDb()
-	mp.db.ReleaseRocksDb()
+	//mp.db.ReleaseRocksDb()
 
 	currentPath := path.Clean(mp.config.RootDir)
 

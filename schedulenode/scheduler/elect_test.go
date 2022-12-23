@@ -10,7 +10,7 @@ import (
 
 const (
 	username = "root"
-	password = "123456"
+	password = "cfsTest123@"
 	host     = "11.97.57.230"
 	database = "smart"
 	port     = 3306

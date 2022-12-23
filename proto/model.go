@@ -29,6 +29,12 @@ const (
 	ZoneStUnavailable       = 1
 )
 
+const (
+	MinMetaRaftLogSize   = 4 //MB
+	MaxMetaRaftLogSize   = 32 //MB
+	MinMetaRaftLogCap    = 2
+)
+
 // MetaNode defines the structure of a meta node
 type MetaNodeInfo struct {
 	ID                        uint64
@@ -219,6 +225,10 @@ type ClusterView struct {
 	MetaRocksFlushWalInterval           uint64  //min
 	MetaRocksDisableFlushFlag           uint64  //0 flush, !=0 disable flush
 	MetaRocksWalTTL                     uint64
+	MetaDelEKRecordFileMaxMB            uint64 //MB
+	MetaTrashCleanInterval              uint64 //second
+	MetaRaftLogSize						int64  //MB
+	MetaRaftLogCap                      int64
 }
 
 // NodeView provides the view of the data or meta node.
