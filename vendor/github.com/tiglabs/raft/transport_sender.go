@@ -157,7 +157,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 			}
 		}
 	}
-	util.RunWorkerUtilStop(loopSendFunc, s.stopc)
+	util.RunWorkerUtilStop("transportSender->loopSend", loopSendFunc, s.stopc)
 }
 
 func (s *transportSender) groupSendMesg(recvc chan *proto.Message, bufWr *util.BufferWriter) (err error) {
