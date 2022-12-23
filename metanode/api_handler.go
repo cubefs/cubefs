@@ -2318,14 +2318,11 @@ func (m *MetaNode) setRaftStorageParam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r *http.Request) {
-	resp := NewAPIResponse(http.StatusSeeOther, "")
-	shouldResp := true
+	resp := NewAPIResponse(http.StatusOK, "OK")
 	defer func() {
-		if shouldResp {
-			data, _ := resp.Marshal()
-			if _, err := w.Write(data); err != nil {
-				log.LogErrorf("[getDeletedDentrysByParentInoHandler] response %s", err)
-			}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getDeletedDentrysByParentInoHandler] response %s", err)
 		}
 	}()
 
@@ -2349,7 +2346,7 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		return
 	}
 	batchNum, err := strconv.ParseInt(r.FormValue("batch"), 10, 16)
-	if err != nil {
+	if err != nil || batchNum > proto.ReadDeletedDirBatchNum {
 		batchNum = proto.ReadDeletedDirBatchNum
 	}
 	prev := r.FormValue("prev")
@@ -2359,22 +2356,13 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		resp.Msg = err.Error()
 		return
 	}
-	buff := bytes.NewBufferString(`{"data":[`)
-	if _, err = w.Write(buff.Bytes()); err != nil {
-		resp.Code = http.StatusInternalServerError
-		resp.Msg = err.Error()
-		return
-	}
-	buff.Reset()
 	var (
-		val           []byte
-		delimiter   = []byte{',', '\n'}
 		count int64 = 0
+		ddentrys    = make([]*DeletedDentry, 0)
 	)
 	prefix := newPrimaryDeletedDentry(parentIno, "", 0, 0)
 	start := newPrimaryDeletedDentry(parentIno, prev, 0, 0)
 	end := newPrimaryDeletedDentry(parentIno+1, "", 0, 0)
-	isFirst := true
 	skipFirst := false
 	if len(prev) > 0 {
 		skipFirst = true
@@ -2384,33 +2372,18 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		if count == 1 && skipFirst {
 			return true, nil
 		}
-		val, err = json.Marshal(dd)
-		if err != nil {
-			return false, err
-		}
-		if !isFirst {
-			if _, err = w.Write(delimiter); err != nil {
-				return false, err
-			}
-		} else {
-			isFirst = false
-		}
-		if _, err = w.Write(val); err != nil {
-			return false, err
-		}
+		ddentrys = append(ddentrys, dd)
 		if count == batchNum {
 			return false, nil
 		}
 		return true, nil
 	})
-	shouldResp = false
+
 	if err != nil {
-		buff.WriteString(fmt.Sprintf(`], "code": %v, "msg": "%s"}`, http.StatusInternalServerError, err.Error()))
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
 	} else {
-		buff.WriteString(`], "code": 200, "msg": "OK"}`)
-	}
-	if _, err = w.Write(buff.Bytes()); err != nil {
-		log.LogErrorf("[getDeletedDentrysByParentInoHandler] response %s", err)
+		resp.Data = ddentrys
 	}
 	return
 }
