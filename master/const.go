@@ -145,6 +145,13 @@ const (
 	umpCollectWayKey                    = "umpCollectWay"
 	umpJmtpAddrKey                      = "umpJmtpAddr"
 	umpJmtpBatchKey                     = "umpJmtpBatch"
+	appKey                              = "app"
+	slavesKey                           = "slaves"
+	addSlaveKey                         = "addslave"
+)
+
+const (
+	appCoralDB = "coraldb"
 )
 
 const (

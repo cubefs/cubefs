@@ -1057,7 +1057,7 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 }
 
 func (c *Cluster) syncAddVirtualMetaPartition(host string, mp *MetaPartition, vMP *proto.VirtualMetaPartition) (err error) {
-	task , err := mp.buildAddVirtualMetaPartitionTask(host, vMP)
+	task, err := mp.buildAddVirtualMetaPartitionTask(host, vMP)
 	if err != nil {
 		return
 	}
@@ -1072,7 +1072,7 @@ func (c *Cluster) syncAddVirtualMetaPartition(host string, mp *MetaPartition, vM
 }
 
 func (c *Cluster) syncDeleteVirtualMetaPartition(host string, mp *MetaPartition, vMP *proto.VirtualMetaPartition) (err error) {
-	task , err := mp.buildDeleteVirtualMetaPartitionTask(host, vMP)
+	task, err := mp.buildDeleteVirtualMetaPartitionTask(host, vMP)
 	if err != nil {
 		return
 	}
@@ -3054,7 +3054,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.CleanTrashDurationEachTime = trashCleanDuration
 	vol.TrashCleanMaxCountEachTime = trashItemCleanMaxCount
 	if !volWriteMutexEnable {
-		vol.volWriteMutexClient = ""
+		vol.volWriteMutexHolder = ""
 	}
 	vol.CrossRegionHAType = crossRegionHAType
 	if description != "" {
@@ -5022,8 +5022,12 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp
 	return
 }
 
-func (c *Cluster) applyVolMutex(volName, clientIP string, force bool) (err error) {
-	var vol *Vol
+func (c *Cluster) applyVolMutex(volName, clientAddr string, slaves map[string]string, addSlave string) (err error) {
+	var (
+		vol            *Vol
+		oldMutexHolder string
+		oldSlaves      map[string]string
+	)
 	if vol, err = c.getVol(volName); err != nil {
 		return
 	}
@@ -5032,34 +5036,34 @@ func (c *Cluster) applyVolMutex(volName, clientIP string, force bool) (err error
 		return proto.ErrVolWriteMutexUnable
 	}
 
-	vol.volWriteMutex.Lock()
-	defer vol.volWriteMutex.Unlock()
-	if force {
-		oldClient := vol.volWriteMutexClient
-		vol.volWriteMutexClient = clientIP
-		if err = c.syncUpdateVol(vol); err != nil {
-			vol.volWriteMutexClient = oldClient
-			return proto.ErrPersistenceByRaft
-		}
-		return
+	vol.volWriteMutexLock.Lock()
+	oldMutexHolder = vol.volWriteMutexHolder
+	oldSlaves = vol.volWriteMutexSlaves
+	if clientAddr != "" {
+		vol.volWriteMutexHolder = clientAddr
 	}
 
-	if vol.volWriteMutexClient != "" {
-		if vol.volWriteMutexClient == clientIP {
-			return
-		}
-		return proto.ErrVolWriteMutexOccupied
+	if len(slaves) > 0 {
+		vol.volWriteMutexSlaves = slaves
 	}
+	if addSlave != "" {
+		if _, ok := vol.volWriteMutexSlaves[addSlave]; !ok {
+			vol.volWriteMutexSlaves[addSlave] = time.Now().Format("2006-01-02 15:04:05")
+		}
+	}
+	vol.volWriteMutexLock.Unlock()
 
-	vol.volWriteMutexClient = clientIP
 	if err = c.syncUpdateVol(vol); err != nil {
-		vol.volWriteMutexClient = ""
+		vol.volWriteMutexLock.Lock()
+		vol.volWriteMutexHolder = oldMutexHolder
+		vol.volWriteMutexSlaves = oldSlaves
+		vol.volWriteMutexLock.Unlock()
 		return proto.ErrPersistenceByRaft
 	}
 	return
 }
 
-func (c *Cluster) releaseVolMutex(volName, clientIP string) (err error) {
+func (c *Cluster) releaseVolMutex(volName, clientAddr string) (err error) {
 	var (
 		vol       *Vol
 		oldClient string
@@ -5071,20 +5075,24 @@ func (c *Cluster) releaseVolMutex(volName, clientIP string) (err error) {
 	if !vol.volWriteMutexEnable {
 		return proto.ErrVolWriteMutexUnable
 	}
-	vol.volWriteMutex.Lock()
-	defer vol.volWriteMutex.Unlock()
+	vol.volWriteMutexLock.RLock()
+	oldClient = vol.volWriteMutexHolder
+	vol.volWriteMutexLock.RUnlock()
 
-	if vol.volWriteMutexClient == "" {
+	if oldClient == "" {
 		return
 	}
-	if vol.volWriteMutexClient != clientIP {
+	if oldClient != clientAddr {
 		return proto.ErrVolWriteMutexOccupied
 	}
 
-	oldClient = vol.volWriteMutexClient
-	vol.volWriteMutexClient = ""
+	vol.volWriteMutexLock.Lock()
+	vol.volWriteMutexHolder = ""
+	vol.volWriteMutexLock.Unlock()
 	if err = c.syncUpdateVol(vol); err != nil {
-		vol.volWriteMutexClient = oldClient
+		vol.volWriteMutexLock.Lock()
+		vol.volWriteMutexHolder = oldClient
+		vol.volWriteMutexLock.Unlock()
 		return proto.ErrPersistenceByRaft
 	}
 	return

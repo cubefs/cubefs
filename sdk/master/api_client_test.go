@@ -47,16 +47,16 @@ func TestGetMetaPartitions(t *testing.T) {
 
 func TestApplyVolMutex(t *testing.T) {
 	testVolName := "ltptest"
-	err := testMc.ClientAPI().ApplyVolMutex(testVolName, false)
+	err := testMc.ClientAPI().ApplyVolMutex("coraldb", testVolName, "127.0.0.1:10094")
 	if err != proto.ErrVolWriteMutexUnable {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf("ApplyVolMutex unexpected err: %v", err)
 	}
 }
 
 func TestReleaseVolMutex(t *testing.T) {
 	testVolName := "ltptest"
-	err := testMc.ClientAPI().ReleaseVolMutex(testVolName)
+	err := testMc.ClientAPI().ReleaseVolMutex("coraldb", testVolName, "127.0.0.1:10094")
 	if err != proto.ErrVolWriteMutexUnable {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf("ReleaseVolMutex unexpected err: %v", err)
 	}
 }

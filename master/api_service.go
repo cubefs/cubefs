@@ -5128,41 +5128,90 @@ func (m *Server) setCompactVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) applyVolWriteMutex(w http.ResponseWriter, r *http.Request) {
 	var (
-		volName string
-		force   bool
-		err     error
+		volName    string
+		clientAddr string
+		slaves     map[string]string
+		addSlave   string
+		err        error
 	)
 	metrics := exporter.NewTPCnt(proto.AdminApplyVolMutexUmpKey)
 	defer func() { metrics.Set(err) }()
-	if volName, err = parseVolName(r); err != nil {
+
+	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	force, err = extractForce(r)
-	clientIP := iputil.RealIP(r)
+	if app := r.FormValue(appKey); app != appCoralDB {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolWriteMutexUnable))
+		return
+	}
+	if volName, err = extractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 
-	if err = m.cluster.applyVolMutex(volName, clientIP, force); err != nil {
+	if clientAddr = r.FormValue(addrKey); clientAddr != "" {
+		if addr := strings.Split(clientAddr, ":"); len(addr) != 2 {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: unmatchedKey(addrKey).Error()})
+			return
+		}
+	}
+
+	if slavesStr := r.FormValue(slavesKey); slavesStr != "" {
+		slaves = make(map[string]string)
+		timeStr := time.Now().Format("2006-01-02 15:04:05")
+		for _, s1 := range strings.Split(slavesStr, ",") {
+			if s2 := strings.TrimSpace(s1); s2 != "" {
+				slaves[s2] = timeStr
+			}
+		}
+	}
+	addSlave = r.FormValue(addSlaveKey)
+	addSlave = strings.TrimSpace(addSlave)
+
+	if err = m.cluster.applyVolMutex(volName, clientAddr, slaves, addSlave); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	log.LogInfof("apply volume mutex success, volume(%v), clientIP(%v)", volName, clientIP)
+	log.LogInfof("apply volume mutex success, volume(%v), clientAddr(%v)", volName, clientAddr)
 	sendOkReply(w, r, newSuccessHTTPReply("apply volume mutex success"))
 }
 
 func (m *Server) releaseVolWriteMutex(w http.ResponseWriter, r *http.Request) {
 	var (
-		volName string
-		err     error
+		volName    string
+		clientAddr string
+		err        error
 	)
 	metrics := exporter.NewTPCnt(proto.AdminReleaseVolMutexUmpKey)
 	defer func() { metrics.Set(err) }()
-	if volName, err = parseVolName(r); err != nil {
+
+	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	clientIP := iputil.RealIP(r)
-	if err = m.cluster.releaseVolMutex(volName, clientIP); err != nil {
+
+	if app := r.FormValue(appKey); app != appCoralDB {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolWriteMutexUnable))
+		return
+	}
+	if volName, err = extractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if clientAddr, err = extractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	clientAddr = strings.TrimSpace(clientAddr)
+	if addr := strings.Split(clientAddr, ":"); len(addr) != 2 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: unmatchedKey(addrKey).Error()})
+		return
+	}
+
+	if err = m.cluster.releaseVolMutex(volName, clientAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -5179,20 +5228,31 @@ func (m *Server) getVolWriteMutexInfo(w http.ResponseWriter, r *http.Request) {
 	)
 	metrics := exporter.NewTPCnt(proto.AdminGetVolMutexUmpKey)
 	defer func() { metrics.Set(err) }()
-	if volName, err = parseVolName(r); err != nil {
+
+	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if app := r.FormValue(appKey); app != appCoralDB {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolWriteMutexUnable))
+		return
+	}
+	if volName, err = extractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if vol, err = m.cluster.getVol(volName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	if !vol.volWriteMutexEnable {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolWriteMutexUnable))
-		return
-	}
-	sendOkReply(w, r, newSuccessHTTPReply(vol.volWriteMutexClient))
+	vol.volWriteMutexLock.RLock()
+	volWriteMutexInfo := proto.VolWriteMutexInfo{vol.volWriteMutexEnable, vol.volWriteMutexHolder, vol.volWriteMutexSlaves}
+	vol.volWriteMutexLock.RUnlock()
+
+	sendOkReply(w, r, newSuccessHTTPReply(volWriteMutexInfo))
 }
 
 func parseAndExtractPartitionInfo(r *http.Request) (partitionID uint64, err error) {

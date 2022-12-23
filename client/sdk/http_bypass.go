@@ -16,38 +16,18 @@ import (
 )
 
 func setReadWrite(w http.ResponseWriter, r *http.Request) {
-	var (
-		err   error
-		force bool
-	)
+	var err error
 	const defaultClientID = 1
 	c, exist := getClient(defaultClientID)
 	if !exist {
 		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
 		return
 	}
-	if err = r.ParseForm(); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse parameter error: %v", err))
-		return
-	}
-	if forceStr := r.FormValue(forceKey); forceStr != "" {
-		if force, err = strconv.ParseBool(forceStr); err != nil {
-			buildFailureResp(w, http.StatusBadRequest, "invalid parameter force")
-			return
-		}
-	}
-	err = c.mc.ClientAPI().ApplyVolMutex(c.volName, force)
+
+	err = c.mc.ClientAPI().ApplyVolMutex(c.app, c.volName, c.localAddr)
 	if err == proto.ErrVolWriteMutexUnable {
+		c.readOnly = false
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume %s not support WriteMutex", c.volName))
-		return
-	}
-	if err == proto.ErrVolWriteMutexOccupied {
-		clientIP, err := c.mc.ClientAPI().GetVolMutex(c.volName)
-		if err != nil {
-			buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume WriteMutex occupied, fail to get holder: %v", err.Error()))
-			return
-		}
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume WriteMutex occupied by %s", clientIP))
 		return
 	}
 	if err != nil {
@@ -66,18 +46,19 @@ func setReadOnly(w http.ResponseWriter, r *http.Request) {
 		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
 		return
 	}
-	err := c.mc.ClientAPI().ReleaseVolMutex(c.volName)
+	err := c.mc.ClientAPI().ReleaseVolMutex(c.app, c.volName, c.localAddr)
 	if err == proto.ErrVolWriteMutexUnable {
+		c.readOnly = false
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume %s not support WriteMutex", c.volName))
 		return
 	}
 	if err == proto.ErrVolWriteMutexOccupied {
-		clientIP, err := c.mc.ClientAPI().GetVolMutex(c.volName)
-		if err != nil {
-			buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume WriteMutex occupied by others, fail to get holder: %v", err.Error()))
-			return
-		}
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume WriteMutex occupied by %s", clientIP))
+		c.readOnly = true
+		c.readProcMapLock.Lock()
+		c.readProcs = make(map[string]string)
+		c.readProcMapLock.Unlock()
+		log.LogWarnf("Set ReadOnly:  volume %s WriteMutex occupied by others.", c.volName)
+		buildSuccessResp(w, "success")
 		return
 	}
 	if err != nil {
@@ -85,6 +66,9 @@ func setReadOnly(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.readOnly = true
+	c.readProcMapLock.Lock()
+	c.readProcs = make(map[string]string)
+	c.readProcMapLock.Unlock()
 	log.LogInfof("Set ReadOnly %s successfully.", c.volName)
 	buildSuccessResp(w, "success")
 }
@@ -97,11 +81,19 @@ func getReadStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	c.readProcMapLock.Lock()
+	status := struct {
+		Readstatus string
+		Slaves     map[string]string
+	}{Slaves: c.readProcs}
+	c.readProcMapLock.Unlock()
+
 	if c.readOnly {
-		buildSuccessResp(w, "read only.")
+		status.Readstatus = "read only"
 	} else {
-		buildSuccessResp(w, "read write.")
+		status.Readstatus = "read write"
 	}
+	buildSuccessResp(w, status)
 	return
 }
 
@@ -292,15 +284,17 @@ func (c *client) broadcastRefreshExtents(readClient string, inode uint64) {
 	url := fmt.Sprintf("http://%s%s?%s=%s&%s=%d", readClient, ControlBroadcastRefreshExtents, volKey, c.volName, inoKey, inode)
 	reply, err := sendWithRetry(url, MaxRetry)
 	if err != nil {
-		log.LogErrorf("broadcastRefreshExtents: failed, send url(%v) err(%v) reply(%v)", url, err, reply)
+		msg := fmt.Sprintf("send url(%v) err(%v) reply(%v)", url, err, reply)
+		log.LogErrorf("broadcastRefreshExtents: %s", msg)
 	}
 }
 
 func (c *client) registerReadProcStatus(alive bool) {
-	if len(c.masterClient) == 0 {
+	if len(c.masterClient) == 0 || c.masterClient == c.localAddr {
 		return
 	}
-	url := fmt.Sprintf("http://%s%s?%s=:%d&%s=%t", c.masterClient, ControlReadProcessRegister, clientKey, gClientManager.profPort, aliveKey, alive)
+
+	url := fmt.Sprintf("http://%s%s?%s=%s&%s=%t", c.masterClient, ControlReadProcessRegister, clientKey, c.localAddr, aliveKey, alive)
 	if reply, err := sendWithRetry(url, MaxRetry); err != nil {
 		msg := fmt.Sprintf("send url(%v) err(%v) reply(%v)", url, err, reply)
 		handleError(c, "registerReadProcStatus", msg)
