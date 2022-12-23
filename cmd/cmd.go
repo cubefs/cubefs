@@ -20,11 +20,10 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/codecnode"
 	"github.com/chubaofs/chubaofs/convertnode"
-	"github.com/chubaofs/chubaofs/datanodeAgent"
+	"github.com/chubaofs/chubaofs/ecnode"
 	"github.com/chubaofs/chubaofs/schedulenode/compact"
 	"github.com/chubaofs/chubaofs/schedulenode/scheduler"
 	"github.com/chubaofs/chubaofs/schedulenode/smart"
-	"github.com/chubaofs/chubaofs/ecnode"
 	syslog "log"
 	"net"
 	"net/http"
@@ -77,7 +76,6 @@ const (
 	RoleSchedule  = "schedulenode"
 	RoleSmart     = "smartvolume"
 	RoleCompact   = "compact"
-	RoleDataAgent = "dataAgent"
 	RoleCodec   = "codecnode"
 	RoleEc      = "ecnode"
 )
@@ -246,9 +244,6 @@ func run() error {
 	case RoleCompact:
 		server = compact.NewCompactWorker()
 		module = ModuleCompact
-	case RoleDataAgent:
-		server = datanodeAgent.NewServer()
-		module = ModuleDataAgent
 	case RoleCodec:
 		server = codecnode.NewServer()
 		module = ModuleCodec

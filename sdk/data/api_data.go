@@ -435,27 +435,6 @@ func (dc *DataHttpClient) RepairExtentBatch(extents, partitionPath string, parti
 	return
 }
 
-//datanodeAgent api
-
-func (dc *DataHttpClient) FetchExtentsCrc(partitionPath string) (extentsMap map[uint64]*proto.ExtentInfoBlock, err error) {
-	d := make([]byte, 0)
-	for i := 0; i < 3; i++ {
-		req := newAPIRequest(http.MethodGet, "/fetchExtentsCrc")
-		req.addParam("path", partitionPath)
-		d, err = dc.serveRequest(req)
-		if err == nil {
-			break
-		}
-		time.Sleep(5 * time.Second)
-	}
-	if err != nil {
-		return
-	}
-	extentsMap = make(map[uint64]*proto.ExtentInfoBlock, 0)
-	err = json.Unmarshal(d, &extentsMap)
-	return
-}
-
 func (dc *DataHttpClient) GetDatanodeStats() (stats *proto.DataNodeStats, err error){
 	var d []byte
 	for i := 0; i < 3; i++ {

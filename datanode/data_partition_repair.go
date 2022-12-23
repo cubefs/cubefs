@@ -695,8 +695,8 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				}
 			}()
 			if currFixOffset+currRecoverySize > remoteExtentInfo[storage.Size] {
-				msg := fmt.Sprintf("action[streamRepairExtent] fix(%v_%v), streamRepairTinyExtent,remoteAvaliSize(%v) needRecoverySize(%v) currRecoverySize(%v), remoteExtentSize(%v), needRecoverySize is too big",
-					dp.partitionID, localExtentInfo[storage.FileID], remoteAvaliSize, currRecoverySize+currFixOffset, currRecoverySize, remoteExtentInfo[storage.Size])
+				msg := fmt.Sprintf("action[streamRepairExtent] fix(%v_%v), streamRepairTinyExtent,remoteAvaliSize(%v) currFixOffset(%v) currRecoverySize(%v), remoteExtentSize(%v), isEmptyResponse(%v), needRecoverySize is too big",
+					dp.partitionID, localExtentInfo[storage.FileID], remoteAvaliSize, currFixOffset, currRecoverySize, remoteExtentInfo[storage.Size], isEmptyResponse)
 				exporter.Warning(msg)
 				//return errors.Trace(err, "streamRepairExtent repair data error ")
 			}
