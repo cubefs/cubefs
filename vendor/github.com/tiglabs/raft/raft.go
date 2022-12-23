@@ -157,7 +157,7 @@ type raft struct {
 }
 
 func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
-	defer util.HandleCrash()
+	defer util.HandleCrash(fmt.Sprintf("newRaft[%v]", raftConfig.ID))
 
 	if err := raftConfig.validate(); err != nil {
 		return nil, err
@@ -199,8 +199,8 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 	raft.curApplied.Set(r.raftLog.applied)
 	raft.peerState.replace(raftConfig.Peers)
 
-	util.RunWorker(raft.runApply, raft.handlePanic)
-	util.RunWorker(raft.run, raft.handlePanic)
+	util.RunWorker(fmt.Sprintf("raft[%v]->runApply", r.id), raft.runApply, raft.handlePanic)
+	util.RunWorker(fmt.Sprintf("raft[%v]->run", r.id), raft.run, raft.handlePanic)
 	//util.RunWorker(raft.monitor, raft.handlePanic)
 	return raft, nil
 }
@@ -459,7 +459,7 @@ func (s *raft) run() {
 			f.respond(nil, err)
 		case truncIndex := <-s.truncatec:
 			func(truncateTo uint64) {
-				defer util.HandleCrash()
+				defer util.HandleCrash(fmt.Sprintf("raft[%v]->truncateTo", s.raftFsm.id))
 
 				if lasti, err := s.raftConfig.Storage.LastIndex(); err != nil {
 					logger.Error("raft[%v] truncate failed to get last index from storage: %v", s.raftFsm.id, err)

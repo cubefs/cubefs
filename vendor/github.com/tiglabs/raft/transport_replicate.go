@@ -185,7 +185,7 @@ func (t *replicateTransport) sendSnapshot(m *proto.Message, rs *snapshotStatus) 
 }
 
 func (t *replicateTransport) start() {
-	util.RunWorkerUtilStop(func() {
+	util.RunWorkerUtilStop("replicateTransport->start", func() {
 		for {
 			select {
 			case <-t.stopc:
@@ -202,7 +202,7 @@ func (t *replicateTransport) start() {
 }
 
 func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
-	util.RunWorker(func() {
+	util.RunWorker("replicateTransport->handleConn", func() {
 		defer conn.Close()
 
 		//loopCount := 0

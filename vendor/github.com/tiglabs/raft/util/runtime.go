@@ -22,17 +22,17 @@ import (
 	"github.com/tiglabs/raft/logger"
 )
 
-func HandleCrash(handlers ...func(interface{})) {
+func HandleCrash(workerName string, handlers ...func(interface{})) {
 	if r := recover(); r != nil {
 		debug.PrintStack()
-		logPanic(r)
+		logPanic(workerName, r)
 		for _, fn := range handlers {
 			fn(r)
 		}
 	}
 }
 
-func logPanic(r interface{}) {
+func logPanic(workerName string, r interface{}) {
 	callers := ""
 	for i := 0; true; i++ {
 		_, file, line, ok := runtime.Caller(i)
@@ -41,18 +41,18 @@ func logPanic(r interface{}) {
 		}
 		callers = callers + fmt.Sprintf("%v:%v\n", file, line)
 	}
-	logger.Error("Recovered from panic: %#v (%v)\n%v", r, r, callers)
+	logger.Error("%v Recovered from panic: %#v (%v)\n%v", workerName, r, r, callers)
 }
 
-func RunWorker(f func(), handlers ...func(interface{})) {
+func RunWorker(name string, f func(), handlers ...func(interface{})) {
 	go func() {
-		defer HandleCrash(handlers...)
+		defer HandleCrash(name, handlers...)
 
 		f()
 	}()
 }
 
-func RunWorkerUtilStop(f func(), stopCh <-chan struct{}, handlers ...func(interface{})) {
+func RunWorkerUtilStop(name string, f func(), stopCh <-chan struct{}, handlers ...func(interface{})) {
 	go func() {
 		for {
 			select {
@@ -61,7 +61,7 @@ func RunWorkerUtilStop(f func(), stopCh <-chan struct{}, handlers ...func(interf
 
 			default:
 				func() {
-					defer HandleCrash(handlers...)
+					defer HandleCrash(name, handlers...)
 					f()
 				}()
 			}

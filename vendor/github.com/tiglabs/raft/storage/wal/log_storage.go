@@ -242,6 +242,7 @@ func (ls *logEntryStorage) TruncateFront(index uint64) error {
 
 // TruncateAll 清空
 func (ls *logEntryStorage) TruncateAll() error {
+	ls.cache.Clean(true)
 	for _, f := range ls.logfiles {
 		if err := ls.remove(f); err != nil {
 			return err

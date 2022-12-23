@@ -133,7 +133,7 @@ func (s *raft) stopSnapping() {
 
 func (s *raft) sendSnapshot(m *proto.Message) {
 
-	util.RunWorker(func() {
+	util.RunWorker(fmt.Sprintf("raft[%v]->sendSnapshot", s.raftFsm.id), func() {
 		defer func() {
 			s.removeSnapping(m.To)
 			m.Snapshot.Close()

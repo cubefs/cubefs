@@ -67,7 +67,7 @@ func (t *heartbeatTransport) stop() {
 }
 
 func (t *heartbeatTransport) start() {
-	util.RunWorkerUtilStop(func() {
+	util.RunWorkerUtilStop("heartbeatTransport->start", func() {
 		for {
 			select {
 			case <-t.stopc:
@@ -84,7 +84,7 @@ func (t *heartbeatTransport) start() {
 }
 
 func (t *heartbeatTransport) handleConn(conn *util.ConnTimeout) {
-	util.RunWorker(func() {
+	util.RunWorker("heartbeatTransport->handleConn", func() {
 		defer conn.Close()
 
 		bufRd := util.NewBufferReader(conn, 16*KB)

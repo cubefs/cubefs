@@ -14,7 +14,14 @@
 
 package wal
 
-import "container/list"
+import (
+	"container/list"
+	"errors"
+)
+
+var (
+	ErrDuplicatedLogFile = errors.New("duplicated log file")
+)
 
 type openFunc func(logFileName) (*logEntryFile, error)
 
@@ -73,7 +80,7 @@ func (lc *logFileCache) Get(name logFileName) (lf *logEntryFile, err error) {
 func (lc *logFileCache) Put(name logFileName, lf *logEntryFile) (err error) {
 	_, ok := lc.m[name]
 	if ok {
-		return
+		return ErrDuplicatedLogFile
 	}
 	e := lc.l.PushFront(lf)
 	lc.m[name] = e
@@ -101,6 +108,19 @@ func (lc *logFileCache) Delete(name logFileName, close bool) error {
 	delete(lc.m, lf.Name())
 	lc.l.Remove(e)
 	return nil
+}
+
+func (lc *logFileCache) Clean(close bool) {
+	for _, e := range lc.m {
+		lf := (e.Value).(*logEntryFile)
+		if close {
+			lf.DecreaseRef()
+			_ = lf.Close()
+		}
+	}
+	lc.m = make(map[logFileName]*list.Element, lc.capacity)
+	lc.l = list.New()
+	return
 }
 
 func (lc *logFileCache) keepCapacity() (err error) {
