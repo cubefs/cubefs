@@ -539,6 +539,8 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		}
 	}
 
+	signal.Ignore(SignalsIgnored...)
+
 	var err error
 
 	// Initialize logging

@@ -140,7 +140,7 @@ build_client() {
     echo -n "libcfsc.so   "
     g++ -std=c++11 ${gccflag} -DCommitID=\"${CommitID}\" -fPIC -shared -o ${BuildBinPath}/libcfsc.so ${SrcPath}/client/bypass/client.c ${SrcPath}/client/bypass/cache.c ${SrcPath}/client/bypass/packet.c ${SrcPath}/client/bypass/conn_pool.c ${SrcPath}/client/bypass/ini.c ${SrcPath}/client/bypass/libc_operation.c -ldl -lpthread -I ${SrcPath}/client/bypass/include || "failed"
     echo -n "libcfssdk.so   "
-    go build -ldflags "-E main.main ${LDFlags}" -buildmode=plugin -linkshared -o ${BuildBinPath}/libcfssdk.so ${SrcPath}/client/sdk_fuse.go ${SrcPath}/client/sdk_bypass.go ${SrcPath}/client/http.go ${SrcPath}/client/ump.go || echo "failed"
+    go build -ldflags "-E main.main ${LDFlags}" -buildmode=plugin -linkshared -o ${BuildBinPath}/libcfssdk.so ${SrcPath}/client/sdk_fuse.go ${SrcPath}/client/sdk_bypass.go ${SrcPath}/client/http.go ${SrcPath}/client/ump.go ${SrcPath}/client/common.go || echo "failed"
     echo -n "cfs-client-inner   "
     go build -linkshared -o ${BuildBinPath}/cfs-client-inner ${SrcPath}/client/main_fuse.go && echo "success" || echo "failed"
     echo -n "cfs-client   "

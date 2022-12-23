@@ -344,7 +344,9 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 
 func registerInterceptedSignal() {
 	sigC := make(chan os.Signal, 1)
-	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
+	notifySignals := SignalsIgnored
+	notifySignals = append(notifySignals, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigC, notifySignals...)
 	gClient.wg.Add(1)
 	go func() {
 		defer gClient.wg.Done()
@@ -352,10 +354,12 @@ func registerInterceptedSignal() {
 		case <-gClient.stopC:
 			return
 		case sig := <-sigC:
-			syslog.Printf("Killed due to a received signal (%v)\n", sig)
-			gClient.outputFile.Sync()
-			gClient.outputFile.Close()
-			os.Exit(1)
+			if sig == syscall.SIGINT || sig == syscall.SIGTERM {
+				syslog.Printf("Killed due to a received signal (%v)\n", sig)
+				gClient.outputFile.Sync()
+				gClient.outputFile.Close()
+				os.Exit(1)
+			}
 		}
 	}()
 }
