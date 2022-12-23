@@ -49,7 +49,7 @@ type Wrapper struct {
 	volName               string
 	masters               []string
 	volNotExists          bool
-	partitions			  *sync.Map //key: dpID; value: *DataPartition
+	partitions            *sync.Map //key: dpID; value: *DataPartition
 	followerRead          bool
 	followerReadClientCfg bool
 	nearRead              bool
@@ -83,6 +83,15 @@ type Wrapper struct {
 
 	dpFollowerReadDelayConfig *proto.DpFollowerReadDelayConfig
 	dpLowestDelayHostWeight   int
+}
+
+type DataState struct {
+	ClusterName  string
+	LocalIP      string
+	VolNotExists bool
+	VolView      *proto.SimpleVolView
+	DpView       *proto.DataPartitionsView
+	ClusterView  *proto.ClusterView
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -142,6 +151,80 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	return
 }
 
+func RebuildDataPartitionWrapper(volName string, masters []string, dataState *DataState) (w *Wrapper) {
+	w = new(Wrapper)
+	w.stopC = make(chan struct{})
+	w.masters = masters
+	w.mc = masterSDK.NewMasterClient(masters, false)
+	w.schedulerClient = scheduler.NewSchedulerClient(w.dpMetricsReportDomain, false)
+	w.volName = volName
+	w.partitions = new(sync.Map)
+	w.HostsStatus = make(map[string]bool)
+	w.connConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   IdleConnTimeoutData,
+		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
+		WriteTimeoutNs:   WriteTimeoutData * int64(time.Second),
+		ReadTimeoutNs:    ReadTimeoutData * int64(time.Second),
+	}
+	w.dpMetricsReportConfig = &proto.DpMetricsReportConfig{
+		EnableReport:      false,
+		ReportIntervalSec: defaultMetricReportSec,
+		FetchIntervalSec:  defaultMetricFetchSec,
+	}
+	w.dpFollowerReadDelayConfig = &proto.DpFollowerReadDelayConfig{
+		EnableCollect:        true,
+		DelaySummaryInterval: followerReadDelaySummaryInterval,
+	}
+	w.clusterName = dataState.ClusterName
+	LocalIP = dataState.LocalIP
+
+	view := dataState.VolView
+	w.followerRead = view.FollowerRead
+	w.nearRead = view.NearRead
+	w.forceROW = view.ForceROW
+	w.dpSelectorName = view.DpSelectorName
+	w.dpSelectorParm = view.DpSelectorParm
+	w.crossRegionHAType = view.CrossRegionHAType
+	w.quorum = view.Quorum
+	w.ecEnable = view.EcEnable
+	w.extentCacheExpireSec = view.ExtentCacheExpireSec
+	w.updateConnConfig(view.ConnConfig)
+	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
+	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
+	w.initDpSelector()
+
+	w.volNotExists = dataState.VolNotExists
+	if !w.volNotExists {
+		w.convertDataPartition(dataState.DpView, true)
+	}
+
+	w._updateDataNodeStatus(dataState.ClusterView)
+
+	streamConnPoolInitOnce.Do(func() {
+		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
+	})
+
+	w.wg.Add(4)
+	go w.update()
+	go w.updateCrossRegionHostStatus()
+	go w.ScheduleDataPartitionMetricsReport()
+	go w.dpFollowerReadDelayCollect()
+
+	return
+}
+
+func (w *Wrapper) saveDataState() *DataState {
+	dataState := new(DataState)
+	dataState.ClusterName = w.clusterName
+	dataState.LocalIP = LocalIP
+
+	dataState.VolView = w.saveSimpleVolView()
+	dataState.DpView = w.saveDataPartition()
+	dataState.ClusterView = w.saveClusterView()
+
+	return dataState
+}
+
 func (w *Wrapper) Stop() {
 	w.stopOnce.Do(func() {
 		close(w.stopC)
@@ -197,6 +280,37 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 		view.DpCnt, view.FollowerRead, view.ForceROW, view.EnableWriteCache, view.CreateTime, view.DpSelectorName, view.DpSelectorParm,
 		view.Quorum, view.ExtentCacheExpireSec, view.DpFolReadDelayConfig)
 	return nil
+}
+
+func (w *Wrapper) saveSimpleVolView() *proto.SimpleVolView {
+	view := &proto.SimpleVolView{
+		FollowerRead:         w.followerRead,
+		NearRead:             w.nearRead,
+		ForceROW:             w.forceROW,
+		DpSelectorName:       w.dpSelectorName,
+		DpSelectorParm:       w.dpSelectorParm,
+		CrossRegionHAType:    w.crossRegionHAType,
+		Quorum:               w.quorum,
+		EcEnable:             w.ecEnable,
+		ExtentCacheExpireSec: w.extentCacheExpireSec,
+	}
+	view.ConnConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   w.connConfig.IdleTimeoutSec,
+		ConnectTimeoutNs: w.connConfig.ConnectTimeoutNs,
+		WriteTimeoutNs:   w.connConfig.WriteTimeoutNs,
+		ReadTimeoutNs:    w.connConfig.ReadTimeoutNs,
+	}
+
+	view.DpMetricsReportConfig = &proto.DpMetricsReportConfig{
+		EnableReport:      w.dpMetricsReportConfig.EnableReport,
+		ReportIntervalSec: w.dpMetricsReportConfig.ReportIntervalSec,
+		FetchIntervalSec:  w.dpMetricsReportConfig.FetchIntervalSec,
+	}
+	view.DpFolReadDelayConfig = proto.DpFollowerReadDelayConfig{
+		EnableCollect:        w.dpFollowerReadDelayConfig.EnableCollect,
+		DelaySummaryInterval: w.dpFollowerReadDelayConfig.DelaySummaryInterval,
+	}
+	return view
 }
 
 func (w *Wrapper) update() {
@@ -294,6 +408,13 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 
 func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	var dpv *proto.DataPartitionsView
+	if dpv, err = w.fetchDataPartition(); err != nil {
+		return
+	}
+	return w.convertDataPartition(dpv, isInit)
+}
+
+func (w *Wrapper) fetchDataPartition() (dpv *proto.DataPartitionsView, err error) {
 	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
 		if err == proto.ErrVolNotExists {
 			w.partitions = new(sync.Map)
@@ -305,7 +426,10 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		w.volNotExists = false
 	}
 	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
+	return
+}
 
+func (w *Wrapper) convertDataPartition(dpv *proto.DataPartitionsView, isInit bool) (err error) {
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
 			DataPartitionResponse: *response,
@@ -337,6 +461,18 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 
 	log.LogInfof("updateDataPartition: finish")
 	return err
+}
+
+func (w *Wrapper) saveDataPartition() *proto.DataPartitionsView {
+	dpv := &proto.DataPartitionsView{
+		DataPartitions: make([]*proto.DataPartitionResponse, 0),
+	}
+	w.partitions.Range(func(k, v interface{}) bool {
+		dp := v.(*DataPartition)
+		dpv.DataPartitions = append(dpv.DataPartitions, &dp.DataPartitionResponse)
+		return true
+	})
+	return dpv
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
@@ -440,12 +576,22 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (dp *DataPartition, err e
 
 func (w *Wrapper) updateDataNodeStatus() (err error) {
 	var cv *proto.ClusterView
+	if cv, err = w.fetchClusterView(); err != nil {
+		return
+	}
+	w._updateDataNodeStatus(cv)
+	return
+}
+
+func (w *Wrapper) fetchClusterView() (cv *proto.ClusterView, err error) {
 	cv, err = w.mc.AdminAPI().GetCluster()
 	if err != nil {
 		log.LogWarnf("updateDataNodeStatus: get cluster fail: err(%v)", err)
-		return
 	}
+	return
+}
 
+func (w *Wrapper) _updateDataNodeStatus(cv *proto.ClusterView) {
 	newHostsStatus := make(map[string]bool)
 	for _, node := range cv.DataNodes {
 		newHostsStatus[node.Addr] = node.Status
@@ -465,6 +611,17 @@ func (w *Wrapper) updateDataNodeStatus() (err error) {
 	}
 
 	return
+}
+
+func (w *Wrapper) saveClusterView() *proto.ClusterView {
+	cv := &proto.ClusterView{
+		DataNodes:       make([]proto.NodeView, 0, len(w.HostsStatus)),
+		SchedulerDomain: w.dpMetricsReportDomain,
+	}
+	for addr, status := range w.HostsStatus {
+		cv.DataNodes = append(cv.DataNodes, proto.NodeView{Addr: addr, Status: status})
+	}
+	return cv
 }
 
 func (w *Wrapper) SetNearRead(nearRead bool) {

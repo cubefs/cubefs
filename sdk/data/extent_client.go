@@ -148,19 +148,23 @@ const (
 )
 
 // NewExtentClient returns a new extent client.
-func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
+func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *ExtentClient, err error) {
 	client = new(ExtentClient)
 
-	limit := MaxMountRetryLimit
-retry:
-	client.dataWrapper, err = NewDataPartitionWrapper(config.Volume, config.Masters)
-	if err != nil {
-		if limit <= 0 {
-			return nil, errors.Trace(err, "Init data wrapper failed!")
-		} else {
-			limit--
-			time.Sleep(MountRetryInterval)
-			goto retry
+	if dataState != nil {
+		client.dataWrapper = RebuildDataPartitionWrapper(config.Volume, config.Masters, dataState)
+	} else {
+		limit := MaxMountRetryLimit
+	retry:
+		client.dataWrapper, err = NewDataPartitionWrapper(config.Volume, config.Masters)
+		if err != nil {
+			if limit <= 0 {
+				return nil, errors.Trace(err, "Init data wrapper failed!")
+			} else {
+				limit--
+				time.Sleep(MountRetryInterval)
+				goto retry
+			}
 		}
 	}
 	client.metaWrapper = config.MetaWrapper
@@ -219,6 +223,15 @@ retry:
 		go client.BackgroundExtentMerge()
 	}
 	return
+}
+
+func RebuildExtentClient(config *ExtentConfig, dataState *DataState) (client *ExtentClient) {
+	client, _ = NewExtentClient(config, dataState)
+	return
+}
+
+func (client *ExtentClient) SaveDataState() *DataState {
+	return client.dataWrapper.saveDataState()
 }
 
 // Open request shall grab the lock until request is sent to the request channel

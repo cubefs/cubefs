@@ -62,6 +62,10 @@ type Super struct {
 	wg             sync.WaitGroup
 }
 
+type SuperState struct {
+	RootIno uint64
+}
+
 // Functions that Super needs to implement
 var (
 	_ fs.FS         = (*Super)(nil)
@@ -69,7 +73,8 @@ var (
 )
 
 // NewSuper returns a new Super.
-func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
+func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaState,
+	dataState *data.DataState, superState *SuperState) (s *Super, err error) {
 
 	s = new(Super)
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
@@ -82,15 +87,22 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		TicketMess:    opt.TicketMess,
 		ValidateOwner: true,
 	}
-	s.mw, err = meta.NewMetaWrapper(metaConfig)
-	if err != nil {
-		return nil, errors.Trace(err, "NewMetaWrapper failed!")
+
+	if first_start {
+		s.mw, err = meta.NewMetaWrapper(metaConfig)
+		if err != nil {
+			return nil, errors.Trace(err, "NewMetaWrapper failed!")
+		}
+	} else {
+		s.mw = meta.RebuildMetaWrapper(metaConfig, metaState)
 	}
+
 	inodeExpiration := DefaultInodeExpiration
 	if opt.IcacheTimeout >= 0 {
 		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
 	}
 	s.ic = cache.NewInodeCache(inodeExpiration, MaxInodeCache, cache.BgEvictionInterval, true)
+
 	var extentConfig = &data.ExtentConfig{
 		Volume:                   opt.Volname,
 		Masters:                  masters,
@@ -108,10 +120,15 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnTruncate:               s.mw.Truncate,
 		OnEvictIcache:            s.ic.Delete,
 	}
-	s.ec, err = data.NewExtentClient(extentConfig)
-	if err != nil {
-		return nil, errors.Trace(err, "NewExtentClient failed!")
+	if first_start {
+		s.ec, err = data.NewExtentClient(extentConfig, nil)
+		if err != nil {
+			return nil, errors.Trace(err, "NewExtentClient failed!")
+		}
+	} else {
+		s.ec = data.RebuildExtentClient(extentConfig, dataState)
 	}
+
 	s.modulename = opt.Modulename
 	s.volname = opt.Volname
 	s.owner = opt.Owner
@@ -136,12 +153,28 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		s.delProcessPath = strings.Split(opt.DelProcessPath, ",")
 	}
 
-	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir, opt.AutoMakeSubDir); err != nil {
-		return nil, err
+	if first_start {
+		if s.rootIno, err = s.mw.GetRootIno(opt.SubDir, opt.AutoMakeSubDir); err != nil {
+			return nil, err
+		}
+	} else {
+		s.rootIno = superState.RootIno
 	}
 
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
 	return s, nil
+}
+
+func (s *Super) MetaWrapper() *meta.MetaWrapper {
+	return s.mw
+}
+
+func (s *Super) ExtentClient() *data.ExtentClient {
+	return s.ec
+}
+
+func (s *Super) SaveSuperState() *SuperState {
+	return &SuperState{s.rootIno}
 }
 
 // Root returns the root directory where it resides.
@@ -295,7 +328,7 @@ func (s *Super) Close() {
 
 func (s *Super) EnableJdosKernelWriteBack(enable bool) (err error) {
 	var (
-		file 		*os.File
+		file *os.File
 	)
 	if file, err = os.OpenFile(JdosKernelWriteBackControlFile, os.O_RDWR, 0644); err != nil {
 		if os.IsNotExist(err) {

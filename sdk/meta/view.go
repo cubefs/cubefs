@@ -54,8 +54,7 @@ type OSSSecure struct {
 
 type VolStatInfo = proto.VolStatInfo
 
-func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
-	var vv *proto.VolView
+func (mw *MetaWrapper) fetchVolumeView() (vv *proto.VolView, err error) {
 	if mw.ownerValidation {
 		var authKey string
 		if authKey, err = calculateAuthKey(mw.owner); err != nil {
@@ -87,6 +86,10 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			return
 		}
 	}
+	return
+}
+
+func (mw *MetaWrapper) convertVolumeView(vv *proto.VolView) (view *VolumeView) {
 	var convert = func(volView *proto.VolView) *VolumeView {
 		result := &VolumeView{
 			Name:              volView.Name,
@@ -119,6 +122,39 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 	return
 }
 
+func (mw *MetaWrapper) saveVolView() *proto.VolView {
+	vv := &proto.VolView{
+		MetaPartitions: make([]*proto.MetaPartitionView, 0, len(mw.partitions)),
+	}
+	for _, mp := range mw.partitions {
+		view := &proto.MetaPartitionView{
+			PartitionID: mp.PartitionID,
+			Start:       mp.Start,
+			End:         mp.End,
+			Members:     mp.Members,
+			Learners:    mp.Learners,
+			LeaderAddr:  mp.LeaderAddr,
+			Status:      mp.Status,
+		}
+		vv.MetaPartitions = append(vv.MetaPartitions, view)
+	}
+	if mw.ossSecure != nil {
+		vv.OSSSecure = &proto.OSSSecure{}
+		vv.OSSSecure.AccessKey = mw.ossSecure.AccessKey
+		vv.OSSSecure.SecretKey = mw.ossSecure.SecretKey
+	}
+	vv.OSSBucketPolicy = mw.ossBucketPolicy
+	vv.CreateTime = mw.volCreateTime
+	vv.CrossRegionHAType = mw.crossRegionHAType
+	vv.ConnConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   mw.connConfig.IdleTimeoutSec,
+		ConnectTimeoutNs: mw.connConfig.ConnectTimeoutNs,
+		WriteTimeoutNs:   mw.connConfig.WriteTimeoutNs,
+		ReadTimeoutNs:    mw.connConfig.ReadTimeoutNs,
+	}
+	return vv
+}
+
 // fetch and update cluster info if successful
 func (mw *MetaWrapper) updateClusterInfo() (err error) {
 	var info *proto.ClusterInfo
@@ -146,7 +182,8 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 }
 
 func (mw *MetaWrapper) updateMetaPartitions() error {
-	view, err := mw.fetchVolumeView()
+	var view *VolumeView
+	vv, err := mw.fetchVolumeView()
 	if err != nil {
 		log.LogInfof("error: %v", err.Error())
 		if err == proto.ErrVolNotExists {
@@ -155,6 +192,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		}
 		return err
 	} else {
+		view = mw.convertVolumeView(vv)
 		mw.volNotExists = false
 	}
 

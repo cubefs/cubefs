@@ -2448,7 +2448,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		OnTruncate:        metaWrapper.Truncate,
 	}
 	var extentClient *data.ExtentClient
-	if extentClient, err = data.NewExtentClient(extentConfig); err != nil {
+	if extentClient, err = data.NewExtentClient(extentConfig, nil); err != nil {
 		return nil, err
 	}
 

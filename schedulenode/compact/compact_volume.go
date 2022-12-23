@@ -72,7 +72,7 @@ func NewCompVolume(name string, clusterName string, nodes []string, mcc *metaNod
 		OnInodeMergeExtents: metaWrapper.InodeMergeExtents_ll,
 	}
 	var extentClient *data.ExtentClient
-	if extentClient, err = data.NewExtentClient(extentConfig); err != nil {
+	if extentClient, err = data.NewExtentClient(extentConfig, nil); err != nil {
 		metaWrapper.Close()
 		return nil, err
 	}

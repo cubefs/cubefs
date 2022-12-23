@@ -4,7 +4,6 @@ package fs // import "bazil.org/fuse/fs"
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -417,7 +416,7 @@ type FuseContext struct {
 	HandleList []*ContextHandle
 }
 
-func (s *Server) marshalFuseContext() (fuseContext []byte) {
+func (s *Server) saveFuseContext() (fuseContext *FuseContext) {
 	var (
 		ncount int
 		hcount int
@@ -455,32 +454,28 @@ func (s *Server) marshalFuseContext() (fuseContext []byte) {
 		handleid := skip + uint64(i)
 		if hdl, ok := sh.handle.(HandleFlusher); ok {
 			if err = hdl.Flush(nil, nil); err != nil {
-				cfslog.LogErrorf("marshalFuseContext: flush handle err. Inode %v, err: %v\n",
+				cfslog.LogErrorf("saveFuseContext: flush handle err. Inode %v, err: %v\n",
 					s.node[sh.nodeID].inode, err)
 			}
 		}
-		cfslog.LogDebugf("marshalFuseContext. Opened inode: %d, nodeID: %d\n", s.node[sh.nodeID].inode, sh.nodeID)
+		cfslog.LogDebugf("saveFuseContext. Opened inode: %d, nodeID: %d\n", s.node[sh.nodeID].inode, sh.nodeID)
 		ch := &ContextHandle{handleid, uint64(sh.nodeID)}
 		handleList = append(handleList, ch)
 		hcount++
 	}
 	s.meta.Unlock()
-	fuseContext, err = json.Marshal(FuseContext{nodeList, handleList})
-	cfslog.LogDebugf("marshalFuseContext. Node count: %d  Handle count: %d\n", ncount, hcount)
+	fuseContext = new(FuseContext)
+	fuseContext.NodeList = nodeList
+	fuseContext.HandleList = handleList
+	cfslog.LogDebugf("saveFuseContext. Node count: %d  Handle count: %d\n", ncount, hcount)
 	return
 }
 
-func (s *Server) rebuildFuseContext(fs FS, buf []byte) {
-	if buf == nil {
+func (s *Server) rebuildFuseContext(fs FS, fuseContext *FuseContext) {
+	if fuseContext == nil {
 		return
 	}
 
-	var err error
-	fuseContext := &FuseContext{}
-	if err := json.Unmarshal(buf, &fuseContext); err != nil {
-		cfslog.LogErrorf("rebuildFuseContext: Unmarshal fuseContext %s err: %v", string(buf), err)
-		return
-	}
 	for _, cn := range fuseContext.NodeList {
 		sn := &serveNode{inode: cn.Inode, generation: cn.Generation, refs: cn.Refs}
 		sn.node = fs.Node(cn.Inode, cn.Mode)
@@ -501,7 +496,10 @@ func (s *Server) rebuildFuseContext(fs FS, buf []byte) {
 			continue
 		}
 
-		var hdl Handle
+		var (
+			hdl Handle
+			err error
+		)
 		sn := s.node[ch.NodeID]
 		if node, ok := sn.node.(NodeOpener); ok {
 			// create streamers for chubaofs
@@ -529,7 +527,7 @@ func (s *Server) rebuildFuseContext(fs FS, buf []byte) {
 // Serve serves the FUSE connection by making calls to the methods
 // of fs and the Nodes and Handles it makes available.  It returns only
 // when the connection has been closed or an unexpected error occurs.
-func (s *Server) Serve(fs FS, fuseContext []byte) ([]byte, error) {
+func (s *Server) Serve(fs FS, fuseContext *FuseContext) (*FuseContext, error) {
 	s.wServe.Add(1)
 	defer s.wServe.Done()
 	defer s.wg.Wait() // Wait for worker goroutines to complete before return
@@ -559,7 +557,7 @@ func (s *Server) Serve(fs FS, fuseContext []byte) ([]byte, error) {
 	for {
 		if s.stop {
 			s.wg.Wait()
-			return s.marshalFuseContext(), nil
+			return s.saveFuseContext(), nil
 		}
 		req, err := s.conn.ReadRequest()
 		if err != nil {
@@ -593,7 +591,7 @@ func (s *Server) Stop() {
 
 // Serve serves a FUSE connection with the default settings. See
 // Server.Serve.
-func Serve(c *fuse.Conn, fs FS, fuseContext []byte) ([]byte, error) {
+func Serve(c *fuse.Conn, fs FS, fuseContext *FuseContext) (*FuseContext, error) {
 	server := New(c, nil)
 	return server.Serve(fs, fuseContext)
 }

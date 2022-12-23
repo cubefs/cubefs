@@ -15,7 +15,7 @@ var (
 
 func TestSetExtentSize(t *testing.T) {
 	var err error
-	testEClient, err = NewExtentClient(cfg)
+	testEClient, err = NewExtentClient(cfg, nil)
 	if err != nil {
 		t.Fatalf("create new extent client failed: err(%v)", err)
 	}
@@ -71,7 +71,7 @@ func TestSetExtentSize(t *testing.T) {
 }
 
 func TestGetRate(t *testing.T) {
-	testEClient, err := NewExtentClient(cfg)
+	testEClient, err := NewExtentClient(cfg, nil)
 	if err != nil {
 		t.Fatalf("create new extent client failed!")
 	}
@@ -81,7 +81,7 @@ func TestGetRate(t *testing.T) {
 }
 
 func TestSetReadRate(t *testing.T) {
-	testEClient, err := NewExtentClient(cfg)
+	testEClient, err := NewExtentClient(cfg, nil)
 	if err != nil {
 		t.Fatalf("create new extent client failed!")
 	}
@@ -92,7 +92,7 @@ func TestSetReadRate(t *testing.T) {
 }
 
 func TestSetWriteRate(t *testing.T) {
-	testEClient, err := NewExtentClient(cfg)
+	testEClient, err := NewExtentClient(cfg, nil)
 	if err != nil {
 		t.Fatalf("create new extent client failed!")
 	}

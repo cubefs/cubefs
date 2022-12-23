@@ -178,7 +178,6 @@ const (
 	inodeEvictionInterval = time.Hour
 	dentryValidDuration   = time.Hour
 
-	MaxRequestMasterRetry      = 10
 	RequestMasterRetryInterval = time.Second * 2
 )
 
@@ -308,7 +307,7 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 	}
 
 	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
-	c.readProcErrMap = make(map[string]int)
+	c.readProcs = make(map[string]string)
 
 	// Just skip fd 0, 1, 2, to avoid confusion.
 	c.fdset.Set(0).Set(1).Set(2)
@@ -329,12 +328,12 @@ func parsePaths(str string) (res []string) {
 	return
 }
 
-func rebuild_sdk_state(c *client, sdkState *SdkState) {
-	log.LogDebugf("rebuild_sdk_state. sdkState: %v\n", sdkState)
-	c.cwd = sdkState.Cwd
-	c.readProcErrMap = sdkState.ReadProcErrMap
+func (c *client) rebuild_client_state(clientState *ClientState) {
+	c.cwd = clientState.Cwd
+	c.readOnly = clientState.ReadOnly
+	c.readProcs = clientState.ReadProcs
 
-	for _, v := range sdkState.Files {
+	for _, v := range clientState.Files {
 		f := &file{fd: v.Fd, ino: v.Ino, flags: v.Flags, mode: v.Mode, size: v.Size, pos: v.Pos, path: v.Path, target: []byte(v.Target), locked: v.Locked}
 		if v.DirPos >= 0 {
 			f.dirp = &dirStream{}
@@ -440,7 +439,7 @@ type client struct {
 	followerRead bool
 	app          string
 
-	readProcErrMap  map[string]int // key: ip:port, value: count of error
+	readProcs       map[string]string // key: ip:port, value: register time
 	readProcMapLock sync.Mutex
 
 	masterClient    string
@@ -467,8 +466,9 @@ type client struct {
 	inodeDentryCache     map[uint64]*cache.DentryCache
 	inodeDentryCacheLock sync.RWMutex
 
-	sdkState  string
-	closeOnce sync.Once
+	totalState string
+	sdkState   string
+	closeOnce  sync.Once
 }
 
 type FileState struct {
@@ -488,10 +488,17 @@ type FileState struct {
 	Locked bool
 }
 
-type SdkState struct {
-	Cwd            string
-	ReadProcErrMap map[string]int
-	Files          []FileState
+type SDKState struct {
+	ClientState *ClientState
+	MetaState   *meta.MetaState
+	DataState   *data.DataState
+}
+
+type ClientState struct {
+	ReadOnly  bool
+	ReadProcs map[string]string
+	Cwd       string
+	Files     []FileState
 }
 
 /*
@@ -652,19 +659,29 @@ func cfs_sdk_version(v *C.cfs_sdk_version_t) C.int {
 //export cfs_new_client
 func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 	first_start := C.GoString(str) == ""
-	c := newClient(conf, C.GoString(configPath))
-	if err := c.start(first_start); err != nil {
-		return C.int64_t(statusEIO)
-	}
+	sdkState := &SDKState{}
 	if !first_start {
-		var sdkState SdkState
-		err := json.Unmarshal([]byte(C.GoString(str)), &sdkState)
-		if err == nil {
-			rebuild_sdk_state(c, &sdkState)
-		} else {
+		err := json.Unmarshal([]byte(C.GoString(str)), sdkState)
+		if err != nil {
 			syslog.Printf("Unmarshal sdkState err(%v), sdkState(%s)\n", err, C.GoString(str))
 			return C.int64_t(statusEIO)
 		}
+		if sdkState.ClientState == nil {
+			sdkState.ClientState = &ClientState{}
+			err = json.Unmarshal([]byte(C.GoString(str)), sdkState.ClientState)
+			if err != nil {
+				syslog.Printf("Unmarshal sdkState err(%v), sdkState(%s)\n", err, C.GoString(str))
+				return C.int64_t(statusEIO)
+			}
+		}
+	}
+	c := newClient(conf, C.GoString(configPath))
+	if err := c.start(sdkState.MetaState == nil, sdkState); err != nil {
+		return C.int64_t(statusEIO)
+	}
+
+	if !first_start {
+		c.rebuild_client_state(sdkState.ClientState)
 	}
 	putClient(c.id, c)
 	return C.int64_t(c.id)
@@ -732,6 +749,24 @@ func cfs_sdk_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
 		c.sdkState = ""
 		return 0
 	}
+
+	sdkState := SDKState{c.saveClientState(), c.mw.SaveMetaState(), c.ec.SaveDataState()}
+	state, err := json.Marshal(sdkState)
+	if err != nil {
+		log.LogErrorf("Marshal sdkState err(%v), sdkState(%v)\n", err, sdkState)
+		return 0
+	}
+	c.sdkState = string(state)
+	log.LogDebugf("cfs sdkState: %s\n", c.sdkState)
+	return C.size_t(len(c.sdkState) + 1)
+}
+
+func (c *client) saveClientState() *ClientState {
+	clientState := new(ClientState)
+	clientState.ReadOnly = c.readOnly
+	clientState.ReadProcs = c.readProcs
+	clientState.Cwd = c.cwd
+
 	c.fdlock.Lock()
 	fdmap := c.fdmap
 	c.fdlock.Unlock()
@@ -755,13 +790,8 @@ func cfs_sdk_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
 		files = append(files, f)
 	}
 
-	str, err := json.Marshal(SdkState{c.cwd, c.readProcErrMap, files})
-	if err != nil {
-		log.LogErrorf("Marshal sdkState err(%v), files(%v)\n", err, files)
-	}
-	c.sdkState = string(str)
-	log.LogDebugf("cfs sdk state: %s\n", c.sdkState)
-	return C.size_t(len(str) + 1)
+	clientState.Files = files
+	return clientState
 }
 
 //export cfs_ump
@@ -3782,46 +3812,40 @@ func (c *client) absPathAt(dirfd C.int, path *C.char) (string, error) {
 	return absPath, nil
 }
 
-func (c *client) checkVolWriteMutex(tryTime int) (err error) {
+func (c *client) checkVolWriteMutex() (err error) {
 	if c.app != appCoralDB {
 		return nil
 	}
-	for i := 0; i < tryTime; i++ {
-		clientIP, err := c.mc.ClientAPI().GetVolMutex(c.volName)
-		if err == nil && clientIP == "" {
-			return nil
-		}
-		if err == proto.ErrVolWriteMutexUnable {
-			c.readOnly = false
-			return nil
-		}
-		if err == proto.ErrVolNotExists {
-			return err
-		}
-		if err != nil {
-			syslog.Printf("checkVolWriteMutex err: %v, retry...\n", err)
-			time.Sleep(RequestMasterRetryInterval)
-			continue
-		}
-
-		err = c.mc.ClientAPI().ApplyVolMutex(c.volName, false)
-		if err == nil {
-			c.readOnly = false
-			return nil
-		}
-		if err == proto.ErrVolWriteMutexOccupied {
-			return nil
-		}
-		if err != nil {
-			syslog.Printf("checkVolWriteMutex err: %v, retry...\n", err)
-			time.Sleep(RequestMasterRetryInterval)
-			continue
-		}
+	var clientIP string
+	clientIP, err = c.mc.ClientAPI().GetVolMutex(c.volName)
+	if err == nil && clientIP == "" {
+		return nil
 	}
-	return err
+	if err == proto.ErrVolWriteMutexUnable {
+		c.readOnly = false
+		return nil
+	}
+	if err != nil {
+		syslog.Printf("checkVolWriteMutex err: %v\n")
+		return err
+	}
+
+	err = c.mc.ClientAPI().ApplyVolMutex(c.volName, false)
+	if err == nil {
+		c.readOnly = false
+		return nil
+	}
+	if err == proto.ErrVolWriteMutexOccupied {
+		return nil
+	}
+	if err != nil {
+		syslog.Printf("checkVolWriteMutex err: %v\n", err)
+		return err
+	}
+	return
 }
 
-func (c *client) start(first_start bool) (err error) {
+func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 	defer func() {
 		if err != nil {
 			gClientManager.outputFile.Sync()
@@ -3832,31 +3856,33 @@ func (c *client) start(first_start bool) (err error) {
 
 	masters := strings.Split(c.masterAddr, ",")
 	c.mc = master.NewMasterClient(masters, false)
-
-	tryTime := MaxRequestMasterRetry
 	if first_start {
-		tryTime = 1
+		if err = c.checkVolWriteMutex(); err != nil {
+			syslog.Printf("checkVolWriteMutex error: %v\n", err)
+			return
+		}
 	}
-	if err = c.checkVolWriteMutex(tryTime); err != nil {
-		syslog.Printf("checkVolWriteMutex error: %v\n", err)
-		return
-	}
-
 	var mw *meta.MetaWrapper
-	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
+	metaConfig := &meta.MetaConfig{
 		Modulename:    gClientManager.moduleName,
 		Volume:        c.volName,
 		Masters:       masters,
 		ValidateOwner: true,
 		Owner:         c.owner,
 		InfiniteRetry: true,
-	}); err != nil {
-		syslog.Println(err)
-		return
 	}
+	if first_start {
+		if mw, err = meta.NewMetaWrapper(metaConfig); err != nil {
+			syslog.Println(err)
+			return
+		}
+	} else {
+		mw = meta.RebuildMetaWrapper(metaConfig, sdkState.MetaState)
+	}
+	c.mw = mw
 
 	var ec *data.ExtentClient
-	if ec, err = data.NewExtentClient(&data.ExtentConfig{
+	extentConfig := &data.ExtentConfig{
 		Volume:            c.volName,
 		Masters:           masters,
 		FollowerRead:      c.followerRead,
@@ -3867,12 +3893,15 @@ func (c *client) start(first_start bool) (err error) {
 		AutoFlush:         c.autoFlush,
 		MetaWrapper:       mw,
 		ExtentMerge:       isMysql(),
-	}); err != nil {
-		syslog.Println(err)
-		return
 	}
-
-	c.mw = mw
+	if first_start {
+		if ec, err = data.NewExtentClient(extentConfig, nil); err != nil {
+			syslog.Println(err)
+			return
+		}
+	} else {
+		ec = data.RebuildExtentClient(extentConfig, sdkState.DataState)
+	}
 	c.ec = ec
 
 	// metric
@@ -3882,7 +3911,7 @@ func (c *client) start(first_start bool) (err error) {
 	}
 	c.initUmpKeys()
 
-	if isMysql() {
+	if first_start && isMysql() {
 		c.registerReadProcStatus(true)
 	}
 
@@ -4165,13 +4194,8 @@ func (c *client) closeStream(f *file) {
 
 func (c *client) broadcastAllReadProcess(ino uint64) {
 	c.readProcMapLock.Lock()
-	log.LogInfof("broadcastAllReadProcess: readProcessMap(%v)", c.readProcErrMap)
-	for readClient, errCount := range c.readProcErrMap {
-		if errCount > 3 {
-			log.LogInfof("broadcastAllReadProcess: unregister readClient: %s", readClient)
-			delete(c.readProcErrMap, readClient)
-			continue
-		}
+	log.LogInfof("broadcastAllReadProcess: readProcessMap(%v)", c.readProcs)
+	for readClient, _ := range c.readProcs {
 		c.broadcastRefreshExtents(readClient, ino)
 	}
 	c.readProcMapLock.Unlock()
