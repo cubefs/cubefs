@@ -474,19 +474,20 @@ type LimitInfo struct {
 	DataNodeRepairSSDZoneTaskLimitOnDisk   uint64
 	DataNodeRepairTaskCountZoneLimit       map[string]uint64
 
-	ExtentMergeIno              map[string][]uint64
-	ExtentMergeSleepMs          uint64
-	MetaNodeDumpWaterLevel      uint64
-	DataNodeFlushFDInterval     uint32
+	ExtentMergeIno                   map[string][]uint64
+	ExtentMergeSleepMs               uint64
+	MetaNodeDumpWaterLevel           uint64
+	DataNodeFlushFDInterval          uint32
+	DataNodeFlushFDParallelismOnDisk uint64
 
-	MonitorSummarySec		uint64
-	MonitorReportSec		uint64
+	MonitorSummarySec uint64
+	MonitorReportSec  uint64
 
 	RocksdbDiskUsageThreshold        float32
 	MemModeRocksdbDiskUsageThreshold float32
 
-	RocksDBDiskReservedSpace   uint64				//MB
-	LogMaxSize                 uint64				//MB
+	RocksDBDiskReservedSpace uint64 //MB
+	LogMaxSize               uint64 //MB
 
 	MetaRockDBWalFileSize      uint64				//MB  10
 	MetaRocksWalMemSize        uint64				//MB  3
@@ -816,18 +817,18 @@ type MetaPartitionLoadResponse struct {
 
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
 type DataPartitionResponse struct {
-	PartitionID uint64
-	Status      int8
-	ReplicaNum  uint8
-	Hosts       []string
-	LeaderAddr  string
-	Epoch       uint64
-	IsRecover   bool
-	IsFrozen    bool
-	CreateTime  int64
-	MediumType  string
-	Total       uint64
-	Used        uint64
+	PartitionID     uint64
+	Status          int8
+	ReplicaNum      uint8
+	Hosts           []string
+	LeaderAddr      string
+	Epoch           uint64
+	IsRecover       bool
+	IsFrozen        bool
+	CreateTime      int64
+	MediumType      string
+	Total           uint64
+	Used            uint64
 	EcMigrateStatus uint8
 	EcHosts         []string
 	EcDataNum       uint8
@@ -917,7 +918,7 @@ type VolView struct {
 	CreateTime        int64
 	ConnConfig        *ConnConfig // todo
 	IsSmart           bool
-	SmartEnableTime int64
+	SmartEnableTime   int64
 	SmartRules        []string
 }
 
@@ -925,7 +926,7 @@ func (v *VolView) SetSmartRules(rules []string) {
 	v.SmartRules = rules
 }
 
-func (v *VolView) SetSmartEnableTime (sec int64) {
+func (v *VolView) SetSmartEnableTime(sec int64) {
 	v.SmartEnableTime = sec
 }
 
@@ -967,48 +968,48 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 
 // SimpleVolView defines the simple view of a volume
 type SimpleVolView struct {
-	ID                   uint64
-	Name                 string
-	Owner                string
-	ZoneName             string
-	DpReplicaNum         uint8
-	MpReplicaNum         uint8
-	DpLearnerNum         uint8
-	MpLearnerNum         uint8
-	InodeCount           uint64
-	DentryCount          uint64
-	MaxMetaPartitionID   uint64
-	Status               uint8
-	Capacity             uint64 // GB
-	DpWriteableThreshold float64
-	RwDpCnt              int
-	MpCnt                int
-	DpCnt                int
-	FollowerRead         bool
-	NearRead             bool
-	NeedToLowerReplica   bool
-	Authenticate         bool
-	VolWriteMutexEnable  bool
-	CrossZone            bool
-	AutoRepair           bool
-	CreateTime           string
-	EnableToken          bool
-	ForceROW             bool
-	EnableWriteCache	 bool
-	CrossRegionHAType    CrossRegionHAType
-	Tokens               map[string]*Token `graphql:"-"`
-	Description          string
-	DpSelectorName       string
-	DpSelectorParm       string
-	Quorum               int
-	OSSBucketPolicy      BucketAccessPolicy
-	DPConvertMode        ConvertMode
-	MPConvertMode        ConvertMode
-	MasterRegionZone     string
-	SlaveRegionZone      string
-	ConnConfig			 *ConnConfig	// todo
-	ExtentCacheExpireSec int64
-	DpMetricsReportConfig	*DpMetricsReportConfig	// todo
+	ID                    uint64
+	Name                  string
+	Owner                 string
+	ZoneName              string
+	DpReplicaNum          uint8
+	MpReplicaNum          uint8
+	DpLearnerNum          uint8
+	MpLearnerNum          uint8
+	InodeCount            uint64
+	DentryCount           uint64
+	MaxMetaPartitionID    uint64
+	Status                uint8
+	Capacity              uint64 // GB
+	DpWriteableThreshold  float64
+	RwDpCnt               int
+	MpCnt                 int
+	DpCnt                 int
+	FollowerRead          bool
+	NearRead              bool
+	NeedToLowerReplica    bool
+	Authenticate          bool
+	VolWriteMutexEnable   bool
+	CrossZone             bool
+	AutoRepair            bool
+	CreateTime            string
+	EnableToken           bool
+	ForceROW              bool
+	EnableWriteCache      bool
+	CrossRegionHAType     CrossRegionHAType
+	Tokens                map[string]*Token `graphql:"-"`
+	Description           string
+	DpSelectorName        string
+	DpSelectorParm        string
+	Quorum                int
+	OSSBucketPolicy       BucketAccessPolicy
+	DPConvertMode         ConvertMode
+	MPConvertMode         ConvertMode
+	MasterRegionZone      string
+	SlaveRegionZone       string
+	ConnConfig            *ConnConfig // todo
+	ExtentCacheExpireSec  int64
+	DpMetricsReportConfig *DpMetricsReportConfig // todo
 	DpFolReadDelayConfig  DpFollowerReadDelayConfig
 	FolReadHostWeight     int
 	RwMpCnt               int
@@ -1018,15 +1019,15 @@ type SimpleVolView struct {
 	DefaultStoreMode      StoreMode
 	ConvertState          VolConvertState
 	MpLayout              MetaPartitionLayout
-	TotalSizeGB          string `json:"TotalGB"`
-	UsedSizeGB           string `json:"UsedGB"`
-	TotalSize            uint64
-	UsedSize             uint64
-	UsedRatio            float64
-	FileAvgSize          float64
-	CreateStatus         VolCreateStatus
+	TotalSizeGB           string `json:"TotalGB"`
+	UsedSizeGB            string `json:"UsedGB"`
+	TotalSize             uint64
+	UsedSize              uint64
+	UsedRatio             float64
+	FileAvgSize           float64
+	CreateStatus          VolCreateStatus
 	IsSmart               bool
-	SmartEnableTime string
+	SmartEnableTime       string
 	SmartRules            []string
 	CompactTag            string
 	CompactTagModifyTime  int64
@@ -1116,6 +1117,7 @@ type RateLimitInfo struct {
 	DataNodeReqVolPartRate      int64
 	DataNodeReqVolOpPartRate    int64
 	DataNodeFlushFDInterval     int64
+	DataNodeFlushFDParallelismOnDisk int64
 	DNNormalExtentDeleteExpire  int64
 	ClientReadVolRate           int64
 	ClientWriteVolRate          int64
@@ -1304,8 +1306,8 @@ type CodecNodeClientView struct {
 
 // CodecNodeHeartbeatResponse defines the response to the codec node heartbeat.
 type CodecNodeHeartbeatResponse struct {
-	Status uint8
-	Result string
+	Status  uint8
+	Result  string
 	Version string
 }
 
@@ -1324,12 +1326,12 @@ type CodecNodeMigrationResponse struct {
 }
 
 type MetaNodeDiskInfo struct {
-	Path               string
-	Total              uint64
-	Used               uint64
-	UsageRatio         float64
-	Status             int8
-	MPCount            int
+	Path       string
+	Total      uint64
+	Used       uint64
+	UsageRatio float64
+	Status     int8
+	MPCount    int
 }
 
 type DpFollowerReadDelayConfig struct {

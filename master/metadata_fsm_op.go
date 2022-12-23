@@ -17,14 +17,15 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	bsProto "github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/tiglabs/raft/proto"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	bsProto "github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/tiglabs/raft/proto"
 )
 
 /* We defines several "values" such as clusterValue, metaPartitionValue, dataPartitionValue, volValue, dataNodeValue,
@@ -51,6 +52,7 @@ type clusterValue struct {
 	MetaNodeDeleteBatchCount            uint64
 	MetaNodeDeleteWorkerSleepMs         uint64
 	DataNodeFlushFDInterval             uint32
+	DataNodeFlushFDParallelismOnDisk    uint64
 	DataNodeNormalExtentDeleteExpire    uint64
 	ClientReadVolRateLimitMap           map[string]uint64
 	ClientWriteVolRateLimitMap          map[string]uint64
@@ -79,8 +81,8 @@ type clusterValue struct {
 	MetaRocksLogSize                    uint64 //MB
 	MetaRocksLogReservedTime            uint64 //day
 	MetaRocksLogReservedCnt             uint64
-	MetaRocksFlushWalInterval           uint64  //min
-	MetaRocksDisableFlushFlag           uint64  //0 flush, !=0 disable flush
+	MetaRocksFlushWalInterval           uint64 //min
+	MetaRocksDisableFlushFlag           uint64 //0 flush, !=0 disable flush
 	MetaRocksWalTTL                     uint64
 	MetaDelEKRecordFileMaxMB            uint64 //MB
 	MetaTrashCleanInterval              uint64
@@ -109,6 +111,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeDeleteBatchCount:            c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs:         c.cfg.MetaNodeDeleteWorkerSleepMs,
 		DataNodeFlushFDInterval:             c.cfg.DataNodeFlushFDInterval,
+		DataNodeFlushFDParallelismOnDisk:    c.cfg.DataNodeFlushFDParallelismOnDisk,
 		DataNodeNormalExtentDeleteExpire:    c.cfg.DataNodeNormalExtentDeleteExpire,
 		MetaNodeReadDirLimitNum:             c.cfg.MetaNodeReadDirLimitNum,
 		ClientReadVolRateLimitMap:           c.cfg.ClientReadVolRateLimitMap,
@@ -770,9 +773,18 @@ func (c *Cluster) updateMetaNodeDeleteBatchCount(val uint64) {
 func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
 }
+
 func (c *Cluster) updateDataNodeFlushFDInterval(val uint32) {
 	atomic.StoreUint32(&c.cfg.DataNodeFlushFDInterval, val)
 }
+
+func (c *Cluster) updateDataNodeFlushFDParallelismOnDisk(val uint64) {
+	if val == 0 {
+		val = defaultDataNodeFlushFDParallelismOnDisk
+	}
+	atomic.StoreUint64(&c.cfg.DataNodeFlushFDParallelismOnDisk, val)
+}
+
 func (c *Cluster) updateNormalExtentDeleteExpire(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeNormalExtentDeleteExpire, val)
 }
@@ -903,6 +915,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeFlushFDInterval(cv.DataNodeFlushFDInterval)
+		c.updateDataNodeFlushFDParallelismOnDisk(cv.DataNodeFlushFDParallelismOnDisk)
 		c.updateNormalExtentDeleteExpire(cv.DataNodeNormalExtentDeleteExpire)
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, cv.MetaNodeReqRateLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, cv.MetaNodeReadDirLimitNum)

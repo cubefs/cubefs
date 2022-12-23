@@ -31,8 +31,8 @@ const (
 	minRate               = 100
 	minPartRate           = 1
 
-	minMonitorSummarySeconds	= 5
-	minMonitorReportSeconds		= 10
+	minMonitorSummarySeconds = 5
+	minMonitorReportSeconds  = 10
 )
 
 func newRateLimitCmd(client *master.MasterClient) *cobra.Command {
@@ -147,6 +147,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if info.DataNodeFlushFDInterval >= 0 {
 				msg += fmt.Sprintf("dataNodeFlushFDInterval: %d, ", info.DataNodeFlushFDInterval)
+			}
+			if info.DataNodeFlushFDParallelismOnDisk > 0 {
+				msg += fmt.Sprintf("dataNodeFlushFDParallelismOnDisk: %d, ", info.DataNodeFlushFDParallelismOnDisk)
 			}
 			if info.DNNormalExtentDeleteExpire >= 0 {
 				msg += fmt.Sprintf("normalExtentDeleteExpire: %d, ", info.DNNormalExtentDeleteExpire)
@@ -270,56 +273,57 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&info.MetaRocksFlushWalInterval, "metaRocksWalFlushInterval", 0, "Meta node RocksDB config:flush wal interval, unit:min")
 	cmd.Flags().Int64Var(&info.MetaRocksDisableFlushFlag, "metaRocksDisableWalFlush", -1, "Meta node RocksDB config:flush wal flag, 0: enable flush wal log, 1:disable flush wal log")
 	cmd.Flags().Uint64Var(&info.MetaRocksWalTTL, "metaRocksWalTTL", 0, "Meta node RocksDB config:wal_ttl_seconds")
-	cmd.Flags().Int64Var(&info.DataNodeFlushFDInterval, "dataNodeFlushFDInterval", -1, "datanode flush wal fd interval")
 	cmd.Flags().Uint64Var(&info.MetaDelEKRecordFileMaxMB, "metaDelEKRecordFileMaxMB", 0, "meta node delete ek record file max mb")
 	cmd.Flags().Uint64Var(&info.MetaTrashCleanInterval, "metaTrashCleanInterval", 0, "meta node clean del inode interval, unit:min")
 	cmd.Flags().Int64Var(&info.MetaRaftLogSize, "metaRaftLogSize", -1, "meta node raft log size")
 	cmd.Flags().Int64Var(&info.MetaRaftLogCap, "metaRaftLogCap", -1, "meta node raft log cap")
 	cmd.Flags().Int64Var(&info.MetaSyncWALEnableState, "metaSyncWALFlag", -1, "0:disable, 1:enable")
 	cmd.Flags().Int64Var(&info.DataSyncWALEnableState, "dataSyncWALFlag", -1, "0:disable, 1:enable")
+	cmd.Flags().Int64Var(&info.DataNodeFlushFDInterval, "dataNodeFlushFDInterval", -1, "time interval for flushing WAL and open FDs on DataNode, unit is seconds.")
+	cmd.Flags().Int64Var(&info.DataNodeFlushFDParallelismOnDisk, "dataNodeFlushFDParallelismOnDisk", 0, "parallelism for flushing WAL and open FDs on DataNode per disk.")
 	cmd.Flags().Int64Var(&info.DNNormalExtentDeleteExpire, "dnNormalExtentDeleteExpire", 0, "datanode normal extent delete record expire time(second, >=600)")
 	return cmd
 }
 
 func formatRateLimitInfo(info *proto.LimitInfo) string {
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("  Cluster name                : %v\n", info.Cluster))
-	sb.WriteString(fmt.Sprintf("  DnFixTinyDeleteRecordLimit  : %v\n", info.DataNodeFixTinyDeleteRecordLimitOnDisk))
-	sb.WriteString(fmt.Sprintf("  MetaNodeReqRate             : %v\n", info.MetaNodeReqRateLimit))
-	sb.WriteString(fmt.Sprintf("  MetaNodeReqOpRateMap        : %v\n", info.MetaNodeReqOpRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  Cluster name                     : %v\n", info.Cluster))
+	sb.WriteString(fmt.Sprintf("  DnFixTinyDeleteRecordLimit       : %v\n", info.DataNodeFixTinyDeleteRecordLimitOnDisk))
+	sb.WriteString(fmt.Sprintf("  MetaNodeReqRate                  : %v\n", info.MetaNodeReqRateLimit))
+	sb.WriteString(fmt.Sprintf("  MetaNodeReqOpRateMap             : %v\n", info.MetaNodeReqOpRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[opcode]limit)\n"))
-	sb.WriteString(fmt.Sprintf("  MetaNodeReqVolOpRateMap     : %v\n", info.MetaNodeReqVolOpRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  MetaNodeReqVolOpRateMap          : %v\n", info.MetaNodeReqVolOpRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[string]map[opcode]limit)\n"))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskHDDZone   : %v\n", info.DataNodeRepairClusterTaskLimitOnDisk))
-	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskSSDZone   : %v\n", info.DataNodeRepairSSDZoneTaskLimitOnDisk))
-	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneRateMap      : %v\n", info.DataNodeReqZoneRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskHDDZone        : %v\n", info.DataNodeRepairClusterTaskLimitOnDisk))
+	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskSSDZone        : %v\n", info.DataNodeRepairSSDZoneTaskLimitOnDisk))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneRateMap           : %v\n", info.DataNodeReqZoneRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[zone]limit)\n"))
-	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneOpRateMap    : %v\n", info.DataNodeReqZoneOpRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneOpRateMap         : %v\n", info.DataNodeReqZoneOpRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[zone]map[opcode]limit)\n"))
-	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneVolOpRateMap : %v\n", info.DataNodeReqZoneVolOpRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneVolOpRateMap      : %v\n", info.DataNodeReqZoneVolOpRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[zone]map[vol]map[opcode]limit)\n"))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  DataNodeReqVolPartRateMap   : %v\n", info.DataNodeReqVolPartRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqVolPartRateMap        : %v\n", info.DataNodeReqVolPartRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[volume]limit - per partition)\n"))
-	sb.WriteString(fmt.Sprintf("  DataNodeReqVolOpPartRateMap : %v\n", info.DataNodeReqVolOpPartRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqVolOpPartRateMap      : %v\n", info.DataNodeReqVolOpPartRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[volume]map[opcode]limit - per partition)\n"))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  ClientReadVolRateMap        : %v\n", info.ClientReadVolRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  ClientReadVolRateMap             : %v\n", info.ClientReadVolRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[volume]limit of specified volume)\n"))
-	sb.WriteString(fmt.Sprintf("  ClientWriteVolRateMap       : %v\n", info.ClientWriteVolRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  ClientWriteVolRateMap            : %v\n", info.ClientWriteVolRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[volume]limit of specified volume)\n"))
-	sb.WriteString(fmt.Sprintf("  ClientVolOpRate             : %v\n", info.ClientVolOpRateLimit))
+	sb.WriteString(fmt.Sprintf("  ClientVolOpRate                  : %v\n", info.ClientVolOpRateLimit))
 	sb.WriteString(fmt.Sprintf("  (map[opcode]limit of specified volume)\n"))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  ObjectVolActionRate          : %v\n", info.ObjectNodeActionRateLimit))
+	sb.WriteString(fmt.Sprintf("  ObjectVolActionRate              : %v\n", info.ObjectNodeActionRateLimit))
 	sb.WriteString(fmt.Sprintf("  (map[action]limit of specified volume)\n"))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  ExtentMergeIno              : %v\n", info.ExtentMergeIno))
+	sb.WriteString(fmt.Sprintf("  ExtentMergeIno                   : %v\n", info.ExtentMergeIno))
 	sb.WriteString(fmt.Sprintf("  (map[volume][]inode)\n"))
-	sb.WriteString(fmt.Sprintf("  ExtentMergeSleepMs          : %v\n", info.ExtentMergeSleepMs))
-	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskZoneLimit : %v\n", info.DataNodeRepairTaskCountZoneLimit))
-	sb.WriteString(fmt.Sprintf("  MetaNodeDumpWaterLevel      : %v\n", info.MetaNodeDumpWaterLevel))
+	sb.WriteString(fmt.Sprintf("  ExtentMergeSleepMs               : %v\n", info.ExtentMergeSleepMs))
+	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskZoneLimit      : %v\n", info.DataNodeRepairTaskCountZoneLimit))
+	sb.WriteString(fmt.Sprintf("  MetaNodeDumpWaterLevel           : %v\n", info.MetaNodeDumpWaterLevel))
 	sb.WriteString(fmt.Sprintf("  (map[zone]limit)\n"))
 	sb.WriteString(fmt.Sprintf("  MonitorSummarySecond        : %v\n", info.MonitorSummarySec))
 	sb.WriteString(fmt.Sprintf("  MonitorReportSecond         : %v\n", info.MonitorReportSec))
@@ -329,6 +333,10 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  DeleteEKRecordFileMaxSize   : %vMB\n", info.DeleteEKRecordFileMaxMB))
 	sb.WriteString(fmt.Sprintf("  MetaSyncWalEnableState      : %s\n", formatEnabledDisabled(info.MetaSyncWALOnUnstableEnableState)))
 	sb.WriteString(fmt.Sprintf("  DataSyncWalEnableState      : %s\n", formatEnabledDisabled(info.DataSyncWALOnUnstableEnableState)))
+	sb.WriteString(fmt.Sprintf("  MonitorSummarySecond             : %v\n", info.MonitorSummarySec))
+	sb.WriteString(fmt.Sprintf("  MonitorReportSecond              : %v\n", info.MonitorReportSec))
+	sb.WriteString(fmt.Sprintf("  DataNodeFlushFDInterval          : %v s\n", info.DataNodeFlushFDInterval))
+	sb.WriteString(fmt.Sprintf("  DataNodeFlushFDParallelismOnDisk : %v \n", info.DataNodeFlushFDParallelismOnDisk))
 	sb.WriteString(fmt.Sprintf("  DNNormalExtentDeleteExpire  : %v\n", info.DataNodeNormalExtentDeleteExpire))
 	return sb.String()
 }

@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"net/http"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/chubaofs/chubaofs/util/iputil"
 
@@ -437,6 +438,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	metaNodeReqRateLimit := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReqRateLimit)
 	metaNodeReadDirLimitNum := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReadDirLimitNum)
 	dataNodeFlushFDInterval := atomic.LoadUint32(&m.cluster.cfg.DataNodeFlushFDInterval)
+	dataNodeFlushFDParallelismOnDiskKey := atomic.LoadUint64(&m.cluster.cfg.DataNodeFlushFDParallelismOnDisk)
 	ssdZoneRepairTaskCount := atomic.LoadUint64(&m.cluster.cfg.DataNodeRepairSSDZoneTaskCount)
 	if ssdZoneRepairTaskCount == 0 {
 		ssdZoneRepairTaskCount = defaultSSDZoneTaskLimit
@@ -479,6 +481,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		DataNodeRepairClusterTaskLimitOnDisk:   clusterRepairTaskCount,
 		DataNodeRepairSSDZoneTaskLimitOnDisk:   ssdZoneRepairTaskCount,
 		DataNodeFlushFDInterval:                dataNodeFlushFDInterval,
+		DataNodeFlushFDParallelismOnDisk:       dataNodeFlushFDParallelismOnDiskKey,
 		DataNodeNormalExtentDeleteExpire:       normalExtentDeleteExpireTime,
 		DataNodeRepairTaskCountZoneLimit:       m.cluster.cfg.DataNodeRepairTaskCountZoneLimit,
 		DataNodeReqZoneRateLimitMap:            m.cluster.cfg.DataNodeReqZoneRateLimitMap,
@@ -2423,6 +2426,8 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
 	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	resp[dataNodeFlushFDIntervalKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeFlushFDInterval)
+	resp[dataNodeFlushFDParallelismOnDiskKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeFlushFDParallelismOnDisk)
+
 	resp[normalExtentDeleteExpireKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeNormalExtentDeleteExpire)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
 }
@@ -4378,7 +4383,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs,
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
-		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
+		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
 	    proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey}

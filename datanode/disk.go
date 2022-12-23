@@ -80,6 +80,8 @@ type Disk struct {
 	// Runtime statistics
 	fdCount int64
 	fdLimit FDLimit
+
+	forceFlushFDParallelism uint64 // 控制Flush文件句柄的并发度
 }
 
 type PartitionVisitor func(dp *DataPartition)
@@ -96,11 +98,24 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, fdLimit FDLimit, 
 	d.repairTaskLimit = space.repairTaskLimitOnDisk
 	d.fdCount = 0
 	d.fdLimit = fdLimit
+	d.forceFlushFDParallelism = DefaultForceFlushFDParallelismOnDisk
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduler()
 	d.startFlushFPScheduler()
 	return
+}
+
+func (d *Disk) SetForceFlushFDParallelism(parallelism uint64) {
+	if parallelism <= 0 {
+		parallelism = DefaultForceFlushFDParallelismOnDisk
+	}
+	if parallelism != d.forceFlushFDParallelism {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("disk[%v] flush FD parallelism changed [prev: %v, new: %v]", d.Path, d.forceFlushFDParallelism, parallelism)
+		}
+		d.forceFlushFDParallelism = parallelism
+	}
 }
 
 func (d *Disk) IncreaseFDCount() {
@@ -722,7 +737,14 @@ func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
 	}
 	wg := new(sync.WaitGroup)
 	var failedCount int64
-	for i := 0; i < 20; i++ {
+	var parallelism = d.forceFlushFDParallelism
+	if parallelism <= 0 {
+		parallelism = DefaultForceFlushFDParallelismOnDisk
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("disk[%v] start to force persist partitions [parallelism: %v]", d.Path, parallelism)
+	}
+	for i := uint64(0); i < parallelism; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

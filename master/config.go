@@ -94,7 +94,7 @@ type clusterConfig struct {
 	MetaNodeThreshold                   float32
 	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
 	MetaNodeReqRateLimit                uint64
-	MetaNodeReadDirLimitNum				uint64
+	MetaNodeReadDirLimitNum             uint64
 	MetaNodeReqOpRateLimitMap           map[uint8]uint64
 	MetaNodeReqVolOpRateLimitMap        map[string]map[uint8]uint64
 	DataNodeReqZoneRateLimitMap         map[string]uint64
@@ -109,6 +109,7 @@ type clusterConfig struct {
 	DataNodeRepairTaskCountZoneLimit    map[string]uint64
 	MetaNodeDeleteWorkerSleepMs         uint64
 	DataNodeFlushFDInterval             uint32
+	DataNodeFlushFDParallelismOnDisk    uint64
 	DataNodeNormalExtentDeleteExpire    uint64
 	ClientReadVolRateLimitMap           map[string]uint64
 	ClientWriteVolRateLimitMap          map[string]uint64
@@ -127,8 +128,8 @@ type clusterConfig struct {
 	MetaNodeRocksdbDiskThreshold        float32
 	MetaNodeMemModeRocksdbDiskThreshold float32
 	MetaNodeDumpWaterLevel              uint64
-	MonitorSummarySec					uint64
-	MonitorReportSec					uint64
+	MonitorSummarySec                   uint64
+	MonitorReportSec                    uint64
 	RocksDBDiskReservedSpace            uint64
 	LogMaxSize                          uint64
 	MetaRockDBWalFileSize               uint64 //MB
@@ -137,7 +138,7 @@ type clusterConfig struct {
 	MetaRocksLogReservedTime            uint64 //day
 	MetaRocksLogReservedCnt             uint64
 	MetaRocksFlushWalInterval           uint64 //min
-	MetaRocksDisableFlushFlag           uint64   //default 0 flush, !=0 disable flush
+	MetaRocksDisableFlushFlag           uint64 //default 0 flush, !=0 disable flush
 	MetaRocksWalTTL                     uint64 //second
 	DeleteEKRecordFilesMaxSize          uint64 //MB
 	MetaTrashCleanInterval              uint64

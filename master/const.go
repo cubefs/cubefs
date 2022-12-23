@@ -141,6 +141,7 @@ const (
 	volTrashCleanIntervalKey     = "trashCleanInterval"
 	volBatchDelInodeCntKey       = "batchDelInodeCnt"
 	volDelInodeIntervalKey       = "delInodeInterval"
+	dataNodeFlushFDParallelismOnDiskKey = "dataNodeFlushFDParallelism"
 )
 
 const (
@@ -251,6 +252,7 @@ const (
 	defaultSSDZoneTaskLimit                            = 20
 	defaultFollReadHostWeight                          = 0
 	defaultChildFileMaxCount                           = 2000 * 10000    //default 2kw
+	defaultDataNodeFlushFDParallelismOnDisk            = 5
 )
 
 const (

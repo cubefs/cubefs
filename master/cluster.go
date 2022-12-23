@@ -3568,6 +3568,11 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		}
 		atomic.StoreUint64(&c.cfg.DataNodeNormalExtentDeleteExpire, val.(uint64))
 	}
+
+	var oldDataNodeFlushFDParallelismOnDisk = atomic.LoadUint64(&c.cfg.DataNodeFlushFDParallelismOnDisk)
+	if val, ok := params[dataNodeFlushFDParallelismOnDiskKey]; ok {
+		atomic.StoreUint64(&c.cfg.DataNodeFlushFDParallelismOnDisk, val.(uint64))
+	}
 	oldDpRecoverPoolSize := atomic.LoadInt32(&c.cfg.DataPartitionsRecoverPoolSize)
 	if val, ok := params[dpRecoverPoolSizeKey]; ok {
 		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, int32(val.(int64)))
@@ -3744,6 +3749,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, oldMetaNodeReadDirLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldDeleteWorkerSleepMs)
 		atomic.StoreUint32(&c.cfg.DataNodeFlushFDInterval, oldDataNodeFlushFDInterval)
+		atomic.StoreUint64(&c.cfg.DataNodeFlushFDParallelismOnDisk, oldDataNodeFlushFDParallelismOnDisk)
 		atomic.StoreUint64(&c.cfg.DataNodeNormalExtentDeleteExpire, oldNormalExtentDeleteExpire)
 		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, oldDpRecoverPoolSize)
 		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpRecoverPoolSize)

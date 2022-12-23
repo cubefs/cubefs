@@ -168,7 +168,6 @@ func (api *AdminAPI) ResetRecoverMetaPartition(partitionId uint64) (result strin
 	return string(data), nil
 }
 
-
 func (api *AdminAPI) DiagnoseMetaPartition() (diagnosis *proto.MetaPartitionDiagnosis, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminDiagnoseMetaPartition)
@@ -634,6 +633,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.DataNodeFlushFDInterval >= 0 {
 		request.addParam("dataNodeFlushFDInterval", strconv.FormatInt(info.DataNodeFlushFDInterval, 10))
+	}
+	if info.DataNodeFlushFDParallelismOnDisk > 0 {
+		request.addParam("dataNodeFlushFDParallelismOnDisk", strconv.FormatInt(info.DataNodeFlushFDParallelismOnDisk, 10))
 	}
 	if info.DNNormalExtentDeleteExpire >= 0 {
 		request.addParam("normalExtentDeleteExpire", strconv.FormatUint(uint64(info.DNNormalExtentDeleteExpire), 10))
