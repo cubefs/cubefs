@@ -331,7 +331,9 @@ func parsePaths(str string) (res []string) {
 func (c *client) rebuild_client_state(clientState *ClientState) {
 	c.cwd = clientState.Cwd
 	c.readOnly = clientState.ReadOnly
-	c.readProcs = clientState.ReadProcs
+	if clientState.ReadProcs != nil {
+		c.readProcs = clientState.ReadProcs
+	}
 
 	for _, v := range clientState.Files {
 		f := &file{fd: v.Fd, ino: v.Ino, flags: v.Flags, mode: v.Mode, size: v.Size, pos: v.Pos, path: v.Path, target: []byte(v.Target), locked: v.Locked}

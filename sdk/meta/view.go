@@ -126,6 +126,7 @@ func (mw *MetaWrapper) saveVolView() *proto.VolView {
 	vv := &proto.VolView{
 		MetaPartitions: make([]*proto.MetaPartitionView, 0, len(mw.partitions)),
 	}
+	mw.RLock()
 	for _, mp := range mw.partitions {
 		view := &proto.MetaPartitionView{
 			PartitionID: mp.PartitionID,
@@ -138,6 +139,7 @@ func (mw *MetaWrapper) saveVolView() *proto.VolView {
 		}
 		vv.MetaPartitions = append(vv.MetaPartitions, view)
 	}
+	mw.RUnlock()
 	if mw.ossSecure != nil {
 		vv.OSSSecure = &proto.OSSSecure{}
 		vv.OSSSecure.AccessKey = mw.ossSecure.AccessKey

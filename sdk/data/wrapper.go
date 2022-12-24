@@ -611,7 +611,9 @@ func (w *Wrapper) _updateDataNodeStatus(cv *proto.ClusterView) {
 	}
 	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))
 
+	w.Lock()
 	w.HostsStatus = newHostsStatus
+	w.Unlock()
 
 	if w.dpMetricsReportDomain != cv.SchedulerDomain {
 		log.LogInfof("updateDataNodeStatus: update scheduler domain from old(%v) to new(%v)", w.dpMetricsReportDomain, cv.SchedulerDomain)
@@ -624,6 +626,8 @@ func (w *Wrapper) _updateDataNodeStatus(cv *proto.ClusterView) {
 }
 
 func (w *Wrapper) saveClusterView() *proto.ClusterView {
+	w.RLock()
+	defer w.RUnlock()
 	cv := &proto.ClusterView{
 		DataNodes:       make([]proto.NodeView, 0, len(w.HostsStatus)),
 		SchedulerDomain: w.dpMetricsReportDomain,
