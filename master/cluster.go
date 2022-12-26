@@ -33,41 +33,40 @@ import (
 
 // Cluster stores all the cluster-level information.
 type Cluster struct {
-	Name                 string
-	vols                 map[string]*Vol
-	dataNodes            sync.Map
-	metaNodes            sync.Map
-	dataNodesToBeOffline int64
-	volMutex             sync.RWMutex // volume mutex
-	createVolMutex       sync.RWMutex // create volume mutex
-	mnMutex              sync.RWMutex // meta node mutex
-	dnMutex              sync.RWMutex // data node mutex
-	badPartitionMutex    sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
-	leaderInfo           *LeaderInfo
-	cfg                  *clusterConfig
-	idAlloc              *IDAllocator
-	t                    *topology
-	dataNodeStatInfo     *nodeStatInfo
-	metaNodeStatInfo     *nodeStatInfo
-	zoneStatInfos        map[string]*proto.ZoneStat
-	volStatInfo          sync.Map
-	domainManager        *DomainManager
-	BadDataPartitionIds  *sync.Map
-	BadMetaPartitionIds  *sync.Map
-	BadDPCount           uint64
-	BadMPCount           uint64
-	DisableAutoAllocate  bool
-	FaultDomain          bool
-	needFaultDomain      bool // FaultDomain is true and normal zone aleady used up
-	fsm                  *MetadataFsm
-	partition            raftstore.Partition
-	MasterSecretKey      []byte
-	lastZoneIdxForNode   int
-	zoneIdxMux           sync.Mutex //
-	zoneList             []string
-	followerReadManager  *followerReadManager
-	diskQosEnable        bool
-	QosAcceptLimit       *rate.Limiter
+	Name                string
+	vols                map[string]*Vol
+	dataNodes           sync.Map
+	metaNodes           sync.Map
+	volMutex            sync.RWMutex // volume mutex
+	createVolMutex      sync.RWMutex // create volume mutex
+	mnMutex             sync.RWMutex // meta node mutex
+	dnMutex             sync.RWMutex // data node mutex
+	badPartitionMutex   sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
+	leaderInfo          *LeaderInfo
+	cfg                 *clusterConfig
+	idAlloc             *IDAllocator
+	t                   *topology
+	dataNodeStatInfo    *nodeStatInfo
+	metaNodeStatInfo    *nodeStatInfo
+	zoneStatInfos       map[string]*proto.ZoneStat
+	volStatInfo         sync.Map
+	domainManager       *DomainManager
+	BadDataPartitionIds *sync.Map
+	BadMetaPartitionIds *sync.Map
+	BadDPCount          uint64
+	BadMPCount          uint64
+	DisableAutoAllocate bool
+	FaultDomain         bool
+	needFaultDomain     bool // FaultDomain is true and normal zone aleady used up
+	fsm                 *MetadataFsm
+	partition           raftstore.Partition
+	MasterSecretKey     []byte
+	lastZoneIdxForNode  int
+	zoneIdxMux          sync.Mutex //
+	zoneList            []string
+	followerReadManager *followerReadManager
+	diskQosEnable       bool
+	QosAcceptLimit      *rate.Limiter
 }
 
 type followerReadManager struct {
@@ -507,7 +506,12 @@ func (c *Cluster) scheduleToDecommission() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
+				if c.BadDPCount > c.cfg.DecommissionDpLimit {
+					log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
+					return
+				}
 				c.decommissionDatanodes()
+				c.decommissionDisks()
 				c.decommissionDataPartitions()
 			}
 			time.Sleep(5 * time.Minute)
@@ -524,10 +528,33 @@ func (c *Cluster) decommissionDatanodes() {
 		}
 	}()
 
-	if c.dataNodesToBeOffline > c.cfg.DecommissionDnLimit {
-		log.LogInfof("the number of decommissioning datanodes are exceeds %v", c.cfg.DecommissionDnLimit)
-		return
-	}
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		if dataNode.ToBeOffline {
+			log.LogDebugf("datanode: [%v] is in state ToBeOffline", dataNode.Addr)
+			return true
+		}
+		if c.BadDPCount > c.cfg.DecommissionDpLimit {
+			log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
+			return true
+		}
+		if dataNode.isStale && !dataNode.ToBeOffline {
+			log.LogDebugf("begin to decommissionDatanode node: [%v]", dataNode.Addr)
+			c.migrateDataNode(dataNode.Addr, "", 0, false)
+		}
+		log.LogDebugf("finish to decommissionDatanode node: [%v]", dataNode.Addr)
+		return true
+	})
+}
+
+func (c *Cluster) decommissionDisks() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("decommission disks occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"decommission disks occurred panic")
+		}
+	}()
 
 	c.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
@@ -535,8 +562,42 @@ func (c *Cluster) decommissionDatanodes() {
 			log.LogDebugf("datanode: [%v] is in state ToBeOffline", dataNode.Addr)
 			return true
 		}
-		if dataNode.isStale && !dataNode.ToBeOffline {
-			c.migrateDataNode(dataNode.Addr, "", 0, false)
+
+		for _, badDisk := range dataNode.BadDisks {
+			if c.BadDPCount > c.cfg.DecommissionDpLimit {
+				log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
+				return true
+			}
+			if _, ok := dataNode.DecommissionedDisks.Load(badDisk); ok {
+				log.LogInfof("the disk [%v] on node [%v] is in state decommission", badDisk, dataNode.Addr)
+				return true
+			}
+			var (
+				badPartitionIds []uint64
+				badPartitions   []*DataPartition
+			)
+			badPartitions = dataNode.badPartitions(badDisk, c)
+			if len(badPartitions) == 0 {
+				if err := c.addAndSyncDecommissionedDisk(dataNode, badDisk); err != nil {
+					log.LogErrorf("action[decommissionDisk] addAndSyncDecommissionedDisk failed, badDisk: [%v], datanode: [%v]", badDisk, dataNode.Addr)
+					return true
+				}
+			}
+			for _, bdp := range badPartitions {
+				badPartitionIds = append(badPartitionIds, bdp.PartitionID)
+			}
+			log.LogInfof("begin to decommissionDisk disk: [%v] from node: [%v], badPartitionIds[%v]", dataNode.Addr, badDisk, badPartitionIds)
+			if err := c.decommissionDisk(dataNode, false, badDisk, badPartitions); err != nil {
+				log.LogErrorf("action[decommissionDisk] decommissionDisk failed, badDisk: [%v], datanode: [%v]", badDisk, dataNode.Addr)
+				return true
+			}
+
+			if err := c.addAndSyncDecommissionedDisk(dataNode, badDisk); err != nil {
+				log.LogErrorf("action[decommissionDisk] addAndSyncDecommissionedDisk failed, badDisk: [%v], datanode: [%v]", badDisk, dataNode.Addr)
+				return true
+			}
+			log.LogInfof("decommissionDisk disk: [%v] from node: [%v], badPartitionIds[%v] has offline successfully",
+				dataNode.Addr, badDisk, badPartitionIds)
 		}
 		return true
 	})
@@ -558,17 +619,18 @@ func (c *Cluster) decommissionDataPartitions() {
 			return true
 		}
 
-		if c.BadDPCount > c.cfg.DecommissionDpLimit {
-			log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
-			return true
-		}
-
 		for _, lackDataPartition := range dataNode.LackDataPartitions {
+			if c.BadDPCount > c.cfg.DecommissionDpLimit {
+				log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
+				return true
+			}
 			dp, err := c.getDataPartitionByID(lackDataPartition)
 			if err != nil {
 				log.LogWarnf("decommission dataPartition: [%v] from datanode: [%v] failed, err: [%v]", lackDataPartition, dataNode.Addr, err)
 			}
+			log.LogDebugf("begin to decommission dataPartition: [%v] from datanode: [%v] ", lackDataPartition, dataNode.Addr)
 			c.decommissionDataPartition(dataNode.Addr, dp, false, handleDataPartitionOfflineErr)
+			log.LogDebugf("decommission dataPartition [%v] from datanode: [%v]", dp.PartitionID, dataNode.Addr)
 		}
 		return true
 	})

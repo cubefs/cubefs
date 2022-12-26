@@ -344,7 +344,6 @@ func (mm *monitorMetrics) setToBeOfflineDataNodesCount() {
 		return true
 	})
 	mm.dataNodesToBeOffline.Set(float64(toBeOfflineDataNodesCount))
-	mm.cluster.dataNodesToBeOffline = toBeOfflineDataNodesCount
 }
 
 func (mm *monitorMetrics) clearVolMetrics() {

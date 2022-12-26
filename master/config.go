@@ -113,7 +113,6 @@ type clusterConfig struct {
 	DomainBuildAsPossible               bool
 	DataPartitionUsageThreshold         float64
 	QosMasterAcceptLimit                uint64
-	DecommissionDnLimit                 int64
 	DecommissionDpLimit                 uint64
 }
 
