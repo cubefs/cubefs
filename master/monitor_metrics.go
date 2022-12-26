@@ -44,6 +44,8 @@ const (
 	MetricDiskError            = "disk_error"
 	MetricDataNodesInactive    = "dataNodes_inactive"
 	MetricMetaNodesInactive    = "metaNodes_inactive"
+	MetricDataNodesNotWritable = "dataNodes_not_writable"
+	MetricMetaNodesNotWritable = "metaNodes_not_writable"
 )
 
 type monitorMetrics struct {
@@ -66,6 +68,8 @@ type monitorMetrics struct {
 	diskError          *exporter.GaugeVec
 	dataNodesInactive  *exporter.Gauge
 	metaNodesInactive  *exporter.Gauge
+	dataNodesNotWritable  *exporter.Gauge
+	metaNodesNotWritable  *exporter.Gauge
 
 	volNames map[string]struct{}
 	badDisks map[string]string
@@ -98,6 +102,8 @@ func (mm *monitorMetrics) start() {
 	mm.diskError = exporter.NewGaugeVec(MetricDiskError, "", []string{"addr", "path"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
+	mm.dataNodesNotWritable = exporter.NewGauge(MetricDataNodesNotWritable)
+	mm.metaNodesNotWritable = exporter.NewGauge(MetricMetaNodesNotWritable)
 	go mm.statMetrics()
 }
 
@@ -141,6 +147,8 @@ func (mm *monitorMetrics) doStat() {
 	mm.setDiskErrorMetric()
 	mm.setInactiveDataNodesCount()
 	mm.setInactiveMetaNodesCount()
+	mm.setNotWritableDataNodesCount()
+	mm.setNotWritableMetaNodesCount()
 }
 
 func (mm *monitorMetrics) setVolMetrics() {
@@ -287,6 +295,36 @@ func (mm *monitorMetrics) setInactiveDataNodesCount() {
 	mm.dataNodesInactive.Set(float64(inactiveDataNodesCount))
 }
 
+func (mm *monitorMetrics) setNotWritableMetaNodesCount() {
+	var notWritabelMetaNodesCount int64
+	mm.cluster.metaNodes.Range(func(addr, node interface{}) bool {
+		metaNode, ok := node.(*MetaNode)
+		if !ok {
+			return true
+		}
+		if !metaNode.isWritable() {
+			notWritabelMetaNodesCount++
+		}
+		return true
+	})
+	mm.metaNodesNotWritable.Set(float64(notWritabelMetaNodesCount))
+}
+
+func (mm *monitorMetrics) setNotWritableDataNodesCount() {
+	var notWritabelDataNodesCount int64
+	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode, ok := node.(*DataNode)
+		if !ok {
+			return true
+		}
+		if !dataNode.isWriteAble() {
+			notWritabelDataNodesCount++
+		}
+		return true
+	})
+	mm.dataNodesNotWritable.Set(float64(notWritabelDataNodesCount))
+}
+
 func (mm *monitorMetrics) clearVolMetrics() {
 	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
 		if volName, ok := key.(string); ok {
@@ -318,4 +356,6 @@ func (mm *monitorMetrics) resetAllMetrics() {
 	//mm.diskError.Set(0)
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)
+	mm.dataNodesNotWritable.Set(0)
+	mm.metaNodesNotWritable.Set(0)
 }
