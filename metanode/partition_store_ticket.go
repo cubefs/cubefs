@@ -17,8 +17,8 @@ package metanode
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-
 	"github.com/chubaofs/chubaofs/util/unit"
 	"time"
 
@@ -125,6 +125,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 			}
 			select {
 			case <-stopC:
+				log.LogCriticalf("[startSchedule]: partitionID(%v) stopCh receive close signal, msgCnt:%v", mp.config.PartitionId, len(msgs))
 				timer.Stop()
 				timerCursor.Stop()
 				return
@@ -281,8 +282,16 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 	}(mp.stopC)
 }
 
-func (mp *metaPartition) stop() {
+func (mp *metaPartition) stop() (err error) {
+	mp.stopLock.Lock()
+	defer mp.stopLock.Unlock()
+	if mp.stopChState == mpStopChStoppedState {
+		err = fmt.Errorf("PartitionID: %v stop chan already closed", mp.config.PartitionId)
+		return
+	}
 	if mp.stopC != nil {
 		close(mp.stopC)
 	}
+	mp.stopChState = mpStopChStoppedState
+	return
 }

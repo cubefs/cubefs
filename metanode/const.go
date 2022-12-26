@@ -296,3 +296,8 @@ const (
 	BatchSnapshotV1
 	LatestSnapV = BatchSnapshotV1 //change with max snap version
 )
+
+const (
+	mpStopChOpenState = iota
+	mpStopChStoppedState
+)

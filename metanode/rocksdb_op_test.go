@@ -461,3 +461,29 @@ func TestAbortOps(t *testing.T) {
 	_ = db.OpenSnap()
 	db.ReleaseRocksDb()
 }
+
+func TestRocksDB_panicRecover(t *testing.T) {
+	testPanicRecoverPath := "./testDBPanicRecover"
+	os.RemoveAll(testPanicRecoverPath)
+	defer func() {
+		os.RemoveAll(testPanicRecoverPath)
+	}()
+	db := NewRocksDb()
+	_ = db.OpenDb("db", 0, 0, 0, 0, 0, 0)
+	genenerData(t, db)
+	dbSnap := db.OpenSnap()
+	if dbSnap == nil {
+		t.Errorf("open db snap failed, snap is nil")
+	}
+	go func() {
+		time.Sleep(time.Millisecond * 1000)
+		db.CloseDb()
+	}()
+	startKey, endKey := []byte{byte(ExtentDelTable)}, []byte{byte(ExtentDelTable+1)}
+	err := db.RangeWithSnap(startKey, endKey, dbSnap, func(k, v []byte) (bool, error) {
+		return true, nil
+	})
+	if err != nil {
+		t.Errorf("expect nil, but actual error:%v", err)
+	}
+}

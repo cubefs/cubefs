@@ -344,25 +344,20 @@ func (r *RocksTree) Count(tp TreeType) (uint64, error) {
 
 // This requires global traversal to call carefully
 func (r *RocksTree) IteratorCount(tableType TableType) uint64 {
-	start, end := []byte{byte(tableType)}, byte(tableType)+1
+	start, end := []byte{byte(tableType)}, []byte{byte(tableType)+1}
 	var count uint64
-	snapshot := r.db.OpenSnap()
-	if snapshot == nil {
+	dbSnap := r.db.OpenSnap()
+	if dbSnap == nil {
 		log.LogErrorf("IteratorCount openSnap failed.")
 		return 0
 	}
-	it := r.db.iterator(snapshot)
-	defer func() {
-		it.Close()
-		r.db.ReleaseSnap(snapshot)
-	}()
-	it.Seek(start)
-	for ; it.ValidForPrefix(start); it.Next() {
-		key := it.Key().Data()
-		if key[0] >= end {
-			break
-		}
-		count += 1
+	defer r.db.ReleaseSnap(dbSnap)
+	if err := r.db.RangeWithSnap(start, end, dbSnap, func(k, v []byte) (bool, error) {
+		count++
+		return true, nil
+	}); err != nil {
+		log.LogErrorf("IteratorCount range with snap failed:%v", err)
+		return 0
 	}
 	return count
 }
@@ -663,10 +658,8 @@ func (b *InodeRocks) GetMaxInode() (uint64, error) {
 		return 0, errors.NewErrorf("open snapshot failed")
 	}
 	defer b.RocksTree.db.ReleaseSnap(snapshot)
-	iterator := b.RocksTree.db.iterator(snapshot)
-	defer iterator.Close()
 	var maxInode uint64 = 0
-	err := b.db.descRangeWithIter(iterator, []byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, func(k, v []byte) (bool, error) {
+	err := b.db.DescRangeWithSnap([]byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, snapshot, func(k, v []byte) (bool, error) {
 		inode := NewInode(0, 0)
 		if e := inode.Unmarshal(context.Background(), v); e != nil {
 			return false, e
@@ -1443,9 +1436,7 @@ func (b *InodeRocks) MaxItem() *Inode {
 		return nil
 	}
 	defer b.RocksTree.db.ReleaseSnap(snapshot)
-	iterator := b.RocksTree.db.iterator(snapshot)
-	defer iterator.Close()
-	err := b.db.descRangeWithIter(iterator, []byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, func(k, v []byte) (bool, error) {
+	err := b.db.DescRangeWithSnap([]byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, snapshot, func(k, v []byte) (bool, error) {
 		inode := NewInode(0, 0)
 		if e := inode.Unmarshal(context.Background(), v); e != nil {
 			return false, e

@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -297,6 +298,8 @@ type metaPartition struct {
 	inodeDelEkRecordCount       uint64
 	inodeDelEkFd                *os.File
 	CreationType                int
+	stopLock                    sync.Mutex
+	stopChState                 uint32
 }
 
 // Start starts a meta partition.
@@ -371,7 +374,9 @@ func (mp *metaPartition) onStart() (err error) {
 func (mp *metaPartition) onStop() {
 	mp.tryToGiveUpLeader()
 	mp.stopRaft()
-	mp.stop()
+	if err := mp.stop(); err != nil {
+		return
+	}
 	mp.db.CloseDb()
 	mp.inodeTree.Release()
 }
@@ -506,6 +511,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		extDelCursor:   make(chan uint64, 1),
 		db:             NewRocksDb(),
 		CreationType:   conf.CreationType,
+		stopChState:    mpStopChOpenState,
 	}
 	return mp
 }
@@ -1239,7 +1245,9 @@ func (mp *metaPartition) Reset() (err error) {
 }
 
 func (mp *metaPartition) Expired() (err error) {
-	mp.stop()
+	if err = mp.stop(); err != nil {
+		return
+	}
 
 	mp.inodeTree.Release()
 	mp.dentryTree.Release()
