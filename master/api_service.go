@@ -295,6 +295,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MpRecoverPool:                       m.cluster.cfg.MetaPartitionsRecoverPoolSize,
 		ClientPkgAddr:                       m.cluster.cfg.ClientPkgAddr,
 		UmpJmtpAddr:                         m.cluster.cfg.UmpJmtpAddr,
+		UmpJmtpBatch:                        m.cluster.cfg.UmpJmtpBatch,
 		Applied:                             m.fsm.applied,
 		MaxDataPartitionID:                  m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:                       m.cluster.idAlloc.commonID,
@@ -4403,7 +4404,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
-		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey}
+		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return

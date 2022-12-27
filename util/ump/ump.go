@@ -64,17 +64,18 @@ var (
 	FunctionTPMapCount = 16
 	FuncationTPMap     []sync.Map
 	FunctionTPKeyMap   *sync.Map
-	UmpCollectWay      proto.UmpCollectBy
+	umpCollectWay      proto.UmpCollectBy
 	jmtpWrite          *JmtpWrite
+	jmtpWriteMutex     sync.Mutex
 )
 
 func init() {
 	FuncationTPMap = make([]sync.Map, FunctionTPMapCount)
 	FunctionTPKeyMap = new(sync.Map)
-	UmpCollectWay = proto.UmpCollectByFile
+	umpCollectWay = proto.UmpCollectByFile
 }
 
-func InitUmp(module, appName string, jmtpAddr string) (err error) {
+func InitUmp(module, appName string) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("InitUmp err(%v)", err)
@@ -82,9 +83,6 @@ func InitUmp(module, appName string, jmtpAddr string) (err error) {
 	}()
 	AppName = appName
 	if err = initLogName(module); err != nil {
-		return
-	}
-	if jmtpWrite, err = NewJmtpWrite(jmtpAddr); err != nil {
 		return
 	}
 	backGroudWriteLog()
@@ -247,7 +245,7 @@ func Alive(key string) {
 	alive.Key = key
 	alive.Time = time.Now().Format(LogTimeForMat)
 	ch := SystemAliveLogWrite.logCh
-	if UmpCollectWay == proto.UmpCollectByJmtpClient {
+	if GetUmpCollectWay() == proto.UmpCollectByJmtpClient && jmtpWrite != nil {
 		ch = jmtpWrite.aliveCh
 	}
 	select {
@@ -275,7 +273,7 @@ func Alarm(key, detail string) {
 
 	inflight := &BusinessAlarmLogWrite.inflight
 	ch := BusinessAlarmLogWrite.logCh
-	if UmpCollectWay == proto.UmpCollectByJmtpClient {
+	if GetUmpCollectWay() == proto.UmpCollectByJmtpClient && jmtpWrite != nil {
 		inflight = &jmtpWrite.inflight
 		ch = jmtpWrite.alarmCh
 	}
@@ -289,7 +287,9 @@ func Alarm(key, detail string) {
 
 func FlushAlarm() {
 	flushAlarm(&BusinessAlarmLogWrite.inflight, BusinessAlarmLogWrite.empty)
-	flushAlarm(&jmtpWrite.inflight, jmtpWrite.empty)
+	if jmtpWrite != nil {
+		flushAlarm(&jmtpWrite.inflight, jmtpWrite.empty)
+	}
 }
 
 func flushAlarm(inflight *int32, empty chan struct{}) {
@@ -304,5 +304,43 @@ func flushAlarm(inflight *int32, empty chan struct{}) {
 				return
 			}
 		}
+	}
+}
+
+func GetUmpCollectWay() proto.UmpCollectBy {
+	return umpCollectWay
+}
+
+// Delay jmtp client initialization to the first set of umpCollectWay.
+// Should call SetUmpJmtpAddr() before this function.
+func SetUmpCollectWay(way proto.UmpCollectBy) {
+	jmtpWriteMutex.Lock()
+	defer jmtpWriteMutex.Unlock()
+	if way == proto.UmpCollectByJmtpClient && jmtpWrite == nil {
+		if jmtp, err := NewJmtpWrite(); err != nil {
+			jmtpWrite = jmtp
+		}
+	}
+	umpCollectWay = way
+}
+
+func SetUmpJmtpAddr(jmtpAddr string) {
+	jmtpWriteMutex.Lock()
+	defer jmtpWriteMutex.Unlock()
+	if jmtpAddr == "" || jmtpAddr == umpJmtpAddr || (umpJmtpAddr == "" && jmtpAddr == defaultJmtpAddr) {
+		return
+	}
+	umpJmtpAddr = jmtpAddr
+	if jmtpWrite != nil {
+		jmtpWrite.stop()
+		if jmtp, err := NewJmtpWrite(); err != nil {
+			jmtpWrite = jmtp
+		}
+	}
+}
+
+func SetUmpJmtpBatch(batch uint) {
+	if batch > 0 && batch <= maxJmtpBatch {
+		umpJmtpBatch = batch
 	}
 }

@@ -3746,6 +3746,12 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.UmpJmtpAddr = v
 	}
 
+	oldUmpJmtpBatch := atomic.LoadUint64(&c.cfg.UmpJmtpBatch)
+	if val, ok := params[umpJmtpBatchKey]; ok {
+		v := val.(uint64)
+		c.cfg.UmpJmtpBatch = v
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3781,6 +3787,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DataSyncWALOnUnstableEnableState = oldDataSyncWALEnableState
 		c.cfg.MetaSyncWALOnUnstableEnableState = oldMetaSyncWALEnableState
 		c.cfg.UmpJmtpAddr = oldUmpJmtpUrl
+		atomic.StoreUint64(&c.cfg.UmpJmtpBatch, oldUmpJmtpBatch)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -5334,6 +5341,8 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		DpRecoverPool:                       c.cfg.DataPartitionsRecoverPoolSize,
 		MpRecoverPool:                       c.cfg.MetaPartitionsRecoverPoolSize,
 		ClientPkgAddr:                       c.cfg.ClientPkgAddr,
+		UmpJmtpAddr:                         c.cfg.UmpJmtpAddr,
+		UmpJmtpBatch:                        c.cfg.UmpJmtpBatch,
 		Applied:                             c.fsm.applied,
 		MaxDataPartitionID:                  c.idAlloc.dataPartitionID,
 		MaxMetaNodeID:                       c.idAlloc.commonID,

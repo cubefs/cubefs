@@ -788,7 +788,7 @@ func buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string
 }
 
 func GetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte(fmt.Sprintf("%v\n", proto.UmpCollectByStr(ump.UmpCollectWay))))
+	w.Write([]byte(fmt.Sprintf("%v\n", proto.UmpCollectByStr(ump.GetUmpCollectWay()))))
 }
 
 func SetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
@@ -802,7 +802,7 @@ func SetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Write([]byte("Set ump collect way failed\n"))
 		} else {
-			ump.UmpCollectWay = proto.UmpCollectBy(val)
+			ump.SetUmpCollectWay(proto.UmpCollectBy(val))
 			w.Write([]byte(fmt.Sprintf("Set ump collect way to %v successfully\n", proto.UmpCollectByStr(proto.UmpCollectBy(val)))))
 		}
 	}

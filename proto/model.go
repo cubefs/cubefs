@@ -30,9 +30,9 @@ const (
 )
 
 const (
-	MinMetaRaftLogSize   = 4 //MB
-	MaxMetaRaftLogSize   = 32 //MB
-	MinMetaRaftLogCap    = 2
+	MinMetaRaftLogSize = 4  //MB
+	MaxMetaRaftLogSize = 32 //MB
+	MinMetaRaftLogCap  = 2
 )
 
 // MetaNode defines the structure of a meta node
@@ -214,6 +214,7 @@ type ClusterView struct {
 	SchedulerDomain                     string // todo
 	ClientPkgAddr                       string
 	UmpJmtpAddr                         string
+	UmpJmtpBatch                        uint64
 	MetaNodeRocksdbDiskThreshold        float32
 	MetaNodeMemModeRocksdbDiskThreshold float32
 	RocksDBDiskReservedSpace            uint64
@@ -228,7 +229,7 @@ type ClusterView struct {
 	MetaRocksWalTTL                     uint64
 	MetaDelEKRecordFileMaxMB            uint64 //MB
 	MetaTrashCleanInterval              uint64 //second
-	MetaRaftLogSize						int64  //MB
+	MetaRaftLogSize                     int64  //MB
 	MetaRaftLogCap                      int64
 }
 

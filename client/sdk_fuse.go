@@ -138,7 +138,6 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	} else {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
-	ump.UmpCollectWay = proto.UmpCollectBy(opt.UmpCollectWay)
 
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, opt.Volname, level, log.NewClientLogRotate())
@@ -307,7 +306,9 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 		server.Shutdown(context.Background())
 	}()
 
-	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), gClient.moduleName), "jdos_chubaofs_node", super.UmpJmtpAddr()); err != nil {
+	ump.SetUmpJmtpAddr(super.UmpJmtpAddr())
+	ump.SetUmpCollectWay(proto.UmpCollectBy(opt.UmpCollectWay))
+	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), gClient.moduleName), "jdos_chubaofs_node"); err != nil {
 		return
 	}
 

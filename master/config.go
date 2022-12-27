@@ -126,6 +126,7 @@ type clusterConfig struct {
 	MetaPartitionsRecoverPoolSize       int32
 	ClientPkgAddr                       string
 	UmpJmtpAddr                         string
+	UmpJmtpBatch                        uint64
 	MetaNodeRocksdbDiskThreshold        float32
 	MetaNodeMemModeRocksdbDiskThreshold float32
 	MetaNodeDumpWaterLevel              uint64
@@ -143,8 +144,8 @@ type clusterConfig struct {
 	MetaRocksWalTTL                     uint64 //second
 	DeleteEKRecordFilesMaxSize          uint64 //MB
 	MetaTrashCleanInterval              uint64
-	MetaRaftLogSize						int64  // MB
-	MetaRaftLogCap                      int64  //
+	MetaRaftLogSize                     int64 // MB
+	MetaRaftLogCap                      int64 //
 	MetaSyncWALOnUnstableEnableState    bool
 	DataSyncWALOnUnstableEnableState    bool
 }
@@ -182,8 +183,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DataNodeRepairTaskCountZoneLimit = make(map[string]uint64)
 	cfg.ClientPkgAddr = defaultClientPkgAddr
 	cfg.DeleteEKRecordFilesMaxSize = 0 // use meta node default value 60MB 10files
-	cfg.MetaRaftLogSize = 0  //use meta node config value
-	cfg.MetaRaftLogCap =  0  // use meta node config value
+	cfg.MetaRaftLogSize = 0            //use meta node config value
+	cfg.MetaRaftLogCap = 0             // use meta node config value
 	return
 }
 

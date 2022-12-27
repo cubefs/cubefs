@@ -144,6 +144,7 @@ const (
 	dataNodeFlushFDParallelismOnDiskKey = "dataNodeFlushFDParallelismOnDisk"
 	umpCollectWayKey                    = "umpCollectWay"
 	umpJmtpAddrKey                      = "umpJmtpAddr"
+	umpJmtpBatchKey              = "umpJmtpBatch"
 )
 
 const (

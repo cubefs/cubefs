@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	InitUmp("datanode", "jdos_chubao-node", "")
+	InitUmp("datanode", "jdos_chubao-node")
 }
 
 //func BenchmarkAfterTPUsOld(b *testing.B) {

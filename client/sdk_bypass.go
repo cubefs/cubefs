@@ -806,8 +806,11 @@ func cfs_ump(id C.int64_t, umpType C.int, sec C.int, nsec C.int) {
 	if !exist {
 		return
 	}
-	tpObject := ump.BeforeTPWithStartTime(c.umpFunctionGeneralKeyFast(int(umpType)), time.Unix(int64(sec), int64(nsec)))
-	ump.AfterTPUs(tpObject, nil)
+	t := time.Unix(int64(sec), int64(nsec))
+	tpObject1 := ump.BeforeTPWithStartTime(c.umpFunctionKeyFast(int(umpType)), t)
+	tpObject2 := ump.BeforeTPWithStartTime(c.umpFunctionGeneralKeyFast(int(umpType)), t)
+	ump.AfterTPUs(tpObject1, nil)
+	ump.AfterTPUs(tpObject2, nil)
 }
 
 /*
@@ -3911,7 +3914,7 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 	c.ec = ec
 
 	// metric
-	if err = ump.InitUmp(gClientManager.moduleName, "jdos_chubaofs-node", ec.UmpJmtpAddr()); err != nil {
+	if err = ump.InitUmp(gClientManager.moduleName, "jdos_chubaofs-node"); err != nil {
 		syslog.Println(err)
 		return
 	}

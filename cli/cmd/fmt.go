@@ -41,6 +41,7 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  Mp recover pool  : %v\n", cv.MpRecoverPool))
 	sb.WriteString(fmt.Sprintf("  Client pkg addr  : %v\n", cv.ClientPkgAddr))
 	sb.WriteString(fmt.Sprintf("  UMP jmtp addr    : %v\n", cv.UmpJmtpAddr))
+	sb.WriteString(fmt.Sprintf("  UMP jmtp batch   : %v\n", cv.UmpJmtpBatch))
 	sb.WriteString(fmt.Sprintf("  EcNode count     : %v\n", len(cv.EcNodes)))
 	if cv.EcNodeStatInfo != nil {
 		sb.WriteString(fmt.Sprintf("  EcNode used      : %v GB\n", cv.EcNodeStatInfo.UsedGB))

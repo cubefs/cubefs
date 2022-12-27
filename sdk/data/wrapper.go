@@ -271,7 +271,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.ecEnable = view.EcEnable
 	w.extentCacheExpireSec = view.ExtentCacheExpireSec
 	if view.UmpCollectWay != proto.UmpCollectByUnkown {
-		ump.UmpCollectWay = view.UmpCollectWay
+		ump.SetUmpCollectWay(view.UmpCollectWay)
 	}
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
@@ -370,9 +370,9 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		w.nearRead = view.NearRead
 	}
 
-	if ump.UmpCollectWay != view.UmpCollectWay && view.UmpCollectWay != proto.UmpCollectByUnkown {
-		log.LogInfof("updateSimpleVolView: update umpCollectWay from old(%v) to new(%v)", ump.UmpCollectWay, view.UmpCollectWay)
-		ump.UmpCollectWay = view.UmpCollectWay
+	if ump.GetUmpCollectWay() != view.UmpCollectWay && view.UmpCollectWay != proto.UmpCollectByUnkown {
+		log.LogInfof("updateSimpleVolView: update umpCollectWay from old(%v) to new(%v)", ump.GetUmpCollectWay(), view.UmpCollectWay)
+		ump.SetUmpCollectWay(view.UmpCollectWay)
 	}
 
 	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm || w.quorum != view.Quorum {
@@ -622,6 +622,8 @@ func (w *Wrapper) _updateDataNodeStatus(cv *proto.ClusterView) {
 	}
 
 	w.umpJmtpAddr = cv.UmpJmtpAddr
+	ump.SetUmpJmtpAddr(w.umpJmtpAddr)
+	ump.SetUmpJmtpBatch(uint(cv.UmpJmtpBatch))
 	return
 }
 

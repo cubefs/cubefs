@@ -71,7 +71,7 @@ func run() error {
 	}
 	defer log.LogFlush()
 
-	if err = ump.InitUmp("check_crc", "jdos_chubaofs-node", ""); err != nil {
+	if err = ump.InitUmp("check_crc", "jdos_chubaofs-node"); err != nil {
 		log.LogErrorf("init ump failed: %v", err)
 		log.LogFlush()
 		syslog.Printf("Fatal: init ump failed: %v ", err)

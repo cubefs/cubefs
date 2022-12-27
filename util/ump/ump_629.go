@@ -11,7 +11,7 @@ import (
 func (lw *LogWrite) backGroupWriteForGroupByTPV629() {
 	defer wg.Done()
 	for {
-		if UmpCollectWay != proto.UmpCollectByFile {
+		if GetUmpCollectWay() != proto.UmpCollectByFile {
 			time.Sleep(10 * time.Second)
 		}
 		select {
@@ -21,7 +21,7 @@ func (lw *LogWrite) backGroupWriteForGroupByTPV629() {
 		default:
 			var body []byte
 			FunctionTPKeyMap.Range(func(key, value interface{}) bool {
-				if UmpCollectWay != proto.UmpCollectByFile {
+				if GetUmpCollectWay() != proto.UmpCollectByFile {
 					return false
 				}
 				v, ok := value.(*sync.Map)

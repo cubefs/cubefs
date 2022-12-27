@@ -270,6 +270,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.forceRowModifyTime = vv.ForceRowModifyTime
 	vol.compactTagModifyTime = vv.CompactTagModifyTime
 	vol.TrashCleanInterval = vv.TrashCleanInterval
+	vol.UmpCollectWay = vv.UmpCollectWay
 	return vol
 }
 

@@ -65,6 +65,7 @@ type clusterValue struct {
 	FixTinyDeleteRecordLimit            uint64
 	ClientPkgAddr                       string
 	UmpJmtpAddr                         string
+	UmpJmtpBatch                        uint64
 	EcScrubEnable                       bool
 	EcMaxScrubExtents                   uint8
 	EcScrubPeriod                       uint32
@@ -127,6 +128,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		FixTinyDeleteRecordLimit:            c.dnFixTinyDeleteRecordLimit,
 		ClientPkgAddr:                       c.cfg.ClientPkgAddr,
 		UmpJmtpAddr:                         c.cfg.UmpJmtpAddr,
+		UmpJmtpBatch:                        c.cfg.UmpJmtpBatch,
 		EcScrubEnable:                       c.EcScrubEnable,
 		EcMaxScrubExtents:                   c.EcMaxScrubExtents,
 		EcScrubPeriod:                       c.EcScrubPeriod,
@@ -902,6 +904,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		c.cfg.ClientPkgAddr = cv.ClientPkgAddr
 		c.cfg.UmpJmtpAddr = cv.UmpJmtpAddr
+		c.cfg.UmpJmtpBatch = cv.UmpJmtpBatch
 		c.EcScrubEnable = cv.EcScrubEnable
 		c.EcScrubPeriod = cv.EcScrubPeriod
 		if c.EcScrubPeriod == 0 {
