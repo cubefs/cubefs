@@ -42,6 +42,9 @@ func TestGetLocalExtentInfo(t *testing.T) {
 	if len(extents) != len(tinyExtents) {
 		t.Fatalf("tiny extent count expect:%v, actual:%v", len(tinyExtents), len(extents))
 	}
+	if leaderTinyDeleteRecordFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
+		t.Fatalf("get leaderTinyDeleteRecordFileSize, extentType:%v err:%v", proto.TinyExtentType, err)
+	}
 	if leaderTinyDeleteRecordFileSize != int64(24) {
 		t.Fatalf("leaderTinyDeleteRecordFileSize expect:%v, actual:%v", 24, leaderTinyDeleteRecordFileSize)
 	}
