@@ -1977,10 +1977,10 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	}
 	stat := volStat(vol)
 	if stat.TotalSize > 0 {
-		usedRatio = float64(stat.UsedSize) / float64(stat.TotalSize)
+		usedRatio = float64(stat.RealUsedSize) / float64(stat.TotalSize)
 	}
 	if volInodeCount > 0 {
-		fileAvgSize = float64(stat.UsedSize) / float64(volInodeCount)
+		fileAvgSize = float64(stat.RealUsedSize) / float64(volInodeCount)
 	}
 	maxPartitionID := vol.maxPartitionID()
 	return &proto.SimpleVolView{
@@ -2035,9 +2035,9 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		SmartEnableTime:      time.Unix(vol.smartEnableTime, 0).Format(proto.TimeFormat),
 		SmartRules:           vol.smartRules,
 		TotalSize:            stat.TotalSize,
-		UsedSize:             stat.UsedSize,
+		UsedSize:             stat.RealUsedSize,
 		TotalSizeGB:          fmt.Sprintf("%.2f", float64(stat.TotalSize)/unit.GB),
-		UsedSizeGB:           fmt.Sprintf("%.2f", float64(stat.UsedSize)/unit.GB),
+		UsedSizeGB:           fmt.Sprintf("%.2f", float64(stat.RealUsedSize)/unit.GB),
 		UsedRatio:            usedRatio,
 		FileAvgSize:          fileAvgSize,
 		CreateStatus:         vol.CreateStatus,
@@ -4677,12 +4677,13 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	stat.Name = vol.Name
 	stat.TotalSize = vol.Capacity * unit.GB
 	stat.UsedSize = vol.totalUsedSpace()
+	stat.RealUsedSize = stat.UsedSize
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize
 	}
 	stat.EnableToken = vol.enableToken
 	stat.EnableWriteCache = vol.enableWriteCache
-	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.UsedSize)
+	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.RealUsedSize)
 	return
 }
 
@@ -4832,7 +4833,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			}
 			stat := volStat(vol)
 
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.RealUsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval)
 			volsInfo = append(volsInfo, volInfo)
