@@ -4,9 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	jc "github.com/jmtp/jmtp-client-go"
-	"github.com/jmtp/jmtp-client-go/protocol"
-	"github.com/jmtp/jmtp-client-go/protocol/v1"
 	"log"
 	"net"
 	urlParser "net/url"
@@ -15,6 +12,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	jc "github.com/jmtp/jmtp-client-go"
+	"github.com/jmtp/jmtp-client-go/protocol"
+	v1 "github.com/jmtp/jmtp-client-go/protocol/v1"
 )
 
 const jmtpProtocol = "jmtp"
@@ -44,6 +45,7 @@ type JmtpClient struct {
 	closePingSignal     chan bool
 	closeCallbackSignal chan bool
 	isClosed            atomic.Value
+	wg                  sync.WaitGroup
 }
 
 func NewJmtpClient(config *Config, callback jc.Callback) (*JmtpClient, error) {
@@ -115,6 +117,7 @@ func (c *JmtpClient) Connect() error {
 			return err
 
 		}
+		c.wg.Add(3)
 		go c.receivePackets()
 		go c.chanListener()
 		go c.ping()
@@ -146,18 +149,21 @@ func (c *JmtpClient) Destroy() error {
 	close(c.closePingSignal)
 	close(c.errorChain)
 	close(c.packetChain)
+	c.wg.Wait()
 	return err
 }
 
 func (c *JmtpClient) SendPacket(packet jc.JmtpPacket) (int, error) {
-	for i := 0; i < 10; i++ {
-		// 如果发现连接被关闭则循环等待，直到连接被重建
-		if c.IsClosed() {
-			time.Sleep(time.Duration(1) * time.Millisecond)
-		} else {
-			break
+	/*
+		for i := 0; i < 10; i++ {
+			// 如果发现连接被关闭则循环等待，直到连接被重建
+			if c.IsClosed() {
+				time.Sleep(time.Duration(1) * time.Millisecond)
+			} else {
+				break
+			}
 		}
-	}
+	*/
 	if c.connection != nil && !c.IsClosed() {
 		out, err := protocol.PacketEncoder(packet)
 		if err != nil {
@@ -174,6 +180,7 @@ func (c *JmtpClient) Reset() error {
 }
 
 func (c *JmtpClient) receivePackets() {
+	defer c.wg.Done()
 	reader := bufio.NewReader(c.connection)
 	err := protocol.PacketDecoder(reader, c.packetChain, c.errorChain)
 	if err != nil {
@@ -197,6 +204,7 @@ func (c *JmtpClient) sendConnectReq() error {
 }
 
 func (c *JmtpClient) ping() {
+	defer c.wg.Done()
 	ticker := time.NewTicker(
 		time.Duration(c.clientConfig.HeartbeatSec) * time.Second)
 	defer ticker.Stop()
@@ -208,7 +216,7 @@ func (c *JmtpClient) ping() {
 				ticker.Stop()
 			}
 		case <-c.closePingSignal:
-			break
+			return
 		}
 	}
 }
@@ -222,6 +230,7 @@ func (c *JmtpClient) disconnectReq() error {
 }
 
 func (c *JmtpClient) chanListener() {
+	defer c.wg.Done()
 	for {
 		select {
 		case packet := <-c.packetChain:
@@ -247,7 +256,7 @@ func (c *JmtpClient) chanListener() {
 		case err := <-c.errorChain:
 			c.callBack(nil, err)
 		case <-c.closeCallbackSignal:
-			break
+			return
 		}
 	}
 }

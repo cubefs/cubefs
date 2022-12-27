@@ -277,7 +277,7 @@ func Alarm(key, detail string) {
 	ch := BusinessAlarmLogWrite.logCh
 	if UmpCollectWay == proto.UmpCollectByJmtpClient {
 		inflight = &jmtpWrite.inflight
-		ch = jmtpWrite.aliveCh
+		ch = jmtpWrite.alarmCh
 	}
 	select {
 	case ch <- alarm:

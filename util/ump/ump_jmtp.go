@@ -82,6 +82,8 @@ func NewJmtpWrite(jmtpAddr string) (jmtp *JmtpWrite, err error) {
 	jmtp.buff = bytes.NewBuffer([]byte{})
 	jmtp.jsonEncoder = json.NewEncoder(jmtp.buff)
 	jmtp.jsonEncoder.SetEscapeHTML(false)
+	jmtp.empty = make(chan struct{})
+	jmtp.stopC = make(chan struct{})
 	jmtp.backGroupWrite()
 	return
 }
@@ -95,7 +97,7 @@ func (jmtp *JmtpWrite) backGroupWrite() {
 }
 
 func (jmtp *JmtpWrite) backGroupWriteTP() {
-	defer wg.Done()
+	defer jmtp.wg.Done()
 	var (
 		body        []byte
 		recordCount int
@@ -151,7 +153,7 @@ func (jmtp *JmtpWrite) backGroupWriteTP() {
 }
 
 func (jmtp *JmtpWrite) checkTPKeyMap() {
-	defer wg.Done()
+	defer jmtp.wg.Done()
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
@@ -170,7 +172,7 @@ func (jmtp *JmtpWrite) checkTPKeyMap() {
 }
 
 func (jmtp *JmtpWrite) backGroupWriteAlive() {
-	defer wg.Done()
+	defer jmtp.wg.Done()
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 	aliveKeyMap := new(sync.Map)
@@ -214,7 +216,7 @@ func (jmtp *JmtpWrite) backGroupWriteAlive() {
 }
 
 func (jmtp *JmtpWrite) backGroupWriteAlarm() {
-	defer wg.Done()
+	defer jmtp.wg.Done()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	businessKeyMap := new(sync.Map)

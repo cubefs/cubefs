@@ -13,6 +13,8 @@
 #include <string.h>
 #include <time.h>
 
+//LD_PRELOAD=libcfsclient.so CFS_CONFIG_PATH=/export/servers/cfs/cfs_client.ini CFS_MOUNT_POINT=/export/data/mysql ./a.out
+
 #define clean_errno() (errno == 0 ? "None" : strerror(errno))
 #define log_error(M, ...) fprintf(stderr, "[ERROR] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, clean_errno(), ##__VA_ARGS__)
 #define assertf(A, M, ...) if(!(A)) {log_error(M, ##__VA_ARGS__); assert(A); }
@@ -301,6 +303,9 @@ void testDup() {
 
     res = close(dirfd);
     assertf(res == 0, "close dir returning %d", res);
+
+    unlink(filepath);
+    rmdir(dir);
 }
 
 void testUnlinkAndRename() {
@@ -439,4 +444,8 @@ void testSymlink() {
     assertf(memcmp(p, filepath1, strlen(filepath1)) == 0, "realpath %s returning %s, expect %s", filepath1, p, filepath1);
     p = realpath(filepath2, buf);
     assertf(memcmp(p, filepath1, strlen(filepath1)) == 0, "realpath %s returning %s, expect %s", filepath2, p, filepath1);
+
+    unlink(filepath2);
+    unlink(filepath1);
+    rmdir(dir);
 }
