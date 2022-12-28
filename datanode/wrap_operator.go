@@ -34,7 +34,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/chubaofs/chubaofs/util/unit"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
@@ -154,7 +153,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	if partition.Used() > partition.Size() * 2 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
+	if partition.Used() > partition.Size()*2 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
@@ -400,7 +399,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	var err error
 	partition := p.Object.(*DataPartition)
 	defer func() {
-		partition.monitorData[statistics.ActionAppendWrite].UpdateData(uint64(p.Size))
+		partition.monitorData[proto.ActionAppendWrite].UpdateData(uint64(p.Size))
 		if err != nil {
 			p.PackErrorBody(ActionWrite, err.Error())
 		} else {
@@ -408,7 +407,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		}
 	}()
 
-	if partition.Used() > partition.Size() * 2 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
+	if partition.Used() > partition.Size()*2 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
@@ -561,9 +560,9 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		}()
 	}
 
-	action := statistics.ActionRead
+	action := proto.ActionRead
 	if isRepairRead {
-		action = statistics.ActionRepairRead
+		action = proto.ActionRepairRead
 	}
 	partition.monitorData[action].UpdateData(uint64(p.Size))
 
@@ -807,7 +806,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	offset := request.ExtentOffset
 	needReplySize = int64(tinyExtentFinfoSize - uint64(request.ExtentOffset))
 	avaliReplySize := uint64(needReplySize)
-	partition.monitorData[statistics.ActionRepairRead].UpdateData(uint64(request.Size))
+	partition.monitorData[proto.ActionRepairRead].UpdateData(uint64(request.Size))
 
 	var (
 		newOffset, newEnd int64

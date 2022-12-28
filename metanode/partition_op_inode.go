@@ -25,8 +25,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/statistics"
-
 )
 
 func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
@@ -55,9 +53,9 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 // CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	var (
-		inoID  uint64
-		val    []byte
-		resp   interface{}
+		inoID uint64
+		val   []byte
+		resp  interface{}
 	)
 
 	inoID, err = mp.nextInodeID()
@@ -103,8 +101,8 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 // DeleteInode deletes an inode.
 func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	var (
-		r      interface{}
-		val    []byte
+		r   interface{}
+		val []byte
 	)
 
 	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
@@ -151,9 +149,9 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 // DeleteInode deletes an inode.
 func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error) {
 	var (
-		r      interface{}
-		reply  []byte
-		val    []byte
+		r     interface{}
+		reply []byte
+		val   []byte
 	)
 
 	if len(req.Inodes) == 0 {
@@ -212,7 +210,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 // InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (err error) {
 
-	mp.monitorData[statistics.ActionMetaInodeGet].UpdateData(0)
+	mp.monitorData[proto.ActionMetaInodeGet].UpdateData(0)
 	var (
 		reply []byte
 	)
@@ -262,7 +260,7 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		retMsg *InodeResponse
 	)
 
-	mp.monitorData[statistics.ActionMetaBatchInodeGet].UpdateData(0)
+	mp.monitorData[proto.ActionMetaBatchInodeGet].UpdateData(0)
 
 	resp := &proto.BatchInodeGetResponse{}
 	for _, inoId := range req.Inodes {
@@ -287,8 +285,8 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 // CreateInodeLink creates an inode link (e.g., soft link).
 func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err error) {
 	var (
-		resp   interface{}
-		val    []byte
+		resp interface{}
+		val  []byte
 	)
 
 	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
@@ -335,8 +333,8 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 // EvictInode evicts an inode.
 func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 	var (
-		resp   interface{}
-		val    []byte
+		resp interface{}
+		val  []byte
 	)
 
 	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
@@ -368,7 +366,7 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 // EvictInode evicts an inode.
 func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error) {
 	var (
-		resp   interface{}
+		resp interface{}
 	)
 
 	if len(req.Inodes) == 0 {
@@ -410,7 +408,7 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 // SetAttr set the inode attributes.
 func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	var (
-		resp   interface{}
+		resp interface{}
 	)
 
 	resp, err = mp.submit(p.Ctx(), opFSMSetAttr, p.RemoteWithReqID(), reqData)

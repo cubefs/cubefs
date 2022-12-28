@@ -2,7 +2,6 @@ package proto
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/statistics"
 	"strings"
 	"testing"
 	"time"
@@ -130,7 +129,7 @@ func TestNewLayerPolicyActionMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
-	if lp1.Action != statistics.ActionRead {
+	if lp1.Action != ActionRead {
 		t.Fatalf("parsed action is not expected")
 	}
 	if lp1.LessCount != 5 {
@@ -149,7 +148,7 @@ func TestNewLayerPolicyActionMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
-	if lp2.Action != statistics.ActionAppendWrite {
+	if lp2.Action != ActionAppendWrite {
 		t.Fatalf("parsed action is not expected")
 	}
 	if lp2.LessCount != 10 {
@@ -198,7 +197,7 @@ func TestActionMetricsParse(t *testing.T) {
 	if lp.ModuleType != ModuleTypeData {
 		t.Fatalf("module type is not expected")
 	}
-	if lp.Action != statistics.ActionRead {
+	if lp.Action != ActionRead {
 		t.Fatalf("action is not expected")
 	}
 	if lp.DataType != DataTypeCount {

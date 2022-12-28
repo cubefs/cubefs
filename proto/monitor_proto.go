@@ -32,3 +32,49 @@ type QueryData struct {
 type QueryView struct {
 	Data []*QueryData
 }
+
+const (
+	ActionRead = iota
+	ActionRepairRead
+	ActionAppendWrite
+	ActionOverWrite
+	ActionRepairWrite
+)
+
+var ActionDataMap = map[int]string{
+	ActionRead:        "read",
+	ActionRepairRead:  "repairRead",
+	ActionAppendWrite: "appendWrite",
+	ActionOverWrite:   "overWrite",
+	ActionRepairWrite: "repairWrite",
+}
+
+const (
+	ActionMetaCreateInode = iota
+	ActionMetaEvictInode
+	ActionMetaCreateDentry
+	ActionMetaDeleteDentry
+	ActionMetaLookup
+	ActionMetaReadDir
+	ActionMetaInodeGet
+	ActionMetaBatchInodeGet
+	ActionMetaExtentsAdd
+	ActionMetaExtentsList
+	ActionMetaTruncate
+	ActionMetaExtentsInsert
+)
+
+var ActionMetaMap = map[int]string{
+	ActionMetaCreateInode:   "createInode",
+	ActionMetaEvictInode:    "evictInode",
+	ActionMetaCreateDentry:  "createDentry",
+	ActionMetaDeleteDentry:  "deleteDentry",
+	ActionMetaLookup:        "lookup",
+	ActionMetaReadDir:       "readDir",
+	ActionMetaInodeGet:      "inodeGet",
+	ActionMetaBatchInodeGet: "batchInodeGet",
+	ActionMetaExtentsAdd:    "addExtents",
+	ActionMetaExtentsList:   "listExtents",
+	ActionMetaTruncate:      "truncate",
+	ActionMetaExtentsInsert: "insertExtent",
+}

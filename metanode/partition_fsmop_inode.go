@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/statistics"
 	"io"
 	"sync/atomic"
 	"time"
@@ -100,7 +99,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse, err error) {
 	i, err = mp.inodeTree.Get(ino.Inode)
 	if err != nil {
 		if err == rocksDBError {
-			exporter.WarningRocksdbError(fmt.Sprintf("action[getInode] clusterID[%s] volumeName[%s] partitionID[%v]" +
+			exporter.WarningRocksdbError(fmt.Sprintf("action[getInode] clusterID[%s] volumeName[%s] partitionID[%v]"+
 				" get inode failed witch rocksdb error", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId))
 		}
@@ -125,7 +124,7 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool, inode *Inode) {
 	var err error
 	inode, err = mp.inodeTree.Get(ino.Inode)
 	if err == rocksDBError {
-		exporter.WarningRocksdbError(fmt.Sprintf("action[Has] clusterID[%s] volumeName[%s] partitionID[%v]" +
+		exporter.WarningRocksdbError(fmt.Sprintf("action[Has] clusterID[%s] volumeName[%s] partitionID[%v]"+
 			" get inode failed witch rocksdb error[inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 			mp.config.PartitionId, ino.Inode))
 	}
@@ -159,7 +158,7 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, inodeID uint64, un
 		return
 	}
 
-	if inode == nil || inode.ShouldDelete(){
+	if inode == nil || inode.ShouldDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
@@ -288,7 +287,7 @@ func (mp *metaPartition) internalDeleteBatch(dbHandle interface{}, inodes InodeB
 	return
 }
 
-func (mp *metaPartition) internalDeleteInode(dbHandle interface{}, ino *Inode) (err error){
+func (mp *metaPartition) internalDeleteInode(dbHandle interface{}, ino *Inode) (err error) {
 	_, err = mp.inodeTree.Delete(dbHandle, ino.Inode)
 	mp.freeList.Remove(ino.Inode)
 	_, err = mp.extendTree.Delete(dbHandle, ino.Inode) // Also delete extend attribute.
@@ -309,7 +308,7 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 		status = proto.OpErr
 		return
 	}
-	if existInode == nil || existInode.ShouldDelete(){
+	if existInode == nil || existInode.ShouldDelete() {
 		status = proto.OpNotExistErr
 		return
 	}
@@ -366,7 +365,7 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 		status = proto.OpErr
 		return
 	}
-	if existIno == nil || existIno.ShouldDelete(){
+	if existIno == nil || existIno.ShouldDelete() {
 		status = proto.OpNotExistErr
 		return
 	}
@@ -426,7 +425,7 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 		resp.Status = proto.OpErr
 		return
 	}
-	if i == nil || i.ShouldDelete(){
+	if i == nil || i.ShouldDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
@@ -486,7 +485,7 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 	}
 
 	var (
-		i *Inode
+		i  *Inode
 		st uint8
 	)
 	i, err = mp.inodeTree.Get(ino.Inode)
@@ -500,7 +499,7 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 	if i.ShouldDelete() {
 		return
 	}
-	defer mp.monitorData[statistics.ActionMetaEvictInode].UpdateData(i.Size)
+	defer mp.monitorData[proto.ActionMetaEvictInode].UpdateData(i.Size)
 
 	if proto.IsDir(i.Type) {
 		if i.IsEmptyDir() {
@@ -553,7 +552,7 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	if ino.ShouldDelete() {
 		dbWriteHandle, _ := mp.inodeTree.CreateBatchWriteHandle()
 		defer mp.inodeTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, false)
-		st, _ := mp.mvToDeletedInodeTree(dbWriteHandle, ino, time.Now().UnixNano() / 1000)
+		st, _ := mp.mvToDeletedInodeTree(dbWriteHandle, ino, time.Now().UnixNano()/1000)
 		log.LogDebugf("checkAndInsertFreeList moveToDeletedInodeTree: mp:%v, inode: %v, status: %v", mp.config.PartitionId, ino, st)
 	}
 }

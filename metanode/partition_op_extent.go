@@ -22,7 +22,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
 // ExtentAppend appends an extent.
@@ -90,7 +89,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		return
 	}
 
-	mp.monitorData[statistics.ActionMetaExtentsList].UpdateData(0)
+	mp.monitorData[proto.ActionMetaExtentsList].UpdateData(0)
 
 	var retMsg *InodeResponse
 	retMsg, err = mp.getInode(NewInode(req.Inode, 0))
@@ -197,7 +196,7 @@ func (mp *metaPartition) MergeExtents(req *proto.InodeMergeExtentsRequest, p *Pa
 		return
 	}
 	im := &InodeMerge{
-		Inode: req.Inode,
+		Inode:      req.Inode,
 		NewExtents: req.NewExtents,
 		OldExtents: req.OldExtents,
 	}

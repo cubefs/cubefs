@@ -18,8 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/statistics"
-
 )
 
 // CreateDentry returns a new dentry.
@@ -232,7 +230,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 		return
 	}
 
-	mp.monitorData[statistics.ActionMetaReadDir].UpdateData(0)
+	mp.monitorData[proto.ActionMetaReadDir].UpdateData(0)
 
 	var (
 		resp  *ReadDirResp
@@ -260,7 +258,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 		return
 	}
 
-	mp.monitorData[statistics.ActionMetaLookup].UpdateData(0)
+	mp.monitorData[proto.ActionMetaLookup].UpdateData(0)
 
 	var (
 		dentry *Dentry

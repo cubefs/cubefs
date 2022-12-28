@@ -2,7 +2,6 @@ package proto
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/statistics"
 	stringutil "github.com/chubaofs/chubaofs/util/string"
 	"strings"
 	"testing"
@@ -62,8 +61,8 @@ func TestNewActionMetricsTaskInfo(t *testing.T) {
 	if am == nil {
 		t.Fatalf("unmarshall action metrics task info failed")
 	}
-	if am.Action != statistics.ActionRead {
-		t.Fatalf("parsed action is not expected, value(%v), excpected(%v)", am.Action, statistics.ActionRead)
+	if am.Action != ActionRead {
+		t.Fatalf("parsed action is not expected, value(%v), excpected(%v)", am.Action, ActionRead)
 	}
 	if am.ModuleType != "dp" {
 		t.Fatalf("parsed module type is not expected, value(%v), excpected(%v)", am.ModuleType, "dp")

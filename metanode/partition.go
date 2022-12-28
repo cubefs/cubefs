@@ -1302,7 +1302,7 @@ func (mp *metaPartition) SumMonitorData(reportTime int64) []*statistics.MonitorD
 			VolName:     mp.config.VolName,
 			PartitionID: mp.config.PartitionId,
 			Action:      i,
-			ActionStr:   statistics.ActionMetaMap[i],
+			ActionStr:   proto.ActionMetaMap[i],
 			Size:        atomic.SwapUint64(&mp.monitorData[i].Size, 0),
 			Count:       atomic.SwapUint64(&mp.monitorData[i].Count, 0),
 			ReportTime:  reportTime,

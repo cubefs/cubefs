@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/statistics"
 	"testing"
 )
 
 var hBaseClient *HBaseClient
 
-func init()  {
+func init() {
 	hBaseHost := "api.storage.hbase.jd.local"
 	hConfig := config.NewHBaseConfig(hBaseHost)
 	hBaseClient = NewHBaseClient(hConfig)
@@ -23,7 +22,7 @@ func TestHBaseClient_SelectDataPartitionMinuteMetrics(t *testing.T) {
 	clusterId := "smart_vol_test"
 	volName := "smart_test"
 	dpId := uint64(10)
-	action := statistics.ActionAppendWrite
+	action := proto.ActionAppendWrite
 	start := "20220325151800"
 	end := "20230325172000"
 	limit := 10

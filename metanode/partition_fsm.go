@@ -38,7 +38,6 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 )
@@ -62,7 +61,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			if err == accessDBError {
 				return
 			}
-			exporter.WarningRocksdbError(fmt.Sprintf("action[Apply] clusterID[%s] volumeName[%s] partitionID[%v]" +
+			exporter.WarningRocksdbError(fmt.Sprintf("action[Apply] clusterID[%s] volumeName[%s] partitionID[%v]"+
 				" apply failed, [error:%v], [msg:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, err, msg))
 			mp.tryToGiveUpLeader()
@@ -88,7 +87,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 	switch msg.Op {
 	case opFSMCreateInode:
-		mp.monitorData[statistics.ActionMetaCreateInode].UpdateData(0)
+		mp.monitorData[proto.ActionMetaCreateInode].UpdateData(0)
 
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
@@ -113,7 +112,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmUnlinkInodeBatch(dbWriteHandle, inodes, msg.Timestamp, msg.TrashEnable)
 	case opFSMExtentTruncate:
-		mp.monitorData[statistics.ActionMetaTruncate].UpdateData(0)
+		mp.monitorData[proto.ActionMetaTruncate].UpdateData(0)
 
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
@@ -147,7 +146,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmSetAttr(dbWriteHandle, req)
 	case opFSMCreateDentry:
-		mp.monitorData[statistics.ActionMetaCreateDentry].UpdateData(0)
+		mp.monitorData[proto.ActionMetaCreateDentry].UpdateData(0)
 
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
@@ -155,7 +154,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmCreateDentry(dbWriteHandle, den, false)
 	case opFSMDeleteDentry:
-		mp.monitorData[statistics.ActionMetaDeleteDentry].UpdateData(0)
+		mp.monitorData[proto.ActionMetaDeleteDentry].UpdateData(0)
 
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
@@ -182,7 +181,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmUpdatePartition(req.End)
 	case opFSMExtentsAdd:
-		mp.monitorData[statistics.ActionMetaExtentsAdd].UpdateData(0)
+		mp.monitorData[proto.ActionMetaExtentsAdd].UpdateData(0)
 
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
@@ -190,7 +189,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmAppendExtents(ctx, dbWriteHandle, ino)
 	case opFSMExtentsInsert:
-		mp.monitorData[statistics.ActionMetaExtentsInsert].UpdateData(0)
+		mp.monitorData[proto.ActionMetaExtentsInsert].UpdateData(0)
 
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
@@ -211,8 +210,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 
 		select {
-			case mp.storeChan <- sMsg:
-			default:
+		case mp.storeChan <- sMsg:
+		default:
 		}
 		mp.fsmStoreConfig()
 
@@ -446,7 +445,7 @@ func (mp *metaPartition) GetRecoverNodeVersion(nodeID uint64) (metaNodeVersion *
 		return
 	}
 
-	if len(strings.Split(recoverPeer.Addr, ":")) < 1{
+	if len(strings.Split(recoverPeer.Addr, ":")) < 1 {
 		err = fmt.Errorf("error recover node addr:%s", recoverPeer.Addr)
 		return
 	}
@@ -509,7 +508,7 @@ func (mp *metaPartition) Snapshot(recoverNode uint64) (snap raftproto.Snapshot, 
 	return newBatchMetaItemIterator(mp, snapV)
 }
 
-func (mp *metaPartition) ResetDbByNewDir(newDBDir string) (err error){
+func (mp *metaPartition) ResetDbByNewDir(newDBDir string) (err error) {
 	if err = mp.db.CloseDb(); err != nil {
 		log.LogErrorf("Close old db failed:%v", err.Error())
 		return
@@ -526,20 +525,20 @@ func (mp *metaPartition) ResetDbByNewDir(newDBDir string) (err error){
 	}
 
 	if err = mp.db.ReOpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
-							mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
+		mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
 		log.LogErrorf("reopen db[%s] failed:%v", mp.getRocksDbRootDir(), err.Error())
 		return
 	}
 
 	partitionId := strconv.FormatUint(mp.config.PartitionId, 10)
-	fileInfoList, err := ioutil.ReadDir(path.Join(mp.config.RocksDBDir, partitionPrefix + partitionId))
+	fileInfoList, err := ioutil.ReadDir(path.Join(mp.config.RocksDBDir, partitionPrefix+partitionId))
 	if err != nil {
 		return nil
 	}
 
 	for _, file := range fileInfoList {
 		if file.IsDir() && strings.HasPrefix(file.Name(), "db_") {
-			oldName := path.Join(mp.config.RocksDBDir, partitionPrefix + partitionId, file.Name())
+			oldName := path.Join(mp.config.RocksDBDir, partitionPrefix+partitionId, file.Name())
 			//last snap shot failed, exist db_timestamp dir, remove it
 			//newName := path.Join(mp.config.RocksDBDir, partitionPrefix + partitionId, "expired_" + file.Name())
 			os.RemoveAll(oldName)
@@ -597,7 +596,6 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	}
 }
 
-
 func (mp *metaPartition) ApplyBaseSnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
 		data          []byte
@@ -626,7 +624,7 @@ func (mp *metaPartition) ApplyBaseSnapshot(peers []raftproto.Peer, iter raftprot
 	defer func() {
 		if err != nil {
 			if err == rocksDBError {
-				exporter.WarningRocksdbError(fmt.Sprintf("action[ApplyBaseSnapshot] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				exporter.WarningRocksdbError(fmt.Sprintf("action[ApplyBaseSnapshot] clusterID[%s] volumeName[%s] partitionID[%v]"+
 					" apply base snapshot failed witch rocksdb error", mp.manager.metaNode.clusterId, mp.config.VolName,
 					mp.config.PartitionId))
 			}
@@ -669,7 +667,7 @@ func (mp *metaPartition) ApplyBaseSnapshot(peers []raftproto.Peer, iter raftprot
 	for {
 		data, err = iter.Next()
 		if err != nil {
-			if err == io.EOF{
+			if err == io.EOF {
 				err = nil
 			}
 			return
@@ -812,7 +810,7 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 	defer func() {
 		if err != nil {
 			if err == rocksDBError {
-				exporter.WarningRocksdbError(fmt.Sprintf("action[ApplyBatchSnapshot] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				exporter.WarningRocksdbError(fmt.Sprintf("action[ApplyBatchSnapshot] clusterID[%s] volumeName[%s] partitionID[%v]"+
 					" apply batch snapshot failed witch rocksdb error", mp.manager.metaNode.clusterId, mp.config.VolName,
 					mp.config.PartitionId))
 			}
@@ -837,7 +835,7 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 	for {
 		data, err = iter.Next()
 		if err != nil {
-			if err == io.EOF{
+			if err == io.EOF {
 				err = nil
 			}
 			return
@@ -897,7 +895,7 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 				log.LogWarnf("write to file failed, err is :%v", err)
 			}
 
-			if leaderCrc != 0  && leaderCrc != crc {
+			if leaderCrc != 0 && leaderCrc != crc {
 				log.LogWarnf("ApplyBatchSnapshot partitionID(%v) leader crc[%v] and local[%v] is different, snaps", mp.config.PartitionId, leaderCrc, crc)
 				err = fmt.Errorf("crc mismatch")
 			}
@@ -1104,7 +1102,7 @@ func (mp *metaPartition) uploadApplyID(applyId uint64) {
 	atomic.StoreUint64(&mp.applyID, applyId)
 
 	if mp.HasRocksDBStore() {
-		if math.Abs(float64(mp.applyID - mp.inodeTree.GetPersistentApplyID())) > math.Min(float64(mp.raftPartition.RaftConfig().RetainLogs), maximumApplyIdDifference) {
+		if math.Abs(float64(mp.applyID-mp.inodeTree.GetPersistentApplyID())) > math.Min(float64(mp.raftPartition.RaftConfig().RetainLogs), maximumApplyIdDifference) {
 			//persist to rocksdb
 			if err := mp.inodeTree.PersistBaseInfo(); err != nil {
 				log.LogErrorf("action[uploadApplyID] persist base info failed:%v", err)

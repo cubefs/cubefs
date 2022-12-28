@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -125,9 +126,9 @@ func InitMonitorData(module string) []*MonitorData {
 	var num int
 	switch module {
 	case ModelDataNode:
-		num = len(ActionDataMap)
+		num = len(proto.ActionDataMap)
 	case ModelMetaNode:
-		num = len(ActionMetaMap)
+		num = len(proto.ActionMetaMap)
 	case ModelObjectNode:
 		num = len(ActionObjectMap)
 	}

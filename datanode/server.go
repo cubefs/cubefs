@@ -515,7 +515,7 @@ func (s *DataNode) summaryMonitorData(reportTime int64) []*statistics.MonitorDat
 				PartitionID: partition.partitionID,
 				DiskPath:    partition.Disk().Path,
 				Action:      i,
-				ActionStr:   statistics.ActionDataMap[i],
+				ActionStr:   proto.ActionDataMap[i],
 				Size:        atomic.SwapUint64(&partition.monitorData[i].Size, 0),
 				Count:       atomic.SwapUint64(&partition.monitorData[i].Count, 0),
 				ReportTime:  reportTime,

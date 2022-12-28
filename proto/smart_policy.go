@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/statistics"
 	"strconv"
 	"strings"
 	"time"
@@ -245,7 +244,7 @@ func (m *LayerPolicyActionMetrics) ParseAction(action string) error {
 
 func constructDataAction() map[string]int {
 	actionData := make(map[string]int)
-	for key, value := range statistics.ActionDataMap {
+	for key, value := range ActionDataMap {
 		actionData[value] = key
 	}
 	return actionData
@@ -253,7 +252,7 @@ func constructDataAction() map[string]int {
 
 func constructMetaAction() map[string]int {
 	actionData := make(map[string]int)
-	for key, value := range statistics.ActionMetaMap {
+	for key, value := range ActionMetaMap {
 		actionData[value] = key
 	}
 	return actionData

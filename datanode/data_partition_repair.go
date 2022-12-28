@@ -36,7 +36,6 @@ import (
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
 // DataPartitionRepairTask defines the reapir task for the data partition.
@@ -760,7 +759,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 
 	}
 
-	dp.monitorData[statistics.ActionRepairWrite].UpdateData(hasRecoverySize)
+	dp.monitorData[proto.ActionRepairWrite].UpdateData(hasRecoverySize)
 
 	return
 

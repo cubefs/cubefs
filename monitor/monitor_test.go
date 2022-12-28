@@ -16,11 +16,11 @@ import (
 )
 
 const (
-	monitorUrl		= "127.0.0.1:81"
+	monitorUrl = "127.0.0.1:81"
 )
 
 var (
-	monitorServer 	= createMonitorServer()
+	monitorServer = createMonitorServer()
 )
 
 func createMonitorServer() *Monitor {
@@ -55,17 +55,17 @@ func TestCollect(t *testing.T) {
 	reqURL := fmt.Sprintf("http://%v%v", monitorUrl, statistics.MonitorCollect)
 	reportInfo := &statistics.ReportInfo{
 		Cluster: "chubaofs01",
-		Addr: "127.0.0.1",
-		Module: statistics.ModelDataNode,
+		Addr:    "127.0.0.1",
+		Module:  statistics.ModelDataNode,
 		Infos: []*statistics.MonitorData{
 			{
-				VolName: "ltptest",
+				VolName:     "ltptest",
 				PartitionID: 1,
-				Action: statistics.ActionRead,
-				Size: 128,
-				Count: 2,
-				ReportTime: time.Now().Unix(),
-				DiskPath: "/data1",
+				Action:      proto.ActionRead,
+				Size:        128,
+				Count:       2,
+				ReportTime:  time.Now().Unix(),
+				DiskPath:    "/data1",
 			},
 		},
 	}
@@ -78,7 +78,7 @@ func TestCollect(t *testing.T) {
 	}
 }
 
-func TestSetCluster(t *testing.T)  {
+func TestSetCluster(t *testing.T) {
 	setCluster := "cfs1,cfs2"
 	reqURL := fmt.Sprintf("http://%v%v?cluster=%v", monitorUrl, statistics.MonitorCluster, setCluster)
 	if err := post(reqURL, nil); err != nil {
@@ -90,35 +90,35 @@ func TestSetCluster(t *testing.T)  {
 }
 
 func TestGetPartitionQueryTable(t *testing.T) {
-	tests := []struct{
-		name		string
-		startTime	string
-		endTime		string
-		expectTable	string
-	} {
+	tests := []struct {
+		name        string
+		startTime   string
+		endTime     string
+		expectTable string
+	}{
 		{
-			name: 			"test01",
-			startTime: 		"20220411120000",
-			endTime: 		"20220411123000",
-			expectTable:	"cfs_monitor_20220411120000",
+			name:        "test01",
+			startTime:   "20220411120000",
+			endTime:     "20220411123000",
+			expectTable: "cfs_monitor_20220411120000",
 		},
 		{
-			name: 			"test02",
-			startTime: 		"20220411125500",
-			endTime: 		"20220411130600",
-			expectTable:	"cfs_monitor_20220411130000",
+			name:        "test02",
+			startTime:   "20220411125500",
+			endTime:     "20220411130600",
+			expectTable: "cfs_monitor_20220411130000",
 		},
 		{
-			name: 			"test03",
-			startTime: 		"20220411125000",
-			endTime: 		"20220411130300",
-			expectTable:	"cfs_monitor_20220411120000",
+			name:        "test03",
+			startTime:   "20220411125000",
+			endTime:     "20220411130300",
+			expectTable: "cfs_monitor_20220411120000",
 		},
 		{
-			name: 			"test04",
-			startTime: 		"20220411125000",
-			endTime: 		"20220411140300",
-			expectTable:	"cfs_monitor_20220411120000",
+			name:        "test04",
+			startTime:   "20220411125000",
+			endTime:     "20220411140300",
+			expectTable: "cfs_monitor_20220411120000",
 		},
 	}
 	for _, tt := range tests {

@@ -2,6 +2,7 @@ package statistics
 
 import (
 	"encoding/json"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
 	"io/ioutil"
 	"net"
@@ -98,9 +99,9 @@ func TestStatistics(t *testing.T) {
 
 func helper(times int, t *testing.T) {
 	for i := 0; i < times; i++ {
-		partition[0].monitorData[ActionMetaCreateInode].UpdateData(dataSize)
-		partition[1].monitorData[ActionMetaLookup].UpdateData(2 * dataSize)
-		partition[2].monitorData[ActionMetaExtentsAdd].UpdateData(3 * dataSize)
+		partition[0].monitorData[proto.ActionMetaCreateInode].UpdateData(dataSize)
+		partition[1].monitorData[proto.ActionMetaLookup].UpdateData(2 * dataSize)
+		partition[2].monitorData[proto.ActionMetaExtentsAdd].UpdateData(3 * dataSize)
 	}
 	time.Sleep(time.Second * time.Duration(StatisticsModule.GetMonitorReportTime()))
 	for _, cc := range collector {
