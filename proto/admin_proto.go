@@ -53,6 +53,9 @@ const (
 	AdminSetNodeRdOnly              = "/admin/setNodeRdOnly"
 	AdminSetDpRdOnly                = "/admin/setDpRdOnly"
 	AdminDataPartitionChangeLeader  = "/dataPartition/changeleader"
+	AdminGetDecommissionDatanodes   = "/admin/getDecommissionDatanodes"
+	AdminGetDecommissionDisks       = "/admin/getDecommissionDisks"
+
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"

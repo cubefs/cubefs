@@ -3316,3 +3316,13 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 
 	return nil
 }
+
+func (m *Server) getAllDecommissionDataNodes(w http.ResponseWriter, r *http.Request) {
+	dataNodes := m.cluster.allDecommissionDataNodes()
+	sendOkReply(w, r, newSuccessHTTPReply(dataNodes))
+}
+
+func (m *Server) getAllDecommissionDisks(w http.ResponseWriter, r *http.Request) {
+	dataNodes := m.cluster.allDecommissionDisks()
+	sendOkReply(w, r, newSuccessHTTPReply(dataNodes))
+}

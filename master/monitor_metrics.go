@@ -219,7 +219,6 @@ func (mm *monitorMetrics) setBadPartitionMetrics() {
 		return true
 	})
 	mm.badMpCount.SetWithLabels(float64(badMpCount), map[string]string{"type": "bad_mp"})
-	mm.cluster.BadMPCount = badMpCount
 
 	badDpCount := uint64(0)
 	mm.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {

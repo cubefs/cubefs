@@ -54,7 +54,6 @@ type Cluster struct {
 	BadDataPartitionIds *sync.Map
 	BadMetaPartitionIds *sync.Map
 	BadDPCount          uint64
-	BadMPCount          uint64
 	DisableAutoAllocate bool
 	FaultDomain         bool
 	needFaultDomain     bool // FaultDomain is true and normal zone aleady used up
@@ -536,7 +535,7 @@ func (c *Cluster) decommissionDatanodes() {
 	c.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if dataNode.ToBeOffline {
-			log.LogDebugf("datanode: [%v] is in state ToBeOffline", dataNode.Addr)
+			log.LogDebugf("datanode: [%v] is decommissioning", dataNode.Addr)
 			return true
 		}
 		if c.BadDPCount > c.cfg.DecommissionDpLimit {
@@ -544,6 +543,7 @@ func (c *Cluster) decommissionDatanodes() {
 			return true
 		}
 		if dataNode.isStale && !dataNode.ToBeOffline {
+			log.LogInfof("begin to decommissionDatanode node: [%v]", dataNode.Addr)
 			if err := c.migrateDataNode(dataNode.Addr, "", 0, false); err != nil {
 				dataNode.ToBeOffline = false
 				log.LogErrorf("auto decommissionDatanode: [%v] failed, err: %v", dataNode.Addr, err)
@@ -567,17 +567,13 @@ func (c *Cluster) decommissionDisks() {
 	c.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if dataNode.ToBeOffline {
-			log.LogDebugf("datanode: [%v] is in state ToBeOffline", dataNode.Addr)
+			log.LogDebugf("datanode: [%v] is decommissioning", dataNode.Addr)
 			return true
 		}
 
 		for _, badDisk := range dataNode.BadDisks {
 			if c.BadDPCount > c.cfg.DecommissionDpLimit {
 				log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
-				return true
-			}
-			if _, ok := dataNode.DecommissionedDisks.Load(badDisk); ok {
-				log.LogInfof("the disk [%v] on node [%v] is in state decommission", badDisk, dataNode.Addr)
 				return true
 			}
 			var (
@@ -623,7 +619,7 @@ func (c *Cluster) decommissionDataPartitions() {
 	c.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if dataNode.ToBeOffline {
-			log.LogDebugf("datanode: [%v] is in state ToBeOffline", dataNode.Addr)
+			log.LogDebugf("datanode: [%v] is decommissioning", dataNode.Addr)
 			return true
 		}
 
@@ -634,17 +630,20 @@ func (c *Cluster) decommissionDataPartitions() {
 			}
 			dp, err := c.getDataPartitionByID(lackDataPartition)
 			if err != nil {
-				log.LogWarnf("decommission dataPartition: [%v] from datanode: [%v] failed, err: [%v]", lackDataPartition, dataNode.Addr, err)
+				log.LogWarnf("lackDataPartition: [%v] is not found, datanode: [%v], err: [%v]", lackDataPartition, dataNode.Addr, err)
+				return true
 			}
 			log.LogDebugf("begin to decommission dataPartition: [%v] from datanode: [%v] ", lackDataPartition, dataNode.Addr)
 			c.decommissionDataPartition(dataNode.Addr, dp, false, handleDataPartitionOfflineErr)
-			log.LogDebugf("decommission dataPartition [%v] from datanode: [%v]", dp.PartitionID, dataNode.Addr)
+			log.LogDebugf("decommission dataPartition [%v] from node: [%v] successfully", dp.PartitionID, dataNode.Addr)
 		}
 		return true
 	})
 }
 
 func (c *Cluster) updateAndSyncLackDataPartitions(dataNode *DataNode, lackDataPartitions []uint64) (err error) {
+	dataNode.Lock()
+	defer dataNode.Unlock()
 	oldLackDataPartitions := dataNode.LackDataPartitions
 	dataNode.LackDataPartitions = lackDataPartitions
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
@@ -2788,6 +2787,28 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
+		return true
+	})
+	return
+}
+
+func (c *Cluster) allDecommissionDataNodes() (dataNodes []proto.NodeView) {
+	dataNodes = make([]proto.NodeView, 0)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		if dataNode.ToBeOffline {
+			dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
+		}
+		return true
+	})
+	return
+}
+
+func (c *Cluster) allDecommissionDisks() (disks []proto.DecommissionDiskView) {
+	disks = make([]proto.DecommissionDiskView, 0)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		disks = append(disks, proto.DecommissionDiskView{Addr: dataNode.Addr, DecommissionDisks: dataNode.getDecommissionedDisks()})
 		return true
 	})
 	return

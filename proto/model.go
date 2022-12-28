@@ -146,6 +146,11 @@ type BadPartitionView struct {
 	PartitionIDs []uint64
 }
 
+type DecommissionDiskView struct {
+	Addr              string
+	DecommissionDisks []string
+}
+
 type ClusterStatInfo struct {
 	DataNodeStatInfo *NodeStatInfo
 	MetaNodeStatInfo *NodeStatInfo

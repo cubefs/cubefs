@@ -55,7 +55,7 @@ const (
 	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck // in terms of seconds
 	noHeartBeatTimes                           = 3                           // number of times that no heartbeat reported
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
-	defaultNodeStaleSec                        = 60 * 60 * 3
+	defaultNodeStaleSec                        = 60 * 10
 	defaultDataPartitionTimeOutSec             = 5 * defaultIntervalToCheckHeartbeat
 	defaultMissingDataPartitionInterval        = 24 * 3600
 
@@ -75,7 +75,6 @@ const (
 	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
 	defaultNodeSetGrpStep                              = 1
 	defaultMasterMinQosAccept                          = 20000
-	defaultDecommissionDnLimit                         = 1
 	defaultDecommissionDpLimit                         = 100
 )
 
