@@ -1071,12 +1071,10 @@ func (t *topology) getZoneByIndex(index int) (zone *Zone) {
 func calculateDemandWriteNodes(zoneNum int, replicaNum int) (demandWriteNodes int) {
 	if zoneNum == 1 {
 		demandWriteNodes = replicaNum
+	} else if zoneNum >= replicaNum {
+		demandWriteNodes = 1
 	} else {
-		if replicaNum == 1 {
-			demandWriteNodes = 1
-		} else {
-			demandWriteNodes = 2
-		}
+		demandWriteNodes = 2
 	}
 	return
 }
