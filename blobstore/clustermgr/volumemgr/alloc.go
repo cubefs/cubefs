@@ -33,6 +33,7 @@ const (
 
 type allocConfig struct {
 	allocatableDiskLoadThreshold int
+	allocFactor                  int
 	allocatableSize              uint64
 	codeModes                    map[codemode.CodeMode]codeModeConf
 }
@@ -270,7 +271,7 @@ RETRY:
 		}
 		volume.lock.RUnlock()
 
-		if len(optionalVids) >= 3*count {
+		if len(optionalVids) >= a.allocFactor*count {
 			break
 		}
 

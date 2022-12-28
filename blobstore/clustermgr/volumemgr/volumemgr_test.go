@@ -940,7 +940,7 @@ func TestVolumeMgr_PreAlloc(t *testing.T) {
 		diskLoad    int
 	}{
 		// first have 8 diskload=0 vid,alloc success
-		{codemode: 1, healthScore: 0, count: 2, lenVids: 2, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold / 2},
+		{codemode: 1, healthScore: 0, count: 2, lenVids: 2, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold},
 		{codemode: 1, healthScore: 0, count: 1, lenVids: 1, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold / 2},
 		// prealloc's vid(diskload=0) num not match require,should add diskload
 		{codemode: 1, healthScore: 0, count: 2, lenVids: 2, diskLoad: mockVolumeMgr.AllocatableDiskLoadThreshold},

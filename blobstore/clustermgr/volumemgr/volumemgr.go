@@ -53,6 +53,7 @@ const (
 	defaultMinAllocatableVolumeCount   = 5
 	defaultVolumeSliceMapNum           = 10
 	defaultListVolumeMaxCount          = 2000
+	defaultAllocFactor                 = 5
 	defaultAllocatableSize             = 1 << 30
 )
 
@@ -528,16 +529,14 @@ func (v *VolumeMgr) applyRetainVolume(ctx context.Context, retainVolTokens []cm.
 			span.Errorf("vid is nil,:%s decode error", retainVol.Token)
 			return errors.Info(ErrVolumeNotExist, "get volume failed").Detail(ErrVolumeNotExist)
 		}
-		vol.lock.RLock()
+
+		vol.lock.Lock()
 		if vol.token == nil {
-			vol.lock.RUnlock()
-			// each volume has a tokenID, one tokenID mismatch do not affect other volume
+			vol.lock.Unlock()
 			span.Errorf("volume not alloc,can not alloc:%d", vid)
 			return ErrVolumeNotAlloc
 		}
-		vol.lock.RUnlock()
 
-		vol.lock.Lock()
 		tokenRecord := &volumedb.TokenRecord{
 			Vid:        vid,
 			TokenID:    retainVol.Token,

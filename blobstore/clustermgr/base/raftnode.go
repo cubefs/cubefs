@@ -333,8 +333,10 @@ func (r *RaftNode) ModuleApply(ctx context.Context, module string, operTypes []i
 	if moduleApplies == nil {
 		return errors.New("raft node can't found applies in map")
 	}
-
+	start := time.Now()
+	span := trace.SpanFromContextSafe(ctx)
 	err := moduleApplies.Apply(ctx, operTypes, datas, contexts)
+	span.Debugf("module:%s, types:%v, contexts:%v, apply cost time:%dus", module, operTypes, contexts, time.Since(start)/time.Microsecond)
 	if err != nil {
 		return errors.Info(err, "raft statemachine Apply call module method failed").Detail(err)
 	}

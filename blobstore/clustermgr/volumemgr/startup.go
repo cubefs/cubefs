@@ -50,6 +50,7 @@ type VolumeMgrConfig struct {
 	ApplyConcurrency             uint32 `json:"apply_concurrency"`
 	MinAllocableVolumeCount      int    `json:"min_allocable_volume_count"`
 	AllocatableDiskLoadThreshold int    `json:"allocatable_disk_load_threshold"`
+	AllocFactor                  int    `json:"alloc_factor"`
 	// the volume free size must big than AllocatableSize can alloc
 	AllocatableSize uint64 `json:"allocatable_size"`
 
@@ -90,6 +91,9 @@ func (c *VolumeMgrConfig) checkAndFix() {
 	}
 	if c.AllocatableSize <= 0 {
 		c.AllocatableSize = defaultAllocatableSize
+	}
+	if c.AllocFactor <= 0 {
+		c.AllocFactor = defaultAllocFactor
 	}
 }
 
@@ -146,6 +150,7 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr diskmgr.DiskMgrAPI, scopeMgr sco
 	allocConfig := allocConfig{
 		codeModes:                    volumeMgr.codeMode,
 		allocatableSize:              conf.AllocatableSize,
+		allocFactor:                  conf.AllocFactor,
 		allocatableDiskLoadThreshold: conf.AllocatableDiskLoadThreshold,
 	}
 	volAllocator := newVolumeAllocator(allocConfig)
