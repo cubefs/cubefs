@@ -150,3 +150,16 @@ func (api *NodeAPI) DataNodeMigrate(srcAddr, targetAddr string, count int) (err 
 	}
 	return
 }
+
+func (api *NodeAPI) ReportLackPartitions(report *proto.LackPartitionReport) (err error) {
+	var encoded []byte
+	if encoded, err = json.Marshal(report); err != nil {
+		return
+	}
+	var request = newAPIRequest(http.MethodPost, proto.ReportLackDataPartitions)
+	request.addBody(encoded)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}

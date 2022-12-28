@@ -409,6 +409,7 @@ func (s *DataNode) checkLocalPartitionMatchWithMasterWhenStartDN() (err error) {
 	if len(lackPartitions) > 0 {
 		err = fmt.Errorf("LackPartitions %v on datanode %v,datanode cannot start", lackPartitions, s.localServerAddr)
 		log.LogErrorf(err.Error())
+		s.reportLackDataPartitions(lackPartitions)
 		return
 	}
 	return
@@ -464,6 +465,20 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64
 			continue
 		}
 		log.LogInfof("action[checkLocalPartitionMatchWithMaster] dp [%v] replicaNum [%v] ignore local error", dp.PartitionID, dp.ReplicaNum)
+	}
+	return
+}
+
+func (s *DataNode) reportLackDataPartitions(lackPartitions []uint64) {
+	report := &proto.LackPartitionReport{}
+	report.Addr = s.localServerAddr
+	report.LackPartitions = lackPartitions
+	for i := 0; i < 3; i++ {
+		if err := MasterClient.NodeAPI().ReportLackPartitions(report); err != nil {
+			log.LogErrorf("reportLackDataPartitions to master error %v", err)
+			continue
+		}
+		break
 	}
 	return
 }

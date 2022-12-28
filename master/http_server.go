@@ -347,6 +347,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetDpRdOnly).
 		HandlerFunc(m.setDpRdOnlyHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.ReportLackDataPartitions).
+		HandlerFunc(m.reportLackDataPartitions)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).

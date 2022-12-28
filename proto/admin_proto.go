@@ -94,6 +94,7 @@ const (
 	DecommissionDataNode           = "/dataNode/decommission"
 	MigrateDataNode                = "/dataNode/migrate"
 	CancelDecommissionDataNode     = "/dataNode/cancelDecommission"
+	ReportLackDataPartitions       = "/dataNode/reportLackDataPartitions"
 	DecommissionDisk               = "/disk/decommission"
 	RecommissionDisk               = "/disk/recommission"
 	GetDataNode                    = "/dataNode/get"
@@ -302,6 +303,12 @@ type PartitionReport struct {
 	IsLeader        bool
 	ExtentCount     int
 	NeedCompare     bool
+}
+
+// LackPartitionReport defines the lack partitions report.
+type LackPartitionReport struct {
+	Addr           string
+	LackPartitions []uint64
 }
 
 type DataNodeQosResponse struct {

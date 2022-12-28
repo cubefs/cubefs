@@ -15,9 +15,11 @@
 package master
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -2193,6 +2195,48 @@ func (m *Server) setDpRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("[setNodeRdOnlyHandler] set dpid %v to rdOnly(%v) success", dpId, rdOnly)))
+	return
+}
+
+func (m *Server) reportLackDataPartitions(w http.ResponseWriter, r *http.Request) {
+	var (
+		node                *DataNode
+		err                 error
+		lackPartitionReport *proto.LackPartitionReport
+	)
+	lackPartitionReport, err = parseRequestToReportLackPartitions(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	addr := lackPartitionReport.Addr
+	if !checkIpPort(addr) {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
+		return
+	}
+	if node, err = m.cluster.dataNode(addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+	if err = m.cluster.updateAndSyncLackDataPartitions(node, lackPartitionReport.LackPartitions); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("updateAndSyncLackDataPartitions failed")))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("updateLackDataPartitions successfully"))
+}
+
+func parseRequestToReportLackPartitions(r *http.Request) (lackPartitionReport *proto.LackPartitionReport, err error) {
+	var body []byte
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		return
+	}
+	lackPartitionReport = &proto.LackPartitionReport{}
+	decoder := json.NewDecoder(bytes.NewBuffer(body))
+	decoder.UseNumber()
+	err = decoder.Decode(lackPartitionReport)
 	return
 }
 

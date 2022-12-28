@@ -508,12 +508,12 @@ func (c *Cluster) scheduleToDecommission() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if !c.AutoDecommission {
-					log.LogInfo("auto decommission is disabled")
-					return
+					log.LogDebugf("auto decommission is disabled")
+					continue
 				}
 				if c.BadDPCount > c.cfg.DecommissionDpLimit {
-					log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
-					return
+					log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
+					continue
 				}
 				c.decommissionDatanodes()
 				c.decommissionDisks()
@@ -544,10 +544,13 @@ func (c *Cluster) decommissionDatanodes() {
 			return true
 		}
 		if dataNode.isStale && !dataNode.ToBeOffline {
-			log.LogDebugf("begin to decommissionDatanode node: [%v]", dataNode.Addr)
-			c.migrateDataNode(dataNode.Addr, "", 0, false)
+			if err := c.migrateDataNode(dataNode.Addr, "", 0, false); err != nil {
+				dataNode.ToBeOffline = false
+				log.LogErrorf("auto decommissionDatanode: [%v] failed, err: %v", dataNode.Addr, err)
+				return true
+			}
 		}
-		log.LogDebugf("finish to decommissionDatanode node: [%v]", dataNode.Addr)
+		log.LogInfof("decommissionDatanode: [%v] successfully", dataNode.Addr)
 		return true
 	})
 }
@@ -639,6 +642,18 @@ func (c *Cluster) decommissionDataPartitions() {
 		}
 		return true
 	})
+}
+
+func (c *Cluster) updateAndSyncLackDataPartitions(dataNode *DataNode, lackDataPartitions []uint64) (err error) {
+	oldLackDataPartitions := dataNode.LackDataPartitions
+	dataNode.LackDataPartitions = lackDataPartitions
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		dataNode.LackDataPartitions = oldLackDataPartitions
+		return
+	}
+	log.LogInfof("action[updateAndSyncLackDataPartitions] finish, lackDataPartitions [%v], dataNode [%v]", lackDataPartitions, dataNode.Addr)
+	log.LogInfof("#TESTLOG datanode lackDataPartitions [%v], dataNode [%v]", dataNode.LackDataPartitions, dataNode.Addr)
+	return
 }
 
 func (c *Cluster) getNotConsistentIDMetaNodes() (metaNodes []*InvalidNodeView) {
