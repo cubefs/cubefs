@@ -125,7 +125,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 			}
 			select {
 			case <-stopC:
-				log.LogCriticalf("[startSchedule]: partitionID(%v) stopCh receive close signal, msgCnt:%v", mp.config.PartitionId, len(msgs))
+				if len(msgs) != 0 {
+					log.LogCriticalf("[startSchedule]: partitionID(%v) stopCh receive close signal, msgCnt:%v", mp.config.PartitionId, len(msgs))
+				}
 				timer.Stop()
 				timerCursor.Stop()
 				return

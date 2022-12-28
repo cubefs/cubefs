@@ -462,6 +462,11 @@ func (mp *metaPartition) selectRocksDBDir() (err error) {
 		dir         string
 		partitionId = strconv.FormatUint(mp.config.PartitionId, 10)
 	)
+	maxUsedPercent := getMemModeMaxFsUsedPercent()
+	if mp.HasRocksDBStore() {
+		maxUsedPercent = getRocksDBModeMaxFsUsedPercent()
+	}
+	factor := float64(maxUsedPercent) / float64(100)
 
 	//clean
 	for _, dir = range mp.manager.rocksDBDirs {
@@ -479,7 +484,7 @@ func (mp *metaPartition) selectRocksDBDir() (err error) {
 		}
 	}
 
-	dir, err = diskusage.SelectDisk(mp.manager.rocksDBDirs)
+	dir, err = diskusage.SelectDisk(mp.manager.rocksDBDirs, factor)
 	if err != nil {
 		log.LogErrorf("selectRocksDBDir, mp[%v] select failed(%v), so set root dir(%s) as rocksdb dir",
 			mp.config.PartitionId, err, mp.manager.rootDir)

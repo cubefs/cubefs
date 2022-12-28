@@ -311,7 +311,7 @@ func (si *BatchMetaItemIterator) Next() (data []byte, err error) {
 		}
 		if item == nil || !open {
 			err, si.err = io.EOF, io.EOF
-			log.LogErrorf("Item Iterator: snap finish:%v, dir:%s", err, si.fileRootDir)
+			log.LogWarnf("Item Iterator: snap finish:%v, dir:%s", err, si.fileRootDir)
 			si.Close()
 			break
 		}

@@ -32,7 +32,7 @@ type diskScore struct {
 const (
 	DiskStatusFile           = ".diskStatus"
 	DiskHangCnt              = 2
-	MAXFsUsedFactor          = 0.6
+	DefaultMAXFsUsedFactor   = 0.6
 	DefReservedSpaceMaxRatio = 0.05
 )
 
@@ -204,8 +204,10 @@ func (ds *diskScore) computeScore(diskTotalAvail uint64, num int) {
 }
 
 // select best dir by dirs , The reference parameters are the number of space remaining and partitions
-func SelectDisk(dirs []string) (string, error) {
-
+func SelectDisk(dirs []string, fsUsedFactor float64) (string, error) {
+	if fsUsedFactor <= 0 || fsUsedFactor >= 1 {
+		fsUsedFactor = DefaultMAXFsUsedFactor
+	}
 	result := make([]*diskScore, 0, len(dirs))
 
 	var (
@@ -221,7 +223,7 @@ func SelectDisk(dirs []string) (string, error) {
 		}
 		total := float64(fs.Blocks * uint64(fs.Bsize))
 		avail := float64(fs.Bavail * uint64(fs.Bsize))
-		if (total - avail) > total*MAXFsUsedFactor {
+		if (total - avail) > total*fsUsedFactor {
 			log.LogWarnf("dir:[%s] not enough space:[%v] of disk so skip", dir, avail)
 			continue
 		}
