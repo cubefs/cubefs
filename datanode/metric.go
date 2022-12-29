@@ -37,7 +37,7 @@ type DataNodeMetrics struct {
 	dataNode                 *DataNode
 	stopC                    chan struct{}
 	MetricIOBytes            *exporter.Counter
-	MetricLackDpCount        *exporter.Gauge
+	MetricLackDpCount        *exporter.GaugeVec
 	MetricCapacityToCreateDp *exporter.GaugeVec
 	MetricConnectionCnt      *exporter.Gauge
 	MetricDpCount            *exporter.Gauge
@@ -51,7 +51,7 @@ func (d *DataNode) registerMetrics() {
 		stopC:    make(chan struct{}),
 	}
 	d.metrics.MetricIOBytes = exporter.NewCounter(MetricPartitionIOBytesName)
-	d.metrics.MetricLackDpCount = exporter.NewGauge(MetricLackDpCount)
+	d.metrics.MetricLackDpCount = exporter.NewGaugeVec(MetricLackDpCount, "", []string{"type"})
 	d.metrics.MetricCapacityToCreateDp = exporter.NewGaugeVec(MetricCapacityToCreateDp, "", []string{"type"})
 	d.metrics.MetricConnectionCnt = exporter.NewGauge(MetricConnectionCnt)
 	d.metrics.MetricDpCount = exporter.NewGauge(MetricDpCount)
@@ -106,18 +106,10 @@ func (dm *DataNodeMetrics) doStat() {
 }
 
 func (dm *DataNodeMetrics) setLackDpCountMetrics() {
-	lackPartitions := make([]uint64, 0)
-	var err error
-	lackPartitions, err = dm.dataNode.checkLocalPartitionMatchWithMaster()
-	if err != nil {
-		log.LogError(err)
-		exporter.Warning(err.Error())
-	}
-	if len(lackPartitions) > 0 {
-		err = fmt.Errorf("LackPartitions %v on datanode %v", lackPartitions, dm.dataNode.localServerAddr)
-		log.LogErrorf(err.Error())
-	}
-	dm.MetricLackDpCount.SetWithLabels(float64(len(lackPartitions)), map[string]string{"type": "lack_dp"})
+	lackPartitionsInMem := dm.dataNode.space.stats.LackPartitionsInMem
+	lackPartitionsInDisk := dm.dataNode.space.stats.LackPartitionsInDisk
+	dm.MetricLackDpCount.SetWithLabelValues(float64(lackPartitionsInMem), "inMemory")
+	dm.MetricLackDpCount.SetWithLabelValues(float64(lackPartitionsInDisk), "inDisk")
 }
 
 func (dm *DataNodeMetrics) setCapacityToCreateDpMetrics() {

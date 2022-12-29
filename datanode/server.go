@@ -225,7 +225,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	go s.registerHandler()
 
-	go s.startUpdateNodeInfo()
+	s.scheduleTask()
 
 	// start metrics (LackDpCount, etc.)
 	s.startMetrics()
@@ -508,6 +508,30 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64
 	}
 }
 
+func (s *DataNode) checkPartitionInMemoryMatchWithInDisk() (lackPartitions []uint64) {
+	s.space.partitionMutex.RLock()
+	partitions := make([]*DataPartition, 0)
+	for _, dp := range s.space.partitions {
+		partitions = append(partitions, dp)
+	}
+	s.space.partitionMutex.RUnlock()
+
+	for _, dp := range partitions {
+		stat, err := os.Stat(dp.path)
+		if err != nil {
+			lackPartitions = append(lackPartitions, dp.partitionID)
+			log.LogErrorf("action[checkPartitionInMemoryMatchWithInDisk] stat dataPartition[%v] fail, path[%v], err[%v]", dp.partitionID, dp.Path(), err)
+			continue
+		}
+		if !stat.IsDir() {
+			lackPartitions = append(lackPartitions, dp.partitionID)
+			log.LogErrorf("action[checkPartitionInMemoryMatchWithInDisk] dataPartition[%v] is not directory, path[%v]", dp.partitionID, dp.Path())
+			continue
+		}
+	}
+	return
+}
+
 func (s *DataNode) registerHandler() {
 	http.HandleFunc("/disks", s.getDiskAPI)
 	http.HandleFunc("/partitions", s.getPartitionsAPI)
@@ -769,6 +793,41 @@ func (s *DataNode) shallDegrade() bool {
 		return false
 	}
 	return true
+}
+
+func (s *DataNode) scheduleTask() {
+	go s.startUpdateNodeInfo()
+	s.scheduleToCheckLackPartitions()
+}
+
+func (s *DataNode) scheduleToCheckLackPartitions() {
+	go func() {
+		for {
+			var err error
+			lackPartitionsInMem := make([]uint64, 0)
+			lackPartitionsInMem, err = s.checkLocalPartitionMatchWithMaster()
+			if err != nil {
+				log.LogError(err)
+			}
+			if len(lackPartitionsInMem) > 0 {
+				err = fmt.Errorf("action[scheduleToLackDataPartitions] lackPartitions %v in datanode %v memory",
+					lackPartitionsInMem, s.localServerAddr)
+				log.LogErrorf(err.Error())
+			}
+			s.space.stats.updateMetricLackPartitionsInMem(uint64(len(lackPartitionsInMem)))
+
+			lackPartitionsInDisk := make([]uint64, 0)
+			lackPartitionsInDisk = s.checkPartitionInMemoryMatchWithInDisk()
+			if len(lackPartitionsInDisk) > 0 {
+				err = fmt.Errorf("action[scheduleToLackDataPartitions] lackPartitions %v in datanode %v disk",
+					lackPartitionsInDisk, s.localServerAddr)
+				log.LogErrorf(err.Error())
+			}
+			s.space.stats.updateMetricLackPartitionsInDisk(uint64(len(lackPartitionsInDisk)))
+
+			time.Sleep(1 * time.Minute)
+		}
+	}()
 }
 
 func IsDiskErr(errMsg string) bool {
