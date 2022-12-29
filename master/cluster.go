@@ -67,6 +67,7 @@ type Cluster struct {
 	diskQosEnable       bool
 	QosAcceptLimit      *rate.Limiter
 	AutoDecommission    bool
+	diskCount           int
 }
 
 type followerReadManager struct {
@@ -510,8 +511,8 @@ func (c *Cluster) scheduleToDecommission() {
 					log.LogDebugf("auto decommission is disabled")
 					continue
 				}
-				if c.BadDPCount > c.cfg.DecommissionDpLimit {
-					log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
+				if c.BadDPCount > uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor) {
+					log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v", uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor)
 					continue
 				}
 				c.decommissionDatanodes()
@@ -538,8 +539,8 @@ func (c *Cluster) decommissionDatanodes() {
 			log.LogDebugf("datanode: [%v] is decommissioning", dataNode.Addr)
 			return true
 		}
-		if c.BadDPCount > c.cfg.DecommissionDpLimit {
-			log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
+		if c.BadDPCount > uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor) {
+			log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v", float64(c.diskCount)*c.cfg.DecommissionDpFactor)
 			return true
 		}
 		if dataNode.isStale && !dataNode.ToBeOffline {
@@ -572,8 +573,8 @@ func (c *Cluster) decommissionDisks() {
 		}
 
 		for _, badDisk := range dataNode.BadDisks {
-			if c.BadDPCount > c.cfg.DecommissionDpLimit {
-				log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
+			if c.BadDPCount > uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor) {
+				log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v", float64(c.diskCount)*c.cfg.DecommissionDpFactor)
 				return true
 			}
 			var (
@@ -624,8 +625,8 @@ func (c *Cluster) decommissionDataPartitions() {
 		}
 
 		for _, lackDataPartition := range dataNode.LackDataPartitions {
-			if c.BadDPCount > c.cfg.DecommissionDpLimit {
-				log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
+			if c.BadDPCount > uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor) {
+				log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v", float64(c.diskCount)*c.cfg.DecommissionDpFactor)
 				return true
 			}
 			dp, err := c.getDataPartitionByID(lackDataPartition)

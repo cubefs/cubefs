@@ -404,4 +404,6 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		log.LogWarn(err)
 	}
 	response.LackDataPartitions = lackPartitions
+	response.DiskCount = len(disks)
+	log.LogInfof("#TESTLOG decommissionDisk DiskCount [%v], DiskLen", response.DiskCount, len(disks))
 }

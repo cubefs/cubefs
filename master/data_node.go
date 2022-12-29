@@ -58,6 +58,7 @@ type DataNode struct {
 	QosIopsWLimit             uint64
 	QosFlowRLimit             uint64
 	QosFlowWLimit             uint64
+	DiskCount                 int
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -126,6 +127,8 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	}
 	dataNode.ReportTime = time.Now()
 	dataNode.isActive = true
+	dataNode.DiskCount = resp.DiskCount
+	log.LogInfof("#TESTLOG decommissionDisk dataNode [%v], diskCount [%v]", dataNode.Addr, dataNode.DiskCount)
 }
 
 func (dataNode *DataNode) canAlloc() bool {
