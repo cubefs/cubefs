@@ -38,6 +38,8 @@ type Stats struct {
 	TotalPartitionSize                 uint64 // dataPartitionCnt * dataPartitionSize
 	RemainingCapacityToCreatePartition uint64
 	CreatedPartitionCnt                uint64
+	LackPartitionsInMem                uint64
+	LackPartitionsInDisk               uint64
 
 	// the maximum capacity among all the disks that can be used to create partition
 	MaxCapacityToCreatePartition uint64
@@ -80,4 +82,18 @@ func (s *Stats) updateMetrics(
 	s.RemainingCapacityToCreatePartition = remainWeightsForCreatePartition
 	s.MaxCapacityToCreatePartition = maxWeightsForCreatePartition
 	s.CreatedPartitionCnt = dataPartitionCnt
+}
+
+func (s *Stats) updateMetricLackPartitionsInMem(lackPartitionsInMem uint64) {
+	s.Lock()
+	defer s.Unlock()
+
+	s.LackPartitionsInMem = lackPartitionsInMem
+}
+
+func (s *Stats) updateMetricLackPartitionsInDisk(lackPartitionsInDisk uint64) {
+	s.Lock()
+	defer s.Unlock()
+
+	s.LackPartitionsInDisk = lackPartitionsInDisk
 }
