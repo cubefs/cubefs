@@ -19,16 +19,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"net"
-	"os"
-	"runtime"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/diskusage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/memory"
 	raftProto "github.com/tiglabs/raft/proto"
+	"net"
+	"os"
 )
 
 const (
@@ -763,7 +761,6 @@ func (m *metadataManager) opExpiredMetaPartition(conn net.Conn,
 	m.expiredPartition(mp.GetBaseConfig().PartitionId)
 	p.PacketOkReply()
 	m.respondToClient(conn, p)
-	runtime.GC()
 	log.LogInfof("%s [opDeleteMetaPartition] req: %d - %v, resp: %v",
 		remoteAddr, p.GetReqID(), req, err)
 	return
