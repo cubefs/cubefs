@@ -182,6 +182,7 @@ func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.MetaDelExtentK
 	err = mp.db.CommitBatchAndRelease(handle)
 	if err != nil {
 		log.LogErrorf("[addDelExtentToDb] partition[%v] commit batch handle and release failed:%v", mp.config.PartitionId, err)
+		goto errOut
 	}
 
 	return
