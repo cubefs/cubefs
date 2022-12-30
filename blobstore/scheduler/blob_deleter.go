@@ -409,6 +409,9 @@ func (d *deleteTopicConsumer) consumeAndDelete(consumer base.IConsumer, batchCnt
 	}
 
 	msgs := consumer.ConsumeMessages(ctx, batchCnt)
+	if len(msgs) == 0 {
+		return
+	}
 	d.handleMsgBatch(ctx, msgs)
 
 	base.InsistOn(ctx, "deleter consumer.CommitOffset", func() error {

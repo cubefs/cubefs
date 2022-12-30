@@ -248,7 +248,9 @@ func (s *ShardRepairMgr) consumerAndRepair(consumer base.IConsumer, batchCnt int
 		batchCnt = 1
 	}
 	msgs := consumer.ConsumeMessages(ctx, batchCnt)
-
+	if len(msgs) == 0 {
+		return
+	}
 	s.handleMsgBatch(ctx, msgs)
 
 	base.InsistOn(ctx, "repairer consumer.CommitOffset", func() error {
