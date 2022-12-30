@@ -908,13 +908,26 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 
 func (mp *metaPartition) metaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree, mulItems *MulItems, cursor *uint64) (err error) {
 	defer func() {
-		log.LogDebugf("metaItemBatchCreate: meta item batch create finished, error:%v", err)
+		log.LogDebugf("metaItemBatchCreate: meta item batch create finished, partitionID: %v, error: %v", mp.config.PartitionId, err)
 	}()
 
 	var dbHandle interface{}
 	if dbHandle, err = metaTree.InodeTree.CreateBatchWriteHandle(); err != nil {
 		return
 	}
+	defer func() {
+		if err != nil {
+			log.LogErrorf("metaItemBatchCreate, create meta item failed:%v", err)
+			err = metaTree.InodeTree.ReleaseBatchWriteHandle(dbHandle)
+			return
+		}
+		err = metaTree.InodeTree.CommitAndReleaseBatchWriteHandle(dbHandle, true)
+		if err != nil {
+			log.LogErrorf("metaItemBatchCreate: commit batch write handle failed, partitionID(%v) error(%v)", mp.config.PartitionId, err)
+			return
+		}
+
+	}()
 	for _, inode := range mulItems.InodeBatches {
 		if _, _, err = metaTree.InodeTree.Create(dbHandle, inode, true); err != nil {
 			err = fmt.Errorf("create inode failed:%v", err)
@@ -970,11 +983,6 @@ func (mp *metaPartition) metaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree
 	for _, ekInfo := range mulItems.DelExtents {
 		_ = db.Put(ekInfo.key, ekInfo.data)
 		log.LogDebugf("metaItemBatchCreate: put del extetns info: partitionID(%v) extent(%v)", mp.config.PartitionId, ekInfo.key)
-	}
-
-	if err = metaTree.InodeTree.CommitAndReleaseBatchWriteHandle(dbHandle, true); err != nil {
-		log.LogErrorf("metaItemBatchCreate: commit batch write handle failed, partitionID(%v) error(%v)", mp.config.PartitionId, err)
-		return
 	}
 	return
 }

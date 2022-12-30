@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -297,6 +298,8 @@ type metaPartition struct {
 	inodeDelEkRecordCount       uint64
 	inodeDelEkFd                *os.File
 	CreationType                int
+	stopLock                    sync.Mutex
+	stopChState                 uint32
 }
 
 // Start starts a meta partition.
@@ -371,7 +374,9 @@ func (mp *metaPartition) onStart() (err error) {
 func (mp *metaPartition) onStop() {
 	mp.tryToGiveUpLeader()
 	mp.stopRaft()
-	mp.stop()
+	if err := mp.stop(); err != nil {
+		return
+	}
 	mp.db.CloseDb()
 	mp.inodeTree.Release()
 }
@@ -457,6 +462,11 @@ func (mp *metaPartition) selectRocksDBDir() (err error) {
 		dir         string
 		partitionId = strconv.FormatUint(mp.config.PartitionId, 10)
 	)
+	maxUsedPercent := getMemModeMaxFsUsedPercent()
+	if mp.HasRocksDBStore() {
+		maxUsedPercent = getRocksDBModeMaxFsUsedPercent()
+	}
+	factor := float64(maxUsedPercent) / float64(100)
 
 	//clean
 	for _, dir = range mp.manager.rocksDBDirs {
@@ -474,7 +484,7 @@ func (mp *metaPartition) selectRocksDBDir() (err error) {
 		}
 	}
 
-	dir, err = diskusage.SelectDisk(mp.manager.rocksDBDirs)
+	dir, err = diskusage.SelectDisk(mp.manager.rocksDBDirs, factor)
 	if err != nil {
 		log.LogErrorf("selectRocksDBDir, mp[%v] select failed(%v), so set root dir(%s) as rocksdb dir",
 			mp.config.PartitionId, err, mp.manager.rootDir)
@@ -506,6 +516,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		extDelCursor:   make(chan uint64, 1),
 		db:             NewRocksDb(),
 		CreationType:   conf.CreationType,
+		stopChState:    mpStopChOpenState,
 	}
 	return mp
 }
@@ -1239,7 +1250,9 @@ func (mp *metaPartition) Reset() (err error) {
 }
 
 func (mp *metaPartition) Expired() (err error) {
-	mp.stop()
+	if err = mp.stop(); err != nil {
+		return
+	}
 
 	mp.inodeTree.Release()
 	mp.dentryTree.Release()

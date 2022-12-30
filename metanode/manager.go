@@ -821,14 +821,15 @@ func (m *metadataManager) deletePartition(id uint64) (err error) {
 }
 
 func (m *metadataManager) expiredPartition(id uint64) (err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	mp, has := m.partitions[id]
-	if !has {
+	var mp MetaPartition
+	if mp, err = m.getPartition(id); err != nil {
 		return
 	}
-	mp.Expired()
-	delete(m.partitions, id)
+
+	if err = mp.Expired(); err != nil {
+		return
+	}
+	_ = m.detachPartition(id)
 	return
 }
 

@@ -82,14 +82,13 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	mp.config.Learners = mConf.Learners
 	mp.config.Cursor = mp.config.Start
 	mp.config.StoreMode = mConf.StoreMode
+	if mp.config.StoreMode < proto.StoreModeMem || mp.config.StoreMode > proto.StoreModeRocksDb {
+		mp.config.StoreMode = proto.StoreModeMem
+	}
 	mp.config.RocksDBDir = mConf.RocksDBDir
 	if mp.config.RocksDBDir == "" {
 		// new version but old config; need select one dir
 		err = mp.selectRocksDBDir()
-	}
-
-	if mp.config.StoreMode < proto.StoreModeMem || mp.config.StoreMode > proto.StoreModeRocksDb {
-		mp.config.StoreMode = proto.StoreModeMem
 	}
 
 	mp.config.CreationType = mConf.CreationType

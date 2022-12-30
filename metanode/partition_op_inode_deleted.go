@@ -359,7 +359,7 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 		di := item.(*DeletedINode)
 		_, ok := mp.IsLeader()
 		if !ok {
-			return false, errors.NewErrorf("not leader")
+			return false, nil
 		}
 
 		if di.Timestamp >= expires {
