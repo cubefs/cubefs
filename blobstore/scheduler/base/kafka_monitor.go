@@ -101,3 +101,13 @@ func (m *KafkaTopicMonitor) Close() {
 	m.Closer.Close()
 	m.monitor.Close()
 }
+
+func defaultKafkaCfg() *sarama.Config {
+	cfg := sarama.NewConfig()
+	cfg.Version = kafka.DefaultKafkaVersion
+	cfg.Consumer.Return.Errors = true
+	cfg.Producer.Return.Successes = true
+	cfg.Producer.RequiredAcks = sarama.WaitForAll
+	cfg.Producer.Compression = sarama.CompressionSnappy
+	return cfg
+}

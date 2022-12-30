@@ -26,6 +26,18 @@ import (
 
 type MockKafkaClient struct{}
 
+func (c *MockKafkaClient) RefreshController() (broker *sarama.Broker, err error) {
+	return
+}
+
+func (c *MockKafkaClient) Broker(brokerID int32) (broker *sarama.Broker, err error) {
+	return
+}
+
+func (c *MockKafkaClient) RefreshBrokers(addrs []string) error {
+	return nil
+}
+
 func (c *MockKafkaClient) Config() *sarama.Config {
 	return nil
 }
