@@ -23,9 +23,8 @@ var ErrInvalidMsg = errors.New("msg is invalid")
 type DeleteStage byte
 
 const (
-	InitStage DeleteStage = iota
-	MarkDelStage
-	DelStage
+	DeleteStageMarkDelete = DeleteStage(iota + 1)
+	DeleteStageDelete
 )
 
 type BlobDeleteStage struct {

@@ -119,17 +119,14 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 	topologyMgr := NewClusterTopologyMgr(clusterMgrCli, topoConf)
 
-	conf.ShardRepair.Kafka = conf.Kafka.ShardRepair
-	conf.ShardRepair.Kafka.BrokerList = conf.Kafka.BrokerList
-	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, topologyMgr, switchMgr, blobnodeCli, clusterMgrCli)
+	kafkaClient := base.NewKafkaConsumer(conf.Kafka.BrokerList, time.Duration(conf.Kafka.CommitIntervalMs)*time.Millisecond, clusterMgrCli)
+	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, topologyMgr, switchMgr, blobnodeCli, clusterMgrCli, kafkaClient)
 	if err != nil {
 		log.Errorf("new shard repair mgr: cfg[%+v], err[%w]", conf.ShardRepair, err)
 		return nil, err
 	}
 
-	conf.BlobDelete.Kafka = conf.Kafka.BlobDelete
-	conf.BlobDelete.Kafka.BrokerList = conf.Kafka.BrokerList
-	deleteMgr, err := NewBlobDeleteMgr(&conf.BlobDelete, topologyMgr, blobnodeCli, switchMgr, clusterMgrCli)
+	deleteMgr, err := NewBlobDeleteMgr(&conf.BlobDelete, topologyMgr, switchMgr, blobnodeCli, kafkaClient)
 	if err != nil {
 		log.Errorf("new blob delete mgr: cfg[%+v], err[%w]", conf.BlobDelete, err)
 		return nil, err
@@ -145,7 +142,9 @@ func NewService(conf *Config) (svr *Service, err error) {
 		return nil, fmt.Errorf("service register: err:[%w]", err)
 	}
 
-	go svr.RunTask()
+	if err = svr.RunTask(); err != nil {
+		return nil, err
+	}
 
 	if !svr.leader {
 		return
@@ -257,39 +256,37 @@ func (svr *Service) Run() {
 }
 
 // RunTask run shard repair and blob delete tasks
-func (svr *Service) RunTask() {
-	err := svr.LoadVolInfo()
-	if err != nil {
-		log.Panicf("load volume info failed: err[%+v]", err)
+func (svr *Service) RunTask() error {
+	if err := svr.LoadVolInfo(); err != nil {
+		log.Errorf("load volume info failed: err[%+v]", err)
+		return err
 	}
-	svr.shardRepairMgr.RunTask()
-	svr.blobDeleteMgr.RunTask()
+	svr.blobDeleteMgr.Run()
+	svr.shardRepairMgr.Run()
+	return nil
 }
 
 func (svr *Service) NewKafkaMonitor(clusterID proto.ClusterID, access base.IConsumerOffset) error {
 	// blob delete
-	var blobDeleteTopicCfgs []*base.KafkaConfig
-	blobDeleteTopicCfgs = append(blobDeleteTopicCfgs, conf.BlobDelete.normalConsumerConfig())
-	blobDeleteTopicCfgs = append(blobDeleteTopicCfgs, conf.BlobDelete.failedConsumerConfig())
-	if err := svr.newMonitor(proto.TaskTypeBlobDelete, clusterID, blobDeleteTopicCfgs, access); err != nil {
+	brokerList := conf.Kafka.BrokerList
+	if err := svr.newMonitor(proto.TaskTypeBlobDelete, clusterID, conf.BlobDelete.topics(),
+		brokerList, access); err != nil {
 		return err
 	}
 
 	// shard repair
-	var shardRepairTopicCfgs []*base.KafkaConfig
-	shardRepairTopicCfgs = append(shardRepairTopicCfgs, conf.ShardRepair.failedConsumerConfig())
-	for _, topicCfg := range conf.ShardRepair.priorityConsumerConfigs() {
-		shardRepairTopicCfgs = append(shardRepairTopicCfgs, &topicCfg.KafkaConfig)
-	}
-	return svr.newMonitor(proto.TaskTypeShardRepair, clusterID, shardRepairTopicCfgs, access)
+	return svr.newMonitor(proto.TaskTypeShardRepair, clusterID, conf.ShardRepair.topics(),
+		brokerList, access)
 }
 
-func (svr *Service) newMonitor(taskType proto.TaskType, clusterID proto.ClusterID, topics []*base.KafkaConfig, access base.IConsumerOffset) error {
+func (svr *Service) newMonitor(taskType proto.TaskType, clusterID proto.ClusterID,
+	topics []string, brokerList []string, access base.IConsumerOffset) error {
 	monitorIntervalS := 1
-	for _, topicCfg := range topics {
-		m, err := base.NewKafkaTopicMonitor(taskType, clusterID, topicCfg, access, monitorIntervalS)
+	for _, topic := range topics {
+		cfg := &base.KafkaConfig{BrokerList: brokerList, Topic: topic}
+		m, err := base.NewKafkaTopicMonitor(taskType, clusterID, cfg, access, monitorIntervalS)
 		if err != nil {
-			log.Errorf("new kafka topic monitor topic failed: topic[%s], err[%+v]", topicCfg.Topic, err)
+			log.Errorf("new kafka topic monitor topic failed: topic[%s], err[%+v]", topic, err)
 			return err
 		}
 		svr.kafkaMonitors = append(svr.kafkaMonitors, m)
@@ -358,6 +355,9 @@ func (svr *Service) forwardToLeader(w http.ResponseWriter, req *http.Request) {
 
 // Close close service safe
 func (svr *Service) Close() {
+	log.Infof("stop scheduler service")
+	svr.blobDeleteMgr.Close()
+	svr.shardRepairMgr.Close()
 	if !svr.leader {
 		return
 	}
