@@ -345,9 +345,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 
 func registerInterceptedSignal() {
 	sigC := make(chan os.Signal, 1)
-	notifySignals := SignalsIgnored
-	notifySignals = append(notifySignals, syscall.SIGINT, syscall.SIGTERM)
-	signal.Notify(sigC, notifySignals...)
+	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM, syscall.SIGPIPE, syscall.SIGUSR1, syscall.SIGUSR2, syscall.SIGALRM, syscall.SIGXCPU, syscall.SIGXFSZ, syscall.SIGVTALRM, syscall.SIGPROF, syscall.SIGIO, syscall.SIGPWR)
 	gClient.wg.Add(1)
 	go func() {
 		defer gClient.wg.Done()
