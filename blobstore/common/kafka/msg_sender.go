@@ -22,7 +22,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-var DefaultKafkaVersion = sarama.V0_10_0_0
+var DefaultKafkaVersion = sarama.V2_1_0_0
 
 type MsgProducer interface {
 	SendMessage(topic string, msg []byte) (err error)

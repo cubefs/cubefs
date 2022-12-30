@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -35,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/selector"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
@@ -43,17 +45,16 @@ type shardRepairStatus int
 
 // shard repair status
 const (
-	ShardRepairDone = shardRepairStatus(iota)
-	ShardRepairFailed
-	ShardRepairUnexpect
-	ShardRepairOrphan
+	ShardRepairStatusDone = shardRepairStatus(iota)
+	ShardRepairStatusFailed
+	ShardRepairStatusUnexpect
+	ShardRepairStatusOrphan
+	ShardRepairStatusUndo
 )
 
 // shard repair name
 const (
-	ShardRepair      = "shard_repair"
-	priorityConsumer = 1
-	normalConsumer   = 0
+	ShardRepair = "shard_repair"
 )
 
 // ErrBlobnodeServiceUnavailable worker service unavailable
@@ -63,49 +64,20 @@ var ErrBlobnodeServiceUnavailable = errors.New("blobnode service unavailable")
 type ShardRepairConfig struct {
 	ClusterID proto.ClusterID
 	IDC       string
+	Kafka     ShardRepairKafkaConfig
 
-	TaskPoolSize         int `json:"task_pool_size"`
-	NormalHandleBatchCnt int `json:"normal_handle_batch_cnt"`
-
-	FailHandleBatchCnt       int   `json:"fail_handle_batch_cnt"`
-	FailMsgConsumeIntervalMs int64 `json:"fail_msg_consume_interval_ms"`
-
+	TaskPoolSize   int              `json:"task_pool_size"`
 	OrphanShardLog recordlog.Config `json:"orphan_shard_log"`
-
-	Kafka ShardRepairKafkaConfig `json:"-"`
 }
 
-func (cfg *ShardRepairConfig) priorityConsumerConfigs() (consumers []base.PriorityConsumerConfig) {
-	consumers = append(consumers, base.PriorityConsumerConfig{
-		KafkaConfig: base.KafkaConfig{
-			BrokerList: cfg.Kafka.BrokerList,
-			Topic:      cfg.Kafka.Priority.Topic,
-			Partitions: cfg.Kafka.Priority.Partitions,
-		},
-		Priority: priorityConsumer,
-	}, base.PriorityConsumerConfig{
-		KafkaConfig: base.KafkaConfig{
-			BrokerList: cfg.Kafka.BrokerList,
-			Topic:      cfg.Kafka.Normal.Topic,
-			Partitions: cfg.Kafka.Normal.Partitions,
-		},
-		Priority: normalConsumer,
-	})
-	return
-}
-
-func (cfg *ShardRepairConfig) failedConsumerConfig() *base.KafkaConfig {
-	return &base.KafkaConfig{
-		Topic:      cfg.Kafka.Failed.Topic,
-		Partitions: cfg.Kafka.Failed.Partitions,
-		BrokerList: cfg.Kafka.BrokerList,
-	}
+func (cfg *ShardRepairConfig) topics() []string {
+	return append(cfg.Kafka.TopicNormals, cfg.Kafka.TopicFailed)
 }
 
 func (cfg *ShardRepairConfig) failedProducerConfig() *kafka.ProducerCfg {
 	return &kafka.ProducerCfg{
 		BrokerList: cfg.Kafka.BrokerList,
-		Topic:      cfg.Kafka.Failed.Topic,
+		Topic:      cfg.Kafka.TopicFailed,
 		TimeoutMs:  cfg.Kafka.FailMsgSenderTimeoutMs,
 	}
 }
@@ -119,18 +91,14 @@ type OrphanShard struct {
 
 // ShardRepairMgr shard repair manager
 type ShardRepairMgr struct {
+	closer.Closer
 	taskPool        taskpool.TaskPool
 	taskSwitch      *taskswitch.TaskSwitch
 	clusterTopology IClusterTopology
 
-	normalPriorConsumers base.IConsumer
-
-	failTopicConsumers       []base.IConsumer
-	failMsgConsumeIntervalMs time.Duration
-	failMsgSender            base.IProducer
-
-	normalHandleBatchCnt int
-	failHandlerBatchCnt  int
+	kafkaConsumerClient base.KafkaConsumer
+	consumers           []base.GroupConsumer
+	failMsgSender       base.IProducer
 
 	blobnodeCli      client.BlobnodeAPI
 	blobnodeSelector selector.Selector
@@ -143,6 +111,8 @@ type ShardRepairMgr struct {
 
 	group             singleflight.Group
 	orphanShardLogger recordlog.Encoder
+
+	cfg *ShardRepairConfig
 }
 
 // NewShardRepairMgr returns shard repair manager
@@ -152,17 +122,8 @@ func NewShardRepairMgr(
 	switchMgr *taskswitch.SwitchMgr,
 	blobnodeCli client.BlobnodeAPI,
 	clusterMgrCli client.ClusterMgrAPI,
+	kafkaClient base.KafkaConsumer,
 ) (*ShardRepairMgr, error) {
-	priorConsumers, err := base.NewPriorityConsumer(proto.TaskTypeShardRepair, cfg.priorityConsumerConfigs(), clusterMgrCli)
-	if err != nil {
-		return nil, err
-	}
-
-	failTopicConsumers, err := base.NewKafkaPartitionConsumers(proto.TaskTypeShardRepair, cfg.failedConsumerConfig(), clusterMgrCli)
-	if err != nil {
-		return nil, err
-	}
-
 	taskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeShardRepair.String())
 	if err != nil {
 		return nil, err
@@ -188,14 +149,8 @@ func NewShardRepairMgr(
 		clusterTopology:  clusterTopology,
 		blobnodeSelector: workerSelector,
 
-		normalPriorConsumers: priorConsumers,
-
-		failTopicConsumers:       failTopicConsumers,
-		failMsgSender:            failMsgSender,
-		failMsgConsumeIntervalMs: time.Duration(cfg.FailMsgConsumeIntervalMs) * time.Millisecond,
-
-		normalHandleBatchCnt: cfg.NormalHandleBatchCnt,
-		failHandlerBatchCnt:  cfg.FailHandleBatchCnt,
+		kafkaConsumerClient: kafkaClient,
+		failMsgSender:       failMsgSender,
 
 		orphanShardLogger: orphanShardsLog,
 
@@ -204,165 +159,190 @@ func NewShardRepairMgr(
 		errStatsDistribution:    base.NewErrorStats(),
 		repairSuccessCounterMin: &counter.Counter{},
 		repairFailedCounterMin:  &counter.Counter{},
+
+		cfg:    cfg,
+		Closer: closer.New(),
 	}, nil
 }
 
 // Enabled returns true if shard repair task is enabled, otherwise returns false
-func (s *ShardRepairMgr) Enabled() bool {
-	return s.taskSwitch.Enabled()
+func (mgr *ShardRepairMgr) Enabled() bool {
+	return mgr.taskSwitch.Enabled()
 }
 
-// RunTask run shard repair task
-func (s *ShardRepairMgr) RunTask() {
-	go func() {
-		for {
-			s.taskSwitch.WaitEnable()
-			s.consumerAndRepair(s.normalPriorConsumers, s.normalHandleBatchCnt)
-		}
-	}()
+func (mgr *ShardRepairMgr) Run() {
+	go mgr.runTask()
+}
 
-	failPtConsumeBatchCnt := s.failHandlerBatchCnt / len(s.failTopicConsumers)
-	for _, c := range s.failTopicConsumers {
-		c := c
-		go func() {
-			for {
-				s.taskSwitch.WaitEnable()
-				s.consumerAndRepair(c, failPtConsumeBatchCnt)
-				time.Sleep(s.failMsgConsumeIntervalMs)
+func (mgr *ShardRepairMgr) Close() {
+	mgr.Closer.Close()
+	mgr.stopConsumer()
+}
+
+func (mgr *ShardRepairMgr) runTask() {
+	t := time.NewTicker(time.Second)
+	span := trace.SpanFromContextSafe(context.Background())
+	defer t.Stop()
+
+	for {
+		select {
+		case <-t.C:
+			if !mgr.Enabled() {
+				mgr.stopConsumer()
+				continue
 			}
-		}()
+			if err := mgr.startConsumer(); err != nil {
+				span.Errorf("start consumer failed: err[%+v]", err)
+				mgr.stopConsumer()
+			}
+		case <-mgr.Done():
+			return
+		}
 	}
+}
+
+func (mgr *ShardRepairMgr) startConsumer() error {
+	if mgr.consumerRunning() {
+		return nil
+	}
+	for _, topic := range mgr.cfg.topics() {
+		consumer, err := mgr.kafkaConsumerClient.StartKafkaConsumer(proto.TaskTypeShardRepair,
+			topic, mgr.Consume)
+		if err != nil {
+			return err
+		}
+		mgr.consumers = append(mgr.consumers, consumer)
+	}
+	return nil
+}
+
+func (mgr *ShardRepairMgr) stopConsumer() {
+	if !mgr.consumerRunning() {
+		return
+	}
+	for _, consumer := range mgr.consumers {
+		consumer.Stop()
+	}
+	mgr.consumers = nil
+}
+
+func (mgr *ShardRepairMgr) consumerRunning() bool {
+	return mgr.consumers != nil
 }
 
 type shardRepairRet struct {
-	status    shardRepairStatus
-	err       error
-	repairMsg *proto.ShardRepairMsg
+	status shardRepairStatus
+	err    error
 }
 
-func (s *ShardRepairMgr) consumerAndRepair(consumer base.IConsumer, batchCnt int) {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "consumerAndRepair")
-	defer span.Finish()
-
-	if batchCnt <= 0 {
-		batchCnt = 1
-	}
-	msgs := consumer.ConsumeMessages(ctx, batchCnt)
-	if len(msgs) == 0 {
-		return
-	}
-	s.handleMsgBatch(ctx, msgs)
-
-	base.InsistOn(ctx, "repairer consumer.CommitOffset", func() error {
-		return consumer.CommitOffset(ctx)
-	})
+// GetTaskStats returns task stats
+func (mgr *ShardRepairMgr) GetTaskStats() (success [counter.SLOT]int, failed [counter.SLOT]int) {
+	return mgr.repairSuccessCounterMin.Show(), mgr.repairFailedCounterMin.Show()
 }
 
-func (s *ShardRepairMgr) handleMsgBatch(ctx context.Context, msgs []*sarama.ConsumerMessage) {
-	span := trace.SpanFromContextSafe(ctx)
-	ctx = trace.ContextWithSpan(ctx, span)
+// GetErrorStats returns service error stats
+func (mgr *ShardRepairMgr) GetErrorStats() (errStats []string, totalErrCnt uint64) {
+	statsResult, totalErrCnt := mgr.errStatsDistribution.Stats()
+	return base.FormatPrint(statsResult), totalErrCnt
+}
 
-	span.Infof("handle repair msg: len[%d]", len(msgs))
-
-	finishCh := make(chan shardRepairRet, len(msgs))
-	for _, m := range msgs {
-		func(msg *sarama.ConsumerMessage) {
-			s.taskPool.Run(func() {
-				s.handleOneMsg(ctx, msg, finishCh)
-			})
-		}(m)
-	}
-
-	for i := 0; i < len(msgs); i++ {
-		ret := <-finishCh
+// Consume consume kafka messages: if message is not consume will return false, otherwise return true
+func (mgr *ShardRepairMgr) Consume(msg *sarama.ConsumerMessage, consumerPause base.ConsumerPause) bool {
+	var (
+		repairMsg *proto.ShardRepairMsg
+		ret       shardRepairRet
+		span      trace.Span
+		ctx       context.Context
+	)
+	defer func() {
 		switch ret.status {
-		case ShardRepairDone:
-			span.Debugf("repair success: vid[%d], bid[%d], trace_id[%s]", ret.repairMsg.Vid, ret.repairMsg.Bid, ret.repairMsg.ReqId)
-			s.repairSuccessCounter.Inc()
-			s.repairSuccessCounterMin.Add()
+		case ShardRepairStatusDone:
+			span.Debugf("repair success: vid[%d], bid[%d]", repairMsg.Vid, repairMsg.Bid)
+			mgr.repairSuccessCounter.Inc()
+			mgr.repairSuccessCounterMin.Add()
 
-		case ShardRepairFailed:
-			span.Warnf("repair failed and send msg to fail queue: vid[%d], bid[%d], reqid[%s], retry[%d], err[%+v]",
-				ret.repairMsg.Vid, ret.repairMsg.Bid, ret.repairMsg.ReqId, ret.repairMsg.Retry, ret.err)
-			s.repairFailedCounter.Inc()
-			s.repairFailedCounterMin.Add()
-			s.errStatsDistribution.AddFail(ret.err)
+		case ShardRepairStatusFailed:
+			span.Warnf("repair failed and send msg to fail queue: vid[%d], bid[%d], retry[%d], err[%+v]",
+				repairMsg.Vid, repairMsg.Bid, repairMsg.Retry, ret.err)
+			mgr.repairFailedCounter.Inc()
+			mgr.repairFailedCounterMin.Add()
+			mgr.errStatsDistribution.AddFail(ret.err)
 
 			base.InsistOn(ctx, "repairer send2FailQueue", func() error {
-				return s.send2FailQueue(ctx, *ret.repairMsg)
+				return mgr.send2FailQueue(ctx, repairMsg)
 			})
-		case ShardRepairUnexpect, ShardRepairOrphan:
-			s.repairFailedCounter.Inc()
-			s.repairFailedCounterMin.Add()
-			s.errStatsDistribution.AddFail(ret.err)
-			span.Warnf("unexpected result: msg[%+v], err[%+v]", ret.repairMsg, ret.err)
+		case ShardRepairStatusUnexpect, ShardRepairStatusOrphan:
+			mgr.repairFailedCounter.Inc()
+			mgr.repairFailedCounterMin.Add()
+			mgr.errStatsDistribution.AddFail(ret.err)
+			span.Warnf("unexpected result: msg[%+v], err[%+v]", repairMsg, ret.err)
+		case ShardRepairStatusUndo:
+			span.Warnf("repair message unconsume: msg[%+v]", repairMsg)
 		}
-	}
-}
+	}()
 
-func (s *ShardRepairMgr) handleOneMsg(ctx context.Context, msg *sarama.ConsumerMessage, finishCh chan<- shardRepairRet) {
-	var repairMsg proto.ShardRepairMsg
+	span = trace.SpanFromContextSafe(context.Background())
 	err := json.Unmarshal(msg.Value, &repairMsg)
 	if err != nil {
-		finishCh <- shardRepairRet{
-			status:    ShardRepairUnexpect,
-			err:       err,
-			repairMsg: nil,
+		ret = shardRepairRet{
+			status: ShardRepairStatusUnexpect,
+			err:    err,
 		}
-		return
+		return true
+	}
+	if !repairMsg.IsValid() {
+		ret = shardRepairRet{
+			status: ShardRepairStatusUnexpect,
+			err:    proto.ErrInvalidMsg,
+		}
+		return true
 	}
 
-	if !repairMsg.IsValid() {
-		finishCh <- shardRepairRet{
-			status:    ShardRepairUnexpect,
-			err:       proto.ErrInvalidMsg,
-			repairMsg: nil,
-		}
-		return
+	span, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "ShardRepairConsume", repairMsg.ReqId)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	mgr.taskPool.Run(func() {
+		ret = mgr.consume(ctx, repairMsg, consumerPause)
+		wg.Done()
+	})
+	wg.Wait()
+	return ret.status != ShardRepairStatusUndo
+}
+
+func (mgr *ShardRepairMgr) consume(ctx context.Context, repairMsg *proto.ShardRepairMsg, consumerPause base.ConsumerPause) shardRepairRet {
+	// quick exit if consumer is pause
+	select {
+	case <-consumerPause.Done():
+		return shardRepairRet{status: ShardRepairStatusUndo}
+	default:
 	}
-	pSpan := trace.SpanFromContextSafe(ctx)
-	pSpan.Debugf("handle one repair msg: msg[%+v]", repairMsg)
-	_, tmpCtx := trace.StartSpanFromContextWithTraceID(context.Background(), "handleRepairMsg", repairMsg.ReqId)
 	jobKey := fmt.Sprintf("%d:%d:%s", repairMsg.Vid, repairMsg.Bid, repairMsg.BadIdx)
-	_, err, _ = s.group.Do(jobKey, func() (ret interface{}, e error) {
-		e = s.repairWithCheckVolConsistency(tmpCtx, repairMsg)
+	_, err, _ := mgr.group.Do(jobKey, func() (ret interface{}, e error) {
+		e = mgr.repairWithCheckVolConsistency(ctx, repairMsg)
 		return
 	})
 
 	if isOrphanShard(err) {
-		finishCh <- shardRepairRet{
-			status:    ShardRepairOrphan,
-			err:       err,
-			repairMsg: &repairMsg,
-		}
-		return
+		return shardRepairRet{status: ShardRepairStatusOrphan, err: err}
 	}
 
 	if err != nil {
-		finishCh <- shardRepairRet{
-			status:    ShardRepairFailed,
-			err:       err,
-			repairMsg: &repairMsg,
-		}
-		return
+		return shardRepairRet{status: ShardRepairStatusFailed, err: err}
 	}
 
-	finishCh <- shardRepairRet{
-		status:    ShardRepairDone,
-		repairMsg: &repairMsg,
-	}
+	return shardRepairRet{status: ShardRepairStatusDone}
 }
 
-func (s *ShardRepairMgr) repairWithCheckVolConsistency(ctx context.Context, repairMsg proto.ShardRepairMsg) error {
-	return DoubleCheckedRun(ctx, s.clusterTopology, repairMsg.Vid, func(info *client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) {
-		return s.tryRepair(ctx, info, repairMsg)
+func (mgr *ShardRepairMgr) repairWithCheckVolConsistency(ctx context.Context, repairMsg *proto.ShardRepairMsg) error {
+	return DoubleCheckedRun(ctx, mgr.clusterTopology, repairMsg.Vid, func(info *client.VolumeInfoSimple) (*client.VolumeInfoSimple, error) {
+		return mgr.tryRepair(ctx, info, repairMsg)
 	})
 }
 
-func (s *ShardRepairMgr) tryRepair(ctx context.Context, volInfo *client.VolumeInfoSimple, repairMsg proto.ShardRepairMsg) (*client.VolumeInfoSimple, error) {
+func (mgr *ShardRepairMgr) tryRepair(ctx context.Context, volInfo *client.VolumeInfoSimple, repairMsg *proto.ShardRepairMsg) (*client.VolumeInfoSimple, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	newVol, err := s.repairShard(ctx, volInfo, repairMsg)
+	newVol, err := mgr.repairShard(ctx, volInfo, repairMsg)
 	if err == nil {
 		return newVol, nil
 	}
@@ -371,7 +351,7 @@ func (s *ShardRepairMgr) tryRepair(ctx context.Context, volInfo *client.VolumeIn
 		return volInfo, err
 	}
 
-	newVol, err1 := s.clusterTopology.UpdateVolume(volInfo.Vid)
+	newVol, err1 := mgr.clusterTopology.UpdateVolume(volInfo.Vid)
 	if err1 != nil || newVol.EqualWith(volInfo) {
 		// if update volInfo failed or volInfo not updated, don't need retry
 		span.Warnf("new volInfo is same or clusterTopology.UpdateVolume failed: vid[%d], vol cache update err[%+v], repair err[%+v]",
@@ -379,15 +359,15 @@ func (s *ShardRepairMgr) tryRepair(ctx context.Context, volInfo *client.VolumeIn
 		return volInfo, err
 	}
 
-	return s.repairShard(ctx, newVol, repairMsg)
+	return mgr.repairShard(ctx, newVol, repairMsg)
 }
 
-func (s *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.VolumeInfoSimple, repairMsg proto.ShardRepairMsg) (*client.VolumeInfoSimple, error) {
+func (mgr *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.VolumeInfoSimple, repairMsg *proto.ShardRepairMsg) (*client.VolumeInfoSimple, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Infof("repair shard: msg[%+v], vol info[%+v]", repairMsg, volInfo)
 
-	hosts := s.blobnodeSelector.GetRandomN(1)
+	hosts := mgr.blobnodeSelector.GetRandomN(1)
 	if len(hosts) == 0 {
 		return volInfo, ErrBlobnodeServiceUnavailable
 	}
@@ -401,19 +381,19 @@ func (s *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.Volume
 		Reason:   repairMsg.Reason,
 	}
 
-	err := s.blobnodeCli.RepairShard(ctx, workerHost, task)
+	err := mgr.blobnodeCli.RepairShard(ctx, workerHost, task)
 	if err == nil {
 		return volInfo, nil
 	}
 
 	if isOrphanShard(err) {
-		s.saveOrphanShard(ctx, repairMsg)
+		mgr.saveOrphanShard(ctx, repairMsg)
 	}
 
 	return volInfo, err
 }
 
-func (s *ShardRepairMgr) saveOrphanShard(ctx context.Context, repairMsg proto.ShardRepairMsg) {
+func (mgr *ShardRepairMgr) saveOrphanShard(ctx context.Context, repairMsg *proto.ShardRepairMsg) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	shard := OrphanShard{
@@ -424,11 +404,15 @@ func (s *ShardRepairMgr) saveOrphanShard(ctx context.Context, repairMsg proto.Sh
 	span.Infof("save orphan shard: [%+v]", shard)
 
 	base.InsistOn(ctx, "save orphan shard", func() error {
-		return s.orphanShardLogger.Encode(shard)
+		return mgr.orphanShardLogger.Encode(shard)
 	})
 }
 
-func (s *ShardRepairMgr) send2FailQueue(ctx context.Context, msg proto.ShardRepairMsg) error {
+func isOrphanShard(err error) bool {
+	return rpc.DetectStatusCode(err) == errcode.CodeOrphanShard
+}
+
+func (mgr *ShardRepairMgr) send2FailQueue(ctx context.Context, msg *proto.ShardRepairMsg) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	msg.Retry++
@@ -438,25 +422,10 @@ func (s *ShardRepairMgr) send2FailQueue(ctx context.Context, msg proto.ShardRepa
 		span.Panicf("send to fail queue msg json.Marshal failed: msg[%+v], err[%+v]", msg, err)
 	}
 
-	err = s.failMsgSender.SendMessage(b)
+	err = mgr.failMsgSender.SendMessage(b)
 	if err != nil {
 		return fmt.Errorf("send message: err[%w]", err)
 	}
 
 	return nil
-}
-
-func isOrphanShard(err error) bool {
-	return rpc.DetectStatusCode(err) == errcode.CodeOrphanShard
-}
-
-// GetTaskStats returns task stats
-func (s *ShardRepairMgr) GetTaskStats() (success [counter.SLOT]int, failed [counter.SLOT]int) {
-	return s.repairSuccessCounterMin.Show(), s.repairFailedCounterMin.Show()
-}
-
-// GetErrorStats returns service error stats
-func (s *ShardRepairMgr) GetErrorStats() (errStats []string, totalErrCnt uint64) {
-	statsResult, totalErrCnt := s.errStatsDistribution.Stats()
-	return base.FormatPrint(statsResult), totalErrCnt
 }
