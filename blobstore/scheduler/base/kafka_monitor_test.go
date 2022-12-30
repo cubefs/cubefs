@@ -28,7 +28,6 @@ func TestNewKafkaTopicMonitor(t *testing.T) {
 	cfg := &KafkaConfig{
 		Topic:      testTopic,
 		BrokerList: []string{broker.Addr()},
-		Partitions: []int32{0},
 	}
 
 	access := newMockAccess(nil)
