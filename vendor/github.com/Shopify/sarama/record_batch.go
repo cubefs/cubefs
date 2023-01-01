@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
@@ -116,7 +117,10 @@ func (b *RecordBatch) decode(pd packetDecoder) (err error) {
 		return err
 	}
 
-	if err = pd.push(&crc32Field{polynomial: crcCastagnoli}); err != nil {
+	crc32Decoder := acquireCrc32Field(crcCastagnoli)
+	defer releaseCrc32Field(crc32Decoder)
+
+	if err = pd.push(crc32Decoder); err != nil {
 		return err
 	}
 
@@ -164,7 +168,7 @@ func (b *RecordBatch) decode(pd packetDecoder) (err error) {
 	bufSize := int(batchLen) - recordBatchOverhead
 	recBuffer, err := pd.getRawBytes(bufSize)
 	if err != nil {
-		if err == ErrInsufficientData {
+		if errors.Is(err, ErrInsufficientData) {
 			b.PartialTrailingRecord = true
 			b.Records = nil
 			return nil
@@ -183,7 +187,7 @@ func (b *RecordBatch) decode(pd packetDecoder) (err error) {
 
 	b.recordsLen = len(recBuffer)
 	err = decode(recBuffer, recordsArray(b.Records))
-	if err == ErrInsufficientData {
+	if errors.Is(err, ErrInsufficientData) {
 		b.PartialTrailingRecord = true
 		b.Records = nil
 		return nil

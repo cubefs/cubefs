@@ -4,7 +4,7 @@ import (
 	"compress/gzip"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"regexp"
 	"time"
@@ -21,6 +21,13 @@ var validID = regexp.MustCompile(`\A[A-Za-z0-9._-]+\z`)
 type Config struct {
 	// Admin is the namespace for ClusterAdmin properties used by the administrative Kafka client.
 	Admin struct {
+		Retry struct {
+			// The total number of times to retry sending (retriable) admin requests (default 5).
+			// Similar to the `retries` setting of the JVM AdminClientConfig.
+			Max int
+			// Backoff time between retries of a failed request (default 100ms)
+			Backoff time.Duration
+		}
 		// The maximum duration the administrative Kafka client will wait for ClusterAdmin operations,
 		// including topics, brokers, configurations and ACLs (defaults to 3 seconds).
 		Timeout time.Duration
@@ -31,6 +38,9 @@ type Config struct {
 	Net struct {
 		// How many outstanding requests a connection is allowed to have before
 		// sending on it blocks (default 5).
+		// Throughput can improve but message ordering is not guaranteed if Producer.Idempotent is disabled, see:
+		// https://kafka.apache.org/protocol#protocol_network
+		// https://kafka.apache.org/28/documentation.html#producerconfigs_max.in.flight.requests.per.connection
 		MaxOpenRequests int
 
 		// All three of the below configurations are similar to the
@@ -58,12 +68,22 @@ type Config struct {
 			// SASLMechanism is the name of the enabled SASL mechanism.
 			// Possible values: OAUTHBEARER, PLAIN (defaults to PLAIN).
 			Mechanism SASLMechanism
+			// Version is the SASL Protocol Version to use
+			// Kafka > 1.x should use V1, except on Azure EventHub which use V0
+			Version int16
 			// Whether or not to send the Kafka SASL handshake first if enabled
 			// (defaults to true). You should only set this to false if you're using
 			// a non-Kafka SASL proxy.
 			Handshake bool
-			//username and password for SASL/PLAIN  or SASL/SCRAM authentication
-			User     string
+			// AuthIdentity is an (optional) authorization identity (authzid) to
+			// use for SASL/PLAIN authentication (if different from User) when
+			// an authenticated user is permitted to act as the presented
+			// alternative user. See RFC4616 for details.
+			AuthIdentity string
+			// User is the authentication identity (authcid) to present for
+			// SASL/PLAIN or SASL/SCRAM authentication
+			User string
+			// Password for SASL/PLAIN authentication
 			Password string
 			// authz id used for SASL/SCRAM authentication
 			SCRAMAuthzID string
@@ -75,10 +95,13 @@ type Config struct {
 			// AccessTokenProvider interface docs for proper implementation
 			// guidelines.
 			TokenProvider AccessTokenProvider
+
+			GSSAPI GSSAPIConfig
 		}
 
-		// KeepAlive specifies the keep-alive period for an active network connection.
-		// If zero, keep-alives are disabled. (default is 0: disabled).
+		// KeepAlive specifies the keep-alive period for an active network connection (defaults to 0).
+		// If zero or positive, keep-alives are enabled.
+		// If negative, keep-alives are disabled.
 		KeepAlive time.Duration
 
 		// LocalAddr is the local address to use when dialing an
@@ -121,6 +144,18 @@ type Config struct {
 		// and usually more convenient, but can take up a substantial amount of
 		// memory if you have many topics and partitions. Defaults to true.
 		Full bool
+
+		// How long to wait for a successful metadata response.
+		// Disabled by default which means a metadata request against an unreachable
+		// cluster (all brokers are unreachable or unresponsive) can take up to
+		// `Net.[Dial|Read]Timeout * BrokerCount * (Metadata.Retry.Max + 1) + Metadata.Retry.Backoff * Metadata.Retry.Max`
+		// to fail.
+		Timeout time.Duration
+
+		// Whether to allow auto-create topics in metadata refresh. If set to true,
+		// the broker may auto-create topics that we requested which do not already exist,
+		// if it is configured to do so (`auto.create.topics.enable` is true). Defaults to true.
+		AllowAutoTopicCreation bool
 	}
 
 	// Producer is the namespace for configuration related to producing messages,
@@ -202,6 +237,14 @@ type Config struct {
 			// `Backoff` if set.
 			BackoffFunc func(retries, maxRetries int) time.Duration
 		}
+
+		// Interceptors to be called when the producer dispatcher reads the
+		// message for the first time. Interceptors allows to intercept and
+		// possible mutate the message before they are published to Kafka
+		// cluster. *ProducerMessage modified by the first interceptor's
+		// OnSend() is passed to the second interceptor OnSend(), and so on in
+		// the interceptor chain.
+		Interceptors []ProducerInterceptor
 	}
 
 	// Consumer is the namespace for configuration related to consuming messages,
@@ -300,7 +343,7 @@ type Config struct {
 		// than this, that partition will stop fetching more messages until it
 		// can proceed again.
 		// Note that, since the Messages channel is buffered, the actual grace time is
-		// (MaxProcessingTime * ChanneBufferSize). Defaults to 100ms.
+		// (MaxProcessingTime * ChannelBufferSize). Defaults to 100ms.
 		// If a message is not written to the Messages channel between two ticks
 		// of the expiryTicker then a timeout is detected.
 		// Using a ticker instead of a timer to detect timeouts should typically
@@ -326,8 +369,20 @@ type Config struct {
 		// offsets. This currently requires the manual use of an OffsetManager
 		// but will eventually be automated.
 		Offsets struct {
-			// How frequently to commit updated offsets. Defaults to 1s.
+			// Deprecated: CommitInterval exists for historical compatibility
+			// and should not be used. Please use Consumer.Offsets.AutoCommit
 			CommitInterval time.Duration
+
+			// AutoCommit specifies configuration for commit messages automatically.
+			AutoCommit struct {
+				// Whether or not to auto-commit updated offsets back to the broker.
+				// (default enabled).
+				Enable bool
+
+				// How frequently to commit updated offsets. Ineffective unless
+				// auto-commit is enabled (default 1s)
+				Interval time.Duration
+			}
 
 			// The initial offset to use if no offset was previously committed.
 			// Should be OffsetNewest or OffsetOldest. Defaults to OffsetNewest.
@@ -352,17 +407,34 @@ type Config struct {
 		// 	- use `ReadUncommitted` (default) to consume and return all messages in message channel
 		//	- use `ReadCommitted` to hide messages that are part of an aborted transaction
 		IsolationLevel IsolationLevel
+
+		// Interceptors to be called just before the record is sent to the
+		// messages channel. Interceptors allows to intercept and possible
+		// mutate the message before they are returned to the client.
+		// *ConsumerMessage modified by the first interceptor's OnConsume() is
+		// passed to the second interceptor OnConsume(), and so on in the
+		// interceptor chain.
+		Interceptors []ConsumerInterceptor
 	}
 
 	// A user-provided string sent with every request to the brokers for logging,
 	// debugging, and auditing purposes. Defaults to "sarama", but you should
 	// probably set it to something specific to your application.
 	ClientID string
+	// A rack identifier for this client. This can be any string value which
+	// indicates where this client is physically located.
+	// It corresponds with the broker config 'broker.rack'
+	RackID string
 	// The number of events to buffer in internal and external channels. This
 	// permits the producer and consumer to continue processing some messages
 	// in the background while user code is working, greatly improving throughput.
 	// Defaults to 256.
 	ChannelBufferSize int
+	// ApiVersionsRequest determines whether Sarama should send an
+	// ApiVersionsRequest message to each broker as part of its initial
+	// connection. This defaults to `true` to match the official Java client
+	// and most 3rdparty ones.
+	ApiVersionsRequest bool
 	// The version of Kafka that Sarama will assume it is running against.
 	// Defaults to the oldest supported stable version. Since Kafka provides
 	// backwards-compatibility, setting it to a version older than you have
@@ -382,6 +454,8 @@ type Config struct {
 func NewConfig() *Config {
 	c := &Config{}
 
+	c.Admin.Retry.Max = 5
+	c.Admin.Retry.Backoff = 100 * time.Millisecond
 	c.Admin.Timeout = 3 * time.Second
 
 	c.Net.MaxOpenRequests = 5
@@ -389,11 +463,13 @@ func NewConfig() *Config {
 	c.Net.ReadTimeout = 30 * time.Second
 	c.Net.WriteTimeout = 30 * time.Second
 	c.Net.SASL.Handshake = true
+	c.Net.SASL.Version = SASLHandshakeV0
 
 	c.Metadata.Retry.Max = 3
 	c.Metadata.Retry.Backoff = 250 * time.Millisecond
 	c.Metadata.RefreshFrequency = 10 * time.Minute
 	c.Metadata.Full = true
+	c.Metadata.AllowAutoTopicCreation = true
 
 	c.Producer.MaxMessageBytes = 1000000
 	c.Producer.RequiredAcks = WaitForLocal
@@ -407,10 +483,11 @@ func NewConfig() *Config {
 	c.Consumer.Fetch.Min = 1
 	c.Consumer.Fetch.Default = 1024 * 1024
 	c.Consumer.Retry.Backoff = 2 * time.Second
-	c.Consumer.MaxWaitTime = 250 * time.Millisecond
+	c.Consumer.MaxWaitTime = 500 * time.Millisecond
 	c.Consumer.MaxProcessingTime = 100 * time.Millisecond
 	c.Consumer.Return.Errors = false
-	c.Consumer.Offsets.CommitInterval = 1 * time.Second
+	c.Consumer.Offsets.AutoCommit.Enable = true
+	c.Consumer.Offsets.AutoCommit.Interval = 1 * time.Second
 	c.Consumer.Offsets.Initial = OffsetNewest
 	c.Consumer.Offsets.Retry.Max = 3
 
@@ -423,7 +500,8 @@ func NewConfig() *Config {
 
 	c.ClientID = defaultClientID
 	c.ChannelBufferSize = 256
-	c.Version = MinVersion
+	c.ApiVersionsRequest = true
+	c.Version = DefaultVersion
 	c.MetricRegistry = metrics.NewRegistry()
 
 	return c
@@ -491,8 +569,6 @@ func (c *Config) Validate() error {
 		return ConfigurationError("Net.ReadTimeout must be > 0")
 	case c.Net.WriteTimeout <= 0:
 		return ConfigurationError("Net.WriteTimeout must be > 0")
-	case c.Net.KeepAlive < 0:
-		return ConfigurationError("Net.KeepAlive must be >= 0")
 	case c.Net.SASL.Enable:
 		if c.Net.SASL.Mechanism == "" {
 			c.Net.SASL.Mechanism = SASLTypePlaintext
@@ -520,9 +596,36 @@ func (c *Config) Validate() error {
 			if c.Net.SASL.SCRAMClientGeneratorFunc == nil {
 				return ConfigurationError("A SCRAMClientGeneratorFunc function must be provided to Net.SASL.SCRAMClientGeneratorFunc")
 			}
+		case SASLTypeGSSAPI:
+			if c.Net.SASL.GSSAPI.ServiceName == "" {
+				return ConfigurationError("Net.SASL.GSSAPI.ServiceName must not be empty when GSS-API mechanism is used")
+			}
+
+			if c.Net.SASL.GSSAPI.AuthType == KRB5_USER_AUTH {
+				if c.Net.SASL.GSSAPI.Password == "" {
+					return ConfigurationError("Net.SASL.GSSAPI.Password must not be empty when GSS-API " +
+						"mechanism is used and Net.SASL.GSSAPI.AuthType = KRB5_USER_AUTH")
+				}
+			} else if c.Net.SASL.GSSAPI.AuthType == KRB5_KEYTAB_AUTH {
+				if c.Net.SASL.GSSAPI.KeyTabPath == "" {
+					return ConfigurationError("Net.SASL.GSSAPI.KeyTabPath must not be empty when GSS-API mechanism is used" +
+						" and  Net.SASL.GSSAPI.AuthType = KRB5_KEYTAB_AUTH")
+				}
+			} else {
+				return ConfigurationError("Net.SASL.GSSAPI.AuthType is invalid. Possible values are KRB5_USER_AUTH and KRB5_KEYTAB_AUTH")
+			}
+			if c.Net.SASL.GSSAPI.KerberosConfigPath == "" {
+				return ConfigurationError("Net.SASL.GSSAPI.KerberosConfigPath must not be empty when GSS-API mechanism is used")
+			}
+			if c.Net.SASL.GSSAPI.Username == "" {
+				return ConfigurationError("Net.SASL.GSSAPI.Username must not be empty when GSS-API mechanism is used")
+			}
+			if c.Net.SASL.GSSAPI.Realm == "" {
+				return ConfigurationError("Net.SASL.GSSAPI.Realm must not be empty when GSS-API mechanism is used")
+			}
 		default:
-			msg := fmt.Sprintf("The SASL mechanism configuration is invalid. Possible values are `%s`, `%s`, `%s` and `%s`",
-				SASLTypeOAuth, SASLTypePlaintext, SASLTypeSCRAMSHA256, SASLTypeSCRAMSHA512)
+			msg := fmt.Sprintf("The SASL mechanism configuration is invalid. Possible values are `%s`, `%s`, `%s`, `%s` and `%s`",
+				SASLTypeOAuth, SASLTypePlaintext, SASLTypeSCRAMSHA256, SASLTypeSCRAMSHA512, SASLTypeGSSAPI)
 			return ConfigurationError(msg)
 		}
 	}
@@ -575,10 +678,14 @@ func (c *Config) Validate() error {
 
 	if c.Producer.Compression == CompressionGZIP {
 		if c.Producer.CompressionLevel != CompressionLevelDefault {
-			if _, err := gzip.NewWriterLevel(ioutil.Discard, c.Producer.CompressionLevel); err != nil {
+			if _, err := gzip.NewWriterLevel(io.Discard, c.Producer.CompressionLevel); err != nil {
 				return ConfigurationError(fmt.Sprintf("gzip compression does not work with level %d: %v", c.Producer.CompressionLevel, err))
 			}
 		}
+	}
+
+	if c.Producer.Compression == CompressionZSTD && !c.Version.IsAtLeast(V2_1_0_0) {
+		return ConfigurationError("zstd compression requires Version >= V2_1_0_0")
 	}
 
 	if c.Producer.Idempotent {
@@ -610,14 +717,19 @@ func (c *Config) Validate() error {
 		return ConfigurationError("Consumer.MaxProcessingTime must be > 0")
 	case c.Consumer.Retry.Backoff < 0:
 		return ConfigurationError("Consumer.Retry.Backoff must be >= 0")
-	case c.Consumer.Offsets.CommitInterval <= 0:
-		return ConfigurationError("Consumer.Offsets.CommitInterval must be > 0")
+	case c.Consumer.Offsets.AutoCommit.Interval <= 0:
+		return ConfigurationError("Consumer.Offsets.AutoCommit.Interval must be > 0")
 	case c.Consumer.Offsets.Initial != OffsetOldest && c.Consumer.Offsets.Initial != OffsetNewest:
 		return ConfigurationError("Consumer.Offsets.Initial must be OffsetOldest or OffsetNewest")
 	case c.Consumer.Offsets.Retry.Max < 0:
 		return ConfigurationError("Consumer.Offsets.Retry.Max must be >= 0")
 	case c.Consumer.IsolationLevel != ReadUncommitted && c.Consumer.IsolationLevel != ReadCommitted:
 		return ConfigurationError("Consumer.IsolationLevel must be ReadUncommitted or ReadCommitted")
+	}
+
+	if c.Consumer.Offsets.CommitInterval != 0 {
+		Logger.Println("Deprecation warning: Consumer.Offsets.CommitInterval exists for historical compatibility" +
+			" and should not be used. Please use Consumer.Offsets.AutoCommit, the current value will be ignored")
 	}
 
 	// validate IsolationLevel
@@ -652,4 +764,17 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+func (c *Config) getDialer() proxy.Dialer {
+	if c.Net.Proxy.Enable {
+		Logger.Printf("using proxy %s", c.Net.Proxy.Dialer)
+		return c.Net.Proxy.Dialer
+	} else {
+		return &net.Dialer{
+			Timeout:   c.Net.DialTimeout,
+			KeepAlive: c.Net.KeepAlive,
+			LocalAddr: c.Net.LocalAddr,
+		}
+	}
 }
