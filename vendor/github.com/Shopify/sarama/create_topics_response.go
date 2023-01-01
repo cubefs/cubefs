@@ -70,6 +70,10 @@ func (c *CreateTopicsResponse) version() int16 {
 	return c.Version
 }
 
+func (c *CreateTopicsResponse) headerVersion() int16 {
+	return 0
+}
+
 func (c *CreateTopicsResponse) requiredVersion() KafkaVersion {
 	switch c.Version {
 	case 2:
@@ -92,6 +96,10 @@ func (t *TopicError) Error() string {
 		text = fmt.Sprintf("%s - %s", text, *t.ErrMsg)
 	}
 	return text
+}
+
+func (t *TopicError) Unwrap() error {
+	return t.Err
 }
 
 func (t *TopicError) encode(pe packetEncoder, version int16) error {
