@@ -70,7 +70,9 @@ func (m *mockPartitionConsumer) sendErr(err error) {
 		Err:       err,
 	}
 }
-
+func (m *mockPartitionConsumer) Pause()                                   {}
+func (m *mockPartitionConsumer) Resume()                                  {}
+func (m *mockPartitionConsumer) IsPaused() bool                           { return false }
 func (m *mockPartitionConsumer) AsyncClose()                              {}
 func (m *mockPartitionConsumer) Close() error                             { return nil }
 func (m *mockPartitionConsumer) Messages() <-chan *sarama.ConsumerMessage { return m.msgCh }
@@ -153,6 +155,13 @@ func (m *mockConsumer) HighWaterMarks() map[string]map[int32]int64 {
 func (m *mockConsumer) Close() error {
 	return nil
 }
+func (m *mockConsumer) Pause(topicPartitions map[string][]int32) {}
+
+func (m *mockConsumer) Resume(topicPartitions map[string][]int32) {}
+
+func (m *mockConsumer) PauseAll() {}
+
+func (m *mockConsumer) ResumeAll() {}
 
 func TestPartitionConsumer(t *testing.T) {
 	mockConsume := newMockConsumer()
