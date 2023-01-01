@@ -11,6 +11,7 @@ type protocolBody interface {
 	versionedDecoder
 	key() int16
 	version() int16
+	headerVersion() int16
 	requiredVersion() KafkaVersion
 }
 
@@ -26,12 +27,19 @@ func (r *request) encode(pe packetEncoder) error {
 	pe.putInt16(r.body.version())
 	pe.putInt32(r.correlationID)
 
-	err := pe.putString(r.clientID)
-	if err != nil {
-		return err
+	if r.body.headerVersion() >= 1 {
+		err := pe.putString(r.clientID)
+		if err != nil {
+			return err
+		}
 	}
 
-	err = r.body.encode(pe)
+	if r.body.headerVersion() >= 2 {
+		// we don't use tag headers at the moment so we just put an array length of 0
+		pe.putUVarint(0)
+	}
+
+	err := r.body.encode(pe)
 	if err != nil {
 		return err
 	}
@@ -63,6 +71,14 @@ func (r *request) decode(pd packetDecoder) (err error) {
 	r.body = allocateBody(key, version)
 	if r.body == nil {
 		return PacketDecodingError{fmt.Sprintf("unknown request key (%d)", key)}
+	}
+
+	if r.body.headerVersion() >= 2 {
+		// tagged field
+		_, err = pd.getUVarint()
+		if err != nil {
+			return err
+		}
 	}
 
 	return r.body.decode(pd, version)
@@ -105,7 +121,7 @@ func allocateBody(key, version int16) protocolBody {
 	case 0:
 		return &ProduceRequest{}
 	case 1:
-		return &FetchRequest{}
+		return &FetchRequest{Version: version}
 	case 2:
 		return &OffsetRequest{Version: version}
 	case 3:
@@ -113,7 +129,7 @@ func allocateBody(key, version int16) protocolBody {
 	case 8:
 		return &OffsetCommitRequest{Version: version}
 	case 9:
-		return &OffsetFetchRequest{}
+		return &OffsetFetchRequest{Version: version}
 	case 10:
 		return &FindCoordinatorRequest{}
 	case 11:
@@ -131,7 +147,7 @@ func allocateBody(key, version int16) protocolBody {
 	case 17:
 		return &SaslHandshakeRequest{}
 	case 18:
-		return &ApiVersionsRequest{}
+		return &ApiVersionsRequest{Version: version}
 	case 19:
 		return &CreateTopicsRequest{}
 	case 20:
@@ -158,12 +174,30 @@ func allocateBody(key, version int16) protocolBody {
 		return &DescribeConfigsRequest{}
 	case 33:
 		return &AlterConfigsRequest{}
+	case 35:
+		return &DescribeLogDirsRequest{}
 	case 36:
 		return &SaslAuthenticateRequest{}
 	case 37:
 		return &CreatePartitionsRequest{}
 	case 42:
 		return &DeleteGroupsRequest{}
+	case 44:
+		return &IncrementalAlterConfigsRequest{}
+	case 45:
+		return &AlterPartitionReassignmentsRequest{}
+	case 46:
+		return &ListPartitionReassignmentsRequest{}
+	case 47:
+		return &DeleteOffsetsRequest{}
+	case 48:
+		return &DescribeClientQuotasRequest{}
+	case 49:
+		return &AlterClientQuotasRequest{}
+	case 50:
+		return &DescribeUserScramCredentialsRequest{}
+	case 51:
+		return &AlterUserScramCredentialsRequest{}
 	}
 	return nil
 }

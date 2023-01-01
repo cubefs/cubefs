@@ -1,6 +1,6 @@
 package sarama
 
-//AddPartitionsToTxnRequest is a add paartition request
+// AddPartitionsToTxnRequest is a add paartition request
 type AddPartitionsToTxnRequest struct {
 	TransactionalID string
 	ProducerID      int64
@@ -70,6 +70,10 @@ func (a *AddPartitionsToTxnRequest) key() int16 {
 
 func (a *AddPartitionsToTxnRequest) version() int16 {
 	return 0
+}
+
+func (a *AddPartitionsToTxnRequest) headerVersion() int16 {
+	return 1
 }
 
 func (a *AddPartitionsToTxnRequest) requiredVersion() KafkaVersion {

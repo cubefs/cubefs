@@ -63,6 +63,10 @@ func (r *CreatePartitionsResponse) version() int16 {
 	return 0
 }
 
+func (r *CreatePartitionsResponse) headerVersion() int16 {
+	return 0
+}
+
 func (r *CreatePartitionsResponse) requiredVersion() KafkaVersion {
 	return V1_0_0_0
 }
@@ -78,6 +82,10 @@ func (t *TopicPartitionError) Error() string {
 		text = fmt.Sprintf("%s - %s", text, *t.ErrMsg)
 	}
 	return text
+}
+
+func (t *TopicPartitionError) Unwrap() error {
+	return t.Err
 }
 
 func (t *TopicPartitionError) encode(pe packetEncoder) error {
