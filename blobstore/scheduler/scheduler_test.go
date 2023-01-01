@@ -66,7 +66,6 @@ var (
 
 func NewBroker(t *testing.T) *sarama.MockBroker {
 	mockFetchResponse := sarama.NewMockFetchResponse(t, 1)
-	mockFetchResponse.SetVersion(1)
 	var msg sarama.ByteEncoder = []byte("FOO")
 	for i := 0; i < 1000; i++ {
 		mockFetchResponse.SetMessage(testTopic, 0, int64(i), msg)

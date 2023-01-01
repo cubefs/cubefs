@@ -1,10 +1,7 @@
 # github.com/BurntSushi/toml v1.1.0
 ## explicit; go 1.16
-# github.com/DataDog/zstd v1.3.6-0.20190409195224-796139022798
-## explicit
-github.com/DataDog/zstd
-# github.com/Shopify/sarama v1.22.1
-## explicit
+# github.com/Shopify/sarama v1.33.0
+## explicit; go 1.16
 github.com/Shopify/sarama
 # github.com/afex/hystrix-go v0.0.0-20180502004556-fa1af6a1f4f5
 ## explicit
@@ -191,6 +188,7 @@ github.com/hashicorp/go-multierror
 github.com/hashicorp/go-rootcerts
 # github.com/hashicorp/go-uuid v1.0.3
 ## explicit
+github.com/hashicorp/go-uuid
 # github.com/hashicorp/golang-lru v0.5.4
 ## explicit; go 1.12
 github.com/hashicorp/golang-lru
@@ -204,12 +202,66 @@ github.com/inconshreveable/mousetrap
 # github.com/jacobsa/daemonize v0.0.0-00010101000000-000000000000 => ./depends/jacobsa/daemonize
 ## explicit; go 1.16
 github.com/jacobsa/daemonize
+# github.com/jcmturner/aescts/v2 v2.0.0
+## explicit; go 1.13
+github.com/jcmturner/aescts/v2
+# github.com/jcmturner/dnsutils/v2 v2.0.0
+## explicit; go 1.13
+github.com/jcmturner/dnsutils/v2
+# github.com/jcmturner/gofork v1.0.0
+## explicit
+github.com/jcmturner/gofork/encoding/asn1
+github.com/jcmturner/gofork/x/crypto/pbkdf2
+# github.com/jcmturner/gokrb5/v8 v8.4.2
+## explicit; go 1.14
+github.com/jcmturner/gokrb5/v8/asn1tools
+github.com/jcmturner/gokrb5/v8/client
+github.com/jcmturner/gokrb5/v8/config
+github.com/jcmturner/gokrb5/v8/credentials
+github.com/jcmturner/gokrb5/v8/crypto
+github.com/jcmturner/gokrb5/v8/crypto/common
+github.com/jcmturner/gokrb5/v8/crypto/etype
+github.com/jcmturner/gokrb5/v8/crypto/rfc3961
+github.com/jcmturner/gokrb5/v8/crypto/rfc3962
+github.com/jcmturner/gokrb5/v8/crypto/rfc4757
+github.com/jcmturner/gokrb5/v8/crypto/rfc8009
+github.com/jcmturner/gokrb5/v8/gssapi
+github.com/jcmturner/gokrb5/v8/iana
+github.com/jcmturner/gokrb5/v8/iana/addrtype
+github.com/jcmturner/gokrb5/v8/iana/adtype
+github.com/jcmturner/gokrb5/v8/iana/asnAppTag
+github.com/jcmturner/gokrb5/v8/iana/chksumtype
+github.com/jcmturner/gokrb5/v8/iana/errorcode
+github.com/jcmturner/gokrb5/v8/iana/etypeID
+github.com/jcmturner/gokrb5/v8/iana/flags
+github.com/jcmturner/gokrb5/v8/iana/keyusage
+github.com/jcmturner/gokrb5/v8/iana/msgtype
+github.com/jcmturner/gokrb5/v8/iana/nametype
+github.com/jcmturner/gokrb5/v8/iana/patype
+github.com/jcmturner/gokrb5/v8/kadmin
+github.com/jcmturner/gokrb5/v8/keytab
+github.com/jcmturner/gokrb5/v8/krberror
+github.com/jcmturner/gokrb5/v8/messages
+github.com/jcmturner/gokrb5/v8/pac
+github.com/jcmturner/gokrb5/v8/types
+# github.com/jcmturner/rpc/v2 v2.0.3
+## explicit; go 1.13
+github.com/jcmturner/rpc/v2/mstypes
+github.com/jcmturner/rpc/v2/ndr
 # github.com/jmespath/go-jmespath v0.3.0
 ## explicit; go 1.14
 github.com/jmespath/go-jmespath
 # github.com/julienschmidt/httprouter v1.3.0
 ## explicit; go 1.7
 github.com/julienschmidt/httprouter
+# github.com/klauspost/compress v1.15.0
+## explicit; go 1.15
+github.com/klauspost/compress
+github.com/klauspost/compress/fse
+github.com/klauspost/compress/huff0
+github.com/klauspost/compress/internal/snapref
+github.com/klauspost/compress/zstd
+github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/klauspost/cpuid/v2 v2.1.1
 ## explicit; go 1.15
 github.com/klauspost/cpuid/v2
@@ -243,7 +295,7 @@ github.com/opentracing/opentracing-go/mocktracer
 # github.com/peterbourgon/diskv/v3 v3.0.1
 ## explicit; go 1.12
 github.com/peterbourgon/diskv/v3
-# github.com/pierrec/lz4 v0.0.0-20190327172049-315a67e90e41
+# github.com/pierrec/lz4 v2.6.1+incompatible
 ## explicit
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
@@ -321,6 +373,10 @@ go.uber.org/automaxprocs/maxprocs
 # golang.org/x/arch v0.0.0-20190312162104-788fe5ffcd8c
 ## explicit; go 1.11
 golang.org/x/arch/x86/x86asm
+# golang.org/x/crypto v0.0.0-20220214200702-86341886e292
+## explicit; go 1.17
+golang.org/x/crypto/md4
+golang.org/x/crypto/pbkdf2
 # golang.org/x/net v0.8.0
 ## explicit; go 1.17
 golang.org/x/net/context

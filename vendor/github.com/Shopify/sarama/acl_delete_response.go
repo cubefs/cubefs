@@ -2,7 +2,7 @@ package sarama
 
 import "time"
 
-//DeleteAclsResponse is a delete acl response
+// DeleteAclsResponse is a delete acl response
 type DeleteAclsResponse struct {
 	Version         int16
 	ThrottleTime    time.Duration
@@ -53,14 +53,18 @@ func (d *DeleteAclsResponse) key() int16 {
 }
 
 func (d *DeleteAclsResponse) version() int16 {
-	return int16(d.Version)
+	return d.Version
+}
+
+func (d *DeleteAclsResponse) headerVersion() int16 {
+	return 0
 }
 
 func (d *DeleteAclsResponse) requiredVersion() KafkaVersion {
 	return V0_11_0_0
 }
 
-//FilterResponse is a filter response type
+// FilterResponse is a filter response type
 type FilterResponse struct {
 	Err          KError
 	ErrMsg       *string
@@ -111,7 +115,7 @@ func (f *FilterResponse) decode(pd packetDecoder, version int16) (err error) {
 	return nil
 }
 
-//MatchingAcl is a matching acl type
+// MatchingAcl is a matching acl type
 type MatchingAcl struct {
 	Err    KError
 	ErrMsg *string

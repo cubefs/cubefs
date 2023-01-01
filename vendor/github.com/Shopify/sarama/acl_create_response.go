@@ -2,7 +2,7 @@ package sarama
 
 import "time"
 
-//CreateAclsResponse is a an acl reponse creation type
+// CreateAclsResponse is a an acl response creation type
 type CreateAclsResponse struct {
 	ThrottleTime         time.Duration
 	AclCreationResponses []*AclCreationResponse
@@ -55,11 +55,15 @@ func (c *CreateAclsResponse) version() int16 {
 	return 0
 }
 
+func (c *CreateAclsResponse) headerVersion() int16 {
+	return 0
+}
+
 func (c *CreateAclsResponse) requiredVersion() KafkaVersion {
 	return V0_11_0_0
 }
 
-//AclCreationResponse is an acl creation response type
+// AclCreationResponse is an acl creation response type
 type AclCreationResponse struct {
 	Err    KError
 	ErrMsg *string
