@@ -428,7 +428,7 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 func downloadAndCheck(mc *master.MasterClient, tmpPath, version string) (fileNames []string, err error) {
 	var tarName string
 	if runtime.GOARCH == ADM64 {
-		tarName = fmt.Sprintf("%s_%s_%s.tar.gz", TarNamePre, ADM64, version)
+		tarName = fmt.Sprintf("%s_%s.tar.gz", TarNamePre, version)
 	} else if runtime.GOARCH == ARM64 {
 		tarName = fmt.Sprintf("%s_%s_%s.tar.gz", TarNamePre, ARM64, version)
 	} else {

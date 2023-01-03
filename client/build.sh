@@ -87,8 +87,8 @@ if [[ ${build_test} -eq 1 ]]; then
     gcc -std=c99 -g ${dir}/bypass/client_test.c -o ${bin}/test-bypass
 fi
 if [[ ${pack_libs} -eq 1 ]]; then
-    libTarName=cfs-client-libs_amd64_${CommitID}.tar.gz
-    fuseTarName=cfs-client-fuse_amd64.tar.gz
+    libTarName=cfs-client-libs_${CommitID}.tar.gz
+    fuseTarName=cfs-client-fuse.tar.gz
     if [[ `arch` == "aarch64" ]] || [[ `arch` == "arm64" ]]; then
         libTarName=cfs-client-libs_arm64_${CommitID}.tar.gz
         fuseTarName=cfs-client-fuse_arm64.tar.gz
