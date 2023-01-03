@@ -294,7 +294,7 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpPath := TmpLibsPath + fmt.Sprintf("%d", time.Now().Unix())
+	tmpPath := TmpLibsPath + fmt.Sprintf("%d_%d", os.Getpid(), time.Now().UnixNano())
 	if err = os.MkdirAll(tmpPath, 0777); err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -380,7 +380,7 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpPath := TmpLibsPath + fmt.Sprintf("%d", time.Now().Unix())
+	tmpPath := TmpLibsPath + fmt.Sprintf("%d_%d", os.Getpid(), time.Now().UnixNano())
 	err = os.MkdirAll(tmpPath, 0777)
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -450,7 +450,7 @@ func downloadAndCheck(mc *master.MasterClient, tmpPath, version string) (fileNam
 	}
 
 	if !checkFiles(fileNames, checkMap, tmpPath) {
-		return nil, fmt.Errorf("check libs faild: %v", err)
+		return nil, fmt.Errorf("check libs faild. Please try again.")
 	}
 
 	return fileNames, nil
