@@ -317,7 +317,7 @@ func SetUmpCollectWay(way proto.UmpCollectBy) {
 	jmtpWriteMutex.Lock()
 	defer jmtpWriteMutex.Unlock()
 	if way == proto.UmpCollectByJmtpClient && jmtpWrite == nil {
-		if jmtp, err := NewJmtpWrite(); err != nil {
+		if jmtp, err := NewJmtpWrite(); err == nil {
 			jmtpWrite = jmtp
 		}
 	}
@@ -333,7 +333,7 @@ func SetUmpJmtpAddr(jmtpAddr string) {
 	umpJmtpAddr = jmtpAddr
 	if jmtpWrite != nil {
 		jmtpWrite.stop()
-		if jmtp, err := NewJmtpWrite(); err != nil {
+		if jmtp, err := NewJmtpWrite(); err == nil {
 			jmtpWrite = jmtp
 		}
 	}
