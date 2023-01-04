@@ -213,8 +213,11 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 	}
 
 out:
-	if err != nil || resp == nil {
-		return nil, needCheckRead, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errMap, resp)), successAddr
+	if err == nil && resp == nil {
+		err = errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errMap, resp))
+	}
+	if err != nil {
+		return nil, needCheckRead, err, successAddr
 	}
 	log.LogDebugf("sendToMetaPartition successful: req(%v) mp(%v) addr(%v) resp(%v)", req, mp, addr, resp)
 	return resp, needCheckRead, nil, successAddr

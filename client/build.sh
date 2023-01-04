@@ -89,9 +89,11 @@ fi
 if [[ ${pack_libs} -eq 1 ]]; then
     libTarName=cfs-client-libs_${CommitID}.tar.gz
     fuseTarName=cfs-client-fuse.tar.gz
+    kbpTarName=libcfs.tar.gz
     if [[ `arch` == "aarch64" ]] || [[ `arch` == "arm64" ]]; then
         libTarName=cfs-client-libs_arm64_${CommitID}.tar.gz
         fuseTarName=cfs-client-fuse_arm64.tar.gz
+        kbpTarName=libcfs_arm64.tar.gz
     fi
 
     echo "pack libs, generate cfs-client-libs.tar.gz ..."
@@ -106,6 +108,8 @@ if [[ ${pack_libs} -eq 1 ]]; then
     md5sum libstd.so >> checkfile
     md5sum cfs-client-inner >> checkfile
     tar -zcvf ${fuseTarName} libcfssdk.so libstd.so cfs-client-inner checkfile
+
+    tar -zcvf ${kbpTarName} libcfsclient.so libcfssdk.so libcfsc.so libstd.so libempty.so
 
     cd ~-
 fi

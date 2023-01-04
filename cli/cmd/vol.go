@@ -623,10 +623,10 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 
 			if optUmpCollectWay >= 0 {
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  UmpCollectWay            : %v -> %v\n", vv.UmpCollectWay, optUmpCollectWay))
+				confirmString.WriteString(fmt.Sprintf("  UmpCollectWay       : %v -> %v\n", proto.UmpCollectByStr(vv.UmpCollectWay), proto.UmpCollectByStr(proto.UmpCollectBy(optUmpCollectWay))))
 				vv.UmpCollectWay = proto.UmpCollectBy(optUmpCollectWay)
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  UmpCollectWay            : %v\n", vv.UmpCollectWay))
+				confirmString.WriteString(fmt.Sprintf("  UmpCollectWay       : %v\n", proto.UmpCollectByStr(vv.UmpCollectWay)))
 			}
 
 			if err != nil {
@@ -651,7 +651,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
-				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, proto.UmpCollectBy(optUmpCollectWay))
+				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay)
 			if err != nil {
 				return
 			}
@@ -692,7 +692,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optTrashCleanInterval, CliOpVolTrashCleanInterval, -1, "specify trash clean interval, unit:min")
 	cmd.Flags().IntVar(&optBatchDelInodeCnt, CliOpVolBatchDelInodeCnt, -1, "specify batch del inode count")
 	cmd.Flags().IntVar(&optDelInodeInterval, CliOpVolDelInodeInterval, -1, "specify del inode interval, unit:ms")
-	cmd.Flags().IntVar(&optUmpCollectWay, CliFlagUmpCollectWay, proto.UmpCollectByUnkown, "Set ump collect way: 0 unknown 1 file 2 jmtp client")
+	cmd.Flags().IntVar(&optUmpCollectWay, CliFlagUmpCollectWay, -1, "Set ump collect way: 0 unknown 1 file 2 jmtp client")
 	return cmd
 }
 
