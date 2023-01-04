@@ -6,7 +6,7 @@
   "raftReplicaPort": "17240",
   "consulAddr": "http://192.168.0.101:8500",
   "exporterPort": 9500,
-  "logLevel": "info",
+  "logLevel": "debug",
   "logDir": "/cfs/log",
   "warnLogDir": "/cfs/log",
   "totalMem": "536870912",

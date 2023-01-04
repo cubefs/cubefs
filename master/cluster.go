@@ -435,6 +435,12 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 		node := metaNode.(*MetaNode)
 		node.checkHeartbeat()
 		task := node.createHeartbeatTask(c.masterAddr())
+		hbReq := task.Request.(*proto.HeartBeatRequest)
+		for _, vol := range c.vols {
+			if vol.FollowerRead {
+				hbReq.FLReadVols = append(hbReq.FLReadVols, vol.Name)
+			}
+		}
 		tasks = append(tasks, task)
 		return true
 	})
