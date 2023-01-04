@@ -202,7 +202,7 @@ type OpPartition interface {
 
 // MetaPartition defines the interface for the meta partition operations.
 type MetaPartition interface {
-	Start() error
+	Start(isCreate bool) error
 	Stop()
 	DataSize() uint64
 	GetFreeListLen() int
@@ -284,7 +284,7 @@ func (mp *metaPartition) GetFreeListLen() int {
 }
 
 // Start starts a meta partition.
-func (mp *metaPartition) Start() (err error) {
+func (mp *metaPartition) Start(isCreate bool) (err error) {
 	if atomic.CompareAndSwapUint32(&mp.state, common.StateStandby, common.StateStart) {
 		defer func() {
 			var newState uint32
@@ -298,7 +298,7 @@ func (mp *metaPartition) Start() (err error) {
 		if mp.config.BeforeStart != nil {
 			mp.config.BeforeStart()
 		}
-		if err = mp.onStart(); err != nil {
+		if err = mp.onStart(isCreate); err != nil {
 			err = errors.NewErrorf("[Start]->%s", err.Error())
 			return
 		}
@@ -325,14 +325,14 @@ func (mp *metaPartition) Stop() {
 	}
 }
 
-func (mp *metaPartition) onStart() (err error) {
+func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	defer func() {
 		if err == nil {
 			return
 		}
 		mp.onStop()
 	}()
-	if err = mp.load(); err != nil {
+	if err = mp.load(isCreate); err != nil {
 		err = errors.NewErrorf("[onStart] load partition id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
@@ -557,10 +557,16 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	return
 }
 
-func (mp *metaPartition) load() (err error) {
+func (mp *metaPartition) load(isCreate bool) (err error) {
 	if err = mp.loadMetadata(); err != nil {
 		return
 	}
+
+	// create new metaPartition, no need to load snapshot
+	if isCreate {
+		return
+	}
+
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
 	if err = mp.loadInode(snapshotPath); err != nil {
 		return
