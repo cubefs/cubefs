@@ -181,7 +181,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
+	quota := d.super.dirChildrenNumLimit
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, quota, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, nil, ParseError(err)
@@ -235,7 +236,8 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
+	quota := d.super.dirChildrenNumLimit
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, quota, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -535,7 +537,8 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
+	quota := d.super.dirChildrenNumLimit
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, quota, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Mknod: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -566,7 +569,8 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
-	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
+	quota := d.super.dirChildrenNumLimit
+	info, err := d.super.mw.Create_ll(parentIno, req.NewName, quota, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
 		return nil, ParseError(err)

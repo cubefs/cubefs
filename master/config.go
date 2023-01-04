@@ -74,6 +74,7 @@ const (
 	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
 	defaultNodeSetGrpStep                              = 1
 	defaultMasterMinQosAccept                          = 20000
+	defaultDirChildrenNumLimit                         = 10000000
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -109,6 +110,7 @@ type clusterConfig struct {
 	DomainBuildAsPossible               bool
 	DataPartitionUsageThreshold         float64
 	QosMasterAcceptLimit                uint64
+	DirChildrenNumLimit                 uint64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -128,6 +130,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
 	cfg.diffSpaceUsage = defaultDiffSpaceUsage
 	cfg.QosMasterAcceptLimit = defaultMasterMinQosAccept
+	cfg.DirChildrenNumLimit = defaultDirChildrenNumLimit
 	return
 }
 

@@ -8,11 +8,12 @@ import (
 )
 
 const (
-	MinSummaryCacheEvictNum   = 10
-	MaxSummaryCacheEvictNum   = 200000
-	SummaryBgEvictionInterval = 2 * time.Minute
-	DefaultSummaryExpiration  = 2 * time.Minute
-	MaxSummaryCache           = 1000000
+	MinSummaryCacheEvictNum    = 10
+	MaxSummaryCacheEvictNum    = 200000
+	SummaryBgEvictionInterval  = 2 * time.Minute
+	DefaultSummaryExpiration   = 2 * time.Minute
+	MaxSummaryCache            = 1000000
+	DefaultDirChildrenNumLimit = 10000000
 )
 
 // SummaryCache defines the structure of the content-summary cache.
