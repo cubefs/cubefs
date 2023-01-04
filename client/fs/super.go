@@ -58,10 +58,11 @@ type Super struct {
 	nodeCache map[uint64]fs.Node
 	fslock    sync.Mutex
 
-	disableDcache bool
-	fsyncOnClose  bool
-	enableXattr   bool
-	rootIno       uint64
+	disableDcache       bool
+	fsyncOnClose        bool
+	enableXattr         bool
+	rootIno             uint64
+	dirChildrenNumLimit uint32
 
 	state     fs.FSStatType
 	sockaddr  string
@@ -223,6 +224,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
 		return nil, err
 	}
+
+	s.dirChildrenNumLimit = DefaultDirChildrenNumLimit
+
 	s.suspendCh = make(chan interface{})
 	if proto.IsCold(opt.VolType) {
 		go s.scheduleFlush()
@@ -239,6 +243,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
 		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
 	return s, nil
+}
+
+func (s *Super) SetDirChildrenNumLimit(quota uint32) {
+	s.dirChildrenNumLimit = quota
 }
 
 func (s *Super) scheduleFlush() {

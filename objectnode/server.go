@@ -22,6 +22,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -83,13 +85,15 @@ const (
 
 // Default of configuration value
 const (
-	defaultListen = "80"
+	defaultListen      = "80"
+	UpdateConfInterval = 2 * time.Minute
 )
 
 var (
 	// Regular expression used to verify the configuration of the service listening port.
 	// A valid service listening port configuration is a string containing only numbers.
-	regexpListen = regexp.MustCompile("^(\\d)+$")
+	regexpListen                = regexp.MustCompile("^(\\d)+$")
+	gDirChildrenNumLimit uint32 = 10000000
 )
 
 type ObjectNode struct {
@@ -110,6 +114,7 @@ type ObjectNode struct {
 	encodedRegion []byte
 
 	control common.Control
+	exitCh  chan struct{}
 }
 
 func (o *ObjectNode) Start(cfg *config.Config) (err error) {
@@ -200,6 +205,25 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	}
 
 	// Get cluster info from master
+
+	go func() {
+		t := time.NewTicker(UpdateConfInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-o.exitCh:
+				return
+			case <-t.C:
+				var clusterInfo *proto.ClusterInfo
+				clusterInfo, err = o.mc.AdminAPI().GetClusterInfo()
+				if err != nil {
+					return
+				}
+				atomic.StoreUint32(&gDirChildrenNumLimit, uint32(clusterInfo.DirChildrenNumLimit))
+			}
+		}
+	}()
+
 	var ci *proto.ClusterInfo
 	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
 		return
@@ -226,6 +250,7 @@ func handleShutdown(s common.Server) {
 		return
 	}
 	o.shutdownRestAPI()
+	o.exitCh <- struct{}{}
 }
 
 func (o *ObjectNode) startMuxRestAPI() (err error) {
@@ -263,5 +288,7 @@ func (o *ObjectNode) shutdownRestAPI() {
 }
 
 func NewServer() *ObjectNode {
-	return &ObjectNode{}
+	return &ObjectNode{
+		exitCh: make(chan struct{}, 1),
+	}
 }

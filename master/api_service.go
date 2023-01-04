@@ -79,6 +79,22 @@ func newZoneView(name string) *ZoneView {
 
 type badPartitionView = proto.BadPartitionView
 
+func (m *Server) setClusterInfo(w http.ResponseWriter, r *http.Request) {
+	var (
+		quota uint64
+		err   error
+	)
+	if quota, err = parseAndExtractDirQuota(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setClusterInfo(quota); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set dir quota to %v successfully", quota)))
+}
+
 // Set the threshold of the memory usage on each meta node.
 // If the memory usage reaches this threshold, then all the mata partition will be marked as readOnly.
 func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
@@ -243,6 +259,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	autoRepairRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeAutoRepairLimitRate)
+	dirChildrenNumLimit := atomic.LoadUint64(&m.cluster.cfg.DirChildrenNumLimit)
 
 	cInfo := &proto.ClusterInfo{
 		Cluster:                     m.cluster.Name,
@@ -250,6 +267,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		MetaNodeDeleteWorkerSleepMs: deleteSleepMs,
 		DataNodeDeleteLimitRate:     limitRate,
 		DataNodeAutoRepairLimitRate: autoRepairRate,
+		DirChildrenNumLimit:         dirChildrenNumLimit,
 		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 		EbsAddr:                     m.bStoreAddr,
 		ServicePath:                 m.servicePath,

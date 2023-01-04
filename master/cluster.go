@@ -2704,6 +2704,18 @@ func (c *Cluster) getMetaPartitionCount() (count int) {
 	return count
 }
 
+func (c *Cluster) setClusterInfo(quota uint64) (err error) {
+	oldLimit := c.cfg.DirChildrenNumLimit
+	c.cfg.DirChildrenNumLimit = quota
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClusterInfo] err[%v]", err)
+		c.cfg.DirChildrenNumLimit = oldLimit
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
 	oldThreshold := c.cfg.MetaNodeThreshold
 	c.cfg.MetaNodeThreshold = threshold
