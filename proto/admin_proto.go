@@ -142,7 +142,12 @@ const (
 	UserInfoKey     = "_user_info_key"
 )
 
-const TimeFormat = "2006-01-02 15:04:05"
+//const TimeFormat = "2006-01-02 15:04:05"
+
+const (
+	TimeFormat                 = "2006-01-02 15:04:05"
+	DefaultDirChildrenNumLimit = 10000000
+)
 
 // HTTPReply uniform response structure
 type HTTPReply struct {

@@ -164,7 +164,7 @@ func newClient() *client {
 		id:                  id,
 		fdmap:               make(map[uint]*file),
 		fdset:               bitset.New(maxFdNum),
-		dirChildrenNumLimit: fs.DefaultDirChildrenNumLimit,
+		dirChildrenNumLimit: proto.DefaultDirChildrenNumLimit,
 		cwd:                 "/",
 		sc:                  fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache),
 		ic:                  fs.NewInodeCache(fs.DefaultInodeExpiration, fs.MaxInodeCache),

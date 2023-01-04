@@ -141,6 +141,7 @@ const (
 	OpMetaBatchEvictInode   uint8 = 0x93
 
 	// Commons
+	OpDirQuota           uint8 = 0xF1
 	OpConflictExtentsErr uint8 = 0xF2
 	OpIntraGroupNetErr   uint8 = 0xF3
 	OpArgMismatchErr     uint8 = 0xF4
