@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	pt "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 )
 
@@ -74,7 +75,6 @@ const (
 	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
 	defaultNodeSetGrpStep                              = 1
 	defaultMasterMinQosAccept                          = 20000
-	defaultDirChildrenNumLimit                         = 10000000
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -130,7 +130,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
 	cfg.diffSpaceUsage = defaultDiffSpaceUsage
 	cfg.QosMasterAcceptLimit = defaultMasterMinQosAccept
-	cfg.DirChildrenNumLimit = defaultDirChildrenNumLimit
+	cfg.DirChildrenNumLimit = pt.DefaultDirChildrenNumLimit
 	return
 }
 

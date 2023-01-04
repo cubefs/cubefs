@@ -450,6 +450,9 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 	// create dentry in dst parent
 	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode)
 	if err != nil {
+		if status == statusOpDirQuota {
+			return statusToErrno(status)
+		}
 		return syscall.EAGAIN
 	}
 

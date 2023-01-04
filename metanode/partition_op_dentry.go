@@ -17,8 +17,8 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-
 	"github.com/cubefs/cubefs/proto"
+	"sync/atomic"
 )
 
 // CreateDentry returns a new dentry.
@@ -27,6 +27,21 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 		err = fmt.Errorf("parentId is equal inodeId")
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
+	}
+
+	item := mp.inodeTree.CopyGet(NewInode(req.ParentID, 0))
+	if item == nil {
+		err = fmt.Errorf("parent inode not exists")
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		return
+	} else {
+		parIno := item.(*Inode)
+		quota := atomic.LoadUint64(&dirChildrenNumLimit)
+		if parIno.NLink >= uint32(quota) {
+			err = fmt.Errorf("parent dir quota limitation reached")
+			p.PacketErrorWithBody(proto.OpDirQuota, []byte(err.Error()))
+			return
+		}
 	}
 
 	dentry := &Dentry{
