@@ -92,7 +92,7 @@ func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 	return
 }
 
-func (mw *MetaWrapper) Create_ll(parentID uint64, name string, dirQuota uint32, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
 	var (
 		status       int
 		err          error
@@ -118,7 +118,8 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, dirQuota uint32, 
 		return nil, statusToErrno(status)
 	}
 
-	if info.Nlink >= dirQuota {
+	quota := atomic.LoadUint32(&mw.DirChildrenNumLimit)
+	if info.Nlink >= quota {
 		log.LogErrorf("Create_ll: parent inode's nlink quota reached, parentID(%v)", parentID)
 		return nil, syscall.EDQUOT
 	}

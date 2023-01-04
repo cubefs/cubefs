@@ -129,10 +129,11 @@ type MetaWrapper struct {
 	partCond  *sync.Cond
 
 	// Allocated to trigger and throttle instant partition updates
-	forceUpdate      chan struct{}
-	forceUpdateLimit *rate.Limiter
-	EnableSummary    bool
-	metaSendTimeout  int64
+	forceUpdate         chan struct{}
+	forceUpdateLimit    *rate.Limiter
+	EnableSummary       bool
+	metaSendTimeout     int64
+	DirChildrenNumLimit uint32
 }
 
 //the ticket from authnode
@@ -177,6 +178,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdate = make(chan struct{}, 1)
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.EnableSummary = config.EnableSummary
+	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
 
 	limit := MaxMountRetryLimit
 

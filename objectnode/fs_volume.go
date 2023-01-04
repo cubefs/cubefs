@@ -25,7 +25,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 
 	"crypto/md5"
@@ -284,8 +283,7 @@ func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool)
 			return err
 		}
 		var inodeInfo *proto.InodeInfo
-		quota := atomic.LoadUint32(&gDirChildrenNumLimit)
-		if inodeInfo, err = v.mw.Create_ll(parentID, filename, quota, DefaultFileMode, 0, 0, nil); err != nil {
+		if inodeInfo, err = v.mw.Create_ll(parentID, filename, DefaultFileMode, 0, 0, nil); err != nil {
 			return err
 		}
 		inode = inodeInfo.Inode
@@ -1427,8 +1425,7 @@ func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
 		}
 		if err == syscall.ENOENT {
 			var info *proto.InodeInfo
-			quota := atomic.LoadUint32(&gDirChildrenNumLimit)
-			info, err = v.mw.Create_ll(ino, pathItem.Name, quota, uint32(DefaultDirMode), 0, 0, nil)
+			info, err = v.mw.Create_ll(ino, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil)
 			if err != nil && err == syscall.EEXIST {
 				existInode, mode, e := v.mw.Lookup_ll(ino, pathItem.Name)
 				if e != nil {
@@ -1473,8 +1470,7 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 		if lookupErr == syscall.ENOENT {
 			var inodeInfo *proto.InodeInfo
 			var createErr error
-			quota := atomic.LoadUint32(&gDirChildrenNumLimit)
-			inodeInfo, createErr = v.mw.Create_ll(parentId, dir, quota, uint32(DefaultDirMode), 0, 0, nil)
+			inodeInfo, createErr = v.mw.Create_ll(parentId, dir, uint32(DefaultDirMode), 0, 0, nil)
 			if createErr != nil && createErr != syscall.EEXIST {
 				log.LogErrorf("lookupDirectories: meta create fail, parentID(%v) name(%v) mode(%v) err(%v)", parentId, dir, os.ModeDir, createErr)
 				return 0, createErr

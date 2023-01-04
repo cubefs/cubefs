@@ -1308,15 +1308,13 @@ func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 
 func (c *client) create(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
-	quota := c.dirChildrenNumLimit
-	return c.mw.Create_ll(pino, name, quota, fuseMode, 0, 0, nil)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
 }
 
 func (c *client) mkdir(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
 	fuseMode |= uint32(os.ModeDir)
-	quota := c.dirChildrenNumLimit
-	return c.mw.Create_ll(pino, name, quota, fuseMode, 0, 0, nil)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
 }
 
 func (c *client) openStream(f *file) {

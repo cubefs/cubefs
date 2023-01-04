@@ -586,12 +586,6 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 					super.EbsBlockSize = volumeInfo.ObjBlockSize
 				}
 
-				var clusterInfo *proto.ClusterInfo
-				clusterInfo, err = mc.AdminAPI().GetClusterInfo()
-				if err != nil {
-					return
-				}
-				super.SetDirChildrenNumLimit(uint32(clusterInfo.DirChildrenNumLimit))
 			}
 		}
 	}()

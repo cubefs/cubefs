@@ -127,6 +127,17 @@ func (mw *MetaWrapper) updateClusterInfo() (err error) {
 	return
 }
 
+func (mw *MetaWrapper) updateDirChildrenNumLimit() (err error) {
+	var clusterInfo *proto.ClusterInfo
+	clusterInfo, err = mw.mc.AdminAPI().GetClusterInfo()
+	if err != nil {
+		return
+	}
+	atomic.StoreUint32(&mw.DirChildrenNumLimit, uint32(clusterInfo.DirChildrenNumLimit))
+	log.LogInfof("updateDirChildrenNumLimit: DirChildrenNumLimit(%v)", mw.DirChildrenNumLimit)
+	return
+}
+
 func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 
 	var info *proto.VolStatInfo
@@ -223,6 +234,10 @@ func (mw *MetaWrapper) refresh() {
 			if err = mw.updateVolStatInfo(); err != nil {
 				mw.onAsyncTaskError.OnError(err)
 				log.LogErrorf("updateVolStatInfo fail cause: %v", err)
+			}
+			if err = mw.updateDirChildrenNumLimit(); err != nil {
+				mw.onAsyncTaskError.OnError(err)
+				log.LogErrorf("updateDirChildrenNumLimit fail cause: %v", err)
 			}
 			t.Reset(RefreshMetaPartitionsInterval)
 		case <-mw.forceUpdate:
