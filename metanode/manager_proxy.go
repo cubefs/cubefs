@@ -37,6 +37,7 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		reqID      = p.ReqID
 		reqOp      = p.Opcode
 	)
+
 	if leaderAddr, ok = mp.IsLeader(); ok {
 		return
 	}

@@ -287,6 +287,7 @@ type QosToDataNode struct {
 type HeartBeatRequest struct {
 	CurrTime   int64
 	MasterAddr string
+	FLReadVols []string
 	QosToDataNode
 }
 
