@@ -391,7 +391,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
 	syslog.Println(fmt.Sprintf("start load metaPartition %v", id))
 	partition.ForceSetMetaPartitionToLoadding()
-	if err = partition.Start(); err != nil {
+	if err = partition.Start(false); err != nil {
 		msg := fmt.Sprintf("load meta partition %v fail: %v", id, err)
 		log.LogError(msg)
 		syslog.Println(msg)
@@ -456,7 +456,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		return
 	}
 
-	if err = partition.Start(); err != nil {
+	if err = partition.Start(true); err != nil {
 		os.RemoveAll(mpc.RootDir)
 		log.LogErrorf("load meta partition %v fail: %v", request.PartitionID, err)
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())

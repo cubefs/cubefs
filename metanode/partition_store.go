@@ -94,7 +94,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 	}()
 	filename := path.Join(rootDir, inodeFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = nil
+		err = errors.NewErrorf("[loadInode] Stat: %s", err.Error())
 		return
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
@@ -160,15 +160,11 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 	}()
 	filename := path.Join(rootDir, dentryFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = nil
+		err = errors.NewErrorf("[loadDentry] Stat: %s", err.Error())
 		return
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
-		if err == os.ErrNotExist {
-			err = nil
-			return
-		}
 		err = errors.NewErrorf("[loadDentry] OpenFile: %s", err.Error())
 		return
 	}
@@ -219,10 +215,12 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 	var err error
 	filename := path.Join(rootDir, extendFile)
 	if _, err = os.Stat(filename); err != nil {
-		return nil
+		err = errors.NewErrorf("[loadExtend] Stat: %s", err.Error())
+		return err
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
+		err = errors.NewErrorf("[loadExtend] OpenFile: %s", err.Error())
 		return err
 	}
 	defer func() {
@@ -263,10 +261,12 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 	var err error
 	filename := path.Join(rootDir, multipartFile)
 	if _, err = os.Stat(filename); err != nil {
-		return nil
+		err = errors.NewErrorf("[loadMultipart] Stat: %s", err.Error())
+		return err
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
+		err = errors.NewErrorf("[loadMultipart] OpenFile: %s", err.Error())
 		return err
 	}
 	defer func() {
@@ -303,16 +303,12 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	filename := path.Join(rootDir, applyIDFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = nil
+		err = errors.NewErrorf("[loadApplyID]: Stat %s", err.Error())
 		return
 	}
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		if err == os.ErrNotExist {
-			err = nil
-			return
-		}
-		err = errors.NewErrorf("[loadApplyID] OpenFile: %s", err.Error())
+		err = errors.NewErrorf("[loadApplyID] ReadFile: %s", err.Error())
 		return
 	}
 	if len(data) == 0 {
