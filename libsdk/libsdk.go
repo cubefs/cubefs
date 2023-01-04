@@ -161,13 +161,14 @@ type pushConfig struct {
 func newClient() *client {
 	id := atomic.AddInt64(&gClientManager.nextClientID, 1)
 	c := &client{
-		id:    id,
-		fdmap: make(map[uint]*file),
-		fdset: bitset.New(maxFdNum),
-		cwd:   "/",
-		sc:    fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache),
-		ic:    fs.NewInodeCache(fs.DefaultInodeExpiration, fs.MaxInodeCache),
-		dc:    fs.NewDentryCache(),
+		id:                  id,
+		fdmap:               make(map[uint]*file),
+		fdset:               bitset.New(maxFdNum),
+		dirChildrenNumLimit: fs.DefaultDirChildrenNumLimit,
+		cwd:                 "/",
+		sc:                  fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache),
+		ic:                  fs.NewInodeCache(fs.DefaultInodeExpiration, fs.MaxInodeCache),
+		dc:                  fs.NewDentryCache(),
 	}
 
 	gClientManager.mu.Lock()
@@ -215,27 +216,28 @@ type client struct {
 	id int64
 
 	// mount config
-	volName          string
-	masterAddr       string
-	followerRead     bool
-	logDir           string
-	logLevel         string
-	ebsEndpoint      string
-	servicePath      string
-	volType          int
-	cacheAction      int
-	ebsBlockSize     int
-	enableBcache     bool
-	readBlockThread  int
-	writeBlockThread int
-	cacheRuleKey     string
-	cacheThreshold   int
-	enableSummary    bool
-	secretKey        string
-	accessKey        string
-	subDir           string
-	pushAddr         string
-	cluster          string
+	volName             string
+	masterAddr          string
+	followerRead        bool
+	logDir              string
+	logLevel            string
+	ebsEndpoint         string
+	servicePath         string
+	volType             int
+	cacheAction         int
+	ebsBlockSize        int
+	enableBcache        bool
+	readBlockThread     int
+	writeBlockThread    int
+	cacheRuleKey        string
+	cacheThreshold      int
+	enableSummary       bool
+	secretKey           string
+	accessKey           string
+	subDir              string
+	pushAddr            string
+	cluster             string
+	dirChildrenNumLimit uint32
 	// runtime context
 	cwd    string // current working directory
 	fdmap  map[uint]*file
@@ -1306,13 +1308,15 @@ func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 
 func (c *client) create(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
+	quota := c.dirChildrenNumLimit
+	return c.mw.Create_ll(pino, name, quota, fuseMode, 0, 0, nil)
 }
 
 func (c *client) mkdir(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
 	fuseMode |= uint32(os.ModeDir)
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
+	quota := c.dirChildrenNumLimit
+	return c.mw.Create_ll(pino, name, quota, fuseMode, 0, 0, nil)
 }
 
 func (c *client) openStream(f *file) {
@@ -1396,6 +1400,7 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	c.ebsEndpoint = clusterInfo.EbsAddr
 	c.servicePath = clusterInfo.ServicePath
 	c.cluster = clusterInfo.Cluster
+	c.dirChildrenNumLimit = uint32(clusterInfo.DirChildrenNumLimit)
 	buf.InitCachePool(c.ebsBlockSize)
 	return
 }

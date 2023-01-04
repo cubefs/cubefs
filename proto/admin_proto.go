@@ -20,6 +20,7 @@ import "github.com/cubefs/cubefs/util"
 const (
 	// Admin APIs
 	AdminGetCluster                 = "/admin/getCluster"
+	AdminSetClusterInfo             = "/admin/setClusterInfo"
 	AdminGetDataPartition           = "/dataPartition/get"
 	AdminLoadDataPartition          = "/dataPartition/load"
 	AdminCreateDataPartition        = "/dataPartition/create"
@@ -163,6 +164,7 @@ type ClusterInfo struct {
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeDeleteLimitRate     uint64
 	DataNodeAutoRepairLimitRate uint64
+	DirChildrenNumLimit         uint64
 	EbsAddr                     string
 	ServicePath                 string
 }

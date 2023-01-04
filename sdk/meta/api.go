@@ -92,7 +92,7 @@ func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 	return
 }
 
-func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Create_ll(parentID uint64, name string, dirQuota uint32, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
 	var (
 		status       int
 		err          error
@@ -105,6 +105,22 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 	if parentMP == nil {
 		log.LogErrorf("Create_ll: No parent partition, parentID(%v)", parentID)
 		return nil, syscall.ENOENT
+	}
+
+	status, info, err = mw.iget(parentMP, parentID)
+	if err != nil || status != statusOK {
+		if status == statusNoent {
+			// For NOENT error, pull the latest mp and give it another try,
+			// in case the mp view is outdated.
+			mw.triggerAndWaitForceUpdate()
+			return mw.doInodeGet(parentID)
+		}
+		return nil, statusToErrno(status)
+	}
+
+	if info.Nlink >= dirQuota {
+		log.LogErrorf("Create_ll: parent inode's nlink quota reached, parentID(%v)", parentID)
+		return nil, syscall.EDQUOT
 	}
 
 	// Create Inode

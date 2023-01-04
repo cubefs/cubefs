@@ -45,6 +45,7 @@ type clusterValue struct {
 	FaultDomain                 bool
 	DiskQosEnable               bool
 	QosLimitUpload              uint64
+	DirChildrenNumLimit         uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -61,6 +62,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		FaultDomain:                 c.FaultDomain,
 		DiskQosEnable:               c.diskQosEnable,
 		QosLimitUpload:              uint64(c.QosAcceptLimit.Limit()),
+		DirChildrenNumLimit:         c.cfg.DirChildrenNumLimit,
 	}
 	return cv
 }
@@ -690,6 +692,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 			return err
 		}
 		c.cfg.MetaNodeThreshold = cv.Threshold
+		c.cfg.DirChildrenNumLimit = cv.DirChildrenNumLimit
 		c.cfg.ClusterLoadFactor = cv.LoadFactor
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.diskQosEnable = cv.DiskQosEnable

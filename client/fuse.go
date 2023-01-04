@@ -574,8 +574,8 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 			select {
 			case <-t.C:
 				log.LogDebugf("UpdateVolConf: start load conf from master")
+				var mc = master.NewMasterClientFromString(opt.Master, false)
 				if proto.IsCold(opt.VolType) {
-					var mc = master.NewMasterClientFromString(opt.Master, false)
 					var volumeInfo *proto.SimpleVolView
 					volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
 					if err != nil {
@@ -585,6 +585,13 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 					super.CacheThreshold = volumeInfo.CacheThreshold
 					super.EbsBlockSize = volumeInfo.ObjBlockSize
 				}
+
+				var clusterInfo *proto.ClusterInfo
+				clusterInfo, err = mc.AdminAPI().GetClusterInfo()
+				if err != nil {
+					return
+				}
+				super.SetDirChildrenNumLimit(uint32(clusterInfo.DirChildrenNumLimit))
 			}
 		}
 	}()

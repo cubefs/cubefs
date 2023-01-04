@@ -779,6 +779,21 @@ func extractCrossZone(r *http.Request) (crossZone bool, err error) {
 	return
 }
 
+func parseAndExtractDirQuota(r *http.Request) (quota uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(dirQuotaKey); value == "" {
+		err = keyNotFound(dirQuotaKey)
+		return
+	}
+	if quota, err = strconv.ParseUint(value, 10, 64); err != nil {
+		return
+	}
+	return
+}
+
 func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
