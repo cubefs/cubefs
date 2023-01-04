@@ -225,7 +225,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		return nil, err
 	}
 
-	s.dirChildrenNumLimit = DefaultDirChildrenNumLimit
+	s.dirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
 
 	s.suspendCh = make(chan interface{})
 	if proto.IsCold(opt.VolType) {
