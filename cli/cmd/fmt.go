@@ -79,13 +79,13 @@ func formatNodeViewTableHeader() string {
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, view.Addr,
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Active))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address : %v\n", view.Addr))
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
-	sb.WriteString(fmt.Sprintf("  Status  : %v", formatNodeStatus(view.Status)))
+	sb.WriteString(fmt.Sprintf("  Status  : %v", formatNodeStatus(view.Active)))
 	return sb.String()
 }
 
