@@ -55,7 +55,7 @@ func run(mountpoint string) error {
 	filesys.clockFile.tick()
 	// This goroutine never exits. That's fine for this example.
 	go filesys.clockFile.update()
-	if err := srv.Serve(filesys); err != nil {
+	if err := srv.Serve(filesys, nil); err != nil {
 		return err
 	}
 

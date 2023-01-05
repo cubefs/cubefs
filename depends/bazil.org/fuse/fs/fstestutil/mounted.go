@@ -80,7 +80,7 @@ func MountedFunc(fn func(*Mount) fs.FS, conf *fs.Config, options ...fuse.MountOp
 	filesys := fn(mnt)
 	go func() {
 		defer close(done)
-		serveErr <- server.Serve(filesys)
+		serveErr <- server.Serve(filesys, nil)
 	}()
 
 	select {

@@ -16,6 +16,7 @@ type mountConfig struct {
 	maxReadahead     uint32
 	initFlags        InitFlags
 	osxfuseLocations []OSXFUSEPaths
+	RequestTimeout   int64
 }
 
 func escapeComma(s string) string {
@@ -325,6 +326,14 @@ func AllowNonEmptyMount() MountOption {
 func PosixACL() MountOption {
 	return func(conf *mountConfig) error {
 		conf.initFlags |= InitPOSIXACL
+		return nil
+	}
+}
+
+// RequestTimeout set request timeout.
+func RequestTimeout(timeout int64) MountOption {
+	return func(conf *mountConfig) error {
+		conf.RequestTimeout = timeout
 		return nil
 	}
 }
