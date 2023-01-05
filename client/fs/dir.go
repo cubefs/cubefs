@@ -451,10 +451,28 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
-	children, err := d.super.mw.ReadDir_ll(d.info.Inode)
-	if err != nil {
-		log.LogErrorf("Readdir: ino(%v) err(%v)", d.info.Inode, err)
-		return make([]fuse.Dirent, 0), ParseError(err)
+	// transform ReadDirAll to ReadDirLimit_ll
+	var noMore = false
+	var from = ""
+	var children []proto.Dentry
+	for !noMore {
+		batches, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("Readdir: ino(%v) err(%v) from(%v)", d.info.Inode, err, from)
+			return make([]fuse.Dirent, 0), ParseError(err)
+		}
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			noMore = true
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
 	}
 
 	inodes := make([]uint64, 0, len(children))
