@@ -49,27 +49,27 @@ const (
 )
 
 type monitorMetrics struct {
-	cluster            *Cluster
-	dataNodesCount     *exporter.Gauge
-	metaNodesCount     *exporter.Gauge
-	volCount           *exporter.Gauge
-	dataNodesTotal     *exporter.Gauge
-	dataNodesUsed      *exporter.Gauge
-	dataNodeIncreased  *exporter.Gauge
-	metaNodesTotal     *exporter.Gauge
-	metaNodesUsed      *exporter.Gauge
-	metaNodesIncreased *exporter.Gauge
-	volTotalSpace      *exporter.GaugeVec
-	volUsedSpace       *exporter.GaugeVec
-	volUsage           *exporter.GaugeVec
-	volMetaCount       *exporter.GaugeVec
-	badMpCount         *exporter.Gauge
-	badDpCount         *exporter.Gauge
-	diskError          *exporter.GaugeVec
-	dataNodesInactive  *exporter.Gauge
-	metaNodesInactive  *exporter.Gauge
-	dataNodesNotWritable  *exporter.Gauge
-	metaNodesNotWritable  *exporter.Gauge
+	cluster              *Cluster
+	dataNodesCount       *exporter.Gauge
+	metaNodesCount       *exporter.Gauge
+	volCount             *exporter.Gauge
+	dataNodesTotal       *exporter.Gauge
+	dataNodesUsed        *exporter.Gauge
+	dataNodeIncreased    *exporter.Gauge
+	metaNodesTotal       *exporter.Gauge
+	metaNodesUsed        *exporter.Gauge
+	metaNodesIncreased   *exporter.Gauge
+	volTotalSpace        *exporter.GaugeVec
+	volUsedSpace         *exporter.GaugeVec
+	volUsage             *exporter.GaugeVec
+	volMetaCount         *exporter.GaugeVec
+	badMpCount           *exporter.Gauge
+	badDpCount           *exporter.Gauge
+	diskError            *exporter.GaugeVec
+	dataNodesInactive    *exporter.Gauge
+	metaNodesInactive    *exporter.Gauge
+	dataNodesNotWritable *exporter.Gauge
+	metaNodesNotWritable *exporter.Gauge
 
 	volNames map[string]struct{}
 	badDisks map[string]string
