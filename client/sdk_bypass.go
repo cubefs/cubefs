@@ -568,6 +568,8 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		syslog.Printf("open %v for stdout redirection failed: %v", outputFilePath, err)
 		return C.int(statusEIO)
 	}
+	_ = os.Chmod(gopath.Join(logDir, gClientManager.moduleName), 0777)
+	_ = os.Chmod(outputFilePath, 0666)
 	syslog.SetOutput(gClientManager.outputFile)
 
 	// Initialize HTTP APIs

@@ -74,7 +74,7 @@ func init() {
 	exe = path.Base(exe)
 	var pid = os.Getpid()
 	var logCommonPrefix = fmt.Sprintf("[%v/%v]", exe, pid)
-	for i := 0; i< len(levelPrefixes); i++ {
+	for i := 0; i < len(levelPrefixes); i++ {
 		levelPrefixes[i] = logCommonPrefix + levelPrefixes[i]
 	}
 }
@@ -282,13 +282,13 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	LogDir = dir
 	fi, err := os.Stat(dir)
 	if err != nil {
-		os.MkdirAll(dir, 0755)
+		os.MkdirAll(dir, 0777)
 	} else {
 		if !fi.IsDir() {
 			return nil, errors.New(dir + " is not a directory")
 		}
 	}
-	_ = os.Chmod(dir, 0766)
+	_ = os.Chmod(dir, 0777)
 
 	if rotate == nil {
 		rotate = NewLogRotate()

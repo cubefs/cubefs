@@ -130,32 +130,6 @@ build_server() {
     popd >/dev/null
 }
 
-build_client() {
-    pre_build
-    pushd $SrcPath >/dev/null
-    echo -n "build libempty.so   "
-    go build -buildmode=plugin -linkshared -o ${BuildBinPath}/libempty.so ${SrcPath}/client/empty.go || echo "failed"
-    echo -n "libcfsclient.so   "
-    gcc ${gccflag} -std=c99 -fPIC -shared -o ${BuildBinPath}/libcfsclient.so ${SrcPath}/client/main_hook.c ${SrcPath}/client/bypass/libc_operation.c -ldl -lpthread -I ${SrcPath}/client/bypass/include || "failed"
-    echo -n "libcfsc.so   "
-    g++ -std=c++11 ${gccflag} -DCommitID=\"${CommitID}\" -fPIC -shared -o ${BuildBinPath}/libcfsc.so ${SrcPath}/client/bypass/client.c ${SrcPath}/client/bypass/cache.c ${SrcPath}/client/bypass/packet.c ${SrcPath}/client/bypass/conn_pool.c ${SrcPath}/client/bypass/ini.c ${SrcPath}/client/bypass/libc_operation.c -ldl -lpthread -I ${SrcPath}/client/bypass/include || "failed"
-    echo -n "libcfssdk.so   "
-    go build -ldflags "-E main.main ${LDFlags}" -buildmode=plugin -linkshared -o ${BuildBinPath}/libcfssdk.so ${SrcPath}/client/sdk_fuse.go ${SrcPath}/client/sdk_bypass.go ${SrcPath}/client/http.go ${SrcPath}/client/ump.go ${SrcPath}/client/common.go || echo "failed"
-    echo -n "cfs-client-inner   "
-    go build -linkshared -o ${BuildBinPath}/cfs-client-inner ${SrcPath}/client/main_fuse.go && echo "success" || echo "failed"
-    echo -n "cfs-client   "
-    go build -o ${bin}/cfs-client ${SrcPath}/client/run_fuse_client.go && echo "success" || echo "failed"
-    popd >/dev/null
-}
-
-build_client2() {
-    pre_build
-    pushd $SrcPath >/dev/null
-    echo -n "build cfs-client2  "
-    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client2 ${SrcPath}/clientv2/*.go  && echo "success" || echo "failed"
-    popd >/dev/null
-}
-
 build_authtool() {
     pre_build
     pushd $SrcPath >/dev/null
@@ -193,12 +167,6 @@ case "$cmd" in
         ;;
     "server")
         build_server
-        ;;
-    "client")
-        build_client
-        ;;
-    "client2")
-        build_client2
         ;;
     "authtool")
         build_authtool
