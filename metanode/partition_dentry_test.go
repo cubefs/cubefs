@@ -109,7 +109,7 @@ func CreateDentryInterTest02(t *testing.T, leader, follower *metaPartition) {
 	}
 	packet := &Packet{}
 	err := leader.CreateDentry(req, packet)
-	if err != nil || packet.ResultCode != proto.OpNotExistErr {
+	if err == nil || packet.ResultCode != proto.OpNotExistErr {
 		t.Fatalf("error[%v] or resultCode mismatch, expect:OpNotExistErr, actual:%v", err, packet.ResultCode)
 	}
 	t.Logf("create dentry test 02 finished\n")
@@ -139,7 +139,7 @@ func CreateDentryInterTest03(t *testing.T, leader, follower *metaPartition) {
 	}
 	packet := &Packet{}
 	err = leader.CreateDentry(req, packet)
-	if err != nil || packet.ResultCode != proto.OpNotExistErr {
+	if err == nil || packet.ResultCode != proto.OpNotExistErr {
 		t.Fatalf("error[%v] or resultCode mismatch, expect:OpNotExistErr, actual:%v", err, packet.ResultCode)
 	}
 	t.Logf("create dentry test 03 finished\n")
@@ -259,6 +259,34 @@ func CreateDentryInterTest06(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
+func CreateDentryInterTest07(t *testing.T, leader, follower *metaPartition) {
+	//create parent inode and change nlink number
+	parentIno := NewInode(1000, uint32(os.ModeDir))
+	parentIno.NLink = 1001
+
+	if _, _, err := inodeCreate(leader.inodeTree, parentIno, true); err != nil {
+		t.Errorf("create parent inode failed:%v", err)
+		return
+	}
+
+	//create dentrys with parent id = inode
+	req := &proto.CreateDentryRequest{
+		ParentID: parentIno.Inode,
+		Name:     "test",
+		Inode:    1549830,
+		Mode:     470,
+	}
+	packet := &Packet{}
+	err := leader.CreateDentry(req, packet)
+	if err == nil || packet.ResultCode != proto.OpNotPerm {
+		t.Fatalf("mistmatch, err expect:child file count reach max count, actual:%v; resultCode expect:" +
+			"OpNotPerm, actual:%v", err, packet.ResultCode)
+		return
+	}
+	t.Logf("create dentry test 07 finished\n")
+	return
+}
+
 func TestMetaPartition_CreateDentryCase01(t *testing.T) {
 	//leader is mem mode
 	dir := "create_dentry_test_01"
@@ -343,6 +371,22 @@ func TestMetaPartition_CreateDentryCase06(t *testing.T) {
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
 	CreateDentryInterTest06(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_CreateDentryCase07(t *testing.T) {
+	//leader is mem mode
+	dir := "create_dentry_test_07"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	leader.config.ChildFileMaxCount = 1000
+	CreateDentryInterTest07(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	leader.config.ChildFileMaxCount = 1000
+	CreateDentryInterTest07(t, leader, follower)
 	releaseMp(leader, follower, dir)
 }
 
@@ -1109,6 +1153,11 @@ func TestMetaPartition_CreateDentryWithSubmitErrorTest(t *testing.T) {
 		})
 	}()
 	fmt.Println(memModeTestMp.config.Cursor)
+
+	if _, _, err = inodeCreate(memModeTestMp.inodeTree, NewInode(1, uint32(os.ModeDir)), true); err != nil {
+		t.Errorf("inode create failed:%v", err)
+		return
+	}
 
 	//create dentrys with parentId is equal to inode
 	req := &proto.CreateDentryRequest{

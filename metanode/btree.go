@@ -108,6 +108,7 @@ type Tree interface {
 
 type InodeTree interface {
 	Tree
+	//RefGet, Get: error always is nil when mem mode, whether the item is nil needs to be determined
 	RefGet(ino uint64) (*Inode, error)
 	Get(ino uint64) (*Inode, error)
 	Put(dbHandle interface{}, inode *Inode) error
@@ -123,6 +124,7 @@ type InodeTree interface {
 
 type DentryTree interface {
 	Tree
+	//RefGet, Get: error always is nil when mem mode, whether the item is nil needs to be determined
 	RefGet(ino uint64, name string) (*Dentry, error)
 	Get(pino uint64, name string) (*Dentry, error)
 	Update(dbHandle interface{}, dentry *Dentry) error
@@ -137,6 +139,7 @@ type DentryTree interface {
 
 type ExtendTree interface {
 	Tree
+	//RefGet, Get: error always is nil when mem mode, whether the item is nil needs to be determined
 	RefGet(ino uint64) (*Extend, error)
 	Get(ino uint64) (*Extend, error)
 	Put(dbHandle interface{}, extend *Extend) error
@@ -150,6 +153,7 @@ type ExtendTree interface {
 
 type MultipartTree interface {
 	Tree
+	//RefGet, Get: error always is nil when mem mode, whether the item is nil needs to be determined
 	RefGet(key, id string) (*Multipart, error)
 	Get(key, id string) (*Multipart, error)
 	Put(dbHandle interface{}, mutipart *Multipart) error
@@ -162,9 +166,9 @@ type MultipartTree interface {
 	Count() uint64
 }
 
-//get refget create delete range realcount count
 type DeletedDentryTree interface {
 	Tree
+	//RefGet, Get: error always is nil when mem mode, whether the item is nil needs to be determined
 	RefGet(pino uint64, name string, timeStamp int64) (*DeletedDentry, error)
 	Get(pino uint64, name string, timeStamp int64) (*DeletedDentry, error)
 	Create(dbHandle interface{}, delDentry *DeletedDentry, replace bool) (*DeletedDentry, bool, error)
@@ -177,6 +181,7 @@ type DeletedDentryTree interface {
 
 type DeletedInodeTree interface {
 	Tree
+	//RefGet, Get: error always is nil when mem mode, whether the item is nil needs to be determined
 	RefGet(ino uint64) (*DeletedINode, error)
 	Get(ino uint64) (*DeletedINode, error)
 	Create(dbHandle interface{}, delIno *DeletedINode, replace bool) (*DeletedINode, bool, error)
