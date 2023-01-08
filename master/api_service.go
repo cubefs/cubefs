@@ -62,7 +62,7 @@ func newNodeSetView(dataNodeLen, metaNodeLen int) *nodeSetView {
 	return &nodeSetView{DataNodes: make([]NodeView, 0), MetaNodes: make([]NodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
 }
 
-//ZoneView define the view of zone
+// ZoneView define the view of zone
 type ZoneView struct {
 	Name       string
 	Status     string
@@ -135,12 +135,12 @@ func (m *Server) setMetaNodeMemModeRocksDBDiskUsedThreshold(w http.ResponseWrite
 
 // Turn on or off the automatic allocation of the data partitions.
 // If DisableAutoAllocate == off, then we WILL NOT automatically allocate new data partitions for the volume when:
-// 	1. the used space is below the max capacity,
-//	2. and the number of r&w data partition is less than 20.
+//  1. the used space is below the max capacity,
+//  2. and the number of r&w data partition is less than 20.
 //
 // If DisableAutoAllocate == on, then we WILL automatically allocate new data partitions for the volume when:
-// 	1. the used space is below the max capacity,
-//	2. and the number of r&w data partition is less than 20.
+//  1. the used space is below the max capacity,
+//  2. and the number of r&w data partition is less than 20.
 func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 	var (
 		status bool
@@ -1972,10 +1972,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		usedRatio      float64
 		fileAvgSize    float64
 	)
-	for _, mp := range vol.MetaPartitions {
-		volDentryCount = volDentryCount + mp.DentryCount
-		volInodeCount = volInodeCount + mp.InodeCount
-	}
+	volDentryCount, volInodeCount = vol.getDentryCntAndInodeCnt()
 	stat := volStat(vol)
 	if stat.TotalSize > 0 {
 		usedRatio = float64(stat.RealUsedSize) / float64(stat.TotalSize)

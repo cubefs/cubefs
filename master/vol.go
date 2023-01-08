@@ -1203,7 +1203,7 @@ func (vol *Vol) dpIsCanEc(dp *DataPartition) bool {
 	return false
 }
 
-//getCanOperDataPartitions oper-> false: get can migration dps true: get can del dps
+// getCanOperDataPartitions oper-> false: get can migration dps true: get can del dps
 func (vol *Vol) getCanOperDataPartitions(oper bool) []*proto.DataPartitionResponse {
 	dpResp := make([]*proto.DataPartitionResponse, 0)
 	vol.dataPartitions.RLock()
@@ -1288,6 +1288,16 @@ func (vol *Vol) deleteEcDataPartitionFromEcNode(c *Cluster, task *proto.AdminTas
 	ep.checkAndRemoveMissReplica(ecNode.Addr)
 	if err = ep.update("deleteEcDataReplica", ep.VolName, ep.Peers, ep.Hosts, c); err != nil {
 		log.LogErrorf("deleteEcDataReplica err[%v]", err)
+	}
+	return
+}
+
+func (vol *Vol) getDentryCntAndInodeCnt() (dentryCnt, inodeCnt uint64) {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+	for _, mp := range vol.MetaPartitions {
+		dentryCnt = dentryCnt + mp.DentryCount
+		inodeCnt = inodeCnt + mp.InodeCount
 	}
 	return
 }
