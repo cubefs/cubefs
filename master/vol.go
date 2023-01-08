@@ -555,7 +555,9 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) (writableMpCount int) {
 
 func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
 	maxPartitionID := vol.maxPartitionID()
+	vol.mpsLock.RLock()
 	partition, ok := vol.MetaPartitions[maxPartitionID]
+	vol.mpsLock.RUnlock()
 	if !ok {
 		return
 	}

@@ -1343,6 +1343,7 @@ func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*Meta
 	partitions = make([]*MetaPartition, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			for _, host := range mp.Hosts {
 				if host == addr {
@@ -1351,6 +1352,7 @@ func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*Meta
 				}
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 
 	return
@@ -1377,6 +1379,7 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 	partitionIDs = make([]uint64, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			for _, host := range mp.Hosts {
 				if host == addr {
@@ -1385,6 +1388,7 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 				}
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 
 	return
@@ -1394,6 +1398,7 @@ func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*Met
 	partitions = make([]*MetaPartition, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			for _, host := range mp.Hosts {
 				if host == addr {
@@ -1402,6 +1407,7 @@ func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*Met
 				}
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 	return
 }
