@@ -161,6 +161,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.cluster.scheduleTask()
 	m.startHTTPService(ModuleName, cfg)
 	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
+	WarnMetrics = newWarningMetrics(m.cluster)
 	metricsService := newMonitorMetrics(m.cluster)
 	metricsService.start()
 	m.wg.Add(1)
