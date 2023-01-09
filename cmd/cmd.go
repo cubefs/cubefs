@@ -358,7 +358,7 @@ func run() error {
 	// report server version
 	masters := cfg.GetStringSlice(proto.MasterAddr)
 	versionInfo := proto.DumpVersion(module, BranchName, CommitID, BuildTime)
-	go version.ReportVersionSchedule(cfg, masters, versionInfo, nil, nil)
+	go version.ReportVersionSchedule(cfg, masters, versionInfo, "", nil, nil)
 
 	// Block main goroutine until server shutdown.
 	server.Sync()
