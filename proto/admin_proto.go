@@ -170,7 +170,7 @@ type ClusterInfo struct {
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeDeleteLimitRate     uint64
 	DataNodeAutoRepairLimitRate uint64
-	DirChildrenNumLimit         uint64
+	DirChildrenNumLimit         uint32
 	EbsAddr                     string
 	ServicePath                 string
 }

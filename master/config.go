@@ -110,7 +110,7 @@ type clusterConfig struct {
 	DomainBuildAsPossible               bool
 	DataPartitionUsageThreshold         float64
 	QosMasterAcceptLimit                uint64
-	DirChildrenNumLimit                 uint64
+	DirChildrenNumLimit                 uint32
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

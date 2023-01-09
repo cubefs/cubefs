@@ -2704,12 +2704,12 @@ func (c *Cluster) getMetaPartitionCount() (count int) {
 	return count
 }
 
-func (c *Cluster) setClusterInfo(quota uint64) (err error) {
+func (c *Cluster) setClusterInfo(quota uint32) (err error) {
 	oldLimit := c.cfg.DirChildrenNumLimit
-	atomic.StoreUint64(&c.cfg.DirChildrenNumLimit, quota)
+	atomic.StoreUint32(&c.cfg.DirChildrenNumLimit, quota)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterInfo] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.DirChildrenNumLimit, oldLimit)
+		atomic.StoreUint32(&c.cfg.DirChildrenNumLimit, oldLimit)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
