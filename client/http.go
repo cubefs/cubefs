@@ -805,5 +805,7 @@ func SetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
 			ump.SetUmpCollectWay(proto.UmpCollectBy(val))
 			w.Write([]byte(fmt.Sprintf("Set ump collect way to %v successfully\n", proto.UmpCollectByStr(proto.UmpCollectBy(val)))))
 		}
+	} else {
+		w.Write([]byte("Unrecognized way\n"))
 	}
 }

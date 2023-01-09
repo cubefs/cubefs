@@ -67,6 +67,11 @@ var (
 	umpCollectWay      proto.UmpCollectBy
 	jmtpWrite          *JmtpWrite
 	jmtpWriteMutex     sync.Mutex
+
+	checkUmpWaySleepTime = 10 * time.Second
+	writeTpSleepTime     = time.Second
+	aliveTickerTime      = 20 * time.Second
+	alarmTickerTime      = time.Second
 )
 
 func init() {

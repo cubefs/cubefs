@@ -12,7 +12,7 @@ func (lw *LogWrite) backGroupWriteForGroupByTPV629() {
 	defer wg.Done()
 	for {
 		if GetUmpCollectWay() != proto.UmpCollectByFile {
-			time.Sleep(10 * time.Second)
+			time.Sleep(checkUmpWaySleepTime)
 		}
 		select {
 		case <-lw.stopC:
@@ -39,7 +39,7 @@ func (lw *LogWrite) backGroupWriteForGroupByTPV629() {
 				lw.bf.Reset()
 				return true
 			})
-			time.Sleep(time.Second)
+			time.Sleep(writeTpSleepTime)
 			if lw.backGroundCheckFile() != nil {
 				continue
 			}
@@ -52,7 +52,7 @@ func (lw *LogWrite) backGroupWriteForGroupByTPV629() {
 
 func (lw *LogWrite) backGroupAliveWriteV629() {
 	defer wg.Done()
-	ticker := time.NewTicker(20 * time.Second)
+	ticker := time.NewTicker(aliveTickerTime)
 	defer ticker.Stop()
 	aliveKeyMap := new(sync.Map)
 
@@ -90,12 +90,15 @@ func (lw *LogWrite) backGroupAliveWriteV629() {
 
 func (lw *LogWrite) backGroupBusinessWriteV629() {
 	defer wg.Done()
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(alarmTickerTime)
 	defer ticker.Stop()
 	businessKeyMap := new(sync.Map)
+	var (
+		body  []byte
+		count int
+	)
 
 	for {
-		var body []byte
 		select {
 		case <-lw.stopC:
 			lw.logFp.Close()
@@ -103,6 +106,7 @@ func (lw *LogWrite) backGroupBusinessWriteV629() {
 		case businessLog := <-lw.logCh:
 			alarmLog := businessLog.(*BusinessAlarm)
 			businessKeyMap.Store(alarmLog.Key, alarmLog.Detail)
+			count++
 		case <-ticker.C:
 			businessKeyMap.Range(func(key, value interface{}) bool {
 				businessKeyMap.Delete(key)
@@ -117,18 +121,20 @@ func (lw *LogWrite) backGroupBusinessWriteV629() {
 				return true
 			})
 			if lw.backGroundCheckFile() != nil {
+				count = 0
 				continue
 			}
 			n, _ := lw.logFp.Write(body)
 			lw.logSize += (int64)(n)
 			body = make([]byte, 0)
 			// Issue a signal to this channel when inflight hits zero.
-			if atomic.AddInt32(&lw.inflight, -1) <= 0 {
+			if atomic.AddInt32(&lw.inflight, -int32(count)) <= 0 {
 				select {
 				case lw.empty <- struct{}{}:
 				default:
 				}
 			}
+			count = 0
 		}
 	}
 }

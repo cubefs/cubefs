@@ -4,10 +4,17 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 func init() {
 	InitUmp("datanode", "jdos_chubao-node")
+	checkUmpWaySleepTime = 100 * time.Millisecond
+	writeTpSleepTime = time.Millisecond
+	aliveTickerTime = time.Millisecond
+	alarmTickerTime = time.Millisecond
 }
 
 //func BenchmarkAfterTPUsOld(b *testing.B) {
@@ -127,4 +134,27 @@ func parallelUmpWriteBusinessAlarmV629(b *testing.B, wg *sync.WaitGroup) {
 		Alarm(key, "heartbeat failed")
 	}
 	wg.Done()
+}
+
+func TestUmp(t *testing.T) {
+	sendUmp()
+
+	SetUmpJmtpAddr(testJmtpAddr)
+	SetUmpCollectWay(proto.UmpCollectByJmtpClient)
+	sendUmp()
+
+	SetUmpCollectWay(proto.UmpCollectByFile)
+	sendUmp()
+}
+
+func sendUmp() {
+	count := 100
+	for i := 0; i < count; i++ {
+		tpObject := BeforeTP(fmt.Sprintf("tp key %d", i))
+		AfterTP(tpObject, nil)
+		Alive(fmt.Sprintf("alive key %d", i))
+		Alarm(fmt.Sprintf("alarm key %d", i), fmt.Sprintf("alarm detail %d", i))
+	}
+	time.Sleep(time.Duration(count) * writeTpSleepTime)
+	FlushAlarm()
 }

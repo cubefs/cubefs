@@ -17,6 +17,7 @@ import (
 
 const (
 	defaultJmtpAddr             = "jmtp://proxy.ump.jd.local:20890"
+	testJmtpAddr                = "test"
 	jmtpTimeoutSec              = 2
 	jmtpHeartbeatSec            = 10
 	jmtpChSize                  = 102400
@@ -28,6 +29,13 @@ const (
 	maxJmtpBatch                = 100
 )
 
+const (
+	reportTypeIndexTp uint = iota
+	reportTypeIndexAlarm
+	reportTypeIndexAlive
+	reportTypeIndexMax
+)
+
 var (
 	umpJmtpAddr  string
 	umpJmtpBatch uint = 1
@@ -37,11 +45,12 @@ type ReportType uint
 
 type JmtpWrite struct {
 	client      *jmtpclient.JmtpClient
+	url         string
 	wg          sync.WaitGroup
 	aliveCh     chan interface{}
 	alarmCh     chan interface{}
-	buff        *bytes.Buffer
-	jsonEncoder *json.Encoder
+	buff        [reportTypeIndexMax]*bytes.Buffer
+	jsonEncoder [reportTypeIndexMax]*json.Encoder
 	// pending log
 	inflight int32
 	// Issue a signal to this channel when inflight hits zero.
@@ -70,24 +79,32 @@ func NewJmtpWrite() (jmtp *JmtpWrite, err error) {
 		InstanceId:    0,
 	}
 	var client *jmtpclient.JmtpClient
-	client, err = jmtpclient.NewJmtpClient(config, func(packet jmtp_client_go.JmtpPacket, err error) {
+	if config.Url == testJmtpAddr {
+		client = &jmtpclient.JmtpClient{}
+	} else {
+		client, err = jmtpclient.NewJmtpClient(config, func(packet jmtp_client_go.JmtpPacket, err error) {
+			if err != nil {
+				log.LogDebugf("JmtpWrite callback: packet(%v) err(%v)", packet, err)
+			}
+		})
 		if err != nil {
-			log.LogDebugf("JmtpWrite callback: packet(%v) err(%v)", packet, err)
+			return
 		}
-	})
-	if err != nil {
-		return
+		if err = client.Connect(); err != nil {
+			return
+		}
 	}
-	if err = client.Connect(); err != nil {
-		return
-	}
+
 	jmtp = &JmtpWrite{}
 	jmtp.client = client
+	jmtp.url = config.Url
 	jmtp.aliveCh = make(chan interface{}, jmtpChSize)
 	jmtp.alarmCh = make(chan interface{}, jmtpChSize)
-	jmtp.buff = bytes.NewBuffer([]byte{})
-	jmtp.jsonEncoder = json.NewEncoder(jmtp.buff)
-	jmtp.jsonEncoder.SetEscapeHTML(false)
+	for i := 0; i < int(reportTypeIndexMax); i++ {
+		jmtp.buff[i] = bytes.NewBuffer([]byte{})
+		jmtp.jsonEncoder[i] = json.NewEncoder(jmtp.buff[i])
+		jmtp.jsonEncoder[i].SetEscapeHTML(false)
+	}
 	jmtp.empty = make(chan struct{})
 	jmtp.stopC = make(chan struct{})
 	jmtp.backGroupWrite()
@@ -111,7 +128,7 @@ func (jmtp *JmtpWrite) backGroupWriteTP() {
 	)
 	for {
 		if GetUmpCollectWay() != proto.UmpCollectByJmtpClient {
-			time.Sleep(10 * time.Second)
+			time.Sleep(checkUmpWaySleepTime)
 		}
 		select {
 		case <-jmtp.stopC:
@@ -131,12 +148,12 @@ func (jmtp *JmtpWrite) backGroupWriteTP() {
 				}
 				FunctionTPKeyMap.Delete(key)
 				umpLog, count := functionTPToLogFormat(key.(string), v)
-				err := jmtp.jsonEncoder.Encode(umpLog)
+				err := jmtp.jsonEncoder[reportTypeIndexTp].Encode(umpLog)
 				if err != nil {
 					return true
 				}
-				body = append(body, jmtp.buff.Bytes()...)
-				jmtp.buff.Reset()
+				body = append(body, jmtp.buff[reportTypeIndexTp].Bytes()...)
+				jmtp.buff[reportTypeIndexTp].Reset()
 				recordCount++
 				eventCount += uint(count)
 				if recordCount >= umpJmtpBatch {
@@ -153,7 +170,7 @@ func (jmtp *JmtpWrite) backGroupWriteTP() {
 				eventCount = 0
 				body = make([]byte, 0)
 			}
-			time.Sleep(time.Second)
+			time.Sleep(writeTpSleepTime)
 		}
 	}
 }
@@ -179,12 +196,12 @@ func (jmtp *JmtpWrite) checkTPKeyMap() {
 
 func (jmtp *JmtpWrite) backGroupWriteAlive() {
 	defer jmtp.wg.Done()
-	ticker := time.NewTicker(20 * time.Second)
+	ticker := time.NewTicker(aliveTickerTime)
 	defer ticker.Stop()
 	aliveKeyMap := new(sync.Map)
 	var (
-		body []byte
-		num  uint
+		body  []byte
+		count uint
 	)
 
 	for {
@@ -198,23 +215,23 @@ func (jmtp *JmtpWrite) backGroupWriteAlive() {
 			aliveKeyMap.Range(func(key, value interface{}) bool {
 				aliveKeyMap.Delete(key)
 				umpLog := aliveToLogFormat(key.(string))
-				err := jmtp.jsonEncoder.Encode(umpLog)
+				err := jmtp.jsonEncoder[reportTypeIndexAlive].Encode(umpLog)
 				if err != nil {
 					return true
 				}
-				body = append(body, jmtp.buff.Bytes()...)
-				jmtp.buff.Reset()
-				num++
-				if num >= umpJmtpBatch {
-					jmtp.send(body, reportTypeAlive, num, num)
-					num = 0
+				body = append(body, jmtp.buff[reportTypeIndexAlive].Bytes()...)
+				jmtp.buff[reportTypeIndexAlive].Reset()
+				count++
+				if count >= umpJmtpBatch {
+					jmtp.send(body, reportTypeAlive, count, count)
+					count = 0
 					body = make([]byte, 0)
 				}
 				return true
 			})
-			if num > 0 {
-				jmtp.send(body, reportTypeAlive, num, num)
-				num = 0
+			if count > 0 {
+				jmtp.send(body, reportTypeAlive, count, count)
+				count = 0
 				body = make([]byte, 0)
 			}
 		}
@@ -223,12 +240,13 @@ func (jmtp *JmtpWrite) backGroupWriteAlive() {
 
 func (jmtp *JmtpWrite) backGroupWriteAlarm() {
 	defer jmtp.wg.Done()
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(alarmTickerTime)
 	defer ticker.Stop()
 	businessKeyMap := new(sync.Map)
 	var (
-		body []byte
-		num  uint
+		body        []byte
+		toSendCount uint
+		eventCount  int
 	)
 
 	for {
@@ -238,36 +256,38 @@ func (jmtp *JmtpWrite) backGroupWriteAlarm() {
 		case businessLog := <-jmtp.alarmCh:
 			alarmLog := businessLog.(*BusinessAlarm)
 			businessKeyMap.Store(alarmLog.Key, alarmLog.Detail)
+			eventCount++
 		case <-ticker.C:
 			businessKeyMap.Range(func(key, value interface{}) bool {
 				businessKeyMap.Delete(key)
 				umpLog := alarmToLogFormat(key.(string), value.(string))
-				err := jmtp.jsonEncoder.Encode(umpLog)
+				err := jmtp.jsonEncoder[reportTypeIndexAlarm].Encode(umpLog)
 				if err != nil {
 					return true
 				}
-				body = append(body, jmtp.buff.Bytes()...)
-				jmtp.buff.Reset()
-				num++
-				if num >= umpJmtpBatch {
-					jmtp.send(body, reportTypeAlarm, num, num)
-					num = 0
+				body = append(body, jmtp.buff[reportTypeIndexAlarm].Bytes()...)
+				jmtp.buff[reportTypeIndexAlarm].Reset()
+				toSendCount++
+				if toSendCount >= umpJmtpBatch {
+					jmtp.send(body, reportTypeAlarm, toSendCount, toSendCount)
+					toSendCount = 0
 					body = make([]byte, 0)
 				}
 				return true
 			})
-			if num > 0 {
-				jmtp.send(body, reportTypeAlarm, num, num)
-				num = 0
+			if toSendCount > 0 {
+				jmtp.send(body, reportTypeAlarm, toSendCount, toSendCount)
+				toSendCount = 0
 				body = make([]byte, 0)
 			}
 			// Issue a signal to this channel when inflight hits zero.
-			if atomic.AddInt32(&jmtp.inflight, -1) <= 0 {
+			if atomic.AddInt32(&jmtp.inflight, -int32(eventCount)) <= 0 {
 				select {
 				case jmtp.empty <- struct{}{}:
 				default:
 				}
 			}
+			eventCount = 0
 		}
 	}
 }
@@ -279,6 +299,9 @@ func (jmtp *JmtpWrite) send(body []byte, reportType ReportType, recordCount uint
 		report *v1.Report
 	)
 	defer func() {
+		if jmtp.url == testJmtpAddr {
+			return
+		}
 		//log.LogDebugf("JmtpWrite send: type(%v) bodyLen(%v) write(%v) recordCount(%v) eventCount(%v)", reportType, len(body), write, recordCount, eventCount)
 		if r := recover(); r != nil || err != nil {
 			if err = jmtp.client.Reconnect(); err != nil {
@@ -295,7 +318,11 @@ func (jmtp *JmtpWrite) send(body []byte, reportType ReportType, recordCount uint
 	report.ReportType = int16(reportType)
 	report.Payload = body
 	report.SerializeType = 3
-	write, err = jmtp.client.SendPacket(report)
+	if jmtp.url == testJmtpAddr {
+		log.LogDebugf("JmtpWrite send: type(%v) bodyLen(%v) write(%v) recordCount(%v) eventCount(%v)", reportType, len(body), write, recordCount, eventCount)
+	} else {
+		write, err = jmtp.client.SendPacket(report)
+	}
 }
 
 func (jmtp *JmtpWrite) stop() {
@@ -304,5 +331,7 @@ func (jmtp *JmtpWrite) stop() {
 	}()
 	close(jmtp.stopC)
 	jmtp.wg.Wait()
-	jmtp.client.Destroy()
+	if jmtp.url != testJmtpAddr {
+		jmtp.client.Destroy()
+	}
 }
