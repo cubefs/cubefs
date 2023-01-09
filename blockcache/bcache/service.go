@@ -173,7 +173,7 @@ func (s *bcacheStore) serveConn(conn net.Conn, stopC chan struct{}) {
 		p := &BlockCachePacket{}
 		if err := p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
-				log.LogDebugf("serve BcacheServer: ", err.Error())
+				log.LogDebugf("serve BcacheServer: %v", err.Error())
 			}
 			return
 		}
