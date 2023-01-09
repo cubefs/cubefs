@@ -16,8 +16,6 @@ package util
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/xtaci/smux"
 	"io"
 	"net"
 	"strconv"
@@ -27,6 +25,9 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/xtaci/smux"
 )
 
 const (
