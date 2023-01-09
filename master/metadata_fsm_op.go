@@ -627,6 +627,13 @@ func (c *Cluster) removeRaftNode(nodeID uint64, addr string) (err error) {
 	return nil
 }
 
+func (c *Cluster) updateDirChildrenNumLimit(val uint64) {
+	if val < bsProto.MinDirChildrenNumLimit {
+		val = bsProto.DefaultDirChildrenNumLimit
+	}
+	atomic.StoreUint64(&c.cfg.DirChildrenNumLimit, val)
+}
+
 func (c *Cluster) updateMetaNodeDeleteBatchCount(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, val)
 }
@@ -692,7 +699,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 			return err
 		}
 		c.cfg.MetaNodeThreshold = cv.Threshold
-		c.cfg.DirChildrenNumLimit = cv.DirChildrenNumLimit
+		//c.cfg.DirChildrenNumLimit = cv.DirChildrenNumLimit
 		c.cfg.ClusterLoadFactor = cv.LoadFactor
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.diskQosEnable = cv.DiskQosEnable
@@ -704,6 +711,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.QosAcceptLimit.SetLimit(rate.Limit(c.cfg.QosMasterAcceptLimit))
 		log.LogInfof("action[loadClusterValue] qos limit %v", c.cfg.QosMasterAcceptLimit)
 
+		c.updateDirChildrenNumLimit(cv.DirChildrenNumLimit)
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
