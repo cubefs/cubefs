@@ -245,13 +245,17 @@ func (mp *MetaPartition) removeMissingReplica(addr string) {
 	}
 }
 
-func (mp *MetaPartition) checkLeader() {
+func (mp *MetaPartition) checkLeader(clusterID string) {
 	mp.Lock()
 	defer mp.Unlock()
 	for _, mr := range mp.Replicas {
 		if !mr.isActive() {
 			mr.IsLeader = false
 		}
+	}
+
+	if _, err := mp.getMetaReplicaLeader(); err != nil {
+		WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID)
 	}
 	return
 }
@@ -483,7 +487,8 @@ func (mp *MetaPartition) shouldReportMissingReplica(addr string, interval int64)
 		isWarn = true
 		mp.MissNodes[addr] = time.Now().Unix()
 	}
-	return false
+	return isWarn
+	//return false
 }
 
 func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, seconds, interval int64) {
@@ -505,8 +510,9 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 				"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 				clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
 			Warn(clusterID, msg)
-			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
-			Warn(clusterID, msg)
+			//msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
+			//Warn(clusterID, msg)
+			WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID)
 		}
 	}
 

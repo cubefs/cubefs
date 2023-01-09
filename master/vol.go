@@ -324,7 +324,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
-		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
+		dp.checkLeader(c.Name, c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
 
@@ -439,7 +439,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 			}
 		}
 
-		mp.checkLeader()
+		mp.checkLeader(c.Name)
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
 		mp.checkEnd(c, maxPartitionID)
 		mp.reportMissingReplicas(c.Name, c.leaderInfo.addr, defaultMetaPartitionTimeOutSec, defaultIntervalToAlarmMissingMetaPartition)
