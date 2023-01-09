@@ -95,6 +95,7 @@ const (
 	ConfigKeySmuxMaxConn       = "smuxMaxConn"        //int
 	ConfigKeySmuxStreamPerConn = "smuxStreamPerConn"  //int
 	ConfigKeySmuxMaxBuffer     = "smuxMaxBuffer"      //int
+	ConfigKeySmuxTotalStream   = "sumxTotalStream"    //int
 
 	//rate limit control enable
 	ConfigDiskQosEnable = "diskQosEnable" //bool
@@ -599,6 +600,9 @@ func (s *DataNode) serveSmuxConn(conn net.Conn) {
 
 func (s *DataNode) serveSmuxStream(stream *smux.Stream) {
 	packetProcessor := repl.NewReplProtocol(stream, s.Prepare, s.OperatePacket, s.Post)
+	if s.enableSmuxConnPool {
+		packetProcessor.SetSmux(s.getRepairConnFunc, s.putRepairConnFunc)
+	}
 	packetProcessor.ServerConn()
 }
 
@@ -662,6 +666,10 @@ func (s *DataNode) parseSmuxConfig(cfg *config.Config) error {
 		maxStreamPerConn := cfg.GetInt64(ConfigKeySmuxStreamPerConn)
 		if maxStreamPerConn > 0 {
 			s.smuxConnPoolConfig.StreamsPerConn = int(maxStreamPerConn)
+		}
+		totalStreams := cfg.GetInt64(ConfigKeySmuxTotalStream)
+		if totalStreams > 0 {
+			s.smuxConnPoolConfig.TotalStreams = int(totalStreams)
 		}
 		if err := util.VerifySmuxPoolConfig(s.smuxConnPoolConfig); err != nil {
 			return err
