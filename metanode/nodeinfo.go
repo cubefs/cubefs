@@ -21,7 +21,7 @@ var (
 	nodeInfo                   = &NodeInfo{}
 	nodeInfoStopC              = make(chan struct{}, 0)
 	deleteWorkerSleepMs uint64 = 0
-	dirChildrenNumLimit uint64 = proto.DefaultDirChildrenNumLimit
+	dirChildrenNumLimit uint32 = proto.DefaultDirChildrenNumLimit
 )
 
 func DeleteBatchCount() uint64 {
@@ -40,8 +40,8 @@ func updateDeleteWorkerSleepMs(val uint64) {
 	atomic.StoreUint64(&deleteWorkerSleepMs, val)
 }
 
-func updateDirChildrenNumLimit(val uint64) {
-	atomic.StoreUint64(&dirChildrenNumLimit, val)
+func updateDirChildrenNumLimit(val uint32) {
+	atomic.StoreUint32(&dirChildrenNumLimit, val)
 }
 
 func DeleteWorkerSleepMs() {
