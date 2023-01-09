@@ -136,13 +136,17 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	}
 }
 
-func (partition *DataPartition) checkLeader(timeOut int64) {
+func (partition *DataPartition) checkLeader(clusterID string, timeOut int64) {
 	partition.Lock()
 	defer partition.Unlock()
 	for _, dr := range partition.Replicas {
 		if !dr.isLive(timeOut) {
 			dr.IsLeader = false
 		}
+	}
+
+	if partition.getLeaderAddr() == "" {
+		WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID)
 	}
 	return
 }
@@ -166,8 +170,9 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] paritionID:%v  on node:%v  "+
 				"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
 				clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
-			msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
+			//msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
 			Warn(clusterID, msg)
+			WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID)
 		}
 	}
 

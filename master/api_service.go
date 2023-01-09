@@ -88,11 +88,14 @@ func (m *Server) setClusterInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	if quota < proto.MinDirChildrenNumLimit {
+		quota = proto.MinDirChildrenNumLimit
+	}
 	if err = m.cluster.setClusterInfo(quota); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set dir quota to %v successfully", quota)))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set dir quota(min:%v) to %v successfully", proto.MinDirChildrenNumLimit, quota)))
 }
 
 // Set the threshold of the memory usage on each meta node.

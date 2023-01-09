@@ -418,11 +418,8 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 }
 
 func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequest) (err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
-
 	log.LogInfof("start create meta Partition, partition %s", partitionId)
 
 	mpc := &MetaPartitionConfig{
@@ -441,11 +438,6 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		m.detachPartition(request.PartitionID)
 	}
 
-	if oldMp, ok := m.partitions[request.PartitionID]; ok {
-		err = oldMp.IsEquareCreateMetaPartitionRequst(request)
-		return
-	}
-
 	partition := NewMetaPartition(mpc, m)
 	if partition == nil {
 		err = errors.NewErrorf("[createPartition] partition is nil")
@@ -460,6 +452,16 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		os.RemoveAll(mpc.RootDir)
 		log.LogErrorf("load meta partition %v fail: %v", request.PartitionID, err)
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if oldMp, ok := m.partitions[request.PartitionID]; ok {
+		err = oldMp.IsEquareCreateMetaPartitionRequst(request)
+		partition.Stop()
+		partition.DeleteRaft()
+		os.RemoveAll(mpc.RootDir)
 		return
 	}
 
