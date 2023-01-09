@@ -451,6 +451,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "NotPerm"
 	case OpNotEmpty:
 		m = "DirNotEmpty"
+	case OpDirQuota:
+		m = "OpDirQuota"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
