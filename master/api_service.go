@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -81,7 +82,7 @@ type badPartitionView = proto.BadPartitionView
 
 func (m *Server) setClusterInfo(w http.ResponseWriter, r *http.Request) {
 	var (
-		quota uint64
+		quota uint32
 		err   error
 	)
 	if quota, err = parseAndExtractDirQuota(r); err != nil {
@@ -95,7 +96,8 @@ func (m *Server) setClusterInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set dir quota(min:%v) to %v successfully", proto.MinDirChildrenNumLimit, quota)))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set dir quota(min:%v, max:%v) to %v successfully",
+		proto.MinDirChildrenNumLimit, math.MaxUint32, quota)))
 }
 
 // Set the threshold of the memory usage on each meta node.
@@ -262,7 +264,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	autoRepairRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeAutoRepairLimitRate)
-	dirChildrenNumLimit := atomic.LoadUint64(&m.cluster.cfg.DirChildrenNumLimit)
+	dirChildrenNumLimit := atomic.LoadUint32(&m.cluster.cfg.DirChildrenNumLimit)
 
 	cInfo := &proto.ClusterInfo{
 		Cluster:                     m.cluster.Name,

@@ -45,7 +45,7 @@ type clusterValue struct {
 	FaultDomain                 bool
 	DiskQosEnable               bool
 	QosLimitUpload              uint64
-	DirChildrenNumLimit         uint64
+	DirChildrenNumLimit         uint32
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -627,11 +627,11 @@ func (c *Cluster) removeRaftNode(nodeID uint64, addr string) (err error) {
 	return nil
 }
 
-func (c *Cluster) updateDirChildrenNumLimit(val uint64) {
+func (c *Cluster) updateDirChildrenNumLimit(val uint32) {
 	if val < bsProto.MinDirChildrenNumLimit {
 		val = bsProto.DefaultDirChildrenNumLimit
 	}
-	atomic.StoreUint64(&c.cfg.DirChildrenNumLimit, val)
+	atomic.StoreUint32(&c.cfg.DirChildrenNumLimit, val)
 }
 
 func (c *Cluster) updateMetaNodeDeleteBatchCount(val uint64) {

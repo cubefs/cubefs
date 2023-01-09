@@ -36,7 +36,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 		return
 	} else {
 		parIno := item.(*Inode)
-		quota := atomic.LoadUint64(&dirChildrenNumLimit)
+		quota := atomic.LoadUint32(&dirChildrenNumLimit)
 		if parIno.NLink >= uint32(quota) {
 			err = fmt.Errorf("parent dir quota limitation reached")
 			p.PacketErrorWithBody(proto.OpDirQuota, []byte(err.Error()))
