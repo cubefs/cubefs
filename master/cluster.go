@@ -2706,10 +2706,10 @@ func (c *Cluster) getMetaPartitionCount() (count int) {
 
 func (c *Cluster) setClusterInfo(quota uint64) (err error) {
 	oldLimit := c.cfg.DirChildrenNumLimit
-	c.cfg.DirChildrenNumLimit = quota
+	atomic.StoreUint64(&c.cfg.DirChildrenNumLimit, quota)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterInfo] err[%v]", err)
-		c.cfg.DirChildrenNumLimit = oldLimit
+		atomic.StoreUint64(&c.cfg.DirChildrenNumLimit, oldLimit)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
