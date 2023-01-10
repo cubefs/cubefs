@@ -35,7 +35,7 @@ const (
 	AdminGetClientPkgAddr = "/clientPkgAddr/get"
 	RetryTimes            = 5
 	TarNamePre            = "cfs-client-fuse"
-	ADM64                 = "amd64"
+	AMD64                 = "amd64"
 	ARM64                 = "arm64"
 )
 
@@ -61,8 +61,8 @@ func main() {
 		defer os.RemoveAll(tmpPath)
 
 		var tarName string
-		if runtime.GOARCH == ADM64 {
-			tarName = fmt.Sprintf("%s_%s.tar.gz", TarNamePre, ADM64)
+		if runtime.GOARCH == AMD64 {
+			tarName = fmt.Sprintf("%s.tar.gz", TarNamePre)
 		} else if runtime.GOARCH == ARM64 {
 			tarName = fmt.Sprintf("%s_%s.tar.gz", TarNamePre, ARM64)
 		} else {

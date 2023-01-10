@@ -52,7 +52,7 @@ const (
 	FuseLibsPath     = "/usr/lib64"
 	FuseLib          = "libcfssdk.so"
 	TarNamePre       = "cfs-client-libs"
-	ADM64            = "amd64"
+	AMD64            = "amd64"
 	ARM64            = "arm64"
 	fuseConfigType   = "json"
 	bypassConfigType = "ini"
@@ -427,7 +427,7 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 
 func downloadAndCheck(mc *master.MasterClient, tmpPath, version string) (fileNames []string, err error) {
 	var tarName string
-	if runtime.GOARCH == ADM64 {
+	if runtime.GOARCH == AMD64 {
 		tarName = fmt.Sprintf("%s_%s.tar.gz", TarNamePre, version)
 	} else if runtime.GOARCH == ARM64 {
 		tarName = fmt.Sprintf("%s_%s_%s.tar.gz", TarNamePre, ARM64, version)
