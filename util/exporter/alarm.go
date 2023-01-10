@@ -58,6 +58,15 @@ func Warning(detail string) (a *Alarm) {
 	return
 }
 
+func WarningBySpecialUMPKey(key, detail string) (a *Alarm) {
+	if key == "" {
+		key = warningKey
+	}
+	ump.Alarm(key, detail)
+	log.LogCritical(key, detail)
+	return
+}
+
 func WarningCritical(detail string) (a *Alarm) {
 	if warningKey == "" {
 		warningKey = fmt.Sprintf("%v_%v_critical", clustername, modulename)

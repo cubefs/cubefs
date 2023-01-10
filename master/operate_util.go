@@ -214,6 +214,11 @@ func WarnBySpecialKey(key, msg string) {
 	exporter.Warning(msg)
 }
 
+func WarnBySpecialUMPKey(key, msg string) {
+	log.LogWarn(msg)
+	exporter.WarningBySpecialUMPKey(key, msg)
+}
+
 func keyNotFound(name string) (err error) {
 	return errors.NewErrorf("parameter %v not found", name)
 }

@@ -379,6 +379,6 @@ func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsag
 		for _, dr := range partition.Replicas {
 			msg = msg + fmt.Sprintf("replica[%v],used[%v];", dr.Addr, dr.Used)
 		}
-		WarnBySpecialKey(fmt.Sprintf("%v_%v_check_replica_size", clusterID, ModuleName), msg)
+		WarnBySpecialUMPKey(fmt.Sprintf("%v_%v_check_replica_size", clusterID, ModuleName), msg)
 	}
 }
