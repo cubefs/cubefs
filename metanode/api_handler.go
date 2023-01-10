@@ -2350,6 +2350,10 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		batchNum = proto.ReadDeletedDirBatchNum
 	}
 	prev := r.FormValue("prev")
+	startTime, err := strconv.ParseInt(r.FormValue("ts"), 10, 64)
+	if err != nil {
+		startTime = 0
+	}
 	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
@@ -2361,7 +2365,7 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		ddentrys    = make([]*DeletedDentry, 0)
 	)
 	prefix := newPrimaryDeletedDentry(parentIno, "", 0, 0)
-	start := newPrimaryDeletedDentry(parentIno, prev, 0, 0)
+	start := newPrimaryDeletedDentry(parentIno, prev, startTime, 0)
 	end := newPrimaryDeletedDentry(parentIno+1, "", 0, 0)
 	skipFirst := false
 	if len(prev) > 0 {
