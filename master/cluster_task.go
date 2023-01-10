@@ -1224,7 +1224,7 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	}
 
 	if err != nil {
-		log.LogError(fmt.Sprintf("process task[%v] failed", task.ToString()))
+		log.LogError("process task:%v failed,status:%v,err:%v ", task.ID, task.Status, err)
 	} else {
 		log.LogInfof("process task:%v status:%v success", task.ID, task.Status)
 	}
@@ -1400,7 +1400,7 @@ func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	return
 
 errHandler:
-	log.LogErrorf("process task[%v] failed,err:%v", task.ToString(), err)
+	log.LogErrorf("process task[%v] failed,status:%v, err:%v", task.ID, task.Status, err)
 	return
 }
 
@@ -1770,4 +1770,3 @@ func (c *Cluster) removePromotedLearners(mp *MetaPartition, isLearner bool, node
 		}
 	}
 }
-
