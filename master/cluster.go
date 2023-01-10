@@ -4447,7 +4447,7 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 	if dpCrcInfo.IsBuildValidateCRCTaskErr {
 		warnMsg.WriteString(fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v build task err:%v ",
 			c.Name, dpCrcInfo.PartitionID, dpCrcInfo.ErrMsg))
-		Warn(c.Name, warnMsg.String())
+		WarnBySpecialKey(fmt.Sprintf("%v_%v_validate_crc", c.Name, ModuleName), warnMsg.String())
 		return
 	}
 	replicaCrcDetail := new(strings.Builder)
@@ -4463,7 +4463,7 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 		if extentCrcInfo.ExtentNum == len(extentCrcInfo.CrcLocAddrMap) {
 			warnMsg.WriteString("crc different between all node.")
 			warnMsg.WriteString(replicaCrcDetail.String())
-			Warn(c.Name, warnMsg.String())
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_validate_crc", c.Name, ModuleName), warnMsg.String())
 			continue
 		}
 
@@ -4480,7 +4480,7 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 			if crc != maxNumCrc {
 				warnMsg.WriteString(fmt.Sprintf("badCrc On addr:%v detail:", locAddrs))
 				warnMsg.WriteString(replicaCrcDetail.String())
-				Warn(c.Name, warnMsg.String())
+				WarnBySpecialKey(fmt.Sprintf("%v_%v_validate_crc", c.Name, ModuleName), warnMsg.String())
 			}
 		}
 	}
