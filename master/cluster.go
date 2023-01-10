@@ -1343,6 +1343,7 @@ func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*Meta
 	partitions = make([]*MetaPartition, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			for _, host := range mp.Hosts {
 				if host == addr {
@@ -1351,6 +1352,7 @@ func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*Meta
 				}
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 
 	return
@@ -1377,6 +1379,7 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 	partitionIDs = make([]uint64, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			for _, host := range mp.Hosts {
 				if host == addr {
@@ -1385,6 +1388,7 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 				}
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 
 	return
@@ -1394,6 +1398,7 @@ func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*Met
 	partitions = make([]*MetaPartition, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			for _, host := range mp.Hosts {
 				if host == addr {
@@ -1402,6 +1407,7 @@ func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*Met
 				}
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 	return
 }
@@ -4441,7 +4447,7 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 	if dpCrcInfo.IsBuildValidateCRCTaskErr {
 		warnMsg.WriteString(fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v build task err:%v ",
 			c.Name, dpCrcInfo.PartitionID, dpCrcInfo.ErrMsg))
-		Warn(c.Name, warnMsg.String())
+		WarnBySpecialUMPKey(fmt.Sprintf("%v_%v_validate_crc", c.Name, ModuleName), warnMsg.String())
 		return
 	}
 	replicaCrcDetail := new(strings.Builder)
@@ -4457,7 +4463,7 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 		if extentCrcInfo.ExtentNum == len(extentCrcInfo.CrcLocAddrMap) {
 			warnMsg.WriteString("crc different between all node.")
 			warnMsg.WriteString(replicaCrcDetail.String())
-			Warn(c.Name, warnMsg.String())
+			WarnBySpecialUMPKey(fmt.Sprintf("%v_%v_validate_crc", c.Name, ModuleName), warnMsg.String())
 			continue
 		}
 
@@ -4474,7 +4480,7 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 			if crc != maxNumCrc {
 				warnMsg.WriteString(fmt.Sprintf("badCrc On addr:%v detail:", locAddrs))
 				warnMsg.WriteString(replicaCrcDetail.String())
-				Warn(c.Name, warnMsg.String())
+				WarnBySpecialUMPKey(fmt.Sprintf("%v_%v_validate_crc", c.Name, ModuleName), warnMsg.String())
 			}
 		}
 	}

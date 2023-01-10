@@ -390,11 +390,13 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []*MetaPartition, err error) {
 	vols := c.copyVols()
 	for _, vol := range vols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			if mp.ReplicaNum+mp.LearnerNum > uint8(len(mp.Hosts)) {
 				lackReplicaMetaPartitions = append(lackReplicaMetaPartitions, mp)
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 	log.LogInfof("clusterID[%v] lackReplicaMetaPartitions count:[%v]", c.Name, len(lackReplicaMetaPartitions))
 	return
@@ -1222,7 +1224,7 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	}
 
 	if err != nil {
-		log.LogError(fmt.Sprintf("process task[%v] failed", task.ToString()))
+		log.LogError("process task:%v failed,status:%v,err:%v ", task.ID, task.Status, err)
 	} else {
 		log.LogInfof("process task:%v status:%v success", task.ID, task.Status)
 	}
@@ -1398,7 +1400,7 @@ func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	return
 
 errHandler:
-	log.LogErrorf("process task[%v] failed,err:%v", task.ToString(), err)
+	log.LogErrorf("process task[%v] failed,status:%v, err:%v", task.ID, task.Status, err)
 	return
 }
 
@@ -1768,4 +1770,3 @@ func (c *Cluster) removePromotedLearners(mp *MetaPartition, isLearner bool, node
 		}
 	}
 }
-
