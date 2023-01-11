@@ -134,6 +134,7 @@ type SmuxConnPoolStat struct {
 	TotalStreamsReported int                      `json:"totalStreamsInflight"`
 	Pools                map[string]*SmuxPoolStat `json:"pools"`
 	TotalSessions        int                      `json:"totalSessions"`
+	Bucket               int                      `json:"bucket"`
 }
 
 // token bucket limit
@@ -232,12 +233,15 @@ func (cp *SmuxConnectPool) PutConnect(stream *smux.Stream, forceClose bool) {
 		return
 	}
 	if forceClose {
-		stream.Close()
+		err := stream.Close()
+		if err == io.ErrClosedPipe {
+			return
+		}
+
 		pool.MarkClosed(stream)
 		return
 	}
 	pool.PutStreamObjectToPool(&streamObject{stream: stream, idle: time.Now().UnixNano()})
-	return
 }
 
 func (cp *SmuxConnectPool) autoRelease() {
@@ -298,6 +302,8 @@ func (cp *SmuxConnectPool) GetStat() *SmuxConnPoolStat {
 		stat.TotalStreams += poolStat.InflightStreams
 		stat.TotalStreamsReported += poolStat.InflightStreamsReported
 	}
+
+	stat.Bucket = int(atomic.LoadInt64(&cp.streamBucket.bucket))
 	return stat
 }
 
@@ -631,7 +637,11 @@ func (p *SmuxPool) PutStreamObjectToPool(obj *streamObject) {
 	case p.objects <- obj:
 		return
 	default:
-		obj.stream.Close()
+		err := obj.stream.Close()
+		if err == io.ErrClosedPipe {
+			return
+		}
+
 		p.MarkClosed(obj.stream)
 	}
 }
