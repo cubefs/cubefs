@@ -4664,7 +4664,7 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol)))
