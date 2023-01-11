@@ -74,6 +74,9 @@ const (
 	MinForceUpdateMetaPartitionsInterval = 5
 
 	defaultOpLimitBurst = 128
+
+	VolNotExistInterceptThresholdMin = 60
+	VolNotExistClearViewThresholdMin = 0
 )
 
 type AsyncTaskErrorFunc func(err error)
@@ -111,8 +114,8 @@ type MetaWrapper struct {
 	ac              *authSDK.AuthClient
 	conns           *connpool.ConnectPool
 	connConfig      *proto.ConnConfig
-	volNotExists    bool
 
+	volNotExistCount  int32
 	crossRegionHAType proto.CrossRegionHAType
 
 	// Callback handler for handling asynchronous task errors.
@@ -166,7 +169,7 @@ type MetaState struct {
 	LocalIP           string
 	TotalSize         uint64
 	UsedSize          uint64
-	VolNotExists      bool
+	VolNotExistCount  int32
 	View              *proto.VolView
 }
 
@@ -298,8 +301,8 @@ func RebuildMetaWrapper(config *MetaConfig, metaState *MetaState) *MetaWrapper {
 	mw.localIP = metaState.LocalIP
 	atomic.StoreUint64(&mw.totalSize, metaState.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, metaState.UsedSize)
-	mw.volNotExists = metaState.VolNotExists
-	if !mw.volNotExists {
+	mw.volNotExistCount = metaState.VolNotExistCount
+	if !mw.VolNotExists() {
 		view := mw.convertVolumeView(metaState.View)
 		rwPartitions := make([]*MetaPartition, 0)
 		for _, mp := range view.MetaPartitions {
@@ -338,7 +341,7 @@ func (mw *MetaWrapper) SaveMetaState() *MetaState {
 	metaState.LocalIP = mw.localIP
 	metaState.TotalSize = mw.totalSize
 	metaState.UsedSize = mw.usedSize
-	metaState.VolNotExists = mw.volNotExists
+	metaState.VolNotExistCount = mw.volNotExistCount
 	metaState.View = mw.saveVolView()
 	return metaState
 }
@@ -571,6 +574,14 @@ func (mw *MetaWrapper) updateConnConfig(config *proto.ConnConfig) {
 	if updateConnPool && mw.conns != nil {
 		mw.conns.UpdateTimeout(mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
 	}
+}
+
+func (mw *MetaWrapper) VolNotExists() bool {
+	if mw.volNotExistCount > VolNotExistInterceptThresholdMin {
+		log.LogWarnf("VolNotExists: vol(%v) count(%v) threshold(%v)", mw.volname, mw.volNotExistCount, VolNotExistInterceptThresholdMin)
+		return true
+	}
+	return false
 }
 
 //func (mw *MetaWrapper) exporterKey(act string) string {

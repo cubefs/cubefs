@@ -27,6 +27,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -187,25 +188,42 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	var view *VolumeView
 	vv, err := mw.fetchVolumeView()
 	if err != nil {
-		log.LogInfof("error: %v", err.Error())
 		if err == proto.ErrVolNotExists {
-			mw.volNotExists = true
-			mw.partitions = make(map[uint64]*MetaPartition)
+			mw.volNotExistCount++
 		}
+		log.LogWarnf("updateMetaPartitions error: %v, volNotExistCount(%v)", err.Error(), mw.volNotExistCount)
 		return err
-	} else {
-		view = mw.convertVolumeView(vv)
-		mw.volNotExists = false
 	}
+	view = mw.convertVolumeView(vv)
 
 	rwPartitions := make([]*MetaPartition, 0)
 	for _, mp := range view.MetaPartitions {
-		mw.replaceOrInsertPartition(mp)
-		log.LogInfof("updateMetaPartition: mp(%v)", mp)
+		if mw.volNotExistCount <= VolNotExistClearViewThresholdMin {
+			mw.replaceOrInsertPartition(mp)
+			log.LogInfof("updateMetaPartition: mp(%v)", mp)
+		}
 		if mp.Status == proto.ReadWrite {
 			rwPartitions = append(rwPartitions, mp)
 		}
 	}
+
+	if mw.volNotExistCount > VolNotExistClearViewThresholdMin {
+		log.LogInfof("clear and updateMetaPartition: volNotExistCount(%v)", mw.volNotExistCount)
+		newPartitions := make(map[uint64]*MetaPartition)
+		newRanges := btree.New(32)
+		for _, mp := range view.MetaPartitions {
+			newPartitions[mp.PartitionID] = mp
+			newRanges.ReplaceOrInsert(mp)
+			log.LogInfof("updateMetaPartition: mp(%v)", mp)
+		}
+		mw.Lock()
+		mw.partitions = newPartitions
+		mw.ranges = newRanges
+		mw.Unlock()
+		log.LogInfof("clear and updateMetaPartition done: volNotExistCount(%v)", mw.volNotExistCount)
+	}
+
+	mw.volNotExistCount = 0
 	mw.ossSecure = view.OSSSecure
 	mw.ossBucketPolicy = view.OSSBucketPolicy
 	mw.volCreateTime = view.CreateTime

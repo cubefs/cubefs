@@ -38,6 +38,11 @@ var (
 	MinWriteAbleDataPartitionCnt = 10
 )
 
+const (
+	VolNotExistInterceptThresholdMin = 60
+	VolNotExistClearViewThresholdMin = 0
+)
+
 type DataPartitionView struct {
 	DataPartitions []*DataPartition
 }
@@ -49,7 +54,7 @@ type Wrapper struct {
 	volName               string
 	masters               []string
 	umpJmtpAddr           string
-	volNotExists          bool
+	volNotExistCount	  int32
 	partitions            *sync.Map //key: dpID; value: *DataPartition
 	followerRead          bool
 	followerReadClientCfg bool
@@ -87,12 +92,12 @@ type Wrapper struct {
 }
 
 type DataState struct {
-	ClusterName  string
-	LocalIP      string
-	VolNotExists bool
-	VolView      *proto.SimpleVolView
-	DpView       *proto.DataPartitionsView
-	ClusterView  *proto.ClusterView
+	ClusterName  		string
+	LocalIP      		string
+	VolNotExistCount	int32
+	VolView      		*proto.SimpleVolView
+	DpView       		*proto.DataPartitionsView
+	ClusterView  		*proto.ClusterView
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -194,8 +199,8 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
 	w.initDpSelector()
 
-	w.volNotExists = dataState.VolNotExists
-	if !w.volNotExists {
+	w.volNotExistCount = dataState.VolNotExistCount
+	if !w.VolNotExists() {
 		w.convertDataPartition(dataState.DpView, true)
 	}
 
@@ -218,6 +223,7 @@ func (w *Wrapper) saveDataState() *DataState {
 	dataState := new(DataState)
 	dataState.ClusterName = w.clusterName
 	dataState.LocalIP = LocalIP
+	dataState.VolNotExistCount = w.volNotExistCount
 
 	dataState.VolView = w.saveSimpleVolView()
 	dataState.DpView = w.saveDataPartition()
@@ -426,15 +432,17 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 func (w *Wrapper) fetchDataPartition() (dpv *proto.DataPartitionsView, err error) {
 	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
 		if err == proto.ErrVolNotExists {
-			w.partitions = new(sync.Map)
-			w.volNotExists = true
+			w.volNotExistCount++
 		}
-		log.LogWarnf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+		log.LogWarnf("updateDataPartition: get data partitions fail: volume(%v) notExistCount(%v) err(%v)", w.volName, w.volNotExistCount, err)
 		return
-	} else {
-		w.volNotExists = false
 	}
-	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
+	if w.volNotExistCount > VolNotExistClearViewThresholdMin {
+		w.partitions = new(sync.Map)
+		log.LogInfof("updateDataPartition: clear volNotExistCount(%v) and data partitions", w.volNotExistCount)
+	}
+	w.volNotExistCount = 0
+	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v) notExistCount(%v)", w.volName, len(dpv.DataPartitions), w.volNotExistCount)
 	return
 }
 
@@ -463,6 +471,7 @@ func (w *Wrapper) convertDataPartition(dpv *proto.DataPartitionsView, isInit boo
 
 	// isInit used to identify whether this call is caused by mount action
 	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt) {
+		log.LogInfof("updateDataPartition: update rwPartitionGroups count(%v)", len(rwPartitionGroups))
 		w.refreshDpSelector(rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
@@ -736,6 +745,14 @@ func (w *Wrapper) updateDpFollowerReadDelayConfig(config *proto.DpFollowerReadDe
 		atomic.StoreInt64(&w.dpFollowerReadDelayConfig.DelaySummaryInterval, config.DelaySummaryInterval)
 	}
 	log.LogInfof("updateDpFollowerReadDelayConfig: (%v)", w.dpFollowerReadDelayConfig)
+}
+
+func (w *Wrapper) VolNotExists() bool {
+	if w.volNotExistCount > VolNotExistInterceptThresholdMin {
+		log.LogWarnf("VolNotExists: vol(%v) count(%v) threshold(%v)", w.volName, w.volNotExistCount, VolNotExistInterceptThresholdMin)
+		return true
+	}
+	return false
 }
 
 func distanceFromLocal(b string) int {

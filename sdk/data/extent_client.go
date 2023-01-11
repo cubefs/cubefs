@@ -333,7 +333,7 @@ func (client *ExtentClient) FileSize(inode uint64) (size uint64, gen uint64, val
 
 // Write writes the data.
 func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint64, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
-	if client.dataWrapper.volNotExists {
+	if client.dataWrapper.VolNotExists() {
 		return 0, false, proto.ErrVolNotExists
 	}
 
@@ -371,7 +371,7 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 }
 
 func (client *ExtentClient) SyncWrite(ctx context.Context, inode uint64, offset uint64, data []byte) (dp *DataPartition, write int, newEk *proto.ExtentKey, err error) {
-	if client.dataWrapper.volNotExists {
+	if client.dataWrapper.VolNotExists() {
 		return nil, 0, nil, proto.ErrVolNotExists
 	}
 
@@ -398,7 +398,7 @@ func (client *ExtentClient) SyncWrite(ctx context.Context, inode uint64, offset 
 }
 
 func (client *ExtentClient) SyncWriteToSpecificExtent(ctx context.Context, dp *DataPartition, inode uint64, fileOffset uint64, extentOffset int, data []byte, extID int) (total int, err error) {
-	if client.dataWrapper.volNotExists {
+	if client.dataWrapper.VolNotExists() {
 		return 0, proto.ErrVolNotExists
 	}
 
@@ -417,7 +417,7 @@ func (client *ExtentClient) SyncWriteToSpecificExtent(ctx context.Context, dp *D
 }
 
 func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size uint64) error {
-	if client.dataWrapper.volNotExists {
+	if client.dataWrapper.VolNotExists() {
 		return proto.ErrVolNotExists
 	}
 
@@ -441,7 +441,7 @@ func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size uin
 }
 
 func (client *ExtentClient) Flush(ctx context.Context, inode uint64) error {
-	if client.dataWrapper.volNotExists {
+	if client.dataWrapper.VolNotExists() {
 		return proto.ErrVolNotExists
 	}
 
@@ -457,7 +457,7 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 		return
 	}
 
-	if client.dataWrapper.volNotExists {
+	if client.dataWrapper.VolNotExists() {
 		err = proto.ErrVolNotExists
 		return
 	}
