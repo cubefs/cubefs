@@ -4587,16 +4587,16 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	metrics := exporter.NewTPCnt(proto.ClientDataPartitionsUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
 
 	if body, err = vol.getDataPartitionsView(); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
+		m.sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	send(w, r, body)
@@ -4615,15 +4615,15 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	metrics := exporter.NewTPCnt(proto.ClientVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if param, err = parseGetVolParameter(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	if vol, err = m.cluster.getVol(param.name); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
 	if !param.skipOwnerValidation && !matchKey(vol.Owner, param.authKey) {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch))
+		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch))
 		return
 	}
 	viewCache := vol.getViewCache()
@@ -4634,14 +4634,14 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	if !param.skipOwnerValidation && vol.authenticate {
 		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, param.name); err != nil {
 			if err == proto.ErrExpiredTicket {
-				sendErrReply(w, r, newErrHTTPReply(err))
+				m.sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidTicket, Msg: err.Error()})
+			m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidTicket, Msg: err.Error()})
 			return
 		}
 		if message, err = genRespMessage(viewCache, &jobj, ts, ticket.SessionKey.Key); err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMasterAPIGenRespError, Msg: err.Error()})
+			m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMasterAPIGenRespError, Msg: err.Error()})
 			return
 		}
 		sendOkReply(w, r, newSuccessHTTPReply(message))
@@ -5788,4 +5788,21 @@ func (m *Server) setVolChildFileMaxCount(w http.ResponseWriter, r *http.Request)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set vol[%v] childFileMaxCount to %v  successfully",
 		volName, maxCount)))
+}
+
+// sendErrReply after check leader or meta status
+func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
+	if !m.metaReady {
+		log.LogWarnf("action[sendErrReply] leader meta is not ready")
+		http.Error(w, m.leaderInfo.addr, http.StatusInternalServerError)
+		return
+	}
+	leaderID, _ := m.partition.LeaderTerm()
+	if m.leaderInfo.addr == "" || leaderID <= 0 {
+		log.LogErrorf("action[sendErrReply] no leader,request[%v]", r.URL)
+		http.Error(w, "no leader", http.StatusInternalServerError)
+		return
+	}
+	sendErrReply(w, r, httpReply)
+	return
 }
