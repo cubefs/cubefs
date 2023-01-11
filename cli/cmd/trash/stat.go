@@ -74,7 +74,7 @@ func newStatCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func stat() (error, map[string]*proto.DeletedFileInfo) {
-	mps, err := gTrashEnv.masterClient.ClientAPI().GetMetaPartitions(gTrashEnv.VolName)
+	mps, err := gTrashEnv.masterClient.ClientAPI().GetPhysicalMetaPartitions(gTrashEnv.VolName)
 	if err != nil {
 		log.LogErrorf("failed to get meta partitions from %v , err: %v", gTrashEnv, err.Error())
 		return err, nil

@@ -223,6 +223,7 @@ func (mms *MockMetaServer) handleCreateMetaPartition(conn net.Conn, p *proto.Pac
 		Cursor:      req.Start,
 		Members:     req.Members,
 		Learners:    req.Learners,
+		VirtualMPs:  req.VirtualMPs,
 	}
 	mms.Lock()
 	mms.partitions[req.PartitionID] = partition
@@ -262,6 +263,7 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 			Status:      proto.ReadWrite,
 			MaxInodeID:  1,
 			VolName:     partition.VolName,
+			VirtualMPs:  partition.VirtualMPs,
 		}
 		mpr.Status = proto.ReadWrite
 		mpr.IsLeader = true

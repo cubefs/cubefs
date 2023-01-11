@@ -34,6 +34,7 @@ func mockMetaPartition(partitionID uint64, metaNodeID uint64, storeMode proto.St
 		RootDir:     rootDir,
 		StoreMode:   storeMode,
 	}
+	conf.VirtualMPs = append(conf.VirtualMPs, proto.VirtualMetaPartition{Start: conf.Start, End: conf.End, ID: partitionID})
 	tmp, err := CreateMetaPartition(conf, manager)
 	if err != nil {
 		fmt.Printf("create meta partition failed:%s", err.Error())
@@ -252,3 +253,34 @@ func TestMetaPartition_StoreAndLoad(t *testing.T) {
 //	os.RemoveAll("./partition_1")
 //	os.RemoveAll("./partition_2")
 //}
+
+func Test_nextInodeID(t *testing.T) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_next_inode_id", ApplyMockWithNull)
+	if err != nil {
+		t.Errorf("mock metapartition failed:%v", err)
+		return
+	}
+	defer releaseMetaPartition(mp)
+	mp.config.VirtualMPs = proto.VirtualMetaPartitions{
+		{
+			Start: 0,
+			End:   1024,
+			ID:    1,
+		},
+		{
+			Start: 10240,
+			End:   defaultMaxMetaPartitionInodeID,
+			ID:    10,
+		},
+	}
+	mp.config.Cursor = 10240
+	if _, err = mp.nextInodeID(1); err == nil {
+		t.Errorf("nextInodeID test failed, error expect :inode ID out of range; actual: nil")
+		return
+	}
+
+	if _, err = mp.nextInodeID(8); err == nil {
+		t.Errorf("nextInodeID test failed, error expect :inode ID out of range; actual: nil")
+		return
+	}
+}

@@ -39,6 +39,7 @@ type MetaNode struct {
 	Threshold                   float32
 	ReportTime                  time.Time
 	metaPartitionInfos          []*proto.MetaPartitionReport
+	PhysicalMetaPartitionCount  int
 	MetaPartitionCount          int
 	NodeSetID                   uint64
 	sync.RWMutex                `graphql:"-"`
@@ -146,7 +147,7 @@ func (metaNode *MetaNode) isWritable(storeMode proto.StoreMode) bool {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	if !metaNode.IsActive || metaNode.MaxMemAvailWeight <= gConfig.metaNodeReservedMem || metaNode.reachesThreshold() ||
-		metaNode.MetaPartitionCount >= defaultMaxMetaPartitionCountOnEachNode || metaNode.ToBeOffline == true ||
+		metaNode.PhysicalMetaPartitionCount >= defaultMaxMetaPartitionCountOnEachNode || metaNode.ToBeOffline == true ||
 		metaNode.ToBeMigrated == true || metaNode.reachesRocksdbDisksThreshold(storeMode) {
 		return false
 	}
@@ -182,7 +183,8 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.metaPartitionInfos = resp.MetaPartitionReports
-	metaNode.MetaPartitionCount = len(metaNode.metaPartitionInfos)
+	metaNode.PhysicalMetaPartitionCount = len(metaNode.metaPartitionInfos)
+	metaNode.MetaPartitionCount = metaNode.metaPartitionCountWithoutLock()
 	metaNode.Total = resp.Total
 	metaNode.Used = resp.Used
 	if resp.Total == 0 {
@@ -200,6 +202,17 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	metaNode.ProfPort = resp.ProfPort
 	metaNode.RocksdbDiskThreshold = rocksdbDiskThreshold
 	metaNode.MemModeRocksdbDiskThreshold = memModeRocksDBDiskThreshold
+}
+
+func (metaNode *MetaNode) metaPartitionCountWithoutLock() (count int) {
+	for _, metaPartition := range metaNode.metaPartitionInfos {
+		if len(metaPartition.VirtualMPs) == 0 {
+			count++
+		} else {
+			count += len(metaPartition.VirtualMPs)
+		}
+	}
+	return
 }
 
 func (metaNode *MetaNode) updateRocksdbDisks(resp *proto.MetaNodeHeartbeatResponse) {

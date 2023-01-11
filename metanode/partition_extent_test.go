@@ -12,9 +12,10 @@ import (
 
 func createInode(t, uid, gid uint32, mp *metaPartition) (ino uint64, err error) {
 	reqCreateInode := &proto.CreateInodeRequest{
-		Mode: t,
-		Uid:  uid,
-		Gid:  gid,
+		PartitionID: mp.config.PartitionId,
+		Mode:        t,
+		Uid:         uid,
+		Gid:         gid,
 	}
 	packet := &Packet{}
 	if err = mp.CreateInode(reqCreateInode, packet); err != nil || packet.ResultCode != proto.OpOk {

@@ -155,6 +155,8 @@ const (
 	CliOpVolMaxChildrenCnt     = "max-children-cnt"
 	CliOpVolBatchDelInodeCnt   = "batch-del-inode-cnt"
 	CliOpVolDelInodeInterval   = "del-inode-interval"
+	CliFlagReuseMP             = "reuseMP"
+	CliOpSetReuseState         = "setReuseState"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

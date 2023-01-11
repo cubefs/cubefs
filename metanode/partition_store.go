@@ -20,18 +20,18 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	mmap "github.com/edsrzf/mmap-go"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"sync/atomic"
-
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	mmap "github.com/edsrzf/mmap-go"
 )
 
 const (
@@ -86,6 +86,14 @@ func (mp *metaPartition) loadMetadata() (err error) {
 		mp.config.StoreMode = proto.StoreModeMem
 	}
 	mp.config.RocksDBDir = mConf.RocksDBDir
+	mp.config.VirtualMPs = mConf.VirtualMPs
+	if len(mp.config.VirtualMPs) == 0 {
+		//first boot, need convert to virtual mp
+		mp.config.VirtualMPs = append(mp.config.VirtualMPs, proto.VirtualMetaPartition{ID: mConf.PartitionId, Start: mConf.Start, End: mConf.End})
+	}
+	sort.Slice(mp.config.VirtualMPs, func(i, j int) bool {
+		return mp.config.VirtualMPs[i].ID < mp.config.VirtualMPs[j].ID
+	})
 	if mp.config.RocksDBDir == "" {
 		// new version but old config; need select one dir
 		err = mp.selectRocksDBDir()

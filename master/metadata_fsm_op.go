@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -92,6 +93,10 @@ type clusterValue struct {
 	MetaRaftLogCap                      int64
 	MetaSyncWALEnableState              bool
 	DataSyncWALEnableState              bool
+	ReuseMPInodeCountThreshold          float64
+	ReuseMPDentryCountThreshold         float64
+	MetaPartitionMaxInodeCount          uint64
+	MetaPartitionMaxDentryCount         uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -155,6 +160,10 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaRaftLogCap:                      c.cfg.MetaRaftLogCap,
 		MetaSyncWALEnableState:              c.cfg.MetaSyncWALOnUnstableEnableState,
 		DataSyncWALEnableState:              c.cfg.DataSyncWALOnUnstableEnableState,
+		ReuseMPInodeCountThreshold:          c.cfg.ReuseMPInodeCountThreshold,
+		ReuseMPDentryCountThreshold:         c.cfg.ReuseMPDentryCountThreshold,
+		MetaPartitionMaxInodeCount:          c.cfg.MetaPartitionMaxInodeCount,
+		MetaPartitionMaxDentryCount:         c.cfg.MetaPartitionMaxDentryCount,
 	}
 	return cv
 }
@@ -174,6 +183,8 @@ type metaPartitionValue struct {
 	Learners      []bsProto.Learner
 	PanicHosts    []string
 	IsRecover     bool
+	DisableReuse  bool
+	VirtualMPs    []bsProto.VirtualMetaPartition
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -191,7 +202,9 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		Learners:      mp.Learners,
 		OfflinePeerID: mp.OfflinePeerID,
 		IsRecover:     mp.IsRecover,
+		DisableReuse:  mp.DisableReuse,
 		PanicHosts:    mp.PanicHosts,
+		VirtualMPs:    mp.VirtualMPs,
 	}
 	return
 }
@@ -307,6 +320,7 @@ type volValue struct {
 	BatchDelInodeCnt     uint32
 	DelInodeInterval     uint32
 	UmpCollectWay        bsProto.UmpCollectBy
+	ReuseMP              bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -376,6 +390,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		BatchDelInodeCnt:     vol.BatchDelInodeCnt,
 		DelInodeInterval:     vol.DelInodeInterval,
 		UmpCollectWay:        vol.UmpCollectWay,
+		ReuseMP:              vol.reuseMP,
 	}
 	return
 }
@@ -991,6 +1006,18 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.MetaNodeDumpWaterLevel < defaultMetanodeDumpWaterLevel {
 			cv.MetaNodeDumpWaterLevel = defaultMetanodeDumpWaterLevel
 		}
+		if cv.ReuseMPInodeCountThreshold > 0 {
+			c.cfg.ReuseMPInodeCountThreshold = cv.ReuseMPInodeCountThreshold
+		}
+		if cv.ReuseMPDentryCountThreshold > 0 {
+			c.cfg.ReuseMPDentryCountThreshold = cv.ReuseMPDentryCountThreshold
+		}
+		if cv.MetaPartitionMaxInodeCount > 0 {
+			c.cfg.MetaPartitionMaxInodeCount = cv.MetaPartitionMaxInodeCount
+		}
+		if cv.MetaPartitionMaxDentryCount > 0 {
+			c.cfg.MetaPartitionMaxDentryCount = cv.MetaPartitionMaxDentryCount
+		}
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, cv.MetaNodeDumpWaterLevel)
 		atomic.StoreUint64(&c.cfg.MonitorSummarySec, cv.MonitorSummarySec)
 		atomic.StoreUint64(&c.cfg.MonitorReportSec, cv.MonitorReportSec)
@@ -1159,6 +1186,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setLearners(mpv.Learners)
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
+		mp.DisableReuse = mpv.DisableReuse
 		mp.modifyTime = time.Now().Unix()
 		mp.PanicHosts = mpv.PanicHosts
 		if mp.IsRecover && len(mp.PanicHosts) > 0 {
@@ -1169,6 +1197,18 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		if mp.IsRecover && len(mp.PanicHosts) == 0 {
 			c.putMigratedMetaPartitions("history", mp.PartitionID)
 		}
+		mp.VirtualMPs = mpv.VirtualMPs
+		if len(mp.VirtualMPs) == 0 {
+			mp.VirtualMPs = append(mp.VirtualMPs, bsProto.VirtualMetaPartition{
+				Start:      mp.Start,
+				End:        mp.End,
+				ID:         mp.PartitionID,
+				CreateTime: time.Now().Unix(),
+			})
+		}
+		sort.Slice(mp.VirtualMPs, func(i, j int) bool {
+			return mp.VirtualMPs[i].ID < mp.VirtualMPs[j].ID
+		})
 		vol.addMetaPartition(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}

@@ -149,6 +149,8 @@ const (
 	OpResetMetaPartitionRaftMember    uint8 = 0x4B
 	OpAddMetaPartitionRaftLearner     uint8 = 0x4C
 	OpPromoteMetaPartitionRaftLearner uint8 = 0x4D
+	OpSyncVirtualMetaPartitions       uint8 = 0x4E
+	OpAddVirtualMetaPartition         uint8 = 0x4F
 
 	// Operations: Master -> DataNode
 	OpCreateDataPartition             uint8 = 0x60

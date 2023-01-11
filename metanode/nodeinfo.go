@@ -45,6 +45,11 @@ type NodeInfo struct {
 	raftLogCapFromMaster   int
 	raftLogSizeFromLoc     int
 	raftLogCapFromLoc      int
+
+	reuseMPInodeCountThreshold  float64
+	reuseMPDentryCountThreshold float64
+	metaPartitionMaxInodeCount  uint64
+	metaPartitionMaxDentryCount uint64
 }
 
 var (
@@ -274,6 +279,60 @@ func (m *MetaNode) updateSyncWALOnUnstableEnableState(enableState bool) {
 	m.raftStore.SetSyncWALOnUnstable(enableState)
 }
 
+func (m *MetaNode) updateMPReuseConf(info *proto.LimitInfo) {
+	if info.ReuseMPInodeCountThreshold != 0 && nodeInfo.reuseMPInodeCountThreshold != info.ReuseMPInodeCountThreshold {
+		nodeInfo.reuseMPInodeCountThreshold = info.ReuseMPInodeCountThreshold
+	}
+
+	if info.ReuseMPDentryCountThreshold != 0 && nodeInfo.reuseMPDentryCountThreshold != info.ReuseMPDentryCountThreshold {
+		nodeInfo.reuseMPDentryCountThreshold = info.ReuseMPDentryCountThreshold
+	}
+
+	if info.MetaPartitionMaxInodeCount != 0 && nodeInfo.metaPartitionMaxInodeCount != info.MetaPartitionMaxInodeCount {
+		nodeInfo.metaPartitionMaxInodeCount = info.MetaPartitionMaxInodeCount
+	}
+
+	if info.MetaPartitionMaxDentryCount != 0 && nodeInfo.metaPartitionMaxDentryCount != info.MetaPartitionMaxDentryCount {
+		nodeInfo.metaPartitionMaxDentryCount = info.MetaPartitionMaxDentryCount
+	}
+}
+
+func (m *MetaNode) getReuseMPInodeCountThreshold() float64 {
+	threshold := proto.DefaultReuseMPInodeCountThreshold
+	nodeConf := getGlobalConfNodeInfo()
+	if nodeConf.reuseMPInodeCountThreshold != 0 {
+		threshold = nodeConf.reuseMPInodeCountThreshold
+	}
+	return threshold
+}
+
+func (m *MetaNode) getReuseMPDentryCountThreshold() float64 {
+	threshold := proto.DefaultReuseMPDentryCountThreshold
+	nodeConf := getGlobalConfNodeInfo()
+	if nodeConf.reuseMPDentryCountThreshold != 0 {
+		threshold = nodeConf.reuseMPDentryCountThreshold
+	}
+	return threshold
+}
+
+func (m *MetaNode) getMetaPartitionMaxInodeCount() uint64 {
+	count := proto.DefaultMetaPartitionMaxInodeCount
+	nodeConf := getGlobalConfNodeInfo()
+	if nodeConf.metaPartitionMaxInodeCount != 0 {
+		count = nodeConf.metaPartitionMaxInodeCount
+	}
+	return count
+}
+
+func (m *MetaNode) getMetaPartitionMaxDentryCount() uint64 {
+	count := proto.DefaultMetaPartitionMaxDentryCount
+	nodeConf := getGlobalConfNodeInfo()
+	if nodeConf.metaPartitionMaxDentryCount != 0 {
+		count = nodeConf.metaPartitionMaxDentryCount
+	}
+	return count
+}
+
 func getGlobalConfNodeInfo() *NodeInfo {
 	newInfo := *nodeInfo
 	return &newInfo
@@ -333,6 +392,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.updateTrashCleanInterval(limitInfo.MetaTrashCleanInterval)
 	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
 	m.updateSyncWALOnUnstableEnableState(limitInfo.MetaSyncWALOnUnstableEnableState)
+	m.updateMPReuseConf(limitInfo)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

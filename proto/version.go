@@ -6,6 +6,24 @@ import (
 )
 
 const (
+	/*
+	MetaNode: RocksDB
+	*/
+	RocksDBVersion = "3.2.0"
+
+	/*
+
+	*/
+	Version_3_3_0 = "3.3.0"
+
+	/*
+	MetaNode: Reuse MP, BitMap Allocator
+	*/
+	Version_3_4_0   = "3.4.0"
+
+	/*
+
+	*/
 	BaseVersion = "4.0.0"
 )
 

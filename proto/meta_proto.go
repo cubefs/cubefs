@@ -14,7 +14,10 @@
 
 package proto
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // CreateNameSpaceRequest defines the request to create a name space.
 type CreateNameSpaceRequest struct {
@@ -45,18 +48,47 @@ type PromoteConfig struct {
 	PromThreshold uint8 `json:"prom_threshold"`
 }
 
+type VirtualMetaPartition struct {
+	ID         uint64
+	Start      uint64
+	End        uint64
+	CreateTime int64
+}
+
+func (v VirtualMetaPartition) String() string {
+	return fmt.Sprintf("(ID:%v, Start:%v, End:%v, CreateTime:%s)",
+		v.ID, v.Start, v.End, time.Unix(v.CreateTime, 0).Format(TimeFormat))
+}
+
+type VirtualMetaPartitions []VirtualMetaPartition
+
+func (s VirtualMetaPartitions) IsEqualTo(cmp VirtualMetaPartitions) bool {
+	if len(s) != len(cmp) {
+		return false
+	}
+
+	for index, virtualMP := range s {
+		if cmp[index].ID != virtualMP.ID || cmp[index].Start != virtualMP.Start || cmp[index].End != virtualMP.End ||
+			cmp[index].CreateTime != virtualMP.CreateTime {
+			return false
+		}
+	}
+	return true
+}
+
 // CreateMetaPartitionRequest defines the request to create a meta partition.
 type CreateMetaPartitionRequest struct {
-	MetaId      string
-	VolName     string
-	Start       uint64
-	End         uint64
-	PartitionID uint64
-	Members     []Peer
-	Learners    []Learner
-	StoreMode   StoreMode
-	TrashDays   uint32
+	MetaId       string
+	VolName      string
+	Start        uint64
+	End          uint64
+	PartitionID  uint64
+	Members      []Peer
+	Learners     []Learner
+	StoreMode    StoreMode
+	TrashDays    uint32
 	CreationType int
+	VirtualMPs   []VirtualMetaPartition
 }
 
 // CreateMetaPartitionResponse defines the response to the request of creating a meta partition.
@@ -106,4 +138,25 @@ type InodeInfoWithEK struct {
 	Extents    []ExtentKey `json:"eks"`
 	Timestamp  int64       `json:"ts"`
 	IsExpired  bool        `json:"isExpired"`
+}
+// CreateMetaPartitionRequest defines the request to create a meta partition.
+type AddVirtualMetaPartitionRequest struct {
+	MetaId      string
+	VolName     string
+	Start       uint64
+	End         uint64
+	PartitionID uint64
+	VirtualPID  uint64
+	Members     []Peer
+	Learners    []Learner
+	StoreMode   StoreMode
+	TrashDays   uint32
+	CreateTime  int64
+}
+
+type SyncVirtualMetaPartitionsRequest struct {
+	PartitionID uint64
+	Start       uint64
+	End         uint64
+	VirtualMPs  []VirtualMetaPartition
 }

@@ -120,26 +120,27 @@ const (
 	RemoveRaftNode = "/raftNode/remove"
 
 	// Node APIs
-	AddDataNode                    = "/dataNode/add"
-	DecommissionDataNode           = "/dataNode/decommission"
-	DecommissionDisk               = "/disk/decommission"
-	GetDataNode                    = "/dataNode/get"
-	AddMetaNode                    = "/metaNode/add"
-	DecommissionMetaNode           = "/metaNode/decommission"
-	GetMetaNode                    = "/metaNode/get"
-	AdminUpdateMetaNode            = "/metaNode/update"
-	AdminLoadMetaPartition         = "/metaPartition/load"
-	AdminDiagnoseMetaPartition     = "/metaPartition/diagnose"
-	AdminResetMetaPartition        = "/metaPartition/reset"
-	AdminManualResetMetaPartition  = "/metaPartition/manualReset"
-	AdminResetCorruptMetaNode      = "/metaNode/reset"
-	AdminDecommissionMetaPartition = "/metaPartition/decommission"
-	AdminAddMetaReplica            = "/metaReplica/add"
-	AdminDeleteMetaReplica         = "/metaReplica/delete"
-	AdminSelectMetaReplicaNode     = "/metaReplica/selectNode"
-	AdminAddMetaReplicaLearner     = "/metaLearner/add"
-	AdminPromoteMetaReplicaLearner = "/metaLearner/promote"
-	AdminMetaPartitionSetIsRecover = "/metaPartition/setIsRecover"
+	AddDataNode                     = "/dataNode/add"
+	DecommissionDataNode            = "/dataNode/decommission"
+	DecommissionDisk                = "/disk/decommission"
+	GetDataNode                     = "/dataNode/get"
+	AddMetaNode                     = "/metaNode/add"
+	DecommissionMetaNode            = "/metaNode/decommission"
+	GetMetaNode                     = "/metaNode/get"
+	AdminUpdateMetaNode             = "/metaNode/update"
+	AdminLoadMetaPartition          = "/metaPartition/load"
+	AdminDiagnoseMetaPartition      = "/metaPartition/diagnose"
+	AdminResetMetaPartition         = "/metaPartition/reset"
+	AdminManualResetMetaPartition   = "/metaPartition/manualReset"
+	AdminResetCorruptMetaNode       = "/metaNode/reset"
+	AdminDecommissionMetaPartition  = "/metaPartition/decommission"
+	AdminAddMetaReplica             = "/metaReplica/add"
+	AdminDeleteMetaReplica          = "/metaReplica/delete"
+	AdminSelectMetaReplicaNode      = "/metaReplica/selectNode"
+	AdminAddMetaReplicaLearner      = "/metaLearner/add"
+	AdminPromoteMetaReplicaLearner  = "/metaLearner/promote"
+	AdminMetaPartitionSetIsRecover  = "/metaPartition/setIsRecover"
+	AdminMetaPartitionSetReuseState = "/metaPartition/setReuseState"
 
 	// Operation response
 	GetMetaNodeTaskResponse   = "/metaNode/response"          // Method: 'POST', ContentType: 'application/json'
@@ -222,29 +223,42 @@ const (
 )
 
 const (
-	RocksDBDiskReservedSpaceKey  = "rocksDBDiskReservedSpace"
-	LogMaxMB                     = "logMaxMB"
-	MetaRockDBWalFileMaxMB       = "metaRockDBWalFileMaxMB"
-	MetaRocksDBWalMemMaxMB       = "metaRocksDBWalMemMaxMB"
-	MetaRocksDBLogMaxMB          = "metaRocksDBLogMaxMB"
-	MetaRocksLogReservedDay      = "metaRocksLogReservedDay"
-	MetaRocksLogReservedCnt      = "metaRocksLogReservedCnt"
-	MetaRocksWalFlushIntervalKey = "metaRocksWalFlushInterval"
-	MetaRocksDisableFlushWalKey  = "metaRocksDisableFlushWal"
-	MetaRocksWalTTLKey           = "metaRocksWalTTL"
-	ChildFileMaxCountKey         = "childFileMaxCount"
-	NameKey                      = "name"
-	MetaDelEKRecordFileMaxMB     = "metaDelEKRecordFileMaxMB"
-	MetaTrashCleanIntervalKey    = "metaTrashCleanInterval"
-	MetaRaftLogSizeKey           = "metaRaftLogSize"
-	MetaRaftLogCapKey            = "metaRaftLogCap"
-	MetaSyncWalEnableStateKey    = "metaWalSyncEnableState"
-	DataSyncWalEnableStateKey    = "dataWalSyncEnableState"
+	RocksDBDiskReservedSpaceKey    = "rocksDBDiskReservedSpace"
+	LogMaxMB                       = "logMaxMB"
+	MetaRockDBWalFileMaxMB         = "metaRockDBWalFileMaxMB"
+	MetaRocksDBWalMemMaxMB         = "metaRocksDBWalMemMaxMB"
+	MetaRocksDBLogMaxMB            = "metaRocksDBLogMaxMB"
+	MetaRocksLogReservedDay        = "metaRocksLogReservedDay"
+	MetaRocksLogReservedCnt        = "metaRocksLogReservedCnt"
+	MetaRocksWalFlushIntervalKey   = "metaRocksWalFlushInterval"
+	MetaRocksDisableFlushWalKey    = "metaRocksDisableFlushWal"
+	MetaRocksWalTTLKey             = "metaRocksWalTTL"
+	ChildFileMaxCountKey           = "childFileMaxCount"
+	NameKey                        = "name"
+	MetaDelEKRecordFileMaxMB       = "metaDelEKRecordFileMaxMB"
+	MetaTrashCleanIntervalKey      = "metaTrashCleanInterval"
+	MetaRaftLogSizeKey             = "metaRaftLogSize"
+	MetaRaftLogCapKey              = "metaRaftLogCap"
+	MetaSyncWalEnableStateKey      = "metaWalSyncEnableState"
+	DataSyncWalEnableStateKey      = "dataWalSyncEnableState"
+	ReuseMPInodeCountThresholdKey  = "reuseMPInodeCountThreshold"
+	ReuseMPDentryCountThresholdKey = "reuseMPDentryCountThreshold"
+	MPMaxInodeCountKey             = "mpMaxInodeCount"
+	MPMaxDentryCountKey            = "mpMaxDentryCount"
+	ReuseMPKey                     = "reuseMP"
 )
 
 const (
 	ReadOnlyToken  = 1
 	ReadWriteToken = 2
+)
+const (
+	DefaultMetaPartitionInodeIDStep    uint64  = 1 << 24
+	DefaultReuseMPInodeCountThreshold  float64 = 0.1
+	DefaultReuseMPDentryCountThreshold float64 = 0.1
+	DefaultMetaPartitionMaxDelInoCnt   uint64  = 100 * 10000
+	DefaultMetaPartitionMaxInodeCount  uint64  = 20000000
+	DefaultMetaPartitionMaxDentryCount uint64  = 20000000
 )
 
 const DbBackMaster = "dbbak.jd.local"
@@ -527,6 +541,11 @@ type LimitInfo struct {
 
 	MetaSyncWALOnUnstableEnableState bool
 	DataSyncWALOnUnstableEnableState bool
+
+	ReuseMPInodeCountThreshold  float64
+	ReuseMPDentryCountThreshold float64
+	MetaPartitionMaxInodeCount  uint64
+	MetaPartitionMaxDentryCount uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -748,6 +767,7 @@ type MetaPartitionReport struct {
 	StoreMode       StoreMode
 	ApplyId         uint64
 	IsRecover       bool
+	VirtualMPs      []VirtualMetaPartition
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -926,6 +946,7 @@ type MetaPartitionView struct {
 	StoreMode   StoreMode
 	MemCount    uint8
 	RocksCount  uint8
+	PhyPid      uint64
 }
 
 type OSSSecure struct {
@@ -987,12 +1008,13 @@ func NewVolView(name string, status uint8, followerRead, isSmart bool, createTim
 	return
 }
 
-func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *MetaPartitionView) {
+func NewMetaPartitionView(partitionID, virtualMPId, start, end uint64, status int8) (mpView *MetaPartitionView) {
 	mpView = new(MetaPartitionView)
-	mpView.PartitionID = partitionID
+	mpView.PartitionID = virtualMPId
 	mpView.Start = start
 	mpView.End = end
 	mpView.Status = status
+	mpView.PhyPid = partitionID
 	mpView.Members = make([]string, 0)
 	mpView.Learners = make([]string, 0)
 	return
@@ -1011,10 +1033,12 @@ type SimpleVolView struct {
 	InodeCount            uint64
 	DentryCount           uint64
 	MaxMetaPartitionID    uint64
+	MaxVirtualMPId        uint64
 	Status                uint8
 	Capacity              uint64 // GB
 	DpWriteableThreshold  float64
 	RwDpCnt               int
+	VirtualMPCnt          int
 	MpCnt                 int
 	DpCnt                 int
 	FollowerRead          bool
@@ -1073,9 +1097,10 @@ type SimpleVolView struct {
 	EcMaxUnitSize         uint64
 	ChildFileMaxCount     uint32
 	TrashCleanInterval    uint64
-	BatchDelInodeCnt     uint32
-	DelInodeInterval     uint32
+	BatchDelInodeCnt      uint32
+	DelInodeInterval      uint32
 	UmpCollectWay         UmpCollectBy
+	ReuseMP               bool
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1181,6 +1206,10 @@ type RateLimitInfo struct {
 	MetaRaftLogCap				int64
 	MetaSyncWALEnableState      int64
 	DataSyncWALEnableState      int64
+	ReuseMPInodeCountThreshold  float64
+	ReuseMPDentryCountThreshold float64
+	MetaPartitionMaxInodeCount  uint64
+	MetaPartitionMaxDentryCount uint64
 }
 
 type ConvertMode uint8

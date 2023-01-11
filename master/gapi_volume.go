@@ -212,7 +212,7 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	Name, Owner, ZoneName, Description                                                   string
 	Capacity, DataPartitionSize, MpCount, DpReplicaNum, storeMode, mpPercent, repPercent uint64
-	FollowerRead, Authenticate, CrossZone, EnableToken                                   bool
+	FollowerRead, Authenticate, CrossZone, EnableToken, reuseMP                          bool
 	batchDelInodeCnt, delInodeInterVal                                                   uint32
 }) (*Vol, error) {
 	uid, per, err := permissions(ctx, ADMIN|USER)
@@ -238,7 +238,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 
 	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount),
 		int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
-		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, false, 0, 0,
+		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, false, args.reuseMP, 0, 0,
 		defaultChildFileMaxCount, proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)}, nil, proto.CompactDefault,
 		proto.DpFollowerReadDelayConfig{false, 0}, args.batchDelInodeCnt, args.delInodeInterVal)
 	if err != nil {
@@ -305,7 +305,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	ZoneName, Description                                  *string
 	Capacity, ReplicaNum, storeMode, mpPercent, repPercent *uint64
 	EnableToken, ForceROW, EnableWriteCache                *bool
-	FollowerRead, Authenticate, AutoRepair                 *bool
+	FollowerRead, Authenticate, AutoRepair, reuseMP        *bool
 	TrashInterVal                                          *uint64
 	batchDelInodeCnt, delInodeInterval                     *uint32
 }) (*Vol, error) {
@@ -395,6 +395,10 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("mpPercent repPercent can only be [0-100],received is[%v - %v]", *args.mpPercent, *args.repPercent)
 	}
 
+	if args.reuseMP == nil {
+		args.reuseMP = &vol.reuseMP
+	}
+
 	if args.TrashInterVal == nil {
 		args.TrashInterVal = &vol.TrashCleanInterval
 	}
@@ -409,7 +413,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
 		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, vol.NearRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW,
-		vol.volWriteMutexEnable, false, *args.EnableWriteCache, vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType,
+		vol.volWriteMutexEnable, false, *args.EnableWriteCache, *args.reuseMP, vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType,
 		vol.dpWriteableThreshold, vol.trashRemainingDays, proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)},
 		vol.ExtentCacheExpireSec, vol.smartRules, vol.compactTag, vol.FollowerReadDelayCfg, vol.FollReadHostWeight, *args.TrashInterVal,
 		*args.batchDelInodeCnt, *args.delInodeInterval, vol.UmpCollectWay); err != nil {

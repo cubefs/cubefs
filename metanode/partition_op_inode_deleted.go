@@ -310,6 +310,7 @@ func (mp *metaPartition) BatchGetDeletedInode(req *BatchGetDeletedInodeReq, p *P
 
 //todo:
 func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
+	var totalCleanCount = 100 * 10000
 	ctx := context.Background()
 	fsmFunc := func(inodes []uint64) (err error) {
 		log.LogDebugf("[CleanExpiredDeletedINode], vol:%v, mp:%v, inodes:%v, inodeCnt:%v", mp.config.VolName, mp.config.PartitionId, inodes, len(inodes))
@@ -355,7 +356,13 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 		return
 	}
 	defer snap.Close()
+	startTime := time.Now()
 	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
+		if total > totalCleanCount || time.Since(startTime) > time.Minute * 5 {
+			log.LogInfof("[CleanExpiredDeletedINode] mp(%v) clean Count:%v, clean time:%v",
+				mp.config.PartitionId, total, time.Since(startTime).Seconds())
+			return false, nil
+		}
 		di := item.(*DeletedINode)
 		_, ok := mp.IsLeader()
 		if !ok {

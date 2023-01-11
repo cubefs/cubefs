@@ -331,6 +331,10 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaTrashCleanInterval:              m.cluster.cfg.MetaTrashCleanInterval,
 		MetaRaftLogSize:                     m.cluster.cfg.MetaRaftLogSize,
 		MetaRaftLogCap:                      m.cluster.cfg.MetaRaftLogCap,
+		ReuseMPInodeCountThreshold:          m.cluster.cfg.ReuseMPInodeCountThreshold,
+		ReuseMPDentryCountThreshold:         m.cluster.cfg.ReuseMPDentryCountThreshold,
+		MetaPartitionMaxInodeCount:          m.cluster.cfg.MetaPartitionMaxInodeCount,
+		MetaPartitionMaxDentryCount:         m.cluster.cfg.MetaPartitionMaxDentryCount,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -519,6 +523,10 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaRaftCap:                            metaRaftLogCap,
 		MetaSyncWALOnUnstableEnableState:       m.cluster.cfg.MetaSyncWALOnUnstableEnableState,
 		DataSyncWALOnUnstableEnableState:       m.cluster.cfg.DataSyncWALOnUnstableEnableState,
+		ReuseMPInodeCountThreshold:             m.cluster.cfg.ReuseMPInodeCountThreshold,
+		ReuseMPDentryCountThreshold:            m.cluster.cfg.ReuseMPDentryCountThreshold,
+		MetaPartitionMaxInodeCount:             m.cluster.cfg.MetaPartitionMaxInodeCount,
+		MetaPartitionMaxDentryCount:            m.cluster.cfg.MetaPartitionMaxDentryCount,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -812,7 +820,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -876,7 +884,7 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -912,7 +920,7 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -976,7 +984,7 @@ func (m *Server) promoteMetaReplicaLearner(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -1590,7 +1598,7 @@ func (m *Server) setMetaPartitionIsRecover(w http.ResponseWriter, r *http.Reques
 	if isRecover, err = extractIsRecoverKey(r); err != nil {
 		return
 	}
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -1663,6 +1671,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		storeMode            int
 		mpLayout             proto.MetaPartitionLayout
 		isSmart              bool
+		reuseMP              bool
 		smartRules           []string
 		compactTag           proto.CompactTag
 		dpFolReadDelayCfg    proto.DpFollowerReadDelayConfig
@@ -1702,7 +1711,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	if mpReplicaNum == 0 {
 		mpReplicaNum = int(vol.mpReplicaNum)
 	}
-	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache, reuseMP, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1779,7 +1788,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
-		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
+		reuseMP, dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -1858,6 +1867,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		volWriteMutexEnable  bool
 		forceROW             bool
 		enableWriteCache     bool
+		reuseMP              bool
 		crossRegionHAType    proto.CrossRegionHAType
 		zoneName             string
 		description          string
@@ -1880,7 +1890,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	metrics := exporter.NewTPCnt(proto.AdminCreateVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
-		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
+		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, reuseMP, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
 		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1923,7 +1933,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
-		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
+		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, reuseMP,
 		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1971,8 +1981,13 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		volDentryCount uint64
 		usedRatio      float64
 		fileAvgSize    float64
+		maxVirtualMPId uint64
+		virtualMPCnt   int
 	)
+
 	volDentryCount, volInodeCount = vol.getDentryCntAndInodeCnt()
+	maxPartitionID := vol.maxPartitionID()
+	maxVirtualMPId, virtualMPCnt = vol.getMaxVirtualMPIDAndVirtualMPCount()
 	stat := volStat(vol)
 	if stat.TotalSize > 0 {
 		usedRatio = float64(stat.RealUsedSize) / float64(stat.TotalSize)
@@ -1980,7 +1995,6 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	if volInodeCount > 0 {
 		fileAvgSize = float64(stat.RealUsedSize) / float64(volInodeCount)
 	}
-	maxPartitionID := vol.maxPartitionID()
 	return &proto.SimpleVolView{
 		ID:                   vol.ID,
 		Name:                 vol.Name,
@@ -1993,6 +2007,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		InodeCount:           volInodeCount,
 		DentryCount:          volDentryCount,
 		MaxMetaPartitionID:   maxPartitionID,
+		MaxVirtualMPId:       maxVirtualMPId,
 		Status:               vol.Status,
 		Capacity:             vol.Capacity,
 		FollowerRead:         vol.FollowerRead,
@@ -2000,26 +2015,27 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		FolReadHostWeight:    vol.FollReadHostWeight,
 		NearRead:             vol.NearRead,
 		ForceROW:             vol.ForceROW,
-		EnableWriteCache:     vol.enableWriteCache,
-		CrossRegionHAType:    vol.CrossRegionHAType,
-		NeedToLowerReplica:   vol.NeedToLowerReplica,
-		Authenticate:         vol.authenticate,
-		EnableToken:          vol.enableToken,
-		CrossZone:            vol.crossZone,
-		AutoRepair:           vol.autoRepair,
-		VolWriteMutexEnable:  vol.volWriteMutexEnable,
-		Tokens:               vol.tokens,
-		RwDpCnt:              vol.dataPartitions.readableAndWritableCnt,
-		MpCnt:                vol.getMpCnt(),
-		DpCnt:                vol.getDpCnt(),
-		CreateTime:           time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
-		Description:          vol.description,
-		DpSelectorName:       vol.dpSelectorName,
-		DpSelectorParm:       vol.dpSelectorParm,
-		OSSBucketPolicy:      vol.OSSBucketPolicy,
-		DPConvertMode:        vol.DPConvertMode,
-		MPConvertMode:        vol.MPConvertMode,
-		Quorum:               vol.getDataPartitionQuorum(),
+		EnableWriteCache:    vol.enableWriteCache,
+		CrossRegionHAType:   vol.CrossRegionHAType,
+		NeedToLowerReplica:  vol.NeedToLowerReplica,
+		Authenticate:        vol.authenticate,
+		EnableToken:         vol.enableToken,
+		CrossZone:           vol.crossZone,
+		AutoRepair:          vol.autoRepair,
+		VolWriteMutexEnable: vol.volWriteMutexEnable,
+		Tokens:              vol.tokens,
+		RwDpCnt:             vol.dataPartitions.readableAndWritableCnt,
+		VirtualMPCnt:        virtualMPCnt,
+		MpCnt:               vol.getMpCnt(),
+		DpCnt:               vol.getDpCnt(),
+		CreateTime:          time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+		Description:         vol.description,
+		DpSelectorName:      vol.dpSelectorName,
+		DpSelectorParm:      vol.dpSelectorParm,
+		OSSBucketPolicy:     vol.OSSBucketPolicy,
+		DPConvertMode:       vol.DPConvertMode,
+		MPConvertMode:       vol.MPConvertMode,
+		Quorum:              vol.getDataPartitionQuorum(),
 		DpWriteableThreshold: vol.dpWriteableThreshold,
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 		RwMpCnt:              int(vol.getWritableMpCount()),
@@ -2054,6 +2070,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		BatchDelInodeCnt:     vol.BatchDelInodeCnt,
 		DelInodeInterval:     vol.DelInodeInterval,
 		UmpCollectWay:        vol.UmpCollectWay,
+		ReuseMP:              vol.reuseMP,
 	}
 }
 
@@ -2621,6 +2638,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		Carry:                     metaNode.Carry,
 		Threshold:                 metaNode.Threshold,
 		ReportTime:                metaNode.ReportTime,
+		PhyMetaPartitionCount:     metaNode.PhysicalMetaPartitionCount,
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
@@ -2648,7 +2666,7 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -2688,7 +2706,7 @@ func (m *Server) selectMetaReplaceNodeAddr(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -2729,7 +2747,7 @@ func (m *Server) resetMetaPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -2788,7 +2806,7 @@ func (m *Server) manualResetMetaPartition(w http.ResponseWriter, r *http.Request
 	}
 	nodes := strings.Split(nodeAddrs, ",")
 
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -2831,7 +2849,7 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -3278,7 +3296,8 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	return
 }
 
-func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache bool, err error) {
+func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair,
+	forceROW, volWriteMutexEnable, enableWriteCache, reuseMP bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -3342,6 +3361,15 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRea
 		}
 	} else {
 		volWriteMutexEnable = vol.volWriteMutexEnable
+	}
+
+	if reuseMPStr := r.FormValue(proto.ReuseMPKey); reuseMPStr != "" {
+		if reuseMP, err = strconv.ParseBool(reuseMPStr); err != nil {
+			err = unmatchedKey(proto.ReuseMPKey)
+			return
+		}
+	} else {
+		reuseMP = vol.reuseMP
 	}
 	return
 }
@@ -3578,7 +3606,7 @@ func parseDefaultDelInodeIntervalToUpdateVol(r *http.Request, vol *Vol) (delInod
 
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, reuseMP bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, childFileMaxCnt uint32,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
 	batchDelInodeCnt, delInodeInterval uint32, err error) {
@@ -3663,6 +3691,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	}
 	enableToken = extractEnableToken(r)
 	volWriteMutexEnable = extractVolWriteMutex(r)
+	reuseMP = extractReuseMP(r)
 	description = r.FormValue(descriptionKey)
 
 	if trashDaysStr := r.FormValue(trashRemainingDaysKey); trashDaysStr == "" {
@@ -4340,6 +4369,11 @@ func extractAutoRepair(r *http.Request) (autoRepair bool, err error) {
 	return
 }
 
+func extractReuseMP(r *http.Request) bool {
+	reuseMP, _ := strconv.ParseBool(r.FormValue(proto.ReuseMPKey))
+	return reuseMP
+}
+
 func extractCrossRegionHA(r *http.Request) (crossRegionHAType proto.CrossRegionHAType, err error) {
 	crossRegionHAStr := r.FormValue(crossRegionHAKey)
 	if crossRegionHAStr != "" {
@@ -4401,7 +4435,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
-		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey}
+		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey, proto.MPMaxInodeCountKey, proto.MPMaxDentryCountKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return
@@ -4411,6 +4445,12 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		proto.MetaRaftLogCapKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
+			return
+		}
+	}
+	floatKeys := []string{proto.ReuseMPInodeCountThresholdKey, proto.ReuseMPDentryCountThresholdKey}
+	for _, key := range floatKeys {
+		if err = parseFloatKey(params, key, r); err != nil {
 			return
 		}
 	}
@@ -4445,6 +4485,18 @@ func parseIntKey(params map[string]interface{}, key string, r *http.Request) (er
 		var val = int64(0)
 		val, err = strconv.ParseInt(value, 10, 64)
 		if err != nil {
+			err = unmatchedKey(key)
+			return
+		}
+		params[key] = val
+	}
+	return
+}
+
+func parseFloatKey(params map[string]interface{}, key string, r *http.Request) (err error) {
+	if value := r.FormValue(key); value != "" {
+		var val = float64(0)
+		if val, err = strconv.ParseFloat(value, 64); err != nil {
 			err = unmatchedKey(key)
 			return
 		}
@@ -4685,45 +4737,73 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	return
 }
 
-func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
-	mpView = proto.NewMetaPartitionView(mp.PartitionID, mp.Start, mp.End, mp.Status)
+func getMetaPartitionView(mp *MetaPartition) (result []*proto.MetaPartitionView) {
+	result = make([]*proto.MetaPartitionView, 0)
 	mp.Lock()
 	defer mp.Unlock()
-	for _, host := range mp.Hosts {
-		mpView.Members = append(mpView.Members, host)
-	}
-	mpView.MaxInodeID = mp.MaxInodeID
-	mpView.InodeCount = mp.InodeCount
-	mpView.DentryCount = mp.DentryCount
-	mpView.IsRecover = mp.IsRecover
-	mpView.MaxExistIno = mp.MaxExistIno
-	for _, learner := range mp.Learners {
-		mpView.Learners = append(mpView.Learners, learner.Addr)
-	}
-	if len(mp.Replicas) <= 0 {
-		log.LogInfof("[getMetaPartitionView] vol(%s) mp(%v) replica count is zero", mp.volName, mp.PartitionID)
-		return
-	}
+	log.LogDebugf("[getMetaPartitionView] partition id:%v, status:%v, start:%v, end:%v",
+		mp.PartitionID, mp.Status, mp.Start, mp.End)
+	for _, virtualMetaPartition := range mp.VirtualMPs {
+		mpView := proto.NewMetaPartitionView(mp.PartitionID, virtualMetaPartition.ID, virtualMetaPartition.Start, virtualMetaPartition.End, mp.Status)
+		for _, host := range mp.Hosts {
+			mpView.Members = append(mpView.Members, host)
+		}
+		mpView.MaxInodeID = mp.MaxInodeID
+		mpView.InodeCount = mp.InodeCount
+		mpView.DentryCount = mp.DentryCount
+		mpView.IsRecover = mp.IsRecover
+		mpView.MaxExistIno = mp.MaxExistIno
 
-	mpView.StoreMode = mp.Replicas[0].StoreMode
-	for _, replica := range mp.Replicas {
-		if mpView.StoreMode != replica.StoreMode {
-			mpView.StoreMode = proto.StoreModeMem | proto.StoreModeRocksDb
+		if mpView.End == defaultMaxMetaPartitionInodeID && mpView.Status != proto.ReadWrite {
+			log.LogErrorf("[getMetaPartitionView] change mpid(%v) status to read write", mpView.PartitionID)
+			mpView.Status = proto.ReadWrite
 		}
-		switch replica.StoreMode {
-		case proto.StoreModeMem:
-			mpView.MemCount++
-		case proto.StoreModeRocksDb:
-			mpView.RocksCount++
-		default:
-			mpView.MemCount++
+
+		if mp.MaxInodeID >= virtualMetaPartition.End {
+			if mpView.Status == proto.ReadWrite {
+				mpView.Status = proto.ReadOnly
+			}
+			mpView.MaxInodeID = virtualMetaPartition.End
 		}
+
+		for _, learner := range mp.Learners {
+			mpView.Learners = append(mpView.Learners, learner.Addr)
+		}
+		if len(mp.Replicas) <= 0 {
+			log.LogInfof("[getMetaPartitionView] vol(%s) mp(%v) replica count is zero", mp.volName, mp.PartitionID)
+			result = append(result, mpView)
+			continue
+		}
+
+		mpView.StoreMode = mp.Replicas[0].StoreMode
+		for _, replica := range mp.Replicas {
+			if mpView.StoreMode != replica.StoreMode {
+				mpView.StoreMode = proto.StoreModeMem | proto.StoreModeRocksDb
+			}
+			switch replica.StoreMode {
+			case proto.StoreModeMem:
+				mpView.MemCount++
+			case proto.StoreModeRocksDb:
+				mpView.RocksCount++
+			default:
+				mpView.MemCount++
+			}
+		}
+		mr, err := mp.getMetaReplicaLeader()
+		if err != nil {
+			if mpView.End == defaultMaxMetaPartitionInodeID {
+				mpView.LeaderAddr = mp.Replicas[0].Addr
+				log.LogDebugf("[getMetaPartitionView] mpid(%v) no leader, set leader addr:%v", mpView.PartitionID,
+					mpView.LeaderAddr)
+			}
+			result = append(result, mpView)
+			continue
+		}
+		mpView.LeaderAddr = mr.Addr
+		log.LogDebugf("getMetaPartitionView mpView(id:%v, phyId:%v, status:%v, start:%v, end:%v)",
+			mpView.PartitionID, mpView.PhyPid, mpView.Status, mpView.Start, mpView.End)
+		result = append(result, mpView)
 	}
-	mr, err := mp.getMetaReplicaLeader()
-	if err != nil {
-		return
-	}
-	mpView.LeaderAddr = mr.Addr
 	return
 }
 
@@ -4739,7 +4819,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
@@ -4779,10 +4859,20 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				rocksCnt++
 			}
 		}
+		var (
+			mpStart = mp.Start
+			mpEnd   = mp.End
+		)
+		virtualMP := mp.getVirtualMPInfoByID(partitionID)
+		if virtualMP != nil {
+			mpStart = virtualMP.Start
+			mpEnd = virtualMP.End
+		}
 		var mpInfo = &proto.MetaPartitionInfo{
-			PartitionID:   mp.PartitionID,
-			Start:         mp.Start,
-			End:           mp.End,
+			PartitionID:   partitionID,
+			PhyPID:        mp.PartitionID,
+			Start:         mpStart,
+			End:           mpEnd,
 			VolName:       mp.volName,
 			MaxInodeID:    mp.MaxInodeID,
 			InodeCount:    mp.InodeCount,
@@ -4802,6 +4892,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			LoadResponse:  mp.LoadResponse,
 			MemStoreCnt:   memCnt,
 			RcokStoreCnt:  rocksCnt,
+			VirtualMPs:    mp.VirtualMPs,
+			DisableReuse:  mp.DisableReuse,
 		}
 		return mpInfo
 	}
@@ -5805,4 +5897,50 @@ func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpReply 
 	}
 	sendErrReply(w, r, httpReply)
 	return
+}
+
+func (m *Server) setMetaPartitionEnableReuseState(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		enableState bool
+		mp          *MetaPartition
+		err         error
+	)
+	metrics := exporter.NewTPCnt(proto.AdminMetaPartitionSetEnableReuseStateUmpKey)
+	defer func() { metrics.Set(err) }()
+	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if enableState, err = extractStatus(r); err != nil {
+		return
+	}
+	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+	if mp.getDisableReuseState() && !enableState {
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("MetaPartition(%v) already disable reuse mp", partitionID)))
+		return
+	}
+
+	if !mp.getDisableReuseState() && enableState {
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("MetaPartition(%v) already enable reuse mp", partitionID)))
+		return
+	}
+
+	var rstMsg string
+	if enableState {
+		rstMsg = fmt.Sprintf("enable MetaPartition(%v) reuse state successfully", partitionID)
+		mp.enableReuse()
+	} else {
+		rstMsg = fmt.Sprintf("disable MetaPartition(%v) reuse state successfully", partitionID)
+		mp.disableReuse()
+	}
+
+	if err = m.cluster.syncUpdateMetaPartition(mp); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }

@@ -29,6 +29,8 @@ type (
 	CreateMetaRangeReq = proto.CreateMetaPartitionRequest
 	// MetaNode -> Master create metaPartition response
 	CreateMetaRangeResp = proto.CreateMetaPartitionResponse
+	// Master -> MetaNode  add virtual metaPartition request
+	AddVirtualMetaPartitionRequest = proto.AddVirtualMetaPartitionRequest
 	// Client -> MetaNode create Inode request
 	CreateInoReq = proto.CreateInodeRequest
 	// MetaNode -> Client create Inode response
@@ -172,6 +174,10 @@ const (
 	opFSMExtentMerge
 	resetStoreTick
 	opFSMExtentDelSyncV2
+	opFSMMetaAddVirtualMP
+	opFSMSynVirtualMPs
+
+	opFSMSyncMetaConf
 )
 
 var (
@@ -246,7 +252,9 @@ const (
 )
 
 const (
-	RocksDBVersion        = proto.BaseVersion
+	RocksDBVersion        = proto.RocksDBVersion
+	Version3_3_0          = proto.Version_3_3_0
+	MPReuseVersion        = proto.BaseVersion
 	MetaNodeLatestVersion = proto.BaseVersion
 )
 
@@ -293,11 +301,17 @@ type SnapshotVersion byte
 
 const (
 	BaseSnapshotV = iota
-	BatchSnapshotV1
-	LatestSnapV = BatchSnapshotV1 //change with max snap version
+	BatchSnapshotV1 //rocksdb
+	BatchSnapshotV2 //mp reuse
+	LatestSnapV = BatchSnapshotV2 //change with max snap version
 )
 
 const (
 	mpStopChOpenState = iota
 	mpStopChStoppedState
 )
+
+type MetaRaftApplyResult struct {
+	Status uint8
+	Msg    string
+}

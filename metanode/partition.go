@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"io/ioutil"
 	"net"
 	"os"
@@ -74,27 +75,28 @@ func (sp sortedPeers) Swap(i, j int) {
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
-	PartitionId        uint64                `json:"partition_id"`
-	VolName            string                `json:"vol_name"`
-	Start              uint64                `json:"start"`    // Minimal Inode ID of this range. (Required during initialization)
-	End                uint64                `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
-	Peers              []proto.Peer          `json:"peers"`    // Peers information of the raftStore
-	Learners           []proto.Learner       `json:"learners"` // Learners information of the raftStore
-	TrashRemainingDays int32                 `json:"-"`
-	Cursor             uint64                `json:"-"` // Cursor ID of the inode that have been assigned
-	NodeId             uint64                `json:"-"`
-	RootDir            string                `json:"-"`
-	RocksDBDir         string                `json:"rocksDb_dir"`
-	BeforeStart        func()                `json:"-"`
-	AfterStart         func()                `json:"-"`
-	BeforeStop         func()                `json:"-"`
-	AfterStop          func()                `json:"-"`
-	RaftStore          raftstore.RaftStore   `json:"-"`
-	ConnPool           *connpool.ConnectPool `json:"-"`
-	StoreMode          proto.StoreMode       `json:"store_mode"`
-	CreationType       int                   `json:"creation_type"`
-	ChildFileMaxCount  uint32                `json:"-"`
-	TrashCleanInterval uint64                `json:"-"`
+	PartitionId        uint64                       `json:"partition_id"`
+	VolName            string                       `json:"vol_name"`
+	Start              uint64                       `json:"start"`    // Minimal Inode ID of this range. (Required during initialization)
+	End                uint64                       `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
+	Peers              []proto.Peer                 `json:"peers"`    // Peers information of the raftStore
+	Learners           []proto.Learner              `json:"learners"` // Learners information of the raftStore
+	VirtualMPs         []proto.VirtualMetaPartition `json:"virtual_mps"`
+	TrashRemainingDays int32                        `json:"-"`
+	Cursor             uint64                       `json:"-"` // Cursor ID of the inode that have been assigned
+	NodeId             uint64                       `json:"-"`
+	RootDir            string                       `json:"-"`
+	RocksDBDir         string                       `json:"rocksDb_dir"`
+	BeforeStart        func()                       `json:"-"`
+	AfterStart         func()                       `json:"-"`
+	BeforeStop         func()                       `json:"-"`
+	AfterStop          func()                       `json:"-"`
+	RaftStore          raftstore.RaftStore          `json:"-"`
+	ConnPool           *connpool.ConnectPool        `json:"-"`
+	StoreMode          proto.StoreMode              `json:"store_mode"`
+	CreationType       int                          `json:"creation_type"`
+	ChildFileMaxCount  uint32                       `json:"-"`
+	TrashCleanInterval uint64                       `json:"-"`
 
 	RocksWalFileSize     uint64 `json:"rocks_wal_file_size"`
 	RocksWalMemSize      uint64 `json:"rocks_wal_mem_size"`
@@ -129,6 +131,32 @@ func (c *MetaPartitionConfig) checkMeta() (err error) {
 func (c *MetaPartitionConfig) sortPeers() {
 	sp := sortedPeers(c.Peers)
 	sort.Sort(sp)
+}
+
+func (c *MetaPartitionConfig) marshalJson() (data []byte, err error) {
+	type MetaConf MetaPartitionConfig
+	return json.Marshal(&struct {
+		Cursor    uint64 `json:"cursor"`
+		*MetaConf
+	}{
+		Cursor:   c.Cursor,
+		MetaConf: (*MetaConf)(c),
+	})
+}
+
+func (c *MetaPartitionConfig) unmarshalJson(data []byte) (err error) {
+	type MetaConf MetaPartitionConfig
+	confStruct := &struct {
+		Cursor    uint64 `json:"cursor"`
+		*MetaConf
+	}{
+		MetaConf: (*MetaConf)(c),
+	}
+	if err = json.Unmarshal(data, &confStruct); err != nil {
+		return
+	}
+	c.Cursor = confStruct.Cursor
+	return
 }
 
 // OpInode defines the interface for the inode operations.
@@ -247,6 +275,10 @@ type OpPartition interface {
 	ReleaseSnapShot(snap Snapshot)
 	IsRaftHang() bool
 	FreeInode(val []byte) error
+	AddVirtualMetaPartition(ctx context.Context, req *proto.AddVirtualMetaPartitionRequest)  (err error)
+	SetStatus(status int)
+	GetStatus() int
+	SyncVirtualMetaPartitions(ctx context.Context, req *proto.SyncVirtualMetaPartitionsRequest) (err error)
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -300,6 +332,7 @@ type metaPartition struct {
 	CreationType                int
 	stopLock                    sync.Mutex
 	stopChState                 uint32
+	status                      int
 }
 
 // Start starts a meta partition.
@@ -517,6 +550,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		db:             NewRocksDb(),
 		CreationType:   conf.CreationType,
 		stopChState:    mpStopChOpenState,
+		status:         proto.ReadWrite,
 	}
 	return mp
 }
@@ -981,13 +1015,24 @@ func (mp *metaPartition) ExpiredRaft() (err error) {
 }
 
 // Return a new inode ID and update the offset.
-func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
+func (mp *metaPartition) nextInodeID(vPID uint64) (inodeId uint64, err error) {
+	var virtualMP proto.VirtualMetaPartition
+	for _, vMP := range mp.config.VirtualMPs {
+		if vMP.ID == vPID {
+			virtualMP = vMP
+			break
+		}
+	}
+	if virtualMP.ID == 0 {
+		return 0, ErrInodeIDOutOfRange
+	}
+
 	for {
 		cur := atomic.LoadUint64(&mp.config.Cursor)
-		end := mp.config.End
-		if cur >= end {
+		if cur >= virtualMP.End || cur < virtualMP.Start {
 			return 0, ErrInodeIDOutOfRange
 		}
+
 		newId := cur + 1
 		if atomic.CompareAndSwapUint64(&mp.config.Cursor, cur, newId) {
 			return newId, nil
@@ -997,10 +1042,14 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 
 // Return a new inode ID and update the offset.
 func (mp *metaPartition) isInoOutOfRange(inodeId uint64) (outOfRange bool, err error) {
-	end := atomic.LoadUint64(&mp.config.End)
-	if inodeId > end || inodeId < mp.config.Start {
+	maxInode := atomic.LoadUint64(&mp.config.End)
+	if atomic.LoadUint64(&mp.config.Cursor) > maxInode {
+		maxInode = atomic.LoadUint64(&mp.config.Cursor)
+	}
+	firstVirtualMP := mp.config.VirtualMPs[0]
+	if inodeId > maxInode || inodeId < firstVirtualMP.Start {
 		outOfRange = true
-		err = fmt.Errorf("ino[%d] is out of range[%d, %d]", inodeId, mp.config.Start, end)
+		err = fmt.Errorf("ino[%d] is out of range[%d, %d]", inodeId, firstVirtualMP.Start, maxInode)
 	}
 	return
 }
@@ -1521,5 +1570,69 @@ func (mp *metaPartition) GetLeaderRaftApplyID(target string) (applyID uint64, er
 	}
 
 	applyID = binary.BigEndian.Uint64(packet.Data[:8])
+	return
+}
+
+func (mp *metaPartition) AddVirtualMetaPartition(ctx context.Context, req *proto.AddVirtualMetaPartitionRequest) (err error) {
+	reqData, err := json.Marshal(req)
+	if err != nil {
+		return
+	}
+	r, err := mp.submit(ctx, opFSMMetaAddVirtualMP, "", reqData)
+	if err != nil {
+		return
+	}
+
+	result := r.(*MetaRaftApplyResult)
+	if result.Status != proto.OpOk {
+		p := NewPacket(ctx)
+		p.ResultCode = result.Status
+		err = errors.NewErrorf("[AddVirtualMetaPartition]: %s", result.Msg)
+	}
+	return
+}
+
+func (mp *metaPartition) SyncVirtualMetaPartitions(ctx context.Context, req *proto.SyncVirtualMetaPartitionsRequest) (err error) {
+	var (
+		reqData []byte
+		resp    interface{}
+	)
+	if reqData, err = json.Marshal(req); err != nil {
+		return
+	}
+	if resp, err = mp.submit(ctx, opFSMSynVirtualMPs, "", reqData); err != nil {
+		return
+	}
+	result := resp.(*MetaRaftApplyResult)
+	if result.Status != proto.OpOk {
+		p := NewPacket(ctx)
+		p.ResultCode = result.Status
+		err = errors.NewErrorf("[SyncVirtualMetaPartitions]: %s", result.Msg)
+	}
+	return
+}
+
+func (mp *metaPartition) SetStatus(status int) {
+	mp.status = status
+	return
+}
+
+func (mp *metaPartition) GetStatus() int {
+	return mp.status
+}
+
+func (mp *metaPartition) updateVirtualMetaPartitionsFromMaster (virtualMPs []proto.VirtualMetaPartition) {
+	mp.config.VirtualMPs = virtualMPs
+	if err := mp.persistMetadata(); err != nil {
+		errMsg := fmt.Sprintf("checkAndSyncVirtualMetaPartitionWithMaster, partitionID(%v) persist meta data failed:%v",
+			mp.config.PartitionId, err)
+		exporter.Warning(errMsg)
+	}
+
+	mp.manager.mu.Lock()
+	defer mp.manager.mu.Unlock()
+	for _, virtualMP := range virtualMPs {
+		mp.manager.partitions[virtualMP.ID] = mp
+	}
 	return
 }

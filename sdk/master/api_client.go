@@ -141,6 +141,26 @@ func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPart
 	return
 }
 
+func (api *ClientAPI) GetPhysicalMetaPartitions(volName string) (views []*proto.MetaPartitionView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.ClientMetaPartitions)
+	request.addParam("name", volName)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	virtualMPViews := make([]*proto.MetaPartitionView, 0)
+	if err = json.Unmarshal(data, &virtualMPViews); err != nil {
+		return
+	}
+	views = make([]*proto.MetaPartitionView, 0, len(virtualMPViews))
+	for _, mpView := range virtualMPViews {
+		if mpView.PartitionID == mpView.PhyPid {
+			views = append(views, mpView)
+		}
+	}
+	return
+}
+
 func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
 	path := proto.ClientDataPartitions
 	if proto.IsDbBack {

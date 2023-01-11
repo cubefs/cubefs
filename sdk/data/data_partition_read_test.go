@@ -56,7 +56,7 @@ func TestNearRead(t *testing.T) {
 	testMc := master.NewMasterClient([]string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}, false)
 	volumeSimpleInfo, _ := testMc.AdminAPI().GetVolumeSimpleInfo("ltptest")
 	if err := testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
-		true, false, true, false, false, false, false, false, false, calcAuthKey("ltptest"),
+		true, false, true, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
 		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, proto.UmpCollectByUnkown); err != nil {
 		t.Fatalf("update followerRead and nearRead to 'true' failed: err(%v) vol(ltptest)", err)
 	}
@@ -163,7 +163,7 @@ func TestNearRead(t *testing.T) {
 	dataWrapper.Stop()
 	LocalIP = originLocalIP
 	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
-		false, false, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
+		false, false, false, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
 		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, proto.UmpCollectByUnkown); err != nil {
 		t.Errorf("update followerRead and nearRead to 'false' failed: err(%v) vol(ltptest)", err)
 	}

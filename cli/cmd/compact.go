@@ -371,7 +371,7 @@ func newCompactCheckFragCmd(client *master.MasterClient) *cobra.Command {
 			ch := make(chan struct{}, optVolumeConcurrency)
 			for i, volName := range volNames {
 				var mps []*proto.MetaPartitionView
-				if mps, err = client.ClientAPI().GetMetaPartitions(volName); err != nil {
+				if mps, err = client.ClientAPI().GetPhysicalMetaPartitions(volName); err != nil {
 					stdout("Volume(%v) got MetaPartitions failed, err:%v\n", volName, err)
 					continue
 				}

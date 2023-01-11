@@ -291,7 +291,7 @@ func (cw *CompactWorker) GetMpView(cluster string, volName string) (mpView []*pr
 	if mc == nil {
 		return nil, fmt.Errorf("GetMpView cluster(%v) does not exist", cluster)
 	}
-	mpView, err = mc.ClientAPI().GetMetaPartitions(volName)
+	mpView, err = mc.ClientAPI().GetPhysicalMetaPartitions(volName)
 	if err != nil {
 		return
 	}

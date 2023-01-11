@@ -190,6 +190,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opAddMetaPartitionRaftLearner(conn, p, remoteAddr)
 	case proto.OpPromoteMetaPartitionRaftLearner:
 		err = m.opPromoteMetaPartitionRaftLearner(conn, p, remoteAddr)
+	case proto.OpAddVirtualMetaPartition:
+		err = m.opVirtualMetaPartitionAdd(conn, p, remoteAddr)
+	case proto.OpSyncVirtualMetaPartitions:
+		err = m.opSyncVirtualMetaPartitions(conn, p, remoteAddr)
 	case proto.OpResetMetaPartitionRaftMember:
 		err = m.opResetMetaPartitionMember(conn, p, remoteAddr)
 	case proto.OpMetaPartitionTryToLeader:
@@ -710,9 +714,12 @@ func (m *metadataManager) loadPartitions() (err error) {
 }
 
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) {
+	mpConfig := partition.GetBaseConfig()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.partitions[id] = partition
+	for _, virtualMP := range mpConfig.VirtualMPs {
+		m.partitions[virtualMP.ID] = partition
+	}
 	return
 }
 
@@ -720,9 +727,16 @@ func (m *metadataManager) startPartitions() (err error) {
 	var wg sync.WaitGroup
 	start := time.Now()
 	failCnt := uint64(0)
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for id, partition := range m.partitions {
+	pids := m.partitionIDs()
+	for _, id := range pids {
+		var partition MetaPartition
+		partition, err = m.getPartition(id)
+		if err != nil {
+			continue
+		}
+		if partition.GetBaseConfig().PartitionId != id {
+			continue
+		}
 		wg.Add(1)
 		go func(pid uint64, mp MetaPartition) {
 			defer wg.Done()
@@ -746,10 +760,25 @@ func (m *metadataManager) startPartitions() (err error) {
 func (m *metadataManager) detachPartition(id uint64) (err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, has := m.partitions[id]; has {
-		delete(m.partitions, id)
-	} else {
+	partition, has := m.partitions[id]
+	if !has {
 		err = fmt.Errorf("unknown partition: %d", id)
+		return
+	}
+
+	mpConfig := partition.GetBaseConfig()
+	for _, virtualMP := range mpConfig.VirtualMPs {
+		delete(m.partitions, virtualMP.ID)
+	}
+	return
+}
+
+func (m *metadataManager) partitionIDs() (pids []uint64) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	pids = make([]uint64, 0, len(m.partitions))
+	for id, _ := range m.partitions {
+		pids = append(pids, id)
 	}
 	return
 }
@@ -775,6 +804,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		TrashRemainingDays: int32(request.TrashDays),
 		StoreMode:          request.StoreMode,
 		CreationType:       request.CreationType,
+		VirtualMPs:         request.VirtualMPs,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
@@ -802,8 +832,11 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		return
 	}
 
-	m.partitions[request.PartitionID] = partition
-	log.LogInfof("load meta partition %v success", request.PartitionID)
+	for _, virtualMP := range request.VirtualMPs {
+		m.partitions[virtualMP.ID] = partition
+	}
+
+	log.LogInfof("load meta partition %v Slots[%v] success", request.PartitionID, request.VirtualMPs)
 
 	return
 }

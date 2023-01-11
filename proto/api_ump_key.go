@@ -134,4 +134,5 @@ const (
 	AdminDeleteEcReplicaUmpKey                  = "ecReplica_delete"
 	AdminAddEcReplicaUmpKey                     = "ecReplica_add"
 	ClientEcPartitionsUmpKey                    = "client_ecPartitions"
+	AdminMetaPartitionSetEnableReuseStateUmpKey = "metaPartition_setEnableReuseState"
 )

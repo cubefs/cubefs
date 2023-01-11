@@ -275,6 +275,8 @@ func (mp *metaPartition) readDeletedDir(req *ReadDeletedDirReq) (resp *ReadDelet
 
 //todo:add test
 func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
+	//todo: need add set cmd to totalCleanCount
+	var totalCleanCount = 100 * 10000
 	ctx := context.Background()
 	fsmFunc := func(dens DeletedDentryBatch) (err error) {
 		log.LogDebugf("[CleanExpiredDeletedDentry], vol:%v, mp:%v, deletedDentryCnt:%v", mp.config.VolName, mp.config.PartitionId, len(dens))
@@ -304,7 +306,7 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 
 	total := 0
 	defer log.LogInfof("[CleanExpiredDeletedDentry], vol: %v, mp: %v, cleaned %v until %v", mp.config.VolName, mp.config.PartitionId, total, expires)
-	batch := 128
+	batch := int(mp.GetBatchDelInodeCnt() * 2)
 	dens := make(DeletedDentryBatch, 0, batch)
 	snap := mp.GetSnapShot()
 	if snap == nil {
@@ -312,7 +314,14 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 		return
 	}
 	defer snap.Close()
+	startTime := time.Now()
+	//todo: need add set cmd to 5 min
 	err = snap.Range(DelDentryType, func(item interface{}) (bool, error) {
+		if total > totalCleanCount || time.Since(startTime) > time.Minute * 5 {
+			log.LogInfof("[CleanExpiredDeletedDentry] mp(%v) clean Count:%v, clean time:%v",
+				mp.config.PartitionId, total, time.Since(startTime).Seconds())
+			return false, nil
+		}
 		dd := item.(*DeletedDentry)
 		_, ok := mp.IsLeader()
 		if !ok {

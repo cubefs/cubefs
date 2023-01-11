@@ -1098,6 +1098,7 @@ func newDefaultMpConfig(pid, nodeId, start, end uint64, storeMode proto.StoreMod
 		StoreMode: storeMode,
 		Cursor: math.MaxUint64 - 100000,
 	}
+	conf.VirtualMPs = append(conf.VirtualMPs, proto.VirtualMetaPartition{Start: conf.Start, End:conf.End, ID: 1})
 	return
 }
 
@@ -1152,7 +1153,7 @@ func TestMetaPartition_CreateDentryWithSubmitErrorTest(t *testing.T) {
 			Force:       true,
 		})
 	}()
-	fmt.Println(memModeTestMp.config.Cursor)
+	t.Logf("cursor:%d\n" ,memModeTestMp.config.Cursor)
 
 	if _, _, err = inodeCreate(memModeTestMp.inodeTree, NewInode(1, uint32(os.ModeDir)), true); err != nil {
 		t.Errorf("inode create failed:%v", err)

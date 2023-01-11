@@ -226,6 +226,18 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 				msg += fmt.Sprintf("DN WAL Sync On Unstable      : enable, ")
 			}
 
+			if info.ReuseMPInodeCountThreshold > 0 {
+				msg += fmt.Sprintf("ReuseMP Inode Count Threshold: %v, ", info.ReuseMPInodeCountThreshold)
+			}
+			if info.ReuseMPDentryCountThreshold > 0 {
+				msg += fmt.Sprintf("ReuseMP Dentry Count Threshold: %v, ", info.ReuseMPDentryCountThreshold)
+			}
+			if info.MetaPartitionMaxInodeCount > 0 {
+				msg += fmt.Sprintf("MP Max Inode Count           : %v, ", info.MetaPartitionMaxInodeCount)
+			}
+			if info.MetaPartitionMaxDentryCount > 0 {
+				msg += fmt.Sprintf("MP Max Dentry Count          : %v, ", info.MetaPartitionMaxDentryCount)
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -282,6 +294,10 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.DataNodeFlushFDInterval, "dataNodeFlushFDInterval", -1, "time interval for flushing WAL and open FDs on DataNode, unit is seconds.")
 	cmd.Flags().Int64Var(&info.DataNodeFlushFDParallelismOnDisk, "dataNodeFlushFDParallelismOnDisk", 0, "parallelism for flushing WAL and open FDs on DataNode per disk.")
 	cmd.Flags().Int64Var(&info.DNNormalExtentDeleteExpire, "dnNormalExtentDeleteExpire", 0, "datanode normal extent delete record expire time(second, >=600)")
+	cmd.Flags().Float64Var(&info.ReuseMPInodeCountThreshold, "reuseMPInodeCountThreshold", 0, "float64, inode count threshold when reuse mp")
+	cmd.Flags().Float64Var(&info.ReuseMPDentryCountThreshold, "reuseMPDentryCountThreshold", 0, "floa64, dentry count threshold when reuse mp")
+	cmd.Flags().Uint64Var(&info.MetaPartitionMaxInodeCount, "metaPartitionMaxInodeCount", 0, "if inode count more than max count, mp status change to read only")
+	cmd.Flags().Uint64Var(&info.MetaPartitionMaxDentryCount, "metaPartitionMaxDentryCount", 0, "if dentry count more than max count, mp status change to read only")
 	return cmd
 }
 

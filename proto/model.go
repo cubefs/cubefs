@@ -49,6 +49,7 @@ type MetaNodeInfo struct {
 	Carry                     float64
 	Threshold                 float32
 	ReportTime                time.Time
+	PhyMetaPartitionCount     int
 	MetaPartitionCount        int
 	NodeSetID                 uint64
 	PersistenceMetaPartitions []uint64
@@ -116,6 +117,7 @@ type EcNodeInfo struct {
 // MetaPartition defines the structure of a meta partition
 type MetaPartitionInfo struct {
 	PartitionID   uint64
+	PhyPID        uint64
 	Start         uint64
 	End           uint64
 	MaxInodeID    uint64
@@ -128,6 +130,7 @@ type MetaPartitionInfo struct {
 	LearnerNum    uint8
 	Status        int8
 	IsRecover     bool
+	DisableReuse  bool
 	Hosts         []string
 	Peers         []Peer
 	Learners      []Learner
@@ -137,6 +140,7 @@ type MetaPartitionInfo struct {
 	LoadResponse  []*MetaPartitionLoadResponse
 	MemStoreCnt   uint8
 	RcokStoreCnt  uint8
+	VirtualMPs    []VirtualMetaPartition
 }
 
 // InodeInfo define the information of inode
@@ -231,6 +235,10 @@ type ClusterView struct {
 	MetaTrashCleanInterval              uint64 //second
 	MetaRaftLogSize                     int64  //MB
 	MetaRaftLogCap                      int64
+	ReuseMPInodeCountThreshold          float64
+	ReuseMPDentryCountThreshold         float64
+	MetaPartitionMaxInodeCount          uint64
+	MetaPartitionMaxDentryCount         uint64
 }
 
 // NodeView provides the view of the data or meta node.

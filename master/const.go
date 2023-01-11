@@ -256,6 +256,7 @@ const (
 	defaultFollReadHostWeight                          = 0
 	defaultChildFileMaxCount                           = 2000 * 10000    //default 2kw
 	defaultDataNodeFlushFDParallelismOnDisk            = 5
+	defaultVirtualMPCreateMinDiffTime                  = 180 //second
 )
 
 const (

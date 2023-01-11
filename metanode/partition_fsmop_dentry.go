@@ -55,7 +55,7 @@ func (mp *metaPartition) fsmCreateDentry(dbHandle interface{}, dentry *Dentry, f
 	)
 	status = proto.OpOk
 
-	if outOfRange, _ := mp.isInoOutOfRange(dentry.ParentId); outOfRange {
+	if outOfRange, _ := mp.isInoOutOfRange(dentry.ParentId); outOfRange && !forceUpdate {
 		status = proto.OpInodeOutOfRange
 		return
 	}

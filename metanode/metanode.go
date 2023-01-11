@@ -89,22 +89,77 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 		}
 		break
 	}
-
-	if metaNodeInfo == nil || len(metaNodeInfo.PersistenceMetaPartitions) == 0 {
+	if err != nil || metaNodeInfo == nil {
+		err = fmt.Errorf("get metanode info failed:%v", err)
 		return
 	}
-	lackPartitions := make([]uint64, 0)
+
+	if len(metaNodeInfo.PersistenceMetaPartitions) == 0 {
+		return
+	}
+
+	lackPhysicalPartitions := make([]uint64, 0)
 	for _, partitionID := range metaNodeInfo.PersistenceMetaPartitions {
-		_, err := m.metadataManager.GetPartition(partitionID)
+		if _, err = m.metadataManager.GetPartition(partitionID); err == nil {
+			continue
+		}
+		var (
+			partitionInfo *proto.MetaPartitionInfo
+			mp            MetaPartition
+		)
+		if partitionInfo, err = getMetaPartitionInfoWithRetry(partitionID); err != nil {
+			err = fmt.Errorf("get meta partition info from master failed:%v", err)
+			return
+		}
+
+		if partitionInfo.PhyPID == 0 || partitionInfo.PhyPID == partitionID {
+			//lack physical partition
+			lackPhysicalPartitions = append(lackPhysicalPartitions, partitionID)
+			continue
+		}
+
+		mp, err = m.metadataManager.GetPartition(partitionInfo.PhyPID)
 		if err != nil {
-			lackPartitions = append(lackPartitions, partitionID)
+			if !containsID(lackPhysicalPartitions, partitionInfo.PhyPID) {
+				lackPhysicalPartitions = append(lackPhysicalPartitions, partitionInfo.PhyPID)
+			}
+			continue
+		}
+
+		log.LogInfof("checkLocalPartitionMatchWithMasterNew, lack virtual meta partition, " +
+			"physicalPartitionID(%v), virtualPartitionID(%v)", partitionInfo.PhyPID, partitionID)
+		mp.(*metaPartition).updateVirtualMetaPartitionsFromMaster(partitionInfo.VirtualMPs)
+	}
+	if len(lackPhysicalPartitions) == 0 {
+		return
+	}
+	err = fmt.Errorf("LackPhysicalPartitions %v on metanode %v,metanode cannot start", lackPhysicalPartitions, m.localAddr+":"+m.listen)
+	log.LogErrorf(err.Error())
+	return
+}
+
+func containsID(arr []uint64, element uint64) (ok bool) {
+	if arr == nil || len(arr) == 0 {
+		return
+	}
+
+	for _, e := range arr {
+		if e == element {
+			ok = true
+			break
 		}
 	}
-	if len(lackPartitions) == 0 {
-		return
+	return
+}
+
+func getMetaPartitionInfoWithRetry(partitionID uint64) (partitionInfo *proto.MetaPartitionInfo, err error) {
+	retryCount := 3
+	for index := 0; index < retryCount; retryCount++ {
+		if partitionInfo, err = masterClient.ClientAPI().GetMetaPartition(partitionID); err == nil {
+			break
+		}
+		time.Sleep(time.Millisecond * 100)
 	}
-	err = fmt.Errorf("LackPartitions %v on metanode %v,metanode cannot start", lackPartitions, m.localAddr+":"+m.listen)
-	log.LogErrorf(err.Error())
 	return
 }
 

@@ -409,7 +409,7 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 }
 
 func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool,
+	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache, reuseMP bool,
 	authKey, zoneName, mpLayout, smartRules string, bucketPolicy, crossRegionHAType uint8,
 	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64,
 	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy) (err error) {
@@ -441,6 +441,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("batchDelInodeCnt", strconv.Itoa(int(batchDelInodeCnt)))
 	request.addParam("delInodeInterval", strconv.Itoa(int(delInodeInterval)))
 	request.addParam(proto.MetaTrashCleanIntervalKey, strconv.FormatUint(trashCleanInterVal, 10))
+	request.addParam(proto.ReuseMPKey, strconv.FormatBool(reuseMP))
 	if trashDays > -1 {
 		request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
 	}
@@ -474,7 +475,7 @@ func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) 
 }
 
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, autoRepair, volWriteMutex, forceROW, isSmart, enableWriteCache bool, zoneName, mpLayout, smartRules string,
+	followerRead, autoRepair, volWriteMutex, forceROW, isSmart, enableWriteCache, reuseMP bool, zoneName, mpLayout, smartRules string,
 	crossRegionHAType uint8, compactTag string, ecDataNum, ecParityNum uint8, ecEnable bool, hostDelayInterval int64,
 	batchDelInodeCnt, delInodeInterval uint64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
@@ -505,6 +506,7 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, ca
 	request.addHeader("isTimeOut", "false")
 	request.addParam("batchDelInodeCnt", strconv.Itoa(int(batchDelInodeCnt)))
 	request.addParam("delInodeInterval", strconv.Itoa(int(delInodeInterval)))
+	request.addParam(proto.ReuseMPKey, strconv.FormatBool(reuseMP))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -770,6 +772,18 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.MetaSyncWALEnableState == 0 || info.MetaSyncWALEnableState == 1 {
 		request.addParam(proto.MetaSyncWalEnableStateKey, strconv.FormatInt(info.MetaSyncWALEnableState, 10))
+	}
+	if info.ReuseMPInodeCountThreshold > 0 {
+		request.addParam(proto.ReuseMPInodeCountThresholdKey, strconv.FormatFloat(info.ReuseMPInodeCountThreshold, 'f', -1, 64))
+	}
+	if info.ReuseMPDentryCountThreshold > 0 {
+		request.addParam(proto.ReuseMPDentryCountThresholdKey, strconv.FormatFloat(info.ReuseMPDentryCountThreshold, 'f', -1, 64))
+	}
+	if info.MetaPartitionMaxInodeCount > 0 {
+		request.addParam(proto.MPMaxInodeCountKey, strconv.FormatUint(info.MetaPartitionMaxInodeCount, 10))
+	}
+	if info.MetaPartitionMaxDentryCount > 0 {
+		request.addParam(proto.MPMaxDentryCountKey, strconv.FormatUint(info.MetaPartitionMaxDentryCount, 10))
 	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
@@ -1157,6 +1171,17 @@ func (api *AdminAPI) SetVolChildFileMaxCount(volName string, maxCount uint32) (r
 	req.addParam(proto.ChildFileMaxCountKey, strconv.FormatUint(uint64(maxCount), 10))
 	if data, err = api.mc.serveRequest(req); err != nil {
 		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) SetMetaPartitionEnableReuseState(partitionId uint64, state bool) (result string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminMetaPartitionSetReuseState)
+	request.addParam("id", strconv.Itoa(int(partitionId)))
+	request.addParam("enable", strconv.FormatBool(state))
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return "", err
 	}
 	return string(data), nil
 }

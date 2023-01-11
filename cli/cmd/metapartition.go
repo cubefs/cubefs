@@ -59,6 +59,7 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMetaDataChecksum(client),
 		newCheckInodeTree(client),
 		newMetaPartitionResetRecoverCmd(client),
+		newMetaPartitionSetReuseStateCmd(client),
 	)
 	return cmd
 }
@@ -76,6 +77,7 @@ const (
 	cmdMetaPartitionListAllInoShort     = "list mp all inodes id"
 	cmdMetaPartitionCheckSnapshotShort  = "check snapshot is same by id"
 	cmdMetaPartitionResetRecoverShort   = "set the meta partition IsRecover value to false"
+	cmdMetaPartitionSetReuseStateShort  = "set the meta partition enable reuse state"
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -1172,4 +1174,55 @@ func stdoutMismatchInodes(resultSet []*proto.InodesCRCSumInfo, hosts []string) {
 		}
 	}
 	stdout("total mismatch inode count:%v\n", mismatchInodeCount)
+}
+
+func newMetaPartitionSetReuseStateCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		partitionID uint64
+		confirm     string
+		err         error
+		result      string
+		partition   *proto.MetaPartitionInfo
+		optEnableState bool
+	)
+	var cmd = &cobra.Command{
+		Use:   CliOpSetReuseState + " [PARTITION ID]",
+		Short: cmdMetaPartitionSetReuseStateShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			defer func() {
+				if err != nil {
+					errout("set meta partition reuse enable state failed:%v\n", err.Error())
+				}
+			}()
+			partitionID, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+				return
+			}
+			if partition.DisableReuse && !optEnableState {
+				stdout(fmt.Sprintf("MetaPartition(%v) already disable reuse state.\n", partition.PartitionID))
+				return
+			}
+			if !partition.DisableReuse && optEnableState {
+				stdout(fmt.Sprintf("MetaPartition(%v) already enable reuse state.\n", partition.PartitionID))
+				return
+			}
+			stdout(fmt.Sprintf("MetaPartition(%v) reuse state change %v to %v, please confirm(y/n):",
+				partition.PartitionID, formatEnabledDisabled(!partition.DisableReuse), formatEnabledDisabled(optEnableState)))
+			_, _ = fmt.Scanln(&confirm)
+			if "y" != confirm && "yes" != confirm {
+				return
+			}
+			result, err = client.AdminAPI().SetMetaPartitionEnableReuseState(partitionID, optEnableState)
+			if err != nil {
+				return
+			}
+			stdout("%s\n", result)
+		},
+	}
+	cmd.Flags().BoolVar(&optEnableState, "enable", true, "enable reuse state, true or false")
+	return cmd
 }

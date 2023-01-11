@@ -41,6 +41,8 @@ func mockMetaPartitionReplica(nodeID, partitionID uint64, storeMode proto.StoreM
 		RocksDBDir:  partitionDir,
 	}
 
+	config.VirtualMPs = append(config.VirtualMPs, proto.VirtualMetaPartition{Start: config.Start, End: config.End, ID: 1})
+
 	mp, err := CreateMetaPartition(config, manager)
 	if err != nil {
 		fmt.Printf("create meta partition failed:%s", err.Error())
@@ -86,9 +88,10 @@ func releaseMp(leader, follower *metaPartition, dir string) {
 
 func CreateInodeInterTest(t *testing.T, leader, follower *metaPartition, start uint64) {
 	reqCreateInode := &proto.CreateInodeRequest{
-		Gid:  0,
-		Uid:  0,
-		Mode: 470,
+		PartitionID: leader.config.PartitionId,
+		Gid:         0,
+		Uid:         0,
+		Mode:        470,
 	}
 	resp := &Packet{}
 	var err error
@@ -176,12 +179,13 @@ func TestMetaPartition_CreateInodeNewCase01(t *testing.T) {
 			}
 			defer releaseMetaPartition(mp)
 			reqCreateInode := &proto.CreateInodeRequest{
-				Gid:  0,
-				Uid:  0,
-				Mode: 470,
+				PartitionID: mp.config.PartitionId,
+				Gid:         0,
+				Uid:         0,
+				Mode:        470,
 			}
 			resp := &Packet{}
-			mp.config.Cursor = 0
+			mp.config.Cursor = 1
 
 			for i := 0; i < 100; i++ {
 				err = mp.CreateInode(reqCreateInode, resp)
@@ -227,9 +231,10 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 	}()
 
 	reqCreateInode := &proto.CreateInodeRequest{
-		Gid:  0,
-		Uid:  0,
-		Mode: 470,
+		PartitionID: leader.config.PartitionId,
+		Gid:         0,
+		Uid:         0,
+		Mode:        470,
 	}
 
 	reqUnlinkInode := &proto.UnlinkInodeRequest{
@@ -332,9 +337,10 @@ func TestMetaPartition_UnlinkInodeCase01(t *testing.T) {
 
 func createInodesForTest(leader, follower *metaPartition, inodeCnt int, mode, uid, gid uint32) (inos []uint64, err error) {
 	reqCreateInode := &proto.CreateInodeRequest{
-		Gid:  gid,
-		Uid:  uid,
-		Mode: mode,
+		PartitionID: 1,
+		Gid:         gid,
+		Uid:         uid,
+		Mode:        mode,
 	}
 
 	inos = make([]uint64, 0, inodeCnt)
@@ -1390,7 +1396,7 @@ func TestResetCursor_CursorChange(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 100; i++ {
-			mp.nextInodeID()
+			mp.nextInodeID(req.PartitionId)
 			time.Sleep(time.Microsecond * 1)
 		}
 	}()

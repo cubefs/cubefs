@@ -58,7 +58,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		resp  interface{}
 	)
 
-	inoID, err = mp.nextInodeID()
+	inoID, err = mp.nextInodeID(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
 		return

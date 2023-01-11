@@ -277,7 +277,7 @@ func (m *ClusterService) loadMetaPartition(ctx context.Context, args struct {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
-	mp, err := m.cluster.getMetaPartitionByID(args.PartitionID)
+	mp, err := m.cluster.getMetaPartitionByVirtualPID(args.PartitionID)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +295,7 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
-	mp, err := m.cluster.getMetaPartitionByID(args.PartitionID)
+	mp, err := m.cluster.getMetaPartitionByVirtualPID(args.PartitionID)
 	if err != nil {
 		return nil, err
 	}

@@ -96,7 +96,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badMetaPartitionIds := value.([]uint64)
 		for _, partitionID := range badMetaPartitionIds {
-			partition, err := c.getMetaPartitionByID(partitionID)
+			partition, err := c.getMetaPartitionByVirtualPID(partitionID)
 			if err != nil {
 				continue
 			}
@@ -114,7 +114,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 		badMetaPartitionIds := value.([]uint64)
 		newBadMpIds := make([]uint64, 0)
 		for _, partitionID := range badMetaPartitionIds {
-			partition, err := c.getMetaPartitionByID(partitionID)
+			partition, err := c.getMetaPartitionByVirtualPID(partitionID)
 			if err != nil {
 				continue
 			}

@@ -30,6 +30,8 @@ const DefaultBatchCount = 128
 
 var MetaBatchSnapshotVersionMap = map[string]SnapshotVersion{
 	RocksDBVersion:    BatchSnapshotV1,
+	Version3_3_0:      BatchSnapshotV1,
+	MPReuseVersion:    BatchSnapshotV2,
 }
 
 type EkData struct {
@@ -103,6 +105,7 @@ type BatchMetaItemIterator struct {
 	snapshotCrcFlag bool
 	treeSnap        Snapshot
 	batchSnapV      SnapshotVersion
+	metaConf        MetaPartitionConfig
 }
 
 // newBatchMetaItemIterator returns a new MetaItemIterator.
@@ -122,6 +125,7 @@ func newBatchMetaItemIterator(mp *metaPartition, snapV SnapshotVersion) (si *Bat
 	si.batchSnapV = snapV
 	si.db = mp.db
 	si.rocksDBSnap = mp.db.OpenSnap()
+	si.metaConf = *mp.config
 
 	// start data producer
 	go func(iter *BatchMetaItemIterator) {
@@ -155,6 +159,13 @@ func newBatchMetaItemIterator(mp *metaPartition, snapV SnapshotVersion) (si *Bat
 		}
 		// process index ID
 		produceItem(si.applyID)
+
+		if snapV >= BatchSnapshotV2 {
+			ok := produceItem(&si.metaConf)
+			if !ok {
+				return
+			}
+		}
 
 		// process inodes
 		if err = iter.treeSnap.Range(InodeType, func(v interface{}) (bool, error) {
@@ -357,6 +368,20 @@ func (si *BatchMetaItemIterator) Next() (data []byte, err error) {
 		case *EkData:
 			mulItems.DelExtents = append(mulItems.DelExtents, item.(*EkData))
 			continue
+		case *MetaPartitionConfig:
+			var confJsonData []byte
+			confJsonData, err = item.(*MetaPartitionConfig).marshalJson()
+			if err != nil {
+				si.err = err
+				si.Close()
+				return
+			}
+			snap = NewMetaItem(opFSMSyncMetaConf, nil, confJsonData)
+			if data, err = snap.MarshalBinary(); err != nil{
+				si.err = err
+				si.Close()
+			}
+			return
 		default:
 			break
 		}

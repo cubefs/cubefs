@@ -266,6 +266,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminResetCorruptMetaNode).
 		HandlerFunc(m.resetCorruptMetaNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminMetaPartitionSetReuseState).
+		HandlerFunc(m.setMetaPartitionEnableReuseState)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).

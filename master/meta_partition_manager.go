@@ -161,7 +161,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		badMetaPartitionIds := value.([]uint64)
 		newBadMpIds := make([]uint64, 0)
 		for _, partitionID := range badMetaPartitionIds {
-			partition, err := c.getMetaPartitionByID(partitionID)
+			partition, err := c.getMetaPartitionByVirtualPID(partitionID)
 			if err != nil {
 				continue
 			}
@@ -231,7 +231,7 @@ func (c *Cluster) fulfillMetaReplica(partitionID uint64, badAddr string) (isPush
 		}
 	}()
 	isPushBackToBadIDs = true
-	if partition, err = c.getMetaPartitionByID(partitionID); err != nil {
+	if partition, err = c.getMetaPartitionByVirtualPID(partitionID); err != nil {
 		return
 	}
 	partition.offlineMutex.Lock()
@@ -318,12 +318,13 @@ func (vol *Vol) autoCreateMetaPartitions(c *Cluster) {
 			return
 		}
 		var nextStart uint64
-		if mp.MaxInodeID > mp.Start {
-			nextStart = mp.MaxInodeID + defaultMetaPartitionInodeIDStep
+		lastVirtualMP := mp.VirtualMPs[len(mp.VirtualMPs) - 1]
+		if mp.MaxInodeID <= 0 {
+			nextStart = lastVirtualMP.Start + proto.DefaultMetaPartitionInodeIDStep
 		} else {
-			nextStart = mp.Start + defaultMetaPartitionInodeIDStep
+			nextStart = mp.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
 		}
-		if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
+		if err = vol.splitMetaPartition(c, mp, nextStart, true); err != nil {
 			msg := fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]",
 				c.Name, vol.Name, mp.PartitionID, err)
 			Warn(c.Name, msg)

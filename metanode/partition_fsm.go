@@ -367,6 +367,18 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		mp.fsmSyncDelExtents(msg.V)
 	case opFSMExtentDelSyncV2:
 		mp.fsmSyncDelExtentsV2(msg.V)
+	case opFSMMetaAddVirtualMP:
+		req := &AddVirtualMetaPartitionRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp, err = mp.fsmAddVirtualMP(req)
+	case opFSMSynVirtualMPs:
+		req := new(proto.SyncVirtualMetaPartitionsRequest)
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp, err = mp.fsmSyncVirtualMPs(req)
 	}
 
 	return
@@ -498,6 +510,7 @@ func (mp *metaPartition) Snapshot(recoverNode uint64) (snap raftproto.Snapshot, 
 		return newMetaItemIterator(mp)
 	}
 
+	//todo: change version map
 	if snapV, ok = MetaBatchSnapshotVersionMap[version.VersionStr()]; !ok {
 		log.LogErrorf("Snapshot: mp[%v] get recover node[%v] version[%s] mismatch, so send latest batch snap",
 			mp.config.PartitionId, recoverNode, version.VersionStr())
@@ -588,7 +601,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	case BaseSnapshotV:
 		log.LogInfof("mp[%v] apply base snapshot", mp.config.PartitionId)
 		return mp.ApplyBaseSnapshot(peers, iter)
-	case BatchSnapshotV1:
+	case BatchSnapshotV1, BatchSnapshotV2:
 		log.LogInfof("mp[%v] apply batch snapshot(snap version:%v)", mp.config.PartitionId, BatchSnapshotV1)
 		return mp.ApplyBatchSnapshot(peers, iter, snapV)
 	default:
@@ -638,7 +651,7 @@ func (mp *metaPartition) ApplyBaseSnapshot(peers []raftproto.Peer, iter raftprot
 			return
 		}
 
-		if err = mp.afterApplySnapshotHandle(newDBDir, appIndexID, cursor, metaTree); err != nil {
+		if err = mp.afterApplySnapshotHandle(newDBDir, appIndexID, cursor, metaTree, nil); err != nil {
 			log.LogErrorf("ApplyBaseSnapshot metaPartition(%v) recover from snap failed; after ApplySnapshot handle failed:%s", mp.config.PartitionId, err.Error())
 			return
 		}
@@ -790,6 +803,7 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 		snapshotCrcStoreSuffix = "snapshotCrc"
 		leaderCrc              uint32
 		db                     *RocksDbInfo
+		metaConf               *MetaPartitionConfig
 	)
 
 	nowStr := strconv.FormatInt(time.Now().Unix(), 10)
@@ -824,7 +838,7 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 			return
 		}
 
-		if err = mp.afterApplySnapshotHandle(newDBDir, appIndexID, cursor, metaTree); err != nil {
+		if err = mp.afterApplySnapshotHandle(newDBDir, appIndexID, cursor, metaTree, metaConf); err != nil {
 			log.LogErrorf("ApplyBatchSnapshot metaPartition(%v) recover from snap failed; after ApplySnapshot handle failed:%s", mp.config.PartitionId, err.Error())
 			return
 		}
@@ -899,6 +913,13 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 				log.LogWarnf("ApplyBatchSnapshot partitionID(%v) leader crc[%v] and local[%v] is different, snaps", mp.config.PartitionId, leaderCrc, crc)
 				err = fmt.Errorf("crc mismatch")
 			}
+		case opFSMSyncMetaConf:
+			metaConf = new(MetaPartitionConfig)
+			if err = metaConf.unmarshalJson(snap.V); err != nil {
+				log.LogErrorf("ApplyBatchSnapshot, partitionID(%v) unmarshal meta config failed:%v", mp.config.PartitionId, err)
+				return
+			}
+			log.LogDebugf("ApplyBatchSnapshot, partitionID(%v) metaConf:%s", mp.config.PartitionId, string(snap.V))
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return
@@ -987,7 +1008,7 @@ func (mp *metaPartition) metaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree
 	return
 }
 
-func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, newCursor uint64, newMetaTree *MetaTree) (err error) {
+func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, newCursor uint64, newMetaTree *MetaTree, metaConf *MetaPartitionConfig) (err error) {
 	if err = mp.ResetDbByNewDir(newDBDir); err != nil {
 		log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) recover from snap failed; Reset db failed:%s", mp.config.PartitionId, err.Error())
 		return
@@ -999,7 +1020,21 @@ func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, n
 		return
 	}
 
-	if newCursor != 0 {
+	if metaConf != nil {
+		mp.config.Start = metaConf.Start
+		mp.config.End = metaConf.End
+		mp.config.Cursor = metaConf.Cursor
+		mp.config.VirtualMPs = metaConf.VirtualMPs
+		mp.config.Peers = metaConf.Peers
+		mp.config.Learners = metaConf.Learners
+		if err = mp.persistMetadata(); err != nil {
+			log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) persist meta data failed:%v",
+				mp.config.PartitionId, err)
+		}
+	}
+
+	//todo: need check
+	if newCursor > mp.config.Cursor {
 		mp.config.Cursor = newCursor
 	}
 	err = nil
@@ -1049,7 +1084,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		command: startStoreTick,
 	}
 	if mp.config.Start == 0 && mp.config.Cursor == 0 {
-		id, err := mp.nextInodeID()
+		id, err := mp.nextInodeID(mp.config.PartitionId)
 		if err != nil {
 			log.LogFatalf("[HandleLeaderChange] init root inode id: %s.", err.Error())
 		}

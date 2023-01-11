@@ -150,7 +150,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Inode count          : %v\n", svv.InodeCount))
 	sb.WriteString(fmt.Sprintf("  Dentry count         : %v\n", svv.DentryCount))
 	sb.WriteString(fmt.Sprintf("  Max metaPartition ID : %v\n", svv.MaxMetaPartitionID))
+	sb.WriteString(fmt.Sprintf("  Max Virtual MP ID    : %v\n", svv.MaxVirtualMPId))
 	sb.WriteString(fmt.Sprintf("  Meta partition count : %v\n", svv.MpCnt))
+	sb.WriteString(fmt.Sprintf("  Virtual MP count     : %v\n", svv.VirtualMPCnt))
 	sb.WriteString(fmt.Sprintf("  Meta replicas        : %v\n", svv.MpReplicaNum))
 	sb.WriteString(fmt.Sprintf("  Meta learner num     : %v\n", svv.MpLearnerNum))
 	sb.WriteString(fmt.Sprintf("  Data partition count : %v\n", svv.DpCnt))
@@ -184,6 +186,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Trash clean interval : %v\n", svv.TrashCleanInterval))
 	sb.WriteString(fmt.Sprintf("  Batch del inode cnt  : %v\n", svv.BatchDelInodeCnt))
 	sb.WriteString(fmt.Sprintf("  Del ino interval(ms) : %v\n", svv.DelInodeInterval))
+	sb.WriteString(fmt.Sprintf("  Reuse MP               : %v\n", formatEnabledDisabled(svv.ReuseMP)))
 	return sb.String()
 }
 
@@ -361,17 +364,23 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("volume name   : %v\n", partition.VolName))
 	sb.WriteString(fmt.Sprintf("PartitionID   : %v\n", partition.PartitionID))
+	sb.WriteString(fmt.Sprintf("PhysicalPID   : %v\n", partition.PhyPID))
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString(fmt.Sprintf("LearnerNum    : %v\n", partition.LearnerNum))
 	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatMetaPartitionStatus(partition.Status)))
 	sb.WriteString(fmt.Sprintf("Recovering    : %v\n", formatIsRecover(partition.IsRecover)))
+	sb.WriteString(fmt.Sprintf("EnableReuseSt : %v\n", formatEnabledDisabled(!partition.DisableReuse)))
 	sb.WriteString(fmt.Sprintf("Start         : %v\n", partition.Start))
 	sb.WriteString(fmt.Sprintf("End           : %v\n", partition.End))
 	sb.WriteString(fmt.Sprintf("MaxInodeID    : %v\n", partition.MaxInodeID))
 	sb.WriteString(fmt.Sprintf("InodeCount    : %v\n", partition.InodeCount))
 	sb.WriteString(fmt.Sprintf("DentryCount   : %v\n", partition.DentryCount))
 	sb.WriteString(fmt.Sprintf("MaxExistIno   : %v\n", partition.MaxExistIno))
-	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Virtual MPs   :"))
+	for _, virtualMP := range partition.VirtualMPs {
+		sb.WriteString(fmt.Sprintf(" [%v: %v-%v]", virtualMP.ID, virtualMP.Start, virtualMP.End))
+	}
+	sb.WriteString("\n\n")
 	sb.WriteString(fmt.Sprintf("Replicas : \n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
 	learnerReplicas := make([]*proto.MetaReplicaInfo, 0)
@@ -417,9 +426,9 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 }
 
 var (
-	metaPartitionTablePattern = "%-8v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-10v    %-10v    %-20v    %-18v"
+	metaPartitionTablePattern = "%-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-10v    %-10v    %-20v    %-18v"
 	metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
-		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "MAX EXIST INO", "STATUS", "STOREMODE", "LEADER", "MEMBERS")
+		"PARTITION ID", "PHYSICAL PID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "STATUS", "STOREMODE", "LEADER", "MEMBERS")
 	metaPartitionSnapshotCrcInfoTablePattern = "%-12v    %-12v    %-18v    %-12v    %-12v\n"
 	metaPartitionSnapshotCrcInfoTableHeader  = fmt.Sprintf(metaPartitionSnapshotCrcInfoTablePattern, "LocalAddr", "Role",
 		"SnapshotCreateTime", "  LeaderCrc", "  FollowerCrc")
@@ -433,9 +442,8 @@ func formatMetaPartitionTableRow(view *proto.MetaPartitionView) string {
 		return strconv.FormatUint(num, 10)
 	}
 	return fmt.Sprintf(metaPartitionTablePattern,
-		view.PartitionID, view.MaxInodeID, view.DentryCount, view.InodeCount, view.Start, rangeToString(view.End),
-		view.MaxExistIno, formatMetaPartitionStatus(view.Status),
-		view.StoreMode.Str(), view.LeaderAddr, strings.Join(view.Members, ","))
+		view.PartitionID, view.PhyPid, view.MaxInodeID, view.DentryCount, view.InodeCount, view.Start, rangeToString(view.End),
+		formatMetaPartitionStatus(view.Status), view.StoreMode.Str(), view.LeaderAddr, strings.Join(view.Members, ","))
 }
 
 var (
@@ -700,6 +708,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(mn.IsActive)))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
+	sb.WriteString(fmt.Sprintf("  PhyPartition count  : %v\n", mn.PhyMetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
 	return sb.String()

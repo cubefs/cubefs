@@ -258,6 +258,11 @@ var getTargetAddressForMetaPartitionDecommission = func(c *Cluster, nodeAddr str
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1, dstStoreMode); err != nil {
+			if vol.isReuseMP() {
+				err = fmt.Errorf("mp (%v) enable reuseMP, not suport cross zone", mp.PartitionID)
+				log.LogErrorf(err.Error())
+				return
+			}
 			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 				//select meta nodes from the other zones in the same region type
 				_, newPeers, err = c.chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName,
@@ -339,7 +344,7 @@ func (c *Cluster) checkCorruptMetaPartitions() (inactiveMetaNodes []string, corr
 
 	for partitionID, badNum := range partitionMap {
 		var partition *MetaPartition
-		if partition, err = c.getMetaPartitionByID(partitionID); err != nil {
+		if partition, err = c.getMetaPartitionByVirtualPID(partitionID); err != nil {
 			return
 		}
 		if badNum > partition.ReplicaNum/2 {
@@ -478,6 +483,11 @@ func (c *Cluster) chooseTargetMetaPartitionHost(oldAddr string, mp *MetaPartitio
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1, dstStoreMode); err != nil {
+			if vol.isReuseMP() {
+				err = fmt.Errorf("mp(%v) enabled reuseMP, not support cross zone", mp.PartitionID)
+				log.LogErrorf(err.Error())
+				goto errHandler
+			}
 			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 				//select meta nodes from the other zones in the same region type
 				_, newPeers, err = c.chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName,
@@ -577,7 +587,7 @@ func (c *Cluster) forceRemoveMetaReplica(mp *MetaPartition, addrs []string) (err
 			continue
 		}
 		for _, pid := range metaNode.PersistenceMetaPartitions {
-			if pid != mp.PartitionID {
+			if !containsID(mp.allVirtualMetaPartitionIDs(), pid) {
 				newMetaPartitions = append(newMetaPartitions, pid)
 			}
 		}
@@ -1254,7 +1264,7 @@ func (c *Cluster) dealDeleteMetaPartitionResp(nodeAddr string, resp *proto.Delet
 		return
 	}
 	var mr *MetaReplica
-	mp, err := c.getMetaPartitionByID(resp.PartitionID)
+	mp, err := c.getMetaPartitionByVirtualPID(resp.PartitionID)
 	if err != nil {
 		goto errHandler
 	}
@@ -1587,14 +1597,22 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 				continue
 			}
 		} else {
-			mp, err = c.getMetaPartitionByID(mr.PartitionID)
+			mp, err = c.getMetaPartitionByVirtualPID(mr.PartitionID)
 			if err != nil {
 				continue
 			}
 		}
 
 		//send latest end to replica
-		if mr.End != mp.End {
+		if mp.needSyncVirtualMPsToMetaNode(mr) {
+			msg := fmt.Sprintf("[updateMetaNode] different virtual mps, timeNow(%s) PartitionID(%v) Addr(%s) master(%v) metaNode(%v)",
+				time.Now().Format(proto.TimeFormat), mp.PartitionID, metaNode.Addr, mp.VirtualMPs, mr.VirtualMPs)
+			log.LogWarnf(msg)
+			Warn(c.Name, msg)
+			mp.addSyncVirtualMetaPartitionsTask(c)
+		} else if mr.End != mp.End {
+			log.LogDebugf("[updateMetaNode] different end, PartitionID(%v) Addr(%s) master(%v) metaNode(%v)",
+				mp.PartitionID, metaNode.Addr, mp.End, mr.End)
 			mp.addUpdateMetaReplicaTask(c)
 		}
 		mp.updateMetaPartition(mr, metaNode)
@@ -1613,17 +1631,18 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		return
 	}
 	maxPartitionID := vol.maxPartitionID()
-	if mr.PartitionID < maxPartitionID {
+	if mr.PartitionID != maxPartitionID {
 		return
 	}
 	var end uint64
+	lastVirtualMP := mp.VirtualMPs[len(mp.VirtualMPs) - 1]
 	if mr.MaxInodeID <= 0 {
-		end = mr.Start + defaultMetaPartitionInodeIDStep
+		end = lastVirtualMP.Start + proto.DefaultMetaPartitionInodeIDStep
 	} else {
-		end = mr.MaxInodeID + defaultMetaPartitionInodeIDStep
+		end = mr.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
 	}
 	log.LogWarnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
-	if err = vol.splitMetaPartition(c, mp, end); err != nil {
+	if err = vol.splitMetaPartition(c, mp, end, true); err != nil {
 		log.LogError(err)
 	}
 	return

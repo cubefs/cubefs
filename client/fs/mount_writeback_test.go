@@ -58,7 +58,7 @@ func Test_EnableJdosKernelWriteBack(t *testing.T) {
 			// update vol write-cache
 			err := mc.AdminAPI().UpdateVolume(ltptestVol, volInfo.Capacity, int(volInfo.DpReplicaNum), int(volInfo.MpReplicaNum),
 				int(volInfo.TrashRemainingDays), int(volInfo.DefaultStoreMode), volInfo.FollowerRead, false, false,
-				false, false, false, false, false, tt.volWriteCache, calcAuthKey("ltptest"),
+				false, false, false, false, false, tt.volWriteCache, false, calcAuthKey("ltptest"),
 				"default", "0,0", "", 0, 0, 60, volInfo.CompactTag,
 				0, 0, 0, 0, 0, volInfo.UmpCollectWay)
 			if err != nil {
