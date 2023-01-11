@@ -829,10 +829,10 @@ type DataPartitionResponse struct {
 	MediumType      string
 	Total           uint64
 	Used            uint64
-	EcMigrateStatus uint8
-	EcHosts         []string
-	EcDataNum       uint8
-	EcMaxUnitSize   uint64
+	EcMigrateStatus uint8    `json:"EcMigrateStatus,omitempty"`
+	EcHosts         []string `json:"EcHosts,omitempty"`
+	EcDataNum       uint8    `json:"EcDataNum,omitempty"`
+	EcMaxUnitSize   uint64   `json:"EcMaxUnitSize,omitempty"`
 }
 
 // DataPartitionsView defines the view of a data partition
