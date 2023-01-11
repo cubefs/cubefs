@@ -1224,7 +1224,7 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	}
 
 	if err != nil {
-		log.LogError("process task:%v failed,status:%v,err:%v ", task.ID, task.Status, err)
+		log.LogErrorf("process task:%v failed,status:%v,err:%v ", task.ID, task.Status, err)
 	} else {
 		log.LogInfof("process task:%v status:%v success", task.ID, task.Status)
 	}
