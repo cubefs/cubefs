@@ -130,7 +130,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 		resp, err, timeout = c.httpRequest(r.method, url, r.params, r.header, r.body)
 		if timeout {
 			log.LogWarnf("serveRequest: send http request timeout: method(%v) url(%v) err(%v)", r.method, url, err)
-			break
+			continue
 		}
 		if err != nil {
 			log.LogWarnf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
