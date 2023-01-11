@@ -361,10 +361,10 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 
 }
 
-func (rp *ReplProtocol) operatorFuncWithWaitGroup(wg *sync.WaitGroup, request *Packet) {
-	defer wg.Done()
-	rp.operatorFunc(request, rp.sourceConn)
-}
+// func (rp *ReplProtocol) operatorFuncWithWaitGroup(wg *sync.WaitGroup, request *Packet) {
+// 	defer wg.Done()
+// 	rp.operatorFunc(request, rp.sourceConn)
+// }
 
 // Read a packet from the list, scan all the connections of the followers of this packet and read the responses.
 // If failed to read the response, then mark the packet as failure, and delete it from the list.
