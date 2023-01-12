@@ -3927,7 +3927,7 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 	}
 
 	// version
-	startVersionReporter(mw.Cluster(), mw.VolName(), masters)
+	startVersionReporter(mw.Cluster(), c.volName, masters)
 	return
 }
 

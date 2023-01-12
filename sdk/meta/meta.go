@@ -388,10 +388,6 @@ func (mw *MetaWrapper) Cluster() string {
 	return mw.cluster
 }
 
-func (mw *MetaWrapper) VolName() string {
-	return mw.volname
-}
-
 //func (mw *MetaWrapper) WorkerAddr() string {
 //	return mw.localIP
 //}
