@@ -34,7 +34,7 @@ type Storage struct {
 	truncTerm  uint64
 
 	hardState  proto.HardState
-	metafile   *metaFile
+	metafile   *MetaFile
 	prevCommit uint64 // 有commit变化时sync一下
 
 	closed bool
@@ -47,7 +47,7 @@ func NewStorage(dir string, c *Config) (*Storage, error) {
 	}
 
 	// 加载HardState
-	mf, hardState, meta, err := openMetaFile(dir)
+	mf, hardState, meta, err := OpenMetaFile(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -67,6 +67,21 @@ func NewStorage(dir string, c *Config) (*Storage, error) {
 		return nil, err
 	}
 	s.ls = ls
+
+	if c.ContinuityCheck {
+		lci, pass, err := ls.ContinuityCheck()
+		if err != nil {
+			return nil, err
+		}
+		if !pass {
+			if !c.ContinuityFix {
+				return nil, errors.New("log files not continuity")
+			}
+			if err = ls.truncateBack(lci); err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	if c.GetTruncateFirstDummy() {
 		if err := s.truncateFirstDummy(); err != nil {
@@ -90,7 +105,7 @@ func (s *Storage) truncateFirstDummy() error {
 		return errors.New("truncate first dummy forbidden")
 	}
 
-	meta := truncateMeta{
+	meta := TruncateMeta{
 		truncIndex: 1,
 		truncTerm:  1,
 	}
@@ -315,7 +330,7 @@ func (s *Storage) Truncate(index uint64) error {
 	}
 
 	// 更新meta
-	meta := truncateMeta{
+	meta := TruncateMeta{
 		truncIndex: index,
 		truncTerm:  term,
 	}
@@ -340,7 +355,7 @@ func (s *Storage) Truncate(index uint64) error {
 
 // ApplySnapshot Sync snapshot status.
 func (s *Storage) ApplySnapshot(meta proto.SnapshotMeta) error {
-	tMeta := truncateMeta{
+	tMeta := TruncateMeta{
 		truncIndex: meta.Index,
 		truncTerm:  meta.Term,
 	}

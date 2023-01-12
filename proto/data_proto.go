@@ -31,7 +31,7 @@ type DNDataPartitionInfo struct {
 	FileCount            int               `json:"fileCount"`
 	Replicas             []string          `json:"replicas"`
 	TinyDeleteRecordSize int64             `json:"tinyDeleteRecordSize"`
-	RaftStatus           *Status      `json:"raftStatus"`
+	RaftStatus           *Status           `json:"raftStatus"`
 	Peers                []Peer            `json:"peers"`
 	Learners             []Learner         `json:"learners"`
 	IsFinishLoad         bool              `json:"isFinishLoad"`
@@ -53,19 +53,19 @@ const (
 )
 
 type DNDataPartitionInfoOldVersion struct {
-	VolName              string            `json:"volName"`
-	ID                   uint64            `json:"id"`
-	Size                 int               `json:"size"`
-	Used                 int               `json:"used"`
-	Status               int               `json:"status"`
-	Path                 string            `json:"path"`
+	VolName              string       `json:"volName"`
+	ID                   uint64       `json:"id"`
+	Size                 int          `json:"size"`
+	Used                 int          `json:"used"`
+	Status               int          `json:"status"`
+	Path                 string       `json:"path"`
 	Files                []ExtentInfo `json:"extents"`
-	FileCount            int               `json:"fileCount"`
-	Replicas             []string          `json:"replicas"`
-	TinyDeleteRecordSize int64             `json:"tinyDeleteRecordSize"`
-	RaftStatus           *Status           `json:"raftStatus"`
-	Peers                []Peer            `json:"peers"`
-	Learners             []Learner         `json:"learners"`
+	FileCount            int          `json:"fileCount"`
+	Replicas             []string     `json:"replicas"`
+	TinyDeleteRecordSize int64        `json:"tinyDeleteRecordSize"`
+	RaftStatus           *Status      `json:"raftStatus"`
+	Peers                []Peer       `json:"peers"`
+	Learners             []Learner    `json:"learners"`
 }
 
 type TinyExtentHole struct {
@@ -82,7 +82,7 @@ type DNTinyExtentInfo struct {
 
 type DataNodeDiskReport struct {
 	Disks []*DataNodeDiskInfo `json:"disks"`
-	Zone  string        `json:"zone"`
+	Zone  string              `json:"zone"`
 }
 
 type DataNodeDiskInfo struct {
@@ -131,16 +131,16 @@ type CfsDisk struct {
 }
 
 type StatInfo struct {
-	Type             string      `json:"type"`
-	Zone             string      `json:"zone"`
+	Type             string       `json:"type"`
+	Zone             string       `json:"zone"`
 	VersionInfo      VersionValue `json:"versionInfo"`
-	StartTime        string      `json:"startTime"`
-	CPUUsageList     []float64   `json:"cpuUsageList"`
-	MaxCPUUsage      float64     `json:"maxCPUUsage"`
-	CPUCoreNumber    int         `json:"cpuCoreNumber"`
-	MemoryUsedGBList []float64   `json:"memoryUsedGBList"`
-	MaxMemoryUsedGB  float64     `json:"maxMemoryUsedGB"`
-	MaxMemoryUsage   float64     `json:"maxMemoryUsage"`
+	StartTime        string       `json:"startTime"`
+	CPUUsageList     []float64    `json:"cpuUsageList"`
+	MaxCPUUsage      float64      `json:"maxCPUUsage"`
+	CPUCoreNumber    int          `json:"cpuCoreNumber"`
+	MemoryUsedGBList []float64    `json:"memoryUsedGBList"`
+	MaxMemoryUsedGB  float64      `json:"maxMemoryUsedGB"`
+	MaxMemoryUsage   float64      `json:"maxMemoryUsage"`
 	DiskInfo         []struct {
 		Path            string  `json:"path"`
 		TotalTB         float64 `json:"totalTB"`
@@ -149,7 +149,6 @@ type StatInfo struct {
 		ReservedSpaceGB uint    `json:"reservedSpaceGB"`
 	} `json:"diskInfo"`
 }
-
 
 type ReplProtocalBufferDetail struct {
 	Addr     string
@@ -161,4 +160,11 @@ type ReplProtocalBufferDetail struct {
 type ExtentCrc struct {
 	ExtentId uint64
 	CRC      uint32
+}
+
+// HardState is the repl state,must persist to the storage.
+type HardState struct {
+	Term   uint64
+	Commit uint64
+	Vote   uint64
 }

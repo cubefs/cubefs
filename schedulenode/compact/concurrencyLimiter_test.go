@@ -17,7 +17,9 @@ func TestConcurrencyLimiter(t *testing.T) {
 				limiter.Done()
 				wg.Done()
 			}()
-			t.Logf("index:%v", i)
+			if i&255 == 0 {
+				t.Logf("index:%v", i)
+			}
 			time.Sleep(time.Millisecond * 10)
 		}(i)
 	}

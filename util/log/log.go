@@ -147,7 +147,7 @@ func (writer *asyncWriter) Close() (err error) {
 	return
 }
 
-// Flush flushes the write.
+// Flush flushes write.
 func (writer *asyncWriter) Flush() {
 	writer.flushToFile()
 	// TODO Unhandled errors
@@ -557,6 +557,18 @@ func IsDebugEnabled() bool {
 		return false
 	}
 	return DebugLevel&gLog.level == gLog.level
+}
+
+func IsInfoEnabled() bool {
+	return gLog != nil && InfoLevel&gLog.level == gLog.level
+}
+
+func IsWriteEnabled() bool {
+	return gLog != nil && UpdateLevel&gLog.level == gLog.level
+}
+
+func IsReadEnabled() bool {
+	return gLog != nil && ReadLevel&gLog.level == gLog.level
 }
 
 // LogDebug logs the debug information.

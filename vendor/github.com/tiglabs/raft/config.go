@@ -144,6 +144,8 @@ type RaftConfig struct {
 	Applied      uint64
 	Peers        []proto.Peer
 	Storage      storage.Storage
+	StrictHS	 bool
+	StartCommit	 uint64
 	StateMachine StateMachine
 	Learners     []proto.Learner
 }

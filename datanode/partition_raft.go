@@ -19,13 +19,16 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/data"
 	"io/ioutil"
+	"math"
 	"net"
 	"os"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -130,20 +133,48 @@ func (dp *DataPartition) startRaft() (err error) {
 		return
 	}
 
-	pc := &raftstore.PartitionConfig{
-		ID:       uint64(dp.partitionID),
-		Peers:    peers,
-		Learners: learners,
-		SM:       dp,
-		WalPath:  dp.path,
+	maxCommitID, err := dp.getQuorumMaxCommitID(context.Background())
+	if err != nil {
+		return
+	}
+	log.LogInfof("start partition(%v), maxCommitID(%v)", dp.partitionID, maxCommitID)
 
-		GetStartIndex: getStartIndex,
+	pc := &raftstore.PartitionConfig{
+		ID:                 uint64(dp.partitionID),
+		Peers:              peers,
+		Learners:           learners,
+		SM:                 dp,
+		WalPath:            dp.path,
+		StartCommit:        maxCommitID,
+		GetStartIndex:      getStartIndex,
+		WALContinuityCheck: dp.isCheckingCommit(),
+		WALContinuityFix:   dp.isCheckingCommit(),
 	}
 	dp.raftPartition = dp.config.RaftStore.CreatePartition(pc)
+
 	if err = dp.raftPartition.Start(); err != nil {
 		return
 	}
 	go dp.StartRaftLoggingSchedule()
+	return
+}
+
+func (dp *DataPartition) getQuorumMaxCommitID(ctx context.Context) (maxID uint64, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("getQuorumMaxCommitID, partition:%v, error:%v", dp.partitionID, err)
+		}
+	}()
+	minReply := dp.getCommitMinReply()
+	if minReply == 0 {
+		return
+	}
+	allRemoteCommitID, replyNum := dp.getRemoteReplicaCommitID(ctx)
+	if replyNum < minReply {
+		err = fmt.Errorf("reply num(%d) not enough to minReply(%d)", replyNum, minReply)
+		return
+	}
+	maxID, _ = dp.findMaxID(allRemoteCommitID)
 	return
 }
 
@@ -324,6 +355,26 @@ func (dp *DataPartition) startRaftAfterRepair() {
 			return
 		case <-dp.stopC:
 			timer.Stop()
+			return
+		}
+	}
+}
+
+//startRaftAsync dp instance can start without raft, this enables remote request to get the dp basic info
+func (dp *DataPartition) startRaftAsync() {
+	var err error
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	for {
+		select {
+		case <-timer.C:
+			if err = dp.startRaft(); err != nil {
+				log.LogErrorf("partition(%v) start raft failed: %v", dp.partitionID, err)
+				timer.Reset(5 * time.Second)
+				continue
+			}
+			return
+		case <-dp.stopC:
 			return
 		}
 	}
@@ -744,26 +795,25 @@ func NewPacketToGetMaxExtentIDAndPartitionSIze(ctx context.Context, partitionID 
 	return
 }
 
-func (dp *DataPartition) findMinAppliedID(allAppliedIDs []uint64) (minAppliedID uint64, index int) {
-	index = 0
-	minAppliedID = allAppliedIDs[0]
-	for i := 1; i < len(allAppliedIDs); i++ {
-		if allAppliedIDs[i] < minAppliedID {
-			minAppliedID = allAppliedIDs[i]
-			index = i
+func (dp *DataPartition) findMinID(allIDs map[string]uint64) (minID uint64, host string) {
+	minID = math.MaxUint64
+	for k, v := range allIDs {
+		if v < minID {
+			minID = v
+			host = k
 		}
 	}
-	return minAppliedID, index
+	return minID, host
 }
 
-func (dp *DataPartition) findMaxAppliedID(allAppliedIDs []uint64) (maxAppliedID uint64, index int) {
-	for i := 0; i < len(allAppliedIDs); i++ {
-		if allAppliedIDs[i] > maxAppliedID {
-			maxAppliedID = allAppliedIDs[i]
-			index = i
+func (dp *DataPartition) findMaxID(allIDs map[string]uint64) (maxID uint64, host string) {
+	for k, v := range allIDs {
+		if v > maxID {
+			maxID = v
+			host = k
 		}
 	}
-	return maxAppliedID, index
+	return maxID, host
 }
 
 // Get the partition size from the leader.
@@ -889,44 +939,130 @@ func (dp *DataPartition) broadcastMinAppliedID(ctx context.Context, minAppliedID
 	return
 }
 
-// Get all replica applied ids
-func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context) (allAppliedID []uint64, replyNum uint8) {
-	replicas := dp.getReplicaClone()
-	if len(replicas) == 0 {
-		log.LogErrorf("action[getAllReplicaAppliedID] partition(%v) replicas is nil.", dp.partitionID)
+// Get all replica commit ids
+func (dp *DataPartition) getRemoteReplicaCommitID(ctx context.Context) (commitIDMap map[string]uint64, replyNum uint8) {
+	hosts := dp.getReplicaClone()
+	if len(hosts) == 0 {
+		log.LogErrorf("action[getRemoteReplicaCommitID] partition(%v) replicas is nil.", dp.partitionID)
 		return
 	}
-	allAppliedID = make([]uint64, len(replicas))
-	for i := 0; i < len(replicas); i++ {
-		p := NewPacketToGetAppliedID(ctx, dp.partitionID)
-		target := replicas[i]
-		replicaHostParts := strings.Split(target, ":")
-		replicaHost := strings.TrimSpace(replicaHostParts[0])
-		if LocalIP == replicaHost {
-			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
-				dp.partitionID, LocalIP, replicaHost, dp.applyStatus.Applied())
-			allAppliedID[i] = dp.applyStatus.Applied()
-			replyNum++
+	commitIDMap = make(map[string]uint64, len(hosts))
+	errSlice := make(map[string]error)
+	var (
+		wg   sync.WaitGroup
+		lock sync.Mutex
+	)
+	for _, host := range hosts {
+		if dp.IsLocalAddress(host) {
 			continue
 		}
-		appliedID, err := dp.getRemoteAppliedID(target, p)
-		if err != nil {
-			log.LogErrorf("partition(%v) getRemoteAppliedID Failed(%v).", dp.partitionID, err)
-			continue
-		}
-		if appliedID == 0 {
-			log.LogDebugf("[getAllReplicaAppliedID] partition(%v) local appliedID(%v) replicaHost(%v) appliedID=0",
-				dp.partitionID, dp.applyStatus.Applied(), replicaHost)
-		}
-		allAppliedID[i] = appliedID
-		replyNum++
+		wg.Add(1)
+		go func(curAddr string) {
+			var commitID uint64
+			var err error
+			commitID, err = dp.getRemoteCommitID(curAddr)
+			if commitID == 0 {
+				log.LogDebugf("action[getRemoteReplicaCommitID] partition(%v) replicaHost(%v) commitID=0",
+					dp.partitionID, curAddr)
+			}
+			ok := false
+			lock.Lock()
+			defer lock.Unlock()
+			if err != nil {
+				log.LogErrorf("action[getRemoteReplicaCommitID] partition(%v) failed, err:%v", dp.partitionID, err)
+				errSlice[curAddr] = err
+			} else {
+				commitIDMap[curAddr] = commitID
+				ok = true
+			}
+			log.LogDebugf("action[getRemoteReplicaCommitID]: get commit id[%v] ok[%v] from host[%v], pid[%v]", commitID, ok, curAddr, dp.partitionID)
+			wg.Done()
+		}(host)
 	}
-
+	wg.Wait()
+	replyNum = uint8(len(hosts) - 1 - len(errSlice))
+	log.LogDebugf("action[getRemoteReplicaCommitID]: get commit id from hosts[%v], pid[%v]", hosts, dp.partitionID)
 	return
 }
 
+// Get all replica applied ids
+func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context) (appliedIDMap map[string]uint64, replyNum uint8) {
+	hosts := dp.getReplicaClone()
+	if len(hosts) == 0 {
+		log.LogErrorf("action[getAllReplicaAppliedID] partition(%v) replicas is nil.", dp.partitionID)
+		return
+	}
+	appliedIDMap = make(map[string]uint64, len(hosts))
+	errSlice := make(map[string]error)
+	var (
+		wg   sync.WaitGroup
+		lock sync.Mutex
+	)
+	for _, host := range hosts {
+		wg.Add(1)
+		go func(curAddr string) {
+			var appliedID uint64
+			var err error
+			defer wg.Done()
+			if dp.IsLocalAddress(curAddr) {
+				appliedID = dp.applyStatus.Applied()
+			} else {
+				appliedID, err = dp.getRemoteAppliedID(ctx, curAddr)
+			}
+			ok := false
+			lock.Lock()
+			defer lock.Unlock()
+			if err != nil {
+				errSlice[curAddr] = err
+			} else {
+				appliedIDMap[curAddr] = appliedID
+				ok = true
+			}
+			log.LogDebugf("action[getAllReplicaAppliedID]: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, dp.partitionID)
+		}(host)
+	}
+	wg.Wait()
+	replyNum = uint8(len(hosts) - len(errSlice))
+	log.LogDebugf("action[getAllReplicaAppliedID]: get apply id from hosts[%v], pid[%v]", hosts, dp.partitionID)
+	return
+}
+
+// Get target members' commit id
+func (dp *DataPartition) getRemoteCommitID(target string) (commitID uint64, err error) {
+	if dp.disk == nil || dp.disk.space == nil || dp.disk.space.dataNode == nil {
+		err = fmt.Errorf("action[getRemoteCommitID] data node[%v] not ready", target)
+		return
+	}
+	profPort := dp.disk.space.dataNode.httpPort
+	httpAddr := fmt.Sprintf("%v:%v", strings.Split(target, ":")[0], profPort)
+	dataClient := data.NewDataHttpClient(httpAddr, false)
+	var hardState proto.HardState
+	hardState, err = dataClient.GetPartitionRaftHardState(dp.partitionID)
+	if err != nil {
+		err = fmt.Errorf("action[getRemoteCommitID] datanode[%v] get partition failed, err:%v", target, err)
+		return
+	}
+	commitID = hardState.Commit
+	log.LogDebugf("[getRemoteCommitID] partition(%v) remoteCommitID(%v)", dp.partitionID, commitID)
+	return
+}
+
+func (dp *DataPartition) getLocalAppliedID() {
+
+}
+
 // Get target members' applied id
-func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appliedID uint64, err error) {
+func (dp *DataPartition) getRemoteAppliedID(ctx context.Context, target string) (appliedID uint64, err error) {
+	p := NewPacketToGetAppliedID(ctx, dp.partitionID)
+	if err = dp.sendTcpPacket(target, p); err != nil {
+		return
+	}
+	appliedID = binary.BigEndian.Uint64(p.Data[0:8])
+	log.LogDebugf("[getRemoteAppliedID] partition(%v) remoteAppliedID(%v)", dp.partitionID, appliedID)
+	return
+}
+
+func (dp *DataPartition) sendTcpPacket(target string, p *repl.Packet) (err error) {
 	var conn *net.TCPConn
 	start := time.Now().UnixNano()
 	defer func() {
@@ -953,10 +1089,7 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 		err = errors.NewErrorf("partition(%v) result code not ok(%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
-	appliedID = binary.BigEndian.Uint64(p.Data[0:8])
-
-	log.LogDebugf("[getRemoteAppliedID] partition(%v) remoteAppliedID(%v)", dp.partitionID, appliedID)
-
+	log.LogDebugf("[sendTcpPacket] partition(%v)", dp.partitionID)
 	return
 }
 
@@ -988,17 +1121,34 @@ func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) Get appliedId failed!", dp.partitionID)
 		return
 	}
-	if replyNum == uint8(len(allAppliedID)) { // update dp.minAppliedID when every member had replied
-		minAppliedID, _ = dp.findMinAppliedID(allAppliedID)
+	if replyNum == uint8(len(dp.replicas)) { // update dp.minAppliedID when every member had replied
+		minAppliedID, _ = dp.findMinID(allAppliedID)
 		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMinID(%v) newMinID(%v) allAppliedID(%v)",
 			dp.partitionID, dp.applyStatus.Applied(), dp.minAppliedID, minAppliedID, allAppliedID)
 		dp.broadcastMinAppliedID(ctx, minAppliedID)
 	}
 
-	maxAppliedID, _ = dp.findMaxAppliedID(allAppliedID)
+	maxAppliedID, _ = dp.findMaxID(allAppliedID)
 	log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMaxID(%v) newMaxID(%v)",
 		dp.partitionID, dp.applyStatus.Applied(), dp.maxAppliedID, maxAppliedID)
 	dp.maxAppliedID = maxAppliedID
 
 	return
+}
+
+func (dp *DataPartition) isCheckingCommit() bool {
+	return dp.serverFaultOccurredCheckLevel == CheckQuorumCommitID || dp.serverFaultOccurredCheckLevel == CheckAllCommitID
+}
+
+func (dp *DataPartition) getCommitMinReply() uint8 {
+	switch dp.serverFaultOccurredCheckLevel {
+	case CheckAllCommitID:
+		return uint8(len(dp.replicas)) - 1
+	case CheckQuorumCommitID:
+		return uint8(len(dp.replicas) / 2)
+	case CheckNothing:
+		return 0
+	default:
+		return 0
+	}
 }

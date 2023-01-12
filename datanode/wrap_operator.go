@@ -56,16 +56,23 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
 			log.LogErrorf(logContent)
 		} else {
-			logContent := fmt.Sprintf("action[OperatePacket] %v.",
-				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch p.Opcode {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpStreamFollowerRead:
 			case proto.OpReadTinyDeleteRecord:
-				log.LogRead(logContent)
+				if log.IsReadEnabled() {
+					log.LogReadf("action[OperatePacket] %v.",
+						p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
+				}
 			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete:
-				log.LogWrite(logContent)
+				if log.IsWriteEnabled() {
+					log.LogWritef("action[OperatePacket] %v.",
+						p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
+				}
 			default:
-				log.LogInfo(logContent)
+				if log.IsInfoEnabled() {
+					log.LogInfof("action[OperatePacket] %v.",
+						p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
+				}
 			}
 		}
 		p.Size = resultSize

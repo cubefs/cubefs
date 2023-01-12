@@ -126,6 +126,8 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	metadata.VolumeHAType = dp.config.VolHAType
 	metadata.LastUpdateTime = dp.lastUpdateTime
 	metadata.IsCatchUp = dp.isCatchUp
+	metadata.ServerFaultOccurredCheckStatus = dp.serverFaultOccurredCheckLevel
+
 	if metadata.CreateTime == "" {
 		metadata.CreateTime = time.Now().Format(TimeLayout)
 	}
@@ -135,7 +137,6 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	} else if dp.persistedMetadata != nil {
 		metadata.LastTruncateID = dp.persistedMetadata.LastTruncateID
 	}
-
 	if dp.persistedMetadata != nil && dp.persistedMetadata.Equals(metadata) {
 		return
 	}

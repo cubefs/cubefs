@@ -72,6 +72,10 @@ func (m MockPartition) Status() (status *raftstore.PartitionStatus) {
 	panic("implement me")
 }
 
+func (m MockPartition) HardState() (hs proto.HardState, err error) {
+	panic("implement me")
+}
+
 func (m MockPartition) LeaderTerm() (leaderID, term uint64) {
 	return m.Id, 0
 }

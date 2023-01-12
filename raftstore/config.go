@@ -85,6 +85,11 @@ type PartitionConfig struct {
 
 	WALFileSize          int
 	WALFileCacheCapacity int
+
+	StrictHS           bool
+	StartCommit        uint64
+	WALContinuityCheck bool
+	WALContinuityFix   bool
 }
 
 func (p PeerAddress) String() string {

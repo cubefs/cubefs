@@ -84,6 +84,7 @@ type raftFsm struct {
 
 	riskState   riskState
 	riskStateLn riskStateListener
+	startCommit	uint64
 }
 
 func (r *raftFsm) getReplicas() (m string) {
@@ -120,11 +121,19 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		r.replicas[learner.ID].isLearner = true
 		r.replicas[learner.ID].promConfig = learner.PromConfig
 	}
+	r.startCommit = raftConfig.StartCommit
 	if !hs.IsEmpty() {
 		if raftConfig.Applied > r.raftLog.lastIndex() {
 			raftConfig.Applied = r.raftLog.lastIndex()
 		}
 		if hs.Commit > r.raftLog.lastIndex() {
+			if raftConfig.StrictHS {
+				return nil, fmt.Errorf("newRaftFsm[%v] state.commit[%d] larger than raftLog[%d, %d]", r.id, hs.Commit, r.raftLog.committed, r.raftLog.lastIndex())
+			}
+			if hs.Commit > r.startCommit {
+				logger.Warn("newRaftFsm[%v] startCommit[%d] is reset to state.commit[%d]", r.id, r.startCommit, hs.Commit)
+				r.startCommit = hs.Commit
+			}
 			hs.Commit = r.raftLog.lastIndex()
 		}
 		if err := r.loadState(hs); err != nil {
@@ -132,8 +141,8 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		}
 	}
 
-	logger.Info("newRaft[%v] [commit: %d, applied: %d, firstindex: %d, lastindex: %d]",
-		r.id, raftlog.committed, raftConfig.Applied, raftlog.firstIndex(), raftlog.lastIndex())
+	logger.Info("newRaft[%v] [commit: %d, applied: %d, firstindex: %d, lastindex: %d] startCommit[%d]",
+		r.id, raftlog.committed, raftConfig.Applied, raftlog.firstIndex(), raftlog.lastIndex(), r.startCommit)
 
 	if raftConfig.Applied > 0 {
 		lasti := raftlog.lastIndex()

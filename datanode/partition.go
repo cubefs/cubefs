@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/tiglabs/raft/storage/wal"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -52,6 +53,14 @@ const (
 	TimeLayout                    = "2006-01-02 15:04:05"
 )
 
+type FaultOccurredCheckLevel uint8
+
+const (
+	CheckNothing FaultOccurredCheckLevel = iota // 默认类型，表示partition已经完成断电后防脑裂检查
+	CheckQuorumCommitID
+	CheckAllCommitID // partition尚未完成断电后防脑裂检查
+)
+
 type DataPartitionMetadata struct {
 	VolumeID                string
 	PartitionID             uint64
@@ -69,7 +78,8 @@ type DataPartitionMetadata struct {
 	// 新创建的DP成员为默认值，表示未完成第一次Raft恢复，Raft未就绪。
 	// 当第一次快照或者有应用日志行为时，该值被置为true并需要持久化该信息。
 	// 当发生快照应用(Apply Snapshot)行为时，该值为true。该DP需要关闭并进行报警。
-	IsCatchUp bool
+	IsCatchUp                      bool
+	ServerFaultOccurredCheckStatus FaultOccurredCheckLevel
 }
 
 func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
@@ -211,10 +221,11 @@ type DataPartition struct {
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
 
-	isCatchUp    bool
-	applyStatus  *WALApplyStatus
-	minAppliedID uint64
-	maxAppliedID uint64
+	isCatchUp                     bool
+	serverFaultOccurredCheckLevel FaultOccurredCheckLevel
+	applyStatus                   *WALApplyStatus
+	minAppliedID                  uint64
+	maxAppliedID                  uint64
 
 	repairC         chan struct{}
 	fetchVolHATypeC chan struct{}
@@ -352,7 +363,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v)", dp.partitionID, meta)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
 	dp.isCatchUp = meta.IsCatchUp
-
+	dp.initServerFaultOccurredCheckStatus(meta)
 	if !dp.applyStatus.Init(appliedID, meta.LastTruncateID) {
 		err = fmt.Errorf("action[loadApplyIndex] illegal metadata, appliedID %v, lastTruncateID %v", appliedID, meta.LastTruncateID)
 		return
@@ -367,6 +378,10 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 
 	dp.persistedApplied = appliedID
 	dp.persistedMetadata = meta
+	if maybeServerFaultOccurred {
+		dp.serverFaultOccurredCheckLevel = CheckAllCommitID
+		_ = dp.PersistMetaDataOnly()
+	}
 	return
 }
 
@@ -374,6 +389,11 @@ const (
 	DelayFullSyncTinyDeleteTimeRandom = 6 * 60 * 60
 )
 
+func (dp *DataPartition) initServerFaultOccurredCheckStatus(meta *DataPartitionMetadata) {
+	if meta.ServerFaultOccurredCheckStatus == CheckAllCommitID {
+		dp.serverFaultOccurredCheckLevel = CheckAllCommitID
+	}
+}
 func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
@@ -423,15 +443,35 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 	return
 }
 
+func (dp *DataPartition) RaftStatus() *raftstore.PartitionStatus {
+	if dp.raftPartition != nil {
+		return dp.raftPartition.Status()
+	}
+	return nil
+}
+
+func (dp *DataPartition) RaftHardState() (hs raftProto.HardState, err error) {
+	hs, err = dp.tryLoadRaftHardStateFromDisk()
+	return
+}
+
+func (dp *DataPartition) tryLoadRaftHardStateFromDisk() (hs raftProto.HardState, err error) {
+	var walPath = path.Join(dp.path, "wal_"+strconv.FormatUint(dp.partitionID, 10))
+	var metaFile *wal.MetaFile
+	if metaFile, hs, _, err = wal.OpenMetaFile(walPath); err != nil {
+		return
+	}
+	_ = metaFile.Close()
+	return
+}
+
 func (dp *DataPartition) Start() (err error) {
 	go dp.statusUpdateScheduler(context.Background())
 	if dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition {
 		go dp.startRaftAfterRepair()
 		return
 	}
-	if err = dp.startRaft(); err != nil {
-		log.LogErrorf("partition(%v) start raft failed: %v", dp.partitionID, err)
-	}
+	go dp.startRaftAsync()
 	return
 }
 
@@ -1256,4 +1296,21 @@ func (dp *DataPartition) getDataPartitionInfo() (dpInfo *DataPartitionViewInfo, 
 		IsRecover:            dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition,
 	}
 	return
+}
+
+func (dp *DataPartition) resetFaultOccurredCheckLevel(checkCorruptLevel FaultOccurredCheckLevel) {
+	dp.serverFaultOccurredCheckLevel = checkCorruptLevel
+}
+
+func convertCheckCorruptLevel(l uint64) (FaultOccurredCheckLevel, error) {
+	switch l {
+	case 0:
+		return CheckNothing, nil
+	case 1:
+		return CheckQuorumCommitID, nil
+	case 2:
+		return CheckAllCommitID, nil
+	default:
+		return CheckNothing, fmt.Errorf("invalid param")
+	}
 }

@@ -18,12 +18,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/cpu"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
+	"path"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -55,6 +60,9 @@ var (
 	gConnPool             = connpool.NewConnectPool()
 	MasterClient          = masterSDK.NewMasterClient(nil, false)
 	gHasLoadDataPartition bool
+	gHasFinishedLoadDisks bool
+
+	maybeServerFaultOccurred bool // 是否判定当前节点大概率出现过系统断电
 )
 
 const (
@@ -68,7 +76,8 @@ const (
 )
 
 const (
-	ModuleName = "dataNode"
+	ModuleName          = "dataNode"
+	SystemStartTimeFile = "SYS_START_TIME"
 )
 
 const (
@@ -131,13 +140,15 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return errors.New("Invalid Node Type!")
 	}
 	s.stopC = make(chan bool, 0)
-
+	if err = s.parseSysStartTime(); err != nil {
+		return
+	}
 	// parse the config file
 	if err = s.parseConfig(cfg); err != nil {
 		return
 	}
 	repl.SetConnectPool(gConnPool)
-	log.LogErrorf("doStart parseConfig fininsh")
+	log.LogErrorf("doStart parseConfig finish")
 	s.register(cfg)
 	log.LogErrorf("doStart register fininsh")
 	exporter.Init(s.clusterID, ModuleName, cfg)
@@ -199,6 +210,9 @@ func doShutdown(server common.Server) {
 	s.stopUpdateNodeInfo()
 	s.stopTCPService()
 	s.stopRaftServer()
+	if gHasFinishedLoadDisks {
+		deleteSysStartTimeFile()
+	}
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
@@ -237,6 +251,45 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
 	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
+	return
+}
+
+//parseSysStartTime maybeServerFaultOccurred is set true only in these two occasions:
+// system power off, then restart
+// kill -9 the program, then reboot or power off, then restart
+func (s *DataNode) parseSysStartTime() (err error) {
+	baseDir := getBasePath()
+	sysStartFile := path.Join(baseDir, SystemStartTimeFile)
+	if _, err = os.Stat(sysStartFile); err != nil {
+		if !os.IsNotExist(err) {
+			return
+		}
+		maybeServerFaultOccurred = false
+		if err = initSysStartTimeFile(); err != nil {
+			log.LogErrorf("parseSysStartTime set system start time has err:%v", err)
+		}
+	} else {
+		bs, err := ioutil.ReadFile(sysStartFile)
+		if err != nil {
+			return err
+		}
+		localSysStart, err := strconv.ParseInt(strings.TrimSpace(string(bs)), 10, 64)
+		if err != nil {
+			return err
+		}
+		newSysStart, err := cpu.SysStartTime()
+		if err != nil {
+			return err
+		}
+		log.LogInfof("parseSysStartTime, localSysStart[%d], newSysStart[%d]", localSysStart, newSysStart)
+
+		if newSysStart-localSysStart > 60*5 {
+			maybeServerFaultOccurred = true
+			log.LogWarnf("parseSysStartTime, the program may be started after power off, localSysStart[%d], newSysStart[%d]", localSysStart, newSysStart)
+		} else {
+			maybeServerFaultOccurred = false
+		}
+	}
 	return
 }
 
@@ -287,6 +340,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		}(&wg, path)
 	}
 	wg.Wait()
+	gHasFinishedLoadDisks = true
 	log.LogInfof("space manager loaded all disk cost(%v)", time.Since(startTime))
 	return nil
 }
@@ -396,6 +450,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/partitions", s.getPartitionsAPI)
 	http.HandleFunc("/partition", s.getPartitionAPI)
 	http.HandleFunc("/partitionSimple", s.getPartitionSimpleAPI)
+	http.HandleFunc("/partitionRaftHardState", s.getPartitionRaftHardStateAPI)
 	http.HandleFunc("/extent", s.getExtentAPI)
 	http.HandleFunc("/block", s.getBlockCrcAPI)
 	http.HandleFunc("/stats", s.getStatAPI)
@@ -414,6 +469,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/repairExtent", s.repairExtent)
 	http.HandleFunc("/repairExtentBatch", s.repairExtentBatch)
 	http.HandleFunc("/extentCrc", s.getExtentCrc)
+	http.HandleFunc("/resetFaultOccurredCheckLevel", s.resetFaultOccurredCheckLevel)
 }
 
 func (s *DataNode) startTCPService() (err error) {
@@ -538,4 +594,29 @@ func (s *DataNode) summaryMonitorData(reportTime int64) []*statistics.MonitorDat
 		return true
 	})
 	return dataList
+}
+
+func getBasePath() string {
+	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		panic(err)
+	}
+	return dir
+}
+
+func initSysStartTimeFile() (err error) {
+	baseDir := getBasePath()
+	sysStartTime, err := cpu.SysStartTime()
+	if err != nil {
+		return
+	}
+	if err = ioutil.WriteFile(path.Join(baseDir, SystemStartTimeFile), []byte(strconv.FormatUint(uint64(sysStartTime), 10)), os.ModePerm); err != nil {
+		return err
+	}
+	return
+}
+
+func deleteSysStartTimeFile() {
+	baseDir := getBasePath()
+	os.Remove(path.Join(baseDir, SystemStartTimeFile))
 }

@@ -24,26 +24,26 @@ import (
 	"github.com/tiglabs/raft/util/bufalloc"
 )
 
-type truncateMeta struct {
+type TruncateMeta struct {
 	truncIndex uint64
 	truncTerm  uint64
 }
 
-func (m truncateMeta) Size() uint64 {
+func (m TruncateMeta) Size() uint64 {
 	return 16
 }
 
-func (m truncateMeta) Encode(b []byte) {
+func (m TruncateMeta) Encode(b []byte) {
 	binary.BigEndian.PutUint64(b, m.truncIndex)
 	binary.BigEndian.PutUint64(b[8:], m.truncTerm)
 }
 
-func (m *truncateMeta) Decode(b []byte) {
+func (m *TruncateMeta) Decode(b []byte) {
 	m.truncIndex = binary.BigEndian.Uint64(b)
 	m.truncTerm = binary.BigEndian.Uint64(b[8:])
 }
 
-// Used to read and store Hard State and Truncate Mete information.
+// MetaFile used to read and store Hard State and Truncate Mete information.
 // Data storage in this file will be read and modified by using mmap.
 //
 // The size of the data file is:
@@ -57,19 +57,19 @@ func (m *truncateMeta) Decode(b []byte) {
 // | Hard State | Truncate Meta |
 // 0           23               39
 //
-type metaFile struct {
+type MetaFile struct {
 	f           *os.File
 	truncOffset int64
 	maybeDirty  bool
 }
 
-func openMetaFile(dir string) (mf *metaFile, hs proto.HardState, meta truncateMeta, err error) {
+func OpenMetaFile(dir string) (mf *MetaFile, hs proto.HardState, meta TruncateMeta, err error) {
 	f, err := os.OpenFile(path.Join(dir, "META"), os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return
 	}
 
-	mf = &metaFile{
+	mf = &MetaFile{
 		f:           f,
 		truncOffset: int64(hs.Size()),
 	}
@@ -78,7 +78,7 @@ func openMetaFile(dir string) (mf *metaFile, hs proto.HardState, meta truncateMe
 	return mf, hs, meta, err
 }
 
-func (mf *metaFile) load() (hs proto.HardState, meta truncateMeta, err error) {
+func (mf *MetaFile) load() (hs proto.HardState, meta TruncateMeta, err error) {
 	// load hardstate
 	hs_size := int(hs.Size())
 	buffer := bufalloc.AllocBuffer(hs_size)
@@ -119,11 +119,11 @@ func (mf *metaFile) load() (hs proto.HardState, meta truncateMeta, err error) {
 	return
 }
 
-func (mf *metaFile) Close() error {
+func (mf *MetaFile) Close() error {
 	return mf.f.Close()
 }
 
-func (mf *metaFile) SaveTruncateMeta(meta truncateMeta) error {
+func (mf *MetaFile) SaveTruncateMeta(meta TruncateMeta) error {
 	mt_size := int(meta.Size())
 	buffer := bufalloc.AllocBuffer(mt_size)
 	defer bufalloc.FreeBuffer(buffer)
@@ -135,7 +135,7 @@ func (mf *metaFile) SaveTruncateMeta(meta truncateMeta) error {
 	return err
 }
 
-func (mf *metaFile) SaveHardState(hs proto.HardState) error {
+func (mf *MetaFile) SaveHardState(hs proto.HardState) error {
 	hs_size := int(hs.Size())
 	buffer := bufalloc.AllocBuffer(hs_size)
 	defer bufalloc.FreeBuffer(buffer)
@@ -147,7 +147,7 @@ func (mf *metaFile) SaveHardState(hs proto.HardState) error {
 	return err
 }
 
-func (mf *metaFile) Sync() (err error) {
+func (mf *MetaFile) Sync() (err error) {
 	if mf.maybeDirty {
 		if err = mf.f.Sync(); err != nil {
 			return

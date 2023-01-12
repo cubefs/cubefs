@@ -269,7 +269,7 @@ func TestAutoFixLastIndexLogEntryFile_BrokenLogEntry(t *testing.T) {
 					}
 					entryIndex++
 				}
-				_ = lf.Close()
+				_ = lf.Release()
 			}
 		}
 
@@ -358,7 +358,7 @@ func TestAutoFixLastIndexLogEntryFile_BrokenIndex_MissingLastOneByte(t *testing.
 				}
 				entryIndex++
 			}
-			_ = lf.Close()
+			_ = lf.Release()
 		}
 	}
 
@@ -448,7 +448,7 @@ func TestAutoFixLastIndexLogEntryFile_BrokenIndex_BrokenLastOneByte(t *testing.T
 				}
 				entryIndex++
 			}
-			_ = lf.Close()
+			_ = lf.Release()
 		}
 	}
 
@@ -531,7 +531,7 @@ func TestAutoFixLastIndexLogEntryFile_BrokenIndex_OneMoreByteAtTheEnd(t *testing
 			}
 			entryIndex++
 		}
-		_ = lf.Close()
+		_ = lf.Release()
 	}
 }
 
@@ -553,6 +553,6 @@ func generateLogEntryFileWithIndex(path, name string, entries []*proto.Entry) (e
 	if err = lf.FinishWrite(nil); err != nil {
 		return
 	}
-	err = lf.Close()
+	err = lf.Release()
 	return
 }

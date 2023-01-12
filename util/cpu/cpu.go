@@ -3,10 +3,12 @@ package cpu
 import (
 	"encoding/json"
 	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/host"
 	"github.com/shirou/gopsutil/process"
 	"io/ioutil"
 	"os"
 	"strconv"
+	"time"
 )
 
 const (
@@ -69,4 +71,18 @@ func GetCPUCoreNumber() (n int) {
 		return
 	}
 	return
+}
+
+func SysStartTime() (sysStartTime int64, err error){
+	sysUpSec, err := Uptime()
+	if err != nil {
+		return
+	}
+	tSysStart := time.Unix(time.Now().Unix() - int64(sysUpSec), 0)
+	sysStartTime = tSysStart.Unix()
+	return
+}
+
+func Uptime() (uint64, error){
+	return host.Uptime()
 }

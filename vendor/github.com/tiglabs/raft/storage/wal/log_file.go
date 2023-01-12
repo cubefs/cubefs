@@ -17,6 +17,7 @@ package wal
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -332,10 +333,14 @@ func (lf *logEntryFile) FinishWrite(ctx context.Context) error {
 	return nil
 }
 
-// Close 关闭读写，关闭文件
-func (lf *logEntryFile) Close() error {
-	if atomic.LoadInt32(&lf.ref) > 0 {
+// Release 会扣减该实例的引用计数，并在引用计数为0时执行关闭并释放文件句柄。
+func (lf *logEntryFile) Release() error {
+	var ref = atomic.AddInt32(&lf.ref, -1)
+	if ref > 0 {
 		return nil
+	}
+	if ref < 0 {
+		return fmt.Errorf("redundant release to %v makes ref less than 0", lf.name.String())
 	}
 	if lf.w != nil {
 		if err := lf.w.Close(); err != nil {
@@ -343,14 +348,9 @@ func (lf *logEntryFile) Close() error {
 		}
 		lf.w = nil
 	}
-
 	return lf.f.Close()
 }
 
 func (lf *logEntryFile) IncreaseRef() (ref int) {
 	return int(atomic.AddInt32(&lf.ref, 1))
-}
-
-func (lf *logEntryFile) DecreaseRef() (ref int) {
-	return int(atomic.AddInt32(&lf.ref, -1))
 }

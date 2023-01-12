@@ -49,6 +49,10 @@ func (m mockRaftPartition) Status() (status *raftstore.PartitionStatus) {
 	return nil
 }
 
+func (m mockRaftPartition) HardState() (hs proto.HardState, err error) {
+	return proto.HardState{}, nil
+}
+
 func (m mockRaftPartition) LeaderTerm() (leaderID, term uint64) {
 	return 0, 0
 }

@@ -37,6 +37,9 @@ type Config struct {
 	TruncateFirstDummy bool
 
 	SyncRotate bool
+
+	ContinuityCheck bool
+	ContinuityFix   bool
 }
 
 func (c *Config) GetFileCacheCapacity() int {

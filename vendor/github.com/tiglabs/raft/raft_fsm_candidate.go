@@ -85,6 +85,9 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		if logger.IsEnableDebug() {
 			logger.Debug("raft[%v] [q:%d] has received %d votes and %d vote rejections.", r.id, r.quorum(), gr, len(r.votes)-gr)
 		}
+		if !r.isCommitReady() {
+			gr = len(r.votes) - r.quorum()
+		}
 		switch r.quorum() {
 		case gr:
 			if r.config.LeaseCheck {
@@ -98,10 +101,20 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		}
 	}
 }
+func (r *raftFsm) isCommitReady() bool {
+	if r.raftLog.committed < r.startCommit {
+		if logger.IsEnableWarn() {
+			logger.Warn("[raft->Step][%v] cannot campaign at term %d since current raftLog commit %d is less than start commit %d.", r.id, r.term, r.raftLog.committed, r.startCommit)
+		}
+		return false
+	}
+	return true
+}
 
 func (r *raftFsm) campaign(force bool) {
 	r.becomeCandidate()
-	if r.quorum() == r.poll(r.config.NodeID, true) {
+
+	if r.isCommitReady() && r.quorum() == r.poll(r.config.NodeID, true)  {
 		if r.config.LeaseCheck {
 			r.becomeElectionAck()
 		} else {

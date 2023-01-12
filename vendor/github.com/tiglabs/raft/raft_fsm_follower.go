@@ -110,10 +110,10 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 			lpri = pr.peer.Priority
 		}
 
-		if (!r.config.LeaseCheck || r.leader == NoLeader) && (r.vote == NoLeader || r.vote == m.From) && r.raftLog.isUpToDate(m.Index, m.LogTerm, fpri, lpri) {
+		if (!r.config.LeaseCheck || r.leader == NoLeader) && (r.vote == NoLeader || r.vote == m.From) && r.raftLog.isUpToDate(m.Index, m.LogTerm, fpri, lpri) && m.Index >= r.startCommit {
 			r.electionElapsed = 0
 			if logger.IsEnableDebug() {
-				logger.Debug("raft[%v] [logterm: %d, index: %d, vote: %v] voted for %v [logterm: %d, index: %d] at term %d.", r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, r.term)
+				logger.Debug("raft[%v] [logterm: %d, index: %d, vote: %v startCommit: %d] voted for %v [logterm: %d, index: %d] at term %d.", r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, r.startCommit, m.From, m.LogTerm, m.Index, r.term)
 			}
 			r.vote = m.From
 			nmsg := proto.GetMessage()
@@ -123,7 +123,7 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 			r.send(nmsg)
 		} else {
 			if logger.IsEnableDebug() {
-				logger.Debug("raft[%v] [logterm: %d, index: %d, vote: %v] rejected vote from %v [logterm: %d, index: %d] at term %d.", r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, r.term)
+				logger.Debug("raft[%v] [logterm: %d, index: %d, vote: %v startCommit: %d] rejected vote from %v [logterm: %d, index: %d] at term %d.", r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, r.startCommit, m.From, m.LogTerm, m.Index, r.term)
 			}
 			nmsg := proto.GetMessage()
 			nmsg.Type = proto.RespMsgVote

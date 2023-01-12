@@ -230,7 +230,7 @@ services:
             - 9500
         volumes:
             - ${DiskPath:-./docker_data}/datanode1/disk:/cfs/disk
-            - ./bin:/cfs/bin:ro
+            - ./bin:/cfs/bin:rw
             - ${DiskPath:-./docker_data}/datanode1/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
@@ -255,7 +255,7 @@ services:
             - 9500
         volumes:
             - ${DiskPath:-./docker_data}/datanode2/disk:/cfs/disk
-            - ./bin:/cfs/bin:ro
+            - ./bin:/cfs/bin:rw
             - ${DiskPath:-./docker_data}/datanode2/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
@@ -280,7 +280,7 @@ services:
             - 9500
         volumes:
             - ${DiskPath:-./docker_data}/datanode3/disk:/cfs/disk
-            - ./bin:/cfs/bin:ro
+            - ./bin:/cfs/bin:rw
             - ${DiskPath:-./docker_data}/datanode3/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
@@ -305,7 +305,7 @@ services:
             - 9500
         volumes:
             - ${DiskPath:-./docker_data}/datanode4/disk:/cfs/disk
-            - ./bin:/cfs/bin:ro
+            - ./bin:/cfs/bin:rw
             - ${DiskPath:-./docker_data}/datanode4/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json

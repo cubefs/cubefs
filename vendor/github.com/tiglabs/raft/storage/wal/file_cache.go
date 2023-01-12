@@ -100,8 +100,7 @@ func (lc *logFileCache) Delete(name logFileName, close bool) error {
 
 	lf := e.Value.(*logEntryFile)
 	if close {
-		lf.DecreaseRef()
-		if err := lf.Close(); err != nil {
+		if err := lf.Release(); err != nil {
 			return err
 		}
 	}
@@ -114,8 +113,7 @@ func (lc *logFileCache) Clean(close bool) {
 	for _, e := range lc.m {
 		lf := (e.Value).(*logEntryFile)
 		if close {
-			lf.DecreaseRef()
-			_ = lf.Close()
+			_ = lf.Release()
 		}
 	}
 	lc.m = make(map[logFileName]*list.Element, lc.capacity)
@@ -137,7 +135,7 @@ func (lc *logFileCache) keepCapacity() (err error) {
 func (lc *logFileCache) Close() (err error) {
 	for _, e := range lc.m {
 		f := (e.Value).(*logEntryFile)
-		err = f.Close()
+		err = f.Release()
 	}
 	return
 }

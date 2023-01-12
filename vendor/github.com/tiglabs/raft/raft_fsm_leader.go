@@ -293,7 +293,7 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 		if !r.replicas[m.From].isLearner {
 			r.acks[m.From] = true
 		}
-		if len(r.acks) >= r.quorum() {
+		if r.isCommitReady() && len(r.acks) >= r.quorum() {
 			r.becomeLeader()
 			r.bcastAppend(m.Ctx())
 		}

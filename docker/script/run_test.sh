@@ -168,15 +168,17 @@ print_error_info() {
     mount
     df -h
     stat $MntPoint
+    stat $RocksDBMntPoint
     ls -l $MntPoint
+    ls -l $RocksDBMntPoint
     ls -l $LTPTestDir
 }
 
 start_client() {
-    mkdir -p /cfs/rocksdbmnt
+    mkdir -p $RocksDBMntPoint
     echo -n "Starting client   ... "
-    nohup /cfs/bin/cfs-client -test.coverprofile=client.cov -test.outputdir=${cover_path} -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
-    nohup /cfs/bin/cfs-client -test.coverprofile=client_rocksdb.cov -test.outputdir=${cover_path} -c /cfs/conf/client_rocksdb.json >/cfs/log/cfs_rocksdb.out 2>&1 &
+    nohup /cfs/bin/cfs-client -test.coverprofile=client.cov -test.outputdir=${cover_path} -c /cfs/conf/client.json 2>&1 /cfs/log/cfs.out &
+    nohup /cfs/bin/cfs-client -test.coverprofile=client_rocksdb.cov -test.outputdir=${cover_path} -c /cfs/conf/client_rocksdb.json 2>&1 /cfs/log/cfs_rocksdb.out &
     sleep 10
     res=$( mount | grep -q "$VolName on $MntPoint" ; echo $? )
     if [[ $res -ne 0 ]] ; then
@@ -238,6 +240,19 @@ wait_proc_done() {
 reload_client() {
     echo -n "run update libcfssdk.so libcfsc.so test    ... "
     curl "http://127.0.0.1:17410/set/clientUpgrade?version=test"
+    sleep 5
+    res=$( stat $MntPoint | grep -q "Transport endpoint is not connected" ; echo $? )
+    if [[ $res -eq 0 ]] ; then
+        echo -e "\033[31mfail\033[0m"
+        print_error_info
+        exit $res
+    fi
+    res=$( stat $RocksDBMntPoint | grep -q "Transport endpoint is not connected" ; echo $? )
+    if [[ $res -eq 0 ]] ; then
+        echo -e "\033[31mfail\033[0m"
+        print_error_info
+        exit $res
+    fi
     echo ""
 }
 

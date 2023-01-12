@@ -405,7 +405,7 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 	defer func() {
 		if err == nil {
 			resp = proto.OpOk
-			if log.IsDebugEnabled() {
+			if log.IsWriteEnabled() {
 				log.LogWritef("[ApplyRandomWrite] "+
 					"ApplyID(%v) Partition(%v)_Extent(%v)_"+
 					"ExtentOffset(%v)_Size(%v)_CRC(%v) cost(%v)us",

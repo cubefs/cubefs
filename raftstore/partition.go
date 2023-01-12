@@ -54,7 +54,7 @@ type Partition interface {
 
 	SubmitWithCtx(ctx context.Context, cmd []byte) (resp interface{}, err error)
 
-	// ChaneMember submits member change event and information to raft log.
+	// ChangeMember submits member change event and information to raft log.
 	ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (resp interface{}, err error)
 
 	// ResetMember reset members directly with no submit, be carefully calling this method. It is used only when dead replicas > live ones and can no longer be alive
@@ -70,6 +70,9 @@ type Partition interface {
 
 	// Status returns the current raft status.
 	Status() (status *PartitionStatus)
+
+	// HardState 返回Raft实例已持久化的Commit、Term、Vote信息
+	HardState() (hs proto.HardState, err error)
 
 	// LeaderTerm returns the current term of leader in the raft group. TODO what is term?
 	LeaderTerm() (leaderID, term uint64)
@@ -180,6 +183,15 @@ func (p *partition) Status() (status *PartitionStatus) {
 	return
 }
 
+// HardState 返回当前分片准确且已持久化的Commit、Vote、Term信息
+func (p *partition) HardState() (hs proto.HardState, err error) {
+	if err = p.initWALStorage(); err != nil {
+		return
+	}
+	hs, err = p.ws.InitialState()
+	return
+}
+
 // LeaderTerm returns the current term of leader in the raft group.
 func (p *partition) LeaderTerm() (leaderID, term uint64) {
 	if p == nil || p.raft == nil {
@@ -261,12 +273,7 @@ func (p *partition) RaftConfig() *raft.Config {
 }
 
 func (p *partition) Start() (err error) {
-	var wc = &wal.Config{
-		FileCacheCapacity: p.config.WALFileCacheCapacity,
-		FileSize:          p.config.WALFileSize,
-	}
-	p.ws, err = wal.NewStorage(p.walPath, wc)
-	if err != nil {
+	if err = p.initWALStorage(); err != nil {
 		return
 	}
 	var fi uint64
@@ -290,9 +297,27 @@ func (p *partition) Start() (err error) {
 		StateMachine: p.config.SM,
 		Applied:      p.config.GetStartIndex.Get(fi, li),
 		Learners:     p.config.Learners,
+		StrictHS:     p.config.StrictHS,
+		StartCommit:  p.config.StartCommit,
 	}
 	if err = p.raft.CreateRaft(p.rc); err != nil {
 		return
+	}
+	return
+}
+
+func (p *partition) initWALStorage() (err error) {
+	if p.ws == nil {
+		var wc = &wal.Config{
+			FileCacheCapacity: p.config.WALFileCacheCapacity,
+			FileSize:          p.config.WALFileSize,
+			ContinuityCheck:   p.config.WALContinuityCheck,
+			ContinuityFix:     p.config.WALContinuityFix,
+		}
+		p.ws, err = wal.NewStorage(p.walPath, wc)
+		if err != nil {
+			return
+		}
 	}
 	return
 }

@@ -177,7 +177,7 @@ func (dc *DataHttpClient) RequestHttp(method, path string, param map[string]stri
 	return dc.serveRequest(req)
 }
 
-func (dc *DataHttpClient) ComputeExtentMd5(partitionID, extentID, offset, size uint64) (md5 string, err error){
+func (dc *DataHttpClient) ComputeExtentMd5(partitionID, extentID, offset, size uint64) (md5 string, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[ComputeExtentMd5],pid:%v, extent:%v, offset:%v, size:%v, err:%v", partitionID, extentID, offset, size, err)
@@ -202,7 +202,7 @@ func (dc *DataHttpClient) ComputeExtentMd5(partitionID, extentID, offset, size u
 	return
 }
 
-func (dc *DataHttpClient) GetDisks() (diskInfo *proto.DataNodeDiskReport, err error){
+func (dc *DataHttpClient) GetDisks() (diskInfo *proto.DataNodeDiskReport, err error) {
 	var d []byte
 	for i := 0; i < 3; i++ {
 		req := newAPIRequest(http.MethodGet, "/disks")
@@ -286,13 +286,54 @@ func (dc *DataHttpClient) GetPartitionSimple(id uint64) (pInfo *proto.DNDataPart
 		if err == nil {
 			break
 		}
-		time.Sleep(time.Second)
 	}
 	if err != nil {
 		return
 	}
 	pInfo = new(proto.DNDataPartitionInfo)
 	if err = json.Unmarshal(d, pInfo); err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataHttpClient) GetPartitionRaftHardState(id uint64) (hs proto.HardState, err error) {
+	params := make(map[string]string)
+	params["partitionID"] = strconv.FormatUint(id, 10)
+	var d []byte
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/partitionRaftHardState", params)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	hs = proto.HardState{}
+	if err = json.Unmarshal(d, &hs); err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataHttpClient) GetRaftStatusFromNode(id uint64) (raftStatus *proto.Status, err error) {
+	params := make(map[string]string)
+	params["raftID"] = strconv.FormatUint(id, 10)
+	var d []byte
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/raftStatus", params)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	raftStatus = new(proto.Status)
+	if err = json.Unmarshal(d, raftStatus); err != nil {
 		return
 	}
 	return
@@ -456,7 +497,7 @@ func (dc *DataHttpClient) RepairExtentBatch(extents, partitionPath string, parti
 	return
 }
 
-func (dc *DataHttpClient) GetDatanodeStats() (stats *proto.DataNodeStats, err error){
+func (dc *DataHttpClient) GetDatanodeStats() (stats *proto.DataNodeStats, err error) {
 	var d []byte
 	for i := 0; i < 3; i++ {
 		req := newAPIRequest(http.MethodGet, "/stats")
@@ -497,7 +538,7 @@ func (dc *DataHttpClient) GetRaftStatus(raftID uint64) (raftStatus *proto.Status
 	return
 }
 
-func (dc *DataHttpClient) SetAutoRepairStatus(autoRepair bool) (autoRepairResult bool, err error){
+func (dc *DataHttpClient) SetAutoRepairStatus(autoRepair bool) (autoRepairResult bool, err error) {
 	var d []byte
 	for i := 0; i < 3; i++ {
 		req := newAPIRequest(http.MethodGet, "/setAutoRepairStatus")
@@ -517,7 +558,7 @@ func (dc *DataHttpClient) SetAutoRepairStatus(autoRepair bool) (autoRepairResult
 	return
 }
 
-func (dc *DataHttpClient) ReleasePartitions(key string) (data string, err error){
+func (dc *DataHttpClient) ReleasePartitions(key string) (data string, err error) {
 	var d []byte
 	for i := 0; i < 3; i++ {
 		req := newAPIRequest(http.MethodGet, "/releasePartitions")
@@ -537,7 +578,7 @@ func (dc *DataHttpClient) ReleasePartitions(key string) (data string, err error)
 	return
 }
 
-func (dc *DataHttpClient) GetStatInfo() (statInfo *proto.StatInfo, err error){
+func (dc *DataHttpClient) GetStatInfo() (statInfo *proto.StatInfo, err error) {
 	var d []byte
 	for i := 0; i < 3; i++ {
 		req := newAPIRequest(http.MethodGet, "/stat/info")
@@ -557,7 +598,7 @@ func (dc *DataHttpClient) GetStatInfo() (statInfo *proto.StatInfo, err error){
 	return
 }
 
-func (dc *DataHttpClient) GetReplProtocolDetail() (details []*proto.ReplProtocalBufferDetail, err error){
+func (dc *DataHttpClient) GetReplProtocolDetail() (details []*proto.ReplProtocalBufferDetail, err error) {
 	var d []byte
 	for i := 0; i < 3; i++ {
 		req := newAPIRequest(http.MethodGet, "/getReplBufferDetail")

@@ -93,6 +93,31 @@ func (ls *logEntryStorage) open() error {
 	return nil
 }
 
+func (ls *logEntryStorage) ContinuityCheck() (lci uint64, pass bool, err error) {
+	sort.Sort(nameSlice(ls.logfiles))
+	var (
+		lf                            *logEntryFile
+		prevLastIndex, currFirstIndex uint64
+	)
+	for i := 1; i < len(ls.logfiles); i++ {
+		if lf, err = ls.get(ls.logfiles[i-1]); err != nil {
+			return
+		}
+		prevLastIndex = lf.LastIndex()
+		if lf, err = ls.get(ls.logfiles[i]); err != nil {
+			return
+		}
+		currFirstIndex = lf.FirstIndex()
+		if prevLastIndex+1 != currFirstIndex {
+			lci = prevLastIndex
+			return
+		}
+	}
+	lci = ls.last.LastIndex()
+	pass = true
+	return
+}
+
 func (ls *logEntryStorage) SetFileSize(filesize int) {
 	if ls.filesize != filesize {
 		ls.filesize = filesize
@@ -282,6 +307,7 @@ func (ls *logEntryStorage) truncateBack(index uint64) error {
 			if err := ls.remove(ls.logfiles[i]); err != nil {
 				return err
 			}
+			_ = ls.cache.Delete(ls.logfiles[i], true)
 			var lfn = ls.logfiles[i]
 			logger.Warn("storage[%v] remove log file [name: %v] cause truncate back to [index: %v]", ls.dir, lfn.String(), index)
 		}
@@ -373,8 +399,7 @@ func (ls *logEntryStorage) rotate(ctx context.Context) error {
 	go func(lf *logEntryFile) {
 		defer ls.revokeRotate(lf.Name())
 		_ = lf.FinishWrite(ctx)
-		lf.DecreaseRef()
-		_ = lf.Close()
+		_ = lf.Release()
 	}(prev)
 
 	return nil
@@ -440,7 +465,7 @@ func (ls *logEntryStorage) Close() {
 		logger.Warn("close log file cache error: %v", err)
 	}
 
-	if err := ls.last.Close(); err != nil {
+	if err := ls.last.Release(); err != nil {
 		var name = ls.last.Name()
 		logger.Warn("close log file %s error: %v", name.String(), err)
 	}

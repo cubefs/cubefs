@@ -143,6 +143,9 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 		msg := fmt.Sprintf("partition [id: %v, disk: %v] triggers an illegal raft snapshot recover and will be stop for data safe",
 			dp.partitionID, dp.Disk().Path)
 		log.LogErrorf(msg)
+		dp.Disk().space.DetachDataPartition(dp.partitionID)
+		dp.Disk().DetachDataPartition(dp)
+		dp.Stop()
 		exporter.WarningCritical(msg)
 		log.LogCritical(msg)
 	}
@@ -179,6 +182,10 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 			go dp.raftPartition.TryToLeader(dp.partitionID)
 		}
 		dp.isRaftLeader = true
+	}
+	if dp.isCheckingCommit() {
+		dp.serverFaultOccurredCheckLevel = CheckNothing
+		_ = dp.PersistMetaDataOnly()
 	}
 }
 

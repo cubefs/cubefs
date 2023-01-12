@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	raftProto "github.com/tiglabs/raft/proto"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -189,19 +190,21 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
 	s.space.RangePartitions(func(dp *DataPartition) bool {
 		partition := &struct {
-			ID       uint64   `json:"id"`
-			Size     int      `json:"size"`
-			Used     int      `json:"used"`
-			Status   int      `json:"status"`
-			Path     string   `json:"path"`
-			Replicas []string `json:"replicas"`
+			ID               uint64                  `json:"id"`
+			Size             int                     `json:"size"`
+			Used             int                     `json:"used"`
+			Status           int                     `json:"status"`
+			Path             string                  `json:"path"`
+			Replicas         []string                `json:"replicas"`
+			CheckCommitLevel FaultOccurredCheckLevel `json:"checkCommitLevel"`
 		}{
-			ID:       dp.partitionID,
-			Size:     dp.Size(),
-			Used:     dp.Used(),
-			Status:   dp.Status(),
-			Path:     dp.Path(),
-			Replicas: dp.getReplicaClone(),
+			ID:               dp.partitionID,
+			Size:             dp.Size(),
+			Used:             dp.Used(),
+			Status:           dp.Status(),
+			Path:             dp.Path(),
+			Replicas:         dp.getReplicaClone(),
+			CheckCommitLevel: dp.serverFaultOccurredCheckLevel,
 		}
 		partitions = append(partitions, partition)
 		return true
@@ -328,8 +331,8 @@ func (s *DataNode) getPartitionSimpleAPI(w http.ResponseWriter, r *http.Request)
 		paramPartitionID = "id"
 	)
 	var (
-		partitionID          uint64
-		err                  error
+		partitionID uint64
+		err         error
 		dpInfo      *DataPartitionViewInfo
 	)
 	if err = r.ParseForm(); err != nil {
@@ -337,6 +340,7 @@ func (s *DataNode) getPartitionSimpleAPI(w http.ResponseWriter, r *http.Request)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
 	if partitionID, err = strconv.ParseUint(r.FormValue(paramPartitionID), 10, 64); err != nil {
 		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -352,6 +356,33 @@ func (s *DataNode) getPartitionSimpleAPI(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s.buildSuccessResp(w, dpInfo)
+}
+
+func (s *DataNode) getPartitionRaftHardStateAPI(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		err         error
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var partition = s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	var hs raftProto.HardState
+	if hs, err = partition.RaftHardState(); err != nil {
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.buildSuccessResp(w, hs)
+	return
 }
 
 func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
@@ -1005,4 +1036,46 @@ func (s *DataNode) getExtentCrc(w http.ResponseWriter, r *http.Request) {
 		CRC: crc,
 	}
 	s.buildSuccessResp(w, result)
+}
+
+func (s *DataNode) resetFaultOccurredCheckLevel(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID       uint64
+		partitionStr      string
+		level             uint64
+		checkCorruptLevel FaultOccurredCheckLevel
+		err               error
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if level, err = strconv.ParseUint(r.FormValue("level"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	checkCorruptLevel, err = convertCheckCorruptLevel(level)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partitionStr = r.FormValue("partitionID")
+	if partitionStr != "" {
+		if partitionID, err = strconv.ParseUint(partitionStr, 10, 64); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		partition := s.space.Partition(partitionID)
+		if partition == nil {
+			s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+			return
+		}
+		partition.resetFaultOccurredCheckLevel(checkCorruptLevel)
+	} else {
+		s.space.RangePartitions(func(partition *DataPartition) bool {
+			partition.resetFaultOccurredCheckLevel(checkCorruptLevel)
+			return true
+		})
+	}
+	s.buildSuccessResp(w, "success")
 }
