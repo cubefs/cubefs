@@ -28,7 +28,7 @@ const (
 	DefaultReportAddr = "http://jfs.report.jd.local/version/report"
 )
 
-func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version string, stopC chan struct{}, wg *sync.WaitGroup) {
+func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version, volName string, stopC chan struct{}, wg *sync.WaitGroup) {
 	defer func() {
 		if wg != nil {
 			wg.Done()
@@ -46,7 +46,7 @@ func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version stri
 		case <-stopC:
 			return
 		case <-timer.C:
-			err := reportVersion(cfg, masterAddr, version)
+			err := reportVersion(cfg, masterAddr, version, volName)
 			if err != nil {
 				log.LogErrorf("[reportVersionSchedule] report version failed, errorInfo(%v)", err)
 			}
@@ -55,7 +55,7 @@ func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version stri
 	}
 }
 
-func reportVersion(cfg *config.Config, masterAddr []string, version string) (err error) {
+func reportVersion(cfg *config.Config, masterAddr []string, version, volName string) (err error) {
 	var (
 		localIp string
 	)
@@ -80,6 +80,7 @@ func reportVersion(cfg *config.Config, masterAddr []string, version string) (err
 		ClientId: clientId,
 		Version:  version,
 		ZkAddr:   cluster,
+		VolName:  volName,
 	}
 	data, err := json.Marshal(versionInfo)
 	if err != nil {

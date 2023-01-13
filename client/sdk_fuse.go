@@ -209,7 +209,7 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	versionInfo := proto.DumpVersion(gClient.moduleName, BranchName, CommitID, BuildTime)
 	gClient.wg.Add(2)
-	go version.ReportVersionSchedule(cfg, masters, versionInfo, gClient.stopC, &gClient.wg)
+	go version.ReportVersionSchedule(cfg, masters, versionInfo, gClient.volName, gClient.stopC, &gClient.wg)
 	go func() {
 		defer gClient.wg.Done()
 		var fuseState *fs.FuseContext

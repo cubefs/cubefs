@@ -392,7 +392,7 @@ func getVersionInfoString() string {
 		gClientManager.moduleName, BranchName, proto.BaseVersion, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime, cmd, pid)
 }
 
-func startVersionReporter(cluster string, masters []string) {
+func startVersionReporter(cluster, volName string, masters []string) {
 	versionReporterStartOnce.Do(func() {
 		versionInfo := getVersionInfoString()
 		cfgStr, _ := json.Marshal(struct {
@@ -400,7 +400,7 @@ func startVersionReporter(cluster string, masters []string) {
 		}{cluster})
 		cfg := config.LoadConfigString(string(cfgStr))
 		gClientManager.wg.Add(1)
-		go version.ReportVersionSchedule(cfg, masters, versionInfo, gClientManager.stopC, &gClientManager.wg)
+		go version.ReportVersionSchedule(cfg, masters, versionInfo, volName, gClientManager.stopC, &gClientManager.wg)
 	})
 }
 
@@ -3927,7 +3927,7 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 	}
 
 	// version
-	startVersionReporter(mw.Cluster(), masters)
+	startVersionReporter(mw.Cluster(), c.volName, masters)
 	return
 }
 
