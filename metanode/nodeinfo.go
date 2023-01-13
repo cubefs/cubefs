@@ -78,5 +78,15 @@ func (m *MetaNode) updateNodeInfo() {
 	}
 	updateDeleteBatchCount(clusterInfo.MetaNodeDeleteBatchCount)
 	updateDeleteWorkerSleepMs(clusterInfo.MetaNodeDeleteWorkerSleepMs)
-	updateDirChildrenNumLimit(clusterInfo.DirChildrenNumLimit)
+
+	if clusterInfo.DirChildrenNumLimit < proto.MinDirChildrenNumLimit {
+		log.LogWarnf("updateNodeInfo: DirChildrenNumLimit probably not enabled on master, set to default value(%v)",
+			proto.DefaultDirChildrenNumLimit)
+		atomic.StoreUint32(&dirChildrenNumLimit, proto.DefaultDirChildrenNumLimit)
+	} else {
+		atomic.StoreUint32(&dirChildrenNumLimit, clusterInfo.DirChildrenNumLimit)
+		log.LogInfof("updateNodeInfo: DirChildrenNumLimit(%v)", clusterInfo.DirChildrenNumLimit)
+	}
+
+	//updateDirChildrenNumLimit(clusterInfo.DirChildrenNumLimit)
 }

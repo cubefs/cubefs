@@ -1398,7 +1398,7 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	c.ebsEndpoint = clusterInfo.EbsAddr
 	c.servicePath = clusterInfo.ServicePath
 	c.cluster = clusterInfo.Cluster
-	c.dirChildrenNumLimit = uint32(clusterInfo.DirChildrenNumLimit)
+	c.dirChildrenNumLimit = clusterInfo.DirChildrenNumLimit
 	buf.InitCachePool(c.ebsBlockSize)
 	return
 }
