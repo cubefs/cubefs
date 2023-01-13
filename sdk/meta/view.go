@@ -133,8 +133,16 @@ func (mw *MetaWrapper) updateDirChildrenNumLimit() (err error) {
 	if err != nil {
 		return
 	}
-	atomic.StoreUint32(&mw.DirChildrenNumLimit, clusterInfo.DirChildrenNumLimit)
-	log.LogInfof("updateDirChildrenNumLimit: DirChildrenNumLimit(%v)", mw.DirChildrenNumLimit)
+
+	if clusterInfo.DirChildrenNumLimit < proto.MinDirChildrenNumLimit {
+		log.LogWarnf("updateDirChildrenNumLimit: DirChildrenNumLimit probably not enabled on master, set to default value(%v)",
+			proto.DefaultDirChildrenNumLimit)
+		atomic.StoreUint32(&mw.DirChildrenNumLimit, proto.DefaultDirChildrenNumLimit)
+	} else {
+		atomic.StoreUint32(&mw.DirChildrenNumLimit, clusterInfo.DirChildrenNumLimit)
+		log.LogInfof("updateDirChildrenNumLimit: DirChildrenNumLimit(%v)", mw.DirChildrenNumLimit)
+	}
+
 	return
 }
 
