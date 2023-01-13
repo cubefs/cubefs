@@ -222,6 +222,10 @@ func (mw *MetaWrapper) initMetaWrapper() (err error) {
 		return err
 	}
 
+	if err = mw.updateDirChildrenNumLimit(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
