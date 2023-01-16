@@ -26,10 +26,11 @@ import (
 func TestMetricReport(t *testing.T) {
 	ctx := context.Background()
 	vm := volumeMgr{}
-	vm.modeInfos = make(map[codemode.CodeMode]*ModeInfo)
-	modeInfo := &ModeInfo{
-		volumes: &volumes{}, totalThreshold: 15 * 16 * 1024 * 1024 * 1024,
-		totalFree: 30 * 16 * 1024 * 1024 * 1024,
+	vm.modeInfos = make(map[codemode.CodeMode]*modeInfo)
+	modeInfo := &modeInfo{
+		current:        &volumes{},
+		backup:         &volumes{},
+		totalThreshold: 15 * 16 * 1024 * 1024 * 1024,
 	}
 	for i := 1; i <= 30; i++ {
 		volInfo := clustermgr.AllocVolumeInfo{
@@ -41,9 +42,9 @@ func TestMetricReport(t *testing.T) {
 			},
 			ExpireTime: 100,
 		}
-		modeInfo.volumes.Put(&volume{
+		modeInfo.Put(&volume{
 			AllocVolumeInfo: volInfo,
-		})
+		}, false)
 	}
 	vm.modeInfos[codemode.CodeMode(2)] = modeInfo
 	vm.metricReport(ctx)
