@@ -17,6 +17,7 @@ package allocator
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -29,7 +30,9 @@ type volume struct {
 }
 
 type volumes struct {
-	vols []*volume
+	vols      []*volume
+	totalFree uint64
+
 	sync.RWMutex
 }
 
@@ -43,6 +46,14 @@ func (s *volumes) Get(vid proto.Vid) (*volume, bool) {
 	return s.vols[i], true
 }
 
+func (s *volumes) UpdateTotalFree(fsize uint64) uint64 {
+	return atomic.AddUint64(&s.totalFree, fsize)
+}
+
+func (s *volumes) TotalFree() uint64 {
+	return atomic.LoadUint64(&s.totalFree)
+}
+
 func (s *volumes) Put(vol *volume) {
 	s.Lock()
 	defer s.Unlock()
@@ -52,26 +63,36 @@ func (s *volumes) Put(vol *volume) {
 		sort.Slice(s.vols, func(i, j int) bool {
 			return s.vols[i].Vid < s.vols[j].Vid
 		})
+		atomic.AddUint64(&s.totalFree, vol.Free)
 	}
 }
 
-func (s *volumes) Delete(vid proto.Vid) {
+func (s *volumes) Delete(vid proto.Vid) bool {
 	s.Lock()
 	defer s.Unlock()
 	i, ok := search(s.vols, vid)
 	if ok {
 		vols := make([]*volume, len(s.vols)-1)
+		vol := s.vols[i]
 		copy(vols, s.vols[:i])
 		copy(vols[i:], s.vols[i+1:])
 		s.vols = vols
+		atomic.AddUint64(&s.totalFree, -vol.Free)
 	}
+	return ok
 }
 
 func (s *volumes) List() (vols []*volume) {
 	s.RLock()
 	defer s.RUnlock()
-	vols = s.vols
+	vols = s.vols[:]
 	return vols
+}
+
+func (s *volumes) Len() int {
+	s.RLock()
+	defer s.RUnlock()
+	return len(s.vols)
 }
 
 func search(vols []*volume, vid proto.Vid) (int, bool) {

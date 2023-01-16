@@ -26,8 +26,10 @@ import (
 	cm "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/proxy/mock"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 func TestNewVolumeMgr(t *testing.T) {
@@ -95,17 +97,36 @@ func TestGetAllocList(t *testing.T) {
 		ExpireTime: expireTime,
 	}
 
-	modeInfoMap := make(map[codemode.CodeMode]*ModeInfo)
+	volInfo6 := cm.AllocVolumeInfo{
+		VolumeInfo: cm.VolumeInfo{
+			VolumeInfoBase: cm.VolumeInfoBase{
+				Vid:  6,
+				Free: 10 * 1024 * 1024,
+			},
+		},
+		ExpireTime: expireTime,
+	}
 
-	volumeStateInfo1 := &ModeInfo{volumes: &volumes{}, totalThreshold: 5 * 1024 * 1024, totalFree: 3 * 1024 * 1024}
-	volumeStateInfo1.volumes.Put(&volume{AllocVolumeInfo: volInfo1})
-	volumeStateInfo1.volumes.Put(&volume{AllocVolumeInfo: volInfo2})
+	modeInfoMap := make(map[codemode.CodeMode]*modeInfo)
+
+	volumeStateInfo1 := &modeInfo{
+		current:        &volumes{},
+		backup:         &volumes{},
+		totalThreshold: 5 * 1024 * 1024,
+	}
+	volumeStateInfo1.Put(&volume{AllocVolumeInfo: volInfo1}, false)
+	volumeStateInfo1.Put(&volume{AllocVolumeInfo: volInfo2}, false)
 	modeInfoMap[codemode.CodeMode(1)] = volumeStateInfo1
 
-	volumeStateInfo2 := &ModeInfo{volumes: &volumes{}, totalThreshold: 5 * 1024 * 1024, totalFree: 32 * 1024 * 1024}
-	volumeStateInfo2.volumes.Put(&volume{AllocVolumeInfo: volInfo3})
-	volumeStateInfo2.volumes.Put(&volume{AllocVolumeInfo: volInfo4})
-	volumeStateInfo2.volumes.Put(&volume{AllocVolumeInfo: volInfo5})
+	volumeStateInfo2 := &modeInfo{
+		current:        &volumes{},
+		backup:         &volumes{},
+		totalThreshold: 5 * 1024 * 1024,
+	}
+	volumeStateInfo2.Put(&volume{AllocVolumeInfo: volInfo3}, false)
+	volumeStateInfo2.Put(&volume{AllocVolumeInfo: volInfo4}, false)
+	volumeStateInfo2.Put(&volume{AllocVolumeInfo: volInfo5}, false)
+	volumeStateInfo2.Put(&volume{AllocVolumeInfo: volInfo6}, true)
 	modeInfoMap[codemode.CodeMode(2)] = volumeStateInfo2
 
 	vm := volumeMgr{
@@ -121,7 +142,7 @@ func TestGetAllocList(t *testing.T) {
 	{
 		vids, _, err := vm.List(ctx, codemode.CodeMode(2))
 		require.NoError(t, err)
-		require.Equal(t, []proto.Vid{3, 4, 5}, vids)
+		require.Equal(t, []proto.Vid{3, 4, 5, 6}, vids)
 	}
 	{
 		writableVidsArgs := &proxy.AllocVolsArgs{
@@ -132,12 +153,10 @@ func TestGetAllocList(t *testing.T) {
 			Discards: []proto.Vid{5},
 		}
 		vid, err := vm.allocVid(ctx, writableVidsArgs)
-		if err != nil {
-			t.Log(err)
-		}
+		require.Nil(t, err)
 		require.Equal(t, 3, int(vid))
-		info3, _ := vm.modeInfos[codemode.CodeMode(2)].volumes.Get(proto.Vid(3))
-		totalFree := vm.modeInfos[codemode.CodeMode(2)].totalFree
+		info3, _ := vm.modeInfos[codemode.CodeMode(2)].Get(proto.Vid(3), false)
+		totalFree := vm.modeInfos[codemode.CodeMode(2)].current.totalFree
 		require.Equal(t, 3*1024*1024, int(info3.Free))
 		require.Equal(t, 11*1024*1024, int(totalFree))
 	}
@@ -166,10 +185,11 @@ func BenchmarkVolumeMgr_Alloc(b *testing.B) {
 	bidMgr, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 100000}, cmcli)
 	vm := volumeMgr{clusterMgr: cmcli, BidMgr: bidMgr}
 
-	vm.modeInfos = make(map[codemode.CodeMode]*ModeInfo)
-	modeInfo := &ModeInfo{
-		volumes: &volumes{}, totalThreshold: 1 * 16 * 1024 * 1024 * 1024,
-		totalFree: 400 * 16 * 1024 * 1024 * 1024,
+	vm.modeInfos = make(map[codemode.CodeMode]*modeInfo)
+	info := &modeInfo{
+		current:        &volumes{},
+		totalThreshold: 1 * 16 * 1024 * 1024 * 1024,
+		backup:         &volumes{},
 	}
 	for i := 1; i <= 400; i++ {
 		volInfo := cm.AllocVolumeInfo{
@@ -182,15 +202,18 @@ func BenchmarkVolumeMgr_Alloc(b *testing.B) {
 			ExpireTime: 100,
 		}
 
-		modeInfo.volumes.Put(&volume{
+		info.Put(&volume{
 			AllocVolumeInfo: volInfo,
-		})
+		}, false)
+		info.Put(&volume{
+			AllocVolumeInfo: volInfo,
+		}, true)
 	}
 
-	vm.modeInfos[codemode.CodeMode(2)] = modeInfo
+	vm.modeInfos[codemode.CodeMode(2)] = info
 
 	args := &proxy.AllocVolsArgs{
-		Fsize:    4 * 1024,
+		Fsize:    100,
 		BidCount: 2,
 		CodeMode: 2,
 		Excludes: []proto.Vid{4, 5},
@@ -198,9 +221,50 @@ func BenchmarkVolumeMgr_Alloc(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := vm.Alloc(ctx, args)
-		if err != nil {
-			b.Fatal(err)
-		}
+		require.Nil(b, err)
+	}
+}
+
+func BenchmarkAllocByBackup(b *testing.B) {
+	cmcli := mock.ProxyMockClusterMgrCli(b)
+	ctx := context.Background()
+	bidMgr, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 100000}, cmcli)
+	vm := volumeMgr{clusterMgr: cmcli, BidMgr: bidMgr}
+
+	vm.modeInfos = make(map[codemode.CodeMode]*modeInfo)
+	info := &modeInfo{
+		current:        &volumes{totalFree: 5 * 1024},
+		totalThreshold: 16 * 1024 * 1024 * 1024,
+		backup:         &volumes{},
+	}
+	volInfo := cm.AllocVolumeInfo{
+		VolumeInfo: cm.VolumeInfo{
+			VolumeInfoBase: cm.VolumeInfoBase{
+				Vid:  proto.Vid(1),
+				Free: 10 * 16 * 1024 * 1024 * 1024,
+			},
+		},
+		ExpireTime: 100,
+	}
+	info.Put(&volume{
+		AllocVolumeInfo: volInfo,
+	}, true)
+
+	vm.modeInfos[codemode.CodeMode(2)] = info
+	args := &proxy.AllocVolsArgs{
+		Fsize:    1 << 10,
+		CodeMode: codemode.EC6P6,
+		BidCount: 1,
+		Excludes: nil,
+		Discards: nil,
+	}
+	vm.allocChs = make(map[codemode.CodeMode]chan *allocArgs)
+	vm.allocChs[codemode.EC6P6] = make(chan *allocArgs)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := vm.allocVid(context.Background(), args)
+		require.NoError(b, err)
 	}
 }
 
@@ -210,10 +274,11 @@ func TestPollingAlloc(t *testing.T) {
 	bidMgr, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 100000}, cmcli)
 	vm := volumeMgr{clusterMgr: cmcli, BidMgr: bidMgr}
 
-	vm.modeInfos = make(map[codemode.CodeMode]*ModeInfo)
-	modeInfo := &ModeInfo{
-		volumes: &volumes{}, totalThreshold: 16 * 1024 * 1024 * 1024,
-		totalFree: 10 * 16 * 1024 * 1024 * 1024,
+	vm.modeInfos = make(map[codemode.CodeMode]*modeInfo)
+	info := &modeInfo{
+		current:        &volumes{},
+		backup:         &volumes{},
+		totalThreshold: 16 * 1024 * 1024 * 1024,
 	}
 	for i := 1; i <= 10; i++ {
 		volInfo := cm.AllocVolumeInfo{
@@ -226,12 +291,24 @@ func TestPollingAlloc(t *testing.T) {
 			ExpireTime: 100,
 		}
 
-		modeInfo.volumes.Put(&volume{
+		info.Put(&volume{
 			AllocVolumeInfo: volInfo,
-		})
-	}
+		}, false)
 
-	vm.modeInfos[codemode.CodeMode(2)] = modeInfo
+	}
+	info.Put(&volume{
+		AllocVolumeInfo: cm.AllocVolumeInfo{
+			VolumeInfo: cm.VolumeInfo{
+				VolumeInfoBase: cm.VolumeInfoBase{
+					Vid:  proto.Vid(20),
+					Free: 16 * 1024 * 1024 * 1024,
+				},
+			},
+			ExpireTime: 100,
+		},
+	}, true)
+
+	vm.modeInfos[codemode.CodeMode(2)] = info
 	args := &proxy.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
@@ -320,16 +397,16 @@ func TestGetAvaliableVols(t *testing.T) {
 		VolConfig:  VolConfig{},
 		BidMgr:     nil,
 		clusterMgr: cmcli,
-		modeInfos:  make(map[codemode.CodeMode]*ModeInfo),
-		mu:         sync.RWMutex{},
+		modeInfos:  make(map[codemode.CodeMode]*modeInfo),
 		allocChs:   make(map[codemode.CodeMode]chan *allocArgs),
 		closeCh:    nil,
 	}
 	v.allocChs[codemode.EC6P6] = make(chan *allocArgs)
 
-	modeInfo := &ModeInfo{
-		volumes: &volumes{}, totalThreshold: 2 * 1024 * 1024 * 1024,
-		totalFree: 15 * 1024 * 1024 * 1024,
+	info := &modeInfo{
+		current:        &volumes{},
+		backup:         &volumes{},
+		totalThreshold: 2 * 1024 * 1024 * 1024,
 	}
 	for i := 1; i <= 5; i++ {
 		volInfo := cm.AllocVolumeInfo{
@@ -343,11 +420,26 @@ func TestGetAvaliableVols(t *testing.T) {
 			ExpireTime: 100,
 		}
 
-		modeInfo.volumes.Put(&volume{
+		info.Put(&volume{
 			AllocVolumeInfo: volInfo,
-		})
+		}, false)
 	}
-	v.modeInfos[codemode.EC6P6] = modeInfo
+
+	volInfo := cm.AllocVolumeInfo{
+		VolumeInfo: cm.VolumeInfo{
+			VolumeInfoBase: cm.VolumeInfoBase{
+				Vid:      proto.Vid(6),
+				CodeMode: codemode.EC6P6,
+				Free:     uint64(6 * 1024 * 1024 * 1024),
+			},
+		},
+		ExpireTime: 100,
+	}
+	info.Put(&volume{
+		AllocVolumeInfo: volInfo,
+	}, true)
+
+	v.modeInfos[codemode.EC6P6] = info
 
 	args := &proxy.AllocVolsArgs{
 		Fsize:    5 << 30,
@@ -387,20 +479,78 @@ func TestGetAvaliableVols(t *testing.T) {
 		Excludes: nil,
 		Discards: []proto.Vid{1, 3, 5},
 	}
-	vols, err = v.getAvailableVols(ctx, args3)
-	vids3 := make([]proto.Vid, 0)
-	for _, v := range vols {
-		vids3 = append(vids3, v.Vid)
-	}
-	require.Error(t, err)
-	require.Equal(t, []proto.Vid{}, vids3)
+	_, err = v.getAvailableVols(ctx, args3)
+	require.Error(t, err, errcode.ErrNoAvaliableVolume)
 
 	// test alloc background
-	v.modeInfos[codemode.EC6P6].volumes.vols = []*volume{}
+	v.modeInfos[codemode.EC6P6].current.vols = []*volume{}
 	go v.allocVolumeLoop(codemode.EC6P6)
 	time.Sleep(time.Millisecond * 100)
-	go v.allocNotify(ctx, codemode.EC6P6, 5)
-	go v.allocNotify(ctx, codemode.EC6P6, 5)
+	go v.allocNotify(ctx, codemode.EC6P6, 5, false)
+	go v.allocNotify(ctx, codemode.EC6P6, 5, false)
 	time.Sleep(time.Millisecond * 100)
-	require.Equal(t, 5, len(v.modeInfos[codemode.EC6P6].volumes.List()))
+	require.Equal(t, 5, len(v.modeInfos[codemode.EC6P6].List(false)))
+}
+
+func TestAllocParallel(b *testing.T) {
+	log.SetOutputLevel(2)
+	cmcli := mock.ProxyMockClusterMgrCli(b)
+	ctx := context.Background()
+	bidMgr, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 100000}, cmcli)
+	vm := volumeMgr{clusterMgr: cmcli, BidMgr: bidMgr}
+
+	vm.modeInfos = make(map[codemode.CodeMode]*modeInfo)
+	vm.allocChs = make(map[codemode.CodeMode]chan *allocArgs)
+	info := &modeInfo{
+		current:        &volumes{},
+		backup:         &volumes{},
+		totalThreshold: 16 * 1024 * 1024,
+	}
+	for i := 1; i <= 400; i++ {
+		volInfo := cm.AllocVolumeInfo{
+			VolumeInfo: cm.VolumeInfo{
+				VolumeInfoBase: cm.VolumeInfoBase{
+					Vid:      proto.Vid(i),
+					CodeMode: codemode.EC6P6,
+					Free:     16 * 1024 * 1024 * 1024,
+				},
+			},
+			ExpireTime: 100,
+		}
+
+		info.Put(&volume{
+			AllocVolumeInfo: volInfo,
+		}, true)
+	}
+	info.Put(&volume{
+		AllocVolumeInfo: cm.AllocVolumeInfo{
+			VolumeInfo: cm.VolumeInfo{
+				VolumeInfoBase: cm.VolumeInfoBase{
+					Vid:      proto.Vid(20),
+					CodeMode: codemode.EC6P6,
+					Free:     16 * 1024 * 1024,
+				},
+			},
+			ExpireTime: 100,
+		},
+	}, false)
+
+	vm.modeInfos[codemode.EC6P6] = info
+	vm.allocChs[codemode.EC6P6] = make(chan *allocArgs)
+	var wg sync.WaitGroup
+	for i := 0; i < 8000; i++ {
+		wg.Add(1)
+		go func() {
+			vid, err := vm.allocVid(context.Background(),
+				&proxy.AllocVolsArgs{
+					Fsize:    1024,
+					CodeMode: codemode.EC6P6,
+					BidCount: 1,
+				})
+			require.Nil(b, err)
+			require.Less(b, proto.Vid(0), vid)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 }
