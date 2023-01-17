@@ -1713,7 +1713,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 			goto errHandler
 		}
 	} else {
-		if err = c.removeDataReplica(dp, srcAddr, false, false); err != nil {
+		if err = c.removeDataReplica(dp, srcAddr, false, raftForce); err != nil {
 			goto errHandler
 		}
 		if err = c.addDataReplica(dp, newAddr); err != nil {
