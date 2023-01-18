@@ -55,6 +55,7 @@ type Status struct {
 	Applied        uint64 `json:"applied"`
 	RaftApplied    uint64 `json:"raftApplied"`
 	LeadTransferee uint64 `json:"transferee"`
+	ApplyingLength int    `json:"applyingLength"`
 	Peers          []Peer `json:"peers"`
 }
 
