@@ -362,9 +362,9 @@ begin:
 			}
 
 			log.LogDebugf("action[streamer.write] inode [%v] latest seq [%v] extentkey seq [%v]  info [%v]",
-				s.inode, s.verSeq, req.ExtentKey.VerSeq, req.ExtentKey)
+				s.inode, s.verSeq, req.ExtentKey.GetSeq(), req.ExtentKey)
 
-			if req.ExtentKey.VerSeq == s.verSeq {
+			if req.ExtentKey.GetSeq() == s.verSeq {
 				log.LogDebugf("action[streamer.write] over write extent key (%v)", req.ExtentKey)
 				writeSize, err = s.doOverwrite(req, direct)
 				if err == proto.ErrCodeVersionOp {
@@ -537,8 +537,9 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 		ExtentId:     replyPacket.ExtentID,
 		ExtentOffset: uint64(replyPacket.ExtentOffset),
 		Size:         uint32(total),
-		VerSeq:       s.verSeq,
-		ModGen:       0,
+		SnapInfo: &proto.ExtSnapInfo{
+			VerSeq: s.verSeq,
+		},
 	}
 	log.LogDebugf("action[doOverwriteByAppend] inode %v local cache process start extKey %v", s.inode, extKey)
 	if err = s.extents.SplitExtentKey(s.inode, extKey); err != nil {
@@ -682,7 +683,9 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool) (to
 						ExtentId:     currentEK.ExtentId,
 						ExtentOffset: currentEK.ExtentOffset,
 						Size:         currentEK.Size,
-						VerSeq:       currentEK.VerSeq,
+						SnapInfo: &proto.ExtSnapInfo{
+							VerSeq: currentEK.GetSeq(),
+						},
 					}
 					s.handler = handler
 					s.dirty = false

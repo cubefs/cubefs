@@ -153,7 +153,7 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	})
 
 	if ekFind == nil {
-		err = fmt.Errorf("inode %v not found ek fileOff[%v] seq[%v]", inodeID, ekPivot.FileOffset, ekPivot.VerSeq)
+		err = fmt.Errorf("inode %v not found ek fileOff[%v] seq[%v]", inodeID, ekPivot.FileOffset, ekPivot.GetSeq())
 		return
 	}
 	ek := &proto.ExtentKey{}
@@ -164,7 +164,7 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 		panic(nil)
 	}
 	log.LogDebugf("ExtentCache Delete: ino(%v) ek(%v) ", cache.inode, ekFind)
-	ek.ModGen++
+	ek.AddModGen()
 	log.LogDebugf("action[SplitExtentKey] inode %v ek [%v] ekPivot [%v] ekLeft [%v]", inodeID, ek, ekPivot, ekLeft)
 	// begin
 	if ek.FileOffset == ekPivot.FileOffset {
@@ -203,8 +203,10 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 			ExtentId:     ek.ExtentId,
 			ExtentOffset: ek.ExtentOffset + uint64(newSize+ekPivot.Size),
 			Size:         ek.Size - newSize - ekPivot.Size,
-			VerSeq:       ek.VerSeq,
-			ModGen:       ek.ModGen,
+			SnapInfo: &proto.ExtSnapInfo{
+				VerSeq: ek.GetSeq(),
+				ModGen: ek.GetModGen(),
+			},
 		}
 		log.LogDebugf("action[SplitExtentKey] inode %v add ekEnd [%v] after split size(%v,%v,%v)", inodeID, ekEnd, newSize, ekPivot.Size, ekEnd.Size)
 		cache.root.ReplaceOrInsert(ekEnd)
@@ -277,7 +279,7 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 	}
 
 	log.LogDebugf("ExtentCache Append: ino(%v) sync(%v) ek(%v) local discard(%v) discardExtents(%v), seq(%v)",
-		cache.inode, sync, ek, discard, discardExtents, ek.VerSeq)
+		cache.inode, sync, ek, discard, discardExtents, ek.GetSeq())
 	//	log.LogDebugf("ExtentCache Append stack[%v]", string(debug.Stack()))
 
 	//cache.root.Descend(func(i btree.Item) bool {
@@ -391,7 +393,7 @@ func (cache *ExtentCache) GetEndForAppendW(offset uint64, verSeq uint64) (ret *p
 		}
 
 		if offset == ek.FileOffset+uint64(ek.Size) {
-			if ek.VerSeq == verSeq {
+			if ek.GetSeq() == verSeq {
 				if ek.ExtentOffset >= util.ExtentSize {
 					log.LogDebugf("action[ExtentCache.GetEndForAppendW] inode %v req offset %v verseq %v not found, exist ek [%v]",
 						cache.inode, offset, verSeq, ek.String())
