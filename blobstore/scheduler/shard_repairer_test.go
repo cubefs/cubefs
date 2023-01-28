@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/golang/mock/gomock"
@@ -72,6 +73,7 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 		blobnodeCli:             blobnode,
 		failMsgSender:           sender,
 		kafkaConsumerClient:     kafkaClient,
+		punishTime:              time.Duration(defaultMessagePunishTimeM) * time.Minute,
 		orphanShardLogger:       orphanShardLog,
 		taskSwitch:              taskSwitch,
 		taskPool:                taskpool.New(10, 10),
@@ -80,7 +82,7 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 		errStatsDistribution:    base.NewErrorStats(),
 		repairSuccessCounterMin: &counter.Counter{},
 		repairFailedCounterMin:  &counter.Counter{},
-		cfg:                     &ShardRepairConfig{},
+		cfg:                     &ShardRepairConfig{MessagePunishThreshold: defaultMessagePunishThreshold},
 	}
 }
 
@@ -173,6 +175,26 @@ func TestConsumerShardRepairMsg(t *testing.T) {
 		ret := mgr.consume(ctx, msg, consuming)
 		require.Equal(t, ShardRepairStatusUndo, ret.status)
 	}
+	{
+		// message punished and consume success
+		msg := &proto.ShardRepairMsg{Bid: 1, Vid: 1, ReqId: "123456", BadIdx: []uint8{0, 1}, Retry: defaultMessagePunishThreshold}
+		oldPunishTime := mgr.punishTime
+		mgr.punishTime = 10 * time.Millisecond
+		ret := mgr.consume(ctx, msg, commonCloser)
+		require.Equal(t, ShardRepairStatusDone, ret.status)
+		mgr.punishTime = oldPunishTime
+	}
+	{
+		// message punished for a while and cancel
+		msg := &proto.ShardRepairMsg{Bid: 1, Vid: 1, ReqId: "123456", BadIdx: []uint8{0, 1}, Retry: defaultMessagePunishThreshold}
+		closer := closer.New()
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			closer.Close()
+		}()
+		ret := mgr.consume(ctx, msg, closer)
+		require.Equal(t, ShardRepairStatusUndo, ret.status)
+	}
 }
 
 func TestNewShardRepairMgr(t *testing.T) {
@@ -195,6 +217,8 @@ func TestNewShardRepairMgr(t *testing.T) {
 			Dir:       testDir,
 			ChunkBits: 22,
 		},
+		MessagePunishTimeM:     defaultMessagePunishTimeM,
+		MessagePunishThreshold: defaultMessagePunishThreshold,
 	}
 
 	clusterTopology := NewMockClusterTopology(ctr)

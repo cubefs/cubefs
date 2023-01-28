@@ -167,6 +167,10 @@ type BlobDeleteConfig struct {
 	ClusterID proto.ClusterID
 	Kafka     BlobDeleteKafkaConfig
 
+	// when the message retry times is greater than this, it will punish for a period of time before consumption
+	MessagePunishThreshold int `json:"message_punish_threshold"`
+	MessagePunishTimeM     int `json:"message_punish_time_m"`
+
 	TaskPoolSize    int              `json:"task_pool_size"`
 	SafeDelayTimeH  int64            `json:"safe_delay_time_h"`
 	DeleteHourRange HourRange        `json:"delete_hour_range"`
@@ -202,6 +206,7 @@ type BlobDeleteMgr struct {
 	kafkaConsumerClient base.KafkaConsumer
 	consumers           []base.GroupConsumer
 	safeDelayTime       time.Duration
+	punishTime          time.Duration
 	deleteHourRange     HourRange
 	failMsgSender       base.IProducer
 
@@ -248,6 +253,7 @@ func NewBlobDeleteMgr(
 
 		kafkaConsumerClient: kafkaClient,
 		safeDelayTime:       time.Duration(cfg.SafeDelayTimeH) * time.Hour,
+		punishTime:          time.Duration(cfg.MessagePunishTimeM) * time.Minute,
 		deleteHourRange:     cfg.DeleteHourRange,
 		failMsgSender:       failMsgSender,
 		delLogger:           delLogger,
@@ -399,18 +405,6 @@ func (mgr *BlobDeleteMgr) Consume(msg *sarama.ConsumerMessage, consumerPause bas
 	return ret.status != DeleteStatusUndo
 }
 
-func (mgr *BlobDeleteMgr) sleep(duration time.Duration, consumerPause base.ConsumerPause) bool {
-	t := time.NewTimer(duration)
-	defer t.Stop()
-
-	select {
-	case <-t.C:
-		return true
-	case <-consumerPause.Done():
-		return false
-	}
-}
-
 func (mgr *BlobDeleteMgr) consume(ctx context.Context, delMsg *proto.DeleteMsg, consumerPause base.ConsumerPause) delBlobRet {
 	// quick exit if consumer is pause
 	select {
@@ -420,11 +414,19 @@ func (mgr *BlobDeleteMgr) consume(ctx context.Context, delMsg *proto.DeleteMsg, 
 	}
 	span := trace.SpanFromContextSafe(ctx)
 
+	// if message retry times is greater than MessagePunishThreshold while sleep MessagePunishTimeM minutes
+	if delMsg.Retry >= mgr.cfg.MessagePunishThreshold {
+		span.Warnf("punish message for a while: until[%+v], sleep[%+v], retry[%d]",
+			time.Now().Add(mgr.punishTime), mgr.punishTime, delMsg.Retry)
+		if ok := sleep(mgr.punishTime, consumerPause); !ok {
+			return delBlobRet{status: DeleteStatusUndo}
+		}
+	}
 	now := time.Now().UTC()
 	if now.Sub(time.Unix(delMsg.Time, 0)) < mgr.safeDelayTime {
 		sleepDuration := mgr.delayDuration(delMsg.Time)
-		span.Warnf("blob is protected: util[%+v], sleep[%+v]", time.Unix(delMsg.Time, 0).Add(mgr.safeDelayTime), sleepDuration)
-		ok := mgr.sleep(sleepDuration, consumerPause)
+		span.Warnf("blob is protected: until[%+v], sleep[%+v]", time.Unix(delMsg.Time, 0).Add(mgr.safeDelayTime), sleepDuration)
+		ok := sleep(sleepDuration, consumerPause)
 		if !ok {
 			return delBlobRet{status: DeleteStatusUndo}
 		}
@@ -665,4 +667,16 @@ func shouldUpdateVolumeErr(errCode int) bool {
 func assumeDeleteSuccess(errCode int) bool {
 	return errCode == errcode.CodeBidNotFound ||
 		errCode == errcode.CodeShardMarkDeleted
+}
+
+func sleep(duration time.Duration, consumerPause base.ConsumerPause) bool {
+	t := time.NewTimer(duration)
+	defer t.Stop()
+
+	select {
+	case <-t.C:
+		return true
+	case <-consumerPause.Done():
+		return false
+	}
 }
