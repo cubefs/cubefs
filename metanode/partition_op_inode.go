@@ -37,7 +37,7 @@ func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
 	info.Uid = ino.Uid
 	info.Gid = ino.Gid
 	info.Generation = ino.Generation
-	info.VerSeq = ino.verSeq
+	info.VerSeq = ino.getVer()
 	if length := len(ino.LinkTarget); length > 0 {
 		info.Target = make([]byte, length)
 		copy(info.Target, ino.LinkTarget)
@@ -61,7 +61,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	info.Uid = ino.Uid
 	info.Gid = ino.Gid
 	info.Generation = ino.Generation
-	info.VerSeq = ino.verSeq
+	info.VerSeq = ino.getVer()
 	if length := len(ino.LinkTarget); length > 0 {
 		info.Target = make([]byte, length)
 		copy(info.Target, ino.LinkTarget)
@@ -116,7 +116,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	ino := NewInode(inoID, req.Mode)
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid
-	ino.verSeq = mp.verSeq
+	ino.setVer(mp.verSeq)
 	ino.LinkTarget = req.Target
 
 	val, err := ino.Marshal()
@@ -322,7 +322,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		r, err = mp.submit(opFSMUnlinkInodeOnce, val)
 	} else {
 		ino := NewInode(req.Inode, 0)
-		ino.verSeq = req.VerSeq
+		ino.setVer(req.VerSeq)
 		log.LogDebugf("action[UnlinkInode] verseq %v ino %v", ino.verSeq, ino)
 		item := mp.inodeTree.Get(ino)
 		if item == nil {
@@ -343,7 +343,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	}
 
 	log.LogDebugf("action[UnlinkInode] ino %v submit", ino)
-	if req.DenVerSeq == item.(*Inode).verSeq {
+	if req.DenVerSeq == item.(*Inode).getVer() {
 		ino.Flag |= InodeDelTop
 	}
 
@@ -412,7 +412,8 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 // InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
-	ino.verSeq = req.VerSeq
+	ino.setVer(req.VerSeq)
+
 	getAllVerInfo := req.VerAll
 	retMsg := mp.getInode(ino, getAllVerInfo)
 
@@ -428,11 +429,12 @@ func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err 
 		resp := &proto.InodeGetSplitResponse{
 			Info: &proto.InodeSplitInfo{
 				Inode:  ino.Inode,
-				VerSeq: ino.verSeq,
+				VerSeq: ino.getVer(),
 			},
 		}
-		if retMsg.Msg.ekRefMap != nil {
-			retMsg.Msg.ekRefMap.Range(func(key, value interface{}) bool {
+		multiSnap := retMsg.Msg.multiSnap
+		if multiSnap.ekRefMap != nil {
+			multiSnap.ekRefMap.Range(func(key, value interface{}) bool {
 				dpID, extID := proto.ParseFromId(key.(uint64))
 				resp.Info.SplitArr = append(resp.Info.SplitArr, proto.SimpleExtInfo{
 					ID:          key.(uint64),
@@ -465,7 +467,7 @@ func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err 
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 
 	ino := NewInode(req.Inode, 0)
-	ino.verSeq = req.VerSeq
+	ino.setVer(req.VerSeq)
 	getAllVerInfo := req.VerAll
 	retMsg := mp.getInode(ino, getAllVerInfo)
 
@@ -630,7 +632,7 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 	for _, inoId := range req.Inodes {
 		var quotaInfos map[uint32]*proto.MetaQuotaInfo
 		ino.Inode = inoId
-		ino.verSeq = req.VerSeq
+		ino.setVer(req.VerSeq)
 		retMsg := mp.getInode(ino, false)
 		if mp.mqMgr.EnableQuota() {
 			quotaInfos, err = mp.getInodeQuotaInfos(inoId)

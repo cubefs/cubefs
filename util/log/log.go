@@ -617,7 +617,9 @@ func LogFatal(v ...interface{}) {
 	}
 	s := fmt.Sprintln(v...)
 	s = gLog.SetPrefix(s, levelPrefixes[4])
+	gLog.debugLogger.Output(2, s)
 	gLog.errorLogger.Output(2, s)
+	gLog.infoLogger.Output(2, s)
 	gLog.Flush()
 	os.Exit(1)
 }
@@ -629,7 +631,9 @@ func LogFatalf(format string, v ...interface{}) {
 	}
 	s := fmt.Sprintf(format, v...)
 	s = gLog.SetPrefix(s, levelPrefixes[4])
+	gLog.debugLogger.Output(2, s)
 	gLog.errorLogger.Output(2, s)
+	gLog.infoLogger.Output(2, s)
 	gLog.Flush()
 	os.Exit(1)
 }

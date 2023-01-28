@@ -74,7 +74,7 @@ func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, split
 		// Don't use se.Append here, since we need to retain the raw ek order.
 		se.eks = append(se.eks, ek)
 		log.LogDebugf("UnmarshalBinary. ek %v", ek)
-		if ek.IsSplit {
+		if ek.IsSplit() {
 			if splitMap == nil {
 				splitMap = new(sync.Map)
 			}
@@ -146,7 +146,7 @@ func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.Exten
 
 func storeEkSplit(inodeID uint64, ekRef *sync.Map, ek *proto.ExtentKey) (id uint64) {
 	log.LogDebugf("storeEkSplit inode %v mp %v extent id %v ek %v", inodeID, ek.PartitionId, ek.ExtentId, ek)
-	ek.IsSplit = true
+	ek.SetSplit(true)
 	id = ek.PartitionId<<32 | ek.ExtentId
 	var v uint32
 	if val, ok := ekRef.Load(id); !ok {
@@ -172,7 +172,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 		status = proto.OpArgMismatchErr
 		return
 	}
-	ekSplit.IsSplit = true
+	ekSplit.SetSplit(true)
 	lastKey := se.eks[len(se.eks)-1]
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ekSplit.FileOffset {
 		log.LogErrorf("SplitWithCheck. inode %v eks do split not found", inodeID)
@@ -213,8 +213,8 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 	}
 
 	keySize := key.Size
-	key.ModGen++
-	if !key.IsSplit {
+	key.AddModGen()
+	if !key.IsSplit() {
 		storeEkSplit(inodeID, ekRef, key)
 	}
 
@@ -309,9 +309,11 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 			ExtentOffset: key.ExtentOffset + uint64(key.Size) + uint64(ekSplit.Size),
 			Size:         keySize - key.Size - ekSplit.Size,
 			//crc
-			VerSeq:  key.VerSeq,
-			ModGen:  0,
-			IsSplit: true,
+			SnapInfo: &proto.ExtSnapInfo{
+				VerSeq:  key.GetSeq(),
+				ModGen:  0,
+				IsSplit: true,
+			},
 		}
 		se.eks = append(se.eks, *mKey)
 		storeEkSplit(inodeID, ekRef, mKey)
@@ -441,7 +443,7 @@ func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentK
 			rsKey.Size -= lastKey.Size
 			rsKey.FileOffset += uint64(lastKey.Size)
 			rsKey.ExtentOffset += uint64(lastKey.Size)
-			rsKey.IsSplit = true // the delete key not the last one
+			rsKey.SetSplit(true) // the delete key not the last one
 
 			deleteExtents = append([]proto.ExtentKey{rsKey}, deleteExtents...)
 			log.LogDebugf("SortedExtents.Truncate rsKey %v, deleteExtents %v", rsKey, deleteExtents)
