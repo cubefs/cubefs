@@ -247,10 +247,10 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			continue
 		}
 
-		log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] inode.Extents %v, ino verlist %v", mp.config.PartitionId, ino, inode.Extents, inode.multiVersions)
-		if len(inode.multiVersions) > 1 {
+		log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] inode.Extents %v, ino verlist %v", mp.config.PartitionId, ino, inode.Extents, inode.multiSnap.multiVersions)
+		if inode.getLayerLen() > 1 {
 			log.LogErrorf("deleteMarkedInodes. mp %v inode [%v] verlist len %v should not drop",
-				mp.config.PartitionId, ino, len(inode.multiVersions))
+				mp.config.PartitionId, ino, inode.getLayerLen())
 			return
 		}
 

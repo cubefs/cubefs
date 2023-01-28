@@ -22,7 +22,6 @@ import (
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
 	"io"
-	"math"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -128,14 +127,14 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64) (resp *In
 func (mp *metaPartition) getInodeByVer(ino *Inode) (i *Inode) {
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
-		log.LogDebugf("action[getInodeByVer] not found ino %v verseq %v", ino.Inode, ino.verSeq)
+		log.LogDebugf("action[getInodeByVer] not found ino %v verseq %v", ino.Inode, ino.getVer())
 		return
 	}
 	log.LogDebugf("action[getInodeByVer] ino %v verseq %v hist len %v request ino ver %v",
-		ino.Inode, item.(*Inode).verSeq, len(item.(*Inode).multiVersions), ino.verSeq)
-	i, _ = item.(*Inode).getInoByVer(ino.verSeq, false)
+		ino.Inode, item.(*Inode).getVer(), item.(*Inode).getLayerLen(), ino.getVer())
+	i, _ = item.(*Inode).getInoByVer(ino.getVer(), false)
 
-	log.LogDebugf("action[getInodeByVer] ino %v verseq %v fin,i %v", ino.Inode, item.(*Inode).verSeq, i)
+	log.LogDebugf("action[getInodeByVer] ino %v verseq %v fin,i %v", ino.Inode, item.(*Inode).getVer(), i)
 	return
 }
 
@@ -146,7 +145,7 @@ func (mp *metaPartition) getInodeTopLayer(ino *Inode) (resp *InodeResponse) {
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
-		log.LogDebugf("action[getInodeTopLayer] not found ino %v verseq %v", ino.Inode, ino.verSeq)
+		log.LogDebugf("action[getInodeTopLayer] not found ino %v verseq %v", ino.Inode, ino.getVer())
 		return
 	}
 	i := item.(*Inode)
@@ -258,7 +257,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		return
 	}
 	inode := item.(*Inode)
-	if ino.verSeq == 0 && inode.ShouldDelete() {
+	if ino.getVer() == 0 && inode.ShouldDelete() {
 		log.LogDebugf("action[fsmUnlinkInode] ino %v", ino)
 		resp.Status = proto.OpNotExistErr
 		return
@@ -279,13 +278,13 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		status = proto.OpOk
 	)
 
-	if ino.verSeq == 0 {
+	if ino.getVer() == 0 {
 		ext2Del, doMore, status = inode.unlinkTopLayer(ino, mp.verSeq, mp.multiVersionList)
 	} else { // means drop snapshot
-		log.LogDebugf("action[fsmUnlinkInode] req drop assigned snapshot reqseq %v inode seq %v", ino.verSeq, inode.verSeq)
-		if ino.verSeq > inode.verSeq && ino.verSeq != math.MaxUint64 {
+		log.LogDebugf("action[fsmUnlinkInode] req drop assigned snapshot reqseq %v inode seq %v", ino.getVer(), inode.getVer())
+		if ino.getVer() > inode.getVer() && !isInitSnapVer(ino.getVer()) {
 			log.LogDebugf("action[fsmUnlinkInode] inode %v unlink not exist snapshot and return do nothing.reqSeq %v larger than inode seq %v",
-				ino.Inode, ino.verSeq, inode.verSeq)
+				ino.Inode, ino.getVer(), inode.getVer())
 			return
 		} else {
 			ext2Del, doMore, status = inode.unlinkVerInList(ino, mp.verSeq, mp.multiVersionList)
@@ -296,10 +295,10 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		return
 	}
 
-	if ino.verSeq == 0 && topLayerEmpty && inode.IsEmptyDirAndNoSnapshot() { // normal deletion
+	if ino.getVer() == 0 && topLayerEmpty && inode.IsEmptyDirAndNoSnapshot() { // normal deletion
 		log.LogDebugf("action[fsmUnlinkInode] ino %v really be deleted, empty dir", ino)
 		mp.inodeTree.Delete(inode)
-	} else if ino.verSeq > 0 && inode.IsEmptyDirAndNoSnapshot() { // snapshot deletion
+	} else if ino.getVer() > 0 && inode.IsEmptyDirAndNoSnapshot() { // snapshot deletion
 		log.LogDebugf("action[fsmUnlinkInode] ino %v really be deleted, empty dir", ino)
 		mp.inodeTree.Delete(inode)
 		mp.updateUsedInfo(0, -1, inode.Inode)
@@ -317,7 +316,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		})
 
 		// all snapshot between create to last deletion cleaned
-		if inode.NLink == 0 && len(inode.multiVersions) == 0 {
+		if inode.NLink == 0 && inode.getLayerLen() == 0 {
 			log.LogDebugf("action[fsmUnlinkInode] unlink inode %v and push to freeList", inode)
 			inode.AccessTime = time.Now().Unix()
 			mp.freeList.Push(inode.Inode)
@@ -435,7 +434,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	}
 
 	ino2 := item.(*Inode)
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v", ino2.Inode, len(ino2.multiVersions))
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v", ino2.Inode, ino2.getLayerLen())
 	if ino2.ShouldDelete() {
 		status = proto.OpNotExistErr
 		return
@@ -445,7 +444,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	)
 	oldSize := int64(ino2.Size)
 	eks := ino.Extents.CopyExtents()
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v,eks %v", ino2.Inode, len(ino2.multiVersions), eks)
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v,eks %v", ino2.Inode, ino2.getLayerLen(), eks)
 	if len(eks) < 1 {
 		return
 	}
@@ -458,10 +457,9 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		return
 	}
 
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] ino %v isSplit %v ek %v hist len %v", ino2.Inode, isSplit, eks[0], len(ino2.multiVersions))
-
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] ino %v isSplit %v ek %v hist len %v", ino2.Inode, isSplit, eks[0], ino2.getLayerLen())
 	if !isSplit {
-		delExtents, status = ino2.AppendExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.verSeq, eks[0], ino.ModifyTime, discardExtentKey, mp.volType)
+		delExtents, status = ino2.AppendExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.getVer(), eks[0], ino.ModifyTime, discardExtentKey, mp.volType)
 		if status == proto.OpOk {
 			log.LogInfof("action[fsmAppendExtentsWithCheck] delExtents [%v]", delExtents)
 			ino2.DecSplitExts(delExtents)
@@ -471,7 +469,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		if status == proto.OpConflictExtentsErr {
 			log.LogInfof("action[fsmAppendExtentsWithCheck] OpConflictExtentsErr [%v]", eks[:1])
 			if !storage.IsTinyExtent(eks[0].ExtentId) && eks[0].ExtentOffset >= util.ExtentSize {
-				eks[0].IsSplit = true
+				eks[0].SetSplit(true)
 			}
 			mp.extDelCh <- eks[:1]
 		}
@@ -479,7 +477,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		// only the ek itself will be moved to level before
 		// ino verseq be set with mp ver before submit in case other mp be updated while on flight, which will lead to
 		// inconsistent between raft pairs
-		delExtents, status = ino2.SplitExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.verSeq, eks[0], ino.ModifyTime, mp.volType)
+		delExtents, status = ino2.SplitExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.getVer(), eks[0], ino.ModifyTime, mp.volType)
 		ino2.DecSplitExts(delExtents)
 		mp.extDelCh <- delExtents
 		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
@@ -553,13 +551,13 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		eks = append(eks, *lastKey)
 		mp.uidManager.minusUidSpace(i.Uid, i.Inode, eks)
 	}
-	if i.verSeq != mp.verSeq {
+	if i.getVer() != mp.verSeq {
 		i.CreateVer(mp.verSeq)
 	}
 	i.Lock()
 	defer i.Unlock()
 
-	if err = i.CreateLowerVersion(i.verSeq, mp.multiVersionList); err != nil {
+	if err = i.CreateLowerVersion(i.getVer(), mp.multiVersionList); err != nil {
 		return
 	}
 	oldSize := int64(i.Size)

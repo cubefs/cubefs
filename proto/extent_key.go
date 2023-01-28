@@ -41,18 +41,77 @@ var (
 	InvalidKeyCheckSum    = errors.New("invalid extent v2 key checksum error")
 )
 
+type ExtSnapInfo struct {
+	VerSeq  uint64
+	IsSplit bool
+	ModGen  uint64
+}
+
 // ExtentKey defines the extent key struct.
 type ExtentKey struct {
 	FileOffset   uint64 // offset in file
 	PartitionId  uint64
 	ExtentId     uint64
 	ExtentOffset uint64 // offset in extent like tiny extent offset large than 0,normal is 0
-	Size         uint32 // extent real size?
+	Size         uint32 // real size that inode used on the extent,it's size may be part of extent real size, such as tinyExt
 	CRC          uint32
 	//snapshot
-	VerSeq  uint64
-	IsSplit bool
-	ModGen  uint64
+	SnapInfo *ExtSnapInfo
+}
+
+func (k *ExtentKey) GetModGen() uint64 {
+	if k.SnapInfo == nil {
+		return 0
+	}
+	return k.SnapInfo.ModGen
+}
+
+func (k *ExtentKey) AddModGen() {
+	if k.SnapInfo == nil {
+		k.SnapInfo = &ExtSnapInfo{
+			ModGen: 1,
+		}
+		return
+	}
+	k.SnapInfo.ModGen++
+}
+
+func (k *ExtentKey) IsSplit() bool {
+	if k.SnapInfo == nil {
+		return false
+	}
+	return k.SnapInfo.IsSplit
+}
+
+func (k *ExtentKey) GetSeq() uint64 {
+	if k.SnapInfo == nil {
+		return 0
+	}
+	return k.SnapInfo.VerSeq
+}
+
+func (k *ExtentKey) SetSeq(seq uint64) {
+	if seq == 0 && k.SnapInfo == nil {
+		return
+	}
+	if k.SnapInfo == nil {
+		k.SnapInfo = &ExtSnapInfo{VerSeq: seq}
+		return
+	}
+	k.SnapInfo.VerSeq = seq
+}
+
+func (k *ExtentKey) SetSplit(split bool) {
+	if !split && k.SnapInfo == nil {
+		return
+	}
+	if k.SnapInfo == nil {
+		k.SnapInfo = &ExtSnapInfo{
+			IsSplit: split,
+		}
+		return
+	}
+	k.SnapInfo.IsSplit = split
 }
 
 func (k *ExtentKey) GenerateId() uint64 {
@@ -93,7 +152,7 @@ func (k *ExtentKey) IsEqual(rightKey *ExtentKey) bool {
 	//	return false
 	return k.PartitionId == rightKey.PartitionId &&
 		k.ExtentId == rightKey.ExtentId &&
-		k.VerSeq == rightKey.VerSeq &&
+		k.GetSeq() == rightKey.GetSeq() &&
 		k.ExtentOffset == rightKey.ExtentOffset &&
 		k.FileOffset == rightKey.FileOffset
 }
@@ -102,7 +161,7 @@ func (k *ExtentKey) IsSequence(rightKey *ExtentKey) bool {
 	//	return false
 	return k.PartitionId == rightKey.PartitionId &&
 		k.ExtentId == rightKey.ExtentId &&
-		k.VerSeq == rightKey.VerSeq &&
+		k.GetSeq() == rightKey.GetSeq() &&
 		k.ExtentOffset+uint64(k.Size) == rightKey.ExtentOffset &&
 		k.FileOffset+uint64(k.Size) == rightKey.FileOffset
 }
@@ -117,7 +176,7 @@ func (k *ExtentKey) IsFileInSequence(rightKey *ExtentKey) bool {
 // String returns the string format of the extentKey.
 func (k ExtentKey) String() string {
 	return fmt.Sprintf("ExtentKey{FileOffset(%v),VerSeq(%v) Partition(%v),ExtentID(%v),ExtentOffset(%v),isSplit(%v),Size(%v),CRC(%v)}",
-		k.FileOffset, k.VerSeq, k.PartitionId, k.ExtentId, k.ExtentOffset, k.IsSplit, k.Size, k.CRC)
+		k.FileOffset, k.GetSeq(), k.PartitionId, k.ExtentId, k.ExtentOffset, k.IsSplit(), k.Size, k.CRC)
 }
 
 // Less defines the less comparator.
@@ -172,10 +231,10 @@ func (k *ExtentKey) MarshalBinary(v3 bool) ([]byte, error) {
 		return nil, err
 	}
 	if v3 {
-		if err := binary.Write(buf, binary.BigEndian, k.VerSeq); err != nil {
+		if err := binary.Write(buf, binary.BigEndian, k.GetSeq()); err != nil {
 			return nil, err
 		}
-		if err := binary.Write(buf, binary.BigEndian, k.IsSplit); err != nil {
+		if err := binary.Write(buf, binary.BigEndian, k.IsSplit()); err != nil {
 			return nil, err
 		}
 	}
@@ -203,12 +262,16 @@ func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer, v3 bool) (err error) {
 		return
 	}
 	if v3 {
-		if err = binary.Read(buf, binary.BigEndian, &k.VerSeq); err != nil {
+		var seq uint64
+		if err = binary.Read(buf, binary.BigEndian, &seq); err != nil {
 			return
 		}
-		if err = binary.Read(buf, binary.BigEndian, &k.IsSplit); err != nil {
+		k.SetSeq(seq)
+		var isSplit bool
+		if err = binary.Read(buf, binary.BigEndian, &isSplit); err != nil {
 			return
 		}
+		k.SetSplit(isSplit)
 	}
 
 	return
@@ -257,10 +320,10 @@ func (k *ExtentKey) MarshalBinaryWithCheckSum(v3 bool) ([]byte, error) {
 		return nil, err
 	}
 	if v3 {
-		if err := binary.Write(buf, binary.BigEndian, k.VerSeq); err != nil {
+		if err := binary.Write(buf, binary.BigEndian, k.GetSeq()); err != nil {
 			return nil, err
 		}
-		if err := binary.Write(buf, binary.BigEndian, k.IsSplit); err != nil {
+		if err := binary.Write(buf, binary.BigEndian, k.IsSplit()); err != nil {
 			return nil, err
 		}
 	}
@@ -311,12 +374,16 @@ func (k *ExtentKey) UnmarshalBinaryWithCheckSum(buf *bytes.Buffer) (err error) {
 	}
 
 	if v3 {
-		if err = binary.Read(buf, binary.BigEndian, &k.VerSeq); err != nil {
+		var seq uint64
+		if err = binary.Read(buf, binary.BigEndian, &seq); err != nil {
 			return
 		}
-		if err = binary.Read(buf, binary.BigEndian, &k.IsSplit); err != nil {
+		k.SetSeq(seq)
+		var split bool
+		if err = binary.Read(buf, binary.BigEndian, &split); err != nil {
 			return
 		}
+		k.SetSplit(split)
 	}
 
 	if err = binary.Read(buf, binary.BigEndian, &checksum); err != nil {

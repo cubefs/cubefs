@@ -43,42 +43,87 @@ import (
 //  +-------+-----------+--------------+-----------+--------------+
 //  | bytes |     4     |   KeyLength  |     4     |   ValLength  |
 //  +-------+-----------+--------------+-----------+--------------+
+
+type DentryMultiSnap struct {
+	VerSeq     uint64
+	dentryList DentryBatch
+}
+
 type Dentry struct {
 	ParentId uint64 // FileID value of the parent inode.
 	Name     string // Name of the current dentry.
 	Inode    uint64 // FileID value of the current inode.
 	Type     uint32
 	//snapshot
-	VerSeq     uint64
-	dentryList DentryBatch
+	multiSnap *DentryMultiSnap
+}
+
+func NewDentrySnap(seq uint64) *DentryMultiSnap {
+	return &DentryMultiSnap{
+		VerSeq: seq,
+	}
+}
+
+func (d *Dentry) getSnapListLen() int {
+	if d.multiSnap == nil {
+		return 0
+	}
+	return len(d.multiSnap.dentryList)
+}
+
+func (d *Dentry) setVerSeq(verSeq uint64) {
+	if verSeq == 0 {
+		return
+	}
+	if d.multiSnap == nil {
+		d.multiSnap = NewDentrySnap(verSeq)
+	} else {
+		d.multiSnap.VerSeq = verSeq
+	}
+}
+
+func (d *Dentry) getSeqFiled() (verSeq uint64) {
+	if d.multiSnap == nil {
+		return 0
+	}
+	return d.multiSnap.VerSeq
 }
 
 func (d *Dentry) getVerSeq() (verSeq uint64) {
-	return d.VerSeq & math.MaxInt64
+	if d.multiSnap == nil {
+		return 0
+	}
+	return d.multiSnap.VerSeq & math.MaxInt64
 }
 
 func (d *Dentry) isDeleted() bool {
-	return (d.VerSeq >> 63) != 0
+	if d.multiSnap == nil {
+		return false
+	}
+	return (d.multiSnap.VerSeq >> 63) != 0
 }
 
 func (d *Dentry) setDeleted() {
+	if d.multiSnap == nil {
+		log.LogErrorf("action[setDeleted] d %v be set deleted not found multiSnap", d)
+	}
 	log.LogDebugf("action[setDeleted] d %v be set deleted", d)
-	d.VerSeq |= uint64(1) << 63
+	d.multiSnap.VerSeq |= uint64(1) << 63
 }
 
 func (d *Dentry) minimizeSeq() (verSeq uint64) {
-	cnt := len(d.dentryList)
+	cnt := d.getSnapListLen()
 	if cnt == 0 {
 		return d.getVerSeq()
 	}
-	return d.dentryList[cnt-1].getVerSeq()
+	return d.multiSnap.dentryList[cnt-1].getVerSeq()
 }
 
 func (d *Dentry) isEffective(verSeq uint64) bool {
 	if verSeq == 0 {
 		return false
 	}
-	if verSeq == math.MaxUint64 {
+	if isInitSnapVer(verSeq) {
 		verSeq = 0
 	}
 	return verSeq >= d.minimizeSeq()
@@ -87,7 +132,7 @@ func (d *Dentry) isEffective(verSeq uint64) bool {
 func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
 
 	log.LogInfof("action[getDentryFromVerList] verseq %v, tmp dentry %v, inode id %v, name %v", verSeq, d.getVerSeq(), d.Inode, d.Name)
-	if verSeq == 0 || (verSeq >= d.getVerSeq() && verSeq != math.MaxUint64) {
+	if verSeq == 0 || (verSeq >= d.getVerSeq() && !isInitSnapVer(verSeq)) {
 		if d.isDeleted() {
 			log.LogDebugf("action[getDentryFromVerList] tmp dentry %v, is deleted, seq %v", d, d.getVerSeq())
 			return
@@ -96,23 +141,23 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
 	}
 
 	// read the oldest version snapshot,the oldest version is 0 should make a different with the lastest uncommit version read(with seq 0)
-	if verSeq == math.MaxUint64 {
+	if isInitSnapVer(verSeq) {
 		if d.getVerSeq() == 0 {
 			return d, 0
 		}
-		denListLen := len(d.dentryList)
+		denListLen := d.getSnapListLen()
 		if denListLen == 0 {
 			return
 		}
-		den = d.dentryList[denListLen-1]
-		if d.dentryList[denListLen-1].getVerSeq() != 0 || d.dentryList[denListLen-1].isDeleted() {
+		den = d.multiSnap.dentryList[denListLen-1]
+		if d.multiSnap.dentryList[denListLen-1].getVerSeq() != 0 || d.multiSnap.dentryList[denListLen-1].isDeleted() {
 			return nil, 0
 		}
 		log.LogDebugf("action[getDentryFromVerList] return dentry %v seq %v", den, den.getVerSeq())
 		return den, denListLen
 	}
 
-	for id, lDen := range d.dentryList {
+	for id, lDen := range d.multiSnap.dentryList {
 		log.LogDebugf("action[getDentryFromVerList] den in ver list %v, is delete %v, seq %v", lDen, lDen.isDeleted(), lDen.getVerSeq())
 		if verSeq < lDen.getVerSeq() {
 			log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil, request seq %v, history ver seq %v", lDen, verSeq, lDen.getVerSeq())
@@ -154,7 +199,7 @@ func (d *Dentry) getLastestVer(reqVerSeq uint64, commit bool, verlist []*proto.V
 func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []*proto.VolVersionInfo) (rd *Dentry, dmore bool, clean bool) { // bool is doMore
 	log.LogDebugf("action[deleteVerSnapshot] enter.dentry %v delVerSeq %v mpVer %v verList %v", d, delVerSeq, mpVerSeq, verlist)
 	// create denParm version
-	if delVerSeq != math.MaxUint64 && delVerSeq > mpVerSeq {
+	if !isInitSnapVer(delVerSeq) && delVerSeq > mpVerSeq {
 		panic(fmt.Sprintf("Dentry version %v large than mp %v", delVerSeq, mpVerSeq))
 	}
 
@@ -166,7 +211,7 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 
 		// if there's no snapshot itself, nor have snapshot after dentry's ver then need unlink directly and make no snapshot
 		// just move to upper layer,the request snapshot be dropped
-		if len(d.dentryList) == 0 {
+		if d.getSnapListLen() == 0 {
 			var found bool
 			// no matter verSeq of dentry is larger than zero,if not be depended then dropped
 			_, found = d.getLastestVer(d.getVerSeq(), true, verlist)
@@ -176,13 +221,17 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 				return d, true, true
 			}
 		}
+
 		if d.getVerSeq() < mpVerSeq {
-			dn := d.Copy()
-			dn.(*Dentry).dentryList = nil
-			d.dentryList = append([]*Dentry{dn.(*Dentry)}, d.dentryList...)
+			dn := d.CopyDirectly()
+			dn.(*Dentry).setVerSeq(d.getVerSeq())
+			d.setVerSeq(mpVerSeq)
+			d.multiSnap.dentryList = append([]*Dentry{dn.(*Dentry)}, d.multiSnap.dentryList...)
 			log.LogDebugf("action[deleteVerSnapshot.delSeq_0] create version and push to dentry list. dentry %v", dn.(*Dentry))
+		} else {
+			d.setVerSeq(mpVerSeq)
 		}
-		d.VerSeq = mpVerSeq
+		d.setVerSeq(mpVerSeq)
 		d.setDeleted() // denParm create at the same version.no need to push to history list
 		log.LogDebugf("action[deleteVerSnapshot.delSeq_0] den %v be set deleted at version seq %v", d, mpVerSeq)
 
@@ -204,14 +253,15 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 			return d, false, false
 		}
 		// if any alive snapshot in mp dimension exist in seq scope from den to next ascend neighbor, dio snapshot be keep or else drop
-		startSeq := den.VerSeq
+		startSeq := den.getVerSeq()
 		realIdx := idx - 1 //index in history list layer
 		if realIdx == 0 {
 			endSeq = d.getVerSeq()
 		} else {
-			endSeq = d.dentryList[realIdx-1].getVerSeq()
-			if d.dentryList[realIdx-1].isDeleted() {
-				log.LogErrorf("action[deleteVerSnapshot.inSnapList_del_%v] inode %v layer %v name %v be deleted already!", delVerSeq, d.Inode, realIdx, d.dentryList[realIdx-1].Name)
+			endSeq = d.multiSnap.dentryList[realIdx-1].getVerSeq()
+			if d.multiSnap.dentryList[realIdx-1].isDeleted() {
+				log.LogErrorf("action[deleteVerSnapshot.inSnapList_del_%v] inode %v layer %v name %v be deleted already!",
+					delVerSeq, d.Inode, realIdx, d.multiSnap.dentryList[realIdx-1].Name)
 			}
 		}
 
@@ -229,11 +279,12 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 			if info.Ver >= endSeq {
 				break
 			}
-			log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode %v try drop scope [%v, %v), mp ver %v not suitable", delVerSeq, den.Inode, den.VerSeq, endSeq, info.Ver)
+			log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode %v try drop scope [%v, %v), mp ver %v not suitable",
+				delVerSeq, den.Inode, den.getVerSeq(), endSeq, info.Ver)
 		}
 
 		log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode %v try drop multiVersion idx %v", delVerSeq, den.Inode, realIdx)
-		d.dentryList = append(d.dentryList[:realIdx], d.dentryList[realIdx+1:]...)
+		d.multiSnap.dentryList = append(d.multiSnap.dentryList[:realIdx], d.multiSnap.dentryList[realIdx+1:]...)
 		return den, false, false
 	}
 
@@ -241,10 +292,11 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 
 func (d *Dentry) String() string {
 	str := fmt.Sprintf("dentry(name:[%v],parentId:[%v],inode:[%v],type:[%v],seq:[%v],isDeleted:[%v],dentryList_len[%v])",
-		d.Name, d.ParentId, d.Inode, d.Type, d.getVerSeq(), d.isDeleted(), len(d.dentryList))
-
-	for idx, den := range d.dentryList {
-		str += fmt.Sprintf("idx:%v,content(%v))", idx, den)
+		d.Name, d.ParentId, d.Inode, d.Type, d.getVerSeq(), d.isDeleted(), d.getSnapListLen())
+	if d.getSnapListLen() > 0 {
+		for idx, den := range d.multiSnap.dentryList {
+			str += fmt.Sprintf("idx:%v,content(%v))", idx, den)
+		}
 	}
 	return str
 }
@@ -573,8 +625,19 @@ func (d *Dentry) Less(than BtreeItem) (less bool) {
 	return
 }
 
+func (d *Dentry) CopyDirectly() BtreeItem {
+	newDentry := *d
+	return &newDentry
+}
+
 func (d *Dentry) Copy() BtreeItem {
 	newDentry := *d
+	if d.multiSnap != nil {
+		newDentry.multiSnap = &DentryMultiSnap{
+			VerSeq:     d.multiSnap.VerSeq,
+			dentryList: d.multiSnap.dentryList,
+		}
+	}
 	return &newDentry
 }
 
@@ -604,26 +667,30 @@ func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 func (d *Dentry) MarshalValue() (k []byte) {
 
 	buff := bytes.NewBuffer(make([]byte, 0))
-	buff.Grow(20 + len(d.dentryList)*20)
+	buff.Grow(20 + d.getSnapListLen()*20)
 	if err := binary.Write(buff, binary.BigEndian, &d.Inode); err != nil {
 		panic(err)
 	}
 	if err := binary.Write(buff, binary.BigEndian, &d.Type); err != nil {
 		panic(err)
 	}
-	if err := binary.Write(buff, binary.BigEndian, &d.VerSeq); err != nil {
+	seq := d.getSeqFiled()
+	if err := binary.Write(buff, binary.BigEndian, &seq); err != nil {
 		panic(err)
 	}
 
-	for _, dd := range d.dentryList {
-		if err := binary.Write(buff, binary.BigEndian, &dd.Inode); err != nil {
-			panic(err)
-		}
-		if err := binary.Write(buff, binary.BigEndian, &dd.Type); err != nil {
-			panic(err)
-		}
-		if err := binary.Write(buff, binary.BigEndian, &dd.VerSeq); err != nil {
-			panic(err)
+	if d.getSnapListLen() > 0 {
+		for _, dd := range d.multiSnap.dentryList {
+			if err := binary.Write(buff, binary.BigEndian, &dd.Inode); err != nil {
+				panic(err)
+			}
+			if err := binary.Write(buff, binary.BigEndian, &dd.Type); err != nil {
+				panic(err)
+			}
+			seq = dd.getSeqFiled()
+			if err := binary.Write(buff, binary.BigEndian, &seq); err != nil {
+				panic(err)
+			}
 		}
 	}
 
@@ -640,7 +707,13 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 	err = binary.Read(buff, binary.BigEndian, &d.Type)
 	log.LogDebugf("action[UnmarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", d.Name, d.Inode, d.ParentId, len(val))
 	if len(val) >= 20 {
-		err = binary.Read(buff, binary.BigEndian, &d.VerSeq)
+		var seq uint64
+		if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
+			return
+		}
+		if seq > 0 {
+			d.multiSnap = NewDentrySnap(seq)
+		}
 		if (len(val)-20)%20 != 0 {
 			return fmt.Errorf("action[UnmarshalSnapshotValue] left len %v after divide by dentry len", len(val)-20)
 		}
@@ -656,10 +729,13 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 			if err = binary.Read(buff, binary.BigEndian, &den.Type); err != nil {
 				return
 			}
-			if err = binary.Read(buff, binary.BigEndian, &den.VerSeq); err != nil {
+			if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
 				return
 			}
-			d.dentryList = append(d.dentryList, den)
+			if seq > 0 {
+				den.multiSnap = NewDentrySnap(seq)
+			}
+			d.multiSnap.dentryList = append(d.multiSnap.dentryList, den)
 			log.LogDebugf("action[UnmarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", den.Name, den.Inode, den.ParentId, len(val))
 		}
 	}
