@@ -327,6 +327,15 @@ func (s *Super) Close() {
 	s.wg.Wait()
 }
 
+func (s *Super) SupportJdosKernelWriteBack() bool {
+	if _, err := os.Stat(JdosKernelWriteBackControlFile); err != nil {
+		log.LogWarnf("SupportJdosKernelWriteBack: stat kernel control file(%v) err(%v)", JdosKernelWriteBackControlFile, err)
+		return false
+	}
+	log.LogInfof("SupportJdosKernelWriteBack: stat kernel control file(%v) ok, enable options -cgwb", JdosKernelWriteBackControlFile)
+	return true
+}
+
 func (s *Super) EnableJdosKernelWriteBack(enable bool) (err error) {
 	var (
 		file *os.File

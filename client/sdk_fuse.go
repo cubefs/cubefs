@@ -329,10 +329,9 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 		options = append(options, fuse.WritebackCache())
 		log.LogInfof("mount: vol enable write cache(%v)", opt.WriteCache)
 		super.SetEnableWriteCache(true)
-	}
-	if err = super.EnableJdosKernelWriteBack(opt.WriteCache); err != nil {
-		log.LogErrorf("EnableJdosKernelWriteBack failed: err(%v)", err)
-		return
+		if super.SupportJdosKernelWriteBack() {
+			options = append(options, fuse.WritebackCacheForCGroup())
+		}
 	}
 
 	if opt.EnablePosixACL {

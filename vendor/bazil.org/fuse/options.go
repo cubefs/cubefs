@@ -328,3 +328,12 @@ func PosixACL() MountOption {
 		return nil
 	}
 }
+
+// WritebackCacheForCGroup enable write-back cache cgroup supported.
+// Only for JDOS kernel at least 4.18
+func WritebackCacheForCGroup() MountOption {
+	return func(conf *mountConfig) error {
+		conf.options["cgwb"] = ""
+		return nil
+	}
+}
