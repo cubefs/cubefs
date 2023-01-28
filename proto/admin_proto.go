@@ -53,6 +53,7 @@ const (
 	AdminSetNodeRdOnly              = "/admin/setNodeRdOnly"
 	AdminSetDpRdOnly                = "/admin/setDpRdOnly"
 	AdminDataPartitionChangeLeader  = "/dataPartition/changeleader"
+	AdminChangeMasterLeader         = "/master/changeleader"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
