@@ -141,6 +141,7 @@ type MetaPartitionInfo struct {
 	MemStoreCnt   uint8
 	RcokStoreCnt  uint8
 	VirtualMPs    []VirtualMetaPartition
+	PhyMPStatus   int8
 }
 
 // InodeInfo define the information of inode
@@ -180,6 +181,7 @@ type MetaReplicaInfo struct {
 	StoreMode   StoreMode
 	ApplyId     uint64
 	IsRecover   bool
+	VirtualMPs  []VirtualMetaPartition
 }
 
 // ClusterView provides the view of a cluster.

@@ -277,11 +277,34 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 				mp.config.TrashRemainingDays = mp.manager.getTrashDaysByVol(mp.config.VolName)
 				mp.config.ChildFileMaxCount = mp.manager.getChildFileMaxCount(mp.config.VolName)
 				mp.config.TrashCleanInterval = mp.manager.getTrashCleanInterval(mp.config.VolName)
+				mp.updateMetaPartitionInodeAllocatorState()
 				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v, childFileMaxCount: %v, trashCleanInterval: %vMin",
 					mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays, mp.config.ChildFileMaxCount, mp.config.TrashCleanInterval)
 			}
 		}
 	}(mp.stopC)
+}
+
+func (mp *metaPartition) updateMetaPartitionInodeAllocatorState() {
+	enableBitMapAllocator, err := mp.manager.getBitMapAllocatorEnableFlag(mp.config.VolName)
+	if err != nil {
+		log.LogErrorf("updateMetaPartitionInodeAlloterState get flag failed:%v", err)
+		return
+	}
+	var changeTo int8
+	if enableBitMapAllocator {
+		changeTo = allocatorStatusAvailable
+	} else {
+		changeTo = allocatorStatusUnavailable
+	}
+	mp.virtualMPLock.Lock()
+	defer mp.virtualMPLock.Unlock()
+	for index := 0; index < defBitMapReuseVirtualMPMaxCount && index < len(mp.virtualMPs); index++ {
+		_ = mp.virtualMPs[index].InodeIDAlloter.SetStatus(changeTo)
+	}
+	for index := defBitMapReuseVirtualMPMaxCount; index < len(mp.virtualMPs); index++ {
+		_ = mp.virtualMPs[index].InodeIDAlloter.SetStatus(allocatorStatusUnavailable)
+	}
 }
 
 func (mp *metaPartition) stop() (err error) {

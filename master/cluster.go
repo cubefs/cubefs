@@ -1047,8 +1047,39 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 	return
 }
 
-func (c *Cluster) syncAddVirtualMetaPartition(mp *MetaPartition, vMP *proto.VirtualMetaPartition) (err error) {
-	task , err := mp.buildAddVirtualMetaPartitionTasks(mp.volName, vMP)
+func (c *Cluster) syncAddVirtualMetaPartition(host string, mp *MetaPartition, vMP *proto.VirtualMetaPartition) (err error) {
+	task , err := mp.buildAddVirtualMetaPartitionTask(host, vMP)
+	if err != nil {
+		return
+	}
+	metaNode, err := c.metaNode(task.OperatorAddr)
+	if err != nil {
+		return
+	}
+	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+		return
+	}
+	return
+}
+
+func (c *Cluster) syncDeleteVirtualMetaPartition(host string, mp *MetaPartition, vMP *proto.VirtualMetaPartition) (err error) {
+	task , err := mp.buildDeleteVirtualMetaPartitionTask(host, vMP)
+	if err != nil {
+		return
+	}
+	metaNode, err := c.metaNode(task.OperatorAddr)
+	if err != nil {
+		return
+	}
+	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+		return
+	}
+	return
+}
+
+func (c *Cluster) syncRaftAddVirtualMetaPartition(mp *MetaPartition, vMP *proto.VirtualMetaPartition) (err error) {
+	var task *proto.AdminTask
+	task, err = mp.buildRaftAddVirtualMetaPartitionTask(vMP)
 	if err != nil {
 		return
 	}
@@ -2903,7 +2934,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
 	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
-	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy) (err error) {
+	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy, enableBitMapAllocator bool) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3009,6 +3040,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.autoRepair = autoRepair
 	vol.volWriteMutexEnable = volWriteMutexEnable
 	vol.reuseMP = reuseMP
+	vol.EnableBitMapAllocator = enableBitMapAllocator
 	if !volWriteMutexEnable {
 		vol.volWriteMutexClient = ""
 	}
@@ -3088,7 +3120,8 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	trashDays int, ecDataNum, ecParityNum uint8, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,
 	forceROW, isSmart, enableWriteCache, reuseMP bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	childFileMaxCnt uint32, storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string,
-	compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32) (vol *Vol, err error) {
+	compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32,
+	bitMapAllocatorEnable bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -3132,7 +3165,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
 		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, reuseMP, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
-		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval); err != nil {
+		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocatorEnable); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -3166,7 +3199,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	forceROW, isSmart, enableWriteCache, reuseMP bool, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8,
 	dpWriteableThreshold float64, childFileMaxCnt uint32, storeMode proto.StoreMode, convertSt proto.VolConvertState,
 	mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
-	batchDelInodeCnt, delInodeInterval uint32) (vol *Vol, err error) {
+	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnable bool) (vol *Vol, err error) {
 	var (
 		id              uint64
 		smartEnableTime int64
@@ -3203,6 +3236,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	vol.EcDataNum = dataNum
 	vol.EcParityNum = parityNum
 	vol.EcEnable = enableEc
+	vol.EnableBitMapAllocator = bitMapAllocatorEnable
 	if len(masterRegionZoneList) > 1 {
 		vol.crossZone = true
 	}
@@ -3248,7 +3282,7 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 		return proto.ErrMetaPartitionNotExists
 	}
 	adjustStart := start
-	lastVirtualMP := partition.VirtualMPs[len(partition.VirtualMPs) - 1]
+	lastVirtualMP := partition.lastVirtualMetaPartition()
 	if adjustStart < lastVirtualMP.Start {
 		adjustStart = lastVirtualMP.Start
 	}

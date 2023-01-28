@@ -23,10 +23,8 @@ import (
 	"github.com/chubaofs/chubaofs/util/diskusage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/memory"
 	raftProto "github.com/tiglabs/raft/proto"
 	"net"
-	"os"
 )
 
 const (
@@ -43,7 +41,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		adminTask = &proto.AdminTask{
 			Request: req,
 		}
-		mpExistMap  = make(map[uint64]bool)
+		partitionsID []uint64
 	)
 	resp.ProfPort = m.metaNode.profPort
 	disks := m.metaNode.getDisks()
@@ -65,15 +63,25 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 
 	// collect memory info
 	resp.Total = configTotalMem
-	resp.Used, err = memory.GetProcessMemory(os.Getpid())
+	resp.Used, err = m.metaNode.getProcessMemUsed()
 	if err != nil {
 		adminTask.Status = proto.TaskFailed
 		goto end
 	}
-	m.Range(func(id uint64, partition MetaPartition) bool {
-		if id != partition.GetBaseConfig().PartitionId {
-			return true
+	partitionsID = m.partitionIDs()
+	for _, partitionID := range partitionsID {
+		var partition MetaPartition
+		partition, err = m.getPartition(partitionID)
+		if err != nil {
+			//already del
+			continue
 		}
+		mConf := partition.GetBaseConfig()
+		if partitionID != mConf.PartitionId {
+			//virtual meta partition
+			continue
+		}
+		partition.(*metaPartition).updateMetaPartitionStatus()
 		var applyID, inodeCnt, dentryCnt, delInodeCnt, delDentryCnt uint64
 		snap := partition.(*metaPartition).GetSnapShot()
 		if snap != nil {
@@ -84,23 +92,11 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			delDentryCnt = snap.Count(DelDentryType)
 			snap.Close()
 		}
-		mConf := partition.GetBaseConfig()
-		if _, ok := mpExistMap[mConf.PartitionId]; ok {
-			// already report
-			return true
-		}
-		mpExistMap[mConf.PartitionId] = true
-		maxInode := partition.GetInodeTree().MaxItem()
-		lastVirtualMP := mConf.VirtualMPs[len(mConf.VirtualMPs) - 1]
-		maxIno := lastVirtualMP.Start
-		if maxInode != nil {
-			maxIno = maxInode.Inode
-		}
 		mpr := &proto.MetaPartitionReport{
 			PartitionID:     mConf.PartitionId,
-			Start:           lastVirtualMP.Start,
-			End:             lastVirtualMP.End,
-			Status:          proto.ReadWrite,
+			Start:           mConf.Start,
+			End:             mConf.End,
+			Status:          int(partition.(*metaPartition).status),
 			MaxInodeID:      mConf.Cursor,
 			VolName:         mConf.VolName,
 			InodeCnt:        inodeCnt,
@@ -108,46 +104,18 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			DelInodeCnt:     delInodeCnt,
 			DelDentryCnt:    delDentryCnt,
 			IsLearner:       partition.IsLearner(),
-			ExistMaxInodeID: maxIno,
+			ExistMaxInodeID: mConf.Cursor, //unUse
 			StoreMode:       mConf.StoreMode,
 			ApplyId:         applyID,
 			IsRecover:       partition.(*metaPartition).CreationType == proto.DecommissionedCreateDataPartition,
-			VirtualMPs:      mConf.VirtualMPs,
+			VirtualMPs:      partition.(*metaPartition).getVirtualMetaPartitionsInfo(),
 		}
-		addr, isLeader := partition.IsLeader()
-		if addr == "" || partition.IsRaftHang() {
-			mpr.Status = proto.Unavailable
-		} else {
-			mpr.IsLeader = isLeader
-			if mpr.InodeCnt < uint64(float64(proto.DefaultMetaPartitionInodeIDStep)*m.metaNode.getReuseMPInodeCountThreshold()) &&
-				mpr.DentryCnt < uint64(float64(proto.DefaultMetaPartitionInodeIDStep)*m.metaNode.getReuseMPDentryCountThreshold()) {
-				mpr.Status = proto.ReadWrite
-			}
-			if mConf.Cursor >= mConf.End {
-				mpr.Status = proto.ReadOnly
-			}
-			if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
-				mpr.Status = proto.ReadOnly
-			}
-			if mpr.InodeCnt >= m.metaNode.getMetaPartitionMaxInodeCount() || mpr.DentryCnt >= m.metaNode.getMetaPartitionMaxDentryCount() {
-				mpr.Status = proto.ReadOnly
-			}
-
-			FsCapInfo := m.metaNode.getSingleDiskStat(mConf.RocksDBDir)
-			maxUsedPercent := getMemModeMaxFsUsedPercent()
-			if partition.(*metaPartition).HasRocksDBStore() {
-				maxUsedPercent = getRocksDBModeMaxFsUsedPercent()
-			}
-
-			factor := float64(maxUsedPercent) / float64(100)
-			if FsCapInfo.Used > FsCapInfo.Total*factor {
-				mpr.Status = proto.ReadOnly
-			}
+		if _, isLeader := partition.IsLeader(); isLeader {
+			mpr.IsLeader = true
 		}
 
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
-		return true
-	})
+	}
 	resp.ZoneName = m.zoneName
 	resp.Status = proto.TaskSucceeds
 	resp.RocksDBDiskInfo = m.metaNode.getRocksDBDiskStat()
@@ -219,6 +187,9 @@ func (m *metadataManager) opCreateInode(conn net.Conn, p *Packet,
 		return
 	}
 	err = mp.CreateInode(req, p)
+	if err != nil {
+		log.LogErrorf("%s [opCreateInode] partitionID: %v, req: %d - %v, err:%v", remoteAddr, req.PartitionID, p.GetReqID(), req, err)
+	}
 	// reply the operation result to the client through TCP
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opCreateInode] req: %d - %v, resp: %v, body: %s",
@@ -1091,7 +1062,7 @@ func (m *metadataManager) opPromoteMetaPartitionRaftLearner(conn net.Conn,
 	return
 }
 
-func (m *metadataManager) opVirtualMetaPartitionAdd(conn net.Conn,	p *Packet, remoteAddr string) (err error) {
+func (m *metadataManager) opVirtualMetaPartitionAdd(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	req := &proto.AddVirtualMetaPartitionRequest{}
 	adminTask := &proto.AdminTask{
 		Request: req,
@@ -1117,23 +1088,74 @@ func (m *metadataManager) opVirtualMetaPartitionAdd(conn net.Conn,	p *Packet, re
 		return
 	}
 
-	conf := mp.GetBaseConfig()
-	for _, virtualMP := range conf.VirtualMPs {
-		if virtualMP.ID == req.VirtualPID {
-			//already exist, is the same?
-			if virtualMP.Start == req.Start && virtualMP.End == req.End {
-				return
-			} else {
-				err = errors.NewErrorf("virtual mp (%v) already exist, but different with master", req.VirtualPID)
-				return
-			}
-		}
+	err = mp.AddVirtualMetaPartition(p.Ctx(), req)
+	log.LogInfof("%s [opVirtualMetaPartitionAdd] req[%v], response[%v].",
+		remoteAddr, req, adminTask)
+	return
+}
+
+func (m *metadataManager) opVirtualMetaPartitionDel(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.DelVirtualMetaPartitionRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
 	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	defer func() {
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+		m.respondToClient(conn, p)
+	}()
+	if err = decode.Decode(adminTask); err != nil {
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		return
+	}
+
+	err = mp.DeleteVirtualMetaPartition(req)
+	log.LogInfof("%s [opVirtualMetaPartitionDel] req[%v], response[%v].",
+		remoteAddr, req, adminTask)
+	return
+}
+
+func (m *metadataManager) opRaftAddVirtualMetaPartition(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.AddVirtualMetaPartitionRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	defer func() {
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+		m.respondToClient(conn, p)
+	}()
+	if err = decode.Decode(adminTask); err != nil {
+
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		return
+	}
+
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.AddVirtualMetaPartition(p.Ctx(), req)
-	log.LogInfof("%s [opVirtualMetaPartitionAdd] req[%v], response[%v].",
+	err = mp.RaftAddVirtualMetaPartition(p.Ctx(), req)
+	log.LogInfof("%s [opRaftAddVirtualMetaPartition] req[%v], response[%v].",
 		remoteAddr, req, adminTask)
 	return
 }
@@ -2107,40 +2129,5 @@ func (m *metadataManager) opInodeMergeExtents(conn net.Conn, p *Packet, remoteAd
 	}
 	err = mp.MergeExtents(req, p)
 	_ = m.respondToClient(conn, p)
-	return
-}
-
-func (m *metadataManager) opSyncVirtualMetaPartitions(conn net.Conn, p *Packet, remoteAddr string) (err error ) {
-	req := new(proto.SyncVirtualMetaPartitionsRequest)
-	adminTask := &proto.AdminTask{
-		Request: req,
-	}
-	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
-	decode.UseNumber()
-	defer func() {
-		if err != nil {
-			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-			err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		} else {
-			p.PacketOkReply()
-		}
-		m.respondToClient(conn, p)
-	}()
-	if err = decode.Decode(adminTask); err != nil {
-
-		return
-	}
-
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		return
-	}
-
-	if !m.serveProxy(conn, mp, p) {
-		return
-	}
-	err = mp.SyncVirtualMetaPartitions(p.Ctx(), req)
-	log.LogInfof("%s [opSyncMetaPartitionSlots] req[%v], response[%v].",
-		remoteAddr, req, adminTask)
 	return
 }

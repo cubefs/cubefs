@@ -179,7 +179,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp, err = mp.fsmUpdatePartition(req.End)
+		resp, _ = mp.fsmUpdatePartition(req.VirtualMPID, req.End)
 	case opFSMExtentsAdd:
 		mp.monitorData[proto.ActionMetaExtentsAdd].UpdateData(0)
 
@@ -367,18 +367,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		mp.fsmSyncDelExtents(msg.V)
 	case opFSMExtentDelSyncV2:
 		mp.fsmSyncDelExtentsV2(msg.V)
-	case opFSMMetaAddVirtualMP:
-		req := &AddVirtualMetaPartitionRequest{}
+	case opFSMMetaRaftAddVirtualMP:
+		req := &proto.AddVirtualMetaPartitionRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp, err = mp.fsmAddVirtualMP(req)
-	case opFSMSynVirtualMPs:
-		req := new(proto.SyncVirtualMetaPartitionsRequest)
-		if err = json.Unmarshal(msg.V, req); err != nil {
-			return
-		}
-		resp, err = mp.fsmSyncVirtualMPs(req)
+		resp = mp.fsmAddVirtualVirtualMetaPartitionPartition(req)
 	}
 
 	return
@@ -651,7 +645,7 @@ func (mp *metaPartition) ApplyBaseSnapshot(peers []raftproto.Peer, iter raftprot
 			return
 		}
 
-		if err = mp.afterApplySnapshotHandle(newDBDir, appIndexID, cursor, metaTree, nil); err != nil {
+		if err = mp.afterApplySnapshotHandle(newDBDir, appIndexID, cursor, metaTree, nil, nil); err != nil {
 			log.LogErrorf("ApplyBaseSnapshot metaPartition(%v) recover from snap failed; after ApplySnapshot handle failed:%s", mp.config.PartitionId, err.Error())
 			return
 		}
@@ -795,17 +789,23 @@ func (mp *metaPartition) ApplyBaseSnapshot(peers []raftproto.Peer, iter raftprot
 
 func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator, batchSnapVersion SnapshotVersion) (err error) {
 	var (
-		data                   []byte
-		index                  int
-		appIndexID             uint64
-		cursor                 uint64
-		snapshotSign           = crc32.NewIEEE()
-		snapshotCrcStoreSuffix = "snapshotCrc"
-		leaderCrc              uint32
-		db                     *RocksDbInfo
-		metaConf               *MetaPartitionConfig
+		data                    []byte
+		index                   int
+		appIndexID              uint64
+		cursor                  uint64
+		snapshotSign            = crc32.NewIEEE()
+		snapshotCrcStoreSuffix  = "snapshotCrc"
+		leaderCrc               uint32
+		db                      *RocksDbInfo
+		metaConf                *MetaPartitionConfig
+		virtualMetaPartitions   []*VirtualMetaPartition
+		needInitBitMapAllocator bool
 	)
 
+	if mp.HasMemStore() {
+		needInitBitMapAllocator = true
+	}
+	virtualMetaPartitions = InitVirtualMetaPartitionByConf(mp.config.VirtualMPs, needInitBitMapAllocator)
 	nowStr := strconv.FormatInt(time.Now().Unix(), 10)
 	newDBDir := mp.getRocksDbRootDir() + "_" + nowStr
 	db, err = newRocksdbHandle(newDBDir)
@@ -838,7 +838,7 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 			return
 		}
 
-		if err = mp.afterApplySnapshotHandle(newDBDir, appIndexID, cursor, metaTree, metaConf); err != nil {
+		if err = mp.afterApplySnapshotHandle(newDBDir, appIndexID, cursor, metaTree, metaConf, virtualMetaPartitions); err != nil {
 			log.LogErrorf("ApplyBatchSnapshot metaPartition(%v) recover from snap failed; after ApplySnapshot handle failed:%s", mp.config.PartitionId, err.Error())
 			return
 		}
@@ -885,7 +885,7 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 				len(mulItems.InodeBatches), len(mulItems.DentryBatches), len(mulItems.MultipartBatches), len(mulItems.ExtendBatches),
 				len(mulItems.DeletedInodeBatches), len(mulItems.DeletedDentryBatches))
 
-			if err = mp.metaItemBatchCreate(db, metaTree, mulItems, &cursor); err != nil {
+			if err = mp.metaItemBatchCreate(db, metaTree, mulItems, &cursor, virtualMetaPartitions); err != nil {
 				log.LogErrorf("ApplyBatchSnapshot: batch create meta item failed, partitionID(%v), error(%v)", mp.config.PartitionId, err)
 				return
 			}
@@ -920,6 +920,7 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 				return
 			}
 			log.LogDebugf("ApplyBatchSnapshot, partitionID(%v) metaConf:%s", mp.config.PartitionId, string(snap.V))
+			virtualMetaPartitions = InitVirtualMetaPartitionByConf(metaConf.VirtualMPs, needInitBitMapAllocator)
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return
@@ -927,7 +928,8 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 	}
 }
 
-func (mp *metaPartition) metaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree, mulItems *MulItems, cursor *uint64) (err error) {
+func (mp *metaPartition) metaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree, mulItems *MulItems, cursor *uint64,
+	vMPs VirtualMetaPartitions) (err error) {
 	defer func() {
 		log.LogDebugf("metaItemBatchCreate: meta item batch create finished, partitionID: %v, error: %v", mp.config.PartitionId, err)
 	}()
@@ -950,6 +952,9 @@ func (mp *metaPartition) metaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree
 
 	}()
 	for _, inode := range mulItems.InodeBatches {
+		if vMP := vMPs.FindVirtualMetaPartitionByInodeID(inode.Inode); vMP != nil {
+			vMP.InodeIDAlloter.SetId(inode.Inode)
+		}
 		if _, _, err = metaTree.InodeTree.Create(dbHandle, inode, true); err != nil {
 			err = fmt.Errorf("create inode failed:%v", err)
 			return
@@ -986,6 +991,9 @@ func (mp *metaPartition) metaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree
 	}
 
 	for _, delInode := range mulItems.DeletedInodeBatches {
+		if vMP := vMPs.FindVirtualMetaPartitionByInodeID(delInode.Inode.Inode); vMP != nil {
+			vMP.InodeIDAlloter.SetId(delInode.Inode.Inode)
+		}
 		if _, _, err = metaTree.DeletedInodeTree.Create(dbHandle, delInode, true); err != nil {
 			err = fmt.Errorf("create deleted inode failed:%v", err)
 			return
@@ -1008,7 +1016,8 @@ func (mp *metaPartition) metaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree
 	return
 }
 
-func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, newCursor uint64, newMetaTree *MetaTree, metaConf *MetaPartitionConfig) (err error) {
+func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, newCursor uint64, newMetaTree *MetaTree,
+	metaConf *MetaPartitionConfig, virtualMetaPartitions []*VirtualMetaPartition) (err error) {
 	if err = mp.ResetDbByNewDir(newDBDir); err != nil {
 		log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) recover from snap failed; Reset db failed:%s", mp.config.PartitionId, err.Error())
 		return
@@ -1020,22 +1029,15 @@ func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, n
 		return
 	}
 
-	if metaConf != nil {
-		mp.config.Start = metaConf.Start
-		mp.config.End = metaConf.End
-		mp.config.Cursor = metaConf.Cursor
-		mp.config.VirtualMPs = metaConf.VirtualMPs
-		mp.config.Peers = metaConf.Peers
-		mp.config.Learners = metaConf.Learners
-		if err = mp.persistMetadata(); err != nil {
-			log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) persist meta data failed:%v",
-				mp.config.PartitionId, err)
-		}
+	if err = mp.updateMetaConfByMetaConfSnap(metaConf); err != nil {
+		log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) recover from snap failed; update meta conf failed:%s", mp.config.PartitionId, err.Error())
+		return
 	}
 
-	//todo: need check
+	mp.updateVirtualMetaPartitions(virtualMetaPartitions)
+
 	if newCursor > mp.config.Cursor {
-		mp.config.Cursor = newCursor
+		atomic.StoreUint64(&mp.config.Cursor, newCursor)
 	}
 	err = nil
 	// store message

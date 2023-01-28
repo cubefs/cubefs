@@ -46,12 +46,17 @@ type CursorResetResponse struct {
 func (mp *metaPartition) fsmCreateInode(dbHandle interface{}, ino *Inode) (status uint8, err error) {
 	var ok bool
 	status = proto.OpOk
+	mp.setAllocatorIno(ino.Inode)
 	if _, ok, err = mp.inodeTree.Create(dbHandle, ino, false); err != nil {
 		status = proto.OpErr
 		return
 	}
 
 	if !ok {
+		msg := fmt.Sprintf("action[fsmCreateInode] clusterID[%s] volumeName[%s] partitionID[%v], create same inode(%v)",
+			mp.manager.metaNode.clusterId, mp.config.VolName, mp.config.PartitionId, ino.Inode)
+		exporter.WarningRocksdbError(msg)
+		log.LogErrorf("fsmCreateInode error: inode(%v) already exist in mp(%v)", ino.Inode, mp.config.PartitionId)
 		status = proto.OpExistErr
 		return
 	}

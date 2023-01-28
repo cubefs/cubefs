@@ -412,7 +412,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache, reuseMP bool,
 	authKey, zoneName, mpLayout, smartRules string, bucketPolicy, crossRegionHAType uint8,
 	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64,
-	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy) (err error) {
+	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy, enableBitMapAllocator bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -442,6 +442,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("delInodeInterval", strconv.Itoa(int(delInodeInterval)))
 	request.addParam(proto.MetaTrashCleanIntervalKey, strconv.FormatUint(trashCleanInterVal, 10))
 	request.addParam(proto.ReuseMPKey, strconv.FormatBool(reuseMP))
+	request.addParam(proto.EnableBitMapAllocatorKey, strconv.FormatBool(enableBitMapAllocator))
 	if trashDays > -1 {
 		request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
 	}
@@ -477,7 +478,7 @@ func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) 
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
 	followerRead, autoRepair, volWriteMutex, forceROW, isSmart, enableWriteCache, reuseMP bool, zoneName, mpLayout, smartRules string,
 	crossRegionHAType uint8, compactTag string, ecDataNum, ecParityNum uint8, ecEnable bool, hostDelayInterval int64,
-	batchDelInodeCnt, delInodeInterval uint64) (err error) {
+	batchDelInodeCnt, delInodeInterval uint64, bitMapAllocatorEnable bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -507,6 +508,7 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, ca
 	request.addParam("batchDelInodeCnt", strconv.Itoa(int(batchDelInodeCnt)))
 	request.addParam("delInodeInterval", strconv.Itoa(int(delInodeInterval)))
 	request.addParam(proto.ReuseMPKey, strconv.FormatBool(reuseMP))
+	request.addParam(proto.EnableBitMapAllocatorKey, strconv.FormatBool(bitMapAllocatorEnable))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

@@ -1603,22 +1603,46 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 			}
 		}
 
+		fillMetaPartitionReportInfo(mr)
+
 		//send latest end to replica
-		if mp.needSyncVirtualMPsToMetaNode(mr) {
-			msg := fmt.Sprintf("[updateMetaNode] different virtual mps, timeNow(%s) PartitionID(%v) Addr(%s) master(%v) metaNode(%v)",
-				time.Now().Format(proto.TimeFormat), mp.PartitionID, metaNode.Addr, mp.VirtualMPs, mr.VirtualMPs)
-			log.LogWarnf(msg)
-			Warn(c.Name, msg)
-			mp.addSyncVirtualMetaPartitionsTask(c)
-		} else if mr.End != mp.End {
+		if mr.End != mp.End {
 			log.LogDebugf("[updateMetaNode] different end, PartitionID(%v) Addr(%s) master(%v) metaNode(%v)",
 				mp.PartitionID, metaNode.Addr, mp.End, mr.End)
-			mp.addUpdateMetaReplicaTask(c)
+			mp.updateMetaPartitionReplicaEnd(c)
 		}
 		mp.updateMetaPartition(mr, metaNode)
 		c.removePromotedLearners(mp, mr.IsLearner, metaNode.ID)
 		c.updateInodeIDUpperBound(mp, mr, threshold, metaNode)
 	}
+}
+
+func fillMetaPartitionReportInfo(mr *proto.MetaPartitionReport) {
+	//meta node是旧版本(不包含虚拟mp功能)上报的信息中不包含虚拟mp的信息，需要填充
+	if len(mr.VirtualMPs) == 0 {
+		mr.VirtualMPs = []proto.VirtualMetaPartition{
+			{
+				ID:         mr.PartitionID,
+				Start:      mr.Start,
+				End:        mr.End,
+				Status:     int8(mr.Status),
+			},
+		}
+		return
+	}
+
+	for index, virtualMP := range mr.VirtualMPs {
+		//meta node是旧版本(仅包含虚拟mp，不包含bitmap分配器的版本)上报的信息中不包含status字段，需要填充
+		if virtualMP.Status == proto.Unknown {
+			//此版本中只有最后一个虚拟mp状态为物理mp的状态，其余均为read only状态
+			mr.VirtualMPs[index].Status = proto.ReadOnly
+			if index == len(mr.VirtualMPs) - 1 {
+				//最后一个虚拟mp
+				mr.VirtualMPs[index].Status = int8(mr.Status)
+			}
+		}
+	}
+	return
 }
 
 func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaPartitionReport, hasArriveThreshold bool, metaNode *MetaNode) (err error) {
@@ -1635,7 +1659,7 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		return
 	}
 	var end uint64
-	lastVirtualMP := mp.VirtualMPs[len(mp.VirtualMPs) - 1]
+	lastVirtualMP := mp.lastVirtualMetaPartition()
 	if mr.MaxInodeID <= 0 {
 		end = lastVirtualMP.Start + proto.DefaultMetaPartitionInodeIDStep
 	} else {

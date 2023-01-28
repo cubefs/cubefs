@@ -468,7 +468,7 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	//get process stat info
 	cpuUsageList, maxCPUUsage := s.processStatInfo.GetProcessCPUStatInfo()
-	memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := s.processStatInfo.GetProcessMemoryStatInfo()
+	_, memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := s.processStatInfo.GetProcessMemoryStatInfo()
 	//get disk info
 	disks := s.space.GetDisks()
 	diskList := make([]interface{}, 0, len(disks))

@@ -180,6 +180,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optBatchDelInodeCnt uint64
 	var optDelInodeInterval uint64
 	var optReuseMP bool
+	var optEnableBitMapAllocator bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -238,6 +239,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  BatchDelInodeCnt    : %v\n", optBatchDelInodeCnt)
 				stdout("  DelInodeInterval    : %v\n", optDelInodeInterval)
 				stdout("  ReuseMP             : %v\n", formatEnabledDisabled(optReuseMP))
+				stdout("  BitMapAllocator     : %v\n", formatEnabledDisabled(optEnableBitMapAllocator))
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -250,7 +252,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
 				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart, optEnableWriteCache, optReuseMP,
 				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag), optEcDataNum,
-				optEcParityNum, optEcEnable, optFolReadDelayInterval, optBatchDelInodeCnt, optDelInodeInterval)
+				optEcParityNum, optEcEnable, optFolReadDelayInterval, optBatchDelInodeCnt, optDelInodeInterval, optEnableBitMapAllocator)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
@@ -285,6 +287,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optBatchDelInodeCnt, CliOpVolBatchDelInodeCnt, 0, "Specify batch del inode cnt [default :0 use meta node default 128]")
 	cmd.Flags().Uint64Var(&optDelInodeInterval, CliOpVolDelInodeInterval, 0, "Specify del inodes interval  [Unit: ms, default 0]")
 	cmd.Flags().BoolVar(&optReuseMP, CliFlagReuseMP, cmdVolDefaultReuseMP, "reuse mp when add mp")
+	cmd.Flags().BoolVar(&optEnableBitMapAllocator, CliFlagBitMapAllocatorSt, false, "bit map allocator enable state")
 	return cmd
 }
 
@@ -331,7 +334,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optBatchDelInodeCnt      int
 		optDelInodeInterval      int
 		optUmpCollectWay         int
-		optReuseMP              string
+		optReuseMP               string
+		optEnableBitMapAllocator string
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -644,10 +648,26 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 					confirmString.WriteString(fmt.Sprintf("  Reuse MP            : %v -> %v\n", formatEnabledDisabled(vv.ReuseMP), formatEnabledDisabled(enable)))
 					vv.ReuseMP = enable
 				} else {
-					confirmString.WriteString(fmt.Sprintf("  Reuse MP            : %v\n", vv.ReuseMP))
+					confirmString.WriteString(fmt.Sprintf("  Reuse MP            : %v\n", formatEnabledDisabled(vv.ReuseMP)))
 				}
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Reuse MP            : %v\n", formatEnabledDisabled(vv.ReuseMP)))
+			}
+
+			if optEnableBitMapAllocator != "" {
+				var enable bool
+				if enable, err = strconv.ParseBool(optEnableBitMapAllocator); err != nil {
+					return
+				}
+				if vv.EnableBitMapAllocator != enable {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  BitMapAllocator     : %v -> %v\n", formatEnabledDisabled(vv.EnableBitMapAllocator), formatEnabledDisabled(enable)))
+					vv.EnableBitMapAllocator = enable
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  BitMapAllocator     : %v\n", formatEnabledDisabled(vv.EnableBitMapAllocator)))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  BitMapAllocator     : %v\n", formatEnabledDisabled(vv.EnableBitMapAllocator)))
 			}
 
 			if err != nil {
@@ -672,7 +692,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, vv.ReuseMP, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
-				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay)
+				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay, vv.EnableBitMapAllocator)
 			if err != nil {
 				return
 			}
@@ -715,6 +735,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optDelInodeInterval, CliOpVolDelInodeInterval, -1, "specify del inode interval, unit:ms")
 	cmd.Flags().IntVar(&optUmpCollectWay, CliFlagUmpCollectWay, -1, "Set ump collect way: 0 unknown 1 file 2 jmtp client")
 	cmd.Flags().StringVar(&optReuseMP, CliFlagReuseMP, "", "Reuse meta partition when add meta partition")
+	cmd.Flags().StringVar(&optEnableBitMapAllocator, CliFlagBitMapAllocatorSt, "", "enable/disable bit map allocator")
 	return cmd
 }
 

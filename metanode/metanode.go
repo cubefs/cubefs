@@ -41,6 +41,7 @@ var (
 	masterClient   *masterSDK.MasterClient
 	configTotalMem uint64
 	serverPort     string
+	ProcessUsedMem uint64
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -413,6 +414,18 @@ func (m *MetaNode) startUpdateProcessStatInfo() {
 	m.processStatInfo = statinfo.NewProcessStatInfo()
 	m.processStatInfo.ProcessStartTime = time.Now().Format("2006-01-02 15:04:05")
 	go m.processStatInfo.UpdateStatInfoSchedule()
+}
+
+func (m *MetaNode) getProcessMemUsed() (memUsed uint64, err error) {
+	if m.processStatInfo == nil {
+		return memory.GetProcessMemory(os.Getpid())
+	}
+
+	if memUsed, _, _, _ = m.processStatInfo.GetProcessMemoryStatInfo(); memUsed != 0 {
+		return
+	}
+
+	return memory.GetProcessMemory(os.Getpid())
 }
 
 // NewServer creates a new meta node instance.

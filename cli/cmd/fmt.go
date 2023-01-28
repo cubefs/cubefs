@@ -186,7 +186,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Trash clean interval : %v\n", svv.TrashCleanInterval))
 	sb.WriteString(fmt.Sprintf("  Batch del inode cnt  : %v\n", svv.BatchDelInodeCnt))
 	sb.WriteString(fmt.Sprintf("  Del ino interval(ms) : %v\n", svv.DelInodeInterval))
-	sb.WriteString(fmt.Sprintf("  Reuse MP               : %v\n", formatEnabledDisabled(svv.ReuseMP)))
+	sb.WriteString(fmt.Sprintf("  Reuse MP             : %v\n", formatEnabledDisabled(svv.ReuseMP)))
+	sb.WriteString(fmt.Sprintf("  BitMapAllocator      : %v\n", formatEnabledDisabled(svv.EnableBitMapAllocator)))
 	return sb.String()
 }
 
@@ -368,6 +369,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString(fmt.Sprintf("LearnerNum    : %v\n", partition.LearnerNum))
 	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatMetaPartitionStatus(partition.Status)))
+	sb.WriteString(fmt.Sprintf("PhyMPStatus   : %v\n", formatMetaPartitionStatus(partition.PhyMPStatus)))
 	sb.WriteString(fmt.Sprintf("Recovering    : %v\n", formatIsRecover(partition.IsRecover)))
 	sb.WriteString(fmt.Sprintf("EnableReuseSt : %v\n", formatEnabledDisabled(!partition.DisableReuse)))
 	sb.WriteString(fmt.Sprintf("Start         : %v\n", partition.Start))
@@ -376,11 +378,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("InodeCount    : %v\n", partition.InodeCount))
 	sb.WriteString(fmt.Sprintf("DentryCount   : %v\n", partition.DentryCount))
 	sb.WriteString(fmt.Sprintf("MaxExistIno   : %v\n", partition.MaxExistIno))
-	sb.WriteString(fmt.Sprintf("Virtual MPs   :"))
-	for _, virtualMP := range partition.VirtualMPs {
-		sb.WriteString(fmt.Sprintf(" [%v: %v-%v]", virtualMP.ID, virtualMP.Start, virtualMP.End))
-	}
-	sb.WriteString("\n\n")
+	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Replicas : \n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
 	learnerReplicas := make([]*proto.MetaReplicaInfo, 0)
@@ -422,7 +420,32 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	for partitionHost, id := range partition.MissNodes {
 		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", partitionHost, id))
 	}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Virtual MP Count:%v\n", len(partition.VirtualMPs)))
+	sb.WriteString(fmt.Sprintf("Virtual MPs Info:\n"))
+	sb.WriteString(fmt.Sprintf(formatVirtualMPInfoTableHeader()))
+	for _, virtualMP := range partition.VirtualMPs {
+		sb.WriteString(fmt.Sprintf(VirtualMPInfoTableRowPattern, virtualMP.ID, fmt.Sprintf("%v - %v", virtualMP.Start, virtualMP.End), virtualMP.AllocatorUsedCount))
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Virtual MP Replica Status:\n"))
+	sb.WriteString(fmt.Sprintf("%-20v    %-8v    \n", "ADDR", "STATUS"))
+	for _, replica := range partition.Replicas {
+		for _, vMP := range replica.VirtualMPs {
+			if partition.PartitionID == vMP.ID {
+				sb.WriteString(fmt.Sprintf("%-20v    %-8v    \n", replica.Addr, formatMetaPartitionStatus(vMP.Status)))
+			}
+		}
+	}
+
 	return sb.String()
+}
+
+var VirtualMPInfoTableRowPattern = "%-8v    %-30v    %-8v\n"
+
+func formatVirtualMPInfoTableHeader() string {
+	return fmt.Sprintf(VirtualMPInfoTableRowPattern, "ID", "SECTION", "BIT USED")
 }
 
 var (

@@ -41,7 +41,7 @@ func mockMetaPartitionReplica(nodeID, partitionID uint64, storeMode proto.StoreM
 		RocksDBDir:  partitionDir,
 	}
 
-	config.VirtualMPs = append(config.VirtualMPs, proto.VirtualMetaPartition{Start: config.Start, End: config.End, ID: 1})
+	config.VirtualMPs = append(config.VirtualMPs, VirtualMetaPartitionConf{Start: config.Start, End: config.End, ID: 1})
 
 	mp, err := CreateMetaPartition(config, manager)
 	if err != nil {

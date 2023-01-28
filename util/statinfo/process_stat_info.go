@@ -20,15 +20,15 @@ type ProcessStatInfo struct {
 	MaxMemUsedGB     float64
 	CPUUsageList     []float64
 	MemUsedGBList    []float64
-	RWMutex          *sync.RWMutex
+	memUsed          uint64
+	RWMutex          sync.RWMutex
 }
 
 func NewProcessStatInfo() *ProcessStatInfo {
-	var statInfo = &ProcessStatInfo{}
-	statInfo.CPUUsageList = make([]float64, 0, CollectPointNumber)
-	statInfo.MemUsedGBList = make([]float64, 0, CollectPointNumber)
-	statInfo.RWMutex = new(sync.RWMutex)
-	return statInfo
+	return &ProcessStatInfo{
+		CPUUsageList:  make([]float64, 0, CollectPointNumber),
+		MemUsedGBList: make([]float64, 0, CollectPointNumber),
+	}
 }
 
 func (s *ProcessStatInfo) UpdateStatInfoSchedule() {
@@ -68,6 +68,7 @@ func (s *ProcessStatInfo) UpdateMemoryInfo(pid int) {
 	memoryUsedGB = unit.FixedPoint(float64(memoryUsed)/unit.GB, 1)
 	s.RWMutex.Lock()
 	defer s.RWMutex.Unlock()
+	s.memUsed = memoryUsed
 	if len(s.MemUsedGBList) < CollectPointNumber {
 		s.MemUsedGBList = append(s.MemUsedGBList, memoryUsedGB)
 	} else {
@@ -110,11 +111,12 @@ func (s *ProcessStatInfo) GetProcessCPUStatInfo() (cpuUsageList []float64, maxCP
 	return
 }
 
-func (s *ProcessStatInfo) GetProcessMemoryStatInfo() (memoryUsedGBList []float64, maxMemoryUsedGB float64, maxMemoryUsagePercent float64) {
+func (s *ProcessStatInfo) GetProcessMemoryStatInfo() (memUsed uint64, memoryUsedGBList []float64, maxMemoryUsedGB float64, maxMemoryUsagePercent float64) {
 	s.RWMutex.RLock()
 	defer s.RWMutex.RUnlock()
 	memoryUsedGBList = s.MemUsedGBList
 	maxMemoryUsedGB = s.MaxMemUsedGB
 	maxMemoryUsagePercent = s.MaxMemUsage
+	memUsed = s.memUsed
 	return
 }

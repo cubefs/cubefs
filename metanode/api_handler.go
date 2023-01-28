@@ -119,6 +119,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/removeOldDelEkRecordFile", m.removeOldDelEKRecordFile)
 	http.HandleFunc("/setRaftStorageParam", m.setRaftStorageParam)
 	http.HandleFunc("/getDeletedDentrys", m.getDeletedDentrysByParentInoHandler)
+	http.HandleFunc("/getBitInuse", m.getBitInuse)
+	http.HandleFunc("/getInoAllocatorInfo", m.getInodeAllocatorStat)
 	return
 }
 
@@ -210,7 +212,8 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 		msg["raft_log_size"] = raftPartition.GetWALFileSize()
 		msg["raft_log_cap"] = raftPartition.GetWALFileCacheCapacity()
 	}
-	msg["virtual_mps"] = mp.(*metaPartition).config.VirtualMPs
+	msg["status"] = mp.(*metaPartition).status
+	msg["virtual_mps"] = mp.(*metaPartition).getVirtualMetaPartitionsInfo()
 	msg["now"] = time.Now()
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -863,7 +866,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	//get process stat info
 	cpuUsageList, maxCPUUsage := m.processStatInfo.GetProcessCPUStatInfo()
-	memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := m.processStatInfo.GetProcessMemoryStatInfo()
+	_, memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := m.processStatInfo.GetProcessMemoryStatInfo()
 	nodeCfg := getGlobalConfNodeInfo()
 	//get disk info
 	disks := m.getDisks()
@@ -2399,5 +2402,91 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 	} else {
 		resp.Data = ddentrys
 	}
+	return
+}
+
+//todo: return bit位
+func (m *MetaNode) getBitInuse(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getBitInuse] response %s", err)
+		}
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	virtualMP := mp.(*metaPartition).getVirtualMetaPartitionByID(pid)
+	if virtualMP.InodeIDAlloter == nil || virtualMP.InodeIDAlloter.GetStatus() == allocatorStatusUnavailable {
+		resp.Msg = fmt.Sprintf("allocator disable")
+		return
+	}
+
+	inoInuse := virtualMP.InodeIDAlloter.GetUsedInos()
+	resp.Data = &struct {
+		Cnt      int      `json:"count"`
+		InoInuse []uint64 `json:"bitInuse"`
+	}{
+		Cnt:      len(inoInuse),
+		InoInuse: inoInuse,
+	}
+	return
+}
+
+func (m *MetaNode) getInodeAllocatorStat(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getInodeAllocatorStat] response %s", err)
+		}
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	virtualMP := mp.(*metaPartition).getVirtualMetaPartitionByID(pid)
+	if virtualMP.InodeIDAlloter == nil || virtualMP.InodeIDAlloter.GetStatus() == allocatorStatusUnavailable {
+		resp.Msg = fmt.Sprintf("allocator disable")
+		return
+	}
+
+	resp.Data = virtualMP.InodeIDAlloter
 	return
 }

@@ -240,7 +240,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, false, args.reuseMP, 0, 0,
 		defaultChildFileMaxCount, proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)}, nil, proto.CompactDefault,
-		proto.DpFollowerReadDelayConfig{false, 0}, args.batchDelInodeCnt, args.delInodeInterVal)
+		proto.DpFollowerReadDelayConfig{false, 0}, args.batchDelInodeCnt, args.delInodeInterVal, false)
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +416,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		vol.volWriteMutexEnable, false, *args.EnableWriteCache, *args.reuseMP, vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType,
 		vol.dpWriteableThreshold, vol.trashRemainingDays, proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)},
 		vol.ExtentCacheExpireSec, vol.smartRules, vol.compactTag, vol.FollowerReadDelayCfg, vol.FollReadHostWeight, *args.TrashInterVal,
-		*args.batchDelInodeCnt, *args.delInodeInterval, vol.UmpCollectWay); err != nil {
+		*args.batchDelInodeCnt, *args.delInodeInterval, vol.UmpCollectWay, false); err != nil {
 		return nil, err
 	}
 

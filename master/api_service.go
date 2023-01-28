@@ -1662,24 +1662,25 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		vol *Vol
 
-		dpSelectorName       string
-		dpSelectorParm       string
-		dpWriteableThreshold float64
-		ossBucketPolicy      proto.BucketAccessPolicy
-		crossRegionHAType    proto.CrossRegionHAType
-		trashRemainingDays   uint32
-		storeMode            int
-		mpLayout             proto.MetaPartitionLayout
-		isSmart              bool
-		reuseMP              bool
-		smartRules           []string
-		compactTag           proto.CompactTag
-		dpFolReadDelayCfg    proto.DpFollowerReadDelayConfig
-		follReadHostWeight   int
-		trashInterVal        uint64
-		batchDelInodeCnt     uint32
-		delInodeInterval     uint32
-		umpCollectWay        proto.UmpCollectBy
+		dpSelectorName        string
+		dpSelectorParm        string
+		dpWriteableThreshold  float64
+		ossBucketPolicy       proto.BucketAccessPolicy
+		crossRegionHAType     proto.CrossRegionHAType
+		trashRemainingDays    uint32
+		storeMode             int
+		mpLayout              proto.MetaPartitionLayout
+		isSmart               bool
+		reuseMP               bool
+		enableBitMapAllocator bool
+		smartRules            []string
+		compactTag            proto.CompactTag
+		dpFolReadDelayCfg     proto.DpFollowerReadDelayConfig
+		follReadHostWeight    int
+		trashInterVal         uint64
+		batchDelInodeCnt      uint32
+		delInodeInterval      uint32
+		umpCollectWay         proto.UmpCollectBy
 	)
 	metrics := exporter.NewTPCnt(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1711,7 +1712,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	if mpReplicaNum == 0 {
 		mpReplicaNum = int(vol.mpReplicaNum)
 	}
-	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache, reuseMP, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache, reuseMP,
+		enableBitMapAllocator, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1790,7 +1792,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
 		reuseMP, dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight,
-		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay); err != nil {
+		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, enableBitMapAllocator); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1885,13 +1887,14 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		childFileMaxCnt      uint32
 		batchDelInodeCnt     uint32
 		delInodeInterval     uint32
+		bitMapAllocator      bool
 	)
 
 	metrics := exporter.NewTPCnt(proto.AdminCreateVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
 		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, reuseMP, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
-		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, err = parseRequestToCreateVol(r); err != nil {
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1934,7 +1937,8 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
 		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, reuseMP,
-		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval); err != nil {
+		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval,
+		bitMapAllocator); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1996,81 +2000,82 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		fileAvgSize = float64(stat.RealUsedSize) / float64(volInodeCount)
 	}
 	return &proto.SimpleVolView{
-		ID:                   vol.ID,
-		Name:                 vol.Name,
-		Owner:                vol.Owner,
-		ZoneName:             vol.zoneName,
-		DpReplicaNum:         vol.dpReplicaNum,
-		MpReplicaNum:         vol.mpReplicaNum,
-		DpLearnerNum:         vol.dpLearnerNum,
-		MpLearnerNum:         vol.mpLearnerNum,
-		InodeCount:           volInodeCount,
-		DentryCount:          volDentryCount,
-		MaxMetaPartitionID:   maxPartitionID,
-		MaxVirtualMPId:       maxVirtualMPId,
-		Status:               vol.Status,
-		Capacity:             vol.Capacity,
-		FollowerRead:         vol.FollowerRead,
-		DpFolReadDelayConfig: vol.FollowerReadDelayCfg,
-		FolReadHostWeight:    vol.FollReadHostWeight,
-		NearRead:             vol.NearRead,
-		ForceROW:             vol.ForceROW,
-		EnableWriteCache:    vol.enableWriteCache,
-		CrossRegionHAType:   vol.CrossRegionHAType,
-		NeedToLowerReplica:  vol.NeedToLowerReplica,
-		Authenticate:        vol.authenticate,
-		EnableToken:         vol.enableToken,
-		CrossZone:           vol.crossZone,
-		AutoRepair:          vol.autoRepair,
-		VolWriteMutexEnable: vol.volWriteMutexEnable,
-		Tokens:              vol.tokens,
-		RwDpCnt:             vol.dataPartitions.readableAndWritableCnt,
-		VirtualMPCnt:        virtualMPCnt,
-		MpCnt:               vol.getMpCnt(),
-		DpCnt:               vol.getDpCnt(),
-		CreateTime:          time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
-		Description:         vol.description,
-		DpSelectorName:      vol.dpSelectorName,
-		DpSelectorParm:      vol.dpSelectorParm,
-		OSSBucketPolicy:     vol.OSSBucketPolicy,
-		DPConvertMode:       vol.DPConvertMode,
-		MPConvertMode:       vol.MPConvertMode,
-		Quorum:              vol.getDataPartitionQuorum(),
-		DpWriteableThreshold: vol.dpWriteableThreshold,
-		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
-		RwMpCnt:              int(vol.getWritableMpCount()),
-		MinWritableMPNum:     vol.MinWritableMPNum,
-		MinWritableDPNum:     vol.MinWritableDPNum,
-		TrashRemainingDays:   vol.trashRemainingDays,
-		DefaultStoreMode:     vol.DefaultStoreMode,
-		ConvertState:         vol.convertState,
-		MpLayout:             vol.MpLayout,
-		IsSmart:              vol.isSmart,
-		SmartEnableTime:      time.Unix(vol.smartEnableTime, 0).Format(proto.TimeFormat),
-		SmartRules:           vol.smartRules,
-		TotalSize:            stat.TotalSize,
-		UsedSize:             stat.RealUsedSize,
-		TotalSizeGB:          fmt.Sprintf("%.2f", float64(stat.TotalSize)/unit.GB),
-		UsedSizeGB:           fmt.Sprintf("%.2f", float64(stat.RealUsedSize)/unit.GB),
-		UsedRatio:            usedRatio,
-		FileAvgSize:          fileAvgSize,
-		CreateStatus:         vol.CreateStatus,
-		CompactTag:           vol.compactTag.String(),
-		CompactTagModifyTime: vol.compactTagModifyTime,
-		EcEnable:             vol.EcEnable,
-		EcWaitTime:           vol.EcMigrationWaitTime,
-		EcSaveTime:           vol.EcMigrationSaveTime,
-		EcRetryWait:          vol.EcMigrationRetryWait,
-		EcTimeOut:            vol.EcMigrationTimeOut,
-		EcDataNum:            vol.EcDataNum,
-		EcParityNum:          vol.EcParityNum,
-		EcMaxUnitSize:        vol.EcMaxUnitSize,
-		ChildFileMaxCount:    vol.ChildFileMaxCount,
-		TrashCleanInterval:   vol.TrashCleanInterval,
-		BatchDelInodeCnt:     vol.BatchDelInodeCnt,
-		DelInodeInterval:     vol.DelInodeInterval,
-		UmpCollectWay:        vol.UmpCollectWay,
-		ReuseMP:              vol.reuseMP,
+		ID:                    vol.ID,
+		Name:                  vol.Name,
+		Owner:                 vol.Owner,
+		ZoneName:              vol.zoneName,
+		DpReplicaNum:          vol.dpReplicaNum,
+		MpReplicaNum:          vol.mpReplicaNum,
+		DpLearnerNum:          vol.dpLearnerNum,
+		MpLearnerNum:          vol.mpLearnerNum,
+		InodeCount:            volInodeCount,
+		DentryCount:           volDentryCount,
+		MaxMetaPartitionID:    maxPartitionID,
+		MaxVirtualMPId:        maxVirtualMPId,
+		Status:                vol.Status,
+		Capacity:              vol.Capacity,
+		FollowerRead:          vol.FollowerRead,
+		DpFolReadDelayConfig:  vol.FollowerReadDelayCfg,
+		FolReadHostWeight:     vol.FollReadHostWeight,
+		NearRead:              vol.NearRead,
+		ForceROW:              vol.ForceROW,
+		EnableWriteCache:      vol.enableWriteCache,
+		CrossRegionHAType:     vol.CrossRegionHAType,
+		NeedToLowerReplica:    vol.NeedToLowerReplica,
+		Authenticate:          vol.authenticate,
+		EnableToken:           vol.enableToken,
+		CrossZone:             vol.crossZone,
+		AutoRepair:            vol.autoRepair,
+		VolWriteMutexEnable:   vol.volWriteMutexEnable,
+		Tokens:                vol.tokens,
+		RwDpCnt:               vol.dataPartitions.readableAndWritableCnt,
+		VirtualMPCnt:          virtualMPCnt,
+		MpCnt:                 vol.getMpCnt(),
+		DpCnt:                 vol.getDpCnt(),
+		CreateTime:            time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+		Description:           vol.description,
+		DpSelectorName:        vol.dpSelectorName,
+		DpSelectorParm:        vol.dpSelectorParm,
+		OSSBucketPolicy:       vol.OSSBucketPolicy,
+		DPConvertMode:         vol.DPConvertMode,
+		MPConvertMode:         vol.MPConvertMode,
+		Quorum:                vol.getDataPartitionQuorum(),
+		DpWriteableThreshold:  vol.dpWriteableThreshold,
+		ExtentCacheExpireSec:  vol.ExtentCacheExpireSec,
+		RwMpCnt:               int(vol.getWritableMpCount()),
+		MinWritableMPNum:      vol.MinWritableMPNum,
+		MinWritableDPNum:      vol.MinWritableDPNum,
+		TrashRemainingDays:    vol.trashRemainingDays,
+		DefaultStoreMode:      vol.DefaultStoreMode,
+		ConvertState:          vol.convertState,
+		MpLayout:              vol.MpLayout,
+		IsSmart:               vol.isSmart,
+		SmartEnableTime:       time.Unix(vol.smartEnableTime, 0).Format(proto.TimeFormat),
+		SmartRules:            vol.smartRules,
+		TotalSize:             stat.TotalSize,
+		UsedSize:              stat.RealUsedSize,
+		TotalSizeGB:           fmt.Sprintf("%.2f", float64(stat.TotalSize)/unit.GB),
+		UsedSizeGB:            fmt.Sprintf("%.2f", float64(stat.RealUsedSize)/unit.GB),
+		UsedRatio:             usedRatio,
+		FileAvgSize:           fileAvgSize,
+		CreateStatus:          vol.CreateStatus,
+		CompactTag:            vol.compactTag.String(),
+		CompactTagModifyTime:  vol.compactTagModifyTime,
+		EcEnable:              vol.EcEnable,
+		EcWaitTime:            vol.EcMigrationWaitTime,
+		EcSaveTime:            vol.EcMigrationSaveTime,
+		EcRetryWait:           vol.EcMigrationRetryWait,
+		EcTimeOut:             vol.EcMigrationTimeOut,
+		EcDataNum:             vol.EcDataNum,
+		EcParityNum:           vol.EcParityNum,
+		EcMaxUnitSize:         vol.EcMaxUnitSize,
+		ChildFileMaxCount:     vol.ChildFileMaxCount,
+		TrashCleanInterval:    vol.TrashCleanInterval,
+		BatchDelInodeCnt:      vol.BatchDelInodeCnt,
+		DelInodeInterval:      vol.DelInodeInterval,
+		UmpCollectWay:         vol.UmpCollectWay,
+		ReuseMP:               vol.reuseMP,
+		EnableBitMapAllocator: vol.EnableBitMapAllocator,
 	}
 }
 
@@ -3032,7 +3037,7 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, httpPort, zoneName, vers
 		zoneName = DefaultZoneName
 	}
 
-	if versionStr := r.FormValue(versionKey); versionStr == "" {
+	if version = r.FormValue(versionKey); version == "" {
 		version = defaultMetaNodeVersion
 	}
 
@@ -3297,7 +3302,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 }
 
 func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair,
-	forceROW, volWriteMutexEnable, enableWriteCache, reuseMP bool, err error) {
+	forceROW, volWriteMutexEnable, enableWriteCache, reuseMP, enableBitMapAllocator bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -3370,6 +3375,15 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRea
 		}
 	} else {
 		reuseMP = vol.reuseMP
+	}
+
+	if enableBitMapAllocatorStr := r.FormValue(proto.EnableBitMapAllocatorKey); enableBitMapAllocatorStr != "" {
+		if enableBitMapAllocator, err = strconv.ParseBool(enableBitMapAllocatorStr); err != nil {
+			err = unmatchedKey(proto.EnableBitMapAllocatorKey)
+			return
+		}
+	} else {
+		enableBitMapAllocator = vol.EnableBitMapAllocator
 	}
 	return
 }
@@ -3609,7 +3623,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, reuseMP bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, childFileMaxCnt uint32,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
-	batchDelInodeCnt, delInodeInterval uint32, err error) {
+	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnableState bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3692,6 +3706,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	enableToken = extractEnableToken(r)
 	volWriteMutexEnable = extractVolWriteMutex(r)
 	reuseMP = extractReuseMP(r)
+	bitMapAllocatorEnableState = extractBitMapAllocatorEnableState(r)
 	description = r.FormValue(descriptionKey)
 
 	if trashDaysStr := r.FormValue(trashRemainingDaysKey); trashDaysStr == "" {
@@ -4374,6 +4389,11 @@ func extractReuseMP(r *http.Request) bool {
 	return reuseMP
 }
 
+func extractBitMapAllocatorEnableState(r *http.Request) bool {
+	reuseMP, _ := strconv.ParseBool(r.FormValue(proto.EnableBitMapAllocatorKey))
+	return reuseMP
+}
+
 func extractCrossRegionHA(r *http.Request) (crossRegionHAType proto.CrossRegionHAType, err error) {
 	crossRegionHAStr := r.FormValue(crossRegionHAKey)
 	if crossRegionHAStr != "" {
@@ -4744,7 +4764,7 @@ func getMetaPartitionView(mp *MetaPartition) (result []*proto.MetaPartitionView)
 	log.LogDebugf("[getMetaPartitionView] partition id:%v, status:%v, start:%v, end:%v",
 		mp.PartitionID, mp.Status, mp.Start, mp.End)
 	for _, virtualMetaPartition := range mp.VirtualMPs {
-		mpView := proto.NewMetaPartitionView(mp.PartitionID, virtualMetaPartition.ID, virtualMetaPartition.Start, virtualMetaPartition.End, mp.Status)
+		mpView := proto.NewMetaPartitionView(mp.PartitionID, virtualMetaPartition.ID, virtualMetaPartition.Start, virtualMetaPartition.End, virtualMetaPartition.Status)
 		for _, host := range mp.Hosts {
 			mpView.Members = append(mpView.Members, host)
 		}
@@ -4760,10 +4780,11 @@ func getMetaPartitionView(mp *MetaPartition) (result []*proto.MetaPartitionView)
 		}
 
 		if mp.MaxInodeID >= virtualMetaPartition.End {
-			if mpView.Status == proto.ReadWrite {
-				mpView.Status = proto.ReadOnly
-			}
 			mpView.MaxInodeID = virtualMetaPartition.End
+		}
+
+		if mp.MaxInodeID < virtualMetaPartition.Start {
+			mpView.MaxInodeID = virtualMetaPartition.Start
 		}
 
 		for _, learner := range mp.Learners {
@@ -4849,6 +4870,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				StoreMode:   mp.Replicas[i].StoreMode,
 				ApplyId:     mp.Replicas[i].ApplyId,
 				IsRecover:   mp.Replicas[i].IsRecover,
+				VirtualMPs:  mp.Replicas[i].VirtualMPs,
 			}
 
 			if mp.Replicas[i].StoreMode == proto.StoreModeMem {
@@ -4862,12 +4884,15 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		var (
 			mpStart = mp.Start
 			mpEnd   = mp.End
+			status  = mp.Status
 		)
-		virtualMP := mp.getVirtualMPInfoByID(partitionID)
+		virtualMP := mp.getVirtualMPInfoByIDWithoutLock(partitionID)
 		if virtualMP != nil {
 			mpStart = virtualMP.Start
 			mpEnd = virtualMP.End
+			status = virtualMP.Status
 		}
+
 		var mpInfo = &proto.MetaPartitionInfo{
 			PartitionID:   partitionID,
 			PhyPID:        mp.PartitionID,
@@ -4881,7 +4906,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			Replicas:      replicas,
 			ReplicaNum:    mp.ReplicaNum,
 			LearnerNum:    mp.LearnerNum,
-			Status:        mp.Status,
+			Status:        status,
 			IsRecover:     mp.IsRecover,
 			Hosts:         mp.Hosts,
 			Peers:         mp.Peers,
@@ -4894,6 +4919,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			RcokStoreCnt:  rocksCnt,
 			VirtualMPs:    mp.VirtualMPs,
 			DisableReuse:  mp.DisableReuse,
+			PhyMPStatus:   mp.Status,
 		}
 		return mpInfo
 	}
@@ -4925,7 +4951,8 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.RealUsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
-				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval)
+				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
+				vol.EnableBitMapAllocator)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4958,7 +4985,8 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 			stat := volStat(vol)
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
-				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval)
+				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
+				vol.EnableBitMapAllocator)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4985,7 +5013,8 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 		stat := volStat(vol)
 		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 			vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
-			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval)
+			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
+			vol.EnableBitMapAllocator)
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))

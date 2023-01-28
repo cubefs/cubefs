@@ -174,10 +174,12 @@ const (
 	opFSMExtentMerge
 	resetStoreTick
 	opFSMExtentDelSyncV2
-	opFSMMetaAddVirtualMP
-	opFSMSynVirtualMPs
+	opFSMMetaAddVirtualMP //deprecated
+	opFSMSynVirtualMPs //deprecated
 
 	opFSMSyncMetaConf
+
+	opFSMMetaRaftAddVirtualMP
 )
 
 var (
@@ -237,6 +239,9 @@ const (
 	intervalFailOverLeader          = time.Second
 	defTryFailOverCnt               = 3
 	defParallelFailOverCnt          = 10
+
+	defBitMapReuseVirtualMPMaxCount = 3 //only manager top three
+	defFreeBitMinCount              = 10000
 )
 
 const (

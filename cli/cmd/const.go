@@ -157,6 +157,7 @@ const (
 	CliOpVolDelInodeInterval   = "del-inode-interval"
 	CliFlagReuseMP             = "reuseMP"
 	CliOpSetReuseState         = "setReuseState"
+	CliFlagBitMapAllocatorSt   = "enableBitMapAllocator"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

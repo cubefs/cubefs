@@ -47,6 +47,7 @@ type MetaReplica struct {
 	IsRecover   bool
 	StoreMode   proto.StoreMode
 	ApplyId     uint64
+	VirtualMPs  []proto.VirtualMetaPartition
 	metaNode    *MetaNode
 }
 
@@ -202,20 +203,6 @@ func (mp *MetaPartition) addUpdateMetaReplicaTask(c *Cluster) (err error) {
 	return
 }
 
-func (mp *MetaPartition) addSyncVirtualMetaPartitionsTask(c *Cluster) (err error) {
-	tasks := make([]*proto.AdminTask, 0)
-	task := mp.createTaskToSyncVirtualMetaPartitions()
-	if task == nil {
-		err = proto.ErrNoLeader
-		return
-	}
-	tasks = append(tasks, task)
-	c.addMetaNodeTasks(tasks)
-	log.LogWarnf("action[addSyncVirtualMetaPartitionsTask] partitionID[%v] start[%v] end[%v] virtualMPs[%v] success",
-		mp.PartitionID, mp.Start, mp.End, mp.VirtualMPs)
-	return
-}
-
 func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 
 	if mp.PartitionID != maxPartitionID {
@@ -258,6 +245,15 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 	log.LogDebugf("action[checkEnd] partitionID[%v] end[%v]", mp.PartitionID, mp.End)
 }
 
+// hosts with lock
+func (mp *MetaPartition) hosts() []string {
+	mp.RLock()
+	defer mp.RUnlock()
+	hosts := make([]string, len(mp.Hosts))
+	copy(hosts, mp.Hosts)
+	return hosts
+}
+
 func (mp *MetaPartition) getMetaReplica(addr string) (mr *MetaReplica, err error) {
 	for _, mr = range mp.Replicas {
 		if mr.Addr == addr {
@@ -279,6 +275,38 @@ func (mp *MetaPartition) checkLeader() {
 	for _, mr := range mp.Replicas {
 		if !mr.isActive() {
 			mr.IsLeader = false
+		}
+	}
+	return
+}
+
+func (mp *MetaPartition) checkVirtualMetaPartitionStatus(virtualMP proto.VirtualMetaPartition) (status int8) {
+	if mp.Status == proto.ReadOnly || mp.Status == proto.Unavailable {
+		status = mp.Status
+		return
+	}
+
+	leaderReplica, err := mp.getMetaReplicaLeader()
+	if err != nil {
+		status = proto.Unavailable
+		return
+	}
+
+	status = virtualMP.Status
+	for _, vMP := range leaderReplica.VirtualMPs {
+		if virtualMP.ID == vMP.ID {
+			status = vMP.Status
+			break
+		}
+	}
+
+	liveReplicas := mp.getLiveReplicas()
+	for _, replica := range liveReplicas {
+		for _, vMP := range replica.VirtualMPs {
+			if vMP.ID == virtualMP.ID && vMP.Status == proto.ReadOnly {
+				status = proto.ReadOnly
+				break
+			}
 		}
 	}
 	return
@@ -312,6 +340,17 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 				mp.Status = proto.ReadOnly
 			}
 		}
+	}
+
+	writableVirtualMPCount := 0
+	for index := 0; index < len(mp.VirtualMPs); index++ {
+		mp.VirtualMPs[index].Status = mp.checkVirtualMetaPartitionStatus(mp.VirtualMPs[index])
+		if mp.VirtualMPs[index].Status == proto.ReadWrite {
+			writableVirtualMPCount++
+		}
+	}
+	if mp.Status == proto.ReadWrite && writableVirtualMPCount == 0 {
+		mp.Status = proto.ReadOnly
 	}
 
 	if (mp.PartitionID == maxPartitionID || mp.VirtualMPs[len(mp.VirtualMPs) - 1].End == defaultMaxMetaPartitionInodeID ) && mp.Status == proto.ReadOnly {
@@ -396,6 +435,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.setDentryCount()
 	mp.setDeletedInodeCount()
 	mp.setMaxExistIno()
+	mp.setInoAllocatorUsedCount()
 	mp.removeMissingReplica(metaNode.Addr)
 }
 
@@ -489,6 +529,12 @@ func (mp *MetaPartition) getLiveReplicas() (liveReplicas []*MetaReplica) {
 		}
 	}
 	return
+}
+
+func (mp *MetaPartition) updateMetaPartitionReplicaEnd(c *Cluster) {
+	mp.RLock()
+	defer mp.RUnlock()
+	mp.addUpdateMetaReplicaTask(c)
 }
 
 func (mp *MetaPartition) persistToRocksDB(action, volName string, newHosts []string, newPeers []proto.Peer, newLearners []proto.Learner, c *Cluster) (err error) {
@@ -627,31 +673,69 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 	return
 }
 
-func (mp *MetaPartition) buildAddVirtualMetaPartitionTasks(volName string, vMP *proto.VirtualMetaPartition) (task *proto.AdminTask, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("buildAddVirtualMetaPartitionTasks recover panic, partitionID(%v) panicStack(%v)", mp.PartitionID, debug.Stack())
-			err = fmt.Errorf("buildAddVirtualMPTasks recover panic, partitionID(%v)", mp.PartitionID)
-		}
-	}()
-	task = nil
-	err = fmt.Errorf("vol[%s] add virtual mp[%d] has no leader", volName, mp.PartitionID)
+func (mp *MetaPartition) buildAddVirtualMetaPartitionTask(host string, vMP *proto.VirtualMetaPartition) (task *proto.AdminTask, err error) {
+	if host == "" {
+		err = fmt.Errorf("build add virtual meta partition task failed, lack host addr")
+		return
+	}
 	req := &proto.AddVirtualMetaPartitionRequest{
 		Start:       vMP.Start,
 		End:         vMP.End,
 		PartitionID: mp.PartitionID,
 		VirtualPID:  vMP.ID,
-		VolName:     volName,
+		VolName:     mp.volName,
 		CreateTime:  vMP.CreateTime,
 	}
 
-	for _, replica := range mp.Replicas {
-		if replica.IsLeader {
-			task = proto.NewAdminTask(proto.OpAddVirtualMetaPartition, replica.Addr, req)
-			err = nil
-		}
+	task = proto.NewAdminTask(proto.OpAddVirtualMetaPartition, host, req)
+	return
+}
+
+func (mp *MetaPartition) buildDeleteVirtualMetaPartitionTask(host string, vMP *proto.VirtualMetaPartition) (task *proto.AdminTask, err error) {
+	if host == "" {
+		err = fmt.Errorf("build del virtual meta partition task failed, lack host addr")
+		return
+	}
+	req := &proto.DelVirtualMetaPartitionRequest{
+		Start:       vMP.Start,
+		End:         vMP.End,
+		PartitionID: mp.PartitionID,
+		VirtualPID:  vMP.ID,
+		VolName:     mp.volName,
+		CreateTime:  vMP.CreateTime,
 	}
 
+	task = proto.NewAdminTask(proto.OpDelVirtualMetaPartition, host, req)
+	return
+}
+
+func (mp *MetaPartition) buildRaftAddVirtualMetaPartitionTask(vMP *proto.VirtualMetaPartition) (task *proto.AdminTask, err error) {
+	mp.RLock()
+	defer mp.RUnlock()
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("buildRaftAddVirtualMetaPartitionTask recover panic, partitionID(%v) panicStack(%v)", mp.PartitionID, debug.Stack())
+			err = fmt.Errorf("buildRaftAddVirtualMetaPartitionTask recover panic, partitionID(%v)", mp.PartitionID)
+		}
+	}()
+
+	req := &proto.AddVirtualMetaPartitionRequest{
+		VolName:     mp.volName,
+		PartitionID: mp.PartitionID,
+		VirtualPID:  vMP.ID,
+		Cursor:      vMP.Start,
+		Start:       vMP.Start,
+		End:         vMP.End,
+		CreateTime:  vMP.CreateTime,
+	}
+	for _, replica := range mp.Replicas {
+		if replica.IsLeader {
+			task = proto.NewAdminTask(proto.OpRaftAddVirtualMetaPartition, replica.Addr, req)
+			err = nil
+			return
+		}
+	}
+	err = fmt.Errorf("buildRaftAddVirtualMetaPartitionTask, vol[%s] mp[%d] has no leader", mp.volName, mp.PartitionID)
 	return
 }
 
@@ -759,20 +843,10 @@ func (mp *MetaPartition) createTaskToUpdateMetaReplica(clusterID string, partiti
 		Warn(clusterID, msg)
 		return
 	}
-	req := &proto.UpdateMetaPartitionRequest{PartitionID: partitionID, End: end, VolName: mp.volName}
+	lastVirtualMP := mp.VirtualMPs[len(mp.VirtualMPs) - 1]
+	req := &proto.UpdateMetaPartitionRequest{PartitionID: partitionID, VirtualMPID: lastVirtualMP.ID, End: end, VolName: mp.volName}
 	t = proto.NewAdminTask(proto.OpUpdateMetaPartition, mr.Addr, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
-	return
-}
-
-func (mp *MetaPartition) createTaskToSyncVirtualMetaPartitions() (task *proto.AdminTask){
-	mr, err := mp.getMetaReplicaLeader()
-	if err != nil {
-		return nil
-	}
-	req := &proto.SyncVirtualMetaPartitionsRequest{PartitionID: mp.PartitionID, Start: mp.Start, End: mp.End, VirtualMPs: mp.VirtualMPs}
-	task = proto.NewAdminTask(proto.OpSyncVirtualMetaPartitions, mr.Addr, req)
-	resetMetaPartitionTaskID(task, mp.PartitionID)
 	return
 }
 
@@ -817,7 +891,17 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	}
 	mr.StoreMode = mgr.StoreMode
 	mr.ApplyId = mgr.ApplyId
+	mr.VirtualMPs = mgr.VirtualMPs
 	mr.setLastReportTime()
+}
+
+func (mr *MetaReplica) virtualMPInoAlloterUsedCount(pid uint64) uint64 {
+	for _, vMP := range mr.VirtualMPs {
+		if vMP.ID == pid {
+			return vMP.AllocatorUsedCount
+		}
+	}
+	return 0
 }
 
 func (mp *MetaPartition) afterCreation(nodeAddr string, c *Cluster, storeMode proto.StoreMode) (err error) {
@@ -1004,6 +1088,24 @@ func (mp *MetaPartition) setDeletedInodeCount() {
 		}
 	}
 	mp.DelInodeCount = deletedInodeCount
+}
+
+func (mp *MetaPartition) setInoAllocatorUsedCount() {
+	for index := 0; index < len(mp.VirtualMPs); index++ {
+		mp.VirtualMPs[index].AllocatorUsedCount = mp.getVirtualMPAllocatorUsedCount(mp.VirtualMPs[index].ID)
+	}
+	return
+}
+
+func (mp *MetaPartition) getVirtualMPAllocatorUsedCount(pid uint64) (allocatorUsedCount uint64) {
+	allocatorUsedCount = 0
+	for _, r := range mp.Replicas {
+		count := r.virtualMPInoAlloterUsedCount(pid)
+		if count > allocatorUsedCount {
+			allocatorUsedCount = count
+		}
+	}
+	return
 }
 
 func (mp *MetaPartition) getAllNodeSets() (nodeSets []uint64) {
@@ -1424,8 +1526,11 @@ func (mp *MetaPartition) allReplicaHasRecovered() bool {
 }
 
 func (mp *MetaPartition) isAvailableForAddVirtualMP(c *Cluster) (ok bool) {
-	log.LogDebugf("isAvailableForAddVirtualMP mpID: %v, isRecover: %v, status: %v, maxInodeID: %v, end: %v, inodeCount: %v, dentryCount: %v",
-		mp.PartitionID, mp.IsRecover, mp.Status, mp.MaxInodeID, mp.End, mp.InodeCount, mp.DentryCount)
+	mp.RLock()
+	defer mp.RUnlock()
+	log.LogDebugf("isAvailableForAddVirtualMP mpID: %v, isRecover: %v, status: %v, maxInodeID: %v, end: %v," +
+		" inodeCount: %v, dentryCount: %v, delInodeCount: %v",
+		mp.PartitionID, mp.IsRecover, mp.Status, mp.MaxInodeID, mp.End, mp.InodeCount, mp.DentryCount, mp.DelInodeCount)
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogWarnf("isAvailableForAddVirtualMP recover panic, partitionID(%v) panicStack(%v)", mp.PartitionID, debug.Stack())
@@ -1438,7 +1543,7 @@ func (mp *MetaPartition) isAvailableForAddVirtualMP(c *Cluster) (ok bool) {
 		return
 	}
 
-	if mp.Status != proto.ReadOnly || mp.MaxInodeID != mp.End {
+	if mp.Status != proto.ReadOnly || mp.MaxInodeID < mp.End {
 		return
 	}
 
@@ -1458,7 +1563,79 @@ func (mp *MetaPartition) isAvailableForAddVirtualMP(c *Cluster) (ok bool) {
 	return
 }
 
+
+func (mp *MetaPartition) doAddVirtualMetaPartition(c *Cluster, start, end uint64) (virtualMP proto.VirtualMetaPartition, err error) {
+	var (
+		virtualPartitionID uint64
+		wg                 sync.WaitGroup
+		errCh              chan error
+	)
+	if virtualPartitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
+		err = errors.NewError(err)
+		return
+	}
+	virtualMP = proto.VirtualMetaPartition{
+		Start:      start,
+		End:        end,
+		ID:         virtualPartitionID,
+		CreateTime: time.Now().Unix(),
+		Status:     proto.ReadWrite,
+	}
+
+	hosts := mp.hosts()
+
+	errCh = make(chan error, len(hosts))
+	for _, host := range hosts {
+		wg.Add(1)
+		go func(host string) {
+			defer wg.Done()
+			if e := c.syncAddVirtualMetaPartition(host, mp, &virtualMP); e != nil {
+				log.LogErrorf("doAddVirtualMetaPartition MetaPartition(%v) syncAddVirtualMP to %s failed:%v",
+					mp.PartitionID, host, err)
+				errCh <- errors.NewError(e)
+			}
+		}(host)
+	}
+	wg.Wait()
+
+	select {
+	case err = <- errCh:
+		for _, host := range hosts {
+			wg.Add(1)
+			go func(host string) {
+				defer wg.Done()
+				if e := c.syncDeleteVirtualMetaPartition(host, mp, &virtualMP); e != nil {
+					log.LogErrorf("doAddVirtualMetaPartition MetaPartition(%v) syncDelVirtualMP to %s failed:%v",
+						mp.PartitionID, host, err)
+				}
+			}(host)
+		}
+		wg.Wait()
+		return
+	default:
+		log.LogDebugf("doAddVirtualMetaPartition MetaPartition(%v) syncAddVirtualMP success", mp.PartitionID)
+	}
+
+	if err = c.syncRaftAddVirtualMetaPartition(mp, &virtualMP); err != nil {
+		log.LogErrorf("doAddVirtualMetaPartition MetaPartition(%v) syncUpdateCursor failed:%v", mp.PartitionID, err)
+		err = errors.NewError(err)
+		return
+	}
+	return
+}
+
+func (mp *MetaPartition) addVirtualMetaPartition(virtualMP proto.VirtualMetaPartition) {
+	mp.Lock()
+	defer mp.Unlock()
+	mp.VirtualMPs = append(mp.VirtualMPs, virtualMP)
+	mp.Start = virtualMP.Start
+	mp.End = virtualMP.End
+	mp.Status = proto.ReadWrite
+}
+
 func (mp *MetaPartition) allVirtualMetaPartitionIDs() (partitionIDs []uint64) {
+	mp.RLock()
+	defer mp.RUnlock()
 	partitionIDs = make([]uint64, 0, len(mp.VirtualMPs))
 	for _, virtualMP := range mp.VirtualMPs {
 		partitionIDs = append(partitionIDs, virtualMP.ID)
@@ -1466,27 +1643,26 @@ func (mp *MetaPartition) allVirtualMetaPartitionIDs() (partitionIDs []uint64) {
 	return
 }
 
-func (mp *MetaPartition) needSyncVirtualMPsToMetaNode(metaReportInfo *proto.MetaPartitionReport) bool {
-	if len(metaReportInfo.VirtualMPs) == 0 {
-		metaReportInfo.VirtualMPs = []proto.VirtualMetaPartition{
-			{
-				ID:         metaReportInfo.PartitionID,
-				Start:      metaReportInfo.Start,
-				End:        metaReportInfo.End,
-			},
-		}
-	}
-	if len(metaReportInfo.VirtualMPs) != len(mp.VirtualMPs) && len(metaReportInfo.VirtualMPs) >= 1 && len(mp.VirtualMPs) >= 1 &&
-		time.Now().Unix() - metaReportInfo.VirtualMPs[len(metaReportInfo.VirtualMPs) - 1].CreateTime > defaultVirtualMPCreateMinDiffTime &&
-		time.Now().Unix() - mp.VirtualMPs[len(mp.VirtualMPs) - 1].CreateTime > defaultVirtualMPCreateMinDiffTime {
-		return true
-	}
-	return false
+func (mp *MetaPartition) lastVirtualMetaPartition() *proto.VirtualMetaPartition {
+	mp.RLock()
+	defer mp.RUnlock()
+	return &mp.VirtualMPs[len(mp.VirtualMPs) - 1]
 }
 
-func (mp *MetaPartition) getVirtualMPInfoByID(ID uint64) *proto.VirtualMetaPartition {
+func (mp *MetaPartition) getVirtualMPInfoByID(id uint64) *proto.VirtualMetaPartition {
+	mp.RLock()
+	defer mp.Unlock()
 	for _, virtualMP := range mp.VirtualMPs {
-		if virtualMP.ID == ID {
+		if virtualMP.ID == id {
+			return &virtualMP
+		}
+	}
+	return nil
+}
+
+func (mp *MetaPartition) getVirtualMPInfoByIDWithoutLock(id uint64) *proto.VirtualMetaPartition {
+	for _, virtualMP := range mp.VirtualMPs {
+		if virtualMP.ID == id {
 			return &virtualMP
 		}
 	}

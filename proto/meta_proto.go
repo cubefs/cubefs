@@ -49,31 +49,18 @@ type PromoteConfig struct {
 }
 
 type VirtualMetaPartition struct {
-	ID         uint64
-	Start      uint64
-	End        uint64
-	CreateTime int64
+	ID                 uint64
+	Start              uint64
+	End                uint64
+	CreateTime         int64
+	Status             int8
+	AllocatorState     int8
+	AllocatorUsedCount uint64
 }
 
 func (v VirtualMetaPartition) String() string {
-	return fmt.Sprintf("(ID:%v, Start:%v, End:%v, CreateTime:%s)",
-		v.ID, v.Start, v.End, time.Unix(v.CreateTime, 0).Format(TimeFormat))
-}
-
-type VirtualMetaPartitions []VirtualMetaPartition
-
-func (s VirtualMetaPartitions) IsEqualTo(cmp VirtualMetaPartitions) bool {
-	if len(s) != len(cmp) {
-		return false
-	}
-
-	for index, virtualMP := range s {
-		if cmp[index].ID != virtualMP.ID || cmp[index].Start != virtualMP.Start || cmp[index].End != virtualMP.End ||
-			cmp[index].CreateTime != virtualMP.CreateTime {
-			return false
-		}
-	}
-	return true
+	return fmt.Sprintf("(ID:%v, Start:%v, End:%v, CreateTime:%s, Status:%v, AllocatorState:%v)",
+		v.ID, v.Start, v.End, time.Unix(v.CreateTime, 0).Format(TimeFormat), v.Status, v.AllocatorState)
 }
 
 // CreateMetaPartitionRequest defines the request to create a meta partition.
@@ -139,18 +126,14 @@ type InodeInfoWithEK struct {
 	Timestamp  int64       `json:"ts"`
 	IsExpired  bool        `json:"isExpired"`
 }
-// CreateMetaPartitionRequest defines the request to create a meta partition.
+// AddVirtualMetaPartitionRequest defines the request to add a virtual meta partition.
 type AddVirtualMetaPartitionRequest struct {
-	MetaId      string
 	VolName     string
-	Start       uint64
-	End         uint64
 	PartitionID uint64
 	VirtualPID  uint64
-	Members     []Peer
-	Learners    []Learner
-	StoreMode   StoreMode
-	TrashDays   uint32
+	Cursor      uint64
+	Start       uint64
+	End         uint64
 	CreateTime  int64
 }
 
@@ -159,4 +142,13 @@ type SyncVirtualMetaPartitionsRequest struct {
 	Start       uint64
 	End         uint64
 	VirtualMPs  []VirtualMetaPartition
+}
+
+type DelVirtualMetaPartitionRequest struct {
+	VolName     string
+	PartitionID uint64
+	VirtualPID  uint64
+	Start       uint64
+	End         uint64
+	CreateTime  int64
 }

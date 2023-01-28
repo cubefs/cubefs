@@ -246,6 +246,7 @@ const (
 	MPMaxInodeCountKey             = "mpMaxInodeCount"
 	MPMaxDentryCountKey            = "mpMaxDentryCount"
 	ReuseMPKey                     = "reuseMP"
+	EnableBitMapAllocatorKey       = "enableBitMapAllocator"
 )
 
 const (
@@ -259,6 +260,8 @@ const (
 	DefaultMetaPartitionMaxDelInoCnt   uint64  = 100 * 10000
 	DefaultMetaPartitionMaxInodeCount  uint64  = 20000000
 	DefaultMetaPartitionMaxDentryCount uint64  = 20000000
+	DefaultVirtualMPCreateMinDiffTime          = 600 //second
+	OneDayBySecond                             = 86400
 )
 
 const DbBackMaster = "dbbak.jd.local"
@@ -812,6 +815,7 @@ type DeleteMetaPartitionResponse struct {
 // UpdateMetaPartitionRequest defines the request to update a meta partition.
 type UpdateMetaPartitionRequest struct {
 	PartitionID uint64
+	VirtualMPID uint64
 	VolName     string
 	Start       uint64
 	End         uint64
@@ -1101,6 +1105,7 @@ type SimpleVolView struct {
 	DelInodeInterval      uint32
 	UmpCollectWay         UmpCollectBy
 	ReuseMP               bool
+	EnableBitMapAllocator bool
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1110,29 +1115,31 @@ type MasterAPIAccessResp struct {
 }
 
 type VolInfo struct {
-	Name               string
-	Owner              string
-	CreateTime         int64
-	Status             uint8
-	TotalSize          uint64
-	UsedSize           uint64
-	UsedRatio          float64
-	TrashRemainingDays uint32
-	IsSmart            bool
-	SmartRules         []string
-	ForceROW           bool
-	CompactTag         uint8
-	EnableToken        bool
-	EnableWriteCache   bool
-	ChildFileMaxCnt    uint32
-	TrashCleanInterval uint64
-	BatchInodeDelCnt   uint32
-	DelInodeInterval   uint32
+	Name                  string
+	Owner                 string
+	CreateTime            int64
+	Status                uint8
+	TotalSize             uint64
+	UsedSize              uint64
+	UsedRatio             float64
+	TrashRemainingDays    uint32
+	IsSmart               bool
+	SmartRules            []string
+	ForceROW              bool
+	CompactTag            uint8
+	EnableToken           bool
+	EnableWriteCache      bool
+	ChildFileMaxCnt       uint32
+	TrashCleanInterval    uint64
+	BatchInodeDelCnt      uint32
+	DelInodeInterval      uint32
+	EnableBitMapAllocator bool
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,
 	remainingDays uint32, childFileMaxCnt uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
-	trashCleanInterval uint64, enableToken, enableWriteCache bool, batchDelIndeCnt, delInodeInterval uint32) *VolInfo {
+	trashCleanInterval uint64, enableToken, enableWriteCache bool, batchDelIndeCnt, delInodeInterval uint32,
+	enableBitMapAllocator bool) *VolInfo {
 	var usedRatio float64
 	if totalSize != 0 {
 		usedRatio = float64(usedSize) / float64(totalSize)
@@ -1146,16 +1153,17 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		UsedSize:           usedSize,
 		TrashRemainingDays: remainingDays,
 		IsSmart:            isSmart,
-		SmartRules:         rules,
-		ForceROW:           forceRow,
-		CompactTag:         compactTag,
-		EnableToken:        enableToken,
-		EnableWriteCache:   enableWriteCache,
-		UsedRatio:          usedRatio,
-		ChildFileMaxCnt:    childFileMaxCnt,
-		TrashCleanInterval: trashCleanInterval,
-		BatchInodeDelCnt:   batchDelIndeCnt,
-		DelInodeInterval:   delInodeInterval,
+		SmartRules:            rules,
+		ForceROW:              forceRow,
+		CompactTag:            compactTag,
+		EnableToken:           enableToken,
+		EnableWriteCache:      enableWriteCache,
+		UsedRatio:             usedRatio,
+		ChildFileMaxCnt:       childFileMaxCnt,
+		TrashCleanInterval:    trashCleanInterval,
+		BatchInodeDelCnt:      batchDelIndeCnt,
+		DelInodeInterval:      delInodeInterval,
+		EnableBitMapAllocator: enableBitMapAllocator,
 	}
 }
 

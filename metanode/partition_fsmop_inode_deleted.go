@@ -130,6 +130,7 @@ func (mp *metaPartition) fsmCreateDeletedInode(dbHandle interface{}, dino *Delet
 	rsp = new(fsmOpDeletedInodeResponse)
 	rsp.Inode = dino.Inode.Inode
 	rsp.Status = proto.OpOk
+	mp.setAllocatorIno(dino.Inode.Inode)
 	var ok = false
 	if _, ok, err = mp.inodeDeletedTree.Create(dbHandle, dino, false); err != nil {
 		rsp.Status = proto.OpErr
@@ -137,6 +138,7 @@ func (mp *metaPartition) fsmCreateDeletedInode(dbHandle interface{}, dino *Delet
 	}
 
 	if !ok {
+		log.LogErrorf("[fsmCreateDeletedInode], partitionID(%v), delInode(%v) already exist", mp.config.PartitionId, dino)
 		rsp.Status = proto.OpExistErr
 	}
 	return
@@ -202,6 +204,8 @@ func (mp *metaPartition) recoverDeletedInode(dbHandle interface{}, inode uint64)
 	}
 	if currInode != nil {
 		if deletedInode != nil {
+			log.LogCriticalf("[recoverDeletedInode], partitionID(%v), curInode(%v), delInode(%v)",
+				mp.config.PartitionId, currInode, deletedInode)
 			if _, err = mp.inodeDeletedTree.Delete(dbHandle, inode); err != nil {
 				resp.Status = proto.OpErr
 				return
@@ -460,6 +464,7 @@ func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, ino *In
 		return
 	}
 	log.LogDebugf("[internalCleanDeletedInode], clean deleted ino: %v result: %v", ino, err)
+	mp.clearAllocatorIno(ino.Inode)
 	return
 }
 

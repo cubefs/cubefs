@@ -318,12 +318,14 @@ func (vol *Vol) autoCreateMetaPartitions(c *Cluster) {
 			return
 		}
 		var nextStart uint64
-		lastVirtualMP := mp.VirtualMPs[len(mp.VirtualMPs) - 1]
+		lastVirtualMP := mp.lastVirtualMetaPartition()
 		if mp.MaxInodeID <= 0 {
 			nextStart = lastVirtualMP.Start + proto.DefaultMetaPartitionInodeIDStep
 		} else {
 			nextStart = mp.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
 		}
+		log.LogDebugf("action[autoCreateMetaPartitions],cluster[%v],vol[%v],writableMPCount[%v] less than %v, do split.",
+			c.Name, vol.Name, writableMpCount, vol.MinWritableMPNum)
 		if err = vol.splitMetaPartition(c, mp, nextStart, true); err != nil {
 			msg := fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]",
 				c.Name, vol.Name, mp.PartitionID, err)
