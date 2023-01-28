@@ -73,6 +73,7 @@ func newBlobDeleteMgr(t *testing.T) *BlobDeleteMgr {
 
 		safeDelayTime:   time.Hour,
 		clusterTopology: clusterTopology,
+		punishTime:      time.Duration(defaultMessagePunishTimeM) * time.Minute,
 		blobnodeCli:     blobnodeCli,
 		failMsgSender:   producer,
 
@@ -85,6 +86,7 @@ func newBlobDeleteMgr(t *testing.T) *BlobDeleteMgr {
 		delFailCounterByMin:    &counter.Counter{},
 
 		Closer: closer.New(),
+		cfg:    &BlobDeleteConfig{MessagePunishThreshold: defaultMessagePunishThreshold},
 	}
 }
 
@@ -461,6 +463,43 @@ func TestBlobDeleteConsume(t *testing.T) {
 		require.Equal(t, DeleteStatusFailed, ret.status)
 		require.Nil(t, msg.BlobDelStages.Stages)
 		mgr.clusterTopology = oldClusterTopology
+	}
+	{
+		// message punished and consume success
+		oldClusterTopology := mgr.clusterTopology
+		clusterTopology := NewMockClusterTopology(ctr)
+		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
+			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
+				return &client.VolumeInfoSimple{
+					Vid:            vid,
+					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
+				}, nil
+			},
+		)
+		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
+		mgr.clusterTopology = clusterTopology
+		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "delete failed", Retry: defaultMessagePunishThreshold}
+		oldPunishTime := mgr.punishTime
+		mgr.punishTime = 10 * time.Millisecond
+		ret := mgr.consume(ctx, msg, commonCloser)
+		require.Equal(t, DeleteStatusDone, ret.status)
+		require.Equal(t, 1, len(msg.BlobDelStages.Stages))
+		for _, v := range msg.BlobDelStages.Stages {
+			require.Equal(t, proto.DeleteStageDelete, v)
+		}
+		mgr.punishTime = oldPunishTime
+		mgr.clusterTopology = oldClusterTopology
+	}
+	{
+		// message punished for a while and cancel
+		closer := closer.New()
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			closer.Close()
+		}()
+		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "delete failed", Retry: defaultMessagePunishThreshold}
+		ret := mgr.consume(ctx, msg, closer)
+		require.Equal(t, DeleteStatusUndo, ret.status)
 	}
 }
 

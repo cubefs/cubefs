@@ -66,6 +66,10 @@ type ShardRepairConfig struct {
 	IDC       string
 	Kafka     ShardRepairKafkaConfig
 
+	// when the message retry times is greater than this, it will punish for a period of time before consumption
+	MessagePunishThreshold int `json:"message_punish_threshold"`
+	MessagePunishTimeM     int `json:"message_punish_time_m"`
+
 	TaskPoolSize   int              `json:"task_pool_size"`
 	OrphanShardLog recordlog.Config `json:"orphan_shard_log"`
 }
@@ -99,6 +103,7 @@ type ShardRepairMgr struct {
 	kafkaConsumerClient base.KafkaConsumer
 	consumers           []base.GroupConsumer
 	failMsgSender       base.IProducer
+	punishTime          time.Duration
 
 	blobnodeCli      client.BlobnodeAPI
 	blobnodeSelector selector.Selector
@@ -151,6 +156,7 @@ func NewShardRepairMgr(
 
 		kafkaConsumerClient: kafkaClient,
 		failMsgSender:       failMsgSender,
+		punishTime:          time.Duration(cfg.MessagePunishTimeM) * time.Minute,
 
 		orphanShardLogger: orphanShardsLog,
 
@@ -315,6 +321,15 @@ func (mgr *ShardRepairMgr) consume(ctx context.Context, repairMsg *proto.ShardRe
 	case <-consumerPause.Done():
 		return shardRepairRet{status: ShardRepairStatusUndo}
 	default:
+	}
+	span := trace.SpanFromContextSafe(ctx)
+	// if message retry times is greater than MessagePunishThreshold while sleep MessagePunishTimeM minutes
+	if repairMsg.Retry >= mgr.cfg.MessagePunishThreshold {
+		span.Warnf("punish message for a while: until[%+v], sleep[%+v], retry[%d]",
+			time.Now().Add(mgr.punishTime), mgr.punishTime, repairMsg.Retry)
+		if ok := sleep(mgr.punishTime, consumerPause); !ok {
+			return shardRepairRet{status: ShardRepairStatusUndo}
+		}
 	}
 	jobKey := fmt.Sprintf("%d:%d:%s", repairMsg.Vid, repairMsg.Bid, repairMsg.BadIdx)
 	_, err, _ := mgr.group.Do(jobKey, func() (ret interface{}, e error) {
