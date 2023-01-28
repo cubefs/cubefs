@@ -373,7 +373,9 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			ExtentId:     extID,
 			ExtentOffset: extOffset,
 			Size:         packet.Size,
-			VerSeq:       eh.stream.verSeq,
+			SnapInfo: &proto.ExtSnapInfo{
+				VerSeq: eh.stream.verSeq,
+			},
 		}
 	} else {
 		eh.key.Size += packet.Size

@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"math/rand"
 	"os"
 	"path"
@@ -527,7 +526,7 @@ func (mp *metaPartition) checkAndUpdateVerList(verSeq uint64) (err error) {
 	mp.multiVersionList.Lock()
 	defer mp.multiVersionList.Unlock()
 
-	if verSeq == math.MaxUint64 {
+	if isInitSnapVer(verSeq) {
 		verSeq = 0
 	}
 	log.LogDebugf("mp.multiVersionList.VerList size %v, content %v", len(mp.multiVersionList.VerList), mp.multiVersionList.VerList)

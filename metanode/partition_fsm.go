@@ -500,7 +500,7 @@ func (mp *metaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
 	return
 }
 
-// ApplySnapshot applies the given multiVersions.
+// ApplySnapshot applies the given multiSnap.multiVersions.
 func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
 		data           []byte

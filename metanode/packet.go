@@ -39,7 +39,7 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p.Data, _ = json.Marshal(ext)
 	p.Size = uint32(len(p.Data))
 
-	if ext.IsSplit {
+	if ext.IsSplit() {
 		log.LogDebugf("ext [%v] delete be set split flag", ext)
 		p.Opcode = proto.OpSplitMarkDelete
 	} else {

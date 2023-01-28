@@ -95,7 +95,9 @@ func buildExtentKey(seq uint64, foffset uint64, extid uint64, exteoffset uint64,
 		ExtentId:     extid,
 		ExtentOffset: exteoffset, // offset in extent like tiny extent offset large than 0,normal is 0
 		Size:         size,       // extent real size?
-		VerSeq:       seq,
+		SnapInfo: &proto.ExtSnapInfo{
+			VerSeq: seq,
+		},
 	}
 }
 
@@ -193,7 +195,7 @@ func testCreateInode(t *testing.T, mode uint32) *Inode {
 	}
 
 	ino := NewInode(inoID, mode)
-	ino.verSeq = mp.verSeq
+	ino.setVer(mp.verSeq)
 	if t != nil {
 		t.Logf("testCreateInode ino %v", ino)
 	}
@@ -205,12 +207,13 @@ func testCreateInode(t *testing.T, mode uint32) *Inode {
 func testCreateDentry(t *testing.T, parentId uint64, inodeId uint64, name string, mod uint32) *Dentry {
 
 	dentry := &Dentry{
-		ParentId: parentId,
-		Name:     name,
-		Inode:    inodeId,
-		Type:     mod,
-		VerSeq:   mp.verSeq,
+		ParentId:  parentId,
+		Name:      name,
+		Inode:     inodeId,
+		Type:      mod,
+		multiSnap: NewDentrySnap(mp.verSeq),
 	}
+
 	t.Logf("createDentry dentry %v", dentry)
 	ret := mp.fsmCreateDentry(dentry, false)
 	assert.True(t, proto.OpOk == ret)
@@ -225,13 +228,16 @@ func TestEkMarshal(t *testing.T) {
 	initMp(t)
 	// inodeID uint64, ekRef *sync.Map, ek *proto.ExtentKey
 	ino := testCreateInode(t, FileModeType)
-	ino.ekRefMap = new(sync.Map)
+	ino.multiSnap = NewMultiSnap(mp.verSeq)
+	ino.multiSnap.ekRefMap = new(sync.Map)
 	ek := &proto.ExtentKey{
 		PartitionId: 10,
 		ExtentId:    20,
-		VerSeq:      123444,
+		SnapInfo: &proto.ExtSnapInfo{
+			VerSeq: 123444,
+		},
 	}
-	id := storeEkSplit(0, ino.ekRefMap, ek)
+	id := storeEkSplit(0, ino.multiSnap.ekRefMap, ek)
 	dpID, extID := proto.ParseFromId(id)
 	assert.True(t, dpID == ek.PartitionId)
 	assert.True(t, extID == ek.ExtentId)
@@ -254,7 +260,7 @@ func testGetSplitSize(t *testing.T, ino *Inode) (cnt int32) {
 	if nil == mp.inodeTree.Get(ino) {
 		return
 	}
-	ino.ekRefMap.Range(func(key, value interface{}) bool {
+	ino.multiSnap.ekRefMap.Range(func(key, value interface{}) bool {
 		dpID, extID := proto.ParseFromId(key.(uint64))
 		log.LogDebugf("id:[%v],key %v (dpId-%v|extId-%v) refCnt %v", cnt, key, dpID, extID, value.(uint32))
 		cnt++
@@ -273,7 +279,7 @@ func testGetEkRefCnt(t *testing.T, ino *Inode, ek *proto.ExtentKey) (cnt uint32)
 		t.Logf("testGetEkRefCnt inode %v ek %v not found", ino, ek)
 		return
 	}
-	if val, ok = ino.ekRefMap.Load(id); !ok {
+	if val, ok = ino.multiSnap.ekRefMap.Load(id); !ok {
 		t.Logf("inode %v not ek %v", ino.Inode, ek)
 		return
 	}
@@ -324,7 +330,9 @@ func TestSplitKeyDeletion(t *testing.T) {
 	iTmp := &Inode{
 		Inode:   fileIno.Inode,
 		Extents: extents,
-		verSeq:  splitSeq,
+		multiSnap: &InodeMultiSnap{
+			verSeq: splitSeq,
+		},
 	}
 
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
@@ -420,7 +428,7 @@ func TestAppendList(t *testing.T) {
 	t.Logf("enter TestAppendList")
 	index := 5
 	seqArr := seqAllArr[1:index]
-	t.Logf("layer len %v, arr size %v, seqarr(%v)", len(ino.multiVersions), len(seqArr), seqArr)
+	t.Logf("layer len %v, arr size %v, seqarr(%v)", ino.getLayerLen(), len(seqArr), seqArr)
 	for idx, seq := range seqArr {
 		exts := buildExtents(seq, uint64(idx*1000), uint64(idx))
 		t.Logf("buildExtents exts[%v]", exts)
@@ -430,7 +438,9 @@ func TestAppendList(t *testing.T) {
 				eks: exts,
 			},
 			ObjExtents: NewSortedObjExtents(),
-			verSeq:     seq,
+			multiSnap: &InodeMultiSnap{
+				verSeq: seq,
+			},
 		}
 		mp.verSeq = seq
 
@@ -438,15 +448,15 @@ func TestAppendList(t *testing.T) {
 			t.Errorf("status %v", status)
 		}
 	}
-	t.Logf("layer len %v, arr size %v, seqarr(%v)", len(ino.multiVersions), len(seqArr), seqArr)
-	assert.True(t, len(ino.multiVersions) == len(seqArr))
-	assert.True(t, ino.verSeq == mp.verSeq)
+	t.Logf("layer len %v, arr size %v, seqarr(%v)", ino.getLayerLen(), len(seqArr), seqArr)
+	assert.True(t, ino.getLayerLen() == len(seqArr))
+	assert.True(t, ino.getVer() == mp.verSeq)
 
 	for i := 0; i < len(seqArr)-1; i++ {
-		assert.True(t, ino.multiVersions[i].verSeq == seqArr[len(seqArr)-i-2])
-		t.Logf("layer %v len %v content %v,seq %v, %v", i, len(ino.multiVersions[i].Extents.eks), ino.multiVersions[i].Extents.eks,
-			ino.multiVersions[i].verSeq, seqArr[len(seqArr)-i-2])
-		assert.True(t, len(ino.multiVersions[i].Extents.eks) == 0)
+		assert.True(t, ino.getLayerVer(i) == seqArr[len(seqArr)-i-2])
+		t.Logf("layer %v len %v content %v,seq %v, %v", i, len(ino.multiSnap.multiVersions[i].Extents.eks), ino.multiSnap.multiVersions[i].Extents.eks,
+			ino.getLayerVer(i), seqArr[len(seqArr)-i-2])
+		assert.True(t, len(ino.multiSnap.multiVersions[i].Extents.eks) == 0)
 	}
 
 	//-------------   split at begin -----------------------------------------
@@ -459,23 +469,25 @@ func TestAppendList(t *testing.T) {
 	iTmp := &Inode{
 		Inode:   ino.Inode,
 		Extents: extents,
-		verSeq:  splitSeq,
+		multiSnap: &InodeMultiSnap{
+			verSeq: splitSeq,
+		},
 	}
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 	t.Logf("in split at begin")
-	assert.True(t, ino.multiVersions[0].Extents.eks[0].VerSeq == ino.multiVersions[3].verSeq)
-	assert.True(t, ino.multiVersions[0].Extents.eks[0].FileOffset == 0)
-	assert.True(t, ino.multiVersions[0].Extents.eks[0].ExtentId == 0)
-	assert.True(t, ino.multiVersions[0].Extents.eks[0].ExtentOffset == 0)
-	assert.True(t, ino.multiVersions[0].Extents.eks[0].Size == splitKey.Size)
+	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].GetSeq() == ino.getLayerVer(3))
+	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].FileOffset == 0)
+	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].ExtentId == 0)
+	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].ExtentOffset == 0)
+	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].Size == splitKey.Size)
 
 	t.Logf("in split at begin")
 
 	assert.True(t, isExtEqual(ino.Extents.eks[0], splitKey))
 	assert.True(t, checkOffSetInSequnce(t, ino.Extents.eks))
 
-	t.Logf("top layer len %v, layer 1 len %v arr size %v", len(ino.Extents.eks), len(ino.multiVersions[0].Extents.eks), len(seqArr))
-	assert.True(t, len(ino.multiVersions[0].Extents.eks) == 1)
+	t.Logf("top layer len %v, layer 1 len %v arr size %v", len(ino.Extents.eks), len(ino.multiSnap.multiVersions[0].Extents.eks), len(seqArr))
+	assert.True(t, len(ino.multiSnap.multiVersions[0].Extents.eks) == 1)
 	assert.True(t, len(ino.Extents.eks) == len(seqArr)+1)
 
 	testCheckExtList(t, ino, seqArr)
@@ -495,15 +507,17 @@ func TestAppendList(t *testing.T) {
 	iTmp = &Inode{
 		Inode:   ino.Inode,
 		Extents: extents,
-		verSeq:  splitSeq,
+		multiSnap: &InodeMultiSnap{
+			verSeq: splitSeq,
+		},
 	}
-	t.Logf("split at middle multiVersions %v", len(ino.multiVersions))
+	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
-	t.Logf("split at middle multiVersions %v", len(ino.multiVersions))
+	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
 
-	getExtRsp := testGetExtList(t, ino, ino.multiVersions[0].verSeq)
+	getExtRsp := testGetExtList(t, ino, ino.getLayerVer(0))
 	t.Logf("split at middle getExtRsp len %v seq(%v), toplayer len:%v seq(%v)",
-		len(getExtRsp.Extents), ino.multiVersions[0].verSeq, len(ino.Extents.eks), ino.verSeq)
+		len(getExtRsp.Extents), ino.getLayerVer(0), len(ino.Extents.eks), ino.getVer())
 
 	assert.True(t, len(getExtRsp.Extents) == lastTopEksLen+2)
 	assert.True(t, len(ino.Extents.eks) == lastTopEksLen+2)
@@ -524,19 +538,21 @@ func TestAppendList(t *testing.T) {
 	iTmp = &Inode{
 		Inode:   ino.Inode,
 		Extents: extents,
-		verSeq:  splitSeq,
+		multiSnap: &InodeMultiSnap{
+			verSeq: splitSeq,
+		},
 	}
 	t.Logf("split key:%v", splitKey)
-	getExtRsp = testGetExtList(t, ino, ino.multiVersions[0].verSeq)
-	t.Logf("split at middle multiVersions %v, extent %v, level 1 %v", len(ino.multiVersions), getExtRsp.Extents, ino.multiVersions[0].Extents.eks)
+	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
+	t.Logf("split at middle multiSnap.multiVersions %v, extent %v, level 1 %v", ino.getLayerLen(), getExtRsp.Extents, ino.multiSnap.multiVersions[0].Extents.eks)
 
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
-	t.Logf("split at middle multiVersions %v", len(ino.multiVersions))
-	getExtRsp = testGetExtList(t, ino, ino.multiVersions[0].verSeq)
-	t.Logf("split at middle multiVersions %v, extent %v, level 1 %v", len(ino.multiVersions), getExtRsp.Extents, ino.multiVersions[0].Extents.eks)
+	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
+	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
+	t.Logf("split at middle multiSnap.multiVersions %v, extent %v, level 1 %v", ino.getLayerLen(), getExtRsp.Extents, ino.multiSnap.multiVersions[0].Extents.eks)
 
 	t.Logf("split at middle getExtRsp len %v seq(%v), toplayer len:%v seq(%v)",
-		len(getExtRsp.Extents), ino.multiVersions[0].verSeq, len(ino.Extents.eks), ino.verSeq)
+		len(getExtRsp.Extents), ino.getLayerVer(0), len(ino.Extents.eks), ino.getVer())
 
 	assert.True(t, len(getExtRsp.Extents) == lastTopEksLen+1)
 	assert.True(t, len(ino.Extents.eks) == lastTopEksLen+1)
@@ -556,12 +572,14 @@ func TestAppendList(t *testing.T) {
 	iTmp = &Inode{
 		Inode:   ino.Inode,
 		Extents: extents,
-		verSeq:  splitSeq,
+		multiSnap: &InodeMultiSnap{
+			verSeq: splitSeq,
+		},
 	}
 	t.Logf("split key:%v", splitKey)
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 
-	getExtRsp = testGetExtList(t, ino, ino.multiVersions[0].verSeq)
+	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
 
 	assert.True(t, len(ino.Extents.eks) == lastTopEksLen+2)
 	assert.True(t, checkOffSetInSequnce(t, ino.Extents.eks))
@@ -583,8 +601,10 @@ func testPrintAllDentry(t *testing.T) uint64 {
 	mp.dentryTree.Ascend(func(i BtreeItem) bool {
 		den := i.(*Dentry)
 		t.Logf("testPrintAllDentry name %v top layer dentry:%v", den.Name, den)
-		for id, info := range den.dentryList {
-			t.Logf("testPrintAllDentry name %v layer %v, denSeq %v den %v", den.Name, id, info.VerSeq, info)
+		if den.getSnapListLen() > 0 {
+			for id, info := range den.multiSnap.dentryList {
+				t.Logf("testPrintAllDentry name %v layer %v, denSeq %v den %v", den.Name, id, info.getVerSeq(), info)
+			}
 		}
 		cnt++
 		return true
@@ -595,9 +615,12 @@ func testPrintAllDentry(t *testing.T) uint64 {
 func testPrintAllInodeInfo(t *testing.T) {
 	mp.inodeTree.Ascend(func(item BtreeItem) bool {
 		i := item.(*Inode)
-		t.Logf("action[PrintAllVersionInfo] toplayer inode [%v] verSeq [%v] hist len [%v]", i, i.verSeq, len(i.multiVersions))
-		for id, info := range i.multiVersions {
-			t.Logf("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode [%v]", id, info.verSeq, info)
+		t.Logf("action[PrintAllVersionInfo] toplayer inode [%v] verSeq [%v] hist len [%v]", i, i.getVer(), i.getLayerLen())
+		if i.getLayerLen() == 0 {
+			return true
+		}
+		for id, info := range i.multiSnap.multiVersions {
+			t.Logf("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode [%v]", id, info.getVer(), info)
 		}
 		return true
 	})
@@ -606,9 +629,12 @@ func testPrintAllInodeInfo(t *testing.T) {
 func testPrintInodeInfo(t *testing.T, ino *Inode) {
 
 	i := mp.inodeTree.Get(ino).(*Inode)
-	t.Logf("action[PrintAllVersionInfo] toplayer inode [%v] verSeq [%v] hist len [%v]", i, i.verSeq, len(i.multiVersions))
-	for id, info := range i.multiVersions {
-		t.Logf("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode [%v]", id, info.verSeq, info)
+	t.Logf("action[PrintAllVersionInfo] toplayer inode [%v] verSeq [%v] hist len [%v]", i, i.getVer(), i.getLayerLen())
+	if i.getLayerLen() == 0 {
+		return
+	}
+	for id, info := range i.multiSnap.multiVersions {
+		t.Logf("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode [%v]", id, info.getVer(), info)
 	}
 
 }
@@ -622,24 +648,28 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	//testPrintAllDentry(t)
 
 	rDirIno := dirIno.Copy().(*Inode)
-	rDirIno.verSeq = verSeq
+	rDirIno.setVer(verSeq)
 
 	rspDelIno := mp.fsmUnlinkInode(rDirIno, 0)
 
 	t.Logf("rspDelinfo ret %v content %v", rspDelIno.Status, rspDelIno)
 	assert.True(t, rspDelIno.Status == proto.OpOk)
-
+	if rspDelIno.Status != proto.OpOk {
+		return
+	}
 	rDirDentry := dirDentry.Copy().(*Dentry)
-	rDirDentry.VerSeq = verSeq
+	rDirDentry.setVerSeq(verSeq)
 	rspDelDen := mp.fsmDeleteDentry(rDirDentry, false)
 	assert.True(t, rspDelDen.Status == proto.OpOk)
 
 	for idx, info := range rspReadDir.Children {
 		t.Logf("testDelDirSnapshotVersion: delSeq %v  to del idx %v infof %v", verSeq, idx, info)
 		rino := &Inode{
-			Inode:  info.Inode,
-			Type:   FileModeType,
-			verSeq: verSeq,
+			Inode: info.Inode,
+			Type:  FileModeType,
+			multiSnap: &InodeMultiSnap{
+				verSeq: verSeq,
+			},
 		}
 		testPrintInodeInfo(t, rino)
 		log.LogDebugf("testDelDirSnapshotVersion get rino %v start", rino)
@@ -660,11 +690,11 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 			panic(nil)
 		}
 		dentry := &Dentry{
-			ParentId: rDirIno.Inode,
-			Name:     info.Name,
-			Type:     FileModeType,
-			VerSeq:   verSeq,
-			Inode:    rino.Inode,
+			ParentId:  rDirIno.Inode,
+			Name:      info.Name,
+			Type:      FileModeType,
+			multiSnap: NewDentrySnap(verSeq),
+			Inode:     rino.Inode,
 		}
 		log.LogDebugf("test.testDelDirSnapshotVersion: dentry param %v ", dentry)
 		//testPrintAllDentry(t)
@@ -676,7 +706,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 		assert.True(t, st == proto.OpOk)
 
 		rDen := iden.Copy().(*Dentry)
-		rDen.VerSeq = verSeq
+		rDen.multiSnap = NewDentrySnap(verSeq)
 		rspDelDen = mp.fsmDeleteDentry(rDen, false)
 		assert.True(t, rspDelDen.Status == proto.OpOk)
 	}
@@ -762,10 +792,10 @@ func TestDentry(t *testing.T) {
 	log.LogDebugf("try testDelDirSnapshotVersion 0")
 	testDelDirSnapshotVersion(t, 0, dirIno, dirDen)
 	rspReadDir = testReadDirAll(t, 0, dirIno.Inode)
-	t.Logf("after  testDelDirSnapshotVersion 0 can see file %v %v", len(rspReadDir.Children), rspReadDir.Children)
+	t.Logf("after  testDelDirSnapshotVersion read seq %v can see file %v %v", 0, len(rspReadDir.Children), rspReadDir.Children)
 	assert.True(t, len(rspReadDir.Children) == 0)
 	rspReadDir = testReadDirAll(t, seq1, dirIno.Inode)
-	t.Logf("after  testDelDirSnapshotVersion 0 can see file %v %v", len(rspReadDir.Children), rspReadDir.Children)
+	t.Logf("after  testDelDirSnapshotVersion read seq %v can see file %v %v", seq1, len(rspReadDir.Children), rspReadDir.Children)
 	assert.True(t, len(rspReadDir.Children) == 2)
 
 	//---------------------------------------------
@@ -822,7 +852,9 @@ func testAppendExt(t *testing.T, seq uint64, idx int, inode uint64) {
 			eks: exts,
 		},
 		ObjExtents: NewSortedObjExtents(),
-		verSeq:     seq,
+		multiSnap: &InodeMultiSnap{
+			verSeq: seq,
+		},
 	}
 	mp.verSeq = seq
 	if status := mp.fsmAppendExtentsWithCheck(iTmp, false); status != proto.OpOk {
@@ -846,7 +878,7 @@ func TestTruncateAndDel(t *testing.T) {
 
 	seq2 := testCreateVer() // seq1 is commited,seq2 not commited
 
-	t.Logf("TestTruncate. create new snapshot seq %v,%v,file verlist [%v]", seq1, seq2, fileIno.multiVersions)
+	t.Logf("TestTruncate. create new snapshot seq %v,%v,file verlist [%v]", seq1, seq2, fileIno.getLayerLen())
 
 	ino := &Inode{
 		Inode:      fileIno.Inode,
@@ -855,9 +887,9 @@ func TestTruncateAndDel(t *testing.T) {
 	}
 	mp.fsmExtentsTruncate(ino)
 
-	t.Logf("TestTruncate. create new snapshot seq %v,%v,file verlist size %v [%v]", seq1, seq2, len(fileIno.multiVersions), fileIno.multiVersions)
+	t.Logf("TestTruncate. create new snapshot seq %v,%v,file verlist size %v [%v]", seq1, seq2, len(fileIno.multiSnap.multiVersions), fileIno.multiSnap.multiVersions)
 
-	assert.True(t, 2 == len(fileIno.multiVersions))
+	assert.True(t, 2 == len(fileIno.multiSnap.multiVersions))
 	rsp := testGetExtList(t, fileIno, 0)
 	assert.True(t, rsp.Size == 500)
 
@@ -875,7 +907,7 @@ func TestTruncateAndDel(t *testing.T) {
 	testCreateVer() // seq2 IS commited, seq3 not
 	mp.fsmUnlinkInode(ino, 0)
 
-	assert.True(t, 3 == len(fileIno.multiVersions))
+	assert.True(t, 3 == len(fileIno.multiSnap.multiVersions))
 	rsp = testGetExtList(t, fileIno, 0)
 	assert.True(t, len(rsp.Extents) == 0)
 
@@ -892,20 +924,21 @@ func TestTruncateAndDel(t *testing.T) {
 func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.Dentry) {
 	t.Logf("testDeleteFile seq %v", verSeq)
 	fsmDentry := &Dentry{
-		ParentId:   parentId,
-		Name:       child.Name,
-		Inode:      child.Inode,
-		Type:       child.Type,
-		VerSeq:     verSeq,
-		dentryList: nil,
+		ParentId:  parentId,
+		Name:      child.Name,
+		Inode:     child.Inode,
+		Type:      child.Type,
+		multiSnap: NewDentrySnap(verSeq),
 	}
-	t.Logf("testDeleteFile seq %v %v dentry %v", verSeq, fsmDentry.VerSeq, fsmDentry)
+	t.Logf("testDeleteFile seq %v %v dentry %v", verSeq, fsmDentry.getSeqFiled(), fsmDentry)
 	assert.True(t, nil != mp.fsmDeleteDentry(fsmDentry, false))
 
 	var rino = &Inode{
-		Inode:  child.Inode,
-		Type:   child.Type,
-		verSeq: verSeq,
+		Inode: child.Inode,
+		Type:  child.Type,
+		multiSnap: &InodeMultiSnap{
+			verSeq: verSeq,
+		},
 	}
 	rino.verSeq = verSeq
 	rspDelIno := mp.fsmUnlinkInode(rino, 0)
@@ -1020,7 +1053,6 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 	t.Logf("------------rename dir ----------------------")
 	if renameDen != nil {
 		t.Logf("try to move dir %v", renameDen)
-		renameDen.VerSeq = 0
 		assert.True(t, nil != mp.fsmDeleteDentry(renameDen, false))
 		renameDen.Name = fmt.Sprintf("rename_from_%v", renameDen.Name)
 		renameDen.ParentId = renameDstIno

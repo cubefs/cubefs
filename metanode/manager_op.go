@@ -2345,28 +2345,28 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 	isOldClient := false
 	defer func() {
 		if (err != nil && !isOldClient) || mp.GetVerSeq() < p.VerSeq {
-			log.LogErrorf("checkMultiVersionStatus. err %v", err)
+			log.LogErrorf("checkmultiSnap.multiVersionstatus. err %v", err)
 			err = m.checkVolVerList() // no matter what happened. try complement update local seq as master's
 		}
 	}()
 	if (p.ExtentType&proto.MultiVersionFlag == 0) && mp.GetVerSeq() > 0 {
 		isOldClient = true
-		log.LogWarnf("action[checkMultiVersionStatus] vol %v mp ver %v, client use old ver before snapshot", mp.GetVolName(), mp.GetVerSeq())
+		log.LogWarnf("action[checkmultiSnap.multiVersionstatus] vol %v mp ver %v, client use old ver before snapshot", mp.GetVolName(), mp.GetVerSeq())
 		return fmt.Errorf("client use old ver before snapshot")
 	}
 	p.ExtentType |= ^uint8(proto.MultiVersionFlag)
 
 	// meta node do not need to check verSeq as strictly as datanode,file append or modAppendWrite on meta node is invisible to other files.
 	// only need to guarantee the verSeq wrote on meta nodes grow up linearly on client's angle
-	log.LogDebugf("action[checkMultiVersionStatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
+	log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
 	if mp.GetVerSeq() >= p.VerSeq {
-		log.LogDebugf("action[checkMultiVersionStatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
+		log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
 		p.VerSeq = mp.GetVerSeq() // used to response to client and try update verSeq of client
 		return
 	}
 
 	volName := mp.GetVolName()
-	log.LogInfof("action[checkMultiVersionStatus] volumeName %v", volName)
+	log.LogInfof("action[checkmultiSnap.multiVersionstatus] volumeName %v", volName)
 	var info *proto.VolumeVerInfo
 	if value, ok := m.volUpdating.Load(volName); ok {
 		ver2Phase := value.(*verOp2Phase)
@@ -2381,13 +2381,13 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 			if atomic.LoadUint32(&ver2Phase.status) == proto.VersionWorkingAbnormal ||
 				atomic.LoadUint32(&ver2Phase.step) != proto.CreateVersionPrepare {
 
-				log.LogWarnf("action[checkMultiVersionStatus] volumeName %v status %v step %v",
+				log.LogWarnf("action[checkmultiSnap.multiVersionstatus] volumeName %v status %v step %v",
 					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
 				return
 			}
 
 			if info, err = masterClient.AdminAPI().GetVerInfo(volName); err != nil {
-				log.LogErrorf("action[checkMultiVersionStatus] volumeName %v status %v step %v err %v",
+				log.LogErrorf("action[checkmultiSnap.multiVersionstatus] volumeName %v status %v step %v err %v",
 					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step), err)
 				return
 			}
@@ -2395,18 +2395,18 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 				atomic.StoreUint32(&ver2Phase.status, proto.VersionWorkingAbnormal)
 				err = fmt.Errorf("volumeName %v status %v step %v",
 					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
-				log.LogErrorf("action[checkMultiVersionStatus] err %v", err)
+				log.LogErrorf("action[checkmultiSnap.multiVersionstatus] err %v", err)
 				return
 			}
 			if info.VerPrepareStatus == proto.CreateVersionCommit {
 				if err = m.commitCreateVersion(volName, info.VerSeqPrepare, proto.CreateVersionCommit); err != nil {
-					log.LogErrorf("action[checkMultiVersionStatus] err %v", err)
+					log.LogErrorf("action[checkmultiSnap.multiVersionstatus] err %v", err)
 					return
 				}
 			}
 		}
 	} else {
-		log.LogErrorf("action[checkMultiVersionStatus] volumeName %v not found", volName)
+		log.LogErrorf("action[checkmultiSnap.multiVersionstatus] volumeName %v not found", volName)
 	}
 	return
 }
