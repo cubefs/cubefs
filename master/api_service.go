@@ -3226,6 +3226,20 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
 }
 
+func (m *Server) changeMasterLeader(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+	)
+
+	if err = m.cluster.tryToChangeLeaderByHost(); err != nil {
+		log.LogErrorf("changeMasterLeader.err %v", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	rstMsg := fmt.Sprintf(" changeMasterLeader. command sucess send to dest host but need check. ")
+	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
 func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) (message string, err error) {
 	var (
 		jresp []byte

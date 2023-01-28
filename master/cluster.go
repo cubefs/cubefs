@@ -170,6 +170,10 @@ func (c *Cluster) masterAddr() (addr string) {
 	return c.leaderInfo.addr
 }
 
+func (c *Cluster) tryToChangeLeaderByHost() error {
+	return c.partition.TryToLeader(1)
+}
+
 func (c *Cluster) scheduleToUpdateStatInfo() {
 	go func() {
 		for {
