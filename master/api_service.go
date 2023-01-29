@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/stat"
 	"math"
 	"net/http"
 	"regexp"
@@ -85,6 +86,10 @@ func (m *Server) setClusterInfo(w http.ResponseWriter, r *http.Request) {
 		quota uint32
 		err   error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminSetClusterInfo, err, bgTime, 1)
+	}()
 	if quota, err = parseAndExtractDirQuota(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -107,6 +112,12 @@ func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 		threshold float64
 		err       error
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminSetMetaNodeThreshold, err, bgTime, 1)
+	}()
+
 	if threshold, err = parseAndExtractThreshold(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -131,6 +142,10 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 		status bool
 		err    error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminClusterFreeze, err, bgTime, 1)
+	}()
 	if status, err = parseAndExtractStatus(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -144,6 +159,12 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 
 // View the topology of the cluster.
 func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.GetTopologyView, nil, bgTime, 1)
+	}()
+
 	tv := &TopologyView{
 		Zones: make([]*ZoneView, 0),
 	}
@@ -176,6 +197,10 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 		name string
 		err  error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UpdateZone, err, bgTime, 1)
+	}()
 	if name = r.FormValue(nameKey); name == "" {
 		err = keyNotFound(nameKey)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -200,6 +225,10 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.GetAllZones, nil, bgTime, 1)
+	}()
 	zones := m.cluster.t.getAllZones()
 	zoneViews := make([]*ZoneView, 0)
 	for _, zone := range zones {
@@ -223,6 +252,10 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetCluster, nil, bgTime, 1)
+	}()
 	cv := &proto.ClusterView{
 		Name:                m.cluster.Name,
 		LeaderAddr:          m.leaderInfo.addr,
@@ -258,7 +291,101 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
 
+func (m *Server) getApiList(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetMasterApiList, nil, bgTime, 1)
+	}()
+	sendOkReply(w, r, newSuccessHTTPReply(proto.GApiInfo))
+}
+
+func (m *Server) setApiQpsLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		name    string
+		limit   uint32
+		timeout uint32
+		err     error
+	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminSetApiQpsLimit, err, bgTime, 1)
+	}()
+
+	if name, limit, timeout, err = parseRequestToSetApiQpsLimit(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if err = m.cluster.apiLimiter.SetLimiter(name, limit, timeout); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	//persist to rocksdb
+	if err = m.cluster.syncPutApiLimiterInfo(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set api qps limit failed: %v", err)))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set api qps limit success: name: %v, limit: %v, timeout: %v",
+		name, limit, timeout)))
+	return
+}
+
+func (m *Server) getApiQpsLimit(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetMasterApiList, nil, bgTime, 1)
+	}()
+
+	m.cluster.apiLimiter.m.RLock()
+	v, err := json.Marshal(m.cluster.apiLimiter.limiterInfos)
+	m.cluster.apiLimiter.m.RUnlock()
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("get api qps limit failed: %v", err)))
+		return
+	}
+
+	limiterInfos := make(map[string]*ApiLimitInfo)
+	json.Unmarshal(v, &limiterInfos)
+	sendOkReply(w, r, newSuccessHTTPReply(limiterInfos))
+}
+
+func (m *Server) rmApiQpsLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		name string
+		err  error
+	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminRemoveApiQpsLimit, err, bgTime, 1)
+	}()
+	if name, err = parseAndExtractName(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if err = m.cluster.apiLimiter.RmLimiter(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	//persist to rocksdb
+	if err = m.cluster.syncPutApiLimiterInfo(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set api qps limit failed: %v", err)))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("rm api qps limit success: name: %v",
+		name)))
+
+}
+
 func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetIP, nil, bgTime, 1)
+	}()
 	m.cluster.loadClusterValue()
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
@@ -287,7 +414,10 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 		start   uint64
 		err     error
 	)
-
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminCreateMetaPartition, err, bgTime, 1)
+	}()
 	if volName, start, err = validateRequestToCreateMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -336,6 +466,10 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 		dps     []*DataPartition
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminCreatePreLoadDataPartition, err, bgTime, 1)
+	}()
 	if volName, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -397,6 +531,10 @@ func (m *Server) getQosStatus(w http.ResponseWriter, r *http.Request) {
 		err     error
 		vol     *Vol
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.QosGetStatus, err, bgTime, 1)
+	}()
 	if volName, err = extractName(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
@@ -417,6 +555,10 @@ func (m *Server) getClientQosInfo(w http.ResponseWriter, r *http.Request) {
 		host    string
 		id      uint64
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.QosGetClientsLimitInfo, err, bgTime, 1)
+	}()
 	if volName, err = extractName(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
@@ -454,6 +596,10 @@ func (m *Server) getQosUpdateMasterLimit(w http.ResponseWriter, r *http.Request)
 		value string
 		limit uint64
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.QosUpdateMasterLimit, err, bgTime, 1)
+	}()
 	if value = r.FormValue(QosMasterLimit); value != "" {
 		if limit, err = strconv.ParseUint(value, 10, 64); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of limit")))
@@ -484,6 +630,10 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 		err                error
 		vol                *Vol
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.QosUpdateClientParam, err, bgTime, 1)
+	}()
 	if volName, err = extractName(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -626,6 +776,10 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 		qosParam *qosArgs
 		enable   bool
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.QosUpdateZoneLimit, err, bgTime, 1)
+	}()
 	var zoneName string
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
@@ -659,6 +813,10 @@ func (m *Server) QosGetZoneLimit(w http.ResponseWriter, r *http.Request) {
 		value interface{}
 		ok    bool
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.QosGetZoneLimitInfo, nil, bgTime, 1)
+	}()
 	var zoneName string
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
@@ -699,6 +857,10 @@ func (m *Server) QosUpdate(w http.ResponseWriter, r *http.Request) {
 		value     string
 		limitArgs *qosArgs
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.QosUpdate, err, bgTime, 1)
+	}()
 	if volName, err = extractName(r); err == nil {
 		if vol, err = m.cluster.getVol(volName); err != nil {
 			goto RET
@@ -742,6 +904,10 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		err                        error
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminCreateDataPartition, err, bgTime, 1)
+	}()
 	if reqCreateCount, volName, err = parseRequestToCreateDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -778,6 +944,10 @@ func (m *Server) changeDataPartitionLeader(w http.ResponseWriter, r *http.Reques
 		err         error
 		host        string
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminDataPartitionChangeLeader, err, bgTime, 1)
+	}()
 	if partitionID, _, err = parseRequestToGetDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -813,6 +983,11 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetDataPartition, err, bgTime, 1)
+	}()
+
 	if partitionID, volName, err = parseRequestToGetDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -846,6 +1021,11 @@ func (m *Server) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminLoadDataPartition, err, bgTime, 1)
+	}()
+
 	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -869,6 +1049,11 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		err         error
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminAddDataReplica, err, bgTime, 1)
+	}()
 
 	if partitionID, addr, err = parseRequestToAddDataReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -904,6 +1089,11 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		raftForce   bool
 		vol         *Vol
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminDeleteDataReplica, err, bgTime, 1)
+	}()
 
 	if partitionID, addr, err = parseRequestToRemoveDataReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -954,6 +1144,11 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminAddMetaReplica, err, bgTime, 1)
+	}()
+
 	if partitionID, addr, err = parseRequestToAddMetaReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -984,6 +1179,11 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		force       bool
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminDeleteMetaReplica, err, bgTime, 1)
+	}()
+
 	if partitionID, addr, err = parseRequestToRemoveMetaReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1013,6 +1213,10 @@ func (m *Server) changeMetaPartitionLeader(w http.ResponseWriter, r *http.Reques
 		err         error
 		host        string
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminChangeMetaPartitionLeader, err, bgTime, 1)
+	}()
 	if partitionID, _, err = parseRequestToGetDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		log.LogErrorf("changeMetaPartitionLeader.err %v", err)
@@ -1057,6 +1261,11 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		err         error
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminDecommissionDataPartition, err, bgTime, 1)
+	}()
+
 	if partitionID, addr, err = parseRequestToDecommissionDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1099,6 +1308,11 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		lackReplicaDpIDs  []uint64
 		badDataPartitions []badPartitionView
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminDiagnoseDataPartition, err, bgTime, 1)
+	}()
 	corruptDpIDs = make([]uint64, 0)
 	lackReplicaDpIDs = make([]uint64, 0)
 	if inactiveNodes, corruptDps, err = m.cluster.checkCorruptDataPartitions(); err != nil {
@@ -1137,6 +1351,11 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		msg string
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminDeleteVol, err, bgTime, 1)
+	}()
+
 	if name, authKey, _, err = parseRequestToDeleteVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1163,6 +1382,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		replicaNum   int
 		followerRead bool
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminUpdateVol, err, bgTime, 1)
+	}()
 
 	if req.name, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1226,6 +1450,11 @@ func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
 		vol      *Vol
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminVolExpand, err, bgTime, 1)
+	}()
+
 	if name, authKey, capacity, err = parseRequestToSetVolCapacity(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1263,6 +1492,12 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 		capacity int
 		vol      *Vol
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminVolShrink, err, bgTime, 1)
+	}()
+
 	if name, authKey, capacity, err = parseRequestToSetVolCapacity(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1382,6 +1617,12 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	vol := &Vol{}
 
 	var err error
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminCreateVol, err, bgTime, 1)
+	}()
+
 	if err = parseRequestToCreateVol(r, req); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1418,6 +1659,10 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 		vol   *Vol
 		limit *proto.LimitRsp2Client
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.QosUpload, err, bgTime, 1)
+	}()
 	ctx := context.Background()
 	m.cluster.QosAcceptLimit.WaitN(ctx, 1)
 	log.LogInfof("action[qosUpload] limit %v", m.cluster.QosAcceptLimit.Limit())
@@ -1463,6 +1708,10 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetVol, err, bgTime, 1)
+	}()
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1562,6 +1811,12 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		err       error
 		nodesetId uint64
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AddDataNode, err, bgTime, 1)
+	}()
+
 	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1592,6 +1847,12 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		dataNodeInfo *proto.DataNodeInfo
 		err          error
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.GetDataNode, err, bgTime, 1)
+	}()
+
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1637,6 +1898,11 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.DecommissionDataNode, err, bgTime, 1)
+	}()
+
 	if offLineAddr, limit, err = parseDecomNodeReq(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1662,7 +1928,17 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) {
-	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
+	var (
+		srcAddr    string
+		targetAddr string
+		limit      int
+		err        error
+	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.MigrateDataNode, err, bgTime, 1)
+	}()
+	srcAddr, targetAddr, limit, err = parseMigrateNodeParam(r)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1720,6 +1996,11 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		err         error
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.CancelDecommissionDataNode, err, bgTime, 1)
+	}()
+
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1742,6 +2023,11 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		params map[string]interface{}
 		err    error
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminSetNodeInfo, err, bgTime, 1)
+	}()
 
 	if params, err = parseAndExtractSetNodeInfoParams(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2162,8 +2448,17 @@ func parseNodeType(r *http.Request) (nodeType int, err error) {
 }
 
 func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
-
-	addr, nodeType, rdOnly, err := parseSetNodeRdOnlyParam(r)
+	var (
+		addr     string
+		nodeType int
+		rdOnly   bool
+		err      error
+	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminSetNodeRdOnly, err, bgTime, 1)
+	}()
+	addr, nodeType, rdOnly, err = parseSetNodeRdOnlyParam(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2183,8 +2478,16 @@ func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) setDpRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
-
-	dpId, rdOnly, err := parseSetDpRdOnlyParam(r)
+	var (
+		dpId   uint64
+		rdOnly bool
+		err    error
+	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminSetDpRdOnly, err, bgTime, 1)
+	}()
+	dpId, rdOnly, err = parseSetDpRdOnlyParam(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2208,6 +2511,10 @@ func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Req
 		params map[string]interface{}
 		err    error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminUpdateNodeSetCapcity, err, bgTime, 1)
+	}()
 	if params, err = parseAndExtractSetNodeSetInfoParams(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2223,6 +2530,10 @@ func (m *Server) updateDataUseRatioHandler(w http.ResponseWriter, r *http.Reques
 		params map[string]interface{}
 		err    error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminUpdateDomainDataUseRatio, err, bgTime, 1)
+	}()
 	var value string
 	if value = r.FormValue(ratio); value == "" {
 		err = keyNotFound(ratio)
@@ -2251,6 +2562,10 @@ func (m *Server) updateZoneExcludeRatioHandler(w http.ResponseWriter, r *http.Re
 		params map[string]interface{}
 		err    error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminUpdateZoneExcludeRatio, err, bgTime, 1)
+	}()
 	var value string
 	if value = r.FormValue(ratio); value == "" {
 		err = keyNotFound(ratio)
@@ -2279,7 +2594,9 @@ func (m *Server) updateNodeSetIdHandler(w http.ResponseWriter, r *http.Request) 
 		nodeType uint64
 		value    string
 	)
+	bgTime := stat.BeginStat()
 	defer func() {
+		stat.EndStat(proto.AdminUpdateNodeSetId, err, bgTime, 1)
 		if err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		}
@@ -2315,6 +2632,10 @@ func (m *Server) updateNodeSetIdHandler(w http.ResponseWriter, r *http.Request) 
 // get metanode some interval params
 func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetNodeSetGrpInfo, err, bgTime, 1)
+	}()
 	if err = r.ParseForm(); err != nil {
 		sendOkReply(w, r, newErrHTTPReply(err))
 	}
@@ -2342,6 +2663,10 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 	sendOkReply(w, r, newSuccessHTTPReply(info))
 }
 func (m *Server) getIsDomainOn(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetIsDomainOn, nil, bgTime, 1)
+	}()
 	type SimpleDomainInfo struct {
 		DomainOn bool
 	}
@@ -2372,6 +2697,10 @@ func (m *Server) createDomainHandler(w http.ResponseWriter, r *http.Request) {
 
 // get metanode some interval params
 func (m *Server) getAllNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetAllNodeSetGrpInfo, nil, bgTime, 1)
+	}()
 	nsgm := m.cluster.domainManager
 
 	nsglStat := new(proto.DomainNodeSetGrpInfoList)
@@ -2402,6 +2731,10 @@ func (m *Server) getAllNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Requ
 
 // get metanode some interval params
 func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetNodeInfo, nil, bgTime, 1)
+	}()
 	resp := make(map[string]string)
 	resp[nodeDeleteBatchCountKey] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteBatchCount)
 	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
@@ -2424,6 +2757,10 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 		lackReplicaMpIDs  []uint64
 		badMetaPartitions []badPartitionView
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminDiagnoseMetaPartition, err, bgTime, 1)
+	}()
 	corruptMpIDs = make([]uint64, 0)
 	lackReplicaMpIDs = make([]uint64, 0)
 	if inactiveNodes, corruptMps, err = m.cluster.checkCorruptMetaPartitions(); err != nil {
@@ -2464,6 +2801,11 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		badPartitionIds       []uint64
 		badPartitions         []*DataPartition
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.DecommissionDisk, err, bgTime, 1)
+	}()
 
 	if offLineAddr, diskPath, diskDisable, limit, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2552,7 +2894,16 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 
 // handle tasks such as heartbeat，loadDataPartition，deleteDataPartition, etc.
 func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
-	tr, err := parseRequestToGetTaskResponse(r)
+	var (
+		tr  *proto.AdminTask
+		err error
+	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.GetDataNodeTaskResponse, err, bgTime, 1)
+	}()
+
+	tr, err = parseRequestToGetTaskResponse(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2569,6 +2920,12 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		err       error
 		nodesetId uint64
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AddMetaNode, err, bgTime, 1)
+	}()
+
 	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2593,6 +2950,11 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) checkInvalidIDNodes(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminGetInvalidNodes, nil, bgTime, 1)
+	}()
+
 	nodes := m.cluster.getInvalidIDNodes()
 	sendOkReply(w, r, newSuccessHTTPReply(nodes))
 }
@@ -2603,6 +2965,12 @@ func (m *Server) updateDataNode(w http.ResponseWriter, r *http.Request) {
 		id       uint64
 		err      error
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminUpdateDataNode, err, bgTime, 1)
+	}()
+
 	if nodeAddr, id, err = parseRequestForUpdateMetaNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2620,6 +2988,12 @@ func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
 		id       uint64
 		err      error
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminUpdateMetaNode, err, bgTime, 1)
+	}()
+
 	if nodeAddr, id, err = parseRequestForUpdateMetaNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2638,6 +3012,12 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		metaNodeInfo *proto.MetaNodeInfo
 		err          error
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.GetMetaNode, err, bgTime, 1)
+	}()
+
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2677,6 +3057,12 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		msg         string
 		err         error
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminDecommissionMetaPartition, err, bgTime, 1)
+	}()
+
 	if partitionID, nodeAddr, err = parseRequestToDecommissionMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2747,7 +3133,10 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		err         error
 	)
-
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminLoadMetaPartition, err, bgTime, 1)
+	}()
 	if partitionID, err = parseRequestToLoadMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2764,7 +3153,18 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) {
-	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
+	var (
+		srcAddr    string
+		targetAddr string
+		limit      int
+		err        error
+	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.MigrateMetaNode, err, bgTime, 1)
+	}()
+
+	srcAddr, targetAddr, limit, err = parseMigrateNodeParam(r)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2817,6 +3217,11 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.DecommissionMetaNode, err, bgTime, 1)
+	}()
+
 	if offLineAddr, limit, err = parseDecomNodeReq(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2835,7 +3240,15 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
-	tr, err := parseRequestToGetTaskResponse(r)
+	var (
+		tr  *proto.AdminTask
+		err error
+	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.GetMetaNodeTaskResponse, err, bgTime, 1)
+	}()
+	tr, err = parseRequestToGetTaskResponse(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2847,8 +3260,17 @@ func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 // Dynamically add a raft node (replica) for the master.
 // By using this function, there is no need to stop all the master services. Adding a new raft node is performed online.
 func (m *Server) addRaftNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		id   uint64
+		addr string
+		err  error
+	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AddRaftNode, err, bgTime, 1)
+	}()
 	var msg string
-	id, addr, err := parseRequestForRaftNode(r)
+	id, addr, err = parseRequestForRaftNode(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2864,8 +3286,17 @@ func (m *Server) addRaftNode(w http.ResponseWriter, r *http.Request) {
 
 // Dynamically remove a master node. Similar to addRaftNode, this operation is performed online.
 func (m *Server) removeRaftNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		id   uint64
+		addr string
+		err  error
+	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.RemoveRaftNode, err, bgTime, 1)
+	}()
 	var msg string
-	id, addr, err := parseRequestForRaftNode(r)
+	id, addr, err = parseRequestForRaftNode(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2881,6 +3312,10 @@ func (m *Server) removeRaftNode(w http.ResponseWriter, r *http.Request) {
 
 // get master's raft status
 func (m *Server) getRaftStatus(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.RaftStatus, nil, bgTime, 1)
+	}()
 	data := m.raftStore.RaftStatus(GroupID)
 	log.LogInfof("get raft status, %s", data.String())
 	sendOkReply(w, r, newSuccessHTTPReply(data))
@@ -2967,6 +3402,10 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 		err  error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.ClientMetaPartitions, err, bgTime, 1)
+	}()
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2992,6 +3431,11 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 		err  error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.ClientDataPartitions, err, bgTime, 1)
+	}()
+
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3032,6 +3476,12 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		ts      int64
 		param   *getVolParameter
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.ClientVol, err, bgTime, 1)
+	}()
+
 	if param, err = parseGetVolParameter(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3076,6 +3526,11 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		ver  int
 		vol  *Vol
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.ClientVolStat, err, bgTime, 1)
+	}()
 
 	if name, ver, err = parseVolStatReq(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3147,6 +3602,10 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		mp          *MetaPartition
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.ClientMetaPartition, err, bgTime, 1)
+	}()
 	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3207,6 +3666,12 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 		vol      *Vol
 		volsInfo []*proto.VolInfo
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminListVols, err, bgTime, 1)
+	}()
+
 	if keywords, err = parseKeywords(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

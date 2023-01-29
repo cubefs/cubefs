@@ -75,11 +75,8 @@ type monitorMetrics struct {
 	badMpCount           *exporter.Gauge
 	badDpCount           *exporter.Gauge
 	diskError            *exporter.GaugeVec
-	dataNodesInactive    *exporter.Gauge
-	metaNodesInactive    *exporter.Gauge
 	dataNodesNotWritable *exporter.Gauge
 	metaNodesNotWritable *exporter.Gauge
-	diskError            *exporter.GaugeVec
 	dataNodesInactive    *exporter.Gauge
 	InactiveDataNodeInfo *exporter.GaugeVec
 	metaNodesInactive    *exporter.Gauge
