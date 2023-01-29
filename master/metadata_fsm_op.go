@@ -400,6 +400,41 @@ func (c *Cluster) syncPutCluster() (err error) {
 	return c.submit(metadata)
 }
 
+func (c *Cluster) syncPutApiLimiterInfo() (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncPutApiLimiterInfo
+	metadata.K = apiLimiterPrefix + c.Name
+	c.apiLimiter.m.RLock()
+	metadata.V, err = json.Marshal(c.apiLimiter.limiterInfos)
+	c.apiLimiter.m.RUnlock()
+	if err != nil {
+		return
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) loadApiLimiterInfo() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(apiLimiterPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadApiLimiterInfo],err:%v", err.Error())
+		return err
+	}
+	for _, value := range result {
+		//cv := &clusterValue{}
+		limiterInfos := make(map[string]*ApiLimitInfo)
+		if err = json.Unmarshal(value, &limiterInfos); err != nil {
+			log.LogErrorf("action[loadApiLimiterInfo], unmarshal err:%v", err.Error())
+			return err
+		}
+
+		c.apiLimiter.m.Lock()
+		c.apiLimiter.limiterInfos = limiterInfos
+		c.apiLimiter.m.Unlock()
+		log.LogInfof("action[loadApiLimiterInfo], limiter info[%v]", value)
+	}
+	return
+}
+
 // key=#s#id
 func (c *Cluster) syncAddNodeSet(nset *nodeSet) (err error) {
 	return c.putNodeSetInfo(opSyncAddNodeSet, nset)

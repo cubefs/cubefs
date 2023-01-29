@@ -388,6 +388,31 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	return
 }
 
+func parseRequestToSetApiQpsLimit(r *http.Request) (name string, limit uint32, timeout uint32, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		return
+	}
+
+	var tmp uint64
+	if tmp, err = extractUint64(r, Limit); err != nil {
+		return
+	}
+
+	limit = uint32(tmp)
+
+	if tmp, err = extractUint64(r, TimeOut); err != nil {
+		return
+	}
+
+	timeout = uint32(tmp)
+
+	return
+}
+
 func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capacity int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

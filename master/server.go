@@ -17,6 +17,7 @@ package master
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/stat"
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
@@ -40,6 +41,7 @@ const (
 	IP                   = "ip"
 	Port                 = "port"
 	LogLevel             = "logLevel"
+	LogDir               = "logDir"
 	WalDir               = "walDir"
 	StoreDir             = "storeDir"
 	EbsAddrKey           = "ebsAddr"
@@ -54,6 +56,7 @@ const (
 	cfgRaftRecvBufSize   = "raftRecvBufSize"
 	cfgElectionTick      = "electionTick"
 	SecretKey            = "masterServiceKey"
+	Stat                 = "stat"
 )
 
 var (
@@ -104,6 +107,7 @@ type Server struct {
 	clusterName     string
 	ip              string
 	port            string
+	logDir          string
 	walDir          string
 	storeDir        string
 	bStoreAddr      string
@@ -164,6 +168,10 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	WarnMetrics = newWarningMetrics(m.cluster)
 	metricsService := newMonitorMetrics(m.cluster)
 	metricsService.start()
+
+	_, err = stat.NewStatistic(m.logDir, Stat, int64(stat.DefaultStatLogSize),
+		stat.DefaultTimeOutUs, true)
+
 	m.wg.Add(1)
 	return nil
 }
@@ -176,6 +184,7 @@ func (m *Server) Shutdown() {
 			log.LogErrorf("action[Shutdown] failed, err: %v", err)
 		}
 	}
+	stat.CloseStat()
 	m.wg.Done()
 }
 
@@ -189,6 +198,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.clusterName = cfg.GetString(ClusterName)
 	m.ip = cfg.GetString(IP)
 	m.port = cfg.GetString(proto.ListenPort)
+	m.logDir = cfg.GetString(LogDir)
 	m.walDir = cfg.GetString(WalDir)
 	m.storeDir = cfg.GetString(StoreDir)
 	m.bStoreAddr = cfg.GetString(BStoreAddrKey)
