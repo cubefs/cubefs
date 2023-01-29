@@ -75,6 +75,12 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 		return http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
 				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
+
+				if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
+					log.LogWarnf("action[interceptor] too many requests")
+					http.Error(w, "too many requests", http.StatusTooManyRequests)
+				}
+
 				if mux.CurrentRoute(r).GetName() == proto.AdminGetIP {
 					next.ServeHTTP(w, r)
 					return
@@ -114,6 +120,20 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	//m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
 
 	// cluster management APIs
+	router.NewRoute().Name(proto.AdminGetMasterApiList).
+		Methods(http.MethodGet).
+		Path(proto.AdminGetMasterApiList).
+		HandlerFunc(m.getApiList)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetApiQpsLimit).
+		HandlerFunc(m.setApiQpsLimit)
+	router.NewRoute().Name(proto.AdminGetApiQpsLimit).
+		Methods(http.MethodGet).
+		Path(proto.AdminGetApiQpsLimit).
+		HandlerFunc(m.getApiQpsLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminRemoveApiQpsLimit).
+		HandlerFunc(m.rmApiQpsLimit)
 	router.NewRoute().Name(proto.AdminGetIP).
 		Methods(http.MethodGet).
 		Path(proto.AdminGetIP).

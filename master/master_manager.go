@@ -185,6 +185,11 @@ func (m *Server) loadMetadata() {
 	}
 	log.LogInfo("action[refreshUser] end")
 
+	log.LogInfo("action[loadApiLimiterInfo] begin")
+	if err = m.cluster.loadApiLimiterInfo(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadApiLimiterInfo] end")
 }
 
 func (m *Server) clearMetadata() {

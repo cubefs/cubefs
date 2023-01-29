@@ -3,6 +3,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/stat"
 	"io/ioutil"
 	"net/http"
 
@@ -16,6 +17,10 @@ func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		userInfo *proto.UserInfo
 		err      error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UserCreate, err, bgTime, 1)
+	}()
 	var bytes []byte
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -46,6 +51,10 @@ func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 		userID string
 		err    error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UserDelete, err, bgTime, 1)
+	}()
 	if userID, err = parseUser(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -64,6 +73,10 @@ func (m *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		userInfo *proto.UserInfo
 		err      error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UserUpdate, err, bgTime, 1)
+	}()
 	var bytes []byte
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -91,6 +104,10 @@ func (m *Server) getUserAKInfo(w http.ResponseWriter, r *http.Request) {
 		userInfo *proto.UserInfo
 		err      error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UserGetAKInfo, err, bgTime, 1)
+	}()
 	if ak, err = parseAccessKey(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -108,6 +125,10 @@ func (m *Server) getUserInfo(w http.ResponseWriter, r *http.Request) {
 		userInfo *proto.UserInfo
 		err      error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UserGetInfo, err, bgTime, 1)
+	}()
 	if userID, err = parseUser(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -125,6 +146,10 @@ func (m *Server) updateUserPolicy(w http.ResponseWriter, r *http.Request) {
 		bytes    []byte
 		err      error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UserUpdatePolicy, err, bgTime, 1)
+	}()
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -151,6 +176,10 @@ func (m *Server) removeUserPolicy(w http.ResponseWriter, r *http.Request) {
 		bytes    []byte
 		err      error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UserRemovePolicy, err, bgTime, 1)
+	}()
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -176,6 +205,10 @@ func (m *Server) deleteUserVolPolicy(w http.ResponseWriter, r *http.Request) {
 		vol string
 		err error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UserDeleteVolPolicy, err, bgTime, 1)
+	}()
 	if vol, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -196,6 +229,10 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		userInfo *proto.UserInfo
 		err      error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UserTransferVol, err, bgTime, 1)
+	}()
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -234,6 +271,10 @@ func (m *Server) getAllUsers(w http.ResponseWriter, r *http.Request) {
 		users    []*proto.UserInfo
 		err      error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UserList, err, bgTime, 1)
+	}()
 	if keywords, err = parseKeywords(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -248,6 +289,10 @@ func (m *Server) getUsersOfVol(w http.ResponseWriter, r *http.Request) {
 		users   []string
 		err     error
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.UsersOfVol, err, bgTime, 1)
+	}()
 	if volName, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
