@@ -18,7 +18,7 @@ const (
 type ApiLimitInfo struct {
 	ApiName        string        `json:"api_name"`
 	QueryPath      string        `json:"query_path"`
-	Limit          uint32        `json:"limit"` // 0: unlimited, other: qps
+	Limit          uint32        `json:"limit"` //qps
 	LimiterTimeout uint32        `json:"limiter_timeout"`
 	Limiter        *rate.Limiter `json:"-"`
 }

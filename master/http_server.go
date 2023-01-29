@@ -79,6 +79,7 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 				if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
 					log.LogWarnf("action[interceptor] too many requests")
 					http.Error(w, "too many requests", http.StatusTooManyRequests)
+					return
 				}
 
 				if mux.CurrentRoute(r).GetName() == proto.AdminGetIP {
