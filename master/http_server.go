@@ -77,8 +77,8 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
 
 				if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
-					log.LogWarnf("action[interceptor] too many requests")
-					http.Error(w, "too many requests", http.StatusTooManyRequests)
+					log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
+					http.Error(w, "too many requests for api: "+r.URL.Path, http.StatusTooManyRequests)
 					return
 				}
 
