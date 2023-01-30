@@ -162,6 +162,7 @@ const (
 	cfgRaftReplicaPort   = "raftReplicaPort"
 	cfgDeleteBatchCount  = "deleteBatchCount"
 	cfgTotalMem          = "totalMem"
+	cfgMemRatio          = "memRatio"
 	cfgZoneName          = "zoneName"
 	cfgTickInterval      = "tickInterval"
 	cfgRaftRecvBufSize   = "raftRecvBufSize"
