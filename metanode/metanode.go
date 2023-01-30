@@ -15,12 +15,13 @@
 package metanode
 
 import (
-	"github.com/xtaci/smux"
 	syslog "log"
 	"os"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/xtaci/smux"
 
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 
@@ -193,11 +194,6 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.zoneName = cfg.GetString(cfgZoneName)
-	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
-
-	if configTotalMem == 0 {
-		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
-	}
 
 	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
 	if deleteBatchCount > 1 {
@@ -205,6 +201,26 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	}
 
 	total, _, err := util.GetMemInfo()
+	if err != nil {
+		log.LogErrorf("get total mem failed, err %s", err.Error())
+	}
+
+	ratioStr := cfg.GetString(cfgMemRatio)
+	if err == nil && ratioStr != "" {
+		ratio, _ := strconv.Atoi(ratioStr)
+		if ratio <= 0 || ratio >= 100 {
+			return fmt.Errorf("cfgMemRatio is not legal, shoule beteen 1-100, now %s", ratioStr)
+		}
+
+		configTotalMem = total * uint64(ratio) / 100
+		log.LogInfof("configTotalMem by ratio is: mem [%d], ratio[%d]", configTotalMem, ratio)
+	} else {
+		configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
+		if configTotalMem == 0 {
+			return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
+		}
+	}
+
 	if err == nil && configTotalMem > total-util.GB {
 		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
 	}
