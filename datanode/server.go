@@ -15,9 +15,11 @@
 package datanode
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"net/http"
+	"os/exec"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -77,6 +79,8 @@ const (
 	ConfigKeyRaftReplica   = "raftReplica"     // string
 	CfgTickInterval        = "tickInterval"    // int
 	CfgRaftRecvBufSize     = "raftRecvBufSize" // int
+
+	ConfigKeyDiskPath = "diskPath" // string
 
 	/*
 	 * Metrics Degrade Level
@@ -307,12 +311,26 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 
 	log.LogInfof("startSpaceManager preReserveSpace %d", diskRdonlySpace)
 
+	paths := make([]string, 0)
+	diskPath := cfg.GetString(ConfigKeyDiskPath)
+	if diskPath != "" {
+		paths, err = parseDiskPath(diskPath)
+		if err != nil {
+			log.LogErrorf("parse diskpath failed, path %s, err %s", diskPath, err.Error())
+			return err
+		}
+	} else {
+		for _, p := range cfg.GetSlice(ConfigKeyDisks) {
+			paths = append(paths, p.(string))
+		}
+	}
+
 	var wg sync.WaitGroup
-	for _, d := range cfg.GetSlice(ConfigKeyDisks) {
+	for _, d := range paths {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
 
 		// format "PATH:RESET_SIZE
-		arr := strings.Split(d.(string), ":")
+		arr := strings.Split(d, ":")
 		if len(arr) != 2 {
 			return errors.New("Invalid disk configuration. Example: PATH:RESERVE_SIZE")
 		}
@@ -342,6 +360,38 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 
 	wg.Wait()
 	return nil
+}
+
+// execute shell to find all paths
+// out: like, /disk1:1024, /disk2:1024
+func parseDiskPath(pathStr string) (disks []string, err error) {
+	log.LogInfof("parse diskpath, %s", pathStr)
+
+	arr := strings.Split(pathStr, ":")
+	if len(arr) != 2 {
+		return disks, fmt.Errorf("diskPath cfg should be diskPathPrefix:RESERVE_SIZE")
+	}
+
+	shell := fmt.Sprintf("mount | grep %s | awk '{print $3}'", arr[0])
+	cmd := exec.Command("/bin/sh", "-c", shell)
+	log.LogWarnf("execute diskPath shell, %s", shell)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return disks, fmt.Errorf("execute shell failed, %s", err.Error())
+	}
+
+	disks = make([]string, 0)
+	lines := bytes.Split(out, []byte("\n"))
+	for _, line := range lines {
+		str := strings.TrimSpace(string(line))
+		if str == "" {
+			continue
+		}
+
+		disks = append(disks, fmt.Sprintf("%s:%s", string(line), arr[1]))
+	}
+
+	return disks, nil
 }
 
 // registers the data node on the master to report the information such as IsIPV4 address.
