@@ -3,15 +3,15 @@
 Here we draft several todo big features as the engineering roadmap of CubeFS. 
 
 
-## Caching
+## CubeFS for Android
 
 
-With tiered local + distributed buffer cache, cubefs will be a unified platform of data storage & caching acceleration, applied to data-intensive systems (e.g. ML training, recommendations AI model dispatching, et al.) in private/public/hybrid cloud platforms. 
+Not only for datacenters, also for mobile devices. CubeFS will work as the storage infrastructure for cloud-enabled mobile applications run on any Android devices.  
 
 
-## Atomicity of rename
+## High-level APIs for personal cloud storage
 
-distributed txn design & efficient implementation
+Syncing, Sharing & Collaboration, Publish-Subscription, et al. for billions of users & devices
 
 
 ## Multi-version snapshots
@@ -19,15 +19,4 @@ distributed txn design & efficient implementation
 for atomic versioned data lake 
 
 
-
-## CubeFS for Android
-
-
-Not only for datacenters, also for mobile devices. CubeFS will work as the storage infrastructure for cloud-enabled mobile applications run on any Android devices.  
-
-
-## High-level APIs for Mobile Applications
-
-
-Syncing, Sharing & Collaboration, Publish-Subscription, et al.
 
