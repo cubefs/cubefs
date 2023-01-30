@@ -110,10 +110,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		return
 	}
 
-	isExist, ino := mp.hasInode(&Inode{Inode: req.Inode})
-	if !isExist {
-		ino = NewInode(req.Inode, 0)
-	}
+	ino := NewInode(req.Inode, 0)
 
 	val, err = ino.Marshal()
 	if err != nil {
@@ -294,10 +291,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		return
 	}
 
-	isExist, ino := mp.hasInode(&Inode{Inode: req.Inode})
-	if !isExist {
-		ino = NewInode(req.Inode, 0)
-	}
+	ino := NewInode(req.Inode, 0)
 
 	val, err = ino.Marshal()
 	if err != nil {
