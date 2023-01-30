@@ -128,6 +128,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.CacheLowWater = vv.CacheLowWater
 	vol.CacheLRUInterval = vv.CacheLRUInterval
 	vol.CacheRule = vv.CacheRule
+	vol.Status = vv.Status
 
 	limitQosVal := &qosArgs{
 		qosEnable:     vv.VolQosEnable,
