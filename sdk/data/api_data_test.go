@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"math"
 	"sort"
 	"strings"
 	"testing"
@@ -111,10 +112,20 @@ func TestStopAndReLoadPartition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StopPartition err:%v", err)
 	}
+	err = dataClient.StopPartition(math.MaxUint64)
+	if err == nil {
+		t.Fatalf("StopPartition expect err, but success")
+	}
 	partitionDirName, dirPath := fmt.Sprintf("datapartition_%v_128849018880", pId), "/cfs/disk"
+	wrongDirPath := "/cfs/wrongDisk"
+
 	err = dataClient.ReLoadPartition(partitionDirName, dirPath)
 	if err != nil {
 		t.Fatalf("ReLoadPartition err:%v", err)
+	}
+	err = dataClient.ReLoadPartition(partitionDirName, wrongDirPath)
+	if err == nil {
+		t.Fatalf("ReLoadPartition expect err, but success")
 	}
 }
 

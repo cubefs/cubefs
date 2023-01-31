@@ -61,7 +61,7 @@ func NewRepairTask() *RepairCrcTask {
 		},
 		ClusterInfo: new(ClusterInfo),
 		Filter: new(Filter),
-		stopC: make(chan bool, 128),
+		stopC: make(chan bool, 8),
 	}
 }
 

@@ -35,7 +35,6 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/storage"
-	"github.com/tiglabs/raft"
 )
 
 var (
@@ -290,10 +289,10 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		paramPartitionID = "id"
 	)
 	var (
-		partitionID          uint64
-		files                []storage.ExtentInfoBlock
-		err                  error
-		tinyDeleteRecordSize int64
+		partitionID uint64
+		files       []storage.ExtentInfoBlock
+		err         error
+		dpInfo      *DataPartitionViewInfo
 	)
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
@@ -310,52 +309,49 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
+	if dpInfo, err = partition.getDataPartitionInfo(); err != nil {
+		s.buildFailureResp(w, http.StatusNotFound, "data partition info get failed")
+		return
+	}
 	if files, err = partition.ExtentStore().GetAllWatermarks(proto.AllExtentType, nil); err != nil {
 		err = fmt.Errorf("get watermark fail: %v", err)
 		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if tinyDeleteRecordSize, err = partition.ExtentStore().LoadTinyDeleteFileOffset(); err != nil {
-		err = fmt.Errorf("load tiny delete file offset fail: %v", err)
-		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+	dpInfo.Files = files
+	dpInfo.FileCount = len(files)
+	s.buildSuccessResp(w, dpInfo)
+}
+
+func (s *DataNode) getPartitionSimpleAPI(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramPartitionID = "id"
+	)
+	var (
+		partitionID          uint64
+		err                  error
+		dpInfo      *DataPartitionViewInfo
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	var raftStatus *raft.Status
-	if partition.raftPartition != nil {
-		raftStatus = partition.raftPartition.Status()
+	if partitionID, err = strconv.ParseUint(r.FormValue(paramPartitionID), 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
 	}
-	result := &struct {
-		VolName              string                    `json:"volName"`
-		ID                   uint64                    `json:"id"`
-		Size                 int                       `json:"size"`
-		Used                 int                       `json:"used"`
-		Status               int                       `json:"status"`
-		Path                 string                    `json:"path"`
-		Files                []storage.ExtentInfoBlock `json:"extents"`
-		FileCount            int                       `json:"fileCount"`
-		Replicas             []string                  `json:"replicas"`
-		Peers                []proto.Peer              `json:"peers"`
-		Learners             []proto.Learner           `json:"learners"`
-		TinyDeleteRecordSize int64                     `json:"tinyDeleteRecordSize"`
-		RaftStatus           *raft.Status              `json:"raftStatus"`
-		IsFinishLoad         bool                      `json:"isFinishLoad"`
-	}{
-		VolName:              partition.volumeID,
-		ID:                   partition.partitionID,
-		Size:                 partition.Size(),
-		Used:                 partition.Used(),
-		Status:               partition.Status(),
-		Path:                 partition.Path(),
-		Files:                files,
-		FileCount:            len(files),
-		Replicas:             partition.getReplicaClone(),
-		TinyDeleteRecordSize: tinyDeleteRecordSize,
-		RaftStatus:           raftStatus,
-		Peers:                partition.config.Peers,
-		Learners:             partition.config.Learners,
-		IsFinishLoad:         partition.ExtentStore().IsFinishLoad(),
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
 	}
-	s.buildSuccessResp(w, result)
+	if dpInfo, err = partition.getDataPartitionInfo(); err != nil {
+		s.buildFailureResp(w, http.StatusNotFound, "data partition info get failed")
+		return
+	}
+	s.buildSuccessResp(w, dpInfo)
 }
 
 func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
@@ -559,24 +555,11 @@ func (s *DataNode) getTinyExtentHoleInfo(w http.ResponseWriter, r *http.Request)
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	store := partition.ExtentStore()
-	holes, extentAvaliSize, err := store.TinyExtentHolesAndAvaliSize(uint64(extentID), 0)
+	result, err := partition.getTinyExtentHoleInfo(uint64(extentID))
 	if err != nil {
-		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		s.buildFailureResp(w, http.StatusNotFound, err.Error())
 		return
 	}
-
-	blks, _ := store.GetRealBlockCnt(uint64(extentID))
-	result := &struct {
-		Holes           []*proto.TinyExtentHole `json:"holes"`
-		ExtentAvaliSize uint64                  `json:"extentAvaliSize"`
-		ExtentBlocks    int64                   `json:"blockNum"`
-	}{
-		Holes:           holes,
-		ExtentAvaliSize: extentAvaliSize,
-		ExtentBlocks:    blks,
-	}
-
 	s.buildSuccessResp(w, result)
 }
 

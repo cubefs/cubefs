@@ -10,7 +10,8 @@ import (
 )
 
 type RepairPersist struct {
-	failedDpFd              *os.File
+	MasterAddr string
+	failedDpFd *os.File
 	failedExtentsFd         *os.File
 	singleBadNormalExtentFd *os.File
 	multiBadNormalExtentsFd *os.File
@@ -40,8 +41,8 @@ func (rp *RepairPersist) persistFailedExtents(dp uint64, failedExtents []uint64)
 func (rp *RepairPersist) persistOneBadHostNormal(rExtent RepairExtentInfo) {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
-	msg := fmt.Sprintf("found bad crc extent, it will be automatically repaired later: %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0])
-	ump.Alarm("check_crc_server", msg)
+	msg := fmt.Sprintf("Domain[%s] found bad crc extent, it will be automatically repaired later: %v %v %v\n", rp.MasterAddr, rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0])
+	ump.Alarm( "check_crc_server", msg)
 	rp.singleBadNormalExtentFd.WriteString(fmt.Sprintf("%v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0]))
 	rp.singleBadNormalExtentFd.Sync()
 }
@@ -49,7 +50,7 @@ func (rp *RepairPersist) persistOneBadHostNormal(rExtent RepairExtentInfo) {
 func (rp *RepairPersist) persistOneBadHostTiny(rExtent RepairExtentInfo) {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
-	msg := fmt.Sprintf("found bad crc extent, it will be automatically repaired later: %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0])
+	msg := fmt.Sprintf("Domain[%s] found bad crc extent, it will be automatically repaired later: %v %v %v\n", rp.MasterAddr, rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0])
 	ump.Alarm("check_crc_server", msg)
 	rp.singleBadTinyExtentFd.WriteString(fmt.Sprintf("%v %v %v %v %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0], rExtent.Inode, rExtent.Offset, rExtent.Size, rExtent.Volume))
 	rp.singleBadTinyExtentFd.Sync()
@@ -58,7 +59,7 @@ func (rp *RepairPersist) persistOneBadHostTiny(rExtent RepairExtentInfo) {
 func (rp *RepairPersist) persistMultiBadHostsNormal(rExtent RepairExtentInfo){
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
-	msg := fmt.Sprintf("found bad crc more than 1, please check again: %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts)
+	msg := fmt.Sprintf("Domain[%s] found bad crc more than 1, please check again: %v %v %v\n", rp.MasterAddr, rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts)
 	ump.Alarm("check_crc_server", msg)
 	rp.multiBadNormalExtentsFd.WriteString(fmt.Sprintf("%v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts))
 	rp.multiBadNormalExtentsFd.Sync()
@@ -67,7 +68,7 @@ func (rp *RepairPersist) persistMultiBadHostsNormal(rExtent RepairExtentInfo){
 func (rp *RepairPersist) persistMultiBadHostsTiny(rExtent RepairExtentInfo){
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
-	msg := fmt.Sprintf("found bad crc more than 1, please check again: %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts)
+	msg := fmt.Sprintf("Domain[%s] found bad crc more than 1, please check again: %v %v %v\n", rp.MasterAddr, rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts)
 	ump.Alarm("check_crc_server", msg)
 	rp.multiBadTinyExtentsFd.WriteString(fmt.Sprintf("%v %v %v %v %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts, rExtent.Inode, rExtent.Offset, rExtent.Size, rExtent.Volume))
 	rp.multiBadTinyExtentsFd.Sync()
@@ -97,15 +98,16 @@ func (rp *RepairPersist) persistResult() {
 	}
 }
 
-func NewRepairPersist(key string) (rp *RepairPersist){
+func NewRepairPersist(master string) (rp *RepairPersist){
 	rp = new(RepairPersist)
+	rp.MasterAddr = master
 	rp.rCh = make(chan RepairExtentInfo, 1024)
-	rp.failedDpFd, _ = os.OpenFile(fmt.Sprintf("checkFailedDp_%v.csv", key), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	rp.failedExtentsFd, _ = os.OpenFile(fmt.Sprintf("checkFailedExtents_%v.csv", key), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	rp.singleBadNormalExtentFd, _ = os.OpenFile(fmt.Sprintf("single_bad_normal_extents_%v", key), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	rp.multiBadNormalExtentsFd, _ = os.OpenFile(fmt.Sprintf("multi_bad_tiny_extents_%v", key), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	rp.singleBadTinyExtentFd, _ = os.OpenFile(fmt.Sprintf("single_bad_tiny_extents_%v", key), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	rp.multiBadTinyExtentsFd, _ = os.OpenFile(fmt.Sprintf("multi_bad_tiny_extents_%v", key), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.failedDpFd, _ = os.OpenFile(fmt.Sprintf("checkFailedDp_%v.csv", master), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.failedExtentsFd, _ = os.OpenFile(fmt.Sprintf("checkFailedExtents_%v.csv", master), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.singleBadNormalExtentFd, _ = os.OpenFile(fmt.Sprintf("single_bad_normal_extents_%v", master), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.multiBadNormalExtentsFd, _ = os.OpenFile(fmt.Sprintf("multi_bad_tiny_extents_%v", master), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.singleBadTinyExtentFd, _ = os.OpenFile(fmt.Sprintf("single_bad_tiny_extents_%v", master), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.multiBadTinyExtentsFd, _ = os.OpenFile(fmt.Sprintf("multi_bad_tiny_extents_%v", master), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	rp.dpCounter = atomic2.Int64{}
 	return
 }

@@ -151,7 +151,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DataNodeFlushFDParallelismOnDisk > 0 {
 				msg += fmt.Sprintf("dataNodeFlushFDParallelismOnDisk: %d, ", info.DataNodeFlushFDParallelismOnDisk)
 			}
-			if info.DNNormalExtentDeleteExpire >= 0 {
+			if info.DNNormalExtentDeleteExpire > 0 {
 				msg += fmt.Sprintf("normalExtentDeleteExpire: %d, ", info.DNNormalExtentDeleteExpire)
 			}
 			if info.ExtentMergeIno != "" {

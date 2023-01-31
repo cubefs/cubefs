@@ -64,6 +64,10 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 					break
 				}
 			}
+			if leader == "" {
+				errout("mp[%v] no leader:\n", mpId)
+				return
+			}
 			if addr == "" {
 				addr = strings.Split(leader, ":")[0]
 			}

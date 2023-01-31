@@ -172,7 +172,7 @@ func newExtentInfoForTest(fileID, size, crc uint64) storage.ExtentInfoBlock {
 }
 
 func TestIsGetConnectError(t *testing.T) {
-	err := fmt.Errorf("rand str %v op", errorGetConnect)
+	err := fmt.Errorf("rand str %v op", errorGetConnectMsg)
 	connectError := isGetConnectError(err)
 	if !connectError {
 		t.Errorf("action[TestIsGetConnectError] failed, isGetConnectError expect[%v] actual[%v]", true, connectError)
@@ -185,7 +185,7 @@ func TestIsGetConnectError(t *testing.T) {
 }
 
 func TestIsConnectionRefusedFailure(t *testing.T) {
-	err := fmt.Errorf("rand str %v op", errorConnRefused)
+	err := fmt.Errorf("rand str %v op", errorConnRefusedMsg)
 	connectRefusedFailure := isConnectionRefusedFailure(err)
 	if !connectRefusedFailure {
 		t.Errorf("action[TestIsConnectionRefusedFailure] failed, isConnectionRefusedFailure expect[%v] actual[%v]", true, connectRefusedFailure)
@@ -198,7 +198,7 @@ func TestIsConnectionRefusedFailure(t *testing.T) {
 }
 
 func TestIsIOTimeoutFailure(t *testing.T) {
-	err := fmt.Errorf("rand str %v op", errorIOTimeout)
+	err := fmt.Errorf("rand str %v op", errorIOTimeoutMsg)
 	ioTimeoutFailure := isIOTimeoutFailure(err)
 	if !ioTimeoutFailure {
 		t.Errorf("action[TestIsIOTimeoutFailure] failed, isIOTimeoutFailure expect[%v] actual[%v]", true, ioTimeoutFailure)

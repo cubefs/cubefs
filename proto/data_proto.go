@@ -31,9 +31,11 @@ type DNDataPartitionInfo struct {
 	FileCount            int               `json:"fileCount"`
 	Replicas             []string          `json:"replicas"`
 	TinyDeleteRecordSize int64             `json:"tinyDeleteRecordSize"`
-	RaftStatus           *Status           `json:"raftStatus"`
+	RaftStatus           *Status      `json:"raftStatus"`
 	Peers                []Peer            `json:"peers"`
 	Learners             []Learner         `json:"learners"`
+	IsFinishLoad         bool              `json:"isFinishLoad"`
+	IsRecover            bool              `json:"isRecover"`
 }
 
 type BlockCrc struct {
@@ -126,26 +128,6 @@ type CfsDisk struct {
 	Status        int
 	Path          string
 	UsageRatio    float64
-}
-
-type RaftStatus struct {
-	ID                uint64
-	NodeID            uint64
-	Leader            uint64
-	Term              uint64
-	Index             uint64
-	Commit            uint64
-	Applied           uint64
-	Vote              uint64
-	PendQueue         int
-	PendCmd           map[uint64]byte
-	RecvQueue         int
-	AppQueue          int
-	Stopped           bool
-	RestoringSnapshot bool
-	State             string // leader、follower、candidate
-	Replicas          map[uint64]*ReplicaStatus
-	Log               LogStatus
 }
 
 type StatInfo struct {

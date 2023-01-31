@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/tiglabs/raft"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -29,10 +30,6 @@ import (
 	"sync"
 	"time"
 
-	"hash/crc32"
-	"net"
-	"syscall"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/repl"
@@ -42,6 +39,8 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
 	raftProto "github.com/tiglabs/raft/proto"
+	"hash/crc32"
+	"net"
 )
 
 const (
@@ -244,6 +243,24 @@ type DataPartition struct {
 
 	persistedApplied  uint64
 	persistedMetadata *DataPartitionMetadata
+}
+
+type DataPartitionViewInfo struct {
+	VolName              string                    `json:"volName"`
+	ID                   uint64                    `json:"id"`
+	Size                 int                       `json:"size"`
+	Used                 int                       `json:"used"`
+	Status               int                       `json:"status"`
+	Path                 string                    `json:"path"`
+	Files                []storage.ExtentInfoBlock `json:"extents"`
+	FileCount            int                       `json:"fileCount"`
+	Replicas             []string                  `json:"replicas"`
+	TinyDeleteRecordSize int64                     `json:"tinyDeleteRecordSize"`
+	RaftStatus           *raft.Status              `json:"raftStatus"`
+	Peers                []proto.Peer              `json:"peers"`
+	Learners             []proto.Learner           `json:"learners"`
+	IsFinishLoad         bool                      `json:"isFinishLoad"`
+	IsRecover            bool                      `json:"isRecover"`
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -757,39 +774,6 @@ func (dp *DataPartition) statusUpdate() {
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
 
-func parseFileName(filename string) (extentID uint64, isExtent bool) {
-	if isExtent = storage.RegexpExtentFile.MatchString(filename); !isExtent {
-		return
-	}
-	var (
-		err error
-	)
-	if extentID, err = strconv.ParseUint(filename, 10, 64); err != nil {
-		isExtent = false
-		return
-	}
-	isExtent = true
-	return
-}
-
-func (dp *DataPartition) actualSize(path string, finfo os.FileInfo) (size int64) {
-	name := finfo.Name()
-	extentID, isExtent := parseFileName(name)
-	if !isExtent {
-		return 0
-	}
-	if proto.IsTinyExtent(extentID) {
-		stat := new(syscall.Stat_t)
-		err := syscall.Stat(fmt.Sprintf("%v/%v", path, finfo.Name()), stat)
-		if err != nil {
-			return finfo.Size()
-		}
-		return stat.Blocks * DiskSectorSize
-	}
-
-	return finfo.Size()
-}
-
 func (dp *DataPartition) computeUsage() {
 	if time.Now().Unix()-dp.intervalToUpdatePartitionSize < IntervalToUpdatePartitionSize {
 		return
@@ -913,16 +897,11 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	response.PartitionId = uint64(dp.partitionID)
 	response.PartitionStatus = dp.partitionStatus
 	response.Used = uint64(dp.Used())
-	var err error
+
 	if dp.loadExtentHeaderStatus != FinishLoadDataPartitionExtentHeader {
 		response.PartitionSnapshot = make([]*proto.File, 0)
 	} else {
 		response.PartitionSnapshot = dp.SnapShot()
-	}
-	if err != nil {
-		response.Status = proto.TaskFailed
-		response.Result = err.Error()
-		return
 	}
 	return
 }
@@ -1210,4 +1189,53 @@ func (dp *DataPartition) EvictExpiredExtentDeleteCache(expireTime int64) {
 		expireTime = DefaultNormalExtentDeleteExpireTime
 	}
 	dp.extentStore.EvictExpiredNormalExtentDeleteCache(expireTime)
+}
+
+func (dp *DataPartition) getTinyExtentHoleInfo(extent uint64) (result interface{}, err error){
+	holes, extentAvaliSize, err := dp.ExtentStore().TinyExtentHolesAndAvaliSize(extent, 0)
+	if err != nil {
+		return
+	}
+
+	blocks, _ := dp.ExtentStore().GetRealBlockCnt(extent)
+	result = &struct {
+		Holes           []*proto.TinyExtentHole `json:"holes"`
+		ExtentAvaliSize uint64                  `json:"extentAvaliSize"`
+		ExtentBlocks    int64                   `json:"blockNum"`
+	}{
+		Holes:           holes,
+		ExtentAvaliSize: extentAvaliSize,
+		ExtentBlocks:    blocks,
+	}
+	return
+}
+
+func (dp *DataPartition) getDataPartitionInfo() (dpInfo *DataPartitionViewInfo, err error) {
+	var (
+		tinyDeleteRecordSize int64
+	)
+	if tinyDeleteRecordSize, err = dp.ExtentStore().LoadTinyDeleteFileOffset(); err != nil {
+		err = fmt.Errorf("load tiny delete file offset fail: %v", err)
+		return
+	}
+	var raftStatus *raft.Status
+	if dp.raftPartition != nil {
+		raftStatus = dp.raftPartition.Status()
+	}
+	dpInfo = &DataPartitionViewInfo{
+		VolName:              dp.volumeID,
+		ID:                   dp.partitionID,
+		Size:                 dp.Size(),
+		Used:                 dp.Used(),
+		Status:               dp.Status(),
+		Path:                 dp.Path(),
+		Replicas:             dp.getReplicaClone(),
+		TinyDeleteRecordSize: tinyDeleteRecordSize,
+		RaftStatus:           raftStatus,
+		Peers:                dp.config.Peers,
+		Learners:             dp.config.Learners,
+		IsFinishLoad:         dp.ExtentStore().IsFinishLoad(),
+		IsRecover:            dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition,
+	}
+	return
 }

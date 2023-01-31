@@ -1166,6 +1166,11 @@ func getFileInodesByMp(mps []*proto.MetaPartitionView, metaPartitionId uint64, c
 		go func() {
 			for mp := range ch {
 				var inos map[uint64]*proto.MetaInode
+				if mp.LeaderAddr == "" {
+					stdout("mp[%v] no leader\n", mp.PartitionID)
+					wg.Done()
+					return
+				}
 				mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], metaProf), false)
 				inos, err = mtClient.GetAllInodes(mp.PartitionID)
 				if err != nil {
@@ -1375,7 +1380,7 @@ func checkInode(vol string, c *sdk.MasterClient, inode uint64, checkedExtent *sy
 	)
 	extentsResp, err = getExtentsByInode(inode, mps, c.MetaNodeProfPort)
 	if err != nil {
-		log.LogErrorf("check inode failed, cluster:%s, vol:%s, inode: %d, extent count: %d, err:%v", c.Nodes()[0], vol, inode, err)
+		log.LogErrorf("check inode failed, cluster:%s, vol:%s, inode: %d, err:%v", c.Nodes()[0], vol, inode, err)
 		return
 	}
 

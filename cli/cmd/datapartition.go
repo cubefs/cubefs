@@ -431,7 +431,7 @@ The "reset" command will be released in next version`,
 				}
 				stdoutGreen(fmt.Sprintf(" The Lack Address is: %v", lackAddr))
 				if canAutoRepair {
-					sb.WriteString(fmt.Sprintf("cfs-cli datapartition add-replica %v %v\n", lackAddr[0], partition.PartitionID))
+					sb.WriteString(fmt.Sprintf("cfs-cli datapartition add-replica %v %v\n", partition.PartitionID, lackAddr[0]))
 				}
 				if optEnableAutoFullfill && canAutoRepair {
 					stdoutGreen("     Auto Repair Begin:")

@@ -219,6 +219,25 @@ func (api *AdminAPI) ResetCorruptMetaNode(nodeAddr string) (err error) {
 //	return
 //}
 
+func (api *AdminAPI) MockCreateDataPartition(nodeAddr string, dp uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminCreateDataPartition)
+	request.addParam("addr", nodeAddr)
+	request.addParam("id", strconv.FormatUint(dp, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+func (api *AdminAPI) MockDeleteDataReplica(nodeAddr string, dp uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteDataReplica)
+	request.addParam("addr", nodeAddr)
+	request.addParam("id", strconv.FormatUint(dp, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) CreateDataPartition(volName string, count int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateDataPartition)
 	request.addParam("name", volName)
@@ -638,7 +657,7 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.DataNodeFlushFDParallelismOnDisk > 0 {
 		request.addParam("dataNodeFlushFDParallelismOnDisk", strconv.FormatInt(info.DataNodeFlushFDParallelismOnDisk, 10))
 	}
-	if info.DNNormalExtentDeleteExpire >= 0 {
+	if info.DNNormalExtentDeleteExpire > 0 {
 		request.addParam("normalExtentDeleteExpire", strconv.FormatUint(uint64(info.DNNormalExtentDeleteExpire), 10))
 	}
 	if info.ClientReadVolRate >= 0 {

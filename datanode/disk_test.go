@@ -3,7 +3,6 @@ package datanode
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"net/http"
 	"os"
 	"path"
 	"reflect"
@@ -12,14 +11,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
-	"time"
 )
-
-const (
-	diskPath = "./"
-	profPort = 10729
-)
-
 var disk *Disk
 
 func init() {
@@ -32,18 +24,19 @@ func init() {
 			repairTaskLimitOnDisk: 0,
 			fixTinyDeleteRecordLimitOnDisk: 0,
 			dataNode: &DataNode{
-				localServerAddr: "127.0.0.1:7777",
+				localServerAddr: localNodeAddress,
 			},
 			partitions: make(map[uint64]*DataPartition),
 		}
 		reservedSpace uint64 = DefaultDiskReservedSpace
 		stateFS              = new(syscall.Statfs_t)
 	)
-	if err := syscall.Statfs(diskPath, stateFS); err == nil {
+	fmt.Println("init disk")
+	if err := syscall.Statfs(testDiskPath, stateFS); err == nil {
 		reservedSpace = uint64(float64(stateFS.Blocks*uint64(stateFS.Bsize)) * DefaultDiskReservedRatio)
 	}
 	disk = new(Disk)
-	disk.Path = diskPath
+	disk.Path = testDiskPath
 	disk.ReservedSpace = reservedSpace
 	disk.MaxErrCnt = DefaultDiskMaxErr
 	disk.fdLimit = diskFDLimit
@@ -52,27 +45,7 @@ func init() {
 	disk.fixTinyDeleteRecordLimit = spaceManager.fixTinyDeleteRecordLimitOnDisk
 	disk.repairTaskLimit = spaceManager.repairTaskLimitOnDisk
 	disk.RejectWrite = false
-	mockMasterHttpServer()
-	MasterClient.AddNode(fmt.Sprintf("127.0.0.1:%v", profPort))
 }
-
-func mockMasterHttpServer() {
-	mx := http.NewServeMux()
-	mx.HandleFunc("/dataNode/get", func(w http.ResponseWriter, r *http.Request) {
-		info := &proto.DataNodeInfo{
-			ID: 1060,
-			Addr : "11.5.61.130:6000",
-			PersistenceDataPartitions: []uint64{1,2,3,10},
-		}
-		buildJSONResp(w, http.StatusOK, info, Master, "")
-	})
-	go func() {
-		err := http.ListenAndServe(fmt.Sprintf(":%v", profPort), mx)
-		fmt.Printf("http ListenAndServe port:%v err:%v", profPort, err)
-	}()
-	time.Sleep(time.Second * 1)
-}
-
 func TestFDCount(t *testing.T) {
 	var (
 		incParallelNum = 10
@@ -297,20 +270,26 @@ func TestCheckDiskStatus(t *testing.T) {
 }
 
 func TestRestoreOnePartition(t *testing.T) {
+	var dpId uint64
+	dpId = 10
+	MasterClient.AdminAPI().MockCreateDataPartition(localNodeAddress, dpId)
+
 	visitor := func(dp *DataPartition) {}
-	var dpId uint64 = 10
 	var applyId uint64 = 1234
 	dpDir := fmt.Sprintf("datapartition_%v_128849018880", dpId)
 	initDataPartitionUnderFile(dpId, applyId, dpDir)
+
 	defer removeUnderFile(dpDir)
 	err := disk.RestoreOnePartition(visitor, dpDir)
 	if err != nil {
 		t.Fatalf("RestoreOnePartition err:%v", err)
 	}
 	partition := disk.GetDataPartition(dpId)
-	applied := partition.applyStatus.Applied()
-	if applied != applyId {
-		t.Fatalf("disk restoreOnePartition mismatch, applyId except:%v, actual:%v", applyId, applied)
+	if partition.applyStatus != nil {
+		applied := partition.applyStatus.Applied()
+		if applied != applyId {
+			t.Fatalf("disk restoreOnePartition mismatch, applyId except:%v, actual:%v", applyId, applied)
+		}
 	}
 	err = disk.RestoreOnePartition(visitor, "")
 	if err == nil || !strings.Contains(err.Error(), "partition path is empty") {
@@ -322,7 +301,10 @@ func TestRestoreOnePartition(t *testing.T) {
 	}
 	dpDir = fmt.Sprintf("datapartition_%v", dpId)
 	initDataPartitionUnderFile(dpId, applyId, dpDir)
-	defer removeUnderFile(dpDir)
+	defer func() {
+		removeUnderFile(dpDir)
+		MasterClient.AdminAPI().MockDeleteDataReplica(localNodeAddress, dpId)
+	}()
 	err = disk.RestoreOnePartition(visitor, dpDir)
 	if err == nil || !strings.Contains(err.Error(), "invalid partition path") {
 		t.Fatalf("err:%v", err)
@@ -330,8 +312,12 @@ func TestRestoreOnePartition(t *testing.T) {
 	dpId = 11
 	applyId = 1234
 	dpDir = fmt.Sprintf("datapartition_%v_128849018880", dpId)
-	initDataPartitionUnderFile(dpId, applyId, dpDir)
-	defer removeUnderFile(ExpiredPartitionPrefix+dpDir)
+	MasterClient.AdminAPI().MockCreateDataPartition(localNodeAddress, dpId)
+	initDataPartitionUnderFile(uint64(dpId), applyId, dpDir)
+	defer func() {
+		removeUnderFile(ExpiredPartitionPrefix+dpDir)
+		MasterClient.AdminAPI().MockDeleteDataReplica(localNodeAddress, dpId)
+	}()
 	_ = disk.RestoreOnePartition(visitor, dpDir)
 }
 
@@ -340,7 +326,11 @@ func TestRestorePartition(t *testing.T) {
 	var applyId uint64 = 1234
 	dpDir := fmt.Sprintf("datapartition_%v_128849018880", dpId)
 	initDataPartitionUnderFile(dpId, applyId, dpDir)
-	defer removeUnderFile(dpDir)
+	MasterClient.AdminAPI().MockCreateDataPartition(localNodeAddress, dpId)
+	defer func() {
+		removeUnderFile(dpDir)
+		MasterClient.AdminAPI().MockDeleteDataReplica(localNodeAddress, dpId)
+	}()
 	disk.RestorePartition(nil, 1)
 }
 

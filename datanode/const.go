@@ -134,7 +134,8 @@ const (
 )
 
 const (
-	errorConnRefused = "connection refused"
-	errorIOTimeout   = "i/o timeout"
-	errorGetConnect  = "get connection failed"
+	errorConnRefusedMsg = "connection refused"
+	errorIOTimeoutMsg     = "i/o timeout"
+	errorGetConnectMsg       = "get connection failed"
+	errorPartitionRecoverMsg = "partition is recovering"
 )

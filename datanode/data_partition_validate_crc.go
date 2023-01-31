@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/chubaofs/chubaofs/sdk/data"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -61,7 +63,7 @@ func (dp *DataPartition) runValidateCRC(ctx context.Context) {
 	err := dp.buildDataPartitionValidateCRCTask(ctx, validateCRCTasks, replicas)
 	if err != nil {
 		log.LogErrorf("action[runValidateCRC] partition(%v) err(%v).", dp.partitionID, err)
-		if isGetConnectError(err) || isConnectionRefusedFailure(err) || isIOTimeoutFailure(err) {
+		if isGetConnectError(err) || isConnectionRefusedFailure(err) || isIOTimeoutFailure(err) || isPartitionRecoverFailure(err) {
 			return
 		}
 		dpCrcInfo := proto.DataPartitionExtentCrcInfo{
@@ -82,27 +84,37 @@ func (dp *DataPartition) runValidateCRC(ctx context.Context) {
 }
 
 func isGetConnectError(err error) bool {
-	if strings.Contains(err.Error(), errorGetConnect) {
+	if strings.Contains(err.Error(), errorGetConnectMsg) {
 		return true
 	}
 	return false
 }
 
 func isConnectionRefusedFailure(err error) bool {
-	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errorConnRefused)) {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errorConnRefusedMsg)) {
 		return true
 	}
 	return false
 }
 
 func isIOTimeoutFailure(err error) bool {
-	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errorIOTimeout)) {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errorIOTimeoutMsg)) {
+		return true
+	}
+	return false
+}
+func isPartitionRecoverFailure(err error) bool {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errorPartitionRecoverMsg)) {
 		return true
 	}
 	return false
 }
 
 func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, validateCRCTasks []*DataPartitionValidateCRCTask, replicas []string) (err error) {
+	if isRecover, err1 := dp.isRecover(); err1 != nil || isRecover {
+		err = fmt.Errorf(errorPartitionRecoverMsg)
+		return
+	}
 	// get the local extent info
 	extents, err := dp.getLocalExtentInfoForValidateCRC()
 	if err != nil {
@@ -126,6 +138,80 @@ func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, 
 	return
 }
 
+func (dp *DataPartition) isRecover() (isRecover bool, err error) {
+	var replyNum uint8
+	isRecover, replyNum = dp.getRemoteReplicaRecoverStatus(context.Background())
+	if int(replyNum) < len(dp.config.Hosts) / 2 {
+		err = fmt.Errorf("reply from remote replica is no enough")
+		return
+	}
+	return isRecover, nil
+}
+
+// Get all replica recover status
+func (dp *DataPartition) getRemoteReplicaRecoverStatus(ctx context.Context) (recovering bool, replyNum uint8) {
+	hosts := dp.getReplicaClone()
+	if len(hosts) == 0 {
+		log.LogErrorf("action[getRemoteReplicaRecoverStatus] partition(%v) replicas is nil.", dp.partitionID)
+		return
+	}
+	errSlice := make(map[string]error)
+	var (
+		wg   sync.WaitGroup
+	)
+	for _, host := range hosts {
+		if dp.IsLocalAddress(host) {
+			continue
+		}
+		wg.Add(1)
+		go func(curAddr string) {
+			var isRecover bool
+			var err error
+			isRecover, err = dp.isRemotePartitionRecover(curAddr)
+
+			ok := false
+			if err != nil {
+				errSlice[curAddr] = err
+			} else {
+				ok = true
+				if isRecover {
+					recovering = true
+				}
+			}
+			log.LogDebugf("action[getRemoteReplicaRecoverStatus]: get commit id[%v] ok[%v] from host[%v], pid[%v]", isRecover, ok, curAddr, dp.partitionID)
+			wg.Done()
+		}(host)
+	}
+	wg.Wait()
+	replyNum = uint8(len(hosts) - 1 - len(errSlice))
+	log.LogDebugf("action[getRemoteReplicaRecoverStatus]: get commit id from hosts[%v], pid[%v]", hosts, dp.partitionID)
+	return
+}
+
+// Get target members recover status
+func (dp *DataPartition) isRemotePartitionRecover(target string) (isRecover bool, err error) {
+	if dp.disk == nil || dp.disk.space == nil || dp.disk.space.dataNode == nil {
+		err = fmt.Errorf("action[getRemotePartitionSimpleInfo] data node[%v] not ready", target)
+		return
+	}
+	profPort := dp.disk.space.dataNode.httpPort
+	httpAddr := fmt.Sprintf("%v:%v", strings.Split(target, ":")[0], profPort)
+	dataClient := data.NewDataHttpClient(httpAddr, false)
+	var dpInfo *proto.DNDataPartitionInfo
+	for i := 0; i < 3; i++ {
+		dpInfo, err = dataClient.GetPartitionSimple(dp.partitionID)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		err = fmt.Errorf("action[getRemotePartitionSimpleInfo] datanode[%v] get partition failed, err:%v", target, err)
+		return
+	}
+	isRecover = dpInfo.IsRecover
+	log.LogDebugf("[getRemotePartitionSimpleInfo] partition(%v) recover(%v)", dp.partitionID, dpInfo.IsRecover)
+	return
+}
 func (dp *DataPartition) getLocalExtentInfoForValidateCRC() (extents []storage.ExtentInfoBlock, err error) {
 	if !dp.ExtentStore().IsFinishLoad() {
 		err = storage.PartitionIsLoaddingErr
@@ -154,7 +240,7 @@ func (dp *DataPartition) getRemoteExtentInfoForValidateCRC(ctx context.Context, 
 	var packet = proto.NewPacketToGetAllExtentInfo(ctx, dp.partitionID)
 	var conn *net.TCPConn
 	if conn, err = gConnPool.GetConnect(target); err != nil {
-		err = errors.Trace(err, errorGetConnect)
+		err = errors.Trace(err, errorGetConnectMsg)
 		return
 	}
 	defer func() {

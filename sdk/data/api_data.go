@@ -277,6 +277,27 @@ func (dc *DataHttpClient) GetPartitionFromNode(id uint64) (pInfo *proto.DNDataPa
 	return
 }
 
+func (dc *DataHttpClient) GetPartitionSimple(id uint64) (pInfo *proto.DNDataPartitionInfo, err error) {
+	params := make(map[string]string)
+	params["id"] = strconv.FormatUint(id, 10)
+	var d []byte
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/partitionSimple", params)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	pInfo = new(proto.DNDataPartitionInfo)
+	if err = json.Unmarshal(d, pInfo); err != nil {
+		return
+	}
+	return
+}
+
 func (dc *DataHttpClient) GetExtentHoles(id uint64, eid uint64) (ehs *proto.DNTinyExtentInfo, err error) {
 	params := make(map[string]string)
 	params["partitionID"] = strconv.FormatUint(id, 10)
@@ -455,7 +476,7 @@ func (dc *DataHttpClient) GetDatanodeStats() (stats *proto.DataNodeStats, err er
 	return
 }
 
-func (dc *DataHttpClient) GetRaftStatus(raftID uint64) (raftStatus *proto.RaftStatus, err error){
+func (dc *DataHttpClient) GetRaftStatus(raftID uint64) (raftStatus *proto.Status, err error) {
 	var d []byte
 	for i := 0; i < 3; i++ {
 		req := newAPIRequest(http.MethodGet, "/raftStatus")
@@ -469,7 +490,7 @@ func (dc *DataHttpClient) GetRaftStatus(raftID uint64) (raftStatus *proto.RaftSt
 	if err != nil {
 		return
 	}
-	raftStatus = new(proto.RaftStatus)
+	raftStatus = new(proto.Status)
 	if err = json.Unmarshal(d, raftStatus); err != nil {
 		return
 	}

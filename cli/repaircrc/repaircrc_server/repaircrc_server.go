@@ -224,16 +224,10 @@ func (s *RepairServer) handleAddTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.lock.RUnlock()
-	s.maxTaskId.Add(1)
-	task.TaskId = s.maxTaskId.Load()
-	s.taskReceiverCh <- task
-
-	s.lock.Lock()
-	s.repairTaskMap[task.TaskId] = task
-	s.lock.Unlock()
-
+	s.addTask(task)
 	s.PersistMetadata()
 	s.PersistTaskID()
+	s.taskReceiverCh <- task
 	buildSuccessResp(w, fmt.Sprintf("add task %v success", task.TaskId))
 }
 
@@ -290,7 +284,7 @@ func (s *RepairServer) scheduleToRepairCrc() {
 			log.LogInfof("scheduleToRepairCrc, task:%v", task.TaskId)
 			go s.executeTask(task)
 		case <- s.stopC:
-				return
+			return
 		}
 	}
 }
@@ -337,16 +331,19 @@ func (s *RepairServer) executeTask(t *RepairCrcTask) {
 
 }
 
-func (s *RepairServer) delTaskFromMem(id int64) {
+func (s *RepairServer) addTask(task *RepairCrcTask) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	delete(s.repairTaskMap, id)
+	s.maxTaskId.Add(1)
+	task.TaskId = s.maxTaskId.Load()
+	s.repairTaskMap[task.TaskId] = task
 }
-
 func (s *RepairServer) stopTask(id int64) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	task := s.repairTaskMap[id]
 	close(task.stopC)
-	s.delTaskFromMem(id)
+	delete(s.repairTaskMap, id)
 }
 
 func (s *RepairServer) PersistMetadata() (err error) {

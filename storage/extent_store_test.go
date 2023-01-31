@@ -274,6 +274,9 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 				if eibs, err = storage.GetAllWatermarks(proto.NormalExtentType, nil); err != nil {
 					return
 				}
+				if _, err = storage.GetAllExtentInfoWithByteArr(ExtentFilterForValidateCRC()); err != nil {
+					return
+				}
 				for _, eib := range eibs {
 					_ = storage.MarkDelete(eib[FileID], 0, 0)
 				}
