@@ -31,7 +31,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
@@ -491,7 +490,6 @@ func (mgr *MigrateMgr) prepareTaskLoop() {
 		}
 		err := mgr.prepareTask()
 		if err == base.ErrNoTaskInQueue {
-			log.Debug("no task in prepare queue and sleep")
 			time.Sleep(prepareMigrateTaskInterval)
 		}
 	}
@@ -597,7 +595,6 @@ func (mgr *MigrateMgr) finishTaskLoop() {
 		mgr.taskSwitch.WaitEnable()
 		err := mgr.finishTask()
 		if err == base.ErrNoTaskInQueue {
-			log.Debug("no task in finish queue and sleep")
 			time.Sleep(finishMigrateTaskInterval)
 		}
 	}

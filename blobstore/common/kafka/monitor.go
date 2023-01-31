@@ -180,7 +180,6 @@ func (monitor *Monitor) update(pid int32) error {
 		log.Errorf("get newest offset failed: topic[%s], pid[%d]", monitor.topic, pid)
 		return err
 	}
-	log.Debugf("set newest offset:%d", newestOffset)
 	monitor.newestOffsetMap.setOffset(newestOffset, pid)
 
 	oldestOffset, err := monitor.kafkaClient.GetOffset(monitor.topic, pid, sarama.OffsetOldest)
@@ -188,7 +187,6 @@ func (monitor *Monitor) update(pid int32) error {
 		log.Errorf("get oldest offset failed: topic[%s], pid[%d]", monitor.topic, pid)
 		return err
 	}
-	log.Debugf("set oldest offset: %d", oldestOffset)
 	monitor.oldestOffsetMap.setOffset(oldestOffset, pid)
 	return nil
 }
