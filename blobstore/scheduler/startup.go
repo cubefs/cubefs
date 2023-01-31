@@ -31,7 +31,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -340,9 +339,6 @@ func (svr *Service) forwardToLeader(w http.ResponseWriter, req *http.Request) {
 		panic("parse leader host url failed: " + err.Error())
 	}
 	url.Host = svr.leaderHost
-
-	span := trace.SpanFromContextSafe(req.Context())
-	span.Debugf("forward url: %v", url)
 
 	proxy := httpproxy.ReverseProxy{
 		Director: func(request *http.Request) {
