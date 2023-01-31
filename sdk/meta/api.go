@@ -132,7 +132,7 @@ func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name stri
 		rwPartitions []*MetaPartition
 	)
 
-	if mw.volNotExists {
+	if mw.VolNotExists() {
 		return nil, proto.ErrVolNotExists
 	}
 
@@ -238,7 +238,7 @@ func (mw *MetaWrapper) InodeNotExist(ctx context.Context, inode uint64) bool {
 }
 
 func (mw *MetaWrapper) Lookup_ll(ctx context.Context, parentID uint64, name string) (inode uint64, mode uint32, err error) {
-	if mw.volNotExists {
+	if mw.VolNotExists() {
 		return 0, 0, proto.ErrVolNotExists
 	}
 
@@ -256,7 +256,7 @@ func (mw *MetaWrapper) Lookup_ll(ctx context.Context, parentID uint64, name stri
 }
 
 func (mw *MetaWrapper) InodeGet_ll(ctx context.Context, inode uint64) (*proto.InodeInfo, error) {
-	if mw.volNotExists {
+	if mw.VolNotExists() {
 		return nil, proto.ErrVolNotExists
 	}
 
@@ -553,7 +553,7 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 }
 
 func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) ([]proto.Dentry, error) {
-	if mw.volNotExists {
+	if mw.VolNotExists() {
 		return nil, proto.ErrVolNotExists
 	}
 
@@ -571,7 +571,7 @@ func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) ([]proto
 
 // ReadDir_wo means execute read dir with options.
 func (mw *MetaWrapper) ReadDir_wo(parentID uint64, prefix, marker string, count uint64) ([]proto.Dentry, string, error) {
-	if mw.volNotExists {
+	if mw.VolNotExists() {
 		return nil, "", proto.ErrVolNotExists
 	}
 	parentMP := mw.getPartitionByInode(context.Background(), parentID)

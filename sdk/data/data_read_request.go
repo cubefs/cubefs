@@ -25,7 +25,7 @@ func (client *ExtentClient) GetReadRequests(ctx context.Context, inode uint64, d
 		return
 	}
 
-	if client.dataWrapper.volNotExists {
+	if client.dataWrapper.VolNotExists() {
 		err = proto.ErrVolNotExists
 		return
 	}

@@ -224,7 +224,7 @@ out:
 }
 
 func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error) {
-	if mw.volNotExists {
+	if mw.VolNotExists() {
 		return nil, false, proto.ErrVolNotExists
 	}
 

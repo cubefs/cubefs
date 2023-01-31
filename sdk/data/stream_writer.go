@@ -453,7 +453,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 }
 
 func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool) (writeSize int, isROW bool, err error) {
-	if s.client.dataWrapper.volNotExists {
+	if s.client.dataWrapper.VolNotExists() {
 		return 0, false, proto.ErrVolNotExists
 	}
 	var errmsg string
