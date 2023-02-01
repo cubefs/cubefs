@@ -135,7 +135,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		if err = mf.delKeyAndPutIndex(prefix+cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
-	case opSyncPutFollowerApiLimiterInfo:
+	case opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo:
 		mf.UserAppCmdHandler(cmd.Op, cmd.K, cmdMap)
 		//if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 		//	panic(err)
