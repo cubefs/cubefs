@@ -590,19 +590,33 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 	}
 
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
-	if err = mp.loadInode(snapshotPath); err != nil {
-		return
+	var loadFuncs = []func(rootDir string) error{
+		mp.loadInode,
+		mp.loadDentry,
+		mp.loadExtend,
+		mp.loadMultipart,
+		mp.loadApplyID,
 	}
-	if err = mp.loadDentry(snapshotPath); err != nil {
-		return
+
+	errs := make([]error, 0)
+	var mutex sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(len(loadFuncs))
+	for _, f := range loadFuncs {
+		loadFunc := f
+		go func() {
+			defer wg.Done()
+			if e := loadFunc(snapshotPath); e != nil {
+				mutex.Lock()
+				errs = append(errs, e)
+				mutex.Unlock()
+			}
+		}()
 	}
-	if err = mp.loadExtend(snapshotPath); err != nil {
-		return
+	wg.Wait()
+	if len(errs) > 0 {
+		err = errs[0]
 	}
-	if err = mp.loadMultipart(snapshotPath); err != nil {
-		return
-	}
-	err = mp.loadApplyID(snapshotPath)
 	return
 }
 
