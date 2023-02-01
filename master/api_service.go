@@ -240,6 +240,10 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminClusterStat, nil, bgTime, 1)
+	}()
 	cs := &proto.ClusterStatInfo{
 		DataNodeStatInfo: m.cluster.dataNodeStatInfo,
 		MetaNodeStatInfo: m.cluster.metaNodeStatInfo,
