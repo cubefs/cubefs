@@ -323,7 +323,12 @@ func (m *Server) setApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//persist to rocksdb
-	if err = m.cluster.syncPutApiLimiterInfo(); err != nil {
+	var qPath string
+	if err, _, qPath = m.cluster.apiLimiter.IsApiNameValid(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.cluster.syncPutApiLimiterInfo(m.cluster.apiLimiter.IsFollowerLimiter(qPath)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set api qps limit failed: %v", err)))
 		return
 	}
@@ -372,7 +377,12 @@ func (m *Server) rmApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//persist to rocksdb
-	if err = m.cluster.syncPutApiLimiterInfo(); err != nil {
+	var qPath string
+	if err, _, qPath = m.cluster.apiLimiter.IsApiNameValid(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.cluster.syncPutApiLimiterInfo(m.cluster.apiLimiter.IsFollowerLimiter(qPath)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set api qps limit failed: %v", err)))
 		return
 	}

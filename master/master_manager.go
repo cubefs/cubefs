@@ -92,6 +92,10 @@ func (m *Server) handleRaftUserCmd(opt uint32, key string, cmdMap map[string][]b
 		if m.cluster != nil {
 			m.cluster.followerReadManager.updateVolViewFromLeader(key, cmdMap[key])
 		}
+	case opSyncPutFollowerApiLimiterInfo:
+		if m.cluster != nil && !m.partition.IsRaftLeader() {
+			m.cluster.apiLimiter.updateLimiterInfoFromLeader(cmdMap[key])
+		}
 	default:
 		log.LogErrorf("action[handleRaftUserCmd] opt %v not supported,key %v, map len %v", opt, key, len(cmdMap))
 	}
@@ -201,6 +205,7 @@ func (m *Server) clearMetadata() {
 	m.user.clearAKStore()
 	m.user.clearVolUsers()
 	m.cluster.t = newTopology()
+	m.cluster.apiLimiter.Clear()
 }
 
 func (m *Server) refreshUser() (err error) {

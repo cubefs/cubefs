@@ -2,6 +2,7 @@ package master
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -23,6 +24,10 @@ type ApiLimitInfo struct {
 	Limiter        *rate.Limiter `json:"-"`
 }
 
+func (li *ApiLimitInfo) InitLimiter() {
+	li.Limiter = rate.NewLimiter(rate.Limit(li.Limit), defaultApiLimitBurst)
+}
+
 type ApiLimiter struct {
 	m            sync.RWMutex
 	limiterInfos map[string]*ApiLimitInfo
@@ -31,6 +36,27 @@ type ApiLimiter struct {
 func newApiLimiter() *ApiLimiter {
 	return &ApiLimiter{
 		limiterInfos: make(map[string]*ApiLimitInfo),
+	}
+}
+
+func (l *ApiLimiter) clear() {
+	for k, _ := range l.limiterInfos {
+		delete(l.limiterInfos, k)
+	}
+}
+
+func (l *ApiLimiter) Clear() {
+	l.m.Lock()
+	defer l.m.Unlock()
+	l.clear()
+}
+
+func (l *ApiLimiter) Replace(limiterInfos map[string]*ApiLimitInfo) {
+	l.m.Lock()
+	defer l.m.Unlock()
+	l.clear()
+	for k, v := range limiterInfos {
+		l.limiterInfos[k] = v
 	}
 }
 
@@ -46,8 +72,8 @@ func (l *ApiLimiter) SetLimiter(apiName string, Limit uint32, LimiterTimeout uin
 		QueryPath:      qPath,
 		Limit:          Limit,
 		LimiterTimeout: LimiterTimeout,
-		Limiter:        rate.NewLimiter(rate.Limit(Limit), defaultApiLimitBurst),
 	}
+	lInfo.InitLimiter()
 
 	l.m.Lock()
 	l.limiterInfos[qPath] = lInfo
@@ -95,4 +121,28 @@ func (l *ApiLimiter) IsApiNameValid(name string) (err error, normalizedName, qPa
 		return nil, normalizedName, qPath
 	}
 	return fmt.Errorf("api name [%v] is not valid", name), normalizedName, qPath
+}
+
+func (l *ApiLimiter) IsFollowerLimiter(qPath string) bool {
+	if qPath == proto.AdminGetIP || qPath == proto.ClientDataPartitions {
+		return true
+	}
+	return false
+}
+
+func (l *ApiLimiter) updateLimiterInfoFromLeader(value []byte) {
+	limiterInfos := make(map[string]*ApiLimitInfo)
+	if err := json.Unmarshal(value, &limiterInfos); err != nil {
+		log.LogErrorf("action[updateLimiterInfoFromLeader], unmarshal err:%v", err.Error())
+		return
+	}
+
+	for _, v := range limiterInfos {
+		v.InitLimiter()
+	}
+
+	l.m.Lock()
+	l.limiterInfos = limiterInfos
+	l.m.Unlock()
+	log.LogInfof("action[updateLimiterInfoFromLeader], limiter info[%v]", value)
 }
