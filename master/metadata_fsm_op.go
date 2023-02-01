@@ -400,9 +400,14 @@ func (c *Cluster) syncPutCluster() (err error) {
 	return c.submit(metadata)
 }
 
-func (c *Cluster) syncPutApiLimiterInfo() (err error) {
+func (c *Cluster) syncPutApiLimiterInfo(followerLimiter bool) (err error) {
 	metadata := new(RaftCmd)
-	metadata.Op = opSyncPutApiLimiterInfo
+	if followerLimiter {
+		metadata.Op = opSyncPutFollowerApiLimiterInfo
+	} else {
+		metadata.Op = opSyncPutApiLimiterInfo
+	}
+
 	metadata.K = apiLimiterPrefix + c.Name
 	c.apiLimiter.m.RLock()
 	metadata.V, err = json.Marshal(c.apiLimiter.limiterInfos)
@@ -426,10 +431,14 @@ func (c *Cluster) loadApiLimiterInfo() (err error) {
 			log.LogErrorf("action[loadApiLimiterInfo], unmarshal err:%v", err.Error())
 			return err
 		}
+		for _, v := range limiterInfos {
+			v.InitLimiter()
+		}
 
 		c.apiLimiter.m.Lock()
 		c.apiLimiter.limiterInfos = limiterInfos
 		c.apiLimiter.m.Unlock()
+		//c.apiLimiter.Replace(limiterInfos)
 		log.LogInfof("action[loadApiLimiterInfo], limiter info[%v]", value)
 	}
 	return
