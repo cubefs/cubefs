@@ -352,6 +352,12 @@ func (m *Server) initFsm() {
 
 func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
+	m.cluster.retainLogs = m.retainLogs
+
+	//incase any limiter on follower
+	log.LogInfo("action[loadApiLimiterInfo] begin")
+	m.cluster.loadApiLimiterInfo()
+	log.LogInfo("action[loadApiLimiterInfo] end")
 }
 
 func (m *Server) initUser() {
