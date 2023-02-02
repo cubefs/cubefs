@@ -410,6 +410,10 @@ func parseRequestToSetApiQpsLimit(r *http.Request) (name string, limit uint32, t
 
 	timeout = uint32(tmp)
 
+	if timeout == 0 {
+		err = fmt.Errorf("timeout(seconds) args must be larger than 0")
+	}
+
 	return
 }
 
