@@ -335,12 +335,13 @@ func formatAuditEntry(op, src, dst string, err error, latency int64, srcInode, d
 	}
 	curTime := time.Now()
 	curTimeStr := curTime.Format("2006-01-02 15:04:05")
+	timeZone, _ := curTime.Zone()
 	latencyStr := strconv.FormatInt(latency, 10) + " us"
 	srcInodeStr := strconv.FormatUint(srcInode, 10)
 	dstInodeStr := strconv.FormatUint(dstInode, 10)
 
-	entry = fmt.Sprintf("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
-		curTimeStr, ipAddr, hostName, op, src, dst, errStr, latencyStr, srcInodeStr, dstInodeStr)
+	entry = fmt.Sprintf("%s %s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
+		curTimeStr, timeZone, ipAddr, hostName, op, src, dst, errStr, latencyStr, srcInodeStr, dstInodeStr)
 	return
 }
 
