@@ -111,6 +111,7 @@ import (
 	"io"
 	syslog "log"
 	"math"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -130,6 +131,7 @@ import (
 	"unsafe"
 
 	"github.com/willf/bitset"
+	"golang.org/x/sys/unix"
 	"gopkg.in/ini.v1"
 
 	"github.com/chubaofs/chubaofs/client/cache"
@@ -573,7 +575,7 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 	syslog.SetOutput(gClientManager.outputFile)
 
 	// Initialize HTTP APIs
-	if gClientManager.profPort == 0 && isMysql() {
+	if gClientManager.profPort == 0 && useROWNotify() {
 		syslog.Printf("prof port is required in mysql but not specified")
 		return C.int(statusEINVAL)
 	}
@@ -594,20 +596,40 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		http.HandleFunc(ControlCommandGetUmpCollectWay, GetUmpCollectWay)
 		http.HandleFunc(ControlCommandSetUmpCollectWay, SetUmpCollectWay)
 		server := &http.Server{Addr: fmt.Sprintf(":%v", gClientManager.profPort)}
+		var lc net.ListenConfig
+		if isMysql() {
+			// set socket option SO_REUSEPORT to let multiple processes listen on the same port
+			lc = net.ListenConfig{
+				Control: func(network, address string, c syscall.RawConn) error {
+					var opErr error
+					err := c.Control(func(fd uintptr) {
+						opErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
+					})
+					if err != nil {
+						return err
+					}
+					return opErr
+				},
+			}
+		}
 		gClientManager.wg.Add(2)
 		go func() {
 			defer gClientManager.wg.Done()
 			i := 0
 			for ; i < 300; i++ {
-				listenErr := server.ListenAndServe()
-				if listenErr == http.ErrServerClosed {
-					syslog.Printf("Stop listen prof port [%v]", gClientManager.profPort)
-					break
+				ln, listenErr := lc.Listen(context.Background(), "tcp", server.Addr)
+				if listenErr == nil {
+					listenErr = server.Serve(ln)
+					if listenErr == http.ErrServerClosed {
+						syslog.Printf("Stop listen prof port [%v]", gClientManager.profPort)
+						break
+					}
 				}
 				if i%30 == 0 {
 					syslog.Printf("listen prof port [%v] failed: %v, try %d times", gClientManager.profPort, listenErr, i+1)
 				}
-				if !isMysql() {
+				if !useROWNotify() {
+					syslog.Printf("listen prof port [%v] failed. No listen any port.", gClientManager.profPort)
 					break
 				}
 				time.Sleep(time.Second)
@@ -3533,7 +3555,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		}
 	}
 
-	if isROW && isMysql() {
+	if isROW && useROWNotify() {
 		c.broadcastAllReadProcess(f.ino)
 	}
 
@@ -3621,7 +3643,7 @@ func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size
 		return C.ssize_t(statusEIO)
 	}
 
-	if isROW && isMysql() {
+	if isROW && useROWNotify() {
 		c.broadcastAllReadProcess(uint64(ino))
 	}
 
@@ -3922,7 +3944,7 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 	}
 	c.initUmpKeys()
 
-	if first_start && isMysql() {
+	if first_start && useROWNotify() {
 		c.registerReadProcStatus(true)
 	}
 
@@ -4244,6 +4266,11 @@ func handleError(c *client, act, msg string) {
 }
 
 func isMysql() bool {
+	processName := filepath.Base(os.Args[0])
+	return strings.Contains(processName, "mysqld")
+}
+
+func useROWNotify() bool {
 	processName := filepath.Base(os.Args[0])
 	return strings.Contains(processName, "mysqld") || strings.Contains(processName, "innobackupex") || strings.Contains(processName, "xtrabackup")
 }
