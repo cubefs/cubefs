@@ -18,18 +18,19 @@
 
 ## Overview
 
-CubeFS (储宝文件系统 in Chinese) is a cloud-native storage platform hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [incubating](https://www.cncf.io/projects/) project.
+CubeFS ("储宝" in Chinese) is an open-source cloud file storage, hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as an [incubating](https://www.cncf.io/projects/) project.
 
-CubeFS has been commonly used as the storage infrastructure for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. An advantage of doing so is to separate storage from compute - one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
+CubeFS has been commonly used as the datacenter filesystem for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes to separate storage from compute. CubeFS is also a high-performance object store compatible with the S3 API. 
 
 Some key features of CubeFS include:
 
-- Multiple access protocols, allowing users to access the same file over multiple protocols, such as POSIX/HDFS/S3
+- Multiple APIs, allowing users to access the same file over multiple protocols such as POSIX/HDFS/S3
 - Highly scalable metadata service with strong consistency  
-- Excellent storage performance via optimizing large/small files and sequential/random writes
+- Performance optimization of large/small files and sequential/random writes
 - Multi-tenancy support with better resource utilization and tenant isolation
 - Hybrid cloud I/O acceleration through multi-level caching
 - Flexible storage policies, high-performance replication or low-cost erasure coding
+
 
 ## Documents
 
