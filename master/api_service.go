@@ -5913,7 +5913,7 @@ func (m *Server) setVolChildFileMaxCount(w http.ResponseWriter, r *http.Request)
 
 // sendErrReply after check leader or meta status
 func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
-	if !m.metaReady {
+	if !m.metaReady.Load() {
 		log.LogWarnf("action[sendErrReply] leader meta is not ready")
 		http.Error(w, m.leaderInfo.addr, http.StatusInternalServerError)
 		return

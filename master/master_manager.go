@@ -43,7 +43,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 			m.clusterName, m.leaderInfo.addr))
 		if oldLeaderAddr != m.leaderInfo.addr {
 			m.loadMetadata()
-			m.metaReady = true
+			m.metaReady.Store(true)
 			m.cluster.updateMetaLoadedTime()
 		}
 		m.cluster.checkDataNodeHeartbeat()
@@ -51,7 +51,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
-		m.metaReady = false
+		m.metaReady.Store(false)
 		m.clearMetadata()
 		m.cluster.resetMetaLoadedTime()
 	}

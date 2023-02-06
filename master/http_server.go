@@ -66,7 +66,7 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					return
 				}
 				if m.partition.IsRaftLeader() {
-					if m.metaReady {
+					if m.metaReady.Load() {
 						next.ServeHTTP(w, r)
 						return
 					}

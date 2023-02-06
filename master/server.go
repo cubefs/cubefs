@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"go.uber.org/atomic"
 	"net"
 	"net/http/httputil"
 	"regexp"
@@ -79,7 +80,7 @@ type Server struct {
 	partition    raftstore.Partition
 	wg           sync.WaitGroup
 	reverseProxy *httputil.ReverseProxy
-	metaReady    bool
+	metaReady    atomic.Bool
 	apiListener  net.Listener
 }
 
