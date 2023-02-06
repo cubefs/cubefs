@@ -94,7 +94,7 @@ func addCmdVolume(cmd *grumble.Command) {
 		Run:  cmdListVolumes,
 		Args: func(a *grumble.Args) {
 			a.Int("count", "number of volumes to list")
-			a.Uint64("marker", "list volumes start from special Vid", grumble.Default(0))
+			a.Uint64("marker", "list volumes start from special Vid", grumble.Default(uint64(0)))
 		},
 		Flags: func(f *grumble.Flags) {
 			flags.VerboseRegister(f)
