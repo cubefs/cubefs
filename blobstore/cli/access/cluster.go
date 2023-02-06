@@ -24,7 +24,6 @@ import (
 	"github.com/fatih/color"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/cli/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
@@ -33,7 +32,7 @@ import (
 )
 
 func showClusters(c *grumble.Context) error {
-	cli, err := common.NewConsulClient(config.AccessConsulAddr())
+	cli, err := config.NewConsulClient(config.AccessConsulAddr())
 	if err != nil {
 		return showClusterWithConfig()
 	}
@@ -106,10 +105,10 @@ func showClusters(c *grumble.Context) error {
 func showClusterWithConfig() error {
 	fmt.Println("\tClusters Info From Config\t")
 
-	cs := config.ClusterMgrClusters()
+	cs := config.Clusters()
 	for clusterID, hosts := range cs {
 		fmt.Println("====================================")
-		client := clustermgr.NewCMClient("", clusterID, nil)
+		client := config.NewCluster(clusterID, nil, "")
 		stat, err := client.Stat(context.Background())
 		if err != nil {
 			fmt.Println("\terror:", err)

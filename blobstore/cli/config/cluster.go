@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package common
+package config
 
 import (
 	"errors"
@@ -20,9 +20,14 @@ import (
 	"github.com/hashicorp/consul/api"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
 )
 
+// NewConsulClient returns client of consul with address.
 func NewConsulClient(addr string) (*api.Client, error) {
 	if addr == "" {
 		return nil, errors.New("if use consul, consul address need config")
@@ -32,26 +37,25 @@ func NewConsulClient(addr string) (*api.Client, error) {
 	return api.NewClient(conf)
 }
 
-func GetClustersFromConsul(addr, region string) (clusters map[string][]string) {
-	clusters = make(map[string][]string)
-
+func getClustersFromConsul(addr, region string) (clusters map[string][]string) {
 	cli, err := NewConsulClient(addr)
 	if err != nil {
 		return
 	}
-
 	if region == "" {
 		region = "test-region"
 	}
+
 	path := cmapi.GetConsulClusterPath(region)
 	pairs, _, err := cli.KV().List(path, nil)
 	if err != nil {
 		return
 	}
 
+	clusters = make(map[string][]string)
 	for _, pair := range pairs {
 		clusterInfo := &cmapi.ClusterInfo{}
-		err := Unmarshal(pair.Value, clusterInfo)
+		err := common.Unmarshal(pair.Value, clusterInfo)
 		if err != nil {
 			fmt.Println("\terror:", err)
 			continue
@@ -59,4 +63,34 @@ func GetClustersFromConsul(addr, region string) (clusters map[string][]string) {
 		clusters[clusterInfo.ClusterID.ToString()] = clusterInfo.Nodes
 	}
 	return
+}
+
+// Cluster returns config default cluster.
+func Cluster() *cmapi.Client {
+	clusterID := proto.ClusterID(DefaultClusterID()).ToString()
+	return NewCluster(clusterID, nil, "")
+}
+
+// NewCluster returns cluster client.
+// TODO: returns cached cluster with the same params.
+func NewCluster(clusterID string, hosts []string, secret string) *cmapi.Client {
+	if len(hosts) == 0 {
+		hosts = Clusters()[clusterID]
+	}
+	if secret == "" {
+		secret = ClusterMgrSecret()
+	}
+	return cmapi.New(&cmapi.Config{
+		LbConfig: rpc.LbConfig{
+			Hosts: hosts,
+			Config: rpc.Config{
+				Tc: rpc.TransportConfig{
+					Auth: auth.Config{
+						EnableAuth: secret != "",
+						Secret:     secret,
+					},
+				},
+			},
+		},
+	})
 }

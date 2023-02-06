@@ -90,7 +90,7 @@ func Register(app *grumble.App) {
 				}
 				return nil
 			}
-			cli, err := common.NewConsulClient(config.AccessConsulAddr())
+			cli, err := config.NewConsulClient(config.AccessConsulAddr())
 			if err != nil {
 				return err
 			}

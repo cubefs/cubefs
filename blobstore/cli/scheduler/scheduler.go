@@ -45,7 +45,7 @@ func newClusterMgrTaskClient(clusterID proto.ClusterID) client.ClusterMgrTaskAPI
 
 func cmConfig(clusterID proto.ClusterID) *clustermgr.Config {
 	addrs := defaultClusterMgrAddrs[:]
-	if hosts, ok := config.ClusterMgrClusters()[clusterID.ToString()]; ok {
+	if hosts, ok := config.Clusters()[clusterID.ToString()]; ok {
 		addrs = hosts
 	}
 	secret := config.ClusterMgrSecret()
