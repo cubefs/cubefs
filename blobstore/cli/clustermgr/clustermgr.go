@@ -23,44 +23,18 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
 )
-
-func NewCMClient(secret string, clusterID string, hosts []string) *clustermgr.Client {
-	if len(hosts) == 0 {
-		hosts = config.ClusterMgrClusters()[clusterID]
-	}
-	if secret == "" {
-		secret = config.ClusterMgrSecret()
-	}
-	return clustermgr.New(&clustermgr.Config{
-		LbConfig: rpc.LbConfig{
-			Hosts: hosts,
-			Config: rpc.Config{
-				Tc: rpc.TransportConfig{
-					Auth: auth.Config{
-						EnableAuth: secret != "",
-						Secret:     secret,
-					},
-				},
-			},
-		},
-	})
-}
 
 func newCMClient(f grumble.FlagMap) *clustermgr.Client {
 	clusterID := f.String("cluster_id")
 	if clusterID == "" {
 		clusterID = fmt.Sprintf("%d", config.DefaultClusterID())
 	}
-
 	var hosts []string
 	if str := strings.TrimSpace(f.String("hosts")); str != "" {
 		hosts = strings.Split(str, " ")
 	}
-
-	return NewCMClient(f.String("secret"), clusterID, hosts)
+	return config.NewCluster(clusterID, hosts, f.String("secret"))
 }
 
 func clusterFlags(f *grumble.Flags) {
