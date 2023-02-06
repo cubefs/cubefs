@@ -41,6 +41,8 @@ var (
 const (
 	VolNotExistInterceptThresholdMin = 60
 	VolNotExistClearViewThresholdMin = 0
+
+	MasterNoCacheAPIRetryTimeout = 5 * time.Minute
 )
 
 type DataPartitionView struct {
@@ -541,9 +543,18 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 
 func (w *Wrapper) getDataPartitionByPid(partitionID uint64) (err error) {
 	var dpInfo *proto.DataPartitionInfo
-	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, partitionID); err != nil {
-		log.LogWarnf("getDataPartitionByPid: err(%v) pid(%v) vol(%v)", err, partitionID, w.volName)
-		return
+	start := time.Now()
+	for {
+		if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, partitionID); err == nil {
+			log.LogInfof("getDataPartitionByPid: pid(%v) vol(%v)", partitionID, w.volName)
+			break
+		}
+		if err != nil && time.Since(start) > MasterNoCacheAPIRetryTimeout {
+			log.LogWarnf("getDataPartitionByPid: err(%v) pid(%v) vol(%v) retry timeout(%v)", err, partitionID, w.volName, time.Since(start))
+			return
+		}
+		log.LogWarnf("getDataPartitionByPid: err(%v) pid(%v) vol(%v) retry next round", err, partitionID, w.volName)
+		time.Sleep(1 * time.Second)
 	}
 	var convert = func(dpInfo *proto.DataPartitionInfo) *DataPartition {
 		return &DataPartition{

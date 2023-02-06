@@ -77,6 +77,8 @@ const (
 
 	VolNotExistInterceptThresholdMin = 60
 	VolNotExistClearViewThresholdMin = 0
+
+	MasterNoCacheAPIRetryTimeout = 5 * time.Minute
 )
 
 type AsyncTaskErrorFunc func(err error)

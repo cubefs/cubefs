@@ -242,9 +242,20 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 }
 
 func (mw *MetaWrapper) updateMetaPartitionsWithNoCache() error {
-	views, err := mw.mc.ClientAPI().GetMetaPartitions(mw.volname)
-	if err != nil {
-		return err
+	var views 	[]*proto.MetaPartitionView
+	start := time.Now()
+	for {
+		var err	error
+		if views, err = mw.mc.ClientAPI().GetMetaPartitions(mw.volname); err == nil {
+			log.LogInfof("updateMetaPartitionsWithNoCache: vol(%v)", mw.volname)
+			break
+		}
+		if err != nil && time.Since(start) > MasterNoCacheAPIRetryTimeout {
+			log.LogWarnf("updateMetaPartitionsWithNoCache: err(%v) vol(%v) retry timeout(%v)", err, mw.volname, time.Since(start))
+			return err
+		}
+		log.LogWarnf("updateMetaPartitionsWithNoCache: err(%v) vol(%v) retry next round", err, mw.volname)
+		time.Sleep(1 * time.Second)
 	}
 	rwPartitions := make([]*MetaPartition, 0)
 	for _, view := range views {
