@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"path"
 	"strings"
 	"time"
 
@@ -41,7 +42,7 @@ import (
 var App = grumble.New(&grumble.Config{
 	Name:                  "blobstore manager",
 	Description:           "A command manager of blobstore",
-	HistoryFile:           "/tmp/.blobstore_cli.history",
+	HistoryFile:           path.Join(os.TempDir(), ".blobstore_cli.history"),
 	HistoryLimit:          10000,
 	ErrorColor:            color.New(color.FgRed, color.Bold, color.Faint),
 	HelpHeadlineColor:     color.New(color.FgGreen),
@@ -98,6 +99,7 @@ func init() {
 			fmt.SetOutput(io.Discard)
 			log.SetOutput(io.Discard)
 		}
+		// build-in flag in grumble
 		if fm.Bool("nocolor") {
 			color.NoColor = true
 		}

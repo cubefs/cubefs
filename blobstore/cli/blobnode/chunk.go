@@ -17,6 +17,7 @@ package blobnode
 import (
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
+	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 
@@ -30,6 +31,22 @@ func addCmdChunk(cmd *grumble.Command) {
 		LongHelp: "chunk tools for blobnode",
 	}
 	cmd.AddCommand(chunkCommand)
+
+	chunkCommand.AddCommand(&grumble.Command{
+		Name: "id",
+		Help: "decode chunk id",
+		Args: func(a *grumble.Args) {
+			a.String("id", "chunk id")
+		},
+		Run: func(c *grumble.Context) error {
+			chunkID, err := blobnode.DecodeChunk(c.Args.String("id"))
+			if err != nil {
+				return err
+			}
+			fmt.Println(cfmt.ChunkidF(chunkID))
+			return nil
+		},
+	})
 
 	chunkCommand.AddCommand(&grumble.Command{
 		Name: "stat",
