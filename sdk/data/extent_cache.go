@@ -195,7 +195,7 @@ func (cache *ExtentCache) PrepareRequests(offset uint64, size int, data []byte) 
 	defer cache.RUnlock()
 
 	fileSize = cache.size
-	cache.root.RangeWithoutLock(func(ek proto.ExtentKey) bool {
+	cache.root.VisitByFileRange(offset, uint32(size), func(ek proto.ExtentKey) bool {
 		ekStart := ek.FileOffset
 		ekEnd := ek.FileOffset + uint64(ek.Size)
 

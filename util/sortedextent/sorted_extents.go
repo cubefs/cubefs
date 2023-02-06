@@ -119,7 +119,7 @@ func (se *SortedExtents) UnmarshalBinaryV2(ctx context.Context, data []byte, ino
 //   3.TestSortedExtents_Insert03
 //   4.TestSortedExtents_Insert04
 // These test cases cover 100% of the this method.
-func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey,ino uint64) (deleteExtents []proto.MetaDelExtentKey) {
+func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey, ino uint64) (deleteExtents []proto.MetaDelExtentKey) {
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
 
@@ -225,7 +225,7 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey,ino uint
 			//                              ↑
 			//                       best start index
 			//
-			if boostStart := findFirstOverlapPosition(se.eks, &ek); boostStart > 0 && boostStart < len(se.eks) {
+			if boostStart := findFirstOverlapPosition(se.eks, ek.FileOffset); boostStart > 0 && boostStart < len(se.eks) {
 				index = boostStart
 			}
 		}
@@ -374,7 +374,7 @@ func (se *SortedExtents) maybeMergeWithPrev(index int) (merged bool) {
 	return
 }
 
-func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey, ino uint64) ([]proto.MetaDelExtentKey) {
+func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey, ino uint64) []proto.MetaDelExtentKey {
 	endOffset := ek.FileOffset + uint64(ek.Size)
 	var deleteExtents []proto.ExtentKey
 
@@ -445,7 +445,7 @@ func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey, ino uin
 	return set.GetDelExtentKeys(se.eks)
 }
 
-func (se *SortedExtents) Truncate(offset, ino uint64) ([]proto.MetaDelExtentKey) {
+func (se *SortedExtents) Truncate(offset, ino uint64) []proto.MetaDelExtentKey {
 	var endIndex int
 	var deleteExtents []proto.ExtentKey
 
@@ -470,12 +470,12 @@ func (se *SortedExtents) Truncate(offset, ino uint64) ([]proto.MetaDelExtentKey)
 
 	var delEks DelEkSet
 	if len(deleteExtents) > maxDelExtentSetSize {
-		delEks = NewDelExtentKeyMap(len(deleteExtents))//NewExtentKeySet()//NewDelExtentKeyBtree()
+		delEks = NewDelExtentKeyMap(len(deleteExtents)) //NewExtentKeySet()//NewDelExtentKeyBtree()
 	} else {
 		delEks = NewExtentKeySet()
 	}
 
-	for i:= 0; i < len(deleteExtents); i++ {
+	for i := 0; i < len(deleteExtents); i++ {
 		delEks.Put2(&deleteExtents[i], ino, uint64(proto.DelEkSrcTypeFromTruncate))
 	}
 
@@ -512,14 +512,6 @@ func (se *SortedExtents) Range(f func(ek proto.ExtentKey) bool) {
 	se.RLock()
 	defer se.RUnlock()
 
-	for _, ek := range se.eks {
-		if !f(ek) {
-			break
-		}
-	}
-}
-
-func (se *SortedExtents) RangeWithoutLock(f func(ek proto.ExtentKey) bool) {
 	for _, ek := range se.eks {
 		if !f(ek) {
 			break
@@ -585,13 +577,49 @@ func (se *SortedExtents) GetByIndex(index int) *proto.ExtentKey {
 	return &se.eks[index]
 }
 
+// VisitByFileRange visit extent keys which range of file data overlapped with specified file range in order.
+func (se *SortedExtents) VisitByFileRange(fileOffset uint64, size uint32, visitor func(ek proto.ExtentKey) bool) {
+	if visitor == nil {
+		return
+	}
+	se.RLock()
+	defer se.RUnlock()
+
+	var startPos int
+	if startPos = findFirstOverlapPosition(se.eks, fileOffset); startPos < 0 || startPos >= len(se.eks) {
+		return
+	}
+	var tmpEK = proto.ExtentKey{
+		FileOffset: fileOffset,
+		Size:       size,
+	}
+	for i := startPos; i < len(se.eks); i++ {
+		if !se.eks[i].Overlap(&tmpEK) {
+			break
+		}
+		if !visitor(se.eks[i]) {
+			break
+		}
+	}
+	return
+}
+
+// QueryByFileRange returns extent keys which range of file data overlapped with specified file range.
+func (se *SortedExtents) QueryByFileRange(fileOffset uint64, size uint32) (eks []proto.ExtentKey) {
+	se.VisitByFileRange(fileOffset, size, func(ek proto.ExtentKey) bool {
+		eks = append(eks, ek)
+		return true
+	})
+	return
+}
+
 // This method is based on recursive binary search to find the first overlapping position.
-func findFirstOverlapPosition(eks []proto.ExtentKey, ek *proto.ExtentKey) int {
+func findFirstOverlapPosition(eks []proto.ExtentKey, fileOffset uint64) int {
 	switch {
 	case len(eks) < 1:
 		return -1
 	case len(eks) == 1:
-		if ek.FileOffset < eks[0].FileOffset+uint64(eks[0].Size) {
+		if fileOffset < eks[0].FileOffset+uint64(eks[0].Size) {
 			return 0
 		} else {
 			return -1
@@ -604,10 +632,10 @@ func findFirstOverlapPosition(eks []proto.ExtentKey, ek *proto.ExtentKey) int {
 		right      = eks[mid:]
 		off, boost int
 	)
-	if leftLast := left[len(left)-1]; ek.FileOffset < leftLast.FileOffset+uint64(leftLast.Size) {
-		off, boost = 0, findFirstOverlapPosition(left, ek)
+	if leftLast := left[len(left)-1]; fileOffset < leftLast.FileOffset+uint64(leftLast.Size) {
+		off, boost = 0, findFirstOverlapPosition(left, fileOffset)
 	} else {
-		off, boost = mid, findFirstOverlapPosition(right, ek)
+		off, boost = mid, findFirstOverlapPosition(right, fileOffset)
 	}
 	if boost >= 0 {
 		return off + boost
@@ -643,8 +671,8 @@ func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKe
 	}
 	start := index
 	// check index out of range
-	if index + len(oldEks) > len(se.eks)-1 {
-		msg = fmt.Sprintf("merge extent failed, index out of range [%v] with length %v", index + len(oldEks), len(se.eks))
+	if index+len(oldEks) > len(se.eks)-1 {
+		msg = fmt.Sprintf("merge extent failed, index out of range [%v] with length %v", index+len(oldEks), len(se.eks))
 		return
 	}
 	// check old ek exist
@@ -656,9 +684,9 @@ func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKe
 		index++
 	}
 	// check last ek is con
-	lastEk := se.eks[index - 1]
+	lastEk := se.eks[index-1]
 	nextEk := se.eks[index]
-	if lastEk.FileOffset + uint64(lastEk.Size)  != nextEk.FileOffset {
+	if lastEk.FileOffset+uint64(lastEk.Size) != nextEk.FileOffset {
 		msg = fmt.Sprintf("merge extent failed, ek changed, lastek can not merged, last:%v, next:%v", lastEk.String(), nextEk)
 		return
 	}
@@ -685,4 +713,3 @@ func (se *SortedExtents) DelNewExtent(newEks []proto.ExtentKey, ino uint64) (del
 	}
 	return set.GetDelExtentKeys(se.eks)
 }
-

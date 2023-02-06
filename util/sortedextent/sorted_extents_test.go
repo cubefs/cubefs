@@ -3,6 +3,7 @@ package sortedextent
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"reflect"
 	"strconv"
 	"strings"
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	maxTruncateEKLen = 100 * 10000 			//
+	maxTruncateEKLen   = 100 * 10000 //
 	maxTruncateEKCount = 100
 )
 
@@ -197,10 +198,10 @@ func TestTruncate02(t *testing.T) {
 	start := time.Now()
 	delExtents := se.Truncate(500, 1)
 	cost := time.Since(start)
-	if se.Len() != 5 || len(delExtents) != maxTruncateEKLen - 5 {
-		t.Errorf("truncate error, se len(exp:%d, now:%d), del len(exp:%d, now:%d)", 5, se.Len(), maxTruncateEKLen - 5, len(delExtents))
+	if se.Len() != 5 || len(delExtents) != maxTruncateEKLen-5 {
+		t.Errorf("truncate error, se len(exp:%d, now:%d), del len(exp:%d, now:%d)", 5, se.Len(), maxTruncateEKLen-5, len(delExtents))
 	}
-	if cost > time.Second * 3 {
+	if cost > time.Second*3 {
 		t.Errorf("truncate %d eks timeout(3s), cost:%v", len(delExtents), cost)
 		return
 	}
@@ -211,16 +212,16 @@ func TestTruncate03(t *testing.T) {
 	se := NewSortedExtents()
 
 	for i := uint64(0); i < maxTruncateEKLen; i++ {
-		se.eks = append(se.eks, proto.ExtentKey{FileOffset: i * 100, Size: 100, PartitionId: i % maxTruncateEKCount + 1, ExtentId: i % maxTruncateEKCount + 1})
+		se.eks = append(se.eks, proto.ExtentKey{FileOffset: i * 100, Size: 100, PartitionId: i%maxTruncateEKCount + 1, ExtentId: i%maxTruncateEKCount + 1})
 	}
 	t.Logf("before truncate eks len: %v", se.Len())
 	start := time.Now()
 	delExtents := se.Truncate(500, 1)
 	cost := time.Since(start)
-	if se.Len() != 5 || len(delExtents) != maxTruncateEKCount - 5 {
-		t.Errorf("truncate error, se len(exp:%d, now:%d), del len(exp:%d, now:%d)", 5, se.Len(), maxTruncateEKCount - 5, len(delExtents))
+	if se.Len() != 5 || len(delExtents) != maxTruncateEKCount-5 {
+		t.Errorf("truncate error, se len(exp:%d, now:%d), del len(exp:%d, now:%d)", 5, se.Len(), maxTruncateEKCount-5, len(delExtents))
 	}
-	if cost > time.Second * 3 {
+	if cost > time.Second*3 {
 		t.Errorf("truncate %d eks timeout(3s), cost:%v", len(delExtents), cost)
 		return
 	}
@@ -1124,5 +1125,87 @@ func TestSortedExtents_Merge5(t *testing.T) {
 	fmt.Println(msg)
 	if merged {
 		t.Fatalf("Merge should hava error")
+	}
+}
+
+func TestSortedExtents_QueryByFileRange(t *testing.T) {
+	const numOfExtentKeys = 10000
+	var se = NewSortedExtents()
+	var r = rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < numOfExtentKeys; i++ {
+		var randSize = r.Intn(1024)
+		se.Insert(context.Background(), proto.ExtentKey{
+			FileOffset: se.Size(), Size: uint32(randSize), PartitionId: 1, ExtentId: uint64(i),
+		}, 1)
+	}
+
+	// 随机100次FileOffset和Size验证查询结果
+	const validationCount = 100
+	r = rand.New(rand.NewSource(time.Now().UnixNano()))
+	var queryOptEK proto.ExtentKey
+	for i := 0; i < validationCount; i++ {
+		var randFileOffset = uint64(rand.Int63n(int64(se.Size() - 1)))
+		var randSize = uint32(rand.Int31n(4096))
+		var resultEKs = se.QueryByFileRange(randFileOffset, randSize)
+		if len(resultEKs) == 0 {
+			t.Fatalf("Query result of file range [%v, %v] validation failed: result is empty",
+				randFileOffset, randFileOffset+uint64(randSize))
+		}
+		for _, resultEK := range resultEKs {
+			queryOptEK.FileOffset, queryOptEK.Size = randFileOffset, randSize
+			if !resultEK.Overlap(&queryOptEK) {
+				t.Fatalf("Query result of file range [%v, %v] validation failed: found unoverlapped result [FileOffset: %v, Size: %v",
+					randFileOffset, randFileOffset+uint64(randSize), resultEK.ExtentOffset, resultEK.Size)
+			}
+		}
+	}
+
+}
+
+// BenchmarkSortedExtents_VisitByFileRange 用来验证在长度由400000(40万)个ExtentKey组成的EK链中,
+// 使用 SortedExtent.VisitByFileRange 方法查找符合指定文件范围(FileRange)的性能。
+func BenchmarkSortedExtents_VisitByFileRange(b *testing.B) {
+	se := NewSortedExtents()
+	const numOfExtentKeys = 400000
+	for i := 0; i < numOfExtentKeys; i++ {
+		se.Insert(context.Background(), proto.ExtentKey{FileOffset: uint64(i * 100), Size: 100, PartitionId: 1, ExtentId: uint64(i)}, 1)
+	}
+	var ran = rand.New(rand.NewSource(time.Now().UnixNano()))
+	var offsets = make([]uint64, b.N)
+	for i := 0; i < b.N; i++ {
+		offsets[i] = uint64(ran.Intn(numOfExtentKeys * 100))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		se.VisitByFileRange(offsets[i], 50, func(ek proto.ExtentKey) bool {
+			return !ek.Overlap(&proto.ExtentKey{FileOffset: offsets[i], Size: 50})
+		})
+	}
+}
+
+// BenchmarkSortedExtents_Range 用来验证在长度由400000(40万)个ExtentKey组成的EK链中,
+// 使用 SortedExtent.Range 方法查找符合指定文件范围(FileRange)的性能。
+func BenchmarkSortedExtents_Range(b *testing.B) {
+	se := NewSortedExtents()
+	const numOfExtentKeys = 400000
+	for i := 0; i < numOfExtentKeys; i++ {
+		se.Insert(context.Background(), proto.ExtentKey{FileOffset: uint64(i * 100), Size: 100, PartitionId: 1, ExtentId: uint64(i)}, 1)
+	}
+	var ran = rand.New(rand.NewSource(time.Now().UnixNano()))
+	var offsets = make([]uint64, b.N)
+	for i := 0; i < b.N; i++ {
+		offsets[i] = uint64(ran.Intn(numOfExtentKeys * 100))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var prevOverlapped bool
+		se.Range(func(ek proto.ExtentKey) bool {
+			overlapped := ek.Overlap(&proto.ExtentKey{FileOffset: offsets[i], Size: 50})
+			if !overlapped && prevOverlapped {
+				return false
+			}
+			prevOverlapped = overlapped
+			return true
+		})
 	}
 }
