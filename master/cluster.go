@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	atomic2 "go.uber.org/atomic"
 	"math"
 	"sort"
 	"strconv"
@@ -82,6 +83,7 @@ type Cluster struct {
 	ecNodes                    sync.Map
 	cnMutex                    sync.RWMutex
 	enMutex                    sync.RWMutex // ec node mutex
+	isLeader                   atomic2.Bool
 }
 type (
 	RepairType uint8
@@ -375,6 +377,9 @@ func (c *Cluster) checkMetaPartitions() {
 	}()
 	vols := c.allVols()
 	for _, vol := range vols {
+		if !c.isLeader.Load() {
+			break
+		}
 		writableMpCount := vol.checkMetaPartitions(c)
 		vol.setWritableMpCount(int64(writableMpCount))
 	}

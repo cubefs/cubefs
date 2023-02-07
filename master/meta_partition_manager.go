@@ -278,6 +278,9 @@ func (c *Cluster) scheduleToCheckAutoMetaPartitionCreation() {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				vols := c.copyVols()
 				for _, vol := range vols {
+					if !c.isLeader.Load() {
+						break
+					}
 					vol.checkAutoMetaPartitionCreation(c)
 				}
 			}

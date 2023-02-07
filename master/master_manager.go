@@ -48,7 +48,9 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		}
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
+		m.cluster.isLeader.Store(true)
 	} else {
+		m.cluster.isLeader.Store(false)
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
 		m.metaReady.Store(false)

@@ -571,6 +571,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) (writableMpCount int) {
 
 		mp.checkLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
+
 		mp.checkEnd(c, maxPartitionID)
 		mp.reportMissingReplicas(c.Name, c.leaderInfo.addr, defaultMetaPartitionTimeOutSec, defaultIntervalToAlarmMissingMetaPartition)
 		mp.replicaCreationTasks(c, vol.Name)
@@ -1101,7 +1102,11 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, re
 	var nextMp *MetaPartition
 	defer func() {
 		if err == nil {
-			vol.addMetaPartition(nextMp)
+			if newV, errGetVol := c.getVol(vol.Name); errGetVol != nil {
+				err = errGetVol
+			} else {
+				newV.addMetaPartition(nextMp)
+			}
 		}
 	}()
 	if !vol.isConvertRunning() && reuseMP && vol.isReuseMP()  {
