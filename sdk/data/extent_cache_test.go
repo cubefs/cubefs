@@ -2,8 +2,10 @@ package data
 
 import (
 	"fmt"
+	"math/rand"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -54,5 +56,39 @@ func Test_PrepareRequests(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func Test_ExtentRangePerformance(t *testing.T)  {
+	extentCache := NewExtentCache(2)
+	ekLen := 500000
+	for i := 0; i < ekLen; i++ {
+		ek := proto.ExtentKey{
+			FileOffset:   uint64(i)*4096,
+			PartitionId:  uint64(i+1),
+			ExtentId:     uint64(i+1),
+			Size:         4096,
+		}
+		extentCache.Insert(&ek, true)
+	}
+	fmt.Println("slice size: ", extentCache.root.Len())
+
+	rand.Seed(time.Now().UnixNano())
+	round := ekLen/100
+	offsetSlice := make([]uint64, 0)
+	for i := 0; i < round; i++ {
+		off := rand.Intn(ekLen)
+		offsetSlice = append(offsetSlice, uint64(off))
+	}
+
+	size := 4096
+	data := make([]byte, size)
+	start := time.Now()
+	for _, off := range offsetSlice {
+		start := off*4096
+		extentCache.PrepareRequests(start, size, data)
+	}
+	if cost := time.Since(start)/time.Duration(round); cost > 20 * time.Microsecond {
+		t.Fatalf("Test_ExtentRangePerformance range extents cost too long: %v, ekLen(%v)", cost, ekLen)
 	}
 }

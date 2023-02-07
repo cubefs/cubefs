@@ -3,6 +3,7 @@ package data
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -41,7 +42,10 @@ func TestWrapper_getDataPartitionByPid(t *testing.T) {
 		}
 	}
 
+	oldValue := MasterNoCacheAPIRetryTimeout
+	MasterNoCacheAPIRetryTimeout = 1 * time.Minute
 	if err = dataWrapper.getDataPartitionByPid(invalidPid); err == nil {
 		t.Fatalf("getDataPartitionByPid use invalidPid %v, expect failed but success", invalidPid)
 	}
+	MasterNoCacheAPIRetryTimeout = oldValue
 }
