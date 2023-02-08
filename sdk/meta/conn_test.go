@@ -120,7 +120,7 @@ func getExtentsByLeaderRead(t *testing.T, mw *MetaWrapper, mp *MetaPartition, pa
 		respPacket *proto.Packet
 		err        error
 	)
-	if respPacket, _, err,_ = mw.sendToMetaPartition(context.Background(), mp, packet, mp.LeaderAddr); err != nil {
+	if respPacket, _, _, err = mw.sendToMetaPartition(context.Background(), mp, packet, mp.LeaderAddr); err != nil {
 		t.Fatalf("getExtentsByLeaderRead: err(%v) mp(%v) reqPacket(%v)", err, mp, packet)
 	}
 	if status := parseStatus(respPacket.ResultCode); status != statusOK {
