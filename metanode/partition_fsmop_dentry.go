@@ -52,6 +52,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 			return
 		}
 		if !proto.IsDir(parIno.Type) {
+			log.LogErrorf("action[fsmCreateDentry] ParentId [%v] type [%v] not dir, dentry name [%v], inode [%v]", dentry.ParentId, parIno.Type, dentry.Name, dentry.Inode)
 			status = proto.OpArgMismatchErr
 			return
 		}
@@ -60,7 +61,9 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		//do not allow directories and files to overwrite each
 		// other when renaming
 		d := item.(*Dentry)
-		if proto.OsModeType(dentry.Type) != proto.OsModeType(d.Type) {
+		if proto.OsModeType(dentry.Type) != proto.OsModeType(d.Type) && !proto.IsSymlink(d.Type) {
+			log.LogErrorf("action[fsmCreateDentry] ParentId [%v] get [%v] but should del, dentry name [%v], inode [%v], type[%v,%v],dir[%v,%v]",
+				dentry.ParentId, parIno, dentry.Name, dentry.Inode, dentry.Type, d.Type, proto.IsSymlink(dentry.Type), proto.IsSymlink(d.Type))
 			status = proto.OpArgMismatchErr
 			return
 		}
