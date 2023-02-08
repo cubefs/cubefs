@@ -43,7 +43,7 @@ func TestWrapper_getDataPartitionByPid(t *testing.T) {
 	}
 
 	oldValue := MasterNoCacheAPIRetryTimeout
-	MasterNoCacheAPIRetryTimeout = 1 * time.Minute
+	MasterNoCacheAPIRetryTimeout = 10 * time.Second
 	if err = dataWrapper.getDataPartitionByPid(invalidPid); err == nil {
 		t.Fatalf("getDataPartitionByPid use invalidPid %v, expect failed but success", invalidPid)
 	}
