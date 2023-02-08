@@ -626,6 +626,15 @@ func findFirstOverlapPosition(eks []proto.ExtentKey, fileOffset uint64) int {
 		}
 	default:
 	}
+
+	if first := eks[0]; fileOffset < first.FileOffset+uint64(first.Size) {
+		return 0
+	}
+
+	if last := eks[len(eks)-1]; fileOffset >= last.FileOffset+uint64(last.Size) {
+		return -1
+	}
+
 	var (
 		mid        = len(eks) / 2
 		left       = eks[:mid]

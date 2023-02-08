@@ -1129,37 +1129,160 @@ func TestSortedExtents_Merge5(t *testing.T) {
 }
 
 func TestSortedExtents_QueryByFileRange(t *testing.T) {
-	const numOfExtentKeys = 10000
-	var se = NewSortedExtents()
-	var r = rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := 0; i < numOfExtentKeys; i++ {
-		var randSize = r.Intn(1024)
-		se.Insert(context.Background(), proto.ExtentKey{
-			FileOffset: se.Size(), Size: uint32(randSize), PartitionId: 1, ExtentId: uint64(i),
-		}, 1)
-	}
 
-	// 随机100次FileOffset和Size验证查询结果
-	const validationCount = 100
-	r = rand.New(rand.NewSource(time.Now().UnixNano()))
-	var queryOptEK proto.ExtentKey
-	for i := 0; i < validationCount; i++ {
-		var randFileOffset = uint64(rand.Int63n(int64(se.Size() - 1)))
-		var randSize = uint32(rand.Int31n(4096))
-		var resultEKs = se.QueryByFileRange(randFileOffset, randSize)
-		if len(resultEKs) == 0 {
-			t.Fatalf("Query result of file range [%v, %v] validation failed: result is empty",
-				randFileOffset, randFileOffset+uint64(randSize))
+	// 这个方法用于通过全部顺序遍历的方式查询ExtentKey链中符合查询文件数据范围的ExtentKey。用于验证QueryByFileRange方法是否正确
+	var querySortedExtentByRangeAll = func(se *SortedExtents, fileOffset uint64, size uint32) (re []proto.ExtentKey) {
+		var tmpEK = proto.ExtentKey{
+			FileOffset: fileOffset,
+			Size:       size,
 		}
-		for _, resultEK := range resultEKs {
-			queryOptEK.FileOffset, queryOptEK.Size = randFileOffset, randSize
-			if !resultEK.Overlap(&queryOptEK) {
-				t.Fatalf("Query result of file range [%v, %v] validation failed: found unoverlapped result [FileOffset: %v, Size: %v",
-					randFileOffset, randFileOffset+uint64(randSize), resultEK.ExtentOffset, resultEK.Size)
+		se.Range(func(ek proto.ExtentKey) bool {
+			if ek.Overlap(&tmpEK) {
+				re = append(re, ek)
 			}
-		}
+			return true
+		})
+		return
 	}
 
+	// Sub cases, case name -> case function
+	var subCases = map[string]func(t *testing.T){
+		"Random_Query": func(t *testing.T) {
+
+			const numOfExtentKeys = 10000
+			var se = NewSortedExtents()
+			var r = rand.New(rand.NewSource(time.Now().UnixNano()))
+			var nextFileOffset uint64
+			for i := 0; i < numOfExtentKeys; i++ {
+				var randSize = r.Intn(1024)
+				// 1/4为空洞跳过，3/4为有效ExtentKey
+				if i%4 != 0 {
+					se.Insert(context.Background(), proto.ExtentKey{
+						FileOffset: nextFileOffset, Size: uint32(randSize), PartitionId: 1, ExtentId: uint64(i),
+					}, 1)
+				}
+				nextFileOffset += uint64(randSize)
+			}
+
+			// 随机10000次FileOffset和Size验证查询结果
+			const validationCount = 10000
+			r = rand.New(rand.NewSource(time.Now().UnixNano()))
+			for i := 0; i < validationCount; i++ {
+				var randFileOffset = uint64(rand.Int63n(int64(se.Size() + 1024)))
+				var randSize = uint32(rand.Int31n(4096))
+				var resultEKs = se.QueryByFileRange(randFileOffset, randSize)
+				// 检查结果是否与遍历完全一致
+				if strictResultEKs := querySortedExtentByRangeAll(se, randFileOffset, randSize); !reflect.DeepEqual(resultEKs, strictResultEKs) {
+					t.Fatalf("Query result of file range [%v, %v) validation failed:\n"+
+						"  expect: %v\n"+
+						"  actual: %v",
+						randFileOffset, randFileOffset+uint64(randSize), strictResultEKs, resultEKs)
+				}
+			}
+		},
+		"Specific_Scene_1": func(t *testing.T) {
+			// Query:                 |-----| [25,35)
+			// EKs  :       |-----|     |-----|
+			//              10         30
+			var se = NewSortedExtents()
+			var sampleEKs = []proto.ExtentKey{
+				{
+					FileOffset: 10,
+					Size:       10,
+				},
+				{
+					FileOffset: 30,
+					Size:       10,
+				},
+			}
+			for _, sampleEK := range sampleEKs {
+				se.Insert(context.Background(), sampleEK, 1)
+			}
+			var resultEKs = se.QueryByFileRange(25, 10)
+			if len(resultEKs) != 1 {
+				t.Fatalf("Query result of file range [%v, %v) validation failed: result length mismatch: expeced 1, actual %v", 25, 35, len(resultEKs))
+			}
+			if !reflect.DeepEqual(resultEKs[0], sampleEKs[1]) {
+				t.Fatalf("Query result of file range [%v, %v) validation failed: result[0] mimstach: expeced %v, actual %v", 25, 35, sampleEKs[1], resultEKs[0])
+			}
+		},
+		"Specific_Scene_2": func(t *testing.T) {
+			// Query:          |-----| [15,25)
+			// EKs  :       |-----|     |-----|
+			//              10         30
+			var se = NewSortedExtents()
+			var sampleEKs = []proto.ExtentKey{
+				{
+					FileOffset: 10,
+					Size:       10,
+				},
+				{
+					FileOffset: 30,
+					Size:       10,
+				},
+			}
+			for _, sampleEK := range sampleEKs {
+				se.Insert(context.Background(), sampleEK, 1)
+			}
+			var resultEKs = se.QueryByFileRange(15, 10)
+			if len(resultEKs) != 1 {
+				t.Fatalf("Query result of file range [%v, %v) validation failed: result length mismatch: expeced 1, actual %v", 15, 25, len(resultEKs))
+			}
+			if !reflect.DeepEqual(resultEKs[0], sampleEKs[0]) {
+				t.Fatalf("Query result of file range [%v, %v) validation failed: result[0] mimstach: expeced %v, actual %v", 15, 25, sampleEKs[0], resultEKs[0])
+			}
+		},
+		"Specific_Scene_3": func(t *testing.T) {
+			// Query:               |-| [25,26)
+			// EKs  :       |-----|     |-----|
+			//              10         30
+			var se = NewSortedExtents()
+			var sampleEKs = []proto.ExtentKey{
+				{
+					FileOffset: 10,
+					Size:       10,
+				},
+				{
+					FileOffset: 30,
+					Size:       10,
+				},
+			}
+			for _, sampleEK := range sampleEKs {
+				se.Insert(context.Background(), sampleEK, 1)
+			}
+			var resultEKs = se.QueryByFileRange(25, 1)
+			if len(resultEKs) != 0 {
+				t.Fatalf("Query result of file range [%v, %v) validation failed: result length mismatch: expeced 0, actual %v", 25, 26, len(resultEKs))
+			}
+		},
+		"Specific_Scene_4": func(t *testing.T) {
+			// Query:                           |-| [40,50)
+			// EKs  :       |-----|     |-----|
+			//              10         30
+			var se = NewSortedExtents()
+			var sampleEKs = []proto.ExtentKey{
+				{
+					FileOffset: 10,
+					Size:       10,
+				},
+				{
+					FileOffset: 30,
+					Size:       10,
+				},
+			}
+			for _, sampleEK := range sampleEKs {
+				se.Insert(context.Background(), sampleEK, 1)
+			}
+			var resultEKs = se.QueryByFileRange(40, 10)
+			if len(resultEKs) != 0 {
+				t.Fatalf("Query result of file range [%v, %v) validation failed: result length mismatch: expeced 0, actual %v", 40, 50, len(resultEKs))
+			}
+		},
+	}
+
+	for name, subCase := range subCases {
+		t.Run(name, subCase)
+	}
 }
 
 // BenchmarkSortedExtents_VisitByFileRange 用来验证在长度由400000(40万)个ExtentKey组成的EK链中,
@@ -1178,7 +1301,7 @@ func BenchmarkSortedExtents_VisitByFileRange(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		se.VisitByFileRange(offsets[i], 50, func(ek proto.ExtentKey) bool {
-			return !ek.Overlap(&proto.ExtentKey{FileOffset: offsets[i], Size: 50})
+			return true
 		})
 	}
 }
