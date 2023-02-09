@@ -595,9 +595,7 @@ log:
     #ifdef _CFS_DEBUG
     log_debug("hook %s, re: %s\n", __func__, re == NULL ? "" : re);
     #endif
-    if(tmpcwd != NULL) {
-        free(tmpcwd);
-    }
+    free(tmpcwd);
     return re;
 }
 

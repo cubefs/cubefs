@@ -28,6 +28,7 @@ package main
 #include <dirent.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -1015,7 +1016,7 @@ func (c *client) openInodeStream(f *file) {
 }
 
 //export cfs_openat
-func cfs_openat(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.mode_t) C.int {
+func cfs_openat(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.mode_t) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1026,11 +1027,14 @@ func cfs_openat(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.mod
 		return statusEINVAL
 	}
 
-	return _cfs_open(id, C.CString(absPath), flags, mode, -1)
+	absPathC := C.CString(absPath)
+	re = _cfs_open(id, absPathC, flags, mode, -1)
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 //export cfs_openat_fd
-func cfs_openat_fd(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.mode_t, fd C.int) C.int {
+func cfs_openat_fd(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.mode_t, fd C.int) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1041,7 +1045,10 @@ func cfs_openat_fd(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.
 		return statusEINVAL
 	}
 
-	return _cfs_open(id, C.CString(absPath), flags, mode, fd)
+	absPathC := C.CString(absPath)
+	re = _cfs_open(id, absPathC, flags, mode, fd)
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 //export cfs_rename
@@ -1128,7 +1135,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 }
 
 //export cfs_renameat
-func cfs_renameat(id C.int64_t, fromDirfd C.int, from *C.char, toDirfd C.int, to *C.char) C.int {
+func cfs_renameat(id C.int64_t, fromDirfd C.int, from *C.char, toDirfd C.int, to *C.char) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1144,7 +1151,12 @@ func cfs_renameat(id C.int64_t, fromDirfd C.int, from *C.char, toDirfd C.int, to
 		return statusEINVAL
 	}
 
-	return cfs_rename(id, C.CString(absFromPath), C.CString(absToPath))
+	absFromPathC := C.CString(absFromPath)
+	absToPathC := C.CString(absToPath)
+	re = cfs_rename(id, absFromPathC, absToPathC)
+	C.free(unsafe.Pointer(absFromPathC))
+	C.free(unsafe.Pointer(absToPathC))
+	return
 }
 
 //export cfs_truncate
@@ -1545,7 +1557,7 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 }
 
 //export cfs_mkdirsat
-func cfs_mkdirsat(id C.int64_t, dirfd C.int, path *C.char, mode C.mode_t) C.int {
+func cfs_mkdirsat(id C.int64_t, dirfd C.int, path *C.char, mode C.mode_t) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1555,7 +1567,10 @@ func cfs_mkdirsat(id C.int64_t, dirfd C.int, path *C.char, mode C.mode_t) C.int 
 	if err != nil {
 		return statusEINVAL
 	}
-	return cfs_mkdirs(id, C.CString(absPath), mode)
+	absPathC := C.CString(absPath)
+	re = cfs_mkdirs(id, absPathC, mode)
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 //export cfs_rmdir
@@ -1623,7 +1638,7 @@ func cfs_chdir(id C.int64_t, path *C.char) (re C.int) {
 	var ino uint64
 	defer func() {
 		if log.IsDebugEnabled() {
-			log.LogDebugf("cfs_chdir: id(%v) path(%v) ino(%v) re(%v)", id, path, ino, re)
+			log.LogDebugf("cfs_chdir: id(%v) path(%v) ino(%v) re(%v)", id, C.GoString(path), ino, re)
 		}
 	}()
 	c, exist := getClient(int64(id))
@@ -1652,7 +1667,7 @@ func cfs_fchdir(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.int) (re C.in
 	)
 	defer func() {
 		if log.IsDebugEnabled() {
-			log.LogDebugf("cfs_fchdir: id(%v) fd(%v) path(%v) ino(%v)", id, path, ino)
+			log.LogDebugf("cfs_fchdir: id(%v) fd(%v) path(%v) ino(%v)", id, fd, path, ino)
 		}
 	}()
 	c, exist := getClient(int64(id))
@@ -1866,7 +1881,7 @@ func cfs_link(id C.int64_t, oldpath *C.char, newpath *C.char) (re C.int) {
 
 //export cfs_linkat
 func cfs_linkat(id C.int64_t, oldDirfd C.int, oldPath *C.char,
-	newDirfd C.int, newPath *C.char, flags C.int) C.int {
+	newDirfd C.int, newPath *C.char, flags C.int) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1881,7 +1896,12 @@ func cfs_linkat(id C.int64_t, oldDirfd C.int, oldPath *C.char,
 	if err != nil {
 		return statusEINVAL
 	}
-	return cfs_link(id, C.CString(absOldPath), C.CString(absNewPath))
+	absOldPathC := C.CString(absOldPath)
+	absNewPathC := C.CString(absNewPath)
+	re = cfs_link(id, absOldPathC, absNewPathC)
+	C.free(unsafe.Pointer(absOldPathC))
+	C.free(unsafe.Pointer(absNewPathC))
+	return
 }
 
 //export cfs_symlink
@@ -1934,7 +1954,7 @@ func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
 }
 
 //export cfs_symlinkat
-func cfs_symlinkat(id C.int64_t, target *C.char, dirfd C.int, linkPath *C.char) C.int {
+func cfs_symlinkat(id C.int64_t, target *C.char, dirfd C.int, linkPath *C.char) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1944,7 +1964,10 @@ func cfs_symlinkat(id C.int64_t, target *C.char, dirfd C.int, linkPath *C.char) 
 	if err != nil {
 		return statusEINVAL
 	}
-	return cfs_symlink(id, target, C.CString(absPath))
+	absPathC := C.CString(absPath)
+	re = cfs_symlink(id, target, absPathC)
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 //export cfs_unlink
@@ -2007,7 +2030,7 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 }
 
 //export cfs_unlinkat
-func cfs_unlinkat(id C.int64_t, dirfd C.int, path *C.char, flags C.int) C.int {
+func cfs_unlinkat(id C.int64_t, dirfd C.int, path *C.char, flags C.int) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -2018,11 +2041,14 @@ func cfs_unlinkat(id C.int64_t, dirfd C.int, path *C.char, flags C.int) C.int {
 		return statusEINVAL
 	}
 
+	absPathC := C.CString(absPath)
 	if uint32(flags)&uint32(C.AT_REMOVEDIR) != 0 {
-		return cfs_rmdir(id, C.CString(absPath))
+		re = cfs_rmdir(id, absPathC)
 	} else {
-		return cfs_unlink(id, C.CString(absPath))
+		re = cfs_unlink(id, absPathC)
 	}
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 //export cfs_readlink
@@ -2074,7 +2100,7 @@ func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) (re C.
 }
 
 //export cfs_readlinkat
-func cfs_readlinkat(id C.int64_t, dirfd C.int, path *C.char, buf *C.char, size C.size_t) C.ssize_t {
+func cfs_readlinkat(id C.int64_t, dirfd C.int, path *C.char, buf *C.char, size C.size_t) (re C.ssize_t) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return C.ssize_t(statusEINVAL)
@@ -2084,7 +2110,10 @@ func cfs_readlinkat(id C.int64_t, dirfd C.int, path *C.char, buf *C.char, size C
 	if err != nil {
 		return C.ssize_t(statusEINVAL)
 	}
-	return cfs_readlink(id, C.CString(absPath), buf, size)
+	absPathC := C.CString(absPath)
+	re = cfs_readlink(id, absPathC, buf, size)
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 /*
@@ -2295,7 +2324,7 @@ func cfs_lstat64(id C.int64_t, path *C.char, stat *C.struct_stat64) C.int {
 }
 
 //export cfs_fstat
-func cfs_fstat(id C.int64_t, fd C.int, stat *C.struct_stat) C.int {
+func cfs_fstat(id C.int64_t, fd C.int, stat *C.struct_stat) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -2305,11 +2334,14 @@ func cfs_fstat(id C.int64_t, fd C.int, stat *C.struct_stat) C.int {
 	if f == nil {
 		return statusEBADFD
 	}
-	return _cfs_stat(id, C.CString(f.path), stat, 0)
+	pathC := C.CString(f.path)
+	re = _cfs_stat(id, pathC, stat, 0)
+	C.free(unsafe.Pointer(pathC))
+	return
 }
 
 //export cfs_fstat64
-func cfs_fstat64(id C.int64_t, fd C.int, stat *C.struct_stat64) C.int {
+func cfs_fstat64(id C.int64_t, fd C.int, stat *C.struct_stat64) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -2319,11 +2351,14 @@ func cfs_fstat64(id C.int64_t, fd C.int, stat *C.struct_stat64) C.int {
 	if f == nil {
 		return statusEBADFD
 	}
-	return _cfs_stat64(id, C.CString(f.path), stat, 0)
+	pathC := C.CString(f.path)
+	re = _cfs_stat64(id, pathC, stat, 0)
+	C.free(unsafe.Pointer(pathC))
+	return
 }
 
 //export cfs_fstatat
-func cfs_fstatat(id C.int64_t, dirfd C.int, path *C.char, stat *C.struct_stat, flags C.int) C.int {
+func cfs_fstatat(id C.int64_t, dirfd C.int, path *C.char, stat *C.struct_stat, flags C.int) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -2333,11 +2368,14 @@ func cfs_fstatat(id C.int64_t, dirfd C.int, path *C.char, stat *C.struct_stat, f
 	if err != nil {
 		return statusEINVAL
 	}
-	return _cfs_stat(id, C.CString(absPath), stat, flags)
+	absPathC := C.CString(absPath)
+	re = _cfs_stat(id, absPathC, stat, flags)
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 //export cfs_fstatat64
-func cfs_fstatat64(id C.int64_t, dirfd C.int, path *C.char, stat *C.struct_stat64, flags C.int) C.int {
+func cfs_fstatat64(id C.int64_t, dirfd C.int, path *C.char, stat *C.struct_stat64, flags C.int) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -2347,7 +2385,10 @@ func cfs_fstatat64(id C.int64_t, dirfd C.int, path *C.char, stat *C.struct_stat6
 	if err != nil {
 		return statusEINVAL
 	}
-	return _cfs_stat64(id, C.CString(absPath), stat, flags)
+	absPathC := C.CString(absPath)
+	re = _cfs_stat64(id, absPathC, stat, flags)
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 //export cfs_chmod
@@ -2424,7 +2465,7 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 }
 
 //export cfs_fchmodat
-func cfs_fchmodat(id C.int64_t, dirfd C.int, path *C.char, mode C.mode_t, flags C.int) C.int {
+func cfs_fchmodat(id C.int64_t, dirfd C.int, path *C.char, mode C.mode_t, flags C.int) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -2434,7 +2475,10 @@ func cfs_fchmodat(id C.int64_t, dirfd C.int, path *C.char, mode C.mode_t, flags 
 	if err != nil {
 		return statusEINVAL
 	}
-	return _cfs_chmod(id, C.CString(absPath), mode, flags)
+	absPathC := C.CString(absPath)
+	re = _cfs_chmod(id, absPathC, mode, flags)
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 //export cfs_chown
@@ -2514,7 +2558,7 @@ func cfs_fchown(id C.int64_t, fd C.int, uid C.uid_t, gid C.gid_t) C.int {
 }
 
 //export cfs_fchownat
-func cfs_fchownat(id C.int64_t, dirfd C.int, path *C.char, uid C.uid_t, gid C.gid_t, flags C.int) C.int {
+func cfs_fchownat(id C.int64_t, dirfd C.int, path *C.char, uid C.uid_t, gid C.gid_t, flags C.int) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -2524,7 +2568,10 @@ func cfs_fchownat(id C.int64_t, dirfd C.int, path *C.char, uid C.uid_t, gid C.gi
 	if err != nil {
 		return statusEINVAL
 	}
-	return _cfs_chown(id, C.CString(absPath), uid, gid, flags)
+	absPathC := C.CString(absPath)
+	re = _cfs_chown(id, absPathC, uid, gid, flags)
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 //export cfs_utimens
@@ -2585,7 +2632,7 @@ func cfs_utimens(id C.int64_t, path *C.char, times *C.struct_timespec, flags C.i
 }
 
 //export cfs_futimens
-func cfs_futimens(id C.int64_t, fd C.int, times *C.struct_timespec) C.int {
+func cfs_futimens(id C.int64_t, fd C.int, times *C.struct_timespec) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -2596,11 +2643,14 @@ func cfs_futimens(id C.int64_t, fd C.int, times *C.struct_timespec) C.int {
 		return statusEBADFD
 	}
 
-	return cfs_utimens(id, C.CString(f.path), times, 0)
+	pathC := C.CString(f.path)
+	re = cfs_utimens(id, pathC, times, 0)
+	C.free(unsafe.Pointer(pathC))
+	return
 }
 
 //export cfs_utimensat
-func cfs_utimensat(id C.int64_t, dirfd C.int, path *C.char, times *C.struct_timespec, flags C.int) C.int {
+func cfs_utimensat(id C.int64_t, dirfd C.int, path *C.char, times *C.struct_timespec, flags C.int) (re C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -2611,7 +2661,10 @@ func cfs_utimensat(id C.int64_t, dirfd C.int, path *C.char, times *C.struct_time
 		return statusEINVAL
 	}
 
-	return cfs_utimens(id, C.CString(absPath), times, flags)
+	absPathC := C.CString(absPath)
+	re = cfs_utimens(id, absPathC, times, flags)
+	C.free(unsafe.Pointer(absPathC))
+	return
 }
 
 /*

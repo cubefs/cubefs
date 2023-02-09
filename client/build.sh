@@ -19,6 +19,7 @@ help() {
 
 Usage: ./build.sh [ -h | --help ] [ -g ] [ --sdk-only | --client-only ]
     -h, --help              show help info
+    --lcov                  lcov coverage measurements
     --online                setup Debug="0" goflag="-s" gccflag=""
     -s, --sdk-only          build sdk (libcfssdk.so libempty.so) only
     -c, --client-only       build client (libcfsclient.so and cfs-client) only
@@ -38,6 +39,9 @@ for opt in ${ARGS[*]} ; do
             Debug="0"
             goflag="-s"
             gccflag=""
+            ;;
+        --lcov)
+            gccflag="$gccflag -fprofile-arcs -ftest-coverage -lgcov"
             ;;
     	-s | --sdk-only)
     	    build_sdk=1

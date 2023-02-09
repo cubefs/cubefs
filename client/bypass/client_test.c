@@ -21,7 +21,7 @@
 
 #define FD_MASK (1 << (sizeof(int)*8 - 2))
 
-void testOp(bool is_cfs, bool ignore);
+void testOp(bool is_cfs, bool ignore, const char *file);
 void testReload();
 void testDup();
 void testUnlinkAndRename();
@@ -62,7 +62,8 @@ int main(int argc, char **argv) {
     char buf[20];
     const int count = is_cfs && !ignore ? 100 : 100000;
     for(int i = 0; i < num; i++) {
-        testOp(is_cfs, ignore);
+        testOp(is_cfs, ignore, "tmp123");
+        testOp(is_cfs, ignore, "mysql-bin.000001");
         if(i >= count && i % count == 0) {
             raw_time = time(NULL);
             ptm = localtime(&raw_time);
@@ -90,7 +91,7 @@ void testReload() {
     printf("finish client update.\n");
 }
 
-void testOp(bool is_cfs, bool ignore) {
+void testOp(bool is_cfs, bool ignore, const char *file) {
     #define PATH_LEN 100
     char cwd[PATH_LEN];      // root for this test
     char dir[PATH_LEN];      // temp dir
@@ -101,7 +102,6 @@ void testOp(bool is_cfs, bool ignore) {
     memset(path, '\0', PATH_LEN);
     memset(new_path, '\0', PATH_LEN);
     const char *tdir = "t";
-    const char *file = "tmp123";
     const char *new_file = "tmp1234";
     if(is_cfs) {
         const char *mount = getenv("CFS_MOUNT_POINT");
@@ -135,25 +135,31 @@ void testOp(bool is_cfs, bool ignore) {
     rmdir(dir);
 
     // chdir operations
-    char tmp_buf[100];
-    memset(tmp_buf, '\0', 100);
+    char tmp_buf[PATH_LEN];
+    memset(tmp_buf, '\0', PATH_LEN);
     //buf is not enough for the cwd
     char *tmp_dir = getcwd(tmp_buf, 1);
     assertf(tmp_dir == NULL, "getcwd returing %s", tmp_dir);
+    tmp_dir = getcwd(tmp_buf, PATH_LEN);
+    assertf(tmp_dir == tmp_buf, "getcwd returing invalid poiter");
     re = mkdir(dir, 0775);
     assertf(re == 0, "mkdir %s returning %d", dir, re);
     dir_fd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
     assertf(!ignore && is_cfs ? dir_fd & FD_MASK : dir_fd, "open dir %s returning %d", dir, tmp_fd);
     re = chdir(cwd);
-    assertf(re == 0, "chdir %s returning %d", cwd, re);
+    tmp_dir = getcwd(NULL, 0);
+    assertf(re == 0 && !strcmp(cwd, tmp_dir), "chdir %s returning %d %s", cwd, re, tmp_dir);
+    free(tmp_dir);
     re = chdir(tdir);
-    assertf(re == 0, "chdir %s returning %d", tmp_dir, re);
-    tmp_dir = getcwd(NULL, 50);
+    tmp_dir = getcwd(NULL, 0);
+    assertf(re == 0 && !strcmp(dir, tmp_dir), "chdir %s returning %d %s", tmp_dir, re, tmp_dir);
+    free(tmp_dir);
+    tmp_dir = getcwd(NULL, PATH_LEN);
     assertf(tmp_dir != NULL && !strcmp(tmp_dir, dir), "getcwd returning %s, len: %d, expect: %s", tmp_dir, strlen(tmp_dir), dir);
     free(tmp_dir);
     re = fchdir(dir_fd);
     assertf(re == 0, "fchdir %d returning %d", dirfd, re);
-    tmp_dir = getcwd(NULL, 50);
+    tmp_dir = getcwd(NULL, PATH_LEN);
     assertf(tmp_dir != NULL && !strcmp(tmp_dir, dir), "getcwd returning %s, len: %d", tmp_dir, strlen(tmp_dir));
     free(tmp_dir);
 
@@ -163,7 +169,13 @@ void testOp(bool is_cfs, bool ignore) {
     close(fd);
     fd = openat(dir_fd, file, O_RDWR | O_CREAT | O_EXCL);
     assertf(fd == -1 && errno == EEXIST, "openat %s returning %d", path, fd);
-    DIR *dirp = opendir(dir);
+    DIR *dirp = fdopendir(dir_fd);
+    assertf(dirp != NULL, "fdopendir %s returning NULL", dir);
+    re = closedir(dirp);
+    assertf(re == 0, "closedir returning %d", re);
+    dir_fd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
+    assertf(!ignore && is_cfs ? dir_fd & FD_MASK : dir_fd, "open dir %s returning %d", dir, tmp_fd);
+    dirp = opendir(dir);
     assertf(dirp != NULL, "opendir %s returning NULL", dir);
     struct dirent *dp;
     while((dp = readdir(dirp)) && (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")));
@@ -220,7 +232,7 @@ void testOp(bool is_cfs, bool ignore) {
     // chdir to original cwd, in case of calling test() for many times
     re = chdir(cwd);
     assertf(re == 0, "chdir %s returning %d", cwd, re);
-    tmp_dir = getcwd(NULL, 50);
+    tmp_dir = getcwd(NULL, PATH_LEN);
     assertf(tmp_dir != NULL && !strcmp(tmp_dir, cwd), "getcwd returning %s, len: %d", tmp_dir, strlen(tmp_dir));
     free(tmp_dir);
 
