@@ -36,13 +36,12 @@ import (
 var (
 	LocalIP                      string
 	MinWriteAbleDataPartitionCnt = 10
+	MasterNoCacheAPIRetryTimeout = 5 * time.Minute
 )
 
 const (
 	VolNotExistInterceptThresholdMin = 60
 	VolNotExistClearViewThresholdMin = 0
-
-	MasterNoCacheAPIRetryTimeout = 5 * time.Minute
 )
 
 type DataPartitionView struct {
