@@ -336,11 +336,15 @@ func (k *ExtentKey) GetExtentKey() (m string) {
 	return fmt.Sprintf("%v_%v_%v_%v_%v", k.PartitionId, k.FileOffset, k.ExtentId, k.ExtentOffset, k.Size)
 }
 
-// This method determines whether there is an overlapping relationship
-// between the two specified EK expression ranges based on following
-// comparison: upper1 >= lower2 && upper2 >= lower1 .
+// Overlap 判断两个ExtentKey所代表的文件数据范围是否存在相交关系。
+// 每个 ExtentKey 表示的文件数据范围可以表示为 {x| FileOffset <= x < FileOffset + Size } = [ FileOffset, FileOffset + Size )
+// 这里使用数据上判断两个数轴存在交集的方式，及两者的最后一个元素(last)必须大于等于对方的下边界(first).
+// 表达式为:
+//     last1 >= first2 && last2 >= first1
+//     last = FileOffset + Size - 1
+//     first = FileOffset
 func (k *ExtentKey) Overlap(o *ExtentKey) bool {
-	return k.FileOffset+uint64(k.Size) >= o.FileOffset && o.FileOffset+uint64(o.Size) >= k.FileOffset
+	return k.FileOffset+uint64(k.Size) > o.FileOffset && o.FileOffset+uint64(o.Size) > k.FileOffset
 }
 
 func (k *ExtentKey) Equal(k1 *ExtentKey) bool {
