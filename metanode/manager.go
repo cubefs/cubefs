@@ -74,6 +74,7 @@ type metadataManager struct {
 	connPool           *connpool.ConnectPool
 	state              uint32
 	mu                 sync.RWMutex
+	createMu           sync.RWMutex
 	partitions         map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
 	metaNode           *MetaNode
 	flDeleteBatchCount atomic.Value
@@ -823,8 +824,8 @@ func (m *metadataManager) partitionIDs() (pids []uint64) {
 }
 
 func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequest) (err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.createMu.Lock()
+	defer m.createMu.Unlock()
 
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
@@ -864,7 +865,8 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		mpc.StoreMode = proto.StoreModeMem
 	}
 
-	if oldMp, ok := m.partitions[request.PartitionID]; ok {
+	var oldMp MetaPartition
+	if oldMp, err = m.GetPartition(request.PartitionID); err == nil {
 		err = oldMp.IsEquareCreateMetaPartitionRequst(request)
 		return
 	}
@@ -882,11 +884,8 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		return
 	}
 
-	for _, virtualMP := range request.VirtualMPs {
-		m.partitions[virtualMP.ID] = partition
-	}
-
-	log.LogInfof("load meta partition %v Slots[%v] success", request.PartitionID, request.VirtualMPs)
+	m.attachPartition(request.PartitionID, partition)
+	log.LogInfof("load meta partition %v success", request.PartitionID)
 
 	return
 }
