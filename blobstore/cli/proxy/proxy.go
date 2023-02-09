@@ -21,9 +21,7 @@ import (
 	"github.com/fatih/color"
 
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
-	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
-	"github.com/cubefs/cubefs/blobstore/common/codemode"
 )
 
 const _host = "host"
@@ -31,7 +29,7 @@ const _host = "host"
 var proxyCli = proxy.New(&proxy.Config{})
 
 func proxyFlags(f *grumble.Flags) {
-	f.StringL(_host, "", "request on proxy host")
+	f.StringL(_host, "http://127.0.0.1:9600", "request on proxy host")
 }
 
 // Register proxy
@@ -56,29 +54,7 @@ func Register(app *grumble.App) {
 			return nil
 		},
 	})
-	proxyCommand.AddCommand(&grumble.Command{
-		Name: "alloc",
-		Help: "alloc volume",
-		Flags: func(f *grumble.Flags) {
-			proxyFlags(f)
-			f.UintL("code_mode", 0, "codemode uint")
-			f.Uint64L("fsize", 0, "file size")
-			f.Uint64L("bid_count", 0, "bid count")
-		},
-		Run: func(c *grumble.Context) error {
-			volumes, err := proxyCli.VolumeAlloc(common.CmdContext(), c.Flags.String(_host),
-				&proxy.AllocVolsArgs{
-					Fsize:    c.Flags.Uint64("fsize"),
-					CodeMode: codemode.CodeMode(c.Flags.Uint("code_mode")),
-					BidCount: c.Flags.Uint64("bid_count"),
-				})
-			if err != nil {
-				return err
-			}
-			fmt.Println(common.Readable(volumes))
-			return nil
-		},
-	})
 
+	addCmdAllocator(proxyCommand)
 	addCmdCacher(proxyCommand)
 }
