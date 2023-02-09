@@ -41,6 +41,19 @@ func TestClient_VolumeAlloc(t *testing.T) {
 	require.Equal(t, make([]AllocRet, 0), ret)
 }
 
+func TestClient_ListVolumes(t *testing.T) {
+	cli := New(&Config{})
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("{\"vids\":[111,222,333]}"))
+	}))
+	defer mockServer.Close()
+	args := &ListVolsArgs{CodeMode: 2}
+	ret, err := cli.ListVolumes(context.Background(), mockServer.URL, args)
+	require.NoError(t, err)
+	require.Equal(t, 3, len(ret.Vids))
+}
+
 func TestClient_GetCacheVolume(t *testing.T) {
 	cli := New(&Config{})
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
