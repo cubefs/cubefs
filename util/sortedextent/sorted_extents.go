@@ -771,35 +771,39 @@ func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKe
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
 	set := NewExtentKeySet()
+	var(
+		lastEk, nextEk proto.ExtentKey
+		start          int
+		upper          []proto.ExtentKey
+	)
 	// get the old start index
 	index, ok := se.findEkIndex(&oldEks[0])
 	if !ok {
 		msg = fmt.Sprintf("findEkIndex oldEks[0](%v) not found(%v)", oldEks[0], ok)
-		return
+		goto errHandle
 	}
-	start := index
+	start = index
 	// check index out of range
 	if index+len(oldEks) > len(se.eks)-1 {
 		msg = fmt.Sprintf("merge extent failed, index out of range [%v] with length %v", index+len(oldEks), len(se.eks))
-		return
+		goto errHandle
 	}
 	// check old ek exist
 	for _, ek := range oldEks {
 		if !se.eks[index].Equal(&ek) {
 			msg = fmt.Sprintf("merge extent failed, can not find pre ek:%v", ek.String())
-			return
+			goto errHandle
 		}
 		index++
 	}
 	// check last ek is con
-	lastEk := se.eks[index-1]
-	nextEk := se.eks[index]
+	lastEk = se.eks[index-1]
+	nextEk = se.eks[index]
 	if lastEk.FileOffset+uint64(lastEk.Size) != nextEk.FileOffset {
 		msg = fmt.Sprintf("merge extent failed, ek changed, lastek can not merged, last:%v, next:%v", lastEk.String(), nextEk)
-		return
+		goto errHandle
 	}
 	// merge
-	var upper []proto.ExtentKey
 	upper = append(upper, se.eks[index:]...)
 	se.eks = se.eks[0:start]
 	se.eks = append(se.eks, newEks...)
@@ -810,6 +814,14 @@ func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKe
 	}
 	deleteExtents = set.GetDelExtentKeys(se.eks)
 	return deleteExtents, true, ""
+
+errHandle:
+	merged = false
+	for _, ek := range newEks {
+		set.Put(&ek, ino, uint64(proto.DelEkSrcTypeFromMerge))
+	}
+	deleteExtents = set.GetDelExtentKeys(se.eks)
+	return
 }
 
 func (se *SortedExtents) DelNewExtent(newEks []proto.ExtentKey, ino uint64) (deleteExtents []proto.MetaDelExtentKey) {

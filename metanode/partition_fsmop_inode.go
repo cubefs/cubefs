@@ -602,19 +602,7 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 
 	//var delExtents = newExtents
 	defer func() {
-		if status != proto.OpOk {
-			//err, clear del extents array, reset to new eks
-			delExtents = delExtents[:0]
-			for _, ek := range newExtents {
-				delExtents = append(delExtents, *ek.ConvertToMetaDelEk(inodeId, uint64(proto.DelEkSrcTypeFromMerge), time.Now().Unix()))
-			}
-		}
 		if len(delExtents) > 0 {
-			//delEks := make([]proto.MetaDelExtentKey, 0)
-			//timeStamp := time.Now().Unix()
-			//for index := 0; index < len(delExtents); index++ {
-			//	delEks = append(delEks, *delExtents[index].ConvertToMetaDelEk(inodeId, delEkSrcTypeFromMerge, timeStamp))
-			//}
 			select {
 			case mp.extDelCh <- delExtents:
 			default:
@@ -648,19 +636,19 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 	if !merged {
 		log.LogWarnf("InodeMergeFailed inode(%v) merge msg(%v)", inodeId, msg)
 		status = proto.OpInodeMergeErr
-		//delExtents = newExtents
 		return
 	}
 	if err = mp.inodeTree.Put(dbHandle, ino); err != nil {
+		//unknown other apply status, do not del ek
 		status = proto.OpErr
-		//delExtents = newExtents
+		delExtents = delExtents[:0]
 		return
 	}
 	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
 		log.LogErrorf("fsm(%v) action(MergeExtents) inode(%v) oldEks(%v) newEks(%v) Commit error:%v",
 			mp.config.PartitionId, ino.Inode, oldExtents, newExtents, err)
 		status = proto.OpErr
-		//delExtents = newExtents
+		delExtents = delExtents[:0]
 		return
 	}
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)

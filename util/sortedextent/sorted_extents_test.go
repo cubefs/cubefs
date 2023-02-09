@@ -1239,6 +1239,197 @@ func TestSortedExtents_Merge5(t *testing.T) {
 	}
 }
 
+func TestSortedExtents_Merge6(t *testing.T) {
+	var err error
+	var eksStr = `
+0_405367_1025_0_89
+89_405369_1025_0_709
+798_405382_1025_0_664
+1462_405371_1025_0_112996
+114458_405360_1026_0_195
+114653_405381_1025_0_165
+114818_405373_1026_0_195
+115013_405369_1026_0_7433
+122446_405371_1026_0_836
+123282_405382_1027_0_5915
+129197_402111_1028_0_46
+`
+	ctx := context.Background()
+	se := NewSortedExtents()
+	for _, ekStr := range strings.Split(eksStr, "\n") {
+		ekStr = strings.TrimSpace(ekStr)
+		if len(ekStr) == 0 {
+			continue
+		}
+		parts := strings.Split(ekStr, "_")
+		if len(parts) != 5 {
+			t.Errorf("error part length")
+			t.FailNow()
+		}
+
+		var ek proto.ExtentKey
+		if ek.FileOffset, err = strconv.ParseUint(parts[0], 10, 64); err != nil {
+			t.Fatalf("Parse FileOffset failed: %v", err)
+		}
+		if ek.PartitionId, err = strconv.ParseUint(parts[1], 10, 64); err != nil {
+			t.Fatalf("Parse PartitionId failed: %v", err)
+		}
+		if ek.ExtentId, err = strconv.ParseUint(parts[2], 10, 64); err != nil {
+			t.Fatalf("Parse ExtentId failed: %v", err)
+		}
+		if ek.ExtentOffset, err = strconv.ParseUint(parts[3], 10, 64); err != nil {
+			t.Fatalf("Parse ExtentOffset failed: %v", err)
+		}
+		var size uint64
+		if size, err = strconv.ParseUint(parts[4], 10, 64); err != nil {
+			t.Fatalf("Parse Size failed: %v", err)
+		}
+		ek.Size = uint32(size)
+		se.Append(ctx, ek, 10)
+	}
+
+	oldEK := make([]proto.ExtentKey, 0)
+	se.Range(func(ek proto.ExtentKey) bool {
+		if ek.FileOffset == 129197 {
+			return false
+		}
+		oldEK = append(oldEK, ek)
+		return true
+	})
+
+	newEK := []proto.ExtentKey{
+		{FileOffset: 0, PartitionId: 473212, ExtentId: 27752, ExtentOffset: 0, Size: 129197},
+	}
+
+	delEK, merged, msg := se.Merge(newEK, oldEK, 10)
+	if !merged {
+		t.Errorf("merge failed:%v", msg)
+		t.FailNow()
+	}
+
+	if len(delEK) != len(oldEK) {
+		t.Errorf("merge failed, expect count:%v, actual:%v", len(oldEK), len(delEK))
+		t.FailNow()
+	}
+
+	delEK, merged, msg = se.Merge(newEK, oldEK, 10)
+	if merged {
+		t.Errorf("merge expect failed, but success")
+		t.FailNow()
+	}
+
+	if len(delEK) != 0 {
+		t.Errorf("delEK expect count:0, actual:%v", len(delEK))
+		t.FailNow()
+	}
+}
+
+func TestSortedExtents_Merge7(t *testing.T) {
+	var err error
+	var eksStr = `
+0_405367_1025_0_89
+89_405369_1025_0_709
+798_405382_1025_0_664
+1462_405371_1025_0_112996
+114458_405360_1026_0_195
+114653_405381_1025_0_165
+114818_405373_1026_0_195
+115013_405369_1026_0_7433
+122446_405371_1026_0_836
+123282_405382_1027_0_5915
+129197_402111_1028_0_46
+`
+	ctx := context.Background()
+	se := NewSortedExtents()
+	for _, ekStr := range strings.Split(eksStr, "\n") {
+		ekStr = strings.TrimSpace(ekStr)
+		if len(ekStr) == 0 {
+			continue
+		}
+		parts := strings.Split(ekStr, "_")
+		if len(parts) != 5 {
+			t.Errorf("error part length")
+			t.FailNow()
+		}
+
+		var ek proto.ExtentKey
+		if ek.FileOffset, err = strconv.ParseUint(parts[0], 10, 64); err != nil {
+			t.Fatalf("Parse FileOffset failed: %v", err)
+		}
+		if ek.PartitionId, err = strconv.ParseUint(parts[1], 10, 64); err != nil {
+			t.Fatalf("Parse PartitionId failed: %v", err)
+		}
+		if ek.ExtentId, err = strconv.ParseUint(parts[2], 10, 64); err != nil {
+			t.Fatalf("Parse ExtentId failed: %v", err)
+		}
+		if ek.ExtentOffset, err = strconv.ParseUint(parts[3], 10, 64); err != nil {
+			t.Fatalf("Parse ExtentOffset failed: %v", err)
+		}
+		var size uint64
+		if size, err = strconv.ParseUint(parts[4], 10, 64); err != nil {
+			t.Fatalf("Parse Size failed: %v", err)
+		}
+		ek.Size = uint32(size)
+		se.Append(ctx, ek, 10)
+	}
+
+	//0_405367_1025_0_89
+	//89_405369_1025_0_709
+	oldEK := []proto.ExtentKey{
+		{FileOffset: 0, PartitionId: 405367, ExtentId: 1025, ExtentOffset: 0, Size: 89},
+		{FileOffset: 89, PartitionId: 405369, ExtentId: 1025, ExtentOffset: 0, Size: 709},
+	}
+
+	newEK := []proto.ExtentKey{
+		{FileOffset: 0, PartitionId: 473212, ExtentId: 27752, ExtentOffset: 0, Size: 798},
+	}
+
+	delEKs, merged, msg := se.Merge(newEK, oldEK, 10)
+	if !merged {
+		t.Errorf("merge failed:%v", msg)
+		t.FailNow()
+	}
+
+	if len(delEKs) != len(oldEK) {
+		t.Errorf("merge failed, expect count:%v, actual:%v", len(oldEK), len(delEKs))
+		t.FailNow()
+	}
+
+	//798_405382_1025_0_664
+	oldEK = []proto.ExtentKey{
+		{FileOffset: 0, PartitionId: 405367, ExtentId: 1025, ExtentOffset: 0, Size: 89},
+		{FileOffset: 89, PartitionId: 405369, ExtentId: 1025, ExtentOffset: 0, Size: 709},
+		{FileOffset: 798, PartitionId: 405382, ExtentId: 1025, ExtentOffset: 0, Size: 664},
+	}
+
+	newEK = []proto.ExtentKey{
+		{FileOffset: 0, PartitionId: 473011, ExtentId: 10496, ExtentOffset: 0, Size: 1462},
+	}
+
+	delEKs, merged, msg = se.Merge(newEK, oldEK, 10)
+	if merged {
+		t.Errorf("merge expect failed, but success")
+		t.FailNow()
+	}
+
+	expectDelEK := newEK
+
+	if len(expectDelEK) != len(delEKs) {
+		t.Errorf("error del ek length, expect:%v, actual:%v", len(expectDelEK), len(delEKs))
+		t.FailNow()
+	}
+
+	for index, ek := range expectDelEK {
+		if ek.FileOffset != delEKs[index].FileOffset || ek.PartitionId != delEKs[index].PartitionId ||
+			ek.ExtentId != delEKs[index].ExtentId || ek.ExtentOffset != delEKs[index].ExtentOffset ||
+			ek.Size != delEKs[index].Size {
+			t.Errorf("ek error, expect:%v, actual:%v", ek, delEKs[index].ExtentKey)
+			t.FailNow()
+		}
+	}
+	return
+}
+
 func TestSortedExtents_QueryByFileRange(t *testing.T) {
 
 	// 这个方法用于通过全部顺序遍历的方式查询ExtentKey链中符合查询文件数据范围的ExtentKey。用于验证QueryByFileRange方法是否正确
