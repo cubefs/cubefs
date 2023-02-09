@@ -73,10 +73,14 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 
 	addr := mp.LeaderAddr
 	retryCount := 0
+	var successAddr string
 	for {
 		retryCount++
-		resp, needCheckRead, err, _ = mw.sendToMetaPartition(ctx, mp, req, addr)
+		resp, needCheckRead, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
+			if successAddr != "" && successAddr != mp.LeaderAddr {
+				mp.LeaderAddr = successAddr
+			}
 			return
 		}
 		// operations don't need to retry
@@ -101,7 +105,7 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 	var successAddr string
 	for {
 		retryCount++
-		resp, _, err, successAddr = mw.sendToMetaPartition(ctx, mp, req, addr)
+		resp, _, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 			if successAddr != "" && successAddr != mp.LeaderAddr {
 				mp.LeaderAddr = successAddr
@@ -168,7 +172,7 @@ func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPart
 	return nil, errors.New(fmt.Sprintf("readConsistentFromHosts: failed, req(%v) mp(%v) isErr(%v) targetHosts(%v) errMap(%v)", req, mp, isErr, targetHosts, errMap))
 }
 
-func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error, successAddr string) {
+func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, successAddr string, err error) {
 	var (
 		errMap        map[int]error
 		start         time.Time
@@ -217,10 +221,10 @@ out:
 		err = errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errMap, resp))
 	}
 	if err != nil {
-		return nil, needCheckRead, err, successAddr
+		return nil, needCheckRead, successAddr, err
 	}
 	log.LogDebugf("sendToMetaPartition successful: req(%v) mp(%v) addr(%v) resp(%v)", req, mp, addr, resp)
-	return resp, needCheckRead, nil, successAddr
+	return resp, needCheckRead, successAddr, nil
 }
 
 func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error) {
