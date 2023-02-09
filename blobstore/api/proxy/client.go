@@ -46,6 +46,11 @@ func (c *client) VolumeAlloc(ctx context.Context, host string, args *AllocVolsAr
 	return
 }
 
+func (c *client) ListVolumes(ctx context.Context, host string, args *ListVolsArgs) (ret VolumeList, err error) {
+	err = c.GetWith(ctx, fmt.Sprintf("%s/volume/list?code_mode=%d", host, args.CodeMode), &ret)
+	return
+}
+
 func (c *client) SendShardRepairMsg(ctx context.Context, host string, args *ShardRepairArgs) error {
 	return c.PostWith(ctx, host+"/repairmsg", nil, args)
 }

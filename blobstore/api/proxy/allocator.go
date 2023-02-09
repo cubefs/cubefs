@@ -24,6 +24,7 @@ import (
 
 type Allocator interface {
 	VolumeAlloc(ctx context.Context, host string, args *AllocVolsArgs) (ret []AllocRet, err error)
+	ListVolumes(ctx context.Context, host string, args *ListVolsArgs) (ret VolumeList, err error)
 }
 
 type ListVolsArgs struct {

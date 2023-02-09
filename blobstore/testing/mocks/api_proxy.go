@@ -80,6 +80,21 @@ func (mr *MockProxyClientMockRecorder) GetCacheVolume(arg0, arg1, arg2 interface
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCacheVolume", reflect.TypeOf((*MockProxyClient)(nil).GetCacheVolume), arg0, arg1, arg2)
 }
 
+// ListVolumes mocks base method.
+func (m *MockProxyClient) ListVolumes(arg0 context.Context, arg1 string, arg2 *proxy.ListVolsArgs) (proxy.VolumeList, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListVolumes", arg0, arg1, arg2)
+	ret0, _ := ret[0].(proxy.VolumeList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListVolumes indicates an expected call of ListVolumes.
+func (mr *MockProxyClientMockRecorder) ListVolumes(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVolumes", reflect.TypeOf((*MockProxyClient)(nil).ListVolumes), arg0, arg1, arg2)
+}
+
 // SendDeleteMsg mocks base method.
 func (m *MockProxyClient) SendDeleteMsg(arg0 context.Context, arg1 string, arg2 *proxy.DeleteArgs) error {
 	m.ctrl.T.Helper()
