@@ -55,7 +55,7 @@ type Wrapper struct {
 	volName               string
 	masters               []string
 	umpJmtpAddr           string
-	volNotExistCount	  int32
+	volNotExistCount      int32
 	partitions            *sync.Map //key: dpID; value: *DataPartition
 	followerRead          bool
 	followerReadClientCfg bool
@@ -93,12 +93,12 @@ type Wrapper struct {
 }
 
 type DataState struct {
-	ClusterName  		string
-	LocalIP      		string
-	VolNotExistCount	int32
-	VolView      		*proto.SimpleVolView
-	DpView       		*proto.DataPartitionsView
-	ClusterView  		*proto.ClusterView
+	ClusterName      string
+	LocalIP          string
+	VolNotExistCount int32
+	VolView          *proto.SimpleVolView
+	DpView           *proto.DataPartitionsView
+	ClusterView      *proto.ClusterView
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -250,14 +250,21 @@ func (w *Wrapper) FollowerRead() bool {
 }
 
 func (w *Wrapper) updateClusterInfo() (err error) {
-	var info *proto.ClusterInfo
+	var (
+		info    *proto.ClusterInfo
+		localIp string
+	)
 	if info, err = w.mc.AdminAPI().GetClusterInfo(); err != nil {
 		log.LogWarnf("UpdateClusterInfo: get cluster info fail: err(%v)", err)
 		return
 	}
 	log.LogInfof("UpdateClusterInfo: get cluster info: cluster(%v) localIP(%v)", info.Cluster, info.Ip)
 	w.clusterName = info.Cluster
-	LocalIP = info.Ip
+	if localIp, err = iputil.GetLocalIPByDial(); err != nil {
+		log.LogWarnf("UpdateClusterInfo: get local ip fail: err(%v)", err)
+		return
+	}
+	LocalIP = localIp
 	return
 }
 

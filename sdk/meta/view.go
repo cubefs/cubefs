@@ -30,6 +30,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/iputil"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -160,7 +161,10 @@ func (mw *MetaWrapper) saveVolView() *proto.VolView {
 
 // fetch and update cluster info if successful
 func (mw *MetaWrapper) updateClusterInfo() (err error) {
-	var info *proto.ClusterInfo
+	var (
+		info    *proto.ClusterInfo
+		localIp string
+	)
 	if info, err = mw.mc.AdminAPI().GetClusterInfo(); err != nil {
 		log.LogWarnf("updateClusterInfo: get cluster info fail: err(%v)", err)
 		return
@@ -168,7 +172,11 @@ func (mw *MetaWrapper) updateClusterInfo() (err error) {
 	log.LogInfof("updateClusterInfo: get cluster info: cluster(%v) localIP(%v)",
 		info.Cluster, info.Ip)
 	mw.cluster = info.Cluster
-	mw.localIP = info.Ip
+	if localIp, err = iputil.GetLocalIPByDial(); err != nil {
+		log.LogWarnf("UpdateClusterInfo: get local ip fail: err(%v)", err)
+		return
+	}
+	mw.localIP = localIp
 	return
 }
 
@@ -242,10 +250,10 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 }
 
 func (mw *MetaWrapper) updateMetaPartitionsWithNoCache() error {
-	var views 	[]*proto.MetaPartitionView
+	var views []*proto.MetaPartitionView
 	start := time.Now()
 	for {
-		var err	error
+		var err error
 		if views, err = mw.mc.ClientAPI().GetMetaPartitions(mw.volname); err == nil {
 			log.LogInfof("updateMetaPartitionsWithNoCache: vol(%v)", mw.volname)
 			break
