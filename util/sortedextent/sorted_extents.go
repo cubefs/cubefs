@@ -296,18 +296,18 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey, ino uin
 			} else {
 				se.eks = append(se.eks[:index], se.eks[index+1:]...)
 			}
-			se.eks = append(se.eks)
+			//se.eks = append(se.eks)
 			continue // Continue and do not advance index cause of element removed
 		} else {
 			if fixedFront != nil {
 				// Make exchange between cur and fixedFront.
 				se.eks[index] = *fixedFront
 				if fixedBack != nil {
-					var eks []proto.ExtentKey
-					eks = append([]proto.ExtentKey{}, se.eks[:index+1]...)
-					eks = append(eks, *fixedBack)
-					eks = append(eks, se.eks[index+1:]...)
-					se.eks = eks
+					//var eks []proto.ExtentKey
+					//eks = append([]proto.ExtentKey{}, se.eks[:index+1]...)
+					//eks = append(eks, *fixedBack)
+					//eks = append(eks, se.eks[index+1:]...)
+					se.insertOrMergeAt(index+1, *fixedBack)
 				}
 			} else if fixedBack != nil {
 				// Make exchange between cur and fixedBack
@@ -343,11 +343,15 @@ func (se *SortedExtents) insertOrMergeAt(index int, ek proto.ExtentKey) (merged 
 		se.eks[index-1].Size = se.eks[index-1].Size + ek.Size
 		merged = true
 	} else if index < len(se.eks) {
-		var eks []proto.ExtentKey
-		eks = append([]proto.ExtentKey{}, se.eks[:index]...)
-		eks = append(eks, ek)
-		eks = append(eks, se.eks[index:]...)
-		se.eks = eks
+		// 原先插入逻辑会引起一次内存分配和两次切片拷贝, 优化成至进行一次拷贝
+		// var eks []proto.ExtentKey
+		// eks = append([]proto.ExtentKey{}, se.eks[:index]...)
+		// eks = append(eks, ek)
+		// eks = append(eks, se.eks[index:]...)
+		// se.eks = eks
+		se.eks = append(se.eks, proto.ExtentKey{})
+		copy(se.eks[index+1:], se.eks[index:len(se.eks)-1])
+		se.eks[index] = ek
 	} else {
 		se.eks = append(se.eks, ek)
 	}
@@ -363,12 +367,19 @@ func (se *SortedExtents) maybeMergeWithPrev(index int) (merged bool) {
 		se.eks[index-1].FileOffset+uint64(se.eks[index-1].Size) == se.eks[index].FileOffset &&
 		se.eks[index-1].ExtentOffset+uint64(se.eks[index-1].Size) == se.eks[index].ExtentOffset {
 		se.eks[index-1].Size = se.eks[index-1].Size + se.eks[index].Size
-		var eks []proto.ExtentKey
-		eks = append([]proto.ExtentKey{}, se.eks[:index]...)
+
+		// var eks []proto.ExtentKey
+		// eks = append([]proto.ExtentKey{}, se.eks[:index]...)
+		// if index+1 < len(se.eks) {
+		//	 eks = append(eks, se.eks[index+1:]...)
+		// }
+		//se.eks = eks
 		if index+1 < len(se.eks) {
-			eks = append(eks, se.eks[index+1:]...)
+			se.eks = append(se.eks[:index], se.eks[index+1:]...)
+		} else {
+			se.eks = se.eks[:index]
 		}
-		se.eks = eks
+
 		merged = true
 	}
 	return

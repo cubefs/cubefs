@@ -865,7 +865,42 @@ ExtentTruncate:98304
 	})
 }
 
-func BenchmarkSortedExtents_Insert(b *testing.B) {
+func BenchmarkSortedExtents_InsertRandom_Base100K(b *testing.B) {
+	// 准备一个由100000(10万)个ExtentKey组成的EK链, 每个ExtentKey的数据长度为1024
+	var se = NewSortedExtents()
+	var extentID uint64 = 1
+	for i := 0; i < 100000; i++ {
+		var ek = proto.ExtentKey{
+			FileOffset:  uint64(i * 1024),
+			Size:        uint32(1024),
+			PartitionId: 1,
+			ExtentId:    extentID,
+		}
+		se.Insert(context.Background(), ek, 1)
+		extentID++
+	}
+
+	// 接下来插入随机ExtentKey, 先产生b.N个随机位置的ExtentKey
+	var randomExtentKeys = make([]proto.ExtentKey, 0)
+	var r = rand.New(rand.New(rand.NewSource(time.Now().UnixNano())))
+	for i := 0; i < b.N; i++ {
+		randomExtentKeys = append(randomExtentKeys, proto.ExtentKey{
+			FileOffset:  uint64(r.Int63n(int64(se.Size()))),
+			Size:        uint32(r.Int31n(1024)),
+			PartitionId: 1,
+			ExtentId:    extentID,
+		})
+		extentID++
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		se.Insert(context.Background(), randomExtentKeys[i], 1)
+	}
+	b.StopTimer()
+}
+
+func BenchmarkSortedExtents_InsertBack(b *testing.B) {
 	ctx := context.Background()
 	se := NewSortedExtents()
 	b.ResetTimer()
