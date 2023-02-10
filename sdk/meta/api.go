@@ -468,7 +468,7 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	// Note that only regular files are allowed to be overwritten.
-	if status == statusExist && proto.IsRegular(mode) {
+	if status == statusExist && (proto.IsSymlink(mode) || proto.IsRegular(mode)) {
 		if !overwritten {
 			return syscall.EEXIST
 		}
