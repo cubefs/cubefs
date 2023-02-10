@@ -1,9 +1,9 @@
 ---
 name: Feature request
 about: Suggest an idea for this project
-title: Feature request
+title: "[Feature]: "
 labels: enhancement
-assignees: awzhgw
+assignees: xiaochunhe,leonrayang
 
 ---
 
