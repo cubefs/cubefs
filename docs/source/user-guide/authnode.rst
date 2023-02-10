@@ -46,7 +46,7 @@ Use the following commands to build client side tool for `Authnode`:
 
 .. code-block:: bash
 
-   $ git clone http://github.com/cubefs/cubefs.git
+   $ git clone http://github.com/cubeFS/cubefs.git
    $ cd cubefs
    $ make build
 
@@ -280,7 +280,7 @@ Create key for CubeFS cluster
   Edit ``client.json`` as following:
    ``clientKey``: use the value of ``key`` in ``key_client.json``
 
-  example ``client.json`` ：
+  example ``client.json`` :
 
   .. code-block:: json
 

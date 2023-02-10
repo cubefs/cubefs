@@ -1,7 +1,7 @@
 Monitor
 -----------------------
 
-CubeFS use prometheus as metrics collector. It simply config as follow in master, metanode, datanode, client's config file：
+CubeFS use prometheus as metrics collector. It simply config as follow in master, metanode, datanode, client's config file:
 
 .. code-block:: json
 
@@ -14,14 +14,14 @@ CubeFS use prometheus as metrics collector. It simply config as follow in master
    }
 
 
-* exporterPort：prometheus exporter Port. when set, can export prometheus metrics from URL(http://$hostip:$exporterPort/metrics). If not set, prometheus exporter will unavailable；
+* exporterPort:prometheus exporter Port. when set, can export prometheus metrics from URL(http://$hostip:$exporterPort/metrics). If not set, prometheus exporter will unavailable;
 * consulAddr: consul register address, it can work with prometheus to auto discover deployed CubeFS nodes, if not set, consul register will not work.
 * consulMeta: conusl meta config, not necessary, it can set meta info when register to consul.
 * ipFilter: it's a ip regular filter, exposed to consul, not necessary, default empty, which is used for multiple ip machine. it can support positive or negative filter, for example:
     * ipFilter="10.17.*", means that ip, regular match ipFilter, is ok
     * ipFilter="!10.17.*" means that ip, not regular match ipFilter, is ok
 * enablePid: whether to report partition id, default false; if you want to show dp or mp info in your cluster, you can set it true
-Using grafana as prometheus metrics web front：
+Using grafana as prometheus metrics web front:
 
 .. image:: ../pic/cfs-grafana-dashboard.png
    :align: center
@@ -54,8 +54,8 @@ Metrics
 
     + The number of invalid masters: ``master_nodes_invalid``
     + The number of invalid metanodes: ``metanode_inactive``
-    + The number of invalid datanodes:： ``datanode_inactive``
-    + The number of invalid clients:： ``fuseclient_inactive``
+    + The number of invalid datanodes:: ``datanode_inactive``
+    + The number of invalid clients:: ``fuseclient_inactive``
 
 - MetaNode
 

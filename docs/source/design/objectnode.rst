@@ -12,10 +12,10 @@ Structure
      :align: center
 
 The ObjectNode is a functional subsystem node. It fetch volume view (volume topology) on demand from Resource Manager (Master).
-Each ObjectNode communicate with metadata subsystem (MetaNode) and data subsystem (DataNode) directly.
+Each ObjectNode communicate with metadata subsystem (MetaNode) and replica-subsystem (DataNode) directly.
 
 ObjectNode is stateless design with high scalability and it have ability to operate all files stored in the CubeFS cluster
-which it belong to directly without any volume-mount operation.
+which it belong to directly without any volume-mount operation. *not support ec-volume temporarily*
 
 Features
 ---------

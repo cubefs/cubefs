@@ -21,8 +21,8 @@
 
 
 project = u'CubeFS'
-copyright = u'2018, The Chubao Authors'
-author = u'The Chubao Authors'
+copyright = u'2018, The Cube Authors'
+author = u'The Cube Authors'
 
 # The short X.Y version
 version = u''
@@ -44,7 +44,7 @@ extensions = [
 ]
 
 # Add any paths that contain templates here, relative to this directory.
-#templates_path = ['_templates']
+templates_path = ['_templates']
 
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:

@@ -17,7 +17,7 @@ If there is no user ID with the same value as the **Owner** when creating the vo
 .. csv-table:: body key
    :header: "Key", "Type", "Description", "Range", "Mandatory", "Default"
    
-   "id", "string", "user ID", "Consists of letters, numbers and underscores, no more than 20 characters", "Yes", "None"
+   "id", "string", "user ID", "Consists of letters, numbers and underscores, no more than 21 characters", "Yes", "None"
    "pwd", "string", "user's password", "Unlimited", "No", "``CubeFSUser``"
    "ak", "string", "Access Key", "Consists of 16-bits letters and numbers", "No", "Random value"
    "sk", "string","Secret Key", "Consists of 32-bits letters and numbers", "No", "Random value"

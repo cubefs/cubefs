@@ -1,7 +1,7 @@
 Use Cases
 =============
 
-CubeFS is a distributed file system that is compatible with most POSIX file system semantics. When ChubaoFS is mounted, it can be as simple as using a local file system. Basically, it can be used in any case where a file system is needed, replacing the local file system, and realizing infinitely expandable storage without physical boundaries. It has been applied in various scenarios, and the following are some of the extracted scenes.
+CubeFS is a distributed file system that is compatible with most POSIX file system semantics. When CubeFS is mounted, it can be as simple as using a local file system. Basically, it can be used in any case where a file system is needed, replacing the local file system, and realizing infinitely expandable storage without physical boundaries. It has been applied in various scenarios, and the following are some of the extracted scenes.
 
 Machine Learning
 --------------------

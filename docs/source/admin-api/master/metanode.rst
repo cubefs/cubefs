@@ -68,3 +68,20 @@ If the used memory percent arrives the threshold, the status of the meta partiti
    :header: "Parameter", "Type", "Description"
    
    "threshold", "float64", "the max percent of memory which metaNode can use"
+
+
+Migrate
+---------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/metaNode/migrate?srcAddr=src&targetAddr=dst&count=3"
+
+Migrate the specified number of metadata partitions from the source meta node to the target meta node.
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+   
+   "srcAddr", "string", "Source meta node"
+   "targetAddr", "string", "Target meta node"
+   "count", "int", "The number of meta partitions to migrate，default(50)"

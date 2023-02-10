@@ -135,7 +135,7 @@ Both of them adopt the master-slave architecture, where the single master stores
 - Hadoop Ozone
 
 Hadoop Ozone is a scalable distributed object storage system designed for Hadoop. It was originally proposed to solve the problem of HDFS namenode expansion. It reconstructs the namenode metadata management part of hdfs and reuses the datanode of hdfs.
-CubeFS has many of the same design concepts like ozone such as: supporting for volume isolation, compatible with both raft/master-slave synchronous replication mechanisms, implenting for s3-compatible interfaces. In addition, ChubaoFS's POSIX fuse-client interface supports random file reading and writing, and optimizes reading and writing of small files.
+CubeFS has many of the same design concepts like ozone such as: supporting for volume isolation, compatible with both raft/master-slave synchronous replication mechanisms, implenting for s3-compatible interfaces. In addition, CubeFS's POSIX fuse-client interface supports random file reading and writing, and optimizes reading and writing of small files.
 
 - Haystack
 
@@ -307,7 +307,7 @@ Upgrade
 
 1.	Steps
 
-    a. Download and unzip the latest binary file compression package from CubeFS official website https://github.com/cubefs/cubefs/releases
+    a. Download and unzip the latest binary file compression package from CubeFS official website https://github.com/cubeFS/cubefs/releases
     b. Freeze the cluster
 
     .. code-block:: bash
@@ -446,7 +446,7 @@ Supported `log-level`: `debug,info,warn,error,critical,read,write,fatal`
 
     .. code-block:: bash
 
-        clusterID[xxx] addr[xxx]_op[xx] has no response until time out
+        clusterID[xxx] addr[xxx]_op[xx] has no response util time out
 
     Analysis:The response timed out when the Master sends the [Op] command to mn or dn, check the network between Master and mn/dn; check whether the dn/mn service process is alive.
 
@@ -532,7 +532,7 @@ Fuse Client
 
         Online: http://{clientIP}:{profPort} /rate/set?write=800&read=800
 
-    - For more, see(https://chubaofs.readthedocs.io/zh_CN/latest/user-guide/fuse.html)
+    - For more, see(https://cubefs.readthedocs.io/zh_CN/latest/user-guide/fuse.html)
 
 2.	Mount issues
 

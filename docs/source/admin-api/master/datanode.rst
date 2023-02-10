@@ -54,3 +54,59 @@ Remove the dataNode from cluster, data partitions which locate the dataNode will
    :header: "Parameter", "Type", "Description"
    
    "addr", "string", "the addr which communicate with master"
+
+
+Get disk information
+---------
+
+.. code-block:: bash
+
+      curl -v "http://192.168.0.11:17320/disks"
+
+
+Get disk information, including disk path, space usage, disk status, etc.
+
+
+Get data partition information
+---------
+
+.. code-block:: bash
+
+      curl -v "http://192.168.0.11:17320/partitions"
+
+
+Get data partition information, including partition ID, partition size and status, etc.
+
+
+Offline Disk
+-------------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/disk/decommission?addr=10.196.59.201:17310&disk=/cfs1"
+
+Synchronously offline all the data partitions on the disk, and create a new replica for each data partition in the cluster.
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+
+   "addr", "string", "replica address"
+   "disk", "string", "disk path"
+   "count", "int", "The number of data partitions to offline from disk，default(0) means all be offlined"
+
+
+Migrate
+---------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/dataNode/migrate?srcAddr=src&targetAddr=dst&count=3"
+
+Migrate the specified number of data partitions from the source data node to the target data node.
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+   
+   "srcAddr", "string", "Source data node"
+   "targetAddr", "string", "Target data node"
+   "count", "int", "The number of data partitions to migrate，default(50)"

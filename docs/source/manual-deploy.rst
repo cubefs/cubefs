@@ -1,6 +1,19 @@
 Run Cluster Manually
 =====================
 
+Compile Dependencies
+--------
+
+.. csv-table::
+   :header: "Dependencies", "Version Requirement"
+
+   "gcc-c++","4.8.5 and above"
+   "CMake","3.1 and above"
+   "Go","1.16 and above"
+   "bzip2-devel","1.0.6 and above"
+   "mvn","3.8.4 and above"
+
+
 Building
 --------
 
@@ -20,7 +33,7 @@ Start Resource Manager (Master)
 
 .. code-block:: bash
 
-   nohup ./cfs-server -c master.json &
+   ./cfs-server -c master.json
 
 
 Sample *master.json* is shown as follows,
@@ -40,8 +53,7 @@ Sample *master.json* is shown as follows,
      "walDir":"/cfs/master/data/wal",
      "storeDir":"/cfs/master/data/store",
      "consulAddr": "http://consul.prometheus-cfs.local",
-     "exporterPort": 9500,
-     "clusterName":"chubaofs01",
+     "clusterName":"cubefs01",
      "metaNodeReservedMem": "1073741824"
    }
 
@@ -53,7 +65,7 @@ Start Metanode
 
 .. code-block:: bash
 
-   nohup ./cfs-server -c meta.json &
+   ./cfs-server -c meta.json
 
 Sample *meta.json is* shown as follows,
 
@@ -119,7 +131,7 @@ Start Datanode
 
    .. code-block:: bash
 
-      nohup ./cfs-server -c datanode.json &
+      ./cfs-server -c datanode.json
 
    Sample *datanode.json* is shown as follows,
 
@@ -149,12 +161,17 @@ Start Datanode
 
 For detailed explanations of *datanode.json*, please refer to :doc:`user-guide/datanode`.
 
+Start BlobStore
+^^^^^^^^^^^^^^^^^^^^^
+
+Please refer to :doc:`user-guide/blobstore` 。
+
 Start ObjectNode
 ^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
-   nohup ./cfs-server -c objectnode.json &
+   ./cfs-server -c objectnode.json
 
 Sample *objectnode.json is* shown as follows,
 
@@ -179,45 +196,15 @@ Sample *objectnode.json is* shown as follows,
 For detailed explanations of *objectnode.json*, please refer to :doc:`user-guide/objectnode`.
 
 
-Start Console
-^^^^^^^^^^^^^^^^
-
-.. code-block:: bash
-
-   nohup ./cfs-server -c console.json &
-
-Sample *console.json is* shown as follows,
-
-.. code-block:: json
-
-    {
-        "role": "console",
-        "logDir": "/cfs/log/",
-        "logLevel": "debug",
-        "listen": "80",
-        "masterAddr": [
-            "192.168.0.11:17010",
-            "192.168.0.12:17010",
-            "192.168.0.13:17010"
-        ],
-        "objectNodeDomain": "object.chubao.io",
-        "monitor_addr": "http://192.168.0.102:9090",
-        "dashboard_addr": "http://192.168.0.103",
-        "monitor_app": "cfs",
-        "monitor_cluster": "cfs"
-    }
-
-
-For detailed explanations of *console.json*, please refer to :doc:`user-guide/console`.
-
 Create Volume
-^^^^^^^^^^^^^
+------------
 
 By default, there are only a few data partitions allocated upon volume creation, and will be dynamically expanded according to actual usage.
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/admin/createVol?name=test&capacity=10000&owner=cfs"
+   curl -v "http://10.196.59.198:17010/admin/createVol?name=ltptest&capacity=10000&owner=ltptest"
+For detailed explanations of volume creation, please refer to :doc:`admin-api/master/volume`.
 
 For performance evaluation, extra data partitions shall be pre-created according to the amount of data nodes and disks to reach maximum performance.
 

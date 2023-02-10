@@ -61,7 +61,7 @@ If a service request is sent via TCP protocol, it has the following steps:
 Future Work
 -----------
 
-`Authnode` supports a general authentication and authorization which is an emergent need for `CubeFS`. There are two directions of security enhancements for `ChubaoFS` in the future.
+`Authnode` supports a general authentication and authorization which is an emergent need for `CubeFS`. There are two directions of security enhancements for `CubeFS` in the future.
 
 
 Feature Enrichment
