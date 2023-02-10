@@ -30,6 +30,7 @@ CubeFS use **JSON** as configuration file format.
    "peers", "string", "the member information of raft group", "Yes"
    "logDir", "string", "Path for log file storage", "Yes"
    "logLevel", "string", "Level operation for logging. Default is *error*.", "No"
+   "ebsAddr","string","blobStore addr, need config if use blobStore subsystem","否", ""
    "retainLogs", "string", "the number of raft logs will be retain.", "Yes"
    "walDir", "string", "Path for raft log file storage.", "Yes"
    "storeDir", "string", "Path for RocksDB file storage,path must be exist", "Yes"
@@ -67,7 +68,7 @@ CubeFS use **JSON** as configuration file format.
     "storeDir":"/cfs/master/data/store",
     "exporterPort": 9500,
     "consulAddr": "http://consul.prometheus-cfs.local",
-    "clusterName":"chubaofs01",
+    "clusterName":"cubefs01",
     "metaNodeReservedMem": "1073741824"
    }
 

@@ -41,7 +41,7 @@ Set volume parameters by following:
 
 .. code-block:: bash
 
-   #get current iops, default:-1(no limits on iops)：
+   #get current iops, default:-1(no limits on iops):
    $ http://[ClientIP]:[ProfPort]/rate/get
    #set iops
    $ http://[ClientIP]:[ProfPort]/rate/set?write=800&read=800

@@ -3,6 +3,7 @@ Cluster
 
 Overview
 --------
+Call the API provided by the masterNode for cluster management. The ip and port addresses in the curl command are the ip and listen options in masterNode configuration file, respectively.
 
 .. code-block:: bash
 
@@ -16,22 +17,40 @@ response
 .. code-block:: json
 
    {
-       "Name": "test",
-       "LeaderAddr": "10.196.59.198:17010",
-       "DisableAutoAlloc": false,
-       "Applied": 225,
-       "MaxDataPartitionID": 100,
-       "MaxMetaNodeID": 3,
-       "MaxMetaPartitionID": 1,
-       "DataNodeStatInfo": {},
-       "MetaNodeStatInfo": {},
-       "VolStatInfo": {},
-       "BadPartitionIDs": {},
-       "BadMetaPartitionIDs": {},
-       "MetaNodes": {},
-       "DataNodes": {}
-   }
+    "code":0,
+    "data":{
+        "Applied":886268,
+        "BadMetaPartitionIDs":[
 
+        ],
+        "BadPartitionIDs":[
+
+        ],
+        "DataNodeStatInfo":{
+
+        },
+        "DataNodes":[
+
+        ],
+        "DisableAutoAlloc":false,
+        "LeaderAddr":"127.0.0.1:17010",
+        "MaxDataPartitionID":735,
+        "MaxMetaNodeID":57,
+        "MaxMetaPartitionID":59,
+        "MetaNodeStatInfo":{
+
+        },
+        "MetaNodeThreshold":0.75,
+        "MetaNodes":[
+
+        ],
+        "Name":"cluster",
+        "VolStatInfo":[
+
+        ]
+    },
+    "msg":"success"
+   }
 
 Freeze
 ------
@@ -40,7 +59,7 @@ Freeze
 
    curl -v "http://10.196.59.198:17010/cluster/freeze?enable=true"
 
-If cluster is freezed, the vol never allocates dataPartitions automatically.
+If cluster is freezed, the vol never allocates dataPartitions.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
@@ -177,7 +196,7 @@ response
         }
     ]
 
-Get Node Info
+Get Cluster Info
 ----------------------
 
 .. code-block:: bash
@@ -196,11 +215,14 @@ response
         "data": {
             "batchCount": 0,
             "deleteWorkerSleepMs": 0,
+            "autoRepairRate": "0",
+            "loadFactor": "0",
+            "maxDpCntLimit": "0",
             "markDeleteRate": 0
         }
     }
 
-Set Node Info
+Set Cluster Info
 -------------------
 
 .. code-block:: bash
@@ -212,10 +234,12 @@ Set node info of cluster.
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
 
-   "autoRepairRate", "uint64", "dataNode auto repair rate"
    "batchCount", "uint64", "metanode delete batch count"
    "deleteWorkerSleepMs", "uint64", "metanode delete worker sleep time with millisecond. if 0 for no sleep"
-   "loadFactor", "uint64", "load factor"
    "markDeleteRate", "uint64", "datanode batch markdelete limit rate. if 0 for no infinity limit"
-   "maxDpCntLimit", "uint64", "maximum number of dp on each datanode, default 3000, 0 represents setting to default"
+   "autoRepairRate", "uint64", "datanode上同时修复的extent个数"
+   "deleteWorkerSleepMs", "uint64", "sleep interval after delete, used to control delete rate"
+   "loadFactor", "uint64", "cluster oversold factor, default 0, means no limit"
+   "maxDpCntLimit", "uint64", "max datapartition count limit for datanode, default 3000"
+
 

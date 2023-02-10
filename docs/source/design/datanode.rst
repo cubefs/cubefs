@@ -1,7 +1,7 @@
-Data Subsystem
+Replica Subsystem
 ===================
 
-The data subsystem is optimized for the storage of large and small files, which can be accessed in a sequential or random fashion.
+The replica-subsystem is optimized for the storage of large and small files, which can be accessed in a sequential or random fashion, can be used to build distributed cache for ec-volume.
 
 .. image:: ../pic/data-subsystem.png
    :align: center
@@ -39,6 +39,7 @@ The contents of multiple small files are aggregated and stored in a single exten
 - Failure Recovery
 
   Because of the existence of two different replication protocols, when a failure on a replica is discovered, we first start the recovery process in the primary-backup-based replication by checking the length of each extent and making all extents aligned. Once this processed is finished, we then start the recovery process in our MultiRaft-based replication.
+
 
 HTTP APIs
 -----------

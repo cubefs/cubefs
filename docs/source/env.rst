@@ -6,7 +6,16 @@ Environment Requirements
 --------------------------
 
 The following table lists the system and hardware requirements of the performance test environment and production environment. You can also refer to the capacity planning chapter to accurately customize the deployment plan based on your cluster's actual capacity planning.
-Note that since the DataNode used some features of linux kernal, so that the kernel version of servers which used for deploy DataNode must be later than 3.10.
+Note that since the DataNode used Punch Hole features of linux kernal, so that the kernel version of servers which used for deploy DataNode are recommended as follow.
+
+.. csv-table::
+   :header: "FileSystem", "Kernel Version Requirement"
+
+   "XFS",">=2.6.38"
+   "ext4",">=3.0"
+   "Btrfs",">=3.7"
+   "tmpfs(5)",">=3.5"
+   "gfs2(5)",">=4.16"
 
 In order to speed up read and write of meta data, the meta data is stored in memory, while the DataNode mainly occupies disk resources. To maximize the use of node resources, you can mix-deploy DataNode and MetaNode on the same node.
 

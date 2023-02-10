@@ -8,7 +8,7 @@ As the CLI continues to improve, it will eventually achieve 100% coverage of the
 Compile and Configure
 -----------------------
 
-After downloading the CubeFS source code, execute the command ``go build`` in the directory ``chubaofs/cli`` to generate ``cli``.
+After downloading the CubeFS source code, execute the command ``go build`` in the directory ``cubefs/cli`` to generate ``cli``.
 
 At the same time, a configuration file named ``.cfs-cli.json`` will be generated in the directory ``root``, and the master address can be changed to the current cluster master address. You can also get or set the master address by executing the command ``./cli config info`` or ``./cli config set``.
 
@@ -20,7 +20,7 @@ The logs of ``cfs-cli`` tool are in the directory ``/tmp/cfs/cli``, which offer 
 Usage
 ---------
 
-In the directory ``chubaofs/cli``, execute the command ``./cli --help`` or ``./cli -h`` to get the CLI help document.
+In the directory ``cubefs/cli``, execute the command ``./cli --help`` or ``./cli -h`` to get the CLI help document.
 
 CLI is mainly divided into seven types of management commands.
 
@@ -36,7 +36,6 @@ CLI is mainly divided into seven types of management commands.
    "cli completion", "Generating bash completions "
    "cli volume, vol", "Manage cluster volumes"
    "cli user", "Manage cluster users"
-   "cli compatibility", "Compatibility test"
 
 Cluster Management
 >>>>>>>>>>>>>>>>>>>>>>>
@@ -57,6 +56,10 @@ Cluster Management
 
     ./cli cluster threshold [float]     #Set the threshold of memory on each meta node.
 
+.. code-block:: bash
+
+    ./cli cluster cluster set [flags]    #Set the parameters for clustedr.
+
 MetaNode Management
 >>>>>>>>>>>>>>>>>>>>>
 
@@ -72,6 +75,9 @@ MetaNode Management
 
     ./cli metanode decommission [Address] #Decommission partitions in a meta node to other nodes
 
+.. code-block:: bash
+
+    ./cfs-cli metanode migrate [srcAddress] [dstAddress] #Migrate meta partitions from source metanode to target metanode
 
 DataNode Management
 >>>>>>>>>>>>>>>>>>>>>>
@@ -87,6 +93,10 @@ DataNode Management
 .. code-block:: bash
 
    ./cli datanode decommission [Address]   #Decommission partitions in a data node to other nodes
+
+.. code-block:: bash
+
+    ./cfs-cli datanode migrate [srcAddress] [dstAddress] #Migrate data partitions from source datanode to target datanode
 
 DataPartition Management
 >>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -143,10 +153,11 @@ Config Management
 
 .. code-block:: bash
 
-    ./cli config set [flags]    #Set configurations of cli
+    ./cfs-cli config set [flags] #set config info
     Flags:
-        --addr      string      #Specify master address [{HOST}:{PORT}]
-        --timeout   uint16      #Specify timeout for requests [Unit: s] (default 60)
+        --addr string      Specify master address [{HOST}:{PORT}]
+    -h, --help             help for set
+        --timeout uint16   Specify timeout for requests [Unit: s]
 
 Completion Management
 >>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -162,11 +173,28 @@ Volume Management
 
     ./cli volume create [VOLUME NAME] [USER ID] [flags]     #Create a new volume
     Flags:
-        --capacity uint                                     #Specify volume capacity [Unit: GB] (default 10)
-        --dp-size  uint                                     #Specify size of data partition size [Unit: GB] (default 120)
-        --follower-read                                     #Enable read form replica follower (default true)
-        --mp-count int                                      #Specify init meta partition count (default 3)
-        -y, --yes                                           #Answer yes for all questions
+         --cache-action int          Specify low volume cacheAction (default 0)
+         --cache-capacity int        Specify low volume capacity[Unit: GB]
+         --cache-high-water int       (default 80)
+         --cache-low-water int        (default 60)
+         --cache-lru-interval int    Specify interval expiration time[Unit: min] (default 5)
+         --cache-rule-key string     Anything that match this field will be written to the cache
+         --cache-threshold int       Specify cache threshold[Unit: byte] (default 10485760)
+         --cache-ttl int             Specify cache expiration time[Unit: day] (default 30)
+         --capacity uint             Specify volume capacity (default 10)
+         --crossZone string          Disable cross zone (default "false")
+         --description string        Description
+         --ebs-blk-size int          Specify ebsBlk Size[Unit: byte] (default 8388608)
+         --follower-read string      Enable read form replica follower (default "true")
+     -h, --help                      help for create
+         --mp-count int              Specify init meta partition count (default 3)
+         --normalZonesFirst string   Write to normal zone first (default "false")
+         --replica-num int           Specify data partition replicas number (default 3)
+         --size int                  Specify data partition size[Unit: GB] (default 120)
+         --vol-type int              Type of volume (default 0)
+     -y, --yes                       Answer yes for all questions
+         --zone-name string          Specify volume zone name
+
 
 .. code-block:: bash
 
@@ -192,10 +220,28 @@ Volume Management
 .. code-block:: bash
 
     ./cli volume transfer [VOLUME NAME] [USER ID] [flags]   #Transfer volume to another user. (Change owner of volume)
-    Flags：
+    Flags:
         -f, --force                                         #Force transfer without current owner check
         -y, --yes                                           #Answer yes for all questions
 
+.. code-block:: bash
+
+    ./cli volume update                                     #Update cluster volumes parameters
+    Flags:
+        --cache-action string      Specify low volume cacheAction (default 0)
+        --cache-capacity string    Specify low volume capacity[Unit: GB]
+        --cache-high-water int      (default 80)
+        --cache-low-water int       (default 60)
+        --cache-lru-interval int   Specify interval expiration time[Unit: min] (default 5)
+        --cache-rule string        Specify cache rule
+        --cache-threshold int      Specify cache threshold[Unit: byte] (default 10M)
+        --cache-ttl int            Specify cache expiration time[Unit: day] (default 30)
+        --capacity uint            Specify volume datanode capacity [Unit: GB]
+        --description string       The description of volume
+        --ebs-blk-size int         Specify ebsBlk Size[Unit: byte]
+        --follower-read string     Enable read form replica follower (default false)
+        -y, --yes               Answer yes for all questions
+        --zonename string   Specify volume zone name
 
 User Management
 >>>>>>>>>>>>>>>>>
@@ -203,7 +249,7 @@ User Management
 .. code-block:: bash
 
     ./cli user create [USER ID] [flags]         #Create a new user
-    Flags：
+    Flags:
         --access-key string                     #Specify user access key for object storage interface authentication
         --secret-key string                     #Specify user secret key for object storage interface authentication
         --password string                       #Specify user password
@@ -213,7 +259,7 @@ User Management
 .. code-block:: bash
 
     ./cli user delete [USER ID] [flags]         #Delete specified user
-    Flags：
+    Flags:
         -y, --yes                               #Answer yes for all questions
 
 .. code-block:: bash
@@ -232,32 +278,9 @@ User Management
 .. code-block:: bash
 
     ./cli user update [USER ID] [flags]         #Update information about specified user
-    Flags：
+    Flags:
         --access-key string                     #Update user access key
         --secret-key string                     #Update user secret key
         --user-type string                      #Update user type [normal | admin]
         -y, --yes                               #Answer yes for all questions
 
-
-Compatibility Test
->>>>>>>>>>>>>>>>>>>>>>>>
-
-.. code-block:: bash
-
-    ./cli cptest meta [Snapshot Path] [Host] [Partition ID]         #Metadata compatibility test
-    Parameters：
-            [Snapshot Path] string                     #The path which snapshot file located
-            [Host] string                              #The metanode host which generated the snapshot file
-            [Partition ID] string                      #The meta partition ID which to be compared
-
-Example:
-
-    1. Use the old version to prepare metadata, stop writing metadata,after waiting for the latest snapshot to be generated(about 5 minutes), copy the snapshot file to the local machine
-    2. Execute the metadata comparison command on local machine
-
-    .. code-block:: bash
-
-        [Verify result]
-        All dentry are consistent
-        All inodes are consistent
-        All meta has checked

@@ -36,7 +36,7 @@ fuse.json
    "owner", "string", "Owner name as authentication", "Yes"
    "masterAddr", "string", "Resource manager IP address", "Yes"
    "logDir", "string", "Path to store log files", "No"
-   "logLevel", "string", "Log level：debug, info, warn, error", "No"
+   "logLevel", "string", "Log level:debug, info, warn, error", "No"
    "profPort", "string", "Golang pprof port", "No"
    "exporterPort", "string", "Performance monitor port", "No"
    "consulAddr", "string", "Performance monitor server address", "No"
@@ -62,6 +62,7 @@ fuse.json
    "enablePosixACL", "bool", "Enable posix ACL support. False by default.", "No"
    "enableSummary", "bool", "Enable content summary. False by default.", "No"
    "enableUnixPermission", "bool", "Enable unix permission check support. False by default.", "No"
+   "enableBcache", "bool", "Enable block cache, False by default", "No"
 
 Mount
 -----
@@ -77,15 +78,6 @@ Unmount
 
 It is recommended to use standard Linux ``umount`` command to terminate the mount.
 
-Live Upgrade
-------------
-
-.. code-block:: bash
-
-   ./cfs-client -c fuse.json -r -p 27510
-
-Before live-upgrading, old cfs-client is running with profPort 27510. ``-p 27510`` tells new cfs-client to communicate with old cfs-client through port 27510.
-
 DataPartitionSelector
 ---------------------
 
@@ -98,3 +90,97 @@ Custom can modify ``DataPartitionSelector`` through master API, and do not need 
     curl 'http://masterIP:Port/vol/update?name=volName&authKey=VolKey&dpSelectorName=a&dpSelectorParm=b'
 
 ``dpSelectorName`` and ``dpSelectorParm`` must be modified at the same time.
+
+Preload
+--------
+
+Execute the following command to preload the file or directory:
+
+.. code-block:: bash
+
+   ./cfs-preload -c preload.json
+
+.. code-block:: json
+
+   {
+      "target":"/", 
+      "volumeName": "cold4",
+      "masterAddr": "10.177.69.105:17010,10.177.69.106:17010,10.177.117.108:17010",
+      "logDir": "/mnt/hgfs/share/cfs-client-test",
+      "logLevel": "debug",
+      "ttl": "100",
+      "replicaNum": "1",
+      "zones": "",
+      "action":"clear",
+      "traverseDirConcurrency":"4",
+      "preloadFileConcurrency":"10",
+      "preloadFileSizeLimit":"10737418240",
+      "readBlockConcurrency":"10"
+      "prof":"27520"
+   }
+
+
+.. csv-table:: Supported Configurations
+   :header: "Name", "Type", "Description", "Mandatory"
+
+    "target", "string", "The file or directory to preload", "Yes"
+    "volName", "string", "Volume name", "Yes"
+    "masterAddr", "string", "Resource manager IP address", "Yes"
+    "logDir", "string", "Path to store log files", "Yes"
+    "logLevel", "string", "Log level:debug, info, warn, error", "Yes"
+    "ttl", "string", "TTL for preload cache", "Yes"
+    "action", "string", "Preload behavior:clear-clears preload cache;preload-preload data to cache", "Yes"
+    "replicaNum", "string", "Copy numbers for preload cache(1-16)", "No"
+    "zones", "string", "Zone name for preload cache", "No"
+    "traverseDirConcurrency", "string", "Concurrency for traversing directory task", "No"
+    "preloadFileConcurrency", "string", "Concurrency for preloading file task", "No"
+    "preloadFileSizeLimit", "string", "The threshold for preloading files，Only files with a file size lower than this threshold can be preloaded", "No"
+    "readBlockConcurrency", "string", "Concurrency for reading blocks from ec volume task", "No"
+    "prof", "string", "Golang pprof port", "No"
+
+
+Block Cache
+--------
+
+The local read cache service deployed on the user client side is not recommended for scenarios where the data set is modified and written, and requires strong consistency.
+After deploying the cache, the client needs to add the following mount parameters, and the cache can take effect after remounting.
+
+.. code-block:: json
+
+   {
+       "maxStreamerLimit":"10000000",
+       "bcacheDir":"/home/service/mnt"
+   }
+
+
+.. csv-table:: Client Cache Configurations 
+   :header: "Name", "Type", "Description", "Mandatory"
+
+    "maxStreamerLimit", "string", "Number of file metadata caches", "Yes"
+    "bcacheDir", "string", "The directory path where read caching needs to be enabled", "Yes"
+
+Command
+^^^^^^^^^^^
+
+.. code-block:: bash
+
+   ./cfs-bcache -c bcache.json
+
+Config
+^^^^^^^^^^^
+
+.. code-block:: json
+
+   {
+      "cacheDir":"/home/service/var:1099511627776",
+      "logDir":"/home/service/var/logs/cachelog",
+      "logLevel":"warn"
+   }
+
+
+.. csv-table:: Supported Configurations
+   :header: "Name", "Type", "Description", "Mandatory"
+
+    "logDir", "string", "Path to store log files", "No"
+    "logLevel", "string", "Log level:debug, info, warn, error", "No"
+    "bcacheDir", "string", "Path to store data block files(Maximum cache capacity, unit is Byte)", "Yes for BlockCache"

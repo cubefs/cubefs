@@ -4,7 +4,7 @@ Data Subsystem
 How To Start DataNode
 ---------------------
 
-Start a DataNode process by execute the server binary of CubeFS you built with ``-c`` argument and specify configuration file. At least 4 data nodes are required in respect to high availability.
+Start a DataNode process by execute the server binary of CubeFS you built with ``-c`` argument and specify configuration file. Usually, the number of datanode instances needs to be more than three, but in a production environment, in order to consider disaster recovery backup, at least four datanode instances are required.
 
 .. code-block:: bash
 

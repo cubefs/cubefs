@@ -4,7 +4,7 @@ Contributing to CubeFS
 Bug Reports
 -----------
 
-Please make sure the bug is not already reported by `searching the repository <https://github.com/cubefs/cubefs/search?q=&type=Issues&utf8=%E2%9C%93>`_ with reasonable keywords. Then, `open an issue <https://github.com/cubefs/cubefs/issues>`_ with steps to reproduce.
+Please make sure the bug is not already reported by `searching the repository <https://github.com/cubeFS/cubefs/search?q=&type=Issues&utf8=%E2%9C%93>`_ with reasonable keywords. Then, `open an issue <https://github.com/cubeFS/cubefs/issues>`_ with steps to reproduce.
 
 Patch Guidelines
 ----------------

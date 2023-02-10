@@ -12,6 +12,7 @@ Resource Manager (Master) API
    admin-api/master/data-partition
    admin-api/master/management
    admin-api/master/user
+   admin-api/master/failureDomain
    
 Meta Node API
 ===================
@@ -22,6 +23,18 @@ Meta Node API
    admin-api/metanode/partition
    admin-api/metanode/inode
    admin-api/metanode/dentry
+
+BlobStore API
+=============
+
+.. toctree::
+   :maxdepth: 2
+   :caption: BlobStore
+
+   admin-api/blobstore/blobnode
+   admin-api/blobstore/clustermgr
+   admin-api/blobstore/scheduler
+   admin-api/blobstore/cli
 
 Command Line Interface
 ========================

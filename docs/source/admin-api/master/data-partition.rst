@@ -81,18 +81,3 @@ Send load task to the dataNode which data partition locate on, then check the cr
    :header: "Parameter", "Type", "Description"
    
    "id", "uint64", "the  id of data partition"
-
-Offline Disk
--------------
-
-.. code-block:: bash
-
-   curl -v "http://10.196.59.198:17010/disk/decommission?addr=10.196.59.201:17310&disk=/cfs1"
-
-Synchronously offline all the data partitions on the disk, and create a new replica for each data partition in the cluster.
-
-.. csv-table:: Parameters
-   :header: "Parameter", "Type", "Description"
-
-   "addr", "string", "replica address"
-   "disk", "string", "disk path"

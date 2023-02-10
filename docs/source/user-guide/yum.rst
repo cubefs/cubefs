@@ -5,7 +5,7 @@ Yum tools to run a CubeFS cluster for CentOS 7+ is provided. The list of RPM pac
 
 .. code-block:: bash
 
-    $ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.0.0/cfs-install-3.0.0-el7.x86_64.rpm
+    $ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.2.0/cfs-install-3.2.0-el7.x86_64.rpm
     $ cd /cfs/install
     $ tree -L 2
     .
@@ -28,7 +28,7 @@ Yum tools to run a CubeFS cluster for CentOS 7+ is provided. The list of RPM pac
 
 Set parameters of the CubeFS cluster in **iplist**.
 
-- **[master]**, **[datanode]** , **[metanode]** , **[console]**, **[monitor]** , **[client]** modules includes member IP addresses of each role.
+- **[master]**, **[datanode]** , **[metanode]** , **[monitor]** , **[client]** modules includes member IP addresses of each role.
 
 - **[cfs:vars]** module includes parameters for SSH connection. So make sure the port, username and password for SSH connection is unified before start.
 
@@ -98,15 +98,6 @@ Set parameters of the CubeFS cluster in **iplist**.
    "objectnode_exporterPort", "string", "Port for monitor system", "No"
    "objectnode_enableHTTPS", "string", "Enable HTTPS", "Yes"
 
-- **#console config** module includes parameters of Console.
-
-.. csv-table:: Properties
-   :header: "Key", "Type", "Description", "Mandatory"
-
-   "console_logDir", "string", "Path for log file storage", "Yes"
-   "console_logLevel", "string", "Level operation for logging. Default is *info*", "No"
-   "console_listen", "string", "Port of TCP network to be listen, default is 80", "Yes"
-
 - **#client config** module includes parameters of Client.
 
 .. csv-table:: Properties
@@ -146,23 +137,22 @@ Set parameters of the CubeFS cluster in **iplist**.
     ...
     #objectnode config
     ...
-    #console config
-    ...
 
 For more configurations, please refer to :doc:`master`; :doc:`metanode`; :doc:`datanode`; :doc:`client`; :doc:`monitor`; :doc:`console`.
+CubeFS supports depoly multi-module on the same server. Pay attention to modifying the port configuration of each module to avoid port conflicts in this way.
 
 Start the resources of CubeFS cluster with script **install.sh** . (make sure the Master is started first)
 
 .. code-block:: bash
 
     $ bash install.sh -h
-    Usage: install.sh -r | --role [datanode | metanode | master | objectnode | console | monitor | client | all | createvol ]
+    Usage: install.sh -r | --role [datanode | metanode | master | objectnode | monitor | client | all | createvol ]
     $ bash install.sh -r master
     $ bash install.sh -r metanode
     $ bash install.sh -r datanode
     $ bash install.sh -r objectnode
-    $ bash install.sh -r console
     $ bash install.sh -r monitor
+    $ bash install.sh -r createvol
     $ bash install.sh -r client
 
 Check mount point at **/cfs/mountpoint** on **client** node defined in **iplist** .

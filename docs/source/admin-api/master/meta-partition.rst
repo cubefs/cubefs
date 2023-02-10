@@ -9,7 +9,16 @@ Create
    curl -v "http://10.196.59.198:17010/metaPartition/create?name=test&start=10000"
 
 
-Split meta partition manually. If max meta partition of the vol which range is ``[0,end)`` and ``end`` larger than ``start`` parameter, old meta partition range will be ``[0,start]``, new meta partition will be ``[start+1,end)``.
+Split meta partition manually. If max meta partition of the vol which range is ``[begin,end)``:
+
+if ``start`` larger than ``begin`` and less than ``end`` parameter, old meta partition range will be ``[begin,start]``, new meta partition will be ``[start+1,end)``;
+
+if ``start`` less than ``begin``, ``max`` is the biggest inode num in current mp, old meta partition range will be ``[begin,max+16777216]``, new meta partition will be ``[max+16777217,inf)``;
+
+if ``start`` bigger than ``end``, old meta partition range will be ``[begin,start]``, new meta partition will be ``[start+1,inf)``;
+so, *if start is too big, that will cause inode count in one partition too many, which will cost large memory*.
+
+when inode count is too big on the last meta partition, it will trigger partition range split automatically
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
