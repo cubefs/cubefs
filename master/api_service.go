@@ -3457,14 +3457,11 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("action[getDataPartitions] tmp is leader[%v]", m.cluster.partition.IsRaftLeader())
 	if !m.cluster.partition.IsRaftLeader() {
 		var ok bool
-		m.cluster.followerReadManager.rwMutex.RLock()
-		if body, ok = m.cluster.followerReadManager.volDataPartitionsView[name]; !ok {
-			m.cluster.followerReadManager.rwMutex.RUnlock()
+		if body, ok = m.cluster.followerReadManager.getVolViewAsFollower(name); !ok {
 			log.LogErrorf("action[getDataPartitions] volume [%v] not get partitions info", name)
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("follower volume info not found")))
 			return
 		}
-		m.cluster.followerReadManager.rwMutex.RUnlock()
 		send(w, r, body)
 		return
 	}
@@ -3716,6 +3713,22 @@ func (m *Server) changeMasterLeader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rstMsg := fmt.Sprintf(" changeMasterLeader. command sucess send to dest host but need check. ")
+	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) OpFollowerPartitionsRead(w http.ResponseWriter, r *http.Request) {
+	var (
+		err            error
+		enableFollower bool
+	)
+	log.LogDebugf("OpFollowerPartitionsRead.")
+	if enableFollower, err = extractStatus(r); err != nil {
+		log.LogErrorf("OpFollowerPartitionsRead.err %v", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+	}
+	m.cluster.followerReadManager.needCheck = enableFollower
+
+	rstMsg := fmt.Sprintf(" OpFollowerPartitionsRead. set needCheck %v command sucess. ", enableFollower)
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 

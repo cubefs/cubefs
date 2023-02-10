@@ -58,6 +58,7 @@ const (
 	AdminSetDpRdOnly                = "/admin/setDpRdOnly"
 	AdminDataPartitionChangeLeader  = "/dataPartition/changeleader"
 	AdminChangeMasterLeader         = "/master/changeleader"
+	AdminOpFollowerPartitionsRead   = "/master/opFollowerPartitionRead"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
