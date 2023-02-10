@@ -15,6 +15,7 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -73,6 +74,7 @@ type followerReadManager struct {
 	volDataPartitionsView map[string][]byte
 	status                map[string]bool
 	lastUpdateTick        map[string]time.Time
+	needCheck             bool
 	rwMutex               sync.RWMutex
 }
 
@@ -109,16 +111,67 @@ func (mgr *followerReadManager) updateVolViewFromLeader(key string, value []byte
 	mgr.rwMutex.Lock()
 	defer mgr.rwMutex.Unlock()
 
+	if !mgr.checkViewContent(key, value, true) {
+		log.LogErrorf("updateVolViewFromLeader. checkViewContent failed")
+		return
+	}
 	log.LogInfof("action[updateVolViewFromLeader] volume %v be updated, value len %v", key, len(value))
 	mgr.volDataPartitionsView[key] = value
 	mgr.status[key] = true
 	mgr.lastUpdateTick[key] = time.Now()
 }
 
+func (mgr *followerReadManager) checkViewContent(volName string, data []byte, isUpdate bool) (ok bool) {
+	if !isUpdate && !mgr.needCheck {
+		return true
+	}
+
+	reply := &struct {
+		Code int32           `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}{}
+
+	view := &proto.DataPartitionsView{}
+
+	log.LogDebugf("volName %v do check content", volName)
+
+	if err := json.Unmarshal(data, reply); err != nil {
+		log.LogErrorf("checkViewContent. umarshal error volName %V", volName)
+		return false
+	}
+	if err := json.Unmarshal(reply.Data, view); err != nil {
+		log.LogErrorf("checkViewContent. umarshal reply.Data error volName %V", volName)
+		return false
+	}
+
+	if len(view.DataPartitions) == 0 {
+		log.LogErrorf("checkViewContent. get nil partitions volName %V", volName)
+		return false
+	}
+	for i := 0; i < len(view.DataPartitions); i++ {
+		dp := view.DataPartitions[i]
+		if len(dp.Hosts) == 0 {
+			log.LogErrorf("checkViewContent. dp id %v, leader %v, status %v", dp.PartitionID, dp.LeaderAddr, dp.Status)
+			ok = false
+		}
+	}
+	log.LogDebugf("checkViewContent. volName %v dp cnt %v check pass", volName, len(view.DataPartitions))
+	return true
+}
+
 func (mgr *followerReadManager) getVolViewAsFollower(key string) (value []byte, ok bool) {
-	mgr.rwMutex.Lock()
-	defer mgr.rwMutex.Unlock()
-	value, ok = mgr.volDataPartitionsView[key]
+	mgr.rwMutex.RLock()
+	defer mgr.rwMutex.RUnlock()
+	if !mgr.status[key] {
+		return
+	}
+	value, _ = mgr.volDataPartitionsView[key]
+	ok = mgr.checkViewContent(key, value, false)
+	if !ok {
+		log.LogWarnf("getVolViewAsFollower. set volume %v not worked!", key)
+		mgr.status[key] = false
+	}
 	return
 }
 
@@ -2082,6 +2135,9 @@ func (c *Cluster) removeHostMember(dp *DataPartition, removePeer proto.Peer) (er
 		}
 		newPeers = append(newPeers, peer)
 	}
+
+	dp.Lock()
+	defer dp.Unlock()
 	if err = dp.update("removeDataPartitionRaftMember", dp.VolName, newPeers, newHosts, c); err != nil {
 		return
 	}

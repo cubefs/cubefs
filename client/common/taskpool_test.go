@@ -174,7 +174,7 @@ func merge(cs []<-chan int) <-chan int {
 	out := make(chan int)
 
 	wg.Add(len(cs))
-	for i, _ := range cs {
+	for i := range cs {
 		cc := cs[i]
 		go func() {
 			for n := range cc {

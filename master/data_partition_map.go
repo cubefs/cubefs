@@ -169,6 +169,10 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpR
 	dpMap.RLock()
 	defer dpMap.RUnlock()
 	for _, dp := range dpMap.partitionMap {
+		if len(dp.Hosts) == 0 {
+			log.LogErrorf("getDataPartitionsView. dp %v host nil", dp.PartitionID)
+			continue
+		}
 		if dp.PartitionID <= minPartitionID {
 			continue
 		}
