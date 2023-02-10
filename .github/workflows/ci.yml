@@ -28,13 +28,13 @@ jobs:
         run: |
           docker/run_docker.sh -t
           docker/run_docker.sh -l
-      - name: Pack docker_data
-        if: ${{ always() }}
-        run: pushd docker && sudo tar --exclude='docker_data/datanode*/disk' --exclude='docker_data/disk' -czvf docker_data.tar.gz docker_data
-      - name: Upload docker_data.tar.gz
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v2
-        with:
-          name: docker_data
-          path: docker/docker_data.tar.gz
-          retention-days: 7
+      # - name: Pack docker_data
+      #   if: ${{ always() }}
+      #   run: pushd docker && sudo tar --exclude='docker_data/datanode*/disk' --exclude='docker_data/disk' -czvf docker_data.tar.gz docker_data
+      # - name: Upload docker_data.tar.gz
+      #   if: ${{ always() }}
+      #   uses: actions/upload-artifact@v2
+      #   with:
+      #     name: docker_data
+      #     path: docker/docker_data.tar.gz
+      #     retention-days: 7
