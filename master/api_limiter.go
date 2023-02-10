@@ -40,7 +40,7 @@ func newApiLimiter() *ApiLimiter {
 }
 
 func (l *ApiLimiter) clear() {
-	for k, _ := range l.limiterInfos {
+	for k := range l.limiterInfos {
 		delete(l.limiterInfos, k)
 	}
 }

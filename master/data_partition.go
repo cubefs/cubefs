@@ -645,6 +645,10 @@ func (partition *DataPartition) getReplicaIndex(addr string) (index int, err err
 }
 
 func (partition *DataPartition) update(action, volName string, newPeers []proto.Peer, newHosts []string, c *Cluster) (err error) {
+	if len(newHosts) == 0 {
+		log.LogErrorf("update. action[%v] update partition[%v] vol[%v] old host[%v]", action, partition.PartitionID, volName, partition.Hosts)
+		return
+	}
 	orgHosts := make([]string, len(partition.Hosts))
 	copy(orgHosts, partition.Hosts)
 	oldPeers := make([]proto.Peer, len(partition.Peers))
@@ -659,7 +663,7 @@ func (partition *DataPartition) update(action, volName string, newPeers []proto.
 	msg := fmt.Sprintf("action[%v] success,vol[%v] partitionID:%v "+
 		"oldHosts:%v newHosts:%v,oldPees[%v],newPeers[%v]",
 		action, volName, partition.PartitionID, orgHosts, partition.Hosts, oldPeers, partition.Peers)
-	log.LogInfo(msg)
+	log.LogWarnf(msg)
 	return
 }
 

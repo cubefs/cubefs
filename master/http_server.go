@@ -64,7 +64,7 @@ func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
 				return
 			}
 		}
-	} else if r.URL.Path == proto.AdminChangeMasterLeader {
+	} else if r.URL.Path == proto.AdminChangeMasterLeader || r.URL.Path == proto.AdminOpFollowerPartitionsRead {
 		followerRead = true
 	}
 	return
@@ -203,7 +203,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminChangeMasterLeader).
 		HandlerFunc(m.changeMasterLeader)
-
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminOpFollowerPartitionsRead).
+		HandlerFunc(m.OpFollowerPartitionsRead)
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetDataNodeTaskResponse).
