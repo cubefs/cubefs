@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	syslog "log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -91,6 +92,8 @@ type fClient struct {
 	mw          *meta.MetaWrapper
 	ec          *data.ExtentClient
 	stderrFd    int
+	profPort    uint64
+	portWg      sync.WaitGroup
 }
 
 type FuseClientState struct {
@@ -209,7 +212,10 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	versionInfo := proto.DumpVersion(gClient.moduleName, BranchName, CommitID, BuildTime)
 	gClient.wg.Add(2)
-	go version.ReportVersionSchedule(cfg, masters, versionInfo, gClient.volName, gClient.stopC, &gClient.wg)
+	go func() {
+		gClient.portWg.Wait()
+		version.ReportVersionSchedule(cfg, masters, versionInfo, gClient.volName, opt.MountPoint, CommitID, gClient.profPort, gClient.stopC, &gClient.wg)
+	}()
 	go func() {
 		defer gClient.wg.Done()
 		var fuseState *fs.FuseContext
@@ -273,15 +279,28 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	http.HandleFunc(ControlUnsetUpgrade, UnsetClientUpgrade)
 	http.HandleFunc(ControlCommandGetUmpCollectWay, GetUmpCollectWay)
 	http.HandleFunc(ControlCommandSetUmpCollectWay, SetUmpCollectWay)
-	var server *http.Server
+	var (
+		server *http.Server
+		lc     net.ListenConfig
+	)
 
 	gClient.wg.Add(2)
+	gClient.portWg.Add(1)
 	go func() {
 		defer gClient.wg.Done()
+		defer func() {
+			gClient.profPort = 0
+		}()
 		if opt.Profport != "" {
 			syslog.Println("Start pprof with port:", opt.Profport)
 			server = &http.Server{Addr: fmt.Sprintf(":%v", opt.Profport)}
-			if err := server.ListenAndServe(); err == nil || err == http.ErrServerClosed {
+			ln, err := lc.Listen(context.Background(), "tcp", server.Addr)
+			if err == nil {
+				gClient.profPort, _ = strconv.ParseUint(opt.Profport, 10, 64)
+				gClient.portWg.Done()
+				if err = server.Serve(ln); err != http.ErrServerClosed {
+					syslog.Printf("Start with config pprof[%v] failed, err: %v", gClient.profPort, err)
+				}
 				return
 			}
 		}
@@ -292,12 +311,20 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 		for port := log.DefaultProfPort; port <= log.MaxProfPort; port++ {
 			syslog.Println("Start pprof with port:", port)
 			server = &http.Server{Addr: fmt.Sprintf(":%v", strconv.Itoa(port))}
-			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			ln, err := lc.Listen(context.Background(), "tcp", server.Addr)
+			if err != nil {
 				syslog.Println("Start pprof err: ", err)
 				continue
 			}
-			break
+			gClient.profPort = uint64(port)
+			gClient.portWg.Done()
+			if err = server.Serve(ln); err != http.ErrServerClosed {
+				syslog.Printf("Start with config pprof[%v] failed, err: %v", gClient.profPort, err)
+			}
+			return
 		}
+		gClient.profPort = 0
+		gClient.portWg.Done()
 	}()
 
 	go func() {

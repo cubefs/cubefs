@@ -25,7 +25,8 @@ var (
 )
 
 const (
-	ClientLib = "/usr/lib64/libcfssdk.so"
+	ClientLib           = "/usr/lib64/libcfssdk.so"
+	CheckUpdateInterval = 5 * time.Second
 )
 
 func loadSym(handle *plugin.Plugin) {
@@ -65,7 +66,7 @@ func main() {
 	}
 	fd := getFuseFd()
 	for {
-		time.Sleep(10 * time.Second)
+		time.Sleep(CheckUpdateInterval)
 		reload := os.Getenv("RELOAD_CLIENT")
 		if reload != "1" && reload != "test" {
 			continue
@@ -75,7 +76,7 @@ func main() {
 		plugin.Close(ClientLib)
 		if reload == "test" {
 			runtime.GC()
-			time.Sleep(10 * time.Second)
+			time.Sleep(CheckUpdateInterval)
 		}
 
 		handle, err = plugin.Open(ClientLib)

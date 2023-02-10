@@ -32,6 +32,8 @@ type VersionInfo struct {
 	TotalConnections int64
 	ZkAddr           string `json:"zkAddr"`
 	VolName          string
+	MountPoint       string
+	CommitID         string
 }
 
 func DumpVersion(role, branchName, commitID, buildTime string) string {
