@@ -320,7 +320,9 @@ func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache bool) e
 		s.isOpen = true
 		log.LogDebugf("open stream again, ino(%v)", s.inode)
 		s.request = make(chan interface{}, 64)
+		s.pendingCache = make(chan bcacheKey, 1)
 		go s.server()
+		go s.asyncBlockCache()
 	}
 	return s.IssueOpenRequest()
 }
@@ -584,7 +586,9 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	if !s.isOpen {
 		s.isOpen = true
 		s.request = make(chan interface{}, 64)
+		s.pendingCache = make(chan bcacheKey, 1)
 		go s.server()
+		go s.asyncBlockCache()
 	}
 	return s
 }

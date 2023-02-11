@@ -21,6 +21,7 @@ import (
 	"golang.org/x/net/context"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
@@ -76,7 +77,7 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
 	s.isOpen = true
-	s.pendingCache = make(chan bcacheKey)
+	s.pendingCache = make(chan bcacheKey, 1)
 	go s.server()
 	go s.asyncBlockCache()
 	return s
@@ -220,7 +221,6 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				select {
 				case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey}:
 				default:
-					log.LogDebugf("bcache pending chan is full,skip. cacheKey =%v,ek=%v bytes", cacheKey, req.ExtentKey)
 				}
 			}
 
@@ -242,9 +242,11 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 }
 
 func (s *Streamer) asyncBlockCache() {
-	if !s.needBCache {
+	if !s.needBCache || !s.isOpen {
 		return
 	}
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
 	for {
 		select {
 		case pending := <-s.pendingCache:
@@ -275,6 +277,10 @@ func (s *Streamer) asyncBlockCache() {
 			}
 			if ek.Size == bcache.MaxBlockSize {
 				buf.BCachePool.Put(data)
+			}
+		case <-t.C:
+			if s.refcnt <= 0 {
+				return
 			}
 		}
 
