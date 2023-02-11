@@ -41,7 +41,8 @@ const (
 	CacheLimit   = "cacheLimit"
 	CacheFree    = "cacheFree"
 	BlockSize    = "blockSize"
-	MaxBlockSize = 128 << 30
+	MaxFileSize  = 128 << 30
+	MaxBlockSize = 128 << 20
 )
 
 var (

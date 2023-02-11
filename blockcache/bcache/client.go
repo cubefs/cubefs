@@ -84,7 +84,7 @@ func (c *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) (
 		return 0, errors.NewErrorf("Failed to write to conn, req(%v) err(%v)", req.CacheKey, err)
 	}
 	stat.EndStat("bcache-get-writeconn", err, bgTime, 1)
-	err = packet.ReadFromConn(*conn, proto.NoReadDeadlineTime)
+	err = packet.ReadFromConn(*conn, 1)
 	if err != nil {
 		log.LogDebugf("Failed to read from conn, req(%v), err(%v)", req.CacheKey, err)
 		return 0, errors.NewErrorf("Failed to read from conn, req(%v), err(%v)", req.CacheKey, err)
