@@ -336,6 +336,9 @@ func main() {
 	if proto.IsCold(opt.VolType) {
 		buf.InitCachePool(opt.EbsBlockSize)
 	}
+	if opt.EnableBcache {
+		buf.InitbCachePool(bcache.MaxBlockSize)
+	}
 	outputFilePath := path.Join(opt.Logpath, LoggerPrefix, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
