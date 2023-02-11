@@ -16,11 +16,11 @@ package stream
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/exporter"
+	"golang.org/x/net/context"
 	"io"
 	"sync"
-
-	"golang.org/x/net/context"
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
@@ -57,6 +57,12 @@ type Streamer struct {
 	writeLock            sync.Mutex
 	inflightL1cache      sync.Map
 	inflightEvictL1cache sync.Map
+	pendingCache         chan bcacheKey
+}
+
+type bcacheKey struct {
+	cacheKey  string
+	extentKey *proto.ExtentKey
 }
 
 // NewStreamer returns a new streamer.
@@ -70,7 +76,9 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
 	s.isOpen = true
+	s.pendingCache = make(chan bcacheKey)
 	go s.server()
+	go s.asyncBlockCache()
 	return s
 }
 
@@ -182,7 +190,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			//skip hole,ek is not nil,read block cache firstly
 			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.needBCache(%v)", s.inode, req, s.client.bcacheEnable, s.needBCache)
 			cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
-			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxBlockSize {
+			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
 				offset := req.FileOffset - int(req.ExtentKey.FileOffset)
 				if s.client.loadBcache != nil {
 					readBytes, err = s.client.loadBcache(cacheKey, req.Data, uint64(offset), uint32(req.Size))
@@ -208,46 +216,15 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				break
 			}
 
-			var needCache = false
-			if _, ok := s.inflightL1cache.Load(cacheKey); !ok && s.client.bcacheEnable && s.needBCache {
-				s.inflightL1cache.Store(cacheKey, true)
-				needCache = true
-			}
-
-			var buf []byte
-			if needCache && filesize <= bcache.MaxBlockSize {
-				//read full extent
-				buf = make([]byte, req.ExtentKey.Size)
-				fullReq := NewExtentRequest(int(req.ExtentKey.FileOffset), int(req.ExtentKey.Size), buf, req.ExtentKey)
-				readBytes, err = reader.Read(fullReq)
-				if err != nil || readBytes != len(buf) {
-					s.inflightL1cache.Delete(cacheKey)
-					log.LogErrorf("ERROR Stream read. read full extent error. fullReq(%v) readBytes(%v) err(%v)", fullReq, readBytes, err)
-					return
-				}
-
-				extentOffset := req.FileOffset - int(req.ExtentKey.FileOffset)
-				readBytes = copy(req.Data, buf[extentOffset:extentOffset+req.Size])
-
-				go func(cacheKey string, buf []byte) {
-					if s.client.cacheBcache != nil {
-						log.LogDebugf("TRACE read. write blockCache cacheKey(%v) len_buf(%v),", cacheKey, len(buf))
-						s.client.cacheBcache(cacheKey, buf)
-					} else {
-						log.LogErrorf("TRACE Stream read. write blockCache is nil,loadBcache(%v)", s.client.loadBcache)
-					}
-					s.inflightL1cache.Delete(cacheKey)
-				}(cacheKey, buf)
-
-				log.LogDebugf("TRACE Stream read. read full extent Exit. fullReq(%v) readBytes(%v) err(%v)", fullReq, readBytes, err)
-			} else {
-				readBytes, err = reader.Read(req)
-				if err != nil || readBytes != req.Size {
-					log.LogErrorf("ERROR Stream read. read error. req(%v) readBytes(%v) err(%v)", req, readBytes, err)
-					return
+			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
+				select {
+				case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey}:
+				default:
+					log.LogDebugf("bcache pending chan is full,skip. cacheKey =%v,ek=%v bytes", cacheKey, req.ExtentKey)
 				}
 			}
 
+			readBytes, err = reader.Read(req)
 			log.LogDebugf("TRACE Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
 
 			total += readBytes
@@ -262,4 +239,44 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 	}
 	//log.LogErrorf("==========> Streamer Read Exit, inode(%v), time[%v us].", s.inode, time.Since(t1).Microseconds())
 	return
+}
+
+func (s *Streamer) asyncBlockCache() {
+	if !s.needBCache {
+		return
+	}
+	for {
+		select {
+		case pending := <-s.pendingCache:
+			ek := pending.extentKey
+			cacheKey := pending.cacheKey
+			log.LogDebugf("asyncBlockCache: cacheKey=(%v) ek=(%v)", cacheKey, ek)
+
+			//read full extent
+			var data []byte
+			if ek.Size == bcache.MaxBlockSize {
+				data = buf.BCachePool.Get()
+			} else {
+				data = make([]byte, ek.Size)
+			}
+			reader, err := s.GetExtentReader(ek)
+			fullReq := NewExtentRequest(int(ek.FileOffset), int(ek.Size), data, ek)
+			readBytes, err := reader.Read(fullReq)
+			if err != nil || readBytes != len(data) {
+				log.LogWarnf("asyncBlockCache: Stream read full extent error. fullReq(%v) readBytes(%v) err(%v)", fullReq, readBytes, err)
+				if ek.Size == bcache.MaxBlockSize {
+					buf.BCachePool.Put(data)
+				}
+				return
+			}
+			if s.client.cacheBcache != nil {
+				log.LogDebugf("TRACE read. write blockCache cacheKey(%v) len_buf(%v),", cacheKey, len(data))
+				s.client.cacheBcache(cacheKey, data)
+			}
+			if ek.Size == bcache.MaxBlockSize {
+				buf.BCachePool.Put(data)
+			}
+		}
+
+	}
 }
