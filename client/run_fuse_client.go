@@ -22,6 +22,7 @@ import (
 var (
 	configFile       = flag.String("c", "", "FUSE client config file")
 	configForeground = flag.Bool("f", false, "run foreground")
+	version          = flag.String("v", "", "Set client version")
 )
 
 const (
@@ -35,12 +36,17 @@ const (
 	AdminGetClientPkgAddr = "/clientPkgAddr/get"
 	RetryTimes            = 5
 	TarNamePre            = "cfs-client-fuse"
+	VersionTarPre         = "cfs-client-libs"
 	AMD64                 = "amd64"
 	ARM64                 = "arm64"
 )
 
 func main() {
 	flag.Parse()
+	if *configFile == "" {
+		fmt.Printf("Usage: %s -c {configFile}\n", os.Args[0])
+		os.Exit(1)
+	}
 	if !checkLibsExist() {
 		masterAddr, err := parseMasterAddr(*configFile)
 		if err != nil {
@@ -53,13 +59,6 @@ func main() {
 			os.Exit(1)
 		}
 
-		tmpPath := TmpLibsPath + fmt.Sprintf("%d", time.Now().Unix())
-		if err = os.MkdirAll(tmpPath, 0777); err != nil {
-			fmt.Printf("%v\n", err)
-			os.Exit(1)
-		}
-		defer os.RemoveAll(tmpPath)
-
 		var tarName string
 		if runtime.GOARCH == AMD64 {
 			tarName = fmt.Sprintf("%s.tar.gz", TarNamePre)
@@ -69,49 +68,16 @@ func main() {
 			fmt.Printf("cpu arch %s not supported", runtime.GOARCH)
 			os.Exit(1)
 		}
-		if err = downloadClientPkg(downloadAddr, tmpPath, tarName); err != nil {
-			fmt.Printf("%v\n", err)
+		if !prepareLibs(downloadAddr, tarName) {
 			os.Exit(1)
 		}
-
-		var fileNames []string
-		if fileNames, err = untar(filepath.Join(tmpPath, tarName), tmpPath); err != nil {
-			fmt.Printf("Untar %s err: %v", tarName, err)
-			os.Exit(1)
-		}
-
-		var checkMap map[string]string
-		if checkMap, err = readCheckfile(filepath.Join(tmpPath, CheckFile)); err != nil {
-			fmt.Printf("Invalid checkfile: %v", err)
-			os.Exit(1)
-		}
-
-		if !checkFiles(fileNames, checkMap, tmpPath) {
-			fmt.Printf("check libs faild\n")
-			os.Exit(1)
-		}
-
-		for _, fileName := range fileNames {
-			if fileName == CheckFile {
-				continue
+		if *version != "" {
+			if runtime.GOARCH == AMD64 {
+				tarName = fmt.Sprintf("%s_%s.tar.gz", VersionTarPre, *version)
+			} else if runtime.GOARCH == ARM64 {
+				tarName = fmt.Sprintf("%s_%s_%s.tar.gz", VersionTarPre, ARM64, *version)
 			}
-
-			src := filepath.Join(tmpPath, fileName)
-			dst := filepath.Join(FuseLibsPath, fileName+".tmp")
-			if err = moveFile(src, dst); err != nil {
-				fmt.Printf("%v\n", err.Error())
-				os.Exit(1)
-			}
-		}
-
-		for _, fileName := range fileNames {
-			if fileName == CheckFile {
-				continue
-			}
-			src := filepath.Join(FuseLibsPath, fileName+".tmp")
-			dst := filepath.Join(FuseLibsPath, fileName)
-			if err = os.Rename(src, dst); err != nil {
-				fmt.Printf("%v\n", err.Error())
+			if !prepareLibs(downloadAddr, tarName) {
 				os.Exit(1)
 			}
 		}
@@ -127,11 +93,77 @@ func main() {
 		os.Exit(1)
 	}
 	env := os.Environ()
-	execErr := syscall.Exec(exeFile, os.Args, env)
+	args := make([]string, 0, len(os.Args))
+	for i := 0; i < len(os.Args); i++ {
+		if os.Args[i] == "-v" {
+			i++
+		} else {
+			args = append(args, os.Args[i])
+		}
+	}
+	execErr := syscall.Exec(exeFile, args, env)
 	if execErr != nil {
 		fmt.Printf("exec %s %v error: %v\n", exeFile, os.Args, execErr)
 		os.Exit(1)
 	}
+}
+
+func prepareLibs(downloadAddr, tarName string) bool {
+	var err error
+	tmpPath := TmpLibsPath + fmt.Sprintf("%d", time.Now().Unix())
+	if err = os.MkdirAll(tmpPath, 0777); err != nil {
+		fmt.Printf("%v\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(tmpPath)
+
+	if err = downloadClientPkg(downloadAddr, tmpPath, tarName); err != nil {
+		fmt.Printf("%v\n", err)
+		return false
+	}
+
+	var fileNames []string
+	if fileNames, err = untar(filepath.Join(tmpPath, tarName), tmpPath); err != nil {
+		fmt.Printf("Untar %s err: %v", tarName, err)
+		return false
+	}
+
+	var checkMap map[string]string
+	if checkMap, err = readCheckfile(filepath.Join(tmpPath, CheckFile)); err != nil {
+		fmt.Printf("Invalid checkfile: %v", err)
+		return false
+	}
+
+	if !checkFiles(fileNames, checkMap, tmpPath) {
+		fmt.Printf("check libs faild\n")
+		return false
+	}
+
+	for _, fileName := range fileNames {
+		if fileName == CheckFile {
+			continue
+		}
+
+		src := filepath.Join(tmpPath, fileName)
+		dst := filepath.Join(FuseLibsPath, fileName+".tmp")
+		if err = moveFile(src, dst); err != nil {
+			fmt.Printf("%v\n", err.Error())
+			return false
+		}
+	}
+
+	for _, fileName := range fileNames {
+		if fileName == CheckFile {
+			continue
+		}
+		src := filepath.Join(FuseLibsPath, fileName+".tmp")
+		dst := filepath.Join(FuseLibsPath, fileName)
+		if err = os.Rename(src, dst); err != nil {
+			fmt.Printf("%v\n", err.Error())
+			return false
+		}
+	}
+	return true
 }
 
 func checkLibsExist() bool {

@@ -16,6 +16,7 @@ import (
 var (
 	configFile       = flag.String("c", "", "FUSE client config file")
 	configForeground = flag.Bool("f", false, "run foreground")
+	version          = flag.String("v", "", "Not supported")
 )
 
 var (
@@ -42,6 +43,9 @@ func loadSym(handle *plugin.Plugin) {
 
 func main() {
 	flag.Parse()
+	if *version != "" {
+		fmt.Printf("Not supported '-v'. Ignore.\n")
+	}
 	if !*configForeground {
 		if err := startDaemon(); err != nil {
 			fmt.Printf("%s\n", err)
