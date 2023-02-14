@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -50,6 +51,30 @@ const (
 	AlgRandom
 	maxAlg
 )
+
+var cachedClient = struct {
+	mu    sync.Mutex
+	cache map[string]*cmapi.Client
+}{
+	cache: make(map[string]*cmapi.Client),
+}
+
+func getClusterClient(conf cmapi.Config) *cmapi.Client {
+	hosts := make([]string, len(conf.Hosts))
+	copy(hosts, conf.Hosts[:])
+	sort.Strings(hosts)
+	key := strings.Join(hosts, "-")
+
+	cachedClient.mu.Lock()
+	defer cachedClient.mu.Unlock()
+	cli, ok := cachedClient.cache[key]
+	if ok {
+		return cli
+	}
+	cli = cmapi.New(&conf)
+	cachedClient.cache[key] = cli
+	return cli
+}
 
 // IsValid returns valid algorithm or not.
 func (alg AlgChoose) IsValid() bool {
@@ -205,7 +230,7 @@ func (c *clusterControllerImpl) loadWithConfig() error {
 	for _, cs := range c.config.Clusters {
 		conf := c.config.CMClientConfig
 		conf.Hosts = cs.Hosts
-		cmCli := cmapi.New(&conf)
+		cmCli := getClusterClient(conf)
 
 		stat, err := cmCli.Stat(ctx)
 		if err != nil {
@@ -300,7 +325,7 @@ func (c *clusterControllerImpl) deal(ctx context.Context, available []*cmapi.Clu
 		if allClusters[clusterID].client == nil {
 			conf := c.config.CMClientConfig
 			conf.Hosts = newCluster.Nodes
-			allClusters[clusterID].client = cmapi.New(&conf)
+			allClusters[clusterID].client = getClusterClient(conf)
 		}
 
 		cmCli := allClusters[clusterID].client
