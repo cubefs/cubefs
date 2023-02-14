@@ -45,6 +45,7 @@ const (
 	inoKey           = "ino"
 	clientKey        = "client" // ip:port
 	versionKey       = "version"
+	currentKey       = "current"
 	MaxRetry         = 5
 	forceKey         = "force"
 	CheckFile        = "checkfile"
@@ -252,6 +253,19 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Parse parameter error: %v", err))
 		return
 	}
+
+	vol := r.FormValue(volKey)
+	if vol != "" && vol != c.volName {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume %s is not expected to update", c.volName))
+		return
+	}
+
+	current := r.FormValue(currentKey)
+	if current != "" && current != CommitID {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Current version %s is not expected to update", CommitID))
+		return
+	}
+
 	version := r.FormValue(versionKey)
 	if version == "" {
 		buildFailureResp(w, http.StatusBadRequest, "Invalid version parameter.")
@@ -259,7 +273,7 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if version == CommitID {
-		buildFailureResp(w, http.StatusBadRequest, "Current version is same to expected.")
+		buildSuccessResp(w, fmt.Sprintf("Current version %s is same to expected.", CommitID))
 		return
 	}
 	if NextVersion != "" && version != NextVersion {
@@ -338,6 +352,19 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Parse parameter error: %v", err))
 		return
 	}
+
+	vol := r.FormValue(volKey)
+	if vol != "" && vol != c.volName {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume %s is not expected to update", c.volName))
+		return
+	}
+
+	current := r.FormValue(currentKey)
+	if current != "" && current != CommitID {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Current version %s is not expected to update", CommitID))
+		return
+	}
+
 	version := r.FormValue(versionKey)
 	if version == "" {
 		buildFailureResp(w, http.StatusBadRequest, "Invalid version parameter.")
@@ -345,7 +372,7 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if version == CommitID {
-		buildFailureResp(w, http.StatusBadRequest, "Current version is same to expected.")
+		buildSuccessResp(w, fmt.Sprintf("Current version %s is same to expected.", CommitID))
 		return
 	}
 	if NextVersion != "" && version != NextVersion {
