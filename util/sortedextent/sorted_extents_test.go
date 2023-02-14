@@ -865,6 +865,77 @@ ExtentTruncate:98304
 	})
 }
 
+func TestSortedExtents_PreviousExtentKey(t *testing.T) {
+
+	var se = NewSortedExtents()
+
+	var extentKeys = []proto.ExtentKey{
+		{FileOffset: 10, Size: 40, PartitionId: 1, ExtentId: 1},
+		{FileOffset: 60, Size: 40, PartitionId: 1, ExtentId: 2},
+		{FileOffset: 100, Size: 50, PartitionId: 1, ExtentId: 3},
+	}
+
+	for _, extentKey := range extentKeys {
+		se.Insert(context.Background(), extentKey, 1)
+	}
+
+	type Case struct {
+		FileOffset      uint64
+		ResultExtentKey proto.ExtentKey
+		ResultFound     bool
+	}
+
+	var cases = []Case{
+		{
+			FileOffset:  5,
+			ResultFound: false,
+		},
+		{
+			FileOffset:  10,
+			ResultFound: false,
+		},
+		{
+			FileOffset:  20,
+			ResultFound: false,
+		},
+		{
+			FileOffset:      50,
+			ResultExtentKey: extentKeys[0],
+			ResultFound:     true,
+		},
+		{
+			FileOffset:      55,
+			ResultExtentKey: extentKeys[0],
+			ResultFound:     true,
+		},
+		{
+			FileOffset:  60,
+			ResultFound: false,
+		},
+		{
+			FileOffset:  110,
+			ResultFound: false,
+		},
+		{
+			FileOffset:      160,
+			ResultExtentKey: extentKeys[2],
+			ResultFound:     true,
+		},
+	}
+
+	for i, c := range cases {
+		t.Run(fmt.Sprintf("Case_%v", i+1), func(t *testing.T) {
+			ek, found := se.PreviousExtentKey(c.FileOffset)
+			if found != c.ResultFound || ek != c.ResultExtentKey {
+				t.Fatalf("Result of input [fileOffset: %v] mismatch:\n"+
+					"\texpact [ek: %v, found: %v],\n"+
+					"\tactual [ek: %v, found: %v]",
+					c.FileOffset, c.ResultExtentKey, c.ResultFound, ek, found)
+			}
+		})
+	}
+}
+
 func BenchmarkSortedExtents_InsertRandom_Base100K(b *testing.B) {
 	// 准备一个由100000(10万)个ExtentKey组成的EK链, 每个ExtentKey的数据长度为1024
 	var se = NewSortedExtents()

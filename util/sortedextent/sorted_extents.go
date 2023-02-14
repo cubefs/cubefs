@@ -624,6 +624,25 @@ func (se *SortedExtents) QueryByFileRange(fileOffset uint64, size uint32) (eks [
 	return
 }
 
+// PreviousExtentKey 从ExtentKey链中查找数据尾边界最接近给定FileOffset参数的ExtentKey，
+// 给定的FileOffset必须不与ExtentKey链中现存的任何一个ExtentKey重叠。
+// 该方法用于Data SDK的UsePrevHandler特性。
+// 也可使用该方法确定指定FileOffset是否位于数据空洞。
+func (se *SortedExtents) PreviousExtentKey(fileOffset uint64) (ek proto.ExtentKey, found bool) {
+	se.RLock()
+	defer se.RUnlock()
+	var pos int
+	if pos = findLastNearPosition(se.eks, fileOffset); pos < 0 || pos >= len(se.eks) {
+		return
+	}
+	if pos < len(se.eks)-1 && se.eks[pos+1].FileOffset <= fileOffset && se.eks[pos+1].FileOffset+uint64(se.eks[pos+1].Size) > fileOffset {
+		return
+	}
+	ek = se.eks[pos]
+	found = true
+	return
+}
+
 // This method is based on recursive binary search to find the first overlapping position.
 func findFirstOverlapPosition(eks []proto.ExtentKey, fileOffset uint64) int {
 	switch {
@@ -656,6 +675,44 @@ func findFirstOverlapPosition(eks []proto.ExtentKey, fileOffset uint64) int {
 		off, boost = 0, findFirstOverlapPosition(left, fileOffset)
 	} else {
 		off, boost = mid, findFirstOverlapPosition(right, fileOffset)
+	}
+	if boost >= 0 {
+		return off + boost
+	}
+	return -1
+}
+
+func findLastNearPosition(eks []proto.ExtentKey, fileOffset uint64) int {
+	switch {
+	case len(eks) < 1:
+		return -1
+	case len(eks) == 1:
+		if fileOffset >= eks[0].FileOffset+uint64(eks[0].Size) {
+			return 0
+		} else {
+			return -1
+		}
+	default:
+	}
+
+	if first := eks[0]; fileOffset < first.FileOffset+uint64(first.Size) {
+		return -1
+	}
+
+	if last := eks[len(eks)-1]; fileOffset >= last.FileOffset+uint64(last.Size) {
+		return len(eks) - 1
+	}
+
+	var (
+		mid        = len(eks) / 2
+		left       = eks[:mid]
+		right      = eks[mid:]
+		off, boost int
+	)
+	if rightFirst := right[0]; fileOffset >= rightFirst.FileOffset+uint64(rightFirst.Size) {
+		off, boost = mid, findLastNearPosition(right, fileOffset)
+	} else {
+		off, boost = 0, findLastNearPosition(left, fileOffset)
 	}
 	if boost >= 0 {
 		return off + boost
