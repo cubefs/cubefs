@@ -158,6 +158,7 @@ func (dp *DataPartition) getRemoteReplicaRecoverStatus(ctx context.Context) (rec
 	errSlice := make(map[string]error)
 	var (
 		wg   sync.WaitGroup
+		lock sync.Mutex
 	)
 	for _, host := range hosts {
 		if dp.IsLocalAddress(host) {
@@ -170,6 +171,8 @@ func (dp *DataPartition) getRemoteReplicaRecoverStatus(ctx context.Context) (rec
 			isRecover, err = dp.isRemotePartitionRecover(curAddr)
 
 			ok := false
+			lock.Lock()
+			defer lock.Unlock()
 			if err != nil {
 				errSlice[curAddr] = err
 			} else {
