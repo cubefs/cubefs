@@ -937,6 +937,11 @@ func TestSortedExtents_PreviousExtentKey(t *testing.T) {
 }
 
 func BenchmarkSortedExtents_InsertRandom_Base100K(b *testing.B) {
+
+	var insertContext = ContextWithInsertOption(context.Background(), &InsertOption{
+		SkipDeletedExtentKeyProcess: true,
+	})
+
 	// 准备一个由100000(10万)个ExtentKey组成的EK链, 每个ExtentKey的数据长度为1024
 	var se = NewSortedExtents()
 	var extentID uint64 = 1
@@ -947,7 +952,7 @@ func BenchmarkSortedExtents_InsertRandom_Base100K(b *testing.B) {
 			PartitionId: 1,
 			ExtentId:    extentID,
 		}
-		se.Insert(context.Background(), ek, 1)
+		se.Insert(insertContext, ek, 1)
 		extentID++
 	}
 
@@ -966,7 +971,7 @@ func BenchmarkSortedExtents_InsertRandom_Base100K(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		se.Insert(context.Background(), randomExtentKeys[i], 1)
+		se.Insert(insertContext, randomExtentKeys[i], 1)
 	}
 	b.StopTimer()
 }

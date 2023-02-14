@@ -13,17 +13,40 @@ const (
 	maxDelExtentSetSize = 10000
 )
 
+var (
+	singletonNoopExtentKeySet = &NoopExtentKeySet{}
+)
+
 type DelEkSet interface {
 	Put(ek *proto.ExtentKey, ino, srcType uint64)
 	Put2(ek *proto.ExtentKey, ino, srcType uint64)
     GetDelExtentKeys(eks []proto.ExtentKey) []proto.MetaDelExtentKey
 }
 
+type NoopExtentKeySet struct {}
+
+func (n NoopExtentKeySet) Put(ek *proto.ExtentKey, ino, srcType uint64) {
+	// Do nothing
+}
+
+func (n NoopExtentKeySet) Put2(ek *proto.ExtentKey, ino, srcType uint64) {
+	// Do nothing
+}
+
+func (n NoopExtentKeySet) GetDelExtentKeys(eks []proto.ExtentKey) []proto.MetaDelExtentKey {
+	// Do nothing
+	return nil
+}
+
+func SingletonNoopExtentKeySet() DelEkSet {
+	return singletonNoopExtentKeySet
+}
+
 type ExtentKeySet struct {
 	set []proto.MetaDelExtentKey
 }
 
-func NewExtentKeySet() *ExtentKeySet {
+func NewExtentKeySet() DelEkSet {
     return &ExtentKeySet{make([]proto.MetaDelExtentKey, 0)}
 }
 

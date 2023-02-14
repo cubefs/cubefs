@@ -5,11 +5,37 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
+
+var (
+	ContextKeyInsertOption = reflect.TypeOf(InsertOption{})
+)
+
+type InsertOption struct {
+	SkipDeletedExtentKeyProcess bool
+}
+
+func ContextWithInsertOption(parent context.Context, opt *InsertOption) context.Context {
+	return context.WithValue(parent, ContextKeyInsertOption, opt)
+}
+
+func InsertOptionFromContext(ctx context.Context) (opt *InsertOption) {
+	if ctx == nil {
+		return
+	}
+	if val := ctx.Value(ContextKeyInsertOption); val != nil {
+		if obj, is := val.(*InsertOption); is {
+			opt = obj
+			return
+		}
+	}
+	return
+}
 
 type SortedExtents struct {
 	sync.RWMutex
@@ -123,7 +149,12 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey, ino uin
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
 
-	set := NewExtentKeySet()
+	var set DelEkSet
+	if opt := InsertOptionFromContext(ctx); opt != nil && opt.SkipDeletedExtentKeyProcess {
+		set = SingletonNoopExtentKeySet()
+	} else {
+		set = NewExtentKeySet()
+	}
 	// -------------------------------------------------------------------------------------
 	// Sample:
 	//                        |=============================|

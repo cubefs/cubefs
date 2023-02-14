@@ -25,6 +25,11 @@ import (
 	se "github.com/chubaofs/chubaofs/util/sortedextent"
 )
 
+var (
+	insertExtentKeyOption = &se.InsertOption{SkipDeletedExtentKeyProcess: true}
+	insertExtentKeyContex = se.ContextWithInsertOption(context.Background(), insertExtentKeyOption)
+)
+
 // ExtentRequest defines the struct for the request of read or write an extent.
 type ExtentRequest struct {
 	FileOffset uint64
@@ -128,7 +133,7 @@ func (cache *ExtentCache) Insert(ek *proto.ExtentKey, sync bool) {
 
 func (cache *ExtentCache) insert(ek *proto.ExtentKey, sync bool) {
 	ekEnd := ek.FileOffset + uint64(ek.Size)
-	deleteExtents := cache.root.Insert(nil, *ek, cache.inode)
+	deleteExtents := cache.root.Insert(insertExtentKeyContex, *ek, cache.inode)
 
 	if sync {
 		cache.gen++
