@@ -154,13 +154,10 @@ func (cache *ExtentCache) Pre(offset uint64) (pre *proto.ExtentKey) {
 	cache.RLock()
 	defer cache.RUnlock()
 
-	cache.root.Range(func(ek proto.ExtentKey) bool {
-		if ek.FileOffset >= offset {
-			return false
-		}
+	if ek, found := cache.root.PreviousExtentKey(offset); found {
 		pre = &ek
-		return true
-	})
+		return
+	}
 	return
 }
 
