@@ -331,11 +331,15 @@ func parsePaths(str string) (res []string) {
 	return
 }
 
-func (c *client) rebuild_client_state(clientState *ClientState) {
+func (c *client) rebuild_client_state(clientState *SDKState) {
 	c.cwd = clientState.Cwd
 	c.readOnly = clientState.ReadOnly
 	if clientState.ReadProcs != nil {
 		c.readProcs = clientState.ReadProcs
+	} else if clientState.ReadProcErrMap != nil {
+		for readProc, _ := range clientState.ReadProcErrMap {
+			c.readProcs[readProc] = time.Now().Format("2006-01-02 15:04:05")
+		}
 	}
 
 	for _, v := range clientState.Files {
@@ -493,17 +497,23 @@ type FileState struct {
 	Locked bool
 }
 
+/*
+ *old struct
 type SDKState struct {
-	ClientState *ClientState
-	MetaState   *meta.MetaState
-	DataState   *data.DataState
+	Cwd            string
+	ReadProcErrMap map[string]int
+	Files          []FileState
 }
+*/
 
-type ClientState struct {
-	ReadOnly  bool
-	ReadProcs map[string]string
-	Cwd       string
-	Files     []FileState
+type SDKState struct {
+	Cwd            string
+	ReadProcErrMap map[string]int // to be compatible with old version
+	Files          []FileState
+	ReadOnly       bool
+	ReadProcs      map[string]string
+	MetaState      *meta.MetaState
+	DataState      *data.DataState
 }
 
 /*
@@ -700,14 +710,6 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 			syslog.Printf("Unmarshal sdkState err(%v), sdkState(%s)\n", err, C.GoString(str))
 			return C.int64_t(statusEIO)
 		}
-		if sdkState.ClientState == nil {
-			sdkState.ClientState = &ClientState{}
-			err = json.Unmarshal([]byte(C.GoString(str)), sdkState.ClientState)
-			if err != nil {
-				syslog.Printf("Unmarshal sdkState err(%v), sdkState(%s)\n", err, C.GoString(str))
-				return C.int64_t(statusEIO)
-			}
-		}
 	}
 	c := newClient(conf, C.GoString(configPath))
 	if err := c.start(sdkState.MetaState == nil, sdkState); err != nil {
@@ -715,7 +717,7 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 	}
 
 	if !first_start {
-		c.rebuild_client_state(sdkState.ClientState)
+		c.rebuild_client_state(sdkState)
 	}
 	putClient(c.id, c)
 	return C.int64_t(c.id)
@@ -784,7 +786,9 @@ func cfs_sdk_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
 		return 0
 	}
 
-	sdkState := SDKState{c.saveClientState(), c.mw.SaveMetaState(), c.ec.SaveDataState()}
+	sdkState := c.saveClientState()
+	sdkState.MetaState = c.mw.SaveMetaState()
+	sdkState.DataState = c.ec.SaveDataState()
 	state, err := json.Marshal(sdkState)
 	if err != nil {
 		log.LogErrorf("Marshal sdkState err(%v), sdkState(%v)\n", err, sdkState)
@@ -795,11 +799,15 @@ func cfs_sdk_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
 	return C.size_t(len(c.sdkState) + 1)
 }
 
-func (c *client) saveClientState() *ClientState {
-	clientState := new(ClientState)
+func (c *client) saveClientState() *SDKState {
+	clientState := new(SDKState)
 	clientState.ReadOnly = c.readOnly
-	clientState.ReadProcs = c.readProcs
 	clientState.Cwd = c.cwd
+	clientState.ReadProcs = c.readProcs
+	clientState.ReadProcErrMap = make(map[string]int)
+	for readProc, _ := range c.readProcs {
+		clientState.ReadProcErrMap[readProc] = 0
+	}
 
 	c.fdlock.Lock()
 	fdmap := c.fdmap
