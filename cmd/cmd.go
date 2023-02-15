@@ -34,6 +34,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -66,18 +67,18 @@ const (
 )
 
 const (
-	RoleMaster    = "master"
-	RoleMeta      = "metanode"
-	RoleData      = "datanode"
-	RoleObject    = "objectnode"
-	RoleConsole   = "console"
-	RoleMonitor   = "monitor"
-	RoleConvert   = "convert"
-	RoleSchedule  = "schedulenode"
-	RoleSmart     = "smartvolume"
-	RoleCompact   = "compact"
-	RoleCodec   = "codecnode"
-	RoleEc      = "ecnode"
+	RoleMaster   = "master"
+	RoleMeta     = "metanode"
+	RoleData     = "datanode"
+	RoleObject   = "objectnode"
+	RoleConsole  = "console"
+	RoleMonitor  = "monitor"
+	RoleConvert  = "convert"
+	RoleSchedule = "schedulenode"
+	RoleSmart    = "smartvolume"
+	RoleCompact  = "compact"
+	RoleCodec    = "codecnode"
+	RoleEc       = "ecnode"
 )
 
 const (
@@ -92,8 +93,8 @@ const (
 	ModuleSmart     = "smartVolume"
 	ModuleCompact   = "compact"
 	ModuleDataAgent = "dataAgent"
-	ModuleCodec  = "codecNode"
-	ModuleEc      = "ecNode"
+	ModuleCodec     = "codecNode"
+	ModuleEc        = "ecNode"
 )
 
 const (
@@ -358,7 +359,8 @@ func run() error {
 	// report server version
 	masters := cfg.GetStringSlice(proto.MasterAddr)
 	versionInfo := proto.DumpVersion(module, BranchName, CommitID, BuildTime)
-	go version.ReportVersionSchedule(cfg, masters, versionInfo, "", nil, nil)
+	port, _ := strconv.ParseUint(profPort, 10, 64)
+	go version.ReportVersionSchedule(cfg, masters, versionInfo, "", "", CommitID, port, nil, nil)
 
 	// Block main goroutine until server shutdown.
 	server.Sync()

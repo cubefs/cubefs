@@ -35,7 +35,7 @@
 
 #include "hook.h"
 
-#define CHECK_UPDATE_INTERVAL 10
+#define CHECK_UPDATE_INTERVAL 5
 #define CFS_CFG_PATH "cfs_client.ini"
 #define CFS_CFG_PATH_JED "/export/servers/cfs/cfs_client.ini"
 #define LIB_EMPTY "/usr/lib64/libempty.so"

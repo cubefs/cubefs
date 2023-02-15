@@ -28,7 +28,7 @@ const (
 	DefaultReportAddr = "http://jfs.report.jd.local/version/report"
 )
 
-func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version, volName string, stopC chan struct{}, wg *sync.WaitGroup) {
+func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version, volName, mountPoint, commitID string, port uint64, stopC chan struct{}, wg *sync.WaitGroup) {
 	defer func() {
 		if wg != nil {
 			wg.Done()
@@ -46,7 +46,7 @@ func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version, vol
 		case <-stopC:
 			return
 		case <-timer.C:
-			err := reportVersion(cfg, masterAddr, version, volName)
+			err := reportVersion(cfg, masterAddr, version, volName, mountPoint, commitID, port)
 			if err != nil {
 				log.LogErrorf("[reportVersionSchedule] report version failed, errorInfo(%v)", err)
 			}
@@ -55,32 +55,29 @@ func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version, vol
 	}
 }
 
-func reportVersion(cfg *config.Config, masterAddr []string, version, volName string) (err error) {
-	var (
-		localIp string
-	)
-
+func reportVersion(cfg *config.Config, masterAddr []string, version, volName, mountPoint, commitID string, port uint64) (err error) {
 	// get cluster info
 	if cluster == "" {
 		cluster = getCluster(cfg, masterAddr)
 	}
 
 	// compute client id
-	if localIp == "" || localIp == "unknown" {
-		localIp, err = iputil.GetLocalIPByDial()
-		if err != nil || localIp == "" {
-			localIp = "unknown"
-			log.LogErrorf("[reportVersion] get local ip failed, errorInfo(%v)", err)
-		}
+	var localIp string
+	localIp, err = iputil.GetLocalIPByDial()
+	if err != nil || localIp == "" {
+		localIp = "unknown"
+		log.LogErrorf("[reportVersion] get local ip failed, errorInfo(%v)", err)
 	}
 	timestamp := time.Now().Unix()
-	clientId = fmt.Sprintf("%s@%d", localIp, timestamp)
+	clientId = fmt.Sprintf("%s:%d@%d", localIp, port, timestamp)
 
 	versionInfo := &proto.VersionInfo{
-		ClientId: clientId,
-		Version:  version,
-		ZkAddr:   cluster,
-		VolName:  volName,
+		ClientId:   clientId,
+		Version:    version,
+		ZkAddr:     cluster,
+		VolName:    volName,
+		MountPoint: mountPoint,
+		CommitID:   commitID,
 	}
 	data, err := json.Marshal(versionInfo)
 	if err != nil {

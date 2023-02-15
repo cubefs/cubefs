@@ -403,7 +403,7 @@ func startVersionReporter(cluster, volName string, masters []string) {
 		}{cluster})
 		cfg := config.LoadConfigString(string(cfgStr))
 		gClientManager.wg.Add(1)
-		go version.ReportVersionSchedule(cfg, masters, versionInfo, volName, gClientManager.stopC, &gClientManager.wg)
+		go version.ReportVersionSchedule(cfg, masters, versionInfo, volName, "", CommitID, gClientManager.profPort, gClientManager.stopC, &gClientManager.wg)
 	})
 }
 
@@ -616,6 +616,9 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		gClientManager.wg.Add(2)
 		go func() {
 			defer gClientManager.wg.Done()
+			defer func() {
+				gClientManager.profPort = 0
+			}()
 			i := 0
 			for ; i < 300; i++ {
 				ln, listenErr := lc.Listen(context.Background(), "tcp", server.Addr)
