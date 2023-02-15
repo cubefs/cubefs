@@ -43,7 +43,6 @@ func createDataPartition(vol *Vol, count int, t *testing.T) {
 }
 
 func getDataPartition(id uint64, t *testing.T) {
-
 	reqURL := fmt.Sprintf("%v%v?id=%v",
 		hostAddr, proto.AdminGetDataPartition, id)
 	fmt.Println(reqURL)

@@ -31,8 +31,6 @@ func requestDoExtentRepair() (err error) {
 	default:
 		return
 	}
-
-	return
 }
 
 func fininshDoExtentRepair() {
