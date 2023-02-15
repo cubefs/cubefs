@@ -1,0 +1,70 @@
+%define app_home /usr/local/blobstore
+
+%define __name  @name@
+%define __ver   @version@
+%define __rev   @revision@
+
+Name: %{__name}
+Version: %{__ver}
+Release: %{__rev}
+
+Summary: Built Based-on %{__rev}
+License: Apache
+Group: System Daemons
+
+URL: https://github.com/cubefs/cubefs
+Source0: %{name}-%{version}.tar.gz
+
+BuildRoot: %{_tmppath}/%{name}-%{version}-root
+
+# Disable the building of the debug package
+%define debug_package %{nil}
+
+%description
+A highly reliable, highly available and ultra-large scale distributed storage system.
+
+%prep
+%setup -q -n %{name}-%{version}
+
+%build
+BUILD_BRANCH=%{__ver} GIT_COMMIT=%{__rev} make %{name}
+
+%install
+rm -rf $RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT%{app_home}
+
+# copy files
+install -m 0755 %{_builddir}/%{name}-%{version}/bin/%{name} $RPM_BUILD_ROOT%{app_home}/
+install -m 0644 %{_builddir}/%{name}-%{version}/cmd/%{name}/%{name}.conf $RPM_BUILD_ROOT%{app_home}/
+
+%post
+case "$1" in
+    # This is an initial install.
+    1)
+        nohup %{app_home}/%{name} -f %{app_home}/%{name}.conf >> %{app_home}/%{name}.log 2>&1 &
+    ;;
+    # This is an upgrade.
+    2)
+        killall %{app_home}/%{name} || echo "no process"
+        nohup %{app_home}/%{name} -f %{app_home}/%{name}.conf >> %{app_home}/%{name}.log 2>&1 &
+    ;;
+esac
+
+# Before Uninstall
+%preun
+if [ $1 -eq 0 ]; then
+    killall %{app_home}/%{name} || echo "no process"
+fi
+
+%postun
+    rm -f %{app_home}/%{name}.log
+
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,nobody,nobody)
+%{app_home}/%{name}
+%config(noreplace) %{app_home}/%{name}.conf
+%defattr(-,nobody,nobody)

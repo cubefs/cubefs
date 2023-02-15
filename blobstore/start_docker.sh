@@ -31,9 +31,9 @@ if [ ${num} -le 1 ];then
 fi
 
 # Start the clustermgr
-nohup ./bin/clustermgr -f conf/clustermgr.conf >> ./run/logs/clustermgr.log  2>&1 &
 nohup ./bin/clustermgr -f conf/clustermgr1.conf >> ./run/logs/clustermgr1.log  2>&1 &
 nohup ./bin/clustermgr -f conf/clustermgr2.conf >> ./run/logs/clustermgr2.log  2>&1 &
+nohup ./bin/clustermgr -f conf/clustermgr3.conf >> ./run/logs/clustermgr3.log  2>&1 &
 sleep 5
 num=`ps -ef | egrep "./bin/clustermgr" |  egrep -v "vi|tail|grep" | wc -l`
 if [ $num -ne 3 ]; then
