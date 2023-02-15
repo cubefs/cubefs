@@ -331,10 +331,8 @@ Start Cli
 
 .. code-block:: bash
 
-   ./cli
-
-   # Set access address
-   $> config set Key-Access-PriorityAddrs http://127.0.0.1:9500
+   $> cd ./blobstore
+   $> ./bin/cli -c cli/cli/cli.conf # use cli with default config
 
 
 Verification
@@ -392,12 +390,40 @@ blobstore supports stand-alone deployment, just run the one-click start command.
 2. Container
 ::::::::::::
 
-blobstore support docker container too:
+blobstore support docker container too：
+
+1. pull image on docker cloud[``recommend``]
+
+.. code-block:: bash
+
+    $> docker pull cubefs/cubefs:blobstore-v3.2.0 # pull
+    $> docker run cubefs/cubefs:blobstore-v3.2.0 # run
+    $> ./run_docker.sh -r # run
+    $> docker container ls # list running containers
+       CONTAINER ID        IMAGE                                  COMMAND                  CREATED             STATUS              PORTS               NAMES
+       76100321156b        blobstore:v3.2.0                      "/bin/sh -c /apps/..."   4 minutes ago       Up 4 minutes                            thirsty_kare
+    $> docker exec -it thirsty_kare /bin/bash # enter container
+
+2. local build with shell script
+
+    tips: it maybe need some time to build whole system
 
 .. code-block:: bash
 
     $> cd blobstore
-    $> ./run_docker.sh
+    $> ./run_docker.sh -b # build
+    &> Successfully built 0b29fda1cd22
+       Successfully tagged blobstore:v3.2.0
+    $> ./run_docker.sh -r # run
+    $> ... # same with step 1
+
+cli tools in container
+
+   tips: cli is a command manager of blobstore, can be more convenient to use after initial configuration, and get more help information via ``./bin/cli --help``
+
+.. code-block:: bash
+
+   $> ./bin/cli -c conf/cli.conf
 
 
 Appendix

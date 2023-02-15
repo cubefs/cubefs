@@ -340,14 +340,12 @@ BlobStore部署文档
 启动CLI
 :::::::
 
-在集群中任一台机器启动命名行工具 ``cli`` 后，设置access访问地址即可。
+在集群中任一台机器启动命令行工具 ``cli`` 后，设置access访问地址即可。
 
 .. code-block:: bash
 
-   ./cli # 启动cli 工具进入命名行
-
-   # 用 config 命名 设置access访问地址
-   $> config set Key-Access-PriorityAddrs http://127.0.0.1:9500
+   $> cd ./blobstore
+   $>./bin/cli -c cli/cli/cli.conf # 采用默认配置启动cli 工具进入命令行
 
 验证
 ::::
@@ -406,12 +404,40 @@ blobstore支持单机部署，运行一键启动命令即可，当显示有start
 二、容器部署
 :::::::::::
 
-blobstore支持docker镜像部署，具体操作如下：
+blobstore支持以下docker镜像部署方式：
+
+1. 远端拉取构建【``推荐``】
+
+.. code-block:: bash
+
+    $> docker pull cubefs/cubefs:blobstore-v3.2.0 # 拉取镜像
+    $> docker run cubefs/cubefs:blobstore-v3.2.0 # 运行镜像
+    $> docker container ls # 查看运行中的容器
+       CONTAINER ID        IMAGE                                  COMMAND                  CREATED             STATUS              PORTS               NAMES
+       76100321156b        blobstore:v3.2.0                       "/bin/sh -c /apps/..."   4 minutes ago       Up 4 minutes                            thirsty_kare
+    $> docker exec -it thirsty_kare /bin/bash # 进入容器
+
+
+2. 本地脚本编译构建
+
+  小提示：整个初始编译过程可能需要些时间
 
 .. code-block:: bash
 
     $> cd blobstore
-    $> ./run_docker.sh
+    $> ./run_docker.sh -b # 编译构建
+    &> Successfully built 0b29fda1cd22
+       Successfully tagged blobstore:v3.2.0
+    $> ./run_docker.sh -r # 运行镜像
+    $> ... # 后续步骤同1
+
+cli工具使用
+
+   小提示: cli 是为 blobstore 提供的交互式命令行管理工具, 配置 cli 后能够更方便地使用, 用 help 可以查看帮助信息
+
+.. code-block:: bash
+
+   $> ./bin/cli -c conf/cli.conf
 
 
 附录
