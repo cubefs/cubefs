@@ -73,6 +73,11 @@ func (mp *metaPartition) updateVolWorker() {
 			DataPartitions: make([]*DataPartition, len(view.DataPartitions)),
 		}
 		for i := 0; i < len(view.DataPartitions); i++ {
+			if len(view.DataPartitions[i].Hosts) < 1 {
+				log.LogErrorf("updateVolWorker dp id(%v) is invalid, DataPartitionResponse detail[%v]",
+					view.DataPartitions[i].PartitionID, view.DataPartitions[i])
+				continue
+			}
 			newView.DataPartitions[i] = &DataPartition{
 				PartitionID: view.DataPartitions[i].PartitionID,
 				Status:      view.DataPartitions[i].Status,
@@ -350,6 +355,11 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	}
 
 	// delete the data node
+	if len(dp.Hosts) < 1 {
+		log.LogErrorf("doBatchDeleteExtentsByPartition dp id(%v) is invalid, detail[%v]", ext.PartitionId, dp)
+		err = errors.NewErrorf("dp id(%v) is invalid", ext.PartitionId)
+		return
+	}
 	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
 	conn, err := smuxPool.GetConnect(addr)
 	log.LogInfof("doDeleteMarkedInodes mp (%v) GetConnect (%v), ext(%s)", mp.config.PartitionId, addr, ext.String())
@@ -417,6 +427,11 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 	}
 
 	// delete the data node
+	if len(dp.Hosts) < 1 {
+		log.LogErrorf("doBatchDeleteExtentsByPartition dp id(%v) is invalid, detail[%v]", partitionID, dp)
+		err = errors.NewErrorf("dp id(%v) is invalid", partitionID)
+		return
+	}
 	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
 	conn, err := smuxPool.GetConnect(addr)
 	log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
