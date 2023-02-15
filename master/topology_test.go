@@ -2,9 +2,10 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/util"
 )
 
 func createDataNodeForTopo(addr, zoneName string, ns *nodeSet) (dn *DataNode) {
@@ -75,6 +76,7 @@ func TestAllocZones(t *testing.T) {
 	zoneName1 := "zone1"
 	zone1 := newZone(zoneName1)
 	nodeSet1 := newNodeSet(c, 1, 6, zoneName1)
+
 	zone1.putNodeSet(nodeSet1)
 	topo.putZone(zone1)
 	topo.putDataNode(createDataNodeForTopo(mds1Addr, zoneName1, nodeSet1))
@@ -83,6 +85,7 @@ func TestAllocZones(t *testing.T) {
 	zoneName2 := "zone2"
 	zone2 := newZone(zoneName2)
 	nodeSet2 := newNodeSet(c, 2, 6, zoneName2)
+
 	zone2.putNodeSet(nodeSet2)
 	topo.putZone(zone2)
 	topo.putDataNode(createDataNodeForTopo(mds3Addr, zoneName2, nodeSet2))
@@ -91,6 +94,7 @@ func TestAllocZones(t *testing.T) {
 	zoneName3 := "zone3"
 	zone3 := newZone(zoneName3)
 	nodeSet3 := newNodeSet(c, 3, 6, zoneName3)
+
 	zone3.putNodeSet(nodeSet3)
 	topo.putZone(zone3)
 	topo.putDataNode(createDataNodeForTopo(mds5Addr, zoneName3, nodeSet3))

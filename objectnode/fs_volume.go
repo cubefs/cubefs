@@ -20,9 +20,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"github.com/cubefs/cubefs/metanode"
-	"github.com/cubefs/cubefs/sdk/data/blobstore"
-	"github.com/cubefs/cubefs/sdk/master"
 	"hash"
 	"io"
 	"os"
@@ -30,6 +27,10 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/cubefs/cubefs/metanode"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
+	"github.com/cubefs/cubefs/sdk/master"
 
 	"crypto/md5"
 	"time"
@@ -1517,7 +1518,7 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 	}
 
 	ctx := context.Background()
-	context.WithValue(ctx, "objectnode", 1)
+	_ = context.WithValue(ctx, "objectnode", 1)
 	reader := v.getEbsReader(inode)
 	var n int
 	var tmp = make([]byte, 2*v.ebsBlockSize)
