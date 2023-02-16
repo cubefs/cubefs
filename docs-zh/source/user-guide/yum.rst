@@ -145,15 +145,13 @@ CubeFS支持混部。如果采取混部的方式，注意修改各个模块的�
 .. code-block:: bash
 
     $ bash install.sh -h
-    Usage: install.sh -r | --role [datanode | metanode | master | objectnode | monitor | client | all | createvol ]
+    Usage: install.sh -r | --role [datanode | metanode | master | objectnode | client | all | createvol ]
     $ bash install.sh -r master
     $ bash install.sh -r metanode
     $ bash install.sh -r datanode
     $ bash install.sh -r objectnode
-    $ bash install.sh -r monitor
+
     $ bash install.sh -r createvol
     $ bash install.sh -r client
 
 全部角色启动后，可以登录到 **client** 角色所在节点验证挂载点 **/cfs/mountpoint** 是否已经挂载CubeFS文件系统。
-
-在浏览器中打开链接http://consul.prometheus-cfs.local 查看监控系统(监控系统的IP地址已在 **iplist** 文件的 **[monitor]** 模块定义).

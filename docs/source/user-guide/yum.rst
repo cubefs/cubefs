@@ -146,15 +146,13 @@ Start the resources of CubeFS cluster with script **install.sh** . (make sure th
 .. code-block:: bash
 
     $ bash install.sh -h
-    Usage: install.sh -r | --role [datanode | metanode | master | objectnode | monitor | client | all | createvol ]
+    Usage: install.sh -r | --role [datanode | metanode | master | objectnode | client | all | createvol ]
     $ bash install.sh -r master
     $ bash install.sh -r metanode
     $ bash install.sh -r datanode
     $ bash install.sh -r objectnode
-    $ bash install.sh -r monitor
+
     $ bash install.sh -r createvol
     $ bash install.sh -r client
 
 Check mount point at **/cfs/mountpoint** on **client** node defined in **iplist** .
-
-Open http://consul.prometheus-cfs.local in browser for monitoring system(the IP of monitoring system is defined in **iplist** ).
