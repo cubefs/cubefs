@@ -23,6 +23,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"math"
+	"sync/atomic"
 	"time"
 )
 
@@ -273,10 +274,36 @@ func (mp *metaPartition) readDeletedDir(req *ReadDeletedDirReq) (resp *ReadDelet
 	return
 }
 
+func (mp *metaPartition) getCleanTrashItemMaxDurationEachTime() (cleanDurationEachTime int32){
+	cleanDurationEachTime = defCleanTrashItemMaxDurationEachTime
+	//cluster config
+	if val := atomic.LoadInt32(&nodeInfo.CleanTrashItemMaxDurationEachTime); val != 0 {
+		cleanDurationEachTime = val
+	}
+	//volume config
+	if val := mp.manager.getCleanTrashItemMaxDurationEachTime(mp.config.VolName); val != 0 {
+		cleanDurationEachTime = val
+	}
+	return
+}
+
+func (mp *metaPartition) getCleanTrashItemMaxCountEachTime() (cleanMaxCountEachTime int32) {
+	cleanMaxCountEachTime = defCleanTrashItemMaxTotalCountEachTime
+	if val := atomic.LoadInt32(&nodeInfo.CleanTrashItemMaxCountEachTime); val != 0 {
+		cleanMaxCountEachTime = val
+	}
+	if val := mp.manager.getCleanTrashItemMaxCountEachTime(mp.config.VolName); val != 0 {
+		cleanMaxCountEachTime = val
+	}
+	return
+}
+
 //todo:add test
 func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
-	//todo: need add set cmd to totalCleanCount
-	var totalCleanCount = 100 * 10000
+	var (
+		cleanMaxCountEachTime = mp.getCleanTrashItemMaxCountEachTime()
+		cleanMaxDurationEachTime = mp.getCleanTrashItemMaxDurationEachTime()
+	)
 	ctx := context.Background()
 	fsmFunc := func(dens DeletedDentryBatch) (err error) {
 		log.LogDebugf("[CleanExpiredDeletedDentry], vol:%v, mp:%v, deletedDentryCnt:%v", mp.config.VolName, mp.config.PartitionId, len(dens))
@@ -304,7 +331,7 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 		expires = time.Now().AddDate(0, 0, 0-int(mp.config.TrashRemainingDays)).UnixNano() / 1000
 	}
 
-	total := 0
+	var total int32 = 0
 	defer log.LogInfof("[CleanExpiredDeletedDentry], vol: %v, mp: %v, cleaned %v until %v", mp.config.VolName, mp.config.PartitionId, total, expires)
 	batch := int(mp.GetBatchDelInodeCnt() * 2)
 	dens := make(DeletedDentryBatch, 0, batch)
@@ -315,9 +342,8 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 	}
 	defer snap.Close()
 	startTime := time.Now()
-	//todo: need add set cmd to 5 min
 	err = snap.Range(DelDentryType, func(item interface{}) (bool, error) {
-		if total > totalCleanCount || time.Since(startTime) > time.Minute * 5 {
+		if total > cleanMaxCountEachTime || time.Since(startTime) > time.Minute * time.Duration(cleanMaxDurationEachTime) {
 			log.LogInfof("[CleanExpiredDeletedDentry] mp(%v) clean Count:%v, clean time:%v",
 				mp.config.PartitionId, total, time.Since(startTime).Seconds())
 			return false, nil
@@ -340,13 +366,14 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 			log.LogErrorf("[CleanExpiredDeletedDentry], vol: %v, mp: %v, err: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
 			return false, err
 		}
-		total += batch
+		total += int32(batch)
 		dens = make(DeletedDentryBatch, 0, batch)
 		if mp.config.TrashRemainingDays > 0 {
 			expires = time.Now().AddDate(0, 0, 0-int(mp.config.TrashRemainingDays)).UnixNano() / 1000
 		} else {
 			expires = math.MaxInt64
 		}
+		//todo:test whether needed remove
 		time.Sleep(1 * time.Second)
 		return true, nil
 	})
@@ -369,7 +396,7 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 		log.LogErrorf("[CleanExpiredDeletedDentry], vol: %v, mp: %v, err: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
 		return
 	}
-	total += len(dens)
+	total += int32(len(dens))
 	return
 }
 

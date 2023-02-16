@@ -310,7 +310,10 @@ func (mp *metaPartition) BatchGetDeletedInode(req *BatchGetDeletedInodeReq, p *P
 
 //todo:
 func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
-	var totalCleanCount = 100 * 10000
+	var (
+		cleanMaxCountEachTime = mp.getCleanTrashItemMaxCountEachTime()
+		cleanMaxDurationEachTime = mp.getCleanTrashItemMaxDurationEachTime()
+	)
 	ctx := context.Background()
 	fsmFunc := func(inodes []uint64) (err error) {
 		log.LogDebugf("[CleanExpiredDeletedINode], vol:%v, mp:%v, inodes:%v, inodeCnt:%v", mp.config.VolName, mp.config.PartitionId, inodes, len(inodes))
@@ -346,7 +349,7 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 	}
 	log.LogDebugf("[CleanExpiredDeletedINode] vol: %v, mp: %v, expires: %v", mp.config.VolName, mp.config.PartitionId, expires)
 
-	total := 0
+	var total int32 = 0
 	defer log.LogDebugf("[CleanExpiredDeletedINode], cleaned %v until %v", total, expires)
 	batch := int(mp.GetBatchDelInodeCnt() * 2)
 	inos := make([]uint64, 0, batch)
@@ -358,7 +361,7 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 	defer snap.Close()
 	startTime := time.Now()
 	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
-		if total > totalCleanCount || time.Since(startTime) > time.Minute * 5 {
+		if total > cleanMaxCountEachTime || time.Since(startTime) > time.Minute * time.Duration(cleanMaxDurationEachTime) {
 			log.LogInfof("[CleanExpiredDeletedINode] mp(%v) clean Count:%v, clean time:%v",
 				mp.config.PartitionId, total, time.Since(startTime).Seconds())
 			return false, nil
@@ -383,7 +386,7 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 			log.LogErrorf("[CleanExpiredDeletedINode], vol:%v, mp:%v, err: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
 			return false, err
 		}
-		total += batch
+		total += int32(batch)
 		inos = make([]uint64, 0, batch)
 		if mp.config.TrashRemainingDays > 0 {
 			expires = time.Now().AddDate(0, 0, 0-int(mp.config.TrashRemainingDays)).UnixNano() / 1000
@@ -412,7 +415,7 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 		log.LogErrorf("[CleanExpiredDeletedINode], vol: %v, mp: %v, err: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
 		return
 	}
-	total += len(inos)
+	total += int32(len(inos))
 	return
 }
 

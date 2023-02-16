@@ -2939,7 +2939,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
 	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
-	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy, enableBitMapAllocator bool) (err error) {
+	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy,
+	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3046,6 +3047,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.volWriteMutexEnable = volWriteMutexEnable
 	vol.reuseMP = reuseMP
 	vol.EnableBitMapAllocator = enableBitMapAllocator
+	vol.CleanTrashDurationEachTime = trashCleanDuration
+	vol.TrashCleanMaxCountEachTime = trashItemCleanMaxCount
 	if !volWriteMutexEnable {
 		vol.volWriteMutexClient = ""
 	}
@@ -3822,6 +3825,11 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.ReuseMPDentryCountThreshold = val.(float64)
 	}
 
+	oldReuseMPDelInodeCountThreshold := c.cfg.ReuseMPDelInodeCountThreshold
+	if val, ok := params[proto.ReuseMPDelInoCountThresholdKey]; ok {
+		c.cfg.ReuseMPDelInodeCountThreshold = val.(float64)
+	}
+
 	oldMPMaxInodeCount := atomic.LoadUint64(&c.cfg.MetaPartitionMaxInodeCount)
 	if val, ok := params[proto.MPMaxInodeCountKey]; ok {
 		atomic.StoreUint64(&c.cfg.MetaPartitionMaxInodeCount, val.(uint64))
@@ -3830,6 +3838,16 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	oldMPMaxDentryCount := atomic.LoadUint64(&c.cfg.MetaPartitionMaxDentryCount)
 	if val, ok := params[proto.MPMaxDentryCountKey]; ok {
 		atomic.StoreUint64(&c.cfg.MetaPartitionMaxDentryCount, val.(uint64))
+	}
+
+	oldTrashCleanDuration := atomic.LoadInt32(&c.cfg.TrashCleanDurationEachTime)
+	if val, ok := params[proto.TrashCleanDurationKey]; ok {
+		atomic.StoreInt32(&c.cfg.TrashCleanDurationEachTime, int32(val.(int64)))
+	}
+
+	oldTrashCleanMaxCount := atomic.LoadInt32(&c.cfg.TrashItemCleanMaxCountEachTime)
+	if val, ok := params[proto.TrashItemCleanMaxCountKey]; ok {
+		atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, int32(val.(int64)))
 	}
 
 	if err = c.syncPutCluster(); err != nil {
@@ -3872,6 +3890,9 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaPartitionMaxDentryCount, oldMPMaxDentryCount)
 		c.cfg.ReuseMPInodeCountThreshold = oldReuseMPInodeCountThreshold
 		c.cfg.ReuseMPDentryCountThreshold = oldReuseMPDentryCountThreshold
+		c.cfg.ReuseMPDelInodeCountThreshold = oldReuseMPDelInodeCountThreshold
+		atomic.StoreInt32(&c.cfg.TrashCleanDurationEachTime, oldTrashCleanDuration)
+		atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, oldTrashCleanMaxCount)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

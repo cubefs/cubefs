@@ -214,6 +214,8 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	}
 	msg["status"] = mp.(*metaPartition).status
 	msg["virtual_mps"] = mp.(*metaPartition).getVirtualMetaPartitionsInfo()
+	msg["cleanTrashItemMaxDurationEachTime"] = mp.(*metaPartition).getCleanTrashItemMaxDurationEachTime()
+	msg["cleanTrashItemMaxCountEachTime"] = mp.(*metaPartition).getCleanTrashItemMaxCountEachTime()
 	msg["now"] = time.Now()
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -890,28 +892,30 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		diskList = append(diskList, diskInfo)
 	}
 	msg := map[string]interface{}{
-		"type":                        "metaNode",
-		"zone":                        m.zoneName,
-		"versionInfo":                 proto.MakeVersion("MetaNode"),
-		"statTime":                    m.processStatInfo.ProcessStartTime,
-		"cpuUsageList":                cpuUsageList,
-		"maxCPUUsage":                 maxCPUUsage,
-		"cpuCoreNumber":               cpu.GetCPUCoreNumber(),
-		"memoryUsedGBList":            memoryUsedGBList,
-		"maxMemoryUsedGB":             maxMemoryUsedGB,
-		"maxMemoryUsage":              maxMemoryUsage,
-		"diskInfo":                    diskList,
-		"raftLogSizeFromMaster":       nodeCfg.raftLogSizeFromMaster,
-		"raftLogCapFromMaster":        nodeCfg.raftLogCapFromMaster,
-		"raftLogSizeFromLoc":          nodeCfg.raftLogSizeFromLoc,
-		"raftLogCapFromLoc":           nodeCfg.raftLogCapFromLoc,
-		"trashCleanInterval":          nodeCfg.trashCleanInterval,
-		"delEKRecordFileMaxMB":        DeleteEKRecordFilesMaxTotalSize.Load() / unit.MB,
-		"raftWALSyncEnableState":      m.raftStore.IsSyncWALOnUnstable(),
-		"reuseMPInodeCountThreshold":  m.getReuseMPInodeCountThreshold(),
-		"reuseMPDentryCountThreshold": m.getReuseMPDentryCountThreshold(),
-		"mpMaxInodeCount":             m.getMetaPartitionMaxInodeCount(),
-		"mpMaxDentryCount":            m.getMetaPartitionMaxDentryCount(),
+		"type":                              "metaNode",
+		"zone":                              m.zoneName,
+		"versionInfo":                       proto.MakeVersion("MetaNode"),
+		"statTime":                          m.processStatInfo.ProcessStartTime,
+		"cpuUsageList":                      cpuUsageList,
+		"maxCPUUsage":                       maxCPUUsage,
+		"cpuCoreNumber":                     cpu.GetCPUCoreNumber(),
+		"memoryUsedGBList":                  memoryUsedGBList,
+		"maxMemoryUsedGB":                   maxMemoryUsedGB,
+		"maxMemoryUsage":                    maxMemoryUsage,
+		"diskInfo":                          diskList,
+		"raftLogSizeFromMaster":             nodeCfg.raftLogSizeFromMaster,
+		"raftLogCapFromMaster":              nodeCfg.raftLogCapFromMaster,
+		"raftLogSizeFromLoc":                nodeCfg.raftLogSizeFromLoc,
+		"raftLogCapFromLoc":                 nodeCfg.raftLogCapFromLoc,
+		"trashCleanInterval":                nodeCfg.trashCleanInterval,
+		"delEKRecordFileMaxMB":              DeleteEKRecordFilesMaxTotalSize.Load() / unit.MB,
+		"raftWALSyncEnableState":            m.raftStore.IsSyncWALOnUnstable(),
+		"reuseMPInodeCountThreshold":        m.getReuseMPInodeCountThreshold(),
+		"reuseMPDentryCountThreshold":       m.getReuseMPDentryCountThreshold(),
+		"mpMaxInodeCount":                   m.getMetaPartitionMaxInodeCount(),
+		"mpMaxDentryCount":                  m.getMetaPartitionMaxDentryCount(),
+		"cleanTrashItemMaxDurationEachTime": nodeInfo.CleanTrashItemMaxDurationEachTime,
+		"cleanTrashItemMaxCountEachTime":    nodeInfo.CleanTrashItemMaxCountEachTime,
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK

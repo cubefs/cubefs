@@ -158,6 +158,8 @@ const (
 	CliFlagReuseMP             = "reuseMP"
 	CliOpSetReuseState         = "setReuseState"
 	CliFlagBitMapAllocatorSt   = "enableBitMapAllocator"
+	CliFlagTrashCleanDuration  = "trashCleanDuration"
+	CliFlagTrashCleanMaxCount  = "trashCleanMaxCount"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

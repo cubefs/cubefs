@@ -242,6 +242,9 @@ const (
 
 	defBitMapReuseVirtualMPMaxCount = 3 //only manager top three
 	defFreeBitMinCount              = 10000
+
+	defCleanTrashItemMaxTotalCountEachTime = 100 * 10000 //100W
+	defCleanTrashItemMaxDurationEachTime   = 5 //min
 )
 
 const (

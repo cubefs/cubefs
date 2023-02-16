@@ -1549,7 +1549,7 @@ func (mp *MetaPartition) isAvailableForAddVirtualMP(c *Cluster) (ok bool) {
 
 	if mp.InodeCount >= uint64(float64(proto.DefaultMetaPartitionInodeIDStep)*c.cfg.ReuseMPInodeCountThreshold) ||
 		mp.DentryCount >= uint64(float64(proto.DefaultMetaPartitionInodeIDStep)*c.cfg.ReuseMPDentryCountThreshold) ||
-		mp.DelInodeCount >= proto.DefaultMetaPartitionMaxDelInoCnt { //todo:add set cmd for delInodeCount
+		mp.DelInodeCount >= uint64(float64(proto.DefaultMetaPartitionInodeIDStep)*c.cfg.ReuseMPDelInodeCountThreshold) {
 		return
 	}
 

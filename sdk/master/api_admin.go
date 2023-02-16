@@ -412,7 +412,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache, reuseMP bool,
 	authKey, zoneName, mpLayout, smartRules string, bucketPolicy, crossRegionHAType uint8,
 	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64,
-	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy, enableBitMapAllocator bool) (err error) {
+	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay proto.UmpCollectBy, trashCleanDuration, trashCleanMaxCount int32, enableBitMapAllocator bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -447,6 +447,12 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 		request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
 	}
 	request.addParam("umpCollectWay", strconv.Itoa(int(umpCollectWay)))
+	if trashCleanDuration >= 0 {
+		request.addParam(proto.TrashCleanDurationKey, strconv.FormatInt(int64(trashCleanDuration), 10))
+	}
+	if trashCleanMaxCount >= 0 {
+		request.addParam(proto.TrashItemCleanMaxCountKey, strconv.FormatInt(int64(trashCleanMaxCount), 10))
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -781,11 +787,20 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.ReuseMPDentryCountThreshold > 0 {
 		request.addParam(proto.ReuseMPDentryCountThresholdKey, strconv.FormatFloat(info.ReuseMPDentryCountThreshold, 'f', -1, 64))
 	}
+	if info.ReuseMPDelInoCountThreshold > 0 {
+		request.addParam(proto.ReuseMPDelInoCountThresholdKey, strconv.FormatFloat(info.ReuseMPDelInoCountThreshold, 'f', -1, 64))
+	}
 	if info.MetaPartitionMaxInodeCount > 0 {
 		request.addParam(proto.MPMaxInodeCountKey, strconv.FormatUint(info.MetaPartitionMaxInodeCount, 10))
 	}
 	if info.MetaPartitionMaxDentryCount > 0 {
 		request.addParam(proto.MPMaxDentryCountKey, strconv.FormatUint(info.MetaPartitionMaxDentryCount, 10))
+	}
+	if info.TrashCleanMaxCountEachTime >= 0 {
+		request.addParam(proto.TrashItemCleanMaxCountKey, strconv.FormatInt(int64(info.TrashCleanMaxCountEachTime), 10))
+	}
+	if info.TrashCleanDurationEachTime >= 0 {
+		request.addParam(proto.TrashCleanDurationKey, strconv.FormatInt(int64(info.TrashCleanDurationEachTime), 10))
 	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)

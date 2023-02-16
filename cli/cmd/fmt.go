@@ -188,6 +188,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Del ino interval(ms) : %v\n", svv.DelInodeInterval))
 	sb.WriteString(fmt.Sprintf("  Reuse MP             : %v\n", formatEnabledDisabled(svv.ReuseMP)))
 	sb.WriteString(fmt.Sprintf("  BitMapAllocator      : %v\n", formatEnabledDisabled(svv.EnableBitMapAllocator)))
+	sb.WriteString(fmt.Sprintf("  TrashCleanDuration   : %v\n", svv.TrashCleanDuration))
+	sb.WriteString(fmt.Sprintf("  TrashCleanMaxCount   : %v\n", svv.TrashCleanMaxCount))
 	return sb.String()
 }
 

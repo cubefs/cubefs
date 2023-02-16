@@ -243,10 +243,13 @@ const (
 	DataSyncWalEnableStateKey      = "dataWalSyncEnableState"
 	ReuseMPInodeCountThresholdKey  = "reuseMPInodeCountThreshold"
 	ReuseMPDentryCountThresholdKey = "reuseMPDentryCountThreshold"
+	ReuseMPDelInoCountThresholdKey = "reuseMPDelInodeCountThreshold"
 	MPMaxInodeCountKey             = "mpMaxInodeCount"
 	MPMaxDentryCountKey            = "mpMaxDentryCount"
 	ReuseMPKey                     = "reuseMP"
 	EnableBitMapAllocatorKey       = "enableBitMapAllocator"
+	TrashItemCleanMaxCountKey      = "trashItemCleanMaxCount"
+	TrashCleanDurationKey          = "trashItemCleanDuration"
 )
 
 const (
@@ -257,6 +260,7 @@ const (
 	DefaultMetaPartitionInodeIDStep    uint64  = 1 << 24
 	DefaultReuseMPInodeCountThreshold  float64 = 0.1
 	DefaultReuseMPDentryCountThreshold float64 = 0.1
+	DefaultReuseMPDelInoCountThreshold float64 = 0.1
 	DefaultMetaPartitionMaxDelInoCnt   uint64  = 100 * 10000
 	DefaultMetaPartitionMaxInodeCount  uint64  = 20000000
 	DefaultMetaPartitionMaxDentryCount uint64  = 20000000
@@ -547,8 +551,12 @@ type LimitInfo struct {
 
 	ReuseMPInodeCountThreshold  float64
 	ReuseMPDentryCountThreshold float64
+	ReuseMPDelInoCountThreshold float64
 	MetaPartitionMaxInodeCount  uint64
 	MetaPartitionMaxDentryCount uint64
+
+	TrashCleanDurationEachTime     int32
+	TrashItemCleanMaxCountEachTime int32
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1106,6 +1114,8 @@ type SimpleVolView struct {
 	UmpCollectWay         UmpCollectBy
 	ReuseMP               bool
 	EnableBitMapAllocator bool
+	TrashCleanDuration    int32
+	TrashCleanMaxCount    int32
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1115,55 +1125,59 @@ type MasterAPIAccessResp struct {
 }
 
 type VolInfo struct {
-	Name                  string
-	Owner                 string
-	CreateTime            int64
-	Status                uint8
-	TotalSize             uint64
-	UsedSize              uint64
-	UsedRatio             float64
-	TrashRemainingDays    uint32
-	IsSmart               bool
-	SmartRules            []string
-	ForceROW              bool
-	CompactTag            uint8
-	EnableToken           bool
-	EnableWriteCache      bool
-	ChildFileMaxCnt       uint32
-	TrashCleanInterval    uint64
-	BatchInodeDelCnt      uint32
-	DelInodeInterval      uint32
-	EnableBitMapAllocator bool
+	Name                          string
+	Owner                         string
+	CreateTime                    int64
+	Status                        uint8
+	TotalSize                     uint64
+	UsedSize                      uint64
+	UsedRatio                     float64
+	TrashRemainingDays            uint32
+	IsSmart                       bool
+	SmartRules                    []string
+	ForceROW                      bool
+	CompactTag                    uint8
+	EnableToken                   bool
+	EnableWriteCache              bool
+	ChildFileMaxCnt               uint32
+	TrashCleanInterval            uint64
+	BatchInodeDelCnt              uint32
+	DelInodeInterval              uint32
+	EnableBitMapAllocator         bool
+	CleanTrashMaxDurationEachTime int32
+	CleanTrashMaxCountEachTime    int32
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,
 	remainingDays uint32, childFileMaxCnt uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
 	trashCleanInterval uint64, enableToken, enableWriteCache bool, batchDelIndeCnt, delInodeInterval uint32,
-	enableBitMapAllocator bool) *VolInfo {
+	cleanTrashDurationEachTime, cleanTrashCountEachTime int32, enableBitMapAllocator bool) *VolInfo {
 	var usedRatio float64
 	if totalSize != 0 {
 		usedRatio = float64(usedSize) / float64(totalSize)
 	}
 	return &VolInfo{
-		Name:               name,
-		Owner:              owner,
-		CreateTime:         createTime,
-		Status:             status,
-		TotalSize:          totalSize,
-		UsedSize:           usedSize,
-		TrashRemainingDays: remainingDays,
-		IsSmart:            isSmart,
-		SmartRules:            rules,
-		ForceROW:              forceRow,
-		CompactTag:            compactTag,
-		EnableToken:           enableToken,
-		EnableWriteCache:      enableWriteCache,
-		UsedRatio:             usedRatio,
-		ChildFileMaxCnt:       childFileMaxCnt,
-		TrashCleanInterval:    trashCleanInterval,
-		BatchInodeDelCnt:      batchDelIndeCnt,
-		DelInodeInterval:      delInodeInterval,
-		EnableBitMapAllocator: enableBitMapAllocator,
+		Name:                          name,
+		Owner:                         owner,
+		CreateTime:                    createTime,
+		Status:                        status,
+		TotalSize:                     totalSize,
+		UsedSize:                      usedSize,
+		TrashRemainingDays:            remainingDays,
+		IsSmart:                       isSmart,
+		SmartRules:                    rules,
+		ForceROW:                      forceRow,
+		CompactTag:                    compactTag,
+		EnableToken:                   enableToken,
+		EnableWriteCache:              enableWriteCache,
+		UsedRatio:                     usedRatio,
+		ChildFileMaxCnt:               childFileMaxCnt,
+		TrashCleanInterval:            trashCleanInterval,
+		BatchInodeDelCnt:              batchDelIndeCnt,
+		DelInodeInterval:              delInodeInterval,
+		EnableBitMapAllocator:         enableBitMapAllocator,
+		CleanTrashMaxCountEachTime:    cleanTrashCountEachTime,
+		CleanTrashMaxDurationEachTime: cleanTrashDurationEachTime,
 	}
 }
 
@@ -1216,8 +1230,11 @@ type RateLimitInfo struct {
 	DataSyncWALEnableState      int64
 	ReuseMPInodeCountThreshold  float64
 	ReuseMPDentryCountThreshold float64
+	ReuseMPDelInoCountThreshold float64
 	MetaPartitionMaxInodeCount  uint64
 	MetaPartitionMaxDentryCount uint64
+	TrashCleanDurationEachTime  int32
+	TrashCleanMaxCountEachTime  int32
 }
 
 type ConvertMode uint8

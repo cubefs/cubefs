@@ -110,6 +110,8 @@ type Vol struct {
 	VMPsToPartitionMap    map[uint64]uint64 `graphql:"-"`
 	LastSelectReuseMPID   uint64
 	EnableBitMapAllocator bool
+	CleanTrashDurationEachTime int32
+	TrashCleanMaxCountEachTime int32
 	sync.RWMutex
 }
 
@@ -279,6 +281,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.TrashCleanInterval = vv.TrashCleanInterval
 	vol.UmpCollectWay = vv.UmpCollectWay
 	vol.EnableBitMapAllocator = vv.EnableBitMapAllocator
+	vol.TrashCleanMaxCountEachTime = vv.TrashCleanMaxCount
+	vol.CleanTrashDurationEachTime = vv.TrashCleanDuration
 	return vol
 }
 
@@ -1323,6 +1327,8 @@ func (vol *Vol) backupConfig() *Vol {
 		UmpCollectWay:         vol.UmpCollectWay,
 		reuseMP:               vol.reuseMP,
 		EnableBitMapAllocator: vol.EnableBitMapAllocator,
+		CleanTrashDurationEachTime: vol.CleanTrashDurationEachTime,
+		TrashCleanMaxCountEachTime: vol.TrashCleanMaxCountEachTime,
 	}
 }
 
@@ -1368,6 +1374,8 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.UmpCollectWay = backupVol.UmpCollectWay
 	vol.reuseMP = backupVol.reuseMP
 	vol.EnableBitMapAllocator = backupVol.EnableBitMapAllocator
+	vol.TrashCleanMaxCountEachTime = backupVol.TrashCleanMaxCountEachTime
+	vol.CleanTrashDurationEachTime = backupVol.CleanTrashDurationEachTime
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

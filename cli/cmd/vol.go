@@ -336,6 +336,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optUmpCollectWay         int
 		optReuseMP               string
 		optEnableBitMapAllocator string
+		optTrashCleanDuration    int32
+		optTrashCleanMaxCount    int32
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -668,6 +670,22 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  BitMapAllocator     : %v\n", formatEnabledDisabled(vv.EnableBitMapAllocator)))
+                        }
+
+			if optTrashCleanMaxCount >= 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  TrashCleanMaxCount  : %v -> %v\n", vv.TrashCleanMaxCount, optTrashCleanMaxCount))
+				vv.TrashCleanMaxCount = optTrashCleanMaxCount
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  TrashCleanMaxCount  : %v\n", vv.TrashCleanMaxCount))
+			}
+
+			if optTrashCleanDuration >= 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  TrashCleanDuration  : %v -> %v\n", vv.TrashCleanDuration, optTrashCleanDuration))
+				vv.TrashCleanDuration = optTrashCleanDuration
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  TrashCleanDuration  : %v\n", vv.TrashCleanDuration))
 			}
 
 			if err != nil {
@@ -692,7 +710,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, vv.ReuseMP, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
-				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay, vv.EnableBitMapAllocator)
+				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
+				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator)
 			if err != nil {
 				return
 			}
@@ -736,6 +755,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optUmpCollectWay, CliFlagUmpCollectWay, -1, "Set ump collect way: 0 unknown 1 file 2 jmtp client")
 	cmd.Flags().StringVar(&optReuseMP, CliFlagReuseMP, "", "Reuse meta partition when add meta partition")
 	cmd.Flags().StringVar(&optEnableBitMapAllocator, CliFlagBitMapAllocatorSt, "", "enable/disable bit map allocator")
+	cmd.Flags().Int32Var(&optTrashCleanDuration, CliFlagTrashCleanDuration, -1, "Trash clean duration, unit:min")
+	cmd.Flags().Int32Var(&optTrashCleanMaxCount, CliFlagTrashCleanMaxCount, -1, "Trash clean max count")
 	return cmd
 }
 

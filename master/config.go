@@ -151,8 +151,11 @@ type clusterConfig struct {
 	DataSyncWALOnUnstableEnableState    bool
 	ReuseMPInodeCountThreshold          float64
 	ReuseMPDentryCountThreshold         float64
+	ReuseMPDelInodeCountThreshold       float64
 	MetaPartitionMaxInodeCount          uint64
 	MetaPartitionMaxDentryCount         uint64
+	TrashCleanDurationEachTime          int32
+	TrashItemCleanMaxCountEachTime      int32
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -192,6 +195,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaRaftLogCap = 0             // use meta node config value
 	cfg.ReuseMPInodeCountThreshold = bsProto.DefaultReuseMPInodeCountThreshold
 	cfg.ReuseMPDentryCountThreshold = bsProto.DefaultReuseMPDentryCountThreshold
+	cfg.ReuseMPDelInodeCountThreshold = bsProto.DefaultReuseMPDelInoCountThreshold
 	cfg.MetaPartitionMaxInodeCount = bsProto.DefaultMetaPartitionMaxInodeCount
 	cfg.MetaPartitionMaxDentryCount = bsProto.DefaultMetaPartitionMaxDentryCount
 	return

@@ -95,8 +95,11 @@ type clusterValue struct {
 	DataSyncWALEnableState              bool
 	ReuseMPInodeCountThreshold          float64
 	ReuseMPDentryCountThreshold         float64
+	ReuseMPDelInodeCountThreshold       float64
 	MetaPartitionMaxInodeCount          uint64
 	MetaPartitionMaxDentryCount         uint64
+	TrashCleanDurationEachTime          int32
+	TrashItemCleanMaxCountEachTime      int32
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -162,8 +165,11 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataSyncWALEnableState:              c.cfg.DataSyncWALOnUnstableEnableState,
 		ReuseMPInodeCountThreshold:          c.cfg.ReuseMPInodeCountThreshold,
 		ReuseMPDentryCountThreshold:         c.cfg.ReuseMPDentryCountThreshold,
+		ReuseMPDelInodeCountThreshold:       c.cfg.ReuseMPDelInodeCountThreshold,
 		MetaPartitionMaxInodeCount:          c.cfg.MetaPartitionMaxInodeCount,
 		MetaPartitionMaxDentryCount:         c.cfg.MetaPartitionMaxDentryCount,
+		TrashItemCleanMaxCountEachTime:      c.cfg.TrashItemCleanMaxCountEachTime,
+		TrashCleanDurationEachTime:          c.cfg.TrashCleanDurationEachTime,
 	}
 	return cv
 }
@@ -322,6 +328,8 @@ type volValue struct {
 	UmpCollectWay         bsProto.UmpCollectBy
 	ReuseMP               bool
 	EnableBitMapAllocator bool
+	TrashCleanDuration    int32
+	TrashCleanMaxCount    int32
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -393,6 +401,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		UmpCollectWay:         vol.UmpCollectWay,
 		ReuseMP:               vol.reuseMP,
 		EnableBitMapAllocator: vol.EnableBitMapAllocator,
+		TrashCleanDuration:    vol.CleanTrashDurationEachTime,
+		TrashCleanMaxCount:    vol.TrashCleanMaxCountEachTime,
 	}
 	return
 }
@@ -1014,6 +1024,9 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.ReuseMPDentryCountThreshold > 0 {
 			c.cfg.ReuseMPDentryCountThreshold = cv.ReuseMPDentryCountThreshold
 		}
+		if cv.ReuseMPDelInodeCountThreshold > 0 {
+			c.cfg.ReuseMPDelInodeCountThreshold = cv.ReuseMPDelInodeCountThreshold
+		}
 		if cv.MetaPartitionMaxInodeCount > 0 {
 			c.cfg.MetaPartitionMaxInodeCount = cv.MetaPartitionMaxInodeCount
 		}
@@ -1047,6 +1060,12 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		c.cfg.DataSyncWALOnUnstableEnableState = cv.DataSyncWALEnableState
 		c.cfg.MetaSyncWALOnUnstableEnableState = cv.MetaSyncWALEnableState
+		if cv.TrashCleanDurationEachTime != 0 {
+			atomic.StoreInt32(&c.cfg.TrashCleanDurationEachTime, cv.TrashCleanDurationEachTime)
+		}
+		if cv.TrashItemCleanMaxCountEachTime != 0 {
+			atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, cv.TrashItemCleanMaxCountEachTime)
+		}
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

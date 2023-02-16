@@ -292,3 +292,9 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 func (mp *metaPartition) GetDentryTree() DentryTree {
 	return mp.dentryTree
 }
+
+func (mp *metaPartition) GetTrashCleanItemMaxTotalCountForEachTime() (maxTotalCount uint64) {
+	maxTotalCount = defCleanTrashItemMaxTotalCountEachTime
+
+	return
+}

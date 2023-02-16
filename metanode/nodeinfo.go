@@ -50,6 +50,9 @@ type NodeInfo struct {
 	reuseMPDentryCountThreshold float64
 	metaPartitionMaxInodeCount  uint64
 	metaPartitionMaxDentryCount uint64
+
+	CleanTrashItemMaxDurationEachTime int32  //min
+	CleanTrashItemMaxCountEachTime    int32
 }
 
 var (
@@ -238,13 +241,28 @@ func (m *MetaNode) updateDeleteEKRecordFilesMaxSize(maxMB uint64) {
 	}
 }
 
-func (m *MetaNode) updateTrashCleanInterval(interval uint64) {
-	if interval == 0 || interval == nodeInfo.trashCleanInterval {
-		log.LogDebugf("[updateTrashCleanInterval] no need update")
-		return
+func (m *MetaNode) updateTrashCleanConfig(limitInfo *proto.LimitInfo) {
+	//clean interval
+	if limitInfo.MetaTrashCleanInterval != 0 && limitInfo.MetaTrashCleanInterval != nodeInfo.trashCleanInterval {
+		log.LogDebugf("[updateTrashCleanConfig] trash clean interval, old value:%v, new value:%v",
+			nodeInfo.trashCleanInterval, limitInfo.MetaTrashCleanInterval)
+		nodeInfo.trashCleanInterval = limitInfo.MetaTrashCleanInterval
 	}
-	nodeInfo.trashCleanInterval = interval
-	log.LogDebugf("[updateTrashCleanInterval] new value:%v", interval)
+
+	//trash clean duration
+	if limitInfo.TrashCleanDurationEachTime != nodeInfo.CleanTrashItemMaxDurationEachTime {
+		log.LogDebugf("[updateTrashCleanConfig] trash clean duration, old value:%v, new value:%v",
+			nodeInfo.CleanTrashItemMaxDurationEachTime, limitInfo.TrashCleanDurationEachTime)
+		nodeInfo.CleanTrashItemMaxDurationEachTime = limitInfo.TrashCleanDurationEachTime
+	}
+
+	//trash clean max count
+	if limitInfo.TrashItemCleanMaxCountEachTime != nodeInfo.CleanTrashItemMaxCountEachTime {
+		log.LogDebugf("[updateTrashCleanConfig] trash clean max count, old value:%v, new value:%v",
+			nodeInfo.CleanTrashItemMaxCountEachTime, limitInfo.TrashItemCleanMaxCountEachTime)
+		nodeInfo.CleanTrashItemMaxCountEachTime = limitInfo.TrashItemCleanMaxCountEachTime
+	}
+	return
 }
 
 func (m *MetaNode) updateRaftParamFromMaster(logSize, logCap int) {
@@ -389,7 +407,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.updateRocksDBDiskReservedSpaceSpace(limitInfo.RocksDBDiskReservedSpace)
 	m.updateRocksDBConf(limitInfo)
 	m.updateDeleteEKRecordFilesMaxSize(limitInfo.DeleteEKRecordFileMaxMB)
-	m.updateTrashCleanInterval(limitInfo.MetaTrashCleanInterval)
+	m.updateTrashCleanConfig(limitInfo)
 	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
 	m.updateSyncWALOnUnstableEnableState(limitInfo.MetaSyncWALOnUnstableEnableState)
 	m.updateMPReuseConf(limitInfo)

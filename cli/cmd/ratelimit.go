@@ -232,11 +232,21 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.ReuseMPDentryCountThreshold > 0 {
 				msg += fmt.Sprintf("ReuseMP Dentry Count Threshold: %v, ", info.ReuseMPDentryCountThreshold)
 			}
+			if info.ReuseMPDelInoCountThreshold > 0 {
+				msg += fmt.Sprintf("ReuseMP DelDen Count Threshold: %v, ", info.ReuseMPDelInoCountThreshold)
+			}
 			if info.MetaPartitionMaxInodeCount > 0 {
 				msg += fmt.Sprintf("MP Max Inode Count           : %v, ", info.MetaPartitionMaxInodeCount)
 			}
 			if info.MetaPartitionMaxDentryCount > 0 {
 				msg += fmt.Sprintf("MP Max Dentry Count          : %v, ", info.MetaPartitionMaxDentryCount)
+			}
+
+			if info.TrashCleanDurationEachTime >= 0 {
+				msg += fmt.Sprintf("Trash Clean Duration         : %v, ", info.TrashCleanDurationEachTime)
+			}
+			if info.TrashCleanMaxCountEachTime >= 0 {
+				msg += fmt.Sprintf("Trash Clean Max Count        : %v, ", info.TrashCleanMaxCountEachTime)
 			}
 			if msg == "" {
 				stdout("No valid parameters\n")
@@ -295,9 +305,12 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.DataNodeFlushFDParallelismOnDisk, "dataNodeFlushFDParallelismOnDisk", 0, "parallelism for flushing WAL and open FDs on DataNode per disk.")
 	cmd.Flags().Int64Var(&info.DNNormalExtentDeleteExpire, "dnNormalExtentDeleteExpire", 0, "datanode normal extent delete record expire time(second, >=600)")
 	cmd.Flags().Float64Var(&info.ReuseMPInodeCountThreshold, "reuseMPInodeCountThreshold", 0, "float64, inode count threshold when reuse mp")
-	cmd.Flags().Float64Var(&info.ReuseMPDentryCountThreshold, "reuseMPDentryCountThreshold", 0, "floa64, dentry count threshold when reuse mp")
+	cmd.Flags().Float64Var(&info.ReuseMPDentryCountThreshold, "reuseMPDentryCountThreshold", 0, "float64, dentry count threshold when reuse mp")
+	cmd.Flags().Float64Var(&info.ReuseMPDelInoCountThreshold, "reuseMPDelInodeCountThreshold", 0, "float64, delInode count threshold when reuse mp")
 	cmd.Flags().Uint64Var(&info.MetaPartitionMaxInodeCount, "metaPartitionMaxInodeCount", 0, "if inode count more than max count, mp status change to read only")
 	cmd.Flags().Uint64Var(&info.MetaPartitionMaxDentryCount, "metaPartitionMaxDentryCount", 0, "if dentry count more than max count, mp status change to read only")
+	cmd.Flags().Int32Var(&info.TrashCleanDurationEachTime, "trashCleanMaxDurationEachTime", -1, "trash clean max duration for each time")
+	cmd.Flags().Int32Var(&info.TrashCleanMaxCountEachTime, "trashCleanMaxCountEachTime", -1, "trash clean max count for each time")
 	return cmd
 }
 
@@ -354,6 +367,11 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  DataNodeFlushFDInterval          : %v s\n", info.DataNodeFlushFDInterval))
 	sb.WriteString(fmt.Sprintf("  DataNodeFlushFDParallelismOnDisk : %v \n", info.DataNodeFlushFDParallelismOnDisk))
 	sb.WriteString(fmt.Sprintf("  DNNormalExtentDeleteExpire  : %v\n", info.DataNodeNormalExtentDeleteExpire))
+	sb.WriteString(fmt.Sprintf("  ReuseMPInodeCountThreshold       : %v\n", info.ReuseMPInodeCountThreshold))
+	sb.WriteString(fmt.Sprintf("  ReuseMPDelInoCountThreshold      : %v\n", info.ReuseMPDelInoCountThreshold))
+	sb.WriteString(fmt.Sprintf("  ReuseMPDentryCountThreshold      : %v\n", info.ReuseMPDentryCountThreshold))
+	sb.WriteString(fmt.Sprintf("  TrashCleanMaxDurationEachTime    : %v\n", info.TrashCleanDurationEachTime))
+	sb.WriteString(fmt.Sprintf("  TrashCleanMaxCountEachTime       : %v\n", info.TrashItemCleanMaxCountEachTime))
 	return sb.String()
 }
 

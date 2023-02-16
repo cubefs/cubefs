@@ -239,6 +239,7 @@ type ClusterView struct {
 	MetaRaftLogCap                      int64
 	ReuseMPInodeCountThreshold          float64
 	ReuseMPDentryCountThreshold         float64
+	ReuseMPDelInodeCountThreshold       float64
 	MetaPartitionMaxInodeCount          uint64
 	MetaPartitionMaxDentryCount         uint64
 }

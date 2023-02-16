@@ -84,14 +84,16 @@ type metadataManager struct {
 }
 
 type VolumeConfig struct {
-	Name               string
-	PartitionCount     int
-	TrashDay           int32
-	ChildFileMaxCnt    uint32
-	TrashCleanInterval uint64
-	BatchDelInodeCnt   uint32
-	DelInodeInterval   uint32
-	EnableBitMapAllocator    bool
+	Name                              string
+	PartitionCount                    int
+	TrashDay                          int32
+	ChildFileMaxCnt                   uint32
+	TrashCleanInterval                uint64
+	BatchDelInodeCnt                  uint32
+	DelInodeInterval                  uint32
+	EnableBitMapAllocator             bool
+	CleanTrashItemMaxDurationEachTime int32
+	CleanTrashItemMaxCountEachTime    int32
 }
 
 type MetaNodeVersion struct {
@@ -473,17 +475,19 @@ func (m *metadataManager) updateVolConf() (err error) {
 	volConfMap := make(map[string]*VolumeConfig, 0)
 	for _, vol := range vols {
 		volConfMap[vol.Name] = &VolumeConfig{
-			Name:                  vol.Name,
-			TrashDay:              int32(vol.TrashRemainingDays),
-			ChildFileMaxCnt:       vol.ChildFileMaxCnt,
-			TrashCleanInterval:    vol.TrashCleanInterval,
-			BatchDelInodeCnt:      vol.BatchInodeDelCnt,
-			DelInodeInterval:      vol.DelInodeInterval,
-			EnableBitMapAllocator: vol.EnableBitMapAllocator,
+			Name:                              vol.Name,
+			TrashDay:                          int32(vol.TrashRemainingDays),
+			ChildFileMaxCnt:                   vol.ChildFileMaxCnt,
+			TrashCleanInterval:                vol.TrashCleanInterval,
+			BatchDelInodeCnt:                  vol.BatchInodeDelCnt,
+			DelInodeInterval:                  vol.DelInodeInterval,
+			EnableBitMapAllocator:             vol.EnableBitMapAllocator,
+			CleanTrashItemMaxCountEachTime:    vol.CleanTrashMaxCountEachTime,
+			CleanTrashItemMaxDurationEachTime: vol.CleanTrashMaxDurationEachTime,
 		}
 		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, " +
-			"enableBitMapAllocator: %v", vol.Name, vol.TrashRemainingDays, vol.ChildFileMaxCnt, vol.TrashCleanInterval,
-			strconv.FormatBool(vol.EnableBitMapAllocator))
+			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v", vol.Name, vol.TrashRemainingDays, vol.ChildFileMaxCnt, vol.TrashCleanInterval,
+			strconv.FormatBool(vol.EnableBitMapAllocator), vol.CleanTrashMaxDurationEachTime, vol.CleanTrashMaxCountEachTime)
 	}
 
 	m.volConfMapRWMutex.Lock()
@@ -564,6 +568,28 @@ func (m *metadataManager) getBitMapAllocatorEnableFlag(vol string) (reuseFlag bo
 		return
 	}
 	reuseFlag = volConf.EnableBitMapAllocator
+	return
+}
+
+func (m *metadataManager) getCleanTrashItemMaxDurationEachTime(vol string) (durationTime int32) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	volConf, ok := m.volConfMap[vol]
+	if !ok {
+		return
+	}
+	durationTime = volConf.CleanTrashItemMaxDurationEachTime
+	return
+}
+
+func (m *metadataManager) getCleanTrashItemMaxCountEachTime(vol string) (maxCount int32) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	volConf, ok := m.volConfMap[vol]
+	if !ok {
+		return
+	}
+	maxCount = volConf.CleanTrashItemMaxCountEachTime
 	return
 }
 
