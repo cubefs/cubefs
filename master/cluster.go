@@ -848,6 +848,32 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 	return
 }
 
+func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, err error) {
+	lackReplicaDPs = make([]*DataPartition, 0)
+	unavailableReplicaDPs = make([]*DataPartition, 0)
+	vols := c.copyVols()
+	for _, vol := range vols {
+		var dps *DataPartitionMap
+		dps = vol.dataPartitions
+		for _, dp := range dps.partitions {
+			if dp.ReplicaNum > uint8(len(dp.Hosts)) {
+				lackReplicaDPs = append(lackReplicaDPs, dp)
+			}
+
+			for _, replica := range dp.Replicas {
+				if replica.Status == proto.Unavailable {
+					unavailableReplicaDPs = append(unavailableReplicaDPs, dp)
+					break
+				}
+			}
+
+		}
+	}
+	log.LogInfof("clusterID[%v] lackReplicaDataPartitions count:[%v], unavailableReplicaDataPartitions count:[%v]",
+		c.Name, len(lackReplicaDPs), len(unavailableReplicaDPs))
+	return
+}
+
 func (c *Cluster) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
 	vols := c.copyVols()
 

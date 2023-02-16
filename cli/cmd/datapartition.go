@@ -162,6 +162,24 @@ The "reset" command will be released in next version`,
 					stdout(badPartitionTablePattern, bdpv.Path, pid)
 				}
 			}
+
+			stdout("\n")
+			stdout("%v\n", "[Partition has unavailable replica]:")
+			stdout("%v\n", badReplicaPartitionInfoTableHeader)
+			sort.SliceStable(diagnosis.BadReplicaDataPartitionIDs, func(i, j int) bool {
+				return diagnosis.BadReplicaDataPartitionIDs[i] < diagnosis.BadReplicaDataPartitionIDs[j]
+			})
+
+			for _, dpId := range diagnosis.BadReplicaDataPartitionIDs {
+				var partition *proto.DataPartitionInfo
+				if partition, err = client.AdminAPI().GetDataPartition("", dpId); err != nil {
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					return
+				}
+				if partition != nil {
+					stdout("%v\n", formatBadReplicaDpInfoRow(partition))
+				}
+			}
 			return
 		},
 	}
