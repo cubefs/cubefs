@@ -163,14 +163,37 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 }
 
 var (
-	partitionInfoTablePattern = "%-8v    %-8v    %-10v     %-18v    %-18v"
+	partitionInfoTablePattern = "%-8v    %-8v    %-10v     %-12v    %-18v"
 	partitionInfoTableHeader  = fmt.Sprintf(partitionInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS")
+
+	badReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
+	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
+		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS", "UNAVAILABLE_REPLICAS")
 )
 
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
-	return fmt.Sprintf(partitionInfoTablePattern,
-		partition.PartitionID, partition.VolName, partition.ReplicaNum, formatDataPartitionStatus(partition.Status), strings.Join(partition.Hosts, ", "))
+	return fmt.Sprintf(partitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), strings.Join(partition.Hosts, ", "))
+}
+
+func formatBadReplicaDpInfoRow(partition *proto.DataPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("[")
+	var firstItem = true
+	for _, replica := range partition.Replicas {
+		if replica.Status == proto.Unavailable {
+			if !firstItem {
+				sb.WriteString(",")
+			}
+
+			sb.WriteString(fmt.Sprintf("%v", replica.Addr))
+			firstItem = false
+		}
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(badReplicaPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
 }
 
 func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {
