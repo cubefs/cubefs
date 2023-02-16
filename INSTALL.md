@@ -104,11 +104,10 @@ Start the resources of CubeFS cluster with script `install.sh`. (make sure the M
 
 ```
 $ bash install.sh -h
-Usage: install.sh -r | --role [datanode | metanode | master | objectnode | monitor | client | all | createvol ] [2.1.0 or latest]
+Usage: install.sh -r | --role [datanode | metanode | master | objectnode | client | all | createvol ] [2.1.0 or latest]
 $ bash install.sh -r master
 $ bash install.sh -r metanode
 $ bash install.sh -r datanode
-$ bash install.sh -r monitor
 $ bash install.sh -r client
 ```
 
