@@ -178,6 +178,7 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.RegisterArgsParser(&proxy.ListVolsArgs{}, "json")
 	rpc.RegisterArgsParser(&proxy.CacheVolumeArgs{}, "json")
 	rpc.RegisterArgsParser(&proxy.CacheDiskArgs{}, "json")
+	rpc.RegisterArgsParser(&proxy.DiscardVolsArgs{}, "json")
 
 	// POST /volume/alloc
 	// request  body:  json
@@ -186,6 +187,10 @@ func NewHandler(service *Service) *rpc.Router {
 
 	// GET /volume/list?code_mode={code_mode}
 	router.Handle(http.MethodGet, "/volume/list", service.List, rpc.OptArgsQuery())
+
+	// POST /volume/discard
+	// request body: json
+	router.Handle(http.MethodPost, "/volume/discard", service.Discard, rpc.OptArgsBody())
 
 	// POST /repairmsg
 	// request body: json
