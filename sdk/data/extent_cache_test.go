@@ -71,7 +71,7 @@ func Test_ExtentRangePerformance(t *testing.T)  {
 		}
 		extentCache.Insert(&ek, true)
 	}
-	fmt.Println("slice size: ", extentCache.root.Len())
+	fmt.Println("ek slice length: ", extentCache.root.Len())
 
 	rand.Seed(time.Now().UnixNano())
 	round := ekLen/100
@@ -90,5 +90,71 @@ func Test_ExtentRangePerformance(t *testing.T)  {
 	}
 	if cost := time.Since(start)/time.Duration(round); cost > 20 * time.Microsecond {
 		t.Fatalf("Test_ExtentRangePerformance range extents cost too long: %v, ekLen(%v)", cost, ekLen)
+	}
+}
+
+func Test_PreExtentPerformance(t *testing.T)  {
+	extentCache := NewExtentCache(2)
+	ekLen := 500000
+	for i := 0; i < ekLen; i++ {
+		ek := proto.ExtentKey{
+			FileOffset:   uint64(i)*4096,
+			PartitionId:  uint64(i+1),
+			ExtentId:     uint64(i+1),
+			Size:         4096,
+		}
+		extentCache.Insert(&ek, true)
+	}
+	fmt.Println("ek slice length: ", extentCache.root.Len())
+
+	rand.Seed(time.Now().UnixNano())
+	round := ekLen/100
+	offsetSlice := make([]uint64, 0)
+	for i := 0; i < round; i++ {
+		off := rand.Intn(ekLen)
+		offsetSlice = append(offsetSlice, uint64(off))
+	}
+
+	start := time.Now()
+	for _, off := range offsetSlice {
+		extentCache.Pre(off*4096)
+	}
+	if cost := time.Since(start)/time.Duration(round); cost > 20 * time.Microsecond {
+		t.Fatalf("Test_PreExtentPerformance find previous extent cost too long: %v, ekLen(%v)", cost, ekLen)
+	}
+}
+
+func Test_InsertExtentPerformance(t *testing.T)  {
+	extentCache := NewExtentCache(2)
+	ekLen := 100000
+	for i := 0; i < ekLen; i++ {
+		ek := proto.ExtentKey{
+			FileOffset:   uint64(i)*4096,
+			PartitionId:  uint64(i+1),
+			ExtentId:     uint64(i+1),
+			Size:         4096,
+		}
+		extentCache.Insert(&ek, true)
+	}
+	fmt.Println("ek slice length: ", extentCache.root.Len())
+
+	rand.Seed(time.Now().UnixNano())
+	round := ekLen/100
+	offsetSlice := make([]uint64, 0)
+	for i := 0; i < round; i++ {
+		off := rand.Intn(ekLen)
+		offsetSlice = append(offsetSlice, uint64(off))
+	}
+
+	start := time.Now()
+	for _, off := range offsetSlice {
+		ek := &proto.ExtentKey{
+			FileOffset:   uint64(off)*4096,
+			Size:         4096,
+		}
+		extentCache.Insert(ek, true)
+	}
+	if cost := time.Since(start)/time.Duration(round); cost > 1 * time.Millisecond {
+		t.Fatalf("Test_InsertExtentPerformance insert extent cost too long: %v, ekLen(%v)", cost, ekLen)
 	}
 }
