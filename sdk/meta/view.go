@@ -215,7 +215,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		}
 	}
 
-	if mw.volNotExistCount > VolNotExistClearViewThresholdMin {
+	if mw.volNotExistCount > VolNotExistClearViewThresholdMin && len(view.MetaPartitions) > 0 {
 		log.LogInfof("clear and updateMetaPartition: volNotExistCount(%v)", mw.volNotExistCount)
 		newPartitions := make(map[uint64]*MetaPartition)
 		newRanges := btree.New(32)
@@ -228,10 +228,10 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		mw.partitions = newPartitions
 		mw.ranges = newRanges
 		mw.Unlock()
+		mw.volNotExistCount = 0
 		log.LogInfof("clear and updateMetaPartition done: volNotExistCount(%v)", mw.volNotExistCount)
 	}
 
-	mw.volNotExistCount = 0
 	mw.ossSecure = view.OSSSecure
 	mw.ossBucketPolicy = view.OSSBucketPolicy
 	mw.volCreateTime = view.CreateTime
