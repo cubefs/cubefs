@@ -301,13 +301,13 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 
 func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 	// initialize k data partitionMap at a time
-	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt)
+	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, true)
 	return
 }
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete && proto.IsHot(vol.VolType) {
-		c.batchCreateDataPartition(vol, 1)
+		c.batchCreateDataPartition(vol, 1, false)
 	}
 
 	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
@@ -570,7 +570,7 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 		}
 	}()
 
-	if !vol.needCreateDataPartition() {
+	if ok, _ := vol.needCreateDataPartition(); !ok {
 		return
 	}
 
@@ -602,30 +602,37 @@ func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
 	return false
 }
 
-func (vol *Vol) needCreateDataPartition() bool {
+func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
+
+	ok = false
 	if vol.status() == markDelete {
-		return false
+		err = proto.ErrVolNotExists
+		return
 	}
 
 	if vol.capacity() == 0 {
-		return false
+		err = proto.ErrVolNoAvailableSpace
+		return
 	}
 
 	if proto.IsHot(vol.VolType) {
 		if vol.shouldInhibitWriteBySpaceFull() {
 			vol.setAllDataPartitionsToReadOnly()
-			return false
+			err = proto.ErrVolNoAvailableSpace
+			return
 		}
-
-		return true
+		ok = true
+		return
 	}
 
 	// cold
 	if vol.CacheAction == proto.NoCache && vol.CacheRule == "" {
-		return false
+		err = proto.ErrVolNoCacheAndRule
+		return
 	}
 
-	return true
+	ok = true
+	return
 }
 
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
@@ -654,7 +661,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 
 		count := (maxSize-allocSize-1)/vol.dataPartitionSize + 1
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, int(count))
+		c.batchCreateDataPartition(vol, int(count), false)
 		return
 	}
 
@@ -662,7 +669,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		count := vol.calculateExpansionNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, count)
+		c.batchCreateDataPartition(vol, count, false)
 	}
 }
 
