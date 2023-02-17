@@ -170,7 +170,8 @@ func (writer *asyncWriter) flushToFile() {
 		oldFile := writer.fileName + "." + time.Now().Format(
 			FileNameDateFormat) + RolledExtension
 		if _, err := os.Lstat(oldFile); err != nil {
-			if err := writer.rename(oldFile); err == nil {
+			// the current log may have been deleted inproperly
+			if err := writer.rename(oldFile); err == nil || os.IsNotExist(err) {
 				if fp, err := os.OpenFile(writer.fileName, FileOpt, 0666); err == nil {
 					writer.file.Close()
 					writer.file = fp
