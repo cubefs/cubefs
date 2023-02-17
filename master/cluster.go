@@ -1023,7 +1023,13 @@ func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol, preload *DataPartiti
 	return
 }
 
-func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int) (err error) {
+func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool) (err error) {
+	if !init {
+		if _, err = vol.needCreateDataPartition(); err != nil {
+			log.LogWarnf("action[batchCreateDataPartition] create data partition failed, err[%v]", err)
+			return
+		}
+	}
 	for i := 0; i < reqCount; i++ {
 		if c.DisableAutoAllocate {
 			log.LogWarn("disable auto allocate dataPartition")
