@@ -571,4 +571,8 @@ func StopClient() (clientState []byte) {
 	return
 }
 
+func GetVersion() string {
+	return dumpVersion()
+}
+
 func main() {}

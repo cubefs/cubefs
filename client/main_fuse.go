@@ -16,13 +16,15 @@ import (
 var (
 	configFile       = flag.String("c", "", "FUSE client config file")
 	configForeground = flag.Bool("f", false, "run foreground")
-	version          = flag.String("v", "", "Not supported")
+	version          = flag.Bool("v", false, "Show client version")
+	useVersion       = flag.String("u", "", "Not supported")
 )
 
 var (
 	startClient func(string, *os.File, []byte) error
 	stopClient  func() []byte
 	getFuseFd   func() *os.File
+	getVersion  func() string
 )
 
 const (
@@ -39,12 +41,18 @@ func loadSym(handle *plugin.Plugin) {
 
 	sym, _ = handle.Lookup("GetFuseFd")
 	getFuseFd = sym.(func() *os.File)
+
+	sym, _ = handle.Lookup("GetVersion")
+	getVersion = sym.(func() string)
 }
 
 func main() {
 	flag.Parse()
-	if *version != "" {
-		fmt.Printf("Not supported '-v'. Ignore.\n")
+	if *useVersion != "" {
+		fmt.Printf("Not supported '-u'. Ignore.\n")
+	}
+	if *version {
+		*configForeground = true
 	}
 	if !*configForeground {
 		if err := startDaemon(); err != nil {
@@ -60,6 +68,10 @@ func main() {
 		os.Exit(1)
 	}
 	loadSym(handle)
+	if *version {
+		fmt.Println(getVersion())
+		os.Exit(0)
+	}
 	err = startClient(*configFile, nil, nil)
 	if err != nil {
 		fmt.Printf("\nStart fuse client failed: %v\n", err.Error())

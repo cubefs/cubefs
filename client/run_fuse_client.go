@@ -22,7 +22,8 @@ import (
 var (
 	configFile       = flag.String("c", "", "FUSE client config file")
 	configForeground = flag.Bool("f", false, "run foreground")
-	version          = flag.String("v", "", "Set client version")
+	version          = flag.Bool("v", false, "Show client version")
+	useVersion       = flag.String("u", "", "Use this client version")
 )
 
 const (
@@ -39,27 +40,37 @@ const (
 	VersionTarPre         = "cfs-client-libs"
 	AMD64                 = "amd64"
 	ARM64                 = "arm64"
+	DefaultMasterAddr     = "cn.chubaofs.jd.local"
 )
 
 func main() {
 	flag.Parse()
-	if *configFile == "" {
+	if !*version && *configFile == "" {
 		fmt.Printf("Usage: %s -c {configFile}\n", os.Args[0])
 		os.Exit(1)
 	}
-	if !checkLibsExist() {
-		masterAddr, err := parseMasterAddr(*configFile)
+	var (
+		err          error
+		masterAddr   string
+		downloadAddr string
+		tarName      string
+	)
+	if *configFile != "" {
+		masterAddr, err = parseMasterAddr(*configFile)
 		if err != nil {
 			fmt.Printf("parseMasterAddr err: %v\n", err)
 			os.Exit(1)
 		}
-		downloadAddr, err := getClientDownloadAddr(masterAddr)
-		if err != nil {
-			fmt.Printf("get downloadAddr from master err: %v\n", err)
-			os.Exit(1)
-		}
+	} else {
+		masterAddr = DefaultMasterAddr
+	}
 
-		var tarName string
+	downloadAddr, err = getClientDownloadAddr(masterAddr)
+	if err != nil {
+		fmt.Printf("get downloadAddr from master err: %v\n", err)
+		os.Exit(1)
+	}
+	if !checkLibsExist() {
 		if runtime.GOARCH == AMD64 {
 			tarName = fmt.Sprintf("%s.tar.gz", TarNamePre)
 		} else if runtime.GOARCH == ARM64 {
@@ -71,36 +82,42 @@ func main() {
 		if !prepareLibs(downloadAddr, tarName) {
 			os.Exit(1)
 		}
-		if *version != "" {
-			if runtime.GOARCH == AMD64 {
-				tarName = fmt.Sprintf("%s_%s.tar.gz", VersionTarPre, *version)
-			} else if runtime.GOARCH == ARM64 {
-				tarName = fmt.Sprintf("%s_%s_%s.tar.gz", VersionTarPre, ARM64, *version)
-			}
-			if !prepareLibs(downloadAddr, tarName) {
-				os.Exit(1)
-			}
+	}
+	if *useVersion != "" {
+		if runtime.GOARCH == AMD64 {
+			tarName = fmt.Sprintf("%s_%s.tar.gz", VersionTarPre, *useVersion)
+		} else if runtime.GOARCH == ARM64 {
+			tarName = fmt.Sprintf("%s_%s_%s.tar.gz", VersionTarPre, ARM64, *useVersion)
+		}
+		if !prepareLibs(downloadAddr, tarName) {
+			os.Exit(1)
 		}
 	}
 
-	exeFile := os.Args[0]
-	if err := moveFile(MainBinary, exeFile+".tmp"); err != nil {
-		fmt.Printf("%v\n", err.Error())
-		os.Exit(1)
+	exeFile := MainBinary
+	start := !*version
+	if start {
+		exeFile = os.Args[0]
+		if err = moveFile(MainBinary, exeFile+".tmp"); err != nil {
+			fmt.Printf("%v\n", err.Error())
+			os.Exit(1)
+		}
+		if err = os.Rename(exeFile+".tmp", exeFile); err != nil {
+			fmt.Printf("%v\n", err.Error())
+			os.Exit(1)
+		}
 	}
-	if err := os.Rename(exeFile+".tmp", exeFile); err != nil {
-		fmt.Printf("%v\n", err.Error())
-		os.Exit(1)
-	}
+
 	env := os.Environ()
 	args := make([]string, 0, len(os.Args))
 	for i := 0; i < len(os.Args); i++ {
-		if os.Args[i] == "-v" {
+		if os.Args[i] == "-u" {
 			i++
 		} else {
 			args = append(args, os.Args[i])
 		}
 	}
+
 	execErr := syscall.Exec(exeFile, args, env)
 	if execErr != nil {
 		fmt.Printf("exec %s %v error: %v\n", exeFile, os.Args, execErr)
