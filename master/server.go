@@ -61,27 +61,29 @@ var (
 
 // Server represents the server in a cluster
 type Server struct {
-	id           uint64
-	clusterName  string
-	ip           string
-	port         string
-	walDir       string
-	storeDir     string
-	retainLogs   uint64
-	tickInterval int
-	electionTick int
-	leaderInfo   *LeaderInfo
-	config       *clusterConfig
-	cluster      *Cluster
-	user         *User
-	rocksDBStore *raftstore.RocksDBStore
-	raftStore    raftstore.RaftStore
-	fsm          *MetadataFsm
-	partition    raftstore.Partition
-	wg           sync.WaitGroup
-	reverseProxy *httputil.ReverseProxy
-	metaReady    atomic.Bool
-	apiListener  net.Listener
+	id               uint64
+	clusterName      string
+	ip               string
+	port             string
+	walDir           string
+	storeDir         string
+	retainLogs       uint64
+	tickInterval     int
+	electionTick     int
+	leaderInfo       *LeaderInfo
+	config           *clusterConfig
+	cluster          *Cluster
+	user             *User
+	rocksDBStore     *raftstore.RocksDBStore
+	raftStore        raftstore.RaftStore
+	fsm              *MetadataFsm
+	partition        raftstore.Partition
+	wg               sync.WaitGroup
+	reverseProxy     *httputil.ReverseProxy
+	metaReady        atomic.Bool
+	leaderVersion    atomic.Uint64
+	leaderChangeChan chan uint64
+	apiListener      net.Listener
 }
 
 // NewServer creates a new server
@@ -94,6 +96,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.config = newClusterConfig()
 	gConfig = m.config
 	m.leaderInfo = &LeaderInfo{}
+	m.leaderChangeChan = make(chan uint64, 64)
 	m.reverseProxy = m.newReverseProxy()
 	if err = m.checkConfig(cfg); err != nil {
 		log.LogError(errors.Stack(err))
@@ -110,8 +113,12 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	}
 	m.initCluster()
 	m.initUser()
+	m.scheduleProcessLeaderChange()
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
+	if err = m.partition.Start(); err != nil {
+		return errors.Trace(err, "start raft partition failed")
+	}
 	MasterSecretKey := cfg.GetString(SecretKey)
 	if m.cluster.MasterSecretKey, err = cryptoutil.Base64Decode(MasterSecretKey); err != nil {
 		return fmt.Errorf("action[Start] failed %v, err: master service Key invalid = %s", proto.ErrInvalidCfg, MasterSecretKey)
@@ -264,9 +271,6 @@ func (m *Server) createRaftServer() (err error) {
 		GetStartIndex: func(firstIndex, lastIndex uint64) (startIndex uint64) { return m.fsm.applied },
 	}
 	m.partition = m.raftStore.CreatePartition(partitionCfg)
-	if err = m.partition.Start(); err != nil {
-		return errors.Trace(err, "start raft partition failed")
-	}
 	return
 }
 func (m *Server) initFsm() {

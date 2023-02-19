@@ -21,6 +21,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 
 	"github.com/chubaofs/chubaofs/util/buf"
 
@@ -38,6 +39,7 @@ import (
 func (m *Server) startHTTPService(modulename string, cfg *config.Config) (err error) {
 	router := mux.NewRouter().SkipClean(true)
 	m.registerAPIRoutes(router)
+
 	m.registerAPIMiddleware(router)
 	exporter.InitWithRouter(modulename, cfg, router, m.port)
 	var listener net.Listener
@@ -66,6 +68,7 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					return
 				}
 				if m.partition.IsRaftLeader() {
+					r.Header.Add(leaderVersion, strconv.FormatUint(m.leaderVersion.Load(), 10))
 					if m.metaReady.Load() {
 						next.ServeHTTP(w, r)
 						return

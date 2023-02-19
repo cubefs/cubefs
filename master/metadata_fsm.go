@@ -196,7 +196,7 @@ func (mf *MetadataFsm) HandleFatalEvent(err *raft.FatalError) {
 // HandleLeaderChange implements the interface of raft.StateMachine
 func (mf *MetadataFsm) HandleLeaderChange(leader uint64) {
 	if mf.leaderChangeHandler != nil {
-		go mf.leaderChangeHandler(leader)
+		mf.leaderChangeHandler(leader)
 	}
 }
 

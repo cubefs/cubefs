@@ -376,8 +376,8 @@ func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 	defer vol.mpsLock.RUnlock()
 	maxVirtualMPId := uint64(0)
 	for id, mp := range vol.MetaPartitions {
-		if maxVirtualMPId < mp.VirtualMPs[len(mp.VirtualMPs) - 1].ID {
-			maxVirtualMPId = mp.VirtualMPs[len(mp.VirtualMPs) - 1].ID
+		if maxVirtualMPId < mp.VirtualMPs[len(mp.VirtualMPs)-1].ID {
+			maxVirtualMPId = mp.VirtualMPs[len(mp.VirtualMPs)-1].ID
 			maxPartitionID = id
 		}
 	}
@@ -805,33 +805,33 @@ func (vol *Vol) checkStatus(c *Cluster) {
 		}
 	}()
 	vol.updateViewCache(c)
-	vol.Lock()
-	defer vol.Unlock()
-	if vol.Status != proto.VolStMarkDelete {
-		return
-	}
-	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
-	metaTasks := vol.getTasksToDeleteMetaPartitions()
-	dataTasks := vol.getTasksToDeleteDataPartitions()
-	ecTasks := vol.getTasksToDeleteEcDataPartitions()
-
-	if len(metaTasks) == 0 && len(dataTasks) == 0 && len(ecTasks) == 0 {
-		vol.deleteVolFromStore(c)
-	}
-	go func() {
-		for _, metaTask := range metaTasks {
-			vol.deleteMetaPartitionFromMetaNode(c, metaTask)
-		}
-
-		for _, dataTask := range dataTasks {
-			vol.deleteDataPartitionFromDataNode(c, dataTask)
-		}
-
-		for _, ecTask := range ecTasks {
-			vol.deleteEcDataPartitionFromEcNode(c, ecTask)
-		}
-
-	}()
+	//vol.Lock()
+	//defer vol.Unlock()
+	//if vol.Status != proto.VolStMarkDelete {
+	//	return
+	//}
+	//log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
+	//metaTasks := vol.getTasksToDeleteMetaPartitions()
+	//dataTasks := vol.getTasksToDeleteDataPartitions()
+	//ecTasks := vol.getTasksToDeleteEcDataPartitions()
+	//
+	//if len(metaTasks) == 0 && len(dataTasks) == 0 && len(ecTasks) == 0 {
+	//	vol.deleteVolFromStore(c)
+	//}
+	//go func() {
+	//	for _, metaTask := range metaTasks {
+	//		vol.deleteMetaPartitionFromMetaNode(c, metaTask)
+	//	}
+	//
+	//	for _, dataTask := range dataTasks {
+	//		vol.deleteDataPartitionFromDataNode(c, dataTask)
+	//	}
+	//
+	//	for _, ecTask := range ecTasks {
+	//		vol.deleteEcDataPartitionFromEcNode(c, ecTask)
+	//	}
+	//
+	//}()
 
 	return
 }
@@ -1030,13 +1030,13 @@ func (vol *Vol) doSplitVirtualMetaPartition(c *Cluster, oldMaxMP *MetaPartition,
 	log.LogWarnf("action[doSplitVirtualMetaPartition],partition[%v],start[%v],end[%v],new end[%v]", oldMaxMP.PartitionID, oldMaxMP.Start, oldMaxMP.End, newEnd)
 	cmdMap := make(map[string]*RaftCmd, 0)
 	oldEnd := oldMaxMP.End
-	lastVirtualMPOldEnd := oldMaxMP.VirtualMPs[len(oldMaxMP.VirtualMPs) - 1].End
+	lastVirtualMPOldEnd := oldMaxMP.VirtualMPs[len(oldMaxMP.VirtualMPs)-1].End
 	oldMaxMP.End = newEnd
-	oldMaxMP.VirtualMPs[len(oldMaxMP.VirtualMPs) - 1].End = newEnd
+	oldMaxMP.VirtualMPs[len(oldMaxMP.VirtualMPs)-1].End = newEnd
 	defer func() {
 		if err != nil {
 			oldMaxMP.End = oldEnd
-			oldMaxMP.VirtualMPs[len(oldMaxMP.VirtualMPs) - 1].End = lastVirtualMPOldEnd
+			oldMaxMP.VirtualMPs[len(oldMaxMP.VirtualMPs)-1].End = lastVirtualMPOldEnd
 		}
 	}()
 	oldMPUpdateRaftCmd, err := c.buildMetaPartitionRaftCmd(opSyncUpdateMetaPartition, oldMaxMP)

@@ -16,7 +16,9 @@ package master
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
+	"time"
 
 	cfsProto "github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -28,11 +30,25 @@ type LeaderInfo struct {
 	addr string //host:port
 }
 
-func (m *Server) handleLeaderChange(leader uint64) {
+func (m *Server) scheduleProcessLeaderChange() {
+	go func() {
+		for {
+			select {
+			case leader := <-m.leaderChangeChan:
+				log.LogWarnf("action[handleLeaderChange] change leader to [%v],%v ", leader, m.leaderVersion.Load())
+				m.doLeaderChange(leader)
+			}
+		}
+	}()
+}
+
+func (m *Server) doLeaderChange(leader uint64) {
 	if leader == 0 {
 		log.LogWarnf("action[handleLeaderChange] but no leader")
 		return
 	}
+	m.metaReady.Store(false)
+	m.leaderVersion.Add(1)
 	oldLeaderAddr := m.leaderInfo.addr
 	m.leaderInfo.addr = AddrDatabase[leader]
 	log.LogWarnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
@@ -43,20 +59,32 @@ func (m *Server) handleLeaderChange(leader uint64) {
 			m.clusterName, m.leaderInfo.addr))
 		if oldLeaderAddr != m.leaderInfo.addr {
 			m.loadMetadata()
-			m.metaReady.Store(true)
+			log.LogInfo("action[refreshUser] begin")
+			if err := m.refreshUser(); err != nil {
+				log.LogErrorf("action[refreshUser] failed,err:%v", err)
+			}
+			log.LogInfo("action[refreshUser] end")
 			m.cluster.updateMetaLoadedTime()
+			Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader[%v] load metadata finished.",
+				m.clusterName, m.leaderInfo.addr))
 		}
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
 		m.cluster.isLeader.Store(true)
+		m.metaReady.Store(true)
 	} else {
-		m.cluster.isLeader.Store(false)
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
-		m.metaReady.Store(false)
+		m.cluster.isLeader.Store(false)
 		m.clearMetadata()
 		m.cluster.resetMetaLoadedTime()
+		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] follower[%v] clear metadata has finished.",
+			m.clusterName, m.ip))
 	}
+}
+
+func (m *Server) handleLeaderChange(leader uint64) {
+	m.leaderChangeChan <- leader
 }
 
 func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
@@ -134,6 +162,9 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
+	rand.Seed(time.Now().UnixNano())
+	v := 15 + rand.Intn(10)
+	time.Sleep(time.Second * time.Duration(v))
 	if err = m.cluster.loadMetaPartitions(); err != nil {
 		panic(err)
 	}
@@ -159,13 +190,6 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadUserInfo] end")
-
-	log.LogInfo("action[refreshUser] begin")
-	if err = m.refreshUser(); err != nil {
-		panic(err)
-	}
-	log.LogInfo("action[refreshUser] end")
-
 }
 
 func (m *Server) clearMetadata() {

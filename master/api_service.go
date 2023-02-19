@@ -1979,6 +1979,7 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		vol     *Vol
 		volView *proto.SimpleVolView
 	)
+	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewTPCnt(proto.AdminGetVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
@@ -1986,7 +1987,7 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
 	volView = newSimpleView(vol)
@@ -4690,6 +4691,7 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 		err  error
 	)
+	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewTPCnt(proto.ClientMetaPartitionsUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
@@ -4697,7 +4699,7 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
 	mpsCache := vol.getMpsCache()
@@ -4717,19 +4719,20 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 		err  error
 	)
+	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewTPCnt(proto.ClientDataPartitionsUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
-		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
 
 	if body, err = vol.getDataPartitionsView(); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(err))
+		m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
 		return
 	}
 	send(w, r, body)
@@ -4745,18 +4748,19 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		ts      int64
 		param   *getVolParameter
 	)
+	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewTPCnt(proto.ClientVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if param, err = parseGetVolParameter(r); err != nil {
-		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
 		return
 	}
 	if vol, err = m.cluster.getVol(param.name); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
 	if !param.skipOwnerValidation && !matchKey(vol.Owner, param.authKey) {
-		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch))
+		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch), currentLeaderVersion)
 		return
 	}
 	viewCache := vol.getViewCache()
@@ -4767,14 +4771,14 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	if !param.skipOwnerValidation && vol.authenticate {
 		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, param.name); err != nil {
 			if err == proto.ErrExpiredTicket {
-				m.sendErrReply(w, r, newErrHTTPReply(err))
+				m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
 				return
 			}
-			m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidTicket, Msg: err.Error()})
+			m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidTicket, Msg: err.Error()}, currentLeaderVersion)
 			return
 		}
 		if message, err = genRespMessage(viewCache, &jobj, ts, ticket.SessionKey.Key); err != nil {
-			m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMasterAPIGenRespError, Msg: err.Error()})
+			m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMasterAPIGenRespError, Msg: err.Error()}, currentLeaderVersion)
 			return
 		}
 		sendOkReply(w, r, newSuccessHTTPReply(message))
@@ -4790,6 +4794,7 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		name string
 		vol  *Vol
 	)
+	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewTPCnt(proto.ClientVolStatUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
@@ -4797,7 +4802,7 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol)))
@@ -4995,6 +5000,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 		vol      *Vol
 		volsInfo []*proto.VolInfo
 	)
+	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewTPCnt(proto.AdminListVolsUmpKey)
 	defer func() { metrics.Set(err) }()
 	if keywords, err = parseKeywords(r); err != nil {
@@ -5005,7 +5011,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 	for _, name := range m.cluster.allVolNames() {
 		if strings.Contains(name, keywords) {
 			if vol, err = m.cluster.getVol(name); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+				m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 				return
 			}
 			stat := volStat(vol)
@@ -5027,6 +5033,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 		vol      *Vol
 		volsInfo []*proto.VolInfo
 	)
+	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewTPCnt(proto.AdminSmartVolListUmpKey)
 	defer func() { metrics.Set(err) }()
 	if keywords, err = parseKeywords(r); err != nil {
@@ -5037,7 +5044,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 	for _, name := range m.cluster.allVolNames() {
 		if strings.Contains(name, keywords) {
 			if vol, err = m.cluster.getVol(name); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+				m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 				return
 			}
 			if !vol.isSmart {
@@ -5060,12 +5067,13 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 		vol      *Vol
 		volsInfo []*proto.VolInfo
 	)
+	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewTPCnt(proto.AdminCompactVolListUmpKey)
 	defer func() { metrics.Set(err) }()
 	volsInfo = make([]*proto.VolInfo, 0)
 	for _, name := range m.cluster.allVolNames() {
 		if vol, err = m.cluster.getVol(name); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+			m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 			return
 		}
 		if vol.compactTag == proto.CompactDefault {
@@ -5973,7 +5981,7 @@ func (m *Server) setVolChildFileMaxCount(w http.ResponseWriter, r *http.Request)
 }
 
 // sendErrReply after check leader or meta status
-func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
+func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply, oldLeaderVersion uint64) {
 	if !m.metaReady.Load() {
 		log.LogWarnf("action[sendErrReply] leader meta is not ready")
 		http.Error(w, m.leaderInfo.addr, http.StatusInternalServerError)
@@ -5983,6 +5991,12 @@ func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpReply 
 	if m.leaderInfo.addr == "" || leaderID <= 0 {
 		log.LogErrorf("action[sendErrReply] no leader,request[%v]", r.URL)
 		http.Error(w, "no leader", http.StatusInternalServerError)
+		return
+	}
+
+	if m.leaderVersion.Load() != oldLeaderVersion {
+		log.LogWarnf("action[sendErrReply] leader meta is not ready")
+		http.Error(w, m.leaderInfo.addr, http.StatusInternalServerError)
 		return
 	}
 	sendErrReply(w, r, httpReply)
@@ -6033,4 +6047,13 @@ func (m *Server) setMetaPartitionEnableReuseState(w http.ResponseWriter, r *http
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) getCurrentLeaderVersion(r *http.Request) (currentLeaderVersion uint64) {
+	currentLeaderVersion, err := strconv.ParseUint(r.Header.Get(leaderVersion), 10, 64)
+	if err != nil {
+		log.LogErrorf("action[getCurrentLeaderVersion] err:%v", err)
+		currentLeaderVersion = m.leaderVersion.Load()
+	}
+	return
 }
