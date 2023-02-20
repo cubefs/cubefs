@@ -14,12 +14,12 @@ import (
 func TestHandleLeaderChange(t *testing.T) {
 	leaderID := server.id
 	newLeaderID := leaderID + 1
-	server.handleLeaderChange(newLeaderID)
+	server.doLeaderChange(newLeaderID)
 	if server.metaReady.Load() != false {
 		t.Errorf("logic error,metaReady should be false,metaReady[%v]", server.metaReady.Load())
 		return
 	}
-	server.handleLeaderChange(leaderID)
+	server.doLeaderChange(leaderID)
 	if server.metaReady.Load() == false {
 		t.Errorf("logic error,metaReady should be true,metaReady[%v]", server.metaReady.Load())
 		return
