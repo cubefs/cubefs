@@ -63,7 +63,6 @@ var (
 	CommitID    string
 	BranchName  string
 	BuildTime   string
-	Debug       string
 	NextVersion string
 )
 
@@ -71,12 +70,10 @@ func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
 	var resp = struct {
 		Branch string
 		Commit string
-		Debug  string
 		Build  string
 	}{
 		Branch: BranchName,
 		Commit: CommitID,
-		Debug:  Debug,
 		Build:  fmt.Sprintf("%s %s %s %s", runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime),
 	}
 	var encoded []byte

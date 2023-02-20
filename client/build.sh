@@ -3,7 +3,6 @@
 BranchName=`git rev-parse --abbrev-ref HEAD`
 CommitID=`git rev-parse HEAD`
 BuildTime=`date +%Y-%m-%d\ %H:%M`
-Debug="1"
 
 [[ "-$GOPATH" == "-" ]] && { echo "GOPATH not set"; exit 1 ; }
 
@@ -20,7 +19,6 @@ help() {
 Usage: ./build.sh [ -h | --help ] [ -g ] [ --sdk-only | --client-only ]
     -h, --help              show help info
     --lcov                  lcov coverage measurements
-    --online                setup Debug="0" goflag="-s" gccflag=""
     -s, --sdk-only          build sdk (libcfssdk.so libempty.so) only
     -c, --client-only       build client (libcfsclient.so and cfs-client) only
     -p, --pack-libs         pack libs to cfs-client-libs.tar.gz used for bypass upgrade
@@ -34,11 +32,6 @@ for opt in ${ARGS[*]} ; do
     case "$opt" in
         -h | --help)
             help
-            ;;
-        --online)
-            Debug="0"
-            goflag="-s"
-            gccflag=""
             ;;
         --lcov)
             gccflag="$gccflag -fprofile-arcs -ftest-coverage -lgcov"
@@ -66,13 +59,12 @@ done
 
 dir=$(dirname $0)
 bin=${dir}/bin
-echo "using Debug=\"${Debug}\""
 echo "using goflag=\"${goflag}\""
 echo "using gccflag=\"${gccflag}\""
 if [[ ${build_sdk} -eq 1 ]]; then
     echo "building sdk (libcfssdk.so, libcfssdk_cshared.so) commit: ${CommitID} ..."
-    go build -ldflags "${goflag} -E main.main -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}' -X 'main.Debug=${Debug}'" -buildmode=plugin -linkshared -o ${bin}/libcfssdk.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http.go ${dir}/ump.go ${dir}/common.go
-    go build -ldflags "${goflag} -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}' -X 'main.Debug=${Debug}'" -buildmode=c-shared -o ${bin}/libcfssdk_cshared.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http.go ${dir}/ump.go ${dir}/common.go
+    go build -ldflags "${goflag} -E main.main -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o ${bin}/libcfssdk.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http.go ${dir}/ump.go ${dir}/common.go
+    go build -ldflags "${goflag} -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -buildmode=c-shared -o ${bin}/libcfssdk_cshared.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http.go ${dir}/ump.go ${dir}/common.go
     chmod a+rx ${bin}/libcfssdk.so
     chmod a+rx ${bin}/libcfssdk_cshared.so
 fi
