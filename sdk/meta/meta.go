@@ -75,7 +75,7 @@ const (
 
 	defaultOpLimitBurst = 128
 
-	VolNotExistInterceptThresholdMin = 60
+	VolNotExistInterceptThresholdMin = 60 * 24
 	VolNotExistClearViewThresholdMin = 0
 
 	MasterNoCacheAPIRetryTimeout = 5 * time.Minute

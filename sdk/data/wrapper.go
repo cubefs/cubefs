@@ -40,7 +40,7 @@ var (
 )
 
 const (
-	VolNotExistInterceptThresholdMin = 60
+	VolNotExistInterceptThresholdMin = 60 * 24
 	VolNotExistClearViewThresholdMin = 0
 )
 
