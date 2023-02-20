@@ -70,8 +70,8 @@ func (s *Service) KvSet(c *rpc.Context) {
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
-	if args.Key == proto.CodeModeConfigKey {
-		span.Warn("code mode key not allow to set by api")
+	if proto.IsSysConfigKey(args.Key) {
+		span.Warnf("system config key:[%s] not allow to set by api", args.Key)
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
