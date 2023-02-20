@@ -16,13 +16,10 @@ package master
 
 import (
 	"fmt"
-	"math/rand"
-	"strings"
-	"time"
-
 	cfsProto "github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft/proto"
+	"strings"
 )
 
 // LeaderInfo represents the leader's information
@@ -162,9 +159,9 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
-	rand.Seed(time.Now().UnixNano())
-	v := 15 + rand.Intn(10)
-	time.Sleep(time.Second * time.Duration(v))
+	//rand.Seed(time.Now().UnixNano())
+	//v := 15 + rand.Intn(10)
+	//time.Sleep(time.Second * time.Duration(v))
 	if err = m.cluster.loadMetaPartitions(); err != nil {
 		panic(err)
 	}

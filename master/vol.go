@@ -805,33 +805,33 @@ func (vol *Vol) checkStatus(c *Cluster) {
 		}
 	}()
 	vol.updateViewCache(c)
-	//vol.Lock()
-	//defer vol.Unlock()
-	//if vol.Status != proto.VolStMarkDelete {
-	//	return
-	//}
-	//log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
-	//metaTasks := vol.getTasksToDeleteMetaPartitions()
-	//dataTasks := vol.getTasksToDeleteDataPartitions()
-	//ecTasks := vol.getTasksToDeleteEcDataPartitions()
-	//
-	//if len(metaTasks) == 0 && len(dataTasks) == 0 && len(ecTasks) == 0 {
-	//	vol.deleteVolFromStore(c)
-	//}
-	//go func() {
-	//	for _, metaTask := range metaTasks {
-	//		vol.deleteMetaPartitionFromMetaNode(c, metaTask)
-	//	}
-	//
-	//	for _, dataTask := range dataTasks {
-	//		vol.deleteDataPartitionFromDataNode(c, dataTask)
-	//	}
-	//
-	//	for _, ecTask := range ecTasks {
-	//		vol.deleteEcDataPartitionFromEcNode(c, ecTask)
-	//	}
-	//
-	//}()
+	vol.Lock()
+	defer vol.Unlock()
+	if vol.Status != proto.VolStMarkDelete {
+		return
+	}
+	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
+	metaTasks := vol.getTasksToDeleteMetaPartitions()
+	dataTasks := vol.getTasksToDeleteDataPartitions()
+	ecTasks := vol.getTasksToDeleteEcDataPartitions()
+
+	if len(metaTasks) == 0 && len(dataTasks) == 0 && len(ecTasks) == 0 {
+		vol.deleteVolFromStore(c)
+	}
+	go func() {
+		for _, metaTask := range metaTasks {
+			vol.deleteMetaPartitionFromMetaNode(c, metaTask)
+		}
+
+		for _, dataTask := range dataTasks {
+			vol.deleteDataPartitionFromDataNode(c, dataTask)
+		}
+
+		for _, ecTask := range ecTasks {
+			vol.deleteEcDataPartitionFromEcNode(c, ecTask)
+		}
+
+	}()
 
 	return
 }
