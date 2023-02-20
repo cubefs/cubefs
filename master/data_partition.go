@@ -842,6 +842,38 @@ func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) 
 	return
 }
 
+func (partition *DataPartition) getNodeSets() (nodeSets []uint64) {
+	partition.RLock()
+	defer partition.RUnlock()
+	nodeSetMap := map[uint64]struct{}{}
+	for _, replica := range partition.Replicas {
+		if replica.dataNode == nil {
+			continue
+		}
+		nodeSetMap[replica.dataNode.NodeSetID] = struct{}{}
+	}
+	for nodeSet := range nodeSetMap {
+		nodeSets = append(nodeSets, nodeSet)
+	}
+	return
+}
+
+func (partition *DataPartition) getZones() (zones []string) {
+	partition.RLock()
+	defer partition.RUnlock()
+	zoneMap := map[string]struct{}{}
+	for _, replica := range partition.Replicas {
+		if replica.dataNode == nil {
+			continue
+		}
+		zoneMap[replica.dataNode.ZoneName] = struct{}{}
+	}
+	for zone := range zoneMap {
+		zones = append(zones, zone)
+	}
+	return
+}
+
 func (partition *DataPartition) getLiveZones(offlineAddr string) (zones []string) {
 	partition.RLock()
 	defer partition.RUnlock()

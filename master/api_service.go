@@ -4186,3 +4186,30 @@ func FormatFloatFloor(num float64, decimal int) (float64, error) {
 	res := strconv.FormatFloat(math.Floor(num*d)/d, 'f', -1, 64)
 	return strconv.ParseFloat(res, 64)
 }
+
+func (m *Server) setCheckDataReplicasEnable(w http.ResponseWriter, r *http.Request) {
+	var (
+		err    error
+		enable bool
+	)
+
+	if enable, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	oldValue := m.cluster.checkDataReplicasEnable
+	if oldValue != enable {
+		m.cluster.checkDataReplicasEnable = enable
+		if err = m.cluster.syncPutCluster(); err != nil {
+			m.cluster.checkDataReplicasEnable = oldValue
+			log.LogErrorf("action[setCheckDataReplicasEnable] syncPutCluster failed %v", err)
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
+			return
+		}
+	}
+
+	log.LogInfof("action[setCheckDataReplicasEnable] enable be set [%v]", enable)
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"set checkDataReplicasEnable to [%v] successfully", enable)))
+}
