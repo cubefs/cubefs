@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/util/buf"
 	"hash"
 	"io"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -191,6 +192,7 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 	writer.fileOffset = 0
 	writer.err = make(chan *wSliceErr)
 
+	var oeksLock sync.RWMutex
 	oeks := make([]proto.ObjExtentKey, 0)
 
 	writeBuff := func() {
@@ -229,6 +231,11 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 					writer.Unlock()
 					return
 				}
+
+				oeksLock.Lock()
+				oeks = append(oeks, wSlice.objExtentKey)
+				oeksLock.Unlock()
+
 				/*oeks := make([]proto.ObjExtentKey, 0)
 				//update meta
 				oeks = append(oeks, wSlice.objExtentKey)
@@ -251,7 +258,7 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 
 				writer.cacheLevel2(wSlice)
 			}
-			oeks = append(oeks, wSlice.objExtentKey)
+			//oeks = append(oeks, wSlice.objExtentKey)
 			exec.Run(write)
 		}
 	}
@@ -304,6 +311,11 @@ LOOP:
 		}
 	}
 
+	log.LogDebugf("WriteFromReader before sort: %v", oeks)
+	sort.Slice(oeks, func(i, j int) bool {
+		return oeks[i].FileOffset < oeks[j].FileOffset
+	})
+	log.LogDebugf("WriteFromReader after sort: %v", oeks)
 	if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
 		log.LogErrorf("WriteFromReader error,meta append ebsc extent keys fail,ino(%v), err(%v)", writer.ino, err)
 		return

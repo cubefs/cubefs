@@ -105,8 +105,8 @@ const (
 	//enable block cache when reading data in cold volume
 	enableBcache = "enableBcache"
 	//define thread numbers for writing and reading ebs
-	ebsWriteThreads = "ebsWriteThreads"
-	ebsReadThreads  = "ebsReadThreads"
+	ebsWriteThreads = "bStoreWriteThreads"
+	ebsReadThreads  = "bStoreReadThreads"
 )
 
 // Default of configuration value
