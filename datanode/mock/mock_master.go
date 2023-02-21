@@ -178,17 +178,17 @@ func buildJSONResp(w http.ResponseWriter, stateCode int, data interface{}, send,
 }
 
 func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
-	fmt.Printf("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, httpReply)
+	// fmt.Printf("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, httpReply)
 	reply, err := json.Marshal(httpReply)
 	if err != nil {
-		fmt.Printf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)
+		// fmt.Printf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
 	if _, err = w.Write(reply); err != nil {
-		fmt.Printf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
+		// fmt.Printf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
 	}
 	return
 }

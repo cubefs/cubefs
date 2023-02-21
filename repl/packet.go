@@ -58,6 +58,8 @@ type Packet struct {
 	errorCh           chan error
 	mesg              string
 	replSource        string
+
+	elapseStart time.Time // 用于记录Packet完整处理链路的耗时
 }
 
 type FollowerPacket struct {
@@ -129,6 +131,14 @@ const (
 	PacketUsePacketPool   = 2
 	PacketNoUsePacketPool = 0
 )
+
+func (p *Packet) ResetElapse() {
+	p.elapseStart = time.Now()
+}
+
+func (p *Packet) Elapsed() time.Duration {
+	return time.Now().Sub(p.elapseStart)
+}
 
 func (p *Packet) canPutToDataPool() (can bool) {
 	if p.isUseDataPool() && atomic.LoadInt32(&p.dataPoolRefCnt) == 0 {
