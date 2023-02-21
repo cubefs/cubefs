@@ -251,7 +251,7 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 }
 
 func dumpVersion() string {
-	return fmt.Sprintf("\nChubaoFS Client\nBranch: %s\nCommit: %s\nBuild: %s %s %s %s\n", BranchName, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
+	return fmt.Sprintf("\nChubaoFS Client\nBranch: %s\nVersion: %s\nCommit: %s\nBuild: %s %s %s %s\n", BranchName, proto.Version, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 }
 
 func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientState *FuseClientState) (fsConn *fuse.Conn, err error) {

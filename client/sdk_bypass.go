@@ -396,7 +396,7 @@ func getVersionInfoString() string {
 	}
 	pid := os.Getpid()
 	return fmt.Sprintf("ChubaoFS %s\nBranch: %s\nVersion: %s\nCommit: %s\nBuild: %s %s %s %s\nCMD: %s\nPID: %d\n",
-		gClientManager.moduleName, BranchName, proto.BaseVersion, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime, cmd, pid)
+		gClientManager.moduleName, BranchName, proto.Version, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime, cmd, pid)
 }
 
 func startVersionReporter(cluster, volName string, masters []string) {

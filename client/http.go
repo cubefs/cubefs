@@ -68,13 +68,15 @@ var (
 
 func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
 	var resp = struct {
-		Branch string
-		Commit string
-		Build  string
+		Branch  string
+		Version string
+		Commit  string
+		Build   string
 	}{
-		Branch: BranchName,
-		Commit: CommitID,
-		Build:  fmt.Sprintf("%s %s %s %s", runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime),
+		Branch:  BranchName,
+		Version: proto.Version,
+		Commit:  CommitID,
+		Build:   fmt.Sprintf("%s %s %s %s", runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime),
 	}
 	var encoded []byte
 	encoded, _ = json.Marshal(&resp)
