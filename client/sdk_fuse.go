@@ -48,7 +48,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	_ "github.com/chubaofs/chubaofs/util/log/http" // HTTP APIs for logging control
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
 
 	"github.com/chubaofs/chubaofs/util/ump"
@@ -273,7 +272,6 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
 	http.HandleFunc(ControlCommandGetOpRate, super.GetOpRate)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
-	http.HandleFunc(log.GetLogPath, log.GetLog)
 	http.HandleFunc("/version", GetVersionHandleFunc)
 	http.HandleFunc(ControlSetUpgrade, gClient.SetClientUpgrade)
 	http.HandleFunc(ControlUnsetUpgrade, UnsetClientUpgrade)

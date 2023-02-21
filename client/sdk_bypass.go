@@ -145,8 +145,6 @@ import (
 
 	"github.com/chubaofs/chubaofs/util/ump"
 	"github.com/chubaofs/chubaofs/util/version"
-
-	_ "github.com/chubaofs/chubaofs/util/log/http" // HTTP APIs for logging control
 )
 
 const (
@@ -594,7 +592,6 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		log.LogInfof("using prof port: %v", gClientManager.profPort)
 		syslog.Printf("using prof port: %v\n", gClientManager.profPort)
 
-		http.HandleFunc(log.GetLogPath, log.GetLog)
 		http.HandleFunc("/version", GetVersionHandleFunc)
 		http.HandleFunc(ControlReadProcessRegister, registerReadProcStatusHandleFunc)
 		http.HandleFunc(ControlBroadcastRefreshExtents, broadcastRefreshExtentsHandleFunc)
