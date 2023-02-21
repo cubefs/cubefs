@@ -46,25 +46,26 @@ type MetaReplica struct {
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartition struct {
-	PartitionID   uint64
-	Start         uint64
-	End           uint64
-	MaxInodeID    uint64
-	InodeCount    uint64
-	DentryCount   uint64
+	PartitionID    uint64
+	Start          uint64
+	End            uint64
+	MaxInodeID     uint64
+	InodeCount     uint64
+	DentryCount    uint64
 	FreeListLen   uint64
-	Replicas      []*MetaReplica
-	ReplicaNum    uint8
-	Status        int8
-	IsRecover     bool
-	volID         uint64
-	volName       string
-	Hosts         []string
-	Peers         []proto.Peer
-	OfflinePeerID uint64
-	MissNodes     map[string]int64
-	LoadResponse  []*proto.MetaPartitionLoadResponse
-	offlineMutex  sync.RWMutex
+	Replicas       []*MetaReplica
+	ReplicaNum     uint8
+	Status         int8
+	IsRecover      bool
+	volID          uint64
+	volName        string
+	Hosts          []string
+	Peers          []proto.Peer
+	OfflinePeerID  uint64
+	MissNodes      map[string]int64
+	LoadResponse   []*proto.MetaPartitionLoadResponse
+	offlineMutex   sync.RWMutex
+	EqualCheckPass bool
 	sync.RWMutex
 }
 
@@ -84,6 +85,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.Peers = make([]proto.Peer, 0)
 	mp.Hosts = make([]string, 0)
 	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
+	mp.EqualCheckPass = true
 	return
 }
 

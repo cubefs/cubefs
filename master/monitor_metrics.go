@@ -57,6 +57,7 @@ const (
 	MetricReplicaMissingDPCount    = "replica_missing_dp_count"
 	MetricDataNodesetInactiveCount = "data_nodeset_inactive_count"
 	MetricMetaNodesetInactiveCount = "meta_nodeset_inactive_count"
+	MetricMetaInconsistent         = "mp_inconsistent"
 )
 
 var WarnMetrics *warningMetrics
@@ -89,11 +90,13 @@ type monitorMetrics struct {
 	ReplicaMissingDPCount    *exporter.Gauge
 	dataNodesetInactiveCount *exporter.GaugeVec
 	metaNodesetInactiveCount *exporter.GaugeVec
+	metaEqualCheckFail       *exporter.GaugeVec
 
 	volNames                      map[string]struct{}
 	badDisks                      map[string]string
 	nodesetInactiveDataNodesCount map[uint64]int64
 	nodesetInactiveMetaNodesCount map[uint64]int64
+	inconsistentMps               map[string]string
 	//volNamesMutex sync.Mutex
 }
 
@@ -103,6 +106,7 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 		badDisks:                      make(map[string]string),
 		nodesetInactiveDataNodesCount: make(map[uint64]int64),
 		nodesetInactiveMetaNodesCount: make(map[uint64]int64),
+		inconsistentMps:               make(map[string]string),
 	}
 }
 
@@ -167,6 +171,7 @@ func (mm *monitorMetrics) start() {
 	mm.ReplicaMissingDPCount = exporter.NewGauge(MetricReplicaMissingDPCount)
 	mm.dataNodesetInactiveCount = exporter.NewGaugeVec(MetricDataNodesetInactiveCount, "", []string{"nodeset"})
 	mm.metaNodesetInactiveCount = exporter.NewGaugeVec(MetricMetaNodesetInactiveCount, "", []string{"nodeset"})
+	mm.metaEqualCheckFail = exporter.NewGaugeVec(MetricMetaInconsistent, "", []string{"volume", "mpId"})
 	go mm.statMetrics()
 }
 
@@ -210,6 +215,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setDiskErrorMetric()
 	mm.setNotWritableDataNodesCount()
 	mm.setNotWritableMetaNodesCount()
+	mm.setMpInconsistentErrorMetric()
 	mm.setInactiveDataNodesCountMetric()
 	mm.setInactiveMetaNodesCountMetric()
 	mm.setDpMetrics()
@@ -318,6 +324,33 @@ func (mm *monitorMetrics) deleteVolMetric(volName string) {
 	mm.volMetaCount.DeleteLabelValues(volName, "mp")
 	mm.volMetaCount.DeleteLabelValues(volName, "dp")
 	mm.volMetaCount.DeleteLabelValues(volName, "freeList")
+}
+
+func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
+	deleteMps := make(map[string]string)
+	for k, v := range mm.inconsistentMps {
+		deleteMps[k] = v
+		delete(mm.inconsistentMps, k)
+	}
+	mm.cluster.volMutex.RLock()
+	defer mm.cluster.volMutex.RUnlock()
+
+	for _, vol := range mm.cluster.vols {
+		for _, mp := range vol.MetaPartitions {
+			if mp.IsRecover || mp.EqualCheckPass {
+				continue
+			}
+			idStr := strconv.FormatUint(mp.PartitionID, 10)
+			mm.metaEqualCheckFail.SetWithLabelValues(1, vol.Name, idStr)
+			mm.inconsistentMps[idStr] = vol.Name
+			log.LogWarnf("setMpInconsistentErrorMetric.mp %v SetWithLabelValues id %v vol %v", mp.PartitionID, idStr, vol.Name)
+			delete(deleteMps, idStr)
+		}
+	}
+
+	for k, v := range deleteMps {
+		mm.metaEqualCheckFail.DeleteLabelValues(v, k)
+	}
 }
 
 func (mm *monitorMetrics) setDiskErrorMetric() {
@@ -456,6 +489,11 @@ func (mm *monitorMetrics) setNotWritableDataNodesCount() {
 	})
 	mm.dataNodesNotWritable.Set(float64(notWritabelDataNodesCount))
 }
+func (mm *monitorMetrics) clearInconsistentMps() {
+	for k := range mm.inconsistentMps {
+		mm.dataNodesetInactiveCount.DeleteLabelValues(k)
+	}
+}
 
 func (mm *monitorMetrics) clearVolMetrics() {
 	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
@@ -477,6 +515,7 @@ func (mm *monitorMetrics) resetAllMetrics() {
 	mm.clearDiskErrMetrics()
 	mm.clearInactiveMetaNodesCountMetric()
 	mm.clearInactiveDataNodesCountMetric()
+	mm.clearInconsistentMps()
 
 	mm.dataNodesCount.Set(0)
 	mm.metaNodesCount.Set(0)
