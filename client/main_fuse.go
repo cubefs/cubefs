@@ -14,13 +14,6 @@ import (
 )
 
 var (
-	configFile       = flag.String("c", "", "FUSE client config file")
-	configForeground = flag.Bool("f", false, "run foreground")
-	version          = flag.Bool("v", false, "Show client version")
-	useVersion       = flag.String("u", "", "Not supported")
-)
-
-var (
 	startClient func(string, *os.File, []byte) error
 	stopClient  func() []byte
 	getFuseFd   func() *os.File
@@ -28,7 +21,6 @@ var (
 )
 
 const (
-	ClientLib           = "/usr/lib64/libcfssdk.so"
 	CheckUpdateInterval = 5 * time.Second
 )
 
@@ -48,9 +40,43 @@ func loadSym(handle *plugin.Plugin) {
 
 func main() {
 	flag.Parse()
-	if *useVersion != "" {
-		fmt.Printf("Not supported '-u'. Ignore.\n")
+
+	if !*version && *configFile == "" {
+		fmt.Printf("Usage: %s -c {configFile}\n", os.Args[0])
+		os.Exit(1)
 	}
+	var (
+		err          error
+		masterAddr   string
+		downloadAddr string
+		tarName      string
+	)
+	if *configFile != "" {
+		masterAddr, err = parseMasterAddr(*configFile)
+		if err != nil {
+			fmt.Printf("parseMasterAddr err: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		masterAddr = DefaultMasterAddr
+	}
+
+	downloadAddr, err = getClientDownloadAddr(masterAddr)
+	if err != nil {
+		fmt.Printf("get downloadAddr from master err: %v\n", err)
+		os.Exit(1)
+	}
+	if *useVersion != "" {
+		if runtime.GOARCH == AMD64 {
+			tarName = fmt.Sprintf("%s_%s.tar.gz", VersionTarPre, *useVersion)
+		} else if runtime.GOARCH == ARM64 {
+			tarName = fmt.Sprintf("%s_%s_%s.tar.gz", VersionTarPre, ARM64, *useVersion)
+		}
+		if !prepareLibs(downloadAddr, tarName) {
+			os.Exit(1)
+		}
+	}
+
 	if *version {
 		*configForeground = true
 	}
