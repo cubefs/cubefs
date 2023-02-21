@@ -79,7 +79,7 @@ if [[ ${build_client} -eq 1 ]]; then
 fi
 if [[ ${build_test} -eq 1 ]]; then
     echo "building test (cfs-client test-bypass libcfsclient.so libempty.so) ..."
-    go test -c -covermode=atomic -coverpkg="../..." -linkshared -o ${bin}/cfs-client ${dir}/main_fuse.go ${dir}/fuse_test.go
+    go test -c -covermode=atomic -coverpkg="../..." -linkshared -o ${bin}/cfs-client ${dir}/main_fuse.go ${dir}/fuse_common.go ${dir}/fuse_test.go
     gcc -std=c99 -g ${dir}/bypass/client_test.c -o ${bin}/test-bypass
 fi
 if [[ ${pack_libs} -eq 1 ]]; then
