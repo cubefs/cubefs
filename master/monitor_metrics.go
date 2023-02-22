@@ -55,6 +55,8 @@ const (
 	MetricMpNoLeader               = "mp_no_leader"
 	MetricDataPartitionCount       = "dataPartition_count"
 	MetricReplicaMissingDPCount    = "replica_missing_dp_count"
+	MetricDpMissingLeaderCount     = "dp_missing_Leader_count"
+	MetricMpMissingLeaderCount     = "mp_missing_Leader_count"
 	MetricDataNodesetInactiveCount = "data_nodeset_inactive_count"
 	MetricMetaNodesetInactiveCount = "meta_nodeset_inactive_count"
 	MetricMetaInconsistent         = "mp_inconsistent"
@@ -88,6 +90,8 @@ type monitorMetrics struct {
 	InactiveMataNodeInfo     *exporter.GaugeVec
 	dataPartitionCount       *exporter.Gauge
 	ReplicaMissingDPCount    *exporter.Gauge
+	DpMissingLeaderCount     *exporter.Gauge
+	MpMissingLeaderCount     *exporter.Gauge
 	dataNodesetInactiveCount *exporter.GaugeVec
 	metaNodesetInactiveCount *exporter.GaugeVec
 	metaEqualCheckFail       *exporter.GaugeVec
@@ -169,6 +173,8 @@ func (mm *monitorMetrics) start() {
 	mm.InactiveMataNodeInfo = exporter.NewGaugeVec(MetricInactiveMataNodeInfo, "", []string{"clusterName", "addr"})
 	mm.dataPartitionCount = exporter.NewGauge(MetricDataPartitionCount)
 	mm.ReplicaMissingDPCount = exporter.NewGauge(MetricReplicaMissingDPCount)
+	mm.DpMissingLeaderCount = exporter.NewGauge(MetricDpMissingLeaderCount)
+	mm.MpMissingLeaderCount = exporter.NewGauge(MetricMpMissingLeaderCount)
 	mm.dataNodesetInactiveCount = exporter.NewGaugeVec(MetricDataNodesetInactiveCount, "", []string{"nodeset"})
 	mm.metaNodesetInactiveCount = exporter.NewGaugeVec(MetricMetaNodesetInactiveCount, "", []string{"nodeset"})
 	mm.metaEqualCheckFail = exporter.NewGaugeVec(MetricMetaInconsistent, "", []string{"volume", "mpId"})
@@ -218,12 +224,15 @@ func (mm *monitorMetrics) doStat() {
 	mm.setMpInconsistentErrorMetric()
 	mm.setInactiveDataNodesCountMetric()
 	mm.setInactiveMetaNodesCountMetric()
-	mm.setDpMetrics()
+	mm.setMpAndDpMetrics()
 }
 
-func (mm *monitorMetrics) setDpMetrics() {
+func (mm *monitorMetrics) setMpAndDpMetrics() {
 	dpCount := 0
-	missingReplicaDpCount := 0
+	dpMissingReplicaDpCount := 0
+	dpMissingLeaderCount := 0
+	mpMissingLeaderCount := 0
+
 	vols := mm.cluster.copyVols()
 	for _, vol := range vols {
 		var dps *DataPartitionMap
@@ -231,14 +240,25 @@ func (mm *monitorMetrics) setDpMetrics() {
 		dpCount += len(dps.partitions)
 		for _, dp := range dps.partitions {
 			if dp.ReplicaNum > uint8(len(dp.liveReplicas(defaultDataPartitionTimeOutSec))) {
-				missingReplicaDpCount++
+				dpMissingReplicaDpCount++
+			}
+			if dp.getLeaderAddr() == "" {
+				dpMissingLeaderCount++
+			}
+		}
+
+		for _, mp := range vol.MetaPartitions {
+			if !mp.isLeaderExist() {
+				mpMissingLeaderCount++
 			}
 		}
 	}
 
 	mm.dataPartitionCount.Set(float64(dpCount))
-	mm.ReplicaMissingDPCount.Set(float64(missingReplicaDpCount))
+	mm.ReplicaMissingDPCount.Set(float64(dpMissingReplicaDpCount))
+	mm.DpMissingLeaderCount.Set(float64(dpMissingLeaderCount))
 
+	mm.MpMissingLeaderCount.Set(float64(mpMissingLeaderCount))
 	return
 }
 
@@ -533,4 +553,6 @@ func (mm *monitorMetrics) resetAllMetrics() {
 	mm.metaNodesNotWritable.Set(0)
 	mm.dataPartitionCount.Set(0)
 	mm.ReplicaMissingDPCount.Set(0)
+	mm.MpMissingLeaderCount.Set(0)
+	mm.DpMissingLeaderCount.Set(0)
 }
