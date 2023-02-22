@@ -16,7 +16,10 @@ package rpc
 
 import (
 	"encoding/base64"
+	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/julienschmidt/httprouter"
@@ -133,6 +136,26 @@ func (args *unmarshalerArgs) Unmarshal([]byte) error {
 	return nil
 }
 
+type unmarshalerFromArgs struct {
+	IFrom int
+}
+
+func (args *unmarshalerFromArgs) UnmarshalFrom(body io.Reader) error {
+	r := body.(*io.LimitedReader)
+	buf := make([]byte, r.N)
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		return err
+	}
+
+	arg, err := strconv.Atoi(string(buf))
+	if err != nil {
+		return err
+	}
+	args.IFrom = arg
+	return nil
+}
+
 type normalArgs struct {
 	Bool bool
 
@@ -219,6 +242,30 @@ func TestArgumentParser(t *testing.T) {
 		err = parseArgs(c, args)
 		require.NoError(t, err)
 		require.Equal(t, 0, args.I)
+	}
+	{
+		c := new(Context)
+		c.opts = new(serverOptions)
+		{
+			c.Request, _ = http.NewRequest("", "", strings.NewReader(""))
+			args := new(unmarshalerFromArgs)
+			err := parseArgs(c, args, OptArgsBody())
+			require.Error(t, err)
+		}
+		{
+			c.Request, _ = http.NewRequest("", "", strings.NewReader("999"))
+			args := new(unmarshalerFromArgs)
+			err := parseArgs(c, args, OptArgsBody())
+			require.NoError(t, err)
+			require.Equal(t, 999, args.IFrom)
+		}
+		{
+			c.Request, _ = http.NewRequest("", "", strings.NewReader("not-a-number"))
+			args := new(unmarshalerFromArgs)
+			err := parseArgs(c, args, OptArgsBody())
+			require.Error(t, err)
+			require.Equal(t, 0, args.IFrom)
+		}
 	}
 	{
 		c := new(Context)
