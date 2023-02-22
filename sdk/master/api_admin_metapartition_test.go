@@ -15,7 +15,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 	var testInodeStart uint64 = 1
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().CreateMetaPartition(testVolName, testInodeStart)
-		time.Sleep(time.Duration(1) * time.Second)
+		time.Sleep(time.Duration(5+i) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("CreateMetaPartition failed, err %v", err)
