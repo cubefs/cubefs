@@ -2849,7 +2849,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 
 		if readN > 0 {
 			if proto.IsCold(v.volType) {
-				writeN, err = ebsWriter.Write(tctx, writeOffset, buf[:readN], proto.FlagsAppend)
+				writeN, err = ebsWriter.WriteWithoutPool(tctx, writeOffset, buf[:readN])
 			} else {
 				writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], 0)
 			}
@@ -2872,7 +2872,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	}
 	// flush
 	if proto.IsCold(v.volType) {
-		err = ebsWriter.Flush(tInodeInfo.Inode, tctx)
+		err = ebsWriter.FlushWithoutPool(tInodeInfo.Inode, tctx)
 	} else {
 		v.ec.Flush(tInodeInfo.Inode)
 	}
