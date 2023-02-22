@@ -802,31 +802,21 @@ func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corr
 		if !dataNode.isActive {
 			inactiveDataNodes = append(inactiveDataNodes, dataNode.Addr)
 		}
+		for _, id := range dataNode.PersistenceDataPartitions {
+			var partition *DataPartition
+			if partition, err = c.getDataPartitionByID(id); err != nil {
+				continue
+			}
+			if partition.getLeaderAddr() == "" {
+				partitionMap[id] = partitionMap[id] + 1
+				if partitionMap[id] == 1 {
+					corruptPartitions = append(corruptPartitions, partition)
+				}
+			}
+		}
 		return true
 	})
-	for _, addr := range inactiveDataNodes {
-		var dataNode *DataNode
-		if dataNode, err = c.dataNode(addr); err != nil {
-			return
-		}
-		for _, partition := range dataNode.PersistenceDataPartitions {
-			partitionMap[partition] = partitionMap[partition] + 1
-		}
-	}
 
-	for partitionID, badNum := range partitionMap {
-		var partition *DataPartition
-		if partition, err = c.getDataPartitionByID(partitionID); err != nil {
-			return
-		}
-		if partition.isSpecialReplicaCnt() && badNum > 0 {
-			corruptPartitions = append(corruptPartitions, partition)
-			continue
-		}
-		if badNum > partition.ReplicaNum/2 {
-			corruptPartitions = append(corruptPartitions, partition)
-		}
-	}
 	log.LogInfof("clusterID[%v] inactiveDataNodes:%v  corruptPartitions count:[%v]",
 		c.Name, inactiveDataNodes, len(corruptPartitions))
 	return
