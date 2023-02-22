@@ -391,8 +391,13 @@ func (o *ObjectNode) checkReqParts(reqParts *CompleteMultipartUploadRequest, mul
 			log.LogErrorf("isReqPartsValid: part number(%v) not existed", reqPart.PartNumber)
 			return false, nil, nil
 		} else {
-			if eTag != reqPart.ETag {
-				log.LogErrorf("isReqPartsValid: part number(%v) md5 not matched", reqPart.PartNumber)
+			reqEtag := reqPart.ETag
+			if strings.Contains(reqEtag, "\"") {
+				reqEtag = strings.ReplaceAll(reqEtag, "\"", "")
+			}
+			if eTag != reqEtag {
+				log.LogErrorf("isReqPartsValid: part number(%v) md5 not matched, reqPart.ETag(%v), eTag(%v)",
+					reqPart.PartNumber, reqEtag, eTag)
 				return false, nil, nil
 			}
 		}

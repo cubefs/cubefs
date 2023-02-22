@@ -105,6 +105,29 @@ func (writer *Writer) String() string {
 		&writer, writer.volName, writer.volType, writer.ino, writer.blockSize, writer.fileSize, writer.enableBcache, writer.cacheAction, writer.fileCache, writer.cacheThreshold, writer.wConcurrency)
 }
 
+func (writer *Writer) WriteWithoutPool(ctx context.Context, offset int, data []byte) (size int, err error) {
+	//atomic.StoreInt32(&writer.idle, 0)
+	if writer == nil {
+		return 0, fmt.Errorf("writer is not opened yet")
+	}
+	log.LogDebugf("TRACE blobStore WriteWithoutPool Enter: ino(%v) offset(%v) len(%v) fileSize(%v)",
+		writer.ino, offset, len(data), writer.CacheFileSize())
+
+	if len(data) > MaxBufferSize || offset != writer.CacheFileSize() {
+		log.LogErrorf("TRACE blobStore WriteWithoutPool error,may be len(%v)>512MB,offset(%v)!=fileSize(%v)",
+			len(data), offset, writer.CacheFileSize())
+		err = syscall.EOPNOTSUPP
+		return
+	}
+	//write buffer
+	log.LogDebugf("TRACE blobStore WriteWithoutPool: ino(%v) offset(%v) len(%v)",
+		writer.ino, offset, len(data))
+
+	size, err = writer.doBufferWriteWithoutPool(ctx, data, offset)
+
+	return
+}
+
 func (writer *Writer) Write(ctx context.Context, offset int, data []byte, flags int) (size int, err error) {
 	//atomic.StoreInt32(&writer.idle, 0)
 	if writer == nil {
@@ -326,6 +349,49 @@ LOOP:
 	return
 }
 
+func (writer *Writer) doBufferWriteWithoutPool(ctx context.Context, data []byte, offset int) (size int, err error) {
+	log.LogDebugf("TRACE blobStore doBufferWriteWithoutPool Enter: ino(%v) offset(%v) len(%v)", writer.ino, offset, len(data))
+
+	writer.fileOffset = offset
+	dataSize := len(data)
+	position := 0
+	log.LogDebugf("TRACE blobStore doBufferWriteWithoutPool: ino(%v) writer.buf.len(%v) writer.blocksize(%v)", writer.ino, len(writer.buf), writer.blockSize)
+	writer.Lock()
+	defer writer.Unlock()
+	for dataSize > 0 {
+		freeSize := writer.blockSize - len(writer.buf)
+		if dataSize < freeSize {
+			freeSize = dataSize
+		}
+		log.LogDebugf("TRACE blobStore doBufferWriteWithoutPool: ino(%v) writer.fileSize(%v) writer.fileOffset(%v) position(%v) freeSize(%v)", writer.ino, writer.fileSize, writer.fileOffset, position, freeSize)
+		writer.buf = append(writer.buf, data[position:position+freeSize]...)
+		log.LogDebugf("TRACE blobStore doBufferWriteWithoutPool:ino(%v) writer.buf.len(%v)", writer.ino, len(writer.buf))
+		position += freeSize
+		dataSize -= freeSize
+		writer.fileOffset += freeSize
+		writer.dirty = true
+
+		if len(writer.buf) == writer.blockSize {
+			log.LogDebugf("TRACE blobStore doBufferWriteWithoutPool: ino(%v) writer.buf.len(%v) writer.blocksize(%v)", writer.ino, len(writer.buf), writer.blockSize)
+			writer.Unlock()
+			err = writer.flushWithoutPool(writer.ino, ctx, false)
+			writer.Lock()
+			if err != nil {
+				writer.buf = writer.buf[:len(writer.buf)-len(data)]
+				writer.fileOffset -= len(data)
+				return
+			}
+
+		}
+	}
+
+	size = len(data)
+	atomic.AddUint64(&writer.fileSize, uint64(size))
+
+	log.LogDebugf("TRACE blobStore doBufferWriteWithoutPool Exit: ino(%v) writer.fileSize(%v) writer.fileOffset(%v)", writer.ino, writer.fileSize, writer.fileOffset)
+	return size, nil
+}
+
 func (writer *Writer) doBufferWrite(ctx context.Context, data []byte, offset int) (size int, err error) {
 	log.LogDebugf("TRACE blobStore doBufferWrite Enter: ino(%v) offset(%v) len(%v)", writer.ino, offset, len(data))
 
@@ -368,6 +434,13 @@ func (writer *Writer) doBufferWrite(ctx context.Context, data []byte, offset int
 
 	log.LogDebugf("TRACE blobStore doBufferWrite Exit: ino(%v) writer.fileSize(%v) writer.fileOffset(%v)", writer.ino, writer.fileSize, writer.fileOffset)
 	return size, nil
+}
+
+func (writer *Writer) FlushWithoutPool(ino uint64, ctx context.Context) (err error) {
+	if writer == nil {
+		return
+	}
+	return writer.flushWithoutPool(ino, ctx, true)
 }
 
 func (writer *Writer) Flush(ino uint64, ctx context.Context) (err error) {
@@ -464,9 +537,56 @@ func (writer *Writer) asyncCache(ino uint64, offset int, data []byte) {
 
 }
 
+func (writer *Writer) resetBufferWithoutPool() {
+	writer.buf = writer.buf[:0]
+}
+
 func (writer *Writer) resetBuffer() {
 	//writer.buf = writer.buf[:0]
 	writer.blockPosition = 0
+}
+
+func (writer *Writer) flushWithoutPool(inode uint64, ctx context.Context, flushFlag bool) (err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("blobstore-flush", err, bgTime, 1)
+	}()
+
+	log.LogDebugf("TRACE blobStore flushWithoutPool: ino(%v) buf-len(%v) flushFlag(%v)", inode, len(writer.buf), flushFlag)
+	writer.Lock()
+	defer func() {
+		writer.dirty = false
+		writer.Unlock()
+	}()
+
+	if len(writer.buf) == 0 || !writer.dirty {
+		return
+	}
+	bufferSize := len(writer.buf)
+	wSlice := &rwSlice{
+		fileOffset: uint64(writer.fileOffset - bufferSize),
+		size:       uint32(bufferSize),
+		Data:       writer.buf,
+	}
+	err = writer.writeSlice(ctx, wSlice, false)
+	if err != nil {
+		if flushFlag {
+			atomic.AddUint64(&writer.fileSize, -uint64(bufferSize))
+		}
+		return
+	}
+
+	oeks := make([]proto.ObjExtentKey, 0)
+	//update meta
+	oeks = append(oeks, wSlice.objExtentKey)
+	if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
+		log.LogErrorf("slice write error,meta append ebsc extent keys fail,ino(%v) fileOffset(%v) len(%v) err(%v)", inode, wSlice.fileOffset, wSlice.size, err)
+		return
+	}
+	writer.resetBufferWithoutPool()
+
+	writer.cacheLevel2(wSlice)
+	return
 }
 
 func (writer *Writer) flush(inode uint64, ctx context.Context, flushFlag bool) (err error) {
