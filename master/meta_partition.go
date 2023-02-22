@@ -247,6 +247,17 @@ func (mp *MetaPartition) removeMissingReplica(addr string) {
 	}
 }
 
+func (mp *MetaPartition) isLeaderExist() bool {
+	mp.RLock()
+	defer mp.RUnlock()
+	for _, mr := range mp.Replicas {
+		if mr.IsLeader {
+			return true
+		}
+	}
+	return false
+}
+
 func (mp *MetaPartition) checkLeader(clusterID string) {
 	mp.Lock()
 	defer mp.Unlock()
