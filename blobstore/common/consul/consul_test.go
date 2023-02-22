@@ -63,10 +63,11 @@ func TestServiceRegister(t *testing.T) {
 
 func TestStartHealthCheckServ(t *testing.T) {
 	ast := require.New(t)
-	_, port := StartHttpServerForHealthyCheck("", "/test")
 
+	server, port := startHttpServerForHealthyCheck("", "/test", [2]int{})
 	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%v/test", port))
 	ast.NoError(err)
 	resp.Body.Close()
 	ast.Equal(http.StatusOK, resp.StatusCode)
+	server.Close()
 }
