@@ -18,6 +18,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -82,6 +83,12 @@ type (
 	// that can unmarshal themselves from bytes.
 	Unmarshaler interface {
 		Unmarshal([]byte) error
+	}
+	// UnmarshalerFrom is the interface implemented by types
+	// that can unmarshal themselves from body reader.
+	// The body underlying implementation is a *io.LimitedReader.
+	UnmarshalerFrom interface {
+		UnmarshalFrom(requestBody io.Reader) error
 	}
 
 	// HTTPError interface of error with http status code

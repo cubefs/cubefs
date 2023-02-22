@@ -194,7 +194,7 @@ func (c *Context) RespondWithReader(statusCode int, contentLength int, contentTy
 
 	c.Writer.WriteHeader(statusCode)
 	c.wroteHeader = true
-	io.Copy(c.Writer, body)
+	io.CopyN(c.Writer, body, int64(contentLength))
 }
 
 // Stream sends a streaming response and returns a boolean
