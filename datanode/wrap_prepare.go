@@ -30,6 +30,8 @@ func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 		p.SetPacketHasPrepare()
 		if err != nil {
 			p.PackErrorBody(repl.ActionPreparePkt, err.Error())
+		} else {
+			p.AfterPre = true
 		}
 	}()
 	if p.IsMasterCommand() {

@@ -25,7 +25,7 @@ func (s *DataNode) Post(p *repl.Packet) error {
 	if p.IsMasterCommand() {
 		p.NeedReply = true
 	}
-	if p.IsReadOperation() {
+	if p.IsReadOperation() && p.AfterPre {
 		p.NeedReply = false
 	}
 	s.cleanupPkt(p)
