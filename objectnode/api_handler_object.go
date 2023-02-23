@@ -748,14 +748,24 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get object meta
+	var sourceVol *Volume
+	if sourceVol, err = o.getVol(sourceBucket); err != nil {
+		log.LogErrorf("copyObjectHandler: load source volume fail: vol(%v) requestID(%v) err(%v)",
+			sourceBucket, getRequestIP(r), err)
+		errorCode = NoSuchBucket
+		return
+	}
+
 	var fileInfo *FSFileInfo
-	fileInfo, _, err = vol.ObjectMeta(sourceObject)
+	fileInfo, _, err = sourceVol.ObjectMeta(sourceObject)
 	if err != nil {
+		log.LogErrorf("copyObjectHandler: volume get file info fail: sourceBucket(%v) sourceObject(%v) requestID(%v) err(%v)",
+			sourceBucket, sourceObject, GetRequestID(r), err)
+
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 			return
 		}
-		log.LogErrorf("copyObjectHandler: volume get file info fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
@@ -807,13 +817,6 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// open source object stream
-	var sourceVol *Volume
-	if sourceVol, err = o.getVol(sourceBucket); err != nil {
-		log.LogErrorf("copyObjectHandler: load source volume fail: vol(%v) requestID(%v) err(%v)",
-			sourceBucket, getRequestIP(r), err)
-		errorCode = NoSuchBucket
-		return
-	}
 
 	fsFileInfo, err := vol.CopyFile(sourceVol, sourceObject, param.Object(), metadataDirective, opt)
 	if err != nil && err != syscall.EINVAL && err != syscall.EFBIG {
