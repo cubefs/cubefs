@@ -47,6 +47,7 @@ type Packet struct {
 
 	// used locally
 	shallDegrade bool
+	AfterPre     bool
 }
 
 type FollowerPacket struct {
