@@ -26,6 +26,7 @@ const (
 type MetaNodeInfo struct {
 	ID                        uint64
 	Addr                      string
+	DomainAddr                string
 	IsActive                  bool
 	IsWriteAble               bool
 	ZoneName                  string `json:"Zone"`
@@ -51,6 +52,7 @@ type DataNodeInfo struct {
 	ID                        uint64
 	ZoneName                  string `json:"Zone"`
 	Addr                      string
+	DomainAddr                string
 	ReportTime                time.Time
 	IsActive                  bool
 	IsWriteAble               bool
@@ -89,6 +91,8 @@ type MetaPartitionInfo struct {
 // MetaReplica defines the replica of a meta partition
 type MetaReplicaInfo struct {
 	Addr       string
+	DomainAddr string
+	MaxInodeID uint64
 	ReportTime int64
 	Status     int8 // unavailable, readOnly, readWrite
 	IsLeader   bool
@@ -138,6 +142,7 @@ type ClusterIP struct {
 type NodeView struct {
 	Addr       string
 	Status     bool
+	DomainAddr string
 	ID         uint64
 	IsWritable bool
 }
@@ -211,7 +216,7 @@ type DataPartitionInfo struct {
 	RdOnly                   bool
 }
 
-//FileInCore define file in data partition
+// FileInCore define file in data partition
 type FileInCore struct {
 	Name          string
 	LastModify    int64
@@ -228,6 +233,7 @@ type FileMetadata struct {
 // DataReplica represents the replica of a data partition
 type DataReplica struct {
 	Addr            string
+	DomainAddr      string
 	ReportTime      int64
 	FileCount       uint32
 	Status          int8

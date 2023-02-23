@@ -16,8 +16,11 @@ package util
 
 import (
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -74,6 +77,106 @@ func GetIp(addr string) (ip string) {
 	}
 	ip = strings.Trim(arr[0], " ")
 	return ip
+}
+
+func getIpAndPort(ipAddr string) (ip string, port string, success bool) {
+	success = false
+	arr := strings.Split(ipAddr, ":")
+	if len(arr) != 2 {
+		log.LogWarnf("action[GetIpAndPort] ipAddr[%v] invalid", ipAddr)
+		return
+	}
+	ip = strings.Trim(arr[0], " ")
+	port = strings.Trim(arr[1], " ")
+	success = true
+	return
+}
+
+func getDomainAndPort(domainAddr string) (domain string, port string, success bool) {
+	success = false
+	arr := strings.Split(domainAddr, ":")
+	if len(arr) != 2 {
+		log.LogWarnf("action[GetDomainAndPort] domainAddr[%v] invalid", domainAddr)
+		return
+	}
+	domain = strings.Trim(arr[0], " ")
+	port = strings.Trim(arr[1], " ")
+	success = true
+	return
+}
+
+func IsIPV4Addr(ipAddr string) bool {
+	ip, _, ok := getIpAndPort(ipAddr)
+	if !ok {
+		return false
+	}
+	return IsIPV4(ip)
+}
+
+func ParseIpAddrToDomainAddr(ipAddr string) (domainAddr string) {
+	ip, port, ok := getIpAndPort(ipAddr)
+	if !ok {
+		return
+	}
+	domains, err := net.LookupAddr(ip)
+	if err != nil {
+		log.LogWarnf("action[ParseIpAddrToDomainAddr] failed, ipAddr[%v], ip[%v], err[%v]", ipAddr, ip, err)
+		return
+	}
+	for _, v := range domains {
+		domain := v
+		if domain[len(domain)-1] == '.' {
+			domain = domain[0 : len(domain)-1]
+		}
+		if len(domainAddr) != 0 {
+			domainAddr += ","
+		}
+		domainAddr += fmt.Sprintf("%s:%v", domain, port)
+	}
+	return
+}
+
+func ParseAddrToIpAddr(addr string) (ipAddr string, success bool) {
+	success = true
+	if IsIPV4Addr(addr) {
+		ipAddr = addr
+		return
+	}
+	if parsedAddr, ok := ParseDomainAddrToIpAddr(addr); ok {
+		ipAddr = parsedAddr
+		return
+	}
+	success = false
+	return
+}
+
+func ParseDomainAddrToIpAddr(domainAddr string) (ipAddr string, success bool) {
+	success = false
+	domain, port, ok := getDomainAndPort(domainAddr)
+	if !ok {
+		return
+	}
+	ips, err := net.LookupHost(domain)
+	if err != nil {
+		log.LogWarnf("action[ParseDomainAddrToIpAddr] failed, domainAddr[%v], domain[%v], err[%v]",
+			domainAddr, domain, err)
+		return
+	}
+	if len(ips) == 0 {
+		log.LogWarnf("action[ParseDomainAddrToIpAddr] ips is null, domainAddr[%v], domain[%v]",
+			domainAddr, domain)
+		return
+	}
+	for i := 0; i < len(ips); i += 1 {
+		if ips[i] != ips[0] {
+			log.LogWarnf("action[ParseDomainAddrToIpAddr] the number of ips is not one,"+
+				"domainAddr[%v], domain[%v], ips[%v], err[%v]", domainAddr, domain, ips, err)
+			return
+		}
+	}
+	ipAddr = fmt.Sprintf("%s:%v", ips[0], port)
+	success = true
+	return
 }
 
 func regexpCompile(str string) *regexp.Regexp {

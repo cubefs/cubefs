@@ -35,6 +35,7 @@ type DataNode struct {
 	ID                        uint64
 	ZoneName                  string `json:"Zone"`
 	Addr                      string
+	DomainAddr                string
 	ReportTime                time.Time
 	StartTime                 int64
 	LastUpdateTime            time.Time
@@ -110,6 +111,7 @@ func (dataNode *DataNode) badPartitions(diskPath string, c *Cluster) (partitions
 func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
+	dataNode.DomainAddr = util.ParseIpAddrToDomainAddr(dataNode.Addr)
 	dataNode.Total = resp.Total
 	dataNode.Used = resp.Used
 	if dataNode.AvailableSpace > resp.Available ||

@@ -2739,7 +2739,8 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 	dataNodes = make([]proto.NodeView, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
+		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
+			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
 		return true
 	})
 	return
@@ -2749,7 +2750,8 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 	metaNodes = make([]proto.NodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
+			Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 		return true
 	})
 	return
