@@ -202,12 +202,14 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr,
+					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr,
+					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 				return true
 			})
 		}
@@ -1983,6 +1985,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		ID:                        dataNode.ID,
 		ZoneName:                  dataNode.ZoneName,
 		Addr:                      dataNode.Addr,
+		DomainAddr:                dataNode.DomainAddr,
 		ReportTime:                dataNode.ReportTime,
 		IsActive:                  dataNode.isActive,
 		IsWriteAble:               dataNode.isWriteAble(),
@@ -3269,6 +3272,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	metaNodeInfo = &proto.MetaNodeInfo{
 		ID:                        metaNode.ID,
 		Addr:                      metaNode.Addr,
+		DomainAddr:                metaNode.DomainAddr,
 		IsActive:                  metaNode.IsActive,
 		IsWriteAble:               metaNode.isWritable(),
 		ZoneName:                  metaNode.ZoneName,
@@ -3326,11 +3330,17 @@ func parseMigrateNodeParam(r *http.Request) (srcAddr, targetAddr string, limit i
 		err = fmt.Errorf("parseMigrateNodeParam %s can't be empty", srcAddrKey)
 		return
 	}
+	if ipAddr, ok := util.ParseAddrToIpAddr(srcAddr); ok {
+		srcAddr = ipAddr
+	}
 
 	targetAddr = r.FormValue(targetAddrKey)
 	if targetAddr == "" {
 		err = fmt.Errorf("parseMigrateNodeParam %s can't be empty when migrate", targetAddrKey)
 		return
+	}
+	if ipAddr, ok := util.ParseAddrToIpAddr(targetAddr); ok {
+		targetAddr = ipAddr
 	}
 
 	if srcAddr == targetAddr {
@@ -3875,6 +3885,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < len(replicas); i++ {
 			replicas[i] = &proto.MetaReplicaInfo{
 				Addr:       mp.Replicas[i].Addr,
+				DomainAddr: mp.Replicas[i].metaNode.DomainAddr,
+				MaxInodeID: mp.Replicas[i].MaxInodeID,
 				ReportTime: mp.Replicas[i].ReportTime,
 				Status:     mp.Replicas[i].Status,
 				IsLeader:   mp.Replicas[i].IsLeader,

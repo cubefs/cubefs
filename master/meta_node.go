@@ -20,12 +20,14 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 )
 
 // MetaNode defines the structure of a meta node
 type MetaNode struct {
 	ID                        uint64
 	Addr                      string
+	DomainAddr                string
 	IsActive                  bool
 	Sender                    *AdminTaskManager `graphql:"-"`
 	ZoneName                  string            `json:"Zone"`
@@ -116,6 +118,7 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	metaNode.Lock()
 	defer metaNode.Unlock()
 
+	metaNode.DomainAddr = util.ParseIpAddrToDomainAddr(metaNode.Addr)
 	metaNode.metaPartitionInfos = resp.MetaPartitionReports
 	metaNode.MetaPartitionCount = len(metaNode.metaPartitionInfos)
 	metaNode.Total = resp.Total

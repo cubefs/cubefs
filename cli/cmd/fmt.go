@@ -24,6 +24,15 @@ import (
 	"github.com/cubefs/cubefs/proto"
 )
 
+func formatAddr(ipAddr string, domainAddr string) (addr string) {
+	if len(domainAddr) != 0 {
+		addr = fmt.Sprintf("%v(%v)", ipAddr, domainAddr)
+	} else {
+		addr = ipAddr
+	}
+	return
+}
+
 func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *proto.ClusterIP) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  Cluster name       : %v\n", cv.Name))
@@ -70,7 +79,7 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v"
+var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
 	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS")
@@ -78,12 +87,12 @@ func formatNodeViewTableHeader() string {
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
-		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, view.Addr,
+		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
-	sb.WriteString(fmt.Sprintf("  Address : %v\n", view.Addr))
+	sb.WriteString(fmt.Sprintf("  Address : %v\n", formatAddr(view.Addr, view.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
 	sb.WriteString(fmt.Sprintf("  Status  : %v", formatNodeStatus(view.Status)))
 	return sb.String()
@@ -417,7 +426,7 @@ func formatTimeToString(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-var dataReplicaTableRowPattern = "%-18v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-18v    %-10v"
+var dataReplicaTableRowPattern = "%-65v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-18v    %-10v"
 
 func formatDataReplicaTableHeader() string {
 	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDR", "USEDSIZE", "TOTALSIZE", "ISLEADER", "FILECOUNT", "HASLOADRESPONSE", "NEEDSTOCOMPARE", "STATUS", "DISKPATH", "REPORT TIME")
@@ -457,12 +466,13 @@ func formatDataFileMetadate(indentation string, fileMeta *proto.FileMetadata) st
 
 func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable bool) string {
 	if rowTable {
-		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, formatSize(replica.Used), formatSize(replica.Total), replica.IsLeader,
-			replica.FileCount, replica.HasLoadResponse, replica.NeedsToCompare, formatDataPartitionStatus(replica.Status),
+		return fmt.Sprintf(dataReplicaTableRowPattern, formatAddr(replica.Addr, replica.DomainAddr),
+			formatSize(replica.Used), formatSize(replica.Total), replica.IsLeader, replica.FileCount,
+			replica.HasLoadResponse, replica.NeedsToCompare, formatDataPartitionStatus(replica.Status),
 			replica.DiskPath, formatTime(replica.ReportTime))
 	}
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
+	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, formatAddr(replica.Addr, replica.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("%v  Allocated      : %v\n", indentation, formatSize(replica.Used)))
 	sb.WriteString(fmt.Sprintf("%v  Total          : %v\n", indentation, formatSize(replica.Total)))
 	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
@@ -475,19 +485,20 @@ func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable 
 	return sb.String()
 }
 
-var metaReplicaTableRowPattern = "%-18v    %-6v    %-6v    %-10v"
+var metaReplicaTableRowPattern = "%-65v    %-6v    %-6v    %-6v    %-10v"
 
 func formatMetaReplicaTableHeader() string {
-	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "ISLEADER", "STATUS", "REPORT TIME")
+	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "MaxInodeID", "ISLEADER", "STATUS", "REPORT TIME")
 }
 
 func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTable bool) string {
 	if rowTable {
-		return fmt.Sprintf(metaReplicaTableRowPattern, replica.Addr, replica.IsLeader, formatMetaPartitionStatus(replica.Status),
-			formatTime(replica.ReportTime))
+		return fmt.Sprintf(metaReplicaTableRowPattern, formatAddr(replica.Addr, replica.DomainAddr), replica.MaxInodeID,
+			replica.IsLeader, formatMetaPartitionStatus(replica.Status), formatTime(replica.ReportTime))
 	}
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
+	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, formatAddr(replica.Addr, replica.DomainAddr)))
+	sb.WriteString(fmt.Sprintf("%v- MaxInodeID     : %v\n", indentation, replica.MaxInodeID))
 	sb.WriteString(fmt.Sprintf("%v  Status         : %v\n", indentation, formatMetaPartitionStatus(replica.Status)))
 	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
 	sb.WriteString(fmt.Sprintf("%v  ReportTime     : %v\n", indentation, formatTime(replica.ReportTime)))
@@ -503,7 +514,7 @@ func formatPeer(peer proto.Peer) string {
 	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr)
 }
 
-var dataNodeDetailTableRowPattern = "%-6v    %-6v    %-18v    %-6v    %-6v    %-6v    %-10v"
+var dataNodeDetailTableRowPattern = "%-6v    %-6v    %-65v    %-6v    %-6v    %-6v    %-10v"
 
 func formatDataNodeDetailTableHeader() string {
 	return fmt.Sprintf(dataNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME")
@@ -511,12 +522,12 @@ func formatDataNodeDetailTableHeader() string {
 
 func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	if rowTable {
-		return fmt.Sprintf(dataNodeDetailTableRowPattern, dn.ID, dn.ZoneName, dn.Addr, formatSize(dn.Used),
-			formatSize(dn.Total), formatNodeStatus(dn.IsActive), formatTimeToString(dn.ReportTime))
+		return fmt.Sprintf(dataNodeDetailTableRowPattern, dn.ID, dn.ZoneName, formatAddr(dn.Addr, dn.DomainAddr),
+			formatSize(dn.Used), formatSize(dn.Total), formatNodeStatus(dn.IsActive), formatTimeToString(dn.ReportTime))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", dn.ID))
-	sb.WriteString(fmt.Sprintf("  Address             : %v\n", dn.Addr))
+	sb.WriteString(fmt.Sprintf("  Address             : %v\n", formatAddr(dn.Addr, dn.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", dn.Carry))
 	sb.WriteString(fmt.Sprintf("  Allocated ratio     : %v\n", dn.UsageRatio))
 	sb.WriteString(fmt.Sprintf("  Allocated           : %v\n", formatSize(dn.Used)))
@@ -531,7 +542,7 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	return sb.String()
 }
 
-var metaNodeDetailTableRowPattern = "%-6v    %-6v    %-18v    %-6v    %-6v    %-6v    %-10v"
+var metaNodeDetailTableRowPattern = "%-6v    %-6v    %-65v    %-6v    %-6v    %-6v    %-10v"
 
 func formatMetaNodeDetailTableHeader() string {
 	return fmt.Sprintf(metaNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME")
@@ -539,11 +550,12 @@ func formatMetaNodeDetailTableHeader() string {
 
 func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	if rowTable {
-		return fmt.Sprintf(metaNodeDetailTableRowPattern, mn.ID, mn.ZoneName, mn.Addr, mn.Used, mn.Total, mn.IsActive, formatTimeToString(mn.ReportTime))
+		return fmt.Sprintf(metaNodeDetailTableRowPattern, mn.ID, mn.ZoneName, formatAddr(mn.Addr, mn.DomainAddr),
+			mn.Used, mn.Total, mn.IsActive, formatTimeToString(mn.ReportTime))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", mn.ID))
-	sb.WriteString(fmt.Sprintf("  Address             : %v\n", mn.Addr))
+	sb.WriteString(fmt.Sprintf("  Address             : %v\n", formatAddr(mn.Addr, mn.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", mn.Carry))
 	sb.WriteString(fmt.Sprintf("  Threshold           : %v\n", mn.Threshold))
 	sb.WriteString(fmt.Sprintf("  MaxMemAvailWeight   : %v\n", formatSize(mn.MaxMemAvailWeight)))

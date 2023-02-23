@@ -863,7 +863,9 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 
 	var replicas = make([]*proto.DataReplica, len(partition.Replicas))
 	for i, replica := range partition.Replicas {
-		replicas[i] = &replica.DataReplica
+		dataReplica := replica.DataReplica
+		dataReplica.DomainAddr = replica.dataNode.DomainAddr
+		replicas[i] = &dataReplica
 	}
 
 	var fileInCoreMap = make(map[string]*proto.FileInCore)

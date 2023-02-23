@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -726,6 +727,9 @@ func extractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	if nodeAddr = r.FormValue(addrKey); nodeAddr == "" {
 		err = keyNotFound(addrKey)
 		return
+	}
+	if ipAddr, ok := util.ParseAddrToIpAddr(nodeAddr); ok {
+		nodeAddr = ipAddr
 	}
 	return
 }
