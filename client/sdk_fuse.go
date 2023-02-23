@@ -79,6 +79,7 @@ const (
 type fClient struct {
 	configFile  string
 	moduleName  string
+	mountPoint  string
 	stopC       chan struct{}
 	super       *cfs.Super
 	wg          sync.WaitGroup
@@ -131,6 +132,7 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	gClient = &fClient{
 		configFile: configFile,
 		moduleName: opt.Modulename,
+		mountPoint: opt.MountPoint,
 		stopC:      make(chan struct{}),
 		volName:    opt.Volname,
 		mc:         master.NewMasterClientFromString(opt.Master, false),
@@ -185,6 +187,11 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	clientState := &FuseClientState{}
 	first_start := clientStateBytes == nil
 	if first_start {
+		if err = checkMountPoint(opt.MountPoint); err != nil {
+			syslog.Println("check MountPoint failed: ", err)
+			log.LogFlush()
+			return err
+		}
 		if err = checkPermission(opt); err != nil {
 			syslog.Println("check permission failed: ", err)
 			log.LogFlush()
@@ -279,6 +286,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	http.HandleFunc(ControlUnsetUpgrade, UnsetClientUpgrade)
 	http.HandleFunc(ControlCommandGetUmpCollectWay, GetUmpCollectWay)
 	http.HandleFunc(ControlCommandSetUmpCollectWay, SetUmpCollectWay)
+	http.HandleFunc(ControlAccessRoot, gClient.AccessRoot)
 	var (
 		server *http.Server
 		lc     net.ListenConfig
@@ -463,6 +471,24 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	}
 	opt.UmpCollectWay = collectWay
 	return opt, nil
+}
+
+func checkMountPoint(mountPoint string) error {
+	if mountPoint == "/" {
+		return fmt.Errorf("Multiple mount are not supported: %s", mountPoint)
+	}
+	stat, err := os.Stat(mountPoint)
+	if err != nil {
+		return err
+	}
+	rootStat, err := os.Stat(filepath.Dir(strings.TrimSuffix(mountPoint, "/")))
+	if err != nil {
+		return err
+	}
+	if stat.Sys().(*syscall.Stat_t).Dev != rootStat.Sys().(*syscall.Stat_t).Dev {
+		return fmt.Errorf("Multiple mount are not supported: %s", mountPoint)
+	}
+	return nil
 }
 
 func checkPermission(opt *proto.MountOptions) (err error) {

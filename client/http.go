@@ -36,6 +36,7 @@ const (
 	ControlGetReadStatus           = "/get/readstatus"
 	ControlSetUpgrade              = "/set/clientUpgrade"
 	ControlUnsetUpgrade            = "/unset/clientUpgrade"
+	ControlAccessRoot              = "/access/root"
 
 	ControlCommandGetUmpCollectWay = "/umpCollectWay/get"
 	ControlCommandSetUmpCollectWay = "/umpCollectWay/set"
@@ -666,6 +667,15 @@ func UnsetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	os.Unsetenv("RELOAD_CLIENT")
 	NextVersion = ""
 	buildSuccessResp(w, "Success")
+}
+
+func (c *fClient) AccessRoot(w http.ResponseWriter, r *http.Request) {
+	if _, err := os.Stat(c.mountPoint); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Access root error: %v", err))
+	} else {
+		buildSuccessResp(w, "Success")
+	}
+	return
 }
 
 func registerReadProcStatusHandleFunc(w http.ResponseWriter, r *http.Request) {
