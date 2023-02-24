@@ -1049,15 +1049,25 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 	log.LogDebugf("WritePart: meta create temp file inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 		v.name, path, multipartId, partId, tempInodeInfo.Inode)
 
+	var oldInode uint64
 	defer func() {
 		// An error has caused the entire process to fail. Delete the inode and release the written data.
-		if err != nil || exist {
+		if err != nil {
 			log.LogWarnf("WritePart: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, tempInodeInfo.Inode)
 			_, _ = v.mw.InodeUnlink_ll(tempInodeInfo.Inode)
 			log.LogWarnf("WritePart: evict part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, tempInodeInfo.Inode)
 			_ = v.mw.Evict(tempInodeInfo.Inode)
+		}
+		// Delete the old inode and release the written data.
+		if exist {
+			log.LogWarnf("WritePart: unlink old part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+				v.name, path, multipartId, partId, oldInode)
+			_, _ = v.mw.InodeUnlink_ll(oldInode)
+			log.LogWarnf("WritePart: evict old part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+				v.name, path, multipartId, partId, oldInode)
+			_ = v.mw.Evict(oldInode)
 		}
 	}()
 
@@ -1097,13 +1107,8 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 	// compute file md5
 	etag = hex.EncodeToString(md5Hash.Sum(nil))
 
-	// update temp file inode to meta with session
-	err = v.mw.AddMultipartPart_ll(path, multipartId, partId, size, etag, tempInodeInfo)
-	if err == syscall.EEXIST {
-		// Result success but cleanup data.
-		err = nil
-		exist = true
-	}
+	// update temp file inode to meta with session, overwrite existing part can result in exist == true
+	oldInode, exist, err = v.mw.AddMultipartPart_ll(path, multipartId, partId, size, etag, tempInodeInfo)
 	if err != nil {
 		log.LogErrorf("WritePart: meta add multipart part fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) size(%v) MD5(%v) err(%v)",
 			v.name, path, multipartId, partId, tempInodeInfo.Inode, size, etag, err)
