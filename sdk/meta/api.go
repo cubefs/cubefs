@@ -1462,7 +1462,7 @@ func (mw *MetaWrapper) GetMultipart_ll(path, multipartId string) (info *proto.Mu
 	return multipartInfo, nil
 }
 
-func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string, inodeInfo *proto.InodeInfo) (err error) {
+func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string, inodeInfo *proto.InodeInfo) (oldInode uint64, updated bool, err error) {
 	var (
 		mpId  uint64
 		found bool
@@ -1476,12 +1476,12 @@ func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint
 		}
 	}
 	var mp = mw.getPartitionByID(mpId)
-	status, err := mw.addMultipartPart(mp, path, multipartId, partId, size, md5, inodeInfo)
+	status, oldInode, updated, err := mw.addMultipartPart(mp, path, multipartId, partId, size, md5, inodeInfo)
 	if err != nil || status != statusOK {
 		log.LogErrorf("AddMultipartPart_ll: err(%v) status(%v)", err, status)
-		return statusToErrno(status)
+		return 0, false, statusToErrno(status)
 	}
-	return nil
+	return
 }
 
 func (mw *MetaWrapper) RemoveMultipart_ll(path, multipartID string) (err error) {
