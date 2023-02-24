@@ -186,6 +186,11 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	clientState := &FuseClientState{}
 	first_start := clientStateBytes == nil
 	if first_start {
+		if err = lockPidFile(opt.PidFile); err != nil {
+			syslog.Printf("lock pidFile %s failed: %v\n", opt.PidFile, err)
+			log.LogFlush()
+			return err
+		}
 		if err = checkMountPoint(opt.MountPoint); err != nil {
 			syslog.Println("check MountPoint failed: ", err)
 			log.LogFlush()
@@ -468,6 +473,10 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		collectWay = proto.UmpCollectByFile
 	}
 	opt.UmpCollectWay = collectWay
+	opt.PidFile = GlobalMountOptions[proto.PidFile].GetString()
+	if opt.PidFile != "" && opt.PidFile[0] != os.PathSeparator {
+		return nil, fmt.Errorf("invalid config file: pidFile(%s) must be a absolute path", opt.PidFile)
+	}
 	return opt, nil
 }
 

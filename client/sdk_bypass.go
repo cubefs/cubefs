@@ -305,6 +305,12 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 			syslog.Println("Check CFS config file for masterAddr, volName or owner.")
 			os.Exit(1)
 		}
+
+		c.pidFile = cfg.Section("").Key("pidFile").String()
+		if c.pidFile != "" && c.pidFile[0] != os.PathSeparator {
+			syslog.Printf("pidFile(%s) must be a absolute path", c.pidFile)
+			os.Exit(1)
+		}
 	}
 
 	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
@@ -476,6 +482,8 @@ type client struct {
 	totalState string
 	sdkState   string
 	closeOnce  sync.Once
+
+	pidFile string
 }
 
 type FileState struct {
@@ -709,6 +717,12 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 		}
 	}
 	c := newClient(conf, C.GoString(configPath))
+	if isMysql() {
+		if err := lockPidFile(c.pidFile); err != nil {
+			syslog.Printf("lock pidFile %s failed: %v\n", c.pidFile, err)
+			return C.int64_t(statusEIO)
+		}
+	}
 	if err := c.start(sdkState.MetaState == nil, sdkState); err != nil {
 		return C.int64_t(statusEIO)
 	}

@@ -57,6 +57,7 @@ const (
 	NoBatchGetInodeOnReaddir
 	ReadAheadSize
 	UmpCollectWay
+	PidFile
 
 	MaxMountOption
 )
@@ -138,6 +139,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[AutoFlush] = MountOption{"autoFlush", "set autoFlush for client", "", true}
 	opts[DeleteProcessAbsoPath] = MountOption{"delProcessAbsoPath", "the absolute path of the process which is allowed to delete files", "", ""}
 	opts[UmpCollectWay] = MountOption{"umpCollectWay", "1: by file, 2: by jmtp client", "", int64(UmpCollectByFile)}
+	opts[PidFile] = MountOption{"pidFile", "pidFile absolute path", "", ""}
 	//	for i := 0; i < MaxMountOption; i++ {
 	//		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	//	}
@@ -277,4 +279,5 @@ type MountOptions struct {
 	NoBatchGetInodeOnReaddir bool
 	ReadAheadSize            int64
 	UmpCollectWay            int64
+	PidFile                  string
 }
