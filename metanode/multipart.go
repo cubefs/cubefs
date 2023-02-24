@@ -130,18 +130,18 @@ func (m *Parts) Hash(part *Part) (has bool) {
 	return
 }
 
-func (m *Parts) LoadOrStore(part *Part) (actual *Part, stored bool) {
+func (m *Parts) UpdateOrStore(part *Part) (oldInode uint64, update bool) {
 	i := sort.Search(len(*m), func(i int) bool {
 		return (*m)[i].ID >= part.ID
 	})
 	if i >= 0 && i < len(*m) && (*m)[i].ID == part.ID {
-		actual = (*m)[i]
-		stored = false
+		oldInode = (*m)[i].Inode
+		update = true
+		(*m)[i] = part
 		return
 	}
 	*m = append(*m, part)
-	actual = part
-	stored = true
+	update = false
 	m.sort()
 	return
 }
@@ -324,13 +324,13 @@ func (m *Multipart) ID() string {
 	return m.id
 }
 
-func (m *Multipart) LoadOrStorePart(part *Part) (actual *Part, stored bool) {
+func (m *Multipart) UpdateOrStorePart(part *Part) (oldInode uint64, updated bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.parts == nil {
 		m.parts = PartsFromBytes(nil)
 	}
-	actual, stored = m.parts.LoadOrStore(part)
+	oldInode, updated = m.parts.UpdateOrStore(part)
 	return
 }
 

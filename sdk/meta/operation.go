@@ -1494,7 +1494,7 @@ func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string)
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId string, partId uint16, size uint64, md5 string, inodeInfo *proto.InodeInfo) (status int, err error) {
+func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId string, partId uint16, size uint64, md5 string, inodeInfo *proto.InodeInfo) (status int, oldNode uint64, updated bool, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("addMultipartPart", err, bgTime, 1)
@@ -1543,8 +1543,13 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId str
 		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) part(%v) result(%v)", packet, mp, *req, part, packet.GetResultMsg())
 		return
 	}
-
-	return statusOK, nil
+	resp := new(proto.AppendMultipartResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("appendMultipart: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+	return status, resp.OldInode, resp.Update, nil
 }
 
 func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err error) {

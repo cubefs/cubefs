@@ -810,3 +810,9 @@ type GetInodeQuotaRequest struct {
 type GetInodeQuotaResponse struct {
 	MetaQuotaInfoMap map[uint32]*MetaQuotaInfo
 }
+
+type AppendMultipartResponse struct {
+	Status   uint8  `json:"status"`
+	Update   bool   `json:"update"`
+	OldInode uint64 `json:"oldinode"`
+}
