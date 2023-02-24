@@ -23,6 +23,7 @@ const (
 )
 
 const (
+	InvaildGetLogParm   = "Filename and log level must specify one"
 	InvalidLogLevel     = "Invalid log level, only support [error, warn, debug, info, read, update, critical]"
 	OpenLogFileFailed   = "Failed to open log file"
 	GetLogNumFailed     = "Failed to get param num"
@@ -160,16 +161,50 @@ func GetLogListHandler(w http.ResponseWriter, r *http.Request) {
 
 func GetLogHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-
+	fileName := query.Get(fileKey)
 	levelStr := query.Get(levelKey)
-	var fileName string
 
-	fileName = query.Get(fileKey)
 	if fileName != "" {
 		fileName = path.Join(gLog.dir, fileName)
 		goto openFile
+	} else if levelStr != "" {
+		var errStr string
+		if fileName, errStr = getLogFileByLevel(levelStr); errStr != "" {
+			buildFailureResp(w, http.StatusBadRequest, errStr)
+			return
+		}
+		goto openFile
+	} else {
+		buildFailureResp(w, http.StatusBadRequest, InvaildGetLogParm)
+		return
 	}
 
+openFile:
+	file, err := os.Open(fileName)
+	if err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("%s, err is [%v]", OpenLogFileFailed, err))
+		return
+	}
+	defer file.Close()
+
+	entire := 0
+	entireStr := query.Get(entireKey)
+	if entireStr != "" {
+		if entire, err = strconv.Atoi(entireStr); err != nil {
+			buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("%s, err is [%v]", GetEntireParaFailed, err))
+			return
+		}
+	}
+	if entire > 0 {
+		readEntireFile(w, r, file)
+	} else {
+		numStr := query.Get(numKey)
+		readTailNFile(w, r, file, numStr)
+	}
+	return
+}
+
+func getLogFileByLevel(levelStr string) (fileName string, errStr string) {
 	switch strings.ToLower(levelStr) {
 	case "error":
 		fileName = gLog.errorLogger.object.fileName
@@ -186,63 +221,67 @@ func GetLogHandler(w http.ResponseWriter, r *http.Request) {
 	case "critical":
 		fileName = gLog.criticalLogger.object.fileName
 	default:
-		buildFailureResp(w, http.StatusBadRequest, InvalidLogLevel)
+		return "", InvalidLogLevel
+	}
+	return
+}
+
+func readEntireFile(w http.ResponseWriter, r *http.Request, file *os.File) {
+	var (
+		fileInfo os.FileInfo
+		err error
+	)
+	fileInfo, err = os.Stat(file.Name())
+	if os.IsNotExist(err) {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("%s, err is [%v]", GetEntireFileFailed, err))
 		return
 	}
-
-openFile:
-	file, err := os.Open(fileName)
+	if fileInfo.Size() == 0 {
+		msg := fmt.Sprintf(": %v, " + EmptyLogFile, file.Name())
+		sendOKReply(w, r, msg, "")
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
+	reader := bufio.NewReader(file)
+	_, err = reader.WriteTo(w)
 	if err != nil {
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("%s, err is [%v]", OpenLogFileFailed, err))
-		return
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("%s, err is [%v]", GetEntireFileFailed, err))
 	}
-	defer file.Close()
-	// 获取entire日志文件
-	entire := 0
-	entireStr := query.Get(entireKey)
-	if entireStr != "" {
-		entire, err = strconv.Atoi(entireStr)
-		if err != nil {
-			buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("%s, err is [%v]", GetEntireParaFailed, err))
-			return
-		}
-	}
+	return
+	//var (
+	//	readStr string
+	//	err error
+	//	size int64
+	//)
+	//
+	//for {
+	//	readStr, err = reader.ReadString('\n')
+	//	size += int64(len(readStr))
+	//	if err == io.EOF {
+	//		return size, nil
+	//	} else if err != nil {
+	//		return size, nil
+	//	}
+	//	_, err = w.Write([]byte(readStr))
+	//	if err != nil {
+	//		return size, err
+	//	}
+	//}
+}
 
-	if entire > 0 {
-		fileInfo, err := os.Stat(fileName)
-		if os.IsNotExist(err) {
-			buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("%s, err is [%v]", GetEntireFileFailed, err))
-			return
-		}
-		if fileInfo.Size() == 0 {
-			msg := fmt.Sprintf(": %v, " + EmptyLogFile, fileName)
-			sendOKReply(w, r, msg, "")
-			return
-		}
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
-		_, err = readEntireFile(w, file)
-		if err != nil {
-			buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("%s, err is [%v]", GetEntireFileFailed, err))
-			return
-		}
-		return
-	}
-
-	var msg string
-	var num int64
-	numStr := query.Get(numKey)
-	if numStr == "" {
-		num = defaultLogLine
-		msg = fmt.Sprintf("%s(%d)", LossNum, defaultLogLine)
-	} else {
-		num, err = strconv.ParseInt(numStr, 10, 64)
-		if err != nil {
+func readTailNFile(w http.ResponseWriter, r *http.Request, file *os.File, numStr string) {
+	var (
+		msg string
+		num int64
+		err error
+	)
+	if numStr != "" {
+		if num, err = strconv.ParseInt(numStr, 10, 64); err != nil {
 			buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("%s, err is [%v]", GetLogNumFailed, err))
 			return
 		}
 	}
-
 	if num <= 0 {
 		num = defaultLogLine
 		msg = fmt.Sprintf("%s(%d)", InvaildLogNum, defaultLogLine)
@@ -250,16 +289,12 @@ openFile:
 		num = maxLogLine
 		msg = fmt.Sprintf("%s(%d)", TooBigNum, maxLogLine)
 	}
-
 	data, err := tailn(num, file)
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("%s, err is [%v]", TailLogFileFailed, err))
 		return
 	}
-
 	sendOKReply(w, r, msg, data)
-
-	return
 }
 
 func tailn(line int64, file *os.File) (data []string, err error) {
@@ -328,36 +363,6 @@ func tailn(line int64, file *os.File) (data []string, err error) {
 	}
 
 	return
-}
-
-func readEntireFile(w http.ResponseWriter, file *os.File) (size int64, err error) {
-	reader := bufio.NewReader(file)
-	_, err = reader.WriteTo(w)
-	if err != nil {
-		return size, err
-	}
-	return
-
-	//var (
-	//	readStr string
-	//	err error
-	//	size int64
-	//)
-	//
-	//for {
-	//	readStr, err = reader.ReadString('\n')
-	//	size += int64(len(readStr))
-	//	if err == io.EOF {
-	//		return size, nil
-	//	} else if err != nil {
-	//		return size, nil
-	//	}
-	//	_, err = w.Write([]byte(readStr))
-	//	if err != nil {
-	//		return size, err
-	//	}
-	//}
-
 }
 
 func sendOKReply(w http.ResponseWriter, r *http.Request, msg string, data interface{}) {
