@@ -307,6 +307,8 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		c.batchCreateDataPartition(vol, 1)
 	}
 
+	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
+
 	partitions := vol.dataPartitions.clonePartitions()
 	for _, dp := range partitions {
 
@@ -326,8 +328,8 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		}
 
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
-		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, c)
-		dp.checkLeader(c.Name, c.cfg.DataPartitionTimeOutSec)
+		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, c, shouldDpInhibitWriteByVolFull)
+		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
 
@@ -576,8 +578,24 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	}
 }
 
-func (vol *Vol) needCreateDataPartition() bool {
+func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
+	if vol.capacity() == 0 {
+		return false
+	}
 
+	if !proto.IsHot(vol.VolType) {
+		return false
+	}
+
+	usedSpace := vol.totalUsedSpace() / util.GB
+	if usedSpace >= vol.capacity() {
+		return true
+	}
+
+	return false
+}
+
+func (vol *Vol) needCreateDataPartition() bool {
 	if vol.status() == markDelete {
 		return false
 	}
@@ -587,11 +605,11 @@ func (vol *Vol) needCreateDataPartition() bool {
 	}
 
 	if proto.IsHot(vol.VolType) {
-		usedSpace := vol.totalUsedSpace() / util.GB
-		if usedSpace >= vol.capacity() {
+		if vol.shouldInhibitWriteBySpaceFull() {
 			vol.setAllDataPartitionsToReadOnly()
 			return false
 		}
+
 		return true
 	}
 
