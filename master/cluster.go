@@ -1121,7 +1121,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 		wg.Wait()
 		goto errHandler
 	default:
-		dp.total = util.DefaultDataPartitionSize
+		dp.total = vol.dataPartitionSize
 		dp.Status = proto.Unavailable
 	}
 
