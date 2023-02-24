@@ -1248,15 +1248,23 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) (i
 		return 0, nil
 	}
 
-	if err = v.ec.OpenStreamWithSize(ino, offset+size); err != nil {
-		log.LogErrorf("ReadFile: data open stream fail, Inode(%v) err(%v)", ino, err)
+	if err = v.ec.OpenStream(ino, false, false); err != nil {
+		log.LogErrorf("ReadFile: data open stream fail: volume(%v) inode(%v) err(%v)", v.name, ino, err)
 		return 0, err
 	}
 	defer func() {
 		if closeErr := v.ec.CloseStream(context.Background(), ino); closeErr != nil {
-			log.LogErrorf("ReadFile: data close stream fail: inode(%v) err(%v)", ino, closeErr)
+			log.LogErrorf("ReadFile: data close stream fail: volume(%v) inode(%v) err(%v)", v.name, ino, closeErr)
 		}
 	}()
+
+	if currFileSize, _, _ := v.ec.FileSize(ino); currFileSize < offset+size {
+		if err = v.ec.RefreshExtentsCache(context.Background(), ino); err != nil {
+			log.LogErrorf("ReadFile: refresh extents cache fail: volume(%v) inode(%v) err(%v)",
+				v.name, ino, err)
+			return 0, err
+		}
+	}
 
 	var upper = size + offset
 	if upper > inoInfo.Size {
@@ -2091,6 +2099,13 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 				sourcePath, sInode, closeErr)
 		}
 	}()
+	if currFileSize, _, _ := sv.ec.FileSize(sInode); currFileSize < sInodeInfo.Size {
+		if err = sv.ec.RefreshExtentsCache(context.Background(), sInode); err != nil {
+			log.LogErrorf("CopyFile: refresh extents cache for source stream fail, source volume (%v), source path(%v), source inode(%v), error(%v)",
+				sv.Name(), sourcePath, sInode, err)
+			return
+		}
+	}
 
 	// if source path is same with target path, just reset file metadata
 	// source path is same with target path, and metadata directive is not 'REPLACE', object node do nothing
@@ -2271,7 +2286,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			copy(hashBuf, buf[:readN])
 			md5Hash.Write(hashBuf[:readN])
 		}
-		if err == io.EOF {
+		if err == io.EOF || readN == 0 {
 			err = nil
 			break
 		}

@@ -246,19 +246,6 @@ func (client *ExtentClient) OpenStream(inode uint64, appendWriteBuffer bool, rea
 	return s.IssueOpenRequest()
 }
 
-func (client *ExtentClient) OpenStreamWithSize(inode uint64, size uint64) (err error) {
-	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
-	streamerMapSeg.Lock()
-	s, ok := streamerMapSeg.streamers[inode]
-	if !ok {
-		s = NewStreamer(client, inode, streamerMapSeg, false, false)
-		streamerMapSeg.streamers[inode] = s
-	} else if curSize, _ := s.extents.Size(); curSize < size {
-		_ = s.GetExtents(context.Background())
-	}
-	return s.IssueOpenRequest()
-}
-
 // Release request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) CloseStream(ctx context.Context, inode uint64) error {
 	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
