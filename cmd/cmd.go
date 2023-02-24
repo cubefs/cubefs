@@ -50,7 +50,6 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
-	_ "github.com/chubaofs/chubaofs/util/log/http" // HTTP API for logging control
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
 
 	"github.com/chubaofs/chubaofs/util/ump"

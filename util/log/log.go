@@ -426,7 +426,7 @@ func GetLogConfig(f func(level Level, headRoom, rollingSize, maxUseSize int64)) 
 }
 
 func buildSuccessResp(w http.ResponseWriter, data interface{}) {
-	buildJSONResp(w, http.StatusOK, data, "")
+	buildJSONResp(w, http.StatusOK, data, "success")
 }
 
 func buildFailureResp(w http.ResponseWriter, code int, msg string) {
