@@ -2102,7 +2102,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	if val, ok := params[clusterCreateTimeKey]; ok {
 		if createTimeParam, ok := val.(string); ok {
 			var createTime time.Time
@@ -2117,7 +2117,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 
 }
