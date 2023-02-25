@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -44,6 +45,25 @@ func NewExtentRequest(offset, size int, data []byte, ek *proto.ExtentKey) *Exten
 		Data:       data,
 		ExtentKey:  ek,
 	}
+}
+
+// split write extent request with more than util.ExtentSize data
+func SplitWriteExtentRequest(raw_req *ExtentRequest) []*ExtentRequest {
+	var requests []*ExtentRequest
+	offset := 0
+	for {
+		size := raw_req.Size - offset
+		if size > util.ExtentSize {
+			size = util.ExtentSize
+		}
+		request := NewExtentRequest(raw_req.FileOffset+offset, size, raw_req.Data[offset:offset+size], nil)
+		requests = append(requests, request)
+		offset += size
+		if offset >= raw_req.Size {
+			break
+		}
+	}
+	return requests
 }
 
 // ExtentCache defines the struct of the extent cache.
@@ -388,7 +408,11 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 				if start < ekStart {
 					// add hole (start, ekStart)
 					req = NewExtentRequest(start, ekStart-start, data[start-offset:ekStart-offset], nil)
-					requests = append(requests, req)
+					if req.Size > util.ExtentSize {
+						requests = append(requests, SplitWriteExtentRequest(req)...)
+					} else {
+						requests = append(requests, req)
+					}
 				}
 				// add non-hole (ekStart, end)
 				req = NewExtentRequest(ekStart, end-ekStart, data[ekStart-offset:end-offset], ek)
@@ -421,8 +445,11 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 	if start < end {
 		// add hole (start, end)
 		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)
-		requests = append(requests, req)
+		if req.Size > util.ExtentSize {
+			requests = append(requests, SplitWriteExtentRequest(req)...)
+		} else {
+			requests = append(requests, req)
+		}
 	}
-
 	return requests
 }
