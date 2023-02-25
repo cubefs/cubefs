@@ -49,10 +49,10 @@ const (
 	MetricMetaNodesNotWritable = "metaNodes_not_writable"
 	MetricInactiveMataNodeInfo = "inactive_mataNodes_info"
 
-	MetricMissingDp  = "missing_dp"
-	MetricDpNoLeader = "dp_no_leader"
-	MetricMissingMp  = "missing_mp"
-	MetricMpNoLeader = "mp_no_leader"
+	MetricMissingDp                = "missing_dp"
+	MetricDpNoLeader               = "dp_no_leader"
+	MetricMissingMp                = "missing_mp"
+	MetricMpNoLeader               = "mp_no_leader"
 	MetricDataPartitionCount       = "dataPartition_count"
 	MetricReplicaMissingDPCount    = "replica_missing_dp_count"
 	MetricDataNodesetInactiveCount = "data_nodeset_inactive_count"
@@ -62,36 +62,36 @@ const (
 var WarnMetrics *warningMetrics
 
 type monitorMetrics struct {
-	cluster              *Cluster
-	dataNodesCount       *exporter.Gauge
-	metaNodesCount       *exporter.Gauge
-	volCount             *exporter.Gauge
-	dataNodesTotal       *exporter.Gauge
-	dataNodesUsed        *exporter.Gauge
-	dataNodeIncreased    *exporter.Gauge
-	metaNodesTotal       *exporter.Gauge
-	metaNodesUsed        *exporter.Gauge
-	metaNodesIncreased   *exporter.Gauge
-	volTotalSpace        *exporter.GaugeVec
-	volUsedSpace         *exporter.GaugeVec
-	volUsage             *exporter.GaugeVec
-	volMetaCount         *exporter.GaugeVec
-	badMpCount           *exporter.Gauge
-	badDpCount           *exporter.Gauge
-	diskError            *exporter.GaugeVec
-	dataNodesNotWritable *exporter.Gauge
-	metaNodesNotWritable *exporter.Gauge
-	dataNodesInactive    *exporter.Gauge
-	InactiveDataNodeInfo *exporter.GaugeVec
-	metaNodesInactive    *exporter.Gauge
-	InactiveMataNodeInfo *exporter.GaugeVec
+	cluster                  *Cluster
+	dataNodesCount           *exporter.Gauge
+	metaNodesCount           *exporter.Gauge
+	volCount                 *exporter.Gauge
+	dataNodesTotal           *exporter.Gauge
+	dataNodesUsed            *exporter.Gauge
+	dataNodeIncreased        *exporter.Gauge
+	metaNodesTotal           *exporter.Gauge
+	metaNodesUsed            *exporter.Gauge
+	metaNodesIncreased       *exporter.Gauge
+	volTotalSpace            *exporter.GaugeVec
+	volUsedSpace             *exporter.GaugeVec
+	volUsage                 *exporter.GaugeVec
+	volMetaCount             *exporter.GaugeVec
+	badMpCount               *exporter.Gauge
+	badDpCount               *exporter.Gauge
+	diskError                *exporter.GaugeVec
+	dataNodesNotWritable     *exporter.Gauge
+	metaNodesNotWritable     *exporter.Gauge
+	dataNodesInactive        *exporter.Gauge
+	InactiveDataNodeInfo     *exporter.GaugeVec
+	metaNodesInactive        *exporter.Gauge
+	InactiveMataNodeInfo     *exporter.GaugeVec
 	dataPartitionCount       *exporter.Gauge
 	ReplicaMissingDPCount    *exporter.Gauge
 	dataNodesetInactiveCount *exporter.GaugeVec
 	metaNodesetInactiveCount *exporter.GaugeVec
 
-	volNames map[string]struct{}
-	badDisks map[string]string
+	volNames                      map[string]struct{}
+	badDisks                      map[string]string
 	nodesetInactiveDataNodesCount map[uint64]int64
 	nodesetInactiveMetaNodesCount map[uint64]int64
 	//volNamesMutex sync.Mutex
@@ -377,13 +377,13 @@ func (mm *monitorMetrics) setInactiveMetaNodesCountMetric() {
 		mm.metaNodesetInactiveCount.SetWithLabelValues(float64(count), strconv.FormatUint(id, 10))
 	}
 
-	for k, _ := range deleteNodesetCount {
+	for k := range deleteNodesetCount {
 		mm.metaNodesetInactiveCount.DeleteLabelValues(strconv.FormatUint(k, 10))
 	}
 }
 
 func (mm *monitorMetrics) clearInactiveMetaNodesCountMetric() {
-	for k, _ := range mm.nodesetInactiveMetaNodesCount {
+	for k := range mm.nodesetInactiveMetaNodesCount {
 		mm.metaNodesetInactiveCount.DeleteLabelValues(strconv.FormatUint(k, 10))
 	}
 }
@@ -416,13 +416,13 @@ func (mm *monitorMetrics) setInactiveDataNodesCountMetric() {
 		mm.dataNodesetInactiveCount.SetWithLabelValues(float64(count), strconv.FormatUint(id, 10))
 	}
 
-	for k, _ := range deleteNodesetCount {
+	for k := range deleteNodesetCount {
 		mm.dataNodesetInactiveCount.DeleteLabelValues(strconv.FormatUint(k, 10))
 	}
 }
 
 func (mm *monitorMetrics) clearInactiveDataNodesCountMetric() {
-	for k, _ := range mm.nodesetInactiveDataNodesCount {
+	for k := range mm.nodesetInactiveDataNodesCount {
 		mm.dataNodesetInactiveCount.DeleteLabelValues(strconv.FormatUint(k, 10))
 	}
 }

@@ -240,7 +240,7 @@ type client struct {
 	pushAddr            string
 	cluster             string
 	dirChildrenNumLimit uint32
-	enableAudit      bool
+	enableAudit         bool
 
 	// runtime context
 	cwd    string // current working directory
