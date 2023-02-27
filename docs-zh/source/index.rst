@@ -5,8 +5,7 @@
    :maxdepth: 2
    :caption: 概览
 
-   overview/introduction
-   overview/architecture
+   overview
 
 .. toctree::
    :maxdepth: 2
@@ -24,7 +23,7 @@
 
    user-guide/hotvol
    user-guide/coldvol
-   user-guide/cache
+   user-guide/datanode
    user-guide/file
    user-guide/objectnode
    user-guide/hadoop
@@ -50,7 +49,7 @@
 .. toctree::
    :maxdepth: 0
    :caption: 测试评估
-   
+
    evaluation/env
    evaluation/tiny
    evaluation/io
@@ -60,24 +59,26 @@
    :maxdepth: 2
    :caption: 设计文档
 
-   design/master
    design/metanode
-   design/datanode
-   design/blobstore
-   design/objectnode
-   design/client
-   design/authnode
+   design/blobstore.rst
+
+.. toctree::
+   :maxdepth: 2
+   :caption: 开发指南
+
+   dev/guide
+   dev/code
 
 .. toctree::
    :maxdepth: 0
    :caption: 社区
 
-   community/overview
+   community/contributing
+   community/user
    community/article
 
 .. toctree::
    :maxdepth: 2
-   :caption: FAQ
+   :caption: 常见问题
 
-   faq/build
-   faq/fuse
+   faq
