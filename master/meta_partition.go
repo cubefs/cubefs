@@ -267,9 +267,12 @@ func (mp *MetaPartition) checkLeader(clusterID string) {
 		}
 	}
 
+	var report bool
 	if _, err := mp.getMetaReplicaLeader(); err != nil {
-		WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID)
+		report = true
+
 	}
+	WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID, report)
 	return
 }
 

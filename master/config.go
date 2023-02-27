@@ -32,6 +32,7 @@ const (
 	cfgPeers   = "peers"
 	// if the data partition has not been reported within this interval  (in terms of seconds), it will be considered as missing.
 	missingDataPartitionInterval        = "missingDataPartitionInterval"
+	noLeaderReportInterval              = "noLeaderReportInterval"
 	dataPartitionTimeOutSec             = "dataPartitionTimeOutSec"
 	NumberOfDataPartitionsToLoad        = "numberOfDataPartitionsToLoad"
 	secondsToFreeDataPartitionAfterLoad = "secondsToFreeDataPartitionAfterLoad"
@@ -58,6 +59,7 @@ const (
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
 	defaultDataPartitionTimeOutSec             = 5 * defaultIntervalToCheckHeartbeat
 	defaultMissingDataPartitionInterval        = 24 * 3600
+	defaultNoLeaderReportInterval              = 10 * 60
 
 	defaultIntervalToAlarmMissingDataPartition = 60 * 60
 	timeToWaitForResponse                      = 120         // time to wait for response by the master during loading partition
@@ -84,6 +86,7 @@ type clusterConfig struct {
 	secondsToFreeDataPartitionAfterLoad int64
 	NodeTimeOutSec                      int64
 	MissingDataPartitionInterval        int64
+	NoLeaderReportInterval              int64
 	DataPartitionTimeOutSec             int64
 	IntervalToAlarmMissingDataPartition int64
 	PeriodToLoadALLDataPartitions       int64
@@ -119,6 +122,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.secondsToFreeDataPartitionAfterLoad = defaultSecondsToFreeDataPartitionAfterLoad
 	cfg.NodeTimeOutSec = defaultNodeTimeOutSec
 	cfg.MissingDataPartitionInterval = defaultMissingDataPartitionInterval
+	cfg.NoLeaderReportInterval = defaultNoLeaderReportInterval
 	cfg.DataPartitionTimeOutSec = defaultDataPartitionTimeOutSec
 	cfg.IntervalToCheckDataPartition = defaultIntervalToCheckDataPartition
 	cfg.IntervalToCheckQos = defaultIntervalToCheckQos

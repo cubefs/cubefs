@@ -58,6 +58,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		m.metaReady = false
 		m.cluster.masterClient.AddNode(m.leaderInfo.addr)
 		m.cluster.masterClient.SetLeader(m.leaderInfo.addr)
+		WarnMetrics.reset()
 	}
 }
 
