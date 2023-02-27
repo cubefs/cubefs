@@ -277,6 +277,13 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	noLeaderReportInterval := cfg.GetString(noLeaderReportInterval)
+	if noLeaderReportInterval != "" {
+		if m.config.NoLeaderReportInterval, err = strconv.ParseInt(noLeaderReportInterval, 10, 0); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
 	dataPartitionTimeOutSec := cfg.GetString(dataPartitionTimeOutSec)
 	if dataPartitionTimeOutSec != "" {
 		if m.config.DataPartitionTimeOutSec, err = strconv.ParseInt(dataPartitionTimeOutSec, 10, 0); err != nil {
