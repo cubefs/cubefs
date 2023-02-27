@@ -292,7 +292,9 @@ create_volumes ; sleep 2
 add_data_partitions ; sleep 3
 show_cluster_info
 start_client ; sleep 2
-run_ltptest
+if [ "$1"x = "-ltp"x ]; then
+    run_ltptest
+fi
 run_s3_test
 stop_client
 delete_volumes
