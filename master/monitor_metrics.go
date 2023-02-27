@@ -115,37 +115,115 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 }
 
 type warningMetrics struct {
-	cluster    *Cluster
-	missingDp  *exporter.GaugeVec
-	dpNoLeader *exporter.GaugeVec
-	missingMp  *exporter.GaugeVec
-	mpNoLeader *exporter.GaugeVec
+	cluster        *Cluster
+	missingDp      *exporter.GaugeVec
+	dpNoLeader     *exporter.GaugeVec
+	missingMp      *exporter.GaugeVec
+	mpNoLeader     *exporter.GaugeVec
+	dpNoLeaderInfo map[uint64]int64
+	mpNoLeaderInfo map[uint64]int64
 }
 
 func newWarningMetrics(c *Cluster) *warningMetrics {
 	return &warningMetrics{
-		cluster:    c,
-		missingDp:  exporter.NewGaugeVec(MetricMissingDp, "", []string{"clusterName", "partitionID", "addr"}),
-		dpNoLeader: exporter.NewGaugeVec(MetricDpNoLeader, "", []string{"clusterName", "partitionID"}),
-		missingMp:  exporter.NewGaugeVec(MetricMissingMp, "", []string{"clusterName", "partitionID", "addr"}),
-		mpNoLeader: exporter.NewGaugeVec(MetricMpNoLeader, "", []string{"clusterName", "partitionID"}),
+		cluster:        c,
+		missingDp:      exporter.NewGaugeVec(MetricMissingDp, "", []string{"clusterName", "partitionID", "addr"}),
+		dpNoLeader:     exporter.NewGaugeVec(MetricDpNoLeader, "", []string{"clusterName", "partitionID"}),
+		missingMp:      exporter.NewGaugeVec(MetricMissingMp, "", []string{"clusterName", "partitionID", "addr"}),
+		mpNoLeader:     exporter.NewGaugeVec(MetricMpNoLeader, "", []string{"clusterName", "partitionID"}),
+		dpNoLeaderInfo: make(map[uint64]int64),
+		mpNoLeaderInfo: make(map[uint64]int64),
 	}
 }
 
+func (m *warningMetrics) reset() {
+	for dp, _ := range m.dpNoLeaderInfo {
+		m.dpNoLeader.DeleteLabelValues(m.cluster.Name, strconv.FormatUint(dp, 10))
+		delete(m.dpNoLeaderInfo, dp)
+	}
+
+	for mp, _ := range m.mpNoLeaderInfo {
+		m.mpNoLeader.DeleteLabelValues(m.cluster.Name, strconv.FormatUint(mp, 10))
+		delete(m.mpNoLeaderInfo, mp)
+	}
+}
+
+//leader only
 func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uint64) {
+	if clusterName != m.cluster.Name {
+		return
+	}
 	m.missingDp.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10), addr)
 }
 
-func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64) {
-	m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+//func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64) {
+//	m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+//}
+
+//leader only
+func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64, report bool) {
+	if clusterName != m.cluster.Name {
+		return
+	}
+
+	t, ok := m.dpNoLeaderInfo[partitionID]
+	if !report {
+		if ok {
+			delete(m.dpNoLeaderInfo, partitionID)
+			m.dpNoLeader.DeleteLabelValues(clusterName, strconv.FormatUint(partitionID, 10))
+		}
+		return
+	}
+
+	now := time.Now().Unix()
+	if !ok {
+		m.dpNoLeaderInfo[partitionID] = now
+		return
+	}
+	if now-t > m.cluster.cfg.NoLeaderReportInterval {
+		m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+		m.dpNoLeaderInfo[partitionID] = now
+	}
 }
 
+//leader only
 func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uint64) {
+	if clusterName != m.cluster.Name {
+		return
+	}
 	m.missingMp.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10), addr)
 }
 
-func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64) {
-	m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+//func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64) {
+//	m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+//}
+
+//leader only
+func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64, report bool) {
+	if clusterName != m.cluster.Name {
+		return
+	}
+	t, ok := m.mpNoLeaderInfo[partitionID]
+	if !report {
+		if ok {
+			delete(m.mpNoLeaderInfo, partitionID)
+			m.mpNoLeader.DeleteLabelValues(clusterName, strconv.FormatUint(partitionID, 10))
+		}
+		return
+	}
+
+	now := time.Now().Unix()
+
+	if !ok {
+		m.mpNoLeaderInfo[partitionID] = now
+		return
+	}
+
+	if now-t > m.cluster.cfg.NoLeaderReportInterval {
+		m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+		m.mpNoLeaderInfo[partitionID] = now
+	}
+
 }
 
 func (mm *monitorMetrics) start() {
@@ -434,6 +512,8 @@ func (mm *monitorMetrics) setInactiveMetaNodesCountMetric() {
 			mm.InactiveMataNodeInfo.SetWithLabelValues(1, mm.cluster.Name, metaNode.Addr)
 			mm.nodesetInactiveMetaNodesCount[metaNode.NodeSetID] = mm.nodesetInactiveMetaNodesCount[metaNode.NodeSetID] + 1
 			delete(deleteNodesetCount, metaNode.NodeSetID)
+		} else {
+			mm.InactiveMataNodeInfo.DeleteLabelValues(mm.cluster.Name, metaNode.Addr)
 		}
 		return true
 	})
@@ -473,6 +553,8 @@ func (mm *monitorMetrics) setInactiveDataNodesCountMetric() {
 			mm.InactiveDataNodeInfo.SetWithLabelValues(1, mm.cluster.Name, dataNode.Addr)
 			mm.nodesetInactiveDataNodesCount[dataNode.NodeSetID] = mm.nodesetInactiveDataNodesCount[dataNode.NodeSetID] + 1
 			delete(deleteNodesetCount, dataNode.NodeSetID)
+		} else {
+			mm.InactiveDataNodeInfo.DeleteLabelValues(mm.cluster.Name, dataNode.Addr)
 		}
 		return true
 	})

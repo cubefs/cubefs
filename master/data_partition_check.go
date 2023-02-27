@@ -150,9 +150,11 @@ func (partition *DataPartition) checkLeader(clusterID string, timeOut int64) {
 		}
 	}
 
+	var report bool
 	if partition.getLeaderAddr() == "" {
-		WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID)
+		report = true
 	}
+	WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID, report)
 	return
 }
 
