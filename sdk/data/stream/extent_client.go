@@ -126,22 +126,23 @@ type ExtentClient struct {
 
 	disableMetaCache bool
 
-	volumeType      int
-	volumeName      string
-	bcacheEnable    bool
-	bcacheDir       string
-	BcacheHealth    bool
-	preload         bool
-	LimitManager    *manager.LimitManager
-	dataWrapper     *wrapper.Wrapper
-	appendExtentKey AppendExtentKeyFunc
-	getExtents      GetExtentsFunc
-	truncate        TruncateFunc
-	evictIcache     EvictIcacheFunc //May be null, must check before using
-	loadBcache      LoadBcacheFunc
-	cacheBcache     CacheBcacheFunc
-	evictBcache     EvictBacheFunc
-	inflightL1cache sync.Map
+	volumeType         int
+	volumeName         string
+	bcacheEnable       bool
+	bcacheDir          string
+	BcacheHealth       bool
+	preload            bool
+	LimitManager       *manager.LimitManager
+	dataWrapper        *wrapper.Wrapper
+	appendExtentKey    AppendExtentKeyFunc
+	getExtents         GetExtentsFunc
+	truncate           TruncateFunc
+	evictIcache        EvictIcacheFunc //May be null, must check before using
+	loadBcache         LoadBcacheFunc
+	cacheBcache        CacheBcacheFunc
+	evictBcache        EvictBacheFunc
+	inflightL1cache    sync.Map
+	inflightL1BigBlock int32
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
