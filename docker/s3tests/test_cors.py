@@ -96,8 +96,8 @@ class CorsTest(S3TestCase):
         self.assert_cors_request_result(
             result=requests.get(url=BUCKET_URL, headers={'Origin': PUT_ORIGIN, 'Access-Control-Request-Method': 'GET'}),
             response_code=403,
-            response_origin=None,
-            response_method=None)
+            response_origin=PUT_ORIGIN,
+            response_method='GET')
 
     def test_cors_options(self):
         # Put object
@@ -131,8 +131,8 @@ class CorsTest(S3TestCase):
             result=requests.options(url=options_url,
                                     headers={'Origin': PUT_ORIGIN, 'Access-Control-Request-Method': 'GET'}),
             response_code=200,
-            response_origin=None,
-            response_method=None)
+            response_origin=PUT_ORIGIN,
+            response_method='GET')
         # Delete object
         self.assert_delete_object_result(
             result=self.s3.delete_object(Bucket=env.BUCKET, Key=key))

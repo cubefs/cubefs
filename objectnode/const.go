@@ -14,7 +14,14 @@
 
 package objectnode
 
-import "os"
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/chubaofs/chubaofs/proto"
+)
 
 const (
 	MaxRetry = 3
@@ -43,14 +50,15 @@ const (
 	HeaderNameExpires            = "Expires"
 
 	// Headers for CORS validation
-	Origin                                = "Origin"
-	HeaderNameAccessControlRequestMethod  = "Access-Control-Request-Method"
-	HeaderNameAccessControlRequestHeaders = "Access-Control-Request-Headers"
-	HeaderNameAccessControlAllowOrigin    = "Access-Control-Allow-Origin"
-	HeaderNameAccessControlMaxAge         = "Access-Control-Max-Age"
-	HeaderNameAccessControlAllowMethods   = "Access-Control-Allow-Methods"
-	HeaderNameAccessControlAllowHeaders   = "Access-Control-Allow-Headers"
-	HeaderNamrAccessControlExposeHeaders  = "Access-Control-Expose-Headers"
+	HeaderNameOrigin                        = "Origin"
+	HeaderNameAccessControlRequestMethod    = "Access-Control-Request-Method"
+	HeaderNameAccessControlRequestHeaders   = "Access-Control-Request-Headers"
+	HeaderNameAccessControlAllowOrigin      = "Access-Control-Allow-Origin"
+	HeaderNameAccessControlMaxAge           = "Access-Control-Max-Age"
+	HeaderNameAccessControlAllowMethods     = "Access-Control-Allow-Methods"
+	HeaderNameAccessControlAllowHeaders     = "Access-Control-Allow-Headers"
+	HeaderNameAccessControlExposeHeaders    = "Access-Control-Expose-Headers"
+	HeaderNameAccessControlAllowCredentials = "Access-Control-Allow-Credentials"
 
 	HeaderNameXAmzStartDate           = "x-amz-date"
 	HeaderNameXAmzRequestId           = "x-amz-request-id"
@@ -75,11 +83,23 @@ const (
 )
 
 const (
-	HeaderValueServer               = "ChubaoFS"
 	HeaderValueAcceptRange          = "bytes"
 	HeaderValueTypeStream           = "application/octet-stream"
 	HeaderValueContentTypeXML       = "application/xml"
 	HeaderValueContentTypeDirectory = "application/directory"
+
+	ServerName                 = "ChubaoFS"
+	DefaultAccessControlMaxAge = 600
+)
+
+var (
+	HeaderValueServerFullName                       = []string{fmt.Sprintf("%v/%v", ServerName, proto.Version)}
+	HeaderValueAccessControlAllowOriginDefault      = []string{"*"}
+	HeaderValueAccessControlMaxAgeDefault           = []string{strconv.Itoa(DefaultAccessControlMaxAge)}
+	HeaderValueAccessControlAllowMethodDefault      = []string{strings.Join([]string{"HEAD", "GET", "POST", "PUT", "DELETE"}, ",")}
+	HeaderValueAccessControlAllowHeadersDefault     = []string{"*"}
+	HeaderValueAccessControlExposeHeadersDefault    = []string{"*"}
+	HeaderValueAccessControlAllowCredentialsDefault = []string{"true"}
 )
 
 const (
