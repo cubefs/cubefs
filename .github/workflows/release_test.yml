@@ -1,0 +1,28 @@
+name: CI-Release
+
+on:
+  push:
+    tags:
+      - v*
+      - release-*
+
+jobs:
+  release-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+      - name: Release and run ltp tests
+        run: |
+          docker/run_docker.sh -t
+          docker/run_docker.sh --ltptest
+      - name: Pack docker_data
+        if: ${{ always() }}
+        run: pushd docker && sudo tar --exclude='docker_data/datanode*/disk' --exclude='docker_data/disk' -czvf docker_data.tar.gz docker_data
+      - name: Upload docker_data.tar.gz
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: docker_data
+          path: docker/docker_data.tar.gz
+          retention-days: 7

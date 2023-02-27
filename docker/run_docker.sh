@@ -53,8 +53,19 @@ start_monitor() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d monitor
 }
 
-start_ltptest() {
+start_scenariotest() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run client
+}
+
+start_ltptest() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start.sh -ltp"
+}
+
+run_scenariotest() {
+    build
+    start_servers
+    start_scenariotest
+    clean
 }
 
 run_ltptest() {
@@ -87,6 +98,9 @@ for opt in ${ARGS[*]} ; do
             ;;
         -l|--ltptest)
             cmd=run_ltptest
+            ;;
+        -n|--scenariotest)
+            cmd=run_scenariotest
             ;;
         -r|--run)
             cmd=run
@@ -149,6 +163,7 @@ case "-$cmd" in
     -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
     -run_test) run_unit_test ;;
+    -run_scenariotest) run_scenariotest ;;
     -clean) clean ;;
     *) help ;;
 esac
