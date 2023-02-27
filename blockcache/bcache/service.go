@@ -37,12 +37,13 @@ const (
 	UnixSocketPath = "/var/lib/kubelet/device-plugins/bcache.socket"
 
 	//config
-	CacheDir     = "cacheDir"
-	CacheLimit   = "cacheLimit"
-	CacheFree    = "cacheFree"
-	BlockSize    = "blockSize"
-	MaxFileSize  = 128 << 30
-	MaxBlockSize = 128 << 20
+	CacheDir      = "cacheDir"
+	CacheLimit    = "cacheLimit"
+	CacheFree     = "cacheFree"
+	BlockSize     = "blockSize"
+	MaxFileSize   = 128 << 30
+	MaxBlockSize  = 128 << 20
+	BigExtentSize = 32 << 20
 )
 
 var (

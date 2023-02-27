@@ -21,6 +21,7 @@ import (
 	"golang.org/x/net/context"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
@@ -56,7 +57,6 @@ type Streamer struct {
 	done    chan struct{}    // stream writer is being closed
 
 	writeLock            sync.Mutex
-	inflightL1cache      sync.Map
 	inflightEvictL1cache sync.Map
 	pendingCache         chan bcacheKey
 }
@@ -218,10 +218,19 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			}
 
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
-				select {
-				case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey}:
-				default:
+				//limit big block cache
+				if s.exceedBlockSize(req.ExtentKey.Size) && atomic.LoadInt32(&s.client.inflightL1BigBlock) > 10 {
+					//do nothing
+				} else {
+					select {
+					case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey}:
+						if s.exceedBlockSize(req.ExtentKey.Size) {
+							atomic.AddInt32(&s.client.inflightL1BigBlock, 1)
+						}
+					default:
+					}
 				}
+
 			}
 
 			readBytes, err = reader.Read(req)
@@ -269,6 +278,9 @@ func (s *Streamer) asyncBlockCache() {
 				if ek.Size == bcache.MaxBlockSize {
 					buf.BCachePool.Put(data)
 				}
+				if s.exceedBlockSize(ek.Size) {
+					atomic.AddInt32(&s.client.inflightL1BigBlock, -1)
+				}
 				return
 			}
 			if s.client.cacheBcache != nil {
@@ -278,11 +290,22 @@ func (s *Streamer) asyncBlockCache() {
 			if ek.Size == bcache.MaxBlockSize {
 				buf.BCachePool.Put(data)
 			}
+			if s.exceedBlockSize(ek.Size) {
+				atomic.AddInt32(&s.client.inflightL1BigBlock, -1)
+			}
 		case <-t.C:
 			if s.refcnt <= 0 {
+				s.isOpen = false
 				return
 			}
 		}
 
 	}
+}
+
+func (s *Streamer) exceedBlockSize(size uint32) bool {
+	if size > bcache.BigExtentSize {
+		return true
+	}
+	return false
 }
