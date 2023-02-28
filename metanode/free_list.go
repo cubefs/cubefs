@@ -82,3 +82,29 @@ func (fl *freeList) PushFront(ino uint64) {
 	item = fl.list.PushFront(ino)
 	fl.index[ino] = item
 }
+
+func (fl *freeList) Get(count int) (inos []uint64) {
+	if count <= 0 {
+		return
+	}
+	fl.Lock()
+	defer fl.Unlock()
+
+	if len(fl.index) < count {
+		count = len(fl.index)
+	}
+	inos = make([]uint64, 0, count)
+	for count > 0 {
+		item := fl.list.Front()
+		if item == nil {
+			break
+		}
+		val := fl.list.Remove(item)
+		ino := val.(uint64)
+		element := fl.list.PushBack(ino)
+		fl.index[ino] = element
+		inos = append(inos, ino)
+		count--
+	}
+	return
+}

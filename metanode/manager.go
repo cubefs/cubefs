@@ -23,6 +23,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -865,10 +866,14 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		vMPsConf = append(vMPsConf, VirtualMetaPartitionConf{ID: vMP.ID, Start: vMP.Start, End: vMP.End, CreateTime: vMP.CreateTime})
 	}
 
+	sort.Slice(request.VirtualMPs, func(i, j int) bool {
+		return request.VirtualMPs[i].ID < request.VirtualMPs[j].ID
+	})
+
 	mpc := &MetaPartitionConfig{
 		PartitionId:        request.PartitionID,
 		VolName:            request.VolName,
-		Start:              request.Start,
+		Start:              request.VirtualMPs[0].Start,
 		End:                request.End,
 		Cursor:             request.Start,
 		Peers:              request.Members,
@@ -881,7 +886,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		StoreMode:          request.StoreMode,
 		CreationType:       request.CreationType,
 		VirtualMPs:         vMPsConf,
-		InodeStart:         request.Start,
+		InodeStart:         request.VirtualMPs[0].Start,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)

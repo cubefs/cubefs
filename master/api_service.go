@@ -4835,7 +4835,7 @@ func getMetaPartitionView(mp *MetaPartition) (result []*proto.MetaPartitionView)
 		mpView.IsRecover = mp.IsRecover
 		mpView.MaxExistIno = mp.MaxExistIno
 
-		if mpView.End == defaultMaxMetaPartitionInodeID && mpView.Status != proto.ReadWrite {
+		if mpView.End == defaultMaxMetaPartitionInodeID && mpView.Status == proto.ReadOnly {
 			log.LogErrorf("[getMetaPartitionView] change mpid(%v) status to read write", mpView.PartitionID)
 			mpView.Status = proto.ReadWrite
 		}

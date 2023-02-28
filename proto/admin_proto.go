@@ -258,7 +258,7 @@ const (
 )
 const (
 	DefaultMetaPartitionInodeIDStep    uint64  = 1 << 24
-	DefaultReuseMPInodeCountThreshold  float64 = 0.1
+	DefaultReuseMPInodeCountThreshold  float64 = 0.4
 	DefaultReuseMPDentryCountThreshold float64 = 0.1
 	DefaultReuseMPDelInoCountThreshold float64 = 0.1
 	DefaultMetaPartitionMaxDelInoCnt   uint64  = 100 * 10000

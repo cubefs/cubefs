@@ -327,6 +327,18 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 		columnValOp.SetValue("SyncVirtualMPs")
 		columnValAttrs.SetValue(fmt.Sprintf("PartitionID: %v, VirtualMPs: %v, Start: %v, End: %v",
 			syncReq.PartitionID, syncReq.VirtualMPs, syncReq.Start, syncReq.End))
+	case metadataOpFSMCleanExpiredInode:
+		var batch metanode.FSMDeletedINodeBatch
+		if batch, err = metanode.FSMDeletedINodeBatchUnmarshal(opKVData.V); err != nil {
+			return
+		}
+		columnValOp.SetValue("CleanExpiredInodes")
+		inodes := make([]uint64, 0, len(batch))
+		for _, deletedInode := range batch {
+			inodeData, _ := deletedInode.Marshal()
+			inodes = append(inodes, binary.BigEndian.Uint64(inodeData))
+		}
+		columnValAttrs.SetValue(fmt.Sprintf("inodes:%v", inodes))
 	default:
 		columnValOp.SetValue(strconv.Itoa(int(opKVData.Op)))
 		columnValAttrs.SetValue("N/A")

@@ -448,11 +448,11 @@ func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, ino *In
 	}
 
 	if !ok {
-		if _, err = mp.inodeTree.Delete(dbHandle, ino.Inode); err != nil {
-			log.LogErrorf("[internalCleanDeletedInode] delete inode from inode tree error:%v", err)
-			return
-		}
-		log.LogDebugf("[internalCleanDeletedInode], ino: %v", ino)
+		//if _, err = mp.inodeTree.Delete(dbHandle, ino.Inode); err != nil {
+		//	log.LogErrorf("[internalCleanDeletedInode] delete inode from inode tree error:%v", err)
+		//	return
+		//}
+		log.LogDebugf("[internalCleanDeletedInode], dino not exist: %v", ino)
 	} else {
 		log.LogDebugf("[internalCleanDeletedInode], dino: %v", ino)
 	}
@@ -466,13 +466,4 @@ func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, ino *In
 	log.LogDebugf("[internalCleanDeletedInode], clean deleted ino: %v result: %v", ino, err)
 	mp.clearAllocatorIno(ino.Inode)
 	return
-}
-
-func (mp *metaPartition) checkExpiredAndInsertFreeList(di *DeletedINode) {
-	if proto.IsDir(di.Type) {
-		return
-	}
-	if di.IsExpired {
-		mp.freeList.Push(di.Inode.Inode)
-	}
 }

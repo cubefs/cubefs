@@ -1028,6 +1028,7 @@ func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, n
 		log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) recover from snap failed; reset meta tree failed:%s", mp.config.PartitionId, err.Error())
 		return
 	}
+	mp.freeList = newFreeList() //avoid mistake delete inode after add bitmap feature
 
 	if err = mp.updateMetaConfByMetaConfSnap(metaConf); err != nil {
 		log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) recover from snap failed; update meta conf failed:%s", mp.config.PartitionId, err.Error())

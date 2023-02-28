@@ -429,13 +429,19 @@ func (vMP *VirtualMetaPartition) updateStatus(mp *metaPartition, status int8) (w
 
 
 	//free bit less than 10%
-	if vMP.InodeIDAlloter.GetFree() < uint64(float64(proto.DefaultMetaPartitionInodeIDStep)*mp.manager.metaNode.getReuseMPInodeCountThreshold()) {
+	bitmapFreeCountThreshold := float64(proto.DefaultMetaPartitionInodeIDStep)*defBitMapFreeCountThresholdForUnavailable
+	if vMP.InodeIDAlloter.GetFree() < uint64(bitmapFreeCountThreshold) {
 		vMP.Status = proto.ReadOnly
 		return
 	}
 
-	//used bit less than 10%
-	if vMP.InodeIDAlloter.GetUsed() < uint64(float64(proto.DefaultMetaPartitionInodeIDStep)*mp.manager.metaNode.getReuseMPInodeCountThreshold()) {
+	//used bit less than 60%
+	bitmapUsedCountThresholdForAvailable := 1 - mp.manager.metaNode.getReuseMPInodeCountThreshold()
+	if bitmapUsedCountThresholdForAvailable > defBitMapUsedCountThresholdForAvailable || bitmapUsedCountThresholdForAvailable <= 0 {
+		bitmapUsedCountThresholdForAvailable = defBitMapUsedCountThresholdForAvailable
+	}
+	bitmapUsedCountThreshold := float64(proto.DefaultMetaPartitionInodeIDStep)*bitmapUsedCountThresholdForAvailable
+	if vMP.InodeIDAlloter.GetUsed() < uint64(bitmapUsedCountThreshold) {
 		vMP.Status = proto.ReadWrite
 		return
 	}
@@ -479,7 +485,7 @@ type metaPartition struct {
 	storeChan                   chan *storeMsg
 	state                       uint32
 	delInodeFp                  *os.File
-	freeList                    *freeList // free inode list
+	freeList                    *freeList // free inode list, only change when raft apply
 	extDelCh                    chan []proto.MetaDelExtentKey
 	extReset                    chan struct{}
 	vol                         *Vol
@@ -859,6 +865,19 @@ func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
 			return
 		}
 	}
+	return
+}
+
+func (mp *metaPartition) LeaderTerm() (term uint64, ok bool) {
+	if mp.raftPartition == nil {
+		return
+	}
+	var leaderID uint64
+	leaderID, term = mp.raftPartition.LeaderTerm()
+	if leaderID == 0 {
+		return
+	}
+	ok = leaderID == mp.config.NodeId
 	return
 }
 

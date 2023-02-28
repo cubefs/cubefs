@@ -94,6 +94,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	sort.Slice(mp.config.VirtualMPs, func(i, j int) bool {
 		return mp.config.VirtualMPs[i].ID < mp.config.VirtualMPs[j].ID
 	})
+	mp.config.Start = mp.config.VirtualMPs[0].Start
 	mp.config.InodeStart = mp.config.VirtualMPs[0].Start
 	if mp.config.RocksDBDir == "" {
 		// new version but old config; need select one dir
@@ -266,7 +267,8 @@ func (mp *metaPartition) loadDeletedInode(ctx context.Context, rootDir string) (
 			err = errors.NewErrorf("[loadDeletedInode] fsmCreateDeletedInode, dinode: %v, resp code: %d", dino, resp.Status)
 			return
 		}
-		mp.checkExpiredAndInsertFreeList(dino)
+		//no need push to free list, maybe mistake delete inode after add bitmap feature
+		//mp.checkExpiredAndInsertFreeList(dino)
 		if mp.config.Cursor < dino.Inode.Inode {
 			mp.config.Cursor = dino.Inode.Inode
 		}
