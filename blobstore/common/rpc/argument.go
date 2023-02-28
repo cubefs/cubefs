@@ -133,9 +133,13 @@ func parseArgs(c *Context, args interface{}, opts ...ServerOption) error {
 		if err != nil {
 			return err
 		}
+
+		if arg, ok := args.(UnmarshalerFrom); ok {
+			return arg.UnmarshalFrom(io.LimitReader(c.Request.Body, int64(size)))
+		}
+
 		buf := bytespool.Alloc(size)
 		defer bytespool.Free(buf)
-
 		if _, err = io.ReadFull(c.Request.Body, buf); err != nil {
 			return err
 		}

@@ -16,7 +16,10 @@ package rpc
 
 import (
 	"encoding/base64"
+	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/julienschmidt/httprouter"
@@ -133,6 +136,26 @@ func (args *unmarshalerArgs) Unmarshal([]byte) error {
 	return nil
 }
 
+type unmarshalerFromArgs struct {
+	IFrom int
+}
+
+func (args *unmarshalerFromArgs) UnmarshalFrom(body io.Reader) error {
+	r := body.(*io.LimitedReader)
+	buf := make([]byte, r.N)
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		return err
+	}
+
+	arg, err := strconv.Atoi(string(buf))
+	if err != nil {
+		return err
+	}
+	args.IFrom = arg
+	return nil
+}
+
 type normalArgs struct {
 	Bool bool
 
@@ -223,6 +246,30 @@ func TestArgumentParser(t *testing.T) {
 	{
 		c := new(Context)
 		c.opts = new(serverOptions)
+		{
+			c.Request, _ = http.NewRequest("", "", strings.NewReader(""))
+			args := new(unmarshalerFromArgs)
+			err := parseArgs(c, args, OptArgsBody())
+			require.Error(t, err)
+		}
+		{
+			c.Request, _ = http.NewRequest("", "", strings.NewReader("999"))
+			args := new(unmarshalerFromArgs)
+			err := parseArgs(c, args, OptArgsBody())
+			require.NoError(t, err)
+			require.Equal(t, 999, args.IFrom)
+		}
+		{
+			c.Request, _ = http.NewRequest("", "", strings.NewReader("not-a-number"))
+			args := new(unmarshalerFromArgs)
+			err := parseArgs(c, args, OptArgsBody())
+			require.Error(t, err)
+			require.Equal(t, 0, args.IFrom)
+		}
+	}
+	{
+		c := new(Context)
+		c.opts = new(serverOptions)
 		c.Param = httprouter.Params{
 			httprouter.Param{Key: "bool", Value: "true"},
 			httprouter.Param{Key: "int", Value: "-1111"},
@@ -279,4 +326,85 @@ func TestArgumentParser(t *testing.T) {
 		require.False(t, args.Bool)
 		require.Equal(t, "getter", args.getter)
 	}
+}
+
+func BenchmarkArgumentParse(b *testing.B) {
+	b.Run("ArgsBodyJson", func(b *testing.B) {
+		type jsonArgs struct {
+			I int
+		}
+		c := new(Context)
+		c.opts = new(serverOptions)
+		c.Request, _ = http.NewRequest("", "", nil)
+		b.ResetTimer()
+		for ii := 0; ii <= b.N; ii++ {
+			args := new(jsonArgs)
+			parseArgs(c, args, OptArgsBody())
+		}
+	})
+	b.Run("ArgsBodyMarshaler", func(b *testing.B) {
+		c := new(Context)
+		c.opts = new(serverOptions)
+		c.Request, _ = http.NewRequest("", "", nil)
+		b.ResetTimer()
+		for ii := 0; ii <= b.N; ii++ {
+			args := new(unmarshalerArgs)
+			parseArgs(c, args, OptArgsBody())
+		}
+	})
+	b.Run("ArgsURISimple", func(b *testing.B) {
+		type simpleURI struct {
+			Bool bool
+		}
+		c := new(Context)
+		c.opts = new(serverOptions)
+		c.Param = httprouter.Params{
+			httprouter.Param{Key: "bool", Value: "true"},
+		}
+		b.ResetTimer()
+		for ii := 0; ii <= b.N; ii++ {
+			args := new(simpleURI)
+			parseArgs(c, args, OptArgsURI())
+		}
+	})
+	b.Run("ArgsURIComplex", func(b *testing.B) {
+		c := new(Context)
+		c.opts = new(serverOptions)
+		c.Param = httprouter.Params{
+			httprouter.Param{Key: "bool", Value: "true"},
+			httprouter.Param{Key: "int", Value: "-1111"},
+			httprouter.Param{Key: "int8", Value: "-1"},
+			httprouter.Param{Key: "int16", Value: "-1111"},
+			httprouter.Param{Key: "int32", Value: "-1111"},
+			httprouter.Param{Key: "int64", Value: "-1111"},
+			httprouter.Param{Key: "uint", Value: "1111"},
+			httprouter.Param{Key: "uint8", Value: "1"},
+			httprouter.Param{Key: "uint16", Value: "1111"},
+			httprouter.Param{Key: "uint32", Value: "1111"},
+			httprouter.Param{Key: "uint64", Value: "1111"},
+			httprouter.Param{Key: "float32", Value: "1e-3"},
+			httprouter.Param{Key: "float64", Value: "1e-32"},
+			httprouter.Param{Key: "string", Value: "string"},
+			httprouter.Param{Key: "uintptr", Value: "1111"},
+			httprouter.Param{Key: "ptr", Value: "string"},
+			httprouter.Param{Key: "slice", Value: "slice"},
+		}
+		b.ResetTimer()
+		for ii := 0; ii <= b.N; ii++ {
+			args := new(normalArgs)
+			parseArgs(c, args, OptArgsURI())
+		}
+	})
+	b.Run("ArgsURIParser", func(b *testing.B) {
+		c := new(Context)
+		c.opts = new(serverOptions)
+		c.Param = httprouter.Params{
+			httprouter.Param{Key: "bool", Value: "true"},
+		}
+		b.ResetTimer()
+		for ii := 0; ii <= b.N; ii++ {
+			args := new(parserArgs)
+			parseArgs(c, args, OptArgsURI())
+		}
+	})
 }

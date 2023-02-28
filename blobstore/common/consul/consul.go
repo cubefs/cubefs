@@ -41,6 +41,8 @@ type Config struct {
 	Timeout     string `json:"timeout"`
 	ServiceIP   string `json:"service_ip"`
 	ServicePort int    `json:"service_port"`
+	// health check port range in [ min(HealthPort), max(HealthPort) ]
+	HealthPort [2]int `json:"health_port"`
 }
 
 const healthRoutine = "/healthCheck/"
@@ -106,7 +108,7 @@ func (c *Client) initConsulService() (registration *api.AgentServiceRegistration
 
 	patten := healthRoutine + strconv.Itoa(c.ServicePort)
 
-	serv, port := StartHttpServerForHealthyCheck(registration.Address, patten)
+	serv, port := startHttpServerForHealthyCheck(registration.Address, patten, c.Config.HealthPort)
 
 	c.healthServer = serv
 
@@ -164,6 +166,9 @@ func initConfig(cfg *Config) {
 	if cfg.Interval == "" {
 		cfg.Interval = "30s"
 	}
+	if cfg.HealthPort[0] > cfg.HealthPort[1] {
+		cfg.HealthPort[0], cfg.HealthPort[1] = cfg.HealthPort[1], cfg.HealthPort[0]
+	}
 }
 
 func parseIP(ip string) (host string) {
@@ -189,18 +194,27 @@ func (c *Client) getId() string {
 	return c.Node + "-" + c.ServiceName + "-" + strconv.Itoa(c.ServicePort)
 }
 
-func StartHttpServerForHealthyCheck(ip, patten string) (srv *http.Server, port int) {
+func startHttpServerForHealthyCheck(ip, patten string, checkPorts [2]int) (srv *http.Server, port int) {
 	if ip == "" {
 		ip = "127.0.0.1"
 	}
-	ln, err := net.Listen("tcp", ip+":0")
+	var ln net.Listener
+	var err error
+
+	for checkPort := checkPorts[0]; checkPort <= checkPorts[1]; checkPort++ {
+		addr := ip + ":" + strconv.Itoa(checkPort)
+		ln, err = net.Listen("tcp", addr)
+		if err == nil {
+			break
+		}
+		log.Errorf("server listen error: %v", err)
+	}
 	if err != nil {
 		log.Fatalf("server listen error: %v", err)
 	}
 
 	srv = &http.Server{}
 	srv.Addr = ln.Addr().String()
-
 	port = ln.Addr().(*net.TCPAddr).Port
 	log.Info("start health check server on: ", srv.Addr)
 	http.HandleFunc(patten, healthCheck)
