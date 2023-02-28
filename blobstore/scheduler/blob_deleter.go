@@ -526,6 +526,8 @@ func (d *deleteTopicConsumer) handleOneMsg(ctx context.Context, delMsg *proto.De
 			err:    errcode.ErrDiskBroken,
 			delMsg: delMsg,
 		}
+		// try to update volume
+		d.clusterTopology.UpdateVolume(delMsg.Vid)
 		return
 	}
 

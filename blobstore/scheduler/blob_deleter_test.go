@@ -320,6 +320,7 @@ func TestDeleteTopicConsumer(t *testing.T) {
 			},
 		)
 		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(true)
+		clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(nil, nil)
 		mockTopicConsumeDelete.clusterTopology = clusterTopology
 
 		consumer.EXPECT().ConsumeMessages(any, any).AnyTimes().DoAndReturn(
