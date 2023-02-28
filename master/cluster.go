@@ -801,6 +801,19 @@ func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corr
 	partitionMap := make(map[uint64]uint8)
 	inactiveDataNodes = make([]string, 0)
 	corruptPartitions = make([]*DataPartition, 0)
+
+	vols := c.copyVols()
+	for _, vol := range vols {
+		if vol.Status == markDelete || !proto.IsHot(vol.VolType) {
+			continue
+		}
+		for _, dp := range vol.dataPartitions.partitions {
+			if dp.getLeaderAddr() == "" {
+				corruptPartitions = append(corruptPartitions, dp)
+			}
+		}
+	}
+
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		if !dataNode.isActive {
