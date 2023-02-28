@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/util/exporter"
@@ -120,6 +121,8 @@ type warningMetrics struct {
 	dpNoLeader     *exporter.GaugeVec
 	missingMp      *exporter.GaugeVec
 	mpNoLeader     *exporter.GaugeVec
+	dpMutex        sync.Mutex
+	mpMutex        sync.Mutex
 	dpNoLeaderInfo map[uint64]int64
 	mpNoLeaderInfo map[uint64]int64
 }
@@ -137,15 +140,19 @@ func newWarningMetrics(c *Cluster) *warningMetrics {
 }
 
 func (m *warningMetrics) reset() {
+	m.dpMutex.Lock()
 	for dp, _ := range m.dpNoLeaderInfo {
 		m.dpNoLeader.DeleteLabelValues(m.cluster.Name, strconv.FormatUint(dp, 10))
 		delete(m.dpNoLeaderInfo, dp)
 	}
+	m.dpMutex.Unlock()
 
+	m.mpMutex.Lock()
 	for mp, _ := range m.mpNoLeaderInfo {
 		m.mpNoLeader.DeleteLabelValues(m.cluster.Name, strconv.FormatUint(mp, 10))
 		delete(m.mpNoLeaderInfo, mp)
 	}
+	m.mpMutex.Unlock()
 }
 
 //leader only
@@ -166,6 +173,8 @@ func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64, 
 		return
 	}
 
+	m.dpMutex.Lock()
+	defer m.dpMutex.Unlock()
 	t, ok := m.dpNoLeaderInfo[partitionID]
 	if !report {
 		if ok {
@@ -203,6 +212,8 @@ func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64, 
 	if clusterName != m.cluster.Name {
 		return
 	}
+	m.mpMutex.Lock()
+	defer m.mpMutex.Unlock()
 	t, ok := m.mpNoLeaderInfo[partitionID]
 	if !report {
 		if ok {
