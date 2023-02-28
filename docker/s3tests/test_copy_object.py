@@ -85,8 +85,8 @@ class CopyObjectTest(S3TestCase):
         cls.s3.delete_object(Bucket=BUCKET, Key=key)
 
     def __copy_object(self, s_bucket, s_key, t_bucket, t_key, is_dir=False, contain_mete_data=False):
-        # sleep one second, otherwise target key last modified is same with the source
-        time.sleep(1)
+        # sleep two seconds, otherwise target key last modified is same with the source
+        time.sleep(2)
         copy_source = {'Bucket': s_bucket, 'Key': s_key}
         self.s3.copy_object(CopySource=copy_source, Bucket=t_bucket, Key=t_key)
         source_response = self.s3.head_object(Bucket=s_bucket, Key=s_key)
