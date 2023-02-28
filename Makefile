@@ -99,5 +99,8 @@ dist-clean:
 phony += test
 test:
 	@build/build.sh test
+phony += testcover
+testcover:
+	@build/build.sh testcover
 
 .PHONY: $(phony)

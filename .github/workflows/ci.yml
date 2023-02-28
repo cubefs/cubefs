@@ -21,7 +21,6 @@ on:
       - '**.md'
 
 jobs:
-
   ci-tests:
     runs-on: ubuntu-latest
     steps:
@@ -46,3 +45,30 @@ jobs:
           name: docker_data
           path: docker/docker_data.tar.gz
           retention-days: 7
+
+      # run blobstore coverage
+      - name: BlobStore includes compiled rocksdb
+        run: |
+          cd blobstore
+          wget -O deps.tar.gz https://ocs-cn-south1.heytapcs.com/blobstore/deps.tar.gz
+          tar -zxf deps.tar.gz
+          mv deps .deps
+          source env.sh
+          echo "CGO_CFLAGS=${CGO_CFLAGS}" >> $GITHUB_ENV
+          echo "CGO_LDFLAGS=${CGO_LDFLAGS}" >> $GITHUB_ENV
+      - name: BlobStore test with coverage
+        run: |
+          cd blobstore
+          go test -trimpath -covermode=count --coverprofile coverage.txt ./...
+        env:
+          JENKINS_TEST: TRUE
+
+      - name: Merge coverages
+        run: |
+          echo "mode: count" > coverage-all.out
+          tail -n +2 ./coverage.txt >> coverage-all.out
+          tail -n +2 ./blobstore/coverage.txt >> coverage-all.out
+      - name: Upload codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage-all.out

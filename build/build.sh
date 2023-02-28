@@ -251,6 +251,16 @@ run_test() {
     exit $ret
 }
 
+run_test_cover() {
+    pre_build
+    pushd $SrcPath >/dev/null
+    echo -n "${TPATH}"
+    go test -trimpath -covermode=count --coverprofile coverage.txt $(go list ./... | grep -v depends)
+    ret=$?
+    popd >/dev/null
+    exit $ret
+}
+
 build_server() {
     pre_build_server
     pushd $SrcPath >/dev/null
@@ -356,7 +366,7 @@ clean() {
 dist_clean() {
     $RM -rf ${BuildBinPath}
     $RM -rf ${BuildOutPath}
-    $RM -rf ${VendorPath}/dep    
+    $RM -rf ${VendorPath}/dep
 }
 
 cmd=${1:-"all"}
@@ -371,6 +381,9 @@ case "$cmd" in
         ;;
     "test")
         run_test
+        ;;
+    "testcover")
+        run_test_cover
         ;;
     "server")
         build_server
@@ -395,7 +408,7 @@ case "$cmd" in
         ;;
     "fdstore")
         build_fdstore
-	;;
+        ;;
     "preload")
         build_preload
         ;;
