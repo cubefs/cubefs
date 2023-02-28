@@ -435,6 +435,6 @@ services:
             - >-
                 set -e;
                 mkdir -p /go/src/github.com/cubefs/cubefs/docker/bin &&
-                cd /go/src/github.com/cubefs/cubefs && make test
+                cd /go/src/github.com/cubefs/cubefs && make testcover
         networks:
             extnetwork:

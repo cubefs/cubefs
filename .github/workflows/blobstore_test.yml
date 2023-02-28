@@ -51,7 +51,7 @@ jobs:
         env:
           JENKINS_TEST: TRUE
 
-      - name: Upload codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./blobstore/coverage.txt
+      # - name: Upload codecov
+      #   uses: codecov/codecov-action@v3
+      #   with:
+      #     files: ./blobstore/coverage.txt
