@@ -396,7 +396,12 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	exporter.Warning(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
 	if mp.config.NodeId == leader {
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", serverPort), time.Second)
+		localIp := mp.manager.metaNode.localAddr
+		if localIp == "" {
+			localIp = "127.0.0.1"
+		}
+
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(localIp, serverPort), time.Second)
 		if err != nil {
 			log.LogErrorf(fmt.Sprintf("HandleLeaderChange serverPort not exsit ,error %v", err))
 			go mp.raftPartition.TryToLeader(mp.config.PartitionId)

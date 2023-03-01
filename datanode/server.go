@@ -551,7 +551,7 @@ func (s *DataNode) registerHandler() {
 
 func (s *DataNode) startTCPService() (err error) {
 	log.LogInfo("Start: startTCPService")
-	addr := fmt.Sprintf(":%v", s.port)
+	addr := fmt.Sprintf("%s:%v", LocalIP, s.port)
 	l, err := net.Listen(NetworkProtocol, addr)
 	log.LogDebugf("action[startTCPService] listen %v address(%v).", NetworkProtocol, addr)
 	if err != nil {
@@ -595,7 +595,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 
 func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
 	log.LogInfo("Start: startSmuxService")
-	addr := fmt.Sprintf(":%v", s.port)
+	addr := fmt.Sprintf("%s:%v", LocalIP, s.port)
 	addr = util.ShiftAddrPort(addr, s.smuxPortShift)
 	log.LogInfof("SmuxListenAddr: (%v)", addr)
 

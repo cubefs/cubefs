@@ -147,7 +147,7 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 		}
 	}()
 	if dp.config.NodeID == leader {
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", serverPort), time.Second)
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(LocalIP, serverPort), time.Second)
 		if err != nil {
 			log.LogErrorf(fmt.Sprintf("HandleLeaderChange PartitionID(%v) serverPort not exsit ,error %v", dp.partitionID, err))
 			go dp.raftPartition.TryToLeader(dp.partitionID)
