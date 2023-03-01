@@ -181,10 +181,15 @@ const (
 	OpRandomWriteVer        uint8 = 0xB3
 	OpSyncRandomWriteVer    uint8 = 0xB4
 	OpSyncRandomWriteVerRsp uint8 = 0xB5
+	OpTryWriteAppend        uint8 = 0xB6
+	OpSyncTryWriteAppend    uint8 = 0xB7
 
 	// Commons
-	OpNoSpaceErr         uint8 = 0xEE
-	OpDirQuota           uint8 = 0xF1
+	OpNoSpaceErr uint8 = 0xEE
+	OpDirQuota   uint8 = 0xF1
+
+	// Commons
+
 	OpConflictExtentsErr uint8 = 0xF2
 	OpIntraGroupNetErr   uint8 = 0xF3
 	OpArgMismatchErr     uint8 = 0xF4
@@ -199,6 +204,7 @@ const (
 	OpNotPerm            uint8 = 0xFD
 	OpNotEmpty           uint8 = 0xFE
 	OpOk                 uint8 = 0xF0
+	OpTryOtherExtent     uint8 = 0xE0
 
 	OpPing                  uint8 = 0xFF
 	OpMetaUpdateXAttr       uint8 = 0x3B
@@ -367,6 +373,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMarkDelete"
 	case OpWrite:
 		m = "OpWrite"
+	case OpTryWriteAppend:
+		m = "OpTryWriteAppend"
 	case OpRandomWrite:
 		m = "OpRandomWrite"
 	case OpRandomWriteAppend:
@@ -469,6 +477,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpGetPartitionSize"
 	case OpSyncWrite:
 		m = "OpSyncWrite"
+	case OpSyncTryWriteAppend:
+		m = "OpSyncTryWriteAppend"
 	case OpSyncRandomWrite:
 		m = "OpSyncRandomWrite"
 	case OpSyncRandomWriteVer:
@@ -733,6 +743,7 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
 		headSize = util.PacketHeaderVerSize
 	}
+	log.LogDebugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
 	header, err := Buffers.Get(headSize)
 	if err != nil {
 		header = make([]byte, headSize)
@@ -742,9 +753,12 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	p.MarshalHeader(header)
 	if _, err = c.Write(header); err == nil {
+		log.LogDebugf("packet opcode %v header size %v extentype %v size %v", p.Opcode, headSize, p.ExtentType, len(header))
 		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
+			log.LogDebugf("packet opcode %v header size %v extentype %v arg size %v", p.Opcode, headSize, p.ExtentType, p.ArgLen)
 			if p.Data != nil && p.Size != 0 {
 				_, err = c.Write(p.Data[:p.Size])
+				log.LogDebugf("packet opcode %v header size %v extentype %v data size %v", p.Opcode, headSize, p.ExtentType, p.Size)
 			}
 		}
 	}
@@ -776,6 +790,7 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 	defer Buffers.Put(header)
 	var n int
 	if n, err = io.ReadFull(c, header); err != nil {
+		log.LogErrorf("ReadFromConnWithVer. read header fail %v", err)
 		return
 	}
 	if n != util.PacketHeaderSize {
@@ -788,13 +803,11 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 	log.LogDebugf("action[ReadFromConnWithVer] verseq %v", p.VerSeq)
 
 	if p.ExtentType&MultiVersionFlag > 0 {
-		log.LogDebugf("action[ReadFromConnWithVer] verseq %v", p.VerSeq)
 		ver := make([]byte, 8)
 		if _, err = io.ReadFull(c, ver); err != nil {
 			return
 		}
 		p.VerSeq = binary.BigEndian.Uint64(ver)
-		log.LogDebugf("action[ReadFromConnWithVer] verseq %v", p.VerSeq)
 	}
 
 	if p.ArgLen > 0 {

@@ -627,6 +627,7 @@ func (d *Dentry) Less(than BtreeItem) (less bool) {
 
 func (d *Dentry) CopyDirectly() BtreeItem {
 	newDentry := *d
+	newDentry.multiSnap = nil
 	return &newDentry
 }
 

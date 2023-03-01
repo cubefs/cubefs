@@ -145,6 +145,10 @@ func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.Exten
 }
 
 func storeEkSplit(inodeID uint64, ekRef *sync.Map, ek *proto.ExtentKey) (id uint64) {
+	if ekRef == nil {
+		log.LogErrorf("inodeID %v ekRef nil", inodeID)
+		return
+	}
 	log.LogDebugf("storeEkSplit inode %v mp %v extent id %v ek %v", inodeID, ek.PartitionId, ek.ExtentId, ek)
 	ek.SetSplit(true)
 	id = ek.PartitionId<<32 | ek.ExtentId
@@ -326,7 +330,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 	return
 }
 
-func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, discard []proto.ExtentKey) (deleteExtents []proto.ExtentKey, status uint8) {
+func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, ekRefMap *sync.Map, discard []proto.ExtentKey) (deleteExtents []proto.ExtentKey, status uint8) {
 	status = proto.OpOk
 	endOffset := ek.FileOffset + uint64(ek.Size)
 	log.LogDebugf("action[AppendWithCheck] ek %v,start %v end %v", ek, ek.FileOffset, endOffset)
@@ -343,6 +347,10 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, dis
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ek.FileOffset {
 		se.eks = append(se.eks, ek)
 		log.LogInfof("action[AppendWithCheck] eks do append cleanly and directly")
+		if lastKey.IsSequenceWithDiffSeq(&ek) {
+			storeEkSplit(inodeID, ekRefMap, &lastKey)
+			storeEkSplit(inodeID, ekRefMap, &ek)
+		}
 		return
 	}
 

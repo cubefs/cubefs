@@ -17,6 +17,7 @@ package stream
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/util"
+	"runtime/debug"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
@@ -282,12 +283,13 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 		cache.inode, sync, ek, discard, discardExtents, ek.GetSeq())
 	//	log.LogDebugf("ExtentCache Append stack[%v]", string(debug.Stack()))
 
-	//cache.root.Descend(func(i btree.Item) bool {
-	//	ek := i.(*proto.ExtentKey)
-	//	// skip if the start offset matches with the given offset
-	//	log.LogDebugf("action[Append.LoopPrint.Exit] inode %v ek [%v]", cache.inode, ek.String())
-	//	return true
-	//})
+	log.LogDebugf("stack:%v", string(debug.Stack()))
+	cache.root.Descend(func(i btree.Item) bool {
+		ek := i.(*proto.ExtentKey)
+		// skip if the start offset matches with the given offset
+		log.LogDebugf("action[Append.LoopPrint.Exit] inode %v ek [%v]", cache.inode, ek.String())
+		return true
+	})
 	return
 }
 
@@ -376,8 +378,8 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 	return ret
 }
 
-// GetEndForAppendW returns the extent key whose end offset equals the given offset.
-func (cache *ExtentCache) GetEndForAppendW(offset uint64, verSeq uint64) (ret *proto.ExtentKey) {
+// GetEndForAppendWrite returns the extent key whose end offset equals the given offset.
+func (cache *ExtentCache) GetEndForAppendWrite(offset uint64, verSeq uint64, needCheck bool) (ret *proto.ExtentKey) {
 	pivot := &proto.ExtentKey{FileOffset: offset}
 	cache.RLock()
 	defer cache.RUnlock()
@@ -393,21 +395,22 @@ func (cache *ExtentCache) GetEndForAppendW(offset uint64, verSeq uint64) (ret *p
 		}
 
 		if offset == ek.FileOffset+uint64(ek.Size) {
-			if ek.GetSeq() == verSeq {
+			if !needCheck || ek.GetSeq() == verSeq {
 				if ek.ExtentOffset >= util.ExtentSize {
-					log.LogDebugf("action[ExtentCache.GetEndForAppendW] inode %v req offset %v verseq %v not found, exist ek [%v]",
+					log.LogDebugf("action[ExtentCache.GetEndForAppendWrite] inode %v req offset %v verseq %v not found, exist ek [%v]",
 						cache.inode, offset, verSeq, ek.String())
 					return false
 				}
+				//?? should not have the neighbor extent in the next
 				if lastExistEk != nil && ek.IsFileInSequence(lastExistEk) {
-					log.LogDebugf("action[ExtentCache.GetEndForAppendW] exist sequence extent %v", lastExistEk)
+					log.LogErrorf("action[ExtentCache.GetEndForAppendWrite] exist sequence extent %v", lastExistEk)
 					return false
 				}
-				log.LogDebugf("action[ExtentCache.GetEndForAppendW] inode %v offset %v verseq %v found,ek [%v] lastExistEk[%v], lastExistEkTest[%v]",
+				log.LogDebugf("action[ExtentCache.GetEndForAppendWrite] inode %v offset %v verseq %v found,ek [%v] lastExistEk[%v], lastExistEkTest[%v]",
 					cache.inode, offset, verSeq, ek.String(), lastExistEk, lastExistEkTest)
 				ret = ek
 			} else {
-				log.LogDebugf("action[ExtentCache.GetEndForAppendW] inode %v req offset %v verseq %v not found, exist ek [%v]", cache.inode, offset, verSeq, ek.String())
+				log.LogDebugf("action[ExtentCache.GetEndForAppendWrite] inode %v req offset %v verseq %v not found, exist ek [%v]", cache.inode, offset, verSeq, ek.String())
 			}
 
 			return false

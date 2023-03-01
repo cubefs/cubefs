@@ -41,21 +41,22 @@ import (
 )
 
 const (
-	ExtCrcHeaderFileName         = "EXTENT_CRC"
-	ExtBaseExtentIDFileName      = "EXTENT_META"
-	TinyDeleteFileOpt            = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	TinyExtDeletedFileName       = "TINYEXTENT_DELETE"
-	NormalExtDeletedFileName     = "NORMALEXTENT_DELETE"
-	MaxExtentCount               = 20000
-	TinyExtentCount              = 64
-	TinyExtentStartID            = 1
-	MinExtentID                  = 1024
-	DeleteTinyRecordSize         = 24
-	UpdateCrcInterval            = 600
-	RepairInterval               = 60
-	RandomWriteType              = 2
-	AppendWriteType              = 1
-	AppendRandomWriteType        = 4
+	ExtCrcHeaderFileName     = "EXTENT_CRC"
+	ExtBaseExtentIDFileName  = "EXTENT_META"
+	TinyDeleteFileOpt        = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	TinyExtDeletedFileName   = "TINYEXTENT_DELETE"
+	NormalExtDeletedFileName = "NORMALEXTENT_DELETE"
+	MaxExtentCount           = 20000
+	TinyExtentCount          = 64
+	TinyExtentStartID        = 1
+	MinExtentID              = 1024
+	DeleteTinyRecordSize     = 24
+	UpdateCrcInterval        = 600
+	RepairInterval           = 60
+	RandomWriteType          = 2
+	AppendWriteType          = 1
+	AppendRandomWriteType    = 4
+
 	NormalExtentDeleteRetainTime = 3600 * 4
 )
 
@@ -360,35 +361,35 @@ func (s *ExtentStore) initBaseFileID() error {
 }
 
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool) (err error) {
+func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool) (status uint8, err error) {
 	var (
 		e  *Extent
 		ei *ExtentInfo
 	)
-
+	status = proto.OpOk
 	s.eiMutex.Lock()
 	ei, _ = s.extentInfoMap[extentID]
 	e, err = s.extentWithHeader(ei)
 	s.eiMutex.Unlock()
 	if err != nil {
-		return err
+		return status, err
 	}
 	// update access time
 	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
 	log.LogDebugf("action[Write] extentID %v offset %v size %v writeTYPE %v", extentID, offset, size, writeType)
 	if err = s.checkOffsetAndSize(extentID, offset, size, writeType); err != nil {
 		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
-		return err
+		return status, err
 	}
 
-	err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
+	status, err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
 	if err != nil {
 		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
-		return err
+		return status, err
 	}
 
 	ei.UpdateExtentInfo(e, 0)
-	return nil
+	return status, nil
 }
 
 func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64, writeType int) error {
