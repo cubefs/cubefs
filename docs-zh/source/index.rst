@@ -10,13 +10,14 @@
 
 .. toctree::
    :maxdepth: 2
-   :caption: 快速入门
+   :caption: 搭建部署
 
-
-   deploy/yum
+   deploy/requirement
    deploy/manual-deploy
+   deploy/yum
    deploy/k8s
    deploy/node
+   deploy/verify
 
 .. toctree::
    :maxdepth: 2
