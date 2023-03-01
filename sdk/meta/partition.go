@@ -17,6 +17,7 @@ package meta
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/util/btree"
 )
@@ -26,8 +27,8 @@ type MetaPartition struct {
 	Start       uint64
 	End         uint64
 	Members     []string
-	Learners   	[]string
-	LeaderAddr 	string
+	Learners    []string
+	LeaderAddr  atomic.Value
 	Status      int8
 }
 
@@ -45,7 +46,16 @@ func (mp *MetaPartition) String() string {
 		return ""
 	}
 	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) Learners(%v) LeaderAddr(%v) Status(%v)",
-		mp.PartitionID, mp.Start, mp.End, mp.Members, mp.Learners, mp.LeaderAddr, mp.Status)
+		mp.PartitionID, mp.Start, mp.End, mp.Members, mp.Learners, mp.GetLeaderAddr(), mp.Status)
+}
+
+func (mp *MetaPartition) GetLeaderAddr() string {
+	str, _ := mp.LeaderAddr.Load().(string)
+	return str
+}
+
+func (mp *MetaPartition) SetLeaderAddr(addr string) {
+	mp.LeaderAddr.Store(addr)
 }
 
 // Meta partition managements
@@ -136,7 +146,7 @@ func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
 	return rwPartitions
 }
 
-func (mw *MetaWrapper) getPartitions() []*MetaPartition  {
+func (mw *MetaWrapper) getPartitions() []*MetaPartition {
 	mw.RLock()
 	defer mw.RUnlock()
 	tempPartitions := make([]*MetaPartition, 0)

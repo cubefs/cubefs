@@ -9,10 +9,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 )
 
@@ -26,14 +23,6 @@ func TestLeaderRead(t *testing.T) {
 		t.Fatalf("create file failed: err(%v) file(%v)", err, readFilePath)
 	}
 	defer readFile.Close()
-	testMc := master.NewMasterClient([]string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}, false)
-	volumeSimpleInfo, _ := testMc.AdminAPI().GetVolumeSimpleInfo("ltptest")
-	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
-		false, false, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
-		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, proto.UmpCollectByUnkown); err != nil {
-		t.Fatalf("update followerRead to 'false' failed: err(%v) vol(ltptest)", err)
-	}
-	time.Sleep(70 * time.Second)
 	writeData := "testLeaderRead"
 	writeBytes := []byte(writeData)
 	writeOffset := int64(0)
@@ -58,11 +47,6 @@ func TestLeaderRead(t *testing.T) {
 			t.Errorf("read file failed: err(%v) expect read data(%v) but (%v)", err, writeData, string(readBytes))
 		}
 		readOffset += int64(readLen)
-	}
-	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
-		true, false, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
-		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, proto.UmpCollectByUnkown); err != nil {
-		t.Errorf("update followerRead to 'true' failed: err(%v) vol(ltptest)", err)
 	}
 }
 

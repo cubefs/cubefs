@@ -206,7 +206,7 @@ func (dp *DataPartition) getNearestCrossRegionHost() string {
 			}
 		}
 	}
-	return dp.LeaderAddr
+	return dp.GetLeaderAddr()
 }
 
 func (dp *DataPartition) getSortedCrossRegionHosts() (dpHosts []string) {

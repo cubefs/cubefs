@@ -563,20 +563,21 @@ func (w *Wrapper) getDataPartitionByPid(partitionID uint64) (err error) {
 		time.Sleep(1 * time.Second)
 	}
 	var convert = func(dpInfo *proto.DataPartitionInfo) *DataPartition {
-		return &DataPartition{
+		dp := &DataPartition{
 			ClientWrapper: w,
 			DataPartitionResponse: proto.DataPartitionResponse{
 				PartitionID: dpInfo.PartitionID,
 				Status:      dpInfo.Status,
 				ReplicaNum:  dpInfo.ReplicaNum,
 				Hosts:       dpInfo.Hosts,
-				LeaderAddr:  getDpInfoLeaderAddr(dpInfo),
 			},
 			CrossRegionMetrics: NewCrossRegionMetrics(),
 		}
+		dp.SetLeaderAddr(getDpInfoLeaderAddr(dpInfo))
+		return dp
 	}
 	dp := convert(dpInfo)
-	log.LogInfof("getDataPartitionByPid: dp(%v) leader(%v)", dp, dp.LeaderAddr)
+	log.LogInfof("getDataPartitionByPid: dp(%v) leader(%v)", dp, dp.GetLeaderAddr())
 	w.replaceOrInsertPartition(dp)
 	return nil
 }

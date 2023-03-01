@@ -3333,8 +3333,9 @@ func cfs_read_requests(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t
 			goRequests[i].partition_id = C.uint64_t(readReq.Req.ExtentKey.PartitionId)
 			goRequests[i].extent_id = C.uint64_t(readReq.Req.ExtentKey.ExtentId)
 			goRequests[i].extent_offset = C.uint64_t(uint64(readReq.Req.FileOffset) - readReq.Req.ExtentKey.FileOffset + readReq.Req.ExtentKey.ExtentOffset)
-			if readReq.Partition.LeaderAddr != "" {
-				addrArr := strings.Split(readReq.Partition.LeaderAddr, ":")
+			leaderAddr := readReq.Partition.GetLeaderAddr()
+			if leaderAddr != "" {
+				addrArr := strings.Split(leaderAddr, ":")
 				// max length of dp_host is 32, defined in cfs_read_req_t
 				hdr := (*reflect.StringHeader)(unsafe.Pointer(&addrArr[0]))
 				addrLen := len(addrArr[0])

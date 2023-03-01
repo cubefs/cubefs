@@ -47,7 +47,7 @@ const (
 
 	hostErrAccessTimeout = 300 // second
 
-	StreamRetryTimeout	 = 10 * time.Minute
+	StreamRetryTimeout = 10 * time.Minute
 )
 
 type GetReplyFunc func(conn *net.TCPConn) (err error, again bool)
@@ -68,7 +68,7 @@ func NewStreamConn(dp *DataPartition, follower bool) *StreamConn {
 	if !follower {
 		return &StreamConn{
 			dp:       dp,
-			currAddr: dp.LeaderAddr,
+			currAddr: dp.GetLeaderAddr(),
 		}
 	}
 
@@ -204,7 +204,7 @@ func (dp *DataPartition) getNearestHost() string {
 		}
 		return addr
 	}
-	return dp.LeaderAddr
+	return dp.GetLeaderAddr()
 }
 
 func (dp *DataPartition) getFollowerReadHost() string {
@@ -222,7 +222,7 @@ func (dp *DataPartition) getFollowerReadHost() string {
 			return host
 		}
 	}
-	return dp.LeaderAddr
+	return dp.GetLeaderAddr()
 }
 
 func (sc *StreamConn) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, reply *Packet, tryOther bool, err error) {

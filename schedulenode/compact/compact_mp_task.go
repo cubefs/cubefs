@@ -4,13 +4,14 @@ import (
 	"container/list"
 	"context"
 	"fmt"
+	"strings"
+	"sync"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/sdk/mysql"
 	"github.com/chubaofs/chubaofs/util/log"
-	"strings"
-	"sync"
 )
 
 type CmpMpTask struct {
@@ -35,8 +36,8 @@ type CmpMpTask struct {
 	cmpErrCnt   uint64
 	cmpErrMsg   map[int]string
 
-	inodes  []uint64
-	last    int
+	inodes []uint64
+	last   int
 }
 
 func NewMpCmpTask(task *proto.Task, masterClient *master.MasterClient, vol *CompactVolumeInfo) *CmpMpTask {
@@ -70,7 +71,7 @@ func (mp *CmpMpTask) GetMpInfo() (err error) {
 	for _, replica := range info.Replicas {
 		cMP.Members = append(cMP.Members, replica.Addr)
 		if replica.IsLeader {
-			cMP.LeaderAddr = replica.Addr
+			cMP.SetLeaderAddr(replica.Addr)
 		}
 		if replica.IsLearner {
 			cMP.Learners = append(cMP.Learners, replica.Addr)
@@ -83,10 +84,11 @@ func (mp *CmpMpTask) GetMpInfo() (err error) {
 	mp.Lock()
 	defer mp.Unlock()
 	mp.info = cMP
-	if cMP.LeaderAddr == "" {
+	leaderAddr := cMP.GetLeaderAddr()
+	if leaderAddr == "" {
 		return fmt.Errorf("get metapartition[%d] no leader", mp.id)
 	}
-	mp.leader = cMP.LeaderAddr
+	mp.leader = leaderAddr
 	return
 }
 

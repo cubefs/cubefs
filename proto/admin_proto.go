@@ -17,6 +17,7 @@ package proto
 import (
 	"fmt"
 	"strconv"
+	"sync/atomic"
 )
 
 // api
@@ -821,7 +822,7 @@ type DataPartitionResponse struct {
 	Status          int8
 	ReplicaNum      uint8
 	Hosts           []string
-	LeaderAddr      string
+	LeaderAddr      atomic.Value
 	Epoch           uint64
 	IsRecover       bool
 	IsFrozen        bool
@@ -833,6 +834,15 @@ type DataPartitionResponse struct {
 	EcHosts         []string `json:"EcHosts,omitempty"`
 	EcDataNum       uint8    `json:"EcDataNum,omitempty"`
 	EcMaxUnitSize   uint64   `json:"EcMaxUnitSize,omitempty"`
+}
+
+func (dp *DataPartitionResponse) GetLeaderAddr() string {
+       str, _ := dp.LeaderAddr.Load().(string)
+       return str
+}
+
+func (dp *DataPartitionResponse) SetLeaderAddr(addr string) {
+       dp.LeaderAddr.Store(addr)
 }
 
 // DataPartitionsView defines the view of a data partition

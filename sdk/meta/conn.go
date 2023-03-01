@@ -71,15 +71,15 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 		return
 	}
 
-	addr := mp.LeaderAddr
+	addr := mp.GetLeaderAddr()
 	retryCount := 0
 	var successAddr string
 	for {
 		retryCount++
 		resp, needCheckRead, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
-			if successAddr != "" && successAddr != mp.LeaderAddr {
-				mp.LeaderAddr = successAddr
+			if successAddr != "" && successAddr != addr {
+				mp.SetLeaderAddr(successAddr)
 			}
 			return
 		}
@@ -100,15 +100,15 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 		return
 	}
 
-	addr := mp.LeaderAddr
+	addr := mp.GetLeaderAddr()
 	retryCount := 0
 	var successAddr string
 	for {
 		retryCount++
 		resp, _, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
-			if successAddr != "" && successAddr != mp.LeaderAddr {
-				mp.LeaderAddr = successAddr
+			if successAddr != "" && successAddr != addr {
+				mp.SetLeaderAddr(successAddr)
 			}
 			return
 		}

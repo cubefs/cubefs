@@ -257,7 +257,7 @@ var (
 
 func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 	return fmt.Sprintf(dataPartitionTablePattern,
-		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), EcStatusMap[view.EcMigrateStatus], view.IsRecover, view.LeaderAddr,
+		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), EcStatusMap[view.EcMigrateStatus], view.IsRecover, view.GetLeaderAddr(),
 		strings.Join(view.Hosts, ","))
 }
 

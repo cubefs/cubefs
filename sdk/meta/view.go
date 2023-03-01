@@ -114,9 +114,9 @@ func (mw *MetaWrapper) convertVolumeView(vv *proto.VolView) (view *VolumeView) {
 				End:         mp.End,
 				Members:     mp.Members,
 				Learners:    mp.Learners,
-				LeaderAddr:  mp.LeaderAddr,
 				Status:      mp.Status,
 			}
+			result.MetaPartitions[i].SetLeaderAddr(mp.LeaderAddr)
 		}
 		return result
 	}
@@ -136,7 +136,7 @@ func (mw *MetaWrapper) saveVolView() *proto.VolView {
 			End:         mp.End,
 			Members:     mp.Members,
 			Learners:    mp.Learners,
-			LeaderAddr:  mp.LeaderAddr,
+			LeaderAddr:  mp.GetLeaderAddr(),
 			Status:      mp.Status,
 		}
 		vv.MetaPartitions = append(vv.MetaPartitions, view)
@@ -273,9 +273,9 @@ func (mw *MetaWrapper) updateMetaPartitionsWithNoCache() error {
 			End:         view.End,
 			Members:     view.Members,
 			Learners:    view.Learners,
-			LeaderAddr:  view.LeaderAddr,
 			Status:      view.Status,
 		}
+		mp.SetLeaderAddr(view.LeaderAddr)
 		mw.replaceOrInsertPartition(mp)
 		log.LogInfof("updateMetaPartitionsWithNoCache: mp(%v)", mp)
 		if mp.Status == proto.ReadWrite {

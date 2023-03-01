@@ -1156,7 +1156,7 @@ func checkCommit(client *master.MasterClient) (err error) {
 	}
 	var badDps sync.Map
 	var partitionFunc = func(volumeName string, partition *proto.DataPartitionResponse) (err error){
-		isLack, lackID, _, _, _, err := checkDataPartitionCommit(partition.LeaderAddr, partition.PartitionID)
+		isLack, lackID, _, _, _, err := checkDataPartitionCommit(partition.GetLeaderAddr(), partition.PartitionID)
 		if err != nil {
 			return
 		}
