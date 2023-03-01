@@ -873,21 +873,22 @@ func TestTruncateAndDel(t *testing.T) {
 	assert.True(t, fileIno != nil)
 	dirDen := testCreateDentry(t, 1, fileIno.Inode, "testDir", FileModeType)
 	assert.True(t, dirDen != nil)
-
+	log.LogDebugf("TestTruncate start")
 	testAppendExt(t, 0, 0, fileIno.Inode)
+	log.LogDebugf("TestTruncate start")
 	seq1 := testCreateVer() // seq1 is NOT commited
 
 	seq2 := testCreateVer() // seq1 is commited,seq2 not commited
 
 	t.Logf("TestTruncate. create new snapshot seq %v,%v,file verlist [%v]", seq1, seq2, fileIno.getLayerLen())
-
+	log.LogDebugf("TestTruncate start")
 	ino := &Inode{
 		Inode:      fileIno.Inode,
 		Size:       500,
 		ModifyTime: time.Now().Unix(),
 	}
 	mp.fsmExtentsTruncate(ino)
-
+	log.LogDebugf("TestTruncate start")
 	t.Logf("TestTruncate. create new snapshot seq %v,%v,file verlist size %v [%v]", seq1, seq2, len(fileIno.multiSnap.multiVersions), fileIno.multiSnap.multiVersions)
 
 	assert.True(t, 2 == len(fileIno.multiSnap.multiVersions))
@@ -904,10 +905,11 @@ func TestTruncateAndDel(t *testing.T) {
 	assert.True(t, rsp.Size == 1000)
 
 	// -------------------------------------------------------
-
+	log.LogDebugf("TestTruncate start")
 	testCreateVer() // seq2 IS commited, seq3 not
 	mp.fsmUnlinkInode(ino, 0)
 
+	log.LogDebugf("TestTruncate start")
 	assert.True(t, 3 == len(fileIno.multiSnap.multiVersions))
 	rsp = testGetExtList(t, fileIno, 0)
 	assert.True(t, len(rsp.Extents) == 0)
