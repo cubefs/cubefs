@@ -41,6 +41,7 @@ const (
 const (
 	StreamerNormal int32 = iota
 	StreamerError
+	StreamerRetry
 )
 
 const (
@@ -386,7 +387,7 @@ begin:
 				log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
 			} else {
 				log.LogDebugf("action[streamer.write] ino %v doOverwriteByAppend extent key (%v)", s.inode, req.ExtentKey)
-				writeSize, err = s.doOverwriteByAppend(req, direct)
+				writeSize, _, err, _ = s.doOverwriteByAppend(req, direct, proto.OpRandomWriteAppend)
 			}
 			if s.client.bcacheEnable {
 				cacheKey := util.GenerateKey(s.client.volumeName, s.inode, uint64(req.FileOffset))
@@ -401,8 +402,17 @@ begin:
 				}
 			}
 
+			// try append write, get response
 			log.LogDebugf("action[streamer.write] doAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-			writeSize, err = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct)
+			var status int32
+			if writeSize, err, status = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, true); status == StreamerRetry {
+				log.LogDebugf("action[streamer.write] doOverwriteByAppend req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
+				if writeSize, _, err, status = s.doOverwriteByAppend(req, direct, proto.OpTryWriteAppend); status == int32(proto.OpTryOtherExtent) {
+					log.LogDebugf("action[streamer.write] doAppendWrite again req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
+					writeSize, err, _ = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, false)
+				}
+			}
+			log.LogDebugf("action[streamer.write] doAppendWrite status %v err %v", status, err)
 		}
 		if err != nil {
 			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
@@ -418,7 +428,7 @@ begin:
 	return
 }
 
-func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total int, err error) {
+func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool, op uint8) (total int, extKey *proto.ExtentKey, err error, status int32) {
 	var (
 		dp        *wrapper.DataPartition
 		reqPacket *Packet
@@ -436,16 +446,21 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 
 	// the extent key needs to be updated because when preparing the requests,
 	// the obtained extent key could be a local key which can be inconsistent with the remote key.
-	req.ExtentKey = s.extents.Get(uint64(offset))
-	ekFileOffset := int(req.ExtentKey.FileOffset)
+	// the OpTryWriteAppend is a special case, ignore it
+	if op != proto.OpTryWriteAppend {
+		req.ExtentKey = s.extents.Get(uint64(offset))
+	} else {
+		req.ExtentKey = s.handler.key
+	}
+
 	if req.ExtentKey == nil {
-		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", s.inode, ekFileOffset, req.ExtentKey))
+		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", s.inode, offset, req.ExtentKey))
 		return
 	}
 
 	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
 		// TODO unhandled error
-		errors.Trace(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
+		errors.Trace(err, "doOverwriteByAppend: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
 	}
 
@@ -460,7 +475,7 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 		addr = dp.Hosts[0]
 		reqPacket = NewWriteTinyDirectly(s.inode, req.ExtentKey.PartitionId, offset, dp)
 	} else {
-		reqPacket = NewOverwriteByAppendPacket(dp, req.ExtentKey.ExtentId, 0, s.inode, offset)
+		reqPacket = NewOverwriteByAppendPacket(dp, req.ExtentKey.ExtentId, int(req.ExtentKey.ExtentOffset)+int(req.ExtentKey.Size), s.inode, offset, direct, op)
 	}
 
 	sc := &StreamConn{
@@ -474,11 +489,11 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 		panic(nil)
 	}
 	for total < size { // normally should only run once due to key exist in the system must be less than BlockSize
-		// right position in extent:offset-ekFileOffset+total+ekExtOffset .
+		// right position in extent:offset-ek4FileOffset+total+ekExtOffset .
 		// ekExtOffset will be set by replay packet at addExtentInfo(datanode)
 
 		if direct {
-			reqPacket.Opcode = proto.OpSyncRandomWriteAppend
+			reqPacket.Opcode = op
 		}
 		if req.ExtentKey.ExtentId <= storage.TinyExtentCount {
 			reqPacket.ExtentType = proto.TinyExtentType
@@ -496,9 +511,14 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
 				return TryOtherAddrError, false
 			}
-
+			log.LogDebugf("action[doOverwriteByAppend] get replyPacket opcode %v resultCode %v", replyPacket.Opcode, replyPacket.ResultCode)
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
+			}
+
+			if replyPacket.ResultCode == proto.OpTryOtherExtent {
+				status = int32(proto.OpTryOtherExtent)
+				return nil, false
 			}
 
 			if replyPacket.ResultCode == proto.OpTryOtherAddr {
@@ -513,6 +533,7 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 		log.LogDebugf("doOverwriteByAppend: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
 
 		if err != nil || replyPacket.ResultCode != proto.OpOk {
+			status = int32(replyPacket.ResultCode)
 			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, s.inode, req, replyPacket))
 			log.LogErrorf("action[doOverwriteByAppend] data process err %v", err)
 			break
@@ -531,7 +552,7 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 		log.LogErrorf("action[doOverwriteByAppend] data process err %v", err)
 		return
 	}
-	extKey := &proto.ExtentKey{
+	extKey = &proto.ExtentKey{
 		FileOffset:   uint64(req.FileOffset),
 		PartitionId:  req.ExtentKey.PartitionId,
 		ExtentId:     replyPacket.ExtentID,
@@ -541,15 +562,24 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total i
 			VerSeq: s.verSeq,
 		},
 	}
-	log.LogDebugf("action[doOverwriteByAppend] inode %v local cache process start extKey %v", s.inode, extKey)
-	if err = s.extents.SplitExtentKey(s.inode, extKey); err != nil {
-		log.LogErrorf("action[doOverwriteByAppend] inode %v llocal cache process err %v", s.inode, err)
-		return
-	}
-	log.LogDebugf("action[doOverwriteByAppend] inode %v meta extent split with ek (%v)", s.inode, extKey)
-	if err = s.client.splitExtentKey(s.parentInode, s.inode, *extKey); err != nil {
-		log.LogErrorf("action[doOverwriteByAppend] inode %v meta extent split process err %v", s.inode, err)
-		return
+	if op == proto.OpRandomWriteAppend || op == proto.OpSyncRandomWriteAppend {
+		log.LogDebugf("action[doOverwriteByAppend] inode %v local cache process start extKey %v", s.inode, extKey)
+		if err = s.extents.SplitExtentKey(s.inode, extKey); err != nil {
+			log.LogErrorf("action[doOverwriteByAppend] inode %v llocal cache process err %v", s.inode, err)
+			return
+		}
+		log.LogDebugf("action[doOverwriteByAppend] inode %v meta extent split with ek (%v)", s.inode, extKey)
+		if err = s.client.splitExtentKey(s.parentInode, s.inode, *extKey); err != nil {
+			log.LogErrorf("action[doOverwriteByAppend] inode %v meta extent split process err %v", s.inode, err)
+			return
+		}
+	} else {
+		// This ek is just a local cache for PrepareWriteRequest, so ignore discard eks here.
+		_ = s.extents.Append(extKey, false)
+		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, nil); err != nil {
+			log.LogErrorf("action[doOverwriteByAppend] inode %v meta extent split process err %v", s.inode, err)
+			return
+		}
 	}
 	log.LogDebugf("action[doOverwriteByAppend] inode %v process over!", s.inode)
 	return
@@ -655,7 +685,52 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	return
 }
 
-func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool) (total int, err error) {
+func (s *Streamer) ExistExtentNeedMoreWork(offset, size int) (find bool) {
+	storeMode := s.GetStoreMod(offset, size)
+
+	// && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset)  delete ??
+	if storeMode == proto.NormalExtentType && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset) {
+		if currentEK := s.extents.GetEndForAppendWrite(uint64(offset), s.verSeq, false); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
+			if currentEK.GetSeq() != s.verSeq {
+				log.LogDebugf("doAppendWrite. exist ek seq %v vs request seq %v", currentEK.GetSeq(), s.verSeq)
+				find = true
+			}
+
+			log.LogDebugf("doAppendWrite: found ek in ExtentCache, extent_id(%v) offset(%v) size(%v), ekoffset(%v) eksize(%v) exist ek seq %v vs request seq %v",
+				currentEK.ExtentId, offset, size, currentEK.FileOffset, currentEK.Size, currentEK.GetSeq(), s.verSeq)
+			_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
+			if pidErr == nil {
+				seq := currentEK.GetSeq()
+				if find {
+					seq = s.verSeq
+				}
+				handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
+				handler.key = &proto.ExtentKey{
+					FileOffset:   currentEK.FileOffset,
+					PartitionId:  currentEK.PartitionId,
+					ExtentId:     currentEK.ExtentId,
+					ExtentOffset: currentEK.ExtentOffset,
+					Size:         currentEK.Size,
+					SnapInfo: &proto.ExtSnapInfo{
+						VerSeq: seq,
+					},
+				}
+				s.handler = handler
+				s.dirty = false
+				log.LogDebugf("doAppendWrite: currentEK.PartitionId(%v) found", currentEK.PartitionId)
+			} else {
+				log.LogDebugf("doAppendWrite: currentEK.PartitionId(%v) not found", currentEK.PartitionId)
+			}
+
+		} else {
+			log.LogDebugf("doAppendWrite: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
+		}
+	}
+
+	return
+}
+
+func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, checkExist bool) (total int, err error, status int32) {
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -667,39 +742,16 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool) (to
 
 	log.LogDebugf("doAppendWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 	if proto.IsHot(s.client.volumeType) {
-		// && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset)  delete ??
-		if storeMode == proto.NormalExtentType && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset) {
-			if currentEK := s.extents.GetEndForAppendW(uint64(offset), s.verSeq); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
-				s.closeOpenHandler()
-
-				log.LogDebugf("doAppendWrite: found ek in ExtentCache, extent_id(%v) offset(%v) size(%v), ekoffset(%v) eksize(%v)",
-					currentEK.ExtentId, offset, size, currentEK.FileOffset, currentEK.Size)
-				_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
-				if pidErr == nil {
-					handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
-					handler.key = &proto.ExtentKey{
-						FileOffset:   currentEK.FileOffset,
-						PartitionId:  currentEK.PartitionId,
-						ExtentId:     currentEK.ExtentId,
-						ExtentOffset: currentEK.ExtentOffset,
-						Size:         currentEK.Size,
-						SnapInfo: &proto.ExtSnapInfo{
-							VerSeq: currentEK.GetSeq(),
-						},
-					}
-					s.handler = handler
-					s.dirty = false
-					log.LogDebugf("doAppendWrite: currentEK.PartitionId(%v) found", currentEK.PartitionId)
-				} else {
-					log.LogDebugf("doAppendWrite: currentEK.PartitionId(%v) not found", currentEK.PartitionId)
-				}
-
-			} else {
-				log.LogDebugf("doAppendWrite: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
+		if checkExist {
+			if find := s.ExistExtentNeedMoreWork(offset, size); find {
+				log.LogDebugf("doAppendWrite enter: ino(%v) ExistExtentNeedMoreWork worked", s.inode)
+				status = StreamerRetry
+				return
 			}
 		}
 		for i := 0; i < MaxNewHandlerRetry; i++ {
 			if s.handler == nil {
+				log.LogDebugf("doAppendWrite: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
 				s.handler = NewExtentHandler(s, offset, storeMode, 0)
 				s.dirty = false
 			} else if s.handler.storeMode != storeMode {

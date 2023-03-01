@@ -87,6 +87,17 @@ type Inode struct {
 	multiSnap *InodeMultiSnap
 }
 
+func (i *Inode) RangeMultiVer(visitor func(idx int, info *Inode) bool) {
+	if i.multiSnap == nil {
+		return
+	}
+	for k, v := range i.multiSnap.multiVersions {
+		if !visitor(k, v) {
+			break
+		}
+	}
+}
+
 func isInitSnapVer(seq uint64) bool {
 	return seq == math.MaxUint64
 }
@@ -106,6 +117,13 @@ func (i *Inode) setVer(seq uint64) {
 	} else {
 		i.multiSnap.verSeq = seq
 	}
+}
+
+func (i *Inode) getEkRefMap() *sync.Map {
+	if i.multiSnap == nil {
+		return nil
+	}
+	return i.multiSnap.ekRefMap
 }
 
 func (i *Inode) getVer() uint64 {
@@ -288,11 +306,12 @@ func (ino *Inode) getAllInodesInfo() (rsp []proto.InodeInfo) {
 	ino.RLock()
 	defer ino.RUnlock()
 
-	for _, info := range ino.multiSnap.multiVersions {
+	ino.RangeMultiVer(func(idx int, info *Inode) bool {
 		rspInodeInfo := &proto.InodeInfo{}
 		replyInfoNoCheck(rspInodeInfo, info)
 		rsp = append(rsp, *rspInodeInfo)
-	}
+		return true
+	})
 	return
 }
 
@@ -308,7 +327,8 @@ func (ino *Inode) getAllLayerEks() (rsp []proto.LayerInfo) {
 		Eks:      ino.Extents.eks,
 	}
 	rsp = append(rsp, layerInfo)
-	for idx, info := range ino.multiSnap.multiVersions {
+
+	ino.RangeMultiVer(func(idx int, info *Inode) bool {
 		rspInodeInfo := &proto.InodeInfo{}
 		replyInfo(rspInodeInfo, info, nil)
 		layerInfo := proto.LayerInfo{
@@ -317,7 +337,9 @@ func (ino *Inode) getAllLayerEks() (rsp []proto.LayerInfo) {
 			Eks:      info.Extents.eks,
 		}
 		rsp = append(rsp, layerInfo)
-	}
+		return true
+	})
+
 	return
 }
 
@@ -1241,17 +1263,19 @@ func (ino *Inode) getInoByVer(verSeq uint64, equal bool) (i *Inode, idx int) {
 		return i, listLen
 	}
 	if verSeq > 0 && ino.getVer() > verSeq {
-		for id, iTmp := range ino.multiSnap.multiVersions {
-			if verSeq == iTmp.getVer() {
-				log.LogDebugf("action[getInoByVer]  ino %v get in multiversion id %v", ino.Inode, id)
-				return iTmp, id + 1
-			} else if verSeq > iTmp.getVer() {
-				if !equal {
-					log.LogDebugf("action[getInoByVer]  ino %v get in multiversion id %v, %v, %v", ino.Inode, id, verSeq, iTmp.getVer())
+		if ino.multiSnap != nil {
+			for id, iTmp := range ino.multiSnap.multiVersions {
+				if verSeq == iTmp.getVer() {
+					log.LogDebugf("action[getInoByVer]  ino %v get in multiversion id %v", ino.Inode, id)
 					return iTmp, id + 1
+				} else if verSeq > iTmp.getVer() {
+					if !equal {
+						log.LogDebugf("action[getInoByVer]  ino %v get in multiversion id %v, %v, %v", ino.Inode, id, verSeq, iTmp.getVer())
+						return iTmp, id + 1
+					}
+					log.LogDebugf("action[getInoByVer]  ino %v get in multiversion id %v", ino.Inode, id)
+					return
 				}
-				log.LogDebugf("action[getInoByVer]  ino %v get in multiversion id %v", ino.Inode, id)
-				return
 			}
 		}
 	} else {
@@ -1523,7 +1547,7 @@ func (i *Inode) AppendExtentWithCheck(
 	i.Lock()
 	defer i.Unlock()
 
-	delExtents, status = i.Extents.AppendWithCheck(i.Inode, ek, discardExtents)
+	delExtents, status = i.Extents.AppendWithCheck(i.Inode, ek, i.getEkRefMap(), discardExtents)
 	if status != proto.OpOk {
 		log.LogErrorf("action[AppendExtentWithCheck] status %v", status)
 		return

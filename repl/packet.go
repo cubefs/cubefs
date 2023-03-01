@@ -403,18 +403,18 @@ func (p *Packet) IsMasterCommand() bool {
 }
 
 func (p *Packet) IsForwardPacket() bool {
-	r := p.RemainingFollowers > 0 && !p.isSpecialReplicaCnttePacket()
+	r := p.RemainingFollowers > 0 && !p.isSpecialReplicaCntPacket()
 	return r
 }
 
-func (p *Packet) isSpecialReplicaCnttePacket() bool {
+func (p *Packet) isSpecialReplicaCntPacket() bool {
 	r := p.RemainingFollowers == 127
 	return r
 }
 
 // A leader packet is the packet send to the leader and does not require packet forwarding.
 func (p *Packet) IsLeaderPacket() (ok bool) {
-	if (p.IsForwardPkt() || p.isSpecialReplicaCnttePacket()) &&
+	if (p.IsForwardPkt() || p.isSpecialReplicaCntPacket()) &&
 		(p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
 		ok = true
 	}

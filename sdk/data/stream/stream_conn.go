@@ -109,7 +109,6 @@ func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		err = sc.sendToPartition(req, retry, getReply)
 		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError {
-			log.LogDebugf("[StreamConn.send] err %v", err)
 			return
 		}
 		log.LogWarnf("StreamConn Send: err(%v)", err)
@@ -121,6 +120,7 @@ func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err
 func (sc *StreamConn) sendToPartition(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
 	if err == nil {
+		log.LogDebugf("req opcode %v, conn %v", req.Opcode, conn)
 		err = sc.sendToConn(conn, req, getReply)
 		if err == nil {
 			StreamConnPool.PutConnect(conn, false)

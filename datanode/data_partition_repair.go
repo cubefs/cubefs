@@ -597,7 +597,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				}
 			} else {
 				log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v ", reply.Size, currFixOffset, reply)
-				err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, wType, BufferWrite)
+				_, err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, wType, BufferWrite)
 			}
 			//log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
 			// write to the local extent file

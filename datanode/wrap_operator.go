@@ -113,6 +113,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			case proto.OpWrite, proto.OpRandomWrite,
 				proto.OpRandomWriteVer, proto.OpSyncRandomWriteVer,
 				proto.OpRandomWriteAppend, proto.OpSyncRandomWriteAppend,
+				proto.OpTryWriteAppend, proto.OpSyncTryWriteAppend,
 				proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete, proto.OpSplitMarkDelete:
 				log.LogWrite(logContent)
 			default:
@@ -143,6 +144,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleBatchMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite,
 		proto.OpRandomWriteAppend, proto.OpSyncRandomWriteAppend,
+		proto.OpTryWriteAppend, proto.OpSyncTryWriteAppend,
 		proto.OpRandomWriteVer, proto.OpSyncRandomWriteVer:
 		s.handleRandomWritePacket(p)
 	case proto.OpNotifyReplicasToRepair:
@@ -678,8 +680,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 // Handle OpWrite packet.
 func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	var (
-		err error
-
+		err                     error
 		metricPartitionIOLabels map[string]string
 		partitionIOMetric       *exporter.TimePointCount
 	)
@@ -708,7 +709,10 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
 
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(p.Size))
+		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
+		_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -722,7 +726,10 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
 
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(p.Size))
+		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
+		_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -742,7 +749,10 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 				partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 			}
 
-			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
+			partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(currSize))
+			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
+			_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
 			if !shallDegrade {
 				s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 				partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -768,12 +778,20 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	)
 
 	defer func() {
+		log.LogDebugf("action[handleRandomWritePacket opcod %v seq %v dpid %v resultCode %v extid %v err %v",
+			p.Opcode, p.VerSeq, p.PartitionID, p.ResultCode, p.ExtentID, err)
 		if err != nil {
 			p.PackErrorBody(ActionWrite, err.Error())
 		} else {
 			// avoid rsp pack ver info into package which client need do more work to read buffer
 			if p.Opcode == proto.OpRandomWriteVer || p.Opcode == proto.OpSyncRandomWriteVer {
 				p.Opcode = proto.OpSyncRandomWriteVerRsp
+			}
+			if p.Opcode == proto.OpTryWriteAppend && p.ResultCode == proto.OpTryOtherExtent {
+				p.PackErrorBody(ActionWrite, storage.SnapshotNeedNewExtentError.Error())
+				p.ResultCode = proto.OpTryOtherExtent
+				log.LogDebugf("action[handleRandomWritePacket opcod %v seq %v dpid %v resultCode %v extid %v", p.Opcode, p.VerSeq, p.PartitionID, p.ResultCode, p.ExtentID)
+				return
 			}
 			p.PacketOkReply()
 		}
@@ -824,20 +842,21 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 		partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 	}
-	log.LogDebugf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v extid %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID)
+	log.LogDebugf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v extid %v err %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID, err)
 	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
 		err = raft.ErrNotLeader
 		log.LogErrorf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v extid %v err %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID, err)
 		return
 	}
 
-	if err == nil && p.ResultCode != proto.OpOk {
+	if err == nil && p.ResultCode != proto.OpOk && p.ResultCode != proto.OpTryOtherExtent {
 		log.LogErrorf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v extid %v ResultCode %v",
 			p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID, p.ResultCode)
 		err = storage.TryAgainError
 		return
 	}
-	log.LogDebugf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v after raft submit err %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, err)
+	log.LogDebugf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v after raft submit err %v resultCode %v",
+		p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, err, p.ResultCode)
 }
 
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
