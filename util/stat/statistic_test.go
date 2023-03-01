@@ -15,22 +15,33 @@
 package stat
 
 import (
-	"github.com/cubefs/cubefs/util/errors"
+	"os"
+	"path"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/util/errors"
 )
 
 func TestStatistic(t *testing.T) {
+	DefaultStatInterval = 1 * time.Second
+
 	statLogPath := "./"
 	statLogSize := 20000000
+	statLogModule := "TestStatistic"
 	timeOutUs := [MaxTimeoutLevel]uint32{100000, 500000, 1000000}
 
-	NewStatistic(statLogPath, "TestStatistic", int64(statLogSize), timeOutUs, true)
+	_, err := NewStatistic(statLogPath, statLogModule, int64(statLogSize), timeOutUs, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(path.Join(statLogPath, statLogModule))
+	defer ClearStat()
+
 	bgTime := BeginStat()
 	EndStat("test1", nil, bgTime, 1)
-	time.Sleep(10 * time.Second)
-	err := errors.New("EIO")
+	time.Sleep(time.Second)
+	err = errors.New("EIO")
 	EndStat("test2", err, bgTime, 100)
-	time.Sleep(10 * time.Second)
-	time.Sleep(50 * time.Second)
+	time.Sleep(3 * time.Second)
 }
