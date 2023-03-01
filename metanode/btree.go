@@ -15,8 +15,9 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/util/btree"
 	"sync"
+
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 const defaultBTreeDegree = 32

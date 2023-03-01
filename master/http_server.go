@@ -38,7 +38,7 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 	m.registerAPIMiddleware(router)
 	exporter.InitWithRouter(modulename, cfg, router, m.port)
 	var server = &http.Server{
-		Addr:    colonSplit + m.port,
+		Addr:    fmt.Sprintf("%s:%s", m.ip, m.port),
 		Handler: router,
 	}
 	var serveAPI = func() {

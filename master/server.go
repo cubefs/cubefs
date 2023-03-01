@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/cubefs/cubefs/util/stat"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/config"
@@ -199,9 +201,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		m.servicePath = cfg.GetString(EbsServicePathKey)
 	}
 	peerAddrs := cfg.GetString(cfgPeers)
-	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
-		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (ip,listen,walDir,storeDir,clusterName) is null",
-			m.ip, m.port, m.walDir, m.storeDir, m.clusterName, peerAddrs)
+	if m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
+		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (listen,walDir,storeDir,clusterName) is null",
+			m.port, m.walDir, m.storeDir, m.clusterName, peerAddrs)
 	}
 
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
@@ -305,6 +307,7 @@ func (m *Server) createRaftServer(cfg *config.Config) (err error) {
 	raftCfg := &raftstore.Config{
 		NodeID:            m.id,
 		RaftPath:          m.walDir,
+		IPAddr:            cfg.GetString(IP),
 		NumOfLogsToRetain: m.retainLogs,
 		HeartbeatPort:     int(m.config.heartbeatPort),
 		ReplicaPort:       int(m.config.replicaPort),
