@@ -25,7 +25,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
+func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64, c *Cluster) {
 	partition.Lock()
 	defer partition.Unlock()
 	var liveReplicas []*DataReplica
@@ -63,6 +63,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 				log.LogInfof("action[checkStatus] partition %v with single replica on decommison and continue to remove old replica",
 					partition.PartitionID)
 				// partition.Status = proto.ReadWrite
+				c.syncUpdateDataPartition(partition)
 				partition.singleDecommissionChan <- true
 			}
 		}

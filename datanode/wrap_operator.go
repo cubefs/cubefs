@@ -1138,14 +1138,14 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 
-	log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember, req(%s) RemoveRaftPeer(%s) dp %v replicaNum %v",
-		string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum)
+	log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember], req %v (%s) RemoveRaftPeer(%s) dp %v replicaNum %v",
+		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum)
 
 	p.PartitionID = req.PartitionId
 
 	if !dp.IsExsitReplica(req.RemovePeer.Addr) {
-		log.LogInfof("receive MasterCommand: %v "+
-			"RemoveRaftPeer(%v) has not exist", string(reqData), req.RemovePeer.Addr)
+		log.LogInfof("action[handlePacketToRemoveDataPartitionRaftMember] receive MasterCommand:  req %v[%v] "+
+			"RemoveRaftPeer(%v) has not exsit", p.GetReqID(), string(reqData), req.RemovePeer.Addr)
 		return
 	}
 
@@ -1155,7 +1155,9 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 	if err = dp.CanRemoveRaftMember(req.RemovePeer, req.Force); err != nil {
-		log.LogInfof("handlePacketToRemoveDataPartitionRaftMember return err %v", err)
+		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember] CanRemoveRaftMember failed "+
+			"req %v dp %v err %v",
+			p.GetReqID(), dp.partitionID, err.Error())
 		return
 	}
 
@@ -1174,11 +1176,15 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	}
 
 	if req.RemovePeer.ID != 0 {
+		log.LogDebugf("action[handlePacketToRemoveDataPartitionRaftMember] ChangeRaftMember "+
+			"req %v dp %v RemovePeer.ID", p.GetReqID(), dp.partitionID, req.RemovePeer.ID)
 		_, err = dp.ChangeRaftMember(raftProto.ConfRemoveNode, raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
 		if err != nil {
 			return
 		}
 	}
+	log.LogDebugf("action[handlePacketToRemoveDataPartitionRaftMember] CanRemoveRaftMember complete "+
+		"req %v dp %v ", p.GetReqID(), dp.partitionID)
 	return
 }
 
@@ -1190,11 +1196,13 @@ func (s *DataNode) handlePacketToDataPartitionTryToLeader(p *repl.Packet) {
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionDataPartitionTryToLeader, err.Error())
+			log.LogWarnf("handlePacketToDataPartitionTryToLeader: %v ", err.Error())
 		} else {
 			p.PacketOkReply()
+			log.LogDebugf("handlePacketToDataPartitionTryToLeader: partition %v success ", p.PartitionID)
 		}
 	}()
-
+	log.LogDebugf("handlePacketToDataPartitionTryToLeader: partition %v ", p.PartitionID)
 	dp := s.space.Partition(p.PartitionID)
 	if dp == nil {
 		err = fmt.Errorf("partition %v not exsit", p.PartitionID)
@@ -1207,6 +1215,7 @@ func (s *DataNode) handlePacketToDataPartitionTryToLeader(p *repl.Packet) {
 	}
 
 	if dp.raftPartition.IsRaftLeader() {
+		log.LogWarnf("handlePacketToDataPartitionTryToLeader: %v is already leader", p.PartitionID)
 		return
 	}
 	err = dp.raftPartition.TryToLeader(dp.partitionID)
@@ -1222,7 +1231,6 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet, force 
 	if leaderAddr, ok = dp.IsRaftLeader(); ok {
 		return
 	}
-
 	// return NoLeaderError if leaderAddr is nil
 	if leaderAddr == "" {
 		if force {

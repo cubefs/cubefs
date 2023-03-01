@@ -199,6 +199,12 @@ func (r *raftFsm) Step(m *proto.Message) {
 			r.campaign(m.ForceVote)
 		} else if logger.IsEnableDebug() && r.state == stateLeader {
 			logger.Debug("[raft->Step][%v] ignoring LocalMsgHup because already leader.", r.id)
+		} else if logger.IsEnableDebug() {
+			var replicas []uint64
+			for id, _ := range r.replicas {
+				replicas = append(replicas, id)
+			}
+			logger.Debug("[raft->Step][%v] state %v, replicas %v.", r.id, r.state, replicas)
 		}
 		return
 	}

@@ -48,6 +48,7 @@ type clusterValue struct {
 	DiskQosEnable               bool
 	QosLimitUpload              uint64
 	DirChildrenNumLimit         uint32
+	DecommissionLimit           uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -66,6 +67,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DiskQosEnable:               c.diskQosEnable,
 		QosLimitUpload:              uint64(c.QosAcceptLimit.Limit()),
 		DirChildrenNumLimit:         c.cfg.DirChildrenNumLimit,
+		DecommissionLimit:           c.DecommissionLimit,
 	}
 	return cv
 }
@@ -102,19 +104,60 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 }
 
 type dataPartitionValue struct {
-	PartitionID   uint64
-	ReplicaNum    uint8
-	Hosts         string
-	Peers         []bsProto.Peer
-	Status        int8
-	VolID         uint64
-	VolName       string
-	OfflinePeerID uint64
-	Replicas      []*replicaValue
-	IsRecover     bool
-	PartitionType int
-	PartitionTTL  int64
-	RdOnly        bool
+	PartitionID              uint64
+	ReplicaNum               uint8
+	Hosts                    string
+	Peers                    []bsProto.Peer
+	Status                   int8
+	VolID                    uint64
+	VolName                  string
+	OfflinePeerID            uint64
+	Replicas                 []*replicaValue
+	IsRecover                bool
+	PartitionType            int
+	PartitionTTL             int64
+	RdOnly                   bool
+	DecommissionRetry        int
+	DecommissionStatus       uint32
+	DecommissionSrcAddr      string
+	DecommissionDstAddr      string
+	DecommissionRaftForce    bool
+	DecommissionSrcDiskPath  string
+	DecommissionTerm         uint64
+	SingleDecommissionStatus uint8
+	SingleDecommissionAddr   string
+}
+
+func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
+	for i := 0; i < len(dpv.Peers); i++ {
+		dn, ok := c.dataNodes.Load(dpv.Peers[i].Addr)
+		if ok && dn.(*DataNode).ID != dpv.Peers[i].ID {
+			dpv.Peers[i].ID = dn.(*DataNode).ID
+		}
+	}
+	dp = newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID, dpv.PartitionType, dpv.PartitionTTL)
+	dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
+	dp.Peers = dpv.Peers
+	dp.OfflinePeerID = dpv.OfflinePeerID
+	dp.isRecover = dpv.IsRecover
+	dp.RdOnly = dpv.RdOnly
+	dp.DecommissionRaftForce = dpv.DecommissionRaftForce
+	dp.DecommissionDstAddr = dpv.DecommissionDstAddr
+	dp.DecommissionSrcAddr = dpv.DecommissionSrcAddr
+	dp.DecommissionRetry = dpv.DecommissionRetry
+	dp.DecommissionStatus = dpv.DecommissionStatus
+	dp.DecommissionSrcDiskPath = dpv.DecommissionSrcDiskPath
+	dp.DecommissionTerm = dpv.DecommissionTerm
+	dp.SingleDecommissionAddr = dpv.SingleDecommissionAddr
+	dp.SingleDecommissionStatus = dpv.SingleDecommissionStatus
+
+	for _, rv := range dpv.Replicas {
+		if !contains(dp.Hosts, rv.Addr) {
+			continue
+		}
+		dp.afterCreation(rv.Addr, rv.DiskPath, c)
+	}
+	return dp
 }
 
 type replicaValue struct {
@@ -124,19 +167,28 @@ type replicaValue struct {
 
 func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 	dpv = &dataPartitionValue{
-		PartitionID:   dp.PartitionID,
-		ReplicaNum:    dp.ReplicaNum,
-		Hosts:         dp.hostsToString(),
-		Peers:         dp.Peers,
-		Status:        dp.Status,
-		VolID:         dp.VolID,
-		VolName:       dp.VolName,
-		OfflinePeerID: dp.OfflinePeerID,
-		Replicas:      make([]*replicaValue, 0),
-		IsRecover:     dp.isRecover,
-		PartitionType: dp.PartitionType,
-		PartitionTTL:  dp.PartitionTTL,
-		RdOnly:        dp.RdOnly,
+		PartitionID:              dp.PartitionID,
+		ReplicaNum:               dp.ReplicaNum,
+		Hosts:                    dp.hostsToString(),
+		Peers:                    dp.Peers,
+		Status:                   dp.Status,
+		VolID:                    dp.VolID,
+		VolName:                  dp.VolName,
+		OfflinePeerID:            dp.OfflinePeerID,
+		Replicas:                 make([]*replicaValue, 0),
+		IsRecover:                dp.isRecover,
+		PartitionType:            dp.PartitionType,
+		PartitionTTL:             dp.PartitionTTL,
+		RdOnly:                   dp.RdOnly,
+		DecommissionRetry:        dp.DecommissionRetry,
+		DecommissionStatus:       dp.DecommissionStatus,
+		DecommissionSrcAddr:      dp.DecommissionSrcAddr,
+		DecommissionDstAddr:      dp.DecommissionDstAddr,
+		DecommissionRaftForce:    dp.DecommissionRaftForce,
+		DecommissionSrcDiskPath:  dp.DecommissionSrcDiskPath,
+		DecommissionTerm:         dp.DecommissionTerm,
+		SingleDecommissionStatus: dp.SingleDecommissionStatus,
+		SingleDecommissionAddr:   dp.SingleDecommissionAddr,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -252,22 +304,40 @@ func newVolValueFromBytes(raw []byte) (*volValue, error) {
 }
 
 type dataNodeValue struct {
-	ID                  uint64
-	NodeSetID           uint64
-	Addr                string
-	ZoneName            string
-	RdOnly              bool
-	DecommissionedDisks []string
+	ID                       uint64
+	NodeSetID                uint64
+	Addr                     string
+	ZoneName                 string
+	RdOnly                   bool
+	DecommissionedDisks      []string
+	DecommissionStatus       uint32
+	DecommissionDstAddr      string
+	DecommissionRaftForce    bool
+	DecommissionDpTotal      int
+	DecommissionLimit        int
+	DecommissionRetry        uint8
+	DecommissionTerm         uint64
+	DecommissionCompleteTime int64
+	ToBeOffline              bool
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 	return &dataNodeValue{
-		ID:                  dataNode.ID,
-		NodeSetID:           dataNode.NodeSetID,
-		Addr:                dataNode.Addr,
-		ZoneName:            dataNode.ZoneName,
-		RdOnly:              dataNode.RdOnly,
-		DecommissionedDisks: dataNode.getDecommissionedDisks(),
+		ID:                       dataNode.ID,
+		NodeSetID:                dataNode.NodeSetID,
+		Addr:                     dataNode.Addr,
+		ZoneName:                 dataNode.ZoneName,
+		RdOnly:                   dataNode.RdOnly,
+		DecommissionedDisks:      dataNode.getDecommissionedDisks(),
+		DecommissionStatus:       atomic.LoadUint32(&dataNode.DecommissionStatus),
+		DecommissionDstAddr:      dataNode.DecommissionDstAddr,
+		DecommissionRaftForce:    dataNode.DecommissionRaftForce,
+		DecommissionDpTotal:      dataNode.DecommissionDpTotal,
+		DecommissionLimit:        dataNode.DecommissionLimit,
+		DecommissionRetry:        dataNode.DecommissionRetry,
+		DecommissionTerm:         dataNode.DecommissionTerm,
+		DecommissionCompleteTime: dataNode.DecommissionCompleteTime,
+		ToBeOffline:              dataNode.ToBeOffline,
 	}
 }
 
@@ -793,6 +863,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.diskQosEnable = cv.DiskQosEnable
 		c.cfg.QosMasterAcceptLimit = cv.QosLimitUpload
+		c.DecommissionLimit = cv.DecommissionLimit //dont update nodesets limit for nodesets are not loaded
 
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
@@ -832,7 +903,7 @@ func (c *Cluster) loadNodeSets() (err error) {
 			cap = c.cfg.nodeSetCapacity
 		}
 
-		ns := newNodeSet(nsv.ID, cap, nsv.ZoneName)
+		ns := newNodeSet(c, nsv.ID, cap, nsv.ZoneName)
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
 			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
@@ -1015,6 +1086,15 @@ func (c *Cluster) loadDataNodes() (err error) {
 		for _, disk := range dnv.DecommissionedDisks {
 			dataNode.addDecommissionedDisk(disk)
 		}
+		dataNode.DecommissionStatus = dnv.DecommissionStatus
+		dataNode.DecommissionDstAddr = dnv.DecommissionDstAddr
+		dataNode.DecommissionRaftForce = dnv.DecommissionRaftForce
+		dataNode.DecommissionDpTotal = dnv.DecommissionDpTotal
+		dataNode.DecommissionLimit = dnv.DecommissionLimit
+		dataNode.DecommissionRetry = dnv.DecommissionRetry
+		dataNode.DecommissionTerm = dnv.DecommissionTerm
+		dataNode.DecommissionCompleteTime = dnv.DecommissionCompleteTime
+		dataNode.ToBeOffline = dnv.ToBeOffline
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
@@ -1149,29 +1229,13 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.gridId[%v],mpv.VolID[%v]", dpv.VolName, vol.ID, dpv.VolID))
 			continue
 		}
-		for i := 0; i < len(dpv.Peers); i++ {
-			dn, ok := c.dataNodes.Load(dpv.Peers[i].Addr)
-			if ok && dn.(*DataNode).ID != dpv.Peers[i].ID {
-				dpv.Peers[i].ID = dn.(*DataNode).ID
-			}
-		}
-		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID, dpv.PartitionType, dpv.PartitionTTL)
-		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
-		dp.Peers = dpv.Peers
-		dp.OfflinePeerID = dpv.OfflinePeerID
-		dp.isRecover = dpv.IsRecover
-		dp.RdOnly = dpv.RdOnly
-
-		for _, rv := range dpv.Replicas {
-			if !contains(dp.Hosts, rv.Addr) {
-				continue
-			}
-			dp.afterCreation(rv.Addr, rv.DiskPath, c)
-		}
+		dp := dpv.Restore(c)
 		vol.dataPartitions.put(dp)
-
 		c.addBadDataParitionIdMap(dp)
-		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
+		//add to nodeset decommission list
+		dp.addToDecommissionList(c)
+		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v] decommissionStatus[%v]", vol.Name, dp.PartitionID,
+			dp.GetDecommissionStatus())
 	}
 	return
 }
@@ -1181,5 +1245,98 @@ func (c *Cluster) addBadDataParitionIdMap(dp *DataPartition) {
 		return
 	}
 
-	c.putBadDataPartitionIDs(nil, dp.Hosts[0], dp.PartitionID)
+	c.putBadDataPartitionIDsByDiskPath(dp.DecommissionSrcDiskPath, dp.DecommissionSrcAddr, dp.PartitionID)
+}
+
+func (c *Cluster) syncAddDecommissionDisk(disk *DecommissionDisk) (err error) {
+	return c.syncPutDecommissionDiskInfo(opSyncAddDecommissionDisk, disk)
+}
+
+func (c *Cluster) syncDeleteDecommissionDisk(disk *DecommissionDisk) (err error) {
+	return c.syncPutDecommissionDiskInfo(opSyncDeleteDecommissionDisk, disk)
+}
+
+func (c *Cluster) syncUpdateDecommissionDisk(disk *DecommissionDisk) (err error) {
+	return c.syncPutDecommissionDiskInfo(opSyncUpdateDecommissionDisk, disk)
+}
+
+func (c *Cluster) syncPutDecommissionDiskInfo(opType uint32, disk *DecommissionDisk) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = DecommissionDiskPrefix + disk.SrcAddr + keySeparator + disk.DiskPath
+	ddv := newDecommissionDiskValue(disk)
+	metadata.V, err = json.Marshal(ddv)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+type decommissionDiskValue struct {
+	SrcAddr               string
+	DiskPath              string
+	DecommissionStatus    uint32
+	DecommissionRaftForce bool
+	DecommissionRetry     uint8
+	DecommissionDpTotal   int
+	DecommissionTerm      uint64
+	DiskDisable           bool
+}
+
+func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
+	return &decommissionDiskValue{
+		SrcAddr:               disk.SrcAddr,
+		DiskPath:              disk.DiskPath,
+		DecommissionRetry:     disk.DecommissionRetry,
+		DecommissionStatus:    atomic.LoadUint32(&disk.DecommissionStatus),
+		DecommissionRaftForce: disk.DecommissionRaftForce,
+		DecommissionDpTotal:   disk.DecommissionDpTotal,
+		DecommissionTerm:      disk.DecommissionTerm,
+		DiskDisable:           disk.DiskDisable,
+	}
+}
+
+func (ddv *decommissionDiskValue) Restore() *DecommissionDisk {
+	return &DecommissionDisk{
+		SrcAddr:               ddv.SrcAddr,
+		DiskPath:              ddv.DiskPath,
+		DecommissionRetry:     ddv.DecommissionRetry,
+		DecommissionStatus:    ddv.DecommissionStatus,
+		DecommissionRaftForce: ddv.DecommissionRaftForce,
+		DecommissionDpTotal:   ddv.DecommissionDpTotal,
+		DecommissionTerm:      ddv.DecommissionTerm,
+		DiskDisable:           ddv.DiskDisable,
+	}
+}
+
+func (c *Cluster) loadDecommissionDiskList() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(DecommissionDiskPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadDataPartitions],err:%v", err.Error())
+		return err
+	}
+	for _, value := range result {
+
+		ddv := &decommissionDiskValue{}
+		if err = json.Unmarshal(value, ddv); err != nil {
+			err = fmt.Errorf("action[loadDecommissionDiskList],value:%v,unmarshal err:%v", string(value), err)
+			return err
+		}
+
+		dd := ddv.Restore()
+		c.DecommissionDisks.Store(dd.GenerateKey(), dd)
+		log.LogInfof("action[loadDecommissionDiskList],decommissionDiskValue[%v]", dd)
+	}
+	return
+}
+
+func (c *Cluster) startDecommissionListTraverse() (err error) {
+	zones := c.t.getAllZones()
+	for _, zone := range zones {
+		err = zone.startDecommissionListTraverse(c)
+		if err != nil {
+			return
+		}
+	}
+	return
 }

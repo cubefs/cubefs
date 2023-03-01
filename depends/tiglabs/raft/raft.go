@@ -361,6 +361,7 @@ func (s *raft) run() {
 			msg.Type = proto.LocalMsgHup
 			msg.From = s.config.NodeID
 			msg.ForceVote = true
+			logger.Debug("raft[%v] node %v try to leader", s.raftFsm.id, s.config.NodeID)
 			s.raftFsm.Step(msg)
 			s.maybeChange(true)
 

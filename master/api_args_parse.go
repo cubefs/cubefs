@@ -81,6 +81,15 @@ func parseDecomNodeReq(r *http.Request) (nodeAddr string, limit int, err error) 
 
 	return
 }
+
+func parseDecomDataNodeReq(r *http.Request) (nodeAddr string, err error) {
+	nodeAddr, err = parseAndExtractNodeAddr(r)
+	if err != nil {
+		return
+	}
+
+	return
+}
 func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1006,7 +1015,7 @@ func extractAuthKey(r *http.Request) (authKey string, err error) {
 	return
 }
 
-func parseVolStatReq(r *http.Request) (name string, ver int, err error) {
+func parseVolStatReq(r *http.Request) (name string, ver int, byMeta bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1020,7 +1029,10 @@ func parseVolStatReq(r *http.Request) (name string, ver int, err error) {
 	if err != nil {
 		return
 	}
-
+	byMeta, err = extractBoolWithDefault(r, CountByMeta, false)
+	if err != nil {
+		return
+	}
 	return
 }
 
@@ -1268,4 +1280,17 @@ func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPR
 	}
 
 	return
+}
+
+func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	var value string
+	if value = r.FormValue(decommissionLimit); value == "" {
+		err = keyNotFound(decommissionLimit)
+		return
+	}
+	return strconv.ParseUint(value, 10, 64)
 }

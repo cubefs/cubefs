@@ -122,7 +122,6 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 	}
 	object := &Object{conn: c, idle: time.Now().UnixNano()}
 	pool.PutConnectObjectToPool(object)
-
 	return
 }
 

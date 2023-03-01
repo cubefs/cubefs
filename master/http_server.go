@@ -171,6 +171,13 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		HandlerFunc(m.getRaftStatus)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminClusterStat).HandlerFunc(m.clusterStat)
 
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateDecommissionLimit).
+		HandlerFunc(m.updateDecommissionLimit)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminQueryDecommissionLimit).
+		HandlerFunc(m.queryDecommissionLimit)
+
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreateVol).
@@ -297,6 +304,13 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientDataPartitions).
 		HandlerFunc(m.getDataPartitions)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminResetDataPartitionDecommissionStatus).
+		HandlerFunc(m.resetDataPartitionDecommissionStatus)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminQueryDataPartitionDecommissionStatus).
+		HandlerFunc(m.queryDataPartitionDecommissionStatus)
+
 	// meta node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddMetaNode).
@@ -340,10 +354,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.MigrateDataNode).
 		HandlerFunc(m.migrateDataNodeHandler)
-
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.CancelDecommissionDataNode).
 		HandlerFunc(m.cancelDecommissionDataNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QueryDataNodeDecoFailedDps).
+		HandlerFunc(m.queryDataNodeDecoFailedDps)
 
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetDataNode).
@@ -354,6 +370,19 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.RecommissionDisk).
 		HandlerFunc(m.recommissionDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QueryDiskDecoProgress).
+		HandlerFunc(m.queryDiskDecoProgress)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.MarkDecoDiskFixed).
+		HandlerFunc(m.markDecoDiskFixed)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.CancelDecommissionDisk).
+		HandlerFunc(m.cancelDecommissionDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QueryDecommissionDiskDecoFailedDps).
+		HandlerFunc(m.queryDecommissionDiskDecoFailedDps)
+
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeInfo).
 		HandlerFunc(m.setNodeInfoHandler)
