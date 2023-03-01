@@ -4,13 +4,37 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 )
 
+const (
+	GLIBCRequired = 214
+)
+
+func getGLIBCVersion() int64 {
+	version, err := exec.Command("bash", "-c", "ldd --version |awk 'NR==1{print}' |awk '{print $NF}'").Output()
+	if err != nil {
+		fmt.Printf("get glibc version err: %v\n", err)
+		os.Exit(1)
+	}
+
+	verStr := strings.Replace(string(version), "\n", "", -1)
+	verStr = strings.Replace(verStr, ".", "", -1)
+	ver, err := strconv.ParseInt(verStr, 10, 64)
+	if err != nil {
+		fmt.Printf("parse glibc version err: %v\n", err)
+		os.Exit(1)
+	}
+	return ver
+}
+
 func main() {
 	flag.Parse()
-	if !*version && *configFile == "" {
+	if !*configVersion && *configFile == "" {
 		fmt.Printf("Usage: %s -c {configFile}\n", os.Args[0])
 		os.Exit(1)
 	}
@@ -48,42 +72,24 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	if *useVersion != "" {
-		if runtime.GOARCH == AMD64 {
-			tarName = fmt.Sprintf("%s_%s.tar.gz", VersionTarPre, *useVersion)
-		} else if runtime.GOARCH == ARM64 {
-			tarName = fmt.Sprintf("%s_%s_%s.tar.gz", VersionTarPre, ARM64, *useVersion)
-		}
-		if !prepareLibs(downloadAddr, tarName) {
-			os.Exit(1)
-		}
-	}
 
-	exeFile := MainBinary
-	start := !*version
-	if start {
-		exeFile = os.Args[0]
-		if err = moveFile(MainBinary, exeFile+".tmp"); err != nil {
-			fmt.Printf("%v\n", err.Error())
-			os.Exit(1)
-		}
-		if err = os.Rename(exeFile+".tmp", exeFile); err != nil {
-			fmt.Printf("%v\n", err.Error())
-			os.Exit(1)
-		}
+	useDynamicLibs := getGLIBCVersion() >= GLIBCRequired
+	mainFile := MainBinary
+	if !useDynamicLibs {
+		mainFile = MainStaticBinary
+	}
+	exeFile := os.Args[0]
+	if err = moveFile(mainFile, exeFile+".tmp"); err != nil {
+		fmt.Printf("%v\n", err.Error())
+		os.Exit(1)
+	}
+	if err = os.Rename(exeFile+".tmp", exeFile); err != nil {
+		fmt.Printf("%v\n", err.Error())
+		os.Exit(1)
 	}
 
 	env := os.Environ()
-	args := make([]string, 0, len(os.Args))
-	for i := 0; i < len(os.Args); i++ {
-		if os.Args[i] == "-u" {
-			i++
-		} else {
-			args = append(args, os.Args[i])
-		}
-	}
-
-	execErr := syscall.Exec(exeFile, args, env)
+	execErr := syscall.Exec(exeFile, os.Args, env)
 	if execErr != nil {
 		fmt.Printf("exec %s %v error: %v\n", exeFile, os.Args, execErr)
 		os.Exit(1)
@@ -92,6 +98,9 @@ func main() {
 
 func checkLibsExist() bool {
 	if _, err := os.Stat(MainBinary); err != nil {
+		return false
+	}
+	if _, err := os.Stat(MainStaticBinary); err != nil {
 		return false
 	}
 	if _, err := os.Stat(GolangLib); err != nil {

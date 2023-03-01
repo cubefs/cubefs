@@ -41,7 +41,7 @@ func loadSym(handle *plugin.Plugin) {
 func main() {
 	flag.Parse()
 
-	if !*version && *configFile == "" {
+	if !*configVersion && *configFile == "" {
 		fmt.Printf("Usage: %s -c {configFile}\n", os.Args[0])
 		os.Exit(1)
 	}
@@ -66,18 +66,18 @@ func main() {
 		fmt.Printf("get downloadAddr from master err: %v\n", err)
 		os.Exit(1)
 	}
-	if *useVersion != "" {
+	if *configUseVersion != "" {
 		if runtime.GOARCH == AMD64 {
-			tarName = fmt.Sprintf("%s_%s.tar.gz", VersionTarPre, *useVersion)
+			tarName = fmt.Sprintf("%s_%s.tar.gz", VersionTarPre, *configUseVersion)
 		} else if runtime.GOARCH == ARM64 {
-			tarName = fmt.Sprintf("%s_%s_%s.tar.gz", VersionTarPre, ARM64, *useVersion)
+			tarName = fmt.Sprintf("%s_%s_%s.tar.gz", VersionTarPre, ARM64, *configUseVersion)
 		}
 		if !prepareLibs(downloadAddr, tarName) {
 			os.Exit(1)
 		}
 	}
 
-	if *version {
+	if *configVersion {
 		*configForeground = true
 	}
 	if !*configForeground {
@@ -94,7 +94,7 @@ func main() {
 		os.Exit(1)
 	}
 	loadSym(handle)
-	if *version {
+	if *configVersion {
 		fmt.Println(getVersion())
 		os.Exit(0)
 	}
