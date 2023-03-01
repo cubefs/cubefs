@@ -38,7 +38,7 @@
 
    maintenance/env
    maintenance/tool
-   maintenance/srv
+   maintenance/administration
    maintenance/svrconf
    maintenance/monitor
    maintenance/config
