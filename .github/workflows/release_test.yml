@@ -2,8 +2,13 @@ name: CI-Release
 
 on:
   push:
+    branches:
+      - release-*
     tags:
       - v*
+      - release-*
+  pull_request:
+    branches:
       - release-*
 
 jobs:
