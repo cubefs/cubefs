@@ -698,7 +698,7 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 }
 
 func genLocationBlobs(location *access.Location, readSize uint64, offset uint64) ([]blobGetArgs, error) {
-	if offset+readSize > location.Size {
+	if readSize > location.Size || offset > location.Size || offset+readSize > location.Size {
 		return nil, fmt.Errorf("FileSize:%d ReadSize:%d Offset:%d", location.Size, readSize, offset)
 	}
 

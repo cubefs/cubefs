@@ -569,7 +569,9 @@ func (args *GetArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.Offset+args.ReadSize <= args.Location.Size
+	return args.Offset <= args.Location.Size &&
+		args.ReadSize <= args.Location.Size &&
+		args.Offset+args.ReadSize <= args.Location.Size
 }
 
 // DeleteArgs for service /delete

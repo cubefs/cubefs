@@ -17,6 +17,7 @@ package access
 import (
 	"bytes"
 	"crypto/rand"
+	"math"
 	mrand "math/rand"
 	"testing"
 	"time"
@@ -471,6 +472,10 @@ func TestAccessStreamGenLocationBlobs(t *testing.T) {
 		{1024 * 7, 0, true, func(blobs []blobArgs) bool { return blobs == nil }},
 		{1024 * 6, 38, true, func(blobs []blobArgs) bool { return blobs == nil }},
 		{1024 * 5, 38, true, func(blobs []blobArgs) bool { return blobs == nil }},
+
+		// overflow
+		{math.MaxUint64 - 1024 - 5, 1024 + 10, true, func(blobs []blobArgs) bool { return blobs == nil }},
+		{1024 + 10, math.MaxUint64 - 1024 - 5, true, func(blobs []blobArgs) bool { return blobs == nil }},
 
 		{0, 0, false, func(blobs []blobArgs) bool {
 			return len(blobs) == 0

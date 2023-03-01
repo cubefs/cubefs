@@ -523,8 +523,24 @@ func TestAllocArgs(t *testing.T) {
 }
 
 func TestGetArgs(t *testing.T) {
-	args := access.GetArgs{}
-	require.True(t, args.IsValid())
+	for _, cs := range []struct {
+		size, offset, readSize uint64
+		valid                  bool
+	}{
+		{0, 0, 0, true},
+		{1024, 10, 1014, true},
+		{1024, math.MaxUint64, 0, false},
+		{1024, math.MaxUint64 - 10, 20, false},
+		{1024, 0, math.MaxUint64 - 10, false},
+		{1024, 20, math.MaxUint64 - 10, false},
+	} {
+		args := access.GetArgs{
+			Offset:   cs.offset,
+			ReadSize: cs.readSize,
+		}
+		args.Location.Size = cs.size
+		require.Equal(t, cs.valid, args.IsValid())
+	}
 }
 
 func TestDeleteArgs(t *testing.T) {
