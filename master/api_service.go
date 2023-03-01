@@ -121,6 +121,22 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set DisableAutoAllocate to %v successfully", status)))
 }
 
+func (m *Server) setupAutoDecommission(w http.ResponseWriter, r *http.Request) {
+	var (
+		status bool
+		err    error
+	)
+	if status, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setAutoDecommission(status); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set AutoDecommission to %v successfully", status)))
+}
+
 // View the topology of the cluster.
 func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	tv := &TopologyView{

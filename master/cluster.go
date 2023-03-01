@@ -67,6 +67,7 @@ type Cluster struct {
 	followerReadManager *followerReadManager
 	diskQosEnable       bool
 	QosAcceptLimit      *rate.Limiter
+	AutoDecommission    bool
 }
 
 type followerReadManager struct {
@@ -506,6 +507,10 @@ func (c *Cluster) scheduleToDecommission() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
+				if !c.AutoDecommission {
+					log.LogInfo("auto decommission is disabled")
+					return
+				}
 				if c.BadDPCount > c.cfg.DecommissionDpLimit {
 					log.LogInfof("the number of decommissioning dataPartitions are exceeds %v", c.cfg.DecommissionDpLimit)
 					return
@@ -2927,6 +2932,18 @@ func (c *Cluster) setDisableAutoAllocate(disableAutoAllocate bool) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDisableAutoAllocate] err[%v]", err)
 		c.DisableAutoAllocate = oldFlag
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setAutoDecommission(autoDecommission bool) (err error) {
+	oldFlag := c.AutoDecommission
+	c.AutoDecommission = autoDecommission
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setAutoDecommission] err[%v]", err)
+		c.AutoDecommission = oldFlag
 		err = proto.ErrPersistenceByRaft
 		return
 	}
