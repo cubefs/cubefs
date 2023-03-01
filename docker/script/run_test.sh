@@ -100,7 +100,7 @@ create_volume() {
     if [[ $? -eq 0 ]]; then
         echo -e "\033[32mdone\033[0m"
     else
-      ${cli} volume create ${VolName} ${Owner} --capacity=30 --store-mode=1 -y > /dev/null
+      ${cli} volume create ${VolName} ${Owner} --capacity=30 --store-mode=1 --follower-read=false -y > /dev/null
       if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
@@ -112,7 +112,7 @@ create_volume() {
     if [[ $? -eq 0 ]]; then
         echo -e "\033[32mdone\033[0m"
     else
-      ${cli} volume create ${RocksDBVolName} ${Owner} --capacity=30 --store-mode=2 -y > /dev/null
+      ${cli} volume create ${RocksDBVolName} ${Owner} --capacity=30 --store-mode=2 --follower-read=false -y > /dev/null
       if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1

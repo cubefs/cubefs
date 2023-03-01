@@ -419,6 +419,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 			request.GetUniqueLogId(), rp.remote)
 	}
 
+	request.ResetElapse()
 	if err = request.resolveFollowersAddr(rp.remote); err != nil {
 		err = rp.putResponse(request)
 		return
@@ -886,7 +887,7 @@ func (rp *ReplProtocol) cleanResponseCh() {
 			}
 			_ = rp.postFunc(p)
 			rp.forceCleanDataPoolFlag(p, "cleanResponseCh")
-			log.LogErrorf("Action[cleanResponseCh] request(%v) because (%v)", p.GetUniqueLogId(), rp.stopError)
+			log.LogErrorf("Action[cleanResponseCh] request(%v) because (%v) elapsed (%v)", p.GetUniqueLogId(), rp.stopError, p.Elapsed())
 			rp.forceCleanPacketPoolFlag(p, "cleanResponseCh")
 		default:
 			return
@@ -993,7 +994,7 @@ func (rp *ReplProtocol) cleanResource() {
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		_ = rp.postFunc(request)
-		log.LogErrorf("Action[cleanResource] request(%v) because (%v)", request.GetUniqueLogId(), rp.stopError)
+		log.LogErrorf("Action[cleanResource] request(%v) because (%v) elapsed (%v)", request.GetUniqueLogId(), rp.stopError, request.Elapsed())
 		rp.forceCleanDataPoolFlag(request, "cleanResourcePacketList")
 		rp.forceCleanPacketPoolFlag(request, "cleanResourcePacketList")
 	}

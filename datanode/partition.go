@@ -18,10 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/tiglabs/raft"
+	"hash/crc32"
 	"io/ioutil"
 	"math"
 	"math/rand"
+	"net"
 	"os"
 	"path"
 	"reflect"
@@ -38,9 +39,8 @@ import (
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
-	"hash/crc32"
-	"net"
 )
 
 const (
@@ -813,7 +813,7 @@ func (dp *DataPartition) String() (m string) {
 // runRepair launches the repair of extents.
 func (dp *DataPartition) runRepair(ctx context.Context, extentType uint8, fetchReplicas bool) {
 
-/*	if dp.partitionStatus == proto.Unavailable {
+	/*	if dp.partitionStatus == proto.Unavailable {
 		return
 	}*/
 	if fetchReplicas {
@@ -941,42 +941,60 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 		info := storage.ExtentInfoBlock{storage.FileID: extentInfo[storage.FileID], storage.Size: extentInfo[storage.Size]}
 		repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 	}
-	var (
-		wg           *sync.WaitGroup
-		recoverIndex int
-	)
+
 	localAddr := fmt.Sprintf("%v:%v", LocalIP, LocalServerPort)
 	allReplicas := dp.getReplicaClone()
-	wg = new(sync.WaitGroup)
+
+	// 使用生产消费模型并行修复Extent。
+	var startTime = time.Now()
+
+	// 内部数据结构，用于包裹修复Extent相关必要信息
+	type __ExtentRepairTask struct {
+		ExtentInfo storage.ExtentInfoBlock
+		Sources    []string
+	}
+
+	var extentRepairTaskCh = make(chan *__ExtentRepairTask, len(repairTask.ExtentsToBeRepaired))
+	var extentRepairWorkerWG = new(sync.WaitGroup)
+	for i := 0; i < NumOfFilesToRecoverInParallel; i++ {
+		extentRepairWorkerWG.Add(1)
+		go func() {
+			defer extentRepairWorkerWG.Done()
+			for {
+				var task = <-extentRepairTaskCh
+				if task == nil {
+					return
+				}
+				dp.doStreamExtentFixRepairOnFollowerDisk(context.Background(), task.ExtentInfo, task.Sources)
+			}
+		}()
+	}
+	var validExtentsToBeRepaired int
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
-		if store.IsRecentDelete(extentInfo[storage.FileID]) {
+		if store.IsRecentDelete(extentInfo[storage.FileID]) || !store.HasExtent(extentInfo[storage.FileID]) {
 			continue
 		}
-		if !store.HasExtent(extentInfo[storage.FileID]) {
-			continue
-		}
-		wg.Add(1)
 		majorSource := repairTask.ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
-		sources := []string{
-			majorSource,
-		}
+		sources := make([]string, 0, len(allReplicas))
+		sources = append(sources, majorSource)
 		for _, replica := range allReplicas {
 			if replica == majorSource || replica == localAddr {
 				continue
 			}
 			sources = append(sources, replica)
 		}
-
-		// repair the extents
-		go dp.doStreamExtentFixRepairOnFollowerDisk(context.Background(), wg, extentInfo, sources)
-		recoverIndex++
-
-		if recoverIndex%NumOfFilesToRecoverInParallel == 0 {
-			wg.Wait()
+		extentRepairTaskCh <- &__ExtentRepairTask{
+			ExtentInfo: extentInfo,
+			Sources:    sources,
 		}
+		validExtentsToBeRepaired++
 	}
-	wg.Wait()
+	close(extentRepairTaskCh)
+	extentRepairWorkerWG.Wait()
+
 	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
+
+	log.LogInfof("partition[%v] repaired %v extents, cost %v", validExtentsToBeRepaired, validExtentsToBeRepaired, time.Now().Sub(startTime))
 }
 
 type TinyDeleteRecord struct {
@@ -1191,7 +1209,7 @@ func (dp *DataPartition) EvictExpiredExtentDeleteCache(expireTime int64) {
 	dp.extentStore.EvictExpiredNormalExtentDeleteCache(expireTime)
 }
 
-func (dp *DataPartition) getTinyExtentHoleInfo(extent uint64) (result interface{}, err error){
+func (dp *DataPartition) getTinyExtentHoleInfo(extent uint64) (result interface{}, err error) {
 	holes, extentAvaliSize, err := dp.ExtentStore().TinyExtentHolesAndAvaliSize(extent, 0)
 	if err != nil {
 		return

@@ -530,8 +530,7 @@ func (dp *DataPartition) NotifyExtentRepair(ctx context.Context, members []*Data
 }
 
 // DoStreamExtentFixRepair executes the repair on the followers.
-func (dp *DataPartition) doStreamExtentFixRepairOnFollowerDisk(ctx context.Context, wg *sync.WaitGroup, remoteExtentInfo storage.ExtentInfoBlock, sources []string) {
-	defer wg.Done()
+func (dp *DataPartition) doStreamExtentFixRepairOnFollowerDisk(ctx context.Context, remoteExtentInfo storage.ExtentInfoBlock, sources []string) {
 
 	var err error
 	for _, source := range sources {

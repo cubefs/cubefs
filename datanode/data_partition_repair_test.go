@@ -336,7 +336,10 @@ func TestDoStreamExtentFixRepairOnFollowerDisk(t *testing.T) {
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
 		wg.Add(1)
 		source := repairTasks[0].ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
-		go dp.doStreamExtentFixRepairOnFollowerDisk(ctx, wg, extentInfo, []string{source})
+		go func(info storage.ExtentInfoBlock) {
+			defer wg.Done()
+			dp.doStreamExtentFixRepairOnFollowerDisk(ctx, info, []string{source})
+		}(extentInfo)
 	}
 	wg.Wait()
 	// 比较修复后extent水位

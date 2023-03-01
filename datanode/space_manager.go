@@ -43,7 +43,7 @@ type SpaceManager struct {
 	selectedIndex        int // TODO what is selected index
 	diskList             []string
 	dataNode             *DataNode
-	createPartitionMutex sync.RWMutex
+	createPartitionMutex sync.RWMutex // 该锁用于控制Partition创建的并发，保证同一时间只处理一个Partition的创建操作
 
 	// Parallel task limits on disk
 	fixTinyDeleteRecordLimitOnDisk uint64
@@ -377,8 +377,9 @@ func (manager *SpaceManager) DetachDataPartition(partitionID uint64) {
 }
 
 func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
-	manager.partitionMutex.Lock()
-	defer manager.partitionMutex.Unlock()
+	// 保证同一时间只处理一个Partition的创建操作
+	manager.createPartitionMutex.Lock()
+	defer manager.createPartitionMutex.Unlock()
 	dpCfg := &dataPartitionCfg{
 		PartitionID:   request.PartitionId,
 		VolName:       request.VolumeId,
@@ -392,7 +393,9 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 
 		VolHAType: request.VolumeHAType,
 	}
+	manager.partitionMutex.RLock()
 	dp = manager.partitions[dpCfg.PartitionID]
+	manager.partitionMutex.RUnlock()
 	if dp != nil {
 		if err = dp.IsEquareCreateDataPartitionRequst(request); err != nil {
 			return nil, err
@@ -409,7 +412,9 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	if err = dp.Start(); err != nil {
 		return
 	}
+	manager.partitionMutex.Lock()
 	manager.partitions[dp.partitionID] = dp
+	manager.partitionMutex.Unlock()
 	return
 }
 
