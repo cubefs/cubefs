@@ -512,7 +512,8 @@ func (c *Cluster) scheduleToDecommission() {
 					continue
 				}
 				if c.BadDPCount > uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor) {
-					log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v", uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor)
+					log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v",
+						uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor))
 					continue
 				}
 				c.decommissionDatanodes()

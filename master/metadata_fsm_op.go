@@ -45,6 +45,7 @@ type clusterValue struct {
 	FaultDomain                 bool
 	DiskQosEnable               bool
 	QosLimitUpload              uint64
+	AutoDecommission            bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -61,6 +62,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		FaultDomain:                 c.FaultDomain,
 		DiskQosEnable:               c.diskQosEnable,
 		QosLimitUpload:              uint64(c.QosAcceptLimit.Limit()),
+		AutoDecommission:            c.AutoDecommission,
 	}
 	return cv
 }
@@ -694,6 +696,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.diskQosEnable = cv.DiskQosEnable
 		c.cfg.QosMasterAcceptLimit = cv.QosLimitUpload
+		c.AutoDecommission = cv.AutoDecommission
 
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
