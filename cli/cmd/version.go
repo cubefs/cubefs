@@ -58,7 +58,10 @@ func newVersionCreateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("%v\n\n", volumeVersionTableHeader)
-			for _, ver := range verList.VerList {
+			for id, ver := range verList.VerList {
+				if id == len(verList.VerList)-1 {
+					break
+				}
 				stdout("%v\n", formatVerInfoTableRow(ver))
 			}
 
@@ -75,13 +78,15 @@ func newVersionListCmd(client *master.MasterClient) *cobra.Command {
 		Short:   cmdVersionListShort,
 		Aliases: []string{"create"},
 		Run: func(cmd *cobra.Command, args []string) {
-			var volumeName = args[0]
-			var verList *proto.VolVersionInfoList
-			var err error
 			if len(args) == 0 {
 				stdout("need volume name\n")
 				return
 			}
+			var (
+				volumeName = args[0]
+				verList    *proto.VolVersionInfoList
+				err        error
+			)
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)
@@ -91,7 +96,10 @@ func newVersionListCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("%v\n", volumeVersionTableHeader)
-			for _, ver := range verList.VerList {
+			for id, ver := range verList.VerList {
+				if id == len(verList.VerList)-1 {
+					break
+				}
 				stdout("%v\n", formatVerInfoTableRow(ver))
 			}
 		},

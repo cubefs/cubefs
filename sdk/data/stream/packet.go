@@ -68,7 +68,8 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 }
 
 // NewOverwritePacket returns a new overwrite packet.
-func NewOverwriteByAppendPacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset int) *Packet {
+func NewOverwriteByAppendPacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int,
+	inode uint64, fileOffset int, direct bool, op uint8) *Packet {
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
@@ -79,7 +80,16 @@ func NewOverwriteByAppendPacket(dp *wrapper.DataPartition, extentID uint64, exte
 	p.Arg = nil
 	p.ArgLen = 0
 	p.RemainingFollowers = 0
-	p.Opcode = proto.OpRandomWriteAppend
+	p.Opcode = op
+
+	if direct {
+		if op == proto.OpRandomWriteAppend {
+			p.Opcode = proto.OpSyncRandomWriteAppend
+		} else if op == proto.OpTryWriteAppend {
+			p.Opcode = proto.OpSyncTryWriteAppend
+		}
+	}
+
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	p.Data, _ = proto.Buffers.Get(util.BlockSize)
