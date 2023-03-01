@@ -53,6 +53,7 @@ type Cluster struct {
 	domainManager       *DomainManager
 	BadDataPartitionIds *sync.Map
 	BadMetaPartitionIds *sync.Map
+	BadDPCount          uint64
 	DisableAutoAllocate bool
 	FaultDomain         bool
 	needFaultDomain     bool // FaultDomain is true and normal zone aleady used up
@@ -65,6 +66,8 @@ type Cluster struct {
 	followerReadManager *followerReadManager
 	diskQosEnable       bool
 	QosAcceptLimit      *rate.Limiter
+	AutoDecommission    bool
+	diskCount           int
 }
 
 type followerReadManager struct {
@@ -164,6 +167,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToReduceReplicaNum()
 	c.scheduleToCheckNodeSetGrpManagerStatus()
 	c.scheduleToCheckFollowerReadCache()
+	c.scheduleToDecommission()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -421,7 +425,7 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 	tasks := make([]*proto.AdminTask, 0)
 	c.dataNodes.Range(func(addr, dataNode interface{}) bool {
 		node := dataNode.(*DataNode)
-		node.checkLiveness()
+		node.checkLiveness(c)
 		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable)
 		tasks = append(tasks, task)
 		return true
@@ -496,6 +500,160 @@ func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
 	nodes = append(nodes, metaNodes...)
 	dataNodes := c.getNotConsistentIDDataNodes()
 	nodes = append(nodes, dataNodes...)
+	return
+}
+
+func (c *Cluster) scheduleToDecommission() {
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				if !c.AutoDecommission {
+					log.LogDebugf("auto decommission is disabled")
+					continue
+				}
+				if c.BadDPCount > uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor) {
+					log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v",
+						uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor))
+					continue
+				}
+				c.decommissionDatanodes()
+				c.decommissionDisks()
+				c.decommissionDataPartitions()
+			}
+			time.Sleep(5 * time.Minute)
+		}
+	}()
+}
+
+func (c *Cluster) decommissionDatanodes() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("decommission datanodes occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"decommission datanodes occurred panic")
+		}
+	}()
+
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		if dataNode.ToBeOffline {
+			log.LogDebugf("datanode: [%v] is decommissioning", dataNode.Addr)
+			return true
+		}
+		if c.BadDPCount > uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor) {
+			log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v", float64(c.diskCount)*c.cfg.DecommissionDpFactor)
+			return true
+		}
+		if dataNode.isStale && !dataNode.ToBeOffline {
+			log.LogInfof("begin to decommissionDatanode node: [%v]", dataNode.Addr)
+			if err := c.migrateDataNode(dataNode.Addr, "", 0, false); err != nil {
+				dataNode.ToBeOffline = false
+				log.LogErrorf("auto decommissionDatanode: [%v] failed, err: %v", dataNode.Addr, err)
+				return true
+			}
+		}
+		log.LogInfof("decommissionDatanode: [%v] successfully", dataNode.Addr)
+		return true
+	})
+}
+
+func (c *Cluster) decommissionDisks() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("decommission disks occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"decommission disks occurred panic")
+		}
+	}()
+
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		if dataNode.ToBeOffline {
+			log.LogDebugf("datanode: [%v] is decommissioning", dataNode.Addr)
+			return true
+		}
+
+		for _, badDisk := range dataNode.BadDisks {
+			if c.BadDPCount > uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor) {
+				log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v", float64(c.diskCount)*c.cfg.DecommissionDpFactor)
+				return true
+			}
+			var (
+				badPartitionIds []uint64
+				badPartitions   []*DataPartition
+			)
+			badPartitions = dataNode.badPartitions(badDisk, c)
+			if len(badPartitions) == 0 {
+				if err := c.addAndSyncDecommissionedDisk(dataNode, badDisk); err != nil {
+					log.LogErrorf("action[decommissionDisk] addAndSyncDecommissionedDisk failed, badDisk: [%v], datanode: [%v]", badDisk, dataNode.Addr)
+					return true
+				}
+			}
+			for _, bdp := range badPartitions {
+				badPartitionIds = append(badPartitionIds, bdp.PartitionID)
+			}
+			log.LogInfof("begin to decommissionDisk disk: [%v] from node: [%v], badPartitionIds[%v]", dataNode.Addr, badDisk, badPartitionIds)
+			if err := c.decommissionDisk(dataNode, false, badDisk, badPartitions); err != nil {
+				log.LogErrorf("action[decommissionDisk] decommissionDisk failed, badDisk: [%v], datanode: [%v]", badDisk, dataNode.Addr)
+				return true
+			}
+
+			if err := c.addAndSyncDecommissionedDisk(dataNode, badDisk); err != nil {
+				log.LogErrorf("action[decommissionDisk] addAndSyncDecommissionedDisk failed, badDisk: [%v], datanode: [%v]", badDisk, dataNode.Addr)
+				return true
+			}
+			log.LogInfof("decommissionDisk disk: [%v] from node: [%v], badPartitionIds[%v] has offline successfully",
+				dataNode.Addr, badDisk, badPartitionIds)
+		}
+		return true
+	})
+}
+
+func (c *Cluster) decommissionDataPartitions() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("decommission dataPartitions occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"decommission dataPartitions occurred panic")
+		}
+	}()
+
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		if dataNode.ToBeOffline {
+			log.LogDebugf("datanode: [%v] is decommissioning", dataNode.Addr)
+			return true
+		}
+
+		for _, lackDataPartition := range dataNode.LackDataPartitions {
+			if c.BadDPCount > uint64(float64(c.diskCount)*c.cfg.DecommissionDpFactor) {
+				log.LogDebugf("the number of decommissioning dataPartitions are exceeds %v", float64(c.diskCount)*c.cfg.DecommissionDpFactor)
+				return true
+			}
+			dp, err := c.getDataPartitionByID(lackDataPartition)
+			if err != nil {
+				log.LogWarnf("lackDataPartition: [%v] is not found, datanode: [%v], err: [%v]", lackDataPartition, dataNode.Addr, err)
+				return true
+			}
+			log.LogDebugf("begin to decommission dataPartition: [%v] from datanode: [%v] ", lackDataPartition, dataNode.Addr)
+			c.decommissionDataPartition(dataNode.Addr, dp, false, handleDataPartitionOfflineErr)
+			log.LogDebugf("decommission dataPartition [%v] from node: [%v] successfully", dp.PartitionID, dataNode.Addr)
+		}
+		return true
+	})
+}
+
+func (c *Cluster) updateAndSyncLackDataPartitions(dataNode *DataNode, lackDataPartitions []uint64) (err error) {
+	dataNode.Lock()
+	defer dataNode.Unlock()
+	oldLackDataPartitions := dataNode.LackDataPartitions
+	dataNode.LackDataPartitions = lackDataPartitions
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		dataNode.LackDataPartitions = oldLackDataPartitions
+		return
+	}
+	log.LogInfof("action[updateAndSyncLackDataPartitions] finish, lackDataPartitions [%v], dataNode [%v]", lackDataPartitions, dataNode.Addr)
+	log.LogInfof("#TESTLOG datanode lackDataPartitions [%v], dataNode [%v]", dataNode.LackDataPartitions, dataNode.Addr)
 	return
 }
 
@@ -2636,6 +2794,28 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 	return
 }
 
+func (c *Cluster) allDecommissionDataNodes() (dataNodes []proto.NodeView) {
+	dataNodes = make([]proto.NodeView, 0)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		if dataNode.ToBeOffline {
+			dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
+		}
+		return true
+	})
+	return
+}
+
+func (c *Cluster) allDecommissionDisks() (disks []proto.DecommissionDiskView) {
+	disks = make([]proto.DecommissionDiskView, 0)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		disks = append(disks, proto.DecommissionDiskView{Addr: dataNode.Addr, DecommissionDisks: dataNode.getDecommissionedDisks()})
+		return true
+	})
+	return
+}
+
 func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 	metaNodes = make([]proto.NodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
@@ -2790,6 +2970,18 @@ func (c *Cluster) setDisableAutoAllocate(disableAutoAllocate bool) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDisableAutoAllocate] err[%v]", err)
 		c.DisableAutoAllocate = oldFlag
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setAutoDecommission(autoDecommission bool) (err error) {
+	oldFlag := c.AutoDecommission
+	c.AutoDecommission = autoDecommission
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setAutoDecommission] err[%v]", err)
+		c.AutoDecommission = oldFlag
 		err = proto.ErrPersistenceByRaft
 		return
 	}

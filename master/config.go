@@ -55,6 +55,7 @@ const (
 	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck // in terms of seconds
 	noHeartBeatTimes                           = 3                           // number of times that no heartbeat reported
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
+	defaultNodeStaleSec                        = 60 * 10
 	defaultDataPartitionTimeOutSec             = 5 * defaultIntervalToCheckHeartbeat
 	defaultMissingDataPartitionInterval        = 24 * 3600
 
@@ -74,6 +75,7 @@ const (
 	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
 	defaultNodeSetGrpStep                              = 1
 	defaultMasterMinQosAccept                          = 20000
+	defaultDecommissionDpFactor                        = 2
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -82,6 +84,7 @@ var AddrDatabase = make(map[uint64]string)
 type clusterConfig struct {
 	secondsToFreeDataPartitionAfterLoad int64
 	NodeTimeOutSec                      int64
+	NodeStaleSec                        int64
 	MissingDataPartitionInterval        int64
 	DataPartitionTimeOutSec             int64
 	IntervalToAlarmMissingDataPartition int64
@@ -109,6 +112,7 @@ type clusterConfig struct {
 	DomainBuildAsPossible               bool
 	DataPartitionUsageThreshold         float64
 	QosMasterAcceptLimit                uint64
+	DecommissionDpFactor                float64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

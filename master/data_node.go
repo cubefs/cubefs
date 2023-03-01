@@ -37,6 +37,7 @@ type DataNode struct {
 	StartTime                 int64
 	LastUpdateTime            time.Time
 	isActive                  bool
+	isStale                   bool
 	sync.RWMutex              `graphql:"-"`
 	UsageRatio                float64           // used / total space
 	SelectedTimes             uint64            // number times that this datanode has been selected as the location for a data partition.
@@ -47,6 +48,7 @@ type DataNode struct {
 	TotalPartitionSize        uint64
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
+	LackDataPartitions        []uint64
 	BadDisks                  []string
 	DecommissionedDisks       sync.Map
 	ToBeOffline               bool
@@ -56,6 +58,7 @@ type DataNode struct {
 	QosIopsWLimit             uint64
 	QosFlowRLimit             uint64
 	QosFlowWLimit             uint64
+	DiskCount                 int
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -69,7 +72,7 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	return
 }
 
-func (dataNode *DataNode) checkLiveness() {
+func (dataNode *DataNode) checkLiveness(c *Cluster) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	log.LogInfof("action[checkLiveness] datanode[%v] report time[%v],since report time[%v], need gap [%v]",
@@ -77,7 +80,13 @@ func (dataNode *DataNode) checkLiveness() {
 	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		dataNode.isActive = false
 	}
-
+	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(c.cfg.NodeStaleSec) {
+		dataNode.isStale = true
+		log.LogInfof("action[checkLiveness] datanode[%v] is stale, report time[%v]", dataNode.Addr, dataNode.ReportTime)
+	} else if dataNode.isStale {
+		dataNode.isStale = false
+		log.LogInfof("action[checkLiveness] datanode[%v] is recover, report time[%v]", dataNode.Addr, dataNode.ReportTime)
+	}
 	return
 }
 
@@ -108,6 +117,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.DataPartitionReports = resp.PartitionReports
 	dataNode.TotalPartitionSize = resp.TotalPartitionSize
+	dataNode.LackDataPartitions = resp.LackDataPartitions
 	dataNode.BadDisks = resp.BadDisks
 	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {
@@ -117,6 +127,8 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	}
 	dataNode.ReportTime = time.Now()
 	dataNode.isActive = true
+	dataNode.DiskCount = resp.DiskCount
+	log.LogInfof("#TESTLOG decommissionDisk dataNode [%v], diskCount [%v]", dataNode.Addr, dataNode.DiskCount)
 }
 
 func (dataNode *DataNode) canAlloc() bool {

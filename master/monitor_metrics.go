@@ -46,6 +46,8 @@ const (
 	MetricMetaNodesInactive    = "metaNodes_inactive"
 	MetricDataNodesNotWritable = "dataNodes_not_writable"
 	MetricMetaNodesNotWritable = "metaNodes_not_writable"
+	MetricDataNodesToBeOffline = "dataNodes_to_be_offline"
+	MetricDiskCount            = "disk_count"
 )
 
 type monitorMetrics struct {
@@ -70,9 +72,11 @@ type monitorMetrics struct {
 	metaNodesInactive    *exporter.Gauge
 	dataNodesNotWritable *exporter.Gauge
 	metaNodesNotWritable *exporter.Gauge
+	dataNodesToBeOffline *exporter.Gauge
 
-	volNames map[string]struct{}
-	badDisks map[string]string
+	volNames  map[string]struct{}
+	badDisks  map[string]string
+	diskCount *exporter.Gauge
 	//volNamesMutex sync.Mutex
 }
 
@@ -104,6 +108,8 @@ func (mm *monitorMetrics) start() {
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
 	mm.dataNodesNotWritable = exporter.NewGauge(MetricDataNodesNotWritable)
 	mm.metaNodesNotWritable = exporter.NewGauge(MetricMetaNodesNotWritable)
+	mm.dataNodesToBeOffline = exporter.NewGauge(MetricDataNodesToBeOffline)
+	mm.diskCount = exporter.NewGauge(MetricDiskCount)
 	go mm.statMetrics()
 }
 
@@ -144,11 +150,12 @@ func (mm *monitorMetrics) doStat() {
 	mm.metaNodesIncreased.Set(float64(mm.cluster.metaNodeStatInfo.IncreasedGB))
 	mm.setVolMetrics()
 	mm.setBadPartitionMetrics()
-	mm.setDiskErrorMetric()
+	mm.setDiskMetric()
 	mm.setInactiveDataNodesCount()
 	mm.setInactiveMetaNodesCount()
 	mm.setNotWritableDataNodesCount()
 	mm.setNotWritableMetaNodesCount()
+	mm.setToBeOfflineDataNodesCount()
 }
 
 func (mm *monitorMetrics) setVolMetrics() {
@@ -222,6 +229,7 @@ func (mm *monitorMetrics) setBadPartitionMetrics() {
 		return true
 	})
 	mm.badDpCount.SetWithLabels(float64(badDpCount), map[string]string{"type": "bad_dp"})
+	mm.cluster.BadDPCount = badDpCount
 }
 
 func (mm *monitorMetrics) deleteVolMetric(volName string) {
@@ -235,8 +243,9 @@ func (mm *monitorMetrics) deleteVolMetric(volName string) {
 	mm.volMetaCount.DeleteLabelValues(volName, "freeList")
 }
 
-func (mm *monitorMetrics) setDiskErrorMetric() {
+func (mm *monitorMetrics) setDiskMetric() {
 	deleteBadDisks := make(map[string]string)
+	diskCount := 0
 	for k, v := range mm.badDisks {
 		deleteBadDisks[k] = v
 		delete(mm.badDisks, k)
@@ -246,6 +255,8 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 		if !ok {
 			return true
 		}
+		log.LogInfof("#TESTLOG decommissionDisk dataNode [%v], diskCount [%v]", dataNode.Addr, dataNode.DiskCount)
+		diskCount += dataNode.DiskCount
 		for _, badDisk := range dataNode.BadDisks {
 			for _, partition := range dataNode.DataPartitionReports {
 				if partition.DiskPath == badDisk {
@@ -263,6 +274,9 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 	for k, v := range deleteBadDisks {
 		mm.diskError.DeleteLabelValues(v, k)
 	}
+	mm.diskCount.Set(float64(diskCount))
+	mm.cluster.diskCount = diskCount
+	log.LogInfof("#TESTLOG decommissionDisk diskCount [%v]", diskCount)
 }
 
 func (mm *monitorMetrics) setInactiveMetaNodesCount() {
@@ -325,6 +339,21 @@ func (mm *monitorMetrics) setNotWritableDataNodesCount() {
 	mm.dataNodesNotWritable.Set(float64(notWritabelDataNodesCount))
 }
 
+func (mm *monitorMetrics) setToBeOfflineDataNodesCount() {
+	var toBeOfflineDataNodesCount int64
+	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode, ok := node.(*DataNode)
+		if !ok {
+			return true
+		}
+		if dataNode.ToBeOffline {
+			toBeOfflineDataNodesCount++
+		}
+		return true
+	})
+	mm.dataNodesToBeOffline.Set(float64(toBeOfflineDataNodesCount))
+}
+
 func (mm *monitorMetrics) clearVolMetrics() {
 	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
 		if volName, ok := key.(string); ok {
@@ -358,4 +387,5 @@ func (mm *monitorMetrics) resetAllMetrics() {
 	mm.metaNodesInactive.Set(0)
 	mm.dataNodesNotWritable.Set(0)
 	mm.metaNodesNotWritable.Set(0)
+	mm.dataNodesToBeOffline.Set(0)
 }

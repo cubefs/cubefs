@@ -298,6 +298,12 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.electionTick <= 3 {
 		m.electionTick = 5
 	}
+	if m.config.NodeStaleSec < defaultNodeStaleSec {
+		m.config.NodeStaleSec = defaultNodeStaleSec
+	}
+	if m.config.DecommissionDpFactor < defaultDecommissionDpFactor {
+		m.config.DecommissionDpFactor = defaultDecommissionDpFactor
+	}
 	return
 }
 

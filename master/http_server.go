@@ -123,6 +123,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminClusterFreeze).
 		HandlerFunc(m.setupAutoAllocation)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAutoDecommission).
+		HandlerFunc(m.setupAutoDecommission)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddRaftNode).
 		HandlerFunc(m.addRaftNode)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -131,7 +134,15 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.RaftStatus).
 		HandlerFunc(m.getRaftStatus)
-	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminClusterStat).HandlerFunc(m.clusterStat)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminClusterStat).
+		HandlerFunc(m.clusterStat)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetDecommissionDatanodes).
+		HandlerFunc(m.getAllDecommissionDataNodes)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetDecommissionDisks).
+		HandlerFunc(m.getAllDecommissionDisks)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -344,6 +355,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetDpRdOnly).
 		HandlerFunc(m.setDpRdOnlyHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.ReportLackDataPartitions).
+		HandlerFunc(m.reportLackDataPartitions)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).

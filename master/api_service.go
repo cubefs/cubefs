@@ -15,9 +15,11 @@
 package master
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -119,6 +121,22 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set DisableAutoAllocate to %v successfully", status)))
+}
+
+func (m *Server) setupAutoDecommission(w http.ResponseWriter, r *http.Request) {
+	var (
+		status bool
+		err    error
+	)
+	if status, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setAutoDecommission(status); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set AutoDecommission to %v successfully", status)))
 }
 
 // View the topology of the cluster.
@@ -2180,6 +2198,48 @@ func (m *Server) setDpRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (m *Server) reportLackDataPartitions(w http.ResponseWriter, r *http.Request) {
+	var (
+		node                *DataNode
+		err                 error
+		lackPartitionReport *proto.LackPartitionReport
+	)
+	lackPartitionReport, err = parseRequestToReportLackPartitions(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	addr := lackPartitionReport.Addr
+	if !checkIpPort(addr) {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
+		return
+	}
+	if node, err = m.cluster.dataNode(addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+	if err = m.cluster.updateAndSyncLackDataPartitions(node, lackPartitionReport.LackPartitions); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("updateAndSyncLackDataPartitions failed")))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("updateLackDataPartitions successfully"))
+}
+
+func parseRequestToReportLackPartitions(r *http.Request) (lackPartitionReport *proto.LackPartitionReport, err error) {
+	var body []byte
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		return
+	}
+	lackPartitionReport = &proto.LackPartitionReport{}
+	decoder := json.NewDecoder(bytes.NewBuffer(body))
+	decoder.UseNumber()
+	err = decoder.Decode(lackPartitionReport)
+	return
+}
+
 func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		params map[string]interface{}
@@ -3255,4 +3315,14 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 	}
 
 	return nil
+}
+
+func (m *Server) getAllDecommissionDataNodes(w http.ResponseWriter, r *http.Request) {
+	dataNodes := m.cluster.allDecommissionDataNodes()
+	sendOkReply(w, r, newSuccessHTTPReply(dataNodes))
+}
+
+func (m *Server) getAllDecommissionDisks(w http.ResponseWriter, r *http.Request) {
+	dataNodes := m.cluster.allDecommissionDisks()
+	sendOkReply(w, r, newSuccessHTTPReply(dataNodes))
 }

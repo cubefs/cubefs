@@ -35,6 +35,7 @@ const (
 	AdminCreateVol                  = "/admin/createVol"
 	AdminGetVol                     = "/admin/getVol"
 	AdminClusterFreeze              = "/cluster/freeze"
+	AdminAutoDecommission           = "/cluster/autoDecommission"
 	AdminClusterStat                = "/cluster/stat"
 	AdminGetIP                      = "/admin/getIp"
 	AdminCreateMetaPartition        = "/metaPartition/create"
@@ -52,6 +53,9 @@ const (
 	AdminSetNodeRdOnly              = "/admin/setNodeRdOnly"
 	AdminSetDpRdOnly                = "/admin/setDpRdOnly"
 	AdminDataPartitionChangeLeader  = "/dataPartition/changeleader"
+	AdminGetDecommissionDatanodes   = "/admin/getDecommissionDatanodes"
+	AdminGetDecommissionDisks       = "/admin/getDecommissionDisks"
+
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -93,6 +97,7 @@ const (
 	DecommissionDataNode           = "/dataNode/decommission"
 	MigrateDataNode                = "/dataNode/migrate"
 	CancelDecommissionDataNode     = "/dataNode/cancelDecommission"
+	ReportLackDataPartitions       = "/dataNode/reportLackDataPartitions"
 	DecommissionDisk               = "/disk/decommission"
 	RecommissionDisk               = "/disk/recommission"
 	GetDataNode                    = "/dataNode/get"
@@ -303,6 +308,12 @@ type PartitionReport struct {
 	NeedCompare     bool
 }
 
+// LackPartitionReport defines the lack partitions report.
+type LackPartitionReport struct {
+	Addr           string
+	LackPartitions []uint64
+}
+
 type DataNodeQosResponse struct {
 	IopsRLimit uint64
 	IopsWLimit uint64
@@ -327,6 +338,8 @@ type DataNodeHeartbeatResponse struct {
 	Status              uint8
 	Result              string
 	BadDisks            []string
+	LackDataPartitions  []uint64
+	DiskCount           int
 }
 
 // MetaPartitionReport defines the meta partition report.
