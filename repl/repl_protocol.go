@@ -273,8 +273,8 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-	log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) ",
-		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String())
+	//log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
+	//	request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
 	if err = request.resolveFollowersAddr(); err != nil {
 		err = rp.putResponse(request)
 		return
@@ -401,6 +401,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	defer func() {
 		reply.clean()
 	}()
+	log.LogDebugf("writeResponse.opcode %v reply %v conn(%v)", reply.Opcode, reply.GetUniqueLogId(), rp.sourceConn)
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
@@ -411,13 +412,21 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		}
 		rp.Stop()
 	}
-
+	log.LogDebugf("try rsp opcode %v %v", rp.replId, reply.Opcode, rp.sourceConn)
+	if reply.Opcode == proto.OpTryWriteAppend || reply.Opcode == proto.OpSyncTryWriteAppend {
+		log.LogDebugf("try rsp opcode %v", reply.Opcode)
+	}
 	// execute the post-processing function
 	rp.postFunc(reply)
 	if !reply.NeedReply {
+		if reply.Opcode == proto.OpTryWriteAppend || reply.Opcode == proto.OpSyncTryWriteAppend {
+			log.LogDebugf("try rsp opcode %v", reply.Opcode)
+		}
 		return
 	}
-
+	if reply.Opcode == proto.OpTryWriteAppend || reply.Opcode == proto.OpSyncTryWriteAppend {
+		log.LogDebugf("try rsp opcode %v", reply.Opcode)
+	}
 	if err = reply.WriteToConn(rp.sourceConn); err != nil {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
 			rp.sourceConn.RemoteAddr().String()), reply.StartT, err))

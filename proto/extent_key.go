@@ -166,6 +166,15 @@ func (k *ExtentKey) IsSequence(rightKey *ExtentKey) bool {
 		k.FileOffset+uint64(k.Size) == rightKey.FileOffset
 }
 
+func (k *ExtentKey) IsSequenceWithDiffSeq(rightKey *ExtentKey) bool {
+	//	return false
+	return k.PartitionId == rightKey.PartitionId &&
+		k.ExtentId == rightKey.ExtentId &&
+		!(k.GetSeq() == rightKey.GetSeq()) &&
+		k.ExtentOffset+uint64(k.Size) == rightKey.ExtentOffset &&
+		k.FileOffset+uint64(k.Size) == rightKey.FileOffset
+}
+
 func (k *ExtentKey) IsFileInSequence(rightKey *ExtentKey) bool {
 	//	return false
 	return k.PartitionId == rightKey.PartitionId &&

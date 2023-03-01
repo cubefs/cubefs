@@ -273,11 +273,10 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 			}
 			return true
 		})
-
-		for _, snapIno := range ino.multiSnap.multiVersions {
+		ino.RangeMultiVer(func(idx int, snapIno *Inode) bool {
 			if reqVer > snapIno.getVer() {
 				log.LogInfof("action[GetExtentByVer] finish read ino %v readseq %v snapIno ino seq %v", ino.Inode, reqVer, snapIno.getVer())
-				break
+				return false
 			}
 
 			log.LogInfof("action[GetExtentByVer] read ino %v readseq %v snapIno ino seq %v", ino.Inode, reqVer, snapIno.getVer())
@@ -289,7 +288,8 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 					log.LogInfof("action[GetExtentByVer] not get extent ino %v readseq %v snapIno ino seq %v, exclude ek (%v)", ino.Inode, reqVer, snapIno.getVer(), ek.String())
 				}
 			}
-		}
+			return true
+		})
 		sort.SliceStable(rsp.Extents, func(i, j int) bool {
 			return rsp.Extents[i].FileOffset < rsp.Extents[j].FileOffset
 		})
