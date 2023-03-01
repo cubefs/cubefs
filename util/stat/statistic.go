@@ -15,6 +15,7 @@
 package stat
 
 import "C"
+
 import (
 	"bufio"
 	"errors"
@@ -39,15 +40,16 @@ const (
 	ShiftedExtension   = ".old"
 	PRO_MEM            = "/proc/%d/status"
 
-	F_OK                = 0
-	MaxTimeoutLevel     = 3
-	DefaultStatInterval = 60                // 60 seconds
-	DefaultStatLogSize  = 200 * 1024 * 1024 // 200M
-	DefaultHeadRoom     = 50 * 1024         // 50G
-	MaxReservedDays     = 7 * 24 * time.Hour
+	F_OK               = 0
+	MaxTimeoutLevel    = 3
+	DefaultStatLogSize = 200 * 1024 * 1024 // 200M
+	DefaultHeadRoom    = 50 * 1024         // 50G
+	MaxReservedDays    = 7 * 24 * time.Hour
 )
 
-var DefaultTimeOutUs = [3]uint32{100000, 500000, 1000000}
+var DefaultTimeOutUs = [MaxTimeoutLevel]uint32{100000, 500000, 1000000}
+
+var DefaultStatInterval = 60 * time.Second // 60 seconds
 
 var re = regexp.MustCompile(`\([0-9]*\)`)
 
@@ -108,33 +110,31 @@ func NewStatistic(dir, logModule string, logMaxSize int64, timeOutUs [MaxTimeout
 		logBaseName:   logName,
 		pid:           os.Getpid(),
 		lastClearTime: time.Time{},
-		timeOutUs:     [MaxTimeoutLevel]uint32{},
+		timeOutUs:     timeOutUs,
 		typeInfoMap:   make(map[string]*typeInfo),
 		closeStat:     false,
 		useMutex:      useMutex,
 		Mutex:         sync.Mutex{},
 	}
 
-	st.timeOutUs = timeOutUs
 	gSt = st
 	go st.flushScheduler()
 	return st, nil
 }
 
+// TODO: how to close?
 func (st *Statistic) flushScheduler() {
-	lastStatTime := time.Now()
-	statGap := time.Duration(DefaultStatInterval)
+	timer := time.NewTimer(DefaultStatInterval)
+	defer timer.Stop()
 	for {
-		if time.Since(lastStatTime) < (statGap * time.Second) {
-			time.Sleep(1 * time.Second)
-			continue
-		}
+		<-timer.C
+
 		err := WriteStat()
 		if err != nil {
 			log.LogErrorf("WriteStat error: %v", err)
 		}
 
-		lastStatTime = time.Now()
+		timer.Reset(DefaultStatInterval)
 
 		fs := syscall.Statfs_t{}
 		if err := syscall.Statfs(st.logDir, &fs); err != nil {
