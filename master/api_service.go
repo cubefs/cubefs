@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/cryptoutil"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -1295,6 +1296,12 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if !dp.IsDecommissionInitial() {
+		rstMsg = fmt.Sprintf(" dataPartitionID :%v  status %v not support decommission",
+			partitionID, dp.GetDecommissionStatus())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
+		return
+	}
 	if dp.isSpecialReplicaCnt() {
 		rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  is special replica cnt %v on node:%v async running,need check later",
 			partitionID, dp.ReplicaNum, addr)
@@ -1363,6 +1370,57 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("diagnose dataPartition[%v] inactiveNodes:[%v], corruptDpIDs:[%v], lackReplicaDpIDs:[%v], BadReplicaDataPartitionIDs[%v]",
 		m.cluster.Name, inactiveNodes, corruptDpIDs, lackReplicaDpIDs, badReplicaDpIDs)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) resetDataPartitionDecommissionStatus(w http.ResponseWriter, r *http.Request) {
+	var (
+		msg         string
+		dp          *DataPartition
+		partitionID uint64
+		err         error
+	)
+
+	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+
+	dp.ResetDecommissionStatus()
+	msg = fmt.Sprintf("partitionID :%v  reset decommission status successfully", partitionID)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *http.Request) {
+	var (
+		msg         string
+		dp          *DataPartition
+		partitionID uint64
+		err         error
+		replicas    []string
+	)
+
+	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+	for _, replica := range dp.Replicas {
+		replicas = append(replicas, replica.Addr)
+	}
+	msg = fmt.Sprintf("partitionID :%v  status[%v] retry [%v] raftForce[%v] recover [%v] "+
+		"decommission src dataNode[%v] disk[%v]  dst dataNode[%v] term[%v] replicas[%v]",
+		partitionID, dp.GetDecommissionStatus(), dp.DecommissionRetry, dp.DecommissionRaftForce, dp.isRecover,
+		dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.DecommissionDstAddr, dp.DecommissionTerm, replicas)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 // Mark the volume as deleted, which will then be deleted later.
@@ -1887,7 +1945,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dataNode.PersistenceDataPartitions = m.cluster.getAllDataPartitionIDByDatanode(nodeAddr)
-
+	//some dp maybe removed from this node but decommission failed
 	dataNodeInfo = &proto.DataNodeInfo{
 		Total:                     dataNode.Total,
 		Used:                      dataNode.Used,
@@ -1917,7 +1975,6 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		rstMsg      string
 		offLineAddr string
-		limit       int
 		raftForce   bool
 		err         error
 	)
@@ -1927,7 +1984,7 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		stat.EndStat(proto.DecommissionDataNode, err, bgTime, 1)
 	}()
 
-	if offLineAddr, limit, err = parseDecomNodeReq(r); err != nil {
+	if offLineAddr, err = parseDecomDataNodeReq(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1942,39 +1999,36 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.migrateDataNode(offLineAddr, "", limit, raftForce); err != nil {
+	if err = m.cluster.migrateDataNode(offLineAddr, "", raftForce, 0); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	rstMsg = fmt.Sprintf("decommission data node [%v] limit %d submited!need check status later!", offLineAddr, limit)
+	rstMsg = fmt.Sprintf("decommission data node [%v] submited!need check status later!", offLineAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) {
 	var (
-		srcAddr    string
-		targetAddr string
-		limit      int
-		err        error
+		srcAddr, targetAddr string
+		limit               int
+		raftForce           bool
+		err                 error
 	)
-	bgTime := stat.BeginStat()
+
+	metric := exporter.NewTPCnt("req_migrateDataNode")
 	defer func() {
-		stat.EndStat(proto.MigrateDataNode, err, bgTime, 1)
+		metric.Set(err)
 	}()
+
 	srcAddr, targetAddr, limit, err = parseMigrateNodeParam(r)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	raftForce, err := parseRaftForce(r)
+	raftForce, err = parseRaftForce(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if limit > defaultMigrateDpCnt {
-		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("limit %d can't be bigger than %d", limit, defaultMigrateDpCnt)))
 		return
 	}
 
@@ -2002,7 +2056,7 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err = m.cluster.migrateDataNode(srcAddr, targetAddr, limit, raftForce); err != nil {
+	if err = m.cluster.migrateDataNode(srcAddr, targetAddr, raftForce, limit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2020,9 +2074,9 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		err         error
 	)
 
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt("req_cancelDecommissionDataNode")
 	defer func() {
-		stat.EndStat(proto.CancelDecommissionDataNode, err, bgTime, 1)
+		metric.Set(err)
 	}()
 
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
@@ -2034,7 +2088,7 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
-	if err = m.cluster.decommissionCancel(node); err != nil {
+	if err = m.cluster.decommissionDataNodeCancel(node); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2831,15 +2885,12 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 // If parameter diskDisable is true, creating data partitions on this disk will be not allowed.
 func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	var (
-		node                  *DataNode
 		rstMsg                string
 		offLineAddr, diskPath string
 		diskDisable           bool
 		err                   error
-		limit                 int
 		raftForce             bool
-		badPartitionIds       []uint64
-		badPartitions         []*DataPartition
+		limit                 int
 	)
 
 	bgTime := stat.BeginStat()
@@ -2857,44 +2908,9 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if node, err = m.cluster.dataNode(offLineAddr); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
-		return
-	}
-	badPartitions = node.badPartitions(diskPath, m.cluster)
-	if len(badPartitions) == 0 {
-		if diskDisable {
-			if err = m.cluster.addAndSyncDecommissionedDisk(node, diskPath); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
-		rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] no any partitions on disk[%v],offline successfully",
-			node.Addr, diskPath)
-		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
-		return
-	}
-	for _, bdp := range badPartitions {
-		badPartitionIds = append(badPartitionIds, bdp.PartitionID)
-	}
-
-	if limit > 0 && limit < len(badPartitionIds) {
-		badPartitionIds = badPartitionIds[:limit]
-		badPartitions = badPartitions[:limit]
-	}
-
-	rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v] limit [%d], badPartitionIds[%v] has offline successfully",
-		node.Addr, diskPath, limit, badPartitionIds)
-	if err = m.cluster.decommissionDisk(node, raftForce, diskPath, badPartitions); err != nil {
+	if err = m.cluster.migrateDisk(offLineAddr, diskPath, raftForce, limit, diskDisable); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
-	}
-
-	if diskDisable {
-		if err = m.cluster.addAndSyncDecommissionedDisk(node, diskPath); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
 	}
 
 	Warn(m.clusterName, rstMsg)
@@ -2929,6 +2945,146 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 		node.Addr, diskPath)
 
 	Warn(m.clusterName, rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr, diskPath string
+		err                   error
+	)
+
+	metric := exporter.NewTPCnt("req_queryDiskDecoProgress")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if offLineAddr, diskPath, _, _, err = parseReqToDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
+	value, ok := m.cluster.DecommissionDisks.Load(key)
+	if !ok {
+		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot found  decommission task for node[%v] disk[%v], "+
+			"may be already offline", offLineAddr, diskPath)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+	disk := value.(*DecommissionDisk)
+	status, progress := disk.updateDecommissionStatus(m.cluster, true)
+	progress, _ = FormatFloatFloor(progress, 4)
+	resp := &proto.DecommissionProgress{
+		Status:   status,
+		Progress: fmt.Sprintf("%.2f%%", progress*float64(100)),
+	}
+	if status == DecommissionFail {
+		err, dps := disk.GetDecommissionFailedDP(m.cluster)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		resp.FailedDps = dps
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(resp))
+}
+
+func (m *Server) queryDecommissionDiskDecoFailedDps(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr, diskPath string
+		err                   error
+	)
+
+	metric := exporter.NewTPCnt("req_queryDecommissionDiskDecoFailedDps")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if offLineAddr, diskPath, _, _, err = parseReqToDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
+	value, ok := m.cluster.DecommissionDisks.Load(key)
+	if !ok {
+		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot found decommission task for node[%v] disk[%v], "+
+			"may be already offline", offLineAddr, diskPath)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+	disk := value.(*DecommissionDisk)
+	err, dps := disk.GetDecommissionFailedDP(m.cluster)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(dps))
+}
+
+func (m *Server) markDecoDiskFixed(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr, diskPath string
+		err                   error
+	)
+
+	metric := exporter.NewTPCnt("req_markDecoDiskFixed")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if offLineAddr, diskPath, _, _, err = parseReqToDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
+	value, ok := m.cluster.DecommissionDisks.Load(key)
+	if !ok {
+		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot found decommission task for  node[%v] disk[%v], "+
+			"may be already offline", offLineAddr, diskPath)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+	disk := value.(*DecommissionDisk)
+	err = m.cluster.syncDeleteDecommissionDisk(disk)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	m.cluster.DecommissionDisks.Delete(disk.GenerateKey())
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
+func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr, diskPath string
+		err                   error
+	)
+
+	metric := exporter.NewTPCnt("req_cancelDecommissionDisk")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if offLineAddr, diskPath, _, _, err = parseReqToDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
+	value, ok := m.cluster.DecommissionDisks.Load(key)
+	if !ok {
+		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot found decommission task for node[%v] disk[%v], "+
+			"may be already offline", offLineAddr, diskPath)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+	disk := value.(*DecommissionDisk)
+	err = m.cluster.decommissionDiskCancel(disk)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	rstMsg := fmt.Sprintf("cancel decommission data node [%s] disk[%s] successfully",
+		offLineAddr, diskPath)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -3558,21 +3714,22 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 // Obtain the volume information such as total capacity and used space, etc.
 func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	var (
-		err  error
-		name string
-		ver  int
-		vol  *Vol
+		err    error
+		name   string
+		ver    int
+		vol    *Vol
+		byMeta bool
 	)
 
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat(proto.ClientVolStat, err, bgTime, 1)
-	}()
-
-	if name, ver, err = parseVolStatReq(r); err != nil {
+	if name, ver, byMeta, err = parseVolStatReq(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	metric := exporter.NewTPCnt("req_getVolStatInfo")
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: name})
+	}()
 
 	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
@@ -3584,14 +3741,14 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol)))
+	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol, byMeta)))
 }
 
-func volStat(vol *Vol) (stat *proto.VolStatInfo) {
+func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat = new(proto.VolStatInfo)
 	stat.Name = vol.Name
 	stat.TotalSize = vol.Capacity * util.GB
-	stat.UsedSize = vol.totalUsedSpace()
+	stat.UsedSize = vol.totalUsedSpaceByMeta(countByMeta)
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize
 	}
@@ -3720,7 +3877,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 				return
 			}
-			stat := volStat(vol)
+			stat := volStat(vol, false)
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize)
 			volsInfo = append(volsInfo, volInfo)
 		}
@@ -3810,4 +3967,115 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 	}
 
 	return nil
+}
+
+func (m *Server) updateDecommissionLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		limit uint64
+		err   error
+	)
+
+	if limit, err = parseRequestToUpdateDecommissionLimit(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	zones := m.cluster.t.getAllZones()
+	for _, zone := range zones {
+		err = zone.updateDecommissionLimit(int32(limit), m.cluster)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
+	}
+	m.cluster.DecommissionLimit = limit
+	if err = m.cluster.syncPutCluster(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set master not worked %v", err)))
+		return
+	}
+	rstMsg := fmt.Sprintf("set decommission limit to %v successfully", limit)
+	log.LogDebugf("action[updateDecommissionLimit] %v", rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) queryDecommissionLimit(w http.ResponseWriter, r *http.Request) {
+	limit := m.cluster.DecommissionLimit
+	rstMsg := fmt.Sprintf("decommission limit is %v", limit)
+	log.LogDebugf("action[queryDecommissionLimit] %v", rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr string
+		err         error
+		dn          *DataNode
+	)
+	if offLineAddr, err = parseReqToDecoDataNodeProgress(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if dn, err = m.cluster.dataNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+	status, progress := dn.updateDecommissionStatus(m.cluster, true)
+	progress, _ = FormatFloatFloor(progress, 4)
+	resp := &proto.DecommissionProgress{
+		Status:   status,
+		Progress: fmt.Sprintf("%.2f%%", progress*float64(100)),
+	}
+	if status == DecommissionFail {
+		err, dps := dn.GetDecommissionFailedDPByTerm(m.cluster)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		resp.FailedDps = dps
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(resp))
+}
+
+func (m *Server) queryDataNodeDecoFailedDps(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr string
+		err         error
+		dn          *DataNode
+	)
+	if offLineAddr, err = parseReqToDecoDataNodeProgress(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if dn, err = m.cluster.dataNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	err, dps := dn.GetDecommissionFailedDP(m.cluster)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(dps))
+}
+
+func parseReqToDecoDataNodeProgress(r *http.Request) (nodeAddr string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	nodeAddr, err = extractNodeAddr(r)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func FormatFloatFloor(num float64, decimal int) (float64, error) {
+	d := float64(1)
+	if decimal > 0 {
+		d = math.Pow10(decimal)
+	}
+
+	res := strconv.FormatFloat(math.Floor(num*d)/d, 'f', -1, 64)
+	return strconv.ParseFloat(res, 64)
 }

@@ -391,12 +391,6 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		}
 		mp.ebsClient = ebsClient
 	}
-
-	if proto.IsHot(mp.volType) {
-		log.LogInfof("hot vol not need updateSize & cacheTTL")
-		return
-	}
-
 	mp.updateSize()
 
 	// do cache TTL die out process

@@ -717,10 +717,20 @@ func (dp *DataPartition) compareReplicas(v1, v2 []string) (equals bool) {
 func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []string, err error) {
 
 	var partition *proto.DataPartitionInfo
-	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
-		isLeader = false
-		return
+	var retry = 0
+	for {
+		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
+			retry++
+			if retry > 5 {
+				isLeader = false
+				return
+			}
+		} else {
+			break
+		}
+		time.Sleep(10 * time.Second)
 	}
+
 	for _, host := range partition.Hosts {
 		replicas = append(replicas, host)
 	}

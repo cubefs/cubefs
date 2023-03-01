@@ -251,7 +251,6 @@ func (rs *RaftServer) IsLeader(id uint64) bool {
 	rs.mu.RLock()
 	raft, ok := rs.rafts[id]
 	rs.mu.RUnlock()
-
 	if ok {
 		return raft.isLeader()
 	}

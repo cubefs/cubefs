@@ -324,7 +324,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		}
 
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
-		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
+		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, c)
 		dp.checkLeader(c.Name, c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
@@ -654,7 +654,11 @@ func (vol *Vol) setAllDataPartitionsToReadOnly() {
 }
 
 func (vol *Vol) totalUsedSpace() uint64 {
-	if proto.IsCold(vol.VolType) {
+	return vol.totalUsedSpaceByMeta(false)
+}
+
+func (vol *Vol) totalUsedSpaceByMeta(byMeta bool) uint64 {
+	if proto.IsCold(vol.VolType) || byMeta {
 		return vol.ebsUsedSpace()
 	}
 

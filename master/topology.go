@@ -20,6 +20,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -936,22 +938,26 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 }
 
 type nodeSet struct {
-	ID        uint64
-	Capacity  int
-	zoneName  string
-	metaNodes *sync.Map
-	dataNodes *sync.Map
+	ID                            uint64
+	Capacity                      int
+	zoneName                      string
+	metaNodes                     *sync.Map
+	dataNodes                     *sync.Map
+	decommissionDataPartitionList *DecommissionDataPartitionList
+	decommissionParallelLimit     int32
 	sync.RWMutex
 }
 
-func newNodeSet(id uint64, cap int, zoneName string) *nodeSet {
+func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 	log.LogInfof("action[newNodeSet] id[%v]", id)
 	ns := &nodeSet{
-		ID:        id,
-		Capacity:  cap,
-		zoneName:  zoneName,
-		metaNodes: new(sync.Map),
-		dataNodes: new(sync.Map),
+		ID:                            id,
+		Capacity:                      cap,
+		zoneName:                      zoneName,
+		metaNodes:                     new(sync.Map),
+		dataNodes:                     new(sync.Map),
+		decommissionDataPartitionList: NewDecommissionDataPartitionList(c),
+		decommissionParallelLimit:     defaultDecommissionParallelLimit,
 	}
 	return ns
 }
@@ -964,6 +970,11 @@ func (ns *nodeSet) metaNodeLen() (count int) {
 		return true
 	})
 	return
+}
+
+func (ns *nodeSet) startDecommissionSchedule() {
+	log.LogDebugf("action[startDecommissionSchedule] ns[%v]", ns.ID)
+	ns.decommissionDataPartitionList.startTraverse()
 }
 
 func (ns *nodeSet) dataNodeLen() (count int) {
@@ -1024,6 +1035,16 @@ func (ns *nodeSet) putDataNode(dataNode *DataNode) {
 
 func (ns *nodeSet) deleteDataNode(dataNode *DataNode) {
 	ns.dataNodes.Delete(dataNode.Addr)
+}
+
+func (ns *nodeSet) AddToDecommissionDataPartitionList(dp *DataPartition) {
+	ns.decommissionDataPartitionList.Put(ns.ID, dp)
+}
+
+func (ns *nodeSet) UpdateMaxParallel(maxParallel int32) {
+	ns.decommissionDataPartitionList.updateMaxParallel(maxParallel)
+	log.LogDebugf("action[UpdateMaxParallel]nodeSet[%v] decommission limit update to [%v]\n", ns.ID, maxParallel)
+	atomic.StoreInt32(&ns.decommissionParallelLimit, maxParallel)
 }
 
 func (t *topology) isSingleZone() bool {
@@ -1326,7 +1347,8 @@ func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 		if err != nil {
 			return nil, err
 		}
-		ns = newNodeSet(id, c.cfg.nodeSetCapacity, zone.name)
+		ns = newNodeSet(c, id, c.cfg.nodeSetCapacity, zone.name)
+		ns.startDecommissionSchedule()
 		log.LogInfof("action[createNodeSet] syncAddNodeSet[%v] zonename[%v]", ns.ID, zone.name)
 		if err = c.syncAddNodeSet(ns); err != nil {
 			return nil, err
@@ -1725,4 +1747,217 @@ func (zone *Zone) dataNodeCount() (len int) {
 		return true
 	})
 	return
+}
+
+func (zone *Zone) updateDecommissionLimit(limit int32, c *Cluster) (err error) {
+	nodeSets := zone.getAllNodeSet()
+
+	if nodeSets == nil {
+		log.LogWarnf("Nodeset form %v is nil", zone.name)
+		return proto.ErrNoNodeSetToUpdateDecommissionLimit
+	}
+
+	for _, ns := range nodeSets {
+		ns.UpdateMaxParallel(limit)
+		if err = c.syncUpdateNodeSet(ns); err != nil {
+			log.LogWarnf("UpdateMaxParallel nodeset [%v] failed,err:%v", ns.ID, err.Error())
+			continue
+		}
+	}
+	log.LogInfof("All nodeset from %v set decommission limit to %v", zone.name, limit)
+	return
+}
+
+func (zone *Zone) startDecommissionListTraverse(c *Cluster) (err error) {
+	nodeSets := zone.getAllNodeSet()
+
+	if nodeSets == nil {
+		log.LogWarnf("Nodeset form %v is nil", zone.name)
+		return proto.ErrNoNodeSetToDecommission
+	}
+
+	for _, ns := range nodeSets {
+		ns.startDecommissionSchedule()
+	}
+	log.LogInfof("All nodeset from %v start decommission schedule", zone.name)
+	return
+}
+
+type DecommissionDataPartitionList struct {
+	mu               sync.Mutex
+	cacheMap         map[uint64]*list.Element
+	decommissionList *list.List
+	done             chan struct{}
+	parallelLimit    int32
+	curParallel      int32
+	start            chan struct{}
+}
+
+type DecommissionDataPartitionListValue struct {
+	DecommissionDataPartitionCacheValue
+	ParallelLimit int32
+	CurParallel   int32
+}
+
+type DecommissionDataPartitionCacheValue struct {
+	CacheMap []dataPartitionValue
+	Status   uint32
+}
+
+const DecommissionInterval = 5 * time.Second
+
+func NewDecommissionDataPartitionList(c *Cluster) *DecommissionDataPartitionList {
+	l := new(DecommissionDataPartitionList)
+	l.mu = sync.Mutex{}
+	l.cacheMap = make(map[uint64]*list.Element)
+	l.done = make(chan struct{}, 1)
+	l.start = make(chan struct{}, 1)
+	l.decommissionList = list.New()
+	atomic.StoreInt32(&l.curParallel, 0)
+	atomic.StoreInt32(&l.parallelLimit, defaultDecommissionParallelLimit)
+	go l.traverse(c)
+	return l
+}
+
+//reserved
+func (l *DecommissionDataPartitionList) Stop() {
+	l.done <- struct{}{}
+}
+
+func (l *DecommissionDataPartitionList) Length() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.decommissionList.Len()
+}
+
+func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition) {
+	if value == nil {
+		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] cannot put nil value", id)
+		return
+	}
+	//can add running or mark deleted
+	if !value.canAddToDecommissionList() {
+		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong dp[%v] status[%v]",
+			id, value.PartitionID, value.GetDecommissionStatus())
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	//retry for prepare status
+	if value.GetDecommissionStatus() == DecommissionPrepare {
+		value.SetDecommissionStatus(markDecommission)
+	}
+
+	if _, ok := l.cacheMap[value.PartitionID]; ok {
+		return
+	}
+	elm := l.decommissionList.PushBack(value)
+	l.cacheMap[value.PartitionID] = elm
+	//restore from rocksdb
+	if value.checkConsumeToken() {
+		atomic.AddInt32(&l.curParallel, 1)
+	}
+	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] isRecover[%v]",
+		id, value.PartitionID, value.GetDecommissionStatus(), value.isRecover)
+}
+
+func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {
+	if value == nil {
+		log.LogWarnf("Cannot remove nil value")
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if elm, ok := l.cacheMap[value.PartitionID]; ok {
+		delete(l.cacheMap, value.PartitionID)
+		l.decommissionList.Remove(elm)
+		log.LogDebugf("Remove dp[%v]\n", value.PartitionID)
+	}
+}
+
+func (l *DecommissionDataPartitionList) updateMaxParallel(maxParallel int32) {
+	atomic.StoreInt32(&l.parallelLimit, maxParallel)
+}
+
+func (l *DecommissionDataPartitionList) acquireDecommissionToken() bool {
+	if atomic.LoadInt32(&l.parallelLimit) == 0 {
+		atomic.AddInt32(&l.curParallel, 1)
+		return true
+	}
+	if atomic.LoadInt32(&l.curParallel) >= atomic.LoadInt32(&l.parallelLimit) {
+		return false
+	}
+	atomic.AddInt32(&l.curParallel, 1)
+	return true
+}
+
+func (l *DecommissionDataPartitionList) releaseDecommissionToken() {
+	if atomic.LoadInt32(&l.curParallel) > 0 {
+		atomic.AddInt32(&l.curParallel, -1)
+	}
+}
+
+func (l *DecommissionDataPartitionList) GetAllDecommissionDataPartitions() (collection []*DataPartition) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	collection = make([]*DataPartition, 0, l.decommissionList.Len())
+	for elm := l.decommissionList.Front(); elm != nil; elm = elm.Next() {
+		collection = append(collection, elm.Value.(*DataPartition))
+	}
+	return collection
+}
+
+func (l *DecommissionDataPartitionList) startTraverse() {
+	l.start <- struct{}{}
+}
+
+//这里应该改成并发，不然回影响
+func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
+	t := time.NewTicker(DecommissionInterval)
+	//wait for loading all ap when reload metadata
+	<-l.start
+	defer t.Stop()
+	for {
+		select {
+		case <-l.done:
+			log.LogWarnf("traverse stopped!\n")
+			return
+		case <-t.C:
+			if c.partition != nil && !c.partition.IsRaftLeader() {
+				log.LogWarnf("Leader changed, stop traverse!\n")
+				return
+			}
+			allDecommissionDP := l.GetAllDecommissionDataPartitions()
+			for _, dp := range allDecommissionDP {
+				//update dp status, if is updated, sync it to followers
+				if dp.UpdateDecommissionStatus() {
+					c.syncUpdateDataPartition(dp)
+				}
+				if dp.IsDecommissionDone() {
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for done\n",
+						dp.PartitionID)
+					l.Remove(dp)
+					l.releaseDecommissionToken()
+					dp.ResetDecommissionStatus()
+					c.syncUpdateDataPartition(dp)
+				} else if dp.IsDecommissionStopped() {
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop or initial\n",
+						dp.PartitionID)
+					//stop do not consume token，wait for add again
+					l.Remove(dp)
+				} else if dp.IsDecommissionInitial() { //fixed done ,not release tocken
+					l.Remove(dp)
+					dp.ResetDecommissionStatus()
+					c.syncUpdateDataPartition(dp)
+				} else if dp.IsMarkDecommission() && l.acquireDecommissionToken() {
+					go func(dp *DataPartition) {
+						if !dp.TryToDecommission(c) {
+							l.releaseDecommissionToken()
+						}
+					}(dp) // special replica cnt cost some time from prepare to running
+				}
+			}
+		}
+	}
 }

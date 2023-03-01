@@ -254,3 +254,9 @@ type MetaPartitionDiagnosis struct {
 	LackReplicaMetaPartitionIDs []uint64
 	BadMetaPartitionIDs         []BadPartitionView
 }
+
+type DecommissionProgress struct {
+	Status    uint32
+	Progress  string
+	FailedDps []uint64
+}

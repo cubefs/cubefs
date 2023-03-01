@@ -113,7 +113,6 @@ func (t *replicateTransport) sendSnapshot(m *proto.Message, rs *snapshotStatus) 
 			logger.Warn("[Transport] %v send snapshot to %v successful.", m.ID, m.To)
 		}
 
-		logger.Info("[Transport] %v send snapshot to %v succ.", m.ID, m.To)
 	}()
 
 	if atomic.AddInt32(&t.curSnapshot, 1) > int32(t.config.MaxSnapConcurrency) {

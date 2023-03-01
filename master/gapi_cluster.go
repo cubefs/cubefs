@@ -201,7 +201,7 @@ func (m *ClusterService) decommissionDisk(ctx context.Context, args struct {
 	}
 	rstMsg := fmt.Sprintf("receive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
 		node.Addr, args.DiskPath, badPartitionIds)
-	if err = m.cluster.decommissionDisk(node, false, args.DiskPath, badPartitions); err != nil {
+	if err = m.cluster.decommissionDisk(node, false, args.DiskPath, badPartitions, true); err != nil {
 		return nil, err
 	}
 	Warn(m.cluster.Name, rstMsg)

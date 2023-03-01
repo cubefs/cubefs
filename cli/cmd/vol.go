@@ -147,7 +147,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			crossZone, _ := strconv.ParseBool(optCrossZone)
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
 			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
-			replicaNum := 3
+			replicaNum, _ := strconv.Atoi(optReplicaNum)
 			if optReplicaNum == "" && optVolType == 1 {
 				replicaNum = 1
 			}

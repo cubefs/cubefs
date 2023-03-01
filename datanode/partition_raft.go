@@ -164,10 +164,12 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error 
 		if nodeID.NodeID == peer.ID {
 			continue
 		}
+		//check nodeID is valid
 		hasDownReplicasExcludePeer = append(hasDownReplicasExcludePeer, nodeID.NodeID)
 	}
-	log.LogInfof("action[CanRemoveRaftMember] replicaNum %v peers %v", dp.replicaNum, len(dp.config.Peers))
-	if force {
+
+	log.LogInfof("action[CanRemoveRaftMember] dp %v replicaNum %v peers %v", dp.partitionID, dp.replicaNum, len(dp.config.Peers))
+	if dp.replicaNum == 2 && len(dp.config.Peers) == 2 && force {
 		return nil
 	}
 

@@ -54,7 +54,6 @@ func (replica *DataReplica) isLive(timeOutSec int64) (isAvailable bool) {
 		replica.isActive(timeOutSec) {
 		isAvailable = true
 	}
-
 	return
 }
 
