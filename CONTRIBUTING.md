@@ -10,7 +10,7 @@ Recommend the standard GitHub flow based on forking and pull requests.
 
 The following diagram and practice steps show the basic process of contributing code to CubeFS:
 
-<img src="https://user-images.githubusercontent.com/5708406/87878246-9ddf4300-ca15-11ea-97a4-cffd1febffa1.png" height="520" alt="How to make contributing to CubeFS"></img>
+<img src="https://ocs-cn-north1.heytapcs.com/cubefs/github/workflow.png" height="520" alt="How to make contributing to CubeFS"></img>
 
 1. Fork CubeFS to your repository.
 2. Add remote for your forked repository.<br>(Example: `$ git remote add me https://github.com/your/cubefs`)
