@@ -369,7 +369,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	}
 	mp.volType = volumeInfo.VolType
 	var ebsClient *blobstore.BlobStoreClient
-	if clusterInfo.EbsAddr != "" {
+	if clusterInfo.EbsAddr != "" && proto.IsCold(mp.volType) {
 		ebsClient, err = blobstore.NewEbsClient(
 			access.Config{
 				ConnMode: access.NoLimitConnMode,
