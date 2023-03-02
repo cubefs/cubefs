@@ -37,6 +37,28 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+func apiToMetricsName(api string) (reqMetricName string) {
+	var builder strings.Builder
+	builder.WriteString("req")
+	// prometheus metric not allow '/' in name, need to transfer to '_'
+	builder.WriteString(strings.Replace(api, "/", "_", -1))
+	return builder.String()
+}
+
+func doStatAndMetric(statName string, metric *exporter.TimePointCount, err error, metricLabels map[string]string) {
+	if metric == nil {
+		return
+	}
+	if metricLabels == nil {
+		metric.Set(err)
+	} else {
+		metric.SetWithLabels(err, metricLabels)
+	}
+
+	startTime := metric.GetStartTime()
+	stat.EndStat(statName, err, &startTime, 1)
+}
+
 // NodeView provides the view of the data or meta node.
 type NodeView struct {
 	Addr       string
@@ -87,10 +109,11 @@ func (m *Server) setClusterInfo(w http.ResponseWriter, r *http.Request) {
 		quota uint32
 		err   error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetClusterInfo))
 	defer func() {
-		stat.EndStat(proto.AdminSetClusterInfo, err, bgTime, 1)
+		doStatAndMetric(proto.AdminSetClusterInfo, metric, err, nil)
 	}()
+
 	if quota, err = parseAndExtractDirQuota(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -113,10 +136,9 @@ func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 		threshold float64
 		err       error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetMetaNodeThreshold))
 	defer func() {
-		stat.EndStat(proto.AdminSetMetaNodeThreshold, err, bgTime, 1)
+		doStatAndMetric(proto.AdminSetMetaNodeThreshold, metric, err, nil)
 	}()
 
 	if threshold, err = parseAndExtractThreshold(r); err != nil {
@@ -143,10 +165,11 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 		status bool
 		err    error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminClusterFreeze))
 	defer func() {
-		stat.EndStat(proto.AdminClusterFreeze, err, bgTime, 1)
+		doStatAndMetric(proto.AdminClusterFreeze, metric, err, nil)
 	}()
+
 	if status, err = parseAndExtractStatus(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -160,10 +183,9 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 
 // View the topology of the cluster.
 func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetTopologyView))
 	defer func() {
-		stat.EndStat(proto.GetTopologyView, nil, bgTime, 1)
+		doStatAndMetric(proto.GetTopologyView, metric, nil, nil)
 	}()
 
 	tv := &TopologyView{
@@ -198,10 +220,11 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 		name string
 		err  error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.UpdateZone))
 	defer func() {
-		stat.EndStat(proto.UpdateZone, err, bgTime, 1)
+		doStatAndMetric(proto.UpdateZone, metric, err, nil)
 	}()
+
 	if name = r.FormValue(nameKey); name == "" {
 		err = keyNotFound(nameKey)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -226,10 +249,11 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetAllZones))
 	defer func() {
-		stat.EndStat(proto.GetAllZones, nil, bgTime, 1)
+		doStatAndMetric(proto.GetAllZones, metric, nil, nil)
 	}()
+
 	zones := m.cluster.t.getAllZones()
 	zoneViews := make([]*ZoneView, 0)
 	for _, zone := range zones {
@@ -241,10 +265,11 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminClusterStat))
 	defer func() {
-		stat.EndStat(proto.AdminClusterStat, nil, bgTime, 1)
+		doStatAndMetric(proto.AdminClusterStat, metric, nil, nil)
 	}()
+
 	cs := &proto.ClusterStatInfo{
 		DataNodeStatInfo: m.cluster.dataNodeStatInfo,
 		MetaNodeStatInfo: m.cluster.metaNodeStatInfo,
@@ -257,10 +282,11 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetCluster))
 	defer func() {
-		stat.EndStat(proto.AdminGetCluster, nil, bgTime, 1)
+		doStatAndMetric(proto.AdminGetCluster, metric, nil, nil)
 	}()
+
 	cv := &proto.ClusterView{
 		Name:                m.cluster.Name,
 		CreateTime:          time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
@@ -298,10 +324,11 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getApiList(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetMasterApiList))
 	defer func() {
-		stat.EndStat(proto.AdminGetMasterApiList, nil, bgTime, 1)
+		doStatAndMetric(proto.AdminGetMasterApiList, metric, nil, nil)
 	}()
+
 	sendOkReply(w, r, newSuccessHTTPReply(proto.GApiInfo))
 }
 
@@ -312,10 +339,9 @@ func (m *Server) setApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 		timeout uint32
 		err     error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetApiQpsLimit))
 	defer func() {
-		stat.EndStat(proto.AdminSetApiQpsLimit, err, bgTime, 1)
+		doStatAndMetric(proto.AdminSetApiQpsLimit, metric, err, nil)
 	}()
 
 	if name, limit, timeout, err = parseRequestToSetApiQpsLimit(r); err != nil {
@@ -344,9 +370,9 @@ func (m *Server) setApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getApiQpsLimit(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetMasterApiList))
 	defer func() {
-		stat.EndStat(proto.AdminGetMasterApiList, nil, bgTime, 1)
+		doStatAndMetric(proto.AdminGetMasterApiList, metric, nil, nil)
 	}()
 
 	m.cluster.apiLimiter.m.RLock()
@@ -367,11 +393,11 @@ func (m *Server) rmApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 		name string
 		err  error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminRemoveApiQpsLimit))
 	defer func() {
-		stat.EndStat(proto.AdminRemoveApiQpsLimit, err, bgTime, 1)
+		doStatAndMetric(proto.AdminRemoveApiQpsLimit, metric, err, nil)
 	}()
+
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -398,10 +424,11 @@ func (m *Server) rmApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetIP))
 	defer func() {
-		stat.EndStat(proto.AdminGetIP, nil, bgTime, 1)
+		doStatAndMetric(proto.AdminGetIP, metric, nil, nil)
 	}()
+
 	m.cluster.loadClusterValue()
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
@@ -430,10 +457,11 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 		start   uint64
 		err     error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateMetaPartition))
 	defer func() {
-		stat.EndStat(proto.AdminCreateMetaPartition, err, bgTime, 1)
+		doStatAndMetric(proto.AdminCreateMetaPartition, metric, err, map[string]string{exporter.Vol: volName})
 	}()
+
 	if volName, start, err = validateRequestToCreateMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -481,11 +509,11 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 		err     error
 		dps     []*DataPartition
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreatePreLoadDataPartition))
 	defer func() {
-		stat.EndStat(proto.AdminCreatePreLoadDataPartition, err, bgTime, 1)
+		doStatAndMetric(proto.AdminCreatePreLoadDataPartition, metric, err, map[string]string{exporter.Vol: volName})
 	}()
+
 	if volName, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -547,10 +575,11 @@ func (m *Server) getQosStatus(w http.ResponseWriter, r *http.Request) {
 		err     error
 		vol     *Vol
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QosGetStatus))
 	defer func() {
-		stat.EndStat(proto.QosGetStatus, err, bgTime, 1)
+		doStatAndMetric(proto.QosGetStatus, metric, err, map[string]string{exporter.Vol: volName})
 	}()
+
 	if volName, err = extractName(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
@@ -571,10 +600,11 @@ func (m *Server) getClientQosInfo(w http.ResponseWriter, r *http.Request) {
 		host    string
 		id      uint64
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QosGetClientsLimitInfo))
 	defer func() {
-		stat.EndStat(proto.QosGetClientsLimitInfo, err, bgTime, 1)
+		doStatAndMetric(proto.QosGetClientsLimitInfo, metric, err, map[string]string{exporter.Vol: volName})
 	}()
+
 	if volName, err = extractName(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
@@ -612,10 +642,11 @@ func (m *Server) getQosUpdateMasterLimit(w http.ResponseWriter, r *http.Request)
 		value string
 		limit uint64
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QosUpdateMasterLimit))
 	defer func() {
-		stat.EndStat(proto.QosUpdateMasterLimit, err, bgTime, 1)
+		doStatAndMetric(proto.QosUpdateMasterLimit, metric, err, nil)
 	}()
+
 	if value = r.FormValue(QosMasterLimit); value != "" {
 		if limit, err = strconv.ParseUint(value, 10, 64); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of limit")))
@@ -646,10 +677,11 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 		err                error
 		vol                *Vol
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QosUpdateClientParam))
 	defer func() {
-		stat.EndStat(proto.QosUpdateClientParam, err, bgTime, 1)
+		doStatAndMetric(proto.QosUpdateClientParam, metric, err, map[string]string{exporter.Vol: volName})
 	}()
+
 	if volName, err = extractName(r); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -792,10 +824,11 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 		qosParam *qosArgs
 		enable   bool
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QosUpdateZoneLimit))
 	defer func() {
-		stat.EndStat(proto.QosUpdateZoneLimit, err, bgTime, 1)
+		doStatAndMetric(proto.QosUpdateZoneLimit, metric, err, nil)
 	}()
+
 	var zoneName string
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
@@ -829,10 +862,11 @@ func (m *Server) QosGetZoneLimit(w http.ResponseWriter, r *http.Request) {
 		value interface{}
 		ok    bool
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QosGetZoneLimitInfo))
 	defer func() {
-		stat.EndStat(proto.QosGetZoneLimitInfo, nil, bgTime, 1)
+		doStatAndMetric(proto.QosGetZoneLimitInfo, metric, nil, nil)
 	}()
+
 	var zoneName string
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
@@ -873,10 +907,11 @@ func (m *Server) QosUpdate(w http.ResponseWriter, r *http.Request) {
 		value     string
 		limitArgs *qosArgs
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QosUpdate))
 	defer func() {
-		stat.EndStat(proto.QosUpdate, err, bgTime, 1)
+		doStatAndMetric(proto.QosUpdate, metric, err, map[string]string{exporter.Vol: volName})
 	}()
+
 	if volName, err = extractName(r); err == nil {
 		if vol, err = m.cluster.getVol(volName); err != nil {
 			goto RET
@@ -919,11 +954,11 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		clusterTotalDataPartitions int
 		err                        error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateDataPartition))
 	defer func() {
-		stat.EndStat(proto.AdminCreateDataPartition, err, bgTime, 1)
+		doStatAndMetric(proto.AdminCreateDataPartition, metric, err, map[string]string{exporter.Vol: volName})
 	}()
+
 	if reqCreateCount, volName, err = parseRequestToCreateDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -960,10 +995,11 @@ func (m *Server) changeDataPartitionLeader(w http.ResponseWriter, r *http.Reques
 		err         error
 		host        string
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDataPartitionChangeLeader))
 	defer func() {
-		stat.EndStat(proto.AdminDataPartitionChangeLeader, err, bgTime, 1)
+		doStatAndMetric(proto.AdminDataPartitionChangeLeader, metric, err, nil)
 	}()
+
 	if partitionID, _, err = parseRequestToGetDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -998,10 +1034,9 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 		vol         *Vol
 		err         error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetDataPartition))
 	defer func() {
-		stat.EndStat(proto.AdminGetDataPartition, err, bgTime, 1)
+		doStatAndMetric(proto.AdminGetDataPartition, metric, err, map[string]string{exporter.Vol: volName})
 	}()
 
 	if partitionID, volName, err = parseRequestToGetDataPartition(r); err != nil {
@@ -1036,10 +1071,9 @@ func (m *Server) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		err         error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminLoadDataPartition))
 	defer func() {
-		stat.EndStat(proto.AdminLoadDataPartition, err, bgTime, 1)
+		doStatAndMetric(proto.AdminLoadDataPartition, metric, err, nil)
 	}()
 
 	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
@@ -1065,10 +1099,9 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		err         error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAddDataReplica))
 	defer func() {
-		stat.EndStat(proto.AdminAddDataReplica, err, bgTime, 1)
+		doStatAndMetric(proto.AdminAddDataReplica, metric, err, nil)
 	}()
 
 	if partitionID, addr, err = parseRequestToAddDataReplica(r); err != nil {
@@ -1105,10 +1138,9 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		raftForce   bool
 		vol         *Vol
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDeleteDataReplica))
 	defer func() {
-		stat.EndStat(proto.AdminDeleteDataReplica, err, bgTime, 1)
+		doStatAndMetric(proto.AdminDeleteDataReplica, metric, err, nil)
 	}()
 
 	if partitionID, addr, err = parseRequestToRemoveDataReplica(r); err != nil {
@@ -1159,10 +1191,9 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		err         error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAddMetaReplica))
 	defer func() {
-		stat.EndStat(proto.AdminAddMetaReplica, err, bgTime, 1)
+		doStatAndMetric(proto.AdminAddMetaReplica, metric, err, nil)
 	}()
 
 	if partitionID, addr, err = parseRequestToAddMetaReplica(r); err != nil {
@@ -1194,10 +1225,9 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		err         error
 		force       bool
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDeleteMetaReplica))
 	defer func() {
-		stat.EndStat(proto.AdminDeleteMetaReplica, err, bgTime, 1)
+		doStatAndMetric(proto.AdminDeleteMetaReplica, metric, err, nil)
 	}()
 
 	if partitionID, addr, err = parseRequestToRemoveMetaReplica(r); err != nil {
@@ -1229,10 +1259,11 @@ func (m *Server) changeMetaPartitionLeader(w http.ResponseWriter, r *http.Reques
 		err         error
 		host        string
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminChangeMetaPartitionLeader))
 	defer func() {
-		stat.EndStat(proto.AdminChangeMetaPartitionLeader, err, bgTime, 1)
+		doStatAndMetric(proto.AdminChangeMetaPartitionLeader, metric, err, nil)
 	}()
+
 	if partitionID, _, err = parseRequestToGetDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		log.LogErrorf("changeMetaPartitionLeader.err %v", err)
@@ -1276,10 +1307,9 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		raftForce   bool
 		err         error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDecommissionDataPartition))
 	defer func() {
-		stat.EndStat(proto.AdminDecommissionDataPartition, err, bgTime, 1)
+		doStatAndMetric(proto.AdminDecommissionDataPartition, metric, err, nil)
 	}()
 
 	if partitionID, addr, err = parseRequestToDecommissionDataPartition(r); err != nil {
@@ -1332,11 +1362,11 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		badReplicaDpIDs   []uint64
 		badDataPartitions []badPartitionView
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDiagnoseDataPartition))
 	defer func() {
-		stat.EndStat(proto.AdminDiagnoseDataPartition, err, bgTime, 1)
+		doStatAndMetric(proto.AdminDiagnoseDataPartition, metric, err, nil)
 	}()
+
 	corruptDpIDs = make([]uint64, 0)
 	lackReplicaDpIDs = make([]uint64, 0)
 	badReplicaDpIDs = make([]uint64, 0)
@@ -1432,10 +1462,9 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		err error
 		msg string
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDeleteVol))
 	defer func() {
-		stat.EndStat(proto.AdminDeleteVol, err, bgTime, 1)
+		doStatAndMetric(proto.AdminDeleteVol, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
 	if name, authKey, _, err = parseRequestToDeleteVol(r); err != nil {
@@ -1464,10 +1493,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		replicaNum   int
 		followerRead bool
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateVol))
 	defer func() {
-		stat.EndStat(proto.AdminUpdateVol, err, bgTime, 1)
+		doStatAndMetric(proto.AdminUpdateVol, metric, err, map[string]string{exporter.Vol: req.name})
 	}()
 
 	if req.name, err = parseVolName(r); err != nil {
@@ -1531,10 +1559,9 @@ func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
 		capacity int
 		vol      *Vol
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminVolExpand))
 	defer func() {
-		stat.EndStat(proto.AdminVolExpand, err, bgTime, 1)
+		doStatAndMetric(proto.AdminVolExpand, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
 	if name, authKey, capacity, err = parseRequestToSetVolCapacity(r); err != nil {
@@ -1574,10 +1601,9 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 		capacity int
 		vol      *Vol
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminVolShrink))
 	defer func() {
-		stat.EndStat(proto.AdminVolShrink, err, bgTime, 1)
+		doStatAndMetric(proto.AdminVolShrink, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
 	if name, authKey, capacity, err = parseRequestToSetVolCapacity(r); err != nil {
@@ -1700,9 +1726,9 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateVol))
 	defer func() {
-		stat.EndStat(proto.AdminCreateVol, err, bgTime, 1)
+		doStatAndMetric(proto.AdminCreateVol, metric, err, map[string]string{exporter.Vol: req.name})
 	}()
 
 	if err = parseRequestToCreateVol(r, req); err != nil {
@@ -1741,10 +1767,11 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 		vol   *Vol
 		limit *proto.LimitRsp2Client
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QosUpload))
 	defer func() {
-		stat.EndStat(proto.QosUpload, err, bgTime, 1)
+		doStatAndMetric(proto.QosUpload, metric, err, map[string]string{exporter.Vol: name})
 	}()
+
 	ctx := context.Background()
 	m.cluster.QosAcceptLimit.WaitN(ctx, 1)
 	log.LogInfof("action[qosUpload] limit %v", m.cluster.QosAcceptLimit.Limit())
@@ -1789,11 +1816,11 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		name string
 		vol  *Vol
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt("req" + strings.Replace(proto.AdminGetVol, "/", "_", -1))
 	defer func() {
-		stat.EndStat(proto.AdminGetVol, err, bgTime, 1)
+		doStatAndMetric(proto.AdminGetVol, metric, err, map[string]string{exporter.Vol: name})
 	}()
+
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1896,10 +1923,9 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		err       error
 		nodesetId uint64
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddDataNode))
 	defer func() {
-		stat.EndStat(proto.AddDataNode, err, bgTime, 1)
+		doStatAndMetric(proto.AddDataNode, metric, err, nil)
 	}()
 
 	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
@@ -1932,10 +1958,9 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		dataNodeInfo *proto.DataNodeInfo
 		err          error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetDataNode))
 	defer func() {
-		stat.EndStat(proto.GetDataNode, err, bgTime, 1)
+		doStatAndMetric(proto.GetDataNode, metric, err, nil)
 	}()
 
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
@@ -1981,10 +2006,9 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		raftForce   bool
 		err         error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.DecommissionDataNode))
 	defer func() {
-		stat.EndStat(proto.DecommissionDataNode, err, bgTime, 1)
+		doStatAndMetric(proto.DecommissionDataNode, metric, err, nil)
 	}()
 
 	if offLineAddr, err = parseDecomDataNodeReq(r); err != nil {
@@ -2019,9 +2043,9 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 		err                 error
 	)
 
-	metric := exporter.NewTPCnt("req_migrateDataNode")
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.MigrateDataNode))
 	defer func() {
-		metric.Set(err)
+		doStatAndMetric(proto.MigrateDataNode, metric, err, nil)
 	}()
 
 	srcAddr, targetAddr, limit, err = parseMigrateNodeParam(r)
@@ -2077,9 +2101,9 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		err         error
 	)
 
-	metric := exporter.NewTPCnt("req_cancelDecommissionDataNode")
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.CancelDecommissionDataNode))
 	defer func() {
-		metric.Set(err)
+		doStatAndMetric(proto.CancelDecommissionDataNode, metric, err, nil)
 	}()
 
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
@@ -2104,10 +2128,9 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		params map[string]interface{}
 		err    error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetNodeInfo))
 	defer func() {
-		stat.EndStat(proto.AdminSetNodeInfo, err, bgTime, 1)
+		doStatAndMetric(proto.AdminSetNodeInfo, metric, err, nil)
 	}()
 
 	if params, err = parseAndExtractSetNodeInfoParams(r); err != nil {
@@ -2551,10 +2574,11 @@ func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 		rdOnly   bool
 		err      error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetNodeRdOnly))
 	defer func() {
-		stat.EndStat(proto.AdminSetNodeRdOnly, err, bgTime, 1)
+		doStatAndMetric(proto.AdminSetNodeRdOnly, metric, err, nil)
 	}()
+
 	addr, nodeType, rdOnly, err = parseSetNodeRdOnlyParam(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2580,10 +2604,11 @@ func (m *Server) setDpRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 		rdOnly bool
 		err    error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetDpRdOnly))
 	defer func() {
-		stat.EndStat(proto.AdminSetDpRdOnly, err, bgTime, 1)
+		doStatAndMetric(proto.AdminSetDpRdOnly, metric, err, nil)
 	}()
+
 	dpId, rdOnly, err = parseSetDpRdOnlyParam(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2608,10 +2633,11 @@ func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Req
 		params map[string]interface{}
 		err    error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateNodeSetCapcity))
 	defer func() {
-		stat.EndStat(proto.AdminUpdateNodeSetCapcity, err, bgTime, 1)
+		doStatAndMetric(proto.AdminUpdateNodeSetCapcity, metric, err, nil)
 	}()
+
 	if params, err = parseAndExtractSetNodeSetInfoParams(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2627,10 +2653,11 @@ func (m *Server) updateDataUseRatioHandler(w http.ResponseWriter, r *http.Reques
 		params map[string]interface{}
 		err    error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateDomainDataUseRatio))
 	defer func() {
-		stat.EndStat(proto.AdminUpdateDomainDataUseRatio, err, bgTime, 1)
+		doStatAndMetric(proto.AdminUpdateDomainDataUseRatio, metric, err, nil)
 	}()
+
 	var value string
 	if value = r.FormValue(ratio); value == "" {
 		err = keyNotFound(ratio)
@@ -2659,10 +2686,11 @@ func (m *Server) updateZoneExcludeRatioHandler(w http.ResponseWriter, r *http.Re
 		params map[string]interface{}
 		err    error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateZoneExcludeRatio))
 	defer func() {
-		stat.EndStat(proto.AdminUpdateZoneExcludeRatio, err, bgTime, 1)
+		doStatAndMetric(proto.AdminUpdateZoneExcludeRatio, metric, err, nil)
 	}()
+
 	var value string
 	if value = r.FormValue(ratio); value == "" {
 		err = keyNotFound(ratio)
@@ -2691,13 +2719,16 @@ func (m *Server) updateNodeSetIdHandler(w http.ResponseWriter, r *http.Request) 
 		nodeType uint64
 		value    string
 	)
-	bgTime := stat.BeginStat()
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateNodeSetId))
 	defer func() {
-		stat.EndStat(proto.AdminUpdateNodeSetId, err, bgTime, 1)
+		doStatAndMetric(proto.AdminUpdateNodeSetId, metric, err, nil)
+
 		if err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		}
 	}()
+
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
 	}
@@ -2729,10 +2760,12 @@ func (m *Server) updateNodeSetIdHandler(w http.ResponseWriter, r *http.Request) 
 // get metanode some interval params
 func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
-	bgTime := stat.BeginStat()
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetNodeSetGrpInfo))
 	defer func() {
-		stat.EndStat(proto.AdminGetNodeSetGrpInfo, err, bgTime, 1)
+		doStatAndMetric(proto.AdminGetNodeSetGrpInfo, metric, err, nil)
 	}()
+
 	if err = r.ParseForm(); err != nil {
 		sendOkReply(w, r, newErrHTTPReply(err))
 	}
@@ -2759,11 +2792,13 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(info))
 }
+
 func (m *Server) getIsDomainOn(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetIsDomainOn))
 	defer func() {
-		stat.EndStat(proto.AdminGetIsDomainOn, nil, bgTime, 1)
+		doStatAndMetric(proto.AdminGetIsDomainOn, metric, nil, nil)
 	}()
+
 	type SimpleDomainInfo struct {
 		DomainOn bool
 	}
@@ -2794,10 +2829,11 @@ func (m *Server) createDomainHandler(w http.ResponseWriter, r *http.Request) {
 
 // get metanode some interval params
 func (m *Server) getAllNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetAllNodeSetGrpInfo))
 	defer func() {
-		stat.EndStat(proto.AdminGetAllNodeSetGrpInfo, nil, bgTime, 1)
+		doStatAndMetric(proto.AdminGetAllNodeSetGrpInfo, metric, nil, nil)
 	}()
+
 	nsgm := m.cluster.domainManager
 
 	nsglStat := new(proto.DomainNodeSetGrpInfoList)
@@ -2828,10 +2864,11 @@ func (m *Server) getAllNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Requ
 
 // get metanode some interval params
 func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetNodeInfo))
 	defer func() {
-		stat.EndStat(proto.AdminGetNodeInfo, nil, bgTime, 1)
+		doStatAndMetric(proto.AdminGetNodeInfo, metric, nil, nil)
 	}()
+
 	resp := make(map[string]string)
 	resp[nodeDeleteBatchCountKey] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteBatchCount)
 	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
@@ -2854,10 +2891,11 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 		lackReplicaMpIDs  []uint64
 		badMetaPartitions []badPartitionView
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDiagnoseMetaPartition))
 	defer func() {
-		stat.EndStat(proto.AdminDiagnoseMetaPartition, err, bgTime, 1)
+		doStatAndMetric(proto.AdminDiagnoseMetaPartition, metric, err, nil)
 	}()
+
 	corruptMpIDs = make([]uint64, 0)
 	lackReplicaMpIDs = make([]uint64, 0)
 	if inactiveNodes, corruptMps, err = m.cluster.checkCorruptMetaPartitions(); err != nil {
@@ -2895,10 +2933,9 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		raftForce             bool
 		limit                 int
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.DecommissionDisk))
 	defer func() {
-		stat.EndStat(proto.DecommissionDisk, err, bgTime, 1)
+		doStatAndMetric(proto.DecommissionDisk, metric, err, nil)
 	}()
 
 	if offLineAddr, diskPath, diskDisable, limit, err = parseReqToDecoDisk(r); err != nil {
@@ -2928,6 +2965,10 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 		onLineAddr, diskPath string
 		err                  error
 	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.RecommissionDisk))
+	defer func() {
+		doStatAndMetric(proto.RecommissionDisk, metric, err, nil)
+	}()
 
 	if onLineAddr, diskPath, err = parseReqToRecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3097,9 +3138,9 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		tr  *proto.AdminTask
 		err error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetDataNodeTaskResponse))
 	defer func() {
-		stat.EndStat(proto.GetDataNodeTaskResponse, err, bgTime, 1)
+		doStatAndMetric(proto.GetDataNodeTaskResponse, metric, err, nil)
 	}()
 
 	tr, err = parseRequestToGetTaskResponse(r)
@@ -3119,10 +3160,9 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		err       error
 		nodesetId uint64
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddMetaNode))
 	defer func() {
-		stat.EndStat(proto.AddMetaNode, err, bgTime, 1)
+		doStatAndMetric(proto.AddMetaNode, metric, err, nil)
 	}()
 
 	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
@@ -3149,9 +3189,9 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) checkInvalidIDNodes(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetInvalidNodes))
 	defer func() {
-		stat.EndStat(proto.AdminGetInvalidNodes, nil, bgTime, 1)
+		doStatAndMetric(proto.AdminGetInvalidNodes, metric, nil, nil)
 	}()
 
 	nodes := m.cluster.getInvalidIDNodes()
@@ -3164,10 +3204,9 @@ func (m *Server) updateDataNode(w http.ResponseWriter, r *http.Request) {
 		id       uint64
 		err      error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateDataNode))
 	defer func() {
-		stat.EndStat(proto.AdminUpdateDataNode, err, bgTime, 1)
+		doStatAndMetric(proto.AdminUpdateDataNode, metric, err, nil)
 	}()
 
 	if nodeAddr, id, err = parseRequestForUpdateMetaNode(r); err != nil {
@@ -3187,10 +3226,9 @@ func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
 		id       uint64
 		err      error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateMetaNode))
 	defer func() {
-		stat.EndStat(proto.AdminUpdateMetaNode, err, bgTime, 1)
+		doStatAndMetric(proto.AdminUpdateMetaNode, metric, err, nil)
 	}()
 
 	if nodeAddr, id, err = parseRequestForUpdateMetaNode(r); err != nil {
@@ -3211,10 +3249,9 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		metaNodeInfo *proto.MetaNodeInfo
 		err          error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetMetaNode))
 	defer func() {
-		stat.EndStat(proto.GetMetaNode, err, bgTime, 1)
+		doStatAndMetric(proto.GetMetaNode, metric, err, nil)
 	}()
 
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
@@ -3256,10 +3293,9 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		msg         string
 		err         error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDecommissionMetaPartition))
 	defer func() {
-		stat.EndStat(proto.AdminDecommissionMetaPartition, err, bgTime, 1)
+		doStatAndMetric(proto.AdminDecommissionMetaPartition, metric, err, nil)
 	}()
 
 	if partitionID, nodeAddr, err = parseRequestToDecommissionMetaPartition(r); err != nil {
@@ -3332,10 +3368,11 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		err         error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminLoadMetaPartition))
 	defer func() {
-		stat.EndStat(proto.AdminLoadMetaPartition, err, bgTime, 1)
+		doStatAndMetric(proto.AdminLoadMetaPartition, metric, err, nil)
 	}()
+
 	if partitionID, err = parseRequestToLoadMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3358,9 +3395,9 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 		limit      int
 		err        error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.MigrateMetaNode))
 	defer func() {
-		stat.EndStat(proto.MigrateMetaNode, err, bgTime, 1)
+		doStatAndMetric(proto.MigrateMetaNode, metric, err, nil)
 	}()
 
 	srcAddr, targetAddr, limit, err = parseMigrateNodeParam(r)
@@ -3415,10 +3452,9 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 		limit       int
 		err         error
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.DecommissionMetaNode))
 	defer func() {
-		stat.EndStat(proto.DecommissionMetaNode, err, bgTime, 1)
+		doStatAndMetric(proto.DecommissionMetaNode, metric, err, nil)
 	}()
 
 	if offLineAddr, limit, err = parseDecomNodeReq(r); err != nil {
@@ -3443,10 +3479,11 @@ func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		tr  *proto.AdminTask
 		err error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetMetaNodeTaskResponse))
 	defer func() {
-		stat.EndStat(proto.GetMetaNodeTaskResponse, err, bgTime, 1)
+		doStatAndMetric(proto.GetMetaNodeTaskResponse, metric, err, nil)
 	}()
+
 	tr, err = parseRequestToGetTaskResponse(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3464,10 +3501,11 @@ func (m *Server) addRaftNode(w http.ResponseWriter, r *http.Request) {
 		addr string
 		err  error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddRaftNode))
 	defer func() {
-		stat.EndStat(proto.AddRaftNode, err, bgTime, 1)
+		doStatAndMetric(proto.AddRaftNode, metric, err, nil)
 	}()
+
 	var msg string
 	id, addr, err = parseRequestForRaftNode(r)
 	if err != nil {
@@ -3490,10 +3528,11 @@ func (m *Server) removeRaftNode(w http.ResponseWriter, r *http.Request) {
 		addr string
 		err  error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.RemoveRaftNode))
 	defer func() {
-		stat.EndStat(proto.RemoveRaftNode, err, bgTime, 1)
+		doStatAndMetric(proto.RemoveRaftNode, metric, err, nil)
 	}()
+
 	var msg string
 	id, addr, err = parseRequestForRaftNode(r)
 	if err != nil {
@@ -3511,10 +3550,11 @@ func (m *Server) removeRaftNode(w http.ResponseWriter, r *http.Request) {
 
 // get master's raft status
 func (m *Server) getRaftStatus(w http.ResponseWriter, r *http.Request) {
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.RaftStatus))
 	defer func() {
-		stat.EndStat(proto.RaftStatus, nil, bgTime, 1)
+		doStatAndMetric(proto.RaftStatus, metric, nil, nil)
 	}()
+
 	data := m.raftStore.RaftStatus(GroupID)
 	log.LogInfof("get raft status, %s", data.String())
 	sendOkReply(w, r, newSuccessHTTPReply(data))
@@ -3601,10 +3641,11 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 		err  error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.ClientMetaPartitions))
 	defer func() {
-		stat.EndStat(proto.ClientMetaPartitions, err, bgTime, 1)
+		doStatAndMetric(proto.ClientMetaPartitions, metric, err, map[string]string{exporter.Vol: name})
 	}()
+
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3630,9 +3671,9 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 		err  error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.ClientDataPartitions))
 	defer func() {
-		stat.EndStat(proto.ClientDataPartitions, err, bgTime, 1)
+		doStatAndMetric(proto.ClientDataPartitions, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
 	if name, err = parseAndExtractName(r); err != nil {
@@ -3671,17 +3712,18 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		ticket  cryptoutil.Ticket
 		ts      int64
 		param   *getVolParameter
+		volName string
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.ClientVol))
 	defer func() {
-		stat.EndStat(proto.ClientVol, err, bgTime, 1)
+		doStatAndMetric(proto.ClientVol, metric, err, map[string]string{exporter.Vol: volName})
 	}()
 
 	if param, err = parseGetVolParameter(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	volName = param.name
 	if vol, err = m.cluster.getVol(param.name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
@@ -3724,15 +3766,15 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		byMeta bool
 	)
 
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.ClientVolStat))
+	defer func() {
+		doStatAndMetric(proto.ClientVolStat, metric, err, map[string]string{exporter.Vol: name})
+	}()
+
 	if name, ver, byMeta, err = parseVolStatReq(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	metric := exporter.NewTPCnt("req_getVolStatInfo")
-	defer func() {
-		metric.SetWithLabels(err, map[string]string{exporter.Vol: name})
-	}()
 
 	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
@@ -3802,10 +3844,11 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		mp          *MetaPartition
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.ClientMetaPartition))
 	defer func() {
-		stat.EndStat(proto.ClientMetaPartition, err, bgTime, 1)
+		doStatAndMetric(proto.ClientMetaPartition, metric, err, nil)
 	}()
+
 	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3866,10 +3909,9 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 		vol      *Vol
 		volsInfo []*proto.VolInfo
 	)
-
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminListVols))
 	defer func() {
-		stat.EndStat(proto.AdminListVols, err, bgTime, 1)
+		doStatAndMetric(proto.AdminListVols, metric, err, nil)
 	}()
 
 	if keywords, err = parseKeywords(r); err != nil {
@@ -3895,6 +3937,10 @@ func (m *Server) changeMasterLeader(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
 	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminChangeMasterLeader))
+	defer func() {
+		doStatAndMetric(proto.AdminChangeMasterLeader, metric, err, nil)
+	}()
 
 	if err = m.cluster.tryToChangeLeaderByHost(); err != nil {
 		log.LogErrorf("changeMasterLeader.err %v", err)
@@ -3910,6 +3956,11 @@ func (m *Server) OpFollowerPartitionsRead(w http.ResponseWriter, r *http.Request
 		err            error
 		enableFollower bool
 	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminOpFollowerPartitionsRead))
+	defer func() {
+		doStatAndMetric(proto.AdminOpFollowerPartitionsRead, metric, err, nil)
+	}()
+
 	log.LogDebugf("OpFollowerPartitionsRead.")
 	if enableFollower, err = extractStatus(r); err != nil {
 		log.LogErrorf("OpFollowerPartitionsRead.err %v", err)
@@ -3980,6 +4031,11 @@ func (m *Server) updateDecommissionLimit(w http.ResponseWriter, r *http.Request)
 		limit uint64
 		err   error
 	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateDecommissionLimit))
+	defer func() {
+		doStatAndMetric(proto.AdminUpdateDecommissionLimit, metric, err, nil)
+	}()
 
 	if limit, err = parseRequestToUpdateDecommissionLimit(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -4071,6 +4127,12 @@ func (m *Server) queryDataNodeDecoFailedDps(w http.ResponseWriter, r *http.Reque
 		err         error
 		dn          *DataNode
 	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QueryDataNodeDecoFailedDps))
+	defer func() {
+		doStatAndMetric(proto.QueryDataNodeDecoFailedDps, metric, err, nil)
+	}()
+
 	if offLineAddr, err = parseReqToDecoDataNodeProgress(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

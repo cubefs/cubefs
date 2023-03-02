@@ -52,6 +52,10 @@ func (tp *TimePoint) SetWithLabels(labels map[string]string) {
 	tp.Set()
 }
 
+func (tp *TimePoint) GetStartTime() time.Time {
+	return tp.startTime
+}
+
 type TimePointCount struct {
 	tp  *TimePoint
 	cnt *Counter
@@ -80,4 +84,8 @@ func (tpc *TimePointCount) SetWithLabels(err error, labels map[string]string) {
 	}
 	tpc.tp.SetWithLabels(labels)
 	tpc.cnt.AddWithLabels(1, labels)
+}
+
+func (tpc *TimePointCount) GetStartTime() time.Time {
+	return tpc.tp.GetStartTime()
 }
