@@ -488,12 +488,12 @@ func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 					XAttrInfo: *attr,
 				}
 				objMetaCache.PutAttr(v.name, attrItem)
-				for key, _ := range attr.XAttrs {
+				for key := range attr.XAttrs {
 					keys = append(keys, key)
 				}
 			}
 		} else {
-			for key, _ := range attrItem.XAttrs {
+			for key := range attrItem.XAttrs {
 				keys = append(keys, key)
 			}
 		}
