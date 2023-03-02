@@ -25,8 +25,6 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/cubefs/cubefs/util/stat"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/config"
