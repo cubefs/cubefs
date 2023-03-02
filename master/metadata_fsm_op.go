@@ -728,6 +728,8 @@ func (c *Cluster) syncPutDataNodeInfo(opType uint32, dataNode *DataNode) (err er
 }
 
 func (c *Cluster) addRaftNode(nodeID uint64, addr string) (err error) {
+	log.LogInfof("action[addRaftNode] nodeID: %v, addr: %v:", nodeID, addr)
+
 	peer := proto.Peer{ID: nodeID}
 	_, err = c.partition.ChangeMember(proto.ConfAddNode, peer, []byte(addr))
 	if err != nil {
@@ -737,6 +739,8 @@ func (c *Cluster) addRaftNode(nodeID uint64, addr string) (err error) {
 }
 
 func (c *Cluster) removeRaftNode(nodeID uint64, addr string) (err error) {
+	log.LogInfof("action[removeRaftNode] nodeID: %v, addr: %v:", nodeID, addr)
+
 	peer := proto.Peer{ID: nodeID}
 	_, err = c.partition.ChangeMember(proto.ConfRemoveNode, peer, []byte(addr))
 	if err != nil {
