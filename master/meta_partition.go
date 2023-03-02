@@ -52,7 +52,7 @@ type MetaPartition struct {
 	MaxInodeID     uint64
 	InodeCount     uint64
 	DentryCount    uint64
-	FreeListLen   uint64
+	FreeListLen    uint64
 	Replicas       []*MetaReplica
 	ReplicaNum     uint8
 	Status         int8

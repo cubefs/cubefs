@@ -1177,7 +1177,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 
 	if req.RemovePeer.ID != 0 {
 		log.LogDebugf("action[handlePacketToRemoveDataPartitionRaftMember] ChangeRaftMember "+
-			"req %v dp %v RemovePeer.ID", p.GetReqID(), dp.partitionID, req.RemovePeer.ID)
+			"req %v dp %v RemovePeer.ID %v", p.GetReqID(), dp.partitionID, req.RemovePeer.ID)
 		_, err = dp.ChangeRaftMember(raftProto.ConfRemoveNode, raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
 		if err != nil {
 			return

@@ -201,7 +201,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 			logger.Debug("[raft->Step][%v] ignoring LocalMsgHup because already leader.", r.id)
 		} else if logger.IsEnableDebug() {
 			var replicas []uint64
-			for id, _ := range r.replicas {
+			for id := range r.replicas {
 				replicas = append(replicas, id)
 			}
 			logger.Debug("[raft->Step][%v] state %v, replicas %v.", r.id, r.state, replicas)
