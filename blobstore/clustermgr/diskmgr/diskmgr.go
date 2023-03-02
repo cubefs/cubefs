@@ -284,6 +284,22 @@ func (d *DiskMgr) GetDiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.D
 	return &(newDiskInfo), nil
 }
 
+// judge disk heartbeat interval whether small than HeartbeatNotifyIntervalS
+func (d *DiskMgr) IsFrequentHeatBeat(id proto.DiskID, HeartbeatNotifyIntervalS int) (bool, error) {
+	diskInfo, ok := d.getDisk(id)
+	if !ok {
+		return false, apierrors.ErrCMDiskNotFound
+	}
+	diskInfo.lock.RLock()
+	defer diskInfo.lock.RUnlock()
+
+	newExpireTime := time.Now().Add(time.Duration(d.HeartbeatExpireIntervalS) * time.Second)
+	if newExpireTime.Sub(diskInfo.expireTime) < time.Duration(HeartbeatNotifyIntervalS)*time.Second {
+		return true, nil
+	}
+	return false, nil
+}
+
 func (d *DiskMgr) CheckDiskInfoDuplicated(ctx context.Context, info *blobnode.DiskInfo) bool {
 	disk := &diskItem{
 		info: &blobnode.DiskInfo{Host: info.Host, Path: info.Path},
@@ -553,8 +569,10 @@ func (d *DiskMgr) SwitchReadonly(diskID proto.DiskID, readonly bool) error {
 func (d *DiskMgr) GetHeartbeatChangeDisks() []HeartbeatEvent {
 	all := d.getAllDisk()
 	ret := make([]HeartbeatEvent, 0)
+	span := trace.SpanFromContextSafe(context.Background())
 	for _, disk := range all {
 		disk.lock.RLock()
+		span.Debugf("diskId:%d,expireTime:%v,lastExpireTime:%v", disk.diskID, disk.expireTime, disk.lastExpireTime)
 		// notify topper level when heartbeat expire or heartbeat recover
 		if disk.isExpire() {
 			// expired disk has been notified already, then ignore it

@@ -366,8 +366,8 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	span.Infof("accept DiskHeartbeat request, args: %+v", args)
 
+	heartbeatDisks := make([]*blobnode.DiskHeartBeatInfo, 0)
 	disks := make([]*clustermgr.DiskHeartbeatRet, len(args.Disks))
 	for i := range args.Disks {
 		info, err := s.DiskMgr.GetDiskInfo(ctx, args.Disks[i].DiskID)
@@ -381,10 +381,28 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 			Status:   info.Status,
 			ReadOnly: info.Readonly,
 		}
+
+		// filter frequentHeatBeat disk
+		frequentHeatBeat, err := s.DiskMgr.IsFrequentHeatBeat(args.Disks[i].DiskID, s.HeartbeatNotifyIntervalS)
+		if err != nil {
+			span.Errorf("get disk info %d failed, err: %v", args.Disks[i].DiskID, err)
+			c.RespondError(err)
+			return
+		}
+		if !frequentHeatBeat {
+			heartbeatDisks = append(heartbeatDisks, args.Disks[i])
+		} else {
+			span.Warnf("disk %d heartbeat too frequent", args.Disks[i].DiskID)
+		}
 	}
+
 	ret := &clustermgr.DisksHeartbeatRet{Disks: disks}
 	c.RespondJSON(ret)
 
+	if len(heartbeatDisks) == 0 {
+		return
+	}
+	args.Disks = heartbeatDisks
 	data, err := json.Marshal(args)
 	span.Debugf("heartbeat params: %s", string(data))
 	if err != nil {
