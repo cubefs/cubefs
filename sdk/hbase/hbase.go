@@ -48,7 +48,7 @@ func (hc *HBaseClient) SelectDataPartitionMetrics(request *proto.HBaseRequest) (
 		params    map[string]string
 	)
 
-	metrics := exporter.NewTPCnt(proto.MonitorHBaseSelectDPMetrics)
+	metrics := exporter.NewModuleTP(proto.MonitorHBaseSelectDPMetrics)
 	defer metrics.Set(err)
 
 	header := make(map[string]string)
@@ -110,7 +110,7 @@ func (hc *HBaseClient) CheckSparkTaskRunning(cluster string) (res bool, err erro
 		stateCode int
 	)
 
-	metrics := exporter.NewTPCnt(proto.MonitorHBaseCheckSparkTaskRunning)
+	metrics := exporter.NewModuleTP(proto.MonitorHBaseCheckSparkTaskRunning)
 	defer metrics.Set(err)
 
 	param := make(map[string]string)

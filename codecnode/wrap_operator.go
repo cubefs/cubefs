@@ -31,7 +31,7 @@ import (
 
 func (s *CodecServer) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	sz := p.Size
-	tpObject := exporter.NewTPCnt(p.GetOpMsg())
+	tpObject := exporter.NewModuleTP(p.GetOpMsg())
 	start := time.Now().UnixNano()
 	defer func() {
 		resultSize := p.Size

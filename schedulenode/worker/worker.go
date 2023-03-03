@@ -2,6 +2,9 @@ package worker
 
 import (
 	"fmt"
+	"regexp"
+	"time"
+
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/mysql"
@@ -11,9 +14,6 @@ import (
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 	stringutil "github.com/cubefs/cubefs/util/string"
-	"github.com/cubefs/cubefs/util/ump"
-	"regexp"
-	"time"
 )
 
 type Worker interface {
@@ -210,7 +210,7 @@ func (b *BaseWorker) sendWorkerHeartbeat() {
 		select {
 		case <-timer.C:
 			heartbeat := func() {
-				metrics := exporter.NewTPCnt(proto.MonitorWorkerHeartbeat)
+				metrics := exporter.NewModuleTP(proto.MonitorWorkerHeartbeat)
 				defer metrics.Set(nil)
 
 				if err := b.heartbeat(b.WorkerType); err != nil {
@@ -329,7 +329,7 @@ func (b *BaseWorker) AddTask(task *proto.Task) (taskId uint64, err error) {
 		log.LogErrorf("[AddTask] add task to failed, err(%v), task(%v)", err, task.String())
 		alarmKey := fmt.Sprintf("Add %s task to database failed", proto.WorkerTypeToName(task.TaskType))
 		alarmInfo := fmt.Sprintf("Add %s task to database failed, errInfo: %s", proto.WorkerTypeToName(task.TaskType), err.Error())
-		ump.Alarm(alarmKey, alarmInfo)
+		exporter.WarningBySpecialUMPKey(alarmKey, alarmInfo)
 		return
 	}
 	return
@@ -405,7 +405,7 @@ func (b *BaseWorker) consumeTaskBase(consumeFunc func(task *proto.Task) (bool, e
 					alarmKey := fmt.Sprintf("%s worker consume task failed", proto.WorkerTypeToName(task.TaskType))
 					alarmInfo := fmt.Sprintf("consume task failed, taskInfo(%v)", task.String())
 					log.LogErrorf("[consumeTaskBase] alarmInfo(%v), error(%v)", alarmInfo, err.Error())
-					ump.Alarm(alarmKey, alarmInfo)
+					exporter.WarningBySpecialUMPKey(alarmKey, alarmInfo)
 
 					errorInfo := err.Error()
 					err = mysql.UpdateTaskFailed(task, errorInfo)

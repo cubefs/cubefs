@@ -173,7 +173,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Default store mode   : %v\n", svv.DefaultStoreMode.Str()))
 	sb.WriteString(fmt.Sprintf("  Convert state        : %v\n", svv.ConvertState.Str()))
 	sb.WriteString(fmt.Sprintf("  Meta layout          : %3d%% - %3d%%\n", svv.MpLayout.PercentOfMP, svv.MpLayout.PercentOfReplica))
-	sb.WriteString(fmt.Sprintf("  ump collect way      : %v\n", proto.UmpCollectByStr(svv.UmpCollectWay)))
+	sb.WriteString(fmt.Sprintf("  ump collect way      : %v\n", svv.UmpCollectWay))
 	sb.WriteString(fmt.Sprintf("  smart                : %s\n", formatEnabledDisabled(svv.IsSmart)))
 	sb.WriteString(fmt.Sprintf("  smart enable time    : %v\n", svv.SmartEnableTime))
 	sb.WriteString(fmt.Sprintf("  smart rules          : %v\n", strings.Join(svv.SmartRules, ",")))

@@ -208,8 +208,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	exporter.RegistConsul(cfg)
-
 	statistics.InitStatistics(cfg, m.clusterId, statistics.ModelMetaNode, m.localAddr, m.metadataManager.SummaryMonitorData)
 
 	go m.startUpdateProcessStatInfo()

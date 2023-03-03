@@ -280,7 +280,9 @@ func computeApproximateRequestSize(r *http.Request) <-chan int {
 
 	out := make(chan int, 1)
 
+	gWg.Add(1)
 	go func() {
+		defer gWg.Done()
 		s += len(r.Method)
 		s += len(r.Proto)
 		for name, values := range r.Header {

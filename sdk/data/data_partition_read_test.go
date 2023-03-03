@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/exporter"
 )
 
 var (
@@ -58,7 +58,7 @@ func TestNearRead(t *testing.T) {
 	volumeSimpleInfo, _ := testMc.AdminAPI().GetVolumeSimpleInfo("ltptest")
 	if err := testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
 		true, false, true, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
-		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, proto.UmpCollectByUnkown, -1, -1, false, 0); err != nil {
+		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false, 0); err != nil {
 		t.Fatalf("update followerRead and nearRead to 'true' failed: err(%v) vol(ltptest)", err)
 	}
 	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, masters)
@@ -165,7 +165,7 @@ func TestNearRead(t *testing.T) {
 	LocalIP = originLocalIP
 	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
 		false, false, false, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
-		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, proto.UmpCollectByUnkown, -1, -1, false, 0); err != nil {
+		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false, 0); err != nil {
 		t.Errorf("update followerRead and nearRead to 'false' failed: err(%v) vol(ltptest)", err)
 	}
 }

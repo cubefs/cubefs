@@ -19,8 +19,45 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
+)
+
+type CollectMethod int
+
+func (c CollectMethod) String() string {
+	switch c {
+	case CollectMethodFile:
+		return "File"
+	case CollectMethodJMTP:
+		return "JMTP"
+	default:
+	}
+	return "Unknown"
+}
+
+func (c CollectMethod) Valid() bool {
+	switch c {
+	case CollectMethodFile, CollectMethodJMTP:
+		return true
+	default:
+	}
+	return false
+}
+
+func (c CollectMethod) Int64() int64 {
+	return int64(c)
+}
+
+func ParseCollectMethod(v int) CollectMethod {
+	return CollectMethod(v)
+}
+
+const (
+	CollectMethodUnknown CollectMethod = iota
+	CollectMethodFile
+	CollectMethodJMTP
+
+	defaultCollectMethod = CollectMethodFile
 )
 
 type TpObject struct {
@@ -64,7 +101,7 @@ var (
 	FunctionTPMapCount = 16
 	FuncationTPMap     []sync.Map
 	FunctionTPKeyMap   *sync.Map
-	umpCollectWay      proto.UmpCollectBy
+	umpCollectMethod   CollectMethod
 	jmtpWrite          *JmtpWrite
 	jmtpWriteMutex     sync.Mutex
 
@@ -77,7 +114,7 @@ var (
 func init() {
 	FuncationTPMap = make([]sync.Map, FunctionTPMapCount)
 	FunctionTPKeyMap = new(sync.Map)
-	umpCollectWay = proto.UmpCollectByFile
+	umpCollectMethod = CollectMethodFile
 }
 
 func InitUmp(module, appName string) (err error) {
@@ -250,7 +287,7 @@ func Alive(key string) {
 	alive.Key = key
 	alive.Time = time.Now().Format(LogTimeForMat)
 	ch := SystemAliveLogWrite.logCh
-	if GetUmpCollectWay() == proto.UmpCollectByJmtpClient && jmtpWrite != nil {
+	if GetUmpCollectMethod() == CollectMethodJMTP && jmtpWrite != nil {
 		ch = jmtpWrite.aliveCh
 	}
 	select {
@@ -278,7 +315,7 @@ func Alarm(key, detail string) {
 
 	inflight := &BusinessAlarmLogWrite.inflight
 	ch := BusinessAlarmLogWrite.logCh
-	if GetUmpCollectWay() == proto.UmpCollectByJmtpClient && jmtpWrite != nil {
+	if GetUmpCollectMethod() == CollectMethodJMTP && jmtpWrite != nil {
 		inflight = &jmtpWrite.inflight
 		ch = jmtpWrite.alarmCh
 	}
@@ -312,30 +349,33 @@ func flushAlarm(inflight *int32, empty chan struct{}) {
 	}
 }
 
-func GetUmpCollectWay() proto.UmpCollectBy {
-	return umpCollectWay
+func GetUmpCollectMethod() CollectMethod {
+	return umpCollectMethod
 }
 
-// Delay jmtp client initialization to the first set of umpCollectWay.
+// Delay jmtp client initialization to the first set of umpCollectMethod.
 // Should call SetUmpJmtpAddr() before this function.
-func SetUmpCollectWay(way proto.UmpCollectBy) {
+func SetUmpCollectMethod(method CollectMethod) {
 	jmtpWriteMutex.Lock()
 	defer jmtpWriteMutex.Unlock()
-	if way == proto.UmpCollectByJmtpClient && jmtpWrite == nil {
+	if !method.Valid() {
+		method = defaultCollectMethod
+	}
+	if method == CollectMethodJMTP && jmtpWrite == nil {
 		if jmtp, err := NewJmtpWrite(); err == nil {
 			jmtpWrite = jmtp
 		}
 	}
-	umpCollectWay = way
+	umpCollectMethod = method
 }
 
-func SetUmpJmtpAddr(jmtpAddr string) {
+func SetUmpJmtpAddr(jmtpAddress string) {
 	jmtpWriteMutex.Lock()
 	defer jmtpWriteMutex.Unlock()
-	if jmtpAddr == "" || jmtpAddr == umpJmtpAddr || (umpJmtpAddr == "" && jmtpAddr == defaultJmtpAddr) {
+	if jmtpAddress == "" || jmtpAddress == umpJmtpAddress {
 		return
 	}
-	umpJmtpAddr = jmtpAddr
+	umpJmtpAddress = jmtpAddress
 	if jmtpWrite != nil {
 		jmtpWrite.stop()
 		if jmtp, err := NewJmtpWrite(); err == nil {

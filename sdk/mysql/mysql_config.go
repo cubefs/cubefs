@@ -19,7 +19,7 @@ const (
 )
 
 func AddScheduleConfig(sc *proto.ScheduleConfig) (err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlAddScheduleConfig)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlAddScheduleConfig)
 	defer metrics.Set(err)
 
 	sqlCmd := "insert into config(config_type, config_key, config_value) values(?, ?, ?)"
@@ -37,7 +37,7 @@ func AddScheduleConfig(sc *proto.ScheduleConfig) (err error) {
 }
 
 func SelectScheduleConfig(st proto.ScheduleConfigType) (scs []*proto.ScheduleConfig, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectScheduleConfig)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectScheduleConfig)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -78,7 +78,7 @@ func UpdateScheduleConfig(sc *proto.ScheduleConfig) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateScheduleConfig)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlUpdateScheduleConfig)
 	defer metrics.Set(err)
 
 	sqlCmd := "update config set config_value = ?, update_time = now() where config_type =? and config_key = ?"
@@ -106,7 +106,7 @@ func DeleteScheduleConfig(sc *proto.ScheduleConfig) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlDeleteScheduleConfig)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlDeleteScheduleConfig)
 	defer metrics.Set(err)
 	sqlCmd := "delete from config where config_type = ? and config_key = ?"
 	args := make([]interface{}, 0)

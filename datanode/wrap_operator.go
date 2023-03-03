@@ -42,7 +42,7 @@ import (
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	sz := p.Size
 
-	tpObject := exporter.NewTPCnt(p.GetOpMsg())
+	tpObject := exporter.NewModuleTP(p.GetOpMsg())
 	s.rateLimit(p, c)
 
 	start := time.Now().UnixNano()
@@ -594,7 +594,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		err = func() error {
 			var storeErr error
 			if !isRepairRead {
-				tp := exporter.NewTPCnt("StreamRead_StoreRead")
+				tp := exporter.NewModuleTP("StreamRead_StoreRead")
 				defer func() {
 					tp.Set(storeErr)
 				}()
@@ -618,7 +618,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		err = func() error {
 			var netErr error
 			if !isRepairRead {
-				tp := exporter.NewTPCnt("StreamRead_WriteToConn")
+				tp := exporter.NewModuleTP("StreamRead_WriteToConn")
 				defer func() {
 					tp.Set(netErr)
 				}()

@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"sort"
 	"strconv"
 	"strings"
@@ -332,7 +333,7 @@ type volValue struct {
 	TrashCleanInterval    uint64
 	BatchDelInodeCnt      uint32
 	DelInodeInterval      uint32
-	UmpCollectWay         bsProto.UmpCollectBy
+	UmpCollectWay         exporter.UMPCollectMethod
 	ReuseMP               bool
 	EnableBitMapAllocator bool
 	TrashCleanDuration    int32

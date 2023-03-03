@@ -24,9 +24,9 @@ import (
 	"bazil.org/fuse/fs"
 	"github.com/cubefs/cubefs/client/cache"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 
-	"github.com/cubefs/cubefs/util/ump"
 	"golang.org/x/net/context"
 )
 
@@ -39,23 +39,23 @@ type Dir struct {
 
 // Functions that Dir needs to implement
 var (
-	_ fs.Node                	= (*Dir)(nil)
-	_ fs.NodeCreater         	= (*Dir)(nil)
-	_ fs.NodeForgetter       	= (*Dir)(nil)
-	_ fs.NodeMkdirer         	= (*Dir)(nil)
-	_ fs.NodeMknoder         	= (*Dir)(nil)
-	_ fs.NodeRemover         	= (*Dir)(nil)
-	_ fs.NodeFsyncer         	= (*Dir)(nil)
-	_ fs.NodeRequestLookuper 	= (*Dir)(nil)
-	_ fs.HandleReadDirAller  	= (*Dir)(nil)
-	_ fs.HandleReadDirPlusAller	= (*Dir)(nil)
-	_ fs.NodeRenamer         	= (*Dir)(nil)
-	_ fs.NodeSetattrer       	= (*Dir)(nil)
-	_ fs.NodeSymlinker       	= (*Dir)(nil)
-	_ fs.NodeGetxattrer      	= (*Dir)(nil)
-	_ fs.NodeListxattrer     	= (*Dir)(nil)
-	_ fs.NodeSetxattrer      	= (*Dir)(nil)
-	_ fs.NodeRemovexattrer   	= (*Dir)(nil)
+	_ fs.Node                   = (*Dir)(nil)
+	_ fs.NodeCreater            = (*Dir)(nil)
+	_ fs.NodeForgetter          = (*Dir)(nil)
+	_ fs.NodeMkdirer            = (*Dir)(nil)
+	_ fs.NodeMknoder            = (*Dir)(nil)
+	_ fs.NodeRemover            = (*Dir)(nil)
+	_ fs.NodeFsyncer            = (*Dir)(nil)
+	_ fs.NodeRequestLookuper    = (*Dir)(nil)
+	_ fs.HandleReadDirAller     = (*Dir)(nil)
+	_ fs.HandleReadDirPlusAller = (*Dir)(nil)
+	_ fs.NodeRenamer            = (*Dir)(nil)
+	_ fs.NodeSetattrer          = (*Dir)(nil)
+	_ fs.NodeSymlinker          = (*Dir)(nil)
+	_ fs.NodeGetxattrer         = (*Dir)(nil)
+	_ fs.NodeListxattrer        = (*Dir)(nil)
+	_ fs.NodeSetxattrer         = (*Dir)(nil)
+	_ fs.NodeRemovexattrer      = (*Dir)(nil)
 )
 
 // NewDir returns a new directory.
@@ -94,8 +94,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	start := time.Now()
 
 	var err error
-	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("filecreate"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewModuleTP("filecreate")
+	defer tpObject.Set(err)
 
 	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -134,8 +134,8 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	start := time.Now()
 
 	var err error
-	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("mkdir"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewModuleTP("mkdir")
+	defer tpObject.Set(err)
 
 	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -154,8 +154,14 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 // Remove handles the remove request.
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
-	tpObject := ump.BeforeTP(d.super.umpFunctionKey("Remove"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewVolumeTP("Remove", d.super.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	tpObject1 := exporter.NewModuleTP("remove")
+	defer func() {
+		tpObject1.Set(err)
+	}()
 
 	if len(d.super.delProcessPath) > 0 {
 		delProcPath, errStat := os.Readlink(fmt.Sprintf("/proc/%v/exe", req.Pid))
@@ -168,8 +174,6 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
 
 	start := time.Now()
 	d.dcache.Delete(req.Name)
-	tpObject1 := ump.BeforeTP(d.super.umpFunctionGeneralKey("remove"))
-	defer ump.AfterTP(tpObject1, err)
 
 	info, syserr := d.super.mw.Delete_ll(ctx, d.info.Inode, req.Name, req.Dir)
 	if syserr != nil {
@@ -241,8 +245,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	start := time.Now()
 
 	var err error
-	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("readdir"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewModuleTP("readdir")
+	defer tpObject.Set(err)
 
 	children, err := d.super.mw.ReadDir_ll(ctx, d.info.Inode)
 	if err != nil {
@@ -287,8 +291,8 @@ func (d *Dir) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusResponse
 	start := time.Now()
 
 	var err error
-	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("readdirplus"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewModuleTP("readdirplus")
+	defer tpObject.Set(err)
 
 	children, err := d.super.mw.ReadDir_ll(ctx, d.info.Inode)
 	if err != nil {
@@ -350,8 +354,8 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	d.dcache.Delete(req.OldName)
 
 	var err error
-	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("rename"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewModuleTP("rename")
+	defer tpObject.Set(err)
 
 	err = d.super.mw.Rename_ll(ctx, d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, false)
 	if err != nil {
@@ -400,8 +404,8 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	start := time.Now()
 
 	var err error
-	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("mknod"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewModuleTP("mknod")
+	defer tpObject.Set(err)
 
 	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -423,8 +427,8 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	start := time.Now()
 
 	var err error
-	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("symlink"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewModuleTP("symlink")
+	defer tpObject.Set(err)
 
 	info, err := d.super.mw.Create_ll(ctx, parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
 	if err != nil {
@@ -458,8 +462,8 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	start := time.Now()
 
 	var err error
-	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("link"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewModuleTP("link")
+	defer tpObject.Set(err)
 
 	info, err := d.super.mw.Link(ctx, d.info.Inode, req.NewName, oldInode.Inode)
 	if err != nil {

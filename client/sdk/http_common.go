@@ -19,8 +19,8 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/ump"
 	versionUtil "github.com/cubefs/cubefs/util/version"
 )
 
@@ -48,7 +48,7 @@ const (
 	TarNamePre   = "cfs-client-libs"
 	AMD64        = "amd64"
 	ARM64        = "arm64"
-	VersionID	 = "Version"
+	VersionID    = "Version"
 
 	pidFileSeparator = ";"
 
@@ -436,7 +436,7 @@ func buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string
 }
 
 func GetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte(fmt.Sprintf("%v\n", proto.UmpCollectByStr(ump.GetUmpCollectWay()))))
+	w.Write([]byte(fmt.Sprintf("%v\n", exporter.GetUmpCollectMethod())))
 }
 
 func SetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
@@ -450,8 +450,8 @@ func SetUmpCollectWay(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Write([]byte("Set ump collect way failed\n"))
 		} else {
-			ump.SetUmpCollectWay(proto.UmpCollectBy(val))
-			w.Write([]byte(fmt.Sprintf("Set ump collect way to %v successfully\n", proto.UmpCollectByStr(proto.UmpCollectBy(val)))))
+			exporter.SetUMPCollectMethod(exporter.UMPCollectMethod(val))
+			w.Write([]byte(fmt.Sprintf("Set ump collect way to %v successfully\n", exporter.UMPCollectMethod(val))))
 		}
 	} else {
 		w.Write([]byte("Unrecognized way\n"))

@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package exporter
+package prom
 
 import (
 	"bytes"
@@ -31,11 +31,9 @@ const (
 	RegisterPath   = "/v1/agent/service/register"
 )
 
-/**
- * consul register info for prometheus
- * optional for user when set prometheus exporter
- */
-type ConsulRegisterInfo struct {
+// consulRegisterEntry for prometheus
+// optional for user when set prometheus exporter
+type consulRegisterEntry struct {
 	Name    string   `json:"Name"`
 	ID      string   `json:"ID"`
 	Address string   `json:"Address"`
@@ -44,17 +42,16 @@ type ConsulRegisterInfo struct {
 }
 
 // get consul id
-func GetConsulId(app string, role string, host string, port int64) string {
+func getConsulId(app string, role string, host string, port int64) string {
 	return fmt.Sprintf("%s_%s_%s_%d", app, role, host, port)
 }
 
-// do consul register process
-func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
+func consoleRegisterWorker(consulAddress, app, role, cluster string, port int64) {
 	defer wg.Done()
-	if len(addr) <= 0 {
+	if len(consulAddress) <= 0 {
 		return
 	}
-	log.LogInfof("metrics consul register %v %v %v", addr, cluster, port)
+	log.LogInfof("metrics consul register %v %v %v", consulAddress, cluster, port)
 	ticker := time.NewTicker(RegisterPeriod)
 	defer func() {
 		if err := recover(); err != nil {
@@ -63,14 +60,14 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 		ticker.Stop()
 	}()
 
-	host, err := GetLocalIpAddr()
+	host, err := getLocalIpAddr()
 	if err != nil {
 		log.LogErrorf("get local ip error, %v", err.Error())
 		return
 	}
 
 	client := &http.Client{}
-	req := makeRegisterReq(host, addr, app, role, cluster, port)
+	req := makeRegisterReq(host, consulAddress, app, role, cluster, port)
 	if req == nil {
 		log.LogErrorf("make register req error")
 		return
@@ -86,7 +83,7 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 		case <-stopC:
 			return
 		case <-ticker.C:
-			req := makeRegisterReq(host, addr, app, role, cluster, port)
+			req := makeRegisterReq(host, consulAddress, app, role, cluster, port)
 			if req == nil {
 				log.LogErrorf("make register req error")
 				return
@@ -99,28 +96,11 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 	}
 }
 
-// GetLocalIpAddr returns the local IP address.
-func GetLocalIpAddr() (ipaddr string, err error) {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		log.LogError("consul register get local ip failed, ", err)
-		return
-	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String(), nil
-			}
-		}
-	}
-	return "", fmt.Errorf("cannot get local ip")
-}
-
 // make a consul rest request
 func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *http.Request) {
-	id := GetConsulId(app, role, host, port)
+	id := getConsulId(app, role, host, port)
 	url := addr + RegisterPath
-	cInfo := &ConsulRegisterInfo{
+	cInfo := &consulRegisterEntry{
 		Name:    app,
 		ID:      id,
 		Address: host,
@@ -145,4 +125,21 @@ func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *ht
 	req.Close = true
 
 	return
+}
+
+// GetLocalIpAddr returns the local IP address.
+func getLocalIpAddr() (ipaddr string, err error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		log.LogError("consul register get local ip failed, ", err)
+		return
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String(), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("cannot get local ip")
 }

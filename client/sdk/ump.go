@@ -116,16 +116,8 @@ func (c *client) initUmpKeys() {
 	umpKeyClusterArr = append(umpKeyClusterArr, fmt.Sprintf("%vcfs_write_relaylog", clusterKeyPrefix))
 }
 
-func (c *client) umpFunctionKey(act string) string {
-	return fmt.Sprintf("%s_%s_%s", c.mw.Cluster(), c.volName, act)
-}
-
 func (c *client) umpFunctionKeyFast(act int) string {
 	return umpKeyVolArr[act]
-}
-
-func (c *client) umpFunctionGeneralKey(act string) string {
-	return fmt.Sprintf("%s_%s_%s", c.mw.Cluster(), gClientManager.moduleName, act)
 }
 
 func (c *client) umpFunctionGeneralKeyFast(act int) string {

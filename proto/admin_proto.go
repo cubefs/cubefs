@@ -17,6 +17,7 @@ package proto
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"strconv"
 	"sync/atomic"
 )
@@ -1127,7 +1128,7 @@ type SimpleVolView struct {
 	TrashCleanInterval    uint64
 	BatchDelInodeCnt      uint32
 	DelInodeInterval      uint32
-	UmpCollectWay         UmpCollectBy
+	UmpCollectWay         exporter.UMPCollectMethod
 	ReuseMP               bool
 	EnableBitMapAllocator bool
 	TrashCleanDuration    int32

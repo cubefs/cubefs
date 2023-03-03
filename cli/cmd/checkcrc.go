@@ -2,21 +2,22 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/ump"
-	atomic2 "go.uber.org/atomic"
 	"os"
 	"sync"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
+	atomic2 "go.uber.org/atomic"
 )
 
 type RepairPersist struct {
-	MasterAddr string
-	failedDpFd *os.File
+	MasterAddr              string
+	failedDpFd              *os.File
 	failedExtentsFd         *os.File
 	singleBadNormalExtentFd *os.File
 	multiBadNormalExtentsFd *os.File
-	singleBadTinyExtentFd *os.File
-	multiBadTinyExtentsFd *os.File
+	singleBadTinyExtentFd   *os.File
+	multiBadTinyExtentsFd   *os.File
 	lock                    sync.RWMutex
 	dpCounter               atomic2.Int64
 	rCh                     chan RepairExtentInfo
@@ -42,7 +43,7 @@ func (rp *RepairPersist) persistOneBadHostNormal(rExtent RepairExtentInfo) {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
 	msg := fmt.Sprintf("Domain[%s] found bad crc extent, it will be automatically repaired later: %v %v %v\n", rp.MasterAddr, rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0])
-	ump.Alarm( "check_crc_server", msg)
+	exporter.WarningBySpecialUMPKey("check_crc_server", msg)
 	rp.singleBadNormalExtentFd.WriteString(fmt.Sprintf("%v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0]))
 	rp.singleBadNormalExtentFd.Sync()
 }
@@ -51,32 +52,32 @@ func (rp *RepairPersist) persistOneBadHostTiny(rExtent RepairExtentInfo) {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
 	msg := fmt.Sprintf("Domain[%s] found bad crc extent, it will be automatically repaired later: %v %v %v\n", rp.MasterAddr, rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0])
-	ump.Alarm("check_crc_server", msg)
+	exporter.WarningBySpecialUMPKey("check_crc_server", msg)
 	rp.singleBadTinyExtentFd.WriteString(fmt.Sprintf("%v %v %v %v %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts[0], rExtent.Inode, rExtent.Offset, rExtent.Size, rExtent.Volume))
 	rp.singleBadTinyExtentFd.Sync()
 }
 
-func (rp *RepairPersist) persistMultiBadHostsNormal(rExtent RepairExtentInfo){
+func (rp *RepairPersist) persistMultiBadHostsNormal(rExtent RepairExtentInfo) {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
 	msg := fmt.Sprintf("Domain[%s] found bad crc more than 1, please check again: %v %v %v\n", rp.MasterAddr, rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts)
-	ump.Alarm("check_crc_server", msg)
+	exporter.WarningBySpecialUMPKey("check_crc_server", msg)
 	rp.multiBadNormalExtentsFd.WriteString(fmt.Sprintf("%v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts))
 	rp.multiBadNormalExtentsFd.Sync()
 }
 
-func (rp *RepairPersist) persistMultiBadHostsTiny(rExtent RepairExtentInfo){
+func (rp *RepairPersist) persistMultiBadHostsTiny(rExtent RepairExtentInfo) {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
 	msg := fmt.Sprintf("Domain[%s] found bad crc more than 1, please check again: %v %v %v\n", rp.MasterAddr, rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts)
-	ump.Alarm("check_crc_server", msg)
+	exporter.WarningBySpecialUMPKey("check_crc_server", msg)
 	rp.multiBadTinyExtentsFd.WriteString(fmt.Sprintf("%v %v %v %v %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts, rExtent.Inode, rExtent.Offset, rExtent.Size, rExtent.Volume))
 	rp.multiBadTinyExtentsFd.Sync()
 }
 func (rp *RepairPersist) persistResult() {
 	for {
 		select {
-		case rExtent := <- rp.rCh:
+		case rExtent := <-rp.rCh:
 			if rExtent.PartitionID == 0 && rExtent.ExtentID == 0 {
 				return
 			}
@@ -98,7 +99,7 @@ func (rp *RepairPersist) persistResult() {
 	}
 }
 
-func NewRepairPersist(master string) (rp *RepairPersist){
+func NewRepairPersist(master string) (rp *RepairPersist) {
 	rp = new(RepairPersist)
 	rp.MasterAddr = master
 	rp.rCh = make(chan RepairExtentInfo, 1024)
@@ -112,10 +113,10 @@ func NewRepairPersist(master string) (rp *RepairPersist){
 	return
 }
 
-func (rp *RepairPersist) close(){
+func (rp *RepairPersist) close() {
 	rp.rCh <- RepairExtentInfo{
 		PartitionID: 0,
-		ExtentID: 0,
+		ExtentID:    0,
 	}
 	rp.failedDpFd.Sync()
 	rp.failedExtentsFd.Sync()

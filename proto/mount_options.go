@@ -6,6 +6,7 @@ import (
 
 	"github.com/cubefs/cubefs/util/auth"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/exporter"
 )
 
 // For client
@@ -21,6 +22,7 @@ const (
 	WarnLogDir
 	LogLevel
 	ProfPort
+	ExporterPort
 	IcacheTimeout
 	LookupValid
 	AttrValid
@@ -98,6 +100,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[WarnLogDir] = MountOption{"warnLogDir", "Warn Log Path", "", ""}
 	opts[LogLevel] = MountOption{"logLevel", "Log Level", "", ""}
 	opts[ProfPort] = MountOption{"profPort", "PProf Port", "", ""}
+	opts[ExporterPort] = MountOption{"exporterPort", "Exporter Port", "", ""}
 	opts[IcacheTimeout] = MountOption{"icacheTimeout", "Inode Cache Expiration Time", "", int64(-1)}
 	opts[LookupValid] = MountOption{"lookupValid", "Lookup Valid Duration", "", int64(-1)}
 	opts[AttrValid] = MountOption{"attrValid", "Attr Valid Duration", "", int64(-1)}
@@ -139,7 +142,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[ExtentSize] = MountOption{"extentSize", "set extentSize for client", "", int64(0)}
 	opts[AutoFlush] = MountOption{"autoFlush", "set autoFlush for client", "", true}
 	opts[DeleteProcessAbsoPath] = MountOption{"delProcessAbsoPath", "the absolute path of the process which is allowed to delete files", "", ""}
-	opts[UmpCollectWay] = MountOption{"umpCollectWay", "1: by file, 2: by jmtp client", "", int64(UmpCollectByFile)}
+	opts[UmpCollectWay] = MountOption{"umpCollectWay", "1: by file, 2: by jmtp client", "", int64(exporter.UMPCollectMethodFile)}
 	opts[PidFile] = MountOption{"pidFile", "pidFile absolute path", "", ""}
 	opts[EnableReadDirPlus] = MountOption{"readDirPlus", "readdir and get inode info to accelerate any future lookups in the same directory", "", int64(-1)}
 	//	for i := 0; i < MaxMountOption; i++ {
@@ -282,5 +285,5 @@ type MountOptions struct {
 	ReadAheadSize            int64
 	UmpCollectWay            int64
 	PidFile                  string
-	EnableReadDirPlus		 int64
+	EnableReadDirPlus        int64
 }

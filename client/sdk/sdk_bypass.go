@@ -142,10 +142,9 @@ import (
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
-
-	"github.com/cubefs/cubefs/util/ump"
 	"github.com/cubefs/cubefs/util/version"
 )
 
@@ -821,8 +820,8 @@ func cfs_sdk_close() {
 	close(gClientManager.stopC)
 	gClientManager.wg.Wait()
 	gClientManager = nil
-	ump.StopUmp()
 	log.LogClose()
+	exporter.Stop()
 	runtime.GC()
 }
 
@@ -921,10 +920,10 @@ func cfs_ump(id C.int64_t, umpType C.int, sec C.int, nsec C.int) {
 		return
 	}
 	t := time.Unix(int64(sec), int64(nsec))
-	tpObject1 := ump.BeforeTPWithStartTime(c.umpFunctionKeyFast(int(umpType)), t)
-	tpObject2 := ump.BeforeTPWithStartTime(c.umpFunctionGeneralKeyFast(int(umpType)), t)
-	ump.AfterTPUs(tpObject1, nil)
-	ump.AfterTPUs(tpObject2, nil)
+	tpObject1 := exporter.NewCustomKeyTPUsWithStartTime(c.umpFunctionKeyFast(int(umpType)), t)
+	tpObject2 := exporter.NewCustomKeyTPUsWithStartTime(c.umpFunctionGeneralKeyFast(int(umpType)), t)
+	tpObject1.Set(nil)
+	tpObject2.Set(nil)
 }
 
 /*
@@ -953,8 +952,8 @@ func cfs_close(id C.int64_t, fd C.int) (re C.int) {
 	path = f.path
 	ino = f.ino
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_close))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_close))
+	defer tpObject.Set(nil)
 
 	c.flush(nil, f.ino)
 	c.closeStream(f)
@@ -999,8 +998,8 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_open))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_open))
+	defer tpObject.Set(nil)
 
 	fuseMode := uint32(mode) & uint32(0777)
 	fuseFlags := uint32(flags) &^ uint32(0x8000)
@@ -1170,8 +1169,8 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_rename))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_rename))
+	defer tpObject.Set(nil)
 
 	absFrom := c.absPath(C.GoString(from))
 	absTo := c.absPath(C.GoString(to))
@@ -1278,8 +1277,8 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_truncate))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_truncate))
+	defer tpObject.Set(nil)
 
 	absPath := c.absPath(C.GoString(path))
 	if c.checkReadOnly(absPath) {
@@ -1338,8 +1337,8 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 		return statusEPERM
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_ftruncate))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_ftruncate))
+	defer tpObject.Set(nil)
 
 	err = c.truncate(nil, f.ino, uint64(len))
 	if err != nil {
@@ -1388,8 +1387,8 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 		return statusEPERM
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fallocate))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_fallocate))
+	defer tpObject.Set(nil)
 
 	info, err := c.getInode(nil, f.ino)
 	if err != nil {
@@ -1457,8 +1456,8 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 		return statusEPERM
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_posix_fallocate))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_posix_fallocate))
+	defer tpObject.Set(nil)
 
 	info, err := c.getInode(nil, f.ino)
 	if err != nil {
@@ -1533,11 +1532,11 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	} else if f.fileType == fileTypeRelaylog {
 		act = ump_cfs_flush_relaylog
 	}
-	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
-	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
+	tpObject1 := exporter.NewCustomKeyTPUs(c.umpFunctionKeyFast(act))
+	tpObject2 := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
-		ump.AfterTPUs(tpObject1, nil)
-		ump.AfterTPUs(tpObject2, nil)
+		tpObject1.Set(nil)
+		tpObject2.Set(nil)
 	}()
 
 	if err = c.flush(nil, f.ino); err != nil {
@@ -1607,8 +1606,8 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 		return statusEPERM
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_mkdirs))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_mkdirs))
+	defer tpObject.Set(nil)
 
 	pino := proto.RootIno
 	dirs := strings.Split(dirpath, "/")
@@ -1693,8 +1692,8 @@ func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_rmdir))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_rmdir))
+	defer tpObject.Set(nil)
 
 	absPath := c.absPath(C.GoString(path))
 	if absPath == "/" {
@@ -1946,8 +1945,8 @@ func cfs_link(id C.int64_t, oldpath *C.char, newpath *C.char) (re C.int) {
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_link))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_link))
+	defer tpObject.Set(nil)
 
 	inode, err := c.lookupPath(nil, c.absPath(C.GoString(oldpath)))
 	if err != nil {
@@ -2018,8 +2017,8 @@ func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_symlink))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_symlink))
+	defer tpObject.Set(nil)
 
 	absPath := c.absPath(C.GoString(linkPath))
 	if c.checkReadOnly(absPath) {
@@ -2090,8 +2089,8 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_unlink))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_unlink))
+	defer tpObject.Set(nil)
 
 	absPath := c.absPath(C.GoString(path))
 	if c.checkReadOnly(absPath) {
@@ -2171,8 +2170,8 @@ func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) (re C.
 		return C.ssize_t(statusEINVAL)
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_readlink))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_readlink))
+	defer tpObject.Set(nil)
 
 	info, err := c.getInodeByPath(nil, c.absPath(C.GoString(path)))
 	if err != nil {
@@ -2253,8 +2252,8 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_stat))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_stat))
+	defer tpObject.Set(nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
@@ -2346,8 +2345,8 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_stat64))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_stat64))
+	defer tpObject.Set(nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
@@ -2494,8 +2493,8 @@ func _cfs_chmod(id C.int64_t, path *C.char, mode C.mode_t, flags C.int) C.int {
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_chmod))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_chmod))
+	defer tpObject.Set(nil)
 
 	absPath := c.absPath(C.GoString(path))
 	if c.checkReadOnly(absPath) {
@@ -2537,8 +2536,8 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 		return statusEPERM
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fchmod))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_fchmod))
+	defer tpObject.Set(nil)
 
 	info, err := c.getInode(nil, f.ino)
 	if err != nil {
@@ -2589,8 +2588,8 @@ func _cfs_chown(id C.int64_t, path *C.char, uid C.uid_t, gid C.gid_t, flags C.in
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_chown))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_chown))
+	defer tpObject.Set(nil)
 
 	absPath := c.absPath(C.GoString(path))
 	if c.checkReadOnly(absPath) {
@@ -2631,8 +2630,8 @@ func cfs_fchown(id C.int64_t, fd C.int, uid C.uid_t, gid C.gid_t) C.int {
 		return statusEPERM
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fchown))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_fchown))
+	defer tpObject.Set(nil)
 
 	info, err := c.getInode(nil, f.ino)
 	if err != nil {
@@ -2673,8 +2672,8 @@ func cfs_utimens(id C.int64_t, path *C.char, times *C.struct_timespec, flags C.i
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_utimens))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_utimens))
+	defer tpObject.Set(nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
@@ -2792,8 +2791,8 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 		return statusEINVAL
 	}
 
-	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_faccessat))
-	defer ump.AfterTPUs(tpObject, nil)
+	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_faccessat))
+	defer tpObject.Set(nil)
 
 	absPath, err := c.absPathAt(dirfd, path)
 	if err != nil {
@@ -3487,11 +3486,11 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	} else if f.fileType == fileTypeRelaylog {
 		act = ump_cfs_read_relaylog
 	}
-	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
-	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
+	tpObject1 := exporter.NewCustomKeyTPUs(c.umpFunctionKeyFast(act))
+	tpObject2 := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
-		ump.AfterTPUs(tpObject1, nil)
-		ump.AfterTPUs(tpObject2, nil)
+		tpObject1.Set(nil)
+		tpObject2.Set(nil)
 	}()
 
 	accFlags := f.flags & uint32(C.O_ACCMODE)
@@ -3658,11 +3657,11 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	if off < 0 && off != C.off_t(autoOffset) {
 		return C.ssize_t(statusEINVAL)
 	}
-	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
-	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
+	tpObject1 := exporter.NewCustomKeyTPUs(c.umpFunctionKeyFast(act))
+	tpObject2 := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
-		ump.AfterTPUs(tpObject1, nil)
-		ump.AfterTPUs(tpObject2, nil)
+		tpObject1.Set(nil)
+		tpObject2.Set(nil)
 	}()
 
 	accFlags := f.flags & uint32(C.O_ACCMODE)
@@ -3769,11 +3768,11 @@ func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size
 	} else if f.fileType == fileTypeRelaylog {
 		act = ump_cfs_write_relaylog
 	}
-	//tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
-	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
+	tpObject1 := exporter.NewCustomKeyTPUs(c.umpFunctionKeyFast(act))
+	tpObject2 := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
-		//ump.AfterTPUs(tpObject1, nil)
-		ump.AfterTPUs(tpObject2, nil)
+		tpObject1.Set(nil)
+		tpObject2.Set(nil)
 	}()
 
 	var buffer []byte
@@ -4094,7 +4093,6 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 
 	var mw *meta.MetaWrapper
 	metaConfig := &meta.MetaConfig{
-		Modulename:    gClientManager.moduleName,
 		Volume:        c.volName,
 		Masters:       masters,
 		ValidateOwner: true,
@@ -4135,11 +4133,8 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 	c.ec = ec
 
 	// metric
-	if err = ump.InitUmp(gClientManager.moduleName, "jdos_chubaofs-node"); err != nil {
-		syslog.Println(err)
-		return
-	}
 	c.initUmpKeys()
+	exporter.Init(mw.Cluster(), gClientManager.moduleName, nil)
 
 	// version
 	startVersionReporter(mw.Cluster(), c.volName, masters)
@@ -4453,12 +4448,12 @@ func handleError(c *client, act, msg string) {
 	if c != nil {
 		key1 := fmt.Sprintf("%s_%s_warning", c.mw.Cluster(), c.volName)
 		errmsg1 := fmt.Sprintf("act(%s) - %s", act, msg)
-		ump.Alarm(key1, errmsg1)
+		exporter.WarningBySpecialUMPKey(key1, errmsg1)
 
 		key2 := fmt.Sprintf("%s_%s_warning", c.mw.Cluster(), gClientManager.moduleName)
 		errmsg2 := fmt.Sprintf("volume(%s) %s", c.volName, errmsg1)
-		ump.Alarm(key2, errmsg2)
-		ump.FlushAlarm()
+		exporter.WarningBySpecialUMPKey(key2, errmsg2)
+		exporter.FlushWarning()
 	}
 }
 

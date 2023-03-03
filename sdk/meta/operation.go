@@ -25,8 +25,8 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/ump"
 )
 
 // API implementations
@@ -52,8 +52,8 @@ func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -101,8 +101,8 @@ func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uin
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -152,8 +152,8 @@ func (mw *MetaWrapper) ievict(ctx context.Context, mp *MetaPartition, inode uint
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -202,8 +202,8 @@ func (mw *MetaWrapper) dcreate(ctx context.Context, mp *MetaPartition, parentID 
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	var needCheckRead bool
 	packet, needCheckRead, err = mw.sendWriteToMP(ctx, mp, packet)
@@ -260,8 +260,8 @@ func (mw *MetaWrapper) dupdate(ctx context.Context, mp *MetaPartition, parentID 
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -312,8 +312,8 @@ func (mw *MetaWrapper) ddelete(ctx context.Context, mp *MetaPartition, parentID 
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -363,8 +363,8 @@ func (mw *MetaWrapper) lookup(ctx context.Context, mp *MetaPartition, parentID u
 
 	log.LogDebugf("lookup enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -418,8 +418,8 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -453,8 +453,8 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 
 	var err error
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, "OpMetaBatchInodeGet"))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP("OpMetaBatchInodeGet")
+	defer metric.Set(err)
 
 	infoRes := make([]*proto.InodeInfo, 0, len(inodes))
 
@@ -518,8 +518,8 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 
 	children = make([]proto.Dentry, 0)
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, "OpMetaReadDir"))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP("OpMetaReadDir")
+	defer metric.Set(err)
 
 	var stepMarker = marker
 
@@ -626,8 +626,8 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 //		return
 //	}
 //
-//	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-//	defer ump.AfterTP(tpObject, err)
+//	metric := exporter.NewModuleTP(packet.GetOpMsg())
+//	defer metric.Set(err)
 //
 //	var needCheckRead bool
 //	packet, needCheckRead, err = mw.sendWriteToMP(ctx, mp, packet)
@@ -670,8 +670,8 @@ func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, i
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	var needCheckRead bool
 	packet, needCheckRead, err = mw.sendWriteToMP(ctx, mp, packet)
@@ -719,8 +719,8 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -773,8 +773,8 @@ func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, o
 
 	log.LogDebugf("truncate enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -829,8 +829,8 @@ func (mw *MetaWrapper) ilink(ctx context.Context, mp *MetaPartition, inode uint6
 
 	log.LogDebugf("ilink enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -891,8 +891,8 @@ func (mw *MetaWrapper) setattr(ctx context.Context, mp *MetaPartition, inode uin
 
 	log.LogDebugf("setattr enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -937,8 +937,8 @@ func (mw *MetaWrapper) createMultipart(ctx context.Context, mp *MetaPartition, p
 
 	log.LogDebugf("createMultipart enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -981,8 +981,8 @@ func (mw *MetaWrapper) getMultipart(ctx context.Context, mp *MetaPartition, path
 
 	log.LogDebugf("getMultipart enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -1033,8 +1033,8 @@ func (mw *MetaWrapper) addMultipartPart(ctx context.Context, mp *MetaPartition, 
 
 	log.LogDebugf("addMultipartPart entry: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1066,8 +1066,8 @@ func (mw *MetaWrapper) idelete(ctx context.Context, mp *MetaPartition, inode uin
 	}
 	log.LogDebugf("delete inode: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1109,8 +1109,8 @@ func (mw *MetaWrapper) removeMultipart(ctx context.Context, mp *MetaPartition, p
 	}
 	log.LogDebugf("delete session: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1145,8 +1145,8 @@ func (mw *MetaWrapper) appendExtentKeys(ctx context.Context, mp *MetaPartition, 
 	}
 	log.LogDebugf("appendExtentKeys: batch append extent: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1191,8 +1191,8 @@ func (mw *MetaWrapper) setXAttr(ctx context.Context, mp *MetaPartition, inode ui
 	}
 	log.LogDebugf("setXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1237,8 +1237,8 @@ func (mw *MetaWrapper) getXAttr(ctx context.Context, mp *MetaPartition, inode ui
 	}
 	log.LogDebugf("get xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -1288,8 +1288,8 @@ func (mw *MetaWrapper) removeXAttr(ctx context.Context, mp *MetaPartition, inode
 	}
 	log.LogDebugf("remove xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	if packet, _, err = mw.sendWriteToMP(ctx, mp, packet); err != nil {
 		log.LogWarnf("remove xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
@@ -1330,8 +1330,8 @@ func (mw *MetaWrapper) listXAttr(ctx context.Context, mp *MetaPartition, inode u
 	}
 	log.LogDebugf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	if packet, err = mw.sendReadToMP(ctx, mp, packet); err != nil {
 		log.LogWarnf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
@@ -1386,8 +1386,8 @@ func (mw *MetaWrapper) listMultiparts(ctx context.Context, mp *MetaPartition, pr
 
 	log.LogDebugf("listMultiparts enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -1430,8 +1430,8 @@ func (mw *MetaWrapper) batchGetXAttr(ctx context.Context, mp *MetaPartition, ino
 		return nil, err
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -1468,8 +1468,8 @@ func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendToHost(ctx, mp, packet, addr)
 	if err != nil || packet == nil {
@@ -1506,8 +1506,8 @@ func (mw *MetaWrapper) getCmpInodes(ctx context.Context, mp *MetaPartition, ino 
 		return nil, err
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil || packet == nil {
@@ -1549,8 +1549,8 @@ func (mw *MetaWrapper) mergeInodeExtents(ctx context.Context, mp *MetaPartition,
 		return err
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil || packet == nil {
@@ -1601,8 +1601,8 @@ func (mw *MetaWrapper) lookupDeleted(ctx context.Context, mp *MetaPartition, par
 
 	log.LogDebugf("lookupDeleted enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -1649,8 +1649,8 @@ func (mw *MetaWrapper) readDeletedDir(ctx context.Context, mp *MetaPartition, pa
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -1699,8 +1699,8 @@ func (mw *MetaWrapper) recoverDentry(ctx context.Context, mp *MetaPartition,
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1731,8 +1731,8 @@ func (mw *MetaWrapper) recoverDeletedInode(ctx context.Context, mp *MetaPartitio
 	}
 	log.LogDebugf("recoverDeletedInode: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1783,8 +1783,8 @@ func (mw *MetaWrapper) batchRecoverDeletedInode(ctx context.Context, wg *sync.Wa
 	}
 	log.LogDebugf("batchRecoverDeletedInode: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1843,8 +1843,8 @@ func (mw *MetaWrapper) batchRecoverDeletedDentry(ctx context.Context, wg *sync.W
 	}
 	log.LogDebugf("batchRecoverDeletedDentry: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1890,8 +1890,8 @@ func (mw *MetaWrapper) cleanDeletedDentry(ctx context.Context, mp *MetaPartition
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1939,8 +1939,8 @@ func (mw *MetaWrapper) batchCleanDeletedDentry(ctx context.Context, wg *sync.Wai
 	}
 	log.LogDebugf("batchCleanDeletedDentry: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1980,8 +1980,8 @@ func (mw *MetaWrapper) cleanDeletedInode(ctx context.Context, mp *MetaPartition,
 	}
 	log.LogDebugf("cleanDeletedInode: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -2031,8 +2031,8 @@ func (mw *MetaWrapper) batchCleanDeletedInode(ctx context.Context, wg *sync.Wait
 	}
 	log.LogDebugf("batchCleanDeletedInode: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -2071,8 +2071,8 @@ func (mw *MetaWrapper) statDeletedFileInfo(ctx context.Context, mp *MetaPartitio
 	}
 	log.LogDebugf("statDeletedFileInfo: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -2111,8 +2111,8 @@ func (mw *MetaWrapper) cleanExpiredDeletedInode(ctx context.Context, mp *MetaPar
 	}
 	log.LogDebugf("cleanExpiredDeletedInode: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -2144,8 +2144,8 @@ func (mw *MetaWrapper) cleanExpiredDeletedDentry(ctx context.Context, mp *MetaPa
 	}
 	log.LogDebugf("cleanExpiredDeletedDentry: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -2179,8 +2179,8 @@ func (mw *MetaWrapper) getDeletedInodeInfo(ctx context.Context, mp *MetaPartitio
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -2222,8 +2222,8 @@ func (mw *MetaWrapper) batchGetDeletedInodeInfo(ctx context.Context, wg *sync.Wa
 		return
 	}
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -2271,8 +2271,8 @@ func (mw *MetaWrapper) batchUnlinkInodeUntest(ctx context.Context, wg *sync.Wait
 	}
 	log.LogDebugf("batchDeleteInodeUntest: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -2328,8 +2328,8 @@ func (mw *MetaWrapper) batchEvictInodeUntest(ctx context.Context, wg *sync.WaitG
 	}
 	log.LogDebugf("batchEvictInodeUntest: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -2369,8 +2369,8 @@ func (mw *MetaWrapper) batchDeleteDentryUntest(ctx context.Context, wg *sync.Wai
 	}
 	log.LogDebugf("batchDeleteDentryUntest: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {

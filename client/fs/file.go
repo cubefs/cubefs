@@ -22,10 +22,10 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 
-	"github.com/cubefs/cubefs/util/ump"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/net/context"
 )
 
@@ -123,8 +123,14 @@ func (f *File) Forget() {
 // Open handles the open request.
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
 
-	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Open"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewVolumeTP("Open", f.super.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	tpObject1 := exporter.NewModuleTP("fileopen")
+	defer func() {
+		tpObject1.Set(err)
+	}()
 
 	ino := f.info.Inode
 	start := time.Now()
@@ -167,15 +173,18 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 
-	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Read"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewVolumeTP("Read", f.super.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	tpObject1 := exporter.NewModuleTP("fileread")
+	defer func() {
+		tpObject1.Set(err)
+	}()
 
 	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
 
 	start := time.Now()
-
-	tpObject1 := ump.BeforeTP(f.super.umpFunctionGeneralKey("fileread"))
-	defer ump.AfterTP(tpObject1, err)
 
 	size, _, err := f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:], uint64(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
@@ -205,8 +214,14 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 
-	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Write"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewVolumeTP("Write", f.super.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	tpObject1 := exporter.NewModuleTP("filewrite")
+	defer func() {
+		tpObject1.Set(err)
+	}()
 
 	ino := f.info.Inode
 	reqlen := len(req.Data)
@@ -235,9 +250,6 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 	enSyncWrite = f.super.enSyncWrite
 	start := time.Now()
-
-	tpObject1 := ump.BeforeTP(f.super.umpFunctionGeneralKey("filewrite"))
-	defer ump.AfterTP(tpObject1, err)
 
 	size, _, err := f.super.ec.Write(ctx, ino, uint64(req.Offset), req.Data, enSyncWrite, false)
 	if err != nil {
@@ -268,17 +280,20 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 // Flush only when fsyncOnClose is enabled.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 
-	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Flush"))
-	defer ump.AfterTP(tpObject, err)
-
 	if !f.super.fsyncOnClose {
 		return fuse.ENOSYS
 	}
 	log.LogDebugf("TRACE Flush enter: ino(%v)", f.info.Inode)
 	start := time.Now()
 
-	tpObject1 := ump.BeforeTP(f.super.umpFunctionGeneralKey("filesync"))
-	defer ump.AfterTP(tpObject1, err)
+	tpObject := exporter.NewVolumeTP("Flush", f.super.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	tpObject1 := exporter.NewModuleTP("filesync")
+	defer func() {
+		tpObject1.Set(err)
+	}()
 
 	err = f.super.ec.Flush(ctx, f.info.Inode)
 	if err != nil {
@@ -294,8 +309,14 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 
 // Fsync hanldes the fsync request.
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
-	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Fsync"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewVolumeTP("Fsync", f.super.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	tpObject1 := exporter.NewModuleTP("filefsync")
+	defer func() {
+		tpObject1.Set(err)
+	}()
 
 	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
@@ -314,8 +335,14 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 
 // Setattr handles the setattr request.
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) (err error) {
-	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Setattr"))
-	defer ump.AfterTP(tpObject, err)
+	tpObject := exporter.NewVolumeTP("Setattr", f.super.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	tpObject1 := exporter.NewModuleTP("filesetattr")
+	defer func() {
+		tpObject1.Set(err)
+	}()
 
 	ino := f.info.Inode
 	start := time.Now()

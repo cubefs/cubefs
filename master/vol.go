@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -106,7 +107,7 @@ type Vol struct {
 	TrashCleanInterval         uint64
 	BatchDelInodeCnt           uint32
 	DelInodeInterval           uint32
-	UmpCollectWay              proto.UmpCollectBy
+	UmpCollectWay              exporter.UMPCollectMethod
 	reuseMP                    bool
 	VMPsToPartitionMap         map[uint64]uint64 `graphql:"-"`
 	LastSelectReuseMPID        uint64

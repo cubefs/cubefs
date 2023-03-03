@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -635,10 +636,10 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 
 			if optUmpCollectWay >= 0 {
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  UmpCollectWay       : %v -> %v\n", proto.UmpCollectByStr(vv.UmpCollectWay), proto.UmpCollectByStr(proto.UmpCollectBy(optUmpCollectWay))))
-				vv.UmpCollectWay = proto.UmpCollectBy(optUmpCollectWay)
+				confirmString.WriteString(fmt.Sprintf("  UmpCollectWay       : %s -> %s\n", vv.UmpCollectWay, exporter.UMPCollectMethod(optUmpCollectWay)))
+				vv.UmpCollectWay = exporter.UMPCollectMethod(optUmpCollectWay)
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  UmpCollectWay       : %v\n", proto.UmpCollectByStr(vv.UmpCollectWay)))
+				confirmString.WriteString(fmt.Sprintf("  UmpCollectWay       : %s\n", vv.UmpCollectWay))
 			}
 
 			if optReuseMP != "" {

@@ -338,7 +338,9 @@ func (s *summary) asyncFlush(now time.Time) {
 	// Unblock the original goroutine that was responsible for the mutation
 	// that triggered the compaction.  But hold onto the global non-buffer
 	// state mutex until the operation finishes.
+	gWg.Add(1)
 	go func() {
+		defer gWg.Done()
 		s.flushColdBuf()
 		s.mtx.Unlock()
 	}()

@@ -4,14 +4,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/cubefs/cubefs/proto"
 )
 
 func (lw *LogWrite) backGroupWriteForGroupByTPV629() {
 	defer wg.Done()
 	for {
-		if GetUmpCollectWay() != proto.UmpCollectByFile {
+		if GetUmpCollectMethod() != CollectMethodFile {
 			time.Sleep(checkUmpWaySleepTime)
 		}
 		select {
@@ -21,7 +19,7 @@ func (lw *LogWrite) backGroupWriteForGroupByTPV629() {
 		default:
 			var body []byte
 			FunctionTPKeyMap.Range(func(key, value interface{}) bool {
-				if GetUmpCollectWay() != proto.UmpCollectByFile {
+				if GetUmpCollectMethod() != CollectMethodFile {
 					return false
 				}
 				v, ok := value.(*sync.Map)

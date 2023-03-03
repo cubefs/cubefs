@@ -39,7 +39,7 @@ func AddTask(task *proto.Task) (taskId uint64, err error) {
 		rs sql.Result
 		id int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlAddTask)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlAddTask)
 	defer metrics.Set(err)
 
 	sqlCmd := "insert into tasks(task_type, cluster_name, vol_name, dp_id, mp_id, task_info, task_status) values(?, ?, ?, ?, ?, ?, ?)"
@@ -68,7 +68,7 @@ func AllocateTask(task *proto.Task, workerAddr string) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlAllocateTask)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlAllocateTask)
 	defer metrics.Set(err)
 
 	sqlCmd := "update tasks set task_status = ?, worker_addr = ?, update_time = now() where task_id =?"
@@ -95,7 +95,7 @@ func UpdateTaskStatus(task *proto.Task) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateTaskStatus)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlUpdateTaskStatus)
 	defer metrics.Set(err)
 
 	var sqlCmd string
@@ -122,7 +122,7 @@ func UpdateTaskStatus(task *proto.Task) (err error) {
 
 // update task status
 func UpdateTasksStatus(tasks []*proto.Task, sourceStatus, targetStatus proto.TaskStatus) (err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateTasksStatusViaSource)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlUpdateTasksStatusViaSource)
 	defer metrics.Set(err)
 
 	taskIds := JoinTaskIds(tasks)
@@ -143,7 +143,7 @@ func UpdateTaskWorkerAddr(task *proto.Task) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateTaskWorkerAddr)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlUpdateTaskWorkerAddr)
 	defer metrics.Set(err)
 
 	sqlCmd := "update tasks set worker_addr = ?, task_status = ?, update_time = now() where task_id =? and task_status = ?"
@@ -172,7 +172,7 @@ func UpdateTaskFailed(task *proto.Task, exceptionInfo string) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateTaskFailed)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlUpdateTaskFailed)
 	defer metrics.Set(err)
 
 	exceptionInfo = stringutil.SubStringByLength(exceptionInfo, DefaultTaskExceptionInfoLength)
@@ -201,7 +201,7 @@ func UpdateTaskInfo(taskId uint64, taskInfo string) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateTaskInfo)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlUpdateTaskInfo)
 	defer metrics.Set(err)
 
 	taskInfo = stringutil.SubStringByLength(taskInfo, DefaultTaskTaskInfoLength)
@@ -228,7 +228,7 @@ func UpdateTaskUpdateTime(taskId uint64) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateTaskUpdateTime)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlUpdateTaskUpdateTime)
 	defer metrics.Set(err)
 
 	sqlCmd := "update tasks set update_time = now() where task_id =?"
@@ -250,7 +250,7 @@ func UpdateTaskUpdateTime(taskId uint64) (err error) {
 
 // select task task via task id
 func SelectTask(taskId int64) (task *proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectTask)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectTask)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -288,7 +288,7 @@ func SelectTask(taskId int64) (task *proto.Task, err error) {
 
 // select allocated tasks and not finished, including not successful and not failed
 func SelectNotFinishedTask(workerAddr string, taskType, limit, offset int) (tasks []*proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectAllocatedTask)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectAllocatedTask)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -326,7 +326,7 @@ func SelectNotFinishedTask(workerAddr string, taskType, limit, offset int) (task
 
 // select allocated tasks via worker address and task type
 func SelectAllocatedTask(workerAddr string, taskType, limit, offset int) (tasks []*proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectAllocatedTask)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectAllocatedTask)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -364,7 +364,7 @@ func SelectAllocatedTask(workerAddr string, taskType, limit, offset int) (tasks 
 
 // select tasks with specified task type, add support to query by page add param limit and offset
 func SelectTasksWithType(taskType, limit, offset int) (tasks []*proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectTasksWithType)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectTasksWithType)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -401,7 +401,7 @@ func SelectTasksWithType(taskType, limit, offset int) (tasks []*proto.Task, err 
 }
 
 func SelectUnallocatedTasks(taskType, limit, offset int) (tasks []*proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectUnallocatedTasks)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectUnallocatedTasks)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -439,7 +439,7 @@ func SelectUnallocatedTasks(taskType, limit, offset int) (tasks []*proto.Task, e
 
 // select specified type tasks that has been allocated and not finished
 func SelectRunningTasks(taskType int) (tasks []*proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectRunningTasks)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectRunningTasks)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -477,7 +477,7 @@ func SelectRunningTasks(taskType int) (tasks []*proto.Task, err error) {
 
 // select specified type tasks that has been finished successfully
 func SelectSucceedTasks(taskType, limit, offset int) (tasks []*proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectSucceedTasks)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectSucceedTasks)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -515,7 +515,7 @@ func SelectSucceedTasks(taskType, limit, offset int) (tasks []*proto.Task, err e
 
 // select failed tasks
 func SelectExceptionTasks(taskType, limit, offset int) (tasks []*proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectExceptionTasks)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectExceptionTasks)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -553,7 +553,7 @@ func SelectExceptionTasks(taskType, limit, offset int) (tasks []*proto.Task, err
 
 // 在一定时间内还没有正常结束的任务，则认为其为异常任务
 func SelectNotModifiedForLongTime(taskType, hours, limit, offset int) (tasks []*proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectNotModifiedForLongTime)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectNotModifiedForLongTime)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -595,7 +595,7 @@ func DeleteTask(taskId int64) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlDeleteTask)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlDeleteTask)
 	defer metrics.Set(err)
 
 	sqlCmd := "delete from tasks where task_id =?"
@@ -621,7 +621,7 @@ func DeleteTaskByVolumeAndId(cluster, volume string, taskType int, taskId int64)
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlDeleteTaskByVolumeAndId)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlDeleteTaskByVolumeAndId)
 	defer metrics.Set(err)
 	sqlCmd := "delete from tasks where cluster_name = ? and vol_name = ? and task_type = ? and task_id =?"
 	args := make([]interface{}, 0)
@@ -649,7 +649,7 @@ func DeleteTasks(tasks []*proto.Task) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlDeleteTasks)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlDeleteTasks)
 	defer metrics.Set(err)
 
 	sbPlaceholder := strings.Builder{}
@@ -674,7 +674,7 @@ func DeleteTasks(tasks []*proto.Task) (err error) {
 }
 
 func CheckDPTaskExist(cluster, volumeName string, taskType int, dpId uint64) (res bool, task *proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlCheckDPTaskExist)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlCheckDPTaskExist)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -711,7 +711,7 @@ func CheckDPTaskExist(cluster, volumeName string, taskType int, dpId uint64) (re
 }
 
 func CheckMPTaskExist(cluster, volumeName string, taskType int, mpId uint64) (res bool, task *proto.Task, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlCheckMPTaskExist)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlCheckMPTaskExist)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows

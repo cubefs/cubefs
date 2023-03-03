@@ -132,7 +132,7 @@ func (m *Server) addToken(w http.ResponseWriter, r *http.Request) {
 		msg       string
 		authKey   string
 	)
-	metrics := exporter.NewTPCnt(proto.TokenAddURIUmpKey)
+	metrics := exporter.NewModuleTP(proto.TokenAddURIUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, tokenType, authKey, err = parseAddTokenPara(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -162,7 +162,7 @@ func (m *Server) updateToken(w http.ResponseWriter, r *http.Request) {
 		authKey   string
 		token     string
 	)
-	metrics := exporter.NewTPCnt(proto.TokenUpdateURIUmpKey)
+	metrics := exporter.NewModuleTP(proto.TokenUpdateURIUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, tokenType, token, authKey, err = parseUpdateTokenPara(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -191,7 +191,7 @@ func (m *Server) deleteToken(w http.ResponseWriter, r *http.Request) {
 		msg     string
 		authKey string
 	)
-	metrics := exporter.NewTPCnt(proto.TokenDelURIUmpKey)
+	metrics := exporter.NewModuleTP(proto.TokenDelURIUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, token, authKey, err = parseDeleteTokenPara(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -220,7 +220,7 @@ func (m *Server) getToken(w http.ResponseWriter, r *http.Request) {
 		tokenObj *proto.Token
 		vol      *Vol
 	)
-	metrics := exporter.NewTPCnt(proto.TokenGetURIUmpKey)
+	metrics := exporter.NewModuleTP(proto.TokenGetURIUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, token, err = parseGetTokenPara(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})

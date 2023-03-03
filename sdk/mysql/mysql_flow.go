@@ -21,7 +21,7 @@ const (
 )
 
 func AddFlowControl(flow *proto.FlowControl) (err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlAddFlowControl)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlAddFlowControl)
 	defer metrics.Set(err)
 
 	sqlCmd := "insert into flow_control(task_type, flow_type, flow_value, max_num) values(?, ?, ?, ?)"
@@ -44,7 +44,7 @@ func UpdateFlowControl(flow *proto.FlowControl) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlModifyFlowControl)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlModifyFlowControl)
 	defer metrics.Set(err)
 
 	sqlCmd := "update flow_control set max_num = ?, update_time = now() where task_type =? and flow_type = ? and flow_value = ?"
@@ -72,7 +72,7 @@ func DeleteFlowControl(flow *proto.FlowControl) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlDeleteFlowControl)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlDeleteFlowControl)
 	defer metrics.Set(err)
 
 	sqlCmd := "delete from flow_control where task_type =? and flow_type = ? and flow_value = ?"
@@ -94,7 +94,7 @@ func DeleteFlowControl(flow *proto.FlowControl) (err error) {
 }
 
 func SelectFlowControls() (flows []*proto.FlowControl, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlListFlowControl)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlListFlowControl)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -131,7 +131,7 @@ func SelectFlowControls() (flows []*proto.FlowControl, err error) {
 }
 
 func SelectFlowControlsViaType(wt proto.WorkerType) (flows []*proto.FlowControl, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectFlowControlsViaType)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectFlowControlsViaType)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows

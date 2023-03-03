@@ -52,9 +52,9 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	sysutil "github.com/cubefs/cubefs/util/sys"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/jacobsa/daemonize"
 
-	"github.com/cubefs/cubefs/util/ump"
 	"github.com/cubefs/cubefs/util/version"
 )
 
@@ -231,6 +231,8 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	}
 	gClient.fsConn = fsConn
 
+	exporter.Init(gClient.super.ClusterName(), gClient.moduleName, cfg)
+
 	// report client version
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	versionInfo := proto.DumpVersion(gClient.moduleName, BranchName, CommitID, BuildTime)
@@ -361,11 +363,8 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 		server.Shutdown(context.Background())
 	}()
 
-	ump.SetUmpJmtpAddr(super.UmpJmtpAddr())
-	ump.SetUmpCollectWay(proto.UmpCollectBy(opt.UmpCollectWay))
-	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), gClient.moduleName), "jdos_chubaofs_node"); err != nil {
-		return
-	}
+	exporter.SetUMPCollectMethod(exporter.UMPCollectMethod(opt.UmpCollectWay))
+	exporter.SetUMPJMTPAddress(super.UmpJmtpAddr())
 
 	options := []fuse.MountOption{
 		fuse.AllowOther(),
@@ -486,11 +485,11 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		return nil, errors.Trace(err, "invalide mount point (%v) ", opt.MountPoint)
 	}
 	opt.MountPoint = absMnt
-	collectWay := GlobalMountOptions[proto.UmpCollectWay].GetInt64()
-	if collectWay <= proto.UmpCollectByUnkown || collectWay > proto.UmpCollectByJmtpClient {
-		collectWay = proto.UmpCollectByFile
+	collectWay := exporter.UMPCollectMethod(GlobalMountOptions[proto.UmpCollectWay].GetInt64())
+	if !collectWay.Valid() {
+		collectWay = exporter.UMPCollectMethodFile
 	}
-	opt.UmpCollectWay = collectWay
+	opt.UmpCollectWay = collectWay.Int64()
 	opt.PidFile = GlobalMountOptions[proto.PidFile].GetString()
 	if opt.PidFile != "" && opt.PidFile[0] != os.PathSeparator {
 		return nil, fmt.Errorf("invalid config file: pidFile(%s) must be a absolute path", opt.PidFile)
@@ -616,8 +615,8 @@ func StopClient() (clientState []byte) {
 	gClient.outputFile.Sync()
 	gClient.outputFile.Close()
 
-	ump.StopUmp()
 	log.LogClose()
+	exporter.Stop()
 	gClient = nil
 
 	runtime.GC()

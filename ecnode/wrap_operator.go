@@ -4,10 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/unit"
 	"hash/crc32"
-	//	"hash/crc32"
 	"net"
 	"strconv"
 	"time"
@@ -15,13 +12,15 @@ import (
 	"github.com/cubefs/cubefs/ecstorage"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 func (e *EcNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	sz := p.Size
-	tpObject := exporter.NewTPCnt(p.GetOpMsg())
+	tpObject := exporter.NewModuleTP(p.GetOpMsg())
 	start := time.Now().UnixNano()
 	defer func() {
 		resultSize := p.Size
@@ -882,7 +881,7 @@ func (e *EcNode) handleReadPacket(p *repl.Packet, c *net.TCPConn) {
 
 	ecStripe, _ := NewEcStripe(partition, stripeUnitSize, p.ExtentID)
 	data := make([]byte, p.Size)
-	tpObject := exporter.NewTPCnt(p.GetOpMsg())
+	tpObject := exporter.NewModuleTP(p.GetOpMsg())
 
 	_, crc, err := store.EcRead(p.ExtentID, p.ExtentOffset, int64(p.Size), data, false)
 	if !partition.checkIsEofError(err, ecStripe, originExtentSize, uint64(p.ExtentOffset), uint64(p.Size)) {

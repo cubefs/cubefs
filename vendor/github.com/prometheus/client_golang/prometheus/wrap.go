@@ -99,7 +99,9 @@ type wrappingCollector struct {
 
 func (c *wrappingCollector) Collect(ch chan<- Metric) {
 	wrappedCh := make(chan Metric)
+	gWg.Add(1)
 	go func() {
+		defer gWg.Done()
 		c.wrappedCollector.Collect(wrappedCh)
 		close(wrappedCh)
 	}()
@@ -114,7 +116,9 @@ func (c *wrappingCollector) Collect(ch chan<- Metric) {
 
 func (c *wrappingCollector) Describe(ch chan<- *Desc) {
 	wrappedCh := make(chan *Desc)
+	gWg.Add(1)
 	go func() {
+		defer gWg.Done()
 		c.wrappedCollector.Describe(wrappedCh)
 		close(wrappedCh)
 	}()

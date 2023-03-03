@@ -11,10 +11,11 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/cubefs/cubefs/util/exporter"
+
 	"github.com/cubefs/cubefs/cli/repaircrc/repaircrc_server"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/ump"
 )
 
 var (
@@ -71,12 +72,7 @@ func run() error {
 	}
 	defer log.LogFlush()
 
-	if err = ump.InitUmp("check_crc", "jdos_chubaofs-node"); err != nil {
-		log.LogErrorf("init ump failed: %v", err)
-		log.LogFlush()
-		syslog.Printf("Fatal: init ump failed: %v ", err)
-		return err
-	}
+	exporter.Init("check_crc", "jdos_chubaofs-node", cfg)
 
 	var profNetListener net.Listener = nil
 	if profPort != "" {

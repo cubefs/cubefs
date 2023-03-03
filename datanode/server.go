@@ -153,7 +153,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	s.register(cfg)
 	log.LogErrorf("doStart register fininsh")
 	exporter.Init(s.clusterID, ModuleName, cfg)
-	exporter.RegistConsul(cfg)
 
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {

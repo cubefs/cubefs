@@ -46,7 +46,7 @@ type Packet struct {
 	followerPackets   []*FollowerPacket
 	IsReleased        int32 // TODO what is released?
 	Object            interface{}
-	TpObject          *exporter.TimePointCount
+	TpObject          exporter.TP
 	NeedReply         bool
 	OrgBuffer         []byte
 	OrgSize           int32
@@ -275,9 +275,9 @@ func copyReplPacket(src *Packet, dst *Packet) {
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	if p.IsForwardPkt() && !p.IsRandomWrite() {
-		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("PrimaryBackUp_%v", p.GetOpMsg()))
+		p.TpObject = exporter.NewModuleTP(fmt.Sprintf("PrimaryBackUp_%v", p.GetOpMsg()))
 	} else if p.IsRandomWrite() {
-		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("Raft_%v", p.GetOpMsg()))
+		p.TpObject = exporter.NewModuleTP(fmt.Sprintf("Raft_%v", p.GetOpMsg()))
 	}
 
 	return

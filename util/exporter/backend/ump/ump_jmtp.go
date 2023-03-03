@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	jmtp_client_go "github.com/jmtp/jmtp-client-go"
 	"github.com/jmtp/jmtp-client-go/jmtpclient"
@@ -16,7 +15,6 @@ import (
 )
 
 const (
-	defaultJmtpAddr             = "jmtp://localhost:20890"
 	testJmtpAddr                = "test"
 	jmtpTimeoutSec              = 2
 	jmtpHeartbeatSec            = 10
@@ -37,8 +35,8 @@ const (
 )
 
 var (
-	umpJmtpAddr  string
-	umpJmtpBatch uint = 1
+	umpJmtpAddress string
+	umpJmtpBatch   uint = 1
 )
 
 type ReportType uint
@@ -66,12 +64,8 @@ func NewJmtpWrite() (jmtp *JmtpWrite, err error) {
 			err = fmt.Errorf("NewJmtpWrite err(%v)", r)
 		}
 	}()
-	jmtpAddr := umpJmtpAddr
-	if jmtpAddr == "" {
-		jmtpAddr = defaultJmtpAddr
-	}
 	config := &jmtpclient.Config{
-		Url:           jmtpAddr,
+		Url:           umpJmtpAddress,
 		TimeoutSec:    jmtpTimeoutSec,
 		HeartbeatSec:  jmtpHeartbeatSec,
 		SerializeType: 0,
@@ -127,7 +121,7 @@ func (jmtp *JmtpWrite) backGroupWriteTP() {
 		eventCount  uint
 	)
 	for {
-		if GetUmpCollectWay() != proto.UmpCollectByJmtpClient {
+		if GetUmpCollectMethod() != CollectMethodJMTP {
 			time.Sleep(checkUmpWaySleepTime)
 		}
 		select {
@@ -135,7 +129,7 @@ func (jmtp *JmtpWrite) backGroupWriteTP() {
 			return
 		default:
 			FunctionTPKeyMap.Range(func(key, value interface{}) bool {
-				if GetUmpCollectWay() != proto.UmpCollectByJmtpClient {
+				if GetUmpCollectMethod() != CollectMethodJMTP {
 					return false
 				}
 				if jmtp.tpKeyCount >= maxTPKeyCount {

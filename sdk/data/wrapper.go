@@ -28,9 +28,9 @@ import (
 	"github.com/cubefs/cubefs/sdk/scheduler"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/ump"
 )
 
 var (
@@ -284,8 +284,8 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.quorum = view.Quorum
 	w.ecEnable = view.EcEnable
 	w.extentCacheExpireSec = view.ExtentCacheExpireSec
-	if view.UmpCollectWay != proto.UmpCollectByUnkown {
-		ump.SetUmpCollectWay(view.UmpCollectWay)
+	if view.UmpCollectWay != exporter.UMPCollectMethodUnknown {
+		exporter.SetUMPCollectMethod(view.UmpCollectWay)
 	}
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
@@ -384,9 +384,9 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		w.nearRead = view.NearRead
 	}
 
-	if ump.GetUmpCollectWay() != view.UmpCollectWay && view.UmpCollectWay != proto.UmpCollectByUnkown {
-		log.LogInfof("updateSimpleVolView: update umpCollectWay from old(%v) to new(%v)", ump.GetUmpCollectWay(), view.UmpCollectWay)
-		ump.SetUmpCollectWay(view.UmpCollectWay)
+	if exporter.GetUmpCollectMethod() != view.UmpCollectWay && view.UmpCollectWay != exporter.UMPCollectMethodUnknown {
+		log.LogInfof("updateSimpleVolView: update umpCollectWay from old(%v) to new(%v)", exporter.GetUmpCollectMethod(), view.UmpCollectWay)
+		exporter.SetUMPCollectMethod(view.UmpCollectWay)
 	}
 
 	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm || w.quorum != view.Quorum {
@@ -649,8 +649,8 @@ func (w *Wrapper) _updateDataNodeStatus(cv *proto.ClusterView) {
 	}
 
 	w.umpJmtpAddr = cv.UmpJmtpAddr
-	ump.SetUmpJmtpAddr(w.umpJmtpAddr)
-	ump.SetUmpJmtpBatch(uint(cv.UmpJmtpBatch))
+	exporter.SetUMPJMTPAddress(w.umpJmtpAddr)
+	exporter.SetUmpJMTPBatch(uint(cv.UmpJmtpBatch))
 	return
 }
 
@@ -782,9 +782,9 @@ func distanceFromLocal(b string) int {
 func handleUmpAlarm(cluster, vol, act, msg string) {
 	umpKeyCluster := fmt.Sprintf("%s_client_warning", cluster)
 	umpMsgCluster := fmt.Sprintf("volume(%s) %s", vol, msg)
-	ump.Alarm(umpKeyCluster, umpMsgCluster)
+	exporter.WarningBySpecialUMPKey(umpKeyCluster, umpMsgCluster)
 
 	umpKeyVol := fmt.Sprintf("%s_%s_warning", cluster, vol)
 	umpMsgVol := fmt.Sprintf("act(%s) - %s", act, msg)
-	ump.Alarm(umpKeyVol, umpMsgVol)
+	exporter.WarningBySpecialUMPKey(umpKeyVol, umpMsgVol)
 }

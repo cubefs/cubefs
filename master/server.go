@@ -129,7 +129,6 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 	exporter.Init(m.clusterName, ModuleName, cfg)
-	exporter.RegistConsul(cfg)
 	metricsService := newMonitorMetrics(m.cluster)
 	metricsService.start()
 	m.wg.Add(1)

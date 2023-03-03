@@ -2,13 +2,14 @@ package scheduler
 
 import (
 	"errors"
+	"sync/atomic"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/mysql"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"sync/atomic"
-	"time"
 )
 
 type Candidate struct {
@@ -148,7 +149,7 @@ func (c *Candidate) sendLeaderHeartBeat() {
 		case <-timer.C:
 
 			heartbeat := func() (err error) {
-				metrics := exporter.NewTPCnt(proto.MonitorSchedulerLeaderHeartbeat)
+				metrics := exporter.NewModuleTP(proto.MonitorSchedulerLeaderHeartbeat)
 				defer metrics.Set(err)
 
 				// if current node is not leader or term is less then zero, exit to wait next period
@@ -190,7 +191,7 @@ func (c *Candidate) sendLeaderHeartBeat() {
 					counter = 0
 				}
 
-				updateFailed:
+			updateFailed:
 				if counter > c.LeaderPeriod {
 					if err = c.StartFollower(false); err != nil {
 						log.LogErrorf("[sendLeaderHeartBeat] demote to follower failed cause leader heartbeat failed too many times, term(%v), localIp(%v), counter(%v), leaderPeriod(%v), err(%v)",
@@ -209,7 +210,7 @@ func (c *Candidate) sendLeaderHeartBeat() {
 				log.LogErrorf("[sendLeaderHeartBeat] leader heartbeat has exception, error(%v)", err)
 			}
 			timer.Reset(heartBeatDuration)
-		case <- c.HeartbeatC:
+		case <-c.HeartbeatC:
 			timer.Stop()
 			log.LogInfof("stop leader heartbeat via heartbeat channel")
 			return
@@ -222,14 +223,14 @@ func (c *Candidate) sendLeaderHeartBeat() {
 }
 
 func (c *Candidate) sendFollowerHeartBeat() {
-	heartBeatDuration := time.Second * time.Duration(c.HeartBeat * c.LeaderPeriod)
+	heartBeatDuration := time.Second * time.Duration(c.HeartBeat*c.LeaderPeriod)
 	timer := time.NewTimer(heartBeatDuration)
 	for {
 		log.LogDebugf("[sendFollowerHeartBeat] follower heartbeat...")
 		select {
 		case <-timer.C:
 			heartbeat := func() (err error) {
-				metrics := exporter.NewTPCnt(proto.MonitorSchedulerFollowerHeartbeat)
+				metrics := exporter.NewModuleTP(proto.MonitorSchedulerFollowerHeartbeat)
 				defer metrics.Set(err)
 				le, err := mysql.GetLeader(c.HeartBeat * c.LeaderPeriod)
 				if err != nil {
@@ -260,7 +261,7 @@ func (c *Candidate) sendFollowerHeartBeat() {
 				log.LogErrorf("[sendFollowerHeartBeat] follower heartbeat has exception, err(%v)", err)
 			}
 			timer.Reset(heartBeatDuration)
-		case <- c.HeartbeatC:
+		case <-c.HeartbeatC:
 			timer.Stop()
 			log.LogInfof("stop follower heartbeat via heartbeat channel")
 			return

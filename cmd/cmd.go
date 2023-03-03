@@ -52,7 +52,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 
-	"github.com/cubefs/cubefs/util/ump"
 	"github.com/cubefs/cubefs/util/version"
 	"github.com/jacobsa/daemonize"
 )
@@ -315,13 +314,6 @@ func run() error {
 
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	if err = ump.InitUmp(role, "jdos_chubaofs-node"); err != nil {
-		log.LogErrorf("init ump failed: %v", err)
-		log.LogFlush()
-		syslog.Printf("Fatal: init ump failed: %v ", err)
-		_ = daemonize.SignalOutcome(fmt.Errorf("init ump failed: %v ", err))
-		return err
-	}
 
 	var profNetListener net.Listener = nil
 	if profPort != "" {

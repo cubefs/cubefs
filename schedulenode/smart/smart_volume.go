@@ -5,6 +5,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/worker"
@@ -15,11 +21,6 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	stringutil "github.com/cubefs/cubefs/util/string"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
@@ -87,7 +88,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	// init ump monitor and alarm module
 	exporter.Init(proto.RoleScheduleNode, proto.RoleSmartVolumeWorker, cfg)
-	exporter.RegistConsul(cfg)
 
 	// init smart volume worker
 	if err = sv.initWorker(); err != nil {
@@ -137,7 +137,7 @@ func (sv *SmartVolumeWorker) loadSmartVolume() {
 		select {
 		case <-timer.C:
 			loader := func() (err error) {
-				metrics := exporter.NewTPCnt(proto.MonitorSmartLoadSmartVolume)
+				metrics := exporter.NewModuleTP(proto.MonitorSmartLoadSmartVolume)
 				defer metrics.Set(err)
 
 				for cluster, mc := range sv.mcw {
@@ -172,7 +172,7 @@ func (sv *SmartVolumeWorker) loadSmartVolume() {
 }
 
 func (sv *SmartVolumeWorker) loadMigrateThreshold() (err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorSchedulerMigrateThresholdManager)
+	metrics := exporter.NewModuleTP(proto.MonitorSchedulerMigrateThresholdManager)
 	defer metrics.Set(err)
 
 	keys := make(map[string]*proto.ScheduleConfig)
@@ -337,7 +337,7 @@ func (sv *SmartVolumeWorker) parseLayerPolicy(volume *proto.SmartVolume) {
 }
 
 func (sv *SmartVolumeWorker) CreateTask(clusterId string, taskNum int64, runningTasks []*proto.Task, wns []*proto.WorkerNode) (newTasks []*proto.Task, err error) {
-	metric := exporter.NewTPCnt(proto.MonitorSmartCreateTask)
+	metric := exporter.NewModuleTP(proto.MonitorSmartCreateTask)
 	defer metric.Set(err)
 
 	clusterSmartVolumeView, ok := sv.svv[clusterId]
@@ -608,7 +608,7 @@ func (sv *SmartVolumeWorker) ConsumeTask(task *proto.Task) (restore bool, err er
 		migrateHosts = make(map[string]string)
 		sortHosts    []string
 	)
-	metric := exporter.NewTPCnt(proto.MonitorSmartConsumeTask)
+	metric := exporter.NewModuleTP(proto.MonitorSmartConsumeTask)
 	defer metric.Set(err)
 
 	sourceHosts, targetMedium, lt, taskInfo, err = sv.unmarshallTaskInfo(task.TaskInfo)

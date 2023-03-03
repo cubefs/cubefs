@@ -86,7 +86,9 @@ type Collector interface {
 // The Collector example demonstrates a use of DescribeByCollect.
 func DescribeByCollect(c Collector, descs chan<- *Desc) {
 	metrics := make(chan Metric)
+	gWg.Add(1)
 	go func() {
+		defer gWg.Done()
 		c.Collect(metrics)
 		close(metrics)
 	}()

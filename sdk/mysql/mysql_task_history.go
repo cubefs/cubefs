@@ -18,7 +18,7 @@ const (
 
 // add task to task history table
 func AddTaskToHistory(task *proto.Task) (err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlAddTaskToHistory)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlAddTaskToHistory)
 	defer metrics.Set(err)
 
 	sqlCmd := "insert into task_history(task_id, task_type, cluster_name, vol_name, dp_id, mp_id, task_info, worker_addr, task_status, exception_info, task_create_time, task_update_time) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -43,7 +43,7 @@ func AddTaskToHistory(task *proto.Task) (err error) {
 }
 
 func AddTasksToHistory(tasks []*proto.Task) (err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlAddTasksToHistory)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlAddTasksToHistory)
 	defer metrics.Set(err)
 
 	sqlCmd := "insert into task_history(task_id, task_type, cluster_name, vol_name, dp_id, mp_id, task_info, worker_addr, task_status, exception_info, task_create_time, task_update_time) values"
@@ -154,7 +154,7 @@ func DeleteTaskHistories(ths []*proto.TaskHistory) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlDeleteTaskHistory)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlDeleteTaskHistory)
 	defer metrics.Set(err)
 
 	sbPlaceholder := strings.Builder{}

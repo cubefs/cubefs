@@ -229,7 +229,6 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	}
 
 	exporter.Init(ci.Cluster, cfg.GetString("role"), cfg)
-	exporter.RegistConsul(cfg)
 
 	// Init SRE monitor
 	go func(cfg *config.Config, cluster string) {

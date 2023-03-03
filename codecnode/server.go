@@ -25,7 +25,6 @@ import (
 	"github.com/cubefs/cubefs/repl"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 )
@@ -190,9 +189,6 @@ func (s *CodecServer) register(cfg *config.Config) {
 				continue
 			}
 			s.nodeID = nodeID
-
-			// Register monitor module
-			exporter.RegistConsul(cfg)
 
 			// Success
 			log.LogDebugf("register: register CodecNode: nodeID(%v)", s.nodeID)

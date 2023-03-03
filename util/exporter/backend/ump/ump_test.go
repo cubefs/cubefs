@@ -5,8 +5,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/cubefs/cubefs/proto"
 )
 
 func init() {
@@ -140,10 +138,10 @@ func TestUmp(t *testing.T) {
 	sendUmp()
 
 	SetUmpJmtpAddr(testJmtpAddr)
-	SetUmpCollectWay(proto.UmpCollectByJmtpClient)
+	SetUmpCollectMethod(CollectMethodJMTP)
 	sendUmp()
 
-	SetUmpCollectWay(proto.UmpCollectByFile)
+	SetUmpCollectMethod(CollectMethodFile)
 	sendUmp()
 }
 

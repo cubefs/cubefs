@@ -156,13 +156,13 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		// ===== pre-handle finish =====
 
 		var startTime = time.Now()
-		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
+		metric := exporter.NewModuleTP(fmt.Sprintf("action_%v", action.Name()))
 		defer func() {
 			// failed request monitor
 			var err error = nil
 			var statusCode = GetStatusCodeFromContext(r)
 			if IsMonitoredStatusCode(statusCode) {
-				exporter.NewTPCnt(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
+				exporter.NewModuleTP(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
 				var errorMessage = getResponseErrorMessage(r)
 				exporter.Warning(generateWarnDetail(r, errorMessage))
 				err = errors.New(errorMessage)

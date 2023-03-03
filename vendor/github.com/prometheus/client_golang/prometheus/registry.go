@@ -54,6 +54,7 @@ var (
 	defaultRegistry              = NewRegistry()
 	DefaultRegisterer Registerer = defaultRegistry
 	DefaultGatherer   Gatherer   = defaultRegistry
+	gWg               sync.WaitGroup
 )
 
 func init() {
@@ -269,7 +270,9 @@ func (r *Registry) Register(c Collector) error {
 		collectorID        uint64 // Just a sum of all desc IDs.
 		duplicateDescErr   error
 	)
+	gWg.Add(1)
 	go func() {
+		defer gWg.Done()
 		c.Describe(descChan)
 		close(descChan)
 	}()
@@ -354,7 +357,9 @@ func (r *Registry) Unregister(c Collector) bool {
 		descIDs     = map[uint64]struct{}{}
 		collectorID uint64 // Just a sum of the desc IDs.
 	)
+	gWg.Add(1)
 	go func() {
+		defer gWg.Done()
 		c.Describe(descChan)
 		close(descChan)
 	}()
@@ -428,6 +433,7 @@ func (r *Registry) Gather() ([]*dto.MetricFamily, error) {
 	wg.Add(goroutineBudget)
 
 	collectWorker := func() {
+		defer gWg.Done()
 		for {
 			select {
 			case collector := <-checkedCollectors:
@@ -442,12 +448,15 @@ func (r *Registry) Gather() ([]*dto.MetricFamily, error) {
 	}
 
 	// Start the first worker now to make sure at least one is running.
+	gWg.Add(1)
 	go collectWorker()
 	goroutineBudget--
 
 	// Close checkedMetricChan and uncheckedMetricChan once all collectors
 	// are collected.
+	gWg.Add(1)
 	go func() {
+		defer gWg.Done()
 		wg.Wait()
 		close(checkedMetricChan)
 		close(uncheckedMetricChan)
@@ -523,6 +532,7 @@ func (r *Registry) Gather() ([]*dto.MetricFamily, error) {
 				break
 			}
 			// Start more workers.
+			gWg.Add(1)
 			go collectWorker()
 			goroutineBudget--
 			runtime.Gosched()
@@ -928,4 +938,8 @@ func checkDescConsistency(
 		}
 	}
 	return nil
+}
+
+func WaitGoroutinesFinish() {
+	gWg.Wait()
 }

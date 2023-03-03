@@ -26,13 +26,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/errors"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/multipart"
-
-	"github.com/cubefs/cubefs/util/ump"
 )
 
 // Low-level API, i.e. work with inode
@@ -1167,11 +1165,11 @@ func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string,
 func handleUmpAlarm(cluster, vol, act, msg string) {
 	umpKeyCluster := fmt.Sprintf("%s_client_warning", cluster)
 	umpMsgCluster := fmt.Sprintf("volume(%s) %s", vol, msg)
-	ump.Alarm(umpKeyCluster, umpMsgCluster)
+	exporter.WarningBySpecialUMPKey(umpKeyCluster, umpMsgCluster)
 
 	umpKeyVol := fmt.Sprintf("%s_%s_warning", cluster, vol)
 	umpMsgVol := fmt.Sprintf("act(%s) - %s", act, msg)
-	ump.Alarm(umpKeyVol, umpMsgVol)
+	exporter.WarningBySpecialUMPKey(umpKeyVol, umpMsgVol)
 }
 
 func contains(arr []string, element string) (ok bool) {

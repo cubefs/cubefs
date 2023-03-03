@@ -41,7 +41,8 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) (err er
 	m.registerAPIRoutes(router)
 
 	m.registerAPIMiddleware(router)
-	exporter.InitWithRouter(modulename, cfg, router, m.port)
+	exporterPort, _ := strconv.ParseInt(m.port, 10, 64)
+	exporter.InitWithRouter(m.clusterName, modulename, cfg, router, exporterPort)
 	var listener net.Listener
 	if listener, err = net.Listen("tcp", colonSplit+m.port); err != nil {
 		return

@@ -17,7 +17,7 @@ const (
 )
 
 func GetLeader(expire int) (le *proto.LeaderElect, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlGetLeader)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlGetLeader)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -54,7 +54,7 @@ func GetLeader(expire int) (le *proto.LeaderElect, err error) {
 }
 
 func GetMaxTerm() (term uint64, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlGetMaxTerm)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlGetMaxTerm)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -83,7 +83,7 @@ func UpdateLeaderHeartbeat(term uint64, localIp string) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateLeaderHeartbeat)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlUpdateLeaderHeartbeat)
 	defer metrics.Set(err)
 
 	sqlCmd := "update leader_election set update_time = now() where term = ? and leader_ip = ?"
@@ -104,7 +104,7 @@ func UpdateLeaderHeartbeat(term uint64, localIp string) (err error) {
 }
 
 func AddElectTerm(le *proto.LeaderElect) (isLeader bool, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlAddElectTerm)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlAddElectTerm)
 	defer metrics.Set(err)
 
 	sqlCmd := "insert into leader_election(term, leader_ip) values(?, ?)"

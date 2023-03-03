@@ -107,7 +107,7 @@ func (m *Server) getEcNode(w http.ResponseWriter, r *http.Request) {
 		ecNodeInfo *proto.EcNodeInfo
 		err        error
 	)
-	metrics := exporter.NewTPCnt(proto.GetEcNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.GetEcNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -156,7 +156,7 @@ func (m *Server) addEcNode(w http.ResponseWriter, r *http.Request) {
 		err      error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AddEcNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.AddEcNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if nodeAddr, httpPort, zoneName, version, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -180,7 +180,7 @@ func (m *Server) decommissionEcNode(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
-	metrics := exporter.NewTPCnt(proto.DecommissionEcNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.DecommissionEcNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -210,7 +210,7 @@ func (m *Server) decommissionEcDisk(w http.ResponseWriter, r *http.Request) {
 		badPartitions         []*EcDataPartition
 	)
 
-	metrics := exporter.NewTPCnt(proto.DecommissionEcDiskUmpKey)
+	metrics := exporter.NewModuleTP(proto.DecommissionEcDiskUmpKey)
 	defer func() { metrics.Set(err) }()
 	if offLineAddr, diskPath, err = parseRequestToDecommissionNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -239,7 +239,7 @@ func (m *Server) decommissionEcDisk(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) handleEcNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	tr, err := parseRequestToGetTaskResponse(r)
-	metrics := exporter.NewTPCnt(proto.GetEcNodeTaskResponseUmpKey)
+	metrics := exporter.NewModuleTP(proto.GetEcNodeTaskResponseUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -576,7 +576,7 @@ func (m *Server) updateEcClusterInfo(w http.ResponseWriter, r *http.Request) {
 		ecScrubPeriod      int
 		maxCodecConcurrent int
 	)
-	metrics := exporter.NewTPCnt(proto.AdminClusterEcSetUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminClusterEcSetUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -631,7 +631,7 @@ func (m *Server) updateEcClusterInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getEcScrubInfo(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.AdminClusterGetScrubUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminClusterGetScrubUmpKey)
 	defer func() { metrics.Set(nil) }()
 	scrubInfo := &proto.UpdateEcScrubInfoRequest{
 		ScrubEnable:     m.cluster.EcScrubEnable,
@@ -674,7 +674,7 @@ func (m *Server) updateVolEcInfo(w http.ResponseWriter, r *http.Request) {
 		ecMaxUnitSize uint64
 		vol           *Vol
 	)
-	metrics := exporter.NewTPCnt(proto.AdminUpdateVolEcInfoUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminUpdateVolEcInfoUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -755,14 +755,14 @@ func (m *Server) updateVolEcInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) GetCanMigrateDp(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.AdminCanMigrateDataPartitionsUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminCanMigrateDataPartitionsUmpKey)
 	defer func() { metrics.Set(nil) }()
 	canOperDps := m.cluster.getCanOperDataPartitions(false)
 	sendOkReply(w, r, newSuccessHTTPReply(canOperDps))
 }
 
 func (m *Server) GetCanDelDp(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.AdminCanDelDataPartitionsUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminCanDelDataPartitionsUmpKey)
 	defer func() { metrics.Set(nil) }()
 	canOperDps := m.cluster.getCanOperDataPartitions(true)
 	sendOkReply(w, r, newSuccessHTTPReply(canOperDps))
@@ -773,7 +773,7 @@ func (m *Server) DelDpAlreadyEc(w http.ResponseWriter, r *http.Request) {
 		err error
 		ID  uint64
 	)
-	metrics := exporter.NewTPCnt(proto.AdminDelDpAlreadyEcUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDelDpAlreadyEcUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -798,7 +798,7 @@ func (m *Server) DpMigrateEcById(w http.ResponseWriter, r *http.Request) {
 		id   uint64
 		test bool
 	)
-	metrics := exporter.NewTPCnt(proto.AdminDpMigrateEcUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDpMigrateEcUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -838,7 +838,7 @@ func (m *Server) deleteEcDataReplica(w http.ResponseWriter, r *http.Request) {
 		ep          *EcDataPartition
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminDeleteEcReplicaUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDeleteEcReplicaUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, err = parseRequestToRemoveEcReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -867,7 +867,7 @@ func (m *Server) addEcDataReplica(w http.ResponseWriter, r *http.Request) {
 		ep          *EcDataPartition
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminAddEcReplicaUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminAddEcReplicaUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, err = parseRequestToAddEcReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -940,7 +940,7 @@ func (m *Server) GetAllTaskStatus(w http.ResponseWriter, r *http.Request) {
 		taskView []*proto.MigrateTaskView
 		err      error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminGetAllTaskStatusUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminGetAllTaskStatusUmpKey)
 	defer func() { metrics.Set(err) }()
 	if taskView, err = m.cluster.getAllTaskStatus(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -956,7 +956,7 @@ func (m *Server) DpStopMigrating(w http.ResponseWriter, r *http.Request) {
 		ID  uint64
 		dp  *DataPartition
 	)
-	metrics := exporter.NewTPCnt(proto.AdminDpStopMigratingUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDpStopMigratingUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -996,7 +996,7 @@ func (m *Server) DNStopMigrating(w http.ResponseWriter, r *http.Request) {
 		err  error
 		addr string
 	)
-	metrics := exporter.NewTPCnt(proto.AdminDNStopMigratingUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDNStopMigratingUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))

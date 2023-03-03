@@ -16,49 +16,25 @@ package exporter
 
 import (
 	"fmt"
-	"sync"
 
+	"github.com/cubefs/cubefs/util/exporter/backend/ump"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/ump"
 )
 
 var (
-	AlarmPool = &sync.Pool{New: func() interface{} {
-		return new(Alarm)
-	}}
-	//AlarmGroup  sync.Map
-	AlarmCh    chan *Alarm
 	warningKey string
 )
 
-func collectAlarm() {
-	defer wg.Done()
-	AlarmCh = make(chan *Alarm, ChSize)
-	for {
-		select {
-		case <-stopC:
-			AlarmPool = nil
-			return
-		case m := <-AlarmCh:
-			AlarmPool.Put(m)
-		}
-	}
-}
-
-type Alarm struct {
-	Counter
-}
-
-func Warning(detail string) (a *Alarm) {
+func Warning(detail string) {
 	if warningKey == "" {
-		warningKey = fmt.Sprintf("%v_%v_warning", clustername, modulename)
+		warningKey = fmt.Sprintf("%v_%v_warning", clusterName, moduleName)
 	}
 	ump.Alarm(warningKey, detail)
 	log.LogCritical(warningKey, detail)
 	return
 }
 
-func WarningBySpecialUMPKey(key, detail string) (a *Alarm) {
+func WarningBySpecialUMPKey(key, detail string) {
 	if key == "" {
 		key = warningKey
 	}
@@ -67,34 +43,31 @@ func WarningBySpecialUMPKey(key, detail string) (a *Alarm) {
 	return
 }
 
-func WarningCritical(detail string) (a *Alarm) {
+func WarningCritical(detail string) {
 	if warningKey == "" {
-		warningKey = fmt.Sprintf("%v_%v_critical", clustername, modulename)
+		warningKey = fmt.Sprintf("%v_%v_critical", clusterName, moduleName)
 	}
 	ump.Alarm(warningKey, detail)
 	log.LogCritical(warningKey, detail)
 	return
 }
 
-func WarningPanic(detail string) (a *Alarm) {
+func WarningPanic(detail string) {
 	if warningKey == "" {
-		warningKey = fmt.Sprintf("%v_%v_panic", clustername, modulename)
+		warningKey = fmt.Sprintf("%v_%v_panic", clusterName, moduleName)
 	}
 	ump.Alarm(warningKey, detail)
 	log.LogCritical(warningKey, detail)
 	return
 }
 
-func (c *Alarm) publish() {
-	select {
-	case AlarmCh <- c:
-	default:
-	}
-}
-
-func WarningRocksdbError(detail string) (a *Alarm) {
-	key := fmt.Sprintf("%v_metanode_rocksdb_error_warning", clustername)
+func WarningRocksdbError(detail string) {
+	key := fmt.Sprintf("%v_metanode_rocksdb_error_warning", clusterName)
 	ump.Alarm(key, detail)
 	log.LogCritical(key, detail)
 	return
+}
+
+func FlushWarning() {
+	ump.FlushAlarm()
 }

@@ -44,21 +44,18 @@ const (
 
 type monitorMetrics struct {
 	cluster            *Cluster
-	dataNodesCount     *exporter.GaugeVec
-	metaNodesCount     *exporter.GaugeVec
-	volCount           *exporter.GaugeVec
-	dataNodesTotal     *exporter.GaugeVec
-	dataNodesUsed      *exporter.GaugeVec
-	dataNodeIncreased  *exporter.GaugeVec
-	metaNodesTotal     *exporter.GaugeVec
-	metaNodesUsed      *exporter.GaugeVec
-	metaNodesIncreased *exporter.GaugeVec
-	volTotalSpace      *exporter.GaugeVec
-	volUsedSpace       *exporter.GaugeVec
-	volUsage           *exporter.GaugeVec
-	diskError          *exporter.GaugeVec
-	dataNodesInactive  *exporter.GaugeVec
-	metaNodesInactive  *exporter.GaugeVec
+	dataNodesCount     exporter.Gauge
+	metaNodesCount     exporter.Gauge
+	volCount           exporter.Gauge
+	dataNodesTotal     exporter.Gauge
+	dataNodesUsed      exporter.Gauge
+	dataNodeIncreased  exporter.Gauge
+	metaNodesTotal     exporter.Gauge
+	metaNodesUsed      exporter.Gauge
+	metaNodesIncreased exporter.Gauge
+	diskError          exporter.Gauge
+	dataNodesInactive  exporter.Gauge
+	metaNodesInactive  exporter.Gauge
 	volNames           map[string]struct{}
 	badDisks           map[string]string
 }
@@ -71,21 +68,21 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 }
 
 func (mm *monitorMetrics) start() {
-	mm.dataNodesTotal = exporter.NewGaugeVec(MetricDataNodesTotalGB, "", []string{})
-	mm.dataNodesUsed = exporter.NewGaugeVec(MetricDataNodesUsedGB, "", []string{})
-	mm.dataNodeIncreased = exporter.NewGaugeVec(MetricDataNodesIncreasedGB, "", []string{})
-	mm.metaNodesTotal = exporter.NewGaugeVec(MetricMetaNodesTotalGB, "", []string{})
-	mm.metaNodesUsed = exporter.NewGaugeVec(MetricMetaNodesUsedGB, "", []string{})
-	mm.metaNodesIncreased = exporter.NewGaugeVec(MetricMetaNodesIncreasedGB, "", []string{})
-	mm.dataNodesCount = exporter.NewGaugeVec(MetricDataNodesCount, "", []string{})
-	mm.metaNodesCount = exporter.NewGaugeVec(MetricMetaNodesCount, "", []string{})
-	mm.volCount = exporter.NewGaugeVec(MetricVolCount, "", []string{})
-	mm.volTotalSpace = exporter.NewGaugeVec(MetricVolTotalGB, "", []string{"volName"})
-	mm.volUsedSpace = exporter.NewGaugeVec(MetricVolUsedGB, "", []string{"volName"})
-	mm.volUsage = exporter.NewGaugeVec(MetricVolUsageGB, "", []string{"volName"})
-	mm.diskError = exporter.NewGaugeVec(MetricDiskError, "", []string{"addr", "path"})
-	mm.dataNodesInactive = exporter.NewGaugeVec(MetricDataNodesInactive, "", []string{})
-	mm.metaNodesInactive = exporter.NewGaugeVec(MetricMetaNodesInactive, "", []string{})
+	var clusterLV = exporter.LabelValue{
+		Label: "cluster",
+		Value: mm.cluster.Name,
+	}
+	mm.dataNodesTotal = exporter.NewGauge(MetricDataNodesTotalGB, clusterLV)
+	mm.dataNodesUsed = exporter.NewGauge(MetricDataNodesUsedGB, clusterLV)
+	mm.dataNodeIncreased = exporter.NewGauge(MetricDataNodesIncreasedGB, clusterLV)
+	mm.metaNodesTotal = exporter.NewGauge(MetricMetaNodesTotalGB, clusterLV)
+	mm.metaNodesUsed = exporter.NewGauge(MetricMetaNodesUsedGB, clusterLV)
+	mm.metaNodesIncreased = exporter.NewGauge(MetricMetaNodesIncreasedGB, clusterLV)
+	mm.dataNodesCount = exporter.NewGauge(MetricDataNodesCount, clusterLV)
+	mm.metaNodesCount = exporter.NewGauge(MetricMetaNodesCount, clusterLV)
+	mm.volCount = exporter.NewGauge(MetricVolCount, clusterLV)
+	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive, clusterLV)
+	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive, clusterLV)
 	go mm.statMetrics()
 }
 
@@ -113,17 +110,17 @@ func (mm *monitorMetrics) statMetrics() {
 
 func (mm *monitorMetrics) doStat() {
 	dataNodeCount := mm.cluster.dataNodeCount()
-	mm.dataNodesCount.SetWithLabelValues(float64(dataNodeCount))
+	mm.dataNodesCount.Set(float64(dataNodeCount))
 	metaNodeCount := mm.cluster.metaNodeCount()
-	mm.metaNodesCount.SetWithLabelValues(float64(metaNodeCount))
+	mm.metaNodesCount.Set(float64(metaNodeCount))
 	volCount := len(mm.cluster.vols)
-	mm.volCount.SetWithLabelValues(float64(volCount))
-	mm.dataNodesTotal.SetWithLabelValues(float64(mm.cluster.dataNodeStatInfo.TotalGB))
-	mm.dataNodesUsed.SetWithLabelValues(float64(mm.cluster.dataNodeStatInfo.UsedGB))
-	mm.dataNodeIncreased.SetWithLabelValues(float64(mm.cluster.dataNodeStatInfo.IncreasedGB))
-	mm.metaNodesTotal.SetWithLabelValues(float64(mm.cluster.metaNodeStatInfo.TotalGB))
-	mm.metaNodesUsed.SetWithLabelValues(float64(mm.cluster.metaNodeStatInfo.UsedGB))
-	mm.metaNodesIncreased.SetWithLabelValues(float64(mm.cluster.metaNodeStatInfo.IncreasedGB))
+	mm.volCount.Set(float64(volCount))
+	mm.dataNodesTotal.Set(float64(mm.cluster.dataNodeStatInfo.TotalGB))
+	mm.dataNodesUsed.Set(float64(mm.cluster.dataNodeStatInfo.UsedGB))
+	mm.dataNodeIncreased.Set(float64(mm.cluster.dataNodeStatInfo.IncreasedGB))
+	mm.metaNodesTotal.Set(float64(mm.cluster.metaNodeStatInfo.TotalGB))
+	mm.metaNodesUsed.Set(float64(mm.cluster.metaNodeStatInfo.UsedGB))
+	mm.metaNodesIncreased.Set(float64(mm.cluster.metaNodeStatInfo.IncreasedGB))
 	mm.setVolMetrics()
 	mm.setDiskErrorMetric()
 	mm.setInactiveDataNodesCount()
@@ -135,6 +132,11 @@ func (mm *monitorMetrics) setVolMetrics() {
 	for k, v := range mm.volNames {
 		deleteVolNames[k] = v
 		delete(mm.volNames, k)
+	}
+
+	var clusterLabelValue = exporter.LabelValue{
+		Label: "cluster",
+		Value: mm.cluster.Name,
 	}
 
 	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
@@ -151,11 +153,14 @@ func (mm *monitorMetrics) setVolMetrics() {
 			delete(deleteVolNames, volName)
 		}
 
-		mm.volTotalSpace.SetWithLabelValues(float64(volStatInfo.TotalSize), volName)
-		mm.volUsedSpace.SetWithLabelValues(float64(volStatInfo.UsedSize), volName)
-		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)
-		if e == nil {
-			mm.volUsage.SetWithLabelValues(usedRatio, volName)
+		var volumeLabelValue = exporter.LabelValue{
+			Label: "volume",
+			Value: volName,
+		}
+		exporter.NewGauge(MetricVolTotalGB, clusterLabelValue, volumeLabelValue).Set(float64(volStatInfo.TotalSize))
+		exporter.NewGauge(MetricVolUsedGB, clusterLabelValue, volumeLabelValue).Set(float64(volStatInfo.UsedSize))
+		if usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64); e == nil {
+			exporter.NewGauge(MetricVolUsageGB, clusterLabelValue, volumeLabelValue).Set(usedRatio)
 		}
 
 		return true
@@ -167,9 +172,19 @@ func (mm *monitorMetrics) setVolMetrics() {
 }
 
 func (mm *monitorMetrics) deleteVolMetric(volName string) {
-	mm.volTotalSpace.DeleteLabelValues(volName)
-	mm.volUsedSpace.DeleteLabelValues(volName)
-	mm.volUsage.DeleteLabelValues(volName)
+	var lvs = []exporter.LabelValue{
+		{
+			Label: "cluster",
+			Value: mm.cluster.Name,
+		},
+		{
+			Label: "volume",
+			Value: volName,
+		},
+	}
+	exporter.DeleteGaugeLabelValues(volName, lvs...)
+	exporter.DeleteGaugeLabelValues(volName, lvs...)
+	exporter.DeleteGaugeLabelValues(volName, lvs...)
 }
 
 func (mm *monitorMetrics) setDiskErrorMetric() {
@@ -177,6 +192,10 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 	for k, v := range mm.badDisks {
 		deleteBadDisks[k] = v
 		delete(mm.badDisks, k)
+	}
+	var clusterLV = exporter.LabelValue{
+		Label: "cluster",
+		Value: mm.cluster.Name,
 	}
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
@@ -186,7 +205,15 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 		for _, badDisk := range dataNode.BadDisks {
 			for _, partition := range dataNode.DataPartitionReports {
 				if partition.DiskPath == badDisk {
-					mm.diskError.SetWithLabelValues(1, dataNode.Addr, badDisk)
+					var addrLV = exporter.LabelValue{
+						Label: "addr",
+						Value: dataNode.Addr,
+					}
+					var pathLV = exporter.LabelValue{
+						Label: "path",
+						Value: badDisk,
+					}
+					exporter.NewGauge(MetricDiskError, clusterLV, addrLV, pathLV)
 					mm.badDisks[badDisk] = dataNode.Addr
 					delete(deleteBadDisks, badDisk)
 					break
@@ -198,7 +225,15 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 	})
 
 	for k, v := range deleteBadDisks {
-		mm.diskError.DeleteLabelValues(v, k)
+		var addrLV = exporter.LabelValue{
+			Label: "addr",
+			Value: v,
+		}
+		var pathLV = exporter.LabelValue{
+			Label: "path",
+			Value: k,
+		}
+		exporter.DeleteGaugeLabelValues(MetricDiskError, clusterLV, addrLV, pathLV)
 	}
 }
 
@@ -214,7 +249,7 @@ func (mm *monitorMetrics) setInactiveMetaNodesCount() {
 		}
 		return true
 	})
-	mm.metaNodesInactive.SetWithLabelValues(float64(inactiveMetaNodesCount))
+	mm.metaNodesInactive.Set(float64(inactiveMetaNodesCount))
 }
 
 func (mm *monitorMetrics) setInactiveDataNodesCount() {
@@ -229,7 +264,7 @@ func (mm *monitorMetrics) setInactiveDataNodesCount() {
 		}
 		return true
 	})
-	mm.dataNodesInactive.SetWithLabelValues(float64(inactiveDataNodesCount))
+	mm.dataNodesInactive.Set(float64(inactiveDataNodesCount))
 }
 
 func (mm *monitorMetrics) clearVolMetrics() {
@@ -242,8 +277,20 @@ func (mm *monitorMetrics) clearVolMetrics() {
 }
 
 func (mm *monitorMetrics) clearDiskErrMetrics() {
+	var clusterLV = exporter.LabelValue{
+		Label: "cluster",
+		Value: mm.cluster.Name,
+	}
 	for k, v := range mm.badDisks {
-		mm.diskError.DeleteLabelValues(v, k)
+		var addrLV = exporter.LabelValue{
+			Label: "addr",
+			Value: v,
+		}
+		var pathLV = exporter.LabelValue{
+			Label: "path",
+			Value: k,
+		}
+		exporter.DeleteGaugeLabelValues(MetricDiskError, clusterLV, addrLV, pathLV)
 	}
 }
 
@@ -251,16 +298,16 @@ func (mm *monitorMetrics) resetAllMetrics() {
 	mm.clearVolMetrics()
 	mm.clearDiskErrMetrics()
 
-	mm.dataNodesCount.SetWithLabelValues(0)
-	mm.metaNodesCount.SetWithLabelValues(0)
-	mm.volCount.SetWithLabelValues(0)
-	mm.dataNodesTotal.SetWithLabelValues(0)
-	mm.dataNodesUsed.SetWithLabelValues(0)
-	mm.dataNodeIncreased.SetWithLabelValues(0)
-	mm.metaNodesTotal.SetWithLabelValues(0)
-	mm.metaNodesUsed.SetWithLabelValues(0)
-	mm.metaNodesIncreased.SetWithLabelValues(0)
-	mm.diskError.SetWithLabelValues(0)
-	mm.dataNodesInactive.SetWithLabelValues(0)
-	mm.metaNodesInactive.SetWithLabelValues(0)
+	mm.dataNodesCount.Set(0)
+	mm.metaNodesCount.Set(0)
+	mm.volCount.Set(0)
+	mm.dataNodesTotal.Set(0)
+	mm.dataNodesUsed.Set(0)
+	mm.dataNodeIncreased.Set(0)
+	mm.metaNodesTotal.Set(0)
+	mm.metaNodesUsed.Set(0)
+	mm.metaNodesIncreased.Set(0)
+	mm.diskError.Set(0)
+	mm.dataNodesInactive.Set(0)
+	mm.metaNodesInactive.Set(0)
 }

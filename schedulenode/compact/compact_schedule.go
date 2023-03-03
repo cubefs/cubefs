@@ -2,6 +2,9 @@ package compact
 
 import (
 	"fmt"
+	"sort"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/worker"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -9,8 +12,6 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"sort"
-	"time"
 )
 
 // NewCompactWorkerForScheduler scheduleNode进程调用此方法
@@ -51,7 +52,7 @@ func (cw *CompactWorker) initWorkerForScheduler() (err error) {
 
 // CreateTask scheduleNode进程调用此方法进行创建任务
 func (cw *CompactWorker) CreateTask(clusterId string, taskNum int64, runningTasks []*proto.Task, wns []*proto.WorkerNode) (newTasks []*proto.Task, err error) {
-	metric := exporter.NewTPCnt(proto.MonitorCompactCreateTask)
+	metric := exporter.NewModuleTP(proto.MonitorCompactCreateTask)
 	defer metric.Set(err)
 
 	if len(cw.cvv) == 0 {
@@ -241,7 +242,7 @@ func (cw *CompactWorker) loadCompactVolume() {
 		select {
 		case <-timer.C:
 			loader := func() (err error) {
-				metrics := exporter.NewTPCnt(proto.MonitorCompactLoadCompactVolume)
+				metrics := exporter.NewModuleTP(proto.MonitorCompactLoadCompactVolume)
 				defer metrics.Set(err)
 
 				for cluster, mc := range cw.mcw {

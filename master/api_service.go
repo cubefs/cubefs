@@ -84,7 +84,7 @@ func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 		threshold float64
 		err       error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminSetMetaNodeThresholdUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSetMetaNodeThresholdUmpKey)
 	defer func() { metrics.Set(err) }()
 	if threshold, err = parseAndExtractThreshold(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -102,7 +102,7 @@ func (m *Server) setMetaNodeRocksDBDiskUsedThreshold(w http.ResponseWriter, r *h
 		threshold float64
 		err       error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminSetMNRocksDBDiskThresholdUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSetMNRocksDBDiskThresholdUmpKey)
 	defer func() { metrics.Set(err) }()
 	if threshold, err = parseAndExtractThreshold(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -120,7 +120,7 @@ func (m *Server) setMetaNodeMemModeRocksDBDiskUsedThreshold(w http.ResponseWrite
 		threshold float64
 		err       error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminSetMNMemModeRocksDBDiskThresholdUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSetMNMemModeRocksDBDiskThresholdUmpKey)
 	defer func() { metrics.Set(err) }()
 	if threshold, err = parseAndExtractThreshold(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -146,7 +146,7 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 		status bool
 		err    error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminClusterFreezeUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminClusterFreezeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if status, err = parseAndExtractStatus(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -161,7 +161,7 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 
 // View the topology of the cluster.
 func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.GetTopologyViewUmpKey)
+	metrics := exporter.NewModuleTP(proto.GetTopologyViewUmpKey)
 	defer func() { metrics.Set(nil) }()
 	tv := &TopologyView{
 		Zones:   make([]*ZoneView, 0),
@@ -210,7 +210,7 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 		name string
 		err  error
 	)
-	metrics := exporter.NewTPCnt(proto.UpdateZoneUmpKey)
+	metrics := exporter.NewModuleTP(proto.UpdateZoneUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name = r.FormValue(nameKey); name == "" {
 		err = keyNotFound(nameKey)
@@ -236,7 +236,7 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.GetAllZonesUmpKey)
+	metrics := exporter.NewModuleTP(proto.GetAllZonesUmpKey)
 	defer func() { metrics.Set(nil) }()
 	zones := m.cluster.t.getAllZones()
 	zoneViews := make([]*ZoneView, 0)
@@ -251,7 +251,7 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.AdminClusterStatUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminClusterStatUmpKey)
 	defer func() { metrics.Set(nil) }()
 	cs := &proto.ClusterStatInfo{
 		DataNodeStatInfo: m.cluster.dataNodeStatInfo,
@@ -277,7 +277,7 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.AdminGetClusterUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminGetClusterUmpKey)
 	defer func() { metrics.Set(nil) }()
 	responseCache := m.cluster.getClusterViewResponseCache()
 	if len(responseCache) != 0 {
@@ -398,7 +398,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.AdminGetIPUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminGetIPUmpKey)
 	defer func() { metrics.Set(nil) }()
 	//m.cluster.loadClusterValue()
 	cInfo := &proto.ClusterInfo{
@@ -436,7 +436,7 @@ func (m *Server) getDataNodeZoneNameOfRemoteAddr(r *http.Request) (dataNodeZoneN
 }
 
 func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.AdminGetLimitInfoUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminGetLimitInfoUmpKey)
 	defer func() { metrics.Set(nil) }()
 	var dataNodeZoneName string
 	vol := r.FormValue(nameKey)
@@ -557,7 +557,7 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 		err     error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminCreateMetaPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminCreateMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if volName, start, err = validateRequestToCreateMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -583,7 +583,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		err                        error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminCreateDataPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminCreateDataPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if reqCreateCount, volName, designatedZoneName, err = parseRequestToCreateDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -628,7 +628,7 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 		vol         *Vol
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminGetDataPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminGetDataPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, volName, err = parseRequestToGetDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -663,7 +663,7 @@ func (m *Server) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminLoadDataPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminLoadDataPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -693,7 +693,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		err                        error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminAddDataReplicaUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminAddDataReplicaUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, addReplicaType, err = parseRequestToAddDataReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -799,7 +799,7 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminDeleteDataReplicaUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDeleteDataReplicaUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, err = parseRequestToRemoveDataReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -832,7 +832,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		err             error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminAddMetaReplicaUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminAddMetaReplicaUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, addReplicaType, storeMode, err = parseRequestToAddMetaReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -896,7 +896,7 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminDeleteMetaReplicaUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDeleteMetaReplicaUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, _, err = parseRequestToRemoveMetaReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -932,7 +932,7 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		storeMode                  int
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminAddMetaReplicaLearnerUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminAddMetaReplicaLearnerUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, auto, threshold, addReplicaType, storeMode, err = parseRequestToAddMetaReplicaLearner(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -996,7 +996,7 @@ func (m *Server) promoteMetaReplicaLearner(w http.ResponseWriter, r *http.Reques
 		err         error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminPromoteMetaReplicaLearnerUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminPromoteMetaReplicaLearnerUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, _, err = parseRequestToPromoteMetaReplicaLearner(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1025,7 +1025,7 @@ func (m *Server) addDataReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		threshold   uint8
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminAddDataReplicaLearnerUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminAddDataReplicaLearnerUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, auto, threshold, err = parseRequestToAddDataReplicaLearner(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1062,7 +1062,7 @@ func (m *Server) promoteDataReplicaLearner(w http.ResponseWriter, r *http.Reques
 		err         error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminPromoteDataReplicaLearnerUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminPromoteDataReplicaLearnerUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, err = parseRequestToPromoteDataReplicaLearner(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1095,7 +1095,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		chooseFunc  ChooseDataHostFunc
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminDecommissionDataPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDecommissionDataPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, destAddr, err = parseRequestToDecommissionDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1148,7 +1148,7 @@ func (m *Server) transferDataPartition(w http.ResponseWriter, r *http.Request) {
 		vol         *Vol
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminTransferDataPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminTransferDataPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, addr, _, err = parseRequestToDecommissionDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1186,7 +1186,7 @@ func (m *Server) setNodeToOfflineState(w http.ResponseWriter, r *http.Request) {
 		zoneName string
 		state    bool
 	)
-	metrics := exporter.NewTPCnt(proto.AdminSetNodeStateUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSetNodeStateUmpKey)
 	defer func() { metrics.Set(err) }()
 	if startID, endID, nodeType, zoneName, state, err = parseRequestToSetNodeToOfflineState(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1248,7 +1248,7 @@ func (m *Server) setupAutoMergeNodeSet(w http.ResponseWriter, r *http.Request) {
 		status bool
 		err    error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminClusterAutoMergeNodeSetUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminClusterAutoMergeNodeSetUmpKey)
 	defer func() { metrics.Set(err) }()
 	if status, err = parseAndExtractStatus(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1272,7 +1272,7 @@ func (m *Server) mergeNodeSet(w http.ResponseWriter, r *http.Request) {
 		count      int
 		successNum int
 	)
-	metrics := exporter.NewTPCnt(proto.AdminMergeNodeSetUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminMergeNodeSetUmpKey)
 	defer func() { metrics.Set(err) }()
 	if zoneName, nodeType, nodeAddr, sourceID, targetID, count, err = parseRequestToMergeNodeSet(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1354,7 +1354,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		corruptDpIDs     []uint64
 		lackReplicaDpIDs []uint64
 	)
-	metrics := exporter.NewTPCnt(proto.AdminDiagnoseDataPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDiagnoseDataPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if inactiveNodes, corruptDps, err = m.cluster.checkCorruptDataPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -1386,7 +1386,7 @@ func (m *Server) resetDataPartition(w http.ResponseWriter, r *http.Request) {
 		panicHosts  []string
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminResetDataPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminResetDataPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, err = parseRequestToResetDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1442,7 +1442,7 @@ func (m *Server) manualResetDataPartition(w http.ResponseWriter, r *http.Request
 		panicHosts  []string
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminManualResetDataPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminManualResetDataPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	panicHosts = make([]string, 0)
 	if nodeAddrs, partitionID, err = parseRequestToManualResetDataPartition(r); err != nil {
@@ -1490,7 +1490,7 @@ func (m *Server) updateDataPartition(w http.ResponseWriter, r *http.Request) {
 		isManual    bool
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminDataPartitionUpdateUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDataPartitionUpdateUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, volName, isManual, err = parseUpdateDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1535,7 +1535,7 @@ func (m *Server) batchUpdateDataPartitions(w http.ResponseWriter, r *http.Reques
 		dataPartitions []*DataPartition
 		msg            string
 	)
-	metrics := exporter.NewTPCnt(proto.AdminVolBatchUpdateDpsUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminVolBatchUpdateDpsUmpKey)
 	defer func() { metrics.Set(err) }()
 	if volName, mediumType, isManual, count, startID, endID, err = parseBatchUpdateDataPartitions(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1579,7 +1579,7 @@ func (m *Server) setDataPartitionIsRecover(w http.ResponseWriter, r *http.Reques
 		dp          *DataPartition
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminDataPartitionSetIsRecoverUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDataPartitionSetIsRecoverUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1608,7 +1608,7 @@ func (m *Server) setMetaPartitionIsRecover(w http.ResponseWriter, r *http.Reques
 		mp          *MetaPartition
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminMetaPartitionSetIsRecoverUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminMetaPartitionSetIsRecoverUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1639,7 +1639,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		msg     string
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminDeleteVolUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDeleteVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, authKey, err = parseRequestToDeleteVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1699,13 +1699,13 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		trashInterVal         uint64
 		batchDelInodeCnt      uint32
 		delInodeInterval      uint32
-		umpCollectWay         proto.UmpCollectBy
+		umpCollectWay         exporter.UMPCollectMethod
 
 		trashCleanDuration     int32
 		trashItemCleanMaxCount int32
 		cursorSkipStep         uint64
 	)
-	metrics := exporter.NewTPCnt(proto.AdminUpdateVolUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, authKey, replicaNum, mpReplicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1871,7 +1871,7 @@ func (m *Server) setVolConvertTaskState(w http.ResponseWriter, r *http.Request) 
 		msg      string
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminSetVolConvertStUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSetVolConvertStUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, authKey, newState, err = parseRequestToSetVolConvertSt(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1932,7 +1932,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		bitMapAllocator      bool
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminCreateVolUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminCreateVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
 		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, reuseMP, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
@@ -2001,7 +2001,7 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		volView *proto.SimpleVolView
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
-	metrics := exporter.NewTPCnt(proto.AdminGetVolUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminGetVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2134,7 +2134,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		version  string
 		err      error
 	)
-	metrics := exporter.NewTPCnt(proto.AddDataNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.AddDataNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if nodeAddr, httpPort, zoneName, version, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2154,7 +2154,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		dataNodeInfo *proto.DataNodeInfo
 		err          error
 	)
-	metrics := exporter.NewTPCnt(proto.GetDataNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.GetDataNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2203,7 +2203,7 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		err          error
 	)
 
-	metrics := exporter.NewTPCnt(proto.DecommissionDataNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.DecommissionDataNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if offLineAddr, destZoneName, err = parseRequestForDecommissionDataNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2242,7 +2242,7 @@ func (m *Server) resetCorruptDataNode(w http.ResponseWriter, r *http.Request) {
 		panicHostsList [][]string
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminResetCorruptDataNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminResetCorruptDataNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if resetAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2275,7 +2275,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		params map[string]interface{}
 		err    error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminSetNodeInfoUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSetNodeInfoUmpKey)
 	defer func() { metrics.Set(err) }()
 	if params, err = parseAndExtractSetNodeInfoParams(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2488,7 +2488,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 // get metanode some interval params
 func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.AdminGetNodeInfoUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminGetNodeInfoUmpKey)
 	defer func() { metrics.Set(nil) }()
 	resp := make(map[string]string)
 	resp[nodeDeleteBatchCountKey] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteBatchCount)
@@ -2511,7 +2511,7 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 		corruptMpIDs     []uint64
 		lackReplicaMpIDs []uint64
 	)
-	metrics := exporter.NewTPCnt(proto.AdminDiagnoseMetaPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDiagnoseMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if inactiveNodes, corruptMps, err = m.cluster.checkCorruptMetaPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -2562,7 +2562,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		badPartitions         []*DataPartition
 	)
 
-	metrics := exporter.NewTPCnt(proto.DecommissionDiskUmpKey)
+	metrics := exporter.NewModuleTP(proto.DecommissionDiskUmpKey)
 	defer func() { metrics.Set(err) }()
 	if offLineAddr, diskPath, err = parseRequestToDecommissionNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2607,7 +2607,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 // handle tasks such as heartbeat，loadDataPartition，deleteDataPartition, etc.
 func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	body, err := readBodyFromRequest(r)
-	metrics := exporter.NewTPCnt(proto.GetDataNodeTaskResponseUmpKey)
+	metrics := exporter.NewModuleTP(proto.GetDataNodeTaskResponseUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2639,7 +2639,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		id       uint64
 		err      error
 	)
-	metrics := exporter.NewTPCnt(proto.AddMetaNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.AddMetaNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if nodeAddr, _, zoneName, version, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2658,7 +2658,7 @@ func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
 		id       uint64
 		err      error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminUpdateMetaNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminUpdateMetaNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if nodeAddr, id, err = parseRequestForUpdateMetaNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2678,7 +2678,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		metaNodeInfo *proto.MetaNodeInfo
 		err          error
 	)
-	metrics := exporter.NewTPCnt(proto.GetMetaNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.GetMetaNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2725,7 +2725,7 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		storeMode   int
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminDecommissionMetaPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminDecommissionMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, nodeAddr, destAddr, storeMode, err = parseRequestToDecommissionMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2764,7 +2764,7 @@ func (m *Server) selectMetaReplaceNodeAddr(w http.ResponseWriter, r *http.Reques
 		err         error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminSelectMetaReplicaNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSelectMetaReplicaNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, nodeAddr, storeMode, err = parseRequestToSelectMetaReplace(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2805,7 +2805,7 @@ func (m *Server) resetMetaPartition(w http.ResponseWriter, r *http.Request) {
 		panicHosts  []string
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminResetMetaPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminResetMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, err = parseRequestToReplicateMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2862,7 +2862,7 @@ func (m *Server) manualResetMetaPartition(w http.ResponseWriter, r *http.Request
 		panicHosts  []string
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminManualResetMetaPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminManualResetMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	panicHosts = make([]string, 0)
 	if nodeAddrs, partitionID, err = parseRequestToManualResetMetaPartition(r); err != nil {
@@ -2907,7 +2907,7 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminLoadMetaPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminLoadMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, err = parseRequestToLoadMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2933,7 +2933,7 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
-	metrics := exporter.NewTPCnt(proto.DecommissionMetaNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.DecommissionMetaNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2967,7 +2967,7 @@ func (m *Server) resetCorruptMetaNode(w http.ResponseWriter, r *http.Request) {
 		panicHostsList [][]string
 		err            error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminResetCorruptMetaNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminResetCorruptMetaNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if addr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2998,7 +2998,7 @@ func (m *Server) resetCorruptMetaNode(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	body, err := readBodyFromRequest(r)
-	metrics := exporter.NewTPCnt(proto.GetMetaNodeTaskResponseUmpKey)
+	metrics := exporter.NewModuleTP(proto.GetMetaNodeTaskResponseUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3018,7 +3018,7 @@ func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 func (m *Server) addRaftNode(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	id, addr, err := parseRequestForRaftNode(r)
-	metrics := exporter.NewTPCnt(proto.AddRaftNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.AddRaftNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3037,7 +3037,7 @@ func (m *Server) addRaftNode(w http.ResponseWriter, r *http.Request) {
 func (m *Server) removeRaftNode(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	id, addr, err := parseRequestForRaftNode(r)
-	metrics := exporter.NewTPCnt(proto.RemoveRaftNodeUmpKey)
+	metrics := exporter.NewModuleTP(proto.RemoveRaftNodeUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3306,7 +3306,7 @@ func parseRequestToSetVolConvertSt(r *http.Request) (name, authKey string, newSt
 }
 
 func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity, storeMode int, description string,
-	layout proto.MetaPartitionLayout, extentCacheExpireSec int64, umpCollectWay proto.UmpCollectBy, err error) {
+	layout proto.MetaPartitionLayout, extentCacheExpireSec int64, umpCollectWay exporter.UMPCollectMethod, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3358,7 +3358,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 			err = unmatchedKey(umpCollectWayKey)
 			return
 		} else {
-			umpCollectWay = proto.UmpCollectBy(tmpUmpCollectWay)
+			umpCollectWay = exporter.UMPCollectMethod(tmpUmpCollectWay)
 		}
 	} else {
 		umpCollectWay = vol.UmpCollectWay
@@ -4755,7 +4755,7 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 		err  error
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
-	metrics := exporter.NewTPCnt(proto.ClientMetaPartitionsUmpKey)
+	metrics := exporter.NewModuleTP(proto.ClientMetaPartitionsUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -4783,7 +4783,7 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		err  error
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
-	metrics := exporter.NewTPCnt(proto.ClientDataPartitionsUmpKey)
+	metrics := exporter.NewModuleTP(proto.ClientDataPartitionsUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
 		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
@@ -4812,7 +4812,7 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		param   *getVolParameter
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
-	metrics := exporter.NewTPCnt(proto.ClientVolUmpKey)
+	metrics := exporter.NewModuleTP(proto.ClientVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if param, err = parseGetVolParameter(r); err != nil {
 		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
@@ -4858,7 +4858,7 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
-	metrics := exporter.NewTPCnt(proto.ClientVolStatUmpKey)
+	metrics := exporter.NewModuleTP(proto.ClientVolStatUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -4964,7 +4964,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		vol *Vol
 		mp          *MetaPartition
 	)
-	metrics := exporter.NewTPCnt(proto.ClientMetaPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.ClientMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5077,7 +5077,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 		volsInfo []*proto.VolInfo
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
-	metrics := exporter.NewTPCnt(proto.AdminListVolsUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminListVolsUmpKey)
 	defer func() { metrics.Set(err) }()
 	if keywords, err = parseKeywords(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5110,7 +5110,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 		volsInfo []*proto.VolInfo
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
-	metrics := exporter.NewTPCnt(proto.AdminSmartVolListUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSmartVolListUmpKey)
 	defer func() { metrics.Set(err) }()
 	if keywords, err = parseKeywords(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5144,7 +5144,7 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 		volsInfo []*proto.VolInfo
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
-	metrics := exporter.NewTPCnt(proto.AdminCompactVolListUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminCompactVolListUmpKey)
 	defer func() { metrics.Set(err) }()
 	volsInfo = make([]*proto.VolInfo, 0)
 	for _, name := range m.cluster.allVolNames() {
@@ -5174,7 +5174,7 @@ func (m *Server) setCompactVol(w http.ResponseWriter, r *http.Request) {
 		msg        string
 	)
 
-	metrics := exporter.NewTPCnt(proto.AdminCompactVolSetUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminCompactVolSetUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, compactTag, authKey, err = parseRequestToSetCompactVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5197,7 +5197,7 @@ func (m *Server) applyVolWriteMutex(w http.ResponseWriter, r *http.Request) {
 		addSlave   string
 		err        error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminApplyVolMutexUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminApplyVolMutexUmpKey)
 	defer func() { metrics.Set(err) }()
 
 	if err = r.ParseForm(); err != nil {
@@ -5247,7 +5247,7 @@ func (m *Server) releaseVolWriteMutex(w http.ResponseWriter, r *http.Request) {
 		clientAddr string
 		err        error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminReleaseVolMutexUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminReleaseVolMutexUmpKey)
 	defer func() { metrics.Set(err) }()
 
 	if err = r.ParseForm(); err != nil {
@@ -5289,7 +5289,7 @@ func (m *Server) getVolWriteMutexInfo(w http.ResponseWriter, r *http.Request) {
 		vol     *Vol
 		err     error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminGetVolMutexUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminGetVolMutexUmpKey)
 	defer func() { metrics.Set(err) }()
 
 	if err = r.ParseForm(); err != nil {
@@ -5504,7 +5504,7 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 
 func (m *Server) handleDataNodeValidateCRCReport(w http.ResponseWriter, r *http.Request) {
 	dpCrcInfo, err := parseRequestToDataNodeValidateCRCReport(r)
-	metrics := exporter.NewTPCnt(proto.DataNodeValidateCRCReportUmpKey)
+	metrics := exporter.NewModuleTP(proto.DataNodeValidateCRCReportUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5533,7 +5533,7 @@ func (m *Server) setZoneRegion(w http.ResponseWriter, r *http.Request) {
 		regionName string
 		err        error
 	)
-	metrics := exporter.NewTPCnt(proto.SetZoneRegionUmpKey)
+	metrics := exporter.NewModuleTP(proto.SetZoneRegionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if zoneName, regionName, err = parseRequestToSetZoneRegion(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5555,7 +5555,7 @@ func (m *Server) updateRegion(w http.ResponseWriter, r *http.Request) {
 		regionType proto.RegionType
 		err        error
 	)
-	metrics := exporter.NewTPCnt(proto.UpdateRegionUmpKey)
+	metrics := exporter.NewModuleTP(proto.UpdateRegionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if regionName, regionType, err = parseRequestToAddRegion(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5573,7 +5573,7 @@ func (m *Server) getRegion(w http.ResponseWriter, r *http.Request) {
 		regionName string
 		err        error
 	)
-	metrics := exporter.NewTPCnt(proto.GetRegionViewUmpKey)
+	metrics := exporter.NewModuleTP(proto.GetRegionViewUmpKey)
 	defer func() { metrics.Set(err) }()
 	if regionName, err = extractRegionNameKey(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5593,7 +5593,7 @@ func (m *Server) getRegion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) regionList(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.RegionListUmpKey)
+	metrics := exporter.NewModuleTP(proto.RegionListUmpKey)
 	defer func() { metrics.Set(nil) }()
 	regionViews := m.cluster.t.getRegionViews()
 	sendOkReply(w, r, newSuccessHTTPReply(regionViews))
@@ -5605,7 +5605,7 @@ func (m *Server) addRegion(w http.ResponseWriter, r *http.Request) {
 		regionType proto.RegionType
 		err        error
 	)
-	metrics := exporter.NewTPCnt(proto.CreateRegionUmpKey)
+	metrics := exporter.NewModuleTP(proto.CreateRegionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if regionName, regionType, err = parseRequestToAddRegion(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5702,7 +5702,7 @@ func (m *Server) setVolConvertMode(w http.ResponseWriter, r *http.Request) {
 		convertMode   proto.ConvertMode
 		err           error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminSetVolConvertModeUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSetVolConvertModeUmpKey)
 	defer func() { metrics.Set(err) }()
 	volName, partitionType, convertMode, err = parseRequestToSetVolConvertMode(r)
 	if err != nil {
@@ -5779,7 +5779,7 @@ func (m *Server) setVolMinRWPartition(w http.ResponseWriter, r *http.Request) {
 		vol        *Vol
 		err        error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminSetVolMinRWPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSetVolMinRWPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if volName, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5849,7 +5849,7 @@ func (m *Server) addIDC(w http.ResponseWriter, r *http.Request) {
 		idcName string
 		err     error
 	)
-	metrics := exporter.NewTPCnt(proto.CreateIDCUmpKey)
+	metrics := exporter.NewModuleTP(proto.CreateIDCUmpKey)
 	defer func() { metrics.Set(err) }()
 	idcName, err = parseRequestToAddIDC(r)
 	if err != nil {
@@ -5869,7 +5869,7 @@ func (m *Server) deleteIDC(w http.ResponseWriter, r *http.Request) {
 		idcName string
 		err     error
 	)
-	metrics := exporter.NewTPCnt(proto.DeleteDCUmpKey)
+	metrics := exporter.NewModuleTP(proto.DeleteDCUmpKey)
 	defer func() { metrics.Set(err) }()
 	idcName, err = parseRequestToAddIDC(r)
 	if err != nil {
@@ -5915,7 +5915,7 @@ func (m *Server) setZoneIDC(w http.ResponseWriter, r *http.Request) {
 		mType             proto.MediumType
 		err               error
 	)
-	metrics := exporter.NewTPCnt(proto.SetZoneIDCUmpKey)
+	metrics := exporter.NewModuleTP(proto.SetZoneIDCUmpKey)
 	defer func() { metrics.Set(err) }()
 	zoneName, idcName, mType, err = parseRequestToSetZone(r)
 	if err != nil {
@@ -5955,7 +5955,7 @@ func (m *Server) getIDC(w http.ResponseWriter, r *http.Request) {
 		idcName string
 		err     error
 	)
-	metrics := exporter.NewTPCnt(proto.GetIDCViewUmpKey)
+	metrics := exporter.NewModuleTP(proto.GetIDCViewUmpKey)
 	defer func() { metrics.Set(err) }()
 	idcName, err = extractIDCNameKey(r)
 	if err != nil {
@@ -5972,7 +5972,7 @@ func (m *Server) getIDC(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) idcList(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.IDCListUmpKey)
+	metrics := exporter.NewModuleTP(proto.IDCListUmpKey)
 	defer func() { metrics.Set(nil) }()
 	views := m.cluster.t.getIDCViews()
 	sendOkReply(w, r, newSuccessHTTPReply(views))
@@ -5984,7 +5984,7 @@ func (m *Server) freezeDataPartition(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminFreezeDataPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminFreezeDataPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	volName, partitionID, err = extractFreezeDataPartitionPara(r)
 	if err != nil {
@@ -6006,7 +6006,7 @@ func (m *Server) unfreezeDataPartition(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminUnfreezeDataPartitionUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminUnfreezeDataPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	volName, partitionID, err = extractFreezeDataPartitionPara(r)
 	if err != nil {
@@ -6049,7 +6049,7 @@ func (m *Server) setClientPkgAddr(w http.ResponseWriter, r *http.Request) {
 		addr string
 		err  error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminSetClientPkgAddrUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminSetClientPkgAddrUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -6067,7 +6067,7 @@ func (m *Server) setClientPkgAddr(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getClientPkgAddr(w http.ResponseWriter, r *http.Request) {
-	metrics := exporter.NewTPCnt(proto.AdminGetClientPkgAddrUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminGetClientPkgAddrUmpKey)
 	defer func() { metrics.Set(nil) }()
 	sendOkReply(w, r, newSuccessHTTPReply(m.cluster.cfg.ClientPkgAddr))
 }
@@ -6146,7 +6146,7 @@ func (m *Server) setMetaPartitionEnableReuseState(w http.ResponseWriter, r *http
 		mp          *MetaPartition
 		err         error
 	)
-	metrics := exporter.NewTPCnt(proto.AdminMetaPartitionSetEnableReuseStateUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminMetaPartitionSetEnableReuseStateUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})

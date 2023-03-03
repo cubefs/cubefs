@@ -31,15 +31,14 @@ import (
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/ump"
 	"golang.org/x/net/context"
 )
 
 // Super defines the struct of a super block.
 type Super struct {
 	cluster     string
-	modulename  string
 	volname     string
 	owner       string
 	umpJmtpAddr string
@@ -62,6 +61,9 @@ type Super struct {
 
 	delProcessPath []string
 	wg             sync.WaitGroup
+	stopC          chan struct{}
+
+	volumeLabelValue exporter.LabelValue
 }
 
 type SuperState struct {
@@ -82,7 +84,6 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 	s = new(Super)
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	var metaConfig = &meta.MetaConfig{
-		Modulename:    opt.Modulename,
 		Volume:        opt.Volname,
 		Owner:         opt.Owner,
 		Masters:       masters,
@@ -132,7 +133,6 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		s.ec = data.RebuildExtentClient(extentConfig, dataState)
 	}
 
-	s.modulename = opt.Modulename
 	s.volname = opt.Volname
 	s.owner = opt.Owner
 	s.cluster = s.mw.Cluster()
@@ -166,8 +166,43 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		s.readDirPlus = superState.ReadDirPlus
 	}
 
+	s.volumeLabelValue = exporter.LabelValue{
+		Label: "volume",
+		Value: s.volname,
+	}
+	s.stopC = make(chan struct{})
+	s.wg.Add(1)
+	go s.scheduler()
+
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
 	return s, nil
+}
+
+func (s *Super) scheduler() {
+	defer s.wg.Done()
+	var (
+		volUsageCollectTimer = time.NewTimer(0)
+		lvs                  = []exporter.LabelValue{
+			{Label: "cluster", Value: s.cluster},
+			{Label: "volume", Value: s.volname},
+		}
+		volUsageUsed  = exporter.NewGauge("volume_usage_used", lvs...)
+		volUsageTotal = exporter.NewGauge("volume_usage_total", lvs...)
+	)
+	for {
+		select {
+		case <-s.stopC:
+			return
+		case <-volUsageCollectTimer.C:
+			var total, used = s.mw.Statfs()
+			if total > 0 {
+				volUsageUsed.Set(float64(used))
+				volUsageTotal.Set(float64(total))
+			}
+			volUsageCollectTimer.Reset(time.Minute)
+		}
+
+	}
 }
 
 func (s *Super) MetaWrapper() *meta.MetaWrapper {
@@ -274,16 +309,16 @@ func (s *Super) exporterKey(act string) string {
 	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
 }
 
+func (s *Super) exporterVolumeLabelValue() exporter.LabelValue {
+	return s.volumeLabelValue
+}
+
 func (s *Super) umpKey() string {
 	return fmt.Sprintf("%v_client_warning", s.cluster)
 }
 
 func (s *Super) umpFunctionKey(act string) string {
 	return fmt.Sprintf("%s_%s_%s", s.cluster, s.volname, act)
-}
-
-func (s *Super) umpFunctionGeneralKey(act string) string {
-	return fmt.Sprintf("%s_%s_%s", s.cluster, s.modulename, act)
 }
 
 func (s *Super) umpAlarmKey() string {
@@ -294,10 +329,10 @@ func (s *Super) handleError(op, msg string) {
 	log.LogError(msg)
 
 	errmsg1 := fmt.Sprintf("act(%v) - %v", op, msg)
-	ump.Alarm(s.umpAlarmKey(), errmsg1)
+	exporter.WarningBySpecialUMPKey(s.umpAlarmKey(), errmsg1)
 
 	errmsg2 := fmt.Sprintf("volume(%v) %v", s.volname, errmsg1)
-	ump.Alarm(s.umpKey(), errmsg2)
+	exporter.WarningBySpecialUMPKey(s.umpKey(), errmsg2)
 }
 
 func (s *Super) handleErrorWithGetInode(op, msg string, inode uint64) {
@@ -311,15 +346,16 @@ func (s *Super) handleErrorWithGetInode(op, msg string, inode uint64) {
 		// if inode not exists, not alarm
 		if _, err := s.mw.InodeGet_ll(context.Background(), inode); err != syscall.ENOENT {
 			errmsg1 := fmt.Sprintf("act(%v) - %v", op, msg)
-			ump.Alarm(s.umpAlarmKey(), errmsg1)
+			exporter.WarningBySpecialUMPKey(s.umpAlarmKey(), errmsg1)
 
 			errmsg2 := fmt.Sprintf("volume(%v) %v", s.volname, errmsg1)
-			ump.Alarm(s.umpKey(), errmsg2)
+			exporter.WarningBySpecialUMPKey(s.umpKey(), errmsg2)
 		}
 	}()
 }
 
 func (s *Super) Close() {
+	close(s.stopC)
 	if s.ec != nil {
 		_ = s.ec.Close(context.Background())
 		s.ec.CloseConnPool()

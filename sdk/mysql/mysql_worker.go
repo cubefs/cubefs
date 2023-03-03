@@ -18,7 +18,7 @@ const (
 )
 
 func SelectWorkerNode(workerType proto.WorkerType, workerAddr string) (workerNode *proto.WorkerNode, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectWorkerNode)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectWorkerNode)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -55,7 +55,7 @@ func SelectWorkerNode(workerType proto.WorkerType, workerAddr string) (workerNod
 }
 
 func CheckWorkerExist(worker *proto.WorkerNode) (res bool, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectWorkersAll)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectWorkersAll)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -84,7 +84,7 @@ func AddWorker(worker *proto.WorkerNode) (workerId uint64, err error) {
 		rs sql.Result
 		id int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlAddWorker)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlAddWorker)
 	defer metrics.Set(err)
 
 	sqlCmd := "insert into workers(worker_type, worker_addr) values(?, ?)"
@@ -107,7 +107,7 @@ func UpdateWorkerHeartbeat(worker *proto.WorkerNode) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlUpdateWorkerHeartbeat)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlUpdateWorkerHeartbeat)
 	defer metrics.Set(err)
 
 	sqlCmd := "update workers set update_time = now() where worker_id =? and worker_addr = ? and worker_type = ?"
@@ -130,7 +130,7 @@ func UpdateWorkerHeartbeat(worker *proto.WorkerNode) (err error) {
 
 // select workers with specified worker type, add support to query by page add param limit and offset
 func SelectWorker(workerType, limit, offset int) (workers []*proto.WorkerNode, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectWorker)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectWorker)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -168,7 +168,7 @@ func SelectWorker(workerType, limit, offset int) (workers []*proto.WorkerNode, e
 
 // select all the workers of specified worker type
 func SelectAllWorkers(workerType int) (workers []*proto.WorkerNode, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectWorkersAll)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectWorkersAll)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -207,7 +207,7 @@ func SelectAllWorkers(workerType int) (workers []*proto.WorkerNode, err error) {
 // 查询异常的worker nodes，如果长时间没有更新，认为节点异常
 // offlineDuration: 单位/秒
 func SelectExceptionWorkers(workerType, offlineDuration int) (workers []*proto.WorkerNode, err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectExceptionWorkers)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectExceptionWorkers)
 	defer metrics.Set(err)
 
 	var rows *sql.Rows
@@ -244,7 +244,7 @@ func SelectExceptionWorkers(workerType, offlineDuration int) (workers []*proto.W
 }
 
 func AddExceptionWorkersToHistory(workers []*proto.WorkerNode) (err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlAddExceptionWorkersToHistory)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlAddExceptionWorkersToHistory)
 	defer metrics.Set(err)
 
 	sqlCmd := "insert into worker_history(worker_id, worker_type, worker_addr, worker_create_time, worker_update_time) values"
@@ -269,7 +269,7 @@ func DeleteExceptionWorkers(workers []*proto.WorkerNode) (err error) {
 		rs   sql.Result
 		nums int64
 	)
-	metrics := exporter.NewTPCnt(proto.MonitorMysqlDeleteExceptionWorkers)
+	metrics := exporter.NewModuleTP(proto.MonitorMysqlDeleteExceptionWorkers)
 	defer metrics.Set(err)
 
 	sbPlaceholder := strings.Builder{}

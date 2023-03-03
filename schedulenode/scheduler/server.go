@@ -15,7 +15,6 @@ import (
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 	stringutil "github.com/cubefs/cubefs/util/string"
-	"github.com/cubefs/cubefs/util/ump"
 	"math"
 	"net/http"
 	"regexp"
@@ -122,7 +121,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	// init ump monitor and alarm module
 	exporter.Init(proto.RoleScheduleNode, proto.RoleScheduleNode, cfg)
-	exporter.RegistConsul(cfg)
 
 	// start campaign goroutine
 	c := NewCandidate(fmt.Sprintf("%s:%s", s.localIp, s.port), s.ec)
@@ -176,7 +174,7 @@ func (s *ScheduleNode) identityMonitor() {
 		select {
 		case <-timer.C:
 			monitorIdentity := func() (err error) {
-				metrics := exporter.NewTPCnt(proto.MonitorSchedulerIdentityMonitor)
+				metrics := exporter.NewModuleTP(proto.MonitorSchedulerIdentityMonitor)
 				defer metrics.Set(err)
 				// schedule node load new all worker nodes if was elected as leader again
 				log.LogDebugf("[identityMonitor] IdentityChanged(%v), IsLeader(%v)", s.candidate.IdentityChanged, s.candidate.IsLeader)
@@ -211,7 +209,7 @@ func (s *ScheduleNode) flowControlManager() {
 		select {
 		case <-timer.C:
 			loadFlowControls := func() (err error) {
-				metrics := exporter.NewTPCnt(proto.MonitorSchedulerFlowControlManager)
+				metrics := exporter.NewModuleTP(proto.MonitorSchedulerFlowControlManager)
 				defer metrics.Set(err)
 
 				keys := make(map[string]*proto.FlowControl)
@@ -435,7 +433,7 @@ func (s *ScheduleNode) workerManager() {
 		select {
 		case <-timer.C:
 			manageWorker := func() (err error) {
-				metrics := exporter.NewTPCnt(proto.MonitorSchedulerWorkerManager)
+				metrics := exporter.NewModuleTP(proto.MonitorSchedulerWorkerManager)
 				defer metrics.Set(err)
 
 				for _, wt := range s.workerTypes {
@@ -504,7 +502,7 @@ func (s *ScheduleNode) workerManager() {
 
 // delete abnormal worker node, and move to history table
 func (s *ScheduleNode) removeExceptionWorkerNodes(wt proto.WorkerType) (err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorSchedulerMoveExceptionWorkerToHistory)
+	metrics := exporter.NewModuleTP(proto.MonitorSchedulerMoveExceptionWorkerToHistory)
 	defer metrics.Set(err)
 
 	var workerNodesException []*proto.WorkerNode
@@ -648,7 +646,7 @@ func (s *ScheduleNode) taskManager() {
 		select {
 		case <-timer.C:
 			taskManager := func() (err error) {
-				metrics := exporter.NewTPCnt(proto.MonitorSchedulerTaskManager)
+				metrics := exporter.NewModuleTP(proto.MonitorSchedulerTaskManager)
 				defer metrics.Set(err)
 				// select unallocated tasks from database, and allocate them to the lowest payload worker node
 				for _, wt := range s.workerTypes {
@@ -715,7 +713,7 @@ func (s *ScheduleNode) exceptionTaskManager() {
 		select {
 		case <-timer.C:
 			manageExceptionTask := func() (err error) {
-				metrics := exporter.NewTPCnt(proto.MonitorSchedulerExceptionTaskManager)
+				metrics := exporter.NewModuleTP(proto.MonitorSchedulerExceptionTaskManager)
 				defer metrics.Set(err)
 
 				for _, wt := range s.workerTypes {
@@ -773,7 +771,7 @@ func (s *ScheduleNode) exceptionTaskManager() {
 						alarmKey := "have tasks that not modified for a long time"
 						alarmInfo := fmt.Sprintf("have tasks that not modified for a long time, taskIds(%v)", strings.Join(taskIds, ","))
 						log.LogErrorf("[exceptionTaskManager] %v", alarmInfo)
-						ump.Alarm(alarmKey, alarmInfo)
+						exporter.WarningBySpecialUMPKey(alarmKey, alarmInfo)
 
 						// remove exceptional tasks from worker node who dispatched this work
 						s.removeTaskFromScheduleNode(wt, tasks)
@@ -830,7 +828,7 @@ func (s *ScheduleNode) removeTaskFromScheduleNode(wt proto.WorkerType, tasks []*
 }
 
 func (s *ScheduleNode) dispatchTaskToWorker(wt proto.WorkerType, tasks []*proto.Task) {
-	metrics := exporter.NewTPCnt(proto.MonitorSchedulerDispatchTask)
+	metrics := exporter.NewModuleTP(proto.MonitorSchedulerDispatchTask)
 	defer metrics.Set(nil)
 
 	if len(tasks) == 0 {
@@ -897,7 +895,7 @@ func (s *ScheduleNode) getWorkerMaxTaskNums(wt proto.WorkerType, workerAddr stri
 }
 
 func (s *ScheduleNode) moveTasksToHistory(tasks []*proto.Task, saveOld bool) (err error) {
-	metrics := exporter.NewTPCnt(proto.MonitorSchedulerMoveTaskToHistory)
+	metrics := exporter.NewModuleTP(proto.MonitorSchedulerMoveTaskToHistory)
 	defer metrics.Set(nil)
 
 	// add to
