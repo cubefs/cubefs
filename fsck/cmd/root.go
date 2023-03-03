@@ -40,6 +40,7 @@ func NewRootCmd() *cobra.Command {
 	c.AddCommand(
 		newCheckCmd(),
 		newCleanCmd(),
+		newInfoCmd(),
 	)
 
 	c.PersistentFlags().StringVarP(&MasterAddr, "master", "m", "", "master addresses")
@@ -47,6 +48,7 @@ func NewRootCmd() *cobra.Command {
 	c.PersistentFlags().StringVarP(&InodesFile, "inode-list", "i", "", "inode list file")
 	c.PersistentFlags().StringVarP(&DensFile, "dentry-list", "d", "", "dentry list file")
 	c.PersistentFlags().StringVarP(&MetaPort, "mport", "", "", "prof port of metanode")
+	c.PersistentFlags().Uint64VarP(&InodeID, "inode", "", 0, "inode id of a file")
 	c.Flags().BoolVarP(&optShowVersion, "version", "v", false, "Show version information")
 	return c
 }

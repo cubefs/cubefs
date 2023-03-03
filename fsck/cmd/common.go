@@ -24,6 +24,7 @@ var (
 	InodesFile string
 	DensFile   string
 	MetaPort   string
+	InodeID    uint64
 )
 
 var (
