@@ -1230,6 +1230,9 @@ func (mp *metaPartition) nextInodeID(vPID uint64) (inodeId uint64, err error) {
 
 		newId := cur + 1
 		if atomic.CompareAndSwapUint64(&mp.config.Cursor, cur, newId) {
+			if virtualMP.InodeIDAlloter != nil {
+				virtualMP.InodeIDAlloter.SetId(newId)
+			}
 			return newId, nil
 		}
 	}
