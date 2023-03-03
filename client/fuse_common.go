@@ -39,6 +39,9 @@ const (
 	AMD64                 = "amd64"
 	ARM64                 = "arm64"
 	DefaultMasterAddr     = "cn.chubaofs.jd.local"
+
+	StartRetryMaxCount	  = 10
+	StartRetryIntervalSec = 5
 )
 
 func parseMasterAddr(configPath string) (string, error) {
@@ -81,39 +84,45 @@ func getClientDownloadAddr(masterAddr string) (string, error) {
 		resp     *http.Response
 		respData []byte
 	)
-	for _, host := range masters {
-		var url = fmt.Sprintf("http://%s%s", host, AdminGetClientPkgAddr)
-		client := http.Client{Timeout: 30 * time.Second}
-		if req, err = http.NewRequest("GET", url, nil); err != nil {
-			return addr, err
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Connection", "close")
-		resp, err = client.Do(req)
+	for retry := 0; retry < StartRetryMaxCount; retry++ {
 		if err != nil {
-			continue
+			time.Sleep(StartRetryIntervalSec * time.Second)
 		}
-		stateCode := resp.StatusCode
-		respData, err = ioutil.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if err != nil {
-			continue
-		}
-		switch stateCode {
-		case http.StatusOK:
-			var body = &struct {
-				Code int32  `json:"code"`
-				Msg  string `json:"msg"`
-				Data string `json:"data"`
-			}{}
-			if err = json.Unmarshal(respData, body); err == nil {
-				addr = body.Data
-				break
+		for _, host := range masters {
+			var url = fmt.Sprintf("http://%s%s", host, AdminGetClientPkgAddr)
+			client := http.Client{Timeout: 30 * time.Second}
+			if req, err = http.NewRequest("GET", url, nil); err != nil {
+				return addr, err
 			}
-		default:
-			err = fmt.Errorf("url(%v) status(%v) body(%s)", url, stateCode, strings.Replace(string(respData), "\n", "", -1))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Connection", "close")
+			resp, err = client.Do(req)
+			if err != nil {
+				continue
+			}
+			stateCode := resp.StatusCode
+			respData, err = ioutil.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil {
+				continue
+			}
+			switch stateCode {
+			case http.StatusOK:
+				var body = &struct {
+					Code int32  `json:"code"`
+					Msg  string `json:"msg"`
+					Data string `json:"data"`
+				}{}
+				if err = json.Unmarshal(respData, body); err == nil {
+					addr = body.Data
+					return addr, err
+				}
+			default:
+				err = fmt.Errorf("url(%v) status(%v) body(%s)", url, stateCode, strings.Replace(string(respData), "\n", "", -1))
+			}
 		}
 	}
+
 	return addr, err
 }
 

@@ -37,6 +37,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -73,6 +74,9 @@ const (
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
 	ControlCommandTracing      = "/tracing"
 	Role                       = "Client"
+
+	StartRetryMaxCount	  	= 10
+	StartRetryIntervalSec	= 5
 )
 
 type fClient struct {
@@ -196,7 +200,14 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 			log.LogFlush()
 			return err
 		}
-		if err = checkPermission(opt); err != nil {
+		for retry := 0; retry < StartRetryMaxCount; retry++ {
+			if err = checkPermission(opt); err == nil || err == proto.ErrNoPermission {
+				break
+			}
+			log.LogWarnf("StartClient: checkPermission err(%v) retry count(%v)", err, retry)
+			time.Sleep(StartRetryIntervalSec * time.Second)
+		}
+		if err != nil {
 			syslog.Println("check permission failed: ", err)
 			log.LogFlush()
 			return err
