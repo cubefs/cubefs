@@ -1,15 +1,10 @@
-# Blobstore通用管理命令
+## 通用管理
 
-## 查看服务通用接口
-
-请求服务接口，可以看到一些比较通用接口方便调试，比如日志级别、指标等
-
+### 查看注册的接口
 ```bash
 curl http://127.0.0.1:9500
 ```
-
-**响应示例**
-
+> **响应示例**
 ```text
 usage:
         /
@@ -33,40 +28,37 @@ users:
         /access/stream/controller/alg/:alg
         /log/level
         /log/level
+
 ```
 
-## 日志级别查看
+### 日志级别查看
 
 ```bash
 curl http://127.0.0.1:9500/log/level
 ```
 
-**响应示例**
+> **响应示例**
 
 ```text
 {"level": "[DEBUG]"}
 ```
 
-## 日志级别变更
-
-| 级别  | 值 | 级别  | 值 |
-|-------|----|-------|----|
-| Debug | 0  | Error | 3  |
-| Info  | 1  | Panic | 4  |
-| Warn  | 2  | Fatal | 5  |
+### 日志级别变更
+|级别   |值  |级别  |值   
+|------|----|-----|-----
+|Debug |0   |Error|3    
+|Info  |1   |Panic|4    
+|Warn  |2   |Fatal|5    
 
 ```bash
 # 以下为设置日志级别为warn
 curl -XPOST -d 'level=2' http://127.0.0.1:9500/log/level
 ```
-
-## metrics信息采集
-
+### metrics信息采集
 ```bash
 curl http://127.0.0.1:9500/metrics
 ```
-**响应示例**
-
+> **响应示例**
 ```text
 # HELP go_gc_duration_seconds A summary of the pause duration of garbage collection cycles.
 # TYPE go_gc_duration_seconds summary

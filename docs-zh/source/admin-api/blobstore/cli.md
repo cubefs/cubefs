@@ -1,4 +1,4 @@
-# Blobstore命令行工具
+## Blobstore命令行工具
 
 使用命令行工具（CLI）可以实现方便快捷的集群管理。该工具为类unix命令行风格，可以查看集群的状态，实现了各模块的接口和功能。
 
@@ -7,7 +7,7 @@
 - 显示为可读数据类型
 
 
-## 编译及配置
+### 编译及配置
 
 通过 `make cli` 编译得到CLI工具。
 
@@ -30,7 +30,7 @@
 }
 ```
 
-## 使用方法
+### 使用方法
 
 cli 可以作为普通命令，比如：
 
@@ -54,16 +54,16 @@ help 可以查看所有命令及简要说明
 
 目前实现了部分模块的主要功能，如下：
 
-| 命令          | 描述                                               |
-|---------------|----------------------------------------------------|
-| cli config    | 管理该cli内存中的配置项                            |
-| cli util      | 小工具集合，如解析location、解析时间、生成特定数据 |
-| cli access    | 文件的上传、下载、删除等                           |
-| cli cm        | 集群信息查看和管理                                 |
-| cli scheduler | 后台任务管理                                       |
-| cli \...      | 补充完善中 \...\...                                |
+ | 命令             | 描述                                      
+ | --------------- |------------------------------------------ 
+ | cli config      | 管理该cli内存中的配置项                      
+ | cli util        |小工具集合，如解析location、解析时间、生成特定数据
+ | cli access      |文件的上传、下载、删除等                       
+ | cli cm          |集群信息查看和管理                            
+ | cli scheduler   |后台任务管理                                 
+ | cli \...        |补充完善中 \...\...                          
 
-## Config
+### Config
 
 ```bash
 manager memory cache of config
@@ -78,7 +78,7 @@ Sub Commands:
   type  print type in cache
 ```
 
-## Util
+### Util
 
 ```bash
 util commands, parse everything
@@ -94,7 +94,7 @@ Sub Commands:
   vuid      parse vuid <vuid>
 ```
 
-## Access
+### Access
 
 ```bash
 blobstore access api tools
@@ -110,7 +110,7 @@ Sub Commands:
   put      put file
 ```
 
-## Clustermgr
+### Clustermgr
 
 ```bash
 cluster manager tools
@@ -130,7 +130,7 @@ Sub Commands:
   wal        wal tools
 ```
 
-## Scheduler
+### Scheduler
 
 ```bash
 scheduler tools

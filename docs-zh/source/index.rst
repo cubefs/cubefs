@@ -49,9 +49,9 @@
    maintenance/upgrade
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 0
    :caption: 测试评估
-
+   
    evaluation/env
    evaluation/tiny
    evaluation/io
@@ -70,7 +70,7 @@
    design/authnode
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 0
    :caption: 社区
 
    community/overview
