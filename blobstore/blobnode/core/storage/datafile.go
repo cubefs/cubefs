@@ -176,7 +176,7 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		ioQos:  ioQos,
 		pool: sync.Pool{
 			New: func() interface{} {
-				return make([]byte, conf.BlockBufferSize)
+				return make([]byte, core.CrcBlockUnitSize)
 			},
 		},
 	}
