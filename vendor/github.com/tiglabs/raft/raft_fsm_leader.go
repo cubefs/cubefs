@@ -404,6 +404,9 @@ func (r *raftFsm) maybeCommitForRemovePeer() bool {
 
 	mis := make(util.Uint64Slice, 0, len(r.replicas))
 	for _, rp := range r.replicas {
+		if rp.isLearner {
+			continue
+		}
 		mis = append(mis, rp.match)
 	}
 	sort.Sort(sort.Reverse(mis))
@@ -428,6 +431,9 @@ func (r *raftFsm) maybeCommit() bool {
 
 	mis := make(util.Uint64Slice, 0, len(r.replicas))
 	for _, rp := range r.replicas {
+		if rp.isLearner {
+			continue
+		}
 		mis = append(mis, rp.match)
 	}
 	sort.Sort(sort.Reverse(mis))
