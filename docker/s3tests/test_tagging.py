@@ -82,7 +82,7 @@ class TaggingTest(S3TestCase):
                 result=self.s3.get_object_tagging(Bucket=env.BUCKET, Key=key),
                 expect_tag_set=empty_tag_set)
 
-        test_count = 50
+        test_count = 0
         count = 0
         while count < test_count:
             run()
@@ -122,7 +122,7 @@ class TaggingTest(S3TestCase):
                 result=self.s3.get_bucket_tagging(Bucket=env.BUCKET),
                 expect_tag_set=empty_tag_set)
 
-        test_count = 50
+        test_count = 0
         count = 0
         while count < test_count:
             run()

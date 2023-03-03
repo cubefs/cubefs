@@ -154,9 +154,8 @@ class TransferTest(S3TestCase):
             return
         return int(match_obj.group(1)), int(match_obj.group(2)), int(match_obj.group(3))
 
-    def __simulation_java_parallel_download(self, part_size_const, file_size):
+    def __simulation_java_parallel_download(self, object_name,part_size_const, file_size):
         # generate file
-        object_name = "java_parallel_download"
         path = os.path.join('/tmp', object_name)
         generate_file(path=path, size=file_size)
 
@@ -195,7 +194,7 @@ class TransferTest(S3TestCase):
         """
         part_size = 10 * 1024 * 1024  # 10M
         file_size = 30 * 1024 * 1024  # 30M
-        self.__simulation_java_parallel_download(part_size_const=part_size, file_size=file_size)
+        self.__simulation_java_parallel_download(object_name="java_parallel_download1",part_size_const=part_size, file_size=file_size)
 
     def test_simulation_10_35M(self):
         """
@@ -204,7 +203,7 @@ class TransferTest(S3TestCase):
         """
         part_size = 10 * 1024 * 1024  # 10M
         file_size = 35 * 1024 * 1024  # 35M
-        self.__simulation_java_parallel_download(part_size_const=part_size, file_size=file_size)
+        self.__simulation_java_parallel_download(object_name="java_parallel_download2",part_size_const=part_size, file_size=file_size)
 
     def test_simulation_part_number(self):
         """
