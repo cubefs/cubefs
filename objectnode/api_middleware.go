@@ -117,7 +117,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		// store request ID to context and write to header
 		SetRequestID(r, requestID)
 		w.Header()[HeaderNameXAmzRequestId] = []string{requestID}
-		w.Header()[HeaderNameServer] = []string{HeaderValueServer}
+		w.Header()[HeaderNameServer] = HeaderValueServerFullName
 
 		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 		SetRequestAction(r, action)
@@ -210,7 +210,7 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			var currentAction = ActionFromRouteName(mux.CurrentRoute(r).GetName())
-			if !currentAction.IsNone() && o.signatureIgnoredActions.Contains(currentAction) {
+			if !currentAction.IsNone() && (proto.OSSOptionsObjectAction == currentAction || o.signatureIgnoredActions.Contains(currentAction)) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -350,26 +350,65 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 		}
 
 		var setupCORSHeader = func(volume *Volume, writer http.ResponseWriter, request *http.Request) {
-			origin := request.Header.Get(Origin)
-			method := request.Header.Get(HeaderNameAccessControlRequestMethod)
-			headerStr := request.Header.Get(HeaderNameAccessControlRequestHeaders)
-			if origin == "" || method == "" {
+			var origin = request.Header.Get(HeaderNameOrigin)
+			var method = request.Header.Get(HeaderNameAccessControlRequestMethod)
+			var headers []string
+			if headerStr := request.Header.Get(HeaderNameAccessControlRequestHeaders); headerStr != "" {
+				headers = strings.Split(headerStr, ",")
+			}
+			if origin == "" && method == "" && len(headers) == 0 {
 				return
 			}
 			cors, _ := volume.metaLoader.loadCors()
-			if cors != nil {
-				headers := strings.Split(headerStr, ",")
+			if cors != nil && len(cors.CORSRule) > 0 {
 				for _, corsRule := range cors.CORSRule {
-					if corsRule.match(origin, method, headers) {
+					if corsRule.Match(origin, method, headers) {
 						// write access control allow headers
-						writer.Header()[HeaderNameAccessControlAllowOrigin] = []string{origin}
-						writer.Header()[HeaderNameAccessControlMaxAge] = []string{strconv.Itoa(int(corsRule.MaxAgeSeconds))}
-						writer.Header()[HeaderNameAccessControlAllowMethods] = []string{strings.Join(corsRule.AllowedMethod, ",")}
-						writer.Header()[HeaderNameAccessControlAllowHeaders] = []string{strings.Join(corsRule.AllowedHeader, ",")}
-						writer.Header()[HeaderNamrAccessControlExposeHeaders] = []string{strings.Join(corsRule.ExposeHeader, ",")}
+						if origin != "" {
+							writer.Header()[HeaderNameAccessControlAllowOrigin] = []string{origin}
+						}
+						if method != "" {
+							if len(corsRule.AllowedMethod) == 0 {
+								writer.Header()[HeaderNameAccessControlAllowMethods] = HeaderValueAccessControlAllowMethodDefault
+							} else {
+								writer.Header()[HeaderNameAccessControlAllowMethods] = []string{strings.Join(corsRule.AllowedMethod, ",")}
+							}
+						}
+						if len(headers) > 0 {
+							if len(corsRule.AllowedHeader) == 0 {
+								writer.Header()[HeaderNameAccessControlAllowHeaders] = HeaderValueAccessControlAllowHeadersDefault
+							} else {
+								writer.Header()[HeaderNameAccessControlAllowHeaders] = []string{strings.Join(corsRule.AllowedHeader, ",")}
+							}
+							if len(corsRule.ExposeHeader) == 0 {
+								writer.Header()[HeaderNameAccessControlExposeHeaders] = HeaderValueAccessControlExposeHeadersDefault
+							} else {
+								writer.Header()[HeaderNameAccessControlExposeHeaders] = []string{strings.Join(corsRule.ExposeHeader, ",")}
+							}
+						}
+						if corsRule.MaxAgeSeconds == 0 {
+							writer.Header()[HeaderNameAccessControlMaxAge] = HeaderValueAccessControlMaxAgeDefault
+						} else {
+							writer.Header()[HeaderNameAccessControlMaxAge] = []string{strconv.Itoa(int(corsRule.MaxAgeSeconds))}
+						}
+						writer.Header()[HeaderNameAccessControlAllowCredentials] = HeaderValueAccessControlAllowCredentialsDefault
 						return
 					}
 				}
+			} else {
+				// Write default CORS response headers
+				if origin != "" {
+					writer.Header()[HeaderNameAccessControlAllowOrigin] = []string{origin}
+				}
+				if method != "" {
+					writer.Header()[HeaderNameAccessControlAllowMethods] = HeaderValueAccessControlAllowMethodDefault
+				}
+				if len(headers) > 0 {
+					writer.Header()[HeaderNameAccessControlAllowHeaders] = HeaderValueAccessControlAllowHeadersDefault
+					writer.Header()[HeaderNameAccessControlExposeHeaders] = HeaderValueAccessControlExposeHeadersDefault
+				}
+				writer.Header()[HeaderNameAccessControlMaxAge] = HeaderValueAccessControlMaxAgeDefault
+				writer.Header()[HeaderNameAccessControlAllowCredentials] = HeaderValueAccessControlAllowCredentialsDefault
 			}
 		}
 		setupCORSHeader(vol, w, r)
