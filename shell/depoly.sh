@@ -5,9 +5,6 @@ if [ $# -ne 2 ]; then
     exit 1
 fi
 
-# first stop all old service
-sh ./shell/stop.sh
-
 # gen net subip 
 sh ./shell/genIp.sh $2
 
@@ -41,4 +38,4 @@ echo "start datanode service success"
 
 ./build/bin/cfs-cli config set --addr 172.16.1.101:17010
 
-
+echo "wait a minute for cluster to prepare state!!!"
