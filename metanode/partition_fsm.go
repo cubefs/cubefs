@@ -44,6 +44,8 @@ import (
 
 // Apply applies the given operational commands.
 func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
+	mp.raftFSMLock.Lock()
+	defer mp.raftFSMLock.Unlock()
 	var (
 		ctx           = context.Background()
 		msg           = new(MetaItem)
@@ -380,6 +382,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 // ApplyMemberChange  apply changes to the raft member.
 func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
+	mp.raftFSMLock.Lock()
+	defer mp.raftFSMLock.Unlock()
 	defer func() {
 		if err == nil {
 			mp.uploadApplyID(index)
@@ -1065,6 +1069,7 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 // HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	exporter.Warning(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
+	mp.cursorAddStep()
 	if mp.config.NodeId == leader {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", serverPort), time.Second)
 		if err != nil {
@@ -1086,12 +1091,9 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	mp.storeChan <- &storeMsg{
 		command: startStoreTick,
 	}
-	if mp.config.Start == 0 && mp.config.Cursor == 0 {
-		id, err := mp.nextInodeID(mp.config.PartitionId)
-		if err != nil {
-			log.LogFatalf("[HandleLeaderChange] init root inode id: %s.", err.Error())
-		}
-		ino := NewInode(id, proto.Mode(os.ModePerm|os.ModeDir))
+	atomic.CompareAndSwapUint64(&mp.config.Cursor, 0, 1)
+	if mp.config.Start == 0 {
+		ino := NewInode(proto.RootIno, proto.Mode(os.ModePerm|os.ModeDir))
 		go mp.initInode(ino)
 	}
 }

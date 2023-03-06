@@ -21,6 +21,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -296,7 +297,7 @@ func (mp *metaPartition) recordInodeDeleteEkInfo(info *Inode) {
 func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint64, term uint64) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)", mp.config.PartitionId, r))
+			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v), stack:%v", mp.config.PartitionId, r, debug.Stack()))
 		}
 	}()
 	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
@@ -313,7 +314,7 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 		}
 		if dio == nil || !dio.IsExpired {
 			//unexpected, just for avoid mistake delete
-			mp.freeList.Remove(dio.Inode.Inode)
+			mp.freeList.Remove(ino)
 			log.LogWarnf("[deleteMarkedInodes], unexpired deleted inode: %v", ino)
 			continue
 		}

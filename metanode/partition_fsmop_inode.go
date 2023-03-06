@@ -501,9 +501,6 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 	if i == nil {
 		return
 	}
-	if i.ShouldDelete() {
-		return
-	}
 	defer mp.monitorData[proto.ActionMetaEvictInode].UpdateData(i.Size)
 
 	if proto.IsDir(i.Type) {

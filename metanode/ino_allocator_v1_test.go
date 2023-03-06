@@ -7,6 +7,22 @@ import (
 	"time"
 )
 
+
+func TestInoAllocatorV1_MaxId(t *testing.T) {
+	allocator := NewInoAllocatorV1(2000001, 4000000)
+	allocator.SetStatus(allocatorStatusInit)
+	allocator.SetStatus(allocatorStatusAvailable)
+	allocator.SetId(4000000 - 1)
+	id, _ := allocator.AllocateId()
+	t.Logf("allocate id :%d", id)
+	id, _ = allocator.AllocateId()
+	t.Logf("allocate id :%d", id)
+	allocator.SetId(4000000 - 1)
+	allocator.ClearId(4000000)
+	id, _ = allocator.AllocateId()
+	t.Logf("allocate id :%d", id)
+}
+
 func TestInoAllocatorV1_MaxCost(t *testing.T) {
 	allocator := NewInoAllocatorV1(0, 1<<24 + uint64(rand.Int()) % 64)
 	allocator.SetStatus(allocatorStatusInit)

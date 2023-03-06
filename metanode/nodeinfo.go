@@ -53,6 +53,8 @@ type NodeInfo struct {
 
 	CleanTrashItemMaxDurationEachTime int32  //min
 	CleanTrashItemMaxCountEachTime    int32
+
+	cursorAddStep uint64
 }
 
 var (
@@ -351,12 +353,29 @@ func (m *MetaNode) getMetaPartitionMaxDentryCount() uint64 {
 	return count
 }
 
+func (m *MetaNode) updateSkipStep(skipStep uint64) {
+	if atomic.LoadUint64(&nodeInfo.cursorAddStep) == skipStep {
+		return
+	}
+	atomic.StoreUint64(&nodeInfo.cursorAddStep, skipStep)
+}
+
+func (m *MetaNode) getSkipStep() uint64 {
+	nodeConf := getGlobalConfNodeInfo()
+	skipStep := nodeConf.cursorAddStep
+	if skipStep < 0 && skipStep > proto.DefaultMaxSkipStepOnLeaderChange {
+		return proto.DefaultSkipStepOnLeaderChange
+	}
+	return skipStep
+}
+
 func getGlobalConfNodeInfo() *NodeInfo {
 	newInfo := *nodeInfo
 	return &newInfo
 }
 
 func (m *MetaNode) startUpdateNodeInfo() {
+	m.updateSkipStep(proto.DefaultSkipStepOnLeaderChange)
 	deleteTicker := time.NewTicker(UpdateDeleteLimitInfoTicket)
 	rateLimitTicker := time.NewTicker(UpdateRateLimitInfoTicket)
 	clusterViewTicker := time.NewTicker(UpdateClusterViewTicket)

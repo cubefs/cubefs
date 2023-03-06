@@ -511,6 +511,7 @@ type metaPartition struct {
 	status                      int8
 	virtualMPLock               sync.RWMutex
 	virtualMPs                  []*VirtualMetaPartition
+	raftFSMLock                 sync.Mutex
 }
 
 // Start starts a meta partition.
@@ -2172,5 +2173,29 @@ func (mp *metaPartition) updateMetaPartitionStatus() {
 		status = proto.ReadOnly
 	}
 	mp.status = status
+	return
+}
+
+func (mp *metaPartition) allocatorCursorAddStep(skipStep uint64){
+	mp.virtualMPLock.Lock()
+	defer mp.virtualMPLock.Unlock()
+
+	for _, virtualMP := range mp.virtualMPs {
+		if virtualMP.InodeIDAlloter != nil {
+			virtualMP.InodeIDAlloter.CursorAddStep(skipStep)
+		}
+	}
+}
+
+func (mp *metaPartition) cursorAddStep() {
+	oldCursor := atomic.LoadUint64(&mp.config.Cursor)
+	skipStep := mp.manager.metaNode.getSkipStep()
+	newCursor := oldCursor + skipStep
+	if newCursor > mp.config.End {
+		newCursor = mp.config.End
+	}
+	atomic.StoreUint64(&mp.config.Cursor, newCursor)
+
+	mp.allocatorCursorAddStep(skipStep)
 	return
 }

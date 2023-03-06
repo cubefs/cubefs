@@ -54,7 +54,7 @@ func NewInoAllocatorV1(start, end uint64) *inoAllocatorV1 {
 	allocator.Status = allocatorStatusUnavailable
 
 	totalBits := bitArrayLen * bitPerU64
-	for overBitIndex := allocator.End; overBitIndex < totalBits; overBitIndex++ {
+	for overBitIndex := cnt; overBitIndex < totalBits; overBitIndex++ {
 		allocator.Bits.SetBit(int(overBitIndex))
 	}
 	allocator.BitCursor = 0
@@ -206,4 +206,15 @@ func (allocator *inoAllocatorV1) GetUsedInos() []uint64 {
 		usedInos = append(usedInos, id)
 	}
 	return usedInos
+}
+
+func (allocator *inoAllocatorV1) CursorAddStep(skipStep uint64) {
+	allocator.mu.Lock()
+	defer allocator.mu.Unlock()
+
+	if allocator.Status == allocatorStatusUnavailable {
+		return
+	}
+
+	allocator.BitCursor = int((uint64(allocator.BitCursor) + skipStep) % allocator.Cnt)
 }

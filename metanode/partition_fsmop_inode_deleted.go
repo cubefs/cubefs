@@ -131,14 +131,18 @@ func (mp *metaPartition) fsmCreateDeletedInode(dbHandle interface{}, dino *Delet
 	rsp.Inode = dino.Inode.Inode
 	rsp.Status = proto.OpOk
 	mp.setAllocatorIno(dino.Inode.Inode)
-	var ok = false
-	if _, ok, err = mp.inodeDeletedTree.Create(dbHandle, dino, false); err != nil {
+	var (
+		ok          = false
+		existDelIno *DeletedINode
+	)
+	if existDelIno, ok, err = mp.inodeDeletedTree.Create(dbHandle, dino, false); err != nil {
 		rsp.Status = proto.OpErr
 		return
 	}
 
 	if !ok {
-		log.LogErrorf("[fsmCreateDeletedInode], partitionID(%v), delInode(%v) already exist", mp.config.PartitionId, dino)
+		log.LogErrorf("[fsmCreateDeletedInode], partitionID(%v), delInode(%v) already exist, exist delInode(%v)",
+			mp.config.PartitionId, dino, existDelIno)
 		rsp.Status = proto.OpExistErr
 	}
 	return
@@ -441,29 +445,41 @@ func (mp *metaPartition) internalClean(dbHandle interface{}, val []byte) (err er
 }
 
 func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, ino *Inode) (err error) {
+	mp.freeList.Remove(ino.Inode)
 	var ok bool
 	if ok, err = mp.inodeDeletedTree.Delete(dbHandle, ino.Inode); err != nil {
-		log.LogErrorf("[internalCleanDeletedInode] delete deletedInode from deleted inode tree error:%v", err)
+		log.LogErrorf("[internalCleanDeletedInode] partitionID(%v) delete dino(%v) from deleted inode tree error:%v",
+			mp.config.PartitionId, ino.Inode, err)
 		return
 	}
 
 	if !ok {
-		//if _, err = mp.inodeTree.Delete(dbHandle, ino.Inode); err != nil {
-		//	log.LogErrorf("[internalCleanDeletedInode] delete inode from inode tree error:%v", err)
-		//	return
-		//}
-		log.LogDebugf("[internalCleanDeletedInode], dino not exist: %v", ino)
-	} else {
-		log.LogDebugf("[internalCleanDeletedInode], dino: %v", ino)
-	}
+		log.LogDebugf("[internalCleanDeletedInode], partitionID(%v) dino(%v) not exist", mp.config.PartitionId, ino.Inode)
+		//check inode tree, if exist in inode tree, do not clear inode id in bitmap
+		var inode *Inode
+		if inode, err = mp.inodeTree.RefGet(ino.Inode); err != nil {
+			log.LogErrorf("[internalCleanDeletedInode] partitionID(%v) get ino(%v) from inode tree error:%v",
+				mp.config.PartitionId, ino.Inode, err)
+			return
+		}
 
-	mp.freeList.Remove(ino.Inode)
+		if inode != nil {
+			//exist in inode tree, skip clear bitmap
+			log.LogDebugf("[internalCleanDeletedInode] partitionID(%v) ino(%v) exist in inode tree",
+				mp.config.PartitionId, ino.Inode)
+			return
+		}
+	} else {
+		log.LogDebugf("[internalCleanDeletedInode] partitionID(%v) dino(%v) delete success", mp.config.PartitionId, ino.Inode)
+	}
 
 	if _, err = mp.extendTree.Delete(dbHandle, ino.Inode); err != nil { // Also delete extend attribute.
-		log.LogErrorf("[internalCleanDeletedInode], deleted extend failed, ino:%v, error:%v", ino.Inode, err)
+		log.LogErrorf("[internalCleanDeletedInode] partitionID(%v) deleted extend failed, ino:%v, error:%v",
+			mp.config.PartitionId, ino.Inode, err)
 		return
 	}
-	log.LogDebugf("[internalCleanDeletedInode], clean deleted ino: %v result: %v", ino, err)
+	log.LogDebugf("[internalCleanDeletedInode], partitionID(%v) clean deleted ino: %v result: %v",
+		mp.config.PartitionId, ino, err)
 	mp.clearAllocatorIno(ino.Inode)
 	return
 }

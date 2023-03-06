@@ -110,6 +110,8 @@ type BatchMetaItemIterator struct {
 
 // newBatchMetaItemIterator returns a new MetaItemIterator.
 func newBatchMetaItemIterator(mp *metaPartition, snapV SnapshotVersion) (si *BatchMetaItemIterator, err error) {
+	mp.raftFSMLock.Lock()
+	defer mp.raftFSMLock.Unlock()
 	si = new(BatchMetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID

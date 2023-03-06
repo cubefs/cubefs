@@ -266,6 +266,8 @@ const (
 	DefaultMetaPartitionMaxDentryCount uint64  = 20000000
 	DefaultVirtualMPCreateMinDiffTime          = 600 //second
 	OneDayBySecond                             = 86400
+	DefaultSkipStepOnLeaderChange              = 1000
+	DefaultMaxSkipStepOnLeaderChange           = 50000
 )
 
 const DbBackMaster = "dbbak.jd.local"

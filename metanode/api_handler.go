@@ -121,6 +121,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getDeletedDentrys", m.getDeletedDentrysByParentInoHandler)
 	http.HandleFunc("/getBitInuse", m.getBitInuse)
 	http.HandleFunc("/getInoAllocatorInfo", m.getInodeAllocatorStat)
+	http.HandleFunc("/setSkipStep", m.setSkipStep)
 	return
 }
 
@@ -916,6 +917,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"mpMaxDentryCount":                  m.getMetaPartitionMaxDentryCount(),
 		"cleanTrashItemMaxDurationEachTime": nodeInfo.CleanTrashItemMaxDurationEachTime,
 		"cleanTrashItemMaxCountEachTime":    nodeInfo.CleanTrashItemMaxCountEachTime,
+		"skipStep":                          m.getSkipStep(),
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -2492,5 +2494,31 @@ func (m *MetaNode) getInodeAllocatorStat(w http.ResponseWriter, r *http.Request)
 	}
 
 	resp.Data = virtualMP.InodeIDAlloter
+	return
+}
+
+func (m *MetaNode) setSkipStep(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[setSkipStep] response %s", err)
+		}
+	}()
+
+	skipStep, err := strconv.ParseUint(r.FormValue("skipStep"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	if skipStep < 0 {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("skipStep(%v) invalid", skipStep)
+		return
+	}
+
+	m.updateSkipStep(skipStep)
 	return
 }

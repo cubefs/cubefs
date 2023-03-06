@@ -167,6 +167,8 @@ type MetaItemIterator struct {
 
 // newMetaItemIterator returns a new MetaItemIterator.
 func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
+	mp.raftFSMLock.Lock()
+	defer mp.raftFSMLock.Unlock()
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID
