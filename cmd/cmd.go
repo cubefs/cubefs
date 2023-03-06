@@ -203,6 +203,8 @@ func main() {
 		level = log.WarnLevel
 	case "error":
 		level = log.ErrorLevel
+	case "critical":
+		level = log.CriticalLevel
 	default:
 		level = log.ErrorLevel
 	}
