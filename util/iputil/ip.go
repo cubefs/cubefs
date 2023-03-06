@@ -16,12 +16,17 @@ package iputil
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-ping/ping"
+)
+
+const (
+	GetLocalIPTimeout = 3 * time.Second
 )
 
 var cidrs []*net.IPNet
@@ -120,6 +125,31 @@ func GetLocalIPByDial() (ip string, err error) {
 	}
 	defer conn.Close()
 	ip = strings.Split(conn.LocalAddr().String(), ":")[0]
+	return
+}
+
+func GetLocalIPByDialWithMaster(masters []string, timeout time.Duration) (ip string, err error) {
+	var conn net.Conn
+	defaultAddr := "cn.chubaofs.jd.local"
+	defaultPort := 80
+	if len(masters) == 0 {
+		masters = append(masters, fmt.Sprintf("%v:%v", defaultAddr, defaultPort))
+	}
+	for _, master := range masters {
+		ipPort := strings.Split(master, ":")
+		if len(ipPort) == 1 {
+			master = fmt.Sprintf("%v:%v", ipPort[0], defaultPort)
+		}
+		conn, err = net.DialTimeout("tcp", master, timeout)
+		if err == nil {
+			break
+		}
+	}
+	if conn == nil {
+		return
+	}
+	ip = strings.Split(conn.LocalAddr().String(), ":")[0]
+	conn.Close()
 	return
 }
 

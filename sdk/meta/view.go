@@ -172,7 +172,7 @@ func (mw *MetaWrapper) updateClusterInfo() (err error) {
 	log.LogInfof("updateClusterInfo: get cluster info: cluster(%v) localIP(%v)",
 		info.Cluster, info.Ip)
 	mw.cluster = info.Cluster
-	if localIp, err = iputil.GetLocalIPByDial(); err != nil {
+	if localIp, err = iputil.GetLocalIPByDialWithMaster(mw.mc.Nodes(), iputil.GetLocalIPTimeout); err != nil {
 		log.LogWarnf("UpdateClusterInfo: get local ip fail: err(%v)", err)
 		return
 	}
