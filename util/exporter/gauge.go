@@ -23,8 +23,9 @@ import (
 )
 
 var (
-	GaugeGroup sync.Map
-	GaugeCh    chan *Gauge
+	GaugeGroup    sync.Map
+	GaugeVecGroup sync.Map
+	GaugeCh       chan *Gauge
 )
 
 func collectGauge() {
@@ -136,8 +137,47 @@ func NewGaugeVec(name, help string, labels []string) *GaugeVec {
 	return &GaugeVec{GaugeVec: v}
 }
 
+func NewGaugeVecFromMap(name, help string, labels []string) *GaugeVec {
+	if !enabledPrometheus {
+		return nil
+	}
+	v := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: metricsName(name),
+			Help: help,
+		},
+		labels,
+	)
+
+	gv := &GaugeVec{GaugeVec: v}
+
+	store, load := GaugeVecGroup.LoadOrStore(name, gv)
+	if load {
+		return store.(*GaugeVec)
+	}
+
+	if err := prometheus.Register(v); err != nil {
+		log.LogErrorf("prometheus register gaugevec name:%v, labels:{%v} error: %v", name, labels, err)
+		return nil
+	}
+
+	return gv
+}
+
 func (v *GaugeVec) SetWithLabelValues(val float64, lvs ...string) {
 	if m, err := v.GetMetricWithLabelValues(lvs...); err == nil {
 		m.Set(val)
+	}
+}
+
+func (v *GaugeVec) AddWithLabelValues(val float64, lvs ...string) {
+	if m, err := v.GetMetricWithLabelValues(lvs...); err == nil {
+		m.Add(val)
+	}
+}
+
+func (v *GaugeVec) SubWithLabelValues(val float64, lvs ...string) {
+	if m, err := v.GetMetricWithLabelValues(lvs...); err == nil {
+		m.Sub(val)
 	}
 }

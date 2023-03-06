@@ -83,6 +83,7 @@ type Super struct {
 	bcacheFilterFiles   string
 	bcacheCheckInterval int64
 	bcacheBatchCnt      int64
+	runningMonitor      *RunningMonitor
 
 	readThreads  int
 	writeThreads int
@@ -161,6 +162,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.bcacheBatchCnt = opt.BcacheBatchCnt
 	s.closeC = make(chan struct{}, 1)
 	s.taskPool = []common.TaskPool{common.New(DefaultTaskPoolSize, DefaultTaskPoolSize), common.New(DefaultTaskPoolSize, DefaultTaskPoolSize)}
+	s.runningMonitor = NewRunningMonitor(opt.ClientOpTimeOut)
+	s.runningMonitor.Start()
 
 	if s.mw.EnableSummary {
 		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
