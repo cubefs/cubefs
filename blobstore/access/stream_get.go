@@ -151,16 +151,16 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location access.Location
 				span.Debugf("read data shard only %s readsize:%d blobsize:%d shardsize:%d",
 					blob.ID(), blob.ReadSize, blob.BlobSize, blob.ShardSize)
 
-				reportDownload(clusterID, "Range", "-")
 				err := h.getDataShardOnly(ctx, getTime, w, serviceController, blob)
 				if err != errNeedReconstructRead {
 					if err != nil {
 						span.Error("read data shard only", err)
-						reportDownload(clusterID, "Range", err.Error())
+						reportDownload(clusterID, "Direct", "error")
+					} else {
+						reportDownload(clusterID, "Direct", "-")
 					}
 					return err
 				}
-				reportDownload(clusterID, "Range", err.Error())
 				span.Info("read data shard only failed", err)
 			}
 		}
@@ -234,7 +234,6 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location access.Location
 		}()
 
 		var err error
-		reportDownload(clusterID, "EC", "-")
 		for line := range pipeline {
 			if line.err != nil {
 				err = line.err
@@ -286,9 +285,11 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location access.Location
 		}()
 
 		if err != nil {
+			reportDownload(clusterID, "EC", "error")
 			span.Error("get request error", err)
 			return err
 		}
+		reportDownload(clusterID, "EC", "-")
 		return nil
 	}, nil
 }

@@ -206,8 +206,9 @@ func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, isCache bool)
 		}
 
 		cacheMetric.WithLabelValues(cid, "memcache", "expired").Inc()
+	} else {
+		cacheMetric.WithLabelValues(cid, "memcache", "miss").Inc()
 	}
-	cacheMetric.WithLabelValues(cid, "memcache", "miss").Inc()
 
 	singleID := fmt.Sprintf("get-volume-%d", id)
 	ver := uint32(0)
