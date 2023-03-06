@@ -678,7 +678,7 @@ func QosWriteDebugf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if UpdateLevel&gLog.level != gLog.level {
+	if DebugLevel&gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintf(format, v...)
