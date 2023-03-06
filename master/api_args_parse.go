@@ -1245,7 +1245,7 @@ func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRe
 
 	reply, err := json.Marshal(httpReply)
 	if err != nil {
-		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)
+		log.LogErrorf("fail to marshal http reply. URL[%v],remoteAddr[%v] err:[%v]", r.URL, r.RemoteAddr, err)
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
@@ -1265,10 +1265,10 @@ func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 }
 
 func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, httpReply)
+	log.LogInfof("URL[%v],remoteAddr[%v],response", r.URL, r.RemoteAddr)
 	reply, err := json.Marshal(httpReply)
 	if err != nil {
-		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)
+		log.LogErrorf("fail to marshal http reply. URL[%v],remoteAddr[%v] err:[%v]", r.URL, r.RemoteAddr, err)
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
@@ -1276,7 +1276,7 @@ func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPR
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
 	if _, err = w.Write(reply); err != nil {
-		log.LogErrorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
+		log.LogErrorf("fail to write http len[%d].URL[%v],remoteAddr[%v] err:[%v]", len(reply), r.URL, r.RemoteAddr, err)
 	}
 
 	return
