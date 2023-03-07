@@ -63,8 +63,13 @@ func (mp *MetaPartition) checkSnapshot(clusterID string) {
 	if !mp.isSameApplyID() {
 		return
 	}
-	mp.checkInodeCount(clusterID)
-	mp.checkDentryCount(clusterID)
+	ckInode := mp.checkInodeCount(clusterID)
+	ckDentry := mp.checkDentryCount(clusterID)
+	if ckInode && ckDentry {
+		mp.EqualCheckPass = true
+	} else {
+		mp.EqualCheckPass = false
+	}
 }
 
 func (mp *MetaPartition) doCompare() bool {
@@ -87,8 +92,8 @@ func (mp *MetaPartition) isSameApplyID() bool {
 	return rst
 }
 
-func (mp *MetaPartition) checkInodeCount(clusterID string) {
-	isEqual := true
+func (mp *MetaPartition) checkInodeCount(clusterID string) (isEqual bool) {
+	isEqual = true
 	maxInode := mp.LoadResponse[0].MaxInode
 	maxInodeCount := mp.LoadResponse[0].InodeCount
 
@@ -117,15 +122,15 @@ func (mp *MetaPartition) checkInodeCount(clusterID string) {
 			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] maxInode[" + inodeMaxInodeStr + "] maxInodeCnt[" + inodeMaxCountStr + "],"
 		}
 		Warn(clusterID, msg)
-		mp.EqualCheckPass = false
 	}
+	return
 }
 
-func (mp *MetaPartition) checkDentryCount(clusterID string) {
+func (mp *MetaPartition) checkDentryCount(clusterID string) (isEqual bool) {
+	isEqual = true
 	if mp.IsRecover {
 		return
 	}
-	isEqual := true
 	dentryCount := mp.LoadResponse[0].DentryCount
 	for _, loadResponse := range mp.LoadResponse {
 		diff := math.Abs(float64(loadResponse.DentryCount) - float64(dentryCount))
@@ -141,9 +146,9 @@ func (mp *MetaPartition) checkDentryCount(clusterID string) {
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
 			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] dentryCount[" + dentryCountStr + "],"
 		}
-		mp.EqualCheckPass = false
 		Warn(clusterID, msg)
 	}
+	return
 }
 
 func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress() {
