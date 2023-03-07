@@ -17,8 +17,8 @@ package meta
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/btree"
 )
 
@@ -28,7 +28,7 @@ type MetaPartition struct {
 	End         uint64
 	Members     []string
 	Learners    []string
-	LeaderAddr  atomic.Value
+	LeaderAddr  proto.AtomicString
 	Status      int8
 }
 

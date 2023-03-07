@@ -16,6 +16,7 @@ package proto
 
 import (
 	"fmt"
+	"encoding/json"
 	"strconv"
 	"sync/atomic"
 )
@@ -346,6 +347,27 @@ func (m MediumType) String() string {
 
 func (m MediumType) Check() bool {
 	return m == MediumSSD || m == MediumHDD || m == MediumEC
+}
+
+type AtomicString struct {
+    atomic.Value
+}
+
+func (v *AtomicString) MarshalJSON() ([]byte, error) {
+    val := v.Load()
+    if val == nil {
+        return json.Marshal("")
+    }
+    str, ok := val.(string)
+    if !ok {
+        return []byte{}, fmt.Errorf("not a string")
+    }
+    return json.Marshal(str)
+}
+
+func (v *AtomicString) UnmarshalJSON(b []byte) error {
+    v.Store(string(b))
+    return nil
 }
 
 type CompactTag uint8
@@ -822,7 +844,7 @@ type DataPartitionResponse struct {
 	Status          int8
 	ReplicaNum      uint8
 	Hosts           []string
-	LeaderAddr      atomic.Value
+	LeaderAddr      AtomicString
 	Epoch           uint64
 	IsRecover       bool
 	IsFrozen        bool
@@ -837,12 +859,12 @@ type DataPartitionResponse struct {
 }
 
 func (dp *DataPartitionResponse) GetLeaderAddr() string {
-       str, _ := dp.LeaderAddr.Load().(string)
-       return str
+   str, _ := dp.LeaderAddr.Load().(string)
+   return str
 }
 
 func (dp *DataPartitionResponse) SetLeaderAddr(addr string) {
-       dp.LeaderAddr.Store(addr)
+   dp.LeaderAddr.Store(addr)
 }
 
 // DataPartitionsView defines the view of a data partition

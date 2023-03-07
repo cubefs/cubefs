@@ -3,15 +3,17 @@ package version
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"runtime/debug"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/iputil"
 	"github.com/chubaofs/chubaofs/util/log"
-	"io/ioutil"
-	"net/http"
-	"strings"
-	"sync"
-	"time"
 )
 
 var (
@@ -56,6 +58,12 @@ func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version, vol
 }
 
 func reportVersion(cfg *config.Config, masterAddr []string, version, volName, mountPoint, commitID string, port uint64) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			stack := fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
+			log.LogErrorf("[reportVersion] panic %s", stack)
+		}
+	}()
 	// get cluster info
 	if cluster == "" {
 		cluster = getCluster(cfg, masterAddr)
@@ -63,7 +71,7 @@ func reportVersion(cfg *config.Config, masterAddr []string, version, volName, mo
 
 	// compute client id
 	var localIp string
-	localIp, err = iputil.GetLocalIPByDial()
+	localIp, err = iputil.GetLocalIPByDialWithMaster(masterAddr, iputil.GetLocalIPTimeout)
 	if err != nil || localIp == "" {
 		localIp = "unknown"
 		log.LogErrorf("[reportVersion] get local ip failed, errorInfo(%v)", err)
