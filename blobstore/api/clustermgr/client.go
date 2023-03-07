@@ -21,7 +21,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	lbClient "github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 const (
@@ -41,11 +41,11 @@ var retryCodes = []int{
 type MemberType uint8
 
 type Config struct {
-	lbClient.LbConfig
+	rpc.LbConfig
 }
 
 type Client struct {
-	lbClient.Client
+	rpc.Client
 }
 
 var _ ClientAPI = (*Client)(nil)
@@ -64,7 +64,7 @@ func New(cfg *Config) *Client {
 	if cfg.ShouldRetry == nil {
 		cfg.ShouldRetry = defaultShouldRetry
 	}
-	return &Client{lbClient.NewLbClient(&cfg.LbConfig, nil)}
+	return &Client{rpc.NewLbClient(&cfg.LbConfig, nil)}
 }
 
 type BidScopeArgs struct {

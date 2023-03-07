@@ -66,6 +66,10 @@ var _ Client = (*lbClient)(nil)
 
 // NewLbClient returns a lb client
 func NewLbClient(cfg *LbConfig, sel Selector) Client {
+	if cfg == nil {
+		cfg = &LbConfig{}
+	}
+	cfg.Config.Tc = cfg.Config.Tc.Default()
 	if cfg.HostTryTimes == 0 {
 		cfg.HostTryTimes = (len(cfg.Hosts) + len(cfg.BackupHosts)) * 2
 	}

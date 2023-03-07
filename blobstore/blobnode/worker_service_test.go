@@ -174,7 +174,7 @@ func TestWorkerService(t *testing.T) {
 		svr.WorkerService.Run()
 		close(closed)
 	}()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 	svr.WorkerService.Close()
 	<-closed
 
