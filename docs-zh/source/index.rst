@@ -40,7 +40,7 @@
    maintenance/tool
    maintenance/administration
    maintenance/svrconf
-   maintenance/monitor
+   maintenance/metrics
    maintenance/config
    maintenance/diskerr
    maintenance/capacity
