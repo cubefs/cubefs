@@ -98,6 +98,10 @@ type client struct {
 
 // NewClient returns a rpc client
 func NewClient(cfg *Config) Client {
+	if cfg == nil {
+		cfg = &Config{}
+	}
+	cfg.Tc = cfg.Tc.Default()
 	if cfg.BodyBaseTimeoutMs == 0 {
 		cfg.BodyBaseTimeoutMs = 30 * 1e3
 	}

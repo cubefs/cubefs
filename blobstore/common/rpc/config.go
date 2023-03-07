@@ -44,6 +44,25 @@ type TransportConfig struct {
 	Auth auth.Config `json:"auth"`
 }
 
+// Default returns default transport if none setting.
+// Disable Auth config.
+func (tc TransportConfig) Default() TransportConfig {
+	noAuth := tc
+	noAuth.Auth = auth.Config{}
+	none := TransportConfig{}
+	if noAuth == none {
+		return TransportConfig{
+			MaxConnsPerHost:     10,
+			MaxIdleConns:        1000,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeoutMs:   10 * 1000,
+
+			Auth: tc.Auth,
+		}
+	}
+	return tc
+}
+
 // NewTransport returns http transport
 func NewTransport(cfg *TransportConfig) http.RoundTripper {
 	tr := &http.Transport{

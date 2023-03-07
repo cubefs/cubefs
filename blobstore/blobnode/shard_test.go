@@ -34,6 +34,12 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
 )
 
+func noLimitClient() bnapi.StorageAPI {
+	cfg := bnapi.Config{}
+	cfg.Config.Tc.IdleConnTimeoutMs = 30 * 1000
+	return bnapi.New(&cfg)
+}
+
 func assertRequest(t require.TestingT, req *http.Request) {
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -634,7 +640,7 @@ func TestShardDeleteConcurrency(t *testing.T) {
 	defer cleanTestBlobNodeService(service)
 
 	host := runTestServer(service)
-	client := bnapi.New(&bnapi.Config{})
+	client := noLimitClient()
 	ctx := context.TODO()
 
 	diskID := proto.DiskID(101)
@@ -796,7 +802,7 @@ func TestShardGetConcurrency(t *testing.T) {
 	defer cleanTestBlobNodeService(service)
 
 	host := runTestServer(service)
-	client := bnapi.New(&bnapi.Config{})
+	client := noLimitClient()
 	ctx := context.TODO()
 
 	service.GetQpsLimitPerKey = keycount.New(1)
@@ -848,7 +854,10 @@ func TestShardGetConcurrency(t *testing.T) {
 				Offset: 0,
 				Size:   int64(len(shardData)),
 			}
-			_, _, err := client.RangeGetShard(ctx, host, getShardArg)
+			body, _, err := client.RangeGetShard(ctx, host, getShardArg)
+			if err == nil {
+				body.Close() // release connection
+			}
 			errChan <- err
 		}(bid)
 	}
@@ -868,7 +877,7 @@ func TestShardPutConcurrency(t *testing.T) {
 	defer cleanTestBlobNodeService(service)
 
 	host := runTestServer(service)
-	client := bnapi.New(&bnapi.Config{})
+	client := noLimitClient()
 	ctx := context.TODO()
 
 	service.PutQpsLimitPerDisk = keycount.New(1)

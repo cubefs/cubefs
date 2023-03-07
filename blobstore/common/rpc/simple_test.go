@@ -133,6 +133,36 @@ func init() {
 	testServer = httptest.NewServer(&handler{})
 }
 
+func TestClient_NewClient(t *testing.T) {
+	NewClient(nil)
+	{
+		cfg := Config{}
+		NewClient(&cfg)
+		require.Equal(t, 10, cfg.Tc.MaxConnsPerHost)
+		require.Equal(t, int64(0), cfg.Tc.DialTimeoutMs)
+		require.False(t, cfg.Tc.Auth.EnableAuth)
+	}
+	{
+		cfg := Config{}
+		cfg.Tc.Auth.EnableAuth = true
+		cfg.Tc.Auth.Secret = "true"
+		NewClient(&cfg)
+		require.Equal(t, 10, cfg.Tc.MaxConnsPerHost)
+		require.Equal(t, int64(0), cfg.Tc.DialTimeoutMs)
+		require.True(t, cfg.Tc.Auth.EnableAuth)
+		require.Equal(t, "true", cfg.Tc.Auth.Secret)
+	}
+	{
+		cfg := Config{}
+		cfg.Tc.MaxConnsPerHost = 4
+		NewClient(&cfg)
+		require.Equal(t, 4, cfg.Tc.MaxConnsPerHost)
+		require.Equal(t, 0, cfg.Tc.MaxIdleConnsPerHost)
+		require.Equal(t, int64(0), cfg.Tc.DialTimeoutMs)
+		require.False(t, cfg.Tc.Auth.EnableAuth)
+	}
+}
+
 func TestClient_GetWith(t *testing.T) {
 	ctx := context.Background()
 	result := &ret{}

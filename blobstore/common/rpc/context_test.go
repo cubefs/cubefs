@@ -124,10 +124,9 @@ func TestServerResponse(t *testing.T) {
 
 		require.Equal(t, 200, resp.StatusCode)
 		require.Equal(t, "flush", resp.Header.Get("x-rpc-name"))
-		buf := make([]byte, 1<<20)
-		n, err := resp.Body.Read(buf)
-		require.ErrorIs(t, io.EOF, err)
-		require.Equal(t, 1024, n)
+		buf, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, 1024, len(buf))
 	}
 	{
 		url := fmt.Sprintf("http://%s/stream", addr)
