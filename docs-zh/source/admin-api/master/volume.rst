@@ -332,7 +332,7 @@ CubeFS以 **Owner** 参数作为用户ID。在创建卷时，如果集群中没�
 两个副本可以正常支持修改和写入（使用其他dp及其范围）
 
 1. 支持已创建的3副本卷设置2副本，并在创建新dp生效，但不包括老的dp。
-2. 两副本卷有一个副本崩溃然后没有leader的情况下，使用force raft del 接口删除2replicas 。
+2. 两副本卷有一个副本崩溃然后没有leader的情况下，使用raftForceDel参数删除异常副本。
 
 异常场景处理
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -372,13 +372,13 @@ CubeFS以 **Owner** 参数作为用户ID。在创建卷时，如果集群中没�
 
       curl -v "http://192.168.0.13:17010/admin/setDpRdOnly?id=**&rdOnly=true
 
-- 更新卷副本数量
+- 更新卷副本数量，更新后3副本分区会异步降低为2副本
 
  .. code-block:: bash
 
       curl -v "http://192.168.0.13:17010/vol/update?name=ltptest&replicaNum=2&followerRead=true&authKey=0e20229116d5a9a4a9e876806b514a85"
 
-3. 强制删除(确定副本不可用使用）
+3. 强制删除(无leader情况下使用，注意：确定删除副本已经不可用)
 
  .. code-block:: bash
 
