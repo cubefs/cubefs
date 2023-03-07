@@ -275,7 +275,9 @@ func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly() {
 	dpMap.Lock()
 	defer dpMap.Unlock()
 	for _, dp := range dpMap.partitions {
-		dp.Status = proto.ReadOnly
+		if proto.ReadWrite == dp.Status {
+			dp.Status = proto.ReadOnly
+		}
 	}
 }
 
