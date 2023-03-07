@@ -20,8 +20,10 @@ package main
 // Default mountpoint is specified in fuse.json, which is "/mnt".
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	syslog "log"
 	"net"
@@ -49,6 +51,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
+	"github.com/jacobsa/daemonize"
 
 	"github.com/chubaofs/chubaofs/util/ump"
 	"github.com/chubaofs/chubaofs/util/version"
@@ -105,6 +108,7 @@ type FuseClientState struct {
 
 var GlobalMountOptions []proto.MountOption
 var gClient *fClient
+var fuseServerWg sync.WaitGroup
 
 func init() {
 	// add GODEBUG=madvdontneed=1 environ, to make sysUnused uses madvise(MADV_DONTNEED) to signal the kernel that a
@@ -227,8 +231,13 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 		gClient.portWg.Wait()
 		version.ReportVersionSchedule(cfg, masters, versionInfo, gClient.volName, opt.MountPoint, CommitID, gClient.profPort, gClient.stopC, &gClient.wg)
 	}()
+
+	fuseServerWg.Add(1)
 	go func() {
-		defer gClient.wg.Done()
+		defer func() {
+			fuseServerWg.Done()
+			gClient.wg.Done()
+		}()
 		var fuseState *fs.FuseContext
 		if !first_start {
 			fuseState = clientState.FuseState
@@ -608,4 +617,80 @@ func GetVersion() string {
 	return dumpVersion()
 }
 
-func main() {}
+func startDaemon(file string) error {
+	cmdPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("startDaemon failed: cannot get absolute command path, err(%v)", err)
+	}
+
+	if len(os.Args) <= 1 {
+		return fmt.Errorf("startDaemon failed: cannot use null arguments")
+	}
+
+	args := []string{"-f"}
+	args = append(args, os.Args[1:]...)
+
+	if file != "" {
+		configPath, err := filepath.Abs(file)
+		if err != nil {
+			return fmt.Errorf("startDaemon failed: cannot get absolute command path of config file(%v) , err(%v)", file, err)
+		}
+		for i := 0; i < len(args); i++ {
+			if args[i] == "-c" {
+				// Since file is not "", the (i+1)th argument must be the config file path
+				args[i+1] = configPath
+				break
+			}
+		}
+	}
+
+	env := os.Environ()
+	buf := new(bytes.Buffer)
+	err = daemonize.Run(cmdPath, args, env, buf)
+	if err != nil {
+		if buf.Len() > 0 {
+			fmt.Println(buf.String())
+		}
+		return fmt.Errorf("startDaemon failed.\ncmd(%v)\nargs(%v)\nerr(%v)\n", cmdPath, args, err)
+	}
+	return nil
+}
+
+func main() {
+	var (
+		configFile       = flag.String("c", "", "FUSE client config file")
+		configForeground = flag.Bool("f", false, "run foreground")
+		configVersion    = flag.Bool("v", false, "Show client version")
+	)
+	flag.Parse()
+
+	if !*configVersion && *configFile == "" {
+		fmt.Printf("Usage: %s -c {configFile}\n", os.Args[0])
+		os.Exit(1)
+	}
+	var err error
+
+	if *configVersion {
+		*configForeground = true
+	}
+	if !*configForeground {
+		if err := startDaemon(*configFile); err != nil {
+			fmt.Printf("%s\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+	if *configVersion {
+		fmt.Println(GetVersion())
+		os.Exit(0)
+	}
+	err = StartClient(*configFile, nil, nil)
+	if err != nil {
+		fmt.Printf("\nStart fuse client failed: %v\n", err.Error())
+		_ = daemonize.SignalOutcome(err)
+		os.Exit(1)
+	} else {
+		_ = daemonize.SignalOutcome(nil)
+	}
+	fuseServerWg.Wait()
+}

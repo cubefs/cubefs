@@ -20,12 +20,13 @@ import (
 var (
 	configFile       = flag.String("c", "", "FUSE client config file")
 	configForeground = flag.Bool("f", false, "run foreground")
-	version          = flag.Bool("v", false, "Show client version")
-	useVersion       = flag.String("u", "", "Use this client version")
+	configVersion    = flag.Bool("v", false, "Show client version")
+	configUseVersion = flag.String("u", "", "Use this client version, GLIBC_2.14 or newer is required")
 )
 
 const (
 	MainBinary            = "/usr/lib64/cfs-client-inner"
+	MainStaticBinary      = "/usr/lib64/cfs-client-static"
 	ClientLib             = "/usr/lib64/libcfssdk.so"
 	GolangLib             = "/usr/lib64/libstd.so"
 	TmpLibsPath           = "/tmp/.cfs_client_fuse"

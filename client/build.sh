@@ -63,15 +63,16 @@ echo "using goflag=\"${goflag}\""
 echo "using gccflag=\"${gccflag}\""
 if [[ ${build_sdk} -eq 1 ]]; then
     echo "building sdk (libcfssdk.so, libcfssdk_cshared.so) commit: ${CommitID} ..."
-    go build -ldflags "${goflag} -E main.main -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o ${bin}/libcfssdk.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http.go ${dir}/ump.go ${dir}/common.go
-    go build -ldflags "${goflag} -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -buildmode=c-shared -o ${bin}/libcfssdk_cshared.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http.go ${dir}/ump.go ${dir}/common.go
+    go build -ldflags "${goflag} -E main.main -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o ${bin}/libcfssdk.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http_fuse.go  ${dir}/http_bypass.go ${dir}/ump.go ${dir}/common.go
+    go build -ldflags "${goflag} -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -buildmode=c-shared -o ${bin}/libcfssdk_cshared.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http_fuse.go ${dir}/http_bypass.go ${dir}/ump.go ${dir}/common.go
     chmod a+rx ${bin}/libcfssdk.so
     chmod a+rx ${bin}/libcfssdk_cshared.so
 fi
 if [[ ${build_client} -eq 1 ]]; then
-    echo "building client (cfs-client cfs-client-inner libcfsclient.so libempty.so libcfsc.so) ..."
+    echo "building client (cfs-client cfs-client-inner cfs-client-static libcfsclient.so libempty.so libcfsc.so) ..."
     go build -ldflags "${goflag}" -buildmode=plugin -linkshared -o ${bin}/libempty.so  ${dir}/empty.go
     go build -ldflags "${goflag}" -linkshared -o ${bin}/cfs-client-inner ${dir}/main_fuse.go ${dir}/fuse_common.go
+    go build -ldflags "${goflag}  -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client-static ${dir}/sdk_fuse.go ${dir}/http_fuse.go ${dir}/common.go
     go build -ldflags "${goflag}" -o ${bin}/cfs-client ${dir}/run_fuse_client.go ${dir}/fuse_common.go
     gcc ${gccflag} -std=c99 -fPIC -shared -o ${bin}/libcfsclient.so ${dir}/main_hook.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
     g++ -std=c++11 ${gccflag} -DCommitID=\"${CommitID}\" -fPIC -shared -o ${bin}/libcfsc.so ${dir}/bypass/client.c ${dir}/bypass/cache.c ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.c ${dir}/bypass/ini.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
@@ -103,7 +104,8 @@ if [[ ${pack_libs} -eq 1 ]]; then
     md5sum libcfssdk.so > checkfile
     md5sum libstd.so >> checkfile
     md5sum cfs-client-inner >> checkfile
-    tar -zcvf ${fuseTarName} libcfssdk.so libstd.so cfs-client-inner checkfile
+    md5sum cfs-client-static >> checkfile
+    tar -zcvf ${fuseTarName} libcfssdk.so libstd.so cfs-client-inner cfs-client-static checkfile
 
     tar -zcvf ${kbpTarName} libcfsclient.so libcfssdk.so libcfsc.so libstd.so libempty.so
 
