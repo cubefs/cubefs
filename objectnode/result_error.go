@@ -26,6 +26,14 @@ type ErrorCode struct {
 	StatusCode   int
 }
 
+func NewError(errCode, errMsg string, statusCode int) ErrorCode {
+	return ErrorCode{
+		ErrorCode:    errCode,
+		ErrorMessage: errMsg,
+		StatusCode:   statusCode,
+	}
+}
+
 func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) error {
 	// write status code to request context,
 	// traceMiddleWare send exception request to prometheus via status code
@@ -132,4 +140,8 @@ func InternalErrorCode(err error) *ErrorCode {
 		ErrorMessage: errorMessage,
 		StatusCode:   http.StatusInternalServerError,
 	}
+}
+
+func (e ErrorCode) Error() string {
+	return e.ErrorMessage
 }

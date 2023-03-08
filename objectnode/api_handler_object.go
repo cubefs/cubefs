@@ -595,8 +595,34 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return deleteReq.Objects[i].Key > deleteReq.Objects[j].Key
 	})
 
+	vol, _, policy, vv, err := o.loadBucketMeta(param.Bucket())
+	if err != nil {
+		log.LogErrorf("get policy : load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		return
+	}
+
+	userInfo, err := o.getUserInfoByAccessKey(param.AccessKey())
+	if err != nil {
+		log.LogErrorf("get userinfo fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		return
+	}
 	var objectKeys = make([]string, 0, len(deleteReq.Objects))
 	for _, object := range deleteReq.Objects {
+		if policy != nil && !policy.IsEmpty() {
+			log.LogDebugf("bucket policy check: requestID(%v) policy(%v)", GetRequestID(r), policy)
+			conditionCheck := map[string]string{
+				SOURCEIP: param.sourceIP,
+				REFERER:  param.r.Referer(),
+				KEYNAME:  object.Key,
+				HOST:     param.r.Host,
+			}
+			pcr := policy.IsAllowed(param, userInfo.UserID, vv.Owner, conditionCheck)
+			// add acl check
+			if pcr == POLICY_DENY {
+				deletedErrors = append(deletedErrors, Error{Key: object.Key, Message: "AccessDenied"})
+				continue
+			}
+		}
 		objectKeys = append(objectKeys, object.Key)
 		err = vol.DeletePath(object.Key)
 		log.LogWarnf("deleteObjectsHandler: delete: requestID(%v) volume(%v) path(%v)",
@@ -641,26 +667,30 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	return
 }
 
-func parseCopySourceInfo(r *http.Request) (sourceBucket, sourceObject string) {
-	var copySource = r.Header.Get(HeaderNameXAmzCopySource)
-	if s, err := url.PathUnescape(copySource); err == nil {
-		copySource = s
-	}
-	if strings.HasPrefix(copySource, "/") {
-		copySource = copySource[1:]
+func extractSrcBucketKey(r *http.Request) (srcBucketId, srcKey, versionId string, err error) {
+	copySource := r.Header.Get(HeaderNameXAmzCopySource)
+	copySource, err = url.QueryUnescape(copySource)
+	if err != nil {
+		return "", "", "", InvalidArgument
 	}
 
-	position := strings.Index(copySource, "/")
-	var bucket, object string
-	if position >= 0 {
-		bucket = copySource[:position]
-		if position+1 <= len(copySource) {
-			object = copySource[position+1:]
-		}
+	// path could be /bucket/key or bucket/key
+	copySource = strings.TrimPrefix(copySource, "/")
+	elements := strings.SplitN(copySource, "?versionId=", 2)
+	if len(elements) == 1 {
+		versionId = ""
+	} else {
+		versionId = elements[1]
+	}
+	path := strings.SplitN(elements[0], "/", 2)
+	if len(path) == 1 {
+		return "", "", "", InvalidArgument
 	}
 
-	sourceBucket = bucket
-	sourceObject = object
+	srcBucketId, srcKey = path[0], path[1]
+	if srcBucketId == "" || srcKey == "" {
+		return "", "", "", InvalidArgument
+	}
 	return
 }
 
@@ -725,7 +755,11 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		Expires:      expires,
 	}
 
-	sourceBucket, sourceObject := parseCopySourceInfo(r)
+	sourceBucket, sourceObject, _, err := extractSrcBucketKey(r)
+	if err != nil {
+		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(r))
+		return
+	}
 
 	// check permission, must have read permission to source bucket
 	var userInfo *proto.UserInfo
