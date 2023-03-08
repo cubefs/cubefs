@@ -246,12 +246,13 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 				dpMissingLeaderCount++
 			}
 		}
-
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			if !mp.isLeaderExist() {
 				mpMissingLeaderCount++
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 
 	mm.dataPartitionCount.Set(float64(dpCount))
@@ -356,8 +357,10 @@ func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
 	defer mm.cluster.volMutex.RUnlock()
 
 	for _, vol := range mm.cluster.vols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			if mp.IsRecover || mp.EqualCheckPass {
+				vol.mpsLock.RUnlock()
 				continue
 			}
 			idStr := strconv.FormatUint(mp.PartitionID, 10)
@@ -366,6 +369,7 @@ func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
 			log.LogWarnf("setMpInconsistentErrorMetric.mp %v SetWithLabelValues id %v vol %v", mp.PartitionID, idStr, vol.Name)
 			delete(deleteMps, idStr)
 		}
+		vol.mpsLock.RUnlock()
 	}
 
 	for k, v := range deleteMps {

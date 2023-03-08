@@ -179,9 +179,11 @@ func (c *Cluster) updateVolStatInfo() {
 		}
 
 		var inodeCount uint64
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			inodeCount += mp.InodeCount
 		}
+		vol.mpsLock.RUnlock()
 
 		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, cacheTotal, cacheUsed, inodeCount))
 	}
