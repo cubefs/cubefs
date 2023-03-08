@@ -198,7 +198,10 @@ func (s *UserService) updateUser(ctx context.Context, args proto.UserUpdateParam
 		return nil, err
 	}
 
-	if old.UserType != args.Type && args.Type == proto.UserTypeRoot {
+	if old.UserType == proto.UserTypeRoot && args.Type != proto.UserTypeRoot  {
+		return nil, fmt.Errorf("the root user is a build-in super user which can not change it to low-level user type")
+	}
+	if old.UserType != proto.UserTypeRoot && args.Type == proto.UserTypeRoot {
 		return nil, fmt.Errorf("user type:[%s] can not to root", args.Type)
 	}
 

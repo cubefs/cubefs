@@ -224,6 +224,9 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", args.DpReplicaNum)
 	}
 
+	if args.storeMode == 0 {
+		args.storeMode = uint64(proto.StoreModeMem)
+	}
 	if !(args.storeMode == uint64(proto.StoreModeMem) || args.storeMode == uint64(proto.StoreModeRocksDb)) {
 		return nil, fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, args.storeMode)
 	}
@@ -445,7 +448,7 @@ func (s *VolumeService) listVolume(ctx context.Context, args struct {
 
 	var list []*Vol
 	for _, vol := range s.cluster.vols {
-		if args.UserID != nil && vol.Owner != *args.UserID {
+		if args.UserID != nil && (vol.Owner != *args.UserID && perm != ADMIN) {
 			continue
 		}
 

@@ -81,7 +81,15 @@ func (m *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if param.Type == proto.UserTypeRoot {
+
+	var currentUserInfo *proto.UserInfo
+	if currentUserInfo, err = m.user.getUserInfo(param.UserID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrUserNotExists))
+		return
+	}
+
+	if (currentUserInfo.UserType == proto.UserTypeRoot && param.Type != proto.UserTypeRoot) ||
+		(currentUserInfo.UserType != proto.UserTypeRoot && param.Type == proto.UserTypeRoot) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrInvalidUserType))
 		return
 	}
