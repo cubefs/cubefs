@@ -31,7 +31,7 @@ page的流程，使得本应该是响应时间非常短的写操作仍然会等�
 
 L1Cache是独立于客户端的本地数据缓存服务，对外提供Put/Get/Delete接口，基于数据块（Block）进行缓存读写、淘汰操作，整体结构如下图所示。
 
-![block cache](pic/block-cache.png){.align-center}
+![block cache](./pic/block-cache.png){.align-center}
 
 L1Cache缓存服务为本机所有打开一级缓存配置的客户端提供缓存服务。本地缓存数据块与远端存储数据块一一对应，并按块进行索引（BlockKey）访问，数据块索引BlockKey生成方式为：VolumeName_Inode_hex(FileOffset)。数据块索引经过两次取模计算将内存数据块结构映射到本地缓存文件，LocalPath
 / hash(BlockKey)%512 / hash(BlockKey)%256 /
