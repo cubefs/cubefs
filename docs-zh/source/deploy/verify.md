@@ -8,7 +8,7 @@
 > 后能够更方便地使用, 用 help 可以查看帮助信息
 ### 启动CLI
 
-基于默认配置，启动命令行工具 `cli` 后，`cli` 详细使用参考 `admin-api/blobstore/cli`
+基于默认配置，启动命令行工具 `cli` ，详细使用参考[CLI工具使用](../cli/blobstore.md)
 1. 物理机环境
 ``` bash
 $> cd ./cubefs/blobstore
