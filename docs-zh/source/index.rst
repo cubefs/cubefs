@@ -23,9 +23,7 @@
    :maxdepth: 2
    :caption: 使用指南
 
-   user-guide/hotvol
-   user-guide/coldvol
-   user-guide/cache
+   user-guide/volume
    user-guide/file
    user-guide/objectnode
    user-guide/hadoop
@@ -87,5 +85,6 @@
    :maxdepth: 2
    :caption: FAQ
 
+   faq/development
    faq/build
    faq/fuse
