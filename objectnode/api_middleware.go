@@ -185,7 +185,8 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 				_ = InternalErrorCode(err).ServeResponse(w, r)
 				return
 			}
-			if !pass {
+			authInfo := parseRequestAuthInfo(r)
+			if !pass && !isAnonymous(authInfo.accessKey) {
 				_ = AccessDenied.ServeResponse(w, r)
 				return
 			}
