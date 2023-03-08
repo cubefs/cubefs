@@ -10,13 +10,13 @@
 
 .. toctree::
    :maxdepth: 2
-   :caption: 搭建部署
+   :caption: 快速入门
 
    deploy/requirement
+   deploy/node
    deploy/manual-deploy
    deploy/yum
    deploy/k8s
-   deploy/node
    deploy/verify
 
 .. toctree::
@@ -68,6 +68,13 @@
    design/objectnode
    design/client
    design/authnode
+
+.. toctree::
+   :maxdepth: 2
+   :caption: 工具
+
+   cli/cli
+   cli/blobstore
 
 .. toctree::
    :maxdepth: 2
