@@ -205,6 +205,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	view = mw.convertVolumeView(vv)
 
 	rwPartitions := make([]*MetaPartition, 0)
+	unavailPartitions := make([]*MetaPartition, 0)
 	for _, mp := range view.MetaPartitions {
 		if mw.volNotExistCount <= VolNotExistClearViewThresholdMin {
 			mw.replaceOrInsertPartition(mp)
@@ -212,6 +213,8 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		}
 		if mp.Status == proto.ReadWrite {
 			rwPartitions = append(rwPartitions, mp)
+		} else if mp.Status == proto.Unavailable {
+			unavailPartitions = append(unavailPartitions, mp)
 		}
 	}
 
@@ -245,6 +248,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 
 	mw.Lock()
 	mw.rwPartitions = rwPartitions
+	mw.unavailPartitions = unavailPartitions
 	mw.Unlock()
 	return nil
 }

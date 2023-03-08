@@ -388,9 +388,13 @@ func (v *AtomicString) MarshalJSON() ([]byte, error) {
     return json.Marshal(str)
 }
 
-func (v *AtomicString) UnmarshalJSON(b []byte) error {
-    v.Store(string(b))
-    return nil
+func (v *AtomicString) UnmarshalJSON(b []byte) (err error) {
+    var str string
+    if err = json.Unmarshal(b, &str); err != nil {
+        return
+    }
+    v.Store(str)
+    return
 }
 
 type CompactTag uint8

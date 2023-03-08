@@ -15,8 +15,10 @@
 package data
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,80 +81,80 @@ func TestKmin(t *testing.T) {
 
 func TestExcludeDp(t *testing.T) {
 	testsForExcludeDp := []struct {
-		name    		string
-		hosts   		[]string
-		excludeMap		map[string]struct{}
-		quorum			int
-		expectExclude	bool
+		name          string
+		hosts         []string
+		excludeMap    map[string]struct{}
+		quorum        int
+		expectExclude bool
 	}{
 		{
-			name: "test3quorum_no_exclude",
-			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
-			excludeMap: map[string]struct{}{},
-			quorum: 3,
+			name:          "test3quorum_no_exclude",
+			hosts:         []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
+			excludeMap:    map[string]struct{}{},
+			quorum:        3,
 			expectExclude: false,
 		},
 		{
-			name: "test3quorum_exclude",
-			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
-			excludeMap: map[string]struct{}{"192.168.0.32:17030":{}},
-			quorum: 3,
+			name:          "test3quorum_exclude",
+			hosts:         []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
+			excludeMap:    map[string]struct{}{"192.168.0.32:17030": {}},
+			quorum:        3,
 			expectExclude: true,
 		},
 		{
-			name: "test0quorum_3host_no_exclude",
-			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
-			excludeMap: map[string]struct{}{},
-			quorum: 0,
+			name:          "test0quorum_3host_no_exclude",
+			hosts:         []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
+			excludeMap:    map[string]struct{}{},
+			quorum:        0,
 			expectExclude: false,
 		},
 		{
-			name: "test0quorum_5host_no_exclude",
-			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
-			excludeMap: map[string]struct{}{},
-			quorum: 0,
+			name:          "test0quorum_5host_no_exclude",
+			hosts:         []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap:    map[string]struct{}{},
+			quorum:        0,
 			expectExclude: false,
 		},
 		{
-			name: "test0quorum_3host",
-			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
-			excludeMap: map[string]struct{}{"192.168.0.33:17030":{}},
-			quorum: 0,
+			name:          "test0quorum_3host",
+			hosts:         []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
+			excludeMap:    map[string]struct{}{"192.168.0.33:17030": {}},
+			quorum:        0,
 			expectExclude: true,
 		},
 		{
-			name: "test0quorum_5host",
-			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
-			excludeMap: map[string]struct{}{"192.168.0.33:17030":{}, "192.168.0.32:17030":{}},
-			quorum: 0,
+			name:          "test0quorum_5host",
+			hosts:         []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap:    map[string]struct{}{"192.168.0.33:17030": {}, "192.168.0.32:17030": {}},
+			quorum:        0,
 			expectExclude: true,
 		},
 		{
-			name: "test3quorum_5host_01",
-			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
-			excludeMap: map[string]struct{}{},
-			quorum: 3,
+			name:          "test3quorum_5host_01",
+			hosts:         []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap:    map[string]struct{}{},
+			quorum:        3,
 			expectExclude: false,
 		},
 		{
-			name: "test3quorum_5host_01",
-			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
-			excludeMap: map[string]struct{}{"192.168.0.32:17030":{}, "192.168.0.33:17030":{}},
-			quorum: 3,
+			name:          "test3quorum_5host_01",
+			hosts:         []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap:    map[string]struct{}{"192.168.0.32:17030": {}, "192.168.0.33:17030": {}},
+			quorum:        3,
 			expectExclude: false,
 		},
 		{
-			name: "test3quorum_5host_02",
-			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
-			excludeMap: map[string]struct{}{"192.168.0.31:17030":{}},
-			quorum: 3,
+			name:          "test3quorum_5host_02",
+			hosts:         []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap:    map[string]struct{}{"192.168.0.31:17030": {}},
+			quorum:        3,
 			expectExclude: true,
 		},
 		{
-			name: "test3quorum_5host_02",
-			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
-			excludeMap: map[string]struct{}{"192.168.0.34:17030":{}, "192.168.0.32:17030":{}, "192.168.0.33:17030":{}},
-			quorum: 3,
+			name:          "test3quorum_5host_02",
+			hosts:         []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap:    map[string]struct{}{"192.168.0.34:17030": {}, "192.168.0.32:17030": {}, "192.168.0.33:17030": {}},
+			quorum:        3,
 			expectExclude: true,
 		},
 	}
@@ -167,5 +169,28 @@ func TestExcludeDp(t *testing.T) {
 				return
 			}
 		})
+	}
+}
+
+func TestDpLeaderAddressSerialization(t *testing.T) {
+	var dp *DataPartition
+	w, _ := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","))
+	w.partitions.Range(func(k, v interface{}) bool {
+		dp = v.(*DataPartition)
+		return false
+	})
+	host := dp.Hosts[0]
+	dp.SetLeaderAddr(host)
+	dpJson, err := json.Marshal(dp)
+	if err != nil {
+		t.Errorf("TestDpLeaderAddressSerialization Marshal dp fail: dp(%v)", dp)
+	}
+	err = json.Unmarshal(dpJson, &dp)
+	if err != nil {
+		t.Errorf("TestDpLeaderAddressSerialization Unmarshal dp fail: dp(%v)", dp)
+	}
+	leader := dp.GetLeaderAddr()
+	if leader != host {
+		t.Errorf("TestDpLeaderAddressSerialization: expect(%v) but(%v)", host, leader)
 	}
 }

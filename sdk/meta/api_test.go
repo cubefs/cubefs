@@ -1,13 +1,21 @@
 package meta
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
-	"golang.org/x/net/context"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"golang.org/x/net/context"
 )
+
+var cfg *MetaConfig = &MetaConfig{
+	Volume:        "ltptest",
+	Masters:       []string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"},
+	ValidateOwner: true,
+	Owner:         "ltptest",
+}
 
 func TestMetaAPI(t *testing.T) {
 	ctx := context.Background()
@@ -18,12 +26,6 @@ func TestMetaAPI(t *testing.T) {
 		dir2 = "test2"
 		dir3 = "test.txt"
 	)
-	cfg := &MetaConfig{
-		Volume:        "ltptest",
-		Masters:       []string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"},
-		ValidateOwner: true,
-		Owner:         "ltptest",
-	}
 	mw, err = NewMetaWrapper(cfg)
 	if err != nil {
 		t.Fatalf("creat meta wrapper failed!")
@@ -75,7 +77,7 @@ func TestMetaAPI(t *testing.T) {
 		t.Errorf("make directory(%v) failed", dir3)
 	}
 	// clean test file
-	err = os.RemoveAll(strings.Join([]string{"/cfs/mnt",dir1}, "/"))
+	err = os.RemoveAll(strings.Join([]string{"/cfs/mnt", dir1}, "/"))
 	if err != nil {
 		t.Errorf("TestMetaAPI: clean test dir(%v) failed, err(%v)", dir1, err)
 	}
@@ -115,14 +117,8 @@ func TestMetaWrapper_Link(t *testing.T) {
 	}
 }
 
-func TestCreateFileAfterInodeLost(t *testing.T)  {
+func TestCreateFileAfterInodeLost(t *testing.T) {
 	ctx := context.Background()
-	cfg := &MetaConfig{
-		Volume:        "ltptest",
-		Masters:       []string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"},
-		ValidateOwner: true,
-		Owner:         "ltptest",
-	}
 	mw, err := NewMetaWrapper(cfg)
 	if err != nil {
 		t.Fatalf("creat meta wrapper failed!")
@@ -130,7 +126,7 @@ func TestCreateFileAfterInodeLost(t *testing.T)  {
 	tests := []struct {
 		name string
 		mode uint32
-	} {
+	}{
 		{
 			name: "test_file",
 			mode: 0644,
@@ -164,9 +160,23 @@ func TestCreateFileAfterInodeLost(t *testing.T)  {
 					newErr, tt.name, newInfo, info)
 			}
 			// clean test file
-			if err = os.Remove(strings.Join([]string{"/cfs/mnt",tt.name}, "/")); err != nil {
+			if err = os.Remove(strings.Join([]string{"/cfs/mnt", tt.name}, "/")); err != nil {
 				t.Errorf("TestCreateFileAfterInodeLost: clean test file(%v) failed, err(%v)", tt.name, err)
 			}
 		})
 	}
+}
+
+func TestCreateFile(t *testing.T) {
+	mw, err := NewMetaWrapper(cfg)
+	mw.ClearRWPartitions()
+	ctx := context.Background()
+	file := "a"
+	mw.Delete_ll(ctx, proto.RootIno, file, false)
+	_, err = mw.Create_ll(ctx, proto.RootIno, file, 0, 0, 0, nil)
+	if err != nil {
+		t.Errorf("TestCreateInode: create err(%v) name(%v)", err, file)
+		return
+	}
+	mw.Delete_ll(ctx, proto.RootIno, file, false)
 }

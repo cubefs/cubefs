@@ -53,14 +53,15 @@ func TestLeaderRead(t *testing.T) {
 }
 
 func TestNearRead(t *testing.T) {
-	testMc := master.NewMasterClient([]string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}, false)
+	masters := strings.Split(ltptestMaster, ",")
+	testMc := master.NewMasterClient(masters, false)
 	volumeSimpleInfo, _ := testMc.AdminAPI().GetVolumeSimpleInfo("ltptest")
 	if err := testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
 		true, false, true, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
 		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, proto.UmpCollectByUnkown, -1, -1, false); err != nil {
 		t.Fatalf("update followerRead and nearRead to 'true' failed: err(%v) vol(ltptest)", err)
 	}
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","))
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, masters)
 	if err != nil {
 		t.Fatalf("NewDataPartitionWrapper: err(%v) vol(%v) master addr(%v)", err, ltptestVolume, ltptestMaster)
 	}

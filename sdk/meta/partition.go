@@ -58,6 +58,12 @@ func (mp *MetaPartition) SetLeaderAddr(addr string) {
 	mp.LeaderAddr.Store(addr)
 }
 
+func (mw *MetaWrapper) ClearRWPartitions() {
+	mw.RLock()
+	defer mw.RUnlock()
+	mw.rwPartitions = mw.rwPartitions[:0]
+}
+
 // Meta partition managements
 //
 
@@ -121,35 +127,24 @@ func (mw *MetaWrapper) getPartitionByInode(ctx context.Context, ino uint64) *Met
 	return mp
 }
 
-//func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
-//	rwPartitions := make([]*MetaPartition, 0)
-//	mw.RLock()
-//	defer mw.RUnlock()
-//	for _, mp := range mw.partitions {
-//		if mp.Status == proto.ReadWrite {
-//			rwPartitions = append(rwPartitions, mp)
-//		}
-//	}
-//	return rwPartitions
-//}
-
 func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
 	mw.RLock()
 	defer mw.RUnlock()
-	rwPartitions := mw.rwPartitions
-	if len(rwPartitions) == 0 {
-		rwPartitions = make([]*MetaPartition, 0)
-		for _, mp := range mw.partitions {
-			rwPartitions = append(rwPartitions, mp)
-		}
-	}
-	return rwPartitions
+	tempPartitions := mw.rwPartitions
+	return tempPartitions
+}
+
+func (mw *MetaWrapper) getUnavailPartitions() []*MetaPartition {
+	mw.RLock()
+	defer mw.RUnlock()
+	tempPartitions := mw.unavailPartitions
+	return tempPartitions
 }
 
 func (mw *MetaWrapper) getPartitions() []*MetaPartition {
 	mw.RLock()
 	defer mw.RUnlock()
-	tempPartitions := make([]*MetaPartition, 0)
+	tempPartitions := make([]*MetaPartition, 0, len(mw.partitions))
 	for _, mp := range mw.partitions {
 		tempPartitions = append(tempPartitions, mp)
 	}

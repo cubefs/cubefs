@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -2385,4 +2386,46 @@ func (mw *MetaWrapper) batchDeleteDentryUntest(ctx context.Context, wg *sync.Wai
 	log.LogDebugf("batchDeleteDentryUntest: packet(%v) mp(%v) req(%v) dens(%v), res(%v)",
 		packet, mp, *req, len(dens), len(resp.Items))
 	return
+}
+
+type operatePartitionFunc func(*MetaPartition) bool
+
+// status of mp in metanode may not be accurate, so write operations should iterate over all mps
+func (mw *MetaWrapper) iteratePartitions(operateFunc operatePartitionFunc) bool {
+	var (
+		partitions []*MetaPartition
+		length     int
+	)
+	partitions = mw.getRWPartitions()
+	length = len(partitions)
+	epoch := atomic.AddUint64(&mw.epoch, 1)
+	for i := 0; i < length; i++ {
+		index := (int(epoch) + i) % length
+		if operateFunc(partitions[index]) {
+			return true
+		}
+	}
+
+	partitions = mw.getUnavailPartitions()
+	length = len(partitions)
+	for i := 0; i < length; i++ {
+		index := (int(epoch) + i) % length
+		if operateFunc(partitions[index]) {
+			return true
+		}
+	}
+
+	maxRetry := 10
+	partitions = mw.getPartitions()
+	length = len(partitions)
+	for i := 0; i < length; i++ {
+		if i >= maxRetry {
+			return false
+		}
+		index := (int(epoch) + i) % length
+		if operateFunc(partitions[index]) {
+			return true
+		}
+	}
+	return false
 }

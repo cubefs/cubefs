@@ -133,8 +133,9 @@ type MetaWrapper struct {
 	// a specific inode locate.
 	ranges *btree.BTree
 
-	rwPartitions []*MetaPartition
-	epoch        uint64
+	rwPartitions      []*MetaPartition
+	unavailPartitions []*MetaPartition
+	epoch             uint64
 
 	totalSize uint64
 	usedSize  uint64

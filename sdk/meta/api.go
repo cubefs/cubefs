@@ -125,11 +125,10 @@ func (mw *MetaWrapper) Statfs() (total, used uint64) {
 
 func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
 	var (
-		status       int
-		err          error
-		info         *proto.InodeInfo
-		mp           *MetaPartition
-		rwPartitions []*MetaPartition
+		status int
+		err    error
+		info   *proto.InodeInfo
+		mp     *MetaPartition
 	)
 
 	if mw.VolNotExists() {
@@ -164,19 +163,20 @@ func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name stri
 	//		}
 	//	}
 
+	var icreateFunc operatePartitionFunc = func(mp1 *MetaPartition) bool {
+		status, info, err = mw.icreate(ctx, mp1, mode, uid, gid, target)
+		if err == nil && status == statusOK {
+			mp = mp1
+			return true
+		} else {
+			return false
+		}
+	}
 	retryCount := 0
 	for {
 		retryCount++
-		rwPartitions = mw.getRWPartitions()
-		length := len(rwPartitions)
-		epoch := atomic.AddUint64(&mw.epoch, 1)
-		for i := 0; i < length; i++ {
-			index := (int(epoch) + i) % length
-			mp = rwPartitions[index]
-			status, info, err = mw.icreate(ctx, mp, mode, uid, gid, target)
-			if err == nil && status == statusOK {
-				goto create_dentry
-			}
+		if mw.iteratePartitions(icreateFunc) {
+			goto create_dentry
 		}
 		if !mw.InfiniteRetry {
 			return nil, syscall.ENOMEM
@@ -761,23 +761,16 @@ func (mw *MetaWrapper) Setattr(ctx context.Context, inode uint64, valid, mode, u
 
 func (mw *MetaWrapper) InodeCreate_ll(ctx context.Context, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
 	var (
-		status       int
-		err          error
-		info         *proto.InodeInfo
-		mp           *MetaPartition
-		rwPartitions []*MetaPartition
+		status int
+		err    error
+		info   *proto.InodeInfo
 	)
-
-	rwPartitions = mw.getRWPartitions()
-	length := len(rwPartitions)
-	epoch := atomic.AddUint64(&mw.epoch, 1)
-	for i := 0; i < length; i++ {
-		index := (int(epoch) + i) % length
-		mp = rwPartitions[index]
+	var icreateFunc operatePartitionFunc = func(mp *MetaPartition) bool {
 		status, info, err = mw.icreate(ctx, mp, mode, uid, gid, target)
-		if err == nil && status == statusOK {
-			return info, nil
-		}
+		return err == nil && status == statusOK
+	}
+	if mw.iteratePartitions(icreateFunc) {
+		return info, nil
 	}
 	return nil, syscall.ENOMEM
 }
@@ -818,28 +811,15 @@ func (mw *MetaWrapper) InodeUnlink_ll(ctx context.Context, inode uint64) (*proto
 
 func (mw *MetaWrapper) InitMultipart_ll(ctx context.Context, path string, extend map[string]string) (multipartId string, err error) {
 	var (
-		status       int
-		mp           *MetaPartition
-		rwPartitions = mw.getRWPartitions()
-		length       = len(rwPartitions)
+		status    int
+		sessionId string
 	)
-	if length <= 0 {
-		log.LogErrorf("InitMultipart: no writable partitions, path(%v)", path)
-		return "", syscall.ENOENT
+	var createMultipartFunc operatePartitionFunc = func(mp *MetaPartition) bool {
+		status, sessionId, err = mw.createMultipart(ctx, mp, path, extend)
+		return err == nil && status == statusOK && len(sessionId) > 0
 	}
-
-	epoch := atomic.AddUint64(&mw.epoch, 1)
-	for i := 0; i < length; i++ {
-		index := (int(epoch) + i) % length
-		mp = rwPartitions[index]
-		log.LogDebugf("InitMultipart_ll: mp(%v), index(%v)", mp, index)
-		status, sessionId, err := mw.createMultipart(ctx, mp, path, extend)
-		if err == nil && status == statusOK && len(sessionId) > 0 {
-			return sessionId, nil
-		} else {
-			log.LogErrorf("InitMultipart: create multipart id fail, path(%v), mp(%v), status(%v), err(%v)",
-				path, mp, status, err)
-		}
+	if mw.iteratePartitions(createMultipartFunc) {
+		return sessionId, nil
 	}
 	log.LogErrorf("InitMultipart: create multipart id fail, path(%v), status(%v), err(%v)", path, status, err)
 	if err != nil {
