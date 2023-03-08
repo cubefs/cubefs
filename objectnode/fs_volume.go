@@ -2622,7 +2622,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	var xattr *proto.XAttrInfo
 	// if source path is same with target path, just reset file metadata
 	// source path is same with target path, and metadata directive is not 'REPLACE', object node do nothing
-	if targetPath == sourcePath {
+	if targetPath == sourcePath && v.name == sv.name {
 		if metaDirective != MetadataDirectiveReplace {
 			log.LogInfof("CopyFile: target path is equal with source path, object node do nothing, source path(%v) target path(%v) err(%v)",
 				sourcePath, targetPath, err)
