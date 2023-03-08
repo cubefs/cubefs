@@ -300,11 +300,13 @@ func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []
 	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
 	vols := c.copyVols()
 	for _, vol := range vols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			if mp.ReplicaNum > uint8(len(mp.Hosts)) {
 				lackReplicaMetaPartitions = append(lackReplicaMetaPartitions, mp)
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 	log.LogInfof("clusterID[%v] lackReplicaMetaPartitions count:[%v]", c.Name, len(lackReplicaMetaPartitions))
 	return

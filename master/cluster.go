@@ -588,13 +588,16 @@ func (c *Cluster) getNotConsistentIDMetaNodes() (metaNodes []*InvalidNodeView) {
 func (c *Cluster) hasNotConsistentIDMetaPartitions(metanode *MetaNode) (notConsistent bool, oldID uint64) {
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			for _, peer := range mp.Peers {
 				if peer.Addr == metanode.Addr && peer.ID != metanode.ID {
+					vol.mpsLock.RUnlock()
 					return true, peer.ID
 				}
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 	return
 }
@@ -1376,6 +1379,7 @@ func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*Meta
 	partitions = make([]*MetaPartition, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			for _, host := range mp.Hosts {
 				if host == addr {
@@ -1384,6 +1388,7 @@ func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*Meta
 				}
 			}
 		}
+		vol.mpsLock.RUnlock()
 	}
 
 	return
@@ -1411,12 +1416,14 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, mp := range vol.MetaPartitions {
+			vol.mpsLock.RLock()
 			for _, host := range mp.Hosts {
 				if host == addr {
 					partitionIDs = append(partitionIDs, mp.PartitionID)
 					break
 				}
 			}
+			vol.mpsLock.RUnlock()
 		}
 	}
 
@@ -1428,12 +1435,14 @@ func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*Met
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, mp := range vol.MetaPartitions {
+			vol.mpsLock.RLock()
 			for _, host := range mp.Hosts {
 				if host == addr {
 					partitions = append(partitions, mp)
 					break
 				}
 			}
+			vol.mpsLock.RUnlock()
 		}
 	}
 	return
@@ -2786,7 +2795,9 @@ func (c *Cluster) getDataPartitionCount() (count int) {
 func (c *Cluster) getMetaPartitionCount() (count int) {
 	vols := c.copyVols()
 	for _, vol := range vols {
+		vol.mpsLock.RLock()
 		count = count + len(vol.MetaPartitions)
+		vol.mpsLock.RUnlock()
 	}
 	return count
 }

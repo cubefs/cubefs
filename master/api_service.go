@@ -1814,6 +1814,9 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		volInodeCount  uint64
 		volDentryCount uint64
 	)
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+
 	for _, mp := range vol.MetaPartitions {
 		volDentryCount = volDentryCount + mp.DentryCount
 		volInodeCount = volInodeCount + mp.InodeCount
@@ -3754,6 +3757,9 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	}
 
 	stat.UsedRatio = strconv.FormatFloat(float64(stat.UsedSize)/float64(stat.TotalSize), 'f', 2, 32)
+
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
 		stat.InodeCount += mp.InodeCount
 	}

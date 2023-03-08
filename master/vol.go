@@ -287,6 +287,8 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 			break
 		}
 	}
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
 	if len(vol.MetaPartitions) != count {
 		err = fmt.Errorf("action[initMetaPartitions] vol[%v] init meta partition failed,mpCount[%v],expectCount[%v],err[%v]",
 			vol.Name, len(vol.MetaPartitions), count, err)
@@ -451,6 +453,10 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 
 func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
 	maxPartitionID := vol.maxPartitionID()
+
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+
 	partition, ok := vol.MetaPartitions[maxPartitionID]
 	if !ok {
 		return
@@ -687,6 +693,9 @@ func (vol *Vol) sendViewCacheToFollower(c *Cluster) {
 func (vol *Vol) ebsUsedSpace() uint64 {
 
 	size := uint64(0)
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+
 	for _, pt := range vol.MetaPartitions {
 		size += pt.dataSize()
 	}
