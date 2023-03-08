@@ -191,6 +191,19 @@ var (
 	versionReporterStartOnce sync.Once
 )
 
+var signalsIgnored = []os.Signal{
+	syscall.SIGUSR1,
+	syscall.SIGUSR2,
+	syscall.SIGPIPE,
+	syscall.SIGALRM,
+	syscall.SIGXCPU,
+	syscall.SIGXFSZ,
+	syscall.SIGVTALRM,
+	syscall.SIGPROF,
+	syscall.SIGIO,
+	syscall.SIGPWR,
+}
+
 var (
 	statusOK = C.int(0)
 	// error status must be minus value
@@ -558,7 +571,7 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		}
 	}
 
-	signal.Ignore(SignalsIgnored...)
+	signal.Ignore(signalsIgnored...)
 
 	var err error
 
@@ -600,7 +613,7 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		log.LogInfof("using prof port: %v", gClientManager.profPort)
 		syslog.Printf("using prof port: %v\n", gClientManager.profPort)
 
-		http.HandleFunc("/version", GetVersionHandleFunc)
+		http.HandleFunc(ControlVersion, GetVersionHandleFunc)
 		http.HandleFunc(ControlReadProcessRegister, registerReadProcStatusHandleFunc)
 		http.HandleFunc(ControlBroadcastRefreshExtents, broadcastRefreshExtentsHandleFunc)
 		http.HandleFunc(ControlGetReadProcs, getReadProcsHandleFunc)

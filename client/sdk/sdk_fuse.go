@@ -78,8 +78,8 @@ const (
 	ControlCommandTracing      = "/tracing"
 	Role                       = "Client"
 
-	StartRetryMaxCount	  	= 10
-	StartRetryIntervalSec	= 5
+	StartRetryMaxCount    = 10
+	StartRetryIntervalSec = 5
 )
 
 type fClient struct {
@@ -304,7 +304,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
 	http.HandleFunc(ControlCommandGetOpRate, super.GetOpRate)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
-	http.HandleFunc("/version", GetVersionHandleFunc)
+	http.HandleFunc(ControlVersion, GetVersionHandleFunc)
 	http.HandleFunc(ControlSetUpgrade, gClient.SetClientUpgrade)
 	http.HandleFunc(ControlUnsetUpgrade, UnsetClientUpgrade)
 	http.HandleFunc(ControlCommandGetUmpCollectWay, GetUmpCollectWay)

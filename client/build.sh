@@ -61,28 +61,44 @@ dir=$(dirname $0)
 bin=${dir}/bin
 echo "using goflag=\"${goflag}\""
 echo "using gccflag=\"${gccflag}\""
+
+build_sdk() {
+    if [ "$1" = "libcfssdk" ]; then
+        libsdk_flag="-E main.main"
+    fi
+    go build -ldflags "${goflag} ${libsdk_flag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o ${bin}/$1.so ${dir}/sdk/*.go
+}
+
 if [[ ${build_sdk} -eq 1 ]]; then
     echo "building sdk (libcfssdk.so, libcfssdk_cshared.so) commit: ${CommitID} ..."
-    go build -ldflags "${goflag} -E main.main -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o ${bin}/libcfssdk.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http_fuse.go  ${dir}/http_bypass.go ${dir}/ump.go ${dir}/common.go
-    go build -ldflags "${goflag} -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -buildmode=c-shared -o ${bin}/libcfssdk_cshared.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http_fuse.go ${dir}/http_bypass.go ${dir}/ump.go ${dir}/common.go
-    chmod a+rx ${bin}/libcfssdk.so
-    chmod a+rx ${bin}/libcfssdk_cshared.so
+    build_sdk "libcfssdk"
+    build_sdk "libcfssdk_cshared"
+    chmod a+rx ${bin}/*
 fi
+
 if [[ ${build_client} -eq 1 ]]; then
-    echo "building client (cfs-client cfs-client-inner cfs-client-static libcfsclient.so libempty.so libcfsc.so) ..."
-    go build -ldflags "${goflag}" -buildmode=plugin -linkshared -o ${bin}/libempty.so  ${dir}/empty.go
-    go build -ldflags "${goflag}" -linkshared -o ${bin}/cfs-client-inner ${dir}/main_fuse.go ${dir}/fuse_common.go
-    go build -ldflags "${goflag}  -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client-static ${dir}/sdk_fuse.go ${dir}/http_fuse.go ${dir}/common.go
-    go build -ldflags "${goflag}" -o ${bin}/cfs-client ${dir}/run_fuse_client.go ${dir}/fuse_common.go
-    gcc ${gccflag} -std=c99 -fPIC -shared -o ${bin}/libcfsclient.so ${dir}/main_hook.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
+    echo "building client (cfs-client cfs-client-inner cfs-client-static libcfsclient.so libcfsc.so libempty.so) ..."
+
+    # dynamic fuse client, for libc version >= 2.14
+    go build -ldflags "${goflag}" -o ${bin}/cfs-client ${dir}/fuse/run_fuse_client.go ${dir}/fuse/prepare_lib.go
+    go build -ldflags "${goflag}" -linkshared -o ${bin}/cfs-client-inner ${dir}/fuse/main.go ${dir}/fuse/prepare_lib.go
+
+    # static fuse client, for libc version < 2.14
+    go build -ldflags "${goflag}  -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client-static ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go
+
+    gcc ${gccflag} -std=c99 -fPIC -shared -o ${bin}/libcfsclient.so ${dir}/bypass/main.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
     g++ -std=c++11 ${gccflag} -DCommitID=\"${CommitID}\" -fPIC -shared -o ${bin}/libcfsc.so ${dir}/bypass/client.c ${dir}/bypass/cache.c ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.c ${dir}/bypass/ini.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
-    chmod a+rx ${bin}/libempty.so ${bin}/cfs-client ${bin}/libcfsclient.so ${bin}/libcfsc.so
+    go build -ldflags "${goflag}" -buildmode=plugin -linkshared -o ${bin}/libempty.so ${dir}/empty.go
+
+    chmod a+rx ${bin}/*
 fi
+
 if [[ ${build_test} -eq 1 ]]; then
     echo "building test (cfs-client test-bypass libcfsclient.so libempty.so) ..."
-    go test -c -covermode=atomic -coverpkg="../..." -linkshared -o ${bin}/cfs-client ${dir}/main_fuse.go ${dir}/fuse_common.go ${dir}/fuse_test.go
+    go test -c -covermode=atomic -coverpkg="../..." -linkshared -o ${bin}/cfs-client ${dir}/fuse/main.go ${dir}/fuse/prepare_lib.go ${dir}/fuse/fuse_test.go
     gcc -std=c99 -g ${dir}/bypass/client_test.c -o ${bin}/test-bypass
 fi
+
 if [[ ${pack_libs} -eq 1 ]]; then
     libTarName=cfs-client-libs_${CommitID}.tar.gz
     fuseTarName=cfs-client-fuse.tar.gz

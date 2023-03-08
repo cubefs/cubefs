@@ -15,7 +15,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -28,6 +27,7 @@ import (
 )
 
 const (
+	ControlVersion                 = "/version"
 	ControlBroadcastRefreshExtents = "/broadcast/refreshExtents"
 	ControlReadProcessRegister     = "/readProcess/register"
 	ControlGetReadProcs            = "/get/readProcs"
@@ -68,19 +68,6 @@ var (
 	BuildTime   string
 	NextVersion string
 )
-
-var SignalsIgnored = []os.Signal{
-	syscall.SIGUSR1,
-	syscall.SIGUSR2,
-	syscall.SIGPIPE,
-	syscall.SIGALRM,
-	syscall.SIGXCPU,
-	syscall.SIGXFSZ,
-	syscall.SIGVTALRM,
-	syscall.SIGPROF,
-	syscall.SIGIO,
-	syscall.SIGPWR,
-}
 
 func lockPidFile(pidFile string) error {
 	var (
