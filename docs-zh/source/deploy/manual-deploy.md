@@ -173,4 +173,4 @@ $ make build
 
 ### 启动纠删码子系统
 
-部署参考 `user-guide/blobstore` 。
+部署参考[如何使用纠删码存储系统](../user-guide/blobstore.md)。
