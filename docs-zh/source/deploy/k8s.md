@@ -2,6 +2,20 @@
 
 CubeFS 可以使用 helm 工具部署在 Kubernetes 集群中，各组件会直接使用宿主机网络，使用 hostPath 将磁盘映射到容器中。
 
+## 部署架构
+
+![image](./pic/k8s-component.png)
+
+CubeFS 目前由这四部分组成：
+
+`Master`：资源管理节点，负责维护整个集群的元信息，部署为 StatefulSet 资源。
+
+`DataNode`：数据存储节点，需要挂载大量磁盘负责文件数据的实际存储，部署为 DaemonSet 资源。
+
+`MetaNode`：元数据节点，负责存储所有的文件元信息，部署为 DaemonSet 资源。
+
+`ObjectNode`：负责提供转换 S3 协议提供对象存储的能力，无状态服务，部署为 Deployment 资源。
+
 ## 机器准备
 
 在开始部署之前，需要拥有一个至少有 3 个节点（最好 4 个以上，可以容灾）的 Kubernetes 集群，且版本大于等于 1.15。
@@ -130,6 +144,7 @@ helm upgrade --install cubefs ./cubefs -f ./cubefs-helm.yaml -n cubefs --create-
 ```
 
 接着使用命令 `kubectl get pods -n cubefs` 等待所有组件状态变为 Running 即可：
+
 ``` bash
 $ kubectl -n cubefs get pods
 NAME                         READY   STATUS    RESTARTS   AGE
