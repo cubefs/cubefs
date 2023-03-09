@@ -1,4 +1,11 @@
 服务配置介绍
 ----------------
 
-主要介绍各个模块的详细配置，在运维过程中可能需要了解每个字段的含义并进行相关调优
+.. toctree::
+   :maxdepth: 2
+
+   configs/master
+   configs/metanode
+   configs/datanode
+   configs/objectnode
+   configs/scheduler

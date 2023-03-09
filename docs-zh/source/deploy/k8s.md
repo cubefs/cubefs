@@ -2,23 +2,7 @@
 
 CubeFS 可以使用 helm 工具部署在 Kubernetes 集群中，各组件会直接使用宿主机网络，使用 hostPath 将磁盘映射到容器中。
 
-## 1.大致架构
-
-![image](pic/k8s-component.png)
-
-CubeFS 目前由这四部分组成：
-
-`Master`：资源管理节点，负责维护整个集群的元信息，部署为 StatefulSet 资源。
-
-`DataNode`：数据存储节点，需要挂载大量磁盘负责文件数据的实际存储，部署为 DaemonSet 资源。
-
-`MetaNode`：元数据节点，负责存储所有的文件元信息，部署为 DaemonSet 资源。
-
-`ObjectNode`：负责提供转换 S3 协议提供对象存储的能力，无状态服务，部署为 Deployment 资源。
-
-## 2.部署
-
-### 2.1 机器准备
+## 机器准备
 
 在开始部署之前，需要拥有一个至少有 3 个节点（最好 4 个以上，可以容灾）的 Kubernetes 集群，且版本大于等于 1.15。
 
@@ -31,35 +15,35 @@ kubectl label node <nodename> component.cubefs.io/master=enabled
 kubectl label node <nodename> component.cubefs.io/metanode=enabled
 # Dataode 数据节点，至少 3 个，奇偶无所谓
 kubectl label node <nodename> component.cubefs.io/datanode=enabled
-# ObjectNod 对象存储节点，可以按需进行标记，不需要对象存储功能的话也可以不部署这个组件
+# ObjectNode 对象存储节点，可以按需进行标记，不需要对象存储功能的话也可以不部署这个组件
 kubectl label node <nodename> component.cubefs.io/objectnode=enabled
 ```
 
 CubeFS 安装时会根据这些标签通过 nodeSelector 进行匹配，然后在机器创建起对应的 Pod。
 
-### 2.2 挂载数据盘
+## 挂载数据盘
 
 在标志为 component.cubefs.io/datanode=enabled 的节点上进行挂载数据盘操作。
 
-#### 2.2.1 查看机器磁盘信息
+### 看机器磁盘信息
 
 ``` bash
 fdisk -l
 ```
 
-#### 2.2.2 格式化磁盘
+### 格式化磁盘
 
 ``` bash
 mkfs.xfs -f /dev/sdx
 ```
 
-#### 2.2.3 创建挂载目录
+### 创建挂载目录
 
 ``` bash
 mkdir /data0
 ```
 
-#### 2.2.4 挂载磁盘
+### 挂载磁盘
 
 ``` bash
 mount /dev/sdx /data0
@@ -67,18 +51,18 @@ mount /dev/sdx /data0
 
 如果机器上存在多个需要挂载的数据磁盘，则每个磁盘按以上步骤进行格式化和挂载磁盘，挂载目录按照 data0/data1/../data999 的顺序命名。
 
-### 2.3 安装 helm
+## 安装 helm
 
-安装 helm，参考官方文档：<https://helm.sh/docs/intro/install/>。
+安装 helm，参考[官方文档](https://helm.sh/docs/intro/install/)
 
-### 2.4 拉取 Cubefs Helm 仓库
+## 拉取 Cubefs Helm 仓库
 
 ``` bash
 git clone https://github.com/cubefs/cubefs-helm.git
 cd cubefs-helm
 ```
 
-### 2.5 编辑配置
+## 编辑配置
 
 部署 CubeFS 的 helm 存在大量的配置，所有的可配置项位于 helm 项目下的 cubefs/values.yaml 中，其中包含有详细的注释。
 
@@ -137,7 +121,7 @@ provisioner:
   kubelet_path: /var/lib/kubelet
 ```
 
-### 2.6 部署
+## 部署
 
 使用如下命令进行 CubeFS 部署：
 
