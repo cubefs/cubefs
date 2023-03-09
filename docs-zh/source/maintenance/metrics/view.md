@@ -1,4 +1,14 @@
 # 可视化配置
+## CubeFS
++ 可以通过grafana来展示监控数据，如下图
+  + 配置模板参考docker/monitor/grafana/provisioning/dashboards/*.json文件
+
+![pic](./pic/grafana.png)
++ 可通过prometheus alertmanager配置监控告警能力，参考[alertmanager文档](https://prometheus.io/docs/alerting/latest/alertmanager/)
++ 相关参考
+  + [prometheus安装](https://prometheus.io/docs/prometheus/latest/getting_started/)
+  + [consul安装](https://developer.hashicorp.com/consul/docs/install)
+  + [grafana安装](https://grafana.com/docs/grafana/v8.4/getting-started/getting-started/)
 
 ## Blobstore
 
@@ -6,7 +16,6 @@
 
 ![pic](./pic/20230306181907020.png)
 ![pic](./pic/20230306181943006.png)
-
 
 **集群物理空间概览**
 
