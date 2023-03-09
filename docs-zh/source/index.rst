@@ -69,13 +69,6 @@
 
 .. toctree::
    :maxdepth: 2
-   :caption: 工具
-
-   cli/cli
-   cli/blobstore
-
-.. toctree::
-   :maxdepth: 2
    :caption: 社区
 
    community/overview
