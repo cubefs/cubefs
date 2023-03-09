@@ -34,43 +34,44 @@ import (
 
 // Cluster stores all the cluster-level information.
 type Cluster struct {
-	Name                string
-	CreateTime          int64
-	vols                map[string]*Vol
-	dataNodes           sync.Map
-	metaNodes           sync.Map
-	volMutex            sync.RWMutex // volume mutex
-	createVolMutex      sync.RWMutex // create volume mutex
-	mnMutex             sync.RWMutex // meta node mutex
-	dnMutex             sync.RWMutex // data node mutex
-	badPartitionMutex   sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
-	leaderInfo          *LeaderInfo
-	cfg                 *clusterConfig
-	retainLogs          uint64
-	idAlloc             *IDAllocator
-	t                   *topology
-	dataNodeStatInfo    *nodeStatInfo
-	metaNodeStatInfo    *nodeStatInfo
-	zoneStatInfos       map[string]*proto.ZoneStat
-	volStatInfo         sync.Map
-	domainManager       *DomainManager
-	BadDataPartitionIds *sync.Map
-	BadMetaPartitionIds *sync.Map
-	DisableAutoAllocate bool
-	FaultDomain         bool
-	needFaultDomain     bool // FaultDomain is true and normal zone aleady used up
-	fsm                 *MetadataFsm
-	partition           raftstore.Partition
-	MasterSecretKey     []byte
-	lastZoneIdxForNode  int
-	zoneIdxMux          sync.Mutex //
-	zoneList            []string
-	followerReadManager *followerReadManager
-	diskQosEnable       bool
-	QosAcceptLimit      *rate.Limiter
-	apiLimiter          *ApiLimiter
-	DecommissionDisks   sync.Map
-	DecommissionLimit   uint64
+	Name                         string
+	CreateTime                   int64
+	vols                         map[string]*Vol
+	dataNodes                    sync.Map
+	metaNodes                    sync.Map
+	volMutex                     sync.RWMutex // volume mutex
+	createVolMutex               sync.RWMutex // create volume mutex
+	mnMutex                      sync.RWMutex // meta node mutex
+	dnMutex                      sync.RWMutex // data node mutex
+	badPartitionMutex            sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
+	leaderInfo                   *LeaderInfo
+	cfg                          *clusterConfig
+	retainLogs                   uint64
+	idAlloc                      *IDAllocator
+	t                            *topology
+	dataNodeStatInfo             *nodeStatInfo
+	metaNodeStatInfo             *nodeStatInfo
+	zoneStatInfos                map[string]*proto.ZoneStat
+	volStatInfo                  sync.Map
+	domainManager                *DomainManager
+	BadDataPartitionIds          *sync.Map
+	BadMetaPartitionIds          *sync.Map
+	DisableAutoAllocate          bool
+	FaultDomain                  bool
+	needFaultDomain              bool // FaultDomain is true and normal zone aleady used up
+	fsm                          *MetadataFsm
+	partition                    raftstore.Partition
+	MasterSecretKey              []byte
+	lastZoneIdxForNode           int
+	zoneIdxMux                   sync.Mutex //
+	zoneList                     []string
+	followerReadManager          *followerReadManager
+	diskQosEnable                bool
+	QosAcceptLimit               *rate.Limiter
+	apiLimiter                   *ApiLimiter
+	DecommissionDisks            sync.Map
+	DecommissionLimit            uint64
+	checkAutoCreateDataPartition bool
 }
 
 type followerReadManager struct {
@@ -205,6 +206,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.QosAcceptLimit = rate.NewLimiter(rate.Limit(c.cfg.QosMasterAcceptLimit), proto.QosDefaultBurst)
 	c.apiLimiter = newApiLimiter()
 	c.DecommissionLimit = defaultDecommissionParallelLimit
+	c.checkAutoCreateDataPartition = false
 	return
 }
 
@@ -273,18 +275,7 @@ func (c *Cluster) scheduleToManageDp() {
 	go func() {
 		// check volumes after switching leader two minutes
 		time.Sleep(2 * time.Minute)
-
-		for {
-
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				vols := c.copyVols()
-				for _, vol := range vols {
-					vol.checkAutoDataPartitionCreation(c)
-				}
-			}
-
-			time.Sleep(5 * time.Second)
-		}
+		c.checkAutoCreateDataPartition = true
 	}()
 
 	// schedule delete dataPartition
@@ -410,8 +401,13 @@ func (c *Cluster) checkDataPartitions() {
 		readWrites := vol.checkDataPartitions(c)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
 		vol.dataPartitions.updateResponseCache(true, 0, vol.VolType)
-		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
+		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ",
+			vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
+
+		if c.checkAutoCreateDataPartition {
+			vol.checkAutoDataPartitionCreation(c)
+		}
 	}
 }
 
