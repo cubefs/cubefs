@@ -360,7 +360,6 @@ func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			if mp.IsRecover || mp.EqualCheckPass {
-				vol.mpsLock.RUnlock()
 				continue
 			}
 			idStr := strconv.FormatUint(mp.PartitionID, 10)
