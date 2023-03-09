@@ -1,11 +1,99 @@
-# 监控指标项
+监控指标项
 
 CubeFS集成了prometheus作为监控指标采集模块，可以结合具体情况开启监控指标或者配置监控面板。
 
+## 进程相关指标
+支持上报go gc stats和 mem stats, 如下
+```bash
+# gc相关
+go_gc_duration_seconds_sum
+go_gc_duration_seconds
+...
+# 内存分配
+go_memstats_alloc_bytes
+go_memstats_heap_idle_bytes
+...
+# 进程相关
+process_resident_memory_bytes
+process_start_time_seconds
+process_open_fds
+...
+```
+
 ## Master
+
+master模块上报的监控指标主要是关于集群内节点的健康状态，使用率，卷的统计数据等
+
+| 指标名                                                 | 说明                                       |
+| ------------------------------------------------------ | ------------------------------------------ |
+| cfs_master_dataNodes_count                             | 集群数据节点数量                           |
+| cfs_master_dataNodes_inactive                          | 集群异常的数据节点个数                     |
+| cfs_master_dataNodes_increased_GB                      | 集群2分钟内使用磁盘空间变化量              |
+| cfs_master_dataNodes_total_GB                          | 集群总的磁盘空间大小                       |
+| cfs_master_dataNodes_used_GB                           | 集群已经使用的磁盘空间大小                 |
+| cfs_master_disk_error{addr="xx",path="xx"}             | 集群中坏盘监控，包含异常节点IP和磁盘路径   |
+| cfs_master_metaNodes_count                             | 集群总的元数据节点个数                     |
+| cfs_master_metaNodes_inactive                          | 集群异常的元数据节点个数                   |
+| cfs_master_metaNodes_increased_GB                      | 集群2分钟内元数据内存变化大小              |
+| cfs_master_metaNodes_total_GB                          | 集群元数据的总内存大小                     |
+| cfs_master_metaNodes_used_GB                           | 集群元数据已用内存大小                     |
+| cfs_master_vol_count                                   | 集群中卷的数量                             |
+| cfs_master_vol_meta_count{type="dentry",volName="vol"} | 指定卷的详情，type类型：dentry,inode,dp,mp |
+| cfs_master_vol_total_GB{volName="xx"}                  | 指定卷的容量带下                           |
+| cfs_master_vol_usage_ratio{volName="xx"}               | 指定卷的使用率                             |
+| cfs_master_vol_used_GB{volName="xx"}                   | 指定卷已用容量                             |
+
 ## Metanode
+
+meta节点的监控指标，可以用来监控每个卷的各种元数据操作的qps, 时延数据，如lookup, createInode，createDentry等。
+
+| 指标名                       | 说明                                                         |
+| ---------------------------- | ------------------------------------------------------------ |
+| cfs_metanode_$op_count       | meta节点对应操作的请求总数，可用于计算请求qps                |
+| cfs_metanode_$op_hist_bucket | meta节点对应操作请求的hist数据，可用于计算时延的95值         |
+| cfs_metanode_$op_hist_count  | meta节点对应请求的总数，同cfs_metanode_$op_count             |
+| cfs_metanode_$op_hist_sum    | meta节点对应操作操作请求的总耗时，与hist_count结合计算平均时延 |
+
 ## Datanode
+
+data节点的监控指标，可以用来监控每个卷的各种数据操作的qps, 时延数据, 以及带宽，如read, write等
+
+| 指标名                                   | 说明                                                         |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| cfs_dataNode_$op_count                   | data节点对应操作的请求总数，可用于计算请求qps                |
+| cfs_dataNode_$op_hist_bucket             | data节点对应操作请求的hist数据，可用于计算时延的95值         |
+| cfs_dataNode_$op_hist_count              | data节点对应请求的总数，同cfs_datanode_$op_count             |
+| cfs_dataNode_$op_hist_sum                | data节点对应操作操作请求的总耗时，可与hist_count结合计算平均时延 |
+| cfs_dataNode_dataPartitionIOBytes        | data节点读写数据总量，可用于计算指定磁盘，卷的带宽数据       |
+| cfs_dataNode_dataPartitionIO_count       | data节点的io总次数，可用于计算磁盘io qps数据                 |
+| cfs_dataNode_dataPartitionIO_hist_bucket | data节点io操作的histogram数据，可用于计算io的95值            |
+| cfs_dataNode_dataPartitionIO_hist_count  | data节点io操作的总次数，同上                                 |
+| cfs_dataNode_dataPartitionIO_hist_sum    | data节点io操作延时的总值，可与hist_count结合计算平均延时     |
+
 ## Objectnode
+
+objectNode的监控指标主要用于监控各种s3操作的请求量和耗时，如copyObject, putObject等。
+
+| 指标名                         | 说明                                                         |
+| ------------------------------ | :----------------------------------------------------------- |
+| cfs_objectnode_$op_count       | object节点对应操作请求的总次数，可用于计算qps                |
+| cfs_objectnode_$op_hist_count  | 同上                                                         |
+| cfs_objectnode_$op_hist_sum    | object节点对应操作请求的总耗时，可与hist_count结合计算平均延时 |
+| cfs_objectnode_$op_hist_bucket | object节点对应请求的histogram数据，可用于计算请求时延的95值，99值 |
+
+## FuseClient
+
+client模块的监控指标主要是用来监控与data模块，或者元数据模块的交互的请求量，耗时，缓存命中率等，如fileread, filewrite等，说明如下
+
+| 指标名                         | 说明                                                  |
+| ------------------------------ | ----------------------------------------------------- |
+| cfs_fuseclient_$dp_count       | client对应操作的总次数，可用于计算qps                 |
+| cfs_fuseclient_$dp_hist_count  | 含义同上                                              |
+| cfs_fuseclient_$dp_hist_sum    | client对应操作的总耗时，与hist_count结合计算平均延时  |
+| cfs_fuseclient_$dp_hist_bucket | client对应请求的histogram数据，用于计算请求延时的95值 |
+
+
+
 ## Blobstore
 
 ### 通用指标项
