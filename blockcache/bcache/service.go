@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	UnixSocketPath = "/var/lib/kubelet/device-plugins/bcache.socket"
+	UnixSocketPath = "/var/run/cubefscache/bcache.socket"
 
 	//config
 	CacheDir      = "cacheDir"
