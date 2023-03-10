@@ -579,7 +579,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(ControlCommandSuspend, super.SetSuspend)
 	http.HandleFunc(ControlCommandResume, super.SetResume)
 	//auditlog
-	http.HandleFunc(auditlog.EnableAuditLogReqPath, auditlog.EnableAuditLog)
+	http.HandleFunc(auditlog.EnableAuditLogReqPath, super.EnableAuditLog)
 	http.HandleFunc(auditlog.DisableAuditLogReqPath, auditlog.DisableAuditLog)
 	http.HandleFunc(auditlog.SetAuditLogBufSizeReqPath, auditlog.ResetWriterBuffSize)
 
