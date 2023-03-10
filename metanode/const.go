@@ -264,7 +264,7 @@ const (
 const (
 	RocksDBVersion        = proto.RocksDBVersion
 	Version3_3_0          = proto.Version_3_3_0
-	MPReuseVersion        = proto.BaseVersion
+	MPReuseVersion        = proto.Version_3_4_0
 	MetaNodeLatestVersion = proto.BaseVersion
 )
 
@@ -312,7 +312,7 @@ type SnapshotVersion byte
 const (
 	BaseSnapshotV = iota
 	BatchSnapshotV1 //rocksdb
-	BatchSnapshotV2 //mp reuse
+	BatchSnapshotV2 //mp reuse, bitmap allocator
 	LatestSnapV = BatchSnapshotV2 //change with max snap version
 )
 

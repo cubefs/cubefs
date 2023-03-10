@@ -29,9 +29,10 @@ import (
 const DefaultBatchCount = 128
 
 var MetaBatchSnapshotVersionMap = map[string]SnapshotVersion{
-	RocksDBVersion:    BatchSnapshotV1,
-	Version3_3_0:      BatchSnapshotV1,
-	MPReuseVersion:    BatchSnapshotV2,
+	RocksDBVersion:        BatchSnapshotV1,
+	Version3_3_0:          BatchSnapshotV1,
+	MPReuseVersion:        BatchSnapshotV2,
+	MetaNodeLatestVersion: LatestSnapV,
 }
 
 type EkData struct {
