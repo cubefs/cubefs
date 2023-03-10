@@ -74,7 +74,7 @@ func Vverbose() bool {
 // ClusterMgrClusters returns cluster manager clusters
 func ClusterMgrClusters() (clusters map[string][]string) {
 	clusters = make(map[string][]string)
-	if AccessConsulAddr() != "" {
+	if AccessConsulAddr() != "" && Region() != "" {
 		return common.GetClustersFromConsul(AccessConsulAddr(), Region())
 	}
 	cs := Get("Key-ClusterMgrCluster").(map[string]string)
