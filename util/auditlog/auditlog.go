@@ -142,7 +142,7 @@ func ResetWriterBuffSize(w http.ResponseWriter, r *http.Request) {
 		err error
 	)
 	if err = r.ParseForm(); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		BuildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	size := int(DefaultAuditLogBufSize)
@@ -150,19 +150,19 @@ func ResetWriterBuffSize(w http.ResponseWriter, r *http.Request) {
 		val, err := strconv.Atoi(sizeStr)
 		if err != nil {
 			err = fmt.Errorf("size error")
-			buildFailureResp(w, http.StatusBadRequest, err.Error())
+			BuildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		size = val
 	}
 
 	ResetWriterBufferSize(size)
-	buildSuccessResp(w, "set audit log buffer size success")
+	BuildSuccessResp(w, "set audit log buffer size success")
 }
 
 func DisableAuditLog(w http.ResponseWriter, r *http.Request) {
 	StopAudit()
-	buildSuccessResp(w, "disable audit log success")
+	BuildSuccessResp(w, "disable audit log success")
 }
 
 func EnableAuditLog(w http.ResponseWriter, r *http.Request) {
@@ -170,19 +170,19 @@ func EnableAuditLog(w http.ResponseWriter, r *http.Request) {
 		err error
 	)
 	if err = r.ParseForm(); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		BuildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	logPath := r.FormValue("path")
 	if logPath == "" {
 		err = fmt.Errorf("path cannot be empty")
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		BuildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	prefix := r.FormValue("prefix")
 	if prefix == "" {
 		err = fmt.Errorf("prefix cannot be empty")
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		BuildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	logSize := 0
@@ -191,7 +191,7 @@ func EnableAuditLog(w http.ResponseWriter, r *http.Request) {
 		val, err := strconv.Atoi(logSizeStr)
 		if err != nil {
 			err = fmt.Errorf("logSize error")
-			buildFailureResp(w, http.StatusBadRequest, err.Error())
+			BuildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		logSize = val
@@ -204,25 +204,25 @@ func EnableAuditLog(w http.ResponseWriter, r *http.Request) {
 		_, err = InitAudit(logPath, prefix, int64(logSize))
 		if err != nil {
 			err = fmt.Errorf("Init audit log fail: %v\n", err)
-			buildFailureResp(w, http.StatusBadRequest, err.Error())
+			BuildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		info := fmt.Sprintf("audit log is initialized with params: logDir(%v) logModule(%v) logMaxSize(%v)",
 			logPath, prefix, logSize)
-		buildSuccessResp(w, info)
+		BuildSuccessResp(w, info)
 	} else {
 		info := fmt.Sprintf("audit log is already initialized with params: logDir(%v) logModule(%v) logMaxSize(%v)",
 			dir, logModule, logMaxSize)
-		buildSuccessResp(w, info)
+		BuildSuccessResp(w, info)
 	}
 
 }
 
-func buildSuccessResp(w http.ResponseWriter, data interface{}) {
+func BuildSuccessResp(w http.ResponseWriter, data interface{}) {
 	buildJSONResp(w, http.StatusOK, data, "")
 }
 
-func buildFailureResp(w http.ResponseWriter, code int, msg string) {
+func BuildFailureResp(w http.ResponseWriter, code int, msg string) {
 	buildJSONResp(w, code, nil, msg)
 }
 

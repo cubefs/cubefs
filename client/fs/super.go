@@ -17,6 +17,7 @@ package fs
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"golang.org/x/net/context"
 	"net/http"
 	"os"
@@ -47,6 +48,9 @@ import (
 type Super struct {
 	cluster     string
 	volname     string
+	masters     string
+	mountPoint  string
+	subDir      string
 	owner       string
 	ic          *InodeCache
 	dc          *Dcache
@@ -120,6 +124,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 
 	s.volname = opt.Volname
+	s.masters = opt.Master
+	s.mountPoint = opt.MountPoint
+	s.subDir = opt.SubDir
 	s.owner = opt.Owner
 	s.cluster = s.mw.Cluster()
 	inodeExpiration := DefaultInodeExpiration
@@ -477,6 +484,62 @@ func (s *Super) SetResume(w http.ResponseWriter, r *http.Request) {
 	s.sockaddr = ""
 	s.fslock.Unlock()
 	replySucc(w, r, "set resume successfully")
+}
+
+func (s *Super) EnableAuditLog(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+	)
+	if err = r.ParseForm(); err != nil {
+		auditlog.BuildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	logPath := r.FormValue("path")
+	if logPath == "" {
+		err = fmt.Errorf("path cannot be empty")
+		auditlog.BuildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	prefix := r.FormValue("prefix")
+	if prefix == "" {
+		err = fmt.Errorf("prefix cannot be empty")
+		auditlog.BuildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	logSize := 0
+
+	if logSizeStr := r.FormValue("logsize"); logSizeStr != "" {
+		val, err := strconv.Atoi(logSizeStr)
+		if err != nil {
+			err = fmt.Errorf("logSize error")
+			auditlog.BuildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		logSize = val
+	} else {
+		logSize = auditlog.DefaultAuditLogSize
+	}
+
+	err, dir, logModule, logMaxSize := auditlog.GetAuditLogInfo()
+	if err != nil {
+
+		_, err = auditlog.InitAuditWithPrefix(logPath, prefix, int64(auditlog.DefaultAuditLogSize),
+			auditlog.NewAuditPrefix(s.masters, s.volname, s.subDir, s.mountPoint))
+		if err != nil {
+			err = errors.NewErrorf("Init audit log fail: %v\n", err)
+			auditlog.BuildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		info := fmt.Sprintf("audit log is initialized with params: logDir(%v) logModule(%v) logMaxSize(%v)",
+			logPath, prefix, logSize)
+		auditlog.BuildSuccessResp(w, info)
+	} else {
+		info := fmt.Sprintf("audit log is already initialized with params: logDir(%v) logModule(%v) logMaxSize(%v)",
+			dir, logModule, logMaxSize)
+		auditlog.BuildSuccessResp(w, info)
+	}
+
 }
 
 func (s *Super) State() (state fs.FSStatType, sockaddr string) {
