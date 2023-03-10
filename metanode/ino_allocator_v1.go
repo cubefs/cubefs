@@ -208,6 +208,13 @@ func (allocator *inoAllocatorV1) GetUsedInos() []uint64 {
 	return usedInos
 }
 
+func (allocator *inoAllocatorV1) GetUsedInosBitMap() []uint64 {
+	allocator.mu.RLock()
+	defer allocator.mu.RUnlock()
+
+	return allocator.Bits
+}
+
 func (allocator *inoAllocatorV1) CursorAddStep(skipStep uint64) {
 	allocator.mu.Lock()
 	defer allocator.mu.Unlock()

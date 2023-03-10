@@ -963,30 +963,24 @@ func EvictDirInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 
 	inode, _ = leader.inodeTree.Get(ino)
-	if inode == nil {
-		t.Errorf("get exist inode failed")
+	if inode != nil {
+		t.Errorf("inode expect not exist in inode tree, but exist")
 		return
 	}
-	if inode.NLink != 2 {
-		t.Errorf("test failed, error nlink, expect:0, actual:%v", inode.NLink)
-		return
-	}
-	if !inode.ShouldDelete() {
-		t.Errorf("test failed, inode should mark delete, but it is not")
+	inode, _ = follower.inodeTree.Get(ino)
+	if inode != nil {
+		t.Errorf("inode expect not exist in inode tree, but exist")
 		return
 	}
 
-	inode, _ = follower.inodeTree.Get(ino)
-	if inode == nil {
-		t.Errorf("get exist inode failed")
+	dino, _ := leader.inodeDeletedTree.Get(ino)
+	if dino == nil {
+		t.Errorf("delete inode expect exist, but not")
 		return
 	}
-	if inode.NLink != 2 {
-		t.Errorf("test failed, error nlink, expect:0, actual:%v", inode.NLink)
-		return
-	}
-	if !inode.ShouldDelete() {
-		t.Errorf("test failed, inode should mark delete, but it is not")
+	dino, _ = follower.inodeDeletedTree.Get(ino)
+	if dino == nil {
+		t.Errorf("delete inode expect exist, but not")
 		return
 	}
 }

@@ -171,21 +171,13 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, inodeID uint64, un
 	resp.Msg = inode
 	inode.DecNlinkNum(uint32(unlinkNum - 1))
 	if inode.IsEmptyDir() {
-		if trashEnable {
-			st, err = mp.mvToDeletedInodeTree(dbHandle, inode, timestamp)
-			if err != nil {
-				log.LogDebugf("fsmUnlinkInode: failed to move inode to deletedInode tree, inode: %v, status: %v",
-					inode, st)
-				return
-			}
-			log.LogDebugf("fsmUnlinkInode: inode: %v, status: %v", inode, st)
+		st, err = mp.mvToDeletedInodeTree(dbHandle, inode, timestamp)
+		if err != nil {
+			log.LogDebugf("fsmUnlinkInode: failed to move inode to deletedInode tree, inode: %v, status: %v",
+				inode, st)
 			return
 		}
-
-		if _, err = mp.inodeTree.Delete(dbHandle, inode.Inode); err != nil {
-			log.LogErrorf("fsmUnlinkInode: inode:%v delete failed:%v", inode, err)
-			resp.Status = proto.OpErr
-		}
+		log.LogDebugf("fsmUnlinkInode: inode: %v, status: %v", inode, st)
 		return
 	}
 	inode.DecNLink()
@@ -503,17 +495,7 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 	}
 	defer mp.monitorData[proto.ActionMetaEvictInode].UpdateData(i.Size)
 
-	if proto.IsDir(i.Type) {
-		if i.IsEmptyDir() {
-			i.SetDeleteMark()
-			if err = mp.inodeTree.Update(dbHandle, i); err != nil {
-				resp.Status = proto.OpErr
-			}
-		}
-		return
-	}
-
-	if i.IsTempFile() {
+	if i.IsEmptyDir() || i.IsDeleting() {
 		i.SetDeleteMark()
 		st, err = mp.mvToDeletedInodeTree(dbHandle, i, timestamp)
 		if err != nil {

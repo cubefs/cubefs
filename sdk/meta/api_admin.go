@@ -412,3 +412,21 @@ func (mc *MetaHttpClient) GetExtentsByInode(mpId uint64, inode uint64) (re *prot
 	}
 	return
 }
+
+func (mc *MetaHttpClient) GetInuseInodes(mpId uint64) (inodeInuseBitMap []uint64, err error) {
+	req := newAPIRequest(http.MethodGet, "/getBitInuse")
+	req.addParam("pid", fmt.Sprintf("%v", mpId))
+	respData, err := mc.serveRequest(req)
+	if err != nil {
+		return
+	}
+
+	var respStruct = &struct {
+		InoInuseBitMap []uint64 `json:"inodeInuseBitMap"`
+	}{}
+	if err = json.Unmarshal(respData, respStruct); err != nil {
+		return
+	}
+	inodeInuseBitMap = respStruct.InoInuseBitMap
+	return
+}

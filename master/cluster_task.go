@@ -258,11 +258,6 @@ var getTargetAddressForMetaPartitionDecommission = func(c *Cluster, nodeAddr str
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1, dstStoreMode); err != nil {
-			if vol.isReuseMP() {
-				err = fmt.Errorf("mp (%v) enable reuseMP, not suport cross zone", mp.PartitionID)
-				log.LogErrorf(err.Error())
-				return
-			}
 			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 				//select meta nodes from the other zones in the same region type
 				_, newPeers, err = c.chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName,
@@ -483,11 +478,6 @@ func (c *Cluster) chooseTargetMetaPartitionHost(oldAddr string, mp *MetaPartitio
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1, dstStoreMode); err != nil {
-			if vol.isReuseMP() {
-				err = fmt.Errorf("mp(%v) enabled reuseMP, not support cross zone", mp.PartitionID)
-				log.LogErrorf(err.Error())
-				goto errHandler
-			}
 			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 				//select meta nodes from the other zones in the same region type
 				_, newPeers, err = c.chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName,

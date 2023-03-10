@@ -1188,7 +1188,6 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		learners    []proto.Learner
 		wg          sync.WaitGroup
 		storeMode   proto.StoreMode
-		isStrict    bool
 	)
 
 	learners = make([]proto.Learner, 0)
@@ -1200,10 +1199,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 			return nil, errors.NewError(err)
 		}
 	} else {
-		if vol.isReuseMP() {
-			isStrict = true
-		}
-		if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.zoneName, isStrict, storeMode); err != nil {
+		if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.zoneName, false, storeMode); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
 			return nil, errors.NewError(err)
 		}

@@ -60,6 +60,7 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newCheckInodeTree(client),
 		newMetaPartitionResetRecoverCmd(client),
 		newMetaPartitionSetReuseStateCmd(client),
+		newMetaPartitionInodeInuse(client),
 	)
 	return cmd
 }
@@ -1224,5 +1225,81 @@ func newMetaPartitionSetReuseStateCmd(client *master.MasterClient) *cobra.Comman
 		},
 	}
 	cmd.Flags().BoolVar(&optEnableState, "enable", true, "enable reuse state, true or false")
+	return cmd
+}
+
+func newMetaPartitionInodeInuse(client *master.MasterClient) *cobra.Command {
+	var (
+		partitionID uint64
+		err         error
+		partition   *proto.MetaPartitionInfo
+	)
+	var cmd = &cobra.Command{
+		Use:   CliFlagInodeInuse + " [PARTITION ID]",
+		Short: "inode inuse",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			defer func() {
+				if err != nil {
+					errout("get meta partition inuse inodes failed:%v\n", err.Error())
+				}
+			}()
+			partitionID, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+				return
+			}
+			if len(partition.Replicas) == 0 {
+				err = fmt.Errorf("partition replicas not exist")
+				return
+			}
+			var virtualMP *proto.VirtualMetaPartition
+			for _, vMP := range partition.VirtualMPs {
+				if vMP.ID == partitionID {
+					virtualMP = &vMP
+					break
+				}
+			}
+			if virtualMP == nil {
+				err = fmt.Errorf("virtual meta partition %v not exist in partition %v", partitionID, partition.PartitionID)
+				return
+			}
+			ip := strings.Split(partition.Replicas[0].Addr, ":")[0]
+			for _, replica := range partition.Replicas {
+				if replica.IsLeader {
+					ip = strings.Split(replica.Addr, ":")[0]
+				}
+			}
+
+			ip += ":" + strconv.Itoa(int(client.MetaNodeProfPort))
+
+			mtClient := meta.NewMetaHttpClient(ip, false)
+			var inodeInuseBitMap []uint64
+			inodeInuseBitMap, err = mtClient.GetInuseInodes(partitionID)
+			if err != nil {
+				return
+			}
+			inodeInuse := make([]uint64, 0)
+			for index := 0; index < len(inodeInuseBitMap); index++ {
+				if inodeInuseBitMap[index] == 0 {
+					continue
+				}
+				for bitMapOffset := 0; bitMapOffset <= 63; bitMapOffset++ {
+					if inodeInuseBitMap[index] & (uint64(1) << bitMapOffset) != 0 {
+						inodeInuse = append(inodeInuse, uint64(index*64+bitMapOffset)+virtualMP.Start)
+					}
+				}
+			}
+			stringBuilder := strings.Builder{}
+			stringBuilder.WriteString(fmt.Sprintf("Physical PartitionID : %v\n", partition.PartitionID))
+			stringBuilder.WriteString(fmt.Sprintf("Virtual PartitionID  : %v\n", partitionID))
+			stringBuilder.WriteString(fmt.Sprintf("Start                : %v\n", virtualMP.Start))
+			stringBuilder.WriteString(fmt.Sprintf("End                  : %v\n", virtualMP.End))
+			stringBuilder.WriteString(fmt.Sprintf("Inode Inuse          : %v\n", inodeInuse))
+			stdout(stringBuilder.String())
+		},
+	}
 	return cmd
 }

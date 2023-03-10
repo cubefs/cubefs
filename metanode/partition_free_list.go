@@ -221,6 +221,10 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 	for i := 0; i < len(allInodes); i++ {
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]
+		if inode.Extents == nil || inode.Extents.Len() == 0 {
+			shouldCommit = append(shouldCommit, inode)
+			continue
+		}
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
 			if occurErrors[ek.PartitionId] == nil {
 				successDeleteExtentCnt++
@@ -328,6 +332,10 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 		//		continue
 		//	}
 		//}
+		if inodeVal.Extents == nil || inodeVal.Extents.Len() == 0 {
+			allInodes = append(allInodes, inodeVal)
+			continue
+		}
 
 		mp.recordInodeDeleteEkInfo(inodeVal)
 

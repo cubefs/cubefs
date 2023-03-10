@@ -2,6 +2,7 @@ package metanode
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -641,14 +642,21 @@ func TestMetaPartition_CleanDeletedInodeCase01(t *testing.T) {
 				t.FailNow()
 			}
 
-			_, _, status, _ = mp.getDeletedInode(ino1.Inode)
-			if status != proto.OpNotExistErr {
+			var dino *DeletedINode
+			_, dino, status, _ = mp.getDeletedInode(ino1.Inode)
+			if status != proto.OpOk {
 				t.Error(status)
 				t.FailNow()
 			}
 
-			if mp.freeList.Len() > 0 {
-				t.Errorf("freelist: %v", mp.freeList.Len())
+			if !dino.IsExpired {
+				t.Error(fmt.Errorf("expect dino(%v) expired, but not", dino))
+				t.FailNow()
+			}
+
+			inodeID := mp.freeList.Pop()
+			if inodeID != ino1.Inode {
+				t.Errorf("expect exist in freelist, but not")
 				t.FailNow()
 			}
 
@@ -699,6 +707,11 @@ func TestMetaPartition_CleanDeletedInodeCase01(t *testing.T) {
 
 			if mp.freeList.Len() != 1 {
 				t.Errorf("freelist: %v", mp.freeList.Len())
+				t.FailNow()
+			}
+			inodeID = mp.freeList.Pop()
+			if inodeID != ino3.Inode {
+				t.Errorf("expect exist in freelist, but not")
 				t.FailNow()
 			}
 
@@ -1016,19 +1029,23 @@ func TestMetaPartition_BatchCleanExpiredDeletedInodeCase01(t *testing.T) {
 				t.Errorf("clean expired deleted inode failed:%v", err)
 				t.FailNow()
 			}
-			if mp.freeList.Len() != 1 {
+			if mp.freeList.Len() != 2 {
 				t.Logf("len: %v", mp.freeList.Len())
 				t.FailNow()
 			}
 
 			ino1 := NewInode(10, proto.Mode(os.ModeDir))
 			srcIno, di, st, _ := mp.getDeletedInode(ino1.Inode)
-			if st != proto.OpNotExistErr{
+			if st != proto.OpOk{
 				t.Log(st)
 				t.FailNow()
 			}
-			if di != nil {
-				t.Errorf("di expect is nil, but not nil")
+			if di == nil {
+				t.Errorf("di expect is not nil, but nil")
+				t.FailNow()
+			}
+			if !di.IsExpired {
+				t.Errorf("di expect is expired, but not")
 				t.FailNow()
 			}
 			if srcIno != nil {
@@ -1045,7 +1062,7 @@ func TestMetaPartition_BatchCleanExpiredDeletedInodeCase01(t *testing.T) {
 				t.Errorf("di expect is not nil, but is nil")
 				t.FailNow()
 			}
-			if di.IsExpired != true {
+			if !di.IsExpired {
 				t.Errorf("di expect is expired, but not expired")
 				t.FailNow()
 			}
@@ -1154,8 +1171,8 @@ func TestMetaPartition_BatchCleanExpiredDeletedInodeCase02(t *testing.T) {
 				t.Errorf("clean expired deleted inode failed:%v", err)
 				t.FailNow()
 			}
-			if mp.freeList.Len() != 2 {
-				t.Errorf("free list len mismatch, expect:2, actual:%v", mp.freeList.Len())
+			if mp.freeList.Len() != 3 {
+				t.Errorf("free list len mismatch, expect:3, actual:%v", mp.freeList.Len())
 				t.FailNow()
 			}
 		})

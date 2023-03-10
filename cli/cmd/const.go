@@ -160,6 +160,7 @@ const (
 	CliFlagBitMapAllocatorSt   = "enableBitMapAllocator"
 	CliFlagTrashCleanDuration  = "trashCleanDuration"
 	CliFlagTrashCleanMaxCount  = "trashCleanMaxCount"
+	CliFlagInodeInuse          = "inodeInuse"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

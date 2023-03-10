@@ -334,15 +334,7 @@ func (mp *metaPartition) cleanDeletedInode(dbHandle interface{}, inode uint64) (
 		return
 	}
 
-	if dino.IsEmptyDir() {
-		_, err = mp.inodeDeletedTree.Delete(dbHandle, dino.Inode.Inode)
-		if err != nil {
-			resp.Status = proto.OpErr
-		}
-		return
-	}
-
-	if dino.IsTempFile() {
+	if dino.IsEmptyDir() || dino.IsDeleting() {
 		dino.setExpired()
 		mp.freeList.Push(dino.Inode.Inode)
 		if err = mp.inodeDeletedTree.Update(dbHandle, dino); err != nil {
@@ -395,14 +387,7 @@ func (mp *metaPartition) cleanExpiredInode(dbHandle interface{}, ino uint64) (
 		return
 	}
 
-	if di.IsEmptyDir() {
-		if _, err = mp.inodeDeletedTree.Delete(dbHandle, di.Inode.Inode); err != nil {
-			resp.Status = proto.OpErr
-		}
-		return
-	}
-
-	if di.IsTempFile() {
+	if di.IsEmptyDir() || di.IsDeleting() {
 		di.setExpired()
 		mp.freeList.Push(di.Inode.Inode)
 		if err = mp.inodeDeletedTree.Update(dbHandle, di); err != nil {
@@ -410,7 +395,6 @@ func (mp *metaPartition) cleanExpiredInode(dbHandle interface{}, ino uint64) (
 		}
 		return
 	}
-
 	resp.Status = proto.OpErr
 	return
 }

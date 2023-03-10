@@ -745,7 +745,7 @@ func (i *Inode) GetNLink() uint32 {
 	return i.NLink
 }
 
-func (i *Inode) IsTempFile() bool {
+func (i *Inode) IsDeleting() bool {
 	i.RLock()
 	ok := i.NLink == 0
 	i.RUnlock()

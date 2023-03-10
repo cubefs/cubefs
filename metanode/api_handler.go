@@ -119,6 +119,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/removeOldDelEkRecordFile", m.removeOldDelEKRecordFile)
 	http.HandleFunc("/setRaftStorageParam", m.setRaftStorageParam)
 	http.HandleFunc("/getDeletedDentrys", m.getDeletedDentrysByParentInoHandler)
+	http.HandleFunc("/getInodeInuse", m.getInodeInuse)
 	http.HandleFunc("/getBitInuse", m.getBitInuse)
 	http.HandleFunc("/getInoAllocatorInfo", m.getInodeAllocatorStat)
 	http.HandleFunc("/setSkipStep", m.setSkipStep)
@@ -2386,15 +2387,8 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 	prefix := newPrimaryDeletedDentry(parentIno, "", 0, 0)
 	start := newPrimaryDeletedDentry(parentIno, prev, startTime, 0)
 	end := newPrimaryDeletedDentry(parentIno+1, "", 0, 0)
-	skipFirst := false
-	if len(prev) > 0 {
-		skipFirst = true
-	}
 	err = mp.(*metaPartition).dentryDeletedTree.RangeWithPrefix(prefix, start, end, func(dd *DeletedDentry) (bool, error) {
 		count++
-		if count == 1 && skipFirst {
-			return true, nil
-		}
 		ddentrys = append(ddentrys, dd)
 		if count == batchNum {
 			return false, nil
@@ -2411,8 +2405,7 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 	return
 }
 
-//todo: return bit位
-func (m *MetaNode) getBitInuse(w http.ResponseWriter, r *http.Request) {
+func (m *MetaNode) getInodeInuse(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, "OK")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -2450,10 +2443,54 @@ func (m *MetaNode) getBitInuse(w http.ResponseWriter, r *http.Request) {
 	inoInuse := virtualMP.InodeIDAlloter.GetUsedInos()
 	resp.Data = &struct {
 		Cnt      int      `json:"count"`
-		InoInuse []uint64 `json:"bitInuse"`
+		InoInuse []uint64 `json:"inodeInuse"`
 	}{
 		Cnt:      len(inoInuse),
 		InoInuse: inoInuse,
+	}
+	return
+}
+
+func (m *MetaNode) getBitInuse(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getBitInuse] response %s", err)
+		}
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	virtualMP := mp.(*metaPartition).getVirtualMetaPartitionByID(pid)
+	if virtualMP.InodeIDAlloter == nil || virtualMP.InodeIDAlloter.GetStatus() == allocatorStatusUnavailable {
+		resp.Msg = fmt.Sprintf("allocator disable")
+		return
+	}
+
+	inoInuseBitMap := virtualMP.InodeIDAlloter.GetUsedInosBitMap()
+	resp.Data = &struct {
+		InoInuseBitMap []uint64 `json:"inodeInuseBitMap"`
+	}{
+		InoInuseBitMap: inoInuseBitMap,
 	}
 	return
 }
