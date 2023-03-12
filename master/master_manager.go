@@ -50,11 +50,14 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
 		m.cluster.followerReadManager.reSet()
+
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
 		m.clearMetadata()
 		m.metaReady = false
+		m.cluster.masterClient.AddNode(m.leaderInfo.addr)
+		m.cluster.masterClient.SetLeader(m.leaderInfo.addr)
 	}
 }
 
@@ -88,12 +91,6 @@ func (m *Server) handleApplySnapshot() {
 func (m *Server) handleRaftUserCmd(opt uint32, key string, cmdMap map[string][]byte) (err error) {
 	log.LogInfof("action[handleRaftUserCmd] opt %v, key %v, map len %v", opt, key, len(cmdMap))
 	switch opt {
-	case opSyncDataPartitionsView:
-		// cluster may not have been init when the raft log recovery,message can be ignored,
-		// Later, we can consider changing their two priorities
-		if m.cluster != nil {
-			m.cluster.followerReadManager.updateVolViewFromLeader(key, cmdMap[key])
-		}
 	case opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo:
 		if m.cluster != nil && !m.partition.IsRaftLeader() {
 			m.cluster.apiLimiter.updateLimiterInfoFromLeader(cmdMap[key])

@@ -83,7 +83,7 @@ func (c *MasterClient) UserAPI() *UserAPI {
 }
 
 // Change the leader address.
-func (c *MasterClient) setLeader(addr string) {
+func (c *MasterClient) SetLeader(addr string) {
 	c.Lock()
 	c.leaderAddr = addr
 	c.Unlock()
@@ -143,7 +143,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 		case http.StatusOK:
 			if leaderAddr != host {
 				log.LogDebugf("server Request resp new master[%v] old [%v]", host, leaderAddr)
-				c.setLeader(host)
+				c.SetLeader(host)
 			}
 			var body = &struct {
 				Code int32           `json:"code"`

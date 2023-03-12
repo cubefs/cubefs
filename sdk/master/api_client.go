@@ -131,10 +131,10 @@ func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartiti
 	request.addParam("name", volName)
 
 	lastLeader := api.mc.leaderAddr
-	defer api.mc.setLeader(lastLeader)
+	defer api.mc.SetLeader(lastLeader)
 	randIndex := rand.Intn(len(api.mc.masters))
 
-	api.mc.setLeader(api.mc.masters[randIndex])
+	api.mc.SetLeader(api.mc.masters[randIndex])
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
