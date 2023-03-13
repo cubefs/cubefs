@@ -348,8 +348,27 @@ export default {
         this.editUserDialog = true
         this.editUserForm = Object.assign({}, row)
         this.editUserForm.user_type = this.editUserForm.user_type + ''
-        if (this.editUserForm.user_type === '1') {
-          this.editUserForm.user_type = 'root'
+        if (this.editUserForm.user_id === 'root') {
+          this.typeList = [
+            {
+              value: '1',
+              label: 'root'
+            }
+          ]
+          this.editUserForm.user_type = '1'
+          this.editUserForm.user_type.disable = true
+        } else {
+          this.typeList = [
+            {
+              value: '2',
+              label: 'admin'
+            },
+            {
+              value: '3',
+              label: 'user'
+            }
+          ]
+          this.editUserForm.user_type.disable = false
         }
       }
       if (tag === 'delete') {

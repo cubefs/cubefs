@@ -163,10 +163,6 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 	}
 	userInfo.Mu.Lock()
 	defer userInfo.Mu.Unlock()
-	if userInfo.UserType == proto.UserTypeRoot {
-		err = proto.ErrNoPermission
-		return
-	}
 	var formerAK = userInfo.AccessKey
 	if param.AccessKey != "" {
 		if !proto.IsValidAK(param.AccessKey) {
