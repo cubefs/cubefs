@@ -948,6 +948,12 @@ type nodeSet struct {
 	sync.RWMutex
 }
 
+type nodeSetDecommissionParallelStatus struct {
+	ID          uint64
+	CurTokenNum int32
+	MaxTokenNum int32
+}
+
 func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 	log.LogInfof("action[newNodeSet] id[%v]", id)
 	ns := &nodeSet{
@@ -1045,6 +1051,10 @@ func (ns *nodeSet) UpdateMaxParallel(maxParallel int32) {
 	ns.decommissionDataPartitionList.updateMaxParallel(maxParallel)
 	log.LogDebugf("action[UpdateMaxParallel]nodeSet[%v] decommission limit update to [%v]\n", ns.ID, maxParallel)
 	atomic.StoreInt32(&ns.decommissionParallelLimit, maxParallel)
+}
+
+func (ns *nodeSet) getDecommissionParallelStatus() (int32, int32) {
+	return ns.decommissionDataPartitionList.getDecommissionParallelStatus()
 }
 
 func (t *topology) isSingleZone() bool {
@@ -1768,6 +1778,27 @@ func (zone *Zone) updateDecommissionLimit(limit int32, c *Cluster) (err error) {
 	return
 }
 
+func (zone *Zone) queryDecommissionParallelStatus() (err error, stats []nodeSetDecommissionParallelStatus) {
+	nodeSets := zone.getAllNodeSet()
+
+	if nodeSets == nil {
+		log.LogWarnf("Nodeset form %v is nil", zone.name)
+		return proto.ErrNoNodeSetToQueryDecommissionLimitStatus, stats
+	}
+
+	for _, ns := range nodeSets {
+		curToken, maxToken := ns.getDecommissionParallelStatus()
+		stat := nodeSetDecommissionParallelStatus{
+			ID:          ns.ID,
+			CurTokenNum: curToken,
+			MaxTokenNum: maxToken,
+		}
+		stats = append(stats, stat)
+	}
+	log.LogInfof("All nodeset from %v  decommission limit status %v", zone.name, stats)
+	return
+}
+
 func (zone *Zone) startDecommissionListTraverse(c *Cluster) (err error) {
 	nodeSets := zone.getAllNodeSet()
 
@@ -1876,6 +1907,10 @@ func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {
 	}
 }
 
+func (l *DecommissionDataPartitionList) getDecommissionParallelStatus() (int32, int32) {
+	return atomic.LoadInt32(&l.curParallel), atomic.LoadInt32(&l.parallelLimit)
+}
+
 func (l *DecommissionDataPartitionList) updateMaxParallel(maxParallel int32) {
 	atomic.StoreInt32(&l.parallelLimit, maxParallel)
 }
@@ -1934,19 +1969,24 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 				if dp.UpdateDecommissionStatus() {
 					c.syncUpdateDataPartition(dp)
 				}
-				if dp.IsDecommissionDone() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for done\n",
+				if dp.IsDecommissionSuccess() {
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success\n",
 						dp.PartitionID)
 					l.Remove(dp)
 					l.releaseDecommissionToken()
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
+				} else if dp.IsDecommissionFailed() {
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail\n",
+						dp.PartitionID)
+					l.Remove(dp)
+					l.releaseDecommissionToken()
 				} else if dp.IsDecommissionStopped() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop or initial\n",
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop \n",
 						dp.PartitionID)
 					//stop do not consume token，wait for add again
 					l.Remove(dp)
-				} else if dp.IsDecommissionInitial() { //fixed done ,not release tocken
+				} else if dp.IsDecommissionInitial() { //fixed done ,not release tokcen
 					l.Remove(dp)
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
