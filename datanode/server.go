@@ -207,7 +207,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 
 	// check local partition compare with master ,if lack,then not start
-	if err = s.checkLocalPartitionMatchWithMasterWhenStartDN(); err != nil {
+	if _, err = s.checkLocalPartitionMatchWithMaster(); err != nil {
 		log.LogError(err)
 		exporter.Warning(err.Error())
 		return
@@ -449,20 +449,6 @@ func (s *DataNode) register(cfg *config.Config) {
 type DataNodeInfo struct {
 	Addr                      string
 	PersistenceDataPartitions []uint64
-}
-
-func (s *DataNode) checkLocalPartitionMatchWithMasterWhenStartDN() (err error) {
-	lackPartitions := make([]uint64, 0)
-	lackPartitions, err = s.checkLocalPartitionMatchWithMaster()
-	if err != nil {
-		return
-	}
-	if len(lackPartitions) > 0 {
-		err = fmt.Errorf("LackPartitions %v on datanode %v,datanode cannot start", lackPartitions, s.localServerAddr)
-		log.LogErrorf(err.Error())
-		return
-	}
-	return
 }
 
 func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64, err error) {
