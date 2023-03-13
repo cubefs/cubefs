@@ -7,6 +7,7 @@
 
    overview/introduction
    overview/architecture
+   overview/plan
 
 .. toctree::
    :maxdepth: 2
@@ -26,6 +27,7 @@
    user-guide/volume
    user-guide/file
    user-guide/objectnode
+   user-guide/blobstore
    user-guide/hadoop
    user-guide/k8s
 
