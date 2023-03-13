@@ -19,8 +19,6 @@
 | zoneName      | string       | 指定区域                                                          | 否，默认分配至`default`区域                      |
 | disks         | string slice | \| 格式：\*磁盘挂载路径:预留空间\* \| 预留空间配置范围\[20G,50G\] | 是                                               |
 
-Properties
-
 ## 配置示例
 
 ``` json

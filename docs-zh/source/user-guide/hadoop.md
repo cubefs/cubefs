@@ -4,7 +4,7 @@ Cubefs兼容Hadoop FileSystem接口协议，用户可以使用CubeFS来替换Had
 
 ## 依赖项
 
-- 搭建一个可访问的CubeFS集群，并需要提前[创建卷（文件系统）](volume.md)。
+- 搭建一个可访问的CubeFS集群，并需要提前[创建卷（文件系统）](./volume.md)。
 - CubeFS 提供的可供Java调用的sdk动态库[libcfs.so](https://github.com/cubefs/cubefs/tree/master/libsdk)
 - Hadoop 的 CubeFS插件[cfs-hadoop.jar](https://github.com/cubefs/cubefs-hadoop.git)
 - cfs-hadoop.jar插件的第三方依赖包jna-5.4.0.jar(最小支持版本4.0，建议5.4以上)
