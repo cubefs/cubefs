@@ -27,7 +27,6 @@
    user-guide/file
    user-guide/objectnode
    user-guide/hadoop
-   user-guide/docker
    user-guide/k8s
 
 .. toctree::
