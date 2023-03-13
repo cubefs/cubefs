@@ -46,6 +46,7 @@ type MetadataManager interface {
 	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
+	GetLeaderPartitions() map[uint64]MetaPartition
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -559,6 +560,20 @@ func (m *metadataManager) QuotaGoroutineIsOver() (lsOver bool) {
 
 func (m *metadataManager) QuotaGoroutineInc(num int32) {
 	atomic.AddInt32(&m.curQuotaGoroutineNum, num)
+}
+
+func (m *metadataManager) GetLeaderPartitions() map[uint64]MetaPartition {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	mps := make(map[uint64]MetaPartition)
+	for addr, mp := range m.partitions {
+		if _, leader := mp.IsLeader(); leader {
+			mps[addr] = mp
+		}
+	}
+
+	return mps
 }
 
 // NewMetadataManager returns a new metadata manager.
