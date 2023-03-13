@@ -41,7 +41,7 @@ const (
 	ARM64                 = "arm64"
 	DefaultMasterAddr     = "cn.chubaofs.jd.local"
 
-	StartRetryMaxCount	  = 10
+	StartRetryMaxCount    = 10
 	StartRetryIntervalSec = 5
 )
 
@@ -236,8 +236,10 @@ func moveFile(src, dst string) error {
 			return err
 		}
 
-		err = ioutil.WriteFile(dst, input, 0755)
-		if err != nil {
+		if err = ioutil.WriteFile(dst, input, 0755); err != nil {
+			return err
+		}
+		if err = os.Remove(src); err != nil {
 			return err
 		}
 	}
