@@ -1,4 +1,4 @@
-# 如何使用纠删码存储系统
+# 使用纠删码系统
 
 ## 快速体验
 > 请看[这里](../deploy/node.md) 
@@ -350,18 +350,23 @@ rm -f -r /tmp/normalwal0
 ## 上传测试
 > 可参考CLI部署验证 `deploy/verify`
 
+## 创建纠删码卷
+
+参考[创建卷](./volume.md)
+
 ## 附录
 
 1.  编码策略: 常用策略表
 
-  |类别        |描述                                                                              |
-  |----------- |---------------------------------------------------------------------------------|
-  |EC15P12     |{N: 15, M: 12, L: 0, AZCount: 3, PutQuorum: 24, GetQuorum: 0, MinShardSize: 2048}|
-  |EC6P6       |{N: 06, M: 06, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: 2048}|
-  |EC16P20L2   |{N: 16, M: 20, L: 2, AZCount: 2, PutQuorum: 34, GetQuorum: 0, MinShardSize: 2048}|
-  |EC6P10L2    |{N: 06, M: 10, L: 2, AZCount: 2, PutQuorum: 14, GetQuorum: 0, MinShardSize: 2048}|
-  |EC12P4      |{N: 12, M: 04, L: 0, AZCount: 1, PutQuorum: 15, GetQuorum: 0, MinShardSize: 2048}|
-  |EC3P3       |{N: 6, M: 3, L: 3, AZCount: 3, PutQuorum: 9, GetQuorum: 0, MinShardSize: 2048}   |
+| 类别      | 描述                                                                              |
+|-----------|-----------------------------------------------------------------------------------|
+| EC15P12   | {N: 15, M: 12, L: 0, AZCount: 3, PutQuorum: 24, GetQuorum: 0, MinShardSize: 2048} |
+| EC6P6     | {N: 06, M: 06, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: 2048} |
+| EC16P20L2 | {N: 16, M: 20, L: 2, AZCount: 2, PutQuorum: 34, GetQuorum: 0, MinShardSize: 2048} |
+| EC6P10L2  | {N: 06, M: 10, L: 2, AZCount: 2, PutQuorum: 14, GetQuorum: 0, MinShardSize: 2048} |
+| EC12P4    | {N: 12, M: 04, L: 0, AZCount: 1, PutQuorum: 15, GetQuorum: 0, MinShardSize: 2048} |
+| EC3P3     | {N: 6, M: 3, L: 3, AZCount: 3, PutQuorum: 9, GetQuorum: 0, MinShardSize: 2048}    |
+
 
 *其中N: 数据块数量, M: 校验块数量, L: 本地校验块数量, AZCount: AZ数量,
 PutQuorum: (N + M) / AZCount + N \<= PutQuorum \<= M + N， MinShardSize:
