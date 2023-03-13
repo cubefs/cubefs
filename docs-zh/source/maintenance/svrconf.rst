@@ -7,13 +7,14 @@
    :maxdepth: 2
    :caption: 配置
 
+   configs/master
+   configs/metanode
+   configs/datanode
+   configs/objectnode
+   configs/client
    configs/blobstore/base
    configs/blobstore/rpc
    configs/blobstore/cm
    configs/blobstore/proxy
    configs/blobstore/blobnode
    configs/blobstore/scheduler
-   configs/master
-   configs/metanode
-   configs/datanode
-   configs/objectnode
