@@ -956,7 +956,6 @@ func (partition *DataPartition) UpdateDecommissionStatus() bool {
 		partition.SetDecommissionStatus(DecommissionSuccess)
 		return true
 	}
-	//超过最大重试次数都变成了fixed
 	if partition.isRecover && atomic.LoadUint32(&partition.DecommissionStatus) == DecommissionFail {
 		partition.SetDecommissionStatus(DecommissionFixed)
 		log.LogWarnf("action[UpdateDecommissionStatus] dp[%v] isRecover[%v] change to fixed",
@@ -974,7 +973,7 @@ func (partition *DataPartition) GetDecommissionStatus() uint32 {
 	return atomic.LoadUint32(&partition.DecommissionStatus)
 }
 
-func (partition *DataPartition) IsDecommissionDone() bool {
+func (partition *DataPartition) IsDecommissionSuccess() bool {
 	return partition.GetDecommissionStatus() == DecommissionSuccess
 }
 

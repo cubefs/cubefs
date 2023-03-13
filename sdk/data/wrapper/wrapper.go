@@ -172,7 +172,7 @@ func (w *Wrapper) update() {
 		select {
 		case <-ticker.C:
 			w.UpdateSimpleVolView()
-			w.updateDataPartition(false)
+			w.updateDataPartition(true)
 			w.updateDataNodeStatus()
 		case <-w.stopC:
 			return
@@ -264,11 +264,12 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 		if dp.Status == proto.ReadWrite {
 			dp.MetricsRefresh()
 			rwPartitionGroups = append(rwPartitionGroups, dp)
+			log.LogInfof("updateDataPartition: dp(%v) address(%p) insert to rwPartitionGroups", dp.PartitionID, dp)
 		}
 	}
 
 	// isInit used to identify whether this call is caused by mount action
-	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1))) {
+	if isInit || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1)) {
 		w.refreshDpSelector(rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
@@ -383,7 +384,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	w.Unlock()
 
 	if ok && oldstatus != dp.Status {
-		log.LogInfof("partition: status change (%v) -> (%v)", old, dp)
+		log.LogInfof("partition:dp[%v] address %p status change (%v) -> (%v)", dp.PartitionID, &old, oldstatus, dp.Status)
 	}
 }
 

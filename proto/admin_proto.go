@@ -63,6 +63,7 @@ const (
 	AdminOpFollowerPartitionsRead             = "/master/opFollowerPartitionRead"
 	AdminUpdateDecommissionLimit              = "/admin/updateDecommissionLimit"
 	AdminQueryDecommissionLimit               = "/admin/queryDecommissionLimit"
+	AdminQueryDecommissionToken               = "/admin/queryDecommissionToken"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"

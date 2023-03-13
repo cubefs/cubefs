@@ -4003,6 +4003,29 @@ func (m *Server) updateDecommissionLimit(w http.ResponseWriter, r *http.Request)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+	)
+
+	metric := exporter.NewTPCnt("req_queryDecommissionToken")
+	defer func() {
+		metric.Set(err)
+	}()
+	var stats []nodeSetDecommissionParallelStatus
+	zones := m.cluster.t.getAllZones()
+	for _, zone := range zones {
+		err, zoneStats := zone.queryDecommissionParallelStatus()
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
+		stats = append(stats, zoneStats...)
+	}
+	log.LogDebugf("action[queryDecommissionToken] %v", stats)
+	sendOkReply(w, r, newSuccessHTTPReply(stats))
+}
+
 func (m *Server) queryDecommissionLimit(w http.ResponseWriter, r *http.Request) {
 	limit := m.cluster.DecommissionLimit
 	rstMsg := fmt.Sprintf("decommission limit is %v", limit)

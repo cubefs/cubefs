@@ -147,7 +147,7 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	index := rand.Intn(length)
 	dp = partitions[index]
 	if !isExcluded(dp, exclude) {
-		log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", dp, index)
+		log.LogDebugf("DefaultRandomSelector: select dp[%v] address[%p], index %v", dp, dp, index)
 		return dp
 	}
 
