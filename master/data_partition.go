@@ -950,7 +950,7 @@ func (partition *DataPartition) SetDecommissionStatus(status uint32) {
 	atomic.StoreUint32(&partition.DecommissionStatus, status)
 }
 
-//if status is changed, trigger to sync by raft
+// if status is changed, trigger to sync by raft
 func (partition *DataPartition) UpdateDecommissionStatus() bool {
 	if !partition.isRecover && atomic.LoadUint32(&partition.DecommissionStatus) == DecommissionRunning {
 		partition.SetDecommissionStatus(DecommissionSuccess)
@@ -1027,9 +1027,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 	begin := time.Now()
 	partition.SetDecommissionStatus(DecommissionPrepare)
 	c.syncUpdateDataPartition(partition)
-	partition.RLock()
 
-	partition.RUnlock()
 	// delete if not normal data partition
 	if !proto.IsNormalDp(partition.PartitionType) {
 		c.vols[partition.VolName].deleteDataPartition(c, partition)
@@ -1235,7 +1233,7 @@ func (partition *DataPartition) checkConsumeToken() bool {
 	return false
 }
 
-//only mark stop status or initial
+// only mark stop status or initial
 func (partition *DataPartition) canMarkDecommission() bool {
 	if partition.GetDecommissionStatus() == DecommissionInitial ||
 		partition.GetDecommissionStatus() == DecommissionStop ||

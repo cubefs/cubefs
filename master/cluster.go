@@ -224,6 +224,8 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToReduceReplicaNum()
 	c.scheduleToCheckNodeSetGrpManagerStatus()
 	c.scheduleToCheckFollowerReadCache()
+	c.scheduleToCheckDecommissionDataNode()
+	c.scheduleToCheckDecommissionDisk()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
