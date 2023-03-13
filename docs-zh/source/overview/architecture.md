@@ -2,7 +2,7 @@
 
 ![arc](../pic/cfs-arch-ec.png)
 
-CubeFS由 **元数据子系统（Metadata Subsystem）** ，**数据子系统（Data Subsystem）** 和 **Master节点（Master）** 以及 **对象子系统（Object Subsystem）** 组成，可以通过POSIX/HDFS/S3接口访问存储数据。
+CubeFS由 **元数据子系统（Metadata Subsystem）** ，**数据子系统（Data Subsystem）** 和 **资源管理节点（Master）** 以及 **对象子系统（Object Subsystem）** 组成，可以通过POSIX/HDFS/S3接口访问存储数据。
 
 - **资源管理节点**：由多个Master节点组成，负责异步处理不同类型的任务，如管理数据分片与元数据分片（包括创建、删除、更新以及一致性检查等），检查数据节点或者元数据节点的健康状态，维护管理卷信息等
 
