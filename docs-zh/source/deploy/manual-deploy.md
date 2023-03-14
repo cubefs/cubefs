@@ -78,71 +78,64 @@ $ make build
 
 ### 启动数据节点
 
-1. 准备数据目录
+::: tip 推荐
+使用单独磁盘作为数据目录，配置多块磁盘能够达到更高的性能。
+:::
 
-   **推荐** 使用单独磁盘作为数据目录，配置多块磁盘能够达到更高的性能。
-
+- 准备数据目录
    **磁盘准备**
-
-   > 1.1 查看机器磁盘信息，选择给CubeFS使用的磁盘
-   >
-   > > ``` bash
-    > > fdisk -l
-    > > ```
-   >
-   > 1.2 格式化磁盘，建议格式化为XFS
-   >
-   > > ``` bash
-    > > mkfs.xfs -f /dev/sdx
-    > > ```
-   >
-   > 1.3 创建挂载目录
-   >
-   > > ``` bash
-    > > mkdir /data0
-    > > ```
-   >
-   > 1.4 挂载磁盘
-   >
-   > > ``` bash
-    > > mount /dev/sdx /data0
-    > > ```
-
-2. 启动数据节点
-
+  - 查看机器磁盘信息，选择给CubeFS使用的磁盘
    ``` bash
-   ./cfs-server -c datanode.json
+   fdisk -l
+   ```
+  - 格式化磁盘，建议格式化为XFS
+   ``` bash
+   mkfs.xfs -f /dev/sdx
+   ```
+  - 创建挂载目录
+   ``` bash
+   mkdir /data0
+   ```
+  - 挂载磁盘
+   ``` bash
+   mount /dev/sdx /data0
    ```
 
-   示例 `datanode.json` :注意：datanode服务最少应该启动4个节点实例
+- 启动数据节点
 
-   ``` json
-   {
-     "role": "datanode",
-     "listen": "17310",
-     "prof": "17320",
-     "logDir": "/cfs/datanode/log",
-     "logLevel": "info",
-     "raftHeartbeat": "17330",
-     "raftReplica": "17340",
-     "raftDir":"/cfs/datanode/log",
-     "consulAddr": "http://consul.prometheus-cfs.local",
-     "exporterPort": 9502,
-     "masterAddr": [
-        "127.0.0.1:17010",
-        "127.0.0.1:17010",
-        "127.0.0.1:17010"
-     ],
-     "disks": [
-        "/data0:10737418240",
-        "/data1:10737418240"
-    ]
-   }
-   ```
+ ``` bash
+./cfs-server -c datanode.json
+```
+
+示例 `datanode.json` :注意：datanode服务最少应该启动4个节点实例
+
+``` json
+{
+  "role": "datanode",
+  "listen": "17310",
+  "prof": "17320",
+  "logDir": "/cfs/datanode/log",
+  "logLevel": "info",
+  "raftHeartbeat": "17330",
+  "raftReplica": "17340",
+  "raftDir":"/cfs/datanode/log",
+  "consulAddr": "http://consul.prometheus-cfs.local",
+  "exporterPort": 9502,
+  "masterAddr": [
+     "127.0.0.1:17010",
+     "127.0.0.1:17010",
+     "127.0.0.1:17010"
+  ],
+  "disks": [
+     "/data0:10737418240",
+     "/data1:10737418240"
+ ]
+}
+```
 
 详细配置参数请参考 [DataNode详细配置](../maintenance/configs/datanode.md)。
 
-### 启动对象存储节点
+### 启动对象存储节点【可选】
 
 如果需要使用对象存储服务则需要部署ObjectNode服务
 
@@ -171,6 +164,6 @@ $ make build
 
 配置文件的详细信息请参考 [ObjectNode详细配置](../maintenance/configs/objectnode.md)
 
-### 启动纠删码子系统
+### 启动纠删码子系统【可选】
 
 部署参考[使用纠删码存储系统](../user-guide/blobstore.md)。

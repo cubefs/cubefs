@@ -6,7 +6,7 @@
 
 启用故障域需要增加cluster级别的配置，否则无法区分，新增zone是故障域zone还是归属于原有cross_zone
 
-``` bash
+```bash
 FaultDomain               bool  // 默认false
 ```
 
@@ -14,13 +14,13 @@ FaultDomain               bool  // 默认false
 
 保留：
 
-``` bash
+```bash
 crossZone        bool  //跨zone
 ```
 
 新增：
 
-``` bash
+```bash
 default_priority  bool  // true优先选择原有的zone，而不是从故障域里面分配
 ```
 
@@ -51,7 +51,7 @@ default_priority  bool  // true优先选择原有的zone，而不是从故障域
 
 创建使用故障域的volume ---------
 
-``` bash
+```bash
 curl "http://192.168.0.11:17010/admin/createVol?name=volDomain&capacity=1000&owner=cfs&crossZone=true&normalZonesFirst=false"
 ```
 
@@ -64,21 +64,24 @@ curl "http://192.168.0.11:17010/admin/createVol?name=volDomain&capacity=1000&own
 
 ### 查看故障域是否启用
 
-``` bash
+```bash
 curl "http://192.168.0.11:17010/admin/getIsDomainOn"
 ```
 
 ### 查看故障域使用情况
 
-``` bash
+```bash
 curl -v  "http://192.168.0.11:17010/admin/getDomainInfo"
 ```
 
 查看故障域copyset group的使用情况 ---------.. code-block:: bash
 
-> curl "<http://192.168.0.11:17010/admin/getDomainNodeSetGrpInfo?id=37>"
+```bash
+curl "http://192.168.0.11:17010/admin/getDomainNodeSetGrpInfo?id=37"
+```
 
 更新非故障域数据使用上限 ---------.. code-block:: bash
 
-> curl
-> "<http://192.168.0.11:17010/admin/updateZoneExcludeRatio?ratio=0.7>"
+```bash
+curl "http://192.168.0.11:17010/admin/updateZoneExcludeRatio?ratio=0.7"
+```
