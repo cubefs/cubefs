@@ -13,12 +13,13 @@ curl -v "http://192.168.0.11:17010/dataNode/decommission?addr=192.168.0.33:17310
 | 参数  | 类型  | 描述  |
 | --- | --- | --- |
 | addr | string | 数据节点地址 |
+
 从集群中下线某个数据节点, 该数据节点上的所有数据分片都会被异步的迁移到集群中其它可用的数据节点
 
 #### 设置迁移速率
 当被迁移的节点有大量的extent文件时，其中副本所在的其他节点带来大量的读IO，以及对被迁移到的节点造成大量的写IO，如果负载较高时，可以限制迁移的速率：
 
-```
+```shell
 curl -v "http://192.168.0.11:17010/admin/setNodeInfo?autoRepairRate=2000"
 ```
 
@@ -34,7 +35,7 @@ curl -v "http://192.168.0.11:17010/admin/setNodeInfo?autoRepairRate=2000"
 #### 查看下线迁移状态
 如果需要判断下线是否完成，可以看下当前当前集群的data partition状态
 
-```
+```shell
 curl -v "http://192.168.0.11:17010/dataPartition/diagnose"
 ```
 
@@ -57,8 +58,8 @@ curl -v "http://192.168.0.11:17010/dataPartition/diagnose"
 ### 磁盘故障处理
 当datanode节点上发生某个磁盘故障时，可以根据具体磁盘执行该磁盘的下线迁移
 
-```
-http://192.168.0.11:17010/disk/decommission?addr=192.168.0.30:17310&disk=/path/to/disk/dir"
+```shell
+curl http://192.168.0.11:17010/disk/decommission?addr=192.168.0.30:17310&disk=/path/to/disk/dir"
 ```
 
 
@@ -76,7 +77,7 @@ http://192.168.0.11:17010/disk/decommission?addr=192.168.0.30:17310&disk=/path/t
 #### 下线节点
 从集群中下线某个元数据节点, 该节点上的所有元数据分片都会被异步的迁移到集群中其它可用的元数据节点。
 
-```
+```shell
 curl -v "http://10.196.59.198:17010/metaNode/decommission?addr=10.196.59.202:17210"
 ```
 
@@ -99,7 +100,7 @@ curl -v "http://192.168.0.11:17010/admin/setNodeRdOnly?addr=192.168.0.40:17210&n
 #### 查看下线迁移状态
 如果需要判断下线是否完成，可以看下当前当前集群的meta partition状态
 
-```
+```shell
 curl -v "http://192.168.0.11:17010/metaPartition/diagnose"
 ```
 
@@ -118,7 +119,7 @@ curl -v "http://192.168.0.11:17010/metaPartition/diagnose"
 }
 ```
 
-## Blobstore子系统
+## 纠删码子系统
 
 Access、Proxy均为无状态节点，不涉及到数据搬迁，这里仅介绍Clustermgr与Blobnode的故障处理
 

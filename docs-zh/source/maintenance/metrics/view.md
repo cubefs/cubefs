@@ -1,5 +1,10 @@
 # 可视化配置
-## CubeFS
+## Grafana配置模板
+
+::: tip 提示
+当前纠删码子系统的监控指标模板还未包含在对应配置模块示例中，后续完善
+:::
+
 + 可以通过grafana来展示监控数据，如下图
   + 配置模板参考docker/monitor/grafana/provisioning/dashboards/*.json文件
 
@@ -10,7 +15,7 @@
   + [consul安装](https://developer.hashicorp.com/consul/docs/install)
   + [grafana安装](https://grafana.com/docs/grafana/v8.4/getting-started/getting-started/)
 
-## Blobstore
+## 纠删码子系统指标
 
 可以结合前面介绍的监控指标项配置个性化的监控面板，如以下面板示例。
 
