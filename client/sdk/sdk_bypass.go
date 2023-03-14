@@ -117,6 +117,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"path"
 	gopath "path"
 	"path/filepath"
 	"reflect"
@@ -182,6 +183,8 @@ const (
 	RequestMasterRetryInterval = time.Second * 2
 	CommonRetryTime            = 5
 	ListenRetryTime            = 300
+
+	DefaultPidFile = "cfs.pid"
 )
 
 var (
@@ -745,6 +748,9 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 	}
 	c := newClient(conf, C.GoString(configPath))
 	if isMysql() {
+		if c.pidFile == "" {
+			c.pidFile = path.Join(path.Dir(C.GoString(configPath)), DefaultPidFile)
+		}
 		if err := lockPidFile(c.pidFile); err != nil {
 			syslog.Printf("lock pidFile %s failed: %v\n", c.pidFile, err)
 			return C.int64_t(statusEIO)
