@@ -635,6 +635,14 @@ func (p *Packet) PacketOkWithBody(reply []byte) {
 	p.ArgLen = 0
 }
 
+// attention use for tmp byte arr, eg: json marshal data
+func (p *Packet) PacketOkWithByte(reply []byte) {
+	p.Size = uint32(len(reply))
+	p.Data = reply
+	p.ResultCode = OpOk
+	p.ArgLen = 0
+}
+
 // PacketErrorWithBody sets the packet with error code whose body is filled with the given data.
 func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 	p.Size = uint32(len(reply))

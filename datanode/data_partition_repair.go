@@ -47,7 +47,7 @@ type DataPartitionRepairTask struct {
 
 func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteRecordFileSize int64, source, leaderAddr string) (task *DataPartitionRepairTask) {
 	task = &DataPartitionRepairTask{
-		extents:                        make(map[uint64]*storage.ExtentInfo),
+		extents:                        make(map[uint64]*storage.ExtentInfo, len(extentFiles)),
 		ExtentsToBeCreated:             make([]*storage.ExtentInfo, 0),
 		ExtentsToBeRepaired:            make([]*storage.ExtentInfo, 0),
 		LeaderTinyDeleteRecordFileSize: tinyDeleteRecordFileSize,
