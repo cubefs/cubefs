@@ -80,7 +80,7 @@ var (
 	NormalExtentFilter = func() ExtentFilter {
 		now := time.Now()
 		return func(ei *ExtentInfo) bool {
-			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > RepairInterval && ei.IsDeleted == false && ei.Size > 0
+			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > RepairInterval && !ei.IsDeleted && ei.Size > 0
 		}
 	}
 
@@ -539,7 +539,7 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 
 // GetAllWatermarks returns all the watermarks.
 func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentInfo, tinyDeleteFileSize int64, err error) {
-	extents = make([]*ExtentInfo, 0)
+	extents = make([]*ExtentInfo, 0, len(s.extentInfoMap))
 	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
 	s.eiMutex.RLock()
 	for _, extentID := range s.extentInfoMap {
