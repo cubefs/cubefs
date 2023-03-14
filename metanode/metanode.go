@@ -156,7 +156,7 @@ func containsID(arr []uint64, element uint64) (ok bool) {
 func getMetaPartitionInfoWithRetry(partitionID uint64) (partitionInfo *proto.MetaPartitionInfo, err error) {
 	retryCount := 3
 	for index := 0; index < retryCount; retryCount++ {
-		if partitionInfo, err = masterClient.ClientAPI().GetMetaPartition(partitionID); err == nil {
+		if partitionInfo, err = masterClient.ClientAPI().GetMetaPartition(partitionID, ""); err == nil {
 			break
 		}
 		time.Sleep(time.Millisecond * 100)

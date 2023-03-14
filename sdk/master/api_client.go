@@ -114,9 +114,10 @@ func (api *ClientAPI) GetToken(volName, tokenKey string) (token *proto.Token, er
 	return
 }
 
-func (api *ClientAPI) GetMetaPartition(partitionID uint64) (partition *proto.MetaPartitionInfo, err error) {
+func (api *ClientAPI) GetMetaPartition(partitionID uint64, volName string) (partition *proto.MetaPartitionInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.ClientMetaPartition)
 	request.addParam("id", strconv.FormatUint(partitionID, 10))
+	request.addParam("name", volName)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

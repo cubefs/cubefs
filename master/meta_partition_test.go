@@ -20,6 +20,7 @@ func TestMetaPartition(t *testing.T) {
 	createMetaPartition(commonVol, t)
 	maxPartitionID := commonVol.maxPartitionID()
 	getMetaPartition(commonVol.Name, maxPartitionID, t)
+	getMetaPartition("", maxPartitionID, t)      //empty vol name
 	loadMetaPartitionTest(commonVol, maxPartitionID, t)
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)

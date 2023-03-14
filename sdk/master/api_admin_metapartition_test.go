@@ -42,7 +42,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 
 	//Get Meta Partition Info
 	var metaPartitionInfo *proto.MetaPartitionInfo
-	metaPartitionInfo, err = testMc.ClientAPI().GetMetaPartition(testMetaPartitionID)
+	metaPartitionInfo, err = testMc.ClientAPI().GetMetaPartition(testMetaPartitionID, "")
 	if err != nil {
 		t.Fatalf("GetMetaPartition failed, err %v", err)
 	}
@@ -137,7 +137,7 @@ func TestMetaLearner(t *testing.T) {
 
 	//Get Meta Partition Info
 	var metaPartitionInfo *proto.MetaPartitionInfo
-	metaPartitionInfo, err = testMc.ClientAPI().GetMetaPartition(testMetaPartitionID)
+	metaPartitionInfo, err = testMc.ClientAPI().GetMetaPartition(testMetaPartitionID, "")
 	if err != nil {
 		t.Fatalf("GetMetaPartition failed, err %v", err)
 	}

@@ -93,7 +93,7 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+			if partition, err = client.ClientAPI().GetMetaPartition(partitionID, ""); err != nil {
 				return
 			}
 			stdout(formatMetaPartitionInfo(partition))
@@ -164,7 +164,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, pid := range diagnosis.CorruptMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+				if partition, err = client.ClientAPI().GetMetaPartition(pid, ""); err != nil {
 					stdout("Partition not found, err:[%v]", err)
 					return
 				}
@@ -179,7 +179,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, pid := range diagnosis.LackReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+				if partition, err = client.ClientAPI().GetMetaPartition(pid, ""); err != nil {
 					stdout("Partition not found, err:[%v]", err)
 					return
 				}
@@ -278,7 +278,7 @@ func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string,
 		}
 		outPut = sb.String()
 	}()
-	if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil || partition == nil {
+	if partition, err = client.ClientAPI().GetMetaPartition(pid, ""); err != nil || partition == nil {
 		errorReports = append(errorReports, fmt.Sprintf("partition not found, err:[%v]", err))
 		return
 	}
@@ -615,7 +615,7 @@ func newMetaPartitionResetRecoverCmd(client *master.MasterClient) *cobra.Command
 			if err != nil {
 				return
 			}
-			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+			if partition, err = client.ClientAPI().GetMetaPartition(partitionID, ""); err != nil {
 				return
 			}
 			stdout(fmt.Sprintf("Set meta partition[%v] IsRecover[%v] to false.\n", partition.PartitionID, partition.IsRecover))
@@ -656,7 +656,7 @@ func newMetaPartitionResetCursorCmd(client *master.MasterClient) *cobra.Command 
 				return
 			}
 
-			if mp, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+			if mp, err = client.ClientAPI().GetMetaPartition(partitionID, ""); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -708,7 +708,7 @@ func newMetaPartitionListAllInoCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			if mp, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+			if mp, err = client.ClientAPI().GetMetaPartition(partitionID, ""); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -769,7 +769,7 @@ func newMetaPartitionCheckSnapshot(client *master.MasterClient) *cobra.Command {
 				stdout("%v\n", err)
 				return
 			}
-			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+			if partition, err = client.ClientAPI().GetMetaPartition(partitionID, ""); err != nil {
 				return
 			}
 			for index, peer := range partition.Peers {
@@ -875,7 +875,7 @@ func newMetaDataChecksum(mc *master.MasterClient) *cobra.Command {
 			}
 
 			var mpInfo *proto.MetaPartitionInfo
-			mpInfo, err = mc.ClientAPI().GetMetaPartition(pid)
+			mpInfo, err = mc.ClientAPI().GetMetaPartition(pid, "")
 			if err != nil {
 				stdout("get meta partition info failed, mpid:%v, error:%v\n", pid, err)
 				return
@@ -1009,7 +1009,7 @@ func newCheckInodeTree(mc *master.MasterClient) *cobra.Command {
 			}
 
 			var mpInfo *proto.MetaPartitionInfo
-			mpInfo, err = mc.ClientAPI().GetMetaPartition(pid)
+			mpInfo, err = mc.ClientAPI().GetMetaPartition(pid, "")
 			if err != nil {
 				stdout("get meta partition info failed, mpid:%v, error:%v", pid, err)
 				return
@@ -1199,7 +1199,7 @@ func newMetaPartitionSetReuseStateCmd(client *master.MasterClient) *cobra.Comman
 			if err != nil {
 				return
 			}
-			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+			if partition, err = client.ClientAPI().GetMetaPartition(partitionID, ""); err != nil {
 				return
 			}
 			if partition.DisableReuse && !optEnableState {

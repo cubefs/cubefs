@@ -1936,7 +1936,7 @@ func getExtentsByMPs(client *master.MasterClient, volumeName string) (
 				}
 
 				log.LogInfof("volume:%s, mp:%v", volumeName, mpID)
-				metaPartitionInfo, errGetMPInfo := client.ClientAPI().GetMetaPartition(mpID)
+				metaPartitionInfo, errGetMPInfo := client.ClientAPI().GetMetaPartition(mpID, "")
 				if errGetMPInfo != nil {
 					errorCh <- errGetMPInfo
 					log.LogErrorf("action[getExtentsByMPs] get cluster volume[%s] mp[%v] info failed: %v",

@@ -4898,16 +4898,13 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		err         error
 		partitionID uint64
+		vol *Vol
 		mp          *MetaPartition
 	)
 	metrics := exporter.NewTPCnt(proto.ClientMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
 
@@ -4990,6 +4987,22 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		return mpInfo
 	}
 
+	volName := r.FormValue(nameKey)
+	if volName != "" {
+		if vol, err = m.cluster.getVol(volName); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+			return
+		}
+		if mp, err = vol.metaPartitionByVirtualPID(partitionID); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+			return
+		}
+	} else {
+		if mp, err = m.cluster.getMetaPartitionByVirtualPID(partitionID); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+			return
+		}
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(toInfo(mp)))
 }
 

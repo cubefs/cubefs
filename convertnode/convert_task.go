@@ -121,7 +121,7 @@ func formatMetaPartitionsIdToString(partitionsId []uint64) string {
 }
 
 func (task *ConvertTask) mpGetMpDetailInfo() (err error) {
-	if task.mpInfo, err = task.mc.clientAPI().GetMetaPartition(task.info.RunningMP); err != nil {
+	if task.mpInfo, err = task.mc.clientAPI().GetMetaPartition(task.info.RunningMP, ""); err != nil {
 		log.LogErrorf("action[mpGetMpDetailInfo] task[%s] MP[%v] GetMetaPartition failed, err[%v]",
 			task.taskName(), task.info.VolName, err)
 		return
@@ -220,7 +220,7 @@ func (task *ConvertTask) mpAddLearner() (err error) {
 }
 
 func (task *ConvertTask) mpWaitSync() (err error) {
-	if task.mpInfo, err = task.mc.clientAPI().GetMetaPartition(task.info.RunningMP); err != nil {
+	if task.mpInfo, err = task.mc.clientAPI().GetMetaPartition(task.info.RunningMP, ""); err != nil {
 		log.LogErrorf("action[mpWaitSync] task[%s] MP[%v] get meta partition info failed, err[%v]",
 			task.taskName(), task.info.RunningMP, err)
 		return
@@ -366,7 +366,7 @@ func (task *ConvertTask) mpWaitStable() (err error) {
 		return
 	}
 
-	if task.mpInfo, err = task.mc.clientAPI().GetMetaPartition(task.info.RunningMP); err != nil {
+	if task.mpInfo, err = task.mc.clientAPI().GetMetaPartition(task.info.RunningMP, ""); err != nil {
 		log.LogErrorf("action[mpWaitStable] task[%s] MP[%v] GetMetaPartition failed, err[%v]",
 			task.taskName(), task.info.RunningMP, err)
 		return
@@ -404,7 +404,7 @@ func (task *ConvertTask) mpWaitInterval() (err error) {
 		return
 	}
 
-	if task.mpInfo, err = task.mc.clientAPI().GetMetaPartition(task.info.RunningMP); err != nil {
+	if task.mpInfo, err = task.mc.clientAPI().GetMetaPartition(task.info.RunningMP, ""); err != nil {
 		log.LogErrorf("action[mpWaitInterval] task[%s] MP[%v] GetMetaPartition failed, err[%v]",
 			task.taskName(), task.info.RunningMP, err)
 		return
