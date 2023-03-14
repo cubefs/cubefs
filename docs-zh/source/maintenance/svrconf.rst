@@ -15,6 +15,7 @@
    configs/blobstore/base
    configs/blobstore/rpc
    configs/blobstore/cm
+   configs/blobstore/access
    configs/blobstore/proxy
    configs/blobstore/blobnode
    configs/blobstore/scheduler
