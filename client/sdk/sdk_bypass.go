@@ -180,6 +180,8 @@ const (
 	dentryValidDuration   = time.Hour
 
 	RequestMasterRetryInterval = time.Second * 2
+	CommonRetryTime            = 5
+	ListenRetryTime            = 300
 )
 
 var (
@@ -641,41 +643,53 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 				},
 			}
 		}
-		gClientManager.wg.Add(2)
-		go func() {
-			defer gClientManager.wg.Done()
-			defer func() {
+
+		var ln net.Listener
+
+		i := 0
+		for ; i < ListenRetryTime; i++ {
+			ln, err = lc.Listen(context.Background(), "tcp", server.Addr)
+			if err == nil {
+				break
+			}
+			if !useROWNotify() {
+				syslog.Printf("listen prof port [%v] failed. No listen any port.", gClientManager.profPort)
 				gClientManager.profPort = 0
-			}()
-			i := 0
-			for ; i < 300; i++ {
-				ln, listenErr := lc.Listen(context.Background(), "tcp", server.Addr)
-				if listenErr == nil {
-					listenErr = server.Serve(ln)
-					if listenErr == http.ErrServerClosed {
+				break
+			}
+			if i%30 == 0 {
+				syslog.Printf("listen prof port [%v] failed: %v, try %d times", gClientManager.profPort, err, i+1)
+			}
+			time.Sleep(time.Second)
+		}
+		if i == ListenRetryTime {
+			syslog.Printf("listen prof port [%v] failed. exit.", gClientManager.profPort)
+			os.Exit(1)
+		}
+		if gClientManager.profPort != 0 {
+			gClientManager.wg.Add(2)
+			go func() {
+				defer gClientManager.wg.Done()
+				for i = 0; i < CommonRetryTime; i++ {
+					err = server.Serve(ln)
+					if err == http.ErrServerClosed {
 						syslog.Printf("Stop listen prof port [%v]", gClientManager.profPort)
 						break
 					}
 				}
-				if i%30 == 0 {
-					syslog.Printf("listen prof port [%v] failed: %v, try %d times", gClientManager.profPort, listenErr, i+1)
+				if i == CommonRetryTime {
+					syslog.Printf("Serve prof port [%v] failed: %v.", gClientManager.profPort, err)
+					if useROWNotify() {
+						os.Exit(1)
+					}
 				}
-				if !useROWNotify() {
-					syslog.Printf("listen prof port [%v] failed. No listen any port.", gClientManager.profPort)
-					break
-				}
-				time.Sleep(time.Second)
-			}
-			if i == 300 {
-				syslog.Printf("listen prof port [%v] failed. exit.", gClientManager.profPort)
-				os.Exit(1)
-			}
-		}()
-		go func() {
-			defer gClientManager.wg.Done()
-			<-gClientManager.stopC
-			server.Shutdown(context.Background())
-		}()
+			}()
+			go func() {
+				defer gClientManager.wg.Done()
+				<-gClientManager.stopC
+				server.Shutdown(context.Background())
+			}()
+		}
 	}
 
 	syslog.Printf(getVersionInfoString())
