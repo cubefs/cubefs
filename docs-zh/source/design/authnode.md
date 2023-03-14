@@ -12,7 +12,7 @@
 
 `Authnode` 是为 CubeFS 提供通用认证和授权框架的安全节点。此外， `Authnode` 还充当对称密钥和非对称密钥的集中密钥存储。`Authnode` 采用并定制了基于票证的 `Kerberos` 认证思想。具体来说，当客户端节点（ `Master 、 Meta 、 Data 或 client `节点）访问服务时，首先需要在 `Authnode` 中展示用于身份验证的共享密钥。如果认证成功， Authnode 将专门为该服务颁发一个限时票证。出于授权的目的，功能嵌入到票证中，以指示 谁可以在什么资源上做什么 。
 
-![Architecture](./pic/authflow.png){.align-center}
+![Architecture](./pic/authflow.png)
 
 在`Authnode` 的上下文中，我们将负责初始化一个服务请求的节点定义为 `Client` ，而响应该请求的节点定义为 `Server` 。这样，任何 CubeFS 节点都可以充当 `Client` 或者 `Server` 。
 

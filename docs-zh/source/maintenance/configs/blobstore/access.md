@@ -1,4 +1,4 @@
-# access
+# Access
 
 > `access` 是接入模块，主要负责数据上传、下载、删除等。access的配置是基于[公有配置](./base.md)，以下配置说明主要针对于access的私有配置。
 

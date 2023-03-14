@@ -1,4 +1,4 @@
-## Blobstore RPC 配置
+## 纠删码 RPC 配置
 
 ### 单点配置Client
 ```json

@@ -312,21 +312,13 @@ nohup ./access -f access.conf
 
 ### 配置说明
 
-1.  
-
-    clustermgr
-
-    :   1\) code_mode_policies(编码模式策略) 示例:
-
-        ``` json
-        {
-           "code_mode" : "EC3P3" # 具体策略方案，详见附录
-           "min_size" : 0 # 最小上传对象大小为0
-           "max_size" : 1024 # 最大上传对象大小为1024
-           "size_ratio" : 1 # 不同策略的存储空间比列
-           "enable" : true # 是否启用这个策略,ture代表启用，false不启用
-        }
-        ```
+- [通用配置说明](../maintenance/configs/blobstore/base.md)
+- [rpc配置说明](../maintenance/configs/blobstore/rpc.md)
+- [clustermgr配置说明](../maintenance/configs/blobstore/cm.md)
+- [access配置说明](../maintenance/configs/blobstore/access.md)
+- [blobnode配置说明](../maintenance/configs/blobstore/blobnode.md)
+- [proxy配置说明](../maintenance/configs/blobstore/proxy.md)
+- [scheduler配置说明](../maintenance/configs/blobstore/scheduler.md)
 
 ## 部署提示
 
@@ -348,7 +340,12 @@ rm -f -r /tmp/normalwal0
 2.  所有模块部署成功后，上传验证需要延缓一段时间，等待创建卷成功。
 
 ## 上传测试
-> 可参考CLI部署验证 `deploy/verify`
+
+> 可参考[CLI部署验证](../deploy/verify.md)
+
+## 修改Master配置支持纠删码
+
+修改Master配置文件中的`ebsAddr`配置项（[更多配置参考](../maintenance/configs/master.md)），配置为Access节点注册的Consul地址。
 
 ## 创建纠删码卷
 
@@ -368,9 +365,8 @@ rm -f -r /tmp/normalwal0
 | EC3P3     | {N: 6, M: 3, L: 3, AZCount: 3, PutQuorum: 9, GetQuorum: 0, MinShardSize: 2048}    |
 
 
-*其中N: 数据块数量, M: 校验块数量, L: 本地校验块数量, AZCount: AZ数量,
-PutQuorum: (N + M) / AZCount + N \<= PutQuorum \<= M + N， MinShardSize:
-最小shard大小,将数据连续填充到 0-N 分片中，如果数据大小小于
-MinShardSize*N，则与零字节对齐\*，详见
-[代码](https://github.com/cubefs/cubefs/blob/release-3.2.0/blobstore/common/codemode/codemode.go)
+其中
+- N: 数据块数量, M: 校验块数量, L: 本地校验块数量, AZCount: AZ数量
+- PutQuorum: (N + M) / AZCount + N \<= PutQuorum \<= M + N
+- MinShardSize: 最小shard大小,将数据连续填充到 0-N 分片中，如果数据大小小于MinShardSize*N，则与零字节对齐，详见[代码](https://github.com/cubefs/cubefs/blob/release-3.2.0/blobstore/common/codemode/codemode.go)
 。
