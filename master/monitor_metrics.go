@@ -383,11 +383,13 @@ func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
 }
 
 func (mm *monitorMetrics) setDiskErrorMetric() {
+	// key: addr_diskpath, val: addr
 	deleteBadDisks := make(map[string]string)
 	for k, v := range mm.badDisks {
 		deleteBadDisks[k] = v
 		delete(mm.badDisks, k)
 	}
+
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
 		if !ok {
@@ -396,9 +398,10 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 		for _, badDisk := range dataNode.BadDisks {
 			for _, partition := range dataNode.DataPartitionReports {
 				if partition.DiskPath == badDisk {
-					mm.diskError.SetWithLabelValues(1, dataNode.Addr, badDisk)
-					mm.badDisks[badDisk] = dataNode.Addr
-					delete(deleteBadDisks, badDisk)
+					key := fmt.Sprintf("%s_%s", dataNode.Addr, badDisk)
+					mm.diskError.SetWithLabelValues(1, dataNode.Addr, key)
+					mm.badDisks[key] = dataNode.Addr
+					delete(deleteBadDisks, key)
 					break
 				}
 			}
