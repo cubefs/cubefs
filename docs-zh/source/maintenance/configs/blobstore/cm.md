@@ -1,4 +1,4 @@
-## clustermgr 配置
+## Clustermgr 配置
 
 ### 关键配置
 

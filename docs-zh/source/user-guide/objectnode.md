@@ -1,6 +1,6 @@
 # 使用对象存储
-## 启动对象存储子系统
-通过执行如下的命令来启动对象存储子系统ObjectNode
+## 启动对象网关
+通过执行如下的命令来启动对象网关ObjectNode
 
 ```bash
 nohup cfs-server -c objectnode.json &

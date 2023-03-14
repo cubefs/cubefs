@@ -1,9 +1,31 @@
 # CLI验证
 
-## CubeFS 
+## 验证文件系统挂载
 
+### 创建卷
 
-## Blobstore
+> 创建纠删码卷请参考[创建卷章节](../user-guide/volume.md)
+
+```bash
+./build/bin/cfs-cli volume create ltptest ltp
+# 查看卷信息
+./build/bin/cfs-cli volume info ltptest
+```
+### 启动客户端
+    + /home/cfs/client/mnt即为挂载点，代表挂载成功
+```bash
+./build/bin/cfs-client -c /home/data/conf/client.conf
+df -h
+Filesystem      Size  Used Avail Use% Mounted on
+udev            3.9G     0  3.9G   0% /dev
+tmpfs           796M   82M  714M  11% /run
+/dev/sda1        98G   48G   45G  52% /
+tmpfs           3.9G   11M  3.9G   1% /dev/shm
+cubefs-ltptest   10G     0   10G   0% /home/cfs/client/mnt
+...
+```
+
+## 验证纠删码子系统
 > 小提示: cli 是为 blobstore 提供的交互式命令行管理工具, 配置 cli
 > 后能够更方便地使用, 用 help 可以查看帮助信息
 ### 启动CLI
