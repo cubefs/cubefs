@@ -40,7 +40,7 @@ $ sh build.sh
 
 3.  **语言环境**
 
-    > [Go](https://go.dev/) (1.17.x)
+    > [Go](https://go.dev/) (1.16.x)
 
 ### 启动clustermgr
 
@@ -48,47 +48,49 @@ $ sh build.sh
 
 1.  启动（三节点集群）
 
-``` bash
+```bash
+# 示例，推荐采用进程托管启停服务，下同
 nohup ./clustermgr -f clustermgr.conf
 nohup ./clustermgr -f clustermgr1.conf
 nohup ./clustermgr -f clustermgr2.conf
 ```
 
-2.  三个节点的集群配置，示例节点一：`clustermgr.conf`
+2. 三个节点的集群配置，示例节点一：`clustermgr.conf`
 
-``` json
+```json
 {
      "bind_addr":":9998",
      "cluster_id":1,
-     "idc":["z0"],#集群部署模式，可以制定多个AZ
-     "chunk_size": 16777216, # blobnode中对应的chunk的大小
+     "idc":["z0"],
+     "chunk_size": 16777216,
      "log": {
          "level": "info",
-         "filename": "./run/logs/clustermgr.log"#运行日志输出路径
+         "filename": "./run/logs/clustermgr.log"
       },
-     "auth": {# 鉴权配置
+     "auth": {
          "enable_auth": false,
          "secret": "testsecret"
      },
      "region": "test-region",
      "db_path":"./run/db0",
-     "code_mode_policies": [ # 编码模式
+     "code_mode_policies": [ 
          {"mode_name":"EC3P3","min_size":0,"max_size":50331648,"size_ratio":1,"enable":true}
      ],
-     "raft_config": { # raft 集群配置
+     "raft_config": {
          "server_config": {
              "nodeId": 1,
-             "listen_port": 10110, #与menber中对应nodeID的host端口保持一致
+             "listen_port": 10110,
              "raft_wal_dir": "./run/raftwal0"
          },
          "raft_node_config":{
              "node_protocol": "http://",
-             "members": [ # raft成员列表
+             "members": [
                      {"id":1, "host":"127.0.0.1:10110", "learner": false, "node_host":"127.0.0.1:9998"},
                      {"id":2, "host":"127.0.0.1:10111", "learner": false, "node_host":"127.0.0.1:9999"},
                      {"id":3, "host":"127.0.0.1:10112", "learner": false, "node_host":"127.0.0.1:10000"}]
-             ]},
-     "disk_mgr_config": { # 磁盘管理配置
+         }
+     },
+     "disk_mgr_config": {
          "refresh_interval_s": 10,
          "rack_aware":false,
          "host_aware":false
@@ -98,29 +100,26 @@ nohup ./clustermgr -f clustermgr2.conf
 
 ### 启动proxy
 
-1.  `proxy`
-    依赖kafka组件，需要提前创建blob_delete_topic、shard_repair_topic、shard_repair_priority_topic对应主题
+1. `proxy` 依赖kafka组件，需要提前创建blob_delete_topic、shard_repair_topic、shard_repair_priority_topic对应主题
 
-``` bash
+```bash
 bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic blob_delete shard_repair shard_repair_priority
 ```
 
-2.  启动服务
-
-``` bash
-# 保证可用性，每个机房 ``idc`` 至少需要部署一个proxy节点
+2. 启动服务。保证可用性，每个机房 ``idc`` 至少需要部署一个proxy节点
+```bash
 nohup ./proxy -f proxy.conf &
 ```
 
-3.  示例 `proxy.conf`:
+3. 示例 `proxy.conf`:
 
-``` json
+```json
 {
    "bind_addr": ":9600",
    "host": "http://127.0.0.1:9600",
    "idc": "z0",
    "cluster_id": 1,
-   "clustermgr": { # clustermgr 服务地址
+   "clustermgr": {
      "hosts": [
        "http://127.0.0.1:9998",
        "http://127.0.0.1:9999",
@@ -131,7 +130,7 @@ nohup ./proxy -f proxy.conf &
        "enable_auth": false,
        "secret": "test"
    },
-   "mq": { # kafka配置
+   "mq": {
      "blob_delete_topic": "blob_delete",
      "shard_repair_topic": "shard_repair",
      "shard_repair_priority_topic": "shard_repair_prior",
@@ -148,19 +147,19 @@ nohup ./proxy -f proxy.conf &
 
 ### 启动scheduler
 
-1.  启动服务
+1. 启动服务
 
-``` bash
+```bash
 nohup ./scheduler -f scheduler.conf &
 ```
 
-2.  示例 `scheduler.conf`: 注意scheduler模块单节点部署
+2. 示例 `scheduler.conf`: 注意scheduler模块单节点部署
 
-``` json
+```json
 {
    "bind_addr": ":9800",
    "cluster_id": 1,
-   "services": { # scheduler服务
+   "services": { 
      "leader": 1,
      "node_id": 1,
      "members": {"1": "127.0.0.1:9800"}
@@ -169,10 +168,10 @@ nohup ./scheduler -f scheduler.conf &
      "host": "http://127.0.0.1:9800",
      "idc": "z0"
    },
-   "clustermgr": { # clustermgr服务地址
+   "clustermgr": { 
      "hosts": ["http://127.0.0.1:9998", "http://127.0.0.1:9999", "http://127.0.0.1:10000"]
    },
-   "kafka": { # kafka服务
+   "kafka": {
      "broker_list": ["127.0.0.1:9092"]
    },
    "blob_delete": {
@@ -197,22 +196,22 @@ nohup ./scheduler -f scheduler.conf &
 
 ### 启动blobnode
 
-1.  在编译好的 `blobnode` 二进制目录下\**创建相关目录*\*
+1. 在编译好的 `blobnode` 二进制目录下\**创建相关目录*\*
 
-``` bash
+```bash
 # 该目录对应配置文件的路径
 mkdir -p ./run/disks/disk{1..8} # 每个目录需要挂载磁盘，保证数据收集准确性
 ```
 
-2.  启动服务
+2. 启动服务
 
-``` bash
+```bash
 nohup ./blobnode -f blobnode.conf
 ```
 
 3.  示例 `blobnode.conf`:
 
-``` json
+```json
 {
    "bind_addr": ":8899",
    "cluster_id": 1,
@@ -226,7 +225,7 @@ nohup ./blobnode -f blobnode.conf
      {
        "path": "./run/disks/disk1",
        "auto_format": true,
-       "max_chunks": 1024 # chunk大小以clustermgr配置中的定义为准
+       "max_chunks": 1024 
      },
      {
        "path": "./run/disks/disk2",
@@ -283,18 +282,17 @@ nohup ./blobnode -f blobnode.conf
 
 ### 启动access
 
-1.  启动服务
+1. 启动服务。access模块为无状态单节点部署
 
-``` bash
-# access模块为无状态单节点部署
+```bash
 nohup ./access -f access.conf
 ```
 
-2.  示例 `access.conf`:
+2. 示例 `access.conf`:
 
-``` json
+```json
 {
-     "bind_addr": ":9500", # 服务端口
+     "bind_addr": ":9500",
      "log": {
          "level": "info",
          "filename": "./run/logs/access.log"
@@ -322,9 +320,9 @@ nohup ./access -f access.conf
 
 ## 部署提示
 
-1.  对于clustermgr和blobnode部署失败后，重新部署需清理残留数据，避免注册盘失败或者数据显示错误，命令如下：
+1. 对于clustermgr和blobnode部署失败后，重新部署需清理残留数据，避免注册盘失败或者数据显示错误，命令如下：
 
-``` bash
+```bash
 # blobnode示例
 rm -f -r ./run/disks/disk*/.*
 rm -f -r ./run/disks/disk*/*
@@ -337,7 +335,7 @@ rm -f -r /tmp/normaldb0
 rm -f -r /tmp/normalwal0
 ```
 
-2.  所有模块部署成功后，上传验证需要延缓一段时间，等待创建卷成功。
+2. 所有模块部署成功后，上传验证需要延缓一段时间，等待创建卷成功。
 
 ## 上传测试
 

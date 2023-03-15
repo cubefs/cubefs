@@ -4,8 +4,8 @@
 主要介绍各个模块的详细配置，在运维过程中可能需要了解每个字段的含义并进行相关调优
 
 .. toctree::
-   :maxdepth: 2
-   :caption: 配置
+   :maxdepth: 3
+   :caption:
 
    configs/master
    configs/metanode
