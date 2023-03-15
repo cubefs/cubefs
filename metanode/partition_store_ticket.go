@@ -138,9 +138,14 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timerCursor.Reset(intervalToSyncCursor)
 					continue
 				}
-				cursorBuf := make([]byte, 8)
-				binary.BigEndian.PutUint64(cursorBuf, mp.config.Cursor)
-				if _, err := mp.submit(opFSMSyncCursor, cursorBuf); err != nil {
+				Buf := make([]byte, 8)
+				binary.BigEndian.PutUint64(Buf, mp.config.Cursor)
+				if _, err := mp.submit(opFSMSyncCursor, Buf); err != nil {
+					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
+				}
+
+				binary.BigEndian.PutUint64(Buf, mp.txProcessor.txManager.txIdAlloc.getTransactionID())
+				if _, err := mp.submit(opFSMSyncTxID, Buf); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerCursor.Reset(intervalToSyncCursor)

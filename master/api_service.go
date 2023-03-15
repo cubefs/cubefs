@@ -1685,6 +1685,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.dpSelectorParm = req.dpSelectorParm
 	newArgs.enablePosixAcl = req.enablePosixAcl
 	newArgs.enableTransaction = req.enableTransaction
+	newArgs.txTimeout = req.txTimeout
 	if req.coldArgs != nil {
 		newArgs.coldArgs = req.coldArgs
 	}
@@ -2020,6 +2021,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		FollowerRead:          vol.FollowerRead,
 		EnablePosixAcl:        vol.enablePosixAcl,
 		EnableTransaction:     vol.enableTransaction,
+		TxTimeout:             vol.txTimeout,
 		NeedToLowerReplica:    vol.NeedToLowerReplica,
 		Authenticate:          vol.authenticate,
 		CrossZone:             vol.crossZone,

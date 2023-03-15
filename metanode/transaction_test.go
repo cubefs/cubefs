@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"
+	"time"
 )
 
 //var manager = &metadataManager{}
@@ -185,24 +186,28 @@ func TestTxRscOp(t *testing.T) {
 	//rbInode
 	txInodeInfo1 := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	txInodeInfo1.TxID = txMgr.nextTxID()
+	txInodeInfo1.Timeout = 5
+	txInodeInfo1.CreateTime = time.Now().Unix()
 	inode1 := NewInode(inodeNum, FileModeType)
 	rbInode1 := NewTxRollbackInode(inode1, txInodeInfo1, TxAdd)
 
 	txInodeInfo2 := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	txInodeInfo2.TxID = txMgr.nextTxID()
+	txInodeInfo2.Timeout = 5
+	txInodeInfo2.CreateTime = time.Now().Unix()
 	rbInode2 := NewTxRollbackInode(inode1, txInodeInfo2, TxAdd)
 
 	txRsc := mp1.txProcessor.txResource
-	err := txRsc.addTxRollbackInode(rbInode1)
-	assert.Nil(t, err)
-	err = txRsc.addTxRollbackInode(rbInode1)
-	assert.Nil(t, err)
+	status := txRsc.addTxRollbackInode(rbInode1)
+	assert.Equal(t, proto.OpOk, status)
+	status = txRsc.addTxRollbackInode(rbInode1)
+	assert.Equal(t, proto.OpOk, status)
 
 	inTx, _ := txRsc.isInodeInTransction(inode1)
 	assert.True(t, inTx)
 
-	err = txRsc.addTxRollbackInode(rbInode2)
-	assert.NotNil(t, err)
+	status = txRsc.addTxRollbackInode(rbInode2)
+	assert.Equal(t, proto.OpTxConflictErr, status)
 
 	//rbDentry
 	txDentryInfo1 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
@@ -213,28 +218,34 @@ func TestTxRscOp(t *testing.T) {
 		Type:     FileModeType,
 	}
 	txDentryInfo1.TxID = txMgr.nextTxID()
+	txDentryInfo1.Timeout = 5
+	txDentryInfo1.CreateTime = time.Now().Unix()
 	rbDentry1 := NewTxRollbackDentry(dentry, txDentryInfo1, TxAdd)
 
 	txDentryInfo2 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txDentryInfo2.TxID = txMgr.nextTxID()
+	txDentryInfo2.Timeout = 5
+	txDentryInfo2.CreateTime = time.Now().Unix()
 	rbDentry2 := NewTxRollbackDentry(dentry, txDentryInfo2, TxAdd)
 
-	err = txRsc.addTxRollbackDentry(rbDentry1)
-	assert.Nil(t, err)
-	err = txRsc.addTxRollbackDentry(rbDentry1)
-	assert.Nil(t, err)
+	status = txRsc.addTxRollbackDentry(rbDentry1)
+	assert.Equal(t, proto.OpOk, status)
+	status = txRsc.addTxRollbackDentry(rbDentry1)
+	assert.Equal(t, proto.OpOk, status)
 
 	inTx, _ = txRsc.isDentryInTransction(dentry)
 	assert.True(t, inTx)
 
-	err = txRsc.addTxRollbackDentry(rbDentry2)
-	assert.NotNil(t, err)
+	status = txRsc.addTxRollbackDentry(rbDentry2)
+	assert.Equal(t, proto.OpTxConflictErr, status)
 }
 
 func mockAddTxInode(mp *metaPartition) *TxRollbackInode {
 	txMgr := mp.txProcessor.txManager
 	txInodeInfo1 := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	txInodeInfo1.TxID = txMgr.nextTxID()
+	txInodeInfo1.Timeout = 5
+	txInodeInfo1.CreateTime = time.Now().Unix()
 	inode1 := NewInode(inodeNum, FileModeType)
 	rbInode := NewTxRollbackInode(inode1, txInodeInfo1, TxDelete)
 	txRsc := mp.txProcessor.txResource
@@ -251,6 +262,8 @@ func mockDeleteTxInode(mp *metaPartition) *TxRollbackInode {
 	txMgr := mp.txProcessor.txManager
 	txInodeInfo2 := proto.NewTxInodeInfo(MemberAddrs, inodeNum2, 10001)
 	txInodeInfo2.TxID = txMgr.nextTxID()
+	txInodeInfo2.Timeout = 5
+	txInodeInfo2.CreateTime = time.Now().Unix()
 	rbInode := NewTxRollbackInode(inode2, txInodeInfo2, TxAdd)
 	txRsc := mp.txProcessor.txResource
 	txRsc.addTxRollbackInode(rbInode)
@@ -273,6 +286,8 @@ func mockAddTxDentry(mp *metaPartition) *TxRollbackDentry {
 	txMgr := mp.txProcessor.txManager
 	txDentryInfo1 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txDentryInfo1.TxID = txMgr.nextTxID()
+	txDentryInfo1.Timeout = 5
+	txDentryInfo1.CreateTime = time.Now().Unix()
 	dentry1 := &Dentry{
 		ParentId: pInodeNum,
 		Name:     dentryName,
@@ -299,6 +314,8 @@ func mockDeleteTxDentry(mp *metaPartition) *TxRollbackDentry {
 	txMgr := mp.txProcessor.txManager
 	txDentryInfo2 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txDentryInfo2.TxID = txMgr.nextTxID()
+	txDentryInfo2.Timeout = 5
+	txDentryInfo2.CreateTime = time.Now().Unix()
 	rbDentry := NewTxRollbackDentry(dentry2, txDentryInfo2, TxAdd)
 	txRsc := mp.txProcessor.txResource
 	txRsc.addTxRollbackDentry(rbDentry)

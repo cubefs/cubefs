@@ -186,6 +186,10 @@ func unmatchedKey(name string) (err error) {
 	return errors.NewErrorf("parameter %v not match", name)
 }
 
+func txInvalidMask() (err error) {
+	return errors.New("transaction mask key value pair should be: enableTxMaskKey=[create|mkdir|remove|rename|mknod|symlink|link]\n enableTxMaskKey=off \n enableTxMaskKey=all")
+}
+
 func notFoundMsg(name string) (err error) {
 	return errors.NewErrorf("%v not found", name)
 }

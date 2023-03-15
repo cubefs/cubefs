@@ -260,7 +260,7 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(vv *proto.SimpleVolView) (err error) {
+func (api *AdminAPI) UpdateVolume(vv *proto.SimpleVolView, txTimeout uint32, txMask string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", vv.Name)
 	request.addParam("description", vv.Description)
@@ -279,6 +279,14 @@ func (api *AdminAPI) UpdateVolume(vv *proto.SimpleVolView) (err error) {
 	request.addParam("cacheRuleKey", vv.CacheRule)
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(vv.DpReadOnlyWhenVolFull))
 	request.addParam("replicaNum", strconv.FormatUint(uint64(vv.DpReplicaNum), 10))
+
+	if txMask != "" {
+		request.addParam("enableTxMask", txMask)
+	}
+
+	if txTimeout > 0 {
+		request.addParam("txTimeout", strconv.FormatUint(uint64(txTimeout), 10))
+	}
 
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -311,7 +319,7 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) 
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, crossZone, normalZonesFirst bool, business string,
 	mpCount, replicaNum, size, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
-	dpReadOnlyWhenVolFull bool) (err error) {
+	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -335,6 +343,13 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, cross
 	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
 	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
+	if txMask != "" {
+		request.addParam("enableTxMask", txMask)
+	}
+
+	if txTimeout > 0 {
+		request.addParam("txTimeout", strconv.FormatUint(uint64(txTimeout), 10))
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

@@ -234,6 +234,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			mp.config.Cursor = cursor
 		}
 
+	case opFSMSyncTxID:
+		var txID uint64
+		txID = binary.BigEndian.Uint64(msg.V)
+		if txID > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
+			mp.txProcessor.txManager.txIdAlloc.setTransactionID(txID)
+		}
 	case opFSMTxCreateInode:
 		txIno := NewTxInode("", 0, 0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {

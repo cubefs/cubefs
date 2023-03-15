@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/log"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -583,10 +584,21 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 		mp.initTxInfo(txInfo)
 	}
 
-	mpIp := mp.manager.metaNode.localAddr
-	mpPort := mp.manager.metaNode.listen
-	mpAddr := fmt.Sprintf("%s:%s", mpIp, mpPort)
-	txIno := NewTxInode(mpAddr, inoID, req.Mode, req.PartitionID, txInfo)
+	addrs := make([]string, 0)
+	for _, peer := range mp.config.Peers {
+		//if mp.config.NodeId == peer.ID {
+		//	continue
+		//}
+		addr := strings.Split(peer.Addr, ":")[0] + ":" + mp.manager.metaNode.listen
+		addrs = append(addrs, addr)
+	}
+	members := strings.Join(addrs, ",")
+
+	//mpIp := mp.manager.metaNode.localAddr
+	//mpPort := mp.manager.metaNode.listen
+	//mpAddr := fmt.Sprintf("%s:%s", mpIp, mpPort)
+	//txIno := NewTxInode(mpAddr, inoID, req.Mode, req.PartitionID, txInfo)
+	txIno := NewTxInode(members, inoID, req.Mode, req.PartitionID, txInfo)
 	log.LogDebugf("NewTxInode: TxInode: %v", txIno)
 	txIno.Inode.Uid = req.Uid
 	txIno.Inode.Gid = req.Gid
