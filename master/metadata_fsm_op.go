@@ -237,7 +237,7 @@ type volValue struct {
 	CacheRule        string
 
 	EnablePosixAcl                                         bool
-	EnableTransaction                                      bool
+	EnableTransaction                                      uint8
 	VolQosEnable                                           bool
 	DiskQosEnable                                          bool
 	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64

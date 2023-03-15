@@ -196,6 +196,7 @@ const (
 	OpTxCommitItemErr         uint8 = 0xE7
 	OpTxRollbackItemErr       uint8 = 0xE8
 	OpTxRollbackUnknownRbType uint8 = 0xE9
+	OpTxTimeoutErr            uint8 = 0xEA
 )
 
 const (
@@ -518,6 +519,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpTxRbInodeNotExistEr"
 	case OpTxRbDentryNotExistErr:
 		m = "OpTxRbDentryNotExistEr"
+	case OpTxTimeoutErr:
+		m = "OpTxTimeoutErr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}

@@ -42,6 +42,82 @@ func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error
 	return
 }
 
+func extractTxTimeout(r *http.Request) (timeout uint32, err error) {
+	var txTimeout uint64
+	if txTimeout, err = extractUint64WithDefault(r, txTimeoutKey, proto.DefaultTransactionTimeout); err != nil {
+		return
+	}
+	if txTimeout == 0 {
+		return timeout, fmt.Errorf("txTimeout(%d) must be larger than 0", txTimeout)
+	}
+	timeout = uint32(txTimeout)
+	return timeout, nil
+}
+
+//func extractTxMask(r *http.Request) (mask uint8, err error) {
+//
+//	var maskStr string
+//	if maskStr = r.FormValue(enableTxMaskKey); maskStr == "" {
+//		return
+//	}
+//
+//	arr := strings.Split(maskStr, "|")
+//
+//	optNum := len(arr)
+//
+//	for _, v := range arr {
+//		if m, ok := proto.GTxMaskMap[v]; ok {
+//			if optNum >= 2 && (m == proto.TxOpMaskOff || m == proto.TxOpMaskAll) {
+//				mask = proto.TxOpMaskOff
+//				err = txInvalidMask()
+//				return
+//			} else {
+//				mask = mask | m
+//			}
+//		} else {
+//			mask = proto.TxOpMaskOff
+//			err = txInvalidMask()
+//			return
+//		}
+//	}
+//
+//	return
+//}
+
+func parseTxMask(r *http.Request, oldMask uint8) (mask uint8, err error) {
+
+	var maskStr string
+	if maskStr = r.FormValue(enableTxMaskKey); maskStr == "" {
+		mask = oldMask
+		return
+	}
+
+	arr := strings.Split(maskStr, "|")
+
+	optNum := len(arr)
+
+	for _, v := range arr {
+		if m, ok := proto.GTxMaskMap[v]; ok {
+			if optNum >= 2 && (m == proto.TxOpMaskOff || m == proto.TxOpMaskAll) {
+				mask = proto.TxOpMaskOff
+				err = txInvalidMask()
+				return
+			} else {
+				mask = mask | m
+			}
+		} else {
+			mask = proto.TxOpMaskOff
+			err = txInvalidMask()
+			return
+		}
+	}
+
+	if mask != proto.TxOpMaskOff {
+		mask = mask | oldMask
+	}
+	return
+}
+
 func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -230,13 +306,15 @@ func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, er
 }
 
 type updateVolReq struct {
-	name                  string
-	authKey               string
-	capacity              uint64
-	followRead            bool
-	authenticate          bool
-	enablePosixAcl        bool
-	enableTransaction     bool
+	name           string
+	authKey        string
+	capacity       uint64
+	followRead     bool
+	authenticate   bool
+	enablePosixAcl bool
+	//enableTransaction     bool
+	enableTransaction     uint8
+	txTimeout             uint32
 	zoneName              string
 	description           string
 	dpSelectorName        string
@@ -327,9 +405,21 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
-	if req.enableTransaction, err = extractBoolWithDefault(r, enableTransactionKey, vol.enableTransaction); err != nil {
+	var txMask uint8
+	if txMask, err = parseTxMask(r, vol.enableTransaction); err != nil {
 		return
 	}
+	req.enableTransaction = txMask
+
+	var txTimeout uint32
+	if txTimeout, err = extractTxTimeout(r); err != nil {
+		return
+	}
+	req.txTimeout = txTimeout
+
+	//if req.enableTransaction, err = extractBoolWithDefault(r, enableTxMaskKey, vol.enableTransaction); err != nil {
+	//	return
+	//}
 
 	if req.authenticate, err = extractBoolWithDefault(r, authenticateKey, vol.authenticate); err != nil {
 		return
@@ -502,6 +592,8 @@ type createVolReq struct {
 	volType                              int
 	enablePosixAcl                       bool
 	DpReadOnlyWhenVolFull                bool
+	enableTransaction                    uint8
+	txTimeout                            uint32
 	qosLimitArgs                         *qosArgs
 	clientReqPeriod, clientHitTriggerCnt uint32
 	// cold vol args
@@ -634,6 +726,18 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	if req.DpReadOnlyWhenVolFull, err = extractBoolWithDefault(r, dpReadOnlyWhenVolFull, false); err != nil {
 		return
 	}
+
+	var txMask uint8
+	if txMask, err = parseTxMask(r, proto.TxOpMaskOff); err != nil {
+		return
+	}
+	req.enableTransaction = txMask
+
+	var txTimeout uint32
+	if txTimeout, err = extractTxTimeout(r); err != nil {
+		return
+	}
+	req.txTimeout = txTimeout
 
 	return
 }

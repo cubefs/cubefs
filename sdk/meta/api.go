@@ -93,7 +93,8 @@ func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 }
 
 func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
-	if mw.EnableTransaction {
+	//if mw.EnableTransaction {
+	if mw.EnableTransaction&proto.TxOpMaskCreate > 0 {
 		return mw.txCreate_ll(parentID, name, mode, uid, gid, target)
 	} else {
 		return mw.create_ll(parentID, name, mode, uid, gid, target)
@@ -120,7 +121,8 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 
 	defer func() {
 		if tx != nil {
-			go tx.OnDone(err, mw)
+			//go tx.OnDone(err, mw)
+			tx.OnDone(err, mw)
 		}
 	}()
 
@@ -130,7 +132,7 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 		mp = rwPartitions[index]
 
 		//tx, err = NewCreateTransaction(parentMP.LeaderAddr, parentID, name, parentMP.PartitionID, defaultTransactionTimeout)
-		tx, err = NewCreateTransaction(parentMP, parentID, name, defaultTransactionTimeout)
+		tx, err = NewCreateTransaction(parentMP, parentID, name, mw.TxTimeout)
 		if err != nil {
 			return nil, syscall.EAGAIN
 		}
@@ -435,7 +437,8 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 }
 
 func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
-	if mw.EnableTransaction {
+	//if mw.EnableTransaction {
+	if mw.EnableTransaction&proto.TxOpMaskRemove > 0 {
 		return mw.txDelete_ll(parentID, name, isDir)
 	} else {
 		return mw.delete_ll(parentID, name, isDir)
@@ -461,7 +464,8 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (*p
 	var tx *Transaction
 	defer func() {
 		if tx != nil {
-			go tx.OnDone(err, mw)
+			//go tx.OnDone(err, mw)
+			tx.OnDone(err, mw)
 		}
 	}()
 
@@ -494,7 +498,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (*p
 		}
 	}
 
-	tx, err = NewDeleteTransaction(parentMP, parentID, name, mp, inode, defaultTransactionTimeout)
+	tx, err = NewDeleteTransaction(parentMP, parentID, name, mp, inode, mw.TxTimeout)
 	//tx, err = NewDeleteTransaction(parentMP, parentID, name, defaultTransactionTimeout)
 
 	status, inode, err = mw.txDdelete(tx, parentMP, parentID, name)
@@ -617,7 +621,8 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 }
 
 func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, overwritten bool) (err error) {
-	if mw.EnableTransaction {
+	//if mw.EnableTransaction {
+	if mw.EnableTransaction&proto.TxOpMaskRename > 0 {
 		return mw.txRename_ll(srcParentID, srcName, dstParentID, dstName, overwritten)
 	} else {
 		return mw.rename_ll(srcParentID, srcName, dstParentID, dstName, overwritten)
@@ -628,7 +633,8 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 	var tx *Transaction
 	defer func() {
 		if tx != nil {
-			go tx.OnDone(err, mw)
+			//go tx.OnDone(err, mw)
+			tx.OnDone(err, mw)
 		}
 	}()
 
@@ -646,7 +652,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		return statusToErrno(status)
 	}
 
-	tx, err = NewRenameTransaction(srcParentMP, srcParentID, srcName, dstParentMP, dstParentID, dstName, defaultTransactionTimeout)
+	tx, err = NewRenameTransaction(srcParentMP, srcParentID, srcName, dstParentMP, dstParentID, dstName, mw.TxTimeout)
 
 	var srcInodeInfo *proto.InodeInfo
 	var dstInodeInfo *proto.InodeInfo
@@ -709,6 +715,8 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		if mw.EnableSummary {
 			srcInodeInfo, _ = mw.InodeGet_ll(srcInode)
 		}
+	} else {
+		return statusToErrno(status)
 	}
 
 	//var inode uint64
@@ -1073,7 +1081,8 @@ func (mw *MetaWrapper) Truncate(inode, size uint64) error {
 }
 
 func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.InodeInfo, error) {
-	if mw.EnableTransaction {
+	//if mw.EnableTransaction {
+	if mw.EnableTransaction&proto.TxOpMaskLink > 0 {
 		return mw.txLink(parentID, name, ino)
 	} else {
 		return mw.link(parentID, name, ino)
@@ -1097,11 +1106,12 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64) (*proto.
 
 	defer func() {
 		if tx != nil {
-			go tx.OnDone(err, mw)
+			//go tx.OnDone(err, mw)
+			tx.OnDone(err, mw)
 		}
 	}()
 	tx, err = NewLinkTransaction(parentMP, parentID, name,
-		mp, ino, defaultTransactionTimeout)
+		mp, ino, mw.TxTimeout)
 
 	status, info, err := mw.txIlink(tx, mp, ino)
 	if err != nil || status != statusOK {

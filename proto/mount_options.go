@@ -144,8 +144,6 @@ func InitMountOptions(opts []MountOption) {
 	opts[BcacheDir] = MountOption{"bcacheDir", "block cache dir", "", ""}
 	opts[ReadThreads] = MountOption{"readThreads", "Cold volume read threads", "", int64(10)}
 	opts[WriteThreads] = MountOption{"writeThreads", "Cold volume write threads", "", int64(10)}
-	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
-	opts[EnableSummary] = MountOption{"enableSummary", "enable content summary", "", false}
 	opts[MetaSendTimeout] = MountOption{"metaSendTimeout", "Meta send timeout", "", int64(600)}
 	opts[BuffersTotalLimit] = MountOption{"buffersTotalLimit", "Send/Receive packets memory limit", "", int64(32768)} //default 4G
 	opts[MaxStreamerLimit] = MountOption{"maxStreamerLimit", "The maximum number of streamers", "", int64(0)}         // default 0
@@ -282,7 +280,8 @@ type MountOptions struct {
 	EnableXattr          bool
 	NearRead             bool
 	EnablePosixACL       bool
-	EnableTransaction    bool
+	EnableTransaction    uint8
+	TxTimeout            uint32
 	VolType              int
 	EbsEndpoint          string
 	EbsServicePath       string

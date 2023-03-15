@@ -131,6 +131,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheLowWater int
 	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
+	var optTxMask string
+	var optTxTimeout uint32
 	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -180,6 +182,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  cacheHighWater      : %v\n", optCacheHighWater)
 				stdout("  cacheLowWater       : %v\n", optCacheLowWater)
 				stdout("  cacheLRUInterval    : %v min\n", optCacheLRUInterval)
+				stdout("  TransactionMask     : %v\n", optTxMask)
+				stdout("  TransactionTimeout  : %vin\n", optTxTimeout)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -194,7 +198,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optMPCount, int(replicaNum), optSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
-				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull)
+				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull, optTxMask, optTxTimeout)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -225,7 +229,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
 		"Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
-
+	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link\"] or \"off\" or \"all\"")
+	cmd.Flags().Uint32Var(&optTxTimeout, CliTxTimeout, 0, "Specify timeout for transaction")
 	return cmd
 }
 
@@ -250,6 +255,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
 	var optYes bool
+	var optTxMask string
+	var optTxTimeout uint32
 	var optReplicaNum string
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
@@ -329,6 +336,25 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB\n", vv.CacheCapacity))
 			}
+
+			var maskStr string
+			if optTxMask != "" {
+				maskStr = proto.GetMaskString(vv.EnableTransaction)
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", maskStr, optTxMask))
+
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", maskStr))
+			}
+
+			if optTxTimeout > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Transaction Timeout : %v -> %v\n", vv.TxTimeout, optTxTimeout))
+				vv.TxTimeout = optTxTimeout
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Transaction Timeout : %v byte\n", vv.TxTimeout))
+			}
+
 			if optCacheAction != "" {
 				if vv.VolType == 0 {
 					err = fmt.Errorf("cache-action not support in hot vol\n")
@@ -450,7 +476,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(vv)
+			err = client.AdminAPI().UpdateVolume(vv, optTxTimeout, optTxMask)
 			if err != nil {
 				return
 			}
@@ -481,6 +507,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
 		"Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link\"] or \"off\" or \"all\"")
+	cmd.Flags().Uint32Var(&optTxTimeout, CliTxTimeout, 0, "Specify timeout for transaction")
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 
 	return cmd

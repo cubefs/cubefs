@@ -124,6 +124,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!"+err.Error())
 	}
 
+	s.SetTransaction(opt.EnableTransaction, opt.TxTimeout)
+
 	s.volname = opt.Volname
 	s.masters = opt.Master
 	s.mountPoint = opt.MountPoint
@@ -717,7 +719,13 @@ func (s *Super) Close() {
 	close(s.closeC)
 }
 
-func (s *Super) SetTransaction(enable bool) {
-	log.LogDebugf("SetTransaction: %v", enable)
-	s.mw.EnableTransaction = enable
+func (s *Super) SetTransaction(txMask uint8, timeout uint32) {
+	maskStr := proto.GetMaskString(txMask)
+
+	s.mw.EnableTransaction = txMask
+	if timeout == 0 {
+		timeout = proto.DefaultTransactionTimeout
+	}
+	s.mw.TxTimeout = timeout
+	log.LogDebugf("SetTransaction: mask[%v], op[%v], timeout[%v]", txMask, maskStr, timeout)
 }

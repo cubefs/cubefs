@@ -611,7 +611,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 				if err != nil {
 					return
 				}
-				super.SetTransaction(volumeInfo.EnableTransaction)
+				super.SetTransaction(volumeInfo.EnableTransaction, volumeInfo.TxTimeout)
 				if proto.IsCold(opt.VolType) {
 					super.CacheAction = volumeInfo.CacheAction
 					super.CacheThreshold = volumeInfo.CacheThreshold
@@ -827,6 +827,7 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.CacheAction = volumeInfo.CacheAction
 	opt.CacheThreshold = volumeInfo.CacheThreshold
 	opt.EnableTransaction = volumeInfo.EnableTransaction
+	opt.TxTimeout = volumeInfo.TxTimeout
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()

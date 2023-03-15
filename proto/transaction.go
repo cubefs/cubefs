@@ -22,6 +22,53 @@ import (
 //	SetCreateTime(createTime int64)
 //}
 
+const (
+	DefaultTransactionTimeout = 5 //seconds
+)
+
+const (
+	TxOpMaskOff     uint8 = 0x00
+	TxOpMaskCreate  uint8 = 0x01
+	TxOpMaskMkdir   uint8 = 0x02
+	TxOpMaskRemove  uint8 = 0x04
+	TxOpMaskRename  uint8 = 0x08
+	TxOpMaskMknod   uint8 = 0x10
+	TxOpMaskSymlink uint8 = 0x20
+	TxOpMaskLink    uint8 = 0x40
+	TxOpMaskAll     uint8 = 0x7F
+)
+
+var GTxMaskMap = map[string]uint8{
+	"off":     TxOpMaskOff,
+	"create":  TxOpMaskCreate,
+	"mkdir":   TxOpMaskMkdir,
+	"remove":  TxOpMaskRemove,
+	"rename":  TxOpMaskRename,
+	"mknod":   TxOpMaskMknod,
+	"symlink": TxOpMaskSymlink,
+	"link":    TxOpMaskLink,
+	"all":     TxOpMaskAll,
+}
+
+func GetMaskString(mask uint8) (maskStr string) {
+	for k, v := range GTxMaskMap {
+		if k == "all" {
+			continue
+		}
+		if mask&v > 0 {
+			if maskStr == "" {
+				maskStr = k
+			} else {
+				maskStr = maskStr + "|" + k
+			}
+		}
+	}
+	if maskStr == "" {
+		maskStr = "off"
+	}
+	return
+}
+
 type TxInodeInfo struct {
 	Ino        uint64
 	MpID       uint64
