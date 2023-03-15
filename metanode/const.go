@@ -135,6 +135,7 @@ const (
 	opFSMSentToChan
 
 	// transaction
+	opFSMSyncTxID
 	opFSMTxCreateInode
 	opFSMTxCreateDentry
 	opFSMTxCommit

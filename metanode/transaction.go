@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -384,12 +385,31 @@ func (tm *TransactionManager) notifyNewTransaction() {
 	}
 }
 
+func (tm *TransactionManager) updateTxIdCursor(txId string) (err error) {
+	arr := strings.Split(txId, "_")
+	if len(arr) != 2 {
+		return fmt.Errorf("updateTxId: tx[%v] is invalid", txId)
+	}
+	id, err := strconv.ParseUint(arr[1], 10, 64)
+	if err != nil {
+		return fmt.Errorf("updateTxId: tx[%v] is invalid", txId)
+	}
+	if id > tm.txIdAlloc.getTransactionID() {
+		tm.txIdAlloc.setTransactionID(id)
+	}
+	return nil
+}
+
 //TM register a transaction, process client transaction
 func (tm *TransactionManager) registerTransaction(txInfo *proto.TransactionInfo) (err error) {
 	//1. generate transactionID from TxIDAllocator
 	//id := tm.txIdAlloc.allocateTransactionID()
 	//txId = fmt.Sprintf("%d_%d", tm.txProcessor.mp.config.PartitionId, id)
 	//2. put transaction received from client into TransactionManager.transctions
+
+	if err = tm.updateTxIdCursor(txInfo.TxID); err != nil {
+		return err
+	}
 
 	if txInfo.TmID != int64(tm.txProcessor.mp.config.PartitionId) {
 		return nil
@@ -771,52 +791,69 @@ func (tr *TransactionResource) isDentryInTransction(dentry *Dentry) (inTx bool, 
 }
 
 //RM add an `TxRollbackInode` into `txRollbackInodes`
-func (tr *TransactionResource) addTxRollbackInode(rbInode *TxRollbackInode) error {
+func (tr *TransactionResource) addTxRollbackInode(rbInode *TxRollbackInode) (status uint8) {
 	tr.Lock()
 	defer tr.Unlock()
+
+	now := time.Now().Unix()
+	if rbInode.txInodeInfo.Timeout <= uint32(now-rbInode.txInodeInfo.CreateTime) {
+		log.LogWarnf("addTxRollbackInode: transaction(%v) is expired for rollback inode(%v), create time(%v), now(%v)",
+			rbInode.txInodeInfo.TxID, rbInode.inode.Inode, rbInode.txInodeInfo.CreateTime, now)
+		return proto.OpTxTimeoutErr
+	}
+
 	if oldRbInode, ok := tr.txRollbackInodes[rbInode.inode.Inode]; ok {
 		if oldRbInode.rbType == rbInode.rbType && oldRbInode.txInodeInfo.TxID == rbInode.txInodeInfo.TxID {
 			log.LogWarnf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] is already exists",
 				rbInode.inode.Inode, rbInode.txInodeInfo.TxID)
-			return nil
+			return proto.OpOk
 		} else {
 			log.LogErrorf("addTxRollbackInode: rollback inode [ino(%v) txID(%v) rbType(%v)] "+
 				"is conflicted with inode [ino(%v) txID(%v) rbType(%v)]",
 				rbInode.inode.Inode, rbInode.txInodeInfo.TxID, rbInode.rbType,
 				oldRbInode.inode.Inode, oldRbInode.txInodeInfo.TxID, oldRbInode.rbType)
-			return fmt.Errorf("inode(%v) is already in another transaction", rbInode.inode.Inode)
+			return proto.OpTxConflictErr
+			//return fmt.Errorf("inode(%v) is already in another transaction", rbInode.inode.Inode)
 		}
 	} else {
 		tr.txRollbackInodes[rbInode.inode.Inode] = rbInode
 	}
 	log.LogDebugf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] is added", rbInode.inode.Inode, rbInode.txInodeInfo.TxID)
-	return nil
+	return proto.OpOk
 }
 
 //RM add a `TxRollbackDentry` into `txRollbackDentries`
-func (tr *TransactionResource) addTxRollbackDentry(rbDentry *TxRollbackDentry) error {
+func (tr *TransactionResource) addTxRollbackDentry(rbDentry *TxRollbackDentry) (status uint8) {
 	tr.Lock()
 	defer tr.Unlock()
+
+	now := time.Now().Unix()
+	if rbDentry.txDentryInfo.Timeout <= uint32(now-rbDentry.txDentryInfo.CreateTime) {
+		log.LogWarnf("addTxRollbackDentry: transaction(%v) is expired for rollback dentry [pino(%v) name(%v)], create time(%v), now(%v)",
+			rbDentry.txDentryInfo.TxID, rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.CreateTime, now)
+		return proto.OpTxTimeoutErr
+	}
 
 	if oldRbDentry, ok := tr.txRollbackDentries[rbDentry.txDentryInfo.GetKey()]; ok {
 		if oldRbDentry.rbType == rbDentry.rbType && oldRbDentry.txDentryInfo.TxID == rbDentry.txDentryInfo.TxID {
 			log.LogWarnf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v)] is already exists",
 				rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.TxID)
-			return nil
+			return proto.OpOk
 		} else {
 			log.LogErrorf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v) rbType(%v)] "+
 				"is conflicted with dentry [pino(%v) name(%v)  txID(%v) rbType(%v)]",
 				rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.TxID, rbDentry.rbType,
 				oldRbDentry.dentry.ParentId, oldRbDentry.dentry.Name, oldRbDentry.txDentryInfo.TxID, oldRbDentry.rbType)
-			return fmt.Errorf("dentry [pino(%v) name(%v)] is already in another transaction",
-				rbDentry.dentry.ParentId, rbDentry.dentry.Name)
+			return proto.OpTxConflictErr
+			//return fmt.Errorf("dentry [pino(%v) name(%v)] is already in another transaction",
+			//	rbDentry.dentry.ParentId, rbDentry.dentry.Name)
 		}
 	} else {
 		tr.txRollbackDentries[rbDentry.txDentryInfo.GetKey()] = rbDentry
 	}
 	log.LogDebugf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v) rbType(%v)] is added",
 		rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.TxID, rbDentry.rbType)
-	return nil
+	return proto.OpOk
 }
 
 //RM roll back an inode, retry if error occours

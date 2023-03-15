@@ -52,6 +52,7 @@ const (
 	statusNoSpace
 	statusTxInodeInfoNotExist
 	statusTxConflict
+	statusTxTimeout
 )
 
 const (
@@ -83,7 +84,8 @@ type MetaConfig struct {
 	OnAsyncTaskError  AsyncTaskErrorFunc
 	EnableSummary     bool
 	MetaSendTimeout   int64
-	EnableTransaction bool
+	EnableTransaction uint8
+	//EnableTransaction bool
 }
 
 type MetaWrapper struct {
@@ -138,7 +140,9 @@ type MetaWrapper struct {
 	EnableSummary       bool
 	metaSendTimeout     int64
 	DirChildrenNumLimit uint32
-	EnableTransaction   bool
+	EnableTransaction   uint8
+	TxTimeout           uint32
+	//EnableTransaction bool
 }
 
 //the ticket from authnode
@@ -294,6 +298,8 @@ func parseStatus(result uint8) (status int) {
 		status = statusTxInodeInfoNotExist
 	case proto.OpTxConflictErr:
 		status = statusTxConflict
+	case proto.OpTxTimeoutErr:
+		status = statusTxTimeout
 	default:
 		status = statusError
 	}
@@ -328,6 +334,8 @@ func statusToErrno(status int) error {
 	case statusTxInodeInfoNotExist:
 		return syscall.EAGAIN
 	case statusTxConflict:
+		return syscall.EAGAIN
+	case statusTxTimeout:
 		return syscall.EAGAIN
 
 	default:

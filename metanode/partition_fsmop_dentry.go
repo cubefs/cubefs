@@ -48,8 +48,8 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry, forceUpdate bool)
 		return
 	}
 	rbDentry := NewTxRollbackDentry(txDentry.Dentry, txDenInfo, TxDelete)
-	if err := mp.txProcessor.txResource.addTxRollbackDentry(rbDentry); err != nil {
-		status = proto.OpTxConflictErr
+	if status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry); status != proto.OpOk {
+		//status = proto.OpTxConflictErr
 		return
 	}
 
@@ -134,8 +134,8 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry, checkInode bool) 
 		return
 	}
 	rbDentry := NewTxRollbackDentry(txDentry.Dentry, txDenInfo, TxAdd)
-	if err := mp.txProcessor.txResource.addTxRollbackDentry(rbDentry); err != nil {
-		resp.Status = proto.OpTxConflictErr
+	if resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry); resp.Status != proto.OpOk {
+		//resp.Status = proto.OpTxConflictErr
 		return
 	}
 
@@ -210,8 +210,8 @@ func (mp *metaPartition) fsmTxUpdateDentry(txUpDateDentry *TxUpdateDentry) (resp
 		return
 	}
 	rbDentry := NewTxRollbackDentry(txUpDateDentry.OldDentry, txDenInfo, TxUpdate)
-	if err := mp.txProcessor.txResource.addTxRollbackDentry(rbDentry); err != nil {
-		resp.Status = proto.OpTxConflictErr
+	if resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry); resp.Status != proto.OpOk {
+		//resp.Status = proto.OpTxConflictErr
 		return
 	}
 

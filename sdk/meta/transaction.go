@@ -5,11 +5,12 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"sync"
+	"time"
 )
 
-const (
-	defaultTransactionTimeout = 5 //seconds
-)
+//const (
+//	defaultTransactionTimeout = 5 //seconds
+//)
 
 //1.first metawrapper call with `Transaction` as a parameter,
 //if tmID is not set(tmID == -1), then try to register a transaction to the metapartitions,
@@ -70,7 +71,7 @@ func (tx *Transaction) AddDentry(dentry *proto.TxDentryInfo) error {
 // will be rolled back if it has not completed yet
 func NewTransaction(timeout uint32, txType uint32) (tx *Transaction) {
 	if timeout == 0 {
-		timeout = defaultTransactionTimeout
+		timeout = proto.DefaultTransactionTimeout
 	}
 	return &Transaction{
 		txInfo: proto.NewTransactionInfo(timeout, txType),
@@ -93,6 +94,19 @@ func (tx *Transaction) Start(ino uint64) (txId string, err error) {
 	}
 }
 */
+
+func (tx *Transaction) OnStart() (status int, err error) {
+	tx.RLock()
+	defer tx.RUnlock()
+	now := time.Now().Unix()
+	if tx.Started && tx.txInfo.Timeout <= uint32(now-tx.txInfo.CreateTime) {
+		status = statusTxTimeout
+		err = errors.New("transaction already expired")
+		return
+	}
+	return statusOK, nil
+}
+
 func (tx *Transaction) OnExecuted(status int, respTxInfo *proto.TransactionInfo) {
 	tx.RLock()
 	defer tx.RUnlock()

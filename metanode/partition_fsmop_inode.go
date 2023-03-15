@@ -50,8 +50,8 @@ func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode) (status uint8) {
 		return
 	}
 	rbInode := NewTxRollbackInode(txIno.Inode, inodeInfo, TxDelete)
-	if err := mp.txProcessor.txResource.addTxRollbackInode(rbInode); err != nil {
-		status = proto.OpTxConflictErr
+	if status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); status != proto.OpOk {
+		//status = proto.OpTxConflictErr
 		return
 	}
 	//3.insert inode in inode tree
@@ -94,8 +94,8 @@ func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeRespon
 	}
 
 	rbInode := NewTxRollbackInode(txIno.Inode, inodeInfo, TxUpdate)
-	if err := mp.txProcessor.txResource.addTxRollbackInode(rbInode); err != nil {
-		resp.Status = proto.OpTxConflictErr
+	if resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); resp.Status != proto.OpOk {
+		//resp.Status = proto.OpTxConflictErr
 		return
 	}
 
@@ -187,8 +187,8 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 		return
 	}
 	rbInode := NewTxRollbackInode(txIno.Inode, inodeInfo, TxAdd)
-	if err := mp.txProcessor.txResource.addTxRollbackInode(rbInode); err != nil {
-		resp.Status = proto.OpTxConflictErr
+	if resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); resp.Status != proto.OpOk {
+		//resp.Status = proto.OpTxConflictErr
 		return
 	}
 

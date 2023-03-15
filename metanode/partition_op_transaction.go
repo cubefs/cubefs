@@ -32,7 +32,12 @@ func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet) error 
 
 	status, err := mp.txProcessor.txManager.rollbackTransaction(req)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		if status == proto.OpTxInfoNotExistErr {
+			p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		} else {
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		}
+
 		return err
 	}
 	p.ResultCode = status

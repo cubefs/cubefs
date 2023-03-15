@@ -39,7 +39,9 @@ type VolVarargs struct {
 	dpReplicaNum          uint8
 	enablePosixAcl        bool
 	dpReadOnlyWhenVolFull bool
-	enableTransaction     bool
+	enableTransaction     uint8
+	txTimeout             uint32
+	//enableTransaction bool
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -67,15 +69,17 @@ type Vol struct {
 	CacheLRUInterval int
 	CacheRule        string
 
-	PreloadCacheOn        bool
-	NeedToLowerReplica    bool
-	FollowerRead          bool
-	authenticate          bool
-	crossZone             bool
-	domainOn              bool
-	defaultPriority       bool // old default zone first
-	enablePosixAcl        bool
-	enableTransaction     bool
+	PreloadCacheOn     bool
+	NeedToLowerReplica bool
+	FollowerRead       bool
+	authenticate       bool
+	crossZone          bool
+	domainOn           bool
+	defaultPriority    bool // old default zone first
+	enablePosixAcl     bool
+	enableTransaction  uint8
+	txTimeout          uint32
+	//enableTransaction  bool
 	zoneName              string
 	MetaPartitions        map[uint64]*MetaPartition `graphql:"-"`
 	mpsLock               sync.RWMutex
@@ -122,6 +126,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.defaultPriority = vv.DefaultPriority
 	vol.domainId = vv.DomainId
 	vol.enablePosixAcl = vv.EnablePosixAcl
+	vol.enableTransaction = vv.EnableTransaction
 
 	vol.VolType = vv.VolType
 	vol.EbsBlkSize = vv.EbsBlkSize
@@ -1188,6 +1193,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.enablePosixAcl = args.enablePosixAcl
 	vol.DpReadOnlyWhenVolFull = args.dpReadOnlyWhenVolFull
 	vol.enableTransaction = args.enableTransaction
+	vol.txTimeout = args.txTimeout
 
 	if proto.IsCold(vol.VolType) {
 		coldArgs := args.coldArgs
