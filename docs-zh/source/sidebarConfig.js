@@ -51,7 +51,7 @@ module.exports = [
                     'maintenance/admin-api/metanode/inode.md',
                     'maintenance/admin-api/metanode/dentry.md',
                     'maintenance/admin-api/blobstore/base.md',
-                    'maintenance/admin-api/blobstore/clustermgr.md',
+                    'maintenance/admin-api/blobstore/cm.md',
                     'maintenance/admin-api/blobstore/blobnode.md',
                     'maintenance/admin-api/blobstore/access.md',
                     'maintenance/admin-api/blobstore/scheduler.md',
