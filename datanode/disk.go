@@ -81,7 +81,7 @@ const (
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk) {
+func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk, err error) {
 	d = new(Disk)
 	d.Path = path
 	d.ReservedSpace = reservedSpace
@@ -92,8 +92,14 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.dataNode = space.dataNode
 	d.partitionMap = make(map[uint64]*DataPartition)
 	d.syncTinyDeleteRecordFromLeaderOnEveryDisk = make(chan bool, SyncTinyDeleteRecordFromLeaderOnEveryDisk)
-	d.computeUsage()
-	d.updateSpaceInfo()
+	err = d.computeUsage()
+	if err != nil {
+		return nil, err
+	}
+	err = d.updateSpaceInfo()
+	if err != nil {
+		return nil, err
+	}
 	d.startScheduleToUpdateSpaceInfo()
 
 	d.limitFactor = make(map[uint32]*rate.Limiter, 0)
@@ -414,7 +420,7 @@ func (d *Disk) isExpiredPartitionDir(filename string) (isExpiredPartitionDir boo
 }
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
-func (d *Disk) RestorePartition(visitor PartitionVisitor) {
+func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
@@ -422,7 +428,6 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		return result
 	}
 	var dataNode *proto.DataNodeInfo
-	var err error
 	for i := 0; i < 3; i++ {
 		dataNode, err = MasterClient.NodeAPI().GetDataNode(d.space.dataNode.localServerAddr)
 		if err != nil {
@@ -445,7 +450,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 	fileInfoList, err := os.ReadDir(d.Path)
 	if err != nil {
 		log.LogErrorf("action[RestorePartition] read dir(%v) err(%v).", d.Path, err)
-		return
+		return err
 	}
 
 	var (
@@ -524,6 +529,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		}
 	}
 	wg.Wait()
+	return err
 }
 
 func (d *Disk) deleteExpiredPartitions(toDeleteExpiredPartitionNames []string) (notDeletedExpiredPartitionNames []string) {
