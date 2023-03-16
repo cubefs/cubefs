@@ -10,7 +10,7 @@ $ git clone https://github.com/cubefs/cubefs.git
 ### 脚本部署
 
 #### 部署Master&MetaNode&DataNode
-cubefs 支持使用脚本进行进行单节点部署master&meta&data模块，步骤如下：
+cubefs 支持使用脚本一键部署，步骤如下：
 ```bash
 cd ./cubefs
 #编译
@@ -19,10 +19,10 @@ make
 sh ./shell/depoly.sh /home/data bond0
 ```
 + bond0: 为本机网卡的名字, 根据实际填写
-+ /home/data: 为本地的一个目录,用于保存集群运行日志和数据，积极配置文件
++ /home/data: 为本地的一个目录,用于保存集群运行日志、数据及配置文件
 + 机器要求
   + 需root权限
-  + 能使用ifconfig
+  + 能使用`ifconfig`
   + 内存4G以上
   + /home/data对应磁盘剩余空间20G以上
 + 查看集群状态
@@ -105,7 +105,7 @@ $ docker/run_docker.sh -m
 ```bash
 $ docker/run_docker.sh -h
 ```
-监控的Prometheus和Grafana相关配置位于\`docker/monitor\`目录下。
+监控的Prometheus和Grafana相关配置位于`docker/monitor`目录下。
 
 
 #### 部署纠删码子系统

@@ -27,7 +27,7 @@
 {
     "exporterPort": 9505, # 指标监听接口
     "consulAddr": "http://consul.prometheus-cfs.local", # consul注册服务器地址。设置后, 可配合prometheus的自动发现机制实现CubeFS节点exporter的自动发现服务。若不设置，将不会启用consul自动注册服务。
-    "consulMeta": "k1=v1;k2=v2", conusl 元数据配置。 非必填项, 在注册到conusl时设置元数据信息。
+    "consulMeta": "k1=v1;k2=v2", # conusl 元数据配置。 非必填项, 在注册到conusl时设置元数据信息。
     "ipFilter": "10.17.*", # 基于正则表达式的过滤器。 非必填项，默认为空。暴露给consul, 当机器存在多个ip时使用. 支持正向和反向过滤,
     "enablePid": "false" # 是否上报partition id, 默认为false; 如果想在集群展示dp或者mp的信息, 可以配置为 true。
 }
@@ -58,4 +58,4 @@ file_sd_configs:
 ```
 配置完成之后启动prometheus即可。
 
-`Blobstore`相关服务暂时只支持上述第二种方式采集指标。
+`纠删码子系统（Blobstore）`相关服务暂时只支持上述第二种方式采集指标。

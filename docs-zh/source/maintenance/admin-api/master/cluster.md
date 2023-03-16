@@ -60,8 +60,8 @@ curl -v "http://10.196.59.198:17010/cluster/freeze?enable=true"
 
 参数列表
 
-| 参数   | 类型 | 描述                         |
-|--------|------|------------------------------|
+| 参数     | 类型   | 描述               |
+|--------|------|------------------|
 | enable | bool | 如果设置为true，则集群被冻结 |
 
 ## 获取集群空间信息
@@ -160,9 +160,9 @@ curl -v "http://10.196.59.198:17010/zone/update?name=zone1&enable=false"
 
 参数列表
 
-| 参数   | 类型   | 描述                        |
-|--------|--------|-----------------------------|
-| name   | string | 可用区名称                  |
+| 参数     | 类型     | 描述                 |
+|--------|--------|--------------------|
+| name   | string | 可用区名称              |
 | enable | bool   | true表示可用，false为不可用 |
 
 ## 获取所有可用区信息
@@ -225,11 +225,11 @@ curl -v "http://192.168.0.11:17010/admin/setNodeInfo?batchCount=100&markDeleteRa
 
 参数列表
 
-| 参数                | 类型   | 描述                                          |
-|---------------------|--------|-----------------------------------------------|
-| batchCount          | uint64 | metanode 删除批量大小                         |
-| markDeleteRate      | uint64 | datanode批量删除限速设置. 0代表未做限速设置   |
-| autoRepairRate      | uint64 | datanode上同时修复的extent个数                |
-| deleteWorkerSleepMs | uint64 | 删除间隔时间                                  |
-| loadFactor          | uint64 | 集群超卖比，默认0，不限制                     |
+| 参数                  | 类型     | 描述                          |
+|---------------------|--------|-----------------------------|
+| batchCount          | uint64 | metanode 删除批量大小             |
+| markDeleteRate      | uint64 | datanode批量删除限速设置. 0代表未做限速设置 |
+| autoRepairRate      | uint64 | datanode上同时修复的extent个数      |
+| deleteWorkerSleepMs | uint64 | 删除间隔时间                      |
+| loadFactor          | uint64 | 集群超卖比，默认0，不限制               |
 | maxDpCntLimit       | uint64 | 每个节点上dp最大数量，默认3000， 0 代表默认值 |

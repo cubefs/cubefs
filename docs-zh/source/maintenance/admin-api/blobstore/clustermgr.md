@@ -99,10 +99,10 @@ curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1, "host"
 
 **参数列表**
 
-| 参数        | 类型   | 描述                               |
-|-------------|--------|------------------------------------|
-| peer_id     | uint64 | raft节点id，不可重复               |
-| host        | string | 主机地址                           |
+| 参数          | 类型     | 描述                       |
+|-------------|--------|--------------------------|
+| peer_id     | uint64 | raft节点id，不可重复            |
+| host        | string | 主机地址                     |
 | member_type | uint8  | 节点类型，1表示leaner，2表示normal |
 
 
@@ -116,8 +116,8 @@ curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1}' "http
 
 **参数列表**
 
-| 参数    | 类型   | 描述                 |
-|---------|--------|----------------------|
+| 参数      | 类型     | 描述            |
+|---------|--------|---------------|
 | peer_id | uint64 | raft节点id，不可重复 |
 
 
@@ -131,21 +131,21 @@ curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1}' "http
 
 **参数列表**
 
-| 参数    | 类型   | 描述                 |
-|---------|--------|----------------------|
+| 参数      | 类型     | 描述            |
+|---------|--------|---------------|
 | peer_id | uint64 | raft节点id，不可重复 |
 
 
 ## 启动或禁用后台任务
 
-| 任务类型(type) | 任务名(key)  | 开关(value) |
-|----------------|--------------|-------------|
-| 磁盘修复       | disk_repair  | true/false  |
-| 数据均衡       | balance      | true/false  |
-| 磁盘下线       | disk_drop    | true/false  |
-| 数据删除       | blob_delete  | true/false  |
-| 数据修补       | shard_repair | true/false  |
-| 数据巡检       | vol_inspect  | true/false  |
+| 任务类型(type) | 任务名(key)     | 开关(value)  |
+|------------|--------------|------------|
+| 磁盘修复       | disk_repair  | true/false |
+| 数据均衡       | balance      | true/false |
+| 磁盘下线       | disk_drop    | true/false |
+| 数据删除       | blob_delete  | true/false |
+| 数据修补       | shard_repair | true/false |
+| 数据巡检       | vol_inspect  | true/false |
 
 查看任务状态
 ```bash

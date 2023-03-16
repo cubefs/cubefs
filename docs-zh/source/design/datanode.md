@@ -35,11 +35,11 @@
 
 ## HTTP接口
 
-| API         | 方法 | 参数                           | 描述                                     |
-|-------------|------|--------------------------------|------------------------------------------|
-| /disks      | GET  | N/A                            | 获取磁盘的列表和信息。                   |
-| /partitions | GET  | N/A                            | 获取所有数据组的信息。                   |
-| /partition  | GET  | partitionId[int]               | 获取特定数据组的详细信息。               |
-| /extent     | GET  | partitionId[int]&extentId[int] | 获取特定数据组里面特定extent文件的信息。 |
-| /stats      | GET  | N/A                            | 获取DATA节点的信息。                     |
+| API         | 方法  | 参数                             | 描述                      |
+|-------------|-----|--------------------------------|-------------------------|
+| /disks      | GET | N/A                            | 获取磁盘的列表和信息。             |
+| /partitions | GET | N/A                            | 获取所有数据组的信息。             |
+| /partition  | GET | partitionId[int]               | 获取特定数据组的详细信息。           |
+| /extent     | GET | partitionId[int]&extentId[int] | 获取特定数据组里面特定extent文件的信息。 |
+| /stats      | GET | N/A                            | 获取DATA节点的信息。            |
 

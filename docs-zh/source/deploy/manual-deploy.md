@@ -5,7 +5,7 @@
 使用如下命令同时构建server，client及相关的依赖：
 
 ``` bash
-$ git clone http://github.com/cubeFS/cubefs.git
+$ git clone https://github.com/cubeFS/cubefs.git
 $ cd cubefs
 $ make build
 ```
@@ -50,7 +50,7 @@ $ make build
 ./cfs-server -c metanode.json
 ```
 
-示例 `meta.json` ：注意：metanode服务最少应该启动3个节点实例
+示例 `meta.json` ：注意：MetaNode服务最少应该启动3个节点实例
 
 ``` json
 {
