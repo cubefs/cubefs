@@ -33,7 +33,7 @@ CubeFS以 **Owner**
 | ebsBlkSize       | int    | 每个块的大小，单位byte                                         | 否    | 默认8M                             |
 | cacheCap         | int    | 纠删码卷 cache容量的大小,单位GB                                  | 否    | 纠删码卷开启缓存必填                       |
 | cacheAction      | int    | 纠删码卷写cache的场景，0-不写cache, 1-读数据回写cache, 2-读写数据都写到cache | 否    | 0                                |
-| cacheThreshold   | int    | 纠删码卷小于该值时，才写入到cahce中,单位byte                           | 否    | 默认10M                            |
+| cacheThreshold   | int    | 纠删码卷小于该值时，才写入到cache中,单位byte                           | 否    | 默认10M                            |
 | cacheTTL         | int    | 纠删码卷cache淘汰时间，单位天                                     | 否    | 默认30                             |
 | cacheHighWater   | int    | 纠删码卷cache淘汰的阈值，dp内容量淘汰上水位，达到该值时，触发淘汰                  | 否    | 默认80，即120G\*80/100=96G时，dp开始淘汰数据 |
 | cacheLowWater    | int    | dp上容量淘汰下水位，达到该值时，不再淘汰，                                | 否    | 默认60，即120G\*60/100=72G，dp不再淘汰数据  |
@@ -52,9 +52,9 @@ curl -v "http://10.196.59.198:17010/vol/delete?name=test&authKey=md5(owner)"
 
 参数列表
 
-| 参数    | 类型   | 描述                                       |
-|---------|--------|--------------------------------------------|
-| name    | string | 卷名称                                     |
+| 参数      | 类型     | 描述                        |
+|---------|--------|---------------------------|
+| name    | string | 卷名称                       |
 | authKey | string | 计算vol的所有者字段的32位MD5值作为认证信息 |
 
 
@@ -68,8 +68,8 @@ curl -v "http://10.196.59.198:17010/admin/getVol?name=test" | python -m json.too
 
 参数列表
 
-| 参数 | 类型   | 描述   |
-|------|--------|--------|
+| 参数   | 类型     | 描述  |
+|------|--------|-----|
 | name | string | 卷名称 |
 
 响应示例
@@ -125,8 +125,8 @@ curl -v "http://192.168.0.12:17010/client/partitions?name=ltptest" | python -m j
 
 参数列表
 
-| 参数 | 类型   | 描述   |
-|------|--------|--------|
+| 参数   | 类型     | 描述  |
+|------|--------|-----|
 | name | string | 卷名称 |
 
 响应示例
@@ -157,8 +157,8 @@ curl -v "http://192.168.0.12:17010/client/metaPartitions?name=ltptest" | python 
 
 参数列表
 
-| 参数 | 类型   | 描述   |
-|------|--------|--------|
+| 参数   | 类型     | 描述  |
+|------|--------|-----|
 | name | string | 卷名称 |
 
 响应示例
@@ -192,9 +192,9 @@ curl -v http://10.196.59.198:17010/client/volStat?name=test
 
 参数列表
 
-| 参数    | 类型   | 描述                                                         |
-|---------|--------|--------------------------------------------------------------|
-| name    | string | 卷名称                                                       |
+| 参数      | 类型     | 描述                                 |
+|---------|--------|------------------------------------|
+| name    | string | 卷名称                                |
 | version | int    | 卷版本，0：副本卷， 1：ec-卷，默认0-副本卷，访问纠删码卷必填 |
 
 响应示例
@@ -223,25 +223,25 @@ curl -v "http://10.196.59.198:17010/vol/update?name=test&capacity=100&authKey=md
 
 参数列表
 
-| 参数             | 类型   | 描述                                                               | 是否必需 |
-|------------------|--------|--------------------------------------------------------------------|----------|
-| name             | string | 卷名称                                                             | 是       |
-| description      | string | 卷描述信息                                                         | 否       |
-| authKey          | string | 计算vol的所有者字段的32位MD5值作为认证信息                         | 是       |
-| capacity         | int    | 更新卷的datanode容量，单位G, 副本卷不能小于已使用容量              | 否       |
-| zoneName         | string | 更新后所在区域，若不设置将被更新至default区域                      | 是       |
-| followerRead     | bool   | 允许从follower读取数据                                             | 否       |
-| enablePosixAcl   | bool   | 是否配置posix权限限制                                              | 否       |
-| emptyCacheRule   | string | 是否置空cacheRule                                                  | 否       |
-| cacheRuleKey     | string | 缓存规则,纠删码卷使用，满足对应规则的才缓存                        | 否       |
-| ebsBlkSize       | int    | 纠删码卷的每个块的大小                                             | 否       |
-| cacheCap         | int    | 纠删码卷使用二级cache时，cache的容量大小                           | 否       |
-| cacheAction      | int    | 纠删码卷使用，0：不写cache, 1-读数据写cache, 2-读写数据都写到cache | 否       |
-| cacheThreshold   | int    | 缓存文件大小限制，纠删码卷小于该值时，才会写到cache当中            | 否       |
-| cacheTTL         | int    | 缓存过期时间，单位天                                               | 否       |
-| cacheHighWater   | int    | 淘汰高水位                                                         | 否       |
-| cacheLowWater    | int    | 缓存淘汰低水位                                                     | 否       |
-| cacheLRUInterval | int    | 缓存检测周期，单位分钟                                             | 否       |
+| 参数               | 类型     | 描述                                            | 是否必需 |
+|------------------|--------|-----------------------------------------------|------|
+| name             | string | 卷名称                                           | 是    |
+| description      | string | 卷描述信息                                         | 否    |
+| authKey          | string | 计算vol的所有者字段的32位MD5值作为认证信息                     | 是    |
+| capacity         | int    | 更新卷的datanode容量，单位G, 副本卷不能小于已使用容量              | 否    |
+| zoneName         | string | 更新后所在区域，若不设置将被更新至default区域                    | 是    |
+| followerRead     | bool   | 允许从follower读取数据                               | 否    |
+| enablePosixAcl   | bool   | 是否配置posix权限限制                                 | 否    |
+| emptyCacheRule   | string | 是否置空cacheRule                                 | 否    |
+| cacheRuleKey     | string | 缓存规则,纠删码卷使用，满足对应规则的才缓存                        | 否    |
+| ebsBlkSize       | int    | 纠删码卷的每个块的大小                                   | 否    |
+| cacheCap         | int    | 纠删码卷使用二级cache时，cache的容量大小                     | 否    |
+| cacheAction      | int    | 纠删码卷使用，0：不写cache, 1-读数据写cache, 2-读写数据都写到cache | 否    |
+| cacheThreshold   | int    | 缓存文件大小限制，纠删码卷小于该值时，才会写到cache当中                | 否    |
+| cacheTTL         | int    | 缓存过期时间，单位天                                    | 否    |
+| cacheHighWater   | int    | 淘汰高水位                                         | 否    |
+| cacheLowWater    | int    | 缓存淘汰低水位                                       | 否    |
+| cacheLRUInterval | int    | 缓存检测周期，单位分钟                                   | 否    |
 
 ## 获取卷列表
 
@@ -253,9 +253,9 @@ curl -v "http://10.196.59.198:17010/vol/list?keywords=test"
 
 参数列表
 
-| 参数     | 类型   | 描述                         | 是否必需 |
-|----------|--------|------------------------------|----------|
-| keywords | string | 获取卷名包含此关键字的卷信息 | 否       |
+| 参数       | 类型     | 描述             | 是否必需 |
+|----------|--------|----------------|------|
+| keywords | string | 获取卷名包含此关键字的卷信息 | 否    |
 
 响应示例
 
@@ -290,11 +290,11 @@ curl -v "http://10.196.59.198:17010/vol/expand?name=test&capacity=100&authKey=md
 
 参数列表
 
-| 参数     | 类型   | 描述                                       | 是否必需 |
-|----------|--------|--------------------------------------------|----------|
-| name     | string | 卷名称                                     | 是       |
-| authKey  | string | 计算vol的所有者字段的32位MD5值作为认证信息 | 是       |
-| capacity | int    | 扩充后卷的配额,单位是GB                    | 是       |
+| 参数       | 类型     | 描述                        | 是否必需 |
+|----------|--------|---------------------------|------|
+| name     | string | 卷名称                       | 是    |
+| authKey  | string | 计算vol的所有者字段的32位MD5值作为认证信息 | 是    |
+| capacity | int    | 扩充后卷的配额,单位是GB             | 是    |
 
 ## 缩容
 
@@ -306,11 +306,11 @@ curl -v "http://10.196.59.198:17010/vol/shrink?name=test&capacity=100&authKey=md
 
 参数列表
 
-| 参数     | 类型   | 描述                                       | 是否必需 |
-|----------|--------|--------------------------------------------|----------|
-| name     | string | 卷名称                                     | 是       |
-| authKey  | string | 计算vol的所有者字段的32位MD5值作为认证信息 | 是       |
-| capacity | int    | 压缩后卷的配额,单位是GB                    | 是       |
+| 参数       | 类型     | 描述                        | 是否必需 |
+|----------|--------|---------------------------|------|
+| name     | string | 卷名称                       | 是    |
+| authKey  | string | 计算vol的所有者字段的32位MD5值作为认证信息 | 是    |
+| capacity | int    | 压缩后卷的配额,单位是GB             | 是    |
 
 ## 两副本
 
@@ -340,7 +340,7 @@ crash了，raft不可用，先删除B，等待迁移完成，删除A，再添加
 解决方式:  
 \- 新命令 强制删除B
 /dataReplica/delete?....force=true。raft支持新接口del
-replcia直接不使用raft log commit（先备份dp数据）
+replica直接不使用raft log commit（先备份dp数据）
 
 -   datanode 将检查副本数（volume 和 dp 必须都是 2
     个副本，以防使用不挡）和 force字段。

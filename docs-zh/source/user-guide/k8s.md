@@ -3,17 +3,17 @@
 CubeFS 基于 [Container Storage Interface (CSI)](https://kubernetes-csi.github.io/docs/) 接口规范开发了 CSI 插件，以支持在 Kubernetes
 集群中使用云存储。
 
-目前 CSI 插件有两个不同的分支：master 分支和 csi-spec-v0.3.0 分支。这里有两个分支的原因是因为 k8s 官方在演进 CSI 协议时 1.0.0 版本与之前的 0.\* 版本不兼容。master 分支是兼容 CSI
+目前 CSI 插件有两个不同的分支：master 分支和 csi-spec-v0.3.0 分支。这里有两个分支的原因是 k8s 官方在演进 CSI 协议时 1.0.0 版本与之前的 0.\* 版本不兼容。master 分支是兼容 CSI
 协议 1.0.0 之后的版本，而 csi-spec-v0.3.0 是兼容 CSI 协议 0.3.0 之前的版本。
 
 根据 CSI 协议的兼容情况，用户的 k8s 版本如果是 v1.13 之前的版本，请采用 csi-spec-v0.3.0 分支代码，而 k8s v1.13 及以后的版本直接采用 master 分支。
 
 **注意：csi-spec-v0.3.0 分支的代码基本上处于冻结不更新状态，往后 CSI 新功能特性都会在 master 分支上进行演进。**
 
-| csi 协议 | kubernetes 兼容版本           |
-|----------|-------------------------------|
-| v0.3.0   | v1.13之前的版本，例如 v1.12   |
-| v1.0.0   | v1.13及之后的版本，例如 v1.15 |
+| csi 协议 | kubernetes 兼容版本      |
+|--------|----------------------|
+| v0.3.0 | v1.13之前的版本，例如 v1.12  |
+| v1.0.0 | v1.13及之后的版本，例如 v1.15 |
 
 CSI 部署之前，请搭建好 CubeFS 集群，文档请参考[快速入门章节](../deploy/requirement.md)。
 
@@ -354,4 +354,4 @@ PVC 会与一个 PV 进行绑定，而这个绑定的 PV 名称就是底下 cube
 
 ### 如何直接操作 cubefs 卷，比如查看卷信息？
 
-可以参考 [cubefs cli 工具使用指南](../maintenance/tools/cli.md)
+可以参考 [cubefs cli 工具使用指南](../maintenance/tool.md)

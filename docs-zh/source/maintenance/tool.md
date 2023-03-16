@@ -20,17 +20,17 @@
 
 CLI主要分为六类管理命令：
 
-| 命令                  | 描述                 |
-|-----------------------|----------------------|
-| cfs-cli cluster       | 集群管理             |
-| cfs-cli metanode      | 元数据节点管理       |
-| cfs-cli datanode      | 数据节点管理         |
-| cfs-cli datapartition | 数据分片管理         |
-| cfs-cli metapartition | 元数据分片管理       |
-| cfs-cli config        | 配置管理             |
+| 命令                    | 描述         |
+|-----------------------|------------|
+| cfs-cli cluster       | 集群管理       |
+| cfs-cli metanode      | 元数据节点管理    |
+| cfs-cli datanode      | 数据节点管理     |
+| cfs-cli datapartition | 数据分片管理     |
+| cfs-cli metapartition | 元数据分片管理    |
+| cfs-cli config        | 配置管理       |
 | cfs-cli completion    | 生成自动补全命令脚本 |
-| cfs-cli volume, vol   | 卷管理               |
-| cfs-cli user          | 用户管理             |
+| cfs-cli volume, vol   | 卷管理        |
+| cfs-cli user          | 用户管理       |
 
 ### 集群管理命令
 
