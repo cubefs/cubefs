@@ -33,7 +33,7 @@ ObjectNode是一种无状态设计，具有很高的可扩展性，能够直接�
 
 ![image](../pic/cfs-object-subsystem-semantic.png)
 
-> Put object \'*example/a/b.txt*\' will be create and write data to file
+> Put object \'*example/a/b.txt*\' will create and write data to file
 > \'*/a/b.txt*\' in volume \'*example*\'.
 
 ## 用户
