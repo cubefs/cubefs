@@ -26,10 +26,10 @@ This page contains a list of organizations who are using CubeFS in production or
 | [BEIKE](https://www.ke.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [Reconova](http://www.reconova.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [LinkSure Network](https://cn.wifi.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
+| [BIGO LIVE](https://www.bigo.tv/cn/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
+| [Xiaomi](https://www.mi.com/global/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [Da-Jiang Innovations](https://www.dji.com/cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Yanhuang Data](https://yanhuangdata.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
-| [BIGO LIVE](https://www.bigo.tv/cn/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
-| [Xiaomi](https://www.mi.com/global/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Sinosoft](http://www.sinosoft.com.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [DADA](https://about.imdada.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Club Factory](https://www.wholeeprime.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
