@@ -355,7 +355,7 @@ rm -f -r /tmp/normalwal0
 
 1.  编码策略: 常用策略表
 
-| 类别      | 描述                                                                              |
+| 类别        | 描述                                                                                |
 |-----------|-----------------------------------------------------------------------------------|
 | EC15P12   | {N: 15, M: 12, L: 0, AZCount: 3, PutQuorum: 24, GetQuorum: 0, MinShardSize: 2048} |
 | EC6P6     | {N: 06, M: 06, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: 2048} |

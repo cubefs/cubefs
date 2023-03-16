@@ -30,16 +30,16 @@ nohup cfs-server -c objectnode.json &
 配置文件中各参数的含义如下表所示：
 
 
-| 参数          | 类型               | 含义                                                     |必需 |
-|--------------|--------------------|---------------------------------------------------------|-----|
-| role         | string             | 进程角色，必须设置为 `objectnode`                         |是   |
-| listen       | string             | 对象存储子系统监听的IP地址和端口号.<br>格式: `IP:PORT`     |是   |
-| domains      | string slice       | 为S3兼容接口配置域名以支持DNS风格访问资源                  |否   |
-| logDir       | string             | 日志存放路径                                             |是   |
-| logLevel     | string             | 日志级别. 默认: `error`                                  |否   |
-| masterAddr   | string slice       | 资源管理Master的IP和端口号.<br>格式: `IP:PORT`            |是   |
-| exporterPort | string             | prometheus获取监控数据端口                               |否   |
-| prof         | string             | 调试和管理员API接口                                      |是   |
+| 参数           | 类型           | 含义                                   | 必需  |
+|--------------|--------------|--------------------------------------|-----|
+| role         | string       | 进程角色，必须设置为 `objectnode`              | 是   |
+| listen       | string       | 对象存储子系统监听的IP地址和端口号.<br>格式: `IP:PORT` | 是   |
+| domains      | string slice | 为S3兼容接口配置域名以支持DNS风格访问资源              | 否   |
+| logDir       | string       | 日志存放路径                               | 是   |
+| logLevel     | string       | 日志级别. 默认: `error`                    | 否   |
+| masterAddr   | string slice | 资源管理Master的IP和端口号.<br>格式: `IP:PORT`  | 是   |
+| exporterPort | string       | prometheus获取监控数据端口                   | 否   |
+| prof         | string       | 调试和管理员API接口                          | 是   |
 
 ## 支持的S3兼容接口
 

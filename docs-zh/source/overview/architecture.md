@@ -8,7 +8,7 @@ CubeFS由 **元数据子系统（Metadata Subsystem）** ，**数据子系统（
 
 > Master节点可以有多个，节点之前通过Raft算法保证元数据的一致性，并且持久化到RocksDB中。
 
-- **元数据子系统**：由多个Meta Node节点组成，多个元数据分片（Meta Partition）和Raft实例（基于Multi-Raft的示例）组成，每个元数据分片表示一个Inode范围元数据，其中包含两个内存B-Tree数：inode BTree与dentry BTree。
+- **元数据子系统**：由多个Meta Node节点组成，多个元数据分片（Meta Partition）和Raft实例（基于Multi-Raft复制协议）组成，每个元数据分片表示一个Inode范围元数据，其中包含两个内存B-Tree数：inode BTree与dentry BTree。
 
 > 元数据实例最少需要3个，支持水平扩容
 

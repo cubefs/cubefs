@@ -1,4 +1,4 @@
-# Access
+# Access 配置
 
 > `access` 是接入模块，主要负责数据上传、下载、删除等。access的配置是基于[公有配置](./base.md)，以下配置说明主要针对于access的私有配置。
 
@@ -6,40 +6,40 @@
 
 ### 一级配置
 
-| 配置项               | 说明                                  | 是否必须                         |
-|:---------------------|:--------------------------------------|:---------------------------------|
-| 公共配置项           | 参考[基础服务配置](./base.md)章节     | 是                               |
-| service_register     | [服务注册信息](#service_register示例) | 是，配置后可用于access的服务发现 |
-| limit                | [限速配置](#limit示例)                | 否，单机限速配置                 |
-| stream               | access 主要配置项                     | 是，参考下列二级配置选项         |
+| 配置项              | 说明                            | 是否必须                |
+|:-----------------|:------------------------------|:--------------------|
+| 公共配置项            | 参考[基础服务配置](./base.md)章节       | 是                   |
+| service_register | [服务注册信息](#service_register示例) | 是，配置后可用于access的服务发现 |
+| limit            | [限速配置](#limit示例)              | 否，单机限速配置            |
+| stream           | access 主要配置项                  | 是，参考下列二级配置选项        |
 
 ### 二级stream配置
 
-| 配置项                    | 说明                       | 是否必须                                |
-|:--------------------------|:---------------------------|:----------------------------------------|
-| idc                       | 服务的IDC                  | 是                                      |
-| max_blob_size             | 文件分段Blob大小           | 否，默认为4MB                           |
-| mem_pool_size_classes     | 文件读写内存控制           | 否                                      |
-| encoder_concurrency       | EC编解码并发数             | 否，默认1000                            |
-| encoder_enableverify      | EC编解码是否启用验证       | 否，默认开启                            |
-| min_read_shards_x         | EC读取并发多下载几个shards | 否，默认1，越大容错率越高，但带宽也越高 |
-| shard_crc_disabled        | 是否验证blobnode的数据crc  | 否，默认开启验证                        |
-| disk_punish_interval_s    | 临时标记坏盘间隔时间       | 否，默认60s                             |
-| service_punish_interval_s | 临时标记坏服务间隔时间     | 否，默认60s                             |
-| blobnode_config           | blobnode rpc 配置          | 参考rpc配置章节[rpc](./rpc.md)          |
-| proxy_config              | proxy rpc 配置             | 参考rpc配置章节[rpc](./rpc.md)          |
-| cluster_config            | cluster 主要配置           | 是，参考下列三级配置选项                |
+| 配置项                       | 说明                 | 是否必须                     |
+|:--------------------------|:-------------------|:-------------------------|
+| idc                       | 服务的IDC             | 是                        |
+| max_blob_size             | 文件分段Blob大小         | 否，默认为4MB                 |
+| mem_pool_size_classes     | 文件读写内存控制           | 否                        |
+| encoder_concurrency       | EC编解码并发数           | 否，默认1000                 |
+| encoder_enableverify      | EC编解码是否启用验证        | 否，默认开启                   |
+| min_read_shards_x         | EC读取并发多下载几个shards  | 否，默认1，越大容错率越高，但带宽也越高     |
+| shard_crc_disabled        | 是否验证blobnode的数据crc | 否，默认开启验证                 |
+| disk_punish_interval_s    | 临时标记坏盘间隔时间         | 否，默认60s                  |
+| service_punish_interval_s | 临时标记坏服务间隔时间        | 否，默认60s                  |
+| blobnode_config           | blobnode rpc 配置    | 参考rpc配置章节[rpc](./rpc.md) |
+| proxy_config              | proxy rpc 配置       | 参考rpc配置章节[rpc](./rpc.md) |
+| cluster_config            | cluster 主要配置       | 是，参考下列三级配置选项             |
 
 ### 三级cluster配置
 
-| 配置项                   | 说明                          | 是否必须                                       |
-|:-------------------------|:------------------------------|:-----------------------------------------------|
-| region                   | region 信息                   | 是，配置后不要变更                             |
+| 配置项                      | 说明                   | 是否必须                        |
+|:-------------------------|:---------------------|:----------------------------|
+| region                   | region 信息            | 是，配置后不要变更                   |
 | region_magic             | 用于编码文件Location的crc字段 | 是，配置后不要变更，发生变更后Location全部失效 |
-| consul_agent_addr        | 集群信息的consul地址          | 是                                             |
-| cluster_reload_secs      | 集群信息同步间隔              | 否，默认3s                                     |
-| service_reload_secs      | 服务信息同步间隔              | 否，默认3s                                     |
-| clustermgr_client_config | clustermgr rpc 配置           | 参考rpc配置示例[rpc](./rpc.md)                 |
+| consul_agent_addr        | 集群信息的consul地址        | 是                           |
+| cluster_reload_secs      | 集群信息同步间隔             | 否，默认3s                      |
+| service_reload_secs      | 服务信息同步间隔             | 否，默认3s                      |
+| clustermgr_client_config | clustermgr rpc 配置    | 参考rpc配置示例[rpc](./rpc.md)    |
 
 
 ## 配置示例

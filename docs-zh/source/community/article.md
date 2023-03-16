@@ -2,6 +2,7 @@
 
 ## 入门系列
 
+- [单机搭建CubeFS集群](https://mp.weixin.qq.com/s/_-CcKBbNBRyR6mHkfNZIdw)，2023-03-07，存储团队@OPPO
 - [K8S容器化存储](https://mp.weixin.qq.com/s/RgpunU_j2ggE679B5y0sbQ)，2023-02-07, 胡炜财@贝壳
 - [集群安装部署](https://mp.weixin.qq.com/s/B98CJ_gh-ViPlDKXkmptTA)，2022-07-26，存储团队@OPPO
 - [云原生分布式存储CubeFS](https://mp.weixin.qq.com/s/mhxODmVEkSLhH8EqgJzcuQ)，2022-06-28，存储团队@OPPO
@@ -20,4 +21,4 @@
 - [均衡、巡检与故障自愈设计](https://mp.weixin.qq.com/s/CUfaEKUqvQ6UekcTDqkMqQ)，2022-11-04，存储团队@OPPO
 - [纠删码单机存储引擎设计](https://mp.weixin.qq.com/s/jCdvwueQrjeIbwAADzb_7Q)，2022-10-13，存储团队@OPPO
 - [混合云加速设计](https://mp.weixin.qq.com/s/kkUvZUMhg-qmy6Bw_RM2xw)，2022-09-16，存储团队@OPPO
-- [纠删码引起系统设计](https://mp.weixin.qq.com/s/Bx2QM3p7Tz-2y6IGlXAdKA)，2022-07-21，存储团队@OPPO
+- [纠删码引擎系统设计](https://mp.weixin.qq.com/s/Bx2QM3p7Tz-2y6IGlXAdKA)，2022-07-21，存储团队@OPPO
