@@ -67,9 +67,11 @@ func (e *Extent) IsOccurNewWrite() bool {
 }
 
 // Close this extent and release FD.
-func (e *Extent) Close() (err error) {
-	if err = e.file.Sync(); err != nil {
-		return
+func (e *Extent) Close(sync bool) (err error) {
+	if sync {
+		if err = e.file.Sync(); err != nil {
+			return
+		}
 	}
 	if err = e.file.Close(); err != nil {
 		return
@@ -77,7 +79,7 @@ func (e *Extent) Close() (err error) {
 	return
 }
 
-func (e *Extent) Exist() (exsit bool) {
+func (e *Extent) Exist() (exist bool) {
 	_, err := os.Stat(e.filePath)
 	if err != nil {
 		if os.IsExist(err) {
