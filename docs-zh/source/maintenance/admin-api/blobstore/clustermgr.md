@@ -89,24 +89,26 @@ curl "http://127.0.0.1:9998/stat"
 }
 ```
 
-## 节点添加
+## 节点管理
+
+### 节点添加
 
 添加节点，指定节点类型，地址和id。
 
 ```bash
-curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1, "host": "127.0.0.1:9998", "member_type": 2}' "http://127.0.0.1:9998/member/add" 
+curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1, "host": "127.0.0.1:10110","node_host": "127.0.0.1:9998", "member_type": 2}' "http://127.0.0.1:9998/member/add" 
 ```
 
 **参数列表**
 
-| 参数          | 类型     | 描述                       |
-|-------------|--------|--------------------------|
-| peer_id     | uint64 | raft节点id，不可重复            |
-| host        | string | 主机地址                     |
+| 参数        | 类型   | 描述                               |
+| ----------- | ------ | ---------------------------------- |
+| peer_id     | uint64 | raft节点id，不可重复               |
+| host        | string | raft地址                          |
+| node_host        | string | 服务地址                           |
 | member_type | uint8  | 节点类型，1表示leaner，2表示normal |
 
-
-## 节点移除
+### 节点移除
 
 根据id移除节点。
 
@@ -116,12 +118,12 @@ curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1}' "http
 
 **参数列表**
 
-| 参数      | 类型     | 描述            |
-|---------|--------|---------------|
+| 参数    | 类型   | 描述                 |
+| ------- | ------ | -------------------- |
 | peer_id | uint64 | raft节点id，不可重复 |
 
 
-## 切主
+### 切主
 
 根据id切换主节点。
 
@@ -131,33 +133,150 @@ curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1}' "http
 
 **参数列表**
 
-| 参数      | 类型     | 描述            |
-|---------|--------|---------------|
+| 参数    | 类型   | 描述                 |
+| ------- | ------ | -------------------- |
 | peer_id | uint64 | raft节点id，不可重复 |
 
+## 磁盘管理
 
-## 启动或禁用后台任务
+### 获取磁盘信息
 
-| 任务类型(type) | 任务名(key)     | 开关(value)  |
-|------------|--------------|------------|
-| 磁盘修复       | disk_repair  | true/false |
-| 数据均衡       | balance      | true/false |
-| 磁盘下线       | disk_drop    | true/false |
-| 数据删除       | blob_delete  | true/false |
-| 数据修补       | shard_repair | true/false |
-| 数据巡检       | vol_inspect  | true/false |
+```bash
+curl "http://127.0.0.1:9998/disk/info?disk_id=1"
+```
+
+**参数列表**
+
+| 参数    | 类型   | 描述   |
+| ------- | ------ | ------ |
+| disk_id | uint32 | 磁盘id |
+
+**响应示例**
+
+```
+{
+    "cluster_id": 10001,
+    "create_time": "2022-05-07T15:22:01.627271402+08:00",
+    "disk_id": 1,
+    "free": 1910475022336,
+    "free_chunk_cnt": 106,
+    "host": "http://127.0.0.1:8889",
+    "idc": "bjht",
+    "last_update_time": "2022-05-07T15:22:01.627271402+08:00",
+    "max_chunk_cnt": 1037,
+    "path": "/home/service/var/data21",
+    "rack": "HT02-B11-F4-402-0203",
+    "readonly": false,
+    "size": 17828005326848,
+    "status": 1,
+    "used": 15917530304512,
+    "used_chunk_cnt": 931
+}
+```
+
+### 设置磁盘状态
+
+```bash
+curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"status":2}' "http://127.0.0.1:9998/disk/set"
+```
+
+| 参数    | 类型   | 描述                                   |
+| ------- | ------ | -------------------------------------- |
+| disk_id | uint32 | 磁盘id                                 |
+| status  | uint8  | 磁盘状态只能从小到大，数值描述参考下表 |
+
+| 磁盘状态数值 | 说明              |
+| ------------ | ----------------- |
+| 1            | normal 正常       |
+| 2            | broken 坏盘状态   |
+| 3            | repairing 修复中  |
+| 4            | repaired 修复完成 |
+| 5            | dropped 下线完成  |
+
+### 设置磁盘读写
+
+设置磁盘只读或者读写
+
+```bash
+curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"readonly":false}' "http://127.0.0.1:9998/disk/access"
+```
+
+**参数列表**
+
+| 参数     | 类型   | 描述                                  |
+| -------- | ------ | ------------------------------------- |
+| disk_id  | uint32 | 磁盘id                                |
+| readonly | bool   | 是否只读，true表示只读，false表示可写 |
+
+## 卷管理
+
+### 获取卷信息
+
+获取单个卷信息
+
+```bash
+curl "http://127.0.0.1:9998/volume/get?vid=1"
+```
+
+**参数列表**
+
+| 参数 | 类型   | 描述 |
+| ---- | ------ | ---- |
+| vid  | uint32 | 卷id |
+
+**响应示例**
+
+```
+{
+    "code_mode": 12,
+    "create_by_node_id": 1,
+    "free": 1061027840,
+    "health_score": 0,
+    "status": 1,
+    "total": 171798691840,
+    "units": [
+        {
+            "disk_id": 112,
+            "host": "http://127.0.0.1:8889",
+            "vuid": 4294967654
+        },
+        ...
+        {
+            "disk_id": 401,
+            "host": "http://127.0.0.1:8889",
+            "vuid": 4513071462
+        }
+    ],
+    "used": 170737664000,
+    "vid": 1
+}
+```
+
+## 后台任务
+
+| 任务类型(type) | 任务名(key)  | 开关(value) |
+| -------------- | ------------ | ----------- |
+| 磁盘修复       | disk_repair  | true/false  |
+| 数据均衡       | balance      | true/false  |
+| 磁盘下线       | disk_drop    | true/false  |
+| 数据删除       | blob_delete  | true/false  |
+| 数据修补       | shard_repair | true/false  |
+| 数据巡检       | vol_inspect  | true/false  |
 
 查看任务状态
+
 ```bash
 curl http://127.0.0.1:9998/config/get?key=balance
 ```
 
 开启任务
+
 ```bash
 curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"true"}' --header 'Content-Type: application/json'
 ```
 
 关闭任务
+
 ```bash
 curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'
 ```
