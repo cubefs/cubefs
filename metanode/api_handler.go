@@ -123,6 +123,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getBitInuse", m.getBitInuse)
 	http.HandleFunc("/getInoAllocatorInfo", m.getInodeAllocatorStat)
 	http.HandleFunc("/setSkipStep", m.setSkipStep)
+	http.HandleFunc("/checkFreeList", m.checkFreelist)
 	return
 }
 
@@ -2558,4 +2559,61 @@ func (m *MetaNode) setSkipStep(w http.ResponseWriter, r *http.Request) {
 
 	m.updateSkipStep(skipStep)
 	return
+}
+
+func (m *MetaNode) checkFreelist(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[checkFreelist] response %s", err)
+		}
+	}()
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	if mp.(*metaPartition).HasRocksDBStore() {
+		return
+	}
+	applyID := mp.(*metaPartition).applyID
+	//del inode snap
+	delInodeTree := &DeletedInodeBTree{(mp.(*metaPartition).inodeDeletedTree).(*DeletedInodeBTree).GetTree()}
+	//free inodes
+	freeInodes := make([]uint64, 0, mp.(*metaPartition).freeList.Len())
+	mp.(*metaPartition).freeList.Range(func(ino uint64) bool {
+		freeInodes = append(freeInodes, ino)
+		return true
+	})
+	unexpectFreeInodes := make([]uint64, 0)
+	for _, ino := range freeInodes {
+		delInode, _ := delInodeTree.RefGet(ino)
+		if delInode == nil || !delInode.IsExpired {
+			unexpectFreeInodes = append(unexpectFreeInodes, ino)
+		}
+	}
+	if len(unexpectFreeInodes) == 0 {
+		return
+	}
+	log.LogInfof("checkFreelist, partitionID(%v) applyID(%v) has unexpect free inodes, count:%v", pid, applyID, len(unexpectFreeInodes))
+	resp.Data = &struct {
+		Count              int      `json:"count"`
+		UnExpectFreeInodes []uint64 `json:"unExpectFreeInodes"`
+	}{
+		Count:              len(unexpectFreeInodes),
+		UnExpectFreeInodes: unexpectFreeInodes,
+	}
 }

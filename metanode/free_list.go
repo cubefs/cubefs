@@ -108,3 +108,13 @@ func (fl *freeList) Get(count int) (inos []uint64) {
 	}
 	return
 }
+
+func (fl *freeList) Range(f func(ino uint64) bool) {
+	fl.Lock()
+	defer fl.Unlock()
+	for ino := range fl.index {
+		if ok := f(ino); !ok {
+			break
+		}
+	}
+}
