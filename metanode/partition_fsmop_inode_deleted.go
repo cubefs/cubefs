@@ -131,19 +131,20 @@ func (mp *metaPartition) fsmCreateDeletedInode(dbHandle interface{}, dino *Delet
 	rsp.Inode = dino.Inode.Inode
 	rsp.Status = proto.OpOk
 	mp.setAllocatorIno(dino.Inode.Inode)
-	var (
-		ok          = false
-		existDelIno *DeletedINode
-	)
-	if existDelIno, ok, err = mp.inodeDeletedTree.Create(dbHandle, dino, false); err != nil {
+	var existDelIno *DeletedINode
+	if existDelIno, err = mp.inodeDeletedTree.RefGet(dino.Inode.Inode); err != nil {
 		rsp.Status = proto.OpErr
 		return
 	}
-
-	if !ok {
+	if existDelIno != nil {
 		log.LogErrorf("[fsmCreateDeletedInode], partitionID(%v), delInode(%v) already exist, exist delInode(%v)",
 			mp.config.PartitionId, dino, existDelIno)
-		rsp.Status = proto.OpExistErr
+	}
+
+	//if exist, replace
+	if _, _, err = mp.inodeDeletedTree.Create(dbHandle, dino, true); err != nil {
+		rsp.Status = proto.OpErr
+		return
 	}
 	return
 }
