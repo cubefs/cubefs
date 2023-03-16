@@ -914,6 +914,10 @@ func (c *Cluster) getVolCrossRegionHAType(volName string) (volCrossRegionHAType 
 }
 
 func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, designatedZoneName string) (err error) {
+	if time.Now().Unix()-vol.createTime < defaultAutoCreateDPAfterVolCreateSecond {
+		log.LogDebug(fmt.Sprintf("action[batchCreateDataPartition] vol:%v createTime less than:%vsecond", vol.Name, defaultAutoCreateDPAfterVolCreateSecond))
+		return
+	}
 	for i := 0; i < reqCount; i++ {
 		if c.DisableAutoAllocate {
 			return

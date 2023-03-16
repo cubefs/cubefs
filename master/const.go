@@ -260,6 +260,7 @@ const (
 	defaultFollReadHostWeight                          = 0
 	defaultChildFileMaxCount                           = 2000 * 10000 //default 2kw
 	defaultDataNodeFlushFDParallelismOnDisk            = 5
+	defaultAutoCreateDPAfterVolCreateSecond            = 60
 )
 
 const (
