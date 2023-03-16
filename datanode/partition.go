@@ -145,11 +145,11 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	}
 	dp.ForceLoadHeader()
 	if request.CreateType == proto.NormalCreateDataPartition {
-		err = dp.StartRaft()
+		err = dp.StartRaft(false)
 	} else {
 		// init leaderSize to partitionSize
 		disk.updateDisk(uint64(request.LeaderSize))
-		go dp.StartRaftAfterRepair()
+		go dp.StartRaftAfterRepair(false)
 	}
 	if err != nil {
 		return nil, err
@@ -242,15 +242,16 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
 	dp.lastTruncateID = meta.LastTruncateID
 	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
-		err = dp.StartRaft()
+		err = dp.StartRaft(true)
 	} else {
 		// init leaderSize to partitionSize
 		dp.leaderSize = dp.partitionSize
-		go dp.StartRaftAfterRepair()
+		go dp.StartRaftAfterRepair(true)
 	}
 	if err != nil {
 		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
 		disk.space.DetachDataPartition(dp.partitionID)
+		return
 	}
 
 	go dp.StartRaftLoggingSchedule()
