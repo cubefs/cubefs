@@ -30,6 +30,7 @@
    user-guide/blobstore
    user-guide/hadoop
    user-guide/k8s
+   user-guide/fuse
 
 .. toctree::
    :maxdepth: 2

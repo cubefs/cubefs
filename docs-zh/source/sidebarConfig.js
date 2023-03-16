@@ -27,6 +27,7 @@ module.exports = [
             'user-guide/blobstore.md',
             'user-guide/hadoop.md',
             'user-guide/k8s.md',
+            'user-guide/fuse.md',
         ]
     },
     {
