@@ -13,8 +13,8 @@
 | disable_sync     | 是否关闭磁盘sync，值为true表示关闭sync，可以提高写性能                | 否       |
 | rack             | 所在机架编号，clustermgr打开机架隔离时需要此字段                      | 否       |
 | host             | 本机的blobnode服务地址，需要注册到clustermgr                          | 是       |
-| must_mount_point | 校验注册路径是否是挂载路径，生成环境建议打开                          | 否       |
-| data_qos         | 数据qos分层限流，生成环境建议打开                                     | 否       |
+| must_mount_point | 校验注册路径是否是挂载路径，生产环境建议打开                          | 否       |
+| data_qos         | 数据qos分层限流，生产环境建议打开                                     | 否       |
 | meta_config      | 元数据相关配置，包含rocksdb的cache大小等                              | 否       |
 | clustermgr       | clustermgr的服务地址信息等                                            | 是       |
 ### 全部配置
@@ -82,7 +82,7 @@
 					"iops": "同上",
 					"factor": "同上"
 				},
-				"level3(balance, drop, manual migrate)": {
+				"level3": {
 					"bandwidth_MBPS": "(level3是balance, drop, manual migrate io)限流带宽MB/s",
 					"iops": "同上",
 					"factor": "同上"
@@ -173,12 +173,12 @@
         "allow_clean_trash": true,        
         "must_mount_point": true,        
         "data_qos": {            
-            "disk_bandwidth_MBPS": 2000,            
+            "disk_bandwidth_MBPS": 200,            
             "disk_iops": 8000,            
             "flow_conf": {                                                                                             
                 "level0": { 					
-                    "bandwidth_MBPS": 2000, 
-                    "iops": 40000, 
+                    "bandwidth_MBPS": 200, 
+                    "iops": 4000, 
                     "factor": 1
                 },                
                 "level1": {							
