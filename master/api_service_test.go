@@ -117,7 +117,7 @@ func createDefaultMasterServerForTest() *Server {
 		size:             3,
 		mpCount:          3,
 		dpReplicaNum:     3,
-		capacity:         100,
+		capacity:         300,
 		followerRead:     false,
 		authenticate:     false,
 		crossZone:        false,

@@ -215,7 +215,7 @@ func createVol(kv map[string]interface{}, t *testing.T) {
 	checkWithDefault(kv, volTypeKey, proto.VolumeTypeHot)
 	checkWithDefault(kv, volOwnerKey, testOwner)
 	checkWithDefault(kv, zoneNameKey, testZone2)
-	checkWithDefault(kv, volCapacityKey, 100)
+	checkWithDefault(kv, volCapacityKey, 300)
 
 	switch kv[volTypeKey].(int) {
 	case proto.VolumeTypeHot:
