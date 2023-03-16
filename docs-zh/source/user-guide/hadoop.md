@@ -38,8 +38,8 @@ mvn package -Dmaven.test.skip=true
 
 Hadoop 集群内的各参与节点都必须安装原生 CubeFS Hadoop客户端。
 
-| 资源包名称     | 安装路径                             |
-| -------------- | ------------------------------------ |
+| 资源包名称          | 安装路径                                 |
+|----------------|--------------------------------------|
 | cfs-hadoop.jar | $HADOOP_HOME/share/hadoop/common/lib |
 | jna-5.4.0.jar  | $HADOOP_HOME/share/hadoop/common/lib |
 | libcfs.so      | $HADOOP_HOME/lib/native              |
@@ -92,16 +92,16 @@ Hadoop 集群内的各参与节点都必须安装原生 CubeFS Hadoop客户端�
 
 配置参数说明：
 
-| Property                | Value                      | Notes                                                        |
-| :---------------------- | :------------------------- | :----------------------------------------------------------- |
-| fs.cfs.impl             | io.cubefs.CubefsFileSystem | 指定scheme为cfs://的存储实现类                               |
+| Property                | Value                      | Notes                                                       |
+|:------------------------|:---------------------------|:------------------------------------------------------------|
+| fs.cfs.impl             | io.cubefs.CubefsFileSystem | 指定scheme为cfs://的存储实现类                                       |
 | cfs.master.address      |                            | CubeFS master地址，可以是ip+port格式，ip:port,ip:port,ip:port，也可以是域名 |
-| cfs.log.dir             | /tmp/cfs-access-log        | 日志路径                                                     |
-| cfs.log.level           | INFO                       | 日志级别                                                     |
-| cfs.access.key          |                            | CubeFS 文件系统的所属用户的 accessKey                        |
-| cfs.secret.key          |                            | CubeFS 文件系统的所属用户的 secretKey                        |
-| cfs.min.buffersize      | 8MB                        | 写缓存区大小,对于副本卷按默认值就行，EC卷建议64MB            |
-| cfs.min.read.buffersize | 128KB                      | 读缓冲区大小,对于副本卷按默认值就行，EC卷建议4MB             |
+| cfs.log.dir             | /tmp/cfs-access-log        | 日志路径                                                        |
+| cfs.log.level           | INFO                       | 日志级别                                                        |
+| cfs.access.key          |                            | CubeFS 文件系统的所属用户的 accessKey                                 |
+| cfs.secret.key          |                            | CubeFS 文件系统的所属用户的 secretKey                                 |
+| cfs.min.buffersize      | 8MB                        | 写缓存区大小,对于副本卷按默认值就行，EC卷建议64MB                                |
+| cfs.min.read.buffersize | 128KB                      | 读缓冲区大小,对于副本卷按默认值就行，EC卷建议4MB                                 |
 
 ## 环境验证
 

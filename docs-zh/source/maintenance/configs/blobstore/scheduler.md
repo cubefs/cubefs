@@ -1,27 +1,27 @@
-# Scheduler
+# Scheduler 配置
 
 ## 配置说明
 
-| 配置项                         | 说明                                                     | 是否必须                                                      |
-|:-----------------------|:-----------------------|:-----------------------|
-| 公共配置项                     | 如服务端口、运行日志以及审计日志等，参考[基础服务配置](./base.md)章节 | 是                                                            |
-| cluster_id                     | 集群id，集群内id统一                                     | 是                                                            |
-| services                       | scheduler所有节点列表                                    | 是，参考示例                                                  |
-| service_register               | 服务注册信息                                             | 是，参考示例                                                  |
-| clustermgr                     | clustermgr客户端初始化配置                               | 是，需要配置clustermgr服务地址                                |
-| proxy                          | proxy客户端初始化配置                                    | 否，参考rpc配置示例                                           |
-| blobnode                       | blobnode客户端初始化配置                                 | 否，参考rpc配置示例                                           |
-| kafka                          | kafka相关配置                                            | 是                                                            |
-| balance                        | 均衡任务参数配置                                         | 否                                                            |
-| disk_drop                      | 磁盘下线任务参数配置                                     | 否                                                            |
-| disk_repair                    | 磁盘修复任务参数配置                                     | 否                                                            |
-| volume_inspect                 | 卷巡检任务参数配置（这个卷指纠删码子系统中的卷）         | 否                                                            |
-| shard_repair                   | 修补任务参数配置                                         | 是，需要配置孤本数据日志存放目录                              |
-| blob_delete                    | 删除任务参数配置                                         | 是，需要配置删除日志存放目录                                  |
-| topology_update_interval_min   | 配置集群拓扑更新时间间隔                                 | 否，默认1分钟                                                 |
-| volume_cache_update_interval_s | 卷缓存更新频率，避免短时间内频繁更新卷                   | 否，默认10s                                                   |
-| free_chunk_counter_buckets     | 统计freechunk指标的bucket访问                            | 否，默认\[1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000\] |
-| task_log                       | 记录已完成后台任务信息，用于备份                         | 是，需要配置dir，chunkbits默认29                              |
+| 配置项                            | 说明                                        | 是否必须                                                      |
+|:-------------------------------|:------------------------------------------|:----------------------------------------------------------|
+| 公共配置项                          | 如服务端口、运行日志以及审计日志等，参考[基础服务配置](./base.md)章节 | 是                                                         |
+| cluster_id                     | 集群id，集群内id统一                              | 是                                                         |
+| services                       | scheduler所有节点列表                           | 是，参考示例                                                    |
+| service_register               | 服务注册信息                                    | 是，参考示例                                                    |
+| clustermgr                     | clustermgr客户端初始化配置                        | 是，需要配置clustermgr服务地址                                      |
+| proxy                          | proxy客户端初始化配置                             | 否，参考rpc配置示例                                               |
+| blobnode                       | blobnode客户端初始化配置                          | 否，参考rpc配置示例                                               |
+| kafka                          | kafka相关配置                                 | 是                                                         |
+| balance                        | 均衡任务参数配置                                  | 否                                                         |
+| disk_drop                      | 磁盘下线任务参数配置                                | 否                                                         |
+| disk_repair                    | 磁盘修复任务参数配置                                | 否                                                         |
+| volume_inspect                 | 卷巡检任务参数配置（这个卷指纠删码子系统中的卷）                  | 否                                                         |
+| shard_repair                   | 修补任务参数配置                                  | 是，需要配置孤本数据日志存放目录                                          |
+| blob_delete                    | 删除任务参数配置                                  | 是，需要配置删除日志存放目录                                            |
+| topology_update_interval_min   | 配置集群拓扑更新时间间隔                              | 否，默认1分钟                                                   |
+| volume_cache_update_interval_s | 卷缓存更新频率，避免短时间内频繁更新卷                       | 否，默认10s                                                   |
+| free_chunk_counter_buckets     | 统计freechunk指标的bucket访问                    | 否，默认\[1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000\] |
+| task_log                       | 记录已完成后台任务信息，用于备份                          | 是，需要配置dir，chunkbits默认29                                   |
 
 ## 配置示例
 ### services示例

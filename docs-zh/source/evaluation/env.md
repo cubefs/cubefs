@@ -2,25 +2,25 @@
 
 ## 集群信息
 
-| 节点类型   | 节点数 | CPU | 内存 | 存储         | 网络    | 备注     |
-|------------|--------|-----|------|--------------|---------|----------|
-| 管理节点   | 3      | 32  | 32GB | 120GB SSD    | 10 Gb/s |          |
-| 元数据节点 | 10     | 32  | 32GB | 16 x 1TB SSD | 10 Gb/s | 混合部署 |
-| 数据节点   | 10     | 32  | 32GB | 16 x 1TB SSD | 10 Gb/s | 混合部署 |
+| 节点类型  | 节点数 | CPU | 内存   | 存储           | 网络      | 备注   |
+|-------|-----|-----|------|--------------|---------|------|
+| 管理节点  | 3   | 32  | 32GB | 120GB SSD    | 10 Gb/s |      |
+| 元数据节点 | 10  | 32  | 32GB | 16 x 1TB SSD | 10 Gb/s | 混合部署 |
+| 数据节点  | 10  | 32  | 32GB | 16 x 1TB SSD | 10 Gb/s | 混合部署 |
 
 
 ## 卷设置
 
-| 参数                 | 默认值 | 推荐值         | 说明                          |
-|----------------------|--------|----------------|-------------------------------|
-| FollowerRead         | True   | True           |                               |
-| Capacity             | 10 GB  | 300 000 000 GB |                               |
-| Data Replica Number  | 3      | 3              |                               |
-| Meta Replica Number  | 3      | 3              |                               |
+| 参数                   | 默认值    | 推荐值            | 说明              |
+|----------------------|--------|----------------|-----------------|
+| FollowerRead         | True   | True           |                 |
+| Capacity             | 10 GB  | 300 000 000 GB |                 |
+| Data Replica Number  | 3      | 3              |                 |
+| Meta Replica Number  | 3      | 3              |                 |
 | Data Partition Size  | 120 GB | 120 GB         | 只是理论值上限 并不预分配空间 |
-| Data Partition Count | 10     | 1500           |                               |
-| Meta Partition Count | 3      | 10             |                               |
-| Cross Zone           | False  | False          |                               |
+| Data Partition Count | 10     | 1500           |                 |
+| Meta Partition Count | 3      | 10             |                 |
+| Cross Zone           | False  | False          |                 |
 
 设置方法:
 

@@ -57,10 +57,10 @@ curl "http://192.168.0.11:17010/admin/createVol?name=volDomain&capacity=1000&own
 
 参数列表
 
-| 参数             | 类型   | 描述         |
-|------------------|--------|--------------|
-| crossZone        | string | 是否跨zone   |
-| normalZonesFirst | bool   | 非故障域优先 |
+| 参数               | 类型     | 描述      |
+|------------------|--------|---------|
+| crossZone        | string | 是否跨zone |
+| normalZonesFirst | bool   | 非故障域优先  |
 
 ### 查看故障域是否启用
 

@@ -12,7 +12,9 @@
 ./build/bin/cfs-cli volume info ltptest
 ```
 ### 启动客户端
-    + /home/cfs/client/mnt即为挂载点，代表挂载成功
+
+> /home/cfs/client/mnt即为挂载点，代表挂载成功
+
 ```bash
 ./build/bin/cfs-client -c /home/data/conf/client.conf
 df -h
@@ -30,7 +32,7 @@ cubefs-ltptest   10G     0   10G   0% /home/cfs/client/mnt
 > 后能够更方便地使用, 用 help 可以查看帮助信息
 ### 启动CLI
 
-基于默认配置，启动命令行工具 `cli` ，详细使用参考[CLI工具使用](../cli/blobstore.md)
+基于默认配置，启动命令行工具 `cli` ，详细使用参考[CLI工具使用](../maintenance/tool.md)
 1. 物理机环境
 ``` bash
 $> cd ./cubefs/blobstore
