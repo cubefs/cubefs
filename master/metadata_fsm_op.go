@@ -1226,7 +1226,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 	return
 }
 
-func (c *Cluster) loadVolsFsmInfo() (err error, vvs []*volValue) {
+func (c *Cluster) loadVolsName() (err error, names []string) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(volPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadVols],err:%v", err.Error())
@@ -1238,7 +1238,10 @@ func (c *Cluster) loadVolsFsmInfo() (err error, vvs []*volValue) {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
-		vvs = append(vvs, vv)
+		if !bsProto.IsHot(vv.VolType) && vv.CacheAction == bsProto.NoCache {
+			continue
+		}
+		names = append(names, vv.Name)
 		log.LogInfof("action[loadVols],vol[%v]", vv.Name)
 	}
 	return
