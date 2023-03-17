@@ -1,4 +1,4 @@
-# Inode管理命令
+# Inode管理
 
 ## 获取指定Inode基本信息
 
