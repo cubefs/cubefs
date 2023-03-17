@@ -31,7 +31,7 @@ func TestGetMetaPartition(t *testing.T) {
 		t.Errorf("get metapartitions failed, the metapartitions count is 0")
 	}
 	testMetaPartitionID := mps[0].PartitionID
-	_, err = testMc.ClientAPI().GetMetaPartition(testMetaPartitionID)
+	_, err = testMc.ClientAPI().GetMetaPartition(testMetaPartitionID, "")
 	if err != nil {
 		t.Fatalf("GetMetaPartition failed, err %v", err)
 	}

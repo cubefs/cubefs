@@ -63,7 +63,7 @@ func (mp *CmpMpTask) GetMpInfo() (err error) {
 	}()
 	var info *proto.MetaPartitionInfo
 	cMP := &meta.MetaPartition{PartitionID: mp.id}
-	info, err = mp.mc.ClientAPI().GetMetaPartition(mp.id)
+	info, err = mp.mc.ClientAPI().GetMetaPartition(mp.id, "")
 	if err != nil {
 		log.LogErrorf("get meta partition[%d] info failed, error [%s]", mp.id, err.Error())
 		return

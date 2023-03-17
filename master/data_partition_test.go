@@ -15,6 +15,7 @@ func TestDataPartition(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	server.cluster.checkDataPartitions()
 	count := 20
+	commonVol.createTime = time.Now().Unix() - defaultAutoCreateDPAfterVolCreateSecond*2
 	createDataPartition(commonVol, count, t)
 	if len(commonVol.dataPartitions.partitions) <= 0 {
 		t.Errorf("getDataPartition no dp")

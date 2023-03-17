@@ -640,6 +640,7 @@ func TestCreateMetaPartition(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	commonVol.checkMetaPartitions(server.cluster)
 	createMetaPartition(commonVol, t)
+	commonVol.createTime = time.Now().Unix() - defaultAutoCreateDPAfterVolCreateSecond*2
 }
 
 func TestCreateDataPartition(t *testing.T) {
@@ -1981,6 +1982,7 @@ func TestAddMetaLearnerForCrossRegionVol(t *testing.T) {
 func TestAddDataPartitionForCrossRegionVol(t *testing.T) {
 	var dataPartition *DataPartition
 	oldPartitionIDMap := make(map[uint64]bool)
+	quorumVol.createTime = 0
 	quorumVol.dataPartitions.RLock()
 	for id := range quorumVol.dataPartitions.partitionMap {
 		oldPartitionIDMap[id] = true
@@ -2152,6 +2154,7 @@ func validateCreateDataPartition(volName, designatedZoneName string, createCount
 	if err != nil {
 		return
 	}
+	vol.createTime = time.Now().Unix() - defaultAutoCreateDPAfterVolCreateSecond*2
 	for dpID := range vol.cloneDataPartitionMap() {
 		oldDpCount++
 		if dpID > oldMaxDpID {

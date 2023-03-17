@@ -1558,7 +1558,7 @@ func (mp *metaPartition) Expired() (err error) {
 //
 func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.MetaPartitionInfo
-	if partition, err = masterClient.ClientAPI().GetMetaPartition(mp.config.PartitionId); err != nil {
+	if partition, err = masterClient.ClientAPI().GetMetaPartition(mp.config.PartitionId, mp.config.VolName); err != nil {
 		log.LogErrorf("action[canRemoveSelf] err[%v]", err)
 		return
 	}
