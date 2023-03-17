@@ -24,6 +24,9 @@ const (
 )
 
 func (o *ObjectNode) recordAction(volume string, action StatisticsAction, size uint64) {
+	if !o.statisticEnabled {
+		return
+	}
 	val, found := o.statistics.Load(volume)
 	if !found {
 		val, _ = o.statistics.LoadOrStore(volume, statistics.InitMonitorData(statistics.ModelObjectNode))

@@ -19,12 +19,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
 
 const (
 	MaxRetry = 3
+
+	GetLocalIPMaxRetry      = 10
+	GetLocalIPRetryInterval = time.Second * 5
 )
 
 const (

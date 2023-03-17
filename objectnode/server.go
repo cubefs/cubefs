@@ -24,6 +24,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util/iputil"
+
 	"github.com/chubaofs/chubaofs/util/statistics"
 
 	"github.com/chubaofs/chubaofs/util/config"
@@ -96,6 +98,7 @@ var (
 )
 
 type ObjectNode struct {
+	masters    []string
 	domains    []string
 	wildcards  Wildcards
 	listen     string
@@ -112,7 +115,8 @@ type ObjectNode struct {
 
 	encodedRegion []byte
 
-	statistics sync.Map // volume(string) -> []*statistics.MonitorData
+	statistics       sync.Map // volume(string) -> []*statistics.MonitorData
+	statisticEnabled bool
 
 	control common.Control
 }
@@ -155,6 +159,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	if len(masters) == 0 {
 		return config.NewIllegalConfigError(configMasterAddr)
 	}
+	o.masters = masters
 	log.LogInfof("loadConfig: setup config: %v(%v)", configMasterAddr, strings.Join(masters, ","))
 
 	// parse signature ignored actions
@@ -227,7 +232,28 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	exporter.RegistConsul(cfg)
 
 	// Init SRE monitor
-	statistics.InitStatistics(cfg, ci.Cluster, statistics.ModelObjectNode, ci.Ip, o.reportSummary)
+	go func(cfg *config.Config, cluster string) {
+		var (
+			localIP string
+			err     error
+		)
+		for i := 0; i < GetLocalIPMaxRetry; i++ {
+			err = nil
+			if localIP, err = iputil.GetLocalIPByDialWithMaster(o.masters, time.Second*5); err == nil {
+				break
+			}
+			time.Sleep(GetLocalIPRetryInterval)
+		}
+		if err != nil {
+			var message = fmt.Sprintf("init statistics failed cause can not get local IP address: %v\n", err)
+			log.LogErrorf(message)
+			exporter.Warning(message)
+			return
+		}
+		statistics.InitStatistics(cfg, cluster, statistics.ModelObjectNode, localIP, o.reportSummary)
+		o.statisticEnabled = true
+		log.LogInfof("statistics inited, cluster [%v], module [%v], localIP [%v]", cluster, statistics.ModelObjectNode, localIP)
+	}(cfg, ci.Cluster)
 
 	log.LogInfo("object subsystem start success")
 	return
