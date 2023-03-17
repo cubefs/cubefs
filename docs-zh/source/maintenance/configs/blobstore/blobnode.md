@@ -1,4 +1,4 @@
-# Blobnode 配置
+# BlobNode 配置
 
 > `blobnode` 是单机存储引擎模块，主要负责组织数据落盘、磁盘读取数据、磁盘删除数据以及后台任务的执行等。blobnode的配置是基于[公有配置](./base.md)，以下配置说明主要针对于blobnode的私有配置。
 

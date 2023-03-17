@@ -3,7 +3,9 @@
 CubeFS集成了prometheus作为监控指标采集模块，可以结合具体情况开启监控指标或者配置监控面板。
 
 ## 进程相关指标
+
 支持上报go gc stats和 mem stats, 如下
+
 ```bash
 # gc相关
 go_gc_duration_seconds_sum
@@ -43,7 +45,7 @@ master模块上报的监控指标主要是关于集群内节点的健康状态�
 | cfs_master_vol_usage_ratio{volName="xx"}               | 指定卷的使用率                          |
 | cfs_master_vol_used_GB{volName="xx"}                   | 指定卷已用容量                          |
 
-## Metanode
+## MetaNode
 
 meta节点的监控指标，可以用来监控每个卷的各种元数据操作的qps, 时延数据，如lookup, createInode，createDentry等。
 
@@ -54,7 +56,7 @@ meta节点的监控指标，可以用来监控每个卷的各种元数据操作�
 | cfs_metanode_$op_hist_count  | meta节点对应请求的总数，同cfs_metanode_$op_count  |
 | cfs_metanode_$op_hist_sum    | meta节点对应操作操作请求的总耗时，与hist_count结合计算平均时延 |
 
-## Datanode
+## DataNode
 
 data节点的监控指标，可以用来监控每个卷的各种数据操作的qps, 时延数据, 以及带宽，如read, write等
 
@@ -70,7 +72,7 @@ data节点的监控指标，可以用来监控每个卷的各种数据操作的q
 | cfs_dataNode_dataPartitionIO_hist_count  | data节点io操作的总次数，同上                       |
 | cfs_dataNode_dataPartitionIO_hist_sum    | data节点io操作延时的总值，可与hist_count结合计算平均延时    |
 
-## Objectnode
+## ObjectNode
 
 objectNode的监控指标主要用于监控各种s3操作的请求量和耗时，如copyObject, putObject等。
 
@@ -92,8 +94,6 @@ client模块的监控指标主要是用来监控与data模块，或者元数据�
 | cfs_fuseclient_$dp_hist_sum    | client对应操作的总耗时，与hist_count结合计算平均延时  |
 | cfs_fuseclient_$dp_hist_bucket | client对应请求的histogram数据，用于计算请求延时的95值 |
 
-
-
 ## Blobstore
 
 ### 通用指标项
@@ -111,22 +111,32 @@ client模块的监控指标主要是用来监控与data模块，或者元数据�
 
 可以修改服务审计日志配置项，开启相关指标
 
+| 配置项                    | 说明                   | 是否必须         |
+|:-----------------------|:---------------------|:-------------|
+| idc                    | idc名字                | 否，如果开启指标建议填写 |
+| service                | 模块名字                 | 否，如果开启指标建议填写 |
+| tag                    | 自定义tag，比如配置clusterid | 否，如果开启指标建议填写 |
+| enable_http_method     | 是否开启状态码统计            | 否，默认关闭       |
+| enable_req_length_cnt  | 是否开启请求长度统计           | 否，默认关闭       |
+| enable_resp_length_cnt | 是否开启响应长度统计           | 否，默认关闭       |
+| enable_resp_duration   | 是否开启请求/响应区间耗时统计      | 否，默认关闭       |
+| max_api_level          | 最大api路径深度            | 否            |
+
 ```json
-# 配置示例，审计日志处配置
-"auditlog": {
-    # 其他配置，比如日志目录。日志后缀，备份数等
-    # 指标配置项
+{
+  "auditlog": {
     "metric_config": {
-        "idc": "z0", # idc名字
-        "service": "SCHEDULER", # 模块名字
-        "tag": "100", # 自定义tag，比如配置clusterid
-        "team": "cubefs", # 团队名
-        "enable_http_method": true, # 是否开启状态码统计，默认关闭
-        "enable_req_length_cnt": true, # 是否开启请求长度统计，默认关闭
-        "enable_resp_length_cnt": true, # 是否开启响应长度统计，默认关闭
-        "enable_resp_duration": true, # 是否开启请求/响应区间耗时统计，默认关闭
-        "max_api_level": 3 # 最大api路径深度
+      "idc": "z0",
+      "service": "SCHEDULER",
+      "tag": "100",
+      "team": "cubefs",
+      "enable_http_method": true,
+      "enable_req_length_cnt": true,
+      "enable_resp_length_cnt": true,
+      "enable_resp_duration": true,
+      "max_api_level": 3
     }
+  }
 }
 ```
 
@@ -166,18 +176,17 @@ service_response_length{api="clustermgr.chunk.report",code="200",host="xxxx",idc
 service_response_duration_ms_bucket{api="clustermgr.config.get",code="200",host="xxx",idc="z0",method="GET",reqlength="",resplength="",service="CLUSTERMGR",tag="",team="",le="1"} 22
 ```
 
-
 ### Access
 
 **blobstore_access_cache_hit_rate**
 
 缓存命中率，status包含三类：hit（命中）、miss（未命中）、expired（未命中可能有很多原因，其中之一是过期了）
 
-| 标签    | 说明                                                              |
-|---------|-------------------------------------------------------------------|
-| cluster | 集群id                                                            |
-| service | 监控组件，比如clustermgr，mencache，redis等                       |
-| status  | 状态，none、hit、miss、expired |
+| 标签      | 说明                                |
+|---------|-----------------------------------|
+| cluster | 集群id                              |
+| service | 监控组件，比如clustermgr，mencache，redis等 |
+| status  | 状态，none、hit、miss、expired          |
 
 ```bash
 # TYPE blobstore_access_cache_hit_rate counter
@@ -302,7 +311,7 @@ blobstore_clusterMgr_space_stat_info{cluster="100",is_leader="false",item="FreeS
 blobstore_clusterMgr_vol_status_vol_count{cluster="100",is_leader="false",region="cn-south-2",status="active"} 316
 ```
 
-### Blobnode
+### BlobNode
 
 **blobstore_blobnode_disk_stat**
 
