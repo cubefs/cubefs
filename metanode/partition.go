@@ -46,6 +46,7 @@ import (
 var (
 	ErrIllegalHeartbeatAddress = errors.New("illegal heartbeat address")
 	ErrIllegalReplicateAddress = errors.New("illegal replicate address")
+	ErrSnapshotCrcMismatch     = errors.New("snapshot crc not match")
 )
 
 // Errors
@@ -788,42 +789,70 @@ func (mp *metaPartition) PersistMetadata() (err error) {
 	return
 }
 
+func (mp *metaPartition) parseCrcFromFile() ([]uint32, error) {
+	data, err := ioutil.ReadFile(path.Join(path.Join(mp.config.RootDir, snapshotDir), SnapshotSign))
+	if err != nil {
+		return nil, err
+	}
+	raw := string(data)
+	crcStrs := strings.Split(raw, " ")
+
+	crcs := make([]uint32, 0, len(crcStrs))
+	for _, crcStr := range crcStrs {
+		crc, err := strconv.ParseUint(crcStr, 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		crcs = append(crcs, uint32(crc))
+	}
+
+	return crcs, nil
+}
+
 func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
-	if err = mp.loadInode(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadDentry(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadExtend(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadMultipart(snapshotPath); err != nil {
-		return
+
+	crcs, err := mp.parseCrcFromFile()
+	if err != nil {
+		return err
 	}
 
-	if err = mp.loadTxInfo(snapshotPath); err != nil {
-		return
+	var loadFuncs = []func(rootDir string, crc uint32) error{
+		mp.loadInode,
+		mp.loadDentry,
+		mp.loadExtend,
+		mp.loadMultipart,
+		mp.loadTxInfo,
+		mp.loadTxRbInode,
+		mp.loadTxRbDentry,
 	}
 
-	if err = mp.loadTxRbInode(snapshotPath); err != nil {
-		return
+	if len(crcs) != len(loadFuncs) {
+		return ErrSnapshotCrcMismatch
 	}
 
-	if err = mp.loadTxRbDentry(snapshotPath); err != nil {
-		return
+	errs := make([]error, len(loadFuncs))
+	var wg sync.WaitGroup
+	wg.Add(len(loadFuncs))
+	for idx, f := range loadFuncs {
+		loadFunc := f
+		i := idx
+		go func() {
+			defer wg.Done()
+			errs[i] = loadFunc(snapshotPath, crcs[i])
+		}()
 	}
 
-	if err = mp.loadApplyID(snapshotPath); err != nil {
-		return
-	}
+	wg.Wait()
 
+	for _, err = range errs {
+		if err != nil {
+			return
+		}
+	}
 	if err = mp.loadTxID(snapshotPath); err != nil {
 		return
 	}
-
-	err = mp.loadApplyID(snapshotPath)
-	return
+	return mp.loadApplyID(snapshotPath)
 }
 
 func (mp *metaPartition) load(isCreate bool) (err error) {
@@ -843,38 +872,12 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 	}
 
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
-	var loadFuncs = []func(rootDir string) error{
-		mp.loadInode,
-		mp.loadDentry,
-		mp.loadExtend,
-		mp.loadMultipart,
-		mp.loadTxInfo,
-		mp.loadTxRbInode,
-		mp.loadTxRbDentry,
-		mp.loadApplyID,
-		mp.loadTxID,
-	}
+	if _, err = os.Stat(snapshotPath); err != nil {
+		log.LogErrorf("load snapshot failed, err: %s", err.Error())
+		return nil
 
-	errs := make([]error, 0)
-	var mutex sync.Mutex
-	var wg sync.WaitGroup
-	wg.Add(len(loadFuncs))
-	for _, f := range loadFuncs {
-		loadFunc := f
-		go func() {
-			defer wg.Done()
-			if e := loadFunc(snapshotPath); e != nil {
-				mutex.Lock()
-				errs = append(errs, e)
-				mutex.Unlock()
-			}
-		}()
 	}
-	wg.Wait()
-	if len(errs) > 0 {
-		err = errs[0]
-	}
-	return
+	return mp.LoadSnapshot(snapshotPath)
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
@@ -1230,11 +1233,15 @@ func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) {
 
 func (mp *metaPartition) storeSnapshotFiles() (err error) {
 	msg := &storeMsg{
-		applyIndex:    mp.applyID,
-		inodeTree:     NewBtree(),
-		dentryTree:    NewBtree(),
-		extendTree:    NewBtree(),
-		multipartTree: NewBtree(),
+		applyIndex:     mp.applyID,
+		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
+		inodeTree:      NewBtree(),
+		dentryTree:     NewBtree(),
+		extendTree:     NewBtree(),
+		multipartTree:  NewBtree(),
+		txTree:         NewBtree(),
+		txRbInodeTree:  NewBtree(),
+		txRbDentryTree: NewBtree(),
 	}
 
 	return mp.store(msg)

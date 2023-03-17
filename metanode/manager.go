@@ -362,20 +362,6 @@ func (m *metadataManager) loadPartitions() (err error) {
 			wg.Add(1)
 			go func(fileName string) {
 				var errload error
-				defer func() {
-					if r := recover(); r != nil {
-						log.LogErrorf("loadPartitions partition: %s, "+
-							"error: %s, failed: %v", fileName, errload, r)
-						log.LogFlush()
-						panic(r)
-					}
-					if errload != nil {
-						log.LogErrorf("loadPartitions partition: %s, "+
-							"error: %s", fileName, errload)
-						log.LogFlush()
-						panic(errload)
-					}
-				}()
 				defer wg.Done()
 				if len(fileName) < 10 {
 					log.LogWarnf("ignore unknown partition dir: %s", fileName)
