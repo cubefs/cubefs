@@ -1,4 +1,4 @@
-# Clustermgr管理命令
+# Clustermgr管理
 
 ## 服务状态
 
