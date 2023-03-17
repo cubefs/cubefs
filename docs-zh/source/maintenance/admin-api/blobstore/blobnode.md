@@ -1,4 +1,4 @@
-# Blobnode管理命令
+# Blobnode管理
 
 ## 服务状态
 

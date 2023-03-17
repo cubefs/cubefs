@@ -1,4 +1,4 @@
-# Dentry调试命令
+# Dentry调试
 
 ## 获取Dentry信息
 
