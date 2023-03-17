@@ -1,6 +1,6 @@
 # 对接Hadoop
 
-Cubefs兼容Hadoop FileSystem接口协议，用户可以使用CubeFS来替换Hadoop 文件系统（ HDFS ）。本章描述了 Cubefs在 Hadoop 存储生态的安装和配置过程。
+CubeFS兼容Hadoop FileSystem接口协议，用户可以使用CubeFS来替换Hadoop 文件系统（ HDFS ）。本章描述了 CubeFS在 Hadoop 存储生态的安装和配置过程。
 
 ## 依赖项
 
