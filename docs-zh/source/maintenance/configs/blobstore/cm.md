@@ -5,20 +5,20 @@
 ## 配置说明
 ### 关键配置
 
-| 配置项                | 说明                                                                     | 是否必须 |
-|:-------------------|:-----------------------------------------------------------------------|:-----|
-| 公有配置               | 如服务端口、运行日志以及审计日志等，参考[基础服务配置](./base.md)章节                              | 是    |
-| chunk_size         | blobnode中每一个chunk的大小，即创建的文件的大小                                         | 是    |
-| cluster_id         | 集群编号                                                                   | 是    |
-| idc                | 所在机房编号                                                                 | 是    |
-| region             | 区域名                                                                    | 是    |
-| db_path            | 元数据DB存储路径，生产环境中， 建议存放的数据盘为SSD                                          | 是    |
-| code_mode_policies | 编码模式，配置参考编码模式详细配置，具体编码信息可参考[如何使用纠删码存储系统](../user-guide/blobstore.md)附录 | 是    |
-| raft_config        | 详细参考Raft详细配置                                                           | 是    |
-| disk_mgr_config    | 详细参考磁盘管理配置                                                             | 是    |
-| host_aware         | 主机感知                                                                   | 是    |
-| rack_ware          | 机架感知                                                                   | 是    |
-| volume_mgr_config  | 卷管理模块                                                                  | 否    |
+| 配置项                | 说明                                                                           | 是否必须 |
+|:-------------------|:-----------------------------------------------------------------------------|:-----|
+| 公有配置               | 如服务端口、运行日志以及审计日志等，参考[基础服务配置](./base.md)章节                                    | 是    |
+| chunk_size         | blobnode中每一个chunk的大小，即创建的文件的大小                                               | 是    |
+| cluster_id         | 集群编号                                                                         | 是    |
+| idc                | 所在机房编号                                                                       | 是    |
+| region             | 区域名                                                                          | 是    |
+| db_path            | 元数据DB存储路径，生产环境中， 建议存放的数据盘为SSD                                                | 是    |
+| code_mode_policies | 编码模式，配置参考编码模式详细配置，具体编码信息可参考[如何使用纠删码存储系统](../../../user-guide/blobstore.md)附录 | 是    |
+| raft_config        | 详细参考Raft详细配置                                                                 | 是    |
+| disk_mgr_config    | 详细参考磁盘管理配置                                                                   | 是    |
+| host_aware         | 主机感知                                                                         | 是    |
+| rack_ware          | 机架感知                                                                         | 是    |
+| volume_mgr_config  | 卷管理模块                                                                        | 否    |
 
 
 ### 全部配置
@@ -89,7 +89,7 @@
   "disk_mgr_config": {
     "refresh_interval_s": "磁盘刷新时间间隔,用于刷新当前cluster的磁盘状态",
     "host_aware": "主机感知，分配卷时是否可以在同一机器，在生产环境必须配上主机隔离",
-    "heartbeat_expire_interval_s": "心跳过期间隔时间，针对于blobnode上报的心跳时间", 
+    "heartbeat_expire_interval_s": "心跳过期间隔时间，针对于BlobNode上报的心跳时间", 
     "rack_aware": "机架感知，分配卷时是否可以在同一机架，机架隔离根据存储环境的条件进行配置",
     "flush_interval_s": "刷新时间间隔",
     "apply_concurrency": "应用并发",
@@ -99,9 +99,9 @@
   
   "cluster_report_interval_s": "上报consul的间隔",
   "consul_agent_addr": "consul地址",
-  "heartbeat_notify_interval_s": "心跳通知间隔，用来定时处理blobnode上报的磁盘信息，这个时间许小于blobnode上报的时间间隔，避免磁盘心跳超时过期",
+  "heartbeat_notify_interval_s": "心跳通知间隔，用来定时处理BlobNode上报的磁盘信息，这个时间许小于BlobNode上报的时间间隔，避免磁盘心跳超时过期",
   "max_heartbeat_notify_num": "最大心跳通知数目",
-  "chunk_size": "Blobnode中每一个chunk的大小，即创建的文件的大小  "
+  "chunk_size": "BlobNode中每一个chunk的大小，即创建的文件的大小  "
 }
 ```
 

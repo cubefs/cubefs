@@ -1,6 +1,6 @@
 # 节点或磁盘故障
 
-## Datanode
+## DataNode
 
 ### 节点故障处理
 当三副本的卷其中一个datanode所处的机器故障导致宕机，从而使得节点上的所有的data partition处于unavailable状态时，需要及时进行迁移下线处理，防止其他节点再宕机造成某些data partition 同时缺少两副本导致不可用。
@@ -71,7 +71,7 @@ curl -v http://192.168.0.11:17010/disk/decommission?addr=192.168.0.30:17310&disk
 
 同样可以根据datanode的负载情况来设置迁移速率
 
-## Metanode
+## MetaNode
 ### 节点故障处理
 当节点不可用（机器故障或者网络不同），需要执行节点的下线，防止节点上的meta partition出现多数副本不可用从而导致整个partition 出现unavailable的情况。
 #### 下线节点
@@ -121,18 +121,18 @@ curl -v "http://192.168.0.11:17010/metaPartition/diagnose"
 
 ## 纠删码子系统
 
-Access、Proxy均为无状态节点，不涉及到数据搬迁，这里仅介绍Clustermgr与Blobnode的故障处理
+Access、Proxy均为无状态节点，不涉及到数据搬迁，这里仅介绍Clustermgr与BlobNode的故障处理
 
 ### Clustermgr
 
 ### 节点故障
 集群可用，宕机的节点数不超过集群的大多数
-   > 在新的节点启用clustermgr服务，将新服务中的配置中加上当前节点的成员信息；
-   > 调用[成员移除接口](admin-api/blobstore/cm.md)移除宕机的节点；
-   > 调用[成员添加接口](admin-api/blobstore/cm.md)将刚启动的Clustermgr节点加到集群中；
-   > 等待数据自动同步即可
+- 在新的节点启用clustermgr服务，将新服务中的配置中加上当前节点的成员信息；
+- 调用[成员移除接口](admin-api/blobstore/cm.md)移除宕机的节点；
+- 调用[成员添加接口](admin-api/blobstore/cm.md)将刚启动的Clustermgr节点加到集群中；
+- 等待数据自动同步即可
 
-### Blobnode
+### BlobNode
 
 #### 磁盘故障
 
