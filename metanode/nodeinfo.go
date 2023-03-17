@@ -360,22 +360,12 @@ func (m *MetaNode) updateSkipStep(skipStep uint64) {
 	atomic.StoreUint64(&nodeInfo.cursorAddStep, skipStep)
 }
 
-func (m *MetaNode) getSkipStep() uint64 {
-	nodeConf := getGlobalConfNodeInfo()
-	skipStep := nodeConf.cursorAddStep
-	if skipStep < 0 && skipStep > proto.DefaultMaxSkipStepOnLeaderChange {
-		return proto.DefaultSkipStepOnLeaderChange
-	}
-	return skipStep
-}
-
 func getGlobalConfNodeInfo() *NodeInfo {
 	newInfo := *nodeInfo
 	return &newInfo
 }
 
 func (m *MetaNode) startUpdateNodeInfo() {
-	m.updateSkipStep(proto.DefaultSkipStepOnLeaderChange)
 	deleteTicker := time.NewTicker(UpdateDeleteLimitInfoTicket)
 	rateLimitTicker := time.NewTicker(UpdateRateLimitInfoTicket)
 	clusterViewTicker := time.NewTicker(UpdateClusterViewTicket)
@@ -430,6 +420,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
 	m.updateSyncWALOnUnstableEnableState(limitInfo.MetaSyncWALOnUnstableEnableState)
 	m.updateMPReuseConf(limitInfo)
+	m.updateSkipStep(limitInfo.CursorSkipStep)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

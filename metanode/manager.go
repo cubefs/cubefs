@@ -95,6 +95,7 @@ type VolumeConfig struct {
 	EnableBitMapAllocator             bool
 	CleanTrashItemMaxDurationEachTime int32
 	CleanTrashItemMaxCountEachTime    int32
+	CursorSkipStep                    uint64
 }
 
 type MetaNodeVersion struct {
@@ -485,10 +486,13 @@ func (m *metadataManager) updateVolConf() (err error) {
 			EnableBitMapAllocator:             vol.EnableBitMapAllocator,
 			CleanTrashItemMaxCountEachTime:    vol.CleanTrashMaxCountEachTime,
 			CleanTrashItemMaxDurationEachTime: vol.CleanTrashMaxDurationEachTime,
+			CursorSkipStep:                    vol.CursorSkipStep,
 		}
 		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, " +
-			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v", vol.Name, vol.TrashRemainingDays, vol.ChildFileMaxCnt, vol.TrashCleanInterval,
-			strconv.FormatBool(vol.EnableBitMapAllocator), vol.CleanTrashMaxDurationEachTime, vol.CleanTrashMaxCountEachTime)
+			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v" +
+			"cursorSkipStep: %v", vol.Name, vol.TrashRemainingDays, vol.ChildFileMaxCnt, vol.TrashCleanInterval,
+			strconv.FormatBool(vol.EnableBitMapAllocator), vol.CleanTrashMaxDurationEachTime, vol.CleanTrashMaxCountEachTime,
+			vol.CursorSkipStep)
 	}
 
 	m.volConfMapRWMutex.Lock()
@@ -591,6 +595,17 @@ func (m *metadataManager) getCleanTrashItemMaxCountEachTime(vol string) (maxCoun
 		return
 	}
 	maxCount = volConf.CleanTrashItemMaxCountEachTime
+	return
+}
+
+func (m *metadataManager) getCursorSkipStep(vol string) (skipStep uint64) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	volConf, ok := m.volConfMap[vol]
+	if !ok {
+		return
+	}
+	skipStep = volConf.CursorSkipStep
 	return
 }
 

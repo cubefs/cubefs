@@ -219,6 +219,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["virtual_mps"] = mp.(*metaPartition).getVirtualMetaPartitionsInfo()
 	msg["cleanTrashItemMaxDurationEachTime"] = mp.(*metaPartition).getCleanTrashItemMaxDurationEachTime()
 	msg["cleanTrashItemMaxCountEachTime"] = mp.(*metaPartition).getCleanTrashItemMaxCountEachTime()
+	msg["skipStep"] = mp.(*metaPartition).getCursorSkipStep()
 	msg["now"] = time.Now()
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -919,7 +920,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"mpMaxDentryCount":                  m.getMetaPartitionMaxDentryCount(),
 		"cleanTrashItemMaxDurationEachTime": nodeInfo.CleanTrashItemMaxDurationEachTime,
 		"cleanTrashItemMaxCountEachTime":    nodeInfo.CleanTrashItemMaxCountEachTime,
-		"skipStep":                          m.getSkipStep(),
+		"skipStep":                          atomic.LoadUint64(&nodeInfo.cursorAddStep),
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK

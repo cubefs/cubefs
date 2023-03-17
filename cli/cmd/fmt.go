@@ -186,6 +186,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  BitMapAllocator      : %v\n", formatEnabledDisabled(svv.EnableBitMapAllocator)))
 	sb.WriteString(fmt.Sprintf("  TrashCleanDuration   : %v\n", svv.TrashCleanDuration))
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxCount   : %v\n", svv.TrashCleanMaxCount))
+	sb.WriteString(fmt.Sprintf("  CursorSkipStep       : %v\n", svv.CursorSkipStep))
 	return sb.String()
 }
 
