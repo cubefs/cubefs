@@ -103,17 +103,21 @@ func (mgr *followerReadManager) reSet() {
 }
 
 func (mgr *followerReadManager) getVolumeDpView() {
-	if err := mgr.c.loadVols(); err != nil {
+	var (
+		err      error
+		volNames []string
+	)
+	if err, volNames = mgr.c.loadVolsName(); err != nil {
 		panic(err)
 	}
 	if mgr.c.masterClient.Leader() == "" {
-		log.LogDebugf("followerReadManager.leader not ready")
+		log.LogDebugf("followerReadManager.getVolumeDpView but master leader not ready")
 		return
 	}
-	for _, vol := range mgr.c.vols {
-		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
-		if view, err := mgr.c.masterClient.ClientAPI().GetDataPartitions(vol.Name); err == nil {
-			mgr.updateVolViewFromLeader(vol.Name, view)
+	for _, name := range volNames {
+		log.LogDebugf("followerReadManager.getVolumeDpView %v", name)
+		if view, err := mgr.c.masterClient.ClientAPI().GetDataPartitions(name); err == nil {
+			mgr.updateVolViewFromLeader(name, view)
 		}
 	}
 }
@@ -144,6 +148,8 @@ func (mgr *followerReadManager) updateVolViewFromLeader(key string, view *proto.
 		log.LogErrorf("action[updateDpResponseCache] marshal error %v", err)
 		return
 	} else {
+		mgr.rwMutex.Lock()
+		defer mgr.rwMutex.Unlock()
 		mgr.volDataPartitionsView[key] = body
 	}
 
