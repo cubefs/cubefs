@@ -91,7 +91,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	return
 }
 
-func (mp *metaPartition) loadInode(rootDir string) (err error) {
+func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 	var numInodes uint64
 	defer func() {
 		if err == nil {
@@ -112,7 +112,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 	defer fp.Close()
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
 	inoBuf := make([]byte, 4)
-
+	crcCheck := crc32.NewIEEE()
 	for {
 		inoBuf = inoBuf[:4]
 		// first read length
@@ -120,11 +120,20 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		if err != nil {
 			if err == io.EOF {
 				err = nil
+				if res := crcCheck.Sum32(); res != crc {
+					log.LogErrorf("[loadInode]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+					return ErrSnapshotCrcMismatch
+				}
 				return
 			}
 			err = errors.NewErrorf("[loadInode] ReadHeader: %s", err.Error())
 			return
 		}
+		// length crc
+		if _, err = crcCheck.Write(inoBuf); err != nil {
+			return err
+		}
+
 		length := binary.BigEndian.Uint32(inoBuf)
 
 		// next read body
@@ -144,6 +153,10 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 			return
 		}
 		mp.acucumUidSizeByLoad(ino)
+		// data crc
+		if _, err = crcCheck.Write(inoBuf); err != nil {
+			return err
+		}
 
 		mp.size += ino.Size
 
@@ -158,7 +171,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 }
 
 // Load dentry from the dentry snapshot.
-func (mp *metaPartition) loadDentry(rootDir string) (err error) {
+func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 	var numDentries uint64
 	defer func() {
 		if err == nil {
@@ -180,6 +193,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 	defer fp.Close()
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
 	dentryBuf := make([]byte, 4)
+	crcCheck := crc32.NewIEEE()
 	for {
 		dentryBuf = dentryBuf[:4]
 		// First Read 4byte header length
@@ -187,12 +201,18 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 		if err != nil {
 			if err == io.EOF {
 				err = nil
+				if res := crcCheck.Sum32(); res != crc {
+					log.LogErrorf("[loadDentry]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+					return ErrSnapshotCrcMismatch
+				}
 				return
 			}
 			err = errors.NewErrorf("[loadDentry] ReadHeader: %s", err.Error())
 			return
 		}
-
+		if _, err = crcCheck.Write(dentryBuf); err != nil {
+			return err
+		}
 		length := binary.BigEndian.Uint32(dentryBuf)
 
 		// next read body
@@ -215,12 +235,14 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
 			return
 		}
+		if _, err = crcCheck.Write(dentryBuf); err != nil {
+			return err
+		}
 		numDentries += 1
 	}
 }
 
-func (mp *metaPartition) loadExtend(rootDir string) error {
-	var err error
+func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 	filename := path.Join(rootDir, extendFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = errors.NewErrorf("[loadExtend] Stat: %s", err.Error())
@@ -247,6 +269,14 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 	numExtends, n = binary.Uvarint(mem)
 	offset += n
 
+	var varintTmp = make([]byte, binary.MaxVarintLen64)
+	// write number of extends
+	n = binary.PutUvarint(varintTmp, numExtends)
+
+	crcCheck := crc32.NewIEEE()
+	if _, err = crcCheck.Write(varintTmp[:n]); err != nil {
+		return
+	}
 	for i := uint64(0); i < numExtends; i++ {
 		// read length
 		var numBytes uint64
@@ -256,20 +286,31 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 		if extend, err = NewExtendFromBytes(mem[offset : offset+int(numBytes)]); err != nil {
 			return err
 		}
+
+		if _, err = crcCheck.Write(mem[offset-n : offset]); err != nil {
+			return err
+		}
 		log.LogDebugf("loadExtend: new extend from bytes: partitionID（%v) volume(%v) inode(%v)",
 			mp.config.PartitionId, mp.config.VolName, extend.inode)
 		_ = mp.fsmSetXAttr(extend)
+
+		if _, err = crcCheck.Write(mem[offset : offset+int(numBytes)]); err != nil {
+			return
+		}
 		offset += int(numBytes)
 		mp.statisticExtendByLoad(extend)
 	}
 
 	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, numExtends, filename)
+	if res := crcCheck.Sum32(); res != crc {
+		log.LogErrorf("loadExtend: check crc mismatch, expected[%d], actual[%d]", crc, res)
+		return ErrSnapshotCrcMismatch
+	}
 	return nil
 }
 
-func (mp *metaPartition) loadMultipart(rootDir string) error {
-	var err error
+func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 	filename := path.Join(rootDir, multipartFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = errors.NewErrorf("[loadMultipart] Stat: %s", err.Error())
@@ -291,23 +332,40 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 		_ = mem.Unmap()
 	}()
 	var offset, n int
-	// read number of extends
+	// read number of multipart
 	var numMultiparts uint64
 	numMultiparts, n = binary.Uvarint(mem)
+	var varintTmp = make([]byte, binary.MaxVarintLen64)
+	// write number of multipart
+	n = binary.PutUvarint(varintTmp, numMultiparts)
+	crcCheck := crc32.NewIEEE()
+	if _, err = crcCheck.Write(varintTmp[:n]); err != nil {
+		return
+	}
 	offset += n
 	for i := uint64(0); i < numMultiparts; i++ {
 		// read length
 		var numBytes uint64
 		numBytes, n = binary.Uvarint(mem[offset:])
 		offset += n
+		if _, err = crcCheck.Write(mem[offset-n : offset]); err != nil {
+			return err
+		}
 		var multipart *Multipart
 		multipart = MultipartFromBytes(mem[offset : offset+int(numBytes)])
 		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
 		mp.fsmCreateMultipart(multipart)
 		offset += int(numBytes)
+		if _, err = crcCheck.Write(mem[offset-int(numBytes) : offset]); err != nil {
+			return err
+		}
 	}
 	log.LogInfof("loadMultipart: load complete: partitionID(%v) numMultiparts(%v) filename(%v)",
 		mp.config.PartitionId, numMultiparts, filename)
+	if res := crcCheck.Sum32(); res != crc {
+		log.LogErrorf("[loadMultipart] check crc mismatch, expected[%d], actual[%d]", crc, res)
+		return ErrSnapshotCrcMismatch
+	}
 	return nil
 }
 
@@ -345,7 +403,7 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	return
 }
 
-func (mp *metaPartition) loadTxRbDentry(rootDir string) (err error) {
+func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) {
 	var numTxRbDentry uint64
 	defer func() {
 		if err == nil {
@@ -404,7 +462,7 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string) (err error) {
 	}
 }
 
-func (mp *metaPartition) loadTxRbInode(rootDir string) (err error) {
+func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 	var numTxRbInode uint64
 	defer func() {
 		if err == nil {
@@ -463,7 +521,7 @@ func (mp *metaPartition) loadTxRbInode(rootDir string) (err error) {
 	}
 }
 
-func (mp *metaPartition) loadTxInfo(rootDir string) (err error) {
+func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 	var numTxInfos uint64
 	defer func() {
 		if err == nil {

@@ -111,8 +111,12 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	if len(lackPartitions) == 0 {
 		return
 	}
-	err = fmt.Errorf("LackPartitions %v on metanode %v,metanode cannot start", lackPartitions, m.localAddr+":"+m.listen)
-	log.LogErrorf(err.Error())
+	m.metrics.MetricMetaFailedPartition.SetWithLabels(float64(1), map[string]string{
+		"partids": fmt.Sprintf("%v", lackPartitions),
+		"node":    m.localAddr + ":" + m.listen,
+		"nodeid":  fmt.Sprintf("%d", m.nodeId),
+	})
+	log.LogErrorf("LackPartitions %v on metanode %v, please deal quickly", lackPartitions, m.localAddr+":"+m.listen)
 	return
 }
 
