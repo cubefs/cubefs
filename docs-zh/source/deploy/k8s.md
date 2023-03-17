@@ -118,7 +118,7 @@ objectnode:
   replicas: 3
   
 metanode:
-  # Metanode 可以使用的总内存，单位字节，建议设置为机器可以内存的 80%，也可以按需减少
+  # MetaNode 可以使用的总内存，单位字节，建议设置为机器可以内存的 80%，也可以按需减少
   total_mem: "26843545600"
 
 datanode:

@@ -93,6 +93,3 @@ umount: /xxx/mnt: target is busy.
 ```
 3. 查看client进程若存在，则停止
 4. 启动新的客户端进程即可，`df -h` 查看是否执行成功
-
-
-## BlobStore 升级
