@@ -106,22 +106,19 @@ func (mgr *followerReadManager) reSet() {
 func (mgr *followerReadManager) getVolumeDpView() {
 	var (
 		err      error
-		volInfos []*volValue
+		volNames []string
 	)
-	if err, volInfos = mgr.c.loadVolsFsmInfo(); err != nil {
+	if err, volNames = mgr.c.loadVolsName(); err != nil {
 		panic(err)
 	}
 	if mgr.c.masterClient.Leader() == "" {
 		log.LogDebugf("followerReadManager.getVolumeDpView but master leader not ready")
 		return
 	}
-	for _, vi := range volInfos {
-		log.LogDebugf("followerReadManager.getVolumeDpView %v", vi.Name)
-		if !proto.IsHot(vi.VolType) && vi.CacheAction == proto.NoCache {
-			continue
-		}
-		if view, err := mgr.c.masterClient.ClientAPI().GetDataPartitions(vi.Name); err == nil {
-			mgr.updateVolViewFromLeader(vi.Name, view)
+	for _, name := range volNames {
+		log.LogDebugf("followerReadManager.getVolumeDpView %v", name)
+		if view, err := mgr.c.masterClient.ClientAPI().GetDataPartitions(name); err == nil {
+			mgr.updateVolViewFromLeader(name, view)
 		}
 	}
 }
