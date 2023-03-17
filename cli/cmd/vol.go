@@ -98,7 +98,7 @@ const (
 	cmdVolDefaultReplicaNum       = 3
 	cmdVolDefaultSize             = 120
 	cmdVolDefaultVolType          = 0
-	cmdVolDefaultFollowerRead     = "true"
+	cmdVolDefaultFollowerRead     = "false"
 	cmdVolDefaultCacheRuleKey     = ""
 	cmdVolDefaultEbsBlkSize       = 8 * 1024 * 1024
 	cmdVolDefaultCacheCapacity    = 0

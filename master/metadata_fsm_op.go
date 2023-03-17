@@ -1143,6 +1143,24 @@ func (c *Cluster) loadMetaNodes() (err error) {
 	return
 }
 
+func (c *Cluster) loadVolsName() (err error, names []string) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(volPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadVols],err:%v", err.Error())
+		return
+	}
+	for _, value := range result {
+		var vv *volValue
+		if vv, err = newVolValueFromBytes(value); err != nil {
+			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		names = append(names, vv.Name)
+		log.LogInfof("action[loadVols],vol[%v]", vv.Name)
+	}
+	return
+}
+
 func (c *Cluster) loadVols() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(volPrefix))
 	if err != nil {

@@ -36,6 +36,7 @@ type DataPartitionMap struct {
 	responseCache          []byte
 	lastAutoCreateTime     time.Time
 	volName                string
+	readMutex              sync.RWMutex
 }
 
 func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
@@ -139,6 +140,13 @@ func (dpMap *DataPartitionMap) setDataPartitionResponseCache(responseCache []byt
 func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64, volType int) (body []byte, err error) {
 	responseCache := dpMap.getDataPartitionResponseCache()
 	if responseCache == nil || needsUpdate || len(responseCache) == 0 {
+		dpMap.readMutex.Lock()
+		defer dpMap.readMutex.Unlock()
+		responseCache = dpMap.getDataPartitionResponseCache()
+		if !(responseCache == nil || needsUpdate || len(responseCache) == 0) {
+			body = responseCache
+			return
+		}
 		dpResps := dpMap.getDataPartitionsView(minPartitionID)
 		if len(dpResps) == 0 && proto.IsHot(volType) {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
