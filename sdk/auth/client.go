@@ -65,7 +65,8 @@ func (c *AuthClient) request(clientID, clientKey string, key []byte, data interf
 	if c.enableHTTPS {
 		urlProto = "https://"
 		if certFile, err = loadCertfile(c.certFile); err != nil {
-			log.LogWarnf("load cert file failed: %v", err)
+			err = fmt.Errorf("load cert file failed: %v, certFile[%v]", err, c.certFile)
+			log.LogWarnf("%v", err)
 			return
 		}
 		client, err = cryptoutil.CreateClientX(&certFile)
