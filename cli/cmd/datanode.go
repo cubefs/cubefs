@@ -123,7 +123,10 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
-	var optCount int
+	var (
+		optCount    int
+		clientIDKey string
+	)
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeDecommissionInfoShort,
@@ -141,7 +144,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				stdout("Migrate dp count should >= 0\n")
 				return
 			}
-			if err = client.NodeAPI().DataNodeDecommission(nodeAddr, optCount); err != nil {
+			if err = client.NodeAPI().DataNodeDecommission(nodeAddr, optCount, clientIDKey); err != nil {
 				return
 			}
 			stdout("Decommission data node successfully\n")
@@ -155,10 +158,12 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "DataNode delete mp count")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
 func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
 	var optCount int
 	var cmd = &cobra.Command{
 		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
@@ -179,7 +184,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			if err = client.NodeAPI().DataNodeMigrate(src, dst, optCount); err != nil {
+			if err = client.NodeAPI().DataNodeMigrate(src, dst, optCount, clientIDKey); err != nil {
 				return
 			}
 			stdout("Migrate data node successfully\n")
@@ -193,5 +198,6 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, dpMigrateMax, "Migrate dp count,default 15")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }

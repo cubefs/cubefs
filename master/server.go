@@ -60,6 +60,10 @@ const (
 	SecretKey                = "masterServiceKey"
 	cfgEnableDirectDeleteVol = "enableDirectDeleteVol"
 	Stat                     = "stat"
+	Authenticate             = "authenticate"
+	AuthNodeHost             = "authNodeHost"
+	AuthNodeEnableHTTPS      = "authNodeEnableHTTPS"
+	AuthNodeCertFile         = "authNodeCertFile"
 )
 
 var (
@@ -162,6 +166,11 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	if m.cluster.MasterSecretKey, err = cryptoutil.Base64Decode(MasterSecretKey); err != nil {
 		return fmt.Errorf("action[Start] failed %v, err: master service Key invalid = %s", proto.ErrInvalidCfg, MasterSecretKey)
 	}
+	m.cluster.authenticate = cfg.GetBool(Authenticate)
+	if m.cluster.authenticate {
+		m.cluster.initAuthentication(cfg)
+	}
+
 	m.cluster.scheduleTask(m)
 	m.startHTTPService(ModuleName, cfg)
 	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
