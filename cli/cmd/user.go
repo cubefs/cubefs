@@ -55,6 +55,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optAccessKey string
 	var optSecretKey string
 	var optUserType string
+	var clientIDKey string
 	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdUserCreateUse,
@@ -116,7 +117,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 				Type:      userType,
 			}
 			var userInfo *proto.UserInfo
-			if userInfo, err = client.UserAPI().CreateUser(&param); err != nil {
+			if userInfo, err = client.UserAPI().CreateUser(&param, clientIDKey); err != nil {
 				err = fmt.Errorf("Create user failed: %v\n", err)
 				return
 			}
@@ -131,6 +132,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optAccessKey, "access-key", "", "Specify user access key for object storage interface authentication [16 digits & letters]")
 	cmd.Flags().StringVar(&optSecretKey, "secret-key", "", "Specify user secret key for object storage interface authentication [32 digits & letters]")
 	cmd.Flags().StringVar(&optUserType, "user-type", "normal", "Specify user type [normal | admin]")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
 }
@@ -144,6 +146,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optAccessKey string
 	var optSecretKey string
 	var optUserType string
+	var clientIDKey string
 	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdUserUpdateUse,
@@ -205,7 +208,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 				Type:      userType,
 			}
 			var userInfo *proto.UserInfo
-			if userInfo, err = client.UserAPI().UpdateUser(&param); err != nil {
+			if userInfo, err = client.UserAPI().UpdateUser(&param, clientIDKey); err != nil {
 				return
 			}
 
@@ -217,6 +220,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optAccessKey, "access-key", "", "Update user access key")
 	cmd.Flags().StringVar(&optSecretKey, "secret-key", "", "Update user secret key")
 	cmd.Flags().StringVar(&optUserType, "user-type", "", "Update user type [normal | admin]")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
 }
@@ -229,6 +233,7 @@ const (
 func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 	var optYes bool
 	//var optForce bool
+	var clientIDKey string
 	var cmd = &cobra.Command{
 		Use:   cmdUserDeleteUse,
 		Short: cmdUserDeleteShort,
@@ -251,7 +256,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			if err = client.UserAPI().DeleteUser(userID); err != nil {
+			if err = client.UserAPI().DeleteUser(userID, clientIDKey); err != nil {
 				err = fmt.Errorf("Delete user failed:\n%v\n", err)
 				return
 			}
@@ -266,6 +271,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	//cmd.Flags().BoolVarP(&optForce, "force", "f", false, "Force to delete user")
 	return cmd
 }
@@ -313,6 +319,7 @@ const (
 
 func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 	var subdir string
+	var clientIDKey string
 	var cmd = &cobra.Command{
 		Use:   cmdUserPermUse,
 		Short: cmdUserPermShort,
@@ -364,11 +371,11 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if perm.IsNone() {
 				param := proto.NewUserPermRemoveParam(userID, volume)
-				userInfo, err = client.UserAPI().RemovePolicy(param)
+				userInfo, err = client.UserAPI().RemovePolicy(param, clientIDKey)
 			} else {
 				param := proto.NewUserPermUpdateParam(userID, volume)
 				param.SetPolicy(perm.String())
-				userInfo, err = client.UserAPI().UpdatePolicy(param)
+				userInfo, err = client.UserAPI().UpdatePolicy(param, clientIDKey)
 			}
 			if err != nil {
 				return
@@ -383,6 +390,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&subdir, "subdir", "", "Subdir")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
