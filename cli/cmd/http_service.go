@@ -13,10 +13,11 @@ type clientHandler interface {
 }
 
 type volumeClient struct {
-	name     string
-	capacity uint64
-	opCode   MasterOp
-	client   *master.MasterClient
+	name        string
+	capacity    uint64
+	opCode      MasterOp
+	client      *master.MasterClient
+	clientIDKey string
 }
 
 func NewVolumeClient(opCode MasterOp, client *master.MasterClient) (vol *volumeClient) {
@@ -36,7 +37,7 @@ func (vol *volumeClient) excuteHttp() (err error) {
 		if vol.capacity <= vv.Capacity {
 			return errors.New(fmt.Sprintf("Expand capacity must larger than %v!\n", vv.Capacity))
 		}
-		if err = vol.client.AdminAPI().VolExpand(vol.name, vol.capacity, util.CalcAuthKey(vv.Owner)); err != nil {
+		if err = vol.client.AdminAPI().VolExpand(vol.name, vol.capacity, util.CalcAuthKey(vv.Owner), vol.clientIDKey); err != nil {
 			return
 		}
 	case OpShrinkVol:
@@ -47,7 +48,7 @@ func (vol *volumeClient) excuteHttp() (err error) {
 		if vol.capacity >= vv.Capacity {
 			return errors.New(fmt.Sprintf("Expand capacity must less than %v!\n", vv.Capacity))
 		}
-		if err = vol.client.AdminAPI().VolShrink(vol.name, vol.capacity, util.CalcAuthKey(vv.Owner)); err != nil {
+		if err = vol.client.AdminAPI().VolShrink(vol.name, vol.capacity, util.CalcAuthKey(vv.Owner), vol.clientIDKey); err != nil {
 			return
 		}
 	case OpDeleteVol:

@@ -46,6 +46,7 @@ func runCLI() (err error) {
 func setupCommands(cfg *cmd.Config) *cobra.Command {
 	var mc = master.NewMasterClient(cfg.MasterAddr, false)
 	mc.SetTimeout(cfg.Timeout)
+	mc.SetClientIDKey(cfg.ClientIDKey)
 	cfsRootCmd := cmd.NewRootCmd(mc)
 	//	var completionCmd = &cobra.Command{
 	//		Use:   "completion",

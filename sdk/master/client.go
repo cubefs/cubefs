@@ -51,10 +51,11 @@ type MasterCLientWithResolver struct {
 
 type MasterClient struct {
 	sync.RWMutex
-	masters    []string
-	useSSL     bool
-	leaderAddr string
-	timeout    time.Duration
+	masters     []string
+	useSSL      bool
+	leaderAddr  string
+	timeout     time.Duration
+	clientIDKey string
 
 	adminAPI  *AdminAPI
 	clientAPI *ClientAPI
@@ -92,6 +93,10 @@ func (c *MasterClient) Leader() (addr string) {
 	return
 }
 
+func (c *MasterClient) ClientIDKey() string {
+	return c.clientIDKey
+}
+
 func (c *MasterClient) AdminAPI() *AdminAPI {
 	return c.adminAPI
 }
@@ -119,6 +124,12 @@ func (c *MasterClient) SetLeader(addr string) {
 func (c *MasterClient) SetTimeout(timeout uint16) {
 	c.Lock()
 	c.timeout = time.Duration(timeout) * time.Second
+	c.Unlock()
+}
+
+func (c *MasterClient) SetClientIDKey(clientIDKey string) {
+	c.Lock()
+	c.clientIDKey = clientIDKey
 	c.Unlock()
 }
 

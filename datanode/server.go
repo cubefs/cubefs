@@ -119,6 +119,7 @@ const (
 	ConfigDiskCurrentStopDpLimit = "diskCurrentStopDpLimit"
 	//disk read extent limit
 	ConfigEnableDiskReadExtentLimit = "enableDiskReadRepairExtentLimit" //bool
+	ConfigServiceIDKey              = "serviceIDKey"
 )
 
 // DataNode defines the structure of a data node.
@@ -168,6 +169,7 @@ type DataNode struct {
 	diskWriteFlow           int
 	clusterUuid             string
 	clusterUuidEnable       bool
+	serviceIDKey            string
 }
 
 func NewServer() *DataNode {
@@ -330,6 +332,8 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		s.zoneName = DefaultZoneName
 	}
 	s.metricsDegrade = cfg.GetInt64(CfgMetricsDegrade)
+
+	s.serviceIDKey = cfg.GetString(ConfigServiceIDKey)
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
@@ -526,7 +530,8 @@ func (s *DataNode) register(cfg *config.Config) {
 
 			// register this data node on the master
 			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.zoneName); err != nil {
+			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port),
+				s.zoneName, s.serviceIDKey); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)

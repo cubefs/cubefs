@@ -142,6 +142,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optTxConflictRetryNum int64
 	var optTxConflictRetryInterval int64
 	var optDeleteLockTime int64
+	var clientIDKey string
 	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -221,7 +222,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
-				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota)
+				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -251,6 +252,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, cmdVolDefaultCacheLRUInterval, "Specify interval expiration time[Unit: min]")
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
 		"Enable volume becomes read only when it is full")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link\"] or \"off\" or \"all\"")
 	cmd.Flags().Uint32Var(&optTxTimeout, CliTxTimeout, 1, "Specify timeout[Unit: minute] for transaction [1-60]")
@@ -283,6 +285,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheLowWater int
 	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
+	var clientIDKey string
+
 	var optYes bool
 	var optTxMask string
 	var optTxTimeout int64
@@ -608,7 +612,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(vv, optTxTimeout, optTxMask, optTxForceReset, optTxConflictRetryNum, optTxConflictRetryInterval, optTxOpLimitVal)
+			err = client.AdminAPI().UpdateVolume(vv, optTxTimeout, optTxMask, optTxForceReset, optTxConflictRetryNum,
+				optTxConflictRetryInterval, optTxOpLimitVal, clientIDKey)
 			if err != nil {
 				return
 			}
@@ -648,6 +653,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 
 	return cmd
 
@@ -738,8 +744,9 @@ const (
 
 func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optYes bool
-		status bool
+		status      bool
+		optYes      bool
+		clientIDKey string
 	)
 	var cmd = &cobra.Command{
 		Use:   cmdVolDeleteUse,
@@ -781,7 +788,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 					err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 					return
 				}
-				if err = client.AdminAPI().DeleteVolume(volumeName, util.CalcAuthKey(svv.Owner)); err != nil {
+				if err = client.AdminAPI().DeleteVolumeWithAuthNode(volumeName, util.CalcAuthKey(svv.Owner), clientIDKey); err != nil {
 					err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 					return
 				}
@@ -791,13 +798,13 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 					err = fmt.Errorf("UnDelete volume failed:\n%v\n", err)
 					return
 				}
-				if err = client.AdminAPI().UnDeleteVolume(volumeName, util.CalcAuthKey(svv.Owner), status); err != nil {
+				if err = client.AdminAPI().UnDeleteVolume(volumeName, util.CalcAuthKey(svv.Owner), status, clientIDKey); err != nil {
 					err = fmt.Errorf("UnDelete volume failed:\n%v\n", err)
 					return
 				}
 				stdout("Volume has been undeleted successfully.\n")
 			}
-
+			stdout("Volume has been deleted successfully.\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -808,6 +815,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().BoolVarP(&status, "status", "s", true, "Decide whether to delete or undelete")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
@@ -819,6 +827,7 @@ const (
 func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 	var optYes bool
 	var optForce bool
+	var clientIDKey string
 	var cmd = &cobra.Command{
 		Use:     cmdVolTransferUse,
 		Short:   cmdVolTransferShort,
@@ -865,7 +874,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 				UserDst: userInfo.UserID,
 				Force:   optForce,
 			}
-			if _, err = client.UserAPI().TransferVol(&param); err != nil {
+			if _, err = client.UserAPI().TransferVol(&param, clientIDKey); err != nil {
 				return
 			}
 			stdout("Volume has been transferred successfully.\n")
@@ -873,6 +882,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().BoolVarP(&optForce, "force", "f", false, "Force transfer without current owner check")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
@@ -882,6 +892,7 @@ const (
 )
 
 func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
 	var cmd = &cobra.Command{
 		Use:   cmdVolAddDPCmdUse,
 		Short: cmdVolAddDPCmdShort,
@@ -903,7 +914,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("number must be larger than 0")
 				return
 			}
-			if err = client.AdminAPI().CreateDataPartition(volume, int(count)); err != nil {
+			if err = client.AdminAPI().CreateDataPartition(volume, int(count), clientIDKey); err != nil {
 				return
 			}
 			stdout("Add dp successfully.\n")
@@ -916,6 +927,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
@@ -935,6 +947,7 @@ func newVolShrinkCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
+	var clientIDKey string
 	var cmd = &cobra.Command{
 		Use:   use + " [VOLUME] [CAPACITY]",
 		Short: short,
@@ -953,6 +966,7 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 				return
 			}
 			volume.name = name
+			volume.clientIDKey = clientIDKey
 			if err = volume.excuteHttp(); err != nil {
 				return
 			}
@@ -967,6 +981,7 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 			return validVols(volume.client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, r.(*volumeClient).client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 

@@ -122,6 +122,7 @@ const (
 	dpDiscardKey               = "dpDiscard"
 	ignoreDiscardKey           = "ignoreDiscard"
 	TrashIntervalKey           = "trashInterval"
+	ClientIDKey                = "clientIDKey"
 )
 
 const (

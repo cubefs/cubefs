@@ -27,11 +27,11 @@ type KeyInfo struct {
 }
 
 // DumpJSONFile dump KeyInfo to file in json format
-func (u *KeyInfo) DumpJSONFile(filename string) (err error) {
+func (u *KeyInfo) DumpJSONFile(filename string, authIdKey string) (err error) {
 	var (
 		data string
 	)
-	if data, err = u.DumpJSONStr(); err != nil {
+	if data, err = u.DumpJSONStr(authIdKey); err != nil {
 		return
 	}
 
@@ -49,7 +49,7 @@ func (u *KeyInfo) DumpJSONFile(filename string) (err error) {
 }
 
 // DumpJSONStr dump KeyInfo to string in json format
-func (u *KeyInfo) DumpJSONStr() (r string, err error) {
+func (u *KeyInfo) DumpJSONStr(authIdKey string) (r string, err error) {
 	dumpInfo := struct {
 		ID        string `json:"id"`
 		AuthKey   []byte `json:"auth_key"`
@@ -58,6 +58,7 @@ func (u *KeyInfo) DumpJSONStr() (r string, err error) {
 		Ts        int64  `json:"create_ts"`
 		Role      string `json:"role"`
 		Caps      string `json:"caps"`
+		AuthIdKey string `json:"auth_id_key"`
 	}{
 		u.ID,
 		u.AuthKey,
@@ -66,6 +67,7 @@ func (u *KeyInfo) DumpJSONStr() (r string, err error) {
 		u.Ts,
 		u.Role,
 		string(u.Caps),
+		authIdKey,
 	}
 	data, err := json.MarshalIndent(dumpInfo, "", "  ")
 	if err != nil {
