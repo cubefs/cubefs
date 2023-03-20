@@ -15,7 +15,6 @@
 package rpc
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -125,28 +124,28 @@ func (c *client) Form(ctx context.Context, method, url string, form map[string][
 }
 
 func (c *client) Put(ctx context.Context, url string, params interface{}) (resp *http.Response, err error) {
-	data, ct, err := marshalObj(params)
+	body, err := marshalObj(params)
 	if err != nil {
 		return
 	}
-	request, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(data))
+	request, err := http.NewRequest(http.MethodPut, url, body.Body)
 	if err != nil {
 		return
 	}
-	request.Header.Set(HeaderContentType, ct)
+	request.Header.Set(HeaderContentType, body.ContentType)
 	return c.Do(ctx, request)
 }
 
 func (c *client) Post(ctx context.Context, url string, params interface{}) (resp *http.Response, err error) {
-	data, ct, err := marshalObj(params)
+	body, err := marshalObj(params)
 	if err != nil {
 		return nil, err
 	}
-	request, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	request, err := http.NewRequest(http.MethodPost, url, body.Body)
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set(HeaderContentType, ct)
+	request.Header.Set(HeaderContentType, body.ContentType)
 	return c.Do(ctx, request)
 }
 
@@ -175,15 +174,15 @@ func (c *client) GetWith(ctx context.Context, url string, ret interface{}) error
 }
 
 func (c *client) PutWith(ctx context.Context, url string, ret interface{}, params interface{}, opts ...Option) (err error) {
-	data, ct, err := marshalObj(params)
+	body, err := marshalObj(params)
 	if err != nil {
 		return
 	}
-	request, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(data))
+	request, err := http.NewRequest(http.MethodPut, url, body.Body)
 	if err != nil {
 		return
 	}
-	request.Header.Set(HeaderContentType, ct)
+	request.Header.Set(HeaderContentType, body.ContentType)
 	for _, opt := range opts {
 		opt(request)
 	}
@@ -199,15 +198,15 @@ func (c *client) PutWith(ctx context.Context, url string, ret interface{}, param
 }
 
 func (c *client) PostWith(ctx context.Context, url string, ret interface{}, params interface{}, opts ...Option) error {
-	data, ct, err := marshalObj(params)
+	body, err := marshalObj(params)
 	if err != nil {
 		return err
 	}
-	request, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	request, err := http.NewRequest(http.MethodPost, url, body.Body)
 	if err != nil {
 		return err
 	}
-	request.Header.Set(HeaderContentType, ct)
+	request.Header.Set(HeaderContentType, body.ContentType)
 
 	for _, opt := range opts {
 		opt(request)
