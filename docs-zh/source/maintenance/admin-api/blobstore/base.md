@@ -49,11 +49,14 @@ curl http://127.0.0.1:9500/log/level
 
 ## 日志级别变更
 
-| 级别    | 值   | 级别    | 值   |
-|-------|-----|-------|-----|
-| Debug | 0   | Error | 3   |
-| Info  | 1   | Panic | 4   |
-| Warn  | 2   | Fatal | 5   |
+| 级别    | 值   |
+|-------|-----|
+| Debug | 0   |
+| Info  | 1   | 
+| Warn  | 2   | 
+| Error | 3   |
+| Panic | 4   |
+| Fatal | 5   |
 
 ```bash
 # 以下为设置日志级别为warn

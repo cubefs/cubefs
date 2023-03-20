@@ -1,5 +1,9 @@
 # Scheduler 配置
 
+`Scheduler` 后台任务管理模块，主要负责均衡、磁盘修复、节点下线、删除、修补等后台任务。
+
+Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要针对于Scheduler的私有配置。
+
 ## 配置说明
 
 | 配置项                            | 说明                                        | 是否必须                                                      |
@@ -8,9 +12,9 @@
 | cluster_id                     | 集群id，集群内id统一                              | 是                                                         |
 | services                       | scheduler所有节点列表                           | 是，参考示例                                                    |
 | service_register               | 服务注册信息                                    | 是，参考示例                                                    |
-| clustermgr                     | clustermgr客户端初始化配置                        | 是，需要配置clustermgr服务地址                                      |
-| proxy                          | proxy客户端初始化配置                             | 否，参考rpc配置示例                                               |
-| blobnode                       | blobnode客户端初始化配置                          | 否，参考rpc配置示例                                               |
+| clustermgr                     | Clustermgr客户端初始化配置                        | 是，需要配置clustermgr服务地址                                      |
+| proxy                          | Proxy客户端初始化配置                             | 否，参考rpc配置示例                                               |
+| blobnode                       | BlobNode客户端初始化配置                          | 否，参考rpc配置示例                                               |
 | kafka                          | kafka相关配置                                 | 是                                                         |
 | balance                        | 均衡任务参数配置                                  | 否                                                         |
 | disk_drop                      | 磁盘下线任务参数配置                                | 否                                                         |

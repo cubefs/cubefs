@@ -33,11 +33,11 @@ kubectl label node <nodename> component.cubefs.io/datanode=enabled
 kubectl label node <nodename> component.cubefs.io/objectnode=enabled
 ```
 
-CubeFS 安装时会根据这些标签通过 nodeSelector 进行匹配，然后在机器创建起对应的 Pod。
+CubeFS 安装时会根据这些标签通过`nodeSelector`进行匹配，然后在机器创建起对应的`Pod`。
 
 ## 挂载数据盘
 
-在标志为 component.cubefs.io/datanode=enabled 的节点上进行挂载数据盘操作。
+在标志为 `component.cubefs.io/datanode=enabled` 的节点上进行挂载数据盘操作。
 
 ### 看机器磁盘信息
 
@@ -63,13 +63,13 @@ mkdir /data0
 mount /dev/sdx /data0
 ```
 
-如果机器上存在多个需要挂载的数据磁盘，则每个磁盘按以上步骤进行格式化和挂载磁盘，挂载目录按照 data0/data1/../data999 的顺序命名。
+如果机器上存在多个需要挂载的数据磁盘，则每个磁盘按以上步骤进行格式化和挂载磁盘，挂载目录按照`data0/data1/../data999`的顺序命名。
 
 ## 安装 helm
 
 安装 helm，参考[官方文档](https://helm.sh/docs/intro/install/)
 
-## 拉取 Cubefs Helm 仓库
+## 拉取 CubeFS Helm 仓库
 
 ``` bash
 git clone https://github.com/cubefs/cubefs-helm.git
@@ -78,15 +78,15 @@ cd cubefs-helm
 
 ## 编辑配置
 
-部署 CubeFS 的 helm 存在大量的配置，所有的可配置项位于 helm 项目下的 cubefs/values.yaml 中，其中包含有详细的注释。
+部署 CubeFS 的 helm 存在大量的配置，所有的可配置项位于 helm 项目下的`cubefs/values.yaml`中，其中包含有详细的注释。
 
-这里单独创建一个配置文件 cubefs-helm.yaml，覆盖其中常见的关键配置项。
+这里单独创建一个配置文件`cubefs-helm.yaml`，覆盖其中常见的关键配置项。
 
 ``` bash
 touch cubefs-helm.yaml
 ```
 
-cubefs-html.yaml 文件内容如下：
+`cubefs-html.yaml`文件内容如下：
 
 ``` yaml
 # 要安装哪些组件，如果只安装服务端的话保持下方配置即可，如果要安装客户端的话，把 csi 设置为 true
@@ -143,7 +143,7 @@ provisioner:
 helm upgrade --install cubefs ./cubefs -f ./cubefs-helm.yaml -n cubefs --create-namespace
 ```
 
-接着使用命令 `kubectl get pods -n cubefs` 等待所有组件状态变为 Running 即可：
+接着使用命令 `kubectl get pods -n cubefs` 等待所有组件状态变为`Running`即可：
 
 ``` bash
 $ kubectl -n cubefs get pods
@@ -162,7 +162,7 @@ objectnode-6598bd9c87-ckwsh         1/1     Running   0          2m40s
 objectnode-6598bd9c87-pj7fc         1/1     Running   0          2m40s
 ```
 
-各个组件的关键日志会在容器标准输出中输出，运行起来后详细日志会存储在上文提到的 path.log 配置地址，如果启动失败可以配合日志查看，常见的启动失败原因可能有：
+各个组件的关键日志会在容器标准输出中输出，运行起来后详细日志会存储在上文提到的`path.log`配置地址，如果启动失败可以配合日志查看，常见的启动失败原因可能有：
 
 - DataNode 数据盘路径配置错误
 - 组件端口被占用

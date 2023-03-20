@@ -4,7 +4,7 @@
 
 ### 创建卷
 
-> 创建纠删码卷请参考[创建卷章节](../user-guide/volume.md)
+创建纠删码卷请参考[创建卷章节](../user-guide/volume.md)
 
 ```bash
 ./build/bin/cfs-cli volume create ltptest ltp
@@ -13,10 +13,14 @@
 ```
 ### 启动客户端
 
-> /home/cfs/client/mnt即为挂载点，代表挂载成功
-
+- 启动客户端
 ```bash
 ./build/bin/cfs-client -c /home/data/conf/client.conf
+```
+
+- 查看挂载是否成功
+`/home/cfs/client/mnt`即为挂载点，执行命令`df -h`如果有如下类似输出则代表挂载成功
+```bash
 df -h
 Filesystem      Size  Used Avail Use% Mounted on
 udev            3.9G     0  3.9G   0% /dev
@@ -28,8 +32,11 @@ cubefs-ltptest   10G     0   10G   0% /home/cfs/client/mnt
 ```
 
 ## 验证纠删码子系统
-> 小提示: cli 是为 blobstore 提供的交互式命令行管理工具, 配置 cli
-> 后能够更方便地使用, 用 help 可以查看帮助信息
+
+::: tip 提示
+cli 是为纠删码子系统（blobstore） 提供的交互式命令行管理工具, 配置 cli 后能够更方便地使用, 用 help 可以查看帮助信息。
+:::
+
 ### 启动CLI
 
 基于默认配置，启动命令行工具 `cli` ，详细使用参考[CLI工具使用](../maintenance/tool.md)

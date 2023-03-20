@@ -1,7 +1,14 @@
 # yum 部署
 
 可以使用yum工具在CentOS 7+操作系统中快速部署和启动CubeFS集群。
+
+## 获取对应版本
+
 该工具的rpm依赖项可通过以下命令安装:
+
+::: tip 提示
+集群通过ansible托管，请确保ansible已经部署。
+:::
 
 ``` bash
 $ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.2.0/cfs-install-3.2.0-el7.x86_64.rpm
@@ -25,14 +32,18 @@ $ tree -L 3
      └── objectnode.json.j2
 ```
 
+## 配置说明
+
 可根据实际环境，在 **iplist** 文件中修改CubeFS集群的参数.
 
--   **\[master\]** , **\[datanode\]** , **\[metanode\]** ,
+- **\[master\]** , **\[datanode\]** , **\[metanode\]** ,
     **\[objectnode\]**, **\[monitor\]** , **\[client\]**
     包含了每个模块的成员IP地址。
--   **\[cfs:vars\]**
+- **\[cfs:vars\]**
     模块定义了所有节点的ssh登陆信息，需要事先将集群中所有节点的登录名和密码进行统一。
--   **#master config** 模块定义了每个Master节点的启动参数。
+### master config模块  
+
+定义了每个Master节点的启动参数。
 
 | 参数                         | 类型  | 描述                                                        | 是否必需 |
 |----------------------------|-----|-----------------------------------------------------------|------|
@@ -49,7 +60,9 @@ $ tree -L 3
 
 >更多配置介绍请参考[Master配置说明](../maintenance/configs/master.md)
 
--   **#datanode config** 模块定义了每个DataNode的启动参数。
+### #datanode config模块
+
+定义了每个DataNode的启动参数。
 
 | 参数                     | 类型    | 描述                         | 是否必需                 |
 |------------------------|-------|----------------------------|----------------------|
@@ -65,7 +78,9 @@ $ tree -L 3
 
 >更多配置介绍请参考[DataNode配置说明](../maintenance/configs/datanode.md)
 
--   **#metanode config** 模块定义了MetaNode的启动参数。
+### metanode config模块
+
+定义了MetaNode的启动参数。
 
 | 参数                         | 类型  | 描述                                               | 是否必需 |
 |----------------------------|-----|--------------------------------------------------|------|
@@ -82,7 +97,9 @@ $ tree -L 3
 
 >更多配置介绍请参考[MetaNode配置说明](../maintenance/configs/metanode.md)
 
--   **#objectnode config** 模块定义了ObjectNode的启动参数。
+### objectnode config模块
+
+定义了ObjectNode的启动参数。
 
 | 参数                      | 类型    | 描述                 | 是否必需                      |
 |-------------------------|-------|--------------------|---------------------------|
@@ -95,7 +112,9 @@ $ tree -L 3
 
 >更多配置介绍请参考[ObjectNode配置说明](../maintenance/configs/objectnode.md)
 
--   **#client config** 模块定义了fuse客户端的启动参数
+### client config模块
+
+定义了fuse客户端的启动参数
 
 | 参数                  | 类型  | 描述                                                | 是否必需 |
 |---------------------|-----|---------------------------------------------------|------|
@@ -136,8 +155,11 @@ metanode_totalMem = "28589934592"
 ...
 ```
 
-CubeFS支持混部。如果采取混部的方式，注意修改各个模块的端口配置\**避免端口冲突*\*。
+::: tip 提示
+CubeFS支持混部。如果采取混部的方式，注意修改各个模块的端口配置**避免端口冲突**。
+:::
 
+## 启动集群
 用 **install.sh** 脚本启动CubeFS集群，并确保首先启动Master。
 
 ``` bash

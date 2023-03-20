@@ -53,4 +53,7 @@ MetaNode配置文件的totalMem指元数据节点可用总内存大小。当Meta
 
 
 ### 修改DataNode/MetaNode端口
-**不建议修改DataNode/MetaNode的端口**。因为DataNode/MetaNode在master中是通过ip:port进行注册的。如果修改了端口，master则会认为其为全新节点，旧节点是 Inactive 状态。
+
+::: danger 警告
+不建议修改DataNode/MetaNode的端口。因为DataNode/MetaNode在master中是通过ip:port进行注册的。如果修改了端口，master则会认为其为全新节点，旧节点是 Inactive 状态。
+:::

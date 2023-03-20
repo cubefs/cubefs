@@ -14,3 +14,15 @@
 ## 用户
 
 [使用用户](https://github.com/cubefs/cubefs/blob/master/ADOPTERS.md)
+
+## 社区
+
+- 邮件组
+  - [cubefs-maintainers@groups.io](https://groups.io/g/cubefs-maintainers)
+  - [cubefs-users@groups.io](https://groups.io/g/cubefs-users)
+- [Slack](https://join.slack.com/t/cubefs/shared_invite/zt-1ra17fe0i-hMqdQsm5o661aPR29LsNCg)
+- [Twitter](https://twitter.com/cubefs)
+- 微信公众号
+
+  ![qrcode](./pic/qrcode.bmp)
+- 微信 CubeFS Community 群，搜索并添加微信号blkleaf或mervinkid联系，注明您的来意

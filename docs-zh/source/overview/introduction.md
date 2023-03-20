@@ -47,9 +47,9 @@ CubeFS是新一代云原生存储产品，目前是云原生计算基金会（CN
 
 ![cache](../pic/cfs-cache.png)
 
-### 强安全
+### 云原生
 
-支持用户隔离，多文件系统池以及精细化的目录权限控制
+基于[CSI插件](../deploy/k8s.md)可以快速地在Kubernetes上使用CubeFS
 
 ## 应用场景
 

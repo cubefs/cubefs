@@ -10,7 +10,7 @@ yum install -y fuse
 ```
 
 ## 挂载文件系统
-成功创建副本卷后，通过执行如下的命令来挂载副本卷:
+成功创建副本卷后，通过执行如下的命令来挂载卷:
 
 ```bash
 cfs-client -c client.json
@@ -84,7 +84,7 @@ cfs-client -c client.json
 umount -l /path/to/mountPoint
 ```
 
-**/path/to/mountPoint** 为客户端配置文件中的挂载路径
+`/path/to/mountPoint` 为客户端配置文件中的挂载路径
 
 ## 开启一级缓存
 

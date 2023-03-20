@@ -10,8 +10,7 @@ $ cd cubefs
 $ make build
 ```
 
-如果构建成功，将在\`build/bin\`
-目录中生成可执行文件\`cfs-server\`和\`cfs-client\`。
+如果构建成功，将在`build/bin` 目录中生成可执行文件`cfs-server`和`cfs-client`。
 
 ## 集群部署
 
@@ -21,7 +20,11 @@ $ make build
 ./cfs-server -c master.json
 ```
 
-示例 `master.json` ：注意：master服务最少应该启动3个节点实例
+示例 `master.json` ：
+
+::: tip 推荐
+为了保证服务的高可用，Master服务最少启动3个节点实例
+:::
 
 ``` json
 {
@@ -50,7 +53,11 @@ $ make build
 ./cfs-server -c metanode.json
 ```
 
-示例 `meta.json` ：注意：MetaNode服务最少应该启动3个节点实例
+示例 `meta.json` ：
+
+::: tip 推荐
+为了保证服务的高可用，MetaNode服务最少启动3个节点实例
+:::
 
 ``` json
 {
@@ -83,7 +90,6 @@ $ make build
 :::
 
 - 准备数据目录
-   **磁盘准备**
   - 查看机器磁盘信息，选择给CubeFS使用的磁盘
    ``` bash
    fdisk -l
@@ -107,7 +113,11 @@ $ make build
 ./cfs-server -c datanode.json
 ```
 
-示例 `datanode.json` :注意：datanode服务最少应该启动4个节点实例
+示例 `datanode.json` :
+
+::: tip 推荐
+为了保证服务的高可用，Datanode服务最少启动3个节点实例
+:::
 
 ``` json
 {
@@ -135,15 +145,17 @@ $ make build
 
 详细配置参数请参考 [DataNode详细配置](../maintenance/configs/datanode.md)。
 
-### 启动对象存储节点【可选】
+### 启动对象网关节点
 
-如果需要使用对象存储服务则需要部署ObjectNode服务
+::: tip 提示
+可选章节，如果需要使用对象存储服务，则需要部署对象网关（ObjectNode）
+:::
 
 ``` bash
 ./cfs-server -c objectnode.json
 ```
 
-示例 `objectnode.json` 内容如下
+示例 `objectnode.json`， 内容如下
 
 ``` json
 {
@@ -164,6 +176,10 @@ $ make build
 
 配置文件的详细信息请参考 [ObjectNode详细配置](../maintenance/configs/objectnode.md)
 
-### 启动纠删码子系统【可选】
+### 启动纠删码子系统
+
+::: tip 提示
+可选章节，如果需要使用纠删码卷则需要部署
+:::
 
 部署参考[使用纠删码存储系统](../user-guide/blobstore.md)。

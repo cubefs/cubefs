@@ -2,7 +2,9 @@
 
 使用命令行界面工具（CLI）可以实现方便快捷的集群管理。利用此工具，可以查看集群及各节点的状态，并进行各节点、卷及用户的管理。
 
+::: tip 提示
 随着CLI的不断完善，最终将会实现对于集群各节点接口功能的100%覆盖。
+:::
 
 ## 编译及配置
 
@@ -32,105 +34,51 @@ CLI主要分为六类管理命令：
 | cfs-cli volume, vol   | 卷管理        |
 | cfs-cli user          | 用户管理       |
 
-### 集群管理命令
+### 集群管理
 
 ``` bash
 ./cfs-cli cluster info          #获取集群信息，包括集群名称、地址、卷数量、节点数量及使用率等
-```
-
-``` bash
 ./cfs-cli cluster stat          #按区域获取元数据和数据节点的使用量、状态等
-```
-
-``` bash
 ./cfs-cli cluster freeze [true/false]        #是否冻结集群，设置为 `true` 冻结后，当partition写满，集群不会自动分配新的partition
-```
-
-``` bash
 ./cfs-cli cluster threshold [float]     #设置集群中每个MetaNode的内存阈值
-```
-
-``` bash
 ./cli cluster cluster set [flags]    #设置集群的参数.
 ```
 
-### 元数据节点管理命令
+### 元数据节点管理
 
 ``` bash
 ./cfs-cli metanode list         #获取所有元数据节点的信息，包括id、地址、读写状态及存活状态
-```
-
-``` bash
 ./cfs-cli metanode info [Address]     #展示元数据节点基本信息，包括状态、使用量、承载的partition ID等，
-```
-
-``` bash
 ./cfs-cli metanode decommission [Address] #将该元数据节点下线，该节点上的partition将自动转移至其他可用节点
-```
-
-``` bash
 ./cfs-cli metanode migrate [srcAddress] [dstAddress] #将源元数据节点上的meta partition转移至目标元数据节点
 ```
 
-### 数据节点管理命令
+### 数据节点管理
 
 ``` bash
 ./cfs-cli datanode list         #获取所有数据节点的信息，包括id、地址、读写状态及存活状态
-```
-
-``` bash
 ./cfs-cli datanode info [Address]     #展示数据节点基本信息，包括状态、使用量、承载的partition ID等，
-```
-
-``` bash
 ./cfs-cli datanode decommission [Address] #将该数据节点下线，该节点上的data partition将自动转移至其他可用节点
-```
-
-``` bash
 ./cfs-cli datanode migrate [srcAddress] [dstAddress] #将源数据节点上的data partition转移至目标数据节点
 ```
 
-### 数据分片管理命令
+### 数据分片管理
 
 ``` bash
 ./cfs-cli datapartition info [Partition ID]        #获取指定data partition的信息
-```
-
-``` bash
 ./cli datapartition decommission [Address] [Partition ID]   #将目标节点上的指定data partition分片下线，并自动转移至其他可用节点
-```
-
-``` bash
 ./cfs-cli datapartition add-replica [Address] [Partition ID]    #在目标节点新增一个data partition分片
-```
-
-``` bash
 ./cfs-cli datapartition del-replica [Address] [Partition ID]    #删除目标节点上的data partition分片
-```
-
-``` bash
 ./cfs-cli datapartition check    #故障诊断，查找多半分片不可用和分片缺失的data partition
 ```
 
-### 元数据分片管理命令
+### 元数据分片管理
 
 ``` bash
 ./cfs-cli metapartition info [Partition ID]        #获取指定meta partition的信息
-```
-
-``` bash
 ./cli metapartition decommission [Address] [Partition ID]   #将目标节点上的指定meta partition分片下线，并自动转移至其他可用节点
-```
-
-``` bash
 ./cfs-cli metapartition add-replica [Address] [Partition ID]    #在目标节点新增一个meta partition分片
-```
-
-``` bash
 ./cfs-cli metapartition del-replica [Address] [Partition ID]    #删除目标节点上的meta partition分片
-```
-
-``` bash
 ./cfs-cli metapartition check    #故障诊断，查找多半分片不可用和分片缺失的meta partition
 ```
 
@@ -138,9 +86,6 @@ CLI主要分为六类管理命令：
 
 ``` bash
 ./cfs-cli config info     #展示配置信息
-```
-
-``` bash
 ./cfs-cli config set [flags] #设置配置信息
 
 Flags:
@@ -155,7 +100,7 @@ Flags:
 ./cfs-cli completion      #生成命令自动补全脚本
 ```
 
-### 卷管理命令
+### 卷管理
 
 ``` bash
 ./cfs-cli volume create [VOLUME NAME] [USER ID] [flags]
@@ -231,7 +176,7 @@ Flags:
     --zonename string   Specify volume zone name
 ```
 
-### 用户管理命令
+### 用户管理
 
 ``` bash
 ./cfs-cli user create [USER ID] [flags]         #创建用户[USER ID]
@@ -251,18 +196,9 @@ Flags：
 
 ``` bash
 ./cfs-cli user info [USER ID]                   #获取用户[USER ID]的信息
-```
-
-``` bash
 ./cfs-cli user list                             #获取包含当前所有用户信息的列表
-```
-
-``` bash
 ./cfs-cli user perm [USER ID] [VOLUME] [PERM]   #更新用户[USER ID]对于卷[VOLUME]的权限[PERM]
                                             #[PERM]可选项为"只读"（READONLY/RO）、"读写"（READWRITE/RW）、"删除授权"（NONE）
-```
-
-``` bash
 ./cfs-cli user update [USER ID] [flags]         #更新用户[USER ID]的信息
 Flags：
     --access-key string                     #更新后的access key取值
@@ -272,8 +208,6 @@ Flags：
 ```
 
 ### 纠删码子系统管理
-
-使用命令行工具（CLI）可以实现方便快捷的集群管理。该工具为类unix命令行风格，可以查看集群的状态，实现了各模块的接口和功能。
 
 ::: tip 提示
 目前CLI还不够完善，功能覆盖不到70%；后续会不断完善，最终将会实现对于集群各模块接口功能的100%覆盖。
@@ -329,14 +263,14 @@ help 可以查看所有命令及简要说明
 
 目前实现了部分模块的主要功能，如下：
 
-| 命令          | 描述                                               |
-|---------------|----------------------------------------------------|
-| cli config    | 管理该cli内存中的配置项                            |
+| 命令            | 描述                            |
+|---------------|-------------------------------|
+| cli config    | 管理该cli内存中的配置项                 |
 | cli util      | 小工具集合，如解析location、解析时间、生成特定数据 |
-| cli access    | 文件的上传、下载、删除等                           |
-| cli cm        | 集群信息查看和管理                                 |
-| cli scheduler | 后台任务管理                                       |
-| cli \...      | 补充完善中 \...\...                                |
+| cli access    | 文件的上传、下载、删除等                  |
+| cli cm        | 集群信息查看和管理                     |
+| cli scheduler | 后台任务管理                        |
+| cli \...      | 补充完善中 \...\...                |
 
 **Config**
 

@@ -9,9 +9,11 @@ curl -v "http://10.196.59.198:17010/admin/createVol?name=test&capacity=100&owner
 为用户创建卷，并分配一组数据分片和元数据分片.
 在创建新卷时，默认分配10个数据分片和3个元数据分片。
 
-CubeFS以 **Owner**
-参数作为用户ID。在创建卷时，如果集群中没有与该卷的Owner同名的用户时，会自动创建一个用户ID为Owner的用户；如果集群中已存在用户ID为Owner的用户，则会自动将该卷的所有权归属于该用户。详情参阅：
-[用戶说明](./user.md)
+CubeFS以 **Owner**参数作为用户ID。
+- 在创建卷时，如果集群中没有与该卷的Owner同名的用户时，会自动创建一个用户ID为Owner的用户
+- 如果集群中已存在用户ID为Owner的用户，则会自动将该卷的所有权归属于该用户。
+
+详情参阅：[用戶说明](./user.md)
 
 参数列表
 
@@ -45,8 +47,11 @@ CubeFS以 **Owner**
 curl -v "http://10.196.59.198:17010/vol/delete?name=test&authKey=md5(owner)"
 ```
 
-首先把卷标记为逻辑删除（status设为1）,
-然后通过周期性任务删除所有数据分片和元数据分片,最终从持久化存储中删除。纠删码卷使用大小为0时才能删除
+首先把卷标记为逻辑删除（status设为1）,然后通过周期性任务删除所有数据分片和元数据分片,最终从持久化存储中删除。
+
+::: warning 注意
+纠删码卷使用大小为0时才能删除
+:::
 
 在删除卷的同时，将会在所有用户的信息中删除与该卷有关的权限信息。
 
@@ -115,7 +120,7 @@ curl -v "http://10.196.59.198:17010/admin/getVol?name=test" | python -m json.too
 }
 ```
 
-查询卷数据分片详细信息 ---------
+查询卷数据分片详细信息
 
 ``` bash
 curl -v "http://192.168.0.12:17010/client/partitions?name=ltptest" | python -m json.tool
@@ -147,7 +152,7 @@ curl -v "http://192.168.0.12:17010/client/partitions?name=ltptest" | python -m j
 }
 ```
 
-查询卷元数据分片详细信息 ---------
+查询卷元数据分片详细信息
 
 ``` bash
 curl -v "http://192.168.0.12:17010/client/metaPartitions?name=ltptest" | python -m json.tool
@@ -329,72 +334,74 @@ curl -v "http://10.196.59.198:17010/vol/shrink?name=test&capacity=100&authKey=md
 
 迁移目标是C，我们实现的过程是先添加副本C，然后删除源A，迁移过程B crash
 
-解决方式：如果B
-crash了，raft不可用，先删除B，等待迁移完成，删除A，再添加一个副本
+解决方式：如果 B crash了，raft不可用，先删除B，等待迁移完成，删除A，再添加一个副本
 
--   正常运营过程某一个副本crash，例如B
+-   正常运营过程某一个副本crash，例如B 没有leader，根据raft规则两副本不能删除B的，因为需要需要先commit，然后apply，但commit的条件是大多数存活。
 
-没有leader，根据raft规则两副本不能删除B的，因为需要需要先commit
-然后apply，但commit的条件是大多数存活。
+解决方式: 强制删除B 
 
-解决方式:  
-\- 新命令 强制删除B
-/dataReplica/delete?....force=true。raft支持新接口del
-replica直接不使用raft log commit（先备份dp数据）
+::: danger 警告
+raft支持新接口del，replica直接不使用raft log commit（先备份dp数据）
+:::
+  - addr 为副本B的地址
+  - id 为分区id（`dpid`）
+  - raftForceDel 强制删除raft副本
+```bash
+curl "http://127.0.0.1:17010/dataReplica/delete?raftForceDel=true&addr=127.0.0.1:17310&id=47128
+```
 
--   datanode 将检查副本数（volume 和 dp 必须都是 2
-    个副本，以防使用不挡）和 force字段。
+-   datanode 将检查副本数（volume 和 dp 必须都是 2 个副本，以防使用不当）和 force字段。
 
 ### 命令行
 
-1.  两副本卷的创建
+1. 两副本卷的创建
 
 > ``` bash
 > curl -v "http://192.168.0.11:17010/admin/createVol?name=2replica&capacity=100&owner=cfs&mpCount=3&replicaNum=2&followerRead=true"
 > ```
 
-1.  原有三副本卷降为两副本
+2. 原有三副本卷降为两副本
 
--   存量的数据只读（建议批量脚本执行）
+- 存量的数据只读（建议批量脚本执行）
 
-> ``` bash
-> curl -v "http://192.168.0.13:17010/admin/setDpRdOnly?id=**&rdOnly=true
-> ```
+``` bash
+curl -v "http://192.168.0.13:17010/admin/setDpRdOnly?id=**&rdOnly=true
+```
 
--   更新卷副本数量，更新后3副本分区会异步降低为2副本
+- 更新卷副本数量，更新后3副本分区会异步降低为2副本
 
-> ``` bash
-> curl -v "http://192.168.0.13:17010/vol/update?name=ltptest&replicaNum=2&followerRead=true&authKey=0e20229116d5a9a4a9e876806b514a85"
-> ```
+``` bash
+curl -v "http://192.168.0.13:17010/vol/update?name=ltptest&replicaNum=2&followerRead=true&authKey=0e20229116d5a9a4a9e876806b514a85"
+```
 
-1.  强制删除(无leader情况下使用，注意：确定删除副本已经不可用)
+- 强制删除(无leader情况下使用，注意：确定删除副本已经不可用)
 
-> ``` bash
-> curl "10.86.180.77:17010/dataReplica/delete?raftForceDel=true&addr=10.33.64.33:17310&id=47128"  
-> ```
+ ``` bash
+curl "10.86.180.77:17010/dataReplica/delete?raftForceDel=true&addr=10.33.64.33:17310&id=47128"  
+```
 
 ## 流控
 
 ### 主要事项
 
-1.  考虑到不区分volume的存储组件，在client端做volume限流
-2.  分布式场景，需要中心控制client端流量，master做中心，保证iops，不增加额外流控server，可以减少运维压力
-3.  client采用幂函数控制流量增长，在流量在资源充足的场景下，可以快速增长
-4.  保证volume整体流量调控下平稳
-5.  master可以均衡客户端流量，根据客户端请求情况自适应调节
+- 考虑到不区分volume的存储组件，在client端做volume限流 
+- 分布式场景，需要中心控制client端流量，master做中心，保证iops，不增加额外流控server，可以减少运维压力 
+- client采用幂函数控制流量增长，在流量在资源充足的场景下，可以快速增长 
+- 保证volume整体流量调控下平稳 
+- master可以均衡客户端流量，根据客户端请求情况自适应调节
 
 ### 配置项
 
 无配置项，通过url命令设置
 
-### QOS流控参数字段及接口
+### QOS流控参数及接口
 
 -   创建卷时启用QOS：
 
 ``` bash
 curl -v "http://192.168.0.11:17010/admin/createVol?name=volName&capacity=100&owner=cfs&qosEnable=true&flowWKey=10000"
 
-启用qos，写流量设置为10000MB
+# 启用qos，写流量设置为10000MB
 ```
 
 -   获取卷的流量情况：
@@ -406,7 +413,7 @@ curl  "http://192.168.0.11:17010/qos/getStatus?name=ltptest"
 -   获取客户端数据：
 
 ``` bash
-curl  "http://192.168.0.11:17010/qos/getClientsInfo?name=ltptest”
+curl  "http://192.168.0.11:17010/qos/getClientsInfo?name=ltptest"
 ```
 
 -   更新服务端参数，关闭、启用流控，调节读写流量值：
@@ -415,8 +422,9 @@ curl  "http://192.168.0.11:17010/qos/getClientsInfo?name=ltptest”
 curl  "http://192.168.0.11:17010/qos/update?name=ltptest&qosEnable=true&flowWKey=100000"|jq
 ```
 
-涉及字段包括： FlowWKey = "flowWKey" //写（卷） FlowRKey = "flowRKey"
-//读（卷）
+涉及字段包括： 
+  - `FlowWKey = "flowWKey"` //写（卷） 
+  - `FlowRKey = "flowRKey"` //读（卷）
 
 ### 一些系统参数说明
 
@@ -424,30 +432,21 @@ curl  "http://192.168.0.11:17010/qos/update?name=ltptest&qosEnable=true&flowWKey
 
 无论是client端还是datanode端，目前流量都是MB为单位
 
-1.  最低参数流量和io，作用于datanode和volume的设置，如果设置值，则需要
-
-MinFlowLimit = 100 \* util.MB
-
-MinIoLimit = 100
-
-否则报错
-
-1.  如果没有设置流量值，但启用限流，则使用默认值（Byte）
-
-defaultIopsRLimit uint64 = 1 \<\< 16
-
-defaultIopsWLimit uint64 = 1 \<\< 16
-
-defaultFlowWLimit uint64 = 1 \<\< 35
-
-defaultFlowRLimit uint64 = 1 \<\< 35
+2. 最低参数流量和io，作用于datanode和volume的设置，如果设置值，则需要保证一下要求，否则报错
+   - `MinFlowLimit = 100 \* util.MB`
+   - `MinIoLimit = 100`
+   
+3. 如果没有设置流量值，但启用限流，则使用默认值（Byte）
+   - defaultIopsRLimit uint64 = 1 \<\< 16
+   - defaultIopsWLimit uint64 = 1 \<\< 16
+   - defaultFlowWLimit uint64 = 1 \<\< 35
+   - defaultFlowRLimit uint64 = 1 \<\< 35
 
 ### client和master通信
 
-1.  client长时间收不到master的流量控制日志会warn出来
-2.  client和master无法不通讯，会维持原有流量限制，也会warn出来
-
-3.流量长时间为0则不会主动请求master流量，不上报给master，减少通信请求。master会清理长时间不上报客户端信息。
+1. client长时间收不到master的流量控制，日志会warn出来
+2. client和master无法不通讯，会维持原有流量限制，也会warn出来
+3. 流量长时间为0则不会主动请求master流量，不上报给master，减少通信请求。master会清理长时间不上报客户端信息。
 
 ### 冷卷
 
