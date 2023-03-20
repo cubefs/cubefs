@@ -37,10 +37,16 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 	m.registerAPIRoutes(router)
 	m.registerAPIMiddleware(router)
 	exporter.InitWithRouter(modulename, cfg, router, m.port)
+	addr := fmt.Sprintf(":%s", m.port)
+	if m.bindIp {
+		addr = fmt.Sprintf("%s:%s", m.ip, m.port)
+	}
+
 	var server = &http.Server{
-		Addr:    fmt.Sprintf("%s:%s", m.ip, m.port),
+		Addr:    addr,
 		Handler: router,
 	}
+
 	var serveAPI = func() {
 		if err := server.ListenAndServe(); err != nil {
 			log.LogErrorf("serveAPI: serve http server failed: err(%v)", err)

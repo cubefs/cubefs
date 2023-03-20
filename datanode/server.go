@@ -112,6 +112,7 @@ type DataNode struct {
 	zoneName        string
 	clusterID       string
 	localIP         string
+	bindIp          bool
 	localServerAddr string
 	nodeID          uint64
 	raftDir         string
@@ -255,6 +256,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(proto.ListenPort)
+	s.bindIp = cfg.GetBool(proto.BindIpKey)
 	serverPort = port
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
 		return fmt.Errorf("Err:no port")
@@ -537,7 +539,10 @@ func (s *DataNode) registerHandler() {
 
 func (s *DataNode) startTCPService() (err error) {
 	log.LogInfo("Start: startTCPService")
-	addr := fmt.Sprintf("%s:%v", LocalIP, s.port)
+	addr := fmt.Sprintf(":%v", s.port)
+	if s.bindIp {
+		addr = fmt.Sprintf("%s:%v", LocalIP, s.port)
+	}
 	l, err := net.Listen(NetworkProtocol, addr)
 	log.LogDebugf("action[startTCPService] listen %v address(%v).", NetworkProtocol, addr)
 	if err != nil {
@@ -581,7 +586,10 @@ func (s *DataNode) serveConn(conn net.Conn) {
 
 func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
 	log.LogInfo("Start: startSmuxService")
-	addr := fmt.Sprintf("%s:%v", LocalIP, s.port)
+	addr := fmt.Sprintf(":%v", s.port)
+	if s.bindIp {
+		addr = fmt.Sprintf("%s:%v", LocalIP, s.port)
+	}
 	addr = util.ShiftAddrPort(addr, s.smuxPortShift)
 	log.LogInfof("SmuxListenAddr: (%v)", addr)
 

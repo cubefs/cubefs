@@ -37,7 +37,6 @@ func NewInodeResponse() *InodeResponse {
 // Create and inode and attach it to the inode tree.
 func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	status = proto.OpOk
-	log.LogDebugf("execute fsmCreateInode to create ino, %v", ino.Inode)
 	if _, ok := mp.inodeTree.ReplaceOrInsert(ino, false); !ok {
 		status = proto.OpExistErr
 	}

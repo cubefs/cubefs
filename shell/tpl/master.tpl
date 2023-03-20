@@ -3,6 +3,7 @@
   "id": "_id_",
   "role": "master",
   "ip": "_ip_",
+  "bindIp": "true",
   "listen": "17010",
   "peers": "_peers_",
   "retainLogs": "2000",

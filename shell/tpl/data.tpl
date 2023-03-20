@@ -2,6 +2,7 @@
   "role": "datanode",
   "listen": "17310",
   "localIP": "_ip_",
+  "bindIp": "true",
   "raftHeartbeat": "17330",
   "raftReplica": "17340",
   "raftDir": "_dir_/raftlog/datanode",
