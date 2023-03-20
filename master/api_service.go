@@ -1540,6 +1540,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newArgs.dpReplicaNum = uint8(replicaNum)
+	newArgs.dpReadOnlyWhenVolFull = req.dpReadOnlyWhenVolFull
 
 	log.LogInfof("[updateVolOut] name [%s], z1 [%s], z2[%s]", req.name, req.zoneName, vol.Name)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
@@ -1850,42 +1851,43 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	}
 	maxPartitionID := vol.maxPartitionID()
 	return &proto.SimpleVolView{
-		ID:                 vol.ID,
-		Name:               vol.Name,
-		Owner:              vol.Owner,
-		ZoneName:           vol.zoneName,
-		DpReplicaNum:       vol.dpReplicaNum,
-		MpReplicaNum:       vol.mpReplicaNum,
-		InodeCount:         volInodeCount,
-		DentryCount:        volDentryCount,
-		MaxMetaPartitionID: maxPartitionID,
-		Status:             vol.Status,
-		Capacity:           vol.Capacity,
-		FollowerRead:       vol.FollowerRead,
-		EnablePosixAcl:     vol.enablePosixAcl,
-		NeedToLowerReplica: vol.NeedToLowerReplica,
-		Authenticate:       vol.authenticate,
-		CrossZone:          vol.crossZone,
-		DefaultPriority:    vol.defaultPriority,
-		DomainOn:           vol.domainOn,
-		RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
-		MpCnt:              len(vol.MetaPartitions),
-		DpCnt:              len(vol.dataPartitions.partitionMap),
-		CreateTime:         time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
-		Description:        vol.description,
-		DpSelectorName:     vol.dpSelectorName,
-		DpSelectorParm:     vol.dpSelectorParm,
-		VolType:            vol.VolType,
-		ObjBlockSize:       vol.EbsBlkSize,
-		CacheCapacity:      vol.CacheCapacity,
-		CacheAction:        vol.CacheAction,
-		CacheThreshold:     vol.CacheThreshold,
-		CacheLruInterval:   vol.CacheLRUInterval,
-		CacheTtl:           vol.CacheTTL,
-		CacheLowWater:      vol.CacheLowWater,
-		CacheHighWater:     vol.CacheHighWater,
-		CacheRule:          vol.CacheRule,
-		PreloadCapacity:    vol.getPreloadCapacity(),
+		ID:                    vol.ID,
+		Name:                  vol.Name,
+		Owner:                 vol.Owner,
+		ZoneName:              vol.zoneName,
+		DpReplicaNum:          vol.dpReplicaNum,
+		MpReplicaNum:          vol.mpReplicaNum,
+		InodeCount:            volInodeCount,
+		DentryCount:           volDentryCount,
+		MaxMetaPartitionID:    maxPartitionID,
+		Status:                vol.Status,
+		Capacity:              vol.Capacity,
+		FollowerRead:          vol.FollowerRead,
+		EnablePosixAcl:        vol.enablePosixAcl,
+		NeedToLowerReplica:    vol.NeedToLowerReplica,
+		Authenticate:          vol.authenticate,
+		CrossZone:             vol.crossZone,
+		DefaultPriority:       vol.defaultPriority,
+		DomainOn:              vol.domainOn,
+		RwDpCnt:               vol.dataPartitions.readableAndWritableCnt,
+		MpCnt:                 len(vol.MetaPartitions),
+		DpCnt:                 len(vol.dataPartitions.partitionMap),
+		CreateTime:            time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+		Description:           vol.description,
+		DpSelectorName:        vol.dpSelectorName,
+		DpSelectorParm:        vol.dpSelectorParm,
+		DpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
+		VolType:               vol.VolType,
+		ObjBlockSize:          vol.EbsBlkSize,
+		CacheCapacity:         vol.CacheCapacity,
+		CacheAction:           vol.CacheAction,
+		CacheThreshold:        vol.CacheThreshold,
+		CacheLruInterval:      vol.CacheLRUInterval,
+		CacheTtl:              vol.CacheTTL,
+		CacheLowWater:         vol.CacheLowWater,
+		CacheHighWater:        vol.CacheHighWater,
+		CacheRule:             vol.CacheRule,
+		PreloadCapacity:       vol.getPreloadCapacity(),
 	}
 }
 
@@ -3799,6 +3801,7 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	}
 
 	stat.UsedRatio = strconv.FormatFloat(float64(stat.UsedSize)/float64(stat.TotalSize), 'f', 2, 32)
+	stat.DpReadOnlyWhenVolFull = vol.DpReadOnlyWhenVolFull
 
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
@@ -3926,7 +3929,8 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			stat := volStat(vol, false)
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize,
+				stat.UsedSize, stat.DpReadOnlyWhenVolFull)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}

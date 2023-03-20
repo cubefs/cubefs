@@ -96,7 +96,7 @@ const (
 	CliFlagCrossZone          = "crossZone"
 	CliNormalZonesFirst       = "normalZonesFirst"
 	CliFlagCount              = "count"
-
+	CliDpReadOnlyWhenVolFull  = "readonly-when-full"
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	//Shorthand format of resource name

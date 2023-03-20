@@ -722,33 +722,34 @@ func NewLimitRsp2Client() *LimitRsp2Client {
 
 // SimpleVolView defines the simple view of a volume
 type SimpleVolView struct {
-	ID                 uint64
-	Name               string
-	Owner              string
-	ZoneName           string
-	DpReplicaNum       uint8
-	MpReplicaNum       uint8
-	InodeCount         uint64
-	DentryCount        uint64
-	MaxMetaPartitionID uint64
-	Status             uint8
-	Capacity           uint64 // GB
-	RwDpCnt            int
-	MpCnt              int
-	DpCnt              int
-	FollowerRead       bool
-	NeedToLowerReplica bool
-	Authenticate       bool
-	CrossZone          bool
-	DefaultPriority    bool
-	DomainOn           bool
-	CreateTime         string
-	EnableToken        bool
-	EnablePosixAcl     bool
-	Description        string
-	DpSelectorName     string
-	DpSelectorParm     string
-	DefaultZonePrior   bool
+	ID                    uint64
+	Name                  string
+	Owner                 string
+	ZoneName              string
+	DpReplicaNum          uint8
+	MpReplicaNum          uint8
+	InodeCount            uint64
+	DentryCount           uint64
+	MaxMetaPartitionID    uint64
+	Status                uint8
+	Capacity              uint64 // GB
+	RwDpCnt               int
+	MpCnt                 int
+	DpCnt                 int
+	FollowerRead          bool
+	NeedToLowerReplica    bool
+	Authenticate          bool
+	CrossZone             bool
+	DefaultPriority       bool
+	DomainOn              bool
+	CreateTime            string
+	EnableToken           bool
+	EnablePosixAcl        bool
+	Description           string
+	DpSelectorName        string
+	DpSelectorParm        string
+	DefaultZonePrior      bool
+	DpReadOnlyWhenVolFull bool
 
 	VolType          int
 	ObjBlockSize     int
@@ -804,22 +805,24 @@ type MasterAPIAccessResp struct {
 }
 
 type VolInfo struct {
-	Name       string
-	Owner      string
-	CreateTime int64
-	Status     uint8
-	TotalSize  uint64
-	UsedSize   uint64
+	Name                  string
+	Owner                 string
+	CreateTime            int64
+	Status                uint8
+	TotalSize             uint64
+	UsedSize              uint64
+	DpReadOnlyWhenVolFull bool
 }
 
-func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64) *VolInfo {
+func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, dpReadOnlyWhenVolFull bool) *VolInfo {
 	return &VolInfo{
-		Name:       name,
-		Owner:      owner,
-		CreateTime: createTime,
-		Status:     status,
-		TotalSize:  totalSize,
-		UsedSize:   usedSize,
+		Name:                  name,
+		Owner:                 owner,
+		CreateTime:            createTime,
+		Status:                status,
+		TotalSize:             totalSize,
+		UsedSize:              usedSize,
+		DpReadOnlyWhenVolFull: dpReadOnlyWhenVolFull,
 	}
 }
 

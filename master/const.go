@@ -94,6 +94,7 @@ const (
 	Limit                   = "limit"
 	TimeOut                 = "timeout"
 	CountByMeta             = "countByMeta"
+	dpReadOnlyWhenVolFull   = "dpReadOnlyWhenVolFull"
 )
 
 const (
