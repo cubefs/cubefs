@@ -76,6 +76,7 @@ const (
 	MasterAddr       = "masterAddr"
 	ListenPort       = "listen"
 	ObjectNodeDomain = "objectNodeDomain"
+	BindIpKey        = "bindIp"
 )
 
 type MountOption struct {

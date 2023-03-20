@@ -30,7 +30,12 @@ import (
 func (m *MetaNode) startServer() (err error) {
 	// initialize and start the server.
 	m.httpStopC = make(chan uint8)
-	addr := fmt.Sprintf("%s:%s", m.localAddr, m.listen)
+
+	addr := fmt.Sprintf(":%s", m.listen)
+	if m.bindIp {
+		addr = fmt.Sprintf("%s:%s", m.localAddr, m.listen)
+	}
+
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return
@@ -105,7 +110,11 @@ func (m *MetaNode) handlePacket(conn net.Conn, p *Packet,
 func (m *MetaNode) startSmuxServer() (err error) {
 	// initialize and start the server.
 	m.smuxStopC = make(chan uint8)
-	ipPort := fmt.Sprintf("%s:%s", m.localAddr, m.listen)
+
+	ipPort := fmt.Sprintf(":%s", m.listen)
+	if m.bindIp {
+		ipPort = fmt.Sprintf("%s:%s", m.localAddr, m.listen)
+	}
 	addr := util.ShiftAddrPort(ipPort, smuxPortShift)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

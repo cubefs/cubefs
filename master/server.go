@@ -17,13 +17,14 @@ package master
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/stat"
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
 	"regexp"
 	"strconv"
 	"sync"
+
+	"github.com/cubefs/cubefs/util/stat"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -111,6 +112,7 @@ type Server struct {
 	id              uint64
 	clusterName     string
 	ip              string
+	bindIp          bool
 	port            string
 	logDir          string
 	walDir          string
@@ -202,6 +204,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 
 	m.clusterName = cfg.GetString(ClusterName)
 	m.ip = cfg.GetString(IP)
+	m.bindIp = cfg.GetBool(proto.BindIpKey)
 	m.port = cfg.GetString(proto.ListenPort)
 	m.logDir = cfg.GetString(LogDir)
 	m.walDir = cfg.GetString(WalDir)

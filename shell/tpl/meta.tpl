@@ -2,6 +2,7 @@
   "role": "metanode",
   "listen": "17210",
   "localIP": "_ip_",
+  "bindIp": "true",
   "raftHeartbeatPort": "17230",
   "raftReplicaPort": "17240",
   "logLevel": "debug",

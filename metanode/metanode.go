@@ -53,6 +53,7 @@ var (
 type MetaNode struct {
 	nodeId            uint64
 	listen            string
+	bindIp            bool
 	metadataDir       string // root dir of the metaNode
 	raftDir           string // root dir of the raftStore log
 	metadataManager   MetadataManager
@@ -186,6 +187,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	m.localAddr = cfg.GetString(cfgLocalIP)
 	m.listen = cfg.GetString(proto.ListenPort)
+	m.bindIp = cfg.GetBool(proto.BindIpKey)
 	serverPort = m.listen
 	m.metadataDir = cfg.GetString(cfgMetadataDir)
 	m.raftDir = cfg.GetString(cfgRaftDir)
