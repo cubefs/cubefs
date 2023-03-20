@@ -111,6 +111,7 @@ const (
 	CliFlagForceInode          = "forceInode"
 	CliFlagEnableQuota         = "enableQuota"
 	CliFlagDeleteLockTime      = "delete-lock-time"
+	CliFlagClientIDKey         = "clientIDKey"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
@@ -119,6 +120,9 @@ const (
 	ResourceMetaNodeShortHand      = "mn"
 	ResourceDataPartitionShortHand = "dp"
 	ResourceMetaPartitionShortHand = "mp"
+
+	//Usages
+	CliUsageClientIDKey = "needed if cluster authentication is on"
 )
 
 type MasterOp int

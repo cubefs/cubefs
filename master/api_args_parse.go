@@ -1215,6 +1215,14 @@ func extractAuthKey(r *http.Request) (authKey string, err error) {
 	return
 }
 
+func extractClientIDKey(r *http.Request) (clientIDKey string, err error) {
+	if clientIDKey = r.FormValue(ClientIDKey); clientIDKey == "" {
+		err = keyNotFound(ClientIDKey)
+		return
+	}
+	return
+}
+
 func parseVolStatReq(r *http.Request) (name string, ver int, byMeta bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1416,6 +1424,22 @@ func extractTicketMess(req *proto.APIAccessReq, key []byte, volName string) (tic
 	}
 	if err = proto.CheckVOLAccessCaps(&ticket, volName, proto.VOLAccess, proto.MasterNode); err != nil {
 		err = fmt.Errorf("CheckVOLAccessCaps failed: %s", err.Error())
+		return
+	}
+	return
+}
+
+func checkTicket(encodedTicket string, key []byte, Type proto.MsgType) (ticket cryptoutil.Ticket, err error) {
+	if ticket, err = proto.ExtractTicket(encodedTicket, key); err != nil {
+		err = fmt.Errorf("extractTicket failed: %s", err.Error())
+		return
+	}
+	if time.Now().Unix() >= ticket.Exp {
+		err = proto.ErrExpiredTicket
+		return
+	}
+	if err = proto.CheckAPIAccessCaps(&ticket, proto.APIRsc, Type, proto.APIAccess); err != nil {
+		err = fmt.Errorf("CheckAPIAccessCaps failed: %s", err.Error())
 		return
 	}
 	return

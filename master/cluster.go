@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"math"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	authSDK "github.com/cubefs/cubefs/sdk/auth"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 
 	"golang.org/x/time/rate"
@@ -34,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -88,6 +91,8 @@ type Cluster struct {
 	inodeCountNotEqualMP         *sync.Map
 	maxInodeNotEqualMP           *sync.Map
 	dentryCountNotEqualMP        *sync.Map
+	ac                           *authSDK.AuthClient
+	authenticate                 bool
 }
 
 type followerReadManager struct {
@@ -3785,6 +3790,60 @@ func (c *Cluster) generateClusterUuid() (err error) {
 		c.clusterUuid = ""
 		return errors.NewErrorf(fmt.Sprintf("syncPutCluster failed %v", err.Error()))
 
+	}
+	return
+}
+
+func (c *Cluster) initAuthentication(cfg *config.Config) {
+	var (
+		authnodes   []string
+		enableHTTPS bool
+		certFile    string
+	)
+	authNodeHostConfig := cfg.GetString(AuthNodeHost)
+	authnodes = strings.Split(authNodeHostConfig, ",")
+
+	enableHTTPS = cfg.GetBool(AuthNodeEnableHTTPS)
+	if enableHTTPS {
+		certFile = cfg.GetString(AuthNodeCertFile)
+	}
+
+	c.ac = authSDK.NewAuthClient(authnodes, enableHTTPS, certFile)
+}
+
+func (c *Cluster) parseAndCheckClientIDKey(r *http.Request, Type proto.MsgType) (err error) {
+	var (
+		clientIDKey string
+		clientID    string
+		clientKey   []byte
+	)
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if clientIDKey, err = extractClientIDKey(r); err != nil {
+		return
+	}
+
+	if clientID, clientKey, err = proto.ExtractIDAndAuthKey(clientIDKey); err != nil {
+		return
+	}
+
+	if err = proto.IsValidClientID(clientID); err != nil {
+		return
+	}
+
+	ticket, err := c.ac.API().GetTicket(clientID, string(clientKey), proto.MasterServiceID)
+	if err != nil {
+		err = fmt.Errorf("get ticket from auth node failed, clientIDKey[%v], err[%v]", clientIDKey, err.Error())
+		return
+	}
+
+	_, err = checkTicket(ticket.Ticket, c.MasterSecretKey, Type)
+	if err != nil {
+		err = fmt.Errorf("check ticket failed, clientIDKey[%v], err[%v]", clientIDKey, err.Error())
+		return
 	}
 	return
 }

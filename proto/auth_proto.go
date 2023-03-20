@@ -198,6 +198,74 @@ const (
 
 	//Master API ClientVol
 	MsgMasterFetchVolViewReq MsgType = MsgMasterAPIAccessReq + 0x10000
+
+	//Master API cluster management
+	MsgMasterClusterFreezeReq    MsgType = MsgMasterAPIAccessReq + 0x20100
+	MsgMasterAddRaftNodeReq      MsgType = MsgMasterAPIAccessReq + 0x20200
+	MsgMasterRemoveRaftNodeReq   MsgType = MsgMasterAPIAccessReq + 0x20300
+	MsgMasterSetNodeInfoReq      MsgType = MsgMasterAPIAccessReq + 0x20400
+	MsgMasterSetNodeRdOnlyReq    MsgType = MsgMasterAPIAccessReq + 0x20500
+	MsgMasterAutoDecommissionReq MsgType = MsgMasterAPIAccessReq + 0x20600
+
+	// Master API volume management
+	MsgMasterCreateVolReq MsgType = MsgMasterAPIAccessReq + 0x30100
+	MsgMasterDeleteVolReq MsgType = MsgMasterAPIAccessReq + 0x30200
+	MsgMasterUpdateVolReq MsgType = MsgMasterAPIAccessReq + 0x30300
+	MsgMasterVolShrinkReq MsgType = MsgMasterAPIAccessReq + 0x30400
+	MsgMasterVolExpandReq MsgType = MsgMasterAPIAccessReq + 0x30500
+
+	// Master API meta partition management
+	MsgMasterLoadMetaPartitionReq         MsgType = MsgMasterAPIAccessReq + 0x40100
+	MsgMasterDecommissionMetaPartitionReq MsgType = MsgMasterAPIAccessReq + 0x40200
+	MsgMasterChangeMetaPartitionLeaderReq MsgType = MsgMasterAPIAccessReq + 0x40300
+	MsgMasterCreateMetaPartitionReq       MsgType = MsgMasterAPIAccessReq + 0x40400
+	MsgMasterAddMetaReplicaReq            MsgType = MsgMasterAPIAccessReq + 0x40500
+	MsgMasterDeleteMetaReplicaReq         MsgType = MsgMasterAPIAccessReq + 0x40600
+	MsgMasterQosUpdateReq                 MsgType = MsgMasterAPIAccessReq + 0x40700
+	MsgMasterQosUpdateZoneLimitReq        MsgType = MsgMasterAPIAccessReq + 0x40800
+	MsgMasterQosUpdateMasterLimitReq      MsgType = MsgMasterAPIAccessReq + 0x40900
+	MsgMasterQosUpdateClientParamReq      MsgType = MsgMasterAPIAccessReq + 0x40a00
+
+	// Master API data partition management
+	MsgMasterCreateDataPartitionReq       MsgType = MsgMasterAPIAccessReq + 0x50100
+	MsgMasterDataPartitionChangeLeaderReq MsgType = MsgMasterAPIAccessReq + 0x50200
+	MsgMasterLoadDataPartitionReq         MsgType = MsgMasterAPIAccessReq + 0x50300
+	MsgMasterDecommissionDataPartitionReq MsgType = MsgMasterAPIAccessReq + 0x50400
+	MsgMasterAddDataReplicaReq            MsgType = MsgMasterAPIAccessReq + 0x50500
+	MsgMasterDeleteDataReplicaReq         MsgType = MsgMasterAPIAccessReq + 0x50600
+	MsgMasterSetDpRdOnlyReq               MsgType = MsgMasterAPIAccessReq + 0x50700
+	MsgMasterReportLackDataPartitions     MsgType = MsgMasterAPIAccessReq + 0x50800
+
+	// Master API meta node management
+	MsgMasterAddMetaNodeReq          MsgType = MsgMasterAPIAccessReq + 0x60100
+	MsgMasterDecommissionMetaNodeReq MsgType = MsgMasterAPIAccessReq + 0x60200
+	MsgMasterMigrateMetaNodeReq      MsgType = MsgMasterAPIAccessReq + 0x60300
+	MsgMasterSetMetaNodeThresholdReq MsgType = MsgMasterAPIAccessReq + 0x60400
+	MsgMasterUpdateMetaNodeReq       MsgType = MsgMasterAPIAccessReq + 0x60500
+
+	// Master API data node management
+	MsgMasterAddDataNodeReq                MsgType = MsgMasterAPIAccessReq + 0x70100
+	MsgMasterDecommissionDataNodeReq       MsgType = MsgMasterAPIAccessReq + 0x70200
+	MsgMasterMigrateDataNodeReq            MsgType = MsgMasterAPIAccessReq + 0x70300
+	MsgMasterCancelDecommissionDataNodeReq MsgType = MsgMasterAPIAccessReq + 0x70400
+	MsgMasterDecommissionDiskReq           MsgType = MsgMasterAPIAccessReq + 0x70500
+	MsgMasterUpdateNodeSetCapcityReq       MsgType = MsgMasterAPIAccessReq + 0x70600
+	MsgMasterUpdateNodeSetIdReq            MsgType = MsgMasterAPIAccessReq + 0x70700
+	MsgMasterUpdateDomainDataUseRatioReq   MsgType = MsgMasterAPIAccessReq + 0x70800
+	MsgMasterUpdateZoneExcludeRatioReq     MsgType = MsgMasterAPIAccessReq + 0x70900
+	MsgMasterRecommissionDiskReq           MsgType = MsgMasterAPIAccessReq + 0x70a00
+
+	// Master API user management
+	MsgMasterUserCreateReq          MsgType = MsgMasterAPIAccessReq + 0x80100
+	MsgMasterUserDeleteReq          MsgType = MsgMasterAPIAccessReq + 0x80200
+	MsgMasterUserUpdateReq          MsgType = MsgMasterAPIAccessReq + 0x80300
+	MsgMasterUserUpdatePolicyReq    MsgType = MsgMasterAPIAccessReq + 0x80400
+	MsgMasterUserRemovePolicyReq    MsgType = MsgMasterAPIAccessReq + 0x80500
+	MsgMasterUserDeleteVolPolicyReq MsgType = MsgMasterAPIAccessReq + 0x80600
+	MsgMasterUserTransferVolReq     MsgType = MsgMasterAPIAccessReq + 0x80700
+
+	// Master API zone management
+	MsgMasterUpdateZoneReq MsgType = MsgMasterAPIAccessReq + 0x90100
 )
 
 // HTTPAuthReply uniform response structure
@@ -222,6 +290,74 @@ var MsgType2ResourceMap = map[MsgType]string{
 	MsgAuthOSGetCapsReq:      "auth:osgetcaps",
 
 	MsgMasterFetchVolViewReq: "master:getvol",
+
+	//Master API cluster management
+	MsgMasterClusterFreezeReq:    "master:clusterfreeze",
+	MsgMasterAddRaftNodeReq:      "master:addraftnode",
+	MsgMasterRemoveRaftNodeReq:   "master:removeraftnode",
+	MsgMasterSetNodeInfoReq:      "master:setnodeinfo",
+	MsgMasterSetNodeRdOnlyReq:    "master:sernoderdonly",
+	MsgMasterAutoDecommissionReq: "master:autodecommission",
+
+	// Master API volume management
+	MsgMasterCreateVolReq: "master:createvol",
+	MsgMasterDeleteVolReq: "master:deletevol",
+	MsgMasterUpdateVolReq: "master:updatevol",
+	MsgMasterVolShrinkReq: "master:volshrink",
+	MsgMasterVolExpandReq: "master:volexpand",
+
+	// Master API meta partition management
+	MsgMasterLoadMetaPartitionReq:         "master:loadmetapartition",
+	MsgMasterDecommissionMetaPartitionReq: "master:decommissionmetapartition",
+	MsgMasterChangeMetaPartitionLeaderReq: "master:changemetapartitionleader",
+	MsgMasterCreateMetaPartitionReq:       "master:createmetapartition",
+	MsgMasterAddMetaReplicaReq:            "master:addmetareplica",
+	MsgMasterDeleteMetaReplicaReq:         "master:deletemetareplica",
+	MsgMasterQosUpdateReq:                 "master:qosupdate",
+	MsgMasterQosUpdateZoneLimitReq:        "master:qosupdatezonelimit",
+	MsgMasterQosUpdateMasterLimitReq:      "master:qosupdatemasterlimit",
+	MsgMasterQosUpdateClientParamReq:      "master:qosupdateclientparam",
+
+	// Master API data partition management
+	MsgMasterCreateDataPartitionReq:       "master:createdatapartition",
+	MsgMasterDataPartitionChangeLeaderReq: "master:changedatapartitionleader",
+	MsgMasterLoadDataPartitionReq:         "master:loaddatapartition",
+	MsgMasterDecommissionDataPartitionReq: "master:decommissiondatapartition",
+	MsgMasterAddDataReplicaReq:            "master:adddatareplica",
+	MsgMasterDeleteDataReplicaReq:         "master:removedatareplica",
+	MsgMasterSetDpRdOnlyReq:               "master:setdprdonly",
+	MsgMasterReportLackDataPartitions:     "master:reportLackDataPartitions",
+
+	// Master API meta node management
+	MsgMasterAddMetaNodeReq:          "master:addmetanode",
+	MsgMasterDecommissionMetaNodeReq: "master:decommissionmetanode",
+	MsgMasterMigrateMetaNodeReq:      "master:migratemetanode",
+	MsgMasterSetMetaNodeThresholdReq: "master:setmetanodethreshold",
+	MsgMasterUpdateMetaNodeReq:       "master:updatemetanode",
+
+	// Master API data node management
+	MsgMasterAddDataNodeReq:                "master:adddatannode",
+	MsgMasterDecommissionDataNodeReq:       "master:decommissiondatannode",
+	MsgMasterMigrateDataNodeReq:            "master:migratedatannode",
+	MsgMasterCancelDecommissionDataNodeReq: "master:canceldecommissiondatannode",
+	MsgMasterDecommissionDiskReq:           "master:decommissiondisk",
+	MsgMasterUpdateNodeSetCapcityReq:       "master:updatenodesetcapcity",
+	MsgMasterUpdateNodeSetIdReq:            "master:updatenodesetid",
+	MsgMasterUpdateDomainDataUseRatioReq:   "master:updatedomaindatauseratio",
+	MsgMasterUpdateZoneExcludeRatioReq:     "master:updatezoneexcluderatio",
+	MsgMasterRecommissionDiskReq:           "master:recommissiondisk",
+
+	// Master API user management
+	MsgMasterUserCreateReq:          "master:usercreate",
+	MsgMasterUserDeleteReq:          "master:userdelete",
+	MsgMasterUserUpdateReq:          "master:userupdate",
+	MsgMasterUserUpdatePolicyReq:    "master:userupdatepolicy",
+	MsgMasterUserRemovePolicyReq:    "master:userremotepolicy",
+	MsgMasterUserDeleteVolPolicyReq: "master:userdeletevolpolicy",
+	MsgMasterUserTransferVolReq:     "master:usertransfervol",
+
+	// Master API zone management
+	MsgMasterUpdateZoneReq: "master:updatezone",
 }
 
 // AuthGetTicketReq defines the message from client to authnode
@@ -273,8 +409,9 @@ type AuthAPIAccessReq struct {
 
 // AuthAPIAccessResp defines the response for creating an key in authnode
 type AuthAPIAccessResp struct {
-	APIResp APIAccessResp    `json:"api_resp"`
-	KeyInfo keystore.KeyInfo `json:"key_info"`
+	APIResp   APIAccessResp    `json:"api_resp"`
+	KeyInfo   keystore.KeyInfo `json:"key_info"`
+	AuthIDKey string           `json:"auth_id_key"`
 }
 
 // AuthRaftNodeInfo defines raft node information
@@ -538,6 +675,45 @@ func CheckAPIAccessCaps(ticket *cryptoutil.Ticket, rscType string, mp MsgType, a
 		err = fmt.Errorf("checkTicketCaps failed: %s", err.Error())
 		return
 	}
+	return
+}
+
+func GenAuthIDKey(id string, authKey []byte) (authIDKey string, err error) {
+	type AuthIDKey struct {
+		ID      string `json:"id"`
+		AuthKey []byte `json:"auth_key"`
+	}
+	tmpAuthIDKey := AuthIDKey{
+		ID:      id,
+		AuthKey: authKey,
+	}
+	var jAuthIDKey []byte
+	if jAuthIDKey, err = json.Marshal(tmpAuthIDKey); err != nil {
+		err = fmt.Errorf("json marshal authIDKey failed %s", err.Error())
+		return
+	}
+	authIDKey = cryptoutil.Base64Encode(jAuthIDKey)
+	return
+}
+
+func ExtractIDAndAuthKey(authIDKey string) (id string, authKey []byte, err error) {
+	type AuthIDKey struct {
+		ID      string `json:"id"`
+		AuthKey string `json:"auth_key"`
+	}
+	var jAuthIDKey []byte
+	jAuthIDKey, err = cryptoutil.Base64Decode(authIDKey)
+	if err != nil {
+		err = fmt.Errorf("decode authIDKey failed %s", err.Error())
+		return
+	}
+	tmpAuthIDKey := &AuthIDKey{}
+	if err = json.Unmarshal(jAuthIDKey, &tmpAuthIDKey); err != nil {
+		err = fmt.Errorf("json unmarshal authIDKey failed %s", err.Error())
+		return
+	}
+	id = tmpAuthIDKey.ID
+	authKey = []byte(tmpAuthIDKey.AuthKey)
 	return
 }
 

@@ -171,81 +171,89 @@ func (api *AdminAPI) DiagnoseMetaPartition() (diagnosis *proto.MetaPartitionDiag
 	return
 }
 
-func (api *AdminAPI) LoadDataPartition(volName string, partitionID uint64) (err error) {
+func (api *AdminAPI) LoadDataPartition(volName string, partitionID uint64, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminLoadDataPartition)
 	request.addParam("id", strconv.Itoa(int(partitionID)))
 	request.addParam("name", volName)
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) CreateDataPartition(volName string, count int) (err error) {
+func (api *AdminAPI) CreateDataPartition(volName string, count int, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateDataPartition)
 	request.addParam("name", volName)
 	request.addParam("count", strconv.Itoa(count))
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string, raftForce bool) (err error) {
+func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string, raftForce bool, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDecommissionDataPartition)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("raftForceDel", strconv.FormatBool(raftForce))
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDecommissionMetaPartition)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) DeleteDataReplica(dataPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) DeleteDataReplica(dataPartitionID uint64, nodeAddr, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteDataReplica)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) AddDataReplica(dataPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) AddDataReplica(dataPartitionID uint64, nodeAddr, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminAddDataReplica)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) DeleteMetaReplica(metaPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) DeleteMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteMetaReplica)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminAddMetaReplica)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -262,6 +270,17 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
+func (api *AdminAPI) DeleteVolumeWithAuthNode(volName, authKey, clientIDKey string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteVol)
+	request.addParam("name", volName)
+	request.addParam("authKey", authKey)
+	request.addParam("clientIDKey", clientIDKey)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) UpdateVolume(
 	vv *proto.SimpleVolView,
 	txTimeout int64,
@@ -269,7 +288,8 @@ func (api *AdminAPI) UpdateVolume(
 	txForceReset bool,
 	txConflictRetryNum int64,
 	txConflictRetryInterval int64,
-	txOpLimit int) (err error) {
+	txOpLimit int,
+	clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", vv.Name)
 	request.addParam("description", vv.Description)
@@ -290,6 +310,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("replicaNum", strconv.FormatUint(uint64(vv.DpReplicaNum), 10))
 	request.addParam("enableQuota", strconv.FormatBool(vv.EnableQuota))
 	request.addParam("deleteLockTime", strconv.FormatInt(vv.DeleteLockTime, 10))
+	request.addParam("clientIDKey", clientIDKey)
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
@@ -329,22 +350,24 @@ func (api *AdminAPI) PutDataPartitions(volName string, dpsView []byte) (err erro
 	return
 }
 
-func (api *AdminAPI) VolShrink(volName string, capacity uint64, authKey string) (err error) {
+func (api *AdminAPI) VolShrink(volName string, capacity uint64, authKey, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminVolShrink)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) (err error) {
+func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminVolExpand)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -354,7 +377,8 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) 
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, deleteLockTime int64, crossZone, normalZonesFirst bool, business string,
 	mpCount, replicaNum, size, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
-	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string) (err error) {
+	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
+	clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -380,6 +404,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
 	request.addParam("enableQuota", optEnableQuota)
+	request.addParam("clientIDKey", clientIDKey)
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
 	}
@@ -499,10 +524,11 @@ func (api *AdminAPI) GetClusterInfo() (ci *proto.ClusterInfo, err error) {
 	return
 }
 
-func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64) (err error) {
+func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateMetaPartition)
 	request.addParam("name", volName)
 	request.addParam("start", strconv.FormatUint(inodeStart, 10))
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -523,9 +549,10 @@ func (api *AdminAPI) ListVols(keywords string) (volsInfo []*proto.VolInfo, err e
 	return
 }
 
-func (api *AdminAPI) IsFreezeCluster(isFreeze bool) (err error) {
+func (api *AdminAPI) IsFreezeCluster(isFreeze bool, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminClusterFreeze)
 	request.addParam("enable", strconv.FormatBool(isFreeze))
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -541,16 +568,18 @@ func (api *AdminAPI) SetForbidMpDecommission(disable bool) (err error) {
 	return
 }
 
-func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
+func (api *AdminAPI) SetMetaNodeThreshold(threshold float64, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetMetaNodeThreshold)
 	request.addParam("threshold", strconv.FormatFloat(threshold, 'f', 6, 64))
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit string) (err error) {
+func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate,
+	loadFactor, maxDpCntLimit, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
 	request.addParam("batchCount", batchCount)
 	request.addParam("markDeleteRate", markDeleteRate)
@@ -558,6 +587,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	request.addParam("autoRepairRate", autoRepairRate)
 	request.addParam("loadFactor", loadFactor)
 	request.addParam("maxDpCntLimit", maxDpCntLimit)
+	request.addParam("clientIDKey", clientIDKey)
 
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return

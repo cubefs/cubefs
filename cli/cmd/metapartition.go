@@ -257,6 +257,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 }
 
 func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionDecommissionShort,
@@ -273,7 +274,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
-			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address); err != nil {
+			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address, clientIDKey); err != nil {
 				return
 			}
 			stdout("Decommission meta partition successfully\n")
@@ -285,10 +286,12 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
 func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
 	var cmd = &cobra.Command{
 		Use:   CliOpReplicate + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionReplicateShort,
@@ -305,7 +308,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
-			if err = client.AdminAPI().AddMetaReplica(partitionID, address); err != nil {
+			if err = client.AdminAPI().AddMetaReplica(partitionID, address, clientIDKey); err != nil {
 				return
 			}
 			stdout("Add replication successfully\n")
@@ -317,10 +320,12 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
 func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
 	var cmd = &cobra.Command{
 		Use:   CliOpDelReplica + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionDeleteReplicaShort,
@@ -340,7 +345,7 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().DeleteMetaReplica(partitionID, address); err != nil {
+			if err = client.AdminAPI().DeleteMetaReplica(partitionID, address, clientIDKey); err != nil {
 				return
 			}
 			stdout("Delete replication successfully\n")
@@ -352,5 +357,6 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }

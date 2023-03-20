@@ -121,6 +121,7 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newClusterFreezeCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
 	var cmd = &cobra.Command{
 		Use:       CliOpFreeze + " [ENABLE]",
 		ValidArgs: []string{"true", "false"},
@@ -146,7 +147,7 @@ If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 				err = fmt.Errorf("Parse bool fail: %v\n", err)
 				return
 			}
-			if err = client.AdminAPI().IsFreezeCluster(enable); err != nil {
+			if err = client.AdminAPI().IsFreezeCluster(enable, clientIDKey); err != nil {
 				return
 			}
 			if enable {
@@ -156,10 +157,12 @@ If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 			}
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
 func newClusterSetThresholdCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
 	var cmd = &cobra.Command{
 		Use:   CliOpSetThreshold + " [THRESHOLD]",
 		Short: cmdClusterThresholdShort,
@@ -184,16 +187,18 @@ If the memory usage reaches this threshold, all the meta partition will be readO
 				err = fmt.Errorf("Threshold too big\n")
 				return
 			}
-			if err = client.AdminAPI().SetMetaNodeThreshold(threshold); err != nil {
+			if err = client.AdminAPI().SetMetaNodeThreshold(threshold, clientIDKey); err != nil {
 				return
 			}
 			stdout("MetaNode threshold is set to %v!\n", threshold)
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
 func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
 	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs, optLoadFactor, opMaxDpCntLimit string
 	var cmd = &cobra.Command{
 		Use:   CliOpSetCluster,
@@ -208,7 +213,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 
-			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs, optAutoRepairRate, optLoadFactor, opMaxDpCntLimit); err != nil {
+			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs, optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, clientIDKey); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -220,6 +225,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
 	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
 	cmd.Flags().StringVar(&opMaxDpCntLimit, CliFlagMaxDpCntLimit, "", "Maximum number of dp on each datanode, default 3000, 0 represents setting to default")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 
 	return cmd
 }

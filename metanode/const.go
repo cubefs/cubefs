@@ -215,6 +215,7 @@ const (
 	cfgSmuxMaxBuffer             = "smuxMaxBuffer"             //int
 	cfgRetainLogs                = "retainLogs"                //string, raft RetainLogs
 	cfgRaftSyncSnapFormatVersion = "raftSyncSnapFormatVersion" //int, format version of snapshot that raft leader sent to follower
+	cfgServiceIDKey              = "serviceIDKey"
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int

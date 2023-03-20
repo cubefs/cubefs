@@ -123,7 +123,10 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
-	var optCount int
+	var (
+		optCount    int
+		clientIDKey string
+	)
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdMetaNodeDecommissionInfoShort,
@@ -141,7 +144,7 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				stdout("Migrate mp count should >= 0\n")
 				return
 			}
-			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr, optCount); err != nil {
+			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr, optCount, clientIDKey); err != nil {
 				return
 			}
 			stdout("Decommission meta node successfully\n")
@@ -155,10 +158,14 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "MetaNode delete mp count")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
-	var optCount int
+	var (
+		optCount    int
+		clientIDKey string
+	)
 	var cmd = &cobra.Command{
 		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
 		Short: cmdMetaNodeMigrateInfoShort,
@@ -177,7 +184,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("Migrate mp count should between [1-15]\n")
 				return
 			}
-			if err = client.NodeAPI().MetaNodeMigrate(src, dst, optCount); err != nil {
+			if err = client.NodeAPI().MetaNodeMigrate(src, dst, optCount, clientIDKey); err != nil {
 				return
 			}
 			stdout("Migrate meta node successfully\n")
@@ -191,5 +198,6 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, mpMigrateMax, "Migrate mp count")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
