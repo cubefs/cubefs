@@ -24,5 +24,5 @@
 - [Twitter](https://twitter.com/cubefs)
 - 微信公众号
 
-  ![qrcode](./pic/qrcode.bmp)
+  ![qrcode](./pic/qrcode.png)
 - 微信 CubeFS Community 群，搜索并添加微信号blkleaf或mervinkid联系，注明您的来意

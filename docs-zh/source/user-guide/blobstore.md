@@ -16,12 +16,12 @@ $ sh build.sh
 构建成功后，将在 `bin` 目录中生成以下可执行文件：
 
 ```shell
-├── bin 
-│   ├── clustermgr
-│   ├── proxy
-│   ├── scheduler
-│   ├── blobnode
-│   └── cli
+├── bin
+│   ├── clustermgr
+│   ├── proxy
+│   ├── scheduler
+│   ├── blobnode
+│   └── cli
 ```
 
 ## 集群部署
