@@ -47,8 +47,9 @@ var (
 )
 
 type Config struct {
-	MasterAddr []string `json:"masterAddr"`
-	Timeout    uint16   `json:"timeout"`
+	MasterAddr  []string `json:"masterAddr"`
+	Timeout     uint16   `json:"timeout"`
+	ClientIDKey string   `json:"clientIDKey"`
 }
 
 func newConfigCmd() *cobra.Command {

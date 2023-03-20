@@ -118,6 +118,7 @@ const (
 	enableQuota                = "enableQuota"
 	dpDiscardKey               = "dpDiscard"
 	ignoreDiscardKey           = "ignoreDiscard"
+	ClientIDKey                = "clientIDKey"
 )
 
 const (

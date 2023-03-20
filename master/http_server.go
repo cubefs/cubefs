@@ -21,6 +21,7 @@ import (
 	"html"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/introspection"
@@ -37,6 +38,9 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 	router := mux.NewRouter().SkipClean(true)
 	m.registerAPIRoutes(router)
 	m.registerAPIMiddleware(router)
+	if m.cluster.authenticate {
+		m.registerAuthenticationMiddleware(router)
+	}
 	exporter.InitWithRouter(modulename, cfg, router, m.port)
 	addr := fmt.Sprintf(":%s", m.port)
 	if m.bindIp {
@@ -140,6 +144,96 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 			})
 	}
 	route.Use(interceptor)
+}
+
+// AuthenticationUri2MsgTypeMap define the mapping from authentication uri to message type
+var AuthenticationUri2MsgTypeMap = map[string]proto.MsgType{
+	//Master API cluster management
+	proto.AdminClusterFreeze: proto.MsgMasterClusterFreezeReq,
+	proto.AddRaftNode:        proto.MsgMasterAddRaftNodeReq,
+	proto.RemoveRaftNode:     proto.MsgMasterRemoveRaftNodeReq,
+	proto.AdminSetNodeInfo:   proto.MsgMasterSetNodeInfoReq,
+	proto.AdminSetNodeRdOnly: proto.MsgMasterSetNodeRdOnlyReq,
+
+	// Master API volume management
+	proto.AdminCreateVol: proto.MsgMasterCreateVolReq,
+	proto.AdminDeleteVol: proto.MsgMasterDeleteVolReq,
+	proto.AdminUpdateVol: proto.MsgMasterUpdateVolReq,
+	proto.AdminVolShrink: proto.MsgMasterVolShrinkReq,
+	proto.AdminVolExpand: proto.MsgMasterVolExpandReq,
+
+	// Master API meta partition management
+	proto.AdminLoadMetaPartition:         proto.MsgMasterLoadMetaPartitionReq,
+	proto.AdminDecommissionMetaPartition: proto.MsgMasterDecommissionMetaPartitionReq,
+	proto.AdminChangeMetaPartitionLeader: proto.MsgMasterChangeMetaPartitionLeaderReq,
+	proto.AdminCreateMetaPartition:       proto.MsgMasterCreateMetaPartitionReq,
+	proto.AdminAddMetaReplica:            proto.MsgMasterAddMetaReplicaReq,
+	proto.AdminDeleteMetaReplica:         proto.MsgMasterDeleteMetaReplicaReq,
+	proto.QosUpdate:                      proto.MsgMasterQosUpdateReq,
+	proto.QosUpdateZoneLimit:             proto.MsgMasterQosUpdateZoneLimitReq,
+	proto.QosUpdateMasterLimit:           proto.MsgMasterQosUpdateMasterLimitReq,
+	proto.QosUpdateClientParam:           proto.MsgMasterQosUpdateClientParamReq,
+
+	// Master API data partition management
+	proto.AdminCreateDataPartition:       proto.MsgMasterCreateDataPartitionReq,
+	proto.AdminDataPartitionChangeLeader: proto.MsgMasterDataPartitionChangeLeaderReq,
+	proto.AdminLoadDataPartition:         proto.MsgMasterLoadDataPartitionReq,
+	proto.AdminDecommissionDataPartition: proto.MsgMasterDecommissionDataPartitionReq,
+	proto.AdminAddDataReplica:            proto.MsgMasterAddDataReplicaReq,
+	proto.AdminDeleteDataReplica:         proto.MsgMasterDeleteDataReplicaReq,
+	proto.AdminSetDpRdOnly:               proto.MsgMasterSetDpRdOnlyReq,
+
+	// Master API meta node management
+	proto.AddMetaNode:               proto.MsgMasterAddMetaNodeReq,
+	proto.DecommissionMetaNode:      proto.MsgMasterDecommissionMetaNodeReq,
+	proto.MigrateMetaNode:           proto.MsgMasterMigrateMetaNodeReq,
+	proto.AdminSetMetaNodeThreshold: proto.MsgMasterSetMetaNodeThresholdReq,
+	proto.AdminUpdateMetaNode:       proto.MsgMasterUpdateMetaNodeReq,
+
+	// Master API data node management
+	proto.AddDataNode:                   proto.MsgMasterAddDataNodeReq,
+	proto.DecommissionDataNode:          proto.MsgMasterDecommissionDataNodeReq,
+	proto.MigrateDataNode:               proto.MsgMasterMigrateDataNodeReq,
+	proto.CancelDecommissionDataNode:    proto.MsgMasterCancelDecommissionDataNodeReq,
+	proto.DecommissionDisk:              proto.MsgMasterDecommissionDiskReq,
+	proto.AdminUpdateNodeSetCapcity:     proto.MsgMasterUpdateNodeSetCapcityReq,
+	proto.AdminUpdateNodeSetId:          proto.MsgMasterUpdateNodeSetIdReq,
+	proto.AdminUpdateDomainDataUseRatio: proto.MsgMasterUpdateDomainDataUseRatioReq,
+	proto.AdminUpdateZoneExcludeRatio:   proto.MsgMasterUpdateZoneExcludeRatioReq,
+	proto.RecommissionDisk:              proto.MsgMasterRecommissionDiskReq,
+
+	// Master API user management
+	proto.UserCreate:          proto.MsgMasterUserCreateReq,
+	proto.UserDelete:          proto.MsgMasterUserDeleteReq,
+	proto.UserUpdate:          proto.MsgMasterUserUpdateReq,
+	proto.UserUpdatePolicy:    proto.MsgMasterUserUpdatePolicyReq,
+	proto.UserRemovePolicy:    proto.MsgMasterUserRemovePolicyReq,
+	proto.UserDeleteVolPolicy: proto.MsgMasterUserDeleteVolPolicyReq,
+	proto.UserTransferVol:     proto.MsgMasterUserTransferVolReq,
+
+	// Master API zone management
+	proto.UpdateZone: proto.MsgMasterUpdateZoneReq,
+}
+
+func (m *Server) registerAuthenticationMiddleware(router *mux.Router) {
+	authenticationInterceptor := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				split := strings.Split(r.RequestURI, "?")
+				uriPath := split[0]
+				msgType, match := AuthenticationUri2MsgTypeMap[uriPath]
+				if match {
+					if err := m.cluster.parseAndCheckClientIDKey(r, msgType); err != nil {
+						log.LogInfof("action[AuthenticationInterceptor] parseAndCheckClientKey failed, RequestURI[%v], err[%v]",
+							r.RequestURI, err)
+						sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidClientIDKey, Msg: err.Error()})
+						return
+					}
+				}
+				next.ServeHTTP(w, r)
+			})
+	}
+	router.Use(authenticationInterceptor)
 }
 
 func (m *Server) registerAPIRoutes(router *mux.Router) {

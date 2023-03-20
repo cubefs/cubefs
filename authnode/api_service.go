@@ -557,6 +557,12 @@ func genAuthAPIAccessResp(req *proto.APIAccessReq, keyInfo *keystore.KeyInfo, ts
 
 	resp.KeyInfo = *keyInfo
 
+	resp.AuthIDKey, err = proto.GenAuthIDKey(keyInfo.ID, keyInfo.AuthKey)
+	if err != nil {
+		err = fmt.Errorf("gen authIDKey for response failed %s", err.Error())
+		return
+	}
+
 	if jresp, err = json.Marshal(resp); err != nil {
 		err = fmt.Errorf("json marshal for response failed %s", err.Error())
 		return
