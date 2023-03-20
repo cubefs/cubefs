@@ -9,22 +9,22 @@ $ git clone https://github.com/cubefs/cubefs.git
 
 ### 脚本部署
 
-#### 部署Master&MetaNode&DataNode
-cubefs 支持使用脚本一键部署，步骤如下：
+#### 部署基础集群
+CubeFS 支持使用脚本一键部署基础集群，包含组件`Master`、`MetaNode`、`DataNode`，步骤如下：
 ```bash
 cd ./cubefs
-#编译
+# 编译
 make
 # 启动脚本
 sh ./shell/depoly.sh /home/data bond0
 ```
 + bond0: 为本机网卡的名字, 根据实际填写
-+ /home/data: 为本地的一个目录,用于保存集群运行日志、数据及配置文件
++ `/home/data`: 为本地的一个目录,用于保存集群运行日志、数据及配置文件
 + 机器要求
   + 需root权限
   + 能使用`ifconfig`
   + 内存4G以上
-  + /home/data对应磁盘剩余空间20G以上
+  + `/home/data`对应磁盘剩余空间20G以上
 + 查看集群状态
 ```bash
 ./build/bin/cfs-cli cluster info
@@ -42,7 +42,7 @@ sh ./shell/depoly.sh /home/data bond0
 ...
 ```
 
-#### 部署ObjectNode【可选】
+#### 部署对象网关
 
 ::: tip 提示
 可选章节，如果需要使用对象存储服务，则需要部署对象网关（ObjectNode）
@@ -50,7 +50,7 @@ sh ./shell/depoly.sh /home/data bond0
 
 参考[使用对象存储章节](../user-guide/objectnode.md)
 
-#### 部署纠删码子系统（Blobstore）【可选】
+#### 部署纠删码子系统
 
 ::: tip 提示
 可选章节，如果需要使用纠删码卷则需要部署
@@ -74,22 +74,30 @@ sh ./shell/stop.sh
 
 ### docker 部署
 
-#### 部署Master&MetaNode&DataNode&ObjectNode
-在docker目录下，run_docker.sh工具用来方便运行CubeFS docker-compose试用集群。请确保已经安装docker和docker-compose，并在执行docker部署前确保防火墙关闭，避免权限问题导致容器启动失败。
+#### 部署基础集群
+在docker目录下，run_docker.sh工具用来方便运行CubeFS docker-compose试用集群，包含`Master`、`MetaNode`、`DataNode`与`ObjectNode`组件。
 
-执行下面的命令，可完全重新创建一个最小的CubeFS集群。注意的是`/data/disk`是数据根目录，至少需要10GB大小空闲空间。
+::: tip 提示
+请确保已经安装docker和docker-compose，并在执行docker部署前确保防火墙关闭，避免权限问题导致容器启动失败。
+:::
+
+执行下面的命令，可创建一个最小的CubeFS集群。
+
+::: warning 注意
+`/data/disk`是数据根目录，至少需要10GB大小空闲空间。
+:::
 
 ```bash
 $ docker/run_docker.sh -r -d /data/disk
 ```
 
-客户端启动成功后，在客户端docker容器中使用\`mount\`命令检查目录挂载状态：
+客户端启动成功后，在客户端docker容器中使用`mount`命令检查目录挂载状态：
 
 ```bash
 $ mount | grep cubefs
 ```
 
-在浏览器中打开http://127.0.0.1:3000，使用\`admin/123456\`登录，可查看cubefs的grafana监控指标界面。
+在浏览器中打开`http://127.0.0.1:3000`，使用`admin/123456`登录，可查看CubeFS的grafana监控指标界面。
 
 或者使用下面的命令分步运行:
 
@@ -100,7 +108,7 @@ $ docker/run_docker.sh -c
 $ docker/run_docker.sh -m
 ```
 
-更多命令:
+更多命令请参考帮助:
 
 ```bash
 $ docker/run_docker.sh -h
@@ -135,5 +143,5 @@ $> ./run_docker.sh -b # 编译构建
 &> Successfully built 0b29fda1cd22
    Successfully tagged blobstore:v3.2.0
 $> ./run_docker.sh -r # 运行镜像
-$> ... # 后续步骤同1
+$> ... # 后续步骤同脚本部署
 ```

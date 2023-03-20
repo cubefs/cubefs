@@ -9,20 +9,13 @@ curl -v "http://10.196.59.198:17010/metaPartition/create?name=test&start=10000"
 手动切分元数据分片，如果卷的最大的元数据分片 **inode** 的范围是
 `[begin, end)`:
 
-若 **start** 大于 **begin** 小于 **end**
-参数，原来最大的元数据分片的inode范围变为 `[begin, start]`
-，新创建的元数据分片的范围是 `[start+1,+inf)` ;
+- 若 **start** 大于 **begin** 小于 **end**参数，原来最大的元数据分片的inode范围变为 `[begin, start]`，新创建的元数据分片的范围是 `[start+1,+inf)` 
+- 若 **start** 小于 **begin**，max为当前分片上最大的inode编号，则inode范围变为 `[begin,  max+16777216]`，新创建的元数据分片的范围是 `[max+16777217,+inf)` ;
+- 若 **start** 大于 **end**，max为当前分片上最大的inode编号，则inode范围变为 `[begin,  start]`，新创建的元数据分片的范围是 `[start+1, +inf)` ;
 
-若 **start** 小于 **begin**,
-max为当前分片上最大的inode编号，则inode范围变为 `[begin,  max+16777216]`
-，新创建的元数据分片的范围是 `[max+16777217,+inf)` ;
-
-若 **start** 大于 **end**,
-max为当前分片上最大的inode编号，则inode范围变为 `[begin,  start]`
-，新创建的元数据分片的范围是 `[start+1, +inf)` ;
-
-*注意：start过大会导致单个分片上inode过大，占用较大内存，
-当最后一个分片上inode过多时，也会触发mp自动分裂的*
+::: warning 注意
+start过大会导致单个分片上inode过大，占用较大内存，当最后一个分片上inode过多时，也会触发mp自动分裂的。
+:::
 
 参数列表
 

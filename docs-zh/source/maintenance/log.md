@@ -12,14 +12,17 @@
 
 
 ## 日志设置
-1.如果您是开发及测试人员，希望进行调试，可以将日志级别设置为Debug或者info。  
-2.如果生产环境，可以将日志级别设置为warn或者error,将大大减少日志的量。 
-3.支持的 log-level 有 debug,info,warn,error,fatal,critical。日志的设置有2种方式：
-3.1在配置文件中设置，具体如下：
+
+1. 如果您是开发及测试人员，希望进行调试，可以将日志级别设置为Debug或者info。  
+2. 如果生产环境，可以将日志级别设置为warn或者error,将大大减少日志的量。 
+3. 支持的 log-level 有 debug,info,warn,error,fatal,critical。
+
+日志的设置有2种方式：
+- 在配置文件中设置，具体如下：
 ```
 "logLevel": "debug"
 ```
-3.2可以通过命令动态的修改，命令如下
+- 可以通过命令动态的修改，命令如下
 ```
 http://127.0.0.1:{profPort}/loglevel/set?level={log-level}
 ```

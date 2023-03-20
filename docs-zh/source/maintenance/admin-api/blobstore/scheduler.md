@@ -2,7 +2,11 @@
 
 ## 服务状态
 
-初始化部署后默认后台任务是没有打开的，如果需要可以`《参考Clustermgr管理命令》`章节打开，只有主节点才会显示均衡、下线、修盘、巡检以及手动迁移任务状态，所有scheduler节点状态都包含删除、修补任务。
+初始化部署后默认后台任务是没有打开的，如果需要可以[Clustermgr管理章节](./cm.md)打开。
+
+::: tip 提示
+只有主节点才会显示均衡、下线、修盘、巡检以及手动迁移任务状态，所有Scheduler节点状态都包含删除、修补任务。
+:::
 
 ```bash
 curl http://127.0.0.1:9800/stats # 查看本机的节点状态
@@ -86,7 +90,11 @@ curl http://127.0.0.1:9800/leader/stats # 查看主节点状态
 
 ## 手动迁移chunk
 
-特殊情况下可以设置手动迁移某个chunk，这里只能指定迁移的数据源，目标由ClusterMgr分配。
+特殊情况下可以设置手动迁移某个chunk。
+
+::: warning 注意
+这里只能指定迁移的数据源，目标由Clustermgr分配。
+:::
 
 ```bash
 curl -X POST --header 'Content-Type: application/json' -d '{"vuid": 4395630596,"direct_download": false}' "http://127.0.0.1:9800/manual/migrate/task/add" 

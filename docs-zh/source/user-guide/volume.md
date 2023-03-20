@@ -1,6 +1,11 @@
 # 创建卷
 
-**卷**是逻辑上的概念，由多个元数据和数据分片组成，从客户端的角度看，卷可以被看作是可被容器访问的文件系统实例。从对象存储的角度来看，一个卷对应着一个bucket。一个卷可以在多个容器中挂载，使得文件可以被不同客户端同时访问。下面将介绍如何创建不同模式的卷，更多卷操作可以参考[卷管理命令](../maintenance/admin-api/master/volume.md)。
+**卷**是逻辑上的概念，由多个元数据和数据分片组成
+- 从客户端的角度看，卷可以被看作是可被容器访问的文件系统实例，一个卷可以在多个容器中挂载，使得文件可以被不同客户端同时访问。
+- 从对象存储的角度来看，一个卷对应着一个bucket。
+
+下面将介绍如何创建不同模式的卷，更多卷操作可以参考[卷管理命令](../maintenance/admin-api/master/volume.md)。
+
 ## 创建副本卷
 
 请求master服务接口，创建卷
@@ -13,7 +18,9 @@
 curl -v "http://127.0.0.1:17010/admin/createVol?name=test&capacity=100&owner=cfs"
 ```
 
-> 扩容示例 `curl -v "http://127.0.0.1:17010/vol/expand?name=test&authKey=57f0162b2303be3449c7008484b0d306&capacity=200"`，其中authKey为volume owner字符串的MD5值
+::: tip 提示
+扩容示例 `curl -v "http://127.0.0.1:17010/vol/expand?name=test&authKey=57f0162b2303be3449c7008484b0d306&capacity=200"`，其中authKey为volume owner字符串的MD5值。
+:::
 
 ## 创建纠删码卷
 

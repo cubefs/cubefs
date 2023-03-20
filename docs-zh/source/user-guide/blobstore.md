@@ -1,7 +1,8 @@
 # 使用纠删码系统
 
-## 快速体验
-> 请看[这里](../deploy/node.md) 
+::: tip 提示
+快速体验请看[单机部署](../deploy/node.md)
+:::
 
 ## 编译构建
 
@@ -14,12 +15,14 @@ $ sh build.sh
 
 构建成功后，将在 `bin` 目录中生成以下可执行文件：
 
-> 1.  clustermgr
-> 2.  proxy
-> 3.  scheduler
-> 4.  blobnode
-> 5.  access
-> 6.  cli
+```shell
+├── bin 
+│   ├── clustermgr
+│   ├── proxy
+│   ├── scheduler
+│   ├── blobnode
+│   └── cli
+```
 
 ## 集群部署
 
@@ -42,9 +45,13 @@ $ sh build.sh
 
     > [Go](https://go.dev/) (1.16.x)
 
-### 启动clustermgr
+### 启动Clustermgr
 
-部署clustermgr至少需要三个节点，以保证服务可用性。启动节点示例如下，节点启动需要更改对应配置文件，并保证集群节点之间的关联配置是一致。
+::: tip 提示
+部署Clustermgr至少需要三个节点，以保证服务可用性。
+:::
+
+启动节点示例如下，节点启动需要更改对应配置文件，并保证集群节点之间的关联配置是一致。
 
 1.  启动（三节点集群）
 
@@ -98,9 +105,13 @@ nohup ./clustermgr -f clustermgr2.conf
 }
 ```
 
-### 启动proxy
+### 启动Proxy
 
 1. `proxy` 依赖kafka组件，需要提前创建blob_delete_topic、shard_repair_topic、shard_repair_priority_topic对应主题
+
+::: tip 提示
+kafka也可以用其他主题名，需要保证Proxy与Scheduler两个服务模块的kafka一致。
+:::
 
 ```bash
 bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic blob_delete shard_repair shard_repair_priority
@@ -145,7 +156,7 @@ nohup ./proxy -f proxy.conf &
 }
 ```
 
-### 启动scheduler
+### 启动Scheduler
 
 1. 启动服务
 
@@ -153,7 +164,7 @@ nohup ./proxy -f proxy.conf &
 nohup ./scheduler -f scheduler.conf &
 ```
 
-2. 示例 `scheduler.conf`: 注意scheduler模块单节点部署
+2. 示例 `scheduler.conf`: 注意Scheduler模块单节点部署
 
 ```json
 {
@@ -194,7 +205,7 @@ nohup ./scheduler -f scheduler.conf &
 }
 ```
 
-### 启动blobnode
+### 启动BlobNode
 
 1. 在编译好的 `blobnode` 二进制目录下\**创建相关目录*\*
 
@@ -282,7 +293,11 @@ nohup ./blobnode -f blobnode.conf
 
 ### 启动access
 
-1. 启动服务。access模块为无状态单节点部署
+::: tip 提示
+access模块为无状态服务节点，可以部署多个节点
+:::
+
+1. 启动服务。
 
 ```bash
 nohup ./access -f access.conf
@@ -311,16 +326,16 @@ nohup ./access -f access.conf
 ### 配置说明
 
 - [通用配置说明](../maintenance/configs/blobstore/base.md)
-- [rpc配置说明](../maintenance/configs/blobstore/rpc.md)
-- [clustermgr配置说明](../maintenance/configs/blobstore/cm.md)
-- [access配置说明](../maintenance/configs/blobstore/access.md)
-- [blobnode配置说明](../maintenance/configs/blobstore/blobnode.md)
-- [proxy配置说明](../maintenance/configs/blobstore/proxy.md)
-- [scheduler配置说明](../maintenance/configs/blobstore/scheduler.md)
+- [RPC配置说明](../maintenance/configs/blobstore/rpc.md)
+- [Clustermgr配置说明](../maintenance/configs/blobstore/cm.md)
+- [Access配置说明](../maintenance/configs/blobstore/access.md)
+- [BlobNode配置说明](../maintenance/configs/blobstore/blobnode.md)
+- [Proxy配置说明](../maintenance/configs/blobstore/proxy.md)
+- [Scheduler配置说明](../maintenance/configs/blobstore/scheduler.md)
 
 ## 部署提示
 
-1. 对于clustermgr和blobnode部署失败后，重新部署需清理残留数据，避免注册盘失败或者数据显示错误，命令如下：
+1. 对于Clustermgr和BlobNode部署失败后，重新部署需清理残留数据，避免注册盘失败或者数据显示错误，命令如下：
 
 ```bash
 # blobnode示例
@@ -365,6 +380,6 @@ rm -f -r /tmp/normalwal0
 
 其中
 - N: 数据块数量, M: 校验块数量, L: 本地校验块数量, AZCount: AZ数量
-- PutQuorum: (N + M) / AZCount + N \<= PutQuorum \<= M + N
-- MinShardSize: 最小shard大小,将数据连续填充到 0-N 分片中，如果数据大小小于MinShardSize*N，则与零字节对齐，详见[代码](https://github.com/cubefs/cubefs/blob/release-3.2.0/blobstore/common/codemode/codemode.go)
+- PutQuorum: `(N + M) / AZCount + N \<= PutQuorum \<= M + N`
+- MinShardSize: 最小shard大小,将数据连续填充到`0-N`分片中，如果数据大小小于`MinShardSize*N`，则与零字节对齐，详见[代码](https://github.com/cubefs/cubefs/blob/release-3.2.0/blobstore/common/codemode/codemode.go)
 。

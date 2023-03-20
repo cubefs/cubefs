@@ -1,6 +1,8 @@
 # BlobNode 配置
 
-> `blobnode` 是单机存储引擎模块，主要负责组织数据落盘、磁盘读取数据、磁盘删除数据以及后台任务的执行等。blobnode的配置是基于[公有配置](./base.md)，以下配置说明主要针对于blobnode的私有配置。
+`BlobNode` 是单机存储引擎模块，主要负责组织数据落盘、磁盘读取数据、磁盘删除数据以及后台任务的执行等。
+
+BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要针对于BlobNode的私有配置。
 
 ## 配置说明
 
@@ -17,6 +19,7 @@
 | data_qos         | 数据qos分层限流，生产环境建议打开                        | 否    |
 | meta_config      | 元数据相关配置，包含rocksdb的cache大小等                | 否    |
 | clustermgr       | clustermgr的服务地址信息等                        | 是    |
+
 ### 全部配置
 ```json
 {

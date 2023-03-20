@@ -15,13 +15,13 @@ FaultDomain               bool  // 默认false
 保留：
 
 ```bash
-crossZone        bool  //跨zone
+crossZone        bool  # 跨zone
 ```
 
 新增：
 
 ```bash
-default_priority  bool  // true优先选择原有的zone，而不是从故障域里面分配
+default_priority  bool  # true优先选择原有的zone，而不是从故障域里面分配
 ```
 
 ### 配置小结
@@ -49,7 +49,7 @@ default_priority  bool  // true优先选择原有的zone，而不是从故障域
 
 ## 管理命令
 
-创建使用故障域的volume ---------
+创建使用故障域的volume
 
 ```bash
 curl "http://192.168.0.11:17010/admin/createVol?name=volDomain&capacity=1000&owner=cfs&crossZone=true&normalZonesFirst=false"

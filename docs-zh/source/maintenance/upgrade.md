@@ -1,18 +1,22 @@
 # 系统升级
-这里分别讲述下CubeFS和BlobStore模块的升级方案。
-## CubeFS 升级
-### 获取二进制
+
+::: warning 注意
+各个版本的升级步骤请参考[release notes](https://github.com/cubefs/cubefs/releases)
+:::
+
+## 获取二进制
 + 获取指定版本二进制， https://github.com/cubeFS/cubefs/releases 获取指定版本代码，编译生成二进制
-### 冻结集群
+## 冻结集群
 ```
 $ cfs-cli cluster freeze true
 ```
-### 注意事项
-1. 确认启动配置文件，不要更改配置文件中的数据目录、端口等重要信息
-   1. 配置文件其他参数修改参考配置说明，release notes等
-2. 各组件升级顺序, 参考对应版本release notes 
-   1. 如无特殊要求，一般可按照datanode->metanode->master->client的顺序升级各组件
-### 升级datanode&metanode
+## 注意事项
+- 确认启动配置文件，不要更改配置文件中的数据目录、端口等重要信息
+  - 配置文件其他参数修改参考配置说明，release notes等
+- 各组件升级顺序, 参考对应版本[release notes](https://github.com/cubefs/cubefs/releases) 
+  - 如无特殊要求，一般可按照datanode->metanode->master->client的顺序升级各组件
+
+## 升级DataNode
 下面以datanode为例描述
 1. 停止旧的datanode进程
 2. 启动新的datanode进程
@@ -34,13 +38,19 @@ $ cfs-cli datanode info 192.168.0.33:17310
  Bad disks           : []
  Persist partitions  : [2 3 5 7 8 10 11 12 13 14 15 16 17 18 19 20]
 ```
-### 升级master
+
+## 升级MetaNode
+
+与DataNode类似
+
+## 升级master
+
 1. 停止旧的master进程
 2. 启动新的master进程
 3. 观察监控是否正常
 4. 查看master对应的raft状态是否正常
-   1. 如下，查看对应重启master id对应的commit是否与其他副本一致，raft是否有主
-```
+   - 如下，查看对应重启master id对应的commit是否与其他副本一致，raft是否有主
+```shell
 curl 192.168.0.1:17010/get/raftStatus | python -m json.tool
 {
     "code": 0,
@@ -82,10 +92,11 @@ curl 192.168.0.1:17010/get/raftStatus | python -m json.tool
     "msg": "success"
 }
 ```
-### 升级client
+## 升级client
+
 1. 停止业务读写
 2. umount 挂载点
-   1. 若出现如下错误, 则需要执行 umount -l 挂载点
+   - 若出现如下错误, 则需要执行 umount -l 挂载点
 ```
 umount: /xxx/mnt: target is busy.
         (In some cases useful info about processes that use

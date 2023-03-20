@@ -56,7 +56,7 @@ curl -v "http://10.196.59.198:17010/admin/getCluster" | python -m json.tool
 curl -v "http://10.196.59.198:17010/cluster/freeze?enable=true"
 ```
 
-如果启用了冻结集群功能,卷就不再自动地创建数据分片，也不能手动创建分片。
+如果启用了冻结集群功能，卷就不再自动地创建数据分片，也不能手动创建分片。
 
 参数列表
 

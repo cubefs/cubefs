@@ -6,14 +6,17 @@
 curl -H "Content-Type:application/json" -X POST --data '{"id":"testuser","pwd":"12345","type":3}' "http://10.196.59.198:17010/user/create"
 ```
 
-在集群中创建用户，用于访问对象存储功能。在集群启动时，会自动创建root用户(type值为0x1)。
+在集群中创建用户，用于访问对象存储功能。
 
-CubeFS将卷的 **Owner** 字段看作一个用户ID。例如，创建卷时Owner取值为
-*testuser* 的话，则该卷自动归为用户 *testuser* 的名下。
+::: tip 提示
+在集群启动时，会自动创建root用户(type值为`0x1`)。
+:::
+
+CubeFS将卷的 **Owner** 字段看作一个用户ID。例如，创建卷时Owner取值为*testuser* 的话，则该卷自动归为用户 *testuser* 的名下。
 
 如果创建卷时不存在与Owner取值相同的用户ID，则创建卷时会自动创建用户ID取值为Owner的用户。
 
-body参数列表
+参数列表
 
 | 参数   | 类型     | 描述                  | 取值范围                  | 是否必需 | 默认值          |
 |------|--------|---------------------|-----------------------|------|--------------|
@@ -39,8 +42,7 @@ curl -v "http://10.196.59.198:17010/user/delete?user=testuser"
 
 ## 查询用户信息
 
-展示的用户基本信息,包括用户ID、Access Key、Secret
-Key、名下的卷列表、其他用户授予的权限列表、用户类型、创建时间等。
+展示的用户基本信息,包括用户`ID`、`Access Key`、`Secret Key`、名下的卷列表、其他用户授予的权限列表、用户类型、创建时间等。
 
 用户信息中 **policy** 字段表示该用户拥有权限的卷，其中 **own_vols**
 表示所有者是该用户的卷， **authorized_vols**
@@ -114,8 +116,7 @@ curl -v "http://10.196.59.198:17010/user/list?keywords=test" | python -m json.to
 curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","access_key":"KzuIVYCFqvu0b3Rd","secret_key":"iaawlCchJeeuGSnmFW72J2oDqLlSqvA5","type":3}' "http://10.196.59.198:17010/user/update"
 ```
 
-更新指定UserID的用户信息，可修改的内容包括Access Key、Secret
-Key和用户类型。
+更新指定UserID的用户信息，可修改的内容包括`Access Key`、`Secret Key`和用户类型。
 
 参数列表
 
@@ -134,13 +135,15 @@ curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","v
 
 更新指定用户对于某个卷的访问权限。 **policy** 的取值有三类：
 
--   授予只读或读写权限，取值为 `perm:builtin:ReadOnly` 或
-    `perm:builtin:Writable` ；
--   授予指定操作的权限，格式为 `action:oss:XXX` ，以 *GetObject*
-    操作为例，policy取值为 **action:oss:GetObject** ；
--   授予自定义权限，格式为 `perm:custom:XXX` ，其中 *XXX* 由用户自定义。
+-   授予只读或读写权限，取值为 `perm:builtin:ReadOnly` 或 `perm:builtin:Writable` 
+-   授予指定操作的权限，格式为 `action:oss:XXX` ，以 *GetObject*操作为例，policy取值为 **action:oss:GetObject** 
+-   授予自定义权限，格式为 `perm:custom:XXX` ，其中 *XXX* 由用户自定义
 
-指定权限后，用户在使用对象存储功能时，仅能在指定权限范围内对卷进行访问。如果该用户已有对此卷的权限设置，则本操作会覆盖原有权限。
+指定权限后，用户在使用对象存储功能时，仅能在指定权限范围内对卷进行访问。
+
+::: danger 警告
+如果该用户已有对此卷的权限设置，则本操作会覆盖原有权限。
+:::
 
 参数列表
 
