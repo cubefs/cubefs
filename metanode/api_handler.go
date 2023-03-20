@@ -2071,14 +2071,14 @@ func (m *MetaNode) getInodeWithMarkDeleteHandler(w http.ResponseWriter, r *http.
 		expired   bool
 		timestamp int64
 	)
-	ino, err := mp.(*metaPartition).inodeTree.Get(id)
+	ino, err := mp.(*metaPartition).inodeTree.RefGet(id)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
 		return
 	}
 
-	delIno, err = mp.(*metaPartition).inodeDeletedTree.Get(id)
+	delIno, err = mp.(*metaPartition).inodeDeletedTree.RefGet(id)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()

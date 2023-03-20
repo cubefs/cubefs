@@ -311,7 +311,7 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		var inodeVal *Inode
-		dio, err := mp.inodeDeletedTree.Get(ino)
+		dio, err := mp.inodeDeletedTree.RefGet(ino)
 		if err != nil {
 			log.LogWarnf("[deleteMarkedInodes], not found the deleted inode: %v", ino)
 			continue

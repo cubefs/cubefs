@@ -101,7 +101,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse, err error) {
 	}
 
 	var i *Inode
-	i, err = mp.inodeTree.Get(ino.Inode)
+	i, err = mp.inodeTree.RefGet(ino.Inode)
 	if err != nil {
 		if err == rocksDBError {
 			exporter.WarningRocksdbError(fmt.Sprintf("action[getInode] clusterID[%s] volumeName[%s] partitionID[%v]"+
@@ -127,7 +127,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse, err error) {
 
 func (mp *metaPartition) hasInode(ino *Inode) (ok bool, inode *Inode) {
 	var err error
-	inode, err = mp.inodeTree.Get(ino.Inode)
+	inode, err = mp.inodeTree.RefGet(ino.Inode)
 	if err == rocksDBError {
 		exporter.WarningRocksdbError(fmt.Sprintf("action[Has] clusterID[%s] volumeName[%s] partitionID[%v]"+
 			" get inode failed witch rocksdb error[inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
