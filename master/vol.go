@@ -27,17 +27,18 @@ import (
 )
 
 type VolVarargs struct {
-	zoneName       string
-	description    string
-	capacity       uint64 //GB
-	followerRead   bool
-	authenticate   bool
-	dpSelectorName string
-	dpSelectorParm string
-	coldArgs       *coldVolArgs
-	domainId       uint64
-	dpReplicaNum   uint8
-	enablePosixAcl bool
+	zoneName              string
+	description           string
+	capacity              uint64 //GB
+	followerRead          bool
+	authenticate          bool
+	dpSelectorName        string
+	dpSelectorParm        string
+	coldArgs              *coldVolArgs
+	domainId              uint64
+	dpReplicaNum          uint8
+	enablePosixAcl        bool
+	dpReadOnlyWhenVolFull bool
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -65,28 +66,29 @@ type Vol struct {
 	CacheLRUInterval int
 	CacheRule        string
 
-	PreloadCacheOn     bool
-	NeedToLowerReplica bool
-	FollowerRead       bool
-	authenticate       bool
-	crossZone          bool
-	domainOn           bool
-	defaultPriority    bool // old default zone first
-	enablePosixAcl     bool
-	zoneName           string
-	MetaPartitions     map[uint64]*MetaPartition `graphql:"-"`
-	mpsLock            sync.RWMutex
-	dataPartitions     *DataPartitionMap
-	mpsCache           []byte
-	viewCache          []byte
-	createDpMutex      sync.RWMutex
-	createMpMutex      sync.RWMutex
-	createTime         int64
-	description        string
-	dpSelectorName     string
-	dpSelectorParm     string
-	domainId           uint64
-	qosManager         *QosCtrlManager
+	PreloadCacheOn        bool
+	NeedToLowerReplica    bool
+	FollowerRead          bool
+	authenticate          bool
+	crossZone             bool
+	domainOn              bool
+	defaultPriority       bool // old default zone first
+	enablePosixAcl        bool
+	zoneName              string
+	MetaPartitions        map[uint64]*MetaPartition `graphql:"-"`
+	mpsLock               sync.RWMutex
+	dataPartitions        *DataPartitionMap
+	mpsCache              []byte
+	viewCache             []byte
+	createDpMutex         sync.RWMutex
+	createMpMutex         sync.RWMutex
+	createTime            int64
+	description           string
+	dpSelectorName        string
+	dpSelectorParm        string
+	domainId              uint64
+	qosManager            *QosCtrlManager
+	DpReadOnlyWhenVolFull bool
 
 	volLock sync.RWMutex
 }
@@ -147,6 +149,7 @@ func newVol(vv volValue) (vol *Vol) {
 		flowWVal: uint64(vv.FlowWMagnify),
 	}
 	vol.qosManager.volUpdateMagnify(magnifyQosVal)
+	vol.DpReadOnlyWhenVolFull = vv.DpReadOnlyWhenVolFull
 	return
 }
 
@@ -579,6 +582,10 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 }
 
 func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
+	if !vol.DpReadOnlyWhenVolFull {
+		return false
+	}
+
 	if vol.capacity() == 0 {
 		return false
 	}
@@ -1149,6 +1156,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.FollowerRead = args.followerRead
 	vol.authenticate = args.authenticate
 	vol.enablePosixAcl = args.enablePosixAcl
+	vol.DpReadOnlyWhenVolFull = args.dpReadOnlyWhenVolFull
 
 	if proto.IsCold(vol.VolType) {
 		coldArgs := args.coldArgs
@@ -1193,6 +1201,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		dpSelectorParm: vol.dpSelectorParm,
 		enablePosixAcl: vol.enablePosixAcl,
 
-		coldArgs: args,
+		coldArgs:              args,
+		dpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
 	}
 }

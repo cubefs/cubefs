@@ -230,17 +230,18 @@ func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, er
 }
 
 type updateVolReq struct {
-	name           string
-	authKey        string
-	capacity       uint64
-	followRead     bool
-	authenticate   bool
-	enablePosixAcl bool
-	zoneName       string
-	description    string
-	dpSelectorName string
-	dpSelectorParm string
-	coldArgs       *coldVolArgs
+	name                  string
+	authKey               string
+	capacity              uint64
+	followRead            bool
+	authenticate          bool
+	enablePosixAcl        bool
+	zoneName              string
+	description           string
+	dpSelectorName        string
+	dpSelectorParm        string
+	coldArgs              *coldVolArgs
+	dpReadOnlyWhenVolFull bool
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -330,6 +331,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if req.followRead, err = extractBoolWithDefault(r, followerReadKey, vol.FollowerRead); err != nil {
+		return
+	}
+
+	if req.dpReadOnlyWhenVolFull, err = extractBoolWithDefault(r, dpReadOnlyWhenVolFull, vol.DpReadOnlyWhenVolFull); err != nil {
 		return
 	}
 
@@ -487,6 +492,7 @@ type createVolReq struct {
 	description                          string
 	volType                              int
 	enablePosixAcl                       bool
+	DpReadOnlyWhenVolFull                bool
 	qosLimitArgs                         *qosArgs
 	clientReqPeriod, clientHitTriggerCnt uint32
 	// cold vol args
@@ -615,6 +621,10 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	}
 
 	req.enablePosixAcl, err = extractPosixAcl(r)
+
+	if req.DpReadOnlyWhenVolFull, err = extractBoolWithDefault(r, dpReadOnlyWhenVolFull, false); err != nil {
+		return
+	}
 
 	return
 }

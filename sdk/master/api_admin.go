@@ -260,7 +260,8 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 }
 
 func (api *AdminAPI) UpdateVolume(volName, description, auth, zoneName string, capacity uint64, followerRead bool,
-	ebsBlkSize int, CacheCap uint64, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int, cacheRule string) (err error) {
+	ebsBlkSize int, CacheCap uint64, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater,
+	cacheLRUInterval int, cacheRule string, dpReadOnlyWhenVolFull bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("description", description)
@@ -277,7 +278,7 @@ func (api *AdminAPI) UpdateVolume(volName, description, auth, zoneName string, c
 	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
 	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
 	request.addParam("cacheRuleKey", cacheRule)
-
+	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -308,7 +309,8 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) 
 
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, crossZone, normalZonesFirst bool, business string,
 	mpCount, replicaNum, size, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
-	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int) (err error) {
+	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
+	dpReadOnlyWhenVolFull bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -331,6 +333,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, cross
 	request.addParam("cacheHighWater", strconv.Itoa(cacheHighWater))
 	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
 	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
+	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

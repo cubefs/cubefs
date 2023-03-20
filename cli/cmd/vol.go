@@ -85,29 +85,30 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdVolCreateUse               = "create [VOLUME NAME] [USER ID]"
-	cmdVolCreateShort             = "Create a new volume"
-	cmdVolDefaultMPCount          = 3
-	cmdVolDefaultDPSize           = 120
-	cmdVolDefaultCapacity         = 10 // 100GB
-	cmdVolDefaultReplicas         = 3
-	cmdVolDefaultFollowerReader   = true
-	cmdVolDefaultZoneName         = ""
-	cmdVolDefaultCrossZone        = "false"
-	cmdVolDefaultBusiness         = ""
-	cmdVolDefaultReplicaNum       = 3
-	cmdVolDefaultSize             = 120
-	cmdVolDefaultVolType          = 0
-	cmdVolDefaultFollowerRead     = "false"
-	cmdVolDefaultCacheRuleKey     = ""
-	cmdVolDefaultEbsBlkSize       = 8 * 1024 * 1024
-	cmdVolDefaultCacheCapacity    = 0
-	cmdVolDefaultCacheAction      = 0
-	cmdVolDefaultCacheThreshold   = 10 * 1024 * 1024
-	cmdVolDefaultCacheTTL         = 30
-	cmdVolDefaultCacheHighWater   = 80
-	cmdVolDefaultCacheLowWater    = 60
-	cmdVolDefaultCacheLRUInterval = 5
+	cmdVolCreateUse                    = "create [VOLUME NAME] [USER ID]"
+	cmdVolCreateShort                  = "Create a new volume"
+	cmdVolDefaultMPCount               = 3
+	cmdVolDefaultDPSize                = 120
+	cmdVolDefaultCapacity              = 10 // 100GB
+	cmdVolDefaultReplicas              = 3
+	cmdVolDefaultFollowerReader        = true
+	cmdVolDefaultZoneName              = ""
+	cmdVolDefaultCrossZone             = "false"
+	cmdVolDefaultBusiness              = ""
+	cmdVolDefaultReplicaNum            = 3
+	cmdVolDefaultSize                  = 120
+	cmdVolDefaultVolType               = 0
+	cmdVolDefaultFollowerRead          = "false"
+	cmdVolDefaultCacheRuleKey          = ""
+	cmdVolDefaultEbsBlkSize            = 8 * 1024 * 1024
+	cmdVolDefaultCacheCapacity         = 0
+	cmdVolDefaultCacheAction           = 0
+	cmdVolDefaultCacheThreshold        = 10 * 1024 * 1024
+	cmdVolDefaultCacheTTL              = 30
+	cmdVolDefaultCacheHighWater        = 80
+	cmdVolDefaultCacheLowWater         = 60
+	cmdVolDefaultCacheLRUInterval      = 5
+	cmdVolDefaultDpReadOnlyWhenVolFull = "false"
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -130,6 +131,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheHighWater int
 	var optCacheLowWater int
 	var optCacheLRUInterval int
+	var optDpReadOnlyWhenVolFull string
 	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -151,6 +153,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			if optReplicaNum == "" && optVolType == 1 {
 				replicaNum = 1
 			}
+			dpReadOnlyWhenVolFull, _ := strconv.ParseBool(optDpReadOnlyWhenVolFull)
+
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -165,6 +169,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  size                : %v G\n", optSize)
 				stdout("  volType             : %v\n", optVolType)
 				stdout("  followerRead        : %v\n", followerRead)
+				stdout("  readOnlyWhenFull    : %v\n", dpReadOnlyWhenVolFull)
 				stdout("  zoneName            : %v\n", optZoneName)
 				stdout("  cacheRuleKey        : %v\n", optCacheRuleKey)
 				stdout("  ebsBlkSize          : %v byte\n", optEbsBlkSize)
@@ -189,7 +194,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optMPCount, replicaNum, optSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
-				optCacheLowWater, optCacheLRUInterval)
+				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -217,6 +222,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optCacheHighWater, CliFlagCacheHighWater, cmdVolDefaultCacheHighWater, "")
 	cmd.Flags().IntVar(&optCacheLowWater, CliFlagCacheLowWater, cmdVolDefaultCacheLowWater, "")
 	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, cmdVolDefaultCacheLRUInterval, "Specify interval expiration time[Unit: min]")
+	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
+		"Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 
 	return cmd
@@ -241,6 +248,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheHighWater int
 	var optCacheLowWater int
 	var optCacheLRUInterval int
+	var optDpReadOnlyWhenVolFull string
 	var optYes bool
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
@@ -400,6 +408,19 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  CacheLRUInterval    : %v min\n", vv.CacheLruInterval))
 			}
+			if optDpReadOnlyWhenVolFull != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optDpReadOnlyWhenVolFull); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Become readonly when vol full : %v -> %v\n",
+					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull), formatEnabledDisabled(enable)))
+				vv.DpReadOnlyWhenVolFull = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Become readonly when vol full : %v\n",
+					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
+			}
 
 			if err != nil {
 				return
@@ -419,9 +440,9 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Description, calcAuthKey(vv.Owner), vv.ZoneName,
-				vv.Capacity, vv.FollowerRead, vv.ObjBlockSize, vv.CacheCapacity, vv.CacheAction, vv.CacheThreshold, vv.CacheTtl,
-				vv.CacheHighWater, vv.CacheLowWater, vv.CacheLruInterval, vv.CacheRule)
+			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Description, calcAuthKey(vv.Owner), vv.ZoneName, vv.Capacity,
+				vv.FollowerRead, vv.ObjBlockSize, vv.CacheCapacity, vv.CacheAction, vv.CacheThreshold, vv.CacheTtl,
+				vv.CacheHighWater, vv.CacheLowWater, vv.CacheLruInterval, vv.CacheRule, vv.DpReadOnlyWhenVolFull)
 			if err != nil {
 				return
 			}
@@ -449,6 +470,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optCacheLowWater, CliFlagCacheLowWater, 0, " (default 60)")
 	cmd.Flags().StringVar(&optCacheRule, CliFlagCacheRule, "", "Specify cache rule")
 	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, 0, "Specify interval expiration time[Unit: min] (default 5)")
+	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
+		"Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 
 	return cmd

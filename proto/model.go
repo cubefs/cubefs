@@ -174,15 +174,16 @@ type NodeStatInfo struct {
 }
 
 type VolStatInfo struct {
-	Name           string
-	TotalSize      uint64
-	UsedSize       uint64
-	UsedRatio      string
-	CacheTotalSize uint64
-	CacheUsedSize  uint64
-	CacheUsedRatio string
-	EnableToken    bool
-	InodeCount     uint64
+	Name                  string
+	TotalSize             uint64
+	UsedSize              uint64
+	UsedRatio             string
+	CacheTotalSize        uint64
+	CacheUsedSize         uint64
+	CacheUsedRatio        string
+	EnableToken           bool
+	InodeCount            uint64
+	DpReadOnlyWhenVolFull bool
 }
 
 // DataPartition represents the structure of storing the file contents.

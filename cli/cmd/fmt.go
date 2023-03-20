@@ -114,6 +114,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Status               : %v\n", formatVolumeStatus(svv.Status)))
 	sb.WriteString(fmt.Sprintf("  ZoneName             : %v\n", svv.ZoneName))
 	sb.WriteString(fmt.Sprintf("  VolType              : %v\n", svv.VolType))
+	sb.WriteString(fmt.Sprintf("  DpReadOnlyWhenVolFull: %v\n", svv.DpReadOnlyWhenVolFull))
 	if svv.VolType == 1 {
 		sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))
 		sb.WriteString(fmt.Sprintf("  CacheCapacity        : %v G\n", svv.CacheCapacity))

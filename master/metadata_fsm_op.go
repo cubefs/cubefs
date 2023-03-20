@@ -198,16 +198,17 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 }
 
 type volValue struct {
-	ID                uint64
-	Name              string
-	ReplicaNum        uint8
-	DpReplicaNum      uint8
-	Status            uint8
-	DataPartitionSize uint64
-	Capacity          uint64
-	Owner             string
-	FollowerRead      bool
-	Authenticate      bool
+	ID                    uint64
+	Name                  string
+	ReplicaNum            uint8
+	DpReplicaNum          uint8
+	Status                uint8
+	DataPartitionSize     uint64
+	Capacity              uint64
+	Owner                 string
+	FollowerRead          bool
+	Authenticate          bool
+	DpReadOnlyWhenVolFull bool
 
 	CrossZone       bool
 	DomainOn        bool
@@ -290,6 +291,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FlowWMagnify:        vol.qosManager.getQosMagnify(bsProto.FlowWriteType),
 		ClientReqPeriod:     vol.qosManager.ClientReqPeriod,
 		ClientHitTriggerCnt: vol.qosManager.ClientHitTriggerCnt,
+
+		DpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
 	}
 
 	return
