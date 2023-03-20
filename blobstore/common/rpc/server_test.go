@@ -51,6 +51,14 @@ func (m *mockResponseWriter) WriteHeader(status int) {
 	m.status = status
 }
 
+func (m *mockResponseWriter) ToResponse() *http.Response {
+	return &http.Response{
+		StatusCode:    m.status,
+		ContentLength: int64(len(m.body)),
+		Body:          io.NopCloser(bytes.NewReader(m.body)),
+	}
+}
+
 func TestServerRouterBase(t *testing.T) {
 	router := New()
 
@@ -304,9 +312,20 @@ type marshalData struct {
 
 func (d *marshalData) Marshal() ([]byte, string, error) {
 	if d.I > 0 {
-		return []byte{0x00, 0xff}, MIMEStream, nil
+		if d.I == 100 {
+			return nil, "", &Error{Status: 204, Err: errors.New("none")}
+		}
+		return []byte(d.S), MIMEStream, nil
 	}
 	return nil, "", &Error{Status: 400, Err: errors.New("fake error")}
+}
+
+func (d *marshalData) Unmarshal(buff []byte) error {
+	for i, j := 0, len(buff)-1; i < j; i, j = i+1, j-1 {
+		buff[i], buff[j] = buff[j], buff[i]
+	}
+	d.S = string(buff)
+	return nil
 }
 
 type marshalToData struct {
@@ -316,13 +335,25 @@ type marshalToData struct {
 
 func (d *marshalToData) MarshalTo(w io.Writer) (string, error) {
 	if d.I > 0 {
-		w.Write([]byte{0x11, 0xee})
+		w.Write([]byte(d.S))
 		return MIMEPlain, nil
 	}
 	return "", &Error{Status: 400, Err: errors.New("fake error")}
 }
 
-func TestServerResponseJSON(t *testing.T) {
+func (d *marshalToData) UnmarshalFrom(r io.Reader) error {
+	buff, _ := io.ReadAll(r)
+	if string(buff) == "error" {
+		return errors.New("unmarshaler from error")
+	}
+	for i, j := 0, len(buff)-1; i < j; i, j = i+1, j-1 {
+		buff[i], buff[j] = buff[j], buff[i]
+	}
+	d.S = string(buff)
+	return nil
+}
+
+func TestServerResponseWith(t *testing.T) {
 	resp := func(r *Router) *mockResponseWriter {
 		w := new(mockResponseWriter)
 		req, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -359,7 +390,7 @@ func TestServerResponseJSON(t *testing.T) {
 		})
 		w := resp(router)
 		require.Equal(t, 200, w.status)
-		require.Equal(t, []byte{0x0, 0xff}, w.body)
+		require.Equal(t, "foo bar", string(w.body))
 	}
 	{
 		router := New()
@@ -389,20 +420,21 @@ func TestServerResponseJSON(t *testing.T) {
 		require.Equal(t, 11, ret.I)
 		require.Equal(t, "foo bar", ret.S)
 	}
+
 	{
 		router := New()
 		router.Handle(http.MethodGet, "/", func(c *Context) {
-			c.RespondJSON(&marshalToData{I: 11, S: "foo bar"})
+			c.RespondJSON(&marshalToData{I: 11, S: "bar foo"})
 		})
 		w := resp(router)
 		require.Equal(t, 200, w.status)
 		require.Equal(t, MIMEPlain, w.headers.Get(HeaderContentType))
-		require.Equal(t, []byte{0x11, 0xee}, w.body)
+		require.Equal(t, "bar foo", string(w.body))
 	}
 	{
 		router := New()
 		router.Handle(http.MethodGet, "/", func(c *Context) {
-			c.RespondJSON(&marshalToData{I: -11, S: "foo bar"})
+			c.RespondJSON(&marshalToData{I: -11, S: "bar foo"})
 		})
 		w := resp(router)
 		require.Equal(t, 400, w.status)
@@ -412,6 +444,60 @@ func TestServerResponseJSON(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "", ret.Code)
 		require.Equal(t, "fake error", ret.Error)
+	}
+
+	{
+		router := New()
+		router.Handle(http.MethodGet, "/", func(c *Context) {
+			c.RespondJSON(&marshalData{I: 100, S: "foo bar"})
+		})
+		resp := resp(router).ToResponse()
+		require.Equal(t, 204, resp.StatusCode)
+
+		err := ParseData(resp, nil)
+		require.Error(t, err)
+	}
+	{
+		router := New()
+		router.Handle(http.MethodGet, "/", func(c *Context) {
+			c.RespondJSON(&marshalData{I: 11, S: "foo bar"})
+		})
+		resp := resp(router).ToResponse()
+		require.Equal(t, 200, resp.StatusCode)
+
+		var r marshalData
+		err := ParseData(resp, &r)
+		require.NoError(t, err)
+		require.Equal(t, "rab oof", r.S)
+
+		resp.Body = io.NopCloser(bytes.NewBuffer(nil))
+		err = ParseData(resp, &r)
+		require.Error(t, err)
+	}
+	{
+		router := New()
+		router.Handle(http.MethodGet, "/", func(c *Context) {
+			c.RespondJSON(&marshalToData{I: 1, S: "bar foo"})
+		})
+		resp := resp(router).ToResponse()
+		require.Equal(t, 200, resp.StatusCode)
+
+		var r marshalToData
+		err := ParseData(resp, &r)
+		require.NoError(t, err)
+		require.Equal(t, "oof rab", r.S)
+	}
+	{
+		router := New()
+		router.Handle(http.MethodGet, "/", func(c *Context) {
+			c.RespondJSON(&marshalToData{I: 1, S: "error"})
+		})
+		resp := resp(router).ToResponse()
+		require.Equal(t, 200, resp.StatusCode)
+
+		var r marshalToData
+		err := ParseData(resp, &r)
+		require.Error(t, err)
 	}
 }
 

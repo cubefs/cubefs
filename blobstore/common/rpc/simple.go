@@ -27,6 +27,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -298,7 +299,21 @@ func ParseData(resp *http.Response, data interface{}) (err error) {
 		resp.Body.Close()
 	}()
 	if resp.StatusCode/100 == 2 {
-		if data != nil && resp.ContentLength != 0 {
+		size := resp.ContentLength
+		if data != nil && size != 0 {
+			if d, ok := data.(UnmarshalerFrom); ok {
+				return d.UnmarshalFrom(io.LimitReader(resp.Body, size))
+			}
+
+			if d, ok := data.(Unmarshaler); ok {
+				buf := bytespool.Alloc(int(size))
+				defer bytespool.Free(buf)
+				if _, err = io.ReadFull(resp.Body, buf); err != nil {
+					return NewError(resp.StatusCode, "ReadResponse", err)
+				}
+				return d.Unmarshal(buf)
+			}
+
 			if err := json.NewDecoder(resp.Body).Decode(data); err != nil {
 				return NewError(resp.StatusCode, "JSONDecode", err)
 			}
