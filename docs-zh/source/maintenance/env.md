@@ -60,7 +60,7 @@ $ cfs-cli volume create {name} --zone-name={zone}
 为了防止单机房volume初始化失败，请保证单个机房的DataNode/MetaNode不少于3。
 :::
 
-创建跨机房volume：Met
+创建跨机房volume：
 
 ``` bash
 $ cfs-cli volume create {name} --cross-zone=true

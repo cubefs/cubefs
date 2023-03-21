@@ -11,7 +11,7 @@
 }
 ```
 3. ObjectNode存在一种日志类型，即服务运行日志
-4. 纠删码子系统的各个模块均存在两类日志，分别为服务运行日志与审计日志，审计日志默认关闭，如果开启[请参考](./configs/blobstore/base.md)
+4. 纠删码子系统的各个模块均存在两类日志，分别为服务运行日志与审计日志，审计日志默认关闭，如果开启请参考[基础服务配置](./configs/blobstore/base.md)
 
 ## 日志设置
 
@@ -34,8 +34,8 @@ http://127.0.0.1:{profPort}/loglevel/set?level={log-level}
 纠删码的日志设置稍有不同
 :::
 
-- 配置文件中设置，[请参考](./configs/blobstore/base.md)
-- 通过命令修改，[请参考](./admin-api/blobstore/base.md)
+- 配置文件中设置，请参考[基础服务配置](./configs/blobstore/base.md)
+- 通过命令修改，请参考[纠删码通用管理命令](./admin-api/blobstore/base.md)
 
 
 ## 日志格式
@@ -53,10 +53,10 @@ http://127.0.0.1:{profPort}/loglevel/set?level={log-level}
 
 服务运行日志格式如下
 
-``test
+```test
 [时间][日志级别][日志路径及行数][TraceID:SpanID][详细信息]
 2023/03/15 18:59:10.350557 [DEBUG] scheduler/blob_deleter.go:540 [tBICACl6si0FREwX:522f47d329a9961d] delete shards: location[{Vuid:94489280515 Host:http://127.0.0.1:8889 DiskID:297}]
-``
+```
 
 审计日志格式如下
 

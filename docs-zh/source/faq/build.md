@@ -25,7 +25,7 @@
    ```
   
 
-## rocksdb/c.h不存在
+## rocksdb编译问题
 
 编译纠删码子系统显示报错 `fatal error: rocksdb/c.h: no such file or directory...`
 - 首先确认`.deps/include/rocksdb`目录下是否存在报错所指向的文件， 
