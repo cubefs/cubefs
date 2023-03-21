@@ -1248,7 +1248,7 @@ func newMetaPartitionInodeInuse(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+			if partition, err = client.ClientAPI().GetMetaPartition(partitionID, ""); err != nil {
 				return
 			}
 			if len(partition.Replicas) == 0 {

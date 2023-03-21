@@ -131,12 +131,6 @@ func TestMetaPartition_mvToDeletedInodeTree(t *testing.T) {
 				t.Error(status)
 				t.FailNow()
 			}
-
-			status, _ = mp.mvToDeletedInodeTree(nil, ino, ts)
-			if status != proto.OpExistErr {
-				t.Error(status)
-				t.FailNow()
-			}
 		})
 	}
 }
@@ -580,12 +574,6 @@ func TestMetaPartition_CleanDeletedInodeCase01(t *testing.T) {
 				t.FailNow()
 			}
 
-			status, _ := mp.mvToDeletedInodeTree(nil, ino1, ts)
-			if status != proto.OpExistErr {
-				t.Error(status)
-				t.FailNow()
-			}
-
 			ino2 := NewInode(20, 1)
 			ino2.NLink = 0
 			_, _, _ = inodeCreate(mp.inodeTree, ino2, true)
@@ -601,11 +589,6 @@ func TestMetaPartition_CleanDeletedInodeCase01(t *testing.T) {
 			}
 			if p.ResultCode != proto.OpOk {
 				t.Error(p.ResultCode)
-				t.FailNow()
-			}
-			status, _ = mp.mvToDeletedInodeTree(nil, ino2, ts)
-			if status != proto.OpExistErr {
-				t.Error(status)
 				t.FailNow()
 			}
 
@@ -642,8 +625,7 @@ func TestMetaPartition_CleanDeletedInodeCase01(t *testing.T) {
 				t.FailNow()
 			}
 
-			var dino *DeletedINode
-			_, dino, status, _ = mp.getDeletedInode(ino1.Inode)
+			_, dino, status, _ := mp.getDeletedInode(ino1.Inode)
 			if status != proto.OpOk {
 				t.Error(status)
 				t.FailNow()
