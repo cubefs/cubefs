@@ -11,7 +11,7 @@
 :::
 
 ``` bash
-$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.2.0/cfs-install-3.2.0-el7.x86_64.rpm
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.2.1/cfs-install-3.2.1-el7.x86_64.rpm
 $ cd /cfs/install
 $ tree -L 3
  .
@@ -60,21 +60,21 @@ $ tree -L 3
 
 >更多配置介绍请参考[Master配置说明](../maintenance/configs/master.md)
 
-### #datanode config模块
+### datanode config模块
 
 定义了每个DataNode的启动参数。
 
-| 参数                     | 类型    | 描述                         | 是否必需                 |
-|------------------------|-------|----------------------------|----------------------|
-| datanode_listen        | 字符串   | 数据节点作为服务端启动TCP监听的端口        | 是                    |
-| datanode_prof          | 字符串   | 数据节点提供HTTP接口所用的端口          | 是                    |
-| datanode_logDir        | 字符串   | 日志存放的路径                    | 是                    |
-| datanode_logLevel      | 字符串   | 日志的级别。默认是 *info*           | 否                    |
-| datanode_raftHeartbeat | 字符串   | RAFT发送节点间心跳消息所用的端口         | 是                    |
-| datanode_raftReplica   | 字符串   | RAFT发送日志消息所用的端口            | 是                    |
-| datanode_raftDir       | 字符串   | RAFT调测日志存放的路径。默认在二进制文件启动路径 | 否                    |
-| datanode_exporterPort  | 字符串   | 监控系统采集的端口                  | 否                    |
-| datanode_disks         | 字符串数组 | \                          | 格式: *PATH:RETAIN*. \ | PATH: 磁盘挂载路径. \| RETAIN: 该路径下的最小预留空间，剩余空间小于该值即认为磁盘已满，单位：字节。（建议值：20G~50G) | 是       |
+| 参数                     | 类型    | 描述                         | 是否必需               |
+|------------------------|-------|----------------------------|--------------------|
+| datanode_listen        | 字符串   | 数据节点作为服务端启动TCP监听的端口        | 是                  |
+| datanode_prof          | 字符串   | 数据节点提供HTTP接口所用的端口          | 是                  |
+| datanode_logDir        | 字符串   | 日志存放的路径                    | 是                  |
+| datanode_logLevel      | 字符串   | 日志的级别。默认是 *info*           | 否                  |
+| datanode_raftHeartbeat | 字符串   | RAFT发送节点间心跳消息所用的端口         | 是                  |
+| datanode_raftReplica   | 字符串   | RAFT发送日志消息所用的端口            | 是                  |
+| datanode_raftDir       | 字符串   | RAFT调测日志存放的路径。默认在二进制文件启动路径 | 否                  |
+| datanode_exporterPort  | 字符串   | 监控系统采集的端口                  | 否                  |
+| datanode_disks         | 字符串数组 |                            | 格式: *PATH:RETAIN*. | PATH: 磁盘挂载路径. \| RETAIN: 该路径下的最小预留空间，剩余空间小于该值即认为磁盘已满，单位：字节。（建议值：20G~50G) | 是       |
 
 >更多配置介绍请参考[DataNode配置说明](../maintenance/configs/datanode.md)
 
@@ -101,14 +101,14 @@ $ tree -L 3
 
 定义了ObjectNode的启动参数。
 
-| 参数                      | 类型    | 描述                 | 是否必需                      |
-|-------------------------|-------|--------------------|---------------------------|
-| objectnode_listen       | 字符串   | http服务监听的IP地址和端口号  | 是                         |
-| objectnode_domains      | 字符串数组 | \                  | 为S3兼容接口配置域名以支持DNS风格访问资源 \ | 格式: `DOMAIN` | 否       |
-| objectnode_logDir       | 字符串   | 日志存放路径             | 是                         |
-| objectnode_logLevel     | 字符串   | \                  | 日志级别. \                   | 默认: `error`                                  | 否       |
-| objectnode_exporterPort | 字符串   | prometheus获取监控数据端口 | No                        |
-| objectnode_enableHTTPS  | 字符串   | 是否支持 HTTPS协议       | Yes                       |
+| 参数                      | 类型    | 描述                 | 是否必需                    |
+|-------------------------|-------|--------------------|-------------------------|
+| objectnode_listen       | 字符串   | http服务监听的IP地址和端口号  | 是                       |
+| objectnode_domains      | 字符串数组 |                    | 为S3兼容接口配置域名以支持DNS风格访问资源 | 格式: `DOMAIN` | 否       |
+| objectnode_logDir       | 字符串   | 日志存放路径             | 是                       |
+| objectnode_logLevel     | 字符串   |                    | 日志级别                    | 默认: `error`                                  | 否       |
+| objectnode_exporterPort | 字符串   | prometheus获取监控数据端口 | No                      |
+| objectnode_enableHTTPS  | 字符串   | 是否支持 HTTPS协议       | Yes                     |
 
 >更多配置介绍请参考[ObjectNode配置说明](../maintenance/configs/objectnode.md)
 

@@ -291,10 +291,10 @@ nohup ./blobnode -f blobnode.conf
 }
 ```
 
-### 启动access
+### 启动Access
 
 ::: tip 提示
-access模块为无状态服务节点，可以部署多个节点
+Access模块为无状态服务节点，可以部署多个节点
 :::
 
 1. 启动服务。
@@ -379,7 +379,7 @@ rm -f -r /tmp/normalwal0
 
 
 其中
-- N: 数据块数量, M: 校验块数量, L: 本地校验块数量, AZCount: AZ数量
+- N: 数据块数量，M: 校验块数量， L: 本地校验块数量，AZCount: AZ数量
 - PutQuorum: `(N + M) / AZCount + N \<= PutQuorum \<= M + N`
 - MinShardSize: 最小shard大小,将数据连续填充到`0-N`分片中，如果数据大小小于`MinShardSize*N`，则与零字节对齐，详见[代码](https://github.com/cubefs/cubefs/blob/release-3.2.0/blobstore/common/codemode/codemode.go)
 。
