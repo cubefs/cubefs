@@ -1,3 +1,57 @@
+## Release v3.2.1 - 2023/03/16
+
+### **UPGRAGDE NOTICE**
+UPGRAGDE NOTICE
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+
+If your Blobstore version is v1.1.0 or before which built with cubefs-blobstore (https://github.com/cubefs/cubefs-blobstore) , please refer to UPGRADE to v3.2.0 following these steps #1556.
+### **Main Feature**
+* `meta\client`: add quota of children dentries for directory (#1763, @wuchunhuan )
+* `master`: add qps limiter for individual API on master (#1766, @wuchunhuan )
+* `client`: add audit log for fuse client (#1764, @wuchunhuan )
+* `objectnode\sdk`: objectnode supports docking erasure-code subsytem(blobstore)  (#1765, @wuchunhuan)
+* `master\datanode`: Add speed control of dp decommission for disk or datanode (#1778, @bboyCH4)
+
+
+### **Enhance**
+* `master`: master support leader switching by external trigger (#1772, @leonrayang )
+* `metanode\master`: metanode support follower read (#1775, @leonrayang)
+* `master`: Add metrics for meta-partition consistency detection (#1776, @leonrayang)
+* `master`: add API statistics log for master (#1767, @wuchunhuan)
+* `datanode`: Datanode startup should not be influnced by missing data partitions (#1773, @leonrayang)
+* `master`: volume's capacity must be bigger than 120% used size (#1723, @Victor1319)
+* `metanode`: metanode support config memRatio of the machine. (#1725, @Victor1319)
+* `datanode`: datanode support config diskPathPrefix to manage disk path list. (#1727, @Victor1319)
+* `metanode`: reduce extent alloc memory when metanode snapshot (#1728, @Victor1319)
+* `metanode`: random write may cause metanode memory grow (#1729, @Victor1319)
+* `datanode`: bad disk space is calculated in datanode's total space (#1601, @Victor1319)
+* `datanode`: no premission disk can't be detected (#1602, @Victor1319)
+* `master\cli`: add display of unavailable replica for cfs-cli datapartition check (#1771 ,@true1064)
+* `datanode`: datanode should compute datapartition used size right after loading extents from disk (#1782 ,@true1064)
+* `client`:enhance support nfs access operation (#1798, @leonrayang )
+* `master`: add some metircs (#1785, @liubingxing @litao)
+* `master\datanode\client\cli`: fix the typos and format code (#1787, @liubingxing @litao)
+* `datanode`: add lack datapartitions monitor (#1789, @guojunhao)
+* `master`: create data partition exclude decommissioned disk (#1790 , @guojunhao)
+* `datanode`: Optimize the qos for random write (#1791, @litao)
+* `metanode`: speed up metanode startup (#1792, @liubingxing)
+* `cli`: add more info to cli/fsck cmd (#1793, @liubingxing @litao)
+
+### **Bugfix**
+* `master`: master snapshot recover not reset local rocksdb info (#1522, @wuchunhuan )
+* `master`:Memory cost too fast during restart in case of data partition‘s count is magnity (#1774 , @leonrayang)
+* `client`: Readonly dp can still accept write request from client (#1779, @bboyCH4)
+* `metanode`: Metanode should not establish connection to blobstore for cold volume (#1781, @bboyCH4)
+* `client`: blockcache service may be oom when the client caches many large files concurrently (#1783, @zhangtianjiong)
+* `datanode`: too may delete requests may cause a lot of tcp connections. (#1724, @Victor1319)
+* `master`: when master creating data partition, should use vol.dataPartitionSize as datapartition.total (#1777 ,@true1064)
+* `master`: In addition to all replica status is readwrtie, still need to consider volume used space before check set datapartition status as readwrite (#1780 ,@true1064)
+* `master`: master auto creates dataparitions when volume goes from full to not full (#1784 ,@true1064)
+* `unit test`: Fix the pipeline cubefs-ci error problem  (#1795, @baijiaruo)
+* `metanode\client`:do rename on the file which is soft link not worked well  (#1797 , @leonrayang)
+* `meta\master`: fix some bug to improve cluster stability (#1786, @liubingxing @litao)
+
+
 ## Release v3.2.0 - 2022/10/14
 
 ### **UPGRAGDE NOTICE**
