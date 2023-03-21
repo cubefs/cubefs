@@ -1,7 +1,7 @@
 # 集群配置修改
 
 ## 在线配置修改
-通过cli工具，可以对以下集群配置项进行在线修改
+通过CLI工具，可以对以下集群配置项进行在线修改
 
 ### 修改卷配置
 cfs-cli的子命令volume的help选项，列举出了当前支持在线修改配置选项
@@ -34,6 +34,24 @@ curl -v "http://127.0.0.1:{profPort}/loglevel/set?level={log-level}"
 ```
 目前支持的日志等级log-level有**debug,info,warn,error,critical,read,write,fatal**
 
+### 调整纠删码日志等级
+
+纠删码系统的所有模块均支持此方式，[详情参考](./admin-api/blobstore/base.md)
+
+| 级别    | 值   |
+|-------|-----|
+| Debug | 0   |
+| Info  | 1   | 
+| Warn  | 2   | 
+| Error | 3   |
+| Panic | 4   |
+| Fatal | 5   |
+
+```bash
+# 以下为设置日志级别为warn
+curl -XPOST -d 'level=2' http://127.0.0.1:9500/log/level
+```
+
 ## 离线配置修改
 集群中子系统的其他配置项，需要修改子系统的启动配置文件后重启才可生效。
 
@@ -57,3 +75,7 @@ MetaNode配置文件的totalMem指元数据节点可用总内存大小。当Meta
 ::: danger 警告
 不建议修改DataNode/MetaNode的端口。因为DataNode/MetaNode在master中是通过ip:port进行注册的。如果修改了端口，master则会认为其为全新节点，旧节点是 Inactive 状态。
 :::
+
+### 纠删码其他配置修改
+
+请参考[服务配置介绍章节](./configs/blobstore/base.md)
