@@ -2839,7 +2839,7 @@ func (m *Server) updateDataUseRatioHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if ratioVal == 0 || ratioVal > 1 {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "ratioVal is not legal"})
 		return
 	}
 
