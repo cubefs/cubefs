@@ -2,7 +2,7 @@
 
 ## 简介
 
-CubeFS是新一代云原生存储产品，目前是云原生计算基金会（CNCF）托管的孵化阶段开源项目， 兼容S3、POSIX、HDFS等多种访问协议，支持多副本与纠删码两种存储引擎，为用户提供多租户、
+CubeFS是新一代云原生存储产品，目前是[云原生计算基金会](https://www.cncf.io/projects/cubefs/)（CNCF）托管的孵化阶段开源项目， 兼容S3、POSIX、HDFS等多种访问协议，支持多副本与纠删码两种存储引擎，为用户提供多租户、
 多AZ部署以及跨区域复制等多种特性，广泛应用于大数据、AI、容器平台、数据库、中间件存算分离、数据共享以及数据保护等场景。
 
 <video width="100%" height="300" controls>
@@ -49,7 +49,7 @@ CubeFS是新一代云原生存储产品，目前是云原生计算基金会（CN
 
 ### 云原生
 
-基于[CSI插件](../deploy/k8s.md)可以快速地在Kubernetes上使用CubeFS
+基于[CSI插件](../user-guide/k8s.md)可以快速地在Kubernetes上使用CubeFS
 
 ## 应用场景
 

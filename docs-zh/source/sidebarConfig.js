@@ -27,7 +27,6 @@ module.exports = [
             'user-guide/blobstore.md',
             'user-guide/hadoop.md',
             'user-guide/k8s.md',
-            'user-guide/fuse.md',
         ]
     },
     {
@@ -70,6 +69,7 @@ module.exports = [
                     'maintenance/configs/blobstore/cm.md',
                     'maintenance/configs/blobstore/access.md',
                     'maintenance/configs/blobstore/proxy.md',
+                    'maintenance/configs/blobstore/blobnode.md',
                     'maintenance/configs/blobstore/scheduler.md',
                 ]
             },
@@ -86,6 +86,7 @@ module.exports = [
             'maintenance/capacity.md',
             'maintenance/zone.md',
             'maintenance/log.md',
+            'maintenance/fuse.md',
             'maintenance/upgrade.md',
         ]
     },

@@ -22,8 +22,10 @@
 ![pic](./pic/20230306181907020.png)
 ![pic](./pic/20230306181943006.png)
 
-- *注意替换cluster/cluster_id为集群id*
-- *service 标签为服务名字，在审计日志指标配置项配置*
+::: tip 提示
+- 替换`cluster/cluster_id`为集群id
+- `service`标签为服务名字，在审计日志指标配置项配置
+:::
 
 **集群物理空间概览**
 

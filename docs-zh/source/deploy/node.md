@@ -143,5 +143,5 @@ $> ./run_docker.sh -b # 编译构建
 &> Successfully built 0b29fda1cd22
    Successfully tagged blobstore:v3.2.0
 $> ./run_docker.sh -r # 运行镜像
-$> ... # 后续步骤同脚本部署
+$> ... # 后续步骤同拉取构建
 ```

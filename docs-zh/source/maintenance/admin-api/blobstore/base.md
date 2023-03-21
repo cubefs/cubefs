@@ -51,12 +51,12 @@ curl http://127.0.0.1:9500/log/level
 
 | 级别    | 值   |
 |-------|-----|
-| Debug | 0   |
-| Info  | 1   | 
-| Warn  | 2   | 
-| Error | 3   |
-| Panic | 4   |
-| Fatal | 5   |
+| debug | 0   |
+| info  | 1   | 
+| warn  | 2   | 
+| error | 3   |
+| panic | 4   |
+| fatal | 5   |
 
 ```bash
 # 以下为设置日志级别为warn
