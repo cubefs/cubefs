@@ -21,8 +21,8 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/util"
+
 	"github.com/google/uuid"
 )
 
@@ -49,27 +49,6 @@ func ActionFromRouteName(name string) proto.Action {
 	return proto.ParseAction(name[:len(name)-33])
 }
 
-func (s Statement) checkActions(p *RequestParam) bool {
-	if s.Actions.Empty() {
-		return true
-	}
-	if s.Actions.ContainsWithAny(p.Action().String()) {
-		return true
-	}
-	return false
-}
-
-func (s Statement) checkNotActions(p *RequestParam) bool {
-	if s.NotActions.Empty() {
-		return true
-	}
-	if s.NotActions.ContainsWithAny(p.Action().String()) {
-		return false
-	}
-	return true
-}
-
-//
 func IsIntersectionActions(actions proto.Actions, action proto.Action) bool {
 	if len(actions) == 0 {
 		return true

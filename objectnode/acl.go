@@ -190,7 +190,7 @@ func (acp *AccessControlPolicy) Validate(bucket string) (bool, error) {
 }
 
 func (acp *AccessControlPolicy) IsAllowed(param *RequestParam, isOwner bool) bool {
-	log.LogDebugf("acl is allowed: %v param: %v", acp, param)
+	log.LogDebugf("start to check acl(%v) requestID(%v)", acp, GetRequestID(param.r))
 	if len(acp.Acl.Grants) == 0 {
 		return true
 	}
