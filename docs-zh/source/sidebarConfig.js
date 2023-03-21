@@ -83,10 +83,10 @@ module.exports = [
             },
             'maintenance/config.md',
             'maintenance/diskerr.md',
+            'maintenance/fuse.md',
             'maintenance/capacity.md',
             'maintenance/zone.md',
             'maintenance/log.md',
-            'maintenance/fuse.md',
             'maintenance/upgrade.md',
         ]
     },
