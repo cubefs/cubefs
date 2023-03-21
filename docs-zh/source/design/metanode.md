@@ -10,7 +10,7 @@
 
 每个`inode`代表文件系统中的一个文件或目录， 每个`dentry`代表一个目录项，`dentry`由`parentId`和`name`组成。
 
-- 在`DentryTree`中，以`PartentId`和`name`组成索引，进行存储和检索
+- 在`DentryTree`中，以`ParentId`和`name`组成索引，进行存储和检索
 - 在`InodeTree`中，则以`inode id`进行索引。
 - 使用multiRaft协议保障高可用性和数据一致性复制，且每个节点集合会包含大量的分片组，每个分片组对应一个`raft group`。
 - 每个分片组隶属于某个volume，分片组都是某个volume的一段元数据范围（`inode id`范围`[100-20000)` )

@@ -50,6 +50,6 @@ Properties
 
 ## 注意事项
 
--   listen、raftHeartbeatPort、raftReplicaPort这三个配置选项在程序首次配置启动后，不能修改；
--   相关的配置信息被记录在metadataDir目录下的constcfg文件中，如果需要强制修改，需要手动删除该文件；
--   上述三个配置选项和MetaNode在master的注册信息有关。如果修改，将导致master无法定位到修改前的metanode信息；
+-   listen、raftHeartbeatPort、raftReplicaPort这三个配置选项在程序首次配置启动后，不能修改
+-   相关的配置信息被记录在metadataDir目录下的constcfg文件中，如果需要强制修改，需要手动删除该文件
+-   上述三个配置选项和MetaNode在Master的注册信息有关。如果修改，将导致Master无法定位到修改前的MetaNode信息
