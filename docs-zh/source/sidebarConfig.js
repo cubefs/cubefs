@@ -46,6 +46,8 @@ module.exports = [
                     'maintenance/admin-api/master/management.md',
                     'maintenance/admin-api/master/user.md',
                     'maintenance/admin-api/master/failureDomain.md',
+                    'maintenance/admin-api/master/qos.md',
+                    'maintenance/admin-api/master/quota.md',
                     'maintenance/admin-api/metanode/partition.md',
                     'maintenance/admin-api/metanode/inode.md',
                     'maintenance/admin-api/metanode/dentry.md',

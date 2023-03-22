@@ -213,7 +213,7 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
 * normal_handle_batch_cnt，批量消费普通消息大小，默认100
 * fail_handle_batch_cnt，批量消费失败消息大小，默认100
 * fail_msg_consume_interval_ms，失败消息消费时间间隔，默认10000ms
-* safe_delay_time_h，删除保护器，默认72h，如果配置负数则表示直接删除
+* safe_delay_time_h，删除保护期，默认72h，如果配置负数则表示直接删除
 * delete_log，删除日志保留目录，需要配置，chunkbits默认为29
 ```json
 {
