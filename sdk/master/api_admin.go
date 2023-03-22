@@ -17,11 +17,11 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"strconv"
-
-	"github.com/cubefs/cubefs/proto"
 )
 
 type AdminAPI struct {
@@ -259,26 +259,26 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(volName, description, auth, zoneName string, capacity uint64, followerRead bool,
-	ebsBlkSize int, CacheCap uint64, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater,
-	cacheLRUInterval int, cacheRule string, dpReadOnlyWhenVolFull bool) (err error) {
+func (api *AdminAPI) UpdateVolume(vv *proto.SimpleVolView) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
-	request.addParam("name", volName)
-	request.addParam("description", description)
-	request.addParam("authKey", auth)
-	request.addParam("zoneName", zoneName)
-	request.addParam("capacity", strconv.FormatUint(capacity, 10))
-	request.addParam("followerRead", strconv.FormatBool(followerRead))
-	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))
-	request.addParam("cacheCap", strconv.FormatUint(CacheCap, 10))
-	request.addParam("cacheAction", strconv.Itoa(cacheAction))
-	request.addParam("cacheThreshold", strconv.Itoa(cacheThreshold))
-	request.addParam("cacheTTL", strconv.Itoa(cacheTTL))
-	request.addParam("cacheHighWater", strconv.Itoa(cacheHighWater))
-	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
-	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
-	request.addParam("cacheRuleKey", cacheRule)
-	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
+	request.addParam("name", vv.Name)
+	request.addParam("description", vv.Description)
+	request.addParam("authKey", util.CalcAuthKey(vv.Owner))
+	request.addParam("zoneName", vv.ZoneName)
+	request.addParam("capacity", strconv.FormatUint(vv.Capacity, 10))
+	request.addParam("followerRead", strconv.FormatBool(vv.FollowerRead))
+	request.addParam("ebsBlkSize", strconv.Itoa(vv.ObjBlockSize))
+	request.addParam("cacheCap", strconv.FormatUint(vv.CacheCapacity, 10))
+	request.addParam("cacheAction", strconv.Itoa(vv.CacheAction))
+	request.addParam("cacheThreshold", strconv.Itoa(vv.CacheThreshold))
+	request.addParam("cacheTTL", strconv.Itoa(vv.CacheTtl))
+	request.addParam("cacheHighWater", strconv.Itoa(vv.CacheHighWater))
+	request.addParam("cacheLowWater", strconv.Itoa(vv.CacheLowWater))
+	request.addParam("cacheLRUInterval", strconv.Itoa(vv.CacheLruInterval))
+	request.addParam("cacheRuleKey", vv.CacheRule)
+	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(vv.DpReadOnlyWhenVolFull))
+	request.addParam("replicaNum", strconv.FormatUint(uint64(vv.DpReplicaNum), 10))
+
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
