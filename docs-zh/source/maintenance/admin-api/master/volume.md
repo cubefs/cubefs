@@ -17,29 +17,29 @@ CubeFS以 **Owner**参数作为用户ID。
 
 参数列表
 
-| 参数               | 类型     | 描述                                                    | 是否必需 | 默认值                              |
-|------------------|--------|-------------------------------------------------------|------|----------------------------------|
-| name             | string | 卷名称                                                   | 是    | 无                                |
-| volType          | int    | 卷类型：0：副本卷，1：纠删码卷                                      | 否    | 0                                |
-| capacity         | int    | 卷的配额,单位是GB                                            | 是    | 无                                |
-| owner            | string | 卷的所有者，同时也是用户ID                                        | 是    | 无                                |
-| mpCount          | int    | 初始化元数据分片个数                                            | 否    | 3                                |
-| replicaNum       | int    | 副本数                                                   | 否    | 副本卷默认3（支持1,3），纠删码卷默认1（支持1-16个）   |
-| size             | int    | 数据分片大小，单位GB                                           | 否    | 120                              |
-| enablePosixAcl   | bool   | 是否配置posix权限限制                                         | 否    | false                            |
-| followerRead     | bool   | 允许从follower读取数据，纠删码卷默认true                            | 否    | false                            |
-| crossZone        | bool   | 是否跨区域，如设为true，则不能设置zoneName参数                         | 否    | false                            |
-| normalZonesFirst | bool   | 是否优先写普通域                                              | 否    | false                            |
-| zoneName         | string | 指定区域                                                  | 否    | 如果crossZone设为false，则默认值为default  |
-| cacheRuleKey     | string | 纠删码卷使用                                                | 否    | 非空时，匹配该字段的才会写入cache，空            |
-| ebsBlkSize       | int    | 每个块的大小，单位byte                                         | 否    | 默认8M                             |
-| cacheCap         | int    | 纠删码卷 cache容量的大小,单位GB                                  | 否    | 纠删码卷开启缓存必填                       |
-| cacheAction      | int    | 纠删码卷写cache的场景，0-不写cache, 1-读数据回写cache, 2-读写数据都写到cache | 否    | 0                                |
-| cacheThreshold   | int    | 纠删码卷小于该值时，才写入到cache中,单位byte                           | 否    | 默认10M                            |
-| cacheTTL         | int    | 纠删码卷cache淘汰时间，单位天                                     | 否    | 默认30                             |
-| cacheHighWater   | int    | 纠删码卷cache淘汰的阈值，dp内容量淘汰上水位，达到该值时，触发淘汰                  | 否    | 默认80，即120G\*80/100=96G时，dp开始淘汰数据 |
-| cacheLowWater    | int    | dp上容量淘汰下水位，达到该值时，不再淘汰，                                | 否    | 默认60，即120G\*60/100=72G，dp不再淘汰数据  |
-| cacheLRUInterval | int    | 低容量淘汰检测周期，单位分钟                                        | 否    | 默认5分钟                            |
+| 参数               | 类型     | 描述                                                    | 必需  | 默认值                              |
+|------------------|--------|-------------------------------------------------------|-----|----------------------------------|
+| name             | string | 卷名称                                                   | 是   | 无                                |
+| volType          | int    | 卷类型：0：副本卷，1：纠删码卷                                      | 否   | 0                                |
+| capacity         | int    | 卷的配额,单位是GB                                            | 是   | 无                                |
+| owner            | string | 卷的所有者，同时也是用户ID                                        | 是   | 无                                |
+| mpCount          | int    | 初始化元数据分片个数                                            | 否   | 3                                |
+| replicaNum       | int    | 副本数                                                   | 否   | 副本卷默认3（支持1,3），纠删码卷默认1（支持1-16个）   |
+| size             | int    | 数据分片大小，单位GB                                           | 否   | 120                              |
+| enablePosixAcl   | bool   | 是否配置posix权限限制                                         | 否   | false                            |
+| followerRead     | bool   | 允许从follower读取数据，纠删码卷默认true                            | 否   | false                            |
+| crossZone        | bool   | 是否跨区域，如设为true，则不能设置zoneName参数                         | 否   | false                            |
+| normalZonesFirst | bool   | 是否优先写普通域                                              | 否   | false                            |
+| zoneName         | string | 指定区域                                                  | 否   | 如果crossZone设为false，则默认值为default  |
+| cacheRuleKey     | string | 纠删码卷使用                                                | 否   | 非空时，匹配该字段的才会写入cache，空            |
+| ebsBlkSize       | int    | 每个块的大小，单位byte                                         | 否   | 默认8M                             |
+| cacheCap         | int    | 纠删码卷 cache容量的大小,单位GB                                  | 否   | 纠删码卷开启缓存必填                       |
+| cacheAction      | int    | 纠删码卷写cache的场景，0-不写cache, 1-读数据回写cache, 2-读写数据都写到cache | 否   | 0                                |
+| cacheThreshold   | int    | 纠删码卷小于该值时，才写入到cache中,单位byte                           | 否   | 默认10M                            |
+| cacheTTL         | int    | 纠删码卷cache淘汰时间，单位天                                     | 否   | 默认30                             |
+| cacheHighWater   | int    | 纠删码卷cache淘汰的阈值，dp内容量淘汰上水位，达到该值时，触发淘汰                  | 否   | 默认80，即120G\*80/100=96G时，dp开始淘汰数据 |
+| cacheLowWater    | int    | dp上容量淘汰下水位，达到该值时，不再淘汰，                                | 否   | 默认60，即120G\*60/100=72G，dp不再淘汰数据  |
+| cacheLRUInterval | int    | 低容量淘汰检测周期，单位分钟                                        | 否   | 默认5分钟                            |
 
 ## 删除
 
@@ -228,25 +228,25 @@ curl -v "http://10.196.59.198:17010/vol/update?name=test&capacity=100&authKey=md
 
 参数列表
 
-| 参数               | 类型     | 描述                                            | 是否必需 |
-|------------------|--------|-----------------------------------------------|------|
-| name             | string | 卷名称                                           | 是    |
-| description      | string | 卷描述信息                                         | 否    |
-| authKey          | string | 计算vol的所有者字段的32位MD5值作为认证信息                     | 是    |
-| capacity         | int    | 更新卷的datanode容量，单位G, 副本卷不能小于已使用容量              | 否    |
-| zoneName         | string | 更新后所在区域，若不设置将被更新至default区域                    | 是    |
-| followerRead     | bool   | 允许从follower读取数据                               | 否    |
-| enablePosixAcl   | bool   | 是否配置posix权限限制                                 | 否    |
-| emptyCacheRule   | string | 是否置空cacheRule                                 | 否    |
-| cacheRuleKey     | string | 缓存规则,纠删码卷使用，满足对应规则的才缓存                        | 否    |
-| ebsBlkSize       | int    | 纠删码卷的每个块的大小                                   | 否    |
-| cacheCap         | int    | 纠删码卷使用二级cache时，cache的容量大小                     | 否    |
-| cacheAction      | int    | 纠删码卷使用，0：不写cache, 1-读数据写cache, 2-读写数据都写到cache | 否    |
-| cacheThreshold   | int    | 缓存文件大小限制，纠删码卷小于该值时，才会写到cache当中                | 否    |
-| cacheTTL         | int    | 缓存过期时间，单位天                                    | 否    |
-| cacheHighWater   | int    | 淘汰高水位                                         | 否    |
-| cacheLowWater    | int    | 缓存淘汰低水位                                       | 否    |
-| cacheLRUInterval | int    | 缓存检测周期，单位分钟                                   | 否    |
+| 参数               | 类型     | 描述                                            | 必需  |
+|------------------|--------|-----------------------------------------------|-----|
+| name             | string | 卷名称                                           | 是   |
+| description      | string | 卷描述信息                                         | 否   |
+| authKey          | string | 计算vol的所有者字段的32位MD5值作为认证信息                     | 是   |
+| capacity         | int    | 更新卷的datanode容量，单位G, 副本卷不能小于已使用容量              | 否   |
+| zoneName         | string | 更新后所在区域，若不设置将被更新至default区域                    | 是   |
+| followerRead     | bool   | 允许从follower读取数据                               | 否   |
+| enablePosixAcl   | bool   | 是否配置posix权限限制                                 | 否   |
+| emptyCacheRule   | string | 是否置空cacheRule                                 | 否   |
+| cacheRuleKey     | string | 缓存规则,纠删码卷使用，满足对应规则的才缓存                        | 否   |
+| ebsBlkSize       | int    | 纠删码卷的每个块的大小                                   | 否   |
+| cacheCap         | int    | 纠删码卷使用二级cache时，cache的容量大小                     | 否   |
+| cacheAction      | int    | 纠删码卷使用，0：不写cache, 1-读数据写cache, 2-读写数据都写到cache | 否   |
+| cacheThreshold   | int    | 缓存文件大小限制，纠删码卷小于该值时，才会写到cache当中                | 否   |
+| cacheTTL         | int    | 缓存过期时间，单位天                                    | 否   |
+| cacheHighWater   | int    | 淘汰高水位                                         | 否   |
+| cacheLowWater    | int    | 缓存淘汰低水位                                       | 否   |
+| cacheLRUInterval | int    | 缓存检测周期，单位分钟                                   | 否   |
 
 ## 获取卷列表
 
@@ -258,9 +258,9 @@ curl -v "http://10.196.59.198:17010/vol/list?keywords=test"
 
 参数列表
 
-| 参数       | 类型     | 描述             | 是否必需 |
-|----------|--------|----------------|------|
-| keywords | string | 获取卷名包含此关键字的卷信息 | 否    |
+| 参数       | 类型     | 描述             | 必需  |
+|----------|--------|----------------|-----|
+| keywords | string | 获取卷名包含此关键字的卷信息 | 否   |
 
 响应示例
 
@@ -295,11 +295,11 @@ curl -v "http://10.196.59.198:17010/vol/expand?name=test&capacity=100&authKey=md
 
 参数列表
 
-| 参数       | 类型     | 描述                        | 是否必需 |
-|----------|--------|---------------------------|------|
-| name     | string | 卷名称                       | 是    |
-| authKey  | string | 计算vol的所有者字段的32位MD5值作为认证信息 | 是    |
-| capacity | int    | 扩充后卷的配额,单位是GB             | 是    |
+| 参数       | 类型     | 描述                        | 必需  |
+|----------|--------|---------------------------|-----|
+| name     | string | 卷名称                       | 是   |
+| authKey  | string | 计算vol的所有者字段的32位MD5值作为认证信息 | 是   |
+| capacity | int    | 扩充后卷的配额,单位是GB             | 是   |
 
 ## 缩容
 
@@ -311,11 +311,11 @@ curl -v "http://10.196.59.198:17010/vol/shrink?name=test&capacity=100&authKey=md
 
 参数列表
 
-| 参数       | 类型     | 描述                        | 是否必需 |
-|----------|--------|---------------------------|------|
-| name     | string | 卷名称                       | 是    |
-| authKey  | string | 计算vol的所有者字段的32位MD5值作为认证信息 | 是    |
-| capacity | int    | 压缩后卷的配额,单位是GB             | 是    |
+| 参数       | 类型     | 描述                        | 必需  |
+|----------|--------|---------------------------|-----|
+| name     | string | 卷名称                       | 是   |
+| authKey  | string | 计算vol的所有者字段的32位MD5值作为认证信息 | 是   |
+| capacity | int    | 压缩后卷的配额,单位是GB             | 是   |
 
 ## 两副本
 
@@ -330,27 +330,34 @@ curl -v "http://10.196.59.198:17010/vol/shrink?name=test&capacity=100&authKey=md
 
 例如存在一个dp，有两个副本A、B
 
--   两副本迁移的异常场景
+**两副本迁移的异常场景**
 
 迁移目标是C，我们实现的过程是先添加副本C，然后删除源A，迁移过程B crash
 
-解决方式：如果 B crash了，raft不可用，先删除B，等待迁移完成，删除A，再添加一个副本
+**解决方式**：
 
--   正常运营过程某一个副本crash，例如B 没有leader，根据raft规则两副本不能删除B的，因为需要需要先commit，然后apply，但commit的条件是大多数存活。
+如果 B crash了，raft不可用，先删除B，等待迁移完成，删除A，再添加一个副本
 
-解决方式: 强制删除B 
+**正常运营过程某一个副本crash，例如B**
+
+没有leader，根据raft规则两副本不能删除B的，因为需要需要先commit，然后apply，但commit的条件是大多数存活。
+
+**解决方式**：
+
+强制删除B 
 
 ::: danger 警告
 raft支持新接口del，replica直接不使用raft log commit（先备份dp数据）
 :::
-  - addr 为副本B的地址
-  - id 为分区id（`dpid`）
-  - raftForceDel 强制删除raft副本
+
 ```bash
 curl "http://127.0.0.1:17010/dataReplica/delete?raftForceDel=true&addr=127.0.0.1:17310&id=47128
 ```
 
--   datanode 将检查副本数（volume 和 dp 必须都是 2 个副本，以防使用不当）和 force字段。
+- addr 为副本B的地址
+- id 为分区id（`dpid`）
+- raftForceDel 强制删除raft副本 
+- DataNode 将检查副本数（volume 和 dp 必须都是 2 个副本，以防使用不当）和 force字段。
 
 ### 命令行
 
@@ -437,16 +444,16 @@ curl  "http://192.168.0.11:17010/qos/update?name=ltptest&qosEnable=true&flowWKey
    - `MinIoLimit = 100`
    
 3. 如果没有设置流量值，但启用限流，则使用默认值（Byte）
-   - defaultIopsRLimit uint64 = 1 \<\< 16
-   - defaultIopsWLimit uint64 = 1 \<\< 16
-   - defaultFlowWLimit uint64 = 1 \<\< 35
-   - defaultFlowRLimit uint64 = 1 \<\< 35
+   - `defaultIopsRLimit uint64 = 1 \<\< 16`
+   - `defaultIopsWLimit uint64 = 1 \<\< 16`
+   - `defaultFlowWLimit uint64 = 1 \<\< 35`
+   - `defaultFlowRLimit uint64 = 1 \<\< 35`
 
-### client和master通信
+### Client和Master通信
 
-1. client长时间收不到master的流量控制，日志会warn出来
-2. client和master无法不通讯，会维持原有流量限制，也会warn出来
-3. 流量长时间为0则不会主动请求master流量，不上报给master，减少通信请求。master会清理长时间不上报客户端信息。
+1. Client长时间收不到Master的流量控制，日志会warn出来
+2. Client和Master无法不通讯，会维持原有流量限制，也会warn出来
+3. 流量长时间为0则不会主动请求Master流量，不上报给Master，减少通信请求。Master会清理长时间不上报客户端信息。
 
 ### 冷卷
 

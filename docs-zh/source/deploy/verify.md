@@ -4,7 +4,9 @@
 
 ### 创建卷
 
-创建纠删码卷请参考[创建卷章节](../user-guide/volume.md)
+::: tip 提示
+如果有部署纠删码模块像创建纠删码卷，请参考[创建卷章节](../user-guide/volume.md)
+:::
 
 ```bash
 ./build/bin/cfs-cli volume create ltptest ltp
@@ -34,12 +36,14 @@ cubefs-ltptest   10G     0   10G   0% /home/cfs/client/mnt
 ## 验证纠删码子系统
 
 ::: tip 提示
-cli 是为纠删码子系统（blobstore） 提供的交互式命令行管理工具, 配置 cli 后能够更方便地使用, 用 help 可以查看帮助信息。
+纠删码子系统（Blobstore）提供了单独交互式命令行管理工具，当前该工具暂时未集成至cfs-cli，后续会集成。
 :::
+
+Blobstore cli 可以方便的管理纠删码子系统, 用 help 可以查看帮助信息。这里仅介绍验证纠删码系统本身的正确性。
 
 ### 启动CLI
 
-基于默认配置，启动命令行工具 `cli` ，详细使用参考[CLI工具使用](../maintenance/tool.md)
+基于默认配置，启动命令行工具 `cli` ，详细使用参考[CLI工具使用指南](../maintenance/tool.md)
 1. 物理机环境
 ``` bash
 $> cd ./cubefs/blobstore
