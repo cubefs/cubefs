@@ -2,7 +2,7 @@
 
 ## 环境依赖
 - 插入内核FUSE模
-- 安装libfuse
+- 安装`libfuse`
 
 ```bash
 modprobe fuse

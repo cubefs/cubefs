@@ -11,16 +11,16 @@
 
 ## 卷设置
 
-| 参数                   | 默认值    | 推荐值            | 说明              |
-|----------------------|--------|----------------|-----------------|
-| FollowerRead         | True   | True           |                 |
-| Capacity             | 10 GB  | 300 000 000 GB |                 |
-| Data Replica Number  | 3      | 3              |                 |
-| Meta Replica Number  | 3      | 3              |                 |
-| Data Partition Size  | 120 GB | 120 GB         | 只是理论值上限 并不预分配空间 |
-| Data Partition Count | 10     | 1500           |                 |
-| Meta Partition Count | 3      | 10             |                 |
-| Cross Zone           | False  | False          |                 |
+| 参数                   | 默认值    | 推荐值            | 说明               |
+|----------------------|--------|----------------|------------------|
+| FollowerRead         | True   | True           | 是否开启FollowerRead |
+| Capacity             | 10 GB  | 300 000 000 GB | 容量               |
+| Data Replica Number  | 3      | 3              | 数据副本数            |
+| Meta Replica Number  | 3      | 3              | 元数据副本数           |
+| Data Partition Size  | 120 GB | 120 GB         | 只是理论值上限 并不预分配空间  |
+| Data Partition Count | 10     | 1500           | 数据分区数            |
+| Meta Partition Count | 3      | 10             | 元数据分区数           |
+| Cross Zone           | False  | False          | 是否跨zone          |
 
 设置方法:
 
