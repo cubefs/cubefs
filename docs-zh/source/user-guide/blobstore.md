@@ -15,7 +15,7 @@ $ sh build.sh
 
 构建成功后，将在 `bin` 目录中生成以下可执行文件：
 
-```shell
+```text
 ├── bin
 │   ├── clustermgr
 │   ├── proxy
@@ -348,6 +348,61 @@ rm -f -r /tmp/volumedb0
 rm -f -r /tmp/clustermgr
 rm -f -r /tmp/normaldb0
 rm -f -r /tmp/normalwal0
+```
+2. clustermgr增加`learner`节点
+
+::: tip 提示
+learner节点一般用于数据备份，故障恢复
+:::
+
+- 在新的节点启用Clustermgr服务，将新服务中的配置中加上当前节点的成员信息；
+- 调用[成员添加接口](../maintenance/admin-api/blobstore/cm.md)将刚启动的learner 节点加到集群中；
+  ```bash
+  curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 4, "host": "127.0.0.1:10113","node_host": "127.0.0.1:10001", "member_type": 1}' "http://127.0.0.1:9998/member/add" 
+  ```
+- 添加成功后，数据会自动同步
+
+参考配置如下 `Clustermgr-learner.conf`:
+```json
+{
+     "bind_addr":":10001",
+     "cluster_id":1,
+     "idc":["z0"],
+     "chunk_size": 16777216,
+     "log": {
+         "level": "info",
+         "filename": "./run/logs/clustermgr3.log"
+      },
+     "auth": {
+         "enable_auth": false,
+         "secret": "testsecret"
+     },
+     "region": "test-region",
+     "db_path":"./run/db3",
+     "code_mode_policies": [ 
+         {"mode_name":"EC3P3","min_size":0,"max_size":50331648,"size_ratio":1,"enable":true}
+     ],
+     "raft_config": {
+         "server_config": {
+             "nodeId": 4,
+             "listen_port": 10113,
+             "raft_wal_dir": "./run/raftwal3"
+         },
+         "raft_node_config":{
+             "node_protocol": "http://",
+             "members": [
+                     {"id":1, "host":"127.0.0.1:10110", "learner": false, "node_host":"127.0.0.1:9998"},
+                     {"id":2, "host":"127.0.0.1:10111", "learner": false, "node_host":"127.0.0.1:9999"},
+                     {"id":3, "host":"127.0.0.1:10112", "learner": false, "node_host":"127.0.0.1:10000"},
+                     {"id":4, "host":"127.0.0.1:10113", "learner": true, "node_host": "127.0.0.1:10001"}]
+         }
+     },
+     "disk_mgr_config": {
+         "refresh_interval_s": 10,
+         "rack_aware":false,
+         "host_aware":false
+     }
+}
 ```
 
 2. 所有模块部署成功后，上传验证需要延缓一段时间，等待创建卷成功。
