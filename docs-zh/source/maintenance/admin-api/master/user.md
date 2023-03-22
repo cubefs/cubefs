@@ -18,13 +18,13 @@ CubeFS将卷的 **Owner** 字段看作一个用户ID。例如，创建卷时Owne
 
 参数列表
 
-| 参数   | 类型     | 描述                  | 取值范围                  | 是否必需 | 默认值          |
-|------|--------|---------------------|-----------------------|------|--------------|
-| id   | string | 用户ID                | 由字母、数字及下划线组成，不超过21个字符 | 是    | 无            |
-| pwd  | string | 用户密码                | 无限制                   | 否    | `CubeFSUser` |
-| ak   | string | 用于对象存储功能的Access Key | 由16位字母及数字组成           | 否    | 系统随机生成       |
-| sk   | string | 用于对象存储功能的Secret Key | 由32位字母及数字组成           | 否    | 系统随机生成       |
-| type | int    | 用户类型                | 2（管理员）/3（普通用户）        | 是    | 无            |
+| 参数   | 类型     | 描述                  | 取值范围                  | 必需  | 默认值          |
+|------|--------|---------------------|-----------------------|-----|--------------|
+| id   | string | 用户ID                | 由字母、数字及下划线组成，不超过21个字符 | 是   | 无            |
+| pwd  | string | 用户密码                | 无限制                   | 否   | `CubeFSUser` |
+| ak   | string | 用于对象存储功能的Access Key | 由16位字母及数字组成           | 否   | 系统随机生成       |
+| sk   | string | 用于对象存储功能的Secret Key | 由32位字母及数字组成           | 否   | 系统随机生成       |
+| type | int    | 用户类型                | 2（管理员）/3（普通用户）        | 是   | 无            |
 
 ## 删除用户
 
@@ -120,12 +120,12 @@ curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","a
 
 参数列表
 
-| 参数         | 类型     | 描述               | 是否必需 |
-|------------|--------|------------------|------|
-| user_id    | string | 待更新信息的用户ID       | 是    |
-| access_key | string | 更新后的Access Key取值 | 否    |
-| secret_key | string | 更新后的Secret Key取值 | 否    |
-| type       | int    | 更新后的用户类型         | 否    |
+| 参数         | 类型     | 描述               | 必需  |
+|------------|--------|------------------|-----|
+| user_id    | string | 待更新信息的用户ID       | 是   |
+| access_key | string | 更新后的Access Key取值 | 否   |
+| secret_key | string | 更新后的Secret Key取值 | 否   |
+| type       | int    | 更新后的用户类型         | 否   |
 
 ## 用户授权
 
@@ -147,11 +147,11 @@ curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","v
 
 参数列表
 
-| 参数      | 类型           | 描述         | 是否必需 |
-|---------|--------------|------------|------|
-| user_id | string       | 待设置权限的用户ID | 是    |
-| volume  | string       | 待设置权限的卷名   | 是    |
-| policy  | string slice | 待设置的权限     | 是    |
+| 参数      | 类型           | 描述         | 必需  |
+|---------|--------------|------------|-----|
+| user_id | string       | 待设置权限的用户ID | 是   |
+| volume  | string       | 待设置权限的卷名   | 是   |
+| policy  | string slice | 待设置的权限     | 是   |
 
 ## 移除用户权限
 
@@ -163,10 +163,10 @@ curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","v
 
 参数列表
 
-| 参数      | 类型     | 描述         | 是否必需 |
-|---------|--------|------------|------|
-| user_id | string | 待删除权限的用户ID | 是    |
-| volume  | string | 待删除权限的卷名   | 是    |
+| 参数      | 类型     | 描述         | 必需  |
+|---------|--------|------------|-----|
+| user_id | string | 待删除权限的用户ID | 是   |
+| volume  | string | 待删除权限的卷名   | 是   |
 
 ## 转交卷
 
@@ -178,9 +178,9 @@ curl -H "Content-Type:application/json" -X POST --data '{"volume":"vol","user_sr
 
 参数列表
 
-| 参数       | 类型     | 描述                                                         | 是否必需 |
-|----------|--------|------------------------------------------------------------|------|
-| volume   | string | 待转交权限的卷名                                                   | 是    |
-| user_src | string | 该卷原来的所有者，必须与卷的Owner字段原取值相同                                 | 是    |
-| user_dst | string | 转交权限后的目标用户ID                                               | 是    |
-| force    | bool   | 是否强制转交卷。如果该值设为true，即使user_src的取值与卷的Owner取值不等，也会将卷变更至目标用户名下 | 否    |
+| 参数       | 类型     | 描述                                                         | 必需  |
+|----------|--------|------------------------------------------------------------|-----|
+| volume   | string | 待转交权限的卷名                                                   | 是   |
+| user_src | string | 该卷原来的所有者，必须与卷的Owner字段原取值相同                                 | 是   |
+| user_dst | string | 转交权限后的目标用户ID                                               | 是   |
+| force    | bool   | 是否强制转交卷。如果该值设为true，即使user_src的取值与卷的Owner取值不等，也会将卷变更至目标用户名下 | 否   |

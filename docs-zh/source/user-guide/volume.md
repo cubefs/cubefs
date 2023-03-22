@@ -19,9 +19,10 @@ curl -v "http://127.0.0.1:17010/admin/createVol?name=test&capacity=100&owner=cfs
 ```
 
 ::: tip 提示
-扩容示例 
-`curl -v "http://127.0.0.1:17010/vol/expand?name=test&authKey=57f0162b2303be3449c7008484b0d306&capacity=200"`，
-其中authKey为volume owner字符串的MD5值。
+扩容示例，如下（其中authKey为volume owner字符串的MD5值。）
+```shell
+curl -v "http://127.0.0.1:17010/vol/expand?name=test&authKey=57f0162b2303be3449c7008484b0d306&capacity=200"
+```
 :::
 
 ## 创建纠删码卷

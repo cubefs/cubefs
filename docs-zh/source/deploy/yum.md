@@ -36,11 +36,8 @@ $ tree -L 3
 
 可根据实际环境，在 **iplist** 文件中修改CubeFS集群的参数.
 
-- **\[master\]** , **\[datanode\]** , **\[metanode\]** ,
-    **\[objectnode\]**, **\[monitor\]** , **\[client\]**
-    包含了每个模块的成员IP地址。
-- **\[cfs:vars\]**
-    模块定义了所有节点的ssh登陆信息，需要事先将集群中所有节点的登录名和密码进行统一。
+- `master` ，`datanode`，`metanode`，`objectnode`，`monitor`，`client`包含了每个模块的成员IP地址。
+- `cfs:vars`模块定义了所有节点的ssh登陆信息，需要事先将集群中所有节点的登录名和密码进行统一。
 ### master config模块  
 
 定义了每个Master节点的启动参数。
@@ -64,17 +61,17 @@ $ tree -L 3
 
 定义了每个DataNode的启动参数。
 
-| 参数                     | 类型    | 描述                         | 是否必需               |
-|------------------------|-------|----------------------------|--------------------|
-| datanode_listen        | 字符串   | 数据节点作为服务端启动TCP监听的端口        | 是                  |
-| datanode_prof          | 字符串   | 数据节点提供HTTP接口所用的端口          | 是                  |
-| datanode_logDir        | 字符串   | 日志存放的路径                    | 是                  |
-| datanode_logLevel      | 字符串   | 日志的级别。默认是 *info*           | 否                  |
-| datanode_raftHeartbeat | 字符串   | RAFT发送节点间心跳消息所用的端口         | 是                  |
-| datanode_raftReplica   | 字符串   | RAFT发送日志消息所用的端口            | 是                  |
-| datanode_raftDir       | 字符串   | RAFT调测日志存放的路径。默认在二进制文件启动路径 | 否                  |
-| datanode_exporterPort  | 字符串   | 监控系统采集的端口                  | 否                  |
-| datanode_disks         | 字符串数组 |                            | 格式: *PATH:RETAIN*. | PATH: 磁盘挂载路径. \| RETAIN: 该路径下的最小预留空间，剩余空间小于该值即认为磁盘已满，单位：字节。（建议值：20G~50G) | 是       |
+| 参数                     | 类型    | 描述                                                                                     | 必需  |
+|------------------------|-------|----------------------------------------------------------------------------------------|-----|
+| datanode_listen        | 字符串   | 数据节点作为服务端启动TCP监听的端口                                                                    | 是   |
+| datanode_prof          | 字符串   | 数据节点提供HTTP接口所用的端口                                                                      | 是   |
+| datanode_logDir        | 字符串   | 日志存放的路径                                                                                | 是   |
+| datanode_logLevel      | 字符串   | 日志的级别。默认是 *info*                                                                       | 否   |
+| datanode_raftHeartbeat | 字符串   | RAFT发送节点间心跳消息所用的端口                                                                     | 是   |
+| datanode_raftReplica   | 字符串   | RAFT发送日志消息所用的端口                                                                        | 是   |
+| datanode_raftDir       | 字符串   | RAFT调测日志存放的路径。默认在二进制文件启动路径                                                             | 否   |
+| datanode_exporterPort  | 字符串   | 监控系统采集的端口                                                                              | 否   |
+| datanode_disks         | 字符串数组 | 格式: *PATH:RETAIN*，PATH: 磁盘挂载路径，RETAIN: 该路径下的最小预留空间，剩余空间小于该值即认为磁盘已满，单位：字节。（建议值：20G~50G) | 是   |
 
 >更多配置介绍请参考[DataNode配置说明](../maintenance/configs/datanode.md)
 
@@ -82,18 +79,18 @@ $ tree -L 3
 
 定义了MetaNode的启动参数。
 
-| 参数                         | 类型  | 描述                                               | 是否必需 |
-|----------------------------|-----|--------------------------------------------------|------|
-| metanode_listen            | 字符串 | 监听和接受请求的端口                                       | 是    |
-| metanode_prof              | 字符串 | 调试和管理员API接口                                      | 是    |
-| metanode_logLevel          | 字符串 | 日志级别，默认: *info*                                  | 否    |
-| metanode_metadataDir       | 字符串 | 元数据快照存储目录                                        | 是    |
-| metanode_logDir            | 字符串 | 日志存储目录                                           | 是    |
-| metanode_raftDir           | 字符串 | raft wal日志目录                                     | 是    |
-| metanode_raftHeartbeatPort | 字符串 | raft心跳通信端口                                       | 是    |
-| metanode_raftReplicaPort   | 字符串 | raft数据传输端口                                       | 是    |
-| metanode_exporterPort      | 字符串 | prometheus获取监控数据端口                               | 否    |
-| metanode_totalMem          | 字符串 | 最大可用内存，此值需高于master配置中metaNodeReservedMem的值，单位：字节 | 是    |
+| 参数                         | 类型  | 描述                                               | 必需  |
+|----------------------------|-----|--------------------------------------------------|-----|
+| metanode_listen            | 字符串 | 监听和接受请求的端口                                       | 是   |
+| metanode_prof              | 字符串 | 调试和管理员API接口                                      | 是   |
+| metanode_logLevel          | 字符串 | 日志级别，默认: *info*                                  | 否   |
+| metanode_metadataDir       | 字符串 | 元数据快照存储目录                                        | 是   |
+| metanode_logDir            | 字符串 | 日志存储目录                                           | 是   |
+| metanode_raftDir           | 字符串 | raft wal日志目录                                     | 是   |
+| metanode_raftHeartbeatPort | 字符串 | raft心跳通信端口                                       | 是   |
+| metanode_raftReplicaPort   | 字符串 | raft数据传输端口                                       | 是   |
+| metanode_exporterPort      | 字符串 | prometheus获取监控数据端口                               | 否   |
+| metanode_totalMem          | 字符串 | 最大可用内存，此值需高于master配置中metaNodeReservedMem的值，单位：字节 | 是   |
 
 >更多配置介绍请参考[MetaNode配置说明](../maintenance/configs/metanode.md)
 
@@ -101,14 +98,14 @@ $ tree -L 3
 
 定义了ObjectNode的启动参数。
 
-| 参数                      | 类型    | 描述                 | 是否必需                    |
-|-------------------------|-------|--------------------|-------------------------|
-| objectnode_listen       | 字符串   | http服务监听的IP地址和端口号  | 是                       |
-| objectnode_domains      | 字符串数组 |                    | 为S3兼容接口配置域名以支持DNS风格访问资源 | 格式: `DOMAIN` | 否       |
-| objectnode_logDir       | 字符串   | 日志存放路径             | 是                       |
-| objectnode_logLevel     | 字符串   |                    | 日志级别                    | 默认: `error`                                  | 否       |
-| objectnode_exporterPort | 字符串   | prometheus获取监控数据端口 | No                      |
-| objectnode_enableHTTPS  | 字符串   | 是否支持 HTTPS协议       | Yes                     |
+| 参数                      | 类型    | 描述                                   | 必需  |
+|-------------------------|-------|--------------------------------------|-----|
+| objectnode_listen       | 字符串   | http服务监听的IP地址和端口号                    | 是   |
+| objectnode_domains      | 字符串数组 | 为S3兼容接口配置域名以支持DNS风格访问资源，格式: `DOMAIN` | 否   |
+| objectnode_logDir       | 字符串   | 日志存放路径                               | 是   |
+| objectnode_logLevel     | 字符串   | 日志级别 ，默认: `error`                    | 否   |
+| objectnode_exporterPort | 字符串   | prometheus获取监控数据端口                   | No  |
+| objectnode_enableHTTPS  | 字符串   | 是否支持 HTTPS协议                         | Yes |
 
 >更多配置介绍请参考[ObjectNode配置说明](../maintenance/configs/objectnode.md)
 
@@ -116,16 +113,16 @@ $ tree -L 3
 
 定义了fuse客户端的启动参数
 
-| 参数                  | 类型  | 描述                                                | 是否必需 |
-|---------------------|-----|---------------------------------------------------|------|
-| client_mountPoint   | 字符串 | 挂载点                                               | 是    |
-| client_volName      | 字符串 | 卷名称                                               | 否    |
-| client_owner        | 字符串 | 卷所有者                                              | 是    |
-| client_SizeGB       | 字符串 | 如果卷不存在，则会创建一个该大小的卷，单位：GB                          | 否    |
-| client_logDir       | 字符串 | 日志存放路径                                            | 是    |
-| client_logLevel     | 字符串 | 日志级别：\*debug\*, *info*, *warn*, *error*，默认 *info* | 否    |
-| client_exporterPort | 字符串 | prometheus获取监控数据端口                                | 是    |
-| client_profPort     | 字符串 | golang pprof调试端口                                  | 否    |
+| 参数                  | 类型  | 描述                                              | 必需  |
+|---------------------|-----|-------------------------------------------------|-----|
+| client_mountPoint   | 字符串 | 挂载点                                             | 是   |
+| client_volName      | 字符串 | 卷名称                                             | 否   |
+| client_owner        | 字符串 | 卷所有者                                            | 是   |
+| client_SizeGB       | 字符串 | 如果卷不存在，则会创建一个该大小的卷，单位：GB                        | 否   |
+| client_logDir       | 字符串 | 日志存放路径                                          | 是   |
+| client_logLevel     | 字符串 | 日志级别：*debug*, *info*, *warn*, *error*，默认 *info* | 否   |
+| client_exporterPort | 字符串 | prometheus获取监控数据端口                              | 是   |
+| client_profPort     | 字符串 | golang pprof调试端口                                | 否   |
 
 >更多配置介绍请参考[Client配置说明](../maintenance/configs/client.md)
 
