@@ -67,6 +67,8 @@ const (
 	defaultRlimit uint64 = 1024000
 
 	UpdateConfInterval = 2 * time.Minute
+
+	MasterRetrys = 20
 )
 
 const (
@@ -288,7 +290,14 @@ func main() {
 		os.Exit(1)
 	}
 	//load  conf from master
-	err = loadConfFromMaster(opt)
+	for retry := 0; retry < MasterRetrys; retry++ {
+		err = loadConfFromMaster(opt)
+		if err != nil && err.Error() == "no valid master" {
+			time.Sleep(5 * time.Second)
+		} else {
+			break
+		}
+	}
 	if err != nil {
 		err = errors.NewErrorf("parse mount opt from master failed: %v\n", err)
 		fmt.Println(err)
