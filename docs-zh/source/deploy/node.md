@@ -18,7 +18,7 @@ make
 # 启动脚本
 sh ./shell/depoly.sh /home/data bond0
 ```
-+ bond0: 为本机网卡的名字, 根据实际填写
++ `bond0`: 为本机网卡的名字, 根据实际填写
 + `/home/data`: 为本地的一个目录,用于保存集群运行日志、数据及配置文件
 + 机器要求
   + 需root权限
