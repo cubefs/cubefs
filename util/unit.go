@@ -15,6 +15,8 @@
 package util
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
@@ -117,4 +119,11 @@ func GenerateRepVolKey(volName string, ino uint64, dpId uint64, extentId uint64,
 
 func OneDaySec() int64 {
 	return 60 * 60 * 24
+}
+
+func CalcAuthKey(key string) (authKey string) {
+	h := md5.New()
+	_, _ = h.Write([]byte(key))
+	cipherStr := h.Sum(nil)
+	return strings.ToLower(hex.EncodeToString(cipherStr))
 }

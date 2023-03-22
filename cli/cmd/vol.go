@@ -15,9 +15,8 @@
 package cmd
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/util"
 	"sort"
 	"strconv"
 	"strings"
@@ -251,6 +250,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
 	var optYes bool
+	var optReplicaNum string
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
 	var cmd = &cobra.Command{
@@ -423,6 +423,15 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
 			}
 
+			confirmString.WriteString(fmt.Sprintf("  ReplicaNum                : %v\n", vv.DpReplicaNum))
+			if optReplicaNum != "" {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v -> %v \n", vv.DpReplicaNum, optReplicaNum))
+				replicaNum, _ := strconv.Atoi(optReplicaNum)
+				vv.DpReplicaNum = uint8(replicaNum)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v \n", vv.Description))
+			}
 			if err != nil {
 				return
 			}
@@ -441,9 +450,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Description, calcAuthKey(vv.Owner), vv.ZoneName, vv.Capacity,
-				vv.FollowerRead, vv.ObjBlockSize, vv.CacheCapacity, vv.CacheAction, vv.CacheThreshold, vv.CacheTtl,
-				vv.CacheHighWater, vv.CacheLowWater, vv.CacheLruInterval, vv.CacheRule, vv.DpReadOnlyWhenVolFull)
+			err = client.AdminAPI().UpdateVolume(vv)
 			if err != nil {
 				return
 			}
@@ -474,6 +481,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
 		"Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 
 	return cmd
 
@@ -595,7 +603,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			if err = client.AdminAPI().DeleteVolume(volumeName, calcAuthKey(svv.Owner)); err != nil {
+			if err = client.AdminAPI().DeleteVolume(volumeName, util.CalcAuthKey(svv.Owner)); err != nil {
 				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 				return
 			}
@@ -769,11 +777,4 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 		},
 	}
 	return cmd
-}
-
-func calcAuthKey(key string) (authKey string) {
-	h := md5.New()
-	_, _ = h.Write([]byte(key))
-	cipherStr := h.Sum(nil)
-	return strings.ToLower(hex.EncodeToString(cipherStr))
 }
