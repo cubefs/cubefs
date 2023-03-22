@@ -48,7 +48,7 @@ type SimpleClientInfo interface {
 
 // Wrapper TODO rename. This name does not reflect what it is doing.
 type Wrapper struct {
-	sync.RWMutex
+	Lock                  sync.RWMutex
 	clusterName           string
 	volName               string
 	volType               int
@@ -131,6 +131,13 @@ func (w *Wrapper) InitFollowerRead(clientConfig bool) {
 
 func (w *Wrapper) FollowerRead() bool {
 	return w.followerRead
+}
+
+func (w *Wrapper) tryGetPartition(index uint64) (partition *DataPartition, ok bool) {
+	w.Lock.RLock()
+	defer w.Lock.RUnlock()
+	partition, ok = w.partitions[index]
+	return
 }
 
 func (w *Wrapper) updateClusterInfo() (err error) {
@@ -282,11 +289,11 @@ func (w *Wrapper) UpdateSimpleVolView() (err error) {
 	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm {
 		log.LogDebugf("UpdateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v)",
 			w.dpSelectorName, w.dpSelectorParm, view.DpSelectorName, view.DpSelectorParm)
-		w.Lock()
+		w.Lock.Lock()
 		w.dpSelectorName = view.DpSelectorName
 		w.dpSelectorParm = view.DpSelectorParm
 		w.dpSelectorChanged = true
-		w.Unlock()
+		w.Lock.Unlock()
 	}
 
 	return nil
@@ -355,17 +362,17 @@ func (w *Wrapper) UpdateDataPartition() (err error) {
 	return w.updateDataPartition(false)
 }
 
-// getDataPartition will call master to get data partition info which not include in  cache updated by
+// getDataPartitionFromMaster will call master to get data partition info which not include in  cache updated by
 // updateDataPartition which may not take effect if nginx be placed for reduce the pressure of master
-func (w *Wrapper) getDataPartition(isInit bool, dpId uint64) (err error) {
+func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err error) {
 
 	var dpInfo *proto.DataPartitionInfo
 	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, dpId); err != nil {
-		log.LogErrorf("getDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+		log.LogErrorf("getDataPartitionFromMaster: get data partitions fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
 
-	log.LogInfof("getDataPartition: get data partitions: volume(%v)", w.volName)
+	log.LogInfof("getDataPartitionFromMaster: get data partitions: volume(%v)", w.volName)
 	var leaderAddr string
 	for _, replica := range dpInfo.Replicas {
 		if replica.IsLeader {
@@ -388,8 +395,8 @@ func (w *Wrapper) getDataPartition(isInit bool, dpId uint64) (err error) {
 }
 
 func (w *Wrapper) clearPartitions() {
-	w.Lock()
-	defer w.Unlock()
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
 	w.partitions = make(map[uint64]*DataPartition)
 }
 
@@ -426,7 +433,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	var (
 		oldstatus int8
 	)
-	w.Lock()
+	w.Lock.Lock()
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {
 		oldstatus = old.Status
@@ -440,7 +447,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		w.partitions[dp.PartitionID] = dp
 	}
 
-	w.Unlock()
+	w.Lock.Unlock()
 
 	if ok && oldstatus != dp.Status {
 		log.LogInfof("partition:dp[%v] address %p status change (%v) -> (%v)", dp.PartitionID, &old, oldstatus, dp.Status)
@@ -449,13 +456,11 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 
 // GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
-	w.RLock()
-	defer w.RUnlock()
-	dp, ok := w.partitions[partitionID]
+	dp, ok := w.tryGetPartition(partitionID)
 	if !ok && !proto.IsCold(w.volType) { // cache miss && hot volume
-		err := w.getDataPartition(false, partitionID)
+		err := w.getDataPartitionFromMaster(false, partitionID)
 		if err == nil {
-			dp, ok = w.partitions[partitionID]
+			dp, ok = w.tryGetPartition(partitionID)
 			if !ok {
 				return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
 			}
