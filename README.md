@@ -35,7 +35,7 @@ Some key features of CubeFS include:
 ## Documents
 
 - English version: https://cubefs.readthedocs.io/en/latest/
-- Chinese version: https://cubefs.readthedocs.io/zh_CN/latest/
+- Chinese version: https://cubefs.io/zh/docs/master/overview/introduction.html
 
 ## Benchmark
 
