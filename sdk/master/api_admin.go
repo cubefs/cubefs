@@ -189,10 +189,11 @@ func (api *AdminAPI) CreateDataPartition(volName string, count int) (err error) 
 	return
 }
 
-func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string, raftForce bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDecommissionDataPartition)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	request.addParam("raftForceDel", strconv.FormatBool(raftForce))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

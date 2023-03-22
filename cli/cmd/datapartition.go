@@ -187,6 +187,7 @@ The "reset" command will be released in next version`,
 }
 
 func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var raftForceDel bool
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionDecommissionShort,
@@ -206,7 +207,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().DecommissionDataPartition(partitionID, address); err != nil {
+			if err = client.AdminAPI().DecommissionDataPartition(partitionID, address, raftForceDel); err != nil {
 				return
 			}
 			stdout("Decommission data partition successfully\n")
@@ -218,6 +219,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().BoolVarP(&raftForceDel, "raftForceDel", "r", false, "true for raftForceDel")
 	return cmd
 }
 

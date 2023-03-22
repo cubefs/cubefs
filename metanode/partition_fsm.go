@@ -393,8 +393,27 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 // HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	exporter.Warning(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
+	if mp.config.NodeId == leader {
+		localIp := mp.manager.metaNode.localAddr
+		if localIp == "" {
+			localIp = "127.0.0.1"
+		}
+
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(localIp, serverPort), time.Second)
+		if err != nil {
+			log.LogErrorf(fmt.Sprintf("HandleLeaderChange serverPort not exsit ,error %v", err))
+			exporter.Warning(fmt.Sprintf("mp [%v] HandleLeaderChange serverPort not exsit ,error %v", mp.config.PartitionId, err))
+			go mp.raftPartition.TryToLeader(mp.config.PartitionId)
+			return
+		}
+		log.LogDebugf("[metaPartition] HandleLeaderChange close conn %v, nodeId: %v, leader: %v", serverPort, mp.config.NodeId, leader)
+		exporter.Warning(fmt.Sprintf("[metaPartition]mp [%v] HandleLeaderChange close conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader))
+		conn.(*net.TCPConn).SetLinger(0)
+		conn.Close()
+	}
 	if mp.config.NodeId != leader {
 		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader)
+		exporter.Warning(fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader))
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
 		}
@@ -404,10 +423,12 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		command: startStoreTick,
 	}
 	log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader)
+	exporter.Warning(fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader))
 	if mp.config.Start == 0 && mp.config.Cursor == 0 {
 		id, err := mp.nextInodeID()
 		if err != nil {
 			log.LogFatalf("[HandleLeaderChange] init root inode id: %s.", err.Error())
+			exporter.Warning(fmt.Sprintf("[HandleLeaderChange] pid %v init root inode id: %s.", mp.config.PartitionId, err.Error()))
 		}
 		ino := NewInode(id, proto.Mode(os.ModePerm|os.ModeDir))
 		go mp.initInode(ino)
