@@ -261,6 +261,8 @@ const (
 	defaultChildFileMaxCount                           = 2000 * 10000 //default 2kw
 	defaultDataNodeFlushFDParallelismOnDisk            = 5
 	defaultAutoCreateDPAfterVolCreateSecond            = 60
+	defaultHeartbeatHandleChanCap                      = 4096
+	defaultHeartbeatHandleGoRoutineCount               = 20
 )
 
 const (

@@ -15,6 +15,7 @@
 package master
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	atomic2 "go.uber.org/atomic"
@@ -84,7 +85,21 @@ type Cluster struct {
 	cnMutex                    sync.RWMutex
 	enMutex                    sync.RWMutex // ec node mutex
 	isLeader                   atomic2.Bool
+	heartbeatHandleChan        chan *HeartbeatTask
 }
+
+type HeartbeatTask struct {
+	addr     string
+	body     []byte
+	nodeType NodeType
+}
+type NodeType uint8
+
+const (
+	NodeTypeDataNode NodeType = iota
+	NodeTypeMetaNode
+)
+
 type (
 	RepairType uint8
 )
@@ -129,10 +144,12 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.EcScrubPeriod = defaultEcScrubPeriod
 	c.MaxCodecConcurrent = defaultMaxCodecConcurrent
 	c.EcStartScrubTime = time.Now().Unix()
+	c.heartbeatHandleChan = make(chan *HeartbeatTask, defaultHeartbeatHandleChanCap)
 	return
 }
 
 func (c *Cluster) scheduleTask() {
+	c.startHeartbeatHandlerWorker()
 	c.scheduleToUpdateClusterViewResponseCache()
 	c.scheduleToCheckDataPartitions()
 	c.scheduleToLoadDataPartitions()
@@ -5570,5 +5587,45 @@ errHandler:
 	err = fmt.Errorf("action[setVolChildFileMaxCount], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
+	return
+}
+
+func (c *Cluster) startHeartbeatHandlerWorker() {
+	for i := 0; i < defaultHeartbeatHandleGoRoutineCount; i++ {
+		go func() {
+			for {
+				select {
+				case task := <-c.heartbeatHandleChan:
+					if task == nil {
+						continue
+					}
+					tr, err := getAdminTaskFromRequestBody(task.body)
+					if err != nil {
+						log.LogError(fmt.Sprintf("action[startHeartbeatHandlerWorker] nodeType:%v addr:%v err:%v", task.nodeType, task.addr, err))
+						continue
+					}
+					if tr == nil {
+						log.LogError(fmt.Sprintf("action[startHeartbeatHandlerWorker] nodeType:%v addr:%v admin task is nil", task.nodeType, task.addr))
+						continue
+					}
+					switch task.nodeType {
+					case NodeTypeDataNode:
+						c.handleDataNodeTaskResponse(tr.OperatorAddr, tr)
+					case NodeTypeMetaNode:
+						c.handleMetaNodeTaskResponse(tr.OperatorAddr, tr)
+					default:
+						log.LogError(fmt.Sprintf("action[startHeartbeatHandlerWorker] unknown task nodeType:%v", task.nodeType))
+					}
+				}
+			}
+		}()
+	}
+}
+
+func getAdminTaskFromRequestBody(body []byte) (tr *proto.AdminTask, err error) {
+	tr = &proto.AdminTask{}
+	decoder := json.NewDecoder(bytes.NewBuffer(body))
+	decoder.UseNumber()
+	err = decoder.Decode(tr)
 	return
 }

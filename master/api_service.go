@@ -2584,7 +2584,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 
 // handle tasks such as heartbeat，loadDataPartition，deleteDataPartition, etc.
 func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
-	tr, err := parseRequestToGetTaskResponse(r)
+	body, err := readBodyFromRequest(r)
 	metrics := exporter.NewTPCnt(proto.GetDataNodeTaskResponseUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err != nil {
@@ -2592,7 +2592,21 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
-	m.cluster.handleDataNodeTaskResponse(tr.OperatorAddr, tr)
+	task := &HeartbeatTask{
+		addr:     r.RemoteAddr,
+		body:     body,
+		nodeType: NodeTypeDataNode,
+	}
+	m.cluster.heartbeatHandleChan <- task
+}
+func readBodyFromRequest(r *http.Request) (body []byte, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		return
+	}
+	return
 }
 
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
@@ -2961,7 +2975,7 @@ func (m *Server) resetCorruptMetaNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
-	tr, err := parseRequestToGetTaskResponse(r)
+	body, err := readBodyFromRequest(r)
 	metrics := exporter.NewTPCnt(proto.GetMetaNodeTaskResponseUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err != nil {
@@ -2969,7 +2983,12 @@ func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
-	m.cluster.handleMetaNodeTaskResponse(tr.OperatorAddr, tr)
+	task := &HeartbeatTask{
+		addr:     r.RemoteAddr,
+		body:     body,
+		nodeType: NodeTypeMetaNode,
+	}
+	m.cluster.heartbeatHandleChan <- task
 }
 
 // Dynamically add a raft node (replica) for the master.
