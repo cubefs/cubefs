@@ -578,8 +578,14 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 		return
 	}
 
-	// create new metaPartition, no need to load snapshot
+	// 1. create new metaPartition, no need to load snapshot
+	// 2. store the snapshot files for new mp, because
+	// mp.load() will check all the snapshot files when mn startup
 	if isCreate {
+		if err = mp.storeSnapshotFiles(); err != nil {
+			err = errors.NewErrorf("[onStart] storeSnapshotFiles for partition id=%d: %s",
+				mp.config.PartitionId, err.Error())
+		}
 		return
 	}
 
@@ -940,4 +946,16 @@ func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
 		}
 		return true
 	})
+}
+
+func (mp *metaPartition) storeSnapshotFiles() (err error) {
+	msg := &storeMsg{
+		applyIndex:    mp.applyID,
+		inodeTree:     NewBtree(),
+		dentryTree:    NewBtree(),
+		extendTree:    NewBtree(),
+		multipartTree: NewBtree(),
+	}
+
+	return mp.store(msg)
 }
