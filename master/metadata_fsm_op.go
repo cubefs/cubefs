@@ -947,6 +947,9 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		c.updateDataNodeAutoRepairLimit(cv.DataNodeAutoRepairLimitRate)
 		c.updateMaxDpCntLimit(cv.MaxDpCntLimit)
+		if cv.MetaPartitionInodeIdStep == 0 {
+			cv.MetaPartitionInodeIdStep = defaultMetaPartitionInodeIDStep
+		}
 		c.updateInodeIdStep(cv.MetaPartitionInodeIdStep)
 
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
