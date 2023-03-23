@@ -313,13 +313,13 @@ type updateVolReq struct {
 	followRead     bool
 	authenticate   bool
 	enablePosixAcl bool
-	//enableTransaction     bool
 	enableTransaction     uint8
 	txTimeout             uint32
 	zoneName              string
 	description           string
 	dpSelectorName        string
 	dpSelectorParm        string
+	replicaNum            int
 	coldArgs              *coldVolArgs
 	dpReadOnlyWhenVolFull bool
 }
@@ -426,7 +426,7 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
-	if req.followRead, err = extractBoolWithDefault(r, followerReadKey, vol.FollowerRead); err != nil {
+	if req.followerRead, err = extractBoolWithDefault(r, followerReadKey, vol.FollowerRead); err != nil {
 		return
 	}
 
@@ -445,34 +445,9 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		req.dpSelectorName = vol.dpSelectorName
 		req.dpSelectorParm = vol.dpSelectorParm
 	}
-	var replicaNum int
-	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
-		if replicaNum, err = strconv.Atoi(replicaNumStr); err != nil {
-			err = unmatchedKey(replicaNumKey)
-			return
-		}
-	} else {
-		replicaNum = int(vol.dpReplicaNum)
-	}
-
-	if replicaNum != 0 && replicaNum != int(vol.dpReplicaNum) {
-		if replicaNum != int(vol.dpReplicaNum)-1 {
-			err = fmt.Errorf("replicaNum only need be reduced one replica one time")
-			return
-		}
-		if !proto.IsHot(vol.VolType) {
-			err = fmt.Errorf("vol type(%v) replicaNum cann't be changed", vol.VolType)
-			return
-		}
-		if ok, dpArry := vol.isOkUpdateRepCnt(); !ok {
-			err = fmt.Errorf("vol have dataPartitions[%v] with inconsistent dataPartitions cnt to volume's ", dpArry)
-			return
-		}
-		vol.dpReplicaNum = uint8(replicaNum)
-	}
 
 	if proto.IsCold(vol.VolType) {
-		req.followRead = true
+		req.followerRead = true
 		req.coldArgs, err = parseColdVolUpdateArgs(r, vol)
 		if err != nil {
 			return
