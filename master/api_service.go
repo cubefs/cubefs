@@ -1634,13 +1634,48 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) checkReplicaNum(r *http.Request, vol *Vol,  req *updateVolReq) (err error) {
+	var (
+		replicaNum int
+	)
+
+	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
+		if replicaNum, err = strconv.Atoi(replicaNumStr); err != nil {
+			err = unmatchedKey(replicaNumKey)
+			return
+		}
+	} else {
+		replicaNum = int(vol.dpReplicaNum)
+	}
+	req.replicaNum = replicaNum
+	if replicaNum != 0 && replicaNum != int(vol.dpReplicaNum) {
+		if replicaNum != int(vol.dpReplicaNum)-1 {
+			err = fmt.Errorf("replicaNum only need be reduced one replica one time")
+			return
+		}
+		if !proto.IsHot(vol.VolType) {
+			err = fmt.Errorf("vol type(%v) replicaNum cann't be changed", vol.VolType)
+			return
+		}
+		if ok, dpArry := vol.isOkUpdateRepCnt(); !ok {
+			err = fmt.Errorf("vol have dataPartitions[%v] with inconsistent dataPartitions cnt to volume's ", dpArry)
+			return
+		}
+	}
+
+	if req.replicaNum == 0 ||
+		((req.replicaNum == 1 || req.replicaNum == 2) && !req.followerRead) {
+		err = fmt.Errorf("replica or follower read status error")
+		return
+	}
+	return
+}
+
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		req          = &updateVolReq{}
 		vol          *Vol
 		err          error
-		replicaNum   int
-		followerRead bool
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateVol))
 	defer func() {
@@ -1661,16 +1696,12 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	if vol.dpReplicaNum == 1 && !req.followRead {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "single replica must enable follower read"})
-	}
-	if followerRead, req.authenticate, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+	if req.followerRead, req.authenticate, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		return
 	}
-	if (replicaNum == 1 || replicaNum == 2) && !followerRead {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "single or two replica must enable follower read"})
+
+	if err = m.checkReplicaNum(r, vol, req); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
@@ -1679,7 +1710,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.zoneName = req.zoneName
 	newArgs.description = req.description
 	newArgs.capacity = req.capacity
-	newArgs.followerRead = req.followRead
+	newArgs.followerRead = req.followerRead
 	newArgs.authenticate = req.authenticate
 	newArgs.dpSelectorName = req.dpSelectorName
 	newArgs.dpSelectorParm = req.dpSelectorParm
@@ -1690,10 +1721,10 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		newArgs.coldArgs = req.coldArgs
 	}
 
-	newArgs.dpReplicaNum = uint8(replicaNum)
+	newArgs.dpReplicaNum = uint8(req.replicaNum)
 	newArgs.dpReadOnlyWhenVolFull = req.dpReadOnlyWhenVolFull
 
-	log.LogInfof("[updateVolOut] name [%s], z1 [%s], z2[%s]", req.name, req.zoneName, vol.Name)
+	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v]", req.name, req.zoneName, vol.Name, req.replicaNum)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
