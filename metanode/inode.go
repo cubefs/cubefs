@@ -543,6 +543,9 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 }
 
 func (i *Inode) GetSpaceSize() (extSize uint64) {
+	if i.IsTempFile() {
+		return
+	}
 	extSize += i.Extents.LayerSize()
 	return
 }

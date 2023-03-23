@@ -119,6 +119,9 @@ func (uMgr *UidSpaceManager) getSpaceOp() (rsp []*proto.UidSpaceInfo) {
 }
 
 func (uMgr *UidSpaceManager) volUidUpdate(report *proto.MetaPartitionReport) {
+	if !report.IsLeader {
+		return
+	}
 	uMgr.Lock()
 	defer uMgr.Unlock()
 	id := report.PartitionID

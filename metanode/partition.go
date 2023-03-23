@@ -292,6 +292,7 @@ func (uMgr *UidManager) addUidSpace(uid uint32, inode uint64, eks []proto.Extent
 		if val, ok := uMgr.accumRebuildDelta.Load(uid); ok {
 			size += val.(int64)
 		}
+		log.LogDebugf("addUidSpace. mp[%v] rbuilding uid %v accumDelta Store size %v", uMgr.mpID, uid, size)
 		uMgr.accumRebuildDelta.Store(uid, size)
 	}
 	return
@@ -306,6 +307,7 @@ func (uMgr *UidManager) doMinusUidSpace(uid uint32, inode uint64, size uint64) {
 		var rsvSize int64
 		if val, ok := delta.Load(uid); ok {
 			delta.Store(uid, val.(int64)-int64(size))
+			log.LogDebugf("doMinusUidSpace. mp[%v] uid %v accumDelta now size %v", uMgr.mpID, uid, rsvSize)
 		} else {
 			rsvSize -= int64(size)
 			log.LogDebugf("doMinusUidSpace. mp[%v] uid %v accumDelta now size %v", uMgr.mpID, uid, rsvSize)
@@ -314,6 +316,7 @@ func (uMgr *UidManager) doMinusUidSpace(uid uint32, inode uint64, size uint64) {
 	}
 	doWork(uMgr.accumDelta)
 	if uMgr.rbuilding {
+		log.LogDebugf("doMinusUidSpace.mp[%v] rbuilding inode %v uid %v size %v", uMgr.mpID, inode, uid, size)
 		doWork(uMgr.accumRebuildDelta)
 	}
 }
@@ -394,13 +397,16 @@ func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
 }
 
 func (uMgr *UidManager) accumRebuildStart() {
+	uMgr.acLock.Lock()
+	defer uMgr.acLock.Unlock()
+	log.LogDebugf("accumRebuildStart vol [%v] mp[%v]", uMgr.volName, uMgr.mpID)
 	uMgr.rbuilding = true
 }
 
 func (uMgr *UidManager) accumRebuildFin() {
 	uMgr.acLock.Lock()
 	defer uMgr.acLock.Unlock()
-	log.LogDebugf("accumRebuildFin rebuild %v:%v", uMgr.accumRebuildBase, uMgr.accumRebuildDelta)
+	log.LogDebugf("accumRebuildFin rebuild vol %v, mp:[%v],%v:%v", uMgr.volName, uMgr.mpID, uMgr.accumRebuildBase, uMgr.accumRebuildDelta)
 	uMgr.accumBase = uMgr.accumRebuildBase
 	uMgr.accumDelta = uMgr.accumRebuildDelta
 	uMgr.accumRebuildBase = new(sync.Map)
@@ -413,7 +419,7 @@ func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum *sync.Map) {
 	if val, ok := accum.Load(ino.Uid); ok {
 		size += uint64(val.(int64))
 	}
-
+	log.LogDebugf("accumInoUidSize mp:[%v] now size %v", uMgr.mpID, size)
 	accum.Store(ino.Uid, int64(size))
 }
 
@@ -458,6 +464,7 @@ func (mp *metaPartition) acucumRebuildFin() {
 	mp.uidManager.accumRebuildFin()
 }
 func (mp *metaPartition) acucumUidSizeByStore(ino *Inode) {
+	log.LogDebugf("action[acucumUidSizeByStore] mp[%v] ino %v", mp.config.PartitionId, ino.Inode)
 	mp.uidManager.accumInoUidSize(ino, mp.uidManager.accumRebuildBase)
 }
 

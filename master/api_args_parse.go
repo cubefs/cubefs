@@ -306,12 +306,12 @@ func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, er
 }
 
 type updateVolReq struct {
-	name           string
-	authKey        string
-	capacity       uint64
-	followRead     bool
-	authenticate   bool
-	enablePosixAcl bool
+	name                  string
+	authKey               string
+	capacity              uint64
+	followerRead          bool
+	authenticate          bool
+	enablePosixAcl        bool
 	enableTransaction     uint8
 	txTimeout             uint32
 	zoneName              string

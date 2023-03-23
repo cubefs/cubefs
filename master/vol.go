@@ -1232,7 +1232,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		dpSelectorName: vol.dpSelectorName,
 		dpSelectorParm: vol.dpSelectorParm,
 		enablePosixAcl: vol.enablePosixAcl,
-		dpReplicaNum: vol.dpReplicaNum,
+		dpReplicaNum:   vol.dpReplicaNum,
 
 		coldArgs:              args,
 		dpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
