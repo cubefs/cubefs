@@ -48,14 +48,20 @@ access的配置是基于[公有配置](./base.md)，以下配置说明主要针�
 
 ### service_register示例
 
+::: tip 提示
+v3.2.1版本开始支持`health_port`
+:::
+
 * consul_addr，access 服务注册的consul地址
 * service_ip，access 服务bind ip
 * node，主机名
+* health_port，consul的健康检查端口范围
 ```json
 {
     "consul_addr": "127.0.0.1:8500",
     "service_ip": "127.0.0.1",
-    "node": "access-node1"
+    "node": "access-node1",
+    "health_port": [9700, 9799]
 }
 ```
 
@@ -113,7 +119,8 @@ access的配置是基于[公有配置](./base.md)，以下配置说明主要针�
     "service_register": {
         "consul_addr": "127.0.0.1:8500",
         "service_ip": "127.0.0.1",
-        "node": "access-node1"
+        "node": "access-node1",
+        "health_port": [9700, 9799]
     },
     "limit": {
         "name_rps": {
