@@ -414,6 +414,7 @@ func (vol *Vol) isOkUpdateRepCnt() (ok bool, rsp []uint64) {
 		if vol.dpReplicaNum != dp.ReplicaNum {
 			rsp = append(rsp, dp.PartitionID)
 			ok = false
+			// output dps detail info
 			if len(rsp) > 20 {
 				return
 			}
@@ -1187,6 +1188,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.DpReadOnlyWhenVolFull = args.dpReadOnlyWhenVolFull
 	vol.enableTransaction = args.enableTransaction
 	vol.txTimeout = args.txTimeout
+	vol.dpReplicaNum = args.dpReplicaNum
 
 	if proto.IsCold(vol.VolType) {
 		coldArgs := args.coldArgs
@@ -1230,6 +1232,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		dpSelectorName: vol.dpSelectorName,
 		dpSelectorParm: vol.dpSelectorParm,
 		enablePosixAcl: vol.enablePosixAcl,
+		dpReplicaNum: vol.dpReplicaNum,
 
 		coldArgs:              args,
 		dpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
