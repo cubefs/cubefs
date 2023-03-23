@@ -226,7 +226,7 @@ func (w *Wrapper) update() {
 		select {
 		case <-ticker.C:
 			w.UpdateSimpleVolView()
-			w.updateDataPartition(false)
+			w.updateDataPartition(true)
 			w.updateDataNodeStatus()
 			w.CheckPermission()
 		case <-w.stopC:
@@ -336,6 +336,8 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 
 	// isInit used to identify whether this call is caused by mount action
 	if isInit || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1)) {
+		log.LogDebugf("action[updateDataPartitionByRsp] refreshDpSelector, rwPartitionGroups len: %v",
+			len(rwPartitionGroups))
 		w.refreshDpSelector(rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
