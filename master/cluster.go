@@ -197,6 +197,9 @@ func (c *Cluster) scheduleToCheckAutoDataPartitionCreation() {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				vols := c.copyVols()
 				for _, vol := range vols {
+					if !c.isLeader.Load() {
+						break
+					}
 					vol.checkAutoDataPartitionCreation(c)
 				}
 			}
@@ -223,6 +226,9 @@ func (c *Cluster) scheduleToCheckVolStatus() {
 			if c.partition.IsRaftLeader() {
 				vols := c.copyVols()
 				for _, vol := range vols {
+					if !c.isLeader.Load() {
+						break
+					}
 					vol.checkStatus(c)
 				}
 			}
@@ -244,6 +250,9 @@ func (c *Cluster) checkDataPartitions() {
 	allBadDisks := make([]map[string][]string, 0)
 	vols := c.allVols()
 	for _, vol := range vols {
+		if !c.isLeader.Load() {
+			break
+		}
 		readWrites, dataNodeBadDisksOfVol := vol.checkDataPartitions(c)
 		allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)

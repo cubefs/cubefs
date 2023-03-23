@@ -45,6 +45,7 @@ func (m *Server) doLeaderChange(leader uint64) {
 		return
 	}
 	m.metaReady.Store(false)
+	m.cluster.isLeader.Store(false)
 	m.leaderVersion.Add(1)
 	oldLeaderAddr := m.leaderInfo.addr
 	m.leaderInfo.addr = AddrDatabase[leader]
@@ -72,7 +73,6 @@ func (m *Server) doLeaderChange(leader uint64) {
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
-		m.cluster.isLeader.Store(false)
 		m.clearMetadata()
 		m.cluster.resetMetaLoadedTime()
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] follower[%v] clear metadata has finished.",
