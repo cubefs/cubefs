@@ -1634,7 +1634,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-func (m *Server) checkReplicaNum(r *http.Request, vol *Vol,  req *updateVolReq) (err error) {
+func (m *Server) checkReplicaNum(r *http.Request, vol *Vol, req *updateVolReq) (err error) {
 	var (
 		replicaNum int
 	)
@@ -1673,9 +1673,9 @@ func (m *Server) checkReplicaNum(r *http.Request, vol *Vol,  req *updateVolReq) 
 
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		req          = &updateVolReq{}
-		vol          *Vol
-		err          error
+		req = &updateVolReq{}
+		vol *Vol
+		err error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateVol))
 	defer func() {
