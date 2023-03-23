@@ -12,6 +12,25 @@
   }
 }
 ```
+
+#### 默认transport配置
+
+::: tip 提示
+v3.2.1版本开始支持该项默认配置
+:::
+
+只有在`transport_config`所有项均为默认值时，才启用下列默认配置
+
+```json
+{
+  "max_conns_per_host": 10,
+  "max_idle_conns": 1000,
+  "max_idle_conns_per_host": 10,
+  "idle_conn_timeout_ms": 10000
+}
+
+```
+
 ### 多点配置LbClient
 
 Lb版本主要实现多节点的负载均衡、失败节点剔除与复用。其配置以单点配置为基础，额外增添以下配置项

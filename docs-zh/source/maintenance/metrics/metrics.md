@@ -180,17 +180,18 @@ service_response_duration_ms_bucket{api="clustermgr.config.get",code="200",host=
 
 **blobstore_access_cache_hit_rate**
 
-缓存命中率，status包含三类：hit（命中）、miss（未命中）、expired（未命中可能有很多原因，其中之一是过期了）
+缓存命中率，status包含四类：none（命中的值为nil）、hit（命中）、miss（未命中）、expired（过期）
 
 | 标签      | 说明                                |
 |---------|-----------------------------------|
 | cluster | 集群id                              |
-| service | 监控组件，比如clustermgr，mencache，redis等 |
+| service | 监控组件，比如memcache，proxy等 |
 | status  | 状态，none、hit、miss、expired          |
 
 ```bash
 # TYPE blobstore_access_cache_hit_rate counter
-blobstore_access_cache_hit_rate{cluster="100",service="clustermgr",status="hit"} 2.4991594e+07
+blobstore_access_cache_hit_rate{cluster="100",service="memcache",status="hit"} 3.4829103e+13
+blobstore_access_cache_hit_rate{cluster="100",service="proxy",status="hit"} 2.4991594e+07
 ```
 
 **blobstore_access_unhealth**
@@ -217,10 +218,11 @@ blobstore_access_unhealth{action="punish",cluster="100",host="xxx",module="diskw
 | 标签      | 说明                        |
 |---------|---------------------------|
 | cluster | 集群id                      |
-| way     | 下载方式，ec读或者直接读（直接读失败会走ec读） |
+| way     | 下载方式，EC读或者直接读(Direct) |
 
 ```bash
 # TYPE blobstore_access_download counter
+blobstore_access_download{cluster="100",way="Direct"} 37
 blobstore_access_download{cluster="100",way="EC"} 3016
 ```
 
