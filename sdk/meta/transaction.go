@@ -108,8 +108,8 @@ func (tx *Transaction) OnStart() (status int, err error) {
 }
 
 func (tx *Transaction) OnExecuted(status int, respTxInfo *proto.TransactionInfo) {
-	tx.RLock()
-	defer tx.RUnlock()
+	tx.Lock()
+	defer tx.Unlock()
 	tx.status = status
 	if tx.status == statusOK {
 		if !tx.Started {

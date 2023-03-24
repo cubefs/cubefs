@@ -97,34 +97,34 @@ func (info *TxInodeInfo) String() string {
 func (info *TxInodeInfo) Marshal() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	if err = binary.Write(buff, binary.BigEndian, &info.Ino); err != nil {
-		panic(err)
+		return nil, err
 	}
 	if err = binary.Write(buff, binary.BigEndian, &info.MpID); err != nil {
-		panic(err)
+		return nil, err
 	}
 	if err = binary.Write(buff, binary.BigEndian, &info.CreateTime); err != nil {
-		panic(err)
+		return nil, err
 	}
 	if err = binary.Write(buff, binary.BigEndian, &info.Timeout); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	id := []byte(info.TxID)
 	idSize := uint32(len(id))
 	if err = binary.Write(buff, binary.BigEndian, &idSize); err != nil {
-		panic(err)
+		return nil, err
 	}
 	if _, err = buff.Write(id); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	addr := []byte(info.MpMembers)
 	addrSize := uint32(len(addr))
 	if err = binary.Write(buff, binary.BigEndian, &addrSize); err != nil {
-		panic(err)
+		return nil, err
 	}
 	if _, err = buff.Write(addr); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	result = buff.Bytes()
@@ -436,31 +436,31 @@ func (txInfo *TransactionInfo) Marshal() (result []byte, err error) {
 	id := []byte(txInfo.TxID)
 	idSize := uint32(len(id))
 	if err = binary.Write(buff, binary.BigEndian, &idSize); err != nil {
-		panic(err)
+		return nil, err
 	}
 	if _, err = buff.Write(id); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if err = binary.Write(buff, binary.BigEndian, &txInfo.TxType); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if err = binary.Write(buff, binary.BigEndian, &txInfo.TmID); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if err = binary.Write(buff, binary.BigEndian, &txInfo.CreateTime); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if err = binary.Write(buff, binary.BigEndian, &txInfo.Timeout); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	inodeNum := uint32(len(txInfo.TxInodeInfos))
 	if err = binary.Write(buff, binary.BigEndian, &inodeNum); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	for _, txInodeInfo := range txInfo.TxInodeInfos {
