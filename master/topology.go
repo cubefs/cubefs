@@ -1057,6 +1057,14 @@ func (ns *nodeSet) getDecommissionParallelStatus() (int32, int32) {
 	return ns.decommissionDataPartitionList.getDecommissionParallelStatus()
 }
 
+func (ns *nodeSet) AcquireDecommissionToken() bool {
+	return ns.decommissionDataPartitionList.acquireDecommissionToken()
+}
+
+func (ns *nodeSet) ReleaseDecommissionToken() {
+	ns.decommissionDataPartitionList.releaseDecommissionToken()
+}
+
 func (t *topology) isSingleZone() bool {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
@@ -1968,7 +1976,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success\n",
 						dp.PartitionID)
 					l.Remove(dp)
-					l.releaseDecommissionToken()
+					dp.ReleaseDecommissionToken(c)
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionFailed() {
@@ -1978,7 +1986,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 						l.Remove(dp)
 					}
 					//rollback fail/success need release token
-					l.releaseDecommissionToken()
+					dp.ReleaseDecommissionToken(c)
 				} else if dp.IsDecommissionStopped() {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop \n",
 						dp.PartitionID)
@@ -1988,12 +1996,12 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					l.Remove(dp)
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
-				} else if dp.IsMarkDecommission() && l.acquireDecommissionToken() {
+				} else if dp.IsMarkDecommission() && dp.TryAcquireDecommissionToken(c) {
 					go func(dp *DataPartition) {
 						if !dp.TryToDecommission(c) {
 							//retry should release token
 							if dp.IsMarkDecommission() {
-								l.releaseDecommissionToken()
+								dp.ReleaseDecommissionToken(c)
 							}
 						}
 					}(dp) // special replica cnt cost some time from prepare to running
