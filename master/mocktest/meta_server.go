@@ -152,6 +152,19 @@ func (mms *MockMetaServer) handleRemoveMetaPartitionRaftMember(conn net.Conn, p 
 
 func (mms *MockMetaServer) handleTryToLeader(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
 	responseAckOKToMaster(conn, p, nil)
+	mms.Lock()
+	mp := mms.partitions[adminTask.PartitionID]
+	for i := range mp.Replicas {
+		if mp.Replicas[i].IsLeader {
+			mp.Replicas[i].IsLeader = false
+		}
+		if mp.Replicas[i].Addr == adminTask.OperatorAddr {
+			mp.Replicas[i].IsLeader = true
+		}
+	}
+
+	mms.Unlock()
+
 	return
 }
 
@@ -174,6 +187,16 @@ func (mms *MockMetaServer) handleCreateMetaPartition(conn net.Conn, p *proto.Pac
 		return
 	}
 	// Create new  metaPartition.
+	replicas := make([]*MockMetaReplica, 0)
+	for i, member := range req.Members {
+		re := &MockMetaReplica{Addr: member.Addr, IsLeader: false}
+		// only set only leader,choose the first member as leader mp
+		if i == 0 {
+			re.IsLeader = true
+		}
+		replicas = append(replicas, re)
+	}
+
 	partition := &MockMetaPartition{
 		PartitionID: req.PartitionID,
 		VolName:     req.VolName,
@@ -181,6 +204,7 @@ func (mms *MockMetaServer) handleCreateMetaPartition(conn net.Conn, p *proto.Pac
 		End:         req.End,
 		Cursor:      req.Start,
 		Members:     req.Members,
+		Replicas:    replicas,
 	}
 	mms.Lock()
 	mms.partitions[req.PartitionID] = partition
@@ -220,9 +244,9 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 			Status:      proto.ReadWrite,
 			MaxInodeID:  1,
 			VolName:     partition.VolName,
+			IsLeader:    partition.isLeaderMetaNode(mms.TcpAddr),
 		}
 		mpr.Status = proto.ReadWrite
-		mpr.IsLeader = true
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 	}
 	mms.RUnlock()

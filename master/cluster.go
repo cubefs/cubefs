@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2990,6 +2991,100 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 		return true
 	})
 	return
+}
+
+// get metaNode with specified condition
+func (c *Cluster) getSpecifiedMetaNodes(zones map[string]struct{}, nodeSetIds map[uint64]struct{}) (metaNodes []*MetaNode) {
+	log.LogInfof("cluster metaNode length:%v", c.allMetaNodes())
+	// if nodeSetId is set,choose metaNode which in nodesetId and ignore zones
+	if len(nodeSetIds) != 0 {
+		log.LogInfof("select from nodeSet")
+		c.metaNodes.Range(func(addr, node interface{}) bool {
+			metaNode := node.(*MetaNode)
+			if _, ok := nodeSetIds[metaNode.NodeSetID]; ok {
+				metaNodes = append(metaNodes, metaNode)
+			}
+			return true
+		})
+		return
+	}
+
+	// if zones is set, choose metaNodes which in zones
+	if len(zones) != 0 {
+		log.LogInfof("select from zone")
+		c.metaNodes.Range(func(addr, node interface{}) bool {
+			metaNode := node.(*MetaNode)
+			if _, ok := zones[metaNode.ZoneName]; ok {
+				metaNodes = append(metaNodes, metaNode)
+			}
+			return true
+		})
+		return
+	}
+
+	log.LogInfof("select all cluster metaNode")
+	// get all metaNodes in cluster
+	c.metaNodes.Range(func(addr, node interface{}) bool {
+		metaNode := node.(*MetaNode)
+		metaNodes = append(metaNodes, metaNode)
+		return true
+	})
+
+	return
+}
+
+func (c *Cluster) balanceMetaPartitionLeader(zones map[string]struct{}, nodeSetIds map[uint64]struct{}) error {
+	sortedNodes := c.getSortLeaderMetaNodes(zones, nodeSetIds)
+	if sortedNodes == nil || len(sortedNodes.nodes) == 0 {
+		return errors.New("no metaNode be selected")
+	}
+
+	sortedNodes.balanceLeader()
+
+	return nil
+}
+
+func (c *Cluster) getSortLeaderMetaNodes(zones map[string]struct{}, nodeSetIds map[uint64]struct{}) *sortLeaderMetaNode {
+	metaNodes := c.getSpecifiedMetaNodes(zones, nodeSetIds)
+	log.LogInfof("metaNode length:%d", len(metaNodes))
+	if len(metaNodes) == 0 {
+		return nil
+	}
+
+	leaderNodes := make([]*LeaderMetaNode, 0)
+	countM := make(map[string]int)
+	totalCount := 0
+	average := 0
+	for _, node := range metaNodes {
+		metaPartitions := make([]*MetaPartition, 0)
+		for _, mp := range node.metaPartitionInfos {
+			if mp.IsLeader {
+				metaPartition, err := c.getMetaPartitionByID(mp.PartitionID)
+				if err != nil {
+					continue
+				}
+				metaPartitions = append(metaPartitions, metaPartition)
+			}
+		}
+
+		// some metaNode's mps length could be 0
+		leaderNodes = append(leaderNodes, &LeaderMetaNode{
+			metaPartitions: metaPartitions,
+			addr:           node.Addr,
+		})
+		countM[node.Addr] = len(metaPartitions)
+		totalCount += len(metaPartitions)
+	}
+	if len(leaderNodes) != 0 {
+		average = totalCount / len(leaderNodes)
+	}
+	s := &sortLeaderMetaNode{
+		nodes:        leaderNodes,
+		leaderCountM: countM,
+		average:      average,
+	}
+	sort.Sort(s)
+	return s
 }
 
 func (c *Cluster) allVolNames() (vols []string) {

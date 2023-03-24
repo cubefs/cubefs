@@ -1446,6 +1446,56 @@ func (m *Server) changeMetaPartitionLeader(w http.ResponseWriter, r *http.Reques
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+// balance the leader meta partition in metaNodes which can select all cluster some zones or noteSet
+func (m *Server) balanceMetaPartitionLeader(w http.ResponseWriter, r *http.Request) {
+	var (
+		zonesKey     string
+		nodesetIdKey string
+		err          error
+	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat(proto.AdminBalanceMetaPartitionLeader, err, bgTime, 1)
+	}()
+	if zonesKey, nodesetIdKey, err = parseRequestToBalanceMetaPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		log.LogErrorf("balanceMetaPartitionLeader.err %v", err)
+		return
+	}
+	log.LogInfof("zone:%v,nodesetId:%v", zonesKey, nodesetIdKey)
+
+	zonesM := make(map[string]struct{})
+	if zonesKey != "" {
+		zones := strings.Split(zonesKey, commaSplit)
+		for _, zone := range zones {
+			zonesM[zone] = struct{}{}
+		}
+	}
+
+	nodesetIdM := make(map[uint64]struct{})
+	if nodesetIdKey != "" {
+		nodesetIds := strings.Split(nodesetIdKey, commaSplit)
+		for _, nodeSetId := range nodesetIds {
+			id, err := strconv.ParseUint(nodeSetId, 10, 64)
+			if err != nil {
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				log.LogErrorf("balanceMetaPartitionLeader.err %v", err)
+				return
+			}
+			nodesetIdM[id] = struct{}{}
+		}
+	}
+	log.LogInfof("balanceMetaPartitionLeader zones[%v] length[%d], nodesetIds[%v] length[%d]", zonesKey, len(zonesM), nodesetIdKey, len(nodesetIdM))
+	err = m.cluster.balanceMetaPartitionLeader(zonesM, nodesetIdM)
+	if err != nil {
+		log.LogErrorf("balanceMetaPartitionLeader.err %v", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	rstMsg := fmt.Sprintf("balanceMetaPartitionLeader command sucess")
+	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
 // Decommission a data partition. This usually happens when disk error has been reported.
 // This function needs to be called manually by the admin.
 func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Request) {

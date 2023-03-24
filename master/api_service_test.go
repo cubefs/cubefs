@@ -44,6 +44,7 @@ const (
 	mds3Addr          = "127.0.0.1:9103"
 	mds4Addr          = "127.0.0.1:9104"
 	mds5Addr          = "127.0.0.1:9105"
+	mds6Addr          = "127.0.0.1:9106"
 
 	mms1Addr      = "127.0.0.1:8101"
 	mms2Addr      = "127.0.0.1:8102"
@@ -94,16 +95,19 @@ func createDefaultMasterServerForTest() *Server {
 	addDataServer(mds3Addr, testZone2)
 	addDataServer(mds4Addr, testZone2)
 	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+
 	// add meta node
 	addMetaServer(mms1Addr, testZone1)
 	addMetaServer(mms2Addr, testZone1)
 	addMetaServer(mms3Addr, testZone2)
 	addMetaServer(mms4Addr, testZone2)
 	addMetaServer(mms5Addr, testZone2)
-	time.Sleep(5 * time.Second)
+	addMetaServer(mms6Addr, testZone2)
+	time.Sleep(1 * time.Second)
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
-	time.Sleep(5 * time.Second)
+	time.Sleep(1 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	// set load factor
 	err = testServer.cluster.setClusterLoadFactor(100)

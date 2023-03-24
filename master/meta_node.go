@@ -21,6 +21,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // MetaNode defines the structure of a meta node
@@ -171,4 +172,79 @@ func (metaNode *MetaNode) setQuotaTask(req *proto.BatchSetMetaserverQuotaReuqest
 func (metaNode *MetaNode) deleteQuotaTask(req *proto.BatchDeleteMetaserverQuotaReuqest) (task *proto.AdminTask) {
 	task = proto.NewAdminTask(proto.OpMasterDeleteInodeQuota, metaNode.Addr, req)
 	return
+}
+
+// LeaderMetaNode define the leader metaPartitions in meta node
+type LeaderMetaNode struct {
+	addr           string
+	metaPartitions []*MetaPartition
+}
+
+type sortLeaderMetaNode struct {
+	nodes        []*LeaderMetaNode
+	leaderCountM map[string]int
+	average      int
+	mu           sync.RWMutex
+}
+
+func (s *sortLeaderMetaNode) Less(i, j int) bool {
+	return len(s.nodes[i].metaPartitions) > len(s.nodes[j].metaPartitions)
+}
+func (s *sortLeaderMetaNode) Swap(i, j int) {
+	s.nodes[i], s.nodes[j] = s.nodes[j], s.nodes[i]
+}
+func (s *sortLeaderMetaNode) Len() int {
+	return len(s.nodes)
+}
+
+func (s *sortLeaderMetaNode) getLeaderCount(addr string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.leaderCountM[addr]
+}
+
+func (s *sortLeaderMetaNode) changeLeader(l *LeaderMetaNode) {
+	for _, mp := range l.metaPartitions {
+		if count := s.getLeaderCount(l.addr); count < s.average {
+			continue
+		}
+
+		// mp's leader not in this metaNode, skip it
+		oldLeader, err := mp.getMetaReplicaLeader()
+		if err != nil {
+			log.LogErrorf("mp[%v] no leader, can not change leader err[%v]", mp, err)
+			continue
+		}
+
+		// get the smallest leader metaPartition count meta node addr as new leader
+		addr := oldLeader.Addr
+		s.mu.RLock()
+		for i := 0; i < len(mp.Replicas); i++ {
+			if s.leaderCountM[mp.Replicas[i].Addr] < s.leaderCountM[oldLeader.Addr] {
+				addr = mp.Replicas[i].Addr
+			}
+		}
+		s.mu.RUnlock()
+		if addr == oldLeader.Addr {
+			continue
+		}
+
+		// one mp change leader failed not influence others
+		if err = mp.tryToChangeLeaderByHost(addr); err != nil {
+			log.LogErrorf("mp[%v] change to addr[%v] err[%v]", mp, addr, err)
+			continue
+		}
+		s.mu.Lock()
+		s.leaderCountM[addr]++
+		s.leaderCountM[oldLeader.Addr]--
+		s.mu.Unlock()
+		log.LogDebugf("mp[%v] oldLeader[%v,nowCount:%d] change to newLeader[%v,nowCount:%d] success", mp.PartitionID, oldLeader.Addr, s.leaderCountM[oldLeader.Addr], addr, s.leaderCountM[addr])
+	}
+}
+
+func (s *sortLeaderMetaNode) balanceLeader() {
+	for _, node := range s.nodes {
+		log.LogDebugf("node[%v] leader count is:%d,average:%d", node.addr, len(node.metaPartitions), s.average)
+		s.changeLeader(node)
+	}
 }

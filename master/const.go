@@ -58,6 +58,7 @@ const (
 	akKey                   = "ak"
 	keywordsKey             = "keywords"
 	zoneNameKey             = "zoneName"
+	nodesetIdKey            = "nodesetId"
 	crossZoneKey            = "crossZone"
 	normalZonesFirstKey     = "normalZonesFirst"
 	userKey                 = "user"
