@@ -112,3 +112,95 @@ curl -v "http://10.196.59.198:17010/dataNode/migrate?srcAddr=src&targetAddr=dst&
 | srcAddr    | string | 迁出数据节点地址            |
 | targetAddr | string | 迁入数据节点地址率           |
 | count      | int    | 迁移数据分区的个数，非必填，默认50个 |
+
+## 设置磁盘下线控制速度
+
+``` bash
+curl -v "http://192.168.0.11:17320/admin/updateDecommissionLimit?decommissionLimit=10"
+```
+
+参数列表
+
+| 参数    | 类型     | 描述                |
+|-------|--------|-------------------|
+| decommissionLimit | int    | 并发下线的dp个数 |
+
+::: tip 提示
+v3.2.1新增接口
+:::
+
+## 查询磁盘下线控制速度
+
+``` bash
+curl -v "http://192.168.0.11:17320/admin/queryDecommissionLimit"
+```
+
+::: tip 提示
+v3.2.1新增接口
+:::
+
+## 查询磁盘下线进度
+
+``` bash
+curl -v "http://192.168.0.11:17320/disk/queryDecommissionProgress?addr=192.168.0.12:17310&disk=/home/service/var/data1"
+```
+
+参数列表
+
+| 参数    | 类型     | 描述                |
+|-------|--------|-------------------|
+| addr  | string | 下线磁盘的节点地址       |
+| disk  | string | 下线磁盘地址              |
+
+::: tip 提示
+v3.2.1新增接口
+:::
+
+## 查询节点下线进度
+
+``` bash
+curl -v "http://192.168.0.11:17010/dataNode/queryDecommissionProgress?addr=192.168.0.33:17310"
+```
+
+参数列表
+
+| 参数   | 类型     | 描述               |
+|------|--------|------------------|
+| addr | string | 数据节点和master的交互地址 |
+
+::: tip 提示
+v3.2.1新增接口
+:::
+
+## 取消磁盘下线
+
+``` bash
+curl -v "http://192.168.0.11:17320/disk/cancelDecommission?addr=192.168.0.12:17310&disk=/home/service/var/data1"
+```
+
+参数列表
+
+| 参数    | 类型     | 描述                |
+|-------|--------|-------------------|
+| addr  | string | 下线磁盘的节点地址       |
+| disk  | string | 下线磁盘地址              |
+
+::: tip 提示
+v3.2.1新增接口
+:::
+
+## 取消节点下线
+
+``` bash
+curl -v "http://192.168.0.11:17010/dataNode/cancelDecommission?addr=192.168.0.33:17310"
+```
+
+参数列表
+
+| 参数   | 类型     | 描述               |
+|------|--------|------------------|
+| addr | string | 数据节点和master的交互地址 |
+
+::: tip 提示
+v3.2.1新增接口
+:::
