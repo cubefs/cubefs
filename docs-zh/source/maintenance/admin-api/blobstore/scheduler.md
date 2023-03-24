@@ -10,81 +10,81 @@
 
 ```bash
 curl http://127.0.0.1:9800/stats # 查看本机的节点状态
-curl http://127.0.0.1:9800/leader/stats # 查看主节点状态
+curl http://127.0.0.1:9800/stats/leader # 查看主节点状态
 ```
 
 **响应示例**
 
 ```json
 {
-    "balance": {
-        "enable": true,
-        "finishing_cnt": 0,
-        "preparing_cnt": 0,
-        "stats_per_min": {
-            "data_amount_byte": "[0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B]",
-            "finished_cnt": "[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
-            "shard_cnt": "[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]"
-        },
-        "worker_doing_cnt": 0
-    },
-    "blob_delete": {
-        "enable": true,
-        "err_stats": null,
-        "failed_per_min": "[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
-        "success_per_min": "[4967 3984 4965 3956 3034 3978 2005 1932 960 3043 3041 2970 1993 3048 2966 2994 4100 6069 6957 6019]",
-        "total_err_cnt": 0
-    },
-    "disk_drop": {
-        "dropped_tasks_cnt": 0,
-        "dropping_disk_id": 0,
-        "enable": true,
-        "finishing_cnt": 0,
-        "preparing_cnt": 0,
-        "stats_per_min": {
-            "data_amount_byte": "[0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B]",
-            "finished_cnt": "[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
-            "shard_cnt": "[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]"
-        },
-        "total_tasks_cnt": 0,
-        "worker_doing_cnt": 0
-    },
-    "disk_repair": {
-        "enable": true,
-        "finishing_cnt": 0,
-        "preparing_cnt": 0,
-        "repaired_tasks_cnt": 0,
-        "repairing_disk_id": 0,
-        "stats_per_min": {
-            "data_amount_byte": "[0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B]",
-            "finished_cnt": "[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
-            "shard_cnt": "[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]"
-        },
-        "total_tasks_cnt": 0,
-        "worker_doing_cnt": 0
-    },
-    "manual_migrate": {
-        "finishing_cnt": 0,
-        "preparing_cnt": 0,
-        "stats_per_min": {
-            "data_amount_byte": "[0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B]",
-            "finished_cnt": "[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
-            "shard_cnt": "[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]"
-        },
-        "worker_doing_cnt": 0
-    },
-    "shard_repair": {
-        "enable": true,
-        "err_stats": null,
-        "failed_per_min": "[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
-        "success_per_min": "[0 0 0 0 0 0 1 0 0 0 1 0 1 0 0 0 0 0 0 0]",
-        "total_err_cnt": 0
-    },
-    "volume_inspect": {
-        "enable": true,
-        "finished_per_min": "[48 63 50 43 39 73 58 48 42 29 52 58 61 85 55 78 59 55 78 80]",
-        "time_out_per_min": "[17 10 10 14 14 6 3 3 16 30 11 4 5 2 1 1 2 4 3 0]"
+  "disk_repair":{
+    "enable":true,
+    "repairing_disks":[],
+    "total_tasks_cnt":0,
+    "repaired_tasks_cnt":0,
+    "preparing_cnt":0,
+    "worker_doing_cnt":0,
+    "finishing_cnt":0,
+    "stats_per_min":{
+      "finished_cnt":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+      "shard_cnt":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+      "data_amount_byte":"[0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B]"
     }
+  },
+  "disk_drop":{
+    "enable":true,
+    "dropping_disks":[],
+    "total_tasks_cnt":0,
+    "dropped_tasks_cnt":0,
+    "preparing_cnt":0,
+    "worker_doing_cnt":0,
+    "finishing_cnt":0,
+    "stats_per_min":{
+      "finished_cnt":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+      "shard_cnt":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+      "data_amount_byte":"[0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B]"
+    }
+  },
+  "balance":{
+    "enable":true,
+    "preparing_cnt":1,
+    "worker_doing_cnt":0,
+    "finishing_cnt":0,
+    "stats_per_min":{
+      "finished_cnt":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+      "shard_cnt":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+      "data_amount_byte":"[0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B]"
+    }
+  },
+  "manual_migrate":{
+    "preparing_cnt":0,
+    "worker_doing_cnt":0,
+    "finishing_cnt":0,
+    "stats_per_min":{
+      "finished_cnt":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+      "shard_cnt":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+      "data_amount_byte":"[0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B 0.000B]"
+    }
+  },
+  "volume_inspect":{
+    "enable":false,
+    "finished_per_min":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+    "time_out_per_min":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]"
+  },
+  "shard_repair":{
+    "enable":true,
+    "success_per_min":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+    "failed_per_min":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+    "total_err_cnt":0,
+    "err_stats":null
+  },
+  "blob_delete":{
+    "enable":true,
+    "success_per_min":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+    "failed_per_min":"[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]",
+    "total_err_cnt":0,
+    "err_stats":null
+  }
 }
 ```
 
