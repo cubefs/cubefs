@@ -74,6 +74,7 @@ const (
 	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
 	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
+	defaultDiffReplicaFileCount                        = 20
 	defaultNodeSetGrpStep                              = 1
 	defaultMasterMinQosAccept                          = 20000
 	defaultMaxDpCntLimit                               = 3000
@@ -106,7 +107,8 @@ type clusterConfig struct {
 	peerAddrs                           []string
 	heartbeatPort                       int64
 	replicaPort                         int64
-	diffSpaceUsage                      uint64
+	diffReplicaSpaceUsage               uint64
+	diffReplicaFileCount                uint32
 	faultDomain                         bool
 	DefaultNormalZoneCnt                int
 	DomainBuildAsPossible               bool
@@ -132,7 +134,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.ClusterLoadFactor = defaultOverSoldFactor
 	cfg.MaxDpCntLimit = defaultMaxDpCntLimit
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
-	cfg.diffSpaceUsage = defaultDiffSpaceUsage
+	cfg.diffReplicaSpaceUsage = defaultDiffSpaceUsage
+	cfg.diffReplicaFileCount = defaultDiffReplicaFileCount
 	cfg.QosMasterAcceptLimit = defaultMasterMinQosAccept
 	cfg.DirChildrenNumLimit = pt.DefaultDirChildrenNumLimit
 	cfg.MetaPartitionInodeIdStep = defaultMetaPartitionInodeIDStep
