@@ -768,6 +768,16 @@ func parseRequestToGetDataPartition(r *http.Request) (ID uint64, volName string,
 	return
 }
 
+func parseRequestToBalanceMetaPartition(r *http.Request) (zones string, nodeSetIds string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	zones = r.FormValue(zoneNameKey)
+	nodeSetIds = r.FormValue(nodesetIdKey)
+
+	return
+}
+
 func parseRequestToLoadDataPartition(r *http.Request) (ID uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

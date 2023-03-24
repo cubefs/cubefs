@@ -753,7 +753,8 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		log.LogErrorf("action[dealMetaNodeHeartbeatResp],metaNode[%v] error[%v]", metaNode.Addr, err)
 	}
 	c.updateMetaNode(metaNode, resp.MetaPartitionReports, metaNode.reachesThreshold())
-	metaNode.metaPartitionInfos = nil
+	//todo remove, this no need set metaNode.metaPartitionInfos = nil
+	//metaNode.metaPartitionInfos = nil
 	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v,zone[%v], ReportTime:%v  success", metaNode.Addr, metaNode.ZoneName, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return
