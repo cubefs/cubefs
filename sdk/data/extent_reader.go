@@ -17,16 +17,11 @@ package data
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/unit"
 )
-
-// request with size greater than the threshold will not read ahead
-const readAheadThreshold int = 16 * 1024
 
 // ExtentReader defines the struct of the extent reader.
 type ExtentReader struct {
@@ -34,19 +29,15 @@ type ExtentReader struct {
 	key          *proto.ExtentKey
 	dp           *DataPartition
 	followerRead bool
-	readAhead    bool
-	req          *ExtentRequest
-	reqMutex     sync.Mutex
 }
 
 // NewExtentReader returns a new extent reader.
-func NewExtentReader(inode uint64, key *proto.ExtentKey, dp *DataPartition, followerRead bool, readAhead bool) *ExtentReader {
+func NewExtentReader(inode uint64, key *proto.ExtentKey, dp *DataPartition, followerRead bool) *ExtentReader {
 	return &ExtentReader{
 		inode:        inode,
 		key:          key,
 		dp:           dp,
 		followerRead: followerRead,
-		readAhead:    readAhead,
 	}
 }
 
@@ -79,49 +70,20 @@ func (er *ExtentReader) EcTinyExtentRead(ctx context.Context, req *ExtentRequest
 
 // Read reads the extent request.
 func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
-	// read from read ahead cache
-	if er.readAhead {
-		er.reqMutex.Lock()
-		defer er.reqMutex.Unlock()
-		if er.req != nil && req.FileOffset >= er.req.FileOffset && req.FileOffset+uint64(req.Size) <= er.req.FileOffset+uint64(er.req.Size) {
-			copy(req.Data[0:req.Size], er.req.Data[req.FileOffset-er.req.FileOffset:req.FileOffset-er.req.FileOffset+uint64(req.Size)])
-			readBytes = req.Size
-			return
-		}
-	}
-
 	offset := int(req.FileOffset - er.key.FileOffset + er.key.ExtentOffset)
 	size := req.Size
 
-	readAhead := false
-	realReq := req
-	if er.readAhead && size <= readAheadThreshold &&
-		uint64(req.FileOffset)-req.ExtentKey.FileOffset+req.ExtentKey.ExtentOffset+uint64(unit.BlockSize) <= uint64(req.ExtentKey.Size) {
-		readAhead = true
-		size = unit.BlockSize
-		data := make([]byte, size)
-		realReq = NewExtentRequest(req.FileOffset, size, data, 0, uint64(unit.BlockSize), req.ExtentKey)
-	}
-
 	reqPacket := common.NewReadPacket(ctx, er.key, offset, size, er.inode, req.FileOffset, er.followerRead)
 
-	log.LogDebugf("ExtentReader Read enter: req.Size(%v) size(%v) req(%v) reqPacket(%v)", req.Size, size, req, reqPacket)
+	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 
-	readBytes, err = er.read(er.dp, reqPacket, realReq, er.followerRead)
-	if readAhead {
-		realReq.Size = readBytes
-		if readBytes > req.Size {
-			readBytes = req.Size
-		}
-		copy(req.Data[0:readBytes], realReq.Data[0:readBytes])
-		er.req = realReq
-	}
+	readBytes, err = er.read(er.dp, reqPacket, req, er.followerRead)
 
 	if err != nil {
 		log.LogWarnf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
 	}
 
-	log.LogDebugf("ExtentReader Read exit: req.Size(%v) size(%v) req(%v) reqPacket(%v) readBytes(%v) err(%v)", req.Size, size, req, reqPacket, readBytes, err)
+	log.LogDebugf("ExtentReader Read exit: req(%v) reqPacket(%v) readBytes(%v) err(%v)", req, reqPacket, readBytes, err)
 	return
 }
 

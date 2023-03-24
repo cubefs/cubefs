@@ -416,12 +416,6 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 				continue
 			}
 			if req.ExtentKey != nil {
-				// clear read ahead cache
-				if s.readAhead && s.extentReader != nil && s.extentReader.key.PartitionId == req.ExtentKey.PartitionId && s.extentReader.key.ExtentId == req.ExtentKey.ExtentId && s.extentReader.req != nil {
-					s.extentReader.reqMutex.Lock()
-					s.extentReader.req = nil
-					s.extentReader.reqMutex.Unlock()
-				}
 				if overWriteBuffer {
 					writeSize = s.appendOverWriteReq(req, direct)
 				} else {

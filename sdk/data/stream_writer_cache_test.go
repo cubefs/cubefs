@@ -535,7 +535,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 			if err != nil {
 				t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)
 			}
-			streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode), false, false)
+			streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode), false)
 			streamer.refcnt++
 			fmt.Println("TestExtentHandler_PendingPacket: done create inode")
 
@@ -664,7 +664,7 @@ func TestStreamer_WriteFile_discontinuous(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)
 	}
-	streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode), false, false)
+	streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode), false)
 
 	localPath := "/tmp/TestStreamer_WriteFile_discontinuous"
 	localFile, _ := os.Create(localPath)

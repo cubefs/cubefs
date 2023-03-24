@@ -3,15 +3,16 @@ package compact
 import (
 	"context"
 	"fmt"
+	"io"
+	"math"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/sdk/mysql"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
-	"io"
-	"math"
-	"sync"
-	"time"
 )
 
 type CmpInodeTask struct {
@@ -74,7 +75,7 @@ func (inodeTask *CmpInodeTask) OpenFile() (err error) {
 		}
 		inodeTask.State = proto.InodeCmpCalcCmpEKS
 	}()
-	if err = inodeTask.vol.dataClient.OpenStream(inodeTask.Inode.Inode, false, false); err != nil {
+	if err = inodeTask.vol.dataClient.OpenStream(inodeTask.Inode.Inode, false); err != nil {
 		return
 	}
 	if err = inodeTask.vol.dataClient.RefreshExtentsCache(context.Background(), inodeTask.Inode.Inode); err != nil {
