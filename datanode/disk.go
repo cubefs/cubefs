@@ -458,7 +458,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			if d.isExpiredPartitionDir(filename) {
 				name := path.Join(d.Path, filename)
 				toDeleteExpiredPartitionNames = append(toDeleteExpiredPartitionNames, name)
-				log.LogInfof("action[RestorePartition]: find expired partition on path(%s)", name)
+				log.LogInfof("action[RestorePartition] find expired partition on path(%s)", name)
 			}
 			continue
 		}
@@ -503,8 +503,8 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		}(partitionID, filename)
 	}
 
-	log.LogInfof("action[RestorePartition] expiredPartitions %v", toDeleteExpiredPartitionNames)
 	if len(toDeleteExpiredPartitionNames) > 0 {
+		log.LogInfof("action[RestorePartition] expiredPartitions %v, disk %v", toDeleteExpiredPartitionNames, d.Path)
 
 		notDeletedExpiredPartitionNames := d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
 
@@ -512,13 +512,12 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			go func(toDeleteExpiredPartitions []string) {
 				ticker := time.NewTicker(ExpiredPartitionExistTime)
 				log.LogInfof("action[RestorePartition] delete expiredPartitions automatically start, toDeleteExpiredPartitions %v", toDeleteExpiredPartitions)
-				for {
-					select {
-					case <-ticker.C:
-						d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
-						ticker.Stop()
-						log.LogInfof("action[RestorePartition] delete expiredPartitions automatically finish")
-					}
+				select {
+				case <-ticker.C:
+					d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
+					ticker.Stop()
+					log.LogInfof("action[RestorePartition] delete expiredPartitions automatically finish")
+					return
 				}
 			}(notDeletedExpiredPartitionNames)
 		}
