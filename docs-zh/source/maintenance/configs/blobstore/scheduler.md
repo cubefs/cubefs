@@ -113,7 +113,7 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
 
 ### balance示例
 
-* balance_disk_cnt_limit，允许同时执行均衡的最大磁盘数，默认100
+* disk_concurrency，允许同时执行均衡的最大磁盘数，默认1（release-3.2.2版本之前该值为balance_disk_cnt_limit，默认100）
 * max_disk_free_chunk_cnt，均衡时会判断本idc内是否存在freechunk大于等于该值的磁盘，如果不存在则不会发起均衡，默认1024
 * min_disk_free_chunk_cnt，均衡freechunk数小于该值的磁盘，默认20
 * prepare_queue_retry_delay_s，准备队列重试时间间隔，当准备队列中的任务执行失败后的重试时间间隔，默认10
@@ -124,7 +124,7 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
 * check_task_interval_s，任务校验时间间隔，默认5
 ```json
 {
-    "balance_disk_cnt_limit": 700,    
+    "disk_concurrency": 700,    
     "max_disk_free_chunk_cnt": 500,    
     "min_disk_free_chunk_cnt": 105,      
     "prepare_queue_retry_delay_s": 60,    
@@ -136,12 +136,18 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
 }
 ```
 ### disk_drop示例
+
+::: tip 提示
+v3.2.2版本开始支持并发下线磁盘。
+:::
+
 * prepare_queue_retry_delay_s，准备队列重试时间间隔，当准备队列中的任务执行失败后的重试时间间隔，默认10
 * finish_queue_retry_delay_s，完成队列重试时间间隔，默认10
 * cancel_punish_duration_s，任务取消之后重试时间间隔，默认20
 * work_queue_size，执行中任务队列大小，默认20
 * collect_task_interval_s，收集任务时间间隔，默认5
 * check_task_interval_s，任务校验时间间隔，默认5
+* disk_concurrency，并发下线磁盘数，默认为1
 ```json
 {     
     "prepare_queue_retry_delay_s": 60,    
@@ -149,18 +155,24 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
     "cancel_punish_duration_s": 60,    
     "work_queue_size": 600,    
     "collect_task_interval_s": 10,    
-    "check_task_interval_s": 1    
+    "check_task_interval_s": 1,
+    "disk_concurrency": 1
 }
 ```
 
 ### disk_repair示例
 
+::: tip 提示
+v3.2.2版本开始支持并发修复磁盘。
+:::
+
 * prepare_queue_retry_delay_s，准备队列重试时间间隔，当准备队列中的任务执行失败后的重试时间间隔，默认10
 * finish_queue_retry_delay_s，完成队列重试时间间隔，默认10
 * cancel_punish_duration_s，任务取消之后重试时间间隔，默认20
 * work_queue_size，执行中任务队列大小，默认20
 * collect_task_interval_s，收集任务时间间隔，默认5
 * check_task_interval_s，任务校验时间间隔，默认5
+* disk_concurrency，并发修盘数，默认为1
 ```json
 {     
     "prepare_queue_retry_delay_s": 60,    
@@ -168,7 +180,8 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
     "cancel_punish_duration_s": 60,    
     "work_queue_size": 600,    
     "collect_task_interval_s": 10,    
-    "check_task_interval_s": 1    
+    "check_task_interval_s": 1,
+    "disk_concurrency": 1
 }
 ```
 
@@ -209,12 +222,17 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
 
 ### blob_delete示例
 
+::: tip 提示
+v3.2.2版本开始支持配置数据删除时间段。
+:::
+
 * task_pool_size，修补任务的并发度，默认10
 * normal_handle_batch_cnt，批量消费普通消息大小，默认100
 * fail_handle_batch_cnt，批量消费失败消息大小，默认100
 * fail_msg_consume_interval_ms，失败消息消费时间间隔，默认10000ms
 * safe_delay_time_h，删除保护期，默认72h，如果配置负数则表示直接删除
 * delete_log，删除日志保留目录，需要配置，chunkbits默认为29
+* delete_hour_range，支持配置删除时间段，24小时制，比如以下配置表示凌晨1点到3点中间时间段才会发起删除请求，如果不配置默认全天删除
 ```json
 {
   "task_pool_size": 400,
@@ -222,6 +240,10 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
   "fail_handle_batch_cnt": 1000,
   "fail_msg_consume_interval_ms": 6000,
   "safe_delay_time_h": 12,
+  "delete_hour_range": {
+    "from": 1,
+    "to": 3
+  },
   "delete_log": {
     "dir": "/home/service/scheduler/_package/delete_log",
     "chunkbits": 29
