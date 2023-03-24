@@ -142,6 +142,7 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/iputil"
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/util/ump"
@@ -292,6 +293,7 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 		inomap:           make(map[uint64]map[uint]bool),
 		cwd:              "/",
 		inodeDentryCache: make(map[uint64]*cache.DentryCache),
+		stopC:            make(chan struct{}),
 	}
 
 	if len(configPath) == 0 {
@@ -501,7 +503,10 @@ type client struct {
 	sdkState   string
 	closeOnce  sync.Once
 
-	pidFile string
+	pidFile   string
+	localAddr string
+	stopC     chan struct{}
+	wg        sync.WaitGroup
 }
 
 type FileState struct {
@@ -747,6 +752,18 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 		}
 	}
 	c := newClient(conf, C.GoString(configPath))
+
+	if !first_start && sdkState.MetaState != nil && sdkState.MetaState.LocalIP != "" {
+		c.localAddr = fmt.Sprintf("%s:%d", sdkState.MetaState.LocalIP, gClientManager.profPort)
+	} else {
+		localIp, err := iputil.GetLocalIPByDialWithMaster(strings.Split(c.masterAddr, ","), iputil.GetLocalIPTimeout)
+		if err != nil && c.app == appCoralDB {
+			syslog.Printf("GetLocalIpAddr err: %v", err)
+			os.Exit(1)
+		}
+		c.localAddr = fmt.Sprintf("%s:%d", localIp, gClientManager.profPort)
+	}
+
 	if isMysql() {
 		if c.pidFile == "" {
 			c.pidFile = path.Join(path.Dir(C.GoString(configPath)), DefaultPidFile)
@@ -764,6 +781,21 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 		c.rebuild_client_state(sdkState)
 	}
 	putClient(c.id, c)
+
+	if first_start {
+		if err := c.checkVolWriteMutex(); err != nil {
+			syslog.Printf("checkVolWriteMutex error: %v\n", err)
+			return C.int64_t(statusEIO)
+		}
+		if useROWNotify() {
+			c.registerReadProcStatus(true)
+		}
+	}
+	if c.app == appCoralDB {
+		c.wg.Add(1)
+		go c.updateVolWriteMutexInfo()
+	}
+
 	return C.int64_t(c.id)
 }
 
@@ -973,7 +1005,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	accFlags := fuseFlags & uint32(C.O_ACCMODE)
 	absPath := c.absPath(C.GoString(path))
 
-	if fuseFlags&(uint32(C.O_WRONLY)|uint32(C.O_RDWR)|uint32(C.O_CREAT)) != 0 {
+	if fuseFlags&(uint32(C.O_WRONLY)|uint32(C.O_CREAT)) != 0 {
 		if c.checkReadOnly(absPath) {
 			return statusEPERM
 		}
@@ -1482,6 +1514,9 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	path = f.path
 	ino = f.ino
 
+	if c.checkReadOnly(path) { // read maybe call cfs_flush
+		return statusOK
+	}
 	if !proto.IsRegular(f.mode) {
 		// Some application may call fdatasync() after open a directory.
 		// In this situation, CFS will do nothing.
@@ -3958,33 +3993,89 @@ func (c *client) checkVolWriteMutex() (err error) {
 	if c.app != appCoralDB {
 		return nil
 	}
-	var clientIP string
-	clientIP, err = c.mc.ClientAPI().GetVolMutex(c.volName)
-	if err == nil && clientIP == "" {
-		return nil
+
+	var volWriteMutexInfo *proto.VolWriteMutexInfo
+
+	for retry := 0; retry < StartRetryMaxCount; retry++ {
+		for {
+			volWriteMutexInfo, err = c.mc.ClientAPI().GetVolMutex(appCoralDB, c.volName)
+			if err == nil && volWriteMutexInfo.Enable && volWriteMutexInfo.Holder == "" {
+				time.Sleep(RequestMasterRetryInterval)
+				continue
+			}
+			break
+		}
+		if err != nil {
+			log.LogWarnf("StartClient: checkVolWriteMutex err(%v) retry count(%v)", err, retry)
+			time.Sleep(StartRetryIntervalSec * time.Second)
+		} else {
+			break
+		}
 	}
-	if err == proto.ErrVolWriteMutexUnable {
+
+	if err == nil && !volWriteMutexInfo.Enable {
 		c.readOnly = false
 		return nil
 	}
 	if err != nil {
-		syslog.Printf("checkVolWriteMutex err: %v\n")
 		return err
 	}
 
-	err = c.mc.ClientAPI().ApplyVolMutex(c.volName, false)
-	if err == nil {
+	c.masterClient = volWriteMutexInfo.Holder
+	syslog.Printf("localAddr: %s, masterClient: %s\n", c.localAddr, c.masterClient)
+	if c.masterClient == c.localAddr {
 		c.readOnly = false
-		return nil
+		c.readProcMapLock.Lock()
+		c.readProcs = volWriteMutexInfo.Slaves
+		c.readProcMapLock.Unlock()
 	}
-	if err == proto.ErrVolWriteMutexOccupied {
-		return nil
+	return nil
+}
+
+func (c *client) updateVolWriteMutexInfo() {
+	defer c.wg.Done()
+
+	var (
+		err               error
+		volWriteMutexInfo *proto.VolWriteMutexInfo
+	)
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.stopC:
+			return
+		case <-ticker.C:
+			volWriteMutexInfo, err = c.mc.ClientAPI().GetVolMutex(appCoralDB, c.volName)
+			if err != nil {
+				continue
+			}
+			if !volWriteMutexInfo.Enable || volWriteMutexInfo.Holder == "" {
+				c.readOnly = false
+				c.masterClient = ""
+				continue
+			}
+			if c.masterClient != volWriteMutexInfo.Holder {
+				c.masterClient = volWriteMutexInfo.Holder
+				if c.masterClient == c.localAddr {
+					c.readOnly = false
+				} else {
+					c.readOnly = true
+					c.readProcMapLock.Lock()
+					if len(c.readProcs) > 0 {
+						c.readProcs = make(map[string]string)
+					}
+					c.readProcMapLock.Unlock()
+				}
+			}
+			if !c.readOnly {
+				c.readProcMapLock.Lock()
+				c.readProcs = volWriteMutexInfo.Slaves
+				c.readProcMapLock.Unlock()
+			}
+		}
 	}
-	if err != nil {
-		syslog.Printf("checkVolWriteMutex err: %v\n", err)
-		return err
-	}
-	return
 }
 
 func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
@@ -3998,12 +4089,7 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 
 	masters := strings.Split(c.masterAddr, ",")
 	c.mc = master.NewMasterClient(masters, false)
-	if first_start {
-		if err = c.checkVolWriteMutex(); err != nil {
-			syslog.Printf("checkVolWriteMutex error: %v\n", err)
-			return
-		}
-	}
+
 	var mw *meta.MetaWrapper
 	metaConfig := &meta.MetaConfig{
 		Modulename:    gClientManager.moduleName,
@@ -4053,10 +4139,6 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 	}
 	c.initUmpKeys()
 
-	if first_start && useROWNotify() {
-		c.registerReadProcStatus(true)
-	}
-
 	// version
 	startVersionReporter(mw.Cluster(), c.volName, masters)
 	return
@@ -4073,6 +4155,8 @@ func (c *client) stop() {
 		}
 
 		c.inodeCache.Stop()
+		close(c.stopC)
+		c.wg.Wait()
 	})
 }
 
@@ -4336,11 +4420,13 @@ func (c *client) closeStream(f *file) {
 
 func (c *client) broadcastAllReadProcess(ino uint64) {
 	c.readProcMapLock.Lock()
-	log.LogInfof("broadcastAllReadProcess: readProcessMap(%v)", c.readProcs)
-	for readClient, _ := range c.readProcs {
+	readProcs := c.readProcs
+	c.readProcMapLock.Unlock()
+
+	log.LogInfof("broadcastAllReadProcess: readProcessMap(%v)", readProcs)
+	for readClient, _ := range readProcs {
 		c.broadcastRefreshExtents(readClient, ino)
 	}
-	c.readProcMapLock.Unlock()
 }
 
 func (c *client) checkReadOnly(absPath string) bool {

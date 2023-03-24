@@ -2557,7 +2557,7 @@ int start_libs(void *args) {
     init_config.log_level = client_config.log_level;
     init_config.prof_port = client_config.prof_port;
     if(cfs_sdk_init(&init_config) != 0) {
-        fprintf(stderr, "Can't initialize CFS SDK, check the config file.\n");
+        fprintf(stderr, "Can't initialize CFS SDK, check output.log for details.\n");
         goto out;
     }
     free(client_config.log_dir);
@@ -2580,7 +2580,7 @@ int start_libs(void *args) {
 
     g_client_info.cfs_client_id = cfs_new_client(NULL, config_path, client_state->sdk_state);
     if(g_client_info.cfs_client_id < 0) {
-        fprintf(stderr, "Can't start CFS client, check the config file.\n");
+        fprintf(stderr, "Can't start CFS client, check output.log for details.\n");
         goto out;
     }
 

@@ -31,85 +31,86 @@ import (
 
 // Vol represents a set of meta partitionMap and data partitionMap
 type Vol struct {
-	ID                    uint64
-	Name                  string
-	Owner                 string
-	OSSAccessKey          string
-	OSSSecretKey          string
-	OSSBucketPolicy       proto.BucketAccessPolicy
-	dpReplicaNum          uint8
-	mpReplicaNum          uint8
-	dpLearnerNum          uint8
-	mpLearnerNum          uint8
-	Status                uint8
-	mpMemUsageThreshold   float32
-	dataPartitionSize     uint64
-	Capacity              uint64 // GB
-	NeedToLowerReplica    bool
-	FollowerRead          bool
-	FollowerReadDelayCfg  proto.DpFollowerReadDelayConfig //sec
-	FollReadHostWeight    int
-	NearRead              bool
-	ForceROW              bool
-	forceRowModifyTime    int64
-	enableWriteCache      bool
-	authenticate          bool
-	autoRepair            bool
-	zoneName              string
-	crossZone             bool
-	CrossRegionHAType     proto.CrossRegionHAType
-	enableToken           bool
-	tokens                map[string]*proto.Token
-	tokensLock            sync.RWMutex
-	MetaPartitions        map[uint64]*MetaPartition `graphql:"-"`
-	mpsLock               sync.RWMutex
-	dataPartitions        *DataPartitionMap
-	mpsCache              []byte
-	viewCache             []byte
-	createDpMutex         sync.RWMutex
-	createMpMutex         sync.RWMutex
-	createTime            int64
-	dpWriteableThreshold  float64
-	description           string
-	dpSelectorName        string
-	dpSelectorParm        string
-	DPConvertMode         proto.ConvertMode
-	MPConvertMode         proto.ConvertMode
-	volWriteMutexEnable   bool
-	volWriteMutex         sync.Mutex
-	volWriteMutexClient   string
-	ExtentCacheExpireSec  int64
-	writableMpCount       int64
-	MinWritableMPNum      int
-	MinWritableDPNum      int
-	trashRemainingDays    uint32
-	convertState          proto.VolConvertState
-	DefaultStoreMode      proto.StoreMode
-	MpLayout              proto.MetaPartitionLayout
-	isSmart               bool
-	smartEnableTime       int64
-	smartRules            []string
-	CreateStatus          proto.VolCreateStatus
-	compactTag            proto.CompactTag
-	compactTagModifyTime  int64
-	EcEnable              bool
-	EcDataNum             uint8
-	EcParityNum           uint8
-	EcMigrationWaitTime   int64
-	EcMigrationSaveTime   int64
-	EcMigrationTimeOut    int64
-	EcMigrationRetryWait  int64
-	EcMaxUnitSize         uint64
-	ecDataPartitions      *EcDataPartitionCache
-	ChildFileMaxCount     uint32
-	TrashCleanInterval    uint64
-	BatchDelInodeCnt      uint32
-	DelInodeInterval      uint32
-	UmpCollectWay         proto.UmpCollectBy
-	reuseMP               bool
-	VMPsToPartitionMap    map[uint64]uint64 `graphql:"-"`
-	LastSelectReuseMPID   uint64
-	EnableBitMapAllocator bool
+	ID                         uint64
+	Name                       string
+	Owner                      string
+	OSSAccessKey               string
+	OSSSecretKey               string
+	OSSBucketPolicy            proto.BucketAccessPolicy
+	dpReplicaNum               uint8
+	mpReplicaNum               uint8
+	dpLearnerNum               uint8
+	mpLearnerNum               uint8
+	Status                     uint8
+	mpMemUsageThreshold        float32
+	dataPartitionSize          uint64
+	Capacity                   uint64 // GB
+	NeedToLowerReplica         bool
+	FollowerRead               bool
+	FollowerReadDelayCfg       proto.DpFollowerReadDelayConfig //sec
+	FollReadHostWeight         int
+	NearRead                   bool
+	ForceROW                   bool
+	forceRowModifyTime         int64
+	enableWriteCache           bool
+	authenticate               bool
+	autoRepair                 bool
+	zoneName                   string
+	crossZone                  bool
+	CrossRegionHAType          proto.CrossRegionHAType
+	enableToken                bool
+	tokens                     map[string]*proto.Token
+	tokensLock                 sync.RWMutex
+	MetaPartitions             map[uint64]*MetaPartition `graphql:"-"`
+	mpsLock                    sync.RWMutex
+	dataPartitions             *DataPartitionMap
+	mpsCache                   []byte
+	viewCache                  []byte
+	createDpMutex              sync.RWMutex
+	createMpMutex              sync.RWMutex
+	createTime                 int64
+	dpWriteableThreshold       float64
+	description                string
+	dpSelectorName             string
+	dpSelectorParm             string
+	DPConvertMode              proto.ConvertMode
+	MPConvertMode              proto.ConvertMode
+	volWriteMutexEnable        bool
+	volWriteMutexHolder        string
+	volWriteMutexSlaves        map[string]string
+	volWriteMutexLock          sync.RWMutex
+	ExtentCacheExpireSec       int64
+	writableMpCount            int64
+	MinWritableMPNum           int
+	MinWritableDPNum           int
+	trashRemainingDays         uint32
+	convertState               proto.VolConvertState
+	DefaultStoreMode           proto.StoreMode
+	MpLayout                   proto.MetaPartitionLayout
+	isSmart                    bool
+	smartEnableTime            int64
+	smartRules                 []string
+	CreateStatus               proto.VolCreateStatus
+	compactTag                 proto.CompactTag
+	compactTagModifyTime       int64
+	EcEnable                   bool
+	EcDataNum                  uint8
+	EcParityNum                uint8
+	EcMigrationWaitTime        int64
+	EcMigrationSaveTime        int64
+	EcMigrationTimeOut         int64
+	EcMigrationRetryWait       int64
+	EcMaxUnitSize              uint64
+	ecDataPartitions           *EcDataPartitionCache
+	ChildFileMaxCount          uint32
+	TrashCleanInterval         uint64
+	BatchDelInodeCnt           uint32
+	DelInodeInterval           uint32
+	UmpCollectWay              proto.UmpCollectBy
+	reuseMP                    bool
+	VMPsToPartitionMap         map[uint64]uint64 `graphql:"-"`
+	LastSelectReuseMPID        uint64
+	EnableBitMapAllocator      bool
 	CleanTrashDurationEachTime int32
 	TrashCleanMaxCountEachTime int32
 	sync.RWMutex
@@ -160,6 +161,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.enableToken = enableToken
 	vol.autoRepair = autoRepair
 	vol.volWriteMutexEnable = volWriteMutexEnable
+	vol.volWriteMutexSlaves = make(map[string]string)
 	vol.tokens = make(map[string]*proto.Token, 0)
 	vol.description = description
 	vol.dpSelectorName = dpSelectorName
@@ -245,7 +247,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.DPConvertMode = vv.DPConvertMode
 	vol.MPConvertMode = vv.MPConvertMode
 	vol.ExtentCacheExpireSec = vv.ExtentCacheExpireSec
-	vol.volWriteMutexClient = vv.VolWriteMutexClient
+	vol.volWriteMutexHolder = vv.VolWriteMutexHolder
+	vol.volWriteMutexSlaves = vv.VolWriteMutexSlaves
 	vol.MinWritableMPNum = vv.MinWritableMPNum
 	vol.MinWritableDPNum = vv.MinWritableDPNum
 	vol.NearRead = vv.NearRead
@@ -979,14 +982,14 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) 
 	log.LogWarnf("action[splitMetaPartition],partition[%v],start[%v],end[%v],new end[%v]", mp.PartitionID, mp.Start, mp.End, end)
 	cmdMap := make(map[string]*RaftCmd, 0)
 	oldEnd := mp.End
-	lastVirtualMPOldEnd := mp.VirtualMPs[len(mp.VirtualMPs) - 1].End
+	lastVirtualMPOldEnd := mp.VirtualMPs[len(mp.VirtualMPs)-1].End
 
 	mp.End = end
-	mp.VirtualMPs[len(mp.VirtualMPs) - 1].End = end
+	mp.VirtualMPs[len(mp.VirtualMPs)-1].End = end
 	defer func() {
 		if err != nil {
 			mp.End = oldEnd
-			mp.VirtualMPs[len(mp.VirtualMPs) - 1].End = lastVirtualMPOldEnd
+			mp.VirtualMPs[len(mp.VirtualMPs)-1].End = lastVirtualMPOldEnd
 		}
 	}()
 	updateMpRaftCmd, err := c.buildMetaPartitionRaftCmd(opSyncUpdateMetaPartition, mp)
@@ -1113,7 +1116,7 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, re
 			}
 		}
 	}()
-	if !vol.isConvertRunning() && reuseMP && vol.isReuseMP()  {
+	if !vol.isConvertRunning() && reuseMP && vol.isReuseMP() {
 		if nextMp, err = vol.doSplitVirtualMetaPartition(c, mp, end); err == nil {
 			log.LogWarnf("action[splitMetaPartition],vol[%v] split virtualMP at partition[%v], virtualMPID[%v], start[%v], end[%v]",
 				vol.Name, nextMp.PartitionID, nextMp.lastVirtualMetaPartition().ID, nextMp.Start, nextMp.End)
@@ -1150,7 +1153,7 @@ func (vol *Vol) getAvailableMp(c *Cluster, physicalMPIDs []uint64, excludePhyMPI
 	defer vol.mpsLock.RUnlock()
 
 	mp = nil
-	err = fmt.Errorf( "vol[%s] has no avaiable mp to add virtual meta partition", vol.Name)
+	err = fmt.Errorf("vol[%s] has no avaiable mp to add virtual meta partition", vol.Name)
 	for _, mpID := range physicalMPIDs {
 		if mpID == vol.maxPartitionID() || mpID == excludePhyMPID {
 			continue
@@ -1288,45 +1291,46 @@ func (vol *Vol) getWritableMpCount() int64 {
 
 func (vol *Vol) backupConfig() *Vol {
 	return &Vol{
-		Capacity:              vol.Capacity,
-		dpReplicaNum:          vol.dpReplicaNum,
-		FollowerRead:          vol.FollowerRead,
-		NearRead:              vol.NearRead,
-		authenticate:          vol.authenticate,
-		enableToken:           vol.enableToken,
-		autoRepair:            vol.autoRepair,
-		description:           vol.description,
-		dpSelectorName:        vol.dpSelectorName,
-		dpSelectorParm:        vol.dpSelectorParm,
-		DefaultStoreMode:      vol.DefaultStoreMode,
-		convertState:          vol.convertState,
-		MpLayout:              vol.MpLayout,
-		crossZone:             vol.crossZone,
-		zoneName:              vol.zoneName,
-		OSSBucketPolicy:       vol.OSSBucketPolicy,
-		trashRemainingDays:    vol.trashRemainingDays,
-		mpLearnerNum:          vol.mpLearnerNum,
-		CrossRegionHAType:     vol.CrossRegionHAType,
-		DPConvertMode:         vol.DPConvertMode,
-		MPConvertMode:         vol.MPConvertMode,
-		dpWriteableThreshold:  vol.dpWriteableThreshold,
-		mpReplicaNum:          vol.mpReplicaNum,
-		ForceROW:              vol.ForceROW,
-		volWriteMutexEnable:   vol.volWriteMutexEnable,
-		volWriteMutexClient:   vol.volWriteMutexClient,
-		enableWriteCache:      vol.enableWriteCache,
-		ExtentCacheExpireSec:  vol.ExtentCacheExpireSec,
-		isSmart:               vol.isSmart,
-		smartRules:            vol.smartRules,
-		compactTag:            vol.compactTag,
-		compactTagModifyTime:  vol.compactTagModifyTime,
-		FollowerReadDelayCfg:  vol.FollowerReadDelayCfg,
-		TrashCleanInterval:    vol.TrashCleanInterval,
-		BatchDelInodeCnt:      vol.BatchDelInodeCnt,
-		DelInodeInterval:      vol.DelInodeInterval,
-		UmpCollectWay:         vol.UmpCollectWay,
-		reuseMP:               vol.reuseMP,
-		EnableBitMapAllocator: vol.EnableBitMapAllocator,
+		Capacity:                   vol.Capacity,
+		dpReplicaNum:               vol.dpReplicaNum,
+		FollowerRead:               vol.FollowerRead,
+		NearRead:                   vol.NearRead,
+		authenticate:               vol.authenticate,
+		enableToken:                vol.enableToken,
+		autoRepair:                 vol.autoRepair,
+		description:                vol.description,
+		dpSelectorName:             vol.dpSelectorName,
+		dpSelectorParm:             vol.dpSelectorParm,
+		DefaultStoreMode:           vol.DefaultStoreMode,
+		convertState:               vol.convertState,
+		MpLayout:                   vol.MpLayout,
+		crossZone:                  vol.crossZone,
+		zoneName:                   vol.zoneName,
+		OSSBucketPolicy:            vol.OSSBucketPolicy,
+		trashRemainingDays:         vol.trashRemainingDays,
+		mpLearnerNum:               vol.mpLearnerNum,
+		CrossRegionHAType:          vol.CrossRegionHAType,
+		DPConvertMode:              vol.DPConvertMode,
+		MPConvertMode:              vol.MPConvertMode,
+		dpWriteableThreshold:       vol.dpWriteableThreshold,
+		mpReplicaNum:               vol.mpReplicaNum,
+		ForceROW:                   vol.ForceROW,
+		volWriteMutexEnable:        vol.volWriteMutexEnable,
+		volWriteMutexHolder:        vol.volWriteMutexHolder,
+		volWriteMutexSlaves:        vol.volWriteMutexSlaves,
+		enableWriteCache:           vol.enableWriteCache,
+		ExtentCacheExpireSec:       vol.ExtentCacheExpireSec,
+		isSmart:                    vol.isSmart,
+		smartRules:                 vol.smartRules,
+		compactTag:                 vol.compactTag,
+		compactTagModifyTime:       vol.compactTagModifyTime,
+		FollowerReadDelayCfg:       vol.FollowerReadDelayCfg,
+		TrashCleanInterval:         vol.TrashCleanInterval,
+		BatchDelInodeCnt:           vol.BatchDelInodeCnt,
+		DelInodeInterval:           vol.DelInodeInterval,
+		UmpCollectWay:              vol.UmpCollectWay,
+		reuseMP:                    vol.reuseMP,
+		EnableBitMapAllocator:      vol.EnableBitMapAllocator,
 		CleanTrashDurationEachTime: vol.CleanTrashDurationEachTime,
 		TrashCleanMaxCountEachTime: vol.TrashCleanMaxCountEachTime,
 	}
@@ -1361,7 +1365,8 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.mpReplicaNum = backupVol.mpReplicaNum
 	vol.ForceROW = backupVol.ForceROW
 	vol.volWriteMutexEnable = backupVol.volWriteMutexEnable
-	vol.volWriteMutexClient = backupVol.volWriteMutexClient
+	vol.volWriteMutexHolder = backupVol.volWriteMutexHolder
+	vol.volWriteMutexSlaves = backupVol.volWriteMutexSlaves
 	vol.enableWriteCache = backupVol.enableWriteCache
 	vol.ExtentCacheExpireSec = backupVol.ExtentCacheExpireSec
 	vol.isSmart = backupVol.isSmart
@@ -1536,7 +1541,7 @@ func (vol *Vol) getPhysicalMetaPartitionIDsForReuse() (mpIDs []uint64) {
 			break
 		}
 	}
-	if index == -1 || index == len(physicalMPIDs) - 1 {
+	if index == -1 || index == len(physicalMPIDs)-1 {
 		mpIDs = physicalMPIDs
 		return
 	}

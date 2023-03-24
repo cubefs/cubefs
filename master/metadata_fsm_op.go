@@ -290,7 +290,8 @@ type volValue struct {
 	CrossZone             bool
 	AutoRepair            bool
 	VolWriteMutexEnable   bool
-	VolWriteMutexClient   string
+	VolWriteMutexHolder   string
+	VolWriteMutexSlaves   map[string]string
 	ZoneName              string
 	OSSAccessKey          string
 	OSSSecretKey          string
@@ -358,7 +359,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Authenticate:          vol.authenticate,
 		AutoRepair:            vol.autoRepair,
 		VolWriteMutexEnable:   vol.volWriteMutexEnable,
-		VolWriteMutexClient:   vol.volWriteMutexClient,
+		VolWriteMutexHolder:   vol.volWriteMutexHolder,
+		VolWriteMutexSlaves:   vol.volWriteMutexSlaves,
 		ZoneName:              vol.zoneName,
 		CrossZone:             vol.crossZone,
 		EnableToken:           vol.enableToken,

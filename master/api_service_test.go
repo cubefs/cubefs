@@ -1465,42 +1465,58 @@ func TestCheckMergeZoneNodeset(t *testing.T) {
 
 }
 
-func TestApplyAndReleaseVolWriteMutex(t *testing.T) {
+func TestApplyAndGetVolWriteMutex(t *testing.T) {
 	// apply volume write mutex
-	applyReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminApplyVolMutex, commonVolName)
+	applyReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v&addr=127.0.0.1:10090&slaves=127.0.0.1:10094,127.0.0.1:10095&addslave=127.0.0.1:10096", hostAddr, proto.AdminApplyVolMutex, commonVolName)
 	fmt.Println(applyReqURL)
 	applyReply := process(applyReqURL, t)
 	if applyReply.Data.(string) != "apply volume mutex success" {
 		t.Errorf("apply volume mutex failed, responseInfo: %v", applyReply.Data)
 	}
+
+	// get volume write mutex
+	getReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
+	fmt.Println(getReqURL)
+	reply := processReturnRawReply(getReqURL, t)
+	mutexInfo := &proto.VolWriteMutexInfo{}
+	if err := json.Unmarshal(reply.Data, mutexInfo); err != nil {
+		t.Errorf("unmarshal data err:%v", err)
+	}
+	if mutexInfo.Enable != true || mutexInfo.Holder != "127.0.0.1:10090" || len(mutexInfo.Slaves) != 3 {
+		expect := &proto.VolWriteMutexInfo{
+			Enable: true,
+			Holder: "127.0.0.1:10090",
+			Slaves: map[string]string{"127.0.0.1:10094": "xxx", "127.0.0.1:10095": "xxx", "127.0.0.1:10096": "xxx"},
+		}
+		t.Errorf("Get wrong volume write mutex. expect: %v, actual: %v", expect, mutexInfo)
+	}
+}
+
+func TestReleaseAndGetVolWriteMutex(t *testing.T) {
 	// release volume write mutex
-	releaseReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminReleaseVolMutex, commonVolName)
+	releaseReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v&addr=127.0.0.1:10090", hostAddr, proto.AdminReleaseVolMutex, commonVolName)
 	fmt.Println(releaseReqURL)
 	releaseReply := process(releaseReqURL, t)
 	if releaseReply.Data.(string) != "release volume mutex success" {
 		t.Errorf("Release volume write mutest failed, errorInfo: %v", releaseReply.Data)
 	}
-}
 
-func TestGetNoVolWriteMutex(t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
-	fmt.Println(reqURL)
-	reply := process(reqURL, t)
-	if reply.Data.(string) != "" {
-		t.Errorf("Got volume write mutex resopnse is not expected, resopnse: %v", reply.Data)
-	}
-}
-
-func TestGetVolWriteMutex(t *testing.T) {
-	// apply volume write mutex
-	applyReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminApplyVolMutex, commonVolName)
-	fmt.Println(applyReqURL)
-	process(applyReqURL, t)
 	// get volume write mutex
-	getReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
+	getReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
 	fmt.Println(getReqURL)
-	reply := process(getReqURL, t)
-	t.Logf("Get volume write mutex reply: %s", reply.Data.(string))
+	reply := processReturnRawReply(getReqURL, t)
+	mutexInfo := &proto.VolWriteMutexInfo{}
+	if err := json.Unmarshal(reply.Data, mutexInfo); err != nil {
+		t.Errorf("unmarshal data err:%v", err)
+	}
+	if mutexInfo.Enable != true || mutexInfo.Holder != "" || len(mutexInfo.Slaves) != 3 {
+		expect := &proto.VolWriteMutexInfo{
+			Enable: true,
+			Holder: "",
+			Slaves: map[string]string{"127.0.0.1:10094": "xxx", "127.0.0.1:10095": "xxx", "127.0.0.1:10096": "xxx"},
+		}
+		t.Errorf("Get wrong volume write mutex. expect: %v, actual: %v", expect, mutexInfo)
+	}
 }
 
 func TestSetNodeInfoHandler(t *testing.T) {

@@ -195,33 +195,37 @@ func (api *ClientAPI) GetEcPartitions(volName string) (view *proto.EcPartitionsV
 	return
 }
 
-func (api *ClientAPI) ApplyVolMutex(volName string, force bool) (err error) {
+func (api *ClientAPI) ApplyVolMutex(app, volName, addr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminApplyVolMutex)
+	request.addParam("app", app)
 	request.addParam("name", volName)
-	request.addParam("force", strconv.FormatBool(force))
+	request.addParam("addr", addr)
 	_, err = api.mc.serveRequest(request)
 	return
 }
 
-func (api *ClientAPI) ReleaseVolMutex(volName string) (err error) {
+func (api *ClientAPI) ReleaseVolMutex(app, volName, addr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminReleaseVolMutex)
+	request.addParam("app", app)
 	request.addParam("name", volName)
+	request.addParam("addr", addr)
 	_, err = api.mc.serveRequest(request)
 	return
 }
 
-func (api *ClientAPI) GetVolMutex(volName string) (string, error) {
+func (api *ClientAPI) GetVolMutex(app, volName string) (*proto.VolWriteMutexInfo, error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetVolMutex)
+	request.addParam("app", app)
 	request.addParam("name", volName)
 	data, err := api.mc.serveRequest(request)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	var clientIP string
-	if err = json.Unmarshal(data, &clientIP); err != nil {
-		return "", err
+	volWriteMutexInfo := &proto.VolWriteMutexInfo{}
+	if err = json.Unmarshal(data, volWriteMutexInfo); err != nil {
+		return nil, err
 	}
-	return clientIP, nil
+	return volWriteMutexInfo, nil
 }
 
 func (api *ClientAPI) SetClientPkgAddr(addr string) (err error) {

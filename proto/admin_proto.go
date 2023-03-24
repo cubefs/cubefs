@@ -15,8 +15,8 @@
 package proto
 
 import (
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"sync/atomic"
 )
@@ -373,28 +373,28 @@ func (m MediumType) Check() bool {
 }
 
 type AtomicString struct {
-    atomic.Value
+	atomic.Value
 }
 
 func (v *AtomicString) MarshalJSON() ([]byte, error) {
-    val := v.Load()
-    if val == nil {
-        return json.Marshal("")
-    }
-    str, ok := val.(string)
-    if !ok {
-        return []byte{}, fmt.Errorf("not a string")
-    }
-    return json.Marshal(str)
+	val := v.Load()
+	if val == nil {
+		return json.Marshal("")
+	}
+	str, ok := val.(string)
+	if !ok {
+		return []byte{}, fmt.Errorf("not a string")
+	}
+	return json.Marshal(str)
 }
 
 func (v *AtomicString) UnmarshalJSON(b []byte) (err error) {
-    var str string
-    if err = json.Unmarshal(b, &str); err != nil {
-        return
-    }
-    v.Store(str)
-    return
+	var str string
+	if err = json.Unmarshal(b, &str); err != nil {
+		return
+	}
+	v.Store(str)
+	return
 }
 
 type CompactTag uint8
@@ -539,18 +539,18 @@ type LimitInfo struct {
 	RocksDBDiskReservedSpace uint64 //MB
 	LogMaxSize               uint64 //MB
 
-	MetaRockDBWalFileSize      uint64				//MB  10
-	MetaRocksWalMemSize        uint64				//MB  3
-	MetaRocksLogSize           uint64				//MB  1
-	MetaRocksLogReservedTime   uint64				//day 3
-	MetaRocksLogReservedCnt    uint64				//default 3
-	MetaRocksFlushWalInterval  uint64				//min   30min
-	MetaRocksWalTTL			   uint64				//second  60s
-	MetaRocksDisableFlushFlag  uint64               //0 flush, !=0 disable flush; default 0
-	DeleteEKRecordFileMaxMB    uint64               //MB
-	MetaTrashCleanInterval     uint64				//second
-	MetaRaftLogSize            int64
-	MetaRaftCap				   int64
+	MetaRockDBWalFileSize     uint64 //MB  10
+	MetaRocksWalMemSize       uint64 //MB  3
+	MetaRocksLogSize          uint64 //MB  1
+	MetaRocksLogReservedTime  uint64 //day 3
+	MetaRocksLogReservedCnt   uint64 //default 3
+	MetaRocksFlushWalInterval uint64 //min   30min
+	MetaRocksWalTTL           uint64 //second  60s
+	MetaRocksDisableFlushFlag uint64 //0 flush, !=0 disable flush; default 0
+	DeleteEKRecordFileMaxMB   uint64 //MB
+	MetaTrashCleanInterval    uint64 //second
+	MetaRaftLogSize           int64
+	MetaRaftCap               int64
 
 	MetaSyncWALOnUnstableEnableState bool
 	DataSyncWALOnUnstableEnableState bool
@@ -897,12 +897,12 @@ type DataPartitionResponse struct {
 }
 
 func (dp *DataPartitionResponse) GetLeaderAddr() string {
-   str, _ := dp.LeaderAddr.Load().(string)
-   return str
+	str, _ := dp.LeaderAddr.Load().(string)
+	return str
 }
 
 func (dp *DataPartitionResponse) SetLeaderAddr(addr string) {
-   dp.LeaderAddr.Store(addr)
+	dp.LeaderAddr.Store(addr)
 }
 
 // DataPartitionsView defines the view of a data partition
@@ -1189,58 +1189,58 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 
 // RateLimitInfo defines the rate limit infomation
 type RateLimitInfo struct {
-	ZoneName                    string
-	Volume                      string
-	Action                      string
-	Opcode                      int8
-	MetaNodeReqRate             int64
-	MetaNodeReqOpRate           int64
-	DataNodeRepairTaskCount     int64
-	DataNodeRepairTaskSSDZone   int64
-	DataNodeReqRate             int64
-	DataNodeReqOpRate           int64
-	DataNodeReqVolOpRate        int64
-	DataNodeReqVolPartRate      int64
-	DataNodeReqVolOpPartRate    int64
-	DataNodeFlushFDInterval     int64
+	ZoneName                         string
+	Volume                           string
+	Action                           string
+	Opcode                           int8
+	MetaNodeReqRate                  int64
+	MetaNodeReqOpRate                int64
+	DataNodeRepairTaskCount          int64
+	DataNodeRepairTaskSSDZone        int64
+	DataNodeReqRate                  int64
+	DataNodeReqOpRate                int64
+	DataNodeReqVolOpRate             int64
+	DataNodeReqVolPartRate           int64
+	DataNodeReqVolOpPartRate         int64
+	DataNodeFlushFDInterval          int64
 	DataNodeFlushFDParallelismOnDisk int64
-	DNNormalExtentDeleteExpire  int64
-	ClientReadVolRate           int64
-	ClientWriteVolRate          int64
-	ExtentMergeIno              string
-	ExtentMergeSleepMs          int64
-	ClientReadRate              int64
-	ClientWriteRate             int64
-	ClientVolOpRate             int64
-	ObjectVolActionRate         int64
-	DnFixTinyDeleteRecordLimit  int64
-	DataNodeRepairTaskZoneCount int64
-	MetaNodeDumpWaterLevel      int64
-	MonitorSummarySecond        uint64
-	MonitorReportSecond         uint64
-	RocksDBDiskReservedSpace    uint64
-	LogMaxMB                    uint64
-	MetaRockDBWalFileMaxMB      uint64
-	MetaRocksWalMemMaxMB        uint64
-	MetaRocksLogMaxMB           uint64
-	MetaRocksLogReservedDay     uint64
-	MetaRocksLogReservedCnt     uint64
-	MetaRocksFlushWalInterval   uint64 //min
-	MetaRocksDisableFlushFlag   int64 //0 flush, !=0 disable flush
-	MetaRocksWalTTL             uint64
-	MetaDelEKRecordFileMaxMB    uint64
-	MetaTrashCleanInterval      uint64
-	MetaRaftLogSize				int64
-	MetaRaftLogCap				int64
-	MetaSyncWALEnableState      int64
-	DataSyncWALEnableState      int64
-	ReuseMPInodeCountThreshold  float64
-	ReuseMPDentryCountThreshold float64
-	ReuseMPDelInoCountThreshold float64
-	MetaPartitionMaxInodeCount  uint64
-	MetaPartitionMaxDentryCount uint64
-	TrashCleanDurationEachTime  int32
-	TrashCleanMaxCountEachTime  int32
+	DNNormalExtentDeleteExpire       int64
+	ClientReadVolRate                int64
+	ClientWriteVolRate               int64
+	ExtentMergeIno                   string
+	ExtentMergeSleepMs               int64
+	ClientReadRate                   int64
+	ClientWriteRate                  int64
+	ClientVolOpRate                  int64
+	ObjectVolActionRate              int64
+	DnFixTinyDeleteRecordLimit       int64
+	DataNodeRepairTaskZoneCount      int64
+	MetaNodeDumpWaterLevel           int64
+	MonitorSummarySecond             uint64
+	MonitorReportSecond              uint64
+	RocksDBDiskReservedSpace         uint64
+	LogMaxMB                         uint64
+	MetaRockDBWalFileMaxMB           uint64
+	MetaRocksWalMemMaxMB             uint64
+	MetaRocksLogMaxMB                uint64
+	MetaRocksLogReservedDay          uint64
+	MetaRocksLogReservedCnt          uint64
+	MetaRocksFlushWalInterval        uint64 //min
+	MetaRocksDisableFlushFlag        int64  //0 flush, !=0 disable flush
+	MetaRocksWalTTL                  uint64
+	MetaDelEKRecordFileMaxMB         uint64
+	MetaTrashCleanInterval           uint64
+	MetaRaftLogSize                  int64
+	MetaRaftLogCap                   int64
+	MetaSyncWALEnableState           int64
+	DataSyncWALEnableState           int64
+	ReuseMPInodeCountThreshold       float64
+	ReuseMPDentryCountThreshold      float64
+	ReuseMPDelInoCountThreshold      float64
+	MetaPartitionMaxInodeCount       uint64
+	MetaPartitionMaxDentryCount      uint64
+	TrashCleanDurationEachTime       int32
+	TrashCleanMaxCountEachTime       int32
 }
 
 type ConvertMode uint8
@@ -1436,4 +1436,10 @@ type DpFollowerReadDelayConfig struct {
 type TopologyView struct {
 	Zones   []*ZoneView
 	Regions []*RegionView
+}
+
+type VolWriteMutexInfo struct {
+	Enable bool
+	Holder string
+	Slaves map[string]string
 }
