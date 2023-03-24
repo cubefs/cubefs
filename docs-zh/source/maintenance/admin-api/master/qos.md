@@ -1,7 +1,7 @@
 # QOS管理
 
 ::: warning 注意
-QOS为release-3.2.1版本新增feature
+QOS为v3.2.1版本新增feature
 :::
 
 ## Master接口限流

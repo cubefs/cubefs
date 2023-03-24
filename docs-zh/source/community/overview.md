@@ -25,4 +25,6 @@
 - 微信公众号
 
   ![qrcode](./pic/qrcode.png)
-- 微信 CubeFS Community 群，搜索并添加微信号blkleaf或mervinkid联系，注明您的来意
+- 微信 CubeFS Community 群（扫码添加**CubeFS小助手微信**加入）
+
+  ![qrcode](./pic/20230324085341754.png)

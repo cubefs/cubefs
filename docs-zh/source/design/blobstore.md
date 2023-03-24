@@ -47,14 +47,14 @@ CubeFS的纠删码存储子系统(BlobStore)，是一个高可靠、高可用、
 
 **Blob**
 
-**Blob** 是用户数据的一次EC计算的数据大小。由 Access 负责切分，Blob用 BlobID 唯一标识，BlobID 则由ClusterManager统一管理分配，**保证****全局唯一**。
+**Blob** 是用户数据的一次EC计算的数据大小。由`Access`负责切分，Blob用`BlobID`唯一标识，`BlobID`则由ClusterManager统一管理分配，保证全局唯一。
 
 假设系统预设的Blob大小为8 M。当前有用户数据 200 M，则会被切分成有序的 25 个 Blob，优先写入某个 Volume 中，当前 Volume 空间不足时，余下Blob 可写入其他 Volume。
 ![arc](./pic/ec-blob.png)
 
 **Shard**
 
-**Shard 是****EC****条带****数据****的组成单元。**上面提到 Volume 由多个 Chunk 组成，Blob 写入Volume 时，对应切成多个块分别写到各个Chunk。**每个小块数据叫做 Shard ，一个 Shard 对应写一个 Chunk**。
+**Shard** 是EC条带数据的组成单元。上面提到 Volume 由多个 Chunk 组成，Blob 写入Volume 时，对应切成多个块分别写到各个Chunk。**每个小块数据叫做 Shard ，一个 Shard 对应写一个 Chunk**。
 
 假设一份用户Blob 数据大小为8M， Volume纠删码模式为“ 4+4 ”，Access会把blob切成4份大小为2M的原始数据块，再计算出4个大小为2M的冗余校验块。该8个2M块都被称为 Shard ，这些 Shard会被分别写到Volume绑定的各个Chunk中，至此完成EC编码及存储流程。
 
