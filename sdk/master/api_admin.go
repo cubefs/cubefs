@@ -791,12 +791,6 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.FlashNodeVolRate >= 0 {
 		request.addParam(proto.FlashNodeVolRateKey, strconv.FormatInt(info.FlashNodeVolRate, 10))
 	}
-	if info.ExtentMergeIno != "" {
-		request.addParam("extentMergeIno", info.ExtentMergeIno)
-	}
-	if info.ExtentMergeSleepMs >= 0 {
-		request.addParam("extentMergeSleepMs", strconv.FormatInt(info.ExtentMergeSleepMs, 10))
-	}
 	if info.DnFixTinyDeleteRecordLimit >= 0 {
 		request.addParam("fixTinyDeleteRecordKey", strconv.FormatInt(info.DnFixTinyDeleteRecordLimit, 10))
 	}

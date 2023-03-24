@@ -64,8 +64,6 @@ type clusterValue struct {
 	ObjectNodeActionRateLimitMap        map[string]map[string]int64
 	PoolSizeOfDataPartitionsInRecover   int32
 	PoolSizeOfMetaPartitionsInRecover   int32
-	ExtentMergeIno                      map[string][]uint64
-	ExtentMergeSleepMs                  uint64
 	FixTinyDeleteRecordLimit            uint64
 	ClientPkgAddr                       string
 	UmpJmtpAddr                         string
@@ -142,8 +140,6 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DisableAutoAllocate:                 c.DisableAutoAllocate,
 		PoolSizeOfDataPartitionsInRecover:   c.cfg.DataPartitionsRecoverPoolSize,
 		PoolSizeOfMetaPartitionsInRecover:   c.cfg.MetaPartitionsRecoverPoolSize,
-		ExtentMergeIno:                      c.cfg.ExtentMergeIno,
-		ExtentMergeSleepMs:                  c.cfg.ExtentMergeSleepMs,
 		FixTinyDeleteRecordLimit:            c.dnFixTinyDeleteRecordLimit,
 		ClientPkgAddr:                       c.cfg.ClientPkgAddr,
 		UmpJmtpAddr:                         c.cfg.UmpJmtpAddr,
@@ -1095,11 +1091,6 @@ func (c *Cluster) loadClusterValue() (err error) {
 			c.cfg.ObjectNodeActionRateLimitMap = make(map[string]map[string]int64)
 		}
 		c.updateRecoverPoolSize(cv.PoolSizeOfDataPartitionsInRecover, cv.PoolSizeOfMetaPartitionsInRecover)
-		c.cfg.ExtentMergeIno = cv.ExtentMergeIno
-		if c.cfg.ExtentMergeIno == nil {
-			c.cfg.ExtentMergeIno = make(map[string][]uint64)
-		}
-		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, cv.ExtentMergeSleepMs)
 
 		if cv.MetaNodeDumpWaterLevel < defaultMetanodeDumpWaterLevel {
 			cv.MetaNodeDumpWaterLevel = defaultMetanodeDumpWaterLevel

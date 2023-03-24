@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -3654,10 +3653,6 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[mpRecoverPoolSizeKey]; ok {
 		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, int32(val.(int64)))
 	}
-	oldExtentMergeSleepMs := atomic.LoadUint64(&c.cfg.ExtentMergeSleepMs)
-	if val, ok := params[extentMergeSleepMsKey]; ok {
-		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, val.(uint64))
-	}
 	oldDumpWaterLevel := atomic.LoadUint64(&c.cfg.MetaNodeDumpWaterLevel)
 	if val, ok := params[dumpWaterLevelKey]; ok {
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, val.(uint64))
@@ -3901,7 +3896,6 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.DataNodeNormalExtentDeleteExpire, oldNormalExtentDeleteExpire)
 		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, oldDpRecoverPoolSize)
 		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpRecoverPoolSize)
-		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, oldExtentMergeSleepMs)
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, oldDumpWaterLevel)
 		atomic.StoreUint64(&c.cfg.MonitorSummarySec, oldMonitorSummaryTime)
 		atomic.StoreUint64(&c.cfg.MonitorReportSec, oldMonitorReportTime)
@@ -4427,38 +4421,6 @@ func (c *Cluster) setMetaNodeDumpWaterLevel(level uint64) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setMetaNodeDumpWaterLevel] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, oldDumpWaterLevel)
-		err = proto.ErrPersistenceByRaft
-		return
-	}
-	return
-}
-
-func (c *Cluster) setExtentMergeIno(ino string, vol string) (err error) {
-	c.cfg.reqRateLimitMapMutex.Lock()
-	defer c.cfg.reqRateLimitMapMutex.Unlock()
-	oldVal, ok := c.cfg.ExtentMergeIno[vol]
-	if ino != "-1" {
-		var inodes []uint64
-		inodeSlice := strings.Split(ino, ",")
-		for _, inode := range inodeSlice {
-			ino, errAtoi := strconv.Atoi(inode)
-			if errAtoi != nil {
-				err = fmt.Errorf("invalid inode: %s", inode)
-				return
-			}
-			inodes = append(inodes, uint64(ino))
-		}
-		c.cfg.ExtentMergeIno[vol] = inodes
-	} else {
-		delete(c.cfg.ExtentMergeIno, vol)
-	}
-	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setExtentMergeIno] err[%v]", err)
-		if ok {
-			c.cfg.ExtentMergeIno[vol] = oldVal
-		} else {
-			delete(c.cfg.ExtentMergeIno, vol)
-		}
 		err = proto.ErrPersistenceByRaft
 		return
 	}

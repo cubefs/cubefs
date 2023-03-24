@@ -164,12 +164,6 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DNNormalExtentDeleteExpire > 0 {
 				msg += fmt.Sprintf("normalExtentDeleteExpire: %d, ", info.DNNormalExtentDeleteExpire)
 			}
-			if info.ExtentMergeIno != "" {
-				msg += fmt.Sprintf("extentMergeIno: %s, volume: %s, ", info.ExtentMergeIno, info.Volume)
-			}
-			if info.ExtentMergeSleepMs >= 0 {
-				msg += fmt.Sprintf("extentMergeSleepMs: %d, ", info.ExtentMergeSleepMs)
-			}
 			if info.MetaNodeDumpWaterLevel > 0 {
 				msg += fmt.Sprintf("dumpWaterLevel    : %d, ", info.MetaNodeDumpWaterLevel)
 			}
@@ -320,8 +314,6 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.ClientWriteVolRate, "clientWriteVolRate", -1, "client write limit rate for volume")
 	cmd.Flags().Int64Var(&info.ClientVolOpRate, "clientVolOpRate", -2, "client meta op limit rate. '-1': unlimit, '0': disable")
 	cmd.Flags().Int64Var(&info.ObjectVolActionRate, "objectVolActionRate", -2, "object node vol action limit rate. '-1': unlimit, '0': disable")
-	cmd.Flags().StringVar(&info.ExtentMergeIno, "extentMergeIno", "", "comma separated inodes to be merged. '-1': no inodes, '0': all inodes")
-	cmd.Flags().Int64Var(&info.ExtentMergeSleepMs, "extentMergeSleepMs", -1, "extent merge interval(ms)")
 	cmd.Flags().Int64Var(&info.DnFixTinyDeleteRecordLimit, "fixTinyDeleteRecordLimit", -1, "data node fix tiny delete record limit")
 	cmd.Flags().Int64Var(&info.DataNodeRepairTaskZoneCount, "dataNodeRepairTaskZoneCount", -1, "data node repair task count of target zone")
 	cmd.Flags().Int64Var(&info.MetaNodeDumpWaterLevel, "metaNodeDumpWaterLevel", -1, "meta node dump snap shot water level")
@@ -400,9 +392,6 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  ObjectVolActionRate              : %v\n", info.ObjectNodeActionRateLimit))
 	sb.WriteString(fmt.Sprintf("    (map[action]limit of specified volume)\n"))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  ExtentMergeIno                   : %v\n", info.ExtentMergeIno))
-	sb.WriteString(fmt.Sprintf("    (map[volume][]inode)\n"))
-	sb.WriteString(fmt.Sprintf("  ExtentMergeSleepMs               : %v\n", info.ExtentMergeSleepMs))
 	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskZoneLimit      : %v\n", info.DataNodeRepairTaskCountZoneLimit))
 	sb.WriteString(fmt.Sprintf("  MetaNodeDumpWaterLevel           : %v\n", info.MetaNodeDumpWaterLevel))
 	sb.WriteString(fmt.Sprintf("    (map[zone]limit)\n"))

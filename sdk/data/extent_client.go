@@ -104,7 +104,6 @@ type ExtentConfig struct {
 	OnTruncate               TruncateFunc
 	OnEvictIcache            EvictIcacheFunc
 	OnInodeMergeExtents      InodeMergeExtentsFunc
-	ExtentMerge              bool
 	MetaWrapper              *meta.MetaWrapper
 }
 
@@ -114,13 +113,13 @@ type ExtentClient struct {
 	//streamerLock sync.Mutex
 	streamerConcurrentMap ConcurrentStreamerMap
 
-	originReadRate  int64
-	originWriteRate int64
-	readRate        uint64
-	writeRate       uint64
-	readLimiter     *rate.Limiter
-	writeLimiter    *rate.Limiter
-	masterClient    *masterSDK.MasterClient
+	originReadRate        int64
+	originWriteRate       int64
+	readRate              uint64
+	writeRate             uint64
+	readLimiter           *rate.Limiter
+	writeLimiter          *rate.Limiter
+	masterClient          *masterSDK.MasterClient
 	dpTimeoutCntThreshold int
 
 	dataWrapper     *Wrapper
@@ -141,11 +140,6 @@ type ExtentClient struct {
 
 	stopC chan struct{}
 	wg    sync.WaitGroup
-
-	extentMerge        bool
-	extentMergeIno     []uint64
-	extentMergeChan    chan struct{}
-	ExtentMergeSleepMs uint64
 
 	prepareCh chan *PrepareRequest
 }
@@ -235,12 +229,6 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	client.maxExtentNumPerAlignArea = config.MaxExtentNumPerAlignArea
 	client.forceAlignMerge = config.ForceAlignMerge
 
-	client.extentMerge = config.ExtentMerge
-	if client.extentMerge {
-		client.extentMergeChan = make(chan struct{})
-		client.wg.Add(1)
-		go client.BackgroundExtentMerge()
-	}
 	return
 }
 
@@ -516,22 +504,6 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	return
 }
 
-func (client *ExtentClient) ExtentMerge(ctx context.Context, inode uint64) (finish bool, err error) {
-	s := client.GetStreamer(inode)
-	if s == nil {
-		log.LogErrorf("stream is not opened yet: inode(%v)", inode)
-		return true, fmt.Errorf("stream is not opened yet")
-	}
-	s.once.Do(func() {
-		s.GetExtents(ctx)
-	})
-	if !s.extents.initialized {
-		return true, proto.ErrGetExtentsFailed
-	}
-	finish, err = s.IssueExtentMergeRequest(ctx)
-	return
-}
-
 // GetStreamer returns the streamer.
 func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
@@ -645,14 +617,6 @@ func (client *ExtentClient) updateConfig() {
 	} else {
 		client.writeLimiter.SetLimit(rate.Limit(defaultWriteLimitRate))
 	}
-
-	if client.extentMerge {
-		if len(client.extentMergeIno) == 0 && len(limitInfo.ExtentMergeIno[client.dataWrapper.volName]) > 0 {
-			client.extentMergeChan <- struct{}{}
-		}
-		client.extentMergeIno = limitInfo.ExtentMergeIno[client.dataWrapper.volName]
-		client.ExtentMergeSleepMs = limitInfo.ExtentMergeSleepMs
-	}
 	client.dpTimeoutCntThreshold = limitInfo.DpTimeoutCntThreshold
 }
 
@@ -716,39 +680,6 @@ func (c *ExtentClient) SetExtentSize(size int) {
 		return
 	}
 	c.extentSize = size
-}
-
-func (c *ExtentClient) BackgroundExtentMerge() {
-	defer c.wg.Done()
-	ctx := context.Background()
-	for {
-		select {
-		case <-c.stopC:
-			return
-		case <-c.extentMergeChan:
-			inodes := c.extentMergeIno
-			if len(inodes) == 1 && inodes[0] == 0 {
-				inodes = c.lookupAllInode(proto.RootIno)
-			}
-			for _, inode := range inodes {
-				var (
-					finish bool
-					err    error
-				)
-				c.OpenStream(inode)
-				for !finish {
-					finish, err = c.ExtentMerge(ctx, inode)
-					if err != nil {
-						log.LogWarnf("BackgroundExtentMerge err: %v, inode(%v)", err, inode)
-						break
-					}
-					time.Sleep(time.Duration(c.ExtentMergeSleepMs) * time.Millisecond)
-				}
-				c.CloseStream(ctx, inode)
-				c.EvictStream(ctx, inode)
-			}
-		}
-	}
 }
 
 func (c *ExtentClient) lookupAllInode(parent uint64) (inodes []uint64) {

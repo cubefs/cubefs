@@ -117,13 +117,6 @@ type EvictRequest struct {
 	ctx  context.Context
 }
 
-type ExtentMergeRequest struct {
-	finish bool
-	err    error
-	done   chan struct{}
-	ctx    context.Context
-}
-
 // Open request shall grab the lock until request is sent to the request channel
 func (s *Streamer) IssueOpenRequest() error {
 	request := openRequestPool.Get().(*OpenRequest)
@@ -240,17 +233,6 @@ func (s *Streamer) IssueEvictRequest(ctx context.Context) error {
 	return err
 }
 
-func (s *Streamer) IssueExtentMergeRequest(ctx context.Context) (finish bool, err error) {
-	request := &ExtentMergeRequest{}
-	request.done = make(chan struct{}, 1)
-	request.ctx = ctx
-	s.request <- request
-	<-request.done
-	finish = request.finish
-	err = request.err
-	return
-}
-
 func (s *Streamer) server() {
 	defer s.wg.Done()
 	t := time.NewTicker(5 * time.Second)
@@ -356,9 +338,6 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 		request.done <- struct{}{}
 	case *EvictRequest:
 		request.err = s.evict(request.ctx)
-		request.done <- struct{}{}
-	case *ExtentMergeRequest:
-		request.finish, request.err = s.extentMerge(request.ctx)
 		request.done <- struct{}{}
 	default:
 	}
@@ -1025,170 +1004,6 @@ func (s *Streamer) truncate(ctx context.Context, size uint64) error {
 
 func (s *Streamer) tinySizeLimit() int {
 	return s.tinySize
-}
-
-//func (s *Streamer) extentMerge(ctx context.Context, req *ExtentRequest) (err error, newReq *ExtentRequest, writeSize int) {
-//	if !s.isNeedMerge(req) {
-//		return
-//	}
-//
-//	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.extentMerge")
-//	defer tracer.Finish()
-//	ctx = tracer.Context()
-//
-//	defer func() {
-//		if err != nil {
-//			log.LogWarnf("extentMerge: extentMerge failed, err(%v), req(%v), newReq(%v), writeSize(%v)",
-//				err, req, newReq, writeSize)
-//		} else {
-//			log.LogDebugf("extentMerge: extentMerge success, req(%v), newReq(%v), writeSize(%v)",
-//				req, newReq, writeSize)
-//		}
-//	}()
-//
-//	alignSize := s.client.AlignSize()
-//
-//	mergeStart := req.FileOffset / alignSize * alignSize
-//	preSize := req.FileOffset - mergeStart
-//	mergeSize := alignSize
-//	if preSize+req.Size < alignSize {
-//		mergeSize = preSize + req.Size
-//	}
-//	mergeData := make([]byte, mergeSize)
-//
-//	_, err = s.read(ctx, mergeData, mergeStart, preSize)
-//	if err != nil {
-//		return
-//	}
-//
-//	writeSize = mergeSize - preSize
-//	copy(mergeData[preSize:], req.Data[:writeSize])
-//
-//	_, err = s.doWrite(ctx, mergeData, mergeStart, mergeSize, false)
-//	if err != nil {
-//		return
-//	}
-//
-//	err = s.flush(ctx)
-//	if err != nil {
-//		return
-//	}
-//
-//	if writeSize == req.Size {
-//		return
-//	}
-//
-//	newReqOffset := (req.FileOffset/alignSize + 1) * alignSize
-//	newReqSize := req.FileOffset + req.Size - newReqOffset
-//	if newReqSize > 0 {
-//		newReq = NewExtentRequest(newReqOffset, newReqSize, req.Data[writeSize:], nil)
-//	}
-//	return
-//}
-//
-//func (s *Streamer) isNeedMerge(req *ExtentRequest) bool {
-//	alignSize := s.client.AlignSize()
-//	maxExtent := s.client.MaxExtentNumPerAlignArea()
-//	force := s.client.ForceAlignMerge()
-//
-//	if s.handler != nil {
-//		return false
-//	}
-//
-//	if req.Size >= alignSize {
-//		return false
-//	}
-//
-//	// If this req.FileOffset equal an alignArea start offset, it will nevel need merge.
-//	if req.FileOffset == (req.FileOffset)/alignSize*alignSize {
-//		return false
-//	}
-//
-//	// In forceAlignMerge mode, when req across alignArea, it will always need merge.
-//	if force && (req.FileOffset/alignSize != (req.FileOffset+req.Size)/alignSize) {
-//		log.LogDebugf("isNeedMerge true: forceAlignMerge(%v), req(%v) across alignArea(%v).",
-//			force, req, alignSize)
-//		return true
-//	}
-//
-//	if maxExtent == 0 {
-//		return false
-//	}
-//
-//	// Determine whether the current extent number has reached to maxExtent
-//	alignStartOffset := req.FileOffset / alignSize * alignSize
-//	alignEndOffset := alignStartOffset + alignSize - 1
-//	pivot := &proto.ExtentKey{FileOffset: uint64(alignStartOffset)}
-//	upper := &proto.ExtentKey{FileOffset: uint64(alignEndOffset)}
-//	lower := &proto.ExtentKey{}
-//
-//	s.extents.RLock()
-//	defer s.extents.RUnlock()
-//
-//	s.extents.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
-//		ek := i.(*proto.ExtentKey)
-//		lower.FileOffset = ek.FileOffset
-//		return false
-//	})
-//
-//	extentNum := int(0)
-//	s.extents.root.AscendRange(lower, upper, func(i btree.Item) bool {
-//		extentNum++
-//		if extentNum >= maxExtent {
-//			return false
-//		}
-//		return true
-//	})
-//
-//	if extentNum >= maxExtent {
-//		log.LogDebugf("isNeedMerge true: current extent numbers(%v) reached to maxExtent(%v).", extentNum, maxExtent)
-//		return true
-//	}
-//
-//	return false
-//}
-
-func (s *Streamer) extentMerge(ctx context.Context) (finish bool, err error) {
-	var (
-		reader       *ExtentReader
-		readBytes    int
-		readRequests []*ExtentRequest
-		writeRequest *ExtentRequest
-	)
-	defer func() {
-		msg := fmt.Sprintf("extentMerge: ino(%v) readRequests(%v) writeRequest(%v) finish(%v) err(%v)", s.inode, readRequests, writeRequest, finish, err)
-		if err != nil {
-			log.LogWarnf(msg)
-		} else {
-			log.LogDebugf(msg)
-		}
-	}()
-
-	if err = s.flush(ctx, true); err != nil {
-		return
-	}
-
-	readRequests, writeRequest, err = s.extents.prepareMergeRequests()
-	if err != nil {
-		return
-	}
-	if writeRequest == nil {
-		finish = true
-		return
-	}
-
-	for _, req := range readRequests {
-		reader, err = s.GetExtentReader(req.ExtentKey)
-		if err != nil {
-			return
-		}
-		readBytes, err = reader.Read(ctx, req)
-		if err != nil || readBytes < req.Size {
-			return
-		}
-	}
-	_, err = s.doROW(ctx, writeRequest, false)
-	return
 }
 
 func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {

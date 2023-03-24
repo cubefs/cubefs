@@ -4115,7 +4115,6 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 		TinySize:          data.NoUseTinyExtent,
 		AutoFlush:         c.autoFlush,
 		MetaWrapper:       mw,
-		ExtentMerge:       isMysql(),
 	}
 	if first_start {
 		if ec, err = data.NewExtentClient(extentConfig, nil); err != nil {

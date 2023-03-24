@@ -1,8 +1,9 @@
 package master
 
 import (
-	"github.com/cubefs/cubefs/proto"
 	"testing"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 func TestGetLimitInfo(t *testing.T) {
@@ -30,8 +31,6 @@ func TestSetClientReaddirOpRateLimit(t *testing.T) {
 		DataNodeReqVolOpPartRate:    -2,
 		ClientReadVolRate:           -2,
 		ClientWriteVolRate:          -2,
-		ExtentMergeIno:              "",
-		ExtentMergeSleepMs:          -2,
 		ClientReadRate:              -2,
 		ClientWriteRate:             -2,
 		ObjectVolActionRate:         -2,

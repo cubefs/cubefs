@@ -95,8 +95,6 @@ const (
 	opcodeKey                           = "opcode"
 	actionKey                           = "action"
 	volWriteMutexKey                    = "volWriteMutex"
-	extentMergeInoKey                   = "extentMergeIno"
-	extentMergeSleepMsKey               = "extentMergeSleepMs"
 	fixTinyDeleteRecordKey              = "fixTinyDeleteRecordKey"
 	crossRegionHAKey                    = "crossRegion"
 	regionNameKey                       = "regionName"

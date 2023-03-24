@@ -535,8 +535,6 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ClientWriteVolRateLimitMap:             m.cluster.cfg.ClientWriteVolRateLimitMap,
 		ClientVolOpRateLimit:                   m.cluster.cfg.ClientVolOpRateLimitMap[vol],
 		ObjectNodeActionRateLimit:              m.cluster.cfg.ObjectNodeActionRateLimitMap[vol],
-		ExtentMergeIno:                         m.cluster.cfg.ExtentMergeIno,
-		ExtentMergeSleepMs:                     m.cluster.cfg.ExtentMergeSleepMs,
 		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
 		MetaNodeDumpWaterLevel:                 dumpWaterLevel,
 		MonitorSummarySec:                      monitorSummarySec,
@@ -2559,12 +2557,6 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		log.LogDebugf("setNodeInfoHandler: vol(%v), actionStr(%v), actionVal(%v), val(%v)", vol, actionStr, actionVal, val)
 		if err = m.cluster.setObjectVolActionRateLimit(v, vol, actionStr); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-	}
-	if val, ok := params[extentMergeInoKey]; ok {
-		if err = m.cluster.setExtentMergeIno(val.(string), vol); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -4692,9 +4684,6 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	if val := r.FormValue(volumeKey); val != "" {
 		params[volumeKey] = val
 	}
-	if val := r.FormValue(extentMergeInoKey); val != "" {
-		params[extentMergeInoKey] = val
-	}
 	if val := r.FormValue(actionKey); val != "" {
 		params[actionKey] = val
 	}
@@ -4704,7 +4693,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	uintKeys := []string{nodeDeleteBatchCountKey, proto.DataNodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs,
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
-		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
+		dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
 		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey, flashNodeRateKey, flashNodeVolRateKey}

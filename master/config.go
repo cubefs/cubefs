@@ -120,8 +120,6 @@ type clusterConfig struct {
 	ClientWriteVolRateLimitMap          map[string]uint64
 	ClientVolOpRateLimitMap             map[string]map[uint8]int64
 	ObjectNodeActionRateLimitMap        map[string]map[string]int64
-	ExtentMergeIno                      map[string][]uint64
-	ExtentMergeSleepMs                  uint64
 	peers                               []raftstore.PeerAddress
 	peerAddrs                           []string
 	heartbeatPort                       int64
@@ -199,7 +197,6 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.ClientWriteVolRateLimitMap = make(map[string]uint64)
 	cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)
 	cfg.ObjectNodeActionRateLimitMap = make(map[string]map[string]int64)
-	cfg.ExtentMergeIno = make(map[string][]uint64)
 	cfg.DataNodeRepairTaskCountZoneLimit = make(map[string]uint64)
 	cfg.DeleteEKRecordFilesMaxSize = 0 // use meta node default value 60MB 10files
 	cfg.MetaRaftLogSize = 0            //use meta node config value

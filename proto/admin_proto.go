@@ -583,8 +583,6 @@ type LimitInfo struct {
 	DataNodeRepairSSDZoneTaskLimitOnDisk   uint64
 	DataNodeRepairTaskCountZoneLimit       map[string]uint64
 
-	ExtentMergeIno                   map[string][]uint64
-	ExtentMergeSleepMs               uint64
 	MetaNodeDumpWaterLevel           uint64
 	DataNodeFlushFDInterval          uint32
 	DataNodeFlushFDParallelismOnDisk uint64
@@ -1294,8 +1292,6 @@ type RateLimitInfo struct {
 	DNNormalExtentDeleteExpire       int64
 	ClientReadVolRate                int64
 	ClientWriteVolRate               int64
-	ExtentMergeIno                   string
-	ExtentMergeSleepMs               int64
 	ClientReadRate                   int64
 	ClientWriteRate                  int64
 	ClientVolOpRate                  int64

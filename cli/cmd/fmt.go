@@ -1205,8 +1205,6 @@ func formatClusterNodeInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  LogMaxSize                  : %v\n", info.LogMaxSize))
 	sb.WriteString(fmt.Sprintf("  DataNodeFlushFDInterval     : %v\n", info.DataNodeFlushFDInterval))
 	sb.WriteString(fmt.Sprintf("  MetaNodeDumpWaterLevel      : %v\n", info.MetaNodeDumpWaterLevel))
-	sb.WriteString(fmt.Sprintf("  ExtentMergeSleepMs          : %v\n", info.ExtentMergeSleepMs))
-	sb.WriteString(fmt.Sprintf("  ExtentMergeIno              : %v\n", info.ExtentMergeIno))
 	sb.WriteString(fmt.Sprintf("  RocksdbDiskUsageThreshold   : %v\n", info.RocksdbDiskUsageThreshold))
 	return sb.String()
 }
