@@ -1027,17 +1027,10 @@ func (partition *DataPartition) TryToDecommission(c *Cluster) bool {
 
 func (partition *DataPartition) Decommission(c *Cluster) bool {
 	var (
-		targetHosts     []string
-		newAddr         string
-		msg             string
-		dataNode        *DataNode
-		zone            *Zone
-		ns              *nodeSet
-		excludeNodeSets []uint64
-		err             error
-		zones           []string
-		srcAddr         = partition.DecommissionSrcAddr
-		targetAddr      = partition.DecommissionDstAddr
+		msg        string
+		err        error
+		srcAddr    = partition.DecommissionSrcAddr
+		targetAddr = partition.DecommissionDstAddr
 	)
 	defer func() {
 		c.syncUpdateDataPartition(partition)
@@ -1059,85 +1052,33 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 	if err = c.validateDecommissionDataPartition(partition, srcAddr); err != nil {
 		goto errHandler
 	}
-	if dataNode, err = c.dataNode(srcAddr); err != nil {
-		goto errHandler
-	}
 
-	if dataNode.ZoneName == "" {
-		err = fmt.Errorf("dataNode[%v] zone is nil", dataNode.Addr)
-		goto errHandler
-	}
-
-	if zone, err = c.t.getZone(dataNode.ZoneName); err != nil {
-		goto errHandler
-	}
-
-	if ns, err = zone.getNodeSet(dataNode.NodeSetID); err != nil {
-		goto errHandler
-	}
-
-	if targetAddr != "" {
-		targetHosts = []string{targetAddr}
-	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1); err != nil {
-		if _, ok := c.vols[partition.VolName]; !ok {
-			err = fmt.Errorf("clusterID[%v] partitionID:%v  on Node:%v offline failed,PersistenceHosts:[%v]",
-				c.Name, partition.PartitionID, srcAddr, partition.Hosts)
-			goto errHandler
-		}
-		if c.isFaultDomain(c.vols[partition.VolName]) {
-			err = fmt.Errorf("clusterID[%v] partitionID:%v  on Node:%v is banlance zone,PersistenceHosts:[%v]",
-				c.Name, partition.PartitionID, srcAddr, partition.Hosts)
-			goto errHandler
-		}
-		// select data nodes from the other node set in same zone
-		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludeNodeSets, partition.Hosts, 1); err != nil {
-			// select data nodes from the other zone
-			zones = partition.getLiveZones(srcAddr)
-			var excludeZone []string
-			if len(zones) == 0 {
-				excludeZone = append(excludeZone, zone.name)
-			} else {
-				excludeZone = append(excludeZone, zones[0])
-			}
-			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludeZone, excludeNodeSets, partition.Hosts, 1, 1, ""); err != nil {
-				goto errHandler
-			}
-		}
-	}
-	newAddr = targetHosts[0]
-
-	err = c.updateDataNodeSize(newAddr, partition)
+	err = c.updateDataNodeSize(targetAddr, partition)
 	if err != nil {
-		log.LogWarnf("action[decommissionDataPartition] target addr can't be writable, add %s %s", newAddr, err.Error())
+		log.LogWarnf("action[decommissionDataPartition] target addr can't be writable, add %s %s", targetAddr, err.Error())
 		goto errHandler
 	}
 	defer func() {
 		if err != nil {
-			c.returnDataSize(newAddr, partition)
+			c.returnDataSize(targetAddr, partition)
 		}
 	}()
-	//save the new Addr for retry
-	if !partition.DecommissionDstAddrSpecify {
-		partition.DecommissionDstAddr = newAddr
-		c.syncUpdateDataPartition(partition)
-	}
 	// if single/two replica without raftforce
 	if partition.isSpecialReplicaCnt() && !partition.DecommissionRaftForce {
 		if partition.GetSpecialReplicaDecommissionStep() == SpecialDecommissionInitial {
 			partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionEnter)
 		}
-		if err = c.decommissionSingleDp(partition, newAddr, srcAddr); err != nil {
+		if err = c.decommissionSingleDp(partition, targetAddr, srcAddr); err != nil {
 			goto errHandler
 		}
 	} else {
 		if err = c.removeDataReplica(partition, srcAddr, false, partition.DecommissionRaftForce); err != nil {
 			goto errHandler
 		}
-		if err = c.addDataReplica(partition, newAddr); err != nil {
+		if err = c.addDataReplica(partition, targetAddr); err != nil {
 			goto errHandler
 		}
-		newReplica, _ := partition.getReplica(newAddr)
+		newReplica, _ := partition.getReplica(targetAddr)
 		newReplica.Status = proto.Recovering //in case heartbeat response is not arrived
 		partition.isRecover = true
 		partition.Status = proto.ReadOnly
@@ -1151,7 +1092,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		partition.SetDecommissionStatus(DecommissionRunning)
 		log.LogInfof("action[decommissionDataPartition]clusterID[%v] partitionID:%v "+
 			"on node:%v offline success,newHost[%v],PersistenceHosts:[%v], SingleDecommissionStatus[%v]prepare consume[%v]seconds",
-			c.Name, partition.PartitionID, srcAddr, newAddr, partition.Hosts, partition.GetSpecialReplicaDecommissionStep(), time.Since(begin).Seconds())
+			c.Name, partition.PartitionID, srcAddr, targetAddr, partition.Hosts, partition.GetSpecialReplicaDecommissionStep(), time.Since(begin).Seconds())
 		return true
 	}
 
@@ -1169,14 +1110,14 @@ errHandler:
 		partition.SetDecommissionStatus(markDecommission) //retry again
 	}
 
-	//if need rollback, set to fail
+	//if need rollback, set to fail,reset DecommissionDstAddr
 	if partition.DecommissionNeedRollback {
 		partition.SetDecommissionStatus(DecommissionFail)
 	}
 	msg = fmt.Sprintf("clusterID[%v] vol[%v] partitionID:%v  on Node:%v  "+
 		"to newHost:%v Err:%v, PersistenceHosts:%v ,retry %v,status %v, isRecover %v SingleDecommissionStatus[%v]"+
 		" DecommissionNeedRollback[%v]",
-		c.Name, partition.VolName, partition.PartitionID, srcAddr, newAddr, err.Error(),
+		c.Name, partition.VolName, partition.PartitionID, srcAddr, targetAddr, err.Error(),
 		partition.Hosts, partition.DecommissionRetry, partition.GetDecommissionStatus(),
 		partition.isRecover, partition.GetSpecialReplicaDecommissionStep(), partition.DecommissionNeedRollback)
 	Warn(c.Name, msg)
@@ -1366,4 +1307,126 @@ func (partition *DataPartition) createTaskToStopDataPartitionRepair(addr string,
 	task = proto.NewAdminTask(proto.OpStopDataPartitionRepair, addr, newStopDataPartitionRepairRequest(partition.PartitionID, stop))
 	partition.resetTaskID(task)
 	return
+}
+
+func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
+	var (
+		zone            *Zone
+		ns              *nodeSet
+		err             error
+		targetHosts     []string
+		excludeNodeSets []uint64
+		zones           []string
+	)
+	defer c.syncUpdateDataPartition(partition)
+
+	// the first time for dst addr not specify
+	if !partition.DecommissionDstAddrSpecify && partition.DecommissionDstAddr == "" {
+		// try to find available data node in src nodeset
+		ns, err = getTargetNodeset(partition.DecommissionSrcAddr, c)
+		if err != nil {
+			log.LogWarnf("action[TryAcquireDecommissionToken] find src nodeset failed:%v", err.Error())
+			goto errHandler
+		}
+		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1)
+		if err != nil {
+			if _, ok := c.vols[partition.VolName]; !ok {
+				err = fmt.Errorf("cannot find vol")
+				goto errHandler
+			}
+
+			if c.isFaultDomain(c.vols[partition.VolName]) {
+				err = fmt.Errorf("is fault domain")
+				goto errHandler
+			}
+			excludeNodeSets = append(excludeNodeSets, ns.ID)
+			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludeNodeSets, partition.Hosts, 1); err != nil {
+				// select data nodes from the other zone
+				zones = partition.getLiveZones(partition.DecommissionSrcAddr)
+				var excludeZone []string
+				if len(zones) == 0 {
+					excludeZone = append(excludeZone, zone.name)
+				} else {
+					excludeZone = append(excludeZone, zones[0])
+				}
+				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludeZone, excludeNodeSets, partition.Hosts, 1, 1, ""); err != nil {
+					goto errHandler
+				}
+			}
+			//get nodeset for target host
+			newAddr := targetHosts[0]
+			ns, err = getTargetNodeset(newAddr, c)
+			if err != nil {
+				log.LogWarnf("action[TryAcquireDecommissionToken] find new nodeset failed:%v", err.Error())
+				goto errHandler
+			}
+		}
+		//only persist DecommissionDstAddr when get token
+		if ns.AcquireDecommissionToken() {
+			partition.DecommissionDstAddr = targetHosts[0]
+			log.LogWarnf("action[TryAcquireDecommissionToken] get token from %v nodeset %v success",
+				partition.DecommissionDstAddr, ns.ID)
+			return true
+		} else {
+			return false
+		}
+	} else {
+		ns, err = getTargetNodeset(partition.DecommissionDstAddr, c)
+		if err != nil {
+			log.LogWarnf("action[TryAcquireDecommissionToken] find src nodeset failed:%v", err.Error())
+			goto errHandler
+		}
+		if ns.AcquireDecommissionToken() {
+			log.LogWarnf("action[TryAcquireDecommissionToken] get token from %v nodeset %v success",
+				partition.DecommissionDstAddr, ns.ID)
+			return true
+		} else {
+			return false
+		}
+	}
+errHandler:
+	partition.DecommissionRetry++
+	if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
+		partition.SetDecommissionStatus(DecommissionFail)
+	}
+	log.LogDebugf("action[TryAcquireDecommissionToken] clusterID[%v] vol[%v] partitionID[%v]"+
+		" retry %v status %v DecommissionDstAddrSpecify %v DecommissionDstAddr %v failed:%v",
+		c.Name, partition.VolName, partition.PartitionID, partition.DecommissionRetry, partition.GetDecommissionStatus(),
+		partition.DecommissionDstAddrSpecify, partition.DecommissionDstAddr, err.Error())
+	return false
+}
+
+func (partition *DataPartition) ReleaseDecommissionToken(c *Cluster) {
+	if partition.DecommissionDstAddr == "" {
+		return
+	}
+	if ns, err := getTargetNodeset(partition.DecommissionDstAddr, c); err != nil {
+		log.LogWarnf("action[ReleaseDecommissionToken]should never happen dp %v:%v", partition.PartitionID, err.Error())
+		return
+	} else {
+		ns.ReleaseDecommissionToken()
+	}
+}
+
+func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, err error) {
+	var (
+		dataNode *DataNode
+		zone     *Zone
+	)
+	dataNode, err = c.dataNode(addr)
+	if err != nil {
+		log.LogWarnf("action[getTargetNodeset] find src %v data node failed:%v", addr, err.Error())
+		return nil, err
+	}
+	zone, err = c.t.getZone(dataNode.ZoneName)
+	if err != nil {
+		log.LogWarnf("action[getTargetNodeset] find src %v zone failed:%v", addr, err.Error())
+		return nil, err
+	}
+	ns, err = zone.getNodeSet(dataNode.NodeSetID)
+	if err != nil {
+		log.LogWarnf("action[getTargetNodeset] find src %v nodeset failed:%v", addr, err.Error())
+		return nil, err
+	}
+	return ns, nil
 }
