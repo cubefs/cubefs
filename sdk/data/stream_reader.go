@@ -17,10 +17,11 @@ package data
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/flash"
 	"io"
 	"net"
 	"sync"
+
+	"github.com/cubefs/cubefs/sdk/flash"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
@@ -60,7 +61,6 @@ type Streamer struct {
 
 	overWriteReq      []*OverWriteRequest
 	overWriteReqMutex sync.Mutex
-	appendWriteBuffer bool
 
 	tinySize   int
 	extentSize int
@@ -72,7 +72,7 @@ type Streamer struct {
 }
 
 // NewStreamer returns a new streamer.
-func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStreamerMapSegment, appendWriteBuffer bool) *Streamer {
+func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStreamerMapSegment) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
@@ -83,7 +83,6 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.tinySize = client.tinySize
 	s.extentSize = client.extentSize
 	s.streamerMap = streamMap
-	s.appendWriteBuffer = appendWriteBuffer
 	s.pendingPacketList = make([]*common.Packet, 0)
 	s.bloomStatus = client.GetInodeBloomStatus(inode)
 
@@ -203,97 +202,6 @@ func (s *Streamer) readHoles(requests []*ExtentRequest, fileSize uint64) (read i
 			return
 		}
 	}
-	return
-}
-
-// concurrent read/write optimization
-// If appendWriteBuffer is on, read all data from extent handler cache. Otherwise,
-//   1.if data is in handler unflushed packet, read from the packet
-//   2.if data has been written to data node, read from datanode without flushing
-func (s *Streamer) readFromCache(req *ExtentRequest) (read int, skipFlush bool) {
-	s.handlerMutex.Lock()
-	defer s.handlerMutex.Unlock()
-	if s.handler == nil {
-		return
-	}
-
-	if !s.appendWriteBuffer {
-		if s.handler.key != nil && uint64(req.FileOffset) >= s.handler.key.FileOffset &&
-			req.FileOffset+uint64(req.Size) <= s.handler.key.FileOffset+uint64(s.handler.key.Size) {
-			req.ExtentKey = s.handler.key
-			skipFlush = true
-			return
-		}
-
-		s.handler.packetMutex.RLock()
-		defer s.handler.packetMutex.RUnlock()
-		if s.handler.packet != nil && req.FileOffset >= s.handler.packet.KernelOffset &&
-			req.FileOffset+uint64(req.Size) <= s.handler.packet.KernelOffset+uint64(s.handler.packet.Size) {
-			off := int(req.FileOffset - s.handler.packet.KernelOffset)
-			copy(req.Data, s.handler.packet.Data[off:off+req.Size])
-			read += req.Size
-			skipFlush = true
-		}
-		return
-	}
-
-	// read from extent handler packetList
-	remainSize := req.Size
-	currentOffset := req.FileOffset
-	defer func() {
-		if remainSize == 0 {
-			skipFlush = true
-		} else {
-			log.LogErrorf("readFromCache cannot read enough data: expect(%v) read(%v) req(%v) packetList(%v) packet(%v)", req.Size, read, req, s.handler.packetList, s.handler.packet)
-			read = 0
-			req.Data = req.Data[:0]
-		}
-	}()
-	s.handler.packetMutex.RLock()
-	defer s.handler.packetMutex.RUnlock()
-
-	for _, p := range s.handler.packetList {
-		if remainSize == 0 {
-			break
-		}
-		if currentOffset >= p.KernelOffset+uint64(p.Size) {
-			continue
-		}
-
-		offset := int(currentOffset - p.KernelOffset)
-		if offset < 0 {
-			log.LogErrorf("readFromCache packet offset invalid: req(%v) packet(%v)", req, p)
-			return
-		}
-		dataLen := remainSize
-		if offset+dataLen > int(p.Size) {
-			dataLen = int(p.Size) - offset
-		}
-		copy(req.Data[read:read+dataLen], p.Data[offset:offset+dataLen])
-		read += dataLen
-		currentOffset += uint64(dataLen)
-		remainSize -= dataLen
-	}
-	if remainSize == 0 {
-		return
-	}
-
-	// read from extent handler packet
-	if s.handler.packet == nil {
-		return
-	}
-	offset := int(currentOffset - s.handler.packet.KernelOffset)
-	if offset < 0 {
-		log.LogErrorf("readFromCache packet offset invalid: req(%v) packet(%v)", req, s.handler.packet)
-		return
-	}
-	dataLen := remainSize
-	if offset+dataLen > int(s.handler.packet.Size) {
-		dataLen = int(s.handler.packet.Size) - offset
-	}
-	copy(req.Data[read:read+dataLen], s.handler.packet.Data[offset:offset+dataLen])
-	read += dataLen
-	remainSize -= dataLen
 	return
 }
 

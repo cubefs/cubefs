@@ -87,7 +87,7 @@ func (r *FSFileReader) Close() error {
 }
 
 func NewFSFileReader(volume string, info *FSFileInfo, ec *data.ExtentClient) (reader *FSFileReader, err error) {
-	if err = ec.OpenStream(info.Inode, false, false); err != nil {
+	if err = ec.OpenStream(info.Inode, false); err != nil {
 		return
 	}
 	if currFileSize, _, _ := ec.FileSize(info.Inode); currFileSize < uint64(info.Size) {

@@ -1086,19 +1086,16 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 }
 
 func (c *client) openInodeStream(f *file) {
-	var appendWriteBuffer bool
 	_, name := gopath.Split(f.path)
 	nameParts := strings.Split(name, ".")
 	if nameParts[0] == fileRelaylog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
 		f.fileType = fileTypeRelaylog
-		//appendWriteBuffer = true
 	} else if nameParts[0] == fileBinlog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
 		f.fileType = fileTypeBinlog
-		//appendWriteBuffer = true
 	} else if strings.Contains(nameParts[0], fileRedolog) {
 		f.fileType = fileTypeRedolog
 	}
-	c.ec.OpenStream(f.ino, appendWriteBuffer)
+	c.ec.OpenStream(f.ino)
 }
 
 //export cfs_openat
@@ -4218,7 +4215,7 @@ func (c *client) copyFile(fd uint, newfd uint) uint {
 	newfile.fd = newfd
 	c.fdmap[newfd] = newfile
 	if proto.IsRegular(newfile.mode) {
-		c.ec.OpenStream(newfile.ino, false)
+		c.ec.OpenStream(newfile.ino)
 	}
 	return newfd
 }

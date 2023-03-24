@@ -66,8 +66,6 @@ type ExtentHandler struct {
 	// Created, filled and sent in Write.
 	packet                    *common.Packet
 	packetMutex               sync.RWMutex // for packet and packetList
-	cachePacket               bool
-	packetList                []*common.Packet
 	overwriteLocalPacketMutex sync.Mutex
 
 	// Updated in *write* method ONLY.
@@ -128,7 +126,7 @@ type ExtentHandler struct {
 }
 
 // NewExtentHandler returns a new extent handler.
-func NewExtentHandler(stream *Streamer, offset uint64, storeMode int, cachePacket bool) *ExtentHandler {
+func NewExtentHandler(stream *Streamer, offset uint64, storeMode int) *ExtentHandler {
 	eh := &ExtentHandler{
 		stream:       stream,
 		id:           GetExtentHandlerID(),
@@ -140,7 +138,6 @@ func NewExtentHandler(stream *Streamer, offset uint64, storeMode int, cachePacke
 		reply:        make(chan *common.Packet, 1024),
 		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
-		cachePacket:  cachePacket,
 	}
 
 	eh.wg.Add(2)
@@ -440,10 +437,8 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 		eh.key.Size += packet.Size
 	}
 
-	if !eh.cachePacket {
-		proto.Buffers.Put(packet.Data)
-		packet.Data = nil
-	}
+	proto.Buffers.Put(packet.Data)
+	packet.Data = nil
 	eh.dirty = true
 	eh.ekMutex.Unlock()
 
@@ -464,19 +459,6 @@ func (eh *ExtentHandler) processReplyError(packet *common.Packet, errmsg string)
 func (eh *ExtentHandler) flush(ctx context.Context) (err error) {
 	eh.flushPacket(ctx)
 	eh.waitForFlush(ctx)
-
-	if eh.cachePacket {
-		// Don't clear packetList if the handler is open, in case of following read
-		if eh.getStatus() != ExtentStatusOpen {
-			eh.packetMutex.Lock()
-			for _, p := range eh.packetList {
-				proto.Buffers.Put(p.Data)
-				p.Data = nil
-			}
-			eh.packetList = eh.packetList[:0]
-			eh.packetMutex.Unlock()
-		}
-	}
 
 	err = eh.appendExtentKey(ctx)
 	if err != nil {
@@ -618,7 +600,7 @@ func (eh *ExtentHandler) recoverPacket(packet *common.Packet, errmsg string) err
 		// Always use normal extent store mode for recovery.
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
-		handler = NewExtentHandler(eh.stream, packet.KernelOffset, proto.NormalExtentType, false)
+		handler = NewExtentHandler(eh.stream, packet.KernelOffset, proto.NormalExtentType)
 		handler.setClosed()
 	}
 	// packet.Data will be released in original handler flush
@@ -635,10 +617,8 @@ func (eh *ExtentHandler) recoverPacket(packet *common.Packet, errmsg string) err
 }
 
 func (eh *ExtentHandler) discardPacket(packet *common.Packet) {
-	if !eh.cachePacket {
-		proto.Buffers.Put(packet.Data)
-		packet.Data = nil
-	}
+	proto.Buffers.Put(packet.Data)
+	packet.Data = nil
 	eh.setError()
 }
 
@@ -779,9 +759,6 @@ func (eh *ExtentHandler) flushPacket(ctx context.Context) {
 	eh.overwriteLocalPacketMutex.Lock()
 	eh.pushToRequest(ctx, eh.packet)
 	eh.packetMutex.Lock()
-	if eh.cachePacket {
-		eh.packetList = append(eh.packetList, eh.packet)
-	}
 	eh.packet = nil
 	eh.packetMutex.Unlock()
 	eh.overwriteLocalPacketMutex.Unlock()

@@ -254,12 +254,12 @@ func (client *ExtentClient) SaveDataState() *DataState {
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStream(inode uint64, appendWriteBuffer bool) error {
+func (client *ExtentClient) OpenStream(inode uint64) error {
 	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
 	streamerMapSeg.Lock()
 	s, ok := streamerMapSeg.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode, streamerMapSeg, appendWriteBuffer)
+		s = NewStreamer(client, inode, streamerMapSeg)
 		streamerMapSeg.streamers[inode] = s
 	}
 	return s.IssueOpenRequest()
@@ -735,7 +735,7 @@ func (c *ExtentClient) BackgroundExtentMerge() {
 					finish bool
 					err    error
 				)
-				c.OpenStream(inode, false)
+				c.OpenStream(inode)
 				for !finish {
 					finish, err = c.ExtentMerge(ctx, inode)
 					if err != nil {

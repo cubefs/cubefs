@@ -114,7 +114,7 @@ func (s *Streamer) FlushAllPendingPacket(ctx context.Context) {
 			pendingEh = nil
 		}
 		if pendingEh == nil {
-			pendingEh = NewExtentHandler(s, pendingPacket.KernelOffset, proto.NormalExtentType, false)
+			pendingEh = NewExtentHandler(s, pendingPacket.KernelOffset, proto.NormalExtentType)
 			s.dirtylist.Put(pendingEh)
 		}
 		pendingEh.packet = pendingPacket

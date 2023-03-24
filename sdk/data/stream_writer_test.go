@@ -319,7 +319,7 @@ func getStreamer(t *testing.T, file string, ec *ExtentClient, appendWriteBuffer 
 	}
 	sysStat := info.Sys().(*syscall.Stat_t)
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	return NewStreamer(ec, sysStat.Ino, streamMap, false)
+	return NewStreamer(ec, sysStat.Ino, streamMap)
 }
 
 func TestROW(t *testing.T) {
@@ -361,7 +361,7 @@ func TestROW(t *testing.T) {
 	}
 	inode := fInfo.Sys().(*syscall.Stat_t).Ino
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(inode)
-	streamer := NewStreamer(ec, inode, streamMap, false)
+	streamer := NewStreamer(ec, inode, streamMap)
 	_, _, eks, err := mw.GetExtents(ctx, inode)
 	if err != nil {
 		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, inode)
@@ -450,7 +450,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 	sysStat := fInfo.Sys().(*syscall.Stat_t)
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	streamer := NewStreamer(ec, sysStat.Ino, streamMap, false)
+	streamer := NewStreamer(ec, sysStat.Ino, streamMap)
 	if _, _, eks, err := mw.GetExtents(context.Background(), sysStat.Ino); err != nil {
 		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, sysStat.Ino)
 	} else {

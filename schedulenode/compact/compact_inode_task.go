@@ -75,7 +75,7 @@ func (inodeTask *CmpInodeTask) OpenFile() (err error) {
 		}
 		inodeTask.State = proto.InodeCmpCalcCmpEKS
 	}()
-	if err = inodeTask.vol.dataClient.OpenStream(inodeTask.Inode.Inode, false); err != nil {
+	if err = inodeTask.vol.dataClient.OpenStream(inodeTask.Inode.Inode); err != nil {
 		return
 	}
 	if err = inodeTask.vol.dataClient.RefreshExtentsCache(context.Background(), inodeTask.Inode.Inode); err != nil {
