@@ -242,14 +242,12 @@ pre_build() {
 }
 
 run_test() {
-    pre_build
-#    pre_build_server
+    pre_build_server
     pushd $SrcPath >/dev/null
     echo -n "${TPATH}"
 #    go test $MODFLAGS -ldflags "${LDFlags}" -cover ./master
 
-    go test  $(go list ./... | grep -v depends)
-#    go test $MODFLAGS -ldflags "${LDFlags}" -cover ./metanode
+    go test -cover -v -coverprofile=cover.output $(go list ./... | grep -v depends | grep -v master) | tee cubefs_unittest.output
     ret=$?
     popd >/dev/null
     exit $ret

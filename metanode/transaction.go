@@ -241,6 +241,17 @@ func NewTransactionProcessor(mp *metaPartition) *TransactionProcessor {
 	return txProcessor
 }
 
+func (tm *TransactionManager) copyTransactions() map[string]*proto.TransactionInfo {
+	transactions := make(map[string]*proto.TransactionInfo, 0)
+	tm.Lock()
+	defer tm.Unlock()
+
+	for key, tx := range tm.transactions {
+		transactions[key] = tx
+	}
+	return transactions
+}
+
 func (tm *TransactionManager) processExpiredTransactions() {
 	//scan transctions periodically, and invoke `rollbackTransaction` to roll back expired transctions
 	log.LogDebugf("processExpiredTransactions for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
@@ -257,17 +268,19 @@ func (tm *TransactionManager) processExpiredTransactions() {
 				case <-tm.exitCh:
 					return
 				case <-scanTimer.C:
-					//tm.Lock()
 					if len(tm.transactions) == 0 {
-						//tm.Unlock()
 						break LOOP
 					}
-					//tm.Unlock()
-					for _, tx := range tm.transactions {
+
+					transactions := tm.copyTransactions()
+					var wg sync.WaitGroup
+					for _, tx := range transactions {
 						now := time.Now().Unix()
 						if tx.Timeout <= uint32(now-tx.CreateTime) {
 							log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
+							wg.Add(1)
 							go func() {
+								defer wg.Done()
 								req := &proto.TxApplyRequest{
 									TxID:        tx.TxID,
 									TmID:        uint64(tx.TmID),
@@ -275,7 +288,9 @@ func (tm *TransactionManager) processExpiredTransactions() {
 								}
 								status, err := tm.rollbackTransaction(req)
 								if err == nil && status == proto.OpOk {
+									tm.Lock()
 									delete(tm.transactions, tx.TxID)
+									tm.Unlock()
 									log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back done", tx)
 								} else {
 									log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back failed, status(%v), err(%v)",
@@ -287,6 +302,7 @@ func (tm *TransactionManager) processExpiredTransactions() {
 							log.LogDebugf("processExpiredTransactions: transaction (%v) is ongoing", tx)
 						}
 					}
+					wg.Wait()
 
 					scanTimer.Reset(time.Second)
 				}
