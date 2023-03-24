@@ -253,7 +253,7 @@ func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 		s.cache.Put(e)
 	} else {
 		defer func() {
-			_ = e.Close()
+			_ = e.Close(false)
 		}()
 	}
 	s.infoStore.Create(extentID)
