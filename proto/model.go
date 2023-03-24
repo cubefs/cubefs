@@ -253,6 +253,8 @@ type DataPartitionDiagnosis struct {
 	LackReplicaDataPartitionIDs []uint64
 	BadDataPartitionIDs         []BadPartitionView
 	BadReplicaDataPartitionIDs  []uint64
+	RepFileCountDifferDpIDs     []uint64
+	RepUsedSizeDifferDpIDs      []uint64
 }
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
