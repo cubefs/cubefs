@@ -198,6 +198,14 @@ var (
 	badReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
 	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
 		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS", "UNAVAILABLE_REPLICAS")
+
+	repFileCountDifferPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v"
+	RepFileCountDifferInfoTableHeader           = fmt.Sprintf(repFileCountDifferPartitionInfoTablePattern,
+		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS(fileCount)")
+
+	repUsedSizeDifferPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v"
+	RepUsedSizeDifferInfoTableHeader           = fmt.Sprintf(repUsedSizeDifferPartitionInfoTablePattern,
+		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS(usedSize)")
 )
 
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
@@ -222,6 +230,48 @@ func formatBadReplicaDpInfoRow(partition *proto.DataPartitionInfo) string {
 	sb.WriteString("]")
 	return fmt.Sprintf(badReplicaPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
 		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
+}
+
+func formatReplicaFileCountDiffDpInfoRow(partition *proto.DataPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("[")
+	var firstItem = true
+	for _, replica := range partition.Replicas {
+		if !firstItem {
+			sb.WriteString(",")
+		}
+
+		if replica.IsLeader {
+			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.FileCount))
+		} else {
+			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.FileCount))
+		}
+		firstItem = false
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(repFileCountDifferPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), sb.String())
+}
+
+func formatReplicaSizeDiffDpInfoRow(partition *proto.DataPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("[")
+	var firstItem = true
+	for _, replica := range partition.Replicas {
+		if !firstItem {
+			sb.WriteString(",")
+		}
+
+		if replica.IsLeader {
+			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.Used))
+		} else {
+			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.Used))
+		}
+		firstItem = false
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(repUsedSizeDifferPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), sb.String())
 }
 
 func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {

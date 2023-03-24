@@ -282,11 +282,14 @@ func (dpMap *DataPartitionMap) totalUsedSpace() (totalUsed uint64) {
 func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly() {
 	dpMap.Lock()
 	defer dpMap.Unlock()
+	changedCnt := 0
 	for _, dp := range dpMap.partitions {
 		if proto.ReadWrite == dp.Status {
 			dp.Status = proto.ReadOnly
+			changedCnt++
 		}
 	}
+	log.LogDebugf("action[setAllDataPartitionsToReadOnly] ReadWrite->ReadOnly dp cnt: %v", changedCnt)
 }
 
 func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr string) (partitions []*DataPartition) {

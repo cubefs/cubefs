@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -901,7 +902,8 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 	return
 }
 
-func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, err error) {
+func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition,
+	repFileCountDifferDps []*DataPartition, repUsedSizeDifferDps []*DataPartition, err error) {
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
 	vols := c.copyVols()
@@ -913,13 +915,38 @@ func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartitio
 				lackReplicaDPs = append(lackReplicaDPs, dp)
 			}
 
+			repSizeDiff := 0.0
+			repSizeSentry := 0.0
+			repFileCountDiff := uint32(0)
+			repFileCountSentry := uint32(0)
+			if len(dp.Replicas) != 0 {
+				repSizeSentry = float64(dp.Replicas[0].Used)
+				repFileCountSentry = dp.Replicas[0].FileCount
+			}
+
 			for _, replica := range dp.Replicas {
 				if replica.Status == proto.Unavailable {
 					unavailableReplicaDPs = append(unavailableReplicaDPs, dp)
-					break
+				}
+
+				tempSizeDiff := math.Abs(float64(replica.Used) - repSizeSentry)
+				if tempSizeDiff > repSizeDiff {
+					repSizeDiff = tempSizeDiff
+				}
+
+				tempFileCountDiff := replica.FileCount - repFileCountSentry
+				if tempFileCountDiff > repFileCountDiff {
+					repFileCountSentry = tempFileCountDiff
 				}
 			}
 
+			if repSizeDiff > float64(c.cfg.diffReplicaSpaceUsage) {
+				repUsedSizeDifferDps = append(repUsedSizeDifferDps, dp)
+			}
+
+			if repFileCountDiff > c.cfg.diffReplicaFileCount {
+				repFileCountDifferDps = append(repFileCountDifferDps, dp)
+			}
 		}
 	}
 	log.LogInfof("clusterID[%v] lackReplicaDataPartitions count:[%v], unavailableReplicaDataPartitions count:[%v]",

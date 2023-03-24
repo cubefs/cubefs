@@ -618,7 +618,7 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 	dp.getFileCount()
 	if proto.IsNormalDp(dp.PartitionType) {
 		dp.validateCRC(c.Name)
-		dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
+		dp.checkReplicaSize(c.Name, c.cfg.diffReplicaSpaceUsage)
 	}
 
 	dp.setToNormal()
