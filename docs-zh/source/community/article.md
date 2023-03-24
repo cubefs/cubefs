@@ -16,6 +16,7 @@
 
 ## 技术揭秘
 
+- [CubeFS源码解读 | 副本子系统](https://mp.weixin.qq.com/s/Ryw4BLlVoysX5jeNFLpdig)，2023-03-23，存储团队@OPPO
 - [元数据管理设计](https://mp.weixin.qq.com/s/_PwSANyJZZuFst1SOolNGQ)，2023-01-04，存储团队@OPPO
 - [Posix文件客户端热升级原理设计](https://mp.weixin.qq.com/s/AUcOjcXOIs4ba1vvnu0-3Q)，2022-12-22，存储团队@OPPO
 - [均衡、巡检与故障自愈设计](https://mp.weixin.qq.com/s/CUfaEKUqvQ6UekcTDqkMqQ)，2022-11-04，存储团队@OPPO

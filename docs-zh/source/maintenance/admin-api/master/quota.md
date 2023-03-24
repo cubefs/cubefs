@@ -1,6 +1,6 @@
 # 配额管理
 ::: warning 注意
-配额管理为release-3.2.1版本新增feature
+配额管理为v3.2.1版本新增feature
 :::
 
 ## 目录文件数目配额
