@@ -361,6 +361,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	}
 
 	partition.lastUpdateTime = time.Now().Unix()
+	partition.monitorData[proto.ActionMarkDelete].UpdateData(0)
 	return
 }
 
@@ -391,6 +392,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	}
 
 	partition.lastUpdateTime = time.Now().Unix()
+	partition.monitorData[proto.ActionBatchMarkDelete].UpdateData(uint64(len(exts)))
 	return
 }
 
@@ -564,7 +566,6 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	if isRepairRead {
 		action = proto.ActionRepairRead
 	}
-	partition.monitorData[action].UpdateData(uint64(p.Size))
 
 	for {
 		if needReplySize <= 0 {
@@ -619,6 +620,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 			netErr = reply.WriteToConn(connect, proto.WriteDeadlineTime)
 			return netErr
 		}()
+		partition.monitorData[action].UpdateData(uint64(currReadSize))
 		if err != nil {
 			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)

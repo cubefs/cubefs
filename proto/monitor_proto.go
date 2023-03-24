@@ -39,14 +39,18 @@ const (
 	ActionAppendWrite
 	ActionOverWrite
 	ActionRepairWrite
+	ActionMarkDelete
+	ActionBatchMarkDelete
 )
 
 var ActionDataMap = map[int]string{
-	ActionRead:        "read",
-	ActionRepairRead:  "repairRead",
-	ActionAppendWrite: "appendWrite",
-	ActionOverWrite:   "overWrite",
-	ActionRepairWrite: "repairWrite",
+	ActionRead:            "read",
+	ActionRepairRead:      "repairRead",
+	ActionAppendWrite:     "appendWrite",
+	ActionOverWrite:       "overWrite",
+	ActionRepairWrite:     "repairWrite",
+	ActionMarkDelete:      "markDelete",
+	ActionBatchMarkDelete: "batchMarkDelete",
 }
 
 const (
