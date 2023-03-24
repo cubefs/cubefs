@@ -258,6 +258,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminChangeMetaPartitionLeader).
 		HandlerFunc(m.changeMetaPartitionLeader)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminBalanceMetaPartitionLeader).
+		HandlerFunc(m.balanceMetaPartitionLeader)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientMetaPartitions).
 		HandlerFunc(m.getMetaPartitions)
