@@ -101,7 +101,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 	}()
 	filename := path.Join(rootDir, inodeFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = nil
+		err = errors.NewErrorf("[loadInode] Stat: %s", err.Error())
 		return
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
@@ -168,7 +168,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 	}()
 	filename := path.Join(rootDir, dentryFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = nil
+		err = errors.NewErrorf("[loadDentry] Stat: %s", err.Error())
 		return
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
@@ -223,7 +223,8 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 	var err error
 	filename := path.Join(rootDir, extendFile)
 	if _, err = os.Stat(filename); err != nil {
-		return nil
+		err = errors.NewErrorf("[loadExtend] Stat: %s", err.Error())
+		return err
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
@@ -271,7 +272,8 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 	var err error
 	filename := path.Join(rootDir, multipartFile)
 	if _, err = os.Stat(filename); err != nil {
-		return nil
+		err = errors.NewErrorf("[loadMultipart] Stat: %s", err.Error())
+		return err
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
@@ -312,7 +314,7 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	filename := path.Join(rootDir, applyIDFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = nil
+		err = errors.NewErrorf("[loadApplyID]: Stat %s", err.Error())
 		return
 	}
 	data, err := ioutil.ReadFile(filename)
