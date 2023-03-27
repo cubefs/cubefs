@@ -992,7 +992,7 @@ func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartitio
 
 				tempFileCountDiff := replica.FileCount - repFileCountSentry
 				if tempFileCountDiff > repFileCountDiff {
-					repFileCountSentry = tempFileCountDiff
+					repFileCountDiff = tempFileCountDiff
 				}
 			}
 
