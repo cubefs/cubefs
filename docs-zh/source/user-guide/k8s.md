@@ -140,10 +140,10 @@ component:
 image:
   # CSI related images
   csi_driver: ghcr.io/cubefs/cfs-csi-driver:3.2.0.150.0
-  csi_provisioner: k8s.gcr.io/sig-storage/csi-provisioner:v2.2.2
-  csi_attacher: k8s.gcr.io/sig-storage/csi-attacher:v3.4.0
-  csi_resizer: k8s.gcr.io/sig-storage/csi-resizer:v1.3.0
-  driver_registrar: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
+  csi_provisioner: registry.k8s.io/sig-storage/csi-provisioner:v2.2.2
+  csi_attacher: registry.k8s.io/sig-storage/csi-attacher:v3.4.0
+  csi_resizer: registry.k8s.io/sig-storage/csi-resizer:v1.3.0
+  driver_registrar: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.5.0
 
 csi:
   driverName: csi.cubefs.com
