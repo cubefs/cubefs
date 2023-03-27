@@ -9,16 +9,11 @@ import (
 )
 
 const (
-	username = "root"
-	password = "cfsTest123@"
-	host     = "11.97.57.230"
-	database = "smart"
+	username = ""
+	password = ""
+	host     = ""
+	database = ""
 	port     = 3306
-	/*username = "jfsops"
-	password = "Lizhendong7&"
-	host     = "10.170.240.34"
-	database = "storage_object"
-	port     = 3306*/
 )
 
 func init() {

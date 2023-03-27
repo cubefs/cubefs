@@ -19,24 +19,24 @@ var ListenAddr string
 func init() {
 	cfgJSON := `{
 		"role": "schedulenode",
-		"localIP": "11.97.57.231",
+		"localIP": "",
 		"prof": "17330",
 		"workerTaskPeriod": 5,
 		"logDir": "/export/Logs/chubaofs/scheduleNode1/",
 		"logLevel": "debug",
 		"mysql": {
-			"url": "11.97.57.230",
-			"userName": "root",
-			"password": "cfsTest123@",
-			"database": "smart",
+			"url": "",
+			"userName": "",
+			"password": "",
+			"database": "",
 			"port": 3306
 		},
 		"hBaseUrl": "api.storage.hbase.jd.local/",
 		"clusterAddr": {
 			"smart_vol_test": [
-				"172.20.81.30:17010",
-				"172.20.81.31:17010",
-				"11.7.139.135:17010"
+				"",
+				"",
+				""
 			]
 		}
     }`

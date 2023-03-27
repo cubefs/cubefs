@@ -10,7 +10,7 @@ import (
 var hBaseClient *HBaseClient
 
 func init() {
-	hBaseHost := "api.storage.hbase.jd.local"
+	hBaseHost := ""
 	hConfig := config.NewHBaseConfig(hBaseHost)
 	hBaseClient = NewHBaseClient(hConfig)
 }
