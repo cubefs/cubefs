@@ -106,6 +106,13 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	return
 }
 
+func (partition *DataPartition) setReadWrite() {
+	partition.Status = proto.ReadWrite
+	for _, replica := range partition.Replicas {
+		replica.Status = proto.ReadWrite
+	}
+}
+
 func (partition *DataPartition) isSpecialReplicaCnt() bool {
 	return partition.ReplicaNum == 1 || partition.ReplicaNum == 2
 }
