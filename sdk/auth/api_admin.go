@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/keystore"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/keystore"
 )
 
 func (api *API) AdminCreateKey(clientID, clientKey, userID, role string, caps []byte) (res *keystore.KeyInfo, err error) {

@@ -17,13 +17,13 @@ package metanode
 import (
 	"context"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 	"strings"
 
 
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 const readDirMax = 1000 // the maximum number of children that can be returned per operation

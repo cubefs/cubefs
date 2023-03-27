@@ -17,8 +17,8 @@ package metanode
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/tecbot/gorocksdb"
 	"hash"
 	"hash/crc32"

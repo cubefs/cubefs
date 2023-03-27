@@ -18,12 +18,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 	"io/ioutil"
 	"net/http"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type ConvertClient struct {

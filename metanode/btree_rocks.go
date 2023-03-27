@@ -5,14 +5,14 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/tecbot/gorocksdb"
 	"hash/crc32"
 	"sync"
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

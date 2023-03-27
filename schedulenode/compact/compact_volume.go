@@ -2,11 +2,11 @@ package compact
 
 import (
 	"context"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 	"sort"
 	"sync"
 	"sync/atomic"

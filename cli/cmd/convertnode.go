@@ -16,8 +16,8 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/convertnode"
-	"github.com/chubaofs/chubaofs/sdk/convert"
+	"github.com/cubefs/cubefs/convertnode"
+	"github.com/cubefs/cubefs/sdk/convert"
 	"github.com/spf13/cobra"
 )
 

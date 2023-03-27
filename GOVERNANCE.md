@@ -32,7 +32,7 @@ participate in Pull Request reviews. Maintainers are expected to respond to assi
 in a *reasonable* time frame, either providing insights, or assign the Pull Requests to other
 maintainers.
 
-Every Maintainer is listed in the top-level [MAINTAINERS](https://github.com/chubaofs/chubaofs/blob/master/MAINTAINERS.md)
+Every Maintainer is listed in the top-level [MAINTAINERS](https://github.com/cubefs/cubefs/blob/master/MAINTAINERS.md)
 file.
 
 
@@ -111,7 +111,7 @@ into the __ChubaoFS__ organization, it has to meet the following criteria:
 - Must be supported by a Maintainer not associated or affiliated with the author(s) of the sub-projects
 
 The submission process starts as a Pull Request or Issue on the
-[chubaofs/chubaofs](https://github.com/chubaofs/chubaofs) repository with the required information
+[chubaofs/chubaofs](https://github.com/cubefs/cubefs) repository with the required information
 mentioned above. Once a project is accepted, it's considered a __sub-project under the umbrella of ChubaoFS__.
 
 ## New Plugins

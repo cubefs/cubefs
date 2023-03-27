@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chubaofs/chubaofs/datanode/mock"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/testutil"
+	"github.com/cubefs/cubefs/datanode/mock"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/testutil"
 )
 
 func TestSpaceManager_CreatePartition(t *testing.T) {

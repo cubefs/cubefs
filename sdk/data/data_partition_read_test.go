@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
 )
 
 var (

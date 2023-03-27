@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/iputil"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/iputil"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 var (

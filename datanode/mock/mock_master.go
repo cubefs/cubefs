@@ -3,7 +3,7 @@ package mock
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 	"go.uber.org/atomic"
 	"net"
 	"net/http"

@@ -19,13 +19,13 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/cubefs/cubefs/util/exporter"
 	"io"
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type InodeResponse struct {

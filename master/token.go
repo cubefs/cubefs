@@ -17,9 +17,9 @@ package master
 import (
 	"encoding/base64"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"net/url"
 	"strconv"

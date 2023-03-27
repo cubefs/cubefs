@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/cubefs/cubefs/util/ump"
 )
 
 var (

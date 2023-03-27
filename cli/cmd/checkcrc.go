@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/ump"
 	atomic2 "go.uber.org/atomic"
 	"os"
 	"sync"

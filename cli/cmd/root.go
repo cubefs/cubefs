@@ -16,15 +16,15 @@ package cmd
 
 import (
 	"fmt"
-	trash "github.com/chubaofs/chubaofs/cli/cmd/trash"
-	"github.com/chubaofs/chubaofs/sdk/convert"
+	trash "github.com/cubefs/cubefs/cli/cmd/trash"
+	"github.com/cubefs/cubefs/sdk/convert"
 	"os"
 	"path"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/monitor"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/monitor"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
 )
 

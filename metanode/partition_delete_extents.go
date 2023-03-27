@@ -20,7 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/util/unit"
 	"github.com/spf13/cast"
 	"go.uber.org/atomic"
 	"io"
@@ -33,9 +33,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/synclist"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/synclist"
 )
 
 const (

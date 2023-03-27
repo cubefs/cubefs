@@ -23,13 +23,13 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/cryptoutil"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // configuration keys

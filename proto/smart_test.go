@@ -2,7 +2,7 @@ package proto
 
 import (
 	"fmt"
-	stringutil "github.com/chubaofs/chubaofs/util/string"
+	stringutil "github.com/cubefs/cubefs/util/string"
 	"strings"
 	"testing"
 	"time"

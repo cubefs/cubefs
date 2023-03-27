@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func requestQuery(reqURL string) (reply *proto.QueryHTTPReply, err error) {

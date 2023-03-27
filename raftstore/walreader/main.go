@@ -22,8 +22,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/raftstore/walreader/decode"
-	"github.com/chubaofs/chubaofs/raftstore/walreader/sink"
+	"github.com/cubefs/cubefs/raftstore/walreader/decode"
+	"github.com/cubefs/cubefs/raftstore/walreader/sink"
 )
 
 func main() {

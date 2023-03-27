@@ -38,7 +38,7 @@
         <span slot="title">{{ $t('chubaoFS.nav.Health') }}</span>
       </el-menu-item>
       <div class="menu-link">
-        <a class="github" href="https://github.com/chubaofs/chubaofs" target="_blank"></a>
+        <a class="github" href="https://github.com/cubefs/cubefs" target="_blank"></a>
         <a class="twitter" href="https://twitter.com/chubaofs" target="_blank"></a>
         <a class="slack" href="https://chubaofs.slack.com" target="_blank"></a>
       </div>
@@ -64,7 +64,7 @@ export default {
     }
   },
   methods: {
-    
+
   },
   created () {
     this.dashboardUrl = sessionStorage.getItem('dashboard_url')

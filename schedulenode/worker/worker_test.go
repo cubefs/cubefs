@@ -1,7 +1,7 @@
 package worker
 
 import (
-	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/cubefs/cubefs/util/config"
 	"testing"
 )
 

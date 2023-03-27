@@ -2,9 +2,9 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/btree"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/log"
 	"os"
 	"testing"
 	"time"

@@ -17,9 +17,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/spf13/cobra"
 	"io/ioutil"
 	"net/http"

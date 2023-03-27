@@ -1,6 +1,6 @@
 package ecnode
 
-import "github.com/chubaofs/chubaofs/proto"
+import "github.com/cubefs/cubefs/proto"
 
 // Action description
 const (

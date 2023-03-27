@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
 	rproto "github.com/tiglabs/raft/proto"
 )
 

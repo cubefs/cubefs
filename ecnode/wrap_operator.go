@@ -4,19 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/unit"
 	"hash/crc32"
 	//	"hash/crc32"
 	"net"
 	"strconv"
 	"time"
 
-	"github.com/chubaofs/chubaofs/ecstorage"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/ecstorage"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (e *EcNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {

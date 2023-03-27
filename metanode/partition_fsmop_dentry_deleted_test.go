@@ -2,9 +2,9 @@ package metanode
 
 import (
 	"encoding/json"
-	"github.com/chubaofs/chubaofs/metanode/metamock"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/metanode/metamock"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"os"
 	"testing"
 	"time"

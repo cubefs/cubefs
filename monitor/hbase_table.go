@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/hbase"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/cubefs/cubefs/util/hbase"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/statistics"
 )
 
 const (

@@ -2,8 +2,8 @@ package diskusage
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 	"github.com/shirou/gopsutil/disk"
 	"io/ioutil"
 	"math"

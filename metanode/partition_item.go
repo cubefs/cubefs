@@ -20,7 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/tecbot/gorocksdb"
 	"io"
 	"io/ioutil"

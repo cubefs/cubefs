@@ -17,7 +17,7 @@ package storage
 import (
 	"syscall"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func fallocate(fd int, mode uint32, off int64, len int64) (err error) {

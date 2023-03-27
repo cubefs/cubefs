@@ -4,7 +4,7 @@ import subprocess
 import logging
 
 # Configurations
-SOURCE_CODE_BASE_DIR = "/go/src/github.com/chubaofs/chubaofs"
+SOURCE_CODE_BASE_DIR = "/go/src/github.com/cubefs/cubefs"
 COV_FILE_BASE_DIR = '/cfs/coverage'
 SUMMARY_COV_FILE = 'summary.cov'
 SUMMARY_COV_TEXT_FILE = 'summary_coverage.txt'
@@ -56,7 +56,7 @@ def analyze_coverage():
     temp_dir = '/tmp'
     for module in modules:
         module_cov_file_path = os.path.join(temp_dir, 'module_%s.cov' % module)
-        module_prefix = 'github.com/chubaofs/chubaofs/%s/' % module
+        module_prefix = 'github.com/cubefs/cubefs/%s/' % module
         filter_cov_file(summary_cov_file_path, module_cov_file_path, module_prefix)
         module_text_file = os.path.join(temp_dir, 'modfule_%s_coverage.txt' % module)
         convert_cov_file(module_cov_file_path, module_text_file, mode=CONVERT_MODE_TEXT)
@@ -91,41 +91,41 @@ def execute_command(command):
 
 def exclude_package_filter(content):
     exclude_packages = [
-        "github.com/chubaofs/chubaofs/cli/",
-        "github.com/chubaofs/chubaofs/client/fs/",
-        "github.com/chubaofs/chubaofs/console/",
-        "github.com/chubaofs/chubaofs/monitor/",
-        "github.com/chubaofs/chubaofs/objectnode/",
-        "github.com/chubaofs/chubaofs/proto/",
-        "github.com/chubaofs/chubaofs/vendor/",
-        "github.com/chubaofs/chubaofs/ecstorage/",
-        "github.com/chubaofs/chubaofs/convertnode/",
-        "github.com/chubaofs/chubaofs/schedulenode/",
-        "github.com/chubaofs/chubaofs/metanode/",
-        "github.com/chubaofs/chubaofs/master/",
-        "github.com/chubaofs/chubaofs/ecnode/",
-        "github.com/chubaofs/chubaofs/sdk/graphql/",
-        "github.com/chubaofs/chubaofs/sdk/auth/",
-        "github.com/chubaofs/chubaofs/sdk/monitor/",
-        "github.com/chubaofs/chubaofs/sdk/mysql/",
-        "github.com/chubaofs/chubaofs/sdk/hbase/",
-        "github.com/chubaofs/chubaofs/sdk/master/",
-        "github.com/chubaofs/chubaofs/sdk/meta/",
-        "github.com/chubaofs/chubaofs/sdk/scheduler/",
-        "github.com/chubaofs/chubaofs/util/ump/",
-        "github.com/chubaofs/chubaofs/util/synclist/",
-        "github.com/chubaofs/chubaofs/util/log/",
-        "github.com/chubaofs/chubaofs/util/cpu/",
-        "github.com/chubaofs/chubaofs/util/log/http/",
-        "github.com/chubaofs/chubaofs/util/keystore/",
-        "github.com/chubaofs/chubaofs/util/string/",
-        "github.com/chubaofs/chubaofs/util/iputil/",
-        "github.com/chubaofs/chubaofs/util/ec/",
-        "github.com/chubaofs/chubaofs/util/cryptoutil/",
-        "github.com/chubaofs/chubaofs/util/caps/",
-        "github.com/chubaofs/chubaofs/util/config/",
-        "github.com/chubaofs/chubaofs/util/hbase/",
-        "github.com/chubaofs/chubaofs/raftstore/rafttest/",
+        "github.com/cubefs/cubefs/cli/",
+        "github.com/cubefs/cubefs/client/fs/",
+        "github.com/cubefs/cubefs/console/",
+        "github.com/cubefs/cubefs/monitor/",
+        "github.com/cubefs/cubefs/objectnode/",
+        "github.com/cubefs/cubefs/proto/",
+        "github.com/cubefs/cubefs/vendor/",
+        "github.com/cubefs/cubefs/ecstorage/",
+        "github.com/cubefs/cubefs/convertnode/",
+        "github.com/cubefs/cubefs/schedulenode/",
+        "github.com/cubefs/cubefs/metanode/",
+        "github.com/cubefs/cubefs/master/",
+        "github.com/cubefs/cubefs/ecnode/",
+        "github.com/cubefs/cubefs/sdk/graphql/",
+        "github.com/cubefs/cubefs/sdk/auth/",
+        "github.com/cubefs/cubefs/sdk/monitor/",
+        "github.com/cubefs/cubefs/sdk/mysql/",
+        "github.com/cubefs/cubefs/sdk/hbase/",
+        "github.com/cubefs/cubefs/sdk/master/",
+        "github.com/cubefs/cubefs/sdk/meta/",
+        "github.com/cubefs/cubefs/sdk/scheduler/",
+        "github.com/cubefs/cubefs/util/ump/",
+        "github.com/cubefs/cubefs/util/synclist/",
+        "github.com/cubefs/cubefs/util/log/",
+        "github.com/cubefs/cubefs/util/cpu/",
+        "github.com/cubefs/cubefs/util/log/http/",
+        "github.com/cubefs/cubefs/util/keystore/",
+        "github.com/cubefs/cubefs/util/string/",
+        "github.com/cubefs/cubefs/util/iputil/",
+        "github.com/cubefs/cubefs/util/ec/",
+        "github.com/cubefs/cubefs/util/cryptoutil/",
+        "github.com/cubefs/cubefs/util/caps/",
+        "github.com/cubefs/cubefs/util/config/",
+        "github.com/cubefs/cubefs/util/hbase/",
+        "github.com/cubefs/cubefs/raftstore/rafttest/",
     ]
     for package in exclude_packages:
         if content.find(package) >= 0:

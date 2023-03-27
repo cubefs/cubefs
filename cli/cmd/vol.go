@@ -28,18 +28,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/storage"
-	"github.com/chubaofs/chubaofs/util/bitset"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/bitset"
+	"github.com/cubefs/cubefs/util/log"
 
-	"github.com/chubaofs/chubaofs/cli/api"
-	"github.com/chubaofs/chubaofs/metanode"
+	"github.com/cubefs/cubefs/cli/api"
+	"github.com/cubefs/cubefs/metanode"
 
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/util/errors"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
 )
 

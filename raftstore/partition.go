@@ -23,7 +23,7 @@ import (
 
 	"github.com/tiglabs/raft/storage/wal"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"

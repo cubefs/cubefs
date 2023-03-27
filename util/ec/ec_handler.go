@@ -1,7 +1,7 @@
 package ec
 
 import (
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/klauspost/reedsolomon"
 )
 

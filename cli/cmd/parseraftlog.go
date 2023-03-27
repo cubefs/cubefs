@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/metanode"
+	"github.com/cubefs/cubefs/metanode"
 	"github.com/spf13/cobra"
 )
 

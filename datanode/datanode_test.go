@@ -2,9 +2,9 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/datanode/mock"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/datanode/mock"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/jacobsa/daemonize"
 	"os"
 )

@@ -1,9 +1,9 @@
 package statinfo
 
 import (
-	"github.com/chubaofs/chubaofs/util/cpu"
-	"github.com/chubaofs/chubaofs/util/memory"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/util/cpu"
+	"github.com/cubefs/cubefs/util/memory"
+	"github.com/cubefs/cubefs/util/unit"
 	"os"
 	"sync"
 	"time"

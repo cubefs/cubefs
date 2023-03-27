@@ -14,7 +14,7 @@
 
 package metanode
 
-import "github.com/chubaofs/chubaofs/proto"
+import "github.com/cubefs/cubefs/proto"
 
 type ExtendOpResult struct {
 	Status uint8

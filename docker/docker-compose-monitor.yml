@@ -498,22 +498,22 @@ services:
     build:
         image: chubaofs/cfs-base:1.1
         volumes:
-            - ../:/go/src/github.com/chubaofs/chubaofs
+            - ../:/go/src/github.com/cubefs/cubefs
         command:
-            /bin/bash /go/src/github.com/chubaofs/chubaofs/docker/script/build.sh
+            /bin/bash /go/src/github.com/cubefs/cubefs/docker/script/build.sh
         networks:
             extnetwork:
 
     unit_test:
         image: chubaofs/cfs-base:1.1
         volumes:
-            - ../:/go/src/github.com/chubaofs/chubaofs
+            - ../:/go/src/github.com/cubefs/cubefs
         command:
             - bash
             - "-c"
             - >-
                 set -e;
-                mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
-                cd /go/src/github.com/chubaofs/chubaofs && make test
+                mkdir -p /go/src/github.com/cubefs/cubefs/docker/bin &&
+                cd /go/src/github.com/cubefs/cubefs && make test
         networks:
             extnetwork:

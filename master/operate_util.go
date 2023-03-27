@@ -23,10 +23,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int, hosts []string, createType int, learners []proto.Learner, volumeHAType proto.CrossRegionHAType) (req *proto.CreateDataPartitionRequest) {

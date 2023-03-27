@@ -8,8 +8,8 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/chubaofs/chubaofs/util/log"
-	se "github.com/chubaofs/chubaofs/util/sortedextent"
+	"github.com/cubefs/cubefs/util/log"
+	se "github.com/cubefs/cubefs/util/sortedextent"
 )
 
 type DeletedINodeBatch []*DeletedINode

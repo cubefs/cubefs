@@ -4,7 +4,7 @@ import (
 	"sort"
 
 	"git.apache.org/thrift.git/lib/go/thrift"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // todo open hbase client once

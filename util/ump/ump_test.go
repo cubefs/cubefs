@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 func init() {

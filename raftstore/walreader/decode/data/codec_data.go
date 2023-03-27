@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	"github.com/chubaofs/chubaofs/datanode"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore/walreader/common"
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/datanode"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore/walreader/common"
+	"github.com/cubefs/cubefs/util/errors"
 )
 
 const (

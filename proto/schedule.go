@@ -3,8 +3,8 @@ package proto
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 	"sync"
 	"time"
 )

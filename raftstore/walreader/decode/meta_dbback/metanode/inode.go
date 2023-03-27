@@ -21,7 +21,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/chubaofs/chubaofs/raftstore/walreader/decode/meta_dbback/proto"
+	"github.com/cubefs/cubefs/raftstore/walreader/decode/meta_dbback/proto"
 )
 
 // inode wraps necessary properties of `inode` information in file system.

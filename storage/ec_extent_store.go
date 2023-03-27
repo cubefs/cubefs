@@ -6,9 +6,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 func (s *ExtentStore) TinyExtentHolesAndAvaliSize(extentID uint64, offset int64) (holes []*proto.TinyExtentHole, extentAvaliSize uint64, err error) {

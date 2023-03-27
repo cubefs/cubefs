@@ -17,7 +17,7 @@ package memory
 import (
 	"bufio"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/util/unit"
 	"os"
 	"strconv"
 	"strings"

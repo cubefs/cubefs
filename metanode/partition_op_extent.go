@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 // ExtentAppend appends an extent.

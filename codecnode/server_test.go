@@ -2,9 +2,9 @@ package codecnode
 
 import (
 	"context"
-	"github.com/chubaofs/chubaofs/proto"
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/cubefs/cubefs/proto"
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/config"
 	"io/ioutil"
 	"net"
 	"os"

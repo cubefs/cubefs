@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	cfslog "github.com/chubaofs/chubaofs/util/log"
+	cfslog "github.com/cubefs/cubefs/util/log"
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 )

@@ -1,6 +1,6 @@
 package convertnode
 
-import "github.com/chubaofs/chubaofs/util/errors"
+import "github.com/cubefs/cubefs/util/errors"
 
 var (
 	TableExistError    = errors.New("TableExistsException")

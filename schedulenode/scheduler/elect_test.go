@@ -2,8 +2,8 @@ package scheduler
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/sdk/mysql"
-	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/cubefs/cubefs/sdk/mysql"
+	"github.com/cubefs/cubefs/util/config"
 	"testing"
 	"time"
 )

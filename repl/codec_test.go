@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/chubaofs/chubaofs/util/blackmagic"
+	"github.com/cubefs/cubefs/util/blackmagic"
 )
 
 func TestDecodeReplPacketArg(t *testing.T) {

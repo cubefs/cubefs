@@ -21,7 +21,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 type Packet struct {

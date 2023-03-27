@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/statinfo"
-	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/statinfo"
+	"github.com/cubefs/cubefs/util/statistics"
 	"golang.org/x/time/rate"
 )
 

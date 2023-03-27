@@ -25,15 +25,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/connpool"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/connpool"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
 )
 
 var (

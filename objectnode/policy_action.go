@@ -20,9 +20,9 @@ package objectnode
 import (
 	"strings"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 
-	stringutil "github.com/chubaofs/chubaofs/util/string"
+	stringutil "github.com/cubefs/cubefs/util/string"
 	"github.com/google/uuid"
 )
 

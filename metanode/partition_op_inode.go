@@ -22,9 +22,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 func replyInfo(info *proto.InodeInfo, ino *Inode) bool {

@@ -3,8 +3,8 @@ package master
 import (
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 const (

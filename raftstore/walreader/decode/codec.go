@@ -1,10 +1,10 @@
 package decode
 
 import (
-	"github.com/chubaofs/chubaofs/raftstore/walreader/common"
-	"github.com/chubaofs/chubaofs/raftstore/walreader/decode/data"
-	"github.com/chubaofs/chubaofs/raftstore/walreader/decode/meta"
-	"github.com/chubaofs/chubaofs/raftstore/walreader/decode/meta_dbback"
+	"github.com/cubefs/cubefs/raftstore/walreader/common"
+	"github.com/cubefs/cubefs/raftstore/walreader/decode/data"
+	"github.com/cubefs/cubefs/raftstore/walreader/decode/meta"
+	"github.com/cubefs/cubefs/raftstore/walreader/decode/meta_dbback"
 )
 
 type LogCommandDecoder interface {

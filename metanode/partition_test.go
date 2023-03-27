@@ -3,8 +3,8 @@ package metanode
 import (
 	"context"
 	"fmt"
-	"github.com/chubaofs/chubaofs/metanode/metamock"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/metanode/metamock"
+	"github.com/cubefs/cubefs/proto"
 	"math"
 	"math/rand"
 	"os"

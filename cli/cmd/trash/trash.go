@@ -17,9 +17,9 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/jacobsa/daemonize"
 	"github.com/spf13/cobra"
 	"regexp"

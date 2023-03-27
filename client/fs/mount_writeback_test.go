@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/proto"
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/errors"
 )
 
 var (

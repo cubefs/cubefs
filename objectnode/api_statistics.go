@@ -3,7 +3,7 @@ package objectnode
 import (
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/cubefs/cubefs/util/statistics"
 )
 
 type StatisticsAction int

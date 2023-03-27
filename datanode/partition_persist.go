@@ -9,7 +9,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type PersistFlag int

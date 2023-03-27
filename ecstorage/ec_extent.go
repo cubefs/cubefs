@@ -16,8 +16,8 @@ package ecstorage
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 	"hash/crc32"
 	"io"
 	"math"
@@ -28,7 +28,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 const (

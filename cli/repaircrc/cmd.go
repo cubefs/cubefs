@@ -11,10 +11,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/chubaofs/chubaofs/cli/repaircrc/repaircrc_server"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/cubefs/cubefs/cli/repaircrc/repaircrc_server"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ump"
 )
 
 var (

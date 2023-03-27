@@ -22,11 +22,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
-	stringutil "github.com/chubaofs/chubaofs/util/string"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
+	stringutil "github.com/cubefs/cubefs/util/string"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 // Vol represents a set of meta partitionMap and data partitionMap

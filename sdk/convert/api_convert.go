@@ -16,8 +16,8 @@ package convert
 
 import (
 	"encoding/json"
-	"github.com/chubaofs/chubaofs/convertnode"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/convertnode"
+	"github.com/cubefs/cubefs/proto"
 	"net/http"
 	"strconv"
 )

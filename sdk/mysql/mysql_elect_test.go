@@ -2,8 +2,8 @@ package mysql
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/config"
 	"sync/atomic"
 	"testing"
 	"time"

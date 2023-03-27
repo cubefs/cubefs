@@ -3,8 +3,8 @@ package metanode
 import (
 	"context"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/multipart"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/multipart"
 	"os"
 	"path"
 	"reflect"

@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type MonitorClient struct {

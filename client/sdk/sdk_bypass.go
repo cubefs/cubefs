@@ -136,17 +136,17 @@ import (
 	"golang.org/x/sys/unix"
 	"gopkg.in/ini.v1"
 
-	"github.com/chubaofs/chubaofs/client/cache"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/iputil"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/client/cache"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/iputil"
+	"github.com/cubefs/cubefs/util/log"
 
-	"github.com/chubaofs/chubaofs/util/ump"
-	"github.com/chubaofs/chubaofs/util/version"
+	"github.com/cubefs/cubefs/util/ump"
+	"github.com/cubefs/cubefs/util/version"
 )
 
 const (

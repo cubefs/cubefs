@@ -24,17 +24,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/iputil"
+	"github.com/cubefs/cubefs/util/iputil"
 
-	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/cubefs/cubefs/util/statistics"
 
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/exporter"
 
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/gorilla/mux"
 )
 

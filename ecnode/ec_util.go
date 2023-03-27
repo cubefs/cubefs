@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func DoRequest(request *repl.Packet, addr string, timeoutSec int, e *EcNode) (err error) {

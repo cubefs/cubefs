@@ -1,12 +1,12 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 func init() {

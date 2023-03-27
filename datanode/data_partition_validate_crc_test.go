@@ -3,8 +3,8 @@ package datanode
 import (
 	"context"
 	"fmt"
-	"github.com/chubaofs/chubaofs/datanode/mock"
-	"github.com/chubaofs/chubaofs/storage"
+	"github.com/cubefs/cubefs/datanode/mock"
+	"github.com/cubefs/cubefs/storage"
 	"os"
 	"path"
 	"reflect"

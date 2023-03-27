@@ -24,7 +24,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/cubefs/cubefs/util/exporter"
 
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"

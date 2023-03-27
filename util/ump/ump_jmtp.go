@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	jmtp_client_go "github.com/jmtp/jmtp-client-go"
 	"github.com/jmtp/jmtp-client-go/jmtpclient"
 	v1 "github.com/jmtp/jmtp-client-go/protocol/v1"

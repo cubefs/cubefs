@@ -16,7 +16,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
 	"strconv"
 	"time"

@@ -20,9 +20,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
-	se "github.com/chubaofs/chubaofs/util/sortedextent"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+	se "github.com/cubefs/cubefs/util/sortedextent"
 )
 
 var (

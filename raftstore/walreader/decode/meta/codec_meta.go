@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/metanode"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore/walreader/common"
-	se "github.com/chubaofs/chubaofs/util/sortedextent"
+	"github.com/cubefs/cubefs/metanode"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore/walreader/common"
+	se "github.com/cubefs/cubefs/util/sortedextent"
 )
 
 const (

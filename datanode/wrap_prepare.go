@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"hash/crc32"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/storage"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/storage"
 )
 
 func (s *DataNode) Prepare(p *repl.Packet, remoteAddr string) (err error) {

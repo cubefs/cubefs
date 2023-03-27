@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
-	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
 )
 

@@ -16,24 +16,24 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/statinfo"
+	"github.com/cubefs/cubefs/util/statinfo"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/diskusage"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/memory"
-	"github.com/chubaofs/chubaofs/util/statistics"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/diskusage"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/memory"
+	"github.com/cubefs/cubefs/util/statistics"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 var (

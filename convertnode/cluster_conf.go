@@ -2,8 +2,8 @@ package convertnode
 
 import (
 	"container/list"
-	"github.com/chubaofs/chubaofs/proto"
-	sdk "github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/cubefs/cubefs/proto"
+	sdk "github.com/cubefs/cubefs/sdk/master"
 	"sync"
 )
 

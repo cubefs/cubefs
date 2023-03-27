@@ -3,8 +3,8 @@
 #write authkey to authnode.json
 cd ..
 cd ..
-cp ./build/bin/cfs-server /home/wuwenjia/gocode/src/github.com/chubaofs/chubaofs/docker/authnode/.
-cp ./build/bin/cfs-authtool /home/wuwenjia/gocode/src/github.com/chubaofs/chubaofs/docker/authnode/.
+cp ./build/bin/cfs-server /home/wuwenjia/gocode/src/github.com/cubefs/cubefs/docker/authnode/.
+cp ./build/bin/cfs-authtool /home/wuwenjia/gocode/src/github.com/cubefs/cubefs/docker/authnode/.
 cd docker/authnode
 ./cfs-authtool authkey
 authnodeKey=$(sed -n '3p' authservice.json | sed 's/auth_key/authServiceKey/g')

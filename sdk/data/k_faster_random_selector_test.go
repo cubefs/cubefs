@@ -3,7 +3,7 @@ package data
 import (
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 func TestKFaster(t *testing.T) {

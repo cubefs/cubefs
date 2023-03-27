@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 var nilExtentPtr *ExtentInfoBlock = nil

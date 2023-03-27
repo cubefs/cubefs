@@ -24,8 +24,8 @@ import (
 	"math"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/proto"
-	se "github.com/chubaofs/chubaofs/util/sortedextent"
+	"github.com/cubefs/cubefs/proto"
+	se "github.com/cubefs/cubefs/util/sortedextent"
 )
 
 const (

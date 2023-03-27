@@ -2,7 +2,7 @@ package buf
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/util/unit"
 	"sync"
 	"sync/atomic"
 )

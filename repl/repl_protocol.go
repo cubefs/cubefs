@@ -24,12 +24,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/cubefs/cubefs/util/exporter"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/connpool"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/connpool"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 var (

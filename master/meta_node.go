@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 // MetaNode defines the structure of a meta node

@@ -18,7 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/cubefs/cubefs/util/exporter"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -31,13 +31,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/unit"
 
-	"github.com/chubaofs/chubaofs/ecstorage"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/ecstorage"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

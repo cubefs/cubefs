@@ -22,11 +22,11 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/chubaofs/chubaofs/client/cache"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/client/cache"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/cubefs/cubefs/util/ump"
 	"golang.org/x/net/context"
 )
 

@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	stringutil "github.com/chubaofs/chubaofs/util/string"
+	stringutil "github.com/cubefs/cubefs/util/string"
 )
 
 func TestMUPart_Bytes(t *testing.T) {

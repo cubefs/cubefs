@@ -43,19 +43,19 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	cfs "github.com/chubaofs/chubaofs/client/fs"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
-	sysutil "github.com/chubaofs/chubaofs/util/sys"
+	cfs "github.com/cubefs/cubefs/client/fs"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
+	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/jacobsa/daemonize"
 
-	"github.com/chubaofs/chubaofs/util/ump"
-	"github.com/chubaofs/chubaofs/util/version"
+	"github.com/cubefs/cubefs/util/ump"
+	"github.com/cubefs/cubefs/util/version"
 )
 
 const (

@@ -635,7 +635,7 @@ services:
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
             - ./s3tests:/opt/s3tests:ro
-            - ../:/go/src/github.com/chubaofs/chubaofs
+            - ../:/go/src/github.com/cubefs/cubefs
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
@@ -668,7 +668,7 @@ services:
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
             - ./s3tests:/opt/s3tests:ro
-            - ../:/go/src/github.com/chubaofs/chubaofs
+            - ../:/go/src/github.com/cubefs/cubefs
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
@@ -734,18 +734,18 @@ services:
     build:
         image: chubaofs/cfs-runtime-alter:1.0
         volumes:
-            - ../:/go/src/github.com/chubaofs/chubaofs
+            - ../:/go/src/github.com/cubefs/cubefs
         command:
-            /bin/bash /go/src/github.com/chubaofs/chubaofs/docker/script/build.sh
+            /bin/bash /go/src/github.com/cubefs/cubefs/docker/script/build.sh
         networks:
             extnetwork:
 
     build_test:
         image: chubaofs/cfs-runtime-alter:1.0
         volumes:
-            - ../:/go/src/github.com/chubaofs/chubaofs
+            - ../:/go/src/github.com/cubefs/cubefs
         command:
-            /bin/bash /go/src/github.com/chubaofs/chubaofs/docker/script/build.sh test
+            /bin/bash /go/src/github.com/cubefs/cubefs/docker/script/build.sh test
         networks:
             extnetwork:
 
@@ -753,15 +753,15 @@ services:
     unit_test:
         image: chubaofs/cfs-base:1.4
         volumes:
-            - ../:/go/src/github.com/chubaofs/chubaofs
+            - ../:/go/src/github.com/cubefs/cubefs
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
         command:
             - bash
             - "-c"
             - >-
                 set -e;
-                mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
-                cd /go/src/github.com/chubaofs/chubaofs && make test
+                mkdir -p /go/src/github.com/cubefs/cubefs/docker/bin &&
+                cd /go/src/github.com/cubefs/cubefs && make test
         networks:
             extnetwork:
 
@@ -769,7 +769,7 @@ services:
         image: chubaofs/cfs-base:1.4
         volumes:
             - ./script/analyze.py:/cfs/script/analyze.py:ro
-            - ../:/go/src/github.com/chubaofs/chubaofs
+            - ../:/go/src/github.com/cubefs/cubefs
             - ./docker_data/coverage:/cfs/coverage
         command: python3 /cfs/script/analyze.py
 

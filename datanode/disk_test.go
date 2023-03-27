@@ -2,7 +2,7 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 	"os"
 	"path"
 	"reflect"

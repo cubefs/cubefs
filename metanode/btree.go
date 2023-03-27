@@ -16,8 +16,8 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	_ "github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
+	_ "github.com/cubefs/cubefs/proto"
 )
 
 type (

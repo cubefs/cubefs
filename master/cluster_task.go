@@ -22,9 +22,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type ChooseMetaHostFunc func(c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string, excludeNodeSets []uint64, zoneName string, dstStoreMode proto.StoreMode) (oldAddr, addAddr string, err error)

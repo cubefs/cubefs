@@ -20,8 +20,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/errors"
 	"hash/crc32"
 	"io"
 	"math"
@@ -35,9 +35,9 @@ import (
 	"os"
 	"path"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 )

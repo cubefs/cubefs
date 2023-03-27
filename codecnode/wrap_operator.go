@@ -21,12 +21,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/repl"
-	echandler "github.com/chubaofs/chubaofs/util/ec"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
+	echandler "github.com/cubefs/cubefs/util/ec"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (s *CodecServer) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {

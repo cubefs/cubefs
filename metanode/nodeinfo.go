@@ -1,15 +1,15 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/util/unit"
 	"reflect"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/statistics"
 	"golang.org/x/time/rate"
 )
 

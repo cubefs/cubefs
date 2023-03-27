@@ -247,7 +247,7 @@ run_unit_test() {
     echo "       unit test       ";
     echo "************************";
     export GO111MODULE="off"
-    pushd /go/src/github.com/chubaofs/chubaofs > /dev/null
+    pushd /go/src/github.com/cubefs/cubefs > /dev/null
     packages=`GO111MODULE="off" go list \
             ./master/... \
             ./datanode/... \
@@ -388,7 +388,7 @@ run_trash_test() {
 
 run_ectest() {
     export GO111MODULE="off"
-    base_path=/go/src/github.com/chubaofs/chubaofs
+    base_path=/go/src/github.com/cubefs/cubefs
     echo "Running EC Consistency Test"
     echo "************************";
     echo "   EC Consistency Test  ";

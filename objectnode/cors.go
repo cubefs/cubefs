@@ -6,7 +6,7 @@ import (
 	"encoding/xml"
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/util/errors"
 )
 
 var (

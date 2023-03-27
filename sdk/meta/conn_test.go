@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 const (

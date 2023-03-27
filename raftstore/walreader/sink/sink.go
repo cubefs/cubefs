@@ -11,8 +11,8 @@ import (
 
 	"github.com/tiglabs/raft/storage/wal"
 
-	"github.com/chubaofs/chubaofs/raftstore/walreader/common"
-	"github.com/chubaofs/chubaofs/raftstore/walreader/decode"
+	"github.com/cubefs/cubefs/raftstore/walreader/common"
+	"github.com/cubefs/cubefs/raftstore/walreader/decode"
 	"github.com/tiglabs/raft/proto"
 )
 

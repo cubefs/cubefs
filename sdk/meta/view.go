@@ -25,13 +25,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util/btree"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/iputil"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/cryptoutil"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/iputil"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

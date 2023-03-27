@@ -23,8 +23,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // Create multipart upload

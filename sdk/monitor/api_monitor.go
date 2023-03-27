@@ -19,8 +19,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/statistics"
 )
 
 type MonitorAPI struct {

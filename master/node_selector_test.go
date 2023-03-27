@@ -1,8 +1,8 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/unit"
 	"math/rand"
 	"sync"
 	"testing"

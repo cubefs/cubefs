@@ -27,14 +27,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/util/cpu"
-	"github.com/chubaofs/chubaofs/util/diskusage"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/util/cpu"
+	"github.com/cubefs/cubefs/util/diskusage"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/storage"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
 )
 
 var (

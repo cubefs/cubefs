@@ -19,7 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/cubefs/cubefs/util/exporter"
 	"io/ioutil"
 	"os"
 	"path"
@@ -28,8 +28,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) initInode(ino *Inode) {

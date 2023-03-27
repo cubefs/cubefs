@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 type AdminAPI struct {

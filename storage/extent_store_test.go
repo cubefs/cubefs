@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/async"
-	"github.com/chubaofs/chubaofs/util/testutil"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/async"
+	"github.com/cubefs/cubefs/util/testutil"
 )
 
 func init() {

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/scheduler"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/scheduler"
 )
 
 var (

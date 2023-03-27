@@ -3,7 +3,7 @@ package proto
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type SmartVolumeView struct {

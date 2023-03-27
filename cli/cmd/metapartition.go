@@ -17,8 +17,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/cli/api"
-	"github.com/chubaofs/chubaofs/metanode"
+	"github.com/cubefs/cubefs/cli/api"
+	"github.com/cubefs/cubefs/metanode"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -27,10 +27,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
 )
 

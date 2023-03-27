@@ -2,7 +2,7 @@
 
 ## Bug Reports
 
-Please make sure the bug is not already reported by [searching the repository](https://github.com/chubaofs/chubaofs/search?q=&type=Issues&utf8=%E2%9C%93) with reasonable keywords. Then, [open an issue](https://github.com/chubaofs/chubaofs/issues) with steps to reproduce.
+Please make sure the bug is not already reported by [searching the repository](https://github.com/cubefs/cubefs/search?q=&type=Issues&utf8=%E2%9C%93) with reasonable keywords. Then, [open an issue](https://github.com/cubefs/cubefs/issues) with steps to reproduce.
 
 ## Patch Guidelines
 

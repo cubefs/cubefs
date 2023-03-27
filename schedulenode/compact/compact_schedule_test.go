@@ -1,7 +1,7 @@
 package compact
 
 import (
-	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/master"
 	"strings"
 	"testing"
 )

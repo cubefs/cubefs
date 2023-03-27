@@ -306,16 +306,16 @@ services:
     build:
         image: chubaofs/cfs-base:dev-1.0
         volumes:
-            - ../:/go/src/github.com/chubaofs/chubaofs
+            - ../:/go/src/github.com/cubefs/cubefs
         command:
             - bash
             - "-c"
             - >-
               set -e;
-              mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
+              mkdir -p /go/src/github.com/cubefs/cubefs/docker/bin &&
               echo -n 'build server ' ;
-              cd /go/src/github.com/chubaofs/chubaofs/cmd && bash ./build.sh && mv cfs-server /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-server && echo "success" || echo "failed" ;
+              cd /go/src/github.com/cubefs/cubefs/cmd && bash ./build.sh && mv cfs-server /go/src/github.com/cubefs/cubefs/docker/bin/cfs-server && echo "success" || echo "failed" ;
               echo -n 'build client ' ;
-              cd /go/src/github.com/chubaofs/chubaofs/client && bash ./build.sh && mv cfs-client /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client && echo 'success' || echo "failed" ;
+              cd /go/src/github.com/cubefs/cubefs/client && bash ./build.sh && mv cfs-client /go/src/github.com/cubefs/cubefs/docker/bin/cfs-client && echo 'success' || echo "failed" ;
         networks:
             extnetwork:

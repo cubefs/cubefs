@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/util/errors"
 )
 
 const (

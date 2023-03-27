@@ -3,9 +3,9 @@ package repaircrc_server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/log"
 	atomic2 "go.uber.org/atomic"
 	"io/ioutil"
 	"net/http"

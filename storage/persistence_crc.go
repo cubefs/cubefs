@@ -18,8 +18,8 @@ import (
 	"encoding/binary"
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 type BlockCrc struct {

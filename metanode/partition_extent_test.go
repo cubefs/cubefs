@@ -7,7 +7,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 func createInode(t, uid, gid uint32, mp *metaPartition) (ino uint64, err error) {

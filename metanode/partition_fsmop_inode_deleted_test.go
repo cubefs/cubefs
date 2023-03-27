@@ -3,9 +3,9 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/metanode/metamock"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/metanode/metamock"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/jacobsa/daemonize"
 	"os"
 	"testing"

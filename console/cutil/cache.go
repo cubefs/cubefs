@@ -2,8 +2,8 @@ package cutil
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/graphql/client/user"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/graphql/client/user"
 	"github.com/google/uuid"
 	"sync"
 	"time"

@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util/unit"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util/unit"
 	"io"
 )
 

@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/raftstore/walreader/common"
-	"github.com/chubaofs/chubaofs/raftstore/walreader/decode/meta_dbback/metanode"
-	"github.com/chubaofs/chubaofs/raftstore/walreader/decode/meta_dbback/proto"
+	"github.com/cubefs/cubefs/raftstore/walreader/common"
+	"github.com/cubefs/cubefs/raftstore/walreader/decode/meta_dbback/metanode"
+	"github.com/cubefs/cubefs/raftstore/walreader/decode/meta_dbback/proto"
 )
 
 const (

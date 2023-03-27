@@ -2,15 +2,15 @@ package mock
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/connpool"
+	"github.com/cubefs/cubefs/util/connpool"
 	"hash/crc32"
 	"io"
 	"net"
 	"sort"
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/repl"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
 )
 
 type MockResult int

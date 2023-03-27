@@ -29,12 +29,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/master"
 
-	"github.com/chubaofs/chubaofs/master/mocktest"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/master/mocktest"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

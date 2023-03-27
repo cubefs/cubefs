@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/util/blackmagic"
+	"github.com/cubefs/cubefs/util/blackmagic"
 )
 
 var ReplArgSplit = "/"

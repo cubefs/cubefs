@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
-	se "github.com/chubaofs/chubaofs/util/sortedextent"
+	"github.com/cubefs/cubefs/proto"
+	se "github.com/cubefs/cubefs/util/sortedextent"
 )
 
 func TestInode_V1Marshal(t *testing.T) {

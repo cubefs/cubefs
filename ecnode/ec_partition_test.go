@@ -2,8 +2,8 @@ package ecnode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/ecstorage"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/ecstorage"
+	"github.com/cubefs/cubefs/proto"
 	"os"
 	"strings"
 	"sync/atomic"

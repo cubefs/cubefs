@@ -20,8 +20,8 @@ import (
 	"strings"
 	"sync"
 
-	bsProto "github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
+	bsProto "github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
 	"github.com/tiglabs/raft/proto"
 )
 

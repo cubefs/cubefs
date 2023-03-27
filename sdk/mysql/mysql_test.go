@@ -2,7 +2,7 @@ package mysql
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/cubefs/cubefs/util/config"
 	"io"
 	"io/ioutil"
 	"testing"

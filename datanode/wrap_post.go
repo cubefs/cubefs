@@ -15,8 +15,8 @@
 package datanode
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/repl"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
 	"sync/atomic"
 )
 

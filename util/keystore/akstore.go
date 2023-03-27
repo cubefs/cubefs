@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/chubaofs/chubaofs/util/caps"
+	"github.com/cubefs/cubefs/util/caps"
 )
 
 type AccessKeyInfo struct {

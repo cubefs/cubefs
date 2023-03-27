@@ -17,7 +17,7 @@ package datanode
 import (
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 // Network protocol

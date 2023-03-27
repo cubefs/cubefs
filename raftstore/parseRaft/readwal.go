@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/metanode"
+	"github.com/cubefs/cubefs/metanode"
 )
 
 type OpKvData struct {

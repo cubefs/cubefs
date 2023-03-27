@@ -23,14 +23,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/scheduler"
-	"github.com/chubaofs/chubaofs/util/connpool"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/iputil"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/cubefs/cubefs/proto"
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/scheduler"
+	"github.com/cubefs/cubefs/util/connpool"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/iputil"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ump"
 )
 
 var (

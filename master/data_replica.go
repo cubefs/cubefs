@@ -17,7 +17,7 @@ package master
 import (
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 // DataReplica represents the replica of a data partition

@@ -2,7 +2,7 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 	"testing"
 )
 

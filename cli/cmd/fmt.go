@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 func formatClusterView(cv *proto.ClusterView) string {

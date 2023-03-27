@@ -7,11 +7,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/sdk/mysql"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/sdk/mysql"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type CmpMpTask struct {

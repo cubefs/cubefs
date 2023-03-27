@@ -18,13 +18,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/cubefs/cubefs/util/exporter"
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/multipart"
+	"github.com/cubefs/cubefs/util/multipart"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {

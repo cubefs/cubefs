@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 var (

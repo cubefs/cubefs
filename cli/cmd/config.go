@@ -17,7 +17,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/convertnode"
+	"github.com/cubefs/cubefs/convertnode"
 	"io/ioutil"
 	"os"
 	"path"

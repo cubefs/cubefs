@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util/log"
-	stringutil "github.com/chubaofs/chubaofs/util/string"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util/log"
+	stringutil "github.com/cubefs/cubefs/util/string"
 )
 
 const (

@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	stringutil "github.com/chubaofs/chubaofs/util/string"
+	stringutil "github.com/cubefs/cubefs/util/string"
 )
 
 func TestExtend_Bytes(t *testing.T) {

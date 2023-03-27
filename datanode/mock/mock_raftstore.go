@@ -3,7 +3,7 @@ package mock
 import (
 	"context"
 
-	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/cubefs/cubefs/raftstore"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
 )

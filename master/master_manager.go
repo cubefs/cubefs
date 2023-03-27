@@ -16,8 +16,8 @@ package master
 
 import (
 	"fmt"
-	cfsProto "github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	cfsProto "github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/tiglabs/raft/proto"
 	"strings"
 )
