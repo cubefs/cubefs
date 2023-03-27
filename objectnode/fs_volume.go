@@ -662,7 +662,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	// This file has only inode but no dentry. In this way, this temporary file can be made invisible
 	// in the true sense. In order to avoid the adverse impact of other user operations on temporary data.
 	var invisibleTempDataInode *proto.InodeInfo
-	if invisibleTempDataInode, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil); err != nil {
+	if invisibleTempDataInode, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
 		return
 	}
 	defer func() {
@@ -1023,7 +1023,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 
 	// create temp file (inode only, invisible for user)
 	var tempInodeInfo *proto.InodeInfo
-	if tempInodeInfo, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil); err != nil {
+	if tempInodeInfo, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
 		log.LogErrorf("WritePart: meta create inode fail: multipartID(%v) partID(%v) err(%v)",
 			multipartId, partId, err)
 		return nil, err
@@ -1158,7 +1158,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 
 	// create inode for complete data
 	var completeInodeInfo *proto.InodeInfo
-	if completeInodeInfo, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil); err != nil {
+	if completeInodeInfo, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
 		log.LogErrorf("CompleteMultipart: meta inode create fail: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
 		return
@@ -2780,7 +2780,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	tLastName = pathItems[len(pathItems)-1].Name
 
 	// create target file inode and set target inode to be source file inode
-	if tInodeInfo, err = v.mw.InodeCreate_ll(uint32(sMode), 0, 0, nil); err != nil {
+	if tInodeInfo, err = v.mw.InodeCreate_ll(uint32(sMode), 0, 0, nil, make([]uint64, 0)); err != nil {
 		return
 	}
 	defer func() {

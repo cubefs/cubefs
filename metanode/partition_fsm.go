@@ -49,14 +49,23 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 	switch msg.Op {
 	case opFSMCreateInode:
-		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(msg.V); err != nil {
+		qinode := &MetaQuotaInode{}
+		if err = qinode.Unmarshal(msg.V); err != nil {
 			return
 		}
+		ino := qinode.inode
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
 		}
+		if len(qinode.quotaIds) > 0 {
+			mp.setInodeQuota(qinode.quotaIds, ino.Inode)
+		}
 		resp = mp.fsmCreateInode(ino)
+		if resp != proto.OpExistErr {
+			for _, quotaId := range qinode.quotaIds {
+				mp.mqMgr.updateUsedInfo(0, 1, quotaId)
+			}
+		}
 	case opFSMUnlinkInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {

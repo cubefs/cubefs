@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -98,6 +99,7 @@ type Vol struct {
 	aclMgr                AclManager
 	uidSpaceManager       *UidSpaceManager
 	volLock               sync.RWMutex
+	quotaManager          *MasterQuotaManager
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -1240,4 +1242,38 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		coldArgs:              args,
 		dpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
 	}
+}
+
+func (vol *Vol) initQuotaManager(c *Cluster) (err error) {
+	vol.quotaManager = &MasterQuotaManager{
+		MpQuotaInfoMap:       make(map[uint64][]*proto.QuotaReportInfo),
+		IdQuotaInfoMap:       make(map[uint32]*proto.QuotaInfo),
+		FullPathQuotaInfoMap: make(map[string]*proto.QuotaInfo),
+		c:                    c,
+		vol:                  vol,
+	}
+
+	result, err := c.fsm.store.SeekForPrefix([]byte(quotaPrefix + strconv.FormatUint(vol.ID, 10)))
+	if err != nil {
+		err = fmt.Errorf("initQuotaManager get quota failed, err [%v]", err)
+		return err
+	}
+
+	for _, value := range result {
+		var quotaInfo = &proto.QuotaInfo{}
+
+		if err = json.Unmarshal(value, quotaInfo); err != nil {
+			log.LogErrorf("initQuotaManager Unmarshal fail err [%v]", err)
+			return err
+		}
+
+		if vol.Name != quotaInfo.VolName {
+			panic("vol name do not match")
+		}
+
+		vol.quotaManager.IdQuotaInfoMap[quotaInfo.QuotaId] = quotaInfo
+		vol.quotaManager.FullPathQuotaInfoMap[quotaInfo.FullPath] = quotaInfo
+	}
+
+	return err
 }

@@ -112,6 +112,13 @@ const (
 	OpRemoveMetaPartitionRaftMember uint8 = 0x47
 	OpMetaPartitionTryToLeader      uint8 = 0x48
 
+	// Quota
+	OpMasterSetInodeQuota       uint8 = 0x50
+	OpMetaBatchSetInodeQuota    uint8 = 0x51
+	OpMasterDeleteInodeQuota    uint8 = 0x52
+	OpMetaBatchDeleteInodeQuota uint8 = 0x53
+	OpMetaGetInodeQuota         uint8 = 0x54
+
 	// Operations: Master -> DataNode
 	OpCreateDataPartition           uint8 = 0x60
 	OpDeleteDataPartition           uint8 = 0x61
@@ -466,6 +473,16 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaTxUpdateDentry"
 	case OpMetaTxLinkInode:
 		m = "OpMetaTxLinkInode"
+	case OpMasterSetInodeQuota:
+		m = "OpMasterSetInodeQuota"
+	case OpMasterDeleteInodeQuota:
+		m = "OpMasterDeleteInodeQuota"
+	case OpMetaBatchSetInodeQuota:
+		m = "OpMetaBatchSetInodeQuota"
+	case OpMetaBatchDeleteInodeQuota:
+		m = "OpMetaBatchDeleteInodeQuota"
+	case OpMetaGetInodeQuota:
+		m = "OpMetaGetInodeQuota"
 	}
 	return
 }

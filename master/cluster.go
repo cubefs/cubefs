@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
 
 	"golang.org/x/time/rate"
 
@@ -515,6 +516,13 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 			}
 			spaceInfo := vol.uidSpaceManager.getSpaceOp()
 			hbReq.UidLimitInfo = append(hbReq.UidLimitInfo, spaceInfo...)
+
+			quotaHbInfos := vol.quotaManager.getQuotaHbInfos()
+			hbReq.QuotaHbInfos = append(hbReq.QuotaHbInfos, quotaHbInfos...)
+			log.LogDebugf("checkMetaNodeHeartbeat start")
+			for _, info := range hbReq.QuotaHbInfos {
+				log.LogDebugf("checkMetaNodeHeartbeat info [%v]", info)
+			}
 		}
 
 		tasks = append(tasks, task)
@@ -2570,6 +2578,10 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 	vol.aclMgr.init(c, vol)
 	vol.initUidSpaceManager(c)
+
+	if err = vol.initQuotaManager(c); err != nil {
+		goto errHandler
+	}
 
 	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
 

@@ -87,6 +87,7 @@ var (
 	ErrNoNodeSetToDecommission                 = errors.New("no node set available to decommission ")
 
 	ErrNoAclPermission = errors.New("acl no permission")
+	ErrQuotaNotExists  = errors.New("quota not exists")
 )
 
 // http response error code and error message definitions

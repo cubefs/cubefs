@@ -18,14 +18,15 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
-func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
+func replyInfo(info *proto.InodeInfo, ino *Inode, quotaIds []uint32) bool {
 	ino.RLock()
 	defer ino.RUnlock()
 	if ino.Flag&DeleteMarkFlag > 0 {
@@ -45,6 +46,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 	info.CreateTime = time.Unix(ino.CreateTime, 0)
 	info.AccessTime = time.Unix(ino.AccessTime, 0)
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
+	info.QuotaIds = quotaIds
 	return true
 }
 
@@ -96,16 +98,33 @@ func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo) (resp *proto.TxCre
 
 // CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
+	var (
+		status = proto.OpNotExistErr
+		reply  []byte
+	)
 	inoID, err := mp.nextInodeID()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
 		return
 	}
+	for _, quotaId := range req.QuotaIds {
+		status = mp.mqMgr.IsOverQuota(false, true, quotaId)
+		if status != 0 {
+			err = errors.New("create inode is over quota")
+			reply = []byte(err.Error())
+			p.PacketErrorWithBody(status, reply)
+			return
+		}
+	}
 	ino := NewInode(inoID, req.Mode)
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
-	val, err := ino.Marshal()
+	qinode := &MetaQuotaInode{
+		inode:    ino,
+		quotaIds: req.QuotaIds,
+	}
+	val, err := qinode.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -115,15 +134,12 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	var (
-		status = resp.(uint8)
-		reply  []byte
-	)
+
 	if resp.(uint8) == proto.OpOk {
 		resp := &CreateInoResp{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, ino) {
+		if replyInfo(resp.Info, ino, req.QuotaIds) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
@@ -133,6 +149,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
+	log.LogInfof("CreateInode req [%v] qinode [%v] success.", req, qinode)
 	return
 }
 
@@ -187,7 +204,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 			Info:   &proto.InodeInfo{},
 			TxInfo: rstTxInfo,
 		}
-		replyInfo(resp.Info, msg.Msg)
+		replyInfo(resp.Info, msg.Msg, make([]uint32, 0))
 		if reply, err = json.Marshal(resp); err != nil {
 			status = proto.OpErr
 			reply = []byte(err.Error())
@@ -217,7 +234,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		resp := &UnlinkInoResp{
 			Info: &proto.InodeInfo{},
 		}
-		replyInfo(resp.Info, msg.Msg)
+		replyInfo(resp.Info, msg.Msg, make([]uint32, 0))
 		if reply, err = json.Marshal(resp); err != nil {
 			status = proto.OpErr
 			reply = []byte(err.Error())
@@ -259,7 +276,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 		}
 
 		info := &proto.InodeInfo{}
-		replyInfo(info, ir.Msg)
+		replyInfo(info, ir.Msg, make([]uint32, 0))
 		result.Items = append(result.Items, &struct {
 			Info   *proto.InodeInfo `json:"info"`
 			Status uint8            `json:"status"`
@@ -280,18 +297,25 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 
 // InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
-	ino := NewInode(req.Inode, 0)
-	retMsg := mp.getInode(ino)
-	ino = retMsg.Msg
 	var (
 		reply  []byte
 		status = proto.OpNotExistErr
 	)
+	quotaIds, err := mp.getInodeQuotaIds(req.Inode)
+	if err != nil {
+		status = proto.OpErr
+		reply = []byte(err.Error())
+		p.PacketErrorWithBody(status, reply)
+		return
+	}
+	ino := NewInode(req.Inode, 0)
+	retMsg := mp.getInode(ino)
+	ino = retMsg.Msg
 	if retMsg.Status == proto.OpOk {
 		resp := &proto.InodeGetResponse{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, retMsg.Msg) {
+		if replyInfo(resp.Info, retMsg.Msg, quotaIds) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
@@ -306,14 +330,20 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 
 // InodeGetBatch executes the inodeBatchGet command from the client.
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
+	var quotaIds []uint32
 	resp := &proto.BatchInodeGetResponse{}
 	ino := NewInode(0, 0)
 	for _, inoId := range req.Inodes {
 		ino.Inode = inoId
 		retMsg := mp.getInode(ino)
+		quotaIds, err = mp.getInodeQuotaIds(inoId)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return
+		}
 		if retMsg.Status == proto.OpOk {
 			inoInfo := &proto.InodeInfo{}
-			if replyInfo(inoInfo, retMsg.Msg) {
+			if replyInfo(inoInfo, retMsg.Msg, quotaIds) {
 				resp.Infos = append(resp.Infos, inoInfo)
 			}
 		}
@@ -378,7 +408,7 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 			Info:   &proto.InodeInfo{},
 			TxInfo: rstTxInfo,
 		}
-		if replyInfo(resp.Info, retMsg.Msg) {
+		if replyInfo(resp.Info, retMsg.Msg, make([]uint32, 0)) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
@@ -412,7 +442,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		resp := &LinkInodeResp{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, retMsg.Msg) {
+		if replyInfo(resp.Info, retMsg.Msg, make([]uint32, 0)) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {

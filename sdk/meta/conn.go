@@ -73,7 +73,6 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	}
 	delta := (sendTimeLimit*2/SendRetryLimit - SendRetryInterval*2) / SendRetryLimit // ms
 	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms", mw.metaSendTimeout, sendTimeLimit, delta)
-
 	errs := make(map[int]error, len(mp.Members))
 	var j int
 

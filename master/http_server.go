@@ -485,6 +485,21 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetAllZones).
 		HandlerFunc(m.listZone)
+
+	// Quota
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QuotaSet).
+		HandlerFunc(m.SetQuota)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QuotaUpdate).
+		HandlerFunc(m.UpdateQuota)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QuotaDelete).
+		HandlerFunc(m.DeleteQuota)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QuotaList).
+		HandlerFunc(m.ListQuota)
+
 }
 
 func (m *Server) registerHandler(router *mux.Router, model string, schema *graphql.Schema) {

@@ -17,12 +17,13 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"strconv"
+
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/log"
-	"io"
-	"strconv"
 )
 
 const (
@@ -125,7 +126,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 
 	switch cmd.Op {
 	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition,
-		opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser:
+		opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser, opSyncDeleteQuota:
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}

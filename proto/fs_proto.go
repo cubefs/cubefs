@@ -24,6 +24,7 @@ import (
 const (
 	RootIno    = uint64(1)
 	SummaryKey = "cbfs.dir.summary"
+	QuotaKey   = "cbfs.dir.quota"
 )
 
 const (
@@ -75,7 +76,7 @@ type InodeInfo struct {
 	CreateTime time.Time `json:"ct"`
 	AccessTime time.Time `json:"at"`
 	Target     []byte    `json:"tgt"`
-
+	QuotaIds   []uint32  `json:"qids"`
 	expiration int64
 }
 
@@ -109,7 +110,8 @@ func (info *InodeInfo) SetExpiration(e int64) {
 
 // String returns the string format of the inode.
 func (info *InodeInfo) String() string {
-	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
+	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v) QuotaIds(%v)",
+		info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation, info.QuotaIds)
 }
 
 type XAttrInfo struct {
@@ -154,12 +156,13 @@ func (d Dentry) String() string {
 
 // CreateInodeRequest defines the request to create an inode.
 type CreateInodeRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Mode        uint32 `json:"mode"`
-	Uid         uint32 `json:"uid"`
-	Gid         uint32 `json:"gid"`
-	Target      []byte `json:"tgt"`
+	VolName     string   `json:"vol"`
+	PartitionID uint64   `json:"pid"`
+	Mode        uint32   `json:"mode"`
+	Uid         uint32   `json:"uid"`
+	Gid         uint32   `json:"gid"`
+	Target      []byte   `json:"tgt"`
+	QuotaIds    []uint32 `json:"qids"`
 }
 
 // CreateInodeResponse defines the response to the request of creating an inode.
@@ -730,4 +733,66 @@ type UpdateSummaryInfoRequest struct {
 	FileInc     int64  `json:"fileinc"`
 	DirInc      int64  `json:"dirinc"`
 	ByteInc     int64  `json:"byteinc"`
+}
+
+type SetMasterQuotaReuqest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	FullPath    string `json:"fpath"`
+	MaxFiles    uint64 `json:"mf"`
+	MaxBytes    uint64 `json:"mbyte"`
+}
+
+type UpdateMasterQuotaReuqest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	FullPath    string `json:"fpath"`
+	MaxFiles    uint64 `json:"mf"`
+	MaxBytes    uint64 `json:"mbyte"`
+}
+
+type ListMasterQuotaRequest struct {
+	VolName string `json:"vol"` //VolName如果为空则返回所有卷的quota
+}
+
+type ListMasterQuotaResponse struct {
+	Quotas []*QuotaInfo
+}
+
+type BatchSetMetaserverQuotaReuqest struct {
+	PartitionId uint64   `json:"pid"`
+	Inodes      []uint64 `json:"ino"`
+	QuotaId     uint32   `json:"qid"`
+	RootInode   uint64   `json:"rino"`
+}
+
+type BatchSetMetaserverQuotaResponse struct {
+	PartitionId uint64 `json:"pid"`
+	QuotaId     uint32 `json:"qid"`
+	Status      int32  `json:"status"`
+	Result      string `json:"rst"`
+}
+
+type BatchDeleteMetaserverQuotaReuqest struct {
+	PartitionId uint64   `json:"pid"`
+	Inodes      []uint64 `json:"ino"`
+	QuotaId     uint32   `json:"qid"`
+}
+
+type BatchDeleteMetaserverQuotaResponse struct {
+	PartitionId uint64 `json:"pid"`
+	QuotaId     uint32 `json:"qid"`
+	Status      int32  `json:"status"`
+	Result      string `json:"rst"`
+}
+
+type GetInodeQuotaRequest struct {
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type GetInodeQuotaResponse struct {
+	MetaQuotaInfoMap map[uint32]*MetaQuotaInfo
 }

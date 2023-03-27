@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1417,4 +1418,104 @@ func parseGetConfigParam(r *http.Request) (key string, err error) {
 	}
 	log.LogInfo("parseGetConfigParam success.")
 	return
+}
+
+func parserSetQuotaParam(r *http.Request, req *proto.SetMasterQuotaReuqest) (err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if req.VolName, err = extractName(r); err != nil {
+		return
+	}
+
+	if req.FullPath, err = extractPath(r); err != nil {
+		return
+	}
+
+	if req.PartitionId, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+
+	if req.Inode, err = extractInodeId(r); err != nil {
+		return
+	}
+
+	if req.MaxFiles, err = extractUint64WithDefault(r, MaxFilesKey, math.MaxUint64); err != nil {
+		return
+	}
+
+	if req.MaxBytes, err = extractUint64WithDefault(r, MaxBytesKey, math.MaxUint64); err != nil {
+		return
+	}
+	log.LogInfo("parserSetQuotaParam success.")
+	return
+}
+
+func parserUpdateQuotaParam(r *http.Request, req *proto.UpdateMasterQuotaReuqest) (err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if req.VolName, err = extractName(r); err != nil {
+		return
+	}
+
+	if req.FullPath, err = extractPath(r); err != nil {
+		return
+	}
+
+	if req.PartitionId, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+
+	if req.Inode, err = extractInodeId(r); err != nil {
+		return
+	}
+
+	if req.MaxFiles, err = extractUint64WithDefault(r, MaxFilesKey, math.MaxUint64); err != nil {
+		return
+	}
+
+	if req.MaxBytes, err = extractUint64WithDefault(r, MaxBytesKey, math.MaxUint64); err != nil {
+		return
+	}
+	log.LogInfo("parserUpdateQuotaParam success.")
+	return
+}
+
+func parseDeleteQuotaParam(r *http.Request) (volName string, quotaId uint32, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if volName, err = extractName(r); err != nil {
+		return
+	}
+
+	value := r.FormValue(quotaKey)
+	if value == "" {
+		err = keyNotFound(startKey)
+		return
+	}
+	v, err := strconv.ParseUint(value, 10, 32)
+	quotaId = uint32(v)
+	return
+}
+
+func extractPath(r *http.Request) (fullPath string, err error) {
+	if fullPath = r.FormValue(fullPathKey); fullPath == "" {
+		err = keyNotFound(nameKey)
+		return
+	}
+	return
+}
+
+func extractInodeId(r *http.Request) (inode uint64, err error) {
+	var value string
+	if value = r.FormValue(inodeKey); value == "" {
+		err = keyNotFound(inodeKey)
+		return
+	}
+	return strconv.ParseUint(value, 10, 64)
 }

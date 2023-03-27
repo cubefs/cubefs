@@ -142,6 +142,8 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		}
 		mp.acucumUidSizeByLoad(ino)
 
+		//mp.statisticExtendByLoad(ino)
+
 		mp.size += ino.Size
 
 		mp.fsmCreateInode(ino)
@@ -255,6 +257,7 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 			mp.config.PartitionId, mp.config.VolName, extend.inode)
 		_ = mp.fsmSetXAttr(extend)
 		offset += int(numBytes)
+		mp.statisticExtendByLoad(extend)
 	}
 	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, numExtends, filename)
@@ -869,9 +872,11 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
+	mp.mqMgr.statisticRebuildStart()
 	extendTree.Ascend(func(i BtreeItem) bool {
 		e := i.(*Extend)
 		var raw []byte
+		mp.statisticExtendByStore(e)
 		if raw, err = e.Bytes(); err != nil {
 			return false
 		}
@@ -892,6 +897,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		}
 		return true
 	})
+	mp.mqMgr.statisticRebuildFin()
 	if err != nil {
 		return
 	}

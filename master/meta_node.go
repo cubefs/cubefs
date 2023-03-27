@@ -158,3 +158,13 @@ func (metaNode *MetaNode) checkHeartbeat() {
 		metaNode.IsActive = false
 	}
 }
+
+func (metaNode *MetaNode) setQuotaTask(req *proto.BatchSetMetaserverQuotaReuqest) (task *proto.AdminTask) {
+	task = proto.NewAdminTask(proto.OpMasterSetInodeQuota, metaNode.Addr, req)
+	return
+}
+
+func (metaNode *MetaNode) deleteQuotaTask(req *proto.BatchDeleteMetaserverQuotaReuqest) (task *proto.AdminTask) {
+	task = proto.NewAdminTask(proto.OpMasterDeleteInodeQuota, metaNode.Addr, req)
+	return
+}

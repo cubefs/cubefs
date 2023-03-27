@@ -18,11 +18,12 @@ import (
 	"container/list"
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data/manager"
-	"golang.org/x/time/rate"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/sdk/data/manager"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
@@ -155,6 +156,21 @@ func (client *ExtentClient) UidIsLimited(uid uint32) bool {
 		}
 	}
 	log.LogDebugf("uid %v is not limited", uid)
+	return false
+}
+
+func (client *ExtentClient) IsQuotaLimited(quotaIds []uint32) bool {
+	client.dataWrapper.QuotaLock.RLock()
+	defer client.dataWrapper.QuotaLock.RUnlock()
+	for _, quotaId := range quotaIds {
+		if limitedInfo, isFind := client.dataWrapper.QuotaLimitedMap[quotaId]; isFind {
+			if limitedInfo.LimitedBytes {
+				log.LogDebugf("IsQuotaLimited quotaId [%v]", quotaId)
+				return true
+			}
+		}
+		log.LogDebugf("IsQuotaLimited false quota [%v]", quotaId)
+	}
 	return false
 }
 
