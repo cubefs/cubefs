@@ -202,6 +202,7 @@ type OpMeta interface {
 	OpExtend
 	OpMultipart
 	OpTransaction
+	OpQuota
 }
 
 // OpPartition defines the interface for the partition operations.
@@ -423,6 +424,16 @@ func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum *sync.Map) {
 	accum.Store(ino.Uid, int64(size))
 }
 
+type OpQuota interface {
+	setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo)
+	getQuotaReportInfos() (infos []*proto.QuotaReportInfo)
+	batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaReuqest,
+		resp *proto.BatchSetMetaserverQuotaResponse) (err error)
+	batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQuotaReuqest,
+		resp *proto.BatchDeleteMetaserverQuotaResponse) (err error)
+	getInodeQuota(inode uint64, p *Packet) (err error)
+}
+
 // metaPartition manages the range of the inode IDs.
 // When a new inode is requested, it allocates a new inode id for this inode if possible.
 // States:
@@ -456,6 +467,7 @@ type metaPartition struct {
 	uidManager             *UidManager
 	xattrLock              sync.Mutex
 	fileRange              []int64
+	mqMgr                  *MetaQuotaManager
 }
 
 func (mp *metaPartition) acucumRebuildStart() {
@@ -724,6 +736,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		vol:           NewVol(),
 		manager:       manager,
 		uidManager:    NewUidMgr(conf.VolName, conf.PartitionId),
+		mqMgr:         NewQuotaManager(conf.VolName, conf.PartitionId),
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp

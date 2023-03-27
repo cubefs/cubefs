@@ -14,6 +14,8 @@
 
 package proto
 
+import "sync"
+
 // CreateNameSpaceRequest defines the request to create a name space.
 type CreateNameSpaceRequest struct {
 	Name string
@@ -65,4 +67,86 @@ type UidReportSpaceInfo struct {
 	Size  uint64
 	Rsv   string
 	MTime int64
+}
+
+type QuotaUsedInfo struct {
+	UsedFiles int64
+	UsedBytes int64
+}
+
+type QuotaLimitedInfo struct {
+	LimitedFiles bool
+	LimitedBytes bool
+}
+
+type QuotaReportInfo struct {
+	QuotaId  uint32
+	UsedInfo QuotaUsedInfo
+}
+
+type QuotaStatus uint8
+
+const (
+	QuotaInit QuotaStatus = iota
+	QuotaComplete
+	QuotaDeleting
+) // quotaInfo status
+
+type QuotaInfo struct {
+	VolName     string
+	QuotaId     uint32
+	Status      QuotaStatus
+	CTime       int64
+	PartitionId uint64
+	RootInode   uint64
+	FullPath    string
+	LimitedInfo QuotaLimitedInfo
+	UsedInfo    QuotaUsedInfo
+	MaxFiles    uint64
+	MaxBytes    uint64
+	Rsv         string
+}
+
+type QuotaHeartBeatInfo struct {
+	VolName     string
+	QuotaId     uint32
+	LimitedInfo QuotaLimitedInfo
+}
+
+type MetaQuotaInfos struct {
+	QuotaInfoMap map[uint32]*MetaQuotaInfo
+	sync.RWMutex
+}
+
+type MetaQuotaInfo struct {
+	RootInode uint64
+	Partition uint64
+	Status    QuotaStatus
+}
+
+func (quotaInfo *MetaQuotaInfo) SetStatus(status QuotaStatus) {
+	quotaInfo.Status = status
+}
+
+func (usedInfo *QuotaUsedInfo) Add(info *QuotaUsedInfo) {
+	usedInfo.UsedFiles += info.UsedFiles
+	usedInfo.UsedBytes += info.UsedBytes
+}
+
+func (quotaInfo *QuotaInfo) IsOverQuotaFiles() (isOver bool) {
+	if uint64(quotaInfo.UsedInfo.UsedFiles) > quotaInfo.MaxFiles {
+		isOver = true
+	} else {
+		isOver = false
+	}
+	return
+}
+
+func (quotaInfo *QuotaInfo) IsOverQuotaBytes() (isOver bool) {
+	if uint64(quotaInfo.UsedInfo.UsedBytes) > quotaInfo.MaxBytes {
+		isOver = true
+	} else {
+		isOver = false
+	}
+	return
 }

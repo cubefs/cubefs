@@ -175,6 +175,11 @@ const (
 	ParamAuthorized = "_authorization"
 	UserKey         = "_user_key"
 	UserInfoKey     = "_user_info_key"
+	//quota
+	QuotaSet    = "/quota/set"
+	QuotaUpdate = "/quota/update"
+	QuotaDelete = "/quota/delete"
+	QuotaList   = "/quota/list"
 )
 
 var GApiInfo map[string]string = map[string]string{
@@ -451,6 +456,10 @@ type QosToDataNode struct {
 	QosFlowWriteLimit uint64
 }
 
+type QuotaHeartBeatInfos struct {
+	QuotaHbInfos []*QuotaHeartBeatInfo
+}
+
 // HeartBeatRequest define the heartbeat request.
 type HeartBeatRequest struct {
 	CurrTime   int64
@@ -459,6 +468,7 @@ type HeartBeatRequest struct {
 	QosToDataNode
 	FileStatsEnable bool
 	UidLimitToMetaNode
+	QuotaHeartBeatInfos
 }
 
 // PartitionReport defines the partition report.
@@ -502,18 +512,19 @@ type DataNodeHeartbeatResponse struct {
 
 // MetaPartitionReport defines the meta partition report.
 type MetaPartitionReport struct {
-	PartitionID uint64
-	Start       uint64
-	End         uint64
-	Status      int
-	Size        uint64
-	MaxInodeID  uint64
-	IsLeader    bool
-	VolName     string
-	InodeCnt    uint64
-	DentryCnt   uint64
-	FreeListLen uint64
-	UidInfo     []*UidReportSpaceInfo
+	PartitionID      uint64
+	Start            uint64
+	End              uint64
+	Status           int
+	Size             uint64
+	MaxInodeID       uint64
+	IsLeader         bool
+	VolName          string
+	InodeCnt         uint64
+	DentryCnt        uint64
+	FreeListLen      uint64
+	UidInfo          []*UidReportSpaceInfo
+	QuotaReportInfos []*QuotaReportInfo
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.

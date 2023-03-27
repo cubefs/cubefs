@@ -43,6 +43,14 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 		}
 	}
 	s.ic.Put(info)
+	node, isFind := s.nodeCache[ino]
+	if isFind {
+		if proto.IsDir(info.Mode) {
+			node.(*Dir).info = info
+		} else {
+			node.(*File).info = info
+		}
+	}
 	s.ec.RefreshExtentsCache(ino)
 	return info, nil
 }

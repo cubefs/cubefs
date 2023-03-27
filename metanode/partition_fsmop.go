@@ -43,10 +43,19 @@ func (mp *metaPartition) initInode(ino *Inode) {
 			if !mp.raftPartition.IsRaftLeader() {
 				continue
 			}
-			data, err := ino.Marshal()
+			qinode := &MetaQuotaInode{
+				inode:    ino,
+				quotaIds: make([]uint32, 0, 0),
+			}
+			data, err := qinode.Marshal()
 			if err != nil {
 				log.LogFatalf("[initInode] marshal: %s", err.Error())
 			}
+			/*
+				data, err := ino.Marshal()
+				if err != nil {
+					log.LogFatalf("[initInode] marshal: %s", err.Error())
+				}*/
 			// put first root inode
 			resp, err := mp.submit(opFSMCreateInode, data)
 			if err != nil {

@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strconv"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
-	"net/http"
-	"strconv"
 )
 
 type AdminAPI struct {
@@ -542,4 +543,67 @@ func (api *AdminAPI) CreatePreLoadDataPartition(volName string, count int, capac
 		return
 	}
 	return
+}
+
+func (api *AdminAPI) ListQuota(volName string) (quotaInfo []*proto.QuotaInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaList)
+	resp := &proto.ListMasterQuotaResponse{}
+	request.addParam("name", volName)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[ListQuota] fail. %v", err)
+		return
+	}
+	if err = json.Unmarshal(data, resp); err != nil {
+		log.LogErrorf("action[ListQuota] fail. %v", err)
+		return
+	}
+	quotaInfo = resp.Quotas
+	log.LogInfof("action[ListQuota] success.")
+	return quotaInfo, err
+}
+
+func (api *AdminAPI) SetQuota(volName string, fullPath string, inodeId uint64, partitionId uint64, maxFiles uint64, maxBytes uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaSet)
+	request.addParam("name", volName)
+	request.addParam("fullPath", fullPath)
+	request.addParam("inode", strconv.FormatUint(inodeId, 10))
+	request.addParam("id", strconv.FormatUint(partitionId, 10))
+	request.addParam("maxFiles", strconv.FormatUint(maxFiles, 10))
+	request.addParam("maxBytes", strconv.FormatUint(maxBytes, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[SetQuota] fail. %v", err)
+		return
+	}
+	log.LogInfof("action[SetQuota] success.")
+	return
+}
+
+func (api *AdminAPI) UpdateQuota(volName string, fullPath string, inodeId uint64, partitionId uint64, maxFiles uint64, maxBytes uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaUpdate)
+	request.addParam("name", volName)
+	request.addParam("fullPath", fullPath)
+	request.addParam("inode", strconv.FormatUint(inodeId, 10))
+	request.addParam("id", strconv.FormatUint(partitionId, 10))
+	request.addParam("maxFiles", strconv.FormatUint(maxFiles, 10))
+	request.addParam("maxBytes", strconv.FormatUint(maxBytes, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[UpdateQuota] fail. %v", err)
+		return
+	}
+	log.LogInfof("action[UpdateQuota] success.")
+	return nil
+}
+
+func (api *AdminAPI) DeleteQuota(volName string, quotaId string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaDelete)
+	request.addParam("name", volName)
+	request.addParam("quotaId", quotaId)
+
+	if _, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[DeleteQuota] fail. %v", err)
+		return
+	}
+	log.LogInfof("action[DeleteQuota] success.")
+	return nil
 }

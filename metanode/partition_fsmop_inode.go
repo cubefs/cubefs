@@ -75,6 +75,7 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	if _, ok := mp.inodeTree.ReplaceOrInsert(ino, false); !ok {
 		status = proto.OpExistErr
 	}
+
 	return
 }
 
@@ -214,12 +215,14 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 
 	if inode.IsEmptyDir() {
 		mp.inodeTree.Delete(inode)
+		mp.updateUsedInfo(0, -1, inode.Inode)
 	}
 
 	inode.DecNLink()
 
 	//Fix#760: when nlink == 0, push into freeList and delay delete inode after 7 days
 	if inode.IsTempFile() {
+		mp.updateUsedInfo(-1*int64(inode.Size), -1, inode.Inode)
 		inode.DoWriteFunc(func() {
 			if inode.NLink == 0 {
 				inode.AccessTime = time.Now().Unix()
@@ -302,12 +305,14 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
+	oldSize := int64(ino2.Size)
 	eks := ino.Extents.CopyExtents()
 	delExtents := ino2.AppendExtents(eks, ino.ModifyTime, mp.volType)
 	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks); status != proto.OpOk {
 		mp.extDelCh <- eks
 		return
 	}
+	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
 	log.LogInfof("fsmAppendExtents inode(%v) deleteExtents(%v)", ino2.Inode, delExtents)
 	mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
 	mp.extDelCh <- delExtents
@@ -330,6 +335,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 	var (
 		discardExtentKey []proto.ExtentKey
 	)
+	oldSize := int64(ino2.Size)
 	eks := ino.Extents.CopyExtents()
 	if len(eks) < 1 {
 		return
@@ -361,7 +367,8 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 		mp.extDelCh <- eks[:1]
 	}
 
-	log.LogInfof("fsmAppendExtentsWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
+	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
+	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
 	return
 }
 
@@ -435,8 +442,10 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		eks = append(eks, *lastKey)
 		mp.uidManager.minusUidSpace(i.Uid, i.Inode, eks)
 	}
-	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime, doOnLastKey)
 
+	oldSize := int64(i.Size)
+	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime, doOnLastKey)
+	mp.updateUsedInfo(int64(i.Size)-oldSize, 0, i.Inode)
 	// now we should delete the extent
 	log.LogInfof("fsmExtentsTruncate inode(%v) exts(%v)", i.Inode, delExtents)
 	mp.extDelCh <- delExtents

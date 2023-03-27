@@ -67,11 +67,13 @@ type Wrapper struct {
 
 	dpSelector DataPartitionSelector
 
-	HostsStatus map[string]bool
-	Uids        map[uint32]*proto.UidSimpleInfo
-	UidLock     sync.RWMutex
-	preload     bool
-	LocalIp     string
+	HostsStatus     map[string]bool
+	Uids            map[uint32]*proto.UidSimpleInfo
+	UidLock         sync.RWMutex
+	preload         bool
+	LocalIp         string
+	QuotaLimitedMap map[uint32]proto.QuotaLimitedInfo
+	QuotaLock       sync.RWMutex
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -114,6 +116,7 @@ func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, master
 	}
 	go w.uploadFlowInfoByTick(clientInfo)
 	go w.updateSimpleVolViewByTick()
+	go w.updateQuotaLimitInfoTick()
 	go w.update()
 	return
 }
@@ -297,6 +300,35 @@ func (w *Wrapper) UpdateSimpleVolView() (err error) {
 	}
 
 	return nil
+}
+
+func (w *Wrapper) updateQuotaLimitInfoTick() {
+	ticker := time.NewTicker(10 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			w.UpdateQuotaLimitInfo()
+		case <-w.stopC:
+			return
+		}
+
+	}
+}
+
+func (w *Wrapper) UpdateQuotaLimitInfo() {
+	quotaInfos, err := w.mc.AdminAPI().ListQuota(w.volName)
+	if err != nil {
+		log.LogWarnf("UpdateQuotaLimitInfo get quota info fail: vol [%v] err [%v]", w.volName, err)
+		return
+	}
+	w.QuotaLock.Lock()
+	defer w.QuotaLock.Unlock()
+	w.QuotaLimitedMap = make(map[uint32]proto.QuotaLimitedInfo)
+	for _, info := range quotaInfos {
+		w.QuotaLimitedMap[info.QuotaId] = info.LimitedInfo
+		log.LogDebugf("UpdateQuotaLimitInfo quotaId [%v] LimitedInfo [%v]", info.QuotaId, info.LimitedInfo)
+	}
 }
 
 func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.DataPartitionResponse) (err error) {

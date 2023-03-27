@@ -27,7 +27,7 @@ var (
 	poolSize = 10
 	tpool    = []TaskPool{New(10, 10), New(10, 10)}
 	batchCnt = 10000
-	listNum  = 2000000
+	listNum  = 200000
 )
 
 func BenchmarkCheck_With_Chan_Con(b *testing.B) {

@@ -16,13 +16,14 @@ package fs
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
 	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"golang.org/x/net/context"
 
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
@@ -369,8 +370,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	ino := f.info.Inode
 	reqlen := len(req.Data)
-
-	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v)  flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, req.Flags, req.FileFlags, req)
+	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v)  flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
+		ino, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaIds, req)
 	if proto.IsHot(f.super.volType) {
 		filesize, _ := f.fileSize(ino)
 		if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
@@ -416,6 +417,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	if proto.IsHot(f.super.volType) {
 		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
 		if ok := f.super.ec.UidIsLimited(req.Uid); ok {
+			return syscall.ENOSPC
+		}
+		if limited := f.super.ec.IsQuotaLimited(f.info.QuotaIds); limited {
 			return syscall.ENOSPC
 		}
 		size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags)
