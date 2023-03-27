@@ -1267,6 +1267,10 @@ func (c *Cluster) loadVols() (err error) {
 			continue
 		}
 
+		if err = vol.initQuotaManager(c); err != nil {
+			log.LogErrorf("loadVols initQuotaManager fail err [%v]", err.Error())
+			return err
+		}
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
 	}

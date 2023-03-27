@@ -167,3 +167,7 @@ func (e *Extend) Bytes() ([]byte, error) {
 	}
 	return buffer.Bytes(), nil
 }
+
+func (e *Extend) GetInode() (inode uint64) {
+	return e.inode
+}

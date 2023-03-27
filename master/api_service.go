@@ -4569,3 +4569,111 @@ func (m *Server) getConfig(key string) (value string, err error) {
 	}
 	return value, err
 }
+
+func (m *Server) SetQuota(w http.ResponseWriter, r *http.Request) {
+	var req = &proto.SetMasterQuotaReuqest{}
+	var (
+		err error
+		vol *Vol
+	)
+	if err = parserSetQuotaParam(r, req); err != nil {
+		log.LogErrorf("[SetQuota] set quota fail err [%v]", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.getVol(req.VolName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	if err = vol.quotaManager.setQuota(req); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	msg := fmt.Sprintf("set quota successfully, req %v", req)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) UpdateQuota(w http.ResponseWriter, r *http.Request) {
+	var req = &proto.UpdateMasterQuotaReuqest{}
+	var (
+		err error
+		vol *Vol
+	)
+	if err = parserUpdateQuotaParam(r, req); err != nil {
+		log.LogErrorf("[SetQuota] set quota fail err [%v]", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol, err = m.cluster.getVol(req.VolName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	if err = vol.quotaManager.updateQuota(req); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	msg := fmt.Sprintf("update quota successfully, req %v", req)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) DeleteQuota(w http.ResponseWriter, r *http.Request) {
+	var (
+		err     error
+		vol     *Vol
+		quotaId uint32
+		name    string
+	)
+
+	if name, quotaId, err = parseDeleteQuotaParam(r); err != nil {
+		log.LogErrorf("[DeleteQuota] del quota fail err [%v]", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	if err = vol.quotaManager.deleteQuota(quotaId); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	msg := fmt.Sprintf("delete quota successfully, vol [%v] quotaId [%v]", name, quotaId)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+	return
+}
+
+func (m *Server) ListQuota(w http.ResponseWriter, r *http.Request) {
+	var (
+		err  error
+		vol  *Vol
+		resp *proto.ListMasterQuotaResponse
+		name string
+	)
+	if name, err = parseAndExtractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	if resp = vol.quotaManager.listQuota(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	log.LogInfof("list quota vol [%v] resp [%v] success.", name, *resp)
+
+	sendOkReply(w, r, newSuccessHTTPReply(resp))
+	return
+}

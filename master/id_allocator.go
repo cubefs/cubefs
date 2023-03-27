@@ -16,11 +16,12 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/raftstore"
-	"github.com/cubefs/cubefs/util/log"
 	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // IDAllocator generates and allocates ids
@@ -29,11 +30,13 @@ type IDAllocator struct {
 	metaPartitionID uint64
 	commonID        uint64
 	clientID        uint64
+	quotaID         uint32
 	store           *raftstore.RocksDBStore
 	partition       raftstore.Partition
 	dpIDLock        sync.RWMutex
 	mpIDLock        sync.RWMutex
 	mnIDLock        sync.RWMutex
+	qaIDLock        sync.RWMutex
 }
 
 func newIDAllocator(store *raftstore.RocksDBStore, partition raftstore.Partition) (alloc *IDAllocator) {
@@ -123,6 +126,24 @@ func (alloc *IDAllocator) restoreMaxCommonID() {
 	log.LogInfof("action[restoreMaxCommonID] maxCommonID[%v]", alloc.commonID)
 }
 
+func (alloc *IDAllocator) restoreMaxQuotaID() {
+	value, err := alloc.store.Get(maxQuotaIDKey)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to restore maxQuotaID,err:%v ", err.Error()))
+	}
+	bytes := value.([]byte)
+	if len(bytes) == 0 {
+		alloc.commonID = 0
+		return
+	}
+	maxQuotaID, err := strconv.ParseUint(string(bytes), 10, 64)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to restore maxCommonID,err:%v ", err.Error()))
+	}
+	alloc.quotaID = uint32(maxQuotaID)
+	log.LogInfof("action[restoreMaxCommonID] maxCommonID[%v]", alloc.commonID)
+}
+
 func (alloc *IDAllocator) setDataPartitionID(id uint64) {
 	atomic.StoreUint64(&alloc.dataPartitionID, id)
 }
@@ -137,6 +158,10 @@ func (alloc *IDAllocator) setCommonID(id uint64) {
 
 func (alloc *IDAllocator) setClientID(id uint64) {
 	atomic.StoreUint64(&alloc.clientID, id)
+}
+
+func (alloc *IDAllocator) setQuotaID(id uint32) {
+	atomic.StoreUint32(&alloc.quotaID, id)
 }
 
 func (alloc *IDAllocator) allocateDataPartitionID() (partitionID uint64, err error) {
@@ -232,5 +257,29 @@ func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	return
 errHandler:
 	log.LogErrorf("action[allocateCommonID] err:%v", err.Error())
+	return
+}
+
+func (alloc *IDAllocator) allocateQuotaID() (id uint32, err error) {
+	alloc.qaIDLock.Lock()
+	defer alloc.qaIDLock.Unlock()
+	var cmd []byte
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncAllocQuotaID
+	metadata.K = maxQuotaIDKey
+	id = atomic.LoadUint32(&alloc.quotaID) + 1
+	value := strconv.FormatUint(uint64(id), 10)
+	metadata.V = []byte(value)
+	cmd, err = metadata.Marshal()
+	if err != nil {
+		goto errHandler
+	}
+	if _, err = alloc.partition.Submit(cmd); err != nil {
+		goto errHandler
+	}
+	alloc.setQuotaID(id)
+	return
+errHandler:
+	log.LogErrorf("action[allocateQuotaID] err:%v", err.Error())
 	return
 }

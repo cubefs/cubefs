@@ -229,19 +229,31 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 	//			goto create_dentry
 	//		}
 	//	}
-
+	quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+	if err != nil {
+		log.LogErrorf("Create_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
+		return nil, syscall.ENOENT
+	}
+	var quotaIds []uint32
+	for quotaId := range quotaInfos {
+		quotaIds = append(quotaIds, quotaId)
+	}
 	rwPartitions = mw.getRWPartitions()
 	length := len(rwPartitions)
 	epoch := atomic.AddUint64(&mw.epoch, 1)
 	for i := 0; i < length; i++ {
 		index := (int(epoch) + i) % length
 		mp = rwPartitions[index]
-		status, info, err = mw.icreate(mp, mode, uid, gid, target)
+		status, info, err = mw.icreate(mp, mode, uid, gid, target, quotaIds)
 		if err == nil && status == statusOK {
 			goto create_dentry
 		}
 		log.LogErrorf("Create_ll status %v", status)
+		if status == int(proto.OpInodeFullErr) {
+			return nil, syscall.ENOSPC
+		}
 		return nil, statusToErrno(status)
+
 	}
 	return nil, syscall.ENOMEM
 
@@ -795,6 +807,20 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
+
+	quotaInfos, err := mw.GetInodeQuota_ll(inode)
+	if err != nil {
+		log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
+		return syscall.ENOENT
+	}
+
+	for _, info := range quotaInfos {
+		if info.RootInode == inode {
+			log.LogErrorf("can not rename quota Root inode equal inode [%v]", inode)
+			return syscall.EACCES
+		}
+	}
+
 	srcMP := mw.getPartitionByInode(inode)
 	if srcMP == nil {
 		return syscall.ENOENT
@@ -813,7 +839,6 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		}
 		return syscall.EAGAIN
 	}
-
 	var srcInodeInfo *proto.InodeInfo
 	var dstInodeInfo *proto.InodeInfo
 	if mw.EnableSummary {
@@ -896,6 +921,29 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			}
 		}
 	}
+
+	var inodes []uint64
+	inodes = append(inodes, inode)
+	srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
+	if err != nil {
+		log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
+		return err
+	}
+
+	for quotaId := range srcQuotaInfos {
+		mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
+	}
+
+	destQuotaInfos, err := mw.GetInodeQuota_ll(dstParentID)
+	if err != nil {
+		log.LogErrorf("rename get dest parent inode [%v] quota fail [%v]", dstParentID, err)
+		return err
+	}
+	for quotaId, info := range destQuotaInfos {
+		log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
+		mw.BatchSetInodeQuota_ll(inodes, quotaId, info.RootInode)
+	}
+
 	return nil
 }
 
@@ -1188,7 +1236,7 @@ func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32, atime
 	return nil
 }
 
-func (mw *MetaWrapper) InodeCreate_ll(mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) InodeCreate_ll(mode, uid, gid uint32, target []byte, quotaIds []uint64) (*proto.InodeInfo, error) {
 	var (
 		status       int
 		err          error
@@ -1203,7 +1251,7 @@ func (mw *MetaWrapper) InodeCreate_ll(mode, uid, gid uint32, target []byte) (*pr
 	for i := 0; i < length; i++ {
 		index := (int(epoch) + i) % length
 		mp = rwPartitions[index]
-		status, info, err = mw.icreate(mp, mode, uid, gid, target)
+		status, info, err = mw.icreate(mp, mode, uid, gid, target, make([]uint32, 0))
 		if err == nil && status == statusOK {
 			return info, nil
 		}
@@ -1829,4 +1877,75 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 			mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, false, goroutineNum)
 		}
 	}
+}
+
+func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32, rootInode uint64) {
+	var wg sync.WaitGroup
+
+	batchInodeMap := make(map[uint64][]uint64)
+	for _, ino := range inodes {
+		mp := mw.getPartitionByInode(ino)
+		if mp == nil {
+			continue
+		}
+		if _, isFind := batchInodeMap[mp.PartitionID]; !isFind {
+			batchInodeMap[mp.PartitionID] = make([]uint64, 0, 128)
+		}
+		batchInodeMap[mp.PartitionID] = append(batchInodeMap[mp.PartitionID], ino)
+	}
+
+	for id, inos := range batchInodeMap {
+		mp := mw.getPartitionByID(id)
+		wg.Add(1)
+		go mw.batchSetInodeQuota(&wg, mp, inos, quotaId, rootInode)
+	}
+
+	wg.Wait()
+	log.LogInfof("set subInode quota [%v] success.", quotaId)
+	return
+}
+
+func (mw *MetaWrapper) GetPartitionByInodeId_ll(inodeId uint64) (mp *MetaPartition) {
+	return mw.getPartitionByInode(inodeId)
+}
+
+func (mw *MetaWrapper) BatchDeleteInodeQuota_ll(inodes []uint64, quotaId uint32) {
+	var wg sync.WaitGroup
+
+	batchInodeMap := make(map[uint64][]uint64)
+	for _, ino := range inodes {
+		mp := mw.getPartitionByInode(ino)
+		if mp == nil {
+			continue
+		}
+		if _, isFind := batchInodeMap[mp.PartitionID]; !isFind {
+			batchInodeMap[mp.PartitionID] = make([]uint64, 0, 128)
+		}
+		batchInodeMap[mp.PartitionID] = append(batchInodeMap[mp.PartitionID], ino)
+	}
+	for id, inos := range batchInodeMap {
+		mp := mw.getPartitionByID(id)
+		wg.Add(1)
+		go mw.batchDeleteInodeQuota(&wg, mp, inos, quotaId)
+	}
+
+	wg.Wait()
+	log.LogInfof("delete subInode quota [%v] success.", quotaId)
+	return
+}
+
+func (mw *MetaWrapper) GetInodeQuota_ll(inode uint64) (quotaInfos map[uint32]*proto.MetaQuotaInfo, err error) {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		err = fmt.Errorf("get partition by inode [%v] failed", inode)
+		return nil, err
+	}
+
+	quotaInfos, err = mw.getInodeQuota(mp, inode)
+	if err != nil {
+		log.LogErrorf("GetInodeQuota_ll get inode [%v] quota failed [%v]", inode, err)
+		return
+	}
+
+	return
 }

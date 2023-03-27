@@ -103,6 +103,11 @@ const (
 	UIDKey                  = "uid"
 	CapacityKey             = "capacity"
 	configKey               = "config"
+	MaxFilesKey             = "maxFiles"
+	MaxBytesKey             = "maxBytes"
+	fullPathKey             = "fullPath"
+	inodeKey                = "inode"
+	quotaKey                = "quotaId"
 )
 
 const (
@@ -234,6 +239,10 @@ const (
 
 	opSyncAcl uint32 = 0x36
 	opSyncUid uint32 = 0x37
+
+	opSyncAllocQuotaID uint32 = 0x40
+	opSyncSetQuota     uint32 = 0x41
+	opSyncDeleteQuota  uint32 = 0x42
 )
 
 const (
@@ -254,6 +263,7 @@ const (
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
 	maxCommonIDKey        = keySeparator + "max_common_id"
 	maxClientIDKey        = keySeparator + "client_id"
+	maxQuotaIDKey         = keySeparator + "quota_id"
 	metaNodePrefix        = keySeparator + metaNodeAcronym + keySeparator
 	dataNodePrefix        = keySeparator + dataNodeAcronym + keySeparator
 	dataPartitionPrefix   = keySeparator + dataPartitionAcronym + keySeparator
@@ -277,4 +287,5 @@ const (
 	volUserPrefix         = keySeparator + volUserAcronym + keySeparator
 	volWarnUsedRatio      = 0.9
 	volCachePrefix        = keySeparator + volNameAcronym + keySeparator
+	quotaPrefix           = keySeparator + "quota" + keySeparator
 )

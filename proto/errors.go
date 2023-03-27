@@ -88,6 +88,7 @@ var (
 	ErrVolNoAvailableSpace                     = errors.New("vol has no available space")
 	ErrVolNoCacheAndRule                       = errors.New("vol has no cache and rule")
 	ErrNoAclPermission                         = errors.New("acl no permission")
+	ErrQuotaNotExists                          = errors.New("quota not exists")
 )
 
 // http response error code and error message definitions

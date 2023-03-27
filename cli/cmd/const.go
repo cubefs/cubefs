@@ -99,6 +99,8 @@ const (
 	CliDpReadOnlyWhenVolFull  = "readonly-when-full"
 	CliTxMask                 = "transaction-mask"
 	CliTxTimeout              = "transaction-timeout"
+	CliFlagMaxFiles           = "maxFiles"
+	CliFlagMaxBytes           = "maxBytes"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

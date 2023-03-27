@@ -332,6 +332,7 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 
 func (mp *MetaPartition) getMetaReplicaLeader() (mr *MetaReplica, err error) {
 	for _, mr = range mp.Replicas {
+		log.LogInfof("getMetaReplicaLeader mp [%v], mr[%v]", mp, mr)
 		if mr.IsLeader {
 			return
 		}

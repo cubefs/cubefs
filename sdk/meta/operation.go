@@ -102,7 +102,8 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 	return status, resp.Info, nil
 }
 
-func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32) (status int,
+	info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("icreate", err, bgTime, 1)
@@ -115,6 +116,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 		Uid:         uid,
 		Gid:         gid,
 		Target:      target,
+		QuotaIds:    quotaIds,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -823,7 +825,6 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 		log.LogErrorf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
-
 	resp := new(proto.InodeGetResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil || resp.Info == nil {
@@ -1876,7 +1877,7 @@ func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (v
 	}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaGetXAttr
+	packet.Opcode = proto.OpMetaGetInodeQuota
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -2209,4 +2210,138 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 
 	log.LogDebugf("updateXAttrs: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return nil
+}
+
+func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32, rootInode uint64) {
+	defer wg.Done()
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("batchSetInodeQuota", err, bgTime, 1)
+	}()
+
+	req := &proto.BatchSetMetaserverQuotaReuqest{
+		PartitionId: mp.PartitionID,
+		Inodes:      inodes,
+		QuotaId:     quotaId,
+		RootInode:   rootInode,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchSetInodeQuota
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("batchSetInodeQuota MarshalData req [%v] fail.", req)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batchSetInodeQuota: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("batchSetInodeQuota: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+	return
+}
+
+func (mw *MetaWrapper) batchDeleteInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32) {
+	defer wg.Done()
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("batchDeleteInodeQuota", err, bgTime, 1)
+	}()
+	log.LogDebugf("batchDeleteInodeQuota mp [%v] inodes [%v]", mp.PartitionID, inodes)
+	req := &proto.BatchDeleteMetaserverQuotaReuqest{
+		PartitionId: mp.PartitionID,
+		Inodes:      inodes,
+		QuotaId:     quotaId,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchDeleteInodeQuota
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("batchDeleteInodeQuota MarshalData req [%v] fail.", req)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batchDeleteInodeQuota: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("batchDeleteInodeQuota: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+	return
+}
+
+func (mw *MetaWrapper) getInodeQuota(mp *MetaPartition, inode uint64) (quotaInfos map[uint32]*proto.MetaQuotaInfo, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("getInodeQuota", err, bgTime, 1)
+	}()
+
+	req := &proto.GetInodeQuotaRequest{
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaGetInodeQuota
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("getInodeQuota: req(%v) err(%v)", *req, err)
+		return
+	}
+	log.LogDebugf("getInodeQuota: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("getInodeQuota: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("getInodeQuota: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.GetInodeQuotaResponse)
+	if err = packet.UnmarshalData(resp); err != nil {
+		log.LogErrorf("getInodeQuota: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+	quotaInfos = resp.MetaQuotaInfoMap
+	log.LogDebugf("getInodeQuota: req(%v) resp(%v) err(%v)", *req, *resp, err)
+	return
 }

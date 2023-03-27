@@ -81,19 +81,21 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		m.Range(func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
 			partition.SetUidLimit(req.UidLimitInfo)
+			partition.setQuotaHbInfo(req.QuotaHbInfos)
 			mConf := partition.GetBaseConfig()
 			mpr := &proto.MetaPartitionReport{
-				PartitionID: mConf.PartitionId,
-				Start:       mConf.Start,
-				End:         mConf.End,
-				Status:      proto.ReadWrite,
-				MaxInodeID:  mConf.Cursor,
-				VolName:     mConf.VolName,
-				Size:        partition.DataSize(),
-				InodeCnt:    uint64(partition.GetInodeTreeLen()),
-				DentryCnt:   uint64(partition.GetDentryTreeLen()),
-				FreeListLen: uint64(partition.GetFreeListLen()),
-				UidInfo:     partition.GetUidInfo(),
+				PartitionID:      mConf.PartitionId,
+				Start:            mConf.Start,
+				End:              mConf.End,
+				Status:           proto.ReadWrite,
+				MaxInodeID:       mConf.Cursor,
+				VolName:          mConf.VolName,
+				Size:             partition.DataSize(),
+				InodeCnt:         uint64(partition.GetInodeTreeLen()),
+				DentryCnt:        uint64(partition.GetDentryTreeLen()),
+				FreeListLen:      uint64(partition.GetFreeListLen()),
+				UidInfo:          partition.GetUidInfo(),
+				QuotaReportInfos: partition.getQuotaReportInfos(),
 			}
 			addr, isLeader := partition.IsLeader()
 			if addr == "" {
@@ -1914,5 +1916,194 @@ func (m *metadataManager) opTxCreateInode(conn net.Conn, p *Packet,
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opTxCreateInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) OpMasterSetInodeQuota(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.BatchSetMetaserverQuotaReuqest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	log.LogInfof("[OpMasterSetInodeQuota] req [%v] start.", req)
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		log.LogErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return err
+	}
+	log.LogInfof("[OpMasterSetInodeQuota] req [%v] decode req.", req)
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[OpMasterSetInodeQuota] req: %v, resp: %v", req, err.Error())
+		return
+	}
+	// leaderAddr, ok := mp.IsLeader()
+	// log.LogInfof("[opMetaBatchSetInodeQuota] mp [%v] isLeader [%v] leader[%v]", mp, ok, leaderAddr)
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	resp := &proto.BatchSetMetaserverQuotaResponse{
+		PartitionId: req.PartitionId,
+		QuotaId:     req.QuotaId,
+	}
+	err = mp.batchSetInodeQuota(req, resp)
+	adminTask.Response = resp
+	adminTask.Request = nil
+	_ = m.respondToMaster(adminTask)
+
+	log.LogInfof("[OpMasterSetInodeQuota] req [%v] resp [%v] success.", req, resp)
+	return
+}
+
+func (m *metadataManager) OpMasterDeleteInodeQuota(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.BatchDeleteMetaserverQuotaReuqest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	log.LogInfof("[OpMasterDeleteInodeQuota] req [%v] start.", req)
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		log.LogErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return err
+	}
+	log.LogInfof("[OpMasterDeleteInodeQuota] req [%v] decode req.", req)
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[OpMasterDeleteInodeQuota] req: %v, resp: %v", req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	resp := &proto.BatchDeleteMetaserverQuotaResponse{
+		PartitionId: req.PartitionId,
+		QuotaId:     req.QuotaId,
+	}
+	err = mp.batchDeleteInodeQuota(req, resp)
+	adminTask.Response = resp
+	adminTask.Request = nil
+	_ = m.respondToMaster(adminTask)
+
+	log.LogInfof("[OpMasterDeleteInodeQuota] req [%v] resp [%v] success.", req, resp)
+	return err
+}
+
+func (m *metadataManager) opMetaBatchSetInodeQuota(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.BatchSetMetaserverQuotaReuqest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opMetaBatchSetInodeQuota] req: %v, resp: %v", req, err.Error())
+		return
+	}
+	log.LogInfof("[opMetaBatchSetInodeQuota] req [%v] decode req.", req)
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opMetaBatchSetInodeQuota] req: %v, resp: %v", req, err.Error())
+		return
+	}
+	// leaderAddr, ok := mp.IsLeader()
+	// log.LogInfof("[opMetaBatchSetInodeQuota] mp [%v] isLeader [%v] leader[%v]", mp, ok, leaderAddr)
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	resp := &proto.BatchSetMetaserverQuotaResponse{
+		PartitionId: req.PartitionId,
+		QuotaId:     req.QuotaId,
+	}
+	err = mp.batchSetInodeQuota(req, resp)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	var reply []byte
+	if reply, err = json.Marshal(resp); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	p.PacketOkWithBody(reply)
+	_ = m.respondToClient(conn, p)
+	log.LogInfof("[opMetaBatchSetInodeQuota] req [%v] resp [%v] success.", req, resp)
+	return
+}
+
+func (m *metadataManager) opMetaBatchDeleteInodeQuota(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.BatchDeleteMetaserverQuotaReuqest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opMetaBatchDeleteInodeQuota] req: %v, resp: %v", req, err.Error())
+		return
+	}
+	log.LogInfof("[opMetaBatchDeleteInodeQuota] req [%v] decode req.", req)
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opMetaBatchDeleteInodeQuota] req: %v, resp: %v", req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	resp := &proto.BatchDeleteMetaserverQuotaResponse{
+		PartitionId: req.PartitionId,
+		QuotaId:     req.QuotaId,
+	}
+	err = mp.batchDeleteInodeQuota(req, resp)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	var reply []byte
+	if reply, err = json.Marshal(resp); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	p.PacketOkWithBody(reply)
+	_ = m.respondToClient(conn, p)
+
+	log.LogInfof("[opMetaBatchSetInodeQuota] req [%v] resp [%v] success.", req, resp)
+	return err
+}
+
+func (m *metadataManager) opMetaGetInodeQuota(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.GetInodeQuotaRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opGetMultipart] req: %v, resp: %v", req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opGetMultipart] req: %v, resp: %v", req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	err = mp.getInodeQuota(req.Inode, p)
+	_ = m.respondToClient(conn, p)
+	log.LogInfof("[opMetaGetInodeQuota] get inode [%v] quota success.", req.Inode)
 	return
 }
