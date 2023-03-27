@@ -13,6 +13,7 @@ const (
 	ConfigProducerNum = "producerNum"
 	ConfigExpiredDay  = "tableExpiredDay"
 	ConfigSplitRegion = "splitRegion"
+	ConfigSplitVol 	  = "splitVol"
 
 	nodeIPKey    = "ip"
 	moduleKey    = "module"
@@ -36,7 +37,7 @@ const (
 
 	defaultThriftAddr	= "127.0.0.1:9091"
 	defaultNamespace 	= "default"
-	defaultQueryIP   	= "11.56.17.222"
+	defaultQueryIP   	= "127.0.0.1"
 	defaultProducerNum 	= 3
 
 	timeLayout 		= "20060102150405"

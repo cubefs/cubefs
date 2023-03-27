@@ -212,7 +212,7 @@ func (m *Monitor) getHourCreateTableInfo(timestamp int64) (tables []*TableInfo) 
 			tableInfo.splitKeys = m.getDataSplitKeys()
 			tableInfo.cFamilies = []string{CFMonitor}
 		case VolTablePrefix:
-			tableInfo.splitKeys = []string{"mysql,data", "mysql,meta", "mysql,z"}
+			tableInfo.splitKeys = m.splitKeysForVol
 			tableInfo.cFamilies = []string{CF1, CF2}
 		}
 		tables = append(tables, tableInfo)

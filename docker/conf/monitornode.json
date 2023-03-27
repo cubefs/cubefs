@@ -7,8 +7,6 @@
   "namespace": "test",
   "cluster": "chubaofs01",
   "producerNum": "10",
-  "splitRegion": [
-    "mysql:2",
-    "spark:6"
-  ]
+  "splitRegion": ["chubaofs01:2", "chubaofs02:6"],
+  "splitVol": ["chubaofs01,data", "chubaofs01,meta", "chubaofs01,z"]
 }

@@ -271,8 +271,6 @@ const (
 	DefaultMaxSkipStepOnLeaderChange           = 50000
 )
 
-const DbBackMaster = "dbbak.jd.local"
-
 var IsDbBack bool = false
 
 type BucketAccessPolicy uint8

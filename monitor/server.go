@@ -29,6 +29,7 @@ type Monitor struct {
 	queryIP          string
 	clusters         []string
 	splitRegionRules map[string]int64 	// clusterName:regionNum
+	splitKeysForVol	 []string
 	apiServer        *http.Server
 	jmqConfig        *JMQConfig
 	mqProducer       *MQProducer
@@ -152,6 +153,7 @@ func (m *Monitor) parseConfig(cfg *config.Config) (err error) {
 	}
 
 	m.splitRegionRules = getSplitRules(cfg.GetStringSlice(ConfigSplitRegion))
+	m.splitKeysForVol = cfg.GetStringSlice(ConfigSplitVol)
 
 	log.LogInfof("action[parseConfig] load listen port(%v).", m.port)
 	log.LogInfof("action[parseConfig] load cluster name(%v).", m.clusters)
@@ -165,6 +167,7 @@ func (m *Monitor) parseConfig(cfg *config.Config) (err error) {
 		log.LogInfof("action[parseConfig] load producer num(%v).", m.jmqConfig.produceNum)
 	}
 	log.LogInfof("action[parseConfig] load splitRegionRules(%v).", m.splitRegionRules)
+	log.LogInfof("action[parseConfig] load splitKeysForVol(%v).", m.splitKeysForVol)
 	return
 }
 

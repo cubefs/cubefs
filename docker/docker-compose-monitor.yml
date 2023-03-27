@@ -342,10 +342,6 @@ services:
         ports:
           - "81"
           - 9500
-        extra_hosts:
-          - "host-11-70-68-208:11.70.68.208"
-          - "host-11-90-65-115:11.90.65.115"
-          - "host-11-90-102-241:11.90.102.241"
         volumes:
           - ./bin:/cfs/bin:ro
           - ${DiskPath:-./docker_data}/monitornode1/log:/cfs/log
@@ -365,10 +361,6 @@ services:
         ports:
             - "81"
             - 9500
-        extra_hosts:
-            - "host-11-70-68-208:11.70.68.208"
-            - "host-11-90-65-115:11.90.65.115"
-            - "host-11-90-102-241:11.90.102.241"
         volumes:
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/monitornode2/log:/cfs/log
@@ -388,10 +380,6 @@ services:
         ports:
             - "81"
             - 9500
-        extra_hosts:
-            - "host-11-70-68-208:11.70.68.208"
-            - "host-11-90-65-115:11.90.65.115"
-            - "host-11-90-102-241:11.90.102.241"
         volumes:
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/monitornode3/log:/cfs/log
