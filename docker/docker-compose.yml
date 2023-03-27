@@ -99,6 +99,7 @@ services:
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.12
+
     master3:
         image: chubaofs/cfs-base:1.4
         ports:

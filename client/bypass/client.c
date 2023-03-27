@@ -2388,11 +2388,13 @@ log:
 
 void* plugin_open(const char* name) {
     void *handle = dlopen(name, RTLD_NOW|RTLD_GLOBAL);
+    #ifdef DYNAMIC_UPDATE
     if(handle != NULL) {
         void* task = dlsym(handle, "main..inittask");
         InitModule_t initModule = (InitModule_t)dlsym(handle, "InitModule");
         initModule(task);
     }
+    #endif
     return handle;
 }
 

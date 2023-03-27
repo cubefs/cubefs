@@ -160,7 +160,6 @@ cmd=${1:-"all"}
 case "$cmd" in
     "all")
         build_server
-        build_client
         ;;
     "test")
         run_test

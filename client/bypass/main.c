@@ -38,7 +38,9 @@
 #define CHECK_UPDATE_INTERVAL 5
 #define CFS_CFG_PATH "cfs_client.ini"
 #define CFS_CFG_PATH_JED "/export/servers/cfs/cfs_client.ini"
+#ifdef DYNAMIC_UPDATE
 #define LIB_EMPTY "/usr/lib64/libempty.so"
+#endif
 #define SDK_SO "libcfssdk.so"
 #define C_SO "libcfsc.so"
 
@@ -601,11 +603,13 @@ static void init() {
     setenv("CFS_CFSC_PATH", lib_cfsc, 1);
 
     void* handle;
+    #ifdef DYNAMIC_UPDATE
     handle = base_open(LIB_EMPTY);
     if(handle == NULL) {
         fprintf(stderr, "dlopen /usr/lib64/libempty.so error: %s.\n", dlerror());
         libc_exit(1);
     }
+    #endif
     handle = dlopen(lib_cfsc, RTLD_NOW|RTLD_GLOBAL);
     if(handle == NULL) {
         fprintf(stderr, "dlopen %s error: %s\n", lib_cfsc, dlerror());

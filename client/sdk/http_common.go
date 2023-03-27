@@ -19,47 +19,39 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
-
-	"gopkg.in/ini.v1"
 )
 
 const (
-	ControlVersion                 = "/version"
-	ControlBroadcastRefreshExtents = "/broadcast/refreshExtents"
-	ControlReadProcessRegister     = "/readProcess/register"
-	ControlGetReadProcs            = "/get/readProcs"
-	ControlSetReadWrite            = "/set/readwrite"
-	ControlSetReadOnly             = "/set/readonly"
-	ControlGetReadStatus           = "/get/readstatus"
-	ControlSetUpgrade              = "/set/clientUpgrade"
-	ControlUnsetUpgrade            = "/unset/clientUpgrade"
-	ControlAccessRoot              = "/access/root"
+	ControlVersion       = "/version"
+	ControlGetReadStatus = "/get/readstatus"
+	ControlSetUpgrade    = "/set/clientUpgrade"
+	ControlUnsetUpgrade  = "/unset/clientUpgrade"
 
 	ControlCommandGetUmpCollectWay = "/umpCollectWay/get"
 	ControlCommandSetUmpCollectWay = "/umpCollectWay/set"
 
-	aliveKey         = "alive"
-	volKey           = "vol"
-	inoKey           = "ino"
-	clientKey        = "client" // ip:port
-	versionKey       = "version"
-	currentKey       = "current"
-	MaxRetry         = 5
-	forceKey         = "force"
-	CheckFile        = "checkfile"
-	TmpLibsPath      = "/tmp/.cfs_client_libs_"
-	FuseLibsPath     = "/usr/lib64"
-	FuseLib          = "libcfssdk.so"
-	TarNamePre       = "cfs-client-libs"
-	AMD64            = "amd64"
-	ARM64            = "arm64"
-	fuseConfigType   = "json"
-	bypassConfigType = "ini"
+	aliveKey     = "alive"
+	volKey       = "vol"
+	inoKey       = "ino"
+	clientKey    = "client" // ip:port
+	versionKey   = "version"
+	currentKey   = "current"
+	MaxRetry     = 5
+	forceKey     = "force"
+	CheckFile    = "checkfile"
+	TmpLibsPath  = "/tmp/.cfs_client_libs_"
+	FuseLibsPath = "/usr/lib64"
+	FuseLib      = "libcfssdk.so"
+	TarNamePre   = "cfs-client-libs"
+	AMD64        = "amd64"
+	ARM64        = "arm64"
 
 	pidFileSeparator = ";"
+
+	StartRetryMaxCount    = 10
+	StartRetryIntervalSec = 5
 )
 
 var (
@@ -143,52 +135,6 @@ func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
 	encoded, _ = json.Marshal(&resp)
 	w.Write(encoded)
 	return
-}
-
-func checkConfigFile(configFile, configFileType, volName, clusterName string) (err error) {
-	var (
-		actualVolName string
-		masterAddr    string
-		info          *proto.ClusterInfo
-	)
-	if configFileType == fuseConfigType {
-		cfg, err := config.LoadConfigFile(configFile)
-		if err != nil {
-			return err
-		}
-		opt, err := parseMountOption(cfg)
-		if err != nil {
-			return err
-		}
-		actualVolName = opt.Volname
-		masterAddr = opt.Master
-	}
-
-	if configFileType == bypassConfigType {
-		cfg, err := ini.Load(configFile)
-		if err != nil {
-			return err
-		}
-		actualVolName = cfg.Section("").Key("volName").String()
-		masterAddr = cfg.Section("").Key("masterAddr").String()
-	}
-
-	if actualVolName != volName {
-		err = fmt.Errorf("actual volName: %s, expect: %s", actualVolName, volName)
-		return
-	}
-
-	masters := strings.Split(masterAddr, ",")
-	mc := master.NewMasterClient(masters, false)
-	if info, err = mc.AdminAPI().GetClusterInfo(); err != nil {
-		err = fmt.Errorf("get cluster info fail: err(%v). Please check masterAddr %s and retry.", err, masterAddr)
-		return err
-	}
-	if info.Cluster != clusterName {
-		err = fmt.Errorf("actual clusterName: %s, expect: %s", info.Cluster, clusterName)
-		return
-	}
-	return nil
 }
 
 func downloadAndCheck(mc *master.MasterClient, tmpPath, version string) (fileNames []string, err error) {
