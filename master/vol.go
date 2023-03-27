@@ -344,6 +344,9 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
 
+		if time.Since(time.Unix(vol.createTime, 0).Add(time.Second*defaultIntervalToCheckHeartbeat*3)) < 0 {
+			dp.setReadWrite()
+		}
 		if dp.Status == proto.ReadWrite {
 			cnt++
 		}
