@@ -11,29 +11,25 @@ import (
 func TestParseConfig(t *testing.T) {
 	cfgJSON := `{
 		"role": "schedulenode",
-		"localIP": "11.97.57.231",
+		"localIP": "192.168.0.13",
 		"prof": "17330",
 		"workerTaskPeriod": 5,
 		"logDir": "/export/Logs/chubaofs/scheduleNode1/",
 		"logLevel": "debug",
 		"mysql": {
-			"url": "11.97.57.230",
-			"userName": "root",
-			"password": "cfsTest123@",
-			"database": "smart",
+			"url": "testUrl",
+			"userName": "test",
+			"password": "test",
+			"database": "test",
 			"port": 3306
 		},
 		"hBaseUrl": "api.storage.hbase.jd.local/",
 		"clusterAddr": {
 			"smart_vol_test": [
-				"172.20.81.30:17010",
-				"172.20.81.31:17010",
-				"11.7.139.135:17010"
+				"192.168.0.10:17010"
 			],
 			"smart_vol_test2": [
-				"172.20.81.30:17010",
-				"172.20.81.31:17010",
-				"11.7.139.135:17010"
+				"192.168.0.11:17010"
 			]
 		}
     }`
@@ -43,10 +39,10 @@ func TestParseConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
-	if smart.LocalIp != "11.97.57.231" {
+	if smart.LocalIp != "192.168.0.13" {
 		t.Errorf("invalid local ip")
 	}
-	if smart.MysqlConfig.Url != "11.97.57.230" {
+	if smart.MysqlConfig.Url != "testUrl" {
 		t.Errorf("invalid mysql url")
 	}
 	if _, ok := smart.masterAddr["smart_vol_test"]; !ok {
