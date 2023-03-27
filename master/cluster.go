@@ -1127,7 +1127,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 		goto errHandler
 	default:
 		dp.total = vol.dataPartitionSize
-		dp.Status = proto.Unavailable
+		dp.setReadWrite()
 	}
 
 	if err = c.syncAddDataPartition(dp); err != nil {
