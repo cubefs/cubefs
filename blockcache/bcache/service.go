@@ -34,15 +34,16 @@ import (
 )
 
 const (
-	UnixSocketPath = "/var/lib/kubelet/device-plugins/bcache.socket"
+	UnixSocketPath = "/var/run/cubefscache/bcache.socket"
 
 	//config
-	CacheDir     = "cacheDir"
-	CacheLimit   = "cacheLimit"
-	CacheFree    = "cacheFree"
-	BlockSize    = "blockSize"
-	MaxFileSize  = 128 << 30
-	MaxBlockSize = 128 << 20
+	CacheDir      = "cacheDir"
+	CacheLimit    = "cacheLimit"
+	CacheFree     = "cacheFree"
+	BlockSize     = "blockSize"
+	MaxFileSize   = 128 << 30
+	MaxBlockSize  = 128 << 20
+	BigExtentSize = 32 << 20
 )
 
 var (
