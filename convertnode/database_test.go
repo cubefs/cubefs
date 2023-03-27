@@ -3,11 +3,11 @@ package convertnode
 import "testing"
 
 var dbConf = DBConfig{
-	Path:         "gate11.local.jed.jddb.com:3306",
+	Path:         "",
 	Config:       "charset=utf8&parseTime=True&loc=Local",
-	Dbname:       "cfs_convert_node",
-	Username:     "cfs_convert_node_rw",
-	Password:     "7ANiuzwYUuBFedhO",
+	Dbname:       "",
+	Username:     "",
+	Password:     "",
 	MaxIdleConns: 10,
 	MaxOpenConns: 100,
 	LogMode:      false,

@@ -31,8 +31,8 @@ export default {
   name: 'login',
   data () {
     return {
-      name: 'root',
-      password: 'ChubaoFSRoot'
+      name: '',
+      password: ''
     }
   },
   methods: {
