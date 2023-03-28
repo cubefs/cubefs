@@ -1,4 +1,0 @@
-Instance,Nodes,CPU,Memory,Storage,Network,Description
-Master,3,32,32 GB,120 GB SSD,10 Gb/s,
-MetaNode,10,32,32 GB,16 x 1TB SSD,10 Gb/s,hybrid deployment
-DataNode,10,32,32 GB,16 x 1TB SSD,10 Gb/s,hybrid deployment
