@@ -33,7 +33,7 @@ fi
 
 echo -n 'Building ChubaoFS Client ... ' ;
 cd /go/src/github.com/cubefs/cubefs/client;
-bash ./build.sh ${build_opt} &>> /tmp/cfs_build_output
+bash ./build.sh -d ${build_opt} &>> /tmp/cfs_build_output
 if [[ $? -eq 0 ]]; then
     echo -e "\033[32mdone\033[0m";
     mv bin/cfs-client /go/src/github.com/cubefs/cubefs/docker/bin/cfs-client;

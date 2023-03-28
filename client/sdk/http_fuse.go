@@ -5,7 +5,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/config"
+)
+
+const (
+	ControlAccessRoot = "/access/root"
 )
 
 func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +55,7 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = checkConfigFile(c.configFile, fuseConfigType, c.volName, c.super.ClusterName()); err != nil {
+	if err = checkFuseConfigFile(c.configFile, c.volName, c.super.ClusterName()); err != nil {
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Invalid configFile %s: %v", c.configFile, err))
 		return
 	}
@@ -108,4 +117,39 @@ func (c *fClient) AccessRoot(w http.ResponseWriter, r *http.Request) {
 		buildSuccessResp(w, "Success")
 	}
 	return
+}
+
+func checkFuseConfigFile(configFile, volName, clusterName string) (err error) {
+	var (
+		actualVolName string
+		masterAddr    string
+		info          *proto.ClusterInfo
+	)
+	cfg, err := config.LoadConfigFile(configFile)
+	if err != nil {
+		return err
+	}
+	opt, err := parseMountOption(cfg)
+	if err != nil {
+		return err
+	}
+	actualVolName = opt.Volname
+	masterAddr = opt.Master
+
+	if actualVolName != volName {
+		err = fmt.Errorf("actual volName: %s, expect: %s", actualVolName, volName)
+		return
+	}
+
+	masters := strings.Split(masterAddr, ",")
+	mc := master.NewMasterClient(masters, false)
+	if info, err = mc.AdminAPI().GetClusterInfo(); err != nil {
+		err = fmt.Errorf("get cluster info fail: err(%v). Please check masterAddr %s and retry.", err, masterAddr)
+		return err
+	}
+	if info.Cluster != clusterName {
+		err = fmt.Errorf("actual clusterName: %s, expect: %s", info.Cluster, clusterName)
+		return
+	}
+	return nil
 }

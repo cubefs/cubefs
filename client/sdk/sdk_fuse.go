@@ -77,9 +77,6 @@ const (
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
 	ControlCommandTracing      = "/tracing"
 	Role                       = "Client"
-
-	StartRetryMaxCount    = 10
-	StartRetryIntervalSec = 5
 )
 
 type fClient struct {

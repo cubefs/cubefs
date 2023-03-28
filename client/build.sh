@@ -8,6 +8,7 @@ BuildTime=`date +%Y-%m-%d\ %H:%M`
 
 goflag=""
 gccflag="-g"
+dynamic=0
 build_sdk=1
 build_client=1
 build_test=0
@@ -19,6 +20,7 @@ help() {
 Usage: ./build.sh [ -h | --help ] [ -g ] [ --sdk-only | --client-only ]
     -h, --help              show help info
     --lcov                  lcov coverage measurements
+    -d, --dynamic           with dynamic updating feature (customized golang required)
     -s, --sdk-only          build sdk (libcfssdk.so libempty.so) only
     -c, --client-only       build client (libcfsclient.so and cfs-client) only
     -p, --pack-libs         pack libs to cfs-client-libs.tar.gz used for bypass upgrade
@@ -33,17 +35,20 @@ for opt in ${ARGS[*]} ; do
         -h | --help)
             help
             ;;
+        -d | --dynamic)
+            dynamic=1
+            ;;
         --lcov)
             gccflag="$gccflag -fprofile-arcs -ftest-coverage -lgcov"
             ;;
-    	-s | --sdk-only)
-    	    build_sdk=1
-    	    build_client=0
-	        ;;
+        -s | --sdk-only)
+            build_sdk=1
+            build_client=0
+            ;;
 	    -c | --client-only)
-	        build_sdk=0
-	        build_client=1
-	        ;;
+            build_sdk=0
+            build_client=1
+            ;;
         -p | --pack-libs)
             build_sdk=1
             build_client=1
@@ -62,21 +67,25 @@ bin=${dir}/bin
 echo "using goflag=\"${goflag}\""
 echo "using gccflag=\"${gccflag}\""
 
-build_sdk() {
+build_sdk_dynamic_impl() {
     if [ "$1" = "libcfssdk" ]; then
         libsdk_flag="-E main.main"
     fi
-    go build -ldflags "${goflag} ${libsdk_flag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o ${bin}/$1.so ${dir}/sdk/*.go
+    go build -ldflags "${goflag} ${libsdk_flag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o ${bin}/$1.so ${dir}/sdk/sdk_bypass.go ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_bypass.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go ${dir}/sdk/ump.go ${dir}/sdk/dynamic.go
 }
 
-if [[ ${build_sdk} -eq 1 ]]; then
+build_sdk_dynamic() {
     echo "building sdk (libcfssdk.so, libcfssdk_cshared.so) commit: ${CommitID} ..."
-    build_sdk "libcfssdk"
-    build_sdk "libcfssdk_cshared"
-    chmod a+rx ${bin}/*
-fi
+    build_sdk_dynamic_impl "libcfssdk"
+    build_sdk_dynamic_impl "libcfssdk_cshared"
+}
 
-if [[ ${build_client} -eq 1 ]]; then
+build_sdk_nodynamic() {
+    echo "building sdk (libcfssdk.so) commit: ${CommitID} ..."
+    go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=c-shared -o ${bin}/libcfssdk.so ${dir}/sdk/sdk_bypass.go ${dir}/sdk/http_bypass.go ${dir}/sdk/http_common.go ${dir}/sdk/ump.go ${dir}/sdk/no_dynamic.go
+}
+
+build_client_dynamic() {
     echo "building client (cfs-client cfs-client-inner cfs-client-static libcfsclient.so libcfsc.so libempty.so) ..."
 
     # dynamic fuse client, for libc version >= 2.14
@@ -84,12 +93,36 @@ if [[ ${build_client} -eq 1 ]]; then
     go build -ldflags "${goflag}" -linkshared -o ${bin}/cfs-client-inner ${dir}/fuse/main.go ${dir}/fuse/prepare_lib.go
 
     # static fuse client, for libc version < 2.14
-    go build -ldflags "${goflag}  -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client-static ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go
+    go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client-static ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go
+
+    gcc ${gccflag} -std=c99 -fPIC -shared -DDYNAMIC_UPDATE -o ${bin}/libcfsclient.so ${dir}/bypass/main.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
+    g++ -std=c++11 ${gccflag} -fPIC -shared -DDYNAMIC_UPDATE -DCommitID=\"${CommitID}\" -o ${bin}/libcfsc.so ${dir}/bypass/client.c ${dir}/bypass/cache.c ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.c ${dir}/bypass/ini.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
+    go build -ldflags "${goflag}" -buildmode=plugin -linkshared -o ${bin}/libempty.so ${dir}/empty.go
+}
+
+build_client_nodynamic() {
+    echo "building client (cfs-client libcfsclient.so libcfsc.so) ..."
+    go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go
 
     gcc ${gccflag} -std=c99 -fPIC -shared -o ${bin}/libcfsclient.so ${dir}/bypass/main.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
     g++ -std=c++11 ${gccflag} -DCommitID=\"${CommitID}\" -fPIC -shared -o ${bin}/libcfsc.so ${dir}/bypass/client.c ${dir}/bypass/cache.c ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.c ${dir}/bypass/ini.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
-    go build -ldflags "${goflag}" -buildmode=plugin -linkshared -o ${bin}/libempty.so ${dir}/empty.go
+}
 
+if [[ ${build_sdk} -eq 1 ]]; then
+    if [[ ${dynamic} -eq 1 ]]; then
+        build_sdk_dynamic
+    else
+        build_sdk_nodynamic
+    fi
+    chmod a+rx ${bin}/*
+fi
+
+if [[ ${build_client} -eq 1 ]]; then
+    if [[ ${dynamic} -eq 1 ]]; then
+        build_client_dynamic
+    else
+        build_client_nodynamic
+    fi
     chmod a+rx ${bin}/*
 fi
 

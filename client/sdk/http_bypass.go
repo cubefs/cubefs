@@ -12,7 +12,17 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
+	"gopkg.in/ini.v1"
+)
+
+const (
+	ControlBroadcastRefreshExtents = "/broadcast/refreshExtents"
+	ControlReadProcessRegister     = "/readProcess/register"
+	ControlGetReadProcs            = "/get/readProcs"
+	ControlSetReadWrite            = "/set/readwrite"
+	ControlSetReadOnly             = "/set/readonly"
 )
 
 func setReadWrite(w http.ResponseWriter, r *http.Request) {
@@ -167,7 +177,7 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = checkConfigFile(c.configPath, bypassConfigType, c.volName, c.mw.Cluster()); err != nil {
+	if err = checkBypassConfigFile(c.configPath, c.volName, c.mw.Cluster()); err != nil {
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Invalid configFile %s: %v", c.configPath, err))
 		return
 	}
@@ -314,4 +324,35 @@ func getReadProcsHandleFunc(w http.ResponseWriter, r *http.Request) {
 	c.readProcMapLock.Unlock()
 	w.Write(encoded)
 	return
+}
+
+func checkBypassConfigFile(configFile, volName, clusterName string) (err error) {
+	var (
+		actualVolName string
+		masterAddr    string
+		info          *proto.ClusterInfo
+	)
+	cfg, err := ini.Load(configFile)
+	if err != nil {
+		return err
+	}
+
+	actualVolName = cfg.Section("").Key("volName").String()
+	masterAddr = cfg.Section("").Key("masterAddr").String()
+	if actualVolName != volName {
+		err = fmt.Errorf("actual volName: %s, expect: %s", actualVolName, volName)
+		return
+	}
+
+	masters := strings.Split(masterAddr, ",")
+	mc := master.NewMasterClient(masters, false)
+	if info, err = mc.AdminAPI().GetClusterInfo(); err != nil {
+		err = fmt.Errorf("get cluster info fail: err(%v). Please check masterAddr %s and retry.", err, masterAddr)
+		return err
+	}
+	if info.Cluster != clusterName {
+		err = fmt.Errorf("actual clusterName: %s, expect: %s", info.Cluster, clusterName)
+		return
+	}
+	return nil
 }
