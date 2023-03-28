@@ -210,7 +210,7 @@ Flags：
 ### 纠删码子系统管理
 
 ::: tip 提示
-目前纠删码子系统的CLI还不够完善，功能覆盖不到70%；后续会不断完善，最终将会实现对于集群各模块接口功能的100%覆盖。
+目前纠删码子系统的blobstore-cli还不够完善，功能覆盖不到70%；后续会不断完善，最终将会实现对于集群各模块接口功能的100%覆盖。
 :::
 
 - 命令行自动补全功能
@@ -218,9 +218,9 @@ Flags：
 
 #### 编译及配置
 
-通过 `make cli` 编译得到CLI工具。
+通过 `make cli` 编译得到纠删码子系统的CLI工具。
 
-`./bin/cli -c cli.conf` 启动命令行工具；其中 `-c cli.conf`
+`./bin/blobstore-cli -c cli/cli/cli.conf` 启动命令行工具；其中 `-c cli/cli/cli.conf`
 是可选配置项，主要配置一些常用变量，
 比如access接入层服务发现地址，clustermgr服务地址等。
 
@@ -241,20 +241,20 @@ Flags：
 
 #### 使用方法
 
-cli 可以作为普通命令，比如：
+blobstore-cli 可以作为普通命令，比如：
 
 ```bash
-cli MainCmd SubCmd [Cmd ...] [--flag Val ...] -- [-arg ...]
+blobstore-cli MainCmd SubCmd [Cmd ...] [--flag Val ...] -- [-arg ...]
 
-1 #$> ./cli config set conf-key conf-val
+1 #$> ./blobstore-cli config set conf-key conf-val
 To set Key: conf-key Value: conf-val
 
-2 #$> ./cli util time
+2 #$> ./blobstore-cli util time
 timestamp = 1640156245364981202 (seconds = 1640156245 nanosecs = 364981202)
         --> format: 2021-12-22T14:57:25.364981202+08:00 (now)
 ```
 
-`./bin/cli` 启动命令行。
+`./bin/blobstore-cli` 启动命令行。
 
 ```text
 help 可以查看所有命令及简要说明
@@ -265,12 +265,12 @@ help 可以查看所有命令及简要说明
 
 | 命令            | 描述                            |
 |---------------|-------------------------------|
-| cli config    | 管理该cli内存中的配置项                 |
-| cli util      | 小工具集合，如解析location、解析时间、生成特定数据 |
-| cli access    | 文件的上传、下载、删除等                  |
-| cli cm        | 集群信息查看和管理                     |
-| cli scheduler | 后台任务管理                        |
-| cli \...      | 补充完善中 \...\...                |
+| blobstore-cli config    | 管理该blobstore-cli内存中的配置项                 |
+| blobstore-cli util      | 小工具集合，如解析location、解析时间、生成特定数据 |
+| blobstore-cli access    | 文件的上传、下载、删除等                  |
+| blobstore-cli cm        | 集群信息查看和管理                     |
+| blobstore-cli scheduler | 后台任务管理                        |
+| blobstore-cli \...      | 补充完善中 \...\...                |
 
 **Config**
 
