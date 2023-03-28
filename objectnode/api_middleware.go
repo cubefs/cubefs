@@ -365,7 +365,7 @@ func preflightProcess(cors *CORSConfiguration, w http.ResponseWriter, r *http.Re
 		return MissingOriginHeader
 	}
 
-	if len(cors.CORSRule) == 0 {
+	if cors == nil || len(cors.CORSRule) == 0 {
 		return ErrCORSNotEnabled
 	}
 
@@ -381,7 +381,7 @@ func simpleProcess(cors *CORSConfiguration, w http.ResponseWriter, r *http.Reque
 		return nil
 	}
 
-	if len(cors.CORSRule) == 0 {
+	if cors == nil || len(cors.CORSRule) == 0 {
 		return nil
 	}
 
