@@ -60,8 +60,8 @@ proxy:
 	@$(INSTALL) $(CMDDIR)/proxy
 
 cli:
-	@echo "building cli"
-	@$(CGOINSTALL) $(PROJECTMOD)/cli/cli
+	@echo "building blobstore-cli"
+	@$(CGOINSTALL) -o $(BINDIR)/blobstore-cli $(PROJECTMOD)/cli/cli
 
 clean:
 	@go clean -i ./...
