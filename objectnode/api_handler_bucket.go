@@ -56,15 +56,10 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InvalidBucketName.ServeResponse(w, r)
 		return
 	}
-	//if vol, _ := o.getVol(bucket); vol != nil {
-	//	log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
-	//	_ = DuplicatedBucket.ServeResponse(w, r)
-	//	return
-	//}
 
 	if vol, _ := o.vm.VolumeWithoutBlacklist(bucket); vol != nil {
 		log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
-		_ = DuplicatedBucket.ServeResponse(w, r)
+		_ = BucketAlreadyOwnedByYou.ServeResponse(w, r)
 		return
 	}
 
@@ -264,10 +259,8 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	var encoded []byte
 	if nil == output || len(output.TagSet) == 0 {
-		sb := strings.Builder{}
-		sb.WriteString(xml.Header)
-		sb.WriteString("<Tagging></Tagging>")
-		encoded = []byte(sb.String())
+		_ = NoSuchTagSetError.ServeResponse(w, r)
+		return
 	} else {
 		if encoded, err = MarshalXMLEntity(output); err != nil {
 			log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)

@@ -26,8 +26,8 @@ type ErrorCode struct {
 	StatusCode   int
 }
 
-func NewError(errCode, errMsg string, statusCode int) ErrorCode {
-	return ErrorCode{
+func NewError(errCode, errMsg string, statusCode int) *ErrorCode {
+	return &ErrorCode{
 		ErrorCode:    errCode,
 		ErrorMessage: errMsg,
 		StatusCode:   statusCode,
@@ -80,14 +80,13 @@ func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
 
 // Presets
 var (
-	UnsupportedOperation                = &ErrorCode{ErrorCode: "UnsupportedOperation", ErrorMessage: "Operation is not supported", StatusCode: http.StatusBadRequest}
+	UnsupportedOperation                = &ErrorCode{ErrorCode: "NotImplemented", ErrorMessage: "A header you provided implies functionality that is not implemented.", StatusCode: http.StatusNotImplemented}
 	AccessDenied                        = &ErrorCode{ErrorCode: "AccessDenied", ErrorMessage: "Access Denied", StatusCode: http.StatusForbidden}
 	BadDigest                           = &ErrorCode{ErrorCode: "BadDigest", ErrorMessage: "The Content-MD5 you specified did not match what we received.", StatusCode: http.StatusBadRequest}
 	BucketNotExisted                    = &ErrorCode{ErrorCode: "BucketNotExisted", ErrorMessage: "The requested bucket name is not existed.", StatusCode: http.StatusNotFound}
 	BucketNotExistedForHead             = &ErrorCode{ErrorCode: "BucketNotExisted", ErrorMessage: "The requested bucket name is not existed.", StatusCode: http.StatusConflict}
 	BucketNotEmpty                      = &ErrorCode{ErrorCode: "BucketNotEmpty", ErrorMessage: "The bucket you tried to delete is not empty.", StatusCode: http.StatusConflict}
 	BucketNotOwnedByYou                 = &ErrorCode{ErrorCode: "BucketNotOwnedByYou", ErrorMessage: "The bucket is not owned by you.", StatusCode: http.StatusConflict}
-	KeyTooLongError                     = &ErrorCode{ErrorCode: "KeyTooLongError", ErrorMessage: "", StatusCode: http.StatusBadRequest}
 	InvalidKey                          = &ErrorCode{ErrorCode: "InvalidKey", ErrorMessage: "Object key is Illegal", StatusCode: http.StatusBadRequest}
 	EntityTooSmall                      = &ErrorCode{ErrorCode: "EntityTooSmall", ErrorMessage: "Your proposed upload is smaller than the minimum allowed object size.", StatusCode: http.StatusBadRequest}
 	EntityTooLarge                      = &ErrorCode{ErrorCode: "EntityTooLarge", ErrorMessage: "Your proposed upload exceeds the maximum allowed object size.", StatusCode: http.StatusBadRequest}
@@ -101,21 +100,33 @@ var (
 	NoSuchBucketPolicy                  = &ErrorCode{ErrorCode: "NoSuchBucketPolicy", ErrorMessage: "The specified bucket does not have a bucket policy.", StatusCode: http.StatusNotFound}
 	PreconditionFailed                  = &ErrorCode{ErrorCode: "PreconditionFailed", ErrorMessage: "At least one of the preconditions you specified did not hold.", StatusCode: http.StatusPreconditionFailed}
 	MaxContentLength                    = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Content-Length is bigger than 20KB.", StatusCode: http.StatusLengthRequired}
-	//DuplicatedBucket                    = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "Duplicate bucket name.", StatusCode: http.StatusBadRequest}
-	//https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
-	DuplicatedBucket          = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "The bucket that you tried to create already exists, and you own it. ", StatusCode: http.StatusConflict}
-	InvalidLocationConstraint = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "The specified location (Region) constraint is not valid.", StatusCode: http.StatusBadRequest}
-	ObjectModeConflict        = &ErrorCode{ErrorCode: "ObjectModeConflict", ErrorMessage: "Object already exists but file mode conflicts", StatusCode: http.StatusConflict}
-	NotModified               = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Not modified.", StatusCode: http.StatusNotModified}
-	NoSuchUpload              = &ErrorCode{ErrorCode: "NoSuchUpload", ErrorMessage: "The specified upload does not exist.", StatusCode: http.StatusNotFound}
-	OverMaxRecordSize         = &ErrorCode{ErrorCode: "OverMaxRecordSize", ErrorMessage: "The length of a record in the input or result is greater than maxCharsPerRecord of 1 MB.", StatusCode: http.StatusBadRequest}
-	CopySourceSizeTooLarge    = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "The specified copy source is larger than the maximum allowable size for a copy source: 5368709120", StatusCode: http.StatusBadRequest}
-	InvalidPartOrder          = &ErrorCode{ErrorCode: "InvalidPartOrder", ErrorMessage: "The list of parts was not in ascending order. Parts list must be specified in order by part number.", StatusCode: http.StatusBadRequest}
-	InvalidPart               = &ErrorCode{ErrorCode: "InvalidPart", ErrorMessage: "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag.", StatusCode: http.StatusBadRequest}
-	InvalidCacheArgument      = &ErrorCode{ErrorCode: "InvalidCacheArgument", ErrorMessage: "Invalid Cache-Control or Expires Argument", StatusCode: http.StatusBadRequest}
-	TagsGreaterThen10         = &ErrorCode{ErrorCode: "BadRequest", ErrorMessage: "Object tags cannot be greater than 10", StatusCode: http.StatusBadRequest}
-	InvalidTagKey             = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagKey you have provided is invalid", StatusCode: http.StatusBadRequest}
-	InvalidTagValue           = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
+	BucketAlreadyOwnedByYou             = &ErrorCode{ErrorCode: "BucketAlreadyOwnedByYou", ErrorMessage: "The bucket that you tried to create already exists, and you own it. ", StatusCode: http.StatusConflict}
+	InvalidLocationConstraint           = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "The specified location (Region) constraint is not valid.", StatusCode: http.StatusBadRequest}
+	ObjectModeConflict                  = &ErrorCode{ErrorCode: "ObjectModeConflict", ErrorMessage: "Object already exists but file mode conflicts", StatusCode: http.StatusConflict}
+	NotModified                         = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Not modified.", StatusCode: http.StatusNotModified}
+	NoSuchUpload                        = &ErrorCode{ErrorCode: "NoSuchUpload", ErrorMessage: "The specified upload does not exist.", StatusCode: http.StatusNotFound}
+	OverMaxRecordSize                   = &ErrorCode{ErrorCode: "OverMaxRecordSize", ErrorMessage: "The length of a record in the input or result is greater than maxCharsPerRecord of 1 MB.", StatusCode: http.StatusBadRequest}
+	CopySourceSizeTooLarge              = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "The specified copy source is larger than the maximum allowable size for a copy source: 5368709120", StatusCode: http.StatusBadRequest}
+	InvalidPartOrder                    = &ErrorCode{ErrorCode: "InvalidPartOrder", ErrorMessage: "The list of parts was not in ascending order. Parts list must be specified in order by part number.", StatusCode: http.StatusBadRequest}
+	InvalidPart                         = &ErrorCode{ErrorCode: "InvalidPart", ErrorMessage: "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag.", StatusCode: http.StatusBadRequest}
+	InvalidCacheArgument                = &ErrorCode{ErrorCode: "InvalidCacheArgument", ErrorMessage: "Invalid Cache-Control or Expires Argument", StatusCode: http.StatusBadRequest}
+	ExceedTagLimit                      = &ErrorCode{ErrorCode: "InvalidTagError", ErrorMessage: "Object tags cannot be greater than 10", StatusCode: http.StatusBadRequest}
+	InvalidTagKey                       = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagKey you have provided is invalid", StatusCode: http.StatusBadRequest}
+	InvalidTagValue                     = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
+	NoSuchTagSetError                   = &ErrorCode{"NoSuchTagSetError", "The TagSet does not exist.", http.StatusNotFound}
+	InvalidTagError                     = &ErrorCode{"InvalidTagError", "missing tag in body", http.StatusBadRequest}
+	NoSuchCORSConfiguration             = &ErrorCode{"The CORS configuration does not exist", "NoSuchCORSConfiguration", http.StatusNotFound}
+	CORSRuleNotMatch                    = &ErrorCode{"AccessForbidden", "CORSResponse: This CORS request is not allowed.", http.StatusForbidden}
+	ErrCORSNotEnabled                   = &ErrorCode{"AccessForbidden", "CORSResponse: CORS is not enabled for this bucket", http.StatusForbidden}
+	MissingOriginHeader                 = &ErrorCode{"MissingOriginHeader", "Missing Origin header.", http.StatusBadRequest}
+	MalformedXML                        = &ErrorCode{"MalformedXML", "The XML you provided was not well-formed or did not validate against our published schema.", http.StatusBadRequest}
+	TooManyCorsRules                    = &ErrorCode{"TooManyCorsRules", "too many cors rules", http.StatusBadRequest}
+	InvalidDigest                       = &ErrorCode{"InvalidDigest", "The Content-MD5 you specified is not valid.", http.StatusBadRequest}
+	KeyTooLong                          = &ErrorCode{"KeyTooLongError", "Your key is too long.", http.StatusBadRequest}
+	InvalidAccessKeyId                  = &ErrorCode{"InvalidAccessKeyId", "The access key Id you provided does not exist in our records.", http.StatusForbidden}
+	SignatureDoesNotMatch               = &ErrorCode{"SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided.", http.StatusForbidden}
+	InvalidMaxPartNumber                = &ErrorCode{"InvalidRequest", "the total part numbers exceed limit.", http.StatusBadRequest}
+	InvalidMinPartNumber                = &ErrorCode{"InvalidRequest", "you must specify at least one part.", http.StatusBadRequest}
 )
 
 func HttpStatusErrorCode(code int) *ErrorCode {
@@ -142,6 +153,6 @@ func InternalErrorCode(err error) *ErrorCode {
 	}
 }
 
-func (e ErrorCode) Error() string {
+func (e *ErrorCode) Error() string {
 	return e.ErrorMessage
 }

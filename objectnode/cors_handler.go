@@ -36,6 +36,10 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if cors != nil {
+		if len(cors.CORSRule) == 0 {
+			_ = NoSuchCORSConfiguration.ServeResponse(w, r)
+			return
+		}
 		output.CORSRule = cors.CORSRule
 	}
 	var corsData []byte
@@ -71,12 +75,9 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	var corsConfig *CORSConfiguration
-	if corsConfig, err = parseCorsConfig(bytes); err != nil {
-		_ = InvalidArgument.ServeResponse(w, r)
-		return
-	}
-	if corsConfig == nil {
-		_ = InvalidArgument.ServeResponse(w, r)
+	var errCode *ErrorCode
+	if corsConfig, errCode = parseCorsConfig(bytes); errCode != nil {
+		_ = errCode.ServeResponse(w, r)
 		return
 	}
 

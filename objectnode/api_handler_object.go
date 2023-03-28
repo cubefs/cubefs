@@ -35,7 +35,8 @@ import (
 )
 
 var (
-	rangeRegexp = regexp.MustCompile("^bytes=(\\d)*-(\\d)*$")
+	rangeRegexp  = regexp.MustCompile("^bytes=(\\d)*-(\\d)*$")
+	MaxKeyLength = 750
 )
 
 // Get object
@@ -169,63 +170,10 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// parse request header
-	match := r.Header.Get(HeaderNameIfMatch)
-	noneMatch := r.Header.Get(HeaderNameIfNoneMatch)
-	modified := r.Header.Get(HeaderNameIfModifiedSince)
-	unmodified := r.Header.Get(HeaderNameIfUnmodifiedSince)
-
-	// Checking precondition: If-Match
-	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
-	if match != "" {
-		if matchEag := strings.Trim(match, "\""); matchEag != fileInfo.ETag {
-			log.LogDebugf("getObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, matchEag, GetRequestID(r))
-			errorCode = PreconditionFailed
-			return
-		}
-	}
-	// Checking precondition: If-Modified-Since
-	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
-	if modified != "" {
-		fileModTime := fileInfo.ModifyTime
-		modifiedTime, err := parseTimeRFC1123(modified)
-		if err != nil {
-			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = InvalidArgument
-			return
-		}
-		if !fileModTime.After(modifiedTime) {
-			log.LogInfof("getObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
-			errorCode = NotModified
-			return
-		}
-	}
-	// Checking precondition: If-None-Match
-	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
-	if noneMatch != "" {
-		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
-			log.LogErrorf("getObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
-			errorCode = NotModified
-			return
-		}
-	}
-	// Checking precondition: If-Unmodified-Since
-	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
-	if unmodified != "" && match == "" {
-		fileModTime := fileInfo.ModifyTime
-		modifiedTime, err := parseTimeRFC1123(unmodified)
-		if err != nil {
-			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = InvalidArgument
-			return
-		}
-		if fileModTime.After(modifiedTime) {
-			log.LogInfof("getObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
-			errorCode = PreconditionFailed
-			return
-		}
+	// header condition check
+	errorCode = CheckConditionInHeader(r, fileInfo)
+	if errorCode != nil {
+		return
 	}
 
 	// validate and fix range
@@ -342,7 +290,6 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if isRangeRead || len(partNumber) > 0 {
 		size = rangeUpper - rangeLower + 1
 	}
-	//err = vol.ReadFile(param.Object(), w, offset, size)
 	err = vol.readFile(fileInfo.Inode, uint64(fileInfo.Size), param.Object(), w, offset, size)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
@@ -357,6 +304,62 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		GetRequestID(r), param.Bucket(), param.Object(), offset, size)
 	log.LogDebugf("getObjectHandler: cost %v", time.Since(startGet))
 	return
+}
+
+func CheckConditionInHeader(r *http.Request, fileInfo *FSFileInfo) *ErrorCode {
+	// parse request header
+	match := r.Header.Get(HeaderNameIfMatch)
+	noneMatch := r.Header.Get(HeaderNameIfNoneMatch)
+	modified := r.Header.Get(HeaderNameIfModifiedSince)
+	unmodified := r.Header.Get(HeaderNameIfUnmodifiedSince)
+	// Checking precondition: If-Match
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
+	if match != "" {
+		if matchEag := strings.Trim(match, "\""); matchEag != fileInfo.ETag {
+			log.LogDebugf("getObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
+				fileInfo.ETag, matchEag, GetRequestID(r))
+			return PreconditionFailed
+
+		}
+	}
+	// Checking precondition: If-Modified-Since
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
+	if modified != "" {
+		fileModTime := fileInfo.ModifyTime
+		modifiedTime, err := parseTimeRFC1123(modified)
+		if err != nil {
+			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			return InvalidArgument
+		}
+		if !fileModTime.After(modifiedTime) {
+			log.LogInfof("getObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
+			return NotModified
+		}
+	}
+	// Checking precondition: If-None-Match
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
+	if noneMatch != "" {
+		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
+			log.LogErrorf("getObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
+				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
+			return NotModified
+		}
+	}
+	// Checking precondition: If-Unmodified-Since
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
+	if unmodified != "" && match == "" {
+		fileModTime := fileInfo.ModifyTime
+		modifiedTime, err := parseTimeRFC1123(unmodified)
+		if err != nil {
+			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			return InvalidArgument
+		}
+		if fileModTime.After(modifiedTime) {
+			log.LogInfof("getObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
+			return PreconditionFailed
+		}
+	}
+	return nil
 }
 
 // Head object
@@ -673,7 +676,6 @@ func extractSrcBucketKey(r *http.Request) (srcBucketId, srcKey, versionId string
 	if err != nil {
 		return "", "", "", InvalidArgument
 	}
-
 	// path could be /bucket/key or bucket/key
 	copySource = strings.TrimPrefix(copySource, "/")
 	elements := strings.SplitN(copySource, "?versionId=", 2)
@@ -686,7 +688,6 @@ func extractSrcBucketKey(r *http.Request) (srcBucketId, srcKey, versionId string
 	if len(path) == 1 {
 		return "", "", "", InvalidArgument
 	}
-
 	srcBucketId, srcKey = path[0], path[1]
 	if srcBucketId == "" || srcKey == "" {
 		return "", "", "", InvalidArgument
@@ -701,10 +702,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var errorCode *ErrorCode
 
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -714,6 +712,10 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if param.Object() == "" {
 		errorCode = InvalidKey
+		return
+	}
+	if len(param.Object()) > MaxKeyLength {
+		errorCode = KeyTooLong
 		return
 	}
 	var vol *Volume
@@ -756,29 +758,14 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sourceBucket, sourceObject, _, err := extractSrcBucketKey(r)
-	if err != nil {
+	if errorCode != nil {
 		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(r))
-		return
-	}
-
-	// check permission, must have read permission to source bucket
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(param.AccessKey()); err != nil {
-		log.LogErrorf("copyObjectHandler: get user info from master error: requestID(%v), accessKey(%v), err(%v)",
-			GetRequestID(r), param.AccessKey(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
 	subdir := strings.TrimRight(param.Object(), "/")
 	if subdir == "" {
 		subdir = r.URL.Query().Get(ParamPrefix)
-	}
-	if !userInfo.Policy.IsAuthorized(sourceBucket, subdir, proto.OSSCopyObjectAction) {
-		log.LogErrorf("copyObjectHandler: no permission to copy from source bucket, requestID(%v), source bucket(%v), source file(%v), target bucket(%v), target file(%v)",
-			GetRequestID(r), sourceBucket, sourceObject, param.bucket, param.object)
-		errorCode = AccessDenied
-		return
 	}
 
 	// get object meta
@@ -959,6 +946,10 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		errorCode = InvalidArgument
 		return
 	}
+	// The result of next list request should not include nextMarker.
+	if result.Truncated {
+		result.NextMarker = result.Files[len(result.Files)-1].Path
+	}
 
 	// get owner
 	var bucketOwner = NewBucketOwner(vol)
@@ -1103,6 +1094,10 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		errorCode = InternalErrorCode(err)
 		return
 	}
+	// The result of next list request should not include continuationToken.
+	if result.Truncated {
+		result.NextToken = result.Files[len(result.Files)-1].Path
+	}
 	// get owner
 	var bucketOwner *BucketOwner
 	if fetchOwnerBool {
@@ -1190,6 +1185,10 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = InvalidKey
 		return
 	}
+	if len(param.Object()) > MaxKeyLength {
+		errorCode = KeyTooLong
+		return
+	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("putObjectHandler: load volume fail: requestID(%v)  volume(%v) err(%v)",
@@ -1221,6 +1220,11 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	var checkMD5 bool
 	if len(requestMD5) > 0 {
+		_, err := base64.StdEncoding.DecodeString(requestMD5)
+		if err != nil {
+			errorCode = InvalidDigest
+			return
+		}
 		checkMD5 = true
 	}
 
