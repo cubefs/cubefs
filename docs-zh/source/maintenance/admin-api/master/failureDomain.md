@@ -74,13 +74,13 @@ curl "http://192.168.0.11:17010/admin/getIsDomainOn"
 curl -v  "http://192.168.0.11:17010/admin/getDomainInfo"
 ```
 
-查看故障域copyset group的使用情况 ---------.. code-block:: bash
+查看故障域copyset group的使用情况
 
 ```bash
 curl "http://192.168.0.11:17010/admin/getDomainNodeSetGrpInfo?id=37"
 ```
 
-更新非故障域数据使用上限 ---------.. code-block:: bash
+更新非故障域数据使用上限
 
 ```bash
 curl "http://192.168.0.11:17010/admin/updateZoneExcludeRatio?ratio=0.7"
