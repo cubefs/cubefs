@@ -15,6 +15,6 @@ COPY  ./cmd/blobnode/blobnode.conf /apps/conf/blobnode.conf
 COPY  ./cmd/access/access.conf /apps/conf/access.conf
 COPY  ./cmd/scheduler/scheduler.conf /apps/conf/scheduler.conf
 COPY  ./cmd/proxy/proxy.conf /apps/conf/proxy.conf
-COPY  ./cli/cli/cli.conf /apps/conf/cli.conf
+COPY  ./cli/cli/cli.conf /apps/conf/blobstore-cli.conf
 COPY  ./start_docker.sh /apps/start_docker.sh
 ENTRYPOINT ["/bin/sh", "-c", "/apps/start_docker.sh"]
