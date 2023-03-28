@@ -196,7 +196,7 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV2(r *http.Request) (bool
 		if ak, sk := volume.OSSSecure(); ak == accessKey {
 			secretKey = sk
 		} else {
-			return false, nil
+			return false, InvalidAccessKeyId
 		}
 	} else {
 		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
@@ -217,7 +217,7 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV2(r *http.Request) (bool
 	}
 	log.LogInfof("newSignature: %v, reqSignature: %v, %v", newSignature, authInfo.signature, authInfo.r)
 
-	return false, nil
+	return false, SignatureDoesNotMatch
 }
 
 /*
@@ -310,7 +310,7 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 		if ak, sk := volume.OSSSecure(); ak == accessKey {
 			secretKey = sk
 		} else {
-			return false, nil
+			return false, InvalidAccessKeyId
 		}
 	} else {
 		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
@@ -332,7 +332,7 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 	if calSignature != signature {
 		log.LogDebugf("validateUrlBySignatureAlgorithmV2: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), signature, calSignature)
-		return false, nil
+		return false, SignatureDoesNotMatch
 	}
 
 	return true, nil

@@ -1555,16 +1555,6 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 
 func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64) error {
 	var err error
-	//if err = v.ec.OpenStream(inode); err != nil {
-	//	log.LogErrorf("ReadFile: data open stream fail, Inode(%v) err(%v)", inode, err)
-	//	return err
-	//}
-	//defer func() {
-	//	if closeErr := v.ec.CloseStream(inode); closeErr != nil {
-	//		log.LogErrorf("ReadFile: data close stream fail: inode(%v) err(%v)", inode, closeErr)
-	//	}
-	//}()
-
 	var upper = size + offset
 	if upper > inodeSize {
 		upper = inodeSize - offset
@@ -1573,7 +1563,7 @@ func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, of
 	var n int
 	var tmp = make([]byte, 2*util.BlockSize)
 	for {
-		var rest = upper - uint64(offset)
+		var rest = upper - offset
 		if rest == 0 {
 			break
 		}
@@ -2344,9 +2334,10 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 				Inode: child.Inode,
 				Path:  path,
 			}
-
-			fileInfos = append(fileInfos, fileInfo)
-			rc++
+			if marker == "" || marker != "" && fileInfo.Path != marker {
+				fileInfos = append(fileInfos, fileInfo)
+				rc++
+			}
 		}
 
 		if os.FileMode(child.Type).IsDir() {

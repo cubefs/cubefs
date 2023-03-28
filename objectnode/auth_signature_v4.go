@@ -129,7 +129,7 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 		if ak, sk := volume.OSSSecure(); ak == accessKey {
 			secretKey = sk
 		} else {
-			return false, nil
+			return false, InvalidAccessKeyId
 		}
 	} else {
 		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
@@ -141,7 +141,7 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 	if req.Signature != newSignature {
 		log.LogDebugf("validateHeaderBySignatureAlgorithmV4: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), req.Signature, newSignature)
-		return false, nil
+		return false, SignatureDoesNotMatch
 	}
 
 	return true, nil
@@ -189,7 +189,7 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 		if ak, sk := volume.OSSSecure(); ak == accessKey {
 			secretKey = sk
 		} else {
-			return false, nil
+			return false, InvalidAccessKeyId
 		}
 	} else {
 		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
@@ -224,8 +224,10 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	newSignature := hex.EncodeToString(sign(stringToSign, signingKey))
 
 	//compare newSignature with request signature
-	pass = newSignature == req.Signature
-	return
+	if newSignature == req.Signature {
+		return true, nil
+	}
+	return false, SignatureDoesNotMatch
 }
 
 type credential struct {
