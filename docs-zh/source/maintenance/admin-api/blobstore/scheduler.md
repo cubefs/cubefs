@@ -119,10 +119,10 @@ curl http://127.0.0.1:9800/task/detail/:type/:id
 
 **参数说明**
 
-| 参数   | 类型     | 描述                                             |
-|------|--------|------------------------------------------------|
-| type | string | disk_repir/balance/disk_drop/manual_migrate id |
-| id   | string | 后台任务id                                         |
+| 参数   | 类型     | 描述                                              |
+|------|--------|-------------------------------------------------|
+| type | string | disk_repair/balance/disk_drop/manual_migrate id |
+| id   | string | 后台任务id                                          |
 
 **响应示例**
 
@@ -228,3 +228,26 @@ curl http://127.0.0.1:9800/task/detail/:type/:id
     }
 }
 ```
+
+## 查询下线或修盘任务进度
+
+```bash
+curl http://127.0.0.1:9800/stats/disk/migrating?task_type=xx&disk_id=xxx
+```
+
+| 参数        | 类型     | 描述                    |
+|-----------|--------|-----------------------|
+| task_type | string | disk_repair/disk_drop |
+| disk_id   | int    | 磁盘id                  |
+
+示例
+
+```json
+{
+    "total_tasks_cnt": 10,
+    "migrated_tasks_cnt":1
+}
+```
+
+- total_tasks_cnt，表示总体任务数
+- migrated_tasks_cnt，表示已完成任务数
