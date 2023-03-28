@@ -249,7 +249,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 
 		// copy api should check srcBucket policy additionally
 		if param.apiName == COPY_OBJECT || param.apiName == UPLOAD_PART_COPY {
-			err := o.allowedBySrcBucketPolicy(param, userInfo.UserID)
+			err = o.allowedBySrcBucketPolicy(param, userInfo.UserID)
 			if err != nil {
 				return
 			}

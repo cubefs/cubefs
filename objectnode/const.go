@@ -21,6 +21,7 @@ const (
 )
 
 const (
+	S3Namespace                  = "http://s3.amazonaws.com/doc/2006-03-01/"
 	HeaderNameServer             = "Server"
 	HeaderNameHost               = "Host"
 	HeaderNameLastModified       = "Last-Modified"
@@ -50,12 +51,13 @@ const (
 	HeaderNameAccessControlMaxAge         = "Access-Control-Max-Age"
 	HeaderNameAccessControlAllowMethods   = "Access-Control-Allow-Methods"
 	HeaderNameAccessControlAllowHeaders   = "Access-Control-Allow-Headers"
-	HeaderNamrAccessControlExposeHeaders  = "Access-Control-Expose-Headers"
+	HeaderNameAccessControlExposeHeaders  = "Access-Control-Expose-Headers"
 
 	HeaderNameXAmzStartDate           = "x-amz-date"
 	HeaderNameXAmzRequestId           = "x-amz-request-id"
 	HeaderNameXAmzContentHash         = "x-amz-content-sha256"
 	HeaderNameXAmzCopySource          = "x-amz-copy-source"
+	HeaderNameXAmzCopyRange           = "x-amz-copy-source-range"
 	HeaderNameXAmzCopyMatch           = "x-amz-copy-source-if-match"
 	HeaderNameXAmzCopyNoneMatch       = "x-amz-copy-source-if-none-match"
 	HeaderNameXAmzCopyModified        = "x-amz-copy-source-if-modified-since"
