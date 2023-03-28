@@ -99,7 +99,7 @@
 其他文件说明如下：
 
 - `APPLY` - 记录分片当前 Raft 的 ApplyIndex 值。
-- `EXTENT_CRC` - 记录每个 extent 文件的 CRC 值，每个记录 4096 字节，按文件的 ExtentID 的顺序存储。
+- `EXTENT_CRC` - 记录每个 extent 文件的 CRC 值，每个记录 4096 字节，按文件的 ExtentID 顺序存储。
 - `EXTENT_META` - 前 8 字节记录当前正在使用的最大 ExtentID，接下来的 8 字节为已经分配的 ExtentID 最大值。
 - `META` - 记录分片创建时的相关元数据信息。
 - `NORMALEXTENT_DELETE` - 记录被删除的 NormalExtent 文件，只记录 ExtentID。
