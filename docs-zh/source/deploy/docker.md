@@ -26,10 +26,10 @@ $> ./run_docker.sh -r # 运行镜像
 $> ... # 后续步骤同1
 ```
 
-cli工具使用
+blobstore-cli工具使用
 
-> 小提示: cli 是为 blobstore 提供的交互式命令行管理工具, 配置 cli 后能够更方便地使用, 用 help 可以查看帮助信息
+> 小提示: blobstore-cli 是为 blobstore 提供的交互式命令行管理工具, 配置 blobstore-cli 后能够更方便地使用, 用 help 可以查看帮助信息
 
 ```
-$> ./bin/cli -c conf/cli.conf
+$> ./bin/blobstore-cli -c conf/blobstore-cli.conf
 ```

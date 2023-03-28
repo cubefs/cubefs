@@ -17,11 +17,12 @@ $ sh build.sh
 
 ```text
 ├── bin
+│   ├── access
 │   ├── clustermgr
 │   ├── proxy
 │   ├── scheduler
 │   ├── blobnode
-│   └── cli
+│   └── blobstore-cli
 ```
 
 ## 集群部署

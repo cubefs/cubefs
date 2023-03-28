@@ -43,15 +43,15 @@ Blobstore cli 可以方便的管理纠删码子系统, 用 help 可以查看帮�
 
 ### 启动CLI
 
-基于默认配置，启动命令行工具 `cli` ，详细使用参考[CLI工具使用指南](../maintenance/tool.md)
+基于默认配置，启动命令行工具 `blobstore-cli` ，详细使用参考[BLOBSTORE-CLI工具使用指南](../maintenance/tool.md)
 1. 物理机环境
 ``` bash
 $> cd ./cubefs/blobstore
-$>./bin/cli -c cli/cli/cli.conf # 采用默认配置启动cli 工具进入命令行
+$>./bin/blobstore-cli -c cli/cli/cli.conf # 采用默认配置启动cli 工具进入命令行
 ```
 2. docker环境
 ``` bash
-$> ./bin/cli -c conf/cli.conf
+$> ./bin/blobstore-cli -c conf/blobstore-cli.conf
 ```
 
 ### 验证
@@ -61,11 +61,11 @@ $> ./bin/cli -c conf/cli.conf
 $> access put -v -d "test -data-"
 # 返回结果
 #"code_mode":11是clustermgr配置文件中制定的编码模式，11就是EC3P3编码模式
-{"cluster_id":1,"code_mode":10,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}
+{"cluster_id":1,"code_mode":11,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}
 
 # 下载文件，用上述得到的location作为参数（-l），即可下载文件内容
-$> access get -v -l '{"cluster_id":1,"code_mode":10,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}'
+$> access get -v -l '{"cluster_id":1,"code_mode":11,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}'
 
 # 删除文件，用上述location作为参数（-l）；删除文件需要手动确认
-$> access del -v -l '{"cluster_id":1,"code_mode":10,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}'
+$> access del -v -l '{"cluster_id":1,"code_mode":11,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}'
 ```
