@@ -22,8 +22,8 @@ import (
 
 // access             550-599
 // blobnode           600-699
-// background service 700-799
-// allocator          800-899
+// scheduler          700-799
+// proxy              800-899
 // clusterMgr         900-999
 
 // Error http status code for all application
@@ -55,53 +55,44 @@ var errCodeMap = map[int]string{
 	CodeAccessExceedSize:       "access exceed object size",
 
 	// clustermgr
-	CodeCMUnexpect:                "cm: unexpected error",
-	CodeActiveVolume:              "volume is activity status",
-	CodeLockNotAllow:              "lock volume not allow",
-	CodeUnlockNotAllow:            "unlock volume not allow",
-	CodeVolumeNotExist:            "volume not exist",
-	CodeVolumeStatusNotAcceptable: "volume status not acceptable",
-	CodeRaftPropose:               "raft propose error",
-	CodeNoLeader:                  "no leader",
-	CodeRaftReadIndex:             "raft read index error",
-	CodeUpdateVolumeParamInvalid:  "update volume params invalid",
-	CodeDuplicatedMemberInfo:      "duplicated member info",
-	CodeCMDiskNotFound:            "disk not found",
-	CodeInvalidDiskStatus:         "invalid status",
-	CodeChangeDiskStatusNotAllow:  "not allow to change status back",
-	CodeConcurrentAllocVolumeUnit: "alloc volume unit concurrently",
-	CodeOverMaxVolumeThreshold:    "allocator request alloc volume over max threshold",
-	CodeNoAvailableVolume:         "no available volume",
-	CodeAllocVolumeInvalidParams:  "alloc volume request params is invalid",
-	CodeOldVuidNotMatch:           "update volume unit, old vuid not match",
-	CodeNewVuidNotMatch:           "update volume unit, new vuid not match",
-	CodeNewDiskIDNotMatch:         "update volume unit, new diskID not match",
-	CodeConfigArgument:            "config argument marshal error",
-	CodeInvalidClusterID:          "request params error, invalid clusterID",
-	CodeInvalidIDC:                "request params error,invalid idc",
-	CodeVolumeUnitNotExist:        "volume unit not exist",
-	CodeDiskAbnormalOrNotReadOnly: "disk is abnormal or not readonly, can't add into dropping list",
-	CodeStatChunkFailed:           "stat blob node chunk failed",
-	CodeInvalidCodeMode:           "request alloc volume codeMode not invalid",
-	CodeRetainVolumeNotAlloc:      "retain volume is not alloc",
-	CodeDroppedDiskHasVolumeUnit:  "dropped disk still has volume unit remain, migrate them firstly",
-	CodeNotSupportIdle:            "list volume v2 not support idle status",
-	CodeDiskIsDropping:            "dropping disk not allow change state or set readonly",
-	CodeRejectDeleteSystemConfig:  "reject delete system config",
-
-	// background
-	CodeNotingTodo:                   "nothing to do",
-	CodeDestReplicaBad:               "dest replica is bad can not repair",
-	CodeOrphanShard:                  "shard is an orphan",
-	CodeIllegalTask:                  "illegal task",
-	CodeNoInspect:                    "no inspect mgr instance",
-	CodeClusterIDNotMatch:            "clusterId not match",
+	CodeCMUnexpect:                   "cm: unexpected error",
+	CodeLockNotAllow:                 "lock volume not allow",
+	CodeUnlockNotAllow:               "unlock volume not allow",
+	CodeVolumeNotExist:               "volume not exist",
+	CodeRaftPropose:                  "raft propose error",
+	CodeNoLeader:                     "no leader",
+	CodeRaftReadIndex:                "raft read index error",
+	CodeDuplicatedMemberInfo:         "duplicated member info",
+	CodeCMDiskNotFound:               "disk not found",
+	CodeInvalidDiskStatus:            "invalid status",
+	CodeChangeDiskStatusNotAllow:     "not allow to change status back",
+	CodeConcurrentAllocVolumeUnit:    "alloc volume unit concurrently",
+	CodeNoAvailableVolume:            "no available volume",
+	CodeAllocVolumeInvalidParams:     "alloc volume request params is invalid",
+	CodeOldVuidNotMatch:              "update volume unit, old vuid not match",
+	CodeNewVuidNotMatch:              "update volume unit, new vuid not match",
+	CodeNewDiskIDNotMatch:            "update volume unit, new diskID not match",
+	CodeConfigArgument:               "config argument marshal error",
+	CodeInvalidClusterID:             "request params error, invalid clusterID",
+	CodeInvalidIDC:                   "request params error,invalid idc",
+	CodeVolumeUnitNotExist:           "volume unit not exist",
+	CodeDiskAbnormalOrNotReadOnly:    "disk is abnormal or not readonly, can't add into dropping list",
+	CodeStatChunkFailed:              "stat blob node chunk failed",
+	CodeInvalidCodeMode:              "request alloc volume codeMode not invalid",
+	CodeRetainVolumeNotAlloc:         "retain volume is not alloc",
+	CodeDroppedDiskHasVolumeUnit:     "dropped disk still has volume unit remain, migrate them firstly",
+	CodeNotSupportIdle:               "list volume v2 not support idle status",
+	CodeDiskIsDropping:               "dropping disk not allow change state or set readonly",
+	CodeRejectDeleteSystemConfig:     "reject delete system config",
 	CodeRegisterServiceInvalidParams: "register service params is invalid",
-	CodeRequestLimited:               "request limited",
 
-	// allocator
+	// scheduler
+	CodeNotingTodo: "nothing to do",
+
+	// proxy
 	CodeNoAvaliableVolume: "this codemode has no avaliable volume",
 	CodeAllocBidFromCm:    "alloc bid from clustermgr error",
+	CodeClusterIDNotMatch: "clusterId not match",
 
 	// blobnode
 	CodeInvalidParam:   "blobnode: invalid params",
@@ -138,6 +129,11 @@ var errCodeMap = map[int]string{
 	CodeShardInvalidOffset:   "shard offset is invalid",
 	CodeShardInvalidBid:      "shard key bid is invalid",
 	CodeShardListExceedLimit: "shard list exceed the limit",
+
+	CodeDestReplicaBad: "dest replica is bad can not repair",
+	CodeOrphanShard:    "shard is an orphan",
+	CodeIllegalTask:    "illegal task",
+	CodeRequestLimited: "request limited",
 }
 
 // HTTPError make rpc.HTTPError

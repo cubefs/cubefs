@@ -14,12 +14,19 @@
 
 package errors
 
+import (
+	"errors"
+)
+
 const (
-	CodeNoAvaliableVolume = 801
-	CodeAllocBidFromCm    = 802
+	CodeNotingTodo = 700
 )
 
 var (
-	ErrNoAvaliableVolume = Error(CodeNoAvaliableVolume)
-	ErrAllocBidFromCm    = Error(CodeAllocBidFromCm)
+	ErrIllegalTaskType       = errors.New("illegal task type")
+	ErrCanNotDropped         = errors.New("disk can not dropped")
+	ErrUnexpectMigrationTask = errors.New("unexpect migration task")
+
+	// error code
+	ErrNothingTodo = Error(CodeNotingTodo)
 )
