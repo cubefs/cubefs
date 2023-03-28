@@ -238,6 +238,7 @@ func submit(rs RaftServer, ctx context.Context, key string, value []byte) error 
 }
 
 func TestRaftServer(t *testing.T) {
+	log.SetOutputLevel(0)
 	os.RemoveAll("/tmp/raftserver")
 	go func() {
 		if err := http.ListenAndServe(":8080", nil); err != http.ErrServerClosed {

@@ -197,7 +197,7 @@ func TestService_MQ(t *testing.T) {
 				ClusterID: 2,
 				Blobs:     []proxy.BlobDelete{{Bid: 0, Vid: 0}},
 			},
-			code: 706,
+			code: 803,
 		},
 		{
 			args: proxy.DeleteArgs{
@@ -234,7 +234,7 @@ func TestService_MQ(t *testing.T) {
 				BadIdxes:  nil,
 				Reason:    "",
 			},
-			code: 706,
+			code: 803,
 		},
 		{
 			args: proxy.ShardRepairArgs{

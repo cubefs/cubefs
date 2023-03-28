@@ -156,7 +156,7 @@ func TestServiceAPI(t *testing.T) {
 		args *proto.ShardRepairTask
 		code int
 	}{
-		{args: &proto.ShardRepairTask{}, code: 704},
+		{args: &proto.ShardRepairTask{}, code: 672},
 	}
 	for _, tc := range testCases {
 		err := workerCli.RepairShard(context.Background(), workerServer.URL, tc.args)

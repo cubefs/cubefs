@@ -14,6 +14,8 @@
 
 package errors
 
+import "errors"
+
 const (
 	CodeInvalidParam   = 600
 	CodeAlreadyExist   = 601
@@ -49,6 +51,11 @@ const (
 	CodeShardInvalidOffset   = 655
 	CodeShardListExceedLimit = 656
 	CodeShardInvalidBid      = 657
+
+	CodeDestReplicaBad = 670
+	CodeOrphanShard    = 671
+	CodeIllegalTask    = 672
+	CodeRequestLimited = 673
 )
 
 var (
@@ -85,4 +92,11 @@ var (
 	ErrShardInvalidOffset   = Error(CodeShardInvalidOffset)
 	ErrShardListExceedLimit = Error(CodeShardListExceedLimit)
 	ErrShardInvalidBid      = Error(CodeShardInvalidBid)
+
+	ErrOrphanShard    = Error(CodeOrphanShard)
+	ErrIllegalTask    = Error(CodeIllegalTask)
+	ErrDestReplicaBad = Error(CodeDestReplicaBad)
+	ErrRequestLimited = Error(CodeRequestLimited)
 )
+
+var ErrShardMayBeLost = errors.New("shard may be lost")
