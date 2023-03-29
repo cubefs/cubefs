@@ -1453,9 +1453,9 @@ func (m *Server) balanceMetaPartitionLeader(w http.ResponseWriter, r *http.Reque
 		nodesetIdKey string
 		err          error
 	)
-	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminBalanceMetaPartitionLeader))
 	defer func() {
-		stat.EndStat(proto.AdminBalanceMetaPartitionLeader, err, bgTime, 1)
+		doStatAndMetric(proto.AdminBalanceMetaPartitionLeader, metric, err, nil)
 	}()
 	if zonesKey, nodesetIdKey, err = parseRequestToBalanceMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
