@@ -23,7 +23,7 @@ func TestFlowControl(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
-	flow3, err = proto.NewFlowControl(proto.WorkerTypeCompact, proto.FlowTypeWorker, "11.67.233.54", 10)
+	flow3, err = proto.NewFlowControl(proto.WorkerTypeCompact, proto.FlowTypeWorker, "192.168.0.101", 10)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}

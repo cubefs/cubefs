@@ -55,7 +55,6 @@ func SelectWorkerNode(workerType proto.WorkerType, workerAddr string) (workerNod
 }
 
 func CheckWorkerExist(worker *proto.WorkerNode) (res bool, err error) {
-	// select count(*) from workers where worker_type = 1 and local_ip = '11.97.57.231'
 	metrics := exporter.NewTPCnt(proto.MonitorMysqlSelectWorkersAll)
 	defer metrics.Set(err)
 
