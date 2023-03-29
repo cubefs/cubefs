@@ -44,7 +44,7 @@ func TestGetWorkerNodesDiff(t *testing.T) {
 func TestGetLowestPayloadWorker(t *testing.T) {
 	scheduleNode := NewScheduleNode()
 
-	workerAddr := "11.67.206.145"
+	workerAddr := "192.168.0.101"
 	maxNum := int64(1)
 	key := flowControlKey(proto.WorkerTypeSmartVolume, proto.FlowTypeWorker, workerAddr)
 	flow, _ := proto.NewFlowControl(proto.WorkerTypeSmartVolume, proto.FlowTypeWorker, workerAddr, maxNum)
@@ -54,7 +54,7 @@ func TestGetLowestPayloadWorker(t *testing.T) {
 		{
 			WorkerId:   76,
 			WorkerType: proto.WorkerTypeSmartVolume,
-			WorkerAddr: "11.67.206.145",
+			WorkerAddr: "192.168.0.101",
 			Tasks: []*proto.Task{
 				{
 					TaskId:   1,
@@ -68,7 +68,7 @@ func TestGetLowestPayloadWorker(t *testing.T) {
 		{
 			WorkerId:   81,
 			WorkerType: proto.WorkerTypeSmartVolume,
-			WorkerAddr: "11.67.233.54",
+			WorkerAddr: "192.168.0.201",
 			Tasks: []*proto.Task{
 				{
 					TaskId:   2,
@@ -90,7 +90,7 @@ func TestGetLowestPayloadWorker(t *testing.T) {
 	scheduleNode.workerNodes.Store(proto.WorkerTypeSmartVolume, workerNodes)
 	wn := scheduleNode.getLowestPayloadWorker(proto.WorkerTypeSmartVolume)
 	fmt.Println(wn.WorkerAddr)
-	if wn.WorkerAddr != "11.67.233.54" {
+	if wn.WorkerAddr != "192.168.0.201" {
 		t.Errorf("selected worker node is not expected")
 	}
 }
@@ -185,13 +185,13 @@ func TestRemoveTaskFromWorkerNode(t *testing.T) {
 		{
 			WorkerId:   76,
 			WorkerType: proto.WorkerTypeSmartVolume,
-			WorkerAddr: "11.67.206.145",
+			WorkerAddr: "192.168.101",
 			Tasks:      []*proto.Task{task1, task2, task6},
 		},
 		{
 			WorkerId:   81,
 			WorkerType: proto.WorkerTypeSmartVolume,
-			WorkerAddr: "11.67.233.54",
+			WorkerAddr: "192.168.201",
 			Tasks:      []*proto.Task{task3, task4, task5},
 		},
 	}
