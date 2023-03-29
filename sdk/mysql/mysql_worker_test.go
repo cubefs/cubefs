@@ -11,8 +11,8 @@ func TestSelectWorkerNode(t *testing.T) {
 	// check worker node exist
 
 	var (
-		localIP1                        = "10.18.109.101"
-		localIP2                        = "10.18.109.102"
+		localIP1                        = "192.168.0.101"
+		localIP2                        = "192.168.0.102"
 		err                             error
 		res                             bool
 		workerId1, workerId2, workerId3 uint64

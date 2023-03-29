@@ -30,7 +30,7 @@ func TestElect(t *testing.T) {
 		term    uint64
 		le      *proto.LeaderElect
 		expire  = 20 // unit: second
-		localIp = "10.18.109.101"
+		localIp = "192.168.0.101"
 	)
 	le, err = GetLeader(expire)
 	if err != nil {
