@@ -9,7 +9,7 @@
 npm install
 
 #host:
-172.20.189.87 console.chubao.io
+172.20.1.1 console.chubao.io
 
 # serve with hot reload at localhost:8080
 npm run dev

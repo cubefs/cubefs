@@ -15,6 +15,6 @@
   "secretKey": "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd",
   "tracingSamplerType": "const",
   "tracingSamplerParam": 1,
-  "tracingReportAddr": "172.20.189.87:6831",
+  "tracingReportAddr": "192.168.0.151:6831",
   "tracingFlag": true
 }

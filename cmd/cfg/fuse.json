@@ -2,7 +2,7 @@
   "mountPoint": "/mnt/fuse",
   "volName": "test",
   "owner": "cfs",
-  "masterAddr": "10.196.31.173:80,10.196.31.141:80,10.196.30.200:80",
+  "masterAddr": "192.168.0.11:80,192.168.0.12:80,192.168.0.13:80",
   "logDir": "/export/Logs/cfs",
   "logLevel": "info",
   "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
