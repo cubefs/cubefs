@@ -137,7 +137,7 @@ type ClusterIP struct {
 // NodeView provides the view of the data or meta node.
 type NodeView struct {
 	Addr       string
-	Status     bool
+	Active     bool
 	ID         uint64
 	IsWritable bool
 }
