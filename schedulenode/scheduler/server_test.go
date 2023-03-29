@@ -10,13 +10,13 @@ import (
 
 func TestGetWorkerNodesDiff(t *testing.T) {
 	wn1 := &proto.WorkerNode{
-		WorkerAddr: "100.124.22.101",
+		WorkerAddr: "192.168.0.101",
 	}
 	wn2 := &proto.WorkerNode{
-		WorkerAddr: "100.124.22.102",
+		WorkerAddr: "192.168.0.102",
 	}
 	wn3 := &proto.WorkerNode{
-		WorkerAddr: "100.124.22.103",
+		WorkerAddr: "192.168.0.103",
 	}
 
 	workerNodeNew := []*proto.WorkerNode{wn1, wn2}

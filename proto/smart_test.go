@@ -14,7 +14,7 @@ func TestNewActionMetricsTaskInfo(t *testing.T) {
 	if err != nil {
 		t.Errorf("parse action metrics layer policy failed")
 	}
-	hosts := []string{"10.119.20.87", "10.119.20.88", "10.119.20.89"}
+	hosts := []string{"192.168.0.87", "192.168.0.88", "192.168.0.89"}
 	metrics := []*HBaseMetricsData{
 		{
 			Time: "20220311163200",
@@ -75,7 +75,7 @@ func TestNewDPCreateTimeTaskInfo(t *testing.T) {
 	if err != nil {
 		t.Errorf("parse dp create time layer policy failed, err(%v)", err)
 	}
-	hosts := []string{"10.119.20.87", "10.119.20.88", "10.119.20.89"}
+	hosts := []string{"192.168.0.87", "192.168.0.88", "192.168.0.89"}
 
 	taskInfo, err := NewDPCreateTimeTaskInfo(lp, time.Now().Unix(), hosts)
 	if err != nil {

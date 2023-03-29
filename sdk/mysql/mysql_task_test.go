@@ -17,7 +17,7 @@ func TestTaskCommands(t *testing.T) {
 		taskInfoNew   = "testTaskInfoNew"
 		exceptionInfo = "testExceptionInfo"
 		err           error
-		workerAddr    = "10.18.109.101"
+		workerAddr    = "192.168.0.101"
 	)
 	// add task
 	task1 := &proto.Task{
@@ -288,7 +288,7 @@ func TestUpdateTaskWorkerAddr(t *testing.T) {
 		volumeName = "vol_liyubo"
 		dpId       = 100
 		taskInfo   = "testTaskInfo"
-		workerAddr = "10.18.109.101"
+		workerAddr = "192.168.0.101"
 	)
 	task := &proto.Task{
 		TaskType: proto.WorkerTypeSmartVolume,

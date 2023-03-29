@@ -32,8 +32,8 @@ func init() {
 
 func TestCandidate(t *testing.T) {
 	ec := config.NewElectConfig(DefaultHeartbeat, DefaultLeaderPeriod, DefaultFollowerPeriod)
-	candidateServerIP1 := "10.18.109.101"
-	candidateServerIP2 := "10.18.109.102"
+	candidateServerIP1 := "192.168.0.101"
+	candidateServerIP2 := "192.168.0.102"
 	candidateServer1 := NewCandidate(candidateServerIP1, ec)
 	candidateServer2 := NewCandidate(candidateServerIP2, ec)
 	defer func() {
