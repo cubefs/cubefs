@@ -570,10 +570,10 @@ func (w *Wrapper) getDataPartitionByPid(partitionID uint64) (err error) {
 				Status:      dpInfo.Status,
 				ReplicaNum:  dpInfo.ReplicaNum,
 				Hosts:       dpInfo.Hosts,
+				LeaderAddr:  proto.NewAtomicString(getDpInfoLeaderAddr(dpInfo)),
 			},
 			CrossRegionMetrics: NewCrossRegionMetrics(),
 		}
-		dp.SetLeaderAddr(getDpInfoLeaderAddr(dpInfo))
 		return dp
 	}
 	dp := convert(dpInfo)

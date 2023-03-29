@@ -54,9 +54,6 @@ func (mp *MetaPartition) GetLeaderAddr() string {
 	return str
 }
 
-func (mp *MetaPartition) SetLeaderAddr(addr string) {
-	mp.LeaderAddr.Store(addr)
-}
 
 func (mw *MetaWrapper) ClearRWPartitions() {
 	mw.RLock()

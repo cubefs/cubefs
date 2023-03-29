@@ -79,7 +79,7 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 		resp, needCheckRead, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 			if successAddr != "" && successAddr != addr {
-				mp.SetLeaderAddr(successAddr)
+				mp.LeaderAddr=proto.NewAtomicString(successAddr)
 			}
 			return
 		}
@@ -108,7 +108,7 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 		resp, _, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 			if successAddr != "" && successAddr != addr {
-				mp.SetLeaderAddr(successAddr)
+				mp.LeaderAddr=proto.NewAtomicString(successAddr)
 			}
 			return
 		}

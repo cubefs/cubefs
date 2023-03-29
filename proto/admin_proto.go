@@ -902,9 +902,13 @@ func (dp *DataPartitionResponse) GetLeaderAddr() string {
 	return str
 }
 
-func (dp *DataPartitionResponse) SetLeaderAddr(addr string) {
-	dp.LeaderAddr.Store(addr)
+func NewAtomicString(newValue string) AtomicString {
+	var as AtomicString
+	as.Store(newValue)
+	return as
 }
+
+
 
 // DataPartitionsView defines the view of a data partition
 type DataPartitionsView struct {

@@ -71,7 +71,7 @@ func (mp *CmpMpTask) GetMpInfo() (err error) {
 	for _, replica := range info.Replicas {
 		cMP.Members = append(cMP.Members, replica.Addr)
 		if replica.IsLeader {
-			cMP.SetLeaderAddr(replica.Addr)
+			cMP.LeaderAddr=proto.NewAtomicString(replica.Addr)
 		}
 		if replica.IsLearner {
 			cMP.Learners = append(cMP.Learners, replica.Addr)

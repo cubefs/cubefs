@@ -27,11 +27,10 @@ func TestCrossRegionHosts(t *testing.T) {
 	dataWrapper.crossRegionHostLatency.Store(ip4, time.Duration(0))     // unknown
 	dataWrapper.crossRegionHostLatency.Store(ip5, 20*time.Millisecond)  // cross-region
 	dp := &DataPartition{
-		DataPartitionResponse: proto.DataPartitionResponse{Hosts: []string{ip1, ip2, ip3, ip4, ip5}},
+		DataPartitionResponse: proto.DataPartitionResponse{Hosts: []string{ip1, ip2, ip3, ip4, ip5},LeaderAddr: proto.NewAtomicString(ip3)},
 		CrossRegionMetrics:    NewCrossRegionMetrics(),
 		ClientWrapper:         dataWrapper,
 	}
-	dp.SetLeaderAddr(ip3)
 	dp.CrossRegionMetrics.CrossRegionHosts = dataWrapper.classifyCrossRegionHosts(dp.Hosts)
 	// check classify
 	if !contains(dp.CrossRegionMetrics.CrossRegionHosts[SameZoneRank], ip3) || !contains(dp.CrossRegionMetrics.CrossRegionHosts[SameZoneRank], ip2) {
@@ -134,11 +133,10 @@ func TestMiddleStatCrossRegionHosts(t *testing.T) {
 	dataWrapper.crossRegionHostLatency.Store(ip5, 20*time.Millisecond)  // cross-region
 	// check before classify
 	dp := &DataPartition{
-		DataPartitionResponse: proto.DataPartitionResponse{Hosts: []string{ip1, ip2, ip3, ip4, ip5}},
+		DataPartitionResponse: proto.DataPartitionResponse{Hosts: []string{ip1, ip2, ip3, ip4, ip5},LeaderAddr: proto.NewAtomicString(ip3)},
 		CrossRegionMetrics:    NewCrossRegionMetrics(),
 		ClientWrapper:         dataWrapper,
 	}
-	dp.SetLeaderAddr(ip3)
 	// check get
 	targetHost := dp.getNearestCrossRegionHost()
 	if targetHost != dp.GetLeaderAddr() {

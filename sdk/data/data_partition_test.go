@@ -180,7 +180,7 @@ func TestDpLeaderAddressSerialization(t *testing.T) {
 		return false
 	})
 	host := dp.Hosts[0]
-	dp.SetLeaderAddr(host)
+	dp.LeaderAddr=proto.NewAtomicString(host)
 	dpJson, err := json.Marshal(dp)
 	if err != nil {
 		t.Errorf("TestDpLeaderAddressSerialization Marshal dp fail: dp(%v)", dp)

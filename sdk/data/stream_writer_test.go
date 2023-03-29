@@ -74,14 +74,14 @@ func handleClientDataPartitions(w http.ResponseWriter, r *http.Request) {
 		PartitionID: 2,
 		Hosts:       []string{"127.0.0.1:9999", "127.0.0.1:9999", "127.0.0.1:9999"},
 		ReplicaNum:  3,
+		LeaderAddr: proto.NewAtomicString("127.0.0.1:9999"),
 	}
-	dp2.SetLeaderAddr("127.0.0.1:9999")
 	dp3 := &proto.DataPartitionResponse{
 		PartitionID: 3,
 		Hosts:       []string{"127.0.0.1:8888", "127.0.0.1:8888", "127.0.0.1:8888"},
 		ReplicaNum:  3,
+		LeaderAddr:  proto.NewAtomicString("127.0.0.1:8888"),
 	}
-	dp3.SetLeaderAddr("127.0.0.1:8888")
 	dv := &proto.DataPartitionsView{
 		DataPartitions: []*proto.DataPartitionResponse{dp2, dp3},
 	}

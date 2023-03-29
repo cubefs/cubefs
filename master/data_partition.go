@@ -354,7 +354,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
-	dpr.SetLeaderAddr(partition.getLeaderAddr())
+	dpr.LeaderAddr=proto.NewAtomicString(partition.getLeaderAddr())
 	dpr.IsRecover = partition.isRecover
 	dpr.IsFrozen = partition.IsFrozen
 	dpr.CreateTime = partition.createTime

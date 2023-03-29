@@ -252,7 +252,7 @@ func (dp *DataPartition) LeaderRead(reqPacket *Packet, req *ExtentRequest) (sc *
 			sc.currAddr = addr
 			readBytes, reply, tryOther, err = dp.sendReadCmdToDataPartition(sc, reqPacket, req)
 			if err == nil {
-				sc.dp.SetLeaderAddr(sc.currAddr)
+				sc.dp.LeaderAddr=proto.NewAtomicString(sc.currAddr)
 				return
 			}
 			errMap[addr] = err
@@ -392,7 +392,7 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 			sc.currAddr = addr
 			err = dp.OverWriteToDataPartitionLeader(sc, req, reply)
 			if err == nil && reply.ResultCode == proto.OpOk {
-				sc.dp.SetLeaderAddr(sc.currAddr)
+				sc.dp.LeaderAddr=proto.NewAtomicString(sc.currAddr)
 				return
 			}
 			if err == nil && reply.ResultCode != proto.OpTryOtherAddr {
