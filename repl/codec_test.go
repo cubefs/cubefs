@@ -1,6 +1,7 @@
 package repl
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -14,68 +15,58 @@ func TestDecodeReplPacketArg(t *testing.T) {
 		ExpectFollowers []string
 		ExpectQuorum    int
 	}
+	dn1:="127.0.0.1:6000"
+	dn2:="127.0.0.1:6001"
+	dn3:="127.0.0.1:6002"
+	dn4:="127.0.0.1:6003"
 	var cases = []TestCase{
 		{
 			Name: "2 followers without quorum",
-			Raw:  "10.203.16.236:6000/10.203.29.78:6000/",
+			Raw:  fmt.Sprintf("%v/%v/",dn1,dn2),
 			ExpectFollowers: []string{
-				"10.203.16.236:6000",
-				"10.203.29.78:6000",
+				dn1,
+				dn2,
 			},
 			ExpectQuorum: 0,
 		},
 		{
 			Name: "4 followers without quorum",
-			Raw:  "10.203.16.236:6000/10.203.29.78:6000/11.97.70.219:6000/11.97.70.220:6000/",
+			Raw:  fmt.Sprintf("%v/%v/%v/",dn1,dn2,dn3),
 			ExpectFollowers: []string{
-				"10.203.16.236:6000",
-				"10.203.29.78:6000",
-				"11.97.70.219:6000",
-				"11.97.70.220:6000",
+				dn1,dn2,dn3,
+
 			},
 			ExpectQuorum: 0,
 		},
 		{
 			Name: "4 followers with 3 for valid quorum",
-			Raw:  "10.203.16.236:6000/10.203.29.78:6000/11.97.70.219:6000/11.97.70.220:6000/3",
+			Raw:  fmt.Sprintf("%v/%v/%v/%v/3",dn1,dn2,dn3,dn4),
 			ExpectFollowers: []string{
-				"10.203.16.236:6000",
-				"10.203.29.78:6000",
-				"11.97.70.219:6000",
-				"11.97.70.220:6000",
+				dn1,dn2,dn3,dn4,
 			},
 			ExpectQuorum: 3,
 		},
 		{
 			Name: "4 followers with 5 for valid quorum",
-			Raw:  "10.203.16.236:6000/10.203.29.78:6000/11.97.70.219:6000/11.97.70.220:6000/5",
+			Raw:  fmt.Sprintf("%v/%v/%v/%v/5",dn1,dn2,dn3,dn4),
 			ExpectFollowers: []string{
-				"10.203.16.236:6000",
-				"10.203.29.78:6000",
-				"11.97.70.219:6000",
-				"11.97.70.220:6000",
+				dn1,dn2,dn3,dn4,
 			},
 			ExpectQuorum: 5,
 		},
 		{
 			Name: "4 followers with 6 for invalid quorum",
-			Raw:  "10.203.16.236:6000/10.203.29.78:6000/11.97.70.219:6000/11.97.70.220:6000/6",
+			Raw:  fmt.Sprintf("%v/%v/%v/%v/6",dn1,dn2,dn3,dn4),
 			ExpectFollowers: []string{
-				"10.203.16.236:6000",
-				"10.203.29.78:6000",
-				"11.97.70.219:6000",
-				"11.97.70.220:6000",
+				dn1,dn2,dn3,dn4,
 			},
 			ExpectQuorum: 0,
 		},
 		{
 			Name: "4 followers with negative value for invalid quorum",
-			Raw:  "10.203.16.236:6000/10.203.29.78:6000/11.97.70.219:6000/11.97.70.220:6000/-2",
+			Raw:  fmt.Sprintf("%v/%v/%v/%v/-2",dn1,dn2,dn3,dn4),
 			ExpectFollowers: []string{
-				"10.203.16.236:6000",
-				"10.203.29.78:6000",
-				"11.97.70.219:6000",
-				"11.97.70.220:6000",
+				dn1,dn2,dn3,dn4,
 			},
 			ExpectQuorum: 0,
 		},
