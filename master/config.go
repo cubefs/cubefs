@@ -25,7 +25,7 @@ import (
 	"github.com/tiglabs/raft/proto"
 )
 
-//config key
+// config key
 const (
 	colonSplit = ":"
 	commaSplit = ","
@@ -41,7 +41,7 @@ const (
 	replicaPortKey                      = "replicaPort"
 )
 
-//default value
+// default value
 const (
 	defaultTobeFreedDataPartitionCount         = 1000
 	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60 // a data partition can only be freed after loading 5 mins
@@ -227,7 +227,6 @@ func (cfg *clusterConfig) parsePeers(peerStr string) error {
 		}
 		cfg.peers = append(cfg.peers, raftstore.PeerAddress{Peer: proto.Peer{ID: id}, Address: ip, HeartbeatPort: int(cfg.heartbeatPort), ReplicaPort: int(cfg.replicaPort)})
 		address := fmt.Sprintf("%v:%v", ip, port)
-		fmt.Println(address)
 		AddrDatabase[id] = address
 	}
 	return nil

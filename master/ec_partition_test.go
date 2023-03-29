@@ -40,7 +40,6 @@ func getEcPartition(id uint64, t *testing.T) {
 
 	reqURL := fmt.Sprintf("%v%v?id=%v",
 		hostAddr, proto.AdminGetEcPartition, id)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -48,6 +47,5 @@ func decommissionEcPartition(ecdp *EcDataPartition, t *testing.T) {
 	offlineAddr := ecdp.Hosts[0]
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
 		hostAddr, proto.AdminDecommissionEcPartition, ecdp.VolName, ecdp.PartitionID, offlineAddr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }

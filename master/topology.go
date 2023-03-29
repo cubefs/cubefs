@@ -485,7 +485,7 @@ func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum 
 	return
 }
 
-//allocate zones according to the specified zoneName and replicaNum
+// allocate zones according to the specified zoneName and replicaNum
 func (t *topology) allocZonesForDataNode(clusterID, zoneName string, replicaNum int, excludeZone []string, isStrict bool) (candidateZones []*Zone, err error) {
 	var initCandidateZones []*Zone
 	initCandidateZones = make([]*Zone, 0)
@@ -841,7 +841,7 @@ func (zone *Zone) canWriteForDataNode(replicaNum uint8) (can bool) {
 		}
 		return true
 	})
-	fmt.Printf("canWriteForDataNode leastAlive[%v],replicaNum[%v],count[%v]\n", leastAlive, replicaNum, zone.dataNodeCount())
+	log.LogInfof("canWriteForDataNode leastAlive[%v],replicaNum[%v],count[%v]\n", leastAlive, replicaNum, zone.dataNodeCount())
 	return
 }
 

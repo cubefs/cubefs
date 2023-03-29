@@ -24,7 +24,7 @@ func buildPanicVol() *Vol {
 	}
 	var createTime = time.Now().Unix() // record create time of this volume
 	vol := newVol(id, commonVol.Name, commonVol.Owner, testZone1+","+testZone2, commonVol.dataPartitionSize, commonVol.Capacity,
-		defaultReplicaNum, defaultReplicaNum,false, false, true,
+		defaultReplicaNum, defaultReplicaNum, false, false, true,
 		true, false, false, false, false, false, createTime, createTime, "", "", "", 0, 0, 0, 0.0, 30,
 		0, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
 		strings.Split(testSmartRules, ","), proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0},
@@ -86,7 +86,6 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 	vol.addMetaPartition(mp)
 	mp = nil
 	c.checkMetaPartitions()
-	t.Logf("catched panic")
 }
 
 func TestCheckAvailSpace(t *testing.T) {
@@ -195,17 +194,14 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		}
 		addr := dp.Replicas[0].dataNode.Addr
 		server.cluster.putBadDataPartitionIDs(dp.Replicas[0], addr, dp.PartitionID)
-		t.Logf("Data Partition ID:%v", dp.PartitionID)
 		dp.RUnlock()
 	}
 	count := 0
 	server.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		count = count + len(badDataPartitionIds)
-		t.Logf("BadDataPartitionIds:%v", badDataPartitionIds)
 		return true
 	})
-	t.Logf("bad data partitions count:%v", count)
 	if count != dpsLen {
 		t.Errorf("expect bad partition num[%v],real num[%v]", dpsLen, count)
 		return
@@ -349,16 +345,12 @@ func TestUpdateDataNodeBadDisks(t *testing.T) {
 	c.updateDataNodeBadDisks(allBadDisks)
 	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 1 || len(badDiskView[0].BadDiskPath) != 1 {
 		t.Errorf("getDataNodeBadDisks should be 1 but get :%v detail:%v", len(badDiskView), badDiskView)
-	} else {
-		t.Logf("getDataNodeBadDisks detail:%v", badDiskView)
 	}
 	// one datanode with more than one bad disk
 	allBadDisks = append(allBadDisks, map[string][]string{addr1: {"/diskPath2"}})
 	c.updateDataNodeBadDisks(allBadDisks)
 	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 1 || len(badDiskView[0].BadDiskPath) != 2 {
 		t.Errorf("getDataNodeBadDisks should be 1 and bad disks shoule be 2 but get :%v detail:%v", len(badDiskView), badDiskView)
-	} else {
-		t.Logf("getDataNodeBadDisks detail:%v", badDiskView)
 	}
 	// two datanode
 	dataNodeBadDisksOfVol[addr2] = append(dataNodeBadDisksOfVol[addr2], "/diskPath3")
@@ -366,8 +358,6 @@ func TestUpdateDataNodeBadDisks(t *testing.T) {
 	c.updateDataNodeBadDisks(allBadDisks)
 	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 2 {
 		t.Errorf("getDataNodeBadDisks should be 2 but get :%v detail:%v", len(badDiskView), badDiskView)
-	} else {
-		t.Logf("getDataNodeBadDisks detail:%v", badDiskView)
 	}
 	// when there is no bad disks
 	c.updateDataNodeBadDisks(make([]map[string][]string, 0))

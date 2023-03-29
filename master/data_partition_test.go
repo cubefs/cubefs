@@ -51,7 +51,6 @@ func createDataPartition(vol *Vol, count int, t *testing.T) {
 	oldCount := len(vol.dataPartitions.partitions)
 	reqURL := fmt.Sprintf("%v%v?count=%v&name=%v&type=extent",
 		hostAddr, proto.AdminCreateDataPartition, count, vol.Name)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	newCount := len(vol.dataPartitions.partitions)
 	total := oldCount + count
@@ -66,7 +65,6 @@ func getDataPartition(id uint64, t *testing.T) {
 
 	reqURL := fmt.Sprintf("%v%v?id=%v",
 		hostAddr, proto.AdminGetDataPartition, id)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -74,7 +72,6 @@ func decommissionDataPartition(dp *DataPartition, t *testing.T) {
 	offlineAddr := dp.Hosts[0]
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionDataPartition, dp.VolName, dp.PartitionID, offlineAddr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if contains(dp.Hosts, offlineAddr) {
 		t.Errorf("decommissionDataPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, dp.Hosts)
@@ -95,14 +92,12 @@ func decommissionDataPartitionToDestAddr(dp *DataPartition, allDataNodes []strin
 	offlineAddr := dp.Hosts[0]
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&destAddr=%v&force=true",
 		hostAddr, proto.AdminDecommissionDataPartition, dp.VolName, dp.PartitionID, offlineAddr, destAddr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if contains(dp.Hosts, offlineAddr) || !contains(dp.Hosts, destAddr) {
 		t.Errorf("decommissionDataPartitionToDestAddr failed,offlineAddr[%v],destAddr[%v],hosts[%v]", offlineAddr, destAddr, dp.Hosts)
 		return
 	}
 	dp.isRecover = false
-	fmt.Printf("decommissionDataPartitionToDestAddr offlineAddr[%v],destAddr[%v],hosts[%v]\n", offlineAddr, destAddr, dp.Hosts)
 }
 
 func loadDataPartitionTest(dp *DataPartition, t *testing.T) {
@@ -111,9 +106,6 @@ func loadDataPartitionTest(dp *DataPartition, t *testing.T) {
 	server.cluster.waitForResponseToLoadDataPartition(dps)
 	time.Sleep(5 * time.Second)
 	dp.RLock()
-	for _, replica := range dp.Replicas {
-		t.Logf("replica[%v],response[%v]", replica.Addr, replica.HasLoadResponse)
-	}
 	tinyFile := &FileInCore{}
 	tinyFile.Name = "50000011"
 	tinyFile.LastModify = 1562507765
@@ -134,7 +126,6 @@ func loadDataPartitionTest(dp *DataPartition, t *testing.T) {
 	dp.setToNormal()
 }
 func delDataReplicaTest(dp *DataPartition, t *testing.T) {
-	t.Logf("dpID[%v],hosts[%v],replica length[%v]", dp.PartitionID, dp.Hosts, len(dp.Replicas))
 	testAddr := mds9Addr
 	extraReplica := proto.DataReplica{
 		Status: 2,
@@ -166,7 +157,6 @@ func delDataReplicaTest(dp *DataPartition, t *testing.T) {
 func updateDataPartition(dp *DataPartition, isManual bool, c *Cluster, vol *Vol, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&isManual=%v",
 		hostAddr, proto.AdminDataPartitionUpdate, dp.VolName, dp.PartitionID, isManual)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if dp.IsManual != isManual {
 		t.Errorf("expect isManual[%v],dp.IsManual[%v],not equal", isManual, dp.IsManual)
@@ -174,7 +164,6 @@ func updateDataPartition(dp *DataPartition, isManual bool, c *Cluster, vol *Vol,
 	}
 	dp.isRecover = false
 	dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, 0, vol.CrossRegionHAType, c, vol.getDataPartitionQuorum())
-	t.Logf("dp.IsManual[%v] Status[%v]", dp.IsManual, dp.Status)
 	if dp.IsManual {
 		if dp.Status != proto.ReadOnly {
 			t.Errorf("dp.IsManual[%v] expect Status ReadOnly, but get Status[%v]", dp.IsManual, dp.Status)
@@ -186,7 +175,6 @@ func updateDataPartition(dp *DataPartition, isManual bool, c *Cluster, vol *Vol,
 func setDataPartitionIsRecover(dp *DataPartition, isRecover bool, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?id=%v&isRecover=%v",
 		hostAddr, proto.AdminDataPartitionSetIsRecover, dp.PartitionID, isRecover)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if dp.isRecover != isRecover {
 		t.Errorf("expect isRecover[%v],dp.isRecover[%v],not equal", isRecover, dp.isRecover)

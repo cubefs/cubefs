@@ -34,8 +34,6 @@ func getZoneNodeSetStatus(zone *Zone) {
 		dataNodeSb.WriteString(fmt.Sprintf(" ns:%v:%v ", ns.ID, ns.dataNodeLen()))
 		metaNodeSb.WriteString(fmt.Sprintf(" ns:%v:%v ", ns.ID, ns.metaNodeLen()))
 	}
-	fmt.Println(dataNodeSb.String())
-	fmt.Println(metaNodeSb.String())
 }
 func batchCreateDataNodeForNodeSet(topo *topology, ns *nodeSet, zoneName, clusterID, baseAddr string, count int) {
 	if count > ns.Capacity-ns.dataNodeCount() {
@@ -322,7 +320,6 @@ func TestIDC(t *testing.T) {
 		t.FailNow()
 	}
 	for _, view := range views {
-		t.Log(view.Name)
 		if views[0].Name != idc1Name {
 			continue
 		}

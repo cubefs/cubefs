@@ -122,7 +122,6 @@ func TestMetaNode_SelectNodeCase01(t *testing.T) {
 		t.FailNow()
 	}
 	for _, host := range newHosts {
-		t.Logf("select host:%v\n", host)
 		impossibleHosts := []string{"192.168.0.7", "192.168.0.4", "192.168.0.5"}
 		if contains(impossibleHosts, host) {
 			t.Errorf("impossible host:%s\n", host)
@@ -136,7 +135,6 @@ func TestMetaNode_SelectNodeCase01(t *testing.T) {
 		t.FailNow()
 	}
 	for _, host := range newHosts {
-		t.Logf("select host:%v\n", host)
 		impossibleHosts := []string{"192.168.0.7", "192.168.0.4", "192.168.0.5"}
 		if contains(impossibleHosts, host) {
 			t.Errorf("impossible host:%s\n", host)

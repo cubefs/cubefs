@@ -24,18 +24,15 @@ func Test_CodecNode(t *testing.T) {
 
 func getCodecNodeInfo(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetCodecNode, addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func getAllCodecNodeInfo(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetAllCodecNodes, addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func decommissionCodecNode(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.DecommissionCodecNode, addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }

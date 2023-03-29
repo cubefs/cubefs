@@ -125,16 +125,12 @@ func (ecs *MockEcServer) serveConn(rc net.Conn) {
 	switch req.Opcode {
 	case proto.OpCreateEcDataPartition:
 		err = ecs.handleCreateEcPartition(conn, req, adminTask)
-		fmt.Printf("data node [%v] create data partition,id[%v],err:%v\n", ecs.TcpAddr, adminTask.ID, err)
 	case proto.OpDeleteEcDataPartition:
 		err = ecs.handleDeleteEcPartition(conn, req)
-		fmt.Printf("data node [%v] delete data partition,id[%v],err:%v\n", ecs.TcpAddr, adminTask.ID, err)
 	case proto.OpEcNodeHeartbeat:
 		err = ecs.handleHeartbeats(conn, req, adminTask)
-		fmt.Printf("data node [%v] report heartbeat to master,err:%v\n", ecs.TcpAddr, err)
 	case proto.OpChangeEcPartitionMembers:
 		err = ecs.handleChangeEcPartitionMembers(conn, req, adminTask)
-		fmt.Printf("data node [%v] remove data partition raft member,id[%v],err:%v\n", ecs.TcpAddr, adminTask.ID, err)
 	default:
 		fmt.Printf("unknown code [%v]\n", req.Opcode)
 	}

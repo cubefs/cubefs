@@ -102,7 +102,6 @@ func (mms *MockMetaServer) start() {
 }
 
 func (mms *MockMetaServer) serveConn(rc net.Conn) {
-	fmt.Printf("remote[%v],local[%v]\n", rc.RemoteAddr(), rc.LocalAddr())
 	conn, ok := rc.(*net.TCPConn)
 	if !ok {
 		rc.Close()
@@ -113,10 +112,8 @@ func (mms *MockMetaServer) serveConn(rc net.Conn) {
 	req := proto.NewPacket(context.Background())
 	err := req.ReadFromConn(conn, proto.NoReadDeadlineTime)
 	if err != nil {
-		fmt.Printf("remote [%v] err is [%v]\n", conn.RemoteAddr(), err)
 		return
 	}
-	fmt.Printf("remote [%v] req [%v]\n", conn.RemoteAddr(), req.GetOpMsg())
 	adminTask := &proto.AdminTask{}
 	decode := json.NewDecoder(bytes.NewBuffer(req.Data))
 	decode.UseNumber()
@@ -127,40 +124,28 @@ func (mms *MockMetaServer) serveConn(rc net.Conn) {
 	switch req.Opcode {
 	case proto.OpCreateMetaPartition:
 		err = mms.handleCreateMetaPartition(conn, req, adminTask)
-		fmt.Printf("meta node [%v] create meta partition,err:%v\n", mms.TcpAddr, err)
 	case proto.OpMetaNodeHeartbeat:
 		err = mms.handleHeartbeats(conn, req, adminTask)
-		fmt.Printf("meta node [%v] heartbeat,err:%v\n", mms.TcpAddr, err)
 	case proto.OpDeleteMetaPartition:
 		err = mms.handleDeleteMetaPartition(conn, req, adminTask)
-		fmt.Printf("meta node [%v] delete meta partition,err:%v\n", mms.TcpAddr, err)
 	case proto.OpUpdateMetaPartition:
 		err = mms.handleUpdateMetaPartition(conn, req, adminTask)
-		fmt.Printf("meta node [%v] update meta partition,err:%v\n", mms.TcpAddr, err)
 	case proto.OpLoadMetaPartition:
 		err = mms.handleLoadMetaPartition(conn, req, adminTask)
-		fmt.Printf("meta node [%v] load meta partition,err:%v\n", mms.TcpAddr, err)
 	case proto.OpDecommissionMetaPartition:
 		err = mms.handleDecommissionMetaPartition(conn, req, adminTask)
-		fmt.Printf("meta node [%v] offline meta partition,err:%v\n", mms.TcpAddr, err)
 	case proto.OpAddMetaPartitionRaftMember:
 		err = mms.handleAddMetaPartitionRaftMember(conn, req, adminTask)
-		fmt.Printf("meta node [%v] add meta partition raft member,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
 	case proto.OpRemoveMetaPartitionRaftMember:
 		err = mms.handleRemoveMetaPartitionRaftMember(conn, req, adminTask)
-		fmt.Printf("meta node [%v] remove meta partition raft member,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
 	case proto.OpAddMetaPartitionRaftLearner:
 		err = mms.handleAddMetaPartitionRaftLearner(conn, req, adminTask)
-		fmt.Printf("meta node [%v] add meta partition raft learner,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
 	case proto.OpPromoteMetaPartitionRaftLearner:
 		err = mms.handlePromoteMetaPartitionRaftLearner(conn, req, adminTask)
-		fmt.Printf("meta node [%v] promote meta partition raft learner,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
 	case proto.OpResetMetaPartitionRaftMember:
 		err = mms.handleResetMetaPartitionRaftMember(conn, req, adminTask)
-		fmt.Printf("meta node [%v] reset data partition raft member,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
 	case proto.OpMetaPartitionTryToLeader:
 		err = mms.handleTryToLeader(conn, req, adminTask)
-		fmt.Printf("meta node [%v] try to leader,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
 	default:
 		fmt.Printf("unknown code [%v]\n", req.Opcode)
 	}

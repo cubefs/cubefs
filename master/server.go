@@ -174,7 +174,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.config.replicaPort <= 1024 {
 		m.config.replicaPort = raftstore.DefaultReplicaPort
 	}
-	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
+	log.LogWarnf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
 	if err = m.config.parsePeers(peerAddrs); err != nil {
 		return
 	}
@@ -207,8 +207,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.retainLogs <= 0 {
 		m.retainLogs = DefaultRetainLogs
 	}
-	fmt.Println("retainLogs=", m.retainLogs)
-
 	missingDataPartitionInterval := cfg.GetString(missingDataPartitionInterval)
 	if missingDataPartitionInterval != "" {
 		if m.config.MissingDataPartitionInterval, err = strconv.ParseInt(missingDataPartitionInterval, 10, 0); err != nil {
@@ -261,7 +259,7 @@ func (m *Server) createRaftServer() (err error) {
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
-	fmt.Printf("peers[%v],tickInterval[%v],electionTick[%v]\n", m.config.peers, m.tickInterval, m.electionTick)
+	log.LogWarnf("peers[%v],tickInterval[%v],electionTick[%v],retainLogs[%v]\n", m.config.peers, m.tickInterval, m.electionTick, m.retainLogs)
 	m.initFsm()
 	partitionCfg := &raftstore.PartitionConfig{
 		ID:    GroupID,

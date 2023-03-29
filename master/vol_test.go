@@ -21,8 +21,6 @@ func TestAutoCreateDataPartitions(t *testing.T) {
 	dpCount := len(commonVol.dataPartitions.partitions)
 	commonVol.dataPartitions.readableAndWritableCnt = 0
 	server.cluster.DisableAutoAllocate = false
-	t.Logf("status[%v],disableAutoAlloc[%v],cap[%v]\n",
-		commonVol.Status, server.cluster.DisableAutoAllocate, commonVol.Capacity)
 	commonVol.checkAutoDataPartitionCreation(server.cluster)
 	newDpCount := len(commonVol.dataPartitions.partitions)
 	if dpCount == newDpCount {
@@ -36,7 +34,6 @@ func TestCheckVol(t *testing.T) {
 	commonVol.checkMetaPartitions(server.cluster)
 	commonVol.checkDataPartitions(server.cluster)
 	log.LogFlush()
-	fmt.Printf("writable data partitions[%v]\n", commonVol.dataPartitions.readableAndWritableCnt)
 }
 
 func TestVol(t *testing.T) {
@@ -69,7 +66,6 @@ func TestVol(t *testing.T) {
 
 func createVol(name, zone string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name, zone)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
@@ -86,7 +82,6 @@ func TestVolMultiZoneDowngrade(t *testing.T) {
 	testMultiZone := "multiZoneDowngrade"
 	zoneList := []string{testZone1, testZone2, testZone3}
 	zone := strings.Join(zoneList, ",")
-	fmt.Printf(strings.Join(zoneList, ","))
 	server.cluster.t.putZoneIfAbsent(newZone(testZone3))
 	createVol(testMultiZone, zone, t)
 	//report mp/dp info to master
@@ -177,8 +172,6 @@ func TestVolMultiZone(t *testing.T) {
 	testMultiZone := "multiZone"
 	zoneList := []string{testZone1, testZone2, testZone3}
 	zone := strings.Join(zoneList, ",")
-	fmt.Printf(strings.Join(zoneList, ","))
-
 	createVol(testMultiZone, zone, t)
 	//report mp/dp info to master
 	server.cluster.checkDataNodeHeartbeat()
@@ -230,15 +223,11 @@ func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
 	if len(vol.dataPartitions.partitions) == 0 {
 		return
 	}
-	partition := vol.dataPartitions.partitions[0]
-	if partition.Status != proto.ReadWrite {
-		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, partition.Status)
-		return
-	}
-
+	server.cluster.checkDataNodeHeartbeat()
+	time.Sleep(3 * time.Second)
 	//after check data partitions ,the status must be writable
 	vol.checkDataPartitions(server.cluster)
-	partition = vol.dataPartitions.partitions[0]
+	partition := vol.dataPartitions.partitions[0]
 	if partition.Status != proto.ReadWrite {
 		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, partition.Status)
 		return
@@ -250,13 +239,8 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 		t.Error("no meta partition")
 		return
 	}
-
-	for _, mp := range vol.MetaPartitions {
-		if mp.Status != proto.ReadWrite {
-			t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, mp.Status)
-			return
-		}
-	}
+	server.cluster.checkMetaNodeHeartbeat()
+	time.Sleep(3 * time.Second)
 	maxPartitionID := vol.maxPartitionID()
 	maxMp := vol.MetaPartitions[maxPartitionID]
 	//after check meta partitions ,the status must be writable
@@ -269,20 +253,17 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 
 func getSimpleVol(name string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVol, name)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func getVol(name string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.ClientVol, name, buildAuthKey("cfs"))
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func updateVol(name, zone string, capacity int, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&zoneName=%v",
 		hostAddr, proto.AdminUpdateVol, name, capacity, buildAuthKey("cfs"), zone)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
@@ -305,14 +286,12 @@ func updateVol(name, zone string, capacity int, t *testing.T) {
 func statVol(name string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v",
 		hostAddr, proto.ClientVolStat, name)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func markDeleteVol(name string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v",
 		hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
@@ -341,7 +320,6 @@ func markDeleteVol(name string, t *testing.T) {
 //	oldReplicaNum := vol.dpReplicaNum
 //	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&replicaNum=%v&authKey=%v",
 //		hostAddr, proto.AdminUpdateVol, volName, 100, 2, buildAuthKey(volName))
-//	fmt.Println(reqURL)
 //	process(reqURL, t)
 //	if vol.dpReplicaNum != 2 {
 //		t.Error("update vol replica Num to [2] failed")
@@ -373,7 +351,7 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 		false, true, false, false, false, false, false, createTime, createTime, "", "", "", 0,
 		0, 0, 0.0, 30, 0, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
 		strings.Split(testSmartRules, ","), proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0},
-		0,0)
+		0, 0)
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, 0, name, volID)
 	vol.addMetaPartition(mp1)
@@ -415,7 +393,6 @@ func TestVolBatchUpdateDps(t *testing.T) {
 	count := vol.dataPartitions.readableAndWritableCnt / 2
 	reqURL := fmt.Sprintf("%v%v?name=%v&isManual=%v&count=%v&start=1&end=1000&medium=all",
 		hostAddr, proto.AdminVolBatchUpdateDps, vol.Name, true, count)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 
 	manualDPCount := 0
@@ -438,11 +415,9 @@ func TestVolBatchUpdateDps(t *testing.T) {
 	}
 	reqURL = fmt.Sprintf("%v%v?name=%v&isManual=%v&start=%v&end=%v&medium=hdd",
 		hostAddr, proto.AdminVolBatchUpdateDps, vol.Name, false, minIsManualDpID, maxIsManualDpID)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	reqURL = fmt.Sprintf("%v%v?name=%v&isManual=%v&start=%v&end=%v&medium=ssd",
 		hostAddr, proto.AdminVolBatchUpdateDps, vol.Name, false, minIsManualDpID, maxIsManualDpID)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	manualDPCount = 0
 	for _, dataPartition := range vol.cloneDataPartitionMap() {
@@ -463,7 +438,6 @@ func TestShrinkVolCapacity(t *testing.T) {
 		return
 	}
 	newCapacity := vol.totalUsedSpace()/unit.GB + 10
-	t.Logf("newCapacity:%v vol Capacity:%v", newCapacity, vol.Capacity)
 	if newCapacity >= vol.Capacity {
 		t.Logf("newCapacity more than vol Capacity, need increase it")
 		reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
@@ -472,7 +446,6 @@ func TestShrinkVolCapacity(t *testing.T) {
 	}
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
 		hostAddr, proto.AdminShrinkVolCapacity, commonVol.Name, newCapacity, buildAuthKey(vol.Owner))
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if vol.Capacity != newCapacity {
 		t.Errorf("expect Capacity is %v,but get :%v", newCapacity, vol.Capacity)

@@ -68,7 +68,6 @@ func snapshotTest(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	t.Logf("snapshot apply index[%v]\n", mdSnapshot.ApplyIndex())
 	s := &Server{}
 
 	var dbStore *raftstore.RocksDBStore
@@ -102,24 +101,20 @@ func snapshotTest(t *testing.T) {
 func addRaftServerTest(addRaftAddr string, id uint64, t *testing.T) {
 	//don't pass id test
 	reqURL := fmt.Sprintf("%v%v?id=&addr=%v", hostAddr, proto.AddRaftNode, addRaftAddr)
-	fmt.Println(reqURL)
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	_, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(string(body))
 }
 
 func removeRaftServerTest(removeRaftAddr string, id uint64, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.RemoveRaftNode, id, removeRaftAddr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }

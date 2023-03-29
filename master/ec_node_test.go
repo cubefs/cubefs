@@ -40,7 +40,6 @@ func TestEC_EcNode(t *testing.T) {
 
 func getEcNodeInfo(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetEcNode, addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -73,12 +72,10 @@ func modifyEcNodeProto(ecnode *ECNode, t *testing.T) {
 func decommissionDiskById(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v&auto=true",
 		hostAddr, proto.DecommissionEcDisk, addr, 1)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func decommissionEcNode(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.DecommissionEcNode, addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }

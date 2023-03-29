@@ -12,24 +12,24 @@ import (
 )
 
 type MockCodecServer struct {
-	nodeID                          uint64
-	TcpAddr                         string
-	httpPort                        string
-	Zone                            string
-	ClusterID                       string
-	Available                       uint64
-	zoneName                        string
-	mc                              *master.MasterClient
-	stopC							chan bool
+	nodeID    uint64
+	TcpAddr   string
+	httpPort  string
+	Zone      string
+	ClusterID string
+	Available uint64
+	zoneName  string
+	mc        *master.MasterClient
+	stopC     chan bool
 }
 
 func NewMockCodecServer(addr string, httpPort string, zoneName string) *MockCodecServer {
 	mcs := &MockCodecServer{
-		TcpAddr:    addr,
-		httpPort:   httpPort,
-		zoneName:   zoneName,
-		mc:         master.NewMasterClient([]string{hostAddr}, false),
-		stopC:      make(chan bool),
+		TcpAddr:  addr,
+		httpPort: httpPort,
+		zoneName: zoneName,
+		mc:       master.NewMasterClient([]string{hostAddr}, false),
+		stopC:    make(chan bool),
 	}
 
 	return mcs
@@ -109,10 +109,8 @@ func (mcs *MockCodecServer) serveConn(rc net.Conn) {
 	switch req.Opcode {
 	case proto.OpCodecNodeHeartbeat:
 		err = mcs.handleHeartbeats(conn, req, adminTask)
-		fmt.Printf("data node [%v] report heartbeat to master,err:%v\n", mcs.TcpAddr, err)
 	case proto.OpIssueMigrationTask:
 		err = mcs.handleMigrationTask(conn, req, adminTask)
-		fmt.Printf("data node [%v] report heartbeat to master,err:%v\n", mcs.TcpAddr, err)
 	default:
 		fmt.Printf("unknown code [%v]\n", req.Opcode)
 	}

@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
@@ -210,8 +211,6 @@ func createDefaultMasterServerForTest() *Server {
 		panic(err)
 	}
 	commonVol = vol
-	fmt.Printf("vol[%v] has created\n", commonVol.Name)
-	fmt.Println("nodeCap is", testServer.cluster.cfg.nodeSetCapacity)
 	if err = createUserWithPolicy(testServer); err != nil {
 		panic(err)
 	}
@@ -224,7 +223,6 @@ func createUserWithPolicy(testServer *Server) (err error) {
 	if cfsUser, err = testServer.user.createKey(param); err != nil {
 		return
 	}
-	fmt.Printf("user[%v] has created\n", cfsUser.UserID)
 	paramTransfer := &proto.UserTransferVolParam{Volume: commonVolName, UserSrc: "cfs", UserDst: "cfs", Force: false}
 	if cfsUser, err = testServer.user.transferVol(paramTransfer); err != nil {
 		return
@@ -275,7 +273,6 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 		return
 	}
 	time.Sleep(5 * time.Second)
-	fmt.Println(server.config.peerAddrs, server.leaderInfo.addr)
 	return server, nil
 }
 
@@ -332,7 +329,6 @@ func TestGetClusterView(t *testing.T) {
 func TestSetMetaNodeThreshold(t *testing.T) {
 	threshold := 0.5
 	reqURL := fmt.Sprintf("%v%v?threshold=%v", hostAddr, proto.AdminSetMetaNodeThreshold, threshold)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if server.cluster.cfg.MetaNodeThreshold != float32(threshold) {
 		t.Errorf("set metanode threshold to %v failed", threshold)
@@ -343,7 +339,6 @@ func TestSetMetaNodeThreshold(t *testing.T) {
 func TestSetDisableAutoAlloc(t *testing.T) {
 	enable := true
 	reqURL := fmt.Sprintf("%v%v?enable=%v", hostAddr, proto.AdminClusterFreeze, enable)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if server.cluster.DisableAutoAllocate != enable {
 		t.Errorf("set disableAutoAlloc to %v failed", enable)
@@ -354,19 +349,16 @@ func TestSetDisableAutoAlloc(t *testing.T) {
 
 func TestGetCluster(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func TestGetIpAndClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func TestGetLimitInfo(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -383,14 +375,12 @@ func processReturnRawReply(reqURL string, t *testing.T) (reply *RawHTTPReply) {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(string(body))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
@@ -414,7 +404,6 @@ func processNoTerminal(reqURL string, t *testing.T) (reply *proto.HTTPReply, err
 		t.Logf("err is %v", err)
 		return
 	}
-	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
 	var body []byte
 	body, err = ioutil.ReadAll(resp.Body)
@@ -422,10 +411,8 @@ func processNoTerminal(reqURL string, t *testing.T) (reply *proto.HTTPReply, err
 		t.Logf("err is %v", err)
 		return
 	}
-	t.Log(string(body))
 	if resp.StatusCode != http.StatusOK {
 		err = fmt.Errorf("status code[%v]", resp.StatusCode)
-		t.Log(err.Error())
 		return
 	}
 	reply = &proto.HTTPReply{}
@@ -435,7 +422,6 @@ func processNoTerminal(reqURL string, t *testing.T) (reply *proto.HTTPReply, err
 	}
 	if reply.Code != 0 {
 		err = fmt.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
-		t.Log(err.Error())
 		return
 	}
 	return
@@ -447,14 +433,12 @@ func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	t.Log(string(body))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
@@ -481,20 +465,17 @@ func TestDisk(t *testing.T) {
 func decommissionDisk(addr, path string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v",
 		hostAddr, proto.DecommissionDisk, addr, path)
-	fmt.Println(reqURL)
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(string(body))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
@@ -512,20 +493,17 @@ func decommissionDisk(addr, path string, t *testing.T) {
 func decommissionDiskWithAuto(addr, path string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v&auto=true",
 		hostAddr, proto.DecommissionDisk, addr, path)
-	fmt.Println(reqURL)
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(string(body))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
@@ -624,7 +602,6 @@ func TestGetVolSimpleInfo(t *testing.T) {
 func TestCreateVol(t *testing.T) {
 	name := "test_create_vol"
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v", hostAddr, proto.AdminCreateVol, name, testZone2)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	userInfo, err := server.user.getUserInfo("cfstest")
 	if err != nil {
@@ -726,11 +703,10 @@ func TestDataPartitionDecommissionWithoutReplica(t *testing.T) {
 	partition.isRecover = false
 }
 
-//func TestGetAllVols(t *testing.T) {
-//	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
-//	process(reqURL, t)
-//}
-//
+//	func TestGetAllVols(t *testing.T) {
+//		reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
+//		process(reqURL, t)
+//	}
 func TestGetMetaPartitions(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientMetaPartitions, commonVolName)
 	process(reqURL, t)
@@ -806,7 +782,6 @@ func TestResetDataReplica(t *testing.T) {
 		}
 		activeHosts = append(activeHosts, host)
 	}
-	t.Logf("pid[%v] origin hosts[%v], active hosts[%v]", partition.PartitionID, partition.Hosts, activeHosts)
 	partition.isRecover = false
 	reqURL := fmt.Sprintf("%v%v?id=%v", hostAddr, proto.AdminResetDataPartition, partition.PartitionID)
 	process(reqURL, t)
@@ -939,9 +914,6 @@ func TestAddMetaLearner(t *testing.T) {
 		partition.RUnlock()
 		return
 	}
-	for i, replica := range partition.Replicas {
-		fmt.Println(fmt.Sprintf("replica[%v] addr: %v", i, replica.Addr))
-	}
 	partition.RUnlock()
 	// remove
 	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
@@ -984,9 +956,6 @@ func TestPromoteMetaLearner(t *testing.T) {
 		t.Errorf("hosts[%v] should contains msAddr[%v], but learners[%v] shouldn't contain", partition.Hosts, msAddr, partition.Learners)
 		partition.RUnlock()
 		return
-	}
-	for i, replica := range partition.Replicas {
-		fmt.Println(fmt.Sprintf("replica[%v] addr: %v", i, replica.Addr))
 	}
 	partition.RUnlock()
 	partition.IsRecover = false
@@ -1041,7 +1010,6 @@ func TestResetMetaReplica(t *testing.T) {
 func TestAddToken(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v?name=%v&tokenType=%v&authKey=%v",
 		hostAddr, proto.TokenAddURI, commonVol.Name, proto.ReadWriteToken, buildAuthKey("cfs"))
-	fmt.Println(reqUrl)
 	process(reqUrl, t)
 }
 
@@ -1049,7 +1017,6 @@ func TestDelToken(t *testing.T) {
 	for _, token := range commonVol.tokens {
 		reqUrl := fmt.Sprintf("%v%v?name=%v&token=%v&authKey=%v",
 			hostAddr, proto.TokenDelURI, commonVol.Name, token.Value, buildAuthKey("cfs"))
-		fmt.Println(reqUrl)
 		process(reqUrl, t)
 		_, ok := commonVol.tokens[token.Value]
 		if ok {
@@ -1059,7 +1026,6 @@ func TestDelToken(t *testing.T) {
 
 		reqUrl = fmt.Sprintf("%v%v?name=%v&tokenType=%v&authKey=%v",
 			hostAddr, proto.TokenAddURI, commonVol.Name, token.TokenType, buildAuthKey("cfs"))
-		fmt.Println(reqUrl)
 		process(reqUrl, t)
 	}
 }
@@ -1075,7 +1041,6 @@ func TestUpdateToken(t *testing.T) {
 
 		reqUrl := fmt.Sprintf("%v%v?name=%v&token=%v&tokenType=%v&authKey=%v",
 			hostAddr, proto.TokenUpdateURI, commonVol.Name, token.Value, tokenType, buildAuthKey("cfs"))
-		fmt.Println(reqUrl)
 		process(reqUrl, t)
 		token := commonVol.tokens[token.Value]
 		if token.TokenType != tokenType {
@@ -1089,29 +1054,24 @@ func TestGetToken(t *testing.T) {
 	for _, token := range commonVol.tokens {
 		reqUrl := fmt.Sprintf("%v%v?name=%v&token=%v",
 			hostAddr, proto.TokenGetURI, commonVol.Name, token.Value)
-		fmt.Println(reqUrl)
 		process(reqUrl, t)
 	}
 }
 
 func TestClusterStat(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminClusterStat)
-	fmt.Println(reqUrl)
 	process(reqUrl, t)
 }
 
 func TestClusterStatWithZoneTag(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v?zoneTag=ssd", hostAddr, proto.AdminClusterStat)
-	fmt.Println(reqUrl)
 	process(reqUrl, t)
 	reqUrl = fmt.Sprintf("%v%v?zoneTag=hdd", hostAddr, proto.AdminClusterStat)
-	fmt.Println(reqUrl)
 	process(reqUrl, t)
 }
 
 func TestListVols(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?keywords=%v", hostAddr, proto.AdminListVols, commonVolName)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -1127,14 +1087,12 @@ func post(reqURL string, data []byte, t *testing.T) (reply *proto.HTTPReply) {
 		t.Errorf("post err: %v", err)
 		return
 	}
-	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(string(body))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
@@ -1159,13 +1117,11 @@ func TestCreateUser(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(reqURL)
 	post(reqURL, data, t)
 }
 
 func TestGetUser(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?user=%v", hostAddr, proto.UserGetInfo, testUserID)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -1177,7 +1133,6 @@ func TestUpdateUser(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(reqURL)
 	post(reqURL, data, t)
 	userInfo, err := server.user.getUserInfo(testUserID)
 	if err != nil {
@@ -1204,7 +1159,6 @@ func TestUpdateUser(t *testing.T) {
 
 func TestGetAKInfo(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?ak=%v", hostAddr, proto.UserGetAKInfo, ak)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -1216,7 +1170,6 @@ func TestUpdatePolicy(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(reqURL)
 	post(reqURL, data, t)
 	userInfo, err := server.user.getUserInfo(testUserID)
 	if err != nil {
@@ -1237,7 +1190,6 @@ func TestRemovePolicy(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(reqURL)
 	post(reqURL, data, t)
 	userInfo, err := server.user.getUserInfo(testUserID)
 	if err != nil {
@@ -1258,7 +1210,6 @@ func TestTransferVol(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	fmt.Println(reqURL)
 	post(reqURL, data, t)
 	userInfo1, err := server.user.getUserInfo(testUserID)
 	if err != nil {
@@ -1296,7 +1247,6 @@ func TestDeleteVolPolicy(t *testing.T) {
 		return
 	}
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UserDeleteVolPolicy, commonVolName)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	userInfo1, err := server.user.getUserInfo(testUserID)
 	if err != nil {
@@ -1320,13 +1270,11 @@ func TestDeleteVolPolicy(t *testing.T) {
 
 func TestListUser(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?keywords=%v", hostAddr, proto.UserList, "test")
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func TestDeleteUser(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?user=%v", hostAddr, proto.UserDelete, testUserID)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if _, err := server.user.getUserInfo(testUserID); err != proto.ErrUserNotExists {
 		t.Errorf("expect err ErrUserNotExists, but err is %v", err)
@@ -1336,7 +1284,6 @@ func TestDeleteUser(t *testing.T) {
 
 func TestListUsersOfVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UsersOfVol, "test_create_vol")
-	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
@@ -1361,7 +1308,6 @@ func TestMergeNodeSetAPI(t *testing.T) {
 	fmt.Printf("before merge dataNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
 	reqURL := fmt.Sprintf("%v%v?nodeType=%v&zoneName=%v&source=%v&target=%v&addr=%v", hostAddr, proto.AdminMergeNodeSet,
 		"dataNode", zoneNodeSet1.name, nodeSet1.ID, nodeSet2.ID, mds6Addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	fmt.Printf("after merge dataNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
 	_, existInNodeSet1 := nodeSet1.dataNodes.Load(mds6Addr)
@@ -1371,7 +1317,6 @@ func TestMergeNodeSetAPI(t *testing.T) {
 	fmt.Printf("before merge metaNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
 	reqURL = fmt.Sprintf("%v%v?nodeType=%v&zoneName=%v&source=%v&target=%v&addr=%v", hostAddr, proto.AdminMergeNodeSet,
 		"metaNode", zoneNodeSet1.name, nodeSet1.ID, nodeSet2.ID, mms9Addr)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	fmt.Printf("after merge metaNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
 	_, existInNodeSet1 = nodeSet1.metaNodes.Load(mms9Addr)
@@ -1382,14 +1327,12 @@ func TestMergeNodeSetAPI(t *testing.T) {
 	fmt.Printf("before batch merge dataNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
 	reqURL = fmt.Sprintf("%v%v?nodeType=%v&zoneName=%v&source=%v&target=%v&count=2", hostAddr, proto.AdminMergeNodeSet,
 		"dataNode", zoneNodeSet1.name, nodeSet1.ID, nodeSet2.ID)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	fmt.Printf("after batch merge dataNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
 
 	fmt.Printf("before batch merge metaNode [nodeSet:metaNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.metaNodeCount(), nodeSet2.ID, nodeSet2.metaNodeCount())
 	reqURL = fmt.Sprintf("%v%v?nodeType=%v&zoneName=%v&source=%v&target=%v&count=9", hostAddr, proto.AdminMergeNodeSet,
 		"metaNode", zoneNodeSet1.name, nodeSet1.ID, nodeSet2.ID)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	fmt.Printf("after batch merge metaNode [nodeSet:metaNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.metaNodeCount(), nodeSet2.ID, nodeSet2.metaNodeCount())
 
@@ -1448,20 +1391,16 @@ func TestCheckMergeZoneNodeset(t *testing.T) {
 	batchCreateMetaNodeForNodeSet(topo, nodeSet28, zoneNodeSet2.name, clusterID, "127.0.0.1:227", 15)
 	batchCreateMetaNodeForNodeSet(topo, nodeSet29, zoneNodeSet2.name, clusterID, "127.0.0.1:228", 13)
 
-	fmt.Println("before auto merge, nodeSetCapacity:", server.cluster.cfg.nodeSetCapacity)
 	getZoneNodeSetStatus(zoneNodeSet1)
 	getZoneNodeSetStatus(zoneNodeSet2)
 	server.cluster.checkMergeZoneNodeset()
-	fmt.Println("after auto merge ")
 	getZoneNodeSetStatus(zoneNodeSet1)
 	getZoneNodeSetStatus(zoneNodeSet2)
-	fmt.Println("before auto merge with many times, nodeSetCapacity:", server.cluster.cfg.nodeSetCapacity)
 	getZoneNodeSetStatus(zoneNodeSet1)
 	getZoneNodeSetStatus(zoneNodeSet2)
 	for i := 0; i < 30; i++ {
 		server.cluster.checkMergeZoneNodeset()
 	}
-	fmt.Println("after auto merge with many times")
 	getZoneNodeSetStatus(zoneNodeSet1)
 	getZoneNodeSetStatus(zoneNodeSet2)
 
@@ -1470,7 +1409,6 @@ func TestCheckMergeZoneNodeset(t *testing.T) {
 func TestApplyAndGetVolWriteMutex(t *testing.T) {
 	// apply volume write mutex
 	applyReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v&addr=127.0.0.1:10090&slaves=127.0.0.1:10094,127.0.0.1:10095&addslave=127.0.0.1:10096", hostAddr, proto.AdminApplyVolMutex, commonVolName)
-	fmt.Println(applyReqURL)
 	applyReply := process(applyReqURL, t)
 	if applyReply.Data.(string) != "apply volume mutex success" {
 		t.Errorf("apply volume mutex failed, responseInfo: %v", applyReply.Data)
@@ -1478,7 +1416,6 @@ func TestApplyAndGetVolWriteMutex(t *testing.T) {
 
 	// get volume write mutex
 	getReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
-	fmt.Println(getReqURL)
 	reply := processReturnRawReply(getReqURL, t)
 	mutexInfo := &proto.VolWriteMutexInfo{}
 	if err := json.Unmarshal(reply.Data, mutexInfo); err != nil {
@@ -1497,7 +1434,6 @@ func TestApplyAndGetVolWriteMutex(t *testing.T) {
 func TestReleaseAndGetVolWriteMutex(t *testing.T) {
 	// release volume write mutex
 	releaseReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v&addr=127.0.0.1:10090", hostAddr, proto.AdminReleaseVolMutex, commonVolName)
-	fmt.Println(releaseReqURL)
 	releaseReply := process(releaseReqURL, t)
 	if releaseReply.Data.(string) != "release volume mutex success" {
 		t.Errorf("Release volume write mutest failed, errorInfo: %v", releaseReply.Data)
@@ -1505,7 +1441,6 @@ func TestReleaseAndGetVolWriteMutex(t *testing.T) {
 
 	// get volume write mutex
 	getReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
-	fmt.Println(getReqURL)
 	reply := processReturnRawReply(getReqURL, t)
 	mutexInfo := &proto.VolWriteMutexInfo{}
 	if err := json.Unmarshal(reply.Data, mutexInfo); err != nil {
@@ -1525,14 +1460,12 @@ func TestSetNodeInfoHandler(t *testing.T) {
 
 	deleteRecord := 10
 	reqURL := fmt.Sprintf("%v%v?fixTinyDeleteRecordKey=%v", hostAddr, proto.AdminSetNodeInfo, deleteRecord)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if server.cluster.dnFixTinyDeleteRecordLimit != uint64(deleteRecord) {
 		t.Errorf("set fixTinyDeleteRecordKey to %v failed", deleteRecord)
 		return
 	}
 	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
-	fmt.Println(reqURL)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
 
@@ -1548,7 +1481,6 @@ func TestSetNodeInfoHandler(t *testing.T) {
 func TestSetVolConvertModeOfDPConvertMode(t *testing.T) {
 	volName := commonVolName
 	reqURL := fmt.Sprintf("%v%v?name=%v&partitionType=dataPartition&convertMode=1", hostAddr, proto.AdminSetVolConvertMode, volName)
-	t.Log(reqURL)
 	process(reqURL, t)
 	volumeSimpleInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
 	if err != nil {
@@ -1560,7 +1492,6 @@ func TestSetVolConvertModeOfDPConvertMode(t *testing.T) {
 	}
 
 	reqURL = fmt.Sprintf("%v%v?name=%v&partitionType=dataPartition&convertMode=0", hostAddr, proto.AdminSetVolConvertMode, volName)
-	t.Log(reqURL)
 	process(reqURL, t)
 	volumeSimpleInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
 	if err != nil {
@@ -1575,7 +1506,6 @@ func TestSetVolConvertModeOfDPConvertMode(t *testing.T) {
 func TestSetVolConvertModeOfMPConvertMode(t *testing.T) {
 	volName := commonVolName
 	reqURL := fmt.Sprintf("%v%v?name=%v&partitionType=metaPartition&convertMode=1", hostAddr, proto.AdminSetVolConvertMode, volName)
-	t.Log(reqURL)
 	process(reqURL, t)
 	volumeSimpleInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
 	if err != nil {
@@ -1587,7 +1517,6 @@ func TestSetVolConvertModeOfMPConvertMode(t *testing.T) {
 	}
 
 	reqURL = fmt.Sprintf("%v%v?name=%v&partitionType=metaPartition&convertMode=0", hostAddr, proto.AdminSetVolConvertMode, volName)
-	t.Log(reqURL)
 	process(reqURL, t)
 	volumeSimpleInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
 	if err != nil {
@@ -1607,7 +1536,6 @@ func TestCreateRegion(t *testing.T) {
 	regionMap[testRegion4] = proto.SlaveRegion
 	for regionName, regionType := range regionMap {
 		reqURL := fmt.Sprintf("%v%v?regionName=%v&regionType=%d", hostAddr, proto.CreateRegion, regionName, regionType)
-		t.Log(reqURL)
 		process(reqURL, t)
 	}
 
@@ -1620,7 +1548,6 @@ func TestCreateRegion(t *testing.T) {
 		t.Errorf("expect regionCount is %v, but is %v", len(regionMap), len(regionList))
 	}
 	for _, regionView := range regionList {
-		t.Log(*regionView)
 		regionType, ok := regionMap[regionView.Name]
 		if !ok {
 			t.Errorf("get unexpect region:%v ", regionView.Name)
@@ -1638,7 +1565,6 @@ func TestZoneSetRegion(t *testing.T) {
 	zoneRegionMap[testZone2] = testRegion3
 	for zoneName, regionName := range zoneRegionMap {
 		reqURL := fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, zoneName, regionName)
-		t.Log(reqURL)
 		process(reqURL, t)
 	}
 
@@ -1682,7 +1608,6 @@ func TestDefaultRegion(t *testing.T) {
 			if !contains(regionView.Zones, testZone9) {
 				t.Errorf("zone:%v is expected in default region but is not", testZone9)
 			}
-			t.Log(*regionView)
 			break
 		}
 	}
@@ -1697,15 +1622,12 @@ func TestUpdateRegion(t *testing.T) {
 	regionName := testRegion4
 	// add one zone
 	reqURL := fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, testZone4, regionName)
-	t.Log(reqURL)
 	process(reqURL, t)
 	// update region type
 	reqURL = fmt.Sprintf("%v%v?regionName=%v&regionType=%d", hostAddr, proto.UpdateRegion, regionName, proto.MasterRegion)
-	t.Log(reqURL)
 	process(reqURL, t)
 	// add a new zone
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, testZone5, regionName)
-	t.Log(reqURL)
 	process(reqURL, t)
 
 	regionView, err := mc.AdminAPI().GetRegionView(regionName)
@@ -1713,7 +1635,6 @@ func TestUpdateRegion(t *testing.T) {
 		t.Errorf("region:%v GetRegionView err:%v", regionName, err)
 		return
 	}
-	t.Log(*regionView)
 	if regionView.Name != regionName {
 		t.Errorf("expect regionName is %v, but is %v", regionName, regionView.Name)
 		return
@@ -1738,7 +1659,6 @@ func getTopologyView() (topologyView TopologyView, err error) {
 	if err != nil {
 		return
 	}
-	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -1765,7 +1685,6 @@ func TestVolDpWriteableThreshold(t *testing.T) {
 	owner := "cfs"
 	dpWriteableThreshold := 0.6
 	reqURL := fmt.Sprintf("%v%v?name=%v&owner=%v&capacity=100&zoneName=%v&dpWriteableThreshold=%v", hostAddr, proto.AdminCreateVol, name, owner, testZone2, dpWriteableThreshold)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
@@ -1779,7 +1698,6 @@ func TestVolDpWriteableThreshold(t *testing.T) {
 	// update vol dpWriteableThreshold
 	dpWriteableThreshold = 0.7
 	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=%v&capacity=100&dpWriteableThreshold=%v", hostAddr, proto.AdminUpdateVol, name, buildAuthKey("cfs"), dpWriteableThreshold)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err = server.cluster.getVol(name)
 	if err != nil {
@@ -1890,8 +1808,6 @@ func TestAddDataReplicaForCrossRegionVol(t *testing.T) {
 		t.Fatalf("getVol:%v err:%v", quorumVolName, err)
 		return
 	}
-	t.Logf("quorumVol:%v zoneName:%v dpReplicaNum:%v CrossRegionHAType:%v",
-		quorumVol.Name, quorumVol.zoneName, quorumVol.dpReplicaNum, quorumVol.CrossRegionHAType)
 	if len(quorumVol.dataPartitions.partitions) == 0 {
 		t.Errorf("vol:%v no data partition ", quorumVolName)
 		return
@@ -2037,7 +1953,6 @@ func TestCreateCrossRegionVol(t *testing.T) {
 	// create a cross region vol
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicaNum=5&capacity=200&owner=cfs&mpCount=3&zoneName=%v&crossRegion=1",
 		hostAddr, proto.AdminCreateVol, volName, zoneName)
-	t.Log(reqURL)
 	process(reqURL, t)
 	if vol, err = server.cluster.getVol(volName); err != nil || vol == nil {
 		t.Errorf("getVol:%v err:%v", volName, err)
@@ -2073,7 +1988,6 @@ func validateCrossRegionDataPartition(dataPartition *DataPartition, t *testing.T
 		t.Errorf("getMasterAndSlaveRegionAddrsFromDataNodeAddrs err:%v", err)
 		return
 	}
-	t.Logf("dp Hosts:%v masterRegionAddrs:%v slaveRegionAddrs:%v ", dataPartitionHosts, masterRegionAddrs, slaveRegionAddrs)
 	if len(masterRegionAddrs) != 3 || len(slaveRegionAddrs) != 2 {
 		t.Errorf("expect masterRegionAddrs len,slaveRegionAddrs len is (3,2) but is (%v,%v) ", len(masterRegionAddrs), len(slaveRegionAddrs))
 		return
@@ -2104,7 +2018,6 @@ func validateCrossRegionMetaPartition(metaPartition *MetaPartition, t *testing.T
 		t.Errorf("getMasterAndSlaveRegionAddrsFromMetaNodeAddrs err:%v", err)
 		return
 	}
-	t.Logf("mp Hosts:%v learnerHosts:%v masterRegionAddrs:%v slaveRegionAddrs:%v", metaPartitionHosts, learnerHosts, masterRegionAddrs, slaveRegionAddrs)
 	if len(masterRegionAddrs) != 3 || len(slaveRegionAddrs) != 2 {
 		t.Errorf("expect masterRegionAddrs len,slaveRegionAddrs len is (3,2) but is (%v,%v)", len(masterRegionAddrs), len(slaveRegionAddrs))
 		return
@@ -2136,9 +2049,6 @@ func TestSetVolMinRWPartition(t *testing.T) {
 	}
 	if volumeSimpleInfo.MinWritableMPNum != minRwMPNum || volumeSimpleInfo.MinWritableDPNum != minRwDPNum {
 		t.Errorf("expect volName:%v MinWritableMPNum,MinWritableDPNum is (%v,%v), but is (%v,%v)",
-			volName, minRwMPNum, minRwDPNum, volumeSimpleInfo.MinWritableMPNum, volumeSimpleInfo.MinWritableDPNum)
-	} else {
-		t.Logf("volName:%v MinWritableMPNum,MinWritableDPNum is (%v,%v), equal to expect value: (%v,%v)",
 			volName, minRwMPNum, minRwDPNum, volumeSimpleInfo.MinWritableMPNum, volumeSimpleInfo.MinWritableDPNum)
 	}
 }
@@ -2217,7 +2127,6 @@ func validateCreateDataPartition(volName, designatedZoneName string, createCount
 			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 				validateCrossRegionDataPartition(dataPartition, t)
 			}
-			t.Logf("index:%v newDpID:%v dpZones:%v expectZoneName:%v", newDpCount, dataPartition.PartitionID, dpZones, expectZoneName)
 		}
 	}
 	if newDpCount != createCount {
@@ -2229,14 +2138,12 @@ func validateCreateDataPartition(volName, designatedZoneName string, createCount
 func TestSetReadDirLimitNum(t *testing.T) {
 	readDirLimitNum := 500000
 	reqURL := fmt.Sprintf("%v%v?metaNodeReadDirLimit=%v", hostAddr, proto.AdminSetNodeInfo, readDirLimitNum)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if server.cluster.cfg.MetaNodeReadDirLimitNum != uint64(readDirLimitNum) {
 		t.Errorf("set readDirLimitNum to %v failed", readDirLimitNum)
 		return
 	}
 	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
-	fmt.Println(reqURL)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
 
@@ -2253,14 +2160,12 @@ func TestSetDataNodeRepairTaskCountZoneLimit(t *testing.T) {
 	limitNum := uint64(10)
 	zone := testZone1
 	reqURL := fmt.Sprintf("%v%v?%v=%v&zoneName=%v", hostAddr, proto.AdminSetNodeInfo, dataNodeRepairTaskCntZoneKey, limitNum, zone)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if server.cluster.cfg.DataNodeRepairTaskCountZoneLimit[zone] != limitNum {
 		t.Errorf("set zone:%v DataNodeRepairTaskCountZoneLimit to %v failed", zone, limitNum)
 		return
 	}
 	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
-	fmt.Println(reqURL)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
 	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
@@ -2285,7 +2190,6 @@ func TestSetDataNodeRepairTaskLimit(t *testing.T) {
 	ssdLimitNum := uint64(29)
 	clusterLimitNum := uint64(5)
 	reqURL := fmt.Sprintf("%v%v?%v=%v&%v=%v", hostAddr, proto.AdminSetNodeInfo, dataNodeRepairTaskSSDKey, ssdLimitNum, dataNodeRepairTaskCountKey, clusterLimitNum)
-	fmt.Println(reqURL)
 	process(reqURL, t)
 	if server.cluster.cfg.DataNodeRepairSSDZoneTaskCount != ssdLimitNum {
 		t.Errorf("set DataNodeRepairSSDZoneTaskCount failed expect:%v, real:%v", ssdLimitNum, server.cluster.cfg.DataNodeRepairSSDZoneTaskCount)
@@ -2296,7 +2200,6 @@ func TestSetDataNodeRepairTaskLimit(t *testing.T) {
 		return
 	}
 
-	fmt.Println(limitInfoReqURL)
 	reply = processReturnRawReply(limitInfoReqURL, t)
 	limitInfo = &proto.LimitInfo{}
 	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
@@ -2365,9 +2268,7 @@ func TestIDCAPI(t *testing.T) {
 	)
 	reqURL = fmt.Sprintf("%v%v?name1=%v", hostAddr, proto.CreateIDC, idc1Name)
 	_, err = processNoTerminal(reqURL, t)
-	if err == nil {
-		t.FailNow()
-	}
+	assert.Contains(t, err.Error(), "parameter name not found")
 	reqURL = fmt.Sprintf("%v%v?name=%v", hostAddr, proto.CreateIDC, "")
 	_, err = processNoTerminal(reqURL, t)
 	if err == nil {
@@ -2382,52 +2283,44 @@ func TestIDCAPI(t *testing.T) {
 	}
 
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName1=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd")
-	t.Log(reqURL)
 	_, err = processNoTerminal(reqURL, t)
 	if err == nil {
 		t.FailNow()
 	}
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, "zone11", idc1Name, "hdd")
-	t.Log(reqURL)
 	_, err = processNoTerminal(reqURL, t)
 	if err == nil {
 		t.FailNow()
 	}
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd1")
-	t.Log(reqURL)
 	_, err = processNoTerminal(reqURL, t)
 	if err == nil {
 		t.FailNow()
 	}
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType1=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd")
-	t.Log(reqURL)
 	_, err = processNoTerminal(reqURL, t)
 	if err != nil {
 		t.Error(err.Error())
 		t.FailNow()
 	}
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName1=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd")
-	t.Log(reqURL)
 	_, err = processNoTerminal(reqURL, t)
 	if err != nil {
 		t.Error(err.Error())
 		t.FailNow()
 	}
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone2, idc1Name, "ssd")
-	t.Log(reqURL)
 	_, err = processNoTerminal(reqURL, t)
 	if err != nil {
 		t.Error(err.Error())
 		t.FailNow()
 	}
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, "", idc1Name, "hdd")
-	t.Log(reqURL)
 	_, err = processNoTerminal(reqURL, t)
 	if err == nil {
 		t.FailNow()
 	}
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, "", "ssd")
-	t.Log(reqURL)
 	_, err = processNoTerminal(reqURL, t)
 	if err != nil {
 		t.Error(err.Error())
@@ -2885,6 +2778,7 @@ func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
 	addDataServer(mds11Addr, testZone6)
 	addDataServer(mds12Addr, testZone6)
 	addDataServer(mds13Addr, testZone6)
+
 vol: zone1-ssd
 idc1: zone1-ssd zone1-hdd zone3-hdd
 */
@@ -3007,6 +2901,7 @@ func TestGetTargetAddressForDataPartitionSmartCase2(t *testing.T) {
 	addDataServer(mds11Addr, testZone6)
 	addDataServer(mds12Addr, testZone6)
 	addDataServer(mds13Addr, testZone6)
+
 vol: zone1-ssd zone3-ssd
 idc1: zone1-ssd zone3-sdd zone2-hdd
 */
@@ -3121,6 +3016,7 @@ func TestGetTargetAddressForDataPartitionSmartCase3(t *testing.T) {
 	addDataServer(mds11Addr, testZone6)
 	addDataServer(mds12Addr, testZone6)
 	addDataServer(mds13Addr, testZone6)
+
 vol: zone1-ssd zone3-ssd
 idc1: zone1-ssd zone2-hdd
 idc2: zone3-ssd zone6-hdd
@@ -3260,6 +3156,7 @@ func TestGetTargetAddressForDataPartitionSmartCase4(t *testing.T) {
 	addDataServer(mds11Addr, testZone6)
 	addDataServer(mds12Addr, testZone6)
 	addDataServer(mds13Addr, testZone6)
+
 vol: zone2-ssd zone3-ssd
 idc1: zone2-ssd zone7-hdd zone8-hdd
 idc2: zone3-ssd zone6-hdd
@@ -3465,6 +3362,7 @@ func TestSetMonitorTime(t *testing.T) {
 	addDataServer(mds11Addr, testZone6)
 	addDataServer(mds12Addr, testZone6)
 	addDataServer(mds13Addr, testZone6)
+
 vol: zone1-ssd zone3-ssd zone7-ssd
 idc1: zone7-ssd zone2-hdd
 idc2: zone3-ssd zone6-hdd
@@ -3641,6 +3539,7 @@ func TestGetTargetAddressForDataPartitionSmartCase6(t *testing.T) {
 
 /*
 master-region:
+
 	zone1:
 		datanode:
 			127.0.0.1:9101
@@ -3657,6 +3556,7 @@ master-region:
 			127.0.0.1:8115
 
 slave-region:
+
 	zone3:
 		datanode:
 			127.0.0.1:9107
