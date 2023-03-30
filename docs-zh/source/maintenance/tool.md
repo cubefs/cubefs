@@ -41,7 +41,7 @@ CLI主要分为六类管理命令：
 ./cfs-cli cluster stat          #按区域获取元数据和数据节点的使用量、状态等
 ./cfs-cli cluster freeze [true/false]        #是否冻结集群，设置为 `true` 冻结后，当partition写满，集群不会自动分配新的partition
 ./cfs-cli cluster threshold [float]     #设置集群中每个MetaNode的内存阈值
-./cli cluster cluster set [flags]    #设置集群的参数.
+./cfs-cli cluster cluster set [flags]    #设置集群的参数.
 ```
 
 ### 元数据节点管理
@@ -66,7 +66,7 @@ CLI主要分为六类管理命令：
 
 ``` bash
 ./cfs-cli datapartition info [Partition ID]        #获取指定data partition的信息
-./cli datapartition decommission [Address] [Partition ID]   #将目标节点上的指定data partition分片下线，并自动转移至其他可用节点
+./cfs-cli datapartition decommission [Address] [Partition ID]   #将目标节点上的指定data partition分片下线，并自动转移至其他可用节点
 ./cfs-cli datapartition add-replica [Address] [Partition ID]    #在目标节点新增一个data partition分片
 ./cfs-cli datapartition del-replica [Address] [Partition ID]    #删除目标节点上的data partition分片
 ./cfs-cli datapartition check    #故障诊断，查找多半分片不可用和分片缺失的data partition
@@ -76,7 +76,7 @@ CLI主要分为六类管理命令：
 
 ``` bash
 ./cfs-cli metapartition info [Partition ID]        #获取指定meta partition的信息
-./cli metapartition decommission [Address] [Partition ID]   #将目标节点上的指定meta partition分片下线，并自动转移至其他可用节点
+./cfs-cli metapartition decommission [Address] [Partition ID]   #将目标节点上的指定meta partition分片下线，并自动转移至其他可用节点
 ./cfs-cli metapartition add-replica [Address] [Partition ID]    #在目标节点新增一个meta partition分片
 ./cfs-cli metapartition del-replica [Address] [Partition ID]    #删除目标节点上的meta partition分片
 ./cfs-cli metapartition check    #故障诊断，查找多半分片不可用和分片缺失的meta partition
@@ -158,7 +158,7 @@ Flags：
 ```
 
 ``` bash
-./cli volume update                                     #更新集群的参数
+./cfs-cli volume update                                     #更新集群的参数
 Flags:
     --cache-action string      Specify low volume cacheAction (default 0)
     --cache-capacity string    Specify low volume capacity[Unit: GB]

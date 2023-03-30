@@ -12,7 +12,7 @@
 
 ### 审计日志格式
 
-```json
+```text
 [集群名（master域名或者ip），卷名，subdir，mountpoint，时间戳，clientip，client hostname，操作类型op(创建、删除、Rename)，源路径，目标路径，错误信息，操作耗时，源文件inode, 目的文件inode]
 ```
 
@@ -38,11 +38,11 @@ curl -v "http://192.168.0.2:17410/auditlog/enable?path=/cfs/log&prefix=client2&l
 `192.168.0.2`为挂载点客户端的ip地址，下同
 :::
 
-| 参数   | 类型     | 描述     |
-|------|--------|--------|
-| path | string | 审计日志目录 |
-| prefix | string | 制定审计日志的前缀目录，可以是模块名或者“audit”，用来区分流水日志和审计日志的目录 |
-| logsize | uint32 | 用来设置日志滚动的size阈值，不设置默认为200MB |
+| 参数      | 类型     | 描述                                           |
+|---------|--------|----------------------------------------------|
+| path    | string | 审计日志目录                                       |
+| prefix  | string | 制定审计日志的前缀目录，可以是模块名或者“audit”，用来区分流水日志和审计日志的目录 |
+| logsize | uint32 | 用来设置日志滚动的size阈值，不设置默认为200MB                  |
 
 #### 关闭审计日志
 
