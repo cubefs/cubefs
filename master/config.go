@@ -149,6 +149,7 @@ type clusterConfig struct {
 	MetaRaftLogCap                      int64 //
 	MetaSyncWALOnUnstableEnableState    bool
 	DataSyncWALOnUnstableEnableState    bool
+	DisableStrictVolZone                bool
 	ReuseMPInodeCountThreshold          float64
 	ReuseMPDentryCountThreshold         float64
 	ReuseMPDelInodeCountThreshold       float64

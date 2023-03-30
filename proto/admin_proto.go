@@ -241,6 +241,7 @@ const (
 	MetaRaftLogCapKey              = "metaRaftLogCap"
 	MetaSyncWalEnableStateKey      = "metaWalSyncEnableState"
 	DataSyncWalEnableStateKey      = "dataWalSyncEnableState"
+	DisableStrictVolZoneKey        = "disableStrictVolZone"
 	ReuseMPInodeCountThresholdKey  = "reuseMPInodeCountThreshold"
 	ReuseMPDentryCountThresholdKey = "reuseMPDentryCountThreshold"
 	ReuseMPDelInoCountThresholdKey = "reuseMPDelInodeCountThreshold"
@@ -553,6 +554,7 @@ type LimitInfo struct {
 
 	MetaSyncWALOnUnstableEnableState bool
 	DataSyncWALOnUnstableEnableState bool
+	DisableStrictVolZone             bool
 
 	ReuseMPInodeCountThreshold  float64
 	ReuseMPDentryCountThreshold float64
@@ -1242,6 +1244,7 @@ type RateLimitInfo struct {
 	MetaRaftLogCap                   int64
 	MetaSyncWALEnableState           int64
 	DataSyncWALEnableState           int64
+	DisableStrictVolZone             int64
 	ReuseMPInodeCountThreshold       float64
 	ReuseMPDentryCountThreshold      float64
 	ReuseMPDelInoCountThreshold      float64

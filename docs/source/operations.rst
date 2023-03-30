@@ -9,7 +9,7 @@ Operations Guides
 
     The number of inodes is inconsistent. When writing data, as long as two of the three replicas are successful, it will be considered successful. So there will be inconsistencies in the three replicas. Check the logs for specific reasons.
 
-3. Log information：clusterID[xxx] addr[xxx]_op[xx] has no response util time out：
+3. Log information：clusterID[xxx] addr[xxx]_op[xx] has no response until time out：
 
     During the [op] operation, the connection to the node at this address timed out. Solution: Check the network connectivity; see if the service process is still there.
 

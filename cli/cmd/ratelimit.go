@@ -225,6 +225,11 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			} else if info.DataSyncWALEnableState == 1 {
 				msg += fmt.Sprintf("DN WAL Sync On Unstable      : enable, ")
 			}
+			if info.DisableStrictVolZone == 0 {
+				msg += fmt.Sprintf("Strict Vol Zone:enable, ")
+			} else if info.DisableStrictVolZone == 1 {
+				msg += fmt.Sprintf("Strict Vol Zone:disable, ")
+			}
 
 			if info.ReuseMPInodeCountThreshold > 0 {
 				msg += fmt.Sprintf("ReuseMP Inode Count Threshold: %v, ", info.ReuseMPInodeCountThreshold)
@@ -304,6 +309,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.MetaRaftLogCap, "metaRaftLogCap", -1, "meta node raft log cap")
 	cmd.Flags().Int64Var(&info.MetaSyncWALEnableState, "metaSyncWALFlag", -1, "0:disable, 1:enable")
 	cmd.Flags().Int64Var(&info.DataSyncWALEnableState, "dataSyncWALFlag", -1, "0:disable, 1:enable")
+	cmd.Flags().Int64Var(&info.DisableStrictVolZone, "disableStrictVolZone", -1, "0:false, 1:true")
 	cmd.Flags().Int64Var(&info.DataNodeFlushFDInterval, "dataNodeFlushFDInterval", -1, "time interval for flushing WAL and open FDs on DataNode, unit is seconds.")
 	cmd.Flags().Int64Var(&info.DataNodeFlushFDParallelismOnDisk, "dataNodeFlushFDParallelismOnDisk", 0, "parallelism for flushing WAL and open FDs on DataNode per disk.")
 	cmd.Flags().Int64Var(&info.DNNormalExtentDeleteExpire, "dnNormalExtentDeleteExpire", 0, "datanode normal extent delete record expire time(second, >=600)")
@@ -366,6 +372,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  DeleteEKRecordFileMaxSize   : %vMB\n", info.DeleteEKRecordFileMaxMB))
 	sb.WriteString(fmt.Sprintf("  MetaSyncWalEnableState      : %s\n", formatEnabledDisabled(info.MetaSyncWALOnUnstableEnableState)))
 	sb.WriteString(fmt.Sprintf("  DataSyncWalEnableState      : %s\n", formatEnabledDisabled(info.DataSyncWALOnUnstableEnableState)))
+	sb.WriteString(fmt.Sprintf("  StrictVolZone               : %s\n", formatEnabledDisabled(!info.DisableStrictVolZone)))
 	sb.WriteString(fmt.Sprintf("  MonitorSummarySecond             : %v\n", info.MonitorSummarySec))
 	sb.WriteString(fmt.Sprintf("  MonitorReportSecond              : %v\n", info.MonitorReportSec))
 	sb.WriteString(fmt.Sprintf("  DataNodeFlushFDInterval          : %v s\n", info.DataNodeFlushFDInterval))

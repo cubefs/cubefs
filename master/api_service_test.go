@@ -25,11 +25,13 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/proto"
@@ -4334,4 +4336,23 @@ func addEcServer(addr, httpPort, zoneName string) {
 func addCodecServer(addr, httpPort, zoneName string) {
 	mcs := mocktest.NewMockCodecServer(addr, httpPort, zoneName)
 	mcs.Start()
+}
+
+func TestSetDisableStrictVolZone(t *testing.T) {
+	testCases := []struct {
+		Value  bool
+		Expect bool
+	}{
+		{true, true},
+		{false, false},
+	}
+	for _, testCase := range testCases {
+		reqURL := fmt.Sprintf("%v%v?disableStrictVolZone=%v", hostAddr, proto.AdminSetNodeInfo, strconv.FormatBool(testCase.Value))
+		process(reqURL, t)
+		limitInfo, err := mc.AdminAPI().GetLimitInfo("")
+		if assert.Nil(t, err) {
+			return
+		}
+		assert.Equal(t, limitInfo.DisableStrictVolZone, testCase.Expect)
+	}
 }

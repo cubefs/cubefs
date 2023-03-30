@@ -785,6 +785,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.MetaSyncWALEnableState == 0 || info.MetaSyncWALEnableState == 1 {
 		request.addParam(proto.MetaSyncWalEnableStateKey, strconv.FormatInt(info.MetaSyncWALEnableState, 10))
 	}
+	if info.DisableStrictVolZone == 0 || info.DisableStrictVolZone == 1 {
+		request.addParam(proto.DisableStrictVolZoneKey, strconv.FormatBool(info.DisableStrictVolZone == 1))
+	}
 	if info.ReuseMPInodeCountThreshold > 0 {
 		request.addParam(proto.ReuseMPInodeCountThresholdKey, strconv.FormatFloat(info.ReuseMPInodeCountThreshold, 'f', -1, 64))
 	}

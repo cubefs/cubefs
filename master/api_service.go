@@ -526,6 +526,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaRaftCap:                            metaRaftLogCap,
 		MetaSyncWALOnUnstableEnableState:       m.cluster.cfg.MetaSyncWALOnUnstableEnableState,
 		DataSyncWALOnUnstableEnableState:       m.cluster.cfg.DataSyncWALOnUnstableEnableState,
+		DisableStrictVolZone:                   m.cluster.cfg.DisableStrictVolZone,
 		ReuseMPInodeCountThreshold:             m.cluster.cfg.ReuseMPInodeCountThreshold,
 		ReuseMPDentryCountThreshold:            m.cluster.cfg.ReuseMPDentryCountThreshold,
 		ReuseMPDelInoCountThreshold:            m.cluster.cfg.ReuseMPDelInodeCountThreshold,
@@ -4587,7 +4588,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
-	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey}
+	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey}
 	for _, key := range boolKey {
 		if err = parseBoolKey(params, key, r); err != nil {
 			return

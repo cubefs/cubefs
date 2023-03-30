@@ -1215,6 +1215,9 @@ func (c *Cluster) chooseTargetDataNodes(excludeZones []string, excludeNodeSets [
 	var (
 		zones []*Zone
 	)
+	if c.cfg.DisableStrictVolZone == false {
+		isStrict = true
+	}
 	allocateZoneMap := make(map[*Zone][]string, 0)
 	hasAllocateNum := 0
 	hosts = make([]string, 0)
@@ -3342,6 +3345,9 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 	var (
 		zones []*Zone
 	)
+	if c.cfg.DisableStrictVolZone == false {
+		isStrict = true
+	}
 	allocateZoneMap := make(map[*Zone][]string, 0)
 	hasAllocateNum := 0
 	excludeZones := make([]string, 0)
@@ -3833,6 +3839,10 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[proto.DataSyncWalEnableStateKey]; ok {
 		c.cfg.DataSyncWALOnUnstableEnableState = val.(bool)
 	}
+	oldDisableStrictVolZone := c.cfg.DisableStrictVolZone
+	if val, ok := params[proto.DisableStrictVolZoneKey]; ok {
+		c.cfg.DisableStrictVolZone = val.(bool)
+	}
 
 	oldUmpJmtpUrl := c.cfg.UmpJmtpAddr
 	if val, ok := params[umpJmtpAddrKey]; ok {
@@ -3920,6 +3930,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.MetaRaftLogCap, oldMetaRaftLogCap)
 		c.cfg.DataSyncWALOnUnstableEnableState = oldDataSyncWALEnableState
 		c.cfg.MetaSyncWALOnUnstableEnableState = oldMetaSyncWALEnableState
+		c.cfg.DisableStrictVolZone = oldDisableStrictVolZone
 		c.cfg.UmpJmtpAddr = oldUmpJmtpUrl
 		atomic.StoreUint64(&c.cfg.UmpJmtpBatch, oldUmpJmtpBatch)
 		atomic.StoreUint64(&c.cfg.MetaPartitionMaxInodeCount, oldMPMaxInodeCount)
@@ -5527,6 +5538,7 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		MetaRaftLogSize:                     c.cfg.MetaRaftLogSize,
 		MetaRaftLogCap:                      c.cfg.MetaRaftLogCap,
 		MetaTrashCleanInterval:              c.cfg.MetaTrashCleanInterval,
+		DisableStrictVolZone:                c.cfg.DisableStrictVolZone,
 	}
 
 	vols := c.allVolNames()

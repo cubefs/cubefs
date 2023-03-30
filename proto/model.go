@@ -242,6 +242,7 @@ type ClusterView struct {
 	ReuseMPDelInodeCountThreshold       float64
 	MetaPartitionMaxInodeCount          uint64
 	MetaPartitionMaxDentryCount         uint64
+	DisableStrictVolZone                bool
 }
 
 // NodeView provides the view of the data or meta node.

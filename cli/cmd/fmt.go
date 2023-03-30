@@ -51,6 +51,7 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  Ec scrub period  : %v min\n", cv.EcScrubPeriod))
 	sb.WriteString(fmt.Sprintf("  Ec scrub extents : %v\n", cv.EcMaxScrubExtents))
 	sb.WriteString(fmt.Sprintf("  codec concurrent : %v\n", cv.MaxCodecConcurrent))
+	sb.WriteString(fmt.Sprintf("  Strict vol zone  : %v\n", formatEnabledDisabled(!cv.DisableStrictVolZone)))
 	if cv.EcScrubEnable {
 		startScrubTime := time.Unix(cv.EcScrubStartTime, 0).Format(time.RFC1123)
 		sb.WriteString(fmt.Sprintf("  Ec start scrub   : %v \n", startScrubTime))
