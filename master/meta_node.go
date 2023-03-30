@@ -201,8 +201,9 @@ func (s *sortLeaderMetaNode) getLeaderCount(addr string) int {
 
 func (s *sortLeaderMetaNode) changeLeader(l *LeaderMetaNode) {
 	for _, mp := range l.metaPartitions {
-		if count := s.getLeaderCount(l.addr); count < s.average {
-			continue
+		if count := s.getLeaderCount(l.addr); count >= s.average {
+			log.LogInfof("now leader count is[%d], average is[%d]", count, s.average)
+			break
 		}
 
 		// mp's leader not in this metaNode, skip it
@@ -212,16 +213,18 @@ func (s *sortLeaderMetaNode) changeLeader(l *LeaderMetaNode) {
 			continue
 		}
 
-		// get the smallest leader metaPartition count meta node addr as new leader
+		// get the leader metaPartition count meta node which smaller than (old leader count - 1) addr as new leader
 		addr := oldLeader.Addr
 		s.mu.RLock()
 		for i := 0; i < len(mp.Replicas); i++ {
-			if s.leaderCountM[mp.Replicas[i].Addr] < s.leaderCountM[oldLeader.Addr] {
+			if s.leaderCountM[mp.Replicas[i].Addr] < s.leaderCountM[oldLeader.Addr]-1 {
 				addr = mp.Replicas[i].Addr
 			}
 		}
 		s.mu.RUnlock()
+
 		if addr == oldLeader.Addr {
+			log.LogDebugf("newAddr:%s,oldAddr:%s is same", addr, oldLeader.Addr)
 			continue
 		}
 
