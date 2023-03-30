@@ -756,7 +756,7 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 	if !first_start && sdkState.MetaState != nil && sdkState.MetaState.LocalIP != "" {
 		c.localAddr = fmt.Sprintf("%s:%d", sdkState.MetaState.LocalIP, gClientManager.profPort)
 	} else {
-		localIp, err := iputil.GetLocalIPByDialWithMaster(strings.Split(c.masterAddr, ","), iputil.GetLocalIPTimeout)
+		localIp, err := iputil.GetLocalIPByDial(strings.Split(c.masterAddr, ","), iputil.GetLocalIPTimeout)
 		if err != nil && c.app == appCoralDB {
 			syslog.Printf("GetLocalIpAddr err: %v", err)
 			os.Exit(1)

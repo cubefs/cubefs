@@ -239,7 +239,7 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 		)
 		for i := 0; i < GetLocalIPMaxRetry; i++ {
 			err = nil
-			if localIP, err = iputil.GetLocalIPByDialWithMaster(o.masters, time.Second*5); err == nil {
+			if localIP, err = iputil.GetLocalIPByDial(o.masters, time.Second*5); err == nil {
 				break
 			}
 			time.Sleep(GetLocalIPRetryInterval)

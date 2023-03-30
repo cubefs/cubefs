@@ -51,22 +51,24 @@ func main() {
 		downloadAddr string
 		tarName      string
 	)
-	if *configFile != "" {
+
+	if *configUseVersion != "" {
+		if *configFile == "" {
+			fmt.Printf("Must given -c {configFile}\n")
+			os.Exit(1)
+		}
+
 		masterAddr, err = parseMasterAddr(*configFile)
 		if err != nil {
 			fmt.Printf("parseMasterAddr err: %v\n", err)
 			os.Exit(1)
 		}
-	} else {
-		masterAddr = DefaultMasterAddr
-	}
+		downloadAddr, err = getClientDownloadAddr(masterAddr)
+		if err != nil {
+			fmt.Printf("get downloadAddr from master err: %v\n", err)
+			os.Exit(1)
+		}
 
-	downloadAddr, err = getClientDownloadAddr(masterAddr)
-	if err != nil {
-		fmt.Printf("get downloadAddr from master err: %v\n", err)
-		os.Exit(1)
-	}
-	if *configUseVersion != "" {
 		if runtime.GOARCH == AMD64 {
 			tarName = fmt.Sprintf("%s_%s.tar.gz", VersionTarPre, *configUseVersion)
 		} else if runtime.GOARCH == ARM64 {

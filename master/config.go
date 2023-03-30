@@ -191,7 +191,6 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.ObjectNodeActionRateLimitMap = make(map[string]map[string]int64)
 	cfg.ExtentMergeIno = make(map[string][]uint64)
 	cfg.DataNodeRepairTaskCountZoneLimit = make(map[string]uint64)
-	cfg.ClientPkgAddr = defaultClientPkgAddr
 	cfg.DeleteEKRecordFilesMaxSize = 0 // use meta node default value 60MB 10files
 	cfg.MetaRaftLogSize = 0            //use meta node config value
 	cfg.MetaRaftLogCap = 0             // use meta node config value

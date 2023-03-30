@@ -246,7 +246,6 @@ const (
 	maxTrashRemainingDays                              = 30
 	defaultMetaNodeVersion                             = "3.0.0"
 	minCrossRegionVolMasterRegionZonesCount            = 1
-	defaultClientPkgAddr                               = "http://storage.jd.local/dpgimage/cfs_spark/"
 	defaultCompactTag                                  = "default"
 	defaultEcMigrationSaveTime                         = 100 * 365 * 24 * 60 //min
 	defaultMinEcTime                                   = 5                   //min

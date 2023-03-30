@@ -34,7 +34,7 @@ func getGLIBCVersion() int64 {
 
 func main() {
 	flag.Parse()
-	if !*configVersion && *configFile == "" {
+	if *configFile == "" {
 		fmt.Printf("Usage: %s -c {configFile}\n", os.Args[0])
 		os.Exit(1)
 	}
@@ -44,21 +44,7 @@ func main() {
 		downloadAddr string
 		tarName      string
 	)
-	if *configFile != "" {
-		masterAddr, err = parseMasterAddr(*configFile)
-		if err != nil {
-			fmt.Printf("parseMasterAddr err: %v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		masterAddr = DefaultMasterAddr
-	}
 
-	downloadAddr, err = getClientDownloadAddr(masterAddr)
-	if err != nil {
-		fmt.Printf("get downloadAddr from master err: %v\n", err)
-		os.Exit(1)
-	}
 	if !checkLibsExist() {
 		if runtime.GOARCH == AMD64 {
 			tarName = fmt.Sprintf("%s.tar.gz", TarNamePre)
@@ -66,6 +52,17 @@ func main() {
 			tarName = fmt.Sprintf("%s_%s.tar.gz", TarNamePre, ARM64)
 		} else {
 			fmt.Printf("cpu arch %s not supported", runtime.GOARCH)
+			os.Exit(1)
+		}
+
+		masterAddr, err = parseMasterAddr(*configFile)
+		if err != nil {
+			fmt.Printf("parseMasterAddr err: %v\n", err)
+			os.Exit(1)
+		}
+		downloadAddr, err = getClientDownloadAddr(masterAddr)
+		if err != nil {
+			fmt.Printf("get downloadAddr from master err: %v\n", err)
 			os.Exit(1)
 		}
 		if !prepareLibs(downloadAddr, tarName) {

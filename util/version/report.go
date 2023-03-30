@@ -71,7 +71,7 @@ func reportVersion(cfg *config.Config, masterAddr []string, version, volName, mo
 
 	// compute client id
 	var localIp string
-	localIp, err = iputil.GetLocalIPByDialWithMaster(masterAddr, iputil.GetLocalIPTimeout)
+	localIp, err = iputil.GetLocalIPByDial(masterAddr, iputil.GetLocalIPTimeout)
 	if err != nil || localIp == "" {
 		localIp = "unknown"
 		log.LogErrorf("[reportVersion] get local ip failed, errorInfo(%v)", err)

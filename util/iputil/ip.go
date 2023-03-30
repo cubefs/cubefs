@@ -117,24 +117,9 @@ func GetDistance(a, b net.IP) int {
 	return DEFAULT_MAX_DISTANCE - commonPrefixLen(a, b)
 }
 
-func GetLocalIPByDial() (ip string, err error) {
+func GetLocalIPByDial(masters []string, timeout time.Duration) (ip string, err error) {
 	var conn net.Conn
-	conn, err = net.Dial("tcp", "cn.chubaofs.jd.local:80")
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-	ip = strings.Split(conn.LocalAddr().String(), ":")[0]
-	return
-}
-
-func GetLocalIPByDialWithMaster(masters []string, timeout time.Duration) (ip string, err error) {
-	var conn net.Conn
-	defaultAddr := "cn.chubaofs.jd.local"
 	defaultPort := 80
-	if len(masters) == 0 {
-		masters = append(masters, fmt.Sprintf("%v:%v", defaultAddr, defaultPort))
-	}
 	for _, master := range masters {
 		ipPort := strings.Split(master, ":")
 		if len(ipPort) == 1 {
