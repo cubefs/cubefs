@@ -474,3 +474,22 @@ kafka_topic_partition_offset{cluster_id="100",module_name="SCHEDULER",partition=
 # TYPE blobstore_proxy_volume_status gauge
 blobstore_proxy_volume_status{cluster="100",codemode="EC15P12",idc="z0",service="PROXY",type="total_free_size"} 9.01538397118e+11
 ```
+
+**blobstore_proxy_cache**
+
+卷和磁盘缓存状态指标
+
+| 标签     | 说明                                |
+|----------|-------------------------------------|
+| cluster  | 集群id                              |
+| service  | 服务名, disk、volume                |
+| name     | 缓存层，memcache、diskv、clustermgr |
+| action   | 缓存值，hit、miss、expired、error   |
+
+```bash
+# TYPE blobstore_proxy_cache counter
+blobstore_proxy_cache{action="hit",cluster="100",name="clustermgr",service="disk"} 6345
+blobstore_proxy_cache{action="hit",cluster="100",name="memcache",service="volume"} 2.3056289e+07
+blobstore_proxy_cache{action="miss",cluster="100",name="diskv",service="volume"} 230595
+
+```
