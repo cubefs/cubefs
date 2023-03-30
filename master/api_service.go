@@ -1660,11 +1660,6 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		}
 	}
 
-	if req.dpReplicaNum == 0 {
-		req.dpReplicaNum = 1
-	}
-
-	req.followerRead = true
 	args := req.coldArgs
 
 	if args.objBlockSize == 0 {
@@ -1707,6 +1702,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("cache capacity(%d) must be less than capacity(%d)", args.cacheCap, req.capacity)
 	}
 
+	if proto.IsCold(req.volType) && req.dpReplicaNum == 0 && args.cacheCap > 0 {
+		return fmt.Errorf("cache capacity(%d) not zero,replicaNum should not be zero", args.cacheCap)
+	}
+
 	if args.cacheHighWater >= 90 || args.cacheLowWater >= 90 {
 		return fmt.Errorf("low(%d) or high water(%d) can't be large than 90, low than 0", args.cacheLowWater, args.cacheHighWater)
 	}
@@ -1742,8 +1741,8 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) && !req.followerRead {
-		err = fmt.Errorf("replicaNum be 2 and 3,followerRead must set true")
+	if proto.IsHot(req.volType) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) && !req.followerRead {
+		err = fmt.Errorf("hot volume replicaNum be 2 and 3,followerRead must set true")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
