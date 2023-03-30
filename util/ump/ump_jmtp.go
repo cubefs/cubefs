@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	defaultJmtpAddr             = "jmtp://proxy.ump.jd.local:20890"
+	defaultJmtpAddr             = "jmtp://localhost:20890"
 	testJmtpAddr                = "test"
 	jmtpTimeoutSec              = 2
 	jmtpHeartbeatSec            = 10
