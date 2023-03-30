@@ -55,12 +55,7 @@ func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode) (status uint8) {
 		return
 	}
 	//3.insert inode in inode tree
-	if _, ok := mp.inodeTree.ReplaceOrInsert(txIno.Inode, false); !ok {
-		status = proto.OpExistErr
-		return
-	}
-
-	return
+	return mp.fsmCreateInode(txIno.Inode)
 }
 
 // Create and inode and attach it to the inode tree.
