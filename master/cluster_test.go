@@ -41,7 +41,6 @@ func TestCheckDataPartitions(t *testing.T) {
 func TestPanicCheckDataPartitions(t *testing.T) {
 	c := buildPanicCluster()
 	c.checkDataPartitions()
-	t.Logf("catched panic")
 }
 
 func TestCheckBackendLoadDataPartitions(t *testing.T) {
@@ -51,7 +50,6 @@ func TestCheckBackendLoadDataPartitions(t *testing.T) {
 func TestPanicBackendLoadDataPartitions(t *testing.T) {
 	c := buildPanicCluster()
 	c.scheduleToLoadDataPartitions()
-	t.Logf("catched panic")
 }
 
 func TestCheckReleaseDataPartitions(t *testing.T) {
@@ -60,7 +58,6 @@ func TestCheckReleaseDataPartitions(t *testing.T) {
 func TestPanicCheckReleaseDataPartitions(t *testing.T) {
 	c := buildPanicCluster()
 	c.releaseDataPartitionAfterLoad()
-	t.Logf("catched panic")
 }
 
 func TestCheckHeartbeat(t *testing.T) {
@@ -153,10 +150,10 @@ func TestPanicCheckMigratedMetaPartitionsRecovery(t *testing.T) {
 	c.MigratedMetaPartitionIds.Store(fmt.Sprintf("%v", mp.PartitionID), mp)
 	mp = nil
 	c.checkMigratedMetaPartitionRecoveryProgress()
-	t.Logf("catched panic")
 }
 
 func TestCheckBadDiskRecovery(t *testing.T) {
+
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	vol, err := server.cluster.getVol(commonVolName)

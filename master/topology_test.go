@@ -5,6 +5,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
 	"time"
@@ -113,21 +114,20 @@ func TestSingleZone(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	newHosts, _, err := zones[0].getAvailDataNodeHosts(nil, nil, replicaNum)
+	_, _, err = zones[0].getAvailDataNodeHosts(nil, nil, replicaNum)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	fmt.Println(newHosts)
 
 	// single zone with exclude hosts
 	excludeHosts := []string{mds1Addr, mds2Addr, mds3Addr}
-	newHosts, _, err = zones[0].getAvailDataNodeHosts(nil, excludeHosts, replicaNum)
+	newHosts, _, err := zones[0].getAvailDataNodeHosts(nil, excludeHosts, replicaNum)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	fmt.Println(newHosts)
+	assert.NotContains(t, newHosts, excludeHosts)
 	topo.deleteDataNode(createDataNodeForTopo(mds1Addr, httpPort, zoneName, nodeSet))
 }
 
@@ -178,18 +178,17 @@ func TestAllocZones(t *testing.T) {
 	cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
 
 	//don't cross zone
-	hosts, _, err := cluster.chooseTargetDataNodes(nil, nil, nil, replicaNum, "zone1", false)
+	_, _, err = cluster.chooseTargetDataNodes(nil, nil, nil, replicaNum, "zone1", false)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	//cross zone
-	hosts, _, err = cluster.chooseTargetDataNodes(nil, nil, nil, replicaNum, "zone1,zone2,zone3", false)
+	_, _, err = cluster.chooseTargetDataNodes(nil, nil, nil, replicaNum, "zone1,zone2,zone3", false)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	t.Logf("ChooseTargetDataHosts in multi zones,hosts[%v]", hosts)
 	// after excluding zone3, alloc zones will be success
 	excludeZones := make([]string, 0)
 	excludeZones = append(excludeZones, zoneName3)
