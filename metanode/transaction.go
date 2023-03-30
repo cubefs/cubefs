@@ -896,11 +896,18 @@ func (tr *TransactionResource) rollbackInode(txID string, inode uint64) (status 
 	switch rbInode.rbType {
 	case TxAdd:
 		tr.txProcessor.mp.freeList.Remove(rbInode.inode.Inode)
-		tr.txProcessor.mp.inodeTree.ReplaceOrInsert(rbInode.inode, true)
+		_, ok = tr.txProcessor.mp.inodeTree.ReplaceOrInsert(rbInode.inode, false)
+		if ok && tr.txProcessor.mp.uidManager != nil {
+			tr.txProcessor.mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Extents.eks)
+		}
+
 		//_ = tr.txProcessor.mp.fsmCreateInode(rbInode.inode)
 	case TxDelete:
 		//todo_tx: fsmUnlinkInode or internalDelete?
 		//_ = tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode)
+		if rsp := tr.txProcessor.mp.getInode(rbInode.inode); tr.txProcessor.mp.uidManager != nil && rsp.Status == proto.OpOk {
+			tr.txProcessor.mp.uidManager.doMinusUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Size)
+		}
 		tr.txProcessor.mp.internalDeleteInode(rbInode.inode)
 	case TxUpdate:
 		if _, ok = tr.txProcessor.mp.inodeTree.ReplaceOrInsert(rbInode.inode, true); !ok {
