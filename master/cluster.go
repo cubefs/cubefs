@@ -872,7 +872,7 @@ func (c *Cluster) checkLackReplicaAndHostDataPartitions() (lackReplicaDataPartit
 		var dps *DataPartitionMap
 		dps = vol.dataPartitions
 		for _, dp := range dps.partitions {
-			if dp.ReplicaNum > uint8(len(dp.Hosts)) && len(dp.Hosts) == len(dp.Replicas) {
+			if dp.ReplicaNum > uint8(len(dp.Hosts)) && len(dp.Hosts) == len(dp.Replicas) && dp.IsDecommissionInitial() {
 				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
 			}
 		}
