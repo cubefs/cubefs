@@ -51,8 +51,25 @@ func (b *BaseWorker) Sync() {
 func (b *BaseWorker) ParseBaseConfig(cfg *config.Config) (err error) {
 	var regexpPort *regexp.Regexp
 	localIP := cfg.GetString(config.ConfigKeyLocalIP)
+
+	clusterInfo := cfg.GetMap(config.ConfigKeyClusterAddr)
+	var masterAddr []string
+	for _, value := range clusterInfo {
+		addresses := make([]string, 0)
+		if valueSlice, ok := value.([]interface{}); ok {
+			for _, item := range valueSlice {
+				if addr, ok := item.(string); ok {
+					addresses = append(addresses, addr)
+				}
+			}
+		}
+		if len(addresses) > 0 {
+			masterAddr = addresses
+			break
+		}
+	}
 	if stringutil.IsStrEmpty(localIP) {
-		if localIP, err = iputil.GetLocalIPByDial(); err != nil {
+		if localIP, err = iputil.GetLocalIPByDial(masterAddr, iputil.GetLocalIPTimeout); err != nil {
 			return
 		}
 	}

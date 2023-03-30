@@ -916,12 +916,6 @@ func (s *ScheduleNode) moveTasksToHistory(tasks []*proto.Task, saveOld bool) (er
 
 func (s *ScheduleNode) parseConfig(cfg *config.Config) (err error) {
 	var regexpPort *regexp.Regexp
-	localIP := cfg.GetString(config.ConfigKeyLocalIP)
-	if stringutil.IsStrEmpty(localIP) {
-		if localIP, err = iputil.GetLocalIPByDial(); err != nil {
-			return
-		}
-	}
 	port := cfg.GetString(config.ConfigKeyProfPort)
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
 		return fmt.Errorf("error: no port")
@@ -931,7 +925,6 @@ func (s *ScheduleNode) parseConfig(cfg *config.Config) (err error) {
 	}
 
 	s.port = port
-	s.localIp = localIP
 	// parse cluster master address
 	masters := make(map[string][]string)
 	masterBaseInfo := cfg.GetMap(config.ConfigKeyClusterAddr)
@@ -951,6 +944,14 @@ func (s *ScheduleNode) parseConfig(cfg *config.Config) (err error) {
 		masters[clusterName] = addresses
 	}
 	s.masterAddr = masters
+	localIP := cfg.GetString(config.ConfigKeyLocalIP)
+	if stringutil.IsStrEmpty(localIP) {
+		if localIP, err = iputil.GetLocalIPByDial(masterAddr, iputil.GetLocalIPTimeout); err != nil {
+			return
+		}
+	}
+	s.localIp = localIP
+
 	// used for cmd to report version
 	if len(masterAddr) == 0 {
 		cfg.SetStringSlice(proto.MasterAddr, masterAddr)

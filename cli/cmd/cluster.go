@@ -51,8 +51,8 @@ const (
 	cmdClusterFreezeShort           = "Freeze cluster"
 	cmdClusterThresholdShort        = "Set memory threshold of metanodes"
 	cmdClusterExtentDelRocksDbShort = "Set extent del in rocksdb enable"
-	cmdClusterClientPkgAddr         = "Set URL for client pkg download, default http://storage.jd.local/dpgimage/cfs_spark/"
-	cmdClusterEcUpdateShort  = "update ec config"
+	cmdClusterClientPkgAddr         = "Set URL for client pkg download"
+	cmdClusterEcUpdateShort         = "update ec config"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -61,8 +61,8 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdClusterInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				err error
-				cv *proto.ClusterView
+				err      error
+				cv       *proto.ClusterView
 				nodeInfo *proto.LimitInfo
 			)
 
@@ -226,10 +226,10 @@ func newClusterSetClientPkgAddr(client *master.MasterClient) *cobra.Command {
 
 func newClusterEcUpdate(client *master.MasterClient) *cobra.Command {
 	var (
-		optEcMaxScrubExtents   int
-		optEcScrubPeriod       int
-		optMaxCodecConcurrent  int
-		optEcScrubEnable       string
+		optEcMaxScrubExtents  int
+		optEcScrubPeriod      int
+		optMaxCodecConcurrent int
+		optEcScrubEnable      string
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpEcSet,

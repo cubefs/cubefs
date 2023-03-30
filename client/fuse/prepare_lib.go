@@ -39,7 +39,6 @@ const (
 	VersionTarPre         = "cfs-client-libs"
 	AMD64                 = "amd64"
 	ARM64                 = "arm64"
-	DefaultMasterAddr     = "cn.chubaofs.jd.local"
 
 	StartRetryMaxCount    = 10
 	StartRetryIntervalSec = 5
