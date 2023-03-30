@@ -344,10 +344,8 @@ func (uMgr *UidManager) setUidAcl(info []*proto.UidSpaceInfo) {
 	defer uMgr.acLock.Unlock()
 
 	uMgr.uidAcl = new(sync.Map)
-	log.LogDebugf("setUidAcl.vol %v info size %v", uMgr.volName, len(info))
 	for _, uidInfo := range info {
 		if uidInfo.VolName != uMgr.volName {
-			log.LogErrorf("setUidAcl.vol %v:%v not equal uid %v be set enable %v", uMgr.volName, uidInfo.VolName, uidInfo.Uid, uidInfo.Limited)
 			continue
 		}
 		log.LogDebugf("setUidAcl.vol %v uid %v be set enable %v", uMgr.volName, uidInfo.Uid, uidInfo.Limited)
@@ -364,17 +362,14 @@ func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
 	uMgr.accumDelta.Range(func(key, value interface{}) bool {
 		var size int64
 		size += value.(int64)
-		log.LogDebugf("getAllUidSpace. mp[%v] accumBase key %v size %v", uMgr.mpID, key.(uint32), size)
 		if baseInfo, ok := uMgr.accumBase.Load(key.(uint32)); ok {
 			size += baseInfo.(int64)
 			if size < 0 {
 				log.LogErrorf("getAllUidSpace. mp[%v] uid %v size small than 0 %v, old %v, new %v", uMgr.mpID, key.(uint32), size, value.(int64), baseInfo.(int64))
 				return false
 			}
-			log.LogDebugf("getAllUidSpace. mp[%v] accumBase key %v size %v", uMgr.mpID, key.(uint32), size)
 		}
 		uMgr.accumBase.Store(key.(uint32), size)
-		log.LogDebugf("getAllUidSpace. mp[%v] accumBase key %v plus size %v", uMgr.mpID, key.(uint32), size)
 		return true
 	})
 
