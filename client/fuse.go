@@ -40,10 +40,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/buf"
-
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/buf"
 
 	sysutil "github.com/cubefs/cubefs/util/sys"
 
