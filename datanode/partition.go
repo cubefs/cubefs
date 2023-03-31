@@ -145,10 +145,15 @@ type DataPartition struct {
 	persistMetaMutex              sync.RWMutex
 
 	// snapshot
-	verSeq             uint64
-	verSeqPrepare      uint64
-	verSeqCommitStatus int8
-	multiVersionList   []*MetaMultiSnapshotInfo
+	verSeq                     uint64
+	verSeqPrepare              uint64
+	verSeqCommitStatus         int8
+	multiVersionList           []*MetaMultiSnapshotInfo
+	decommissionRepairProgress float64 //record repair progress for decommission datapartition
+	stopRecover                bool
+	recoverStartTime           time.Time
+	recoverLastConsumeTime     time.Duration
+	recoverErrCnt              int64 //donot reset, if reach max err cnt, delete this dp
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -162,6 +167,8 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	} else {
 		// init leaderSize to partitionSize
 		disk.updateDisk(uint64(request.LeaderSize))
+		//ensure heartbeat report  Recovering
+		dp.partitionStatus = proto.Recovering
 		go dp.StartRaftAfterRepair(false)
 	}
 	if err != nil {
@@ -260,6 +267,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	} else {
 		// init leaderSize to partitionSize
 		dp.leaderSize = dp.partitionSize
+		dp.partitionStatus = proto.Recovering
 		go dp.StartRaftAfterRepair(true)
 	}
 	if err != nil {
@@ -308,7 +316,8 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		raftStatus:      RaftStatusStopped,
 		verSeq:          dpCfg.VerSeq,
 	}
-	log.LogInfof("action[newDataPartition] dp %v replica num %v isCreate %v", partitionID, dpCfg.ReplicaNum, isCreate)
+	atomic.StoreInt64(&partition.recoverErrCnt, 0)
+	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize,
 		partition.partitionType, isCreate)
@@ -485,9 +494,7 @@ func (dp *DataPartition) Disk() *Disk {
 
 // Status returns the partition status.
 func (dp *DataPartition) Status() int {
-	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
-		return proto.Unavailable
-	}
+	dp.statusUpdate()
 	return dp.partitionStatus
 }
 
@@ -599,7 +606,12 @@ func (dp *DataPartition) statusUpdate() {
 		status = proto.ReadOnly
 	}
 	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
-		status = proto.Unavailable
+		//dp is still recovering
+		if dp.DataPartitionCreateType == proto.NormalCreateDataPartition {
+			status = proto.Recovering
+		} else {
+			status = proto.Unavailable
+		}
 	}
 
 	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, dis status %v, res:%v",
@@ -795,6 +807,10 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // 1. when the extent size is smaller than the max size on the record, start to repair the missing part.
 // 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
+	if dp.stopRecover && dp.isDecommissionRecovering() {
+		log.LogDebugf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
+		return
+	}
 	store := dp.extentStore
 	log.LogDebugf("DoExtentStoreRepair.dp %v len extents %v", dp.partitionID, len(repairTask.ExtentsToBeCreated))
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
@@ -824,7 +840,10 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	)
 	wg = new(sync.WaitGroup)
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
-
+		if dp.stopRecover && dp.isDecommissionRecovering() {
+			log.LogDebugf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
+			return
+		}
 		if !store.HasExtent(uint64(extentInfo.FileID)) {
 			continue
 		}
@@ -906,6 +925,10 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	store := dp.extentStore
 	start := time.Now().Unix()
 	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteRecordFileSize {
+		if dp.stopRecover && dp.isDecommissionRecovering() {
+			log.LogWarnf("doStreamFixTinyDeleteRecord %v receive stop signal", dp.partitionID)
+			return
+		}
 		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 			return
 		}
@@ -949,7 +972,6 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 	return
 }
 
-//
 func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.DataPartitionInfo
 	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
@@ -1190,4 +1212,35 @@ func getWithDefault(base, def int) int {
 	}
 
 	return base
+}
+
+func (dp *DataPartition) StopDecommissionRecover(stop bool) {
+	//only work for decommission repair
+	if !dp.isDecommissionRecovering() {
+		return
+	}
+	//for check timeout
+	if !stop {
+		dp.recoverStartTime = time.Now().Add(-dp.recoverLastConsumeTime)
+		dp.recoverLastConsumeTime = time.Duration(0)
+	} else {
+		dp.recoverLastConsumeTime = time.Now().Sub(dp.recoverStartTime) //record consume time
+	}
+	dp.stopRecover = stop
+}
+
+func (dp *DataPartition) isDecommissionRecovering() bool {
+	//decommission recover failed or success will set to normal
+	return dp.partitionType == proto.DecommissionedCreateDataPartition
+
+}
+func (dp *DataPartition) handleDecommissionRecoverFailed() {
+	if !dp.isDecommissionRecovering() {
+		return
+	}
+	//prevent status changing from  Unavailable to Recovering again in statusUpdate()
+	dp.partitionType = proto.NormalCreateDataPartition
+	dp.partitionStatus = proto.Unavailable
+	dp.PersistMetadata()
+	dp.StopDecommissionRecover(true)
 }
