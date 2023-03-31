@@ -179,6 +179,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleBroadcastMinAppliedID(p)
 	case proto.OpVersionOperation:
 		s.handleUpdateVerPacket(p)
+	case proto.OpStopDataPartitionRepair:
+		s.handlePacketToStopDataPartitionRepair(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -1517,4 +1519,40 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet, force 
 	}
 
 	return
+}
+
+func (s *DataNode) handlePacketToStopDataPartitionRepair(p *repl.Packet) {
+	task := &proto.AdminTask{}
+	err := json.Unmarshal(p.Data, task)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionStopDataPartitionRepair, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	if err != nil {
+		return
+	}
+	request := &proto.StopDataPartitionRepairRequest{}
+	if task.OpCode != proto.OpStopDataPartitionRepair {
+		err = fmt.Errorf("action[handlePacketToStopDataPartitionRepair] illegal opcode ")
+		log.LogWarnf("action[handlePacketToStopDataPartitionRepair] illegal opcode ")
+		return
+	}
+
+	bytes, _ := json.Marshal(task.Request)
+	p.AddMesgLog(string(bytes))
+	err = json.Unmarshal(bytes, request)
+	if err != nil {
+		return
+	}
+	dp := s.space.Partition(request.PartitionId)
+	if dp == nil {
+		err = proto.ErrDataPartitionNotExists
+		log.LogWarnf("action[handlePacketToStopDataPartitionRepair] cannot find dp %v", request.PartitionId)
+		return
+	}
+	dp.StopDecommissionRecover(request.Stop)
+	log.LogInfof("action[handlePacketToStopDataPartitionRepair] %v stop %v success", request.PartitionId, request.Stop)
 }
