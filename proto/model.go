@@ -206,7 +206,7 @@ type DataPartitionInfo struct {
 	FileInCoreMap            map[string]*FileInCore
 	IsRecover                bool
 	FilesWithMissingReplica  map[string]int64 // key: file name, value: last time when a missing replica is found
-	SingleDecommissionStatus uint8
+	SingleDecommissionStatus uint32
 	SingleDecommissionAddr   string
 	RdOnly                   bool
 }
@@ -237,6 +237,7 @@ type DataReplica struct {
 	IsLeader        bool
 	NeedsToCompare  bool
 	DiskPath        string
+	DecommissionRepairProgress 				float64
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas

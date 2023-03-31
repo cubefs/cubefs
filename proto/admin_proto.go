@@ -376,6 +376,19 @@ type LoadDataPartitionResponse struct {
 	VolName           string
 }
 
+
+type StopDataPartitionRepairRequest struct {
+	PartitionId       uint64
+	Stop				bool
+}
+
+// DeleteDataPartitionResponse defines the response to the request of deleting a data partition.
+type StopDataPartitionRepairResponse struct {
+	Status      uint8
+	Result      string
+	PartitionId uint64
+}
+
 // File defines the file struct.
 type File struct {
 	Name     string
@@ -427,6 +440,7 @@ type PartitionReport struct {
 	IsLeader        bool
 	ExtentCount     int
 	NeedCompare     bool
+	DecommissionRepairProgress float64
 }
 
 type DataNodeQosResponse struct {

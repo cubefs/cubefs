@@ -764,7 +764,7 @@ func (nsgm *DomainManager) buildNodeSetGrpCommit(resList []nsList, domainGrpMana
 	domainGrpManager.status = normal
 }
 
-//policy of build zone if zone count large then three
+// policy of build zone if zone count large then three
 func buildNodeSetGrp3Zone(nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error) {
 	nsgm.Lock()
 	defer nsgm.Unlock()
@@ -827,7 +827,7 @@ func buildNodeSetGrpOneZone(nsgm *DomainManager, domainGrpManager *DomainNodeSet
 	return nil
 }
 
-//build 2 plus 1 nodesetGrp with 2zone or larger
+// build 2 plus 1 nodesetGrp with 2zone or larger
 func buildNodeSetGrp2Plus1(nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error) {
 	nsgm.Lock()
 	defer nsgm.Unlock()
@@ -1850,7 +1850,7 @@ func NewDecommissionDataPartitionList(c *Cluster) *DecommissionDataPartitionList
 	return l
 }
 
-//reserved
+// reserved
 func (l *DecommissionDataPartitionList) Stop() {
 	l.done <- struct{}{}
 }
@@ -1866,7 +1866,7 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition) {
 		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] cannot put nil value", id)
 		return
 	}
-	//can add running or mark deleted
+	//can only add running or mark or prepare
 	if !value.canAddToDecommissionList() {
 		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong dp[%v] status[%v]",
 			id, value.PartitionID, value.GetDecommissionStatus())
@@ -1875,7 +1875,7 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	//retry for prepare status
+	//prepare status reset to mark status to retry again
 	if value.GetDecommissionStatus() == DecommissionPrepare {
 		value.SetDecommissionStatus(markDecommission)
 	}
@@ -1947,7 +1947,6 @@ func (l *DecommissionDataPartitionList) startTraverse() {
 	l.start <- struct{}{}
 }
 
-//这里应该改成并发，不然回影响
 func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	//wait for loading all ap when reload metadata
@@ -1965,10 +1964,6 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 			for _, dp := range allDecommissionDP {
-				//update dp status, if is updated, sync it to followers
-				if dp.UpdateDecommissionStatus() {
-					c.syncUpdateDataPartition(dp)
-				}
 				if dp.IsDecommissionSuccess() {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success\n",
 						dp.PartitionID)
@@ -1977,9 +1972,12 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionFailed() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail\n",
-						dp.PartitionID)
-					l.Remove(dp)
+					if !dp.tryRollback(c) {
+						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail\n",
+							dp.PartitionID)
+						l.Remove(dp)
+					}
+					//rollback fail/success need release token
 					l.releaseDecommissionToken()
 				} else if dp.IsDecommissionStopped() {
 					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop \n",
@@ -1993,7 +1991,10 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 				} else if dp.IsMarkDecommission() && l.acquireDecommissionToken() {
 					go func(dp *DataPartition) {
 						if !dp.TryToDecommission(c) {
-							l.releaseDecommissionToken()
+							//retry should release token
+							if dp.IsMarkDecommission() {
+								l.releaseDecommissionToken()
+							}
 						}
 					}(dp) // special replica cnt cost some time from prepare to running
 				}

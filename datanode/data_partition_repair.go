@@ -21,6 +21,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"sync/atomic"
 
 	"github.com/cubefs/cubefs/util"
 
@@ -455,6 +456,7 @@ func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 	return
 }
 
+const MaxRepairErrCnt = 1000
 // DoStreamExtentFixRepair executes the repair on the followers.
 func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExtentInfo *storage.ExtentInfo) {
 	defer wg.Done()
@@ -462,6 +464,14 @@ func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExten
 	err := dp.streamRepairExtent(remoteExtentInfo)
 
 	if err != nil {
+		//only decommission repair need to check err cnt
+		if dp.isDecommissionRecovering() {
+			atomic.AddInt64(&dp.recoverErrCnt, 1)
+			if atomic.LoadInt64(&dp.recoverErrCnt) >= MaxRepairErrCnt{
+				dp.handleDecommissionRecoverFailed()
+				return
+			}
+		}
 		err = errors.Trace(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(remoteExtentInfo.FileID)))
 		localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(remoteExtentInfo.FileID))
 		if opErr != nil {
@@ -533,7 +543,10 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	)
 	var loopTimes uint64
 	for currFixOffset < remoteExtentInfo.Size {
-
+		if dp.stopRecover && dp.isDecommissionRecovering(){
+			log.LogWarnf("streamRepairExtent %v [extent %v]receive stop signal", dp.partitionID, remoteExtentInfo.FileID)
+			return
+		}
 		if !dp.Disk().CanWrite() {
 			return fmt.Errorf("disk is full, can't do repair write any more")
 		}

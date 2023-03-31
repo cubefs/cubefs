@@ -124,8 +124,9 @@ type dataPartitionValue struct {
 	DecommissionRaftForce    bool
 	DecommissionSrcDiskPath  string
 	DecommissionTerm         uint64
-	SingleDecommissionStatus uint8
-	SingleDecommissionAddr   string
+	SpecialReplicaDecommissionStep uint32
+	DecommissionDstAddrSpecify bool
+	DecommissionNeedRollback bool
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -148,14 +149,19 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.DecommissionStatus = dpv.DecommissionStatus
 	dp.DecommissionSrcDiskPath = dpv.DecommissionSrcDiskPath
 	dp.DecommissionTerm = dpv.DecommissionTerm
-	dp.SingleDecommissionAddr = dpv.SingleDecommissionAddr
-	dp.SingleDecommissionStatus = dpv.SingleDecommissionStatus
+	dp.SpecialReplicaDecommissionStep = dpv.SpecialReplicaDecommissionStep
+	dp.DecommissionDstAddrSpecify = dpv.DecommissionDstAddrSpecify
+	dp.DecommissionNeedRollback = dpv.DecommissionNeedRollback
 
 	for _, rv := range dpv.Replicas {
 		if !contains(dp.Hosts, rv.Addr) {
 			continue
 		}
 		dp.afterCreation(rv.Addr, rv.DiskPath, c)
+	}
+	if dp.IsDecommissionRunning(){
+		newReplica, _:= dp.getReplica(dp.DecommissionDstAddr)
+		newReplica.Status = bsProto.Recovering
 	}
 	return dp
 }
@@ -187,8 +193,9 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		DecommissionRaftForce:    dp.DecommissionRaftForce,
 		DecommissionSrcDiskPath:  dp.DecommissionSrcDiskPath,
 		DecommissionTerm:         dp.DecommissionTerm,
-		SingleDecommissionStatus: dp.SingleDecommissionStatus,
-		SingleDecommissionAddr:   dp.SingleDecommissionAddr,
+		SpecialReplicaDecommissionStep: dp.SpecialReplicaDecommissionStep,
+		DecommissionDstAddrSpecify: dp.DecommissionDstAddrSpecify,
+		DecommissionNeedRollback: dp.DecommissionNeedRollback,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -1266,7 +1273,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 }
 
 func (c *Cluster) addBadDataParitionIdMap(dp *DataPartition) {
-	if !dp.isRecover {
+	if !dp.IsDecommissionRunning() {
 		return
 	}
 

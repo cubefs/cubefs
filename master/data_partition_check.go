@@ -16,7 +16,6 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/datanode"
 	"math"
 	"time"
 
@@ -56,21 +55,11 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	default:
 		partition.Status = proto.ReadOnly
 	}
-
-	if partition.isSpecialReplicaCnt() && partition.SingleDecommissionStatus > 0 {
+	//keep readonly if special replica is still decommission
+	if partition.isSpecialReplicaCnt() && partition.GetSpecialReplicaDecommissionStep() > 0 {
 		log.LogInfof("action[checkStatus] partition %v with Special replica cnt %v on decommison status %v, live replicacnt %v",
 			partition.PartitionID, partition.ReplicaNum, partition.Status, len(liveReplicas))
 		partition.Status = proto.ReadOnly
-		if partition.SingleDecommissionStatus == datanode.DecommsionWaitAddRes {
-			if len(liveReplicas) == int(partition.ReplicaNum+1) && partition.checkReplicaNotHaveStatus(liveReplicas, proto.Unavailable) == true {
-				partition.SingleDecommissionStatus = datanode.DecommsionWaitAddResFin
-				log.LogInfof("action[checkStatus] partition %v with single replica on decommison and continue to remove old replica",
-					partition.PartitionID)
-				// partition.Status = proto.ReadWrite
-				c.syncUpdateDataPartition(partition)
-				partition.singleDecommissionChan <- true
-			}
-		}
 	}
 
 	if partition.checkReplicaEqualStatus(liveReplicas, proto.Unavailable) {
