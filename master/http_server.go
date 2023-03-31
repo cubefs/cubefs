@@ -189,6 +189,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminQueryDecommissionToken).
 		HandlerFunc(m.queryDecommissionToken)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetFileStats).
+		HandlerFunc(m.setFileStats)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetFileStats).
+		HandlerFunc(m.getFileStats)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

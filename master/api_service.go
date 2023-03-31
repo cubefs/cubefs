@@ -4213,3 +4213,30 @@ func (m *Server) setCheckDataReplicasEnable(w http.ResponseWriter, r *http.Reque
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
 		"set checkDataReplicasEnable to [%v] successfully", enable)))
 }
+
+func (m *Server) setFileStats(w http.ResponseWriter, r *http.Request) {
+	var (
+		err    error
+		enable bool
+	)
+	if enable, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	oldValue := m.cluster.fileStatsEnable
+	m.cluster.fileStatsEnable = enable
+	if err = m.cluster.syncPutCluster(); err != nil {
+		m.cluster.fileStatsEnable = oldValue
+		log.LogErrorf("action[setFileStats] syncPutCluster failed %v", err)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
+		return
+	}
+	log.LogInfof("action[setFileStats] enable be set [%v]", enable)
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"set setFileStats to [%v] successfully", enable)))
+}
+
+func (m *Server) getFileStats(w http.ResponseWriter, r *http.Request) {
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"getFileStats enable value [%v]", m.cluster.fileStatsEnable)))
+}

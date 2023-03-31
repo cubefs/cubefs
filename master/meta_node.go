@@ -145,11 +145,12 @@ func (metaNode *MetaNode) reachesThreshold() bool {
 	return float32(float64(metaNode.Used)/float64(metaNode.Total)) > metaNode.Threshold
 }
 
-func (metaNode *MetaNode) createHeartbeatTask(masterAddr string) (task *proto.AdminTask) {
+func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable bool) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,
 	}
+	request.FileStatsEnable = fileStatsEnable
 	task = proto.NewAdminTask(proto.OpMetaNodeHeartbeat, metaNode.Addr, request)
 	return
 }

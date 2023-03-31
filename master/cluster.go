@@ -75,6 +75,7 @@ type Cluster struct {
 	checkAutoCreateDataPartition bool
 	masterClient                 *masterSDK.MasterClient
 	checkDataReplicasEnable      bool
+	fileStatsEnable              bool
 }
 
 type followerReadManager struct {
@@ -503,7 +504,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
 		node := metaNode.(*MetaNode)
 		node.checkHeartbeat()
-		task := node.createHeartbeatTask(c.masterAddr())
+		task := node.createHeartbeatTask(c.masterAddr(), c.fileStatsEnable)
 		hbReq := task.Request.(*proto.HeartBeatRequest)
 		for _, vol := range c.vols {
 			if vol.FollowerRead {
