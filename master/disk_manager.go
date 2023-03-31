@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util"
+	//"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -66,23 +66,31 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			}
 			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replics %v conf replics num %v",
 				partition.PartitionID, partition.isSpecialReplicaCnt(), len(partition.Replicas), int(partition.ReplicaNum))
-			if len(partition.Replicas) == 0 ||
-				(!partition.isSpecialReplicaCnt() && len(partition.Replicas) < int(partition.ReplicaNum)) ||
-				(partition.isSpecialReplicaCnt() && len(partition.Replicas) > int(partition.ReplicaNum)) {
-				newBadDpIds = append(newBadDpIds, partitionID)
-				log.LogInfof("action[checkDiskRecoveryProgress] dp %v newBadDpIds [%v] replics %v conf replics num %v",
-					partition.PartitionID, newBadDpIds, len(partition.Replicas), int(partition.ReplicaNum))
-				continue
-			}
+			//if len(partition.Replicas) == 0 ||
+			//	(!partition.isSpecialReplicaCnt() && len(partition.Replicas) < int(partition.ReplicaNum)) ||
+			//	(partition.isSpecialReplicaCnt() && len(partition.Replicas) > int(partition.ReplicaNum)) {
+			//	newBadDpIds = append(newBadDpIds, partitionID)
+			//	log.LogInfof("action[checkDiskRecoveryProgress] dp %v newBadDpIds [%v] replics %v conf replics num %v",
+			//		partition.PartitionID, newBadDpIds, len(partition.Replicas), int(partition.ReplicaNum))
+			//	continue
+			//}
 
-			if partition.getMinus() < util.GB {
-				partition.isRecover = false
+			newReplica, _:= partition.getReplica(partition.DecommissionDstAddr)
+			if newReplica.isRepairing(){
+				newBadDpIds = append(newBadDpIds, partitionID)
+			} else {
+				//do not add to BadDataPartitionIds
+				if newReplica.isUnavailable(){
+					partition.DecommissionNeedRollback = true
+					partition.SetDecommissionStatus(DecommissionFail)
+					Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered failed", c.Name, partitionID))
+				} else {
+					partition.SetDecommissionStatus(DecommissionSuccess) //can be readonly or readwrite
+					Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
+				}
 				partition.RLock()
 				c.syncUpdateDataPartition(partition)
 				partition.RUnlock()
-				Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
-			} else {
-				newBadDpIds = append(newBadDpIds, partitionID)
 			}
 		}
 
