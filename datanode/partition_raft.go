@@ -280,6 +280,8 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 		err                                error
 	)
 	timer := time.NewTimer(0)
+	dp.recoverStartTime = time.Now()
+	const RepairTimeOut = time.Hour * 24
 	for {
 		select {
 		case <-timer.C:
@@ -293,7 +295,16 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				log.LogDebugf("PartitionID(%v) leader started.", dp.partitionID)
 				return
 			}
-			log.LogDebugf("StartRaftAfterRepair enter")
+			if dp.stopRecover && dp.isDecommissionRecovering() {
+				continue
+			}
+			if time.Now().Sub(dp.recoverStartTime) > RepairTimeOut && dp.isDecommissionRecovering() {
+				//stop and wait for delete
+				dp.handleDecommissionRecoverFailed()
+				log.LogErrorf("PartitionID(%v) repair timeout", dp.partitionID)
+				return
+			}
+
 			// wait for dp.replicas to be updated
 			if dp.getReplicaLen() == 0 {
 				timer.Reset(5 * time.Second)
@@ -323,7 +334,7 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				initPartitionSize = currLeaderPartitionSize
 			}
 			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
-
+			dp.decommissionRepairProgress = float64(localSize) / float64(initPartitionSize)
 			log.LogInfof("StartRaftAfterRepair PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
 				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
 
@@ -335,6 +346,7 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
+			dp.decommissionRepairProgress = float64(1)
 			dp.PersistMetadata()
 			if err := dp.StartRaft(isLoad); err != nil {
 				log.LogErrorf("PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
