@@ -31,11 +31,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -2271,61 +2269,34 @@ func TestIDCAPI(t *testing.T) {
 	assert.Contains(t, err.Error(), "parameter name not found")
 	reqURL = fmt.Sprintf("%v%v?name=%v", hostAddr, proto.CreateIDC, "")
 	_, err = processNoTerminal(reqURL, t)
-	if err == nil {
-		t.FailNow()
-	}
-
+	assert.Contains(t, err.Error(), "parameter name not found")
 	reqURL = fmt.Sprintf("%v%v?name=%v", hostAddr, proto.CreateIDC, idc1Name)
 	_, err = processNoTerminal(reqURL, t)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
-
+	assert.Nil(t, err)
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName1=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd")
 	_, err = processNoTerminal(reqURL, t)
-	if err == nil {
-		t.FailNow()
-	}
+	assert.Contains(t, err.Error(), "idc name is empty")
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, "zone11", idc1Name, "hdd")
 	_, err = processNoTerminal(reqURL, t)
-	if err == nil {
-		t.FailNow()
-	}
+	assert.Contains(t, err.Error(), "zone[zone11] is not found")
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd1")
 	_, err = processNoTerminal(reqURL, t)
-	if err == nil {
-		t.FailNow()
-	}
+	assert.Contains(t, err.Error(), "invalid medium type: hdd1")
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType1=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd")
 	_, err = processNoTerminal(reqURL, t)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assert.Nil(t, err)
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName1=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd")
 	_, err = processNoTerminal(reqURL, t)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assert.Nil(t, err)
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone2, idc1Name, "ssd")
 	_, err = processNoTerminal(reqURL, t)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assert.Nil(t, err)
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, "", idc1Name, "hdd")
 	_, err = processNoTerminal(reqURL, t)
-	if err == nil {
-		t.FailNow()
-	}
+	assert.Contains(t, err.Error(), " parameter zoneName not found")
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, "", "ssd")
 	_, err = processNoTerminal(reqURL, t)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assert.Nil(t, err)
 }
 
 func TestSetIDC(t *testing.T) {
@@ -2466,7 +2437,6 @@ func TestSmartVolRules(t *testing.T) {
 	defer log.LogFlush()
 	var reqURL string
 	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminSmartVolList)
-	t.Log(reqURL)
 	resp := process(reqURL, t)
 	vols := resp.Data.([]interface{})
 	/*
@@ -2482,7 +2452,6 @@ func TestSmartVolRules(t *testing.T) {
 	}
 
 	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=7b2f1bf38b87d32470c4557c7ff02e75&smart=%v", hostAddr, proto.AdminUpdateVol, volName, true)
-	t.Log(reqURL)
 	_, err = processNoTerminal(reqURL, t)
 	if err != nil {
 		t.Error(err.Error())
@@ -2500,7 +2469,6 @@ func TestSmartVolRules(t *testing.T) {
 
 	rules := "actionMetrics:dp:read:count:minute:1000:10:hdd,actionMetrics:dp:appendWrite:count:minute:1000:10:hdd"
 	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=7b2f1bf38b87d32470c4557c7ff02e75&smart=%v&smartRules=%v", hostAddr, proto.AdminUpdateVol, volName, false, rules)
-	t.Log(reqURL)
 	_, err = processNoTerminal(reqURL, t)
 	if err != nil {
 		t.Error(err.Error())
@@ -2599,10 +2567,7 @@ func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
 		t.FailNow()
 	}
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminSmartVolList)
-	t.Log(reqURL)
-	resp := process(reqURL, t)
-	t.Logf("data: %v", resp.Data)
-
+	process(reqURL, t)
 	dps, err := mc.ClientAPI().GetDataPartitions(volName)
 	if err != nil {
 		t.Error(err.Error())
@@ -2621,7 +2586,6 @@ func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
 		t.Error(err.Error())
 		t.FailNow()
 	}
-	t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
 	oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
 	if err != nil {
 		t.Error(err.Error())
@@ -2642,7 +2606,7 @@ func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
 		t.FailNow()
 	}
 
-	// check the new add is belong to expected zone
+	// check the new addr is belong to expected zone
 	zone, err = c.t.getZone(testZone1)
 	if err != nil {
 		t.Error(err.Error())
@@ -2653,8 +2617,6 @@ func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
 		t.Error(err.Error())
 		t.FailNow()
 	}
-
-	t.Logf("new addr: %v", newAddr)
 }
 
 /*
@@ -2721,7 +2683,6 @@ func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
 			t.Error(err.Error())
 			t.FailNow()
 		}
-		t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
 		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
 		if err != nil {
 			t.Error(err.Error())
@@ -2762,7 +2723,6 @@ func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
 			hosts = append(hosts, host)
 		}
 		dp.Hosts = hosts
-		t.Logf("dps: %v, pid: %v, addr: %v, new addr: %v", len(dps.DataPartitions), pid, oldAddr, newAddr)
 	}
 }
 
