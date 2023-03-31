@@ -486,24 +486,20 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64
 	if len(dinfo.PersistenceDataPartitions) == 0 {
 		return
 	}
-	lackPartitionsNeedCheck := make([]uint64, 0)
+
 	for _, partitionID := range dinfo.PersistenceDataPartitions {
 		dp := s.space.Partition(partitionID)
 		if dp == nil {
-			lackPartitionsNeedCheck = append(lackPartitionsNeedCheck, partitionID)
+			lackPartitions = append(lackPartitions, partitionID)
 		}
 	}
 
-	if len(lackPartitionsNeedCheck) == 0 {
-		return
+	if len(lackPartitions) == 0 {
+		log.LogInfo("checkLocalPartitionMatchWithMaster no lack")
 	} else {
-		lackPartitions = make([]uint64, 0)
-		for _, lackPartitionID := range lackPartitionsNeedCheck {
-			lackPartitions = append(lackPartitions, lackPartitionID)
-		}
 		log.LogErrorf("checkLocalPartitionMatchWithMaster lack ids [%v]", lackPartitions)
-		return
 	}
+	return
 }
 
 func (s *DataNode) checkPartitionInMemoryMatchWithInDisk() (lackPartitions []uint64) {
