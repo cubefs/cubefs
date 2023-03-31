@@ -67,6 +67,7 @@ type metadataManager struct {
 	partitions         map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
 	metaNode           *MetaNode
 	flDeleteBatchCount atomic.Value
+	fileStatsEnable    bool
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
