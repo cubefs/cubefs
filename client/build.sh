@@ -71,8 +71,11 @@ echo "using gccflag=\"${gccflag}\""
 build_sdk_dynamic_impl() {
     if [ "$1" = "libcfssdk" ]; then
         libsdk_flag="-E main.main"
+        libsdk_buildmode="plugin"
+    else
+        libsdk_buildmode="c-shared"
     fi
-    go build -ldflags "-r /usr/lib64 ${goflag} ${libsdk_flag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o ${bin}/$1.so ${dir}/sdk/sdk_bypass.go ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_bypass.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go ${dir}/sdk/ump.go ${dir}/sdk/dynamic.go
+    go build -ldflags "-r /usr/lib64 ${goflag} ${libsdk_flag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=${libsdk_buildmode} -linkshared -o ${bin}/$1.so ${dir}/sdk/sdk_bypass.go ${dir}/sdk/posix_bypass.go ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_bypass.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go ${dir}/sdk/ump.go ${dir}/sdk/dynamic.go
 }
 
 build_sdk_dynamic() {
@@ -83,7 +86,7 @@ build_sdk_dynamic() {
 
 build_sdk_nodynamic() {
     echo "building sdk (libcfssdk.so) commit: ${CommitID} ..."
-    go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=c-shared -o ${bin}/libcfssdk.so ${dir}/sdk/sdk_bypass.go ${dir}/sdk/http_bypass.go ${dir}/sdk/http_common.go ${dir}/sdk/ump.go ${dir}/sdk/no_dynamic.go
+    go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=c-shared -o ${bin}/libcfssdk.so ${dir}/sdk/sdk_bypass.go ${dir}/sdk/posix_bypass.go ${dir}/sdk/http_bypass.go ${dir}/sdk/http_common.go ${dir}/sdk/ump.go ${dir}/sdk/no_dynamic.go
 }
 
 build_client_dynamic() {
