@@ -423,8 +423,6 @@ func (vol *Vol) tryUpdateDpReplicaNum(c *Cluster, partition *DataPartition) (err
 	}
 
 	if partition.isSpecialReplicaCnt() {
-		partition.SingleDecommissionStatus = 0
-		partition.SingleDecommissionAddr = ""
 		return
 	}
 	oldReplicaNum := partition.ReplicaNum

@@ -76,3 +76,11 @@ func (replica *DataReplica) isLocationAvailable() (isAvailable bool) {
 
 	return
 }
+
+func (replica *DataReplica) isRepairing() bool{
+	return replica.Status == proto.Recovering
+}
+
+func (replica *DataReplica) isUnavailable() bool{
+	return replica.Status == proto.Unavailable
+}
