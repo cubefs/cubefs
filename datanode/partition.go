@@ -137,11 +137,11 @@ type DataPartition struct {
 	isLoadingDataPartition        bool
 	persistMetaMutex              sync.RWMutex
 
-	decommissionRepairProgress 				float64 //record repair progress for decommission datapartition
-	stopRecover bool
-	recoverStartTime 			time.Time
-	recoverLastConsumeTime	time.Duration
-	recoverErrCnt int64		//donot reset, if reach max err cnt, delete this dp
+	decommissionRepairProgress float64 //record repair progress for decommission datapartition
+	stopRecover                bool
+	recoverStartTime           time.Time
+	recoverLastConsumeTime     time.Duration
+	recoverErrCnt              int64 //donot reset, if reach max err cnt, delete this dp
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -580,9 +580,9 @@ func (dp *DataPartition) statusUpdate() {
 	}
 	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
 		//dp is still recovering
-		if  dp.DataPartitionCreateType == proto.NormalCreateDataPartition {
+		if dp.DataPartitionCreateType == proto.NormalCreateDataPartition {
 			status = proto.Recovering
-		}else {
+		} else {
 			status = proto.Unavailable
 		}
 	}
@@ -780,7 +780,7 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // 1. when the extent size is smaller than the max size on the record, start to repair the missing part.
 // 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
-	if dp.stopRecover && dp.isDecommissionRecovering(){
+	if dp.stopRecover && dp.isDecommissionRecovering() {
 		log.LogDebugf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
 		return
 	}
@@ -811,7 +811,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	)
 	wg = new(sync.WaitGroup)
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
-		if dp.stopRecover && dp.isDecommissionRecovering(){
+		if dp.stopRecover && dp.isDecommissionRecovering() {
 			log.LogDebugf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
 			return
 		}
@@ -896,7 +896,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	store := dp.extentStore
 	start := time.Now().Unix()
 	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteRecordFileSize {
-		if dp.stopRecover && dp.isDecommissionRecovering(){
+		if dp.stopRecover && dp.isDecommissionRecovering() {
 			log.LogWarnf("doStreamFixTinyDeleteRecord %v receive stop signal", dp.partitionID)
 			return
 		}
@@ -1186,14 +1186,14 @@ func getWithDefault(base, def int) int {
 	return base
 }
 
-func (dp *DataPartition) StopDecommissionRecover(stop bool){
+func (dp *DataPartition) StopDecommissionRecover(stop bool) {
 	//only work for decommission repair
-	if !dp.isDecommissionRecovering(){
+	if !dp.isDecommissionRecovering() {
 		return
 	}
 	//for check timeout
-	if !stop{
-		dp.recoverStartTime = time.Now().Add(- dp.recoverLastConsumeTime)
+	if !stop {
+		dp.recoverStartTime = time.Now().Add(-dp.recoverLastConsumeTime)
 		dp.recoverLastConsumeTime = time.Duration(0)
 	} else {
 		dp.recoverLastConsumeTime = time.Now().Sub(dp.recoverStartTime) //record consume time
@@ -1201,13 +1201,13 @@ func (dp *DataPartition) StopDecommissionRecover(stop bool){
 	dp.stopRecover = stop
 }
 
-func (dp *DataPartition) isDecommissionRecovering()bool {
+func (dp *DataPartition) isDecommissionRecovering() bool {
 	//decommission recover failed or success will set to normal
 	return dp.partitionType == proto.DecommissionedCreateDataPartition
 
 }
 func (dp *DataPartition) handleDecommissionRecoverFailed() {
-	if !dp.isDecommissionRecovering(){
+	if !dp.isDecommissionRecovering() {
 		return
 	}
 	//prevent status changing from  Unavailable to Recovering again in statusUpdate()

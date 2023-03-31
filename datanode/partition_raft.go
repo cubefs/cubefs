@@ -288,13 +288,13 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 				log.LogDebugf("PartitionID(%v) leader started.", dp.partitionID)
 				return
 			}
-			if dp.stopRecover && dp.isDecommissionRecovering(){
+			if dp.stopRecover && dp.isDecommissionRecovering() {
 				continue
 			}
-			if time.Now().Sub(dp.recoverStartTime) > RepairTimeOut && dp.isDecommissionRecovering(){
+			if time.Now().Sub(dp.recoverStartTime) > RepairTimeOut && dp.isDecommissionRecovering() {
 				//stop and wait for delete
 				dp.handleDecommissionRecoverFailed()
-				log.LogErrorf("PartitionID(%v) repair timeout",dp.partitionID)
+				log.LogErrorf("PartitionID(%v) repair timeout", dp.partitionID)
 				return
 			}
 

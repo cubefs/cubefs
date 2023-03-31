@@ -104,29 +104,29 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 }
 
 type dataPartitionValue struct {
-	PartitionID              uint64
-	ReplicaNum               uint8
-	Hosts                    string
-	Peers                    []bsProto.Peer
-	Status                   int8
-	VolID                    uint64
-	VolName                  string
-	OfflinePeerID            uint64
-	Replicas                 []*replicaValue
-	IsRecover                bool
-	PartitionType            int
-	PartitionTTL             int64
-	RdOnly                   bool
-	DecommissionRetry        int
-	DecommissionStatus       uint32
-	DecommissionSrcAddr      string
-	DecommissionDstAddr      string
-	DecommissionRaftForce    bool
-	DecommissionSrcDiskPath  string
-	DecommissionTerm         uint64
+	PartitionID                    uint64
+	ReplicaNum                     uint8
+	Hosts                          string
+	Peers                          []bsProto.Peer
+	Status                         int8
+	VolID                          uint64
+	VolName                        string
+	OfflinePeerID                  uint64
+	Replicas                       []*replicaValue
+	IsRecover                      bool
+	PartitionType                  int
+	PartitionTTL                   int64
+	RdOnly                         bool
+	DecommissionRetry              int
+	DecommissionStatus             uint32
+	DecommissionSrcAddr            string
+	DecommissionDstAddr            string
+	DecommissionRaftForce          bool
+	DecommissionSrcDiskPath        string
+	DecommissionTerm               uint64
 	SpecialReplicaDecommissionStep uint32
-	DecommissionDstAddrSpecify bool
-	DecommissionNeedRollback bool
+	DecommissionDstAddrSpecify     bool
+	DecommissionNeedRollback       bool
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -159,8 +159,8 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 		}
 		dp.afterCreation(rv.Addr, rv.DiskPath, c)
 	}
-	if dp.IsDecommissionRunning(){
-		newReplica, _:= dp.getReplica(dp.DecommissionDstAddr)
+	if dp.IsDecommissionRunning() {
+		newReplica, _ := dp.getReplica(dp.DecommissionDstAddr)
 		newReplica.Status = bsProto.Recovering
 	}
 	return dp
@@ -173,29 +173,29 @@ type replicaValue struct {
 
 func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 	dpv = &dataPartitionValue{
-		PartitionID:              dp.PartitionID,
-		ReplicaNum:               dp.ReplicaNum,
-		Hosts:                    dp.hostsToString(),
-		Peers:                    dp.Peers,
-		Status:                   dp.Status,
-		VolID:                    dp.VolID,
-		VolName:                  dp.VolName,
-		OfflinePeerID:            dp.OfflinePeerID,
-		Replicas:                 make([]*replicaValue, 0),
-		IsRecover:                dp.isRecover,
-		PartitionType:            dp.PartitionType,
-		PartitionTTL:             dp.PartitionTTL,
-		RdOnly:                   dp.RdOnly,
-		DecommissionRetry:        dp.DecommissionRetry,
-		DecommissionStatus:       dp.DecommissionStatus,
-		DecommissionSrcAddr:      dp.DecommissionSrcAddr,
-		DecommissionDstAddr:      dp.DecommissionDstAddr,
-		DecommissionRaftForce:    dp.DecommissionRaftForce,
-		DecommissionSrcDiskPath:  dp.DecommissionSrcDiskPath,
-		DecommissionTerm:         dp.DecommissionTerm,
+		PartitionID:                    dp.PartitionID,
+		ReplicaNum:                     dp.ReplicaNum,
+		Hosts:                          dp.hostsToString(),
+		Peers:                          dp.Peers,
+		Status:                         dp.Status,
+		VolID:                          dp.VolID,
+		VolName:                        dp.VolName,
+		OfflinePeerID:                  dp.OfflinePeerID,
+		Replicas:                       make([]*replicaValue, 0),
+		IsRecover:                      dp.isRecover,
+		PartitionType:                  dp.PartitionType,
+		PartitionTTL:                   dp.PartitionTTL,
+		RdOnly:                         dp.RdOnly,
+		DecommissionRetry:              dp.DecommissionRetry,
+		DecommissionStatus:             dp.DecommissionStatus,
+		DecommissionSrcAddr:            dp.DecommissionSrcAddr,
+		DecommissionDstAddr:            dp.DecommissionDstAddr,
+		DecommissionRaftForce:          dp.DecommissionRaftForce,
+		DecommissionSrcDiskPath:        dp.DecommissionSrcDiskPath,
+		DecommissionTerm:               dp.DecommissionTerm,
 		SpecialReplicaDecommissionStep: dp.SpecialReplicaDecommissionStep,
-		DecommissionDstAddrSpecify: dp.DecommissionDstAddrSpecify,
-		DecommissionNeedRollback: dp.DecommissionNeedRollback,
+		DecommissionDstAddrSpecify:     dp.DecommissionDstAddrSpecify,
+		DecommissionNeedRollback:       dp.DecommissionNeedRollback,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -323,12 +323,11 @@ type dataNodeValue struct {
 	DecommissionStatus       uint32
 	DecommissionDstAddr      string
 	DecommissionRaftForce    bool
-	DecommissionDpTotal      int
 	DecommissionLimit        int
 	DecommissionRetry        uint8
-	DecommissionTerm         uint64
 	DecommissionCompleteTime int64
 	ToBeOffline              bool
+	DecommissionDiskList     []string
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -342,12 +341,11 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		DecommissionStatus:       atomic.LoadUint32(&dataNode.DecommissionStatus),
 		DecommissionDstAddr:      dataNode.DecommissionDstAddr,
 		DecommissionRaftForce:    dataNode.DecommissionRaftForce,
-		DecommissionDpTotal:      dataNode.DecommissionDpTotal,
 		DecommissionLimit:        dataNode.DecommissionLimit,
 		DecommissionRetry:        dataNode.DecommissionRetry,
-		DecommissionTerm:         dataNode.DecommissionTerm,
 		DecommissionCompleteTime: dataNode.DecommissionCompleteTime,
 		ToBeOffline:              dataNode.ToBeOffline,
+		DecommissionDiskList:     dataNode.DecommissionDiskList,
 	}
 }
 
@@ -370,9 +368,11 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 }
 
 type nodeSetValue struct {
-	ID       uint64
-	Capacity int
-	ZoneName string
+	ID                             uint64
+	Capacity                       int
+	ZoneName                       string
+	DecommissionParallelLimit      int32
+	DecommissionDiskParallelFactor int32
 }
 
 type domainNodeSetGrpValue struct {
@@ -399,9 +399,11 @@ func newZoneDomainValue() (ev *zoneDomainValue) {
 }
 func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 	nsv = &nodeSetValue{
-		ID:       nset.ID,
-		Capacity: nset.Capacity,
-		ZoneName: nset.zoneName,
+		ID:                             nset.ID,
+		Capacity:                       nset.Capacity,
+		ZoneName:                       nset.zoneName,
+		DecommissionParallelLimit:      atomic.LoadInt32(&nset.decommissionParallelLimit),
+		DecommissionDiskParallelFactor: atomic.LoadInt32(&nset.decommissionDiskParallelFactor),
 	}
 	return
 }
@@ -818,7 +820,7 @@ func (c *Cluster) loadZoneValue() (err error) {
 	return
 }
 
-//persist cluster value if not persisted; set create time for cluster being created.
+// persist cluster value if not persisted; set create time for cluster being created.
 func (c *Cluster) checkPersistClusterValue() {
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
@@ -878,7 +880,6 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.diskQosEnable = cv.DiskQosEnable
 		c.cfg.QosMasterAcceptLimit = cv.QosLimitUpload
 		c.DecommissionLimit = cv.DecommissionLimit //dont update nodesets limit for nodesets are not loaded
-
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
 		}
@@ -918,6 +919,8 @@ func (c *Cluster) loadNodeSets() (err error) {
 		}
 
 		ns := newNodeSet(c, nsv.ID, cap, nsv.ZoneName)
+		ns.UpdateMaxParallel(nsv.DecommissionParallelLimit)
+		ns.UpdateDecommissionDiskFactor(nsv.DecommissionDiskParallelFactor)
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
 			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
@@ -1103,12 +1106,11 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.DecommissionStatus = dnv.DecommissionStatus
 		dataNode.DecommissionDstAddr = dnv.DecommissionDstAddr
 		dataNode.DecommissionRaftForce = dnv.DecommissionRaftForce
-		dataNode.DecommissionDpTotal = dnv.DecommissionDpTotal
 		dataNode.DecommissionLimit = dnv.DecommissionLimit
 		dataNode.DecommissionRetry = dnv.DecommissionRetry
-		dataNode.DecommissionTerm = dnv.DecommissionTerm
 		dataNode.DecommissionCompleteTime = dnv.DecommissionCompleteTime
 		dataNode.ToBeOffline = dnv.ToBeOffline
+		dataNode.DecommissionDiskList = dnv.DecommissionDiskList
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
@@ -1305,39 +1307,42 @@ func (c *Cluster) syncPutDecommissionDiskInfo(opType uint32, disk *DecommissionD
 }
 
 type decommissionDiskValue struct {
-	SrcAddr               string
-	DiskPath              string
-	DecommissionStatus    uint32
-	DecommissionRaftForce bool
-	DecommissionRetry     uint8
-	DecommissionDpTotal   int
-	DecommissionTerm      uint64
-	DiskDisable           bool
+	SrcAddr                  string
+	DiskPath                 string
+	DecommissionStatus       uint32
+	DecommissionRaftForce    bool
+	DecommissionRetry        uint8
+	DecommissionDpTotal      int
+	DecommissionTerm         uint64
+	Type                     uint32
+	DecommissionCompleteTime int64
 }
 
 func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
 	return &decommissionDiskValue{
-		SrcAddr:               disk.SrcAddr,
-		DiskPath:              disk.DiskPath,
-		DecommissionRetry:     disk.DecommissionRetry,
-		DecommissionStatus:    atomic.LoadUint32(&disk.DecommissionStatus),
-		DecommissionRaftForce: disk.DecommissionRaftForce,
-		DecommissionDpTotal:   disk.DecommissionDpTotal,
-		DecommissionTerm:      disk.DecommissionTerm,
-		DiskDisable:           disk.DiskDisable,
+		SrcAddr:                  disk.SrcAddr,
+		DiskPath:                 disk.DiskPath,
+		DecommissionRetry:        disk.DecommissionRetry,
+		DecommissionStatus:       atomic.LoadUint32(&disk.DecommissionStatus),
+		DecommissionRaftForce:    disk.DecommissionRaftForce,
+		DecommissionDpTotal:      disk.DecommissionDpTotal,
+		DecommissionTerm:         disk.DecommissionTerm,
+		Type:                     disk.Type,
+		DecommissionCompleteTime: disk.DecommissionCompleteTime,
 	}
 }
 
 func (ddv *decommissionDiskValue) Restore() *DecommissionDisk {
 	return &DecommissionDisk{
-		SrcAddr:               ddv.SrcAddr,
-		DiskPath:              ddv.DiskPath,
-		DecommissionRetry:     ddv.DecommissionRetry,
-		DecommissionStatus:    ddv.DecommissionStatus,
-		DecommissionRaftForce: ddv.DecommissionRaftForce,
-		DecommissionDpTotal:   ddv.DecommissionDpTotal,
-		DecommissionTerm:      ddv.DecommissionTerm,
-		DiskDisable:           ddv.DiskDisable,
+		SrcAddr:                  ddv.SrcAddr,
+		DiskPath:                 ddv.DiskPath,
+		DecommissionRetry:        ddv.DecommissionRetry,
+		DecommissionStatus:       ddv.DecommissionStatus,
+		DecommissionRaftForce:    ddv.DecommissionRaftForce,
+		DecommissionDpTotal:      ddv.DecommissionDpTotal,
+		DecommissionTerm:         ddv.DecommissionTerm,
+		Type:                     ddv.Type,
+		DecommissionCompleteTime: ddv.DecommissionCompleteTime,
 	}
 }
 

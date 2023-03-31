@@ -381,15 +381,15 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	space.RangePartitions(func(partition *DataPartition) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.PartitionReport{
-			VolName:         partition.volumeID,
-			PartitionID:     uint64(partition.partitionID),
-			PartitionStatus: partition.Status(),
-			Total:           uint64(partition.Size()),
-			Used:            uint64(partition.Used()),
-			DiskPath:        partition.Disk().Path,
-			IsLeader:        isLeader,
-			ExtentCount:     partition.GetExtentCount(),
-			NeedCompare:     true,
+			VolName:                    partition.volumeID,
+			PartitionID:                uint64(partition.partitionID),
+			PartitionStatus:            partition.Status(),
+			Total:                      uint64(partition.Size()),
+			Used:                       uint64(partition.Used()),
+			DiskPath:                   partition.Disk().Path,
+			IsLeader:                   isLeader,
+			ExtentCount:                partition.GetExtentCount(),
+			NeedCompare:                true,
 			DecommissionRepairProgress: partition.decommissionRepairProgress,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)

@@ -782,6 +782,17 @@ func (partition *DataPartition) containsBadDisk(diskPath string, nodeAddr string
 	return false
 }
 
+func (partition *DataPartition) getReplicaDisk(nodeAddr string) string {
+	partition.RLock()
+	defer partition.RUnlock()
+	for _, replica := range partition.Replicas {
+		if nodeAddr == replica.Addr {
+			return replica.DiskPath
+		}
+	}
+	return ""
+}
+
 func (partition *DataPartition) getMinus() (minus float64) {
 	partition.RLock()
 	defer partition.RUnlock()
@@ -932,18 +943,20 @@ const (
 const InvalidDecommissionDpCnt = -1
 
 const (
-	defaultDecommissionParallelLimit = 10
-	defaultDecommissionRetryLimit    = 5
-	defaultDecommissionRollbackLimit = 3
+	defaultDecommissionParallelLimit      = 10
+	defaultDecommissionRetryLimit         = 5
+	defaultDecommissionRollbackLimit      = 3
+	defaultDecommissionDiskParallelFactor = 2
 )
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64, c *Cluster) {
 	if !partition.canMarkDecommission() {
 		return
 	}
-	//do not reset status
+
 	if partition.IsDecommissionStopped() {
 		partition.stopReplicaRepair(partition.DecommissionDstAddr, false, c)
+		partition.SetDecommissionStatus(markDecommission)
 		return
 	}
 	//initial or failed restart
@@ -999,6 +1012,10 @@ func (partition *DataPartition) IsDecommissionFailed() bool {
 
 func (partition *DataPartition) IsDecommissionRunning() bool {
 	return partition.GetDecommissionStatus() == DecommissionRunning
+}
+
+func (partition *DataPartition) IsDecommissionPrepare() bool {
+	return partition.GetDecommissionStatus() == DecommissionPrepare
 }
 
 func (partition *DataPartition) IsDecommissionStopped() bool {
@@ -1144,7 +1161,7 @@ func (partition *DataPartition) StopDecommission(c *Cluster) bool {
 		if partition.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes {
 			partition.stopReplicaRepair(partition.DecommissionDstAddr, true, c)
 		}
-	} else { //三副本直接停止
+	} else {
 		partition.stopReplicaRepair(partition.DecommissionDstAddr, true, c)
 	}
 	partition.isRecover = false
@@ -1181,7 +1198,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	partition.SetDecommissionStatus(markDecommission)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	c.syncUpdateDataPartition(partition)
-	log.LogWarnf("action[rollback]dp[%v] rollback success")
+	log.LogWarnf("action[rollback]dp[%v] rollback success", partition.PartitionID)
 	return
 }
 

@@ -938,14 +938,20 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 }
 
 type nodeSet struct {
-	ID                            uint64
-	Capacity                      int
-	zoneName                      string
-	metaNodes                     *sync.Map
-	dataNodes                     *sync.Map
-	decommissionDataPartitionList *DecommissionDataPartitionList
-	decommissionParallelLimit     int32
+	ID                             uint64
+	Capacity                       int
+	zoneName                       string
+	metaNodes                      *sync.Map
+	dataNodes                      *sync.Map
+	decommissionDataPartitionList  *DecommissionDataPartitionList
+	decommissionParallelLimit      int32
+	decommissionDiskParallelFactor int32
 	sync.RWMutex
+	manualDecommissionDiskList        *DecommissionDiskList
+	autoDecommissionDiskList          *DecommissionDiskList
+	doneDecommissionDiskListTraverse  chan struct{}
+	startDecommissionDiskListTraverse chan struct{}
+	DecommissionDisks                 sync.Map
 }
 
 type nodeSetDecommissionParallelStatus struct {
@@ -957,13 +963,18 @@ type nodeSetDecommissionParallelStatus struct {
 func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 	log.LogInfof("action[newNodeSet] id[%v]", id)
 	ns := &nodeSet{
-		ID:                            id,
-		Capacity:                      cap,
-		zoneName:                      zoneName,
-		metaNodes:                     new(sync.Map),
-		dataNodes:                     new(sync.Map),
-		decommissionDataPartitionList: NewDecommissionDataPartitionList(c),
-		decommissionParallelLimit:     defaultDecommissionParallelLimit,
+		ID:                                id,
+		Capacity:                          cap,
+		zoneName:                          zoneName,
+		metaNodes:                         new(sync.Map),
+		dataNodes:                         new(sync.Map),
+		decommissionDataPartitionList:     NewDecommissionDataPartitionList(c),
+		decommissionParallelLimit:         defaultDecommissionParallelLimit,
+		decommissionDiskParallelFactor:    defaultDecommissionDiskParallelFactor,
+		manualDecommissionDiskList:        NewDecommissionDiskList(),
+		autoDecommissionDiskList:          NewDecommissionDiskList(),
+		doneDecommissionDiskListTraverse:  make(chan struct{}, 1),
+		startDecommissionDiskListTraverse: make(chan struct{}, 1),
 	}
 	return ns
 }
@@ -1049,8 +1060,19 @@ func (ns *nodeSet) AddToDecommissionDataPartitionList(dp *DataPartition) {
 
 func (ns *nodeSet) UpdateMaxParallel(maxParallel int32) {
 	ns.decommissionDataPartitionList.updateMaxParallel(maxParallel)
-	log.LogDebugf("action[UpdateMaxParallel]nodeSet[%v] decommission limit update to [%v]\n", ns.ID, maxParallel)
+	log.LogDebugf("action[UpdateMaxParallel]nodeSet[%v] decommission limit update to [%v]", ns.ID, maxParallel)
 	atomic.StoreInt32(&ns.decommissionParallelLimit, maxParallel)
+}
+
+func (ns *nodeSet) UpdateDecommissionDiskFactor(factor int32) {
+	log.LogDebugf("action[UpdateDecommissionFactor]nodeSet[%v] decommission disk factor update to [%v]", ns.ID, factor)
+	atomic.StoreInt32(&ns.decommissionDiskParallelFactor, factor)
+}
+
+func (ns *nodeSet) QueryDecommissionDiskLimit() int {
+	log.LogDebugf("action[QueryDecommissionDiskLimit]nodeSet[%v] decommission disk limit to [%v]",
+		ns.ID, int(atomic.LoadInt32(&ns.decommissionDiskParallelFactor))*ns.dataNodeLen())
+	return int(atomic.LoadInt32(&ns.decommissionDiskParallelFactor)) * ns.dataNodeLen()
 }
 
 func (ns *nodeSet) getDecommissionParallelStatus() (int32, int32) {
@@ -1063,6 +1085,104 @@ func (ns *nodeSet) AcquireDecommissionToken() bool {
 
 func (ns *nodeSet) ReleaseDecommissionToken() {
 	ns.decommissionDataPartitionList.releaseDecommissionToken()
+}
+func (ns *nodeSet) AddDecommissionDisk(dd *DecommissionDisk) {
+	ns.DecommissionDisks.Store(dd.GenerateKey(), dd)
+	if dd.IsManualDecommissionDisk() {
+		ns.addManualDecommissionDisk(dd)
+	} else {
+		ns.addAutoDecommissionDisk(dd)
+	}
+}
+
+func (ns *nodeSet) RemoveDecommissionDisk(dd *DecommissionDisk) {
+	ns.DecommissionDisks.Delete(dd.GenerateKey())
+	if dd.IsManualDecommissionDisk() {
+		ns.removeManualDecommissionDisk(dd)
+	} else {
+		ns.removeAutoDecommissionDisk(dd)
+	}
+}
+
+func (ns *nodeSet) addManualDecommissionDisk(dd *DecommissionDisk) {
+	ns.manualDecommissionDiskList.Put(ns.ID, dd)
+}
+
+func (ns *nodeSet) addAutoDecommissionDisk(dd *DecommissionDisk) {
+	ns.autoDecommissionDiskList.Put(ns.ID, dd)
+}
+
+func (ns *nodeSet) removeManualDecommissionDisk(dd *DecommissionDisk) {
+	ns.manualDecommissionDiskList.Remove(ns.ID, dd)
+}
+
+func (ns *nodeSet) removeAutoDecommissionDisk(dd *DecommissionDisk) {
+	ns.autoDecommissionDiskList.Remove(ns.ID, dd)
+}
+
+func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
+	t := time.NewTicker(DecommissionInterval)
+	//wait for loading all decommissionDisk when reload metadata
+	<-ns.startDecommissionDiskListTraverse
+	defer t.Stop()
+	for {
+		select {
+		case <-ns.doneDecommissionDiskListTraverse:
+			log.LogWarnf("traverse stopped!\n")
+			return
+		case <-t.C:
+			if c.partition != nil && !c.partition.IsRaftLeader() {
+				log.LogWarnf("Leader changed, stop traverse!\n")
+				return
+			}
+			runningCnt := 0
+			ns.DecommissionDisks.Range(func(key, value interface{}) bool {
+				disk := value.(*DecommissionDisk)
+				disk.updateDecommissionStatus(c, false)
+				if disk.GetDecommissionStatus() == DecommissionRunning {
+					runningCnt++
+				} else if disk.GetDecommissionStatus() == DecommissionSuccess ||
+					disk.GetDecommissionStatus() == DecommissionFail {
+					//remove from decommission disk list
+					ns.RemoveDecommissionDisk(disk)
+				}
+				return true
+			})
+			if ns.decommissionDiskParallelFactor == 0 {
+				autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
+				if autoCnt > 0 {
+					for _, disk := range autoDisks {
+						c.TryDecommissionDisk(disk)
+					}
+				}
+				manualCnt, manualDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
+				if manualCnt > 0 {
+					for _, disk := range manualDisks {
+						c.TryDecommissionDisk(disk)
+					}
+				}
+			} else {
+				maxDiskDecommissionCnt := int(atomic.LoadInt32(&ns.decommissionDiskParallelFactor)) * ns.dataNodeLen()
+				newDiskDecommissionCnt := maxDiskDecommissionCnt - runningCnt
+				if newDiskDecommissionCnt > 0 {
+					autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt)
+					if autoCnt > 0 {
+						for _, disk := range autoDisks {
+							c.TryDecommissionDisk(disk)
+						}
+					}
+					if newDiskDecommissionCnt-autoCnt > 0 {
+						manualCnt, manualDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt - autoCnt)
+						if manualCnt > 0 {
+							for _, disk := range manualDisks {
+								c.TryDecommissionDisk(disk)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 func (t *topology) isSingleZone() bool {
@@ -1786,6 +1906,41 @@ func (zone *Zone) updateDecommissionLimit(limit int32, c *Cluster) (err error) {
 	return
 }
 
+func (zone *Zone) updateDecommissionDiskFactor(factor int32, c *Cluster) (err error) {
+	nodeSets := zone.getAllNodeSet()
+
+	if nodeSets == nil {
+		log.LogWarnf("Nodeset form %v is nil", zone.name)
+		return proto.ErrNoNodeSetToUpdateDecommissionDiskFactor
+	}
+
+	for _, ns := range nodeSets {
+		ns.UpdateDecommissionDiskFactor(factor)
+		if err = c.syncUpdateNodeSet(ns); err != nil {
+			log.LogWarnf("updateDecommissionDiskFactor nodeset [%v] failed,err:%v", ns.ID, err.Error())
+			continue
+		}
+	}
+	log.LogInfof("All nodeset from %v set decommission disk factor to %v", zone.name, factor)
+	return
+}
+
+func (zone *Zone) queryDecommissionDiskLimit() (err error, diskLimit []proto.DecommissionDiskLimitDetail) {
+	nodeSets := zone.getAllNodeSet()
+	diskLimit = make([]proto.DecommissionDiskLimitDetail, 0)
+	if nodeSets == nil {
+		log.LogWarnf("Nodeset form %v is nil", zone.name)
+		return proto.ErrNoNodeSetToQueryDecommissionDiskLimit, nil
+	}
+
+	for _, ns := range nodeSets {
+		limit := ns.QueryDecommissionDiskLimit()
+		diskLimit = append(diskLimit, proto.DecommissionDiskLimitDetail{NodeSetId: ns.ID, Limit: limit})
+	}
+	log.LogInfof("All nodeset from %v set decommission disk limit  %v", zone.name, diskLimit)
+	return
+}
+
 func (zone *Zone) queryDecommissionParallelStatus() (err error, stats []nodeSetDecommissionParallelStatus) {
 	nodeSets := zone.getAllNodeSet()
 
@@ -2009,4 +2164,82 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 			}
 		}
 	}
+}
+
+type DecommissionDiskList struct {
+	mu               sync.Mutex
+	cacheMap         map[string]*list.Element
+	decommissionList *list.List
+}
+
+func NewDecommissionDiskList() *DecommissionDiskList {
+	l := new(DecommissionDiskList)
+	l.mu = sync.Mutex{}
+	l.cacheMap = make(map[string]*list.Element)
+	l.decommissionList = list.New()
+	return l
+}
+
+func (l *DecommissionDiskList) Put(nsId uint64, value *DecommissionDisk) {
+	if value == nil {
+		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] cannot put nil value", nsId)
+		return
+	}
+	//can only add running or mark
+	if !value.canAddToDecommissionList() {
+		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong dp[%v] status[%v]",
+			nsId, value.GenerateKey(), value.GetDecommissionStatus())
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if _, ok := l.cacheMap[value.GenerateKey()]; ok {
+		return
+	}
+	elm := l.decommissionList.PushBack(value)
+	l.cacheMap[value.GenerateKey()] = elm
+
+	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] type[%v]",
+		nsId, value.GenerateKey(), value.GetDecommissionStatus(), value.Type)
+}
+
+func (l *DecommissionDiskList) Remove(nsId uint64, value *DecommissionDisk) {
+	if value == nil {
+		log.LogWarnf("action[DecommissionDataPartitionListRemove] ns[%v]Cannot remove nil value", nsId)
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if elm, ok := l.cacheMap[value.GenerateKey()]; ok {
+		delete(l.cacheMap, value.GenerateKey())
+		l.decommissionList.Remove(elm)
+		log.LogDebugf("action[DecommissionDataPartitionListRemove] ns[%v] remove disk[%v]", nsId, value.GenerateKey())
+	}
+}
+
+func (l *DecommissionDiskList) Length() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.decommissionList.Len()
+}
+
+// only pop decommission disk with markDecommission status from front
+func (l *DecommissionDiskList) PopMarkDecommissionDisk(limit int) (count int, collection []*DecommissionDisk) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	collection = make([]*DecommissionDisk, count)
+	count = 0
+	for elm := l.decommissionList.Front(); elm != nil; elm = elm.Next() {
+		if count == limit && limit != 0 {
+			break
+		}
+		disk := elm.Value.(*DecommissionDisk)
+		if disk.GetDecommissionStatus() != markDecommission {
+			continue
+		}
+		collection = append(collection, disk)
+		count++
+	}
+	return count, collection
 }

@@ -80,11 +80,10 @@ func newLoadDataPartitionMetricRequest(ID uint64) (req *proto.LoadDataPartitionR
 func newStopDataPartitionRepairRequest(ID uint64, stop bool) (req *proto.StopDataPartitionRepairRequest) {
 	req = &proto.StopDataPartitionRepairRequest{
 		PartitionId: ID,
-		Stop: stop,
+		Stop:        stop,
 	}
 	return
 }
-
 
 func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 	bytes, err := json.Marshal(task.Response)

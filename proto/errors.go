@@ -16,7 +16,7 @@ package proto
 
 import "github.com/cubefs/cubefs/util/errors"
 
-//err
+// err
 var (
 	ErrSuc                    = errors.New("success")
 	ErrInternalError          = errors.New("internal error")
@@ -85,6 +85,8 @@ var (
 	ErrNoNodeSetToUpdateDecommissionLimit      = errors.New("no node set available for updating decommission limit")
 	ErrNoNodeSetToQueryDecommissionLimitStatus = errors.New("no node set available for query decommission limit status")
 	ErrNoNodeSetToDecommission                 = errors.New("no node set available to decommission ")
+	ErrNoNodeSetToUpdateDecommissionDiskFactor = errors.New("no node set available for updating decommission disk factor")
+	ErrNoNodeSetToQueryDecommissionDiskLimit   = errors.New("no node set available for query decommission disk limit")
 )
 
 // http response error code and error message definitions

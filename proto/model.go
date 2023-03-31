@@ -211,7 +211,7 @@ type DataPartitionInfo struct {
 	RdOnly                   bool
 }
 
-//FileInCore define file in data partition
+// FileInCore define file in data partition
 type FileInCore struct {
 	Name          string
 	LastModify    int64
@@ -227,17 +227,17 @@ type FileMetadata struct {
 
 // DataReplica represents the replica of a data partition
 type DataReplica struct {
-	Addr            string
-	ReportTime      int64
-	FileCount       uint32
-	Status          int8
-	HasLoadResponse bool   // if there is any response when loading
-	Total           uint64 `json:"TotalSize"`
-	Used            uint64 `json:"UsedSize"`
-	IsLeader        bool
-	NeedsToCompare  bool
-	DiskPath        string
-	DecommissionRepairProgress 				float64
+	Addr                       string
+	ReportTime                 int64
+	FileCount                  uint32
+	Status                     int8
+	HasLoadResponse            bool   // if there is any response when loading
+	Total                      uint64 `json:"TotalSize"`
+	Used                       uint64 `json:"UsedSize"`
+	IsLeader                   bool
+	NeedsToCompare             bool
+	DiskPath                   string
+	DecommissionRepairProgress float64
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
@@ -261,4 +261,30 @@ type DecommissionProgress struct {
 	Status    uint32
 	Progress  string
 	FailedDps []uint64
+}
+
+type DecommissionDiskLimitDetail struct {
+	NodeSetId uint64
+	Limit     int
+}
+type DecommissionDiskLimit struct {
+	Details []DecommissionDiskLimitDetail
+}
+
+type DecommissionDiskInfo struct {
+	SrcAddr                  string
+	DiskPath                 string
+	DecommissionStatus       uint32
+	DecommissionRaftForce    bool
+	DecommissionRetry        uint8
+	DecommissionDpTotal      int
+	DecommissionTerm         uint64
+	DecommissionLimit        int
+	Type                     uint32
+	DecommissionCompleteTime int64
+	Progress                 float64
+}
+
+type DecommissionDisksResponse struct {
+	Infos []DecommissionDiskInfo
 }

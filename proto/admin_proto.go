@@ -64,6 +64,8 @@ const (
 	AdminUpdateDecommissionLimit              = "/admin/updateDecommissionLimit"
 	AdminQueryDecommissionLimit               = "/admin/queryDecommissionLimit"
 	AdminQueryDecommissionToken               = "/admin/queryDecommissionToken"
+	AdminUpdateDecommissionDiskFactor         = "/admin/updateDecommissionDiskFactor"
+	AdminQueryDecommissionDiskLimit           = "/admin/queryDecommissionDiskLimit"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -113,6 +115,8 @@ const (
 	MarkDecoDiskFixed                  = "/disk/MarkDecommissionDiskFixed"
 	CancelDecommissionDisk             = "/disk/cancelDecommission"
 	QueryDecommissionDiskDecoFailedDps = "/disk/queryDecommissionFailedDps"
+	RestoreStoppedAutoDecommissionDisk = "/disk/restoreStoppedAutoDecommissionDisk"
+	QueryAllDecommissionDisk           = "/disk/queryAllDecommissionDisk"
 	GetDataNode                        = "/dataNode/get"
 	AddMetaNode                        = "/metaNode/add"
 	DecommissionMetaNode               = "/metaNode/decommission"
@@ -376,10 +380,9 @@ type LoadDataPartitionResponse struct {
 	VolName           string
 }
 
-
 type StopDataPartitionRepairRequest struct {
-	PartitionId       uint64
-	Stop				bool
+	PartitionId uint64
+	Stop        bool
 }
 
 // DeleteDataPartitionResponse defines the response to the request of deleting a data partition.
@@ -431,15 +434,15 @@ type HeartBeatRequest struct {
 
 // PartitionReport defines the partition report.
 type PartitionReport struct {
-	VolName         string
-	PartitionID     uint64
-	PartitionStatus int
-	Total           uint64
-	Used            uint64
-	DiskPath        string
-	IsLeader        bool
-	ExtentCount     int
-	NeedCompare     bool
+	VolName                    string
+	PartitionID                uint64
+	PartitionStatus            int
+	Total                      uint64
+	Used                       uint64
+	DiskPath                   string
+	IsLeader                   bool
+	ExtentCount                int
+	NeedCompare                bool
 	DecommissionRepairProgress float64
 }
 
@@ -606,6 +609,12 @@ type MetaPartitionView struct {
 	Members     []string
 	LeaderAddr  string
 	Status      int8
+}
+
+type DataNodeDisksRequest struct {
+}
+
+type DataNodeDisksResponse struct {
 }
 
 type OSSSecure struct {

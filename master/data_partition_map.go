@@ -300,3 +300,25 @@ func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr str
 	}
 	return
 }
+
+func (dpMap *DataPartitionMap) getReplicaDiskPaths(nodeAddr string) (diskPaths []string) {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+	diskPaths = make([]string, 0)
+	for _, dp := range dpMap.partitionMap {
+		disk := dp.getReplicaDisk(nodeAddr)
+		if len(disk) != 0 && !inStingList(disk, diskPaths) {
+			diskPaths = append(diskPaths, disk)
+		}
+	}
+	return
+}
+
+func inStingList(target string, strArray []string) bool {
+	for _, element := range strArray {
+		if target == element {
+			return true
+		}
+	}
+	return false
+}
