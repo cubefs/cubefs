@@ -336,6 +336,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetClusterValue).
 		HandlerFunc(m.GetClusterValue)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateDecommissionDiskFactor).
+		HandlerFunc(m.updateDecommissionDiskFactor)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminQueryDecommissionDiskLimit).
+		HandlerFunc(m.queryDecommissionDiskLimit)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -580,6 +586,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.RecommissionDisk).
 		HandlerFunc(m.recommissionDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RestoreStoppedAutoDecommissionDisk).
+		HandlerFunc(m.restoreStoppedAutoDecommissionDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.QueryDiskDecoProgress).
 		HandlerFunc(m.queryDiskDecoProgress)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -594,6 +603,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.QueryBadDisks).
 		HandlerFunc(m.queryBadDisks)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QueryAllDecommissionDisk).
+		HandlerFunc(m.queryAllDecommissionDisk)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeInfo).
