@@ -92,6 +92,8 @@ var (
 	ErrQuotaNotExists                          = errors.New("quota not exists")
 	ErrCodeVersionOp                           = errors.New("version op failed")
 	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
+	ErrNoNodeSetToUpdateDecommissionDiskFactor = errors.New("no node set available for updating decommission disk factor")
+	ErrNoNodeSetToQueryDecommissionDiskLimit   = errors.New("no node set available for query decommission disk limit")
 )
 
 // http response error code and error message definitions
