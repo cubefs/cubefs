@@ -456,7 +456,7 @@ func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 	return
 }
 
-const MaxRepairErrCnt = 1000
+//const MaxRepairErrCnt = 1000
 
 // DoStreamExtentFixRepair executes the repair on the followers.
 func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExtentInfo *storage.ExtentInfo) {
@@ -467,8 +467,8 @@ func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExten
 	if err != nil {
 		//only decommission repair need to check err cnt
 		if dp.isDecommissionRecovering() {
-			atomic.AddInt64(&dp.recoverErrCnt, 1)
-			if atomic.LoadInt64(&dp.recoverErrCnt) >= MaxRepairErrCnt {
+			atomic.AddUint64(&dp.recoverErrCnt, 1)
+			if atomic.LoadUint64(&dp.recoverErrCnt) >= dp.dataNode.GetDpMaxRepairErrCnt() {
 				dp.handleDecommissionRecoverFailed()
 				return
 			}
