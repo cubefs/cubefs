@@ -630,6 +630,8 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	autoRepairRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeAutoRepairLimitRate)
 	dirChildrenNumLimit := atomic.LoadUint32(&m.cluster.cfg.DirChildrenNumLimit)
+	dpMaxRepairErrCnt := atomic.LoadUint64(&m.cluster.cfg.DpMaxRepairErrCnt)
+	dpRepairTimeOut := atomic.LoadUint64(&m.cluster.cfg.DpRepairTimeOut)
 
 	cInfo := &proto.ClusterInfo{
 		Cluster:                     m.cluster.Name,
@@ -637,6 +639,8 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		MetaNodeDeleteWorkerSleepMs: deleteSleepMs,
 		DataNodeDeleteLimitRate:     limitRate,
 		DataNodeAutoRepairLimitRate: autoRepairRate,
+		DpMaxRepairErrCnt:           dpMaxRepairErrCnt,
+		DpRepairTimeOut:             dpRepairTimeOut,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
 		//Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 		Ip:                iputil.RealIP(r),
@@ -1618,7 +1622,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		repFileCountDifferDpIDs []uint64
 		repUsedSizeDifferDpIDs  []uint64
 		excessReplicaDpIDs      []uint64
-		badDataPartitions       []badPartitionView
+		badDataPartitionInfos   []proto.BadPartitionRepairView
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDiagnoseDataPartition))
 	defer func() {
@@ -1667,12 +1671,13 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		excessReplicaDpIDs = append(excessReplicaDpIDs, dp.PartitionID)
 	}
 
-	badDataPartitions = m.cluster.getBadDataPartitionsView()
+	//badDataPartitions = m.cluster.getBadDataPartitionsView()
+	badDataPartitionInfos = m.cluster.getBadDataPartitionsRepairView()
 	rstMsg = &proto.DataPartitionDiagnosis{
 		InactiveDataNodes:           inactiveNodes,
 		CorruptDataPartitionIDs:     corruptDpIDs,
 		LackReplicaDataPartitionIDs: lackReplicaDpIDs,
-		BadDataPartitionIDs:         badDataPartitions,
+		BadDataPartitionInfos:       badDataPartitionInfos,
 		BadReplicaDataPartitionIDs:  badReplicaDpIDs,
 		RepFileCountDifferDpIDs:     repFileCountDifferDpIDs,
 		RepUsedSizeDifferDpIDs:      repUsedSizeDifferDpIDs,
@@ -2537,6 +2542,24 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if val, ok := params[nodeDpRepairTimeOutKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if err = m.cluster.setDataPartitionRepairTimeOut(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[nodeDpMaxRepairErrCntKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if err = m.cluster.setDataPartitionMaxRepairErrCnt(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	if val, ok := params[nodeDeleteWorkerSleepMs]; ok {
 		if v, ok := val.(uint64); ok {
 			if err = m.cluster.setMetaNodeDeleteWorkerSleepMs(v); err != nil {
@@ -3242,6 +3265,8 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
 	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	resp[nodeAutoRepairRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeAutoRepairLimitRate)
+	resp[nodeDpRepairTimeOutKey] = fmt.Sprintf("%v", m.cluster.cfg.DpRepairTimeOut)
+	resp[nodeDpMaxRepairErrCntKey] = fmt.Sprintf("%v", m.cluster.cfg.DpMaxRepairErrCnt)
 	resp[clusterLoadFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.ClusterLoadFactor)
 	resp[maxDpCntLimitKey] = fmt.Sprintf("%v", m.cluster.cfg.MaxDpCntLimit)
 
