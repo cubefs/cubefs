@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"fmt"
+	syslog "log"
 	"path"
 	"regexp"
 	"strconv"
@@ -499,6 +500,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 					partitionID, err.Error())
 				log.LogError(mesg)
 				exporter.Warning(mesg)
+				syslog.Println(mesg)
 				return
 			}
 			if visitor != nil {
