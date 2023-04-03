@@ -330,9 +330,11 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 		return 0, false, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
 	}
 	s.once.Do(func() {
-		// TODO unhandled error
 		s.GetExtents(ctx)
 	})
+	if !s.extents.initialized {
+		return 0, false, proto.ErrGetExtentsFailed
+	}
 
 	if overWriteBuffer {
 		requests, _ := s.extents.PrepareRequests(offset, len(data), data)
@@ -418,6 +420,9 @@ func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size uin
 	s.once.Do(func() {
 		s.GetExtents(ctx)
 	})
+	if !s.extents.initialized {
+		return proto.ErrGetExtentsFailed
+	}
 
 	err := s.IssueTruncRequest(ctx, size)
 	if err != nil {
@@ -458,6 +463,10 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	s.once.Do(func() {
 		s.GetExtents(ctx)
 	})
+	if !s.extents.initialized {
+		err = proto.ErrGetExtentsFailed
+		return
+	}
 
 	//err = s.IssueFlushRequest(ctx)
 	//if err != nil {
@@ -496,6 +505,9 @@ func (client *ExtentClient) ExtentMerge(ctx context.Context, inode uint64) (fini
 	s.once.Do(func() {
 		s.GetExtents(ctx)
 	})
+	if !s.extents.initialized {
+		return true, proto.ErrGetExtentsFailed
+	}
 	finish, err = s.IssueExtentMergeRequest(ctx)
 	return
 }

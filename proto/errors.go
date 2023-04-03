@@ -101,6 +101,7 @@ var (
 	ErrVolInCreation     = errors.New("vol is in creation")
 
 	ExtentNotFoundError = errors.New("extent does not exist")
+	ErrGetExtentsFailed = errors.New("get extents failed")
 )
 
 // http response error code and error message definitions
@@ -174,6 +175,7 @@ const (
 	ErrCodeNoAvailEcPartition
 	ErrCodeNoZoneToCreateECPartition
 	ErrCodeDataPartitionNotMigrating
+	ErrCodeGetExtentsFailed
 )
 
 // Err2CodeMap error map to code
@@ -243,6 +245,7 @@ var Err2CodeMap = map[error]int32{
 	ErrVolWriteMutexOccupied:           ErrCodeVolWriteMutexOccupied,
 	ErrHBaseOperation:                  ErrCodeHBaseOperation,
 	ErrVolInCreation:                   ErrCodeVolInCreation,
+	ErrGetExtentsFailed:                ErrCodeGetExtentsFailed,
 }
 
 func ParseErrorCode(code int32) error {
@@ -319,6 +322,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeVolWriteMutexOccupied:           ErrVolWriteMutexOccupied,
 	ErrCodeHBaseOperation:                  ErrHBaseOperation,
 	ErrCodeVolInCreation:                   ErrVolInCreation,
+	ErrCodeGetExtentsFailed:                ErrGetExtentsFailed,
 }
 
 type GeneralResp struct {

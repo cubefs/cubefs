@@ -36,7 +36,7 @@ type ExtentRequest struct {
 	Size       int
 	Data       []byte
 	ExtentKey  *proto.ExtentKey
-	Done	   bool
+	Done       bool
 }
 
 // String returns the string format of the extent request.
@@ -64,6 +64,7 @@ type ExtentCache struct {
 	gen         uint64 // generation number
 	size        uint64 // size of the cache
 	root        *se.SortedExtents
+	initialized bool
 	refreshTime time.Time        // the last time to update extent cache
 	ek          *proto.ExtentKey // temporary ek
 }
@@ -96,6 +97,7 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 
 	log.LogDebugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) cache.ek(%v) gen(%v) size(%v)", cache.inode, cache.gen, cache.size, cache.ek, gen, size)
 
+	cache.initialized = true
 	if cache.gen != 0 && cache.gen >= gen {
 		log.LogDebugf("ExtentCache update: no need to update, ino(%v) gen(%v) size(%v)", cache.inode, gen, size)
 		return
