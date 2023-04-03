@@ -142,6 +142,16 @@ type NodeView struct {
 	IsWritable bool
 }
 
+type DpRepairInfo struct {
+	PartitionID                uint64
+	DecommissionRepairProgress float64
+}
+
+type BadPartitionRepairView struct {
+	Path           string
+	PartitionInfos []DpRepairInfo
+}
+
 type BadPartitionView struct {
 	Path         string
 	PartitionIDs []uint64
@@ -245,8 +255,9 @@ type DataPartitionDiagnosis struct {
 	InactiveDataNodes           []string
 	CorruptDataPartitionIDs     []uint64
 	LackReplicaDataPartitionIDs []uint64
-	BadDataPartitionIDs         []BadPartitionView
-	BadReplicaDataPartitionIDs  []uint64
+	//BadDataPartitionIDs         []BadPartitionView
+	BadDataPartitionInfos      []BadPartitionRepairView
+	BadReplicaDataPartitionIDs []uint64
 }
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas

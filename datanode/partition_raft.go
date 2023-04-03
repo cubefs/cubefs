@@ -275,7 +275,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 	)
 	timer := time.NewTicker(5 * time.Second)
 	dp.recoverStartTime = time.Now()
-	const RepairTimeOut = time.Hour * 24
+	//const RepairTimeOut = time.Hour * 24
 	for {
 		select {
 		case <-timer.C:
@@ -292,7 +292,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 				log.LogDebugf("action[StartRaftAfterRepair] PartitionID(%v) receive stop signal.", dp.partitionID)
 				continue
 			}
-			if time.Now().Sub(dp.recoverStartTime) > RepairTimeOut && dp.isDecommissionRecovering() {
+			if time.Now().Sub(dp.recoverStartTime) > dp.dataNode.GetDpRepairTimeout() && dp.isDecommissionRecovering() {
 				//stop and wait for delete
 				dp.handleDecommissionRecoverFailed()
 				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) repair timeout", dp.partitionID)

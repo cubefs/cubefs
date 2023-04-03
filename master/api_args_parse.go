@@ -971,6 +971,28 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[maxDpCntLimitKey] = val
 	}
 
+	if value = r.FormValue(nodeDpRepairTimeOutKey); value != "" {
+		noParams = false
+		var val = uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(nodeDpRepairTimeOutKey)
+			return
+		}
+		params[nodeDpRepairTimeOutKey] = val
+	}
+
+	if value = r.FormValue(nodeDpMaxRepairErrCntKey); value != "" {
+		noParams = false
+		var val = uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(nodeDpMaxRepairErrCntKey)
+			return
+		}
+		params[nodeDpMaxRepairErrCntKey] = val
+	}
+
 	if value = r.FormValue(clusterCreateTimeKey); value != "" {
 		noParams = false
 		params[clusterCreateTimeKey] = value

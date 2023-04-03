@@ -152,14 +152,15 @@ The "reset" command will be released in next version`,
 
 			stdout("\n")
 			stdout("%v\n", "[Bad data partitions(decommission not completed)]:")
-			badPartitionTablePattern := "%-8v    %-10v\n"
-			stdout(badPartitionTablePattern, "PATH", "PARTITION ID")
-			for _, bdpv := range diagnosis.BadDataPartitionIDs {
-				sort.SliceStable(bdpv.PartitionIDs, func(i, j int) bool {
-					return bdpv.PartitionIDs[i] < bdpv.PartitionIDs[j]
+			badPartitionTablePattern := "%-8v    %-10v    %-10v\n"
+			stdout(badPartitionTablePattern, "PATH", "PARTITION ID", "REPAIR PROGRESS")
+			for _, bdpv := range diagnosis.BadDataPartitionInfos {
+				sort.SliceStable(bdpv.PartitionInfos, func(i, j int) bool {
+					return bdpv.PartitionInfos[i].PartitionID < bdpv.PartitionInfos[j].PartitionID
 				})
-				for _, pid := range bdpv.PartitionIDs {
-					stdout(badPartitionTablePattern, bdpv.Path, pid)
+				for _, pinfo := range bdpv.PartitionInfos {
+					percent := strconv.FormatFloat(pinfo.DecommissionRepairProgress*100, 'f', 2, 64) + "%"
+					stdout(badPartitionTablePattern, bdpv.Path, pinfo.PartitionID, percent)
 				}
 			}
 

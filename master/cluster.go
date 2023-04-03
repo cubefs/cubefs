@@ -2311,6 +2311,39 @@ func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView) {
 	return
 }
 
+func (c *Cluster) getBadDataPartitionsRepairView() (bprvs []proto.BadPartitionRepairView) {
+	c.badPartitionMutex.Lock()
+	defer c.badPartitionMutex.Unlock()
+
+	bprvs = make([]proto.BadPartitionRepairView, 0)
+	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		badDataPartitionIds := value.([]uint64)
+		dpRepairInfos := make([]proto.DpRepairInfo, 0)
+		path := key.(string)
+
+		for _, partitionID := range badDataPartitionIds {
+			partition, err := c.getDataPartitionByID(partitionID)
+			if err != nil {
+				continue
+			}
+			replica, err := partition.getReplica(partition.DecommissionDstAddr)
+			if err != nil {
+				log.LogDebugf("getBadDataPartitionsRepairView: replica for partitionID[%v] addr[%v] is empty", partitionID, partition.DecommissionDstAddr)
+				continue
+			}
+			dpRepairInfo := proto.DpRepairInfo{PartitionID: partitionID, DecommissionRepairProgress: replica.DecommissionRepairProgress}
+			dpRepairInfos = append(dpRepairInfos, dpRepairInfo)
+			log.LogDebugf("getBadDataPartitionsRepairView: partitionID[%v], addr[%v], dpRepairInfo[%v]",
+				partitionID, partition.DecommissionDstAddr, dpRepairInfo)
+		}
+
+		bprv := proto.BadPartitionRepairView{Path: path, PartitionInfos: dpRepairInfos}
+		bprvs = append(bprvs, bprv)
+		return true
+	})
+	return
+}
+
 func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err error) {
 	var toBeOfflineMps []*MetaPartition
 
@@ -2882,6 +2915,30 @@ func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataNodeDeleteLimitRate] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDataPartitionMaxRepairErrCnt(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.DpMaxRepairErrCnt)
+	atomic.StoreUint64(&c.cfg.DpMaxRepairErrCnt, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataPartitionMaxRepairErrCnt] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.DpMaxRepairErrCnt, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDataPartitionRepairTimeOut(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.DpRepairTimeOut)
+	atomic.StoreUint64(&c.cfg.DpRepairTimeOut, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataPartitionRepairTimeOut] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.DpRepairTimeOut, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

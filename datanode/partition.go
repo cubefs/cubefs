@@ -142,7 +142,7 @@ type DataPartition struct {
 	stopRecover                bool
 	recoverStartTime           time.Time
 	recoverLastConsumeTime     time.Duration
-	recoverErrCnt              int64 //donot reset, if reach max err cnt, delete this dp
+	recoverErrCnt              uint64 //donot reset, if reach max err cnt, delete this dp
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -304,7 +304,8 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		raftStatus:              RaftStatusStopped,
 		DataPartitionCreateType: dpCfg.CreateType,
 	}
-	atomic.StoreInt64(&partition.recoverErrCnt, 0)
+	atomic.StoreUint64(&partition.recoverErrCnt, 0)
+	log.LogInfof("action[newDataPartition] dp %v replica num %v tmp11", partitionID, dpCfg.ReplicaNum)
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, partition.partitionType)
 	if err != nil {

@@ -100,6 +100,8 @@ type clusterConfig struct {
 	MetaNodeDeleteWorkerSleepMs         uint64 //metaNode delete worker sleep time with millisecond. if 0 for no sleep
 	MaxDpCntLimit                       uint64 //datanode data partition limit
 	DataNodeAutoRepairLimitRate         uint64 //datanode autorepair limit rate
+	DpMaxRepairErrCnt                   uint64
+	DpRepairTimeOut                     uint64
 	peers                               []raftstore.PeerAddress
 	peerAddrs                           []string
 	heartbeatPort                       int64
