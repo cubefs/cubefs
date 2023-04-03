@@ -158,6 +158,8 @@ type DataNode struct {
 	diskIopsWriteLimit      uint64
 	diskFlowReadLimit       uint64
 	diskFlowWriteLimit      uint64
+	dpMaxRepairErrCnt       uint64
+	dpRepairTimeOut         uint64
 	clusterUuid             string
 	clusterUuidEnable       bool
 	serviceIDKey            string
