@@ -74,6 +74,7 @@ const (
 	defaultRocksdbDiskUsageThreshold                 float32 = 0.6
 	defaultMemModeRocksdbDiskUsageThreshold          float32 = 0.8
 	defaultMetanodeDumpWaterLevel                            = 100
+	defaultDeleteMarkDelVolInterval                          = 60 * 60 * 24 * 2
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -154,6 +155,7 @@ type clusterConfig struct {
 	BitMapAllocatorMinFreeFactor        float64
 	TrashCleanDurationEachTime          int32
 	TrashItemCleanMaxCountEachTime      int32
+	DeleteMarkDelVolInterval            int64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

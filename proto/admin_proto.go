@@ -53,6 +53,8 @@ const (
 	AdminAddDataReplicaLearner     = "/dataLearner/add"
 	AdminPromoteDataReplicaLearner = "/dataLearner/promote"
 	AdminDeleteVol                 = "/vol/delete"
+	AdminForceDeleteVol            = "/vol/forceDelete"
+	AdminRecoverVol                = "/vol/recover"
 	AdminUpdateVol                 = "/vol/update"
 	AdminUpdateVolEcInfo           = "/vol/updateEcInfo"
 	AdminSetVolConvertSt           = "/vol/setConvertSate"
@@ -219,8 +221,9 @@ const (
 )
 
 const (
-	TimeFormat  = "2006-01-02 15:04:05"
-	TimeFormat2 = "20060102150405"
+	TimeFormat    = "2006-01-02 15:04:05"
+	TimeFormat2   = "20060102150405"
+	TimeFormatMin = "200601021504"
 )
 
 const (
@@ -249,6 +252,7 @@ const (
 	AllocatorMinFreeFactorKey      = "allocatorMinFreeFactor"
 	TrashItemCleanMaxCountKey      = "trashItemCleanMaxCount"
 	TrashCleanDurationKey          = "trashItemCleanDuration"
+	DeleteMarkDelVolIntervalKey    = "deleteMarkDelVolInterval"
 )
 
 const (
@@ -550,6 +554,7 @@ type LimitInfo struct {
 	TrashCleanDurationEachTime     int32
 	TrashItemCleanMaxCountEachTime int32
 
+	DeleteMarkDelVolInterval    int64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1107,6 +1112,12 @@ type SimpleVolView struct {
 	EnableBitMapAllocator bool
 	TrashCleanDuration    int32
 	TrashCleanMaxCount    int32
+	NewVolName            string
+	NewVolID              uint64
+	OldVolName            string
+	FinalVolStatus        uint8
+	RenameConvertStatus   VolRenameConvertStatus
+	MarkDeleteTime        int64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1225,6 +1236,7 @@ type RateLimitInfo struct {
 	AllocatorMinFreeFactor           float64
 	TrashCleanDurationEachTime       int32
 	TrashCleanMaxCountEachTime       int32
+	DeleteMarkDelVolInterval         int64
 }
 
 type ConvertMode uint8

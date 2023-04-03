@@ -99,6 +99,7 @@ type clusterValue struct {
 	BitMapAllocatorMinFreeFactor        float64
 	TrashCleanDurationEachTime          int32
 	TrashItemCleanMaxCountEachTime      int32
+	DeleteMarkDelVolInterval            int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -168,6 +169,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		BitMapAllocatorMinFreeFactor:        c.cfg.BitMapAllocatorMinFreeFactor,
 		TrashItemCleanMaxCountEachTime:      c.cfg.TrashItemCleanMaxCountEachTime,
 		TrashCleanDurationEachTime:          c.cfg.TrashCleanDurationEachTime,
+		DeleteMarkDelVolInterval:            c.cfg.DeleteMarkDelVolInterval,
 	}
 	return cv
 }
@@ -325,6 +327,12 @@ type volValue struct {
 	EnableBitMapAllocator bool
 	TrashCleanDuration    int32
 	TrashCleanMaxCount    int32
+	NewVolName            string
+	NewVolID              uint64
+	OldVolName            string
+	FinalVolStatus        uint8
+	RenameConvertStatus   bsProto.VolRenameConvertStatus
+	MarkDeleteTime        int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -398,6 +406,12 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		EnableBitMapAllocator: vol.EnableBitMapAllocator,
 		TrashCleanDuration:    vol.CleanTrashDurationEachTime,
 		TrashCleanMaxCount:    vol.TrashCleanMaxCountEachTime,
+		NewVolName:            vol.NewVolName,
+		OldVolName:            vol.OldVolName,
+		NewVolID:              vol.NewVolID,
+		FinalVolStatus:        vol.FinalVolStatus,
+		RenameConvertStatus:   vol.RenameConvertStatus,
+		MarkDeleteTime:        vol.MarkDeleteTime,
 	}
 	return
 }
@@ -585,6 +599,17 @@ func (c *Cluster) syncPutTokenInfo(opType uint32, token *bsProto.Token) (err err
 	return c.submit(metadata)
 }
 
+func (c *Cluster) buildTokenRaftCmd(opType uint32, token *bsProto.Token) (metadata *RaftCmd, err error) {
+	metadata = new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = TokenPrefix + token.VolName + keySeparator + token.Value
+	tv := newTokenValue(token)
+	if metadata.V, err = json.Marshal(tv); err != nil {
+		return nil, errors.New(err.Error())
+	}
+	return
+}
+
 //key=#c#name
 func (c *Cluster) syncPutCluster() (err error) {
 	metadata := new(RaftCmd)
@@ -680,6 +705,17 @@ func (c *Cluster) syncPutVolInfo(opType uint32, vol *Vol) (err error) {
 	return c.submit(metadata)
 }
 
+func (c *Cluster) buildVolRaftCmd(opType uint32, vol *Vol) (metadata *RaftCmd, err error) {
+	metadata = new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = volPrefix + strconv.FormatUint(vol.ID, 10)
+	vv := newVolValue(vol)
+	if metadata.V, err = json.Marshal(vv); err != nil {
+		return nil, errors.New(err.Error())
+	}
+	return
+}
+
 // key=#mp#volID#metaPartitionID,value=json.Marshal(metaPartitionValue)
 func (c *Cluster) syncAddMetaPartition(mp *MetaPartition) (err error) {
 	return c.putMetaPartitionInfo(opSyncAddMetaPartition, mp)
@@ -708,6 +744,17 @@ func (c *Cluster) buildMetaPartitionRaftCmd(opType uint32, mp *MetaPartition) (m
 	metadata.K = metaPartitionPrefix + strconv.FormatUint(mp.volID, 10) + keySeparator + partitionID
 	mpv := newMetaPartitionValue(mp)
 	if metadata.V, err = json.Marshal(mpv); err != nil {
+		return metadata, errors.New(err.Error())
+	}
+	return
+}
+
+func (c *Cluster) buildDataPartitionRaftCmd(opType uint32, dp *DataPartition) (metadata *RaftCmd, err error) {
+	metadata = new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = dataPartitionPrefix + strconv.FormatUint(dp.VolID, 10) + keySeparator + strconv.FormatUint(dp.PartitionID, 10)
+	dpv := newDataPartitionValue(dp)
+	if metadata.V, err = json.Marshal(dpv); err != nil {
 		return metadata, errors.New(err.Error())
 	}
 	return
@@ -1054,6 +1101,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.TrashItemCleanMaxCountEachTime != 0 {
 			atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, cv.TrashItemCleanMaxCountEachTime)
 		}
+		c.cfg.DeleteMarkDelVolInterval = cv.DeleteMarkDelVolInterval
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

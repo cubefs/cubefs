@@ -539,6 +539,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		BitMapAllocatorMinFreeFactor:           m.cluster.cfg.BitMapAllocatorMinFreeFactor,
 		TrashItemCleanMaxCountEachTime:         trashCleanMaxCount,
 		TrashCleanDurationEachTime:             trashCleanDuartion,
+		DeleteMarkDelVolInterval:               m.cluster.cfg.DeleteMarkDelVolInterval,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -630,6 +631,10 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	if volName != "" {
 		if vol, err = m.cluster.getVol(volName); err != nil {
+			if dp, err = m.cluster.getDataPartitionByID(partitionID); err == nil {
+				sendOkReply(w, r, newSuccessHTTPReply(dp.ToProto(m.cluster)))
+				return
+			}
 			sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 			return
 		}
@@ -1624,7 +1629,7 @@ func (m *Server) setMetaPartitionIsRecover(w http.ResponseWriter, r *http.Reques
 }
 
 // Mark the volume as deleted, which will then be deleted later.
-func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) markDeleteVolForce(w http.ResponseWriter, r *http.Request) {
 	var (
 		name    string
 		authKey string
@@ -1632,7 +1637,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		msg     string
 	)
 
-	metrics := exporter.NewModuleTP(proto.AdminDeleteVolUmpKey)
+	metrics := exporter.NewModuleTP(proto.AdminForceDeleteVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, authKey, err = parseRequestToDeleteVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1642,11 +1647,11 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.user.deleteVolPolicy(name); err != nil {
+	if err = m.user.deleteVolPolicy(name); err != nil && err != proto.ErrHaveNoPolicy {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("delete vol[%v] successfully,from[%v]", name, r.RemoteAddr)
+	msg = fmt.Sprintf("force delete vol[%v] successfully,from[%v]", name, r.RemoteAddr)
 	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -2099,6 +2104,12 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		EnableBitMapAllocator: vol.EnableBitMapAllocator,
 		TrashCleanMaxCount:    vol.TrashCleanMaxCountEachTime,
 		TrashCleanDuration:    vol.CleanTrashDurationEachTime,
+		NewVolName:            vol.NewVolName,
+		NewVolID:              vol.NewVolID,
+		OldVolName:            vol.OldVolName,
+		FinalVolStatus:        vol.FinalVolStatus,
+		RenameConvertStatus:   vol.RenameConvertStatus,
+		MarkDeleteTime:        vol.MarkDeleteTime,
 	}
 }
 
@@ -3180,12 +3191,7 @@ func parseGetVolParameter(r *http.Request) (p *getVolParameter, err error) {
 			return
 		}
 	}
-	if p.name = r.FormValue(nameKey); p.name == "" {
-		err = keyNotFound(nameKey)
-		return
-	}
-	if !volNameRegexp.MatchString(p.name) {
-		err = errors.New("name can only be number and letters")
+	if p.name, err = extractName(r); err != nil {
 		return
 	}
 	if p.authKey = r.FormValue(volAuthKey); !p.skipOwnerValidation && len(p.authKey) == 0 {
@@ -3697,7 +3703,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	if name, err = extractName(r); err != nil {
+	if name, err = extractNameForCreateVol(r); err != nil {
 		return
 	}
 	if owner, err = extractOwner(r); err != nil {
@@ -4526,7 +4532,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 	}
 	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
-		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey}
+		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return
@@ -4959,6 +4965,10 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	volName := r.FormValue(nameKey)
 	if volName != "" {
 		if vol, err = m.cluster.getVol(volName); err != nil {
+			if mp, err = m.cluster.getMetaPartitionByID(partitionID); err == nil {
+				sendOkReply(w, r, newSuccessHTTPReply(toInfo(mp)))
+				return
+			}
 			sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 			return
 		}
@@ -5266,9 +5276,27 @@ func extractZoneName(r *http.Request) (name string, err error) {
 	return
 }
 
+func extractNameForCreateVol(r *http.Request) (name string, err error) {
+	if name = r.FormValue(nameKey); name == "" {
+		err = keyNotFound(nameKey)
+		return
+	}
+	if !volNameRegexp.MatchString(name) {
+		return "", errors.New("name can only be number and letters")
+	}
+	if strings.HasPrefix(name, markDeleteVolByRenamePrefix) {
+		err = fmt.Errorf("name can not contains prefix:%v", markDeleteVolByRenamePrefix)
+		return
+	}
+	return
+}
+
 func extractName(r *http.Request) (name string, err error) {
 	if name = r.FormValue(nameKey); name == "" {
 		err = keyNotFound(nameKey)
+		return
+	}
+	if strings.HasPrefix(name, markDeleteVolByRenamePrefix) {
 		return
 	}
 	if !volNameRegexp.MatchString(name) {
@@ -6070,4 +6098,141 @@ func (m *Server) checkVolPartitionReplica(w http.ResponseWriter, r *http.Request
 	}
 	diffMpIDs, diffDpIDs := vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("vol[%v] check if vol partition replica is same with vol replica cfg info, diffMpIDs:%v, diffDpIDs:%v", volName, diffMpIDs, diffDpIDs)))
+}
+
+func (m *Server) markDeleteVolByRename(w http.ResponseWriter, r *http.Request) {
+	var (
+		oldVolName string
+		newVolName string
+		authKey    string
+		oldVol     *Vol
+		err        error
+		msg        string
+	)
+
+	metrics := exporter.NewModuleTP(proto.AdminDeleteVolUmpKey)
+	defer func() { metrics.Set(err) }()
+	if oldVolName, authKey, err = parseRequestToDeleteVol(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if oldVol, err = m.cluster.getVol(oldVolName); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	if m.cluster.cfg.DeleteMarkDelVolInterval == 0 {
+		if err = m.cluster.markDeleteVol(oldVolName, authKey); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.user.deleteVolPolicy(oldVolName); err != nil && err != proto.ErrHaveNoPolicy {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		msg = fmt.Sprintf("delete vol[%v] successfully,from[%v]", oldVolName, r.RemoteAddr)
+		log.LogWarn(msg)
+		sendOkReply(w, r, newSuccessHTTPReply(msg))
+		return
+	}
+	newVolOwner := oldVol.Owner
+	newVolName = fmt.Sprintf("%v_%v_%v", markDeleteVolByRenamePrefix, oldVolName, time.Now().Format(proto.TimeFormatMin))
+	if err = m.cluster.renameVolToNewVolName(oldVolName, authKey, newVolName, newVolOwner, proto.VolStMarkDelete); err != nil {
+		log.LogError(fmt.Sprintf("action[markDeleteVolByRename]oldVolName:%v newVolName:%v err[%v]", oldVolName, newVolName, err))
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.associateVolWithUser(newVolOwner, newVolName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.user.deleteVolPolicy(oldVolName); err != nil && err != proto.ErrHaveNoPolicy {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("mark delete vol by rename vol[%v] successfully,new vol name[%v],from[%v]", oldVolName, newVolName, r.RemoteAddr)
+	log.LogWarn(msg)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) recoverMarkDeletedVolToNormal(w http.ResponseWriter, r *http.Request) {
+	var (
+		oldVol      *Vol
+		oldVolName  string
+		newVolName  string
+		authKey     string
+		err         error
+		msg         string
+	)
+
+	metrics := exporter.NewModuleTP(proto.AdminRecoverVolUmpKey)
+	defer func() { metrics.Set(err) }()
+	if oldVolName, authKey, newVolName, err = parseRequestToRecoverMarkDeletedVolToNormal(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if oldVol, err = m.cluster.getVol(oldVolName); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	if oldVol.Status != proto.VolStMarkDelete {
+		err = fmt.Errorf("vol Status:%v is normal, need not be recover", oldVol.Status)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if oldVol.OldVolName == "" {
+		err = fmt.Errorf("vol:%v has not been renamed, can not be recovered", oldVol.Name)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if newVolName == "" { //新vol名默认使用原volName
+		newVolName = oldVol.OldVolName
+	}
+	newVolOwner := oldVol.Owner //owner信息不变
+	if err = m.cluster.renameVolToNewVolName(oldVolName, authKey, newVolName, newVolOwner, proto.VolStNormal); err != nil {
+		log.LogError(fmt.Sprintf("action[recoverMarkDeletedVolToNormal]oldVolName:%v newVolName:%v err[%v]", oldVolName, newVolName, err))
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.associateVolWithUser(newVolOwner, newVolName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.user.deleteVolPolicy(oldVolName); err != nil && err != proto.ErrHaveNoPolicy {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("recover mark deleted vol to normal successfully,old vol name[%v] new vol name[%v],from[%v]", oldVolName, newVolName, r.RemoteAddr)
+	log.LogWarn(msg)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func parseRequestToRecoverMarkDeletedVolToNormal(r *http.Request) (oldName, authKey, newName string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if oldName, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	newName, err = extractNewName(r)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func extractNewName(r *http.Request) (newName string, err error) {
+	if newName = r.FormValue(newNameKey); newName == "" {
+		return
+	}
+	if !volNameRegexp.MatchString(newName) {
+		return "", errors.New("name can only be number and letters")
+	}
+	if strings.HasPrefix(newName, markDeleteVolByRenamePrefix) {
+		err = fmt.Errorf("new name can not contains prefix:%v", markDeleteVolByRenamePrefix)
+		return
+	}
+	return
 }

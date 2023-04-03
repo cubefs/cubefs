@@ -26,6 +26,7 @@ const (
 	AdminAddDataReplicaLearnerUmpKey            = "dataLearner_add"
 	AdminPromoteDataReplicaLearnerUmpKey        = "dataLearner_promote"
 	AdminDeleteVolUmpKey                        = "vol_delete"
+	AdminRecoverVolUmpKey                       = "vol_recover"
 	AdminUpdateVolUmpKey                        = "vol_update"
 	AdminUpdateVolEcInfoUmpKey                  = "vol_updateEcInfo"
 	AdminSetVolConvertStUmpKey                  = "vol_setConvertSate"
@@ -134,4 +135,5 @@ const (
 	AdminDeleteEcReplicaUmpKey                  = "ecReplica_delete"
 	AdminAddEcReplicaUmpKey                     = "ecReplica_add"
 	ClientEcPartitionsUmpKey                    = "client_ecPartitions"
+	AdminForceDeleteVolUmpKey                   = "vol_force_delete"
 )

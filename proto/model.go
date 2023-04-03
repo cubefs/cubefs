@@ -29,6 +29,30 @@ const (
 	ZoneStUnavailable       = 1
 )
 
+type VolRenameConvertStatus uint8
+
+const (
+	VolRenameConvertStatusFinish                   VolRenameConvertStatus = iota //rename完成
+	VolRenameConvertStatusOldVolInConvertPartition                               //旧vol对应创建新的vol, 正在将其dp/mp转移至新vol
+	VolRenameConvertStatusOldVolNeedDel                                          //旧vol转换完成, 等待通过raft从rocksDB删除
+	VolRenameConvertStatusNewVolInConvertPartition                               //新vol: 正在将旧vol的dp/mp转移至当前vol
+)
+
+func (status VolRenameConvertStatus) String() string {
+	switch status {
+	case VolRenameConvertStatusFinish:
+		return "Finish"
+	case VolRenameConvertStatusOldVolInConvertPartition:
+		return "OldVolInConvertPartition"
+	case VolRenameConvertStatusOldVolNeedDel:
+		return "OldVolNeedDel"
+	case VolRenameConvertStatusNewVolInConvertPartition:
+		return "NewVolInConvertPartition"
+	default:
+	}
+	return "Unknown"
+}
+
 const (
 	MinMetaRaftLogSize = 4  //MB
 	MaxMetaRaftLogSize = 32 //MB
@@ -189,6 +213,7 @@ type ClusterView struct {
 	MetaNodeThreshold                   float32
 	DpRecoverPool                       int32
 	MpRecoverPool                       int32
+	DeleteMarkDelVolInterval            int64
 	Applied                             uint64
 	MaxDataPartitionID                  uint64
 	MaxMetaNodeID                       uint64

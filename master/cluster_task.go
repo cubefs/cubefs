@@ -1552,9 +1552,12 @@ func (c *Cluster) updateDataNode(dataNode *DataNode, dps []*proto.PartitionRepor
 		if vr.VolName != "" {
 			vol, err := c.getVol(vr.VolName)
 			if err != nil {
+				if dp, err1 := c.getDataPartitionByID(vr.PartitionID); err1 == nil {
+					dp.updateMetric(vr, dataNode, c)
+				}
 				continue
 			}
-			if vol.Status == proto.VolStMarkDelete {
+			if vol.isRealDelete(c.cfg.DeleteMarkDelVolInterval) {
 				continue
 			}
 			if dp, err := vol.getDataPartitionByID(vr.PartitionID); err == nil {
@@ -1581,9 +1584,12 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 		if mr.VolName != "" {
 			vol, err = c.getVol(mr.VolName)
 			if err != nil {
+				if mp, err = c.getMetaPartitionByID(mr.PartitionID); err == nil {
+					mp.updateMetric(mr, metaNode, c, threshold)
+				}
 				continue
 			}
-			if vol.Status == proto.VolStMarkDelete {
+			if vol.isRealDelete(c.cfg.DeleteMarkDelVolInterval) {
 				continue
 			}
 			mp, err = vol.metaPartition(mr.PartitionID)
@@ -1597,16 +1603,21 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 			}
 		}
 
-		//send latest end to replica
-		if mr.End != mp.End {
-			log.LogDebugf("[updateMetaNode] different end, PartitionID(%v) Addr(%s) master(%v) metaNode(%v)",
-				mp.PartitionID, metaNode.Addr, mp.End, mr.End)
-			mp.updateMetaPartitionReplicaEnd(c)
-		}
-		mp.updateMetaPartition(mr, metaNode)
-		c.removePromotedLearners(mp, mr.IsLearner, metaNode.ID)
-		c.updateInodeIDUpperBound(mp, mr, threshold, metaNode)
+		mp.updateMetric(mr, metaNode, c, threshold)
 	}
+}
+
+func (mp *MetaPartition) updateMetric(mr *proto.MetaPartitionReport, metaNode *MetaNode, c *Cluster, threshold bool) {
+
+	//send latest end to replica
+	if mr.End != mp.End {
+		log.LogDebugf("[updateMetaNode] different end, PartitionID(%v) Addr(%s) master(%v) metaNode(%v)",
+			mp.PartitionID, metaNode.Addr, mp.End, mr.End)
+		mp.updateMetaPartitionReplicaEnd(c)
+	}
+	mp.updateMetaPartition(mr, metaNode)
+	c.removePromotedLearners(mp, mr.IsLearner, metaNode.ID)
+	c.updateInodeIDUpperBound(mp, mr, threshold, metaNode)
 }
 
 func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaPartitionReport, hasArriveThreshold bool, metaNode *MetaNode) (err error) {

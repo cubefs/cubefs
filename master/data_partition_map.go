@@ -78,6 +78,21 @@ func (dpMap *DataPartitionMap) put(dp *DataPartition) {
 	}
 }
 
+func (dpMap *DataPartitionMap) del(dp *DataPartition) {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+	delete(dpMap.partitionMap, dp.PartitionID)
+	dataPartitions := make([]*DataPartition, 0)
+	for index, partition := range dpMap.partitions {
+		if partition.PartitionID == dp.PartitionID {
+			dataPartitions = append(dataPartitions, dpMap.partitions[:index]...)
+			dataPartitions = append(dataPartitions, dpMap.partitions[index+1:]...)
+			dpMap.partitions = dataPartitions
+			break
+		}
+	}
+}
+
 func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int, clusterName string) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
