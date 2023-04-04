@@ -95,6 +95,7 @@ const (
 	TimeOut                 = "timeout"
 	CountByMeta             = "countByMeta"
 	dpReadOnlyWhenVolFull   = "dpReadOnlyWhenVolFull"
+	DecommissionType        = "decommissionType"
 )
 
 const (

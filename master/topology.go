@@ -976,6 +976,7 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 		doneDecommissionDiskListTraverse:  make(chan struct{}, 1),
 		startDecommissionDiskListTraverse: make(chan struct{}, 1),
 	}
+	go ns.traverseDecommissionDisk(c)
 	return ns
 }
 
@@ -992,6 +993,7 @@ func (ns *nodeSet) metaNodeLen() (count int) {
 func (ns *nodeSet) startDecommissionSchedule() {
 	log.LogDebugf("action[startDecommissionSchedule] ns[%v]", ns.ID)
 	ns.decommissionDataPartitionList.startTraverse()
+	ns.startDecommissionDiskListTraverse <- struct{}{}
 }
 
 func (ns *nodeSet) dataNodeLen() (count int) {
@@ -1093,6 +1095,7 @@ func (ns *nodeSet) AddDecommissionDisk(dd *DecommissionDisk) {
 	} else {
 		ns.addAutoDecommissionDisk(dd)
 	}
+	log.LogInfof("action[AddDecommissionDisk] add disk %v type %v to  ns %v", dd.GenerateKey(), dd.Type, ns.ID)
 }
 
 func (ns *nodeSet) RemoveDecommissionDisk(dd *DecommissionDisk) {
@@ -1102,6 +1105,7 @@ func (ns *nodeSet) RemoveDecommissionDisk(dd *DecommissionDisk) {
 	} else {
 		ns.removeAutoDecommissionDisk(dd)
 	}
+	log.LogInfof("action[RemoveDecommissionDisk] remove disk %v type %v  from  ns %v", dd.GenerateKey(), dd.Type, ns.ID)
 }
 
 func (ns *nodeSet) addManualDecommissionDisk(dd *DecommissionDisk) {
@@ -1124,15 +1128,17 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	//wait for loading all decommissionDisk when reload metadata
 	<-ns.startDecommissionDiskListTraverse
+	log.LogDebugf("traverseDecommissionDisk start %v",
+		ns.ID)
 	defer t.Stop()
 	for {
 		select {
 		case <-ns.doneDecommissionDiskListTraverse:
-			log.LogWarnf("traverse stopped!\n")
+			log.LogWarnf("traverse stopped")
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
-				log.LogWarnf("Leader changed, stop traverse!\n")
+				log.LogWarnf("Leader changed, stop traverse!")
 				return
 			}
 			runningCnt := 0
@@ -1149,32 +1155,42 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 				return true
 			})
 			if ns.decommissionDiskParallelFactor == 0 {
-				autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
-				if autoCnt > 0 {
-					for _, disk := range autoDisks {
+				manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(0)
+				log.LogDebugf("traverseDecommissionDisk traverse manualCnt %v",
+					manualCnt)
+				if manualCnt > 0 {
+					for _, disk := range manualDisks {
 						c.TryDecommissionDisk(disk)
 					}
 				}
-				manualCnt, manualDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
-				if manualCnt > 0 {
-					for _, disk := range manualDisks {
+				autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
+				log.LogDebugf("traverseDecommissionDisk traverse autoCnt %v",
+					autoCnt)
+				if autoCnt > 0 {
+					for _, disk := range autoDisks {
 						c.TryDecommissionDisk(disk)
 					}
 				}
 			} else {
 				maxDiskDecommissionCnt := int(atomic.LoadInt32(&ns.decommissionDiskParallelFactor)) * ns.dataNodeLen()
 				newDiskDecommissionCnt := maxDiskDecommissionCnt - runningCnt
+				log.LogDebugf("traverseDecommissionDisk traverse DiskDecommissionCnt %v",
+					newDiskDecommissionCnt)
 				if newDiskDecommissionCnt > 0 {
-					autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt)
-					if autoCnt > 0 {
-						for _, disk := range autoDisks {
+					manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt)
+					log.LogDebugf("traverseDecommissionDisk traverse manualCnt %v",
+						manualCnt)
+					if manualCnt > 0 {
+						for _, disk := range manualDisks {
 							c.TryDecommissionDisk(disk)
 						}
 					}
-					if newDiskDecommissionCnt-autoCnt > 0 {
-						manualCnt, manualDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt - autoCnt)
-						if manualCnt > 0 {
-							for _, disk := range manualDisks {
+					if newDiskDecommissionCnt-manualCnt > 0 {
+						autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt - manualCnt)
+						log.LogDebugf("traverseDecommissionDisk traverse autoCnt %v",
+							autoCnt)
+						if autoCnt > 0 {
+							for _, disk := range autoDisks {
 								c.TryDecommissionDisk(disk)
 							}
 						}
@@ -2240,6 +2256,7 @@ func (l *DecommissionDiskList) PopMarkDecommissionDisk(limit int) (count int, co
 		}
 		collection = append(collection, disk)
 		count++
+		log.LogDebugf("action[PopMarkDecommissionDisk] pop disk[%v]", disk)
 	}
 	return count, collection
 }

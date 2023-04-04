@@ -3140,8 +3140,9 @@ func (c *Cluster) migrateDisk(nodeAddr, diskPath string, raftForce bool, limit i
 	}
 	//add to the nodeset decommission list
 	c.addDecommissionDiskToNodeset(disk)
-	log.LogInfof("action[addDecommissionDisk],clusterID[%v] dataNodeAddr:%v,diskPath[%v] err:%v",
-		c.Name, nodeAddr, diskPath, err)
+	log.LogInfof("action[addDecommissionDisk],clusterID[%v] dataNodeAddr:%v,diskPath[%v] raftForce [%v] "+
+		"limit [%v], diskDisable [%v], migrateType [%v]",
+		c.Name, nodeAddr, diskPath, raftForce, limit, diskDisable, migrateType)
 	return
 }
 
