@@ -94,7 +94,7 @@ func parseTxMask(r *http.Request, oldMask uint8) (mask uint8, err error) {
 		return
 	}
 
-	arr := strings.Split(maskStr, "|")
+	/*arr := strings.Split(maskStr, "|")
 
 	optNum := len(arr)
 
@@ -112,6 +112,11 @@ func parseTxMask(r *http.Request, oldMask uint8) (mask uint8, err error) {
 			err = txInvalidMask()
 			return
 		}
+	}*/
+
+	mask, err = proto.GetMaskFromString(maskStr)
+	if err != nil {
+		return
 	}
 
 	if mask != proto.TxOpMaskOff {

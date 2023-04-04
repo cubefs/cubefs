@@ -337,14 +337,14 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB\n", vv.CacheCapacity))
 			}
 
-			var maskStr string
+			//var maskStr string
 			if optTxMask != "" {
-				maskStr = proto.GetMaskString(vv.EnableTransaction)
+				//maskStr = proto.GetMaskString(vv.EnableTransaction)
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", maskStr, optTxMask))
+				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, optTxMask))
 
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", maskStr))
+				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
 			}
 
 			if optTxTimeout > 0 {
