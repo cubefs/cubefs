@@ -412,7 +412,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		return
 	}
 	manager.partitions[dp.partitionID] = dp
-
+	log.LogInfof("action[CreatePartition] save dp %v to partitions", dp.partitionID)
 	return
 }
 
