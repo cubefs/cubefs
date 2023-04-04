@@ -109,15 +109,15 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	var metaConfig = &meta.MetaConfig{
-		Volume:            opt.Volname,
-		Owner:             opt.Owner,
-		Masters:           masters,
-		Authenticate:      opt.Authenticate,
-		TicketMess:        opt.TicketMess,
-		ValidateOwner:     opt.Authenticate || opt.AccessKey == "",
-		EnableSummary:     opt.EnableSummary && opt.EnableXattr,
-		MetaSendTimeout:   opt.MetaSendTimeout,
-		EnableTransaction: opt.EnableTransaction,
+		Volume:          opt.Volname,
+		Owner:           opt.Owner,
+		Masters:         masters,
+		Authenticate:    opt.Authenticate,
+		TicketMess:      opt.TicketMess,
+		ValidateOwner:   opt.Authenticate || opt.AccessKey == "",
+		EnableSummary:   opt.EnableSummary && opt.EnableXattr,
+		MetaSendTimeout: opt.MetaSendTimeout,
+		//EnableTransaction: opt.EnableTransaction,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
@@ -719,13 +719,18 @@ func (s *Super) Close() {
 	close(s.closeC)
 }
 
-func (s *Super) SetTransaction(txMask uint8, timeout uint32) {
-	maskStr := proto.GetMaskString(txMask)
+func (s *Super) SetTransaction(txMaskStr string, timeout uint32) {
+	//maskStr := proto.GetMaskString(txMask)
+	mask, err := proto.GetMaskFromString(txMaskStr)
+	if err != nil {
+		log.LogErrorf("SetTransaction: err[%v], op[%v], timeout[%v]", err, txMaskStr, timeout)
+		return
+	}
 
-	s.mw.EnableTransaction = txMask
+	s.mw.EnableTransaction = mask
 	if timeout == 0 {
 		timeout = proto.DefaultTransactionTimeout
 	}
 	s.mw.TxTimeout = timeout
-	log.LogDebugf("SetTransaction: mask[%v], op[%v], timeout[%v]", txMask, maskStr, timeout)
+	log.LogDebugf("SetTransaction: mask[%v], op[%v], timeout[%v]", mask, txMaskStr, timeout)
 }

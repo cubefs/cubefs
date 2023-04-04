@@ -2051,7 +2051,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		Capacity:              vol.Capacity,
 		FollowerRead:          vol.FollowerRead,
 		EnablePosixAcl:        vol.enablePosixAcl,
-		EnableTransaction:     vol.enableTransaction,
+		EnableTransaction:     proto.GetMaskString(vol.enableTransaction),
 		TxTimeout:             vol.txTimeout,
 		NeedToLowerReplica:    vol.NeedToLowerReplica,
 		Authenticate:          vol.authenticate,
