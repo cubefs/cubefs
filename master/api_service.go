@@ -3341,13 +3341,14 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		err                   error
 		raftForce             bool
 		limit                 int
+		decommissionType      int
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.DecommissionDisk))
 	defer func() {
 		doStatAndMetric(proto.DecommissionDisk, metric, err, nil)
 	}()
 
-	if offLineAddr, diskPath, diskDisable, limit, err = parseReqToDecoDisk(r); err != nil {
+	if offLineAddr, diskPath, diskDisable, limit, decommissionType, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3356,7 +3357,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.migrateDisk(offLineAddr, diskPath, raftForce, limit, diskDisable, ManualDecommission); err != nil {
+	if err = m.cluster.migrateDisk(offLineAddr, diskPath, raftForce, limit, diskDisable, uint32(decommissionType)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -3411,7 +3412,7 @@ func (m *Server) restoreStoppedAutoDecommissionDisk(w http.ResponseWriter, r *ht
 	defer func() {
 		metric.Set(err)
 	}()
-	if offLineAddr, diskPath, _, _, err = parseReqToDecoDisk(r); err != nil {
+	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3437,7 +3438,7 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 		metric.Set(err)
 	}()
 
-	if offLineAddr, diskPath, _, _, err = parseReqToDecoDisk(r); err != nil {
+	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3478,7 +3479,7 @@ func (m *Server) queryDecommissionDiskDecoFailedDps(w http.ResponseWriter, r *ht
 		metric.Set(err)
 	}()
 
-	if offLineAddr, diskPath, _, _, err = parseReqToDecoDisk(r); err != nil {
+	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3542,7 +3543,7 @@ func (m *Server) markDecoDiskFixed(w http.ResponseWriter, r *http.Request) {
 		metric.Set(err)
 	}()
 
-	if offLineAddr, diskPath, _, _, err = parseReqToDecoDisk(r); err != nil {
+	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3575,7 +3576,7 @@ func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) 
 		metric.Set(err)
 	}()
 
-	if offLineAddr, diskPath, _, _, err = parseReqToDecoDisk(r); err != nil {
+	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -4035,7 +4036,7 @@ func (m *Server) getRaftStatus(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(data))
 }
 
-func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, diskDisable bool, limit int, err error) {
+func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, diskDisable bool, limit, decommissionType int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -4051,8 +4052,14 @@ func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, diskDisable
 	if err != nil {
 		return
 	}
-
+	decommissionType, err = parseUintParam(r, DecommissionType)
+	if err != nil {
+		return
+	}
 	limit, err = parseUintParam(r, countKey)
+	if err != nil {
+		return
+	}
 	return
 }
 

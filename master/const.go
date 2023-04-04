@@ -119,6 +119,7 @@ const (
 	ignoreDiscardKey           = "ignoreDiscard"
 	verSeqKey                  = "verSeq"
 	Periodic                   = "periodic"
+	DecommissionType           = "decommissionType"
 )
 
 const (
