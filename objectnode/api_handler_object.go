@@ -157,9 +157,13 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.ObjectMeta(param.Object())
+	fileInfo, err = vol.ObjectMeta(param.Object(), true)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
+		return
+	}
+	if err == syscall.ELOOP {
+		errorCode = TooManyLevelsOfSymlinks
 		return
 	}
 	if err != nil {
@@ -244,19 +248,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		contentLength = rangeUpper - rangeLower + 1
 	}
 
-	// get object tagging size
-	var xattrInfo *proto.XAttrInfo
-	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil && err != syscall.ENOENT {
-		log.LogErrorf("getObjectHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
-	}
-	if xattrInfo != nil {
-		ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
-		output, _ := ParseTagging(string(ossTaggingData))
-		if output != nil && len(output.TagSet) > 0 {
-			w.Header()[HeaderNameXAmzTaggingCount] = []string{strconv.Itoa(len(output.TagSet))}
-		}
+	// Write object tagging size
+	if tagging := fileInfo.Tagging; tagging != nil && len(tagging.TagSet) > 0 {
+		w.Header()[HeaderNameXAmzTaggingCount] = []string{strconv.Itoa(len(tagging.TagSet))}
 	}
 
 	// set response header for GetObject
@@ -402,9 +396,13 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.ObjectMeta(param.Object())
+	fileInfo, err = vol.ObjectMeta(param.Object(), true)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
+		return
+	}
+	if err == syscall.ELOOP {
+		errorCode = TooManyLevelsOfSymlinks
 		return
 	}
 	if err != nil {
@@ -770,12 +768,16 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.ObjectMeta(sourceObject)
+	fileInfo, err = vol.ObjectMeta(sourceObject, true)
+	if err == syscall.ENOENT {
+		errorCode = NoSuchKey
+		return
+	}
+	if err == syscall.ELOOP {
+		errorCode = TooManyLevelsOfSymlinks
+		return
+	}
 	if err != nil {
-		if err == syscall.ENOENT {
-			errorCode = NoSuchKey
-			return
-		}
 		log.LogErrorf("copyObjectHandler: volume get file info fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
@@ -837,12 +839,6 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fsFileInfo, err := vol.CopyFile(sourceVol, sourceObject, param.Object(), metadataDirective, opt)
-	if err != nil && err != syscall.EINVAL && err != syscall.ENOENT && err != syscall.EFBIG {
-		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
-		errorCode = InternalErrorCode(err)
-		return
-	}
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -857,6 +853,18 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		log.LogErrorf("copyObjectHandler: source file size greater than 5GB: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
 		errorCode = CopySourceSizeTooLarge
+		return
+	}
+	if err == syscall.ELOOP {
+		log.LogWarnf("copyObjectHandler: too many levels of symbolic links, requestID(%v) source(%v:%v) target(%v:%v) err(%v)",
+			GetRequestID(r), sourceVol.Name(), sourceObject, vol.name, param.Object(), err)
+		errorCode = TooManyLevelsOfSymlinks
+		return
+	}
+	if err != nil {
+		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -882,7 +890,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 // List objects v1
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html
-func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) {
+func (o *ObjectNode) listObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
 	defer func() {
@@ -899,7 +907,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getBucketV1Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
+		log.LogErrorf("listObjectsV1Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
@@ -915,7 +923,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	if maxKeys != "" {
 		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
 		if err != nil {
-			log.LogErrorf("getBucketV1Handler: parse max key fail, requestID(%v) err(%v)", GetRequestID(r), err)
+			log.LogErrorf("listObjectsV1Handler: parse max key fail, requestID(%v) err(%v)", GetRequestID(r), err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -941,8 +949,12 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 
 	var result *ListFilesV1Result
 	result, err = vol.ListFilesV1(option)
+	if err == syscall.ELOOP {
+		errorCode = TooManyLevelsOfSymlinks
+		return
+	}
 	if err != nil {
-		log.LogErrorf("getBucketV1Handler: list file fail: requestID(%v) volume(%v) err(%v)",
+		log.LogErrorf("listObjectsV1Handler: list file fail: requestID(%v) volume(%v) err(%v)",
 			getRequestIP(r), vol.name, err)
 		errorCode = InvalidArgument
 		return
@@ -955,7 +967,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		if file.Mode == 0 {
 			// Invalid file mode, which means that the inode of the file may not exist.
 			// Record and filter out the file.
-			log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
+			log.LogWarnf("listObjectsV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
 				vol.Name(), file.Path, file.Inode)
 			continue
 		}
@@ -993,7 +1005,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	var bytes []byte
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(listBucketResult); marshalError != nil {
-		log.LogErrorf("getBucketV1Handler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("listObjectsV1Handler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return
 	}
@@ -1009,7 +1021,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 
 // List objects version 2
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html
-func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) {
+func (o *ObjectNode) listObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
 	defer func() {
@@ -1026,7 +1038,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getBucketV2Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
+		log.LogErrorf("listObjectsV2Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
@@ -1045,7 +1057,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if maxKeys != "" {
 		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
 		if err != nil {
-			log.LogErrorf("getBucketV2Handler: parse max keys fail, requestID(%v) err(%v)",
+			log.LogErrorf("listObjectsV2Handler: parse max keys fail, requestID(%v) err(%v)",
 				GetRequestID(r), err)
 			errorCode = InvalidArgument
 			return
@@ -1061,7 +1073,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if fetchOwner != "" {
 		fetchOwnerBool, err = strconv.ParseBool(fetchOwner)
 		if err != nil {
-			log.LogErrorf("getBucketV2Handler: requestID(%v) err(%v)", GetRequestID(r), err)
+			log.LogErrorf("listObjectsV2Handler: requestID(%v) err(%v)", GetRequestID(r), err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -1086,8 +1098,12 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 
 	var result *ListFilesV2Result
 	result, err = vol.ListFilesV2(option)
+	if err == syscall.ELOOP {
+		errorCode = TooManyLevelsOfSymlinks
+		return
+	}
 	if err != nil {
-		log.LogErrorf("getBucketV2Handler: list files fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("listObjectsV2Handler: list files fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
@@ -1103,7 +1119,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 			if file.Mode == 0 {
 				// Invalid file mode, which means that the inode of the file may not exist.
 				// Record and filter out the file.
-				log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
+				log.LogWarnf("listObjectsV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
 					vol.Name(), file.Path, file.Inode)
 				continue
 			}
@@ -1143,7 +1159,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	var bytes []byte
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(listBucketResult); marshalError != nil {
-		log.LogErrorf("getBucketV2Handler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("listObjectsV2Handler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return
 	}
@@ -1330,6 +1346,10 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object())
 
 	err = vol.DeletePath(param.Object())
+	if err == syscall.ELOOP {
+		errorCode = TooManyLevelsOfSymlinks
+		return
+	}
 	if err != nil {
 		log.LogErrorf("deleteObjectHandler: Volume delete file fail: "+
 			"requestID(%v) volume(%v) path(%v) err(%v)", GetRequestID(r), vol.Name(), param.Object(), err)
@@ -1375,6 +1395,10 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil {
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
+			return
+		}
+		if err == syscall.ELOOP {
+			errorCode = TooManyLevelsOfSymlinks
 			return
 		}
 		log.LogErrorf("getObjectTaggingHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
@@ -1451,15 +1475,18 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, []byte(tagging.Encode()), false)
-
+	if err == syscall.ENOENT {
+		errorCode = NoSuchKey
+		return
+	}
+	if err == syscall.ELOOP {
+		errorCode = TooManyLevelsOfSymlinks
+		return
+	}
 	if err != nil {
 		log.LogErrorf("pubObjectTaggingHandler: volume set tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		if err == syscall.ENOENT {
-			errorCode = NoSuchKey
-		} else {
-			errorCode = InternalErrorCode(err)
-		}
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	return
@@ -1495,6 +1522,14 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 	if err = vol.DeleteXAttr(param.object, XAttrKeyOSSTagging); err != nil {
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+			return
+		}
+		if err == syscall.ELOOP {
+			errorCode = TooManyLevelsOfSymlinks
+			return
+		}
 		log.LogErrorf("deleteObjectTaggingHandler: volume delete tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
 		errorCode = InternalErrorCode(err)
@@ -1561,6 +1596,10 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 			errorCode = NoSuchKey
 			return
 		}
+		if err == syscall.ELOOP {
+			errorCode = TooManyLevelsOfSymlinks
+			return
+		}
 		log.LogErrorf("pubObjectXAttrHandler: volume set extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
@@ -1607,6 +1646,10 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	if info, err = vol.GetXAttr(param.object, xattrKey); err != nil {
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
+			return
+		}
+		if err == syscall.ELOOP {
+			errorCode = TooManyLevelsOfSymlinks
 			return
 		}
 		log.LogErrorf("getObjectXAttrHandler: get extend attribute fail: requestID(%v) volume(%v) object(%v) key(%v) err(%v)",
@@ -1669,6 +1712,10 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 			errorCode = NoSuchKey
 			return
 		}
+		if err == syscall.ELOOP {
+			errorCode = TooManyLevelsOfSymlinks
+			return
+		}
 		log.LogErrorf("deleteObjectXAttrHandler: delete extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
@@ -1709,6 +1756,10 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	if keys, err = vol.ListXAttrs(param.object); err != nil {
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
+			return
+		}
+		if err == syscall.ELOOP {
+			errorCode = TooManyLevelsOfSymlinks
 			return
 		}
 		log.LogErrorf("listObjectXAttrs: volume list extend attributes fail: requestID(%v) volume(%v) object(%v) err(%v)",

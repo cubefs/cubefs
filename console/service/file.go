@@ -245,7 +245,7 @@ func (fs *FileService) fileMeta(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return volume.ObjectMeta(args.Path)
+	return volume.ObjectMeta(args.Path, false)
 }
 
 func (fs *FileService) signURL(ctx context.Context, args struct {
@@ -325,7 +325,7 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 		return err
 	}
 
-	meta, err := volume.ObjectMeta(path)
+	meta, err := volume.ObjectMeta(path, true)
 	if err != nil {
 		return err
 	}

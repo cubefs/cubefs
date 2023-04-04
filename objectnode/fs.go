@@ -33,6 +33,7 @@ type FSFileInfo struct {
 	CacheControl string
 	Expires      string
 	Metadata     map[string]string `graphql:"-"` // User-defined metadata
+	Tagging      *Tagging
 }
 
 type Prefixes []string

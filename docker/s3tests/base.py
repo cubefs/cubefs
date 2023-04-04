@@ -70,7 +70,7 @@ def generate_file(path, size):
     """
     data = random_bytes(size)
     md5 = compute_md5(data)
-    f = open(path, 'wb+', buffering=1024*1024)
+    f = open(path, 'wb+', buffering=1024 * 1024)
     f.write(data)
     f.flush()
     f.close()

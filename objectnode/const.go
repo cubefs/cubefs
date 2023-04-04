@@ -29,6 +29,8 @@ const (
 
 	GetLocalIPMaxRetry      = 10
 	GetLocalIPRetryInterval = time.Second * 5
+
+	MaxLevelsOfSymlinks = 40 // POSIX default limits
 )
 
 const (
@@ -91,8 +93,9 @@ const (
 	HeaderValueTypeStream           = "application/octet-stream"
 	HeaderValueContentTypeXML       = "application/xml"
 	HeaderValueContentTypeDirectory = "application/directory"
+	HeaderValueContentTypeSymlink   = "inode/symlink"
 
-	ServerName                 = "ChubaoFS"
+	ServerName                 = "CubeFS"
 	DefaultAccessControlMaxAge = 600
 )
 

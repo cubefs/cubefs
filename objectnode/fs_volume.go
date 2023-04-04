@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"bufio"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -25,6 +26,7 @@ import (
 	"io"
 	"math"
 	"os"
+	libpath "path"
 	"sort"
 	"strings"
 	"sync"
@@ -238,43 +240,19 @@ func (v *Volume) loadBucketCors() (configuration *CORSConfiguration, err error) 
 	return configuration, nil
 }
 
-func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {
-	if path == "/" {
+func (v *Volume) getInodeFromPath(path string, targetRedirect bool) (inode uint64, err error) {
+	if path == "/" || path == "" {
 		return volumeRootInode, nil
 	}
 
-	dirs, filename := splitPath(path)
-
-	if len(dirs) == 0 && filename == "" {
-		return volumeRootInode, nil
-	} else {
-		// process path
-		var parentId uint64
-		if parentId, err = v.lookupDirectories(dirs, false); err != nil {
-			return 0, err
-		}
-		if log.IsDebugEnabled() {
-			log.LogDebugf("GetXAttr: lookup directories: path(%v) parentId(%v)", path, parentId)
-		}
-		// check file
-		var lookupMode uint32
-		inode, lookupMode, err = v.mw.Lookup_ll(context.Background(), parentId, filename)
-		if err != nil {
-			return 0, err
-		}
-		if os.FileMode(lookupMode).IsDir() {
-			err = syscall.ENOENT
-			return 0, err
-		}
-	}
-
+	_, inode, _, _, err = v.recursiveLookupTarget(path, targetRedirect)
 	return
 }
 
 func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool) error {
 	var err error
 	var inode uint64
-	if inode, err = v.getInodeFromPath(path); err != nil && err != syscall.ENOENT {
+	if inode, err = v.getInodeFromPath(path, true); err != nil && err != syscall.ENOENT {
 		return err
 	}
 	if err == syscall.ENOENT && !autoCreate {
@@ -297,8 +275,7 @@ func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool)
 
 func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err error) {
 	var inode uint64
-	inode, err = v.getInodeFromPath(path)
-	if err != nil {
+	if inode, err = v.getInodeFromPath(path, true); err != nil {
 		return
 	}
 	if info, err = v.mw.XAttrGet_ll(context.Background(), inode, key); err != nil {
@@ -309,9 +286,8 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 }
 
 func (v *Volume) DeleteXAttr(path string, key string) (err error) {
-	inode, err1 := v.getInodeFromPath(path)
-	if err1 != nil {
-		err = err1
+	var inode uint64
+	if inode, err = v.getInodeFromPath(path, true); err != nil {
 		return
 	}
 	if err = v.mw.XAttrDel_ll(context.Background(), inode, key); err != nil {
@@ -323,8 +299,7 @@ func (v *Volume) DeleteXAttr(path string, key string) (err error) {
 
 func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 	var inode uint64
-	inode, err = v.getInodeFromPath(path)
-	if err != nil {
+	if inode, err = v.getInodeFromPath(path, true); err != nil {
 		return
 	}
 	if keys, err = v.mw.XAttrsList_ll(context.Background(), inode); err != nil {
@@ -701,7 +676,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 	var ino uint64
 	var name string
 	var mode os.FileMode
-	parent, ino, name, mode, err = v.recursiveLookupTarget(path)
+	parent, ino, name, mode, err = v.recursiveLookupTarget(path, false)
 	if err != nil {
 		// An unexpected error occurred
 		return
@@ -1207,23 +1182,17 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 	return
 }
 
-func (v *Volume) loadUserDefinedMetadata(inode uint64) (metadata map[string]string, err error) {
+func (v *Volume) loadXAttrs(inode uint64) (metadata map[string]string, err error) {
 	var storedXAttrKeys []string
 	if storedXAttrKeys, err = v.mw.XAttrsList_ll(context.Background(), inode); err != nil {
-		log.LogErrorf("loadUserDefinedMetadata: meta list xattr fail: volume(%v) inode(%v) err(%v)",
+		log.LogErrorf("loadXAttrs: meta list xattr fail: volume(%v) inode(%v) err(%v)",
 			v.name, inode, err)
 		return
 	}
-	var xattrKeys = make([]string, 0)
-	for _, storedXAttrKey := range storedXAttrKeys {
-		if !strings.HasPrefix(storedXAttrKey, "oss:") {
-			xattrKeys = append(xattrKeys, storedXAttrKey)
-		}
-	}
 	var xattrs []*proto.XAttrInfo
-	if xattrs, err = v.mw.BatchGetXAttr(context.Background(), []uint64{inode}, xattrKeys); err != nil {
-		log.LogErrorf("loadUserDefinedMetadata: meta get xattr fail, volume(%v) inode(%v) keys(%v) err(%v)",
-			v.name, inode, strings.Join(xattrKeys, ","), err)
+	if xattrs, err = v.mw.BatchGetXAttr(context.Background(), []uint64{inode}, storedXAttrKeys); err != nil {
+		log.LogErrorf("loadXAttrs: meta get xattr fail, volume(%v) inode(%v) keys(%v) err(%v)",
+			v.name, inode, strings.Join(storedXAttrKeys, ","), err)
 		return
 	}
 	metadata = make(map[string]string)
@@ -1275,6 +1244,7 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) (i
 	var tmp = make([]byte, 2*unit.BlockSize)
 
 	var totalWriteNumBytes int
+	var bufWriter = bufio.NewWriterSize(writer, 4*unit.BlockSize)
 	for {
 		var rest = upper - uint64(offset)
 		if rest == 0 {
@@ -1294,7 +1264,7 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) (i
 		}
 		if n > 0 {
 			var num int
-			if num, err = writer.Write(tmp[:n]); err != nil {
+			if num, err = bufWriter.Write(tmp[:n]); err != nil {
 				return totalWriteNumBytes, err
 			}
 			offset += uint64(n)
@@ -1304,6 +1274,9 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) (i
 			break
 		}
 	}
+	if err = bufWriter.Flush(); err != nil {
+		return totalWriteNumBytes, err
+	}
 	return totalWriteNumBytes, nil
 }
 
@@ -1312,7 +1285,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) (i
 
 	var ino uint64
 	var mode os.FileMode
-	if _, ino, _, mode, err = v.recursiveLookupTarget(path); err != nil {
+	if _, ino, _, mode, err = v.recursiveLookupTarget(path, true); err != nil {
 		return 0, err
 	}
 	if mode.IsDir() {
@@ -1321,7 +1294,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) (i
 	return v.ReadInode(ino, writer, offset, size)
 }
 
-func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
+func (v *Volume) ObjectMeta(path string, targetRedirect bool) (info *FSFileInfo, err error) {
 
 	// process path
 	var inode uint64
@@ -1330,7 +1303,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 
 	var retry = 0
 	for {
-		if _, inode, _, mode, err = v.recursiveLookupTarget(path); err != nil {
+		if _, inode, _, mode, err = v.recursiveLookupTarget(path, targetRedirect); err != nil {
 			return
 		}
 
@@ -1352,48 +1325,44 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		disposition  string
 		cacheControl string
 		expires      string
+		tagging      *Tagging
 	)
+
+	var xAttrs map[string]string
+	if xAttrs, err = v.loadXAttrs(inode); err != nil {
+		log.LogErrorf("ObjectMeta: load user-defined metadata fail: volume(%v) inode(%v) path(%v) err(%v)",
+			v.name, inode, path, err)
+		return
+	}
+	var rawETag = xAttrs[XAttrKeyOSSETag]
+	if len(rawETag) == 0 {
+		rawETag = xAttrs[XAttrKeyOSSETagDeprecated]
+	}
+	if len(rawETag) > 0 {
+		etagValue = ParseETagValue(rawETag)
+	}
+	mimeType = xAttrs[XAttrKeyOSSMIME]
+	disposition = xAttrs[XAttrKeyOSSDISPOSITION]
+	cacheControl = xAttrs[XAttrKeyOSSCacheControl]
+	expires = xAttrs[XAttrKeyOSSExpires]
+	tagging, _ = ParseTagging(xAttrs[XAttrKeyOSSTagging])
 
 	if mode.IsDir() {
 		// Folder has specific ETag and MIME type.
 		etagValue = DirectoryETagValue()
 		mimeType = HeaderValueContentTypeDirectory
-	} else {
-		// Try to get the advanced attributes stored in the extended attributes.
-		// The following advanced attributes apply to the object storage:
-		// 1. Etag (MD5)
-		// 2. MIME type
-		var xattrs []*proto.XAttrInfo
-		var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagDeprecated, XAttrKeyOSSMIME, XAttrKeyOSSDISPOSITION,
-			XAttrKeyOSSCacheControl, XAttrKeyOSSExpires}
-		if xattrs, err = v.mw.BatchGetXAttr(context.Background(), []uint64{inode}, xattrKeys); err != nil {
-			log.LogErrorf("ObjectMeta: meta get xattr fail, volume(%v) inode(%v) path(%v) keys(%v) err(%v)",
-				v.name, inode, path, strings.Join(xattrKeys, ","), err)
-			return
-		}
-		if len(xattrs) > 0 && xattrs[0].Inode == inode {
-			var xattr = xattrs[0]
-			var rawETag = string(xattr.Get(XAttrKeyOSSETag))
-			if len(rawETag) == 0 {
-				rawETag = string(xattr.Get(XAttrKeyOSSETagDeprecated))
-			}
-			if len(rawETag) > 0 {
-				etagValue = ParseETagValue(rawETag)
-			}
-
-			mimeType = string(xattr.Get(XAttrKeyOSSMIME))
-			disposition = string(xattr.Get(XAttrKeyOSSDISPOSITION))
-			cacheControl = string(xattr.Get(XAttrKeyOSSCacheControl))
-			expires = string(xattr.Get(XAttrKeyOSSExpires))
-		}
+	}
+	if IsSymlink(mode) {
+		mimeType = HeaderValueContentTypeSymlink
 	}
 
-	// Load user-defined metadata
-	var metadata map[string]string
-	if metadata, err = v.loadUserDefinedMetadata(inode); err != nil {
-		log.LogErrorf("ObjectMeta: load user-defined metadata fail: volume(%v) inode(%v) path(%v) err(%v)",
-			v.name, inode, path, err)
-		return
+	// Filter user-defined metadata
+	var metadata = make(map[string]string, len(xAttrs))
+	for k, v := range xAttrs {
+		if strings.HasPrefix(k, "oss:") {
+			continue
+		}
+		metadata[k] = v
 	}
 
 	// Validating ETag value.
@@ -1420,6 +1389,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		CacheControl: cacheControl,
 		Expires:      expires,
 		Metadata:     metadata,
+		Tagging:      tagging,
 	}
 	return
 }
@@ -1440,35 +1410,94 @@ func (v *Volume) Close() error {
 // ENOENT:
 // 		0x2 ENOENT No such file or directory. A component of a specified
 // 		pathname did not exist, or the pathname was an empty string.
-func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, name string, mode os.FileMode, err error) {
+func (v *Volume) recursiveLookupTarget(path string, targetRedirect bool) (parent uint64, ino uint64, name string, mode os.FileMode, err error) {
+	defer func() {
+		if err == syscall.ELOOP {
+			exporter.Warning(fmt.Sprintf("Too many levels of symbolic link.\n"+
+				"Volume: %v\n"+
+				"Path: %v",
+				v.name, path))
+		}
+	}()
+	parent, ino, name, mode, err = v.__recursiveLookupTarget(0, path, targetRedirect)
+	return
+}
+
+func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedirect bool) (parent uint64, ino uint64, name string, mode os.FileMode, err error) {
 	parent = rootIno
-	var pathIterator = NewPathIterator(path)
-	if !pathIterator.HasNext() {
+	var pathItems = NewPathIterator(path).ToSlice()
+	if len(pathItems) == 0 {
 		err = syscall.ENOENT
 		return
 	}
-	for pathIterator.HasNext() {
-		var pathItem = pathIterator.Next()
+	var base string
+	for i := 0; i < len(pathItems); i++ {
+		var pathItem = pathItems[i]
 		var curIno uint64
 		var curMode uint32
+		var curPath = base + pathSep + pathItem.Name
 		curIno, curMode, err = v.mw.Lookup_ll(context.Background(), parent, pathItem.Name)
 		if err != nil && err != syscall.ENOENT {
-			log.LogErrorf("recursiveLookupPath: lookup fail, parentID(%v) name(%v) fail err(%v)",
-				parent, pathItem.Name, err)
+			log.LogErrorf("volume[%v]: recursiveLookupTarget: lookup [path: %v, parent: %v, name: %v] failed: %v",
+				v.name, curPath, parent, pathItem.Name, err)
 			return
 		}
 		if err == syscall.ENOENT {
 			return
 		}
-		log.LogDebugf("recursiveLookupPath: lookup item: parentID(%v) inode(%v) name(%v) mode(%v)",
-			parent, curIno, pathItem.Name, os.FileMode(curMode))
+		var curFileMode = os.FileMode(curMode)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("volume[%v]: recursiveLookupTarget: lookup [path: %v, parent: %v, name: %v, inode: %v, mode: %v]",
+				v.name, curPath, parent, pathItem.Name, curIno, curFileMode)
+		}
 		// Check file mode
-		if os.FileMode(curMode).IsDir() != pathItem.IsDirectory {
+		if IsSymlink(curFileMode) && (targetRedirect || i < len(pathItems)-1) {
+			if redirects >= MaxLevelsOfSymlinks {
+				err = syscall.ELOOP
+				return
+			}
+			var symlinkInodeInfo *proto.InodeInfo
+			symlinkInodeInfo, err = v.mw.InodeGet_ll(context.Background(), curIno)
+			if err == syscall.ENOENT {
+				return
+			}
+			if err != nil {
+				log.LogErrorf("volume[%v]: recursiveLookupTarget: get symlink inode [path: %v, inode: %v] info failed: %v",
+					v.name, libpath.Join(base, pathItem.Name), curIno, err)
+				return
+			}
+			var linkTarget = string(symlinkInodeInfo.Target)
+			var redirectPath = base + pathSep + linkTarget
+			if len(pathItems) > i+1 {
+				redirectPath += pathSep
+				for _, item := range pathItems[i+1:] {
+					redirectPath += item.Name
+					if item.IsDirectory {
+						redirectPath += pathSep
+					}
+				}
+			}
+			if path == redirectPath {
+				err = syscall.ELOOP
+				return
+			}
+			if log.IsDebugEnabled() {
+				log.LogDebugf("volume[%v]: recursiveLookupTarget: found symlink [%v -> %v], path redirect [%v -> %v]", v.name, pathItem.Name, linkTarget, path, redirectPath)
+			}
+			parent, ino, name, mode, err = v.__recursiveLookupTarget(redirects+1, redirectPath, targetRedirect)
+			return
+		}
+		if pathItem.IsDirectory && !curFileMode.IsDir() {
 			err = syscall.ENOENT
 			return
 		}
-		if pathIterator.HasNext() {
+		//if curFileMode.IsDir() != pathItem.IsDirectory {
+		//	err = syscall.ENOENT
+		//	return
+		//}
+		if i < len(pathItems)-1 {
 			parent = curIno
+			base = curPath
 			continue
 		}
 		ino = curIno
@@ -1583,7 +1612,7 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (infos []*FSFileInfo, prefixes Prefixes, nextMarker string, err error) {
 	var prefixMap = PrefixMap(make(map[string]struct{}))
 
-	parentId, dirs, err := v.findParentId(prefix)
+	parentId, dirs, err := v.lookupPrefix(prefix)
 
 	// The method returns an ENOENT error, indicating that there
 	// are no files or directories matching the prefix.
@@ -1593,11 +1622,13 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (
 
 	// Errors other than ENOENT are unexpected errors, method stops and returns it to the caller.
 	if err != nil {
-		log.LogErrorf("listFilesV1: find parent ID fail, prefix(%v) marker(%v) err(%v)", prefix, marker, err)
+		log.LogErrorf("listFilesV1: lookup prefix fail, prefix(%v) marker(%v) err(%v)", prefix, marker, err)
 		return nil, nil, "", err
 	}
 
-	log.LogDebugf("listFilesV1: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
+	if log.IsDebugEnabled() {
+		log.LogDebugf("listFilesV1: lookup prefix, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
+	}
 
 	// Init the value that queried result count.
 	// Check this value when adding key to contents or common prefix,
@@ -1636,7 +1667,7 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 	if contToken != "" {
 		marker = contToken
 	}
-	parentId, dirs, err := v.findParentId(prefix)
+	parentId, dirs, err := v.lookupPrefix(prefix)
 
 	// The method returns an ENOENT error, indicating that there
 	// are no files or directories matching the prefix.
@@ -1646,12 +1677,12 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 
 	// Errors other than ENOENT are unexpected errors, method stops and returns it to the caller.
 	if err != nil {
-		log.LogErrorf("listFilesV2: find parent ID fail, prefix(%v) marker(%v) err(%v)", prefix, marker, err)
+		log.LogErrorf("listFilesV2: lookup prefix fail, prefix(%v) marker(%v) err(%v)", prefix, marker, err)
 		return nil, nil, "", err
 	}
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("listFilesV2: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
+		log.LogDebugf("listFilesV2: lookup prefix, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
 	}
 
 	// Init the value that queried result count.
@@ -1682,8 +1713,12 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 	return
 }
 
-func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string, err error) {
+func (v *Volume) lookupPrefix(prefix string) (inode uint64, prefixDirs []string, err error) {
 	prefixDirs = make([]string, 0)
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("volume[%v]: lookupPrefix: %v", v.name, prefix)
+	}
 
 	// if prefix and marker are both not empty, use marker
 	var dirs []string
@@ -1694,6 +1729,7 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 		return proto.RootIno, prefixDirs, nil
 	}
 
+	var base string
 	var parentId = proto.RootIno
 	for index, dir := range dirs {
 
@@ -1712,19 +1748,55 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 		}
 
 		if err != nil && err != syscall.ENOENT {
-			log.LogErrorf("findParentId: find directories fail: prefix(%v) err(%v)", prefix, err)
+			log.LogErrorf("volume[%v]: lookupPrefix: find directories fail: prefix(%v) err(%v)", v.name, prefix, err)
 			return 0, nil, err
 		}
 
 		// Because the file cannot have the next level members,
 		// if there is a directory in the middle of the prefix,
 		// it means that there is no file matching the prefix.
-		if !os.FileMode(curMode).IsDir() {
+		var curFileMode = os.FileMode(curMode)
+		if IsSymlink(curFileMode) {
+			// Get link target
+			var symlinkInodeInfo *proto.InodeInfo
+			symlinkInodeInfo, err = v.mw.InodeGet_ll(context.Background(), curIno)
+			if err == syscall.ENOENT {
+				return 0, nil, syscall.ENOENT
+			}
+			if err != nil {
+				log.LogErrorf("volume[%v]: lookupPrefix: get symlink inode info failed: %v", v.name, err)
+				return 0, nil, err
+			}
+			var linkTarget = string(symlinkInodeInfo.Target)
+			var redirectPath = libpath.Join(base, linkTarget) + pathSep
+			if log.IsDebugEnabled() {
+				log.LogDebugf("volume[%v]: lookupPrefix: found symlink [%v -> %v], path redirect [%v -> %v]", v.name, dir, linkTarget, libpath.Join(base, dir), redirectPath)
+			}
+			var (
+				linkTargetInode uint64
+				linkTargetMode  os.FileMode
+			)
+			_, linkTargetInode, _, linkTargetMode, err = v.recursiveLookupTarget(redirectPath, true)
+			if err == syscall.ENOENT {
+				return 0, nil, syscall.ENOENT
+			}
+			if err != nil {
+				log.LogErrorf("volume[%v]: lookupPrefix: lookup symlink target [path: %v] failed: %v", v.name, redirectPath, err)
+				return 0, nil, err
+			}
+			curIno = linkTargetInode
+			curFileMode = linkTargetMode
+			if log.IsDebugEnabled() {
+				log.LogDebugf("volume[%v]: lookupPrefix: lookup symlink target [path: %v, inode: %v, mode: %v]", v.name, redirectPath, curIno, curFileMode)
+			}
+		}
+		if !curFileMode.IsDir() {
 			return 0, nil, syscall.ENOENT
 		}
 
 		prefixDirs = append(prefixDirs, dir)
 		parentId = curIno
+		base = libpath.Join(base, dir)
 	}
 	inode = parentId
 	return
@@ -2076,7 +2148,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		sMode      os.FileMode
 		sInodeInfo *proto.InodeInfo
 	)
-	if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
+	if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath, true); err != nil {
 		log.LogErrorf("CopyFile: look up source path fail, source path(%v) err(%v)", sourcePath, err)
 		return
 	}
@@ -2159,7 +2231,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			log.LogInfof("CopyFile: target path is equal with source path, replace metadata, source path(%v) target path(%v) opt(%v)",
 				sourcePath, targetPath, opt)
 		}
-		return sv.ObjectMeta(sourcePath)
+		return sv.ObjectMeta(sourcePath, true)
 	}
 
 	// operation at target object
@@ -2171,7 +2243,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		pathItems  []PathItem
 		tLastName  string
 	)
-	if _, _, _, tMode, err = v.recursiveLookupTarget(targetPath); err != nil && err != syscall.ENOENT {
+	if _, _, _, tMode, err = v.recursiveLookupTarget(targetPath, true); err != nil && err != syscall.ENOENT {
 		log.LogErrorf("CopyFile: look up target path failed, target path(%v), err(%v)", targetPath, err)
 		return
 	}

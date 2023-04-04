@@ -15,12 +15,12 @@
 package objectnode
 
 import (
-	"net/url"
-	"regexp"
-	"strings"
-
 	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -326,4 +326,8 @@ func ValidateCacheExpires(expires string) bool {
 	}
 	log.LogErrorf("Expires less than now: %v, now: %v", expires, now)
 	return false
+}
+
+func IsSymlink(mode os.FileMode) bool {
+	return mode&os.ModeSymlink > 0
 }
