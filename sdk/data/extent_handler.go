@@ -639,8 +639,8 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 	for {
 		loopCount++
 		if loopCount%50 == 0 {
-			log.LogWarnf("allocateExtent: try (%v)th times because of failing to create extent, eh(%v) exclude(%v)", loopCount, eh, exclude)
-			umpMsg := fmt.Sprintf("create extent failed, eh(%v), try count(%v)", eh, loopCount)
+			log.LogWarnf("allocateExtent: err(%v) try (%v)th times because of failing to create extent, eh(%v) exclude(%v)", err, loopCount, eh, exclude)
+			umpMsg := fmt.Sprintf("create extent failed(%v), eh(%v), try count(%v)", err, eh, loopCount)
 			handleUmpAlarm(eh.stream.client.dataWrapper.clusterName, eh.stream.client.dataWrapper.volName, "allocateExtent", umpMsg)
 		}
 		if time.Since(start) > StreamRetryTimeout {
