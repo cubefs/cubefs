@@ -158,18 +158,18 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 
 		dataNode := value.(*DataNode)
 		if contains(excludeHosts, dataNode.Addr) {
-			log.LogInfof("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
+			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			log.LogDebugf("contains return")
 			return true
 		}
 		if !dataNode.canAllocDp() {
-			log.LogInfof("dataNode [%v] is not writeable, offline %v, dpCnt %d", dataNode.Addr, dataNode.ToBeOffline, dataNode.DataPartitionCount)
+			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable, offline %v, dpCnt %d", dataNode.Addr, dataNode.ToBeOffline, dataNode.DataPartitionCount)
 			log.LogDebugf("isWritable return")
 			return true
 		}
 
 		if !dataNode.canAlloc() {
-			log.LogInfof("dataNode [%v] is overSold", dataNode.Addr)
+			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is overSold", dataNode.Addr)
 			return true
 		}
 		if dataNode.isAvailCarryNode() {

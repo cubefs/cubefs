@@ -181,6 +181,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	dp.replicaNum = request.ReplicaNum
 	err = dp.PersistMetadata()
 	disk.AddSize(uint64(dp.Size()))
+	log.LogInfof("action[CreateDataPartition] dp %v create success", dp.partitionID)
 	return
 }
 
@@ -317,11 +318,12 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		verSeq:          dpCfg.VerSeq,
 	}
 	atomic.StoreInt64(&partition.recoverErrCnt, 0)
-	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
+	log.LogInfof("action[newDataPartition] dp %v replica num %v tmp11", partitionID, dpCfg.ReplicaNum)
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize,
 		partition.partitionType, isCreate)
 	if err != nil {
+		log.LogWarnf("action[newDataPartition] dp %v NewExtentStore failed %v", partitionID, err.Error())
 		return
 	}
 
@@ -330,6 +332,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 
 	go partition.statusUpdateScheduler()
 	go partition.startEvict()
+	log.LogInfof("action[newDataPartition] dp %v create success", dp.partitionID)
 	return
 }
 
@@ -973,10 +976,20 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 
 func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.DataPartitionInfo
-	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
-		log.LogErrorf("action[canRemoveSelf] err[%v]", err)
-		return
+	var retry = 0
+	for {
+		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
+			log.LogErrorf("action[canRemoveSelf] err[%v]", err)
+			retry++
+			if retry > 5 {
+				return
+			}
+		} else {
+			break
+		}
+		time.Sleep(10 * time.Second)
 	}
+
 	canRemove = false
 	var existInPeers bool
 	for _, peer := range partition.Peers {

@@ -1508,6 +1508,7 @@ func (ddv *decommissionDiskValue) Restore() *DecommissionDisk {
 		DecommissionTerm:         ddv.DecommissionTerm,
 		Type:                     ddv.Type,
 		DecommissionCompleteTime: ddv.DecommissionCompleteTime,
+		DecommissionLimit:        ddv.DecommissionLimit,
 	}
 }
 
