@@ -1477,6 +1477,7 @@ type decommissionDiskValue struct {
 	DecommissionTerm         uint64
 	Type                     uint32
 	DecommissionCompleteTime int64
+	DecommissionLimit        int
 }
 
 func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
@@ -1490,6 +1491,7 @@ func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
 		DecommissionTerm:         disk.DecommissionTerm,
 		Type:                     disk.Type,
 		DecommissionCompleteTime: disk.DecommissionCompleteTime,
+		DecommissionLimit:        disk.DecommissionLimit,
 	}
 }
 
@@ -1523,6 +1525,7 @@ func (c *Cluster) loadDecommissionDiskList() (err error) {
 
 		dd := ddv.Restore()
 		c.DecommissionDisks.Store(dd.GenerateKey(), dd)
+		c.addDecommissionDiskToNodeset(dd)
 		log.LogInfof("action[loadDecommissionDiskList],decommissionDiskValue[%v]", dd)
 	}
 	return
