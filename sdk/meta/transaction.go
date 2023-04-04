@@ -149,7 +149,7 @@ func (tx *Transaction) OnDone(err error, mw *MetaWrapper) {
 // Commit will notify all the RM(related metapartitions) that transaction is completed successfully,
 // and corresponding transaction items can be removed
 func (tx *Transaction) Commit(mw *MetaWrapper) {
-	tmMP := mw.getPartitionByInode(uint64(tx.txInfo.TmID))
+	tmMP := mw.getPartitionByID(uint64(tx.txInfo.TmID))
 	if tmMP == nil {
 		log.LogErrorf("Transaction commit: No TM partition, TmID(%v), txID(%v)", tx.txInfo.TmID, tx.txInfo.TxID)
 		return
@@ -198,7 +198,7 @@ func (tx *Transaction) Commit(mw *MetaWrapper) {
 // and corresponding transaction items should be rolled back to previous state(before transaction)
 func (tx *Transaction) Rollback(mw *MetaWrapper) {
 	//todo_tx: if transaction info in TM is missing, should try to rollback each item
-	tmMP := mw.getPartitionByInode(uint64(tx.txInfo.TmID))
+	tmMP := mw.getPartitionByID(uint64(tx.txInfo.TmID))
 	if tmMP == nil {
 		log.LogErrorf("Transaction Rollback: No TM partition, TmID(%v), txID(%v)", tx.txInfo.TmID, tx.txInfo.TxID)
 		return
