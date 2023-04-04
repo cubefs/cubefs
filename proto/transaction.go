@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"strings"
 )
 
 //const (
@@ -67,6 +68,38 @@ func GetMaskString(mask uint8) (maskStr string) {
 		maskStr = "off"
 	}
 	return
+}
+
+func txInvalidMask() (err error) {
+	return errors.New("transaction mask key value pair should be: enableTxMaskKey=[create|mkdir|remove|rename|mknod|symlink|link]\n enableTxMaskKey=off \n enableTxMaskKey=all")
+}
+
+func GetMaskFromString(maskStr string) (mask uint8, err error) {
+	if maskStr == "" {
+		err = txInvalidMask()
+		return
+	}
+
+	arr := strings.Split(maskStr, "|")
+
+	optNum := len(arr)
+
+	for _, v := range arr {
+		if m, ok := GTxMaskMap[v]; ok {
+			if optNum >= 2 && (m == TxOpMaskOff || m == TxOpMaskAll) {
+				mask = TxOpMaskOff
+				err = txInvalidMask()
+				return
+			} else {
+				mask = mask | m
+			}
+		} else {
+			mask = TxOpMaskOff
+			err = txInvalidMask()
+			return
+		}
+	}
+	return mask, nil
 }
 
 type TxInodeInfo struct {

@@ -75,16 +75,16 @@ func (f AsyncTaskErrorFunc) OnError(err error) {
 }
 
 type MetaConfig struct {
-	Volume            string
-	Owner             string
-	Masters           []string
-	Authenticate      bool
-	TicketMess        auth.TicketMess
-	ValidateOwner     bool
-	OnAsyncTaskError  AsyncTaskErrorFunc
-	EnableSummary     bool
-	MetaSendTimeout   int64
-	EnableTransaction uint8
+	Volume           string
+	Owner            string
+	Masters          []string
+	Authenticate     bool
+	TicketMess       auth.TicketMess
+	ValidateOwner    bool
+	OnAsyncTaskError AsyncTaskErrorFunc
+	EnableSummary    bool
+	MetaSendTimeout  int64
+	//EnableTransaction uint8
 	//EnableTransaction bool
 }
 
@@ -188,7 +188,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.EnableSummary = config.EnableSummary
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
-	mw.EnableTransaction = config.EnableTransaction
+	//mw.EnableTransaction = config.EnableTransaction
 
 	limit := MaxMountRetryLimit
 

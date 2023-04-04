@@ -280,7 +280,7 @@ type MountOptions struct {
 	EnableXattr          bool
 	NearRead             bool
 	EnablePosixACL       bool
-	EnableTransaction    uint8
+	EnableTransaction    string
 	TxTimeout            uint32
 	VolType              int
 	EbsEndpoint          string
