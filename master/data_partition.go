@@ -1003,7 +1003,7 @@ const (
 	defaultDecommissionParallelLimit      = 10
 	defaultDecommissionRetryLimit         = 5
 	defaultDecommissionRollbackLimit      = 3
-	defaultDecommissionDiskParallelFactor = 2
+	defaultDecommissionDiskParallelFactor = 0
 )
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64, c *Cluster) {
@@ -1397,7 +1397,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 	// the first time for dst addr not specify
 	if !partition.DecommissionDstAddrSpecify && partition.DecommissionDstAddr == "" {
 		// try to find available data node in src nodeset
-		ns, err = getTargetNodeset(partition.DecommissionSrcAddr, c)
+		ns, zone, err = getTargetNodeset(partition.DecommissionSrcAddr, c)
 		if err != nil {
 			log.LogWarnf("action[TryAcquireDecommissionToken] find src nodeset failed:%v", err.Error())
 			goto errHandler
@@ -1429,7 +1429,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			}
 			//get nodeset for target host
 			newAddr := targetHosts[0]
-			ns, err = getTargetNodeset(newAddr, c)
+			ns, zone, err = getTargetNodeset(newAddr, c)
 			if err != nil {
 				log.LogWarnf("action[TryAcquireDecommissionToken] find new nodeset failed:%v", err.Error())
 				goto errHandler
@@ -1445,7 +1445,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			return false
 		}
 	} else {
-		ns, err = getTargetNodeset(partition.DecommissionDstAddr, c)
+		ns, zone, err = getTargetNodeset(partition.DecommissionDstAddr, c)
 		if err != nil {
 			log.LogWarnf("action[TryAcquireDecommissionToken] find src nodeset failed:%v", err.Error())
 			goto errHandler
@@ -1474,7 +1474,7 @@ func (partition *DataPartition) ReleaseDecommissionToken(c *Cluster) {
 	if partition.DecommissionDstAddr == "" {
 		return
 	}
-	if ns, err := getTargetNodeset(partition.DecommissionDstAddr, c); err != nil {
+	if ns, _, err := getTargetNodeset(partition.DecommissionDstAddr, c); err != nil {
 		log.LogWarnf("action[ReleaseDecommissionToken]should never happen dp %v:%v", partition.PartitionID, err.Error())
 		return
 	} else {
@@ -1482,25 +1482,24 @@ func (partition *DataPartition) ReleaseDecommissionToken(c *Cluster) {
 	}
 }
 
-func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, err error) {
+func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err error) {
 	var (
 		dataNode *DataNode
-		zone     *Zone
 	)
 	dataNode, err = c.dataNode(addr)
 	if err != nil {
 		log.LogWarnf("action[getTargetNodeset] find src %v data node failed:%v", addr, err.Error())
-		return nil, err
+		return nil, nil, err
 	}
 	zone, err = c.t.getZone(dataNode.ZoneName)
 	if err != nil {
 		log.LogWarnf("action[getTargetNodeset] find src %v zone failed:%v", addr, err.Error())
-		return nil, err
+		return nil, nil, err
 	}
 	ns, err = zone.getNodeSet(dataNode.NodeSetID)
 	if err != nil {
 		log.LogWarnf("action[getTargetNodeset] find src %v nodeset failed:%v", addr, err.Error())
-		return nil, err
+		return nil, nil, err
 	}
-	return ns, nil
+	return ns, zone, nil
 }

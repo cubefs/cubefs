@@ -121,6 +121,7 @@ const (
 	ClientIDKey                = "clientIDKey"
 	verSeqKey                  = "verSeq"
 	Periodic                   = "periodic"
+	DecommissionType           = "decommissionType"
 )
 
 const (
