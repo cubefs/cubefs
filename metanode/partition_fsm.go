@@ -17,13 +17,13 @@ package metanode
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"strconv"
 	"sync/atomic"
 	"time"
-
 	"io/ioutil"
 	"os"
 	"path"
@@ -452,6 +452,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				return
 			case <-mp.stopC:
 				log.LogWarnf("ApplySnapshot: revice stop signal, exit now, partition(%d), applyId(%d)", mp.config.PartitionId, mp.applyID)
+				err = errors.New("server has been shutdown")
 				return
 			}
 		}
