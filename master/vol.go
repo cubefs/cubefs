@@ -783,8 +783,8 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 		return
 	}
 	vol.setMpsCache(mpsBody)
-	dpResps := vol.dataPartitions.getDataPartitionsView(0)
-	view.DataPartitions = dpResps
+	//dpResps := vol.dataPartitions.getDataPartitionsView(0)
+	//view.DataPartitions = dpResps
 	view.DomainOn = vol.domainOn
 	viewReply := newSuccessHTTPReply(view)
 	body, err := json.Marshal(viewReply)
