@@ -1497,13 +1497,24 @@ func (c *Cluster) decommissionDiskCancel(disk *DecommissionDisk) (err error) {
 			disk.SrcAddr, disk.SrcAddr, err.Error())
 		return err
 	}
-	partitions := c.getAllDecommissionDataPartitionByDiskAndTerm(disk.SrcAddr, disk.DiskPath, disk.DecommissionTerm)
-	for _, dp := range partitions {
-		dp.StopDecommission(c)
-		c.syncUpdateDataPartition(dp)
+	dps := disk.GetLatestDecommissionDP(c)
+	dpIds := make([]uint64, 0)
+	for _, dp := range dps {
+		if dp.IsDecommissionFailed() {
+			dpIds = append(dpIds, dp.PartitionID)
+		}
 	}
-	log.LogDebugf("action[decommissionDiskCancel] dataNode[%v] disk[%s] cancel decommission",
-		disk.SrcAddr, disk.SrcAddr)
+
+	partitions := disk.GetLatestDecommissionDP(c)
+	dpIds = make([]uint64, 0)
+	for _, dp := range partitions {
+		if dp.StopDecommission(c) {
+			dpIds = append(dpIds, dp.PartitionID)
+			c.syncUpdateDataPartition(dp)
+		}
+	}
+	log.LogDebugf("action[decommissionDiskCancel] dataNode[%v] disk[%s] cancel decommission dps[%v] len[%v ]total dp %v",
+		disk.SrcAddr, disk.SrcAddr, dpIds, len(dpIds), len(partitions))
 	return
 }
 
@@ -3127,7 +3138,6 @@ func (c *Cluster) migrateDisk(nodeAddr, diskPath string, raftForce bool, limit i
 		}
 		c.DecommissionDisks.Store(disk.GenerateKey(), disk)
 	}
-	//mark as manual
 	disk.Type = migrateType
 	//disk should be decommission all the dp
 	disk.markDecommission(raftForce, limit)
@@ -3141,8 +3151,8 @@ func (c *Cluster) migrateDisk(nodeAddr, diskPath string, raftForce bool, limit i
 	//add to the nodeset decommission list
 	c.addDecommissionDiskToNodeset(disk)
 	log.LogInfof("action[addDecommissionDisk],clusterID[%v] dataNodeAddr:%v,diskPath[%v] raftForce [%v] "+
-		"limit [%v], diskDisable [%v], migrateType [%v]",
-		c.Name, nodeAddr, diskPath, raftForce, limit, diskDisable, migrateType)
+		"limit [%v], diskDisable [%v], migrateType [%v] term [%v]",
+		c.Name, nodeAddr, diskPath, raftForce, limit, diskDisable, migrateType, disk.DecommissionTerm)
 	return
 }
 
@@ -3298,7 +3308,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		c.addAndSyncDecommissionedDisk(node, disk.DiskPath)
 	}
 	rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v],badPartitionIds %v,raftForce %v"+
-		"DecommissionDpTotal %v term %v  Type[%v] has offline successfully",
+		" DecommissionDpTotal %v term %v  Type[%v] has offline successfully",
 		node.Addr, disk.DiskPath, badPartitionIds, disk.DecommissionRaftForce,
 		disk.DecommissionDpTotal, disk.DecommissionTerm, disk.Type)
 	log.LogInfof("action[TryDecommissionDisk] %s", rstMsg)

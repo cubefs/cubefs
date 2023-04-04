@@ -415,6 +415,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpBatchDeleteExtent"
 	case OpMetaClearInodeCache:
 		m = "OpMetaClearInodeCache"
+	case OpStopDataPartitionRepair:
+		m = "OpStopDataPartitionRepair"
 	}
 	return
 }

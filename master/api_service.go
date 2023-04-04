@@ -2954,7 +2954,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-
+	rstMsg = fmt.Sprintf("decommission disk [%v:%v] submited!need check status later!", offLineAddr, diskPath)
 	Warn(m.clusterName, rstMsg)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
@@ -3051,12 +3051,14 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 		Progress: fmt.Sprintf("%.2f%%", progress*float64(100)),
 	}
 	if status == DecommissionFail {
-		err, dps := disk.GetDecommissionFailedDP(m.cluster)
-		if err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-			return
+		dps := disk.GetLatestDecommissionDP(m.cluster)
+		dpIds := make([]uint64, 0)
+		for _, dp := range dps {
+			if dp.IsDecommissionFailed() {
+				dpIds = append(dpIds, dp.PartitionID)
+			}
 		}
-		resp.FailedDps = dps
+		resp.FailedDps = dpIds
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
@@ -4129,8 +4131,8 @@ func (m *Server) updateDecommissionLimit(w http.ResponseWriter, r *http.Request)
 
 func (m *Server) updateDecommissionDiskFactor(w http.ResponseWriter, r *http.Request) {
 	var (
-		limit uint64
-		err   error
+		factor uint64
+		err    error
 	)
 
 	metric := exporter.NewTPCnt("req_updateDecommissionDiskFactor")
@@ -4138,21 +4140,21 @@ func (m *Server) updateDecommissionDiskFactor(w http.ResponseWriter, r *http.Req
 		metric.Set(err)
 	}()
 
-	if limit, err = parseRequestToUpdateDecommissionLimit(r); err != nil {
+	if factor, err = parseRequestToUpdateDecommissionLimit(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	zones := m.cluster.t.getAllZones()
 	for _, zone := range zones {
-		err = zone.updateDecommissionDiskFactor(int32(limit), m.cluster)
+		err = zone.updateDecommissionDiskFactor(int32(factor), m.cluster)
 		if err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return
 		}
 	}
 
-	rstMsg := fmt.Sprintf("set decommission limit to %v successfully", limit)
-	log.LogDebugf("action[updateDecommissionLimit] %v", rstMsg)
+	rstMsg := fmt.Sprintf("set decommission factor to %v successfully", factor)
+	log.LogDebugf("action[updateDecommissionDiskFactor] %v", rstMsg)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 

@@ -1037,7 +1037,7 @@ func (partition *DataPartition) TryToDecommission(c *Cluster) bool {
 		return false
 	}
 
-	log.LogDebugf("action[TryToDecommission] dp[%v]\n", partition.PartitionID)
+	log.LogDebugf("action[TryToDecommission] dp[%v]", partition.PartitionID)
 
 	return partition.Decommission(c)
 }
@@ -1104,6 +1104,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 	//only stop 3-replica,need to release token
 	if partition.IsDecommissionStopped() {
 		log.LogInfof("action[decommissionDataPartition]clusterID[%v] partitionID:%v decommission stopped", c.Name, partition.PartitionID)
+		partition.stopReplicaRepair(partition.DecommissionDstAddr, true, c)
 		return false //false to release token
 	} else {
 		partition.SetDecommissionStatus(DecommissionRunning)
@@ -1146,9 +1147,12 @@ func (partition *DataPartition) StopDecommission(c *Cluster) bool {
 	status := partition.GetDecommissionStatus()
 	if status == DecommissionInitial || status == DecommissionSuccess ||
 		status == DecommissionFail || status == DecommissionStop {
-		log.LogWarnf("dp[%v] cannot be stopped status[%v]\n", partition.PartitionID, status)
+		log.LogWarnf("action[StopDecommission] dp[%v] cannot be stopped status[%v]", partition.PartitionID, status)
 		return false
 	}
+	log.LogDebugf("action[StopDecommission] dp[%v] status %v set to stop ",
+		partition.PartitionID, partition.GetDecommissionStatus())
+
 	if status == markDecommission {
 		partition.SetDecommissionStatus(DecommissionStop)
 		return true
@@ -1162,8 +1166,13 @@ func (partition *DataPartition) StopDecommission(c *Cluster) bool {
 			partition.stopReplicaRepair(partition.DecommissionDstAddr, true, c)
 		}
 	} else {
-		partition.stopReplicaRepair(partition.DecommissionDstAddr, true, c)
+		if partition.IsDecommissionRunning() {
+			partition.stopReplicaRepair(partition.DecommissionDstAddr, true, c)
+			log.LogDebugf("action[StopDecommission] dp[%v] status [%v] send stop signal ",
+				partition.PartitionID, partition.GetDecommissionStatus())
+		}
 	}
+	partition.SetDecommissionStatus(DecommissionStop)
 	partition.isRecover = false
 	return true
 }
@@ -1297,8 +1306,8 @@ func (partition *DataPartition) stopReplicaRepair(replicaAddr string, stop bool,
 		return
 	}
 	task := partition.createTaskToStopDataPartitionRepair(replicaAddr, stop)
-
-	_, err = dataNode.TaskManager.syncSendAdminTask(task)
+	packet, err := dataNode.TaskManager.syncSendAdminTask(task)
+	log.LogDebugf("action[stopReplicaRepair]dp[%v] send stop to  replica %v packet %v", partition.PartitionID, replicaAddr, packet)
 	return
 }
 
@@ -1342,18 +1351,23 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		// try to find available data node in src nodeset
 		ns, zone, err = getTargetNodeset(partition.DecommissionSrcAddr, c)
 		if err != nil {
-			log.LogWarnf("action[TryAcquireDecommissionToken] find src nodeset failed:%v", err.Error())
+			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v find src nodeset failed:%v",
+				partition.PartitionID, err.Error())
 			goto errHandler
 		}
 		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1)
 		if err != nil {
+			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from src nodeset failed:%v",
+				partition.PartitionID, err.Error())
 			if _, ok := c.vols[partition.VolName]; !ok {
-				err = fmt.Errorf("cannot find vol")
+				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v cannot find vol:%v",
+					partition.PartitionID, err.Error())
 				goto errHandler
 			}
 
 			if c.isFaultDomain(c.vols[partition.VolName]) {
-				err = fmt.Errorf("is fault domain")
+				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v is fault domain",
+					partition.PartitionID)
 				goto errHandler
 			}
 			excludeNodeSets = append(excludeNodeSets, ns.ID)
@@ -1367,6 +1381,8 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 					excludeZone = append(excludeZone, zones[0])
 				}
 				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludeZone, excludeNodeSets, partition.Hosts, 1, 1, ""); err != nil {
+					log.LogWarnf("action[TryAcquireDecommissionToken] dp %v getHostFromNormalZone failed:%v",
+						partition.PartitionID, err.Error())
 					goto errHandler
 				}
 			}
@@ -1374,15 +1390,16 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			newAddr := targetHosts[0]
 			ns, zone, err = getTargetNodeset(newAddr, c)
 			if err != nil {
-				log.LogWarnf("action[TryAcquireDecommissionToken] find new nodeset failed:%v", err.Error())
+				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v find new nodeset failed:%v",
+					partition.PartitionID, err.Error())
 				goto errHandler
 			}
 		}
 		//only persist DecommissionDstAddr when get token
 		if ns.AcquireDecommissionToken() {
 			partition.DecommissionDstAddr = targetHosts[0]
-			log.LogWarnf("action[TryAcquireDecommissionToken] get token from %v nodeset %v success",
-				partition.DecommissionDstAddr, ns.ID)
+			log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token from %v nodeset %v success",
+				partition.PartitionID, partition.DecommissionDstAddr, ns.ID)
 			return true
 		} else {
 			return false
@@ -1390,12 +1407,13 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 	} else {
 		ns, zone, err = getTargetNodeset(partition.DecommissionDstAddr, c)
 		if err != nil {
-			log.LogWarnf("action[TryAcquireDecommissionToken] find src nodeset failed:%v", err.Error())
+			log.LogWarnf("action[TryAcquireDecommissionToken]dp %v find src nodeset failed:%v",
+				partition.PartitionID, err.Error())
 			goto errHandler
 		}
 		if ns.AcquireDecommissionToken() {
-			log.LogWarnf("action[TryAcquireDecommissionToken] get token from %v nodeset %v success",
-				partition.DecommissionDstAddr, ns.ID)
+			log.LogDebugf("action[TryAcquireDecommissionToken]dp %v get token from %v nodeset %v success",
+				partition.PartitionID, partition.DecommissionDstAddr, ns.ID)
 			return true
 		} else {
 			return false
@@ -1407,9 +1425,9 @@ errHandler:
 		partition.SetDecommissionStatus(DecommissionFail)
 	}
 	log.LogDebugf("action[TryAcquireDecommissionToken] clusterID[%v] vol[%v] partitionID[%v]"+
-		" retry %v status %v DecommissionDstAddrSpecify %v DecommissionDstAddr %v failed:%v",
+		" retry %v status %v DecommissionDstAddrSpecify %v DecommissionDstAddr %v failed",
 		c.Name, partition.VolName, partition.PartitionID, partition.DecommissionRetry, partition.GetDecommissionStatus(),
-		partition.DecommissionDstAddrSpecify, partition.DecommissionDstAddr, err.Error())
+		partition.DecommissionDstAddrSpecify, partition.DecommissionDstAddr)
 	return false
 }
 

@@ -1139,7 +1139,7 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
 				log.LogWarnf("Leader changed, stop traverse!")
-				return
+				continue
 			}
 			runningCnt := 0
 			ns.DecommissionDisks.Range(func(key, value interface{}) bool {
@@ -1172,7 +1172,9 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 					}
 				}
 			} else {
-				maxDiskDecommissionCnt := int(atomic.LoadInt32(&ns.decommissionDiskParallelFactor)) * ns.dataNodeLen()
+				//TODO
+				//maxDiskDecommissionCnt := int(atomic.LoadInt32(&ns.decommissionDiskParallelFactor)) * ns.dataNodeLen()
+				maxDiskDecommissionCnt := 1
 				newDiskDecommissionCnt := maxDiskDecommissionCnt - runningCnt
 				log.LogDebugf("traverseDecommissionDisk traverse DiskDecommissionCnt %v",
 					newDiskDecommissionCnt)
@@ -2134,17 +2136,17 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 	for {
 		select {
 		case <-l.done:
-			log.LogWarnf("traverse stopped!\n")
+			log.LogWarnf("traverse stopped!")
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
-				log.LogWarnf("Leader changed, stop traverse!\n")
-				return
+				log.LogWarnf("Leader changed, stop traverse!")
+				continue
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 			for _, dp := range allDecommissionDP {
 				if dp.IsDecommissionSuccess() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success\n",
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
 						dp.PartitionID)
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
@@ -2152,14 +2154,14 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionFailed() {
 					if !dp.tryRollback(c) {
-						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail\n",
+						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
 							dp.PartitionID)
 						l.Remove(dp)
 					}
 					//rollback fail/success need release token
 					dp.ReleaseDecommissionToken(c)
 				} else if dp.IsDecommissionStopped() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop \n",
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop ",
 						dp.PartitionID)
 					//stop do not consume token，wait for add again
 					l.Remove(dp)
@@ -2203,7 +2205,7 @@ func (l *DecommissionDiskList) Put(nsId uint64, value *DecommissionDisk) {
 	}
 	//can only add running or mark
 	if !value.canAddToDecommissionList() {
-		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong dp[%v] status[%v]",
+		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong disk[%v] status[%v]",
 			nsId, value.GenerateKey(), value.GetDecommissionStatus())
 		return
 	}
@@ -2216,7 +2218,7 @@ func (l *DecommissionDiskList) Put(nsId uint64, value *DecommissionDisk) {
 	elm := l.decommissionList.PushBack(value)
 	l.cacheMap[value.GenerateKey()] = elm
 
-	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] type[%v]",
+	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add disk[%v] status[%v] type[%v]",
 		nsId, value.GenerateKey(), value.GetDecommissionStatus(), value.Type)
 }
 

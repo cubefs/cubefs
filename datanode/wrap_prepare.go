@@ -82,7 +82,8 @@ func (s *DataNode) checkCrc(p *repl.Packet) (err error) {
 func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 	dp := s.space.Partition(p.PartitionID)
 	if dp == nil {
-		err = proto.ErrDataPartitionNotExists
+		//err = proto.ErrDataPartitionNotExists
+		err = fmt.Errorf("data partition not exists %v", p.PartitionID)
 		return
 	}
 	p.Object = dp
