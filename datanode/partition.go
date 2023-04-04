@@ -494,7 +494,6 @@ func (dp *DataPartition) Disk() *Disk {
 
 // Status returns the partition status.
 func (dp *DataPartition) Status() int {
-	dp.statusUpdate()
 	return dp.partitionStatus
 }
 
@@ -607,14 +606,14 @@ func (dp *DataPartition) statusUpdate() {
 	}
 	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
 		//dp is still recovering
-		if dp.DataPartitionCreateType == proto.NormalCreateDataPartition {
+		if dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition {
 			status = proto.Recovering
 		} else {
 			status = proto.Unavailable
 		}
 	}
 
-	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, dis status %v, res:%v",
+	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v, res:%v",
 		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status), int(math.Min(float64(status), float64(dp.disk.Status))))
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
