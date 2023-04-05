@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/stat"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"regexp"
@@ -3662,6 +3663,54 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 	}
 	send(w, r, mpsCache)
 	return
+}
+
+func (m *Server) putDataPartitions(w http.ResponseWriter, r *http.Request) {
+	var (
+		body []byte
+		name string
+		err  error
+	)
+	defer func() {
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		}
+	}()
+
+	if name, err = parseAndExtractName(r); err != nil {
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		return
+	}
+	if !m.cluster.partition.IsRaftLeader() {
+
+		reply := &struct {
+			Code int32           `json:"code"`
+			Msg  string          `json:"msg"`
+			Data json.RawMessage `json:"data"`
+		}{}
+
+		if err = json.Unmarshal(body, reply); err != nil {
+			log.LogErrorf("putDataPartitions. umarshal error volName %v", name)
+			return
+		}
+		view := &proto.DataPartitionsView{}
+		if err = json.Unmarshal(reply.Data, view); err != nil {
+			log.LogErrorf("putDataPartitions. umarshal reply.Data error volName %v", name)
+			return
+		}
+
+		m.cluster.followerReadManager.updateVolViewFromLeader(name, view)
+		sendOkReply(w, r, newSuccessHTTPReply("success"))
+		return
+	} else {
+		err = fmt.Errorf("raft leader cann't be grant dps info")
+		log.LogErrorf("putDataPartitions. err %v", err)
+	}
 }
 
 // Obtain all the data partitions in a volume.
