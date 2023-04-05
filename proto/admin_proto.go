@@ -112,6 +112,7 @@ const (
 	RaftStatus     = "/get/raftStatus"
 
 	// node APIs
+
 	AddDataNode                        = "/dataNode/add"
 	DecommissionDataNode               = "/dataNode/decommission"
 	QueryDataNodeDecoProgress          = "/dataNode/queryDecommissionProgress"
@@ -138,7 +139,8 @@ const (
 	AdminChangeMetaPartitionLeader     = "/metaPartition/changeleader"
 	AdminAddMetaReplica                = "/metaReplica/add"
 	AdminDeleteMetaReplica             = "/metaReplica/delete"
-
+	AdminPutDataPartitions             = "/dataPartitions/set"
+	
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'

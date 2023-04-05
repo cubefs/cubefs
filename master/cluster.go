@@ -123,6 +123,34 @@ func (mgr *followerReadManager) getVolumeDpView() {
 	}
 }
 
+func (mgr *followerReadManager) sendFollowerVolumeDpView() {
+	var (
+		err      error
+		volNames []string
+	)
+	if err, volNames = mgr.c.loadVolsName(); err != nil {
+		panic(err)
+	}
+	for _, name := range volNames {
+		log.LogDebugf("followerReadManager.getVolumeDpView %v", name)
+		var body []byte
+		if body, err = mgr.c.vols[name].getDataPartitionsView(); err != nil {
+			log.LogErrorf("followerReadManager.sendFollowerVolumeDpView err %v", err)
+			continue
+		}
+		for _, addr := range AddrDatabase {
+			if addr == mgr.c.leaderInfo.addr {
+				continue
+			}
+			mgr.c.masterClient.SetLeader(addr)
+			if err = mgr.c.masterClient.AdminAPI().PutDataPartitions(name, body); err != nil {
+				log.LogErrorf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", name, addr, err)
+			}
+			log.LogDebugf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", name, addr, err)
+		}
+	}
+}
+
 func (mgr *followerReadManager) checkStatus() {
 	mgr.rwMutex.Lock()
 	defer mgr.rwMutex.Unlock()
@@ -345,6 +373,8 @@ func (c *Cluster) scheduleToCheckFollowerReadCache() {
 			if !c.partition.IsRaftLeader() {
 				c.followerReadManager.getVolumeDpView()
 				c.followerReadManager.checkStatus()
+			} else {
+				c.followerReadManager.sendFollowerVolumeDpView()
 			}
 			time.Sleep(5 * time.Second)
 		}
