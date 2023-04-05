@@ -285,6 +285,17 @@ func (api *AdminAPI) UpdateVolume(volName, description, auth, zoneName string, c
 	return
 }
 
+func (api *AdminAPI) PutDataPartitions(volName string, dpsView []byte) (err error) {
+	var request = newAPIRequest(http.MethodPost, proto.AdminPutDataPartitions)
+	request.addParam("name", volName)
+	request.addBody(dpsView)
+
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) VolShrink(volName string, capacity uint64, authKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminVolShrink)
 	request.addParam("name", volName)
