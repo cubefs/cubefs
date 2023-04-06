@@ -24,6 +24,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"syscall"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -203,7 +204,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 
-		//step2. Check user policy
+		// step2. Check user policy
 		userInfo := new(proto.UserInfo)
 		isOwner := false
 		if isAnonymous(param.accessKey) && apiAllowAnonymous(param.apiName) {
@@ -254,8 +255,15 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
+		// batch delete will delay to check just before delete for each key
+		if param.apiName == BATCH_DELETE {
+			log.LogDebugf("user policy check: delete objects delay check: requestID(%v) userID(%v) volume(%v)",
+				GetRequestID(r), userInfo.UserID, param.Bucket())
+			allowed = true
+			return
+		}
 
-		//step3. Check bucket policy
+		// step3. Check bucket policy
 	policycheck:
 		vol, acl, policy, vv, err := o.loadBucketMeta(param.Bucket())
 		if err != nil {
@@ -264,7 +272,8 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			ec = NoSuchBucket
 			return
 		}
-
+		log.LogDebugf("bucket policy check: load bucket metadata, requestID(%v) userPolicy(%v/%+v) vol(%v/%v) acl(%+v) policy(%+v)",
+			GetRequestID(r), userInfo.UserID, userInfo.Policy, vol.Name(), vol.GetOwner(), acl, policy)
 		if vol != nil && policy != nil && !policy.IsEmpty() {
 			log.LogDebugf("bucket policy check: requestID(%v) policy(%v)", GetRequestID(r), policy)
 			conditionCheck := map[string]string{
@@ -291,20 +300,41 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 
-		//step4. Check acl
-		//The default bucket acl should not be empty
-		if acl == nil && !isOwner {
-			allowed = false
-			log.LogWarnf("bucket acl check: not allowed because of empty bucket ACL : requestID(%v) ", GetRequestID(r))
-			return
-		}
-		if acl != nil && !acl.IsAclEmpty() {
-			allowed = acl.IsAllowed(param, isOwner)
-			if !allowed {
-				log.LogWarnf("bucket acl check: bucket ACL not allowed: requestID(%v) acl(%v) accessKey(%v) volume(%v) action(%v)",
-					GetRequestID(r), userInfo, acl, param.Bucket(), param.Action())
+		// step4. Check acl
+		if IsApiSupportByACL(param.Action()) {
+			if vol != nil && IsApiSupportByObjectAcl(param.Action()) {
+				if param.Object() == "" {
+					ec = InvalidKey
+					log.LogErrorf("acl check: no object key specified: requestID(%v) userID(%v) volume(%v) action(%v)",
+						GetRequestID(r), userInfo.UserID, param.Bucket(), param.Action())
+					return
+				}
+				if acl, err = getObjectACL(vol, param.object, true); err != nil {
+					log.LogErrorf("acl check: get object ACL fail: requestID(%v) userID(%v) volume(%v) action(%v) err(%v)",
+						GetRequestID(r), userInfo.UserID, param.Bucket(), param.Action(), err)
+					if err == syscall.ENOENT {
+						ec = NoSuchKey
+					}
+					return
+				}
+			}
+			if acl == nil && !isOwner {
+				allowed = false
+				log.LogWarnf("acl check: empty ACL disallows non-owners: requestID(%v) userID(%v) volume(%v) action(%v)",
+					GetRequestID(r), userInfo.UserID, param.Bucket(), param.Action())
 				return
 			}
+			if acl != nil && !acl.IsAllowed(userInfo.UserID, param.Action()) {
+				allowed = false
+				log.LogWarnf("acl check: ACL not allowed: requestID(%v) acl(%+v) userID(%v) volume(%v) action(%v)",
+					GetRequestID(r), acl, userInfo.UserID, param.Bucket(), param.Action())
+				return
+			}
+		} else if !isOwner {
+			allowed = false
+			log.LogWarnf("acl check: api action not support ACL for non-owners: requestID(%v) userID(%v) volume(%v) action(%v)",
+				GetRequestID(r), userInfo.UserID, param.Bucket(), param.Action())
+			return
 		}
 
 		allowed = true
@@ -331,52 +361,57 @@ func (o *ObjectNode) loadBucketMeta(bucket string) (vol *Volume, acl *AccessCont
 }
 
 func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string) (err error) {
-	srcBucketId, srcKey, _, err := extractSrcBucketKey(param.r)
+	paramCopy := *param
+	srcBucketId, srcKey, _, err := extractSrcBucketKey(paramCopy.r)
 	if err != nil {
-		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", param.r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(param.r))
+		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", paramCopy.r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(paramCopy.r))
 		return
 	}
 	vol, acl, policy, vv, err := o.loadBucketMeta(srcBucketId)
 	if err != nil {
-		log.LogErrorf("srcBucket policy check: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(param.r), err)
+		log.LogErrorf("srcBucket policy check: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(paramCopy.r), err)
 		return
 	}
+	paramCopy.apiName = GET_OBJECT
+	paramCopy.action = proto.OSSGetObjectAction
 	if vol != nil && policy != nil && !policy.IsEmpty() {
 		conditionCheck := map[string]string{
-			SOURCEIP: param.sourceIP,
+			SOURCEIP: paramCopy.sourceIP,
 			KEYNAME:  srcKey,
-			REFERER:  param.r.Referer(),
-			HOST:     param.r.Host,
+			REFERER:  paramCopy.r.Referer(),
+			HOST:     paramCopy.r.Host,
 		}
-		pcr := policy.IsAllowed(param, reqUid, vv.Owner, conditionCheck)
+		pcr := policy.IsAllowed(&paramCopy, reqUid, vv.Owner, conditionCheck)
 		switch pcr {
 		case POLICY_ALLOW:
-			log.LogDebugf("srcBucket policy check: policy allowed: requestID(%v)", GetRequestID(param.r))
+			log.LogDebugf("srcBucket policy check: policy allowed: requestID(%v)", GetRequestID(paramCopy.r))
 			return
 		case POLICY_DENY:
-			log.LogWarnf("srcBucket policy check: policy not allowed: requestID(%v) ", GetRequestID(param.r))
+			log.LogWarnf("srcBucket policy check: policy not allowed: requestID(%v) ", GetRequestID(paramCopy.r))
 			return AccessDenied
 		case POLICY_UNKNOW:
 			// policy check result is unknown so that acl should be checked
-			log.LogWarnf("srcBucket policy check: policy unknown: requestID(%v) ", GetRequestID(param.r))
+			log.LogWarnf("srcBucket policy check: policy unknown: requestID(%v) ", GetRequestID(paramCopy.r))
 		}
 	}
 
 	isOwner := reqUid == vv.Owner
+	if acl, err = getObjectACL(vol, srcKey, true); err != nil {
+		log.LogErrorf("srcBucket acl check: get object acl fail: requestID(%v) volume(%v) path(%v) action(%v) err(%v)",
+			GetRequestID(paramCopy.r), srcBucketId, srcKey, paramCopy.Action(), err)
+		return
+	}
 	if acl == nil && !isOwner {
-		log.LogWarnf("srcBucket acl check: not allowed because of empty bucket ACL : requestID(%v) ", GetRequestID(param.r))
+		log.LogWarnf("srcBucket acl check: empty ACL disallows non-owners: requestID(%v) userID(%v) volume(%v) action(%v)",
+			GetRequestID(paramCopy.r), reqUid, srcBucketId, paramCopy.Action())
 		return AccessDenied
 	}
-
-	if vol != nil && acl != nil && !acl.IsAclEmpty() {
-		allowed := acl.IsAllowed(param, isOwner)
-		if !allowed {
-			log.LogWarnf("srcBucket acl check: bucket ACL not allowed: requestID(%v) acl(%v) volume(%v) action(%v)",
-				GetRequestID(param.r), acl, param.Bucket(), param.Action())
-			return
-		}
+	if acl != nil && !acl.IsAllowed(reqUid, paramCopy.Action()) {
+		log.LogWarnf("srcBucket acl check: object ACL not allowed: requestID(%v) acl(%+v) volume(%v) path(%v) action(%v)",
+			GetRequestID(paramCopy.r), acl, srcBucketId, srcKey, paramCopy.Action())
+		return AccessDenied
 	}
 	log.LogDebugf("srcBucket acl check: action allowed: requestID(%v) accessKey(%v) volume(%v) action(%v)",
-		GetRequestID(param.r), param.AccessKey(), param.Bucket(), param.Action())
+		GetRequestID(paramCopy.r), paramCopy.AccessKey(), paramCopy.Bucket(), paramCopy.Action())
 	return
 }

@@ -113,9 +113,10 @@ var (
 	ExceedTagLimit                      = &ErrorCode{ErrorCode: "InvalidTagError", ErrorMessage: "Object tags cannot be greater than 10", StatusCode: http.StatusBadRequest}
 	InvalidTagKey                       = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagKey you have provided is invalid", StatusCode: http.StatusBadRequest}
 	InvalidTagValue                     = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
+	MissingContentMD5                   = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "Missing required header for this request: Content-MD5.", StatusCode: http.StatusBadRequest}
 	NoSuchTagSetError                   = &ErrorCode{"NoSuchTagSetError", "The TagSet does not exist.", http.StatusNotFound}
 	InvalidTagError                     = &ErrorCode{"InvalidTagError", "missing tag in body", http.StatusBadRequest}
-	NoSuchCORSConfiguration             = &ErrorCode{"The CORS configuration does not exist", "NoSuchCORSConfiguration", http.StatusNotFound}
+	NoSuchCORSConfiguration             = &ErrorCode{"NoSuchCORSConfiguration", "The CORS configuration does not exist", http.StatusNotFound}
 	CORSRuleNotMatch                    = &ErrorCode{"AccessForbidden", "CORSResponse: This CORS request is not allowed.", http.StatusForbidden}
 	ErrCORSNotEnabled                   = &ErrorCode{"AccessForbidden", "CORSResponse: CORS is not enabled for this bucket", http.StatusForbidden}
 	MissingOriginHeader                 = &ErrorCode{"MissingOriginHeader", "Missing Origin header.", http.StatusBadRequest}

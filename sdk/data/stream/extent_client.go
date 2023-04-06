@@ -18,14 +18,13 @@ import (
 	"container/list"
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/sdk/data/manager"
-	"golang.org/x/time/rate"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
@@ -33,6 +32,8 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+
+	"golang.org/x/time/rate"
 )
 
 type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
@@ -240,6 +241,11 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 retry:
 	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload)
 	if err != nil {
+		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
+			config.Volume, limit, err)
+		if strings.Contains(err.Error(), proto.ErrVolNotExists.Error()) {
+			return nil, proto.ErrVolNotExists
+		}
 		if limit >= MaxMountRetryLimit {
 			return nil, errors.Trace(err, "Init data wrapper failed!")
 		} else {

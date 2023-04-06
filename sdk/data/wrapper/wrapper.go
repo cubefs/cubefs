@@ -16,8 +16,6 @@ package wrapper
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/ump"
 	syslog "log"
 	"net"
 	"strings"
@@ -26,9 +24,11 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ump"
 )
 
 var (
@@ -174,6 +174,11 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("GetSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
+	}
+	if view.Status == 1 {
+		log.LogWarnf("GetSimpleVolView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+			w.volName, view.Status)
+		return proto.ErrVolNotExists
 	}
 	w.followerRead = view.FollowerRead
 	w.dpSelectorName = view.DpSelectorName
@@ -368,8 +373,8 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 
 	// isInit used to identify whether this call is caused by mount action
 	if isInit || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1)) {
-		log.LogDebugf("action[updateDataPartitionByRsp] refreshDpSelector, rwPartitionGroups len: %v",
-			len(rwPartitionGroups))
+		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all)",
+			w.volName, len(rwPartitionGroups), len(DataPartitions))
 		w.refreshDpSelector(rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")

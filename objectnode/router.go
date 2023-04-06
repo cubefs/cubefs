@@ -576,7 +576,6 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// https://docs.aws.amazon.com/AmazonS3/latest/API/RESTOPTIONSobject.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSOptionsObjectAction)).
 			Methods(http.MethodOptions).
-			Path("/{object:.+}").
 			HandlerFunc(o.optionsObjectHandler)
 	}
 
