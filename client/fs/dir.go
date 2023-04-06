@@ -39,22 +39,23 @@ type Dir struct {
 
 // Functions that Dir needs to implement
 var (
-	_ fs.Node                = (*Dir)(nil)
-	_ fs.NodeCreater         = (*Dir)(nil)
-	_ fs.NodeForgetter       = (*Dir)(nil)
-	_ fs.NodeMkdirer         = (*Dir)(nil)
-	_ fs.NodeMknoder         = (*Dir)(nil)
-	_ fs.NodeRemover         = (*Dir)(nil)
-	_ fs.NodeFsyncer         = (*Dir)(nil)
-	_ fs.NodeRequestLookuper = (*Dir)(nil)
-	_ fs.HandleReadDirAller  = (*Dir)(nil)
-	_ fs.NodeRenamer         = (*Dir)(nil)
-	_ fs.NodeSetattrer       = (*Dir)(nil)
-	_ fs.NodeSymlinker       = (*Dir)(nil)
-	_ fs.NodeGetxattrer      = (*Dir)(nil)
-	_ fs.NodeListxattrer     = (*Dir)(nil)
-	_ fs.NodeSetxattrer      = (*Dir)(nil)
-	_ fs.NodeRemovexattrer   = (*Dir)(nil)
+	_ fs.Node                	= (*Dir)(nil)
+	_ fs.NodeCreater         	= (*Dir)(nil)
+	_ fs.NodeForgetter       	= (*Dir)(nil)
+	_ fs.NodeMkdirer         	= (*Dir)(nil)
+	_ fs.NodeMknoder         	= (*Dir)(nil)
+	_ fs.NodeRemover         	= (*Dir)(nil)
+	_ fs.NodeFsyncer         	= (*Dir)(nil)
+	_ fs.NodeRequestLookuper 	= (*Dir)(nil)
+	_ fs.HandleReadDirAller  	= (*Dir)(nil)
+	_ fs.HandleReadDirPlusAller	= (*Dir)(nil)
+	_ fs.NodeRenamer         	= (*Dir)(nil)
+	_ fs.NodeSetattrer       	= (*Dir)(nil)
+	_ fs.NodeSymlinker       	= (*Dir)(nil)
+	_ fs.NodeGetxattrer      	= (*Dir)(nil)
+	_ fs.NodeListxattrer     	= (*Dir)(nil)
+	_ fs.NodeSetxattrer      	= (*Dir)(nil)
+	_ fs.NodeRemovexattrer   	= (*Dir)(nil)
 )
 
 // NewDir returns a new directory.
@@ -263,9 +264,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 			Type:  ParseType(child.Type),
 			Name:  child.Name,
 		}
-		if len(inodes) < 10000 {
-			inodes = append(inodes, child.Inode)
-		}
+		inodes = append(inodes, child.Inode)
 		dirents = append(dirents, dentry)
 		dcache.Put(child.Name, child.Inode)
 	}
@@ -280,6 +279,63 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	d.dcache = dcache
 
 	log.LogDebugf("TRACE ReadDir: ino(%v) time(%v)", d.info.Inode, time.Since(start))
+	return dirents, nil
+}
+
+// ReadDirPlusAll gets all the dentries and their information in a directory and puts them into the cache.
+func (d *Dir) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusResponse) ([]fs.DirentPlus, error) {
+	start := time.Now()
+
+	var err error
+	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("readdirplus"))
+	defer ump.AfterTP(tpObject, err)
+
+	children, err := d.super.mw.ReadDir_ll(ctx, d.info.Inode)
+	if err != nil {
+		log.LogErrorf("ReaddirPlus: ino(%v) err(%v)", d.info.Inode, err)
+		return make([]fs.DirentPlus, 0), ParseError(err)
+	}
+
+	inodes := make([]uint64, 0, len(children))
+	for _, child := range children {
+		inodes = append(inodes, child.Inode)
+	}
+	infos := d.super.mw.BatchInodeGet(ctx, inodes)
+	infoMap := make(map[uint64]*proto.InodeInfo, len(infos))
+	for _, info := range infos {
+		d.super.ic.Put(info)
+		infoMap[info.Inode] = info
+	}
+
+	var dcache *cache.DentryCache
+	if !d.super.disableDcache {
+		dcache = cache.NewDentryCache(DentryValidDuration, true)
+	}
+	dirents := make([]fs.DirentPlus, 0, len(children))
+	for _, child := range children {
+		dentryPlus := fs.DirentPlus{}
+		dentryPlus.Dirent = fuse.Dirent{
+			Inode: child.Inode,
+			Type:  ParseType(child.Type),
+			Name:  child.Name,
+		}
+		info, exist := infoMap[child.Inode]
+		if exist {
+			mode := proto.OsMode(info.Mode)
+			if mode.IsDir() {
+				dentryPlus.Node = NewDir(d.super, info)
+			} else {
+				dentryPlus.Node = NewFile(d.super, info)
+			}
+		}
+		dirents = append(dirents, dentryPlus)
+		dcache.Put(child.Name, child.Inode)
+	}
+
+	d.dcache = dcache
+	resp.EntryValid = LookupValidDuration
+
+	log.LogDebugf("TRACE ReaddirPlus: ino(%v) resp(%v) time(%v)", d.info.Inode, resp, time.Since(start))
 	return dirents, nil
 }
 

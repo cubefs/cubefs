@@ -38,7 +38,9 @@ import (
 // Low-level API, i.e. work with inode
 
 const (
-	BatchIgetRespBuf      = 1000
+	BatchIgetRespBuf 	= 1000
+	BatchIgetLimit   	= 2000
+
 	CreateSubDirDeepLimit = 5
 )
 

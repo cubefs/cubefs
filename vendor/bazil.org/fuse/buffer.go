@@ -8,7 +8,7 @@ type buffer []byte
 
 // alloc allocates size bytes and returns a pointer to the new
 // segment.
-func (w *buffer) alloc(size uintptr) unsafe.Pointer {
+func (w *buffer) Alloc(size uintptr) unsafe.Pointer {
 	s := int(size)
 	if len(*w)+s > cap(*w) {
 		old := *w
@@ -31,5 +31,10 @@ func (w *buffer) reset() {
 func newBuffer(extra uintptr) buffer {
 	const hdrSize = unsafe.Sizeof(outHeader{})
 	buf := make(buffer, hdrSize, hdrSize+extra)
+	return buf
+}
+
+func NewBufferWithoutHdr(size uintptr) buffer {
+	buf := make(buffer, 0, size)
 	return buf
 }

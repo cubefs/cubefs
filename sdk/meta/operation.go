@@ -451,54 +451,67 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 
 func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, respCh chan []*proto.InodeInfo) {
 
-	defer wg.Done()
-	var (
-		err error
-	)
-	req := &proto.BatchInodeGetRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inodes:      inodes,
-	}
+	var err error
 
-	packet := proto.NewPacketReqID(ctx)
-	packet.Opcode = proto.OpMetaBatchInodeGet
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		return
-	}
-
-	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
+	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, "OpMetaBatchInodeGet"))
 	defer ump.AfterTP(tpObject, err)
 
-	packet, err = mw.sendReadToMP(ctx, mp, packet)
-	if err != nil {
-		log.LogWarnf("batchIget: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
+	infoRes := make([]*proto.InodeInfo, 0, len(inodes))
+
+	defer func() {
+		if len(infoRes) != 0 {
+			select {
+			case respCh <- infoRes:
+			default:
+			}
+		}
+		wg.Done()
+	}()
+
+	posStart := 0
+	for {
+		if posStart >= len(inodes) {
+			break
+		}
+		posEnd := posStart + BatchIgetLimit
+		if posEnd > len(inodes) {
+			posEnd = len(inodes)
+		}
+		req := &proto.BatchInodeGetRequest{
+			VolName:     mw.volname,
+			PartitionID: mp.PartitionID,
+			Inodes:      inodes[posStart:posEnd],
+		}
+		packet := proto.NewPacketReqID(ctx)
+		packet.Opcode = proto.OpMetaBatchInodeGet
+		packet.PartitionID = mp.PartitionID
+		err = packet.MarshalData(req)
+		if err != nil {
+			return
+		}
+		packet, err = mw.sendReadToMP(ctx, mp, packet)
+		if err != nil {
+			log.LogWarnf("batchIget: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+			return
+		}
+		status := parseStatus(packet.ResultCode)
+		if status != statusOK {
+			log.LogWarnf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+			return
+		}
+		resp := new(proto.BatchInodeGetResponse)
+		err = packet.UnmarshalData(resp)
+		if err != nil {
+			log.LogWarnf("batchIget: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+			return
+		}
+		if log.IsDebugEnabled() {
+			log.LogDebugf("batchIget: packet(%v) mp(%v) result(%v) count(%v) pos start(%v) end(%v)", packet, mp, packet.GetResultMsg(), len(resp.Infos), posStart, posEnd)
+		}
+		infoRes = append(infoRes, resp.Infos...)
+		posStart = posEnd
 	}
 
-	status := parseStatus(packet.ResultCode)
-	if status != statusOK {
-		log.LogWarnf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-		return
-	}
-
-	resp := new(proto.BatchInodeGetResponse)
-	err = packet.UnmarshalData(resp)
-	if err != nil {
-		log.LogWarnf("batchIget: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
-		return
-	}
-
-	if len(resp.Infos) == 0 {
-		return
-	}
-
-	select {
-	case respCh <- resp.Infos:
-	default:
-	}
 }
 
 func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID uint64, prefix, marker string, count uint64) (status int, children []proto.Dentry, next string, err error) {
@@ -1428,7 +1441,7 @@ func (mw *MetaWrapper) batchGetXAttr(ctx context.Context, mp *MetaPartition, ino
 
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogWarnf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogWarnf("batchGetXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return nil, err
 	}
 

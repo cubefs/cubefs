@@ -808,17 +808,18 @@ loop:
 			Flags:  openFlags(in.Flags),
 		}
 
-	case opRead, opReaddir:
+	case opRead, opReaddir, opReaddirPlus:
 		in := (*readIn)(m.data())
 		if m.len() < readInSize(c.proto) {
 			goto corrupt
 		}
 		r := &ReadRequest{
-			Header: m.Header(),
-			Dir:    m.hdr.Opcode == opReaddir,
-			Handle: HandleID(in.Fh),
-			Offset: int64(in.Offset),
-			Size:   int(in.Size),
+			Header: 	m.Header(),
+			Dir:    	m.hdr.Opcode == opReaddir,
+			DirPlus:	m.hdr.Opcode == opReaddirPlus,
+			Handle: 	HandleID(in.Fh),
+			Offset: 	int64(in.Offset),
+			Size:   	int(in.Size),
 		}
 		if c.proto.GE(Protocol{7, 9}) {
 			r.Flags = ReadFlags(in.ReadFlags)
@@ -1171,7 +1172,7 @@ func (c *Conn) InvalidateNode(nodeID NodeID, off int64, size int64) error {
 	h := (*outHeader)(unsafe.Pointer(&buf[0]))
 	// h.Unique is 0
 	h.Error = notifyCodeInvalInode
-	out := (*notifyInvalInodeOut)(buf.alloc(unsafe.Sizeof(notifyInvalInodeOut{})))
+	out := (*notifyInvalInodeOut)(buf.Alloc(unsafe.Sizeof(notifyInvalInodeOut{})))
 	out.Ino = uint64(nodeID)
 	out.Off = off
 	out.Len = size
@@ -1198,7 +1199,7 @@ func (c *Conn) InvalidateEntry(parent NodeID, name string) error {
 	h := (*outHeader)(unsafe.Pointer(&buf[0]))
 	// h.Unique is 0
 	h.Error = notifyCodeInvalEntry
-	out := (*notifyInvalEntryOut)(buf.alloc(unsafe.Sizeof(notifyInvalEntryOut{})))
+	out := (*notifyInvalEntryOut)(buf.Alloc(unsafe.Sizeof(notifyInvalEntryOut{})))
 	out.Parent = uint64(parent)
 	out.Namelen = uint32(len(name))
 	buf = append(buf, name...)
@@ -1240,7 +1241,7 @@ func (r *InitResponse) String() string {
 // Respond replies to the request with the given response.
 func (r *InitRequest) Respond(resp *InitResponse) {
 	buf := newBuffer(unsafe.Sizeof(initOut{}))
-	out := (*initOut)(buf.alloc(unsafe.Sizeof(initOut{})))
+	out := (*initOut)(buf.Alloc(unsafe.Sizeof(initOut{})))
 	out.Major = resp.Library.Major
 	out.Minor = resp.Library.Minor
 	out.MaxReadahead = resp.MaxReadahead
@@ -1269,7 +1270,7 @@ func (r *StatfsRequest) String() string {
 // Respond replies to the request with the given response.
 func (r *StatfsRequest) Respond(resp *StatfsResponse) {
 	buf := newBuffer(unsafe.Sizeof(statfsOut{}))
-	out := (*statfsOut)(buf.alloc(unsafe.Sizeof(statfsOut{})))
+	out := (*statfsOut)(buf.Alloc(unsafe.Sizeof(statfsOut{})))
 	out.St = kstatfs{
 		Blocks:  resp.Blocks,
 		Bfree:   resp.Bfree,
@@ -1356,6 +1357,10 @@ func unix(t time.Time) (sec uint64, nsec uint32) {
 	return
 }
 
+func (a *Attr) SetAttr(out *attr, proto Protocol) {
+	a.attr(out, proto)
+}
+
 func (a *Attr) attr(out *attr, proto Protocol) {
 	out.Ino = a.Inode
 	out.Size = a.Size
@@ -1418,7 +1423,7 @@ func (r *GetattrRequest) String() string {
 func (r *GetattrRequest) Respond(resp *GetattrResponse) {
 	size := attrOutSize(r.Header.Conn.proto)
 	buf := newBuffer(size)
-	out := (*attrOut)(buf.alloc(size))
+	out := (*attrOut)(buf.Alloc(size))
 	out.AttrValid = uint64(resp.Attr.Valid / time.Second)
 	out.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
 	resp.Attr.attr(&out.Attr, r.Header.Conn.proto)
@@ -1461,7 +1466,7 @@ func (r *GetxattrRequest) String() string {
 func (r *GetxattrRequest) Respond(resp *GetxattrResponse) {
 	if r.Size == 0 {
 		buf := newBuffer(unsafe.Sizeof(getxattrOut{}))
-		out := (*getxattrOut)(buf.alloc(unsafe.Sizeof(getxattrOut{})))
+		out := (*getxattrOut)(buf.Alloc(unsafe.Sizeof(getxattrOut{})))
 		out.Size = uint32(len(resp.Xattr))
 		r.respond(buf)
 	} else {
@@ -1497,7 +1502,7 @@ func (r *ListxattrRequest) String() string {
 func (r *ListxattrRequest) Respond(resp *ListxattrResponse) {
 	if r.Size == 0 {
 		buf := newBuffer(unsafe.Sizeof(getxattrOut{}))
-		out := (*getxattrOut)(buf.alloc(unsafe.Sizeof(getxattrOut{})))
+		out := (*getxattrOut)(buf.Alloc(unsafe.Sizeof(getxattrOut{})))
 		out.Size = uint32(len(resp.Xattr))
 		r.respond(buf)
 	} else {
@@ -1601,9 +1606,9 @@ func (r *LookupRequest) String() string {
 
 // Respond replies to the request with the given response.
 func (r *LookupRequest) Respond(resp *LookupResponse) {
-	size := entryOutSize(r.Header.Conn.proto)
+	size := EntryOutSize(r.Header.Conn.proto)
 	buf := newBuffer(size)
-	out := (*entryOut)(buf.alloc(size))
+	out := (*EntryOut)(buf.Alloc(size))
 	out.Nodeid = uint64(resp.Node)
 	out.Generation = resp.Generation
 	out.EntryValid = uint64(resp.EntryValid / time.Second)
@@ -1649,7 +1654,7 @@ func (r *OpenRequest) String() string {
 // Respond replies to the request with the given response.
 func (r *OpenRequest) Respond(resp *OpenResponse) {
 	buf := newBuffer(unsafe.Sizeof(openOut{}))
-	out := (*openOut)(buf.alloc(unsafe.Sizeof(openOut{})))
+	out := (*openOut)(buf.Alloc(unsafe.Sizeof(openOut{})))
 	out.Fh = uint64(resp.Handle)
 	out.OpenFlags = uint32(resp.Flags)
 	r.respond(buf)
@@ -1690,10 +1695,10 @@ func (r *CreateRequest) String() string {
 
 // Respond replies to the request with the given response.
 func (r *CreateRequest) Respond(resp *CreateResponse) {
-	eSize := entryOutSize(r.Header.Conn.proto)
+	eSize := EntryOutSize(r.Header.Conn.proto)
 	buf := newBuffer(eSize + unsafe.Sizeof(openOut{}))
 
-	e := (*entryOut)(buf.alloc(eSize))
+	e := (*EntryOut)(buf.Alloc(eSize))
 	e.Nodeid = uint64(resp.Node)
 	e.Generation = resp.Generation
 	e.EntryValid = uint64(resp.EntryValid / time.Second)
@@ -1702,7 +1707,7 @@ func (r *CreateRequest) Respond(resp *CreateResponse) {
 	e.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
 	resp.Attr.attr(&e.Attr, r.Header.Conn.proto)
 
-	o := (*openOut)(buf.alloc(unsafe.Sizeof(openOut{})))
+	o := (*openOut)(buf.Alloc(unsafe.Sizeof(openOut{})))
 	o.Fh = uint64(resp.Handle)
 	o.OpenFlags = uint32(resp.Flags)
 
@@ -1737,9 +1742,9 @@ func (r *MkdirRequest) String() string {
 
 // Respond replies to the request with the given response.
 func (r *MkdirRequest) Respond(resp *MkdirResponse) {
-	size := entryOutSize(r.Header.Conn.proto)
+	size := EntryOutSize(r.Header.Conn.proto)
 	buf := newBuffer(size)
-	out := (*entryOut)(buf.alloc(size))
+	out := (*EntryOut)(buf.Alloc(size))
 	out.Nodeid = uint64(resp.Node)
 	out.Generation = resp.Generation
 	out.EntryValid = uint64(resp.EntryValid / time.Second)
@@ -1763,6 +1768,7 @@ func (r *MkdirResponse) String() string {
 type ReadRequest struct {
 	Header    `json:"-"`
 	Dir       bool // is this Readdir?
+	DirPlus   bool
 	Handle    HandleID
 	Offset    int64
 	Size      int
@@ -1780,7 +1786,7 @@ func (r *ReadRequest) String() string {
 
 // Respond replies to the request with the given response.
 func (r *ReadRequest) Respond(resp *ReadResponse) {
-	if r.Dir {
+	if r.Dir || r.DirPlus {
 		buf := newBuffer(uintptr(len(resp.Data)))
 		buf = append(buf, resp.Data...)
 		r.respond(buf)
@@ -1988,7 +1994,7 @@ func (r *WriteRequest) MarshalJSON() ([]byte, error) {
 // Respond replies to the request with the given response.
 func (r *WriteRequest) Respond(resp *WriteResponse) {
 	buf := newBuffer(unsafe.Sizeof(writeOut{}))
-	out := (*writeOut)(buf.alloc(unsafe.Sizeof(writeOut{})))
+	out := (*writeOut)(buf.Alloc(unsafe.Sizeof(writeOut{})))
 	out.Size = uint32(resp.Size)
 	r.respond(buf)
 }
@@ -2079,7 +2085,7 @@ func (r *SetattrRequest) String() string {
 func (r *SetattrRequest) Respond(resp *SetattrResponse) {
 	size := attrOutSize(r.Header.Conn.proto)
 	buf := newBuffer(size)
-	out := (*attrOut)(buf.alloc(size))
+	out := (*attrOut)(buf.Alloc(size))
 	out.AttrValid = uint64(resp.Attr.Valid / time.Second)
 	out.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
 	resp.Attr.attr(&out.Attr, r.Header.Conn.proto)
@@ -2151,9 +2157,9 @@ func (r *SymlinkRequest) String() string {
 
 // Respond replies to the request, indicating that the symlink was created.
 func (r *SymlinkRequest) Respond(resp *SymlinkResponse) {
-	size := entryOutSize(r.Header.Conn.proto)
+	size := EntryOutSize(r.Header.Conn.proto)
 	buf := newBuffer(size)
-	out := (*entryOut)(buf.alloc(size))
+	out := (*EntryOut)(buf.Alloc(size))
 	out.Nodeid = uint64(resp.Node)
 	out.Generation = resp.Generation
 	out.EntryValid = uint64(resp.EntryValid / time.Second)
@@ -2204,9 +2210,9 @@ func (r *LinkRequest) String() string {
 }
 
 func (r *LinkRequest) Respond(resp *LookupResponse) {
-	size := entryOutSize(r.Header.Conn.proto)
+	size := EntryOutSize(r.Header.Conn.proto)
 	buf := newBuffer(size)
-	out := (*entryOut)(buf.alloc(size))
+	out := (*EntryOut)(buf.Alloc(size))
 	out.Nodeid = uint64(resp.Node)
 	out.Generation = resp.Generation
 	out.EntryValid = uint64(resp.EntryValid / time.Second)
@@ -2251,9 +2257,9 @@ func (r *MknodRequest) String() string {
 }
 
 func (r *MknodRequest) Respond(resp *LookupResponse) {
-	size := entryOutSize(r.Header.Conn.proto)
+	size := EntryOutSize(r.Header.Conn.proto)
 	buf := newBuffer(size)
-	out := (*entryOut)(buf.alloc(size))
+	out := (*EntryOut)(buf.Alloc(size))
 	out.Nodeid = uint64(resp.Node)
 	out.Generation = resp.Generation
 	out.EntryValid = uint64(resp.EntryValid / time.Second)
@@ -2326,4 +2332,13 @@ func (r *ExchangeDataRequest) String() string {
 func (r *ExchangeDataRequest) Respond() {
 	buf := newBuffer(0)
 	r.respond(buf)
+}
+
+// A ReadDirPlusResponse is the response to a ReadDirPlusRequest.
+type ReadDirPlusResponse struct {
+	EntryValid time.Duration
+}
+
+func (r *ReadDirPlusResponse) String() string {
+	return fmt.Sprintf("ReadDirPlus valid=%v", r.EntryValid)
 }
