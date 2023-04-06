@@ -68,26 +68,26 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdDataPartitionGetShort            = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort   = "Check and list unhealthy data partitions"
-	cmdCheckCommitDataPartitionShort    = "Check the snapshot blocking by analyze commit id in data partitions"
-	cmdResetDataPartitionShort          = "Reset corrupt data partition"
-	cmdDataPartitionDecommissionShort   = "Decommission a replication of the data partition to a new address"
-	cmdDataPartitionStopShort           = "Stop a data partition progress in a safe way"
-	cmdDataPartitionReloadShort         = "Reload a data partition on disk"
-	cmdDataPartitionReplicateShort      = "Add a replication of the data partition on a new address"
-	cmdDataPartitionDeleteReplicaShort  = "Delete a replication of the data partition on a fixed address"
-	cmdDataPartitionAddLearnerShort     = "Add a learner of the data partition on a new address"
-	cmdDataPartitionPromoteLearnerShort = "Promote the learner of the data partition on a fixed address"
+	cmdDataPartitionGetShort             = "Display detail information of a data partition"
+	cmdCheckCorruptDataPartitionShort    = "Check and list unhealthy data partitions"
+	cmdCheckCommitDataPartitionShort     = "Check the snapshot blocking by analyze commit id in data partitions"
+	cmdResetDataPartitionShort           = "Reset corrupt data partition"
+	cmdDataPartitionDecommissionShort    = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionStopShort            = "Stop a data partition progress in a safe way"
+	cmdDataPartitionReloadShort          = "Reload a data partition on disk"
+	cmdDataPartitionReplicateShort       = "Add a replication of the data partition on a new address"
+	cmdDataPartitionDeleteReplicaShort   = "Delete a replication of the data partition on a fixed address"
+	cmdDataPartitionAddLearnerShort      = "Add a learner of the data partition on a new address"
+	cmdDataPartitionPromoteLearnerShort  = "Promote the learner of the data partition on a fixed address"
 	cmdDataPartitionFreezeShort          = "Freezes the DP and does not provide the write service. It is used only for smart Volumes"
 	cmdDataPartitionUnFreezeLearnerShort = "Unfreeze the DP to provide write services. It is used only for smart Volumes"
-	cmdGetCanEcMigrateShort             = "Display these partitions's detail information of can ec migrate"
-	cmdGetCanEcDelShort                 = "Display these partitions's detail information of already finish ec"
-	cmdDelDpAlreadyEc                   = "delete the datapartition of already finish ec migration"
-	cmdMigrateEc                        = "start ec migration to using ecnode store data"
-	cmdStopMigratingEcByDataPartition   = "stop migrating task by data partition"
-	cmdDataPartitionResetRecoverShort   = "set the data partition IsRecover value to false"
-	cmdDataPartitionCheckReplicaShort   = "Check extents in this data partition"
+	cmdGetCanEcMigrateShort              = "Display these partitions's detail information of can ec migrate"
+	cmdGetCanEcDelShort                  = "Display these partitions's detail information of already finish ec"
+	cmdDelDpAlreadyEc                    = "delete the datapartition of already finish ec migration"
+	cmdMigrateEc                         = "start ec migration to using ecnode store data"
+	cmdStopMigratingEcByDataPartition    = "stop migrating task by data partition"
+	cmdDataPartitionResetRecoverShort    = "set the data partition IsRecover value to false"
+	cmdDataPartitionCheckReplicaShort    = "Check extents in this data partition"
 )
 
 func newDataPartitionTransferCmd(client *master.MasterClient) *cobra.Command {
@@ -202,6 +202,7 @@ func newDataPartitionResetRecoverCmd(client *master.MasterClient) *cobra.Command
 		confirm     string
 		err         error
 		result      string
+		optYes      bool
 		partition   *proto.DataPartitionInfo
 	)
 	var cmd = &cobra.Command{
@@ -221,12 +222,15 @@ func newDataPartitionResetRecoverCmd(client *master.MasterClient) *cobra.Command
 			if partition, err = client.AdminAPI().GetDataPartition("", partitionID); err != nil {
 				return
 			}
-			stdout(fmt.Sprintf("Set data partition[%v] IsRecover[%v] to false.\n", partition.PartitionID, partition.IsRecover))
-			stdout(fmt.Sprintf("The action may risk the danger of losing data, please confirm(y/n):"))
-			_, _ = fmt.Scanln(&confirm)
-			if "y" != confirm && "yes" != confirm {
-				return
+			if !optYes {
+				stdout(fmt.Sprintf("Set data partition[%v] IsRecover[%v] to false.\n", partition.PartitionID, partition.IsRecover))
+				stdout(fmt.Sprintf("The action may risk the danger of losing data, please confirm(y/n):"))
+				_, _ = fmt.Scanln(&confirm)
+				if "y" != confirm && "yes" != confirm {
+					return
+				}
 			}
+
 			result, err = client.AdminAPI().ResetRecoverDataPartition(partitionID)
 			if err != nil {
 				return
@@ -234,6 +238,8 @@ func newDataPartitionResetRecoverCmd(client *master.MasterClient) *cobra.Command
 			stdout("%s\n", result)
 		},
 	}
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+
 	return cmd
 }
 
@@ -986,7 +992,7 @@ func newDataPartitionCheckCommitCmd(client *master.MasterClient) *cobra.Command 
 					return
 				}
 				for _, r := range partition.Replicas {
-					if r.IsLeader && time.Now().Unix()-r.ReportTime <= defaultNodeTimeOutSec  {
+					if r.IsLeader && time.Now().Unix()-r.ReportTime <= defaultNodeTimeOutSec {
 						isLack, lackID, active, next, firstIdx, err := checkDataPartitionCommit(r.Addr, partition.PartitionID)
 						if err != nil {
 							continue
@@ -1155,7 +1161,7 @@ func checkCommit(client *master.MasterClient) (err error) {
 		f.WriteString("Volume,Partition,BadPeerID,BadHost,IsActive,Next,FirstIndex\n")
 	}
 	var badDps sync.Map
-	var partitionFunc = func(volumeName string, partition *proto.DataPartitionResponse) (err error){
+	var partitionFunc = func(volumeName string, partition *proto.DataPartitionResponse) (err error) {
 		isLack, lackID, _, _, _, err := checkDataPartitionCommit(partition.GetLeaderAddr(), partition.PartitionID)
 		if err != nil {
 			return
@@ -1235,7 +1241,7 @@ func checkCommit(client *master.MasterClient) (err error) {
 	return
 }
 
-func checkDataPartitionCommit(leader string, pid uint64,) (lack bool, lackID uint64, active bool, next, firstIdx uint64, err error) {
+func checkDataPartitionCommit(leader string, pid uint64) (lack bool, lackID uint64, active bool, next, firstIdx uint64, err error) {
 	var dnPartition *proto.DNDataPartitionInfo
 	addr := strings.Split(leader, ":")[0]
 	//check dataPartition by dataNode api
@@ -1286,15 +1292,15 @@ func checkDataPartitionRelica(c *master.MasterClient, partitionID uint64, checkT
 	}
 
 	for _, ekTmp := range dpDNInfo.Files {
-		if int64(ekTmp[proto.ExtentInfoModifyTime]) < specTime.Unix() || ekTmp[proto.ExtentInfoSize] == 0{
+		if int64(ekTmp[proto.ExtentInfoModifyTime]) < specTime.Unix() || ekTmp[proto.ExtentInfoSize] == 0 {
 			continue
 		}
-		ek := proto.ExtentKey {
-			FileOffset: 0,
-			PartitionId: partitionID,
-			ExtentId: ekTmp[proto.ExtentInfoFileID],
+		ek := proto.ExtentKey{
+			FileOffset:   0,
+			PartitionId:  partitionID,
+			ExtentId:     ekTmp[proto.ExtentInfoFileID],
 			ExtentOffset: 0,
-			Size: uint32(ekTmp[proto.ExtentInfoSize]),
+			Size:         uint32(ekTmp[proto.ExtentInfoSize]),
 		}
 		if _, ok := checkedExtent.LoadOrStore(fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId), true); ok {
 			continue
@@ -1310,7 +1316,7 @@ func checkDataPartitionRelica(c *master.MasterClient, partitionID uint64, checkT
 func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command {
 	var optCheckType int
 	var fromFile bool
-	var fromTime     string
+	var fromTime string
 	var ids []uint64
 	var checkTiny bool
 	var cmd = &cobra.Command{
@@ -1350,7 +1356,7 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 				go func(pid uint64) {
 					defer func() {
 						wg.Done()
-						<- limitCh
+						<-limitCh
 						rp.dpCounter.Add(1)
 						log.LogInfof("check data partition(%v) finish, progress(%d/%d)", pid, rp.dpCounter.Load(), len(ids))
 					}()
@@ -1369,7 +1375,7 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 		},
 	}
 	cmd.Flags().BoolVar(&fromFile, "from-file", false, "check partitions from file, file name:`ids`, format:`partition`")
-	cmd.Flags().IntVar(&optCheckType, "check-type",  0, "specify check type : 0 all, 1 crc, 2 md5, 3 block")
+	cmd.Flags().IntVar(&optCheckType, "check-type", 0, "specify check type : 0 all, 1 crc, 2 md5, 3 block")
 	cmd.Flags().StringVar(&fromTime, "from-time", "1970-01-01 00:00:00", "specify extent modify from time to check, format:yyyy-mm-dd hh:mm:ss")
 	cmd.Flags().BoolVar(&checkTiny, "check-tiny", false, "check tiny extent")
 	return cmd
