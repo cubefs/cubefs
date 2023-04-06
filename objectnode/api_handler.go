@@ -109,6 +109,9 @@ func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err e
 			log.LogErrorf("errorResponse: found error: requestID(%v) err(%v)",
 				GetRequestID(r), err)
 		}
+		if ec1, ok := err.(*ErrorCode); ok && ec == nil {
+			ec = ec1
+		}
 		if ec == nil {
 			ec = InternalErrorCode(err)
 		}

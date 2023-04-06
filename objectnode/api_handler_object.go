@@ -67,8 +67,8 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		log.LogErrorf("getObjectHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		log.LogErrorf("getObjectHandler: load volume fail: requestID(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.Object(), err)
 		errorCode = NoSuchBucket
 		return
 	}
@@ -82,62 +82,58 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	revRange := false
 	if len(rangeOpt) > 0 {
 		if !rangeRegexp.MatchString(rangeOpt) {
-			log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
-				GetRequestID(r), rangeOpt)
+			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
+				GetRequestID(r), param.Bucket(), param.Object(), rangeOpt)
 			errorCode = InvalidRange
 			return
-		} else {
-			var hyphenIndex = strings.Index(rangeOpt, "-")
-			if hyphenIndex < 0 {
-				log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
-					GetRequestID(r), rangeOpt)
-				errorCode = InvalidRange
-				return
-			}
-
-			var lowerPart = rangeOpt[len("bytes="):hyphenIndex]
-			var upperPart = ""
-			if hyphenIndex+1 < len(rangeOpt) {
-				// bytes=-5
-				if hyphenIndex == len("bytes=") { //suffix range opt
-					revRange = true
-					rangeUpper = 1<<64 - 1
-					lowerPart = rangeOpt[hyphenIndex+1:]
-				} else { // bytes=1-10
-					upperPart = rangeOpt[hyphenIndex+1:]
-				}
-			} else if hyphenIndex+1 == len(rangeOpt) { // bytes=1-
-				rangeUpper = 1<<64 - 1
-			}
-
-			if len(lowerPart) > 0 {
-				if rangeLower, err = strconv.ParseUint(lowerPart, 10, 64); err != nil {
-					log.LogErrorf("getObjectHandler: parse range lower fail: requestID(%v) rangeOpt(%v) err(%v)",
-						GetRequestID(r), rangeOpt, err)
-					ServeInternalStaticErrorResponse(w, r)
-					return
-				}
-			}
-			if len(upperPart) > 0 {
-				if rangeUpper, err = strconv.ParseUint(upperPart, 10, 64); err != nil {
-					log.LogErrorf("getObjectHandler: parse range upper fail: requestID(%v) rangeOpt(%v) err(%v)",
-						GetRequestID(r), rangeOpt, err)
-					ServeInternalStaticErrorResponse(w, r)
-					return
-				}
-			}
-			if rangeUpper < rangeLower {
-				// upper enabled and lower than lower side
-				log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
-					GetRequestID(r), rangeOpt)
-				errorCode = InvalidRange
-				return
-			}
-
-			isRangeRead = true
-			log.LogDebugf("getObjectHandler: parse range option: requestID(%v) rangeOpt(%v) rangeLower(%v) rangeUpper(%v)",
-				GetRequestID(r), rangeOpt, rangeLower, rangeUpper)
 		}
+		hyphenIndex := strings.Index(rangeOpt, "-")
+		if hyphenIndex < 0 {
+			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
+				GetRequestID(r), param.Bucket(), param.Object(), rangeOpt)
+			errorCode = InvalidRange
+			return
+		}
+		lowerPart := rangeOpt[len("bytes="):hyphenIndex]
+		upperPart := ""
+		if hyphenIndex+1 < len(rangeOpt) {
+			// bytes=-5
+			if hyphenIndex == len("bytes=") { //suffix range opt
+				revRange = true
+				rangeUpper = 1<<64 - 1
+				lowerPart = rangeOpt[hyphenIndex+1:]
+			} else { // bytes=1-10
+				upperPart = rangeOpt[hyphenIndex+1:]
+			}
+		} else if hyphenIndex+1 == len(rangeOpt) { // bytes=1-
+			rangeUpper = 1<<64 - 1
+		}
+		if len(lowerPart) > 0 {
+			if rangeLower, err = strconv.ParseUint(lowerPart, 10, 64); err != nil {
+				log.LogErrorf("getObjectHandler: parse range lower fail: requestID(%v) volume(%v) path(%v) rangeOpt(%v) err(%v)",
+					GetRequestID(r), param.Bucket(), param.Object(), rangeOpt, err)
+				errorCode = InvalidRange
+				return
+			}
+		}
+		if len(upperPart) > 0 {
+			if rangeUpper, err = strconv.ParseUint(upperPart, 10, 64); err != nil {
+				log.LogErrorf("getObjectHandler: parse range upper fail: requestID(%v) volume(%v) path(%v) rangeOpt(%v) err(%v)",
+					GetRequestID(r), param.Bucket(), param.Object(), rangeOpt, err)
+				errorCode = InvalidRange
+				return
+			}
+		}
+		if rangeUpper < rangeLower {
+			// upper enabled and lower than lower side
+			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
+				GetRequestID(r), param.Bucket(), param.Object(), rangeOpt)
+			errorCode = InvalidRange
+			return
+		}
+		isRangeRead = true
+		log.LogDebugf("getObjectHandler: parse range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v) lower(%v) upper(%v)",
+			GetRequestID(r), param.Bucket(), param.Object(), rangeOpt, rangeLower, rangeUpper)
 	}
 
 	responseCacheControl := r.URL.Query().Get(ParamResponseCacheControl)
@@ -158,7 +154,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var xattr *proto.XAttrInfo
 	var start = time.Now()
 	fileInfo, xattr, err = vol.ObjectMeta(param.Object())
-	log.LogDebugf("ObjectMeta cost: %v", time.Since(start))
+	log.LogDebugf("getObjectHandler: get object meta cost: %v", time.Since(start))
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -188,7 +184,6 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var contentLength = uint64(fileInfo.Size)
 	if isRangeRead {
 		contentLength = rangeUpper - rangeLower + 1
-		w.WriteHeader(http.StatusPartialContent)
 	}
 
 	// get object tagging size
@@ -197,19 +192,6 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if output != nil && len(output.TagSet) > 0 {
 		w.Header()[HeaderNameXAmzTaggingCount] = []string{strconv.Itoa(len(output.TagSet))}
 	}
-	/*var xattrInfo *proto.XAttrInfo
-	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil && err != syscall.ENOENT {
-		log.LogErrorf("getObjectHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
-	}
-	if xattrInfo != nil {
-		ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
-		output, _ := ParseTagging(string(ossTaggingData))
-		if output != nil && len(output.TagSet) > 0 {
-			w.Header()[HeaderNameXAmzTaggingCount] = []string{strconv.Itoa(len(output.TagSet))}
-		}
-	}*/
 
 	// set response header for GetObject
 	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
@@ -242,19 +224,22 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if len(partNumber) > 0 && fileInfo.Size >= MinParallelDownloadFileSize {
 		partNumberInt, err := strconv.ParseUint(partNumber, 10, 64)
 		if err != nil {
-			log.LogErrorf("getObjectHandler: parse param partNumber(%s) fail: requestID(%v) err(%v)", partNumber, GetRequestID(r), err)
+			log.LogErrorf("getObjectHandler: parse partNumber(%v) fail: requestID(%v) volume(%v) path(%v) err(%v)",
+				partNumber, GetRequestID(r), param.Bucket(), param.Object(), err)
 			errorCode = InvalidArgument
 			return
 		}
 		partSize, partCount, rangeLower, rangeUpper, err = parsePartInfo(partNumberInt, uint64(fileInfo.Size))
-		log.LogDebugf("getObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
+		log.LogDebugf("getObjectHandler: partNumber(%v) fileSize(%v) parsed: partSize(%d) partCount(%d) rangeLower(%d) rangeUpper(%d)",
+			partNumberInt, fileInfo.Size, partSize, partCount, rangeLower, rangeUpper)
 		if err != nil {
 			errorCode = InternalErrorCode(err)
 			return
 		}
 
 		if partNumberInt > partCount {
-			log.LogErrorf("getObjectHandler: param partNumber(%d) is more then partCount{%d}: requestID(%v)", partNumberInt, partCount, GetRequestID(r))
+			log.LogErrorf("getObjectHandler: partNumber(%d) > partCount(%d): requestID(%v) volume(%v) path(%v)",
+				partNumberInt, partCount, GetRequestID(r), param.Bucket(), param.Object())
 			errorCode = NoSuchKey
 			return
 		}
@@ -290,19 +275,22 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if isRangeRead || len(partNumber) > 0 {
 		size = rangeUpper - rangeLower + 1
 	}
+	if isRangeRead {
+		w.WriteHeader(http.StatusPartialContent)
+	}
 	err = vol.readFile(fileInfo.Inode, uint64(fileInfo.Size), param.Object(), w, offset, size)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
 	}
 	if err != nil {
-		log.LogErrorf("getObjectHandler: read from Volume fail: requestId(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",
+		log.LogErrorf("getObjectHandler: read file fail: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), offset, size, err)
 		return
 	}
-	log.LogDebugf("getObjectHandler: Volume read file: requestID(%v) Volume(%v) path(%v) offset(%v) size(%v)",
-		GetRequestID(r), param.Bucket(), param.Object(), offset, size)
-	log.LogDebugf("getObjectHandler: cost %v", time.Since(startGet))
+	log.LogDebugf("getObjectHandler: read file success: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) cost(%v)",
+		GetRequestID(r), param.Bucket(), param.Object(), offset, size, time.Since(startGet))
+
 	return
 }
 
@@ -530,17 +518,12 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 // Delete objects (multiple objects)
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html
 func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request) {
-
 	var (
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -598,19 +581,29 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return deleteReq.Objects[i].Key > deleteReq.Objects[j].Key
 	})
 
-	vol, _, policy, vv, err := o.loadBucketMeta(param.Bucket())
+	vol, acl, policy, vv, err := o.loadBucketMeta(param.Bucket())
 	if err != nil {
 		log.LogErrorf("get policy : load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
 
-	userInfo, err := o.getUserInfoByAccessKey(param.AccessKey())
+	userInfo, err := o.getUserInfoByAccessKeyV2(param.AccessKey())
 	if err != nil {
 		log.LogErrorf("get userinfo fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
+
+	allowByAcl := false
+	if acl == nil && userInfo.UserID == vol.owner {
+		allowByAcl = true
+	}
+	if acl != nil && acl.IsAllowed(userInfo.UserID, param.Action()) {
+		allowByAcl = true
+	}
+
 	var objectKeys = make([]string, 0, len(deleteReq.Objects))
 	for _, object := range deleteReq.Objects {
+		result := POLICY_UNKNOW
 		if policy != nil && !policy.IsEmpty() {
 			log.LogDebugf("bucket policy check: requestID(%v) policy(%v)", GetRequestID(r), policy)
 			conditionCheck := map[string]string{
@@ -619,12 +612,11 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 				KEYNAME:  object.Key,
 				HOST:     param.r.Host,
 			}
-			pcr := policy.IsAllowed(param, userInfo.UserID, vv.Owner, conditionCheck)
-			// add acl check
-			if pcr == POLICY_DENY {
-				deletedErrors = append(deletedErrors, Error{Key: object.Key, Message: "AccessDenied"})
-				continue
-			}
+			result = policy.IsAllowed(param, userInfo.UserID, vv.Owner, conditionCheck)
+		}
+		if result == POLICY_DENY || (result == POLICY_UNKNOW && !allowByAcl) {
+			deletedErrors = append(deletedErrors, Error{Key: object.Key, Message: "AccessDenied"})
+			continue
 		}
 		objectKeys = append(objectKeys, object.Key)
 		err = vol.DeletePath(object.Key)
@@ -700,7 +692,6 @@ func extractSrcBucketKey(r *http.Request) (srcBucketId, srcKey, versionId string
 func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
-
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -749,17 +740,25 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if len(metadataDirective) == 0 {
 		metadataDirective = MetadataDirectiveCopy
 	}
-	var opt = &PutFileOption{
-		MIMEType:     contentType,
-		Disposition:  contentDisposition,
-		Metadata:     metadata,
-		CacheControl: cacheControl,
-		Expires:      expires,
-	}
 
 	sourceBucket, sourceObject, _, err := extractSrcBucketKey(r)
 	if errorCode != nil {
 		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(r))
+		return
+	}
+
+	// check permission, must have read permission to source bucket
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
+		log.LogErrorf("copyObjectHandler: get user info from master error: requestID(%v), accessKey(%v), err(%v)",
+			GetRequestID(r), param.AccessKey(), err)
+		return
+	}
+
+	// check ACL
+	acl, err := ParseACL(r, userInfo.UserID, false)
+	if err != nil {
+		log.LogErrorf("copyObjectHandler: parse acl fail: requestID(%v) acl(%+v) err(%v)", GetRequestID(r), acl, err)
 		return
 	}
 
@@ -838,7 +837,14 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// open source object stream
-
+	var opt = &PutFileOption{
+		MIMEType:     contentType,
+		Disposition:  contentDisposition,
+		Metadata:     metadata,
+		CacheControl: cacheControl,
+		Expires:      expires,
+		ACL:          acl,
+	}
 	fsFileInfo, err := vol.CopyFile(sourceVol, sourceObject, param.Object(), metadataDirective, opt)
 	if err != nil && err != syscall.EINVAL && err != syscall.EFBIG {
 		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
@@ -913,7 +919,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	if maxKeys != "" {
 		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
 		if err != nil {
-			log.LogErrorf("getBucketV1Handler: parse max key fail, requestID(%v) err(%v)", GetRequestID(r), err)
+			log.LogErrorf("getBucketV1Handler: parse max key fail: requestID(%v) volume(%v) maxKeys(%v) err(%v)",
+				GetRequestID(r), vol.Name(), maxKeys, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -930,6 +937,11 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if marker != "" && prefix != "" && !strings.HasPrefix(marker, prefix) {
+		errorCode = InvalidArgument
+		return
+	}
+
 	var option = &ListFilesV1Option{
 		Prefix:     prefix,
 		Delimiter:  delimiter,
@@ -941,9 +953,9 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	var result *ListFilesV1Result
 	result, err = vol.ListFilesV1(option)
 	if err != nil {
-		log.LogErrorf("getBucketV1Handler: list file fail: requestID(%v) volume(%v) err(%v)",
-			getRequestIP(r), vol.name, err)
-		errorCode = InvalidArgument
+		log.LogErrorf("getBucketV1Handler: list files fail: requestID(%v) volume(%v) option(%v) err(%v)",
+			GetRequestID(r), vol.Name(), option, err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	// The result of next list request should not include nextMarker.
@@ -959,8 +971,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		if file.Mode == 0 {
 			// Invalid file mode, which means that the inode of the file may not exist.
 			// Record and filter out the file.
-			log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
-				vol.Name(), file.Path, file.Inode)
+			log.LogWarnf("getBucketV1Handler: invalid file found: requestID(%v) volume(%v) path(%v) inode(%v)",
+				GetRequestID(r), vol.Name(), file.Path, file.Inode)
 			continue
 		}
 		content := &Content{
@@ -995,17 +1007,21 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var bytes []byte
-	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(listBucketResult); marshalError != nil {
-		log.LogErrorf("getBucketV1Handler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InvalidArgument
+	if bytes, err = MarshalXMLEntity(listBucketResult); err != nil {
+		log.LogErrorf("getBucketV1Handler: marshal result fail: requestID(%v) volume(%v) result(%v) err(%v)",
+			GetRequestID(r), vol.Name(), listBucketResult, err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
 	// set response header
 	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	_, _ = w.Write(bytes)
+	if _, err = w.Write(bytes); err != nil {
+		log.LogErrorf("getBucketV1Handler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
+			GetRequestID(r), vol.Name(), string(bytes), err)
+		errorCode = InternalErrorCode(err)
+	}
 
 	return
 }
@@ -1048,8 +1064,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if maxKeys != "" {
 		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
 		if err != nil {
-			log.LogErrorf("getBucketV2Handler: parse max keys fail, requestID(%v) err(%v)",
-				GetRequestID(r), err)
+			log.LogErrorf("getBucketV2Handler: parse max keys fail: requestID(%v) volume(%v) maxKeys(%v) err(%v)",
+				GetRequestID(r), vol.Name(), maxKeys, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -1064,7 +1080,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if fetchOwner != "" {
 		fetchOwnerBool, err = strconv.ParseBool(fetchOwner)
 		if err != nil {
-			log.LogErrorf("getBucketV2Handler: requestID(%v) err(%v)", GetRequestID(r), err)
+			log.LogErrorf("getBucketV2Handler: parse fetch owner fail: requestID(%v) volume(%v) fetchOwner(%v) err(%v)",
+				GetRequestID(r), vol.Name(), fetchOwner, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -1074,6 +1091,17 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 
 	// Validate encoding type option
 	if encodingType != "" && encodingType != "url" {
+		errorCode = InvalidArgument
+		return
+	}
+
+	var marker string
+	if contToken != "" {
+		marker = contToken
+	} else {
+		marker = startAfter
+	}
+	if marker != "" && prefix != "" && !strings.HasPrefix(marker, prefix) {
 		errorCode = InvalidArgument
 		return
 	}
@@ -1090,14 +1118,16 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	var result *ListFilesV2Result
 	result, err = vol.ListFilesV2(option)
 	if err != nil {
-		log.LogErrorf("getBucketV2Handler: list files fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("getBucketV2Handler: list files fail, requestID(%v) volume(%v) option(%v) err(%v)",
+			GetRequestID(r), vol.Name(), option, err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
 	// The result of next list request should not include continuationToken.
-	if result.Truncated {
+	if result.Truncated && len(result.Files) > 0 {
 		result.NextToken = result.Files[len(result.Files)-1].Path
 	}
+
 	// get owner
 	var bucketOwner *BucketOwner
 	if fetchOwnerBool {
@@ -1110,8 +1140,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 			if file.Mode == 0 {
 				// Invalid file mode, which means that the inode of the file may not exist.
 				// Record and filter out the file.
-				log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
-					vol.Name(), file.Path, file.Inode)
+				log.LogWarnf("getBucketV2Handler: invalid file found: requestID(%v) volume(%v) path(%v) inode(%v)",
+					GetRequestID(r), vol.Name(), file.Path, file.Inode)
 				continue
 			}
 			content := &Content{
@@ -1148,10 +1178,10 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var bytes []byte
-	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(listBucketResult); marshalError != nil {
-		log.LogErrorf("getBucketV2Handler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InvalidArgument
+	if bytes, err = MarshalXMLEntity(listBucketResult); err != nil {
+		log.LogErrorf("getBucketV2Handler: marshal result fail: requestID(%v) volume(%v) result(%v) err(%v)",
+			GetRequestID(r), vol.Name(), listBucketResult, err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1159,7 +1189,9 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	if _, err = w.Write(bytes); err != nil {
-		log.LogErrorf("getBucketVeHandler: write response body fail, requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("getBucketV2Handler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
+			GetRequestID(r), vol.Name(), string(bytes), err)
+		errorCode = InternalErrorCode(err)
 	}
 	return
 }
@@ -1167,13 +1199,10 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 // Put object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
 func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
-
 	var err error
 	var errorCode *ErrorCode
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1197,6 +1226,13 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
+		log.LogErrorf("putObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		return
+	}
+
 	// Check 'x-amz-tagging' header
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax
 	var tagging *Tagging
@@ -1210,6 +1246,13 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 			log.LogErrorf("putObjectHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
 			return
 		}
+	}
+
+	// Check ACL
+	acl, err := ParseACL(r, userInfo.UserID, false)
+	if err != nil {
+		log.LogErrorf("putObjectHandler: parse acl fail: requestID(%v) acl(%+v) err(%v)", GetRequestID(r), acl, err)
+		return
 	}
 
 	// Checking user-defined metadata
@@ -1259,6 +1302,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		Metadata:     metadata,
 		CacheControl: cacheControl,
 		Expires:      expires,
+		ACL:          acl,
 	}
 	var startPut = time.Now()
 	fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt)

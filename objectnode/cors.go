@@ -106,17 +106,11 @@ func StringListContain(list []string, element string) bool {
 }
 
 func storeBucketCors(bytes []byte, vol *Volume) (err error) {
-	if err = vol.store.Put(vol.name, bucketRootPath, XAttrKeyOSSCORS, bytes); err != nil {
-		return
-	}
-	return nil
+	return vol.store.Put(vol.name, bucketRootPath, XAttrKeyOSSCORS, bytes)
 }
 
 func deleteBucketCors(vol *Volume) (err error) {
-	if err = vol.store.Delete(vol.name, bucketRootPath, XAttrKeyOSSCORS); err != nil {
-		return err
-	}
-	return nil
+	return vol.store.Delete(vol.name, bucketRootPath, XAttrKeyOSSCORS)
 }
 
 func matchOrigin(allowedOrigins []string, origin string) bool {
