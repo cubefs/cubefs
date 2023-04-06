@@ -305,13 +305,13 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			if vol != nil && IsApiSupportByObjectAcl(param.Action()) {
 				if param.Object() == "" {
 					ec = InvalidKey
-					log.LogErrorf("acl check: no object key specified: requestID(%v) userID(%v) volume(%v) action(%v)",
-						GetRequestID(r), userInfo.UserID, param.Bucket(), param.Action())
+					log.LogErrorf("acl check: no object key specified: requestID(%v) volume(%v) action(%v)",
+						GetRequestID(r), param.Bucket(), param.Action())
 					return
 				}
 				if acl, err = getObjectACL(vol, param.object, true); err != nil {
-					log.LogErrorf("acl check: get object ACL fail: requestID(%v) userID(%v) volume(%v) action(%v) err(%v)",
-						GetRequestID(r), userInfo.UserID, param.Bucket(), param.Action(), err)
+					log.LogErrorf("acl check: get object acl fail: requestID(%v) volume(%v) action(%v) err(%v)",
+						GetRequestID(r), param.Bucket(), param.Action(), err)
 					if err == syscall.ENOENT {
 						ec = NoSuchKey
 					}
@@ -320,25 +320,25 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			}
 			if acl == nil && !isOwner {
 				allowed = false
-				log.LogWarnf("acl check: empty ACL disallows non-owners: requestID(%v) userID(%v) volume(%v) action(%v)",
-					GetRequestID(r), userInfo.UserID, param.Bucket(), param.Action())
+				log.LogWarnf("acl check: empty acl disallows: requestID(%v) reqUid(%v) ownerUid(%v) volume(%v) action(%v)",
+					GetRequestID(r), userInfo.UserID, vol.GetOwner(), param.Bucket(), param.Action())
 				return
 			}
 			if acl != nil && !acl.IsAllowed(userInfo.UserID, param.Action()) {
 				allowed = false
-				log.LogWarnf("acl check: ACL not allowed: requestID(%v) acl(%+v) userID(%v) volume(%v) action(%v)",
-					GetRequestID(r), acl, userInfo.UserID, param.Bucket(), param.Action())
+				log.LogWarnf("acl check: acl not allowed: requestID(%v) reqUid(%v) acl(%+v) volume(%v) action(%v)",
+					GetRequestID(r), userInfo.UserID, acl, param.Bucket(), param.Action())
 				return
 			}
 		} else if !isOwner {
 			allowed = false
-			log.LogWarnf("acl check: api action not support ACL for non-owners: requestID(%v) userID(%v) volume(%v) action(%v)",
-				GetRequestID(r), userInfo.UserID, param.Bucket(), param.Action())
+			log.LogWarnf("acl check: action not support acl: requestID(%v) reqUid(%v) ownerUid(%v) volume(%v) action(%v)",
+				GetRequestID(r), userInfo.UserID, vol.GetOwner(), param.Bucket(), param.Action())
 			return
 		}
 
 		allowed = true
-		log.LogDebugf("bucket acl check: action allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+		log.LogDebugf("bucket acl check: action allowed: requestID(%v) reqUid(%v) accessKey(%v) volume(%v) action(%v)",
 			GetRequestID(r), userInfo, param.AccessKey(), param.Bucket(), param.Action())
 	}
 }
@@ -397,18 +397,18 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string
 
 	isOwner := reqUid == vv.Owner
 	if acl, err = getObjectACL(vol, srcKey, true); err != nil {
-		log.LogErrorf("srcBucket acl check: get object acl fail: requestID(%v) volume(%v) path(%v) action(%v) err(%v)",
-			GetRequestID(paramCopy.r), srcBucketId, srcKey, paramCopy.Action(), err)
+		log.LogErrorf("srcBucket acl check: get object acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(paramCopy.r), srcBucketId, srcKey, err)
 		return
 	}
 	if acl == nil && !isOwner {
-		log.LogWarnf("srcBucket acl check: empty ACL disallows non-owners: requestID(%v) userID(%v) volume(%v) action(%v)",
-			GetRequestID(paramCopy.r), reqUid, srcBucketId, paramCopy.Action())
+		log.LogWarnf("srcBucket acl check: empty acl disallows: requestID(%v) reqUid(%v) ownerUid(%v) volume(%v) action(%v)",
+			GetRequestID(paramCopy.r), reqUid, vv.Owner, srcBucketId, paramCopy.Action())
 		return AccessDenied
 	}
 	if acl != nil && !acl.IsAllowed(reqUid, paramCopy.Action()) {
-		log.LogWarnf("srcBucket acl check: object ACL not allowed: requestID(%v) acl(%+v) volume(%v) path(%v) action(%v)",
-			GetRequestID(paramCopy.r), acl, srcBucketId, srcKey, paramCopy.Action())
+		log.LogWarnf("srcBucket acl check: acl not allowed: requestID(%v) reqUid(%v) acl(%+v) volume(%v) path(%v) action(%v)",
+			GetRequestID(paramCopy.r), reqUid, acl, srcBucketId, srcKey, paramCopy.Action())
 		return AccessDenied
 	}
 	log.LogDebugf("srcBucket acl check: action allowed: requestID(%v) accessKey(%v) volume(%v) action(%v)",
