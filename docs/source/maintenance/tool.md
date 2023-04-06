@@ -40,7 +40,7 @@ The CLI is mainly divided into six types of management commands:
 ./cfs-cli cluster cluster set [flags]    # Set the parameters of the cluster.
 ```
 
-### Metadata Node Management
+### MetaData Management
 
 ``` bash
 ./cfs-cli metanode list         # Get information of all metadata nodes, including ID, address, read/write status, and survival status.
@@ -49,7 +49,7 @@ The CLI is mainly divided into six types of management commands:
 ./cfs-cli metanode migrate [srcAddress] [dstAddress] # Transfer the meta partition on the source metadata node to the target metadata node.
 ```
 
-### Data Node Management
+### DataNode Management
 
 ``` bash
 ./cfs-cli datanode list         # Get information of all data nodes, including ID, address, read/write status, and survival status.

@@ -1,4 +1,4 @@
-# Data Node Management
+# DataNode Management
 
 ## Add
 
@@ -66,7 +66,7 @@ Parameter List
 |-----------|--------|------------------------------------------------------|
 | addr      | string | Address for interaction between data node and master |
 
-## Get Disk Information
+## Get Disk
 
 ``` bash
 curl -v "http://192.168.0.11:17320/disks"
@@ -74,7 +74,7 @@ curl -v "http://192.168.0.11:17320/disks"
 
 Gets disk information, including disk path, space usage, disk status, etc.
 
-## Get Node Partition Information
+## Get Node Partition
 
 ``` bash
 curl -v "http://192.168.0.11:17320/partitions"
@@ -114,10 +114,10 @@ curl -v "http://192.168.0.11:17320/disk/queryDecommissionProgress?addr=192.168.0
 
 Parameter List
 
-| Parameter | Type   | Description |
-| --------- | ------ | ----------- |
+| Parameter | Type   | Description                                                        |
+|-----------|--------|--------------------------------------------------------------------|
 | addr      | string | Address of the node where the disk to be decommissioned is located |
-| disk      | string | Address of the disk to be decommissioned |
+| disk      | string | Address of the disk to be decommissioned                           |
 
 ::: tip Note
 New interface in v3.2.1
@@ -131,8 +131,8 @@ curl -v "http://192.168.0.11:17010/dataNode/queryDecommissionProgress?addr=192.1
 
 Parameter List
 
-| Parameter | Type   | Description |
-| --------- | ------ | ----------- |
+| Parameter | Type   | Description                                          |
+|-----------|--------|------------------------------------------------------|
 | addr      | string | Address for interaction between data node and master |
 
 ::: tip Note

@@ -1,6 +1,6 @@
-# Distributed Deployment Cluster
+# Distributed Mode
 
-## Compile and Build
+## Get Software
 
 Use the following command to build server, client, and related dependencies at the same time:
 
@@ -14,7 +14,7 @@ If the build is successful, the executable files `cfs-server` and `cfs-client` w
 
 ## Cluster Deployment
 
-### Start the Resource Management Node
+### Install Master
 
 ``` bash
 ./cfs-server -c master.json
@@ -47,7 +47,7 @@ To ensure high availability of the service, at least 3 instances of the Master s
 
 Configuration parameters can be found in [Master Detailed Configuration](../maintenance/configs/master.md).
 
-### Start the MetaNode
+### Install MetaNode
 
 ``` bash
 ./cfs-server -c metanode.json
@@ -83,7 +83,7 @@ To ensure high availability of the service, at least 3 instances of the MetaNode
 
 For detailed configuration parameters, please refer to [MetaNode Detailed Configuration](../maintenance/configs/metanode.md).
 
-### Start the DataNode
+### Install DataNode
 
 ::: tip Recommended
 Using a separate disk as the data directory and configuring multiple disks can achieve higher performance.
@@ -145,7 +145,7 @@ To ensure high availability of the service, at least 3 instances of the DataNode
 
 For detailed configuration parameters, please refer to [DataNode Detailed Configuration](../maintenance/configs/datanode.md).
 
-### Start the Object Gateway Node
+### Install Object Gateway
 
 ::: tip Note
 Optional section. If you need to use the object storage service, you need to deploy the object gateway (ObjectNode).
@@ -176,7 +176,7 @@ Example `objectnode.json`, as follows:
 
 For detailed configuration parameters, please refer to [ObjectNode Detailed Configuration](../maintenance/configs/objectnode.md).
 
-### Start the Erasure Coding Subsystem
+### Install Erasure Coding Subsystem
 
 ::: tip Note
 Optional section. If you need to use the erasure coding volume, you need to deploy it.
