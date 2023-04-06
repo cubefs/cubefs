@@ -534,38 +534,43 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		log.LogErrorf("deleteObjectsHandler: load volume fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("deleteObjectsHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		errorCode = NoSuchBucket
+		return
+	}
+
+	var cmd5 string
+	if cmd5 = r.Header.Get(HeaderNameContentMD5); cmd5 == "" {
+		errorCode = MissingContentMD5
 		return
 	}
 
 	var bytes []byte
 	bytes, err = ioutil.ReadAll(r.Body)
-	if err != nil && err != io.EOF {
-		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
+	if err != nil {
+		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		errorCode = UnexpectedContent
+		return
+	}
+	if cmd5 != GetMD5(bytes) {
+		errorCode = BadDigest
 		return
 	}
 
 	deleteReq := DeleteRequest{}
 	err = UnmarshalXMLEntity(bytes, &deleteReq)
 	if err != nil {
-		log.LogErrorf("deleteObjectsHandler: unmarshal xml fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
-		errorCode = InvalidArgument
+		log.LogErrorf("deleteObjectsHandler: unmarshal xml fail: requestID(%v) volume(%v) request(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), string(bytes), err)
+		errorCode = MalformedXML
 		return
 	}
-
-	if len(deleteReq.Objects) <= 0 {
-		log.LogDebugf("deleteObjectsHandler: non objects found in request: requestID(%v)", GetRequestID(r))
-		errorCode = InvalidArgument
+	if len(deleteReq.Objects) > 1000 {
+		errorCode = EntityTooLarge
 		return
 	}
-
-	var (
-		deletedObjects = make([]Deleted, 0, len(deleteReq.Objects))
-		deletedErrors  = make([]Error, 0)
-	)
 
 	// Sort the key values in reverse order.
 	// The purpose of this is to delete the child leaf first and then the parent node.
@@ -583,13 +588,15 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 
 	vol, acl, policy, vv, err := o.loadBucketMeta(param.Bucket())
 	if err != nil {
-		log.LogErrorf("get policy : load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("deleteObjectsHandler: load bucket metadata fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
 	userInfo, err := o.getUserInfoByAccessKeyV2(param.AccessKey())
 	if err != nil {
-		log.LogErrorf("get userinfo fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("deleteObjectsHandler: get userinfo fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
 		return
 	}
 
@@ -601,11 +608,14 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		allowByAcl = true
 	}
 
-	var objectKeys = make([]string, 0, len(deleteReq.Objects))
+	deletedObjects := make([]Deleted, 0, len(deleteReq.Objects))
+	deletedErrors := make([]Error, 0)
+	objectKeys := make([]string, 0, len(deleteReq.Objects))
 	for _, object := range deleteReq.Objects {
 		result := POLICY_UNKNOW
 		if policy != nil && !policy.IsEmpty() {
-			log.LogDebugf("bucket policy check: requestID(%v) policy(%v)", GetRequestID(r), policy)
+			log.LogDebugf("deleteObjectsHandler: policy check: requestID(%v) volume(%v) path(%v) policy(%v)",
+				GetRequestID(r), param.Bucket(), object.Key, policy)
 			conditionCheck := map[string]string{
 				SOURCEIP: param.sourceIP,
 				REFERER:  param.r.Referer(),
@@ -615,50 +625,45 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 			result = policy.IsAllowed(param, userInfo.UserID, vv.Owner, conditionCheck)
 		}
 		if result == POLICY_DENY || (result == POLICY_UNKNOW && !allowByAcl) {
-			deletedErrors = append(deletedErrors, Error{Key: object.Key, Message: "AccessDenied"})
+			deletedErrors = append(deletedErrors, Error{
+				Key:     object.Key,
+				Code:    "AccessDenied",
+				Message: "Not Allowed By Policy",
+			})
 			continue
 		}
 		objectKeys = append(objectKeys, object.Key)
-		err = vol.DeletePath(object.Key)
-		log.LogWarnf("deleteObjectsHandler: delete: requestID(%v) volume(%v) path(%v)",
-			GetRequestID(r), vol.Name(), object.Key)
-		if err != nil {
-			deletedErrors = append(deletedErrors, Error{Key: object.Key, Message: err.Error()})
+		log.LogWarnf("deleteObjectsHandler: delete path: requestID(%v) remote(%v) volume(%v) path(%v)",
+			GetRequestID(r), getRequestIP(r), vol.Name(), object.Key)
+		if err = vol.DeletePath(object.Key); err != nil {
 			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
 				GetRequestID(r), vol.Name(), object.Key, err)
+			deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "InternalError", Message: err.Error()})
 		} else {
+			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)",
+				GetRequestID(r), vol.Name(), object.Key)
 			deletedObjects = append(deletedObjects, Deleted{Key: object.Key})
-			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)", GetRequestID(r),
-				vol.Name(), object.Key)
 		}
 	}
-
-	// Audit bulk delete behavior
-	log.LogInfof("Audit: delete multiple objects: requestID(%v) remote(%v) volume(%v) objects(%v)",
-		GetRequestID(r), getRequestIP(r), vol.Name(), strings.Join(objectKeys, ","))
 
 	deleteResult := DeleteResult{
 		Deleted: deletedObjects,
 		Error:   deletedErrors,
 	}
-
-	log.LogDebugf("deleteObjectsHandler: delete objects: deletes(%v) errors(%v)",
-		len(deleteResult.Deleted), len(deleteResult.Error))
-
-	var bytesRes []byte
-	var marshalError error
-	if bytesRes, marshalError = MarshalXMLEntity(deleteResult); marshalError != nil {
-		log.LogErrorf("deleteObjectsHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
+	bytesRes, err1 := MarshalXMLEntity(deleteResult)
+	if err1 != nil {
+		log.LogErrorf("deleteObjectsHandler: xml marshal fail: requestID(%v) volume(%v) result(%+v) err(%v)",
+			GetRequestID(r), param.Bucket(), deleteResult, err1)
 	}
 
 	// set response header
 	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytesRes))}
-	if _, err = w.Write(bytesRes); err != nil {
-		log.LogErrorf("deleteObjectsHandler: write response body fail: requestID(%v) err(%v)", GetRequestID(r), err)
+	if _, err1 = w.Write(bytesRes); err1 != nil {
+		log.LogErrorf("deleteObjectsHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), string(bytesRes), err1)
 	}
+
 	return
 }
 
