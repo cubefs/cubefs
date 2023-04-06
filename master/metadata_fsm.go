@@ -24,6 +24,9 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
+	"io"
+	"strconv"
 )
 
 const (
@@ -192,16 +195,20 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	var data []byte
 	for err == nil {
+		bgTime := stat.BeginStat()
 		if data, err = iterator.Next(); err != nil {
 			break
 		}
+		stat.EndStat("ApplySnapshot-Next", err, bgTime, 1)
 		cmd := &RaftCmd{}
 		if err = json.Unmarshal(data, cmd); err != nil {
 			goto errHandler
 		}
+		bgTime = stat.BeginStat()
 		if _, err = mf.store.Put(cmd.K, cmd.V, true); err != nil {
 			goto errHandler
 		}
+		stat.EndStat("ApplySnapshot-Put", err, bgTime, 1)
 	}
 	if err != nil && err != io.EOF {
 		goto errHandler
