@@ -525,15 +525,15 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 			}
 			spaceInfo := vol.uidSpaceManager.getSpaceOp()
 			hbReq.UidLimitInfo = append(hbReq.UidLimitInfo, spaceInfo...)
-
 			quotaHbInfos := vol.quotaManager.getQuotaHbInfos()
-			hbReq.QuotaHbInfos = append(hbReq.QuotaHbInfos, quotaHbInfos...)
-			log.LogDebugf("checkMetaNodeHeartbeat start")
-			for _, info := range hbReq.QuotaHbInfos {
-				log.LogDebugf("checkMetaNodeHeartbeat info [%v]", info)
+			if len(quotaHbInfos) != 0 {
+				hbReq.QuotaHbInfos = append(hbReq.QuotaHbInfos, quotaHbInfos...)
 			}
 		}
-
+		log.LogDebugf("checkMetaNodeHeartbeat start")
+		for _, info := range hbReq.QuotaHbInfos {
+			log.LogDebugf("checkMetaNodeHeartbeat info [%v]", info)
+		}
 		tasks = append(tasks, task)
 		return true
 	})

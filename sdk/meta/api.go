@@ -597,6 +597,17 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 		if info == nil || info.Nlink > 2 {
 			return nil, syscall.ENOTEMPTY
 		}
+		quotaInfos, err := mw.GetInodeQuota_ll(inode)
+		if err != nil {
+			log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
+			return nil, syscall.ENOENT
+		}
+		for _, info := range quotaInfos {
+			if info.RootInode == inode {
+				log.LogErrorf("can not remove quota Root inode equal inode [%v]", inode)
+				return nil, syscall.EACCES
+			}
+		}
 	}
 
 	status, inode, err = mw.ddelete(parentMP, parentID, name)

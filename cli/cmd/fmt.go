@@ -617,3 +617,24 @@ func formatZoneView(zv *proto.ZoneView) string {
 	}
 	return sb.String()
 }
+
+var quotaTableRowPattern = "%-6v    %-30v    %-15v    %-8v    %-10v    %-10v    %-10v    %-12v    %-12v    %-10v    %-10v    %-10v    %-10v"
+
+func formatQuotaTableHeader() string {
+	return fmt.Sprintf(quotaTableRowPattern, "ID", "PATH", "VOL", "STATUS", "CTIME",
+		"PID", "RINODE", "LIMITEDFILES", "LIMITEDBYTES", "USEDFILES", "USEDBYTES", "MAXFILES", "MAXBYTES")
+}
+
+func formatQuotaInfo(info *proto.QuotaInfo) string {
+	var status string
+	if info.Status == proto.QuotaInit {
+		status = "Init"
+	} else if info.Status == proto.QuotaComplete {
+		status = "Complete"
+	} else {
+		status = "Deleting"
+	}
+	return fmt.Sprintf(quotaTableRowPattern, info.QuotaId, info.FullPath, info.VolName, status, info.CTime, info.PartitionId,
+		info.RootInode, info.LimitedInfo.LimitedFiles, info.LimitedInfo.LimitedBytes, info.UsedInfo.UsedFiles, info.UsedInfo.UsedBytes,
+		info.MaxFiles, info.MaxBytes)
+}

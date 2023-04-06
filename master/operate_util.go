@@ -102,7 +102,7 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.MetaPartitionDecommissionResponse{}
 	case proto.OpMasterSetInodeQuota:
 		response = &proto.BatchSetMetaserverQuotaResponse{}
-	case proto.OpMetaBatchDeleteInodeQuota:
+	case proto.OpMasterDeleteInodeQuota:
 		response = &proto.BatchDeleteMetaserverQuotaResponse{}
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
