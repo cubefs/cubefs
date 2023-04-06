@@ -205,7 +205,7 @@ func (s *sortLeaderMetaNode) getLeaderCount(addr string) int {
 
 func (s *sortLeaderMetaNode) changeLeader(l *LeaderMetaNode) {
 	for _, mp := range l.metaPartitions {
-		if count := s.getLeaderCount(l.addr); count >= s.average {
+		if count := s.getLeaderCount(l.addr); count <= s.average {
 			log.LogInfof("now leader count is[%d], average is[%d]", count, s.average)
 			break
 		}

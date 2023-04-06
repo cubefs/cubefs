@@ -997,7 +997,9 @@ func (vol *Vol) getTasksToDeleteMetaPartitions() (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 
 	for _, mp := range vol.MetaPartitions {
+		log.LogDebugf("get delete task from vol(%s) mp(%d)", vol.Name, mp.PartitionID)
 		for _, replica := range mp.Replicas {
+			log.LogDebugf("get delete task from vol(%s) mp(%d),replica(%v)", vol.Name, mp.PartitionID, replica.Addr)
 			tasks = append(tasks, replica.createTaskToDeleteReplica(mp.PartitionID))
 		}
 	}
