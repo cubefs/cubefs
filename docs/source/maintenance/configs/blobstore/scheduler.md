@@ -29,7 +29,7 @@ The configuration of the Scheduler is based on the [public configuration](./base
 
 ## Configuration Example
 
-### Example of services
+### services
 
 * leader, ID of the main node
 * node_id, ID of the current node
@@ -45,7 +45,7 @@ The configuration of the Scheduler is based on the [public configuration](./base
 }
 ```
 
-### Example of service_register
+### service_register
 
 * host, service address of the current node
 * idc, IDC information of the current node
@@ -56,7 +56,7 @@ The configuration of the Scheduler is based on the [public configuration](./base
 }
 ```
 
-## clustermgr Example
+## clustermgr
 
 * hosts, clustermgr service list
 * Other RPC parameters, refer to the general module description
@@ -70,7 +70,7 @@ The configuration of the Scheduler is based on the [public configuration](./base
 }
 ```
 
-### Kafka Example
+### kafka
 
 * broker_list, Kafka node list
 * fail_msg_sender_timeout_ms, timeout for resending messages to the failed topic after message consumption fails, default is 1000ms
@@ -112,7 +112,7 @@ The configuration of the Scheduler is based on the [public configuration](./base
 }
 ```
 
-### Example of balance
+### balance
 
 * disk_concurrency, the maximum number of disks allowed to be balanced simultaneously, default is 1 (before v3.2.2, this value was balance_disk_cnt_limit, default is 100)
 * max_disk_free_chunk_cnt, when balancing, it will be judged whether there are disks with freechunk greater than or equal to this value in the current IDC. If not, no balance will be initiated. The default is 1024.
@@ -136,7 +136,7 @@ The configuration of the Scheduler is based on the [public configuration](./base
     "check_task_interval_s": 1    
 }
 ```
-### Example of disk_drop
+### disk_drop
 
 ::: tip Note
 Starting from version v3.2.2, concurrent disk offline is supported.
@@ -161,7 +161,7 @@ Starting from version v3.2.2, concurrent disk offline is supported.
 }
 ```
 
-### Example of disk_repair
+### disk_repair
 
 ::: tip Note
 Starting from version v3.2.2, concurrent disk repair is supported.
@@ -186,7 +186,7 @@ Starting from version v3.2.2, concurrent disk repair is supported.
 }
 ```
 
-### Example of volume_inspect
+### volume_inspect
 
 * inspect_interval_s, inspection time interval, default is 1s
 * inspect_batch, batch inspection volume size, default is 1000
@@ -202,7 +202,7 @@ Starting from version v3.2.2, concurrent disk repair is supported.
     "timeout_ms": 10000   
 }
 ```
-### Example of shard_repair
+### shard_repair
 
 * task_pool_size, concurrency of repair tasks, default is 10
 * normal_handle_batch_cnt, batch consumption size of normal messages, default is 100
@@ -222,7 +222,7 @@ Starting from version v3.2.2, concurrent disk repair is supported.
 } 
 ```
 
-### Example of blob_delete
+### blob_delete
 
 ::: tip Note
 Starting from version v3.2.2, it is supported to configure the data deletion time period.

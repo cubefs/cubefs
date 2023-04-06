@@ -1,6 +1,6 @@
 # Deployment dependencies
 
-::: tip
+::: tip Note
 Before setting up the cluster, please prepare the following components in advance to make your user experience smoother~
 :::
 

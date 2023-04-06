@@ -46,7 +46,7 @@ Due to the interdependence of the modules, the deployment should be carried out 
 
     > [Go](https://go.dev/) (1.16.x)
 
-### Starting Clustermgr
+### Install Clustermgr
 
 ::: tip Note
 Deploying Clustermgr requires at least three nodes to ensure service availability.
@@ -106,7 +106,7 @@ nohup ./clustermgr -f clustermgr2.conf
 }
 ```
 
-### Starting Proxy
+### Install Proxy
 
 1. `proxy` depends on the Kafka component and requires the creation of corresponding topics for `blob_delete_topic`, `shard_repair_topic`, and `shard_repair_priority_topic` in advance.
 
@@ -158,7 +158,7 @@ nohup ./proxy -f proxy.conf &
 }
 ```
 
-### Starting Scheduler
+### Install Scheduler
 
 1. Start the service.
 
@@ -207,7 +207,7 @@ nohup ./scheduler -f scheduler.conf &
 }
 ```
 
-### Starting BlobNode
+### Install BlobNode
 
 1. Create the relevant directories in the compiled `blobnode` binary directory.
 
@@ -293,7 +293,7 @@ nohup ./blobnode -f blobnode.conf
 }
 ```
 
-### Starting Access
+### Install Access
 
 ::: tip Note
 The Access module is a stateless service node and can be deployed on multiple nodes.
@@ -415,11 +415,11 @@ The reference configuration is as follows: `clustermgr-learner.conf`:
 
 > Refer to [CLI Deployment Verification](../deploy/verify.md) for details.
 
-## Modifying Master Configuration to Support Erasure Coding
+## Modifying Master Configuration
 
 Modify the `ebsAddr` configuration item in the Master configuration file ([more configuration references](../maintenance/configs/master.md)) to the Consul address registered by the Access node.
 
-## Creating an Erasure Coding Volume
+## Creating Erasure-coded Volume
 
 Refer to [Creating a Volume](./volume.md).
 

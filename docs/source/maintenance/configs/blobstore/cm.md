@@ -23,7 +23,7 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
 | rack_ware            | Rack awareness                                                                                                                                                                                                   | Yes      |
 | volume_mgr_config    | Volume management module                                                                                                                                                                                         | No       |
 
-### Example Configuration
+### Complete Configuration
 
 ```json
 {

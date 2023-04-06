@@ -2,7 +2,7 @@
 
 You can use the yum tool to quickly deploy and start the CubeFS cluster in CentOS 7+ operating system.
 
-## Get the Corresponding Version
+## Get Software
 
 The RPM dependencies of this tool can be installed with the following command:
 
@@ -39,7 +39,7 @@ You can modify the parameters of the CubeFS cluster in the **iplist** file accor
 - `master`, `datanode`, `metanode`, `objectnode`, `monitor`, `client` contain the IP addresses of each module member.
 - The `cfs:vars` module defines the SSH login information of all nodes, and the login name and password of all nodes in the cluster need to be unified in advance.
 
-### Master Config Module
+### Master Config
 
 Defines the startup parameters of each Master node.
 
@@ -58,7 +58,7 @@ Defines the startup parameters of each Master node.
 
 > For more configuration information, please refer to [Master Configuration Instructions](../maintenance/configs/master.md).
 
-## Datanode Config Module
+### DataNode Config
 
 Defines the startup parameters of each DataNode.
 
@@ -76,7 +76,7 @@ Defines the startup parameters of each DataNode.
 
 > For more configuration information, please refer to [DataNode Configuration Instructions](../maintenance/configs/datanode.md).
 
-### Metanode Config Module
+### MetaNode Config
 
 Defines the startup parameters of the MetaNode.
 
@@ -95,7 +95,7 @@ Defines the startup parameters of the MetaNode.
 
 > For more configuration information, please refer to [MetaNode Configuration Instructions](../maintenance/configs/metanode.md).
 
-### ObjectNode Config Module
+### ObjectNode Config
 
 Defines the startup parameters of the ObjectNode.
 
@@ -110,7 +110,7 @@ Defines the startup parameters of the ObjectNode.
 
 > For more configuration information, please refer to [ObjectNode Configuration Instructions](../maintenance/configs/objectnode.md).
 
-### Client Config Module
+### Client Config
 
 Defines the startup parameters of the FUSE client.
 
