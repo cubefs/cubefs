@@ -69,7 +69,7 @@ If there are multiple data disks that need to be mounted on the machine, format 
 
 Install helm, refer to [official documentation](https://helm.sh/docs/intro/install/)
 
-## Pull the CubeFS Helm repository
+## Get CubeFS Helm repository
 
 ``` bash
 git clone https://github.com/cubefs/cubefs-helm.git

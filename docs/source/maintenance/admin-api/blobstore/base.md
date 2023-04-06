@@ -62,7 +62,7 @@ curl http://127.0.0.1:9500/log/level
 curl -XPOST -d 'level=2' http://127.0.0.1:9500/log/level
 ```
 
-## Metrics Information Collection
+## Collect Metrics
 
 ```bash
 curl http://127.0.0.1:9500/metrics

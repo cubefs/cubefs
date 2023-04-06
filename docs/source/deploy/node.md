@@ -1,15 +1,15 @@
-# Single Node Deployment
+# Standalone Mode
 
-## Pull the Code
+## Get Software
 ``` bash
 # Skip this step if it has been completed
 $ git clone https://github.com/cubefs/cubefs.git
 ```
-## Deployment
+## Install Software
 
-### Script Deployment
+### Script Installation
 
-#### Deploy the Basic Cluster
+#### Install Basic Cluster
 CubeFS supports one-click deployment of the basic cluster using scripts, including components such as `Master`, `MetaNode`, and `DataNode`. The steps are as follows:
 ```bash
 cd ./cubefs
@@ -42,7 +42,7 @@ sh ./shell/depoly.sh /home/data bond0
 ...
 ```
 
-#### Deploy the Object Gateway
+#### Install Object Gateway
 
 ::: tip Note
 Optional section. If you need to use the object storage service, you need to deploy the object gateway (ObjectNode).
@@ -50,7 +50,7 @@ Optional section. If you need to use the object storage service, you need to dep
 
 Refer to [Object Storage Section](../user-guide/objectnode.md)
 
-#### Deploy the Erasure Code Subsystem
+#### Install Erasure Code Subsystem
 
 ::: tip Note
 Optional section. If you need to use the erasure-coded volume, you need to deploy it.
@@ -72,9 +72,9 @@ After the erasure code subsystem is deployed successfully, modify the `ebsAddr` 
 sh ./shell/stop.sh
 ```
 
-### Docker Deployment
+### Docker Installation
 
-#### Deploy the Basic Cluster
+#### Install Basic Cluster
 In the docker directory, the run_docker.sh tool is used to facilitate running the CubeFS docker-compose trial cluster, including the `Master`, `MetaNode`, `DataNode`, and `ObjectNode` components.
 
 ::: tip Note
@@ -116,7 +116,7 @@ $ docker/run_docker.sh -h
 The Prometheus and Grafana related configurations for monitoring are located in the `docker/monitor` directory.
 
 
-#### Deploy the Erasure Code Subsystem
+#### Install Erasure Code Subsystem
 
 ::: warning Note
 The erasure code docker deployment method has not been unified with other modules (such as Master) for the time being. This section is currently only used to experience the function of the erasure code subsystem itself, and will be improved later.

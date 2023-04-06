@@ -34,7 +34,7 @@ curl http://127.0.0.1:8889/stat
 
 ```
 
-## View Information of Specified Disk
+## Get Disk
 
 ```bash
 curl http://127.0.0.1:8889/disk/stat/diskid/259
