@@ -189,7 +189,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	for it.SeekToFirst(); it.Valid(); it.Next() {
 		key := string(it.Key().Data())
 		log.LogInfof("deleting Key: %v Value: %v", key, it.Value().Data())
-		mf.store.Del(key, true)
+		mf.store.Del(key, false)
 	}
 
 	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
@@ -205,7 +205,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 			goto errHandler
 		}
 		bgTime = stat.BeginStat()
-		if _, err = mf.store.Put(cmd.K, cmd.V, true); err != nil {
+		if _, err = mf.store.Put(cmd.K, cmd.V, false); err != nil {
 			goto errHandler
 		}
 		stat.EndStat("ApplySnapshot-Put", err, bgTime, 1)
@@ -213,6 +213,12 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	if err != nil && err != io.EOF {
 		goto errHandler
 	}
+
+	if err = mf.store.Flush(); err != nil {
+		log.LogError(fmt.Sprintf("action[ApplySnapshot] Flush failed,err:%v", err.Error()))
+		goto errHandler
+	}
+
 	mf.snapshotHandler()
 	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
 	return nil
