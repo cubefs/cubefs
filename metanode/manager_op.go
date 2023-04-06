@@ -1923,6 +1923,7 @@ func (m *metadataManager) OpMasterSetInodeQuota(conn net.Conn, p *Packet, remote
 	adminTask := &proto.AdminTask{
 		Request: req,
 	}
+
 	log.LogInfof("[OpMasterSetInodeQuota] req [%v] start.", req)
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
@@ -1945,6 +1946,9 @@ func (m *metadataManager) OpMasterSetInodeQuota(conn net.Conn, p *Packet, remote
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+
+	m.responseAckOKToMaster(conn, p)
+
 	resp := &proto.BatchSetMetaserverQuotaResponse{
 		PartitionId: req.PartitionId,
 		QuotaId:     req.QuotaId,
@@ -1963,6 +1967,7 @@ func (m *metadataManager) OpMasterDeleteInodeQuota(conn net.Conn, p *Packet, rem
 	adminTask := &proto.AdminTask{
 		Request: req,
 	}
+
 	log.LogInfof("[OpMasterDeleteInodeQuota] req [%v] start.", req)
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
@@ -1983,6 +1988,9 @@ func (m *metadataManager) OpMasterDeleteInodeQuota(conn net.Conn, p *Packet, rem
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+
+	m.responseAckOKToMaster(conn, p)
+
 	resp := &proto.BatchDeleteMetaserverQuotaResponse{
 		PartitionId: req.PartitionId,
 		QuotaId:     req.QuotaId,
@@ -1991,7 +1999,6 @@ func (m *metadataManager) OpMasterDeleteInodeQuota(conn net.Conn, p *Packet, rem
 	adminTask.Response = resp
 	adminTask.Request = nil
 	_ = m.respondToMaster(adminTask)
-
 	log.LogInfof("[OpMasterDeleteInodeQuota] req [%v] resp [%v] success.", req, resp)
 	return err
 }

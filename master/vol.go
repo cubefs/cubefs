@@ -1266,7 +1266,7 @@ func (vol *Vol) initQuotaManager(c *Cluster) (err error) {
 			log.LogErrorf("initQuotaManager Unmarshal fail err [%v]", err)
 			return err
 		}
-
+		log.LogDebugf("loadQuota info [%v]", quotaInfo)
 		if vol.Name != quotaInfo.VolName {
 			panic("vol name do not match")
 		}

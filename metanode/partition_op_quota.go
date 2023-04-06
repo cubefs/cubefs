@@ -347,9 +347,9 @@ func (mp *metaPartition) statisticExtendByLoad(extend *Extend) {
 			value, isFind := mqMgr.statisticBase.Load(quotaId)
 			if isFind {
 				baseInfo = value.(proto.QuotaUsedInfo)
-				baseInfo.UsedBytes += int64(ino.Size)
-				baseInfo.UsedFiles += 1
 			}
+			baseInfo.UsedBytes += int64(ino.Size)
+			baseInfo.UsedFiles += 1
 			mqMgr.statisticBase.Store(quotaId, baseInfo)
 			log.LogDebugf("[statisticExtendByLoad] quotaId [%v] baseInfo [%v]", quotaId, baseInfo)
 		}
