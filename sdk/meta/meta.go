@@ -197,9 +197,9 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
 		if err != nil {
-			log.LogErrorf("initMetaWrapper failed, err %s", err.Error())
+			log.LogErrorf("NewMetaWrapper: init meta wrapper failed: volume(%v) mayRetry(%v) err(%v)",
+				mw.volname, limit-1, err)
 		}
-
 		if err == proto.ErrVolNotExists {
 			return nil, err
 		}

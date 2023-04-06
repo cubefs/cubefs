@@ -18,23 +18,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cubefs/blobstore/api/access"
-	"github.com/cubefs/cubefs/blockcache/bcache"
-	"github.com/cubefs/cubefs/sdk/data/blobstore"
-	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/hashicorp/consul/api"
 	"net/http"
 	"path"
 	"regexp"
 	"strings"
 	"sync"
 
+	"github.com/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+
 	"github.com/gorilla/mux"
+	"github.com/hashicorp/consul/api"
 )
 
 // Configuration items that act on the ObjectNode.
@@ -322,8 +323,8 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	o.registerApiRouters(router)
 	router.Use(
 		o.expectMiddleware,
-		o.corsMiddleware,
 		o.traceMiddleware,
+		o.corsMiddleware,
 		o.authMiddleware,
 		o.policyCheckMiddleware,
 		o.contentMiddleware,

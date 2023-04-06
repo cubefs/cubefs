@@ -114,6 +114,9 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		// Check action is whether enabled.
 		if !action.IsNone() && !o.disabledActions.Contains(action) {
+			log.LogDebugf("traceMiddleware: start with "+
+				"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%+v) remote(%v)",
+				action.Name(), requestID, r.Host, r.Method, r.URL.String(), r.Header, getRequestIP(r))
 			// next
 			next.ServeHTTP(w, r)
 		} else {
@@ -141,7 +144,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			return "{" + sb.String() + "}"
 		}
 
-		log.LogDebugf("traceMiddleware: "+
+		log.LogDebugf("traceMiddleware: end with "+
 			"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) "+
 			"remote(%v) cost(%v)",
 			action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),

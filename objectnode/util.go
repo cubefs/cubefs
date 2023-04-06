@@ -15,12 +15,13 @@
 package objectnode
 
 import (
+	"crypto/md5"
+	"encoding/base64"
+	"net"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
-
-	"net"
-	"net/http"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
@@ -326,4 +327,10 @@ func ValidateCacheExpires(expires string) bool {
 	}
 	log.LogErrorf("Expires less than now: %v, now: %v", expires, now)
 	return false
+}
+
+func GetMD5(b []byte) string {
+	hash := md5.New()
+	hash.Write(b)
+	return base64.StdEncoding.EncodeToString(hash.Sum(nil))
 }

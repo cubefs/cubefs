@@ -154,6 +154,7 @@ func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 	var err error
 	// Check if the volume is on the blacklist.
 	if val, exist := loader.blacklist.Load(volName); exist {
+		log.LogDebugf("loadVolume: load volume from blacklist: volume(%v) val(%v)", volName, val)
 		if ts, is := val.(time.Time); is {
 			if time.Since(ts) <= volumeBlacklistTTL {
 				log.LogDebugf("loadVolume faild, blacklist")
@@ -166,6 +167,7 @@ func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 	loader.volMu.RLock()
 	volume, exist = loader.volumes[volName]
 	loader.volMu.RUnlock()
+	log.LogDebugf("loadVolume: load volume from volumes: name(%v) exist(%v) volume(%+v)", volName, exist, volume)
 	if !exist {
 		var release = loader.syncVolumeInit(volName)
 		loader.volMu.RLock()
@@ -194,8 +196,9 @@ func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 			MetaStrict:       loader.metaStrict,
 		}
 		if volume, err = NewVolume(config); err != nil {
+			log.LogDebugf("loadVolume: new volume fail, add to blacklist: volume(%v) err(%v)", volName, err)
 			if err != proto.ErrVolNotExists {
-				log.LogErrorf("loadVolume: init volume fail: volume(%v) err(%v)", volume, err)
+				log.LogErrorf("loadVolume: new volume fail: volume(%v) config(%+v) err(%v)", volume, config, err)
 			}
 			release()
 			// Add to blacklist
@@ -203,7 +206,7 @@ func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 			return nil, err
 		}
 		ak, sk := volume.OSSSecure()
-		log.LogDebugf("[loadVolume] load Volume: Name[%v] AccessKey[%v] SecretKey[%v]", volName, ak, sk)
+		log.LogDebugf("loadVolume: new volume success: volume(%v) accessKey(%v) secretKey(%v)", volName, ak, sk)
 
 		loader.volMu.Lock()
 		loader.volumes[volName] = volume

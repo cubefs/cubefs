@@ -16,6 +16,7 @@ package objectnode
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
@@ -27,21 +28,17 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-
-	"github.com/cubefs/cubefs/metanode"
-	"github.com/cubefs/cubefs/sdk/data/blobstore"
-	"github.com/cubefs/cubefs/sdk/master"
-
-	"crypto/md5"
 	"time"
 
+	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-
-	"github.com/cubefs/cubefs/util"
 )
 
 const (
@@ -87,6 +84,7 @@ type PutFileOption struct {
 	MIMEType     string
 	Disposition  string
 	Tagging      *Tagging
+	ACL          *AccessControlPolicy
 	Metadata     map[string]string
 	CacheControl string
 	Expires      string
@@ -246,7 +244,7 @@ func (v *Volume) loadBucketCors() (configuration *CORSConfiguration, err error) 
 		return
 	}
 	configuration = &CORSConfiguration{}
-	if err = json.Unmarshal(raw, configuration); err != nil {
+	if err = xml.Unmarshal(raw, configuration); err != nil {
 		return
 	}
 	return configuration, nil
@@ -632,6 +630,8 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		// Just get the information of this node and return.
 		var info *proto.InodeInfo
 		if info, err = v.mw.InodeGet_ll(parentId); err != nil {
+			log.LogErrorf("PutObject: inode get fail: volume(%v) path(%v) inode(%v) err(%v)",
+				v.name, path, parentId, err)
 			return
 		}
 		fsInfo = &FSFileInfo{
@@ -651,9 +651,13 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	var lookupMode uint32
 	_, lookupMode, err = v.mw.Lookup_ll(parentId, lastPathItem.Name)
 	if err != nil && err != syscall.ENOENT {
+		log.LogErrorf("PutObject: lookup name fail: volume(%v) path(%v) parentInode(%v) name(%v) err(%v)",
+			v.name, path, parentId, lastPathItem.Name, err)
 		return
 	}
 	if err == nil && os.FileMode(lookupMode).IsDir() {
+		log.LogErrorf("PutObject: the last name is a dir: volume(%v) path(%v) name(%v)",
+			v.name, path, lastPathItem.Name)
 		err = syscall.EINVAL
 		return
 	}
@@ -663,6 +667,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	// in the true sense. In order to avoid the adverse impact of other user operations on temporary data.
 	var invisibleTempDataInode *proto.InodeInfo
 	if invisibleTempDataInode, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
+		log.LogErrorf("PutObject: inode create fail: volume(%v) path(%v) err(%v)", v.name, path, err)
 		return
 	}
 	defer func() {
@@ -683,6 +688,8 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	)
 
 	if err = v.ec.OpenStream(invisibleTempDataInode.Inode); err != nil {
+		log.LogErrorf("PutObject: open stream fail: volume(%v) path(%v) inode(%v) err(%v)",
+			v.name, path, invisibleTempDataInode.Inode, err)
 		return
 	}
 	defer func() {
@@ -693,12 +700,16 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}()
 	if proto.IsCold(v.volType) {
 		if _, err = v.ebsWrite(invisibleTempDataInode.Inode, reader, md5Hash); err != nil {
+			log.LogErrorf("PutObject: ebs write fail: volume(%v) path(%v) inode(%v) err(%v)",
+				v.name, path, invisibleTempDataInode.Inode, err)
 			return
 		}
 
 	} else {
 
 		if _, err = v.streamWrite(invisibleTempDataInode.Inode, reader, md5Hash); err != nil {
+			log.LogErrorf("PutObject: stream write fail: volume(%v) path(%v) inode(%v) err(%v)",
+				v.name, path, invisibleTempDataInode.Inode, err)
 			return
 		}
 		// flush
@@ -746,6 +757,9 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 	if opt != nil && len(opt.Expires) > 0 {
 		attr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
+	}
+	if opt != nil && opt.ACL != nil {
+		attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
 	}
 
 	// If user-defined metadata have been specified, use extend attributes for storage.
@@ -998,6 +1012,10 @@ func (v *Volume) InitMultipart(path string, opt *PutFileOption) (multipartID str
 	if opt != nil && opt.Tagging != nil {
 		var encoded = opt.Tagging.Encode()
 		extend[XAttrKeyOSSTagging] = encoded
+	}
+	// If ACL have been specified, use extend attributes for storage.
+	if opt != nil && opt.ACL != nil {
+		extend[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
 	}
 
 	// Iterate all the meta partition to create multipart id
@@ -2054,7 +2072,8 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 	return
 }
 
-func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, onlyObject bool) (infos []*FSFileInfo, prefixes Prefixes, nextMarker string, err error) {
+func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, onlyObject bool) (infos []*FSFileInfo,
+	prefixes Prefixes, nextMarker string, err error) {
 	var prefixMap = PrefixMap(make(map[string]struct{}))
 
 	parentId, dirs, err := v.findParentId(prefix)
@@ -2071,14 +2090,16 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, o
 		return nil, nil, "", err
 	}
 
-	log.LogDebugf("listFilesV1: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
+	log.LogDebugf("listFilesV1: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)",
+		prefix, marker, delimiter, parentId, len(dirs))
 
 	// Init the value that queried result count.
 	// Check this value when adding key to contents or common prefix,
 	// return if it reach to max keys
 	var rc uint64
 	// recursion scan
-	infos, prefixMap, nextMarker, _, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, rc, dirs, prefix, marker, delimiter, onlyObject)
+	infos, prefixMap, nextMarker, _, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, maxKeys, rc, dirs,
+		prefix, marker, delimiter, onlyObject, true)
 	if err != nil {
 		log.LogErrorf("listFilesV1: volume list dir fail: Volume(%v) err(%v)", v.name, err)
 		return
@@ -2098,7 +2119,8 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, o
 	return
 }
 
-func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, maxKeys uint64) (infos []*FSFileInfo, prefixes Prefixes, nextMarker string, err error) {
+func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, maxKeys uint64) (infos []*FSFileInfo,
+	prefixes Prefixes, nextMarker string, err error) {
 	var prefixMap = PrefixMap(make(map[string]struct{}))
 
 	var marker string
@@ -2122,14 +2144,16 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 		return nil, nil, "", err
 	}
 
-	log.LogDebugf("listFilesV2: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
+	log.LogDebugf("listFilesV2: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)",
+		prefix, marker, delimiter, parentId, len(dirs))
 
 	// Init the value that queried result count.
 	// Check this value when adding key to contents or common prefix,
 	// return if it reach to max keys
 	var rc uint64
 	// recursion scan
-	infos, prefixMap, nextMarker, _, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, rc, dirs, prefix, marker, delimiter, true)
+	infos, prefixMap, nextMarker, _, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, maxKeys, rc, dirs,
+		prefix, marker, delimiter, true, true)
 	if err != nil {
 		log.LogErrorf("listFilesV2: Volume list dir fail, Volume(%v) err(%v)", v.name, err)
 		return
@@ -2201,41 +2225,22 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 // Recursive scan of the directory starting from the given parentID. Match files and directories
 // that match the prefix and delimiter criteria. Stop when the number of matches reaches a threshold
 // or all files and directories are scanned.
-func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId, maxKeys, rc uint64,
-	dirs []string, prefix, marker, delimiter string, onlyObject bool) ([]*FSFileInfo, PrefixMap, string, uint64, error) {
+func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId, maxKeys, readLimit, rc uint64, dirs []string,
+	prefix, marker, delimiter string, onlyObject, firstEnter bool) ([]*FSFileInfo, PrefixMap, string, uint64, error) {
 	var err error
 	var nextMarker string
+	var lastKey string
 
 	var currentPath = strings.Join(dirs, pathSep) + pathSep
-	log.LogDebugf("recursiveScan enter: fileInfos(%v) parentId(%v) prefix(%v) marker(%v) delimiter(%v) currentPath(%v)", fileInfos, parentId, prefix, marker, delimiter, currentPath)
-	/*
-		if len(dirs) > 0 && prefix != "" && strings.HasSuffix(currentPath, prefix) {
-			// When the current scanning position is not the root directory, a prefix matching
-			// check is performed on the current directory first.
-			//
-			// The reason for this is that according to the definition of Amazon S3's ListObjects
-			// interface, directory entries that meet the exact prefix match will be returned as
-			// a Content result, not as a CommonPrefix.
-
-			// Add check to marker, if request contain marker, current path must greater than marker,
-			// otherwise can not put it to prefix map
-			if (len(marker) > 0 && currentPath > marker) || len(marker) == 0 {
-				// If the number of matches reaches the threshold given by maxKey,
-				// stop scanning and return results.
-				// To get the next marker, first compare the result counts with the max key
-				// it means that when result count reach the max key, continue to find the next key as the next marker
-				if rc >= maxKeys {
-					return fileInfos, prefixMap, currentPath, rc, nil
-				}
-				fileInfo := &FSFileInfo{
-					Inode: parentId,
-					Path:  currentPath,
-				}
-				fileInfos = append(fileInfos, fileInfo)
-				rc++
-			}
-		}
-	*/
+	if strings.HasPrefix(currentPath, pathSep) {
+		currentPath = strings.TrimPrefix(currentPath, pathSep)
+	}
+	log.LogDebugf("recursiveScan enter: currentPath(/%v) fileInfos(%v) parentId(%v) prefix(%v) marker(%v) rc(%v)",
+		currentPath, fileInfos, parentId, prefix, marker, rc)
+	defer func() {
+		log.LogDebugf("recursiveScan exit: currentPath(/%v) fileInfos(%v) parentId(%v)  prefix(%v) nextMarker(%v) rc(%v)",
+			currentPath, fileInfos, parentId, prefix, nextMarker, rc)
+	}()
 
 	// The "prefix" needs to be extracted as marker when it is larger than "marker".
 	// So extract prefixMarker in this layer.
@@ -2273,7 +2278,8 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	// At this time, stops process and returns success.
 	var children []proto.Dentry
 
-	children, err = v.mw.ReadDirLimit_ll(parentId, fromName, maxKeys+1) // one more for nextMarker
+readDir:
+	children, err = v.mw.ReadDirLimit_ll(parentId, fromName, readLimit+1) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		return fileInfos, prefixMap, "", 0, err
 	}
@@ -2281,9 +2287,13 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 		return fileInfos, prefixMap, "", 0, nil
 	}
 
-	log.LogDebugf("recursiveScan: ReadDirLimit_ll, parentId(%v) fromName(%v), maxKey(%v) children(%v)", parentId, fromName, maxKeys, children)
+	log.LogDebugf("recursiveScan read: currentPath(%v) parentId(%v) fromName(%v) maxKey(%v) readLimit(%v) children(%v)",
+		currentPath, parentId, fromName, maxKeys, readLimit, children)
 
 	for _, child := range children {
+		if child.Name == lastKey {
+			continue
+		}
 		var path = strings.Join(append(dirs, child.Name), pathSep)
 		if os.FileMode(child.Type).IsDir() {
 			path += pathSep
@@ -2297,7 +2307,8 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 				continue
 			}
 			if os.FileMode(child.Type).IsDir() && strings.HasPrefix(marker, path) {
-				fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys, rc, append(dirs, child.Name), prefix, marker, delimiter, onlyObject)
+				fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys,
+					readLimit, rc, append(dirs, child.Name), prefix, marker, delimiter, onlyObject, false)
 				if err != nil {
 					return fileInfos, prefixMap, nextMarker, rc, err
 				}
@@ -2341,7 +2352,9 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 		}
 
 		if os.FileMode(child.Type).IsDir() {
-			fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys, rc, append(dirs, child.Name), prefix, fmt.Sprintf("%v%v%v", currentPath, child.Name, pathSep), delimiter, onlyObject)
+			nextMarker = fmt.Sprintf("%v%v%v", currentPath, child.Name, pathSep)
+			fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys,
+				readLimit, rc, append(dirs, child.Name), prefix, nextMarker, delimiter, onlyObject, false)
 			if err != nil {
 				return fileInfos, prefixMap, nextMarker, rc, err
 			}
@@ -2350,7 +2363,18 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 			}
 		}
 	}
-	log.LogDebugf("recursiveScan exit: fileInfos(%v) parentId(%v) prefixMap(%v) nextMarker(%v) rc(%v)", fileInfos, parentId, prefixMap, nextMarker, rc)
+
+	if firstEnter && len(children) > 1 && rc <= maxKeys {
+		lastKey = children[len(children)-1].Name
+		if strings.HasPrefix(strings.Join(append(dirs, lastKey), pathSep), prefix) {
+			fromName = lastKey
+			readLimit = maxKeys - rc + 1
+			log.LogDebugf("recursiveScan continue: currentPath(%v) parentId(%v) prefix(%v) marker(%v) lastKey(%v) rc(%v)",
+				currentPath, parentId, prefix, marker, lastKey, rc)
+			goto readDir
+		}
+	}
+
 	return fileInfos, prefixMap, nextMarker, rc, nil
 }
 
@@ -2641,6 +2665,9 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			if opt != nil && opt.Expires != "" {
 				attr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
 			}
+			if opt != nil && opt.ACL != nil {
+				attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+			}
 
 			// If user-defined metadata have been specified, use extend attributes for storage.
 			if opt != nil && len(opt.Metadata) > 0 {
@@ -2919,6 +2946,9 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			}
 			targetAttr.XAttrs[key] = val
 		}
+		if opt != nil && opt.ACL != nil {
+			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+		}
 		if err = v.mw.BatchSetXAttr_ll(tInodeInfo.Inode, targetAttr.XAttrs); err != nil {
 			log.LogErrorf("CopyFile: set target xattr fail: volume(%v) target path(%v) inode(%v) xattr (%v)err(%v)",
 				v.name, targetPath, tInodeInfo.Inode, xattr, err)
@@ -2974,6 +3004,9 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		}
 		if opt != nil && opt.Expires != "" {
 			targetAttr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
+		}
+		if opt != nil && opt.ACL != nil {
+			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
 		}
 
 		// If user-defined metadata have been specified, use extend attributes for storage.
@@ -3096,6 +3129,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 
 	var metaWrapper *meta.MetaWrapper
 	if metaWrapper, err = meta.NewMetaWrapper(metaConfig); err != nil {
+		log.LogErrorf("NewVolume: new meta wrapper failed: volume(%v) err(%v)", metaConfig.Volume, err)
 		return nil, err
 	}
 	defer func() {
@@ -3108,7 +3142,13 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 	var volumeInfo *proto.SimpleVolView
 	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(config.Volume)
 	if err != nil {
+		log.LogErrorf("NewVolume: get volume info from master failed: volume(%v) err(%v)", config.Volume, err)
 		return nil, err
+	}
+	if volumeInfo.Status == 1 {
+		log.LogWarnf("NewVolume: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+			config.Volume, volumeInfo.Status)
+		return nil, proto.ErrVolNotExists
 	}
 
 	var extentConfig = &stream.ExtentConfig{
@@ -3130,6 +3170,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 	}
 	var extentClient *stream.ExtentClient
 	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
+		log.LogErrorf("NewVolume: new extent client failed: volume(%v) err(%v)", metaConfig.Volume, err)
 		return nil, err
 	}
 

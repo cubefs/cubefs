@@ -38,15 +38,10 @@ var (
 // Create multipart upload
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html
 func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.Request) {
-
 	var err error
 	var errorCode *ErrorCode
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -67,6 +62,13 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		log.LogErrorf("createMultipleUploadHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		errorCode = NoSuchBucket
+		return
+	}
+
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
+		log.LogErrorf("createMultipleUploadHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
 		return
 	}
 
@@ -101,6 +103,14 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 			return
 		}
 	}
+	// Check ACL
+	var acl *AccessControlPolicy
+	acl, err = ParseACL(r, userInfo.UserID, false)
+	if err != nil {
+		log.LogErrorf("createMultipleUploadHandler: parse acl fail: requestID(%v) acl(%+v) err(%v)",
+			GetRequestID(r), acl, err)
+		return
+	}
 	var opt = &PutFileOption{
 		MIMEType:     contentType,
 		Disposition:  contentDisposition,
@@ -108,13 +118,13 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		Metadata:     metadata,
 		CacheControl: cacheControl,
 		Expires:      expires,
+		ACL:          acl,
 	}
 
 	var uploadID string
 	if uploadID, err = vol.InitMultipart(param.Object(), opt); err != nil {
 		log.LogErrorf("createMultipleUploadHandler:  init multipart fail, requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -125,11 +135,9 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 	}
 
 	var bytes []byte
-	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(initResult); marshalError != nil {
+	if bytes, err = MarshalXMLEntity(initResult); err != nil {
 		log.LogErrorf("createMultipleUploadHandler: marshal result fail, requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = InternalErrorCode(marshalError)
 		return
 	}
 

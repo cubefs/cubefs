@@ -85,6 +85,11 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			return
 		}
 	}
+	if vv.Status == 1 {
+		log.LogErrorf("fetchVolumeView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+			vv.Name, vv.Status)
+		return nil, proto.ErrVolNotExists
+	}
 	var convert = func(volView *proto.VolView) *VolumeView {
 		result := &VolumeView{
 			Name:           volView.Name,
