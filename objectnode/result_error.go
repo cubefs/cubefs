@@ -114,6 +114,7 @@ var (
 	InvalidTagKey                       = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagKey you have provided is invalid", StatusCode: http.StatusBadRequest}
 	InvalidTagValue                     = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
 	MissingContentMD5                   = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "Missing required header for this request: Content-MD5.", StatusCode: http.StatusBadRequest}
+	UnexpectedContent                   = &ErrorCode{ErrorCode: "UnexpectedContent", ErrorMessage: "This request does not support content.", StatusCode: http.StatusBadRequest}
 	NoSuchTagSetError                   = &ErrorCode{"NoSuchTagSetError", "The TagSet does not exist.", http.StatusNotFound}
 	InvalidTagError                     = &ErrorCode{"InvalidTagError", "missing tag in body", http.StatusBadRequest}
 	NoSuchCORSConfiguration             = &ErrorCode{"NoSuchCORSConfiguration", "The CORS configuration does not exist", http.StatusNotFound}
