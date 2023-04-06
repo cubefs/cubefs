@@ -8,12 +8,12 @@ Access configuration is based on the [public configuration](./base.md), and the 
 
 ### First-Level Configuration
 
-| Configuration Item         | Description                                                      | Required                                                             |
-|:---------------------------|:-----------------------------------------------------------------|:---------------------------------------------------------------------|
-| Public Configuration Items | Refer to the [Basic Service Configuration](./base.md) section    | Yes                                                                  |
-| service_register           | [Service registration information](#Example of service_register) | Yes, can be used for service discovery in Access after configuration |
-| limit                      | [Rate limiting configuration](#Example of limit)                 | No, single-machine rate limiting configuration                       |
-| stream                     | Main Access configuration item                                   | Yes, refer to the following second-level configuration options       |
+| Configuration Item         | Description                                                     | Required                                                             |
+|:---------------------------|:----------------------------------------------------------------|:---------------------------------------------------------------------|
+| Public Configuration Items | Refer to the [Basic Service Configuration](./base.md) section   | Yes                                                                  |
+| service_register           | [Service registration information](#service_register)           | Yes, can be used for service discovery in Access after configuration |
+| limit                      | [Rate limiting configuration](#limit)                | No, single-machine rate limiting configuration                       |
+| stream                     | Main Access configuration item                                  | Yes, refer to the following second-level configuration options       |
 
 ### Second-Level Stream Configuration
 
@@ -45,7 +45,7 @@ Access configuration is based on the [public configuration](./base.md), and the 
 
 ## Configuration Example
 
-### Example of service_register
+### service_register
 
 ::: tip Note
 Support for `health_port` began with version v3.2.1.
@@ -64,7 +64,7 @@ Support for `health_port` began with version v3.2.1.
 }
 ```
 
-### Example of limit
+### limit
 
 * reader_mbps: Single-machine download bandwidth (MB/s)
 * writer_mbps: Single-machine upload bandwidth (MB/s)
@@ -85,7 +85,7 @@ Support for `health_port` began with version v3.2.1.
 }
 ```
 
-### Example of mem_pool_size_classes
+### mem_pool_size_classes
 
 * key: Memory allocation ladder
 * value: Limit on the number of items, 0 means no limit (Access currently does not enable quantity limits)

@@ -64,7 +64,7 @@ Parameter List
 |-----------|------|---------------------------------------|
 | enable    | bool | If set to true, the cluster is frozen |
 
-## Get Cluster Space Information
+## Get Cluster Space
 
 ``` bash
 curl -v "http://10.196.59.198:17010/cluster/stat"
@@ -111,7 +111,7 @@ Response Example
 }
 ```
 
-## Get Cluster Topology Information
+## Get Cluster Topology
 
 ``` bash
 curl -v "http://10.196.59.198:17010/topo/get"
@@ -160,12 +160,12 @@ Updates the status of the zone to available or unavailable.
 
 Parameter List
 
-| Parameter | Type   | Description |
-| --------- | ------ | ----------- |
-| name      | string | Zone name   |
+| Parameter | Type   | Description                                   |
+|-----------|--------|-----------------------------------------------|
+| name      | string | Zone name                                     |
 | enable    | bool   | true means available, false means unavailable |
 
-## Get All Zone Information
+## Get All Zone
 
 ``` bash
 curl -v "http://10.196.59.198:17010/zone/list"
@@ -190,7 +190,7 @@ Response Example
 ]
 ```
 
-## Get Cluster Information
+## Get Cluster
 
 ``` bash
 curl -v "http://192.168.0.11:17010/admin/getNodeInfo"
@@ -215,7 +215,7 @@ Response Example
 }
 ```
 
-## Set Cluster Information
+## Set Cluster
 
 ``` bash
 curl -v "http://192.168.0.11:17010/admin/setNodeInfo?batchCount=100&markDeleteRate=100"

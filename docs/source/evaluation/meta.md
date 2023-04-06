@@ -1,3 +1,18 @@
+# MetaData performance evaluation
+
+The results of metadata performance testing through [mdtest](https://github.com/LLNL/mdtest) are as follows:
+
+**tool settings**
+
+``` bash
+#!/bin/bash
+TEST_PATH=/mnt/cfs/mdtest # mount point of CubeFS volume
+for CLIENTS in 1 2 4 8 # number of clients
+do
+mpirun --allow-run-as-root -np $CLIENTS --hostfile hfile01 mdtest -n 5000 -u -z 2 -i 3 -d $TEST_PATH;
+done
+```
+
 ## Directory Creation
 
 ![Dir Creation](../pic/cfs-mdtest-dir-creation.png)
