@@ -92,8 +92,14 @@ func (rs *RocksDBStore) Put(key, value interface{}, isSync bool) (result interfa
 	if err := rs.db.Write(wo, wb); err != nil {
 		return nil, err
 	}
+
 	result = value
 	return result, nil
+}
+
+func (rs *RocksDBStore) Flush() (err error) {
+	fo := gorocksdb.NewDefaultFlushOptions()
+	return rs.db.Flush(fo)
 }
 
 // Get returns the value based on the given key.
