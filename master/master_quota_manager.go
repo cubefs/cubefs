@@ -109,6 +109,12 @@ func (mqMgr *MasterQuotaManager) updateQuota(req *proto.UpdateMasterQuotaReuqest
 		return
 	}
 
+	if quotaInfo.RootInode != req.Inode {
+		log.LogErrorf("vol [%v] update quota inode [%v] is not match.", mqMgr.vol.Name, req.Inode)
+		err = errors.New("quota inode is not match.")
+		return
+	}
+
 	quotaInfo.MaxFiles = req.MaxFiles
 	quotaInfo.MaxBytes = req.MaxBytes
 
@@ -285,12 +291,14 @@ func (mqMgr *MasterQuotaManager) quotaUpdate(report *proto.MetaPartitionReport) 
 	defer mqMgr.Unlock()
 
 	mpId := report.PartitionID
-	mqMgr.MpQuotaInfoMap[mpId] = report.QuotaReportInfos
 
 	log.LogDebugf("[quotaUpdate] mpId [%v] QuotaReportInfos [%v] leader [%v]", mpId, report.QuotaReportInfos, report.IsLeader)
 	if !report.IsLeader {
 		return
 	}
+
+	mqMgr.MpQuotaInfoMap[mpId] = report.QuotaReportInfos
+
 	for _, quotaInfo = range mqMgr.IdQuotaInfoMap {
 		quotaInfo.UsedInfo.UsedFiles = 0
 		quotaInfo.UsedInfo.UsedBytes = 0

@@ -105,7 +105,8 @@ func newQuotaSetCmd(client *master.MasterClient) *cobra.Command {
 				stdout("volName %v path %v quota set failed(%v)\n", volName, fullPath, err)
 				return
 			}
-			stdout("volName %v path %v maxFiles %v, maxBytes %v err %v.\n", volName, fullPath, maxFiles, maxBytes, err)
+			stdout("setQuota: volName %v path %v inode %v maxFiles %v maxBytes %v success.\n",
+				volName, fullPath, inodeId, maxFiles, maxBytes)
 		},
 	}
 	cmd.Flags().Uint64Var(&maxFiles, CliFlagMaxFiles, cmdQuotaDefaultMaxFiles, "Specify quota max files")
@@ -126,8 +127,10 @@ func newQuotaListCmd(client *master.MasterClient) *cobra.Command {
 				stdout("volName %v quota list failed(%v)\n", volName, err)
 				return
 			}
+			stdout("[quotas]\n")
+			stdout("%v\n", formatQuotaTableHeader())
 			for _, quotaInfo := range quotas {
-				stdout("quotas:%v\n", *quotaInfo)
+				stdout("%v\n", formatQuotaInfo(quotaInfo))
 			}
 		},
 	}
@@ -168,7 +171,8 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("volName %v path %v quota update failed(%v)\n", volName, fullPath, err)
 				return
 			}
-			stdout("volName %v path %v maxFiles %v, maxBytes %v err %v.\n", volName, fullPath, maxFiles, maxBytes, err)
+			stdout("updateQuota: volName %v path %v inode %v maxFiles %v maxBytes %v success.\n",
+				volName, fullPath, inodeId, maxFiles, maxBytes)
 		},
 	}
 	cmd.Flags().Uint64Var(&maxFiles, CliFlagMaxFiles, cmdQuotaDefaultMaxFiles, "Specify quota max files")

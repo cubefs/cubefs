@@ -51,6 +51,7 @@ func (alloc *IDAllocator) restore() {
 	alloc.restoreMaxMetaPartitionID()
 	alloc.restoreMaxCommonID()
 	alloc.restoreClientID()
+	alloc.restoreMaxQuotaID()
 }
 
 func (alloc *IDAllocator) restoreClientID() {
