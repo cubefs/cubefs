@@ -716,14 +716,11 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("copyObjectHandler: load volume fail: requestID(%v) err(%v)",
-			getRequestIP(r), err)
+		log.LogErrorf("copyObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			getRequestIP(r), param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
 	}
-
-	// Checking user-defined metadata
-	var metadata = ParseUserDefinedMetadata(r.Header)
 
 	// client can reset these system metadata: Content-Type, Content-Disposition
 	contentType := r.Header.Get(HeaderNameContentType)
@@ -745,48 +742,47 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if len(metadataDirective) == 0 {
 		metadataDirective = MetadataDirectiveCopy
 	}
-
-	sourceBucket, sourceObject, _, err := extractSrcBucketKey(r)
-	if errorCode != nil {
-		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(r))
+	if metadataDirective != MetadataDirectiveCopy && metadataDirective != MetadataDirectiveReplace {
+		log.LogErrorf("copyObjectHandler: x-amz-metadata-directive invalid: requestID(%v) volume(%v) x-amz-metadata-directive(%v)",
+			GetRequestID(r), param.Bucket(), metadataDirective, err)
+		errorCode = InvalidArgument
 		return
 	}
-
-	// check permission, must have read permission to source bucket
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
-		log.LogErrorf("copyObjectHandler: get user info from master error: requestID(%v), accessKey(%v), err(%v)",
-			GetRequestID(r), param.AccessKey(), err)
+	// parse x-amz-copy-source header
+	sourceBucket, sourceObject, _, err := extractSrcBucketKey(r)
+	if err != nil {
+		log.LogErrorf("copyObjectHandler: copySource(%v) argument invalid: requestID(%v) volume(%v) err(%v)",
+			r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
 	// check ACL
+	userInfo, err := o.getUserInfoByAccessKeyV2(param.AccessKey())
+	if err != nil {
+		log.LogErrorf("copyObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		return
+	}
 	acl, err := ParseACL(r, userInfo.UserID, false)
 	if err != nil {
-		log.LogErrorf("copyObjectHandler: parse acl fail: requestID(%v) acl(%+v) err(%v)", GetRequestID(r), acl, err)
+		log.LogErrorf("copyObjectHandler: parse acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
+			GetRequestID(r), param.Bucket(), acl, err)
 		return
 	}
 
-	subdir := strings.TrimRight(param.Object(), "/")
-	if subdir == "" {
-		subdir = r.URL.Query().Get(ParamPrefix)
-	}
-
-	// get object meta
+	// get src object meta
 	var sourceVol *Volume
 	if sourceVol, err = o.getVol(sourceBucket); err != nil {
-		log.LogErrorf("copyObjectHandler: load source volume fail: vol(%v) requestID(%v) err(%v)",
-			sourceBucket, getRequestIP(r), err)
+		log.LogErrorf("copyObjectHandler: load source volume fail: requestID(%v) srcVolume(%v) err(%v)",
+			GetRequestID(r), sourceBucket, err)
 		errorCode = NoSuchBucket
 		return
 	}
-
 	var fileInfo *FSFileInfo
 	fileInfo, _, err = sourceVol.ObjectMeta(sourceObject)
 	if err != nil {
-		log.LogErrorf("copyObjectHandler: volume get file info fail: sourceBucket(%v) sourceObject(%v) requestID(%v) err(%v)",
-			sourceBucket, sourceObject, GetRequestID(r), err)
-
+		log.LogErrorf("copyObjectHandler: get object meta fail: requestID(%v) srcVolume(%v) srcObject(%v) err(%v)",
+			GetRequestID(r), sourceBucket, sourceObject, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 			return
@@ -841,8 +837,10 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// open source object stream
-	var opt = &PutFileOption{
+	// parse user-defined metadata
+	metadata := ParseUserDefinedMetadata(r.Header)
+	// copy file
+	opt := &PutFileOption{
 		MIMEType:     contentType,
 		Disposition:  contentDisposition,
 		Metadata:     metadata,
@@ -885,7 +883,11 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// set response header
 	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	_, _ = w.Write(bytes)
+	if _, err1 := w.Write(bytes); err1 != nil {
+		log.LogWarnf("copyObjectHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), string(bytes), err)
+	}
+
 	return
 }
 
