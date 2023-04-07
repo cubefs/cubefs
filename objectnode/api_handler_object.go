@@ -1248,7 +1248,8 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		var validateRes bool
 		if validateRes, errorCode = tagging.Validate(); !validateRes {
-			log.LogErrorf("putObjectHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
+			log.LogErrorf("putObjectHandler: tagging validate fail: requestID(%v) volume(%v) path(%v) tagging(%v) err(%v)",
+				GetRequestID(r), vol.Name(), param.Object(), tagging, errorCode)
 			return
 		}
 	}
@@ -1256,24 +1257,20 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Check ACL
 	acl, err := ParseACL(r, userInfo.UserID, false)
 	if err != nil {
-		log.LogErrorf("putObjectHandler: parse acl fail: requestID(%v) acl(%+v) err(%v)", GetRequestID(r), acl, err)
+		log.LogErrorf("putObjectHandler: parse acl fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), acl, err)
 		return
 	}
 
-	// Checking user-defined metadata
-	var metadata = ParseUserDefinedMetadata(r.Header)
-
 	// Get request MD5, if request MD5 is not empty, compute and verify it.
 	requestMD5 := r.Header.Get(HeaderNameContentMD5)
-
-	var checkMD5 bool
-	if len(requestMD5) > 0 {
-		_, err := base64.StdEncoding.DecodeString(requestMD5)
+	if requestMD5 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
 		if err != nil {
 			errorCode = InvalidDigest
 			return
 		}
-		checkMD5 = true
+		requestMD5 = hex.EncodeToString(decoded)
 	}
 
 	// Get the requested content-type.
@@ -1294,7 +1291,8 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = InvalidCacheArgument
 		return
 	}
-
+	// Checking user-defined metadata
+	metadata := ParseUserDefinedMetadata(r.Header)
 	// Audit file write
 	log.LogInfof("Audit: put object: requestID(%v) remote(%v) volume(%v) path(%v) type(%v)",
 		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object(), contentType)
@@ -1331,21 +1329,10 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// validate content MD5 value
-	if strings.HasSuffix(requestMD5, "==") {
-		var decoded []byte
-		if decoded, err = base64.StdEncoding.DecodeString(requestMD5); err != nil {
-			log.LogErrorf("putObjectHandler: decode request MD5 value fail: requestID(%v) raw(%v) err(%v)",
-				GetRequestID(r), requestMD5, err)
-			errorCode = InternalErrorCode(err)
-			return
-		}
-		requestMD5 = hex.EncodeToString(decoded)
-	}
 	// check content MD5
-	if checkMD5 && requestMD5 != fsFileInfo.ETag {
-		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) requestMD5(%v) serverMD5(%v)",
-			r.URL.EscapedPath(), requestMD5, fsFileInfo.ETag)
+	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
+		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), requestMD5, fsFileInfo.ETag)
 		errorCode = BadDigest
 		return
 	}
