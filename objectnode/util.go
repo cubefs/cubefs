@@ -63,7 +63,7 @@ type PathIterator struct {
 
 func (p *PathIterator) init() {
 	if !p.inited {
-		p.path = strings.TrimSpace(p.path)
+		// p.path = strings.TrimSpace(p.path)
 		loc := regexpSepPrefix.FindStringIndex(p.path)
 		if len(loc) == 2 {
 			p.path = p.path[loc[1]:]
