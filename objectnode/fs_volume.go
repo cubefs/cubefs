@@ -2573,43 +2573,6 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		sInodeInfo *proto.InodeInfo
 	)
 
-	/*var retry = 0
-	  var useCache = true
-	  var UpdateTime = int64(0)
-	  for {
-	  	var dentry *DentryItem
-	  	if objMetaCache != nil && useCache {
-	  		dentry = objMetaCache.RecursiveLookupTarget(sv.name, sourcePath)
-	  		if dentry != nil {
-	  			sInode = dentry.Inode
-	  			sMode = os.FileMode(dentry.Type)
-	  			UpdateTime = dentry.GetUpdateTime()
-	  		} else {
-	  			if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
-	  				return
-	  			}
-	  		}
-	  	} else {
-	  		if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
-	  			return
-	  		}
-
-	  	}
-
-	  	sInodeInfo, err = sv.mw.InodeGet_ll(sInode)
-	  	if err == syscall.ENOENT && retry < MaxRetry {
-	  		retry++
-	  		useCache = false
-	  		continue
-	  	}
-	  	if err != nil {
-	  		log.LogErrorf("CopyFile: get source path inode info fail: source volume(%v)"+
-	  			" source path(%v) retry(%v) err(%v)", sv.name, sourcePath, retry, err)
-	  		return
-	  	}
-	  	break
-	  }*/
-
 	if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
 		log.LogErrorf("CopyFile: look up source path fail, source path(%v) err(%v)", sourcePath, err)
 		return
@@ -2684,50 +2647,10 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 					sv.name, sourcePath, sInode, attr.XAttrs, err)
 				return nil, err
 			}
-			//merge attrs in cache
+			// merge attrs in cache
 			if objMetaCache != nil {
 				objMetaCache.MergeAttr(v.name, attr)
 			}
-
-			/*if opt != nil && opt.MIMEType != "" {
-			  	if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
-			  		log.LogErrorf("CopyFile: store MIME fail: volume(%v) source path(%v) inode(%v) mime(%v) err(%v)",
-			  			sv.name, sourcePath, sInode, opt.MIMEType, err)
-			  		return nil, err
-			  	}
-			  }
-			  if opt != nil && opt.Disposition != "" {
-			  	if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
-			  		log.LogErrorf("CopyFile: store content disposition fail: volume(%v) source path(%v) inode(%v) disposition(%v) err(%v)",
-			  			sv.name, sourcePath, sInode, opt.Disposition, err)
-			  		return nil, err
-			  	}
-			  }
-			  if opt != nil && opt.CacheControl != "" {
-			  	if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSCacheControl), []byte(opt.CacheControl)); err != nil {
-			  		log.LogErrorf("CopyFile: store content cache-control fail: volume(%v) source path(%v) inode(%v) cache-control(%v) err(%v)",
-			  			sv.name, sourcePath, sInode, opt.CacheControl, err)
-			  		return nil, err
-			  	}
-			  }
-			  if opt != nil && opt.Expires != "" {
-			  	if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSExpires), []byte(opt.Expires)); err != nil {
-			  		log.LogErrorf("CopyFile: store content expires fail: volume(%v) source path(%v) inode(%v) expires(%v) err(%v)",
-			  			sv.name, sourcePath, sInode, opt.Expires, err)
-			  		return nil, err
-			  	}
-			  }
-			  // If user-defined metadata have been specified, use extend attributes for storage.
-			  if opt != nil && len(opt.Metadata) > 0 {
-			  	for name, value := range opt.Metadata {
-			  		if err = v.mw.XAttrSet_ll(sInode, []byte(name), []byte(value)); err != nil {
-			  			log.LogErrorf("CopyFile: store user-defined metadata fail: "+
-			  				"volume(%v) source path(%v) inode(%v) key(%v) value(%v) err(%v)",
-			  				sv.name, sourcePath, sInode, name, value, err)
-			  			return nil, err
-			  		}
-			  	}
-			  }*/
 			log.LogInfof("CopyFile: target path is equal with source path, replace metadata, source path(%v) target path(%v) opt(%v)",
 				sourcePath, targetPath, opt)
 		}
@@ -2915,15 +2838,6 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		TS:      finalInode.ModifyTime,
 	}
 
-	/*
-		log.LogDebugf("debug_CopyFile dst : %v, etag: %v", targetPath, etagValue.Encode())
-		// Save target file ETag
-		if err = v.mw.XAttrSet_ll(finalInode.Inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
-			log.LogErrorf("CopyFile: store target file ETag fail: volume(%v) path(%v) inode(%v) key(%v) val(%v) err(%v)",
-				v.name, targetPath, tInodeInfo.Inode, XAttrKeyOSSETag, md5Value, err)
-			return
-		}*/
-
 	targetAttr := &AttrItem{
 		XAttrInfo: proto.XAttrInfo{
 			Inode:  tInodeInfo.Inode,
@@ -2954,43 +2868,10 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 				v.name, targetPath, tInodeInfo.Inode, xattr, err)
 			return
 		}
-		//merge attrs in cache
+		// merge attrs in cache
 		if objMetaCache != nil {
 			objMetaCache.PutAttr(v.name, targetAttr)
 		}
-
-		/*// get source file xattr keys
-		  var keys []string
-		  if keys, err = sv.mw.XAttrsList_ll(sInode); err != nil {
-		  	if err == syscall.ENOENT {
-		  		log.LogErrorf("CopyFile: volume list extend attributes fail: volume(%v) source path(%v) err(%v)",
-		  			sv.name, sourcePath, err)
-		  		return
-		  	}
-		  	log.LogErrorf("CopyFile: volume list extend attributes fail: volume(%v) source path(%v) err(%v)",
-		  		sv.name, sourcePath, err)
-		  	return
-		  }
-		  // batch get source file xattr values
-		  var xattrs []*proto.XAttrInfo
-		  if xattrs, err = sv.mw.BatchGetXAttr([]uint64{sInode}, keys); err != nil {
-		  	log.LogErrorf("CopyFile: meta get xattr fail, volume(%v) source path(%v) inode(%v) keys(%v) err(%v)",
-		  		sv.name, sourcePath, sInode, strings.Join(keys, ","), err)
-		  	return
-		  }
-		  // set tar xattr
-		  if len(xattrs) > 0 {
-		  	for xk, xv := range xattrs[0].XAttrs {
-		  		if xk == XAttrKeyOSSETag {
-		  			continue
-		  		}
-		  		if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(xk), []byte(xv)); err != nil {
-		  			log.LogErrorf("CopyFile: set target xattr fail: volume(%v) target path(%v) inode(%v) xattr key(%v) xattr value(%v) err(%v)",
-		  				v.name, targetPath, tInodeInfo.Inode, xk, xv, err)
-		  			return
-		  		}
-		  	}
-		  }*/
 	} else {
 		log.LogDebugf("debug_CopyFile replace dst meta")
 		if opt != nil && opt.MIMEType != "" {
@@ -3024,50 +2905,10 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 				v.name, targetPath, tInodeInfo.Inode, targetAttr.XAttrs, err)
 			return nil, err
 		}
-		//merge attrs in cache
+		// merge attrs in cache
 		if objMetaCache != nil {
 			objMetaCache.PutAttr(v.name, targetAttr)
 		}
-
-		/*if opt != nil && opt.MIMEType != "" {
-		  	if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
-		  		log.LogErrorf("CopyFile: store MIME fail: volume(%v) target path(%v) inode(%v) mime(%v) err(%v)",
-		  			v.name, targetPath, tInodeInfo.Inode, opt.MIMEType, err)
-		  		return nil, err
-		  	}
-		  }
-		  if opt != nil && opt.Disposition != "" {
-		  	if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
-		  		log.LogErrorf("CopyFile: store content disposition fail: volume(%v) target path(%v) inode(%v) mime(%v) err(%v)",
-		  			v.name, targetPath, tInodeInfo.Inode, opt.Disposition, err)
-		  		return nil, err
-		  	}
-		  }
-		  if opt != nil && opt.CacheControl != "" {
-		  	if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSCacheControl), []byte(opt.CacheControl)); err != nil {
-		  		log.LogErrorf("CopyFile: store content cache-control fail: volume(%v) target path(%v) inode(%v) cache-control(%v) err(%v)",
-		  			v.name, targetPath, tInodeInfo.Inode, opt.CacheControl, err)
-		  		return nil, err
-		  	}
-		  }
-		  if opt != nil && opt.Expires != "" {
-		  	if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSExpires), []byte(opt.Expires)); err != nil {
-		  		log.LogErrorf("CopyFile: store content expires fail: volume(%v) target path(%v) inode(%v) expires(%v) err(%v)",
-		  			v.name, targetPath, tInodeInfo.Inode, opt.Expires, err)
-		  		return nil, err
-		  	}
-		  }
-		  // If user-defined metadata have been specified, use extend attributes for storage.
-		  if opt != nil && len(opt.Metadata) > 0 {
-		  	for name, value := range opt.Metadata {
-		  		if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(name), []byte(value)); err != nil {
-		  			log.LogErrorf("CopyFile: store user-defined metadata fail: "+
-		  				"volume(%v) target path(%v) inode(%v) key(%v) value(%v) err(%v)",
-		  				v.name, targetPath, tInodeInfo.Inode, name, value, err)
-		  			return nil, err
-		  		}
-		  	}
-		  }*/
 	}
 
 	// create file info
@@ -3088,7 +2929,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
 	}
 
-	//force updating dentry and attrs in cache
+	// force updating dentry and attrs in cache
 	if objMetaCache != nil {
 		dentry := &DentryItem{
 			Dentry: metanode.Dentry{
