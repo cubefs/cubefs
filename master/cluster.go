@@ -112,19 +112,22 @@ func (mgr *followerReadManager) getVolumeDpView() {
 	var (
 		err      error
 		volNames []string
+		view     *proto.DataPartitionsView
 	)
 	if err, volNames = mgr.c.loadVolsName(); err != nil {
 		panic(err)
 	}
 	if mgr.c.masterClient.Leader() == "" {
-		log.LogDebugf("followerReadManager.getVolumeDpView but master leader not ready")
+		log.LogErrorf("followerReadManager.getVolumeDpView but master leader not ready")
 		return
 	}
 	for _, name := range volNames {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", name)
-		if view, err := mgr.c.masterClient.ClientAPI().GetDataPartitions(name); err == nil {
-			mgr.updateVolViewFromLeader(name, view)
+		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitions(name); err != nil {
+			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v", name, err)
+			continue
 		}
+		mgr.updateVolViewFromLeader(name, view)
 	}
 }
 
@@ -134,7 +137,8 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 		volNames []string
 	)
 	if err, volNames = mgr.c.loadVolsName(); err != nil {
-		panic(err)
+		log.LogErrorf("sendFollowerVolumeDpView. loadVolsName err %v", err)
+		return
 	}
 	for _, name := range volNames {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", name)
@@ -150,6 +154,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 			mgr.c.masterClient.SetLeader(addr)
 			if err = mgr.c.masterClient.AdminAPI().PutDataPartitions(name, body); err != nil {
 				log.LogErrorf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", name, addr, err)
+				continue
 			}
 			log.LogDebugf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", name, addr, err)
 		}
@@ -162,9 +167,9 @@ func (mgr *followerReadManager) checkStatus() {
 
 	timeNow := time.Now()
 	for volNm, lastTime := range mgr.lastUpdateTick {
-		if lastTime.Before(timeNow.Add(-time.Second * 30)) {
+		if lastTime.Before(timeNow.Add(-5 * time.Minute)) {
 			mgr.status[volNm] = false
-			log.LogInfof("action[checkStatus] volume %v expired last time %v, now %v", volNm, lastTime, timeNow)
+			log.LogWarnf("action[checkStatus] volume %v expired last time %v, now %v", volNm, lastTime, timeNow)
 		}
 	}
 }
