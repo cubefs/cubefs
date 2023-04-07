@@ -44,14 +44,15 @@ const (
 	HeaderNameConnection         = "Connection"
 
 	// Headers for CORS validation
-	Origin                                = "Origin"
-	HeaderNameAccessControlRequestMethod  = "Access-Control-Request-Method"
-	HeaderNameAccessControlRequestHeaders = "Access-Control-Request-Headers"
-	HeaderNameAccessControlAllowOrigin    = "Access-Control-Allow-Origin"
-	HeaderNameAccessControlMaxAge         = "Access-Control-Max-Age"
-	HeaderNameAccessControlAllowMethods   = "Access-Control-Allow-Methods"
-	HeaderNameAccessControlAllowHeaders   = "Access-Control-Allow-Headers"
-	HeaderNameAccessControlExposeHeaders  = "Access-Control-Expose-Headers"
+	Origin                                  = "Origin"
+	HeaderNameAccessControlRequestMethod    = "Access-Control-Request-Method"
+	HeaderNameAccessControlRequestHeaders   = "Access-Control-Request-Headers"
+	HeaderNameAccessControlAllowOrigin      = "Access-Control-Allow-Origin"
+	HeaderNameAccessControlAllowCredentials = "Access-Control-Allow-Credentials"
+	HeaderNameAccessControlMaxAge           = "Access-Control-Max-Age"
+	HeaderNameAccessControlAllowMethods     = "Access-Control-Allow-Methods"
+	HeaderNameAccessControlAllowHeaders     = "Access-Control-Allow-Headers"
+	HeaderNameAccessControlExposeHeaders    = "Access-Control-Expose-Headers"
 
 	HeaderNameXAmzStartDate           = "x-amz-date"
 	HeaderNameXAmzRequestId           = "x-amz-request-id"
