@@ -337,23 +337,34 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func isMatchAndSetupCORSHeader(cors *CORSConfiguration, writer http.ResponseWriter, request *http.Request) (match bool) {
+func isMatchAndSetupCORSHeader(cors *CORSConfiguration, writer http.ResponseWriter, request *http.Request, isPreflight bool) (match bool) {
 	origin := request.Header.Get(Origin)
-	method := request.Header.Get(HeaderNameAccessControlRequestMethod)
-	headerStr := request.Header.Get(HeaderNameAccessControlRequestHeaders)
-	if origin == "" || method == "" {
-		return
+	reqHeaders := request.Header.Get(HeaderNameAccessControlRequestHeaders)
+	var reqMethod string
+	if isPreflight {
+		reqMethod = request.Header.Get(HeaderNameAccessControlRequestMethod)
+	} else {
+		reqMethod = request.Method
 	}
 	if cors != nil {
 		for _, corsRule := range cors.CORSRule {
-			if corsRule.match(origin, method, headerStr) {
+			if corsRule.match(origin, reqMethod, reqHeaders) {
 				// write access control allow headers
 				match = true
-				writer.Header()[HeaderNameAccessControlAllowOrigin] = []string{origin}
-				writer.Header()[HeaderNameAccessControlMaxAge] = []string{strconv.Itoa(int(corsRule.MaxAgeSeconds))}
+				if StringListContain(corsRule.AllowedOrigin, "*") {
+					writer.Header().Set(HeaderNameAccessControlAllowOrigin, "*")
+				} else {
+					writer.Header().Set(HeaderNameAccessControlAllowOrigin, origin)
+					writer.Header().Set(HeaderNameAccessControlAllowCredentials, "true")
+				}
 				writer.Header()[HeaderNameAccessControlAllowMethods] = []string{strings.Join(corsRule.AllowedMethod, ",")}
-				writer.Header()[HeaderNameAccessControlAllowHeaders] = []string{strings.Join(corsRule.AllowedHeader, ",")}
 				writer.Header()[HeaderNameAccessControlExposeHeaders] = []string{strings.Join(corsRule.ExposeHeader, ",")}
+				if corsRule.MaxAgeSeconds != 0 {
+					writer.Header()[HeaderNameAccessControlMaxAge] = []string{strconv.Itoa(int(corsRule.MaxAgeSeconds))}
+				}
+				if reqHeaders != "" {
+					writer.Header()[HeaderNameAccessControlAllowHeaders] = []string{strings.Join(corsRule.AllowedHeader, ",")}
+				}
 				return
 			}
 		}
@@ -371,7 +382,7 @@ func preflightProcess(cors *CORSConfiguration, w http.ResponseWriter, r *http.Re
 		return ErrCORSNotEnabled
 	}
 
-	if !isMatchAndSetupCORSHeader(cors, w, r) {
+	if !isMatchAndSetupCORSHeader(cors, w, r, true) {
 		return CORSRuleNotMatch
 	}
 	return nil
@@ -387,7 +398,7 @@ func simpleProcess(cors *CORSConfiguration, w http.ResponseWriter, r *http.Reque
 		return nil
 	}
 
-	if !isMatchAndSetupCORSHeader(cors, w, r) {
+	if !isMatchAndSetupCORSHeader(cors, w, r, false) {
 		return nil
 	}
 	return nil
