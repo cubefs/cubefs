@@ -23,14 +23,14 @@ type CORSRule struct {
 	MaxAgeSeconds uint16   `xml:"MaxAgeSeconds,omitempty" json:"max_age_seconds,omitempty"`
 }
 
-func (rule *CORSRule) match(origin, method string, headers []string) bool {
+func (rule *CORSRule) match(origin, method string, headers string) bool {
 	if !matchOrigin(rule.AllowedOrigin, origin) {
 		return false
 	}
 	if !matchMethod(rule.AllowedMethod, method) {
 		return false
 	}
-	if len(headers) != 0 && !matchHeaders(rule.AllowedHeader, headers) {
+	if headers != "" && !matchHeaders(rule.AllowedHeader, headers) {
 		return false
 	}
 	return true
@@ -130,11 +130,12 @@ func matchMethod(allowedMethod []string, method string) bool {
 	return StringListContain(allowedMethod, method)
 }
 
-func matchHeaders(allowedHeaders []string, reqHeaders []string) bool {
+func matchHeaders(allowedHeaders []string, reqHeaders string) bool {
 	if len(allowedHeaders) == 0 {
 		return false
 	}
-	for _, h := range reqHeaders {
+	headers := strings.Split(strings.ToLower(reqHeaders), ",")
+	for _, h := range headers {
 		if !matchHeader(allowedHeaders, h) {
 			return false
 		}

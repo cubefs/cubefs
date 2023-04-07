@@ -345,9 +345,8 @@ func isMatchAndSetupCORSHeader(cors *CORSConfiguration, writer http.ResponseWrit
 		return
 	}
 	if cors != nil {
-		headers := strings.Split(strings.ToLower(headerStr), ",")
 		for _, corsRule := range cors.CORSRule {
-			if corsRule.match(origin, method, headers) {
+			if corsRule.match(origin, method, headerStr) {
 				// write access control allow headers
 				match = true
 				writer.Header()[HeaderNameAccessControlAllowOrigin] = []string{origin}
