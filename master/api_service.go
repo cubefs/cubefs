@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/stat"
 	"io/ioutil"
 	"math"
 	"net/http"
