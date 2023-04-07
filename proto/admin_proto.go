@@ -129,7 +129,7 @@ const (
 	AdminAddMetaReplica                = "/metaReplica/add"
 	AdminDeleteMetaReplica             = "/metaReplica/delete"
 	AdminPutDataPartitions             = "/dataPartitions/set"
-	
+
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
