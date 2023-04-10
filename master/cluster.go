@@ -2803,6 +2803,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		Description:       req.description,
 		EnablePosixAcl:    req.enablePosixAcl,
 		EnableTransaction: req.enableTransaction,
+		TxTimeout:         req.txTimeout,
 
 		VolType:          req.volType,
 		EbsBlkSize:       req.coldArgs.objBlockSize,

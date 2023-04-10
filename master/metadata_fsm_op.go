@@ -246,6 +246,7 @@ type volValue struct {
 
 	EnablePosixAcl                                         bool
 	EnableTransaction                                      uint8
+	TxTimeout                                              uint32
 	VolQosEnable                                           bool
 	DiskQosEnable                                          bool
 	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64
