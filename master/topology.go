@@ -764,7 +764,7 @@ func (nsgm *DomainManager) buildNodeSetGrpCommit(resList []nsList, domainGrpMana
 	domainGrpManager.status = normal
 }
 
-//policy of build zone if zone count large then three
+// policy of build zone if zone count large then three
 func buildNodeSetGrp3Zone(nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error) {
 	nsgm.Lock()
 	defer nsgm.Unlock()
@@ -827,7 +827,7 @@ func buildNodeSetGrpOneZone(nsgm *DomainManager, domainGrpManager *DomainNodeSet
 	return nil
 }
 
-//build 2 plus 1 nodesetGrp with 2zone or larger
+// build 2 plus 1 nodesetGrp with 2zone or larger
 func buildNodeSetGrp2Plus1(nsgm *DomainManager, domainGrpManager *DomainNodeSetGrpManager) (err error) {
 	nsgm.Lock()
 	defer nsgm.Unlock()
@@ -1850,7 +1850,7 @@ func NewDecommissionDataPartitionList(c *Cluster) *DecommissionDataPartitionList
 	return l
 }
 
-//reserved
+// reserved
 func (l *DecommissionDataPartitionList) Stop() {
 	l.done <- struct{}{}
 }
@@ -1947,7 +1947,7 @@ func (l *DecommissionDataPartitionList) startTraverse() {
 	l.start <- struct{}{}
 }
 
-//这里应该改成并发，不然回影响
+// 这里应该改成并发，不然回影响
 func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	//wait for loading all ap when reload metadata
@@ -1961,7 +1961,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
 				log.LogWarnf("Leader changed, stop traverse!\n")
-				return
+				continue
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 			for _, dp := range allDecommissionDP {
