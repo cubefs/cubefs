@@ -129,6 +129,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.domainId = vv.DomainId
 	vol.enablePosixAcl = vv.EnablePosixAcl
 	vol.enableTransaction = vv.EnableTransaction
+	vol.txTimeout = vv.TxTimeout
 
 	vol.VolType = vv.VolType
 	vol.EbsBlkSize = vv.EbsBlkSize
