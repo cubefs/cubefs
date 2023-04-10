@@ -4259,10 +4259,11 @@ func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) 
 		err error
 	)
 
-	metric := exporter.NewTPCnt("req_queryDecommissionToken")
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDecommissionToken))
 	defer func() {
-		metric.Set(err)
+		doStatAndMetric(proto.AdminQueryDecommissionToken, metric, err, nil)
 	}()
+
 	var stats []nodeSetDecommissionParallelStatus
 	zones := m.cluster.t.getAllZones()
 	for _, zone := range zones {
@@ -4278,6 +4279,11 @@ func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *Server) queryDecommissionLimit(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDecommissionLimit))
+	defer func() {
+		doStatAndMetric(proto.AdminQueryDecommissionLimit, metric, nil, nil)
+	}()
+
 	limit := m.cluster.DecommissionLimit
 	rstMsg := fmt.Sprintf("decommission limit is %v", limit)
 	log.LogDebugf("action[queryDecommissionLimit] %v", rstMsg)
@@ -4290,6 +4296,12 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 		err         error
 		dn          *DataNode
 	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QueryDataNodeDecoProgress))
+	defer func() {
+		doStatAndMetric(proto.QueryDataNodeDecoProgress, metric, err, nil)
+	}()
+
 	if offLineAddr, err = parseReqToDecoDataNodeProgress(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -4367,6 +4379,13 @@ func FormatFloatFloor(num float64, decimal int) (float64, error) {
 }
 
 func (m *Server) setConfigHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetConfig))
+	defer func() {
+		doStatAndMetric(proto.AdminSetConfig, metric, err, nil)
+	}()
+
 	key, value, err := parseSetConfigParam(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -4387,6 +4406,13 @@ func (m *Server) setConfigHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetConfig))
+	defer func() {
+		doStatAndMetric(proto.AdminGetConfig, metric, err, nil)
+	}()
+
 	key, err := parseGetConfigParam(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -4439,6 +4465,12 @@ func (m *Server) SetQuota(w http.ResponseWriter, r *http.Request) {
 		err error
 		vol *Vol
 	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaSet))
+	defer func() {
+		doStatAndMetric(proto.QuotaSet, metric, err, map[string]string{exporter.Vol: req.VolName})
+	}()
+
 	if err = parserSetQuotaParam(r, req); err != nil {
 		log.LogErrorf("[SetQuota] set quota fail err [%v]", err)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -4492,6 +4524,11 @@ func (m *Server) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 		name    string
 	)
 
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaDelete))
+	defer func() {
+		doStatAndMetric(proto.QuotaDelete, metric, err, map[string]string{exporter.Vol: name})
+	}()
+
 	if name, quotaId, err = parseDeleteQuotaParam(r); err != nil {
 		log.LogErrorf("[DeleteQuota] del quota fail err [%v]", err)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -4520,6 +4557,12 @@ func (m *Server) ListQuota(w http.ResponseWriter, r *http.Request) {
 		resp *proto.ListMasterQuotaResponse
 		name string
 	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaList))
+	defer func() {
+		doStatAndMetric(proto.QuotaList, metric, err, map[string]string{exporter.Vol: name})
+	}()
+
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
