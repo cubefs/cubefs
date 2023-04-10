@@ -768,6 +768,8 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 		if c.pidFile == "" {
 			c.pidFile = path.Join(path.Dir(C.GoString(configPath)), DefaultPidFile)
 		}
+	}
+	if first_start {
 		if err := lockPidFile(c.pidFile); err != nil {
 			syslog.Printf("lock pidFile %s failed: %v\n", c.pidFile, err)
 			return C.int64_t(statusEIO)
