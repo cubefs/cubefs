@@ -44,7 +44,7 @@ type CacheBcacheFunc func(key string, buf []byte) error
 type EvictBacheFunc func(key string) error
 
 const (
-	MaxMountRetryLimit = 5
+	MaxMountRetryLimit = 6
 	MountRetryInterval = time.Second * 5
 
 	defaultReadLimitRate  = rate.Inf
@@ -236,15 +236,15 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	client = new(ExtentClient)
 	client.LimitManager = manager.NewLimitManager(client)
 	client.LimitManager.WrapperUpdate = client.UploadFlowInfo
-	limit := MaxMountRetryLimit
+	limit := 0
 retry:
 	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload)
 	if err != nil {
-		if limit <= 0 {
+		if limit >= MaxMountRetryLimit {
 			return nil, errors.Trace(err, "Init data wrapper failed!")
 		} else {
-			limit--
-			time.Sleep(MountRetryInterval)
+			limit++
+			time.Sleep(MountRetryInterval * time.Duration(limit))
 			goto retry
 		}
 	}
@@ -400,7 +400,6 @@ func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
 	return s.GetExtents()
 }
 
-//
 func (client *ExtentClient) ForceRefreshExtentsCache(inode uint64) error {
 	s := client.GetStreamer(inode)
 	if s == nil {
