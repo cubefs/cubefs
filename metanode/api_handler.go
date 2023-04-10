@@ -122,7 +122,6 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getInodeInuse", m.getInodeInuse)
 	http.HandleFunc("/getBitInuse", m.getBitInuse)
 	http.HandleFunc("/getInoAllocatorInfo", m.getInodeAllocatorStat)
-	http.HandleFunc("/setSkipStep", m.setSkipStep)
 	http.HandleFunc("/checkFreeList", m.checkFreelist)
 	return
 }
@@ -219,7 +218,6 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["virtual_mps"] = mp.(*metaPartition).getVirtualMetaPartitionsInfo()
 	msg["cleanTrashItemMaxDurationEachTime"] = mp.(*metaPartition).getCleanTrashItemMaxDurationEachTime()
 	msg["cleanTrashItemMaxCountEachTime"] = mp.(*metaPartition).getCleanTrashItemMaxCountEachTime()
-	msg["skipStep"] = mp.(*metaPartition).getCursorSkipStep()
 	msg["now"] = time.Now()
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -920,7 +918,6 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"mpMaxDentryCount":                  m.getMetaPartitionMaxDentryCount(),
 		"cleanTrashItemMaxDurationEachTime": nodeInfo.CleanTrashItemMaxDurationEachTime,
 		"cleanTrashItemMaxCountEachTime":    nodeInfo.CleanTrashItemMaxCountEachTime,
-		"skipStep":                          atomic.LoadUint64(&nodeInfo.cursorAddStep),
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -2533,32 +2530,6 @@ func (m *MetaNode) getInodeAllocatorStat(w http.ResponseWriter, r *http.Request)
 	}
 
 	resp.Data = virtualMP.InodeIDAlloter
-	return
-}
-
-func (m *MetaNode) setSkipStep(w http.ResponseWriter, r *http.Request) {
-	resp := NewAPIResponse(http.StatusOK, "OK")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[setSkipStep] response %s", err)
-		}
-	}()
-
-	skipStep, err := strconv.ParseUint(r.FormValue("skipStep"), 10, 64)
-	if err != nil {
-		resp.Code = http.StatusBadRequest
-		resp.Msg = err.Error()
-		return
-	}
-
-	if skipStep < 0 {
-		resp.Code = http.StatusBadRequest
-		resp.Msg = fmt.Sprintf("skipStep(%v) invalid", skipStep)
-		return
-	}
-
-	m.updateSkipStep(skipStep)
 	return
 }
 

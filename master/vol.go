@@ -114,7 +114,6 @@ type Vol struct {
 	EnableBitMapAllocator      bool
 	CleanTrashDurationEachTime int32
 	TrashCleanMaxCountEachTime int32
-	CursorSkipStep        uint64
 	sync.RWMutex
 }
 
@@ -288,7 +287,6 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.EnableBitMapAllocator = vv.EnableBitMapAllocator
 	vol.TrashCleanMaxCountEachTime = vv.TrashCleanMaxCount
 	vol.CleanTrashDurationEachTime = vv.TrashCleanDuration
-	vol.CursorSkipStep = vv.CursorSkipStep
 	return vol
 }
 
@@ -1345,7 +1343,6 @@ func (vol *Vol) backupConfig() *Vol {
 		EnableBitMapAllocator:      vol.EnableBitMapAllocator,
 		CleanTrashDurationEachTime: vol.CleanTrashDurationEachTime,
 		TrashCleanMaxCountEachTime: vol.TrashCleanMaxCountEachTime,
-		CursorSkipStep:        vol.CursorSkipStep,
 	}
 }
 
@@ -1394,7 +1391,6 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.EnableBitMapAllocator = backupVol.EnableBitMapAllocator
 	vol.TrashCleanMaxCountEachTime = backupVol.TrashCleanMaxCountEachTime
 	vol.CleanTrashDurationEachTime = backupVol.CleanTrashDurationEachTime
-	vol.CursorSkipStep = backupVol.CursorSkipStep
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

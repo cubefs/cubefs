@@ -106,7 +106,6 @@ type MetaPartitionConfig struct {
 	CreationType       int                          `json:"creation_type"`
 	ChildFileMaxCount  uint32                       `json:"-"`
 	TrashCleanInterval uint64                       `json:"-"`
-	CursorSkipStep     uint64                       `json:"-"`
 
 	RocksWalFileSize     uint64 `json:"rocks_wal_file_size"`
 	RocksWalMemSize      uint64 `json:"rocks_wal_mem_size"`
@@ -2174,43 +2173,5 @@ func (mp *metaPartition) updateMetaPartitionStatus() {
 		status = proto.ReadOnly
 	}
 	mp.status = status
-	return
-}
-
-func (mp *metaPartition) getCursorSkipStep() (skipStep uint64) {
-	skipStep = proto.DefaultSkipStepOnLeaderChange
-	if nodeInfo.cursorAddStep != 0 {
-		skipStep = atomic.LoadUint64(&nodeInfo.cursorAddStep)
-	}
-	if mp.config.CursorSkipStep != 0 {
-		skipStep = atomic.LoadUint64(&mp.config.CursorSkipStep)
-	}
-	if skipStep > proto.DefaultMaxSkipStepOnLeaderChange {
-		skipStep = proto.DefaultMaxSkipStepOnLeaderChange
-	}
-	return
-}
-
-func (mp *metaPartition) allocatorCursorAddStep(skipStep uint64){
-	mp.virtualMPLock.Lock()
-	defer mp.virtualMPLock.Unlock()
-
-	for _, virtualMP := range mp.virtualMPs {
-		if virtualMP.InodeIDAlloter != nil {
-			virtualMP.InodeIDAlloter.CursorAddStep(skipStep)
-		}
-	}
-}
-
-func (mp *metaPartition) cursorAddStep() {
-	oldCursor := atomic.LoadUint64(&mp.config.Cursor)
-	skipStep := mp.getCursorSkipStep()
-	newCursor := oldCursor + skipStep
-	if newCursor > mp.config.End {
-		newCursor = mp.config.End
-	}
-	atomic.StoreUint64(&mp.config.Cursor, newCursor)
-
-	mp.allocatorCursorAddStep(skipStep)
 	return
 }

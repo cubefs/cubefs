@@ -277,7 +277,6 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 				mp.config.TrashRemainingDays = mp.manager.getTrashDaysByVol(mp.config.VolName)
 				mp.config.ChildFileMaxCount = mp.manager.getChildFileMaxCount(mp.config.VolName)
 				mp.config.TrashCleanInterval = mp.manager.getTrashCleanInterval(mp.config.VolName)
-				mp.config.CursorSkipStep = mp.manager.getCursorSkipStep(mp.config.VolName)
 				mp.updateMetaPartitionInodeAllocatorState()
 				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v, childFileMaxCount: %v, trashCleanInterval: %vMin",
 					mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays, mp.config.ChildFileMaxCount, mp.config.TrashCleanInterval)

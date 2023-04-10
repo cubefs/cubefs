@@ -258,9 +258,6 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.TrashCleanMaxCountEachTime >= 0 {
 				msg += fmt.Sprintf("Trash Clean Max Count        : %v, ", info.TrashCleanMaxCountEachTime)
 			}
-			if info.CursorSkipStep >= 0 {
-				msg += fmt.Sprintf("Cursor Skip Step             : %v, ", info.CursorSkipStep)
-			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -326,7 +323,6 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&info.MetaPartitionMaxDentryCount, "metaPartitionMaxDentryCount", 0, "if dentry count more than max count, mp status change to read only")
 	cmd.Flags().Int32Var(&info.TrashCleanDurationEachTime, "trashCleanMaxDurationEachTime", -1, "trash clean max duration for each time")
 	cmd.Flags().Int32Var(&info.TrashCleanMaxCountEachTime, "trashCleanMaxCountEachTime", -1, "trash clean max count for each time")
-	cmd.Flags().Int64Var(&info.CursorSkipStep, CliFlagCusorSkipStep, -1, "cursor skip step when meta partition change leader")
 	return cmd
 }
 
@@ -390,7 +386,6 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  ReuseMPDentryCountThreshold      : %v\n", info.ReuseMPDentryCountThreshold))
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxDurationEachTime    : %v\n", info.TrashCleanDurationEachTime))
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxCountEachTime       : %v\n", info.TrashItemCleanMaxCountEachTime))
-	sb.WriteString(fmt.Sprintf("  CursorSkipStep                   : %v\n", info.CursorSkipStep))
 	return sb.String()
 }
 

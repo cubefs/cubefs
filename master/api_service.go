@@ -545,7 +545,6 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaPartitionMaxDentryCount:            m.cluster.cfg.MetaPartitionMaxDentryCount,
 		TrashItemCleanMaxCountEachTime:         trashCleanMaxCount,
 		TrashCleanDurationEachTime:             trashCleanDuartion,
-		CursorSkipStep:                         m.cluster.cfg.CursorSkipStep,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1703,7 +1702,6 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		trashCleanDuration     int32
 		trashItemCleanMaxCount int32
-		cursorSkipStep         uint64
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1823,18 +1821,12 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cursorSkipStep, err = parseCursorSkipStep(r, vol)
-	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
 		reuseMP, dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
-		enableBitMapAllocator, cursorSkipStep); err != nil {
+		enableBitMapAllocator); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2121,7 +2113,6 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		EnableBitMapAllocator: vol.EnableBitMapAllocator,
 		TrashCleanMaxCount:    vol.TrashCleanMaxCountEachTime,
 		TrashCleanDuration:    vol.CleanTrashDurationEachTime,
-		CursorSkipStep:        vol.CursorSkipStep,
 	}
 }
 
@@ -3721,28 +3712,6 @@ func parseDefaultDelInodeIntervalToUpdateVol(r *http.Request, vol *Vol) (delInod
 	return
 }
 
-func parseCursorSkipStep(r *http.Request, vol *Vol) (skipStep uint64, err error) {
-	err = r.ParseForm()
-	if err != nil {
-		return
-	}
-
-	val := r.FormValue(proto.CursorSkipStepKey)
-	if val == "" {
-		skipStep = vol.CursorSkipStep
-		return
-	}
-
-	var valTemp uint64
-	valTemp, err = strconv.ParseUint(val, 10, 64)
-	if err != nil {
-		return
-	}
-
-	skipStep = valTemp
-	return
-}
-
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, reuseMP bool,
@@ -4580,7 +4549,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
-		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey, proto.MPMaxInodeCountKey, proto.MPMaxDentryCountKey, proto.CursorSkipStepKey}
+		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey, proto.MPMaxInodeCountKey, proto.MPMaxDentryCountKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return
@@ -5095,7 +5064,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.RealUsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.CursorSkipStep)
+				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5130,7 +5099,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.CursorSkipStep)
+				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5159,7 +5128,7 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 			vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.CursorSkipStep)
+			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator)
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))

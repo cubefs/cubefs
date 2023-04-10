@@ -161,7 +161,6 @@ const (
 	CliFlagTrashCleanDuration  = "trashCleanDuration"
 	CliFlagTrashCleanMaxCount  = "trashCleanMaxCount"
 	CliFlagInodeInuse          = "inodeInuse"
-	CliFlagCusorSkipStep       = "skipStep"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

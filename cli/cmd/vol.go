@@ -339,7 +339,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optEnableBitMapAllocator string
 		optTrashCleanDuration    int32
 		optTrashCleanMaxCount    int32
-		optCursorSkipStep        int64
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -690,18 +689,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  TrashCleanDuration  : %v\n", vv.TrashCleanDuration))
 			}
 
-			if optCursorSkipStep >= 0 {
-				if vv.CursorSkipStep != uint64(optCursorSkipStep) {
-					isChange = true
-					confirmString.WriteString(fmt.Sprintf("  CursorSkipStep      : %v -> %v\n", vv.CursorSkipStep, optCursorSkipStep))
-					vv.CursorSkipStep = uint64(optCursorSkipStep)
-				} else {
-					confirmString.WriteString(fmt.Sprintf("  CursorSkipStep      : %v\n", vv.CursorSkipStep))
-				}
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  CursorSkipStep      : %v\n", vv.CursorSkipStep))
-			}
-
 			if err != nil {
 				return
 			}
@@ -725,7 +712,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, vv.ReuseMP, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
 				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
-				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator, vv.CursorSkipStep)
+				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator)
 			if err != nil {
 				return
 			}
@@ -771,7 +758,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableBitMapAllocator, CliFlagBitMapAllocatorSt, "", "enable/disable bit map allocator")
 	cmd.Flags().Int32Var(&optTrashCleanDuration, CliFlagTrashCleanDuration, -1, "Trash clean duration, unit:min")
 	cmd.Flags().Int32Var(&optTrashCleanMaxCount, CliFlagTrashCleanMaxCount, -1, "Trash clean max count")
-	cmd.Flags().Int64Var(&optCursorSkipStep, CliFlagCusorSkipStep, -1, "cursor skip step when meta partition change leader")
 	return cmd
 }
 

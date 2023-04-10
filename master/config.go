@@ -158,7 +158,6 @@ type clusterConfig struct {
 	MetaPartitionMaxDentryCount         uint64
 	TrashCleanDurationEachTime          int32
 	TrashItemCleanMaxCountEachTime      int32
-	CursorSkipStep                      uint64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

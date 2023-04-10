@@ -103,7 +103,6 @@ type clusterValue struct {
 	MetaPartitionMaxDentryCount         uint64
 	TrashCleanDurationEachTime          int32
 	TrashItemCleanMaxCountEachTime      int32
-	CursorSkipStep                      uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -176,7 +175,6 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaPartitionMaxDentryCount:         c.cfg.MetaPartitionMaxDentryCount,
 		TrashItemCleanMaxCountEachTime:      c.cfg.TrashItemCleanMaxCountEachTime,
 		TrashCleanDurationEachTime:          c.cfg.TrashCleanDurationEachTime,
-		CursorSkipStep:                      c.cfg.CursorSkipStep,
 	}
 	return cv
 }
@@ -338,7 +336,6 @@ type volValue struct {
 	EnableBitMapAllocator bool
 	TrashCleanDuration    int32
 	TrashCleanMaxCount    int32
-	CursorSkipStep        uint64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -413,7 +410,6 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		EnableBitMapAllocator: vol.EnableBitMapAllocator,
 		TrashCleanDuration:    vol.CleanTrashDurationEachTime,
 		TrashCleanMaxCount:    vol.TrashCleanMaxCountEachTime,
-		CursorSkipStep:        vol.CursorSkipStep,
 	}
 	return
 }
@@ -1078,9 +1074,6 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		if cv.TrashItemCleanMaxCountEachTime != 0 {
 			atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, cv.TrashItemCleanMaxCountEachTime)
-		}
-		if cv.CursorSkipStep != 0 {
-			atomic.StoreUint64(&c.cfg.CursorSkipStep, cv.CursorSkipStep)
 		}
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)

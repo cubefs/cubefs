@@ -254,7 +254,6 @@ const (
 	EnableBitMapAllocatorKey       = "enableBitMapAllocator"
 	TrashItemCleanMaxCountKey      = "trashItemCleanMaxCount"
 	TrashCleanDurationKey          = "trashItemCleanDuration"
-	CursorSkipStepKey              = "skipStep"
 )
 
 const (
@@ -271,8 +270,6 @@ const (
 	DefaultMetaPartitionMaxDentryCount uint64  = 20000000
 	DefaultVirtualMPCreateMinDiffTime          = 600 //second
 	OneDayBySecond                             = 86400
-	DefaultSkipStepOnLeaderChange              = 1000
-	DefaultMaxSkipStepOnLeaderChange           = 50000
 )
 
 var IsDbBack bool = false
@@ -569,7 +566,6 @@ type LimitInfo struct {
 	TrashCleanDurationEachTime     int32
 	TrashItemCleanMaxCountEachTime int32
 
-	CursorSkipStep uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1133,7 +1129,6 @@ type SimpleVolView struct {
 	EnableBitMapAllocator bool
 	TrashCleanDuration    int32
 	TrashCleanMaxCount    int32
-	CursorSkipStep        uint64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1164,13 +1159,12 @@ type VolInfo struct {
 	EnableBitMapAllocator         bool
 	CleanTrashMaxDurationEachTime int32
 	CleanTrashMaxCountEachTime    int32
-	CursorSkipStep                uint64
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,
 	remainingDays uint32, childFileMaxCnt uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
 	trashCleanInterval uint64, enableToken, enableWriteCache bool, batchDelIndeCnt, delInodeInterval uint32,
-	cleanTrashDurationEachTime, cleanTrashCountEachTime int32, enableBitMapAllocator bool, cursorSkipStep uint64) *VolInfo {
+	cleanTrashDurationEachTime, cleanTrashCountEachTime int32, enableBitMapAllocator bool) *VolInfo {
 	var usedRatio float64
 	if totalSize != 0 {
 		usedRatio = float64(usedSize) / float64(totalSize)
@@ -1197,7 +1191,6 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		EnableBitMapAllocator:         enableBitMapAllocator,
 		CleanTrashMaxCountEachTime:    cleanTrashCountEachTime,
 		CleanTrashMaxDurationEachTime: cleanTrashDurationEachTime,
-		CursorSkipStep:                cursorSkipStep,
 	}
 }
 
@@ -1257,7 +1250,6 @@ type RateLimitInfo struct {
 	MetaPartitionMaxDentryCount      uint64
 	TrashCleanDurationEachTime       int32
 	TrashCleanMaxCountEachTime       int32
-	CursorSkipStep                   int64
 }
 
 type ConvertMode uint8

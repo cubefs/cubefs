@@ -2952,7 +2952,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
 	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
 	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod,
-	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool, cursorSkipStep uint64) (err error) {
+	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3087,7 +3087,6 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.TrashCleanInterval = trashCleanInterval
 	vol.BatchDelInodeCnt = batchDelInodeCnt
 	vol.DelInodeInterval = delInodeInterval
-	vol.CursorSkipStep = cursorSkipStep
 	if isSmart && !vol.isSmart {
 		vol.smartEnableTime = time.Now().Unix()
 	}
@@ -3866,11 +3865,6 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, int32(val.(int64)))
 	}
 
-	oldCursorSkipStep := atomic.LoadUint64(&c.cfg.CursorSkipStep)
-	if val, ok := params[proto.CursorSkipStepKey]; ok {
-		atomic.StoreUint64(&c.cfg.CursorSkipStep, val.(uint64))
-	}
-
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3916,7 +3910,6 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.ReuseMPDelInodeCountThreshold = oldReuseMPDelInodeCountThreshold
 		atomic.StoreInt32(&c.cfg.TrashCleanDurationEachTime, oldTrashCleanDuration)
 		atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, oldTrashCleanMaxCount)
-		atomic.StoreUint64(&c.cfg.CursorSkipStep, oldCursorSkipStep)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

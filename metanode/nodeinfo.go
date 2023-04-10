@@ -53,8 +53,6 @@ type NodeInfo struct {
 
 	CleanTrashItemMaxDurationEachTime int32  //min
 	CleanTrashItemMaxCountEachTime    int32
-
-	cursorAddStep uint64
 }
 
 var (
@@ -353,13 +351,6 @@ func (m *MetaNode) getMetaPartitionMaxDentryCount() uint64 {
 	return count
 }
 
-func (m *MetaNode) updateSkipStep(skipStep uint64) {
-	if atomic.LoadUint64(&nodeInfo.cursorAddStep) == skipStep {
-		return
-	}
-	atomic.StoreUint64(&nodeInfo.cursorAddStep, skipStep)
-}
-
 func getGlobalConfNodeInfo() *NodeInfo {
 	newInfo := *nodeInfo
 	return &newInfo
@@ -420,7 +411,6 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
 	m.updateSyncWALOnUnstableEnableState(limitInfo.MetaSyncWALOnUnstableEnableState)
 	m.updateMPReuseConf(limitInfo)
-	m.updateSkipStep(limitInfo.CursorSkipStep)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

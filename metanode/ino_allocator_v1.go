@@ -214,14 +214,3 @@ func (allocator *inoAllocatorV1) GetUsedInosBitMap() []uint64 {
 
 	return allocator.Bits
 }
-
-func (allocator *inoAllocatorV1) CursorAddStep(skipStep uint64) {
-	allocator.mu.Lock()
-	defer allocator.mu.Unlock()
-
-	if allocator.Status == allocatorStatusUnavailable {
-		return
-	}
-
-	allocator.BitCursor = int((uint64(allocator.BitCursor) + skipStep) % allocator.Cnt)
-}
