@@ -750,18 +750,20 @@ func (tm *TransactionManager) txApplyToRM(members string, p *proto.Packet, wg *s
 	var err error
 
 	addrs := strings.Split(members, ",")
+	var newPacket *proto.Packet
 	for _, addr := range addrs {
-		err = tm.sendPacketToMP(addr, p)
+		newPacket = p.GetCopy()
+		err = tm.sendPacketToMP(addr, newPacket)
 		if err != nil {
 			//errorsCh <- err
-			log.LogErrorf("txApplyToRM: apply to %v fail, packet(%v) err(%s) retry another addr", addr, p, err)
+			log.LogErrorf("txApplyToRM: apply to %v fail, packet(%v) err(%s) retry another addr", addr, newPacket, err)
 			continue
 		}
 
-		status := p.ResultCode
+		status := newPacket.ResultCode
 		if status != proto.OpOk {
-			err = errors.New(p.GetResultMsg())
-			log.LogErrorf("txApplyToRM: packet(%v) err(%v) members(%v) retry another addr", p, err, addr)
+			err = errors.New(newPacket.GetResultMsg())
+			log.LogErrorf("txApplyToRM: packet(%v) err(%v) members(%v) retry another addr", newPacket, err, addr)
 			//errorsCh <- err
 		} else {
 			break
@@ -769,11 +771,11 @@ func (tm *TransactionManager) txApplyToRM(members string, p *proto.Packet, wg *s
 	}
 
 	if err != nil {
-		if (p.Opcode == proto.OpTxInodeRollback && p.ResultCode == proto.OpTxRbInodeNotExistErr) ||
-			(p.Opcode == proto.OpTxDentryRollback && p.ResultCode == proto.OpTxRbDentryNotExistErr) {
-			log.LogWarnf("txApplyToRM: rollback item might have not been added before: data: %v", p)
+		if (newPacket.Opcode == proto.OpTxInodeRollback && newPacket.ResultCode == proto.OpTxRbInodeNotExistErr) ||
+			(newPacket.Opcode == proto.OpTxDentryRollback && newPacket.ResultCode == proto.OpTxRbDentryNotExistErr) {
+			log.LogWarnf("txApplyToRM: rollback item might have not been added before: data: %v", newPacket)
 		} else {
-			log.LogErrorf("txApplyToRM: apply failed with members(%v), packet(%v) err(%s)", members, p, err)
+			log.LogErrorf("txApplyToRM: apply failed with members(%v), packet(%v) err(%s)", members, newPacket, err)
 			errorsCh <- err
 		}
 
