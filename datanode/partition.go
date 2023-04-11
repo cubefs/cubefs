@@ -1038,7 +1038,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 
 	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
 
-	log.LogInfof("partition[%v] repaired %v extents, cost %v", validExtentsToBeRepaired, validExtentsToBeRepaired, time.Now().Sub(startTime))
+	log.LogInfof("partition[%v] repaired %v extents, cost %v", dp.partitionID, validExtentsToBeRepaired, time.Now().Sub(startTime))
 }
 
 type TinyDeleteRecord struct {

@@ -331,7 +331,7 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTasks [
 			}
 		}
 		for _, source := range sources {
-			err := dp.streamRepairExtent(ctx, extentInfo, source, NoSkipLimit)
+			err := dp.streamRepairExtent(ctx, extentInfo, source, SkipLimit)
 			if err != nil {
 				err = errors.Trace(err, "DoRepairOnLeaderDisk %v", dp.applyRepairKey(int(extentInfo[storage.FileID])))
 				localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(extentInfo[storage.FileID]))
@@ -534,7 +534,7 @@ func (dp *DataPartition) doStreamExtentFixRepairOnFollowerDisk(ctx context.Conte
 
 	var err error
 	for _, source := range sources {
-		err = dp.streamRepairExtent(ctx, remoteExtentInfo, source, NoSkipLimit)
+		err = dp.streamRepairExtent(ctx, remoteExtentInfo, source, SkipLimit)
 		if err != nil {
 			err = errors.Trace(err, "doStreamExtentFixRepairOnFollowerDisk %v", dp.applyRepairKey(int(remoteExtentInfo[storage.FileID])))
 			localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(remoteExtentInfo[storage.FileID]))
@@ -586,7 +586,10 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 	}
 
 	var localExtentInfo *storage.ExtentInfoBlock
-
+	if !store.IsFinishLoad() {
+		log.LogWarnf("partition(%v) is loading", dp.partitionID)
+		return
+	}
 	if !SkipLimit {
 		if !AutoRepairStatus && !proto.IsTinyExtent(remoteExtentInfo[storage.FileID]) {
 			log.LogWarnf("AutoRepairStatus is False,so cannot AutoRepair extent(%v)", remoteExtentInfo.String())
