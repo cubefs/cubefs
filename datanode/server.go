@@ -78,6 +78,7 @@ const (
 const (
 	ModuleName          = "dataNode"
 	SystemStartTimeFile = "SYS_START_TIME"
+	MAX_OFFSET_OF_TIME  = 5
 )
 
 const (
@@ -283,7 +284,7 @@ func (s *DataNode) parseSysStartTime() (err error) {
 		}
 		log.LogInfof("parseSysStartTime, localSysStart[%d], newSysStart[%d]", localSysStart, newSysStart)
 
-		if newSysStart-localSysStart > 60*5 {
+		if newSysStart-localSysStart > MAX_OFFSET_OF_TIME {
 			maybeServerFaultOccurred = true
 			log.LogWarnf("parseSysStartTime, the program may be started after power off, localSysStart[%d], newSysStart[%d]", localSysStart, newSysStart)
 		} else {

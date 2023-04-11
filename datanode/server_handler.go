@@ -1070,10 +1070,10 @@ func (s *DataNode) resetFaultOccurredCheckLevel(w http.ResponseWriter, r *http.R
 			s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 			return
 		}
-		partition.resetFaultOccurredCheckLevel(checkCorruptLevel)
+		partition.setFaultOccurredCheckLevel(checkCorruptLevel)
 	} else {
 		s.space.RangePartitions(func(partition *DataPartition) bool {
-			partition.resetFaultOccurredCheckLevel(checkCorruptLevel)
+			partition.setFaultOccurredCheckLevel(checkCorruptLevel)
 			return true
 		})
 	}

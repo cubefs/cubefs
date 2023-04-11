@@ -235,6 +235,8 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 		err = nil
 		go disk.autoComputeExtentCrc()
 	}
+	deleteSysStartTimeFile()
+	_ = initSysStartTimeFile()
 	return
 }
 

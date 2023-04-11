@@ -133,22 +133,21 @@ func (dp *DataPartition) startRaft() (err error) {
 		return
 	}
 
-	maxCommitID, err := dp.getQuorumMaxCommitID(context.Background())
+	maxCommitID, err := dp.getMaxCommitID(context.Background())
 	if err != nil {
 		return
 	}
-	log.LogInfof("start partition(%v), maxCommitID(%v)", dp.partitionID, maxCommitID)
 
 	pc := &raftstore.PartitionConfig{
-		ID:                 uint64(dp.partitionID),
+		ID:                 dp.partitionID,
 		Peers:              peers,
 		Learners:           learners,
 		SM:                 dp,
 		WalPath:            dp.path,
 		StartCommit:        maxCommitID,
 		GetStartIndex:      getStartIndex,
-		WALContinuityCheck: dp.isCheckingCommit(),
-		WALContinuityFix:   dp.isCheckingCommit(),
+		WALContinuityCheck: dp.isNeedFaultOccurredCheck(),
+		WALContinuityFix:   dp.isNeedFaultOccurredCheck(),
 	}
 	dp.raftPartition = dp.config.RaftStore.CreatePartition(pc)
 
@@ -159,14 +158,15 @@ func (dp *DataPartition) startRaft() (err error) {
 	return
 }
 
-func (dp *DataPartition) getQuorumMaxCommitID(ctx context.Context) (maxID uint64, err error) {
+func (dp *DataPartition) getMaxCommitID(ctx context.Context) (maxID uint64, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("getQuorumMaxCommitID, partition:%v, error:%v", dp.partitionID, err)
+			log.LogErrorf("getMaxCommitID, partition:%v, error:%v", dp.partitionID, err)
 		}
 	}()
 	minReply := dp.getCommitMinReply()
 	if minReply == 0 {
+		log.LogDebugf("start partition(%v), skip get max commit id", dp.partitionID)
 		return
 	}
 	allRemoteCommitID, replyNum := dp.getRemoteReplicaCommitID(ctx)
@@ -175,6 +175,7 @@ func (dp *DataPartition) getQuorumMaxCommitID(ctx context.Context) (maxID uint64
 		return
 	}
 	maxID, _ = dp.findMaxID(allRemoteCommitID)
+	log.LogInfof("start partition(%v), maxCommitID(%v)", dp.partitionID, maxID)
 	return
 }
 
@@ -1136,7 +1137,7 @@ func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 	return
 }
 
-func (dp *DataPartition) isCheckingCommit() bool {
+func (dp *DataPartition) isNeedFaultOccurredCheck() bool {
 	return dp.serverFaultOccurredCheckLevel == CheckQuorumCommitID || dp.serverFaultOccurredCheckLevel == CheckAllCommitID
 }
 
@@ -1146,8 +1147,6 @@ func (dp *DataPartition) getCommitMinReply() uint8 {
 		return uint8(len(dp.replicas)) - 1
 	case CheckQuorumCommitID:
 		return uint8(len(dp.replicas) / 2)
-	case CheckNothing:
-		return 0
 	default:
 		return 0
 	}

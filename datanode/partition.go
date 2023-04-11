@@ -56,9 +56,10 @@ const (
 type FaultOccurredCheckLevel uint8
 
 const (
-	CheckNothing FaultOccurredCheckLevel = iota // 默认类型，表示partition已经完成断电后防脑裂检查
-	CheckQuorumCommitID
-	CheckAllCommitID // partition尚未完成断电后防脑裂检查
+	CheckNothing FaultOccurredCheckLevel = iota // default value, no need fault occurred check or check finished
+	// CheckQuorumCommitID never persist
+	CheckQuorumCommitID // fetch commit with quorum in fault occurred check
+	CheckAllCommitID    // fetch commit with all in fault occurred check
 )
 
 type DataPartitionMetadata struct {
@@ -363,7 +364,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v)", dp.partitionID, meta)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
 	dp.isCatchUp = meta.IsCatchUp
-	dp.initServerFaultOccurredCheckStatus(meta)
+	dp.loadServerFaultOccurredCheckLevel(meta)
 	if !dp.applyStatus.Init(appliedID, meta.LastTruncateID) {
 		err = fmt.Errorf("action[loadApplyIndex] illegal metadata, appliedID %v, lastTruncateID %v", appliedID, meta.LastTruncateID)
 		return
@@ -378,10 +379,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 
 	dp.persistedApplied = appliedID
 	dp.persistedMetadata = meta
-	if maybeServerFaultOccurred {
-		dp.serverFaultOccurredCheckLevel = CheckAllCommitID
-		_ = dp.PersistMetaDataOnly()
-	}
+	dp.maybeUpdateFaultOccurredCheckLevel()
 	return
 }
 
@@ -389,9 +387,15 @@ const (
 	DelayFullSyncTinyDeleteTimeRandom = 6 * 60 * 60
 )
 
-func (dp *DataPartition) initServerFaultOccurredCheckStatus(meta *DataPartitionMetadata) {
+func (dp *DataPartition) maybeUpdateFaultOccurredCheckLevel() {
+	if maybeServerFaultOccurred {
+		dp.setFaultOccurredCheckLevel(CheckAllCommitID)
+		_ = dp.PersistMetaDataOnly()
+	}
+}
+func (dp *DataPartition) loadServerFaultOccurredCheckLevel(meta *DataPartitionMetadata) {
 	if meta.ServerFaultOccurredCheckStatus == CheckAllCommitID {
-		dp.serverFaultOccurredCheckLevel = CheckAllCommitID
+		dp.setFaultOccurredCheckLevel(CheckAllCommitID)
 	}
 }
 func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool) (dp *DataPartition, err error) {
@@ -1298,7 +1302,7 @@ func (dp *DataPartition) getDataPartitionInfo() (dpInfo *DataPartitionViewInfo, 
 	return
 }
 
-func (dp *DataPartition) resetFaultOccurredCheckLevel(checkCorruptLevel FaultOccurredCheckLevel) {
+func (dp *DataPartition) setFaultOccurredCheckLevel(checkCorruptLevel FaultOccurredCheckLevel) {
 	dp.serverFaultOccurredCheckLevel = checkCorruptLevel
 }
 

@@ -49,7 +49,7 @@ func (dp *DataPartition) Persist(status *WALApplyStatus) (err error) {
 	return
 }
 
-// PersistMetaDataOnly仅持久化DP的META信息(不对LastTruncatedID信息进行变更)
+// PersistMetaDataOnly 仅持久化DP的META信息(不对LastTruncatedID信息进行变更)
 func (dp *DataPartition) PersistMetaDataOnly() (err error) {
 	dp.persistSync <- struct{}{}
 	defer func() {

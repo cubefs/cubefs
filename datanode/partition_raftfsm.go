@@ -183,8 +183,10 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 		}
 		dp.isRaftLeader = true
 	}
-	if dp.isCheckingCommit() {
-		dp.serverFaultOccurredCheckLevel = CheckNothing
+	//If leader changed, that indicates the raft has elected a new leader,
+	//the fault occurred checking to prevent raft brain split is no more needed.
+	if dp.isNeedFaultOccurredCheck() {
+		dp.setFaultOccurredCheckLevel(CheckNothing)
 		_ = dp.PersistMetaDataOnly()
 	}
 }
