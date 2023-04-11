@@ -1647,6 +1647,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("vol capacity can't be zero, %d", req.capacity)
 	}
 
+	if req.size != 0 && req.size <= 10 {
+		return fmt.Errorf("datapartition size must be bigger than 10 G")
+	}
+
 	if proto.IsHot(req.volType) {
 		if req.dpReplicaNum == 0 {
 			req.dpReplicaNum = defaultReplicaNum
