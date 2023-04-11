@@ -263,6 +263,19 @@ func NewPacketReqID() *Packet {
 	return p
 }
 
+func (p *Packet) GetCopy() *Packet {
+	newPacket := NewPacket()
+	newPacket.ReqID = p.ReqID
+	newPacket.Opcode = p.Opcode
+	newPacket.PartitionID = p.PartitionID
+
+	newPacket.Data = make([]byte, p.Size)
+	copy(newPacket.Data[:p.Size], p.Data)
+
+	newPacket.Size = p.Size
+	return newPacket
+}
+
 func (p *Packet) String() string {
 	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg())
 }
