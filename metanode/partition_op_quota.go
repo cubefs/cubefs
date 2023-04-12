@@ -24,7 +24,7 @@ import (
 )
 
 func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaReuqest,
-	resp *proto.BatchSetMetaserverQuotaResponse) (err error) {
+	resp *proto.BatchSetMetaserverQuotaResponse, rootInode bool) (err error) {
 	for _, ino := range req.Inodes {
 		var extend = NewExtend(ino)
 		treeItem := mp.extendTree.Get(extend)
@@ -40,8 +40,7 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 			QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 		}
 		var quotaInfo = &proto.MetaQuotaInfo{
-			RootInode: req.RootInode,
-			Partition: req.PartitionId,
+			RootInode: rootInode,
 			Status:    proto.QuotaInit,
 		}
 
@@ -203,7 +202,7 @@ func (mp *metaPartition) setSubQuota(parentInode uint64, quotaId uint32, quotaIn
 	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
 		if j >= maxReqCount {
 			j = 0
-			mp.batchSetSubInodeQuotaToMetaNode(inodes, quotaId, quotaInfo.RootInode)
+			mp.batchSetSubInodeQuotaToMetaNode(inodes, quotaId)
 			inodes = inodes[0:0]
 		}
 
@@ -213,7 +212,7 @@ func (mp *metaPartition) setSubQuota(parentInode uint64, quotaId uint32, quotaIn
 		return true
 	})
 	if len(inodes) != 0 {
-		mp.batchSetSubInodeQuotaToMetaNode(inodes, quotaId, quotaInfo.RootInode)
+		mp.batchSetSubInodeQuotaToMetaNode(inodes, quotaId)
 	}
 
 	quotaInfo.SetStatus(proto.QuotaComplete)
@@ -286,7 +285,7 @@ func (mp *metaPartition) deleteSubQuota(parentInode uint64, quotaId uint32, quot
 	return
 }
 
-func (mp *metaPartition) batchSetSubInodeQuotaToMetaNode(inodes []uint64, quotaId uint32, rootInode uint64) {
+func (mp *metaPartition) batchSetSubInodeQuotaToMetaNode(inodes []uint64, quotaId uint32) {
 	masters := masterClient.Nodes()
 	var metaConfig = &meta.MetaConfig{
 		Volume:  mp.config.VolName,
@@ -299,7 +298,7 @@ func (mp *metaPartition) batchSetSubInodeQuotaToMetaNode(inodes []uint64, quotaI
 		return
 	}
 
-	metaWrapper.BatchSetInodeQuota_ll(inodes, quotaId, rootInode)
+	metaWrapper.BatchSetInodeQuota_ll(inodes, quotaId)
 	return
 }
 
@@ -515,8 +514,7 @@ func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
 	}
 	for _, quotaId := range quotaIds {
 		var quotaInfo = &proto.MetaQuotaInfo{
-			RootInode: inode,
-			Partition: mp.config.PartitionId,
+			RootInode: false,
 			Status:    proto.QuotaComplete,
 		}
 		quotaInfos.QuotaInfoMap[quotaId] = quotaInfo

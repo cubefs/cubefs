@@ -1954,7 +1954,7 @@ func (m *metadataManager) OpMasterSetInodeQuota(conn net.Conn, p *Packet, remote
 		PartitionId: req.PartitionId,
 		QuotaId:     req.QuotaId,
 	}
-	err = mp.batchSetInodeQuota(req, resp)
+	err = mp.batchSetInodeQuota(req, resp, true)
 	adminTask.Response = resp
 	adminTask.Request = nil
 	_ = m.respondToMaster(adminTask)
@@ -2029,7 +2029,7 @@ func (m *metadataManager) opMetaBatchSetInodeQuota(conn net.Conn, p *Packet, rem
 		PartitionId: req.PartitionId,
 		QuotaId:     req.QuotaId,
 	}
-	err = mp.batchSetInodeQuota(req, resp)
+	err = mp.batchSetInodeQuota(req, resp, false)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
