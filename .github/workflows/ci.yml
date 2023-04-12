@@ -24,6 +24,10 @@ jobs:
   ci-tests:
     runs-on: ubuntu-latest
     steps:
+      - name: Set up Go Version 1.17.x
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.17
       - name: Checkout repo
         uses: actions/checkout@v3
       - name: Check gofmt
