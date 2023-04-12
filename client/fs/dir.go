@@ -383,8 +383,12 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		stat.EndStat("ReadDirLimit", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-
-	dirCtx := d.dctx.GetCopy(req.Handle)
+	var dirCtx DirContext
+	if req.Offset != 0 {
+		dirCtx = d.dctx.GetCopy(req.Handle)
+	} else {
+		dirCtx = DirContext{}
+	}
 	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
 	if err != nil {
 		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v)", d.info.Inode, err)
