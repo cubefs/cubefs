@@ -112,7 +112,6 @@ func (mqMgr *MetaQuotaManager) setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo)
 	mqMgr.rwlock.Lock()
 	defer mqMgr.rwlock.Unlock()
 
-	//mqMgr.limitedMap = new(sync.Map)
 	for _, info := range infos {
 		if mqMgr.volName != info.VolName {
 			continue

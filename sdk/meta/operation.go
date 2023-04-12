@@ -2212,7 +2212,7 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 	return nil
 }
 
-func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32, rootInode uint64) {
+func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32) {
 	defer wg.Done()
 	var err error
 	bgTime := stat.BeginStat()
@@ -2224,7 +2224,6 @@ func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition,
 		PartitionId: mp.PartitionID,
 		Inodes:      inodes,
 		QuotaId:     quotaId,
-		RootInode:   rootInode,
 	}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaBatchSetInodeQuota

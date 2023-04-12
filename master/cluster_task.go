@@ -1177,7 +1177,7 @@ func (c *Cluster) dealDeleteMetaserverQuotaResponse(nodeAddr string, resp *proto
 	metadata.Op = opSyncDeleteQuota
 	metadata.K = quotaPrefix + strconv.FormatUint(vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(resp.QuotaId), 10)
 	metadata.V = value
-	log.LogInfof("hytemp dealSetMetaserverQuotaResponse op [%v] k [%v]", metadata.Op, metadata.K)
+
 	if err = c.submit(metadata); err != nil {
 		log.LogErrorf("delete quota [%v] submit fail [%v].", quotaInfo, err)
 		return
