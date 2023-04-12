@@ -765,7 +765,6 @@ type BatchSetMetaserverQuotaReuqest struct {
 	PartitionId uint64   `json:"pid"`
 	Inodes      []uint64 `json:"ino"`
 	QuotaId     uint32   `json:"qid"`
-	RootInode   uint64   `json:"rino"`
 }
 
 type BatchSetMetaserverQuotaResponse struct {

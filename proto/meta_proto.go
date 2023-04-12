@@ -119,9 +119,9 @@ type MetaQuotaInfos struct {
 }
 
 type MetaQuotaInfo struct {
-	RootInode uint64
-	Partition uint64
-	Status    QuotaStatus
+	RootInode bool
+	//Partition uint64
+	Status QuotaStatus
 }
 
 func (quotaInfo *MetaQuotaInfo) SetStatus(status QuotaStatus) {

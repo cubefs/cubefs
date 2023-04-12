@@ -83,6 +83,9 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	mp.config.Peers = mConf.Peers
 	mp.config.Cursor = mp.config.Start
 
+	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
+	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
+
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return

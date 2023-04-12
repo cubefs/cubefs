@@ -193,7 +193,7 @@ func newQuotaDelete(client *master.MasterClient) *cobra.Command {
 				stdout("volName %v quotaId %v quota delete failed(%v)\n", volName, quotaId, err)
 				return
 			}
-			stdout("volName %v quotaId %v err %v.\n", volName, quotaId, err)
+			stdout("deleteQuota: volName %v quotaId %v success.\n", volName, quotaId)
 		},
 	}
 	return cmd
@@ -228,7 +228,15 @@ func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			for quotaId, quotaInfo := range quotaInfos {
-				stdout("quotaId [%v] quotaInfo [%v]\n", quotaId, quotaInfo)
+				var status string
+				if quotaInfo.Status == proto.QuotaInit {
+					status = "Init"
+				} else if quotaInfo.Status == proto.QuotaComplete {
+					status = "Complete"
+				} else {
+					status = "Deleting"
+				}
+				stdout("quotaId [%v] rootInode [%v]  status [%v]\n", quotaId, quotaInfo.RootInode, status)
 			}
 		},
 	}

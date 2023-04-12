@@ -603,7 +603,7 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 			return nil, syscall.ENOENT
 		}
 		for _, info := range quotaInfos {
-			if info.RootInode == inode {
+			if info.RootInode {
 				log.LogErrorf("can not remove quota Root inode equal inode [%v]", inode)
 				return nil, syscall.EACCES
 			}
@@ -826,7 +826,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	for _, info := range quotaInfos {
-		if info.RootInode == inode {
+		if info.RootInode {
 			log.LogErrorf("can not rename quota Root inode equal inode [%v]", inode)
 			return syscall.EACCES
 		}
@@ -952,7 +952,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 	for quotaId, info := range destQuotaInfos {
 		log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
-		mw.BatchSetInodeQuota_ll(inodes, quotaId, info.RootInode)
+		mw.BatchSetInodeQuota_ll(inodes, quotaId)
 	}
 
 	return nil
@@ -1890,7 +1890,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	}
 }
 
-func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32, rootInode uint64) {
+func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32) {
 	var wg sync.WaitGroup
 
 	batchInodeMap := make(map[uint64][]uint64)
@@ -1908,7 +1908,7 @@ func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32, ro
 	for id, inos := range batchInodeMap {
 		mp := mw.getPartitionByID(id)
 		wg.Add(1)
-		go mw.batchSetInodeQuota(&wg, mp, inos, quotaId, rootInode)
+		go mw.batchSetInodeQuota(&wg, mp, inos, quotaId)
 	}
 
 	wg.Wait()

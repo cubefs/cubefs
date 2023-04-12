@@ -83,7 +83,6 @@ func (mqMgr *MasterQuotaManager) setQuota(req *proto.SetMasterQuotaReuqest) (err
 		PartitionId: req.PartitionId,
 		Inodes:      inodes,
 		QuotaId:     quotaId,
-		RootInode:   req.Inode,
 	}
 
 	if err = mqMgr.setQuotaToMetaNode(request); err != nil {

@@ -423,7 +423,7 @@ type OpQuota interface {
 	setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo)
 	getQuotaReportInfos() (infos []*proto.QuotaReportInfo)
 	batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaReuqest,
-		resp *proto.BatchSetMetaserverQuotaResponse) (err error)
+		resp *proto.BatchSetMetaserverQuotaResponse, rootInode bool) (err error)
 	batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQuotaReuqest,
 		resp *proto.BatchDeleteMetaserverQuotaResponse) (err error)
 	getInodeQuota(inode uint64, p *Packet) (err error)
@@ -724,8 +724,6 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		extReset:      make(chan struct{}),
 		vol:           NewVol(),
 		manager:       manager,
-		uidManager:    NewUidMgr(conf.VolName, conf.PartitionId),
-		mqMgr:         NewQuotaManager(conf.VolName, conf.PartitionId),
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp
