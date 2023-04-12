@@ -117,4 +117,6 @@ func addCmdChunk(cmd *grumble.Command) {
 			return nil
 		},
 	})
+
+	addCmdChunkDump(chunkCommand)
 }
