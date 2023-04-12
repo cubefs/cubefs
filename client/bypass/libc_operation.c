@@ -49,6 +49,7 @@ static fstat_t func_fstat;
 static fstat64_t func_fstat64;
 static fstatat_t func_fstatat;
 static fstatat64_t func_fstatat64;
+static statx_t func_statx;
 static fchmod_t func_fchmod;
 static fchmodat_t func_fchmodat;
 static lchown_t func_lchown;
@@ -335,6 +336,13 @@ int libc_fstatat64(int ver, int dirfd, const char *pathname, struct stat64 *stat
         func_fstatat64 = (fstatat64_t)dlsym(RTLD_NEXT, "__fxstatat64");
     }
     return func_fstatat64(ver, dirfd, pathname, statbuf, flags);
+}
+
+int libc_statx(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf) {
+    if(func_statx == NULL) {
+        func_statx = (statx_t)dlsym(RTLD_NEXT, "statx");
+    }
+    return func_statx(dirfd, pathname, flags, mask, statxbuf);
 }
 
 int libc_fchmod(int fd, mode_t mode) {

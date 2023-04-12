@@ -44,6 +44,7 @@ static fstat_t real_fstat;
 static fstat64_t real_fstat64;
 static fstatat_t real_fstatat;
 static fstatat64_t real_fstatat64;
+static statx_t real_statx;
 static fchmod_t real_fchmod;
 static fchmodat_t real_fchmodat;
 static lchown_t real_lchown;
