@@ -391,8 +391,39 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	}
 	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
 	if err != nil {
-		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v)", d.info.Inode, err)
+		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v) offset %v", d.info.Inode, err, req.Offset)
 		return make([]fuse.Dirent, 0), ParseError(err)
+	}
+
+	if req.Offset == 0 {
+		children = append([]proto.Dentry{{
+			Name:  ".",
+			Inode: d.info.Inode,
+			Type:  uint32(os.ModeDir),
+		}, {
+			Name:  "..",
+			Inode: uint64(req.Pid),
+			Type:  uint32(os.ModeDir),
+		}}, children...)
+
+		if len(children) == 2 {
+			dirents := make([]fuse.Dirent, 0, len(children))
+			dirents = append(dirents, fuse.Dirent{
+				Inode: d.info.Inode,
+				Type:  fuse.DT_Dir,
+				Name:  ".",
+			})
+			pid := uint64(req.Pid)
+			if d.info.Inode == 1 {
+				pid = d.info.Inode
+			}
+			dirents = append(dirents, fuse.Dirent{
+				Inode: pid,
+				Type:  fuse.DT_Dir,
+				Name:  "..",
+			})
+			return dirents, io.EOF
+		}
 	}
 
 	// skip the first one, which is already accessed
