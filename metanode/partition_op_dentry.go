@@ -28,7 +28,7 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
-	txInfo := req.TxInfo.Copy()
+	txInfo := req.TxInfo.GetCopy()
 	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
 		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 		txInfo.TmID = int64(mp.config.PartitionId)
@@ -120,7 +120,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 }
 
 func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet) (err error) {
-	txInfo := req.TxInfo.Copy()
+	txInfo := req.TxInfo.GetCopy()
 	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
 		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 		txInfo.TmID = int64(mp.config.PartitionId)
@@ -278,7 +278,7 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		return
 	}
 
-	txInfo := req.TxInfo.Copy()
+	txInfo := req.TxInfo.GetCopy()
 	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
 		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 		txInfo.TmID = int64(mp.config.PartitionId)

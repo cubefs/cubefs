@@ -49,8 +49,8 @@ func extractTxTimeout(r *http.Request) (timeout uint32, err error) {
 	if txTimeout, err = extractUint64WithDefault(r, txTimeoutKey, proto.DefaultTransactionTimeout); err != nil {
 		return
 	}
-	if txTimeout == 0 {
-		return timeout, fmt.Errorf("txTimeout(%d) must be larger than 0", txTimeout)
+	if txTimeout == 0 || txTimeout > 60 {
+		return timeout, fmt.Errorf("txTimeout(%d) value range (0-60] seconds", txTimeout)
 	}
 	timeout = uint32(txTimeout)
 	return timeout, nil
@@ -85,6 +85,21 @@ func extractTxTimeout(r *http.Request) (timeout uint32, err error) {
 //
 //	return
 //}
+
+func hasTxParams(r *http.Request) bool {
+	var (
+		maskStr    string
+		timeoutStr string
+	)
+	if maskStr = r.FormValue(enableTxMaskKey); maskStr != "" {
+		return true
+	}
+
+	if timeoutStr = r.FormValue(txTimeoutKey); timeoutStr != "" {
+		return true
+	}
+	return false
+}
 
 func parseTxMask(r *http.Request, oldMask uint8) (mask uint8, err error) {
 

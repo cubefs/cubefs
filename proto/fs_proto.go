@@ -205,8 +205,10 @@ type TxInodeApplyRequest struct {
 }
 
 type TxDentryApplyRequest struct {
-	TxID        string `json:"txid"`
-	DenKey      string `json:"denkey"`
+	TxID string `json:"txid"`
+	//DenKey      string `json:"denkey"`
+	Pid         uint64 `json:"pid"`
+	Name        string `json:"name"`
 	TxApplyType int    `json:"type"`
 }
 

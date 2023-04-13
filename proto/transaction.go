@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"github.com/cubefs/cubefs/util/btree"
 	"io"
 	"strconv"
 	"strings"
@@ -424,6 +425,24 @@ type TransactionInfo struct {
 	TxDentryInfos map[string]*TxDentryInfo
 }
 
+// Less tests whether the current TransactionInfo item is less than the given one.
+// This method is necessary fot B-Tree item implementation.
+func (txInfo *TransactionInfo) Less(than btree.Item) bool {
+	ti, ok := than.(*TransactionInfo)
+	return ok && txInfo.TxID < ti.TxID
+}
+
+// Copy returns a copy of the inode.
+func (txInfo *TransactionInfo) Copy() btree.Item {
+	return txInfo.GetCopy()
+}
+
+func NewTxInfoBItem(txId string) *TransactionInfo {
+	return &TransactionInfo{
+		TxID: txId,
+	}
+}
+
 func NewTransactionInfo(timeout uint32, txType uint32) *TransactionInfo {
 	return &TransactionInfo{
 		Timeout:       timeout,
@@ -449,7 +468,7 @@ func (txInfo *TransactionInfo) String() string {
 	return string(data)
 }
 
-func (txInfo *TransactionInfo) Copy() *TransactionInfo {
+func (txInfo *TransactionInfo) GetCopy() *TransactionInfo {
 	newInfo := NewTransactionInfo(txInfo.Timeout, txInfo.TxType)
 	newInfo.TxID = txInfo.TxID
 	//newInfo.TxType = txInfo.TxType
