@@ -38,8 +38,10 @@ var (
 // Create multipart upload
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html
 func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -58,10 +60,9 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("createMultipleUploadHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -155,17 +156,12 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 // Uploads a part in a multipart upload.
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html .
 func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
-
 	var (
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	// check args
@@ -198,10 +194,9 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("uploadPartHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -237,7 +232,6 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 // Uploads a part in a multipart upload by copying a existed object.
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html .
 func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Request) {
-
 	var (
 		err       error
 		errorCode *ErrorCode
@@ -350,22 +344,15 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 // List parts
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
 func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("listPartsHandler: list parts, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
-
 	var (
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	// get upload id and part number
 	uploadId := param.GetVar(ParamUploadId)
 	maxParts := param.GetVar(ParamMaxParts)
@@ -376,7 +363,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 
 	if uploadId == "" {
 		log.LogErrorf("listPartsHandler: illegal update ID, requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InvalidArgument.ServeResponse(w, r)
+		errorCode = InvalidArgument
 		return
 	}
 
@@ -386,7 +373,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		maxPartsInt, err = strconv.ParseUint(maxParts, 10, 64)
 		if err != nil {
 			log.LogErrorf("listPartsHandler: parse max parts fail, requestID(%v) raw(%v) err(%v)", GetRequestID(r), maxParts, err)
-			_ = InvalidArgument.ServeResponse(w, r)
+			errorCode = InvalidArgument
 			return
 		}
 		if maxPartsInt > MaxParts {
@@ -397,7 +384,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		res, err := strconv.ParseUint(partNoMarker, 10, 64)
 		if err != nil {
 			log.LogErrorf("listPatsHandler: parse part number marker fail, requestID(%v) raw(%v) err(%v)", GetRequestID(r), partNoMarker, err)
-			_ = InvalidArgument.ServeResponse(w, r)
+			errorCode = InvalidArgument
 			return
 		}
 		partNoMarkerInt = res
@@ -413,10 +400,9 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("listPartsHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -540,22 +526,15 @@ func (o *ObjectNode) checkReqParts(reqParts *CompleteMultipartUploadRequest, mul
 // Complete multipart
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html
 func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("completeMultipartUploadHandler: complete multiple upload, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
-
 	var (
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	// get upload id and part number
 	uploadId := param.GetVar(ParamUploadId)
 	if uploadId == "" {
@@ -578,10 +557,9 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("completeMultipartUploadHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -692,23 +670,16 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 // Abort multipart
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html .
 func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("abortMultipartUploadHandler: abort multiple upload, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
-
 	var (
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	// check args
 	var param = ParseRequestParam(r)
-
 	uploadId := param.GetVar(ParamUploadId)
 	if uploadId == "" {
 		errorCode = InvalidArgument
@@ -724,10 +695,9 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("abortMultipartUploadHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -744,7 +714,6 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 		return
 	}
 	log.LogDebugf("abortMultipartUploadHandler: Volume abort multipart, requestID(%v) uploadID(%v) path(%v)", GetRequestID(r), uploadId, param.Object())
-	//errorCode = NoContent
 	w.WriteHeader(http.StatusNoContent)
 	return
 }
@@ -752,22 +721,15 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 // List multipart uploads
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html
 func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("listMultipartUploadsHandler: list multipart uploads, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
-
 	var (
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	// get list uploads parameter
 	prefix := param.GetVar(ParamPrefix)
 	keyMarker := param.GetVar(ParamKeyMarker)
@@ -782,7 +744,7 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 		maxUploadsInt, err = strconv.ParseUint(maxUploads, 10, 64)
 		if err != nil {
 			log.LogErrorf("listMultipartUploadsHandler: parse max uploads option fail: requestID(%v), err(%v)", GetRequestID(r), err)
-			_ = InvalidArgument.ServeResponse(w, r)
+			errorCode = InvalidArgument
 			return
 		}
 		if maxUploadsInt > MaxUploads {
@@ -796,10 +758,9 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("listMultipartUploadsHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 

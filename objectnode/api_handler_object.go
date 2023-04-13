@@ -46,17 +46,12 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		err       error
 		errorCode *ErrorCode
 	)
-
 	var startGet = time.Now()
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -66,10 +61,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getObjectHandler: load volume fail: requestID(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = NoSuchBucket
 		return
 	}
 	// parse http range option
@@ -358,10 +352,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	// check args
@@ -376,10 +367,9 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("headObjectHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -533,10 +523,9 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectsHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -1337,21 +1326,15 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 // Delete object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html .
 func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request) {
-
 	var (
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1362,10 +1345,9 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -1442,16 +1424,11 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1462,10 +1439,9 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("putObjectTaggingHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -1508,7 +1484,6 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
-
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1543,7 +1518,6 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
-
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1565,20 +1539,20 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	}
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
-		_ = ErrorCode{
+		errorCode = &ErrorCode{
 			ErrorCode:    "BadRequest",
 			ErrorMessage: err.Error(),
 			StatusCode:   http.StatusBadRequest,
-		}.ServeResponse(w, r)
+		}
 		return
 	}
 	var putXAttrRequest = PutXAttrRequest{}
 	if err = xml.Unmarshal(requestBody, &putXAttrRequest); err != nil {
-		_ = ErrorCode{
+		errorCode = &ErrorCode{
 			ErrorCode:    "BadRequest",
 			ErrorMessage: err.Error(),
 			StatusCode:   http.StatusBadRequest,
-		}.ServeResponse(w, r)
+		}
 		return
 	}
 	var key, value = putXAttrRequest.XAttr.Key, putXAttrRequest.XAttr.Value
@@ -1603,7 +1577,6 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
-
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1661,10 +1634,10 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
-
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
+
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
@@ -1703,10 +1676,10 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
-
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
+
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
@@ -1719,7 +1692,7 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(param.Object()) == 0 {
-		_ = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 
