@@ -1586,10 +1586,10 @@ func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err e
 }
 
 func parseSetConfigParam(r *http.Request) (key string, value string, err error) {
+
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-
 	if value = r.FormValue(cfgmetaPartitionInodeIdStep); value == "" {
 		err = keyNotFound("config")
 		return
@@ -1720,4 +1720,17 @@ func extractInodeId(r *http.Request) (inode uint64, err error) {
 		return
 	}
 	return strconv.ParseUint(value, 10, 64)
+}
+
+func parseRequestToUpdateDecommissionDiskFactor(r *http.Request) (factor float64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	var value string
+	if value = r.FormValue(decommissionDiskFactor); value == "" {
+		err = keyNotFound(decommissionDiskFactor)
+		return
+	}
+	return strconv.ParseFloat(value, 64)
 }
