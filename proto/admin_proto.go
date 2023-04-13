@@ -65,6 +65,9 @@ const (
 	AdminUpdateDecommissionLimit              = "/admin/updateDecommissionLimit"
 	AdminQueryDecommissionLimit               = "/admin/queryDecommissionLimit"
 	AdminQueryDecommissionToken               = "/admin/queryDecommissionToken"
+	AdminSetFileStats                         = "/admin/setFileStatsEnable"
+	AdminGetFileStats                         = "/admin/getFileStatsEnable"
+
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -415,6 +418,7 @@ type HeartBeatRequest struct {
 	MasterAddr string
 	FLReadVols []string
 	QosToDataNode
+	FileStatsEnable bool
 }
 
 // PartitionReport defines the partition report.

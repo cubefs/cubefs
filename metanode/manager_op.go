@@ -69,6 +69,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			resp.Result = err.Error()
 			goto end
 		}
+		m.fileStatsEnable = req.FileStatsEnable
 		// collect memory info
 		resp.Total = configTotalMem
 		resp.Used, err = util.GetProcessMemory(os.Getpid())

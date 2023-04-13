@@ -50,6 +50,7 @@ type clusterValue struct {
 	DirChildrenNumLimit         uint32
 	DecommissionLimit           uint64
 	CheckDataReplicasEnable     bool
+	FileStatsEnable             bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -70,6 +71,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DirChildrenNumLimit:         c.cfg.DirChildrenNumLimit,
 		DecommissionLimit:           c.DecommissionLimit,
 		CheckDataReplicasEnable:     c.checkDataReplicasEnable,
+		FileStatsEnable:             c.fileStatsEnable,
 	}
 	return cv
 }
@@ -873,6 +875,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.diskQosEnable = cv.DiskQosEnable
 		c.cfg.QosMasterAcceptLimit = cv.QosLimitUpload
 		c.DecommissionLimit = cv.DecommissionLimit //dont update nodesets limit for nodesets are not loaded
+		c.fileStatsEnable = cv.FileStatsEnable
 
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt

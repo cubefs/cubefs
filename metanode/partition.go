@@ -246,6 +246,7 @@ type metaPartition struct {
 	volType                int
 	isFollowerRead         bool
 	xattrLock              sync.Mutex
+	fileRange              []int64
 }
 
 func (mp *metaPartition) updateSize() {
@@ -342,7 +343,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 			mp.config.PartitionId, err.Error())
 		return
 	}
-	mp.startSchedule(mp.applyID)
+	mp.startScheduleTask()
 	if err = mp.startFreeList(); err != nil {
 		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
 			mp.config.PartitionId, err.Error())
@@ -400,6 +401,11 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 	return
+}
+
+func (mp *metaPartition) startScheduleTask() {
+	mp.startSchedule(mp.applyID)
+	mp.startFileStats()
 }
 
 func (mp *metaPartition) onStop() {
@@ -814,7 +820,6 @@ func (mp *metaPartition) Reset() (err error) {
 	return
 }
 
-//
 func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.MetaPartitionInfo
 	if partition, err = masterClient.ClientAPI().GetMetaPartition(mp.config.PartitionId); err != nil {

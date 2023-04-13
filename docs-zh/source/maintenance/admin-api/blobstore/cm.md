@@ -101,11 +101,11 @@ curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1, "host"
 
 **参数列表**
 
-| 参数        | 类型   | 描述                               |
-| ----------- | ------ | ---------------------------------- |
-| peer_id     | uint64 | raft节点id，不可重复               |
-| host        | string | raft地址                          |
-| node_host        | string | 服务地址                           |
+| 参数          | 类型     | 描述                       |
+|-------------|--------|--------------------------|
+| peer_id     | uint64 | raft节点id，不可重复            |
+| host        | string | raft地址                   |
+| node_host   | string | 服务地址                     |
 | member_type | uint8  | 节点类型，1表示leaner，2表示normal |
 
 ### 节点移除
@@ -118,8 +118,8 @@ curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1}' "http
 
 **参数列表**
 
-| 参数    | 类型   | 描述                 |
-| ------- | ------ | -------------------- |
+| 参数      | 类型     | 描述            |
+|---------|--------|---------------|
 | peer_id | uint64 | raft节点id，不可重复 |
 
 
@@ -133,8 +133,8 @@ curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1}' "http
 
 **参数列表**
 
-| 参数    | 类型   | 描述                 |
-| ------- | ------ | -------------------- |
+| 参数      | 类型     | 描述            |
+|---------|--------|---------------|
 | peer_id | uint64 | raft节点id，不可重复 |
 
 ## 磁盘管理
@@ -147,8 +147,8 @@ curl "http://127.0.0.1:9998/disk/info?disk_id=1"
 
 **参数列表**
 
-| 参数    | 类型   | 描述   |
-| ------- | ------ | ------ |
+| 参数      | 类型     | 描述   |
+|---------|--------|------|
 | disk_id | uint32 | 磁盘id |
 
 **响应示例**
@@ -180,18 +180,18 @@ curl "http://127.0.0.1:9998/disk/info?disk_id=1"
 curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"status":2}' "http://127.0.0.1:9998/disk/set"
 ```
 
-| 参数    | 类型   | 描述                                   |
-| ------- | ------ | -------------------------------------- |
-| disk_id | uint32 | 磁盘id                                 |
+| 参数      | 类型     | 描述                  |
+|---------|--------|---------------------|
+| disk_id | uint32 | 磁盘id                |
 | status  | uint8  | 磁盘状态只能从小到大，数值描述参考下表 |
 
-| 磁盘状态数值 | 说明              |
-| ------------ | ----------------- |
-| 1            | normal 正常       |
-| 2            | broken 坏盘状态   |
-| 3            | repairing 修复中  |
-| 4            | repaired 修复完成 |
-| 5            | dropped 下线完成  |
+| 磁盘状态数值 | 说明            |
+|--------|---------------|
+| 1      | normal 正常     |
+| 2      | broken 坏盘状态   |
+| 3      | repairing 修复中 |
+| 4      | repaired 修复完成 |
+| 5      | dropped 下线完成  |
 
 ### 设置磁盘读写
 
@@ -203,10 +203,18 @@ curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"readonl
 
 **参数列表**
 
-| 参数     | 类型   | 描述                                  |
-| -------- | ------ | ------------------------------------- |
-| disk_id  | uint32 | 磁盘id                                |
+| 参数       | 类型     | 描述                      |
+|----------|--------|-------------------------|
+| disk_id  | uint32 | 磁盘id                    |
 | readonly | bool   | 是否只读，true表示只读，false表示可写 |
+
+### 设置磁盘下线
+
+对于机器或者磁盘过保的场景，我们可以设置磁盘下线进行数据迁移，迁移时会优先读取下线磁盘数据，如果读取失败则走修复读流程
+
+```bash
+curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2}' "http://127.0.0.1:9998/disk/drop"
+```
 
 ## 卷管理
 
@@ -220,9 +228,9 @@ curl "http://127.0.0.1:9998/volume/get?vid=1"
 
 **参数列表**
 
-| 参数 | 类型   | 描述 |
-| ---- | ------ | ---- |
-| vid  | uint32 | 卷id |
+| 参数  | 类型     | 描述  |
+|-----|--------|-----|
+| vid | uint32 | 卷id |
 
 **响应示例**
 
@@ -254,14 +262,14 @@ curl "http://127.0.0.1:9998/volume/get?vid=1"
 
 ## 后台任务
 
-| 任务类型(type) | 任务名(key)  | 开关(value) |
-| -------------- | ------------ | ----------- |
-| 磁盘修复       | disk_repair  | true/false  |
-| 数据均衡       | balance      | true/false  |
-| 磁盘下线       | disk_drop    | true/false  |
-| 数据删除       | blob_delete  | true/false  |
-| 数据修补       | shard_repair | true/false  |
-| 数据巡检       | vol_inspect  | true/false  |
+| 任务类型(type) | 任务名(key)     | 开关(value)  |
+|------------|--------------|------------|
+| 磁盘修复       | disk_repair  | true/false |
+| 数据均衡       | balance      | true/false |
+| 磁盘下线       | disk_drop    | true/false |
+| 数据删除       | blob_delete  | true/false |
+| 数据修补       | shard_repair | true/false |
+| 数据巡检       | vol_inspect  | true/false |
 
 查看任务状态
 

@@ -1647,6 +1647,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("vol capacity can't be zero, %d", req.capacity)
 	}
 
+	if req.size != 0 && req.size <= 10 {
+		return fmt.Errorf("datapartition size must be bigger than 10 G")
+	}
+
 	if proto.IsHot(req.volType) {
 		if req.dpReplicaNum == 0 {
 			req.dpReplicaNum = defaultReplicaNum
@@ -4212,4 +4216,31 @@ func (m *Server) setCheckDataReplicasEnable(w http.ResponseWriter, r *http.Reque
 	log.LogInfof("action[setCheckDataReplicasEnable] enable be set [%v]", enable)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
 		"set checkDataReplicasEnable to [%v] successfully", enable)))
+}
+
+func (m *Server) setFileStats(w http.ResponseWriter, r *http.Request) {
+	var (
+		err    error
+		enable bool
+	)
+	if enable, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	oldValue := m.cluster.fileStatsEnable
+	m.cluster.fileStatsEnable = enable
+	if err = m.cluster.syncPutCluster(); err != nil {
+		m.cluster.fileStatsEnable = oldValue
+		log.LogErrorf("action[setFileStats] syncPutCluster failed %v", err)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
+		return
+	}
+	log.LogInfof("action[setFileStats] enable be set [%v]", enable)
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"set setFileStats to [%v] successfully", enable)))
+}
+
+func (m *Server) getFileStats(w http.ResponseWriter, r *http.Request) {
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"getFileStats enable value [%v]", m.cluster.fileStatsEnable)))
 }

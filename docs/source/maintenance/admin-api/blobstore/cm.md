@@ -180,18 +180,18 @@ curl "http://127.0.0.1:9998/disk/info?disk_id=1"
 curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"status":2}' "http://127.0.0.1:9998/disk/set"
 ```
 
-| Parameter | Type   | Description |
-| --------- | ------ | ----------- |
-| disk_id   | uint32 | Disk ID     |
+| Parameter | Type   | Description                                                                            |
+|-----------|--------|----------------------------------------------------------------------------------------|
+| disk_id   | uint32 | Disk ID                                                                                |
 | status    | uint8  | Disk status can only be increased, numerical description refers to the following table |
 
-| Disk Status Value | Description         |
-| ----------------- | ------------------- |
-| 1                 | normal              |
-| 2                 | broken              |
-| 3                 | repairing           |
-| 4                 | repaired            |
-| 5                 | dropped             |
+| Disk Status Value | Description |
+|-------------------|-------------|
+| 1                 | normal      |
+| 2                 | broken      |
+| 3                 | repairing   |
+| 4                 | repaired    |
+| 5                 | dropped     |
 
 ### Set Disk Read and Write
 
@@ -207,6 +207,14 @@ curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"readonl
 |-----------|--------|-----------------------------------------------------------------------|
 | disk_id   | uint32 | Disk ID                                                               |
 | readonly  | bool   | Whether it is read-only, true means read-only, false means read-write |
+
+### Set Disk Drop
+
+For the scenario where the machine or disk is over-protected, we can set the disk drop for data migration. During the migration, the offline disk data will be read first. If the reading fails, the recovery and reading process will be followed.
+
+```bash
+curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2}' "http://127.0.0.1:9998/disk/drop"
+```
 
 ## Volume Management
 
