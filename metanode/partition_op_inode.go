@@ -155,7 +155,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 
 func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error) {
 
-	txInfo := req.TxInfo.Copy()
+	txInfo := req.TxInfo.GetCopy()
 	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
 		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 		txInfo.TmID = int64(mp.config.PartitionId)
@@ -358,7 +358,7 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 }
 
 func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet) (err error) {
-	txInfo := req.TxInfo.Copy()
+	txInfo := req.TxInfo.GetCopy()
 	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
 		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 		txInfo.TmID = int64(mp.config.PartitionId)
@@ -601,7 +601,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 		return
 	}
 
-	txInfo := req.TxInfo.Copy()
+	txInfo := req.TxInfo.GetCopy()
 	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
 		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 		txInfo.TmID = int64(mp.config.PartitionId)

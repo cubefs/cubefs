@@ -125,16 +125,19 @@ type fileData struct {
 
 // MetaItemIterator defines the iterator of the MetaItem.
 type MetaItemIterator struct {
-	fileRootDir        string
-	applyID            uint64
-	txId               uint64
-	inodeTree          *BTree
-	dentryTree         *BTree
-	extendTree         *BTree
-	multipartTree      *BTree
-	transactions       map[string]*proto.TransactionInfo
-	txRollbackInodes   map[uint64]*TxRollbackInode
-	txRollbackDentries map[string]*TxRollbackDentry
+	fileRootDir   string
+	applyID       uint64
+	txId          uint64
+	inodeTree     *BTree
+	dentryTree    *BTree
+	extendTree    *BTree
+	multipartTree *BTree
+	txTree        *BTree
+	//transactions       map[string]*proto.TransactionInfo
+	txRbInodeTree *BTree
+	//txRollbackInodes   map[uint64]*TxRollbackInode
+	txRbDentryTree *BTree
+	//txRollbackDentries map[string]*TxRollbackDentry
 
 	filenames []string
 
@@ -155,9 +158,12 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.dentryTree = mp.dentryTree.GetTree()
 	si.extendTree = mp.extendTree.GetTree()
 	si.multipartTree = mp.multipartTree.GetTree()
-	si.transactions = mp.txProcessor.txManager.transactions
-	si.txRollbackInodes = mp.txProcessor.txResource.txRollbackInodes
-	si.txRollbackDentries = mp.txProcessor.txResource.txRollbackDentries
+	si.txTree = mp.txProcessor.txManager.txTree.GetTree()
+	//si.transactions = mp.txProcessor.txManager.transactions
+	si.txRbInodeTree = mp.txProcessor.txResource.txRbInodeTree.GetTree()
+	//si.txRollbackInodes = mp.txProcessor.txResource.txRollbackInodes
+	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
+	//si.txRollbackDentries = mp.txProcessor.txResource.txRollbackDentries
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
@@ -241,23 +247,33 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			return
 		}
 
-		for _, item := range iter.transactions {
-			produceItem(item)
-		}
+		iter.txTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+
+		//for _, item := range iter.transactions {
+		//	produceItem(item)
+		//}
 		if checkClose() {
 			return
 		}
 
-		for _, item := range iter.txRollbackInodes {
-			produceItem(item)
-		}
+		iter.txRbInodeTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+		//for _, item := range iter.txRollbackInodes {
+		//	produceItem(item)
+		//}
 		if checkClose() {
 			return
 		}
 
-		for _, item := range iter.txRollbackDentries {
-			produceItem(item)
-		}
+		iter.txRbDentryTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+		//for _, item := range iter.txRollbackDentries {
+		//	produceItem(item)
+		//}
 		if checkClose() {
 			return
 		}

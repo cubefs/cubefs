@@ -339,12 +339,12 @@ func TestTxRscRollback(t *testing.T) {
 
 	//roll back add dentry
 	rbDentry1 := mockAddTxDentry(mp1)
-	status, err = txRsc.rollbackDentry(rbDentry1.txDentryInfo.TxID, rbDentry1.txDentryInfo.GetKey())
+	status, err = txRsc.rollbackDentry(rbDentry1.txDentryInfo.TxID, rbDentry1.txDentryInfo.ParentId, rbDentry1.txDentryInfo.Name)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	//roll back delete dentry
 	rbDentry2 := mockDeleteTxDentry(mp1)
-	status, err = txRsc.rollbackDentry(rbDentry2.txDentryInfo.TxID, rbDentry2.txDentryInfo.GetKey())
+	status, err = txRsc.rollbackDentry(rbDentry2.txDentryInfo.TxID, rbDentry2.txDentryInfo.ParentId, rbDentry2.txDentryInfo.Name)
 	assert.True(t, status == proto.OpOk && err == nil)
 }
 
@@ -363,12 +363,12 @@ func TestTxRscCommit(t *testing.T) {
 
 	//commit add dentry
 	rbDentry1 := mockAddTxDentry(mp1)
-	status, err = txRsc.commitDentry(rbDentry1.txDentryInfo.TxID, rbDentry1.txDentryInfo.GetKey())
+	status, err = txRsc.commitDentry(rbDentry1.txDentryInfo.TxID, rbDentry1.txDentryInfo.ParentId, rbDentry1.txDentryInfo.Name)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	//commit delete dentry
 	rbDentry2 := mockDeleteTxDentry(mp1)
-	status, err = txRsc.commitDentry(rbDentry2.txDentryInfo.TxID, rbDentry2.txDentryInfo.GetKey())
+	status, err = txRsc.commitDentry(rbDentry2.txDentryInfo.TxID, rbDentry2.txDentryInfo.ParentId, rbDentry2.txDentryInfo.Name)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 }

@@ -1071,13 +1071,16 @@ func (mp *metaPartition) Reset() (err error) {
 	mp.config.Cursor = 0
 	mp.applyID = 0
 	mp.txProcessor.txManager.txIdAlloc.setTransactionID(0)
-	mp.txProcessor.txManager.Lock()
-	mp.txProcessor.txManager.transactions = make(map[string]*proto.TransactionInfo, 0)
-	mp.txProcessor.txManager.Unlock()
-	mp.txProcessor.txResource.Lock()
-	mp.txProcessor.txResource.txRollbackInodes = make(map[uint64]*TxRollbackInode, 0)
-	mp.txProcessor.txResource.txRollbackDentries = make(map[string]*TxRollbackDentry, 0)
-	mp.txProcessor.txResource.Unlock()
+	mp.txProcessor.txManager.txTree.Reset()
+	//mp.txProcessor.txManager.Lock()
+	//mp.txProcessor.txManager.transactions = make(map[string]*proto.TransactionInfo, 0)
+	//mp.txProcessor.txManager.Unlock()
+	mp.txProcessor.txResource.txRbInodeTree.Reset()
+	mp.txProcessor.txResource.txRbDentryTree.Reset()
+	//mp.txProcessor.txResource.Lock()
+	//mp.txProcessor.txResource.txRollbackInodes = make(map[uint64]*TxRollbackInode, 0)
+	//mp.txProcessor.txResource.txRollbackDentries = make(map[string]*TxRollbackDentry, 0)
+	//mp.txProcessor.txResource.Unlock()
 
 	// remove files
 	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile, txInfoFile, txRbInodeFile, txRbDentryFile, TxIDFile}

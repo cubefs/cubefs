@@ -1730,7 +1730,15 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update vol[%v] successfully\n", req.name)))
+	var response string
+
+	if hasTxParams(r) {
+		response = fmt.Sprintf("update vol[%v] successfully, txTimeout[%v] enableTransaction[%v]",
+			req.name, newArgs.txTimeout, proto.GetMaskString(newArgs.enableTransaction))
+	} else {
+		response = fmt.Sprintf("update vol[%v] successfully", req.name)
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(response))
 }
 
 func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
