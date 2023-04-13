@@ -178,7 +178,10 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	}
 	if dp.IsDecommissionRunning() {
 		newReplica, _ := dp.getReplica(dp.DecommissionDstAddr)
-		newReplica.Status = bsProto.Recovering
+		if newReplica != nil {
+			newReplica.Status = bsProto.Recovering
+		}
+
 	}
 	return dp
 }
@@ -360,6 +363,7 @@ type dataNodeValue struct {
 	DecommissionCompleteTime int64
 	ToBeOffline              bool
 	DecommissionDiskList     []string
+	DecommissionDpTotal      int
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -378,6 +382,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		DecommissionCompleteTime: dataNode.DecommissionCompleteTime,
 		ToBeOffline:              dataNode.ToBeOffline,
 		DecommissionDiskList:     dataNode.DecommissionDiskList,
+		DecommissionDpTotal:      dataNode.DecommissionDpTotal,
 	}
 }
 
@@ -404,7 +409,7 @@ type nodeSetValue struct {
 	Capacity                       int
 	ZoneName                       string
 	DecommissionParallelLimit      int32
-	DecommissionDiskParallelFactor int32
+	DecommissionDiskParallelFactor float64
 }
 
 type domainNodeSetGrpValue struct {
@@ -435,7 +440,7 @@ func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 		Capacity:                       nset.Capacity,
 		ZoneName:                       nset.zoneName,
 		DecommissionParallelLimit:      atomic.LoadInt32(&nset.decommissionParallelLimit),
-		DecommissionDiskParallelFactor: atomic.LoadInt32(&nset.decommissionDiskParallelFactor),
+		DecommissionDiskParallelFactor: nset.decommissionDiskParallelFactor,
 	}
 	return
 }
@@ -1242,6 +1247,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.DecommissionCompleteTime = dnv.DecommissionCompleteTime
 		dataNode.ToBeOffline = dnv.ToBeOffline
 		dataNode.DecommissionDiskList = dnv.DecommissionDiskList
+		dataNode.DecommissionDpTotal = dnv.DecommissionDpTotal
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
@@ -1414,11 +1420,10 @@ func (c *Cluster) loadDataPartitions() (err error) {
 
 		dp := dpv.Restore(c)
 		vol.dataPartitions.put(dp)
-		c.addBadDataParitionIdMap(dp)
+		c.addBadDataPartitionIdMap(dp)
 		//add to nodeset decommission list
 		dp.addToDecommissionList(c)
-		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v] decommissionStatus[%v]", vol.Name, dp.PartitionID,
-			dp.GetDecommissionStatus())
+		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v] ", vol.Name, dp.PartitionID)
 	}
 	return
 }
@@ -1435,11 +1440,10 @@ func (c *Cluster) loadQuota() (err error) {
 	return
 }
 
-func (c *Cluster) addBadDataParitionIdMap(dp *DataPartition) {
+func (c *Cluster) addBadDataPartitionIdMap(dp *DataPartition) {
 	if !dp.IsDecommissionRunning() {
 		return
 	}
-
 	c.putBadDataPartitionIDsByDiskPath(dp.DecommissionSrcDiskPath, dp.DecommissionSrcAddr, dp.PartitionID)
 }
 
@@ -1469,6 +1473,7 @@ func (c *Cluster) syncPutDecommissionDiskInfo(opType uint32, disk *DecommissionD
 
 type decommissionDiskValue struct {
 	SrcAddr                  string
+	DstAddr                  string
 	DiskPath                 string
 	DecommissionStatus       uint32
 	DecommissionRaftForce    bool
@@ -1483,6 +1488,7 @@ type decommissionDiskValue struct {
 func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
 	return &decommissionDiskValue{
 		SrcAddr:                  disk.SrcAddr,
+		DstAddr:                  disk.DstAddr,
 		DiskPath:                 disk.DiskPath,
 		DecommissionRetry:        disk.DecommissionRetry,
 		DecommissionStatus:       atomic.LoadUint32(&disk.DecommissionStatus),
@@ -1498,6 +1504,7 @@ func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
 func (ddv *decommissionDiskValue) Restore() *DecommissionDisk {
 	return &DecommissionDisk{
 		SrcAddr:                  ddv.SrcAddr,
+		DstAddr:                  ddv.DstAddr,
 		DiskPath:                 ddv.DiskPath,
 		DecommissionRetry:        ddv.DecommissionRetry,
 		DecommissionStatus:       ddv.DecommissionStatus,
@@ -1527,7 +1534,10 @@ func (c *Cluster) loadDecommissionDiskList() (err error) {
 		dd := ddv.Restore()
 		c.DecommissionDisks.Store(dd.GenerateKey(), dd)
 		c.addDecommissionDiskToNodeset(dd)
-		log.LogInfof("action[loadDecommissionDiskList],decommissionDiskValue[%v]", dd)
+		log.LogInfof("action[loadDecommissionDiskList],decommissionDisk[%v] type %v dst[%v] status[%v] raftForce[%v]"+
+			"dpTotal[%v] term[%v]",
+			dd.GenerateKey(), dd.Type, dd.DstAddr, dd.GetDecommissionStatus(), dd.DecommissionRaftForce,
+			dd.DecommissionDpTotal, dd.DecommissionTerm)
 	}
 	return
 }
