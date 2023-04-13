@@ -67,7 +67,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 					c.Name, partitionID, partition.VolName))
 				continue
 			}
-			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replics %v conf replics num %v",
+			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replicas %v conf replicas num %v",
 				partition.PartitionID, partition.isSpecialReplicaCnt(), len(partition.Replicas), int(partition.ReplicaNum))
 			//if len(partition.Replicas) == 0 ||
 			//	(!partition.isSpecialReplicaCnt() && len(partition.Replicas) < int(partition.ReplicaNum)) ||
@@ -79,9 +79,17 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			//}
 
 			newReplica, _ := partition.getReplica(partition.DecommissionDstAddr)
+			if newReplica == nil {
+				log.LogInfof("action[checkDiskRecoveryProgress] dp %v cannot find replica %v", partition.PartitionID,
+					partition.DecommissionDstAddr)
+				continue
+			}
 			if newReplica.isRepairing() {
 				newBadDpIds = append(newBadDpIds, partitionID)
 			} else {
+				if partition.isSingleReplica() {
+					continue //change dp decommission status in decommission function
+				}
 				//do not add to BadDataPartitionIds
 				if newReplica.isUnavailable() {
 					partition.DecommissionNeedRollback = true
@@ -159,6 +167,7 @@ const (
 
 type DecommissionDisk struct {
 	SrcAddr                  string
+	DstAddr                  string
 	DiskPath                 string
 	DecommissionStatus       uint32
 	DecommissionRaftForce    bool
@@ -246,7 +255,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 		}
 		partitionIds = append(partitionIds, dp.PartitionID)
 	}
-	progress = float64(totalNum-len(partitions)+stopNum) / float64(totalNum)
+	progress = float64(totalNum-len(partitions)) / float64(totalNum)
 	if debug {
 		log.LogInfof("action[updateDecommissionDiskStatus] progress[%v] totalNum[%v] "+
 			"partitionIds[%v] FailedNum[%v] failedPartitionIds[%v], runningNum[%v] runningDp[%v], prepareNum[%v] prepareDp[%v] "+
@@ -254,7 +263,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 			progress, totalNum, partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
 			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
 	}
-	if failedNum >= (len(partitions) - stopNum) {
+	if failedNum >= (len(partitions)-stopNum) && failedNum != 0 {
 		dd.SetDecommissionStatus(DecommissionFail)
 		return DecommissionFail, progress
 	}
@@ -301,9 +310,10 @@ func (dd *DecommissionDisk) GetDecommissionFailedDP(c *Cluster) (error, []uint64
 	return nil, failedDps
 }
 
-func (dd *DecommissionDisk) markDecommission(raftForce bool, limit int) {
+func (dd *DecommissionDisk) markDecommission(dstPath string, raftForce bool, limit int) {
 	dd.SetDecommissionStatus(markDecommission)
 	//reset decommission status for failed once
+	dd.DstAddr = dstPath
 	dd.DecommissionRetry = 0
 	dd.DecommissionDpTotal = InvalidDecommissionDpCnt
 	dd.DecommissionRaftForce = raftForce
