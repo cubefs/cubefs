@@ -1069,7 +1069,6 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 // HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	exporter.Warning(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
-	mp.cursorAddStep()
 	if mp.config.NodeId == leader {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", serverPort), time.Second)
 		if err != nil {
