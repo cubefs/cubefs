@@ -120,6 +120,7 @@ const (
 	verSeqKey                  = "verSeq"
 	Periodic                   = "periodic"
 	DecommissionType           = "decommissionType"
+	decommissionDiskFactor     = "decommissionDiskFactor"
 )
 
 const (

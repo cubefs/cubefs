@@ -70,6 +70,7 @@ type DataNode struct {
 	CpuUtil                   atomicutil.Float64 `json:"-"`
 	ioUtils                   atomic.Value       `json:"-"`
 	DecommissionDiskList      []string
+	DecommissionDpTotal       int
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -313,7 +314,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		runningPartitionIds []uint64
 		preparePartitionIds []uint64
 		stopPartitionIds    []uint64
-		totalNum            int
+		totalNum            = dataNode.DecommissionDpTotal
 	)
 	if dataNode.GetDecommissionStatus() == DecommissionInitial {
 		return DecommissionInitial, float64(0)
@@ -327,7 +328,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	if dataNode.GetDecommissionStatus() == markDecommission {
 		return markDecommission, float64(0)
 	}
-
+	//if mark success directly for no dp to decommission
 	if dataNode.GetDecommissionStatus() == DecommissionSuccess {
 		return DecommissionSuccess, float64(1)
 	}
@@ -346,7 +347,8 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	stopNum := 0
 	//only failed or stopped or markDeleted
 	if len(partitions) == 0 {
-		dataNode.markDecommissionSuccess()
+		log.LogInfof("action[updateDecommissionDataNodeStatus]dataNode[%v] has no decommission left", dataNode.Addr)
+		dataNode.markDecommissionSuccess(c)
 		return DecommissionSuccess, float64(1)
 	}
 
@@ -370,7 +372,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		}
 		partitionIds = append(partitionIds, dp.PartitionID)
 	}
-	progress = float64(totalNum-len(partitions)+stopNum) / float64(totalNum)
+	progress = float64(totalNum-len(partitions)) / float64(totalNum)
 	if debug {
 		log.LogInfof("action[updateDecommissionDataNodeStatus]dataNode[%v] progress[%v] totalNum[%v] "+
 			"partitionIds[%v] FailedNum[%v] failedPartitionIds[%v], runningNum[%v] runningDp[%v], prepareNum[%v] prepareDp[%v] "+
@@ -379,7 +381,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
 	}
 
-	if failedNum >= (len(partitions) - stopNum) {
+	if failedNum >= (len(partitions)-stopNum) && failedNum != 0 {
 		dataNode.markDecommissionFail()
 		return DecommissionFail, progress
 	}
@@ -388,6 +390,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 }
 
 func (dataNode *DataNode) GetLatestDecommissionDataPartition(c *Cluster) (partitions []*DataPartition) {
+	log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v diskList %v", dataNode.Addr, dataNode.DecommissionDiskList)
 	for _, disk := range dataNode.DecommissionDiskList {
 		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
 		//if not found, may already success, so only care running disk
@@ -395,6 +398,12 @@ func (dataNode *DataNode) GetLatestDecommissionDataPartition(c *Cluster) (partit
 			dd := value.(*DecommissionDisk)
 			dps := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 			partitions = append(partitions, dps...)
+			dpIds := make([]uint64, 0)
+			for _, dp := range dps {
+				dpIds = append(dpIds, dp.PartitionID)
+			}
+			log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v disk %v dps[%v]",
+				dataNode.Addr, dd.DiskPath, dpIds)
 		}
 	}
 	return
@@ -467,9 +476,13 @@ func (dataNode *DataNode) canMarkDecommission() bool {
 		dataNode.GetDecommissionStatus() == DecommissionFail
 }
 
-func (dataNode *DataNode) markDecommissionSuccess() {
+func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {
 	dataNode.SetDecommissionStatus(DecommissionSuccess)
-	dataNode.ToBeOffline = false
+	partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
+	//if only decommission part of data partitions, can alloc dp in future
+	if len(partitions) != 0 {
+		dataNode.ToBeOffline = false
+	}
 	dataNode.DecommissionCompleteTime = time.Now().Unix()
 }
 
