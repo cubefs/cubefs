@@ -4244,3 +4244,21 @@ func (m *Server) getFileStats(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
 		"getFileStats enable value [%v]", m.cluster.fileStatsEnable)))
 }
+
+func (m *Server) GetClusterValue(w http.ResponseWriter, r *http.Request) {
+	result, err := m.cluster.fsm.store.SeekForPrefix([]byte(clusterPrefix))
+	if err != nil {
+		log.LogErrorf("action[GetClusterValue],err:%v", err.Error())
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrInternalError))
+		return
+	}
+	for _, value := range result {
+		cv := &clusterValue{}
+		if err = json.Unmarshal(value, cv); err != nil {
+			log.LogErrorf("action[GetClusterValue], unmarshal err:%v", err.Error())
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrUnmarshalData))
+			return
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(cv))
+	}
+}

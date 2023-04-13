@@ -67,7 +67,7 @@ const (
 	AdminQueryDecommissionToken               = "/admin/queryDecommissionToken"
 	AdminSetFileStats                         = "/admin/setFileStatsEnable"
 	AdminGetFileStats                         = "/admin/getFileStatsEnable"
-
+	AdminGetClusterValue                      = "/admin/getClusterValue"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
