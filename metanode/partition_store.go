@@ -396,7 +396,8 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string) (err error) {
 			err = errors.NewErrorf("[loadTxRbDentry] Unmarshal: %s", err.Error())
 			return
 		}
-		mp.txProcessor.txResource.txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
+		//mp.txProcessor.txResource.txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
+		mp.txProcessor.txResource.txRbDentryTree.ReplaceOrInsert(txRbDentry, true)
 		numTxRbDentry++
 	}
 }
@@ -454,7 +455,8 @@ func (mp *metaPartition) loadTxRbInode(rootDir string) (err error) {
 			err = errors.NewErrorf("[loadTxRbInode] Unmarshal: %s", err.Error())
 			return
 		}
-		mp.txProcessor.txResource.txRollbackInodes[txRbInode.inode.Inode] = txRbInode
+		//mp.txProcessor.txResource.txRollbackInodes[txRbInode.inode.Inode] = txRbInode
+		mp.txProcessor.txResource.txRbInodeTree.ReplaceOrInsert(txRbInode, true)
 		numTxRbInode++
 	}
 }
@@ -512,7 +514,8 @@ func (mp *metaPartition) loadTxInfo(rootDir string) (err error) {
 			err = errors.NewErrorf("[loadTxInfo] Unmarshal: %s", err.Error())
 			return
 		}
-		mp.txProcessor.txManager.transactions[txInfo.TxID] = txInfo
+		//mp.txProcessor.txManager.transactions[txInfo.TxID] = txInfo
+		mp.txProcessor.txManager.txTree.ReplaceOrInsert(txInfo, true)
 		numTxInfos++
 	}
 }
@@ -640,28 +643,51 @@ func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
 
-	for _, rbDentry := range sm.txRollbackDentries {
+	//for _, rbDentry := range sm.txRollbackDentries {
+	//	if data, err = rbDentry.Marshal(); err != nil {
+	//		break
+	//	}
+	//	binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+	//	if _, err = fp.Write(lenBuf); err != nil {
+	//		break
+	//	}
+	//	if _, err = sign.Write(lenBuf); err != nil {
+	//		break
+	//	}
+	//
+	//	if _, err = fp.Write(data); err != nil {
+	//		break
+	//	}
+	//	if _, err = sign.Write(data); err != nil {
+	//		break
+	//	}
+	//}
+
+	sm.txRbDentryTree.Ascend(func(i BtreeItem) bool {
+		rbDentry := i.(*TxRollbackDentry)
 		if data, err = rbDentry.Marshal(); err != nil {
-			break
+			return false
 		}
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
-			break
+			return false
 		}
 		if _, err = sign.Write(lenBuf); err != nil {
-			break
+			return false
 		}
 
 		if _, err = fp.Write(data); err != nil {
-			break
+			return false
 		}
 		if _, err = sign.Write(data); err != nil {
-			break
+			return false
 		}
-	}
+		return true
+	})
+
 	crc = sign.Sum32()
 	log.LogInfof("storeTxRbDentry: store complete: partitoinID(%v) volume(%v) numRbDentry(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, len(sm.txRollbackDentries), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.txRbDentryTree.Len(), crc)
 	return
 }
 
@@ -681,28 +707,51 @@ func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint3
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
 
-	for _, rbInode := range sm.txRollbackInodes {
+	//for _, rbInode := range sm.txRollbackInodes {
+	//	if data, err = rbInode.Marshal(); err != nil {
+	//		break
+	//	}
+	//	binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+	//	if _, err = fp.Write(lenBuf); err != nil {
+	//		break
+	//	}
+	//	if _, err = sign.Write(lenBuf); err != nil {
+	//		break
+	//	}
+	//
+	//	if _, err = fp.Write(data); err != nil {
+	//		break
+	//	}
+	//	if _, err = sign.Write(data); err != nil {
+	//		break
+	//	}
+	//}
+
+	sm.txRbInodeTree.Ascend(func(i BtreeItem) bool {
+		rbInode := i.(*TxRollbackInode)
 		if data, err = rbInode.Marshal(); err != nil {
-			break
+			return false
 		}
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
-			break
+			return false
 		}
 		if _, err = sign.Write(lenBuf); err != nil {
-			break
+			return false
 		}
 
 		if _, err = fp.Write(data); err != nil {
-			break
+			return false
 		}
 		if _, err = sign.Write(data); err != nil {
-			break
+			return false
 		}
-	}
+		return true
+	})
+
 	crc = sign.Sum32()
 	log.LogInfof("storeTxRbInode: store complete: partitoinID(%v) volume(%v) numRbInode(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, len(sm.txRollbackInodes), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.txRbInodeTree.Len(), crc)
 	return
 }
 
@@ -722,29 +771,53 @@ func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, 
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
 
-	for _, tx := range sm.transactions {
+	//for _, tx := range sm.transactions {
+	//	if data, err = tx.Marshal(); err != nil {
+	//		break
+	//	}
+	//
+	//	binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+	//	if _, err = fp.Write(lenBuf); err != nil {
+	//		break
+	//	}
+	//	if _, err = sign.Write(lenBuf); err != nil {
+	//		break
+	//	}
+	//
+	//	if _, err = fp.Write(data); err != nil {
+	//		break
+	//	}
+	//	if _, err = sign.Write(data); err != nil {
+	//		break
+	//	}
+	//}
+
+	sm.txTree.Ascend(func(i BtreeItem) bool {
+		tx := i.(*proto.TransactionInfo)
 		if data, err = tx.Marshal(); err != nil {
-			break
+			return false
 		}
 
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
-			break
+			return false
 		}
 		if _, err = sign.Write(lenBuf); err != nil {
-			break
+			return false
 		}
 
 		if _, err = fp.Write(data); err != nil {
-			break
+			return false
 		}
 		if _, err = sign.Write(data); err != nil {
-			break
+			return false
 		}
-	}
+		return true
+	})
+
 	crc = sign.Sum32()
 	log.LogInfof("storeTxInfo: store complete: partitoinID(%v) volume(%v) numTxs(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, len(sm.transactions), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.txTree.Len(), crc)
 	return
 }
 

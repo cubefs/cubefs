@@ -1230,16 +1230,17 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 	}
 
 	return &VolVarargs{
-		zoneName:       vol.zoneName,
-		description:    vol.description,
-		capacity:       vol.Capacity,
-		followerRead:   vol.FollowerRead,
-		authenticate:   vol.authenticate,
-		dpSelectorName: vol.dpSelectorName,
-		dpSelectorParm: vol.dpSelectorParm,
-		enablePosixAcl: vol.enablePosixAcl,
-		dpReplicaNum:   vol.dpReplicaNum,
-
+		zoneName:              vol.zoneName,
+		description:           vol.description,
+		capacity:              vol.Capacity,
+		followerRead:          vol.FollowerRead,
+		authenticate:          vol.authenticate,
+		dpSelectorName:        vol.dpSelectorName,
+		dpSelectorParm:        vol.dpSelectorParm,
+		enablePosixAcl:        vol.enablePosixAcl,
+		dpReplicaNum:          vol.dpReplicaNum,
+		enableTransaction:     vol.enableTransaction,
+		txTimeout:             vol.txTimeout,
 		coldArgs:              args,
 		dpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
 	}

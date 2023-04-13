@@ -24,10 +24,10 @@ func (mp *metaPartition) fsmTxInodeRollback(txID string, inode uint64) (status u
 	return
 }
 
-func (mp *metaPartition) fsmTxDentryRollback(txID string, denKey string) (status uint8) {
+func (mp *metaPartition) fsmTxDentryRollback(txID string, pId uint64, name string) (status uint8) {
 	//status = proto.OpOk
 	//var err error
-	status, _ = mp.txProcessor.txResource.rollbackDentry(txID, denKey)
+	status, _ = mp.txProcessor.txResource.rollbackDentry(txID, pId, name)
 	return
 }
 
@@ -61,10 +61,10 @@ func (mp *metaPartition) fsmTxInodeCommit(txID string, inode uint64) (status uin
 	}
 }
 
-func (mp *metaPartition) fsmTxDentryCommit(txID string, denKey string) (status uint8) {
+func (mp *metaPartition) fsmTxDentryCommit(txID string, pId uint64, name string) (status uint8) {
 	//status = proto.OpOk
 	var err error
-	status, err = mp.txProcessor.txResource.commitDentry(txID, denKey)
+	status, err = mp.txProcessor.txResource.commitDentry(txID, pId, name)
 	if err == nil && status == proto.OpOk {
 		return
 	} else {
