@@ -43,7 +43,6 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketPolicyHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		ec = NoSuchBucket
 		return
 	}
 	var policy *Policy
@@ -91,7 +90,6 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("putBucketPolicyHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		ec = NoSuchBucket
 		return
 	}
 
