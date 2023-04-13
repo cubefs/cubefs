@@ -48,6 +48,7 @@ type dataPartitionCfg struct {
 	RaftStore     raftstore.RaftStore `json:"-"`
 	ReplicaNum    int
 	VerSeq        uint64 `json:"ver_seq"`
+	CreateType    int
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
@@ -279,7 +280,7 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 		currLeaderPartitionSize            uint64
 		err                                error
 	)
-	timer := time.NewTimer(0)
+	timer := time.NewTicker(5 * time.Second)
 	dp.recoverStartTime = time.Now()
 	const RepairTimeOut = time.Hour * 24
 	for {
@@ -289,25 +290,24 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			if dp.isLeader { // primary does not need to wait repair
 				if err := dp.StartRaft(isLoad); err != nil {
 					log.LogErrorf("PartitionID(%v) leader start raft err(%v).", dp.partitionID, err)
-					timer.Reset(5 * time.Second)
 					continue
 				}
 				log.LogDebugf("PartitionID(%v) leader started.", dp.partitionID)
 				return
 			}
 			if dp.stopRecover && dp.isDecommissionRecovering() {
+				log.LogDebugf("action[StartRaftAfterRepair] PartitionID(%v) receive stop signal.", dp.partitionID)
 				continue
 			}
 			if time.Now().Sub(dp.recoverStartTime) > RepairTimeOut && dp.isDecommissionRecovering() {
 				//stop and wait for delete
 				dp.handleDecommissionRecoverFailed()
-				log.LogErrorf("PartitionID(%v) repair timeout", dp.partitionID)
+				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) repair timeout", dp.partitionID)
 				return
 			}
 
 			// wait for dp.replicas to be updated
 			if dp.getReplicaLen() == 0 {
-				timer.Reset(5 * time.Second)
 				continue
 			}
 			if initMaxExtentID == 0 || initPartitionSize == 0 {
@@ -315,16 +315,14 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			}
 
 			if err != nil {
-				log.LogErrorf("PartitionID(%v) get MaxExtentID  err(%v)", dp.partitionID, err)
-				timer.Reset(5 * time.Second)
+				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) get MaxExtentID  err(%v)", dp.partitionID, err)
 				continue
 			}
 
 			// get the partition size from the primary and compare it with the loparal one
 			currLeaderPartitionSize, err = dp.getLeaderPartitionSize(initMaxExtentID)
 			if err != nil {
-				log.LogErrorf("PartitionID(%v) get leader size err(%v)", dp.partitionID, err)
-				timer.Reset(5 * time.Second)
+				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) get leader size err(%v)", dp.partitionID, err)
 				continue
 			}
 
@@ -335,12 +333,11 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			}
 			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
 			dp.decommissionRepairProgress = float64(localSize) / float64(initPartitionSize)
-			log.LogInfof("StartRaftAfterRepair PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
-				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
+			log.LogInfof("action[StartRaftAfterRepair] PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
+				"localSize(%v) tmp27", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
 
 			if initPartitionSize > localSize {
-				log.LogErrorf("PartitionID(%v) leader size(%v) local size(%v) wait snapshot recover", dp.partitionID, initPartitionSize, localSize)
-				timer.Reset(5 * time.Second)
+				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) leader size(%v) local size(%v) wait snapshot recover", dp.partitionID, initPartitionSize, localSize)
 				continue
 			}
 
@@ -353,9 +350,10 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			log.LogInfof("PartitionID(%v) raft started!", dp.partitionID)
+			log.LogInfof("action[StartRaftAfterRepair] PartitionID(%v) raft started!", dp.partitionID)
 			return
 		case <-dp.stopC:
+			log.LogDebugf("action[StartRaftAfterRepair] PartitionID(%v) receive dp stop signal!!.", dp.partitionID)
 			timer.Stop()
 			return
 		}
