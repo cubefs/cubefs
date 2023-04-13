@@ -1454,6 +1454,10 @@ func (mw *MetaWrapper) GetMultipart_ll(path, multipartId string) (info *proto.Mu
 		return
 	}
 	var mp = mw.getPartitionByID(mpId)
+	if mp == nil {
+		err = syscall.ENOENT
+		return
+	}
 	status, multipartInfo, err := mw.getMultipart(mp, path, multipartId)
 	if err != nil || status != statusOK {
 		log.LogErrorf("GetMultipartRequest: err(%v) status(%v)", err, status)
@@ -1476,6 +1480,10 @@ func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint
 		}
 	}
 	var mp = mw.getPartitionByID(mpId)
+	if mp == nil {
+		err = syscall.ENOENT
+		return
+	}
 	status, oldInode, updated, err := mw.addMultipartPart(mp, path, multipartId, partId, size, md5, inodeInfo)
 	if err != nil || status != statusOK {
 		log.LogErrorf("AddMultipartPart_ll: err(%v) status(%v)", err, status)
@@ -1498,6 +1506,10 @@ func (mw *MetaWrapper) RemoveMultipart_ll(path, multipartID string) (err error) 
 		}
 	}
 	var mp = mw.getPartitionByID(mpId)
+	if mp == nil {
+		err = syscall.ENOENT
+		return
+	}
 	status, err := mw.removeMultipart(mp, path, multipartID)
 	if err != nil || status != statusOK {
 		log.LogErrorf(" RemoveMultipart_ll: partition remove multipart fail: "+

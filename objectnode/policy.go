@@ -195,11 +195,6 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
 			if volume, err = o.getVol(bucket); err != nil {
 				allowed = false
-				if err == proto.ErrVolNotExists {
-					ec = NoSuchBucket
-					return
-				}
-				ec = InternalErrorCode(err)
 				return
 			}
 		}
