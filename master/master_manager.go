@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	syslog "log"
 	"strings"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -108,6 +109,7 @@ func (m *Server) restoreIDAlloc() {
 // Load stored metadata into the memory
 func (m *Server) loadMetadata() {
 	log.LogInfo("action[loadMetadata] begin")
+	syslog.Println("action[loadMetadata] begin")
 	m.clearMetadata()
 	m.restoreIDAlloc()
 	m.cluster.fsm.restore()
@@ -199,6 +201,7 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadApiLimiterInfo] end")
+	syslog.Println("action[loadMetadata] end")
 }
 
 func (m *Server) clearMetadata() {

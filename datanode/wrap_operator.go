@@ -1289,7 +1289,7 @@ func (s *DataNode) handlePacketToStopDataPartitionRepair(p *repl.Packet) {
 	if err != nil {
 		return
 	}
-	log.LogDebugf("action[handlePacketToStopDataPartitionRepair] try stop %v success", request.PartitionId)
+	log.LogDebugf("action[handlePacketToStopDataPartitionRepair] try stop %v", request.PartitionId)
 	dp := s.space.Partition(request.PartitionId)
 	if dp == nil {
 		err = proto.ErrDataPartitionNotExists

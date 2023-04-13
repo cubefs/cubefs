@@ -1446,9 +1446,9 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 	for _, replica := range dp.Replicas {
 		replicas = append(replicas, replica.Addr)
 	}
-	msg = fmt.Sprintf("partitionID :%v  status[%v] retry [%v] raftForce[%v] recover [%v] "+
+	msg = fmt.Sprintf("partitionID:%v  status[%v] specialStep[%v] retry [%v] raftForce[%v] recover [%v] "+
 		"decommission src dataNode[%v] disk[%v]  dst dataNode[%v] term[%v] replicas[%v]",
-		partitionID, dp.GetDecommissionStatus(), dp.DecommissionRetry, dp.DecommissionRaftForce, dp.isRecover,
+		partitionID, dp.GetDecommissionStatus(), dp.GetSpecialReplicaDecommissionStep(), dp.DecommissionRetry, dp.DecommissionRaftForce, dp.isRecover,
 		dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.DecommissionDstAddr, dp.DecommissionTerm, replicas)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -2950,7 +2950,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.migrateDisk(offLineAddr, diskPath, raftForce, limit, diskDisable, uint32(decommissionType)); err != nil {
+	if err = m.cluster.migrateDisk(offLineAddr, diskPath, "", raftForce, limit, diskDisable, uint32(decommissionType)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -4131,7 +4131,7 @@ func (m *Server) updateDecommissionLimit(w http.ResponseWriter, r *http.Request)
 
 func (m *Server) updateDecommissionDiskFactor(w http.ResponseWriter, r *http.Request) {
 	var (
-		factor uint64
+		factor float64
 		err    error
 	)
 
@@ -4140,13 +4140,13 @@ func (m *Server) updateDecommissionDiskFactor(w http.ResponseWriter, r *http.Req
 		metric.Set(err)
 	}()
 
-	if factor, err = parseRequestToUpdateDecommissionLimit(r); err != nil {
+	if factor, err = parseRequestToUpdateDecommissionDiskFactor(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	zones := m.cluster.t.getAllZones()
 	for _, zone := range zones {
-		err = zone.updateDecommissionDiskFactor(int32(factor), m.cluster)
+		err = zone.updateDecommissionDiskFactor(factor, m.cluster)
 		if err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return

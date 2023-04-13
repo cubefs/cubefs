@@ -290,7 +290,6 @@ func (manager *SpaceManager) Partition(partitionID uint64) (dp *DataPartition) {
 	manager.partitionMutex.RLock()
 	defer manager.partitionMutex.RUnlock()
 	dp = manager.partitions[partitionID]
-
 	return
 }
 
@@ -321,6 +320,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		PartitionSize: request.PartitionSize,
 		PartitionType: int(request.PartitionTyp),
 		ReplicaNum:    request.ReplicaNum,
+		CreateType:    request.CreateType,
 	}
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
@@ -337,7 +337,6 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		return
 	}
 	manager.partitions[dp.partitionID] = dp
-	log.LogInfof("action[CreatePartition] save dp %v to partitions", dp.partitionID)
 	return
 }
 
@@ -403,4 +402,12 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			response.BadDisks = append(response.BadDisks, d.Path)
 		}
 	}
+}
+
+func (manager *SpaceManager) getPartitionIds() []uint64 {
+	res := make([]uint64, 0)
+	for id := range manager.partitions {
+		res = append(res, id)
+	}
+	return res
 }

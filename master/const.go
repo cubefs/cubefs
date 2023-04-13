@@ -96,6 +96,7 @@ const (
 	CountByMeta             = "countByMeta"
 	dpReadOnlyWhenVolFull   = "dpReadOnlyWhenVolFull"
 	DecommissionType        = "decommissionType"
+	decommissionDiskFactor  = "decommissionDiskFactor"
 )
 
 const (

@@ -71,6 +71,7 @@ type DataPartitionMetadata struct {
 	DataPartitionCreateType int
 	LastTruncateID          uint64
 	ReplicaNum              int
+	StopRecover             bool
 }
 
 type sortedPeers []proto.Peer
@@ -169,7 +170,6 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	dp.replicaNum = request.ReplicaNum
 	err = dp.PersistMetadata()
 	disk.AddSize(uint64(dp.Size()))
-	log.LogInfof("action[CreateDataPartition] dp %v create success", dp.partitionID)
 	return
 }
 
@@ -241,13 +241,14 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
+	dp.stopRecover = meta.StopRecover
 	dp.computeUsage()
 	dp.ForceSetDataPartitionToLoadding()
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
-	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v)", dp.partitionID, meta)
+	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v) stopRecover(%v)", dp.partitionID, meta, meta.StopRecover)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
 	dp.lastTruncateID = meta.LastTruncateID
 	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
@@ -284,26 +285,26 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	}
 
 	partition := &DataPartition{
-		volumeID:        dpCfg.VolName,
-		clusterID:       dpCfg.ClusterID,
-		partitionID:     partitionID,
-		replicaNum:      dpCfg.ReplicaNum,
-		disk:            disk,
-		dataNode:        disk.dataNode,
-		path:            dataPath,
-		partitionSize:   dpCfg.PartitionSize,
-		partitionType:   dpCfg.PartitionType,
-		replicas:        make([]string, 0),
-		stopC:           make(chan bool, 0),
-		stopRaftC:       make(chan uint64, 0),
-		storeC:          make(chan uint64, 128),
-		snapshot:        make([]*proto.File, 0),
-		partitionStatus: proto.ReadWrite,
-		config:          dpCfg,
-		raftStatus:      RaftStatusStopped,
+		volumeID:                dpCfg.VolName,
+		clusterID:               dpCfg.ClusterID,
+		partitionID:             partitionID,
+		replicaNum:              dpCfg.ReplicaNum,
+		disk:                    disk,
+		dataNode:                disk.dataNode,
+		path:                    dataPath,
+		partitionSize:           dpCfg.PartitionSize,
+		partitionType:           dpCfg.PartitionType,
+		replicas:                make([]string, 0),
+		stopC:                   make(chan bool, 0),
+		stopRaftC:               make(chan uint64, 0),
+		storeC:                  make(chan uint64, 128),
+		snapshot:                make([]*proto.File, 0),
+		partitionStatus:         proto.ReadWrite,
+		config:                  dpCfg,
+		raftStatus:              RaftStatusStopped,
+		DataPartitionCreateType: dpCfg.CreateType,
 	}
 	atomic.StoreInt64(&partition.recoverErrCnt, 0)
-	log.LogInfof("action[newDataPartition] dp %v replica num %v tmp11", partitionID, dpCfg.ReplicaNum)
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, partition.partitionType)
 	if err != nil {
@@ -316,7 +317,8 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 
 	go partition.statusUpdateScheduler()
 	go partition.startEvict()
-	log.LogInfof("action[newDataPartition] dp %v create success", dp.partitionID)
+	log.LogInfof("action[newDataPartition] dp %v replica num %v CreateType %v create success",
+		dp.partitionID, dpCfg.ReplicaNum, dp.partitionType)
 	return
 }
 
@@ -525,6 +527,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		DataPartitionCreateType: dp.DataPartitionCreateType,
 		CreateTime:              time.Now().Format(TimeLayout),
 		LastTruncateID:          dp.lastTruncateID,
+		StopRecover:             dp.stopRecover,
 	}
 	if metaData, err = json.Marshal(md); err != nil {
 		return
@@ -783,7 +786,7 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
 	if dp.stopRecover && dp.isDecommissionRecovering() {
-		log.LogDebugf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
+		log.LogWarnf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
 		return
 	}
 	store := dp.extentStore
@@ -814,7 +817,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	wg = new(sync.WaitGroup)
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
 		if dp.stopRecover && dp.isDecommissionRecovering() {
-			log.LogDebugf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
+			log.LogWarnf("DoExtentStoreRepair %v receive stop signal", dp.partitionID)
 			return
 		}
 		if !store.HasExtent(uint64(extentInfo.FileID)) {
@@ -1200,6 +1203,8 @@ func getWithDefault(base, def int) int {
 func (dp *DataPartition) StopDecommissionRecover(stop bool) {
 	//only work for decommission repair
 	if !dp.isDecommissionRecovering() {
+		log.LogWarnf("[StopDecommissionRecover]  dp(%d) is not in recovering status: type %d status %d",
+			dp.partitionID, dp.partitionType, dp.Status())
 		return
 	}
 	//for check timeout
@@ -1210,11 +1215,12 @@ func (dp *DataPartition) StopDecommissionRecover(stop bool) {
 		dp.recoverLastConsumeTime = time.Now().Sub(dp.recoverStartTime) //record consume time
 	}
 	dp.stopRecover = stop
+	dp.PersistMetadata()
 }
 
 func (dp *DataPartition) isDecommissionRecovering() bool {
 	//decommission recover failed or success will set to normal
-	return dp.partitionType == proto.DecommissionedCreateDataPartition
+	return dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition
 
 }
 func (dp *DataPartition) handleDecommissionRecoverFailed() {

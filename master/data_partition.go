@@ -738,18 +738,18 @@ func (partition *DataPartition) getMaxUsedSpace() uint64 {
 }
 
 func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Cluster) (err error) {
-	log.LogInfof("action[afterCreation] dp %v nodeaddr %v replica be set Unavailable", partition.PartitionID, nodeAddr)
 	dataNode, err := c.dataNode(nodeAddr)
 	if err != nil {
 		return err
 	}
 	replica := newDataReplica(dataNode)
-	replica.Status = proto.Unavailable
+	replica.Status = proto.Recovering //update by heartbeat
 	replica.DiskPath = diskPath
 	replica.ReportTime = time.Now().Unix()
 	replica.Total = util.DefaultDataPartitionSize
 	partition.addReplica(replica)
 	partition.checkAndRemoveMissReplica(replica.Addr)
+	log.LogInfof("action[afterCreation] dp %v add new replica %v ", partition.PartitionID, dataNode.Addr)
 	return
 }
 
@@ -981,7 +981,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	if dstAddr != "" {
 		partition.DecommissionDstAddrSpecify = true
 	}
-	log.LogDebugf("action[MarkDecommissionStatus] dp[%v] SrcAddr %v, dstAddr %v, diskPath %v, raftForce %v term %v\n",
+	log.LogDebugf("action[MarkDecommissionStatus] dp[%v] SrcAddr %v, dstAddr %v, diskPath %v, raftForce %v term %v",
 		partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
 		partition.DecommissionSrcDiskPath, partition.DecommissionRaftForce, partition.DecommissionTerm)
 }
@@ -1032,7 +1032,7 @@ func (partition *DataPartition) IsMarkDecommission() bool {
 
 func (partition *DataPartition) TryToDecommission(c *Cluster) bool {
 	if !partition.IsMarkDecommission() {
-		log.LogWarnf("action[TryToDecommission] failed dp[%v] status expected markDecommission[%v]\n",
+		log.LogWarnf("action[TryToDecommission] failed dp[%v] status expected markDecommission[%v]",
 			partition.PartitionID, atomic.LoadUint32(&partition.DecommissionStatus))
 		return false
 	}
@@ -1056,7 +1056,11 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		partition.PartitionID, srcAddr, targetAddr, partition.DecommissionRaftForce, partition.GetSpecialReplicaDecommissionStep())
 	begin := time.Now()
 	partition.SetDecommissionStatus(DecommissionPrepare)
-	c.syncUpdateDataPartition(partition)
+	err = c.syncUpdateDataPartition(partition)
+	if err != nil {
+		log.LogWarnf("action[decommissionDataPartition] dp [%v] update to prepare failed", partition.PartitionID)
+		goto errHandler
+	}
 
 	// delete if not normal data partition
 	if !proto.IsNormalDp(partition.PartitionType) {
@@ -1099,15 +1103,15 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		newReplica.Status = proto.Recovering //in case heartbeat response is not arrived
 		partition.isRecover = true
 		partition.Status = proto.ReadOnly
+		partition.SetDecommissionStatus(DecommissionRunning)
 		c.putBadDataPartitionIDsByDiskPath(partition.DecommissionSrcDiskPath, partition.DecommissionSrcAddr, partition.PartitionID)
 	}
 	//only stop 3-replica,need to release token
 	if partition.IsDecommissionStopped() {
 		log.LogInfof("action[decommissionDataPartition]clusterID[%v] partitionID:%v decommission stopped", c.Name, partition.PartitionID)
 		partition.stopReplicaRepair(partition.DecommissionDstAddr, true, c)
-		return false //false to release token
+		return true
 	} else {
-		partition.SetDecommissionStatus(DecommissionRunning)
 		log.LogInfof("action[decommissionDataPartition]clusterID[%v] partitionID:%v "+
 			"on node:%v offline success,newHost[%v],PersistenceHosts:[%v], SingleDecommissionStatus[%v]prepare consume[%v]seconds",
 			c.Name, partition.PartitionID, srcAddr, targetAddr, partition.Hosts, partition.GetSpecialReplicaDecommissionStep(), time.Since(begin).Seconds())
@@ -1118,7 +1122,7 @@ errHandler:
 	//special replica num receive stop signal,donot reset  SingleDecommissionStatus for decommission again
 	if partition.GetDecommissionStatus() == DecommissionStop {
 		log.LogWarnf("action[decommissionDataPartition] partitionID:%v is stopped", partition.PartitionID)
-		return false
+		return true
 	}
 
 	partition.DecommissionRetry++
@@ -1200,6 +1204,10 @@ func (partition *DataPartition) rollback(c *Cluster) {
 			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
 		return
 	}
+	err = partition.restoreReplicaMeta(c)
+	if err != nil {
+		return
+	}
 	//reset status if rollback success
 	partition.DecommissionDstAddr = ""
 	partition.DecommissionRetry = 0
@@ -1241,10 +1249,11 @@ func (partition *DataPartition) addToDecommissionList(c *Cluster) {
 		log.LogWarnf("action[addToDecommissionList]dataNode[%v] nodeSet is nil:%v", dataNode.Addr, err.Error())
 		return
 	}
-	ns.AddToDecommissionDataPartitionList(partition)
-	log.LogDebugf("action[addToDecommissionList]dp[%v] decommission src[%v] Disk[%v] dst[%v] status[%v], add to  decommission list[%v] ",
+	ns.AddToDecommissionDataPartitionList(partition, c)
+	log.LogDebugf("action[addToDecommissionList]dp[%v] decommission src[%v] Disk[%v] dst[%v] status[%v] specialStep[%v],"+
+		" add to  decommission list[%v] ",
 		partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath,
-		partition.DecommissionDstAddr, partition.GetDecommissionStatus(), ns.ID)
+		partition.DecommissionDstAddr, partition.GetDecommissionStatus(), partition.GetSpecialReplicaDecommissionStep(), ns.ID)
 }
 
 func (partition *DataPartition) checkConsumeToken() bool {
@@ -1281,6 +1290,7 @@ func (partition *DataPartition) tryRollback(c *Cluster) bool {
 	}
 	//specify dst addr do not need rollback
 	if partition.DecommissionDstAddrSpecify {
+		log.LogWarnf("action[tryRollback]dp[%v] do not rollback for DecommissionDstAddrSpecify", partition.PartitionID)
 		return false
 	}
 	partition.DecommissionNeedRollbackTimes++
@@ -1301,7 +1311,7 @@ func (partition *DataPartition) stopReplicaRepair(replicaAddr string, stop bool,
 		dataNode *DataNode
 		err      error
 	)
-	if dataNode, err = c.dataNode(partition.DecommissionSrcAddr); err != nil {
+	if dataNode, err = c.dataNode(replicaAddr); err != nil {
 		log.LogWarnf("action[stopReplicaRepair]dp[%v] can't find dataNode %v", partition.PartitionID, partition.DecommissionSrcAddr)
 		return
 	}
@@ -1396,12 +1406,14 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			}
 		}
 		//only persist DecommissionDstAddr when get token
-		if ns.AcquireDecommissionToken() {
+		if ns.AcquireDecommissionToken(partition.PartitionID) {
 			partition.DecommissionDstAddr = targetHosts[0]
 			log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token from %v nodeset %v success",
 				partition.PartitionID, partition.DecommissionDstAddr, ns.ID)
 			return true
 		} else {
+			log.LogDebugf("action[TryAcquireDecommissionToken] dp %v: nodeset %v token is empty",
+				partition.PartitionID, ns.ID)
 			return false
 		}
 	} else {
@@ -1411,7 +1423,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				partition.PartitionID, err.Error())
 			goto errHandler
 		}
-		if ns.AcquireDecommissionToken() {
+		if ns.AcquireDecommissionToken(partition.PartitionID) {
 			log.LogDebugf("action[TryAcquireDecommissionToken]dp %v get token from %v nodeset %v success",
 				partition.PartitionID, partition.DecommissionDstAddr, ns.ID)
 			return true
@@ -1425,7 +1437,7 @@ errHandler:
 		partition.SetDecommissionStatus(DecommissionFail)
 	}
 	log.LogDebugf("action[TryAcquireDecommissionToken] clusterID[%v] vol[%v] partitionID[%v]"+
-		" retry %v status %v DecommissionDstAddrSpecify %v DecommissionDstAddr %v failed",
+		" retry [%v] status [%v] DecommissionDstAddrSpecify [%v] DecommissionDstAddr [%v] failed",
 		c.Name, partition.VolName, partition.PartitionID, partition.DecommissionRetry, partition.GetDecommissionStatus(),
 		partition.DecommissionDstAddrSpecify, partition.DecommissionDstAddr)
 	return false
@@ -1439,8 +1451,50 @@ func (partition *DataPartition) ReleaseDecommissionToken(c *Cluster) {
 		log.LogWarnf("action[ReleaseDecommissionToken]should never happen dp %v:%v", partition.PartitionID, err.Error())
 		return
 	} else {
-		ns.ReleaseDecommissionToken()
+		ns.ReleaseDecommissionToken(partition.PartitionID)
 	}
+}
+func (partition *DataPartition) ShouldReleaseDecommissionTokenByStop(c *Cluster) {
+	if partition.DecommissionDstAddr == "" {
+		return
+	}
+	index := partition.findReplica(partition.DecommissionDstAddr)
+	if index == -1 {
+		log.LogWarnf("action[ShouldReleaseDecommissionTokenByStop]dp[%v] has not added replica %v",
+			partition.PartitionID, partition.DecommissionDstAddr)
+		return
+	}
+	partition.ReleaseDecommissionToken(c)
+}
+
+func (partition *DataPartition) restoreReplicaMeta(c *Cluster) (err error) {
+	dstDataNode, err := c.dataNode(partition.DecommissionDstAddr)
+	if err != nil {
+		log.LogWarnf("action[restoreReplicaMeta]partition %v find dst %v data node failed:%v",
+			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
+		return
+	}
+	removePeer := proto.Peer{ID: dstDataNode.ID, Addr: partition.DecommissionDstAddr}
+	if err = c.removeHostMember(partition, removePeer); err != nil {
+		log.LogWarnf("action[restoreReplicaMeta]partition %v metadata  removeReplica %v failed:%v",
+			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
+		return
+	}
+	srcDataNode, err := c.dataNode(partition.DecommissionSrcAddr)
+	if err != nil {
+		log.LogWarnf("action[restoreReplicaMeta]partition %v find src %v data node failed:%v",
+			partition.PartitionID, partition.DecommissionSrcAddr, err.Error())
+		return
+	}
+	addPeer := proto.Peer{ID: srcDataNode.ID, Addr: partition.DecommissionSrcAddr}
+	if err = c.addDataPartitionRaftMember(partition, addPeer); err != nil {
+		log.LogWarnf("action[restoreReplicaMeta]partition %v metadata addReplica %v failed:%v",
+			partition.PartitionID, partition.DecommissionSrcAddr, err.Error())
+		return
+	}
+	log.LogDebugf("action[restoreReplicaMeta]partition %v meta data has restored:hosts [%v] peers[%v]",
+		partition.PartitionID, partition.Hosts, partition.Peers)
+	return
 }
 
 func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err error) {

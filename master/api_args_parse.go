@@ -1304,3 +1304,16 @@ func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err e
 	}
 	return strconv.ParseUint(value, 10, 64)
 }
+
+func parseRequestToUpdateDecommissionDiskFactor(r *http.Request) (factor float64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	var value string
+	if value = r.FormValue(decommissionDiskFactor); value == "" {
+		err = keyNotFound(decommissionDiskFactor)
+		return
+	}
+	return strconv.ParseFloat(value, 64)
+}
