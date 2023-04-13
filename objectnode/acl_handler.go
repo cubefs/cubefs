@@ -40,10 +40,9 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.bucket); err != nil {
+	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("getBucketACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.bucket, err)
-		ec = NoSuchBucket
 		return
 	}
 	var acl *AccessControlPolicy
@@ -91,10 +90,9 @@ func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.bucket); err != nil {
+	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("putBucketACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.bucket, err)
-		ec = NoSuchBucket
 		return
 	}
 	var acl *AccessControlPolicy
@@ -135,10 +133,9 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.bucket); err != nil {
+	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("getObjectACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.bucket, err)
-		ec = NoSuchBucket
 		return
 	}
 	var acl *AccessControlPolicy
@@ -189,10 +186,9 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.bucket); err != nil {
+	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("putObjectACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.bucket, err)
-		ec = NoSuchBucket
 		return
 	}
 	var acl, oldAcl *AccessControlPolicy
