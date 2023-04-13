@@ -196,6 +196,10 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetFileStats).
 		HandlerFunc(m.getFileStats)
 
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetClusterValue).
+		HandlerFunc(m.GetClusterValue)
+
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreateVol).
