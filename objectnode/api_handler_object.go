@@ -717,8 +717,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("copyObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
-			getRequestIP(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
@@ -775,7 +774,6 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if sourceVol, err = o.getVol(sourceBucket); err != nil {
 		log.LogErrorf("copyObjectHandler: load source volume fail: requestID(%v) srcVolume(%v) err(%v)",
 			GetRequestID(r), sourceBucket, err)
-		errorCode = NoSuchBucket
 		return
 	}
 	var fileInfo *FSFileInfo
@@ -897,10 +895,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	var err error
 	var errorCode *ErrorCode
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -912,7 +907,6 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketV1Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
 	// get options
@@ -1039,10 +1033,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	var err error
 	var errorCode *ErrorCode
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1054,7 +1045,6 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketV2Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -1229,7 +1219,6 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("putObjectHandler: load volume fail: requestID(%v)  volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
@@ -1402,10 +1391,7 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var err error
 	var errorCode *ErrorCode
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1421,7 +1407,6 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getObjectTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
 	var xattrInfo *proto.XAttrInfo
@@ -1525,10 +1510,7 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	var errorCode *ErrorCode
 
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1544,7 +1526,6 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectTaggingHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 	if err = vol.DeleteXAttr(param.object, XAttrKeyOSSTagging); err != nil {
@@ -1564,10 +1545,7 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	var errorCode *ErrorCode
 
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1579,7 +1557,6 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("pubObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 	if len(param.Object()) == 0 {
@@ -1628,10 +1605,7 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	var errorCode *ErrorCode
 
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1643,7 +1617,6 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 	if len(param.Object()) == 0 {
@@ -1690,10 +1663,7 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 	var errorCode *ErrorCode
 
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
@@ -1704,7 +1674,6 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 	if len(param.Object()) == 0 {
@@ -1736,10 +1705,7 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	var errorCode *ErrorCode
 
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
@@ -1750,7 +1716,6 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("listObjectXAttrs: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 	if len(param.Object()) == 0 {

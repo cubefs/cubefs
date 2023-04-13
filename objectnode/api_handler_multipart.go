@@ -221,9 +221,7 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, getRequestIP(r), err)
-		if !r.Close {
-			errorCode = InternalErrorCode(err)
-		}
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("uploadPartHandler: write part success: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) fsFileInfo(%v)",
@@ -275,11 +273,6 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("partCopyHandler: load volume fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		if err == proto.ErrVolNotExists {
-			errorCode = NoSuchBucket
-			return
-		}
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -294,11 +287,6 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	var srcVol *Volume
 	if srcVol, err = o.getVol(srcBucket); err != nil {
 		log.LogErrorf("partCopyHandler: load src volume fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		if err == proto.ErrVolNotExists {
-			errorCode = NoSuchBucket
-			return
-		}
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	srcFileInfo, _, err := srcVol.ObjectMeta(srcObject)
@@ -347,9 +335,7 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		log.LogErrorf("partCopyHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
-		if !r.Close {
-			errorCode = InternalErrorCode(err)
-		}
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("partCopyHandler: write part success: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) fsFileInfo(%+v)",

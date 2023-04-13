@@ -97,9 +97,13 @@ func (o *ObjectNode) getVol(bucket string) (vol *Volume, err error) {
 	vol, err = o.vm.Volume(bucket)
 	if err != nil {
 		log.LogErrorf("getVol: load Volume fail, bucket(%v) err(%v)", bucket, err)
-		return nil, err
+		if err == proto.ErrVolNotExists {
+			err = NoSuchBucket
+			return
+		}
+		err = InternalErrorCode(err)
+		return
 	}
-
 	return vol, nil
 }
 
