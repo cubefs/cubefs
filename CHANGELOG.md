@@ -176,8 +176,8 @@ Release formal version release-v3.0.0 which based on the newest master commit, b
 6) manage third part library with go mod.
 
 Please refer to the documentation for details,the content already updated.
-English version : https://cubefs.readthedocs.io/en/latest/overview.html
-Chinese version: https://cubefs.readthedocs.io/zh_CN/latest/
+- English version: https://cubefs.io/docs/master/overview/introduction.html
+- Chinese version: https://cubefs.io/zh/docs/master/overview/introduction.html
 
 
 ### **Main Feature**

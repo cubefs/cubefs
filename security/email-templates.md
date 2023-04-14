@@ -60,7 +60,7 @@ vulnerable in practice. -->
 
 **How do I upgrade?**
 
-Follow the upgrade instructions at https://cubefs.readthedocs.io/en/latest/
+Follow the upgrade instructions at https://cubefs.io/docs/master/overview/introduction.html
 
 **Vulnerability Details**
 
