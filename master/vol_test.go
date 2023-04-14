@@ -10,6 +10,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestAutoCreateDataPartitions(t *testing.T) {
@@ -449,5 +450,37 @@ func TestShrinkVolCapacity(t *testing.T) {
 	process(reqURL, t)
 	if vol.Capacity != newCapacity {
 		t.Errorf("expect Capacity is %v,but get :%v", newCapacity, vol.Capacity)
+	}
+}
+
+func TestGetMaxCapacityWithReservedTrashSpace(t *testing.T) {
+	volName := commonVolName
+	vol, err := server.cluster.getVol(volName)
+	if err != nil || vol == nil {
+		t.Errorf("getVol:%v err:%v", volName, err)
+		return
+	}
+	oldCap := vol.Capacity
+	oldTrashRemainingDays := vol.trashRemainingDays
+	defer func() {
+		vol.Capacity = oldCap
+		vol.trashRemainingDays = oldTrashRemainingDays
+	}()
+	capacity1 := uint64(volLowCapThresholdForReservedTrashSpace - 1)
+	capacity2 := uint64(volLowCapThresholdForReservedTrashSpace)
+	testCases := []struct {
+		capacity uint64
+		trashDay uint32
+		expect   uint64
+	}{
+		{vol.Capacity, 0, vol.Capacity},
+		{capacity1, 1, uint64(float64(capacity1) * volLowCapMaxCapacityRatioForReservedTrashSpace)},
+		{capacity2, 1, uint64(float64(capacity2) * volDefaultMaxCapacityRatioForReservedTrashSpace)},
+	}
+	for i, testCase := range testCases {
+		vol.Capacity = testCase.capacity
+		vol.trashRemainingDays = testCase.trashDay
+		maxCap := vol.getMaxCapacityWithReservedTrashSpace()
+		assert.Equal(t, testCase.expect, maxCap, fmt.Sprintf("testCase:%v", i))
 	}
 }

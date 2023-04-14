@@ -269,6 +269,9 @@ const (
 	defaultAutoCreateDPAfterVolCreateSecond            = 60
 	defaultHeartbeatHandleChanCap                      = 4096
 	defaultHeartbeatHandleGoRoutineCount               = 20
+	volDefaultMaxCapacityRatioForReservedTrashSpace    = 1.5
+	volLowCapThresholdForReservedTrashSpace            = 20 * 1024 // GB
+	volLowCapMaxCapacityRatioForReservedTrashSpace     = 2
 )
 
 const (

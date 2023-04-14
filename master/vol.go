@@ -685,7 +685,7 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 		return
 	}
 	usedSpace := vol.totalUsedSpace() / unit.GB
-	if usedSpace >= vol.capacity() {
+	if usedSpace >= vol.getMaxCapacityWithReservedTrashSpace() {
 		vol.setAllDataPartitionsToReadOnly()
 		return
 	}
@@ -694,6 +694,19 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	if vol.status() == proto.VolStNormal && !c.DisableAutoAllocate {
 		vol.autoCreateDataPartitions(c)
 	}
+}
+
+func (vol *Vol) getMaxCapacityWithReservedTrashSpace() uint64 {
+	vol.RLock()
+	defer vol.RUnlock()
+	if vol.trashRemainingDays == 0 {
+		return vol.Capacity
+	}
+	ratio := volDefaultMaxCapacityRatioForReservedTrashSpace
+	if vol.Capacity < volLowCapThresholdForReservedTrashSpace {
+		ratio = volLowCapMaxCapacityRatioForReservedTrashSpace
+	}
+	return uint64(float64(vol.Capacity) * ratio)
 }
 
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
