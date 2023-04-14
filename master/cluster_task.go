@@ -488,8 +488,16 @@ func (c *Cluster) buildAddMetaPartitionRaftMemberTaskAndSyncSend(mp *MetaPartiti
 		if resp != nil {
 			resultCode = resp.ResultCode
 		}
-		log.LogErrorf("action[addMetaRaftMemberAndSend],vol[%v],meta partition[%v],resultCode[%v],err[%v]", mp.volName, mp.PartitionID, resultCode, err)
+
+		if err != nil {
+			log.LogErrorf("action[addMetaRaftMemberAndSend],vol[%v],meta partition[%v],resultCode[%v],err[%v]",
+				mp.volName, mp.PartitionID, resultCode, err)
+		} else {
+			log.LogWarnf("action[addMetaRaftMemberAndSend],vol[%v],meta partition[%v],resultCode[%v]",
+				mp.volName, mp.PartitionID, resultCode)
+		}
 	}()
+
 	t, err := mp.createTaskToAddRaftMember(addPeer, leaderAddr)
 	if err != nil {
 		return
