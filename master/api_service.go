@@ -348,38 +348,48 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv.EcNodes = m.cluster.allEcNodes()
 	cv.EcNodeStatInfo = m.cluster.ecNodeStatInfo
 	m.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionIds := value.([]uint64)
+		badDataPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badDataPartitionIds}
-		cv.BadPartitionIDs = append(cv.BadPartitionIDs, bpv)
+		cv.BadPartitionIDs = append(cv.BadPartitionIDs, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badDataPartitionId,
+		})
 		return true
 	})
 	m.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionIds := value.([]uint64)
+		badPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
-		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, bpv)
+		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badPartitionId,
+		})
 		return true
 	})
 	m.cluster.BadEcPartitionIds.Range(func(key, value interface{}) bool {
-		badEcPartitionIds := value.([]uint64)
+		badPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badEcPartitionIds}
-		cv.BadEcPartitionIDs = append(cv.BadEcPartitionIDs, bpv)
+		cv.BadEcPartitionIDs = append(cv.BadEcPartitionIDs, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badPartitionId,
+		})
 		return true
 	})
 	m.cluster.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionIds := value.([]uint64)
+		badPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
-		cv.MigratedDataPartitions = append(cv.MigratedDataPartitions, bpv)
+		cv.MigratedDataPartitions = append(cv.MigratedDataPartitions, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badPartitionId,
+		})
 		return true
 	})
 	m.cluster.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionIds := value.([]uint64)
+		badPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
-		cv.MigratedMetaPartitions = append(cv.MigratedMetaPartitions, bpv)
+		cv.MigratedMetaPartitions = append(cv.MigratedMetaPartitions, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badPartitionId,
+		})
 		return true
 	})
 	cv.DataNodeBadDisks = m.cluster.getDataNodeBadDisks()

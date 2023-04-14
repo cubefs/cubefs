@@ -256,7 +256,7 @@ type NodeView struct {
 
 type BadPartitionView struct {
 	Path         string
-	PartitionIDs []uint64
+	PartitionID  uint64
 }
 
 type DataNodeBadDisksView struct {

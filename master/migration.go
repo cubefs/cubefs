@@ -3,6 +3,7 @@ package master
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/log"
+	"strings"
 	"time"
 )
 
@@ -16,39 +17,30 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 	}()
 	unrecoverPartitionIDs := make(map[uint64]int64, 0)
 	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionIds := value.([]uint64)
-		newBadDpIds := make([]uint64, 0)
-		for _, partitionID := range badDataPartitionIds {
-			partition, err := c.getDataPartitionByID(partitionID)
-			if err != nil {
-				continue
-			}
-			vol, err := c.getVol(partition.VolName)
-			if err != nil {
-				continue
-			}
-			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
-				continue
-			}
-			if partition.isDataCatchUpInStrictMode() && partition.allReplicaHasRecovered() {
-				partition.RLock()
-				if partition.isRecover {
-					partition.isRecover = false
-					c.syncUpdateDataPartition(partition)
-				}
-				partition.RUnlock()
-			} else {
-				newBadDpIds = append(newBadDpIds, partitionID)
-				if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
-					unrecoverPartitionIDs[partitionID] = partition.modifyTime
-				}
-			}
+		partitionID := value.(uint64)
+		partition, err := c.getDataPartitionByID(partitionID)
+		if err != nil {
+			return true
 		}
-
-		if len(newBadDpIds) == 0 {
+		vol, err := c.getVol(partition.VolName)
+		if err != nil {
+			return true
+		}
+		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
+			return true
+		}
+		if partition.isDataCatchUpInStrictMode() && partition.allReplicaHasRecovered() {
+			partition.RLock()
+			if partition.isRecover {
+				partition.isRecover = false
+				c.syncUpdateDataPartition(partition)
+			}
+			partition.RUnlock()
 			c.MigratedDataPartitionIds.Delete(key)
 		} else {
-			c.MigratedDataPartitionIds.Store(key, newBadDpIds)
+			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+				unrecoverPartitionIDs[partitionID] = partition.modifyTime
+			}
 		}
 
 		return true
@@ -59,29 +51,31 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 }
 
 func (c *Cluster) putMigratedDataPartitionIDs(replica *DataReplica, addr string, partitionID uint64) {
-	var key string
-	newMigratedPartitionIDs := make([]uint64, 0)
+	var diskPath string
 	if replica != nil {
-		key = fmt.Sprintf("%s:%s", addr, replica.DiskPath)
-	} else {
-		key = fmt.Sprintf("%s:%s", addr, "")
+		diskPath = replica.DiskPath
 	}
-	migratedPartitionIDs, ok := c.MigratedDataPartitionIds.Load(key)
-	if ok {
-		newMigratedPartitionIDs = migratedPartitionIDs.([]uint64)
-	}
-	newMigratedPartitionIDs = append(newMigratedPartitionIDs, partitionID)
-	c.MigratedDataPartitionIds.Store(key, newMigratedPartitionIDs)
+	key := decommissionDataPartitionKey(addr, diskPath, partitionID)
+	c.MigratedDataPartitionIds.Store(key, partitionID)
+}
+
+func decommissionDataPartitionKey(addr, diskPath string, partitionID uint64) string {
+	return fmt.Sprintf("%s%v%s%v%v", addr, keySeparator, diskPath, keySeparator, partitionID)
+}
+func getAddrFromDecommissionDataPartitionKey(key string) string {
+	return strings.Split(key, keySeparator)[0]
 }
 
 func (c *Cluster) putMigratedMetaPartitions(addr string, partitionID uint64) {
-	newMigratedPartitionIDs := make([]uint64, 0)
-	migratedPartitionIDs, ok := c.MigratedMetaPartitionIds.Load(addr)
-	if ok {
-		newMigratedPartitionIDs = migratedPartitionIDs.([]uint64)
-	}
-	newMigratedPartitionIDs = append(newMigratedPartitionIDs, partitionID)
-	c.MigratedMetaPartitionIds.Store(addr, newMigratedPartitionIDs)
+	key := decommissionMetaPartitionKey(addr, partitionID)
+	c.MigratedMetaPartitionIds.Store(key, partitionID)
+}
+
+func decommissionMetaPartitionKey(addr string, partitionID uint64) string {
+	return fmt.Sprintf("%v%v%v", addr, keySeparator, partitionID)
+}
+func getAddrFromDecommissionMetaPartitionKey(key string) string {
+	return strings.Split(key, keySeparator)[0]
 }
 
 func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
@@ -94,14 +88,12 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 	}()
 
 	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badMetaPartitionIds := value.([]uint64)
-		for _, partitionID := range badMetaPartitionIds {
-			partition, err := c.getMetaPartitionByVirtualPID(partitionID)
-			if err != nil {
-				continue
-			}
-			c.doLoadMetaPartition(partition)
+		partitionID := value.(uint64)
+		partition, err := c.getMetaPartitionByVirtualPID(partitionID)
+		if err != nil {
+			return true
 		}
+		c.doLoadMetaPartition(partition)
 		return true
 	})
 
@@ -111,42 +103,32 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 	)
 	unrecoverMpIDs := make(map[uint64]int64, 0)
 	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badMetaPartitionIds := value.([]uint64)
-		newBadMpIds := make([]uint64, 0)
-		for _, partitionID := range badMetaPartitionIds {
-			partition, err := c.getMetaPartitionByVirtualPID(partitionID)
-			if err != nil {
-				continue
-			}
-			vol, err := c.getVol(partition.volName)
-			if err != nil {
-				continue
-			}
-			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.mpReplicaNum) {
-				continue
-			}
-			dentryDiff = partition.getMinusOfDentryCount()
-			//inodeDiff = partition.getMinusOfInodeCount()
-			//inodeDiff = partition.getPercentMinusOfInodeCount()
-			applyIDDiff = partition.getMinusOfApplyID()
-			if dentryDiff == 0 && applyIDDiff == 0 && partition.allReplicaHasRecovered() {
-				partition.RLock()
-				partition.IsRecover = false
-				c.syncUpdateMetaPartition(partition)
-				partition.RUnlock()
-			} else {
-				newBadMpIds = append(newBadMpIds, partitionID)
-				if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
-					unrecoverMpIDs[partitionID] = partition.modifyTime
-				}
-			}
+		partitionID := value.(uint64)
+		partition, err := c.getMetaPartitionByVirtualPID(partitionID)
+		if err != nil {
+			return true
 		}
-
-		if len(newBadMpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("action[checkMigratedMpRecoveryProgress] clusterID[%v],node[%v] has recovered success", c.Name, key))
+		vol, err := c.getVol(partition.volName)
+		if err != nil {
+			return true
+		}
+		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.mpReplicaNum) {
+			return true
+		}
+		dentryDiff = partition.getMinusOfDentryCount()
+		//inodeDiff = partition.getMinusOfInodeCount()
+		//inodeDiff = partition.getPercentMinusOfInodeCount()
+		applyIDDiff = partition.getMinusOfApplyID()
+		if dentryDiff == 0 && applyIDDiff == 0 && partition.allReplicaHasRecovered() {
+			partition.RLock()
+			partition.IsRecover = false
+			c.syncUpdateMetaPartition(partition)
+			partition.RUnlock()
 			c.MigratedMetaPartitionIds.Delete(key)
 		} else {
-			c.MigratedMetaPartitionIds.Store(key, newBadMpIds)
+			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+				unrecoverMpIDs[partitionID] = partition.modifyTime
+			}
 		}
 
 		return true

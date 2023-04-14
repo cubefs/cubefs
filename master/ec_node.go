@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -1280,42 +1281,33 @@ func (c *Cluster) checkLackReplicaEcPartitions() (lackReplicaEcPartitions []*EcD
 }
 
 func (c *Cluster) putBadEcPartitionIDs(replica *EcReplica, addr string, partitionId uint64) {
-	var key string
-	newBadEcPartitionIDs := make([]uint64, 0)
+	var diskPath string
 	if replica != nil {
-		key = fmt.Sprintf("%s:%s", addr, replica.DiskPath)
-	} else {
-		key = fmt.Sprintf("%s:%s", addr, "")
+		diskPath = replica.DiskPath
 	}
-	c.badEcPartitionsMutex.Lock()
-	defer c.badEcPartitionsMutex.Unlock()
-	badEcPartitionIDs, ok := c.BadEcPartitionIds.Load(key)
-	if ok {
-		newBadEcPartitionIDs = badEcPartitionIDs.([]uint64)
-	}
-	newBadEcPartitionIDs = append(newBadEcPartitionIDs, partitionId)
-	c.BadEcPartitionIds.Store(key, newBadEcPartitionIDs)
+	key := decommissionEcPartitionKey(addr, diskPath, partitionId)
+	c.BadEcPartitionIds.Store(key, partitionId)
+}
+
+func decommissionEcPartitionKey(addr, diskPath string, partitionID uint64) string {
+	return fmt.Sprintf("%s%v%s%v%v", addr, keySeparator, diskPath, keySeparator, partitionID)
+}
+func getAddrFromDecommissionEcPartitionKey(key string) string {
+	return strings.Split(key, keySeparator)[0]
 }
 
 func (c *Cluster) isEcRecovering(ecdp *EcDataPartition, addr string) (isRecover bool) {
-	var key string
+	var diskPath string
 	ecdp.RLock()
 	defer ecdp.RUnlock()
 	replica, _ := ecdp.getEcReplica(addr)
 	if replica != nil {
-		key = fmt.Sprintf("%s:%s", addr, replica.DiskPath)
-	} else {
-		key = fmt.Sprintf("%s:%s", addr, "")
+		diskPath = replica.DiskPath
 	}
-	var badEcPartitionIDs []uint64
-	badEcPartitions, ok := c.BadEcPartitionIds.Load(key)
+	key := decommissionEcPartitionKey(addr, diskPath, ecdp.PartitionID)
+	_, ok := c.BadEcPartitionIds.Load(key)
 	if ok {
-		badEcPartitionIDs = badEcPartitions.([]uint64)
-	}
-	for _, id := range badEcPartitionIDs {
-		if id == ecdp.PartitionID {
-			isRecover = true
-		}
+		isRecover = true
 	}
 	return
 }
@@ -1422,43 +1414,23 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 		}
 	}()
 	c.BadEcPartitionIds.Range(func(key, value interface{}) bool {
-		badEcPartitionIds := value.([]uint64)
-		newBadEcDpIds := make([]uint64, 0)
-		for _, partitionID := range badEcPartitionIds {
-			ep, err := c.getEcPartitionByID(partitionID)
-			if err != nil {
-				continue
-			}
-			if !ep.isRecover {
-				continue
-			}
-
-			if ep.isEcFilesCatchUp() && ep.isEcDataCatchUp() && len(ep.ecReplicas) >= int(ep.DataUnitsNum+ep.ParityUnitsNum) {
-				ep.RLock()
-				ep.isRecover = false
-				ep.PanicHosts = make([]string, 0)
-				c.syncUpdateEcDataPartition(ep)
-				ep.RUnlock()
-				Warn(c.Name, fmt.Sprintf("action[checkEcDiskRecoveryProgress] clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
-			} else {
-				newBadEcDpIds = append(newBadEcDpIds, partitionID)
-			}
-		}
-		c.badEcPartitionsMutex.Lock()
-		defer c.badEcPartitionsMutex.Unlock()
-
-		newValue, _ := c.BadEcPartitionIds.Load(key)
-		newBadEcPartitionIds := newValue.([]uint64)
-		if len(newBadEcPartitionIds) != len(badEcPartitionIds) { //avoid new insert value deleted
-			log.LogInfof("new value insert, wait next schedule handle, newBadEcPartitionIds(%v) badEcPartitionIds(%v)\n",
-				newBadEcPartitionIds, badEcPartitionIds)
+		partitionID := value.(uint64)
+		ep, err := c.getEcPartitionByID(partitionID)
+		if err != nil {
 			return true
 		}
-		if len(newBadEcDpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
+		if !ep.isRecover {
+			return true
+		}
+
+		if ep.isEcFilesCatchUp() && ep.isEcDataCatchUp() && len(ep.ecReplicas) >= int(ep.DataUnitsNum+ep.ParityUnitsNum) {
+			ep.RLock()
+			ep.isRecover = false
+			ep.PanicHosts = make([]string, 0)
+			c.syncUpdateEcDataPartition(ep)
+			ep.RUnlock()
+			Warn(c.Name, fmt.Sprintf("action[checkEcDiskRecoveryProgress] clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
 			c.BadEcPartitionIds.Delete(key)
-		} else {
-			c.BadEcPartitionIds.Store(key, newBadEcDpIds)
 		}
 		return true
 	})

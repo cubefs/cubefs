@@ -79,7 +79,6 @@ type Cluster struct {
 	EcStartScrubTime           int64
 	MaxCodecConcurrent         int
 	BadEcPartitionIds          *sync.Map
-	badEcPartitionsMutex       sync.Mutex
 	codecNodes                 sync.Map
 	ecNodes                    sync.Map
 	cnMutex                    sync.RWMutex
@@ -507,13 +506,11 @@ func (c *Cluster) repairMetaPartition(wg sync.WaitGroup) {
 
 func (c *Cluster) dataPartitionInRecovering() (num int) {
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionIds := value.([]uint64)
-		num = num + len(badDataPartitionIds)
+		num++
 		return true
 	})
 	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionIds := value.([]uint64)
-		num = num + len(badDataPartitionIds)
+		num++
 		return true
 	})
 
@@ -522,8 +519,7 @@ func (c *Cluster) dataPartitionInRecovering() (num int) {
 
 func (c *Cluster) metaPartitionInRecovering() (num int) {
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badMetaPartitionIds := value.([]uint64)
-		num = num + len(badMetaPartitionIds)
+		num++
 		return true
 	})
 	return
@@ -1594,6 +1590,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 			goto errHandler
 		}
 	}
+	dpReplica, _ = dp.getReplica(oldAddr)
 	if isLearner, pmConfig, err = c.removeDataReplica(dp, oldAddr, false, strictMode); err != nil {
 		goto errHandler
 	}
@@ -1612,7 +1609,6 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	dp.modifyTime = time.Now().Unix()
 	c.syncUpdateDataPartition(dp)
 	dp.Unlock()
-	dpReplica, _ = dp.getReplica(oldAddr)
 	if strictMode {
 		c.putMigratedDataPartitionIDs(dpReplica, oldAddr, dp.PartitionID)
 	} else {
@@ -2441,24 +2437,17 @@ func (c *Cluster) resetDataPartitionRaftMember(dp *DataPartition, newPeers []pro
 }
 
 func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) {
-	var key string
+	var diskPath string
 	dp.RLock()
 	defer dp.RUnlock()
 	replica, _ := dp.getReplica(addr)
 	if replica != nil {
-		key = fmt.Sprintf("%s:%s", addr, replica.DiskPath)
-	} else {
-		key = fmt.Sprintf("%s:%s", addr, "")
+		diskPath = replica.DiskPath
 	}
-	var badPartitionIDs []uint64
-	badPartitions, ok := c.BadDataPartitionIds.Load(key)
+	key := decommissionDataPartitionKey(addr, diskPath, dp.PartitionID)
+	_, ok := c.BadDataPartitionIds.Load(key)
 	if ok {
-		badPartitionIDs = badPartitions.([]uint64)
-	}
-	for _, id := range badPartitionIDs {
-		if id == dp.PartitionID {
-			isRecover = true
-		}
+		isRecover = true
 	}
 	return
 }
@@ -2772,29 +2761,17 @@ func (c *Cluster) buildPromoteDataPartitionRaftLearnerTaskAndSyncSend(dp *DataPa
 }
 
 func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
-	newBadPartitionIDs := make([]uint64, 0)
-	badPartitionIDs, ok := c.BadMetaPartitionIds.Load(addr)
-	if ok {
-		newBadPartitionIDs = badPartitionIDs.([]uint64)
-	}
-	newBadPartitionIDs = append(newBadPartitionIDs, partitionID)
-	c.BadMetaPartitionIds.Store(addr, newBadPartitionIDs)
+	key := decommissionMetaPartitionKey(addr, partitionID)
+	c.BadMetaPartitionIds.Store(key, partitionID)
 }
 
 func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, partitionID uint64) {
-	var key string
-	newBadPartitionIDs := make([]uint64, 0)
+	var diskPath string
 	if replica != nil {
-		key = fmt.Sprintf("%s:%s", addr, replica.DiskPath)
-	} else {
-		key = fmt.Sprintf("%s:%s", addr, "")
+		diskPath = replica.DiskPath
 	}
-	badPartitionIDs, ok := c.BadDataPartitionIds.Load(key)
-	if ok {
-		newBadPartitionIDs = badPartitionIDs.([]uint64)
-	}
-	newBadPartitionIDs = append(newBadPartitionIDs, partitionID)
-	c.BadDataPartitionIds.Store(key, newBadPartitionIDs)
+	key := decommissionDataPartitionKey(addr, diskPath, partitionID)
+	c.BadDataPartitionIds.Store(key, partitionID)
 }
 
 func (c *Cluster) decommissionMetaNode(metaNode *MetaNode, strictMode bool) (err error) {
@@ -5551,38 +5528,48 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 	cv.EcNodes = c.allEcNodes()
 	cv.EcNodeStatInfo = c.ecNodeStatInfo
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionIds := value.([]uint64)
+		badDataPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badDataPartitionIds}
-		cv.BadPartitionIDs = append(cv.BadPartitionIDs, bpv)
+		cv.BadPartitionIDs = append(cv.BadPartitionIDs, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badDataPartitionId,
+		})
 		return true
 	})
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionIds := value.([]uint64)
+		badPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
-		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, bpv)
+		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badPartitionId,
+		})
 		return true
 	})
 	c.BadEcPartitionIds.Range(func(key, value interface{}) bool {
-		badEcPartitionIds := value.([]uint64)
+		badPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badEcPartitionIds}
-		cv.BadEcPartitionIDs = append(cv.BadEcPartitionIDs, bpv)
+		cv.BadEcPartitionIDs = append(cv.BadEcPartitionIDs, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badPartitionId,
+		})
 		return true
 	})
 	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionIds := value.([]uint64)
+		badPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
-		cv.MigratedDataPartitions = append(cv.MigratedDataPartitions, bpv)
+		cv.MigratedDataPartitions = append(cv.MigratedDataPartitions, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badPartitionId,
+		})
 		return true
 	})
 	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionIds := value.([]uint64)
+		badPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
-		cv.MigratedMetaPartitions = append(cv.MigratedMetaPartitions, bpv)
+		cv.MigratedMetaPartitions = append(cv.MigratedMetaPartitions, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badPartitionId,
+		})
 		return true
 	})
 	cv.DataNodeBadDisks = c.getDataNodeBadDisks()

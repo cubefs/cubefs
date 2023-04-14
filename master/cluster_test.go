@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 )
 
 func buildPanicCluster() *Cluster {
@@ -169,6 +170,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 	dpsMapLen := vol.getDpCnt()
 	vol.RUnlock()
 	dpsLen := len(dps)
+	partitionIdMap := make(map[uint64]bool, dpsLen)
 	if dpsLen != dpsMapLen {
 		t.Errorf("dpsLen[%v],dpsMapLen[%v]", dpsLen, dpsMapLen)
 		return
@@ -191,18 +193,20 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		}
 		addr := dp.Replicas[0].dataNode.Addr
 		server.cluster.putBadDataPartitionIDs(dp.Replicas[0], addr, dp.PartitionID)
+		partitionIdMap[dp.PartitionID] = true
 		dp.RUnlock()
 	}
 	count := 0
 	server.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionIds := value.([]uint64)
-		count = count + len(badDataPartitionIds)
+		count++
+		delete(partitionIdMap, value.(uint64))
 		return true
 	})
 	if count != dpsLen {
 		t.Errorf("expect bad partition num[%v],real num[%v]", dpsLen, count)
 		return
 	}
+	assert.Equal(t, 0, len(partitionIdMap))
 	//check recovery
 	server.cluster.checkDiskRecoveryProgress()
 
@@ -251,6 +255,7 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 		mps = append(mps, mp)
 	}
 	mpsMapLen := len(vol.MetaPartitions)
+	partitionIdMap := make(map[uint64]bool, mpsMapLen)
 	vol.RUnlock()
 	mpsLen := len(mps)
 	if mpsLen != mpsMapLen {
@@ -266,12 +271,13 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 		}
 		addr := mp.Replicas[0].metaNode.Addr
 		server.cluster.putBadMetaPartitions(addr, mp.PartitionID)
+		partitionIdMap[mp.PartitionID] = true
 		mp.RUnlock()
 	}
 	count := 0
 	server.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badMetaPartitionIds := value.([]uint64)
-		count = count + len(badMetaPartitionIds)
+		count++
+		delete(partitionIdMap, value.(uint64))
 		return true
 	})
 
@@ -279,6 +285,7 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 		t.Errorf("expect bad partition num[%v],real num[%v]", mpsLen, count)
 		return
 	}
+	assert.Equal(t, 0, len(partitionIdMap))
 	//check recovery
 	server.cluster.checkMetaPartitionRecoveryProgress()
 

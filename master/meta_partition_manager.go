@@ -158,38 +158,29 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 	c.checkFulfillMetaReplica()
 	unrecoverMpIDs := make(map[uint64]int64, 0)
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badMetaPartitionIds := value.([]uint64)
-		newBadMpIds := make([]uint64, 0)
-		for _, partitionID := range badMetaPartitionIds {
-			partition, err := c.getMetaPartitionByVirtualPID(partitionID)
-			if err != nil {
-				continue
-			}
-			vol, err := c.getVol(partition.volName)
-			if err != nil {
-				continue
-			}
-			if len(partition.Replicas) == 0 {
-				continue
-			}
-			diff, normalReplicaCount = partition.getMinusOfMaxInodeID()
-			if diff < defaultMinusOfMaxInodeID && int(vol.mpReplicaNum) <= normalReplicaCount && partition.allReplicaHasRecovered() {
-				partition.RLock()
-				partition.IsRecover = false
-				c.syncUpdateMetaPartition(partition)
-				partition.RUnlock()
-			} else {
-				newBadMpIds = append(newBadMpIds, partitionID)
-				if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
-					unrecoverMpIDs[partitionID] = partition.modifyTime
-				}
-			}
+		partitionID := value.(uint64)
+		partition, err := c.getMetaPartitionByVirtualPID(partitionID)
+		if err != nil {
+			return true
 		}
-
-		if len(newBadMpIds) == 0 {
+		vol, err := c.getVol(partition.volName)
+		if err != nil {
+			return true
+		}
+		if len(partition.Replicas) == 0 {
+			return true
+		}
+		diff, normalReplicaCount = partition.getMinusOfMaxInodeID()
+		if diff < defaultMinusOfMaxInodeID && int(vol.mpReplicaNum) <= normalReplicaCount && partition.allReplicaHasRecovered() {
+			partition.RLock()
+			partition.IsRecover = false
+			c.syncUpdateMetaPartition(partition)
+			partition.RUnlock()
 			c.BadMetaPartitionIds.Delete(key)
 		} else {
-			c.BadMetaPartitionIds.Store(key, newBadMpIds)
+			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+				unrecoverMpIDs[partitionID] = partition.modifyTime
+			}
 		}
 
 		return true
@@ -202,17 +193,13 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 // Add replica for the partition whose replica number is less than replicaNum
 func (c *Cluster) checkFulfillMetaReplica() {
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badMetaPartitionIds := value.([]uint64)
-		badAddr := key.(string)
-		newBadParitionIds := make([]uint64, 0)
-		for _, partitionID := range badMetaPartitionIds {
-			isPushBackToBadIDs := c.fulfillMetaReplica(partitionID, badAddr)
-			if isPushBackToBadIDs {
-				newBadParitionIds = append(newBadParitionIds, partitionID)
-			}
+		partitionID := value.(uint64)
+		badAddr := getAddrFromDecommissionMetaPartitionKey(key.(string))
+		isPushBackToBadIDs := c.fulfillMetaReplica(partitionID, badAddr)
+		if !isPushBackToBadIDs {
+			c.BadMetaPartitionIds.Delete(key)
 		}
 		//Todo: write BadMetaPartitionIds to raft log
-		c.BadMetaPartitionIds.Store(key, newBadParitionIds)
 		return true
 	})
 

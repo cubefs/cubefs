@@ -16,7 +16,6 @@ package master
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -50,46 +49,37 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 	c.checkFulfillDataReplica()
 	unrecoverPartitionIDs := make(map[uint64]int64, 0)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionIds := value.([]uint64)
-		newBadDpIds := make([]uint64, 0)
-		for _, partitionID := range badDataPartitionIds {
-			partition, err := c.getDataPartitionByID(partitionID)
-			if err != nil {
-				continue
-			}
-			vol, err := c.getVol(partition.VolName)
-			if err != nil {
-				continue
-			}
-			if len(partition.Replicas) == 0 {
-				continue
-			}
-			replicaNum := vol.dpReplicaNum
-			if vol.DPConvertMode == proto.IncreaseReplicaNum && vol.dpReplicaNum == maxQuorumVolDataPartitionReplicaNum {
-				replicaNum = partition.ReplicaNum
-				if replicaNum < defaultReplicaNum {
-					replicaNum = defaultReplicaNum
-				}
-			}
-			if partition.isDataCatchUp() && partition.allReplicaHasRecovered() && len(partition.Replicas) >= int(replicaNum) {
-				partition.RLock()
-				if partition.isRecover {
-					partition.isRecover = false
-					c.syncUpdateDataPartition(partition)
-				}
-				partition.RUnlock()
-			} else {
-				newBadDpIds = append(newBadDpIds, partitionID)
-				if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
-					unrecoverPartitionIDs[partitionID] = partition.modifyTime
-				}
+		partitionID := value.(uint64)
+		partition, err := c.getDataPartitionByID(partitionID)
+		if err != nil {
+			return true
+		}
+		vol, err := c.getVol(partition.VolName)
+		if err != nil {
+			return true
+		}
+		if len(partition.Replicas) == 0 {
+			return true
+		}
+		replicaNum := vol.dpReplicaNum
+		if vol.DPConvertMode == proto.IncreaseReplicaNum && vol.dpReplicaNum == maxQuorumVolDataPartitionReplicaNum {
+			replicaNum = partition.ReplicaNum
+			if replicaNum < defaultReplicaNum {
+				replicaNum = defaultReplicaNum
 			}
 		}
-
-		if len(newBadDpIds) == 0 {
+		if partition.isDataCatchUp() && partition.allReplicaHasRecovered() && len(partition.Replicas) >= int(replicaNum) {
+			partition.RLock()
+			if partition.isRecover {
+				partition.isRecover = false
+				c.syncUpdateDataPartition(partition)
+			}
+			partition.RUnlock()
 			c.BadDataPartitionIds.Delete(key)
 		} else {
-			c.BadDataPartitionIds.Store(key, newBadDpIds)
+			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+				unrecoverPartitionIDs[partitionID] = partition.modifyTime
+			}
 		}
 
 		return true
@@ -103,20 +93,13 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 // Add replica for the partition whose replica number is less than replicaNum
 func (c *Cluster) checkFulfillDataReplica() {
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionIds := value.([]uint64)
+		partitionID := value.(uint64)
 		//badDiskAddr: '127.0.0.1:17210:/data1'
-		badDiskAddr := strings.Split(key.(string), ":")
-		if len(badDiskAddr) < 2 {
-			return true
+		badAddr := getAddrFromDecommissionDataPartitionKey(key.(string))
+		isPushBackToBadIDs := c.fulfillDataReplica(partitionID, badAddr)
+		if !isPushBackToBadIDs {
+			c.BadDataPartitionIds.Delete(key)
 		}
-		newBadParitionIds := make([]uint64, 0)
-		for _, partitionID := range badDataPartitionIds {
-			isPushBackToBadIDs := c.fulfillDataReplica(partitionID, badDiskAddr[0]+":"+badDiskAddr[1])
-			if isPushBackToBadIDs {
-				newBadParitionIds = append(newBadParitionIds, partitionID)
-			}
-		}
-		c.BadDataPartitionIds.Store(key, newBadParitionIds)
 		return true
 	})
 
@@ -289,10 +272,8 @@ func (c *Cluster) checkIfDPIdIsInRecovering(dpIds []uint64) (inRecoveringDps []u
 	}
 	allInRecoveringDPIds := make(map[uint64]bool, 0)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		if badDataPartitionIds, ok := value.([]uint64); ok {
-			for _, dataPartitionId := range badDataPartitionIds {
-				allInRecoveringDPIds[dataPartitionId] = true
-			}
+		if dataPartitionId, ok := value.(uint64); ok {
+			allInRecoveringDPIds[dataPartitionId] = true
 		}
 		return true
 	})

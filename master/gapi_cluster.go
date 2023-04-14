@@ -708,17 +708,21 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
 	cv.DataNodeBadDisks = m.cluster.getDataNodeBadDisks()
 	m.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionIds := value.([]uint64)
+		badDataPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badDataPartitionIds}
-		cv.BadPartitionIDs = append(cv.BadPartitionIDs, bpv)
+		cv.BadPartitionIDs = append(cv.BadPartitionIDs, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badDataPartitionId,
+		})
 		return true
 	})
 	m.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionIds := value.([]uint64)
+		badPartitionId := value.(uint64)
 		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
-		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, bpv)
+		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, proto.BadPartitionView{
+			Path:        path,
+			PartitionID: badPartitionId,
+		})
 		return true
 	})
 	return cv
