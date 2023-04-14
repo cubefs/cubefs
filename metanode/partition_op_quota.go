@@ -49,15 +49,6 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 		}
 		if treeItem == nil {
 			quotaInfos.QuotaInfoMap[req.QuotaId] = quotaInfo
-			value, err1 := json.Marshal(quotaInfos.QuotaInfoMap)
-			if err1 != nil {
-				log.LogErrorf("set quota marsha1 quotaInfos [%v] fail [%v]", quotaInfos, err)
-				resp.Status = proto.TaskFailed
-				resp.Result = err1.Error()
-				err = err1
-				return
-			}
-			extend.Put([]byte(proto.QuotaKey), value)
 		} else {
 			extend = treeItem.(*Extend)
 			value, exist := extend.Get([]byte(proto.QuotaKey))
@@ -68,7 +59,6 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 					resp.Result = err.Error()
 					return
 				}
-
 				_, ok := quotaInfos.QuotaInfoMap[req.QuotaId]
 				if ok {
 					err = errors.New("quotaId [%v] is exist.")
@@ -80,17 +70,17 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 				}
 			} else {
 				quotaInfos.QuotaInfoMap[req.QuotaId] = quotaInfo
-				value, err1 := json.Marshal(quotaInfos.QuotaInfoMap)
-				if err1 != nil {
-					log.LogErrorf("set quota marsha1 quotaInfos [%v] fail [%v]", quotaInfos, err)
-					resp.Status = proto.TaskFailed
-					resp.Result = err1.Error()
-					err = err1
-					return
-				}
-				extend.Put([]byte(proto.QuotaKey), value)
 			}
 		}
+		value, err1 := json.Marshal(quotaInfos.QuotaInfoMap)
+		if err1 != nil {
+			log.LogErrorf("set quota marsha1 quotaInfos [%v] fail [%v]", quotaInfos, err)
+			resp.Status = proto.TaskFailed
+			resp.Result = err1.Error()
+			err = err1
+			return
+		}
+		extend.Put([]byte(proto.QuotaKey), value)
 		if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
 			log.LogErrorf("set quota putExtend [%v] fail [%v]", quotaInfos, err)
 			resp.Status = proto.TaskFailed
@@ -468,10 +458,7 @@ func (mp *metaPartition) getInodeQuota(inode uint64, p *Packet) (err error) {
 	}
 handleRsp:
 	var response = &proto.GetInodeQuotaResponse{}
-	/*
-		for quotaId, _ := range quotaInfos.QuotaInfoMap {
-			response.QuotaIds = append(response.QuotaIds, quotaId)
-		}*/
+	log.LogInfof("getInodeQuota indoe %v ,map %v", inode, quotaInfos.QuotaInfoMap)
 	response.MetaQuotaInfoMap = quotaInfos.QuotaInfoMap
 
 	encoded, err := json.Marshal(response)
