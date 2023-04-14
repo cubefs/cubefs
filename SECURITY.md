@@ -4,7 +4,7 @@ Join the [cubefs-users@groups.io](mailto:cubefs-users@groups.io) group for email
 
 ## Report a Vulnerability
 
-We’re extremely grateful for security researchers and users that report vulnerabilities to the CubeFS Open Source Community. All reports are thoroughly investigated by a dedicated committee of community volunteers called [Product Security Committee](security-release-process.md#product-security-committee).
+We’re extremely grateful for security researchers and users that report vulnerabilities to the CubeFS Open Source Community. All reports are thoroughly investigated by a dedicated committee of community volunteers called [Product Security Committee](./security/security-release-process.md#product-security-committee).
 
 To make a report, please email the private [cubefs-users@groups.io](mailto:cubefs-users@groups.io) list with the security details and the details expected for [all CubeFS bug reports](https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md#bug-reports).
 
@@ -22,7 +22,7 @@ To make a report, please email the private [cubefs-users@groups.io](mailto:cubef
 
 ## Security Vulnerability Response
 
-Each report is acknowledged and analyzed by Product Security Committee members within 3 working days. This will set off the [Security Release Process](security-release-process.md).
+Each report is acknowledged and analyzed by Product Security Committee members within 3 working days. This will set off the [Security Release Process](./security/security-release-process.md).
 
 Any vulnerability information shared with Product Security Committee stays within CubeFS project and will not be disseminated to other projects unless it is necessary to get the issue fixed.
 
