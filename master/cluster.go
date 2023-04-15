@@ -537,11 +537,15 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 
 func (c *Cluster) checkMetaNodeHeartbeat() {
 	tasks := make([]*proto.AdminTask, 0)
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
+
 	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
 		node := metaNode.(*MetaNode)
 		node.checkHeartbeat()
 		task := node.createHeartbeatTask(c.masterAddr())
 		hbReq := task.Request.(*proto.HeartBeatRequest)
+
 		for _, vol := range c.vols {
 			if vol.FollowerRead {
 				hbReq.FLReadVols = append(hbReq.FLReadVols, vol.Name)
