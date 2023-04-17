@@ -258,7 +258,7 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 	return nil, syscall.ENOMEM
 
 create_dentry:
-	status, err = mw.dcreate(parentMP, parentID, name, info.Inode, mode)
+	status, err = mw.dcreate(parentMP, parentID, name, info.Inode, mode, quotaIds)
 	if err != nil {
 		if status == statusOpDirQuota {
 			mw.iunlink(mp, info.Inode)
@@ -842,8 +842,16 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return statusToErrno(status)
 	}
 
+	destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
+	if err != nil {
+		log.LogErrorf("rename_ll: get dst partent quota fail, pa")
+	}
+	var quotaIds []uint32
+	for quotaId := range destQuotaInfos {
+		quotaIds = append(quotaIds, quotaId)
+	}
 	// create dentry in dst parent
-	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode)
+	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode, quotaIds)
 	if err != nil {
 		if status == statusOpDirQuota {
 			return statusToErrno(status)
@@ -945,11 +953,6 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
 	}
 
-	destQuotaInfos, err := mw.GetInodeQuota_ll(dstParentID)
-	if err != nil {
-		log.LogErrorf("rename get dest parent inode [%v] quota fail [%v]", dstParentID, err)
-		return err
-	}
 	for quotaId, info := range destQuotaInfos {
 		log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
 		mw.BatchSetInodeQuota_ll(inodes, quotaId)
@@ -993,7 +996,8 @@ func (mw *MetaWrapper) DentryCreate_ll(parentID uint64, name string, inode uint6
 	}
 	var err error
 	var status int
-	if status, err = mw.dcreate(parentMP, parentID, name, inode, mode); err != nil || status != statusOK {
+	var quotaIds []uint32
+	if status, err = mw.dcreate(parentMP, parentID, name, inode, mode, quotaIds); err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
 	return nil
@@ -1203,8 +1207,17 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64) (*proto.In
 		return nil, statusToErrno(status)
 	}
 
+	quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+	if err != nil {
+		log.LogErrorf("link: get parent quota fail, parentID(%v) err(%v)", parentID, err)
+		return nil, syscall.ENOENT
+	}
+	var quotaIds []uint32
+	for quotaId := range quotaInfos {
+		quotaIds = append(quotaIds, quotaId)
+	}
 	// create new dentry and refer to the inode
-	status, err = mw.dcreate(parentMP, parentID, name, ino, info.Mode)
+	status, err = mw.dcreate(parentMP, parentID, name, ino, info.Mode, quotaIds)
 	if err != nil {
 		return nil, statusToErrno(status)
 	} else if status != statusOK {

@@ -302,12 +302,13 @@ type BatchEvictInodeRequest struct {
 
 // CreateDentryRequest defines the request to create a dentry.
 type CreateDentryRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	ParentID    uint64 `json:"pino"`
-	Inode       uint64 `json:"ino"`
-	Name        string `json:"name"`
-	Mode        uint32 `json:"mode"`
+	VolName     string   `json:"vol"`
+	PartitionID uint64   `json:"pid"`
+	ParentID    uint64   `json:"pino"`
+	Inode       uint64   `json:"ino"`
+	Name        string   `json:"name"`
+	Mode        uint32   `json:"mode"`
+	QuotaIds    []uint32 `json:"qids"`
 }
 
 // TxCreateDentryRequest defines the request to create a dentry.
