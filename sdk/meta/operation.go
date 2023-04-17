@@ -16,11 +16,10 @@ package meta
 
 import (
 	"fmt"
-	"strconv"
-	"sync"
-
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/stat"
+	"strconv"
+	"sync"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"

@@ -39,6 +39,11 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
+	} else {
+		if txInfo.IsExpired() {
+			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
+			return
+		}
 	}
 
 	txDentry := NewTxDentry(req.ParentID, req.Name, req.Inode, req.Mode, txInfo)
@@ -128,6 +133,11 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 	}*/
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
+	} else {
+		if txInfo.IsExpired() {
+			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
+			return
+		}
 	}
 
 	den := &Dentry{
@@ -287,6 +297,11 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
+	} else {
+		if txInfo.IsExpired() {
+			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
+			return
+		}
 	}
 
 	newDentry := &Dentry{
