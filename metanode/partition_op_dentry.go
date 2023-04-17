@@ -17,8 +17,10 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"sync/atomic"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
 )
 
 func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet) (err error) {
@@ -89,7 +91,15 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
-
+	for _, quotaId := range req.QuotaIds {
+		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
+		if status != 0 {
+			err = errors.New("create dentry is over quota")
+			reply := []byte(err.Error())
+			p.PacketErrorWithBody(status, reply)
+			return
+		}
+	}
 	item := mp.inodeTree.CopyGet(NewInode(req.ParentID, 0))
 	if item == nil {
 		err = fmt.Errorf("parent inode not exists")
