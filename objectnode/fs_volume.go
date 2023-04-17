@@ -1555,7 +1555,7 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 		if uint64(readSize) > rest {
 			readSize = int(rest)
 		}
-		tmp = make([]byte, readSize)
+		tmp = tmp[:readSize]
 		n, err = reader.Read(ctx, tmp, int(offset), readSize)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
@@ -2788,7 +2788,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		if rest < len(buf) {
 			readSize = rest
 		}
-		buf = make([]byte, readSize)
+		buf = buf[:readSize]
 		if proto.IsCold(sv.volType) {
 			readN, err = ebsReader.Read(sctx, buf, readOffset, readSize)
 		} else {
