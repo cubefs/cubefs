@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util"
 	"net"
 	"strconv"
 	"strings"
@@ -236,6 +237,7 @@ type TransactionManager struct {
 	txTree      *BTree
 	txProcessor *TransactionProcessor
 	started     bool
+	blacklist   *util.Set
 	newTxCh     chan struct{}
 	exitCh      chan struct{}
 	sync.RWMutex
@@ -265,6 +267,7 @@ func NewTransactionManager(txProcessor *TransactionProcessor) *TransactionManage
 		txTree:      NewBtree(),
 		txProcessor: txProcessor,
 		started:     false,
+		blacklist:   util.NewSet(),
 		exitCh:      make(chan struct{}),
 		newTxCh:     make(chan struct{}),
 	}
@@ -365,11 +368,17 @@ func (tm *TransactionManager) processExpiredTransactions() {
 func (tm *TransactionManager) processExpiredTransactions() {
 	//scan transactions periodically, and invoke `rollbackTransaction` to roll back expired transactions
 	log.LogDebugf("processExpiredTransactions for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
+	clearInterval := time.Second * 60
+	clearTimer := time.NewTimer(clearInterval)
 	for {
 		select {
 		case <-tm.exitCh:
 			log.LogDebugf("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
 			return
+		case <-clearTimer.C:
+			tm.blacklist.Clear()
+			clearTimer.Reset(clearInterval)
+			//log.LogDebugf("processExpiredTransactions: blacklist cleared")
 		case <-tm.newTxCh:
 			scanTimer := time.NewTimer(time.Second)
 		LOOP:
@@ -857,17 +866,56 @@ end:
 	return
 }
 
-func (tm *TransactionManager) txApplyToRM(members string, p *proto.Packet, wg *sync.WaitGroup, errorsCh chan error) {
-	defer wg.Done()
-
-	var err error
-
-	addrs := strings.Split(members, ",")
-	var newPacket *proto.Packet
+func (tm *TransactionManager) txApplyToRMWithBlacklist(addrs []string, p *proto.Packet, skipBlacklist bool) (skippedAddrNum int, newPacket *proto.Packet, err error) {
+	//addrs := strings.Split(members, ",")
+	//var newPacket *proto.Packet
+	skippedAddrNum = 0
 	for _, addr := range addrs {
+		if tm.blacklist.Has(addr) && !skipBlacklist {
+			log.LogWarnf("txApplyToRM: addr[%v] is already blacklisted, retry another addr", addr)
+			skippedAddrNum++
+			continue
+		}
 		newPacket = p.GetCopy()
 		err = tm.sendPacketToMP(addr, newPacket)
 		if err != nil {
+			tm.blacklist.Add(addr)
+			//errorsCh <- err
+			log.LogWarnf("txApplyToRM: apply to %v fail packet(%v) err(%s), add to blacklist and retry another addr",
+				addr, newPacket, err)
+			continue
+		}
+
+		status := newPacket.ResultCode
+		if status != proto.OpOk {
+			err = errors.New(newPacket.GetResultMsg())
+			log.LogErrorf("txApplyToRM: packet(%v) err(%v) members(%v) retry another addr", newPacket, err, addr)
+			//errorsCh <- err
+		} else {
+			break
+		}
+	}
+	return skippedAddrNum, newPacket, err
+}
+
+func (tm *TransactionManager) txApplyToRM(members string, p *proto.Packet, wg *sync.WaitGroup, errorsCh chan error) {
+	defer wg.Done()
+
+	//var err error
+
+	/*addrs := strings.Split(members, ",")
+	var newPacket *proto.Packet
+	skippedAddrNum := 0
+	for _, addr := range addrs {
+		if tm.blacklist.Has(addr) && !skipBlacklist {
+			log.LogDebugf("txApplyToRM: addr[%v] is already blacklisted, retry another addr", addr)
+			skippedAddrNum++
+			continue
+		}
+		newPacket = p.GetCopy()
+		err = tm.sendPacketToMP(addr, newPacket)
+		if err != nil {
+			tm.blacklist.Add(addr)
 			//errorsCh <- err
 			log.LogErrorf("txApplyToRM: apply to %v fail, packet(%v) err(%s) retry another addr", addr, newPacket, err)
 			continue
@@ -881,6 +929,12 @@ func (tm *TransactionManager) txApplyToRM(members string, p *proto.Packet, wg *s
 		} else {
 			break
 		}
+	}*/
+	addrs := strings.Split(members, ",")
+	skippedAddrNum, newPacket, err := tm.txApplyToRMWithBlacklist(addrs, p, false)
+	if err == nil && skippedAddrNum == len(addrs) || err != nil && skippedAddrNum > 0 {
+		log.LogInfof("txApplyToRM: retry send packet[%v] without blacklist", p)
+		_, newPacket, err = tm.txApplyToRMWithBlacklist(addrs, p, true)
 	}
 
 	if err != nil {
@@ -944,12 +998,12 @@ func (tr *TransactionResource) addTxRollbackInode(rbInode *TxRollbackInode) (sta
 	tr.Lock()
 	defer tr.Unlock()
 
-	now := time.Now().Unix()
-	if rbInode.txInodeInfo.Timeout <= uint32(now-rbInode.txInodeInfo.CreateTime) {
-		log.LogWarnf("addTxRollbackInode: transaction(%v) is expired for rollback inode(%v), create time(%v), now(%v)",
-			rbInode.txInodeInfo.TxID, rbInode.inode.Inode, rbInode.txInodeInfo.CreateTime, now)
-		return proto.OpTxTimeoutErr
-	}
+	// now := time.Now().Unix()
+	// if rbInode.txInodeInfo.Timeout <= uint32(now-rbInode.txInodeInfo.CreateTime) {
+	// 	log.LogWarnf("addTxRollbackInode: transaction(%v) is expired for rollback inode(%v), create time(%v), now(%v)",
+	// 		rbInode.txInodeInfo.TxID, rbInode.inode.Inode, rbInode.txInodeInfo.CreateTime, now)
+	// 	return proto.OpTxTimeoutErr
+	// }
 
 	oldRbInode := tr.getTxRbInode(rbInode.inode.Inode)
 	if oldRbInode != nil {
@@ -991,12 +1045,12 @@ func (tr *TransactionResource) addTxRollbackDentry(rbDentry *TxRollbackDentry) (
 	tr.Lock()
 	defer tr.Unlock()
 
-	now := time.Now().Unix()
-	if rbDentry.txDentryInfo.Timeout <= uint32(now-rbDentry.txDentryInfo.CreateTime) {
-		log.LogWarnf("addTxRollbackDentry: transaction(%v) is expired for rollback dentry [pino(%v) name(%v)], create time(%v), now(%v)",
-			rbDentry.txDentryInfo.TxID, rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.CreateTime, now)
-		return proto.OpTxTimeoutErr
-	}
+	// now := time.Now().Unix()
+	// if rbDentry.txDentryInfo.Timeout <= uint32(now-rbDentry.txDentryInfo.CreateTime) {
+	// 	log.LogWarnf("addTxRollbackDentry: transaction(%v) is expired for rollback dentry [pino(%v) name(%v)], create time(%v), now(%v)",
+	// 		rbDentry.txDentryInfo.TxID, rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.CreateTime, now)
+	// 	return proto.OpTxTimeoutErr
+	// }
 
 	oldRbDentry := tr.getTxRbDentry(rbDentry.txDentryInfo.ParentId, rbDentry.dentry.Name)
 	if oldRbDentry != nil {
