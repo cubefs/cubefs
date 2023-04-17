@@ -433,7 +433,8 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 	return
 }
 
-func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32) (status int, err error) {
+func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
+	quotaIds []uint32) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dcreate", err, bgTime, 1)
@@ -450,6 +451,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 		Inode:       inode,
 		Name:        name,
 		Mode:        mode,
+		QuotaIds:    quotaIds,
 	}
 
 	packet := proto.NewPacketReqID()
