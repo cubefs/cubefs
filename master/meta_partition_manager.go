@@ -153,7 +153,6 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		}
 	}()
 
-	var diff float64
 	var normalReplicaCount int
 	c.checkFulfillMetaReplica()
 	unrecoverMpIDs := make(map[uint64]int64, 0)
@@ -170,8 +169,8 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		if len(partition.Replicas) == 0 {
 			return true
 		}
-		diff, normalReplicaCount = partition.getMinusOfMaxInodeID()
-		if diff < defaultMinusOfMaxInodeID && int(vol.mpReplicaNum) <= normalReplicaCount && partition.allReplicaHasRecovered() {
+		_, normalReplicaCount = partition.getMinusOfMaxInodeID()
+		if int(vol.mpReplicaNum) <= normalReplicaCount && partition.allReplicaHasRecovered() {
 			partition.RLock()
 			partition.IsRecover = false
 			c.syncUpdateMetaPartition(partition)
