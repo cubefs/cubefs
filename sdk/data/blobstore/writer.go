@@ -17,8 +17,6 @@ package blobstore
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data/manager"
-	"github.com/cubefs/cubefs/util/buf"
 	"hash"
 	"io"
 	"sort"
@@ -26,14 +24,15 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/cubefs/cubefs/util/stat"
-
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
@@ -228,7 +227,6 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 			}
 			wSlice.Data = make([]byte, bufSize)
 			copy(wSlice.Data, writer.buf)
-			//writer.resetBuffer()
 			writer.buf = writer.buf[:0]
 			if (err == nil || err == io.EOF) && h != nil {
 				h.Write(wSlice.Data)
@@ -259,29 +257,9 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 				oeks = append(oeks, wSlice.objExtentKey)
 				oeksLock.Unlock()
 
-				/*oeks := make([]proto.ObjExtentKey, 0)
-				//update meta
-				oeks = append(oeks, wSlice.objExtentKey)
-				if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
-					log.LogErrorf("slice write error,meta append ebsc extent keys fail,ino(%v) fileOffset(%v) len(%v) err(%v)", writer.ino, wSlice.fileOffset, wSlice.size, err)
-					writer.Lock()
-					if len(writer.err) > 0 {
-						writer.Unlock()
-						return
-					}
-					wErr := &wSliceErr{
-						err:        err,
-						fileOffset: wSlice.fileOffset,
-						size:       wSlice.size,
-					}
-					writer.err <- wErr
-					writer.Unlock()
-					return
-				}*/
-
 				writer.cacheLevel2(wSlice)
 			}
-			//oeks = append(oeks, wSlice.objExtentKey)
+
 			exec.Run(write)
 		}
 	}
@@ -316,10 +294,10 @@ LOOP:
 		}
 		if err == io.EOF {
 			log.LogDebugf("WriteFromReader: EOF")
-			err = nil
 			if len(writer.buf) > 0 {
 				writeBuff()
 			}
+			err = nil
 			writer.wg.Wait()
 			var wErr *wSliceErr
 			select {
