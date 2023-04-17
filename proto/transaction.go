@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"strconv"
 	"strings"
+	"time"
 )
 
 //const (
@@ -423,6 +425,15 @@ type TransactionInfo struct {
 	//ItemMap    map[string]TxItemInfo
 	TxInodeInfos  map[uint64]*TxInodeInfo
 	TxDentryInfos map[string]*TxDentryInfo
+}
+
+func (txInfo *TransactionInfo) IsExpired() (expired bool) {
+	now := time.Now().Unix()
+	expired = txInfo.Timeout <= uint32(now-txInfo.CreateTime)
+	if expired {
+		log.LogDebugf("Transaction [%v] is expired", txInfo)
+	}
+	return expired
 }
 
 // Less tests whether the current TransactionInfo item is less than the given one.

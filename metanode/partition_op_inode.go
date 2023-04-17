@@ -166,6 +166,11 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
+	} else {
+		if txInfo.IsExpired() {
+			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
+			return
+		}
 	}
 
 	ino := NewInode(req.Inode, 0)
@@ -369,6 +374,11 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
+	} else {
+		if txInfo.IsExpired() {
+			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
+			return
+		}
 	}
 
 	ino := NewInode(req.Inode, 0)
@@ -612,6 +622,11 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
+	} else {
+		if txInfo.IsExpired() {
+			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
+			return
+		}
 	}
 
 	addrs := make([]string, 0)
