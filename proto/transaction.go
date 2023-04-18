@@ -27,7 +27,8 @@ import (
 //}
 
 const (
-	DefaultTransactionTimeout = 5 //seconds
+	DefaultTransactionTimeout = 5  //seconds
+	MaxTransactionTimeout     = 60 //seconds
 )
 
 const (
@@ -109,7 +110,7 @@ type TxInodeInfo struct {
 	Ino        uint64
 	MpID       uint64
 	CreateTime int64 //time.Now().Unix()
-	Timeout    uint32
+	Timeout    int64
 	TxID       string
 	MpMembers  string
 }
@@ -235,7 +236,7 @@ func (info *TxInodeInfo) SetTxId(txID string) {
 	info.TxID = txID
 }
 
-func (info *TxInodeInfo) SetTimeout(timeout uint32) {
+func (info *TxInodeInfo) SetTimeout(timeout int64) {
 	info.Timeout = timeout
 }
 
@@ -250,7 +251,7 @@ type TxDentryInfo struct {
 	TxID       string
 	MpID       uint64
 	CreateTime int64 //time.Now().Unix()
-	Timeout    uint32
+	Timeout    int64
 }
 
 func NewTxDentryInfo(members string, parentId uint64, name string, mpID uint64) *TxDentryInfo {
@@ -392,7 +393,7 @@ func (info *TxDentryInfo) SetTxId(txID string) {
 	info.TxID = txID
 }
 
-func (info *TxDentryInfo) SetTimeout(timeout uint32) {
+func (info *TxDentryInfo) SetTimeout(timeout int64) {
 	info.Timeout = timeout
 }
 
@@ -420,18 +421,22 @@ type TransactionInfo struct {
 	TxID       string // "metapartitionId_atomicId", if empty, mp should be TM, otherwise it will be RM
 	TxType     uint32
 	TmID       int64
-	CreateTime int64 //time.Now().Unix()
-	Timeout    uint32
+	CreateTime int64 //time.Now().UnixNano()
+	Timeout    int64 //seconds
 	//ItemMap    map[string]TxItemInfo
 	TxInodeInfos  map[uint64]*TxInodeInfo
 	TxDentryInfos map[string]*TxDentryInfo
 }
 
 func (txInfo *TransactionInfo) IsExpired() (expired bool) {
-	now := time.Now().Unix()
-	expired = txInfo.Timeout <= uint32(now-txInfo.CreateTime)
+	now := time.Now().UnixNano()
+	if now < txInfo.CreateTime {
+		log.LogErrorf("IsExpired: transaction time out error, now[%v], CreateTime[%v]", now, txInfo.CreateTime)
+		return true
+	}
+	expired = txInfo.Timeout*1e9 <= now-txInfo.CreateTime
 	if expired {
-		log.LogDebugf("Transaction [%v] is expired", txInfo)
+		log.LogDebugf("IsExpired: transaction [%v] is expired, now[%v], CreateTime[%v]", txInfo, now, txInfo.CreateTime)
 	}
 	return expired
 }
@@ -454,7 +459,7 @@ func NewTxInfoBItem(txId string) *TransactionInfo {
 	}
 }
 
-func NewTransactionInfo(timeout uint32, txType uint32) *TransactionInfo {
+func NewTransactionInfo(timeout int64, txType uint32) *TransactionInfo {
 	return &TransactionInfo{
 		Timeout:       timeout,
 		TxInodeInfos:  make(map[uint64]*TxInodeInfo, 0),

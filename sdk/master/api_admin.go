@@ -261,7 +261,7 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(vv *proto.SimpleVolView, txTimeout uint32, txMask string) (err error) {
+func (api *AdminAPI) UpdateVolume(vv *proto.SimpleVolView, txTimeout int64, txMask string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", vv.Name)
 	request.addParam("description", vv.Description)
@@ -286,7 +286,7 @@ func (api *AdminAPI) UpdateVolume(vv *proto.SimpleVolView, txTimeout uint32, txM
 	}
 
 	if txTimeout > 0 {
-		request.addParam("txTimeout", strconv.FormatUint(uint64(txTimeout), 10))
+		request.addParam("txTimeout", strconv.FormatInt(txTimeout, 10))
 	}
 
 	if _, err = api.mc.serveRequest(request); err != nil {

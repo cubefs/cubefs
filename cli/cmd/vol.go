@@ -259,7 +259,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optDpReadOnlyWhenVolFull string
 	var optYes bool
 	var optTxMask string
-	var optTxTimeout uint32
+	var optTxTimeout int64
 	var optReplicaNum string
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
@@ -343,9 +343,12 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			//var maskStr string
 			if optTxMask != "" {
 				//maskStr = proto.GetMaskString(vv.EnableTransaction)
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, optTxMask))
-
+				if strings.Contains(vv.EnableTransaction, optTxMask) {
+					confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
+				} else {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, optTxMask))
+				}
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
 			}
@@ -511,7 +514,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 		"Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link\"] or \"off\" or \"all\"")
-	cmd.Flags().Uint32Var(&optTxTimeout, CliTxTimeout, 0, "Specify timeout[Unit: second] for transaction (0-60]")
+	cmd.Flags().Int64Var(&optTxTimeout, CliTxTimeout, 0, "Specify timeout[Unit: second] for transaction (0-60]")
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 
 	return cmd

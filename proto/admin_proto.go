@@ -810,7 +810,7 @@ type SimpleVolView struct {
 	EnableToken           bool
 	EnablePosixAcl        bool
 	EnableTransaction     string
-	TxTimeout             uint32
+	TxTimeout             int64
 	Description           string
 	DpSelectorName        string
 	DpSelectorParm        string

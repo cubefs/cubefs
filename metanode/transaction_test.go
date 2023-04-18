@@ -329,22 +329,40 @@ func TestTxRscRollback(t *testing.T) {
 	//roll back add inode
 	rbInode1 := mockAddTxInode(mp1)
 	txRsc := mp1.txProcessor.txResource
-	status, err := txRsc.rollbackInode(rbInode1.txInodeInfo.TxID, rbInode1.inode.Inode)
+	req1 := &proto.TxInodeApplyRequest{
+		TxID:  rbInode1.txInodeInfo.TxID,
+		Inode: rbInode1.inode.Inode,
+	}
+	status, err := txRsc.rollbackInode(req1)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	//roll back delete inode
 	rbInode2 := mockDeleteTxInode(mp1)
-	status, err = txRsc.rollbackInode(rbInode2.txInodeInfo.TxID, rbInode2.inode.Inode)
+	req2 := &proto.TxInodeApplyRequest{
+		TxID:  rbInode2.txInodeInfo.TxID,
+		Inode: rbInode2.inode.Inode,
+	}
+	status, err = txRsc.rollbackInode(req2)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	//roll back add dentry
 	rbDentry1 := mockAddTxDentry(mp1)
-	status, err = txRsc.rollbackDentry(rbDentry1.txDentryInfo.TxID, rbDentry1.txDentryInfo.ParentId, rbDentry1.txDentryInfo.Name)
+	req3 := &proto.TxDentryApplyRequest{
+		TxID: rbDentry1.txDentryInfo.TxID,
+		Pid:  rbDentry1.txDentryInfo.ParentId,
+		Name: rbDentry1.txDentryInfo.Name,
+	}
+	status, err = txRsc.rollbackDentry(req3)
 	assert.True(t, status == proto.OpOk && err == nil)
 
 	//roll back delete dentry
 	rbDentry2 := mockDeleteTxDentry(mp1)
-	status, err = txRsc.rollbackDentry(rbDentry2.txDentryInfo.TxID, rbDentry2.txDentryInfo.ParentId, rbDentry2.txDentryInfo.Name)
+	req4 := &proto.TxDentryApplyRequest{
+		TxID: rbDentry2.txDentryInfo.TxID,
+		Pid:  rbDentry2.txDentryInfo.ParentId,
+		Name: rbDentry2.txDentryInfo.Name,
+	}
+	status, err = txRsc.rollbackDentry(req4)
 	assert.True(t, status == proto.OpOk && err == nil)
 }
 

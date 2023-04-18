@@ -296,13 +296,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxInodeRollback(req.TxID, req.Inode)
+		resp = mp.fsmTxInodeRollback(req)
 	case opFSMTxDentryRollback:
 		req := &proto.TxDentryApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxDentryRollback(req.TxID, req.Pid, req.Name)
+		resp = mp.fsmTxDentryRollback(req)
 	case opFSMTxDeleteDentry:
 		txDen := NewTxDentry(0, "", 0, 0, nil)
 		if err = txDen.Unmarshal(msg.V); err != nil {
@@ -432,6 +432,11 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
 				//txRollbackDentries: mp.txProcessor.txResource.txRollbackDentries,
 			}
+			if mp.txProcessor.txManager.txTree.Len() > 0 {
+				log.LogDebugf("ApplySnapshot: notify transaction expiration")
+				mp.txProcessor.txManager.notifyNewTransaction()
+			}
+
 			select {
 			case mp.extReset <- struct{}{}:
 				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v)", mp.config.PartitionId, mp.applyID)
