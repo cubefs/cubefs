@@ -200,28 +200,23 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// handle exception
 	var fsFileInfo *FSFileInfo
-	fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), r.Body)
-	if err == syscall.ENOENT {
-		errorCode = NoSuchUpload
-		return
-	}
-	if err == io.ErrUnexpectedEOF {
-		log.LogWarnf("uploadPartHandler: write part fail cause unexpected EOF: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) remote(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, getRequestIP(r), err)
-		errorCode = EntityTooSmall
-		return
-	}
-	if err != nil {
-		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) remote(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, getRequestIP(r), err)
+	if fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), r.Body); err != nil {
+		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchUpload
+			return
+		}
+		if err == io.ErrUnexpectedEOF {
+			errorCode = EntityTooSmall
+			return
+		}
 		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("uploadPartHandler: write part success: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) fsFileInfo(%v)",
 		GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, fsFileInfo)
-
 	// write header to response
 	w.Header()[HeaderNameContentLength] = []string{"0"}
 	w.Header()[HeaderNameETag] = []string{"\"" + fsFileInfo.ETag + "\""}
@@ -407,13 +402,13 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fsParts, nextMarker, isTruncated, err := vol.ListParts(param.Object(), uploadId, maxPartsInt, partNoMarkerInt)
-	if err == syscall.ENOENT {
-		errorCode = NoSuchUpload
-		return
-	}
 	if err != nil {
 		log.LogErrorf("listPartsHandler: Volume list parts fail, requestID(%v) uploadID(%v) maxParts(%v) partNoMarker(%v) err(%v)",
 			GetRequestID(r), uploadId, maxPartsInt, partNoMarkerInt, err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchUpload
+			return
+		}
 		errorCode = InternalErrorCode(err)
 		return
 	}
@@ -625,17 +620,17 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 	//todo
 	fsFileInfo, err := vol.CompleteMultipart(param.Object(), uploadId, committedPartInfo, discardedInods)
-	if err == syscall.ENOENT {
-		errorCode = NoSuchUpload
-		return
-	}
-	if err == syscall.EINVAL {
-		errorCode = ObjectModeConflict
-		return
-	}
 	if err != nil {
 		log.LogErrorf("completeMultipartUploadHandler: complete multipart fail, requestID(%v) uploadID(%v) err(%v)",
 			GetRequestID(r), uploadId, err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchUpload
+			return
+		}
+		if err == syscall.EINVAL {
+			errorCode = ObjectModeConflict
+			return
+		}
 		errorCode = InternalErrorCode(err)
 		return
 	}
