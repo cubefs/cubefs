@@ -43,15 +43,16 @@ func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error
 	return
 }
 
-func extractTxTimeout(r *http.Request) (timeout uint32, err error) {
+func extractTxTimeout(r *http.Request) (timeout int64, err error) {
 	var txTimeout uint64
 	if txTimeout, err = extractUint64WithDefault(r, txTimeoutKey, proto.DefaultTransactionTimeout); err != nil {
 		return
 	}
-	if txTimeout == 0 || txTimeout > 60 {
-		return timeout, fmt.Errorf("txTimeout(%d) value range (0-60] seconds", txTimeout)
+
+	if txTimeout == 0 || txTimeout > proto.MaxTransactionTimeout {
+		return timeout, fmt.Errorf("txTimeout(%d) value range (0-%v] seconds", txTimeout, proto.MaxTransactionTimeout)
 	}
-	timeout = uint32(txTimeout)
+	timeout = int64(txTimeout)
 	return timeout, nil
 }
 
@@ -334,7 +335,7 @@ type updateVolReq struct {
 	authenticate          bool
 	enablePosixAcl        bool
 	enableTransaction     uint8
-	txTimeout             uint32
+	txTimeout             int64
 	zoneName              string
 	description           string
 	dpSelectorName        string
@@ -432,7 +433,7 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 	req.enableTransaction = txMask
 
-	var txTimeout uint32
+	var txTimeout int64
 	if txTimeout, err = extractTxTimeout(r); err != nil {
 		return
 	}
@@ -589,7 +590,7 @@ type createVolReq struct {
 	enablePosixAcl                       bool
 	DpReadOnlyWhenVolFull                bool
 	enableTransaction                    uint8
-	txTimeout                            uint32
+	txTimeout                            int64
 	qosLimitArgs                         *qosArgs
 	clientReqPeriod, clientHitTriggerCnt uint32
 	// cold vol args
@@ -729,7 +730,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	}
 	req.enableTransaction = txMask
 
-	var txTimeout uint32
+	var txTimeout int64
 	if txTimeout, err = extractTxTimeout(r); err != nil {
 		return
 	}

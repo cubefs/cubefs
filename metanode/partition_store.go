@@ -515,7 +515,8 @@ func (mp *metaPartition) loadTxInfo(rootDir string) (err error) {
 			return
 		}
 		//mp.txProcessor.txManager.transactions[txInfo.TxID] = txInfo
-		mp.txProcessor.txManager.txTree.ReplaceOrInsert(txInfo, true)
+		//mp.txProcessor.txManager.txTree.ReplaceOrInsert(txInfo, true)
+		mp.txProcessor.txManager.addTxInfo(txInfo)
 		numTxInfos++
 	}
 }

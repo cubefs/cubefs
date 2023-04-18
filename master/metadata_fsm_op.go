@@ -238,7 +238,7 @@ type volValue struct {
 
 	EnablePosixAcl                                         bool
 	EnableTransaction                                      uint8
-	TxTimeout                                              uint32
+	TxTimeout                                              int64
 	VolQosEnable                                           bool
 	DiskQosEnable                                          bool
 	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64
@@ -275,6 +275,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DefaultPriority:   vol.defaultPriority,
 		EnablePosixAcl:    vol.enablePosixAcl,
 		EnableTransaction: vol.enableTransaction,
+		TxTimeout:         vol.txTimeout,
 
 		VolType:             vol.VolType,
 		EbsBlkSize:          vol.EbsBlkSize,

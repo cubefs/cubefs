@@ -17,17 +17,17 @@ func (mp *metaPartition) fsmTxRollback(txID string) (status uint8) {
 	}
 }
 
-func (mp *metaPartition) fsmTxInodeRollback(txID string, inode uint64) (status uint8) {
+func (mp *metaPartition) fsmTxInodeRollback(req *proto.TxInodeApplyRequest) (status uint8) {
 	//status = proto.OpOk
 	//var err error
-	status, _ = mp.txProcessor.txResource.rollbackInode(txID, inode)
+	status, _ = mp.txProcessor.txResource.rollbackInode(req)
 	return
 }
 
-func (mp *metaPartition) fsmTxDentryRollback(txID string, pId uint64, name string) (status uint8) {
+func (mp *metaPartition) fsmTxDentryRollback(req *proto.TxDentryApplyRequest) (status uint8) {
 	//status = proto.OpOk
 	//var err error
-	status, _ = mp.txProcessor.txResource.rollbackDentry(txID, pId, name)
+	status, _ = mp.txProcessor.txResource.rollbackDentry(req)
 	return
 }
 

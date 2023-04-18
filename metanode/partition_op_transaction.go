@@ -30,7 +30,7 @@ func (mp *metaPartition) TxCommit(req *proto.TxApplyRequest, p *Packet) error {
 
 func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet) error {
 
-	status, err := mp.txProcessor.txManager.rollbackTransaction(req)
+	status, err := mp.txProcessor.txManager.rollbackTransaction(req, RbFromClient)
 	if err != nil {
 		if status == proto.OpTxInfoNotExistErr {
 			p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))

@@ -202,6 +202,7 @@ type TxInodeApplyRequest struct {
 	TxID        string `json:"txid"`
 	Inode       uint64 `json:"ino"`
 	TxApplyType int    `json:"type"`
+	ApplyFrom   uint32 `json:"from"`
 }
 
 type TxDentryApplyRequest struct {
@@ -210,6 +211,7 @@ type TxDentryApplyRequest struct {
 	Pid         uint64 `json:"pid"`
 	Name        string `json:"name"`
 	TxApplyType int    `json:"type"`
+	ApplyFrom   uint32 `json:"from"`
 }
 
 // LinkInodeRequest defines the request to link an inode.

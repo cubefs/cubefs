@@ -281,7 +281,7 @@ type MountOptions struct {
 	NearRead             bool
 	EnablePosixACL       bool
 	EnableTransaction    string
-	TxTimeout            uint32
+	TxTimeout            int64
 	VolType              int
 	EbsEndpoint          string
 	EbsServicePath       string

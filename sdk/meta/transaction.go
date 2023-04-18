@@ -69,7 +69,7 @@ func (tx *Transaction) AddDentry(dentry *proto.TxDentryInfo) error {
 
 // NewTransaction returns a `Transaction` with a timeout(seconds) duration after which the transaction
 // will be rolled back if it has not completed yet
-func NewTransaction(timeout uint32, txType uint32) (tx *Transaction) {
+func NewTransaction(timeout int64, txType uint32) (tx *Transaction) {
 	if timeout == 0 {
 		timeout = proto.DefaultTransactionTimeout
 	}
@@ -98,8 +98,8 @@ func (tx *Transaction) Start(ino uint64) (txId string, err error) {
 func (tx *Transaction) OnStart() (status int, err error) {
 	tx.RLock()
 	defer tx.RUnlock()
-	now := time.Now().Unix()
-	if tx.Started && tx.txInfo.Timeout <= uint32(now-tx.txInfo.CreateTime) {
+	now := time.Now().UnixNano()
+	if tx.Started && tx.txInfo.Timeout*1e9 <= now-tx.txInfo.CreateTime {
 		status = statusTxTimeout
 		err = errors.New("transaction already expired")
 		return
