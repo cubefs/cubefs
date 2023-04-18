@@ -151,7 +151,7 @@ curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"status"
 
 ```bash
 # 列举所有磁盘
-curl "http://127.0.0.1:9998/disk/list?host=http://127.0.0.1:8899"
+curl "http://127.0.0.1:9998/disk/list?host=http://127.0.0.1:8899&count=100"
 # 手动下线磁盘，走坏盘修复流程
 ```
 
