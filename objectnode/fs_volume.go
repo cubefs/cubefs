@@ -714,7 +714,8 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		}
 		// flush
 		if err = v.ec.Flush(invisibleTempDataInode.Inode); err != nil {
-			log.LogErrorf("PutObject: data flush inode fail, inode(%v) err(%v)", invisibleTempDataInode.Inode, err)
+			log.LogErrorf("PutObject: data flush inode fail: volume(%v) path(%v) inode(%v) err(%v)",
+				v.name, path, invisibleTempDataInode.Inode, err)
 			return nil, err
 		}
 	}
@@ -777,71 +778,8 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			v.name, path, invisibleTempDataInode.Inode, attr.XAttrs, err)
 		return nil, err
 	}
-
-	/*
-		// Save ETag
-		if err = v.mw.XAttrSet_ll(finalInode.Inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
-			log.LogErrorf("PutObject: store ETag fail: volume(%v) path(%v) inode(%v) key(%v) val(%v) err(%v)",
-				v.name, path, invisibleTempDataInode.Inode, XAttrKeyOSSETag, md5Value, err)
-			return nil, err
-		}
-		// If MIME information is valid, use extended attributes for storage.
-		if opt != nil && opt.MIMEType != "" {
-			if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
-				log.LogErrorf("PutObject: store MIME fail: volume(%v) path(%v) inode(%v) mime(%v) err(%v)",
-					v.name, path, invisibleTempDataInode.Inode, opt.MIMEType, err)
-				return nil, err
-			}
-		}
-		// If request contain content-disposition header, store it to xattr
-		if opt != nil && len(opt.Disposition) > 0 {
-			if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
-				log.LogErrorf("PutObject: store disposition fail: volume(%v) path(%v) inode(%v) disposition value(%v) err(%v)",
-					v.name, path, invisibleTempDataInode.Inode, opt.Disposition, err)
-			}
-		}
-		// If tagging have been specified, use extend attributes for storage.
-		if opt != nil && opt.Tagging != nil {
-			var encoded = opt.Tagging.Encode()
-			if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSTagging), []byte(encoded)); err != nil {
-				log.LogErrorf("PutObject: store Tagging fail: volume(%v) path(%v) inode(%v) value(%v) err(%v)",
-					v.name, path, invisibleTempDataInode.Inode, encoded, err)
-				return nil, err
-			}
-		}
-		// If request contain cache-control header, store it to xattr
-		if opt != nil && len(opt.CacheControl) > 0 {
-			if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSCacheControl), []byte(opt.CacheControl)); err != nil {
-				log.LogErrorf("PutObject: store cache-control fail: volume(%v) path(%v) inode(%v) cache-control value(%v) err(%v)",
-					v.name, path, invisibleTempDataInode.Inode, opt.CacheControl, err)
-				return nil, err
-			}
-		}
-		// If request contain expires header, store it to xattr
-		if opt != nil && len(opt.Expires) > 0 {
-			if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSExpires), []byte(opt.Expires)); err != nil {
-				log.LogErrorf("PutObject: store expires fail: volume(%v) path(%v) inode(%v) expires value(%v) err(%v)",
-					v.name, path, invisibleTempDataInode.Inode, opt.Expires, err)
-				return nil, err
-			}
-		}
-		// If user-defined metadata have been specified, use extend attributes for storage.
-		if opt != nil && len(opt.Metadata) > 0 {
-			for name, value := range opt.Metadata {
-				if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(name), []byte(value)); err != nil {
-					log.LogErrorf("PutObject: store user-defined metadata fail: "+
-						"volume(%v) path(%v) inode(%v) key(%v) value(%v) err(%v)",
-						v.name, path, invisibleTempDataInode.Inode, name, value, err)
-					return nil, err
-				}
-				log.LogDebugf("PutObject: store user-defined metadata: "+
-					"volume(%v) path(%v) inode(%v) key(%v) value(%v)",
-					v.name, path, invisibleTempDataInode.Inode, name, value)
-			}
-		}
-
-	*/
-
+	log.LogDebugf("PutObject: BatchSetXAttr_ll success: volume(%v) path(%v) inode(%v) attrs(%v)",
+		v.name, path, invisibleTempDataInode.Inode, attr.XAttrs)
 	// create file info
 	fsInfo = &FSFileInfo{
 		Path:       path,
@@ -1089,12 +1027,15 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 	}()
 	if proto.IsCold(v.volType) {
 		if size, err = v.ebsWrite(tempInodeInfo.Inode, reader, md5Hash); err != nil {
+			log.LogErrorf("WritePart: ebs write fail: volume(%v) inode(%v) multipartID(%v) partID(%v) err(%v)",
+				v.name, tempInodeInfo.Inode, multipartId, partId, err)
 			return nil, err
 		}
 	} else {
-
 		// Write data to data node
 		if size, err = v.streamWrite(tempInodeInfo.Inode, reader, md5Hash); err != nil {
+			log.LogErrorf("WritePart: stream write fail: volume(%v) inode(%v) multipartID(%v) partID(%v) err(%v)",
+				v.name, tempInodeInfo.Inode, multipartId, partId, err)
 			return nil, err
 		}
 		// flush
@@ -1672,7 +1613,6 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 		expires      string
 	)
 
-	//var xattr *proto.XAttrInfo
 	if objMetaCache != nil {
 		attrItem, needRefresh := objMetaCache.GetAttr(v.name, inode)
 		if attrItem == nil || needRefresh {
@@ -1704,9 +1644,6 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 		}
 	}
 
-	/*var xattr *proto.XAttrInfo
-	  xattr, err = v.mw.XAttrGetAll_ll(inode)*/
-
 	if mode.IsDir() {
 		// Folder has specific ETag and MIME type.
 		etagValue = DirectoryETagValue()
@@ -1727,32 +1664,6 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 		if len(rawETag) > 0 {
 			etagValue = ParseETagValue(rawETag)
 		}
-
-		/*
-			var xattrs []*proto.XAttrInfo
-			var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagDeprecated, XAttrKeyOSSMIME, XAttrKeyOSSDISPOSITION,
-				XAttrKeyOSSCacheControl, XAttrKeyOSSExpires}
-			if xattrs, err = v.mw.BatchGetXAttr([]uint64{inode}, xattrKeys); err != nil {
-				log.LogErrorf("ObjectMeta: meta get xattr fail, volume(%v) inode(%v) path(%v) keys(%v) err(%v)",
-					v.name, inode, path, strings.Join(xattrKeys, ","), err)
-				return
-			}
-			if len(xattrs) > 0 && xattrs[0].Inode == inode {
-				var xattr = xattrs[0]
-				var rawETag = string(xattr.Get(XAttrKeyOSSETag))
-				if len(rawETag) == 0 {
-					rawETag = string(xattr.Get(XAttrKeyOSSETagDeprecated))
-				}
-				if len(rawETag) > 0 {
-					etagValue = ParseETagValue(rawETag)
-				}
-
-				mimeType = string(xattr.Get(XAttrKeyOSSMIME))
-				disposition = string(xattr.Get(XAttrKeyOSSDISPOSITION))
-				cacheControl = string(xattr.Get(XAttrKeyOSSCacheControl))
-				expires = string(xattr.Get(XAttrKeyOSSExpires))
-			}
-		*/
 	}
 
 	// Load user-defined metadata
@@ -1762,22 +1673,18 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 			metadata[key] = val
 		}
 	}
-	/*if metadata, err = v.loadUserDefinedMetadata(inode); err != nil {
-		log.LogErrorf("ObjectMeta: load user-defined metadata fail: volume(%v) inode(%v) path(%v) err(%v)",
-			v.name, inode, path, err)
-		return
-	}*/
 
 	// Validating ETag value.
 	if !mode.IsDir() && (!etagValue.Valid() || etagValue.TS.Before(inoInfo.ModifyTime)) {
 		// The ETag is invalid or outdated then generate a new ETag and make update.
+		oldEtagVal := etagValue
 		if etagValue, err = v.updateETag(inoInfo.Inode, int64(inoInfo.Size), inoInfo.ModifyTime); err != nil {
-			log.LogErrorf("ObjectMeta: update ETag fail: volume(%v) path(%v) inode(%v) err(%v)",
-				v.name, path, inoInfo.Inode, err)
+			log.LogErrorf("ObjectMeta: update ETag fail: volume(%v) path(%v) inoInfo(%v) etagVal(%v) err(%v)",
+				v.name, path, inoInfo, err)
 		}
 		xattr.XAttrs[XAttrKeyOSSETag] = etagValue.Encode()
-		log.LogDebugf("ObjectMeta: update ETag: volume(%v) path(%v) inode(%v) etagValue(%v)",
-			v.name, path, inoInfo.Inode, etagValue)
+		log.LogWarnf("ObjectMeta: update ETag: volume(%v) path(%v) inoInfo(%v) oldEtagVal(%v) newEtagVal(%v)",
+			v.name, path, inoInfo, oldEtagVal, etagValue)
 	}
 
 	info = &FSFileInfo{
@@ -2467,43 +2374,46 @@ func (v *Volume) updateETag(inode uint64, size int64, mt time.Time) (etagValue E
 	return
 }
 
-func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string,
-	maxUploads uint64) ([]*FSUpload, string, string, bool, []string, error) {
+func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (
+	uploads []*FSUpload, nextMarker, nextMultipartIdMarker string, isTruncated bool, prefixes []string, err error) {
 	sessions, err := v.mw.ListMultipart_ll(prefix, delimiter, keyMarker, multipartIdMarker, maxUploads)
-	if err != nil {
-		return nil, "", "", false, nil, err
+	if err != nil || len(sessions) == 0 {
+		return
 	}
 
-	uploads := make([]*FSUpload, 0)
-	prefixes := make([]string, 0)
+	uploads = make([]*FSUpload, 0)
+	prefixes = make([]string, 0)
 	prefixMap := make(map[string]interface{})
 
-	var nextUpload *proto.MultipartInfo
-	var NextMarker string
-	var NextSessionIdMarker string
-	var IsTruncated bool
-
-	if len(sessions) == 0 {
-		return nil, "", "", false, nil, nil
-	}
-
-	// get maxUploads number sessions from combined sessions
-	if len(sessions) > int(maxUploads) {
-		nextUpload = sessions[maxUploads]
-		sessions = sessions[:maxUploads]
-		NextMarker = nextUpload.Path
-		NextSessionIdMarker = nextUpload.ID
-		IsTruncated = true
-	}
-
+	var count uint64
+	var lastUpload *proto.MultipartInfo
 	for _, session := range sessions {
 		var tempKey = session.Path
 		if len(prefix) > 0 {
+			if !strings.HasPrefix(tempKey, prefix) {
+				continue
+			}
 			pIndex := strings.Index(tempKey, prefix)
 			tempKeyRunes := []rune(tempKey)
 			tempKey = string(tempKeyRunes[pIndex+len(prefix):])
 		}
-
+		if len(keyMarker) > 0 {
+			if session.Path < keyMarker {
+				continue
+			}
+			if session.Path == keyMarker && multipartIdMarker == "" {
+				continue
+			}
+			if session.Path == keyMarker && multipartIdMarker != "" && session.ID <= multipartIdMarker {
+				continue
+			}
+		}
+		if count >= maxUploads {
+			isTruncated = true
+			break
+		}
+		count++
+		lastUpload = session
 		if len(delimiter) > 0 && strings.Contains(tempKey, delimiter) {
 			dIndex := strings.Index(tempKey, delimiter)
 			tempKeyRunes := []rune(tempKey)
@@ -2524,15 +2434,18 @@ func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 			uploads = append(uploads, fsUpload)
 		}
 	}
-	if len(prefixMap) > 0 {
-		for prefix := range prefixMap {
-			prefixes = append(prefixes, prefix)
-		}
+	if isTruncated && lastUpload != nil {
+		nextMarker = lastUpload.Path
+		nextMultipartIdMarker = lastUpload.ID
+	}
+	for pref := range prefixMap {
+		prefixes = append(prefixes, pref)
 	}
 	sort.SliceStable(prefixes, func(i, j int) bool {
 		return prefixes[i] < prefixes[j]
 	})
-	return uploads, NextMarker, NextSessionIdMarker, IsTruncated, prefixes, nil
+
+	return
 }
 
 func (v *Volume) ListParts(path, uploadId string, maxParts, partNumberMarker uint64) (parts []*FSPart, nextMarker uint64, isTruncated bool, err error) {

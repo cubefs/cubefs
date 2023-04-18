@@ -1288,27 +1288,21 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ACL:          acl,
 	}
 	var startPut = time.Now()
-	fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt)
-	log.LogDebugf("PutObject, cost: %v", time.Since(startPut))
-	if err == syscall.EINVAL {
-		errorCode = ObjectModeConflict
-		return
-	}
-	if err == io.ErrUnexpectedEOF {
-		log.LogWarnf("putObjectHandler: put object fail cause unexpected EOF: requestID(%v) volume(%v) path(%v) remote(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
-		errorCode = EntityTooSmall
-		return
-	}
-	if err != nil {
+	if fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt); err != nil {
 		log.LogErrorf("putObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
-		if !r.Close {
-			errorCode = InternalErrorCode(err)
+		if err == syscall.EINVAL {
+			errorCode = ObjectModeConflict
+			return
 		}
+		if err == io.ErrUnexpectedEOF {
+			errorCode = EntityTooSmall
+			return
+		}
+		errorCode = InternalErrorCode(err)
 		return
 	}
-
+	log.LogDebugf("PutObject, cost: %v", time.Since(startPut))
 	// check content MD5
 	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
 		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",

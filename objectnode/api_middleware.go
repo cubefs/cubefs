@@ -114,7 +114,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		// Check action is whether enabled.
 		if !action.IsNone() && !o.disabledActions.Contains(action) {
-			log.LogDebugf("traceMiddleware: start with "+
+			log.LogInfof("traceMiddleware: start with "+
 				"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%+v) remote(%v)",
 				action.Name(), requestID, r.Host, r.Method, r.URL.String(), r.Header, getRequestIP(r))
 			// next
@@ -133,22 +133,10 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		}
 
 		// ===== post-handle start =====
-		var headerToString = func(header http.Header) string {
-			var sb = strings.Builder{}
-			for k := range header {
-				if sb.Len() != 0 {
-					sb.WriteString(",")
-				}
-				sb.WriteString(fmt.Sprintf("%v:[%v]", k, header.Get(k)))
-			}
-			return "{" + sb.String() + "}"
-		}
-
-		log.LogDebugf("traceMiddleware: end with "+
-			"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) "+
-			"remote(%v) cost(%v)",
-			action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
-			getRequestIP(r), time.Since(startTime))
+		log.LogInfof("traceMiddleware: end with "+
+			"action(%v) requestID(%v) host(%v) method(%v) url(%v) req-header(%v) remote(%v) resp-header(%v) cost(%v)",
+			action.Name(), requestID, r.Host, r.Method, r.URL.String(), r.Header, getRequestIP(r), w.Header(),
+			time.Since(startTime))
 		// ==== post-handle finish =====
 	}
 	return handlerFunc
