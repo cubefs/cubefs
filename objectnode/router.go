@@ -128,7 +128,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSListObjectsAction)).
 			Methods(http.MethodGet).
 			Queries("list-type", "2").
-			HandlerFunc(o.getBucketV2Handler)
+			HandlerFunc(o.listObjectsV2Handler)
 
 		// List multipart uploads
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html
@@ -249,7 +249,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSListObjectsAction)).
 			Methods(http.MethodGet).
-			HandlerFunc(o.getBucketV1Handler)
+			HandlerFunc(o.listObjectsV1Handler)
 	}
 
 	var registerBucketHttpPostRouters = func(r *mux.Router) {

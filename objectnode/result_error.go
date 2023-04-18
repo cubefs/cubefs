@@ -106,6 +106,7 @@ var (
 	InvalidTagKey                       = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagKey you have provided is invalid", StatusCode: http.StatusBadRequest}
 	InvalidTagValue                     = &ErrorCode{ErrorCode: "InvalidTagValue", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
 	TooManyRequests                     = &ErrorCode{ErrorCode: "TooManyRequests", ErrorMessage: "Too many requests, reduce your request", StatusCode: http.StatusTooManyRequests}
+	TooManyLevelsOfSymlinks             = &ErrorCode{ErrorCode: "TooManyLevelsOfSymlink", ErrorMessage: "Too many levels of symbolic links", StatusCode: http.StatusBadRequest}
 )
 
 func HttpStatusErrorCode(code int) *ErrorCode {

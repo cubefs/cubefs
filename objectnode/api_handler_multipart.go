@@ -435,7 +435,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		log.LogErrorf("CompleteMultipart: meta get multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
 			vol.name, uploadId, param.object, err)
 		if err == syscall.ENOENT {
-			fsFileInfo, err = vol.ObjectMeta(param.Object())
+			fsFileInfo, err = vol.ObjectMeta(param.Object(), true)
 			if err == nil && fsFileInfo != nil && fsFileInfo.ETag == multipartUploadRequest.MultipartETag() {
 				log.LogInfof("CompleteMultipart: multipart id not found, got file metadata and last is upload via multipart, response file info in direct, volume(%v) multipartID(%v) path(%v)",
 					vol.name, uploadId, param.object)
