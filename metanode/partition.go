@@ -1224,5 +1224,5 @@ func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
 func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) {
 	txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 	txInfo.TmID = int64(mp.config.PartitionId)
-	txInfo.CreateTime = time.Now().Unix()
+	txInfo.CreateTime = time.Now().UnixNano()
 }

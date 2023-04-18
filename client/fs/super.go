@@ -719,7 +719,7 @@ func (s *Super) Close() {
 	close(s.closeC)
 }
 
-func (s *Super) SetTransaction(txMaskStr string, timeout uint32) {
+func (s *Super) SetTransaction(txMaskStr string, timeout int64) {
 	//maskStr := proto.GetMaskString(txMask)
 	mask, err := proto.GetMaskFromString(txMaskStr)
 	if err != nil {
@@ -728,7 +728,7 @@ func (s *Super) SetTransaction(txMaskStr string, timeout uint32) {
 	}
 
 	s.mw.EnableTransaction = mask
-	if timeout == 0 {
+	if timeout <= 0 {
 		timeout = proto.DefaultTransactionTimeout
 	}
 	s.mw.TxTimeout = timeout

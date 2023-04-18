@@ -39,7 +39,7 @@ func getMembersFromMp(parentMp *MetaPartition) string {
 	return members
 }
 
-func NewCreateTransaction(parentMp *MetaPartition, parentID uint64, name string, txTimeout uint32) (tx *Transaction, err error) {
+func NewCreateTransaction(parentMp *MetaPartition, parentID uint64, name string, txTimeout int64) (tx *Transaction, err error) {
 	tx = NewTransaction(txTimeout, proto.TxTypeCreate)
 	//txInoInfo := proto.NewTxInodeInfo(mpID)
 
@@ -73,7 +73,7 @@ func NewCreateTransaction(parentMp *MetaPartition, parentID uint64, name string,
 
 func NewDeleteTransaction(
 	denMp *MetaPartition, parentID uint64, name string,
-	inoMp *MetaPartition, ino uint64, txTimeout uint32) (tx *Transaction, err error) {
+	inoMp *MetaPartition, ino uint64, txTimeout int64) (tx *Transaction, err error) {
 	tx = NewTransaction(txTimeout, proto.TxTypeRemove)
 
 	denMembers := getMembersFromMp(denMp)
@@ -117,7 +117,7 @@ func NewDeleteTransaction(
 }*/
 
 func NewRenameTransaction(srcMp *MetaPartition, srcDenParentID uint64, srcName string,
-	dstMp *MetaPartition, dstDenParentID uint64, dstName string, txTimeout uint32) (tx *Transaction, err error) {
+	dstMp *MetaPartition, dstDenParentID uint64, dstName string, txTimeout int64) (tx *Transaction, err error) {
 	tx = NewTransaction(txTimeout, proto.TxTypeRename)
 
 	srcMembers := getMembersFromMp(srcMp)
@@ -155,7 +155,7 @@ func RenameTxReplaceInode(tx *Transaction, inoMp *MetaPartition, ino uint64) (er
 
 func NewLinkTransaction(
 	denMp *MetaPartition, parentID uint64, name string,
-	inoMp *MetaPartition, ino uint64, txTimeout uint32) (tx *Transaction, err error) {
+	inoMp *MetaPartition, ino uint64, txTimeout int64) (tx *Transaction, err error) {
 	tx = NewTransaction(txTimeout, proto.TxTypeLink)
 
 	denMembers := getMembersFromMp(denMp)

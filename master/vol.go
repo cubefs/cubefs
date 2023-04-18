@@ -41,7 +41,7 @@ type VolVarargs struct {
 	enablePosixAcl        bool
 	dpReadOnlyWhenVolFull bool
 	enableTransaction     uint8
-	txTimeout             uint32
+	txTimeout             int64
 	//enableTransaction bool
 }
 
@@ -79,7 +79,7 @@ type Vol struct {
 	defaultPriority    bool // old default zone first
 	enablePosixAcl     bool
 	enableTransaction  uint8
-	txTimeout          uint32
+	txTimeout          int64
 	//enableTransaction  bool
 	zoneName              string
 	MetaPartitions        map[uint64]*MetaPartition `graphql:"-"`

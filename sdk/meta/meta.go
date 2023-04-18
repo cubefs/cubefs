@@ -141,7 +141,7 @@ type MetaWrapper struct {
 	metaSendTimeout     int64
 	DirChildrenNumLimit uint32
 	EnableTransaction   uint8
-	TxTimeout           uint32
+	TxTimeout           int64
 	//EnableTransaction bool
 }
 

@@ -35,10 +35,10 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 		stat.EndStat("txIcreate", err, bgTime, 1)
 	}()
 
-	status, err = tx.OnStart()
+	/*status, err = tx.OnStart()
 	if status != statusOK || err != nil {
 		return
-	}
+	}*/
 
 	req := &proto.TxCreateInodeRequest{
 		VolName:     mw.volname,
@@ -166,10 +166,10 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 		stat.EndStat("txIunlink", err, bgTime, 1)
 	}()
 
-	status, err = tx.OnStart()
+	/*status, err = tx.OnStart()
 	if status != statusOK || err != nil {
 		return
-	}
+	}*/
 
 	req := &proto.TxUnlinkInodeRequest{
 		VolName:     mw.volname,
@@ -364,10 +364,10 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		stat.EndStat("txDcreate", err, bgTime, 1)
 	}()
 
-	status, err = tx.OnStart()
+	/*status, err = tx.OnStart()
 	if status != statusOK || err != nil {
 		return
-	}
+	}*/
 
 	if parentID == inode {
 		return statusExist, nil
@@ -491,10 +491,10 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 		stat.EndStat("txDupdate", err, bgTime, 1)
 	}()
 
-	status, err = tx.OnStart()
+	/*status, err = tx.OnStart()
 	if status != statusOK || err != nil {
 		return
-	}
+	}*/
 
 	if parentID == newInode {
 		return statusExist, 0, nil
@@ -618,10 +618,10 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID ui
 		stat.EndStat("txDdelete", err, bgTime, 1)
 	}()
 
-	status, err = tx.OnStart()
+	/*status, err = tx.OnStart()
 	if status != statusOK || err != nil {
 		return
-	}
+	}*/
 
 	req := &proto.TxDeleteDentryRequest{
 		VolName:     mw.volname,
@@ -1219,10 +1219,10 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64)
 		stat.EndStat("txIlink", err, bgTime, 1)
 	}()
 
-	status, err = tx.OnStart()
+	/*status, err = tx.OnStart()
 	if status != statusOK || err != nil {
 		return
-	}
+	}*/
 
 	req := &proto.TxLinkInodeRequest{
 		VolName:     mw.volname,
