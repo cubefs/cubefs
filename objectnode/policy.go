@@ -303,14 +303,12 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 						GetRequestID(r), param.Bucket(), param.Action())
 					return
 				}
-				if acl, err = getObjectACL(vol, param.object, true); err != nil {
+				if acl, err = getObjectACL(vol, param.object, true); err != nil && err != syscall.ENOENT {
 					log.LogErrorf("acl check: get object acl fail: requestID(%v) volume(%v) action(%v) err(%v)",
 						GetRequestID(r), param.Bucket(), param.Action(), err)
-					if err == syscall.ENOENT {
-						ec = NoSuchKey
-					}
 					return
 				}
+				err = nil
 			}
 			if acl == nil && !isOwner {
 				allowed = false

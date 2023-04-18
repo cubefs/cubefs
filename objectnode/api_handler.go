@@ -109,10 +109,7 @@ func (o *ObjectNode) getVol(bucket string) (vol *Volume, err error) {
 
 func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err error, ec *ErrorCode) {
 	if err != nil || ec != nil {
-		if err != nil {
-			log.LogErrorf("errorResponse: found error: requestID(%v) err(%v)",
-				GetRequestID(r), err)
-		}
+		log.LogErrorf("errorResponse: found error: requestID(%v) err(%v) errCode(%v)", GetRequestID(r), err, ec)
 		if ec1, ok := err.(*ErrorCode); ok && ec == nil {
 			ec = ec1
 		}

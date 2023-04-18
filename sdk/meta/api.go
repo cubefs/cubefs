@@ -1476,11 +1476,13 @@ func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint
 		log.LogDebugf("AddMultipartPart_ll: meta partition not found by multipart id, multipartId(%v), err(%v)", multipartId, err)
 		// If meta partition not found by multipart id, broadcast to all meta partitions to find it
 		if _, mpId, err = mw.broadcastGetMultipart(path, multipartId); err != nil {
+			log.LogErrorf("AddMultipartPart_ll: broadcast get multipart fail: multipartId(%v) err(%v)", multipartId, err)
 			return
 		}
 	}
 	var mp = mw.getPartitionByID(mpId)
 	if mp == nil {
+		log.LogWarnf("AddMultipartPart_ll: has no meta partition: multipartId(%v) mpId(%v)", multipartId, mpId)
 		err = syscall.ENOENT
 		return
 	}
