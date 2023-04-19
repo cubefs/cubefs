@@ -151,8 +151,8 @@ curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"status"
 2. If the machine is unavailable or the service cannot be automatically restored, manually take the machine offline.
 
 ```bash
-# List all disks
-curl "http://127.0.0.1:9998/disk/list?host=http://127.0.0.1:8899"
+# List the first XX disks of offline nodes (the returned data includes the disk ids that were offline or repaired before)
+curl "http://127.0.0.1:9998/disk/list?host=http://Offline_node_IP:8899&count=XX"
 # Manually take the disk offline and go through the bad disk repair process.
 ```
 

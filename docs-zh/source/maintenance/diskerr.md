@@ -150,8 +150,8 @@ curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"status"
 2. 机器不可用或者服务不能自动恢复，手动下线该机器
 
 ```bash
-# 列举所有磁盘
-curl "http://127.0.0.1:9998/disk/list?host=http://127.0.0.1:8899"
+# 列举下线节点的个磁盘（返回数据包含之前下线或修复的磁盘id）
+curl "http://127.0.0.1:9998/disk/list?host=http://下线节点IP:8899&count=XX"
 # 手动下线磁盘，走坏盘修复流程
 ```
 
