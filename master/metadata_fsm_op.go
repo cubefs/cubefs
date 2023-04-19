@@ -49,6 +49,7 @@ type clusterValue struct {
 	QosLimitUpload              uint64
 	DirChildrenNumLimit         uint32
 	DecommissionLimit           uint64
+	EnableAutoDecommissionDisk  bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -68,6 +69,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		QosLimitUpload:              uint64(c.QosAcceptLimit.Limit()),
 		DirChildrenNumLimit:         c.cfg.DirChildrenNumLimit,
 		DecommissionLimit:           c.DecommissionLimit,
+		EnableAutoDecommissionDisk:  c.EnableAutoDecommissionDisk,
 	}
 	return cv
 }
@@ -164,7 +166,6 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 		if newReplica != nil {
 			newReplica.Status = bsProto.Recovering
 		}
-
 	}
 	return dp
 }
@@ -884,7 +885,8 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.diskQosEnable = cv.DiskQosEnable
 		c.cfg.QosMasterAcceptLimit = cv.QosLimitUpload
-		c.DecommissionLimit = cv.DecommissionLimit //dont update nodesets limit for nodesets are not loaded
+		c.DecommissionLimit = cv.DecommissionLimit
+		c.EnableAutoDecommissionDisk = cv.EnableAutoDecommissionDisk
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
 		}

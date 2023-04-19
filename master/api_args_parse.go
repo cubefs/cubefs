@@ -750,7 +750,7 @@ func extractDiskPath(r *http.Request) (diskPath string, err error) {
 func extractDiskDisable(r *http.Request) (diskDisable bool, err error) {
 	var value string
 	if value = r.FormValue(DiskDisableKey); value == "" {
-		diskDisable = false
+		diskDisable = true
 		return
 	}
 	return strconv.ParseBool(value)

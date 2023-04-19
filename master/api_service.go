@@ -2101,6 +2101,7 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		rstMsg      string
 		offLineAddr string
 		err         error
+		dps         []uint64
 	)
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.CancelDecommissionDataNode))
@@ -2117,11 +2118,11 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
-	if err = m.cluster.decommissionDataNodeCancel(node); err != nil {
+	if err, dps = m.cluster.decommissionDataNodeCancel(node); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	rstMsg = fmt.Sprintf("cancel decommission data node [%v] successfully", offLineAddr)
+	rstMsg = fmt.Sprintf("cancel decommission data node [%v] with paused failed[%v]", offLineAddr, dps)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -2940,7 +2941,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.DecommissionDisk, metric, err, nil)
 	}()
-
+	//default diskDisable is true
 	if offLineAddr, diskPath, diskDisable, limit, decommissionType, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3184,13 +3185,13 @@ func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	disk := value.(*DecommissionDisk)
-	err = m.cluster.decommissionDiskCancel(disk)
+	err, dps := m.cluster.decommissionDiskCancel(disk)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	rstMsg := fmt.Sprintf("cancel decommission data node [%s] disk[%s] successfully",
-		offLineAddr, diskPath)
+	rstMsg := fmt.Sprintf("cancel decommission data node [%s] disk[%s] successfully with failed dp[%v]",
+		offLineAddr, diskPath, dps)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -4269,6 +4270,70 @@ func (m *Server) queryDataNodeDecoFailedDps(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(dps))
+}
+
+func (m *Server) enableAutoDecommissionDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		enable bool
+		err    error
+	)
+
+	metric := exporter.NewTPCnt("req_enableAutoDecommissionDisk")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if enable, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	m.cluster.SetAutoDecommissionDisk(enable)
+	rstMsg := fmt.Sprintf("set auto decommission disk to %v successfully", enable)
+	log.LogDebugf("action[enableAutoDecommissionDisk] %v", rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) queryAutoDecommissionDisk(w http.ResponseWriter, r *http.Request) {
+
+	metric := exporter.NewTPCnt("req_queryAutoDecommissionDisk")
+	defer func() {
+		metric.Set(nil)
+	}()
+	enable := m.cluster.AutoDecommissionDiskIsEnabled()
+	rstMsg := fmt.Sprintf("auto decommission disk is %v ", enable)
+	log.LogDebugf("action[queryAutoDecommissionDisk] %v", rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) queryDisableDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		node     *DataNode
+		rstMsg   string
+		nodeAddr string
+		err      error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.RecommissionDisk))
+	defer func() {
+		doStatAndMetric(proto.RecommissionDisk, metric, err, nil)
+	}()
+
+	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if node, err = m.cluster.dataNode(nodeAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	disks := node.getDecommissionedDisks()
+
+	rstMsg = fmt.Sprintf("datanode[%v] disable disk[%v]",
+		nodeAddr, disks)
+
+	Warn(m.clusterName, rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 func parseReqToDecoDataNodeProgress(r *http.Request) (nodeAddr string, err error) {

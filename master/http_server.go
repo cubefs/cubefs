@@ -192,6 +192,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminQueryDecommissionDiskLimit).
 		HandlerFunc(m.queryDecommissionDiskLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminEnableAutoDecommissionDisk).
+		HandlerFunc(m.enableAutoDecommissionDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminQueryAutoDecommissionDisk).
+		HandlerFunc(m.queryAutoDecommissionDisk)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -406,6 +412,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.QueryAllDecommissionDisk).
 		HandlerFunc(m.queryAllDecommissionDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QueryDisableDisk).
+		HandlerFunc(m.queryDisableDisk)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeInfo).

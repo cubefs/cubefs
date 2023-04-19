@@ -952,6 +952,7 @@ type nodeSet struct {
 	doneDecommissionDiskListTraverse  chan struct{}
 	startDecommissionDiskListTraverse chan struct{}
 	DecommissionDisks                 sync.Map
+	diskParallelFactorLk              sync.Mutex
 }
 
 type nodeSetDecommissionParallelStatus struct {
@@ -1069,10 +1070,14 @@ func (ns *nodeSet) UpdateMaxParallel(maxParallel int32) {
 
 func (ns *nodeSet) UpdateDecommissionDiskFactor(factor float64) {
 	log.LogDebugf("action[UpdateDecommissionFactor]nodeSet[%v] decommission disk factor update to [%v]", ns.ID, factor)
+	ns.diskParallelFactorLk.Lock()
+	defer ns.diskParallelFactorLk.Unlock()
 	ns.decommissionDiskParallelFactor = factor
 }
 
 func (ns *nodeSet) QueryDecommissionDiskLimit() int {
+	ns.diskParallelFactorLk.Lock()
+	defer ns.diskParallelFactorLk.Unlock()
 	log.LogDebugf("action[QueryDecommissionDiskLimit]nodeSet[%v] decommission disk limit to [%v]",
 		ns.ID, int(ns.decommissionDiskParallelFactor*float64(ns.dataNodeLen())))
 	return int(ns.decommissionDiskParallelFactor * float64(ns.dataNodeLen()))
@@ -1146,10 +1151,10 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 			ns.DecommissionDisks.Range(func(key, value interface{}) bool {
 				disk := value.(*DecommissionDisk)
 				disk.updateDecommissionStatus(c, false)
-				if disk.GetDecommissionStatus() == DecommissionRunning {
+				status := disk.GetDecommissionStatus()
+				if status == DecommissionRunning {
 					runningCnt++
-				} else if disk.GetDecommissionStatus() == DecommissionSuccess ||
-					disk.GetDecommissionStatus() == DecommissionFail {
+				} else if status == DecommissionSuccess || status == DecommissionFail {
 					//remove from decommission disk list
 					log.LogWarnf("traverseDecommissionDisk remove disk %v status %v",
 						disk.GenerateKey(), disk.GetDecommissionStatus())
@@ -1157,7 +1162,10 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 				}
 				return true
 			})
-			if ns.decommissionDiskParallelFactor == 0 {
+			ns.diskParallelFactorLk.Lock()
+			maxDiskDecommissionCnt := int(ns.decommissionDiskParallelFactor * float64(ns.dataNodeLen()))
+			ns.diskParallelFactorLk.Unlock()
+			if maxDiskDecommissionCnt == 0 && ns.dataNodeLen() != 0 {
 				manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(0)
 				log.LogDebugf("traverseDecommissionDisk traverse manualCnt %v",
 					manualCnt)
@@ -1166,16 +1174,17 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 						c.TryDecommissionDisk(disk)
 					}
 				}
-				autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
-				log.LogDebugf("traverseDecommissionDisk traverse autoCnt %v",
-					autoCnt)
-				if autoCnt > 0 {
-					for _, disk := range autoDisks {
-						c.TryDecommissionDisk(disk)
+				if c.AutoDecommissionDiskIsEnabled() {
+					autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
+					log.LogDebugf("traverseDecommissionDisk traverse autoCnt %v",
+						autoCnt)
+					if autoCnt > 0 {
+						for _, disk := range autoDisks {
+							c.TryDecommissionDisk(disk)
+						}
 					}
 				}
 			} else {
-				maxDiskDecommissionCnt := int(ns.decommissionDiskParallelFactor * float64(ns.dataNodeLen()))
 				newDiskDecommissionCnt := maxDiskDecommissionCnt - runningCnt
 				log.LogDebugf("traverseDecommissionDisk traverse DiskDecommissionCnt %v",
 					newDiskDecommissionCnt)
@@ -1188,7 +1197,7 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 							c.TryDecommissionDisk(disk)
 						}
 					}
-					if newDiskDecommissionCnt-manualCnt > 0 {
+					if newDiskDecommissionCnt-manualCnt > 0 && c.AutoDecommissionDiskIsEnabled() {
 						autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt - manualCnt)
 						log.LogDebugf("traverseDecommissionDisk traverse autoCnt %v",
 							autoCnt)
@@ -2123,12 +2132,15 @@ func (l *DecommissionDataPartitionList) acquireDecommissionToken(id uint64) bool
 }
 
 func (l *DecommissionDataPartitionList) releaseDecommissionToken(id uint64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.runningMap[id]; !ok {
+		return
+	}
+	delete(l.runningMap, id)
 	if atomic.LoadInt32(&l.curParallel) > 0 {
 		atomic.AddInt32(&l.curParallel, -1)
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	delete(l.runningMap, id)
 }
 
 func (l *DecommissionDataPartitionList) GetAllDecommissionDataPartitions() (collection []*DataPartition) {
@@ -2177,10 +2189,10 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					}
 					//rollback fail/success need release token
 					dp.ReleaseDecommissionToken(c)
-				} else if dp.IsDecommissionStopped() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for stop ",
+				} else if dp.IsDecommissionPaused() {
+					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for paused ",
 						dp.PartitionID)
-					dp.ShouldReleaseDecommissionTokenByStop(c)
+					dp.ReleaseDecommissionToken(c)
 					l.Remove(dp)
 				} else if dp.IsDecommissionInitial() { //fixed done ,not release token
 					l.Remove(dp)
