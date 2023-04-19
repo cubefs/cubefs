@@ -48,6 +48,19 @@ class ObjectPutTest(S3TestCase):
             content_type=content_type,
             content_length=0,
             body_md5=md5)
+        try:
+            self.s3.head_object(Bucket=BUCKET, Key=key)
+            self.fail()
+        except Exception as e:
+            # Error code 404 is legal.
+            self.assert_client_error(error=e, expect_status_code=404)
+        try:
+            self.s3.get_object(Bucket=BUCKET, Key=key)
+            self.fail()
+        except Exception as e:
+            # Error code 404 is legal.
+            self.assert_client_error(error=e, expect_status_code=404)
+
         # Delete the directory
         self.assert_delete_object_result(
             result=self.s3.delete_object(Bucket=BUCKET, Key=key + '/'))

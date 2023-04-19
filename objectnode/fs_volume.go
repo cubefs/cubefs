@@ -1468,8 +1468,10 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 			}
 			var linkTarget = string(symlinkInodeInfo.Target)
 			var redirectPath = base + pathSep + linkTarget
-			if len(pathItems) > i+1 {
+			if pathItem.IsDirectory {
 				redirectPath += pathSep
+			}
+			if len(pathItems) > i+1 {
 				for _, item := range pathItems[i+1:] {
 					redirectPath += item.Name
 					if item.IsDirectory {
@@ -1487,14 +1489,10 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 			parent, ino, name, mode, err = v.__recursiveLookupTarget(redirects+1, redirectPath, targetRedirect)
 			return
 		}
-		if pathItem.IsDirectory && !curFileMode.IsDir() {
+		if curFileMode.IsDir() != pathItem.IsDirectory {
 			err = syscall.ENOENT
 			return
 		}
-		//if curFileMode.IsDir() != pathItem.IsDirectory {
-		//	err = syscall.ENOENT
-		//	return
-		//}
 		if i < len(pathItems)-1 {
 			parent = curIno
 			base = curPath
