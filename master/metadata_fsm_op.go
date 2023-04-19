@@ -57,6 +57,7 @@ type clusterValue struct {
 	ClusterUuidEnable           bool
 	MetaPartitionInodeIdStep    uint64
 	MaxConcurrentLcNodes        uint64
+	EnableAutoDecommissionDisk  bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -83,6 +84,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ClusterUuidEnable:           c.clusterUuidEnable,
 		MetaPartitionInodeIdStep:    c.cfg.MetaPartitionInodeIdStep,
 		MaxConcurrentLcNodes:        c.cfg.MaxConcurrentLcNodes,
+		EnableAutoDecommissionDisk:  c.EnableAutoDecommissionDisk,
 	}
 	return cv
 }
@@ -181,7 +183,6 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 		if newReplica != nil {
 			newReplica.Status = bsProto.Recovering
 		}
-
 	}
 	return dp
 }
@@ -1010,6 +1011,8 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.fileStatsEnable = cv.FileStatsEnable
 		c.clusterUuid = cv.ClusterUuid
 		c.clusterUuidEnable = cv.ClusterUuidEnable
+		c.DecommissionLimit = cv.DecommissionLimit
+		c.EnableAutoDecommissionDisk = cv.EnableAutoDecommissionDisk
 
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt

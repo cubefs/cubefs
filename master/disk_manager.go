@@ -57,8 +57,8 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],partitionID[%v] is not exist", c.Name, partitionID))
 				continue
 			}
-			//do not update status if stopped
-			if partition.IsDecommissionStopped() {
+			//do not update status if paused
+			if partition.IsDecommissionPaused() {
 				continue
 			}
 			_, err = c.getVol(partition.VolName)
@@ -211,15 +211,15 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 		return DecommissionSuccess, float64(1)
 	}
 
-	if dd.GetDecommissionStatus() == DecommissionStop {
-		return DecommissionStop, float64(0)
+	if dd.GetDecommissionStatus() == DecommissionPause {
+		return DecommissionPause, float64(0)
 	}
 
 	defer func() {
 		c.syncUpdateDecommissionDisk(dd)
 	}()
 	if dd.DecommissionRetry >= defaultDecommissionRetryLimit {
-		dd.SetDecommissionStatus(DecommissionFail)
+		dd.markDecommissionFailed()
 		return DecommissionFail, float64(0)
 	}
 	//Get all dp on this disk
@@ -249,7 +249,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 			preparePartitionIds = append(preparePartitionIds, dp.PartitionID)
 		}
 		//disk may stop before and will be counted into partitions
-		if dp.GetDecommissionStatus() == DecommissionStop {
+		if dp.GetDecommissionStatus() == DecommissionPause {
 			stopNum++
 			stopPartitionIds = append(stopPartitionIds, dp.PartitionID)
 		}
@@ -264,7 +264,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
 	}
 	if failedNum >= (len(partitions)-stopNum) && failedNum != 0 {
-		dd.SetDecommissionStatus(DecommissionFail)
+		dd.markDecommissionFailed()
 		return DecommissionFail, progress
 	}
 	return dd.GetDecommissionStatus(), progress
@@ -280,6 +280,11 @@ func (dd *DecommissionDisk) SetDecommissionStatus(status uint32) {
 
 func (dd *DecommissionDisk) markDecommissionSuccess() {
 	dd.SetDecommissionStatus(DecommissionSuccess)
+	dd.DecommissionCompleteTime = time.Now().Unix()
+}
+
+func (dd *DecommissionDisk) markDecommissionFailed() {
+	dd.SetDecommissionStatus(DecommissionFail)
 	dd.DecommissionCompleteTime = time.Now().Unix()
 }
 
@@ -322,16 +327,18 @@ func (dd *DecommissionDisk) markDecommission(dstPath string, raftForce bool, lim
 }
 
 func (dd *DecommissionDisk) canAddToDecommissionList() bool {
-	if dd.GetDecommissionStatus() == DecommissionRunning ||
-		dd.GetDecommissionStatus() == markDecommission {
+	status := dd.GetDecommissionStatus()
+	if status == DecommissionRunning ||
+		status == markDecommission {
 		return true
 	}
 	return false
 }
 
 func (dd *DecommissionDisk) AddToNodeSet() bool {
-	if dd.GetDecommissionStatus() == DecommissionRunning ||
-		dd.GetDecommissionStatus() == markDecommission {
+	status := dd.GetDecommissionStatus()
+	if status == DecommissionRunning ||
+		status == markDecommission {
 		return true
 	}
 	return false
@@ -339,4 +346,13 @@ func (dd *DecommissionDisk) AddToNodeSet() bool {
 
 func (dd *DecommissionDisk) IsManualDecommissionDisk() bool {
 	return dd.Type == ManualDecommission
+}
+
+func (dd *DecommissionDisk) CanBePaused() bool {
+	status := dd.GetDecommissionStatus()
+	if status == DecommissionRunning || status == markDecommission ||
+		status == DecommissionPause {
+		return true
+	}
+	return false
 }
