@@ -333,8 +333,8 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		return DecommissionSuccess, float64(1)
 	}
 
-	if dataNode.GetDecommissionStatus() == DecommissionStop {
-		return DecommissionStop, float64(0)
+	if dataNode.GetDecommissionStatus() == DecommissionPause {
+		return DecommissionPause, float64(0)
 	}
 	defer func() {
 		c.syncUpdateDataNode(dataNode)
@@ -366,7 +366,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 			preparePartitionIds = append(preparePartitionIds, dp.PartitionID)
 		}
 		//datanode may stop before and will be counted into partitions
-		if dp.GetDecommissionStatus() == DecommissionStop {
+		if dp.GetDecommissionStatus() == DecommissionPause {
 			stopNum++
 			stopPartitionIds = append(stopPartitionIds, dp.PartitionID)
 		}
@@ -471,9 +471,8 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 }
 
 func (dataNode *DataNode) canMarkDecommission() bool {
-	return dataNode.GetDecommissionStatus() == DecommissionInitial ||
-		dataNode.GetDecommissionStatus() == DecommissionStop ||
-		dataNode.GetDecommissionStatus() == DecommissionFail
+	status := dataNode.GetDecommissionStatus()
+	return status == DecommissionInitial || status == DecommissionPause || status == DecommissionFail
 }
 
 func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {
@@ -511,4 +510,12 @@ func (dataNode *DataNode) createVersionTask(volume string, version uint64, op ui
 	log.LogInfof("action[createVersionTask] op %v  datanode addr %v addr %v volume %v seq %v", op, dataNode.Addr, addr, volume, version)
 	task = proto.NewAdminTask(proto.OpVersionOperation, dataNode.Addr, request)
 	return
+}
+
+func (dataNode *DataNode) CanBePaused() bool {
+	status := dataNode.GetDecommissionStatus()
+	if status == DecommissionRunning || status == markDecommission || status == DecommissionPause {
+		return true
+	}
+	return false
 }

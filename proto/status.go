@@ -16,8 +16,8 @@ package proto
 
 // The following defines the status of a disk or a partition.
 const (
-	Recovering  = 1
-	ReadOnly    = 2
-	ReadWrite   = 3
+	Recovering  = 0
+	ReadOnly    = 1
+	ReadWrite   = 2
 	Unavailable = -1
 )
