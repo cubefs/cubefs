@@ -88,6 +88,8 @@ const (
 
 	AdminUpdateDecommissionDiskFactor = "/admin/updateDecommissionDiskFactor"
 	AdminQueryDecommissionDiskLimit   = "/admin/queryDecommissionDiskLimit"
+	AdminEnableAutoDecommissionDisk   = "/admin/enableAutoDecommissionDisk"
+	AdminQueryAutoDecommissionDisk    = "/admin/queryAutoDecommissionDisk"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -178,6 +180,7 @@ const (
 
 	AddLcNode = "/lcNode/add"
 
+	QueryDisableDisk = "/dataNode/queryDisableDisk"
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
