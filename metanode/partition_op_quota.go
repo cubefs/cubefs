@@ -61,7 +61,7 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 				}
 				_, ok := quotaInfos.QuotaInfoMap[req.QuotaId]
 				if ok {
-					err = errors.New("quotaId [%v] is exist.")
+					err = errors.NewErrorf("quotaId [%v] is exist.", req.QuotaId)
 					resp.Status = proto.TaskFailed
 					resp.Result = err.Error()
 					return
