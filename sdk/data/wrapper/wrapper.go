@@ -391,8 +391,8 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 // GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	w.RLock()
-	defer w.RUnlock()
 	dp, ok := w.partitions[partitionID]
+	w.RUnlock()
 	if !ok && !proto.IsCold(w.volType) { // cache miss && hot volume
 		err := w.getDataPartition(false, partitionID)
 		if err == nil {
