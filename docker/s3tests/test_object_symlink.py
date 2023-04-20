@@ -51,7 +51,7 @@ class ObjectSymlinkTest(S3TestCase):
         self.assert_head_bucket_result(self.s3.head_bucket(Bucket=BUCKET))
         # Test head result of key 'test-object-symlink/current'
         self.assert_head_object_result(
-            result=self.s3.head_object(Bucket=BUCKET, Key=KEY_PREFIX + 'current'),
+            result=self.s3.head_object(Bucket=BUCKET, Key=KEY_PREFIX + 'current/'),
             content_type='application/directory')
         self.assert_head_object_result(
             result=self.s3.head_object(Bucket=BUCKET, Key=KEY_PREFIX + 'current/meta'),
@@ -70,7 +70,7 @@ class ObjectSymlinkTest(S3TestCase):
             content_type='application/octet-stream')
         try:
             self.assert_head_object_result(
-                result=self.s3.head_object(Bucket=BUCKET, Key=KEY_PREFIX + 'current'))
+                result=self.s3.head_object(Bucket=BUCKET, Key=KEY_PREFIX + 'current/'))
             self.fail()
         except Exception as e:
             # Error code 404 is legal

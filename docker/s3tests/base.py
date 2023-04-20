@@ -12,13 +12,14 @@
 # implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-# -*- coding: utf-8 -*-
-import boto3
 import hashlib
 import json
 import random
-import requests
 import time
+
+# -*- coding: utf-8 -*-
+import boto3
+import requests
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from unittest2 import TestCase
@@ -276,9 +277,10 @@ class S3TestCase(TestCase):
         self.assertTrue('HTTPStatusCode' in result['ResponseMetadata'])
         self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], status_code)
 
-    def assert_client_error(self, error, expect_status_code=None, expect_code=None):
+    def assert_client_error(self, error, exception_type=None, expect_status_code=None, expect_code=None):
         self.assertNotEqual(error, None)
-        self.assertEqual(type(error), ClientError)
+        if exception_type is not None:
+            self.assertEqual(type(error), exception_type)
         self.assertTrue(hasattr(error, 'response'))
         self.assertEqual(type(error.response), dict)
         if expect_status_code is not None:
