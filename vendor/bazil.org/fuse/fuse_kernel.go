@@ -47,6 +47,9 @@ const (
 	protoVersionMinMinor = 8
 	protoVersionMaxMajor = 7
 	protoVersionMaxMinor = 12
+	
+	protoReadDirPlusVersionMinMajor = 7
+	protoReadDirPlusVersionMinMinor = 21
 )
 
 const (

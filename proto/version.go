@@ -22,9 +22,14 @@ const (
 	Version_3_4_0   = "3.4.0"
 
 	/*
+	Client: support opReadDirPlus
+	 */
+	ReadDirPlusVersion = "4.2.0"
+
+	/*
 
 	*/
-	BaseVersion = "4.0.0"
+	BaseVersion = "4.2.0"
 )
 
 var (

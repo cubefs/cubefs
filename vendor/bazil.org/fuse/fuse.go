@@ -234,6 +234,15 @@ func initMount(c *Conn, conf *mountConfig) error {
 		}
 	}
 
+	if conf.initFlags & InitDoReaddirplus == InitDoReaddirplus {
+		readDirPlusProto := Protocol{protoReadDirPlusVersionMinMajor, protoReadDirPlusVersionMinMinor}
+		if r.Kernel.LT(readDirPlusProto) {
+			req.RespondError(Errno(syscall.EPROTO))
+			c.Close()
+			return fmt.Errorf("the 'ReadDirPlus' protocol requires kernel FUSE version at least %v, current is %v", readDirPlusProto, r.Kernel)
+		}
+	}
+
 	proto := Protocol{protoVersionMaxMajor, protoVersionMaxMinor}
 	if r.Kernel.LT(proto) {
 		// Kernel doesn't support the latest version we have.

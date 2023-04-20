@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
+	versionUtil "github.com/cubefs/cubefs/util/version"
 )
 
 const (
@@ -47,6 +48,7 @@ const (
 	TarNamePre   = "cfs-client-libs"
 	AMD64        = "amd64"
 	ARM64        = "arm64"
+	VersionID	 = "Version"
 
 	pidFileSeparator = ";"
 
@@ -138,7 +140,7 @@ func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func downloadAndCheck(mc *master.MasterClient, tmpPath, version string) (fileNames []string, err error) {
+func downloadAndCheck(mc *master.MasterClient, tmpPath, version string, enableReadDirPlus bool) (fileNames []string, err error) {
 	var tarName string
 	if runtime.GOARCH == AMD64 {
 		tarName = fmt.Sprintf("%s_%s.tar.gz", TarNamePre, version)
@@ -161,12 +163,31 @@ func downloadAndCheck(mc *master.MasterClient, tmpPath, version string) (fileNam
 	if checkMap, err = readCheckfile(filepath.Join(tmpPath, CheckFile)); err != nil {
 		return nil, fmt.Errorf("Invalid checkfile: %v", err)
 	}
-
+	if err = checkVersionID(checkMap, enableReadDirPlus); err != nil {
+		return nil, err
+	}
 	if !checkFiles(fileNames, checkMap, tmpPath) {
 		return nil, fmt.Errorf("check libs faild. Please try again.")
 	}
 
 	return fileNames, nil
+}
+
+func checkVersionID(checkMap map[string]string, enableReadDirPlus bool) error {
+	version, exist := checkMap[VersionID]
+	if enableReadDirPlus {
+		if !exist {
+			return fmt.Errorf("unsupported 'readDirPlus': version ID is not exist, at least %v", proto.ReadDirPlusVersion)
+		}
+		less, err := versionUtil.VersionID(version).LessThan(proto.ReadDirPlusVersion)
+		if err != nil {
+			return fmt.Errorf("invalid version: %v", version)
+		}
+		if less {
+			return fmt.Errorf("unsupported 'readDirPlus': version ID at least %v, current is %v", proto.ReadDirPlusVersion, version)
+		}
+	}
+	return nil
 }
 
 func downloadClientPkg(mc *master.MasterClient, fileName, downloadPath string) (err error) {

@@ -58,13 +58,15 @@ type Super struct {
 	enableXattr              bool
 	noBatchGetInodeOnReaddir bool
 	rootIno                  uint64
+	readDirPlus 		 	 int64
 
 	delProcessPath []string
 	wg             sync.WaitGroup
 }
 
 type SuperState struct {
-	RootIno uint64
+	RootIno 	uint64
+	ReadDirPlus	int64
 }
 
 // Functions that Super needs to implement
@@ -158,8 +160,10 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		if s.rootIno, err = s.mw.GetRootIno(opt.SubDir, opt.AutoMakeSubDir); err != nil {
 			return nil, err
 		}
+		s.readDirPlus = opt.EnableReadDirPlus
 	} else {
 		s.rootIno = superState.RootIno
+		s.readDirPlus = superState.ReadDirPlus
 	}
 
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
@@ -175,7 +179,7 @@ func (s *Super) ExtentClient() *data.ExtentClient {
 }
 
 func (s *Super) SaveSuperState() *SuperState {
-	return &SuperState{s.rootIno}
+	return &SuperState{s.rootIno, s.readDirPlus}
 }
 
 // Root returns the root directory where it resides.
@@ -367,4 +371,8 @@ func (s *Super) EnableJdosKernelWriteBack(enable bool) (err error) {
 
 func (s *Super) UmpJmtpAddr() string {
 	return s.ec.UmpJmtpAddr()
+}
+
+func (s *Super) EnableReadDirPlus() bool {
+	return s.readDirPlus > 0
 }
