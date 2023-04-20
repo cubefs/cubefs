@@ -148,9 +148,11 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 			}
 			mgr.c.masterClient.SetLeader(addr)
 			if err = mgr.c.masterClient.AdminAPI().PutDataPartitions(name, body); err != nil {
+				mgr.c.masterClient.SetLeader("")
 				log.LogErrorf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", name, addr, err)
 				continue
 			}
+			mgr.c.masterClient.SetLeader("")
 			log.LogDebugf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", name, addr, err)
 		}
 	}
