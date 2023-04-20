@@ -396,7 +396,9 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	if !ok && !proto.IsCold(w.volType) { // cache miss && hot volume
 		err := w.getDataPartition(false, partitionID)
 		if err == nil {
+			w.RLock()
 			dp, ok = w.partitions[partitionID]
+			w.RUnlock()
 			if !ok {
 				return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
 			}
