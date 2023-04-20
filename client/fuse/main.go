@@ -9,6 +9,7 @@ import (
 	"plugin"
 	"runtime"
 	"time"
+	_ "unsafe"
 
 	"github.com/jacobsa/daemonize"
 )
@@ -36,6 +37,13 @@ func loadSym(handle *plugin.Plugin) {
 
 	sym, _ = handle.Lookup("GetVersion")
 	getVersion = sym.(func() string)
+}
+
+//go:linkname initSig runtime.libpreinit
+func initSig()
+
+func init() {
+	initSig()
 }
 
 func main() {
