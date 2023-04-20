@@ -154,7 +154,7 @@ const (
 	OpSyncVirtualMetaPartitions       uint8 = 0x4E
 	//OpAddVirtualMetaPartition         uint8 = 0x4F
 
-	OpAddVirtualMetaPartition         uint8 = 0x5A //添加虚拟mp的逻辑发生变化，防止master升级后使用旧的op code给metanode发送添加虚拟mp的请求
+	OpAddVirtualMetaPartition uint8 = 0x5A //添加虚拟mp的逻辑发生变化，防止master升级后使用旧的op code给metanode发送添加虚拟mp的请求
 
 	// Operations: Master -> DataNode
 	OpCreateDataPartition             uint8 = 0x60
@@ -621,7 +621,7 @@ func (p *Packet) GetReqID() int64 {
 }
 
 func (p *Packet) GetRespData() (msg string) {
-	if len(p.Data) > 0 && p.Size < uint32(len(p.Data)) {
+	if len(p.Data) > 0 && p.Size <= uint32(len(p.Data)) {
 		msgLen := unit.Min(int(p.Size), 512)
 		msg = string(p.Data[:msgLen])
 	}

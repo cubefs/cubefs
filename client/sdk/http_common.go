@@ -83,7 +83,8 @@ func lockPidFile(pidFile string) error {
 	}
 	pidCmd := strings.Split(string(data), pidFileSeparator)
 	if len(pidCmd) < 2 {
-		return fmt.Errorf("Invalid pidFile %s. Please remove it first", pidFile)
+		log.LogWarnf("Invalid pidFile %s. Content: %s", pidFile, string(data))
+		return writePidFile(pidFile)
 	}
 	cmdFile := fmt.Sprintf("/proc/%s/cmdline", pidCmd[0])
 	data, err = ioutil.ReadFile(cmdFile)
