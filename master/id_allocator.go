@@ -134,15 +134,15 @@ func (alloc *IDAllocator) restoreMaxQuotaID() {
 	}
 	bytes := value.([]byte)
 	if len(bytes) == 0 {
-		alloc.commonID = 0
+		alloc.quotaID = 0
 		return
 	}
 	maxQuotaID, err := strconv.ParseUint(string(bytes), 10, 64)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to restore maxCommonID,err:%v ", err.Error()))
+		panic(fmt.Sprintf("Failed to restore maxQuotaID,err:%v ", err.Error()))
 	}
 	alloc.quotaID = uint32(maxQuotaID)
-	log.LogInfof("action[restoreMaxCommonID] maxCommonID[%v]", alloc.commonID)
+	log.LogInfof("action[restoreMaxCommonID] maxQuotaID[%v]", alloc.quotaID)
 }
 
 func (alloc *IDAllocator) setDataPartitionID(id uint64) {
