@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/tiglabs/raft/storage/wal"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -31,6 +30,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/holder"
+	"github.com/tiglabs/raft/storage/wal"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -51,6 +53,8 @@ const (
 	ApplyIndexFile                = "APPLY"
 	TempApplyIndexFile            = ".apply"
 	TimeLayout                    = "2006-01-02 15:04:05"
+	LatestFlushTimeFile           = "LATEST_FLUSH"
+	TempLatestFlushTimeFile       = ".LATEST_FLUSH"
 )
 
 type FaultOccurredCheckLevel uint8
@@ -74,13 +78,14 @@ type DataPartitionMetadata struct {
 	LastTruncateID          uint64
 	LastUpdateTime          int64
 	VolumeHAType            proto.CrossRegionHAType
+	IsUpstreamRead          bool
 
 	// 该BOOL值表示Partition是否已经就绪，该值默认值为false，
 	// 新创建的DP成员为默认值，表示未完成第一次Raft恢复，Raft未就绪。
 	// 当第一次快照或者有应用日志行为时，该值被置为true并需要持久化该信息。
 	// 当发生快照应用(Apply Snapshot)行为时，该值为true。该DP需要关闭并进行报警。
-	IsCatchUp                      bool
-	ServerFaultOccurredCheckStatus FaultOccurredCheckLevel
+	IsCatchUp            bool
+	NeedServerFaultCheck bool
 }
 
 func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
@@ -96,7 +101,9 @@ func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
 			md.LastTruncateID == other.LastTruncateID &&
 			md.LastUpdateTime == other.LastUpdateTime &&
 			md.VolumeHAType == other.VolumeHAType) &&
-			md.IsCatchUp == other.IsCatchUp
+			md.IsUpstreamRead == other.IsUpstreamRead &&
+			md.IsCatchUp == other.IsCatchUp &&
+			md.NeedServerFaultCheck == other.NeedServerFaultCheck
 }
 
 func (md *DataPartitionMetadata) Validate() (err error) {
@@ -222,11 +229,12 @@ type DataPartition struct {
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
 
-	isCatchUp                     bool
-	serverFaultOccurredCheckLevel FaultOccurredCheckLevel
-	applyStatus                   *WALApplyStatus
-	minAppliedID                  uint64
-	maxAppliedID                  uint64
+	isCatchUp             bool
+	needServerFaultCheck  bool
+	serverFaultCheckLevel FaultOccurredCheckLevel
+	applyStatus           *WALApplyStatus
+	minAppliedID          uint64
+	maxAppliedID          uint64
 
 	repairC         chan struct{}
 	fetchVolHATypeC chan struct{}
@@ -255,6 +263,9 @@ type DataPartition struct {
 
 	persistedApplied  uint64
 	persistedMetadata *DataPartitionMetadata
+
+	actionHolder   *holder.ActionHolder
+	issueProcessor *IssueProcessor
 }
 
 type DataPartitionViewInfo struct {
@@ -285,8 +296,11 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	// persist file metadata
 	dp.DataPartitionCreateType = request.CreateType
 	dp.lastUpdateTime = time.Now().Unix()
-	err = dp.PersistMetaDataOnly()
+	err = dp.persistMetaDataOnly()
 	disk.AddSize(uint64(dp.Size()))
+	if err = dp.initIssueProcessor(); err != nil {
+		return
+	}
 	return
 }
 
@@ -364,7 +378,8 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v)", dp.partitionID, meta)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
 	dp.isCatchUp = meta.IsCatchUp
-	dp.loadServerFaultOccurredCheckLevel(meta)
+	dp.needServerFaultCheck = meta.NeedServerFaultCheck
+	dp.serverFaultCheckLevel = CheckAllCommitID
 	if !dp.applyStatus.Init(appliedID, meta.LastTruncateID) {
 		err = fmt.Errorf("action[loadApplyIndex] illegal metadata, appliedID %v, lastTruncateID %v", appliedID, meta.LastTruncateID)
 		return
@@ -380,7 +395,41 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dp.persistedApplied = appliedID
 	dp.persistedMetadata = meta
 	dp.maybeUpdateFaultOccurredCheckLevel()
+	if err = dp.initIssueProcessor(); err != nil {
+		return
+	}
 	return
+}
+
+func (dp *DataPartition) initIssueProcessor() (err error) {
+	var fragments []*IssueFragment
+	if dp.needServerFaultCheck {
+		if fragments, err = dp.scanIssueFragments(); err != nil {
+			return
+		}
+	}
+	var getRemotes = func() []string {
+		var replicas = dp.getReplicaClone()
+		var remotes = make([]string, 0, len(replicas)-1)
+		for _, replica := range replicas {
+			if !dp.IsLocalAddress(replica) {
+				remotes = append(remotes, replica)
+			}
+		}
+		return remotes
+	}
+	if dp.issueProcessor, err = NewIssueProcessor(dp.partitionID, dp.path, dp.extentStore, getRemotes, fragments); err != nil {
+		return
+	}
+	return
+}
+
+func (dp *DataPartition) CheckIssue(extentID, offset, size uint64) bool {
+	return dp.issueProcessor.FindOverlap(extentID, offset, size)
+}
+
+func (dp *DataPartition) RemoveIssueExtent(extentID uint64) error {
+	return dp.issueProcessor.RemoveByExtent(extentID)
 }
 
 const (
@@ -389,15 +438,11 @@ const (
 
 func (dp *DataPartition) maybeUpdateFaultOccurredCheckLevel() {
 	if maybeServerFaultOccurred {
-		dp.setFaultOccurredCheckLevel(CheckAllCommitID)
-		_ = dp.PersistMetaDataOnly()
+		dp.setNeedFaultCheck(true)
+		_ = dp.persistMetaDataOnly()
 	}
 }
-func (dp *DataPartition) loadServerFaultOccurredCheckLevel(meta *DataPartitionMetadata) {
-	if meta.ServerFaultOccurredCheckStatus == CheckAllCommitID {
-		dp.setFaultOccurredCheckLevel(CheckAllCommitID)
-	}
-}
+
 func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
@@ -422,6 +467,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		persistSync:             make(chan struct{}, 1),
 		inRepairExtents:         make(map[uint64]struct{}),
 		applyStatus:             NewWALApplyStatus(),
+		actionHolder:            holder.NewActionHolder(),
 	}
 	partition.replicasInit()
 
@@ -470,12 +516,14 @@ func (dp *DataPartition) tryLoadRaftHardStateFromDisk() (hs raftProto.HardState,
 }
 
 func (dp *DataPartition) Start() (err error) {
-	go dp.statusUpdateScheduler(context.Background())
-	if dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition {
-		go dp.startRaftAfterRepair()
-		return
-	}
-	go dp.startRaftAsync()
+	go func() {
+		go dp.statusUpdateScheduler(context.Background())
+		if dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition {
+			dp.startRaftAfterRepair()
+			return
+		}
+		dp.startRaftAsync()
+	}()
 	return
 }
 
@@ -614,9 +662,10 @@ func (dp *DataPartition) Stop() {
 			close(dp.stopC)
 		}
 		// Close the store and raftstore.
+		dp.issueProcessor.Stop()
 		dp.extentStore.Close()
 		dp.stopRaft()
-		if err := dp.Persist(nil); err != nil {
+		if err := dp.persist(nil); err != nil {
 			log.LogErrorf("persist partition [%v] failed when stop: %v", dp.partitionID, err)
 		}
 	})
@@ -781,7 +830,7 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 				retryFetchVolHATypeTimer.Reset(time.Minute)
 			}
 		case <-persistDpLastUpdateTimer.C:
-			_ = dp.PersistMetaDataOnly()
+			_ = dp.persistMetaDataOnly()
 			persistDpLastUpdateTimer.Reset(time.Hour)
 		}
 	}
@@ -794,7 +843,7 @@ func (dp *DataPartition) fetchVolHATypeFromMaster() (err error) {
 	}
 	if dp.config.VolHAType != simpleVolView.CrossRegionHAType {
 		dp.config.VolHAType = simpleVolView.CrossRegionHAType
-		if err = dp.PersistMetaDataOnly(); err != nil {
+		if err = dp.persistMetaDataOnly(); err != nil {
 			return
 		}
 	}
@@ -954,6 +1003,12 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // 1. when the extent size is smaller than the max size on the record, start to repair the missing part.
 // 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataPartitionRepairTask) {
+
+	// 在断电检查修复完成前不要进行修复
+	if dp.isNeedFaultCheck() {
+		return
+	}
+
 	store := dp.extentStore
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
 		if proto.IsTinyExtent(extentInfo[storage.FileID]) {
@@ -1303,7 +1358,53 @@ func (dp *DataPartition) getDataPartitionInfo() (dpInfo *DataPartitionViewInfo, 
 }
 
 func (dp *DataPartition) setFaultOccurredCheckLevel(checkCorruptLevel FaultOccurredCheckLevel) {
-	dp.serverFaultOccurredCheckLevel = checkCorruptLevel
+	dp.serverFaultCheckLevel = checkCorruptLevel
+}
+
+func (dp *DataPartition) ChangeCreateType(createType int) (err error) {
+	if dp.DataPartitionCreateType != createType {
+		dp.DataPartitionCreateType = createType
+		err = dp.persistMetaDataOnly()
+		return
+	}
+	return
+}
+
+func (dp *DataPartition) scanIssueFragments() (fragments []*IssueFragment, err error) {
+	var unixTS int64
+	if unixTS, err = dp.readLatestFlushTime(); err != nil {
+		return
+	}
+	if unixTS == 0 {
+		return
+	}
+	// 触发所有Extent必要元信息的加载或等待异步加载结束以在接下来的处理可以获得存储引擎中所有Extent的准确元信息。
+	dp.extentStore.Load()
+
+	var latestFlushTime = time.Unix(unixTS, 0)
+	// 对存储引擎中的所有数据块进行过滤，将有数据(Size > 0)且修改时间晚于最近一次Flush的Extent过滤出来进行接下来的检查和修复。
+	dp.extentStore.WalkExtentsInfo(func(info *storage.ExtentInfoBlock) {
+		if info[storage.Size] > 0 && time.Unix(int64(info[storage.ModifyTime]), 0).After(latestFlushTime) {
+			var (
+				extentID       = info[storage.FileID]
+				extentSize     = info[storage.Size]
+				fragmentOffset uint64
+				fragmentSize   uint64
+			)
+			if extentSize%uint64(proto.PageSize) == 0 {
+				fragmentOffset = (extentSize/proto.PageSize - 1) * proto.PageSize
+			} else {
+				fragmentOffset = (extentSize / proto.PageSize) * proto.PageSize
+			}
+			fragmentSize = extentSize - fragmentOffset
+			fragments = append(fragments, &IssueFragment{
+				extentID: extentID,
+				offset:   fragmentOffset,
+				size:     fragmentSize,
+			})
+		}
+	})
+	return
 }
 
 func convertCheckCorruptLevel(l uint64) (FaultOccurredCheckLevel, error) {

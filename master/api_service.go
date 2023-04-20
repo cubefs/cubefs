@@ -3830,7 +3830,6 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 			return
 		}
 	}
-
 	rules := r.FormValue(smartRulesKey)
 	if rules != "" {
 		smartRules = strings.Split(rules, ",")

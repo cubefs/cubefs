@@ -33,6 +33,8 @@ func (f RecordFilter) String() string {
 		return "Normal"
 	case RecordFilter_ConfChange:
 		return "ConfChange"
+	case RecordFilter_Rollback:
+		return "Rollback"
 	default:
 	}
 	return "Unknown"
@@ -42,6 +44,7 @@ const (
 	RecordFilter_All RecordFilter = iota
 	RecordFilter_Normal
 	RecordFilter_ConfChange
+	RecordFilter_Rollback
 )
 
 type Option struct {
@@ -147,10 +150,6 @@ func (s *Sinker) Run() (err error) {
 			}
 			var recordRawText string
 			var skip bool
-			if len(entry.Data) == 0 {
-				fmt.Println(entry)
-				continue
-			}
 			if recordRawText, skip, err = s.buildRecordRowText(entry); err != nil {
 				err = fmt.Errorf("output record failed: %v", err)
 				return
@@ -196,11 +195,13 @@ func (s *Sinker) buildRecordRowText(entry *proto.Entry) (text string, skip bool,
 			skip = true
 			return
 		}
-		var childValues common.ColumnValues
-		if childValues, err = s.decoder.DecodeCommand(entry.Data); err != nil {
-			return
+		if len(entry.Data) > 0 {
+			var childValues common.ColumnValues
+			if childValues, err = s.decoder.DecodeCommand(entry.Data); err != nil {
+				return
+			}
+			values.Add(childValues...)
 		}
-		values.Add(childValues...)
 	case proto.EntryConfChange:
 		if s.opt.Filter != RecordFilter_All && s.opt.Filter != RecordFilter_ConfChange {
 			skip = true
@@ -208,11 +209,23 @@ func (s *Sinker) buildRecordRowText(entry *proto.Entry) (text string, skip bool,
 		}
 		cc := new(proto.ConfChange)
 		cc.Decode(entry.Data)
-		content := fmt.Sprintf("%v(%v)", cc.Type, cc.Peer)
+		content := fmt.Sprintf("%v -> %v", cc.Type, cc.Peer)
 		values.Add(common.ColumnValue{Value: content, Width: columnWidthDefault})
+	case proto.EntryRollback:
+		if s.opt.Filter != RecordFilter_All && s.opt.Filter != RecordFilter_Rollback {
+			skip = true
+			return
+		}
+		rb := new(proto.Rollback)
+		rb.Decode(entry.Data)
+		var childValues common.ColumnValues
+		if childValues, err = s.decoder.DecodeCommand(rb.Data); err != nil {
+			return
+		}
+		values.Add(childValues...)
+		values.Add(common.ColumnValue{Value: fmt.Sprintf("Target(%v)", rb.Index), Width: columnWidthDefault})
 	}
 	text = values.BuildColumnText()
-
 	if len(s.opt.Keyword) > 0 && !strings.Contains(text, s.opt.Keyword) {
 		skip = true
 	}
@@ -220,6 +233,7 @@ func (s *Sinker) buildRecordRowText(entry *proto.Entry) (text string, skip bool,
 }
 
 var footerMagic = []byte{'\xf9', '\xbf', '\x3e', '\x0a', '\xd3', '\xc5', '\xcc', '\x3f'}
+
 const indexItemSize = 8 + 8 + 4
 
 type indexItem struct {
@@ -237,7 +251,7 @@ func decodeLogIndex(data []byte) (logEntryIndex, error) {
 	nItems := binary.BigEndian.Uint32(data[offset:])
 	offset += 4
 
-	calcItems := uint32((len(data) - 4 -29 -4) / 20)
+	calcItems := uint32((len(data) - 4 - 29 - 4) / 20)
 	if calcItems < nItems {
 		err = fmt.Errorf("!!! log expect %d recs, but now have %d recs", nItems, calcItems)
 		nItems = calcItems
@@ -257,7 +271,7 @@ func decodeLogIndex(data []byte) (logEntryIndex, error) {
 
 func (s *Sinker) getRaftLogRecordsIndexItem(data []byte) (logEntryIndex, error) {
 	index := make([]indexItem, 0)
-	footer := data[len(data) - 29 :]
+	footer := data[len(data)-29:]
 	if footer[0] != 3 {
 		return index, fmt.Errorf("record file has no index item")
 	}
@@ -271,12 +285,12 @@ func (s *Sinker) getRaftLogRecordsIndexItem(data []byte) (logEntryIndex, error) 
 		return index, fmt.Errorf("record file footer magic error\n")
 	}
 
-	logIndexBuff := data[logIndexOffset : ]
+	logIndexBuff := data[logIndexOffset:]
 
 	return decodeLogIndex(logIndexBuff[9:])
 }
 
-func (s *Sinker)parseLogEntry(data []byte, offset int, lastTerm, lastIndex *uint64) (int, error) {
+func (s *Sinker) parseLogEntry(data []byte, offset int, lastTerm, lastIndex *uint64) (int, error) {
 	if offset >= len(data) {
 		return offset, fmt.Errorf("parese finished, offset[%d] is beyond data buff[%d]", offset, len(data))
 	}
@@ -289,11 +303,11 @@ func (s *Sinker)parseLogEntry(data []byte, offset int, lastTerm, lastIndex *uint
 	size := binary.BigEndian.Uint64(data[offset:])
 	offset += 8
 
-	if offset + int(size) > len(data) {
+	if offset+int(size) > len(data) {
 		return offset - 9, fmt.Errorf("parese log failed: data size err")
 	}
 
-	entryBuff := data[offset: offset + int(size)]
+	entryBuff := data[offset : offset+int(size)]
 	newCrc := common.NewCRC(entryBuff)
 	offset += int(size)
 	crc := binary.BigEndian.Uint32(data[offset:])
@@ -319,7 +333,7 @@ func (s *Sinker)parseLogEntry(data []byte, offset int, lastTerm, lastIndex *uint
 			fmt.Printf("index skipped, term:%d, index:%d-->%d\n", entry.Term, *lastIndex, entry.Index)
 		}
 	}
-	value, _, _ :=s.buildRecordRowText(entry)
+	value, _, _ := s.buildRecordRowText(entry)
 	fmt.Printf("%v\n", value)
 	*lastTerm = entry.Term
 	*lastIndex = entry.Index
@@ -330,7 +344,7 @@ func (s *Sinker) ForceParseRaftLog() {
 
 	fileNames, _ := common.ListLogEntryFiles(s.logDir)
 	lastIndex := uint64(0)
-	lastTerm  := uint64(0)
+	lastTerm := uint64(0)
 	fmt.Printf("force parse \ntotal files:%d \n%s\n", len(fileNames), s.buildHeaderRowText())
 	for index, logFile := range fileNames {
 		fileAbsName := path.Join(s.logDir, logFile.String())
@@ -341,7 +355,7 @@ func (s *Sinker) ForceParseRaftLog() {
 		}
 
 		//get index recs
-		indexRecs, err:= s.getRaftLogRecordsIndexItem(data)
+		indexRecs, err := s.getRaftLogRecordsIndexItem(data)
 		if err != nil {
 			fmt.Printf("get log records failed:%s\n", err.Error())
 		}
@@ -349,7 +363,7 @@ func (s *Sinker) ForceParseRaftLog() {
 
 		// read data as log entry
 		for {
-			offset , err = s.parseLogEntry(data, offset, &lastTerm, &lastIndex)
+			offset, err = s.parseLogEntry(data, offset, &lastTerm, &lastIndex)
 			if err != nil {
 				fmt.Printf("parse %d file[%s] err:%s\n", index, logFile.String(), err.Error())
 				break
@@ -380,6 +394,8 @@ func (s *Sinker) formatEntryType(entryType proto.EntryType) string {
 		return "Normal"
 	case proto.EntryConfChange:
 		return "ConfChange"
+	case proto.EntryRollback:
+		return "Rollback"
 	}
 	return "Unknown"
 }

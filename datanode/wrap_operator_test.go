@@ -2,272 +2,118 @@ package datanode
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/datanode/mock"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/unit"
-	"hash/crc32"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"strings"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/stretchr/testify/assert"
 	"testing"
-	"time"
 )
 
-var (
-	partitionIdNum uint64
-)
+func TestUpstreamRead(t *testing.T) {
+	tcp := mock.NewMockTcp(mockDataTcpPort1)
+	err := tcp.Start()
+	assert.Nil(t, err)
+	defer tcp.Stop()
 
-type fakeDataNode struct {
-	DataNode
-	fakeNormalExtentId uint64
-	fakeTinyExtentId   uint64
+	dataReceiver := make([]byte, 0)
+	var callbackWriter = func(packet *repl.Packet) error {
+		dataReceiver = append(dataReceiver, packet.Data...)
+		return nil
+	}
+	reqPacket := newReadPacket(context.Background(), &proto.ExtentKey{
+		PartitionId: 1,
+		ExtentId:    1,
+	}, 0, mock.UpstreamReadSize, 0, false)
+
+	err = upstreamStreamRead(reqPacket, callbackWriter, fmt.Sprintf("127.0.0.1:%d", mockDataTcpPort1))
+	assert.Nil(t, err)
+	assert.Equal(t, len(dataReceiver), mock.UpstreamReadSize)
+	realData := mock.RandTestData(mock.UpstreamReadSize, mock.UpstreamReadSeed)
+	assert.Equal(t, realData, dataReceiver)
 }
 
-func Test_getTinyExtentHoleInfo(t *testing.T) {
-	partitionIdNum++
-	dp := PrepareDataPartition(true, true, t, partitionIdNum)
-	if dp == nil {
-		t.Fatalf("prepare data partition failed")
-		return
-	}
-	defer fakeNode.fakeDeleteDataPartition(t, partitionIdNum)
-	if _, err := dp.getTinyExtentHoleInfo(fakeNode.fakeTinyExtentId); err != nil {
-		t.Fatalf("getHttpRequestResp err(%v)", err)
-	}
-}
-
-func Test_handleTinyExtentAvaliRead(t *testing.T) {
-	partitionIdNum++
-	dp := PrepareDataPartition(true, true, t, partitionIdNum)
-	if dp == nil {
-		t.Fatalf("prepare data partition failed")
-		return
-	}
-	defer fakeNode.fakeDeleteDataPartition(t, partitionIdNum)
-	p := repl.NewTinyExtentRepairReadPacket(context.Background(), partitionIdNum, fakeNode.fakeTinyExtentId, 0, 10)
-	opCode, err, msg := fakeNode.operateHandle(t, p)
+func TestUpstreamConsistentReadWithOneBadHost(t *testing.T) {
+	//node 3 is not started
+	tcp := mock.NewMockTcp(mockDataTcpPort2)
+	err := tcp.Start()
 	if err != nil {
-		t.Fatal(err)
-		return
+		t.Fatalf("start mock tcp server failed: %v", err)
 	}
-	if opCode != proto.OpOk {
-		t.Fatal(msg)
+	defer tcp.Stop()
+
+	dataReceiver := make([]byte, 0)
+	var callbackWriter = func(packet *repl.Packet) error {
+		dataReceiver = append(dataReceiver, packet.Data...)
+		return nil
 	}
-
-}
-
-func (fdn *fakeDataNode) fakeDeleteDataPartition(t *testing.T, partitionId uint64) {
-	req := &proto.DeleteDataPartitionRequest{
-		PartitionId: partitionId,
-	}
-
-	task := proto.NewAdminTask(proto.OpDeleteDataPartition, localNodeAddress, req)
-	body, err := json.Marshal(task)
-	p := &repl.Packet{
-		Packet: proto.Packet{
-			Magic:       proto.ProtoMagic,
-			ReqID:       proto.GenerateRequestID(),
-			Opcode:      proto.OpDeleteDataPartition,
-			PartitionID: partitionId,
-			Data:        body,
-			Size:        uint32(len(body)),
-			StartT:      time.Now().UnixNano(),
+	//remote applyID=2
+	partition := &DataPartition{
+		partitionID: 1,
+		applyStatus: &WALApplyStatus{
+			applied: 1,
 		},
-	}
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-	fdn.handlePacketToDeleteDataPartition(p)
-	if p.ResultCode != proto.OpOk {
-		t.Fatalf("delete partiotion failed msg[%v]", p.ResultCode)
-	}
-
-}
-
-func PrepareDataPartition(extentCreate, dataPrepare bool, t *testing.T, partitionId uint64) *DataPartition {
-	dp := fakeNode.fakeCreateDataPartition(t, partitionId)
-	if dp == nil {
-		t.Fatalf("create Partition failed")
-		return nil
-	}
-
-	if !extentCreate {
-		return dp
-	}
-
-	if err := fakeNode.fakeCreateExtent(dp, t, fakeNode.fakeNormalExtentId); err != nil {
-		t.Fatal(err)
-		return nil
-	}
-
-	if err := fakeNode.fakeCreateExtent(dp, t, fakeNode.fakeTinyExtentId); err != nil {
-		t.Fatal(err)
-		return nil
-	}
-
-	if !dataPrepare {
-		return dp
-	}
-
-	if _, err := fakeNode.prepareTestData(t, dp, fakeNode.fakeNormalExtentId); err != nil {
-		return nil
-	}
-
-	if _, err := fakeNode.prepareTestData(t, dp, fakeNode.fakeTinyExtentId); err != nil {
-		return nil
-	}
-	dp.ReloadSnapshot()
-	return dp
-}
-
-func (fdn *fakeDataNode) fakeCreateDataPartition(t *testing.T, partitionId uint64) (dp *DataPartition) {
-	req := &proto.CreateDataPartitionRequest{
-		PartitionId:   partitionId,
-		PartitionSize: 5 * unit.GB, // 5GB
-		VolumeId:      "testVol",
-		Hosts: []string{
-			localNodeAddress,
-			localNodeAddress,
-			localNodeAddress,
+		replicas: []string{
+			fmt.Sprintf("127.0.0.1:%d", mockDataTcpPort1),
+			fmt.Sprintf("127.0.0.1:%d", mockDataTcpPort2),
+			fmt.Sprintf("127.0.0.1:%d", mockDataTcpPort3),
 		},
-		Members: []proto.Peer{
-			{ID: fdn.nodeID, Addr: fdn.localServerAddr},
-			{ID: fdn.nodeID, Addr: fdn.localServerAddr},
-			{ID: fdn.nodeID, Addr: fdn.localServerAddr},
+		config: &dataPartitionCfg{
+			NodeID: 1,
+			Peers: []proto.Peer{
+				{
+					ID:   1,
+					Addr: fmt.Sprintf("127.0.0.1:%d", mockDataTcpPort1),
+				},
+				{
+					ID:   2,
+					Addr: fmt.Sprintf("127.0.0.1:%d", mockDataTcpPort2),
+				},
+				{
+					ID:   3,
+					Addr: fmt.Sprintf("127.0.0.1:%d", mockDataTcpPort3),
+				},
+			},
 		},
 	}
 
-	task := proto.NewAdminTask(proto.OpCreateDataPartition, localNodeAddress, req)
-	body, err := json.Marshal(task)
-	if err != nil {
-		t.Fatal(err)
-		return nil
-	}
-	p := &repl.Packet{
-		Packet: proto.Packet{
-			Magic:       proto.ProtoMagic,
-			ReqID:       proto.GenerateRequestID(),
-			Opcode:      proto.OpCreateDataPartition,
-			PartitionID: partitionId,
-			Data:        body,
-			Size:        uint32(len(body)),
-			StartT:      time.Now().UnixNano(),
-		},
-	}
+	reqPacket := newReadPacket(context.Background(), &proto.ExtentKey{
+		PartitionId: 1,
+		ExtentId:    1,
+	}, 0, mock.UpstreamReadSize, 0, false)
 
-	opCode, err, msg := fdn.operateHandle(t, p)
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-	if opCode != proto.OpOk {
-		t.Fatal(msg)
-	}
-	return fdn.space.Partition(partitionId)
+	allAppliedIDMap, replyNum := partition.getAllReplicaAppliedID(context.Background(), proto.UpstreamRequestDeadLineTimeNs, proto.UpstreamRequestDeadLineTimeNs)
+	assert.Greater(t, replyNum, uint8(len(partition.replicas)/2))
+
+	_, maxAplHost := partition.findMaxID(allAppliedIDMap)
+	//turn to follower read and avoid recycling
+	reqPacket.Opcode = proto.OpStreamFollowerRead
+	assert.False(t, partition.IsLocalAddress(maxAplHost))
+	err = upstreamStreamRead(reqPacket, callbackWriter, maxAplHost)
+	log.LogWarnf("action[handleStreamReadPacket] upstream req(%v) to max apply id host:%v", reqPacket.LogMessage(reqPacket.GetOpMsg(), "local req", reqPacket.StartT, err), maxAplHost)
+	assert.Equal(t, len(dataReceiver), mock.UpstreamReadSize)
+	realData := mock.RandTestData(mock.UpstreamReadSize, mock.UpstreamReadSeed)
+	assert.Equal(t, realData, dataReceiver)
 }
 
-func (e *fakeDataNode) fakeCreateExtent(dp *DataPartition, t *testing.T, extentId uint64) error {
-	p := &repl.Packet{
-		Packet: proto.Packet{
-			Magic:       proto.ProtoMagic,
-			ReqID:       proto.GenerateRequestID(),
-			Opcode:      proto.OpCreateExtent,
-			PartitionID: dp.partitionID,
-			StartT:      time.Now().UnixNano(),
-			ExtentID:    extentId,
-		},
+// newReadPacket returns a new read packet.
+func newReadPacket(ctx context.Context, key *proto.ExtentKey, extentOffset, size int, fileOffset uint64, followerRead bool) *repl.Packet {
+	p := new(repl.Packet)
+	p.ExtentID = key.ExtentId
+	p.PartitionID = key.PartitionId
+	p.Magic = proto.ProtoMagic
+	p.ExtentOffset = int64(extentOffset)
+	p.Size = uint32(size)
+	if followerRead {
+		p.Opcode = proto.OpStreamFollowerRead
+	} else {
+		p.Opcode = proto.OpStreamRead
 	}
-
-	opCode, err, msg := e.operateHandle(t, p)
-	if err != nil {
-		t.Fatal(err)
-		return nil
-	}
-	if opCode != proto.OpOk && !strings.Contains(msg, "extent already exists") {
-		return errors.NewErrorf("fakeCreateExtent fail %v", msg)
-	}
-
-	if p.ExtentID != extentId {
-		return errors.NewErrorf("fakeCreateExtent fail, error not set ExtentId")
-	}
-	return nil
-}
-
-func (fdn *fakeDataNode) prepareTestData(t *testing.T, dp *DataPartition, extentId uint64) (crc uint32, err error) {
-	size := 1 * unit.MB
-	bytes := make([]byte, size)
-	for i := 0; i < size; i++ {
-		bytes[i] = 1
-	}
-
-	crc = crc32.ChecksumIEEE(bytes)
-	p := &repl.Packet{
-		Object: dp,
-		Packet: proto.Packet{
-			Magic:       proto.ProtoMagic,
-			ReqID:       proto.GenerateRequestID(),
-			Opcode:      proto.OpWrite,
-			PartitionID: dp.partitionID,
-			ExtentID:    extentId,
-			Size:        uint32(size),
-			CRC:         crc,
-			Data:        bytes,
-			StartT:      time.Now().UnixNano(),
-		},
-	}
-
-	opCode, err, msg := fdn.operateHandle(t, p)
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-	if opCode != proto.OpOk {
-		t.Fatal(msg)
-	}
-	return
-}
-
-func (fdn *fakeDataNode) operateHandle(t *testing.T, p *repl.Packet) (opCode uint8, err error, msg string) {
-	err = fdn.Prepare(p, fdn.localServerAddr)
-	if err != nil {
-		t.Errorf("prepare err %v", err)
-		return
-	}
-
-	conn, err := net.Dial("tcp", localNodeAddress)
-	if err != nil {
-		return
-	}
-
-	defer conn.Close()
-	err = fdn.OperatePacket(p, conn.(*net.TCPConn))
-	if err != nil {
-		msg = fmt.Sprintf("%v", err)
-	}
-
-	err = fdn.Post(p)
-	if err != nil {
-		return
-	}
-	opCode = p.ResultCode
-	return
-}
-
-func getHttpRequestResp(url string, t *testing.T) (body []byte, err error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatalf("http getPartitions error(%v)", err)
-		return
-	}
-	body, err = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return
+	p.ExtentType = proto.NormalExtentType
+	p.ReqID = proto.GenerateRequestID()
+	p.RemainingFollowers = 0
+	p.KernelOffset = uint64(fileOffset)
+	p.SetCtx(ctx)
+	return p
 }

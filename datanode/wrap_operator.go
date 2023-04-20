@@ -360,6 +360,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			p.PartitionID, p.ExtentID, remote)
 		partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 	}
+	_ = partition.RemoveIssueExtent(p.ExtentID)
 	if err != nil {
 		p.PackErrorBody(ActionMarkDelete, err.Error())
 	} else {
@@ -387,6 +388,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			log.LogInfof("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
 				p.PartitionID, ext.ExtentId, ext.ExtentOffset, ext.Size, remote)
 			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+			_ = partition.RemoveIssueExtent(p.ExtentID)
 		}
 	}
 
@@ -526,17 +528,160 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 			p.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
-	partition := p.Object.(*DataPartition)
-	if err = partition.CheckLeader(p, connect); err != nil {
+	if s.raftStore == nil {
+		err = proto.ErrOperationDisabled
 		return
 	}
+	s.handleExtentRepairReadPacket(p, connect, isRepairRead)
+	return
+}
+
+func upstreamStreamRead(p *repl.Packet, callbackWriter func(p *repl.Packet) error, upstreamHost string) (err error) {
+	var upstreamConn *net.TCPConn
+	if upstreamConn, err = gConnPool.GetConnect(upstreamHost); err != nil {
+		err = errors.Trace(err, fmt.Sprintf("get connection failed: %v", err))
+		return
+	}
+	defer func() {
+		gConnPool.PutConnectWithErr(upstreamConn, err)
+	}()
+	err = writeToUpstream(p, upstreamConn)
+	if err != nil {
+		return
+	}
+
+	_, err = readFromUpstream(upstreamConn, p, callbackWriter)
+	return
+}
+
+func writeToUpstream(p *repl.Packet, conn *net.TCPConn) (err error) {
+	if err = p.WriteToConnNs(conn, proto.UpstreamRequestDeadLineTimeNs); err != nil {
+		log.LogWarnf("writeToUpstream: failed to write to conn, err(%v)", err)
+	}
+	return
+}
+
+func readFromUpstream(upstreamConn *net.TCPConn, reqPacket *repl.Packet, callbackWriter func(p *repl.Packet) error) (readBytes int, err error) {
+	readBytes = 0
+	for readBytes < int(reqPacket.Size) {
+		replyPacket := repl.NewStreamReadResponsePacket(reqPacket.Ctx(), reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
+		bufSize := unit.Min(unit.ReadBlockSize, int(reqPacket.Size)-readBytes)
+		err = streamReadPacket(bufSize, upstreamConn, replyPacket, reqPacket, callbackWriter)
+		if err != nil {
+			return 0, err
+		}
+		readBytes += int(replyPacket.Size)
+	}
+	return readBytes, nil
+}
+
+func streamReadPacket(bufSize int, upstreamConn *net.TCPConn, replyPacket *repl.Packet, reqPacket *repl.Packet, callbackWriter func(p *repl.Packet) error) (err error) {
+	if bufSize == unit.ReadBlockSize {
+		replyPacket.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
+	} else {
+		replyPacket.Data = make([]byte, bufSize)
+	}
+	defer func() {
+		if bufSize == unit.ReadBlockSize {
+			proto.Buffers.Put(replyPacket.Data)
+		}
+	}()
+	err = replyPacket.ReadFromConnNs(upstreamConn, proto.UpstreamRequestDeadLineTimeNs)
+	if err != nil {
+		log.LogWarnf("streamReadPacket: failed to read from upstream connect, req(%v) readBytes(%v) err(%v)", reqPacket, bufSize, err)
+		return
+	}
+	err = callbackWriter(replyPacket)
+	if err != nil {
+		log.LogWarnf("streamReadPacket: failed to write to connect, req(%v) readBytes(%v) err(%v)", reqPacket, bufSize, err)
+		return
+	}
+	err = checkReadReplyValid(reqPacket, replyPacket)
+	return
+}
+
+func checkReadReplyValid(request *repl.Packet, reply *repl.Packet) (err error) {
+	if reply.ResultCode != proto.OpOk {
+		err = errors.New(fmt.Sprintf("checkReadReplyValid: ResultCode(%v) NOK", reply.GetResultMsg()))
+		return
+	}
+	if !isValidReadReply(request, reply) {
+		err = errors.New(fmt.Sprintf("checkReadReplyValid: inconsistent req and reply, req(%v) reply(%v)", request, reply))
+		return
+	}
+	expectCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
+	if reply.CRC != expectCrc {
+		err = errors.New(fmt.Sprintf("checkReadReplyValid: inconsistent CRC, expectCRC(%v) replyCRC(%v)", expectCrc, reply.CRC))
+		return
+	}
+	return nil
+}
+
+func isValidReadReply(p *repl.Packet, q *repl.Packet) bool {
+	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.ExtentID == q.ExtentID {
+		return true
+	}
+	return false
+}
+
+func (s *DataNode) handleStreamFollowerReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	s.handleExtentRepairReadPacket(p, connect, isRepairRead)
 
 	return
 }
 
-func (s *DataNode) handleStreamFollowerReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
-	s.handleExtentRepairReadPacket(p, connect, isRepairRead)
+func dealExtentRepairReadPacket(buff []byte, p *repl.Packet, connect net.Conn) (err error) {
+	needReplySize := p.Size
+	offset := p.ExtentOffset
+	curReadOffset := uint32(0)
+	for {
+		if needReplySize <= 0 {
+			break
+		}
+		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
+		reply.StartT = p.StartT
+		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
+		if currReadSize == unit.ReadBlockSize {
+			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
+		} else {
+			reply.Data = make([]byte, currReadSize)
+		}
+
+		reply.ExtentOffset = offset
+		p.Size = uint32(currReadSize)
+		p.ExtentOffset = offset
+		copy(reply.Data[0:currReadSize], buff[curReadOffset:curReadOffset+currReadSize])
+		reply.CRC = crc32.ChecksumIEEE(reply.Data[0:currReadSize])
+		p.CRC = reply.CRC
+		reply.Size = uint32(currReadSize)
+		reply.ResultCode = proto.OpOk
+		reply.Opcode = p.Opcode
+		p.ResultCode = proto.OpOk
+
+		err = func() error {
+			var netErr error
+			netErr = reply.WriteToConnNs(connect, proto.UpstreamRequestDeadLineTimeNs)
+			return netErr
+		}()
+		if err != nil {
+			if currReadSize == unit.ReadBlockSize {
+				proto.Buffers.Put(reply.Data)
+			}
+			logContent := fmt.Sprintf("action[operatePacket] %v.",
+				reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+			log.LogErrorf(logContent)
+			return
+		}
+		needReplySize -= currReadSize
+		offset += int64(currReadSize)
+		if currReadSize == unit.ReadBlockSize {
+			proto.Buffers.Put(reply.Data)
+		}
+		logContent := fmt.Sprintf("action[operatePacket] %v.",
+			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+		log.LogReadf(logContent)
+	}
+	p.PacketOkReply()
 
 	return
 }
@@ -566,6 +711,11 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		defer func() {
 			partition.Disk().finishRepairTask()
 		}()
+	}
+
+	if partition.CheckIssue(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)) && (len(p.Arg) == 0 || p.Arg[0] != 1) {
+		err = proto.ErrOperationDisabled
+		return
 	}
 
 	action := proto.ActionRead
@@ -598,6 +748,9 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 				defer func() {
 					tp.Set(storeErr)
 				}()
+			}
+			if storeErr = partition.checkAndWaitForPendingActionApplied(reply.ExtentID, offset, int64(currReadSize)); storeErr != nil {
+				return storeErr
 			}
 			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data[0:currReadSize], isRepairRead)
 			return storeErr
@@ -1352,8 +1505,7 @@ func (s *DataNode) handlePacketToResetDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 	if isUpdated {
-		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-		if err = dp.Persist(nil); err != nil {
+		if err = dp.ChangeCreateType(proto.NormalCreateDataPartition); err != nil {
 			log.LogErrorf("handlePacketToResetDataPartitionRaftMember dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}

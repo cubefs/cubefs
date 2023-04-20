@@ -213,7 +213,7 @@ func TestIsIOTimeoutFailure(t *testing.T) {
 func TestGetRemoteExtentInfoForValidateCRCWithRetry(t *testing.T) {
 	var (
 		ctx         = context.Background()
-		tcp         = mock.NewMockTcp(tcpPort)
+		tcp         = mock.NewMockTcp(mockDataTcpPort1)
 		err         error
 		extentFiles []storage.ExtentInfoBlock
 	)
@@ -226,7 +226,7 @@ func TestGetRemoteExtentInfoForValidateCRCWithRetry(t *testing.T) {
 		partitionID: 10,
 	}
 	mock.ReplyGetRemoteExtentInfoForValidateCRCCount = GetRemoteExtentInfoForValidateCRCRetryTimes
-	targetHost := fmt.Sprintf(":%v", tcpPort)
+	targetHost := fmt.Sprintf(":%v", mockDataTcpPort1)
 	if extentFiles, err = dp.getRemoteExtentInfoForValidateCRCWithRetry(ctx, targetHost); err == nil {
 		t.Error("action[getRemoteExtentInfoForValidateCRCWithRetry] err should not be nil")
 	}
@@ -277,7 +277,7 @@ func TestValidateCrc(t *testing.T) {
 					t.Errorf("action[getLocalExtentInfoForValidateCRC], err should not be equal to nil or err[%v]", err)
 				}
 			case 1:
-				tcp := mock.NewMockTcp(tcpPort)
+				tcp := mock.NewMockTcp(mockDataTcpPort1)
 				err = tcp.Start()
 				if err != nil {
 					t.Fatalf("start mock tcp server failed: %v", err)

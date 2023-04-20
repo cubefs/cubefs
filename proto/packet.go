@@ -238,8 +238,12 @@ const (
 )
 
 const (
-	WriteDeadlineTime            = 5
-	ReadDeadlineTime             = 5
+	WriteDeadlineTime             = 5
+	ReadDeadlineTime              = 5
+	UpstreamRequestDeadLineTimeMs = 600
+	UpstreamRequestDeadLineTimeNs = UpstreamRequestDeadLineTimeMs * 1e6
+	UpstreamProcessDeadLineTime   = 3
+
 	SyncSendTaskDeadlineTime     = 20
 	NoReadDeadlineTime           = -1
 	MaxWaitFollowerRepairTime    = 60 * 5

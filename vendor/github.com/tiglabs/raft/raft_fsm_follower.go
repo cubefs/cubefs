@@ -25,7 +25,7 @@ import (
 
 func (r *raftFsm) becomeFollower(ctx context.Context, term, lead uint64) {
 	r.step = stepFollower
-	r.reset(term, 0, false)
+	r.reset(term, 0, false, false)
 	r.tick = r.tickElection
 	r.leader = lead
 	r.state = stateFollower
@@ -58,18 +58,14 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 		r.electionElapsed = 0
 		r.leader = m.From
 		if entry, exist := m.HeartbeatContext.Get(r.id); exist {
-			if entry.IsUnstable != (r.riskState == stateUnstable) {
-				var newState riskState
-				if entry.IsUnstable {
-					newState = stateUnstable
-				} else {
-					newState = stateStable
-				}
+			var newState = StableState
+			if entry.IsUnstable {
+				newState = UnstableState
+			}
+			if r.maybeChangeState(newState) {
 				if logger.IsEnableDebug() {
 					logger.Debug("raft[%v] recv risk state change to [%v] from leader [%v].", r.id, newState, m.From)
 				}
-				r.riskState = newState
-				r.riskStateLn.changeTo(newState)
 			}
 		}
 		return
@@ -80,6 +76,8 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgElectAck
 		nmsg.To = m.From
+		nmsg.Index = r.raftLog.lastIndex()
+		nmsg.Commit = r.raftLog.committed
 		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 		proto.ReturnMessage(m)
@@ -119,6 +117,8 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 			nmsg := proto.GetMessage()
 			nmsg.Type = proto.RespMsgVote
 			nmsg.To = m.From
+			nmsg.Index = r.raftLog.lastIndex()
+			nmsg.Commit = r.raftLog.committed
 			nmsg.SetCtx(m.Ctx())
 			r.send(nmsg)
 		} else {
@@ -158,18 +158,16 @@ func (r *raftFsm) tickElection() {
 	r.electionElapsed++
 
 	var stableElapsed = r.config.ElectionTick
-	if r.leader != NoLeader && r.state == stateFollower && r.electionElapsed >= stableElapsed && r.riskState == stateStable {
+	if r.leader != NoLeader && r.state == stateFollower && r.electionElapsed >= stableElapsed && r.maybeChangeState(UnstableState) {
 		if logger.IsEnableDebug() {
-			logger.Debug("raft[%v] risk state change to [%v] cause election elapsed [%v] larger than stable elapsed [%v].", r.id, stateUnstable, r.electionElapsed, stableElapsed)
+			logger.Debug("raft[%v] risk state change to [%v] cause election elapsed [%v] larger than stable elapsed [%v].", r.id, UnstableState, r.electionElapsed, stableElapsed)
 		}
-		r.riskState = stateUnstable
-		r.riskStateLn.changeTo(stateUnstable)
 	}
 
 	timeout := false
 	// check follower lease (2 * electiontimeout)
 	if r.config.LeaseCheck && r.leader != NoLeader && r.state == stateFollower {
-		timeout = (r.electionElapsed >= (r.config.ElectionTick << 1))
+		timeout = r.electionElapsed >= (r.config.ElectionTick << 1)
 	} else {
 		timeout = r.pastElectionTimeout()
 	}

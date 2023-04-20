@@ -31,7 +31,7 @@ import (
 /* The functions below implement the interfaces defined in the raft library. */
 
 // Apply puts the data onto the disk.
-func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
+func (dp *DataPartition) handleRaftApply(command []byte, index uint64) (resp interface{}, err error) {
 	defer func() {
 		if err != nil {
 			msg := fmt.Sprintf("partition [id: %v, disk: %v] apply command [index: %v] occurred error and will be stop: %v",
@@ -46,6 +46,7 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		dp.advanceApplyID(index)
+		dp.actionHolder.Unregister(index)
 	}()
 	var opItem *rndWrtOpItem
 	if opItem, err = UnmarshalRandWriteRaftLog(command); err != nil {
@@ -59,7 +60,7 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 // ApplyMemberChange supports adding new raft member or deleting an existing raft member.
 // It does not support updating an existing member at this point.
-func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
+func (dp *DataPartition) handleRaftApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
 		if err != nil {
 			msg := fmt.Sprintf("partition [id: %v, disk: %v] apply member change [index: %v] occurred error and will be stop: %v",
@@ -116,7 +117,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-		if err = dp.Persist(nil); err != nil {
+		if err = dp.persist(nil); err != nil {
 			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}
@@ -128,7 +129,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 // Snapshot persists the in-memory data (as a snapshot) to the disk.
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
-func (dp *DataPartition) Snapshot(recoverNode uint64) (raftproto.Snapshot, error) {
+func (dp *DataPartition) handleRaftSnapshot(recoverNode uint64) (raftproto.Snapshot, error) {
 	snapIterator := NewItemIterator(dp.applyStatus.LastTruncate())
 	log.LogInfof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v)",
 		dp.partitionID, dp.applyStatus.LastTruncate(), dp.applyStatus.Applied())
@@ -136,7 +137,7 @@ func (dp *DataPartition) Snapshot(recoverNode uint64) (raftproto.Snapshot, error
 }
 
 // ApplySnapshot asks the raft leader for the snapshot data to recover the contents on the local disk.
-func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator, snapV uint32) (err error) {
+func (dp *DataPartition) handleRaftApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator, snapV uint32) (err error) {
 	// Never delete the raft log which hadn't applied, so snapshot no need.
 	log.LogInfof("PartitionID(%v) ApplySnapshot from(%v)", dp.partitionID, dp.raftPartition.CommittedIndex())
 	if dp.isCatchUp {
@@ -164,13 +165,13 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 }
 
 // HandleFatalEvent notifies the application when panic happens.
-func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
+func (dp *DataPartition) handleRaftFatalEvent(err *raft.FatalError) {
 	dp.checkIsDiskError(err.Err)
 	log.LogErrorf("action[HandleFatalEvent] err(%v).", err)
 }
 
 // HandleLeaderChange notifies the application when the raft leader has changed.
-func (dp *DataPartition) HandleLeaderChange(leader uint64) {
+func (dp *DataPartition) handleRaftLeaderChange(leader uint64) {
 	defer func() {
 		if r := recover(); r != nil {
 			mesg := fmt.Sprintf("HandleLeaderChange(%v)  Raft Panic(%v)", dp.partitionID, r)
@@ -185,10 +186,32 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 	}
 	//If leader changed, that indicates the raft has elected a new leader,
 	//the fault occurred checking to prevent raft brain split is no more needed.
-	if dp.isNeedFaultOccurredCheck() {
-		dp.setFaultOccurredCheckLevel(CheckNothing)
-		_ = dp.PersistMetaDataOnly()
+	if dp.isNeedFaultCheck() {
+		dp.setNeedFaultCheck(false)
+		_ = dp.persistMetaDataOnly()
 	}
+}
+
+func (dp *DataPartition) handleRaftAskRollback(original []byte) (rollback []byte, err error) {
+	if len(original) == 0 {
+		return
+	}
+	var opItem *rndWrtOpItem
+	if opItem, err = UnmarshalRandWriteRaftLog(original); err != nil {
+		return
+	}
+	defer func() {
+		PutRandomWriteOpItem(opItem)
+	}()
+	var buf = make([]byte, opItem.size)
+	var crc uint32
+	if crc, err = dp.extentStore.Read(opItem.extentID, opItem.offset, opItem.size, buf, false); err != nil {
+		return
+	}
+	rollback, err = MarshalRandWriteRaftLog(opItem.opcode, opItem.extentID, opItem.offset, opItem.size, buf, crc)
+	log.LogWarnf("partition [id: %v, disk: %v] handle ask rollback [extent: %v, offset: %v, size: %v], CRC[%v -> %v]",
+		dp.partitionID, dp.disk.Path, opItem.extentID, opItem.offset, opItem.size, opItem.crc, crc)
+	return
 }
 
 // Put submits the raft log to the raft store.

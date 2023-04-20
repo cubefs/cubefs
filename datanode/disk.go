@@ -262,10 +262,10 @@ func (d *Disk) maybeUpdateFlushFDInterval(oldVal uint32) bool {
 func (d *Disk) startScheduler() {
 	go func() {
 		var (
-			updateSpaceInfoTicker = time.NewTicker(5 * time.Second)
-			checkStatusTicker     = time.NewTicker(time.Minute * 2)
-			evictFDTicker         = time.NewTicker(time.Minute * 5)
-			forceEvictFDTicker    = time.NewTicker(time.Second * 10)
+			updateSpaceInfoTicker        = time.NewTicker(5 * time.Second)
+			checkStatusTicker            = time.NewTicker(time.Minute * 2)
+			evictFDTicker                = time.NewTicker(time.Minute * 5)
+			forceEvictFDTicker           = time.NewTicker(time.Second * 10)
 			evictExtentDeleteCacheTicker = time.NewTicker(time.Minute * 10)
 		)
 		defer func() {
@@ -751,11 +751,7 @@ func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
 			for {
 				select {
 				case dp := <-pChan:
-					var status = dp.applyStatus.Snap()
-					if status.Applied() == 0 || dp.raftPartition == nil {
-						return
-					}
-					if err := dp.Persist(status); err != nil {
+					if err := dp.Flush(); err != nil {
 						err = errors.NewErrorf("[forcePersistPartitions]: persist all failed, partition=%d: %v", dp.config.PartitionID, err.Error())
 						log.LogErrorf(err.Error())
 						atomic.AddInt64(&failedCount, 1)

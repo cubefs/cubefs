@@ -241,6 +241,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  BatchDelInodeCnt    : %v\n", optBatchDelInodeCnt)
 				stdout("  DelInodeInterval    : %v\n", optDelInodeInterval)
 				stdout("  BitMapAllocator     : %v\n", formatEnabledDisabled(optEnableBitMapAllocator))
+
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -653,7 +654,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  BitMapAllocator     : %v\n", formatEnabledDisabled(vv.EnableBitMapAllocator)))
-                        }
+			}
 
 			if optTrashCleanMaxCount >= 0 {
 				isChange = true

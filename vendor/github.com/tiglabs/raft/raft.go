@@ -31,16 +31,24 @@ import (
 	"github.com/tiglabs/raft/util"
 )
 
+type respondFunc func(interface{}, error)
+
 type proposal struct {
 	cmdType proto.EntryType
-	future  *Future
+	respond respondFunc
 	data    []byte
+}
+
+type askRollback struct {
+	index   uint64 // entry index to be rollback
+	data    []byte
+	respond respondFunc
 }
 
 type apply struct {
 	term        uint64
 	index       uint64
-	future      *Future
+	respond     respondFunc
 	command     interface{}
 	readIndexes []*Future
 }
@@ -122,6 +130,11 @@ func (s *peerState) get() (nodes []uint64) {
 	return
 }
 
+type pending struct {
+	respond respondFunc
+	typ     proto.EntryType
+}
+
 type raft struct {
 	raftFsm           *raftFsm
 	config            *Config
@@ -132,12 +145,12 @@ type raft struct {
 	prevSoftSt        softState
 	prevHardSt        proto.HardState
 	peerState         peerState
-	pending           map[uint64]*Future
-	pendingCmd        map[uint64]proto.EntryType
+	pending           map[uint64]*pending
 	snapping          map[uint64]*snapshotStatus
 	mStatus           *monitorStatus
 	propc             chan *proposal
 	applyc            chan *apply
+	askRollbackc      chan *askRollback
 	recvc             chan *proto.Message
 	snapRecvc         chan *snapshotRequest
 	truncatec         chan uint64
@@ -146,14 +159,13 @@ type raft struct {
 	statusc           chan chan *Status
 	entryRequestC     chan *entryRequest
 	readyc            chan struct{}
+	propReadyc        chan struct{}
 	tickc             chan struct{}
 	electc            chan struct{}
 	promtec           chan struct{}
 	stopc             chan struct{}
 	done              chan struct{}
 	mu                sync.Mutex
-
-	riskState riskState
 }
 
 func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
@@ -177,12 +189,12 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		config:        config,
 		raftConfig:    raftConfig,
 		mStatus:       mStatus,
-		pending:       make(map[uint64]*Future),
-		pendingCmd:    make(map[uint64]proto.EntryType),
+		pending:       make(map[uint64]*pending),
 		snapping:      make(map[uint64]*snapshotStatus),
 		recvc:         make(chan *proto.Message, config.ReqBufferSize),
 		applyc:        make(chan *apply, config.AppBufferSize),
 		propc:         make(chan *proposal, 256),
+		askRollbackc:  make(chan *askRollback, 256),
 		snapRecvc:     make(chan *snapshotRequest, 1),
 		truncatec:     make(chan uint64, 1),
 		flushc:        make(chan *Future, 1),
@@ -192,10 +204,13 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		tickc:         make(chan struct{}, 64),
 		promtec:       make(chan struct{}, 64),
 		readyc:        make(chan struct{}, 1),
+		propReadyc:    make(chan struct{}, 1),
 		electc:        make(chan struct{}, 1),
 		stopc:         make(chan struct{}),
 		done:          make(chan struct{}),
 	}
+	raft.raftFsm.registerRiskStateListener(raft.onFSMRiskStateChange)
+	raft.raftFsm.registerAskRollbackListener(raft.onFSMAskRollback)
 	raft.curApplied.Set(r.raftLog.applied)
 	raft.peerState.replace(raftConfig.Peers)
 
@@ -236,16 +251,109 @@ func (s *raft) runApply() {
 		s.resetApply()
 	}()
 
-	loopCount := 0
+	var (
+		loopCount = 0
+		props     []*proposal
+	)
+
+	// This channel is used to receive signals indicating
+	// that the raft.propc channel is currently available.
+	var propReadyc <-chan struct{} = nil
+
+	var propose = func(pr *proposal) {
+		select {
+		case s.propc <- pr:
+		default:
+			props = append(props, pr)
+		}
+	}
+
 	for {
 		loopCount = loopCount + 1
 		if loopCount > 16 {
 			loopCount = 0
 			runtime.Gosched()
 		}
+
+		if len(props) > 0 {
+			propReadyc = s.propReadyc
+		}
+
 		select {
 		case <-s.stopc:
 			return
+
+		case askRollback := <-s.askRollbackc:
+
+			if askRollback.index == 0 && len(askRollback.data) == 0 {
+				// This is a committing resume notification.
+				var proposal = pool.getProposal()
+				proposal.cmdType = proto.EntryRollback
+				proposal.data = nil
+				proposal.respond = nil
+				propose(proposal)
+				continue
+			}
+
+			var (
+				command []byte
+				err     error
+			)
+			command, err = s.raftConfig.StateMachine.AskRollback(askRollback.data)
+
+			if err != nil {
+				logger.Warn("raft[%v] ask rollback for entry [index: %v], FSM returns error: %v", s.config.NodeID, askRollback.index, err)
+				if askRollback.respond != nil {
+					askRollback.respond(nil, err)
+				}
+				continue
+			}
+			if len(command) == 0 {
+				if logger.IsEnableDebug() {
+					logger.Debug("raft[%v] ask rollback for entry [index: %v], FSM returns empty command", s.config.NodeID, askRollback.index)
+				}
+				if askRollback.respond != nil {
+					askRollback.respond(nil, nil)
+				}
+				continue
+			}
+			if logger.IsEnableDebug() {
+				logger.Debug("raft[%v] ask rollback for entry [index: %v], FSM returns valid command", s.config.NodeID, askRollback.index)
+			}
+			var rollback = new(proto.Rollback)
+			rollback.Index = askRollback.index
+			rollback.Data = command
+
+			var proposal = pool.getProposal()
+			proposal.cmdType = proto.EntryRollback
+			proposal.data = rollback.Encode()
+			proposal.respond = askRollback.respond
+			propose(proposal)
+
+		case <-propReadyc:
+			var (
+				i         int
+				breakLoop bool
+			)
+			for i < len(props) {
+				select {
+				case s.propc <- props[i]:
+					i++
+				default:
+					breakLoop = true
+				}
+				if breakLoop {
+					break
+				}
+			}
+			switch {
+			case i == 0:
+			case i < len(props):
+				props = append([]*proposal{}, props[i:]...)
+			default:
+				props = props[:0]
+			}
+			propReadyc = nil
 
 		case apply := <-s.applyc:
 			if apply.index <= s.curApplied.Get() {
@@ -266,8 +374,8 @@ func (s *raft) runApply() {
 				resp, err = s.raftConfig.StateMachine.Apply(cmd, apply.index)
 			}
 
-			if apply.future != nil {
-				apply.future.respond(resp, err)
+			if apply.respond != nil {
+				apply.respond(resp, err)
 			}
 			if len(apply.readIndexes) > 0 {
 				respondReadIndex(apply.readIndexes, nil)
@@ -292,7 +400,6 @@ func (s *raft) run() {
 	s.prevHardSt.Vote = s.raftFsm.vote
 	s.prevHardSt.Commit = s.raftFsm.raftLog.committed
 	s.maybeChange(true)
-	s.raftFsm.setRiskStateListener(s.riskStateChange)
 	loopCount := 0
 	var readyc chan struct{}
 	for {
@@ -323,50 +430,57 @@ func (s *raft) run() {
 		case pr := <-s.propc:
 
 			if s.raftFsm.leader != s.config.NodeID {
-				pr.future.respond(nil, ErrNotLeader)
+				if pr.respond != nil {
+					pr.respond(nil, ErrNotLeader)
+				}
 				pool.returnProposal(pr)
 				break
 			}
 
-			msg := proto.GetMessage()
+			var msg = proto.GetMessage()
 			msg.Type = proto.LocalMsgProp
 			msg.From = s.config.NodeID
-			starti := s.raftFsm.raftLog.lastIndex() + 1
-			s.pending[starti] = pr.future
-			s.pendingCmd[starti] = pr.cmdType
 
-			//e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data, len(s.raftFsm.replicas)-1)
-			var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
+			var nextIndex = s.raftFsm.raftLog.lastIndex() + 1
+			nextIndex, msg.Entries = s.handleProposal(pr, nextIndex, msg.Entries)
 
-			msg.Entries = append(msg.Entries, e)
-			pool.returnProposal(pr)
-
-			msg.SetCtx(pr.future.ctx)
-
-			flag := false
-			for i := 1; i < 64; i++ {
-				starti = starti + 1
+			const (
+				maxBatchSize = 64
+				maxLoopCount = 256
+			)
+			var (
+				breakLoop    bool
+				curLoopCount = 0
+			)
+			for len(msg.Entries) < maxBatchSize && curLoopCount < maxLoopCount {
+				curLoopCount++
 				select {
 				case pr := <-s.propc:
-					s.pending[starti] = pr.future
-					s.pendingCmd[starti] = pr.cmdType
-					//e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data, len(s.raftFsm.replicas)-1)
-					var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
-
-					msg.Entries = append(msg.Entries, e)
-					pool.returnProposal(pr)
+					nextIndex, msg.Entries = s.handleProposal(pr, nextIndex, msg.Entries)
+					continue
 				default:
-					flag = true
+					breakLoop = true
 				}
-				if flag {
+				if breakLoop {
 					break
 				}
+			}
+
+			s.markProposalChannelReady()
+
+			if len(msg.Entries) == 0 {
+				proto.ReturnMessage(msg)
+				break
 			}
 
 			s.raftFsm.Step(msg)
 
 		case m := <-s.recvc:
-			if _, ok := s.raftFsm.replicas[m.From]; ok || (!m.IsResponseMsg() && m.Type != proto.ReqMsgVote) ||
+			// MsgFilter 仅用于单测中制造异常场景，正式代码中不要赋值！
+			if s.raftConfig.MsgFilter(m) {
+				proto.ReturnMessage(m)
+				continue
+			} else if _, ok := s.raftFsm.replicas[m.From]; ok || (!m.IsResponseMsg() && m.Type != proto.ReqMsgVote) ||
 				(m.Type == proto.ReqMsgVote && s.raftFsm.raftLog.isUpToDate(m.Index, m.LogTerm, 0, 0)) {
 				switch m.Type {
 				case proto.ReqMsgHeartBeat:
@@ -415,6 +529,11 @@ func (s *raft) run() {
 				for _, msg := range s.raftFsm.msgs {
 					if msg.Type == proto.ReqMsgSnapShot {
 						s.sendSnapshot(msg)
+						continue
+					}
+					// MsgFilter 仅用于单测中制造异常场景，正式代码中不要赋值！
+					if s.raftConfig.MsgFilter(msg) {
+						proto.ReturnMessage(msg)
 						continue
 					}
 					s.sendMessage(msg)
@@ -579,10 +698,15 @@ func (s *raft) propose(cmd []byte, future *Future) {
 		return
 	}
 
+	if !s.isAllowPropose() {
+		future.respond(nil, ErrProposalDenied)
+		return
+	}
+
 	pr := pool.getProposal()
 	pr.cmdType = proto.EntryNormal
 	pr.data = cmd
-	pr.future = future
+	pr.respond = future.respond
 
 	select {
 	case <-s.stopc:
@@ -599,7 +723,7 @@ func (s *raft) proposeMemberChange(cc *proto.ConfChange, future *Future) {
 
 	pr := pool.getProposal()
 	pr.cmdType = proto.EntryConfChange
-	pr.future = future
+	pr.respond = future.respond
 	pr.data = cc.Encode()
 
 	select {
@@ -631,7 +755,7 @@ func (s *raft) proposePromoteLearnerMemberChange(cc *proto.ConfChange, future *F
 
 	pr := pool.getProposal()
 	pr.cmdType = proto.EntryConfChange
-	pr.future = future
+	pr.respond = future.respond
 	pr.data = cc.Encode()
 
 	if autoPromote {
@@ -651,6 +775,11 @@ func (s *raft) proposePromoteLearnerMemberChange(cc *proto.ConfChange, future *F
 		case s.propc <- pr:
 		}
 	}
+	return
+}
+
+func (s *raft) checkProposalACL(cmdType proto.EntryType) (allowed bool) {
+	allowed = !(((s.raftFsm.getRiskStatus().Equals(UnstableState) && s.raftFsm.consistencyMode.Equals(StrictMode)) || s.raftFsm.isCommittingPaused()) && cmdType == proto.EntryNormal)
 	return
 }
 
@@ -759,8 +888,12 @@ func (s *raft) isLeader() bool {
 	return leader == s.config.NodeID
 }
 
+func (s *raft) isAllowPropose() bool {
+	return s.checkProposalACL(proto.EntryNormal)
+}
+
 func (s *raft) getRiskState() riskState {
-	return s.riskState
+	return s.raftFsm.getRiskStatus()
 }
 
 func (s *raft) applied() uint64 {
@@ -824,7 +957,7 @@ func (s *raft) persist() {
 		s.prevHardSt = hs
 	}
 
-	if s.riskState != stateStable && s.config.SyncWALOnUnstable {
+	if s.raftFsm.getRiskStatus().Equals(UnstableState) && s.config.SyncWALOnUnstable {
 		if err := s.raftConfig.Storage.Flush(); err != nil {
 			panic(AppPanicError(fmt.Sprintf("[raft->persist][%v] flush storage err: [%v].", s.raftFsm.id, err)))
 		}
@@ -853,10 +986,12 @@ func (s *raft) apply() {
 		apply := pool.getApply()
 		apply.term = entry.Term
 		apply.index = entry.Index
-		if future, ok := s.pending[entry.Index]; ok {
-			apply.future = future
+		if pending, ok := s.pending[entry.Index]; ok {
+			if pending.respond != nil {
+				apply.respond = pending.respond
+			}
 			delete(s.pending, entry.Index)
-			delete(s.pendingCmd, entry.Index)
+			pool.returnPending(pending)
 		}
 
 		apply.readIndexes = s.raftFsm.readOnly.getReady(entry.Index)
@@ -875,14 +1010,24 @@ func (s *raft) apply() {
 			s.raftFsm.applyConfChange(cc)
 			s.peerState.change(cc)
 			if logger.IsEnableWarn() {
-				logger.Warn("raft[%v] applying configuration change %v.", s.raftFsm.id, cc)
+				logger.Warn("raft[%v] applying configuration change [index: %v], detail: %v.", s.raftFsm.id, entry.Index, cc)
+			}
+
+		case proto.EntryRollback:
+			rollback := new(proto.Rollback)
+			rollback.Decode(entry.Data)
+			if len(rollback.Data) > 0 {
+				apply.command = rollback.Data
+				if logger.IsEnableWarn() {
+					logger.Warn("raft[%v] applying rollback entry [index: %v], rollback target [index: %v]", s.raftFsm.id, entry.Index, rollback.Index)
+				}
 			}
 		}
 
 		select {
 		case <-s.stopc:
-			if apply.future != nil {
-				apply.future.respond(nil, ErrStopped)
+			if apply.respond != nil {
+				apply.respond(nil, ErrStopped)
 			}
 			if len(apply.readIndexes) > 0 {
 				respondReadIndex(apply.readIndexes, ErrStopped)
@@ -905,12 +1050,65 @@ func (s *raft) containsUpdate() bool {
 
 func (s *raft) resetPending(err error) {
 	if len(s.pending) > 0 {
-		for k, v := range s.pending {
-			v.respond(nil, err)
-			delete(s.pending, k)
-			delete(s.pendingCmd, k)
+		for index, pending := range s.pending {
+			if pending.respond != nil {
+				pending.respond(nil, err)
+			}
+			delete(s.pending, index)
 		}
 	}
+}
+
+func (s *raft) onFSMAskRollback(startIndex uint64) (n int, err error) {
+	var entries []*proto.Entry
+	if entries, err = s.raftFsm.raftLog.entries(startIndex, noLimit); err != nil {
+		return
+	}
+	var wrapRespond = func(respond respondFunc) respondFunc {
+		if respond != nil {
+			return func(i interface{}, err error) {
+				if err != nil {
+					respond(nil, ErrRollbackFailed)
+					return
+				}
+				respond(nil, ErrProposalAbort)
+				return
+			}
+		}
+		return nil
+	}
+
+	var needRollbackEntries = filterNeedRollbackEntries(entries)
+	if num := len(needRollbackEntries); num > 0 {
+		var (
+			from = needRollbackEntries[0].Index
+			to   = needRollbackEntries[num-1]
+		)
+		for i := 0; i < num; i++ {
+			var ent = needRollbackEntries[i]
+			var respond respondFunc = nil
+			if pending, exists := s.pending[ent.Index]; exists {
+				delete(s.pending, ent.Index)
+				respond = wrapRespond(pending.respond)
+				pool.returnPending(pending)
+			}
+			s.askRollbackc <- &askRollback{
+				index:   ent.Index,
+				data:    ent.Data,
+				respond: respond,
+			}
+		}
+		// Signal for committing resume
+		s.askRollbackc <- &askRollback{
+			index:   0,
+			data:    nil,
+			respond: nil,
+		}
+		if logger.IsEnableWarn() {
+			logger.Warn("raft[%v] prepare ask rollback for normal entries [from: %v, to: %v, num: %v]", s.raftConfig.ID, from, to, num)
+		}
+	}
+	return
 }
 
 func (s *raft) resetTick() {
@@ -927,8 +1125,8 @@ func (s *raft) resetApply() {
 	for {
 		select {
 		case apply := <-s.applyc:
-			if apply.future != nil {
-				apply.future.respond(nil, ErrStopped)
+			if apply.respond != nil {
+				apply.respond(nil, ErrStopped)
 			}
 			if len(apply.readIndexes) > 0 {
 				respondReadIndex(apply.readIndexes, ErrStopped)
@@ -948,11 +1146,6 @@ func (s *raft) getStatus() *Status {
 	default:
 	}
 
-	pendingCmd := make(map[uint64]proto.EntryType)
-	for k, v := range s.pendingCmd {
-		pendingCmd[k] = v
-	}
-
 	st := &Status{
 		ID:                s.raftFsm.id,
 		NodeID:            s.config.NodeID,
@@ -965,10 +1158,19 @@ func (s *raft) getStatus() *Status {
 		State:             s.raftFsm.state.String(),
 		RestoringSnapshot: s.restoringSnapshot.Get(),
 		PendQueue:         len(s.pending),
-		PendCmd:           pendingCmd,
-		RecvQueue:         len(s.recvc),
-		AppQueue:          len(s.applyc),
-		Stopped:           stopped,
+		Pending: func() []PendingInfo {
+			ret := make([]PendingInfo, 0, len(s.pending))
+			for index, pending := range s.pending {
+				ret = append(ret, PendingInfo{
+					Index: index,
+					Type:  pending.typ.String(),
+				})
+			}
+			return ret
+		}(),
+		RecvQueue: len(s.recvc),
+		AppQueue:  len(s.applyc),
+		Stopped:   stopped,
 		Log: LogStatus{
 			FirstIndex: s.raftFsm.raftLog.firstIndex(),
 			LastIndex:  s.raftFsm.raftLog.lastIndex(),
@@ -1097,14 +1299,76 @@ func (s *raft) promoteLearner() {
 	}
 }
 
-func (s *raft) riskStateChange(state riskState) {
-	if s.riskState != state && state == stateUnstable && s.config.SyncWALOnUnstable {
-		if err := s.raftConfig.Storage.Flush(); err != nil {
-			panic(AppPanicError(fmt.Sprintf("raft[%v] flush storage err: %v", s.raftConfig.ID, err)))
-		}
-		if logger.IsEnableDebug() {
-			logger.Debug("raft[%v] fired storage force flush cause risk state change to [%v].", s.raftConfig.ID, state)
+func (s *raft) onFSMRiskStateChange(state riskState) {
+	if s.raftFsm.getRiskStatus().Equals(UnstableState) {
+		if s.config.SyncWALOnUnstable {
+			_ = s.flush(false)
+			if logger.IsEnableDebug() {
+				logger.Debug("raft[%v] proposed storage force flush cause risk state change to [%v].", s.raftConfig.ID, state)
+			}
 		}
 	}
-	s.riskState = state
+}
+
+func (s *raft) handleProposal(pr *proposal, nextIndex uint64, entries []*proto.Entry) (uint64, []*proto.Entry) {
+	switch {
+	case s.maybeResumeCommitting(pr, nextIndex-1):
+	case s.checkProposalACL(pr.cmdType):
+		pending := pool.getPending()
+		pending.typ = pr.cmdType
+		pending.respond = pr.respond
+		s.pending[nextIndex] = pending
+		var e = &proto.Entry{Term: s.raftFsm.term, Index: nextIndex, Type: pr.cmdType, Data: pr.data}
+		entries = append(entries, e)
+		nextIndex++
+	default:
+		if pr.respond != nil {
+			pr.respond(nil, ErrProposalDenied)
+		}
+	}
+	pool.returnProposal(pr)
+	return nextIndex, entries
+}
+
+func (s *raft) maybeResumeCommitting(pr *proposal, curMaxIndex uint64) bool {
+	if pr.cmdType == proto.EntryRollback && len(pr.data) == 0 {
+		s.raftFsm.setMinimumCommitIndex(curMaxIndex)
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] set minimum commit index to %v (auto resume committing), current committed %v", s.raftConfig.ID, curMaxIndex, s.raftFsm.raftLog.committed)
+		}
+		return true
+	}
+	return false
+}
+
+func (s *raft) markProposalChannelReady() {
+	select {
+	case s.propReadyc <- struct{}{}:
+	default:
+	}
+}
+
+// filterNeedRollbackEntries returns entries can be makes rollback from specified entries collection.
+func filterNeedRollbackEntries(ents []*proto.Entry) []*proto.Entry {
+	if len(ents) == 0 {
+		return nil
+	}
+	var rollbacks = make(map[uint64]struct{})
+	for i := 0; i < len(ents); i++ {
+		if ents[i].Type == proto.EntryRollback {
+			rollback := new(proto.Rollback)
+			rollback.Decode(ents[i].Data)
+			rollbacks[rollback.Index] = struct{}{}
+		}
+	}
+	var result = make([]*proto.Entry, 0, len(ents))
+	for i := 0; i < len(ents); i++ {
+		if ent := ents[i]; ent.Type == proto.EntryNormal && len(ent.Data) > 0 {
+			if _, exists := rollbacks[ent.Index]; exists {
+				continue
+			}
+			result = append(result, ent)
+		}
+	}
+	return result
 }

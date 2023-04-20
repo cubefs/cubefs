@@ -14,17 +14,30 @@ import (
 
 type PersistFlag int
 
-// Persist方法会执行以下操作:
+func (dp *DataPartition) lockPersist() (release func()) {
+	dp.persistSync <- struct{}{}
+	release = func() {
+		<-dp.persistSync
+	}
+	return
+}
+
+func (dp *DataPartition) Flush() (err error) {
+	err = dp.persist(nil)
+	return
+}
+
+// Persist 方法会执行以下操作:
 // 1. Sync所有打开的文件句柄
 // 2. Sync Raft WAL以及HardState信息
 // 3. 持久化Applied Index水位信息
 // 4. 持久化DP的META信息, 主要用于持久化和Applied Index对应的LastTruncateID。
 // 若status参数为nil，则会使用调用该方法时WALApplyStatus状态
-func (dp *DataPartition) Persist(status *WALApplyStatus) (err error) {
-	dp.persistSync <- struct{}{}
-	defer func() {
-		<-dp.persistSync
-	}()
+func (dp *DataPartition) persist(status *WALApplyStatus) (err error) {
+	var release = dp.lockPersist()
+	defer release()
+
+	var flushTime = time.Now()
 
 	if status == nil {
 		status = dp.applyStatus.Snap()
@@ -46,15 +59,17 @@ func (dp *DataPartition) Persist(status *WALApplyStatus) (err error) {
 		return
 	}
 
+	if err = dp.persistLatestFlushTime(flushTime.Unix()); err != nil {
+		return
+	}
+
 	return
 }
 
-// PersistMetaDataOnly 仅持久化DP的META信息(不对LastTruncatedID信息进行变更)
-func (dp *DataPartition) PersistMetaDataOnly() (err error) {
-	dp.persistSync <- struct{}{}
-	defer func() {
-		<-dp.persistSync
-	}()
+// persistMetaDataOnly 仅持久化DP的META信息(不对LastTruncatedID信息进行变更)
+func (dp *DataPartition) persistMetaDataOnly() (err error) {
+	var release = dp.lockPersist()
+	defer release()
 
 	if err = dp.persistMetadata(nil); err != nil {
 		return
@@ -126,7 +141,7 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	metadata.VolumeHAType = dp.config.VolHAType
 	metadata.LastUpdateTime = dp.lastUpdateTime
 	metadata.IsCatchUp = dp.isCatchUp
-	metadata.ServerFaultOccurredCheckStatus = dp.serverFaultOccurredCheckLevel
+	metadata.NeedServerFaultCheck = dp.needServerFaultCheck
 
 	if metadata.CreateTime == "" {
 		metadata.CreateTime = time.Now().Format(TimeLayout)
@@ -169,6 +184,46 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	return
 }
 
+func (dp *DataPartition) persistLatestFlushTime(unix int64) (err error) {
+
+	tmpFilename := path.Join(dp.Path(), TempLatestFlushTimeFile)
+	tmpFile, err := os.OpenFile(tmpFilename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFilename)
+	}()
+	if _, err = tmpFile.WriteString(fmt.Sprintf("%d", unix)); err != nil {
+		return
+	}
+	if err = tmpFile.Sync(); err != nil {
+		return
+	}
+	err = os.Rename(tmpFilename, path.Join(dp.Path(), LatestFlushTimeFile))
+	log.LogInfof("dp(%v) persistLatestFlushTime to (%v)", dp.partitionID, unix)
+	return
+}
+
+func (dp *DataPartition) readLatestFlushTime() (unix int64, err error) {
+	var filename = path.Join(dp.Path(), LatestFlushTimeFile)
+	var (
+		fileBytes []byte
+	)
+	if fileBytes, err = ioutil.ReadFile(filename); err != nil {
+		if os.IsNotExist(err) {
+			err = nil
+		}
+		return
+	}
+	if _, err = fmt.Sscanf(string(fileBytes), "%d", &unix); err != nil {
+		err = nil
+		return
+	}
+	return
+}
+
 func (dp *DataPartition) forceFlushAllFD() (cnt int) {
-	return dp.extentStore.ForceFlushAllFD()
+	return dp.extentStore.Flush()
 }

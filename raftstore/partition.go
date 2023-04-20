@@ -16,10 +16,13 @@ package raftstore
 
 import (
 	"context"
+	"math"
 	"os"
 	"path"
 	"strconv"
 	"time"
+
+	"github.com/tiglabs/raft/util"
 
 	"github.com/tiglabs/raft/storage/wal"
 
@@ -35,11 +38,6 @@ const (
 
 // PartitionStatus is a type alias of raft.Status
 type PartitionStatus = raft.Status
-
-// PartitionFsm wraps necessary methods include both FSM implementation
-// and data storage operation for raft store partition.
-// It extends from raft StateMachine and Store.
-type PartitionFsm = raft.StateMachine
 
 // Partition wraps necessary methods for raft store partition operation.
 // Partition is a shard for multi-raft in RaftSore. RaftStore is based on multi-raft which
@@ -288,18 +286,43 @@ func (p *partition) Start() (err error) {
 	for _, peerAddress := range p.config.Peers {
 		peers = append(peers, peerAddress.Peer)
 	}
+	var applied = p.config.GetStartIndex.Get(fi, li)
 	p.rc = &raft.RaftConfig{
 		ID:           p.config.ID,
 		Peers:        peers,
 		Leader:       p.config.Leader,
 		Term:         p.config.Term,
-		Storage:      p.ws,
+		Storage:      listenStorage(p.ws, p.config.StorageListener),
 		StateMachine: p.config.SM,
-		Applied:      p.config.GetStartIndex.Get(fi, li),
+		Applied:      applied,
 		Learners:     p.config.Learners,
 		StrictHS:     p.config.StrictHS,
 		StartCommit:  p.config.StartCommit,
+		Mode:         p.config.Mode.toRaftConsistencyMode(),
 	}
+	if ln := p.config.StorageListener; ln != nil {
+		var (
+			lo, hi uint64
+		)
+		if hi, err = p.ws.LastIndex(); err != nil {
+			return
+		}
+		lo = uint64(math.Min(float64(applied+1), float64(hi)))
+		for lo <= hi {
+			var entries []*proto.Entry
+			if entries, _, err = p.ws.Entries(lo, hi, util.MB); err != nil {
+				return
+			}
+			if len(entries) == 0 {
+				break
+			}
+			for _, entry := range entries {
+				ln.StoredEntry(entry)
+			}
+			lo = entries[len(entries)-1].Index + 1
+		}
+	}
+
 	if err = p.raft.CreateRaft(p.rc); err != nil {
 		return
 	}

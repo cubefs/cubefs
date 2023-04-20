@@ -49,6 +49,105 @@ const (
 	defaultReplicateAddr   = ":2015"
 )
 
+// QuorumHandler defines the interface necessary to calculate the quorum value.
+type QuorumHandler interface {
+	// Name returns name of current QuorumHandler for identification.
+	Name() string
+	// Quorum returns quorum values computed by replicas information.
+	Quorum(replicas map[uint64]*replica) (quorum int)
+}
+
+type QuorumFunc func(replicas map[uint64]*replica) (quorum int)
+
+type funcQuorumHandler struct {
+	name   string
+	quorum QuorumFunc
+}
+
+func (f *funcQuorumHandler) Name() string {
+	if f != nil {
+		return f.name
+	}
+	panic(AppPanicError("invalid quorum handler"))
+}
+
+func (f *funcQuorumHandler) Quorum(replicas map[uint64]*replica) (quorum int) {
+	if f != nil && f.quorum != nil {
+		quorum = f.quorum(replicas)
+		return
+	}
+	panic(AppPanicError("invalid quorum handler"))
+}
+
+func newQuorumHandler(name string, quorum QuorumFunc) QuorumHandler {
+	return &funcQuorumHandler{
+		name:   name,
+		quorum: quorum,
+	}
+}
+
+// Build-in quorum functions
+var (
+	standardQuorumHandler = newQuorumHandler("standard", func(replicas map[uint64]*replica) (quorum int) {
+		learnerCount := 0
+		for _, pr := range replicas {
+			if pr.isLearner {
+				learnerCount++
+			}
+		}
+		quorum = (len(replicas)-learnerCount)/2 + 1
+		return
+	})
+
+	strictQuorumHandler = newQuorumHandler("strict", func(replicas map[uint64]*replica) (quorum int) {
+		learnerCount := 0
+		for _, pr := range replicas {
+			if pr.isLearner {
+				learnerCount++
+			}
+		}
+		quorum = len(replicas) - learnerCount
+		return
+	})
+)
+
+type ConsistencyMode int
+
+func (c ConsistencyMode) String() string {
+	switch c {
+	case StrictMode:
+		return "StrictMode"
+	case StandardMode:
+		return "StandardMode"
+	}
+	return "UnknownMode"
+}
+
+func (c ConsistencyMode) Valid() bool {
+	switch c {
+	case StandardMode, StrictMode:
+		return true
+	}
+	return false
+}
+
+func (c ConsistencyMode) Equals(o ConsistencyMode) bool {
+	return c == o
+}
+
+const (
+	StandardMode ConsistencyMode = iota
+	StrictMode
+
+	DefaultMode = StandardMode
+)
+
+type MsgFilterFunc func(msg *proto.Message) (isFiltered bool)
+
+func DefaultNoMsgFilter(msg *proto.Message) (isFiltered bool) {
+	return false
+}
+
 // Config contains the parameters to start a raft server.
 // Default: Do not use lease mechanism.
 // NOTE: NodeID and Resolver must be required.Other parameter has default value.
@@ -144,10 +243,12 @@ type RaftConfig struct {
 	Applied      uint64
 	Peers        []proto.Peer
 	Storage      storage.Storage
-	StrictHS	 bool
-	StartCommit	 uint64
+	StrictHS     bool
+	StartCommit  uint64
 	StateMachine StateMachine
 	Learners     []proto.Learner
+	Mode         ConsistencyMode
+	MsgFilter	 MsgFilterFunc		// only used in debug mode
 }
 
 // DefaultConfig returns a Config with usable defaults.
@@ -258,6 +359,11 @@ func (c *RaftConfig) validate() error {
 			return errors.New("Range of MatchPercent is from 0 to 100 ")
 		}
 	}
-
+	if !c.Mode.Valid() {
+		c.Mode = DefaultMode
+	}
+	if c.MsgFilter == nil {
+		c.MsgFilter = DefaultNoMsgFilter
+	}
 	return nil
 }

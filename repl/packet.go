@@ -465,12 +465,16 @@ func NewReadTinyDeleteRecordResponsePacket(ctx context.Context, requestID int64,
 	return
 }
 
-func NewExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
+func NewExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID uint64, offset, size int, force bool) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(offset)
+	if force {
+		p.Arg = []byte{1}
+		p.ArgLen = uint32(len(p.Arg))
+	}
 	p.Size = uint32(size)
 	p.Opcode = proto.OpExtentRepairRead
 	p.ExtentType = proto.NormalExtentType
@@ -480,12 +484,16 @@ func NewExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID
 	return
 }
 
-func NewTinyExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
+func NewTinyExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID uint64, offset, size int, force bool) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(offset)
+	if force {
+		p.Arg = []byte{1}
+		p.ArgLen = uint32(len(p.Arg))
+	}
 	p.Size = uint32(size)
 	p.Opcode = proto.OpTinyExtentRepairRead
 	p.ExtentType = proto.TinyExtentType

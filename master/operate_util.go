@@ -31,14 +31,14 @@ import (
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int, hosts []string, createType int, learners []proto.Learner, volumeHAType proto.CrossRegionHAType) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
-		PartitionId:   ID,
-		PartitionSize: dataPartitionSize,
-		VolumeId:      volName,
-		Members:       members,
-		Learners:      learners,
-		Hosts:         hosts,
-		CreateType:    createType,
-		VolumeHAType:  volumeHAType,
+		PartitionId:    ID,
+		PartitionSize:  dataPartitionSize,
+		VolumeId:       volName,
+		Members:        members,
+		Learners:       learners,
+		Hosts:          hosts,
+		CreateType:     createType,
+		VolumeHAType:   volumeHAType,
 	}
 	return
 }

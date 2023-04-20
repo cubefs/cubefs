@@ -18,6 +18,7 @@ package raft
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
 	"time"
@@ -26,26 +27,33 @@ import (
 	"github.com/tiglabs/raft/proto"
 )
 
-// NoLeader is a placeholder nodeID used when there is no leader.
-const NoLeader uint64 = 0
+const (
+	// NoLeader is a placeholder nodeID used when there is no leader.
+	NoLeader uint64 = 0
+)
 
 type stepFunc func(r *raftFsm, m *proto.Message)
+type tickFunc func()
 
 type riskState int
 
 func (s riskState) String() string {
 	switch s {
-	case stateUnstable:
-		return "StateUnstable"
-	case stateStable:
-		return "StateStable"
+	case UnstableState:
+		return "Unstable"
+	case StableState:
+		return "Stable"
 	}
 	return "Unknown"
 }
 
+func (s riskState) Equals(o riskState) bool {
+	return s == o
+}
+
 const (
-	stateUnstable riskState = iota
-	stateStable
+	UnstableState riskState = iota
+	StableState
 )
 
 type riskStateListener func(state riskState)
@@ -54,6 +62,15 @@ func (f riskStateListener) changeTo(state riskState) {
 	if f != nil {
 		f(state)
 	}
+}
+
+type askRollbackListener func(startIndex uint64) (n int, err error)
+
+func (f askRollbackListener) ask(startIndex uint64) (n int, err error) {
+	if f != nil {
+		n, err = f(startIndex)
+	}
+	return
 }
 
 type raftFsm struct {
@@ -79,12 +96,23 @@ type raftFsm struct {
 	readOnly    *readOnly
 	msgs        []*proto.Message
 	step        stepFunc
-	tick        func()
+	tick        tickFunc
 	stopCh      chan struct{}
 
-	riskState   riskState
-	riskStateLn riskStateListener
-	startCommit	uint64
+	riskState     riskState
+	riskStateLn   riskStateListener
+	askRollbackLn askRollbackListener
+	startCommit   uint64
+
+	consistencyMode ConsistencyMode
+
+	// Minimize committing index.
+	//
+	// This field is used to limit the minimum commit index when determining the commit index of the replication group.
+	//
+	// When the commit index of the replication group calculated by the quorum algorithm is lower than this value,
+	// no commit will be performed.
+	mci uint64
 }
 
 func (r *raftFsm) getReplicas() (m string) {
@@ -92,6 +120,14 @@ func (r *raftFsm) getReplicas() (m string) {
 		m += fmt.Sprintf(" [%v] ,", id)
 	}
 	return m
+}
+
+func (r *raftFsm) getRiskStatus() riskState {
+	return r.riskState
+}
+
+func (r *raftFsm) getConsistencyMode() ConsistencyMode {
+	return r.consistencyMode
 }
 
 func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
@@ -112,6 +148,9 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		raftLog:  raftlog,
 		replicas: make(map[uint64]*replica),
 		readOnly: newReadOnly(raftConfig.ID, config.ReadOnlyOption),
+
+		riskState:       UnstableState,
+		consistencyMode: raftConfig.Mode,
 	}
 	r.rand = rand.New(rand.NewSource(int64(config.NodeID + r.id)))
 	for _, p := range raftConfig.Peers {
@@ -141,8 +180,8 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		}
 	}
 
-	logger.Info("newRaft[%v] [commit: %d, applied: %d, firstindex: %d, lastindex: %d] startCommit[%d]",
-		r.id, raftlog.committed, raftConfig.Applied, raftlog.firstIndex(), raftlog.lastIndex(), r.startCommit)
+	logger.Info("newRaftFsm[%v] init with [commit: %d, applied: %d, firstindex: %d, lastindex: %d, consistencyMode: %v, startCommit: %d]",
+		r.id, raftlog.committed, raftConfig.Applied, raftlog.firstIndex(), raftlog.lastIndex(), r.consistencyMode, r.startCommit)
 
 	if raftConfig.Applied > 0 {
 		lasti := raftlog.lastIndex()
@@ -307,6 +346,16 @@ func (r *raftFsm) recoverCommit() error {
 					return err
 				}
 				r.applyConfChange(cc)
+
+			case proto.EntryRollback:
+				rollback := new(proto.Rollback)
+				rollback.Decode(entry.Data)
+				if rollback.Data == nil || len(rollback.Data) == 0 {
+					continue
+				}
+				if _, err := r.sm.Apply(rollback.Data, entry.Index); err != nil {
+					return err
+				}
 			}
 		}
 		if r.raftLog.applied == r.raftLog.committed {
@@ -381,7 +430,7 @@ func (r *raftFsm) applyResetPeer(rp *proto.ResetPeers) {
 			delete(r.replicas, replica.peer.ID)
 		}
 	}
-	r.reset(r.term+1, 0, false)
+	r.reset(r.term+1, 0, false, false)
 	r.acks = nil
 }
 
@@ -433,13 +482,14 @@ func (r *raftFsm) updatePeer(peer proto.Peer) {
 }
 
 func (r *raftFsm) quorum() int {
-	learnerCount := 0
-	for _, pr := range r.replicas {
-		if pr.isLearner {
-			learnerCount++
-		}
+	return r.getQuorumHandler().Quorum(r.replicas)
+}
+
+func (r *raftFsm) getQuorumHandler() QuorumHandler {
+	if r.consistencyMode.Equals(StrictMode) && r.riskState.Equals(StableState) {
+		return strictQuorumHandler
 	}
-	return (len(r.replicas)-learnerCount)/2 + 1
+	return standardQuorumHandler
 }
 
 func (r *raftFsm) send(m *proto.Message) {
@@ -451,7 +501,7 @@ func (r *raftFsm) send(m *proto.Message) {
 	r.msgs = append(r.msgs, m)
 }
 
-func (r *raftFsm) reset(term, lasti uint64, isLeader bool) {
+func (r *raftFsm) reset(term, lasti uint64, isLeader bool, keepReplicaIndex bool) {
 	if r.term != term {
 		r.term = term
 		r.vote = NoLeader
@@ -462,11 +512,16 @@ func (r *raftFsm) reset(term, lasti uint64, isLeader bool) {
 	r.votes = make(map[uint64]bool)
 	r.pendingConf = false
 	r.readOnly.reset(ErrNotLeader)
+	r.setMinimumCommitIndex(0)
 
 	if isLeader {
 		r.randElectionTick = r.config.ElectionTick - 1
 		for id, p := range r.replicas {
 			r.replicas[id] = newReplica(p.peer, r.config.MaxInflightMsgs)
+			if keepReplicaIndex {
+				r.replicas[id].match = p.match
+				r.replicas[id].committed = p.committed
+			}
 			r.replicas[id].next = lasti + 1
 			if id == r.config.NodeID {
 				r.replicas[id].match = lasti
@@ -479,6 +534,10 @@ func (r *raftFsm) reset(term, lasti uint64, isLeader bool) {
 		r.resetRandomizedElectionTimeout()
 		for id, p := range r.replicas {
 			r.replicas[id] = newReplica(p.peer, 0)
+			if keepReplicaIndex {
+				r.replicas[id].match = p.match
+				r.replicas[id].committed = p.committed
+			}
 			r.replicas[id].isLearner = p.isLearner
 			r.replicas[id].promConfig = p.promConfig
 		}
@@ -549,9 +608,36 @@ func (r *raftFsm) addReadIndex(futures []*Future) {
 	r.bcastReadOnly()
 }
 
-func (r *raftFsm) setRiskStateListener(f riskStateListener) {
+func (r *raftFsm) registerRiskStateListener(f riskStateListener) {
 	r.riskStateLn = f
 	r.riskStateLn.changeTo(r.riskState)
+}
+
+func (r *raftFsm) registerAskRollbackListener(f askRollbackListener) {
+	r.askRollbackLn = f
+}
+
+func (r *raftFsm) maybeChangeState(state riskState) bool {
+	if r.riskState != state {
+		r.riskState = state
+		r.riskStateLn.changeTo(state)
+		return true
+	}
+	return false
+}
+
+func (r *raftFsm) isCommittingPaused() bool {
+	return r.mci == math.MaxUint64
+}
+
+func (r *raftFsm) setMinimumCommitIndex(mci uint64) {
+	r.mci = mci
+}
+
+func (r *raftFsm) maybeUpdateReplica(id, match, committed uint64) {
+	if re, exist := r.replicas[id]; exist {
+		re.maybeUpdate(match, committed)
+	}
 }
 
 func numOfPendingConf(ents []*proto.Entry) int {

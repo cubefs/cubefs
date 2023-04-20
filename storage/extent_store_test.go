@@ -197,7 +197,7 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 		return
 	}
 
-	storage.AsyncLoadExtentSize()
+	storage.Load()
 	for {
 		if storage.IsFinishLoad() {
 			break

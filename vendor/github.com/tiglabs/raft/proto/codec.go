@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 package proto
 
 import (
@@ -99,6 +100,22 @@ func (c *ConfChange) Decode(datas []byte) {
 	if uint64(len(datas)) > peer_size+1 {
 		c.Context = append([]byte{}, datas[peer_size+1:]...)
 	}
+}
+
+func (r *Rollback) Encode() []byte {
+	datas := make([]byte, 8+8+len(r.Data))
+	binary.BigEndian.PutUint64(datas[0:8], r.Index)
+	binary.BigEndian.PutUint64(datas[8:16], uint64(len(r.Data)))
+	copy(datas[16:16+len(r.Data)], r.Data)
+	return datas
+}
+
+func (r *Rollback) Decode(datas []byte) {
+	r.Index = binary.BigEndian.Uint64(datas[:8])
+	var dataLen uint64
+	dataLen = binary.BigEndian.Uint64(datas[8:16])
+	r.Data = make([]byte, dataLen)
+	copy(r.Data, datas[16:16+dataLen])
 }
 
 // SnapshotMeta codec

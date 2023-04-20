@@ -5,10 +5,8 @@ import (
 	"time"
 )
 
-
-
 func Benchmark_Raft(b *testing.B) {
-	servers := initTestServer(peers, true, true, 1)
+	servers := initTestServer(peers, true, true, 1, StandardMode)
 	f, w := getLogFile("/tmp", "raftBenchmark.log")
 	defer func() {
 		w.Flush()

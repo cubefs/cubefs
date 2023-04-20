@@ -141,7 +141,7 @@ func (s *testServer) localBigData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("local bigdata submit: raftid-%d, datasize-%d, execute min-%d", raftId, size, exeMin)
+	output("local bigdata submit: raftid-%d, datasize-%d, execute min-%d", raftId, size, exeMin)
 
 	if err, rst = s.localPutBigData(uint64(raftId), size, exeMin, goroutingNumber); err != nil {
 		sendReply(w, r, &HTTPReply{Code: 1, Msg: fmt.Sprintf("raft[%v] put data err: %v", raftId, err),
@@ -314,15 +314,15 @@ func parseRaftId(r *http.Request) (id uint64, err error) {
 }
 
 func sendReply(w http.ResponseWriter, r *http.Request, reply *HTTPReply) {
-	//fmt.Println(fmt.Sprintf("send url[%v], reply[%v]", r.URL, reply))
+	//output(fmt.Sprintf("send url[%v], reply[%v]", r.URL, reply))
 	bytes, err := json.Marshal(reply)
 	if err != nil {
-		fmt.Println("marshal reply err: ", err)
+		output("marshal reply err: %v", err)
 		return
 	}
 	_, err = w.Write(bytes)
 	if err != nil {
-		fmt.Println("send reply err: ", err)
+		output("send reply err: %v", err)
 		return
 	}
 	return

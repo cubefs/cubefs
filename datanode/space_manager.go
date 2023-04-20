@@ -96,7 +96,7 @@ func (manager *SpaceManager) AsyncLoadExtent() {
 				if dp = <-c; dp == nil {
 					return
 				}
-				dp.ExtentStore().AsyncLoadExtentSize()
+				dp.ExtentStore().Load()
 			}
 		}(partitionC)
 	}
@@ -465,8 +465,7 @@ func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partit
 		return fmt.Errorf("partition not exist")
 	}
 
-	partition.DataPartitionCreateType = proto.DecommissionedCreateDataPartition
-	if err = partition.PersistMetaDataOnly(); err != nil {
+	if err = partition.ChangeCreateType(proto.DecommissionedCreateDataPartition); err != nil {
 		goto errDeal
 	}
 
@@ -474,7 +473,7 @@ func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partit
 	if err = partition.Start(); err != nil {
 		goto errDeal
 	}
-	go partition.ExtentStore().AsyncLoadExtentSize()
+	go partition.ExtentStore().Load()
 	return
 
 errDeal:

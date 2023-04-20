@@ -58,6 +58,7 @@ var (
 	LocalIP               string
 	LocalServerPort       string
 	gConnPool             = connpool.NewConnectPool()
+	gUpstreamConnPool     = connpool.NewConnectPoolWithTimeout(30, proto.UpstreamRequestDeadLineTimeMs)
 	MasterClient          = masterSDK.NewMasterClient(nil, false)
 	gHasLoadDataPartition bool
 	gHasFinishedLoadDisks bool

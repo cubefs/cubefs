@@ -16,8 +16,13 @@ import (
 )
 
 const (
-	tcpPort  = 17019
-	pageSize = 4096
+	mockDataTcpPort1 = 17017
+	mockDataID1      = 1
+	mockDataTcpPort2 = 17018
+	mockDataID2      = 2
+	mockDataTcpPort3 = 17019
+	mockDataID3      = 3
+	pageSize         = 4096
 )
 
 func TestGetLocalExtentInfo(t *testing.T) {
@@ -65,7 +70,7 @@ func TestGetLocalExtentInfo(t *testing.T) {
 
 func TestGetRemoteExtentInfo(t *testing.T) {
 	ctx := context.Background()
-	tcp := mock.NewMockTcp(tcpPort)
+	tcp := mock.NewMockTcp(mockDataTcpPort1)
 	err := tcp.Start()
 	if err != nil {
 		t.Fatalf("start mock tcp server failed: %v", err)
@@ -77,7 +82,7 @@ func TestGetRemoteExtentInfo(t *testing.T) {
 		partitionID: 10,
 	}
 	tinyExtents := []uint64{1, 2, 3, 10}
-	targetHost := fmt.Sprintf(":%v", tcpPort)
+	targetHost := fmt.Sprintf(":%v", mockDataTcpPort1)
 	extentFiles, err := dp.getRemoteExtentInfo(ctx, proto.TinyExtentType, tinyExtents, targetHost)
 	if err != nil {
 		t.Fatalf("get remote extent info by v2 type:%v failed:%v", proto.TinyExtentType, err)
@@ -118,7 +123,7 @@ func TestBuildDataPartitionRepairTask_TinyExtent(t *testing.T) {
 		testBaseDir                 = path.Join(os.TempDir(), t.Name())
 		ctx                         = context.Background()
 	)
-	tcp := mock.NewMockTcp(tcpPort)
+	tcp := mock.NewMockTcp(mockDataTcpPort1)
 	err = tcp.Start()
 	if err != nil {
 		t.Fatalf("start mock tcp server failed: %v", err)
@@ -194,7 +199,7 @@ func TestBuildDataPartitionRepairTask_NormalExtent(t *testing.T) {
 		testBaseDir                 = path.Join(os.TempDir(), t.Name())
 		ctx                         = context.Background()
 	)
-	tcp := mock.NewMockTcp(tcpPort)
+	tcp := mock.NewMockTcp(mockDataTcpPort1)
 	err = tcp.Start()
 	if err != nil {
 		t.Fatalf("start mock tcp server failed: %v", err)
@@ -259,7 +264,7 @@ func TestRepair(t *testing.T) {
 		testBaseDir                 = path.Join(os.TempDir(), t.Name())
 		ctx                         = context.Background()
 	)
-	tcp := mock.NewMockTcp(tcpPort)
+	tcp := mock.NewMockTcp(mockDataTcpPort1)
 	err = tcp.Start()
 	if err != nil {
 		t.Fatalf("start mock tcp server failed: %v", err)
@@ -315,7 +320,7 @@ func TestDoStreamExtentFixRepairOnFollowerDisk(t *testing.T) {
 		testBaseDir                 = path.Join(os.TempDir(), t.Name())
 		ctx                         = context.Background()
 	)
-	tcp := mock.NewMockTcp(tcpPort)
+	tcp := mock.NewMockTcp(mockDataTcpPort1)
 	err = tcp.Start()
 	if err != nil {
 		t.Fatalf("start mock tcp server failed: %v", err)
@@ -394,7 +399,7 @@ func initDataPartition(rootDir string, partitionID uint64, isCreatePartition boo
 		partitionSize = 128849018880
 	)
 	dataPath := path.Join(rootDir, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, partitionSize))
-	host := fmt.Sprintf(":%v", tcpPort)
+	host := fmt.Sprintf(":%v", mockDataTcpPort1)
 	partition = &DataPartition{
 		volumeID:                "test-vol",
 		clusterID:               "test-cluster",

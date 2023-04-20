@@ -474,11 +474,20 @@ func (mp *metaPartition) startRaft() (err error) {
 		rl := raftproto.Learner{ID: learner.ID, PromConfig: &raftproto.PromoteConfig{AutoPromote: learner.PmConfig.AutoProm, PromThreshold: learner.PmConfig.PromThreshold}}
 		learners = append(learners, rl)
 	}
+
+	var fsm = &raftstore.FunctionalPartitionFsm{
+		ApplyFunc:              mp.Apply,
+		ApplyMemberChangeFunc:  mp.ApplyMemberChange,
+		SnapshotFunc:           mp.Snapshot,
+		ApplySnapshotFunc:      mp.ApplySnapshot,
+		HandleFatalEventFunc:   mp.HandleFatalEvent,
+		HandleLeaderChangeFunc: mp.HandleLeaderChange,
+	}
 	pc := &raftstore.PartitionConfig{
 		ID:       mp.config.PartitionId,
 		Peers:    peers,
 		Learners: learners,
-		SM:       mp,
+		SM:       fsm,
 
 		GetStartIndex: func(firstIndex, lastIndex uint64) (startIndex uint64) { return mp.applyID },
 	}
