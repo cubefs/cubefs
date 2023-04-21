@@ -208,6 +208,10 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = NoSuchUpload
 			return
 		}
+		if err == syscall.EAGAIN {
+			errorCode = ConflictUploadRequest
+			return
+		}
 		if err == io.ErrUnexpectedEOF {
 			errorCode = EntityTooSmall
 			return
@@ -313,6 +317,10 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), reader)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchUpload
+		return
+	}
+	if err == syscall.EAGAIN {
+		errorCode = ConflictUploadRequest
 		return
 	}
 	if err == io.ErrUnexpectedEOF {
