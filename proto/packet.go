@@ -181,9 +181,10 @@ const (
 	OpNotEmpty           uint8 = 0xFE
 	OpOk                 uint8 = 0xF0
 
-	OpPing            uint8 = 0xFF
-	OpMetaUpdateXAttr uint8 = 0x3B
-	OpMetaReadDirOnly uint8 = 0x3C
+	OpPing                  uint8 = 0xFF
+	OpMetaUpdateXAttr       uint8 = 0x3B
+	OpMetaReadDirOnly       uint8 = 0x3C
+	OpUploadPartConflictErr uint8 = 0x3D
 
 	// ebs obj meta
 	OpMetaObjExtentAdd       uint8 = 0xDD
@@ -559,6 +560,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpTxRbDentryNotExistEr"
 	case OpTxTimeoutErr:
 		m = "OpTxTimeoutErr"
+	case OpUploadPartConflictErr:
+		m = "OpUploadPartConflictErr"
 	case OpTxRestoreRollbackInodeErr:
 		m = "OpTxRestoreRollbackInodeErr"
 	case OpTxRestoreRollbackDentryErr:

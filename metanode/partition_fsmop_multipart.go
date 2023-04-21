@@ -44,7 +44,11 @@ func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (resp proto.Ap
 		return
 	}
 	for _, part := range multipart.Parts() {
-		oldInode, updated := storedMultipart.UpdateOrStorePart(part)
+		oldInode, updated, conflict := storedMultipart.UpdateOrStorePart(part)
+		if conflict {
+			resp.Status = proto.OpUploadPartConflictErr
+			return
+		}
 		if updated {
 			resp.OldInode = oldInode
 			resp.Update = true
