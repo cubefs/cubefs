@@ -58,6 +58,10 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 	return
 }
 
+func (m *Server) isClientPartitionsReq(r *http.Request) bool {
+	return r.URL.Path == proto.ClientDataPartitions
+}
+
 func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
 	followerRead = false
 	if r.URL.Path == proto.ClientDataPartitions && !m.partition.IsRaftLeader() {
@@ -117,13 +121,17 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					log.LogWarnf("action[interceptor] leader meta has not ready")
 					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 					return
-				}
-				if m.leaderInfo.addr == "" {
+				} else if m.leaderInfo.addr != "" {
+					if m.isClientPartitionsReq(r) {
+						http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
+						return
+					}
+					m.proxy(w, r)
+				} else {
 					log.LogErrorf("action[interceptor] no leader,request[%v]", r.URL)
 					http.Error(w, "no leader", http.StatusBadRequest)
 					return
 				}
-				m.proxy(w, r)
 			})
 	}
 	route.Use(interceptor)
