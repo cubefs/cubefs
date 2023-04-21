@@ -629,10 +629,6 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	if err != nil {
 		log.LogErrorf("completeMultipartUploadHandler: complete multipart fail: requestID(%v) volume(%v) uploadID(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), uploadId, err)
-		if err == syscall.ENOENT {
-			errorCode = NoSuchUpload
-			return
-		}
 		if err == syscall.EINVAL {
 			errorCode = ObjectModeConflict
 			return
