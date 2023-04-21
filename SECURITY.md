@@ -1,12 +1,12 @@
 # Security Announcements
 
-Join the [cubefs-users@groups.io](mailto:cubefs-users@groups.io) group for emails about security and major announcements.
+Join the [cubefs-security@groups.io](mailto:cubefs-security@groups.io) group for emails about security and major announcements.
 
 ## Report a Vulnerability
 
 We’re extremely grateful for security researchers and users that report vulnerabilities to the CubeFS Open Source Community. All reports are thoroughly investigated by a dedicated committee of community volunteers called [Product Security Committee](./security/security-release-process.md#product-security-committee).
 
-To make a report, please email the private [cubefs-users@groups.io](mailto:cubefs-users@groups.io) list with the security details and the details expected for [all CubeFS bug reports](https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md#bug-reports).
+To make a report, please email the private [cubefs-security@groups.io](mailto:cubefs-security@groups.io) list with the security details and the details expected for [all CubeFS bug reports](https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md#bug-reports).
 
 ### When Should I Report a Vulnerability?
 
