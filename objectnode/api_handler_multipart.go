@@ -455,10 +455,12 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (o *ObjectNode) checkReqParts(reqParts *CompleteMultipartUploadRequest, multipartInfo *proto.MultipartInfo) (discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, errCode *ErrorCode) {
+func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultipartUploadRequest, multipartInfo *proto.MultipartInfo) (
+	discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, errCode *ErrorCode) {
 	if len(reqParts.Parts) <= 0 {
-		log.LogErrorf("isReqPartsValid: upload part is empty")
-		return nil, nil, InvalidPart
+		errCode = InvalidPart
+		log.LogErrorf("checkReqParts: upload part is empty: requestID(%v) volume(%v)", GetRequestID(param.r), param.Bucket())
+		return
 	}
 
 	reqInfo := make(map[int]int, 0)
@@ -479,12 +481,13 @@ func (o *ObjectNode) checkReqParts(reqParts *CompleteMultipartUploadRequest, mul
 	uploadedInfo := make(map[uint16]string, 0)
 	discardedPartInodes = make(map[uint64]uint16, 0)
 	for _, uploadedPart := range multipartInfo.Parts {
+		log.LogDebugf("checkReqParts: server save part check: requestID(%v) volume(%v) part(%v)",
+			GetRequestID(param.r), param.Bucket(), uploadedPart)
 		eTag := uploadedPart.MD5
 		if strings.Contains(eTag, "\"") {
 			eTag = strings.ReplaceAll(eTag, "\"", "")
 		}
 		uploadedInfo[uploadedPart.ID] = eTag
-
 		if _, existed := reqInfo[int(uploadedPart.ID)]; !existed {
 			discardedPartInodes[uploadedPart.Inode] = uploadedPart.ID
 		} else {
@@ -494,28 +497,32 @@ func (o *ObjectNode) checkReqParts(reqParts *CompleteMultipartUploadRequest, mul
 
 	for idx, reqPart := range reqParts.Parts {
 		if reqPart.PartNumber > len(multipartInfo.Parts) {
-			return nil, nil, InvalidPart
+			errCode = InvalidPart
+			return
 		}
 		if multipartInfo.Parts[reqPart.PartNumber-1].Size < MinPartSizeBytes && idx < len(reqParts.Parts)-1 {
-			return nil, nil, EntityTooSmall
+			errCode = EntityTooSmall
+			return
 		}
-
 		if eTag, existed := uploadedInfo[uint16(reqPart.PartNumber)]; !existed {
-			log.LogErrorf("isReqPartsValid: part number(%v) not existed", reqPart.PartNumber)
-			return nil, nil, InvalidPart
+			log.LogErrorf("checkReqParts: request part not existed: requestID(%v) volume(%v) part(%v)",
+				GetRequestID(param.r), param.Bucket(), reqPart)
+			errCode = InvalidPart
+			return
 		} else {
 			reqEtag := reqPart.ETag
 			if strings.Contains(reqEtag, "\"") {
 				reqEtag = strings.ReplaceAll(reqEtag, "\"", "")
 			}
 			if eTag != reqEtag {
-				log.LogErrorf("isReqPartsValid: part number(%v) md5 not matched, reqPart.ETag(%v), eTag(%v)",
-					reqPart.PartNumber, reqEtag, eTag)
-				return nil, nil, InvalidPart
+				log.LogErrorf("checkReqParts: part(%v) md5 not matched: requestID(%v) volume(%v) reqETag(%v) eTag(%v)",
+					reqPart.PartNumber, GetRequestID(param.r), param.Bucket(), reqEtag, eTag)
+				errCode = InvalidPart
+				return
 			}
 		}
 	}
-	return discardedPartInodes, committedPartInfo, nil
+	return
 }
 
 // Complete multipart
@@ -613,16 +620,15 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
-	discardedInods, committedPartInfo, errorCode := o.checkReqParts(multipartUploadRequest, multipartInfo)
+	discardedInods, committedPartInfo, errorCode := o.checkReqParts(param, multipartUploadRequest, multipartInfo)
 	if errorCode != nil {
 		log.LogWarnf("CompleteMultipart: checkReqParts err requestID(%v) path(%v) err(%v)", GetRequestID(r), param.object, errorCode)
 		return
 	}
-	//todo
 	fsFileInfo, err := vol.CompleteMultipart(param.Object(), uploadId, committedPartInfo, discardedInods)
 	if err != nil {
-		log.LogErrorf("completeMultipartUploadHandler: complete multipart fail, requestID(%v) uploadID(%v) err(%v)",
-			GetRequestID(r), uploadId, err)
+		log.LogErrorf("completeMultipartUploadHandler: complete multipart fail: requestID(%v) volume(%v) uploadID(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), uploadId, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchUpload
 			return
@@ -634,8 +640,8 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	log.LogDebugf("completeMultipartUploadHandler: complete multipart, requestID(%v) uploadID(%v) path(%v)",
-		GetRequestID(r), uploadId, param.Object())
+	log.LogDebugf("completeMultipartUploadHandler: complete multipart: requestID(%v) volume(%v) uploadID(%v) fileInfo(%v)",
+		GetRequestID(r), param.Bucket(), param.Object(), uploadId, fsFileInfo)
 
 	// write response
 	completeResult := CompleteMultipartResult{

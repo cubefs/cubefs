@@ -1150,6 +1150,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			if _, _, _, objExtents, err = v.mw.GetObjExtents(part.Inode); err != nil {
 				log.LogErrorf("CompleteMultipart: meta get objextents fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 					v.name, path, multipartID, part.ID, part.Inode, err)
+				return
 			}
 			for _, ek := range objExtents {
 				ek.FileOffset = fileOffset
@@ -1227,22 +1228,11 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 
 	attrs := make(map[string]string)
 	attrs[XAttrKeyOSSETag] = etagValue.Encode()
-	//if err = v.mw.XAttrSet_ll(finalInode.Inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
-	//	log.LogErrorf("CompleteMultipart: save ETag fail: volume(%v) inode(%v) err(%v)",
-	//		v.name, completeInodeInfo, err)
-	//	return
-	//}
-
 	// set user modified system metadata, self defined metadata and tag
 	extend := multipartInfo.Extend
 	if len(extend) > 0 {
 		for key, value := range extend {
 			attrs[key] = value
-			//if err = v.mw.XAttrSet_ll(completeInodeInfo.Inode, []byte(key), []byte(value)); err != nil {
-			//	log.LogErrorf("CompleteMultipart: store multipart extend fail: volume(%v) path(%v) inode(%v) key(%v) value(%v) err(%v)",
-			//		v.name, path, completeInodeInfo.Inode, key, value, err)
-			//	return nil, err
-			//}
 		}
 	}
 	if err = v.mw.BatchSetXAttr_ll(finalInode.Inode, attrs); err != nil {
