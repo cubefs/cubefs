@@ -128,17 +128,13 @@ func (mgr *followerReadManager) getVolumeDpView() {
 
 func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	var (
-		err      error
-		volNames []string
+		err error
 	)
-	if err, volNames = mgr.c.loadVolsName(); err != nil {
-		log.LogErrorf("sendFollowerVolumeDpView. loadVolsName err %v", err)
-		return
-	}
-	for _, name := range volNames {
-		log.LogDebugf("followerReadManager.getVolumeDpView %v", name)
+	vols := mgr.c.copyVols()
+	for _, vol := range vols {
+		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
 		var body []byte
-		if body, err = mgr.c.vols[name].getDataPartitionsView(); err != nil {
+		if body, err = vol.getDataPartitionsView(); err != nil {
 			log.LogErrorf("followerReadManager.sendFollowerVolumeDpView err %v", err)
 			continue
 		}
@@ -147,13 +143,13 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 				continue
 			}
 			mgr.c.masterClient.SetLeader(addr)
-			if err = mgr.c.masterClient.AdminAPI().PutDataPartitions(name, body); err != nil {
+			if err = mgr.c.masterClient.AdminAPI().PutDataPartitions(vol.Name, body); err != nil {
 				mgr.c.masterClient.SetLeader("")
-				log.LogErrorf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", name, addr, err)
+				log.LogErrorf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", vol.Name, addr, err)
 				continue
 			}
 			mgr.c.masterClient.SetLeader("")
-			log.LogDebugf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", name, addr, err)
+			log.LogDebugf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", vol.Name, addr, err)
 		}
 	}
 }
