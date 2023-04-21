@@ -1208,15 +1208,15 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		parentId  uint64
 	)
 	if parentId, err = v.recursiveMakeDirectory(path); err != nil {
-		log.LogErrorf("PutObject: recursive make directory fail: volume(%v) path(%v) err(%v)",
-			v.name, path, err)
+		log.LogErrorf("CompleteMultipart: recursive make dir fail: volume(%v) path(%v) multipartID(%v) err(%v)",
+			v.name, path, multipartID, err)
 		return
 	}
 
 	var finalInode *proto.InodeInfo
 	if finalInode, err = v.mw.InodeGet_ll(completeInodeInfo.Inode); err != nil {
-		log.LogErrorf("CompleteMultipart: get inode fail: volume(%v) inode(%v) err(%v)",
-			v.name, completeInodeInfo.Inode, err)
+		log.LogErrorf("CompleteMultipart: get inode fail: volume(%v) multipartID(%v) inode(%v) err(%v)",
+			v.name, multipartID, completeInodeInfo.Inode, err)
 		return
 	}
 
@@ -1236,44 +1236,45 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		}
 	}
 	if err = v.mw.BatchSetXAttr_ll(finalInode.Inode, attrs); err != nil {
-		log.LogErrorf("CompleteMultipart: store multipart extend fail: volume(%v) path(%v) inode(%v) attrs(%v) err(%v)",
-			v.name, path, finalInode.Inode, attrs, err)
+		log.LogErrorf("CompleteMultipart: store multipart extend fail: volume(%v) multipartID(%v) inode(%v) "+
+			"attrs(%v) err(%v)", v.name, multipartID, finalInode.Inode, attrs, err)
 		return nil, err
 	}
 
-	// remove multipart
-	err = v.mw.RemoveMultipart_ll(path, multipartID)
-	if err == syscall.ENOENT {
-		log.LogWarnf("CompleteMultipart: removing not exist multipart: volume(%v) multipartID(%v) path(%v)",
-			v.name, multipartID, path)
+	// apply new inode to dentry
+	if err = v.applyInodeToDEntry(parentId, filename, completeInodeInfo.Inode); err != nil {
+		log.LogErrorf("CompleteMultipart: apply inode to dentry fail: volume(%v) multipartID(%v) parentId(%v) "+
+			"fileName(%v) inode(%v) err(%v)", v.name, multipartID, parentId, filename, completeInodeInfo.Inode, err)
+		return
 	}
-	if err != nil {
-		log.LogErrorf("CompleteMultipart: meta complete multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
-			v.name, multipartID, path, err)
-		return nil, err
+
+	// remove multipart
+	var err2 error
+	if err2 = v.mw.RemoveMultipart_ll(path, multipartID); err2 != nil {
+		log.LogWarnf("CompleteMultipart: remove multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
+			v.name, multipartID, path, err2)
 	}
 	// delete part inodes
 	for _, part := range parts {
 		log.LogWarnf("CompleteMultipart: destroy part inode: volume(%v) multipartID(%v) partID(%v) inode(%v)",
 			v.name, multipartID, part.ID, part.Inode)
-		if err = v.mw.InodeDelete_ll(part.Inode); err != nil {
-			log.LogErrorf("CompleteMultipart: destroy part inode fail: volume(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
-				v.name, multipartID, part.ID, part.Inode, err)
+		if err2 = v.mw.InodeDelete_ll(part.Inode); err2 != nil {
+			log.LogWarnf("CompleteMultipart: delete part inode fail: volume(%v) multipartID(%v) part(%v) err(%v)",
+				v.name, multipartID, part, err2)
 		}
 	}
-
-	//discard part inodes
+	// discard part inodes
 	for discardedInode, partNum := range discardedPartInodes {
-		log.LogDebugf("CompleteMultipart: discard part number(%v)", partNum)
-		if _, err = v.mw.InodeUnlink_ll(discardedInode); err != nil {
-			log.LogWarnf("CompleteMultipart: unlink inode fail: volume(%v) inode(%v) err(%v)",
-				v.name, discardedInode, err)
+		log.LogWarnf("CompleteMultipart: discard part: volume(%v) multipartID(%v) partNum(%v) inode(%v)",
+			v.name, multipartID, partNum, discardedInode)
+		if _, err2 = v.mw.InodeUnlink_ll(discardedInode); err2 != nil {
+			log.LogWarnf("CompleteMultipart: unlink inode fail: volume(%v) multipartID(%v) inode(%v) err(%v)",
+				v.name, multipartID, discardedInode, err2)
 		}
 	}
 
 	log.LogDebugf("CompleteMultipart: meta complete multipart: volume(%v) multipartID(%v) path(%v) parentID(%v) inode(%v) etagValue(%v)",
 		v.name, multipartID, path, parentId, finalInode.Inode, etagValue)
-
 	// create file info
 	fInfo := &FSFileInfo{
 		Path:       path,
@@ -1285,12 +1286,6 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		Inode:      finalInode.Inode,
 	}
 
-	// apply new inode to dentry
-	err = v.applyInodeToDEntry(parentId, filename, completeInodeInfo.Inode)
-	if err != nil {
-		log.LogErrorf("CompleteMultipart: apply new inode to dentry fail, parent id (%v), file name(%v), inode(%v)",
-			parentId, filename, completeInodeInfo.Inode)
-	}
 	return fInfo, nil
 }
 
@@ -1570,26 +1565,26 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 }
 
 func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrInfo, err error) {
-
 	// process path
 	var inode uint64
 	var mode os.FileMode
 	var inoInfo *proto.InodeInfo
-
 	var retry = 0
-	for {
 
+	for {
 		if _, inode, _, mode, err = v.recursiveLookupTarget(path); err != nil {
+			log.LogErrorf("ObjectMeta: recursive look up path fail: volume(%v) path(%v) err(%v)",
+				v.name, path, err)
 			return
 		}
-
 		inoInfo, err = v.mw.InodeGet_ll(inode)
 		if err == syscall.ENOENT && retry < MaxRetry {
 			retry++
 			continue
 		}
 		if err != nil {
-			log.LogErrorf("ObjectMeta: get inode fail: volume(%v) path(%v) inode(%v) retry(%v) err(%v)", v.name, path, inode, retry, err)
+			log.LogErrorf("ObjectMeta: get inode fail: volume(%v) path(%v) inode(%v) retry(%v) err(%v)",
+				v.name, path, inode, retry, err)
 			return
 		}
 		break
