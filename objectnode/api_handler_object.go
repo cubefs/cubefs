@@ -376,13 +376,13 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// get object meta
 	var fileInfo *FSFileInfo
 	fileInfo, _, err = vol.ObjectMeta(param.Object())
-	if err == syscall.ENOENT {
-		errorCode = NoSuchKey
-		return
-	}
 	if err != nil {
-		log.LogErrorf("headObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v)err(%v)",
+		log.LogErrorf("headObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+			return
+		}
 		errorCode = InternalErrorCode(err)
 		return
 	}
