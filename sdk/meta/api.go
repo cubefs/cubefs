@@ -94,7 +94,17 @@ func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 
 func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
 	//if mw.EnableTransaction {
-	if mw.EnableTransaction&proto.TxOpMaskCreate > 0 {
+	txType := proto.TxOpMaskOff
+	if proto.IsRegular(mode) {
+		txType = proto.TxOpMaskCreate
+	} else if proto.IsDir(mode) {
+		txType = proto.TxOpMaskMkdir
+	} else if proto.IsSymlink(mode) {
+		txType = proto.TxOpMaskSymlink
+	} else {
+		txType = proto.TxOpMaskMknod
+	}
+	if mw.EnableTransaction&txType > 0 {
 		return mw.txCreate_ll(parentID, name, mode, uid, gid, target)
 	} else {
 		return mw.create_ll(parentID, name, mode, uid, gid, target)
