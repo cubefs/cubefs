@@ -1,90 +1,45 @@
 # Cubefs Makefile
 #
 
-BIN_PATH := build/bin
-BIN_SERVER := $(BIN_PATH)/cfs-server
-BIN_CLIENT := $(BIN_PATH)/cfs-client
-BIN_CLIENT2 := $(BIN_PATH)/cfs-client2
-BIN_AUTHTOOL := $(BIN_PATH)/cfs-authtool
-BIN_CLI := $(BIN_PATH)/cfs-cli
-BIN_FSCK := $(BIN_PATH)/cfs-fsck
-BIN_LIBSDK := $(BIN_PATH)/libsdk
-BIN_FDSTORE := $(BIN_PATH)/fdstore
-BIN_PRELOAD := $(BIN_PATH)/cfs-preload
-BIN_BCACHE:= $(BIN_PATH)/cfs-bcache
-
-COMMON_SRC := build/build.sh Makefile
-COMMON_SRC += $(wildcard storage/*.go util/*/*.go util/*.go repl/*.go raftstore/*.go proto/*.go)
-SERVER_SRC := $(wildcard cmd/*.go authnode/*.go datanode/*.go master/*.go metanode/*.go objectnode/*.go)
-CLIENT_SRC := $(wildcard client/*.go client/fs/*.go sdk/*.go)
-CLIENT2_SRC := $(wildcard clientv2/*.go clientv2/fs/*.go sdk/*.go)
-AUTHTOOL_SRC := $(wildcard authtool/*.go)
-CLI_SRC := $(wildcard cli/*.go)
-FSCK_SRC := $(wildcard fsck/*.go fsck/cmd/*.go)
-LIBSDK_SRC := $(wildcard libsdk/*.go)
-FDSTORE_SRC := $(wildcard fdstore/*.go)
-PRELOAD_SRC := $(wildcard preload/*.go)
-BCACHE_SRC := $(wildcard blockcache/*.go)
-
 RM := $(shell [ -x /bin/rm ] && echo "/bin/rm" || echo "/usr/bin/rm" )
-
+GOMOD=on
 default: all
 
 phony := all
 all: build
 
-phony += build server authtool client client2 cli fsck preload bcache
-build: server authtool client cli libsdk fsck preload bcache
+phony += build server authtool client cli libsdk fsck fdstore preload bcache blobstore
+build: server authtool client cli libsdk fsck fdstore preload bcache blobstore
 
-server: $(BIN_SERVER)
+server: 
+	@build/build.sh server $(GOMOD)
 
-client: $(BIN_CLIENT)
+blobstore:
+	@build/build.sh blobstore $(GOMOD)
 
-client2: $(BIN_CLIENT2)
+client: 
+	@build/build.sh client $(GOMOD)
 
-authtool: $(BIN_AUTHTOOL)
+authtool: 
+	@build/build.sh authtool $(GOMOD)
 
-cli: $(BIN_CLI)
+cli: 
+	@build/build.sh cli $(GOMOD)
 
-fsck: $(BIN_FSCK)
+fsck: 
+	@build/build.sh fsck $(GOMOD)
 
-libsdk: $(BIN_LIBSDK)
+libsdk: 
+	@build/build.sh libsdk $(GOMOD)
 
-fdstore: $(BIN_FDSTORE)
+fdstore: 
+	@build/build.sh fdstore $(GOMOD)
 
-preload: $(BIN_PRELOAD)
+preload: 
+	@build/build.sh preload $(GOMOD)
 
-bcache: $(BIN_BCACHE)
-
-$(BIN_SERVER): $(COMMON_SRC) $(SERVER_SRC)
-	@build/build.sh server
-
-$(BIN_CLIENT): $(COMMON_SRC) $(CLIENT_SRC)
-	@build/build.sh client
-
-$(BIN_CLIENT2): $(COMMON_SRC) $(CLIENT2_SRC)
-	@build/build.sh client2
-
-$(BIN_AUTHTOOL): $(COMMON_SRC) $(AUTHTOOL_SRC)
-	@build/build.sh authtool
-
-$(BIN_CLI): $(COMMON_SRC) $(CLI_SRC)
-	@build/build.sh cli
-
-$(BIN_FSCK): $(COMMON_SRC) $(FSCK_SRC)
-	@build/build.sh fsck
-
-$(BIN_LIBSDK): $(COMMON_SRC) $(LIBSDK_SRC)
-	@build/build.sh libsdk
-
-$(BIN_FDSTORE): $(FDSTORE_SRC)
-	@build/build.sh fdstore
-
-$(BIN_PRELOAD): $(COMMON_SRC) $(PRELOAD_SRC)
-	@build/build.sh preload
-
-$(BIN_BCACHE): $(COMMON_SRC) $(BCACHE_SRC)
-	@build/build.sh bcache
+bcache: 
+	@build/build.sh bcache $(GOMOD)
 
 phony += clean
 clean:
@@ -92,15 +47,14 @@ clean:
 
 phony += dist-clean
 dist-clean:
-	@$(RM) -rf build/bin
-	@$(RM) -rf build/out
-	@$(RM) -rf vendor/dep
+	@build/build.sh dist_clean
 
 phony += test
 test:
-	@build/build.sh test
+	@build/build.sh test $(GOMOD)
+
 phony += testcover
 testcover:
-	@build/build.sh testcover
+	@build/build.sh testcover $(GOMOD)
 
 .PHONY: $(phony)

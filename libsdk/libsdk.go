@@ -76,8 +76,6 @@ import "C"
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/auditlog"
-	"github.com/cubefs/cubefs/util/buf"
 	"io"
 	syslog "log"
 	"os"
@@ -92,11 +90,13 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cubefs/blobstore/api/access"
-	"github.com/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/buf"
+
+	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 
 	"github.com/bits-and-blooms/bitset"
-	// "github.com/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/fs"
 	"github.com/cubefs/cubefs/proto"

@@ -1,12 +1,10 @@
 package auditlog
 
-import "C"
 import (
 	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -19,6 +17,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
