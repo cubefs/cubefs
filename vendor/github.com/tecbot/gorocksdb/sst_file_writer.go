@@ -30,7 +30,7 @@ func (w *SSTFileWriter) Open(path string) error {
 	defer C.free(unsafe.Pointer(cPath))
 	C.rocksdb_sstfilewriter_open(w.c, cPath, &cErr)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return errors.New(C.GoString(cErr))
 	}
 	return nil
@@ -44,7 +44,7 @@ func (w *SSTFileWriter) Add(key, value []byte) error {
 	var cErr *C.char
 	C.rocksdb_sstfilewriter_add(w.c, cKey, C.size_t(len(key)), cValue, C.size_t(len(value)), &cErr)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return errors.New(C.GoString(cErr))
 	}
 	return nil
@@ -55,7 +55,7 @@ func (w *SSTFileWriter) Finish() error {
 	var cErr *C.char
 	C.rocksdb_sstfilewriter_finish(w.c, &cErr)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return errors.New(C.GoString(cErr))
 	}
 	return nil

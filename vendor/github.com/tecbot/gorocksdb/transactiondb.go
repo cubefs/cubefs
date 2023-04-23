@@ -30,7 +30,7 @@ func OpenTransactionDb(
 	db := C.rocksdb_transactiondb_open(
 		opts.c, transactionDBOpts.c, cName, &cErr)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return nil, errors.New(C.GoString(cErr))
 	}
 	return &TransactionDB{
@@ -83,7 +83,7 @@ func (db *TransactionDB) Get(opts *ReadOptions, key []byte) (*Slice, error) {
 		db.c, opts.c, cKey, C.size_t(len(key)), &cValLen, &cErr,
 	)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return nil, errors.New(C.GoString(cErr))
 	}
 	return NewSlice(cValue, cValLen), nil
@@ -100,7 +100,7 @@ func (db *TransactionDB) Put(opts *WriteOptions, key, value []byte) error {
 		db.c, opts.c, cKey, C.size_t(len(key)), cValue, C.size_t(len(value)), &cErr,
 	)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return errors.New(C.GoString(cErr))
 	}
 	return nil
@@ -114,7 +114,7 @@ func (db *TransactionDB) Delete(opts *WriteOptions, key []byte) error {
 	)
 	C.rocksdb_transactiondb_delete(db.c, opts.c, cKey, C.size_t(len(key)), &cErr)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return errors.New(C.GoString(cErr))
 	}
 	return nil
@@ -129,7 +129,7 @@ func (db *TransactionDB) NewCheckpoint() (*Checkpoint, error) {
 		db.c, &cErr,
 	)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return nil, errors.New(C.GoString(cErr))
 	}
 

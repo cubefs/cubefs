@@ -24,9 +24,9 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/stat"
 
-	"github.com/cubefs/blobstore/api/access"
-	"github.com/cubefs/blobstore/common/codemode"
-	ebsproto "github.com/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	ebsproto "github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/google/uuid"

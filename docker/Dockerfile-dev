@@ -1,4 +1,4 @@
-FROM ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+FROM cubefs/cbfs-base:1.0-golang-1.17.13
 
 RUN echo "deb http://deb.debian.org/debian stretch-backports main" >> /etc/apt/sources.list \
         && apt-get update

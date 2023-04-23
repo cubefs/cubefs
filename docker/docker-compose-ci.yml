@@ -9,7 +9,7 @@ networks:
 
 services:
     monitor:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         depends_on:
             - consul
             - prometheus
@@ -18,7 +18,7 @@ services:
             extnetwork:
 
     servers:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         depends_on:
             - master1
             - master2
@@ -35,7 +35,7 @@ services:
             extnetwork:
 
     master1:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "5901"
             - "5902"
@@ -56,7 +56,7 @@ services:
                 ipv4_address: 192.168.0.11
 
     master2:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "5901"
             - "5902"
@@ -76,7 +76,7 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.12
     master3:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "5901"
             - "5902"
@@ -97,7 +97,7 @@ services:
                 ipv4_address: 192.168.0.13
 
     metanode1:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "17210"
             - "17220"
@@ -118,7 +118,7 @@ services:
                 ipv4_address: 192.168.0.21
 
     metanode2:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "17210"
             - "17220"
@@ -139,7 +139,7 @@ services:
                 ipv4_address: 192.168.0.22
 
     metanode3:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "17210"
             - "17220"
@@ -160,7 +160,7 @@ services:
                 ipv4_address: 192.168.0.23
 
     metanode4:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "17210"
             - "17220"
@@ -181,7 +181,7 @@ services:
                 ipv4_address: 192.168.0.24
 
     datanode1:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "17310"
             - "17320"
@@ -202,7 +202,7 @@ services:
                 ipv4_address: 192.168.0.31
 
     datanode2:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "17310"
             - "17320"
@@ -223,7 +223,7 @@ services:
                 ipv4_address: 192.168.0.32
 
     datanode3:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "17310"
             - "17320"
@@ -244,7 +244,7 @@ services:
                 ipv4_address: 192.168.0.33
 
     datanode4:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "17310"
             - "17320"
@@ -265,7 +265,7 @@ services:
                 ipv4_address: 192.168.0.34
 
     objectnode1:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "80"
             - 9500
@@ -284,7 +284,7 @@ services:
                 ipv4_address: 192.168.0.41
 
     objectnode2:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "80"
             - 9500
@@ -303,7 +303,7 @@ services:
                 ipv4_address: 192.168.0.42
 
     objectnode3:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - "80"
             - 9500
@@ -323,7 +323,7 @@ services:
 
 
     console1:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
           - "80"
         volumes:
@@ -339,7 +339,7 @@ services:
             ipv4_address: 192.168.0.50
 
     client:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         ports:
             - 9500
             - 17410:17410
@@ -413,7 +413,7 @@ services:
                 ipv4_address: 192.168.0.104
 
     build:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         volumes:
             - ../:/go/src/github.com/cubefs/cubefs
         command:
@@ -422,7 +422,7 @@ services:
             extnetwork:
 
     unit_test:
-        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ghcr.dockerproxy.com/cubefs/cbfs-base:1.0-golang-1.17.13
         volumes:
             - ../:/go/src/github.com/cubefs/cubefs
         command:
