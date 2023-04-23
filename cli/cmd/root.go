@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/sdk/monitor"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
 )
@@ -36,7 +35,7 @@ type ChubaoFSCmd struct {
 	CFSCmd *cobra.Command
 }
 
-func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient, cc *convert.ConvertClient) *ChubaoFSCmd {
+func NewRootCmd(client *master.MasterClient, cc *convert.ConvertClient) *ChubaoFSCmd {
 	var cmd = &ChubaoFSCmd{
 		CFSCmd: &cobra.Command{
 			Use:   path.Base(os.Args[0]),
@@ -57,7 +56,6 @@ func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient, cc 
 		newEcPartitionCmd(client),
 		newDataPartitionCmd(client),
 		newMetaPartitionCmd(client),
-		newMonitorNodeCmd(client, mClient),
 		newConfigCmd(),
 		newCompatibilityCmd(),
 		newParseRaftLogCmd(),
