@@ -1,4 +1,6 @@
+// +build !linux !static
+
 package gorocksdb
 
-// #cgo LDFLAGS: -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy
+// #cgo LDFLAGS: -lrocksdb -lstdc++ -lm -ldl
 import "C"

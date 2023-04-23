@@ -33,7 +33,7 @@ import (
 	"syscall"
 	"time"
 
-	blog "github.com/cubefs/blobstore/util/log"
+	blog "github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 type Level uint8

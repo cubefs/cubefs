@@ -2,7 +2,10 @@ package gorocksdb
 
 // #include "rocksdb/c.h"
 import "C"
-import "io"
+import (
+	"errors"
+	"io"
+)
 
 // WriteBatch is a batching of Puts, Merges and Deletes.
 type WriteBatch struct {
@@ -38,6 +41,12 @@ func (wb *WriteBatch) PutCF(cf *ColumnFamilyHandle, key, value []byte) {
 	C.rocksdb_writebatch_put_cf(wb.c, cf.c, cKey, C.size_t(len(key)), cValue, C.size_t(len(value)))
 }
 
+// Append a blob of arbitrary size to the records in this batch.
+func (wb *WriteBatch) PutLogData(blob []byte) {
+	cBlob := byteToChar(blob)
+	C.rocksdb_writebatch_put_log_data(wb.c, cBlob, C.size_t(len(blob)))
+}
+
 // Merge queues a merge of "value" with the existing value of "key".
 func (wb *WriteBatch) Merge(key, value []byte) {
 	cKey := byteToChar(key)
@@ -63,6 +72,21 @@ func (wb *WriteBatch) Delete(key []byte) {
 func (wb *WriteBatch) DeleteCF(cf *ColumnFamilyHandle, key []byte) {
 	cKey := byteToChar(key)
 	C.rocksdb_writebatch_delete_cf(wb.c, cf.c, cKey, C.size_t(len(key)))
+}
+
+// DeleteRange deletes keys that are between [startKey, endKey)
+func (wb *WriteBatch) DeleteRange(startKey []byte, endKey []byte) {
+	cStartKey := byteToChar(startKey)
+	cEndKey := byteToChar(endKey)
+	C.rocksdb_writebatch_delete_range(wb.c, cStartKey, C.size_t(len(startKey)), cEndKey, C.size_t(len(endKey)))
+}
+
+// DeleteRangeCF deletes keys that are between [startKey, endKey) and
+// belong to a given column family
+func (wb *WriteBatch) DeleteRangeCF(cf *ColumnFamilyHandle, startKey []byte, endKey []byte) {
+	cStartKey := byteToChar(startKey)
+	cEndKey := byteToChar(endKey)
+	C.rocksdb_writebatch_delete_range_cf(wb.c, cf.c, cStartKey, C.size_t(len(startKey)), cEndKey, C.size_t(len(endKey)))
 }
 
 // Data returns the serialized version of this batch.
@@ -102,14 +126,31 @@ type WriteBatchRecordType byte
 
 // Types of batch records.
 const (
-	WriteBatchRecordTypeDeletion WriteBatchRecordType = 0x0
-	WriteBatchRecordTypeValue    WriteBatchRecordType = 0x1
-	WriteBatchRecordTypeMerge    WriteBatchRecordType = 0x2
-	WriteBatchRecordTypeLogData  WriteBatchRecordType = 0x3
+	WriteBatchDeletionRecord                 WriteBatchRecordType = 0x0
+	WriteBatchValueRecord                    WriteBatchRecordType = 0x1
+	WriteBatchMergeRecord                    WriteBatchRecordType = 0x2
+	WriteBatchLogDataRecord                  WriteBatchRecordType = 0x3
+	WriteBatchCFDeletionRecord               WriteBatchRecordType = 0x4
+	WriteBatchCFValueRecord                  WriteBatchRecordType = 0x5
+	WriteBatchCFMergeRecord                  WriteBatchRecordType = 0x6
+	WriteBatchSingleDeletionRecord           WriteBatchRecordType = 0x7
+	WriteBatchCFSingleDeletionRecord         WriteBatchRecordType = 0x8
+	WriteBatchBeginPrepareXIDRecord          WriteBatchRecordType = 0x9
+	WriteBatchEndPrepareXIDRecord            WriteBatchRecordType = 0xA
+	WriteBatchCommitXIDRecord                WriteBatchRecordType = 0xB
+	WriteBatchRollbackXIDRecord              WriteBatchRecordType = 0xC
+	WriteBatchNoopRecord                     WriteBatchRecordType = 0xD
+	WriteBatchRangeDeletion                  WriteBatchRecordType = 0xF
+	WriteBatchCFRangeDeletion                WriteBatchRecordType = 0xE
+	WriteBatchCFBlobIndex                    WriteBatchRecordType = 0x10
+	WriteBatchBlobIndex                      WriteBatchRecordType = 0x11
+	WriteBatchBeginPersistedPrepareXIDRecord WriteBatchRecordType = 0x12
+	WriteBatchNotUsedRecord                  WriteBatchRecordType = 0x7F
 )
 
 // WriteBatchRecord represents a record inside a WriteBatch.
 type WriteBatchRecord struct {
+	CF    int
 	Key   []byte
 	Value []byte
 	Type  WriteBatchRecordType
@@ -129,36 +170,63 @@ func (iter *WriteBatchIterator) Next() bool {
 		return false
 	}
 	// reset the current record
+	iter.record.CF = 0
 	iter.record.Key = nil
 	iter.record.Value = nil
 
 	// parse the record type
-	recordType := WriteBatchRecordType(iter.data[0])
-	iter.record.Type = recordType
-	iter.data = iter.data[1:]
+	iter.record.Type = iter.decodeRecType()
 
-	// parse the key
-	x, n := iter.decodeVarint(iter.data)
-	if n == 0 {
-		iter.err = io.ErrShortBuffer
-		return false
-	}
-	k := n + int(x)
-	iter.record.Key = iter.data[n:k]
-	iter.data = iter.data[k:]
-
-	// parse the data
-	if recordType == WriteBatchRecordTypeValue || recordType == WriteBatchRecordTypeMerge {
-		x, n := iter.decodeVarint(iter.data)
-		if n == 0 {
-			iter.err = io.ErrShortBuffer
-			return false
+	switch iter.record.Type {
+	case
+		WriteBatchDeletionRecord,
+		WriteBatchSingleDeletionRecord:
+		iter.record.Key = iter.decodeSlice()
+	case
+		WriteBatchCFDeletionRecord,
+		WriteBatchCFSingleDeletionRecord:
+		iter.record.CF = int(iter.decodeVarint())
+		if iter.err == nil {
+			iter.record.Key = iter.decodeSlice()
 		}
-		k := n + int(x)
-		iter.record.Value = iter.data[n:k]
-		iter.data = iter.data[k:]
+	case
+		WriteBatchValueRecord,
+		WriteBatchMergeRecord,
+		WriteBatchRangeDeletion,
+		WriteBatchBlobIndex:
+		iter.record.Key = iter.decodeSlice()
+		if iter.err == nil {
+			iter.record.Value = iter.decodeSlice()
+		}
+	case
+		WriteBatchCFValueRecord,
+		WriteBatchCFRangeDeletion,
+		WriteBatchCFMergeRecord,
+		WriteBatchCFBlobIndex:
+		iter.record.CF = int(iter.decodeVarint())
+		if iter.err == nil {
+			iter.record.Key = iter.decodeSlice()
+		}
+		if iter.err == nil {
+			iter.record.Value = iter.decodeSlice()
+		}
+	case WriteBatchLogDataRecord:
+		iter.record.Value = iter.decodeSlice()
+	case
+		WriteBatchNoopRecord,
+		WriteBatchBeginPrepareXIDRecord,
+		WriteBatchBeginPersistedPrepareXIDRecord:
+	case
+		WriteBatchEndPrepareXIDRecord,
+		WriteBatchCommitXIDRecord,
+		WriteBatchRollbackXIDRecord:
+		iter.record.Value = iter.decodeSlice()
+	default:
+		iter.err = errors.New("unsupported wal record type")
 	}
-	return true
+
+	return iter.err == nil
+
 }
 
 // Record returns the current record.
@@ -171,19 +239,45 @@ func (iter *WriteBatchIterator) Error() error {
 	return iter.err
 }
 
-func (iter *WriteBatchIterator) decodeVarint(buf []byte) (x uint64, n int) {
-	// x, n already 0
-	for shift := uint(0); shift < 64; shift += 7 {
-		if n >= len(buf) {
-			return 0, 0
-		}
-		b := uint64(buf[n])
+func (iter *WriteBatchIterator) decodeSlice() []byte {
+	l := int(iter.decodeVarint())
+	if l > len(iter.data) {
+		iter.err = io.ErrShortBuffer
+	}
+	if iter.err != nil {
+		return []byte{}
+	}
+	ret := iter.data[:l]
+	iter.data = iter.data[l:]
+	return ret
+}
+
+func (iter *WriteBatchIterator) decodeRecType() WriteBatchRecordType {
+	if len(iter.data) == 0 {
+		iter.err = io.ErrShortBuffer
+		return WriteBatchNotUsedRecord
+	}
+	t := iter.data[0]
+	iter.data = iter.data[1:]
+	return WriteBatchRecordType(t)
+}
+
+func (iter *WriteBatchIterator) decodeVarint() uint64 {
+	var n int
+	var x uint64
+	for shift := uint(0); shift < 64 && n < len(iter.data); shift += 7 {
+		b := uint64(iter.data[n])
 		n++
 		x |= (b & 0x7F) << shift
 		if (b & 0x80) == 0 {
-			return x, n
+			iter.data = iter.data[n:]
+			return x
 		}
 	}
-	// The number is too large to represent in a 64-bit value.
-	return 0, 0
+	if n == len(iter.data) {
+		iter.err = io.ErrShortBuffer
+	} else {
+		iter.err = errors.New("malformed varint")
+	}
+	return 0
 }

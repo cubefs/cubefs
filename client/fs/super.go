@@ -15,10 +15,8 @@
 package fs
 
 import (
+	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/auditlog"
-	"golang.org/x/net/context"
 	"net/http"
 	"os"
 	"path"
@@ -30,7 +28,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 
-	"github.com/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/common"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
@@ -39,6 +37,8 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
@@ -72,7 +72,7 @@ type Super struct {
 	sockaddr  string
 	suspendCh chan interface{}
 
-	//data lake
+	// data lake
 	volType             int
 	ebsEndpoint         string
 	CacheAction         int
@@ -100,15 +100,16 @@ var (
 	_ fs.FSStatfser = (*Super)(nil)
 )
 
-const BlobWriterIdleTimeoutPeriod = 10
-const DefaultTaskPoolSize = 30
+const (
+	BlobWriterIdleTimeoutPeriod = 10
+	DefaultTaskPoolSize         = 30
+)
 
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
-
 	s = new(Super)
-	var masters = strings.Split(opt.Master, meta.HostsSeparator)
-	var metaConfig = &meta.MetaConfig{
+	masters := strings.Split(opt.Master, meta.HostsSeparator)
+	metaConfig := &meta.MetaConfig{
 		Volume:          opt.Volname,
 		Owner:           opt.Owner,
 		Masters:         masters,
@@ -208,7 +209,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		s.bc = bcache.NewBcacheClient()
 	}
 
-	var extentConfig = &stream.ExtentConfig{
+	extentConfig := &stream.ExtentConfig{
 		Volume:            opt.Volname,
 		Masters:           masters,
 		FollowerRead:      opt.FollowerRead,
@@ -263,7 +264,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		go s.scheduleFlush()
 	}
 	if s.mw.EnableSummary {
-
 		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
 	}
 
@@ -358,6 +358,7 @@ func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 func (s *Super) ClusterName() string {
 	return s.cluster
 }
+
 func (s *Super) GetRate(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(s.ec.GetRate()))
 }
@@ -487,9 +488,7 @@ func (s *Super) SetResume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Super) EnableAuditLog(w http.ResponseWriter, r *http.Request) {
-	var (
-		err error
-	)
+	var err error
 	if err = r.ParseForm(); err != nil {
 		auditlog.BuildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -539,7 +538,6 @@ func (s *Super) EnableAuditLog(w http.ResponseWriter, r *http.Request) {
 			dir, logModule, logMaxSize)
 		auditlog.BuildSuccessResp(w, info)
 	}
-
 }
 
 func (s *Super) State() (state fs.FSStatType, sockaddr string) {
@@ -573,7 +571,6 @@ func (s *Super) loopSyncMeta() {
 }
 
 func (s *Super) syncMeta() <-chan struct{} {
-
 	finishC := make(chan struct{})
 	start := time.Now()
 	cacheLen := s.ic.lruList.Len()

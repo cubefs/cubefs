@@ -17,8 +17,9 @@ package raftstore
 import (
 	"fmt"
 
-	"github.com/tecbot/gorocksdb"
 	"os"
+
+	"github.com/tecbot/gorocksdb"
 )
 
 // RocksDBStore is a wrapper of the gorocksdb.DB
@@ -42,7 +43,7 @@ func NewRocksDBStore(dir string, lruCacheSize, writeBufferSize int) (store *Rock
 // Open opens the RocksDB instance.
 func (rs *RocksDBStore) Open(lruCacheSize, writeBufferSize int) error {
 	basedTableOptions := gorocksdb.NewDefaultBlockBasedTableOptions()
-	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(lruCacheSize))
+	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(uint64(lruCacheSize)))
 	opts := gorocksdb.NewDefaultOptions()
 	opts.SetBlockBasedTableFactory(basedTableOptions)
 	opts.SetCreateIfMissing(true)
