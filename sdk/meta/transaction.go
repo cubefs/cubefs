@@ -200,7 +200,7 @@ func (tx *Transaction) Rollback(mw *MetaWrapper) {
 	//todo_tx: if transaction info in TM is missing, should try to rollback each item
 	tmMP := mw.getPartitionByID(uint64(tx.txInfo.TmID))
 	if tmMP == nil {
-		log.LogErrorf("Transaction Rollback: No TM partition, TmID(%v), txID(%v)", tx.txInfo.TmID, tx.txInfo.TxID)
+		log.LogWarnf("Transaction Rollback: No TM partition, TmID(%v), txID(%v)", tx.txInfo.TmID, tx.txInfo.TxID)
 		return
 	}
 
