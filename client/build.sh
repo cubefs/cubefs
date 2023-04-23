@@ -145,8 +145,15 @@ if [[ ${pack_libs} -eq 1 ]]; then
 
     echo "pack libs, generate cfs-client-libs.tar.gz ..."
     cd ${bin}
+    versionID=`./cfs-client-static -v | grep Version: | awk '{print $2}'`
+    version_regex="^[0-9]+\.[0-9]+\.[0-9]+$"
+    if ! [[ ${versionID} =~ ${version_regex} ]]; then
+        echo "${versionID} is not a version ID"
+        exit 1
+    fi
     md5sum libcfssdk.so > checkfile
     md5sum libcfsc.so >> checkfile
+    echo "${versionID}  Version" >> checkfile
     tar -zcvf ${libTarName} libcfssdk.so libcfsc.so checkfile
 
     libstd=`ldd libcfssdk.so |grep libstd.so |awk '{print $3}'`
@@ -155,6 +162,7 @@ if [[ ${pack_libs} -eq 1 ]]; then
     md5sum libstd.so >> checkfile
     md5sum cfs-client-inner >> checkfile
     md5sum cfs-client-static >> checkfile
+    echo "${versionID}  Version" >> checkfile
     tar -zcvf ${fuseTarName} libcfssdk.so libstd.so cfs-client-inner cfs-client-static checkfile
 
     tar -zcvf ${kbpTarName} libcfsclient.so libcfssdk.so libcfsc.so libstd.so libempty.so

@@ -302,6 +302,36 @@ type HandleReadDirAller interface {
 	ReadDirAll(ctx context.Context) ([]fuse.Dirent, error)
 }
 
+type HandleReadDirPlusAller interface {
+	ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusResponse) ([]DirentPlus, error)
+}
+
+// A DirentPlus represents a single directory entry and its information.
+type DirentPlus struct {
+	Node 	Node
+	Dirent	fuse.Dirent
+}
+
+// AppendDirentPlus appends the encoded form of a directory entry info to data
+// and returns the resulting slice.
+func AppendDirentPlus(data []byte, resp *fuse.LookupResponse, dir DirentPlus, proto fuse.Protocol) []byte {
+	size := fuse.EntryOutSize(proto)
+	buf := fuse.NewBufferWithoutHdr(size)
+	out := (*fuse.EntryOut)(buf.Alloc(size))
+	out.Nodeid = uint64(resp.Node)
+	if out.Nodeid != 0 {
+		out.Generation = resp.Generation
+		out.EntryValid = uint64(resp.EntryValid / time.Second)
+		out.EntryValidNsec = uint32(resp.EntryValid % time.Second / time.Nanosecond)
+		out.AttrValid = uint64(resp.Attr.Valid / time.Second)
+		out.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
+		resp.Attr.SetAttr(&out.Attr, proto)
+	}
+	data = append(data, buf...)
+	data = fuse.AppendDirent(data, dir.Dirent)
+	return data
+}
+
 type HandleReader interface {
 	// Read requests to read data from the handle.
 	//
@@ -1377,6 +1407,40 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 							dir.Inode = c.dynamicInode(snode.inode, dir.Name)
 						}
 						data = fuse.AppendDirent(data, dir)
+					}
+					shandle.readData = data
+				}
+				fuseutil.HandleRead(r, s, shandle.readData)
+				done(s)
+				r.Respond(s)
+				return nil
+			}
+		} else if r.DirPlus {
+			s.Data = make([]byte, r.Size)
+			if h, ok := handle.(HandleReadDirPlusAller); ok {
+				// detect rewinddir(3) or similar seek and refresh
+				// contents
+				if r.Offset == 0 {
+					shandle.readData = nil
+				}
+
+				if shandle.readData == nil {
+					resp := &fuse.ReadDirPlusResponse{EntryValid: entryValidTime}
+					dirs, err := h.ReadDirPlusAll(ctx, resp)
+					if err != nil {
+						return err
+					}
+					var data []byte
+					proto := r.Header.Conn.Protocol()
+					for _, dir := range dirs {
+						lookupResp := &fuse.LookupResponse{EntryValid: resp.EntryValid}
+						if dir.Node != nil {
+							c.saveLookup(ctx, lookupResp, snode, dir.Dirent.Name, dir.Node)
+						}
+						if dir.Dirent.Inode == 0 {
+							dir.Dirent.Inode = c.dynamicInode(snode.inode, dir.Dirent.Name)
+						}
+						data = AppendDirentPlus(data, lookupResp, dir, proto)
 					}
 					shandle.readData = data
 				}

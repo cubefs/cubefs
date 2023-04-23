@@ -16,5 +16,6 @@
   "tracingSamplerType": "const",
   "tracingSamplerParam": 1,
   "tracingReportAddr": "192.168.0.151:6831",
-  "tracingFlag": true
+  "tracingFlag": true,
+  "readDirPlus": 1
 }

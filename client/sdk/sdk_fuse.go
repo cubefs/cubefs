@@ -372,6 +372,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 		fuse.MaxReadahead(uint32(opt.ReadAheadSize)),
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(opt.AutoInvalData),
+		fuse.EnableReadDirPlus(opt.EnableReadDirPlus),
 		fuse.FSName("chubaofs-" + opt.Volname),
 		fuse.LocalVolume(),
 		fuse.VolumeName("chubaofs-" + opt.Volname)}
@@ -494,6 +495,8 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	if opt.PidFile != "" && opt.PidFile[0] != os.PathSeparator {
 		return nil, fmt.Errorf("invalid config file: pidFile(%s) must be a absolute path", opt.PidFile)
 	}
+	opt.EnableReadDirPlus = GlobalMountOptions[proto.EnableReadDirPlus].GetInt64()
+
 	return opt, nil
 }
 

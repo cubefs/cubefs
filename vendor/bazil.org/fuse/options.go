@@ -257,6 +257,18 @@ func AutoInvalData(enable int64) MountOption {
 	}
 }
 
+func EnableReadDirPlus(enable int64) MountOption {
+	if enable > 0 {
+		return func(conf *mountConfig) error {
+			conf.initFlags |= InitDoReaddirplus
+			return nil
+		}
+	}
+	return func(conf *mountConfig) error {
+		return nil
+	}
+}
+
 // OSXFUSEPaths describes the paths used by an installed OSXFUSE
 // version. See OSXFUSELocationV3 for typical values.
 type OSXFUSEPaths struct {

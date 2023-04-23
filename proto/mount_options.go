@@ -58,6 +58,7 @@ const (
 	ReadAheadSize
 	UmpCollectWay
 	PidFile
+	EnableReadDirPlus
 
 	MaxMountOption
 )
@@ -140,6 +141,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[DeleteProcessAbsoPath] = MountOption{"delProcessAbsoPath", "the absolute path of the process which is allowed to delete files", "", ""}
 	opts[UmpCollectWay] = MountOption{"umpCollectWay", "1: by file, 2: by jmtp client", "", int64(UmpCollectByFile)}
 	opts[PidFile] = MountOption{"pidFile", "pidFile absolute path", "", ""}
+	opts[EnableReadDirPlus] = MountOption{"readDirPlus", "readdir and get inode info to accelerate any future lookups in the same directory", "", int64(-1)}
 	//	for i := 0; i < MaxMountOption; i++ {
 	//		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	//	}
@@ -280,4 +282,5 @@ type MountOptions struct {
 	ReadAheadSize            int64
 	UmpCollectWay            int64
 	PidFile                  string
+	EnableReadDirPlus		 int64
 }
