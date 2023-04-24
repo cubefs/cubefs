@@ -141,14 +141,14 @@ func newWarningMetrics(c *Cluster) *warningMetrics {
 
 func (m *warningMetrics) reset() {
 	m.dpMutex.Lock()
-	for dp, _ := range m.dpNoLeaderInfo {
+	for dp := range m.dpNoLeaderInfo {
 		m.dpNoLeader.DeleteLabelValues(m.cluster.Name, strconv.FormatUint(dp, 10))
 		delete(m.dpNoLeaderInfo, dp)
 	}
 	m.dpMutex.Unlock()
 
 	m.mpMutex.Lock()
-	for mp, _ := range m.mpNoLeaderInfo {
+	for mp := range m.mpNoLeaderInfo {
 		m.mpNoLeader.DeleteLabelValues(m.cluster.Name, strconv.FormatUint(mp, 10))
 		delete(m.mpNoLeaderInfo, mp)
 	}
