@@ -194,7 +194,6 @@ func (mgr *followerReadManager) updateVolViewFromLeader(key string, view *proto.
 		defer mgr.rwMutex.Unlock()
 		mgr.volDataPartitionsView[key] = body
 	}
-
 	mgr.status[key] = true
 	mgr.lastUpdateTick[key] = time.Now()
 }
