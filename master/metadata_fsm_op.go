@@ -1260,10 +1260,6 @@ func (c *Cluster) loadVols() (err error) {
 			continue
 		}
 
-		if err = vol.initQuotaManager(c); err != nil {
-			log.LogErrorf("loadVols initQuotaManager fail err [%v]", err.Error())
-			return err
-		}
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
 	}
@@ -1347,6 +1343,18 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp.addToDecommissionList(c)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v] decommissionStatus[%v]", vol.Name, dp.PartitionID,
 			dp.GetDecommissionStatus())
+	}
+	return
+}
+
+func (c *Cluster) loadQuota() (err error) {
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
+	for name, vol := range c.vols {
+		if err = vol.loadQuotaManager(c); err != nil {
+			log.LogErrorf("loadQuota loadQuotaManager vol [%v] fail err [%v]", name, err.Error())
+			return err
+		}
 	}
 	return
 }

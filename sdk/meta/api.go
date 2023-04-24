@@ -46,6 +46,7 @@ const (
 	SummaryKey             = "DirStat"
 	ChannelLen             = 100
 	BatchSize              = 200
+	MaxGoroutineNum        = 5
 )
 
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
@@ -1915,7 +1916,8 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 
 func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32) {
 	var wg sync.WaitGroup
-
+	var maxGoroutineNum int32 = MaxGoroutineNum
+	var curGoroutineNum int32 = 0
 	batchInodeMap := make(map[uint64][]uint64)
 	for _, ino := range inodes {
 		mp := mw.getPartitionByInode(ino)
@@ -1930,12 +1932,17 @@ func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32) {
 
 	for id, inos := range batchInodeMap {
 		mp := mw.getPartitionByID(id)
-		wg.Add(1)
-		go mw.batchSetInodeQuota(&wg, mp, inos, quotaId)
+		if atomic.LoadInt32(&curGoroutineNum) < maxGoroutineNum {
+			wg.Add(1)
+			atomic.AddInt32(&curGoroutineNum, 1)
+			go mw.batchSetInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, true)
+		} else {
+			mw.batchSetInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, false)
+		}
 	}
 
 	wg.Wait()
-	log.LogInfof("set subInode quota [%v] success.", quotaId)
+	log.LogInfof("set subInode quota [%v] inodes [%v] success.", quotaId, inodes)
 	return
 }
 
@@ -1945,7 +1952,8 @@ func (mw *MetaWrapper) GetPartitionByInodeId_ll(inodeId uint64) (mp *MetaPartiti
 
 func (mw *MetaWrapper) BatchDeleteInodeQuota_ll(inodes []uint64, quotaId uint32) {
 	var wg sync.WaitGroup
-
+	var maxGoroutineNum int32 = MaxGoroutineNum
+	var curGoroutineNum int32 = 0
 	batchInodeMap := make(map[uint64][]uint64)
 	for _, ino := range inodes {
 		mp := mw.getPartitionByInode(ino)
@@ -1959,8 +1967,13 @@ func (mw *MetaWrapper) BatchDeleteInodeQuota_ll(inodes []uint64, quotaId uint32)
 	}
 	for id, inos := range batchInodeMap {
 		mp := mw.getPartitionByID(id)
-		wg.Add(1)
-		go mw.batchDeleteInodeQuota(&wg, mp, inos, quotaId)
+		if atomic.LoadInt32(&curGoroutineNum) < maxGoroutineNum {
+			wg.Add(1)
+			atomic.AddInt32(&curGoroutineNum, 1)
+			go mw.batchDeleteInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, true)
+		} else {
+			mw.batchDeleteInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, false)
+		}
 	}
 
 	wg.Wait()

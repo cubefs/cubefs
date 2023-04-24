@@ -2612,10 +2612,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 	vol.aclMgr.init(c, vol)
 	vol.initUidSpaceManager(c)
-
-	if err = vol.initQuotaManager(c); err != nil {
-		goto errHandler
-	}
+	vol.initQuotaManager(c)
 
 	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
 

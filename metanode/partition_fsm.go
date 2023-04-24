@@ -49,6 +49,15 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 	switch msg.Op {
 	case opFSMCreateInode:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		if mp.config.Cursor < ino.Inode {
+			mp.config.Cursor = ino.Inode
+		}
+		resp = mp.fsmCreateInode(ino)
+	case opFSMCreateInodeQuota:
 		qinode := &MetaQuotaInode{}
 		if err = qinode.Unmarshal(msg.V); err != nil {
 			return

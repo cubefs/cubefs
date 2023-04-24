@@ -57,16 +57,18 @@ type MetadataManagerConfig struct {
 }
 
 type metadataManager struct {
-	nodeId             uint64
-	zoneName           string
-	rootDir            string
-	raftStore          raftstore.RaftStore
-	connPool           *util.ConnectPool
-	state              uint32
-	mu                 sync.RWMutex
-	partitions         map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
-	metaNode           *MetaNode
-	flDeleteBatchCount atomic.Value
+	nodeId               uint64
+	zoneName             string
+	rootDir              string
+	raftStore            raftstore.RaftStore
+	connPool             *util.ConnectPool
+	state                uint32
+	mu                   sync.RWMutex
+	partitions           map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
+	metaNode             *MetaNode
+	flDeleteBatchCount   atomic.Value
+	curQuotaGoroutineNum int32
+	maxQuotaGoroutineNum int32
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
@@ -547,15 +549,28 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 	return json.Marshal(m.partitions)
 }
 
+func (m *metadataManager) QuotaGoroutineIsOver() (lsOver bool) {
+	log.LogInfof("hytemp QuotaGoroutineIsOver cur [%v] max [%v]", m.curQuotaGoroutineNum, m.maxQuotaGoroutineNum)
+	if atomic.LoadInt32(&m.curQuotaGoroutineNum) >= m.maxQuotaGoroutineNum {
+		return true
+	}
+	return false
+}
+
+func (m *metadataManager) QuotaGoroutineInc(num int32) {
+	atomic.AddInt32(&m.curQuotaGoroutineNum, num)
+}
+
 // NewMetadataManager returns a new metadata manager.
 func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) MetadataManager {
 	return &metadataManager{
-		nodeId:     conf.NodeID,
-		zoneName:   conf.ZoneName,
-		rootDir:    conf.RootDir,
-		raftStore:  conf.RaftStore,
-		partitions: make(map[uint64]MetaPartition),
-		metaNode:   metaNode,
+		nodeId:               conf.NodeID,
+		zoneName:             conf.ZoneName,
+		rootDir:              conf.RootDir,
+		raftStore:            conf.RaftStore,
+		partitions:           make(map[uint64]MetaPartition),
+		metaNode:             metaNode,
+		maxQuotaGoroutineNum: defaultMaxQuotaGoroutine,
 	}
 }
 

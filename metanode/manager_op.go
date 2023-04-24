@@ -1941,8 +1941,7 @@ func (m *metadataManager) OpMasterSetInodeQuota(conn net.Conn, p *Packet, remote
 		err = errors.NewErrorf("[OpMasterSetInodeQuota] req: %v, resp: %v", req, err.Error())
 		return
 	}
-	// leaderAddr, ok := mp.IsLeader()
-	// log.LogInfof("[opMetaBatchSetInodeQuota] mp [%v] isLeader [%v] leader[%v]", mp, ok, leaderAddr)
+
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}

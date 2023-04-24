@@ -152,6 +152,9 @@ const (
 	opFSMTxSnapshot
 	opFSMTxRbInodeSnapshot
 	opFSMTxRbDentrySnapshot
+
+	//quota
+	opFSMCreateInodeQuota
 )
 
 var (
@@ -198,7 +201,9 @@ const (
 	intervalToPersistData = time.Minute * 5
 	intervalToSyncCursor  = time.Minute * 1
 
-	defaultDelExtentsCnt = 100000
+	defaultDelExtentsCnt     = 100000
+	defaultMaxQuotaGoroutine = 5
+	defaultQuotaSwitch       = true
 )
 
 const (

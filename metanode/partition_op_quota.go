@@ -19,7 +19,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/meta"
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -59,18 +58,13 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 					resp.Result = err.Error()
 					return
 				}
-				_, ok := quotaInfos.QuotaInfoMap[req.QuotaId]
+				oldQuotaInfo, ok := quotaInfos.QuotaInfoMap[req.QuotaId]
 				if ok {
-					err = errors.NewErrorf("quotaId [%v] is exist.", req.QuotaId)
-					resp.Status = proto.TaskFailed
-					resp.Result = err.Error()
-					return
-				} else {
-					quotaInfos.QuotaInfoMap[req.QuotaId] = quotaInfo
+					log.LogInfof("hytemp quotaInfo [%v] oldQuotaInfo [%v]", quotaInfo, oldQuotaInfo)
+					quotaInfo = oldQuotaInfo
 				}
-			} else {
-				quotaInfos.QuotaInfoMap[req.QuotaId] = quotaInfo
 			}
+			quotaInfos.QuotaInfoMap[req.QuotaId] = quotaInfo
 		}
 		value, err1 := json.Marshal(quotaInfos.QuotaInfoMap)
 		if err1 != nil {
@@ -89,7 +83,13 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 		}
 		mp.mqMgr.updateUsedInfo(int64(inode.Size), 1, req.QuotaId)
 		if proto.IsDir(inode.Type) {
-			go mp.setSubQuota(ino, req.QuotaId, quotaInfos)
+			if !mp.manager.QuotaGoroutineIsOver() {
+				mp.manager.QuotaGoroutineInc(1)
+				go mp.setSubQuota(ino, req.QuotaId, quotaInfos, true)
+			} else {
+				mp.setSubQuota(ino, req.QuotaId, quotaInfos, false)
+			}
+
 		}
 	}
 	log.LogInfof("batchSetInodeQuota quotaId [%v] mp [%v] btreeLen [%v] success", req.QuotaId, mp.config.PartitionId, mp.extendTree.Len())
@@ -161,7 +161,12 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 		}
 		mp.mqMgr.updateUsedInfo(-int64(inode.Size), -1, req.QuotaId)
 		if proto.IsDir(inode.Type) {
-			go mp.deleteSubQuota(ino, req.QuotaId, quotaInfos)
+			if !mp.manager.QuotaGoroutineIsOver() {
+				mp.manager.QuotaGoroutineInc(1)
+				go mp.deleteSubQuota(ino, req.QuotaId, quotaInfos, true)
+			} else {
+				mp.deleteSubQuota(ino, req.QuotaId, quotaInfos, false)
+			}
 		}
 	}
 	log.LogInfof("batchDeleteInodeQuota quotaId [%v] success", req.QuotaId)
@@ -169,7 +174,12 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 	return
 }
 
-func (mp *metaPartition) setSubQuota(parentInode uint64, quotaId uint32, quotaInfos *proto.MetaQuotaInfos) {
+func (mp *metaPartition) setSubQuota(parentInode uint64, quotaId uint32, quotaInfos *proto.MetaQuotaInfos, newGoroutine bool) {
+	defer func() {
+		if newGoroutine {
+			mp.manager.QuotaGoroutineInc(-1)
+		}
+	}()
 	var (
 		maxReqCount uint64
 		j           uint64
@@ -204,7 +214,8 @@ func (mp *metaPartition) setSubQuota(parentInode uint64, quotaId uint32, quotaIn
 	if len(inodes) != 0 {
 		mp.batchSetSubInodeQuotaToMetaNode(inodes, quotaId)
 	}
-
+	log.LogInfof("hytemp setSubQuota parentInode [%v] quotaId [%v] newGoroutine [%v].", parentInode, quotaId, newGoroutine)
+	//time.Sleep(3000 * time.Second)
 	quotaInfo.SetStatus(proto.QuotaComplete)
 
 	var extend = NewExtend(parentInode)
@@ -219,11 +230,16 @@ func (mp *metaPartition) setSubQuota(parentInode uint64, quotaId uint32, quotaIn
 		log.LogErrorf("setSubQuota putExtend [%v] fail [%v]", quotaInfos, err)
 		return
 	}
-	log.LogInfof("setSubQuota mp [%v] inode [%v] quotaInfo [%v] success.", mp.config.PartitionId, parentInode, quotaInfo)
+	log.LogInfof("setSubQuota mp [%v] inode [%v] quotaInfo [%v] newGoroutine [%v] success.", mp.config.PartitionId, parentInode, quotaInfo, newGoroutine)
 	return
 }
 
-func (mp *metaPartition) deleteSubQuota(parentInode uint64, quotaId uint32, quotaInfos *proto.MetaQuotaInfos) {
+func (mp *metaPartition) deleteSubQuota(parentInode uint64, quotaId uint32, quotaInfos *proto.MetaQuotaInfos, newGoroutine bool) {
+	defer func() {
+		if newGoroutine {
+			mp.manager.QuotaGoroutineInc(-1)
+		}
+	}()
 	var (
 		maxReqCount uint64
 		j           uint64
@@ -258,7 +274,8 @@ func (mp *metaPartition) deleteSubQuota(parentInode uint64, quotaId uint32, quot
 		log.LogErrorf("deleteSubQuota can not find quotaInfo  [%v] fail.", quotaId)
 		return
 	}
-
+	log.LogInfof("hytemp deleteSubQuota parentInode [%v] quotaId [%v].", parentInode, quotaId)
+	//time.Sleep(300 * time.Second)
 	delete(quotaInfos.QuotaInfoMap, quotaId)
 	var extend = NewExtend(parentInode)
 	value, err := json.Marshal(quotaInfos.QuotaInfoMap)
@@ -271,7 +288,7 @@ func (mp *metaPartition) deleteSubQuota(parentInode uint64, quotaId uint32, quot
 		log.LogErrorf("deleteSubQuota putExtend [%v] fail [%v]", quotaInfos, err)
 		return
 	}
-	log.LogInfof("deleteSubQuota mp [%v] inode [%v] quotaInfo [%v] success.", mp.config.PartitionId, parentInode, quotaInfo)
+	log.LogInfof("deleteSubQuota mp [%v] inode [%v] quotaInfo [%v] newGoroutine [%v] success.", mp.config.PartitionId, parentInode, quotaInfo, newGoroutine)
 	return
 }
 
@@ -341,10 +358,10 @@ func (mp *metaPartition) statisticExtendByLoad(extend *Extend) {
 			baseInfo.UsedFiles += 1
 			mqMgr.statisticBase.Store(quotaId, baseInfo)
 			log.LogDebugf("[statisticExtendByLoad] quotaId [%v] baseInfo [%v]", quotaId, baseInfo)
-		}
 
+		}
 	}
-	log.LogInfof("statisticExtendByLoad ino [%v] isFind [%v] quotaIds [%v].", ino.Inode, isFind, quotaIds)
+	log.LogInfof("statisticExtendByLoad ino [%v] isFind [%v].", ino.Inode, isFind)
 	return
 }
 
@@ -412,12 +429,36 @@ func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind boo
 		return
 	}
 	isFind = true
+	quotaInfos.RLock()
 	for quotaId := range quotaInfos.QuotaInfoMap {
 		quotaIds = append(quotaIds, quotaId)
 	}
+	quotaInfos.RUnlock()
 	log.LogInfof("isExistQuota inode:[%v] quotaIds [%v] isFind[%v]", ino, quotaIds, isFind)
 	return
 }
+
+// func (mp *metaPartition) getInodeQuotas(extend *Extend) (infos map[uint32]*proto.MetaQuotaInfo, isFind bool) {
+// 	value, exist := extend.Get([]byte(proto.QuotaKey))
+// 	if !exist {
+// 		isFind = false
+// 		log.LogErrorf("getInodeQuotas quotakey is not exist inode:%v", extend.GetInode())
+// 		return
+// 	}
+// 	var quotaInfos = &proto.MetaQuotaInfos{
+// 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
+// 	}
+// 	if err := json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
+// 		log.LogErrorf("set quota Unmarshal quotaInfos fail [%v]", err)
+// 		isFind = false
+// 		return
+// 	}
+// 	isFind = true
+// 	infos = quotaInfos.QuotaInfoMap
+
+// 	log.LogInfof("getInodeQuotas inode:[%v] infos [%v] isFind[%v]", extend.GetInode(), infos, isFind)
+// 	return
+// }
 
 func (mp *metaPartition) isOverQuota(ino uint64, size bool, files bool) (status uint8) {
 	quotaIds, isFind := mp.isExistQuota(ino)
@@ -523,4 +564,42 @@ func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
 	e.Merge(extend, true)
 	log.LogInfof("setInodeQuota Inode [%v] quota [%v] success.", inode, quotaIds)
 	return
+}
+
+func (mp *metaPartition) UpdateInodeQuota() {
+	setInodeMap := make(map[uint32][]uint64)
+	deleteInodeMap := make(map[uint32][]uint64)
+	mp.extendTree.Ascend(func(i BtreeItem) bool {
+		var quotaInfos = &proto.MetaQuotaInfos{
+			QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
+		}
+		e := i.(*Extend)
+		value, exist := e.Get([]byte(proto.QuotaKey))
+		if exist {
+
+			if err := json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
+				log.LogErrorf("UpdateInodeQuota Unmarshal quotaInfos fail [%v]", err)
+				return true
+			}
+			for quotaId, quotaInfo := range quotaInfos.QuotaInfoMap {
+				log.LogInfof("hytemp UpdateInodeQuota inode [%v] quotaId [%v] quotaInfo [%v]", e.GetInode(), quotaId, quotaInfo)
+				if quotaInfo.Status == proto.QuotaInit {
+					setInodeMap[quotaId] = append(setInodeMap[quotaId], e.GetInode())
+				} else if quotaInfo.Status == proto.QuotaDeleting {
+					deleteInodeMap[quotaId] = append(deleteInodeMap[quotaId], e.GetInode())
+				}
+			}
+		}
+		return true
+	})
+
+	log.LogInfof("UpdateInodeQuota setInodeMap len [%v], deleteInodeMap len [%v]", len(setInodeMap), len(deleteInodeMap))
+
+	for quotaId, inodes := range setInodeMap {
+		mp.batchSetSubInodeQuotaToMetaNode(inodes, quotaId)
+	}
+
+	for quotaId, inodes := range deleteInodeMap {
+		mp.batchDeleteSubInodeQuotaToMetaNode(inodes, quotaId)
+	}
 }
