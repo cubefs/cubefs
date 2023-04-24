@@ -135,6 +135,9 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	vols := mgr.c.copyVols()
 	for _, vol := range vols {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
+		if !proto.IsHot(vol.VolType) && vol.CacheAction == proto.NoCache {
+			continue
+		}
 		var body []byte
 		if body, err = vol.getDataPartitionsView(); err != nil {
 			log.LogErrorf("followerReadManager.sendFollowerVolumeDpView err %v", err)
