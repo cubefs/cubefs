@@ -1253,7 +1253,17 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 	}
 }
 
-func (vol *Vol) initQuotaManager(c *Cluster) (err error) {
+func (vol *Vol) initQuotaManager(c *Cluster) {
+	vol.quotaManager = &MasterQuotaManager{
+		MpQuotaInfoMap:       make(map[uint64][]*proto.QuotaReportInfo),
+		IdQuotaInfoMap:       make(map[uint32]*proto.QuotaInfo),
+		FullPathQuotaInfoMap: make(map[string]*proto.QuotaInfo),
+		c:                    c,
+		vol:                  vol,
+	}
+}
+
+func (vol *Vol) loadQuotaManager(c *Cluster) (err error) {
 	vol.quotaManager = &MasterQuotaManager{
 		MpQuotaInfoMap:       make(map[uint64][]*proto.QuotaReportInfo),
 		IdQuotaInfoMap:       make(map[uint32]*proto.QuotaInfo),
@@ -1264,7 +1274,7 @@ func (vol *Vol) initQuotaManager(c *Cluster) (err error) {
 
 	result, err := c.fsm.store.SeekForPrefix([]byte(quotaPrefix + strconv.FormatUint(vol.ID, 10)))
 	if err != nil {
-		err = fmt.Errorf("initQuotaManager get quota failed, err [%v]", err)
+		err = fmt.Errorf("loadQuotaManager get quota failed, err [%v]", err)
 		return err
 	}
 
@@ -1272,13 +1282,37 @@ func (vol *Vol) initQuotaManager(c *Cluster) (err error) {
 		var quotaInfo = &proto.QuotaInfo{}
 
 		if err = json.Unmarshal(value, quotaInfo); err != nil {
-			log.LogErrorf("initQuotaManager Unmarshal fail err [%v]", err)
+			log.LogErrorf("loadQuotaManager Unmarshal fail err [%v]", err)
 			return err
 		}
-		log.LogDebugf("loadQuota info [%v]", quotaInfo)
+		log.LogDebugf("loadQuotaManager info [%v]", quotaInfo)
 		if vol.Name != quotaInfo.VolName {
 			panic("vol name do not match")
 		}
+
+		// if quotaInfo.Status != proto.QuotaComplete {
+		// 	var inodes = make([]uint64, 0)
+		// 	inodes = append(inodes, quotaInfo.RootInode)
+		// 	if quotaInfo.Status == proto.QuotaInit {
+		// 		request := &proto.BatchSetMetaserverQuotaReuqest{
+		// 			PartitionId: quotaInfo.PartitionId,
+		// 			Inodes:      inodes,
+		// 			QuotaId:     quotaInfo.QuotaId,
+		// 		}
+		// 		if err = vol.quotaManager.setQuotaToMetaNode(request); err != nil {
+		// 			log.LogErrorf("set quota [%v] to metanode fail [%v].", quotaInfo, err)
+		// 		}
+		// 	} else if quotaInfo.Status == proto.QuotaDeleting {
+		// 		request := &proto.BatchDeleteMetaserverQuotaReuqest{
+		// 			PartitionId: quotaInfo.PartitionId,
+		// 			Inodes:      inodes,
+		// 			QuotaId:     quotaInfo.QuotaId,
+		// 		}
+		// 		if err = vol.quotaManager.DeleteQuotaToMetaNode(request); err != nil {
+		// 			log.LogErrorf("delete quota [%v] to metanode fail [%v].", quotaInfo, err)
+		// 		}
+		// 	}
+		// }
 
 		vol.quotaManager.IdQuotaInfoMap[quotaInfo.QuotaId] = quotaInfo
 		vol.quotaManager.FullPathQuotaInfoMap[quotaInfo.FullPath] = quotaInfo

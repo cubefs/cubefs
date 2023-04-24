@@ -16,10 +16,12 @@ package meta
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/stat"
 	"strconv"
 	"sync"
+	"sync/atomic"
+
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/stat"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -2213,8 +2215,14 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 	return nil
 }
 
-func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32) {
-	defer wg.Done()
+func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32,
+	currentGoroutineNum *int32, newGoroutine bool) {
+	defer func() {
+		if newGoroutine {
+			atomic.AddInt32(currentGoroutineNum, -1)
+			wg.Done()
+		}
+	}()
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -2252,11 +2260,19 @@ func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition,
 		log.LogErrorf("batchSetInodeQuota: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
+	log.LogInfof("batchSetInodeQuota inodes [%v] quota [%v] cur [%v] newGoroutine [%v] success.",
+		inodes, quotaId, *currentGoroutineNum, newGoroutine)
 	return
 }
 
-func (mw *MetaWrapper) batchDeleteInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32) {
-	defer wg.Done()
+func (mw *MetaWrapper) batchDeleteInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32,
+	currentGoroutineNum *int32, newGoroutine bool) {
+	defer func() {
+		if newGoroutine {
+			atomic.AddInt32(currentGoroutineNum, -1)
+			wg.Done()
+		}
+	}()
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -2294,6 +2310,8 @@ func (mw *MetaWrapper) batchDeleteInodeQuota(wg *sync.WaitGroup, mp *MetaPartiti
 		log.LogErrorf("batchDeleteInodeQuota: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
+	log.LogInfof("batchDeleteInodeQuota inodes [%v] quota [%v] cur [%v] newGoroutine [%v] success.",
+		inodes, quotaId, *currentGoroutineNum, newGoroutine)
 	return
 }
 

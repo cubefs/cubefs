@@ -1,9 +1,10 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/proto"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -89,4 +90,17 @@ func (m *MetaNode) updateNodeInfo() {
 	}
 
 	//updateDirChildrenNumLimit(clusterInfo.DirChildrenNumLimit)
+}
+
+func (m *MetaNode) startUpdateInodeQuota() {
+	//time.Sleep(100 * time.Second)
+	if manager, ok := m.metadataManager.(*metadataManager); ok {
+		manager.mu.RLock()
+		for _, p := range manager.partitions {
+			if mp, ok := p.(*metaPartition); ok {
+				mp.UpdateInodeQuota()
+			}
+		}
+		manager.mu.RUnlock()
+	}
 }

@@ -168,6 +168,7 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.loadDataPartitions(); err != nil {
 		panic(err)
 	}
+
 	if err = m.cluster.startDecommissionListTraverse(); err != nil {
 		panic(err)
 	}
@@ -196,6 +197,12 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadApiLimiterInfo] end")
+
+	log.LogInfo("action[loadQuota] begin")
+	if err = m.cluster.loadQuota(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadQuota] end")
 }
 
 func (m *Server) clearMetadata() {
