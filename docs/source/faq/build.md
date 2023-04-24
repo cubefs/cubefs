@@ -29,3 +29,11 @@ There are two ways to solve this problem:
 When compiling the erasure coding subsystem, an error message is displayed: `fatal error: rocksdb/c.h: no such file or directory...`
 - First, confirm whether the file pointed to by the error message exists in the `.deps/include/rocksdb` directory.
 - If it exists, try `source env.sh` and try again. If the file does not exist or the error still occurs, you can delete all the rocksdb-related files in the `.deps` directory and then recompile.
+
+## cannot find -lbz2
+
+To resolve the error message "/usr/bin/ld: cannot find -lbz2" during compilation, you should check if the "bzip2-devel" package is installed with a version of 1.0.6 or higher.
+
+## cannot find -lz
+
+To resolve the error message "/usr/bin/ld: cannot find -lz" during compilation, you should check if the "zlib-devel" package is installed with a version of 1.2.7 or higher.
