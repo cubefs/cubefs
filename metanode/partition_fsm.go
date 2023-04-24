@@ -432,10 +432,10 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
 				//txRollbackDentries: mp.txProcessor.txResource.txRollbackDentries,
 			}
-			if mp.txProcessor.txManager.txTree.Len() > 0 {
+			/*if mp.txProcessor.txManager.txTree.Len() > 0 {
 				log.LogDebugf("ApplySnapshot: notify transaction expiration")
 				mp.txProcessor.txManager.notifyNewTransaction()
-			}
+			}*/
 
 			select {
 			case mp.extReset <- struct{}{}:
