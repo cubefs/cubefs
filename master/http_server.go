@@ -76,7 +76,8 @@ func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
 		}
 	} else if r.URL.Path == proto.AdminChangeMasterLeader ||
 		r.URL.Path == proto.AdminOpFollowerPartitionsRead ||
-		r.URL.Path == proto.AdminPutDataPartitions {
+		r.URL.Path == proto.AdminPutDataPartitions ||
+		r.URL.Path == "/metrics" {
 		followerRead = true
 	}
 	return
