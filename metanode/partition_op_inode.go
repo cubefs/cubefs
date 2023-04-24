@@ -101,38 +101,53 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	var (
 		status = proto.OpNotExistErr
 		reply  []byte
+		resp   interface{}
+		qinode *MetaQuotaInode
 	)
 	inoID, err := mp.nextInodeID()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
 		return
 	}
-	for _, quotaId := range req.QuotaIds {
-		status = mp.mqMgr.IsOverQuota(false, true, quotaId)
-		if status != 0 {
-			err = errors.New("create inode is over quota")
-			reply = []byte(err.Error())
-			p.PacketErrorWithBody(status, reply)
-			return
-		}
-	}
 	ino := NewInode(inoID, req.Mode)
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
-	qinode := &MetaQuotaInode{
-		inode:    ino,
-		quotaIds: req.QuotaIds,
-	}
-	val, err := qinode.Marshal()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
-	}
-	resp, err := mp.submit(opFSMCreateInode, val)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-		return
+	if defaultQuotaSwitch {
+		for _, quotaId := range req.QuotaIds {
+			status = mp.mqMgr.IsOverQuota(false, true, quotaId)
+			if status != 0 {
+				err = errors.New("create inode is over quota")
+				reply = []byte(err.Error())
+				p.PacketErrorWithBody(status, reply)
+				return
+			}
+		}
+		qinode = &MetaQuotaInode{
+			inode:    ino,
+			quotaIds: req.QuotaIds,
+		}
+		val, err := qinode.Marshal()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return err
+		}
+		resp, err = mp.submit(opFSMCreateInodeQuota, val)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			return err
+		}
+	} else {
+		val, err := ino.Marshal()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return err
+		}
+		resp, err = mp.submit(opFSMCreateInode, val)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			return err
+		}
 	}
 
 	if resp.(uint8) == proto.OpOk {

@@ -145,8 +145,6 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		}
 		mp.acucumUidSizeByLoad(ino)
 
-		//mp.statisticExtendByLoad(ino)
-
 		mp.size += ino.Size
 
 		mp.fsmCreateInode(ino)
@@ -247,6 +245,7 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 	var numExtends uint64
 	numExtends, n = binary.Uvarint(mem)
 	offset += n
+
 	for i := uint64(0); i < numExtends; i++ {
 		// read length
 		var numBytes uint64
@@ -262,6 +261,7 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 		offset += int(numBytes)
 		mp.statisticExtendByLoad(extend)
 	}
+
 	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, numExtends, filename)
 	return nil

@@ -175,7 +175,7 @@ func (mqMgr *MasterQuotaManager) deleteQuota(quotaId uint32) (err error) {
 		return
 	}
 
-	var inodes = make([]uint64, 1)
+	var inodes = make([]uint64, 0)
 	inodes = append(inodes, quotaInfo.RootInode)
 	request := &proto.BatchDeleteMetaserverQuotaReuqest{
 		PartitionId: quotaInfo.PartitionId,
