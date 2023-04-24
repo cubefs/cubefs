@@ -362,8 +362,8 @@ type TransactionManager struct {
 	txProcessor *TransactionProcessor
 	started     bool
 	blacklist   *util.Set
-	newTxCh     chan struct{}
-	exitCh      chan struct{}
+	//newTxCh     chan struct{}
+	exitCh chan struct{}
 	sync.RWMutex
 }
 
@@ -395,7 +395,7 @@ func NewTransactionManager(txProcessor *TransactionProcessor) *TransactionManage
 		started:     false,
 		blacklist:   util.NewSet(),
 		exitCh:      make(chan struct{}),
-		newTxCh:     make(chan struct{}, 1),
+		//newTxCh:     make(chan struct{}, 1),
 	}
 	//txMgr.Start()
 	return txMgr
@@ -424,82 +424,16 @@ func NewTransactionProcessor(mp *metaPartition) *TransactionProcessor {
 	return txProcessor
 }
 
-//func (tm *TransactionManager) copyTransactions() map[string]*proto.TransactionInfo {
-//	transactions := make(map[string]*proto.TransactionInfo, 0)
-//	tm.Lock()
-//	defer tm.Unlock()
-//
-//	for key, tx := range tm.transactions {
-//		transactions[key] = tx
-//	}
-//	return transactions
-//}
-/*
-func (tm *TransactionManager) processExpiredTransactions() {
-	//scan transctions periodically, and invoke `rollbackTransaction` to roll back expired transctions
-	log.LogDebugf("processExpiredTransactions for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
-	for {
-		select {
-		case <-tm.exitCh:
-			log.LogDebugf("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
-			return
-		case <-tm.newTxCh:
-			scanTimer := time.NewTimer(time.Second)
-		LOOP:
-			for {
-				select {
-				case <-tm.exitCh:
-					return
-				case <-scanTimer.C:
-					if len(tm.transactions) == 0 {
-						break LOOP
-					}
-
-					transactions := tm.copyTransactions()
-					var wg sync.WaitGroup
-					for _, tx := range transactions {
-						now := time.Now().Unix()
-						if tx.Timeout <= uint32(now-tx.CreateTime) {
-							log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
-							wg.Add(1)
-							go func() {
-								defer wg.Done()
-								req := &proto.TxApplyRequest{
-									TxID:        tx.TxID,
-									TmID:        uint64(tx.TmID),
-									TxApplyType: proto.TxRollback,
-								}
-								status, err := tm.rollbackTransaction(req)
-								if err == nil && status == proto.OpOk {
-									tm.Lock()
-									delete(tm.transactions, tx.TxID)
-									tm.Unlock()
-									log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back done", tx)
-								} else {
-									log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back failed, status(%v), err(%v)",
-										tx, status, err)
-								}
-							}()
-
-						} else {
-							log.LogDebugf("processExpiredTransactions: transaction (%v) is ongoing", tx)
-						}
-					}
-					wg.Wait()
-
-					scanTimer.Reset(time.Second)
-				}
-
-			}
-		}
-	}
-}
-*/
 func (tm *TransactionManager) processExpiredTransactions() {
 	//scan transactions periodically, and invoke `rollbackTransaction` to roll back expired transactions
 	log.LogDebugf("processExpiredTransactions for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
 	clearInterval := time.Second * 60
 	clearTimer := time.NewTimer(clearInterval)
+
+	txCheckInterval := 100 * time.Millisecond
+	txCheckTimer := time.NewTimer(txCheckInterval)
+
+	var counter uint64 = 0
 
 	for {
 		select {
@@ -512,7 +446,89 @@ func (tm *TransactionManager) processExpiredTransactions() {
 		case <-clearTimer.C:
 			tm.blacklist.Clear()
 			clearTimer.Reset(clearInterval)
-			//log.LogDebugf("processExpiredTransactions: blacklist cleared")
+		//log.LogDebugf("processExpiredTransactions: blacklist cleared")
+		case <-txCheckTimer.C:
+			//tm.notifyNewTransaction()
+
+			if tm.txTree.Len() == 0 {
+				counter++
+				if counter >= 100 {
+					txCheckInterval = time.Second
+				} else {
+					txCheckInterval = 100 * time.Millisecond
+				}
+				txCheckTimer.Reset(txCheckInterval)
+				continue
+			} else {
+				counter = 0
+			}
+
+			var wg sync.WaitGroup
+			f := func(i BtreeItem) bool {
+				tx := i.(*proto.TransactionInfo)
+
+				//now := time.Now().Unix()
+				if tx.IsExpired() {
+					log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						req := &proto.TxApplyRequest{
+							TxID:        tx.TxID,
+							TmID:        uint64(tx.TmID),
+							TxApplyType: proto.TxRollback,
+						}
+						status, err := tm.rollbackTransaction(req, RbFromTM)
+						if err == nil && status == proto.OpOk {
+							//tm.Lock()
+							//tm.txTree.Delete(tx)
+							//tm.Unlock()
+							log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back done", tx)
+						} else {
+							log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back failed, status(%v), err(%v)",
+								tx, status, err)
+						}
+					}()
+
+				} else {
+					log.LogDebugf("processExpiredTransactions: transaction (%v) is ongoing", tx)
+				}
+				return true
+			}
+
+			tm.txTree.GetTree().Ascend(f)
+			wg.Wait()
+			txCheckInterval = 100 * time.Millisecond
+			txCheckTimer.Reset(txCheckInterval)
+		}
+	}
+
+}
+
+/*func (tm *TransactionManager) processExpiredTransactions() {
+	//scan transactions periodically, and invoke `rollbackTransaction` to roll back expired transactions
+	log.LogDebugf("processExpiredTransactions for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
+	clearInterval := time.Second * 60
+	clearTimer := time.NewTimer(clearInterval)
+
+	txCheckInterval := time.Second * 30
+	txCheckTimer := time.NewTimer(txCheckInterval)
+
+	for {
+		select {
+		case <-tm.txProcessor.mp.stopC:
+			log.LogDebugf("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
+			return
+		case <-tm.exitCh:
+			log.LogDebugf("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
+			return
+		case <-clearTimer.C:
+			tm.blacklist.Clear()
+			clearTimer.Reset(clearInterval)
+		//log.LogDebugf("processExpiredTransactions: blacklist cleared")
+		case <-txCheckTimer.C:
+			tm.notifyNewTransaction()
+			txCheckTimer.Reset(txCheckInterval)
 		case <-tm.newTxCh:
 			scanTimer := time.NewTimer(0)
 		LOOP:
@@ -569,7 +585,7 @@ func (tm *TransactionManager) processExpiredTransactions() {
 		}
 	}
 
-}
+}*/
 
 func (tm *TransactionManager) Start() {
 	//only metapartition raft leader can start scan goroutine
@@ -580,7 +596,7 @@ func (tm *TransactionManager) Start() {
 	}
 	//if _, ok := tm.txProcessor.mp.IsLeader(); ok {
 	go tm.processExpiredTransactions()
-	tm.notifyNewTransaction()
+	//tm.notifyNewTransaction()
 	//}
 	tm.started = true
 	log.LogDebugf("TransactionManager for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
@@ -659,14 +675,14 @@ func (tm *TransactionManager) getTransaction(txID string) (txInfo *proto.Transac
 	return
 }
 
-func (tm *TransactionManager) notifyNewTransaction() {
+/*func (tm *TransactionManager) notifyNewTransaction() {
 	select {
 	case tm.newTxCh <- struct{}{}:
 		log.LogDebugf("notifyNewTransaction, scan routine notified!")
 	default:
 		log.LogDebugf("notifyNewTransaction, skipping notify!")
 	}
-}
+}*/
 
 func (tm *TransactionManager) updateTxIdCursor(txId string) (err error) {
 	arr := strings.Split(txId, "_")
@@ -685,7 +701,7 @@ func (tm *TransactionManager) updateTxIdCursor(txId string) (err error) {
 
 func (tm *TransactionManager) addTxInfo(txInfo *proto.TransactionInfo) {
 	tm.txTree.ReplaceOrInsert(txInfo, true)
-	tm.notifyNewTransaction()
+	//tm.notifyNewTransaction()
 }
 
 //TM register a transaction, process client transaction
