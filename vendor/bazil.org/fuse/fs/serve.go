@@ -308,8 +308,8 @@ type HandleReadDirPlusAller interface {
 
 // A DirentPlus represents a single directory entry and its information.
 type DirentPlus struct {
-	Node 	Node
-	Dirent	fuse.Dirent
+	Node   Node
+	Dirent fuse.Dirent
 }
 
 // AppendDirentPlus appends the encoded form of a directory entry info to data
@@ -439,6 +439,7 @@ type ContextNode struct {
 type ContextHandle struct {
 	HandleID uint64
 	NodeID   uint64
+	ReadData []byte
 }
 
 type FuseContext struct {
@@ -489,7 +490,7 @@ func (s *Server) saveFuseContext() (fuseContext *FuseContext) {
 			}
 		}
 		cfslog.LogDebugf("saveFuseContext. Opened inode: %d, nodeID: %d\n", s.node[sh.nodeID].inode, sh.nodeID)
-		ch := &ContextHandle{handleid, uint64(sh.nodeID)}
+		ch := &ContextHandle{handleid, uint64(sh.nodeID), sh.readData}
 		handleList = append(handleList, ch)
 		hcount++
 	}
@@ -542,7 +543,7 @@ func (s *Server) rebuildFuseContext(fs FS, fuseContext *FuseContext) {
 		}
 		cfslog.LogDebugf("rebuildFuseContext: reopen inode : %d\n", sn.inode)
 
-		sh := &serveHandle{handle: hdl, nodeID: fuse.NodeID(ch.NodeID)}
+		sh := &serveHandle{handle: hdl, readData: ch.ReadData, nodeID: fuse.NodeID(ch.NodeID)}
 		for uint64(len(s.handle)) < ch.HandleID {
 			freeHandleID := fuse.HandleID(len(s.handle))
 			s.freeHandle = append(s.freeHandle, freeHandleID)
