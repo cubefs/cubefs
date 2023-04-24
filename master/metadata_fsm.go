@@ -49,6 +49,7 @@ type MetadataFsm struct {
 	peerChangeHandler   raftPeerChangeHandler
 	snapshotHandler     raftApplySnapshotHandler
 	UserAppCmdHandler   raftUserCmdApplyHandler
+	onSnapshot          bool
 }
 
 func newMetadataFsm(store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *MetadataFsm) {
@@ -180,9 +181,14 @@ func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
 	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] reset rocksdb before applying snapshot"))
 	snap := mf.store.RocksDBSnapshot()
-	defer mf.store.ReleaseSnapshot(snap)
+	mf.onSnapshot = true
 	it := mf.store.Iterator(snap)
-	defer it.Close()
+
+	defer func() {
+		mf.store.ReleaseSnapshot(snap)
+		it.Close()
+		mf.onSnapshot = false
+	}()
 
 	for it.SeekToFirst(); it.Valid(); it.Next() {
 		key := string(it.Key().Data())
