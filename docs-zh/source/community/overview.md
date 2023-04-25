@@ -17,14 +17,12 @@
 
 ## 社区
 
-- 邮件组
-  - [cubefs-maintainers@groups.io](https://groups.io/g/cubefs-maintainers) ，主要订阅github仓库的`Commit Events`、`Pull Requests`、`Issue`及`Branches and Tags`相关变更事件，`maintainers`可订阅（当然如果其他用户如果想接受这些动态，也欢迎订阅）。
-  - [cubefs-users@groups.io](https://groups.io/g/cubefs-users) ，主要订阅github仓库的`Branches and Tags`相关变更事件，关注新版本的发布动态，CubeFS的用户可订阅。
-- [Slack](https://join.slack.com/t/cubefs/shared_invite/zt-1ra17fe0i-hMqdQsm5o661aPR29LsNCg) ，可以加入slack组，讨论 CubeFS 使用、社区支持和特性开发等。
-- [Twitter](https://twitter.com/cubefs) ，可以关注CubeFS的推特账号，了解官方动态。
-- 微信公众号，不定期推送官方活动、最佳实践以及源码解读系列文章。
+- 邮件组[users@cubefs.groups.io](https://cubefs.groups.io/g/users) ：订阅邮件组，关注版本发布、社区活动等，也可以讨论任何有关CubeFS的内容。
+- [Slack](https://join.slack.com/t/cubefs/shared_invite/zt-1ra17fe0i-hMqdQsm5o661aPR29LsNCg) ：加入CubeFS Slack组，可以实时讨论任何有关CubeFS的内容。
+- [Twitter](https://twitter.com/cubefs) ：关注推特账号：`@CubeFS`，获取最新动态。
+- 微信公众号: 关注微信公众号：`CubeFS官微`，获取产品动态、技术分享、社区活动等
 
   ![qrcode](./pic/qrcode.png)
-- 微信 CubeFS Community 群，发布版本更新、社区活动及相关动态，也可以讨论交流存储相关技术。（扫码添加**CubeFS小助手微信**加入）
+- 微信 CubeFS Community 群: 扫码或搜索微信号 `cubefs` 加入CubeFS微信社区群，分享使用心得或了解版本更新、社区活动及相关动态。
 
   ![qrcode](./pic/20230324085341754.png)
