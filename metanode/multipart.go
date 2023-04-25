@@ -143,7 +143,8 @@ func (m *Parts) UpdateOrStore(part *Part) (oldInode uint64, update, conflict boo
 			return
 		}
 		if part.UploadTime.Before(oldPart.UploadTime) {
-			log.LogWarnf("Request part putTime[%v] is less than old part putTime[%v], partNumber[%v]", part.UploadTime, oldPart.UploadTime, part.ID)
+			log.LogWarnf("Request part putTime[%v] is less than old part putTime[%v], partNumber[%v]",
+				part.UploadTime.UnixNano(), oldPart.UploadTime.UnixNano(), part.ID)
 			conflict = true
 			return
 		}
