@@ -391,6 +391,8 @@ void testSymlink() {
     char *file1 = "file1";
     char *file2 = "file2";
     char *file3 = "file3";
+    char *file4 = "notExist";
+
     int res, fd;
     ssize_t size;
     char buf[PATH_LEN] = {0};
@@ -419,6 +421,11 @@ void testSymlink() {
     strcat(filepath3, "/");
     strcat(filepath3, file3);
     unlink(filepath3);
+
+    char filepath4[PATH_LEN] = {0};
+    strcat(filepath4, dir);
+    strcat(filepath4, "/");
+    strcat(filepath4, file4);
 
     rmdir(dir);
 
@@ -453,9 +460,11 @@ void testSymlink() {
     assertf(res == 0, "stat symlink %s returning %d, expect 0", filepath2, res);
 
     p = realpath(filepath1, buf);
-    assertf(memcmp(p, filepath1, strlen(filepath1)) == 0, "realpath %s returning %s, expect %s", filepath1, p, filepath1);
+    assertf(memcmp(p, filepath1, strlen(filepath1)) == 0 && errno == 0, "realpath %s returning %s, errno: %d; expect %s, errno: 0", filepath1, p, errno, filepath1);
     p = realpath(filepath2, buf);
-    assertf(memcmp(p, filepath1, strlen(filepath1)) == 0, "realpath %s returning %s, expect %s", filepath2, p, filepath1);
+    assertf(memcmp(p, filepath1, strlen(filepath1)) == 0 && errno == 0, "realpath %s returning %s, errno: %d; expect %s, errno: 0", filepath2, p, errno, filepath1);
+    p = realpath(filepath4, buf);
+    assertf(errno == ENOENT && p == NULL, "realpath %s returing %s, errno: %d; expect NULL, errno: ENOENT", filepath4, p, errno);
 
     unlink(filepath2);
     unlink(filepath1);

@@ -819,12 +819,6 @@ int real_closedir(DIR *dirp) {
 }
 
 char *cfs_realpath(const char *cfs_path, char *resolved_path) {
-    int res1 = cfs_errno(cfs_access(g_client_info.cfs_client_id, cfs_path, F_OK));
-    if(res1 < 0) {
-        errno = ENOENT;
-        return NULL;
-    }
-
     char *buf = NULL;
     int buf_len = 0;
     char *res_path = resolved_path;
@@ -833,18 +827,14 @@ char *cfs_realpath(const char *cfs_path, char *resolved_path) {
         memset(res_path, 0, PATH_MAX);
     }
     ssize_t res2 = cfs_errno_ssize_t(cfs_readlink(g_client_info.cfs_client_id, cfs_path, res_path, PATH_MAX));
-    if(res2 < 0) {
-        buf = cat_path(g_client_info.mount_point, &cfs_path[1]);
-        buf_len = strlen(buf);
-        if(buf_len >= PATH_MAX) {
-            errno = ENAMETOOLONG;
-        } else {
-            errno = 0;
-        }
-    } else {
+    if(errno == EINVAL) {
+        memcpy(res_path, cfs_path, strlen(cfs_path));
+        errno = 0;
+    }
+    if(errno == 0) {
         if(res_path[0] == '/') {
             buf = cat_path(g_client_info.mount_point, &res_path[1]);
-            buf_len = strlen(g_client_info.mount_point) + res2;
+            buf_len = strlen(buf);
             if(buf_len >= PATH_MAX) {
                 errno = ENAMETOOLONG;
             } else {
