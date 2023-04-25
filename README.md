@@ -59,7 +59,7 @@ Refer to [document](https://cubefs.io/docs/master/evaluation/env.html) for perfo
 ## Community
 
 - Homepage: [cubefs.io](https://cubefs.io/)
-- Mailing list: cubefs-users@groups.io
+- Mailing list: users@cubefs.groups.io
 - Slack: [cubefs.slack.com](https://cubefs.slack.com/)
 - WeChat: detail see [here](https://github.com/cubefs/cubefs/issues/604).
 
