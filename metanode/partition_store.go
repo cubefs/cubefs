@@ -413,7 +413,7 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 	}()
 	filename := path.Join(rootDir, txRbDentryFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = nil
+		err = errors.NewErrorf("[loadTxRbDentry] Stat: %s", err.Error())
 		return
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
@@ -424,6 +424,7 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 	defer fp.Close()
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
 	txBuf := make([]byte, 4)
+	crcCheck := crc32.NewIEEE()
 
 	for {
 		txBuf = txBuf[:4]
@@ -432,11 +433,20 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 		if err != nil {
 			if err == io.EOF {
 				err = nil
+				if res := crcCheck.Sum32(); res != crc {
+					log.LogErrorf("[loadTxRbDentry]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+					return ErrSnapshotCrcMismatch
+				}
 				return
 			}
 			err = errors.NewErrorf("[loadTxRbDentry] ReadHeader: %s", err.Error())
 			return
 		}
+		// length crc
+		if _, err = crcCheck.Write(txBuf); err != nil {
+			return err
+		}
+
 		length := binary.BigEndian.Uint32(txBuf)
 
 		// next read body
@@ -456,6 +466,12 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 			err = errors.NewErrorf("[loadTxRbDentry] Unmarshal: %s", err.Error())
 			return
 		}
+
+		// data crc
+		if _, err = crcCheck.Write(txBuf); err != nil {
+			return err
+		}
+
 		//mp.txProcessor.txResource.txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
 		mp.txProcessor.txResource.txRbDentryTree.ReplaceOrInsert(txRbDentry, true)
 		numTxRbDentry++
@@ -472,7 +488,7 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 	}()
 	filename := path.Join(rootDir, txRbInodeFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = nil
+		err = errors.NewErrorf("[loadTxRbInode] Stat: %s", err.Error())
 		return
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
@@ -483,6 +499,7 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 	defer fp.Close()
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
 	txBuf := make([]byte, 4)
+	crcCheck := crc32.NewIEEE()
 
 	for {
 		txBuf = txBuf[:4]
@@ -496,6 +513,11 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 			err = errors.NewErrorf("[loadTxRbInode] ReadHeader: %s", err.Error())
 			return
 		}
+		// length crc
+		if _, err = crcCheck.Write(txBuf); err != nil {
+			return err
+		}
+
 		length := binary.BigEndian.Uint32(txBuf)
 
 		// next read body
@@ -515,6 +537,11 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 			err = errors.NewErrorf("[loadTxRbInode] Unmarshal: %s", err.Error())
 			return
 		}
+		// data crc
+		if _, err = crcCheck.Write(txBuf); err != nil {
+			return err
+		}
+
 		//mp.txProcessor.txResource.txRollbackInodes[txRbInode.inode.Inode] = txRbInode
 		mp.txProcessor.txResource.txRbInodeTree.ReplaceOrInsert(txRbInode, true)
 		numTxRbInode++
@@ -531,17 +558,18 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 	}()
 	filename := path.Join(rootDir, txInfoFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = nil
+		err = errors.NewErrorf("[loadTxInfo] Stat: %s", err.Error())
 		return
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
-		err = errors.NewErrorf("[loadInode] OpenFile: %s", err.Error())
+		err = errors.NewErrorf("[loadTxInfo] OpenFile: %s", err.Error())
 		return
 	}
 	defer fp.Close()
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
 	txBuf := make([]byte, 4)
+	crcCheck := crc32.NewIEEE()
 
 	for {
 		txBuf = txBuf[:4]
@@ -550,11 +578,20 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 		if err != nil {
 			if err == io.EOF {
 				err = nil
+				if res := crcCheck.Sum32(); res != crc {
+					log.LogErrorf("[loadTxInfo]: check crc mismatch, expected[%d], actual[%d]", crc, res)
+					return ErrSnapshotCrcMismatch
+				}
 				return
 			}
 			err = errors.NewErrorf("[loadTxInfo] ReadHeader: %s", err.Error())
 			return
 		}
+		// length crc
+		if _, err = crcCheck.Write(txBuf); err != nil {
+			return err
+		}
+
 		length := binary.BigEndian.Uint32(txBuf)
 
 		// next read body
@@ -574,6 +611,12 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 			err = errors.NewErrorf("[loadTxInfo] Unmarshal: %s", err.Error())
 			return
 		}
+
+		// data crc
+		if _, err = crcCheck.Write(txBuf); err != nil {
+			return err
+		}
+
 		//mp.txProcessor.txManager.transactions[txInfo.TxID] = txInfo
 		//mp.txProcessor.txManager.txTree.ReplaceOrInsert(txInfo, true)
 		mp.txProcessor.txManager.addTxInfo(txInfo)
