@@ -52,12 +52,15 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	mp, ok := partition.(*metaPartition)
 	require.True(t, ok)
 	msg := &storeMsg{
-		command:       1,
-		applyIndex:    0,
-		inodeTree:     mp.inodeTree,
-		dentryTree:    mp.dentryTree,
-		extendTree:    mp.extendTree,
-		multipartTree: mp.multipartTree,
+		command:        1,
+		applyIndex:     0,
+		inodeTree:      mp.inodeTree,
+		dentryTree:     mp.dentryTree,
+		extendTree:     mp.extendTree,
+		multipartTree:  mp.multipartTree,
+		txTree:         mp.txProcessor.txManager.txTree,
+		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
+		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
 	}
 	err := mp.store(msg)
 	require.NoError(t, err)
@@ -83,12 +86,15 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	mp.multipartTree.ReplaceOrInsert(multipart, true)
 
 	msg = &storeMsg{
-		command:       1,
-		applyIndex:    0,
-		inodeTree:     mp.inodeTree,
-		dentryTree:    mp.dentryTree,
-		extendTree:    mp.extendTree,
-		multipartTree: mp.multipartTree,
+		command:        1,
+		applyIndex:     0,
+		inodeTree:      mp.inodeTree,
+		dentryTree:     mp.dentryTree,
+		extendTree:     mp.extendTree,
+		multipartTree:  mp.multipartTree,
+		txTree:         mp.txProcessor.txManager.txTree,
+		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
+		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
 	}
 	err = mp.store(msg)
 	require.Nil(t, err)
