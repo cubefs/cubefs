@@ -19,13 +19,13 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/stat"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 // API implementations
@@ -1505,7 +1505,7 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId str
 		Inode:      inodeInfo.Inode,
 		MD5:        md5,
 		Size:       size,
-		UploadTime: inodeInfo.ModifyTime,
+		UploadTime: time.Now(),
 	}
 
 	req := &proto.AddMultipartPartRequest{
