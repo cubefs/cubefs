@@ -400,8 +400,8 @@ func (r *raftFsm) reset(term, lasti uint64, isLeader bool) {
 func (r *raftFsm) resetRandomizedElectionTimeout() {
 	randTick := r.rand.Intn(r.config.ElectionTick)
 	r.randElectionTick = r.config.ElectionTick + randTick
-	logger.Debug("raft[%v] random election timeout randElectionTick=%v, config.ElectionTick=%v, randTick=%v", r.id,
-		r.randElectionTick, r.config.ElectionTick, randTick)
+	logger.Debug("raft[%v,%v] random election timeout randElectionTick=%v, config.ElectionTick=%v, randTick=%v",
+		r.id, r.config.ReplicateAddr, r.randElectionTick, r.config.ElectionTick, randTick)
 }
 
 func (r *raftFsm) pastElectionTimeout() bool {
