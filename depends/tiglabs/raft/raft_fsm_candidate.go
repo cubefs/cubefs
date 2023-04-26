@@ -34,7 +34,7 @@ func (r *raftFsm) becomeCandidate() {
 	r.vote = r.config.NodeID
 	r.state = stateCandidate
 	if logger.IsEnableDebug() {
-		logger.Debug("raft[%v] became candidate at term %d.", r.id, r.term)
+		logger.Debug("raft[%v,%v] became candidate at term %d.", r.id, r.config.TransportConfig.ReplicateAddr, r.term)
 	}
 }
 
@@ -114,8 +114,8 @@ func (r *raftFsm) campaign(force bool) {
 		}
 		li, lt := r.raftLog.lastIndexAndTerm()
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->campaign][%v logterm: %d, index: %d] sent "+
-				"vote request to %v at term %d.   raftFSM[%p]", r.id, lt, li, id, r.term, r)
+			logger.Debug("[raft->campaign][%v,%v logterm: %d, index: %d] sent "+
+				"vote request to %v at term %d.   raftFSM[%p]", r.id, r.config.ReplicateAddr, lt, li, id, r.term, r)
 		}
 
 		m := proto.GetMessage()
@@ -131,9 +131,9 @@ func (r *raftFsm) campaign(force bool) {
 func (r *raftFsm) poll(id uint64, v bool) (granted int) {
 	if logger.IsEnableDebug() {
 		if v {
-			logger.Debug("raft[%v] received vote from %v at term %d.", r.id, id, r.term)
+			logger.Debug("raft[%v,%v] received vote from %v at term %d.", r.id, r.config.ReplicateAddr, id, r.term)
 		} else {
-			logger.Debug("raft[%v] received vote rejection from %v at term %d.", r.id, id, r.term)
+			logger.Debug("raft[%v,%v] received vote rejection from %v at term %d.", r.id, r.config.ReplicateAddr, id, r.term)
 		}
 	}
 	if _, ok := r.votes[id]; !ok {
