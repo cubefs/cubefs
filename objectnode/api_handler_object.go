@@ -731,7 +731,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		metadataDirective = MetadataDirectiveCopy
 	}
 	if metadataDirective != MetadataDirectiveCopy && metadataDirective != MetadataDirectiveReplace {
-		log.LogErrorf("copyObjectHandler: x-amz-metadata-directive invalid: requestID(%v) volume(%v) x-amz-metadata-directive(%v)",
+		log.LogErrorf("copyObjectHandler: x-amz-metadata-directive invalid: requestID(%v) volume(%v) x-amz-metadata-directive(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), metadataDirective, err)
 		errorCode = InvalidArgument
 		return
@@ -1128,6 +1128,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 				// Record and filter out the file.
 				log.LogWarnf("getBucketV2Handler: invalid file found: requestID(%v) volume(%v) path(%v) inode(%v)",
 					GetRequestID(r), vol.Name(), file.Path, file.Inode)
+				result.KeyCount--
 				continue
 			}
 			content := &Content{
@@ -1302,7 +1303,6 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	log.LogDebugf("PutObject, cost: %v", time.Since(startPut))
 	// check content MD5
 	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
 		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
@@ -1310,6 +1310,8 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = BadDigest
 		return
 	}
+	log.LogDebugf("PutObject succeed, requestID(%v) volume(%v) key(%v) costTime: %v", GetRequestID(r),
+		vol.Name(), param.Object(), time.Since(startPut))
 
 	// set response header
 	w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
