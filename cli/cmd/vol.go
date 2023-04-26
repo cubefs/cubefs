@@ -305,6 +305,16 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB\n", vv.Capacity))
 			}
+
+			if optReplicaNum != "" {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v -> %v \n", vv.DpReplicaNum, optReplicaNum))
+				replicaNum, _ := strconv.Atoi(optReplicaNum)
+				vv.DpReplicaNum = uint8(replicaNum)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v \n", vv.Description))
+			}
+
 			if optFollowerRead != "" {
 				isChange = true
 				var enable bool
@@ -314,6 +324,9 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v -> %v\n", formatEnabledDisabled(vv.FollowerRead), formatEnabledDisabled(enable)))
 				vv.FollowerRead = enable
 			} else {
+				if vv.DpReplicaNum == 1 || vv.DpReplicaNum == 2 {
+					vv.FollowerRead = true
+				}
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
 			}
 			if optEbsBlkSize > 0 {
@@ -455,15 +468,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
 			}
 
-			confirmString.WriteString(fmt.Sprintf("  ReplicaNum                : %v\n", vv.DpReplicaNum))
-			if optReplicaNum != "" {
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v -> %v \n", vv.DpReplicaNum, optReplicaNum))
-				replicaNum, _ := strconv.Atoi(optReplicaNum)
-				vv.DpReplicaNum = uint8(replicaNum)
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v \n", vv.Description))
-			}
 			if err != nil {
 				return
 			}
