@@ -1367,10 +1367,12 @@ func (tr *TransactionResource) rollbackInode(req *proto.TxInodeApplyRequest) (st
 	switch rbInode.rbType {
 	case TxAdd:
 		tr.txProcessor.mp.freeList.Remove(rbInode.inode.Inode)
-		_, ok := tr.txProcessor.mp.inodeTree.ReplaceOrInsert(rbInode.inode, false)
-		if ok && tr.txProcessor.mp.uidManager != nil {
-			tr.txProcessor.mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Extents.eks)
+		if ino := tr.txProcessor.mp.inodeTree.Get(rbInode.inode); ino != nil {
+			if ino.(*Inode).IsTempFile() && tr.txProcessor.mp.uidManager != nil {
+				tr.txProcessor.mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Extents.eks)
+			}
 		}
+		tr.txProcessor.mp.inodeTree.ReplaceOrInsert(rbInode.inode, true)
 
 		//_ = tr.txProcessor.mp.fsmCreateInode(rbInode.inode)
 	case TxDelete:
