@@ -40,11 +40,10 @@ import (
 )
 
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
-	s.rateLimit(p, c)
-
 	sz := p.Size
 
 	tpObject := exporter.NewTPCnt(p.GetOpMsg())
+	s.rateLimit(p, c)
 
 	start := time.Now().UnixNano()
 	defer func() {

@@ -121,9 +121,9 @@ func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
 
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	metric := exporter.NewTPCnt(p.GetOpMsg())
 	m.rateLimit(conn, p, remoteAddr)
 
-	metric := exporter.NewTPCnt(p.GetOpMsg())
 	defer metric.Set(err)
 
 	//now := time.Now()
