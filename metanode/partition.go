@@ -815,8 +815,10 @@ func (mp *metaPartition) parseCrcFromFile() ([]uint32, error) {
 	return crcs, nil
 }
 
-func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
+const CRC_NUM_BEFORE_CUBEFS_V3_2_2 int = 4
+const CRC_NUM_SINCE_CUBEFS_V3_2_2 int = 7
 
+func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	crcs, err := mp.parseCrcFromFile()
 	if err != nil {
 		return err
@@ -827,12 +829,19 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		mp.loadDentry,
 		mp.loadExtend,
 		mp.loadMultipart,
-		mp.loadTxInfo,
-		mp.loadTxRbInode,
-		mp.loadTxRbDentry,
 	}
 
-	if len(crcs) != len(loadFuncs) {
+	var needLoadTxStuff bool
+	//handle compatibility in upgrade scenarios
+	if len(crcs) == CRC_NUM_BEFORE_CUBEFS_V3_2_2 {
+		needLoadTxStuff = false
+	} else if len(crcs) == CRC_NUM_SINCE_CUBEFS_V3_2_2 {
+		needLoadTxStuff = true
+		loadFuncs = append(loadFuncs, mp.loadTxInfo)
+		loadFuncs = append(loadFuncs, mp.loadTxRbInode)
+		loadFuncs = append(loadFuncs, mp.loadTxRbDentry)
+	} else {
+		log.LogErrorf("action[LoadSnapshot] crc array length %d not match", len(crcs))
 		return ErrSnapshotCrcMismatch
 	}
 
@@ -855,9 +864,13 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 			return
 		}
 	}
-	if err = mp.loadTxID(snapshotPath); err != nil {
-		return
+
+	if needLoadTxStuff {
+		if err = mp.loadTxID(snapshotPath); err != nil {
+			return
+		}
 	}
+
 	return mp.loadApplyID(snapshotPath)
 }
 
