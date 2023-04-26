@@ -2,6 +2,7 @@
 
 ## Getting Started Series
 
+- [Ten-minute introduction to CubeFS | Easily Master CubeFS Object Storage Permission Control](https://mp.weixin.qq.com/s/dJ2e5XDyVth3HL1UWR7fvw) , April 25, 2023，Storage Team @OPPO
 - [Ten-minute introduction to CubeFS | Cross-platform use based on FTP, NFS, and SMB](https://mp.weixin.qq.com/s/PyOwFzOSZK0pe6Xd0MnHJQ) , April 18, 2023，Storage Team @OPPO
 - [Ten-minute introduction to CubeFS | Easily build big data storage](https://mp.weixin.qq.com/s/MHSK4hG6omHajtrJcrjzvw), March 31, 2023, Storage Team @OPPO
 - [Ten-minute introduction to CubeFS | Building a CubeFS Cluster on a Single Machine](https://mp.weixin.qq.com/s/_-CcKBbNBRyR6mHkfNZIdw), March 7, 2023, Storage Team @OPPO

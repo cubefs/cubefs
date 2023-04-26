@@ -2,6 +2,7 @@
 
 ## 入门系列
 
+- [CubeFS十分钟入门 | 轻松掌握CubeFS对象存储权限管控](https://mp.weixin.qq.com/s/dJ2e5XDyVth3HL1UWR7fvw) ，2023-04-25，存储团队@OPPO
 - [CubeFS十分钟入门 | 基于FTP、NFS、SMB跨平台使用](https://mp.weixin.qq.com/s/PyOwFzOSZK0pe6Xd0MnHJQ) ，2023-04-18，存储团队@OPPO
 - [CubeFS十分钟入门 | 轻松构建大数据存储](https://mp.weixin.qq.com/s/MHSK4hG6omHajtrJcrjzvw) ，2023-03-31，存储团队@OPPO
 - [CubeFS十分钟入门 | 单机搭建CubeFS集群](https://mp.weixin.qq.com/s/_-CcKBbNBRyR6mHkfNZIdw) ，2023-03-07，存储团队@OPPO
