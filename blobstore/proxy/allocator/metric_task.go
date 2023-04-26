@@ -55,8 +55,9 @@ func (v *volumeMgr) metricReportTask() {
 
 func (v *volumeMgr) metricReport(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
-	for codeMode, info := range v.modeInfos {
-		volNums := info.VolumeNum()
+	for codeMode, modeInfo := range v.modeInfos {
+		vols := modeInfo.volumes.List()
+		volNums := len(vols)
 		proxyStatusMetric.With(
 			prometheus.Labels{
 				"service":  "PROXY",
@@ -74,8 +75,8 @@ func (v *volumeMgr) metricReport(ctx context.Context) {
 				"host":     v.Host,
 				"codemode": codeMode.String(),
 				"type":     "total_free_size",
-			}).Set(float64(info.TotalFree()))
+			}).Set(float64(modeInfo.totalFree))
 		span.Debugf("metric report total_free_size: %d, idc: %s, codemode: %s,",
-			info.TotalFree(), v.Idc, codeMode.String())
+			modeInfo.totalFree, v.Idc, codeMode.String())
 	}
 }

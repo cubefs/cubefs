@@ -16,7 +16,7 @@ package allocator
 
 import (
 	"context"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -33,7 +33,7 @@ func (v *volumeMgr) retainTask() {
 	for {
 		select {
 		case <-ticker.C:
-			v.retainAll(ctx)
+			v.retain(ctx)
 		case <-v.closeCh:
 			span.Debugf("loop retain done.")
 			return
@@ -41,71 +41,47 @@ func (v *volumeMgr) retainTask() {
 	}
 }
 
-func (v *volumeMgr) retainAll(ctx context.Context) {
-	var wg sync.WaitGroup
-
-	wg.Add(2)
-	go func() {
-		v.retain(ctx, false)
-		wg.Done()
-	}()
-	go func() {
-		v.retain(ctx, true)
-		wg.Done()
-	}()
-	wg.Wait()
-}
-
 // 1.Judgment of whether the volume is full or not
 // 2.Lease renewal for volumes whose leases are about to expire
-func (v *volumeMgr) retain(ctx context.Context, isBackup bool) {
+func (v *volumeMgr) retain(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
-
-	v.handleFullVols(ctx, isBackup)
-
-	retainTokenArgs := v.genRetainVolume(ctx, isBackup)
-	numTokens := len(retainTokenArgs)
-	if numTokens == 0 {
+	v.handleFullVols(ctx)
+	retainTokenArgs := v.genRetainVolume(ctx)
+	if len(retainTokenArgs) == 0 {
 		return
 	}
-	span.Debugf("retain tokens: %v, lens: %v", retainTokenArgs, numTokens)
-
-	end := 0
-	start := 0
-	for {
-		end = start + v.RetainVolumeBatchNum
-		if end > numTokens {
-			end = numTokens
-		}
-		v.retainVolumeFromCm(ctx, retainTokenArgs[start:end], isBackup)
-		start = end
-		if start < numTokens {
-			time.Sleep(time.Duration(v.RetainBatchIntervalS) * time.Second)
-			continue
-		}
+	span.Debugf("retain tokens: %v, lens: %v", retainTokenArgs, len(retainTokenArgs))
+	args := &clustermgr.RetainVolumeArgs{
+		Tokens: retainTokenArgs,
+	}
+	retainVolume, err := v.clusterMgr.RetainVolume(ctx, args)
+	if err != nil {
+		span.Errorf("retain volume from clusterMgr failed: %v", err)
 		return
 	}
+	span.Debugf("retain result: %#v, lens: %v\n", retainVolume, len(retainVolume.RetainVolTokens))
+	v.handleRetainResult(ctx, retainTokenArgs, retainVolume.RetainVolTokens)
 }
 
 // Determining whether a volume is full or not by heartbeat reduces the time of the allocation process.
-func (v *volumeMgr) handleFullVols(ctx context.Context, isBackup bool) {
+func (v *volumeMgr) handleFullVols(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
-	for codeMode, info := range v.modeInfos {
+	for codeMode, volInfo := range v.modeInfos {
 		fullVols := make([]proto.Vid, 0)
-		vols := info.List(isBackup)
+		vols := volInfo.volumes.List()
 		for _, vol := range vols {
 			vid := vol.Vid
 			vol.mu.Lock()
 			if vol.Free < uint64(v.VolumeReserveSize) {
 				vol.deleted = true
 				fullVols = append(fullVols, vid)
-				info.UpdateTotalFree(isBackup, -vol.Free)
+				atomic.AddUint64(&volInfo.totalFree, -vol.Free)
 			}
 			vol.mu.Unlock()
 		}
 		if len(fullVols) > 0 {
 			for _, vid := range fullVols {
-				info.Delete(vid)
+				volInfo.volumes.Delete(vid)
 				span.Debugf("volume is full, vid: %v,codeMode: %v", vid, codeMode)
 			}
 		}
@@ -113,12 +89,11 @@ func (v *volumeMgr) handleFullVols(ctx context.Context, isBackup bool) {
 }
 
 // remove retain failed volume and update success expire time
-func (v *volumeMgr) handleRetainResult(ctx context.Context, retainTokenArgs []string,
-	retainRet []clustermgr.RetainVolume, isBackup bool) {
+func (v *volumeMgr) handleRetainResult(ctx context.Context, retainTokenArgs []string, retainRet []clustermgr.RetainVolume) {
 	span := trace.SpanFromContextSafe(ctx)
 	if len(retainRet) == 0 {
 		for _, token := range retainTokenArgs {
-			err := v.discardVolume(ctx, token, isBackup)
+			err := v.discardVolume(ctx, token)
 			if err != nil {
 				span.Error(err)
 			}
@@ -132,7 +107,7 @@ func (v *volumeMgr) handleRetainResult(ctx context.Context, retainTokenArgs []st
 			span.Errorf("decodeToken %v error", infos.Token)
 			continue
 		}
-		err = v.updateExpireTime(vid, infos.ExpireTime, isBackup)
+		err = v.updateExpiretime(vid, infos.ExpireTime)
 		if err != nil {
 			span.Error(err, vid)
 		}
@@ -142,27 +117,27 @@ func (v *volumeMgr) handleRetainResult(ctx context.Context, retainTokenArgs []st
 		if _, ok := tokenMap[token]; ok {
 			continue
 		}
-		err := v.discardVolume(ctx, token, isBackup)
+		err := v.discardVolume(ctx, token)
 		if err != nil {
 			span.Error(err, token)
 		}
 	}
 }
 
-func (v *volumeMgr) discardVolume(ctx context.Context, token string, isBackup bool) (err error) {
+func (v *volumeMgr) discardVolume(ctx context.Context, token string) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	_, vid, err := proto.DecodeToken(token)
 	if err != nil {
 		return
 	}
 	span.Debugf("retain failed vid: %v", vid)
-	for _, info := range v.modeInfos {
-		if vol, ok := info.Get(vid, isBackup); ok {
+	for _, modeInfo := range v.modeInfos {
+		if vol, ok := modeInfo.volumes.Get(vid); ok {
 			vol.mu.Lock()
-			info.UpdateTotalFree(isBackup, -vol.Free)
+			atomic.AddUint64(&modeInfo.totalFree, -vol.Free)
 			vol.deleted = true
 			vol.mu.Unlock()
-			info.Delete(vid)
+			modeInfo.volumes.Delete(vid)
 			return
 		}
 	}
@@ -170,12 +145,12 @@ func (v *volumeMgr) discardVolume(ctx context.Context, token string, isBackup bo
 }
 
 // Generate volume information for lease renewal
-func (v *volumeMgr) genRetainVolume(ctx context.Context, isBackup bool) (tokens []string) {
+func (v *volumeMgr) genRetainVolume(ctx context.Context) (tokens []string) {
 	span := trace.SpanFromContextSafe(ctx)
 	tokens = make([]string, 0, 128)
 	vids := make([]proto.Vid, 0, 128)
-	for _, info := range v.modeInfos {
-		vols := info.List(isBackup)
+	for _, volInfos := range v.modeInfos {
+		vols := volInfos.volumes.List()
 		for _, vol := range vols {
 			vids = append(vids, vol.Vid)
 			tokens = append(tokens, vol.Token)
@@ -187,26 +162,12 @@ func (v *volumeMgr) genRetainVolume(ctx context.Context, isBackup bool) (tokens 
 	return
 }
 
-func (v *volumeMgr) updateExpireTime(vid proto.Vid, expireTime int64, isBackup bool) (err error) {
+func (v *volumeMgr) updateExpiretime(vid proto.Vid, expireTime int64) (err error) {
 	for _, modeInfo := range v.modeInfos {
-		if vol, ok := modeInfo.Get(vid, isBackup); ok {
+		if vol, ok := modeInfo.volumes.Get(vid); ok {
 			vol.ExpireTime = expireTime
 			return nil
 		}
 	}
 	return errors.New("vid does not exist ")
-}
-
-func (v *volumeMgr) retainVolumeFromCm(ctx context.Context, tokens []string, isBackup bool) {
-	span := trace.SpanFromContextSafe(ctx)
-	args := &clustermgr.RetainVolumeArgs{
-		Tokens: tokens,
-	}
-	retainVolume, err := v.clusterMgr.RetainVolume(ctx, args)
-	if err != nil {
-		span.Errorf("retain volume from clusterMgr failed: %v", err)
-		return
-	}
-	span.Debugf("retain result: %#v, lens: %v\n", retainVolume, len(retainVolume.RetainVolTokens))
-	v.handleRetainResult(ctx, tokens, retainVolume.RetainVolTokens, isBackup)
 }
