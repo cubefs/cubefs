@@ -36,7 +36,7 @@ import (
 
 const (
 	defaultAllocVolsNum        = 1
-	defaultTotalThresholdRatio = 0.2
+	defaultTotalThresholdRatio = 0.6
 	defaultInitVolumeNum       = 4
 	defaultRetainVolumeNum     = 400
 
@@ -194,11 +194,6 @@ func volConfCheck(cfg *VolConfig) {
 	defaulter.Equal(&cfg.MetricReportIntervalS, defaultMetricIntervalS)
 	defaulter.Equal(&cfg.RetainVolumeBatchNum, defaultRetainVolumeNum)
 	defaulter.Equal(&cfg.RetainBatchIntervalS, defaultRetainBatchIntervalS)
-
-	need := int(cfg.TotalThresholdRatio*float64(cfg.InitVolumeNum)) + 1
-	if cfg.DefaultAllocVolsNum <= need {
-		cfg.DefaultAllocVolsNum = need
-	}
 }
 
 type VolumeMgr interface {
@@ -206,8 +201,6 @@ type VolumeMgr interface {
 	Alloc(ctx context.Context, args *proxy.AllocVolsArgs) (allocVols []proxy.AllocRet, err error)
 	// List the volumes in the allocator
 	List(ctx context.Context, codeMode codemode.CodeMode) (vids []proto.Vid, volumes []clustermgr.AllocVolumeInfo, err error)
-	// Discard just used for proxy volume management, remove invalid volumes
-	Discard(ctx context.Context, args *proxy.DiscardVolsArgs) error
 	Close()
 }
 
@@ -288,7 +281,7 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 			totalThreshold: uint64(threshold),
 		}
 		v.modeInfos[codeMode] = info
-		span.Infof("codeMode: %v, initVolumeNum: %v, threshold: %v", codeModeConfig.ModeName, v.InitVolumeNum, threshold)
+		span.Infof("code_mode: %v, initVolumeNum: %v, threshold: %v", codeModeConfig.ModeName, v.InitVolumeNum, threshold)
 	}
 
 	for mode := range v.allocChs {
@@ -325,17 +318,6 @@ func (v *volumeMgr) Alloc(ctx context.Context, args *proxy.AllocVolsArgs) (alloc
 	}
 
 	return
-}
-
-func (v *volumeMgr) Discard(ctx context.Context, args *proxy.DiscardVolsArgs) error {
-	span := trace.SpanFromContextSafe(ctx)
-	info := v.modeInfos[args.CodeMode]
-	if info != nil {
-		span.Debugf("discard code mode[%s], vols[%v]", args.CodeMode, args.Discards)
-		info.dealDisCards(args.Discards)
-		return nil
-	}
-	return errors.New("code mode not exist")
 }
 
 func (v *volumeMgr) List(ctx context.Context, codeMode codemode.CodeMode) (vids []proto.Vid, volumes []clustermgr.AllocVolumeInfo, err error) {
@@ -409,13 +391,13 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 	if err != nil {
 		return 0, err
 	}
-	span.Debugf("codeMode: %v, available volumes: %v", args.CodeMode, vols)
+	span.Debugf("code mode: %v, available volumes: %v", args.CodeMode, vols)
 	vid, err := v.getNextVid(ctx, vols, info, args)
 	if err != nil {
 		return 0, err
 	}
 
-	span.Debugf("codeMode: %v, info.currentTotalFree: %v, info.totalThreshold: %v", args.CodeMode,
+	span.Debugf("code_mode: %v, info.currentTotalFree: %v, info.totalThreshold: %v", args.CodeMode,
 		info.TotalFree(), info.totalThreshold)
 
 	return vid, nil
@@ -475,13 +457,16 @@ func (v *volumeMgr) allocVolume(ctx context.Context, args *clustermgr.AllocVolum
 	err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	err = retry.ExponentialBackoff(2, 200).On(func() error {
-		allocVolumes, err_ := v.clusterMgr.AllocVolume(ctx, args)
+		allocVolumes, err := v.clusterMgr.AllocVolume(ctx, args)
 		span.Infof("alloc volume from clusterMgr: %#v, err: %v", allocVolumes, err)
-		if err_ == nil && len(allocVolumes.AllocVolumeInfos) != 0 {
+		if err == nil && len(allocVolumes.AllocVolumeInfos) != 0 {
 			ret = allocVolumes.AllocVolumeInfos
 		}
-		return err_
+		return err
 	})
+	if err != nil {
+		return nil, errors.New("allocVolume from clusterMgr error")
+	}
 	return ret, err
 }
 
@@ -499,7 +484,7 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 			span.Infof("allocVolumeLoop arguments: %+v", *allocArg)
 			volumeRets, err := v.allocVolume(ctx, allocArg)
 			if err != nil {
-				span.Warnf("alloc volume failed, codeMode: %s, err: %v", mode.String(), err)
+				span.Warnf("alloc volume codemode: %s, err: %v", mode.String(), err)
 				time.Sleep(time.Duration(10) * time.Second)
 				args.isInit = false
 				continue
@@ -511,7 +496,7 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 				v.modeInfos[allocArg.CodeMode].Put(allocVolInfo, args.isBackup)
 			}
 			if len(volumeRets) < requireCount {
-				span.Warnf("clusterMgr volume num not enough, codeMode: %v, need: %v, got: %v", allocArg.CodeMode,
+				span.Warnf("clusterMgr volume num not enough.code_mode: %v, need: %v, got: %v", allocArg.CodeMode,
 					requireCount, len(volumeRets))
 				requireCount -= len(volumeRets)
 				args.isInit = false

@@ -96,13 +96,6 @@ func newMockService(t *testing.T) *Service {
 			}
 			return nil, nil, nil
 		})
-	volumeMgr.EXPECT().Discard(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(ctx context.Context, args *proxy.DiscardVolsArgs) (err error) {
-			if args.CodeMode != codemode.EC6P6 && args.CodeMode != codemode.EC15P12 {
-				return errCodeMode
-			}
-			return nil
-		})
 
 	cacher := mock.NewMockCacher(ctr)
 	cacher.EXPECT().GetVolume(A, A).AnyTimes().DoAndReturn(
@@ -305,16 +298,6 @@ func TestService_Allocator(t *testing.T) {
 		require.Error(t, err)
 		require.Equal(t, errcode.ErrIllegalArguments.Error(), err.Error())
 	}
-	discardUrl := url + "/volume/discard"
-	{
-		args := proxy.DiscardVolsArgs{
-			CodeMode: codemode.CodeMode(2),
-			Discards: []proto.Vid{},
-		}
-		err := cli.PostWith(ctx, discardUrl, nil, args)
-		require.NoError(t, err)
-	}
-
 	{
 		err := cli.GetWith(ctx, url+"/volume/list?code_mode=0", nil)
 		require.Error(t, err)

@@ -65,20 +65,6 @@ func (mr *MockVolumeMgrMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockVolumeMgr)(nil).Close))
 }
 
-// Discard mocks base method.
-func (m *MockVolumeMgr) Discard(arg0 context.Context, arg1 *proxy.DiscardVolsArgs) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Discard", arg0, arg1)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Discard indicates an expected call of Discard.
-func (mr *MockVolumeMgrMockRecorder) Discard(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Discard", reflect.TypeOf((*MockVolumeMgr)(nil).Discard), arg0, arg1)
-}
-
 // List mocks base method.
 func (m *MockVolumeMgr) List(arg0 context.Context, arg1 codemode.CodeMode) ([]proto.Vid, []clustermgr.AllocVolumeInfo, error) {
 	m.ctrl.T.Helper()

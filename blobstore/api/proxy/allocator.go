@@ -49,8 +49,3 @@ type AllocVolsArgs struct {
 	Excludes []proto.Vid       `json:"excludes"`
 	Discards []proto.Vid       `json:"discards"`
 }
-
-type DiscardVolsArgs struct {
-	CodeMode codemode.CodeMode `json:"code_mode"`
-	Discards []proto.Vid       `json:"discards"`
-}
