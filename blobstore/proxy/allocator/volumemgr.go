@@ -145,14 +145,16 @@ func (m *modeInfo) UpdateTotalFree(isBackup bool, free uint64) {
 }
 
 func (m *modeInfo) dealDisCards(discards []proto.Vid) {
-	if len(discards) == 0 {
-		return
-	}
-
 	m.RLock()
 	defer m.RUnlock()
 	for _, vid := range discards {
+		isBackup := false
 		vol, ok := m.current.Get(vid)
+		if !ok {
+			vol, ok = m.backup.Get(vid)
+			isBackup = true
+		}
+
 		if ok {
 			vol.mu.Lock()
 			if vol.deleted {
@@ -161,6 +163,10 @@ func (m *modeInfo) dealDisCards(discards []proto.Vid) {
 			}
 			vol.deleted = true
 			vol.mu.Unlock()
+			if isBackup {
+				m.backup.Delete(vid)
+				continue
+			}
 			m.current.Delete(vid)
 		}
 	}

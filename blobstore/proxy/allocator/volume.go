@@ -57,15 +57,13 @@ func (s *volumes) TotalFree() uint64 {
 func (s *volumes) Put(vol *volume) {
 	s.Lock()
 	defer s.Unlock()
-	idx, ok := search(s.vols, vol.Vid)
+	_, ok := search(s.vols, vol.Vid)
 	if !ok {
-		atomic.AddUint64(&s.totalFree, vol.Free)
 		s.vols = append(s.vols, vol)
-		if idx == len(s.vols)-1 {
-			return
-		}
-		copy(s.vols[idx+1:], s.vols[idx:len(s.vols)-1])
-		s.vols[idx] = vol
+		sort.Slice(s.vols, func(i, j int) bool {
+			return s.vols[i].Vid < s.vols[j].Vid
+		})
+		atomic.AddUint64(&s.totalFree, vol.Free)
 	}
 }
 
@@ -74,10 +72,12 @@ func (s *volumes) Delete(vid proto.Vid) bool {
 	defer s.Unlock()
 	i, ok := search(s.vols, vid)
 	if ok {
-		atomic.AddUint64(&s.totalFree, -s.vols[i].Free)
-		copy(s.vols[i:], s.vols[i+1:])
-		s.vols[len(s.vols)-1] = nil
-		s.vols = s.vols[:len(s.vols)-1]
+		vols := make([]*volume, len(s.vols)-1)
+		vol := s.vols[i]
+		copy(vols, s.vols[:i])
+		copy(vols[i:], s.vols[i+1:])
+		s.vols = vols
+		atomic.AddUint64(&s.totalFree, -vol.Free)
 	}
 	return ok
 }
