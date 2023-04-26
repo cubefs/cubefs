@@ -85,6 +85,8 @@ var (
 	ErrNoNodeSetToUpdateDecommissionLimit      = errors.New("no node set available for updating decommission limit")
 	ErrNoNodeSetToQueryDecommissionLimitStatus = errors.New("no node set available for query decommission limit status")
 	ErrNoNodeSetToDecommission                 = errors.New("no node set available to decommission ")
+	ErrVolNoAvailableSpace                     = errors.New("vol has no available space")
+	ErrVolNoCacheAndRule                       = errors.New("vol has no cache and rule")
 )
 
 // http response error code and error message definitions

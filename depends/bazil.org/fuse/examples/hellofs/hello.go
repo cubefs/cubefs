@@ -41,7 +41,7 @@ func main() {
 	}
 	defer c.Close()
 
-	err = fs.Serve(c, FS{})
+	err = fs.Serve(c, FS{}, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

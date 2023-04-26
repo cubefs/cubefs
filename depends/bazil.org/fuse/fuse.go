@@ -330,6 +330,12 @@ func (h *Header) respond(msg []byte) {
 	putMessage(h.msg)
 }
 
+func (h *Header) respondDoNotReuseMsg(msg []byte) {
+	out := (*outHeader)(unsafe.Pointer(&msg[0]))
+	out.Unique = uint64(h.ID)
+	h.Conn.respond(msg)
+}
+
 // An ErrorNumber is an error with a specific error number.
 //
 // Operations may return an error value that implements ErrorNumber to
@@ -354,9 +360,11 @@ const (
 	// See also fs.Intr.
 	EINTR = Errno(syscall.EINTR)
 
-	ERANGE  = Errno(syscall.ERANGE)
-	ENOTSUP = Errno(syscall.ENOTSUP)
-	EEXIST  = Errno(syscall.EEXIST)
+	ERANGE    = Errno(syscall.ERANGE)
+	ENOTSUP   = Errno(syscall.ENOTSUP)
+	EEXIST    = Errno(syscall.EEXIST)
+	ETIME     = Errno(syscall.ETIME)
+	ETIMEDOUT = Errno(syscall.ETIMEDOUT)
 )
 
 // DefaultErrno is the errno used when error returned does not
@@ -364,13 +372,15 @@ const (
 const DefaultErrno = EIO
 
 var errnoNames = map[Errno]string{
-	ENOSYS: "ENOSYS",
-	ESTALE: "ESTALE",
-	ENOENT: "ENOENT",
-	EIO:    "EIO",
-	EPERM:  "EPERM",
-	EINTR:  "EINTR",
-	EEXIST: "EEXIST",
+	ENOSYS:    "ENOSYS",
+	ESTALE:    "ESTALE",
+	ENOENT:    "ENOENT",
+	EIO:       "EIO",
+	EPERM:     "EPERM",
+	EINTR:     "EINTR",
+	EEXIST:    "EEXIST",
+	ETIME:     "ETIME",
+	ETIMEDOUT: "ETIMEDOUT",
 }
 
 // Errno implements Error and ErrorNumber using a syscall.Errno.
@@ -416,7 +426,7 @@ func (h *Header) RespondError(err error) {
 	buf := newBuffer(0)
 	hOut := (*outHeader)(unsafe.Pointer(&buf[0]))
 	hOut.Error = -int32(errno)
-	h.respond(buf)
+	h.respondDoNotReuseMsg(buf)
 }
 
 // All requests read from the kernel, without data, are shorter than

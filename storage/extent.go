@@ -238,10 +238,6 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		return
 	}
 
-	if err = e.checkOffsetAndSize(offset, size); err != nil {
-		return
-	}
-
 	// Check if extent file size matches the write offset just in case
 	// multiple clients are writing concurrently.
 	e.Lock()
@@ -286,9 +282,6 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	if IsTinyExtent(e.extentID) {
 		return e.ReadTiny(data, offset, size, isRepairRead)
 	}
-	if err = e.checkOffsetAndSize(offset, size); err != nil {
-		return
-	}
 	if _, err = e.file.ReadAt(data[:size], offset); err != nil {
 		return
 	}
@@ -305,20 +298,6 @@ func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (c
 	crc = crc32.ChecksumIEEE(data[:size])
 
 	return
-}
-
-func (e *Extent) checkOffsetAndSize(offset, size int64) error {
-	if offset+size > util.BlockSize*util.BlockCount {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
-	}
-	if offset >= util.BlockCount*util.BlockSize || size == 0 {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
-	}
-
-	if size > util.BlockSize {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
-	}
-	return nil
 }
 
 // Flush synchronizes data to the disk.

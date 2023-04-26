@@ -5,7 +5,7 @@
 [![LICENSE](https://img.shields.io/github/license/cubefs/cubefs.svg)](https://github.com/cubefs/cubefs/blob/master/LICENSE)
 [![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cubefs/cubefs)](https://goreportcard.com/report/github.com/cubefs/cubefs)
-[![Docs](https://readthedocs.org/projects/cubefs/badge/?version=latest)](https://cubefs.readthedocs.io/en/latest/?badge=latest)
+[![Docs](https://readthedocs.org/projects/cubefs/badge/?version=latest)](https://cubefs.io/docs/master/overview/introduction.html)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/2761)
 
 |<img src="https://user-images.githubusercontent.com/5708406/91202310-31eaab80-e734-11ea-84fc-c1b1882ae71c.png" height="24"/>&nbsp;Community Meeting|
@@ -34,7 +34,7 @@ Some key features of CubeFS include:
 
 ## Documents
 
-- English version: https://cubefs.readthedocs.io/en/latest/
+- English version: https://cubefs.io/docs/master/overview/introduction.html
 - Chinese version: https://cubefs.io/zh/docs/master/overview/introduction.html
 
 ## Benchmark
@@ -50,7 +50,7 @@ Small file operation performance and scalability benchmark tested by [mdtest](ht
 |Removal (TPS)	|87648	|84651	|83532	|79279	|85498	|86523	|80946	|84441 |
 |Stat (TPS)	    |231961	|263270	|264207	|252309	|240244	|244906	|273576	|242930|
 
-Refer to [cubefs.readthedocs.io](https://cubefs.readthedocs.io/en/latest/evaluation.html) for performance and scalability of `IO` and `Metadata`.
+Refer to [document](https://cubefs.io/docs/master/evaluation/env.html) for performance and scalability of `IO` and `Metadata`.
 
 ## Setup CubeFS 
 - [Set up a small CubeFS cluster](https://github.com/cubefs/cubefs/blob/master/INSTALL.md) 
@@ -59,7 +59,7 @@ Refer to [cubefs.readthedocs.io](https://cubefs.readthedocs.io/en/latest/evaluat
 ## Community
 
 - Homepage: [cubefs.io](https://cubefs.io/)
-- Mailing list: cubefs-users@groups.io
+- Mailing list: users@cubefs.groups.io
 - Slack: [cubefs.slack.com](https://cubefs.slack.com/)
 - WeChat: detail see [here](https://github.com/cubefs/cubefs/issues/604).
 

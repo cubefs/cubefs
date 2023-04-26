@@ -6,7 +6,7 @@ This is a collection of email templates to handle various situations the securit
 
 ```
 Subject: Upcoming security release of CubeFS $VERSION
-To: cubefs-users@groups.io
+To: security@cubefs.groups.io
 
 Hello CubeFS Community,
 
@@ -32,7 +32,7 @@ $PERSON on behalf of the CubeFS Product Security Committee and maintainers
 
 ```
 Subject: Security release of CubeFS $VERSION is now available
-To: cubefs-users@groups.io
+To: security@cubefs.groups.io
 
 Hello CubeFS Community,
 
@@ -60,7 +60,7 @@ vulnerable in practice. -->
 
 **How do I upgrade?**
 
-Follow the upgrade instructions at https://cubefs.readthedocs.io/en/latest/
+Follow the upgrade instructions at https://cubefs.io/docs/master/overview/introduction.html
 
 **Vulnerability Details**
 

@@ -689,6 +689,9 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 			h.punishDiskWith(ctx, clusterID, diskID, host, "Timeout")
 			return true, err
 		}
+		if errorConnectionRefused(err) {
+			return true, err
+		}
 		span.Debugf("read from disk:%d blobnode/%s", diskID, err.Error())
 
 		err = errors.Base(err, fmt.Sprintf("get shard on (disk:%d host:%s)", diskID, host))

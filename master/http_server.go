@@ -176,6 +176,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.RaftStatus).
 		HandlerFunc(m.getRaftStatus)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminClusterStat).HandlerFunc(m.clusterStat)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetCheckDataReplicasEnable).
+		HandlerFunc(m.setCheckDataReplicasEnable)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateDecommissionLimit).
@@ -186,6 +189,16 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminQueryDecommissionToken).
 		HandlerFunc(m.queryDecommissionToken)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetFileStats).
+		HandlerFunc(m.setFileStats)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetFileStats).
+		HandlerFunc(m.getFileStats)
+
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetClusterValue).
+		HandlerFunc(m.GetClusterValue)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

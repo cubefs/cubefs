@@ -74,6 +74,8 @@ type Cluster struct {
 	DecommissionLimit            uint64
 	checkAutoCreateDataPartition bool
 	masterClient                 *masterSDK.MasterClient
+	checkDataReplicasEnable      bool
+	fileStatsEnable              bool
 }
 
 type followerReadManager struct {
@@ -237,6 +239,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckFollowerReadCache()
 	c.scheduleToCheckDecommissionDataNode()
 	c.scheduleToCheckDecommissionDisk()
+	c.scheduleToCheckDataReplicas()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -501,7 +504,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
 		node := metaNode.(*MetaNode)
 		node.checkHeartbeat()
-		task := node.createHeartbeatTask(c.masterAddr())
+		task := node.createHeartbeatTask(c.masterAddr(), c.fileStatsEnable)
 		hbReq := task.Request.(*proto.HeartBeatRequest)
 		for _, vol := range c.vols {
 			if vol.FollowerRead {
@@ -570,6 +573,35 @@ func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
 	dataNodes := c.getNotConsistentIDDataNodes()
 	nodes = append(nodes, dataNodes...)
 	return
+}
+
+func (c *Cluster) scheduleToCheckDataReplicas() {
+	go func() {
+		for {
+			if c.checkDataReplicasEnable {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkDataReplicas()
+				}
+			}
+			time.Sleep(1 * time.Minute)
+		}
+	}()
+}
+
+func (c *Cluster) checkDataReplicas() {
+	lackReplicaDataPartitions, _ := c.checkLackReplicaAndHostDataPartitions()
+	if len(lackReplicaDataPartitions) == 0 {
+		return
+	}
+
+	successCnt := 0
+	for _, dp := range lackReplicaDataPartitions {
+		if success, _ := c.autoAddDataReplica(dp); success {
+			successCnt += 1
+		}
+	}
+	failCnt := len(lackReplicaDataPartitions) - successCnt
+	log.LogInfof("action[checkDataReplicas] autoAddDataReplica successCnt[%v], failedCnt[%v]", successCnt, failCnt)
 }
 
 func (c *Cluster) getNotConsistentIDMetaNodes() (metaNodes []*InvalidNodeView) {
@@ -833,6 +865,22 @@ func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corr
 	return
 }
 
+func (c *Cluster) checkLackReplicaAndHostDataPartitions() (lackReplicaDataPartitions []*DataPartition, err error) {
+	lackReplicaDataPartitions = make([]*DataPartition, 0)
+	vols := c.copyVols()
+	for _, vol := range vols {
+		var dps *DataPartitionMap
+		dps = vol.dataPartitions
+		for _, dp := range dps.partitions {
+			if dp.ReplicaNum > uint8(len(dp.Hosts)) && len(dp.Hosts) == len(dp.Replicas) && dp.IsDecommissionInitial() {
+				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
+			}
+		}
+	}
+	log.LogInfof("clusterID[%v] checkLackReplicaAndHostDataPartitions count:[%v]", c.Name, len(lackReplicaDataPartitions))
+	return
+}
+
 func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []*DataPartition, err error) {
 	lackReplicaDataPartitions = make([]*DataPartition, 0)
 	vols := c.copyVols()
@@ -976,7 +1024,13 @@ func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol, preload *DataPartiti
 	return
 }
 
-func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int) (err error) {
+func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool) (err error) {
+	if !init {
+		if _, err = vol.needCreateDataPartition(); err != nil {
+			log.LogWarnf("action[batchCreateDataPartition] create data partition failed, err[%v]", err)
+			return
+		}
+	}
 	for i := 0; i < reqCount; i++ {
 		if c.DisableAutoAllocate {
 			log.LogWarn("disable auto allocate dataPartition")
@@ -1656,6 +1710,94 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 ERR:
 	log.LogErrorf("%v", err)
 	return err
+}
+
+func (c *Cluster) autoAddDataReplica(dp *DataPartition) (success bool, err error) {
+	var (
+		targetHosts []string
+		newAddr     string
+		vol         *Vol
+		zone        *Zone
+		ns          *nodeSet
+	)
+	success = false
+
+	dp.RLock()
+
+	// not support
+	if dp.isSpecialReplicaCnt() {
+		dp.RUnlock()
+		return
+	}
+
+	dp.RUnlock()
+
+	// not support
+	if !proto.IsNormalDp(dp.PartitionType) {
+		return
+	}
+
+	var ok bool
+	if vol, ok = c.vols[dp.VolName]; !ok {
+		log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] vol not exist, PersistenceHosts:[%v]",
+			c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
+		return
+	}
+
+	// not support
+	if c.isFaultDomain(vol) {
+		return
+	}
+
+	if vol.crossZone {
+		zones := dp.getZones()
+		if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, nil, dp.Hosts, 1, 1, ""); err != nil {
+			goto errHandler
+		}
+	} else {
+		if zone, err = c.t.getZone(vol.zoneName); err != nil {
+			log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] zone not exist, PersistenceHosts:[%v]",
+				c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
+			return
+		}
+		nodeSets := dp.getNodeSets()
+		if len(nodeSets) != 1 {
+			log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] the number of nodeSets is not one, PersistenceHosts:[%v]",
+				c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
+			return
+		}
+		if ns, err = zone.getNodeSet(nodeSets[0]); err != nil {
+			goto errHandler
+		}
+		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
+			goto errHandler
+		}
+	}
+
+	newAddr = targetHosts[0]
+	if err = c.addDataReplica(dp, newAddr); err != nil {
+		goto errHandler
+	}
+
+	dp.Status = proto.ReadOnly
+	dp.isRecover = true
+	c.putBadDataPartitionIDs(nil, newAddr, dp.PartitionID)
+
+	dp.RLock()
+	c.syncUpdateDataPartition(dp)
+	dp.RUnlock()
+
+	log.LogInfof("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] auto add data replica success, newReplicaHost[%v], PersistenceHosts:[%v]",
+		c.Name, dp.VolName, dp.PartitionID, newAddr, dp.Hosts)
+	success = true
+	return
+
+errHandler:
+	if err != nil {
+		err = fmt.Errorf("clusterID[%v] vol[%v] partitionID[%v], err[%v]", c.Name, dp.VolName, dp.PartitionID, err)
+		log.LogErrorf("action[autoAddDataReplica] err %v", err)
+	}
+	return
 }
 
 // Decommission a data partition.
@@ -2739,7 +2881,8 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 	dataNodes = make([]proto.NodeView, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
+		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
+			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
 		return true
 	})
 	return
@@ -2749,7 +2892,8 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 	metaNodes = make([]proto.NodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
+			Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 		return true
 	})
 	return

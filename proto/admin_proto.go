@@ -43,6 +43,7 @@ const (
 	AdminGetVol                               = "/admin/getVol"
 	AdminClusterFreeze                        = "/cluster/freeze"
 	AdminClusterStat                          = "/cluster/stat"
+	AdminSetCheckDataReplicasEnable           = "/cluster/setCheckDataReplicasEnable"
 	AdminGetIP                                = "/admin/getIp"
 	AdminCreateMetaPartition                  = "/metaPartition/create"
 	AdminSetMetaNodeThreshold                 = "/threshold/set"
@@ -64,6 +65,9 @@ const (
 	AdminUpdateDecommissionLimit              = "/admin/updateDecommissionLimit"
 	AdminQueryDecommissionLimit               = "/admin/queryDecommissionLimit"
 	AdminQueryDecommissionToken               = "/admin/queryDecommissionToken"
+	AdminSetFileStats                         = "/admin/setFileStatsEnable"
+	AdminGetFileStats                         = "/admin/getFileStatsEnable"
+	AdminGetClusterValue                      = "/admin/getClusterValue"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -414,6 +418,7 @@ type HeartBeatRequest struct {
 	MasterAddr string
 	FLReadVols []string
 	QosToDataNode
+	FileStatsEnable bool
 }
 
 // PartitionReport defines the partition report.

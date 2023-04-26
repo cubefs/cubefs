@@ -5,6 +5,7 @@ package fs // import "github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"hash/fnv"
 	"io"
 	"log"
@@ -893,7 +894,7 @@ func (s *Server) LoadFuseDevFd(sockaddr string) (err error) {
 // Serve serves the FUSE connection by making calls to the methods
 // of fs and the Nodes and Handles it makes available.  It returns only
 // when the connection has been closed or an unexpected error occurs.
-func (s *Server) Serve(fs FS) error {
+func (s *Server) Serve(fs FS, opt *proto.MountOptions) error {
 	defer s.wg.Wait() // Wait for worker goroutines to complete before return
 
 	s.fs = fs
@@ -943,7 +944,11 @@ func (s *Server) Serve(fs FS) error {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			s.serve(req)
+			if opt != nil && opt.RequestTimeout > 0 {
+				s.serveWithTimeOut(req, opt.RequestTimeout)
+			} else {
+				s.serve(req)
+			}
 		}()
 	}
 	return nil
@@ -951,9 +956,9 @@ func (s *Server) Serve(fs FS) error {
 
 // Serve serves a FUSE connection with the default settings. See
 // Server.Serve.
-func Serve(c *fuse.Conn, fs FS) error {
+func Serve(c *fuse.Conn, fs FS, opt *proto.MountOptions) error {
 	server := New(c, nil)
-	return server.Serve(fs)
+	return server.Serve(fs, opt)
 }
 
 type nothing struct{}
@@ -1307,73 +1312,11 @@ func (c *Server) serve(r fuse.Request) {
 		Request: r.Hdr(),
 		In:      r,
 	})
-	var node Node
-	var snode *serveNode
-	c.meta.Lock()
-	hdr := r.Hdr()
-	if id := hdr.Node; id != 0 {
-		if id < fuse.NodeID(len(c.node)) {
-			snode = c.node[uint(id)]
-		}
-		if snode == nil {
-			c.meta.Unlock()
-			c.debug(response{
-				Op:      opName(r),
-				Request: logResponseHeader{ID: hdr.ID},
-				Error:   fuse.ESTALE.ErrnoName(),
-				// this is the only place that sets both Error and
-				// Out; not sure if i want to do that; might get rid
-				// of len(c.node) things altogether
-				Out: logMissingNode{
-					MaxNode: fuse.NodeID(len(c.node)),
-				},
-			})
-			r.RespondError(fuse.ESTALE)
-			return
-		}
-		node = snode.node
+	node, snode, hdr, ok := c.checkNode(r, req)
+	if ok {
+		return
 	}
-	if c.req[hdr.ID] != nil {
-		// This happens with OSXFUSE.  Assume it's okay and
-		// that we'll never see an interrupt for this one.
-		// Otherwise everything wedges.  TODO: Report to OSXFUSE?
-		//
-		// TODO this might have been because of missing done() calls
-	} else {
-		c.req[hdr.ID] = req
-	}
-	c.meta.Unlock()
-
-	// Call this before responding.
-	// After responding is too late: we might get another request
-	// with the same ID and be very confused.
-	done := func(resp interface{}) {
-		msg := response{
-			Op:      opName(r),
-			Request: logResponseHeader{ID: hdr.ID},
-		}
-		if err, ok := resp.(error); ok {
-			msg.Error = err.Error()
-			if ferr, ok := err.(fuse.ErrorNumber); ok {
-				errno := ferr.Errno()
-				msg.Errno = errno.ErrnoName()
-				if errno == err {
-					// it's just a fuse.Errno with no extra detail;
-					// skip the textual message for log readability
-					msg.Error = ""
-				}
-			} else {
-				msg.Errno = fuse.DefaultErrno.ErrnoName()
-			}
-		} else {
-			msg.Out = resp
-		}
-		c.debug(msg)
-
-		c.meta.Lock()
-		delete(c.req, hdr.ID)
-		c.meta.Unlock()
-	}
+	done := c.done(r, hdr)
 
 	var responded bool
 	defer func() {
@@ -1427,6 +1370,160 @@ func (c *Server) serve(r fuse.Request) {
 
 	// disarm runtime.Goexit protection
 	responded = true
+}
+
+func (c *Server) done(r fuse.Request, hdr *fuse.Header) func(resp interface{}) {
+	// Call this before responding.
+	// After responding is too late: we might get another request
+	// with the same ID and be very confused.
+	done := func(resp interface{}) {
+		msg := response{
+			Op:      opName(r),
+			Request: logResponseHeader{ID: hdr.ID},
+		}
+		if err, ok := resp.(error); ok {
+			msg.Error = err.Error()
+			if ferr, ok := err.(fuse.ErrorNumber); ok {
+				errno := ferr.Errno()
+				msg.Errno = errno.ErrnoName()
+				if errno == err {
+					// it's just a fuse.Errno with no extra detail;
+					// skip the textual message for log readability
+					msg.Error = ""
+				}
+			} else {
+				msg.Errno = fuse.DefaultErrno.ErrnoName()
+			}
+		} else {
+			msg.Out = resp
+		}
+		c.debug(msg)
+
+		c.meta.Lock()
+		delete(c.req, hdr.ID)
+		c.meta.Unlock()
+	}
+	return done
+}
+
+func (c *Server) checkNode(r fuse.Request, req *serveRequest) (Node, *serveNode, *fuse.Header, bool) {
+	var node Node
+	var snode *serveNode
+	c.meta.Lock()
+	hdr := r.Hdr()
+	if id := hdr.Node; id != 0 {
+		if id < fuse.NodeID(len(c.node)) {
+			snode = c.node[uint(id)]
+		}
+		if snode == nil {
+			c.meta.Unlock()
+			c.debug(response{
+				Op:      opName(r),
+				Request: logResponseHeader{ID: hdr.ID},
+				Error:   fuse.ESTALE.ErrnoName(),
+				// this is the only place that sets both Error and
+				// Out; not sure if i want to do that; might get rid
+				// of len(c.node) things altogether
+				Out: logMissingNode{
+					MaxNode: fuse.NodeID(len(c.node)),
+				},
+			})
+			r.RespondError(fuse.ESTALE)
+			return nil, nil, nil, true
+		}
+		node = snode.node
+	}
+	if c.req[hdr.ID] != nil {
+		// This happens with OSXFUSE.  Assume it's okay and
+		// that we'll never see an interrupt for this one.
+		// Otherwise everything wedges.  TODO: Report to OSXFUSE?
+		//
+		// TODO this might have been because of missing done() calls
+	} else {
+		c.req[hdr.ID] = req
+	}
+	c.meta.Unlock()
+	return node, snode, hdr, false
+}
+
+func (c *Server) serveWithTimeOut(r fuse.Request, requestTimeout int64) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(requestTimeout))
+	defer cancel()
+
+	doneChan := make(chan error, 1)
+	parentCtx := ctx
+	if c.context != nil {
+		ctx = c.context(ctx, r)
+	}
+
+	req := &serveRequest{Request: r, cancel: cancel}
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("fuse:"+opName(r), nil, bgTime, 1)
+	}()
+
+	c.debug(request{
+		Op:      opName(r),
+		Request: r.Hdr(),
+		In:      r,
+	})
+	node, snode, hdr, ok := c.checkNode(r, req)
+	if ok {
+		return
+	}
+	done := c.done(r, hdr)
+
+	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				const size = 1 << 16
+				buf := make([]byte, size)
+				n := runtime.Stack(buf, false)
+				buf = buf[:n]
+				log.Printf("fuse: panic in handler for %v: %v\n%s", r, rec, buf)
+				err := handlerPanickedError{
+					Request: r,
+					Err:     rec,
+				}
+				done(err)
+				r.RespondError(err)
+				return
+			}
+		}()
+
+		doneChan <- c.handleRequest(ctx, node, snode, r, done)
+	}()
+
+	select {
+	case err := <-doneChan:
+		if err != nil {
+			if err == context.Canceled {
+				select {
+				case <-parentCtx.Done():
+					err = fuse.EINTR
+				default:
+					// nothing
+				}
+			}
+			done(err)
+			r.RespondError(err)
+		}
+	case <-ctx.Done():
+		err := ctx.Err()
+		if err != nil {
+			if err.Error() == "context canceled" {
+				// Context is finished, ignore
+			} else if err.Error() == "context deadline exceeded" {
+				log.Printf("request timeout, err: [%v], req: [%v], conn: [%v], pid: [%v]", ctx.Err(), r, r.Hdr().Conn, r.Hdr().Pid)
+				done(fuse.ETIME)
+				r.RespondError(fuse.ETIME)
+			} else {
+				done(fuse.EIO)
+				r.RespondError(fuse.EIO)
+			}
+		}
+	}
 }
 
 // handleRequest will either a) call done(s) and r.Respond(s) OR b) return an error.

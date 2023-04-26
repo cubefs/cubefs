@@ -202,12 +202,14 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr,
+					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr,
+					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 				return true
 			})
 		}
@@ -976,7 +978,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
-	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount)
+	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false)
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))
@@ -1645,6 +1647,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("vol capacity can't be zero, %d", req.capacity)
 	}
 
+	if req.size != 0 && req.size <= 10 {
+		return fmt.Errorf("datapartition size must be bigger than 10 G")
+	}
+
 	if proto.IsHot(req.volType) {
 		if req.dpReplicaNum == 0 {
 			req.dpReplicaNum = defaultReplicaNum
@@ -1983,6 +1989,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		ID:                        dataNode.ID,
 		ZoneName:                  dataNode.ZoneName,
 		Addr:                      dataNode.Addr,
+		DomainAddr:                dataNode.DomainAddr,
 		ReportTime:                dataNode.ReportTime,
 		IsActive:                  dataNode.isActive,
 		IsWriteAble:               dataNode.isWriteAble(),
@@ -3269,6 +3276,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	metaNodeInfo = &proto.MetaNodeInfo{
 		ID:                        metaNode.ID,
 		Addr:                      metaNode.Addr,
+		DomainAddr:                metaNode.DomainAddr,
 		IsActive:                  metaNode.IsActive,
 		IsWriteAble:               metaNode.isWritable(),
 		ZoneName:                  metaNode.ZoneName,
@@ -3326,11 +3334,17 @@ func parseMigrateNodeParam(r *http.Request) (srcAddr, targetAddr string, limit i
 		err = fmt.Errorf("parseMigrateNodeParam %s can't be empty", srcAddrKey)
 		return
 	}
+	if ipAddr, ok := util.ParseAddrToIpAddr(srcAddr); ok {
+		srcAddr = ipAddr
+	}
 
 	targetAddr = r.FormValue(targetAddrKey)
 	if targetAddr == "" {
 		err = fmt.Errorf("parseMigrateNodeParam %s can't be empty when migrate", targetAddrKey)
 		return
+	}
+	if ipAddr, ok := util.ParseAddrToIpAddr(targetAddr); ok {
+		targetAddr = ipAddr
 	}
 
 	if srcAddr == targetAddr {
@@ -3875,6 +3889,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < len(replicas); i++ {
 			replicas[i] = &proto.MetaReplicaInfo{
 				Addr:       mp.Replicas[i].Addr,
+				DomainAddr: mp.Replicas[i].metaNode.DomainAddr,
+				MaxInodeID: mp.Replicas[i].MaxInodeID,
 				ReportTime: mp.Replicas[i].ReportTime,
 				Status:     mp.Replicas[i].Status,
 				IsLeader:   mp.Replicas[i].IsLeader,
@@ -4173,4 +4189,76 @@ func FormatFloatFloor(num float64, decimal int) (float64, error) {
 
 	res := strconv.FormatFloat(math.Floor(num*d)/d, 'f', -1, 64)
 	return strconv.ParseFloat(res, 64)
+}
+
+func (m *Server) setCheckDataReplicasEnable(w http.ResponseWriter, r *http.Request) {
+	var (
+		err    error
+		enable bool
+	)
+
+	if enable, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	oldValue := m.cluster.checkDataReplicasEnable
+	if oldValue != enable {
+		m.cluster.checkDataReplicasEnable = enable
+		if err = m.cluster.syncPutCluster(); err != nil {
+			m.cluster.checkDataReplicasEnable = oldValue
+			log.LogErrorf("action[setCheckDataReplicasEnable] syncPutCluster failed %v", err)
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
+			return
+		}
+	}
+
+	log.LogInfof("action[setCheckDataReplicasEnable] enable be set [%v]", enable)
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"set checkDataReplicasEnable to [%v] successfully", enable)))
+}
+
+func (m *Server) setFileStats(w http.ResponseWriter, r *http.Request) {
+	var (
+		err    error
+		enable bool
+	)
+	if enable, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	oldValue := m.cluster.fileStatsEnable
+	m.cluster.fileStatsEnable = enable
+	if err = m.cluster.syncPutCluster(); err != nil {
+		m.cluster.fileStatsEnable = oldValue
+		log.LogErrorf("action[setFileStats] syncPutCluster failed %v", err)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
+		return
+	}
+	log.LogInfof("action[setFileStats] enable be set [%v]", enable)
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"set setFileStats to [%v] successfully", enable)))
+}
+
+func (m *Server) getFileStats(w http.ResponseWriter, r *http.Request) {
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"getFileStats enable value [%v]", m.cluster.fileStatsEnable)))
+}
+
+func (m *Server) GetClusterValue(w http.ResponseWriter, r *http.Request) {
+	result, err := m.cluster.fsm.store.SeekForPrefix([]byte(clusterPrefix))
+	if err != nil {
+		log.LogErrorf("action[GetClusterValue],err:%v", err.Error())
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrInternalError))
+		return
+	}
+	for _, value := range result {
+		cv := &clusterValue{}
+		if err = json.Unmarshal(value, cv); err != nil {
+			log.LogErrorf("action[GetClusterValue], unmarshal err:%v", err.Error())
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrUnmarshalData))
+			return
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(cv))
+	}
 }

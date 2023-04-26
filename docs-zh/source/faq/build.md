@@ -31,3 +31,10 @@
 - 首先确认`.deps/include/rocksdb`目录下是否存在报错所指向的文件， 
 - 如果存在 可`source env.sh`后再次尝试，如果没有该文件或者仍然报错，可将`.deps`目录下rocksdb相关的文件全部清理，然后重新编译。
    
+## cannot find -lbz2
+
+编译时候如果报错 `/usr/bin/ld: cannot find -lbz2`，确认是否安装`bzip2-devel`（版本1.0.6及以上）
+
+## cannot find -lz
+
+编译时候如果报错 `/usr/bin/ld: cannot find -lz`，确认是否安装`zlib-devel`（版本1.2.7及以上）

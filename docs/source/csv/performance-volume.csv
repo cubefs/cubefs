@@ -1,9 +1,0 @@
-Parameter,Default,Recommend,Description
-FollowerRead,True,True,
-Capacity,10 GB,300 000 000 GB,
-Data Replica Number,3,3,
-Meta Replica Number,3,3,
-Data Partition Size,120 GB,120 GB,Logical upper limit with no pre-occupied space.
-Data Partition Count,10,1500,
-Meta Partition Count,3,10,
-Cross Zone,False,False,

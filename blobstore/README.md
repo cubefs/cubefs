@@ -17,9 +17,8 @@ Some key features of BlobStore include:
 
 ## Documents
 
-English version: https://cubefs.readthedocs.io/en/latest/
-
-Chinese version: https://cubefs.readthedocs.io/zh_CN/latest/
+- English version: https://cubefs.io/docs/master/overview/introduction.html
+- Chinese version: https://cubefs.io/zh/docs/master/overview/introduction.html
 
 ## Build BlobStore
 
@@ -31,10 +30,10 @@ $ ./build.sh
 ```
 
 ## Deploy BlobStore
-For more details please refer to [documentation](https://cubefs.readthedocs.io/en/latest/user-guide/blobstore.html).
+For more details please refer to [documentation](https://cubefs.io/docs/master/user-guide/blobstore.html).
 
 ## Manage BlobStore
-For more details please refer to [documentation](https://cubefs.readthedocs.io/en/latest/admin-api/blobstore/blobnode.html).
+For more details please refer to [documentation](https://cubefs.io/docs/master/maintenance/admin-api/blobstore/base.html).
 
 ## License
 BlobStore is licensed under the Apache License, Version 2.0. For detail see LICENSE and NOTICE.
