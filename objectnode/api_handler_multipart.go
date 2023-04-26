@@ -307,7 +307,8 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	go func() {
 		err = srcVol.readFile(srcFileInfo.Inode, uint64(srcFileInfo.Size), srcObject, writer, uint64(firstByte), uint64(copyLength))
 		if err != nil {
-			log.LogErrorf("partCopyHandler: read srcObj err: requestId(%v) srcVol(%v) path(%v)", err, GetRequestID(r), srcBucket, srcObject)
+			log.LogErrorf("partCopyHandler: read srcObj err(%v): requestId(%v) srcVol(%v) path(%v)",
+				err, GetRequestID(r), srcBucket, srcObject)
 		}
 		writer.CloseWithError(err)
 	}()
@@ -644,7 +645,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	log.LogDebugf("completeMultipartUploadHandler: complete multipart: requestID(%v) volume(%v) uploadID(%v) fileInfo(%v)",
+	log.LogDebugf("completeMultipartUploadHandler: complete multipart: requestID(%v) volume(%v) key(%v) uploadID(%v) fileInfo(%v)",
 		GetRequestID(r), param.Bucket(), param.Object(), uploadId, fsFileInfo)
 
 	// write response

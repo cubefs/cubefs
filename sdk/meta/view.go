@@ -122,11 +122,11 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 func (mw *MetaWrapper) updateClusterInfo() (err error) {
 	var info *proto.ClusterInfo
 	if info, err = mw.mc.AdminAPI().GetClusterInfo(); err != nil {
-		log.LogWarnf("updateClusterInfo: get cluster info fail: err(%v)", err)
+		log.LogWarnf("updateClusterInfo: get cluster info fail: err(%v) volume(%v)", err, mw.volname)
 		return
 	}
-	log.LogInfof("updateClusterInfo: get cluster info: cluster(%v) localIP(%v)",
-		info.Cluster, info.Ip)
+	log.LogInfof("updateClusterInfo: get cluster info: cluster(%v) localIP(%v) volume(%v)",
+		info.Cluster, info.Ip, mw.volname)
 	mw.cluster = info.Cluster
 	mw.localIP = info.Ip
 	return
@@ -161,14 +161,14 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
-	log.LogInfof("VolStatInfo: info(%v)", info)
+	log.LogInfof("VolStatInfo: volume(%v) info(%v)", mw.volname, info)
 	return
 }
 
 func (mw *MetaWrapper) updateMetaPartitions() error {
 	view, err := mw.fetchVolumeView()
 	if err != nil {
-		log.LogInfof("error: %v", err.Error())
+		log.LogInfof("updateMetaPartition volume(%v) error: %v", mw.volname, err.Error())
 		switch err {
 		case proto.ErrExpiredTicket:
 			// TODO: bad logic, remove later (Mofei Zhang)
