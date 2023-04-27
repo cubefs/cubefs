@@ -67,6 +67,7 @@ type DataNode struct {
 	DecommissionLimit         int
 	DecommissionTerm          uint64
 	DecommissionCompleteTime  int64
+	DpCntLimit                DpCountLimiter `json:"-"` // max count of data partition in a data node
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -80,6 +81,7 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	dataNode.DecommissionStatus = DecommissionInitial
 	dataNode.DecommissionTerm = 0
 	dataNode.DecommissionDpTotal = InvalidDecommissionDpCnt
+	dataNode.DpCntLimit = newDpCountLimiter(nil)
 	return
 }
 
@@ -178,8 +180,12 @@ func (dataNode *DataNode) canAllocDp() bool {
 	return true
 }
 
+func (dataNode *DataNode) GetDpCntLimit() uint32 {
+	return uint32(dataNode.DpCntLimit.GetCntLimit())
+}
+
 func (dataNode *DataNode) dpCntInLimit() bool {
-	return dataNode.DataPartitionCount <= dpCntOneNodeLimit()
+	return dataNode.DataPartitionCount <= dataNode.GetDpCntLimit()
 }
 
 func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {

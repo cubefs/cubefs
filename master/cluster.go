@@ -204,6 +204,9 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.leaderInfo = leaderInfo
 	c.vols = make(map[string]*Vol, 0)
 	c.cfg = cfg
+	if c.cfg.MaxDpCntLimit == 0 {
+		c.cfg.MaxDpCntLimit = defaultMaxDpCntLimit
+	}
 	c.t = newTopology()
 	c.BadDataPartitionIds = new(sync.Map)
 	c.BadMetaPartitionIds = new(sync.Map)
@@ -791,6 +794,7 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 	}
 
 	dataNode = newDataNode(nodeAddr, zoneName, c.Name)
+	dataNode.DpCntLimit = newDpCountLimiter(&c.cfg.MaxDpCntLimit)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
 		zone = c.t.putZoneIfAbsent(newZone(zoneName))
@@ -3040,14 +3044,20 @@ func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
 	return
 }
 
+func (c *Cluster) getMaxDpCntLimit() (dpCntInLimit uint64) {
+	dpCntInLimit = atomic.LoadUint64(&c.cfg.MaxDpCntLimit)
+	return
+}
+
 func (c *Cluster) setMaxDpCntLimit(val uint64) (err error) {
+	if val == 0 {
+		val = defaultMaxDpCntLimit
+	}
 	oldVal := atomic.LoadUint64(&c.cfg.MaxDpCntLimit)
 	atomic.StoreUint64(&c.cfg.MaxDpCntLimit, val)
-	maxDpCntOneNode = uint32(val)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[MaxDpCntLimit] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MaxDpCntLimit, oldVal)
-		maxDpCntOneNode = uint32(oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

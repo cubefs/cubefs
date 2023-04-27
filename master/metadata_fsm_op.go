@@ -785,7 +785,6 @@ func (c *Cluster) updateDataNodeDeleteLimitRate(val uint64) {
 
 func (c *Cluster) updateMaxDpCntLimit(val uint64) {
 	atomic.StoreUint64(&c.cfg.MaxDpCntLimit, val)
-	maxDpCntOneNode = uint32(val)
 }
 
 func (c *Cluster) loadZoneValue() (err error) {
