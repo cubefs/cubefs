@@ -1888,7 +1888,7 @@ func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (v
 	}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaGetInodeQuota
+	packet.Opcode = proto.OpMetaGetXAttr
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
