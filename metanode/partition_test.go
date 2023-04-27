@@ -62,6 +62,9 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
 		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
 	}
+	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
+	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
+
 	err := mp.store(msg)
 	require.NoError(t, err)
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
