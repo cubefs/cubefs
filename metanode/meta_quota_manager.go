@@ -41,6 +41,11 @@ type MetaQuotaInode struct {
 	quotaIds []uint32
 }
 
+type TxMetaQuotaInode struct {
+	txinode  *TxInode
+	quotaIds []uint32
+}
+
 func NewQuotaManager(volName string, mpId uint64) (mqMgr *MetaQuotaManager) {
 	mqMgr = &MetaQuotaManager{
 		statisticTemp:        new(sync.Map),
@@ -94,6 +99,60 @@ func (qInode *MetaQuotaInode) Unmarshal(raw []byte) (err error) {
 	log.LogDebugf("MetaQuotaInode Unmarshal inodeLen [%v] size [%v]", inodeBytes, len(raw))
 	qInode.inode = NewInode(0, 0)
 	if err = qInode.inode.Unmarshal(inodeBytes); err != nil {
+		return
+	}
+	for {
+		if buff.Len() == 0 {
+			break
+		}
+		if err = binary.Read(buff, binary.BigEndian, &quotaId); err != nil {
+			return
+		}
+		qInode.quotaIds = append(qInode.quotaIds, quotaId)
+	}
+	return
+}
+
+func (qInode *TxMetaQuotaInode) Marshal() (result []byte, err error) {
+	var (
+		inodeBytes []byte
+	)
+	quotaBytes := bytes.NewBuffer(make([]byte, 0, 128))
+	buff := bytes.NewBuffer(make([]byte, 0, 128))
+	inodeBytes, err = qInode.txinode.Marshal()
+	if err != nil {
+		return
+	}
+	inodeLen := uint32(len(inodeBytes))
+	if err = binary.Write(buff, binary.BigEndian, inodeLen); err != nil {
+		return
+	}
+	buff.Write(inodeBytes)
+	for _, quotaId := range qInode.quotaIds {
+		if err = binary.Write(quotaBytes, binary.BigEndian, quotaId); err != nil {
+			return
+		}
+	}
+	buff.Write(quotaBytes.Bytes())
+	result = buff.Bytes()
+	log.LogDebugf("TxMetaQuotaInode Marshal inode [%v] inodeLen [%v] size [%v]", qInode.txinode.Inode.Inode, inodeLen, len(result))
+	return
+}
+
+func (qInode *TxMetaQuotaInode) Unmarshal(raw []byte) (err error) {
+	var inodeLen uint32
+	var quotaId uint32
+	buff := bytes.NewBuffer(raw)
+	if err = binary.Read(buff, binary.BigEndian, &inodeLen); err != nil {
+		return
+	}
+	inodeBytes := make([]byte, inodeLen)
+	if _, err = buff.Read(inodeBytes); err != nil {
+		return
+	}
+	log.LogDebugf("TxMetaQuotaInode Unmarshal inodeLen [%v] size [%v]", inodeBytes, len(raw))
+	qInode.txinode = NewTxInode("", 0, 0, 0, nil)
+	if err = qInode.txinode.Unmarshal(inodeBytes); err != nil {
 		return
 	}
 	for {

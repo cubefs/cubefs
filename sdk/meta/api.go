@@ -126,6 +126,15 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 		log.LogErrorf("txCreate_ll: No parent partition, parentID(%v)", parentID)
 		return nil, syscall.ENOENT
 	}
+	quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+	if err != nil {
+		log.LogErrorf("Create_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
+		return nil, syscall.ENOENT
+	}
+	var quotaIds []uint32
+	for quotaId := range quotaInfos {
+		quotaIds = append(quotaIds, quotaId)
+	}
 	rwPartitions = mw.getRWPartitions()
 	length := len(rwPartitions)
 	var tx *Transaction
@@ -148,7 +157,7 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 			return nil, syscall.EAGAIN
 		}
 
-		status, info, err = mw.txIcreate(tx, mp, mode, uid, gid, target)
+		status, info, err = mw.txIcreate(tx, mp, mode, uid, gid, target, quotaIds)
 		if err == nil && status == statusOK {
 			goto create_dentry
 		} else {
@@ -163,7 +172,7 @@ create_dentry:
 	//todo_tx: test
 	//err = errors.New("mock test failed")
 	//return nil, err
-	status, err = mw.txDcreate(tx, parentMP, parentID, name, info.Inode, mode)
+	status, err = mw.txDcreate(tx, parentMP, parentID, name, info.Inode, mode, quotaIds)
 	if err != nil {
 		return nil, statusToErrno(status)
 	}
@@ -519,6 +528,17 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (*p
 		if info == nil || info.Nlink > 2 {
 			return nil, syscall.ENOTEMPTY
 		}
+		quotaInfos, err := mw.GetInodeQuota_ll(inode)
+		if err != nil {
+			log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
+			return nil, syscall.ENOENT
+		}
+		for _, info := range quotaInfos {
+			if info.RootInode {
+				log.LogErrorf("can not remove quota Root inode equal inode [%v]", inode)
+				return nil, syscall.EACCES
+			}
+		}
 	}
 
 	tx, err = NewDeleteTransaction(parentMP, parentID, name, mp, inode, mw.TxTimeout)
@@ -668,7 +688,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 	defer func() {
 		if tx != nil {
 			//go tx.OnDone(err, mw)
-			tx.OnDone(err, mw)
+			//tx.OnDone(err, mw)
 		}
 	}()
 
@@ -684,6 +704,28 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 	status, srcInode, srcMode, err := mw.lookup(srcParentMP, srcParentID, srcName)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
+	}
+
+	quotaInfos, err := mw.GetInodeQuota_ll(srcInode)
+	if err != nil {
+		log.LogErrorf("get inode [%v] quota failed [%v]", srcInode, err)
+		return syscall.ENOENT
+	}
+
+	for _, info := range quotaInfos {
+		if info.RootInode {
+			log.LogErrorf("can not rename quota Root inode equal inode [%v]", srcInode)
+			return syscall.EACCES
+		}
+	}
+
+	destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
+	if err != nil {
+		log.LogErrorf("rename_ll: get dst partent quota fail, pa")
+	}
+	var quotaIds []uint32
+	for quotaId := range destQuotaInfos {
+		quotaIds = append(quotaIds, quotaId)
 	}
 
 	tx, err = NewRenameTransaction(srcParentMP, srcParentID, srcName, dstParentMP, dstParentID, dstName, mw.TxTimeout)
@@ -736,7 +778,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		//return syscall.EAGAIN
 
 	} else if status == statusNoent {
-		status, err = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode)
+		status, err = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, quotaIds)
 		if err != nil {
 			//todo_tx: check process for error
 			return statusToErrno(status)
@@ -809,6 +851,24 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		}
 
 	}
+	var inodes []uint64
+	inodes = append(inodes, srcInode)
+	srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
+	if err != nil {
+		log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
+		return err
+	}
+	job = func() {
+		for quotaId := range srcQuotaInfos {
+			mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
+		}
+
+		for quotaId, info := range destQuotaInfos {
+			log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
+			mw.BatchSetInodeQuota_ll(inodes, quotaId)
+		}
+	}
+	tx.SetOnCommit(job)
 	return nil
 }
 
@@ -1192,7 +1252,17 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64) (*proto.
 		return nil, statusToErrno(status)
 	}
 
-	status, err = mw.txDcreate(tx, parentMP, parentID, name, ino, info.Mode)
+	quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+	if err != nil {
+		log.LogErrorf("link: get parent quota fail, parentID(%v) err(%v)", parentID, err)
+		return nil, syscall.ENOENT
+	}
+	var quotaIds []uint32
+	for quotaId := range quotaInfos {
+		quotaIds = append(quotaIds, quotaId)
+	}
+
+	status, err = mw.txDcreate(tx, parentMP, parentID, name, ino, info.Mode, quotaIds)
 	if err != nil {
 		return nil, statusToErrno(status)
 	}
@@ -1977,7 +2047,7 @@ func (mw *MetaWrapper) BatchDeleteInodeQuota_ll(inodes []uint64, quotaId uint32)
 	}
 
 	wg.Wait()
-	log.LogInfof("delete subInode quota [%v] success.", quotaId)
+	log.LogInfof("delete subInode inodes [%v] quota [%v] success.", inodes, quotaId)
 	return
 }
 

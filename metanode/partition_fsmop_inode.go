@@ -35,7 +35,7 @@ func NewInodeResponse() *InodeResponse {
 }
 
 // Create and inode and attach it to the inode tree.
-func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode) (status uint8) {
+func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaId uint32) (status uint8) {
 	status = proto.OpOk
 	//1.if mpID == -1, register transaction in transaction manager
 	//if txIno.TxInfo.TxID != "" && txIno.TxInfo.TmID == -1 {
@@ -49,7 +49,7 @@ func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode) (status uint8) {
 		status = proto.OpTxInodeInfoNotExistErr
 		return
 	}
-	rbInode := NewTxRollbackInode(txIno.Inode, inodeInfo, TxDelete)
+	rbInode := NewTxRollbackInode(txIno.Inode, quotaId, inodeInfo, TxDelete)
 	if status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); status != proto.OpOk {
 		//status = proto.OpTxConflictErr
 		return
@@ -89,7 +89,7 @@ func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeRespon
 		return
 	}
 
-	rbInode := NewTxRollbackInode(txIno.Inode, inodeInfo, TxUpdate)
+	rbInode := NewTxRollbackInode(txIno.Inode, 0, inodeInfo, TxUpdate)
 	if resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); resp.Status != proto.OpOk {
 		//resp.Status = proto.OpTxConflictErr
 		return
@@ -182,7 +182,12 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 		resp.Status = proto.OpTxInodeInfoNotExistErr
 		return
 	}
-	rbInode := NewTxRollbackInode(txIno.Inode, inodeInfo, TxAdd)
+	var quotaId uint32
+	quotaIds, isFind := mp.isExistQuota(txIno.Inode.Inode)
+	if isFind {
+		quotaId = quotaIds[0]
+	}
+	rbInode := NewTxRollbackInode(txIno.Inode, quotaId, inodeInfo, TxAdd)
 	if resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); resp.Status != proto.OpOk {
 		//resp.Status = proto.OpTxConflictErr
 		return

@@ -30,6 +30,16 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
+	for _, quotaId := range req.QuotaIds {
+		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
+		if status != 0 {
+			err = errors.New("create dentry is over quota")
+			reply := []byte(err.Error())
+			p.PacketErrorWithBody(status, reply)
+			return
+		}
+	}
+
 	txInfo := req.TxInfo.GetCopy()
 	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
 		txInfo.TxID = mp.txProcessor.txManager.nextTxID()

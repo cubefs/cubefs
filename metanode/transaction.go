@@ -6,16 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/util/btree"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -36,6 +35,7 @@ const (
 
 type TxRollbackInode struct {
 	inode                  *Inode
+	quotaId                uint32
 	txInodeInfo            *proto.TxInodeInfo
 	rbType                 uint32 //Rollback Type
 	rbInitiator            uint32 //TM, Client
@@ -58,6 +58,7 @@ func (i *TxRollbackInode) Copy() btree.Item {
 
 	return &TxRollbackInode{
 		inode:                  item.(*Inode),
+		quotaId:                i.quotaId,
 		txInodeInfo:            &txInodeInfo,
 		rbType:                 i.rbType,
 		rbInitiator:            i.rbInitiator,
@@ -78,7 +79,9 @@ func (i *TxRollbackInode) Marshal() (result []byte, err error) {
 	if _, err := buff.Write(bs); err != nil {
 		return nil, err
 	}
-
+	if err = binary.Write(buff, binary.BigEndian, &i.quotaId); err != nil {
+		panic(err)
+	}
 	bs, err = i.txInodeInfo.Marshal()
 	if err != nil {
 		return nil, err
@@ -121,6 +124,10 @@ func (i *TxRollbackInode) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	i.inode = ino
+
+	if err = binary.Read(buff, binary.BigEndian, &i.quotaId); err != nil {
+		return
+	}
 
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
@@ -169,9 +176,10 @@ func (i *TxRollbackInode) IsExpired() (expired bool) {
 	return expired
 }
 
-func NewTxRollbackInode(inode *Inode, txInodeInfo *proto.TxInodeInfo, rbType uint32) *TxRollbackInode {
+func NewTxRollbackInode(inode *Inode, quotaId uint32, txInodeInfo *proto.TxInodeInfo, rbType uint32) *TxRollbackInode {
 	return &TxRollbackInode{
 		inode:       inode,
+		quotaId:     quotaId,
 		txInodeInfo: txInodeInfo,
 		rbType:      rbType,
 	}
@@ -1371,6 +1379,13 @@ func (tr *TransactionResource) rollbackInode(req *proto.TxInodeApplyRequest) (st
 			if ino.(*Inode).IsTempFile() && tr.txProcessor.mp.uidManager != nil {
 				tr.txProcessor.mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Extents.eks)
 			}
+			if (ino.(*Inode).IsTempFile() || ino.(*Inode).IsEmptyDir()) && tr.txProcessor.mp.mqMgr != nil && rbInode.quotaId != 0 {
+				var quotaIds []uint32
+				quotaIds = append(quotaIds, rbInode.quotaId)
+				tr.txProcessor.mp.setInodeQuota(quotaIds, rbInode.inode.Inode)
+				tr.txProcessor.mp.mqMgr.updateUsedInfo(int64(rbInode.inode.Size), 1, rbInode.quotaId)
+			}
+
 		}
 		tr.txProcessor.mp.inodeTree.ReplaceOrInsert(rbInode.inode, true)
 
@@ -1378,9 +1393,18 @@ func (tr *TransactionResource) rollbackInode(req *proto.TxInodeApplyRequest) (st
 	case TxDelete:
 		//todo_tx: fsmUnlinkInode or internalDelete?
 		//_ = tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode)
-		if rsp := tr.txProcessor.mp.getInode(rbInode.inode); tr.txProcessor.mp.uidManager != nil && rsp.Status == proto.OpOk {
-			tr.txProcessor.mp.uidManager.doMinusUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Size)
+		// if rsp := tr.txProcessor.mp.getInode(rbInode.inode); tr.txProcessor.mp.uidManager != nil && rsp.Status == proto.OpOk {
+		// 	tr.txProcessor.mp.uidManager.doMinusUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Size)
+		// }
+		if rsp := tr.txProcessor.mp.getInode(rbInode.inode); rsp.Status == proto.OpOk {
+			if tr.txProcessor.mp.uidManager != nil {
+				tr.txProcessor.mp.uidManager.doMinusUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Size)
+			}
+			if tr.txProcessor.mp.mqMgr != nil && rbInode.quotaId != 0 {
+				tr.txProcessor.mp.mqMgr.updateUsedInfo(-1*int64(rbInode.inode.Size), -1, rbInode.quotaId)
+			}
 		}
+
 		tr.txProcessor.mp.internalDeleteInode(rbInode.inode)
 	case TxUpdate:
 		if _, ok := tr.txProcessor.mp.inodeTree.ReplaceOrInsert(rbInode.inode, true); !ok {

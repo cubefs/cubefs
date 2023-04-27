@@ -2083,7 +2083,7 @@ func (m *metadataManager) opMetaBatchDeleteInodeQuota(conn net.Conn, p *Packet, 
 	p.PacketOkWithBody(reply)
 	_ = m.respondToClient(conn, p)
 
-	log.LogInfof("[opMetaBatchSetInodeQuota] req [%v] resp [%v] success.", req, resp)
+	log.LogInfof("[opMetaBatchDeleteInodeQuota] req [%v] resp [%v] success.", req, resp)
 	return err
 }
 
