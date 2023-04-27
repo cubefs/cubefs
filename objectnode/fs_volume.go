@@ -1661,15 +1661,8 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 
 	// Validating ETag value.
 	if !mode.IsDir() && (!etagValue.Valid() || etagValue.TS.Before(inoInfo.ModifyTime)) {
-		// The ETag is invalid or outdated then generate a new ETag and make update.
-		oldEtagVal := etagValue
-		if etagValue, err = v.updateETag(inoInfo.Inode, int64(inoInfo.Size), inoInfo.ModifyTime); err != nil {
-			log.LogErrorf("ObjectMeta: update ETag fail: volume(%v) path(%v) inoInfo(%v) etagVal(%v) err(%v)",
-				v.name, path, inoInfo, err)
-		}
-		xattr.XAttrs[XAttrKeyOSSETag] = etagValue.Encode()
-		log.LogWarnf("ObjectMeta: update ETag: volume(%v) path(%v) inoInfo(%v) oldEtagVal(%v) newEtagVal(%v)",
-			v.name, path, inoInfo, oldEtagVal, etagValue)
+		log.LogWarnf("ObjectMeta: etag invalid or before inode modTime: volume(%v) path(%v) inoInfo(%v) etagVal(%v)",
+			v.name, path, inoInfo, etagValue)
 	}
 
 	info = &FSFileInfo{
