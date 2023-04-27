@@ -288,22 +288,13 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 func (mp *metaPartition) updateMetaPartitionInodeAllocatorState() {
 	enableBitMapAllocator, err := mp.manager.getBitMapAllocatorEnableFlag(mp.config.VolName)
 	if err != nil {
-		log.LogErrorf("updateMetaPartitionInodeAlloterState get flag failed:%v", err)
+		log.LogErrorf("updateMetaPartitionInodeAllocatorState get flag failed:%v", err)
 		return
 	}
-	var changeTo int8
 	if enableBitMapAllocator {
-		changeTo = allocatorStatusAvailable
+		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusAvailable)
 	} else {
-		changeTo = allocatorStatusUnavailable
-	}
-	mp.virtualMPLock.Lock()
-	defer mp.virtualMPLock.Unlock()
-	for index := 0; index < defBitMapReuseVirtualMPMaxCount && index < len(mp.virtualMPs); index++ {
-		_ = mp.virtualMPs[index].InodeIDAlloter.SetStatus(changeTo)
-	}
-	for index := defBitMapReuseVirtualMPMaxCount; index < len(mp.virtualMPs); index++ {
-		_ = mp.virtualMPs[index].InodeIDAlloter.SetStatus(allocatorStatusUnavailable)
+		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusUnavailable)
 	}
 }
 

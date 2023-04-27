@@ -142,7 +142,6 @@ const (
 	AdminAddMetaReplicaLearner      = "/metaLearner/add"
 	AdminPromoteMetaReplicaLearner  = "/metaLearner/promote"
 	AdminMetaPartitionSetIsRecover  = "/metaPartition/setIsRecover"
-	AdminMetaPartitionSetReuseState = "/metaPartition/setReuseState"
 
 	// Operation response
 	GetMetaNodeTaskResponse   = "/metaNode/response"          // Method: 'POST', ContentType: 'application/json'
@@ -245,13 +244,9 @@ const (
 	DataSyncWalEnableStateKey      = "dataWalSyncEnableState"
 	DisableStrictVolZoneKey        = "disableStrictVolZone"
 	AutoUpPartitionReplicaNumKey   = "autoUpdatePartitionReplicaNum"
-	ReuseMPInodeCountThresholdKey  = "reuseMPInodeCountThreshold"
-	ReuseMPDentryCountThresholdKey = "reuseMPDentryCountThreshold"
-	ReuseMPDelInoCountThresholdKey = "reuseMPDelInodeCountThreshold"
-	MPMaxInodeCountKey             = "mpMaxInodeCount"
-	MPMaxDentryCountKey            = "mpMaxDentryCount"
-	ReuseMPKey                     = "reuseMP"
 	EnableBitMapAllocatorKey       = "enableBitMapAllocator"
+	AllocatorMaxUsedFactorKey      = "allocatorMaxUsedFactor"
+	AllocatorMinFreeFactorKey      = "allocatorMinFreeFactor"
 	TrashItemCleanMaxCountKey      = "trashItemCleanMaxCount"
 	TrashCleanDurationKey          = "trashItemCleanDuration"
 )
@@ -262,14 +257,6 @@ const (
 )
 const (
 	DefaultMetaPartitionInodeIDStep    uint64  = 1 << 24
-	DefaultReuseMPInodeCountThreshold  float64 = 0.4
-	DefaultReuseMPDentryCountThreshold float64 = 0.1
-	DefaultReuseMPDelInoCountThreshold float64 = 0.1
-	DefaultMetaPartitionMaxDelInoCnt   uint64  = 100 * 10000
-	DefaultMetaPartitionMaxInodeCount  uint64  = 20000000
-	DefaultMetaPartitionMaxDentryCount uint64  = 20000000
-	DefaultVirtualMPCreateMinDiffTime          = 600 //second
-	OneDayBySecond                             = 86400
 )
 
 var IsDbBack bool = false
@@ -557,11 +544,8 @@ type LimitInfo struct {
 	DisableStrictVolZone             bool
 	AutoUpdatePartitionReplicaNum    bool
 
-	ReuseMPInodeCountThreshold  float64
-	ReuseMPDentryCountThreshold float64
-	ReuseMPDelInoCountThreshold float64
-	MetaPartitionMaxInodeCount  uint64
-	MetaPartitionMaxDentryCount uint64
+	BitMapAllocatorMaxUsedFactor float64
+	BitMapAllocatorMinFreeFactor float64
 
 	TrashCleanDurationEachTime     int32
 	TrashItemCleanMaxCountEachTime int32
@@ -771,23 +755,23 @@ type DiskInfo struct {
 
 // MetaPartitionReport defines the meta partition report.
 type MetaPartitionReport struct {
-	PartitionID     uint64
-	Start           uint64
-	End             uint64
-	Status          int
-	MaxInodeID      uint64
-	IsLeader        bool
-	VolName         string
-	InodeCnt        uint64
-	DentryCnt       uint64
-	DelInodeCnt     uint64
-	DelDentryCnt    uint64
-	IsLearner       bool
-	ExistMaxInodeID uint64
-	StoreMode       StoreMode
-	ApplyId         uint64
-	IsRecover       bool
-	VirtualMPs      []VirtualMetaPartition
+	PartitionID       uint64
+	Start             uint64
+	End               uint64
+	Status            int
+	MaxInodeID        uint64
+	IsLeader          bool
+	VolName           string
+	InodeCnt          uint64
+	DentryCnt         uint64
+	DelInodeCnt       uint64
+	DelDentryCnt      uint64
+	IsLearner         bool
+	ExistMaxInodeID   uint64
+	StoreMode         StoreMode
+	ApplyId           uint64
+	IsRecover         bool
+	AllocatorInUseCnt uint64
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -832,7 +816,6 @@ type DeleteMetaPartitionResponse struct {
 // UpdateMetaPartitionRequest defines the request to update a meta partition.
 type UpdateMetaPartitionRequest struct {
 	PartitionID uint64
-	VirtualMPID uint64
 	VolName     string
 	Start       uint64
 	End         uint64
@@ -971,7 +954,6 @@ type MetaPartitionView struct {
 	StoreMode   StoreMode
 	MemCount    uint8
 	RocksCount  uint8
-	PhyPid      uint64
 }
 
 type OSSSecure struct {
@@ -1033,13 +1015,12 @@ func NewVolView(name string, status uint8, followerRead, isSmart bool, createTim
 	return
 }
 
-func NewMetaPartitionView(partitionID, virtualMPId, start, end uint64, status int8) (mpView *MetaPartitionView) {
+func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *MetaPartitionView) {
 	mpView = new(MetaPartitionView)
-	mpView.PartitionID = virtualMPId
+	mpView.PartitionID = partitionID
 	mpView.Start = start
 	mpView.End = end
 	mpView.Status = status
-	mpView.PhyPid = partitionID
 	mpView.Members = make([]string, 0)
 	mpView.Learners = make([]string, 0)
 	return
@@ -1058,12 +1039,10 @@ type SimpleVolView struct {
 	InodeCount            uint64
 	DentryCount           uint64
 	MaxMetaPartitionID    uint64
-	MaxVirtualMPId        uint64
 	Status                uint8
 	Capacity              uint64 // GB
 	DpWriteableThreshold  float64
 	RwDpCnt               int
-	VirtualMPCnt          int
 	MpCnt                 int
 	DpCnt                 int
 	FollowerRead          bool
@@ -1125,7 +1104,6 @@ type SimpleVolView struct {
 	BatchDelInodeCnt      uint32
 	DelInodeInterval      uint32
 	UmpCollectWay         exporter.UMPCollectMethod
-	ReuseMP               bool
 	EnableBitMapAllocator bool
 	TrashCleanDuration    int32
 	TrashCleanMaxCount    int32
@@ -1243,11 +1221,8 @@ type RateLimitInfo struct {
 	DataSyncWALEnableState           int64
 	DisableStrictVolZone             int64
 	AutoUpdatePartitionReplicaNum    int64
-	ReuseMPInodeCountThreshold       float64
-	ReuseMPDentryCountThreshold      float64
-	ReuseMPDelInoCountThreshold      float64
-	MetaPartitionMaxInodeCount       uint64
-	MetaPartitionMaxDentryCount      uint64
+	AllocatorMaxUsedFactor           float64
+	AllocatorMinFreeFactor           float64
 	TrashCleanDurationEachTime       int32
 	TrashCleanMaxCountEachTime       int32
 }

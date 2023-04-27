@@ -19,5 +19,4 @@ type MockMetaPartition struct {
 	VolName     string
 	Members     []proto.Peer
 	Learners    []proto.Learner
-	VirtualMPs  []proto.VirtualMetaPartition
 }

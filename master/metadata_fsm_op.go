@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/exporter"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -96,11 +95,8 @@ type clusterValue struct {
 	DataSyncWALEnableState              bool
 	DisableStrictVolZone                bool
 	AutoUpdatePartitionReplicaNum       bool
-	ReuseMPInodeCountThreshold          float64
-	ReuseMPDentryCountThreshold         float64
-	ReuseMPDelInodeCountThreshold       float64
-	MetaPartitionMaxInodeCount          uint64
-	MetaPartitionMaxDentryCount         uint64
+	BitMapAllocatorMaxUsedFactor        float64
+	BitMapAllocatorMinFreeFactor        float64
 	TrashCleanDurationEachTime          int32
 	TrashItemCleanMaxCountEachTime      int32
 }
@@ -168,11 +164,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataSyncWALEnableState:              c.cfg.DataSyncWALOnUnstableEnableState,
 		DisableStrictVolZone:                c.cfg.DisableStrictVolZone,
 		AutoUpdatePartitionReplicaNum:       c.cfg.AutoUpdatePartitionReplicaNum,
-		ReuseMPInodeCountThreshold:          c.cfg.ReuseMPInodeCountThreshold,
-		ReuseMPDentryCountThreshold:         c.cfg.ReuseMPDentryCountThreshold,
-		ReuseMPDelInodeCountThreshold:       c.cfg.ReuseMPDelInodeCountThreshold,
-		MetaPartitionMaxInodeCount:          c.cfg.MetaPartitionMaxInodeCount,
-		MetaPartitionMaxDentryCount:         c.cfg.MetaPartitionMaxDentryCount,
+		BitMapAllocatorMaxUsedFactor:        c.cfg.BitMapAllocatorMaxUsedFactor,
+		BitMapAllocatorMinFreeFactor:        c.cfg.BitMapAllocatorMinFreeFactor,
 		TrashItemCleanMaxCountEachTime:      c.cfg.TrashItemCleanMaxCountEachTime,
 		TrashCleanDurationEachTime:          c.cfg.TrashCleanDurationEachTime,
 	}
@@ -194,8 +187,6 @@ type metaPartitionValue struct {
 	Learners      []bsProto.Learner
 	PanicHosts    []string
 	IsRecover     bool
-	DisableReuse  bool
-	VirtualMPs    []bsProto.VirtualMetaPartition
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -213,9 +204,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		Learners:      mp.Learners,
 		OfflinePeerID: mp.OfflinePeerID,
 		IsRecover:     mp.IsRecover,
-		DisableReuse:  mp.DisableReuse,
 		PanicHosts:    mp.PanicHosts,
-		VirtualMPs:    mp.VirtualMPs,
 	}
 	return
 }
@@ -406,7 +395,6 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		BatchDelInodeCnt:      vol.BatchDelInodeCnt,
 		DelInodeInterval:      vol.DelInodeInterval,
 		UmpCollectWay:         vol.UmpCollectWay,
-		ReuseMP:               vol.reuseMP,
 		EnableBitMapAllocator: vol.EnableBitMapAllocator,
 		TrashCleanDuration:    vol.CleanTrashDurationEachTime,
 		TrashCleanMaxCount:    vol.TrashCleanMaxCountEachTime,
@@ -1025,20 +1013,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.MetaNodeDumpWaterLevel < defaultMetanodeDumpWaterLevel {
 			cv.MetaNodeDumpWaterLevel = defaultMetanodeDumpWaterLevel
 		}
-		if cv.ReuseMPInodeCountThreshold > 0 {
-			c.cfg.ReuseMPInodeCountThreshold = cv.ReuseMPInodeCountThreshold
+		if cv.BitMapAllocatorMaxUsedFactor > 0 {
+			c.cfg.BitMapAllocatorMaxUsedFactor = cv.BitMapAllocatorMaxUsedFactor
 		}
-		if cv.ReuseMPDentryCountThreshold > 0 {
-			c.cfg.ReuseMPDentryCountThreshold = cv.ReuseMPDentryCountThreshold
-		}
-		if cv.ReuseMPDelInodeCountThreshold > 0 {
-			c.cfg.ReuseMPDelInodeCountThreshold = cv.ReuseMPDelInodeCountThreshold
-		}
-		if cv.MetaPartitionMaxInodeCount > 0 {
-			c.cfg.MetaPartitionMaxInodeCount = cv.MetaPartitionMaxInodeCount
-		}
-		if cv.MetaPartitionMaxDentryCount > 0 {
-			c.cfg.MetaPartitionMaxDentryCount = cv.MetaPartitionMaxDentryCount
+		if cv.BitMapAllocatorMinFreeFactor > 0 {
+			c.cfg.BitMapAllocatorMinFreeFactor = cv.BitMapAllocatorMinFreeFactor
 		}
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, cv.MetaNodeDumpWaterLevel)
 		atomic.StoreUint64(&c.cfg.MonitorSummarySec, cv.MonitorSummarySec)
@@ -1216,7 +1195,6 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setLearners(mpv.Learners)
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
-		mp.DisableReuse = mpv.DisableReuse
 		mp.modifyTime = time.Now().Unix()
 		mp.PanicHosts = mpv.PanicHosts
 		if mp.IsRecover && len(mp.PanicHosts) > 0 {
@@ -1227,21 +1205,6 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		if mp.IsRecover && len(mp.PanicHosts) == 0 {
 			c.putMigratedMetaPartitions("history", mp.PartitionID)
 		}
-		mp.VirtualMPs = mpv.VirtualMPs
-		if len(mp.VirtualMPs) == 0 {
-			mp.VirtualMPs = append(mp.VirtualMPs, bsProto.VirtualMetaPartition{
-				Start:      mp.Start,
-				End:        mp.End,
-				ID:         mp.PartitionID,
-				CreateTime: time.Now().Unix(),
-			})
-		}
-		for index := 0; index < len(mp.VirtualMPs); index++ {
-			mp.VirtualMPs[index].Status = bsProto.Unavailable
-		}
-		sort.Slice(mp.VirtualMPs, func(i, j int) bool {
-			return mp.VirtualMPs[i].ID < mp.VirtualMPs[j].ID
-		})
 		vol.addMetaPartition(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}

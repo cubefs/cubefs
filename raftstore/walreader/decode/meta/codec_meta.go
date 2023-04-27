@@ -72,8 +72,8 @@ const (
 	metadataOpFSMExtentMerge
 	metadataOpFSMResetStoreTick
 	metadataOpFSMExtentDelSyncV2
-	metadataOpFSMMetaAddVirtualMP
-	metadataOpFSMSynVirtualMPs
+	metadataOpFSMMetaAddVirtualMP // Deprecated
+	metadataOpFSMSynVirtualMPs // Deprecated
 
 	metadataOpFSMSyncMetaConf
 )
@@ -311,22 +311,6 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 		}
 		columnValOp.SetValue("ExtentMerge")
 		columnValAttrs.SetValue(fmt.Sprintf("inode: %v, eks:%v", inodeMerge.Inode, decoder.formatEks(inodeMerge.NewExtents, inodeMerge.OldExtents)))
-	case metadataOpFSMMetaAddVirtualMP:
-		var addVMP proto.AddVirtualMetaPartitionRequest
-		if err = json.Unmarshal(opKVData.V, &addVMP); err != nil {
-			return
-		}
-		columnValOp.SetValue("AddVirtualMP")
-		columnValAttrs.SetValue(fmt.Sprintf("PartitionID: %v, VirtualMP: %v, Start: %v, End: %v, CreateTime: %v",
-			addVMP.PartitionID, addVMP.VirtualPID, addVMP.Start, addVMP.End, addVMP.CreateTime))
-	case metadataOpFSMSynVirtualMPs:
-		syncReq := new(proto.SyncVirtualMetaPartitionsRequest)
-		if err = json.Unmarshal(opKVData.V, syncReq); err != nil {
-			return
-		}
-		columnValOp.SetValue("SyncVirtualMPs")
-		columnValAttrs.SetValue(fmt.Sprintf("PartitionID: %v, VirtualMPs: %v, Start: %v, End: %v",
-			syncReq.PartitionID, syncReq.VirtualMPs, syncReq.Start, syncReq.End))
 	case metadataOpFSMCleanExpiredInode:
 		var batch metanode.FSMDeletedINodeBatch
 		if batch, err = metanode.FSMDeletedINodeBatchUnmarshal(opKVData.V); err != nil {

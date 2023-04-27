@@ -589,7 +589,7 @@ func searchExtent(dps []uint64, extents []uint64, extentOffset uint, size uint, 
 		return
 	}
 	vol := dataPartition.VolName
-	mps, err := client.ClientAPI().GetPhysicalMetaPartitions(vol)
+	mps, err := client.ClientAPI().GetMetaPartitions(vol)
 	if err != nil {
 		return
 	}
@@ -787,7 +787,7 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, dpC
 
 	// get all extents from metanode
 	var inodes []uint64
-	mps, err := client.ClientAPI().GetPhysicalMetaPartitions(vol)
+	mps, err := client.ClientAPI().GetMetaPartitions(vol)
 	if err != nil {
 		return
 	}

@@ -146,13 +146,13 @@ const (
 	OpAddMetaPartitionRaftMember      uint8 = 0x46
 	OpRemoveMetaPartitionRaftMember   uint8 = 0x47
 	OpMetaPartitionTryToLeader        uint8 = 0x48
-	OpRaftAddVirtualMetaPartition     uint8 = 0x49
-	OpDelVirtualMetaPartition         uint8 = 0x4A
+	OpRaftAddVirtualMetaPartition     uint8 = 0x49 // Deprecated
+	OpDelVirtualMetaPartition         uint8 = 0x4A // Deprecated
 	OpResetMetaPartitionRaftMember    uint8 = 0x4B
 	OpAddMetaPartitionRaftLearner     uint8 = 0x4C
 	OpPromoteMetaPartitionRaftLearner uint8 = 0x4D
-	OpSyncVirtualMetaPartitions       uint8 = 0x4E
-	//OpAddVirtualMetaPartition         uint8 = 0x4F
+	OpSyncVirtualMetaPartitions       uint8 = 0x4E // Deprecated
+	//OpAddVirtualMetaPartition         uint8 = 0x4F // Deprecated
 
 	OpAddVirtualMetaPartition uint8 = 0x5A //添加虚拟mp的逻辑发生变化，防止master升级后使用旧的op code给metanode发送添加虚拟mp的请求
 

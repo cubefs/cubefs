@@ -58,7 +58,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		resp  interface{}
 	)
 
-	inoID, err = mp.genInodeID(req.PartitionID)
+	inoID, err = mp.genInodeID()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
 		return
@@ -439,10 +439,6 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 }
 
 func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorResetRequest) error {
-	if lastVirtualMP := mp.lastVirtualMetaPartition(); lastVirtualMP.ID != req.PartitionId {
-		return fmt.Errorf("virtual partition %v not support reset cursor, must be the last virtual mp:%v",
-			req.PartitionId, lastVirtualMP.ID)
-	}
 	status, _ := mp.calcMPStatus()
 	if status == proto.Unavailable {
 		log.LogInfof("mp[%v] status[%d] is unavailable[%d], can not reset cursor[%v]",

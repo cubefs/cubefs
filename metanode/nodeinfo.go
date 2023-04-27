@@ -46,10 +46,8 @@ type NodeInfo struct {
 	raftLogSizeFromLoc     int
 	raftLogCapFromLoc      int
 
-	reuseMPInodeCountThreshold  float64
-	reuseMPDentryCountThreshold float64
-	metaPartitionMaxInodeCount  uint64
-	metaPartitionMaxDentryCount uint64
+	bitMapAllocatorMaxUsedFactorForAvailable float64
+	bitMapAllocatorMinFreeFactorForAvailable float64
 
 	CleanTrashItemMaxDurationEachTime int32  //min
 	CleanTrashItemMaxCountEachTime    int32
@@ -297,58 +295,32 @@ func (m *MetaNode) updateSyncWALOnUnstableEnableState(enableState bool) {
 	m.raftStore.SetSyncWALOnUnstable(enableState)
 }
 
-func (m *MetaNode) updateMPReuseConf(info *proto.LimitInfo) {
-	if info.ReuseMPInodeCountThreshold != 0 && nodeInfo.reuseMPInodeCountThreshold != info.ReuseMPInodeCountThreshold {
-		nodeInfo.reuseMPInodeCountThreshold = info.ReuseMPInodeCountThreshold
+func (m *MetaNode) updateBitMapAllocatorConf(info *proto.LimitInfo) {
+	if info.BitMapAllocatorMaxUsedFactor != 0 && nodeInfo.bitMapAllocatorMaxUsedFactorForAvailable != info.BitMapAllocatorMaxUsedFactor {
+		nodeInfo.bitMapAllocatorMaxUsedFactorForAvailable = info.BitMapAllocatorMaxUsedFactor
 	}
 
-	if info.ReuseMPDentryCountThreshold != 0 && nodeInfo.reuseMPDentryCountThreshold != info.ReuseMPDentryCountThreshold {
-		nodeInfo.reuseMPDentryCountThreshold = info.ReuseMPDentryCountThreshold
-	}
-
-	if info.MetaPartitionMaxInodeCount != 0 && nodeInfo.metaPartitionMaxInodeCount != info.MetaPartitionMaxInodeCount {
-		nodeInfo.metaPartitionMaxInodeCount = info.MetaPartitionMaxInodeCount
-	}
-
-	if info.MetaPartitionMaxDentryCount != 0 && nodeInfo.metaPartitionMaxDentryCount != info.MetaPartitionMaxDentryCount {
-		nodeInfo.metaPartitionMaxDentryCount = info.MetaPartitionMaxDentryCount
+	if info.BitMapAllocatorMinFreeFactor != 0 && nodeInfo.bitMapAllocatorMinFreeFactorForAvailable != info.BitMapAllocatorMinFreeFactor {
+		nodeInfo.bitMapAllocatorMinFreeFactorForAvailable = info.BitMapAllocatorMinFreeFactor
 	}
 }
 
-func (m *MetaNode) getReuseMPInodeCountThreshold() float64 {
-	threshold := proto.DefaultReuseMPInodeCountThreshold
+func (m *MetaNode) getBitMapAllocatorMaxUsedFactor() float64 {
+	factor := defBitMapAllocatorMaxUsedFactorForAvailable
 	nodeConf := getGlobalConfNodeInfo()
-	if nodeConf.reuseMPInodeCountThreshold != 0 {
-		threshold = nodeConf.reuseMPInodeCountThreshold
+	if nodeConf.bitMapAllocatorMaxUsedFactorForAvailable != 0 {
+		factor = nodeConf.bitMapAllocatorMaxUsedFactorForAvailable
 	}
-	return threshold
+	return factor
 }
 
-func (m *MetaNode) getReuseMPDentryCountThreshold() float64 {
-	threshold := proto.DefaultReuseMPDentryCountThreshold
+func (m *MetaNode) getBitMapAllocatorMinFreeFactor() float64 {
+	factor := defBitMapAllocatorMinFreeFactorForAvailable
 	nodeConf := getGlobalConfNodeInfo()
-	if nodeConf.reuseMPDentryCountThreshold != 0 {
-		threshold = nodeConf.reuseMPDentryCountThreshold
+	if nodeConf.bitMapAllocatorMinFreeFactorForAvailable != 0 {
+		factor = nodeConf.bitMapAllocatorMinFreeFactorForAvailable
 	}
-	return threshold
-}
-
-func (m *MetaNode) getMetaPartitionMaxInodeCount() uint64 {
-	count := proto.DefaultMetaPartitionMaxInodeCount
-	nodeConf := getGlobalConfNodeInfo()
-	if nodeConf.metaPartitionMaxInodeCount != 0 {
-		count = nodeConf.metaPartitionMaxInodeCount
-	}
-	return count
-}
-
-func (m *MetaNode) getMetaPartitionMaxDentryCount() uint64 {
-	count := proto.DefaultMetaPartitionMaxDentryCount
-	nodeConf := getGlobalConfNodeInfo()
-	if nodeConf.metaPartitionMaxDentryCount != 0 {
-		count = nodeConf.metaPartitionMaxDentryCount
-	}
-	return count
+	return factor
 }
 
 func getGlobalConfNodeInfo() *NodeInfo {
@@ -410,7 +382,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.updateTrashCleanConfig(limitInfo)
 	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
 	m.updateSyncWALOnUnstableEnableState(limitInfo.MetaSyncWALOnUnstableEnableState)
-	m.updateMPReuseConf(limitInfo)
+	m.updateBitMapAllocatorConf(limitInfo)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

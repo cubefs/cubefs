@@ -35,7 +35,7 @@ var (
 func TestVolCreate(t *testing.T) {
 	t.Skipf("This case skiped cause timeout problem.")
 	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testEnableWriteCache, false, testZoneName, testMpLyout, "", 0, proto.CompactDefaultName, 4, 2, false, 0, 0, 0, false)
+		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testEnableWriteCache, testZoneName, testMpLyout, "", 0, proto.CompactDefaultName, 4, 2, false, 0, 0, 0, false)
 	if err != nil {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, testVolName)
 	}
@@ -61,7 +61,7 @@ func TestUpdateVol(t *testing.T) {
 	updateFollowerRead := false
 	trashDays := 15
 	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, trashDays, testStoreMode,
-		updateFollowerRead, false, false, false, false, false, false, false, false, false, authKey, testZoneName,
+		updateFollowerRead, false, false, false, false, false, false, false, false, authKey, testZoneName,
 		testMpLyout, "", 0, 0, 0, "default", 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false)
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)

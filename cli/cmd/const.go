@@ -155,8 +155,6 @@ const (
 	CliOpVolMaxChildrenCnt     = "max-children-cnt"
 	CliOpVolBatchDelInodeCnt   = "batch-del-inode-cnt"
 	CliOpVolDelInodeInterval   = "del-inode-interval"
-	CliFlagReuseMP             = "reuseMP"
-	CliOpSetReuseState         = "setReuseState"
 	CliFlagBitMapAllocatorSt   = "enableBitMapAllocator"
 	CliFlagTrashCleanDuration  = "trashCleanDuration"
 	CliFlagTrashCleanMaxCount  = "trashCleanMaxCount"

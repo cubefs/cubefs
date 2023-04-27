@@ -41,8 +41,6 @@ func mockMetaPartitionReplica(nodeID, partitionID uint64, storeMode proto.StoreM
 		RocksDBDir:  partitionDir,
 	}
 
-	config.VirtualMPs = append(config.VirtualMPs, VirtualMetaPartitionConf{Start: config.Start, End: config.End, ID: 1})
-
 	mp, err := CreateMetaPartition(config, manager)
 	if err != nil {
 		fmt.Printf("create meta partition failed:%s", err.Error())
@@ -1390,7 +1388,7 @@ func TestResetCursor_CursorChange(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 100; i++ {
-			mp.nextInodeID(req.PartitionId)
+			mp.nextInodeID()
 			time.Sleep(time.Microsecond * 1)
 		}
 	}()

@@ -77,11 +77,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			continue
 		}
 		mConf := partition.GetBaseConfig()
-		if partitionID != mConf.PartitionId {
-			//virtual meta partition
-			continue
-		}
-		partition.(*metaPartition).updateMetaPartitionStatus()
+		partition.(*metaPartition).updateStatus()
 		var applyID, inodeCnt, dentryCnt, delInodeCnt, delDentryCnt uint64
 		snap := partition.(*metaPartition).GetSnapShot()
 		if snap != nil {
@@ -108,7 +104,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			StoreMode:       mConf.StoreMode,
 			ApplyId:         applyID,
 			IsRecover:       partition.(*metaPartition).CreationType == proto.DecommissionedCreateDataPartition,
-			VirtualMPs:      partition.(*metaPartition).getVirtualMetaPartitionsInfo(),
+			AllocatorInUseCnt: partition.(*metaPartition).inodeIDAllocator.GetUsed(),
 		}
 		if _, isLeader := partition.IsLeader(); isLeader {
 			mpr.IsLeader = true
@@ -1059,104 +1055,6 @@ func (m *metadataManager) opPromoteMetaPartitionRaftLearner(conn net.Conn,
 	p.PacketOkReply()
 	m.respondToClient(conn, p)
 
-	return
-}
-
-func (m *metadataManager) opVirtualMetaPartitionAdd(conn net.Conn, p *Packet, remoteAddr string) (err error) {
-	req := &proto.AddVirtualMetaPartitionRequest{}
-	adminTask := &proto.AdminTask{
-		Request: req,
-	}
-	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
-	decode.UseNumber()
-	defer func() {
-		if err != nil {
-			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-			err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		} else {
-			p.PacketOkReply()
-		}
-		m.respondToClient(conn, p)
-	}()
-	if err = decode.Decode(adminTask); err != nil {
-
-		return
-	}
-
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		return
-	}
-
-	err = mp.AddVirtualMetaPartition(p.Ctx(), req)
-	log.LogInfof("%s [opVirtualMetaPartitionAdd] req[%v], response[%v].",
-		remoteAddr, req, adminTask)
-	return
-}
-
-func (m *metadataManager) opVirtualMetaPartitionDel(conn net.Conn, p *Packet, remoteAddr string) (err error) {
-	req := &proto.DelVirtualMetaPartitionRequest{}
-	adminTask := &proto.AdminTask{
-		Request: req,
-	}
-	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
-	decode.UseNumber()
-	defer func() {
-		if err != nil {
-			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-			err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		} else {
-			p.PacketOkReply()
-		}
-		m.respondToClient(conn, p)
-	}()
-	if err = decode.Decode(adminTask); err != nil {
-		return
-	}
-
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		return
-	}
-
-	err = mp.DeleteVirtualMetaPartition(req)
-	log.LogInfof("%s [opVirtualMetaPartitionDel] req[%v], response[%v].",
-		remoteAddr, req, adminTask)
-	return
-}
-
-func (m *metadataManager) opRaftAddVirtualMetaPartition(conn net.Conn, p *Packet, remoteAddr string) (err error) {
-	req := &proto.AddVirtualMetaPartitionRequest{}
-	adminTask := &proto.AdminTask{
-		Request: req,
-	}
-	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
-	decode.UseNumber()
-	defer func() {
-		if err != nil {
-			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-			err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		} else {
-			p.PacketOkReply()
-		}
-		m.respondToClient(conn, p)
-	}()
-	if err = decode.Decode(adminTask); err != nil {
-
-		return
-	}
-
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		return
-	}
-
-	if !m.serveProxy(conn, mp, p) {
-		return
-	}
-	err = mp.RaftAddVirtualMetaPartition(p.Ctx(), req)
-	log.LogInfof("%s [opRaftAddVirtualMetaPartition] req[%v], response[%v].",
-		remoteAddr, req, adminTask)
 	return
 }
 

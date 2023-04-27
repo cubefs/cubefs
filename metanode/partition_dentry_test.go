@@ -1098,7 +1098,6 @@ func newDefaultMpConfig(pid, nodeId, start, end uint64, storeMode proto.StoreMod
 		StoreMode: storeMode,
 		Cursor: math.MaxUint64 - 100000,
 	}
-	conf.VirtualMPs = append(conf.VirtualMPs, VirtualMetaPartitionConf{Start: conf.Start, End:conf.End, ID: 1})
 	return
 }
 

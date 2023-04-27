@@ -59,7 +59,6 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMetaDataChecksum(client),
 		newCheckInodeTree(client),
 		newMetaPartitionResetRecoverCmd(client),
-		newMetaPartitionSetReuseStateCmd(client),
 		newMetaPartitionInodeInuse(client),
 	)
 	return cmd
@@ -78,7 +77,6 @@ const (
 	cmdMetaPartitionListAllInoShort     = "list mp all inodes id"
 	cmdMetaPartitionCheckSnapshotShort  = "check snapshot is same by id"
 	cmdMetaPartitionResetRecoverShort   = "set the meta partition IsRecover value to false"
-	cmdMetaPartitionSetReuseStateShort  = "set the meta partition enable reuse state"
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -1177,57 +1175,6 @@ func stdoutMismatchInodes(resultSet []*proto.InodesCRCSumInfo, hosts []string) {
 	stdout("total mismatch inode count:%v\n", mismatchInodeCount)
 }
 
-func newMetaPartitionSetReuseStateCmd(client *master.MasterClient) *cobra.Command {
-	var (
-		partitionID uint64
-		confirm     string
-		err         error
-		result      string
-		partition   *proto.MetaPartitionInfo
-		optEnableState bool
-	)
-	var cmd = &cobra.Command{
-		Use:   CliOpSetReuseState + " [PARTITION ID]",
-		Short: cmdMetaPartitionSetReuseStateShort,
-		Args:  cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			defer func() {
-				if err != nil {
-					errout("set meta partition reuse enable state failed:%v\n", err.Error())
-				}
-			}()
-			partitionID, err = strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return
-			}
-			if partition, err = client.ClientAPI().GetMetaPartition(partitionID, ""); err != nil {
-				return
-			}
-			if partition.DisableReuse && !optEnableState {
-				stdout(fmt.Sprintf("MetaPartition(%v) already disable reuse state.\n", partition.PartitionID))
-				return
-			}
-			if !partition.DisableReuse && optEnableState {
-				stdout(fmt.Sprintf("MetaPartition(%v) already enable reuse state.\n", partition.PartitionID))
-				return
-			}
-			stdout(fmt.Sprintf("MetaPartition(%v) reuse state change %v to %v, please confirm(y/n):",
-				partition.PartitionID, formatEnabledDisabled(!partition.DisableReuse), formatEnabledDisabled(optEnableState)))
-			_, _ = fmt.Scanln(&confirm)
-			if "y" != confirm && "yes" != confirm {
-				return
-			}
-			result, err = client.AdminAPI().SetMetaPartitionEnableReuseState(partitionID, optEnableState)
-			if err != nil {
-				return
-			}
-			stdout("%s\n", result)
-		},
-	}
-	cmd.Flags().BoolVar(&optEnableState, "enable", true, "enable reuse state, true or false")
-	return cmd
-}
-
 func newMetaPartitionInodeInuse(client *master.MasterClient) *cobra.Command {
 	var (
 		partitionID uint64
@@ -1255,17 +1202,6 @@ func newMetaPartitionInodeInuse(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("partition replicas not exist")
 				return
 			}
-			var virtualMP *proto.VirtualMetaPartition
-			for _, vMP := range partition.VirtualMPs {
-				if vMP.ID == partitionID {
-					virtualMP = &vMP
-					break
-				}
-			}
-			if virtualMP == nil {
-				err = fmt.Errorf("virtual meta partition %v not exist in partition %v", partitionID, partition.PartitionID)
-				return
-			}
 			ip := strings.Split(partition.Replicas[0].Addr, ":")[0]
 			for _, replica := range partition.Replicas {
 				if replica.IsLeader {
@@ -1288,15 +1224,14 @@ func newMetaPartitionInodeInuse(client *master.MasterClient) *cobra.Command {
 				}
 				for bitMapOffset := 0; bitMapOffset <= 63; bitMapOffset++ {
 					if inodeInuseBitMap[index] & (uint64(1) << bitMapOffset) != 0 {
-						inodeInuse = append(inodeInuse, uint64(index*64+bitMapOffset)+virtualMP.Start)
+						inodeInuse = append(inodeInuse, uint64(index*64+bitMapOffset)+partition.Start)
 					}
 				}
 			}
 			stringBuilder := strings.Builder{}
-			stringBuilder.WriteString(fmt.Sprintf("Physical PartitionID : %v\n", partition.PartitionID))
-			stringBuilder.WriteString(fmt.Sprintf("Virtual PartitionID  : %v\n", partitionID))
-			stringBuilder.WriteString(fmt.Sprintf("Start                : %v\n", virtualMP.Start))
-			stringBuilder.WriteString(fmt.Sprintf("End                  : %v\n", virtualMP.End))
+			stringBuilder.WriteString(fmt.Sprintf("PartitionID          : %v\n", partition.PartitionID))
+			stringBuilder.WriteString(fmt.Sprintf("Start                : %v\n", partition.Start))
+			stringBuilder.WriteString(fmt.Sprintf("End                  : %v\n", partition.End))
 			stringBuilder.WriteString(fmt.Sprintf("Inode Inuse          : %v\n", inodeInuse))
 			stdout(stringBuilder.String())
 		},

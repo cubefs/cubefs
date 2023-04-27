@@ -96,7 +96,7 @@ func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 	reqURL = fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionMetaPartition, vol.Name, id, offlineAddr)
 	process(reqURL, t)
-	mp, err = server.cluster.getMetaPartitionByVirtualPID(id)
+	mp, err = server.cluster.getMetaPartitionByID(id)
 	if err != nil {
 		t.Errorf("decommissionMetaPartition,err [%v]", err)
 		return
@@ -134,7 +134,7 @@ func decommissionMetaPartitionWithoutReplica(vol *Vol, id uint64, t *testing.T) 
 	reqURL = fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionMetaPartition, vol.Name, id, offlineAddr)
 	process(reqURL, t)
-	mp, err = server.cluster.getMetaPartitionByVirtualPID(id)
+	mp, err = server.cluster.getMetaPartitionByID(id)
 	if err != nil {
 		t.Errorf("decommissionMetaPartition,err [%v]", err)
 		return

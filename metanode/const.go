@@ -29,8 +29,6 @@ type (
 	CreateMetaRangeReq = proto.CreateMetaPartitionRequest
 	// MetaNode -> Master create metaPartition response
 	CreateMetaRangeResp = proto.CreateMetaPartitionResponse
-	// Master -> MetaNode  add virtual metaPartition request
-	AddVirtualMetaPartitionRequest = proto.AddVirtualMetaPartitionRequest
 	// Client -> MetaNode create Inode request
 	CreateInoReq = proto.CreateInodeRequest
 	// MetaNode -> Client create Inode response
@@ -179,7 +177,7 @@ const (
 
 	opFSMSyncMetaConf
 
-	opFSMMetaRaftAddVirtualMP
+	opFSMMetaRaftAddVirtualMP //deprecated
 )
 
 var (
@@ -240,13 +238,11 @@ const (
 	defTryFailOverCnt               = 3
 	defParallelFailOverCnt          = 10
 
-	defBitMapReuseVirtualMPMaxCount = 3 //only manager top three
-	defFreeBitMinCount              = 10000
-
 	defCleanTrashItemMaxTotalCountEachTime    = 100 * 10000 //100W
 	defCleanTrashItemMaxDurationEachTime      = 5           //min
-	defBitMapFreeCountThresholdForUnavailable = 0.1
-	defBitMapUsedCountThresholdForAvailable   = 0.6
+
+	defBitMapAllocatorMaxUsedFactorForAvailable = 0.9
+	defBitMapAllocatorMinFreeFactorForAvailable = 0.4
 )
 
 const (
@@ -262,10 +258,11 @@ const (
 )
 
 const (
-	RocksDBVersion        = proto.RocksDBVersion
-	Version3_3_0          = proto.Version_3_3_0
-	MPReuseVersion        = proto.Version_3_4_0
-	MetaNodeLatestVersion = proto.BaseVersion
+	RocksDBVersion         = proto.RocksDBVersion
+	Version3_3_0           = proto.Version_3_3_0
+	BitMapAllocatorVersion = proto.BitMapAllocator
+	Version4_0_0           = proto.Version_4_0_0
+	MetaNodeLatestVersion  = proto.BaseVersion
 )
 
 const (

@@ -29,7 +29,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"sort"
 	"strings"
 	"sync/atomic"
 )
@@ -86,16 +85,6 @@ func (mp *metaPartition) loadMetadata() (err error) {
 		mp.config.StoreMode = proto.StoreModeMem
 	}
 	mp.config.RocksDBDir = mConf.RocksDBDir
-	mp.config.VirtualMPs = mConf.VirtualMPs
-	if len(mp.config.VirtualMPs) == 0 {
-		//first boot, need convert to virtual mp
-		mp.config.VirtualMPs = append(mp.config.VirtualMPs, VirtualMetaPartitionConf{ID: mConf.PartitionId, Start: mConf.Start, End: mConf.End})
-	}
-	sort.Slice(mp.config.VirtualMPs, func(i, j int) bool {
-		return mp.config.VirtualMPs[i].ID < mp.config.VirtualMPs[j].ID
-	})
-	mp.config.Start = mp.config.VirtualMPs[0].Start
-	mp.config.InodeStart = mp.config.VirtualMPs[0].Start
 	if mp.config.RocksDBDir == "" {
 		// new version but old config; need select one dir
 		err = mp.selectRocksDBDir()
@@ -575,97 +564,6 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	return
 }
 
-func (mp *metaPartition) addVirtualMetaPartitionConf(virtualMPInfo VirtualMetaPartitionConf) (err error) {
-	mp.confUpdateMutex.Lock()
-	defer mp.confUpdateMutex.Unlock()
-	if mp.config.virtualMetaPartitionConfExist(virtualMPInfo) {
-		return
-	}
-
-	mp.config.addVirtualMetaPartitionConf(virtualMPInfo)
-	defer func() {
-		if err != nil {
-			mp.config.delVirtualMetaPartitionConf(virtualMPInfo)
-		}
-	}()
-
-	if err = mp.config.checkMeta(); err != nil {
-		err = errors.NewErrorf("[addVirtualMetaPartitionConf] checkMeta->%s", err.Error())
-		return
-	}
-
-	if err = mp.config.persist(); err != nil {
-		err = errors.NewErrorf("[addVirtualMetaPartitionConf] config persist->%s", err.Error())
-		return
-	}
-	return
-}
-
-func (mp *metaPartition) delVirtualMetaPartitionConf(virtualMPInfo VirtualMetaPartitionConf) (err error) {
-	mp.confUpdateMutex.Lock()
-	defer mp.confUpdateMutex.Unlock()
-	if !mp.config.virtualMetaPartitionConfExist(virtualMPInfo) {
-		return
-	}
-
-	mp.config.delVirtualMetaPartitionConf(virtualMPInfo)
-	defer func() {
-		if err != nil {
-			mp.config.addVirtualMetaPartitionConf(virtualMPInfo)
-		}
-	}()
-
-	if err = mp.config.checkMeta(); err != nil {
-		err = errors.NewErrorf("[delVirtualMetaPartitionConf] checkMeta->%s", err.Error())
-		return
-	}
-
-	if err = mp.config.persist(); err != nil {
-		err = errors.NewErrorf("[delVirtualMetaPartitionConf] config persist->%s", err.Error())
-		return
-	}
-	return
-}
-
-func (mp *metaPartition) updateEnd(id, end uint64) (err error) {
-	mp.confUpdateMutex.Lock()
-	defer mp.confUpdateMutex.Unlock()
-
-	var needUpdateEndVirtualMPConf *VirtualMetaPartitionConf
-	for index, virtualConf := range mp.config.VirtualMPs {
-		if virtualConf.ID == id {
-			needUpdateEndVirtualMPConf = &mp.config.VirtualMPs[index]
-		}
-	}
-	if needUpdateEndVirtualMPConf == nil {
-		err = fmt.Errorf("[updateEnd] not found virtual meta partition:%v", id)
-		return
-	}
-	needUpdateEndVirtualMPOldEnd := needUpdateEndVirtualMPConf.End
-	oldEnd := atomic.LoadUint64(&mp.config.End)
-
-	atomic.StoreUint64(&mp.config.End, end)
-	atomic.StoreUint64(&needUpdateEndVirtualMPConf.End, end)
-	defer func() {
-		if err != nil {
-			atomic.StoreUint64(&mp.config.End, oldEnd)
-			atomic.StoreUint64(&needUpdateEndVirtualMPConf.End, needUpdateEndVirtualMPOldEnd)
-			return
-		}
-	}()
-
-	if err = mp.config.checkMeta(); err != nil {
-		err = errors.NewErrorf("[updateEnd] checkMeta->%s", err.Error())
-		return
-	}
-
-	if err = mp.config.persist(); err != nil {
-		err = errors.NewErrorf("[updateEnd] config persist->%s", err.Error())
-		return
-	}
-	return
-}
-
 func (mp *metaPartition) updateMetaConfByMetaConfSnap(newMetaConf *MetaPartitionConfig) (err error) {
 	mp.confUpdateMutex.Lock()
 	defer mp.confUpdateMutex.Unlock()
@@ -675,13 +573,11 @@ func (mp *metaPartition) updateMetaConfByMetaConfSnap(newMetaConf *MetaPartition
 	oldStart := atomic.LoadUint64(&mp.config.Start)
 	oldEnd := atomic.LoadUint64(&mp.config.End)
 	oldCursor := atomic.LoadUint64(&mp.config.Cursor)
-	oldVirtualMPsConf := mp.config.VirtualMPs
 	oldPeers := mp.config.Peers
 	oldLearner := mp.config.Learners
 	atomic.StoreUint64(&mp.config.Start, newMetaConf.Start)
 	atomic.StoreUint64(&mp.config.End, newMetaConf.End)
 	atomic.StoreUint64(&mp.config.Cursor, newMetaConf.Cursor)
-	mp.config.VirtualMPs = newMetaConf.VirtualMPs
 	mp.config.Peers = newMetaConf.Peers
 	mp.config.Learners = newMetaConf.Learners
 	defer func() {
@@ -689,7 +585,6 @@ func (mp *metaPartition) updateMetaConfByMetaConfSnap(newMetaConf *MetaPartition
 			atomic.StoreUint64(&mp.config.Start, oldStart)
 			atomic.StoreUint64(&mp.config.End, oldEnd)
 			atomic.StoreUint64(&mp.config.Cursor, oldCursor)
-			mp.config.VirtualMPs = oldVirtualMPsConf
 			mp.config.Peers = oldPeers
 			mp.config.Learners = oldLearner
 		}
@@ -719,37 +614,6 @@ func (mp *metaPartition) persistMetadata() (err error) {
 		return
 	}
 	return
-	//// TODO Unhandled errors
-	//os.MkdirAll(mp.config.RootDir, 0755)
-	//filename := path.Join(mp.config.RootDir, metadataFileTmp)
-	//fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
-	//if err != nil {
-	//	return
-	//}
-	//defer func() {
-	//	// TODO Unhandled errors
-	//	fp.Sync()
-	//	fp.Close()
-	//	os.Remove(filename)
-	//}()
-	//
-	//data, err := json.Marshal(mp.config)
-	//if err != nil {
-	//	return
-	//}
-	//if _, err = fp.Write(data); err != nil {
-	//	return
-	//}
-	//if err = os.Rename(filename, path.Join(mp.config.RootDir, metadataFile)); err != nil {
-	//	return
-	//}
-	//log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
-	//	mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
-	//log.LogInfof("persistMetadata: persist complete: partitionID(%v) creationType(%v) RocksDBWalFileSize(%v) +" +
-	//	"RocksDBWalMemSize(%v) RocksDBLogFileSize(%v) RocksDBReservedCount(%v) RocksDBLogReservedTime(%v) WALTTL(%v)", mp.config.PartitionId,
-	//	mp.config.CreationType, mp.config.RocksWalFileSize, mp.config.RocksWalMemSize, mp.config.RocksLogFileSize,
-	//	mp.config.RocksLogReVersedCnt, mp.config.RocksLogReversedTime, mp.config.RocksWalTTL)
-	//return
 }
 
 func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) {

@@ -19,7 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/errors"
 	"io/ioutil"
 	"os"
 	"path"
@@ -120,70 +120,24 @@ func (mp *metaPartition) fsmStoreConfig() {
 	}
 }
 
-func (mp *metaPartition) fsmUpdatePartition(id, end uint64) (status uint8, err error) {
+func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8, err error) {
 	status = proto.OpOk
-	if id == 0 {
-		id = mp.lastVirtualMetaPartition().ID
-	}
-	if err = mp.updateEnd(id, end); err != nil {
-		status = proto.OpDiskErr
-		return
-	}
-	mp.updateVirtualMetaPartitionEnd(id, end)
-	return
-}
-
-func (mp *metaPartition) fsmAddVirtualVirtualMetaPartitionPartition(req *proto.AddVirtualMetaPartitionRequest) (resp *MetaRaftApplyResult) {
-	resp = new(MetaRaftApplyResult)
-	resp.Status = proto.OpOk
-	if atomic.LoadUint64(&mp.config.Cursor) < req.Cursor {
-		atomic.StoreUint64(&mp.config.Cursor, req.Cursor)
-	}
-	return
-}
-
-//unuse
-func (mp *metaPartition) fsmSyncVirtualMPs(req *proto.SyncVirtualMetaPartitionsRequest) (resp *MetaRaftApplyResult) {
-	resp = new(MetaRaftApplyResult)
-	resp.Status = proto.OpOk
-
-	if time.Now().Unix() - mp.lastVirtualMetaPartition().CreateTime < proto.DefaultVirtualMPCreateMinDiffTime {
-		//unstable state, ignore
-		log.LogDebugf("fsmSyncVirtualMPs, partitionID(%v) ignore sync virtual mps", mp.config.PartitionId)
+	oldEnd := atomic.LoadUint64(&mp.config.End)
+	atomic.StoreUint64(&mp.config.End, end)
+	defer func() {
+		if err != nil {
+			log.LogErrorf("fsmUpdatePartition failed:%v", err.Error())
+			atomic.StoreUint64(&mp.config.End, oldEnd)
+			status = proto.OpDiskErr
+		}
+	}()
+	if err = mp.config.checkMeta(); err != nil {
 		return
 	}
 
-	oldVirtualMPs := mp.config.VirtualMPs
-	vMPsConf := make([]VirtualMetaPartitionConf, 0, len(req.VirtualMPs))
-	for _, vMP := range req.VirtualMPs {
-		vMPsConf = append(vMPsConf, VirtualMetaPartitionConf{ID: vMP.ID, Start: vMP.Start, End: vMP.End, CreateTime: vMP.CreateTime})
-	}
-	mp.config.VirtualMPs = vMPsConf
-	if err := mp.PersistMetadata(); err != nil {
-		errMsg := fmt.Sprintf("fsmSyncVirtualMPs, partitionID(%v) persist meta data failed:%v", mp.config.PartitionId, err)
-		exporter.WarningRocksdbError(errMsg)
-	}
-
-	if needUpdate := mp.needUpdateVirtualMetaPartition(); !needUpdate {
-		log.LogDebugf("fsmSyncVirtualMPs, partitionID(%v) with the same virtual meta partition, no need update", mp.config.PartitionId)
+	if err = mp.config.persist(); err != nil {
+		err = errors.NewErrorf("[persistConf] config persist->%s", err.Error())
 		return
-	}
-
-	mp.updateVirtualMetaPartitionsByConf()
-	mp.config.Start = req.Start
-	mp.config.End = req.End
-
-	if atomic.LoadUint64(&mp.config.Cursor) < mp.lastVirtualMetaPartition().Start {
-		atomic.StoreUint64(&mp.config.Cursor, mp.lastVirtualMetaPartition().Start)
-	}
-
-	mp.manager.mu.Lock()
-	defer mp.manager.mu.Unlock()
-	for _, virtualMP := range oldVirtualMPs {
-		delete(mp.manager.partitions, virtualMP.ID)
-	}
-	for _, virtualMP := range mp.config.VirtualMPs {
-		mp.manager.partitions[virtualMP.ID] = mp
 	}
 	return
 }

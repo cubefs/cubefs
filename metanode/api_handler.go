@@ -215,7 +215,6 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 		msg["raft_log_cap"] = raftPartition.GetWALFileCacheCapacity()
 	}
 	msg["status"] = mp.(*metaPartition).status
-	msg["virtual_mps"] = mp.(*metaPartition).getVirtualMetaPartitionsInfo()
 	msg["cleanTrashItemMaxDurationEachTime"] = mp.(*metaPartition).getCleanTrashItemMaxDurationEachTime()
 	msg["cleanTrashItemMaxCountEachTime"] = mp.(*metaPartition).getCleanTrashItemMaxCountEachTime()
 	msg["now"] = time.Now()
@@ -912,10 +911,8 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"trashCleanInterval":                nodeCfg.trashCleanInterval,
 		"delEKRecordFileMaxMB":              DeleteEKRecordFilesMaxTotalSize.Load() / unit.MB,
 		"raftWALSyncEnableState":            m.raftStore.IsSyncWALOnUnstable(),
-		"reuseMPInodeCountThreshold":        m.getReuseMPInodeCountThreshold(),
-		"reuseMPDentryCountThreshold":       m.getReuseMPDentryCountThreshold(),
-		"mpMaxInodeCount":                   m.getMetaPartitionMaxInodeCount(),
-		"mpMaxDentryCount":                  m.getMetaPartitionMaxDentryCount(),
+		"bitMapAllocatorMaxUsedFactor":      m.getBitMapAllocatorMaxUsedFactor(),
+		"bitMapAllocatorMinFreeFactor":      m.getBitMapAllocatorMinFreeFactor(),
 		"cleanTrashItemMaxDurationEachTime": nodeInfo.CleanTrashItemMaxDurationEachTime,
 		"cleanTrashItemMaxCountEachTime":    nodeInfo.CleanTrashItemMaxCountEachTime,
 	}
@@ -2433,13 +2430,12 @@ func (m *MetaNode) getInodeInuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	virtualMP := mp.(*metaPartition).getVirtualMetaPartitionByID(pid)
-	if virtualMP.InodeIDAlloter == nil || virtualMP.InodeIDAlloter.GetStatus() == allocatorStatusUnavailable {
+	if mp.(*metaPartition).inodeIDAllocator == nil || mp.(*metaPartition).inodeIDAllocator.GetStatus() == allocatorStatusUnavailable {
 		resp.Msg = fmt.Sprintf("allocator disable")
 		return
 	}
 
-	inoInuse := virtualMP.InodeIDAlloter.GetUsedInos()
+	inoInuse := mp.(*metaPartition).inodeIDAllocator.GetUsedInos()
 	resp.Data = &struct {
 		Cnt      int      `json:"count"`
 		InoInuse []uint64 `json:"inodeInuse"`
@@ -2479,13 +2475,11 @@ func (m *MetaNode) getBitInuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	virtualMP := mp.(*metaPartition).getVirtualMetaPartitionByID(pid)
-	if virtualMP.InodeIDAlloter == nil || virtualMP.InodeIDAlloter.GetStatus() == allocatorStatusUnavailable {
+	if mp.(*metaPartition).inodeIDAllocator == nil || mp.(*metaPartition).inodeIDAllocator.GetStatus() == allocatorStatusUnavailable {
 		resp.Msg = fmt.Sprintf("allocator disable")
 		return
 	}
-
-	inoInuseBitMap := virtualMP.InodeIDAlloter.GetUsedInosBitMap()
+	inoInuseBitMap := mp.(*metaPartition).inodeIDAllocator.GetUsedInosBitMap()
 	resp.Data = &struct {
 		InoInuseBitMap []uint64 `json:"inodeInuseBitMap"`
 	}{
@@ -2523,13 +2517,12 @@ func (m *MetaNode) getInodeAllocatorStat(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	virtualMP := mp.(*metaPartition).getVirtualMetaPartitionByID(pid)
-	if virtualMP.InodeIDAlloter == nil || virtualMP.InodeIDAlloter.GetStatus() == allocatorStatusUnavailable {
+	if mp.(*metaPartition).inodeIDAllocator == nil || mp.(*metaPartition).inodeIDAllocator.GetStatus() == allocatorStatusUnavailable {
 		resp.Msg = fmt.Sprintf("allocator disable")
 		return
 	}
 
-	resp.Data = virtualMP.InodeIDAlloter
+	resp.Data = mp.(*metaPartition).inodeIDAllocator
 	return
 }
 

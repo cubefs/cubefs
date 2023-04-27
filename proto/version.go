@@ -17,9 +17,14 @@ const (
 	Version_3_3_0 = "3.3.0"
 
 	/*
-	MetaNode: Reuse MP, BitMap Allocator
+	MetaNode: BitMap Allocator
 	*/
-	Version_3_4_0   = "3.4.0"
+	BitMapAllocator = "3.4.0"
+
+	/*
+
+	*/
+	Version_4_0_0 = "4.0.0"
 
 	/*
 	Client: support opReadDirPlus

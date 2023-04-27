@@ -33,7 +33,7 @@ func TestUserAPI(t *testing.T) {
 	}
 	// create new vol for transfer、perm
 	err = testMc.AdminAPI().CreateVolume(testTransVol, testOwner, testMpcount, testDpSize, testCapacity, testReplicas, testMpReplicas,
-		testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, false, testEnableWriteCache, false, testZoneName, testMpLyout, "", 0, proto.CompactDefaultName, 4, 2, false, 0, 0, 0, false)
+		testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, false, testEnableWriteCache, testZoneName, testMpLyout, "", 0, proto.CompactDefaultName, 4, 2, false, 0, 0, 0, false)
 	if err != nil {
 		t.Fatalf("create vol failed: err(%v) vol(%v)", err, testTransVol)
 	}

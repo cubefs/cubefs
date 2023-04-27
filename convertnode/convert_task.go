@@ -547,7 +547,7 @@ func calcAuthKey(key string) (authKey string) {
 }
 
 func (task *ConvertTask) getVolumeMPInfo() (err error) {
-	mps, err := task.mc.clientAPI().GetPhysicalMetaPartitions(task.info.VolName)
+	mps, err := task.mc.clientAPI().GetMetaPartitions(task.info.VolName)
 	if err != nil {
 		log.LogErrorf("action[getVolumeMPInfo] task[%s] get volume meta partitions failed:%v", task.taskName(), err)
 		return

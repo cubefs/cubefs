@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/exporter"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -118,12 +117,12 @@ type Vol struct {
 }
 
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, reuseMP bool,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	createTime, smartEnableTime int64, description, dpSelectorName, dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType,
 	dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32, defStoreMode proto.StoreMode,
 	convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag,
 	dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32) (vol *Vol) {
-	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0), VMPsToPartitionMap: make(map[uint64]uint64, 0)}
+	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.ecDataPartitions = newEcDataPartitionCache(vol)
 	if dpReplicaNum < defaultReplicaNum {
@@ -186,7 +185,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.compactTag = compactTag
 	vol.FollowerReadDelayCfg = dpFolReadDelayCfg
 	vol.FollReadHostWeight = defaultFollReadHostWeight
-	vol.reuseMP = reuseMP
 
 	vol.EcDataNum = defaultEcDataNum
 	vol.EcParityNum = defaultEcParityNum
@@ -220,7 +218,6 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.ForceROW,
 		vv.IsSmart,
 		vv.EnableWriteCache,
-		vv.ReuseMP,
 		vv.CreateTime,
 		vv.SmartEnableTime,
 		vv.Description,
@@ -322,9 +319,6 @@ func (vol *Vol) putToken(token *proto.Token) {
 func (vol *Vol) addMetaPartition(mp *MetaPartition) {
 	vol.mpsLock.Lock()
 	defer vol.mpsLock.Unlock()
-	for _, virtualMP := range mp.VirtualMPs {
-		vol.VMPsToPartitionMap[virtualMP.ID] = mp.PartitionID
-	}
 	if _, ok := vol.MetaPartitions[mp.PartitionID]; !ok {
 		vol.MetaPartitions[mp.PartitionID] = mp
 		return
@@ -360,28 +354,11 @@ func (vol *Vol) metaPartition(partitionID uint64) (mp *MetaPartition, err error)
 	return
 }
 
-func (vol *Vol) metaPartitionByVirtualPID(virtualPID uint64) (mp *MetaPartition, err error) {
-	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
-	err = proto.ErrMetaPartitionNotExists
-	if _, ok := vol.VMPsToPartitionMap[virtualPID]; !ok {
-		return
-	}
-	mp, ok := vol.MetaPartitions[vol.VMPsToPartitionMap[virtualPID]]
-	if !ok {
-		return
-	}
-	err = nil
-	return
-}
-
 func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
-	maxVirtualMPId := uint64(0)
-	for id, mp := range vol.MetaPartitions {
-		if maxVirtualMPId < mp.VirtualMPs[len(mp.VirtualMPs)-1].ID {
-			maxVirtualMPId = mp.VirtualMPs[len(mp.VirtualMPs)-1].ID
+	for id := range vol.MetaPartitions {
+		if id > maxPartitionID {
 			maxPartitionID = id
 		}
 	}
@@ -572,7 +549,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) (writableMpCount int) {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID)
 		if doSplit && mp.MaxInodeID != 0 {
 			nextStart := mp.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
-			if err = vol.splitMetaPartition(c, mp, nextStart, true); err != nil {
+			if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
 				Warn(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]", c.Name, vol.Name, mp.PartitionID, err))
 			}
 		}
@@ -618,7 +595,7 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
 		return
 	}
 	end := partition.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
-	if err := vol.splitMetaPartition(c, partition, end, true); err != nil {
+	if err := vol.splitMetaPartition(c, partition, end); err != nil {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta partition[%v] failed,err[%v]\n",
 			partition.PartitionID, err)
 		Warn(c.Name, msg)
@@ -781,7 +758,7 @@ func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
 	defer vol.mpsLock.RUnlock()
 	mpViews = make([]*proto.MetaPartitionView, 0)
 	for _, mp := range vol.MetaPartitions {
-		mpViews = append(mpViews, getMetaPartitionView(mp)...)
+		mpViews = append(mpViews, getMetaPartitionView(mp))
 	}
 	return
 }
@@ -996,14 +973,10 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) 
 	log.LogWarnf("action[splitMetaPartition],partition[%v],start[%v],end[%v],new end[%v]", mp.PartitionID, mp.Start, mp.End, end)
 	cmdMap := make(map[string]*RaftCmd, 0)
 	oldEnd := mp.End
-	lastVirtualMPOldEnd := mp.VirtualMPs[len(mp.VirtualMPs)-1].End
-
 	mp.End = end
-	mp.VirtualMPs[len(mp.VirtualMPs)-1].End = end
 	defer func() {
 		if err != nil {
 			mp.End = oldEnd
-			mp.VirtualMPs[len(mp.VirtualMPs)-1].End = lastVirtualMPOldEnd
 		}
 	}()
 	updateMpRaftCmd, err := c.buildMetaPartitionRaftCmd(opSyncUpdateMetaPartition, mp)
@@ -1030,86 +1003,7 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) 
 	return
 }
 
-func (vol *Vol) doSplitVirtualMetaPartition(c *Cluster, oldMaxMP *MetaPartition, newEnd uint64) (reuseMP *MetaPartition, err error) {
-	//select available mp for reuse
-	physicalMPIDs := vol.getPhysicalMetaPartitionIDsForReuse()
-	if reuseMP, err = vol.getAvailableMp(c, physicalMPIDs, oldMaxMP.PartitionID); err != nil {
-		err = errors.NewError(err)
-		return
-	}
-
-	//change old max partition end
-	oldMaxMP.Lock()
-	defer oldMaxMP.Unlock()
-	if err = oldMaxMP.canSplit(newEnd); err != nil {
-		return
-	}
-	log.LogWarnf("action[doSplitVirtualMetaPartition],partition[%v],start[%v],end[%v],new end[%v]", oldMaxMP.PartitionID, oldMaxMP.Start, oldMaxMP.End, newEnd)
-	cmdMap := make(map[string]*RaftCmd, 0)
-	oldEnd := oldMaxMP.End
-	lastVirtualMPOldEnd := oldMaxMP.VirtualMPs[len(oldMaxMP.VirtualMPs)-1].End
-	oldMaxMP.End = newEnd
-	oldMaxMP.VirtualMPs[len(oldMaxMP.VirtualMPs)-1].End = newEnd
-	defer func() {
-		if err != nil {
-			oldMaxMP.End = oldEnd
-			oldMaxMP.VirtualMPs[len(oldMaxMP.VirtualMPs)-1].End = lastVirtualMPOldEnd
-		}
-	}()
-	oldMPUpdateRaftCmd, err := c.buildMetaPartitionRaftCmd(opSyncUpdateMetaPartition, oldMaxMP)
-	if err != nil {
-		log.LogErrorf("action[doSplitVirtualMetaPartition] maxPartitionID[%v] buildUpdateMPRaftCmd error[%v]", oldMaxMP.PartitionID, err)
-		return
-	}
-	cmdMap[oldMPUpdateRaftCmd.K] = oldMPUpdateRaftCmd
-
-	//add virtual mp to reuse
-	var virtualMP proto.VirtualMetaPartition
-	virtualMP, err = reuseMP.doAddVirtualMetaPartition(c, oldMaxMP.End+1, defaultMaxMetaPartitionInodeID)
-	if err != nil {
-		log.LogErrorf("action[doSplitVirtualMetaPartition] maxPartitionID[%v] addVirtualMP error[%v]", oldMaxMP.PartitionID, err)
-		return
-	}
-
-	reuseMP.Lock()
-	defer reuseMP.Unlock()
-	reuseMPOldStart := reuseMP.Start
-	reuseMPOldEnd := reuseMP.End
-	reuseMPOldStatus := reuseMP.Status
-	reuseMPOldVirtualMPs := make([]proto.VirtualMetaPartition, len(reuseMP.VirtualMPs))
-	copy(reuseMPOldVirtualMPs, reuseMP.VirtualMPs)
-
-	reuseMP.Start = virtualMP.Start
-	reuseMP.End = virtualMP.End
-	reuseMP.Status = proto.ReadWrite
-	reuseMP.VirtualMPs = append(reuseMP.VirtualMPs, virtualMP)
-	defer func() {
-		if err != nil {
-			reuseMP.Start = reuseMPOldStart
-			reuseMP.End = reuseMPOldEnd
-			reuseMP.Status = reuseMPOldStatus
-			reuseMP.VirtualMPs = reuseMPOldVirtualMPs
-		}
-	}()
-
-	reuseMpUpdateRaftCmd, err := c.buildMetaPartitionRaftCmd(opSyncUpdateMetaPartition, reuseMP)
-	if err != nil {
-		log.LogErrorf("action[doSplitVirtualMetaPartition] maxPartitionID[%v], reuseMetaPartitionID[%v] buildUpdateReuseMPRaftCmd error[%v]",
-			oldMaxMP.PartitionID, reuseMP.PartitionID, err)
-		return
-	}
-	cmdMap[reuseMpUpdateRaftCmd.K] = reuseMpUpdateRaftCmd
-	if err = c.syncBatchCommitCmd(cmdMap); err != nil {
-		log.LogErrorf("action[doSplitVirtualMetaPartition] syncUpdateMetaPartition raft cmd error[%v]", err)
-		err = errors.NewError(err)
-		return
-	}
-	oldMaxMP.updateInodeIDRangeForAllReplicas()
-	oldMaxMP.addUpdateMetaReplicaTask(c)
-	return
-}
-
-func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, reuseMP bool) (err error) {
+func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (err error) {
 	if c.DisableAutoAllocate {
 		return
 	}
@@ -1130,16 +1024,6 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, re
 			}
 		}
 	}()
-	if !vol.isConvertRunning() && reuseMP && vol.isReuseMP() {
-		if nextMp, err = vol.doSplitVirtualMetaPartition(c, mp, end); err == nil {
-			log.LogWarnf("action[splitMetaPartition],vol[%v] split virtualMP at partition[%v], virtualMPID[%v], start[%v], end[%v]",
-				vol.Name, nextMp.PartitionID, nextMp.lastVirtualMetaPartition().ID, nextMp.Start, nextMp.End)
-			return
-		}
-		log.LogErrorf("action[splitMetaPartition], vol[%v] split virtual meta partition failed:%v", vol.Name, err)
-		nextMp = nil
-		err = nil
-	}
 	nextMp, err = vol.doSplitMetaPartition(c, mp, end)
 	if err != nil {
 		return
@@ -1160,38 +1044,6 @@ func (vol *Vol) createMetaPartition(c *Cluster, start, end uint64) (err error) {
 	}
 	vol.addMetaPartition(mp)
 	return
-}
-
-func (vol *Vol) getAvailableMp(c *Cluster, physicalMPIDs []uint64, excludePhyMPID uint64) (mp *MetaPartition, err error) {
-	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
-
-	mp = nil
-	err = fmt.Errorf("vol[%s] has no avaiable mp to add virtual meta partition", vol.Name)
-	for _, mpID := range physicalMPIDs {
-		if mpID == vol.maxPartitionID() || mpID == excludePhyMPID {
-			continue
-		}
-
-		metaPartition, ok := vol.MetaPartitions[mpID]
-		if !ok {
-			continue
-		}
-
-		if metaPartition.isAvailableForAddVirtualMP(c) {
-			mp = metaPartition
-			vol.LastSelectReuseMPID = mpID
-			err = nil
-			break
-		}
-	}
-	return
-}
-
-func (vol *Vol) isReuseMP() bool {
-	vol.RLock()
-	defer vol.RUnlock()
-	return vol.reuseMP
 }
 
 func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPartition, err error) {
@@ -1228,7 +1080,6 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	mp.setHosts(hosts)
 	mp.setPeers(peers)
 	mp.setLearners(learners)
-	mp.VirtualMPs = append(mp.VirtualMPs, proto.VirtualMetaPartition{Start: start, End: end, ID: partitionID, CreateTime: time.Now().Unix()})
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(host string) {
@@ -1269,9 +1120,6 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		return nil, errors.NewError(err)
 	default:
 		mp.Status = proto.ReadWrite
-		for index := 0; index < len(mp.VirtualMPs); index++ {
-			mp.VirtualMPs[index].Status = proto.ReadWrite
-		}
 	}
 	log.LogInfof("action[doCreateMetaPartition] success,volName[%v],partition[%v]", vol.Name, partitionID)
 	return
@@ -1339,7 +1187,6 @@ func (vol *Vol) backupConfig() *Vol {
 		BatchDelInodeCnt:           vol.BatchDelInodeCnt,
 		DelInodeInterval:           vol.DelInodeInterval,
 		UmpCollectWay:              vol.UmpCollectWay,
-		reuseMP:                    vol.reuseMP,
 		EnableBitMapAllocator:      vol.EnableBitMapAllocator,
 		CleanTrashDurationEachTime: vol.CleanTrashDurationEachTime,
 		TrashCleanMaxCountEachTime: vol.TrashCleanMaxCountEachTime,
@@ -1387,7 +1234,6 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.BatchDelInodeCnt = backupVol.BatchDelInodeCnt
 	vol.DelInodeInterval = backupVol.DelInodeInterval
 	vol.UmpCollectWay = backupVol.UmpCollectWay
-	vol.reuseMP = backupVol.reuseMP
 	vol.EnableBitMapAllocator = backupVol.EnableBitMapAllocator
 	vol.TrashCleanMaxCountEachTime = backupVol.TrashCleanMaxCountEachTime
 	vol.CleanTrashDurationEachTime = backupVol.CleanTrashDurationEachTime
@@ -1504,60 +1350,6 @@ func (vol *Vol) getDentryCntAndInodeCnt() (dentryCnt, inodeCnt uint64) {
 		dentryCnt = dentryCnt + mp.DentryCount
 		inodeCnt = inodeCnt + mp.InodeCount
 	}
-	return
-}
-
-func (vol *Vol) getMaxVirtualMPIDAndVirtualMPCount() (maxVirtualMPID uint64, virtualMPCnt int) {
-	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
-	for _, mp := range vol.MetaPartitions {
-		virtualMPCnt = virtualMPCnt + len(mp.VirtualMPs)
-		if mp.VirtualMPs[len(mp.VirtualMPs)-1].ID > maxVirtualMPID {
-			maxVirtualMPID = mp.VirtualMPs[len(mp.VirtualMPs)-1].ID
-		}
-	}
-	return
-}
-
-func (vol *Vol) isConvertRunning() bool {
-	if vol.convertState == proto.VolConvertStRunning {
-		return true
-	}
-	return false
-}
-
-func (vol *Vol) physicalMetaPartitionIDs() (physicalMPIDs []uint64) {
-	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
-
-	physicalMPIDs = make([]uint64, 0, len(vol.MetaPartitions))
-	for mpid := range vol.MetaPartitions {
-		physicalMPIDs = append(physicalMPIDs, mpid)
-	}
-	return
-}
-
-func (vol *Vol) getPhysicalMetaPartitionIDsForReuse() (mpIDs []uint64) {
-	physicalMPIDs := vol.physicalMetaPartitionIDs()
-
-	sort.Slice(physicalMPIDs, func(i, j int) bool {
-		return physicalMPIDs[i] < physicalMPIDs[j]
-	})
-
-	var index = -1
-	for i, mpID := range physicalMPIDs {
-		if mpID == vol.LastSelectReuseMPID {
-			index = i
-			break
-		}
-	}
-	if index == -1 || index == len(physicalMPIDs)-1 {
-		mpIDs = physicalMPIDs
-		return
-	}
-
-	mpIDs = append(mpIDs, physicalMPIDs[index+1:]...)
-	mpIDs = append(mpIDs, physicalMPIDs[:index]...)
 	return
 }
 

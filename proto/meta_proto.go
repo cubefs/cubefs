@@ -15,7 +15,6 @@
 package proto
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -48,21 +47,6 @@ type PromoteConfig struct {
 	PromThreshold uint8 `json:"prom_threshold"`
 }
 
-type VirtualMetaPartition struct {
-	ID                 uint64
-	Start              uint64
-	End                uint64
-	CreateTime         int64
-	Status             int8
-	AllocatorState     int8
-	AllocatorUsedCount uint64
-}
-
-func (v VirtualMetaPartition) String() string {
-	return fmt.Sprintf("(ID:%v, Start:%v, End:%v, CreateTime:%s, Status:%v, AllocatorState:%v)",
-		v.ID, v.Start, v.End, time.Unix(v.CreateTime, 0).Format(TimeFormat), v.Status, v.AllocatorState)
-}
-
 // CreateMetaPartitionRequest defines the request to create a meta partition.
 type CreateMetaPartitionRequest struct {
 	MetaId       string
@@ -75,7 +59,6 @@ type CreateMetaPartitionRequest struct {
 	StoreMode    StoreMode
 	TrashDays    uint32
 	CreationType int
-	VirtualMPs   []VirtualMetaPartition
 }
 
 // CreateMetaPartitionResponse defines the response to the request of creating a meta partition.
@@ -125,30 +108,4 @@ type InodeInfoWithEK struct {
 	Extents    []ExtentKey `json:"eks"`
 	Timestamp  int64       `json:"ts"`
 	IsExpired  bool        `json:"isExpired"`
-}
-// AddVirtualMetaPartitionRequest defines the request to add a virtual meta partition.
-type AddVirtualMetaPartitionRequest struct {
-	VolName     string
-	PartitionID uint64
-	VirtualPID  uint64
-	Cursor      uint64
-	Start       uint64
-	End         uint64
-	CreateTime  int64
-}
-
-type SyncVirtualMetaPartitionsRequest struct {
-	PartitionID uint64
-	Start       uint64
-	End         uint64
-	VirtualMPs  []VirtualMetaPartition
-}
-
-type DelVirtualMetaPartitionRequest struct {
-	VolName     string
-	PartitionID uint64
-	VirtualPID  uint64
-	Start       uint64
-	End         uint64
-	CreateTime  int64
 }

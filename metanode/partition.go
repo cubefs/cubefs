@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
 	"io/ioutil"
 	"net"
 	"os"
@@ -72,14 +71,6 @@ func (sp sortedPeers) Swap(i, j int) {
 	sp[i], sp[j] = sp[j], sp[i]
 }
 
-//virtual meta partition conf
-type VirtualMetaPartitionConf struct {
-	ID         uint64
-	Start      uint64
-	End        uint64
-	CreateTime int64
-}
-
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
@@ -89,8 +80,6 @@ type MetaPartitionConfig struct {
 	End                uint64                       `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
 	Peers              []proto.Peer                 `json:"peers"`    // Peers information of the raftStore
 	Learners           []proto.Learner              `json:"learners"` // Learners information of the raftStore
-	VirtualMPs         []VirtualMetaPartitionConf   `json:"virtual_mps"`
-	InodeStart         uint64                       `json:"-"`
 	TrashRemainingDays int32                        `json:"-"`
 	Cursor             uint64                       `json:"-"` // Cursor ID of the inode that have been assigned
 	NodeId             uint64                       `json:"-"`
@@ -171,38 +160,6 @@ func (c *MetaPartitionConfig) persist() (err error) {
 	return
 }
 
-func (c *MetaPartitionConfig) addVirtualMetaPartitionConf(virtualMPConf VirtualMetaPartitionConf) {
-	c.VirtualMPs = append(c.VirtualMPs, virtualMPConf)
-	sort.Slice(c.VirtualMPs, func(i, j int) bool {
-		return c.VirtualMPs[i].ID < c.VirtualMPs[j].ID
-	})
-	return
-}
-
-func (c *MetaPartitionConfig) delVirtualMetaPartitionConf(virtualMPConf VirtualMetaPartitionConf) {
-	newVirtualMPsConf := make([]VirtualMetaPartitionConf, 0, len(c.VirtualMPs))
-	for _, virtualMP := range c.VirtualMPs {
-		if virtualMP.ID == virtualMPConf.ID && virtualMP.Start  == virtualMPConf.Start && virtualMP.End == virtualMPConf.End {
-			continue
-		}
-		newVirtualMPsConf = append(newVirtualMPsConf, virtualMP)
-	}
-	c.VirtualMPs = newVirtualMPsConf
-	sort.Slice(c.VirtualMPs, func(i, j int) bool {
-		return c.VirtualMPs[i].ID < c.VirtualMPs[j].ID
-	})
-	return
-}
-
-func (c *MetaPartitionConfig) virtualMetaPartitionConfExist(virtualMPConf VirtualMetaPartitionConf) bool {
-	for _, vMPConf := range c.VirtualMPs {
-		if vMPConf.ID == virtualMPConf.ID && vMPConf.Start == virtualMPConf.Start && vMPConf.End == virtualMPConf.End {
-			return true
-		}
-	}
-	return false
-}
-
 func (c *MetaPartitionConfig) sortPeers() {
 	sp := sortedPeers(c.Peers)
 	sort.Sort(sp)
@@ -232,22 +189,6 @@ func (c *MetaPartitionConfig) unmarshalJson(data []byte) (err error) {
 	}
 	c.Cursor = confStruct.Cursor
 	return
-}
-
-type VirtualMetaPartitionsConf []VirtualMetaPartitionConf
-
-func (s VirtualMetaPartitionsConf) IsEqualTo(cmp VirtualMetaPartitionsConf) bool {
-	if len(s) != len(cmp) {
-		return false
-	}
-
-	for index, virtualMP := range s {
-		if cmp[index].ID != virtualMP.ID || cmp[index].Start != virtualMP.Start || cmp[index].End != virtualMP.End ||
-			cmp[index].CreateTime != virtualMP.CreateTime {
-			return false
-		}
-	}
-	return true
 }
 
 // OpInode defines the interface for the inode operations.
@@ -366,9 +307,6 @@ type OpPartition interface {
 	ReleaseSnapShot(snap Snapshot)
 	IsRaftHang() bool
 	FreeInode(val []byte) error
-	AddVirtualMetaPartition(ctx context.Context, req *proto.AddVirtualMetaPartitionRequest)  (err error)
-	DeleteVirtualMetaPartition(req *proto.DelVirtualMetaPartitionRequest)  (err error)
-	RaftAddVirtualMetaPartition(ctx context.Context, req *proto.AddVirtualMetaPartitionRequest)  (err error)
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -378,90 +316,6 @@ type MetaPartition interface {
 	OpMeta
 	LoadSnapshot(path string) error
 	SumMonitorData(reportTime int64) []*statistics.MonitorData
-}
-type VirtualMetaPartition struct {
-	VirtualMetaPartitionConf
-	Status         int8
-	InodeIDAlloter *inoAllocatorV1
-}
-
-func InitVirtualMetaPartitionByConf(conf []VirtualMetaPartitionConf, needInitAllocator bool) (virtualMPs []*VirtualMetaPartition) {
-	virtualMPs = make([]*VirtualMetaPartition, 0, len(conf))
-	for _, vMPConf := range conf {
-		virtualMP := &VirtualMetaPartition{
-			VirtualMetaPartitionConf: vMPConf,
-			InodeIDAlloter:           NewInoAllocatorV1(vMPConf.Start, vMPConf.End),
-		}
-		if needInitAllocator {
-			_ = virtualMP.InodeIDAlloter.SetStatus(allocatorStatusInit)
-		}
-		if vMPConf.Start == 0 {
-			virtualMP.InodeIDAlloter.SetId(0)
-			virtualMP.InodeIDAlloter.SetId(proto.RootIno)
-		}
-		virtualMPs = append(virtualMPs, virtualMP)
-	}
-	return
-}
-
-func (vMP *VirtualMetaPartition) updateStatus(mp *metaPartition, status int8) (writable bool) {
-	defer func() {
-		if vMP.Status == proto.ReadWrite {
-			writable = true
-		}
-	}()
-
-	if status == proto.ReadOnly || status == proto.Unavailable {
-		vMP.Status = status
-		return
-	}
-
-	if mp.config.Cursor < vMP.End {
-		vMP.Status = proto.ReadWrite
-		return
-	}
-
-	// bit map allocator unavailable
-	if vMP.InodeIDAlloter == nil || vMP.InodeIDAlloter.GetStatus() != allocatorStatusAvailable {
-		vMP.Status = proto.ReadOnly
-		return
-	}
-
-
-	//free bit less than 10%
-	bitmapFreeCountThreshold := float64(proto.DefaultMetaPartitionInodeIDStep)*defBitMapFreeCountThresholdForUnavailable
-	if vMP.InodeIDAlloter.GetFree() < uint64(bitmapFreeCountThreshold) {
-		vMP.Status = proto.ReadOnly
-		return
-	}
-
-	//used bit less than 60%
-	bitmapUsedCountThresholdForAvailable := 1 - mp.manager.metaNode.getReuseMPInodeCountThreshold()
-	if bitmapUsedCountThresholdForAvailable > defBitMapUsedCountThresholdForAvailable || bitmapUsedCountThresholdForAvailable <= 0 {
-		bitmapUsedCountThresholdForAvailable = defBitMapUsedCountThresholdForAvailable
-	}
-	bitmapUsedCountThreshold := float64(proto.DefaultMetaPartitionInodeIDStep)*bitmapUsedCountThresholdForAvailable
-	if vMP.InodeIDAlloter.GetUsed() < uint64(bitmapUsedCountThreshold) {
-		vMP.Status = proto.ReadWrite
-		return
-	}
-	return
-}
-
-type VirtualMetaPartitions []*VirtualMetaPartition
-
-func (vMPs VirtualMetaPartitions) FindVirtualMetaPartitionByInodeID(inodeID uint64) (virtualMP *VirtualMetaPartition) {
-	for index, vMP := range vMPs {
-		if vMP == nil || (vMP.End == defaultMaxMetaPartitionInodeID && (index != len(vMPs) - 1) ) {
-			//error virtual meta partition, invalid, skip
-			continue
-		}
-		if inodeID >= vMP.Start && inodeID <= vMP.End {
-			virtualMP = vMP
-			return
-		}
-	}
-	return
 }
 
 // metaPartition manages the range of the inode IDs.
@@ -475,7 +329,6 @@ type metaPartition struct {
 	confUpdateMutex             sync.Mutex
 	size                        uint64 // For partition all file size
 	applyID                     uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	inodeStart                  uint64 // first virtual mp start
 	dentryTree                  DentryTree
 	inodeTree                   InodeTree     // btree for inodes
 	extendTree                  ExtendTree    // btree for inode extend (XAttr) management
@@ -508,9 +361,8 @@ type metaPartition struct {
 	CreationType                int
 	stopLock                    sync.Mutex
 	stopChState                 uint32
+	inodeIDAllocator            *inoAllocatorV1
 	status                      int8
-	virtualMPLock               sync.RWMutex
-	virtualMPs                  []*VirtualMetaPartition
 	raftFSMLock                 sync.Mutex
 }
 
@@ -563,7 +415,6 @@ func (mp *metaPartition) onStart() (err error) {
 		}
 		mp.onStop()
 	}()
-	mp.checkCursor()
 	mp.startSchedule(mp.applyID)
 	if err = mp.startFreeList(); err != nil {
 		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
@@ -582,13 +433,6 @@ func (mp *metaPartition) onStart() (err error) {
 	mp.startCleanTrashScheduler()
 	mp.startUpdatePartitionConfigScheduler()
 	return
-}
-
-func (mp *metaPartition) checkCursor() {
-	lastVirtualMP := mp.lastVirtualMetaPartition()
-	if mp.config.Cursor < lastVirtualMP.Start {
-		mp.config.Cursor = lastVirtualMP.Start
-	}
 }
 
 func (mp *metaPartition) onStop() {
@@ -723,20 +567,20 @@ func (mp *metaPartition) getRocksDbRootDir() string {
 
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *metaPartition {
 	mp := &metaPartition{
-		config:         conf,
-		stopC:          make(chan bool),
-		storeChan:      make(chan *storeMsg, 100),
-		freeList:       newFreeList(),
-		extDelCh:       make(chan []proto.MetaDelExtentKey, 10000),
-		extReset:       make(chan struct{}),
-		vol:            NewVol(),
-		manager:        manager,
-		monitorData:    statistics.InitMonitorData(statistics.ModelMetaNode),
-		marshalVersion: MetaPartitionMarshVersion2,
-		extDelCursor:   make(chan uint64, 1),
-		db:             NewRocksDb(),
-		CreationType:   conf.CreationType,
-		stopChState:    mpStopChOpenState,
+		config:           conf,
+		stopC:            make(chan bool),
+		storeChan:        make(chan *storeMsg, 100),
+		freeList:         newFreeList(),
+		extDelCh:         make(chan []proto.MetaDelExtentKey, 10000),
+		extReset:         make(chan struct{}),
+		vol:              NewVol(),
+		manager:          manager,
+		monitorData:      statistics.InitMonitorData(statistics.ModelMetaNode),
+		marshalVersion:   MetaPartitionMarshVersion2,
+		extDelCursor:     make(chan uint64, 1),
+		db:               NewRocksDb(),
+		CreationType:     conf.CreationType,
+		stopChState:      mpStopChOpenState,
 	}
 	return mp
 }
@@ -752,9 +596,11 @@ func CreateMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (M
 	if err = mp.selectRocksDBDir(); err != nil {
 		return nil, err
 	}
-	mp.initVirtualMetaPartitions()
+
+	mp.inodeIDAllocator = NewInoAllocatorV1(conf.Start, conf.End)
 
 	if mp.HasMemStore() {
+		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusInit)
 		mp.initMemoryTree()
 		mp.cleanRocksDbTreeResource()
 	}
@@ -1090,7 +936,9 @@ func (mp *metaPartition) load(ctx context.Context) (err error) {
 	if err = mp.loadMetadata(); err != nil {
 		return
 	}
-	mp.initVirtualMetaPartitions()
+
+	mp.inodeIDAllocator = NewInoAllocatorV1(mp.config.Start, mp.config.End)
+	mp.initInodeIDAllocator()
 
 	if err = mp.db.OpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
 		mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
@@ -1217,54 +1065,42 @@ func (mp *metaPartition) ExpiredRaft() (err error) {
 }
 
 // Return a new inode ID and update the offset.
-func (mp *metaPartition) nextInodeID(vPID uint64) (inodeId uint64, err error) {
-	virtualMP := mp.getVirtualMetaPartitionByID(vPID)
-	if virtualMP == nil || virtualMP.ID == 0 {
-		return 0, ErrInodeIDOutOfRange
-	}
-
+func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 	for {
 		cur := atomic.LoadUint64(&mp.config.Cursor)
-		if cur >= virtualMP.End || cur < virtualMP.Start {
+		if cur >= mp.config.End || cur < mp.config.Start {
 			return 0, ErrInodeIDOutOfRange
 		}
 
 		newId := cur + 1
 		if atomic.CompareAndSwapUint64(&mp.config.Cursor, cur, newId) {
-			if virtualMP.InodeIDAlloter != nil {
-				virtualMP.InodeIDAlloter.SetId(newId)
+			if mp.inodeIDAllocator != nil {
+				mp.inodeIDAllocator.SetId(newId)
 			}
 			return newId, nil
 		}
 	}
 }
 
-func (mp *metaPartition) genInodeID(vPID uint64) (inodeID uint64, err error) {
-	if inodeID, err = mp.nextInodeID(vPID); err == nil {
+func (mp *metaPartition) genInodeID() (inodeID uint64, err error) {
+	if inodeID, err = mp.nextInodeID(); err == nil {
 		return
 	}
 
-	return mp.genInodeIDByBitMap(vPID)
+	return mp.genInodeIDByBitMap()
 
 }
 
-func (mp *metaPartition) genInodeIDByBitMap(vPID uint64) (inodeID uint64, err error) {
-	virtualMP := mp.getVirtualMetaPartitionByID(vPID)
-	if virtualMP == nil {
+func (mp *metaPartition) genInodeIDByBitMap() (inodeID uint64, err error) {
+	if mp.inodeIDAllocator == nil {
 		err = ErrInodeIDOutOfRange
 		return
 	}
 
-	if virtualMP.InodeIDAlloter == nil {
+	if inodeID, err = mp.inodeIDAllocator.AllocateId(); err != nil {
 		err = ErrInodeIDOutOfRange
 		return
 	}
-
-	if inodeID, err = virtualMP.InodeIDAlloter.AllocateId(); err != nil {
-		err = ErrInodeIDOutOfRange
-		return
-	}
-
 	return
 }
 
@@ -1274,9 +1110,9 @@ func (mp *metaPartition) isInoOutOfRange(inodeId uint64) (outOfRange bool, err e
 	if atomic.LoadUint64(&mp.config.Cursor) > maxInode {
 		maxInode = atomic.LoadUint64(&mp.config.Cursor)
 	}
-	if inodeId > maxInode || inodeId < mp.config.InodeStart {
+	if inodeId > maxInode || inodeId < mp.config.Start {
 		outOfRange = true
-		err = fmt.Errorf("ino[%d] is out of range[%d, %d]", inodeId, mp.config.InodeStart, maxInode)
+		err = fmt.Errorf("ino[%d] is out of range[%d, %d]", inodeId, mp.config.Start, maxInode)
 	}
 	return
 }
@@ -1800,308 +1636,37 @@ func (mp *metaPartition) GetLeaderRaftApplyID(target string) (applyID uint64, er
 	return
 }
 
-func (mp *metaPartition) AddVirtualMetaPartition(ctx context.Context, req *proto.AddVirtualMetaPartitionRequest) (err error) {
-	if existVirtualMP := mp.getVirtualMetaPartitionByID(req.VirtualPID); existVirtualMP != nil {
-		if existVirtualMP.Start == req.Start && existVirtualMP.End == req.End {
-			log.LogDebugf("[AddVirtualMetaPartition] virtual meta partition(%v) already exist", existVirtualMP.ID)
-			return
-		}
-
-		log.LogErrorf("[AddVirtualMetaPartition] virtual meta partition info mismatch, request:" +
-			"(start:%v, end:%v), already exist:(start:%v, end:%v)", req.Start, req.End, existVirtualMP.Start, existVirtualMP.End)
-		err = fmt.Errorf("virtual meta partition mismatch")
-		return
-	}
-
-	virtualConf := VirtualMetaPartitionConf{ID: req.VirtualPID, Start: req.Start, End: req.End, CreateTime: req.CreateTime}
-	if err = mp.addVirtualMetaPartitionConf(virtualConf); err != nil {
-		warnMsg := fmt.Sprintf("[AddVirtualMetaPartition] cluster(%s) partitionID(%v) addr(%s) persist meta data(add:%v) failed:%v",
-			mp.manager.metaNode.clusterId, mp.config.PartitionId, mp.manager.metaNode.localAddr, virtualConf, err)
-		exporter.WarningRocksdbError(warnMsg)
-		log.LogErrorf(warnMsg)
-		return
-	}
-	mp.addVirtualMetaPartition(virtualConf)
-
-	//add to manager
-	mp.manager.addVirtualMetaPartition(req.VirtualPID, mp)
-	return
-}
-
-func (mp *metaPartition) DeleteVirtualMetaPartition(req *proto.DelVirtualMetaPartitionRequest) (err error) {
-	if existVirtualMP := mp.getVirtualMetaPartitionByID(req.VirtualPID); existVirtualMP == nil {
-		log.LogDebugf("[DeleteVirtualMetaPartition] virtual meta partition(%v) not exist", req.VirtualPID)
-		return
-	}
-
-	virtualConf := VirtualMetaPartitionConf{ID: req.VirtualPID, Start: req.Start, End: req.End, CreateTime: req.CreateTime}
-	if err = mp.delVirtualMetaPartitionConf(virtualConf); err != nil {
-		warnMsg := fmt.Sprintf("[DeleteVirtualMetaPartition] cluster(%s) partitionID(%v) addr(%s) persist meta data(del:%v) failed:%v",
-			mp.manager.metaNode.clusterId, mp.config.PartitionId, mp.manager.metaNode.localAddr, virtualConf, err)
-		exporter.WarningRocksdbError(warnMsg)
-		log.LogErrorf(warnMsg)
-		return
-	}
-	mp.deleteVirtualMetaPartition(virtualConf)
-
-	//del from manager
-	mp.manager.delVirtualMetaPartition(req.VirtualPID)
-	return
-}
-
-//for add virtual meta partition
-func (mp *metaPartition) RaftAddVirtualMetaPartition(ctx context.Context, req *proto.AddVirtualMetaPartitionRequest) (err error) {
-	reqData, err := json.Marshal(req)
-	if err != nil {
-		return
-	}
-	r, err := mp.submit(ctx, opFSMMetaRaftAddVirtualMP, "", reqData)
-	if err != nil {
-		return
-	}
-
-	result := r.(*MetaRaftApplyResult)
-	if result.Status != proto.OpOk {
-		p := NewPacket(ctx)
-		p.ResultCode = result.Status
-		err = errors.NewErrorf("[RaftAddVirtualMetaPartition]: %s", result.Msg)
-	}
-	return
-}
-
-func (mp *metaPartition) getInodeSectionStart() uint64 {
-	mp.virtualMPLock.RLock()
-	defer mp.virtualMPLock.RUnlock()
-	if len(mp.virtualMPs) == 0 {
-		return 0
-	}
-	return mp.virtualMPs[0].Start
-}
-
-func (mp *metaPartition) updateVirtualMetaPartitionsFromMaster (virtualMPs []proto.VirtualMetaPartition) {
-	vMPsConf := make([]VirtualMetaPartitionConf, 0, len(virtualMPs))
-	for _, vMP := range virtualMPs {
-		vMPsConf = append(vMPsConf, VirtualMetaPartitionConf{ID: vMP.ID, Start: vMP.Start, End: vMP.End, CreateTime: vMP.CreateTime})
-	}
-	mp.config.VirtualMPs = vMPsConf
-	if err := mp.persistMetadata(); err != nil {
-		errMsg := fmt.Sprintf("checkAndSyncVirtualMetaPartitionWithMaster, partitionID(%v) persist meta data failed:%v",
-			mp.config.PartitionId, err)
-		exporter.Warning(errMsg)
-	}
-	mp.updateVirtualMetaPartitionsByConf()
-	mp.manager.attachPartition(mp.config.PartitionId, mp)
-	return
-}
-
-func (mp *metaPartition) initVirtualMetaPartitions() {
-	var needInitBitMapAllocator = false
-	//todo:rocksdb store mode
+func (mp *metaPartition) initInodeIDAllocator() {
 	if mp.HasMemStore() {
-		needInitBitMapAllocator = true
-	}
-	mp.virtualMPs = InitVirtualMetaPartitionByConf(mp.config.VirtualMPs, needInitBitMapAllocator)
-}
-
-func (mp *metaPartition) addVirtualMetaPartition(virtualMPConf VirtualMetaPartitionConf) {
-	mp.virtualMPLock.Lock()
-	defer mp.virtualMPLock.Unlock()
-	for _, virtualMP := range mp.virtualMPs {
-		if virtualMP.ID == virtualMPConf.ID && virtualMP.Start == virtualMPConf.Start && virtualMP.End == virtualMPConf.End {
-			log.LogDebugf("[addVirtualMetaPartition] virtual meta partition(%v) already exist", virtualMPConf.ID)
-			return
+		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusInit)
+		if mp.config.Start == 0 {
+			mp.inodeIDAllocator.SetId(0)
+			mp.inodeIDAllocator.SetId(proto.RootIno)
 		}
 	}
-
-	inoAllocator := NewInoAllocatorV1(virtualMPConf.Start, virtualMPConf.End)
-	//todo:rocksdb store mode
-	if mp.HasMemStore() {
-		inoAllocator.SetStatus(allocatorStatusInit)
-	}
-
-	mp.virtualMPs = append(mp.virtualMPs, &VirtualMetaPartition{
-		VirtualMetaPartitionConf: virtualMPConf,
-		InodeIDAlloter:           inoAllocator,
-	})
-	sort.Slice(mp.virtualMPs, func(i, j int) bool {
-		return mp.virtualMPs[i].ID < mp.virtualMPs[j].ID
-	})
-	return
-}
-
-func (mp *metaPartition) deleteVirtualMetaPartition(virtualMPConf VirtualMetaPartitionConf) {
-	mp.virtualMPLock.Lock()
-	defer mp.virtualMPLock.Unlock()
-
-	newVirtualMPs := make([]*VirtualMetaPartition, 0, len(mp.virtualMPs))
-	for _, virtualMP := range mp.virtualMPs {
-		if virtualMP.ID == virtualMPConf.ID && virtualMP.Start == virtualMPConf.Start && virtualMP.End == virtualMPConf.End {
-			continue
-		}
-		newVirtualMPs = append(newVirtualMPs, virtualMP)
-	}
-	mp.virtualMPs = newVirtualMPs
-	sort.Slice(mp.virtualMPs, func(i, j int) bool {
-		return mp.virtualMPs[i].ID < mp.virtualMPs[j].ID
-	})
-	return
-}
-
-func (mp *metaPartition) needUpdateVirtualMetaPartition() (needUpdate bool) {
-	mp.virtualMPLock.RLock()
-	defer mp.virtualMPLock.RUnlock()
-
-	if len(mp.config.VirtualMPs) != len(mp.virtualMPs) {
-		needUpdate = true
-		return
-	}
-
-	for index, virtualMPConf := range mp.config.VirtualMPs {
-		if mp.virtualMPs[index].ID != virtualMPConf.ID || mp.virtualMPs[index].Start != virtualMPConf.Start ||
-			mp.virtualMPs[index].End != virtualMPConf.End {
-			needUpdate = true
-			return
-		}
-	}
-	return
-}
-
-func (mp *metaPartition) updateVirtualMetaPartitionsByConf() {
-	mp.virtualMPLock.Lock()
-	defer mp.virtualMPLock.Unlock()
-	for _, vMPInConf := range mp.config.VirtualMPs {
-		notFound := true
-		for _, virtualMp := range mp.virtualMPs {
-			if virtualMp.ID == vMPInConf.ID {
-				virtualMp.Start = vMPInConf.Start
-				virtualMp.End = vMPInConf.End
-				notFound = false
-				break
-			}
-		}
-		if notFound {
-			lackVirtualMP := &VirtualMetaPartition{
-				VirtualMetaPartitionConf: vMPInConf,
-				InodeIDAlloter:           NewInoAllocatorV1(vMPInConf.Start, vMPInConf.End),
-			}
-			mp.virtualMPs = append(mp.virtualMPs, lackVirtualMP)
-		}
-	}
-
-	newVirtualMPs := make([]*VirtualMetaPartition, 0, len(mp.virtualMPs))
-	for _, virtualMP := range mp.virtualMPs {
-		found := false
-		for _, vMPInConf := range mp.config.VirtualMPs {
-			if virtualMP.ID == vMPInConf.ID {
-				found = true
-				break
-			}
-		}
-		if found {
-			newVirtualMPs = append(newVirtualMPs, virtualMP)
-		}
-	}
-	mp.virtualMPs = newVirtualMPs
-	sort.Slice(mp.virtualMPs, func(i, j int) bool {
-		return mp.virtualMPs[i].ID < mp.virtualMPs[j].ID
-	})
 }
 
 func (mp *metaPartition) setAllocatorIno(inodeID uint64) {
-	virtualMP := mp.findVirtualMetaPartitionByInodeID(inodeID)
-	if virtualMP == nil {
+	if mp.inodeIDAllocator == nil {
 		return
 	}
 
-	if virtualMP.InodeIDAlloter == nil {
-		return
-	}
-
-	virtualMP.InodeIDAlloter.SetId(inodeID)
+	mp.inodeIDAllocator.SetId(inodeID)
 
 }
 
 func (mp *metaPartition) clearAllocatorIno(inodeID uint64) {
-	virtualMP := mp.findVirtualMetaPartitionByInodeID(inodeID)
-	if virtualMP == nil {
+	if mp.inodeIDAllocator == nil {
 		return
 	}
 
-	if virtualMP.InodeIDAlloter == nil {
-		return
-	}
-
-	virtualMP.InodeIDAlloter.ClearId(inodeID)
+	mp.inodeIDAllocator.ClearId(inodeID)
 }
 
-func (mp *metaPartition) updateVirtualMetaPartitions(vMPs []*VirtualMetaPartition) {
-	mp.virtualMPLock.Lock()
-	defer mp.virtualMPLock.Unlock()
-	if vMPs == nil || len(vMPs) == 0 {
-		return
-	}
-	mp.virtualMPs = vMPs
-}
-
-func (mp *metaPartition) getVirtualMetaPartitionsID() (pids []uint64) {
-	mp.virtualMPLock.RLock()
-	defer mp.virtualMPLock.RUnlock()
-	pids = make([]uint64, 0, len(mp.virtualMPs))
-	for _, vMP := range mp.virtualMPs {
-		pids = append(pids, vMP.ID)
-	}
-	return
-}
-
-func (mp *metaPartition) removeExpiredVirtualMetaPartition(virtualMPConf VirtualMetaPartitionConf) {
-	mp.config.delVirtualMetaPartitionConf(virtualMPConf)
-	mp.deleteVirtualMetaPartition(virtualMPConf)
-}
-
-func (mp *metaPartition) updateVirtualMetaPartitionEnd(id, end uint64) {
-	mp.virtualMPLock.Lock()
-	defer mp.virtualMPLock.Unlock()
-	if len(mp.virtualMPs) == 0 {
-		panic(fmt.Errorf("error virtual mp count"))
-	}
-	for _, virtualMP := range mp.virtualMPs {
-		if virtualMP.ID == id {
-			virtualMP.End = end
-		}
-	}
-}
-
-func (mp *metaPartition) findVirtualMetaPartitionByInodeID(inodeID uint64) (virtualMP *VirtualMetaPartition) {
-	mp.virtualMPLock.RLock()
-	defer mp.virtualMPLock.RUnlock()
-	return VirtualMetaPartitions(mp.virtualMPs).FindVirtualMetaPartitionByInodeID(inodeID)
-}
-
-func (mp *metaPartition) getVirtualMetaPartitionByID(vPID uint64) (virtualMP *VirtualMetaPartition) {
-	mp.virtualMPLock.RLock()
-	defer mp.virtualMPLock.RUnlock()
-	for _, vMP := range mp.virtualMPs {
-		if vMP != nil && vMP.ID == vPID {
-			virtualMP = vMP
-			return
-		}
-	}
-	return
-}
-
-func (mp *metaPartition) lastVirtualMetaPartition() *VirtualMetaPartition {
-	mp.virtualMPLock.RLock()
-	defer mp.virtualMPLock.RUnlock()
-	if len(mp.virtualMPs) == 0 {
-		panic(fmt.Errorf("error virtual mp count"))
-	}
-	return mp.virtualMPs[len(mp.virtualMPs) - 1]
-}
-
-func (mp *metaPartition) isWritable() (isWritable bool, status int8) {
-	status = proto.ReadWrite
-	if addr, _ := mp.IsLeader(); addr == "" {
-		status = proto.Unavailable
+func (mp *metaPartition) updateStatus() {
+	mp.status = proto.ReadWrite
+	if addr, _ := mp.IsLeader(); addr == "" || mp.IsRaftHang() {
+		mp.status = proto.Unavailable
 		return
 	}
 
@@ -2112,7 +1677,7 @@ func (mp *metaPartition) isWritable() (isWritable bool, status int8) {
 	}
 
 	if used > uint64(float64(total)*MaxUsedMemFactor) {
-		status = proto.ReadOnly
+		mp.status = proto.ReadOnly
 		return
 	}
 
@@ -2124,54 +1689,34 @@ func (mp *metaPartition) isWritable() (isWritable bool, status int8) {
 
 	factor := float64(maxUsedPercent) / float64(100)
 	if FsCapInfo.Used > FsCapInfo.Total*factor {
-		status = proto.ReadOnly
+		mp.status = proto.ReadOnly
 		return
 	}
 
-	inodeCnt := mp.inodeTree.Count()
-	dentryCnt := mp.dentryTree.Count()
-	if inodeCnt >= mp.manager.metaNode.getMetaPartitionMaxInodeCount() || dentryCnt >= mp.manager.metaNode.getMetaPartitionMaxDentryCount() {
-		status = proto.ReadOnly
+	if mp.config.Cursor < mp.config.End {
+		mp.status = proto.ReadWrite
 		return
 	}
-	isWritable = true
-	return
-}
 
-func (mp *metaPartition) getVirtualMetaPartitionsInfo() (virtualMPsInfo []proto.VirtualMetaPartition) {
-	mp.virtualMPLock.RLock()
-	defer mp.virtualMPLock.RUnlock()
-	virtualMPsInfo = make([]proto.VirtualMetaPartition, 0, len(mp.virtualMPs))
-	for _, virtualMP := range mp.virtualMPs {
-		virtualMPInfo := proto.VirtualMetaPartition{
-			ID:                 virtualMP.ID,
-			Start:              virtualMP.Start,
-			End:                virtualMP.End,
-			CreateTime:         virtualMP.CreateTime,
-			Status:             virtualMP.Status,
-			AllocatorState:     virtualMP.InodeIDAlloter.GetStatus(),
-			AllocatorUsedCount: virtualMP.InodeIDAlloter.GetUsed(),
-		}
-		virtualMPsInfo = append(virtualMPsInfo, virtualMPInfo)
-	}
-	return
-}
-
-func (mp *metaPartition) updateMetaPartitionStatus() {
-	ok, status := mp.isWritable()
-
-	mp.virtualMPLock.Lock()
-	defer mp.virtualMPLock.Unlock()
-	writableVirtualMPCnt := 0
-	for _, virtualMP := range mp.virtualMPs {
-		if writable := virtualMP.updateStatus(mp, status); writable {
-			writableVirtualMPCnt++
-		}
+	if mp.inodeIDAllocator == nil || mp.inodeIDAllocator.GetStatus() != allocatorStatusAvailable {
+		mp.status = proto.ReadOnly
+		return
 	}
 
-	if ok && writableVirtualMPCnt == 0 {
-		status = proto.ReadOnly
+	//default 0.9
+	bitmapMaxUsedFactor := mp.manager.metaNode.getBitMapAllocatorMaxUsedFactor()
+	bitmapMaxUsedCountForAvailable := float64(proto.DefaultMetaPartitionInodeIDStep)*bitmapMaxUsedFactor
+	if mp.inodeIDAllocator.GetUsed() > uint64(bitmapMaxUsedCountForAvailable) {
+		mp.status = proto.ReadOnly
+		return
 	}
-	mp.status = status
+
+	//default 0.4
+	bitmapMinFreeFactor := mp.manager.metaNode.getBitMapAllocatorMinFreeFactor()
+	bitmapMinFreeCountForAvailable := float64(proto.DefaultMetaPartitionInodeIDStep)*bitmapMinFreeFactor
+	if mp.inodeIDAllocator.GetFree() > uint64(bitmapMinFreeCountForAvailable) {
+		mp.status = proto.ReadWrite
+		return
+	}
 	return
 }

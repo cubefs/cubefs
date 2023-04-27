@@ -23,7 +23,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -196,12 +195,6 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opAddMetaPartitionRaftLearner(conn, p, remoteAddr)
 	case proto.OpPromoteMetaPartitionRaftLearner:
 		err = m.opPromoteMetaPartitionRaftLearner(conn, p, remoteAddr)
-	case proto.OpAddVirtualMetaPartition:
-		err = m.opVirtualMetaPartitionAdd(conn, p, remoteAddr)
-	case proto.OpDelVirtualMetaPartition:
-		err = m.opVirtualMetaPartitionDel(conn, p, remoteAddr)
-	case proto.OpRaftAddVirtualMetaPartition:
-		err = m.opRaftAddVirtualMetaPartition(conn, p, remoteAddr)
 	case proto.OpResetMetaPartitionRaftMember:
 		err = m.opResetMetaPartitionMember(conn, p, remoteAddr)
 	case proto.OpMetaPartitionTryToLeader:
@@ -562,7 +555,7 @@ func (m *metadataManager) getDelInodeInterval(vol string) (interval uint64) {
 	return
 }
 
-func (m *metadataManager) getBitMapAllocatorEnableFlag(vol string) (reuseFlag bool, err error) {
+func (m *metadataManager) getBitMapAllocatorEnableFlag(vol string) (enableState bool, err error) {
 	m.volConfMapRWMutex.RLock()
 	defer m.volConfMapRWMutex.RUnlock()
 	volConf, ok := m.volConfMap[vol]
@@ -570,7 +563,7 @@ func (m *metadataManager) getBitMapAllocatorEnableFlag(vol string) (reuseFlag bo
 		err = fmt.Errorf("get vol(%s) enableBitMapAllocator flag failed", vol)
 		return
 	}
-	reuseFlag = volConf.EnableBitMapAllocator
+	enableState = volConf.EnableBitMapAllocator
 	return
 }
 
@@ -754,14 +747,6 @@ func (m *metadataManager) loadPartitions() (err error) {
 						id, loadErr.Error())
 					return
 				}
-				/*for _, virtualMP := range partition.GetBaseConfig().VirtualMPs {
-					if time.Now().Unix() - virtualMP.CreateTime > proto.OneDayBySecond &&
-						isExpiredVirtualMetaPartition(virtualMP.ID, metaNodeInfo.PersistenceMetaPartitions) {
-						log.LogErrorf("loadPartitions: find expired virtual partition[%v], remove it from partition %v",
-							virtualMP.ID, partition.GetBaseConfig().PartitionId)
-						partition.(*metaPartition).removeExpiredVirtualMetaPartition(virtualMP)
-					}
-				}*/
 				m.attachPartition(id, partition)
 			}(fileInfo.Name())
 		}
@@ -773,17 +758,8 @@ func (m *metadataManager) loadPartitions() (err error) {
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	virtualMPIDs := partition.(*metaPartition).getVirtualMetaPartitionsID()
-	for _, vPID := range virtualMPIDs {
-		m.partitions[vPID] = partition
-	}
-	return
-}
-
-func (m *metadataManager) addVirtualMetaPartition(id uint64, partition MetaPartition) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.partitions[id] = partition
+	return
 }
 
 func (m *metadataManager) startPartitions() (err error) {
@@ -823,23 +799,13 @@ func (m *metadataManager) startPartitions() (err error) {
 func (m *metadataManager) detachPartition(id uint64) (err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	partition, has := m.partitions[id]
+	_, has := m.partitions[id]
 	if !has {
 		err = fmt.Errorf("unknown partition: %d", id)
 		return
 	}
-
-	virtualMPIDs := partition.(*metaPartition).getVirtualMetaPartitionsID()
-	for _, vPID := range virtualMPIDs {
-		delete(m.partitions, vPID)
-	}
-	return
-}
-
-func (m *metadataManager) delVirtualMetaPartition(id uint64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	delete(m.partitions, id)
+	return
 }
 
 func (m *metadataManager) partitionIDs() (pids []uint64) {
@@ -858,24 +824,10 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
-	if len(request.VirtualMPs) == 0 {
-		request.VirtualMPs = []proto.VirtualMetaPartition{
-			{ID: request.PartitionID, Start: request.Start, End: request.End, CreateTime: time.Now().Unix()},
-		}
-	}
-	vMPsConf := make([]VirtualMetaPartitionConf, 0, len(request.VirtualMPs))
-	for _, vMP := range request.VirtualMPs {
-		vMPsConf = append(vMPsConf, VirtualMetaPartitionConf{ID: vMP.ID, Start: vMP.Start, End: vMP.End, CreateTime: vMP.CreateTime})
-	}
-
-	sort.Slice(request.VirtualMPs, func(i, j int) bool {
-		return request.VirtualMPs[i].ID < request.VirtualMPs[j].ID
-	})
-
 	mpc := &MetaPartitionConfig{
 		PartitionId:        request.PartitionID,
 		VolName:            request.VolName,
-		Start:              request.VirtualMPs[0].Start,
+		Start:              request.Start,
 		End:                request.End,
 		Cursor:             request.Start,
 		Peers:              request.Members,
@@ -887,8 +839,6 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		TrashRemainingDays: int32(request.TrashDays),
 		StoreMode:          request.StoreMode,
 		CreationType:       request.CreationType,
-		VirtualMPs:         vMPsConf,
-		InodeStart:         request.VirtualMPs[0].Start,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
@@ -1145,22 +1095,6 @@ func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition 
 		}
 	}
 	return true
-}
-
-func isExpiredVirtualMetaPartition(virtualMPID uint64, partitions []uint64) (expiredVirtualMP bool) {
-	expiredVirtualMP = true
-	if len(partitions) == 0 {
-		return
-	}
-
-	for _, existId := range partitions {
-		if existId == virtualMPID {
-			expiredVirtualMP = false
-			return
-		}
-	}
-	return
-
 }
 
 func NewMetaNodeVersion(version string) *MetaNodeVersion {

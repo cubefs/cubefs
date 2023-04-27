@@ -20,7 +20,6 @@ import (
 	"strings"
 	"sync"
 
-	bsProto "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/tiglabs/raft/proto"
 )
@@ -151,11 +150,8 @@ type clusterConfig struct {
 	DataSyncWALOnUnstableEnableState    bool
 	DisableStrictVolZone                bool
 	AutoUpdatePartitionReplicaNum       bool
-	ReuseMPInodeCountThreshold          float64
-	ReuseMPDentryCountThreshold         float64
-	ReuseMPDelInodeCountThreshold       float64
-	MetaPartitionMaxInodeCount          uint64
-	MetaPartitionMaxDentryCount         uint64
+	BitMapAllocatorMaxUsedFactor        float64
+	BitMapAllocatorMinFreeFactor        float64
 	TrashCleanDurationEachTime          int32
 	TrashItemCleanMaxCountEachTime      int32
 }
@@ -194,11 +190,6 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DeleteEKRecordFilesMaxSize = 0 // use meta node default value 60MB 10files
 	cfg.MetaRaftLogSize = 0            //use meta node config value
 	cfg.MetaRaftLogCap = 0             // use meta node config value
-	cfg.ReuseMPInodeCountThreshold = bsProto.DefaultReuseMPInodeCountThreshold
-	cfg.ReuseMPDentryCountThreshold = bsProto.DefaultReuseMPDentryCountThreshold
-	cfg.ReuseMPDelInodeCountThreshold = bsProto.DefaultReuseMPDelInoCountThreshold
-	cfg.MetaPartitionMaxInodeCount = bsProto.DefaultMetaPartitionMaxInodeCount
-	cfg.MetaPartitionMaxDentryCount = bsProto.DefaultMetaPartitionMaxDentryCount
 	return
 }
 

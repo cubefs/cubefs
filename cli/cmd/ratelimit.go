@@ -236,20 +236,11 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 				msg += fmt.Sprintf("Auto Update Partition Replica Num:enable, ")
 			}
 
-			if info.ReuseMPInodeCountThreshold > 0 {
-				msg += fmt.Sprintf("ReuseMP Inode Count Threshold: %v, ", info.ReuseMPInodeCountThreshold)
+			if info.AllocatorMaxUsedFactor > 0 && info.AllocatorMaxUsedFactor <= 1 {
+				msg += fmt.Sprintf("BitMap Allocator Max Used Factor: %v, ", info.AllocatorMaxUsedFactor)
 			}
-			if info.ReuseMPDentryCountThreshold > 0 {
-				msg += fmt.Sprintf("ReuseMP Dentry Count Threshold: %v, ", info.ReuseMPDentryCountThreshold)
-			}
-			if info.ReuseMPDelInoCountThreshold > 0 {
-				msg += fmt.Sprintf("ReuseMP DelDen Count Threshold: %v, ", info.ReuseMPDelInoCountThreshold)
-			}
-			if info.MetaPartitionMaxInodeCount > 0 {
-				msg += fmt.Sprintf("MP Max Inode Count           : %v, ", info.MetaPartitionMaxInodeCount)
-			}
-			if info.MetaPartitionMaxDentryCount > 0 {
-				msg += fmt.Sprintf("MP Max Dentry Count          : %v, ", info.MetaPartitionMaxDentryCount)
+			if info.AllocatorMinFreeFactor > 0 && info.AllocatorMinFreeFactor <= 1 {
+				msg += fmt.Sprintf("BitMap Allocator Min Free Factor: %v, ", info.AllocatorMinFreeFactor)
 			}
 
 			if info.TrashCleanDurationEachTime >= 0 {
@@ -316,11 +307,8 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.DataNodeFlushFDInterval, "dataNodeFlushFDInterval", -1, "time interval for flushing WAL and open FDs on DataNode, unit is seconds.")
 	cmd.Flags().Int64Var(&info.DataNodeFlushFDParallelismOnDisk, "dataNodeFlushFDParallelismOnDisk", 0, "parallelism for flushing WAL and open FDs on DataNode per disk.")
 	cmd.Flags().Int64Var(&info.DNNormalExtentDeleteExpire, "dnNormalExtentDeleteExpire", 0, "datanode normal extent delete record expire time(second, >=600)")
-	cmd.Flags().Float64Var(&info.ReuseMPInodeCountThreshold, "reuseMPInodeCountThreshold", 0, "float64, inode count threshold when reuse mp")
-	cmd.Flags().Float64Var(&info.ReuseMPDentryCountThreshold, "reuseMPDentryCountThreshold", 0, "float64, dentry count threshold when reuse mp")
-	cmd.Flags().Float64Var(&info.ReuseMPDelInoCountThreshold, "reuseMPDelInodeCountThreshold", 0, "float64, delInode count threshold when reuse mp")
-	cmd.Flags().Uint64Var(&info.MetaPartitionMaxInodeCount, "metaPartitionMaxInodeCount", 0, "if inode count more than max count, mp status change to read only")
-	cmd.Flags().Uint64Var(&info.MetaPartitionMaxDentryCount, "metaPartitionMaxDentryCount", 0, "if dentry count more than max count, mp status change to read only")
+	cmd.Flags().Float64Var(&info.AllocatorMaxUsedFactor, "allocatorMaxUsedFactor", 0, "float64, bit map allocator max used factor for available")
+	cmd.Flags().Float64Var(&info.AllocatorMinFreeFactor, "allocatorMinFreeFactor", 0, "float64, bit map allocator min free factor for available")
 	cmd.Flags().Int32Var(&info.TrashCleanDurationEachTime, "trashCleanMaxDurationEachTime", -1, "trash clean max duration for each time")
 	cmd.Flags().Int32Var(&info.TrashCleanMaxCountEachTime, "trashCleanMaxCountEachTime", -1, "trash clean max count for each time")
 	return cmd
@@ -380,10 +368,9 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  MonitorReportSecond              : %v\n", info.MonitorReportSec))
 	sb.WriteString(fmt.Sprintf("  DataNodeFlushFDInterval          : %v s\n", info.DataNodeFlushFDInterval))
 	sb.WriteString(fmt.Sprintf("  DataNodeFlushFDParallelismOnDisk : %v \n", info.DataNodeFlushFDParallelismOnDisk))
-	sb.WriteString(fmt.Sprintf("  DNNormalExtentDeleteExpire  : %v\n", info.DataNodeNormalExtentDeleteExpire))
-	sb.WriteString(fmt.Sprintf("  ReuseMPInodeCountThreshold       : %v\n", info.ReuseMPInodeCountThreshold))
-	sb.WriteString(fmt.Sprintf("  ReuseMPDelInoCountThreshold      : %v\n", info.ReuseMPDelInoCountThreshold))
-	sb.WriteString(fmt.Sprintf("  ReuseMPDentryCountThreshold      : %v\n", info.ReuseMPDentryCountThreshold))
+	sb.WriteString(fmt.Sprintf("  DNNormalExtentDeleteExpire       : %v\n", info.DataNodeNormalExtentDeleteExpire))
+	sb.WriteString(fmt.Sprintf("  BitMapAllocatorMaxUsedFactor     : %v\n", info.BitMapAllocatorMaxUsedFactor))
+	sb.WriteString(fmt.Sprintf("  BitMapAllocatorMinFreeFactor     : %v\n", info.BitMapAllocatorMinFreeFactor))
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxDurationEachTime    : %v\n", info.TrashCleanDurationEachTime))
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxCountEachTime       : %v\n", info.TrashItemCleanMaxCountEachTime))
 	return sb.String()

@@ -34,7 +34,6 @@ func mockMetaPartition(partitionID uint64, metaNodeID uint64, storeMode proto.St
 		RootDir:     rootDir,
 		StoreMode:   storeMode,
 	}
-	conf.VirtualMPs = append(conf.VirtualMPs, VirtualMetaPartitionConf{Start: conf.Start, End: conf.End, ID: partitionID})
 	tmp, err := CreateMetaPartition(conf, manager)
 	if err != nil {
 		fmt.Printf("create meta partition failed:%s", err.Error())
@@ -254,6 +253,7 @@ func TestMetaPartition_StoreAndLoad(t *testing.T) {
 //	os.RemoveAll("./partition_2")
 //}
 
+//todo: add test case
 func Test_nextInodeID(t *testing.T) {
 	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_next_inode_id", ApplyMockWithNull)
 	if err != nil {
@@ -261,120 +261,5 @@ func Test_nextInodeID(t *testing.T) {
 		return
 	}
 	defer releaseMetaPartition(mp)
-	mp.config.VirtualMPs = []VirtualMetaPartitionConf{
-		{
-			Start: 0,
-			End:   1024,
-			ID:    1,
-		},
-		{
-			Start: 10240,
-			End:   defaultMaxMetaPartitionInodeID,
-			ID:    10,
-		},
-	}
-	mp.virtualMPs = InitVirtualMetaPartitionByConf(mp.config.VirtualMPs, true)
-	mp.config.Cursor = 10240
-	if _, err = mp.nextInodeID(1); err == nil {
-		t.Errorf("nextInodeID test failed, error expect :inode ID out of range; actual: nil")
-		return
-	}
 
-	if _, err = mp.nextInodeID(8); err == nil {
-		t.Errorf("nextInodeID test failed, error expect :inode ID out of range; actual: nil")
-		return
-	}
-}
-
-func TestMetaPartition_updateVirtualMPByConf(t *testing.T) {
-	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./test_next_inode_id", ApplyMockWithNull)
-	if err != nil {
-		t.Errorf("mock metapartition failed:%v", err)
-		return
-	}
-	defer releaseMetaPartition(mp)
-	mp.config.VirtualMPs = []VirtualMetaPartitionConf{
-		{
-			Start: 0,
-			End:   1024,
-			ID:    1,
-		},
-	}
-	mp.virtualMPs = []*VirtualMetaPartition{
-		{
-			VirtualMetaPartitionConf: VirtualMetaPartitionConf{ID: 1, Start: 0, End: 1024},
-			Status:                   proto.ReadWrite,
-			InodeIDAlloter:           nil,
-		},
-		{
-			VirtualMetaPartitionConf: VirtualMetaPartitionConf{ID: 10, Start: 2048, End: proto.DefaultMetaPartitionInodeIDStep},
-			Status:                   proto.ReadWrite,
-			InodeIDAlloter:           nil,
-		},
-	}
-
-	mp.updateVirtualMetaPartitionsByConf()
-	if len(mp.virtualMPs) != len(mp.config.VirtualMPs) {
-		t.Errorf("error virtual mp count:%v", len(mp.virtualMPs))
-		return
-	}
-	for index, vMP := range mp.virtualMPs {
-		t.Logf("conf:%v, virtual mp:(id:%v, start:%v, end:%v)", mp.config.VirtualMPs[index], vMP.ID, vMP.Start, vMP.End)
-	}
-
-	mp.config.VirtualMPs = []VirtualMetaPartitionConf{
-		{
-			Start: 0,
-			End:   1024,
-			ID:    1,
-		},
-		{
-			Start: 10240,
-			End:   defaultMaxMetaPartitionInodeID,
-			ID:    10,
-		},
-	}
-
-	mp.virtualMPs = []*VirtualMetaPartition{
-		{
-			VirtualMetaPartitionConf: VirtualMetaPartitionConf{ID: 1, Start: 0, End: 1024},
-			Status:                   proto.ReadWrite,
-			InodeIDAlloter:           NewInoAllocatorV1(0, 1024),
-		},
-	}
-	inodeAllocator := mp.virtualMPs[0].InodeIDAlloter
-	inodeAllocator.SetStatus(allocatorStatusInit)
-	for index := inodeAllocator.Start; index <= inodeAllocator.Start + 1024; index++ {
-		if index%10 == 5 {
-			inodeAllocator.SetId(index)
-		}
-	}
-	cnt := inodeAllocator.GetUsed()
-	mp.updateVirtualMetaPartitionsByConf()
-	if len(mp.virtualMPs) != len(mp.config.VirtualMPs) {
-		t.Errorf("error virtual mp count:%v", len(mp.virtualMPs))
-		return
-	}
-	inodeAllocator = mp.virtualMPs[0].InodeIDAlloter
-	if inodeAllocator.GetUsed() != cnt {
-		t.Errorf("inode allocator used count error, expect:%v, actual:%v", cnt, inodeAllocator.GetUsed())
-	}
-
-	inodeAllocator = mp.virtualMPs[1].InodeIDAlloter
-	inodeAllocator.SetStatus(allocatorStatusInit)
-	for index := inodeAllocator.Start; index <= inodeAllocator.Start + 1024; index++ {
-		if index%10 == 6 {
-			inodeAllocator.SetId(index)
-		}
-	}
-	cnt = inodeAllocator.GetUsed()
-	mp.updateVirtualMetaPartitionsByConf()
-	if len(mp.virtualMPs) != len(mp.config.VirtualMPs) {
-		t.Errorf("error virtual mp count:%v", len(mp.virtualMPs))
-		return
-	}
-	inodeAllocator = mp.virtualMPs[1].InodeIDAlloter
-	if inodeAllocator.GetUsed() != cnt {
-		t.Errorf("inode allocator used count error, expect:%v, actual:%v", cnt, inodeAllocator.GetUsed())
-	}
 }

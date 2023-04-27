@@ -49,7 +49,6 @@ type MetaNodeInfo struct {
 	Carry                     float64
 	Threshold                 float32
 	ReportTime                time.Time
-	PhyMetaPartitionCount     int
 	MetaPartitionCount        int
 	NodeSetID                 uint64
 	PersistenceMetaPartitions []uint64
@@ -116,32 +115,29 @@ type EcNodeInfo struct {
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartitionInfo struct {
-	PartitionID   uint64
-	PhyPID        uint64
-	Start         uint64
-	End           uint64
-	MaxInodeID    uint64
-	InodeCount    uint64
-	DentryCount   uint64
-	MaxExistIno   uint64
-	VolName       string
-	Replicas      []*MetaReplicaInfo
-	ReplicaNum    uint8
-	LearnerNum    uint8
-	Status        int8
-	IsRecover     bool
-	DisableReuse  bool
-	Hosts         []string
-	Peers         []Peer
-	Learners      []Learner
-	Zones         []string
-	OfflinePeerID uint64
-	MissNodes     map[string]int64
-	LoadResponse  []*MetaPartitionLoadResponse
-	MemStoreCnt   uint8
-	RcokStoreCnt  uint8
-	VirtualMPs    []VirtualMetaPartition
-	PhyMPStatus   int8
+	PartitionID       uint64
+	Start             uint64
+	End               uint64
+	MaxInodeID        uint64
+	InodeCount        uint64
+	DentryCount       uint64
+	MaxExistIno       uint64
+	VolName           string
+	Replicas          []*MetaReplicaInfo
+	ReplicaNum        uint8
+	LearnerNum        uint8
+	Status            int8
+	IsRecover         bool
+	Hosts             []string
+	Peers             []Peer
+	Learners          []Learner
+	Zones             []string
+	OfflinePeerID     uint64
+	MissNodes         map[string]int64
+	LoadResponse      []*MetaPartitionLoadResponse
+	MemStoreCnt       uint8
+	RcokStoreCnt      uint8
+	AllocatorInuseCnt uint64
 }
 
 // InodeInfo define the information of inode
@@ -181,7 +177,6 @@ type MetaReplicaInfo struct {
 	StoreMode   StoreMode
 	ApplyId     uint64
 	IsRecover   bool
-	VirtualMPs  []VirtualMetaPartition
 }
 
 // ClusterView provides the view of a cluster.
@@ -237,11 +232,8 @@ type ClusterView struct {
 	MetaTrashCleanInterval              uint64 //second
 	MetaRaftLogSize                     int64  //MB
 	MetaRaftLogCap                      int64
-	ReuseMPInodeCountThreshold          float64
-	ReuseMPDentryCountThreshold         float64
-	ReuseMPDelInodeCountThreshold       float64
-	MetaPartitionMaxInodeCount          uint64
-	MetaPartitionMaxDentryCount         uint64
+	BitMapAllocatorMaxUsedFactor        float64
+	BitMapAllocatorMinFreeFactor        float64
 	DisableStrictVolZone                bool
 	AutoUpdatePartitionReplicaNum       bool
 }
