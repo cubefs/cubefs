@@ -460,11 +460,11 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				if enable, err = strconv.ParseBool(optDpReadOnlyWhenVolFull); err != nil {
 					return
 				}
-				confirmString.WriteString(fmt.Sprintf("  Become readonly when vol full : %v -> %v\n",
+				confirmString.WriteString(fmt.Sprintf("  Vol readonly when full : %v -> %v\n",
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull), formatEnabledDisabled(enable)))
 				vv.DpReadOnlyWhenVolFull = enable
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Become readonly when vol full : %v\n",
+				confirmString.WriteString(fmt.Sprintf("  Vol readonly full : %v\n",
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
 			}
 
@@ -514,8 +514,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optCacheLowWater, CliFlagCacheLowWater, 0, " (default 60)")
 	cmd.Flags().StringVar(&optCacheRule, CliFlagCacheRule, "", "Specify cache rule")
 	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, 0, "Specify interval expiration time[Unit: min] (default 5)")
-	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
-		"Enable volume becomes read only when it is full")
+	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, "", "Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link\"] or \"off\" or \"all\"")
 	cmd.Flags().Int64Var(&optTxTimeout, CliTxTimeout, 0, "Specify timeout[Unit: second] for transaction (0-60]")
