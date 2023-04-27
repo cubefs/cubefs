@@ -652,14 +652,22 @@ func TestGetNodeInfo(t *testing.T) {
 }
 
 func TestSetNodeMaxDpCntLimit(t *testing.T) {
-	limit := 4000
+	// change current max data partition count limit to 4000
+	limit := uint32(4000)
 	reqURL := fmt.Sprintf("%v%v?maxDpCntLimit=%v", hostAddr, proto.AdminSetNodeInfo, limit)
 	process(reqURL, t)
+	// query current settings
 	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetNodeInfo)
 	reply := process(reqURL, t)
 	data := reply.Data.(map[string]interface{})
 	limitStr := (data[maxDpCntLimitKey]).(string)
 	assert.True(t, fmt.Sprint(limit) == limitStr)
+	// query data node info
+	reqURL = fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetDataNode, mds1Addr)
+	reply = process(reqURL, t)
+	data = reply.Data.(map[string]interface{})
+	dataNodeLimit := uint32((data[maxDpCntLimitKey]).(float64))
+	assert.True(t, dataNodeLimit == limit)
 }
 
 func TestAddDataReplica(t *testing.T) {
