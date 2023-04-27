@@ -172,7 +172,10 @@ build_rocksdb() {
 
         [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
         MAJOR=$(echo __GNUC__ | $(which gcc) -E -xc - | tail -n 1)
-        if [ ${MAJOR} -ge 10 ] ; then
+        if [ ${MAJOR} -ge 12 ] ; then
+          CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move -Wno-error=range-loop-construct' \
+        make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+        elif [ ${MAJOR} -ge 10 ] ; then
           CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move' \
 		make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
         elif [ ${MAJOR} -ge 8 ] ; then
