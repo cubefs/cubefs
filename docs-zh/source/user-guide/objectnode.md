@@ -33,7 +33,7 @@ nohup cfs-server -c objectnode.json &
 | 参数           | 类型           | 含义                                   | 必需  |
 |--------------|--------------|--------------------------------------|-----|
 | role         | string       | 进程角色，必须设置为 `objectnode`              | 是   |
-| listen       | string       | 对象存储子系统监听的IP地址和端口号.<br>格式: `IP:PORT` | 是   |
+| listen       | string       | 对象存储子系统监听的端口号.<br>格式: `PORT`    | 是   |
 | domains      | string slice | 为S3兼容接口配置域名以支持DNS风格访问资源              | 否   |
 | logDir       | string       | 日志存放路径                               | 是   |
 | logLevel     | string       | 日志级别. 默认: `error`                    | 否   |
