@@ -646,6 +646,22 @@ func TestGetMetaNode(t *testing.T) {
 	process(reqURL, t)
 }
 
+func TestGetNodeInfo(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetNodeInfo)
+	process(reqURL, t)
+}
+
+func TestSetNodeMaxDpCntLimit(t *testing.T) {
+	limit := 4000
+	reqURL := fmt.Sprintf("%v%v?maxDpCntLimit=%v", hostAddr, proto.AdminSetNodeInfo, limit)
+	process(reqURL, t)
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetNodeInfo)
+	reply := process(reqURL, t)
+	data := reply.Data.(map[string]interface{})
+	limitStr := (data[maxDpCntLimitKey]).(string)
+	assert.True(t, fmt.Sprint(limit) == limitStr)
+}
+
 func TestAddDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	dsAddr := "127.0.0.1:9106"
