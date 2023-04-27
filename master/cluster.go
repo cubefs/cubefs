@@ -3003,11 +3003,6 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) && !IsCrossRegionHATypeQuorum(crossRegionHAType) {
 		vol.mpLearnerNum = 0
 	}
-	if !IsCrossRegionHATypeQuorum(crossRegionHAType) && replicaNum > vol.dpReplicaNum {
-		err = fmt.Errorf("don't support new replicaNum[%v] larger than old dpReplicaNum[%v] for crossRegionHAType[%s]",
-			replicaNum, vol.dpReplicaNum, crossRegionHAType)
-		goto errHandler
-	}
 	if enableToken == true && len(vol.tokens) == 0 {
 		if err = c.createToken(vol, proto.ReadOnlyToken); err != nil {
 			goto errHandler
@@ -3066,13 +3061,10 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	if description != "" {
 		vol.description = description
 	}
-	//for normal vol, only reduced dp replica num is supported
-	if replicaNum != 0 && (replicaNum < vol.dpReplicaNum || IsCrossRegionHATypeQuorum(crossRegionHAType)) {
-		if replicaNum > vol.dpReplicaNum {
-			vol.DPConvertMode = proto.IncreaseReplicaNum
-		}
-		vol.dpReplicaNum = replicaNum
+	if replicaNum > vol.dpReplicaNum {
+		vol.DPConvertMode = proto.IncreaseReplicaNum
 	}
+	vol.dpReplicaNum = replicaNum
 	// only can increase mp replica num
 	if mpReplicaNum > vol.mpReplicaNum {
 		vol.mpReplicaNum = mpReplicaNum
