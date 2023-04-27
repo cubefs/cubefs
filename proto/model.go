@@ -65,6 +65,7 @@ type DataNodeInfo struct {
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
 	RdOnly                    bool
+	MaxDpCntLimit             uint32 `json:"maxDpCntLimit"`
 }
 
 // MetaPartition defines the structure of a meta partition

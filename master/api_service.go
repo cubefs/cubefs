@@ -2002,6 +2002,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		PersistenceDataPartitions: dataNode.PersistenceDataPartitions,
 		BadDisks:                  dataNode.BadDisks,
 		RdOnly:                    dataNode.RdOnly,
+		MaxDpCntLimit:             dataNode.GetDpCntLimit(),
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
