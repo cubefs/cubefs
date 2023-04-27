@@ -137,6 +137,7 @@ const (
 	// transaction
 	opFSMSyncTxID
 	opFSMTxCreateInode
+	opFSMTxCreateInodeQuota
 	opFSMTxCreateDentry
 	opFSMTxCommit
 	opFSMTxInodeCommit

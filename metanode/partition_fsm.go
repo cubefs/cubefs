@@ -70,7 +70,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			mp.setInodeQuota(qinode.quotaIds, ino.Inode)
 		}
 		resp = mp.fsmCreateInode(ino)
-		if resp != proto.OpExistErr {
+		if resp == proto.OpOk {
 			for _, quotaId := range qinode.quotaIds {
 				mp.mqMgr.updateUsedInfo(0, 1, quotaId)
 			}
@@ -269,7 +269,27 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if mp.config.Cursor < txIno.Inode.Inode {
 			mp.config.Cursor = txIno.Inode.Inode
 		}
-		resp = mp.fsmTxCreateInode(txIno)
+		resp = mp.fsmTxCreateInode(txIno, 0)
+	case opFSMTxCreateInodeQuota:
+		qinode := &TxMetaQuotaInode{}
+		if err = qinode.Unmarshal(msg.V); err != nil {
+			return
+		}
+		txIno := qinode.txinode
+		if mp.config.Cursor < txIno.Inode.Inode {
+			mp.config.Cursor = txIno.Inode.Inode
+		}
+		var quotaId uint32
+		if len(qinode.quotaIds) > 0 {
+			mp.setInodeQuota(qinode.quotaIds, txIno.Inode.Inode)
+			quotaId = qinode.quotaIds[0]
+		}
+		resp = mp.fsmTxCreateInode(txIno, quotaId)
+		if resp == proto.OpOk {
+			for _, quotaId := range qinode.quotaIds {
+				mp.mqMgr.updateUsedInfo(0, 1, quotaId)
+			}
+		}
 	case opFSMTxCreateDentry:
 		txDen := NewTxDentry(0, "", 0, 0, nil)
 		if err = txDen.Unmarshal(msg.V); err != nil {
@@ -520,7 +540,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			txTree.ReplaceOrInsert(txInfo, true)
 			log.LogDebugf("ApplySnapshot: create transaction: partitionID(%v) txInfo(%v)", mp.config.PartitionId, txInfo)
 		case opFSMTxRbInodeSnapshot:
-			txRbInode := NewTxRollbackInode(nil, nil, 0)
+			txRbInode := NewTxRollbackInode(nil, 0, nil, 0)
 			txRbInode.Unmarshal(snap.V)
 			//txRollbackInodes[txRbInode.inode.Inode] = txRbInode
 			txRbInodeTree.ReplaceOrInsert(txRbInode, true)

@@ -31,7 +31,8 @@ import (
 // API implementations
 //
 
-func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, gid uint32,
+	target []byte, quotaIds []uint32) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txIcreate", err, bgTime, 1)
@@ -49,6 +50,7 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 		Uid:         uid,
 		Gid:         gid,
 		Target:      target,
+		QuotaIds:    quotaIds,
 		TxInfo:      tx.txInfo,
 	}
 
@@ -360,7 +362,7 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32) (status int, err error) {
+func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32, quotaIds []uint32) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txDcreate", err, bgTime, 1)
@@ -382,6 +384,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		Inode:       inode,
 		Name:        name,
 		Mode:        mode,
+		QuotaIds:    quotaIds,
 		TxInfo:      tx.txInfo,
 	}
 

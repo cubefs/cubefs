@@ -178,6 +178,7 @@ type TxCreateInodeRequest struct {
 	Uid         uint32           `json:"uid"`
 	Gid         uint32           `json:"gid"`
 	Target      []byte           `json:"tgt"`
+	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
 }
 
@@ -321,6 +322,7 @@ type TxCreateDentryRequest struct {
 	Inode       uint64           `json:"ino"`
 	Name        string           `json:"name"`
 	Mode        uint32           `json:"mode"`
+	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
 }
 

@@ -620,6 +620,11 @@ func (mp *metaPartition) ClearInodeCache(req *proto.ClearInodeCacheRequest, p *P
 
 // TxCreateInode returns a new inode.
 func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet) (err error) {
+	var (
+		status = proto.OpNotExistErr
+		reply  []byte
+		resp   interface{}
+	)
 	inoID, err := mp.nextInodeID()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
@@ -664,20 +669,43 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	txIno.Inode.Gid = req.Gid
 	txIno.Inode.LinkTarget = req.Target
 
-	val, err := txIno.Marshal()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
+	if defaultQuotaSwitch {
+		for _, quotaId := range req.QuotaIds {
+			status = mp.mqMgr.IsOverQuota(false, true, quotaId)
+			if status != 0 {
+				err = errors.New("tx create inode is over quota")
+				reply = []byte(err.Error())
+				p.PacketErrorWithBody(status, reply)
+				return
+			}
+		}
+
+		qinode := &TxMetaQuotaInode{
+			txinode:  txIno,
+			quotaIds: req.QuotaIds,
+		}
+		val, err := qinode.Marshal()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return err
+		}
+		resp, err = mp.submit(opFSMTxCreateInodeQuota, val)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			return err
+		}
+	} else {
+		val, err := txIno.Marshal()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return err
+		}
+		resp, err = mp.submit(opFSMTxCreateInode, val)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			return err
+		}
 	}
-	status, err := mp.submit(opFSMTxCreateInode, val)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-		return
-	}
-	var (
-		//status = proto.OpNotExistErr
-		reply []byte
-	)
 
 	var rstTxInfo *proto.TransactionInfo
 	if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
@@ -688,7 +716,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 		rstTxInfo = req.TxInfo
 	}
 
-	if status.(uint8) == proto.OpOk {
+	if resp == proto.OpOk {
 		/*resp := &proto.TxCreateInodeResponse{
 			Info:   &proto.InodeInfo{},
 			TxInfo: rstTxInfo,
@@ -709,6 +737,6 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 			reply = []byte(err.Error())
 		}
 	}
-	p.PacketErrorWithBody(status.(uint8), reply)
+	p.PacketErrorWithBody(status, reply)
 	return
 }

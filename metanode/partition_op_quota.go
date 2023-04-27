@@ -137,7 +137,7 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 						quotaInfo.Status = proto.QuotaDeleting
 					}
 				} else {
-					log.LogErrorf("batchDeleteInodeQuota QuotaInfoMap can not find quota [%v]", req.QuotaId)
+					log.LogErrorf("batchDeleteInodeQuota QuotaInfoMap can not find inode [%v] quota [%v]", ino, req.QuotaId)
 					continue
 				}
 			} else {
