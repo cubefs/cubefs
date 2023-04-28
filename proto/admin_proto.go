@@ -68,6 +68,9 @@ const (
 	AdminSetFileStats                         = "/admin/setFileStatsEnable"
 	AdminGetFileStats                         = "/admin/getFileStatsEnable"
 	AdminGetClusterValue                      = "/admin/getClusterValue"
+	AdminSetClusterUuidEnable                 = "/admin/setClusterUuidEnable"
+	AdminGetClusterUuid                       = "/admin/getClusterUuid"
+	AdminGenerateClusterUuid                  = "/admin/generateClusterUuid"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -294,6 +297,8 @@ type ClusterInfo struct {
 	DirChildrenNumLimit         uint32
 	EbsAddr                     string
 	ServicePath                 string
+	ClusterUuid                 string
+	ClusterUuidEnable           bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

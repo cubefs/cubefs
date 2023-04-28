@@ -148,6 +148,8 @@ type DataNode struct {
 	diskIopsWriteLimit      uint64
 	diskFlowReadLimit       uint64
 	diskFlowWriteLimit      uint64
+	clusterUuid             string
+	clusterUuidEnable       bool
 }
 
 func NewServer() *DataNode {
@@ -344,6 +346,12 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if !fileInfo.IsDir() {
 			return errors.New("Disk path is not dir")
 		}
+		if s.clusterUuidEnable {
+			if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
+				log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+				return errors.New(fmt.Sprintf("CheckOrStoreClusterUuid failed: %v", err.Error()))
+			}
+		}
 		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
 		if err != nil {
 			return errors.New(fmt.Sprintf("Invalid disk reserved space. Error: %s", err.Error()))
@@ -417,6 +425,8 @@ func (s *DataNode) register(cfg *config.Config) {
 				continue
 			}
 			masterAddr := MasterClient.Leader()
+			s.clusterUuid = ci.ClusterUuid
+			s.clusterUuidEnable = ci.ClusterUuidEnable
 			s.clusterID = ci.Cluster
 			if LocalIP == "" {
 				LocalIP = string(ci.Ip)
@@ -535,6 +545,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/setMetricsDegrade", s.setMetricsDegrade)
 	http.HandleFunc("/getMetricsDegrade", s.getMetricsDegrade)
 	http.HandleFunc("/qosEnable", s.setQosEnable())
+	http.HandleFunc("/genClusterVersionFile", s.genClusterVersionFile)
 }
 
 func (s *DataNode) startTCPService() (err error) {

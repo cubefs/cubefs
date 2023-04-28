@@ -515,6 +515,13 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 
 	s.parseRaftConfig(cfg)
 
+	if s.clusterUuidEnable {
+		if err = config.CheckOrStoreClusterUuid(s.raftDir, s.clusterUuid, false); err != nil {
+			log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+			return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err)
+		}
+	}
+
 	constCfg := config.ConstConfig{
 		Listen:           s.port,
 		RaftHeartbetPort: s.raftHeartbeat,
