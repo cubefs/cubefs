@@ -69,6 +69,8 @@ type MetaNode struct {
 	tickInterval      int
 	raftRecvBufSize   int
 	connectionCnt     int64
+	clusterUuid       string
+	clusterUuidEnable bool
 
 	control common.Control
 }
@@ -243,17 +245,6 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("bad cfgRaftReplicaPort config")
 	}
 
-	constCfg := config.ConstConfig{
-		Listen:           m.listen,
-		RaftHeartbetPort: m.raftHeartbeatPort,
-		RaftReplicaPort:  m.raftReplicatePort,
-	}
-	var ok = false
-	if ok, err = config.CheckOrStoreConstCfg(m.metadataDir, config.DefaultConstConfigFile, &constCfg); !ok {
-		log.LogErrorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
-		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
-	}
-
 	log.LogInfof("[parseConfig] load localAddr[%v].", m.localAddr)
 	log.LogInfof("[parseConfig] load listen[%v].", m.listen)
 	log.LogInfof("[parseConfig] load metadataDir[%v].", m.metadataDir)
@@ -341,6 +332,25 @@ func (m *MetaNode) newMetaManager() (err error) {
 			return
 		}
 	}
+
+	if m.clusterUuidEnable {
+		if err = config.CheckOrStoreClusterUuid(m.metadataDir, m.clusterUuid, false); err != nil {
+			log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+			return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err)
+		}
+	}
+
+	constCfg := config.ConstConfig{
+		Listen:           m.listen,
+		RaftHeartbetPort: m.raftHeartbeatPort,
+		RaftReplicaPort:  m.raftReplicatePort,
+	}
+	var ok = false
+	if ok, err = config.CheckOrStoreConstCfg(m.metadataDir, config.DefaultConstConfigFile, &constCfg); !ok {
+		log.LogErrorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
+		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
+	}
+
 	// load metadataManager
 	conf := MetadataManagerConfig{
 		NodeID:    m.nodeId,
@@ -378,6 +388,8 @@ func (m *MetaNode) register() (err error) {
 			if m.localAddr == "" {
 				m.localAddr = clusterInfo.Ip
 			}
+			m.clusterUuid = clusterInfo.ClusterUuid
+			m.clusterUuidEnable = clusterInfo.ClusterUuidEnable
 			m.clusterId = clusterInfo.Cluster
 			nodeAddress = m.localAddr + ":" + m.listen
 			step++
