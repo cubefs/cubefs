@@ -2,10 +2,38 @@
 
 ## 开发指南
 
+### 基本准则
+
 你可以通过多种方式参与到CubeFS的开源建设当中，如：
 
-- **报告问题**：请合理的使用关键字搜索 [查找问题](https://github.com/cubeFS/cubefs/search?q=&type=Issues&utf8=%E2%9C%93)，以确保问题没有提交。然后通过 [打开问题](https://github.com/cubeFS/cubefs/issues) 提交问题描述和复现方法。
-- **新增补丁**：[规范说明](https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md)。
+- **报告问题**：请合理的使用关键字搜索 [查找问题](https://github.com/cubeFS/cubefs/search?q=&type=Issues&utf8=%E2%9C%93) ，以确保问题没有提交。然后通过 [打开问题](https://github.com/cubeFS/cubefs/issues) 提交问题描述和复现方法。
+- **新增补丁**：[规范说明](https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md) 。
+
+### 代码风格
+
+- 遵循Go的[编码规范](https://go.dev/doc/effective_go)
+- 确保提交代码之前使用 `go fmt` 或者 `gofumpt`格式化你的代码
+- 确保每个新加的源文件以许可证头开始
+- 确保有足够的单元测试
+- 确保有足够的注释
+
+### 提交点说明
+
+- 遵循[Angular提交规范](https://github.com/angular/angular/blob/main/CONTRIBUTING.md#commit)
+- 提交点需要签名，并确保签名与作者一致
+
+示例：
+
+> 比如Author的信息需要与Signed-of-by一致
+
+```shell
+Author: users <users@cubefs.groups.io>
+Date:   Thu Apr 27 09:40:02 2023 +0800
+
+    feat(cubefs): this is an example
+    
+    Signed-off-by: users <users@cubefs.groups.io>
+```
 
 ## 开发者
 
