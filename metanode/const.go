@@ -153,6 +153,9 @@ const (
 	opFSMTxSnapshot
 	opFSMTxRbInodeSnapshot
 	opFSMTxRbDentrySnapshot
+	//restore rollback item
+	opFSMTxRestoreRollbackInode
+	opFSMTxRestoreRollbackDentry
 
 	//quota
 	opFSMCreateInodeQuota
