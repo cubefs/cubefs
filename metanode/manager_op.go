@@ -365,8 +365,8 @@ func (m *metadataManager) opTxInodeCommit(conn net.Conn, p *Packet,
 	err = mp.TxInodeCommit(req, p)
 	m.respondToClient(conn, p)
 
-	log.LogDebugf("%s [opTxInodeCommit] req: %d - %v, resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opTxInodeCommit] req: %d - %v, resp: %v",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg())
 	return
 }
 
@@ -423,8 +423,8 @@ func (m *metadataManager) opTxDentryCommit(conn net.Conn, p *Packet,
 	err = mp.TxDentryCommit(req, p)
 	m.respondToClient(conn, p)
 
-	log.LogDebugf("%s [opTxDentryCommit] req: %d - %v, resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opTxDentryCommit] req: %d - %v, resp: %v",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg())
 	return
 }
 
@@ -453,6 +453,64 @@ func (m *metadataManager) opTxDentryRollback(conn net.Conn, p *Packet,
 	m.respondToClient(conn, p)
 
 	log.LogDebugf("%s [opTxDentryRollback] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opTxRestoreRollbackInode(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.TxRestoreRollbackInodeRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+
+	mp, err := m.getPartition(p.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	err = mp.TxRestoreRollbackInode(req, p)
+	m.respondToClient(conn, p)
+
+	log.LogDebugf("%s [opTxRestoreRollbackInode] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opTxRestoreRollbackDentry(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.TxRestoreRollbackDentryRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+
+	mp, err := m.getPartition(p.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	err = mp.TxRestoreRollbackDentry(req, p)
+	m.respondToClient(conn, p)
+
+	log.LogDebugf("%s [opTxRestoreRollbackDentry] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }

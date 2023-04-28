@@ -215,6 +215,14 @@ type TxDentryApplyRequest struct {
 	ApplyFrom   uint32 `json:"from"`
 }
 
+type TxRestoreRollbackInodeRequest struct {
+	RbInode []byte `json:"rbinode"`
+}
+
+type TxRestoreRollbackDentryRequest struct {
+	RbDentry []byte `json:"rbdentry"`
+}
+
 // LinkInodeRequest defines the request to link an inode.
 type LinkInodeRequest struct {
 	VolName     string `json:"vol"`
