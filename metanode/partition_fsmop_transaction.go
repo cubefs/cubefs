@@ -1,3 +1,17 @@
+// Copyright 2018 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.k
+
 package metanode
 
 import "github.com/cubefs/cubefs/proto"
@@ -24,6 +38,18 @@ func (mp *metaPartition) fsmTxInodeRollback(req *proto.TxInodeApplyRequest) (sta
 	return
 }
 
+func (mp *metaPartition) fsmTxRestoreRollbackInode(req *proto.TxRestoreRollbackInodeRequest) (status uint8) {
+
+	status, _ = mp.txProcessor.txResource.restoreRollbackInode(req)
+	return
+}
+
+func (mp *metaPartition) fsmTxRestoreRollbackDentry(req *proto.TxRestoreRollbackDentryRequest) (status uint8) {
+
+	status, _ = mp.txProcessor.txResource.restoreRollbackDentry(req)
+	return
+}
+
 func (mp *metaPartition) fsmTxDentryRollback(req *proto.TxDentryApplyRequest) (status uint8) {
 	//status = proto.OpOk
 	//var err error
@@ -32,7 +58,6 @@ func (mp *metaPartition) fsmTxDentryRollback(req *proto.TxDentryApplyRequest) (s
 }
 
 func (mp *metaPartition) fsmTxCommit(txID string) (status uint8) {
-	//status = proto.OpOk
 	var err error
 	status, err = mp.txProcessor.txManager.commitTxInfo(txID)
 	if err == nil && status == proto.OpOk {
@@ -47,10 +72,9 @@ func (mp *metaPartition) fsmTxCommit(txID string) (status uint8) {
 }
 
 func (mp *metaPartition) fsmTxInodeCommit(txID string, inode uint64) (status uint8) {
-	//status = proto.OpOk
-	var err error
-	status, err = mp.txProcessor.txResource.commitInode(txID, inode)
-	if err == nil && status == proto.OpOk {
+	//var err error
+	status, _ = mp.txProcessor.txResource.commitInode(txID, inode)
+	/*if err == nil && status == proto.OpOk {
 		return
 	} else {
 		if err != nil && status == proto.OpTxRbInodeNotExistErr {
@@ -58,14 +82,14 @@ func (mp *metaPartition) fsmTxInodeCommit(txID string, inode uint64) (status uin
 			return
 		}
 		return status
-	}
+	}*/
+	return
 }
 
 func (mp *metaPartition) fsmTxDentryCommit(txID string, pId uint64, name string) (status uint8) {
-	//status = proto.OpOk
-	var err error
-	status, err = mp.txProcessor.txResource.commitDentry(txID, pId, name)
-	if err == nil && status == proto.OpOk {
+	//var err error
+	status, _ = mp.txProcessor.txResource.commitDentry(txID, pId, name)
+	/*if err == nil && status == proto.OpOk {
 		return
 	} else {
 		if err != nil && status == proto.OpTxRbDentryNotExistErr {
@@ -73,5 +97,6 @@ func (mp *metaPartition) fsmTxDentryCommit(txID string, pId uint64, name string)
 			return
 		}
 		return status
-	}
+	}*/
+	return
 }

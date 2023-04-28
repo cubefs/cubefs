@@ -148,18 +148,20 @@ const (
 	OpMetaBatchEvictInode   uint8 = 0x93
 
 	//Transaction Operations: Client -> MetaNode.
-	OpMetaTxCreateInode  uint8 = 0xA0
-	OpMetaTxUnlinkInode  uint8 = 0xA1
-	OpMetaTxCreateDentry uint8 = 0xA2
-	OpTxCommit           uint8 = 0xA3
-	OpTxInodeCommit      uint8 = 0xA4
-	OpTxDentryCommit     uint8 = 0xA5
-	OpTxRollback         uint8 = 0xA6
-	OpTxInodeRollback    uint8 = 0xA7
-	OpTxDentryRollback   uint8 = 0xA8
-	OpMetaTxDeleteDentry uint8 = 0xA9
-	OpMetaTxUpdateDentry uint8 = 0xAA
-	OpMetaTxLinkInode    uint8 = 0xAB
+	OpMetaTxCreateInode       uint8 = 0xA0
+	OpMetaTxUnlinkInode       uint8 = 0xA1
+	OpMetaTxCreateDentry      uint8 = 0xA2
+	OpTxCommit                uint8 = 0xA3
+	OpTxInodeCommit           uint8 = 0xA4
+	OpTxDentryCommit          uint8 = 0xA5
+	OpTxRollback              uint8 = 0xA6
+	OpTxInodeRollback         uint8 = 0xA7
+	OpTxDentryRollback        uint8 = 0xA8
+	OpTxRestoreRollbackInode  uint8 = 0xA9
+	OpTxRestoreRollbackDentry uint8 = 0xAA
+	OpMetaTxDeleteDentry      uint8 = 0xAB
+	OpMetaTxUpdateDentry      uint8 = 0xAC
+	OpMetaTxLinkInode         uint8 = 0xAD
 
 	// Commons
 	OpNoSpaceErr         uint8 = 0xEE
@@ -193,17 +195,19 @@ const (
 	OpMetaGetAllXAttr        uint8 = 0xD3
 
 	//transaction error
-	OpTxInodeInfoNotExistErr  uint8 = 0xE0
-	OpTxConflictErr           uint8 = 0xE1
-	OpTxDentryInfoNotExistErr uint8 = 0xE2
-	OpTxRbInodeNotExistErr    uint8 = 0xE3
-	OpTxRbDentryNotExistErr   uint8 = 0xE4
-	OpTxInfoNotExistErr       uint8 = 0xE5
-	OpTxInternalErr           uint8 = 0xE6
-	OpTxCommitItemErr         uint8 = 0xE7
-	OpTxRollbackItemErr       uint8 = 0xE8
-	OpTxRollbackUnknownRbType uint8 = 0xE9
-	OpTxTimeoutErr            uint8 = 0xEA
+	OpTxInodeInfoNotExistErr     uint8 = 0xE0
+	OpTxConflictErr              uint8 = 0xE1
+	OpTxDentryInfoNotExistErr    uint8 = 0xE2
+	OpTxRbInodeNotExistErr       uint8 = 0xE3
+	OpTxRbDentryNotExistErr      uint8 = 0xE4
+	OpTxInfoNotExistErr          uint8 = 0xE5
+	OpTxInternalErr              uint8 = 0xE6
+	OpTxCommitItemErr            uint8 = 0xE7
+	OpTxRollbackItemErr          uint8 = 0xE8
+	OpTxRollbackUnknownRbType    uint8 = 0xE9
+	OpTxTimeoutErr               uint8 = 0xEA
+	OpTxRestoreRollbackInodeErr  uint8 = 0xEB
+	OpTxRestoreRollbackDentryErr uint8 = 0xEC
 )
 
 const (
@@ -478,6 +482,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpTxInodeRollback"
 	case OpTxDentryRollback:
 		m = "OpTxDentryRollback"
+	case OpTxRestoreRollbackInode:
+		m = "OpTxRestoreRollbackInode"
+	case OpTxRestoreRollbackDentry:
+		m = "OpTxRestoreRollbackDentry"
 	case OpMetaTxDeleteDentry:
 		m = "OpMetaTxDeleteDentry"
 	case OpMetaTxUnlinkInode:
@@ -551,6 +559,10 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpTxRbDentryNotExistEr"
 	case OpTxTimeoutErr:
 		m = "OpTxTimeoutErr"
+	case OpTxRestoreRollbackInodeErr:
+		m = "OpTxRestoreRollbackInodeErr"
+	case OpTxRestoreRollbackDentryErr:
+		m = "OpTxRestoreRollbackDentryErr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
