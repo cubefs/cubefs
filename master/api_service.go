@@ -448,6 +448,8 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 		EbsAddr:                     m.bStoreAddr,
 		ServicePath:                 m.servicePath,
+		ClusterUuid:                 m.cluster.clusterUuid,
+		ClusterUuidEnable:           m.cluster.clusterUuidEnable,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
@@ -4261,4 +4263,51 @@ func (m *Server) GetClusterValue(w http.ResponseWriter, r *http.Request) {
 		}
 		sendOkReply(w, r, newSuccessHTTPReply(cv))
 	}
+}
+
+func (m *Server) setClusterUuidEnable(w http.ResponseWriter, r *http.Request) {
+	var (
+		err    error
+		enable bool
+	)
+
+	if m.cluster.clusterUuid == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "no ClusterUuid, generate it first"})
+		return
+	}
+
+	if enable, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	oldValue := m.cluster.clusterUuidEnable
+	m.cluster.clusterUuidEnable = enable
+	if err = m.cluster.syncPutCluster(); err != nil {
+		m.cluster.clusterUuidEnable = oldValue
+		log.LogErrorf("action[setClusterUuidEnable] syncPutCluster failed %v", err)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
+		return
+	}
+
+	log.LogInfof("action[setClusterUuidEnable] enable be set [%v]", enable)
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"set clusterUuIdEnable to [%v] successfully", enable)))
+}
+
+func (m *Server) generateClusterUuid(w http.ResponseWriter, r *http.Request) {
+	if m.cluster.clusterUuid != "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "The cluster already has a ClusterUuid"})
+	}
+	if err := m.cluster.generateClusterUuid(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrInternalError))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"generate ClusterUUID [%v] successfully", m.cluster.clusterUuid)))
+}
+
+func (m *Server) getClusterUuid(w http.ResponseWriter, r *http.Request) {
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"ClusterUUID [%v], enable value [%v]", m.cluster.clusterUuid, m.cluster.clusterUuidEnable)))
 }

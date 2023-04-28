@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/google/uuid"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -76,6 +77,8 @@ type Cluster struct {
 	masterClient                 *masterSDK.MasterClient
 	checkDataReplicasEnable      bool
 	fileStatsEnable              bool
+	clusterUuid                  string
+	clusterUuidEnable            bool
 }
 
 type followerReadManager struct {
@@ -3437,4 +3440,15 @@ func mergeDataPartitionArr(newDps, oldDps []*DataPartition) []*DataPartition {
 		}
 	}
 	return ret
+}
+
+func (c *Cluster) generateClusterUuid() (err error) {
+	cid := "CID-" + uuid.NewString()
+	c.clusterUuid = cid
+	if err := c.syncPutCluster(); err != nil {
+		c.clusterUuid = ""
+		return errors.NewErrorf(fmt.Sprintf("syncPutCluster failed %v", err.Error()))
+
+	}
+	return
 }

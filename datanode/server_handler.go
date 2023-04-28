@@ -17,7 +17,10 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/config"
 	"net/http"
+	"os"
+	"path"
 	"strconv"
 	"sync/atomic"
 
@@ -382,6 +385,30 @@ func (s *DataNode) setMetricsDegrade(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getMetricsDegrade(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("%v\n", atomic.LoadInt64(&s.metricsDegrade))))
+}
+
+func (s *DataNode) genClusterVersionFile(w http.ResponseWriter, r *http.Request) {
+	paths := make([]string, 0)
+	s.space.RangePartitions(func(partition *DataPartition) bool {
+		paths = append(paths, partition.disk.Path)
+		return true
+	})
+	paths = append(paths, s.raftDir)
+
+	for _, p := range paths {
+		if _, err := os.Stat(path.Join(p, config.ClusterVersionFile)); err == nil || os.IsExist(err) {
+			s.buildFailureResp(w, http.StatusCreated, "cluster version file already exists in "+p)
+			return
+		}
+	}
+	for _, p := range paths {
+		if err := config.CheckOrStoreClusterUuid(p, s.clusterUuid, true); err != nil {
+			s.buildFailureResp(w, http.StatusInternalServerError, "Failed to create cluster version file in "+p)
+			return
+		}
+	}
+	s.buildSuccessResp(w, "Generate cluster version file success")
+	return
 }
 
 func (s *DataNode) buildSuccessResp(w http.ResponseWriter, data interface{}) {
