@@ -484,3 +484,62 @@ func TestGetMaxCapacityWithReservedTrashSpace(t *testing.T) {
 		assert.Equal(t, testCase.expect, maxCap, fmt.Sprintf("testCase:%v", i))
 	}
 }
+
+func TestCheckAndUpdatePartitionReplicaNum(t *testing.T) {
+	volName := "test_update_replica"
+	createVol(volName, testZone2, t)
+	vol, err := server.cluster.getVol(volName)
+	if err != nil || vol == nil {
+		t.Errorf("getVol:%v err:%v", volName, err)
+		return
+	}
+	//will not change
+	vol.dpReplicaNum = 5
+	vol.mpReplicaNum = 5
+	vol.checkAndUpdateDataPartitionReplicaNum(server.cluster)
+	vol.checkAndUpdateMetaPartitionReplicaNum(server.cluster)
+	for _, partition := range vol.allDataPartition() {
+		assert.Equal(t, uint8(3), partition.ReplicaNum)
+	}
+	for _, partition := range vol.allMetaPartition() {
+		assert.Equal(t, uint8(3), partition.ReplicaNum)
+	}
+
+	//update hosts info
+	fakeHosts := []string{"192.168.1.901:6000","192.168.1.902:6000"}
+	for _, partition := range vol.allDataPartition() {
+		assert.Equal(t, false, vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum())
+		partition.Hosts = append(partition.Hosts, fakeHosts...)
+	}
+	for _, partition := range vol.allMetaPartition() {
+		assert.Equal(t, false, vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum())
+		partition.Hosts = append(partition.Hosts, fakeHosts...)
+	}
+	assert.Equal(t, true, vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum())
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminCheckVolPartitionReplica, volName)
+	process(reqURL, t)
+	testCases := []struct {
+		DpReplicaNum uint8
+		MpReplicaNum uint8
+	}{
+		{3, 5},
+		{5, 3},
+		{3, 3},
+		{5, 5},
+		{3, 3},
+	}
+	for i, testCase := range testCases {
+		vol.dpReplicaNum = testCase.DpReplicaNum
+		vol.mpReplicaNum = testCase.MpReplicaNum
+
+		vol.checkAndUpdateDataPartitionReplicaNum(server.cluster)
+		vol.checkAndUpdateMetaPartitionReplicaNum(server.cluster)
+		for _, partition := range vol.allDataPartition() {
+			assert.Equal(t, testCase.DpReplicaNum, partition.ReplicaNum, fmt.Sprintf("testCase:%v,dp", i))
+		}
+		for _, partition := range vol.allMetaPartition() {
+			assert.Equal(t, testCase.MpReplicaNum, partition.ReplicaNum, fmt.Sprintf("testCase:%v,mp", i))
+		}
+	}
+	markDeleteVol(volName, t)
+}

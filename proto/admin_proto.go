@@ -83,6 +83,7 @@ const (
 	AdminSetClientPkgAddr          = "/clientPkgAddr/set"
 	AdminGetClientPkgAddr          = "/clientPkgAddr/get"
 	AdminSetVolChildMaxCnt         = "/vol/setChildMaxCnt"
+	AdminCheckVolPartitionReplica  = "/vol/checkReplica"
 
 	AdminSmartVolList = "/admin/smartVol/list"
 
@@ -242,6 +243,7 @@ const (
 	MetaSyncWalEnableStateKey      = "metaWalSyncEnableState"
 	DataSyncWalEnableStateKey      = "dataWalSyncEnableState"
 	DisableStrictVolZoneKey        = "disableStrictVolZone"
+	AutoUpPartitionReplicaNumKey   = "autoUpdatePartitionReplicaNum"
 	ReuseMPInodeCountThresholdKey  = "reuseMPInodeCountThreshold"
 	ReuseMPDentryCountThresholdKey = "reuseMPDentryCountThreshold"
 	ReuseMPDelInoCountThresholdKey = "reuseMPDelInodeCountThreshold"
@@ -555,6 +557,7 @@ type LimitInfo struct {
 	MetaSyncWALOnUnstableEnableState bool
 	DataSyncWALOnUnstableEnableState bool
 	DisableStrictVolZone             bool
+	AutoUpdatePartitionReplicaNum    bool
 
 	ReuseMPInodeCountThreshold  float64
 	ReuseMPDentryCountThreshold float64
@@ -1245,6 +1248,7 @@ type RateLimitInfo struct {
 	MetaSyncWALEnableState           int64
 	DataSyncWALEnableState           int64
 	DisableStrictVolZone             int64
+	AutoUpdatePartitionReplicaNum    int64
 	ReuseMPInodeCountThreshold       float64
 	ReuseMPDentryCountThreshold      float64
 	ReuseMPDelInoCountThreshold      float64

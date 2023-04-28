@@ -168,6 +168,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckAutoMetaPartitionCreation()
 	c.scheduleToCheckEcDataPartitions()
 	c.scheduleToMigrationEc()
+	c.scheduleToCheckUpdatePartitionReplicaNum()
 
 }
 
@@ -3812,6 +3813,10 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[proto.DisableStrictVolZoneKey]; ok {
 		c.cfg.DisableStrictVolZone = val.(bool)
 	}
+	oldAutoUpdatePartitionReplicaNum := c.cfg.AutoUpdatePartitionReplicaNum
+	if val, ok := params[proto.AutoUpPartitionReplicaNumKey]; ok {
+		c.cfg.AutoUpdatePartitionReplicaNum = val.(bool)
+	}
 
 	oldUmpJmtpUrl := c.cfg.UmpJmtpAddr
 	if val, ok := params[umpJmtpAddrKey]; ok {
@@ -3900,6 +3905,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DataSyncWALOnUnstableEnableState = oldDataSyncWALEnableState
 		c.cfg.MetaSyncWALOnUnstableEnableState = oldMetaSyncWALEnableState
 		c.cfg.DisableStrictVolZone = oldDisableStrictVolZone
+		c.cfg.AutoUpdatePartitionReplicaNum = oldAutoUpdatePartitionReplicaNum
 		c.cfg.UmpJmtpAddr = oldUmpJmtpUrl
 		atomic.StoreUint64(&c.cfg.UmpJmtpBatch, oldUmpJmtpBatch)
 		atomic.StoreUint64(&c.cfg.MetaPartitionMaxInodeCount, oldMPMaxInodeCount)
@@ -5508,6 +5514,7 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		MetaRaftLogCap:                      c.cfg.MetaRaftLogCap,
 		MetaTrashCleanInterval:              c.cfg.MetaTrashCleanInterval,
 		DisableStrictVolZone:                c.cfg.DisableStrictVolZone,
+		AutoUpdatePartitionReplicaNum:       c.cfg.AutoUpdatePartitionReplicaNum,
 	}
 
 	vols := c.allVolNames()

@@ -537,6 +537,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaSyncWALOnUnstableEnableState:       m.cluster.cfg.MetaSyncWALOnUnstableEnableState,
 		DataSyncWALOnUnstableEnableState:       m.cluster.cfg.DataSyncWALOnUnstableEnableState,
 		DisableStrictVolZone:                   m.cluster.cfg.DisableStrictVolZone,
+		AutoUpdatePartitionReplicaNum:          m.cluster.cfg.AutoUpdatePartitionReplicaNum,
 		ReuseMPInodeCountThreshold:             m.cluster.cfg.ReuseMPInodeCountThreshold,
 		ReuseMPDentryCountThreshold:            m.cluster.cfg.ReuseMPDentryCountThreshold,
 		ReuseMPDelInoCountThreshold:            m.cluster.cfg.ReuseMPDelInodeCountThreshold,
@@ -4598,7 +4599,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
-	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey}
+	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey, proto.AutoUpPartitionReplicaNumKey}
 	for _, key := range boolKey {
 		if err = parseBoolKey(params, key, r); err != nil {
 			return
@@ -6191,4 +6192,22 @@ func (m *Server) getCurrentLeaderVersion(r *http.Request) (currentLeaderVersion 
 		currentLeaderVersion = m.leaderVersion.Load()
 	}
 	return
+}
+
+func (m *Server) checkVolPartitionReplica(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName string
+		vol     *Vol
+		err     error
+	)
+	if volName, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	same := vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("vol[%v] check if vol partition replica is same with vol replica cfg info, result:%v", volName, same)))
 }
