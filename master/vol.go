@@ -1650,16 +1650,16 @@ func (vol *Vol) checkAndUpdateMetaPartitionReplicaNum(c *Cluster) {
 	return
 }
 
-func (vol *Vol) checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum() bool {
+func (vol *Vol) checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum() (diffMpIDs, diffDpIDs []uint64) {
 	for _, metaPartition := range vol.allMetaPartition() {
 		if len(metaPartition.Hosts) != int(vol.mpReplicaNum) {
-			return false
+			diffMpIDs = append(diffMpIDs, metaPartition.PartitionID)
 		}
 	}
 	for _, partition := range vol.allDataPartition() {
 		if len(partition.Hosts) != int(vol.dpReplicaNum) {
-			return false
+			diffDpIDs = append(diffDpIDs, partition.PartitionID)
 		}
 	}
-	return true
+	return
 }

@@ -6208,6 +6208,6 @@ func (m *Server) checkVolPartitionReplica(w http.ResponseWriter, r *http.Request
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	same := vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("vol[%v] check if vol partition replica is same with vol replica cfg info, result:%v", volName, same)))
+	diffMpIDs, diffDpIDs := vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("vol[%v] check if vol partition replica is same with vol replica cfg info, diffMpIDs:%v, diffDpIDs:%v", volName, diffMpIDs, diffDpIDs)))
 }

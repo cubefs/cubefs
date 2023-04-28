@@ -504,18 +504,30 @@ func TestCheckAndUpdatePartitionReplicaNum(t *testing.T) {
 	for _, partition := range vol.allMetaPartition() {
 		assert.Equal(t, uint8(3), partition.ReplicaNum)
 	}
+	mpCount := len(vol.allMetaPartition())
+	dpCount := len(vol.allDataPartition())
+	diffMpIDs, diffDpIDs := vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
+	assert.Equal(t, mpCount, len(diffMpIDs))
+	assert.Equal(t, dpCount, len(diffDpIDs))
 
 	//update hosts info
-	fakeHosts := []string{"192.168.1.901:6000","192.168.1.902:6000"}
+	fakeHosts := []string{"192.168.1.901:6000", "192.168.1.902:6000"}
 	for _, partition := range vol.allDataPartition() {
-		assert.Equal(t, false, vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum())
 		partition.Hosts = append(partition.Hosts, fakeHosts...)
+		dpCount--
+		_, diffDpIDs = vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
+		assert.Equal(t, dpCount, len(diffDpIDs))
 	}
 	for _, partition := range vol.allMetaPartition() {
-		assert.Equal(t, false, vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum())
 		partition.Hosts = append(partition.Hosts, fakeHosts...)
+		mpCount--
+		diffMpIDs, _ = vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
+		assert.Equal(t, mpCount, len(diffMpIDs))
 	}
-	assert.Equal(t, true, vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum())
+	diffMpIDs, diffDpIDs = vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
+	assert.Equal(t, 0, len(diffMpIDs))
+	assert.Equal(t, 0, len(diffDpIDs))
+
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminCheckVolPartitionReplica, volName)
 	process(reqURL, t)
 	testCases := []struct {
