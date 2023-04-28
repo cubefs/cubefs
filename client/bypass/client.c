@@ -828,7 +828,7 @@ char *cfs_realpath(const char *cfs_path, char *resolved_path) {
     }
     ssize_t res2 = cfs_errno_ssize_t(cfs_readlink(g_client_info.cfs_client_id, cfs_path, res_path, PATH_MAX));
     if(errno == EINVAL) {
-        memcpy(res_path, cfs_path, strlen(cfs_path));
+        memcpy(res_path, cfs_path, strlen(cfs_path) + 1);
         errno = 0;
     }
     if(errno == 0) {
