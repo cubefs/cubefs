@@ -1563,3 +1563,103 @@ func (vol *Vol) getPhysicalMetaPartitionIDsForReuse() (mpIDs []uint64) {
 	mpIDs = append(mpIDs, physicalMPIDs[:index]...)
 	return
 }
+
+func (c *Cluster) scheduleToCheckUpdatePartitionReplicaNum() {
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() && c.cfg.AutoUpdatePartitionReplicaNum {
+				vols := c.copyVols()
+				for _, vol := range vols {
+					if !c.isLeader.Load() {
+						break
+					}
+					if !c.cfg.AutoUpdatePartitionReplicaNum {
+						break
+					}
+					if vol.status() == proto.VolStMarkDelete {
+						continue
+					}
+					vol.checkAndUpdateDataPartitionReplicaNum(c)
+					vol.checkAndUpdateMetaPartitionReplicaNum(c)
+				}
+			}
+			time.Sleep(2 * time.Minute)
+		}
+	}()
+}
+
+func (vol *Vol) checkAndUpdateDataPartitionReplicaNum(c *Cluster) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkAndUpdateDataPartitionReplicaNum occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkAndUpdateDataPartitionReplicaNum occurred panic")
+		}
+	}()
+	dataPartitions := vol.allDataPartition()
+	for _, dataPartition := range dataPartitions {
+		dataPartition.RLock()
+		if len(dataPartition.Hosts) < int(vol.dpReplicaNum) {
+			dataPartition.RUnlock()
+			log.LogInfo(fmt.Sprintf("action[checkAndUpdateDataPartitionReplicaNum] dp:%v replicaCount less than vol dpReplicaNum:%v can not update",
+				dataPartition.PartitionID, vol.dpReplicaNum))
+			continue
+		}
+		if dataPartition.ReplicaNum != vol.dpReplicaNum {
+			oldReplicaNum := dataPartition.ReplicaNum
+
+			dataPartition.ReplicaNum = vol.dpReplicaNum
+			if err := c.syncUpdateDataPartition(dataPartition); err != nil {
+				dataPartition.ReplicaNum = oldReplicaNum
+				log.LogError(fmt.Sprintf("action[checkAndUpdateDataPartitionReplicaNum] err:%v", err))
+			}
+		}
+		dataPartition.RUnlock()
+	}
+	return
+}
+
+func (vol *Vol) checkAndUpdateMetaPartitionReplicaNum(c *Cluster) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkAndUpdateMetaPartitionReplicaNum occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkAndUpdateMetaPartitionReplicaNum occurred panic")
+		}
+	}()
+	metaPartitions := vol.allMetaPartition()
+	for _, metaPartition := range metaPartitions {
+		metaPartition.RLock()
+		if len(metaPartition.Hosts) < int(vol.mpReplicaNum) {
+			metaPartition.RUnlock()
+			log.LogInfo(fmt.Sprintf("action[checkAndUpdateMetaPartitionReplicaNum] mp:%v replicaCount less than vol mpReplicaNum:%v can not update",
+				metaPartition.PartitionID, vol.mpReplicaNum))
+			continue
+		}
+		if metaPartition.ReplicaNum != vol.mpReplicaNum {
+			oldReplicaNum := metaPartition.ReplicaNum
+
+			metaPartition.ReplicaNum = vol.mpReplicaNum
+			if err := c.syncUpdateMetaPartition(metaPartition); err != nil {
+				metaPartition.ReplicaNum = oldReplicaNum
+				log.LogError(fmt.Sprintf("action[checkAndUpdateMetaPartitionReplicaNum] err:%v", err))
+			}
+		}
+		metaPartition.RUnlock()
+	}
+	return
+}
+
+func (vol *Vol) checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum() (diffMpIDs, diffDpIDs []uint64) {
+	for _, metaPartition := range vol.allMetaPartition() {
+		if len(metaPartition.Hosts) != int(vol.mpReplicaNum) {
+			diffMpIDs = append(diffMpIDs, metaPartition.PartitionID)
+		}
+	}
+	for _, partition := range vol.allDataPartition() {
+		if len(partition.Hosts) != int(vol.dpReplicaNum) {
+			diffDpIDs = append(diffDpIDs, partition.PartitionID)
+		}
+	}
+	return
+}

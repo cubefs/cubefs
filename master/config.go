@@ -150,6 +150,7 @@ type clusterConfig struct {
 	MetaSyncWALOnUnstableEnableState    bool
 	DataSyncWALOnUnstableEnableState    bool
 	DisableStrictVolZone                bool
+	AutoUpdatePartitionReplicaNum       bool
 	ReuseMPInodeCountThreshold          float64
 	ReuseMPDentryCountThreshold         float64
 	ReuseMPDelInodeCountThreshold       float64

@@ -243,6 +243,7 @@ type ClusterView struct {
 	MetaPartitionMaxInodeCount          uint64
 	MetaPartitionMaxDentryCount         uint64
 	DisableStrictVolZone                bool
+	AutoUpdatePartitionReplicaNum       bool
 }
 
 // NodeView provides the view of the data or meta node.

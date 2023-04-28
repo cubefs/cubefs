@@ -208,6 +208,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminSetVolChildMaxCnt).
 		HandlerFunc(m.setVolChildFileMaxCount)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminCheckVolPartitionReplica).
+		HandlerFunc(m.checkVolPartitionReplica)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

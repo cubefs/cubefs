@@ -4216,3 +4216,25 @@ func TestSetDisableStrictVolZone(t *testing.T) {
 		assert.Equal(t, limitInfo.DisableStrictVolZone, testCase.Expect)
 	}
 }
+
+func TestSetAutoUpdatePartitionReplicaNum(t *testing.T) {
+	server.cluster.cfg.AutoUpdatePartitionReplicaNum = true
+	server.cluster.scheduleToCheckUpdatePartitionReplicaNum()
+	server.cluster.cfg.AutoUpdatePartitionReplicaNum = false
+	testCases := []struct {
+		Value  bool
+		Expect bool
+	}{
+		{true, true},
+		{false, false},
+	}
+	for _, testCase := range testCases {
+		reqURL := fmt.Sprintf("%v%v?autoUpdatePartitionReplicaNum=%v", hostAddr, proto.AdminSetNodeInfo, strconv.FormatBool(testCase.Value))
+		process(reqURL, t)
+		limitInfo, err := mc.AdminAPI().GetLimitInfo("")
+		if err != nil {
+			assert.Fail(t, err.Error())
+		}
+		assert.Equal(t, limitInfo.AutoUpdatePartitionReplicaNum, testCase.Expect)
+	}
+}

@@ -788,6 +788,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.DisableStrictVolZone == 0 || info.DisableStrictVolZone == 1 {
 		request.addParam(proto.DisableStrictVolZoneKey, strconv.FormatBool(info.DisableStrictVolZone == 1))
 	}
+	if info.AutoUpdatePartitionReplicaNum == 0 || info.AutoUpdatePartitionReplicaNum == 1 {
+		request.addParam(proto.AutoUpPartitionReplicaNumKey, strconv.FormatBool(info.AutoUpdatePartitionReplicaNum == 1))
+	}
 	if info.ReuseMPInodeCountThreshold > 0 {
 		request.addParam(proto.ReuseMPInodeCountThresholdKey, strconv.FormatFloat(info.ReuseMPInodeCountThreshold, 'f', -1, 64))
 	}

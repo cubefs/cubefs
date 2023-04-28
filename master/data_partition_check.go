@@ -45,15 +45,12 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	} else if IsCrossRegionHATypeQuorum(crossRegionHAType) {
 		partition.checkStatusOfCrossRegionQuorumVol(liveReplicas, dpWriteableThreshold, c, quorum)
 	} else {
-		switch len(liveReplicas) {
-		case (int)(partition.ReplicaNum):
-			partition.Status = proto.ReadOnly
+		partition.Status = proto.ReadOnly
+		if len(liveReplicas) >= (int)(partition.ReplicaNum) {
 			if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true &&
 				partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
 				partition.Status = proto.ReadWrite
 			}
-		default:
-			partition.Status = proto.ReadOnly
 		}
 	}
 	if partition.Status != partition.lastStatus {

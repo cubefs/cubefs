@@ -94,6 +94,7 @@ type clusterValue struct {
 	MetaSyncWALEnableState              bool
 	DataSyncWALEnableState              bool
 	DisableStrictVolZone                bool
+	AutoUpdatePartitionReplicaNum       bool
 	ReuseMPInodeCountThreshold          float64
 	ReuseMPDentryCountThreshold         float64
 	ReuseMPDelInodeCountThreshold       float64
@@ -166,6 +167,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaSyncWALEnableState:              c.cfg.MetaSyncWALOnUnstableEnableState,
 		DataSyncWALEnableState:              c.cfg.DataSyncWALOnUnstableEnableState,
 		DisableStrictVolZone:                c.cfg.DisableStrictVolZone,
+		AutoUpdatePartitionReplicaNum:       c.cfg.AutoUpdatePartitionReplicaNum,
 		ReuseMPInodeCountThreshold:          c.cfg.ReuseMPInodeCountThreshold,
 		ReuseMPDentryCountThreshold:         c.cfg.ReuseMPDentryCountThreshold,
 		ReuseMPDelInodeCountThreshold:       c.cfg.ReuseMPDelInodeCountThreshold,
@@ -1069,6 +1071,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.DataSyncWALOnUnstableEnableState = cv.DataSyncWALEnableState
 		c.cfg.MetaSyncWALOnUnstableEnableState = cv.MetaSyncWALEnableState
 		c.cfg.DisableStrictVolZone = cv.DisableStrictVolZone
+		c.cfg.AutoUpdatePartitionReplicaNum = cv.AutoUpdatePartitionReplicaNum
 		if cv.TrashCleanDurationEachTime != 0 {
 			atomic.StoreInt32(&c.cfg.TrashCleanDurationEachTime, cv.TrashCleanDurationEachTime)
 		}

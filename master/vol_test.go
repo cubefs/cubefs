@@ -484,3 +484,74 @@ func TestGetMaxCapacityWithReservedTrashSpace(t *testing.T) {
 		assert.Equal(t, testCase.expect, maxCap, fmt.Sprintf("testCase:%v", i))
 	}
 }
+
+func TestCheckAndUpdatePartitionReplicaNum(t *testing.T) {
+	volName := "test_update_replica"
+	createVol(volName, testZone2, t)
+	vol, err := server.cluster.getVol(volName)
+	if err != nil || vol == nil {
+		t.Errorf("getVol:%v err:%v", volName, err)
+		return
+	}
+	//will not change
+	vol.dpReplicaNum = 5
+	vol.mpReplicaNum = 5
+	vol.checkAndUpdateDataPartitionReplicaNum(server.cluster)
+	vol.checkAndUpdateMetaPartitionReplicaNum(server.cluster)
+	for _, partition := range vol.allDataPartition() {
+		assert.Equal(t, uint8(3), partition.ReplicaNum)
+	}
+	for _, partition := range vol.allMetaPartition() {
+		assert.Equal(t, uint8(3), partition.ReplicaNum)
+	}
+	mpCount := len(vol.allMetaPartition())
+	dpCount := len(vol.allDataPartition())
+	diffMpIDs, diffDpIDs := vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
+	assert.Equal(t, mpCount, len(diffMpIDs))
+	assert.Equal(t, dpCount, len(diffDpIDs))
+
+	//update hosts info
+	fakeHosts := []string{"192.168.1.901:6000", "192.168.1.902:6000"}
+	for _, partition := range vol.allDataPartition() {
+		partition.Hosts = append(partition.Hosts, fakeHosts...)
+		dpCount--
+		_, diffDpIDs = vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
+		assert.Equal(t, dpCount, len(diffDpIDs))
+	}
+	for _, partition := range vol.allMetaPartition() {
+		partition.Hosts = append(partition.Hosts, fakeHosts...)
+		mpCount--
+		diffMpIDs, _ = vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
+		assert.Equal(t, mpCount, len(diffMpIDs))
+	}
+	diffMpIDs, diffDpIDs = vol.checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplicaNum()
+	assert.Equal(t, 0, len(diffMpIDs))
+	assert.Equal(t, 0, len(diffDpIDs))
+
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminCheckVolPartitionReplica, volName)
+	process(reqURL, t)
+	testCases := []struct {
+		DpReplicaNum uint8
+		MpReplicaNum uint8
+	}{
+		{3, 5},
+		{5, 3},
+		{3, 3},
+		{5, 5},
+		{3, 3},
+	}
+	for i, testCase := range testCases {
+		vol.dpReplicaNum = testCase.DpReplicaNum
+		vol.mpReplicaNum = testCase.MpReplicaNum
+
+		vol.checkAndUpdateDataPartitionReplicaNum(server.cluster)
+		vol.checkAndUpdateMetaPartitionReplicaNum(server.cluster)
+		for _, partition := range vol.allDataPartition() {
+			assert.Equal(t, testCase.DpReplicaNum, partition.ReplicaNum, fmt.Sprintf("testCase:%v,dp", i))
+		}
+		for _, partition := range vol.allMetaPartition() {
+			assert.Equal(t, testCase.MpReplicaNum, partition.ReplicaNum, fmt.Sprintf("testCase:%v,mp", i))
+		}
+	}
+	markDeleteVol(volName, t)
+}
