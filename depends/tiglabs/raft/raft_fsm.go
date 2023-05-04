@@ -25,8 +25,23 @@ import (
 	"time"
 )
 
+// CampaignType represents the type of campaigning
+// the reason we use the type of string instead of uint64
+// is because it's simpler to compare and fill in raft entries
+type CampaignType string
+
 // NoLeader is a placeholder nodeID used when there is no leader.
 const NoLeader uint64 = 0
+
+// Possible values for CampaignType
+const (
+	// campaignPreElection represents the first phase of a normal election when
+	// Config.PreVote is true.
+	campaignPreElection CampaignType = "CampaignPreElection"
+	// campaignElection represents a normal (time-based) election (the second phase
+	// of the election when Config.PreVote is true).
+	campaignElection CampaignType = "CampaignElection"
+)
 
 type stepFunc func(r *raftFsm, m *proto.Message)
 
@@ -202,7 +217,16 @@ func (r *raftFsm) Step(m *proto.Message) {
 			if logger.IsEnableDebug() {
 				logger.Debug("[raft->Step][%v] is starting a new election at term[%d].", r.id, r.term)
 			}
-			r.campaign(m.ForceVote)
+			// only transfer leader will set forceVote=true.
+			// Leadership transfers never use pre-vote even if r.preVote is true; we
+			// know we are not recovering from a partition so there is no need for the
+			// extra round trip.
+			if r.config.PreVote && !m.ForceVote {
+				r.campaign(m.ForceVote, campaignPreElection)
+			} else {
+				r.campaign(m.ForceVote, campaignElection)
+			}
+
 		} else if logger.IsEnableDebug() && r.state == stateLeader {
 			logger.Debug("[raft->Step][%v] ignoring LocalMsgHup because already leader.", r.id)
 		} else if logger.IsEnableDebug() {
@@ -214,36 +238,148 @@ func (r *raftFsm) Step(m *proto.Message) {
 		}
 		return
 	}
-
 	switch {
 	case m.Term == 0:
 		// local message
 	case m.Term > r.term:
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->Step][%v term: %d] received a [%s] message with higher term from [%v term: %d].", r.id, r.term, m.Type, m.From, m.Term)
+			logger.Debug("[raft->Step][%v term: %d] received a [%s] message with higher term from [%v term: %d],ForceVote[%v].",
+				r.id, r.term, m.Type, m.From, m.Term, m.ForceVote)
 		}
-		lead := m.From
-		if m.Type == proto.ReqMsgVote {
-			lead = NoLeader
-			inLease := r.config.LeaseCheck && r.state == stateFollower && r.leader != NoLeader
-			if r.leader != m.From && inLease && !m.ForceVote {
+		if m.Type == proto.ReqMsgVote || m.Type == proto.ReqMsgPreVote {
+			inLease := r.config.LeaseCheck && r.leader != NoLeader
+			if r.leader != m.From && inLease && !m.ForceVote && r.electionElapsed < r.randElectionTick {
 				if logger.IsEnableWarn() {
-					logger.Warn("[raft->Step][%v logterm: %d, index: %d, vote: %v] ignored vote from %v [logterm: %d, index: %d] at term %d: lease is not expired.",
-						r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, r.term)
+					logger.Warn("[raft->Step][%v logterm: %d, index: %d, vote: %v] ignored %v from %v [logterm: %d, index: %d] at term %d: lease is not expired.",
+						r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.Type, m.From, m.LogTerm, m.Index, r.term)
 				}
 
-				nmsg := proto.GetMessage()
-				nmsg.Type = proto.LeaseMsgOffline
-				nmsg.To = r.leader
-				r.send(nmsg)
 				return
 			}
 		}
-		r.becomeFollower(m.Term, lead)
+		switch {
+		case m.Type == proto.ReqMsgPreVote:
+			// Never change our term in response to a PreVote
+		case m.Type == proto.RespMsgPreVote && !m.Reject:
+			// We send pre-vote requests with a term in our future. If the
+			// pre-vote is granted, we will increment our term when we get a
+			// quorum. If it is not, the term comes from the node that
+			// rejected our vote so we should become a follower at the new
+			// term.
+		default:
+			if logger.IsEnableDebug() {
+				logger.Debug("[raft->Step][%x,%d] [term: %d] received a %s message with higher term from %x [term: %d]",
+					r.id, r.config.ReplicateAddr, r.term, m.Type, m.From, m.Term)
+			}
+			if m.Type == proto.ReqMsgAppend || m.Type == proto.ReqMsgHeartBeat || m.Type == proto.ReqMsgSnapShot {
+				r.becomeFollower(m.Term, m.From)
+			} else {
+				r.becomeFollower(m.Term, NoLeader)
+			}
+		}
 
 	case m.Term < r.term:
-		if logger.IsEnableDebug() {
-			logger.Debug("[raft->Step][%v term: %d] ignored a %s message with lower term from [%v term: %d].", r.id, r.term, m.Type, m.From, m.Term)
+		if (r.config.LeaseCheck || r.config.PreVote) && (m.Type == proto.ReqMsgHeartBeat || m.Type == proto.ReqMsgAppend) {
+			// We have received messages from a leader at a lower term. It is possible
+			// that these messages were simply delayed in the network, but this could
+			// also mean that this node has advanced its term number during a network
+			// partition, and it is now unable to either win an election or to rejoin
+			// the majority on the old term. If checkQuorum is false, this will be
+			// handled by incrementing term numbers in response to MsgVote with a
+			// higher term, but if checkQuorum is true we may not advance the term on
+			// MsgVote and must generate other messages to advance the term. The net
+			// result of these two features is to minimize the disruption caused by
+			// nodes that have been removed from the cluster's configuration: a
+			// removed node will send MsgVotes (or MsgPreVotes) which will be ignored,
+			// but it will not receive MsgApp or MsgHeartbeat, so it will not create
+			// disruptive term increases, by notifying leader of this node's activeness.
+			// The above comments also true for Pre-Vote
+			//
+			// When follower gets isolated, it soon starts an election ending
+			// up with a higher term than leader, although it won't receive enough
+			// votes to win the election. When it regains connectivity, this response
+			// with "proto.MsgAppResp" of higher term would force leader to step down.
+			// However, this disruption is inevitable to free this stuck node with
+			// fresh election. This can be prevented with Pre-Vote phase.
+			r.send(&proto.Message{To: m.From, Term: r.term, Type: proto.RespMsgAppend})
+		} else if m.Type == proto.ReqMsgPreVote {
+			// Before Pre-Vote enable, there may have candidate with higher term,
+			// but less log. After update to Pre-Vote, the cluster may deadlock if
+			// we drop messages with a lower term.
+			if logger.IsEnableDebug() {
+				logger.Debug("%x [logterm: %d, index: %d, vote: %x] rejected %s from %x [logterm: %d, index: %d] at term %d",
+					r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.Type, m.From, m.LogTerm, m.Index, r.term)
+			}
+			r.send(&proto.Message{To: m.From, Term: r.term, Type: proto.RespMsgPreVote, Reject: true})
+		} else {
+			// ignore other cases
+			if logger.IsEnableDebug() {
+				logger.Debug("%x [term: %d] ignored a %s message with lower term from %x [term: %d]",
+					r.id, r.term, m.Type, m.From, m.Term)
+			}
+		}
+
+		return
+	}
+
+	if m.Type == proto.ReqMsgPreVote || m.Type == proto.ReqMsgVote {
+		// We can vote if this is a repeat of a vote we've already cast...
+		canVote := r.vote == m.From ||
+			// ...we haven't voted and we don't think there's a leader yet in this term...
+			(r.vote == NoLeader && r.leader == NoLeader) ||
+			// ...or this is a PreVote for a future term...
+			(m.Type == proto.ReqMsgPreVote && m.Term > r.term)
+		// ...and we believe the candidate is up to date.
+		var respType proto.MsgType
+		if m.Type == proto.ReqMsgPreVote {
+			respType = proto.RespMsgPreVote
+		} else {
+			respType = proto.RespMsgVote
+		}
+		if canVote && r.raftLog.isUpToDate(m.Index, m.LogTerm, 0, 0) {
+			// Note: it turns out that that learners must be allowed to cast votes.
+			// This seems counter- intuitive but is necessary in the situation in which
+			// a learner has been promoted (i.e. is now a voter) but has not learned
+			// about this yet.
+			// For example, consider a group in which id=1 is a learner and id=2 and
+			// id=3 are voters. A configuration change promoting 1 can be committed on
+			// the quorum `{2,3}` without the config change being appended to the
+			// learner's log. If the leader (say 2) fails, there are de facto two
+			// voters remaining. Only 3 can win an election (due to its log containing
+			// all committed entries), but to do so it will need 1 to vote. But 1
+			// considers itself a learner and will continue to do so until 3 has
+			// stepped up as leader, replicates the conf change to 1, and 1 applies it.
+			// Ultimately, by receiving a request to vote, the learner realizes that
+			// the candidate believes it to be a voter, and that it should act
+			// accordingly. The candidate's config may be stale, too; but in that case
+			// it won't win the election, at least in the absence of the bug discussed
+			// in:
+			// https://github.com/etcd-io/etcd/issues/7625#issuecomment-488798263.
+			if logger.IsEnableDebug() {
+				logger.Info("%x [logterm: %d, index: %d, vote: %x] cast %s for %x [logterm: %d, index: %d] at term %d",
+					r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.Type, m.From, m.LogTerm, m.Index, r.term)
+			}
+			// When responding to Msg{Pre,}Vote messages we include the term
+			// from the message, not the local term. To see why, consider the
+			// case where a single node was previously partitioned away and
+			// it's local term is now out of date. If we include the local term
+			// (recall that for pre-votes we don't update the local term), the
+			// (pre-)campaigning node on the other end will proceed to ignore
+			// the message (it ignores all out of date messages).
+			// The term in the original message and current local term are the
+			// same in the case of regular votes, but different for pre-votes.
+			r.send(&proto.Message{To: m.From, Term: m.Term, Type: respType})
+			if m.Type == proto.ReqMsgVote {
+				// Only record real votes.
+				r.electionElapsed = 0
+				r.vote = m.From
+			}
+		} else {
+			if logger.IsEnableDebug() {
+				logger.Info("%x [logterm: %d, index: %d, vote: %x] rejected %s from %x [logterm: %d, index: %d] at term %d",
+					r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.Type, m.From, m.LogTerm, m.Index, r.term)
+			}
+			r.send(&proto.Message{To: m.From, Term: r.term, Type: respType, Reject: true})
 		}
 		return
 	}
@@ -361,7 +497,8 @@ func (r *raftFsm) quorum() int {
 func (r *raftFsm) send(m *proto.Message) {
 	m.ID = r.id
 	m.From = r.config.NodeID
-	if m.Type != proto.LocalMsgProp {
+	// ReqMsgPreVote's message should add one
+	if m.Type != proto.LocalMsgProp && m.Type != proto.ReqMsgPreVote {
 		m.Term = r.term
 	}
 	r.msgs = append(r.msgs, m)
