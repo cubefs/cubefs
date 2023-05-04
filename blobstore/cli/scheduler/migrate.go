@@ -78,6 +78,15 @@ func addCmdMigrateTask(cmd *grumble.Command) {
 			f.Uint64L(_diskID, 0, "disk id for which disk")
 		},
 	})
+	migrateCommand.AddCommand(&grumble.Command{
+		Name: "progress",
+		Help: "show migrating progress",
+		Run:  cmdGetMigratingProgress,
+		Flags: func(f *grumble.Flags) {
+			migrateFlags(f)
+			f.Uint64L(_diskID, 0, "disk id for which disk")
+		},
+	})
 }
 
 func migrateFlags(f *grumble.Flags) {
@@ -192,6 +201,42 @@ func cmdGetMigratingDisk(c *grumble.Context) error {
 		return err
 	}
 	printMigratingDisk(disk)
+	return nil
+}
+
+func cmdGetMigratingProgress(c *grumble.Context) error {
+	ctx := common.CmdContext()
+
+	taskType := proto.TaskType(c.Flags.String(_taskType))
+	if taskType != proto.TaskTypeDiskRepair && taskType != proto.TaskTypeDiskDrop {
+		fmt.Println("task_type must be one of disk_repair and disk_drop")
+		return errcode.ErrIllegalTaskType
+	}
+	diskID := proto.DiskID(c.Flags.Uint64(_diskID))
+	if diskID == proto.InvalidDiskID {
+		return errcode.ErrIllegalDiskID
+	}
+
+	clusterID := getClusterID(c.Flags)
+	clusterMgrCli := newClusterMgrClient(clusterID)
+	cli := scheduler.New(&scheduler.Config{}, clusterMgrCli, clusterID)
+
+	progress, err := cli.DiskMigratingStats(ctx, &scheduler.DiskMigratingStatsArgs{
+		TaskType: taskType,
+		DiskID:   diskID,
+	})
+	if err != nil {
+		return err
+	}
+	if progress == nil {
+		return nil
+	}
+	if progress.TotalTasksCnt == 0 {
+		fmt.Println("no migrating task")
+		return nil
+	}
+	curr := progress.MigratedTasksCnt * 100 / progress.TotalTasksCnt
+	fmt.Printf("[%s] MigratedTasksCnt: %d/TotalTasksCnt: %d\n", common.LineBar(curr, 50), progress.MigratedTasksCnt, progress.TotalTasksCnt)
 	return nil
 }
 
