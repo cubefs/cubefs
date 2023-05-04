@@ -105,6 +105,7 @@ func NewRaftStore(cfg *Config, extendCfg *utilConfig.Config) (mr RaftStore, err 
 	rc := raft.DefaultConfig()
 	rc.NodeID = cfg.NodeID
 	rc.LeaseCheck = true
+	rc.PreVote = true
 	if cfg.HeartbeatPort <= 0 {
 		cfg.HeartbeatPort = DefaultHeartbeatPort
 	}

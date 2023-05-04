@@ -58,11 +58,11 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 		r.leader = m.From
 		return
 
-	case proto.ReqMsgElectAck:
+	case proto.ReqMsgPreVote:
 		r.electionElapsed = 0
 		r.leader = m.From
 		nmsg := proto.GetMessage()
-		nmsg.Type = proto.RespMsgElectAck
+		nmsg.Type = proto.RespMsgPreVote
 		nmsg.To = m.From
 		r.send(nmsg)
 		proto.ReturnMessage(m)
@@ -186,6 +186,7 @@ func (r *raftFsm) handleAppendEntries(m *proto.Message) {
 }
 
 func (r *raftFsm) promotable() bool {
+	// todo check snapshot
 	_, ok := r.replicas[r.config.NodeID]
 	return ok
 }
