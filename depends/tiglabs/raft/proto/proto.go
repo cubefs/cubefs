@@ -30,12 +30,12 @@ const (
 	ReqMsgVote
 	ReqMsgHeartBeat
 	ReqMsgSnapShot
-	ReqMsgElectAck
+	ReqMsgPreVote
 	RespMsgAppend
 	RespMsgVote
 	RespMsgHeartBeat
 	RespMsgSnapShot
-	RespMsgElectAck
+	RespMsgPreVote
 	LocalMsgHup
 	LocalMsgProp
 	LeaseMsgOffline
@@ -140,7 +140,7 @@ func (t MsgType) String() string {
 	case 3:
 		return "ReqMsgSnapShot"
 	case 4:
-		return "ReqMsgElectAck"
+		return "ReqMsgPreVote"
 	case 5:
 		return "RespMsgAppend"
 	case 6:
@@ -150,7 +150,7 @@ func (t MsgType) String() string {
 	case 8:
 		return "RespMsgSnapShot"
 	case 9:
-		return "RespMsgElectAck"
+		return "RespMsgPreVote"
 	case 10:
 		return "LocalMsgHup"
 	case 11:
@@ -210,12 +210,12 @@ func (cc *ConfChange) String() string {
 
 func (m *Message) IsResponseMsg() bool {
 	return m.Type == RespMsgAppend || m.Type == RespMsgHeartBeat || m.Type == RespMsgVote ||
-		m.Type == RespMsgElectAck || m.Type == RespMsgSnapShot || m.Type == RespCheckQuorum
+		m.Type == RespMsgPreVote || m.Type == RespMsgSnapShot || m.Type == RespCheckQuorum
 }
 
 func (m *Message) IsElectionMsg() bool {
 	return m.Type == ReqMsgHeartBeat || m.Type == RespMsgHeartBeat || m.Type == ReqMsgVote || m.Type == RespMsgVote ||
-		m.Type == ReqMsgElectAck || m.Type == RespMsgElectAck || m.Type == LeaseMsgOffline || m.Type == LeaseMsgTimeout
+		m.Type == ReqMsgPreVote || m.Type == RespMsgPreVote || m.Type == LeaseMsgOffline || m.Type == LeaseMsgTimeout
 }
 
 func (m *Message) IsHeartbeatMsg() bool {

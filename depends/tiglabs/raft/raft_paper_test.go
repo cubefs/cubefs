@@ -953,7 +953,6 @@ func newTestRaftConfig(nodeId uint64, opts ...testRaftConfigOptions) *RaftConfig
 	return rc
 }
 
-// todo should raft_test.go
 func (r *raftFsm) readMessages() []proto.Message {
 	msgs := make([]proto.Message, 0)
 	for _, m := range r.msgs {

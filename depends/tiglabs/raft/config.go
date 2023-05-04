@@ -89,7 +89,12 @@ type Config struct {
 	RetainLogs uint64
 	// LeaseCheck whether to use the lease mechanism.
 	// The default value is false.
+	// (this equal etcd's raft checkQuorum)
 	LeaseCheck bool
+	// PreVote enables the Pre-Vote algorithm described in raft thesis section
+	// 9.6. This prevents disruption when a node that has been partitioned away
+	// rejoins the cluster.
+	PreVote bool
 	// ReadOnlyOption specifies how the read only request is processed.
 	//
 	// ReadOnlySafe guarantees the linearizability of the read only request by
