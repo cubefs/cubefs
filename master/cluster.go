@@ -969,7 +969,7 @@ func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartitio
 		var dps *DataPartitionMap
 		dps = vol.dataPartitions
 		for _, dp := range dps.partitions {
-			if dp.ReplicaNum > uint8(len(dp.Hosts)) {
+			if dp.ReplicaNum > uint8(len(dp.Hosts)) || dp.ReplicaNum > uint8(len(dp.Replicas)) {
 				lackReplicaDPs = append(lackReplicaDPs, dp)
 			}
 
