@@ -270,7 +270,7 @@ func TestRaftServer(t *testing.T) {
 
 	// campaign and change leader
 	for _, raft := range servers[0].rafts {
-		raft.raftFsm.campaign(true)
+		raft.raftFsm.campaign(true, campaignPreElection)
 	}
 
 	for i := range servers {
@@ -316,7 +316,7 @@ func TestRaftServer(t *testing.T) {
 
 		t.Logf("----------------test -------------------")
 		// node1's raftId1 campaign
-		servers[1].rafts[raftId1].raftFsm.campaign(true)
+		servers[1].rafts[raftId1].raftFsm.campaign(true, campaignElection)
 
 		//for i := 0; i < len(servers); i++ {
 		//	if i == 0 {
