@@ -212,33 +212,18 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 	}
 }
 
-func (r *raftFsm) becomeElectionAck() {
+func (r *raftFsm) becomePreCandidate() {
 	r.acks = make(map[uint64]bool)
 	r.acks[r.config.NodeID] = true
-	if len(r.acks) >= r.quorum() {
-		r.becomeLeader()
-		return
-	}
+	logger.Debug("raft[%v] became preCandidate at term %d.", r.id, r.term)
 
-	logger.Debug("raft[%v] became election at term %d.", r.id, r.term)
-
-	r.step = stepElectionAck
+	r.step = stepPreCandidate
 	r.reset(r.term, 0, false)
 	r.tick = r.tickElectionAck
-	r.state = stateElectionACK
-	for id := range r.replicas {
-		if id == r.config.NodeID {
-			continue
-		}
-
-		m := proto.GetMessage()
-		m.Type = proto.ReqMsgElectAck
-		m.To = id
-		r.send(m)
-	}
+	r.state = statePreCandidate
 }
 
-func stepElectionAck(r *raftFsm, m *proto.Message) {
+func stepPreCandidate(r *raftFsm, m *proto.Message) {
 	switch m.Type {
 	case proto.LocalMsgProp:
 		if logger.IsEnableDebug() {
@@ -257,10 +242,10 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 		r.becomeFollower(r.term, m.From)
 		return
 
-	case proto.ReqMsgElectAck:
+	case proto.ReqMsgPreVote:
 		r.becomeFollower(r.term, m.From)
 		nmsg := proto.GetMessage()
-		nmsg.Type = proto.RespMsgElectAck
+		nmsg.Type = proto.RespMsgPreVote
 		nmsg.To = m.From
 		r.send(nmsg)
 		proto.ReturnMessage(m)
@@ -284,15 +269,17 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 		proto.ReturnMessage(m)
 		return
 
-	case proto.RespMsgElectAck:
-		r.replicas[m.From].active = true
-		r.replicas[m.From].lastActive = time.Now()
-		r.acks[m.From] = true
-		if len(r.acks) >= r.quorum() {
-			r.becomeLeader()
-			r.bcastAppend()
+	case proto.RespMsgPreVote:
+		gr := r.poll(m.From, !m.Reject)
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] [q:%d] stepPreCandidate has received %d votes and %d vote rejections.", r.id, r.quorum(), gr, len(r.votes)-gr)
 		}
-		proto.ReturnMessage(m)
+		switch r.quorum() {
+		case gr:
+			r.campaign(false, campaignElection)
+		case len(r.votes) - gr:
+			r.becomeFollower(r.term, NoLeader)
+		}
 		return
 	}
 }
