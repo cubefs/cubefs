@@ -110,7 +110,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 				}
 				if optShowDp {
 					info = nodeInfoSlice[index]
-					row = fmt.Sprintf(dataNodeDetailViewTableRowPattern, node.ID, node.Addr,node.Version,
+					row = fmt.Sprintf(dataNodeDetailViewTableRowPattern, node.ID, node.Addr, node.Version,
 						formatYesNo(node.IsWritable), formatNodeStatus(node.Status), formatSize(info.Used), formatFloat(info.UsageRatio), info.ZoneName, info.DataPartitionCount)
 				} else {
 					row = formatNodeView(&node, true)
@@ -281,7 +281,7 @@ func newCheckReplicaByDataNodeCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpCheckReplica + " [ADDRESS]",
 		Short: cmdCheckReplicaByDataNodeShort,
-		Args: cobra.MinimumNArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var nodeAddr string
@@ -306,8 +306,8 @@ func newCheckReplicaByDataNodeCmd(client *master.MasterClient) *cobra.Command {
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().IntVar(&limitRate, "limit-rate",  10, "specify dp check limit rate, default:10, max:200")
-	cmd.Flags().IntVar(&optCheckType, "check-type",  0, "specify check type : 0 all, 1 crc, 2 md5, 3 block")
+	cmd.Flags().IntVar(&limitRate, "limit-rate", 10, "specify dp check limit rate, default:10, max:200")
+	cmd.Flags().IntVar(&optCheckType, "check-type", 0, "specify check type : 0 all, 1 crc, 2 md5, 3 block")
 	cmd.Flags().StringVar(&fromTime, "from-time", "1970-01-01 00:00:00", "specify extent modify from time to check, format:yyyy-mm-dd hh:mm:ss")
 	cmd.Flags().BoolVar(&checkTiny, "check-tiny", false, "check tiny extent")
 	return cmd
@@ -328,7 +328,7 @@ func parseTime(timeStr string) (t time.Time, err error) {
 func CheckDataNodeCrc(nodeAddr string, c *master.MasterClient, limitRate uint64, optCheckType int, fromTime string, checkTiny bool) (err error) {
 	var (
 		minParsedTime time.Time
-		dpCount int
+		dpCount       int
 	)
 	defer func() {
 		if err != nil {
@@ -341,8 +341,8 @@ func CheckDataNodeCrc(nodeAddr string, c *master.MasterClient, limitRate uint64,
 		return
 	}
 	rp := NewRepairPersist(c.Nodes()[0])
-	go rp.persistResult()
-	defer rp.close()
+	go rp.PersistResult()
+	defer rp.Close()
 	dr, err := newDataNodeRepair(nodeAddr, c, limitRate, minParsedTime)
 	if err != nil {
 		return
@@ -379,7 +379,6 @@ func CheckDataNodeCrc(nodeAddr string, c *master.MasterClient, limitRate uint64,
 	return
 }
 
-
 type dataNodeRepair struct {
 	nodeAddr      string
 	persistDps    []uint64
@@ -389,7 +388,8 @@ type dataNodeRepair struct {
 	client        *master.MasterClient
 	minParsedTime time.Time
 }
-func newDataNodeRepair(nodeAddr string, c *master.MasterClient, limitRate uint64, minParsedTime time.Time)(dr *dataNodeRepair, err error){
+
+func newDataNodeRepair(nodeAddr string, c *master.MasterClient, limitRate uint64, minParsedTime time.Time) (dr *dataNodeRepair, err error) {
 	dr = new(dataNodeRepair)
 	dr.nodeAddr = nodeAddr
 	dr.minParsedTime = minParsedTime
@@ -403,8 +403,8 @@ func newDataNodeRepair(nodeAddr string, c *master.MasterClient, limitRate uint64
 
 func (dr *dataNodeRepair) doRepairPartition(dp uint64, rp *RepairPersist, optCheckType int, checkTiny bool) {
 	var (
-		err error
-	 	failedExtents []uint64
+		err           error
+		failedExtents []uint64
 	)
 	defer func() {
 		rp.dpCounter.Add(1)
@@ -413,7 +413,7 @@ func (dr *dataNodeRepair) doRepairPartition(dp uint64, rp *RepairPersist, optChe
 			log.LogErrorf(" check datanode:%v dp:%v end, progress:(%d/%d), err:%v", dr.nodeAddr, dp, rp.dpCounter.Load(), len(dr.persistDps), err)
 		}
 	}()
-	if failedExtents, err = checkDataPartitionRelica(dr.client, dp, optCheckType, dr.minParsedTime, rp.rCh, checkTiny); err != nil {
+	if failedExtents, err = checkDataPartitionRelica(dr.client, dp, optCheckType, dr.minParsedTime, rp.RCh, checkTiny); err != nil {
 		rp.persistFailedDp(dp)
 	} else if len(failedExtents) > 0 {
 		rp.persistFailedExtents(dp, failedExtents)
@@ -422,7 +422,7 @@ func (dr *dataNodeRepair) doRepairPartition(dp uint64, rp *RepairPersist, optChe
 	}
 }
 
-func getDiskPath(nodeAddr string, prof uint16, dp uint64)(diskPath string, err error) {
+func getDiskPath(nodeAddr string, prof uint16, dp uint64) (diskPath string, err error) {
 	var dpDnInfo *proto.DNDataPartitionInfo
 	dpDnInfo, err = getDataPartitionInfo(nodeAddr, prof, dp)
 	if err != nil || dpDnInfo.RaftStatus == nil || dpDnInfo.RaftStatus.Stopped == true {
@@ -432,7 +432,7 @@ func getDiskPath(nodeAddr string, prof uint16, dp uint64)(diskPath string, err e
 	diskPath = strings.Split(dpDnInfo.Path, "/datapartition")[0]
 	return
 }
-func getDataPartitionInfo(nodeAddr string, prof uint16, dp uint64)(dn *proto.DNDataPartitionInfo, err error) {
+func getDataPartitionInfo(nodeAddr string, prof uint16, dp uint64) (dn *proto.DNDataPartitionInfo, err error) {
 	datanodeAddr := fmt.Sprintf("%s:%d", strings.Split(nodeAddr, ":")[0], prof)
 	dataClient := data.NewDataHttpClient(datanodeAddr, false)
 	dn, err = dataClient.GetPartitionFromNode(dp)

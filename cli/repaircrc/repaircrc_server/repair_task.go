@@ -12,7 +12,7 @@ import (
 )
 
 type RepairCrcTask struct {
-	TaskId        int64       `json:"task_id"`
+	TaskId        int64        `json:"task_id"`
 	ClusterInfo   *ClusterInfo `json:"cluster_info"`
 	LimitLevel    uint32       `json:"limit_level"`
 	Filter        *Filter      `json:"filter"`
@@ -20,26 +20,28 @@ type RepairCrcTask struct {
 	ModifyTimeMin string       `json:"modify_time_min"`
 	ModifyTimeMax string       `json:"modify_time_max"`
 	RepairType    RepairType   `json:"repair_type"`
-	CheckTiny     bool          `json:"check_tiny"`
+	CheckTiny     bool         `json:"check_tiny"`
 	NodeAddress   string       `json:"node_address"`
 	mc            *master.MasterClient
 	stopC         chan bool
 }
 
 type Filter struct {
-	VolFilter         string  `json:"vol_filter"`
-	VolExcludeFilter  string  `json:"vol_exclude_filter"`
+	VolFilter         string `json:"vol_filter"`
+	VolExcludeFilter  string `json:"vol_exclude_filter"`
+	ZoneFilter        string `json:"zone_filter"`
+	ZoneExcludeFilter string `json:"zone_exclude_filter"`
 }
 
 type Frequency struct {
-	Interval     uint32   `json:"interval"`
-	ExecuteCount uint32   `json:"execute_count"`
+	Interval     uint32 `json:"interval"`
+	ExecuteCount uint32 `json:"execute_count"`
 }
 
 type ClusterInfo struct {
-	Master     string  `json:"master"`
-	DnProf     uint16  `json:"dn_prof"`
-	MnProf     uint16  `json:"mn_prof"`
+	Master string `json:"master"`
+	DnProf uint16 `json:"dn_prof"`
+	MnProf uint16 `json:"mn_prof"`
 }
 
 type RepairType uint8
@@ -53,15 +55,14 @@ const (
 	defaultIntervalHour = 24
 )
 
-
 func NewRepairTask() *RepairCrcTask {
 	return &RepairCrcTask{
 		Frequency: &Frequency{
 			Interval: defaultIntervalHour,
 		},
 		ClusterInfo: new(ClusterInfo),
-		Filter: new(Filter),
-		stopC: make(chan bool, 8),
+		Filter:      new(Filter),
+		stopC:       make(chan bool, 8),
 	}
 }
 
@@ -113,13 +114,13 @@ func (t *RepairCrcTask) validTask() (err error) {
 func (t *RepairCrcTask) executeVolumeTask() (err error) {
 	var (
 		volsInfo []*proto.VolInfo
-		para      *cmd.CheckParam
+		para     *cmd.CheckParam
 	)
 	log.LogInfof("executeVolumeTask begin, taskID:%v ", t.TaskId)
 	defer func() {
 		log.LogInfof("executeVolumeTask end, taskID:%v ", t.TaskId)
 	}()
-	for i := 1; i<20; i++ {
+	for i := 1; i < 20; i++ {
 		volsInfo, err = t.mc.AdminAPI().ListVols("")
 		if err == nil {
 			break
@@ -147,14 +148,41 @@ func (t *RepairCrcTask) executeVolumeTask() (err error) {
 	}
 	var checkStop = func() bool {
 		select {
-		case <- t.stopC:
+		case <-t.stopC:
 			return true
 		default:
 			return false
 		}
 	}
-	cmd.CheckVols(vols, t.mc, para,"", checkStop)
+	rp := cmd.NewRepairPersist(t.mc.Nodes()[0])
+	go rp.PersistResult()
+	defer rp.Close()
+	for _, v := range vols {
+		if checkStop() {
+			break
+		}
+		volume, err1 := t.mc.AdminAPI().GetVolumeSimpleInfo(v)
+		if err1 != nil {
+			continue
+		}
+		if t.Filter.ZoneFilter != "" && !strings.Contains(volume.ZoneName, t.Filter.ZoneFilter) {
+			continue
+		}
+		if t.Filter.ZoneExcludeFilter != "" && strings.Contains(volume.ZoneName, t.Filter.ZoneExcludeFilter) {
+			continue
+		}
+		cmd.CheckVol(v, t.mc, "", para, rp.RCh, checkStop)
+	}
 	return
+}
+
+func CheckVols(vols []string, c *master.MasterClient, para *cmd.CheckParam, path string, stopFunc func() bool) {
+	var err error
+	defer func() {
+		if err != nil {
+			log.LogErrorf("CheckVols error: %v", err)
+		}
+	}()
 
 }
 
