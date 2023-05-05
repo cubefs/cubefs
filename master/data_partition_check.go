@@ -164,22 +164,26 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 	defer partition.Unlock()
 
 	for _, replica := range partition.Replicas {
-		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) && partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
-			dataNode := replica.getReplicaNode()
-			var (
-				lastReportTime time.Time
-			)
-			isActive := true
-			if dataNode != nil {
-				lastReportTime = dataNode.ReportTime
-				isActive = dataNode.isActive
+		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) {
+			if partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
+				dataNode := replica.getReplicaNode()
+				var (
+					lastReportTime time.Time
+				)
+				isActive := true
+				if dataNode != nil {
+					lastReportTime = dataNode.ReportTime
+					isActive = dataNode.isActive
+				}
+				msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] paritionID:%v  on node:%v  "+
+					"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
+					clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
+				//msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
+				Warn(clusterID, msg)
+				WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, true)
 			}
-			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] paritionID:%v  on node:%v  "+
-				"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
-				clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
-			//msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
-			Warn(clusterID, msg)
-			WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID)
+		} else {
+			WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, false)
 		}
 	}
 
