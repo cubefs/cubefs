@@ -32,17 +32,18 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID    uint64
-	PartitionType  int
-	PartitionTTL   int64
-	LastLoadedTime int64
-	ReplicaNum     uint8
-	Status         int8
-	isRecover      bool
-	Replicas       []*DataReplica
-	Hosts          []string // host addresses
-	Peers          []proto.Peer
-	offlineMutex   sync.RWMutex
+	PartitionID      uint64
+	PartitionType    int
+	PartitionTTL     int64
+	LastLoadedTime   int64
+	ReplicaNum       uint8
+	Status           int8
+	isRecover        bool
+	Replicas         []*DataReplica
+	LeaderReportTime int64
+	Hosts            []string // host addresses
+	Peers            []proto.Peer
+	offlineMutex     sync.RWMutex
 	sync.RWMutex
 	total                    uint64
 	used                     uint64
@@ -104,6 +105,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.lastWarnTime = time.Now().Unix()
 	partition.singleDecommissionChan = make(chan bool, 1024)
 	partition.DecommissionStatus = DecommissionInitial
+	partition.LeaderReportTime = time.Now().Unix()
 	return
 }
 
@@ -705,6 +707,9 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica.FileCount = uint32(vr.ExtentCount)
 	replica.setAlive()
 	replica.IsLeader = vr.IsLeader
+	if replica.IsLeader {
+		partition.LeaderReportTime = time.Now().Unix()
+	}
 	replica.NeedsToCompare = vr.NeedCompare
 	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
 		oldDiskPath := replica.DiskPath
