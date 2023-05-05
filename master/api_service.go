@@ -3622,7 +3622,7 @@ func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) 
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	rstMsg := fmt.Sprintf("cancel decommission data node [%s] disk[%s] successfully with failed dp[%v]",
+	rstMsg := fmt.Sprintf("cancel decommission data node [%s] disk[%s] successfully with failed dp %v",
 		offLineAddr, diskPath, dps)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
@@ -4831,7 +4831,11 @@ func (m *Server) updateDecommissionDiskFactor(w http.ResponseWriter, r *http.Req
 			return
 		}
 	}
-
+	m.cluster.DecommissionDiskFactor = factor
+	if err = m.cluster.syncPutCluster(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set master not worked %v", err)))
+		return
+	}
 	rstMsg := fmt.Sprintf("set decommission factor to %v successfully", factor)
 	log.LogDebugf("action[updateDecommissionDiskFactor] %v", rstMsg)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
@@ -4978,6 +4982,10 @@ func (m *Server) enableAutoDecommissionDisk(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	m.cluster.SetAutoDecommissionDisk(enable)
+	if err = m.cluster.syncPutCluster(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set master not worked %v", err)))
+		return
+	}
 	rstMsg := fmt.Sprintf("set auto decommission disk to %v successfully", enable)
 	log.LogDebugf("action[enableAutoDecommissionDisk] %v", rstMsg)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))

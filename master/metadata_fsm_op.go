@@ -60,6 +60,7 @@ type clusterValue struct {
 	DpMaxRepairErrCnt           uint64
 	DpRepairTimeOut             uint64
 	EnableAutoDecommissionDisk  bool
+	DecommissionDiskFactor      float64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -89,6 +90,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DpMaxRepairErrCnt:           c.cfg.DpMaxRepairErrCnt,
 		DpRepairTimeOut:             c.cfg.DpRepairTimeOut,
 		EnableAutoDecommissionDisk:  c.EnableAutoDecommissionDisk,
+		DecommissionDiskFactor:      c.DecommissionDiskFactor,
 	}
 	return cv
 }
@@ -181,12 +183,6 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 			continue
 		}
 		dp.afterCreation(rv.Addr, rv.DiskPath, c)
-	}
-	if dp.IsDecommissionRunning() {
-		newReplica, _ := dp.getReplica(dp.DecommissionDstAddr)
-		if newReplica != nil {
-			newReplica.Status = bsProto.Recovering
-		}
 	}
 	return dp
 }
@@ -1023,7 +1019,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.clusterUuidEnable = cv.ClusterUuidEnable
 		c.DecommissionLimit = cv.DecommissionLimit
 		c.EnableAutoDecommissionDisk = cv.EnableAutoDecommissionDisk
-
+		c.DecommissionDiskFactor = cv.DecommissionDiskFactor
 		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
 			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
 		}
