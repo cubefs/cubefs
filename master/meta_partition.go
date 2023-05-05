@@ -512,23 +512,28 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 	defer mp.Unlock()
 	for _, replica := range mp.Replicas {
 		// reduce the alarm frequency
-		if contains(mp.Hosts, replica.Addr) && replica.isMissing() && mp.shouldReportMissingReplica(replica.Addr, interval) {
-			metaNode := replica.metaNode
-			var (
-				lastReportTime time.Time
-			)
-			isActive := true
-			if metaNode != nil {
-				lastReportTime = metaNode.ReportTime
-				isActive = metaNode.IsActive
+		if contains(mp.Hosts, replica.Addr) && replica.isMissing() {
+			if mp.shouldReportMissingReplica(replica.Addr, interval) {
+				metaNode := replica.metaNode
+				var (
+					lastReportTime time.Time
+				)
+				isActive := true
+				if metaNode != nil {
+					lastReportTime = metaNode.ReportTime
+					isActive = metaNode.IsActive
+				}
+				msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on node:%v  "+
+					"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
+					clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
+				Warn(clusterID, msg)
+				//msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
+				//Warn(clusterID, msg)
+				WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, true)
 			}
-			msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on node:%v  "+
-				"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
-				clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
-			Warn(clusterID, msg)
-			//msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
-			//Warn(clusterID, msg)
-			WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID)
+
+		} else {
+			WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, false)
 		}
 	}
 
