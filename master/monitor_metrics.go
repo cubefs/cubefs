@@ -116,26 +116,32 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 }
 
 type warningMetrics struct {
-	cluster        *Cluster
-	missingDp      *exporter.GaugeVec
-	dpNoLeader     *exporter.GaugeVec
-	missingMp      *exporter.GaugeVec
-	mpNoLeader     *exporter.GaugeVec
-	dpMutex        sync.Mutex
-	mpMutex        sync.Mutex
-	dpNoLeaderInfo map[uint64]int64
-	mpNoLeaderInfo map[uint64]int64
+	cluster               *Cluster
+	missingDp             *exporter.GaugeVec
+	dpNoLeader            *exporter.GaugeVec
+	missingMp             *exporter.GaugeVec
+	mpNoLeader            *exporter.GaugeVec
+	dpMutex               sync.Mutex
+	mpMutex               sync.Mutex
+	dpNoLeaderInfo        map[uint64]int64
+	mpNoLeaderInfo        map[uint64]int64
+	dpMissingReplicaMutex sync.Mutex
+	mpMissingReplicaMutex sync.Mutex
+	dpMissingReplicaInfo  map[string]string
+	mpMissingReplicaInfo  map[string]string
 }
 
 func newWarningMetrics(c *Cluster) *warningMetrics {
 	return &warningMetrics{
-		cluster:        c,
-		missingDp:      exporter.NewGaugeVec(MetricMissingDp, "", []string{"clusterName", "partitionID", "addr"}),
-		dpNoLeader:     exporter.NewGaugeVec(MetricDpNoLeader, "", []string{"clusterName", "partitionID"}),
-		missingMp:      exporter.NewGaugeVec(MetricMissingMp, "", []string{"clusterName", "partitionID", "addr"}),
-		mpNoLeader:     exporter.NewGaugeVec(MetricMpNoLeader, "", []string{"clusterName", "partitionID"}),
-		dpNoLeaderInfo: make(map[uint64]int64),
-		mpNoLeaderInfo: make(map[uint64]int64),
+		cluster:              c,
+		missingDp:            exporter.NewGaugeVec(MetricMissingDp, "", []string{"clusterName", "partitionID", "addr"}),
+		dpNoLeader:           exporter.NewGaugeVec(MetricDpNoLeader, "", []string{"clusterName", "partitionID"}),
+		missingMp:            exporter.NewGaugeVec(MetricMissingMp, "", []string{"clusterName", "partitionID", "addr"}),
+		mpNoLeader:           exporter.NewGaugeVec(MetricMpNoLeader, "", []string{"clusterName", "partitionID"}),
+		dpNoLeaderInfo:       make(map[uint64]int64),
+		mpNoLeaderInfo:       make(map[uint64]int64),
+		dpMissingReplicaInfo: make(map[string]string),
+		mpMissingReplicaInfo: make(map[string]string),
 	}
 }
 
@@ -153,14 +159,38 @@ func (m *warningMetrics) reset() {
 		delete(m.mpNoLeaderInfo, mp)
 	}
 	m.mpMutex.Unlock()
+
+	m.dpMissingReplicaMutex.Lock()
+	for id, addr := range m.dpMissingReplicaInfo {
+		m.missingDp.DeleteLabelValues(m.cluster.Name, id, addr)
+		delete(m.dpMissingReplicaInfo, id)
+	}
+	m.dpMissingReplicaMutex.Unlock()
+
+	m.mpMissingReplicaMutex.Lock()
+	for id, addr := range m.mpMissingReplicaInfo {
+		m.missingMp.DeleteLabelValues(m.cluster.Name, id, addr)
+		delete(m.mpMissingReplicaInfo, id)
+	}
+	m.mpMissingReplicaMutex.Unlock()
 }
 
 //leader only
-func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uint64) {
+func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uint64, report bool) {
+	m.dpMissingReplicaMutex.Lock()
+	defer m.dpMissingReplicaMutex.Unlock()
 	if clusterName != m.cluster.Name {
 		return
 	}
-	m.missingDp.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10), addr)
+	id := strconv.FormatUint(partitionID, 10)
+	if !report {
+		m.missingDp.DeleteLabelValues(clusterName, id, addr)
+		delete(m.dpMissingReplicaInfo, id)
+		return
+	}
+
+	m.missingDp.SetWithLabelValues(1, clusterName, id, addr)
+	m.dpMissingReplicaInfo[id] = addr
 }
 
 //func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64) {
@@ -196,11 +226,21 @@ func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64, 
 }
 
 //leader only
-func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uint64) {
+func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uint64, report bool) {
+	m.mpMissingReplicaMutex.Lock()
+	defer m.mpMissingReplicaMutex.Unlock()
 	if clusterName != m.cluster.Name {
 		return
 	}
-	m.missingMp.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10), addr)
+
+	id := strconv.FormatUint(partitionID, 10)
+	if !report {
+		m.missingMp.DeleteLabelValues(clusterName, id, addr)
+		delete(m.mpMissingReplicaInfo, id)
+		return
+	}
+	m.missingMp.SetWithLabelValues(1, clusterName, id, addr)
+	m.mpMissingReplicaInfo[id] = addr
 }
 
 //func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64) {
