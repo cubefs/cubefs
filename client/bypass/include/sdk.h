@@ -33,11 +33,11 @@ extern "C" {
 #endif
 
 typedef struct {
-        int ignore_sighup;
-        int ignore_sigterm;
-        const char* log_dir;
-        const char* log_level;
-        const char* prof_port;
+    int ignore_sighup;
+    int ignore_sigterm;
+    const char* log_dir;
+    const char* log_level;
+    const char* prof_port;
 } cfs_sdk_init_t;
 
 typedef struct {
@@ -50,16 +50,6 @@ typedef struct {
     const char* auto_flush;
     const char* master_client;
 } cfs_config_t;
-
-typedef struct {
-	int fd;
-	int flags;
-    int file_type;
-    int dup_ref;
-    ino_t inode;
-	size_t size;
-	off_t pos;
-} cfs_file_t;
 
 typedef struct {
 	off_t 		file_offset;

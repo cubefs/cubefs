@@ -4,14 +4,11 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <assert.h>
 #include <map>
-#include <set>
 #include <vector>
-#include "sdk.h"
-#include "util.h"
 
 #define BIG_PAGE_CACHE_SIZE 67108864
 #define SMALL_PAGE_CACHE_SIZE 67108864
@@ -75,6 +72,7 @@ typedef ssize_t (*cfs_pwrite_inode_t)(int64_t id, ino_t ino, const void *buf, si
 #define FILE_CACHE_WRITE_THROUGH 0x2
 #define FILE_CACHE_PRIORITY_HIGH 0x4
 
+typedef page_t **file_block_t;
 typedef struct inode_info {
     int64_t client_id;
     ino_t inode;
@@ -84,7 +82,7 @@ typedef struct inode_info {
     size_t size;
     int fd_ref;
     // The file contents are structured as a two dimentional array of pages for memory efficiency.
-    page_t ***pages;
+    file_block_t *pages;
     pthread_mutex_t inode_lock;
     cfs_pwrite_inode_t write_func;
 } inode_info_t;
@@ -105,5 +103,7 @@ void flush_inode_range(inode_info_t *inode_info, off_t offset, size_t count);
 void clear_inode_range(inode_info_t *inode_info, off_t offset, size_t count);
 void clear_inode(inode_info_t *inode_info);
 void flush_and_release(std::map<ino_t, inode_info_t *> &arg);
+
+void log_debug(const char* message, ...);
 
 #endif

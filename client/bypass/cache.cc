@@ -368,7 +368,7 @@ inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t
     inode_info->use_pagecache = use_pagecache;
     inode_info->c = NULL;
     if(use_pagecache) {
-        inode_info->pages = (page_t ***)calloc(BLOCKS_PER_FILE, sizeof(page_t **));
+        inode_info->pages = (file_block_t *)calloc(BLOCKS_PER_FILE, sizeof(file_block_t *));
         if(inode_info->pages == NULL) {
             free(inode_info);
             return NULL;
@@ -483,7 +483,7 @@ size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const v
 
         pthread_mutex_lock(&inode_info->inode_lock);
         if(inode_info->pages[block_index] == NULL) {
-            inode_info->pages[block_index] = (page_t **)calloc(PAGES_PER_BLOCK, sizeof(page_t *));
+            inode_info->pages[block_index] = (file_block_t)calloc(PAGES_PER_BLOCK, sizeof(page_t *));
             if(inode_info->pages[block_index] == NULL) {
                 pthread_mutex_unlock(&inode_info->inode_lock);
                 break;

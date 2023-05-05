@@ -1,9 +1,10 @@
 #include "client.h"
+
 /*
  * File operations
  */
 
-int close_cfs_fd(int fd) {
+static int close_cfs_fd(int fd) {
     int is_need_release_file = 0;
     int is_need_release_inode = 0;
 
@@ -97,7 +98,7 @@ log:
     return re;
 }
 
-inode_info_t *record_inode_info(ino_t inode, int file_type, size_t size) {
+static inode_info_t *record_inode_info(ino_t inode, int file_type, size_t size) {
     inode_info_t *inode_info = NULL;
 
     pthread_rwlock_rdlock(&g_client_info.open_inodes_lock);
@@ -153,7 +154,7 @@ inode_info_t *record_inode_info(ino_t inode, int file_type, size_t size) {
     return inode_info;
 }
 
-int record_open_file(cfs_file_t *cfs_file) {
+static int record_open_file(cfs_file_t *cfs_file) {
     file_t *f = (file_t *)calloc(1, sizeof(file_t));
     if(f == NULL) {
         fprintf(stderr, "calloc file_t failed.\n");
@@ -851,7 +852,7 @@ int real_closedir(DIR *dirp) {
     return re;
 }
 
-char *cfs_realpath(const char *cfs_path, char *resolved_path) {
+static char *cfs_realpath(const char *cfs_path, char *resolved_path) {
     char *buf = NULL;
     int buf_len = 0;
     char *res_path = resolved_path;
@@ -1748,6 +1749,72 @@ log:
  * Read & Write
  */
 
+static ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset, bool hasRefreshed) {
+    int max_count = 3;
+    cfs_read_req_t *req = (cfs_read_req_t *)calloc(max_count, sizeof(cfs_read_req_t));
+	int req_count = cfs_read_requests(id, fd, buf, count, offset, req, max_count);
+    ssize_t read = 0;
+    bool has_err = req_count < 0;
+    struct timespec start;
+    if(!has_err) {
+        clock_gettime(CLOCK_REALTIME, &start);
+    }
+    for(int i = 0; i < req_count; i++) {
+        if(req[i].size == 0) {
+            break;
+        }
+        if(req[i].partition_id == 0) {
+            memset((char *)buf + read, 0, req[i].size);
+            read += req[i].size;
+            continue;
+        }
+        packet_t *p = new_read_packet(req[i].partition_id, req[i].extent_id, req[i].extent_offset, (char *)buf + read, req[i].size, req[i].file_offset);
+        if(p == NULL) {
+            has_err = true;
+            break;
+        }
+        int sock_fd = get_conn(g_client_info.conn_pool, req[i].dp_host, req[i].dp_port);
+        if(sock_fd < 0) {
+            free(p);
+            has_err = true;
+            break;
+        }
+        ssize_t re = write_sock(sock_fd, p);
+        if(re < 0) {
+            free(p);
+            close(sock_fd);
+            has_err = true;
+            break;
+        }
+        re = get_read_reply(sock_fd, p);
+        free(p);
+        if(re < 0) {
+            close(sock_fd);
+            has_err = true;
+            break;
+        }
+        #ifdef _CFS_DEBUG
+        log_debug("cfs_pread_sock read sock, file_offset:%d, host:%s, sock_fd:%d, dp:%d, extent:%d, extent_offset:%ld, size:%d, re:%d\n", req[i].file_offset, req[i].dp_host, sock_fd, req[i].partition_id, req[i].extent_id, req[i].extent_offset, req[i].size, re);
+        #endif
+        put_conn(g_client_info.conn_pool, req[i].dp_host, req[i].dp_port, sock_fd);
+        read += re;
+        if(re != req[i].size) {
+            break;
+        }
+    }
+    if(!has_err) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_READ, start.tv_sec, start.tv_nsec);
+    }
+    free(req);
+    #ifdef _CFS_DEBUG
+    log_debug("cfs_pread_sock, fd:%d, count:%d, offset:%ld, req_count:%d, read:%d, has_err:%d\n", fd, count, offset, req_count, read, has_err);
+    #endif
+    if((read < count && !hasRefreshed) || has_err) {
+        read = cfs_pread(id, fd, buf, count, offset);
+    }
+    return read;
+}
+
 ssize_t real_read(int fd, void *buf, size_t count) {
     #ifdef _CFS_DEBUG
     struct timespec start, stop;
@@ -2466,7 +2533,7 @@ log:
 }
 */
 
-void* plugin_open(const char* name) {
+static void* plugin_open(const char* name) {
     void *handle = dlopen(name, RTLD_NOW|RTLD_GLOBAL);
     #ifdef DYNAMIC_UPDATE
     if(handle != NULL) {
@@ -2478,7 +2545,7 @@ void* plugin_open(const char* name) {
     return handle;
 }
 
-int plugin_close(void* handle) {
+static int plugin_close(void* handle) {
     FinishModule_t finishModule = (FinishModule_t)dlsym(handle, "FinishModule");
     void* task = dlsym(handle, "main..finitask");
     finishModule(task);
