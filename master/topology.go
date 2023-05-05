@@ -1514,6 +1514,8 @@ func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 			return nil, err
 		}
 		ns = newNodeSet(c, id, c.cfg.nodeSetCapacity, zone.name)
+		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
+		ns.UpdateDecommissionDiskFactor(c.DecommissionDiskFactor)
 		ns.startDecommissionSchedule()
 		log.LogInfof("action[createNodeSet] syncAddNodeSet[%v] zonename[%v]", ns.ID, zone.name)
 		if err = c.syncAddNodeSet(ns); err != nil {
