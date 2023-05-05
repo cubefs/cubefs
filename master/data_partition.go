@@ -376,7 +376,7 @@ func (partition *DataPartition) deleteReplicaByIndex(index int) {
 	for _, replica := range partition.Replicas {
 		replicaAddrs = append(replicaAddrs, replica.Addr)
 	}
-	msg := fmt.Sprintf("deleteReplicaByIndex replica:%v  index:%v  locations :%v ", partition.PartitionID, index, replicaAddrs)
+	msg := fmt.Sprintf("deleteReplicaByIndex dp %v  index:%v  locations :%v ", partition.PartitionID, index, replicaAddrs)
 	log.LogInfo(msg)
 	replicasAfter := partition.Replicas[index+1:]
 	partition.Replicas = partition.Replicas[:index]
@@ -743,7 +743,11 @@ func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Clus
 		return err
 	}
 	replica := newDataReplica(dataNode)
-	replica.Status = proto.Unavailable //update by heartbeat
+	if partition.IsDecommissionRunning() {
+		replica.Status = proto.Recovering
+	} else {
+		replica.Status = proto.Unavailable
+	}
 	replica.DiskPath = diskPath
 	replica.ReportTime = time.Now().Unix()
 	replica.Total = util.DefaultDataPartitionSize
@@ -949,18 +953,22 @@ const (
 	defaultDecommissionDiskParallelFactor = 0
 )
 
-func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64, c *Cluster) {
+func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64, c *Cluster) bool {
 	if !partition.canMarkDecommission() {
-		return
+		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:status[%v]",
+			partition.PartitionID, partition.GetDecommissionStatus())
+		return false
 	}
 
 	if partition.IsDecommissionPaused() {
 		if !partition.pauseReplicaRepair(partition.DecommissionDstAddr, false, c) {
 			log.LogWarnf("action[MarkDecommissionStatus] dp [%d] recover from stop failed", partition.PartitionID)
-			return
+			return false
 		}
 		partition.SetDecommissionStatus(markDecommission)
-		return
+		//update decommissionTerm for next time query
+		partition.DecommissionTerm = term
+		return true
 	}
 	//initial or failed restart
 	partition.ResetDecommissionStatus()
@@ -987,6 +995,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	log.LogDebugf("action[MarkDecommissionStatus] dp[%v] SrcAddr %v, dstAddr %v, diskPath %v, raftForce %v term %v",
 		partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
 		partition.DecommissionSrcDiskPath, partition.DecommissionRaftForce, partition.DecommissionTerm)
+	return true
 }
 
 func (partition *DataPartition) SetDecommissionStatus(status uint32) {
@@ -1158,7 +1167,7 @@ func (partition *DataPartition) PauseDecommission(c *Cluster) bool {
 	if status == DecommissionInitial || status == DecommissionSuccess ||
 		status == DecommissionFail {
 		log.LogWarnf("action[PauseDecommission] dp[%v] cannot be stopped status[%v]", partition.PartitionID, status)
-		return false
+		return true
 	}
 	defer c.syncUpdateDataPartition(partition)
 	log.LogDebugf("action[PauseDecommission] dp[%v] status %v set to stop ",
@@ -1219,6 +1228,8 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	if err != nil {
 		return
 	}
+	//release token first
+	partition.ReleaseDecommissionToken(c)
 	//reset status if rollback success
 	partition.DecommissionDstAddr = ""
 	partition.DecommissionRetry = 0
@@ -1297,19 +1308,10 @@ func (partition *DataPartition) canAddToDecommissionList() bool {
 }
 
 func (partition *DataPartition) tryRollback(c *Cluster) bool {
-	//failed by error except add replica or create dp or repair dp
-	if !partition.DecommissionNeedRollback {
-		return false
-	}
-	//specify dst addr do not need rollback
-	if partition.DecommissionDstAddrSpecify {
-		log.LogWarnf("action[tryRollback]dp[%v] do not rollback for DecommissionDstAddrSpecify", partition.PartitionID)
+	if !partition.needRollback(c) {
 		return false
 	}
 	partition.DecommissionNeedRollbackTimes++
-	if partition.DecommissionNeedRollbackTimes >= defaultDecommissionRollbackLimit {
-		return false
-	}
 	partition.rollback(c)
 	return true
 }
@@ -1318,7 +1320,8 @@ func (partition *DataPartition) pauseReplicaRepair(replicaAddr string, stop bool
 	index := partition.findReplica(replicaAddr)
 	if index == -1 {
 		log.LogWarnf("action[pauseReplicaRepair]dp[%v] can't find replica %v", partition.PartitionID, replicaAddr)
-		return false
+		//maybe paused from rollback[mark]
+		return true
 	}
 	const RetryMax = 5
 	var (
@@ -1335,7 +1338,6 @@ func (partition *DataPartition) pauseReplicaRepair(replicaAddr string, stop bool
 			continue
 		}
 		task := partition.createTaskToStopDataPartitionRepair(replicaAddr, stop)
-		//TODO: 新增参数或者其他函数名，来终止Disk没下线的dp的执行
 		packet, err := dataNode.TaskManager.syncSendAdminTask(task)
 		if err != nil {
 			retry++
@@ -1545,4 +1547,20 @@ func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err err
 		return nil, nil, err
 	}
 	return ns, zone, nil
+}
+
+func (partition *DataPartition) needRollback(c *Cluster) bool {
+	//failed by error except add replica or create dp or repair dp
+	if !partition.DecommissionNeedRollback {
+		return false
+	}
+	//specify dst addr do not need rollback
+	if partition.DecommissionDstAddrSpecify {
+		log.LogWarnf("action[needRollback]dp[%v] do not rollback for DecommissionDstAddrSpecify", partition.PartitionID)
+		return false
+	}
+	if partition.DecommissionNeedRollbackTimes >= defaultDecommissionRollbackLimit {
+		return false
+	}
+	return true
 }

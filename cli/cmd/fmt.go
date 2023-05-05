@@ -327,13 +327,13 @@ func formatUserInfoTableRow(userInfo *proto.UserInfo) string {
 
 func formatDataPartitionStatus(status int8) string {
 	switch status {
-	case 1:
+	case proto.Recovering:
 		return "Recovering"
-	case 2:
+	case proto.ReadOnly:
 		return "ReadOnly"
-	case 3:
+	case proto.ReadWrite:
 		return "ReadWrite"
-	case -1:
+	case proto.Unavailable:
 		return "Unavailable"
 	default:
 		return "Unknown"

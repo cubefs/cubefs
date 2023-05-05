@@ -175,22 +175,26 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 
 func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.CreateDataPartitionRequest) (err error) {
 	if len(dp.config.Peers) != len(request.Members) {
-		return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", dp.partitionID, dp.config.Peers, request.Members)
+		return fmt.Errorf("exist partition(%v)  peers len(%v) members len(%v)",
+			dp.partitionID, len(dp.config.Peers), len(request.Members))
 	}
 	for index, host := range dp.config.Hosts {
 		requestHost := request.Hosts[index]
 		if host != requestHost {
-			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", dp.partitionID, dp.config.Hosts, request.Hosts)
+			return fmt.Errorf("exist partition(%v) index(%v) requestHost(%v) persistHost(%v)",
+				dp.partitionID, index, requestHost, host)
 		}
 	}
 	for index, peer := range dp.config.Peers {
 		requestPeer := request.Members[index]
 		if requestPeer.ID != peer.ID || requestPeer.Addr != peer.Addr {
-			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", dp.partitionID, dp.config.Peers, request.Members)
+			return fmt.Errorf("exist partition(%v) index(%v) requestPeer(%v) persistPeers(%v)",
+				dp.partitionID, index, requestPeer, peer)
 		}
 	}
 	if dp.config.VolName != request.VolumeId {
-		return fmt.Errorf("Exsit unavali Partition(%v) VolName(%v) requestVolName(%v)", dp.partitionID, dp.config.VolName, request.VolumeId)
+		return fmt.Errorf("exist partition Partition(%v)  requestVolName(%v) persistVolName(%v)",
+			dp.partitionID, request.VolumeId, dp.config.VolName)
 	}
 
 	return
@@ -305,7 +309,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		DataPartitionCreateType: dpCfg.CreateType,
 	}
 	atomic.StoreUint64(&partition.recoverErrCnt, 0)
-	log.LogInfof("action[newDataPartition] dp %v replica num %v tmp11", partitionID, dpCfg.ReplicaNum)
+	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, partition.partitionType)
 	if err != nil {
@@ -319,7 +323,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	go partition.statusUpdateScheduler()
 	go partition.startEvict()
 	log.LogInfof("action[newDataPartition] dp %v replica num %v CreateType %v create success",
-		dp.partitionID, dpCfg.ReplicaNum, dp.partitionType)
+		dp.partitionID, dpCfg.ReplicaNum, dp.DataPartitionCreateType)
 	return
 }
 
@@ -514,8 +518,8 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		os.Remove(fileName)
 	}()
 
-	sp := sortedPeers(dp.config.Peers)
-	sort.Sort(sp)
+	//sp := sortedPeers(dp.config.Peers)
+	//sort.Sort(sp)
 
 	md := &DataPartitionMetadata{
 		VolumeID:                dp.config.VolName,

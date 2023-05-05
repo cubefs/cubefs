@@ -322,6 +322,8 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		ReplicaNum:    request.ReplicaNum,
 		CreateType:    request.CreateType,
 	}
+	log.LogInfof("action[CreatePartition] dp %v dpCfg.Peers %v request.Members %v",
+		dpCfg.PartitionID, dpCfg.Peers, request.Members)
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
 		if err = dp.IsEquareCreateDataPartitionRequst(request); err != nil {
