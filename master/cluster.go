@@ -859,7 +859,7 @@ errHandler:
 }
 
 func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corruptPartitions []*DataPartition, err error) {
-
+	partitionMap := make(map[uint64]uint8)
 	inactiveDataNodes = make([]string, 0)
 	corruptPartitions = make([]*DataPartition, 0)
 
@@ -880,7 +880,20 @@ func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corr
 		if !dataNode.isActive {
 			inactiveDataNodes = append(inactiveDataNodes, dataNode.Addr)
 		}
-
+		for _, id := range dataNode.PersistenceDataPartitions {
+			var partition *DataPartition
+			if partition, err = c.getDataPartitionByID(id); err != nil {
+				continue
+			}
+			if partition.getLeaderAddr() == "" {
+				if time.Now().Unix()-partition.LeaderReportTime > defaultNoLeaderReportInterval {
+					partitionMap[id] = partitionMap[id] + 1
+					if partitionMap[id] == 1 {
+						corruptPartitions = append(corruptPartitions, partition)
+					}
+				}
+			}
+		}
 		return true
 	})
 
