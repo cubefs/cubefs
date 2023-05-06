@@ -356,10 +356,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 		dp.checkDiskError(c.Name, c.leaderInfo.addr)
 
-		tasks := dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
-		if len(tasks) != 0 {
-			c.addDataNodeTasks(tasks)
-		}
+		dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
 	}
 
 	return
