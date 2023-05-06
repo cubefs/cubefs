@@ -27,8 +27,8 @@ check=--no-check-certificate
 
 pushd ${INSTALLDIR}
 if [ ! -f lib/libz.a ]; then
-    rm -rf zlib-${ZLIB_VER}*
-    wget https://github.com/madler/zlib/archive/refs/tags/v${ZLIB_VER}.tar.gz -O ./zlib-${ZLIB_VER}.tar.gz ${check}
+    rm -rf zlib-${ZLIB_VER}
+    test -e zlib-${ZLIB_VER}.tar.gz || wget https://github.com/madler/zlib/archive/refs/tags/v${ZLIB_VER}.tar.gz -O ./zlib-${ZLIB_VER}.tar.gz ${check}
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -45,8 +45,8 @@ if [ ! -f lib/libz.a ]; then
 fi
 
 if [ ! -f lib/libbz2.a ]; then
-    rm -rf bzip2-bzip2-${BZIP2_VER}*
-    wget https://gitlab.com/bzip2/bzip2/-/archive/bzip2-${BZIP2_VER}/bzip2-bzip2-${BZIP2_VER}.tar.gz
+    rm -rf bzip2-bzip2-${BZIP2_VER}
+    test -e bzip2-bzip2-${BZIP2_VER}.tar.gz || wget https://gitlab.com/bzip2/bzip2/-/archive/bzip2-${BZIP2_VER}/bzip2-bzip2-${BZIP2_VER}.tar.gz
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -62,8 +62,8 @@ if [ ! -f lib/libbz2.a ]; then
 fi
 
 if [ ! -f lib/libzstd.a ]; then
-    rm -rf zstd-${ZSTD_VER}*
-    wget https://github.com/facebook/zstd/archive/v${ZSTD_VER}.tar.gz -O zstd-${ZSTD_VER}.tar.gz ${check}
+    rm -rf zstd-${ZSTD_VER}
+    test -e zstd-${ZSTD_VER}.tar.gz || wget https://github.com/facebook/zstd/archive/v${ZSTD_VER}.tar.gz -O zstd-${ZSTD_VER}.tar.gz ${check}
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -79,8 +79,8 @@ if [ ! -f lib/libzstd.a ]; then
 fi
 
 if [ ! -f lib/liblz4.a ]; then
-    rm -rf lz4-${LZ4_VER}*
-    wget https://github.com/lz4/lz4/archive/v${LZ4_VER}.tar.gz -O lz4-${LZ4_VER}.tar.gz ${check}
+    rm -rf lz4-${LZ4_VER}
+    test -e lz4-${LZ4_VER}.tar.gz || wget https://github.com/lz4/lz4/archive/v${LZ4_VER}.tar.gz -O lz4-${LZ4_VER}.tar.gz ${check}
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -96,8 +96,8 @@ if [ ! -f lib/liblz4.a ]; then
 fi
 
 if [ ! -f lib/libsnappy.a ]; then
-    rm -rf snappy-${SNAPPY_VER}*
-    wget https://github.com/google/snappy/archive/${SNAPPY_VER}.tar.gz -O snappy-${SNAPPY_VER}.tar.gz ${check}
+    rm -rf snappy-${SNAPPY_VER}
+    test -e snappy-${SNAPPY_VER}.tar.gz || wget https://github.com/google/snappy/archive/${SNAPPY_VER}.tar.gz -O snappy-${SNAPPY_VER}.tar.gz ${check}
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -117,8 +117,8 @@ if [ ! -f lib/libsnappy.a ]; then
 fi
 
 if [ ! -f lib/librocksdb.a ]; then
-    rm -rf ${INSTALLDIR}/include/rocksdb rocksdb-${ROCKSDB_VER}*
-    wget https://github.com/facebook/rocksdb/archive/refs/tags/v${ROCKSDB_VER}.tar.gz -O rocksdb-${ROCKSDB_VER}.tar.gz ${check}
+    rm -rf ${INSTALLDIR}/include/rocksdb rocksdb-${ROCKSDB_VER}/
+    test -e rocksdb-${ROCKSDB_VER}.tar.gz || wget https://github.com/facebook/rocksdb/archive/refs/tags/v${ROCKSDB_VER}.tar.gz -O rocksdb-${ROCKSDB_VER}.tar.gz ${check}
     if [ $? -ne 0 ]; then
         exit 1
     fi
