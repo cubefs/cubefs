@@ -37,3 +37,17 @@ To resolve the error message "/usr/bin/ld: cannot find -lbz2" during compilation
 ## cannot find -lz
 
 To resolve the error message "/usr/bin/ld: cannot find -lz" during compilation, you should check if the "zlib-devel" package is installed with a version of 1.2.7 or higher.
+
+## `cc1plus: all warnings being treated as errors` on building `rocksdb`
+
+- when building `blobstore`, just enter sub-folder `blobstore` and add following content to the end of `blobstore/env.sh` before executing `source env.sh`:
+
+```bash
+export DISABLE_WARNING_AS_ERROR=true
+```
+
+- when building `cubefs` itself, just add following content at the end of `env.sh` before executing `source env.sh`:
+
+```bash
+export CXXFLAGS=-Wno-error
+```
