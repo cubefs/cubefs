@@ -49,6 +49,8 @@ export DISABLE_WARNING_AS_ERROR=true
 
 - 对于`cubefs`根目录而言，请在根目录下的`env.sh`中添加导出环境变量：
 
+> **注意**： 选项开关可能因gcc版本不同存在差异，以下选项在`gcc (Ubuntu 11.3.0-1ubuntu1~22.04) 11.3.0`版本上测试通过
+
 ```bash
 export CXXFLAGS=-Wno-error
 ```

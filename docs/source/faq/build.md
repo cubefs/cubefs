@@ -48,6 +48,8 @@ export DISABLE_WARNING_AS_ERROR=true
 
 - when building `cubefs` itself, just add following content at the end of `env.sh` before executing `source env.sh`:
 
+> **NOTE**: Options might be different according to different gcc versions. Following option has been tested on `gcc (Ubuntu 11.3.0-1ubuntu1~22.04) 11.3.0`
+
 ```bash
 export CXXFLAGS=-Wno-error
 ```
