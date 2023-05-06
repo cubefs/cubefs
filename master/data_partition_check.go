@@ -261,9 +261,9 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	return
 }
 
-func (partition *DataPartition) checkReplicationTask(clusterID string, dataPartitionSize uint64) (tasks []*proto.AdminTask) {
+func (partition *DataPartition) checkReplicationTask(clusterID string, dataPartitionSize uint64) {
 	var msg string
-	tasks = make([]*proto.AdminTask, 0)
+
 	if excessAddr, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication On :%v  Err:%v  rocksDBRecords:%v",
 			deleteIllegalReplicaErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.Hosts)
