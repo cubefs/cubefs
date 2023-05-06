@@ -56,7 +56,7 @@ build_zlib() {
         echo "build Zlib..."
         pushd ${ZlibBuildPath} >/dev/null
         [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
-		./configure
+        ./configure
         make -j ${NPROC}   && echo "build Zlib success" || {  echo "build Zlib failed" ; exit 1; }
         popd >/dev/null
     fi
@@ -173,17 +173,17 @@ build_rocksdb() {
         [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
         MAJOR=$(echo __GNUC__ | $(which gcc) -E -xc - | tail -n 1)
         if [ ${MAJOR} -ge 12 ] ; then
-          CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move -Wno-error=range-loop-construct' \
-        make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+            CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move -Wno-error=range-loop-construct'" ${CXXFLAGS}" \
+                make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
         elif [ ${MAJOR} -ge 10 ] ; then
-          CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move' \
-		make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+            CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move'" ${CXXFLAGS}" \
+                make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
         elif [ ${MAJOR} -ge 8 ] ; then
-	  CXXFLAGS='-Wno-error=class-memaccess' \
-		      make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
-	else
-		      make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
-	fi
+            CXXFLAGS='-Wno-error=class-memaccess'" ${CXXFLAGS}" \
+                make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+        else
+            make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+        fi
         popd >/dev/null
     fi
     cgo_cflags="${cgo_cflags} -I${RocksdbSrcPath}/include"
