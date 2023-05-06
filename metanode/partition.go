@@ -897,7 +897,7 @@ func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
 }
 
 func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
-	curTime := Now.GetCurrentTime().Unix()
+	curTime := Now.GetCurrentTimeUnix()
 	// begin
 	count := 0
 	needSleep := false
@@ -923,7 +923,7 @@ func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
 				Inode: inode.Inode,
 			}
 			ino := NewInode(req.Inode, 0)
-			curTime = Now.GetCurrentTime().Unix()
+			curTime = Now.GetCurrentTimeUnix()
 			if inode.ModifyTime < curTime {
 				ino.ModifyTime = curTime
 			}

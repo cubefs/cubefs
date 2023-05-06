@@ -74,7 +74,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	ctime := Now.GetCurrentTime().Unix()
+	ctime := Now.GetCurrentTimeUnix()
 	/*
 	 * FIXME: not protected by lock yet, since nothing is depending on atime.
 	 * Shall add inode lock in the future.
