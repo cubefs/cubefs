@@ -17,10 +17,8 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -146,16 +144,6 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 			panic(mesg)
 		}
 	}()
-	if dp.config.NodeID == leader {
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(LocalIP, serverPort), time.Second)
-		if err != nil {
-			log.LogErrorf(fmt.Sprintf("HandleLeaderChange PartitionID(%v) serverPort not exsit ,error %v", dp.partitionID, err))
-			go dp.raftPartition.TryToLeader(dp.partitionID)
-			return
-		}
-		conn.(*net.TCPConn).SetLinger(0)
-		conn.Close()
-	}
 	if dp.config.NodeID == leader {
 		dp.isRaftLeader = true
 	}
