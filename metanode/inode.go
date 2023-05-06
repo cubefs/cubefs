@@ -105,7 +105,7 @@ func (i *Inode) String() string {
 // NewInode returns a new Inode instance with specified Inode ID, name and type.
 // The AccessTime and ModifyTime will be set to the current time.
 func NewInode(ino uint64, t uint32) *Inode {
-	ts := Now.GetCurrentTime().Unix()
+	ts := Now.GetCurrentTimeUnix()
 	i := &Inode{
 		Inode:      ino,
 		Type:       t,
@@ -638,7 +638,7 @@ func (i *Inode) DoReadFunc(fn func()) {
 
 // SetMtime sets mtime to the current time.
 func (i *Inode) SetMtime() {
-	mtime := Now.GetCurrentTime().Unix()
+	mtime := Now.GetCurrentTimeUnix()
 	i.Lock()
 	defer i.Unlock()
 	i.ModifyTime = mtime
