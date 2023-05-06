@@ -17,6 +17,7 @@ package meta
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -164,6 +165,9 @@ type MetaWrapper struct {
 	// infinite retry send to mp
 	InfiniteRetry    bool
 	RemoteCacheBloom RemoteCacheBloomFunc
+
+	ClientID		uint64
+	StartTime		int64
 }
 
 type MetaState struct {
@@ -233,6 +237,8 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		WriteTimeoutNs:   WriteTimeoutMeta * int64(time.Second),
 		ReadTimeoutNs:    ReadTimeoutMeta * int64(time.Second),
 	}
+	mw.SetClientID()
+	mw.SetStartTime()
 
 	limit := MaxMountRetryLimit
 
@@ -299,6 +305,8 @@ func RebuildMetaWrapper(config *MetaConfig, metaState *MetaState) *MetaWrapper {
 		ReadTimeoutNs:    ReadTimeoutMeta * int64(time.Second),
 	}
 
+	mw.SetClientID()
+	mw.SetStartTime()
 	mw.cluster = metaState.Cluster
 	mw.localIP = metaState.LocalIP
 	atomic.StoreUint64(&mw.totalSize, metaState.TotalSize)
@@ -584,6 +592,23 @@ func (mw *MetaWrapper) VolNotExists() bool {
 		return true
 	}
 	return false
+}
+
+func (mw *MetaWrapper) SetClientID() {
+	processID := os.Getpid()
+	mw.ClientID = uint64(processID)
+}
+
+func (mw *MetaWrapper) GetClientID() uint64 {
+	return mw.ClientID
+}
+
+func (mw *MetaWrapper) SetStartTime() {
+	mw.StartTime = time.Now().Unix()
+}
+
+func (mw *MetaWrapper) GetStartTime() int64 {
+	return mw.StartTime
 }
 
 //func (mw *MetaWrapper) exporterKey(act string) string {

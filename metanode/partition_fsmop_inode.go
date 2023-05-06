@@ -63,9 +63,27 @@ func (mp *metaPartition) fsmCreateInode(dbHandle interface{}, ino *Inode) (statu
 	return
 }
 
-func (mp *metaPartition) fsmCreateLinkInode(dbHandle interface{}, ino *Inode) (resp *InodeResponse, err error) {
+func (mp *metaPartition) fsmCreateLinkInode(dbHandle interface{}, ino *Inode, reqInfo *RequestInfo) (resp *InodeResponse, err error) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmCreateLink: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		existIno, _ := mp.inodeTree.Get(ino.Inode)
+		if existIno == nil {
+			resp.Status = proto.OpNotExistErr
+			return
+		}
+		resp.Msg = existIno
+	}
+
+	defer func() {
+		if err != nil {
+			return
+		}
+		mp.recordRequest(reqInfo, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
+	}()
 
 	if outOfRange, _ := mp.isInoOutOfRange(ino.Inode); outOfRange {
 		resp.Status = proto.OpInodeOutOfRange
@@ -144,9 +162,27 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool, inode *Inode) {
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.
-func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, inodeID uint64, unlinkNum int, timestamp int64, trashEnable bool) (resp *InodeResponse, err error) {
+func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, inodeID uint64, unlinkNum int, timestamp int64, trashEnable bool, reqInfo *RequestInfo) (resp *InodeResponse, err error) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmUnlinkInode: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		existIno, _ := mp.inodeTree.Get(inodeID)
+		if existIno == nil {
+			resp.Status = proto.OpNotExistErr
+			return
+		}
+		resp.Msg = existIno
+		return
+	}
+	defer func() {
+		if err != nil {
+			return
+		}
+		mp.recordRequest(reqInfo, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
+	}()
 
 	if outOfRange, _ := mp.isInoOutOfRange(inodeID); outOfRange {
 		resp.Status = proto.OpInodeOutOfRange
@@ -209,7 +245,7 @@ func (mp *metaPartition) fsmUnlinkInodeBatch(dbHandle interface{}, batchInode In
 
 	for inodeID, unlinkNum := range inodeUnlinkNumMap {
 		var rsp *InodeResponse
-		rsp, err = mp.fsmUnlinkInode(dbHandle, inodeID, unlinkNum, timestamp, trashEnable)
+		rsp, err = mp.fsmUnlinkInode(dbHandle, inodeID, unlinkNum, timestamp, trashEnable, nil)
 		if err != nil {
 			resp = resp[:0]
 			return
@@ -291,11 +327,18 @@ func (mp *metaPartition) internalDeleteInode(dbHandle interface{}, ino *Inode) (
 	return
 }
 
-func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interface{}, ino *Inode) (status uint8, err error) {
+func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interface{}, ino *Inode, req *RequestInfo) (status uint8, err error) {
 	status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(req); isDup {
+		log.LogCriticalf("fsmAppendExtents: dup req:%v, previousRespCode:%v", req, previousRespCode)
+		status = previousRespCode
+		return
+	}
 
 	if outOfRange, _ := mp.isInoOutOfRange(ino.Inode); outOfRange {
 		status = proto.OpInodeOutOfRange
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 
@@ -307,6 +350,8 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 	}
 	if existInode == nil || existInode.ShouldDelete() {
 		status = proto.OpNotExistErr
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 
@@ -319,6 +364,8 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 				status = proto.OpNotExistErr
 				log.LogWarnf("fsm(%v) AppendExtents pre check failed, inode(%v) ek(insert: %v)",
 					mp.config.PartitionId, existInode.Inode, ek)
+				mp.recordRequest(req, status)
+				mp.persistRequestInfoToRocksDB(dbHandle, req)
 				return
 			}
 		}
@@ -331,10 +378,13 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 			mp.config.PartitionId, existInode.Inode, delExtents, err)
 		return
 	}
+	mp.recordRequest(req, status)
+	mp.persistRequestInfoToRocksDB(dbHandle, req)
 	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
 		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Commit error:%v",
 			mp.config.PartitionId, existInode.Inode, eks, err)
 		status = proto.OpErr
+		mp.reqRecords.Remove(req)
 		return
 	}
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
@@ -348,11 +398,18 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 	return
 }
 
-func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interface{}, ino *Inode) (status uint8, err error) {
+func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interface{}, ino *Inode, reqInfo *RequestInfo) (status uint8, err error) {
 	status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmInsertExtents: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		status = previousRespCode
+		return
+	}
 
 	if outOfRange, _ := mp.isInoOutOfRange(ino.Inode); outOfRange {
 		status = proto.OpInodeOutOfRange
+		mp.recordRequest(reqInfo, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
 		return
 	}
 
@@ -364,6 +421,8 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 	}
 	if existIno == nil || existIno.ShouldDelete() {
 		status = proto.OpNotExistErr
+		mp.recordRequest(reqInfo, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
 		return
 	}
 
@@ -376,6 +435,8 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 				status = proto.OpNotExistErr
 				log.LogWarnf("fsm(%v) InsertExtents pre check failed, inode(%v) ek(insert: %v)",
 					mp.config.PartitionId, existIno.Inode, ek)
+				mp.recordRequest(reqInfo, status)
+				mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
 				return
 			}
 		}
@@ -390,10 +451,13 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 			mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize, err)
 		return
 	}
+	mp.recordRequest(reqInfo, status)
+	mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
 	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
 		log.LogErrorf("fsm(%v) action(InsertExtents) inode(%v) eks(insert: %v, deleted: %v) size(old: %v, new: %v) Commit error:%v",
 			mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize, err)
 		status = proto.OpErr
+		mp.reqRecords.Remove(reqInfo)
 		return
 	}
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
@@ -407,12 +471,19 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 	return
 }
 
-func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (resp *InodeResponse, err error) {
+func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode, req *RequestInfo) (resp *InodeResponse, err error) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(req); isDup {
+		log.LogCriticalf("fsmExtentsTruncate: dup req:%v, previousRespCode:%v", req, previousRespCode)
+		resp.Status = previousRespCode
+		return
+	}
 
 	if outOfRange, _ := mp.isInoOutOfRange(ino.Inode); outOfRange {
 		resp.Status = proto.OpInodeOutOfRange
+		mp.recordRequest(req, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 
@@ -424,11 +495,15 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 	}
 	if i == nil || i.ShouldDelete() {
 		resp.Status = proto.OpNotExistErr
+		mp.recordRequest(req, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 
 	if proto.IsDir(i.Type) {
 		resp.Status = proto.OpArgMismatchErr
+		mp.recordRequest(req, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 	oldSize := i.Size
@@ -445,6 +520,8 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 		log.LogWarnf("fsm(%v) ExtentsTruncate error, inode(%v) req [oldSize(%v) ==> newSize(%v)] mismatch file size(%v)",
 			mp.config.PartitionId, i.Inode, ino.AccessTime, ino.Size, i.Size)
 		resp.Status = proto.OpArgMismatchErr
+		mp.recordRequest(req, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime)
@@ -454,10 +531,13 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 		resp.Status = proto.OpErr
 		return
 	}
+	mp.recordRequest(req, resp.Status)
+	mp.persistRequestInfoToRocksDB(dbHandle, req)
 	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
 		log.LogErrorf("fsm(%v) action(ExtentsTruncate) inode(%v) size(old: %v, new: %v, req: %v) Commit error:%v",
 			mp.config.PartitionId, ino.Inode, oldSize, newSize, ino.Size, err)
 		resp.Status = proto.OpErr
+		mp.reqRecords.Remove(req)
 		return
 	}
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
@@ -541,9 +621,22 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) fsmSetAttr(dbHandle interface{}, req *SetattrRequest) (resp *InodeResponse, err error) {
+func (mp *metaPartition) fsmSetAttr(dbHandle interface{}, req *SetattrRequest, reqInfo *RequestInfo) (resp *InodeResponse, err error) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmSetAttr: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			return
+		}
+		mp.recordRequest(reqInfo, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
+	}()
 
 	if outOfRange, _ := mp.isInoOutOfRange(req.Inode); outOfRange {
 		resp.Status = proto.OpInodeOutOfRange

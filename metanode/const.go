@@ -179,6 +179,7 @@ const (
 	opFSMSyncMetaConf
 
 	opFSMMetaRaftAddVirtualMP //deprecated
+	opFSMSyncEvictReqRecords
 )
 
 var (
@@ -248,6 +249,8 @@ const (
 	defDumpSnapPreAllocatedMemSize = 4 * unit.MB
 	Uint32Size                     = int(unsafe.Sizeof(uint32(0)))
 	Uint64Size                     = int(unsafe.Sizeof(uint64(0)))
+
+	intervalToSyncEvictReqRecords = time.Second * 5
 )
 
 const (
@@ -267,6 +270,8 @@ const (
 	Version3_3_0           = proto.Version_3_3_0
 	BitMapAllocatorVersion = proto.BitMapAllocator
 	Version4_0_0           = proto.Version_4_0_0
+	Version4_2_0           = proto.ReadDirPlusVersion
+	RemoveDupReqVersion    = proto.RemoveDupReq
 	MetaNodeLatestVersion  = proto.BaseVersion
 )
 
@@ -314,8 +319,9 @@ type SnapshotVersion byte
 const (
 	BaseSnapshotV = iota
 	BatchSnapshotV1 //rocksdb
-	BatchSnapshotV2 //mp reuse, bitmap allocator
-	LatestSnapV = BatchSnapshotV2 //change with max snap version
+	BatchSnapshotV2 //bitmap allocator
+	BatchSnapshotV3 //remove dup op
+	LatestSnapV = BatchSnapshotV3 //change with max snap version
 )
 
 const (

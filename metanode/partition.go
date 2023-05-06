@@ -95,6 +95,7 @@ type MetaPartitionConfig struct {
 	CreationType       int                          `json:"creation_type"`
 	ChildFileMaxCount  uint32                       `json:"-"`
 	TrashCleanInterval uint64                       `json:"-"`
+	EnableRemoveDupReq bool                         `json:"-"`
 
 	RocksWalFileSize     uint64 `json:"rocks_wal_file_size"`
 	RocksWalMemSize      uint64 `json:"rocks_wal_mem_size"`
@@ -201,7 +202,7 @@ type OpInode interface {
 	CreateInodeLink(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
-	SetAttr(reqData []byte, p *Packet) (err error)
+	SetAttr(req *SetattrRequest, reqData []byte, p *Packet) (err error)
 	GetInodeTree() InodeTree
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
@@ -364,6 +365,7 @@ type metaPartition struct {
 	inodeIDAllocator            *inoAllocatorV1
 	status                      int8
 	raftFSMLock                 sync.Mutex
+	reqRecords                  *RequestRecords
 }
 
 // Start starts a meta partition.
@@ -590,6 +592,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		db:               NewRocksDb(),
 		CreationType:     conf.CreationType,
 		stopChState:      mpStopChOpenState,
+		reqRecords:       NewRequestRecords(),
 	}
 	return mp
 }
@@ -831,11 +834,36 @@ func (mp *metaPartition) loadMetaDataToMemory(ctx context.Context) (err error) {
 	if err = mp.loadDeletedInode(ctx, snapshotPath); err != nil {
 		return
 	}
+	if err = mp.loadRequestRecords(snapshotPath); err != nil {
+		return
+	}
 	return
 }
 
 func (mp *metaPartition) loadMetaInRocksDB() (err error) {
+	if err = mp.loadRequestRecordsInRocksDB(); err != nil {
+		return
+	}
 	//todo:range inode, del inode table, set bit map
+	return
+}
+
+func (mp *metaPartition) loadRequestRecordsInRocksDB() (err error) {
+	startKey := []byte{byte(ReqRecordsTable)}
+	endKey := []byte{byte(ReqRecordsTable+1)}
+	batchReq := make([]*RequestInfo, 0)
+	err = mp.db.Range(startKey, endKey, func(k, v []byte) (bool, error) {
+		reqInfos, e := UnmarshalBatchRequestInfo(v)
+		if e != nil {
+			return false, e
+		}
+		batchReq = append(batchReq, reqInfos...)
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("loadRequestRecordsInRocksDB partitionID:%v, err:%v", mp.config.PartitionId, err)
+	}
+	mp.reqRecords = InitRequestRecords(batchReq)
 	return
 }
 
@@ -1006,6 +1034,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		mp.storeMultipart,
 		mp.storeDeletedDentry,
 		mp.storeDeletedInode,
+		mp.storeRequestInfo,
 	}
 	for _, storeFunc := range storeFuncs {
 		var crc uint32
@@ -1258,7 +1287,7 @@ func (mp *metaPartition) UpdatePartition(ctx context.Context, req *UpdatePartiti
 		resp.Result = err.Error()
 		return
 	}
-	r, err := mp.submit(ctx, opFSMUpdatePartition, "", reqData)
+	r, err := mp.submit(ctx, opFSMUpdatePartition, "", reqData, nil)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
@@ -1276,7 +1305,7 @@ func (mp *metaPartition) UpdatePartition(ctx context.Context, req *UpdatePartiti
 }
 
 func (mp *metaPartition) DecommissionPartition(ctx context.Context, req []byte) (err error) {
-	_, err = mp.submit(ctx, opFSMDecommissionPartition, "", req)
+	_, err = mp.submit(ctx, opFSMDecommissionPartition, "", req, nil)
 	return
 }
 
@@ -1731,4 +1760,43 @@ func (mp *metaPartition) updateStatus() {
 		return
 	}
 	return
+}
+
+func (mp *metaPartition) recordRequest(req *RequestInfo, respCode uint8) {
+	if req == nil {
+		return
+	}
+	req.RespCode = respCode
+	mp.reqRecords.Update(req)
+}
+
+func (mp *metaPartition) persistRequestInfoToRocksDB(dbWriteHandle interface{}, req *RequestInfo){
+	if req == nil || !req.EnableRemoveDupReq || mp.HasMemStore() {
+		log.LogDebugf("persistRequestInfoToRocksDB: partitionID(%v), reqInfo(%v) is nil or disable remove dup or mem store mode",
+			mp.config.PartitionId, req)
+		return
+	}
+	key := make([]byte, requestInfoRocksDBKeyLen)
+	key[0] = byte(ReqRecordsTable)
+	binary.BigEndian.PutUint64(key[1:], uint64(req.RequestTime))
+
+	reqInfos := mp.reqRecords.GetRequestsByRequestTime(req.RequestTime)
+	value := reqInfos.MarshalBinary()
+	if err := mp.db.AddItemToBatch(dbWriteHandle, key, value); err != nil {
+		log.LogErrorf("persistRequestInfoToRocksDB, addItemToBatch failed:%v, requestTime:%v, reqInfos:%v",
+			err, req.RequestTime, reqInfos)
+	}
+	return
+}
+
+func (mp *metaPartition) removeDupClientReqEnableState() bool {
+	if enableRemoveDupReq {
+		return true
+	}
+
+	if mp.config.EnableRemoveDupReq {
+		return true
+	}
+
+	return false
 }

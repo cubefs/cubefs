@@ -32,6 +32,7 @@ type storeMsg struct {
 	command    uint32
 	applyIndex uint64
 	snap       Snapshot
+	reqTree    *BTree
 }
 
 func (mp *metaPartition) updateRaftStorageParam() {
@@ -77,6 +78,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timer := time.NewTimer(time.Hour * 24 * 365)
 	timer.Stop()
 	timerCursor := time.NewTimer(intervalToSyncCursor)
+	timerSyncReqRecordsEvictTimestamp := time.NewTimer(time.Second * 5)
 	scheduleState := common.StateStopped
 	dumpFunc := func(msg *storeMsg) {
 		log.LogWarnf("[beforMetaPartitionStore] partitionId=%d: nowAppID"+
@@ -178,7 +180,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
-				if _, err := mp.submit(context.Background(), opFSMStoreTick, "", nil); err != nil {
+				if _, err := mp.submit(context.Background(), opFSMStoreTick, "", nil, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
 						timer.Reset(intervalToPersistData)
@@ -191,10 +193,22 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				cursorBuf := make([]byte, 8)
 				binary.BigEndian.PutUint64(cursorBuf, mp.config.Cursor)
-				if _, err := mp.submit(context.Background(), opFSMSyncCursor, "", cursorBuf); err != nil {
+				if _, err := mp.submit(context.Background(), opFSMSyncCursor, "", cursorBuf, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerCursor.Reset(intervalToSyncCursor)
+			case <- timerSyncReqRecordsEvictTimestamp.C:
+				if _, ok := mp.IsLeader(); !ok {
+					timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)
+					continue
+				}
+				evictTimestamp := mp.reqRecords.GetEvictTimestamp()
+				evictTimestampBuff := make([]byte, 8)
+				binary.BigEndian.PutUint64(evictTimestampBuff, uint64(evictTimestamp))
+				if _, err := mp.submit(context.Background(), opFSMSyncEvictReqRecords, "", evictTimestampBuff, nil); err != nil {
+					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
+				}
+				timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)
 			}
 		}
 	}(mp.stopC)
@@ -278,6 +292,9 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 				mp.config.ChildFileMaxCount = mp.manager.getChildFileMaxCount(mp.config.VolName)
 				mp.config.TrashCleanInterval = mp.manager.getTrashCleanInterval(mp.config.VolName)
 				mp.updateMetaPartitionInodeAllocatorState()
+				if enableState, err := mp.manager.getRemoveDupReqEnableState(mp.config.VolName); err == nil {
+					mp.config.EnableRemoveDupReq = enableState
+				}
 				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v, childFileMaxCount: %v, trashCleanInterval: %vMin",
 					mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays, mp.config.ChildFileMaxCount, mp.config.TrashCleanInterval)
 			}

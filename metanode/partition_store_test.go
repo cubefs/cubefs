@@ -502,3 +502,57 @@ func compareMultipart(expect, actual *Multipart) bool {
 	}
 	return true
 }
+
+func TestMetaPartition_storeReqRecords(t *testing.T) {
+	filename := path.Join(rootdir, requestRecordFile)
+	_, err := os.Stat(filename)
+	if err == nil {
+		os.Remove(filename)
+	}
+	defer os.Remove(filename)
+
+	batchReqInfo := genBatchRequestInfo(128, false)
+	reqRecords := InitRequestRecords(batchReqInfo)
+
+	msg := new(storeMsg)
+	msg.reqTree = reqRecords.ReqBTreeSnap()
+
+	mp := new(metaPartition)
+	mp.config = new(MetaPartitionConfig)
+	mp.config.PartitionId = 1
+	mp.config.VolName = "ltptest"
+	mp.config.StoreMode = proto.StoreModeMem
+	mp.config.Cursor = 10000
+	mp.config.Start = 0
+	mp.initMemoryTree()
+	_, err = mp.storeRequestInfo(rootdir, msg)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+
+	err = mp.loadRequestRecords(rootdir)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+
+	if mp.reqRecords.Count() != len(batchReqInfo){
+		t.Errorf("count mismatch, expect:%v, actual:%v", len(batchReqInfo), mp.reqRecords.Count())
+		t.FailNow()
+	}
+
+	if mp.reqRecords.reqTree.Count() != reqRecords.reqTree.Count() {
+		t.Errorf("tree count mismatch, expect:%v, actual:%v", reqRecords.reqTree.Count(), mp.reqRecords.reqTree.Count())
+		t.FailNow()
+	}
+
+	reqRecords.reqTree.Ascend(func(i BtreeItem) bool {
+		if ok := mp.reqRecords.reqTree.Has(i); !ok {
+			t.Errorf("result mismatch, req(%v) not exist in metapartition req records", i.(*RequestInfo))
+			return false
+		}
+		return true
+	})
+	return
+}

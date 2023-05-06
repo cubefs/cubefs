@@ -47,13 +47,25 @@ func NewDentryResponse() *DentryResponse {
 }
 
 // Insert a dentry into the dentry tree.
-func (mp *metaPartition) fsmCreateDentry(dbHandle interface{}, dentry *Dentry, forceUpdate bool) (status uint8, err error) {
+func (mp *metaPartition) fsmCreateDentry(dbHandle interface{}, dentry *Dentry, forceUpdate bool, reqInfo *RequestInfo) (status uint8, err error) {
 	var (
 		parIno *Inode
 		d      *Dentry
 		ok     bool
 	)
 	status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmCreateDentry: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		status = previousRespCode
+		return
+	}
+	defer func() {
+		if err != nil {
+			return
+		}
+		mp.recordRequest(reqInfo, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
+	}()
 
 	if outOfRange, _ := mp.isInoOutOfRange(dentry.ParentId); outOfRange && !forceUpdate {
 		status = proto.OpInodeOutOfRange
@@ -130,7 +142,7 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8, error) {
 	return d, status, nil
 }
 
-func (mp *metaPartition) fsmDeleteDentry(dbHandle interface{}, dentry *Dentry, timestamp int64, from string, checkInode bool, trashEnable bool) (
+func (mp *metaPartition) fsmDeleteDentry(dbHandle interface{}, dentry *Dentry, timestamp int64, from string, checkInode bool, trashEnable bool, reqInfo *RequestInfo) (
 	resp *DentryResponse, err error) {
 	var (
 		d      *Dentry
@@ -139,6 +151,18 @@ func (mp *metaPartition) fsmDeleteDentry(dbHandle interface{}, dentry *Dentry, t
 	)
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmDeleteDentry: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		return
+	}
+	defer func() {
+		if err != nil {
+			return
+		}
+		mp.recordRequest(reqInfo, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
+	}()
 
 	if outOfRange, _ := mp.isInoOutOfRange(dentry.ParentId); outOfRange {
 		resp.Status = proto.OpInodeOutOfRange
@@ -213,7 +237,7 @@ func (mp *metaPartition) fsmBatchDeleteDentry(dbHandle interface{}, batchDentry 
 			wrongIndex = index
 			break
 		}
-		rsp, err = mp.fsmDeleteDentry(dbWriteHandle, dentry, timestamp, from, true, trashEnable)
+		rsp, err = mp.fsmDeleteDentry(dbWriteHandle, dentry, timestamp, from, true, trashEnable, nil)
 		if err != nil {
 			_ = mp.dentryTree.ReleaseBatchWriteHandle(dbWriteHandle)
 			wrongIndex = index

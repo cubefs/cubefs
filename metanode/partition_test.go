@@ -149,6 +149,23 @@ func checkMPInodeAndDentry(t *testing.T, mp1, mp2 *metaPartition) {
 		}
 		return true, nil
 	})
+
+	if mp1.reqRecords == nil {
+		return
+	}
+
+	if mp1.reqRecords.Count() != mp2.reqRecords.Count(){
+		t.Errorf("req records count different [mp1:%d], [mp2:%d]",
+			mp1.reqRecords.Count(), mp2.reqRecords.Count())
+		t.FailNow()
+	}
+	mp1.reqRecords.reqTree.Ascend(func(i BtreeItem) bool {
+		if item := mp1.reqRecords.reqTree.Get(i); item == nil {
+			t.Errorf("req records test failed, reqInfo mp1(%v), mp2(nil)", i.(*RequestInfo))
+			t.FailNow()
+		}
+		return true
+	})
 }
 
 func TestMetaPartition_StoreAndLoad(t *testing.T) {
@@ -172,12 +189,14 @@ func TestMetaPartition_StoreAndLoad(t *testing.T) {
 		t.FailNow()
 	}
 	genDentry(t, mp, count, maxInode)
+	mp.reqRecords = InitRequestRecords(genBatchRequestInfo(128, false))
 
 	start := time.Now()
 	mp.store(&storeMsg{
 		command:    opFSMStoreTick,
 		applyIndex: mp.applyID,
 		snap:       NewSnapshot(mp),
+		reqTree:    mp.reqRecords.ReqBTreeSnap(),
 	})
 	storeV1Cost := time.Since(start)
 
@@ -186,6 +205,7 @@ func TestMetaPartition_StoreAndLoad(t *testing.T) {
 		command:    opFSMStoreTick,
 		applyIndex: mp.applyID,
 		snap:       NewSnapshot(mp),
+		reqTree:    mp.reqRecords.ReqBTreeSnap(),
 	})
 	storeV2Cost := time.Since(start)
 	t.Logf("Store %dW inodes and %dW dentry, V1 cost:%v, V2 cost:%v", mp.inodeTree.Count()/10000, mp.dentryTree.Count()/10000, storeV1Cost, storeV2Cost)
@@ -262,4 +282,56 @@ func Test_nextInodeID(t *testing.T) {
 	}
 	defer releaseMetaPartition(mp)
 
+}
+
+func TestMetaPartition_storeAndLoadReqInfoInRocksDBStoreMode(t *testing.T) {
+	mp, _ := mockMetaPartition(1, 1, proto.StoreModeRocksDb, "./test_reqRecordStore", ApplyMock)
+	defer releaseMetaPartition(mp)
+	mp.reqRecords = NewRequestRecords()
+	dbWriteHandle, err := mp.db.CreateBatchHandler()
+
+	for index:= 0; index < 128; index++ {
+		reqInfo := genRequestInfo(true)
+		if _, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+			continue
+		}
+		mp.reqRecords.Update(reqInfo)
+		mp.persistRequestInfoToRocksDB(dbWriteHandle, reqInfo)
+		time.Sleep(time.Millisecond * 100)
+	}
+
+	_ = mp.db.CommitBatchAndRelease(dbWriteHandle)
+	mp.db.CloseDb()
+
+	mp2 := new(metaPartition)
+	mp2.config = newDefaultMpConfig(1, 1, 0, math.MaxInt64, proto.StoreModeRocksDb)
+	mp2.config.RootDir = "./test_reqRecordStore"
+	mp2.config.RocksDBDir = "./test_reqRecordStore"
+	mp2.config.PartitionId = 1
+	mp2.db = NewRocksDb()
+	if err = mp2.db.OpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
+		mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
+		t.Errorf("open db failed, dir:%v, error:%v", mp.getRocksDbRootDir(), err)
+		return
+	}
+	defer mp2.db.CloseDb()
+
+
+	if err = mp2.loadRequestRecordsInRocksDB(); err != nil {
+		t.Errorf("load requset records in rocksDB failed:%v", err)
+		return
+	}
+
+	if mp.reqRecords.Count() != mp2.reqRecords.Count() {
+		t.Errorf("req records count mismatch, expect:%v, actual:%v", mp.reqRecords.Count(), mp2.reqRecords.Count())
+		return
+	}
+
+	mp.reqRecords.reqTree.Ascend(func(i BtreeItem) bool {
+		if ok := mp2.reqRecords.reqTree.Has(i); !ok {
+			t.Errorf("result mismatch, req(%v) not exist in metapartition req records", i.(*RequestInfo))
+			return false
+		}
+		return true
+	})
 }

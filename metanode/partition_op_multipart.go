@@ -254,6 +254,6 @@ func (mp *metaPartition) putMultipart(ctx context.Context, op uint32, multipart 
 	if encoded, err = multipart.Bytes(); err != nil {
 		return
 	}
-	resp, err = mp.submit(ctx, op, "", encoded)
+	resp, err = mp.submit(ctx, op, "", encoded, nil)
 	return
 }

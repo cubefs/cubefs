@@ -33,7 +33,8 @@ var MetaBatchSnapshotVersionMap = map[string]SnapshotVersion{
 	Version3_3_0:           BatchSnapshotV1,
 	BitMapAllocatorVersion: BatchSnapshotV2,
 	Version4_0_0:           BatchSnapshotV2,
-	MetaNodeLatestVersion:  LatestSnapV,
+	Version4_2_0:           BatchSnapshotV2,
+	RemoveDupReqVersion:    BatchSnapshotV3,
 }
 
 type EkData struct {
@@ -106,6 +107,7 @@ type BatchMetaItemIterator struct {
 	snapshotSign    hash.Hash32
 	snapshotCrcFlag bool
 	treeSnap        Snapshot
+	reqRecordsSnap  *BTree
 	batchSnapV      SnapshotVersion
 	metaConf        MetaPartitionConfig
 }
@@ -130,6 +132,7 @@ func newBatchMetaItemIterator(mp *metaPartition, snapV SnapshotVersion) (si *Bat
 	si.db = mp.db
 	si.rocksDBSnap = mp.db.OpenSnap()
 	si.metaConf = *mp.config
+	si.reqRecordsSnap = mp.reqRecords.ReqBTreeSnap()
 
 	// start data producer
 	go func(iter *BatchMetaItemIterator) {
@@ -271,6 +274,20 @@ func newBatchMetaItemIterator(mp *metaPartition, snapV SnapshotVersion) (si *Bat
 		if checkClose() {
 			return
 		}
+
+		if snapV < BatchSnapshotV3 {
+			return
+		}
+		iter.reqRecordsSnap.Ascend(func(i BtreeItem) bool {
+			if ok := produceItem(i.(*RequestInfo)); !ok {
+				return false
+			}
+			return true
+		})
+		if checkClose() {
+			return
+		}
+
 	}(si)
 
 	return
@@ -371,6 +388,9 @@ func (si *BatchMetaItemIterator) Next() (data []byte, err error) {
 			continue
 		case *EkData:
 			mulItems.DelExtents = append(mulItems.DelExtents, item.(*EkData))
+			continue
+		case *RequestInfo:
+			mulItems.RequestBatches = append(mulItems.RequestBatches, item.(*RequestInfo))
 			continue
 		case *MetaPartitionConfig:
 			var confJsonData []byte

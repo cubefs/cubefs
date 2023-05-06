@@ -2942,7 +2942,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
 	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod,
 	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
-	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64) (err error) {
+	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
+	enableRemoveDupReq bool) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3076,6 +3077,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.TrashCleanInterval = trashCleanInterval
 	vol.BatchDelInodeCnt = batchDelInodeCnt
 	vol.DelInodeInterval = delInodeInterval
+	vol.enableRemoveDupReq = enableRemoveDupReq
 	if isSmart && !vol.isSmart {
 		vol.smartEnableTime = time.Now().Unix()
 	}
@@ -3866,6 +3868,21 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.DpTimeoutCntThreshold, int32(val.(int64)))
 	}
 
+	oldClientReqReservedCount := atomic.LoadInt32(&c.cfg.ClientReqRecordsReservedCount)
+	if val, ok := params[proto.ClientReqRecordReservedCntKey]; ok {
+		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedCount, int32(val.(int64)))
+	}
+
+	oldClientReqReservedMin := atomic.LoadInt32(&c.cfg.ClientReqRecordsReservedMin)
+	if val, ok := params[proto.ClientReqRecordReservedMinKey]; ok {
+		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedMin, int32(val.(int64)))
+	}
+
+	oldClientReqRemoveDup := c.cfg.ClientReqRemoveDup
+	if val, ok := params[proto.ClientReqRemoveDupFlagKey]; ok {
+		c.cfg.ClientReqRemoveDup = val.(bool)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3912,6 +3929,9 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.DpTimeoutCntThreshold, oldDpTimeoutCntThreshold)
 		c.cfg.RemoteCacheBoostEnable = oldRemoteCacheBoostEnable
 		atomic.StoreInt64(&c.cfg.ClientNetConnTimeoutUs, oldClientNetConnTimeout)
+		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedCount, oldClientReqReservedCount)
+		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedMin, oldClientReqReservedMin)
+		c.cfg.ClientReqRemoveDup = oldClientReqRemoveDup
 		err = proto.ErrPersistenceByRaft
 		return
 	}

@@ -15,10 +15,12 @@
 package iputil
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -166,5 +168,25 @@ func GetRemoteRealIP(r *http.Request) (ip string) {
 		return
 	}
 	ip = strings.Split(r.RemoteAddr, ":")[0]
+	return
+}
+
+func ConvertIPStrToUnit32(ipAddr string) (value uint32, err error){
+	strArr := strings.Split(ipAddr, ".")
+	if len(strArr) != 4 {
+		err = fmt.Errorf("invalid addr:%s", ipAddr)
+		return
+	}
+	data := make([]byte, 4)
+	for index, str := range strArr {
+		var v uint64
+		v, err = strconv.ParseUint(str, 10, 32)
+		if err != nil || v > 255 {
+			err = fmt.Errorf("invalid addr:%s", ipAddr)
+			return
+		}
+		data[index] = byte(v)
+	}
+	value = binary.BigEndian.Uint32(data)
 	return
 }

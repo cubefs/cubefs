@@ -263,6 +263,9 @@ type ClusterView struct {
 	BitMapAllocatorMinFreeFactor        float64
 	DisableStrictVolZone                bool
 	AutoUpdatePartitionReplicaNum       bool
+	ClientReqRecordsReservedCount       int32
+	ClientReqRecordsReservedMin         int32
+	ClientReqRemoveDupFlag              bool
 }
 
 type ClusterStatInfo struct {

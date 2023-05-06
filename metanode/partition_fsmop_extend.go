@@ -14,16 +14,32 @@
 
 package metanode
 
-import "github.com/cubefs/cubefs/proto"
+import (
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+)
 
 type ExtendOpResult struct {
 	Status uint8
 	Extend *Extend
 }
 
-func (mp *metaPartition) fsmSetXAttr(dbHandle interface{}, extend *Extend) (resp *proto.XAttrRaftResponse, err error) {
+func (mp *metaPartition) fsmSetXAttr(dbHandle interface{}, extend *Extend, reqInfo *RequestInfo) (resp *proto.XAttrRaftResponse, err error) {
 	resp = &proto.XAttrRaftResponse{Inode: extend.inode}
 	resp.Status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmSetXAttr: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			return
+		}
+		mp.recordRequest(reqInfo, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
+	}()
 
 	if outOfRange, _ := mp.isInoOutOfRange(extend.inode); outOfRange {
 		resp.Status = proto.OpInodeOutOfRange
@@ -48,9 +64,22 @@ func (mp *metaPartition) fsmSetXAttr(dbHandle interface{}, extend *Extend) (resp
 	return
 }
 
-func (mp *metaPartition) fsmRemoveXAttr(dbHandle interface{}, extend *Extend) (resp *proto.XAttrRaftResponse, err error) {
+func (mp *metaPartition) fsmRemoveXAttr(dbHandle interface{}, extend *Extend, reqInfo *RequestInfo) (resp *proto.XAttrRaftResponse, err error) {
 	resp = &proto.XAttrRaftResponse{Inode: extend.inode}
 	resp.Status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmRemoveXAttr: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			return
+		}
+		mp.recordRequest(reqInfo, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
+	}()
 
 	if outOfRange, _ := mp.isInoOutOfRange(extend.inode); outOfRange {
 		resp.Status = proto.OpInodeOutOfRange

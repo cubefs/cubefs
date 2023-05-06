@@ -163,6 +163,9 @@ type clusterConfig struct {
 	RemoteCacheBoostEnable              bool
 	ClientNetConnTimeoutUs              int64
 	DpTimeoutCntThreshold               int32
+	ClientReqRecordsReservedCount       int32
+	ClientReqRecordsReservedMin         int32
+	ClientReqRemoveDup                  bool //default false, disable remove dup
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

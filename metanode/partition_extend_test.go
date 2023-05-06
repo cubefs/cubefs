@@ -1,12 +1,17 @@
 package metanode
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"hash/crc32"
+	"math"
+	"math/rand"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func SetXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -17,16 +22,30 @@ func SetXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 		return
 	}
 	//set xattr
+	rand.Seed(time.Now().UnixNano())
+	clientIP := uint32(rand.Int31n(math.MaxInt32))
+	clientStartTime := time.Now().Unix()
+	clientID := uint64(rand.Int63n(math.MaxInt64))
+	//set xattr
+	keys := make([]string, 0)
 	for _, ino := range inos {
 		for index := 0; index < 5; index++ {
 			req := &proto.SetXAttrRequest{
-				Inode: ino,
-				Key: fmt.Sprintf("test_%v", index),
-				Value: fmt.Sprintf("test_%v_%v", index, ino),
+				Inode:           ino,
+				Key:             fmt.Sprintf("test_%v", index),
+				Value:           fmt.Sprintf("test_%v_%v", index, ino),
+				ClientStartTime: clientStartTime,
+				ClientIP:        clientIP,
+				ClientID:        clientID,
 			}
+			keys = append(keys, req.Key)
 			packet := &Packet{}
+			packet.Data, _ = json.Marshal(req)
+			packet.Size = uint32(len(packet.Data))
+			packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+			packet.ReqID = rand.Int63n(math.MaxInt64)
 			if err = leader.SetXAttr(req, packet); err != nil || packet.ResultCode != proto.OpOk {
-				t.Errorf("set xattr failed, req:%v, err:%v", req, err)
+				t.Errorf("set xattr error[%v] or resultCode mismatch, resultCode expect:OpOk(0xF0), actual:0x%X", err, packet.ResultCode)
 				return
 			}
 		}
@@ -186,17 +205,29 @@ func RemoveXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 		t.Error(err)
 		return
 	}
+
+	rand.Seed(time.Now().UnixNano())
+	clientIP := uint32(rand.Int31n(math.MaxInt32))
+	clientStartTime := time.Now().Unix()
+	clientID := uint64(rand.Int63n(math.MaxInt64))
 	//set xattr
 	keys := make([]string, 0)
 	for _, ino := range inos {
 		for index := 0; index < 5; index++ {
 			req := &proto.SetXAttrRequest{
-				Inode: ino,
-				Key: fmt.Sprintf("test_%v", index),
-				Value: fmt.Sprintf("test_%v_%v", index, ino),
+				Inode:           ino,
+				Key:             fmt.Sprintf("test_%v", index),
+				Value:           fmt.Sprintf("test_%v_%v", index, ino),
+				ClientStartTime: clientStartTime,
+				ClientIP:        clientIP,
+				ClientID:        clientID,
 			}
 			keys = append(keys, req.Key)
 			packet := &Packet{}
+			packet.Data, _ = json.Marshal(req)
+			packet.Size = uint32(len(packet.Data))
+			packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+			packet.ReqID = rand.Int63n(math.MaxInt64)
 			if err = leader.SetXAttr(req, packet); err != nil || packet.ResultCode != proto.OpOk {
 				t.Errorf("set xattr error[%v] or resultCode mismatch, resultCode expect:OpOk(0xF0), actual:0x%X", err, packet.ResultCode)
 				return
@@ -207,10 +238,17 @@ func RemoveXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 	for _, ino := range inos {
 		for _, key := range keys {
 			req := &proto.RemoveXAttrRequest{
-				Inode: ino,
-				Key: key,
+				Inode:           ino,
+				Key:             key,
+				ClientStartTime: clientStartTime,
+				ClientIP:        clientIP,
+				ClientID:        clientID,
 			}
 			packet := &Packet{}
+			packet.Data, _ = json.Marshal(req)
+			packet.Size = uint32(len(packet.Data))
+			packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+			packet.ReqID = rand.Int63n(math.MaxInt64)
 			if err = leader.RemoveXAttr(req, packet); err != nil || packet.ResultCode != proto.OpOk {
 				t.Errorf("remove xattr error[%v] or resultCode mismatch, resultCode expect:OpOk(0xF0), actual:0x%X", err, packet.ResultCode)
 				return
@@ -279,17 +317,29 @@ func ListXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 		t.Error(err)
 		return
 	}
+
+	rand.Seed(time.Now().UnixNano())
+	clientIP := uint32(rand.Int31n(math.MaxInt32))
+	clientStartTime := time.Now().Unix()
+	clientID := uint64(rand.Int63n(math.MaxInt64))
 	//set xattr
 	keys := make([]string, 0)
 	for _, ino := range inos {
 		for index := 0; index < 5; index++ {
 			req := &proto.SetXAttrRequest{
-				Inode: ino,
-				Key: fmt.Sprintf("test_%v", index),
-				Value: fmt.Sprintf("test_%v_%v", index, ino),
+				Inode:           ino,
+				Key:             fmt.Sprintf("test_%v", index),
+				Value:           fmt.Sprintf("test_%v_%v", index, ino),
+				ClientStartTime: clientStartTime,
+				ClientIP:        clientIP,
+				ClientID:        clientID,
 			}
 			keys = append(keys, req.Key)
 			packet := &Packet{}
+			packet.Data, _ = json.Marshal(req)
+			packet.Size = uint32(len(packet.Data))
+			packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+			packet.ReqID = rand.Int63n(math.MaxInt64)
 			if err = leader.SetXAttr(req, packet); err != nil || packet.ResultCode != proto.OpOk {
 				t.Errorf("set xattr error[%v] or resultCode mismatch, resultCode expect:OpOk(0xF0), actual:0x%X", err, packet.ResultCode)
 				return

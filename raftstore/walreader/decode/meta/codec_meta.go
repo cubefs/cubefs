@@ -76,6 +76,7 @@ const (
 	metadataOpFSMSynVirtualMPs // Deprecated
 
 	metadataOpFSMSyncMetaConf
+	metadataOpFSMSyncEvictReqRecords
 )
 
 const (
@@ -323,6 +324,9 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 			inodes = append(inodes, binary.BigEndian.Uint64(inodeData))
 		}
 		columnValAttrs.SetValue(fmt.Sprintf("inodes:%v", inodes))
+	case metadataOpFSMSyncEvictReqRecords:
+		columnValOp.SetValue("SyncEvictTimestamp")
+		columnValAttrs.SetValue(fmt.Sprintf("EvictTimestamp:%v", int64(binary.BigEndian.Uint64(opKVData.V))))
 	default:
 		columnValOp.SetValue(strconv.Itoa(int(opKVData.Op)))
 		columnValAttrs.SetValue("N/A")

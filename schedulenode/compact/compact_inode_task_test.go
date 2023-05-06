@@ -639,7 +639,7 @@ func setVolForceRow(forceRow bool) {
 		int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 		forceRow, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, fmt.Sprintf("%v,%v", vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica), strings.Join(vv.SmartRules, ","),
 		uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag, vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, 0, 0, 0, vv.UmpCollectWay, -1, -1, false,
-		"", false, false, 0)
+		"", false, false, 0, false)
 }
 
 func calcAuthKey(key string) (authKey string) {

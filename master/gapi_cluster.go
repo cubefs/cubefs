@@ -699,6 +699,9 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		MetaTrashCleanInterval:              m.cluster.cfg.MetaTrashCleanInterval,
 		MetaRaftLogSize:                     m.cluster.cfg.MetaRaftLogSize,
 		MetaRaftLogCap:                      m.cluster.cfg.MetaRaftLogCap,
+		ClientReqRecordsReservedCount:       m.cluster.cfg.ClientReqRecordsReservedCount,
+		ClientReqRecordsReservedMin:         m.cluster.cfg.ClientReqRecordsReservedMin,
+		ClientReqRemoveDupFlag:              m.cluster.cfg.ClientReqRemoveDup,
 	}
 
 	vols := m.cluster.allVolNames()

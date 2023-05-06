@@ -1747,7 +1747,7 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	// update to cross region vol
 	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, 0, 1, false, false, false, false, false, false,
 		true, false, false, buildAuthKey("cfs"), newZoneName, "0,0", "", 0, 1, 120, "default", 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
-		"", false, false, 0)
+		"", false, false, 0, false)
 	if !assert.NoErrorf(t, err, "UpdateVolume err:%v", err) {
 		return
 	}
@@ -3900,7 +3900,8 @@ func updateVolCacheConfig(volName, remoteCacheBoostPath string, remoteCacheBoost
 		remoteCacheBoostPath,
 		remoteCacheBoostEnable,
 		remoteCacheAutoPrepare,
-		remoteCacheTTL)
+		remoteCacheTTL,
+		false)
 	if err != nil {
 		return
 	}

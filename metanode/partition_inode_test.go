@@ -7,7 +7,9 @@ import (
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/unit"
+	"hash/crc32"
 	"math"
+	"math/rand"
 	"os"
 	"path"
 	"reflect"
@@ -234,11 +236,18 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 		Uid:         0,
 		Mode:        470,
 	}
-
+	rand.Seed(time.Now().UnixMilli())
 	reqUnlinkInode := &proto.UnlinkInodeRequest{
 		Inode: 10 + cursor,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 	}
-	resp := &Packet{}
+	var resp = &Packet{}
+	resp.Data, _ = json.Marshal(reqUnlinkInode)
+	resp.Size = uint32(len(resp.Data))
+	resp.CRC = crc32.ChecksumIEEE(resp.Data[:resp.Size])
+	resp.ReqID = rand.Int63n(math.MaxInt64)
 	var err error
 
 	for i := 0; i < 100; i++ {
@@ -282,15 +291,17 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 		return
 	}
 
+	resp.ReqID = rand.Int63n(math.MaxInt64)
 	err = leader.UnlinkInode(reqUnlinkInode, resp)
 	if resp.ResultCode != proto.OpOk {
 		t.Errorf("unlink inode test failed:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
 		return
 	}
 
+	resp.ReqID = rand.Int63n(math.MaxInt64)
 	err = leader.UnlinkInode(reqUnlinkInode, resp)
 	if resp.ResultCode == proto.OpOk {
-		t.Errorf("same inode create failed, inode link:%d", inode.NLink)
+		t.Errorf("unlink failed, inode link:%d", inode.NLink)
 		return
 	}
 	t.Logf("unlink inode test success:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
@@ -312,6 +323,7 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 	_ = inodePut(follower.inodeTree, inode)
 
 	reqUnlinkInode.Inode = 11 + cursor
+	resp.ReqID = rand.Int63n(math.MaxInt64)
 	err = leader.UnlinkInode(reqUnlinkInode, resp)
 	if resp.ResultCode == proto.OpOk {
 		t.Errorf("same inode create failed, inode link:%d", inode.NLink)
@@ -404,10 +416,18 @@ func BatchInodeUnlinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	testInos := inos[20:40]
 	for _, ino := range testInos {
 		//create nlink for dir
+		rand.Seed(time.Now().UnixMilli())
 		req := &proto.LinkInodeRequest{
 			Inode: ino,
+			ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+			ClientStartTime: time.Now().Unix(),
+			ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 		}
 		packet := &Packet{}
+		packet.Data, _ = json.Marshal(req)
+		packet.Size = uint32(len(packet.Data))
+		packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+		packet.ReqID = rand.Int63n(math.MaxInt64)
 		if err = leader.CreateInodeLink(req, packet); err != nil || packet.ResultCode != proto.OpOk {
 			t.Errorf("create inode link failed, err:%v, resultCode:%v", err, packet.ResultCode)
 			return
@@ -734,10 +754,18 @@ func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
 		t.Fatal(err)
 		return
 	}
+	rand.Seed(time.Now().UnixMilli())
 	req := &proto.LinkInodeRequest{
 		Inode: ino,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 	}
 	packet := &Packet{}
+	packet.Data, _ = json.Marshal(req)
+	packet.Size = uint32(len(packet.Data))
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	packet.ReqID = rand.Int63n(math.MaxInt64)
 	if err = leader.CreateInodeLink(req, packet); err != nil || packet.ResultCode != proto.OpOk {
 		t.Errorf("create inode link failed, err:%v, resultCode:%v", err, packet.ResultCode)
 		return
@@ -764,10 +792,18 @@ func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 
 	//create inode link for not exist inode
+	rand.Seed(time.Now().UnixMilli())
 	req = &proto.LinkInodeRequest{
 		Inode: math.MaxUint64 - 10,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 	}
 	packet = &Packet{}
+	packet.Data, _ = json.Marshal(req)
+	packet.Size = uint32(len(packet.Data))
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	packet.ReqID = rand.Int63n(math.MaxInt64)
 	if _ = leader.CreateInodeLink(req, packet); packet.ResultCode != proto.OpInodeOutOfRange {
 		t.Errorf("create inode link for not exist inode failed, expect result code is OpInodeOutOfRange, "+
 			"but actual result is:0x%X", packet.ResultCode)
@@ -778,10 +814,18 @@ func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	inode.SetDeleteMark()
 	_ = inodePut(leader.inodeTree, inode)
 	_ = inodePut(follower.inodeTree, inode)
+	rand.Seed(time.Now().UnixMilli())
 	req = &proto.LinkInodeRequest{
 		Inode: ino,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 	}
 	packet = &Packet{}
+	packet.Data, _ = json.Marshal(req)
+	packet.Size = uint32(len(packet.Data))
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	packet.ReqID = rand.Int63n(math.MaxInt64)
 	if _ = leader.CreateInodeLink(req, packet); packet.ResultCode != proto.OpNotExistErr {
 		t.Errorf("create inode link for mark delete inode failed, expect result code is OpNotExistErr, "+
 			"but actual result is:0x%X", packet.ResultCode)
@@ -813,10 +857,18 @@ func EvictFileInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 
 	//unlink inode
+	rand.Seed(time.Now().UnixMilli())
 	reqUnlinkInode := &proto.UnlinkInodeRequest{
-		Inode: ino,
+		Inode:           ino,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 	}
 	packet := &Packet{}
+	packet.Data, _ = json.Marshal(reqUnlinkInode)
+	packet.Size = uint32(len(packet.Data))
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	packet.ReqID = rand.Int63n(math.MaxInt64)
 	if err = leader.UnlinkInode(reqUnlinkInode, packet); err != nil || packet.ResultCode != proto.OpOk {
 		t.Errorf("unlink inode failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
 		return
@@ -895,11 +947,18 @@ func EvictDirInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 		t.Errorf("inode info in mem is not equal to rocks, mem:%s, rocks:%s", inodeInLeaderMP.String(), inodeInFollowerMP.String())
 		return
 	}
-
+	rand.Seed(time.Now().UnixMilli())
 	req := &proto.LinkInodeRequest{
 		Inode: ino,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 	}
 	packet := &Packet{}
+	packet.Data, _ = json.Marshal(req)
+	packet.Size = uint32(len(packet.Data))
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	packet.ReqID = rand.Int63n(math.MaxInt64)
 	if err = leader.CreateInodeLink(req, packet); err != nil || packet.ResultCode != proto.OpOk {
 		t.Errorf("create inode link failed, err:%v, resultCode:%v", err, packet.ResultCode)
 		return
@@ -945,10 +1004,18 @@ func EvictDirInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 
 	//unlink to empty
+	rand.Seed(time.Now().UnixMilli())
 	reqUnlinkInode := &proto.UnlinkInodeRequest{
 		Inode: ino,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 	}
 	packet = &Packet{}
+	packet.Data, _ = json.Marshal(reqUnlinkInode)
+	packet.Size = uint32(len(packet.Data))
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	packet.ReqID = rand.Int63n(math.MaxInt64)
 	if err = leader.UnlinkInode(reqUnlinkInode, packet); err != nil || packet.ResultCode != proto.OpOk {
 		t.Errorf("unlink inode failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
 		return
@@ -1117,7 +1184,7 @@ func SetAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 		return
 	}
 	packet := &Packet{}
-	if err = leader.SetAttr(reqData, packet); err != nil || packet.ResultCode != proto.OpOk {
+	if err = leader.SetAttr(req, reqData, packet); err != nil || packet.ResultCode != proto.OpOk {
 		t.Errorf("set attr failed, err:%v, resultCode:%v", err, packet.ResultCode)
 		return
 	}

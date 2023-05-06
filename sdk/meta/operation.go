@@ -32,6 +32,13 @@ import (
 
 // API implementations
 //
+type RequestInfo struct {
+	ClientID uint64
+	ClientIP uint32
+	RequestID uint32
+	CRC uint32
+
+}
 
 func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
 
@@ -87,10 +94,12 @@ func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uin
 	noTrash bool) (status int, info *proto.InodeInfo, err error) {
 
 	req := &proto.UnlinkInodeRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		NoTrash:     noTrash,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		Inode:           inode,
+		NoTrash:         noTrash,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -186,12 +195,14 @@ func (mw *MetaWrapper) dcreate(ctx context.Context, mp *MetaPartition, parentID 
 	}
 
 	req := &proto.CreateDentryRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		ParentID:    parentID,
-		Inode:       inode,
-		Name:        name,
-		Mode:        mode,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		ParentID:        parentID,
+		Inode:           inode,
+		Name:            name,
+		Mode:            mode,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -297,11 +308,13 @@ func (mw *MetaWrapper) ddelete(ctx context.Context, mp *MetaPartition, parentID 
 	noTrash bool) (status int, inode uint64, err error) {
 
 	req := &proto.DeleteDentryRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		ParentID:    parentID,
-		Name:        name,
-		NoTrash:     noTrash,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		ParentID:        parentID,
+		Name:            name,
+		NoTrash:         noTrash,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -667,11 +680,13 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, ek proto.ExtentKey, isPreExtent bool) (status int, err error) {
 
 	req := &proto.InsertExtentKeyRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		Extent:      ek,
-		IsPreExtent: isPreExtent,
+		VolName:     		mw.volname,
+		PartitionID: 		mp.PartitionID,
+		Inode:       		inode,
+		Extent:      		ek,
+		IsPreExtent: 		isPreExtent,
+		ClientID: 	 		mw.GetClientID(),
+		ClientStartTime: 	mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -767,12 +782,14 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, oldSize, size uint64) (status int, err error) {
 
 	req := &proto.TruncateRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		Size:        size,
-		Version:     proto.TruncateRequestVersion_1,
-		OldSize:     oldSize,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		Inode:           inode,
+		Size:            size,
+		Version:         proto.TruncateRequestVersion_1,
+		OldSize:         oldSize,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -826,9 +843,11 @@ func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, o
 func (mw *MetaWrapper) ilink(ctx context.Context, mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
 
 	req := &proto.LinkInodeRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		Inode:           inode,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -882,15 +901,17 @@ func (mw *MetaWrapper) ilink(ctx context.Context, mp *MetaPartition, inode uint6
 func (mw *MetaWrapper) setattr(ctx context.Context, mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
 
 	req := &proto.SetAttrRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		Valid:       valid,
-		Mode:        mode,
-		Uid:         uid,
-		Gid:         gid,
-		AccessTime:  atime,
-		ModifyTime:  mtime,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		Inode:           inode,
+		Valid:           valid,
+		Mode:            mode,
+		Uid:             uid,
+		Gid:             gid,
+		AccessTime:      atime,
+		ModifyTime:      mtime,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -1142,10 +1163,12 @@ func (mw *MetaWrapper) removeMultipart(ctx context.Context, mp *MetaPartition, p
 
 func (mw *MetaWrapper) appendExtentKeys(ctx context.Context, mp *MetaPartition, inode uint64, extents []proto.ExtentKey) (status int, err error) {
 	req := &proto.AppendExtentKeysRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		Extents:     extents,
+		VolName:         mw.volname,
+		PartitionId:     mp.PartitionID,
+		Inode:           inode,
+		Extents:         extents,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -1187,11 +1210,13 @@ func (mw *MetaWrapper) appendExtentKeys(ctx context.Context, mp *MetaPartition, 
 func (mw *MetaWrapper) setXAttr(ctx context.Context, mp *MetaPartition, inode uint64, name []byte, value []byte) (status int, err error) {
 
 	req := &proto.SetXAttrRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		Key:         string(name),
-		Value:       string(value),
+		VolName:         mw.volname,
+		PartitionId:     mp.PartitionID,
+		Inode:           inode,
+		Key:             string(name),
+		Value:           string(value),
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -1286,10 +1311,12 @@ func (mw *MetaWrapper) getXAttr(ctx context.Context, mp *MetaPartition, inode ui
 func (mw *MetaWrapper) removeXAttr(ctx context.Context, mp *MetaPartition, inode uint64, name string) (status int, err error) {
 
 	req := &proto.RemoveXAttrRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		Key:         name,
+		VolName:         mw.volname,
+		PartitionId:     mp.PartitionID,
+		Inode:           inode,
+		Key:             name,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)

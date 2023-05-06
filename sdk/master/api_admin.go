@@ -462,8 +462,8 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	authKey, zoneName, mpLayout, smartRules string, bucketPolicy, crossRegionHAType uint8,
 	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64,
 	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod, trashCleanDuration, trashCleanMaxCount int32,
-	enableBitMapAllocator bool,
-	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64) (err error) {
+	enableBitMapAllocator bool, remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool,
+	remoteCacheTTL int64, enableRemoveDupReq bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -507,6 +507,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("remoteCacheBoostEnable", strconv.FormatBool(remoteCacheBoostEnable))
 	request.addParam("remoteCacheAutoPrepare", strconv.FormatBool(remoteCacheAutoPrepare))
 	request.addParam("remoteCacheTTL", strconv.FormatInt(remoteCacheTTL, 10))
+	request.addParam(proto.VolRemoveDupFlagKey, strconv.FormatBool(enableRemoveDupReq))
 	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -888,6 +889,17 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.DpTimeoutCntThreshold >= 0 {
 		request.addParam(proto.DpTimeoutCntThreshold, strconv.FormatInt(int64(info.DpTimeoutCntThreshold), 10))
+	}
+	if info.ClientReqRecordsReservedCount > 0 {
+		request.addParam(proto.ClientReqRecordReservedCntKey, strconv.FormatUint(uint64(info.ClientReqRecordsReservedCount), 10))
+	}
+	if info.ClientReqRecordsReservedMin > 0 {
+		request.addParam(proto.ClientReqRecordReservedMinKey, strconv.FormatUint(uint64(info.ClientReqRecordsReservedMin), 10))
+	}
+	if info.ClientReqRemoveDupFlag == 0 {
+		request.addParam(proto.ClientReqRemoveDupFlagKey, strconv.FormatBool(false))
+	} else if info.ClientReqRemoveDupFlag > 0 {
+		request.addParam(proto.ClientReqRemoveDupFlagKey, strconv.FormatBool(true))
 	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)

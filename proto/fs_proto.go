@@ -145,9 +145,12 @@ type CreateInodeResponse struct {
 
 // LinkInodeRequest defines the request to link an inode.
 type LinkInodeRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
+	VolName         string `json:"vol"`
+	PartitionID     uint64 `json:"pid"`
+	Inode           uint64 `json:"ino"`
+	ClientID        uint64 `json:"client_id"`
+	ClientIP        uint32 `json:"client_ip"`
+	ClientStartTime int64  `json:"client_sTime"`
 }
 
 // LinkInodeResponse defines the response to the request of linking an inode.
@@ -157,10 +160,13 @@ type LinkInodeResponse struct {
 
 // UnlinkInodeRequest defines the request to unlink an inode.
 type UnlinkInodeRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-	NoTrash     bool   `json:"noTrash"`
+	VolName         string `json:"vol"`
+	PartitionID     uint64 `json:"pid"`
+	Inode           uint64 `json:"ino"`
+	NoTrash         bool   `json:"noTrash"`
+	ClientID        uint64 `json:"client_id"`
+	ClientStartTime int64  `json:"client_sTime"`
+	ClientIP        uint32 `json:"client_ip"`
 }
 
 // UnlinkInodeRequest defines the request to unlink an inode.
@@ -202,12 +208,15 @@ type BatchEvictInodeRequest struct {
 
 // CreateDentryRequest defines the request to create a dentry.
 type CreateDentryRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	ParentID    uint64 `json:"pino"`
-	Inode       uint64 `json:"ino"`
-	Name        string `json:"name"`
-	Mode        uint32 `json:"mode"`
+	VolName         string `json:"vol"`
+	PartitionID     uint64 `json:"pid"`
+	ParentID        uint64 `json:"pino"`
+	Inode           uint64 `json:"ino"`
+	Name            string `json:"name"`
+	Mode            uint32 `json:"mode"`
+	ClientID        uint64 `json:"client_id"`
+	ClientStartTime int64  `json:"client_sTime"`
+	ClientIP        uint32 `json:"client_ip"`
 }
 
 // UpdateDentryRequest defines the request to update a dentry.
@@ -226,11 +235,14 @@ type UpdateDentryResponse struct {
 
 // DeleteDentryRequest define the request tp delete a dentry.
 type DeleteDentryRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	ParentID    uint64 `json:"pino"`
-	Name        string `json:"name"`
-	NoTrash     bool   `json:"noTrash"`
+	VolName         string `json:"vol"`
+	PartitionID     uint64 `json:"pid"`
+	ParentID        uint64 `json:"pino"`
+	Name            string `json:"name"`
+	NoTrash         bool   `json:"noTrash"`
+	ClientID        uint64 `json:"client_id"`
+	ClientStartTime int64  `json:"client_sTime"`
+	ClientIP        uint32 `json:"client_ip"`
 }
 
 type BatchDeleteDentryRequest struct {
@@ -322,19 +334,25 @@ type ReadDirResponse struct {
 
 // BatchAppendExtentKeyRequest defines the request to append an extent key.
 type AppendExtentKeyRequest struct {
-	VolName     string    `json:"vol"`
-	PartitionID uint64    `json:"pid"`
-	Inode       uint64    `json:"ino"`
-	Extent      ExtentKey `json:"ek"`
-	IsPreExtent bool      `json:"pre"`
+	VolName         string    `json:"vol"`
+	PartitionID     uint64    `json:"pid"`
+	Inode           uint64    `json:"ino"`
+	Extent          ExtentKey `json:"ek"`
+	IsPreExtent     bool      `json:"pre"`
+	ClientID        uint64    `json:"client_id"`
+	ClientStartTime int64     `json:"client_sTime"`
+	ClientIP        uint32    `json:"client_ip"`
 }
 
 type InsertExtentKeyRequest struct {
-	VolName     string    `json:"vol"`
-	PartitionID uint64    `json:"pid"`
-	Inode       uint64    `json:"ino"`
-	Extent      ExtentKey `json:"ek"`
-	IsPreExtent bool      `json:"pre"`
+	VolName         string    `json:"vol"`
+	PartitionID     uint64    `json:"pid"`
+	Inode           uint64    `json:"ino"`
+	Extent          ExtentKey `json:"ek"`
+	IsPreExtent     bool      `json:"pre"`
+	ClientID        uint64    `json:"client_id"`
+	ClientStartTime int64     `json:"client_sTime"`
+	ClientIP        uint32    `json:"client_ip"`
 }
 
 // GetExtentsRequest defines the reques to get extents.
@@ -355,25 +373,31 @@ const TruncateRequestVersion_1 = 1
 
 // TruncateRequest defines the request to truncate.
 type TruncateRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-	Size        uint64 `json:"sz"`
-	OldSize     uint64 `json:"oldSize"`
-	Version     uint64 `json:"version"`
+	VolName         string `json:"vol"`
+	PartitionID     uint64 `json:"pid"`
+	Inode           uint64 `json:"ino"`
+	Size            uint64 `json:"sz"`
+	OldSize         uint64 `json:"oldSize"`
+	Version         uint64 `json:"version"`
+	ClientID        uint64 `json:"client_id"`
+	ClientStartTime int64  `json:"client_sTime"`
+	ClientIP        uint32 `json:"client_ip"`
 }
 
 // SetAttrRequest defines the request to set attribute.
 type SetAttrRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-	Mode        uint32 `json:"mode"`
-	Uid         uint32 `json:"uid"`
-	Gid         uint32 `json:"gid"`
-	ModifyTime  int64  `json:"mt"`
-	AccessTime  int64  `json:"at"`
-	Valid       uint32 `json:"valid"`
+	VolName         string `json:"vol"`
+	PartitionID     uint64 `json:"pid"`
+	Inode           uint64 `json:"ino"`
+	Mode            uint32 `json:"mode"`
+	Uid             uint32 `json:"uid"`
+	Gid             uint32 `json:"gid"`
+	ModifyTime      int64  `json:"mt"`
+	AccessTime      int64  `json:"at"`
+	Valid           uint32 `json:"valid"`
+	ClientID        uint64 `json:"client_id"`
+	ClientStartTime int64  `json:"client_sTime"`
+	ClientIP        uint32 `json:"client_ip"`
 }
 
 const (
@@ -421,19 +445,25 @@ type DeleteInodeBatchRequest struct {
 
 // AppendExtentKeysRequest defines the request to append an extent key.
 type AppendExtentKeysRequest struct {
-	VolName     string      `json:"vol"`
-	PartitionId uint64      `json:"pid"`
-	Inode       uint64      `json:"ino"`
-	Extents     []ExtentKey `json:"eks"`
-	IsPreExtent bool        `json:"pre"`
+	VolName         string      `json:"vol"`
+	PartitionId     uint64      `json:"pid"`
+	Inode           uint64      `json:"ino"`
+	Extents         []ExtentKey `json:"eks"`
+	IsPreExtent     bool        `json:"pre"`
+	ClientID        uint64      `json:"client_id"`
+	ClientStartTime int64       `json:"client_sTime"`
+	ClientIP        uint32      `json:"client_ip"`
 }
 
 type SetXAttrRequest struct {
-	VolName     string `json:"vol"`
-	PartitionId uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-	Key         string `json:"key"`
-	Value       string `json:"val"`
+	VolName         string `json:"vol"`
+	PartitionId     uint64 `json:"pid"`
+	Inode           uint64 `json:"ino"`
+	Key             string `json:"key"`
+	Value           string `json:"val"`
+	ClientID        uint64 `json:"client_id"`
+	ClientStartTime int64  `json:"client_sTime"`
+	ClientIP        uint32 `json:"client_ip"`
 }
 
 type GetXAttrRequest struct {
@@ -452,10 +482,13 @@ type GetXAttrResponse struct {
 }
 
 type RemoveXAttrRequest struct {
-	VolName     string `json:"vol"`
-	PartitionId uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-	Key         string `json:"key"`
+	VolName         string `json:"vol"`
+	PartitionId     uint64 `json:"pid"`
+	Inode           uint64 `json:"ino"`
+	Key             string `json:"key"`
+	ClientID        uint64 `json:"client_id"`
+	ClientStartTime int64  `json:"client_sTime"`
+	ClientIP        uint32 `json:"client_ip"`
 }
 
 type ListXAttrRequest struct {
@@ -597,7 +630,7 @@ type InodeMergeExtentsRequest struct {
 	PartitionId uint64      `json:"pid"`
 	Inode       uint64      `json:"inode_id"`
 	OldExtents  []ExtentKey `json:"old_extents"`
-	NewExtents  []ExtentKey   `json:"new_extents"`
+	NewExtents  []ExtentKey `json:"new_extents"`
 }
 
 // Dentry defines the dentry struct.

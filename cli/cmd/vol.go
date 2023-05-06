@@ -329,43 +329,44 @@ const (
 
 func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optCapacity              uint64
-		optReplicas              int
-		optMpReplicas            int
-		optTrashDays             int
-		optStoreMode             int
-		optFollowerRead          string
-		optVolWriteMutex         string
-		optNearRead              string
-		optForceROW              string
-		optEnableWriteCache      string
-		optAuthenticate          string
-		optEnableToken           string
-		optAutoRepair            string
-		optBucketPolicy          string
-		optCrossRegionHAType     string
-		optZoneName              string
-		optLayout                string
-		optExtentCacheExpireSec  int64
-		optYes                   bool
-		confirmString            = strings.Builder{}
-		vv                       *proto.SimpleVolView
-		optIsSmart               string
-		smartRules               []string
-		optCompactTag            string
-		optFolReadDelayInterval  int64
-		optLowestDelayHostWeight int
-		optTrashCleanInterval    int
-		optBatchDelInodeCnt      int
-		optDelInodeInterval      int
-		optUmpCollectWay         int
-		optEnableBitMapAllocator string
-		optTrashCleanDuration    int32
-		optTrashCleanMaxCount    int32
-		optRemoteCacheBoostPath        string
-		optRemoteCacheBoostEnable      string
-		optRemoteCacheAutoPrepare      string
-		optRemoteCacheTTL              int64
+		optCapacity               uint64
+		optReplicas               int
+		optMpReplicas             int
+		optTrashDays              int
+		optStoreMode              int
+		optFollowerRead           string
+		optVolWriteMutex          string
+		optNearRead               string
+		optForceROW               string
+		optEnableWriteCache       string
+		optAuthenticate           string
+		optEnableToken            string
+		optAutoRepair             string
+		optBucketPolicy           string
+		optCrossRegionHAType      string
+		optZoneName               string
+		optLayout                 string
+		optExtentCacheExpireSec   int64
+		optYes                    bool
+		confirmString             = strings.Builder{}
+		vv                        *proto.SimpleVolView
+		optIsSmart                string
+		smartRules                []string
+		optCompactTag             string
+		optFolReadDelayInterval   int64
+		optLowestDelayHostWeight  int
+		optTrashCleanInterval     int
+		optBatchDelInodeCnt       int
+		optDelInodeInterval       int
+		optUmpCollectWay          int
+		optEnableBitMapAllocator  string
+		optTrashCleanDuration     int32
+		optTrashCleanMaxCount     int32
+		optRemoteCacheBoostPath   string
+		optRemoteCacheBoostEnable string
+		optRemoteCacheAutoPrepare string
+		optRemoteCacheTTL         int64
+		optEnableRemoveDup        string
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -735,6 +736,22 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  TrashCleanDuration  : %v\n", vv.TrashCleanDuration))
 			}
+			if optEnableRemoveDup != "" {
+				var enable bool
+				if enable, err = strconv.ParseBool(optEnableRemoveDup); err != nil {
+					return
+				}
+
+				if vv.EnableRemoveDupReq != enable {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  Remove dup req      : %v -> %v\n", vv.EnableRemoveDupReq, enable))
+					vv.EnableRemoveDupReq = enable
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  Remove dup req      : %v\n", vv.EnableRemoveDupReq))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Remove dup req      : %v\n", vv.EnableRemoveDupReq))
+			}
 
 			if err != nil {
 				return
@@ -760,7 +777,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
 				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
 				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator,
-				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL)
+				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL, vv.EnableRemoveDupReq,)
 			if err != nil {
 				return
 			}
@@ -809,6 +826,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optRemoteCacheBoostEnable, CliFlagRemoteCacheBoostEnable, "", "enable cache boost")
 	cmd.Flags().StringVar(&optRemoteCacheAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "enable cache auto prepare")
 	cmd.Flags().Int64Var(&optRemoteCacheTTL, CliFlagRemoteCacheTTL, 0, "Cache TTL")
+	cmd.Flags().StringVar(&optEnableRemoveDup, CliFlagEnableRemoveDup, "", "Enable remove dup")
 	return cmd
 }
 

@@ -52,7 +52,7 @@ func (mp *metaPartition) fsmCreateDeletedDentry(dbHandle interface{}, ddentry *D
 			dden.Timestamp == ddentry.Timestamp && dden.Inode == ddentry.Inode {
 			return
 		}
-		rsp.Status = proto.OpErr
+		rsp.Status = proto.OpExistErr
 	}
 	return
 }
@@ -99,7 +99,7 @@ func (mp *metaPartition) cleanDeletedDentry(dbHandle interface{}, ddentry *Delet
 
 	if len(ddentry.Name) == 0 {
 		log.LogErrorf("[cleanDeletedDentry], not found name: %v", ddentry)
-		resp.Status = proto.OpErr
+		resp.Status = proto.OpNotExistErr
 		return
 	}
 
@@ -140,7 +140,7 @@ func (mp *metaPartition) fsmRecoverDeletedDentry(dbHandle interface{}, ddentry *
 
 	if len(ddentry.Name) == 0 {
 		log.LogErrorf("[fsmRecoverDeletedDentry], not found name in  dentry: %v", ddentry)
-		resp.Status = proto.OpErr
+		resp.Status = proto.OpNotExistErr
 		return
 	}
 	var dd *DeletedDentry
@@ -195,7 +195,7 @@ func (mp *metaPartition) fsmRecoverDeletedDentry(dbHandle interface{}, ddentry *
 			return
 		}
 
-		resp.Status, err = mp.fsmCreateDentry(dbHandle, d, false)
+		resp.Status, err = mp.fsmCreateDentry(dbHandle, d, false, nil)
 		resp.Msg = newDDentry
 		if err != nil || resp.Status != proto.OpOk {
 			log.LogErrorf("[fsmRecoverDeletedDentry], failed to create dentry: %v, status: %v, err :%v",
@@ -204,7 +204,7 @@ func (mp *metaPartition) fsmRecoverDeletedDentry(dbHandle interface{}, ddentry *
 		}
 	} else {
 		dentry = dd.buildDentry()
-		resp.Status, err = mp.fsmCreateDentry(dbHandle, dentry, false)
+		resp.Status, err = mp.fsmCreateDentry(dbHandle, dentry, false, nil)
 		if err != nil || resp.Status != proto.OpOk {
 			log.LogErrorf("[fsmRecoverDeletedDentry], failed to create dentry: %v, status: %v, err: %v", dentry, resp.Status, err)
 			return

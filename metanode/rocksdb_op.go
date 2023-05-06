@@ -46,6 +46,7 @@ const (
 	DelDentryTable
 	DelInodeTable
 	ExtentDelTable
+	ReqRecordsTable
 )
 
 const (

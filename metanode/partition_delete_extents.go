@@ -392,7 +392,7 @@ func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retr
 			return err
 		}
 	}
-	if _, err = mp.submit(context.Background(), opFSMExtentDelSyncV2, "", buf.Bytes()); err != nil {
+	if _, err = mp.submit(context.Background(), opFSMExtentDelSyncV2, "", buf.Bytes(), nil); err != nil {
 		return err
 	}
 
@@ -988,7 +988,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 					status := mp.raftPartition.Status()
 					if status.State == "StateLeader" && !status.
 						RestoringSnapshot {
-						if _, err = mp.submit(context.Background(), opFSMInternalDelExtentFile, "", []byte(fileName)); err != nil {
+						if _, err = mp.submit(context.Background(), opFSMInternalDelExtentFile, "", []byte(fileName), nil); err != nil {
 							log.LogErrorf(
 								"[deleteExtentsFromList] partitionId=%d,"+
 									"delete old file: %s,status: %s", mp.config.PartitionId,
@@ -1036,7 +1036,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		}
 		buff.Reset()
 		buff.WriteString(fmt.Sprintf("%s %d", fileName, cursor))
-		if _, err = mp.submit(context.Background(), opFSMInternalDelExtentCursor, "", buff.Bytes()); err != nil {
+		if _, err = mp.submit(context.Background(), opFSMInternalDelExtentCursor, "", buff.Bytes(), nil); err != nil {
 			log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
 				mp.config.PartitionId, err.Error())
 		}

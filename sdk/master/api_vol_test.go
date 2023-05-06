@@ -63,7 +63,7 @@ func TestUpdateVol(t *testing.T) {
 	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, trashDays, testStoreMode,
 		updateFollowerRead, false, false, false, false, false, false, false, false, authKey, testZoneName,
 		testMpLyout, "", 0, 0, 0, "default", 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
-		"", false, false, 0)
+		"", false, false, 0, false)
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)
 		t.FailNow()

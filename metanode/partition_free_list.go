@@ -388,7 +388,7 @@ func (mp *metaPartition) syncToRaftFollowersFreeInode(ctx context.Context, hasDe
 		return
 	}
 	//_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes)
-	_, err = mp.submit(ctx, opFSMInternalCleanDeletedInode, "", hasDeleteInodes)
+	_, err = mp.submit(ctx, opFSMInternalCleanDeletedInode, "", hasDeleteInodes, nil)
 
 	return
 }

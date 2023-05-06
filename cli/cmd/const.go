@@ -128,6 +128,7 @@ const (
 	CliFlagRemoteCacheTTL         = "remoteCacheTTL"
 	CliFlagFollReadDelayInterval  = "host-delay-interval"
 	CliFlagFollReadHostWeight     = "set-host-weight"
+	CliFlagEnableRemoveDup        = "enableRemoveDup"
 
 	CliOpRollBack              = "rollback"
 	CliOpGetCanEcDel           = "get-can-del"

@@ -337,6 +337,9 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaRaftLogCap:                      m.cluster.cfg.MetaRaftLogCap,
 		BitMapAllocatorMaxUsedFactor:        m.cluster.cfg.BitMapAllocatorMaxUsedFactor,
 		BitMapAllocatorMinFreeFactor:        m.cluster.cfg.BitMapAllocatorMinFreeFactor,
+		ClientReqRecordsReservedCount:       m.cluster.cfg.ClientReqRecordsReservedCount,
+		ClientReqRecordsReservedMin:         m.cluster.cfg.ClientReqRecordsReservedMin,
+		ClientReqRemoveDupFlag:              m.cluster.cfg.ClientReqRemoveDup,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -493,6 +496,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	trashCleanDuration := atomic.LoadInt32(&m.cluster.cfg.TrashCleanDurationEachTime)
 	trashCleanMaxCount := atomic.LoadInt32(&m.cluster.cfg.TrashItemCleanMaxCountEachTime)
 	dpTimeoutCntThreshold := atomic.LoadInt32(&m.cluster.cfg.DpTimeoutCntThreshold)
+	clientReqRecordsReservedCount := atomic.LoadInt32(&m.cluster.cfg.ClientReqRecordsReservedCount)
+	clientReqRecordsReservedMin := atomic.LoadInt32(&m.cluster.cfg.ClientReqRecordsReservedMin)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
 	if dataNodeZoneName != "" {
@@ -564,6 +569,9 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		RemoteCacheBoostEnable:                 m.cluster.cfg.RemoteCacheBoostEnable,
 		ClientConnTimeoutUs:                    m.cluster.cfg.ClientNetConnTimeoutUs,
 		DpTimeoutCntThreshold:                  int(dpTimeoutCntThreshold),
+		ClientReqRecordsReservedCount:          clientReqRecordsReservedCount,
+		ClientReqRecordsReservedMin:            clientReqRecordsReservedMin,
+		ClientReqRemoveDupFlag:                 m.cluster.cfg.ClientReqRemoveDup,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1764,6 +1772,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		description          string
 		extentCacheExpireSec int64
 		enableWriteCache     bool
+		enableRemoveDupReq   bool
 
 		vol *Vol
 
@@ -1825,7 +1834,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		mpReplicaNum = int(vol.mpReplicaNum)
 	}
 	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache,
-		enableBitMapAllocator, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+		enableBitMapAllocator, enableRemoveDupReq, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1922,8 +1931,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
-		enableBitMapAllocator,
-		remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL); err != nil {
+		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2226,6 +2234,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		RemoteCacheBoostEnable: vol.RemoteCacheBoostEnable,
 		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:         vol.RemoteCacheTTL,
+		EnableRemoveDupReq:     vol.enableRemoveDupReq,
 	}
 }
 
@@ -3471,7 +3480,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 }
 
 func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair,
-	forceROW, volWriteMutexEnable, enableWriteCache, enableBitMapAllocator bool, err error) {
+	forceROW, volWriteMutexEnable, enableWriteCache, enableBitMapAllocator, volRemoveDupReqEnable bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -3544,6 +3553,15 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRea
 		}
 	} else {
 		enableBitMapAllocator = vol.EnableBitMapAllocator
+	}
+
+	if volRemoveDupReqEnableStr := r.FormValue(proto.VolRemoveDupFlagKey); volRemoveDupReqEnableStr != "" {
+		if volRemoveDupReqEnable, err = strconv.ParseBool(volRemoveDupReqEnableStr); err != nil {
+			err = unmatchedKey(proto.VolRemoveDupFlagKey)
+			return
+		}
+	} else {
+		volRemoveDupReqEnable = vol.enableRemoveDupReq
 	}
 	return
 }
@@ -4696,7 +4714,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 	}
 	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
-		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.NetConnTimeoutUsKey, proto.DpTimeoutCntThreshold}
+		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.NetConnTimeoutUsKey, proto.DpTimeoutCntThreshold,
+		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return
@@ -4708,7 +4727,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
-	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey, proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey}
+	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey,
+		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey}
 	for _, key := range boolKey {
 		if err = parseBoolKey(params, key, r); err != nil {
 			return
@@ -5223,7 +5243,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.RealUsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator)
+				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5258,7 +5278,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator)
+				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5287,7 +5307,7 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 			vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator)
+			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq)
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))

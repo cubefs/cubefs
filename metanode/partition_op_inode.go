@@ -72,7 +72,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err = mp.submit(p.Ctx(), opFSMCreateInode, p.RemoteWithReqID(), val)
+	resp, err = mp.submit(p.Ctx(), opFSMCreateInode, p.RemoteWithReqID(), val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -103,6 +103,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	var (
 		r   interface{}
 		val []byte
+		msg *InodeResponse
 	)
 
 	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
@@ -112,34 +113,56 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 
 	ino := NewInode(req.Inode, 0)
 
+	defer func() {
+		if err != nil {
+			return
+		}
+		status := msg.Status
+		var reply []byte
+		if status == proto.OpOk {
+			resp := &UnlinkInoResp{
+				Info: &proto.InodeInfo{},
+			}
+			replyInfo(resp.Info, msg.Msg)
+			if reply, err = json.Marshal(resp); err != nil {
+				status = proto.OpErr
+				reply = []byte(err.Error())
+			}
+		}
+		p.PacketErrorWithBody(status, reply)
+	}()
+
+	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
+		log.LogCriticalf("UnlinkInode: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
+		msg = &InodeResponse{
+			Status: previousRespCode,
+		}
+		existIno, _ := mp.inodeTree.Get(ino.Inode)
+		if existIno == nil {
+			log.LogCriticalf("UnlinkInode: dup req, but inode(%v) not exist", ino.Inode)
+			msg.Status = proto.OpNotExistErr
+			return
+		}
+		msg.Msg = existIno
+		return
+	}
+
 	val, err = ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	if req.NoTrash || mp.isTrashDisable() {
-		r, err = mp.submit(p.Ctx(), opFSMUnlinkInode, p.RemoteWithReqID(), val)
+		r, err = mp.submit(p.Ctx(), opFSMUnlinkInode, p.RemoteWithReqID(), val, clientReq)
 	} else {
-		r, err = mp.submitTrash(p.Ctx(), opFSMUnlinkInode, p.RemoteWithReqID(), val)
+		r, err = mp.submitTrash(p.Ctx(), opFSMUnlinkInode, p.RemoteWithReqID(), val, clientReq)
 	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	msg := r.(*InodeResponse)
-	status := msg.Status
-	var reply []byte
-	if status == proto.OpOk {
-		resp := &UnlinkInoResp{
-			Info: &proto.InodeInfo{},
-		}
-		replyInfo(resp.Info, msg.Msg)
-		if reply, err = json.Marshal(resp); err != nil {
-			status = proto.OpErr
-			reply = []byte(err.Error())
-		}
-	}
-	p.PacketErrorWithBody(status, reply)
+	msg = r.(*InodeResponse)
 	return
 }
 
@@ -167,9 +190,9 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 		return
 	}
 	if req.NoTrash || mp.isTrashDisable() {
-		r, err = mp.submit(p.Ctx(), opFSMUnlinkInodeBatch, p.RemoteWithReqID(), val)
+		r, err = mp.submit(p.Ctx(), opFSMUnlinkInodeBatch, p.RemoteWithReqID(), val, nil)
 	} else {
-		r, err = mp.submitTrash(p.Ctx(), opFSMUnlinkInodeBatch, p.RemoteWithReqID(), val)
+		r, err = mp.submitTrash(p.Ctx(), opFSMUnlinkInodeBatch, p.RemoteWithReqID(), val, nil)
 	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -282,8 +305,9 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 // CreateInodeLink creates an inode link (e.g., soft link).
 func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err error) {
 	var (
-		resp interface{}
-		val  []byte
+		resp   interface{}
+		val    []byte
+		retMsg *InodeResponse
 	)
 
 	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
@@ -293,34 +317,56 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 
 	ino := NewInode(req.Inode, 0)
 
+	defer func() {
+		if err != nil {
+			return
+		}
+		status := proto.OpNotExistErr
+		var reply []byte
+		if retMsg.Status == proto.OpOk {
+			r := &LinkInodeResp{
+				Info: &proto.InodeInfo{},
+			}
+			if replyInfo(r.Info, retMsg.Msg) {
+				status = proto.OpOk
+				reply, err = json.Marshal(r)
+				if err != nil {
+					status = proto.OpErr
+					reply = []byte(err.Error())
+				}
+			}
+
+		}
+		p.PacketErrorWithBody(status, reply)
+	}()
+
+	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
+		log.LogCriticalf("CreateInodeLink: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
+		retMsg = &InodeResponse{
+			Status: previousRespCode,
+		}
+		existIno, _ := mp.inodeTree.Get(ino.Inode)
+		if existIno == nil {
+			log.LogCriticalf("CreateInodeLink: dup req, but inode(%v) not exist", ino.Inode)
+			retMsg.Status = proto.OpNotExistErr
+			return
+		}
+		retMsg.Msg = existIno
+		return
+	}
+
 	val, err = ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err = mp.submit(p.Ctx(), opFSMCreateLinkInode, p.RemoteWithReqID(), val)
+	resp, err = mp.submit(p.Ctx(), opFSMCreateLinkInode, p.RemoteWithReqID(), val, clientReq)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	retMsg := resp.(*InodeResponse)
-	status := proto.OpNotExistErr
-	var reply []byte
-	if retMsg.Status == proto.OpOk {
-		resp := &LinkInodeResp{
-			Info: &proto.InodeInfo{},
-		}
-		if replyInfo(resp.Info, retMsg.Msg) {
-			status = proto.OpOk
-			reply, err = json.Marshal(resp)
-			if err != nil {
-				status = proto.OpErr
-				reply = []byte(err.Error())
-			}
-		}
-
-	}
-	p.PacketErrorWithBody(status, reply)
+	retMsg = resp.(*InodeResponse)
 	return
 }
 
@@ -344,9 +390,9 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 	}
 
 	if req.NoTrash || mp.isTrashDisable() {
-		resp, err = mp.submit(p.Ctx(), opFSMEvictInode, p.RemoteWithReqID(), val)
+		resp, err = mp.submit(p.Ctx(), opFSMEvictInode, p.RemoteWithReqID(), val, nil)
 	} else {
-		resp, err = mp.submitTrash(p.Ctx(), opFSMEvictInode, p.RemoteWithReqID(), val)
+		resp, err = mp.submitTrash(p.Ctx(), opFSMEvictInode, p.RemoteWithReqID(), val, nil)
 	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -379,9 +425,9 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 		return
 	}
 	if req.NoTrash || mp.isTrashDisable() {
-		resp, err = mp.submit(p.Ctx(), opFSMEvictInodeBatch, p.RemoteWithReqID(), val)
+		resp, err = mp.submit(p.Ctx(), opFSMEvictInodeBatch, p.RemoteWithReqID(), val, nil)
 	} else {
-		resp, err = mp.submitTrash(p.Ctx(), opFSMEvictInodeBatch, p.RemoteWithReqID(), val)
+		resp, err = mp.submitTrash(p.Ctx(), opFSMEvictInodeBatch, p.RemoteWithReqID(), val, nil)
 	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -400,12 +446,19 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 }
 
 // SetAttr set the inode attributes.
-func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
+func (mp *metaPartition) SetAttr(req *SetattrRequest, reqData []byte, p *Packet) (err error) {
 	var (
 		resp interface{}
 	)
 
-	resp, err = mp.submit(p.Ctx(), opFSMSetAttr, p.RemoteWithReqID(), reqData)
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("setAttr: dup req:%v, previousRespCode:%v", clientReqInfo, previousRespCode)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
+
+	resp, err = mp.submit(p.Ctx(), opFSMSetAttr, p.RemoteWithReqID(), reqData, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -429,7 +482,7 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 
 	var bytes = make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, req.Inode)
-	_, err = mp.submit(p.Ctx(), opFSMInternalDeleteInode, p.RemoteWithReqID(), bytes)
+	_, err = mp.submit(p.Ctx(), opFSMInternalDeleteInode, p.RemoteWithReqID(), bytes, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -506,7 +559,7 @@ func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorReset
 	if _, ok := mp.IsLeader(); !ok {
 		return fmt.Errorf("this node is not leader, can not execute this op")
 	}
-	resp, err := mp.submit(ctx, opFSMCursorReset, "", data)
+	resp, err := mp.submit(ctx, opFSMCursorReset, "", data, nil)
 	if err != nil {
 		return err
 	}
@@ -533,7 +586,7 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	_, err = mp.submit(p.Ctx(), opFSMInternalDeleteInodeBatch, p.RemoteWithReqID(), encoded)
+	_, err = mp.submit(p.Ctx(), opFSMInternalDeleteInodeBatch, p.RemoteWithReqID(), encoded, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

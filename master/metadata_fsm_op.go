@@ -105,6 +105,9 @@ type clusterValue struct {
 	DeleteMarkDelVolInterval            int64
 	RemoteCacheBoostEnable              bool
 	ClientConnTimeoutUs                 int64
+	ClientReqRecordsReservedCount       int32
+	ClientReqRecordsReservedMin         int32
+	ClientReqRemoveDupFlag              bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -180,6 +183,9 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DeleteMarkDelVolInterval:            c.cfg.DeleteMarkDelVolInterval,
 		RemoteCacheBoostEnable:              c.cfg.RemoteCacheBoostEnable,
 		ClientConnTimeoutUs:                 c.cfg.ClientNetConnTimeoutUs,
+		ClientReqRecordsReservedCount:       c.cfg.ClientReqRecordsReservedCount,
+		ClientReqRecordsReservedMin:         c.cfg.ClientReqRecordsReservedMin,
+		ClientReqRemoveDupFlag:              c.cfg.ClientReqRemoveDup,
 	}
 	return cv
 }
@@ -348,6 +354,7 @@ type volValue struct {
 	RemoteCacheBoostEnable bool
 	RemoteCacheAutoPrepare bool
 	RemoteCacheTTL         int64
+	RemoveDupReqEnable     bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -432,6 +439,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoteCacheBoostEnable: vol.RemoteCacheBoostEnable,
 		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:         vol.RemoteCacheTTL,
+		RemoveDupReqEnable:     vol.enableRemoveDupReq,
 	}
 	return
 }
@@ -1131,6 +1139,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.MetaSyncWALOnUnstableEnableState = cv.MetaSyncWALEnableState
 		c.cfg.DisableStrictVolZone = cv.DisableStrictVolZone
 		c.cfg.AutoUpdatePartitionReplicaNum = cv.AutoUpdatePartitionReplicaNum
+		c.cfg.ClientReqRemoveDup = cv.ClientReqRemoveDupFlag
 		if cv.TrashCleanDurationEachTime != 0 {
 			atomic.StoreInt32(&c.cfg.TrashCleanDurationEachTime, cv.TrashCleanDurationEachTime)
 		}
@@ -1140,6 +1149,12 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.DeleteMarkDelVolInterval = cv.DeleteMarkDelVolInterval
 		c.cfg.RemoteCacheBoostEnable = cv.RemoteCacheBoostEnable
 		c.cfg.ClientNetConnTimeoutUs = cv.ClientConnTimeoutUs
+		if cv.ClientReqRecordsReservedCount != 0 {
+			atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedCount, cv.ClientReqRecordsReservedCount)
+		}
+		if cv.ClientReqRecordsReservedMin != 0 {
+			atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedMin, cv.ClientReqRecordsReservedMin)
+		}
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

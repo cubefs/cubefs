@@ -36,7 +36,7 @@ func (mp *metaPartition) RecoverDeletedDentry(req *RecoverDeletedDentryReq, p *P
 		return
 	}
 	var ret interface{}
-	ret, err = mp.submit(p.Ctx(), opFSMRecoverDeletedDentry, p.RemoteWithReqID(), val)
+	ret, err = mp.submit(p.Ctx(), opFSMRecoverDeletedDentry, p.RemoteWithReqID(), val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -74,7 +74,7 @@ func (mp *metaPartition) BatchRecoverDeletedDentry(req *BatchRecoverDeletedDentr
 		return
 	}
 	var ret interface{}
-	ret, err = mp.submit(p.Ctx(), opFSMBatchRecoverDeletedDentry, p.RemoteWithReqID(), val)
+	ret, err = mp.submit(p.Ctx(), opFSMBatchRecoverDeletedDentry, p.RemoteWithReqID(), val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -103,7 +103,7 @@ func (mp *metaPartition) BatchCleanDeletedDentry(req *BatchCleanDeletedDentryReq
 		return
 	}
 	var ret interface{}
-	ret, err = mp.submit(p.Ctx(), opFSMBatchCleanDeletedDentry, p.RemoteWithReqID(), val)
+	ret, err = mp.submit(p.Ctx(), opFSMBatchCleanDeletedDentry, p.RemoteWithReqID(), val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -128,7 +128,7 @@ func (mp *metaPartition) CleanDeletedDentry(req *CleanDeletedDentryReq, p *Packe
 		return
 	}
 	var ret interface{}
-	ret, err = mp.submit(p.Ctx(), opFSMCleanDeletedDentry, p.RemoteWithReqID(), val)
+	ret, err = mp.submit(p.Ctx(), opFSMCleanDeletedDentry, p.RemoteWithReqID(), val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -313,7 +313,7 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 			log.LogError(err.Error())
 			return
 		}
-		_, err = mp.submit(ctx, opFSMCleanExpiredDentry, mp.manager.metaNode.localAddr, data)
+		_, err = mp.submit(ctx, opFSMCleanExpiredDentry, mp.manager.metaNode.localAddr, data, nil)
 		if err != nil {
 			log.LogErrorf("[CleanExpiredDeletedDentry], vol: %v, err: %v", mp.config.VolName, err.Error())
 		}

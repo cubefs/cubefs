@@ -2,6 +2,7 @@ package metanode
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
@@ -77,7 +78,7 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			followerStoreMode: proto.StoreModeMem,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BatchSnapshotV1,
+			snapV:             BatchSnapshotV3,
 		},
 		{
 			name:              "test6",
@@ -87,7 +88,7 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			followerStoreMode: proto.StoreModeRocksDb,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BatchSnapshotV1,
+			snapV:             BatchSnapshotV3,
 		},
 		{
 			name:              "test7",
@@ -97,7 +98,7 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			followerStoreMode: proto.StoreModeMem,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BatchSnapshotV1,
+			snapV:             BatchSnapshotV3,
 		},
 		{
 			name:              "test8",
@@ -107,7 +108,7 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			followerStoreMode: proto.StoreModeRocksDb,
 			followerRootDir:   "./test_apply_snapshot_follower_mp",
 			applyFunc:         ApplyMockWithNull,
-			snapV:             BatchSnapshotV1,
+			snapV:             BatchSnapshotV3,
 		},
 	}
 	for _, test := range tests {
@@ -493,6 +494,8 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 	if err != nil {
 		fmt.Printf("del ek commit failed:%v\n", err.Error())
 	}
+
+	mp.reqRecords = InitRequestRecords(genBatchRequestInfo(200, true))
 	return
 }
 
@@ -504,8 +507,8 @@ func interTest(t *testing.T, leaderMp, followerMp *metaPartition, snapV int) {
 	switch snapV {
 	case BaseSnapshotV:
 		snap, err = newMetaItemIterator(leaderMp)
-	case BatchSnapshotV1:
-		snap, err = newBatchMetaItemIterator(leaderMp, BatchSnapshotV1)
+	case BatchSnapshotV1, BatchSnapshotV2, BatchSnapshotV3:
+		snap, err = newBatchMetaItemIterator(leaderMp, SnapshotVersion(snapV))
 	default:
 		t.Errorf("error snap version:%v", snapV)
 		t.FailNow()
@@ -604,7 +607,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 	}
 
 	if leaderMp.dentryDeletedTree.Count() != followerMp.dentryDeletedTree.Count() {
-		t.Errorf("deleted dentry tree count mismatch, leader:%v, follower:%v", leaderMp.dentryDeletedTree.Count(), leaderMp.dentryDeletedTree.Count())
+		t.Errorf("deleted dentry tree count mismatch, leader:%v, follower:%v", leaderMp.dentryDeletedTree.Count(), followerMp.dentryDeletedTree.Count())
 		return false
 	}
 	if err := leaderMp.dentryDeletedTree.Range(nil, nil, func(delDentry *DeletedDentry) (bool, error) {
@@ -651,6 +654,47 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 	}); err != nil {
 		t.Errorf("validate failed:%v", err)
 		return false
+	}
+
+	if leaderMp.reqRecords.Count() != followerMp.reqRecords.Count() {
+		t.Errorf("reqeust records count mismatch, leader:%v, follower:%v", leaderMp.reqRecords.Count(), followerMp.reqRecords.Count())
+		return false
+	}
+
+	var err error
+	leaderMp.reqRecords.RangeTree(func(req *RequestInfo) bool {
+		if item := followerMp.reqRecords.reqTree.Get(req); item == nil {
+			err = fmt.Errorf("request info mismatch, req(%v) not exist", item.(*RequestInfo))
+			t.Errorf("request info mismatch, req(%v) not exist", item.(*RequestInfo))
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return false
+	}
+
+	aggResult := leaderMp.reqRecords.AggRequestsByRequestTime()
+
+	if followerMp.HasRocksDBStore() {
+		for timestamp, requests := range aggResult {
+			key := make([]byte, 9)
+			key[0] = byte(ReqRecordsTable)
+			binary.BigEndian.PutUint64(key[1:], uint64(timestamp))
+			var data []byte
+			if data, err = followerMp.db.GetBytes(key); err != nil || len(data) == 0 {
+				t.Errorf("request info mismatch, timestamp:%v", timestamp)
+				return false
+			}
+			var unmarshalResult RequestInfoBatch
+			if unmarshalResult, err = UnmarshalBatchRequestInfo(data); err != nil {
+				return false
+			}
+			if len(unmarshalResult) != len(requests) {
+				t.Errorf("request info count mismatch, timestamp:%v, expect:%v, actual:%v", timestamp, len(requests), len(unmarshalResult))
+				return false
+			}
+		}
 	}
 
 	return true
@@ -855,4 +899,73 @@ func TestMetaPartition_Snap(t *testing.T) {
 	checkMPInodeAndDentry(t, mp2, mp4)
 	t.Logf("V1 gen snap, V1 aplly snnap success cost:%v", v1Cost)
 	t.Logf("V2 gen snap, V2 aplly snnap success cost:%v", v2Cost)
+}
+
+func TestMetaPartition_EvictReqRecords(t *testing.T) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeRocksDb, "./test_evict_req_records", ApplyMockWithNull)
+	if err != nil {
+		t.Errorf("mock meta partition failed:%v", err)
+		return
+	}
+	var dbWriteHandle interface{}
+	dbWriteHandle, err = mp.db.CreateBatchHandler()
+	if err != nil {
+		t.Errorf("create batch write handle failed:%v", err)
+		return
+	}
+	mp.reqRecords = NewRequestRecords()
+	for index := 0; index < 5000; index++{
+		reqInfo := genRequestInfo(true)
+		mp.reqRecords.Update(reqInfo)
+		mp.persistRequestInfoToRocksDB(dbWriteHandle, reqInfo)
+	}
+
+	if err = mp.db.CommitBatchAndRelease(dbWriteHandle); err != nil {
+		t.Errorf("commit batch write handle failed:%v", err)
+		return
+	}
+
+	reqRecordReserveMin.Store(1)
+	reqRecordMaxCount.Store(2000)
+	evictTimestamp := mp.reqRecords.GetEvictTimestamp()
+
+	dbWriteHandle, err = mp.db.CreateBatchHandler()
+	if err != nil {
+		t.Errorf("create batch write handle failed:%v", err)
+		return
+	}
+	mp.evictExpiredRequestRecords(dbWriteHandle, evictTimestamp)
+	if err = mp.db.CommitBatchAndRelease(dbWriteHandle); err != nil {
+		t.Errorf("commit batch write handle failed:%v", err)
+		return
+	}
+
+	//verify
+	if mp.reqRecords.Count() > 2000 {
+		t.Errorf("count mismatch, expect:less than 2000, actual:%v", mp.reqRecords.Count())
+		return
+	}
+
+	aggResult := mp.reqRecords.AggRequestsByRequestTime()
+	for timestamp, reqRecords := range aggResult {
+		key := make([]byte, 9)
+		key[0] = byte(ReqRecordsTable)
+		binary.BigEndian.PutUint64(key[1:], uint64(timestamp))
+		var (
+			value        []byte
+			batchRecords RequestInfoBatch
+		)
+		if value, err = mp.db.GetBytes(key); err != nil {
+			t.Errorf("get value failed:%v, key:%v", err, timestamp)
+			return
+		}
+		if batchRecords, err = UnmarshalBatchRequestInfo(value); err != nil {
+			t.Errorf("unmarshal batch request failed:%v", err)
+			return
+		}
+		if len(batchRecords) != len(reqRecords) {
+			t.Errorf("records mismatch, expect count:%v, actual:%v; expect reqRecords:%v, actual:%v",
+				len(batchRecords), len(reqRecords), reqRecords, batchRecords)
+		}
+	}
 }

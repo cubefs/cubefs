@@ -33,12 +33,13 @@ import (
 
 // MetaItem defines the structure of the metadata operations.
 type MetaItem struct {
-	Op          uint32 `json:"op"`
-	K           []byte `json:"k"`
-	V           []byte `json:"v"`
-	From        string `json:"frm"` // The address of the client that initiated the operation.
-	Timestamp   int64  `json:"ts"`  // DeleteTime of operation
-	TrashEnable bool   `json:"te"`  // enable trash
+	Op          uint32       `json:"op"`
+	K           []byte       `json:"k"`
+	V           []byte       `json:"v"`
+	From        string       `json:"frm"` // The address of the client that initiated the operation.
+	Timestamp   int64        `json:"ts"`  // DeleteTime of operation
+	TrashEnable bool         `json:"te"`  // enable trash
+	ReqInfo     *RequestInfo `json:"req"`
 }
 
 // MarshalJson
