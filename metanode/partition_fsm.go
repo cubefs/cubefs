@@ -19,9 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"sync/atomic"
-	"time"
 
 	"io/ioutil"
 	"os"
@@ -395,22 +393,6 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 // HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	exporter.Warning(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
-	if mp.config.NodeId == leader {
-		localIp := mp.manager.metaNode.localAddr
-		if localIp == "" {
-			localIp = "127.0.0.1"
-		}
-
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(localIp, serverPort), time.Second)
-		if err != nil {
-			log.LogErrorf(fmt.Sprintf("HandleLeaderChange serverPort not exsit ,error %v", err))
-			go mp.raftPartition.TryToLeader(mp.config.PartitionId)
-			return
-		}
-		log.LogDebugf("[metaPartition] HandleLeaderChange close conn %v, nodeId: %v, leader: %v", serverPort, mp.config.NodeId, leader)
-		conn.(*net.TCPConn).SetLinger(0)
-		conn.Close()
-	}
 	if mp.config.NodeId != leader {
 		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader)
 		mp.storeChan <- &storeMsg{
