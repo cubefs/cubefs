@@ -99,6 +99,11 @@ func (manager *SpaceManager) Stop() {
 		}(partitionC)
 	}
 	wg.Wait()
+	// after all scheduler were drained
+	// close all io pools
+	for _, disk := range manager.disks {
+		disk.Close()
+	}
 }
 
 func (manager *SpaceManager) SetNodeID(nodeID uint64) {
@@ -156,7 +161,7 @@ func (manager *SpaceManager) Stats() *Stats {
 	return manager.stats
 }
 
-func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int) (err error) {
+func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, writeThreadCnt uint32, readThreadCnt uint32) (err error) {
 	var (
 		disk    *Disk
 		visitor PartitionVisitor
@@ -177,7 +182,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 	}
 
 	if _, err = manager.GetDisk(path); err != nil {
-		disk = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager)
+		disk = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager, writeThreadCnt, readThreadCnt)
 		disk.RestorePartition(visitor)
 		manager.putDisk(disk)
 		err = nil

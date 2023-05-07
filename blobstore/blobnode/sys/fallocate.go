@@ -14,11 +14,15 @@
 
 package sys
 
-import "syscall"
+import (
+	"syscall"
+
+	myos "github.com/cubefs/cubefs/blobstore/util/sys"
+)
 
 // punch hole physize, and keep size
 func PunchHole(fd uintptr, offset int64, size int64) error {
-	err := Fallocate(fd, FALLOC_FL_KEEP_SIZE|FALLOC_FL_PUNCH_HOLE, offset, size)
+	err := myos.Fallocate(fd, myos.FALLOC_FL_KEEP_SIZE|myos.FALLOC_FL_PUNCH_HOLE, offset, size)
 	if err == syscall.ENOSYS || err == syscall.EOPNOTSUPP {
 		return syscall.EPERM
 	}
@@ -27,7 +31,7 @@ func PunchHole(fd uintptr, offset int64, size int64) error {
 
 // pre allocate phy space, and scale size
 func PreAllocate(fd uintptr, offset int64, size int64) error {
-	return Fallocate(fd, FALLOC_FL_DEFAULT, offset, size)
+	return myos.Fallocate(fd, myos.FALLOC_FL_DEFAULT, offset, size)
 }
 
 func Fstat(fd uintptr, stat *syscall.Stat_t) error {

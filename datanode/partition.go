@@ -34,6 +34,7 @@ import (
 	"sort"
 	"syscall"
 
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -294,7 +295,10 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	}
 	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
 	partition.replicasInit()
-	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, partition.partitionType)
+	// use simple scheduler
+	writeScheduler := iopool.NewShardedIoScheduler(64, disk.GetWritePool())
+	readScheduler := iopool.NewShardedIoScheduler(64, disk.GetReadPool())
+	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, partition.partitionType, writeScheduler, readScheduler)
 	if err != nil {
 		return
 	}

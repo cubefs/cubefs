@@ -16,3 +16,4 @@ java/target
 java/src/main/resources/*.so
 blobstore/.deps/
 blobstore/bin/
+blobstore/run

@@ -19,6 +19,7 @@ import (
 	"io"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
@@ -50,7 +51,14 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 	endIdx := startIdx + util.PerBlockCrcSize
 	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], blockCrc)
 	verifyStart := startIdx + int(util.BlockHeaderSize*e.extentID)
-	if _, err = s.verifyExtentFp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart)); err != nil {
+	if s.writeScheduler != nil {
+		task := iopool.NewWriteIoTask(s.verifyExtentFp, verifyExtentFpId, uint64(verifyStart), e.header[startIdx:endIdx], false)
+		s.writeScheduler.Schedule(task)
+		_, err = task.WaitAndClose()
+	} else {
+		_, err = s.verifyExtentFp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart))
+	}
+	if err != nil {
 		return
 	}
 
@@ -62,22 +70,40 @@ func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
 		return
 	}
 
-	err = fallocate(int(s.verifyExtentFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
-		int64(util.BlockHeaderSize*extentID), util.BlockHeaderSize)
-
+	if s.writeScheduler != nil {
+		task := iopool.NewAllocIoTask(s.verifyExtentFp, verifyExtentFpId, FallocFLPunchHole|FallocFLKeepSize, uint64(util.BlockHeaderSize*extentID), util.BlockHeaderSize)
+		s.writeScheduler.Schedule(task)
+		_, err = task.WaitAndClose()
+	} else {
+		err = fallocate(int(s.verifyExtentFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
+			int64(util.BlockHeaderSize*extentID), util.BlockHeaderSize)
+	}
 	return
 }
 
 func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, extentID)
-	_, err = s.metadataFp.WriteAt(value, BaseExtentIDOffset)
+	if s.writeScheduler != nil {
+		task := iopool.NewWriteIoTask(s.metadataFp, metadataFpId, BaseExtentIDOffset, value, false)
+		s.writeScheduler.Schedule(task)
+		_, err = task.WaitAndClose()
+	} else {
+		_, err = s.metadataFp.WriteAt(value, BaseExtentIDOffset)
+	}
 	return
 }
 
 func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerifyFile() (extentID uint64) {
 	value := make([]byte, 8)
-	_, err := s.metadataFp.ReadAt(value, 8)
+	var err error
+	if s.readScheduler != nil {
+		task := iopool.NewReadIoTask(s.metadataFp, metadataFpId, 8, value)
+		s.readScheduler.Schedule(task)
+		_, err = task.WaitAndClose()
+	} else {
+		_, err = s.metadataFp.ReadAt(value, 8)
+	}
 	if err != nil {
 		return
 	}
@@ -94,13 +120,27 @@ func (s *ExtentStore) PreAllocSpaceOnVerifyFile(currExtentID uint64) {
 		prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerifyFile))
 		endAllocSpaceExtentID := int64(prevAllocSpaceExtentID + 1000)
 		size := int64(1000 * util.BlockHeaderSize)
-		err := fallocate(int(s.verifyExtentFp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
+		var err error
+		if s.writeScheduler != nil {
+			task := iopool.NewAllocIoTask(s.verifyExtentFp, verifyExtentFpId, 1, uint64(prevAllocSpaceExtentID*util.BlockHeaderSize), uint64(size))
+			s.writeScheduler.Schedule(task)
+			_, err = task.WaitAndClose()
+		} else {
+			err = fallocate(int(s.verifyExtentFp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
+		}
 		if err != nil {
 			return
 		}
 		data := make([]byte, 8)
 		binary.BigEndian.PutUint64(data, uint64(endAllocSpaceExtentID))
-		if _, err = s.metadataFp.WriteAt(data, 8); err != nil {
+		if s.writeScheduler != nil {
+			task := iopool.NewWriteIoTask(s.metadataFp, metadataFpId, 8, data, false)
+			s.writeScheduler.Schedule(task)
+			_, err = task.WaitAndClose()
+		} else {
+			_, err = s.metadataFp.WriteAt(data, 8)
+		}
+		if err != nil {
 			return
 		}
 		atomic.StoreUint64(&s.hasAllocSpaceExtentIDOnVerifyFile, uint64(endAllocSpaceExtentID))
@@ -115,7 +155,13 @@ func (s *ExtentStore) PreAllocSpaceOnVerifyFile(currExtentID uint64) {
 
 func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) {
 	data := make([]byte, 8)
-	_, err = s.metadataFp.ReadAt(data, 0)
+	if s.readScheduler != nil {
+		task := iopool.NewReadIoTask(s.metadataFp, metadataFpId, 0, data)
+		s.readScheduler.Schedule(task)
+		_, err = task.WaitAndClose()
+	} else {
+		_, err = s.metadataFp.ReadAt(data, 0)
+	}
 	if err != nil {
 		return
 	}

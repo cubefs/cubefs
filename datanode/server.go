@@ -57,11 +57,13 @@ var (
 )
 
 const (
-	DefaultZoneName         = proto.DefaultZoneName
-	DefaultRaftDir          = "raft"
-	DefaultRaftLogsToRetain = 10 // Count of raft logs per data partition
-	DefaultDiskMaxErr       = 1
-	DefaultDiskRetainMin    = 5 * util.GB // GB
+	DefaultZoneName           = proto.DefaultZoneName
+	DefaultRaftDir            = "raft"
+	DefaultRaftLogsToRetain   = 10 // Count of raft logs per data partition
+	DefaultDiskMaxErr         = 1
+	DefaultDiskRetainMin      = 5 * util.GB // GB
+	DefaultDiskWriteThreadCnt = 2
+	DefaultDiskReadThreadCnt  = 4
 )
 
 const (
@@ -103,6 +105,10 @@ const (
 
 	//rate limit control enable
 	ConfigDiskQosEnable = "diskQosEnable" //bool
+
+	// io threads count
+	ConfigWriteThreadCnt = "writeThreadCnt" // int
+	ConfigReadThreadCnt  = "readThreadCnt"  // int
 )
 
 // DataNode defines the structure of a data node.
@@ -329,6 +335,15 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		}
 	}
 
+	writeThreadCnt := cfg.GetInt(ConfigWriteThreadCnt)
+	readThreadCnt := cfg.GetInt(ConfigReadThreadCnt)
+	if writeThreadCnt <= 0 {
+		writeThreadCnt = DefaultDiskWriteThreadCnt
+	}
+	if readThreadCnt <= 0 {
+		readThreadCnt = DefaultDiskReadThreadCnt
+	}
+
 	var wg sync.WaitGroup
 	for _, d := range paths {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
@@ -364,7 +379,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
 			defer wg.Done()
-			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr)
+			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, uint32(writeThreadCnt), uint32(readThreadCnt))
 		}(&wg, path, reservedSpace)
 	}
 

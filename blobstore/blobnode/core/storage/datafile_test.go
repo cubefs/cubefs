@@ -54,14 +54,14 @@ func TestNewChunkData(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err = NewChunkData(ctx, core.VuidMeta{}, "", nil, false, nil)
+	_, err = NewChunkData(ctx, core.VuidMeta{}, "", nil, false, nil, nil, nil)
 	require.Error(t, err)
 
-	_, err = NewChunkData(ctx, core.VuidMeta{}, "/tmp/mock/file/path", conf, false, nil)
+	_, err = NewChunkData(ctx, core.VuidMeta{}, "/tmp/mock/file/path", conf, false, nil, nil, nil)
 	require.Error(t, err)
 
 	// case: format data when first creating chunkdata
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, conf, true, nil)
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, conf, true, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -79,7 +79,7 @@ func TestNewChunkData(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	cdRo, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, conf, true, nil)
+	cdRo, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, conf, true, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, cdRo)
 	defer cdRo.Close()
@@ -111,7 +111,7 @@ func TestChunkData_Write(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos)
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -176,7 +176,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos)
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -256,7 +256,7 @@ func TestChunkData_Delete(t *testing.T) {
 		RuntimeConfig: core.RuntimeConfig{BlockBufferSize: 64 * 1024},
 	}
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos)
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -379,7 +379,7 @@ func TestChunkData_Destroy(t *testing.T) {
 		RuntimeConfig: core.RuntimeConfig{},
 	}
 
-	cd, err := NewChunkData(context.TODO(), core.VuidMeta{}, chunkname, diskConfig, true, nil)
+	cd, err := NewChunkData(context.TODO(), core.VuidMeta{}, chunkname, diskConfig, true, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -433,12 +433,12 @@ func TestParseMeta(t *testing.T) {
 	}
 
 	// scene 1
-	cd, err := NewChunkData(ctx, meta, chunkname, diskConfig, true, nil)
+	cd, err := NewChunkData(ctx, meta, chunkname, diskConfig, true, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
 
-	cd1, err := NewChunkData(ctx, meta, chunkname, diskConfig, false, nil)
+	cd1, err := NewChunkData(ctx, meta, chunkname, diskConfig, false, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, cd1)
 	defer cd1.Close()

@@ -15,5 +15,7 @@
   "enableSmuxConnPool": "true",
   "masterAddr": [
       _master_addr_
-]
+  ],
+  "writeThreadCnt":2,
+  "readThreadCnt":4
 }

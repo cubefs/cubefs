@@ -65,6 +65,10 @@ github.com/eapache/queue
 # github.com/fatih/color v1.13.0
 ## explicit; go 1.13
 github.com/fatih/color
+# github.com/go-ole/go-ole v1.2.6
+## explicit; go 1.12
+github.com/go-ole/go-ole
+github.com/go-ole/go-ole/oleutil
 # github.com/go-playground/locales v0.14.0
 ## explicit; go 1.13
 github.com/go-playground/locales
@@ -195,6 +199,10 @@ github.com/rcrowley/go-metrics
 # github.com/rs/xid v1.4.0
 ## explicit; go 1.12
 github.com/rs/xid
+# github.com/shirou/gopsutil v3.21.11+incompatible
+## explicit
+github.com/shirou/gopsutil/disk
+github.com/shirou/gopsutil/internal/common
 # github.com/smartystreets/goconvey v1.7.2
 ## explicit; go 1.16
 # github.com/stretchr/testify v1.7.0
@@ -204,6 +212,9 @@ github.com/stretchr/testify/require
 # github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
 ## explicit
 github.com/tecbot/gorocksdb
+# github.com/yusufpapurcu/wmi v1.2.2
+## explicit; go 1.16
+github.com/yusufpapurcu/wmi
 # go.etcd.io/etcd/raft/v3 v3.5.1
 ## explicit; go 1.16
 go.etcd.io/etcd/raft/v3

@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -76,7 +77,7 @@ func TestNewChunkStorage(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(context.TODO(), datapath, vm, func(option *core.Option) {
+	cs, err := NewChunkStorage(context.TODO(), datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -137,7 +138,130 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
+		option.Conf = conf
+		option.DB = kvdb
+		option.CreateDataIfMiss = true
+		option.IoQos = ioQos
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cs)
+
+	// build shard data
+	shardData := []byte("test data")
+	shardSize := len(shardData)
+	dataCrc := crc32.NewIEEE()
+	n, err := dataCrc.Write(shardData)
+	require.NoError(t, err)
+	require.Equal(t, shardSize, n)
+
+	bid := proto.BlobID(1024)
+
+	// write failed. argument check
+	shard := &core.Shard{
+		Bid:  bid,
+		Vuid: 10,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(shardData)),
+		Body: bytes.NewReader(shardData),
+	}
+
+	err = cs.Write(ctx, shard)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not match")
+
+	// normal write
+	shard = &core.Shard{
+		Bid:  bid,
+		Vuid: vuid,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(shardData)),
+		Body: bytes.NewReader(shardData),
+	}
+
+	// write data
+	err = cs.Write(ctx, shard)
+	require.NoError(t, err)
+
+	// read data and check
+	rs, err := cs.NewReader(ctx, bid)
+	require.NoError(t, err)
+	require.NotNil(t, rs)
+
+	require.Equal(t, shard.Bid, rs.Bid)
+	require.Equal(t, shard.Vuid, rs.Vuid)
+	require.Equal(t, shard.Flag, rs.Flag)
+	require.Equal(t, shard.Size, rs.Size)
+
+	rd, err := ioutil.ReadAll(rs.Body)
+	require.NoError(t, err)
+	require.Equal(t, shardData, rd)
+
+	// read meta
+	me, err := cs.ReadShardMeta(ctx, bid)
+	require.NoError(t, err)
+	require.NotNil(t, me)
+
+	require.Equal(t, false, me.Inline)
+	require.Equal(t, shard.Size, me.Size)
+
+	// calc crc32
+	expectedCrc := crc32.ChecksumIEEE(shardData)
+	require.Equal(t, expectedCrc, shard.Crc)
+	log.Info(expectedCrc)
+
+	from, to := int64(0), int64(1)
+	_, err = cs.NewRangeReader(ctx, shard.Bid, from, to)
+	require.NoError(t, err)
+
+	cs.compacting = true
+	shard.Body = bytes.NewReader(shardData)
+	err = cs.Write(ctx, shard)
+	require.NoError(t, err)
+}
+
+func TestChunkStorage_ReadWriteWithPool(t *testing.T) {
+	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkStorageRW")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+	writePool := iopool.NewGoroutinePool(2)
+	readPool := iopool.NewGoroutinePool(4)
+	writeScheduler := iopool.NewSimpleIoScheduler(writePool)
+	readScheduler := iopool.NewSimpleIoScheduler(readPool)
+	ctx := context.Background()
+
+	conf := &core.Config{
+		RuntimeConfig: core.RuntimeConfig{
+			MetricReportIntervalS: 30,
+			BlockBufferSize:       64 * 1024,
+		},
+	}
+
+	vuid := proto.Vuid(1)
+	chunkid := bnapi.NewChunkId(vuid)
+
+	err = core.EnsureDiskArea(testDir, "")
+	require.NoError(t, err)
+
+	datapath := core.GetDataPath(testDir)
+	log.Info(datapath)
+	metapath := core.GetMetaPath(testDir, "")
+	log.Info(metapath)
+
+	kvdb, err := db.NewMetaHandler(metapath, db.MetaConfig{})
+	require.NoError(t, err)
+	require.NotNil(t, kvdb)
+
+	vm := core.VuidMeta{
+		Vuid:    vuid,
+		DiskID:  12,
+		ChunkId: chunkid,
+		Mtime:   time.Now().UnixNano(),
+		Status:  bnapi.ChunkStatusNormal,
+	}
+
+	ioQos, _ := qos.NewQosManager(qos.Config{})
+	cs, err := NewChunkStorage(ctx, datapath, vm, readScheduler, writeScheduler, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -259,7 +383,7 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -375,7 +499,7 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -483,7 +607,7 @@ func TestChunkStorage_Finalizer(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = metadb
 		option.CreateDataIfMiss = true

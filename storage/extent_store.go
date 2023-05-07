@@ -17,6 +17,7 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"sync"
@@ -33,6 +34,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
@@ -128,17 +130,25 @@ type ExtentStore struct {
 	hasAllocSpaceExtentIDOnVerifyFile uint64
 	hasDeleteNormalExtentsCache       sync.Map
 	partitionType                     int
+	// io schedulers
+	writeScheduler iopool.IoScheduler
+	readScheduler  iopool.IoScheduler
 }
+
+const metadataFpId = math.MaxUint64 - 1
+const verifyExtentFpId = math.MaxUint64
 
 func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
-func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int) (s *ExtentStore, err error) {
+func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, writeScheduler iopool.IoScheduler, readScheduler iopool.IoScheduler) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
 	s.dataPath = dataDir
 	s.partitionType = dpType
 	s.partitionID = partitionID
+	s.writeScheduler = writeScheduler
+	s.readScheduler = readScheduler
 	if err = MkdirAll(dataDir); err != nil {
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
@@ -326,7 +336,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
 	}
-	err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
+	err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei, s.writeScheduler)
 	if err != nil {
 		return err
 	}
@@ -378,7 +388,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return
 	}
-	crc, err = e.Read(nbuf, offset, size, isRepairRead)
+	crc, err = e.Read(nbuf, offset, size, isRepairRead, s.readScheduler)
 
 	return
 }
@@ -403,7 +413,7 @@ func (s *ExtentStore) tinyDelete(extentID uint64, offset, size int64) (err error
 	var (
 		hasDelete bool
 	)
-	if hasDelete, err = e.DeleteTiny(offset, size); err != nil {
+	if hasDelete, err = e.DeleteTiny(offset, size, s.writeScheduler); err != nil {
 		return
 	}
 	if hasDelete {
@@ -887,7 +897,15 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 
 	if !IsTinyExtent(extentID) && proto.IsNormalDp(s.partitionType) {
 		e.header = make([]byte, util.BlockHeaderSize)
-		if _, err = s.verifyExtentFp.ReadAt(e.header, int64(extentID*util.BlockHeaderSize)); err != nil && err != io.EOF {
+		scheduler := s.readScheduler
+		if scheduler != nil {
+			task := iopool.NewReadIoTask(s.verifyExtentFp, verifyExtentFpId, uint64(extentID*util.BlockHeaderSize), e.header)
+			scheduler.Schedule(task)
+			_, err = task.WaitAndClose()
+		} else {
+			_, err = s.verifyExtentFp.ReadAt(e.header, int64(extentID*util.BlockHeaderSize))
+		}
+		if err != nil && err != io.EOF {
 			return
 		}
 	}
@@ -992,7 +1010,7 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 				continue
 			}
 
-			extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
+			extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc, s.readScheduler)
 			if err != nil {
 				log.LogError("[autoComputeExtentCrc] compute crc fail", err)
 				continue
@@ -1024,7 +1042,7 @@ func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, dat
 		return nil
 	}
 
-	if err = e.TinyExtentRecover(data, offset, size, crc, isEmptyPacket); err != nil {
+	if err = e.TinyExtentRecover(data, offset, size, crc, isEmptyPacket, s.writeScheduler); err != nil {
 		return err
 	}
 	ei.UpdateExtentInfo(e, 0)

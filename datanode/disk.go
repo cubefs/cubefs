@@ -30,9 +30,12 @@ import (
 
 	"os"
 
+	"github.com/cubefs/cubefs/blobstore/util/diskinfo"
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/shirou/gopsutil/disk"
 )
 
 var (
@@ -73,6 +76,17 @@ type Disk struct {
 	dataNode                                  *DataNode
 
 	limitFactor map[uint32]*rate.Limiter
+
+	// goroutine pool for io
+	writePool *iopool.GoroutinePool
+	readPool  *iopool.GoroutinePool
+
+	// limiter adjuster
+	limitAdjuster LimitAdjuster
+	// disk partition
+	diskPartition *disk.PartitionStat
+	// limit sampler
+	samplerChan chan interface{}
 }
 
 const (
@@ -81,7 +95,7 @@ const (
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk) {
+func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager, writeThreadCnt uint32, readThreadCnt uint32) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
 	d.ReservedSpace = reservedSpace
@@ -102,7 +116,62 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
 	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
 
+	// create and start io pools
+	d.writePool = iopool.NewGoroutinePool(writeThreadCnt)
+	d.readPool = iopool.NewGoroutinePool(readThreadCnt)
+
+	// setting adjusters
+	d.limitAdjuster = nil
+
+	// find disk partition
+	parition, err := diskinfo.GetMatchParation(d.Path)
+	if err == nil && d.limitAdjuster != nil {
+		d.diskPartition = parition
+
+		// start sampler
+		d.samplerChan = make(chan interface{})
+		d.startSampler()
+	} else {
+		log.LogErrorf("failed to find disk partition in %v, error %v", d.Path, err)
+	}
 	return
+}
+
+func (d *Disk) startSampler() {
+	go func() {
+		for {
+			time.Sleep(time.Millisecond * 900)
+			select {
+			case <-d.samplerChan:
+				return
+			default:
+				if d.diskPartition != nil {
+					smaple, err := diskinfo.GetDiskIoSample(d.diskPartition, 100*time.Millisecond)
+					if err != nil {
+						log.LogErrorf("failed to get disk io sample, error %v\n", err)
+						continue
+					}
+					if d.limitAdjuster != nil {
+						d.limitAdjuster.Adjust(smaple, d.limitFactor[proto.IopsReadType], d.limitFactor[proto.IopsWriteType], d.limitFactor[proto.FlowReadType], d.limitFactor[proto.FlowWriteType])
+					}
+				}
+			}
+		}
+	}()
+}
+
+func (d *Disk) GetWritePool() *iopool.GoroutinePool {
+	return d.writePool
+}
+
+func (d *Disk) GetReadPool() *iopool.GoroutinePool {
+	return d.readPool
+}
+
+func (d *Disk) Close() {
+	d.writePool.Close()
+	d.readPool.Close()
+	close(d.samplerChan)
 }
 
 func (d *Disk) updateQosLimiter() {

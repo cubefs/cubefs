@@ -27,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -199,7 +200,7 @@ func IsAppendWrite(writeType int) bool {
 }
 
 // WriteTiny performs write on a tiny extent.
-func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeType int, isSync bool) (err error) {
+func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, scheduler iopool.IoScheduler) (err error) {
 	e.Lock()
 	defer e.Unlock()
 	index := offset + size
@@ -211,10 +212,18 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 		return ParameterMismatchError
 	}
 
-	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
+	if scheduler != nil {
+		task := iopool.NewWriteIoTask(e.file, e.extentID, uint64(offset), data[:size], isSync)
+		scheduler.Schedule(task)
+		_, err = task.WaitAndClose()
+	} else {
+		_, err = e.file.WriteAt(data[:size], int64(offset))
+	}
+	if err != nil {
 		return
 	}
-	if isSync {
+	// sync() will be executed by the scheduler
+	if scheduler == nil && isSync {
 		if err = e.file.Sync(); err != nil {
 			return
 		}
@@ -232,9 +241,9 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo, scheduler iopool.IoScheduler) (err error) {
 	if IsTinyExtent(e.extentID) {
-		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
+		err = e.WriteTiny(data, offset, size, crc, writeType, isSync, scheduler)
 		return
 	}
 
@@ -246,7 +255,14 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		err = NewParameterMismatchErr(fmt.Sprintf("extent current size = %v write offset=%v write size=%v", e.dataSize, offset, size))
 		return
 	}
-	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
+	if scheduler != nil {
+		task := iopool.NewWriteIoTask(e.file, e.extentID, uint64(offset), data[:size], isSync)
+		scheduler.Schedule(task)
+		_, err = task.WaitAndClose()
+	} else {
+		_, err = e.file.WriteAt(data[:size], int64(offset))
+	}
+	if err != nil {
 		return
 	}
 	blockNo := offset / util.BlockSize
@@ -257,7 +273,8 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 		}
 	}()
-	if isSync {
+	// sync() will be executed by the scheduler
+	if scheduler == nil && isSync {
 		if err = e.file.Sync(); err != nil {
 			return
 		}
@@ -278,11 +295,19 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 }
 
 // Read reads data from an extent.
-func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
+func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool, scheduler iopool.IoScheduler) (crc uint32, err error) {
 	if IsTinyExtent(e.extentID) {
-		return e.ReadTiny(data, offset, size, isRepairRead)
+		return e.ReadTiny(data, offset, size, isRepairRead, scheduler)
 	}
-	if _, err = e.file.ReadAt(data[:size], offset); err != nil {
+	if scheduler != nil {
+		task := iopool.NewReadIoTask(e.file, e.extentID, uint64(offset), data[:size])
+		scheduler.Schedule(task)
+		_, err = task.WaitAndClose()
+
+	} else {
+		_, err = e.file.ReadAt(data[:size], offset)
+	}
+	if err != nil {
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
@@ -290,8 +315,14 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 }
 
 // ReadTiny read data from a tiny extent.
-func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
-	_, err = e.file.ReadAt(data[:size], offset)
+func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool, scheduler iopool.IoScheduler) (crc uint32, err error) {
+	if scheduler != nil {
+		task := iopool.NewReadIoTask(e.file, e.extentID, uint64(offset), data[:size])
+		scheduler.Schedule(task)
+		_, err = task.WaitAndClose()
+	} else {
+		_, err = e.file.ReadAt(data[:size], offset)
+	}
 	if isRepairRead && err == io.EOF {
 		err = nil
 	}
@@ -306,7 +337,7 @@ func (e *Extent) Flush() (err error) {
 	return
 }
 
-func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
+func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc, scheduler iopool.IoScheduler) (crc uint32, err error) {
 	var blockCnt int
 	blockCnt = int(e.Size() / util.BlockSize)
 	if e.Size()%util.BlockSize != 0 {
@@ -321,7 +352,14 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 		}
 		bdata := make([]byte, util.BlockSize)
 		offset := int64(blockNo * util.BlockSize)
-		readN, err := e.file.ReadAt(bdata[:util.BlockSize], offset)
+		var readN int
+		if scheduler != nil {
+			task := iopool.NewReadIoTask(e.file, e.extentID, uint64(offset), bdata[:util.BlockSize])
+			scheduler.Schedule(task)
+			readN, err = task.WaitAndClose()
+		} else {
+			readN, err = e.file.ReadAt(bdata[:util.BlockSize], offset)
+		}
 		if readN == 0 && err != nil {
 			break
 		}
@@ -344,7 +382,7 @@ const (
 )
 
 // DeleteTiny deletes a tiny extent.
-func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
+func (e *Extent) DeleteTiny(offset, size int64, scheduler iopool.IoScheduler) (hasDelete bool, err error) {
 	if int(offset)%PageSize != 0 {
 		return false, ParameterMismatchError
 	}
@@ -367,7 +405,13 @@ func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
 		hasDelete = true
 		return true, nil
 	}
-	err = fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
+	if scheduler != nil {
+		task := iopool.NewAllocIoTask(e.file, e.extentID, FallocFLPunchHole|FallocFLKeepSize, uint64(offset), uint64(size))
+		scheduler.Schedule(task)
+		_, err = task.WaitAndClose()
+	} else {
+		err = fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
+	}
 	return
 }
 
@@ -377,7 +421,7 @@ func (e *Extent) getRealBlockCnt() (blockNum int64) {
 	return stat.Blocks
 }
 
-func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, isEmptyPacket bool) (err error) {
+func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, isEmptyPacket bool, scheduler iopool.IoScheduler) (err error) {
 	e.Lock()
 	defer e.Unlock()
 	if !IsTinyExtent(e.extentID) {
@@ -401,9 +445,21 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		if err = syscall.Ftruncate(int(e.file.Fd()), offset+size); err != nil {
 			return err
 		}
-		err = fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
+		if scheduler != nil {
+			task := iopool.NewAllocIoTask(e.file, e.extentID, FallocFLPunchHole|FallocFLKeepSize, uint64(offset), uint64(size))
+			scheduler.Schedule(task)
+			_, err = task.WaitAndClose()
+		} else {
+			err = fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
+		}
 	} else {
-		_, err = e.file.WriteAt(data[:size], int64(offset))
+		if scheduler != nil {
+			task := iopool.NewWriteIoTask(e.file, e.extentID, uint64(offset), data[:size], false)
+			scheduler.Schedule(task)
+			_, err = task.WaitAndClose()
+		} else {
+			_, err = e.file.WriteAt(data[:size], int64(offset))
+		}
 	}
 	if err != nil {
 		return

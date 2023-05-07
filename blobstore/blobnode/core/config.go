@@ -77,6 +77,8 @@ type RuntimeConfig struct {
 	MetricReportIntervalS        int64   `json:"metric_report_interval_S"`
 	BlockBufferSize              int64   `json:"block_buffer_size"`
 	EnableDataInspect            bool    `json:"enable_data_inspect"`
+	WriteThreadCnt               uint32  `json:"write_thread_count"`
+	ReadThreadCnt                uint32  `json:"read_thread_count"`
 
 	DataQos qos.Config `json:"data_qos"`
 }

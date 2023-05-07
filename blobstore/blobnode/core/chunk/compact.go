@@ -64,7 +64,7 @@ func (cs *chunk) StartCompact(ctx context.Context) (newcs core.ChunkAPI, err err
 	stg := cs.getStg()
 
 	// new dstChunkStorage
-	ncs, err := newChunkStorage(ctx, cs.Disk().GetDataPath(), vm, func(o *core.Option) {
+	ncs, err := newChunkStorage(ctx, cs.Disk().GetDataPath(), vm, cs.readScheduler, cs.writeScheduler, func(o *core.Option) {
 		o.Conf = cs.Disk().GetConfig()
 		o.DB = stg.MetaHandler().InnerDB()
 		o.IoQos = cs.Disk().GetIoQos()
