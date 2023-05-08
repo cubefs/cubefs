@@ -178,7 +178,12 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 		resp.Msg = err.Error()
 		return
 	}
-	snap := NewSnapshot(mp.(*metaPartition))
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		return
+	}
+	snap := NewSnapshot(partition)
 	if snap == nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
@@ -199,24 +204,24 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["extend_count"] = snap.Count(ExtendType)
 	msg["deleted_inode_count"] = snap.Count(DelInodeType)
 	msg["deleted_dentry_count"] = snap.Count(DelDentryType)
-	msg["free_list_count"] = mp.(*metaPartition).freeList.Len()
-	msg["trash_days"] = mp.(*metaPartition).config.TrashRemainingDays
+	msg["free_list_count"] = partition.freeList.Len()
+	msg["trash_days"] = partition.config.TrashRemainingDays
 	msg["cursor"] = mp.GetCursor()
 	_, msg["leader"] = mp.IsLeader()
 	msg["apply_id"] = mp.GetAppliedID()
 	msg["raft_status"] = m.raftStore.RaftStatus(pid)
-	msg["trash_first_upd_time"] = mp.(*metaPartition).trashExpiresFirstUpdateTime
-	msg["trash_clean_interval_min"] = mp.(*metaPartition).getTrashCleanInterval() / time.Minute
-	msg["batch_del_inode_cnt"] = mp.(*metaPartition).GetBatchDelInodeCnt()
-	msg["del_inode_interval_ms"] = mp.(*metaPartition).GetDelInodeInterval()
-	raftPartition := mp.(*metaPartition).raftPartition
+	msg["trash_first_upd_time"] = partition.trashExpiresFirstUpdateTime
+	msg["trash_clean_interval_min"] = partition.getTrashCleanInterval() / time.Minute
+	msg["batch_del_inode_cnt"] = partition.GetBatchDelInodeCnt()
+	msg["del_inode_interval_ms"] = partition.GetDelInodeInterval()
+	raftPartition := partition.raftPartition
 	if raftPartition != nil {
 		msg["raft_log_size"] = raftPartition.GetWALFileSize()
 		msg["raft_log_cap"] = raftPartition.GetWALFileCacheCapacity()
 	}
-	msg["status"] = mp.(*metaPartition).status
-	msg["cleanTrashItemMaxDurationEachTime"] = mp.(*metaPartition).getCleanTrashItemMaxDurationEachTime()
-	msg["cleanTrashItemMaxCountEachTime"] = mp.(*metaPartition).getCleanTrashItemMaxCountEachTime()
+	msg["status"] = partition.status
+	msg["cleanTrashItemMaxDurationEachTime"] = partition.getCleanTrashItemMaxDurationEachTime()
+	msg["cleanTrashItemMaxCountEachTime"] = partition.getCleanTrashItemMaxCountEachTime()
 	msg["now"] = time.Now()
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -270,8 +275,14 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 		resp.Msg = err.Error()
 		return
 	}
-	snap := mp.(*metaPartition).db.OpenSnap()
-	defer mp.(*metaPartition).db.ReleaseSnap(snap)
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		return
+	}
+
+	snap := partition.db.OpenSnap()
+	defer partition.db.ReleaseSnap(snap)
 
 	buff.Reset()
 	var (
@@ -286,7 +297,7 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 	endKey = make([]byte, 1)
 	stKey[0] = byte(prefixTable)
 	endKey[0] = byte(prefixTable + 1)
-	err = mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
+	err = partition.db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
 		ek := &proto.ExtentKey{}
 		switch prefixTable {
 		case ExtentDelTableV1:
@@ -379,8 +390,14 @@ func (m *MetaNode) cleanDeleteEkHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	snap := mp.(*metaPartition).db.OpenSnap()
-	defer mp.(*metaPartition).db.ReleaseSnap(snap)
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		return
+	}
+
+	snap := partition.db.OpenSnap()
+	defer partition.db.ReleaseSnap(snap)
 
 	var (
 		stKey  []byte
@@ -391,20 +408,20 @@ func (m *MetaNode) cleanDeleteEkHandler(w http.ResponseWriter, r *http.Request) 
 	endKey = make([]byte, 1)
 	stKey[0] = byte(ExtentDelTableV1)
 	endKey[0] = byte(ExtentDelTableV1 + 1)
-	delHandle, err := mp.(*metaPartition).db.CreateBatchHandler()
+	delHandle, err := partition.db.CreateBatchHandler()
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
 		return
 	}
-	err = mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
+	err = partition.db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
 		if k[0] != byte(ExtentDelTableV1) {
 			return false, nil
 		}
-		mp.(*metaPartition).db.DelItemToBatch(delHandle, k)
+		partition.db.DelItemToBatch(delHandle, k)
 		return true, nil
 	})
-	if err = mp.(*metaPartition).db.CommitBatchAndRelease(delHandle); err != nil {
+	if err = partition.db.CommitBatchAndRelease(delHandle); err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
 		return
@@ -2060,19 +2077,25 @@ func (m *MetaNode) getInodeWithMarkDeleteHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		return
+	}
+
 	var (
 		delIno    *DeletedINode
 		expired   bool
 		timestamp int64
 	)
-	ino, err := mp.(*metaPartition).inodeTree.RefGet(id)
+	ino, err := partition.inodeTree.RefGet(id)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
 		return
 	}
 
-	delIno, err = mp.(*metaPartition).inodeDeletedTree.RefGet(id)
+	delIno, err = partition.inodeDeletedTree.RefGet(id)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -2190,7 +2213,13 @@ func (m *MetaNode) reopenRocksDb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = mp.(*metaPartition).db.CloseDb()
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		return
+	}
+
+	err = partition.db.CloseDb()
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = "close db failed " + err.Error()
@@ -2199,7 +2228,7 @@ func (m *MetaNode) reopenRocksDb(w http.ResponseWriter, r *http.Request) {
 
 	mConf := mp.GetBaseConfig()
 
-	err = mp.(*metaPartition).db.ReOpenDb(mp.(*metaPartition).getRocksDbRootDir(), mConf.RocksWalFileSize, mConf.RocksWalMemSize,
+	err = partition.db.ReOpenDb(partition.getRocksDbRootDir(), mConf.RocksWalFileSize, mConf.RocksWalMemSize,
 		mConf.RocksLogFileSize, mConf.RocksLogReversedTime, mConf.RocksLogReVersedCnt, mConf.RocksWalTTL)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
@@ -2430,12 +2459,18 @@ func (m *MetaNode) getInodeInuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if mp.(*metaPartition).inodeIDAllocator == nil || mp.(*metaPartition).inodeIDAllocator.GetStatus() == allocatorStatusUnavailable {
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		return
+	}
+
+	if partition.inodeIDAllocator == nil || partition.inodeIDAllocator.GetStatus() == allocatorStatusUnavailable {
 		resp.Msg = fmt.Sprintf("allocator disable")
 		return
 	}
 
-	inoInuse := mp.(*metaPartition).inodeIDAllocator.GetUsedInos()
+	inoInuse := partition.inodeIDAllocator.GetUsedInos()
 	resp.Data = &struct {
 		Cnt      int      `json:"count"`
 		InoInuse []uint64 `json:"inodeInuse"`
@@ -2475,11 +2510,17 @@ func (m *MetaNode) getBitInuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if mp.(*metaPartition).inodeIDAllocator == nil || mp.(*metaPartition).inodeIDAllocator.GetStatus() == allocatorStatusUnavailable {
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		return
+	}
+
+	if partition.inodeIDAllocator == nil || partition.inodeIDAllocator.GetStatus() == allocatorStatusUnavailable {
 		resp.Msg = fmt.Sprintf("allocator disable")
 		return
 	}
-	inoInuseBitMap := mp.(*metaPartition).inodeIDAllocator.GetUsedInosBitMap()
+	inoInuseBitMap := partition.inodeIDAllocator.GetUsedInosBitMap()
 	resp.Data = &struct {
 		InoInuseBitMap []uint64 `json:"inodeInuseBitMap"`
 	}{
@@ -2517,12 +2558,18 @@ func (m *MetaNode) getInodeAllocatorStat(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if mp.(*metaPartition).inodeIDAllocator == nil || mp.(*metaPartition).inodeIDAllocator.GetStatus() == allocatorStatusUnavailable {
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		return
+	}
+
+	if partition.inodeIDAllocator == nil || partition.inodeIDAllocator.GetStatus() == allocatorStatusUnavailable {
 		resp.Msg = fmt.Sprintf("allocator disable")
 		return
 	}
 
-	resp.Data = mp.(*metaPartition).inodeIDAllocator
+	resp.Data = partition.inodeIDAllocator
 	return
 }
 
@@ -2551,15 +2598,21 @@ func (m *MetaNode) checkFreelist(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-	if mp.(*metaPartition).HasRocksDBStore() {
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
 		return
 	}
-	applyID := mp.(*metaPartition).applyID
+
+	if partition.HasRocksDBStore() {
+		return
+	}
+	applyID := partition.applyID
 	//del inode snap
-	delInodeTree := &DeletedInodeBTree{(mp.(*metaPartition).inodeDeletedTree).(*DeletedInodeBTree).GetTree()}
+	delInodeTree := &DeletedInodeBTree{(partition.inodeDeletedTree).(*DeletedInodeBTree).GetTree()}
 	//free inodes
-	freeInodes := make([]uint64, 0, mp.(*metaPartition).freeList.Len())
-	mp.(*metaPartition).freeList.Range(func(ino uint64) bool {
+	freeInodes := make([]uint64, 0, partition.freeList.Len())
+	partition.freeList.Range(func(ino uint64) bool {
 		freeInodes = append(freeInodes, ino)
 		return true
 	})
