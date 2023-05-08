@@ -26,6 +26,8 @@ import (
 
 const (
 	DefaultConstConfigFile = "constcfg"
+	ClusterVersionFile     = "CLUSTER-VERSION"
+	ClusterUUID            = "ClusterUUID"
 )
 
 // Config defines the struct of a configuration in general.
@@ -276,4 +278,32 @@ func CheckOrStoreConstCfg(fileDir, fileName string, cfg *ConstConfig) (ok bool, 
 		return false, fmt.Errorf("compare const config %v and %v failed: %v", storedConstCfg, cfg, err)
 	}
 	return true, nil
+}
+
+func CheckOrStoreClusterUuid(dirPath, id string, force bool) (err error) {
+	dir, err := ioutil.ReadDir(dirPath)
+	if err != nil {
+		return fmt.Errorf("read dir %v failed: %v", dirPath, err.Error())
+	}
+	versionFile := path.Join(dirPath, ClusterVersionFile)
+	if len(dir) == 0 || force {
+		// store clusterUUID
+		ClusterMap := map[string]interface{}{"ClusterUUID": id}
+		data, err := json.Marshal(ClusterMap)
+		if err = ioutil.WriteFile(versionFile, data, 0755); err != nil {
+			return fmt.Errorf("write file %v failed: %v", versionFile, err.Error())
+		}
+	} else {
+		// check clusterUUID
+		cfg, err := LoadConfigFile(versionFile)
+		if err != nil {
+			return fmt.Errorf("read file %v failed: %v\n", versionFile, err.Error())
+		}
+		clusterUuId := cfg.GetString(ClusterUUID)
+		if clusterUuId != id {
+			return fmt.Errorf("file %v ClusterUUID %v not equal to %v\n",
+				versionFile, clusterUuId, id)
+		}
+	}
+	return
 }

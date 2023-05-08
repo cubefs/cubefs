@@ -195,6 +195,15 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetFileStats).
 		HandlerFunc(m.getFileStats)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetClusterUuidEnable).
+		HandlerFunc(m.setClusterUuidEnable)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetClusterUuid).
+		HandlerFunc(m.getClusterUuid)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGenerateClusterUuid).
+		HandlerFunc(m.generateClusterUuid)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetClusterValue).

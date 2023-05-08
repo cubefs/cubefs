@@ -26,6 +26,7 @@ var (
 	ErrIllegalTaskType       = errors.New("illegal task type")
 	ErrCanNotDropped         = errors.New("disk can not dropped")
 	ErrUnexpectMigrationTask = errors.New("unexpect migration task")
+	ErrIllegalDiskID         = errors.New("illegal disk id")
 
 	// error code
 	ErrNothingTodo = Error(CodeNotingTodo)
