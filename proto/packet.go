@@ -594,38 +594,44 @@ func (p *Packet) GetResultMsg() (m string) {
 	}
 
 	switch p.ResultCode {
+	case OpInitResultCode:
+		m = "init"
 	case OpInodeOutOfRange:
-		m = "Inode Out of Range :" + p.GetRespData()
+		m = "Inode Out of Range"
 	case OpIntraGroupNetErr:
-		m = "IntraGroupNetErr: " + p.GetRespData()
+		m = "IntraGroupNetErr"
 	case OpDiskNoSpaceErr:
-		m = "DiskNoSpaceErr: " + p.GetRespData()
+		m = "DiskNoSpaceErr"
 	case OpDiskErr:
-		m = "DiskErr: " + p.GetRespData()
+		m = "DiskErr"
 	case OpErr:
-		m = "Err: " + p.GetRespData()
+		m = "Err"
 	case OpAgain:
-		m = "Again: " + p.GetRespData()
+		m = "Again"
 	case OpOk:
 		m = "Ok"
 	case OpExistErr:
-		m = "ExistErr: " + p.GetRespData()
+		m = "ExistErr"
 	case OpInodeFullErr:
-		m = "InodeFullErr: " + p.GetRespData()
+		m = "InodeFullErr"
 	case OpArgMismatchErr:
-		m = "ArgUnmatchErr: " + p.GetRespData()
+		m = "ArgUnmatchErr"
 	case OpNotExistErr:
-		m = "NotExistErr: " + p.GetRespData()
+		m = "NotExistErr"
 	case OpTryOtherAddr:
-		m = "TryOtherAddr: " + p.GetRespData()
+		m = "TryOtherAddr"
 	case OpNotPerm:
-		m = "NotPerm: " + p.GetRespData()
+		m = "NotPerm"
 	case OpNotEmtpy:
-		m = "DirNotEmpty: " + p.GetRespData()
+		m = "DirNotEmpty"
 	case OpDisabled:
-		m = "Disabled: " + p.GetRespData()
+		m = "Disabled"
 	default:
-		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
+		m = fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
+	}
+	resp := p.GetRespData()
+	if p.ResultCode != OpInitResultCode && p.ResultCode != OpOk && len(resp) > 0 {
+		m = fmt.Sprintf("%v: %v", m, resp)
 	}
 	return
 }

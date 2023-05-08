@@ -108,9 +108,6 @@ func (sc *StreamConn) String() string {
 }
 
 func (sc *StreamConn) sendToDataPartition(req *common.Packet) (conn *net.TCPConn, err error) {
-	if log.IsDebugEnabled() {
-		log.LogDebugf("sendToDataPartition: send to addr(%v), reqPacket(%v)", sc.currAddr, req)
-	}
 	if conn, err = StreamConnPool.GetConnect(sc.currAddr); err != nil {
 		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		return
@@ -119,11 +116,11 @@ func (sc *StreamConn) sendToDataPartition(req *common.Packet) (conn *net.TCPConn
 		req.SendT = time.Now().UnixNano()
 	}
 	if err = req.WriteToConnNs(conn, sc.dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
-		log.LogWarnf("sendToDataPartition: failed to write to addr(%v) err(%v)", sc.currAddr, err)
+		log.LogWarnf("sendToDataPartition: failed to write to addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		return
 	}
 	if log.IsDebugEnabled() {
-		log.LogDebugf("sendToDataPartition exit: send to addr(%v) reqPacket(%v) successfully", sc.currAddr, req)
+		log.LogDebugf("sendToDataPartition: send to addr(%v) reqPacket(%v) successfully", sc.currAddr, req)
 	}
 	return
 }

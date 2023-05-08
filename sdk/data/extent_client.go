@@ -317,15 +317,6 @@ func (client *ExtentClient) FileSize(inode uint64) (size uint64, gen uint64, val
 	return
 }
 
-// SetFileSize set the file size.
-//func (client *ExtentClient) SetFileSize(inode uint64, size int) {
-//	s := client.GetStreamer(inode)
-//	if s != nil {
-//		log.LogDebugf("SetFileSize: ino(%v) size(%v)", inode, size)
-//		s.extents.SetSize(uint64(size), true)
-//	}
-//}
-
 // Write writes the data.
 func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint64, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
 	if client.dataWrapper.VolNotExists() {

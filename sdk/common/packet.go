@@ -256,7 +256,6 @@ func (p *Packet) IsValidReadReply(q *Packet) bool {
 	return false
 }
 
-
 func (p *Packet) ReadFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 	if deadlineTimeNs != proto.NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(time.Duration(deadlineTimeNs) * time.Nanosecond))
@@ -276,15 +275,16 @@ func (p *Packet) ReadFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 		}
 	}
 
-	if p.ResultCode != proto.OpOk || int(p.Size) != len(p.Data) {
-		// if read fails in datanode, p->Data would be error msg, p->Size would be the size of the msg
-		msg := make([]byte, p.Size)
-		_, readErr := io.ReadFull(c, msg)
-		err = errors.New(fmt.Sprintf("readFromConn: ResultCode(%v) Size(%v) expectedSize(%v) msg(%v) readErr(%v)", p.GetResultMsg(), p.Size, len(p.Data), string(msg), readErr))
+	if p.Size < 0 {
 		return
 	}
 
-	_, err = io.ReadFull(c, p.Data)
+	size := int(p.Size)
+	if size > len(p.Data) {
+		size = len(p.Data)
+	}
+
+	_, err = io.ReadFull(c, p.Data[:size])
 	return
 }
 

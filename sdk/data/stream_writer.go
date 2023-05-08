@@ -442,7 +442,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 			if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
 				break
 			}
-			log.LogWarnf("doOverWrite failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
+			log.LogWarnf("doOverWriteOrROW failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
 		}
 		if writeSize, err = s.doROW(ctx, req, direct); err == nil {
 			isROW = true
@@ -452,7 +452,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 		if err == syscall.ENOENT {
 			break
 		}
-		errmsg = fmt.Sprintf("doOverWrite and doROW err(%v) inode(%v) req(%v) try count(%v)", err, s.inode, req, tryCount)
+		errmsg = fmt.Sprintf("doOverWriteOrROW err(%v) inode(%v) req(%v) try count(%v)", err, s.inode, req, tryCount)
 		common.HandleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
 		if time.Since(start) > StreamRetryTimeout {
 			log.LogWarnf("doOverWriteOrROW failed: retry timeout ino(%v) err(%v) req(%v)", s.inode, err, req)
@@ -694,14 +694,14 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 		}
 
 		if err != nil || replyPacket.ResultCode != proto.OpOk {
-			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, s.inode, req, replyPacket))
 			break
 		}
 
 		if !reqPacket.IsValidWriteReply(replyPacket) || reqPacket.CRC != replyPacket.CRC {
-			err = errors.New(fmt.Sprintf("doOverwrite: is not the corresponding reply, ino(%v) req(%v) replyPacket(%v)", s.inode, req, replyPacket))
+			err = errors.New(fmt.Sprintf("doOverwrite: invalid reply, ino(%v) req(%v) replyPacket(%v)", s.inode, req, replyPacket))
 			break
 		}
+
 		common.PutOverWritePacketToPool(reqPacket)
 		common.PutOverWritePacketToPool(replyPacket)
 

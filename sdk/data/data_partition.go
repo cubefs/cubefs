@@ -348,7 +348,7 @@ func (dp *DataPartition) LeaderRead(reqPacket *common.Packet, req *ExtentRequest
 			sc.currAddr = addr
 			readBytes, reply, tryOther, err = dp.sendReadCmdToDataPartition(sc, reqPacket, req)
 			if err == nil {
-				sc.dp.LeaderAddr=proto.NewAtomicString(sc.currAddr)
+				sc.dp.LeaderAddr = proto.NewAtomicString(sc.currAddr)
 				return
 			}
 			errMap[addr] = err
@@ -360,7 +360,7 @@ func (dp *DataPartition) LeaderRead(reqPacket *common.Packet, req *ExtentRequest
 	}
 
 	log.LogWarnf("LeaderRead exit: err(%v), reqPacket(%v)", err, reqPacket)
-	err = errors.New(fmt.Sprintf("LeaderRead: failed, sc(%v) reqPacket(%v) errMap(%v)", sc, reqPacket, errMap))
+	err = errors.New(fmt.Sprintf("LeaderRead: failed, errMap(%v), sc(%v) reqPacket(%v)", errMap, sc, reqPacket))
 	return
 }
 
@@ -395,7 +395,7 @@ func (dp *DataPartition) FollowerRead(reqPacket *common.Packet, req *ExtentReque
 		log.LogWarnf("FollowerRead: errMap(%v), reqPacket(%v), try the next round", errMap, reqPacket)
 		time.Sleep(StreamSendSleepInterval)
 	}
-	err = errors.New(fmt.Sprintf("FollowerRead: failed %v times, reqPacket(%v) errMap(%v)", StreamSendReadMaxRetry, reqPacket, errMap))
+	err = errors.New(fmt.Sprintf("FollowerRead: failed %v times, errMap(%v), reqPacket(%v)", StreamSendReadMaxRetry, errMap, reqPacket))
 	return
 }
 
@@ -476,7 +476,7 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *co
 	}
 
 	if err == nil && reply.ResultCode != proto.OpTryOtherAddr {
-		err = errors.New(fmt.Sprintf("OverWrite failed: sc(%v) resultCode(%v) reply(%v) reqPacket(%v)", sc, reply.GetResultMsg(), reply, req))
+		err = errors.New(fmt.Sprintf("OverWrite failed: sc(%v) resultCode(%v) reqPacket(%v)", sc, reply.GetResultMsg(), req))
 		return
 	}
 
@@ -488,18 +488,18 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *co
 			sc.currAddr = addr
 			err = dp.OverWriteToDataPartitionLeader(sc, req, reply)
 			if err == nil && reply.ResultCode == proto.OpOk {
-				sc.dp.LeaderAddr=proto.NewAtomicString(sc.currAddr)
+				sc.dp.LeaderAddr = proto.NewAtomicString(sc.currAddr)
 				return
 			}
 			if err == nil && reply.ResultCode != proto.OpTryOtherAddr {
-				err = errors.New(fmt.Sprintf("OverWrite failed: sc(%v) errMap(%v) reply(%v) reqPacket(%v)", sc, errMap, reply, req))
+				err = errors.New(fmt.Sprintf("OverWrite failed: sc(%v) errMap(%v) resultCode(%v) reqPacket(%v)", sc, errMap, reply.GetResultMsg(), req))
 				return
 			}
 			if err == nil {
 				err = errors.New(reply.GetResultMsg())
 			}
 			errMap[addr] = err
-			log.LogWarnf("OverWrite: try addr(%v) failed! err(%v) reply(%v) reqPacket(%v) ", addr, err, reply, req)
+			log.LogWarnf("OverWrite: try addr(%v) failed! err(%v) reqPacket(%v) ", addr, err, req)
 		}
 		if time.Since(startTime) > StreamSendOverWriteTimeout {
 			log.LogWarnf("OverWrite: retry timeout req(%v) time(%v)", req, time.Since(startTime))
@@ -509,7 +509,7 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *co
 		//time.Sleep(StreamSendSleepInterval)
 	}
 
-	return errors.New(fmt.Sprintf("OverWrite failed: sc(%v) errMap(%v) reply(%v) reqPacket(%v)", sc, errMap, reply, req))
+	return errors.New(fmt.Sprintf("OverWrite failed: errMap(%v) sc(%v) reqPacket(%v)", errMap, sc, req))
 }
 
 func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *common.Packet, reply *common.Packet) (err error) {
