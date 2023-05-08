@@ -786,10 +786,15 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 }
 
 func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
+	mps := make(map[uint64]*MetaPartition)
 	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
+	for key, mp := range vol.MetaPartitions {
+		mps[key] = mp
+	}
+	vol.mpsLock.RUnlock()
+
 	mpViews = make([]*proto.MetaPartitionView, 0)
-	for _, mp := range vol.MetaPartitions {
+	for _, mp := range mps {
 		mpViews = append(mpViews, getMetaPartitionView(mp))
 	}
 	return
