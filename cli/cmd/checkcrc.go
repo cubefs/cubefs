@@ -20,7 +20,7 @@ type RepairPersist struct {
 	multiBadTinyExtentsFd   *os.File
 	lock                    sync.RWMutex
 	dpCounter               atomic2.Int64
-	rCh                     chan RepairExtentInfo
+	RCh                     chan RepairExtentInfo
 }
 
 func (rp *RepairPersist) persistFailedDp(dp uint64) {
@@ -74,10 +74,10 @@ func (rp *RepairPersist) persistMultiBadHostsTiny(rExtent RepairExtentInfo) {
 	rp.multiBadTinyExtentsFd.WriteString(fmt.Sprintf("%v %v %v %v %v %v %v\n", rExtent.PartitionID, rExtent.ExtentID, rExtent.Hosts, rExtent.Inode, rExtent.Offset, rExtent.Size, rExtent.Volume))
 	rp.multiBadTinyExtentsFd.Sync()
 }
-func (rp *RepairPersist) persistResult() {
+func (rp *RepairPersist) PersistResult() {
 	for {
 		select {
-		case rExtent := <-rp.rCh:
+		case rExtent := <-rp.RCh:
 			if rExtent.PartitionID == 0 && rExtent.ExtentID == 0 {
 				return
 			}
@@ -102,7 +102,7 @@ func (rp *RepairPersist) persistResult() {
 func NewRepairPersist(master string) (rp *RepairPersist) {
 	rp = new(RepairPersist)
 	rp.MasterAddr = master
-	rp.rCh = make(chan RepairExtentInfo, 1024)
+	rp.RCh = make(chan RepairExtentInfo, 1024)
 	rp.failedDpFd, _ = os.OpenFile(fmt.Sprintf("checkFailedDp_%v.csv", master), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	rp.failedExtentsFd, _ = os.OpenFile(fmt.Sprintf("checkFailedExtents_%v.csv", master), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	rp.singleBadNormalExtentFd, _ = os.OpenFile(fmt.Sprintf("single_bad_normal_extents_%v", master), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -113,8 +113,8 @@ func NewRepairPersist(master string) (rp *RepairPersist) {
 	return
 }
 
-func (rp *RepairPersist) close() {
-	rp.rCh <- RepairExtentInfo{
+func (rp *RepairPersist) Close() {
+	rp.RCh <- RepairExtentInfo{
 		PartitionID: 0,
 		ExtentID:    0,
 	}

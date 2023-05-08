@@ -176,7 +176,7 @@ func newExtentGetCmd() *cobra.Command {
 					continue
 				}
 				var md5Sum string
-				if extent[proto.ExtentInfoSize] < 16 * unit.GB {
+				if extent[proto.ExtentInfoSize] < 16*unit.GB {
 					md5Sum, err = dataClient.ComputeExtentMd5(partitionID, extentID, 0, extent[proto.ExtentInfoSize]-uint64(proto.PageSize))
 					if err != nil {
 						md5Sum = "null"
@@ -495,15 +495,15 @@ func CheckVols(vols []string, c *sdk.MasterClient, para *CheckParam, path string
 	}()
 
 	rp := NewRepairPersist(c.Nodes()[0])
-	go rp.persistResult()
-	defer rp.close()
+	go rp.PersistResult()
+	defer rp.Close()
 	for _, v := range vols {
 		if stopFunc() {
 			break
 		}
 		switch para.checkType {
 		case checkTypeExtentReplica, checkTypeExtentLength, checkTypeInodeEk, checkTypeInodeNlink:
-			CheckVol(v, c, path, para, rp.rCh, stopFunc)
+			CheckVol(v, c, path, para, rp.RCh, stopFunc)
 		case checkTypeExtentCrc:
 			checkVolExtentCrc(c, v, para.tinyOnly, unit.MB*5)
 		}
@@ -907,7 +907,7 @@ type CheckParam struct {
 	metaPartitionId   uint64
 	checkType         int
 	specifyInodes     []uint64
-	specifyDps	      []uint64
+	specifyDps        []uint64
 	modifyTimeMin     time.Time
 	modifyTimeMax     time.Time
 }
@@ -923,17 +923,17 @@ func NewCheckParam(tinyOnly, tinyInUse bool, mpConcurrency, inodeConcurrency, ex
 		return
 	}
 	cfg = &CheckParam{
-		tinyOnly: tinyOnly,
-		tinyInUse: tinyInUse,
-		mpConcurrency: mpConcurrency,
-		inodeConcurrency: inodeConcurrency,
+		tinyOnly:          tinyOnly,
+		tinyInUse:         tinyInUse,
+		mpConcurrency:     mpConcurrency,
+		inodeConcurrency:  inodeConcurrency,
 		extentConcurrency: extentConcurrency,
-		checkType: checkType,
-		modifyTimeMin: modifyTimestampMin,
-		modifyTimeMax: modifyTimestampMax,
-		metaPartitionId: metaPartitionId,
-		specifyInodes: specifyInodes,
-		specifyDps: specifyDps,
+		checkType:         checkType,
+		modifyTimeMin:     modifyTimestampMin,
+		modifyTimeMax:     modifyTimestampMax,
+		metaPartitionId:   metaPartitionId,
+		specifyInodes:     specifyInodes,
+		specifyDps:        specifyDps,
 	}
 	return
 }
@@ -941,8 +941,8 @@ func NewCheckParam(tinyOnly, tinyInUse bool, mpConcurrency, inodeConcurrency, ex
 func CheckVol(vol string, c *sdk.MasterClient, path string, param *CheckParam, rCh chan RepairExtentInfo, stopFunc func() bool) {
 	var (
 		checkedExtent *sync.Map
-		wg sync.WaitGroup
-		inodes []uint64
+		wg            sync.WaitGroup
+		inodes        []uint64
 	)
 	defer func() {
 		msg := fmt.Sprintf("checkVol, cluster:%s, vol:%s, path%s", c.Nodes()[0], vol, path)
@@ -1534,7 +1534,7 @@ func checkExtentBlockCrc(dataReplicas []*proto.DataReplica, c *sdk.MasterClient,
 
 func checkExtentReplica(c *sdk.MasterClient, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, mod string) (badAddrs []string, output string, same bool, err error) {
 	var (
-		ok bool
+		ok       bool
 		replicas = make([]struct {
 			partitionId uint64
 			extentId    uint64

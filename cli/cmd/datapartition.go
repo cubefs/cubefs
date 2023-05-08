@@ -1346,7 +1346,7 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 				return
 			}
 			rp := NewRepairPersist(client.Nodes()[0])
-			go rp.persistResult()
+			go rp.PersistResult()
 
 			limitCh := make(chan bool, 50)
 			wg := sync.WaitGroup{}
@@ -1360,11 +1360,11 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 						rp.dpCounter.Add(1)
 						log.LogInfof("check data partition(%v) finish, progress(%d/%d)", pid, rp.dpCounter.Load(), len(ids))
 					}()
-					checkDataPartitionRelica(client, pid, optCheckType, minParsedTime, rp.rCh, checkTiny)
+					checkDataPartitionRelica(client, pid, optCheckType, minParsedTime, rp.RCh, checkTiny)
 				}(id)
 			}
 			wg.Wait()
-			rp.close()
+			rp.Close()
 			stdout("finish data partition replica crc check")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
