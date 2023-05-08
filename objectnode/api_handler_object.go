@@ -575,7 +575,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return deleteReq.Objects[i].Key > deleteReq.Objects[j].Key
 	})
 
-	vol, acl, policy, vv, err := o.loadBucketMeta(param.Bucket())
+	vol, acl, policy, err := o.loadBucketMeta(param.Bucket())
 	if err != nil {
 		log.LogErrorf("deleteObjectsHandler: load bucket metadata fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
@@ -611,7 +611,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 				KEYNAME:  object.Key,
 				HOST:     param.r.Host,
 			}
-			result = policy.IsAllowed(param, userInfo.UserID, vv.Owner, conditionCheck)
+			result = policy.IsAllowed(param, userInfo.UserID, vol.owner, conditionCheck)
 		}
 		if result == POLICY_DENY || (result == POLICY_UNKNOW && !allowByAcl) {
 			deletedErrors = append(deletedErrors, Error{

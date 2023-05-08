@@ -260,7 +260,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 
 		// step3. Check bucket policy
 	policycheck:
-		vol, acl, policy, vv, err := o.loadBucketMeta(param.Bucket())
+		vol, acl, policy, err := o.loadBucketMeta(param.Bucket())
 		if err != nil {
 			log.LogErrorf("bucket policy check: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
 			allowed = false
@@ -278,7 +278,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			if !IsBucketApi(param.apiName) {
 				conditionCheck[KEYNAME] = param.object
 			}
-			pcr := policy.IsAllowed(param, userInfo.UserID, vv.Owner, conditionCheck)
+			pcr := policy.IsAllowed(param, userInfo.UserID, vol.owner, conditionCheck)
 			switch pcr {
 			case POLICY_ALLOW:
 				allowed = true
@@ -335,8 +335,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (o *ObjectNode) loadBucketMeta(bucket string) (vol *Volume, acl *AccessControlPolicy,
-	policy *Policy, vv *proto.VolView, err error) {
+func (o *ObjectNode) loadBucketMeta(bucket string) (vol *Volume, acl *AccessControlPolicy, policy *Policy, err error) {
 	if vol, err = o.getVol(bucket); err != nil {
 		return
 	}
@@ -344,9 +343,6 @@ func (o *ObjectNode) loadBucketMeta(bucket string) (vol *Volume, acl *AccessCont
 		return
 	}
 	if policy, err = vol.metaLoader.loadPolicy(); err != nil {
-		return
-	}
-	if vv, err = o.mc.ClientAPI().GetVolumeWithoutAuthKey(bucket); err != nil {
 		return
 	}
 	return
@@ -359,7 +355,7 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string
 		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", paramCopy.r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(paramCopy.r))
 		return
 	}
-	vol, acl, policy, vv, err := o.loadBucketMeta(srcBucketId)
+	vol, acl, policy, err := o.loadBucketMeta(srcBucketId)
 	if err != nil {
 		log.LogErrorf("srcBucket policy check: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(paramCopy.r), err)
 		return
@@ -373,7 +369,7 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string
 			REFERER:  paramCopy.r.Referer(),
 			HOST:     paramCopy.r.Host,
 		}
-		pcr := policy.IsAllowed(&paramCopy, reqUid, vv.Owner, conditionCheck)
+		pcr := policy.IsAllowed(&paramCopy, reqUid, vol.owner, conditionCheck)
 		switch pcr {
 		case POLICY_ALLOW:
 			log.LogDebugf("srcBucket policy check: policy allowed: requestID(%v)", GetRequestID(paramCopy.r))
@@ -387,7 +383,7 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string
 		}
 	}
 
-	isOwner := reqUid == vv.Owner
+	isOwner := reqUid == vol.owner
 	if acl, err = getObjectACL(vol, srcKey, true); err != nil {
 		log.LogErrorf("srcBucket acl check: get object acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(paramCopy.r), srcBucketId, srcKey, err)
@@ -395,7 +391,7 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string
 	}
 	if acl == nil && !isOwner {
 		log.LogWarnf("srcBucket acl check: empty acl disallows: requestID(%v) reqUid(%v) ownerUid(%v) volume(%v) action(%v)",
-			GetRequestID(paramCopy.r), reqUid, vv.Owner, srcBucketId, paramCopy.Action())
+			GetRequestID(paramCopy.r), reqUid, vol.owner, srcBucketId, paramCopy.Action())
 		return AccessDenied
 	}
 	if acl != nil && !acl.IsAllowed(reqUid, paramCopy.Action()) {
