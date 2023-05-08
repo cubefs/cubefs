@@ -236,6 +236,7 @@ type OpPartition interface {
 	GetVolName() (volName string)
 	GetVerSeq() uint64
 	IsLeader() (leaderAddr string, isLeader bool)
+	LeaderTerm() (leaderID, term uint64)
 	IsFollowerRead() bool
 	SetFollowerRead(bool)
 	GetCursor() uint64
@@ -909,6 +910,13 @@ func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
 		}
 	}
 	return
+}
+
+func (mp *metaPartition) LeaderTerm() (leaderID, term uint64) {
+	if mp.raftPartition == nil {
+		return
+	}
+	return mp.raftPartition.LeaderTerm()
 }
 
 func (mp *metaPartition) GetPeers() (peers []string) {
