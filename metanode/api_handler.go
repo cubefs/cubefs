@@ -132,7 +132,9 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	}
 	msg := make(map[string]interface{})
 	leader, _ := mp.IsLeader()
+	_, leaderTerm := mp.LeaderTerm()
 	msg["leaderAddr"] = leader
+	msg["leader_term"] = leaderTerm
 	conf := mp.GetBaseConfig()
 	msg["partition_id"] = conf.PartitionId
 	msg["partition_type"] = conf.PartitionType
