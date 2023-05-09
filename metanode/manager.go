@@ -542,7 +542,7 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 }
 
 func (m *metadataManager) QuotaGoroutineIsOver() (lsOver bool) {
-	log.LogInfof("hytemp QuotaGoroutineIsOver cur [%v] max [%v]", m.curQuotaGoroutineNum, m.maxQuotaGoroutineNum)
+	log.LogInfof("QuotaGoroutineIsOver cur [%v] max [%v]", m.curQuotaGoroutineNum, m.maxQuotaGoroutineNum)
 	if atomic.LoadInt32(&m.curQuotaGoroutineNum) >= m.maxQuotaGoroutineNum {
 		return true
 	}

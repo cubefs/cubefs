@@ -1538,6 +1538,20 @@ func parseDeleteQuotaParam(r *http.Request) (volName string, quotaId uint32, err
 	return
 }
 
+func parseGetQuotaParam(r *http.Request) (volName string, fullPath string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if volName, err = extractName(r); err != nil {
+		return
+	}
+
+	if fullPath, err = extractPath(r); err != nil {
+		return
+	}
+	return
+}
+
 func extractPath(r *http.Request) (fullPath string, err error) {
 	if fullPath = r.FormValue(fullPathKey); fullPath == "" {
 		err = keyNotFound(nameKey)

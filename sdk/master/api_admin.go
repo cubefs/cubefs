@@ -615,6 +615,42 @@ func (api *AdminAPI) DeleteQuota(volName string, quotaId string) (err error) {
 		log.LogErrorf("action[DeleteQuota] fail. %v", err)
 		return
 	}
-	log.LogInfof("action[DeleteQuota] success.")
+	log.LogInfo("action[DeleteQuota] success.")
+	return nil
+}
+
+func (api *AdminAPI) GetQuota(volName string, fullPath string) (quotaInfo *proto.QuotaInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaGet)
+	request.addParam("name", volName)
+	request.addParam("fullPath", fullPath)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[GetQuota] fail. %v", err)
+		return
+	}
+	info := &proto.QuotaInfo{}
+	if err = json.Unmarshal(data, info); err != nil {
+		log.LogErrorf("action[GetQuota] fail. %v", err)
+		return
+	}
+	quotaInfo = info
+	log.LogInfof("action[GetQuota] %v success.", *quotaInfo)
+	return quotaInfo, err
+}
+
+func (api *AdminAPI) BatchModifyQuotaPath(volName string, quotaMap map[uint32]string) (err error) {
+	var data []byte
+	var request = newAPIRequest(http.MethodGet, proto.QuotaBatchModifyPath)
+	request.addParam("name", volName)
+	if data, err = json.Marshal(&quotaMap); err != nil {
+		log.LogErrorf("action[BatchModifyQuotaPath] fail. %v", err)
+		return err
+	}
+	request.addBody(data)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[BatchModifyQuotaPath] fail. %v", err)
+		return
+	}
+	log.LogInfof("action[BatchModifyQuotaPath] vol [%v] quotaMap [%v] success.", volName, quotaMap)
 	return nil
 }

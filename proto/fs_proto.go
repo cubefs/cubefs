@@ -768,10 +768,6 @@ type UpdateMasterQuotaReuqest struct {
 	MaxBytes    uint64 `json:"mbyte"`
 }
 
-type ListMasterQuotaRequest struct {
-	VolName string `json:"vol"` //VolName如果为空则返回所有卷的quota
-}
-
 type ListMasterQuotaResponse struct {
 	Quotas []*QuotaInfo
 }
