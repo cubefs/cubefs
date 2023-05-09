@@ -4698,13 +4698,83 @@ func (m *Server) ListQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if resp = vol.quotaManager.listQuota(); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
+	resp = vol.quotaManager.listQuota()
 
 	log.LogInfof("list quota vol [%v] resp [%v] success.", name, *resp)
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 	return
+}
+
+func (m *Server) GetQuota(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		vol       *Vol
+		name      string
+		fullPath  string
+		quotaInfo *proto.QuotaInfo
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaGet))
+	defer func() {
+		doStatAndMetric(proto.QuotaGet, metric, err, map[string]string{exporter.Vol: name})
+	}()
+
+	if name, fullPath, err = parseGetQuotaParam(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	if quotaInfo, err = vol.quotaManager.getQuota(fullPath); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	log.LogInfof("get quota vol [%v] fullPath [%v] quotaInfo [%v] success.", name, fullPath, *quotaInfo)
+	sendOkReply(w, r, newSuccessHTTPReply(quotaInfo))
+	return
+}
+
+func (m *Server) BatchModifyQuotaFullPath(w http.ResponseWriter, r *http.Request) {
+	var (
+		name              string
+		body              []byte
+		changeFullPathMap map[uint32]string
+		err               error
+		vol               *Vol
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaGet))
+	defer func() {
+		doStatAndMetric(proto.QuotaBatchModifyPath, metric, err, map[string]string{exporter.Vol: name})
+	}()
+
+	if name, err = parseAndExtractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	changeFullPathMap = make(map[uint32]string)
+	if err = json.Unmarshal(body, &changeFullPathMap); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	vol.quotaManager.batchModifyQuotaFullPath(changeFullPathMap)
+
+	log.LogInfof("BatchModifyQuotaFullPath vol [%v] changeFullPathMap [%v] success.", name, changeFullPathMap)
+	msg := fmt.Sprintf("BatchModifyQuotaFullPath successfully, vol [%v]", name)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }

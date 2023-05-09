@@ -2080,3 +2080,7 @@ func (mw *MetaWrapper) GetInodeQuota_ll(inode uint64) (quotaInfos map[uint32]*pr
 
 	return
 }
+
+func (mw *MetaWrapper) BatchModifyQuotaPath(changePathMap map[uint32]string) {
+	mw.mc.AdminAPI().BatchModifyQuotaPath(mw.volname, changePathMap)
+}

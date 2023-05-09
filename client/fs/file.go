@@ -419,7 +419,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		if ok := f.super.ec.UidIsLimited(req.Uid); ok {
 			return syscall.ENOSPC
 		}
-		if limited := f.super.ec.IsQuotaLimited(f.info.QuotaIds); limited {
+		if limited := f.super.mw.IsQuotaLimited(f.info.QuotaIds); limited {
 			return syscall.ENOSPC
 		}
 		size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags)

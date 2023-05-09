@@ -363,3 +363,85 @@ func (mw *MetaWrapper) parseRespWithAuth(body []byte) (resp proto.MasterAPIAcces
 
 	return
 }
+
+func (mw *MetaWrapper) updateQuotaInfoTick() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			mw.UpdateQuotaInfo()
+		case <-mw.closeCh:
+			return
+		}
+
+	}
+}
+
+func (mw *MetaWrapper) UpdateQuotaInfo() {
+	quotaInfos, err := mw.mc.AdminAPI().ListQuota(mw.volname)
+	if err != nil {
+		log.LogWarnf("UpdateQuotaInfo get quota info fail: vol [%v] err [%v]", mw.volname, err)
+		return
+	}
+	mw.QuotaLock.Lock()
+	defer mw.QuotaLock.Unlock()
+	mw.QuotaInfoMap = make(map[uint32]*proto.QuotaInfo)
+	for _, info := range quotaInfos {
+		mw.QuotaInfoMap[info.QuotaId] = info
+		log.LogDebugf("UpdateQuotaInfo quotaInfo [%v]", info)
+	}
+}
+
+func (mw *MetaWrapper) IsQuotaLimited(quotaIds []uint32) bool {
+	mw.QuotaLock.RLock()
+	defer mw.QuotaLock.RUnlock()
+	for _, quotaId := range quotaIds {
+		if info, isFind := mw.QuotaInfoMap[quotaId]; isFind {
+			if info.LimitedInfo.LimitedBytes {
+				log.LogDebugf("IsQuotaLimited quotaId [%v]", quotaId)
+				return true
+			}
+		}
+		log.LogDebugf("IsQuotaLimited false quota [%v]", quotaId)
+	}
+	return false
+}
+
+func findNestedPath(path1, path2 string) string {
+	if path1 == path2 {
+		return ""
+	}
+
+	if len(path1) > len(path2) {
+		return ""
+	}
+
+	if strings.HasPrefix(path2, path1) {
+		if len(path1) == 1 || strings.HasSuffix(path1, "/") {
+			return path2[len(path1):]
+		} else if path2[len(path1)] == '/' {
+			return path2[len(path1)+1:]
+		}
+	}
+
+	return ""
+}
+
+func (mw *MetaWrapper) GetChangeQuota(srcPath string, dstPath string) (changePathMap map[uint32]string) {
+	changePathMap = make(map[uint32]string, 0)
+	mw.QuotaLock.RLock()
+	defer mw.QuotaLock.RUnlock()
+
+	for _, info := range mw.QuotaInfoMap {
+		nestedPath := findNestedPath(srcPath, info.FullPath)
+		if nestedPath != "" {
+			newPath := dstPath + "/" + nestedPath
+			changePathMap[info.QuotaId] = newPath
+		}
+	}
+
+	log.LogDebugf("GetChangeQuota map [%v]", changePathMap)
+	return changePathMap
+}

@@ -27,11 +27,11 @@ import (
 const (
 	cmdQuotaUse           = "quota [COMMAND]"
 	cmdQuotaShort         = "Manage cluster quota"
-	cmdQuotaSetUse        = "set [volname] [fullpath] [inode]"
+	cmdQuotaSetUse        = "set [volname] [fullpath]"
 	cmdQuotaSetShort      = "set path quota"
 	cmdQuotaListUse       = "list [volname]"
 	cmdQuotaListShort     = "list volname all quota"
-	cmdQuotaUpdateUse     = "update [volname] [fullpath] [inode]"
+	cmdQuotaUpdateUse     = "update [volname] [fullpath]"
 	cmdQuotaUpdateShort   = "update path quota"
 	cmdQuotaDeleteUse     = "delete [volname] [quotaId]"
 	cmdQUotaDeleteShort   = "delete path quota"
@@ -69,17 +69,12 @@ func newQuotaSetCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdQuotaSetUse,
 		Short: cmdQuotaSetShort,
-		Args:  cobra.MinimumNArgs(3),
+		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			volName := args[0]
 			fullPath := args[1]
-			inodeId, err := strconv.ParseUint(args[2], 10, 64)
 
-			if err != nil {
-				stdout("inodeId %v is illegal\n", args[2])
-				return
-			}
 			var metaConfig = &meta.MetaConfig{
 				Volume:  volName,
 				Masters: client.Nodes(),
@@ -89,10 +84,9 @@ func newQuotaSetCmd(client *master.MasterClient) *cobra.Command {
 				stdout("NewMetaWrapper failed: %v\n", err)
 				return
 			}
-
-			_, err = metaWrapper.InodeGet_ll(inodeId)
+			inodeId, err := metaWrapper.LookupPath(fullPath)
 			if err != nil {
-				stdout("get inode %v fail %v\n", inodeId, err)
+				stdout("get inode by fullPath %v fail %v\n", fullPath, err)
 				return
 			}
 
@@ -144,28 +138,41 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdQuotaUpdateUse,
 		Short: cmdQuotaUpdateShort,
-		Args:  cobra.MinimumNArgs(3),
+		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			volName := args[0]
 			fullPath := args[1]
-			inodeId, err := strconv.ParseUint(args[2], 10, 64)
-			if err != nil {
-				stdout("inodeId %v is illegal", args[2])
-				return
-			}
+
 			var metaConfig = &meta.MetaConfig{
 				Volume:  volName,
 				Masters: client.Nodes(),
 			}
+
 			metaWrapper, err := meta.NewMetaWrapper(metaConfig)
 			if err != nil {
-				stdout("NewMetaWrapper failed: %v", err)
+				stdout("NewMetaWrapper failed: %v\n", err)
+				return
+			}
+			inodeId, err := metaWrapper.LookupPath(fullPath)
+			if err != nil {
+				stdout("get inode by fullPath %v fail %v\n", fullPath, err)
 				return
 			}
 			mp := metaWrapper.GetPartitionByInodeId_ll(inodeId)
 			if mp == nil {
-				stdout("can not find mp by inodeId: %v", inodeId)
+				stdout("can not find mp by inodeId: %v\n", inodeId)
 				return
+			}
+			quotaInfo, err := client.AdminAPI().GetQuota(volName, fullPath)
+			if err != nil {
+				stdout("get quota vol: %v ,fullPath: %v failed err %v.\n", volName, fullPath, err)
+				return
+			}
+			if maxFiles == 0 {
+				maxFiles = quotaInfo.MaxFiles
+			}
+			if maxBytes == 0 {
+				maxBytes = quotaInfo.MaxFiles
 			}
 			if err = client.AdminAPI().UpdateQuota(volName, fullPath, inodeId, mp.PartitionID, maxFiles, maxBytes); err != nil {
 				stdout("volName %v path %v quota update failed(%v)\n", volName, fullPath, err)
@@ -175,8 +182,8 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 				volName, fullPath, inodeId, maxFiles, maxBytes)
 		},
 	}
-	cmd.Flags().Uint64Var(&maxFiles, CliFlagMaxFiles, cmdQuotaDefaultMaxFiles, "Specify quota max files")
-	cmd.Flags().Uint64Var(&maxBytes, CliFlagMaxBytes, cmdQuotaDefaultMaxBytes, "Specify quota max bytes")
+	cmd.Flags().Uint64Var(&maxFiles, CliFlagMaxFiles, 0, "Specify quota max files")
+	cmd.Flags().Uint64Var(&maxBytes, CliFlagMaxBytes, 0, "Specify quota max bytes")
 	return cmd
 }
 

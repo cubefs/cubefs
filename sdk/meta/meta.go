@@ -144,6 +144,8 @@ type MetaWrapper struct {
 	EnableTransaction   uint8
 	TxTimeout           int64
 	//EnableTransaction bool
+	QuotaInfoMap map[uint32]*proto.QuotaInfo
+	QuotaLock    sync.RWMutex
 }
 
 // the ticket from authnode
@@ -214,7 +216,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	if limit <= 0 && err != nil {
 		return nil, err
 	}
-
+	go mw.updateQuotaInfoTick()
 	go mw.refresh()
 	return mw, nil
 }

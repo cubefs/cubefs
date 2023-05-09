@@ -60,7 +60,6 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 				}
 				oldQuotaInfo, ok := quotaInfos.QuotaInfoMap[req.QuotaId]
 				if ok {
-					log.LogInfof("hytemp quotaInfo [%v] oldQuotaInfo [%v]", quotaInfo, oldQuotaInfo)
 					quotaInfo = oldQuotaInfo
 				}
 			}
@@ -214,8 +213,6 @@ func (mp *metaPartition) setSubQuota(parentInode uint64, quotaId uint32, quotaIn
 	if len(inodes) != 0 {
 		mp.batchSetSubInodeQuotaToMetaNode(inodes, quotaId)
 	}
-	log.LogInfof("hytemp setSubQuota parentInode [%v] quotaId [%v] newGoroutine [%v].", parentInode, quotaId, newGoroutine)
-	//time.Sleep(3000 * time.Second)
 	quotaInfo.SetStatus(proto.QuotaComplete)
 
 	var extend = NewExtend(parentInode)
@@ -274,8 +271,6 @@ func (mp *metaPartition) deleteSubQuota(parentInode uint64, quotaId uint32, quot
 		log.LogErrorf("deleteSubQuota can not find quotaInfo  [%v] fail.", quotaId)
 		return
 	}
-	log.LogInfof("hytemp deleteSubQuota parentInode [%v] quotaId [%v].", parentInode, quotaId)
-	//time.Sleep(300 * time.Second)
 	delete(quotaInfos.QuotaInfoMap, quotaId)
 	var extend = NewExtend(parentInode)
 	value, err := json.Marshal(quotaInfos.QuotaInfoMap)
@@ -582,7 +577,6 @@ func (mp *metaPartition) UpdateInodeQuota() {
 				return true
 			}
 			for quotaId, quotaInfo := range quotaInfos.QuotaInfoMap {
-				log.LogInfof("hytemp UpdateInodeQuota inode [%v] quotaId [%v] quotaInfo [%v]", e.GetInode(), quotaId, quotaInfo)
 				if quotaInfo.Status == proto.QuotaInit {
 					setInodeMap[quotaId] = append(setInodeMap[quotaId], e.GetInode())
 				} else if quotaInfo.Status == proto.QuotaDeleting {

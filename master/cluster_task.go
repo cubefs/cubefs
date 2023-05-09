@@ -1174,14 +1174,6 @@ func (c *Cluster) dealDeleteMetaserverQuotaResponse(nodeAddr string, resp *proto
 		return
 	}
 
-	if err = vol.quotaManager.DeleteQuotaInfoById(resp.QuotaId); err != nil {
-		msg := fmt.Sprintf("action[dealDeleteMetaserverQuotaResponse],clusterID[%v] get vol [%v] failed,err %v",
-			c.Name, mp.volName, err)
-		log.LogError(msg)
-		Warn(c.Name, msg)
-		return
-	}
-
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncDeleteQuota
 	metadata.K = quotaPrefix + strconv.FormatUint(vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(resp.QuotaId), 10)
@@ -1191,6 +1183,7 @@ func (c *Cluster) dealDeleteMetaserverQuotaResponse(nodeAddr string, resp *proto
 		log.LogErrorf("delete quota [%v] submit fail [%v].", quotaInfo, err)
 		return
 	}
+	vol.quotaManager.DeleteQuotaInfoById(resp.QuotaId)
 
 	log.LogInfof("action[dealDeleteMetaserverQuotaResponse] resp [%v] success.", resp)
 	return

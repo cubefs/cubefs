@@ -160,21 +160,6 @@ func (client *ExtentClient) UidIsLimited(uid uint32) bool {
 	return false
 }
 
-func (client *ExtentClient) IsQuotaLimited(quotaIds []uint32) bool {
-	client.dataWrapper.QuotaLock.RLock()
-	defer client.dataWrapper.QuotaLock.RUnlock()
-	for _, quotaId := range quotaIds {
-		if limitedInfo, isFind := client.dataWrapper.QuotaLimitedMap[quotaId]; isFind {
-			if limitedInfo.LimitedBytes {
-				log.LogDebugf("IsQuotaLimited quotaId [%v]", quotaId)
-				return true
-			}
-		}
-		log.LogDebugf("IsQuotaLimited false quota [%v]", quotaId)
-	}
-	return false
-}
-
 func (client *ExtentClient) evictStreamer() bool {
 	// remove from list
 	item := client.streamerList.Back()

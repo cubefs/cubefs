@@ -516,7 +516,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.QuotaList).
 		HandlerFunc(m.ListQuota)
-
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QuotaGet).
+		HandlerFunc(m.GetQuota)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QuotaBatchModifyPath).
+		HandlerFunc(m.BatchModifyQuotaFullPath)
 }
 
 func (m *Server) registerHandler(router *mux.Router, model string, schema *graphql.Schema) {
