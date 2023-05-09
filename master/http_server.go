@@ -62,12 +62,19 @@ func (m *Server) isClientPartitionsReq(r *http.Request) bool {
 	return r.URL.Path == proto.ClientDataPartitions
 }
 
+func (m *Server) isVolExist(r *http.Request) (exist bool) {
+	if volName, err := parseAndExtractName(r); err == nil {
+		exist, _ = m.cluster.followerReadManager.IsVolViewReady(volName)
+	}
+	return
+}
+
 func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
 	followerRead = false
 	if r.URL.Path == proto.ClientDataPartitions && !m.partition.IsRaftLeader() {
 		if volName, err := parseAndExtractName(r); err == nil {
 			log.LogInfof("action[interceptor] followerRead vol[%v]", volName)
-			if m.cluster.followerReadManager.IsVolViewReady(volName) {
+			if exist, status := m.cluster.followerReadManager.IsVolViewReady(volName); exist && status {
 				followerRead = true
 				log.LogInfof("action[interceptor] followerRead [%v], GetName[%v] IsRaftLeader[%v]",
 					followerRead, r.URL.Path, m.partition.IsRaftLeader())
@@ -122,7 +129,7 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 					return
 				} else if m.leaderInfo.addr != "" {
-					if m.isClientPartitionsReq(r) {
+					if m.isClientPartitionsReq(r) && m.isVolExist(r) {
 						http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 						return
 					}
