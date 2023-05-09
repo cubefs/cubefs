@@ -67,6 +67,7 @@ type DataPartition struct {
 	DecommissionRaftForce    bool
 	DecommissionSrcDiskPath  string //
 	DecommissionTerm         uint64 // only used for disk decommission
+	IsDiscard                bool
 }
 
 type DataPartitionPreLoad struct {
@@ -427,6 +428,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	copy(dpr.Hosts, partition.Hosts)
 	dpr.LeaderAddr = partition.getLeaderAddr()
 	dpr.IsRecover = partition.isRecover
+	dpr.IsDiscard = partition.IsDiscard
 
 	return
 }
@@ -940,6 +942,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		FilesWithMissingReplica:  partition.FilesWithMissingReplica,
 		SingleDecommissionStatus: partition.SingleDecommissionStatus,
 		SingleDecommissionAddr:   partition.SingleDecommissionAddr,
+		IsDiscard:                partition.IsDiscard,
 	}
 }
 

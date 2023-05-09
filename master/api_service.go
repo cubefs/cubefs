@@ -4015,7 +4015,7 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	log.LogInfof("action[getDataPartitions] tmp is leader[%v]", m.cluster.partition.IsRaftLeader())
+	log.LogInfof("action[getDataPartitions] current is leader[%v]", m.cluster.partition.IsRaftLeader())
 	if !m.cluster.partition.IsRaftLeader() {
 		var ok bool
 		if body, ok = m.cluster.followerReadManager.getVolViewAsFollower(name); !ok {
@@ -4914,4 +4914,74 @@ func (m *Server) BatchModifyQuotaFullPath(w http.ResponseWriter, r *http.Request
 	log.LogInfof("BatchModifyQuotaFullPath vol [%v] changeFullPathMap [%v] success.", name, changeFullPathMap)
 	msg := fmt.Sprintf("BatchModifyQuotaFullPath successfully, vol [%v]", name)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func parseSetDpDiscardParam(r *http.Request) (dpId uint64, rdOnly bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if dpId, err = extractDataPartitionID(r); err != nil {
+		err = fmt.Errorf("parseSetDpDiscardParam get dpid error %v", err)
+		return
+	}
+
+	val := r.FormValue(dpDiscardKey)
+	if val == "" {
+		err = fmt.Errorf("parseSetDpDiscardParam %s is empty", dpDiscardKey)
+		return
+	}
+
+	if rdOnly, err = strconv.ParseBool(val); err != nil {
+		err = fmt.Errorf("parseSetDpDiscardParam %s is not bool value %s", dpDiscardKey, val)
+		return
+	}
+
+	return
+}
+
+func (m *Server) setDpDiscard(partitionID uint64, isDiscard bool) (err error) {
+
+	var dp *DataPartition
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		return fmt.Errorf("[setDpDiacard] getDataPartitionByID err(%s)", err.Error())
+	}
+	dp.RLock()
+	dp.IsDiscard = isDiscard
+	m.cluster.syncUpdateDataPartition(dp)
+	dp.RUnlock()
+
+	return
+}
+
+func (m *Server) setDpDiscardHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		dpId    uint64
+		discard bool
+		err     error
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaGet))
+	defer func() {
+		doStatAndMetric(proto.AdminSetDpDiscard, metric, err, nil)
+	}()
+
+	dpId, discard, err = parseSetDpDiscardParam(r)
+	if err != nil {
+		log.LogInfof("[setDpDiscardHandler] set dp %v to discard(%v)", dpId, discard)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	err = m.setDpDiscard(dpId, discard)
+	if err != nil {
+		log.LogErrorf("[setDpDiscardHandler] set dp %v to discard %v, err (%s)", dpId, discard, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	msg := fmt.Sprintf("[setDpDiscardHandler] set dpid %v to discard(%v) success", dpId, discard)
+	log.LogInfo(msg)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+	return
 }

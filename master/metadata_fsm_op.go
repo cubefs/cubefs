@@ -128,6 +128,7 @@ type dataPartitionValue struct {
 	PartitionType            int
 	PartitionTTL             int64
 	RdOnly                   bool
+	IsDiscard                bool
 	DecommissionRetry        int
 	DecommissionStatus       uint32
 	DecommissionSrcAddr      string
@@ -152,6 +153,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.OfflinePeerID = dpv.OfflinePeerID
 	dp.isRecover = dpv.IsRecover
 	dp.RdOnly = dpv.RdOnly
+	dp.IsDiscard = dpv.IsDiscard
 	dp.DecommissionRaftForce = dpv.DecommissionRaftForce
 	dp.DecommissionDstAddr = dpv.DecommissionDstAddr
 	dp.DecommissionSrcAddr = dpv.DecommissionSrcAddr
@@ -191,6 +193,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		PartitionType:            dp.PartitionType,
 		PartitionTTL:             dp.PartitionTTL,
 		RdOnly:                   dp.RdOnly,
+		IsDiscard:                dp.IsDiscard,
 		DecommissionRetry:        dp.DecommissionRetry,
 		DecommissionStatus:       dp.DecommissionStatus,
 		DecommissionSrcAddr:      dp.DecommissionSrcAddr,
@@ -1348,6 +1351,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.gridId[%v],mpv.VolID[%v]", dpv.VolName, vol.ID, dpv.VolID))
 			continue
 		}
+
 		dp := dpv.Restore(c)
 		vol.dataPartitions.put(dp)
 		c.addBadDataParitionIdMap(dp)

@@ -113,6 +113,11 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 		return nil, err
 	}
 
+	if partition.IsDiscard {
+		log.LogWarnf("GetExtentReader: datapartition %v is discard", partition.PartitionID)
+		return nil, DpDiscardError
+	}
+
 	retryRead := true
 	if proto.IsCold(s.client.volumeType) {
 		retryRead = false
