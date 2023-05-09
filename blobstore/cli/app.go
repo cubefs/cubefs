@@ -56,6 +56,8 @@ var App = grumble.New(&grumble.Config{
 })
 
 func init() {
+	log.SetOutputLevel(log.Lerror)
+
 	App.OnInit(func(a *grumble.App, fm grumble.FlagMap) error {
 		if path := flags.Config(fm); path != "" {
 			config.LoadConfig(path)
