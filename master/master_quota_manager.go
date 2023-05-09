@@ -39,10 +39,13 @@ func (mqMgr *MasterQuotaManager) setQuota(req *proto.SetMasterQuotaReuqest) (err
 	var quotaId uint32
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
-	if _, isFind := mqMgr.FullPathQuotaInfoMap[req.FullPath]; isFind {
-		log.LogErrorf("vol [%v] quota fullpath [%v] is exist.", mqMgr.vol.Name, req.FullPath)
-		err = errors.New("quota is exist.")
-		return
+
+	for _, quotaInfo := range mqMgr.FullPathQuotaInfoMap {
+		if req.Inode == quotaInfo.RootInode {
+			err = errors.NewErrorf("inode [%v] is the same as quotaId [%v] inode [%v]",
+				req.Inode, quotaInfo.QuotaId, quotaInfo.RootInode)
+			return
+		}
 	}
 
 	if quotaId, err = mqMgr.c.idAlloc.allocateQuotaID(); err != nil {
@@ -146,6 +149,19 @@ func (mqMgr *MasterQuotaManager) listQuota() (resp *proto.ListMasterQuotaRespons
 		resp.Quotas = append(resp.Quotas, info)
 	}
 	return
+}
+
+func (mqMgr *MasterQuotaManager) getQuota(fullPath string) (quotaInfo *proto.QuotaInfo, err error) {
+	mqMgr.RLock()
+	defer mqMgr.RUnlock()
+	quotaInfo, isFind := mqMgr.FullPathQuotaInfoMap[fullPath]
+	if !isFind {
+		log.LogErrorf("vol [%v] quota fullPath [%v] is not exist.", mqMgr.vol.Name, fullPath)
+		err = errors.New("quota is not exist.")
+		return nil, err
+	}
+
+	return quotaInfo, nil
 }
 
 func (mqMgr *MasterQuotaManager) deleteQuota(quotaId uint32) (err error) {
@@ -267,7 +283,7 @@ func (mqMgr *MasterQuotaManager) getQuotaInfoById(quotaId uint32) (quotaInfo *pr
 	return
 }
 
-func (mqMgr *MasterQuotaManager) DeleteQuotaInfoById(quotaId uint32) (err error) {
+func (mqMgr *MasterQuotaManager) DeleteQuotaInfoById(quotaId uint32) {
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
 
@@ -345,4 +361,36 @@ func (mqMgr *MasterQuotaManager) getQuotaHbInfos() (infos []*proto.QuotaHeartBea
 	}
 
 	return
+}
+
+func (mqMgr *MasterQuotaManager) batchModifyQuotaFullPath(changeFullPathMap map[uint32]string) {
+	mqMgr.Lock()
+	defer mqMgr.Unlock()
+
+	for quotaId, newPath := range changeFullPathMap {
+		quotaInfo, isFind := mqMgr.IdQuotaInfoMap[quotaId]
+		if isFind {
+			quotaInfo.FullPath = newPath
+			var value []byte
+			var err error
+			if value, err = json.Marshal(quotaInfo); err != nil {
+				log.LogErrorf("update quota [%v] marsha1 fail [%v].", quotaInfo, err)
+				continue
+			}
+
+			metadata := new(RaftCmd)
+			metadata.Op = opSyncSetQuota
+			metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaId), 10)
+			metadata.V = value
+
+			if err = mqMgr.c.submit(metadata); err != nil {
+				log.LogErrorf("update quota [%v] submit fail [%v].", quotaInfo, err)
+				continue
+			}
+
+			delete(mqMgr.FullPathQuotaInfoMap, quotaInfo.FullPath)
+			mqMgr.FullPathQuotaInfoMap[newPath] = quotaInfo
+		}
+	}
+	log.LogInfof("batchModifyQuotaFullPath idMap [%v] pathmap [%v]", mqMgr.IdQuotaInfoMap, mqMgr.FullPathQuotaInfoMap)
 }
