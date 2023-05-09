@@ -26,8 +26,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/buf"
-
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
@@ -35,9 +33,9 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
-	"github.com/hashicorp/consul/api"
 )
 
 type LimitParameters struct {
@@ -206,7 +204,7 @@ func (c *PreLoadClient) newEBSClient(masters []string, logDir string) (err error
 
 	if ebsc, err = blobstore.NewEbsClient(access.Config{
 		ConnMode: access.NoLimitConnMode,
-		Consul: api.Config{
+		Consul: access.ConsulConfig{
 			Address: ebsEndpoint,
 		},
 		MaxSizePutOnce: int64(c.ebsBlockSize),

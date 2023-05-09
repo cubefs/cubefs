@@ -26,8 +26,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hashicorp/consul/api"
-
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/common"
@@ -241,7 +239,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if proto.IsCold(opt.VolType) {
 		s.ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
-			Consul: api.Config{
+			Consul: access.ConsulConfig{
 				Address: opt.EbsEndpoint,
 			},
 			MaxSizePutOnce: MaxSizePutOnce,

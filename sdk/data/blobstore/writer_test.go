@@ -21,17 +21,15 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/cubefs/cubefs/sdk/data/manager"
-	"github.com/cubefs/cubefs/util/buf"
-
+	"github.com/brahma-adshonor/gohook"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/brahma-adshonor/gohook"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
-	"github.com/hashicorp/consul/api"
+	"github.com/cubefs/cubefs/util/buf"
 )
 
 var (
@@ -44,7 +42,7 @@ func init() {
 	mockServer := NewMockEbsService()
 	cfg := access.Config{
 		ConnMode: access.QuickConnMode,
-		Consul: api.Config{
+		Consul: access.ConsulConfig{
 			Address: mockServer.service.URL[7:],
 		},
 		PriorityAddrs:  []string{mockServer.service.URL},
