@@ -209,6 +209,7 @@ type DataPartitionInfo struct {
 	SingleDecommissionStatus uint8
 	SingleDecommissionAddr   string
 	RdOnly                   bool
+	IsDiscard                bool
 }
 
 //FileInCore define file in data partition

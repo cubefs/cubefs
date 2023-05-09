@@ -28,6 +28,7 @@ import (
 
 var (
 	TryOtherAddrError = errors.New("TryOtherAddrError")
+	DpDiscardError    = errors.New("DpDiscardError")
 )
 
 const (
