@@ -33,6 +33,8 @@ type DataPartition struct {
 	proto.DataPartitionResponse
 	RandomWrite   bool
 	NearHosts     []string
+	LocalDp       bool
+	LocalHostIdx  int
 	ClientWrapper *Wrapper
 	Metrics       *DataPartitionMetrics
 }

@@ -50,10 +50,22 @@ func (s *DefaultRandomSelector) Name() string {
 	return DefaultRandomSelectorName
 }
 
+func (s *DefaultRandomSelector) isLocalPartition(partition *DataPartition) bool {
+	for i := 0; i < len(partition.Hosts); i++ {
+		host := partition.Hosts[i]
+		if strings.Split(host, ":")[0] == LocalIP {
+			partition.LocalDp = true
+			partition.LocalHostIdx = i
+			return true
+		}
+	}
+	return false
+}
+
 func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error) {
 	var localLeaderPartitions []*DataPartition
 	for i := 0; i < len(partitions); i++ {
-		if strings.Split(partitions[i].Hosts[0], ":")[0] == LocalIP {
+		if s.isLocalPartition(partitions[i]) {
 			localLeaderPartitions = append(localLeaderPartitions, partitions[i])
 		}
 	}
