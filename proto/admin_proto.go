@@ -21,7 +21,6 @@ import (
 // api
 const (
 	// Admin APIs
-
 	AdminGetMasterApiList                     = "/admin/getMasterApiList"
 	AdminSetApiQpsLimit                       = "/admin/setApiQpsLimit"
 	AdminGetApiQpsLimit                       = "/admin/getApiQpsLimit"
@@ -76,6 +75,7 @@ const (
 	AdminSetClusterUuidEnable                 = "/admin/setClusterUuidEnable"
 	AdminGetClusterUuid                       = "/admin/getClusterUuid"
 	AdminGenerateClusterUuid                  = "/admin/generateClusterUuid"
+	AdminSetDpDiscard                         = "/admin/setDpDiscard"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -224,6 +224,7 @@ var GApiInfo map[string]string = map[string]string{
 	"adminsetnoderdonly":              AdminSetNodeRdOnly,
 	"adminsetdprdonly":                AdminSetDpRdOnly,
 	"admindatapartitionchangeleader":  AdminDataPartitionChangeLeader,
+	"adminsetdpdiscard":               AdminSetDpDiscard,
 	//"adminclusterapi":                 AdminClusterAPI,
 	//"adminuserapi":                    AdminUserAPI,
 	//"adminvolumeapi":                  AdminVolumeAPI,
@@ -629,6 +630,7 @@ type DataPartitionResponse struct {
 	Epoch         uint64
 	IsRecover     bool
 	PartitionTTL  int64
+	IsDiscard     bool
 }
 
 // DataPartitionsView defines the view of a data partition

@@ -297,6 +297,8 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatDataPartitionStatus(partition.Status)))
 	sb.WriteString(fmt.Sprintf("LastLoadedTime: %v\n", formatTime(partition.LastLoadedTime)))
 	sb.WriteString(fmt.Sprintf("OfflinePeerID : %v\n", partition.OfflinePeerID))
+	sb.WriteString(fmt.Sprintf("ISRdOnly      : %v\n", partition.RdOnly))
+	sb.WriteString(fmt.Sprintf("IsDiscard     : %v\n", partition.IsDiscard))
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Replicas : \n"))
