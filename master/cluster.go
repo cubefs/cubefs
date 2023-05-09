@@ -221,10 +221,11 @@ func (mgr *followerReadManager) getVolViewAsFollower(key string) (value []byte, 
 	return
 }
 
-func (mgr *followerReadManager) IsVolViewReady(volName string) bool {
+func (mgr *followerReadManager) IsVolViewReady(volName string) (exist bool, status bool) {
 	mgr.rwMutex.Lock()
 	defer mgr.rwMutex.Unlock()
-	return mgr.status[volName]
+	status, exist = mgr.status[volName]
+	return
 }
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig) (c *Cluster) {
