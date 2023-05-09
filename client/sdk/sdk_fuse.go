@@ -50,9 +50,9 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	sysutil "github.com/cubefs/cubefs/util/sys"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/jacobsa/daemonize"
 
 	"github.com/cubefs/cubefs/util/version"
@@ -494,7 +494,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	if opt.PidFile != "" && opt.PidFile[0] != os.PathSeparator {
 		return nil, fmt.Errorf("invalid config file: pidFile(%s) must be a absolute path", opt.PidFile)
 	}
-	opt.EnableReadDirPlus = GlobalMountOptions[proto.EnableReadDirPlus].GetInt64()
+	opt.EnableReadDirPlus = GlobalMountOptions[proto.EnableReadDirPlus].GetBool()
 
 	return opt, nil
 }

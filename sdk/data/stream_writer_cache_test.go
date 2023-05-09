@@ -530,6 +530,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 			}
 			defer localFile.Close()
 			// create CFS file
+			mw.Delete_ll(context.Background(), 1, "TestPendingPacket_"+tt.name, false)
 			inodeInfo, err := mw.Create_ll(context.Background(), 1, "TestPendingPacket_"+tt.name, 0644, 0, 0, nil)
 			if err != nil {
 				t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)
@@ -658,6 +659,7 @@ func TestStreamer_WriteFile_discontinuous(t *testing.T) {
 	}
 	ec.SetEnableWriteCache(true)
 	ec.tinySize = unit.DefaultTinySizeLimit
+	mw.Delete_ll(context.Background(), 1, "TestStreamer_WriteFile_discontinuous", false)
 	inodeInfo, err := mw.Create_ll(context.Background(), 1, "TestStreamer_WriteFile_discontinuous", 0644, 0, 0, nil)
 	if err != nil {
 		t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)

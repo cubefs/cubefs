@@ -257,8 +257,8 @@ func AutoInvalData(enable int64) MountOption {
 	}
 }
 
-func EnableReadDirPlus(enable int64) MountOption {
-	if enable > 0 {
+func EnableReadDirPlus(enable bool) MountOption {
+	if enable {
 		return func(conf *mountConfig) error {
 			conf.initFlags |= InitDoReaddirplus
 			return nil

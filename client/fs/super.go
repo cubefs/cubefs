@@ -57,7 +57,7 @@ type Super struct {
 	enableXattr              bool
 	noBatchGetInodeOnReaddir bool
 	rootIno                  uint64
-	readDirPlus 		 	 int64
+	readDirPlus 		 	 bool
 
 	delProcessPath []string
 	wg             sync.WaitGroup
@@ -67,8 +67,8 @@ type Super struct {
 }
 
 type SuperState struct {
-	RootIno 	uint64
-	ReadDirPlus	int64
+	RootIno 			uint64
+	EnableReadDirPlus	bool
 }
 
 // Functions that Super needs to implement
@@ -163,7 +163,7 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		s.readDirPlus = opt.EnableReadDirPlus
 	} else {
 		s.rootIno = superState.RootIno
-		s.readDirPlus = superState.ReadDirPlus
+		s.readDirPlus = superState.EnableReadDirPlus
 	}
 
 	s.volumeLabelValue = exporter.LabelValue{
@@ -410,5 +410,5 @@ func (s *Super) UmpJmtpAddr() string {
 }
 
 func (s *Super) EnableReadDirPlus() bool {
-	return s.readDirPlus > 0
+	return s.readDirPlus
 }
