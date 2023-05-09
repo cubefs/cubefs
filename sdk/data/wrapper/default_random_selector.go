@@ -53,7 +53,7 @@ func (s *DefaultRandomSelector) Name() string {
 func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error) {
 	var localLeaderPartitions []*DataPartition
 	for i := 0; i < len(partitions); i++ {
-		if strings.Split(partitions[i].Hosts[0], ":")[0] == LocalIP {
+		if strings.Split(partitions[i].NearHosts[0], ":")[0] == LocalIP {
 			localLeaderPartitions = append(localLeaderPartitions, partitions[i])
 		}
 	}

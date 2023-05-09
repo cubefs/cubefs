@@ -379,6 +379,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
 		w.partitions[dp.PartitionID] = dp
+		w.partitions[dp.PartitionID].NearHosts = dp.Hosts
 	}
 
 	w.Unlock()
