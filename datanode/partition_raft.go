@@ -19,7 +19,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data"
 	"io/ioutil"
 	"math"
 	"net"
@@ -34,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -292,6 +292,12 @@ func (dp *DataPartition) startRaftAfterRepair() {
 		case <-timer.C:
 			err = nil
 			if dp.isLeader { // primary does not need to wait repair
+				dp.DataPartitionCreateType = proto.NormalCreateDataPartition
+				if err = dp.Persist(nil); err != nil {
+					log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)
+					timer.Reset(5 * time.Second)
+					continue
+				}
 				if err := dp.startRaft(); err != nil {
 					log.LogErrorf("PartitionID(%v) leader start raft err(%v).", dp.partitionID, err)
 					timer.Reset(5 * time.Second)
