@@ -172,7 +172,7 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 				maxFiles = quotaInfo.MaxFiles
 			}
 			if maxBytes == 0 {
-				maxBytes = quotaInfo.MaxFiles
+				maxBytes = quotaInfo.MaxBytes
 			}
 			if err = client.AdminAPI().UpdateQuota(volName, fullPath, inodeId, mp.PartitionID, maxFiles, maxBytes); err != nil {
 				stdout("volName %v path %v quota update failed(%v)\n", volName, fullPath, err)
