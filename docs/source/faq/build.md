@@ -51,5 +51,5 @@ export DISABLE_WARNING_AS_ERROR=true
 > **NOTE**: Options might be different according to different gcc versions. Following option has been tested on `gcc (Ubuntu 11.3.0-1ubuntu1~22.04) 11.3.0`
 
 ```bash
-export CXXFLAGS=-Wno-error
+export CXXFLAGS=-Wno-error=xxx # optional, developers can change accordingly or comment out or delete it safely
 ```
