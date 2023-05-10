@@ -119,11 +119,11 @@ func (i *TxRollbackInode) Equal(txRbInode *TxRollbackInode) bool {
 func TestRollbackInodeSerialization(t *testing.T) {
 	txInodeInfo := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	inode := NewInode(inodeNum, FileModeType)
-	rbInode := NewTxRollbackInode(inode, 0, txInodeInfo, TxAdd)
+	rbInode := NewTxRollbackInode(inode, []uint32{}, txInodeInfo, TxAdd)
 	var data []byte
 	data, _ = rbInode.Marshal()
 
-	txRbInode := NewTxRollbackInode(nil, 0, nil, 0)
+	txRbInode := NewTxRollbackInode(nil, []uint32{}, nil, 0)
 	txRbInode.Unmarshal(data)
 	assert.True(t, rbInode.Equal(txRbInode))
 }
@@ -204,13 +204,13 @@ func TestTxRscOp(t *testing.T) {
 	txInodeInfo1.Timeout = 5
 	txInodeInfo1.CreateTime = time.Now().Unix()
 	inode1 := NewInode(inodeNum, FileModeType)
-	rbInode1 := NewTxRollbackInode(inode1, 0, txInodeInfo1, TxAdd)
+	rbInode1 := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo1, TxAdd)
 
 	txInodeInfo2 := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	txInodeInfo2.TxID = txMgr.nextTxID()
 	txInodeInfo2.Timeout = 5
 	txInodeInfo2.CreateTime = time.Now().Unix()
-	rbInode2 := NewTxRollbackInode(inode1, 0, txInodeInfo2, TxAdd)
+	rbInode2 := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo2, TxAdd)
 
 	txRsc := mp1.txProcessor.txResource
 	status := txRsc.addTxRollbackInode(rbInode1)
@@ -262,7 +262,7 @@ func mockAddTxInode(mp *metaPartition) *TxRollbackInode {
 	txInodeInfo1.Timeout = 5
 	txInodeInfo1.CreateTime = time.Now().Unix()
 	inode1 := NewInode(inodeNum, FileModeType)
-	rbInode := NewTxRollbackInode(inode1, 0, txInodeInfo1, TxDelete)
+	rbInode := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo1, TxDelete)
 	txRsc := mp.txProcessor.txResource
 	txRsc.addTxRollbackInode(rbInode)
 
@@ -279,7 +279,7 @@ func mockDeleteTxInode(mp *metaPartition) *TxRollbackInode {
 	txInodeInfo2.TxID = txMgr.nextTxID()
 	txInodeInfo2.Timeout = 5
 	txInodeInfo2.CreateTime = time.Now().Unix()
-	rbInode := NewTxRollbackInode(inode2, 0, txInodeInfo2, TxAdd)
+	rbInode := NewTxRollbackInode(inode2, []uint32{}, txInodeInfo2, TxAdd)
 	txRsc := mp.txProcessor.txResource
 	txRsc.addTxRollbackInode(rbInode)
 

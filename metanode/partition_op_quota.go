@@ -412,7 +412,7 @@ func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind boo
 	value, exist := extend.Get([]byte(proto.QuotaKey))
 	if !exist {
 		isFind = false
-		log.LogErrorf("isExistQuota quotakey is not exist inode:%v", ino)
+		log.LogDebugf("isExistQuota quotakey is not exist inode:%v", ino)
 		return
 	}
 	var quotaInfos = &proto.MetaQuotaInfos{

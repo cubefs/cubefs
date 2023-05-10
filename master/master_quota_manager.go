@@ -1,4 +1,4 @@
-// Copyright 2023 The CubeFS Authors.
+// Copyright 2018 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,6 +40,10 @@ func (mqMgr *MasterQuotaManager) setQuota(req *proto.SetMasterQuotaReuqest) (err
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
 
+	if len(mqMgr.IdQuotaInfoMap) >= MaxQuotaNumPerVol {
+		err = errors.NewErrorf("the number of quota has reached the upper limit %v", len(mqMgr.IdQuotaInfoMap))
+		return
+	}
 	for _, quotaInfo := range mqMgr.FullPathQuotaInfoMap {
 		if req.Inode == quotaInfo.RootInode {
 			err = errors.NewErrorf("inode [%v] is the same as quotaId [%v] inode [%v]",
