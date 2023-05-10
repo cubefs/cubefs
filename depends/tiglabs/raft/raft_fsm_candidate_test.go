@@ -167,49 +167,47 @@ func TestDuelingPreCandidates(t *testing.T) {
 	}
 }
 
-//func TestCandidateConcede(t *testing.T) {
-//	tt := newNetwork(nil, nil, nil)
-//	tt.isolate(1)
-//
-//	tt.send(proto.Message{From: 1, To: 1, Type: proto.LocalMsgHup})
-//	tt.send(proto.Message{From: 3, To: 3, Type: proto.LocalMsgHup})
-//
-//	// heal the partition
-//	tt.recover()
-//	// send heartbeat; reset wait
-//	tt.send(proto.Message{From: 3, To: 3, Type: proto.MsgBeat})
-//	data := []byte("force follower")
-//	// send a proposal to 3 to flush out a MsgApp to 1
-//	tt.send(proto.Message{From: 3, To: 3, Type: proto.LocalMsgProp, Entries: []*proto.Entry{{Data: data}}})
-//	// send heartbeat; flush out commit
-//	tt.send(proto.Message{From: 3, To: 3, Type: proto.MsgBeat})
-//
-//	a := tt.peers[1].(*raftFsm)
-//	if g := a.state; g != stateFollower {
-//		t.Errorf("state = %s, want %s", g, stateFollower)
-//	}
-//	if g := a.term; g != 1 {
-//		t.Errorf("term = %d, want %d", g, 1)
-//	}
-//	storage := stor.DefaultMemoryStorage()
-//	storage.StoreEntries([]*proto.Entry{{}, {Data: nil, Term: 1, Index: 1}, {Term: 1, Index: 2, Data: data}})
-//	wantLog := ltoa(&raftLog{
-//		storage: storage,
-//		unstable:  unstable{offset: 3},
-//		committed: 2,
-//	})
-//
-//	for i, p := range tt.peers {
-//		if sm, ok := p.(*raftFsm); ok {
-//			l := ltoa(sm.raftLog)
-//			if g := diffu(wantLog, l); g != "" {
-//				t.Errorf("#%d: diff:\n%s", i, g)
-//			}
-//		} else {
-//			t.Logf("#%d: empty log", i)
-//		}
-//	}
-//}
+func TestCandidateConcede(t *testing.T) {
+	tt := newNetwork(nil, nil, nil)
+	tt.isolate(1)
+
+	tt.send(proto.Message{From: 1, To: 1, Type: proto.LocalMsgHup})
+	tt.send(proto.Message{From: 3, To: 3, Type: proto.LocalMsgHup})
+
+	// heal the partition
+	tt.recover()
+	// send ReqMsgAppend; flush nil message to node 1
+	tt.send(proto.Message{From: 3, To: 1, Type: proto.ReqMsgAppend, Term: 1, LogTerm: 1, Index: 0, Entries: []*proto.Entry{{Data: nil, Index: 1, Term: 1}}})
+	data := []byte("force follower")
+	// send a proposal to 3 to flush out a MsgApp to 1
+	tt.send(proto.Message{From: 3, To: 3, Type: proto.LocalMsgProp, Entries: []*proto.Entry{{Data: data, Index: 2, Term: 1}}})
+
+	a := tt.peers[1].(*raftFsm)
+	if g := a.state; g != stateFollower {
+		t.Errorf("state = %s, want %s", g, stateFollower)
+	}
+	if g := a.term; g != 1 {
+		t.Errorf("term = %d, want %d", g, 1)
+	}
+	storage := stor.DefaultMemoryStorage()
+	storage.StoreEntries([]*proto.Entry{{}, {Data: nil, Term: 1, Index: 1}, {Term: 1, Index: 2, Data: data}})
+	wantLog := ltoa(&raftLog{
+		storage:   storage,
+		unstable:  unstable{offset: 3},
+		committed: 2,
+	})
+
+	for i, p := range tt.peers {
+		if sm, ok := p.(*raftFsm); ok {
+			l := ltoa(sm.raftLog)
+			if g := diffu(wantLog, l); g != "" {
+				t.Errorf("#%d: diff:\n%s", i, g)
+			}
+		} else {
+			t.Logf("#%d: empty log", i)
+		}
+	}
+}
 
 func TestSingleNodeCandidate(t *testing.T) {
 	tt := newNetwork(nil)
