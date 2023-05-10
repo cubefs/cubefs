@@ -52,5 +52,5 @@ export DISABLE_WARNING_AS_ERROR=true
 > **注意**： 选项开关可能因gcc版本不同存在差异，以下选项在`gcc (Ubuntu 11.3.0-1ubuntu1~22.04) 11.3.0`版本上测试通过
 
 ```bash
-export CXXFLAGS=-Wno-error
+export CXXFLAGS=-Wno-error=xxx # 此选项可选，开发者可根据实际情况调整选项值，或者干脆注释掉或删除此行
 ```
