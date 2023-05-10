@@ -19,7 +19,7 @@ Clustermgr的配置是基于[公有配置](./base.md)，以下配置说明主要
 | raft_config        | 详细参考Raft详细配置                                                                 | 是   |
 | disk_mgr_config    | 详细参考磁盘管理配置                                                                   | 是   |
 | host_aware         | 主机感知                                                                         | 是   |
-| rack_ware          | 机架感知                                                                         | 是   |
+| rack_aware         | 机架感知                                                                         | 是   |
 | volume_mgr_config  | 卷管理模块                                                                        | 否   |
 
 
