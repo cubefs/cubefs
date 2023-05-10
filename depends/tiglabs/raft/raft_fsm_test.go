@@ -63,31 +63,22 @@ func newNetworkWithConfig(configFunc func(fsm *raftFsm), peers ...stateMachine) 
 			s := stor.DefaultMemoryStorage()
 			cfg := newTestRaftConfig(id, withStorage(s), withPeers(peerAddrs...))
 			r := newTestRaftFsm(10, 1, cfg)
+
+			for i := 0; i < size; i++ {
+				r.replicas[peerAddrs[i]] = newReplica(proto.Peer{PeerID: peerAddrs[i], Priority: 0, ID: peerAddrs[i]}, 256)
+			}
 			if configFunc != nil {
 				configFunc(r)
 			}
+			r.id = id
+			r.config.NodeID = id
 			npeers[id] = r
 		case *raftFsm:
-			//learners := make(map[uint64]bool, len(v.prs.Learners))
-			//for i := range v.prs.Learners {
-			//	learners[i] = true
-			//}
-			//v.id = id
-			//v.prs = tracker.MakeProgressTracker(v.prs.MaxInflight)
-			//if len(learners) > 0 {
-			//	v.prs.Learners = map[uint64]struct{}{}
-			//}
-			//for i := 0; i < size; i++ {
-			//	pr := &tracker.Progress{}
-			//	if _, ok := learners[peerAddrs[i]]; ok {
-			//		pr.IsLearner = true
-			//		v.prs.Learners[peerAddrs[i]] = struct{}{}
-			//	} else {
-			//		v.prs.Voters[0][peerAddrs[i]] = struct{}{}
-			//	}
-			//	v.prs.Progress[peerAddrs[i]] = pr
-			//}
-			//v.reset(v.term)
+			v.id = id
+			for i := 0; i < size; i++ {
+				v.replicas[peerAddrs[i]] = newReplica(proto.Peer{PeerID: peerAddrs[i], Priority: 0, ID: peerAddrs[i]}, 256)
+			}
+			v.config.NodeID = id
 			npeers[id] = v
 		case *blackHole:
 			npeers[id] = v
@@ -1291,7 +1282,7 @@ func TestNonPromotableVoterWithCheckQuorum(t *testing.T) {
 	nt := newNetwork(a, b)
 	b.randElectionTick += 1
 	// Need to remove 2 again to make it a non-promotable node since newNetwork overwritten some internal states
-	b.applyConfChange(&proto.ConfChange{Type: proto.ConfRemoveNode, Peer: proto.Peer{PeerID: 2}})
+	b.applyConfChange(&proto.ConfChange{Type: proto.ConfRemoveNode, Peer: proto.Peer{PeerID: 2, ID: 2}})
 
 	if b.promotable() {
 		t.Fatalf("promotable = %v, want false", b.promotable())
