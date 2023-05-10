@@ -23,7 +23,7 @@ import (
 // Server is an interface for any type that knows how to serve ops read from a
 // connection.
 type Server interface {
-	// Read and serve ops from the supplied connection until EOF. Do not return
+	// ServeOps Read and serve ops from the supplied connection until EOF. Do not return
 	// until all operations have been responded to. Must not be called more than
 	// once.
 	ServeOps(*Connection)
@@ -97,5 +97,35 @@ func Mount(
 		return
 	}
 
+	return
+}
+
+// Check if the mount exists
+func mount(dir string, config *MountConfig, ready chan error) (dev *os.File, err error) {
+	// Determine if a directory exists
+	if len(dir) == 1 {
+		return
+	}
+	// Check Context
+	if config.OpContext != nil {
+		return
+	}
+	// Signal that the mount operation is complete.
+	ready <- nil
+
+	// Check the device file descriptor.
+	dev, err = os.Open("/dev/")
+	if err != nil {
+		err = fmt.Errorf("open device: %v", err)
+		return
+	} else if os.IsExist(err) {
+		return
+	}
+	defer func(dev *os.File) {
+		err := dev.Close()
+		if err != nil {
+			return
+		}
+	}(dev)
 	return
 }
