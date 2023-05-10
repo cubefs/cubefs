@@ -22,13 +22,13 @@ type (
 
 const (
 	stateFollower     fsmState = 0
-	stateCandidate             = 1
-	stateLeader                = 2
-	statePreCandidate          = 3
+	stateCandidate    fsmState = 1
+	stateLeader       fsmState = 2
+	statePreCandidate fsmState = 3
 
 	replicaStateProbe     replicaState = 0
-	replicaStateReplicate              = 1
-	replicaStateSnapshot               = 2
+	replicaStateReplicate replicaState = 1
+	replicaStateSnapshot  replicaState = 2
 )
 
 func (st fsmState) String() string {
