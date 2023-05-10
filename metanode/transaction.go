@@ -49,12 +49,12 @@ const (
 
 type TxRollbackInode struct {
 	inode                  *Inode
-	quotaId                uint32
 	txInodeInfo            *proto.TxInodeInfo
 	rbType                 uint32 //Rollback Type
 	rbInitiator            uint32 //TM, Client
 	rbPlaceholder          bool   //default false
 	rbPlaceholderTimestamp int64
+	quotaIds               []uint32
 }
 
 // Less tests whether the current TxRollbackInode item is less than the given one.
@@ -72,7 +72,7 @@ func (i *TxRollbackInode) Copy() btree.Item {
 
 	return &TxRollbackInode{
 		inode:                  item.(*Inode),
-		quotaId:                i.quotaId,
+		quotaIds:               i.quotaIds,
 		txInodeInfo:            &txInodeInfo,
 		rbType:                 i.rbType,
 		rbInitiator:            i.rbInitiator,
@@ -92,9 +92,6 @@ func (i *TxRollbackInode) Marshal() (result []byte, err error) {
 	}
 	if _, err := buff.Write(bs); err != nil {
 		return nil, err
-	}
-	if err = binary.Write(buff, binary.BigEndian, &i.quotaId); err != nil {
-		panic(err)
 	}
 	bs, err = i.txInodeInfo.Marshal()
 	if err != nil {
@@ -118,7 +115,13 @@ func (i *TxRollbackInode) Marshal() (result []byte, err error) {
 	if err = binary.Write(buff, binary.BigEndian, &i.rbPlaceholderTimestamp); err != nil {
 		panic(err)
 	}
-
+	quotaBytes := bytes.NewBuffer(make([]byte, 0, 128))
+	for _, quotaId := range i.quotaIds {
+		if err = binary.Write(quotaBytes, binary.BigEndian, quotaId); err != nil {
+			panic(err)
+		}
+	}
+	buff.Write(quotaBytes.Bytes())
 	return buff.Bytes(), nil
 }
 
@@ -138,10 +141,6 @@ func (i *TxRollbackInode) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	i.inode = ino
-
-	if err = binary.Read(buff, binary.BigEndian, &i.quotaId); err != nil {
-		return
-	}
 
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
@@ -169,6 +168,16 @@ func (i *TxRollbackInode) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.rbPlaceholderTimestamp); err != nil {
 		return
 	}
+	var quotaId uint32
+	for {
+		if buff.Len() == 0 {
+			break
+		}
+		if err = binary.Read(buff, binary.BigEndian, &quotaId); err != nil {
+			return
+		}
+		i.quotaIds = append(i.quotaIds, quotaId)
+	}
 	return
 }
 
@@ -190,10 +199,10 @@ func (i *TxRollbackInode) IsExpired() (expired bool) {
 	return expired
 }
 
-func NewTxRollbackInode(inode *Inode, quotaId uint32, txInodeInfo *proto.TxInodeInfo, rbType uint32) *TxRollbackInode {
+func NewTxRollbackInode(inode *Inode, quotaIds []uint32, txInodeInfo *proto.TxInodeInfo, rbType uint32) *TxRollbackInode {
 	return &TxRollbackInode{
 		inode:       inode,
-		quotaId:     quotaId,
+		quotaIds:    quotaIds,
 		txInodeInfo: txInodeInfo,
 		rbType:      rbType,
 	}
@@ -1622,11 +1631,11 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 			if ino.(*Inode).IsTempFile() && tr.txProcessor.mp.uidManager != nil {
 				tr.txProcessor.mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Extents.eks)
 			}
-			if (ino.(*Inode).IsTempFile() || ino.(*Inode).IsEmptyDir()) && tr.txProcessor.mp.mqMgr != nil && rbInode.quotaId != 0 {
-				var quotaIds []uint32
-				quotaIds = append(quotaIds, rbInode.quotaId)
-				tr.txProcessor.mp.setInodeQuota(quotaIds, rbInode.inode.Inode)
-				tr.txProcessor.mp.mqMgr.updateUsedInfo(int64(rbInode.inode.Size), 1, rbInode.quotaId)
+			if (ino.(*Inode).IsTempFile() || ino.(*Inode).IsEmptyDir()) && tr.txProcessor.mp.mqMgr != nil && len(rbInode.quotaIds) > 0 {
+				tr.txProcessor.mp.setInodeQuota(rbInode.quotaIds, rbInode.inode.Inode)
+				for _, quotaId := range rbInode.quotaIds {
+					tr.txProcessor.mp.mqMgr.updateUsedInfo(int64(rbInode.inode.Size), 1, quotaId)
+				}
 			}
 
 		}
@@ -1639,8 +1648,10 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 			if tr.txProcessor.mp.uidManager != nil {
 				tr.txProcessor.mp.uidManager.doMinusUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Size)
 			}
-			if tr.txProcessor.mp.mqMgr != nil && rbInode.quotaId != 0 {
-				tr.txProcessor.mp.mqMgr.updateUsedInfo(-1*int64(rbInode.inode.Size), -1, rbInode.quotaId)
+			if tr.txProcessor.mp.mqMgr != nil && len(rbInode.quotaIds) > 0 {
+				for _, quotaId := range rbInode.quotaIds {
+					tr.txProcessor.mp.mqMgr.updateUsedInfo(-1*int64(rbInode.inode.Size), -1, quotaId)
+				}
 			}
 		}
 

@@ -849,6 +849,9 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		i := idx
 		go func() {
 			defer wg.Done()
+			if i == 2 { //loadExtend must be executed after loadInode
+				return
+			}
 			errs[i] = loadFunc(snapshotPath, crcs[i])
 		}()
 	}
@@ -859,6 +862,10 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		if err != nil {
 			return
 		}
+	}
+
+	if err = mp.loadExtend(snapshotPath, crcs[2]); err != nil {
+		return
 	}
 
 	if needLoadTxStuff {

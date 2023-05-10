@@ -135,6 +135,7 @@ const (
 	QosMasterAcceptCnt = 3000
 	MinZoneDiskLimit   = 300
 	MaxZoneDiskLimit   = 10000
+	MaxQuotaNumPerVol  = 100
 )
 
 const (
