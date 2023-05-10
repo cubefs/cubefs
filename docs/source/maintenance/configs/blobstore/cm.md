@@ -20,7 +20,7 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
 | raft_config          | Detailed Raft configuration                                                                                                                                                                                      | Yes      |
 | disk_mgr_config      | Detailed disk management configuration                                                                                                                                                                           | Yes      |
 | host_aware           | Host awareness                                                                                                                                                                                                   | Yes      |
-| rack_ware            | Rack awareness                                                                                                                                                                                                   | Yes      |
+| rack_aware           | Rack awareness                                                                                                                                                                                                   | Yes      |
 | volume_mgr_config    | Volume management module                                                                                                                                                                                         | No       |
 
 ### Complete Configuration

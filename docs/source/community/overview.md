@@ -20,6 +20,7 @@ You can participate in the open-source development of CubeFS in various ways, su
 
 - Follow the [angular commit guidelines](https://github.com/angular/angular/blob/main/CONTRIBUTING.md#commit).
 - Commits must be signed and the signature must match the author.
+- If there is an issue, you need to link to related issues.
 
 Example:
 
@@ -30,6 +31,8 @@ Author: users <users@cubefs.groups.io>
 Date:   Thu Apr 27 09:40:02 2023 +0800
 
     feat(cubefs): this is an example
+   
+    close: #issue-id
     
     Signed-off-by: users <users@cubefs.groups.io>
 ```

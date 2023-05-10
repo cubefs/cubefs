@@ -21,6 +21,7 @@
 
 - 遵循[Angular提交规范](https://github.com/angular/angular/blob/main/CONTRIBUTING.md#commit)
 - 提交点需要签名，并确保签名与作者一致
+- 如果有相关Issue，建议在提交点上关联
 
 示例：
 
@@ -31,6 +32,8 @@ Author: users <users@cubefs.groups.io>
 Date:   Thu Apr 27 09:40:02 2023 +0800
 
     feat(cubefs): this is an example
+    
+    close: #issue-id
     
     Signed-off-by: users <users@cubefs.groups.io>
 ```
