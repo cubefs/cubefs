@@ -14,11 +14,14 @@
 
 package codemode
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type (
 	// CodeMode EC encode and decode mode
 	CodeMode     uint8
+	CodeType     uint8
 	CodeModeName string
 )
 
@@ -41,6 +44,13 @@ const (
 	// for test
 	EC6P6L9  CodeMode = 200
 	EC6P8L10 CodeMode = 201
+	// for azureLrcP1
+	// dataShards/(L-1) MUST equal to globalParityShards
+	EC12P6L3 CodeMode = 211
+	EC18P9L3 CodeMode = 212
+	EC10P5L3 CodeMode = 213
+	//EC12P3L3 CodeMode = 214 // this is a wrong mode, just test
+	EC12P6 CodeMode = 214
 )
 
 // Note: Don't modify it unless you know very well how codemode works.
@@ -51,31 +61,45 @@ const (
 	alignSize2KB  = 2048 // 2KB
 )
 
+// Note: Don't modify it unless you know very well what codetype means.
+const (
+	ReedSolomon CodeType = 0
+	OPPOLrc     CodeType = 1
+	AzureLrcP1  CodeType = 2
+)
+
 // The tactic is fixed pairing with one codemode.
 // Add a new codemode if you want other features.
 var constCodeModeTactic = map[CodeMode]Tactic{
 	// three az
-	EC15P12: {N: 15, M: 12, L: 0, AZCount: 3, PutQuorum: 24, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC6P6:   {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC12P9:  {N: 12, M: 9, L: 0, AZCount: 3, PutQuorum: 20, GetQuorum: 0, MinShardSize: alignSize2KB},
+	EC15P12: {N: 15, M: 12, L: 0, AZCount: 3, PutQuorum: 24, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: ReedSolomon},
+	EC6P6:   {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: ReedSolomon},
+	EC12P9:  {N: 12, M: 9, L: 0, AZCount: 3, PutQuorum: 20, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: ReedSolomon},
 
 	// two az
-	EC16P20L2: {N: 16, M: 20, L: 2, AZCount: 2, PutQuorum: 34, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC6P10L2:  {N: 6, M: 10, L: 2, AZCount: 2, PutQuorum: 14, GetQuorum: 0, MinShardSize: alignSize2KB},
+	EC16P20L2: {N: 16, M: 20, L: 2, AZCount: 2, PutQuorum: 34, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: OPPOLrc},
+	EC6P10L2:  {N: 6, M: 10, L: 2, AZCount: 2, PutQuorum: 14, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: OPPOLrc},
 
 	// single az
-	EC12P4: {N: 12, M: 4, L: 0, AZCount: 1, PutQuorum: 15, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC16P4: {N: 16, M: 4, L: 0, AZCount: 1, PutQuorum: 19, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC3P3:  {N: 3, M: 3, L: 0, AZCount: 1, PutQuorum: 5, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC10P4: {N: 10, M: 4, L: 0, AZCount: 1, PutQuorum: 13, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC6P3:  {N: 6, M: 3, L: 0, AZCount: 1, PutQuorum: 8, GetQuorum: 0, MinShardSize: alignSize2KB},
+	EC12P4: {N: 12, M: 4, L: 0, AZCount: 1, PutQuorum: 15, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: ReedSolomon},
+	EC16P4: {N: 16, M: 4, L: 0, AZCount: 1, PutQuorum: 19, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: ReedSolomon},
+	EC3P3:  {N: 3, M: 3, L: 0, AZCount: 1, PutQuorum: 5, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: ReedSolomon},
+	EC10P4: {N: 10, M: 4, L: 0, AZCount: 1, PutQuorum: 13, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: ReedSolomon},
+	EC6P3:  {N: 6, M: 3, L: 0, AZCount: 1, PutQuorum: 8, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: ReedSolomon},
 	// for env test
-	EC6P3L3:       {N: 6, M: 3, L: 3, AZCount: 3, PutQuorum: 9, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC6P6Align0:   {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize0B},
-	EC6P6Align512: {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize512B},
-	EC4P4L2:       {N: 4, M: 4, L: 2, AZCount: 2, PutQuorum: 6, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC6P6L9:       {N: 6, M: 6, L: 9, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize2KB},
-	EC6P8L10:      {N: 6, M: 8, L: 10, AZCount: 2, PutQuorum: 13, GetQuorum: 0, MinShardSize: alignSize0B},
+	EC6P3L3:       {N: 6, M: 3, L: 3, AZCount: 3, PutQuorum: 9, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: OPPOLrc},
+	EC6P6Align0:   {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize0B, CodeType: ReedSolomon},
+	EC6P6Align512: {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize512B, CodeType: ReedSolomon},
+	EC4P4L2:       {N: 4, M: 4, L: 2, AZCount: 2, PutQuorum: 6, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: OPPOLrc},
+	EC6P6L9:       {N: 6, M: 6, L: 9, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: OPPOLrc},
+	EC6P8L10:      {N: 6, M: 8, L: 10, AZCount: 2, PutQuorum: 13, GetQuorum: 0, MinShardSize: alignSize0B, CodeType: OPPOLrc},
+	// for azureLrcP1 test
+	EC12P6L3: {N: 12, M: 6, L: 3, AZCount: 3, PutQuorum: 18, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
+	EC18P9L3: {N: 18, M: 9, L: 3, AZCount: 3, PutQuorum: 27, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
+	EC10P5L3: {N: 10, M: 5, L: 3, AZCount: 3, PutQuorum: 15, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
+	//EC12P3L3: {N: 12, M: 3, L: 3, AZCount: 3, PutQuorum: 15, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
+	// test
+	EC12P6: {N: 12, M: 6, L: 0, AZCount: 0, PutQuorum: 12, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: ReedSolomon},
 }
 
 var constName2CodeMode = map[CodeModeName]CodeMode{
@@ -95,6 +119,11 @@ var constName2CodeMode = map[CodeModeName]CodeMode{
 	"EC6P6L9":       EC6P6L9,
 	"EC6P8L10":      EC6P8L10,
 	"EC12P9":        EC12P9,
+	"EC12P6L3":      EC12P6L3,
+	"EC18P9L3":      EC18P9L3,
+	"EC10P5L3":      EC10P5L3,
+	//"EC12P3L3":      EC12P3L3,
+	"EC12P6": EC12P6,
 }
 
 var constCodeMode2Name = map[CodeMode]CodeModeName{
@@ -114,16 +143,29 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 	EC6P6L9:       "EC6P6L9",
 	EC6P8L10:      "EC6P8L10",
 	EC12P9:        "EC12P9",
+	EC12P6L3:      "EC12P6L3",
+	EC18P9L3:      "EC18P9L3",
+	EC10P5L3:      "EC10P5L3",
+	//EC12P3L3:      "EC12P3L3",
+	EC12P6: "EC12P6",
 }
 
-//vol layout ep:EC6P10L2
-//|----N------|--------M----------------|--L--|
-//|0,1,2,3,4,5|6,7,8,9,10,11,12,13,14,15|16,17|
-
+// vol layout ep:EC6P10L2
+// |----N------|--------M----------------|--L--|
+// |0,1,2,3,4,5|6,7,8,9,10,11,12,13,14,15|16,17|
 // global stripe:[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15], n=6 m=10
 // two local stripes:
 // local stripe1:[0,1,2,  6, 7, 8, 9,10, 16] n=8 m=1
 // local stripe2:[3,4,5, 11,12,13,14,15, 17] n=8 m=1
+
+// ec layout of AzureLrcP1 is as follows: e.g. EC6P3L3
+// |----N------|--M--|---L---|
+// |0,1,2,3,4,5|6,7,8|9,10,11|
+// global stripe:[0,1,2,3,4,5,6,7,8], n=6 m=3
+// three local stripes:
+// local stripe1(data):		[0,1,2,  9] n=3 m=1
+// local stripe2(data):		[3,4,5, 10] n=3 m=1
+// local stripe3(parity):	[6,7,8, 11] n=3 m=1
 
 // Tactic constant strategy of one CodeMode
 type Tactic struct {
@@ -160,6 +202,10 @@ type Tactic struct {
 	//  |    0    |    1    |    2    |   ....                |    N    |
 	//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 	MinShardSize int
+
+	// indicate the code types:
+	// ReedSolomon = 0, OPPOLrc = 1, AzureLrcP1 = 2
+	CodeType CodeType
 }
 
 func init() {
@@ -177,6 +223,12 @@ func init() {
 		{Mode: EC6P3L3, Size: alignSize2KB},
 		{Mode: EC6P6Align0, Size: alignSize0B},
 		{Mode: EC6P6Align512, Size: alignSize512B},
+
+		// azureLrc+1's code mode
+		{Mode: EC12P6L3, Size: alignSize2KB},
+		{Mode: EC18P9L3, Size: alignSize2KB},
+		{Mode: EC10P5L3, Size: alignSize2KB},
+		//{Mode: EC12P3L3, Size: alignSize2KB},
 	} {
 		tactic := pair.Mode.Tactic()
 		if !tactic.IsValid() {
@@ -265,27 +317,60 @@ func (cn CodeModeName) Tactic() Tactic {
 
 // IsValid ec tactic valid or not
 func (c *Tactic) IsValid() bool {
-	return c.N > 0 && c.M > 0 && c.L >= 0 && c.AZCount > 0 &&
-		c.PutQuorum > 0 && c.GetQuorum >= 0 && c.MinShardSize >= 0 &&
-		c.N%c.AZCount == 0 && c.M%c.AZCount == 0 && c.L%c.AZCount == 0
+	if c.CodeType == AzureLrcP1 {
+		return c.N > 0 && c.M > 0 && c.L >= 0 && c.AZCount > 0 &&
+			c.PutQuorum > 0 && c.GetQuorum >= 0 && c.MinShardSize >= 0 &&
+			c.N == c.M*(c.AZCount-1)
+	} else {
+		return c.N > 0 && c.M > 0 && c.L >= 0 && c.AZCount > 0 &&
+			c.PutQuorum > 0 && c.GetQuorum >= 0 && c.MinShardSize >= 0 &&
+			c.N%c.AZCount == 0 && c.M%c.AZCount == 0 && c.L%c.AZCount == 0
+	}
 }
 
 // GetECLayoutByAZ ec layout by AZ
 func (c *Tactic) GetECLayoutByAZ() (azStripes [][]int) {
 	azStripes = make([][]int, c.AZCount)
-	n, m, l := c.N/c.AZCount, c.M/c.AZCount, c.L/c.AZCount
-	for idx := range azStripes {
-		stripe := make([]int, 0, n+m+l)
-		for i := 0; i < n; i++ {
-			stripe = append(stripe, idx*n+i)
+	if c.CodeType == AzureLrcP1 {
+		// generally, c.L is equal to c.AZCount
+		// In our implementation , we force that c.M = c.N/(c.L-1)
+		n, l := c.N/(c.AZCount-1), c.L/c.AZCount
+		for idx := range azStripes {
+			var stripe []int
+			if idx == c.AZCount-1 {
+				// parity stripe
+				stripe = make([]int, 0, c.M+l)
+				for i := 0; i < c.M; i++ {
+					stripe = append(stripe, c.N+i)
+				}
+			} else {
+				// data stripe
+				stripe = make([]int, 0, n+l)
+				for i := 0; i < n; i++ {
+					stripe = append(stripe, idx*n+i)
+				}
+			}
+			for i := 0; i < l; i++ {
+				stripe = append(stripe, c.N+c.M+idx*l+i)
+			}
+			azStripes[idx] = stripe
 		}
-		for i := 0; i < m; i++ {
-			stripe = append(stripe, c.N+idx*m+i)
+	}
+	if c.CodeType == OPPOLrc {
+		n, m, l := c.N/c.AZCount, c.M/c.AZCount, c.L/c.AZCount
+		for idx := range azStripes {
+			stripe := make([]int, 0, n+m+l)
+			for i := 0; i < n; i++ {
+				stripe = append(stripe, idx*n+i)
+			}
+			for i := 0; i < m; i++ {
+				stripe = append(stripe, c.N+idx*m+i)
+			}
+			for i := 0; i < l; i++ {
+				stripe = append(stripe, c.N+c.M+idx*l+i)
+			}
+			azStripes[idx] = stripe
 		}
-		for i := 0; i < l; i++ {
-			stripe = append(stripe, c.N+c.M+idx*l+i)
-		}
-		azStripes[idx] = stripe
 	}
 	return azStripes
 }
@@ -336,7 +421,17 @@ func (c *Tactic) LocalStripeInAZ(azIndex int) (localStripe []int, n, m int) {
 		return nil, 0, 0
 	}
 
-	n, m, l := c.N/c.AZCount, c.M/c.AZCount, c.L/c.AZCount
+	l := c.L / c.AZCount
+	if c.CodeType == OPPOLrc {
+		n, m = c.N/c.AZCount, c.M/c.AZCount
+	}
+	if c.CodeType == AzureLrcP1 {
+		if azIndex == c.AZCount-1 {
+			n, m = 0, c.M
+		} else {
+			n, m = c.N/(c.AZCount-1), 0
+		}
+	}
 	azStripes := c.GetECLayoutByAZ()
 	if azIndex < 0 || azIndex >= len(azStripes) {
 		return nil, 0, 0
@@ -362,5 +457,10 @@ func GetAllCodeModes() []CodeMode {
 		EC6P3,
 		EC6P6L9,
 		EC6P8L10,
+		EC12P6L3,
+		EC18P9L3,
+		EC10P5L3,
+		//EC12P3L3,
+		EC12P6,
 	}
 }
