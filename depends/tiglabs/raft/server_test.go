@@ -17,7 +17,7 @@ package raft
 
 import (
 	"encoding/binary"
-	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
+	"fmt"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/storage/wal"
 	"github.com/cubefs/cubefs/util/log"
