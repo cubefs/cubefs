@@ -532,7 +532,7 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 			return
 		}
 
-		txRbInode := NewTxRollbackInode(nil, 0, nil, 0)
+		txRbInode := NewTxRollbackInode(nil, []uint32{}, nil, 0)
 		if err = txRbInode.Unmarshal(txBuf); err != nil {
 			err = errors.NewErrorf("[loadTxRbInode] Unmarshal: %s", err.Error())
 			return
