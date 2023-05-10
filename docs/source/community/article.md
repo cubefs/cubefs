@@ -2,6 +2,7 @@
 
 ## Getting Started Series
 
+- [Ten-minute introduction to CubeFS | BlobStore Cross-AZ Deployment](https://mp.weixin.qq.com/s/HEgeVRITyoMF93fm3mXmqA), May 9, 2023, Storage Team@0PP0
 - [Ten-minute introduction to CubeFS | Easily Master CubeFS Object Storage Permission Control](https://mp.weixin.qq.com/s/dJ2e5XDyVth3HL1UWR7fvw) , April 25, 2023，Storage Team @OPPO
 - [Ten-minute introduction to CubeFS | Cross-platform use based on FTP, NFS, and SMB](https://mp.weixin.qq.com/s/PyOwFzOSZK0pe6Xd0MnHJQ) , April 18, 2023，Storage Team @OPPO
 - [Ten-minute introduction to CubeFS | Easily build big data storage](https://mp.weixin.qq.com/s/MHSK4hG6omHajtrJcrjzvw), March 31, 2023, Storage Team @OPPO
@@ -12,6 +13,7 @@
 
 ## Best Practices
 
+- [Create the future with CubeFS: BIGO's Practice and Thinking](https://mp.weixin.qq.com/s/X5c14U55O2g0bT3bxJWFbg), May 5, 2023, Bingxing Liu@BIGO
 - [How CubeFS Accelerates AI Training 3x in OPPO Hybrid Cloud Platform](https://mp.weixin.qq.com/s/9el9S66eDhqAKU2vvpJW3Q), March 30, 2023, Storage Team @OPPO
 - [Erasure Coding Mode Selection](https://mp.weixin.qq.com/s/v-fFJZtDY2_9loHWAnPXqA), December 15, 2022, Storage Team @OPPO
 - [Common Operational Issues Handling](https://mp.weixin.qq.com/s/cH9xw5sK80RIkkZWpyd4qA), November 29, 2022, Storage Team @OPPO
