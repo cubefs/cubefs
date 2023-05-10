@@ -83,13 +83,25 @@ func NewEncoder(cfg Config) (Encoder, error) {
 		cfg.Concurrency = defaultConcurrency
 	}
 
-	engine, err := reedsolomon.New(cfg.CodeMode.N, cfg.CodeMode.M)
-	if err != nil {
-		return nil, err
-	}
 	pool := count.NewBlockingCount(cfg.Concurrency)
 
-	if cfg.CodeMode.L != 0 {
+	switch cfg.CodeMode.CodeType {
+	case codemode.ReedSolomon:
+		optionTest := reedsolomon.WithJerasureMatrix()
+		engine, err := reedsolomon.New(cfg.CodeMode.N, cfg.CodeMode.M, optionTest)
+		if err != nil {
+			return nil, err
+		}
+		return &encoder{
+			Config: cfg,
+			pool:   pool,
+			engine: engine,
+		}, nil
+	case codemode.OPPOLrc:
+		engine, err := reedsolomon.New(cfg.CodeMode.N, cfg.CodeMode.M)
+		if err != nil {
+			return nil, err
+		}
 		localN := (cfg.CodeMode.N + cfg.CodeMode.M) / cfg.CodeMode.AZCount
 		localM := cfg.CodeMode.L / cfg.CodeMode.AZCount
 		localEngine, err := reedsolomon.New(localN, localM)
@@ -102,13 +114,40 @@ func NewEncoder(cfg Config) (Encoder, error) {
 			engine:      engine,
 			localEngine: localEngine,
 		}, nil
+	case codemode.AzureLrcP1:
+		// for CodeType = AzureLrcP1, we will maintain 3 engines
+		// (1) globalEngine : special Jerasure matrix for global parity Encoding
+		//	& normal repair for most scenario with few failure
+		// (2) localEngine  : normal Jerasure matrix (all 1 row vector while m=1)
+		// for local parity Encoding & single failure (key insight of LRC)
+		// (3) entireEngine : entire Encoding matrix with dimension of (k+g+l)*k
+		// & used to solve the failure scenario that (1)(2) can't handle
+		optionGlobal := reedsolomon.WithSpecialJerasureMatrix()
+		optionLocal := reedsolomon.WithJerasureMatrix()
+		optionEntire := reedsolomon.WithAzureLrcP1Matrix()
+		k, g, l := cfg.CodeMode.N, cfg.CodeMode.M, cfg.CodeMode.L
+		globalEngine, err := reedsolomon.New(k, g, optionGlobal)
+		if err != nil {
+			return nil, err
+		}
+		localEngine, err := reedsolomon.New(g, 1, optionLocal)
+		if err != nil {
+			return nil, err
+		}
+		entireEngine, err := reedsolomon.New(k, g+l, optionEntire)
+		if err != nil {
+			return nil, err
+		}
+		return &azureLrcP1Encoder{
+			Config:       cfg,
+			pool:         pool,
+			globalEngine: globalEngine,
+			localEngine:  localEngine,
+			entireEngine: entireEngine,
+		}, nil
 	}
 
-	return &encoder{
-		Config: cfg,
-		pool:   pool,
-		engine: engine,
-	}, nil
+	return nil, nil
 }
 
 func (e *encoder) Encode(shards [][]byte) error {
