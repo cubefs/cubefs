@@ -53,6 +53,7 @@ type ExtentInfo struct {
 	Source              string `json:"src"`
 	SnapshotDataOff     uint64 `json:"snapSize"`
 	SnapPreAllocDataOff uint64 `json:"snapPreAllocSize"`
+	ApplyID             uint64 `json:"applyID"`
 }
 
 func (ei *ExtentInfo) TotalSize() uint64 {
