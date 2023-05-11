@@ -16,6 +16,7 @@ package master
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -397,4 +398,8 @@ func (mqMgr *MasterQuotaManager) batchModifyQuotaFullPath(changeFullPathMap map[
 		}
 	}
 	log.LogInfof("batchModifyQuotaFullPath idMap [%v] pathmap [%v]", mqMgr.IdQuotaInfoMap, mqMgr.FullPathQuotaInfoMap)
+}
+
+func resetQuotaTaskID(t *proto.AdminTask, quotaId uint32) {
+	t.ID = fmt.Sprintf("%v_quota[%v]", t.ID, quotaId)
 }
