@@ -961,9 +961,11 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 }
 
 func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition,
-	repFileCountDifferDps []*DataPartition, repUsedSizeDifferDps []*DataPartition, err error) {
+	repFileCountDifferDps []*DataPartition, repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, err error) {
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
+	excessReplicaDPs = make([]*DataPartition, 0)
+
 	vols := c.copyVols()
 	for _, vol := range vols {
 		var dps *DataPartitionMap
@@ -971,6 +973,11 @@ func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartitio
 		for _, dp := range dps.partitions {
 			if dp.ReplicaNum > uint8(len(dp.Hosts)) || dp.ReplicaNum > uint8(len(dp.Replicas)) {
 				lackReplicaDPs = append(lackReplicaDPs, dp)
+			}
+
+			if (dp.GetDecommissionStatus() == DecommissionInitial || dp.GetDecommissionStatus() == DecommissionFail) &&
+				(uint8(len(dp.Hosts)) > dp.ReplicaNum || uint8(len(dp.Replicas)) > dp.ReplicaNum) {
+				excessReplicaDPs = append(excessReplicaDPs, dp)
 			}
 
 			repSizeDiff := 0.0
