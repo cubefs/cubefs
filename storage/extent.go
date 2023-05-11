@@ -50,6 +50,7 @@ type ExtentInfo struct {
 	ModifyTime int64  `json:"modTime"` // random write not update modify time
 	AccessTime int64  `json:"accessTime"`
 	Source     string `json:"src"`
+	ApplyID    uint64 `json:"applyID"`
 }
 
 func (ei *ExtentInfo) String() (m string) {

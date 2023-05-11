@@ -504,7 +504,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
 
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), 0)
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -518,7 +518,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
 
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), 0)
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -538,7 +538,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 				partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 			}
 
-			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
+			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), 0)
 			if !shallDegrade {
 				s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 				partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -570,7 +570,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-
 	// cache or preload partition not support raft and repair.
 	if !partition.isNormalType() {
 		err = raft.ErrStopped

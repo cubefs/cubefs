@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"time"
 )
 
@@ -65,7 +66,7 @@ func (fc *FileInCore) shouldCheckCrc() bool {
 	return time.Now().Unix()-fc.LastModify > defaultIntervalToCheckCrc
 }
 
-func (fc *FileInCore) needCrcRepair(liveReplicas []*DataReplica) (fms []*FileMetadata, needRepair bool) {
+func (fc *FileInCore) needCrcRepair(liveReplicas []*DataReplica, getInfoCallback func() string) (fms []*FileMetadata, needRepair bool) {
 	var baseCrc uint32
 	fms = make([]*FileMetadata, 0)
 
@@ -80,17 +81,21 @@ func (fc *FileInCore) needCrcRepair(liveReplicas []*DataReplica) (fms []*FileMet
 	}
 
 	baseCrc = fms[0].Crc
+	baseApplyId := fms[0].ApplyID
 	for _, fm := range fms {
 		if fm.getFileCrc() == EmptyCrcValue || fm.getFileCrc() == 0 {
 			needRepair = false
 			return
 		}
-		if fm.getFileCrc() != baseCrc {
+		if fm.ApplyID == baseApplyId && fm.getFileCrc() != baseCrc {
 			needRepair = true
 			return
 		}
+		if fm.ApplyID != baseApplyId && fm.getFileCrc() == baseCrc {
+			log.LogErrorf("needCrcRepair. getInfoCallback %v, extent %v, applyID(%v:%v), crc %v",
+				getInfoCallback(), fc.Name, fm.ApplyID, baseApplyId, baseCrc)
+		}
 	}
-
 	return
 }
 

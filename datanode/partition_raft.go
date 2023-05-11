@@ -493,6 +493,7 @@ func (dp *DataPartition) LoadAppliedID() (err error) {
 		err = errors.NewErrorf("[loadApplyID] ReadApplyID: %s", err.Error())
 		return
 	}
+	dp.extentStore.ApplyId = dp.appliedID
 	return
 }
 

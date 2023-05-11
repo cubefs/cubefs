@@ -626,7 +626,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(reply.Size))
 			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
-			err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, storage.AppendWriteType, BufferWrite)
+			err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, storage.AppendWriteType, BufferWrite, 0)
 		}
 
 		// write to the local extent file

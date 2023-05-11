@@ -604,7 +604,6 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 	c.addDataNodeTasks(loadTasks)
 	for i := 0; i < timeToWaitForResponse; i++ {
 		if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) {
-			log.LogDebugf("action[checkLoadResponse]  all replica has responded,partitionID:%v ", dp.PartitionID)
 			break
 		}
 		time.Sleep(time.Second)

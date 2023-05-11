@@ -652,6 +652,7 @@ func (partition *DataPartition) loadFile(dataNode *DataNode, resp *proto.LoadDat
 			fc = newFileInCore(dpf.Name)
 			partition.FileInCoreMap[dpf.Name] = fc
 		}
+		log.LogInfof("updateFileInCore partition %v", partition.PartitionID)
 		fc.updateFileInCore(partition.PartitionID, dpf, replica, index)
 	}
 	replica.HasLoadResponse = true

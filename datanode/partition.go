@@ -434,8 +434,10 @@ func (dp *DataPartition) IsExsitReplica(addr string) bool {
 func (dp *DataPartition) ReloadSnapshot() {
 	files, err := dp.extentStore.SnapShot()
 	if err != nil {
+		log.LogErrorf("ReloadSnapshot err %v", err)
 		return
 	}
+
 	dp.snapshotMutex.Lock()
 	for _, f := range dp.snapshot {
 		storage.PutSnapShotFileToPool(f)
@@ -773,6 +775,7 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	response.PartitionStatus = dp.partitionStatus
 	response.Used = uint64(dp.Used())
 	var err error
+
 	if dp.loadExtentHeaderStatus != FinishLoadDataPartitionExtentHeader {
 		response.PartitionSnapshot = make([]*proto.File, 0)
 	} else {

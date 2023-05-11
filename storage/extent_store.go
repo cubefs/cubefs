@@ -128,6 +128,8 @@ type ExtentStore struct {
 	hasAllocSpaceExtentIDOnVerifyFile uint64
 	hasDeleteNormalExtentsCache       sync.Map
 	partitionType                     int
+	ApplyId                           uint64
+	ApplyIdMutex                      sync.RWMutex
 }
 
 func MkdirAll(name string) (err error) {
@@ -203,7 +205,11 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 		normalExtentSnapshot, tinyExtentSnapshot []*ExtentInfo
 	)
 
+	// compute crc again to guarantee crc and applyID is the newest
+	s.autoComputeExtentCrc()
+
 	if normalExtentSnapshot, _, err = s.GetAllWatermarks(NormalExtentFilter()); err != nil {
+		log.LogErrorf("SnapShot GetAllWatermarks err %v", err)
 		return
 	}
 
@@ -214,6 +220,8 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 		file.Size = uint32(ei.Size)
 		file.Modified = ei.ModifyTime
 		file.Crc = atomic.LoadUint32(&ei.Crc)
+		file.ApplyID = ei.ApplyID
+		log.LogDebugf("partitionID %v ExtentStore set applyid %v partition %v", s.partitionID, s.ApplyId, s.partitionID)
 		files = append(files, file)
 	}
 	tinyExtentSnapshot = s.getTinyExtentInfo()
@@ -307,7 +315,7 @@ func (s *ExtentStore) initBaseFileID() error {
 }
 
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool) (err error) {
+func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool, applyID uint64) (err error) {
 	var (
 		e  *Extent
 		ei *ExtentInfo
@@ -322,9 +330,17 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	}
 	// update access time
 	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
-
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
+	}
+	if writeType == RandomWriteType && !IsTinyExtent(extentID) {
+		s.ApplyIdMutex.Lock()
+		defer func() {
+			if err == nil {
+				s.ApplyId = applyID
+			}
+			s.ApplyIdMutex.Unlock()
+		}()
 	}
 	err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
 	if err != nil {
@@ -930,7 +946,7 @@ func (arr ExtentInfoArr) Less(i, j int) bool { return arr[i].FileID < arr[j].Fil
 func (arr ExtentInfoArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
 func (s *ExtentStore) BackendTask() {
-	s.autoComputeExtentCrc()
+	// s.autoComputeExtentCrc()
 	s.cleanExpiredNormalExtentDeleteCache()
 }
 
@@ -978,8 +994,9 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 	sort.Sort(ExtentInfoArr(extentInfos))
 
 	for _, ei := range extentInfos {
-
+		s.ApplyIdMutex.RLock()
 		if ei == nil {
+			s.ApplyIdMutex.RUnlock()
 			continue
 		}
 
@@ -989,19 +1006,22 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			e, err := s.extentWithHeader(ei)
 			if err != nil {
 				log.LogError("[autoComputeExtentCrc] get extent error", err)
+				s.ApplyIdMutex.RUnlock()
 				continue
 			}
 
 			extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
 			if err != nil {
 				log.LogError("[autoComputeExtentCrc] compute crc fail", err)
+				s.ApplyIdMutex.RUnlock()
 				continue
 			}
 
 			ei.UpdateExtentInfo(e, extentCrc)
-
+			ei.ApplyID = s.ApplyId
 			time.Sleep(time.Millisecond * 100)
 		}
+		s.ApplyIdMutex.RUnlock()
 	}
 
 	time.Sleep(time.Second)
