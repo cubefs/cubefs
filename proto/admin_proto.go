@@ -501,6 +501,7 @@ type File struct {
 	Crc      uint32
 	Size     uint32
 	Modified int64
+	ApplyID  uint64
 }
 
 // LoadMetaPartitionMetricRequest defines the request of loading the meta partition metrics.
