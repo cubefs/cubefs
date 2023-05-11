@@ -106,7 +106,6 @@ func (mqMgr *MasterQuotaManager) setQuota(req *proto.SetMasterQuotaReuqest) (err
 }
 
 func (mqMgr *MasterQuotaManager) updateQuota(req *proto.UpdateMasterQuotaReuqest) (err error) {
-	var quotaId uint32
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
 	quotaInfo, isFind := mqMgr.FullPathQuotaInfoMap[req.FullPath]
@@ -133,7 +132,7 @@ func (mqMgr *MasterQuotaManager) updateQuota(req *proto.UpdateMasterQuotaReuqest
 
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncSetQuota
-	metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaId), 10)
+	metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaInfo.QuotaId), 10)
 	metadata.V = value
 
 	if err = mqMgr.c.submit(metadata); err != nil {

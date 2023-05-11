@@ -269,9 +269,6 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 			goto create_dentry
 		}
 		log.LogErrorf("Create_ll status %v", status)
-		if status == int(proto.OpInodeFullErr) {
-			return nil, syscall.ENOSPC
-		}
 		return nil, statusToErrno(status)
 
 	}
