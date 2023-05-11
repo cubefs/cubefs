@@ -214,8 +214,8 @@ func (r *raftFsm) Step(m *proto.Message) {
 				return
 			}
 
-			if logger.IsEnableDebug() {
-				logger.Debug("[raft->Step][%v] is starting a new election at term[%d].", r.id, r.term)
+			if logger.IsEnableInfo() {
+				logger.Info("[raft->Step][%v] is starting a new election at term[%d].", r.id, r.term)
 			}
 			// only transfer leader will set forceVote=true.
 			// Leadership transfers never use pre-vote even if r.preVote is true; we
@@ -306,15 +306,15 @@ func (r *raftFsm) Step(m *proto.Message) {
 			// Before Pre-Vote enable, there may have candidate with higher term,
 			// but less log. After update to Pre-Vote, the cluster may deadlock if
 			// we drop messages with a lower term.
-			if logger.IsEnableDebug() {
-				logger.Debug("%x [logterm: %d, index: %d, vote: %x] rejected %s from %x [logterm: %d, index: %d] at term %d",
+			if logger.IsEnableInfo() {
+				logger.Info("%x [logterm: %d, index: %d, vote: %x] rejected %s from %x [logterm: %d, index: %d] at term %d",
 					r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.Type, m.From, m.LogTerm, m.Index, r.term)
 			}
 			r.send(&proto.Message{To: m.From, Term: r.term, Type: proto.RespMsgPreVote, Reject: true})
 		} else {
 			// ignore other cases
-			if logger.IsEnableDebug() {
-				logger.Debug("%x [term: %d] ignored a %s message with lower term from %x [term: %d]",
+			if logger.IsEnableInfo() {
+				logger.Info("%x [term: %d] ignored a %s message with lower term from %x [term: %d]",
 					r.id, r.term, m.Type, m.From, m.Term)
 			}
 		}
