@@ -166,11 +166,13 @@ func (metaNode *MetaNode) checkHeartbeat() {
 
 func (metaNode *MetaNode) setQuotaTask(req *proto.BatchSetMetaserverQuotaReuqest) (task *proto.AdminTask) {
 	task = proto.NewAdminTask(proto.OpMasterSetInodeQuota, metaNode.Addr, req)
+	resetQuotaTaskID(task, req.QuotaId)
 	return
 }
 
 func (metaNode *MetaNode) deleteQuotaTask(req *proto.BatchDeleteMetaserverQuotaReuqest) (task *proto.AdminTask) {
 	task = proto.NewAdminTask(proto.OpMasterDeleteInodeQuota, metaNode.Addr, req)
+	resetQuotaTaskID(task, req.QuotaId)
 	return
 }
 
