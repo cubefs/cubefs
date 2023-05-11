@@ -254,6 +254,7 @@ type FileMetadata struct {
 	Crc     uint32
 	LocAddr string
 	Size    uint32
+	ApplyID uint64
 }
 
 // DataReplica represents the replica of a data partition

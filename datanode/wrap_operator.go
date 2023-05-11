@@ -801,7 +801,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 
 	partition := p.Object.(*DataPartition)
 	log.LogDebugf("action[handleRandomWritePacket opcod %v seq %v dpid %v dpseq %v extid %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID)
-
 	// cache or preload partition not support raft and repair.
 	if !partition.isNormalType() {
 		err = raft.ErrStopped
