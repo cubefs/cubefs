@@ -86,7 +86,7 @@ cd cubefs-helm
 touch cubefs-helm.yaml
 ```
 
-`cubefs-html.yaml`文件内容如下：
+`cubefs-helm.yaml`文件内容如下：
 
 ``` yaml
 # 要安装哪些组件，如果只安装服务端的话保持下方配置即可，如果要安装客户端的话，把 csi 设置为 true
