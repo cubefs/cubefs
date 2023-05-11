@@ -27,15 +27,15 @@ type (
 
 const (
 	ReqMsgAppend MsgType = iota
-	ReqMsgVote
+	ReqMsgPreVote
 	ReqMsgHeartBeat
 	ReqMsgSnapShot
-	ReqMsgPreVote
+	ReqMsgVote
 	RespMsgAppend
-	RespMsgVote
+	RespMsgPreVote
 	RespMsgHeartBeat
 	RespMsgSnapShot
-	RespMsgPreVote
+	RespMsgVote
 	LocalMsgHup
 	LocalMsgProp
 	LeaseMsgOffline
@@ -134,23 +134,23 @@ func (t MsgType) String() string {
 	case 0:
 		return "ReqMsgAppend"
 	case 1:
-		return "ReqMsgVote"
+		return "ReqMsgPreVote"
 	case 2:
 		return "ReqMsgHeartBeat"
 	case 3:
 		return "ReqMsgSnapShot"
 	case 4:
-		return "ReqMsgPreVote"
+		return "ReqMsgVote"
 	case 5:
 		return "RespMsgAppend"
 	case 6:
-		return "RespMsgVote"
+		return "RespMsgPreVote"
 	case 7:
 		return "RespMsgHeartBeat"
 	case 8:
 		return "RespMsgSnapShot"
 	case 9:
-		return "RespMsgPreVote"
+		return "RespMsgVote"
 	case 10:
 		return "LocalMsgHup"
 	case 11:
