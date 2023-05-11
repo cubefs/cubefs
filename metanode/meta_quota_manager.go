@@ -234,11 +234,11 @@ func (mqMgr *MetaQuotaManager) IsOverQuota(size bool, files bool, quotaId uint32
 	if isFind {
 		limitedInfo = value.(proto.QuotaLimitedInfo)
 		if size && limitedInfo.LimitedBytes {
-			status = proto.OpInodeFullErr
+			status = proto.OpNoSpaceErr
 		}
 
 		if files && limitedInfo.LimitedFiles {
-			status = proto.OpInodeFullErr
+			status = proto.OpNoSpaceErr
 		}
 	}
 	log.LogInfof("IsOverQuota quotaId [%v] limitedInfo[%v] status [%v] isFind [%v]", quotaId, limitedInfo, status, isFind)
