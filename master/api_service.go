@@ -1555,11 +1555,13 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		badReplicaDps           []*DataPartition
 		repFileCountDifferDps   []*DataPartition
 		repUsedSizeDifferDps    []*DataPartition
+		excessReplicaDPs        []*DataPartition
 		corruptDpIDs            []uint64
 		lackReplicaDpIDs        []uint64
 		badReplicaDpIDs         []uint64
 		repFileCountDifferDpIDs []uint64
 		repUsedSizeDifferDpIDs  []uint64
+		excessReplicaDpIDs      []uint64
 		badDataPartitions       []badPartitionView
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDiagnoseDataPartition))
@@ -1572,12 +1574,15 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	badReplicaDpIDs = make([]uint64, 0)
 	repFileCountDifferDpIDs = make([]uint64, 0)
 	repUsedSizeDifferDpIDs = make([]uint64, 0)
+	excessReplicaDpIDs = make([]uint64, 0)
+
 	if inactiveNodes, corruptDps, err = m.cluster.checkCorruptDataPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, err = m.cluster.checkReplicaOfDataPartitions(); err != nil {
+	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs, err =
+		m.cluster.checkReplicaOfDataPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1596,6 +1601,9 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	for _, dp := range repUsedSizeDifferDps {
 		repUsedSizeDifferDpIDs = append(repUsedSizeDifferDpIDs, dp.PartitionID)
 	}
+	for _, dp := range excessReplicaDPs {
+		excessReplicaDpIDs = append(excessReplicaDpIDs, dp.PartitionID)
+	}
 
 	badDataPartitions = m.cluster.getBadDataPartitionsView()
 	rstMsg = &proto.DataPartitionDiagnosis{
@@ -1606,13 +1614,14 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		BadReplicaDataPartitionIDs:  badReplicaDpIDs,
 		RepFileCountDifferDpIDs:     repFileCountDifferDpIDs,
 		RepUsedSizeDifferDpIDs:      repUsedSizeDifferDpIDs,
+		ExcessReplicaDpIDs:          excessReplicaDpIDs,
 	}
 	log.LogInfof("diagnose dataPartition[%v] inactiveNodes:[%v], corruptDpIDs:[%v], "+
 		"lackReplicaDpIDs:[%v], BadReplicaDataPartitionIDs[%v], "+
-		"repFileCountDifferDpIDs:[%v], RepUsedSizeDifferDpIDs[%v]",
+		"repFileCountDifferDpIDs:[%v], RepUsedSizeDifferDpIDs[%v], excessReplicaDpIDs[%v]",
 		m.cluster.Name, inactiveNodes, corruptDpIDs,
 		lackReplicaDpIDs, badReplicaDpIDs,
-		repFileCountDifferDpIDs, repUsedSizeDifferDpIDs)
+		repFileCountDifferDpIDs, repUsedSizeDifferDpIDs, excessReplicaDpIDs)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
