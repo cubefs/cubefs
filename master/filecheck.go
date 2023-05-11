@@ -61,19 +61,22 @@ func (partition *DataPartition) doValidateCRC(liveReplicas []*DataReplica, clust
 		if err != nil {
 			continue
 		}
+		infoFunc := func() string {
+			return fmt.Sprintf("partition[%v] extentID %v, isTiny %v", partition.PartitionID, extentID, storage.IsTinyExtent(extentID))
+		}
 		if storage.IsTinyExtent(extentID) {
-			partition.checkTinyExtentFile(fc, liveReplicas, clusterID)
+			partition.checkTinyExtentFile(fc, liveReplicas, clusterID, infoFunc)
 		} else {
-			partition.checkExtentFile(fc, liveReplicas, clusterID)
+			partition.checkExtentFile(fc, liveReplicas, clusterID, infoFunc)
 		}
 	}
 }
 
-func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string) {
+func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string, getInfoCallback func() string) {
 	if fc.shouldCheckCrc() == false {
 		return
 	}
-	fms, needRepair := fc.needCrcRepair(liveReplicas)
+	fms, needRepair := fc.needCrcRepair(liveReplicas, getInfoCallback)
 	if !needRepair {
 		return
 	}
@@ -93,12 +96,11 @@ func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas
 	return
 }
 
-func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string) {
+func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string, getInfoCallback func() string) {
 	if fc.shouldCheckCrc() == false {
 		return
 	}
-
-	fms, needRepair := fc.needCrcRepair(liveReplicas)
+	fms, needRepair := fc.needCrcRepair(liveReplicas, getInfoCallback)
 
 	if len(fms) < len(liveReplicas) && (time.Now().Unix()-fc.LastModify) > intervalToCheckMissingReplica {
 		lastReportTime, ok := partition.FilesWithMissingReplica[fc.Name]
@@ -122,11 +124,12 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 		Warn(clusterID, fmt.Sprintf("partitionid[%v],file[%v],fms[%v],liveAddr[%v]", partition.PartitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs))
 	}
 	if !needRepair {
+		log.LogDebugf("checkExtentFile. partition %v all equal so no need compare in details", partition.PartitionID)
 		return
 	}
 
 	fileCrcArr := fc.calculateCrc(fms)
-	sort.Sort((fileCrcSorter)(fileCrcArr))
+	sort.Sort(fileCrcSorter(fileCrcArr))
 	maxCountFileCrcIndex := len(fileCrcArr) - 1
 	if fileCrcArr[maxCountFileCrcIndex].count == 1 {
 		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  ExtentOffset different between all node  "+
