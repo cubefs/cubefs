@@ -215,6 +215,23 @@ The "reset" command will be released in next version`,
 				}
 			}
 
+			stdout("\n")
+			stdout("%v\n", "[Partition with excessive replicas]:")
+			stdout("%v\n", partitionInfoTableHeader)
+			sort.SliceStable(diagnosis.ExcessReplicaDpIDs, func(i, j int) bool {
+				return diagnosis.ExcessReplicaDpIDs[i] < diagnosis.ExcessReplicaDpIDs[j]
+			})
+			for _, pid := range diagnosis.ExcessReplicaDpIDs {
+				var partition *proto.DataPartitionInfo
+				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					return
+				}
+				if partition != nil {
+					stdout("%v\n", formatDataPartitionInfoRow(partition))
+				}
+			}
+
 			return
 		},
 	}
