@@ -390,7 +390,6 @@ type ClusterInfo struct {
 	DataNodeDeleteLimitRate     uint64
 	DataNodeAutoRepairLimitRate uint64
 	DpMaxRepairErrCnt           uint64
-	DpRepairTimeOut             uint64
 	DirChildrenNumLimit         uint32
 	EbsAddr                     string
 	ServicePath                 string
