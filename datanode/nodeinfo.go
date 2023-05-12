@@ -52,20 +52,11 @@ func (m *DataNode) updateNodeInfo() {
 	setDoExtentRepair(int(clusterInfo.DataNodeAutoRepairLimitRate))
 
 	atomic.StoreUint64(&m.dpMaxRepairErrCnt, clusterInfo.DpMaxRepairErrCnt)
-	atomic.StoreUint64(&m.dpRepairTimeOut, clusterInfo.DpRepairTimeOut)
 
 	log.LogInfof("updateNodeInfo from master:"+
-		"deleteLimite(%v), autoRepairLimit(%v), dpMaxRepairErrCnt(%v), dpRepairTimeOut(%v)",
+		"deleteLimite(%v), autoRepairLimit(%v), dpMaxRepairErrCnt(%v)",
 		clusterInfo.DataNodeDeleteLimitRate, clusterInfo.DataNodeAutoRepairLimitRate,
-		clusterInfo.DpMaxRepairErrCnt, clusterInfo.DpRepairTimeOut)
-}
-
-func (m *DataNode) GetDpRepairTimeout() time.Duration {
-	dpRepairTimeout := atomic.LoadUint64(&m.dpRepairTimeOut)
-	if dpRepairTimeout == 0 {
-		return RepairTimeOut
-	}
-	return time.Second * time.Duration(dpRepairTimeout)
+		clusterInfo.DpMaxRepairErrCnt)
 }
 
 func (m *DataNode) GetDpMaxRepairErrCnt() uint64 {
