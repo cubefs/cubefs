@@ -281,8 +281,6 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 		err                                error
 	)
 	timer := time.NewTicker(5 * time.Second)
-	dp.recoverStartTime = time.Now()
-	//const RepairTimeOut = time.Hour * 24
 	for {
 		select {
 		case <-timer.C:
@@ -299,13 +297,6 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				log.LogDebugf("action[StartRaftAfterRepair] PartitionID(%v) receive stop signal.", dp.partitionID)
 				continue
 			}
-			if time.Now().Sub(dp.recoverStartTime) > dp.dataNode.GetDpRepairTimeout() && dp.isDecommissionRecovering() {
-				//stop and wait for delete
-				dp.handleDecommissionRecoverFailed()
-				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) repair timeout", dp.partitionID)
-				return
-			}
-
 			// wait for dp.replicas to be updated
 			if dp.getReplicaLen() == 0 {
 				continue
@@ -346,10 +337,16 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			dp.decommissionRepairProgress = float64(1)
 			dp.PersistMetadata()
 			if err := dp.StartRaft(isLoad); err != nil {
-				log.LogErrorf("PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
+				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue
 			}
+			// start raft
+			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
+			log.LogInfof("action[StartRaftAfterRepair] PartitionID(%v) change to NormalCreateDataPartition",
+				dp.partitionID)
+			dp.decommissionRepairProgress = float64(1)
+			dp.PersistMetadata()
 			log.LogInfof("action[StartRaftAfterRepair] PartitionID(%v) raft started!", dp.partitionID)
 			return
 		case <-dp.stopC:

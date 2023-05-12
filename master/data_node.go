@@ -487,6 +487,7 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 	//reset decommission status for failed once
 	dataNode.DecommissionRetry = 0
 	dataNode.DecommissionLimit = limit
+	dataNode.DecommissionDiskList = make([]string, 0)
 }
 
 func (dataNode *DataNode) canMarkDecommission() bool {
