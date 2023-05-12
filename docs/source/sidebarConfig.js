@@ -127,6 +127,7 @@ module.exports = [
             'faq/development.md',
             'faq/build.md',
             'faq/fuse.md',
+            'faq/kafka.md',
         ]
     }
 ]
