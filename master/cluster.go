@@ -1911,6 +1911,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 		dp.SetDecommissionStatus(DecommissionRunning)
 		dp.isRecover = true
 		dp.Status = proto.ReadOnly
+		dp.RecoverStartTime = time.Now()
 		c.syncUpdateDataPartition(dp)
 		c.putBadDataPartitionIDsByDiskPath(dp.DecommissionSrcDiskPath, dp.DecommissionSrcAddr, dp.PartitionID)
 		log.LogWarnf("action[decommissionSingleDp] dp %v start wait add replica %v", dp.PartitionID, newAddr)
@@ -1946,6 +1947,14 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 				log.LogInfof("action[decommissionSingleDp] dp %v replica[%v] status %v",
 					dp.PartitionID, newReplica.Addr, newReplica.Status)
 				if newReplica.isRepairing() { //wait for repair
+					if time.Now().Sub(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out",
+							dp.PartitionID, newAddr)
+						dp.DecommissionNeedRollback = true
+						newReplica.Status = proto.Unavailable //remove from data partition check
+						log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
+						goto ERR
+					}
 					continue
 				} else if newReplica.isUnavailable() { //repair failed,need rollback
 					err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v is Unavailable",
@@ -3706,8 +3715,10 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		}
 		dataNode.SetDecommissionStatus(DecommissionPrepare)
 		dataNode.ToBeOffline = true
+		log.LogDebugf("action[TryDecommissionDataNode] dataNode [%s] recover from DecommissionDiskList", dataNode.Addr)
 		return
 	}
+	log.LogDebugf("action[TryDecommissionDataNode] dataNode [%s]  prepare to decommission", dataNode.Addr)
 	var partitions []*DataPartition
 	disks := dataNode.getDisks(c)
 	for _, disk := range disks {
@@ -3965,11 +3976,11 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	if disk.DecommissionDpTotal != InvalidDecommissionDpCnt {
 		badPartitions = lastBadPartitions
 	} else { //the first time for decommission
-		if disk.DecommissionLimit == 0 || disk.DecommissionLimit > len(badPartitions) {
+		if disk.DecommissionDpCount == 0 || disk.DecommissionDpCount > len(badPartitions) {
 			disk.DecommissionDpTotal = len(badPartitions)
 		} else {
-			disk.DecommissionDpTotal = disk.DecommissionLimit
-			badPartitions = badPartitions[:disk.DecommissionLimit]
+			disk.DecommissionDpTotal = disk.DecommissionDpCount
+			badPartitions = badPartitions[:disk.DecommissionDpCount]
 		}
 	}
 
@@ -4326,4 +4337,12 @@ func (c *Cluster) SetAutoDecommissionDisk(flag bool) {
 	c.AutoDecommissionDiskMux.Lock()
 	defer c.AutoDecommissionDiskMux.Unlock()
 	c.EnableAutoDecommissionDisk = flag
+}
+
+func (c *Cluster) GetDecommissionDataPartitionRecoverTimeOut() time.Duration {
+	if c.cfg.DpRepairTimeOut == 0 {
+		return time.Hour * 2
+	} else {
+		return time.Second * time.Duration(c.cfg.DpRepairTimeOut)
+	}
 }

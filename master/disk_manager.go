@@ -85,7 +85,15 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				continue
 			}
 			if newReplica.isRepairing() {
-				newBadDpIds = append(newBadDpIds, partitionID)
+				if !partition.isSpecialReplicaCnt() &&
+					time.Now().Sub(partition.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+					partition.DecommissionNeedRollback = true
+					partition.SetDecommissionStatus(DecommissionFail)
+					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v]  recovered timeout %s",
+						c.Name, partitionID, time.Now().Sub(partition.RecoverStartTime).String()))
+				} else {
+					newBadDpIds = append(newBadDpIds, partitionID)
+				}
 			} else {
 				if partition.isSpecialReplicaCnt() {
 					continue //change dp decommission status in decommission function
@@ -174,7 +182,7 @@ type DecommissionDisk struct {
 	DecommissionRetry        uint8
 	DecommissionDpTotal      int
 	DecommissionTerm         uint64
-	DecommissionLimit        int
+	DecommissionDpCount      int
 	DiskDisable              bool
 	Type                     uint32
 	DecommissionCompleteTime int64
@@ -320,7 +328,7 @@ func (dd *DecommissionDisk) markDecommission(dstPath string, raftForce bool, lim
 	//if transfer from pause,do not change these attrs
 	if dd.GetDecommissionStatus() != DecommissionPause {
 		dd.DecommissionDpTotal = InvalidDecommissionDpCnt
-		dd.DecommissionLimit = limit
+		dd.DecommissionDpCount = limit
 		dd.DecommissionRaftForce = raftForce
 		dd.DstAddr = dstPath
 		dd.DecommissionRetry = 0

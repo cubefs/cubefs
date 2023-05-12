@@ -151,6 +151,8 @@ type dataPartitionValue struct {
 	SpecialReplicaDecommissionStep uint32
 	DecommissionDstAddrSpecify     bool
 	DecommissionNeedRollback       bool
+	RecoverStartTime               int64
+	RecoverLastConsumeTime         float64
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -177,7 +179,8 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.SpecialReplicaDecommissionStep = dpv.SpecialReplicaDecommissionStep
 	dp.DecommissionDstAddrSpecify = dpv.DecommissionDstAddrSpecify
 	dp.DecommissionNeedRollback = dpv.DecommissionNeedRollback
-
+	dp.RecoverStartTime = time.Unix(dpv.RecoverStartTime, 0)
+	dp.RecoverLastConsumeTime = time.Duration(dpv.RecoverLastConsumeTime) * time.Second
 	for _, rv := range dpv.Replicas {
 		if !contains(dp.Hosts, rv.Addr) {
 			continue
@@ -218,6 +221,8 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		SpecialReplicaDecommissionStep: dp.SpecialReplicaDecommissionStep,
 		DecommissionDstAddrSpecify:     dp.DecommissionDstAddrSpecify,
 		DecommissionNeedRollback:       dp.DecommissionNeedRollback,
+		RecoverStartTime:               dp.RecoverStartTime.Unix(),
+		RecoverLastConsumeTime:         dp.RecoverLastConsumeTime.Seconds(),
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -406,11 +411,9 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 }
 
 type nodeSetValue struct {
-	ID                             uint64
-	Capacity                       int
-	ZoneName                       string
-	DecommissionParallelLimit      int32
-	DecommissionDiskParallelFactor float64
+	ID       uint64
+	Capacity int
+	ZoneName string
 }
 
 type domainNodeSetGrpValue struct {
@@ -437,11 +440,9 @@ func newZoneDomainValue() (ev *zoneDomainValue) {
 }
 func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 	nsv = &nodeSetValue{
-		ID:                             nset.ID,
-		Capacity:                       nset.Capacity,
-		ZoneName:                       nset.zoneName,
-		DecommissionParallelLimit:      atomic.LoadInt32(&nset.decommissionParallelLimit),
-		DecommissionDiskParallelFactor: nset.decommissionDiskParallelFactor,
+		ID:       nset.ID,
+		Capacity: nset.Capacity,
+		ZoneName: nset.zoneName,
 	}
 	return
 }
@@ -1068,8 +1069,8 @@ func (c *Cluster) loadNodeSets() (err error) {
 		}
 
 		ns := newNodeSet(c, nsv.ID, cap, nsv.ZoneName)
-		ns.UpdateMaxParallel(nsv.DecommissionParallelLimit)
-		ns.UpdateDecommissionDiskFactor(nsv.DecommissionDiskParallelFactor)
+		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
+		ns.UpdateDecommissionDiskFactor(c.DecommissionDiskFactor)
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
 			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
@@ -1510,7 +1511,7 @@ func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
 		DecommissionTerm:         disk.DecommissionTerm,
 		Type:                     disk.Type,
 		DecommissionCompleteTime: disk.DecommissionCompleteTime,
-		DecommissionLimit:        disk.DecommissionLimit,
+		DecommissionLimit:        disk.DecommissionDpCount,
 	}
 }
 
@@ -1526,7 +1527,7 @@ func (ddv *decommissionDiskValue) Restore() *DecommissionDisk {
 		DecommissionTerm:         ddv.DecommissionTerm,
 		Type:                     ddv.Type,
 		DecommissionCompleteTime: ddv.DecommissionCompleteTime,
-		DecommissionLimit:        ddv.DecommissionLimit,
+		DecommissionDpCount:      ddv.DecommissionLimit,
 	}
 }
 

@@ -631,7 +631,6 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	autoRepairRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeAutoRepairLimitRate)
 	dirChildrenNumLimit := atomic.LoadUint32(&m.cluster.cfg.DirChildrenNumLimit)
 	dpMaxRepairErrCnt := atomic.LoadUint64(&m.cluster.cfg.DpMaxRepairErrCnt)
-	dpRepairTimeOut := atomic.LoadUint64(&m.cluster.cfg.DpRepairTimeOut)
 
 	cInfo := &proto.ClusterInfo{
 		Cluster:                     m.cluster.Name,
@@ -640,7 +639,6 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DataNodeDeleteLimitRate:     limitRate,
 		DataNodeAutoRepairLimitRate: autoRepairRate,
 		DpMaxRepairErrCnt:           dpMaxRepairErrCnt,
-		DpRepairTimeOut:             dpRepairTimeOut,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
 		//Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 		Ip:                iputil.RealIP(r),
@@ -3548,7 +3546,7 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			DecommissionRetry:        disk.DecommissionRetry,
 			DecommissionDpTotal:      disk.DecommissionDpTotal,
 			DecommissionTerm:         disk.DecommissionTerm,
-			DecommissionLimit:        disk.DecommissionLimit,
+			DecommissionLimit:        disk.DecommissionDpCount,
 			Type:                     disk.Type,
 			DecommissionCompleteTime: disk.DecommissionCompleteTime,
 		}
@@ -5000,7 +4998,7 @@ func (m *Server) queryAutoDecommissionDisk(w http.ResponseWriter, r *http.Reques
 	enable := m.cluster.AutoDecommissionDiskIsEnabled()
 	rstMsg := fmt.Sprintf("auto decommission disk is %v ", enable)
 	log.LogDebugf("action[queryAutoDecommissionDisk] %v", rstMsg)
-	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+	sendOkReply(w, r, newSuccessHTTPReply(enable))
 }
 
 func (m *Server) queryDisableDisk(w http.ResponseWriter, r *http.Request) {

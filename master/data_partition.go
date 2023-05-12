@@ -72,6 +72,8 @@ type DataPartition struct {
 	SpecialReplicaDecommissionStep uint32
 	IsDiscard                      bool
 	VerSeq                         uint64
+	RecoverStartTime               time.Time
+	RecoverLastConsumeTime         time.Duration
 }
 
 type DataPartitionPreLoad struct {
@@ -329,14 +331,19 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 	}
 
 	if partition.ReplicaNum >= 3 && len(otherLiveReplicas) < int(partition.ReplicaNum/2+1) {
-		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", proto.ErrCannotBeOffLine, len(liveReplicas))
+		var lives []string
+		for _, replica := range otherLiveReplicas {
+			lives = append(lives, replica.Addr)
+		}
+		msg = fmt.Sprintf(msg+" err:%v  liveReplicas len:%v [%v] not satisify qurom %d ",
+			proto.ErrCannotBeOffLine, len(liveReplicas), lives, int(partition.ReplicaNum/2+1))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
 		return
 	}
 
 	if len(liveReplicas) == 0 {
-		msg = fmt.Sprintf(msg+" err:%v  replicaNum:%v liveReplicas:%v ", proto.ErrCannotBeOffLine, partition.ReplicaNum, len(liveReplicas))
+		msg = fmt.Sprintf(msg+" err:%v  replicaNum:%v liveReplicas is 0 ", proto.ErrCannotBeOffLine, partition.ReplicaNum)
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
 		return
@@ -1170,6 +1177,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		partition.isRecover = true
 		partition.Status = proto.ReadOnly
 		partition.SetDecommissionStatus(DecommissionRunning)
+		partition.RecoverStartTime = time.Now()
 		c.putBadDataPartitionIDsByDiskPath(partition.DecommissionSrcDiskPath, partition.DecommissionSrcAddr, partition.PartitionID)
 	}
 	//only stop 3-replica,need to release token
@@ -1288,6 +1296,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	partition.DecommissionDstAddr = ""
 	partition.DecommissionRetry = 0
 	partition.isRecover = false
+	partition.DecommissionNeedRollback = false
 	partition.SetDecommissionStatus(markDecommission)
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	c.syncUpdateDataPartition(partition)
@@ -1398,6 +1407,16 @@ func (partition *DataPartition) pauseReplicaRepair(replicaAddr string, stop bool
 			time.Sleep(time.Second)
 			log.LogWarnf("action[pauseReplicaRepair]dp[%v] send stop task failed %v", partition.PartitionID, err.Error())
 			continue
+		}
+		if !stop {
+			partition.RecoverStartTime = time.Now().Add(-partition.RecoverLastConsumeTime)
+			partition.RecoverLastConsumeTime = time.Duration(0)
+			log.LogDebugf("action[pauseReplicaRepair]dp[%v] replica %v RecoverStartTime sub %v seconds",
+				partition.PartitionID, replicaAddr, partition.RecoverLastConsumeTime.Seconds())
+		} else {
+			partition.RecoverLastConsumeTime = time.Now().Sub(partition.RecoverStartTime)
+			log.LogDebugf("action[pauseReplicaRepair]dp[%v] replica %v already recover %v seconds",
+				partition.PartitionID, replicaAddr, partition.RecoverLastConsumeTime.Seconds())
 		}
 		log.LogDebugf("action[pauseReplicaRepair]dp[%v] send stop to  replica %v packet %v", partition.PartitionID, replicaAddr, packet)
 		return true
@@ -1614,6 +1633,11 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		return false
 	}
 	if partition.DecommissionNeedRollbackTimes >= defaultDecommissionRollbackLimit {
+		//recover decommission src replica
+		err := c.addDataReplica(partition, partition.DecommissionSrcAddr)
+		if err != nil {
+			log.LogWarnf("action[needRollback]dp[%v] recover decommission src replica failed", partition.PartitionID)
+		}
 		return false
 	}
 	return true
