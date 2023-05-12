@@ -152,8 +152,6 @@ type DataPartition struct {
 	multiVersionList           []*MetaMultiSnapshotInfo
 	decommissionRepairProgress float64 //record repair progress for decommission datapartition
 	stopRecover                bool
-	recoverStartTime           time.Time
-	recoverLastConsumeTime     time.Duration
 	recoverErrCnt              uint64 //donot reset, if reach max err cnt, delete this dp
 }
 
@@ -1242,12 +1240,6 @@ func (dp *DataPartition) StopDecommissionRecover(stop bool) {
 		return
 	}
 	//for check timeout
-	if !stop {
-		dp.recoverStartTime = time.Now().Add(-dp.recoverLastConsumeTime)
-		dp.recoverLastConsumeTime = time.Duration(0)
-	} else {
-		dp.recoverLastConsumeTime = time.Now().Sub(dp.recoverStartTime) //record consume time
-	}
 	dp.stopRecover = stop
 	dp.PersistMetadata()
 }
@@ -1264,6 +1256,7 @@ func (dp *DataPartition) handleDecommissionRecoverFailed() {
 	//prevent status changing from  Unavailable to Recovering again in statusUpdate()
 	dp.partitionType = proto.NormalCreateDataPartition
 	dp.partitionStatus = proto.Unavailable
+	log.LogWarnf("[handleDecommissionRecoverFailed]  dp(%d) recover failed reach max limit", dp.partitionID)
 	dp.PersistMetadata()
 	dp.StopDecommissionRecover(true)
 }

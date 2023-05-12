@@ -971,8 +971,6 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 		metaNodes:                         new(sync.Map),
 		dataNodes:                         new(sync.Map),
 		decommissionDataPartitionList:     NewDecommissionDataPartitionList(c),
-		decommissionParallelLimit:         defaultDecommissionParallelLimit,
-		decommissionDiskParallelFactor:    defaultDecommissionDiskParallelFactor,
 		manualDecommissionDiskList:        NewDecommissionDiskList(),
 		autoDecommissionDiskList:          NewDecommissionDiskList(),
 		doneDecommissionDiskListTraverse:  make(chan struct{}, 1),
