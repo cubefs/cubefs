@@ -53,6 +53,7 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  codec concurrent : %v\n", cv.MaxCodecConcurrent))
 	sb.WriteString(fmt.Sprintf("  Strict vol zone  : %v\n", formatEnabledDisabled(!cv.DisableStrictVolZone)))
 	sb.WriteString(fmt.Sprintf("  Auto Update Partition Replica Num  : %v\n", formatEnabledDisabled(cv.AutoUpdatePartitionReplicaNum)))
+	sb.WriteString(fmt.Sprintf("  DelVolAfterMarkDel   : %v(%v sec)\n", formatTimeInterval(cv.DeleteMarkDelVolInterval), cv.DeleteMarkDelVolInterval))
 	if cv.EcScrubEnable {
 		startScrubTime := time.Unix(cv.EcScrubStartTime, 0).Format(time.RFC1123)
 		sb.WriteString(fmt.Sprintf("  Ec start scrub   : %v \n", startScrubTime))
@@ -185,6 +186,16 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  BitMapAllocator      : %v\n", formatEnabledDisabled(svv.EnableBitMapAllocator)))
 	sb.WriteString(fmt.Sprintf("  TrashCleanDuration   : %v\n", svv.TrashCleanDuration))
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxCount   : %v\n", svv.TrashCleanMaxCount))
+	if svv.NewVolName == "" && svv.OldVolName == "" && svv.RenameConvertStatus == 0 {
+		sb.WriteString(fmt.Sprintf("  rename convert status: No Rename Operation\n"))
+	} else {
+		sb.WriteString(fmt.Sprintf("  rename convert status: %s\n", svv.RenameConvertStatus))
+	}
+	sb.WriteString(fmt.Sprintf("  new vol name         : %v\n", svv.NewVolName))
+	sb.WriteString(fmt.Sprintf("  New vol id           : %v\n", svv.NewVolID))
+	sb.WriteString(fmt.Sprintf("  old vol name         : %v\n", svv.OldVolName))
+	sb.WriteString(fmt.Sprintf("  final vol status     : %v\n", svv.FinalVolStatus))
+	sb.WriteString(fmt.Sprintf("  mark delete time     : %v\n", formatTime(svv.MarkDeleteTime)))
 	return sb.String()
 }
 
@@ -220,7 +231,7 @@ func formatVolumeStatus(status uint8) string {
 	case proto.VolStNormal:
 		return "Normal"
 	case proto.VolStMarkDelete:
-		return "Marked delete"
+		return "Marked Del"
 	default:
 		return "Unknown"
 	}
@@ -574,6 +585,11 @@ func formatTime(timeUnix int64) string {
 
 func formatTimeToString(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
+}
+
+func formatTimeInterval(intervalSecond int64) string {
+	d := time.Duration(intervalSecond) * time.Second
+	return d.String()
 }
 
 var dataReplicaTableRowPattern = "%-20v    %-12v    %-6v    %-8v    %-8v    %-12v    %-10v    %-20v    %-8v		%-8v"
@@ -1174,4 +1190,16 @@ func formatClusterNodeInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  ExtentMergeIno              : %v\n", info.ExtentMergeIno))
 	sb.WriteString(fmt.Sprintf("  RocksdbDiskUsageThreshold   : %v\n", info.RocksdbDiskUsageThreshold))
 	return sb.String()
+}
+
+var (
+	trashVolumeInfoTablePattern = "%-63v    %-63v   %-45v    %-20v    %-8v    %-8v    %-45v"
+	trashVolumeInfoTableHeader  = fmt.Sprintf(trashVolumeInfoTablePattern, "VOLUME", "OLD VOLUME", "MRAK DEL TIME", "OWNER", "STATUS", "USED", "CREATE TIME")
+)
+
+func formatTrashVolInfoTableRow(svv *proto.SimpleVolView, vi *proto.VolInfo) string {
+	return fmt.Sprintf(trashVolumeInfoTablePattern,
+		svv.Name, svv.OldVolName, time.Unix(svv.MarkDeleteTime, 0).Local().Format(time.RFC1123), svv.Owner,
+		formatVolumeStatus(svv.Status), formatSize(svv.UsedSize),
+		time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }

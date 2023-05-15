@@ -113,6 +113,12 @@ type Vol struct {
 	EnableBitMapAllocator      bool
 	CleanTrashDurationEachTime int32
 	TrashCleanMaxCountEachTime int32
+	NewVolName           string
+	NewVolID             uint64
+	OldVolName           string
+	FinalVolStatus       uint8
+	RenameConvertStatus  proto.VolRenameConvertStatus
+	MarkDeleteTime       int64
 	sync.RWMutex
 }
 
@@ -284,6 +290,12 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.EnableBitMapAllocator = vv.EnableBitMapAllocator
 	vol.TrashCleanMaxCountEachTime = vv.TrashCleanMaxCount
 	vol.CleanTrashDurationEachTime = vv.TrashCleanDuration
+	vol.NewVolName = vv.NewVolName
+	vol.OldVolName = vv.OldVolName
+	vol.NewVolID = vv.NewVolID
+	vol.FinalVolStatus = vv.FinalVolStatus
+	vol.RenameConvertStatus = vv.RenameConvertStatus
+	vol.MarkDeleteTime = vv.MarkDeleteTime
 	return vol
 }
 
@@ -316,6 +328,24 @@ func (vol *Vol) putToken(token *proto.Token) {
 	return
 }
 
+func (vol *Vol) getAllTokens() (tokens []*proto.Token) {
+	vol.tokensLock.RLock()
+	defer vol.tokensLock.RUnlock()
+	for _, t := range vol.tokens {
+		tokens = append(tokens, t)
+	}
+	return
+}
+
+func (vol *Vol) putTokens(tokens []*proto.Token) {
+	vol.tokensLock.Lock()
+	defer vol.tokensLock.Unlock()
+	for _, t := range tokens {
+		vol.tokens[t.Value] = t
+	}
+	return
+}
+
 func (vol *Vol) addMetaPartition(mp *MetaPartition) {
 	vol.mpsLock.Lock()
 	defer vol.mpsLock.Unlock()
@@ -325,6 +355,12 @@ func (vol *Vol) addMetaPartition(mp *MetaPartition) {
 	}
 	// replace the old partition in the map with mp
 	vol.MetaPartitions[mp.PartitionID] = mp
+}
+
+func (vol *Vol) delMetaPartition(mp *MetaPartition) {
+	vol.mpsLock.Lock()
+	defer vol.mpsLock.Unlock()
+	delete(vol.MetaPartitions, mp.PartitionID)
 }
 
 func (vol *Vol) allMetaPartition() []*MetaPartition {
@@ -804,6 +840,12 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	if vol.Status != proto.VolStMarkDelete {
 		return
 	}
+	if vol.RenameConvertStatus != proto.VolRenameConvertStatusFinish {
+		return
+	}
+	if time.Now().Unix()-vol.MarkDeleteTime < c.cfg.DeleteMarkDelVolInterval {
+		return
+	}
 	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
 	metaTasks := vol.getTasksToDeleteMetaPartitions()
 	dataTasks := vol.getTasksToDeleteDataPartitions()
@@ -1006,6 +1048,9 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) 
 func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (err error) {
 	if c.DisableAutoAllocate {
 		return
+	}
+	if vol.Status == proto.VolStMarkDelete {
+		return fmt.Errorf("vol status is MarkDelete,need not create new mp")
 	}
 	vol.createMpMutex.Lock()
 	defer vol.createMpMutex.Unlock()
@@ -1450,5 +1495,10 @@ func (vol *Vol) checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplica
 			diffDpIDs = append(diffDpIDs, partition.PartitionID)
 		}
 	}
+	return
+}
+
+func (vol *Vol) isRealDelete(deleteMarkDelVolInterval int64) (ok bool) {
+	ok = vol.Status == proto.VolStMarkDelete && vol.RenameConvertStatus == proto.VolRenameConvertStatusFinish && time.Now().Unix()-vol.MarkDeleteTime > deleteMarkDelVolInterval
 	return
 }

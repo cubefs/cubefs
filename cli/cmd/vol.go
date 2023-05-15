@@ -76,6 +76,9 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolEcPartitionsChunkConsistency(client),
 		newVolCheckEKDeletedByMistake(client),
 		newVolSetChildFileMaxCountCmd(client),
+		newVolRecoverCmd(client),
+		newVolListTrashVolsCmd(client),
+		newVolForceDeleteCmd(client),
 	)
 	return cmd
 }
@@ -2117,4 +2120,142 @@ func getExtentsByDataPartition(dpId uint64, dataNodeAddr string) (extentsID []ui
 		extentsID = append(extentsID, file[storage.FileID])
 	}
 	return
+}
+
+func newVolRecoverCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		optYes bool
+	)
+	var cmd = &cobra.Command{
+		Use:   "recover [VOLUME NAME] [NEW VOLUME NAME]",
+		Short: cmdVolDeleteShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var oldVolName = args[0]
+			var newVolName string
+			if len(args) >= 2 {
+				newVolName = args[1]
+			}
+			var svv *proto.SimpleVolView
+			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(oldVolName); err != nil {
+				errout("Recover volume failed:\n%v\n", err)
+			}
+			// ask user for confirm
+			if !optYes {
+				tmpNewVolName := svv.OldVolName
+				if newVolName != "" {
+					tmpNewVolName = newVolName
+				}
+				stdout("Recover volume [%v] to [%v] (yes/no)[no]:", oldVolName, tmpNewVolName)
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" {
+					stdout("Abort by user.\n")
+					return
+				}
+			}
+			if _, err = client.AdminAPI().GetVolumeSimpleInfo(newVolName); err == nil {
+				errout("Recover volume failed:\n new vol name existed\n")
+			}
+
+			if err = client.AdminAPI().RecoverVolume(oldVolName, calcAuthKey(svv.Owner), newVolName); err != nil {
+				errout("Recover volume failed:\n%v\n", err)
+			}
+			stdout("Recover volume success.\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	return cmd
+}
+
+func newVolListTrashVolsCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   "listTrashVols",
+		Short: "List cluster trash volumes",
+		Run: func(cmd *cobra.Command, args []string) {
+			var vols []*proto.VolInfo
+			var err error
+			defer func() {
+				if err != nil {
+					errout("List cluster trash volume failed:\n%v\n", err)
+				}
+			}()
+			if vols, err = client.AdminAPI().ListVolsByKeywordsAndSmart("mark_del_by_rename", ""); err != nil {
+				return
+			}
+			sort.Slice(vols, func(i, j int) bool { return vols[i].Name < vols[j].Name })
+			stdout("%v\n", trashVolumeInfoTableHeader)
+			for _, vol := range vols {
+				var svv *proto.SimpleVolView
+				if svv, err = client.AdminAPI().GetVolumeSimpleInfo(vol.Name); err != nil {
+					return
+				}
+				if svv.OldVolName != "" {
+					stdout("%v\n", formatTrashVolInfoTableRow(svv, vol))
+				}
+			}
+		},
+	}
+
+	return cmd
+}
+
+func newVolForceDeleteCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		optYes bool
+	)
+	var cmd = &cobra.Command{
+		Use:   "forceDelete [VOLUME NAME]",
+		Short: "Force Delete a volume from cluster",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			// ask user for confirm
+			var svv *proto.SimpleVolView
+			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
+				errout("Force Delete volume failed:\n%v\n", err)
+			}
+			stdout("Vol:%v will be force delete.\n", svv.Name)
+			if svv.NewVolName != "" {
+				if newSvv, err1 := client.AdminAPI().GetVolumeSimpleInfo(svv.NewVolName); err1 == nil && newSvv.ID == svv.NewVolID {
+					stdout("NewVolName:%v is existed,please force delete it manually.\n", svv.NewVolName)
+				}
+			}
+			if svv.OldVolName != "" {
+				if oldSvv, err1 := client.AdminAPI().GetVolumeSimpleInfo(svv.OldVolName); err1 == nil && oldSvv.NewVolID == svv.ID {
+					stdout("OldVolName:%v is existed,please force delete it manually.\n", svv.OldVolName)
+				}
+			}
+			if !optYes {
+				stdout("Force Delete volume [%v] (yes/no)[no]:", volumeName)
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" {
+					stdout("Abort by user.\n")
+					return
+				}
+			}
+
+			if err = client.AdminAPI().ForceDeleteVolume(volumeName, calcAuthKey(svv.Owner)); err != nil {
+				errout("Force Delete volume failed:\n%v\n", err)
+			}
+			stdout("Force Delete volume success.\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	return cmd
 }

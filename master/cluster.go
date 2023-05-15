@@ -159,6 +159,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToUpdateStatInfo()
 	c.scheduleToCheckAutoDataPartitionCreation()
 	c.scheduleToCheckVolStatus()
+	c.scheduleToConvertRenamedOldVol()
 	c.scheduleToCheckDiskRecoveryProgress()
 	c.scheduleToCheckMetaPartitionRecoveryProgress()
 	c.scheduleToLoadMetaPartitions()
@@ -861,6 +862,7 @@ func (c *Cluster) deleteVol(name string) {
 	return
 }
 
+// set vol status,RenameConvertStatus and MarkDeleteTime then it will be deleted in background,
 func (c *Cluster) markDeleteVol(name, authKey string) (err error) {
 	var (
 		vol           *Vol
@@ -874,10 +876,17 @@ func (c *Cluster) markDeleteVol(name, authKey string) (err error) {
 	if !matchKey(serverAuthKey, authKey) {
 		return proto.ErrVolAuthKeyNotMatch
 	}
+	oldRenameConvertStatus := vol.RenameConvertStatus
+	oldMarkDeleteTime := vol.MarkDeleteTime
+	oldStatus := vol.Status
 
+	vol.RenameConvertStatus = proto.VolRenameConvertStatusFinish
+	vol.MarkDeleteTime = 0
 	vol.Status = proto.VolStMarkDelete
 	if err = c.syncUpdateVol(vol); err != nil {
-		vol.Status = proto.VolStNormal
+		vol.RenameConvertStatus = oldRenameConvertStatus
+		vol.MarkDeleteTime = oldMarkDeleteTime
+		vol.Status = oldStatus
 		return proto.ErrPersistenceByRaft
 	}
 	return
@@ -970,6 +979,9 @@ func (c *Cluster) createDataPartition(volName, designatedZoneName string) (dp *D
 
 	if vol, err = c.getVol(volName); err != nil {
 		return
+	}
+	if vol.Status == proto.VolStMarkDelete {
+		return nil, fmt.Errorf("vol status is MarkDelete,need not create new dp")
 	}
 	vol.createDpMutex.Lock()
 	defer vol.createDpMutex.Unlock()
@@ -3178,6 +3190,10 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
 	if vol, err = c.getVol(name); err == nil {
+		if vol.Status == proto.VolStMarkDelete {
+			err = fmt.Errorf("vol status is MartDelete,please try later or use another name")
+			goto errHandler
+		}
 		if vol.CreateStatus == proto.VolInCreation {
 			err = proto.ErrVolInCreation
 		} else {
@@ -3472,13 +3488,13 @@ func (c *Cluster) copyVols() (vols map[string]*Vol) {
 	return
 }
 
-// Return all the volumes except the ones that have been marked to be deleted.
+// Return all the volumes except the ones that is real delete which will be deleted in background.
 func (c *Cluster) allVols() (vols map[string]*Vol) {
 	vols = make(map[string]*Vol, 0)
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
 	for name, vol := range c.vols {
-		if vol.Status == proto.VolStNormal {
+		if vol.Status == proto.VolStNormal || !vol.isRealDelete(c.cfg.DeleteMarkDelVolInterval) {
 			vols[name] = vol
 		}
 	}
@@ -3801,6 +3817,11 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, int32(val.(int64)))
 	}
 
+	oldDeleteMarkDelVolInterval := c.cfg.DeleteMarkDelVolInterval
+	if val, ok := params[proto.DeleteMarkDelVolIntervalKey]; ok {
+		c.cfg.DeleteMarkDelVolInterval = val.(int64)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3843,6 +3864,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.BitMapAllocatorMinFreeFactor = oldBitMapAllocatorMinFreeFactor
 		atomic.StoreInt32(&c.cfg.TrashCleanDurationEachTime, oldTrashCleanDuration)
 		atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, oldTrashCleanMaxCount)
+		c.cfg.DeleteMarkDelVolInterval = oldDeleteMarkDelVolInterval
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -5441,6 +5463,7 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		MetaRaftLogCap:                      c.cfg.MetaRaftLogCap,
 		MetaTrashCleanInterval:              c.cfg.MetaTrashCleanInterval,
 		DisableStrictVolZone:                c.cfg.DisableStrictVolZone,
+		DeleteMarkDelVolInterval:            c.cfg.DeleteMarkDelVolInterval,
 		AutoUpdatePartitionReplicaNum:       c.cfg.AutoUpdatePartitionReplicaNum,
 	}
 
@@ -5578,3 +5601,339 @@ func getAdminTaskFromRequestBody(body []byte) (tr *proto.AdminTask, err error) {
 	err = decoder.Decode(tr)
 	return
 }
+
+func (c *Cluster) renameVolToNewVolName(oldVolName, authKey, newVolName, newVolOwner string, afterFinishRenameFinalVolStatus uint8) (err error) {
+	var (
+		serverAuthKey          string
+		oldVol                 *Vol
+		id                     uint64
+		oldStatus              uint8
+		oldMarkDeleteTime      int64
+		oldNewVolName          string
+		oldNewVolID            uint64
+		oldRenameConvertStatus proto.VolRenameConvertStatus
+		volRaftCmd             *RaftCmd
+	)
+	cmdMap := make(map[string]*RaftCmd, 0)
+	currentTime := time.Now().Unix()
+	c.createVolMutex.Lock()
+	defer c.createVolMutex.Unlock()
+	if _, err = c.getVol(newVolName); err == nil {
+		return proto.ErrDuplicateVol
+	}
+	if oldVol, err = c.getVol(oldVolName); err != nil {
+		return proto.ErrVolNotExists
+	}
+	serverAuthKey = oldVol.Owner
+	if !matchKey(serverAuthKey, authKey) {
+		return proto.ErrVolAuthKeyNotMatch
+	}
+	//如果还在转换中 或者已经重命名过了，禁止重命名
+	if oldVol.RenameConvertStatus != proto.VolRenameConvertStatusFinish {
+		return fmt.Errorf("vol RenameConvertStatus:%v can not be renamed", oldVol.RenameConvertStatus)
+	}
+
+	if id, err = c.idAlloc.allocateCommonID(); err != nil {
+		return
+	}
+	vv := newVolValue(oldVol)
+	newRenamedVol := newVolFromVolValue(vv)
+
+	newRenamedVol.ID = id
+	newRenamedVol.Name = newVolName
+	newRenamedVol.Owner = newVolOwner
+	newRenamedVol.OldVolName = oldVol.Name
+	newRenamedVol.Status = proto.VolStMarkDelete
+	newRenamedVol.MarkDeleteTime = currentTime
+	newRenamedVol.RenameConvertStatus = proto.VolRenameConvertStatusNewVolInConvertPartition
+	newRenamedVol.FinalVolStatus = afterFinishRenameFinalVolStatus
+	if volRaftCmd, err = c.buildVolRaftCmd(opSyncAddVol, newRenamedVol); err != nil {
+		return
+	}
+	cmdMap[volRaftCmd.K] = volRaftCmd
+
+	oldStatus = oldVol.Status
+	oldMarkDeleteTime = oldVol.MarkDeleteTime
+	oldNewVolName = oldVol.NewVolName
+	oldNewVolID = oldVol.NewVolID
+	oldRenameConvertStatus = oldVol.RenameConvertStatus
+
+	oldVol.Status = proto.VolStMarkDelete
+	oldVol.MarkDeleteTime = currentTime
+	oldVol.NewVolName = newVolName
+	oldVol.NewVolID = newRenamedVol.ID
+	oldVol.RenameConvertStatus = proto.VolRenameConvertStatusOldVolInConvertPartition
+	if volRaftCmd, err = c.buildVolRaftCmd(opSyncUpdateVol, oldVol); err != nil {
+		return
+	}
+	cmdMap[volRaftCmd.K] = volRaftCmd
+	if newRenamedVol.enableToken {
+		oldVolTokens := oldVol.getAllTokens()
+		newVolTokens := make([]*proto.Token, 0)
+		for _, t := range oldVolTokens {
+			newToken := &proto.Token{
+				TokenType: t.TokenType,
+				Value:     t.Value,
+				VolName:   newRenamedVol.Name,
+			}
+			tokenRaftCmd, err1 := c.buildTokenRaftCmd(OpSyncAddToken, newToken)
+			if err1 != nil {
+				err = fmt.Errorf("build token raft cmd err:%v", err1)
+				return
+			}
+			cmdMap[tokenRaftCmd.K] = tokenRaftCmd
+			newVolTokens = append(newVolTokens, newToken)
+		}
+		newRenamedVol.putTokens(newVolTokens)
+	}
+	if err = c.syncBatchCommitCmd(cmdMap); err != nil {
+		oldVol.Status = oldStatus
+		oldVol.MarkDeleteTime = oldMarkDeleteTime
+		oldVol.NewVolName = oldNewVolName
+		oldVol.NewVolID = oldNewVolID
+		oldVol.RenameConvertStatus = oldRenameConvertStatus
+		return
+	}
+	c.putVol(newRenamedVol)
+	return
+}
+
+func (c *Cluster) scheduleToConvertRenamedOldVol() {
+	go func() {
+		// check volumes after switching leader two minutes
+		time.Sleep(2 * time.Minute)
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				vols := c.copyVols()
+				for _, vol := range vols {
+					if !c.isLeader.Load() {
+						break
+					}
+					vol.doConvertRenamedOldVol(c)
+				}
+			}
+			time.Sleep(2 * time.Minute)
+		}
+	}()
+}
+
+func (vol *Vol) doConvertRenamedOldVol(c *Cluster) {
+	switch vol.RenameConvertStatus {
+	case proto.VolRenameConvertStatusOldVolNeedDel:
+		vol.DeleteRenamedOldVol(c)
+	case proto.VolRenameConvertStatusOldVolInConvertPartition:
+		vol.ConvertPartitionsToNewVol(c)
+	}
+}
+
+func (vol *Vol) DeleteRenamedOldVol(c *Cluster) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("DeleteRenamedOldVol occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"DeleteRenamedOldVol occurred panic")
+		}
+	}()
+	if vol.RenameConvertStatus != proto.VolRenameConvertStatusOldVolNeedDel {
+		return
+	}
+	if err := c.syncDeleteVol(vol); err != nil {
+		log.LogError(fmt.Sprintf("action[DeleteRenamedOldVol] vol:%v err:%v", vol.Name, err))
+	}
+	vol.deleteTokensFromStore(c)
+	c.deleteVol(vol.Name)
+	c.volStatInfo.Delete(vol.Name)
+}
+
+func (vol *Vol) ConvertPartitionsToNewVol(c *Cluster) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("ConvertPartitionsToNewVol occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"ConvertPartitionsToNewVol occurred panic")
+		}
+	}()
+	if vol.RenameConvertStatus != proto.VolRenameConvertStatusOldVolInConvertPartition {
+		return
+	}
+	newRenamedVol, err := c.getVol(vol.NewVolName)
+	if err != nil {
+		msg := fmt.Sprintf("action[ConvertPartitionsToNewVol] vol:%v,new vol:%v err:%v", vol.Name, vol.NewVolName, err)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+	if newRenamedVol.ID != vol.NewVolID {
+		msg := fmt.Sprintf("action[ConvertPartitionsToNewVol] vol:%v expect new vol id:%v,new vol id:%v", vol.Name, vol.NewVolID, newRenamedVol.ID)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+	if err = c.batchConvertRenamedOldVolMpMetadataToNewVol(vol, newRenamedVol, markDeleteVolUpdatePartitionBatchCount); err != nil {
+		log.LogError(fmt.Sprintf("action[ConvertPartitionsToNewVol] vol:%v err:%v", vol.Name, err))
+		return
+	}
+	if err = c.batchConvertRenamedOldVolDpMetadataToNewVol(vol, newRenamedVol, markDeleteVolUpdatePartitionBatchCount); err != nil {
+		log.LogError(fmt.Sprintf("action[ConvertPartitionsToNewVol] vol:%v err:%v", vol.Name, err))
+		return
+	}
+
+	dpCount := vol.getDataPartitionsCount()
+	mpCount := vol.getMpCnt()
+	log.LogInfo(fmt.Sprintf("action[ConvertPartitionsToNewVol] vol:%v dpCount:%v,mpCount:%v", vol.Name, dpCount, mpCount))
+	if dpCount == 0 && mpCount == 0 {
+		if err = c.clearRenamedOldVolAndResetNewVolStatus(vol, newRenamedVol); err != nil {
+			log.LogError(fmt.Sprintf("action[ConvertPartitionsToNewVol] vol:%v err:%v", vol.Name, err))
+			return
+		}
+	}
+}
+
+func (c *Cluster) batchConvertRenamedOldVolMpMetadataToNewVol(oldVol, renamedVol *Vol, batchCount int) (err error) {
+	var updateRaftCmd *RaftCmd
+	mps := oldVol.cloneMetaPartitionMap()
+	if len(mps) == 0 {
+		return
+	}
+	cmdMap := make(map[string]*RaftCmd, 0)
+	affectedMps := make([]*MetaPartition, 0)
+	for _, mp := range mps {
+		mp.volID = renamedVol.ID
+		mp.volName = renamedVol.Name
+		affectedMps = append(affectedMps, mp)
+		if updateRaftCmd, err = c.buildMetaPartitionRaftCmd(opSyncUpdateMetaPartition, mp); err != nil {
+			goto errHandler
+		}
+		cmdMap[updateRaftCmd.K] = updateRaftCmd
+		if len(cmdMap) >= batchCount {
+			if err = c.convertRenamedOldVolMpMetadataByRaft(oldVol, renamedVol, cmdMap, affectedMps); err != nil {
+				goto errHandler
+			}
+			cmdMap = make(map[string]*RaftCmd, 0)
+			affectedMps = make([]*MetaPartition, 0)
+		}
+	}
+	if len(cmdMap) != 0 {
+		if err = c.convertRenamedOldVolMpMetadataByRaft(oldVol, renamedVol, cmdMap, affectedMps); err != nil {
+			goto errHandler
+		}
+	}
+	return
+errHandler:
+	for _, mp := range affectedMps {
+		if mp.volID != oldVol.ID {
+			mp.volID = oldVol.ID
+			mp.volName = oldVol.Name
+		}
+	}
+	err = fmt.Errorf("action[batchConvertRenamedOldVolMpMetadataToNewVol], clusterID[%v] name:%v, err:%v ", c.Name, oldVol.Name, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
+	return
+}
+func (c *Cluster) batchConvertRenamedOldVolDpMetadataToNewVol(oldVol, renamedVol *Vol, batchCount int) (err error) {
+	var updateRaftCmd *RaftCmd
+	dps := oldVol.cloneDataPartitionMap()
+	if len(dps) == 0 {
+		return
+	}
+	cmdMap := make(map[string]*RaftCmd, 0)
+	affectedDps := make([]*DataPartition, 0)
+	for _, dp := range dps {
+		dp.VolID = renamedVol.ID
+		dp.VolName = renamedVol.Name
+		affectedDps = append(affectedDps, dp)
+		if updateRaftCmd, err = c.buildDataPartitionRaftCmd(opSyncUpdateMetaPartition, dp); err != nil {
+			goto errHandler
+		}
+		cmdMap[updateRaftCmd.K] = updateRaftCmd
+		if len(cmdMap) >= batchCount {
+			if err = c.convertRenamedOldVolDpMetadataByRaft(oldVol, renamedVol, cmdMap, affectedDps); err != nil {
+				goto errHandler
+			}
+			cmdMap = make(map[string]*RaftCmd, 0)
+			affectedDps = make([]*DataPartition, 0)
+		}
+	}
+	if len(cmdMap) != 0 {
+		if err = c.convertRenamedOldVolDpMetadataByRaft(oldVol, renamedVol, cmdMap, affectedDps); err != nil {
+			goto errHandler
+		}
+	}
+	return
+errHandler:
+	for _, dp := range affectedDps {
+		if dp.VolID != oldVol.ID {
+			dp.VolID = oldVol.ID
+			dp.VolName = oldVol.Name
+		}
+	}
+	err = fmt.Errorf("action[batchConvertRenamedOldVolDpMetadataToNewVol], clusterID[%v] name:%v, err:%v ", c.Name, oldVol.Name, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
+	return
+}
+func (c *Cluster) convertRenamedOldVolMpMetadataByRaft(oldVol, renamedVol *Vol, cmdMap map[string]*RaftCmd, affectedMps []*MetaPartition) (err error) {
+	if err = c.syncBatchCommitCmd(cmdMap); err != nil {
+		return
+	}
+	mpIDs := make([]uint64, 0)
+	for _, mp := range affectedMps {
+		oldVol.delMetaPartition(mp)
+		renamedVol.addMetaPartition(mp)
+		mpIDs = append(mpIDs, mp.PartitionID)
+	}
+	log.LogInfo(fmt.Sprintf("action[convertRenamedOldVolMpMetadataByRaft] mpCount:%v mpIds:%v", len(mpIDs), mpIDs))
+	return
+}
+func (c *Cluster) convertRenamedOldVolDpMetadataByRaft(oldVol, renamedVol *Vol, cmdMap map[string]*RaftCmd, affectedDps []*DataPartition) (err error) {
+	if err = c.syncBatchCommitCmd(cmdMap); err != nil {
+		return
+	}
+	dpIDs := make([]uint64, 0)
+	for _, dp := range affectedDps {
+		oldVol.dataPartitions.del(dp)
+		renamedVol.dataPartitions.put(dp)
+		dpIDs = append(dpIDs, dp.PartitionID)
+	}
+	log.LogInfo(fmt.Sprintf("action[convertRenamedOldVolDpMetadataByRaft] dpCount:%v dpIds:%v", len(dpIDs), dpIDs))
+	return
+}
+
+func (c *Cluster) clearRenamedOldVolAndResetNewVolStatus(oldVol, newRenamedVol *Vol) (err error) {
+	cmdMap := make(map[string]*RaftCmd, 0)
+	oldVolRenameConvertStatus := oldVol.RenameConvertStatus
+	oldNewVolRenameConvertStatus := newRenamedVol.RenameConvertStatus
+	oldNewVolStatus := newRenamedVol.Status
+
+	oldVol.RenameConvertStatus = proto.VolRenameConvertStatusOldVolNeedDel
+	newRenamedVol.RenameConvertStatus = proto.VolRenameConvertStatusFinish
+	newRenamedVol.Status = newRenamedVol.FinalVolStatus
+	defer func() {
+		if err != nil {
+			oldVol.RenameConvertStatus = oldVolRenameConvertStatus
+			newRenamedVol.RenameConvertStatus = oldNewVolRenameConvertStatus
+			newRenamedVol.Status = oldNewVolStatus
+		}
+	}()
+	volRaftCmd, err := c.buildVolRaftCmd(opSyncUpdateVol, oldVol)
+	if err != nil {
+		return
+	}
+	cmdMap[volRaftCmd.K] = volRaftCmd
+	if volRaftCmd, err = c.buildVolRaftCmd(opSyncUpdateVol, newRenamedVol); err != nil {
+		return
+	}
+	cmdMap[volRaftCmd.K] = volRaftCmd
+	if err = c.syncBatchCommitCmd(cmdMap); err != nil {
+		return
+	}
+
+	newRenamedVol.mpsCache = make([]byte, 0)
+	newRenamedVol.viewCache = make([]byte, 0)
+	oldVol.mpsCache = make([]byte, 0)
+	oldVol.viewCache = make([]byte, 0)
+	oldVol.DeleteRenamedOldVol(c)
+	return
+}
+

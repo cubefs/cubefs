@@ -249,6 +249,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.TrashCleanMaxCountEachTime >= 0 {
 				msg += fmt.Sprintf("Trash Clean Max Count        : %v, ", info.TrashCleanMaxCountEachTime)
 			}
+			if info.DeleteMarkDelVolInterval >= 0 {
+				msg += fmt.Sprintf("DeleteMarkDelVolInterval     : %v, ", info.DeleteMarkDelVolInterval)
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -311,6 +314,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Float64Var(&info.AllocatorMinFreeFactor, "allocatorMinFreeFactor", 0, "float64, bit map allocator min free factor for available")
 	cmd.Flags().Int32Var(&info.TrashCleanDurationEachTime, "trashCleanMaxDurationEachTime", -1, "trash clean max duration for each time")
 	cmd.Flags().Int32Var(&info.TrashCleanMaxCountEachTime, "trashCleanMaxCountEachTime", -1, "trash clean max count for each time")
+	cmd.Flags().Int64Var(&info.DeleteMarkDelVolInterval, "deleteMarkDelVolInterval", -1, "delete mark del vol interval, unit is seconds.")
 	return cmd
 }
 
@@ -373,6 +377,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  BitMapAllocatorMinFreeFactor     : %v\n", info.BitMapAllocatorMinFreeFactor))
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxDurationEachTime    : %v\n", info.TrashCleanDurationEachTime))
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxCountEachTime       : %v\n", info.TrashItemCleanMaxCountEachTime))
+	sb.WriteString(fmt.Sprintf("  DeleteMarkDelVolInterval         : %v(%v sec)\n", formatTimeInterval(info.DeleteMarkDelVolInterval), info.DeleteMarkDelVolInterval))
 	return sb.String()
 }
 

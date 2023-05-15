@@ -148,6 +148,7 @@ const (
 	appKey                              = "app"
 	slavesKey                           = "slaves"
 	addSlaveKey                         = "addslave"
+	newNameKey                          = "newName"
 )
 
 const (
@@ -279,6 +280,11 @@ const (
 	markDelete      uint8 = 1
 	normalZone            = 0
 	unavailableZone       = 1
+)
+
+const (
+	markDeleteVolByRenamePrefix = "mark_del_by_rename"
+	markDeleteVolUpdatePartitionBatchCount = 200
 )
 
 const (

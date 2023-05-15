@@ -409,6 +409,27 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
+func (api *AdminAPI) ForceDeleteVolume(volName, authKey string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminForceDeleteVol)
+	request.addParam("name", volName)
+	request.addParam("authKey", authKey)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) RecoverVolume(oldVolName, authKey, newVolName string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminRecoverVol)
+	request.addParam("name", oldVolName)
+	request.addParam("authKey", authKey)
+	request.addParam("newName", newVolName)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
 	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool,
 	authKey, zoneName, mpLayout, smartRules string, bucketPolicy, crossRegionHAType uint8,
@@ -798,6 +819,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.TrashCleanDurationEachTime >= 0 {
 		request.addParam(proto.TrashCleanDurationKey, strconv.FormatInt(int64(info.TrashCleanDurationEachTime), 10))
+	}
+	if info.DeleteMarkDelVolInterval >= 0 {
+		request.addParam(proto.DeleteMarkDelVolIntervalKey, strconv.FormatInt(info.DeleteMarkDelVolInterval, 10))
 	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)

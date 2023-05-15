@@ -193,6 +193,7 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.cfg = newClusterConfig()
 	testServer.cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
 	testServer.cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
+	testServer.cluster.cfg.DeleteMarkDelVolInterval = defaultDeleteMarkDelVolInterval
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
 	testServer.cluster.checkEcNodeHeartbeat()
@@ -523,14 +524,22 @@ func TestMarkDeleteVol(t *testing.T) {
 	createVol(name, testZone2, t)
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
 	process(reqURL, t)
-	userInfo, err := server.user.getUserInfo("cfs")
+	oldVol, err := server.cluster.getVol(name)
+	assertErrNilOtherwiseFailNow(t, err)
+	assert.NotEqual(t, oldVol.NewVolName, "")
+	assert.NotEqual(t, oldVol.MarkDeleteTime, 0)
+	assert.Equal(t, oldVol.RenameConvertStatus, proto.VolRenameConvertStatusOldVolInConvertPartition)
+	newRenamedVol, err := server.cluster.getVol(oldVol.NewVolName)
+	assertErrNilOtherwiseFailNow(t, err)
+	assert.Equal(t, newRenamedVol.OldVolName, oldVol.Name)
+	assert.Equal(t, newRenamedVol.ID, oldVol.NewVolID)
+	assert.Equal(t, newRenamedVol.RenameConvertStatus, proto.VolRenameConvertStatusNewVolInConvertPartition)
+	assert.Equal(t, newRenamedVol.FinalVolStatus, proto.VolStMarkDelete)
+}
+
+func assertErrNilOtherwiseFailNow(t *testing.T, err error) {
 	if err != nil {
-		t.Error(err)
-		return
-	}
-	if contains(userInfo.Policy.OwnVols, name) {
-		t.Errorf("expect no vol %v in own vols, but is exist", name)
-		return
+		assert.FailNow(t, err.Error())
 	}
 }
 
@@ -638,6 +647,9 @@ func TestGetDataPartition(t *testing.T) {
 	process(reqURL, t)
 
 	reqURL = fmt.Sprintf("%v%v?id=%v&name=%v", hostAddr, proto.AdminGetDataPartition, partition.PartitionID, partition.VolName)
+	process(reqURL, t)
+
+	reqURL = fmt.Sprintf("%v%v?id=%v&name=%v", hostAddr, proto.AdminGetDataPartition, partition.PartitionID, partition.VolName+"wrongInfo")
 	process(reqURL, t)
 }
 

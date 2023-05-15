@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,6 +62,10 @@ func TestVol(t *testing.T) {
 	statVol(name, t)
 	markDeleteVol(name, t)
 	getSimpleVol(name, t)
+	vol.ConvertPartitionsToNewVol(server.cluster)
+	oldDeleteMarkDelVolInterval := server.cluster.cfg.DeleteMarkDelVolInterval
+	server.cluster.cfg.DeleteMarkDelVolInterval = 1
+	defer func() { server.cluster.cfg.DeleteMarkDelVolInterval = oldDeleteMarkDelVolInterval }()
 	vol.checkStatus(server.cluster)
 	vol.deleteVolFromStore(server.cluster)
 }
@@ -140,6 +145,7 @@ func TestVolMultiZoneDowngrade(t *testing.T) {
 	}*/
 	markDeleteVol(testMultiZone, t)
 	getSimpleVol(testMultiZone, t)
+	vol.ConvertPartitionsToNewVol(server.cluster)
 	vol.checkStatus(server.cluster)
 	vol.deleteVolFromStore(server.cluster)
 }
@@ -216,6 +222,7 @@ func TestVolMultiZone(t *testing.T) {
 
 	markDeleteVol(testMultiZone, t)
 	getSimpleVol(testMultiZone, t)
+	vol.ConvertPartitionsToNewVol(server.cluster)
 	vol.checkStatus(server.cluster)
 	vol.deleteVolFromStore(server.cluster)
 }
@@ -291,14 +298,17 @@ func statVol(name string, t *testing.T) {
 }
 
 func markDeleteVol(name string, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v",
-		hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
-	process(reqURL, t)
+	oldDeleteMarkDelVolInterval := server.cluster.cfg.DeleteMarkDelVolInterval
+	server.cluster.cfg.DeleteMarkDelVolInterval = 0
+	defer func() { server.cluster.cfg.DeleteMarkDelVolInterval = oldDeleteMarkDelVolInterval }()
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v",
+		hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
+	process(reqURL, t)
 	if vol.Status != proto.VolStMarkDelete {
 		t.Errorf("markDeleteVol failed,expect[%v],real[%v]", proto.VolStMarkDelete, vol.Status)
 		return
@@ -450,6 +460,293 @@ func TestShrinkVolCapacity(t *testing.T) {
 	process(reqURL, t)
 	if vol.Capacity != newCapacity {
 		t.Errorf("expect Capacity is %v,but get :%v", newCapacity, vol.Capacity)
+	}
+}
+
+func TestRecoverVol(t *testing.T) {
+	oldDeleteMarkDelVolInterval := server.cluster.cfg.DeleteMarkDelVolInterval
+	defer func() { server.cluster.cfg.DeleteMarkDelVolInterval = oldDeleteMarkDelVolInterval }()
+	server.cluster.cfg.DeleteMarkDelVolInterval = 1000000
+	oldVolName := "oldVol123_del"
+	newVolNameMarkDel := "newVol456_mark_del"
+	owner := "test2"
+	newVolNameRecover := "newVol456_recover"
+	//do delete:oldVolName --> newVolNameMarkDel
+	zoneName := fmt.Sprintf("%s,%s,%s", testZone1, testZone2, testZone3)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&capacity=100&owner=%v&mpCount=10&enableToken=true&zoneName=%v", hostAddr, proto.AdminCreateVol, oldVolName, "cfs", zoneName)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	oldVol, err := server.cluster.getVol(oldVolName)
+	assertErrNilOtherwiseFailNow(t, err)
+	oldVolTokens := oldVol.getAllTokens()
+	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.checkMetaNodeHeartbeat()
+	time.Sleep(5 * time.Second)
+
+	if err = server.cluster.renameVolToNewVolName(oldVolName, buildAuthKey("cfs"), newVolNameMarkDel, owner, proto.VolStMarkDelete); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	if err = server.associateVolWithUser(owner, newVolNameMarkDel); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	if err = server.user.deleteVolPolicy(oldVolName); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+
+	newVolMarkDel, err := server.cluster.getVol(newVolNameMarkDel)
+	assertErrNilOtherwiseFailNow(t, err)
+	assert.Equal(t, newVolMarkDel.OldVolName, oldVol.Name)
+	assert.Equal(t, newVolMarkDel.ID, oldVol.NewVolID)
+	compareVolValue(t, newVolMarkDel, oldVol)
+	if err = server.cluster.batchConvertRenamedOldVolMpMetadataToNewVol(oldVol, newVolMarkDel, 2); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	if err = server.cluster.batchConvertRenamedOldVolDpMetadataToNewVol(oldVol, newVolMarkDel, 3); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	oldVol.ConvertPartitionsToNewVol(server.cluster)
+
+	checkNewRenamedVolDp(t, newVolMarkDel)
+	checkNewRenamedVolMp(t, newVolMarkDel)
+	checkClientViews(t, newVolMarkDel)
+
+	//rename recover:newVolNameMarkDel --> newVolNameRecover
+	err = mc.AdminAPI().RecoverVolume(newVolNameMarkDel, buildAuthKey(owner), newVolNameRecover)
+	assertErrNilOtherwiseFailNow(t, err)
+	newVolMarkDel, err = server.cluster.getVol(newVolNameMarkDel)
+	assertErrNilOtherwiseFailNow(t, err)
+	assert.Equal(t, newVolMarkDel.NewVolName, newVolNameRecover)
+	assert.Equal(t, newVolMarkDel.RenameConvertStatus, proto.VolRenameConvertStatusOldVolInConvertPartition)
+	newRenamedVol, err := server.cluster.getVol(newVolMarkDel.NewVolName)
+	assertErrNilOtherwiseFailNow(t, err)
+	assert.Equal(t, newRenamedVol.OldVolName, newVolMarkDel.Name)
+	assert.Equal(t, newVolMarkDel.NewVolID, newRenamedVol.ID)
+	assert.Equal(t, newRenamedVol.RenameConvertStatus, proto.VolRenameConvertStatusNewVolInConvertPartition)
+	assert.Equal(t, newRenamedVol.FinalVolStatus, proto.VolStNormal)
+	newVolRecover, err := server.cluster.getVol(newVolNameRecover)
+	assertErrNilOtherwiseFailNow(t, err)
+	oldMps := newVolMarkDel.cloneMetaPartitionMap()
+	oldDps := newVolMarkDel.cloneDataPartitionMap()
+
+	wg := new(sync.WaitGroup)
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		for _, mp := range oldMps {
+			err1 := mc.AdminAPI().DecommissionMetaPartition(mp.PartitionID, mp.Hosts[len(mp.Hosts)-1], "", 0)
+			if err1 != nil {
+				t.Errorf("DecommissionMetaPartition err:%v", err1)
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for _, dp := range oldDps {
+			err1 := mc.AdminAPI().DecommissionDataPartition(dp.PartitionID, dp.Hosts[len(dp.Hosts)-1], "")
+			if err1 != nil {
+				t.Errorf("DecommissionDataPartition err:%v", err1)
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		newVolMarkDel.ConvertPartitionsToNewVol(server.cluster)
+		if err = server.cluster.batchConvertRenamedOldVolMpMetadataToNewVol(newVolMarkDel, newVolRecover, 2); err != nil {
+			t.Error(err)
+			return
+		}
+		if err = server.cluster.batchConvertRenamedOldVolDpMetadataToNewVol(newVolMarkDel, newVolRecover, 3); err != nil {
+			t.Error(err)
+			return
+		}
+		newVolMarkDel.ConvertPartitionsToNewVol(server.cluster)
+	}()
+	wg.Wait()
+	newVolRecover, err = server.cluster.getVol(newVolNameRecover)
+	assertErrNilOtherwiseFailNow(t, err)
+	assert.Equal(t, newVolRecover.Status, proto.VolStNormal)
+	assert.Equal(t, newVolMarkDel.RenameConvertStatus, proto.VolRenameConvertStatusOldVolNeedDel)
+	newMps := newVolRecover.cloneMetaPartitionMap()
+	newDps := newVolRecover.cloneDataPartitionMap()
+
+	assert.Equal(t, len(newMps), len(oldMps))
+	assert.Equal(t, len(newDps), len(oldDps))
+	for _, mp := range newMps {
+		assert.Equal(t, mp.volName, newVolRecover.Name)
+	}
+	for _, dp := range newDps {
+		assert.Equal(t, dp.VolName, newVolRecover.Name)
+	}
+
+	newVolTokens := newVolRecover.getAllTokens()
+	t.Log(fmt.Sprintf("oldVolTokensCount:%v,newVolTokensCount:%v", len(oldVolTokens), len(newVolTokens)))
+	assert.Equal(t, len(oldVolTokens), len(newVolTokens))
+	for _, token := range newVolTokens {
+		flag := false
+		for _, oldVolToken := range oldVolTokens {
+			if token.TokenType == oldVolToken.TokenType && token.Value == oldVolToken.Value {
+				flag = true
+				break
+			}
+		}
+		if !flag {
+			t.Errorf("can not found new token:%v in old token info", token.Value)
+		}
+	}
+}
+
+func compareVolValue(t *testing.T, newVolMarkDel, oldVol *Vol) {
+	newVolMarkDelVolValue := newVolValue(newVolMarkDel)
+	oldVolVolValue := newVolValue(oldVol)
+
+	newVolMarkDelVolValue.ID = 0
+	newVolMarkDelVolValue.Name = ""
+	newVolMarkDelVolValue.Owner = ""
+	newVolMarkDelVolValue.NewVolName = ""
+	newVolMarkDelVolValue.OldVolName = ""
+	newVolMarkDelVolValue.NewVolID = 0
+	newVolMarkDelVolValue.Status = 0
+	newVolMarkDelVolValue.MarkDeleteTime = 0
+	newVolMarkDelVolValue.RenameConvertStatus = 0
+	newVolMarkDelVolValue.FinalVolStatus = 0
+
+	oldVolVolValue.ID = 0
+	oldVolVolValue.Name = ""
+	oldVolVolValue.Owner = ""
+	oldVolVolValue.NewVolName = ""
+	oldVolVolValue.OldVolName = ""
+	oldVolVolValue.NewVolID = 0
+	oldVolVolValue.Status = 0
+	oldVolVolValue.MarkDeleteTime = 0
+	oldVolVolValue.RenameConvertStatus = 0
+	oldVolVolValue.FinalVolStatus = 0
+	assert.Equal(t, *newVolMarkDelVolValue, *oldVolVolValue)
+}
+
+func checkNewRenamedVolDp(t *testing.T, newRenamedVol *Vol) {
+	dataPartitionMap := newRenamedVol.cloneDataPartitionMap()
+	if len(dataPartitionMap) == 0 {
+		t.Errorf("dpCount should not be 0")
+		return
+	}
+	nodeDpMap := make(map[string][]uint64)
+	for _, partition := range dataPartitionMap {
+		for _, host := range partition.Hosts {
+			nodeDpMap[host] = append(nodeDpMap[host], partition.PartitionID)
+		}
+	}
+	for addr, dpIDs := range nodeDpMap {
+		dataNodeInfo, err := mc.NodeAPI().GetDataNode(addr)
+		assertErrNilOtherwiseFailNow(t, err)
+		for _, id := range dpIDs {
+			if !containsID(dataNodeInfo.PersistenceDataPartitions, id) {
+				t.Errorf("id:%v expect in node:%v but not", id, addr)
+			}
+		}
+	}
+}
+
+func checkNewRenamedVolMp(t *testing.T, newRenamedVol *Vol) {
+	mps := newRenamedVol.cloneMetaPartitionMap()
+	if len(mps) == 0 {
+		t.Errorf("mpCount should not be 0")
+		return
+	}
+	nodeMpMap := make(map[string][]uint64)
+	for _, partition := range mps {
+		for _, host := range partition.Hosts {
+			nodeMpMap[host] = append(nodeMpMap[host], partition.PartitionID)
+		}
+	}
+	for addr, mpIDs := range nodeMpMap {
+		metaNodeInfo, err := mc.NodeAPI().GetMetaNode(addr)
+		assertErrNilOtherwiseFailNow(t, err)
+		for _, id := range mpIDs {
+			if !containsID(metaNodeInfo.PersistenceMetaPartitions, id) {
+				t.Errorf("id:%v expect in node:%v but not", id, addr)
+			}
+		}
+	}
+}
+
+func checkClientViews(t *testing.T, newRenamedVol *Vol) {
+	mps := newRenamedVol.cloneMetaPartitionMap()
+	dataPartitionMap := newRenamedVol.cloneDataPartitionMap()
+	newRenamedVol.mpsCache = nil
+	newRenamedVol.viewCache = nil
+	volView, err := mc.ClientAPI().GetVolume(newRenamedVol.Name, buildAuthKey(newRenamedVol.Owner))
+	assertErrNilOtherwiseFailNow(t, err)
+	assert.Equal(t, len(volView.MetaPartitions), len(mps))
+	assert.Equal(t, len(volView.DataPartitions), len(dataPartitionMap))
+	dataPartitionsView, err := mc.ClientAPI().GetDataPartitions(newRenamedVol.Name)
+	assertErrNilOtherwiseFailNow(t, err)
+	assert.Equal(t, len(dataPartitionsView.DataPartitions), len(dataPartitionMap))
+	metaPartitions, err := mc.ClientAPI().GetMetaPartitions(newRenamedVol.Name)
+	assertErrNilOtherwiseFailNow(t, err)
+	assert.Equal(t, len(metaPartitions), len(mps))
+	for _, partition := range dataPartitionsView.DataPartitions {
+		_, ok := dataPartitionMap[partition.PartitionID]
+		if !ok {
+			t.Errorf("can not found dpId:%v", partition.PartitionID)
+		} else {
+			delete(dataPartitionMap, partition.PartitionID)
+		}
+	}
+	assert.Equal(t, len(dataPartitionMap), 0, "rest dps count")
+	for _, partition := range volView.MetaPartitions {
+		_, ok := mps[partition.PartitionID]
+		if !ok {
+			t.Errorf("can not found mpId:%v", partition.PartitionID)
+		} else {
+			delete(mps, partition.PartitionID)
+		}
+	}
+	assert.Equal(t, len(mps), 0, "rest mps count")
+}
+
+func TestForceDeleteVolume(t *testing.T) {
+	//delete vol by rename then force delete the vol
+	volName := "test_force_delete"
+	testOwner := "cfs"
+	zoneName := fmt.Sprintf("%s,%s,%s", testZone1, testZone2, testZone3)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&capacity=100&owner=%v&mpCount=10&enableToken=true&zoneName=%v", hostAddr, proto.AdminCreateVol, volName, testOwner, zoneName)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	oldVol, err := server.cluster.getVol(volName)
+	assertErrNilOtherwiseFailNow(t, err)
+	oldDeleteMarkDelVolInterval := server.cluster.cfg.DeleteMarkDelVolInterval
+	defer func() { server.cluster.cfg.DeleteMarkDelVolInterval = oldDeleteMarkDelVolInterval }()
+	server.cluster.cfg.DeleteMarkDelVolInterval = 1000000
+	err = mc.AdminAPI().DeleteVolume(volName, buildAuthKey(testOwner))
+	assertErrNilOtherwiseFailNow(t, err)
+	if err = mc.AdminAPI().ForceDeleteVolume(oldVol.Name, buildAuthKey(testOwner)); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	newVolName := oldVol.NewVolName
+	nVol, err := server.cluster.getVol(newVolName)
+	assertErrNilOtherwiseFailNow(t, err)
+	if err = mc.AdminAPI().ForceDeleteVolume(newVolName, buildAuthKey(testOwner)); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	for i := 0; i < 3; i++ {
+		oldVol.checkStatus(server.cluster)
+		nVol.checkStatus(server.cluster)
+		time.Sleep(time.Second)
+	}
+	isDeleteStatus := func(v *Vol) bool {
+		t.Logf("vol:%v Status:%v,RenameConvertStatus:%v,MarkDeleteTime:%v", v.Name, v.Status, v.RenameConvertStatus, v.MarkDeleteTime)
+		if v.Status == 1 && v.RenameConvertStatus == 0 && v.MarkDeleteTime == 0 {
+			return true
+		}
+		return false
+	}
+	if oldVol, err = server.cluster.getVol(oldVol.Name); err == nil && !isDeleteStatus(oldVol) {
+		t.Errorf("vol:%v should not be exist, Status:%v,RenameConvertStatus:%v,MarkDeleteTime:%v", oldVol.Name, oldVol.Status, oldVol.RenameConvertStatus, oldVol.MarkDeleteTime)
+		return
+	}
+	if nVol, err = server.cluster.getVol(newVolName); err == nil && !isDeleteStatus(nVol) {
+		t.Errorf("vol:%v should not be exist, Status:%v,RenameConvertStatus:%v,MarkDeleteTime:%v", newVolName, nVol.Status, nVol.RenameConvertStatus, nVol.MarkDeleteTime)
+		return
 	}
 }
 

@@ -157,7 +157,7 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		HandlerFunc(m.getVolSimpleInfo)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDeleteVol).
-		HandlerFunc(m.markDeleteVol)
+		HandlerFunc(m.markDeleteVolByRename)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateVol).
 		HandlerFunc(m.updateVol)
@@ -212,6 +212,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminCheckVolPartitionReplica).
 		HandlerFunc(m.checkVolPartitionReplica)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminRecoverVol).
+		HandlerFunc(m.recoverMarkDeletedVolToNormal)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminForceDeleteVol).
+		HandlerFunc(m.markDeleteVolForce)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
