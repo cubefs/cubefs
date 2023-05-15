@@ -897,47 +897,18 @@ errHandler:
 	return
 }
 
-func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corruptPartitions []*DataPartition, err error) {
-	partitionMap := make(map[uint64]uint8)
+func (c *Cluster) checkInactiveDataNodes() (inactiveDataNodes []string, err error) {
 	inactiveDataNodes = make([]string, 0)
-	corruptPartitions = make([]*DataPartition, 0)
-
-	vols := c.copyVols()
-	for _, vol := range vols {
-		if vol.Status == markDelete || !proto.IsHot(vol.VolType) {
-			continue
-		}
-		for _, dp := range vol.dataPartitions.partitions {
-			if dp.getLeaderAddr() == "" {
-				corruptPartitions = append(corruptPartitions, dp)
-			}
-		}
-	}
 
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		if !dataNode.isActive {
 			inactiveDataNodes = append(inactiveDataNodes, dataNode.Addr)
 		}
-		for _, id := range dataNode.PersistenceDataPartitions {
-			var partition *DataPartition
-			if partition, err = c.getDataPartitionByID(id); err != nil {
-				continue
-			}
-			if partition.getLeaderAddr() == "" {
-				if time.Now().Unix()-partition.LeaderReportTime > defaultNoLeaderReportInterval {
-					partitionMap[id] = partitionMap[id] + 1
-					if partitionMap[id] == 1 {
-						corruptPartitions = append(corruptPartitions, partition)
-					}
-				}
-			}
-		}
 		return true
 	})
 
-	log.LogInfof("clusterID[%v] inactiveDataNodes:%v  corruptPartitions count:[%v]",
-		c.Name, inactiveDataNodes, len(corruptPartitions))
+	log.LogInfof("clusterID[%v] inactiveDataNodes:%v", c.Name, inactiveDataNodes)
 	return
 }
 
@@ -973,8 +944,11 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 	return
 }
 
-func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition,
-	repFileCountDifferDps []*DataPartition, repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, err error) {
+
+func (c *Cluster) checkReplicaOfDataPartitions() (
+	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error) {
+	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
 	excessReplicaDPs = make([]*DataPartition, 0)
@@ -984,6 +958,12 @@ func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartitio
 		var dps *DataPartitionMap
 		dps = vol.dataPartitions
 		for _, dp := range dps.partitions {
+			if vol.Status != markDelete && proto.IsHot(vol.VolType) {
+				if dp.getLeaderAddr() == "" && (time.Now().Unix()-dp.LeaderReportTime > c.cfg.NoLeaderReportInterval) {
+					noLeaderDPs = append(noLeaderDPs, dp)
+				}
+			}
+
 			if dp.ReplicaNum > uint8(len(dp.Hosts)) || dp.ReplicaNum > uint8(len(dp.Replicas)) {
 				lackReplicaDPs = append(lackReplicaDPs, dp)
 			}
@@ -1002,9 +982,11 @@ func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartitio
 				repFileCountSentry = dp.Replicas[0].FileCount
 			}
 
+			recordReplicaUnavailable := false
 			for _, replica := range dp.Replicas {
-				if replica.Status == proto.Unavailable {
+				if !recordReplicaUnavailable && replica.Status == proto.Unavailable {
 					unavailableReplicaDPs = append(unavailableReplicaDPs, dp)
+					recordReplicaUnavailable = true
 				}
 
 				tempSizeDiff := math.Abs(float64(replica.Used) - repSizeSentry)
@@ -1027,8 +1009,13 @@ func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartitio
 			}
 		}
 	}
-	log.LogInfof("clusterID[%v] lackReplicaDataPartitions count:[%v], unavailableReplicaDataPartitions count:[%v]",
-		c.Name, len(lackReplicaDPs), len(unavailableReplicaDPs))
+
+	log.LogInfof("clusterID[%v] lackReplicaDp count:[%v], unavailableReplicaDp count:[%v], "+
+		"repFileCountDifferDps count[%v], repUsedSizeDifferDps count[%v], "+
+		"excessReplicaDPs count[%v], noLeaderDPs count[%v]",
+		c.Name, len(lackReplicaDPs), len(unavailableReplicaDPs),
+		len(repFileCountDifferDps), len(repUsedSizeDifferDps),
+		len(excessReplicaDPs), len(noLeaderDPs))
 	return
 }
 

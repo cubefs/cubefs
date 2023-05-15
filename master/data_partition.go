@@ -100,12 +100,13 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.PartitionType = partitionType
 	partition.PartitionTTL = partitionTTL
 
-	partition.modifyTime = time.Now().Unix()
-	partition.createTime = time.Now().Unix()
-	partition.lastWarnTime = time.Now().Unix()
+	now := time.Now().Unix()
+	partition.modifyTime = now
+	partition.createTime = now
+	partition.lastWarnTime = now
 	partition.singleDecommissionChan = make(chan bool, 1024)
 	partition.DecommissionStatus = DecommissionInitial
-	partition.LeaderReportTime = time.Now().Unix()
+	partition.LeaderReportTime = now
 	return
 }
 

@@ -261,10 +261,12 @@ type DataPartitionDiagnosis struct {
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
 type MetaPartitionDiagnosis struct {
-	InactiveMetaNodes           []string
-	CorruptMetaPartitionIDs     []uint64
-	LackReplicaMetaPartitionIDs []uint64
-	BadMetaPartitionIDs         []BadPartitionView
+	InactiveMetaNodes             []string
+	CorruptMetaPartitionIDs       []uint64
+	LackReplicaMetaPartitionIDs   []uint64
+	BadMetaPartitionIDs           []BadPartitionView
+	BadReplicaMetaPartitionIDs    []uint64
+	ExcessReplicaMetaPartitionIDs []uint64
 }
 
 type DecommissionProgress struct {
