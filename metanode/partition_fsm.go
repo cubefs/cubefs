@@ -289,11 +289,17 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			}
 		}
 	case opFSMTxCreateDentry:
-		txDen := NewTxDentry(0, "", 0, 0, nil)
+		txDen := NewTxDentry(0, "", 0, 0, nil, nil)
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
 		resp = mp.fsmTxCreateDentry(txDen, false)
+	case opFSMTxSetState:
+		req := &proto.TxSetStateRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmTxSetState(req)
 	case opFSMTxCommit:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
@@ -330,20 +336,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmTxDentryRollback(req)
-	case opFSMTxRestoreRollbackInode:
-		req := &proto.TxRestoreRollbackInodeRequest{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
-			return
-		}
-		resp = mp.fsmTxRestoreRollbackInode(req)
-	case opFSMTxRestoreRollbackDentry:
-		req := &proto.TxRestoreRollbackDentryRequest{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
-			return
-		}
-		resp = mp.fsmTxRestoreRollbackDentry(req)
 	case opFSMTxDeleteDentry:
-		txDen := NewTxDentry(0, "", 0, 0, nil)
+		txDen := NewTxDentry(0, "", 0, 0, nil, nil)
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}

@@ -171,22 +171,10 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error) {
 
 	txInfo := req.TxInfo.GetCopy()
-	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
-		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
-		txInfo.TmID = int64(mp.config.PartitionId)
-		txInfo.CreateTime = time.Now().Unix()
-	} else {
-		//todo_tx:RM
-	}*/
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
-	} /* else {
-		if txInfo.IsExpired() {
-			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
-			return
-		}
-	}*/
+	}
 
 	ino := NewInode(req.Inode, 0)
 	inoResp := mp.getInode(ino)
@@ -379,22 +367,10 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 
 func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet) (err error) {
 	txInfo := req.TxInfo.GetCopy()
-	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
-		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
-		txInfo.TmID = int64(mp.config.PartitionId)
-		txInfo.CreateTime = time.Now().Unix()
-	} else {
-		//todo_tx:RM
-	}*/
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
-	} /* else {
-		if txInfo.IsExpired() {
-			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
-			return
-		}
-	}*/
+	}
 
 	ino := NewInode(req.Inode, 0)
 	inoResp := mp.getInode(ino)
@@ -632,28 +608,13 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	}
 
 	txInfo := req.TxInfo.GetCopy()
-	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
-		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
-		txInfo.TmID = int64(mp.config.PartitionId)
-		txInfo.CreateTime = time.Now().Unix()
-	} else {
-		//todo_tx:RM
-	}*/
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
-	} /* else {
-		if txInfo.IsExpired() {
-			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
-			return
-		}
-	}*/
+	}
 
 	addrs := make([]string, 0)
 	for _, peer := range mp.config.Peers {
-		//if mp.config.NodeId == peer.ID {
-		//	continue
-		//}
 		addr := strings.Split(peer.Addr, ":")[0] + ":" + mp.manager.metaNode.listen
 		addrs = append(addrs, addr)
 	}
@@ -717,18 +678,6 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	}
 
 	if resp == proto.OpOk {
-		/*resp := &proto.TxCreateInodeResponse{
-			Info:   &proto.InodeInfo{},
-			TxInfo: rstTxInfo,
-		}
-		if txReplyInfo(resp, txIno) {
-			status = proto.OpOk
-			reply, err = json.Marshal(resp)
-			if err != nil {
-				status = proto.OpErr
-				reply = []byte(err.Error())
-			}
-		}*/
 		resp := txReplyInfo(txIno.Inode, rstTxInfo)
 		status = proto.OpOk
 		reply, err = json.Marshal(resp)

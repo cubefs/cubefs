@@ -41,24 +41,19 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 	}
 
 	txInfo := req.TxInfo.GetCopy()
-	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
-		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
-		txInfo.TmID = int64(mp.config.PartitionId)
-		txInfo.CreateTime = time.Now().Unix()
-	} else {
-		//todo_tx:RM
-	}*/
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
-	} /* else {
-		if txInfo.IsExpired() {
-			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
-			return
-		}
-	}*/
+	}
 
-	txDentry := NewTxDentry(req.ParentID, req.Name, req.Inode, req.Mode, txInfo)
+	parIno := NewInode(req.ParentID, 0)
+	inoResp := mp.getInode(parIno)
+	if inoResp.Status != proto.OpOk {
+		p.PacketErrorWithBody(inoResp.Status, nil)
+		return
+	}
+
+	txDentry := NewTxDentry(req.ParentID, req.Name, req.Inode, req.Mode, parIno, txInfo)
 
 	val, err := txDentry.Marshal()
 	if err != nil {
@@ -146,19 +141,10 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 
 func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet) (err error) {
 	txInfo := req.TxInfo.GetCopy()
-	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
-		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
-		txInfo.TmID = int64(mp.config.PartitionId)
-		txInfo.CreateTime = time.Now().Unix()
-	}*/
+
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
-	} /* else {
-		if txInfo.IsExpired() {
-			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
-			return
-		}
-	}*/
+	}
 
 	den := &Dentry{
 		ParentId: req.ParentID,
@@ -170,9 +156,17 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		return
 	}
 
+	parIno := NewInode(req.ParentID, 0)
+	inoResp := mp.getInode(parIno)
+	if inoResp.Status != proto.OpOk {
+		p.PacketErrorWithBody(inoResp.Status, nil)
+		return
+	}
+
 	txDentry := &TxDentry{
-		Dentry: dentry,
-		TxInfo: txInfo,
+		ParInode: parIno,
+		Dentry:   dentry,
+		TxInfo:   txInfo,
 	}
 
 	val, err := txDentry.Marshal()
@@ -309,20 +303,10 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 	}
 
 	txInfo := req.TxInfo.GetCopy()
-	/*if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
-		txInfo.TxID = mp.txProcessor.txManager.nextTxID()
-		txInfo.TmID = int64(mp.config.PartitionId)
-		txInfo.CreateTime = time.Now().Unix()
-	}*/
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
-	} /* else {
-		if txInfo.IsExpired() {
-			p.PacketErrorWithBody(proto.OpTxTimeoutErr, nil)
-			return
-		}
-	}*/
+	}
 
 	newDentry := &Dentry{
 		ParentId: req.ParentID,
