@@ -40,7 +40,6 @@ Due to the interdependence of the modules, the deployment should be carried out 
     > [Kafka](https://kafka.apache.org/documentation/#basic_ops)
     >
     > [Consul](https://learn.hashicorp.com/tutorials/consul/get-started-install?in=consul/getting-started)
-    > (optional, supports Consul)
 
 3.  **Language Environment**
 

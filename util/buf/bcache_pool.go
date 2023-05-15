@@ -1,18 +1,21 @@
 package buf
 
 import (
+	"sync"
+	"sync/atomic"
+
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
-	"sync"
-	"sync/atomic"
 )
 
-var bcacheTotalLimit int64
-var bcacheRateLimit = rate.NewLimiter(rate.Limit(1), 16)
-var bcacheCount int64
-var BCachePool *FileBCachePool
+var (
+	bcacheTotalLimit int64
+	bcacheRateLimit  = rate.NewLimiter(rate.Limit(1), 16)
+	bcacheCount      int64
+	BCachePool       *FileBCachePool
+)
 
 func newBlockCachePool(blockSize int) *sync.Pool {
 	return &sync.Pool{

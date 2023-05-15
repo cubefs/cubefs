@@ -40,7 +40,6 @@ $ sh build.sh
     > [Kafka](https://kafka.apache.org/documentation/#basic_ops)
     >
     > [Consul](https://learn.hashicorp.com/tutorials/consul/get-started-install?in=consul/getting-started)
-    > （可选，支持consul）
 
 3.  **语言环境**
 
