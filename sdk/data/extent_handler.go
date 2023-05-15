@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
@@ -62,10 +63,10 @@ type ExtentHandler struct {
 	status int32
 
 	// Created, filled and sent in Write.
-	packet                    *Packet
+	packet                    *common.Packet
 	packetMutex               sync.RWMutex // for packet and packetList
 	cachePacket               bool
-	packetList                []*Packet
+	packetList                []*common.Packet
 	overwriteLocalPacketMutex sync.Mutex
 
 	// Updated in *write* method ONLY.
@@ -108,8 +109,8 @@ type ExtentHandler struct {
 	// node, and then throw it back to the *reply* channel.
 	// The *receiver* gets the packets from the *reply* channel, waits for the
 	// reply from the data node, and then deals with it.
-	request chan *Packet
-	reply   chan *Packet
+	request chan *common.Packet
+	reply   chan *common.Packet
 
 	// Signaled in stream writer ONLY to exit *receiver*.
 	doneReceiver chan struct{}
@@ -134,8 +135,8 @@ func NewExtentHandler(stream *Streamer, offset uint64, storeMode int, cachePacke
 		fileOffset:   offset,
 		storeMode:    storeMode,
 		empty:        make(chan struct{}, 1024),
-		request:      make(chan *Packet, 1024),
-		reply:        make(chan *Packet, 1024),
+		request:      make(chan *common.Packet, 1024),
+		reply:        make(chan *common.Packet, 1024),
 		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
 		cachePacket:  cachePacket,
@@ -193,7 +194,7 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 
 	for total < size {
 		if eh.packet == nil {
-			eh.packet = NewWritePacket(context.Background(), eh.inode, offset+uint64(total), eh.storeMode, blksize)
+			eh.packet = common.NewWritePacket(context.Background(), eh.inode, offset+uint64(total), eh.storeMode, blksize)
 			if direct {
 				eh.packet.Opcode = proto.OpSyncWrite
 			}
@@ -283,7 +284,7 @@ func (eh *ExtentHandler) sender() {
 				continue
 			}
 
-			if err = packet.writeToConn(eh.conn, eh.stream.client.dataWrapper.connConfig.WriteTimeoutNs); err != nil {
+			if err = packet.WriteToConn(eh.conn, eh.stream.client.dataWrapper.connConfig.WriteTimeoutNs); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
 				eh.setRecovery()
@@ -324,7 +325,7 @@ func (eh *ExtentHandler) receiver() {
 	}
 }
 
-func (eh *ExtentHandler) processReply(packet *Packet) {
+func (eh *ExtentHandler) processReply(packet *common.Packet) {
 	defer func() {
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
 			eh.empty <- struct{}{}
@@ -357,7 +358,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 	packet.WaitT = time.Now().UnixNano()
 
-	reply := NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
+	reply := common.NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
 	readDeadLineTime := ReadTimeoutData - int(cost.Seconds())
 	if readDeadLineTime < proto.MinReadDeadlineTime {
 		readDeadLineTime = proto.MinReadDeadlineTime
@@ -386,7 +387,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 
-	if !packet.isValidWriteReply(reply) {
+	if !packet.IsValidWriteReply(reply) {
 		errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
 		eh.dp.RecordWrite(packet.StartT, true)
@@ -439,14 +440,14 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	return
 }
 
-func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
+func (eh *ExtentHandler) processReplyError(packet *common.Packet, errmsg string) {
 	eh.setClosed()
 	eh.setRecovery()
 	if err := eh.recoverPacket(packet, errmsg); err != nil {
 		eh.discardPacket(packet)
 		log.LogErrorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
 	} else {
-		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) errmsg(%v) errCount(%v)", eh, eh.recoverHandler, packet, errmsg, packet.errCount)
+		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) errmsg(%v) errCount(%v)", eh, eh.recoverHandler, packet, errmsg, packet.ErrCount)
 	}
 }
 
@@ -580,16 +581,16 @@ func (eh *ExtentHandler) waitForFlush(ctx context.Context) {
 	}
 }
 
-func (eh *ExtentHandler) recoverPacket(packet *Packet, errmsg string) error {
-	packet.errCount++
-	if packet.errCount%50 == 0 {
-		log.LogWarnf("recoverPacket: try (%v)th times because of failing to write to extent, eh(%v) packet(%v)", packet.errCount, eh, packet)
-		umpMsg := fmt.Sprintf("append write recoverPacket err(%v) eh(%v) packet(%v) try count(%v)", errmsg, eh, packet, packet.errCount)
+func (eh *ExtentHandler) recoverPacket(packet *common.Packet, errmsg string) error {
+	packet.ErrCount++
+	if packet.ErrCount%50 == 0 {
+		log.LogWarnf("recoverPacket: try (%v)th times because of failing to write to extent, eh(%v) packet(%v)", packet.ErrCount, eh, packet)
+		umpMsg := fmt.Sprintf("append write recoverPacket err(%v) eh(%v) packet(%v) try count(%v)", errmsg, eh, packet, packet.ErrCount)
 		handleUmpAlarm(eh.stream.client.dataWrapper.clusterName, eh.stream.client.dataWrapper.volName, "recoverPacket", umpMsg)
 		time.Sleep(1 * time.Second)
 	}
 
-	if packet.errCount >= MaxPacketErrorCount {
+	if packet.ErrCount >= MaxPacketErrorCount {
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
 	}
 
@@ -614,7 +615,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet, errmsg string) error {
 	return nil
 }
 
-func (eh *ExtentHandler) discardPacket(packet *Packet) {
+func (eh *ExtentHandler) discardPacket(packet *common.Packet) {
 	if !eh.cachePacket {
 		proto.Buffers.Put(packet.Data)
 		packet.Data = nil
@@ -717,7 +718,7 @@ func (eh *ExtentHandler) ehCreateExtent(ctx context.Context, conn *net.TCPConn, 
 }
 
 func CreateExtent(ctx context.Context, conn *net.TCPConn, inode uint64, dp *DataPartition, quorum int) (extID int, err error) {
-	p := NewCreateExtentPacket(ctx, dp, quorum, inode)
+	p := common.NewCreateExtentPacket(ctx, dp.PartitionID, dp.GetAllHosts(), quorum, inode)
 	if err = p.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
 		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
@@ -762,7 +763,7 @@ func (eh *ExtentHandler) flushPacket(ctx context.Context) {
 	eh.overwriteLocalPacketMutex.Unlock()
 }
 
-func (eh *ExtentHandler) pushToRequest(ctx context.Context, packet *Packet) {
+func (eh *ExtentHandler) pushToRequest(ctx context.Context, packet *common.Packet) {
 	// Increase before sending the packet, because inflight is used
 	// to determine if the handler has finished.
 	atomic.AddInt32(&eh.inflight, 1)

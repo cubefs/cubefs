@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 )
@@ -22,7 +23,7 @@ func (s *Streamer) WritePendingPacket(data []byte, offset uint64, size int, dire
 	var (
 		total, write       int
 		pendingPacketIndex int
-		curPendingPacket   *Packet
+		curPendingPacket   *common.Packet
 	)
 	// find index to insert
 	pendingPacketIndex = 0
@@ -36,7 +37,7 @@ func (s *Streamer) WritePendingPacket(data []byte, offset uint64, size int, dire
 			break
 		}
 	}
-	var newPendingPacketList []*Packet
+	var newPendingPacketList []*common.Packet
 	newPendingPacketList = append(newPendingPacketList, s.pendingPacketList[:pendingPacketIndex]...)
 	if curPendingPacket != nil {
 		newPendingPacketList = append(newPendingPacketList, curPendingPacket)
@@ -45,7 +46,7 @@ func (s *Streamer) WritePendingPacket(data []byte, offset uint64, size int, dire
 	// write current pending packet
 	for total < size {
 		if curPendingPacket == nil {
-			curPendingPacket = NewWritePacket(context.Background(), s.handler.inode, offset+uint64(total), s.handler.storeMode, blksize)
+			curPendingPacket = common.NewWritePacket(context.Background(), s.handler.inode, offset+uint64(total), s.handler.storeMode, blksize)
 			if direct {
 				curPendingPacket.Opcode = proto.OpSyncWrite
 			}
@@ -81,7 +82,7 @@ func (s *Streamer) WritePendingPacket(data []byte, offset uint64, size int, dire
 	return ek, nil
 }
 
-func (s *Streamer) FlushContinuousPendingPacket(ctx context.Context) (newPendingPacketList []*Packet) {
+func (s *Streamer) FlushContinuousPendingPacket(ctx context.Context) (newPendingPacketList []*common.Packet) {
 	for _, pendingPacket := range s.pendingPacketList {
 		if log.IsDebugEnabled() {
 			log.LogDebugf("FlushContinuousPendingPacket: eh(%v) packet(%v) check pending packet(%v)", s.handler, s.handler.packet, pendingPacket)
@@ -126,7 +127,7 @@ func (s *Streamer) FlushAllPendingPacket(ctx context.Context) {
 	if log.IsDebugEnabled() {
 		log.LogDebugf("FlushAllPendingPacket: inode(%v) clean pending list(%v)", s.inode, s.pendingPacketList)
 	}
-	s.pendingPacketList = make([]*Packet, 0)
+	s.pendingPacketList = make([]*common.Packet, 0)
 }
 
 func (s *Streamer) OverwriteLocalPacket(req *ExtentRequest) bool {
@@ -159,6 +160,6 @@ func (s *Streamer) OverwriteLocalPacket(req *ExtentRequest) bool {
 	return false
 }
 
-func (s *Streamer) doOverwriteLocalPacket(packet *Packet, req *ExtentRequest) {
+func (s *Streamer) doOverwriteLocalPacket(packet *common.Packet, req *ExtentRequest) {
 	copy(packet.Data[(req.FileOffset-packet.KernelOffset):(req.FileOffset+uint64(req.Size)-packet.KernelOffset)], req.Data[:req.Size])
 }

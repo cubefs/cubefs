@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -231,12 +232,12 @@ func isExcluded(dp *DataPartition, exclude map[string]struct{}, quorum int) bool
 	return false
 }
 
-func (dp *DataPartition) LeaderRead(reqPacket *Packet, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
+func (dp *DataPartition) LeaderRead(reqPacket *common.Packet, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
 	sc = NewStreamConn(dp, false)
 	errMap := make(map[string]error)
 	tryOther := false
 
-	var reply *Packet
+	var reply *common.Packet
 	readBytes, reply, tryOther, err = dp.sendReadCmdToDataPartition(sc, reqPacket, req)
 	if err == nil {
 		return
@@ -268,7 +269,7 @@ func (dp *DataPartition) LeaderRead(reqPacket *Packet, req *ExtentRequest) (sc *
 	return
 }
 
-func (dp *DataPartition) FollowerRead(reqPacket *Packet, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
+func (dp *DataPartition) FollowerRead(reqPacket *common.Packet, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
 	sc = NewStreamConn(dp, true)
 	errMap := make(map[string]error)
 
@@ -303,7 +304,7 @@ func (dp *DataPartition) FollowerRead(reqPacket *Packet, req *ExtentRequest) (sc
 	return
 }
 
-func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, err error) {
+func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *common.Packet, req *ExtentRequest) (readBytes int, err error) {
 	var (
 		targetHosts []string
 		errMap      map[string]error
@@ -338,11 +339,11 @@ func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *Pack
 		sc, reqPacket, isErr, targetHosts, errMap))
 }
 
-func (dp *DataPartition) SendReadCmdToDataPartition(sc *StreamConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, reply *Packet, tryOther bool, err error) {
+func (dp *DataPartition) SendReadCmdToDataPartition(sc *StreamConn, reqPacket *common.Packet, req *ExtentRequest) (readBytes int, reply *common.Packet, tryOther bool, err error) {
 	return dp.sendReadCmdToDataPartition(sc, reqPacket, req)
 }
 
-func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, reply *Packet, tryOther bool, err error) {
+func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *common.Packet, req *ExtentRequest) (readBytes int, reply *common.Packet, tryOther bool, err error) {
 	if sc.currAddr == "" {
 		err = errors.New(fmt.Sprintf("sendReadCmdToDataPartition: failed, current address is null, reqPacket(%v)", reqPacket))
 		tryOther = true
@@ -373,7 +374,7 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *P
 
 // Send send the given packet over the network through the stream connection until success
 // or the maximum number of retries is reached.
-func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (err error) {
+func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *common.Packet) (err error) {
 	err = dp.OverWriteToDataPartitionLeader(sc, req, reply)
 	if err == nil && reply.ResultCode == proto.OpOk {
 		return
@@ -416,7 +417,7 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 	return errors.New(fmt.Sprintf("OverWrite failed: sc(%v) errMap(%v) reply(%v) reqPacket(%v)", sc, errMap, reply, req))
 }
 
-func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *Packet, reply *Packet) (err error) {
+func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *common.Packet, reply *common.Packet) (err error) {
 	var conn *net.TCPConn
 	defer func() {
 		StreamConnPool.PutConnectWithErr(conn, err)
@@ -459,7 +460,7 @@ func chooseEcNode(hosts []string, stripeUnitSize, extentOffset uint64, dp *DataP
 	return
 }
 
-func (dp *DataPartition) EcRead(reqPacket *Packet, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
+func (dp *DataPartition) EcRead(reqPacket *common.Packet, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
 	errMap := make(map[string]error)
 	hosts := proto.GetEcHostsByExtentId(uint64(len(dp.EcHosts)), req.ExtentKey.ExtentId, dp.EcHosts)
 	stripeUnitSize := proto.CalStripeUnitSize(uint64(req.ExtentKey.Size), dp.EcMaxUnitSize, uint64(dp.EcDataNum))

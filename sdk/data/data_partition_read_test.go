@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -211,7 +212,7 @@ func TestConsistenceRead(t *testing.T) {
 	for _, ek := range eks {
 		data := make([]byte, ek.Size)
 		req := NewExtentRequest(ek.FileOffset, int(ek.Size), data, &ek)
-		reqPacket := NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, false)
+		reqPacket := common.NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, false)
 		partition, getErr := streamer.client.dataWrapper.GetDataPartition(ek.PartitionId)
 		if getErr != nil {
 			t.Errorf("GetDataPartition: err(%v) pid(%v)", getErr, ek.PartitionId)

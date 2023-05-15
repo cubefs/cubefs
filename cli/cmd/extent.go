@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/sdk/data"
 	sdk "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
@@ -1972,7 +1973,7 @@ func readExtent(dp *proto.DataPartitionResponse, addr string, extentId uint64, d
 	dataPartition.ClientWrapper.SetConnConfig()
 	dataPartition.ClientWrapper.SetDpFollowerReadDelayConfig(false, 60)
 	sc := data.NewStreamConnWithAddr(dataPartition, addr)
-	reqPacket := data.NewReadPacket(ctx, ek, int(offset), size, 0, offset, true)
+	reqPacket := common.NewReadPacket(ctx, ek, int(offset), size, 0, offset, true)
 	req := data.NewExtentRequest(0, 0, d, nil)
 	_, _, _, err = dataPartition.SendReadCmdToDataPartition(sc, reqPacket, req)
 	return

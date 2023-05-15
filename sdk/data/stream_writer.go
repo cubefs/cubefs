@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
@@ -499,7 +500,7 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 
 	for total < size {
 		currSize := unit.Min(size-total, unit.OverWritePacketSizeLimit)
-		packet := NewROWPacket(ctx, dp, s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset+uint64(total), total, currSize)
+		packet := common.NewROWPacket(ctx, dp.PartitionID, dp.GetAllHosts(), s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset+uint64(total), total, currSize)
 		if direct {
 			packet.Opcode = proto.OpSyncWrite
 		}
@@ -509,9 +510,9 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 		if err != nil {
 			break
 		}
-		reply := NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
+		reply := common.NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
 		err = reply.ReadFromConnNs(conn, s.client.dataWrapper.connConfig.ReadTimeoutNs)
-		if err != nil || reply.ResultCode != proto.OpOk || !packet.isValidWriteReply(reply) || reply.CRC != packet.CRC {
+		if err != nil || reply.ResultCode != proto.OpOk || !packet.IsValidWriteReply(reply) || reply.CRC != packet.CRC {
 			err = fmt.Errorf("err[%v]-packet[%v]-reply[%v]", err, packet, reply)
 			break
 		}
@@ -604,7 +605,7 @@ func (s *Streamer) writeToSpecificExtent(ctx context.Context, oriReq *ExtentRequ
 func (s *Streamer) writeToExtentSpecificOffset(ctx context.Context, oriReq *ExtentRequest, dp *DataPartition, extID, extentOffset int,
 	direct bool, conn *net.TCPConn) (total int, err error) {
 
-	packet := NewROWPacket(ctx, dp, s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset, extentOffset, oriReq.Size)
+	packet := common.NewROWPacket(ctx, dp.PartitionID, dp.GetAllHosts(), s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset, extentOffset, oriReq.Size)
 	if direct {
 		packet.Opcode = proto.OpSyncWrite
 	}
@@ -614,9 +615,9 @@ func (s *Streamer) writeToExtentSpecificOffset(ctx context.Context, oriReq *Exte
 	if err != nil {
 		return
 	}
-	reply := NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
+	reply := common.NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
 	err = reply.ReadFromConnNs(conn, s.client.dataWrapper.connConfig.ReadTimeoutNs)
-	if err != nil || reply.ResultCode != proto.OpOk || !packet.isValidWriteReply(reply) || reply.CRC != packet.CRC {
+	if err != nil || reply.ResultCode != proto.OpOk || !packet.IsValidWriteReply(reply) || reply.CRC != packet.CRC {
 		err = fmt.Errorf("err[%v]-packet[%v]-reply[%v]", err, packet, reply)
 		return
 	}
@@ -684,7 +685,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 	sc := NewStreamConn(dp, false)
 
 	for total < size {
-		reqPacket := NewOverwritePacket(ctx, dp, req.ExtentKey.ExtentId, int(offset-ekFileOffset)+total+ekExtOffset, s.inode, offset)
+		reqPacket := common.NewOverwritePacket(ctx, dp.PartitionID, req.ExtentKey.ExtentId, int(offset-ekFileOffset)+total+ekExtOffset, s.inode, offset)
 		if direct {
 			reqPacket.Opcode = proto.OpSyncRandomWrite
 		}
@@ -693,7 +694,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 		reqPacket.Size = uint32(packSize)
 		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
 
-		replyPacket := GetOverWritePacketFromPool()
+		replyPacket := common.GetOverWritePacketFromPool()
 		err = dp.OverWrite(sc, reqPacket, replyPacket)
 
 		reqPacket.Data = nil
@@ -706,12 +707,12 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 			break
 		}
 
-		if !reqPacket.isValidWriteReply(replyPacket) || reqPacket.CRC != replyPacket.CRC {
+		if !reqPacket.IsValidWriteReply(replyPacket) || reqPacket.CRC != replyPacket.CRC {
 			err = errors.New(fmt.Sprintf("doOverwrite: is not the corresponding reply, ino(%v) req(%v) replyPacket(%v)", s.inode, req, replyPacket))
 			break
 		}
-		PutOverWritePacketToPool(reqPacket)
-		PutOverWritePacketToPool(replyPacket)
+		common.PutOverWritePacketToPool(reqPacket)
+		common.PutOverWritePacketToPool(replyPacket)
 
 		total += packSize
 	}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 )
@@ -42,15 +43,15 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 		name                    string
 		writeOffset             uint64
 		writeSize               int
-		orgPendingPacketList    []*Packet
-		expectPendingPacketList []*Packet
+		orgPendingPacketList    []*common.Packet
+		expectPendingPacketList []*common.Packet
 	}{
 		{
 			name:                 "test01",
 			writeOffset:          10,
 			writeSize:            128,
-			orgPendingPacketList: []*Packet{},
-			expectPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{},
+			expectPendingPacketList: []*common.Packet{
 				newPacket(10, 128),
 			},
 		},
@@ -59,12 +60,12 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			name:        "test02",
 			writeOffset: 5,
 			writeSize:   10,
-			orgPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
 				newPacket(300, 400),
 			},
-			expectPendingPacketList: []*Packet{
+			expectPendingPacketList: []*common.Packet{
 				newPacket(5, 10),
 				newPacket(100, 50),
 				newPacket(200, 100),
@@ -76,12 +77,12 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			name:        "test03",
 			writeOffset: 160,
 			writeSize:   30,
-			orgPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
 				newPacket(300, 400),
 			},
-			expectPendingPacketList: []*Packet{
+			expectPendingPacketList: []*common.Packet{
 				newPacket(100, 50),
 				newPacket(160, 30),
 				newPacket(200, 100),
@@ -93,12 +94,12 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			name:        "test04",
 			writeOffset: 500,
 			writeSize:   600,
-			orgPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
 				newPacket(300, 400),
 			},
-			expectPendingPacketList: []*Packet{
+			expectPendingPacketList: []*common.Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
 				newPacket(300, 400),
@@ -110,12 +111,12 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			name:        "test05",
 			writeOffset: 50,
 			writeSize:   50,
-			orgPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
 				newPacket(300, 400),
 			},
-			expectPendingPacketList: []*Packet{
+			expectPendingPacketList: []*common.Packet{
 				newPacket(50, 50),
 				newPacket(100, 50),
 				newPacket(200, 100),
@@ -127,12 +128,12 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			name:        "test06",
 			writeOffset: 150,
 			writeSize:   50,
-			orgPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{
 				newPacket(100, 50),
 				newPacket(200, 100),
 				newPacket(300, 400),
 			},
-			expectPendingPacketList: []*Packet{
+			expectPendingPacketList: []*common.Packet{
 				newPacket(100, 100),
 				newPacket(200, 100),
 				newPacket(300, 400),
@@ -143,12 +144,12 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			name:        "test07",
 			writeOffset: 150,
 			writeSize:   128 * 1024,
-			orgPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{
 				newPacket(100, 50),
 				newPacket(2*128*1024, 128*1024),
 				newPacket(3*128*1024, 100),
 			},
-			expectPendingPacketList: []*Packet{
+			expectPendingPacketList: []*common.Packet{
 				newPacket(100, 128*1024),
 				newPacket(100+128*1024, 50),
 				newPacket(2*128*1024, 128*1024),
@@ -160,12 +161,12 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			name:        "test08",
 			writeOffset: (2*128 + 64) * 1024,
 			writeSize:   (2*128 - 64) * 1024,
-			orgPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 64*1024),
 				newPacket(4*128*1024, 128*1024),
 			},
-			expectPendingPacketList: []*Packet{
+			expectPendingPacketList: []*common.Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 128*1024),
 				newPacket(3*128*1024, 128*1024),
@@ -177,12 +178,12 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			name:        "test09",
 			writeOffset: (2*128 + 64) * 1024,
 			writeSize:   128 * 1024,
-			orgPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 64*1024),
 				newPacket(4*128*1024, 128*1024),
 			},
-			expectPendingPacketList: []*Packet{
+			expectPendingPacketList: []*common.Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 128*1024),
 				newPacket(3*128*1024, 64*1024),
@@ -194,12 +195,12 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			name:        "test10",
 			writeOffset: (4*128 + 64) * 1024,
 			writeSize:   64 * 1024,
-			orgPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 64*1024),
 				newPacket(4*128*1024, 64*1024),
 			},
-			expectPendingPacketList: []*Packet{
+			expectPendingPacketList: []*common.Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 64*1024),
 				newPacket(4*128*1024, 128*1024),
@@ -210,12 +211,12 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			name:        "test11",
 			writeOffset: 5 * 128 * 1024,
 			writeSize:   128 * 1024,
-			orgPendingPacketList: []*Packet{
+			orgPendingPacketList: []*common.Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 64*1024),
 				newPacket(4*128*1024, 128*1024),
 			},
-			expectPendingPacketList: []*Packet{
+			expectPendingPacketList: []*common.Packet{
 				newPacket(0, 128*1024),
 				newPacket(2*128*1024, 64*1024),
 				newPacket(4*128*1024, 128*1024),
@@ -257,8 +258,8 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 	}
 }
 
-func newPacket(offset uint64, size uint32) (packet *Packet) {
-	packet = &Packet{}
+func newPacket(offset uint64, size uint32) (packet *common.Packet) {
+	packet = &common.Packet{}
 	packet.KernelOffset = offset
 	packet.Size = size
 	packet.Data = make([]byte, 128*1024)

@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package data
+package common
 
 import (
 	"context"
@@ -36,7 +36,7 @@ import (
 type Packet struct {
 	proto.Packet
 	inode    uint64
-	errCount int
+	ErrCount int
 }
 
 func EncodeReplPacketArg(followers []string, quorum int) []byte {
@@ -79,22 +79,22 @@ func NewWritePacket(ctx context.Context, inode uint64, fileOffset uint64, storeM
 }
 
 // NewWritePacket returns a new write packet.
-func NewROWPacket(ctx context.Context, dp *DataPartition, quorum int, inode uint64, extID int, fileOffset uint64, extentOffset, size int) *Packet {
+func NewROWPacket(ctx context.Context, partitionID uint64, hosts []string, quorum int, inode uint64, extID int, fileOffset uint64, extentOffset, size int) *Packet {
 	p := new(Packet)
 	p.ReqID = proto.GenerateRequestID()
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpWrite
 	p.ExtentType = proto.NormalExtentType
-	p.PartitionID = dp.PartitionID
+	p.PartitionID = partitionID
 	p.ExtentID = uint64(extID)
-	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
+	p.RemainingFollowers = uint8(len(hosts) - 1)
 	p.KernelOffset = uint64(fileOffset)
 	p.ExtentOffset = int64(extentOffset)
 	p.Size = uint32(size)
 	p.inode = inode
 
 	p.SetCtx(ctx)
-	p.SetupReplArg(dp.GetAllHosts(), quorum)
+	p.SetupReplArg(hosts, quorum)
 	return p
 }
 
@@ -140,9 +140,9 @@ func PutOverWritePacketToPool(p *Packet) {
 }
 
 // NewOverwritePacket returns a new overwrite packet.
-func NewOverwritePacket(ctx context.Context, dp *DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset uint64) *Packet {
+func NewOverwritePacket(ctx context.Context, partitionID, extentID uint64, extentOffset int, inode uint64, fileOffset uint64) *Packet {
 	p := GetOverWritePacketFromPool()
-	p.PartitionID = dp.PartitionID
+	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
 	p.ExtentID = extentID
@@ -184,19 +184,19 @@ func NewReadPacket(ctx context.Context, key *proto.ExtentKey, extentOffset, size
 }
 
 // NewCreateExtentPacket returns a new packet to create extent.
-func NewCreateExtentPacket(ctx context.Context, dp *DataPartition, quorum int, inode uint64) *Packet {
+func NewCreateExtentPacket(ctx context.Context, partitionID uint64, hosts []string, quorum int, inode uint64) *Packet {
 	p := new(Packet)
-	p.PartitionID = dp.PartitionID
+	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
-	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
+	p.RemainingFollowers = uint8(len(hosts) - 1)
 	p.ReqID = proto.GenerateRequestID()
 	p.Opcode = proto.OpCreateExtent
 	p.Data = make([]byte, 8)
 	binary.BigEndian.PutUint64(p.Data, inode)
 	p.Size = uint32(len(p.Data))
 	p.SetCtx(ctx)
-	p.SetupReplArg(dp.GetAllHosts(), quorum)
+	p.SetupReplArg(hosts, quorum)
 	return p
 }
 
@@ -226,26 +226,26 @@ func NewReply(ctx context.Context, reqID int64, partitionID uint64, extentID uin
 	return p
 }
 
-func (p *Packet) isValidWriteReply(q *Packet) bool {
+func (p *Packet) IsValidWriteReply(q *Packet) bool {
 	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID {
 		return true
 	}
 	return false
 }
 
-func (p *Packet) isValidReadReply(q *Packet) bool {
+func (p *Packet) IsValidReadReply(q *Packet) bool {
 	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.ExtentID == q.ExtentID {
 		return true
 	}
 	return false
 }
 
-func (p *Packet) writeToConn(conn net.Conn, timeoutNs int64) error {
+func (p *Packet) WriteToConn(conn net.Conn, timeoutNs int64) error {
 	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
 	return p.WriteToConnNs(conn, timeoutNs)
 }
 
-func (p *Packet) readFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
+func (p *Packet) ReadFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 	if deadlineTimeNs != proto.NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(time.Duration(deadlineTimeNs) * time.Nanosecond))
 	}
@@ -296,7 +296,7 @@ func (p *Packet) Copy() *Packet {
 		packet.Data = make([]byte, len(p.Data))
 	}
 	packet.SetCtx(p.Ctx())
-	packet.errCount = p.errCount
+	packet.ErrCount = p.ErrCount
 	return packet
 }
 

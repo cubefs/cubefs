@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 )
@@ -62,7 +63,7 @@ func (er *ExtentReader) EcTinyExtentRead(ctx context.Context, req *ExtentRequest
 	offset := int(req.FileOffset) - int(er.key.FileOffset) + int(er.key.ExtentOffset)
 	size := req.Size
 
-	reqPacket := NewTinyExtentReadPacket(ctx, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, offset, req.Size)
+	reqPacket := common.NewTinyExtentReadPacket(ctx, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, offset, req.Size)
 
 	log.LogDebugf("grep : size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 
@@ -102,7 +103,7 @@ func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes
 		realReq = NewExtentRequest(req.FileOffset, size, data, req.ExtentKey)
 	}
 
-	reqPacket := NewReadPacket(ctx, er.key, offset, size, er.inode, req.FileOffset, er.followerRead)
+	reqPacket := common.NewReadPacket(ctx, er.key, offset, size, er.inode, req.FileOffset, er.followerRead)
 
 	log.LogDebugf("ExtentReader Read enter: req.Size(%v) size(%v) req(%v) reqPacket(%v)", req.Size, size, req, reqPacket)
 
@@ -124,7 +125,7 @@ func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes
 	return
 }
 
-func (er *ExtentReader) read(dp *DataPartition, reqPacket *Packet, req *ExtentRequest, followerRead bool) (readBytes int, err error) {
+func (er *ExtentReader) read(dp *DataPartition, reqPacket *common.Packet, req *ExtentRequest, followerRead bool) (readBytes int, err error) {
 	var sc *StreamConn
 	if dp.canEcRead() {
 		reqPacket.Opcode = proto.OpStreamEcRead

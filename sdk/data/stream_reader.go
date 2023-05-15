@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/net/context"
@@ -66,7 +67,7 @@ type Streamer struct {
 	extentReader *ExtentReader
 
 	writeLock         sync.Mutex
-	pendingPacketList []*Packet
+	pendingPacketList []*common.Packet
 }
 
 // NewStreamer returns a new streamer.
@@ -83,7 +84,7 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.streamerMap = streamMap
 	s.appendWriteBuffer = appendWriteBuffer
 	s.readAhead = readAhead
-	s.pendingPacketList = make([]*Packet, 0)
+	s.pendingPacketList = make([]*common.Packet, 0)
 	s.wg.Add(1)
 	go s.server()
 	return s
@@ -314,7 +315,7 @@ func (s *Streamer) UpdateExpiredExtentCache(ctx context.Context) {
 	}
 }
 
-func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *Packet) (targetHosts []string, isErr bool) {
+func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *common.Packet) (targetHosts []string, isErr bool) {
 	isErr = false
 	appliedIDslice := make(map[string]uint64, len(hosts))
 	errSlice := make(map[string]error)
@@ -351,7 +352,7 @@ func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hos
 	return
 }
 
-func (dp *DataPartition) getDpAppliedID(ctx context.Context, pid uint64, addr string, orgPacket *Packet) (appliedID uint64, err error) {
+func (dp *DataPartition) getDpAppliedID(ctx context.Context, pid uint64, addr string, orgPacket *common.Packet) (appliedID uint64, err error) {
 	var conn *net.TCPConn
 	if conn, err = StreamConnPool.GetConnect(addr); err != nil {
 		log.LogWarnf("getDpAppliedID: failed to create connection, orgPacket(%v) pid(%v) dpHost(%v) err(%v)", orgPacket, pid, addr, err)
@@ -362,7 +363,7 @@ func (dp *DataPartition) getDpAppliedID(ctx context.Context, pid uint64, addr st
 		StreamConnPool.PutConnectWithErr(conn, err)
 	}()
 
-	p := NewPacketToGetDpAppliedID(ctx, pid)
+	p := common.NewPacketToGetDpAppliedID(ctx, pid)
 	if err = p.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
 		log.LogWarnf("getDpAppliedID: failed to WriteToConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", p, addr, orgPacket, err)
 		return

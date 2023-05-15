@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
@@ -464,7 +465,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 	data := make([]byte, size)
 	req := NewExtentRequest(fileOffset, size, data, &ek)
-	reqPacket := NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, true)
+	reqPacket := common.NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, true)
 	// read from three replicas, check if same
 	readMap := make(map[string]string)
 	for _, addr := range host {

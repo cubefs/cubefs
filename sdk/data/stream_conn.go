@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -107,7 +108,7 @@ func (sc *StreamConn) String() string {
 	return fmt.Sprintf("Partition(%v) CurrentAddr(%v) Hosts(%v)", sc.dp.PartitionID, sc.currAddr, sc.dp.Hosts)
 }
 
-func (sc *StreamConn) sendToDataPartition(req *Packet) (conn *net.TCPConn, err error) {
+func (sc *StreamConn) sendToDataPartition(req *common.Packet) (conn *net.TCPConn, err error) {
 	if log.IsDebugEnabled() {
 		log.LogDebugf("sendToDataPartition: send to addr(%v), reqPacket(%v)", sc.currAddr, req)
 	}
@@ -225,15 +226,15 @@ func (dp *DataPartition) getFollowerReadHost() string {
 	return dp.GetLeaderAddr()
 }
 
-func (sc *StreamConn) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, reply *Packet, tryOther bool, err error) {
+func (sc *StreamConn) getReadReply(conn *net.TCPConn, reqPacket *common.Packet, req *ExtentRequest) (readBytes int, reply *common.Packet, tryOther bool, err error) {
 	readBytes = 0
 	for readBytes < int(reqPacket.Size) {
-		replyPacket := NewReply(reqPacket.Ctx(), reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
+		replyPacket := common.NewReply(reqPacket.Ctx(), reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
 		bufSize := unit.Min(unit.ReadBlockSize, int(reqPacket.Size)-readBytes)
 		replyPacket.Data = req.Data[readBytes : readBytes+bufSize]
-		e := replyPacket.readFromConn(conn, sc.dp.ClientWrapper.connConfig.ReadTimeoutNs)
+		e := replyPacket.ReadFromConn(conn, sc.dp.ClientWrapper.connConfig.ReadTimeoutNs)
 		if e != nil {
-			log.LogWarnf("getReadReply: failed to read from connect, ino(%v) req(%v) readBytes(%v) err(%v)", reqPacket.inode, reqPacket, readBytes, e)
+			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, e)
 			// Upon receiving TryOtherAddrError, other hosts will be retried.
 			return readBytes, replyPacket, true, e
 		}
@@ -251,12 +252,12 @@ func (sc *StreamConn) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *Ex
 	return readBytes, nil, false, nil
 }
 
-func checkReadReplyValid(request *Packet, reply *Packet) (err error) {
+func checkReadReplyValid(request *common.Packet, reply *common.Packet) (err error) {
 	if reply.ResultCode != proto.OpOk {
 		err = errors.New(fmt.Sprintf("checkReadReplyValid: ResultCode(%v) NOK", reply.GetResultMsg()))
 		return
 	}
-	if !request.isValidReadReply(reply) {
+	if !request.IsValidReadReply(reply) {
 		err = errors.New(fmt.Sprintf("checkReadReplyValid: inconsistent req and reply, req(%v) reply(%v)", request, reply))
 		return
 	}
