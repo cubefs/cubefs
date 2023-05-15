@@ -1580,12 +1580,12 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	repUsedSizeDifferDpIDs = make([]uint64, 0)
 	excessReplicaDpIDs = make([]uint64, 0)
 
-	if inactiveNodes, corruptDps, err = m.cluster.checkCorruptDataPartitions(); err != nil {
+	if inactiveNodes, err = m.cluster.checkInactiveDataNodes(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs, err =
+	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs, corruptDps, err =
 		m.cluster.checkReplicaOfDataPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -3171,14 +3171,18 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		err               error
-		rstMsg            *proto.MetaPartitionDiagnosis
-		inactiveNodes     []string
-		corruptMps        []*MetaPartition
-		lackReplicaMps    []*MetaPartition
-		corruptMpIDs      []uint64
-		lackReplicaMpIDs  []uint64
-		badMetaPartitions []badPartitionView
+		err                error
+		rstMsg             *proto.MetaPartitionDiagnosis
+		inactiveNodes      []string
+		noLeaderMps        []*MetaPartition
+		lackReplicaMps     []*MetaPartition
+		badReplicaMps      []*MetaPartition
+		excessReplicaMPs   []*MetaPartition
+		corruptMpIDs       []uint64
+		lackReplicaMpIDs   []uint64
+		badReplicaMpIDs    []uint64
+		excessReplicaDpIDs []uint64
+		badMetaPartitions  []badPartitionView
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDiagnoseMetaPartition))
 	defer func() {
@@ -3187,27 +3191,41 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 
 	corruptMpIDs = make([]uint64, 0)
 	lackReplicaMpIDs = make([]uint64, 0)
-	if inactiveNodes, corruptMps, err = m.cluster.checkCorruptMetaPartitions(); err != nil {
+	badReplicaMpIDs = make([]uint64, 0)
+	excessReplicaDpIDs = make([]uint64, 0)
+
+	if inactiveNodes, err = m.cluster.checkInactiveMetaNodes(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 	}
 
-	if lackReplicaMps, err = m.cluster.checkLackReplicaMetaPartitions(); err != nil {
+	if lackReplicaMps, noLeaderMps, badReplicaMps, excessReplicaMPs, err = m.cluster.checkReplicaMetaPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 	}
-	for _, mp := range corruptMps {
+	for _, mp := range noLeaderMps {
 		corruptMpIDs = append(corruptMpIDs, mp.PartitionID)
 	}
 	for _, mp := range lackReplicaMps {
 		lackReplicaMpIDs = append(lackReplicaMpIDs, mp.PartitionID)
 	}
+	for _, mp := range badReplicaMps {
+		badReplicaMpIDs = append(badReplicaMpIDs, mp.PartitionID)
+	}
+	for _, mp := range excessReplicaMPs {
+		excessReplicaDpIDs = append(excessReplicaDpIDs, mp.PartitionID)
+	}
+
 	badMetaPartitions = m.cluster.getBadMetaPartitionsView()
 	rstMsg = &proto.MetaPartitionDiagnosis{
-		InactiveMetaNodes:           inactiveNodes,
-		CorruptMetaPartitionIDs:     corruptMpIDs,
-		LackReplicaMetaPartitionIDs: lackReplicaMpIDs,
-		BadMetaPartitionIDs:         badMetaPartitions,
+		InactiveMetaNodes:             inactiveNodes,
+		CorruptMetaPartitionIDs:       corruptMpIDs,
+		LackReplicaMetaPartitionIDs:   lackReplicaMpIDs,
+		BadMetaPartitionIDs:           badMetaPartitions,
+		BadReplicaMetaPartitionIDs:    badReplicaMpIDs,
+		ExcessReplicaMetaPartitionIDs: excessReplicaDpIDs,
 	}
-	log.LogInfof("diagnose metaPartition[%v] inactiveNodes:[%v], corruptMpIDs:[%v], lackReplicaMpIDs:[%v]", m.cluster.Name, inactiveNodes, corruptMpIDs, lackReplicaMpIDs)
+	log.LogInfof("diagnose metaPartition cluster[%v], inactiveNodes:[%v], corruptMpIDs:[%v], "+
+		"lackReplicaMpIDs:[%v], badReplicaMpIDs:[%v], excessReplicaDpIDs[%v]",
+		m.cluster.Name, inactiveNodes, corruptMpIDs, lackReplicaMpIDs, badReplicaMpIDs, excessReplicaDpIDs)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 

@@ -288,6 +288,25 @@ func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {
 		partition.PartitionID, partition.VolName, partition.ReplicaNum, formatDataPartitionStatus(partition.Status), strings.Join(partition.Hosts, ", "))
 }
 
+func formatBadReplicaMpInfoRow(partition *proto.MetaPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("[")
+	var firstItem = true
+	for _, replica := range partition.Replicas {
+		if replica.Status == proto.Unavailable {
+			if !firstItem {
+				sb.WriteString(", ")
+			}
+
+			sb.WriteString(fmt.Sprintf("%v", replica.Addr))
+			firstItem = false
+		}
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(badReplicaPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
+}
+
 func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	var sb = strings.Builder{}
 	sb.WriteString("\n")

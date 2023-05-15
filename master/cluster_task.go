@@ -229,10 +229,9 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 	return
 }
 
-func (c *Cluster) checkCorruptMetaPartitions() (inactiveMetaNodes []string, corruptPartitions []*MetaPartition, err error) {
-	partitionMap := make(map[uint64]uint8)
+func (c *Cluster) checkInactiveMetaNodes() (inactiveMetaNodes []string, err error) {
 	inactiveMetaNodes = make([]string, 0)
-	corruptPartitions = make([]*MetaPartition, 0)
+
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		if !metaNode.IsActive {
@@ -240,27 +239,8 @@ func (c *Cluster) checkCorruptMetaPartitions() (inactiveMetaNodes []string, corr
 		}
 		return true
 	})
-	for _, addr := range inactiveMetaNodes {
-		var metaNode *MetaNode
-		if metaNode, err = c.metaNode(addr); err != nil {
-			return
-		}
-		for _, partition := range metaNode.PersistenceMetaPartitions {
-			partitionMap[partition] = partitionMap[partition] + 1
-		}
-	}
 
-	for partitionID, badNum := range partitionMap {
-		var partition *MetaPartition
-		if partition, err = c.getMetaPartitionByID(partitionID); err != nil {
-			return
-		}
-		if badNum > partition.ReplicaNum/2 {
-			corruptPartitions = append(corruptPartitions, partition)
-		}
-	}
-	log.LogInfof("clusterID[%v] inactiveMetaNodes:%v  corruptPartitions count:[%v]",
-		c.Name, inactiveMetaNodes, len(corruptPartitions))
+	log.LogInfof("clusterID[%v] inactiveMetaNodes:%v", c.Name, inactiveMetaNodes)
 	return
 }
 
@@ -297,19 +277,42 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 	return
 }
 
-func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []*MetaPartition, err error) {
+func (c *Cluster) checkReplicaMetaPartitions() (
+	lackReplicaMetaPartitions []*MetaPartition, noLeaderMetaPartitions []*MetaPartition,
+	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions []*MetaPartition, err error) {
 	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
+	noLeaderMetaPartitions = make([]*MetaPartition, 0)
+	excessReplicaMetaPartitions = make([]*MetaPartition, 0)
+
 	vols := c.copyVols()
 	for _, vol := range vols {
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
-			if mp.ReplicaNum > uint8(len(mp.Hosts)) {
+			if uint8(len(mp.Hosts)) < mp.ReplicaNum || uint8(len(mp.Replicas)) < mp.ReplicaNum {
 				lackReplicaMetaPartitions = append(lackReplicaMetaPartitions, mp)
+			}
+
+			if !mp.isLeaderExist() && (time.Now().Unix()-mp.LeaderReportTime > c.cfg.NoLeaderReportInterval) {
+				noLeaderMetaPartitions = append(noLeaderMetaPartitions, mp)
+			}
+
+			if uint8(len(mp.Hosts)) > mp.ReplicaNum || uint8(len(mp.Replicas)) > mp.ReplicaNum {
+				excessReplicaMetaPartitions = append(excessReplicaMetaPartitions, mp)
+			}
+
+			for _, replica := range mp.Replicas {
+				if replica.Status == proto.Unavailable {
+					unavailableReplicaMPs = append(unavailableReplicaMPs, mp)
+					break
+				}
 			}
 		}
 		vol.mpsLock.RUnlock()
 	}
-	log.LogInfof("clusterID[%v] lackReplicaMetaPartitions count:[%v]", c.Name, len(lackReplicaMetaPartitions))
+	log.LogInfof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
+		"unavailableReplicaMPs count:[%v], excessReplicaMp count:[%v]",
+		c.Name, len(lackReplicaMetaPartitions), len(noLeaderMetaPartitions),
+		len(unavailableReplicaMPs), len(excessReplicaMetaPartitions))
 	return
 }
 
