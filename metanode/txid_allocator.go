@@ -56,6 +56,11 @@ func (alloc *TxIDAllocator) restoreTransactionID() {
 	log.LogInfof("action[restoreTransactionID] mpTxID[%v]", alloc.mpTxID)
 }
 */
+
+func (alloc *TxIDAllocator) Reset() {
+	atomic.StoreUint64(&alloc.mpTxID, 0)
+}
+
 func (alloc *TxIDAllocator) setTransactionID(id uint64) {
 	atomic.StoreUint64(&alloc.mpTxID, id)
 }

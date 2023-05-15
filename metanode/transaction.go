@@ -434,6 +434,12 @@ type TransactionProcessor struct {
 	//connPool   *util.ConnectPool
 }
 
+func (p *TransactionProcessor) Reset() {
+	p.txManager.Reset()
+	p.txResource.Reset()
+	p.mp = nil
+}
+
 func NewTransactionManager(txProcessor *TransactionProcessor) *TransactionManager {
 	txMgr := &TransactionManager{
 		txIdAlloc: newTxIDAllocator(),
@@ -471,6 +477,16 @@ func NewTransactionProcessor(mp *metaPartition) *TransactionProcessor {
 	txProcessor.txResource = NewTransactionResource(txProcessor)
 	//txProcessor.connPool = util.NewConnectPool()
 	return txProcessor
+}
+
+func (tm *TransactionManager) Reset() {
+	tm.Lock()
+	tm.txIdAlloc.Reset()
+	tm.txTree.Reset()
+	tm.txProcessor = nil
+	tm.Unlock()
+	tm.blacklist.Clear()
+	tm.Stop()
 }
 
 func (tm *TransactionManager) processExpiredTransactions() {
@@ -1082,7 +1098,7 @@ func (tm *TransactionManager) setTransactionState(txId string, state int32) (sta
 	status = resp.(uint8)
 
 	if status != proto.OpOk {
-		errInfo := fmt.Sprintf("setTransactionState: set transaction[%v] state to TxStateCommit failed", txId)
+		errInfo := fmt.Sprintf("setTransactionState: set transaction[%v] state to [%v] failed", txId, state)
 		err = errors.New(errInfo)
 		log.LogWarnf("%v", errInfo)
 	}
@@ -1271,6 +1287,8 @@ func (tm *TransactionManager) txApplyToRMWithBlacklist(addrs []string, applyItem
 				} else {
 					tm.blacklist.Add(addr)
 					err = errors.New(newPacket.GetResultMsg())
+					log.LogWarnf("txApplyToRM: apply to %v failed, err(%s), add to blacklist and retry another addr key[%v], tx[%v]",
+						addr, err, applyItem.key, applyItem.txId)
 				}
 			} else {
 				log.LogDebugf("txApplyToRM: apply to %v done with status[%v], key[%v], tx[%v]",
@@ -1316,7 +1334,7 @@ func (tm *TransactionManager) txRollbackToRM(applyItem *txApplyItem, wg *sync.Wa
 			log.LogWarnf("txRollbackToRM: %v[%v] might have not been added before or rolled back by TM: tx[%v]",
 				applyType, applyItem.key, applyItem.txId)
 		} else {
-			log.LogDebugf("txRollbackToRM: %v[%v] committed, tx[%v]", applyType, applyItem.key, applyItem.txId)
+			log.LogDebugf("txRollbackToRM: %v[%v] rolled back, tx[%v]", applyType, applyItem.key, applyItem.txId)
 		}
 	}
 }
@@ -1483,6 +1501,14 @@ func (tr *TransactionResource) Stop() {
 	tr.started = false
 	log.LogDebugf("clearExpiredPlaceholder for mp[%v] stopped", tr.txProcessor.mp.config.PartitionId)
 }*/
+
+func (tr *TransactionResource) Reset() {
+	tr.Lock()
+	defer tr.Unlock()
+	tr.txRbInodeTree.Reset()
+	tr.txRbDentryTree.Reset()
+	tr.txProcessor = nil
+}
 
 //check if item(inode, dentry) is in transaction for modifying
 func (tr *TransactionResource) isInodeInTransction(ino *Inode) (inTx bool, txID string) {
