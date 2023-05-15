@@ -40,7 +40,7 @@ jobs:
       - name: Check and Verify Go modules
         run: |
           cd blobstore
-          go mod tidy
+          go mod tidy -go=1.17
           git diff --exit-code go.mod go.sum
           go mod verify
 

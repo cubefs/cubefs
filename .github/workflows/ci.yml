@@ -15,10 +15,10 @@ on:
     branches: [ master ]
     paths-ignore:
       # - 'blobstore/**'
-      - '.github/**'
-      - 'docs/**'
-      - 'docs-zh/**'
-      - '**.md'
+      # - '.github/**'
+      # - 'docs/**'
+      # - 'docs-zh/**'
+      # - '**.md'
 
 jobs:
   ci-tests:
