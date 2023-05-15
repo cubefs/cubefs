@@ -139,6 +139,7 @@ const (
 	opFSMTxCreateInode
 	opFSMTxCreateInodeQuota
 	opFSMTxCreateDentry
+	opFSMTxSetState
 	opFSMTxCommit
 	opFSMTxInodeCommit
 	opFSMTxDentryCommit
@@ -153,9 +154,6 @@ const (
 	opFSMTxSnapshot
 	opFSMTxRbInodeSnapshot
 	opFSMTxRbDentrySnapshot
-	//restore rollback item
-	opFSMTxRestoreRollbackInode
-	opFSMTxRestoreRollbackDentry
 
 	//quota
 	opFSMCreateInodeQuota

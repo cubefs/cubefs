@@ -38,18 +38,6 @@ func (mp *metaPartition) fsmTxInodeRollback(req *proto.TxInodeApplyRequest) (sta
 	return
 }
 
-func (mp *metaPartition) fsmTxRestoreRollbackInode(req *proto.TxRestoreRollbackInodeRequest) (status uint8) {
-
-	status, _ = mp.txProcessor.txResource.restoreRollbackInode(req)
-	return
-}
-
-func (mp *metaPartition) fsmTxRestoreRollbackDentry(req *proto.TxRestoreRollbackDentryRequest) (status uint8) {
-
-	status, _ = mp.txProcessor.txResource.restoreRollbackDentry(req)
-	return
-}
-
 func (mp *metaPartition) fsmTxDentryRollback(req *proto.TxDentryApplyRequest) (status uint8) {
 	//status = proto.OpOk
 	//var err error
@@ -57,10 +45,15 @@ func (mp *metaPartition) fsmTxDentryRollback(req *proto.TxDentryApplyRequest) (s
 	return
 }
 
+func (mp *metaPartition) fsmTxSetState(req *proto.TxSetStateRequest) (status uint8) {
+	status, _ = mp.txProcessor.txManager.txSetState(req)
+	return
+}
+
 func (mp *metaPartition) fsmTxCommit(txID string) (status uint8) {
-	var err error
-	status, err = mp.txProcessor.txManager.commitTxInfo(txID)
-	if err == nil && status == proto.OpOk {
+	//var err error
+	status, _ = mp.txProcessor.txManager.commitTxInfo(txID)
+	/*if err == nil && status == proto.OpOk {
 		return
 	} else {
 		if err != nil && status == proto.OpTxInfoNotExistErr {
@@ -68,7 +61,8 @@ func (mp *metaPartition) fsmTxCommit(txID string) (status uint8) {
 			return
 		}
 		return status
-	}
+	}*/
+	return
 }
 
 func (mp *metaPartition) fsmTxInodeCommit(txID string, inode uint64) (status uint8) {

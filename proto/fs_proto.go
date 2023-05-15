@@ -191,12 +191,18 @@ type TxCreateInodeResponse struct {
 const (
 	TxCommit int = 1 << iota
 	TxRollback
+	//TxPreCommit
 )
 
 type TxApplyRequest struct {
 	TxID        string `json:"tx"`
 	TmID        uint64 `json:"tmid"`
 	TxApplyType int    `json:"type"`
+}
+
+type TxSetStateRequest struct {
+	TxID  string `json:"tx"`
+	State int32  `json:"state"`
 }
 
 type TxInodeApplyRequest struct {
@@ -213,14 +219,6 @@ type TxDentryApplyRequest struct {
 	Name        string `json:"name"`
 	TxApplyType int    `json:"type"`
 	ApplyFrom   uint32 `json:"from"`
-}
-
-type TxRestoreRollbackInodeRequest struct {
-	RbInode []byte `json:"rbinode"`
-}
-
-type TxRestoreRollbackDentryRequest struct {
-	RbDentry []byte `json:"rbdentry"`
 }
 
 // LinkInodeRequest defines the request to link an inode.
