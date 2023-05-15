@@ -228,6 +228,8 @@ func TestChunkStorage_ReadWriteWithPool(t *testing.T) {
 	readPool := iopool.NewGoroutinePool(4)
 	writeScheduler := iopool.NewSimpleIoScheduler(writePool)
 	readScheduler := iopool.NewSimpleIoScheduler(readPool)
+	defer readPool.Close()
+	defer writePool.Close()
 	ctx := context.Background()
 
 	conf := &core.Config{
@@ -341,8 +343,6 @@ func TestChunkStorage_ReadWriteWithPool(t *testing.T) {
 	shard.Body = bytes.NewReader(shardData)
 	err = cs.Write(ctx, shard)
 	require.NoError(t, err)
-	readPool.Close()
-	writePool.Close()
 }
 
 func TestChunkStorage_ReadWriteInline(t *testing.T) {

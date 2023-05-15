@@ -107,7 +107,6 @@ func (cb *FileController) exec(pool *GoroutinePool) {
 			}
 		}
 	}
-
 }
 
 func (cb *FileController) Submit(task *IoTask, pool *GoroutinePool) {

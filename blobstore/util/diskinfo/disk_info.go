@@ -15,10 +15,9 @@
 package diskinfo
 
 import (
+	"errors"
 	"fmt"
 	"time"
-
-	"errors"
 
 	"github.com/shirou/gopsutil/disk"
 )
