@@ -170,8 +170,6 @@ type OpTransaction interface {
 	TxRollback(req *proto.TxApplyRequest, p *Packet) (err error)
 	TxInodeRollback(req *proto.TxInodeApplyRequest, p *Packet) (err error)
 	TxDentryRollback(req *proto.TxDentryApplyRequest, p *Packet) (err error)
-	TxRestoreRollbackInode(req *proto.TxRestoreRollbackInodeRequest, p *Packet) (err error)
-	TxRestoreRollbackDentry(req *proto.TxRestoreRollbackDentryRequest, p *Packet) (err error)
 }
 
 // OpExtent defines the interface for the extent operations.
@@ -1251,6 +1249,7 @@ func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) {
 	txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 	txInfo.TmID = int64(mp.config.PartitionId)
 	txInfo.CreateTime = time.Now().UnixNano()
+	txInfo.State = proto.TxStatePreCommit
 }
 
 func (mp *metaPartition) storeSnapshotFiles() (err error) {

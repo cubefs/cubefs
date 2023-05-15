@@ -41,8 +41,9 @@ import (
 //}
 
 const (
-	DefaultTransactionTimeout = 5      //seconds
-	MaxTransactionTimeout     = 60 * 5 //seconds
+	DefaultTransactionTimeout = 1  //minutes
+	MaxTransactionTimeout     = 60 //minutes
+	//MaxReplaceholderTimeout   = MaxTransactionTimeout * 30 //seconds
 )
 
 const (
@@ -431,12 +432,45 @@ const (
 	TxTypeLink
 )
 
+func TxMastToType(mask uint8) (txType uint32) {
+	switch mask {
+	case TxOpMaskOff:
+		txType = TxTypeUndefined
+	case TxOpMaskCreate:
+		txType = TxTypeCreate
+	case TxOpMaskMkdir:
+		txType = TxTypeMkdir
+	case TxOpMaskRemove:
+		txType = TxTypeRemove
+	case TxOpMaskRename:
+		txType = TxTypeRename
+	case TxOpMaskMknod:
+		txType = TxTypeMknod
+	case TxOpMaskSymlink:
+		txType = TxTypeSymlink
+	case TxOpMaskLink:
+		txType = TxTypeLink
+	default:
+		txType = TxTypeUndefined
+	}
+	return txType
+}
+
+const (
+	TxStateInit int32 = iota
+	TxStatePreCommit
+	TxStateCommit
+	TxStateRollback
+	TxStateFailed
+)
+
 type TransactionInfo struct {
 	TxID       string // "metapartitionId_atomicId", if empty, mp should be TM, otherwise it will be RM
 	TxType     uint32
 	TmID       int64
 	CreateTime int64 //time.Now().UnixNano()
-	Timeout    int64 //seconds
+	Timeout    int64 //minutes
+	State      int32
 	//ItemMap    map[string]TxItemInfo
 	TxInodeInfos  map[uint64]*TxInodeInfo
 	TxDentryInfos map[string]*TxDentryInfo
@@ -448,7 +482,7 @@ func (txInfo *TransactionInfo) IsExpired() (expired bool) {
 		log.LogErrorf("IsExpired: transaction time out error, now[%v], CreateTime[%v]", now, txInfo.CreateTime)
 		return true
 	}
-	expired = txInfo.Timeout*1e9 <= now-txInfo.CreateTime
+	expired = txInfo.Timeout*60*1e9 <= now-txInfo.CreateTime
 	if expired {
 		log.LogDebugf("IsExpired: transaction [%v] is expired, now[%v], CreateTime[%v]", txInfo, now, txInfo.CreateTime)
 	}
@@ -480,6 +514,7 @@ func NewTransactionInfo(timeout int64, txType uint32) *TransactionInfo {
 		TxDentryInfos: make(map[string]*TxDentryInfo, 0),
 		TmID:          -1,
 		TxType:        txType,
+		State:         TxStateInit,
 	}
 }
 
@@ -503,6 +538,7 @@ func (txInfo *TransactionInfo) GetCopy() *TransactionInfo {
 	newInfo.TxID = txInfo.TxID
 	//newInfo.TxType = txInfo.TxType
 	newInfo.TmID = txInfo.TmID
+	newInfo.State = txInfo.State
 	newInfo.CreateTime = txInfo.CreateTime
 	for k, v := range txInfo.TxInodeInfos {
 		newInfo.TxInodeInfos[k] = v
@@ -537,6 +573,10 @@ func (txInfo *TransactionInfo) Marshal() (result []byte, err error) {
 	}
 
 	if err = binary.Write(buff, binary.BigEndian, &txInfo.Timeout); err != nil {
+		return nil, err
+	}
+
+	if err = binary.Write(buff, binary.BigEndian, &txInfo.State); err != nil {
 		return nil, err
 	}
 
@@ -603,6 +643,9 @@ func (txInfo *TransactionInfo) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &txInfo.Timeout); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &txInfo.State); err != nil {
 		return
 	}
 

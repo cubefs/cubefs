@@ -50,7 +50,7 @@ func extractTxTimeout(r *http.Request) (timeout int64, err error) {
 	}
 
 	if txTimeout == 0 || txTimeout > proto.MaxTransactionTimeout {
-		return timeout, fmt.Errorf("txTimeout(%d) value range (0-%v] seconds", txTimeout, proto.MaxTransactionTimeout)
+		return timeout, fmt.Errorf("txTimeout(%d) value range [1-%v] minutes", txTimeout, proto.MaxTransactionTimeout)
 	}
 	timeout = int64(txTimeout)
 	return timeout, nil

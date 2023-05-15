@@ -53,6 +53,20 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry, forceUpdate bool)
 		return
 	}
 
+	//3. register rollback parent inode item
+	parInodeInfo, ok := txDentry.TxInfo.TxInodeInfos[txDentry.ParInode.Inode]
+	if !ok {
+		status = proto.OpTxInodeInfoNotExistErr
+		return
+	}
+	quotaIds, _ := mp.isExistQuota(txDentry.ParInode.Inode)
+
+	rbParInode := NewTxRollbackInode(txDentry.ParInode, quotaIds, parInodeInfo, TxUpdate)
+	if status = mp.txProcessor.txResource.addTxRollbackInode(rbParInode); status != proto.OpOk {
+		//status = proto.OpTxConflictErr
+		return
+	}
+
 	return mp.fsmCreateDentry(txDentry.Dentry, forceUpdate)
 }
 
@@ -126,7 +140,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry, checkInode bool) 
 	//if txDentry.TxInfo.TxID != "" && txDentry.TxInfo.TmID == -1 {
 	_ = mp.txProcessor.txManager.registerTransaction(txDentry.TxInfo)
 	//}
-	//2.register rollback item
+	//2.register rollback dentry item
 	txDI := proto.NewTxDentryInfo("", txDentry.Dentry.ParentId, txDentry.Dentry.Name, 0)
 	txDenInfo, ok := txDentry.TxInfo.TxDentryInfos[txDI.GetKey()]
 	if !ok {
@@ -135,6 +149,20 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry, checkInode bool) 
 	}
 	rbDentry := NewTxRollbackDentry(txDentry.Dentry, txDenInfo, TxAdd)
 	if resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry); resp.Status != proto.OpOk {
+		//resp.Status = proto.OpTxConflictErr
+		return
+	}
+
+	//3. register rollback parent inode item
+	parInodeInfo, ok := txDentry.TxInfo.TxInodeInfos[txDentry.ParInode.Inode]
+	if !ok {
+		resp.Status = proto.OpTxInodeInfoNotExistErr
+		return
+	}
+	quotaIds, _ := mp.isExistQuota(txDentry.ParInode.Inode)
+
+	rbParInode := NewTxRollbackInode(txDentry.ParInode, quotaIds, parInodeInfo, TxUpdate)
+	if resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbParInode); resp.Status != proto.OpOk {
 		//resp.Status = proto.OpTxConflictErr
 		return
 	}

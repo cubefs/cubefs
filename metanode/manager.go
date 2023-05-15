@@ -231,10 +231,6 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opTxInodeRollback(conn, p, remoteAddr)
 	case proto.OpTxDentryRollback:
 		err = m.opTxDentryRollback(conn, p, remoteAddr)
-	case proto.OpTxRestoreRollbackInode:
-		err = m.opTxRestoreRollbackInode(conn, p, remoteAddr)
-	case proto.OpTxRestoreRollbackDentry:
-		err = m.opTxRestoreRollbackDentry(conn, p, remoteAddr)
 	case proto.OpMetaTxDeleteDentry:
 		err = m.opTxDeleteDentry(conn, p, remoteAddr)
 	case proto.OpMetaTxUnlinkInode:

@@ -456,64 +456,6 @@ func (m *metadataManager) opTxDentryRollback(conn net.Conn, p *Packet,
 	return
 }
 
-func (m *metadataManager) opTxRestoreRollbackInode(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
-	req := &proto.TxRestoreRollbackInodeRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-		return
-	}
-
-	mp, err := m.getPartition(p.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-		return
-	}
-	if !m.serveProxy(conn, mp, p) {
-		return
-	}
-
-	err = mp.TxRestoreRollbackInode(req, p)
-	m.respondToClient(conn, p)
-
-	log.LogDebugf("%s [opTxRestoreRollbackInode] req: %d - %v, resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
-	return
-}
-
-func (m *metadataManager) opTxRestoreRollbackDentry(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
-	req := &proto.TxRestoreRollbackDentryRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-		return
-	}
-
-	mp, err := m.getPartition(p.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-		return
-	}
-	if !m.serveProxy(conn, mp, p) {
-		return
-	}
-
-	err = mp.TxRestoreRollbackDentry(req, p)
-	m.respondToClient(conn, p)
-
-	log.LogDebugf("%s [opTxRestoreRollbackDentry] req: %d - %v, resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
-	return
-}
-
 // Handle OpCreate
 func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {

@@ -49,11 +49,12 @@ type Dentry struct {
 type DentryBatch []*Dentry
 
 type TxDentry struct {
-	Dentry *Dentry
-	TxInfo *proto.TransactionInfo
+	ParInode *Inode
+	Dentry   *Dentry
+	TxInfo   *proto.TransactionInfo
 }
 
-func NewTxDentry(parentID uint64, name string, ino uint64, mode uint32, txInfo *proto.TransactionInfo) *TxDentry {
+func NewTxDentry(parentID uint64, name string, ino uint64, mode uint32, parInode *Inode, txInfo *proto.TransactionInfo) *TxDentry {
 	dentry := &Dentry{
 		ParentId: parentID,
 		Name:     name,
@@ -62,15 +63,28 @@ func NewTxDentry(parentID uint64, name string, ino uint64, mode uint32, txInfo *
 	}
 
 	txDentry := &TxDentry{
-		Dentry: dentry,
-		TxInfo: txInfo,
+		ParInode: parInode,
+		Dentry:   dentry,
+		TxInfo:   txInfo,
 	}
 	return txDentry
 }
 
 func (td *TxDentry) Marshal() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
-	bs, err := td.Dentry.Marshal()
+
+	bs, err := td.ParInode.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+		return nil, err
+	}
+	if _, err := buff.Write(bs); err != nil {
+		return nil, err
+	}
+
+	bs, err = td.Dentry.Marshal()
 	if err != nil {
 		return nil, err
 	}
@@ -98,10 +112,24 @@ func (td *TxDentry) Marshal() (result []byte, err error) {
 func (td *TxDentry) Unmarshal(raw []byte) (err error) {
 	buff := bytes.NewBuffer(raw)
 	var dataLen uint32
+
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
 	data := make([]byte, int(dataLen))
+	if _, err = buff.Read(data); err != nil {
+		return
+	}
+	parIno := NewInode(0, 0)
+	if err = parIno.Unmarshal(data); err != nil {
+		return
+	}
+	td.ParInode = parIno
+
+	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+		return
+	}
+	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
 	}
