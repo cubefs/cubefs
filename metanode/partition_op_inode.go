@@ -179,7 +179,8 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	ino := NewInode(req.Inode, 0)
 	inoResp := mp.getInode(ino)
 	if inoResp.Status != proto.OpOk {
-		p.PacketErrorWithBody(inoResp.Status, nil)
+		err = fmt.Errorf("ino[%v] not exists", ino.Inode)
+		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
 		return
 	}
 	ti := &TxInode{
@@ -375,6 +376,7 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 	ino := NewInode(req.Inode, 0)
 	inoResp := mp.getInode(ino)
 	if inoResp.Status != proto.OpOk {
+		err = fmt.Errorf("ino[%v] not exists", ino.Inode)
 		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
 		return
 	}

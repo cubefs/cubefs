@@ -152,6 +152,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 	}
 	dentry, status := mp.getDentry(den)
 	if status != proto.OpOk {
+		err = fmt.Errorf("dentry[%v] not exists", dentry)
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return
 	}
@@ -159,7 +160,8 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 	parIno := NewInode(req.ParentID, 0)
 	inoResp := mp.getInode(parIno)
 	if inoResp.Status != proto.OpOk {
-		p.PacketErrorWithBody(inoResp.Status, nil)
+		err = fmt.Errorf("parIno[%v] not exists", parIno.Inode)
+		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
 		return
 	}
 
@@ -315,6 +317,7 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 	}
 	oldDentry, status := mp.getDentry(newDentry)
 	if status != proto.OpOk {
+		err = fmt.Errorf("oldDentry[%v] not exists", oldDentry)
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return
 	}
