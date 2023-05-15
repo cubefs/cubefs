@@ -46,27 +46,28 @@ type MetaReplica struct {
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartition struct {
-	PartitionID    uint64
-	Start          uint64
-	End            uint64
-	MaxInodeID     uint64
-	InodeCount     uint64
-	DentryCount    uint64
-	FreeListLen    uint64
-	Replicas       []*MetaReplica
-	ReplicaNum     uint8
-	Status         int8
-	IsRecover      bool
-	volID          uint64
-	volName        string
-	Hosts          []string
-	Peers          []proto.Peer
-	OfflinePeerID  uint64
-	MissNodes      map[string]int64
-	LoadResponse   []*proto.MetaPartitionLoadResponse
-	offlineMutex   sync.RWMutex
-	uidInfo        []*proto.UidReportSpaceInfo
-	EqualCheckPass bool
+	PartitionID      uint64
+	Start            uint64
+	End              uint64
+	MaxInodeID       uint64
+	InodeCount       uint64
+	DentryCount      uint64
+	FreeListLen      uint64
+	Replicas         []*MetaReplica
+	LeaderReportTime int64
+	ReplicaNum       uint8
+	Status           int8
+	IsRecover        bool
+	volID            uint64
+	volName          string
+	Hosts            []string
+	Peers            []proto.Peer
+	OfflinePeerID    uint64
+	MissNodes        map[string]int64
+	LoadResponse     []*proto.MetaPartitionLoadResponse
+	offlineMutex     sync.RWMutex
+	uidInfo          []*proto.UidReportSpaceInfo
+	EqualCheckPass   bool
 	sync.RWMutex
 }
 
@@ -81,6 +82,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp = &MetaPartition{PartitionID: partitionID, Start: start, End: end, volName: volName, volID: volID}
 	mp.ReplicaNum = replicaNum
 	mp.Replicas = make([]*MetaReplica, 0)
+	mp.LeaderReportTime = time.Now().Unix()
 	mp.Status = proto.Unavailable
 	mp.MissNodes = make(map[string]int64, 0)
 	mp.Peers = make([]proto.Peer, 0)
@@ -395,6 +397,9 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 		mp.addReplica(mr)
 	}
 	mr.updateMetric(mgr)
+	if mr.IsLeader {
+		mp.LeaderReportTime = time.Now().Unix()
+	}
 	mp.setMaxInodeID()
 	mp.setInodeCount()
 	mp.setDentryCount()
