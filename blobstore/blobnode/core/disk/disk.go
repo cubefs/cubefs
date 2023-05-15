@@ -172,6 +172,9 @@ func (ds *DiskStorage) Close(ctx context.Context) {
 	}
 
 	ds.closed = true
+
+	ds.writePool.Close()
+	ds.readPool.Close()
 }
 
 func (ds *DiskStorage) DiskInfo() (info bnapi.DiskInfo) {

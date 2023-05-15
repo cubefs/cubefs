@@ -181,4 +181,6 @@ func TestBlobFile_OpWithPool(t *testing.T) {
 	require.Equal(t, int32(stat.Size), int32(1*1024*1024))
 	// phy allocate == 0
 	require.Equal(t, int(stat.Blocks), 0)
+	readPool.Close()
+	writePool.Close()
 }

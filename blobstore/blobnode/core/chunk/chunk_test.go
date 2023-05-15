@@ -341,6 +341,8 @@ func TestChunkStorage_ReadWriteWithPool(t *testing.T) {
 	shard.Body = bytes.NewReader(shardData)
 	err = cs.Write(ctx, shard)
 	require.NoError(t, err)
+	readPool.Close()
+	writePool.Close()
 }
 
 func TestChunkStorage_ReadWriteInline(t *testing.T) {
