@@ -191,9 +191,8 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			allowed = false
 			return
 		}
-		var volume *Volume
 		if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-			if volume, err = o.getVol(bucket); err != nil {
+			if _, err = o.getVol(bucket); err != nil {
 				allowed = false
 				return
 			}
@@ -230,12 +229,6 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 				log.LogDebugf("user policy check:  permission unknown url(%v) subdir(%v) requestID(%v) userID(%v) accessKey(%v) volume(%v) object(%v) action(%v) authorizedVols(%v)",
 					r.URL, subdir, GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Object(), param.Action(), userPolicy.AuthorizedVols)
 			}
-		} else if (err == proto.ErrAccessKeyNotExists || err == proto.ErrUserNotExists) && volume != nil {
-			if ak, _ := volume.OSSSecure(); ak != param.AccessKey() {
-				allowed = false
-				return
-			}
-			isOwner = true
 		} else {
 			log.LogErrorf("user policy check: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
 				GetRequestID(r), param.AccessKey(), err)
