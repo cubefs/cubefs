@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"runtime"
 	"sync"
 	"time"
 
@@ -441,11 +440,6 @@ func NewMetaHandler(dirpath string, config MetaConfig) (mh MetaHandler, err erro
 	}
 
 	w := &MetaDBWapper{metadb: md}
-
-	// close db when gc
-	runtime.SetFinalizer(w, func(wapper *MetaDBWapper) {
-		wapper.Close(context.Background())
-	})
 
 	return w, nil
 }

@@ -22,7 +22,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -251,7 +250,7 @@ func TestKVDB_BatchDelete(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestKVDB_Finalizer(t *testing.T) {
+func TestKVDB_Close(t *testing.T) {
 	testDir, err := ioutil.TempDir(os.TempDir(), "Metadb")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
@@ -274,8 +273,9 @@ func TestKVDB_Finalizer(t *testing.T) {
 		close(done)
 	}
 
-	// Trigger recycling
-	runtime.GC()
+	// Trigger Close
+	err = md.Close(context.Background())
+	require.NoError(t, err)
 
 	select {
 	case <-done:

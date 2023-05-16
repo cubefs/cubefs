@@ -378,6 +378,7 @@ func (s *SuperBlock) SetIOStat(stat *flow.IOFlowStat) {
 }
 
 func (s *SuperBlock) Close(ctx context.Context) error {
+	s.db.Close(ctx)
 	// db will be automatically closed when gc
 	s.db = nil
 	return nil
