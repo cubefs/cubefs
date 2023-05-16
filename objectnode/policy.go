@@ -384,11 +384,12 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string
 	}
 
 	isOwner := reqUid == vol.owner
-	if acl, err = getObjectACL(vol, srcKey, true); err != nil {
+	if acl, err = getObjectACL(vol, srcKey, true); err != nil && err != syscall.ENOENT {
 		log.LogErrorf("srcBucket acl check: get object acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(paramCopy.r), srcBucketId, srcKey, err)
 		return
 	}
+	err = nil
 	if acl == nil && !isOwner {
 		log.LogWarnf("srcBucket acl check: empty acl disallows: requestID(%v) reqUid(%v) ownerUid(%v) volume(%v) action(%v)",
 			GetRequestID(paramCopy.r), reqUid, vol.owner, srcBucketId, paramCopy.Action())
