@@ -25,7 +25,7 @@ POLICY = '{' \
          '"Effect": "Allow",' \
          '"Principal": {"AWS": ["arn:aws:iam::123456789012:root"]}, ' \
          '"Action": ["s3:PutObject"], ' \
-         '"Resource": ["arn:aws:s3:::acl3/*" ] ' \
+         '"Resource": ["arn:aws:s3:::' + env.BUCKET + '/*" ] ' \
          '}]}'
 
 

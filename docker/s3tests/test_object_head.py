@@ -92,7 +92,7 @@ class ObjectHeadTest(S3TestCase):
             result=self.s3.head_object(
                 Bucket=env.BUCKET,
                 Key=key,
-                IfModifiedSince=datetime.datetime(1946, 2, 14)),
+                IfModifiedSince=datetime.datetime(1996, 2, 14)),
             etag=expect_md5,
             content_length=size)
         try:
@@ -156,7 +156,7 @@ class ObjectHeadTest(S3TestCase):
             etag=expect_md5,
             content_length=size)
         try:
-            self.s3.head_object(Bucket=env.BUCKET, Key=key, IfUnmodifiedSince=datetime.datetime(1946, 2, 14))
+            self.s3.head_object(Bucket=env.BUCKET, Key=key, IfUnmodifiedSince=datetime.datetime(1996, 2, 14))
             self.fail()  # Non exception occurred is illegal.
         except Exception as e:
             # Error code 412 is legal.
