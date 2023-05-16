@@ -115,13 +115,12 @@ func (ds *DiskStorage) waitAllLoopsStop(ctx context.Context) {
 		close(done)
 	}()
 
-	shutdownTimer := time.NewTimer(30 * time.Second)
-	defer shutdownTimer.Stop()
+	warnTicker := time.NewTicker(30 * time.Second)
+	defer warnTicker.Stop()
 	for {
 		select {
-		case <-shutdownTimer.C:
+		case <-warnTicker.C:
 			span.Warnf("=== disk<%v> loop wait timed out. ===", ds.DiskID)
-			return
 		case <-done:
 			span.Infof("=== disk<%v> all loops done ===", ds.DiskID)
 			return
@@ -149,20 +148,23 @@ func (ds *DiskStorage) Close(ctx context.Context) {
 	if ds.closeCh != nil {
 		close(ds.closeCh)
 	}
+	// wait loop in goroutine
+	go func() {
+		// wait all loop done
+		ds.waitAllLoopsStop(ctx)
 
-	// wait all loop done
-	ds.waitAllLoopsStop(ctx)
+		// clean chunk map
+		ds.Chunks = make(map[proto.Vuid]core.ChunkAPI)
 
-	// clean chunk map
-	ds.Chunks = make(map[proto.Vuid]core.ChunkAPI)
+		// clean superblock
+		sb := ds.SuperBlock
+		if sb != nil {
+			sb.Close(ctx)
+			ds.SuperBlock = nil
+		}
 
-	// clean superblock
-	sb := ds.SuperBlock
-	if sb != nil {
-		ds.SuperBlock = nil
-	}
-
-	ds.closed = true
+		ds.closed = true
+	}()
 }
 
 func (ds *DiskStorage) DiskInfo() (info bnapi.DiskInfo) {
