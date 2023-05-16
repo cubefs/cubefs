@@ -119,10 +119,18 @@ def get_env_s3_client_volume_credential(signature_version='s3v4'):
     assert content['code'] == 0
     assert ('data' in content)
     data = content['data']
+    owner = data['Owner']
     assert 'OSSSecure' in data
-    credential = data['OSSSecure']
-    access_key = credential['AccessKey']
-    secret_key = credential['SecretKey']
+    resp = requests.get(
+        url=env.MASTER + '/user/info?user=%s' % owner,
+        headers={
+            'Skip-Owner-Validation': 'true'
+        })
+    assert resp.status_code == 200
+    content = json.loads(resp.content.decode())
+    data = content['data']
+    access_key = data['access_key']
+    secret_key = data['secret_key']
     assert access_key != ''
     assert secret_key != ''
     return boto3.client(
