@@ -181,7 +181,7 @@ func putBucketACL(vol *Volume, acp *AccessControlPolicy) error {
 
 func getObjectACL(vol *Volume, path string, needDefault bool) (*AccessControlPolicy, error) {
 	xAttr, err := vol.GetXAttr(path, XAttrKeyOSSACL)
-	if err != nil {
+	if err != nil || xAttr == nil {
 		return nil, err
 	}
 	var acp *AccessControlPolicy
