@@ -116,6 +116,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		ValidateOwner:   opt.Authenticate || opt.AccessKey == "",
 		EnableSummary:   opt.EnableSummary && opt.EnableXattr,
 		MetaSendTimeout: opt.MetaSendTimeout,
+		UpdateQuota:     true,
 		//EnableTransaction: opt.EnableTransaction,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)

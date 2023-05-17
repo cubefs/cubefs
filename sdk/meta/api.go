@@ -161,6 +161,9 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 		status, info, err = mw.txIcreate(tx, mp, mode, uid, gid, target, quotaIds)
 		if err == nil && status == statusOK {
 			goto create_dentry
+		} else if status == statusNoSpace {
+			log.LogErrorf("Create_ll status %v", status)
+			return nil, statusToErrno(status)
 		} else {
 			//todo_tx: sync cancel previous transaction before retry
 			tx.Rollback(mw)
@@ -268,10 +271,10 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 		status, info, err = mw.icreate(mp, mode, uid, gid, target, quotaIds)
 		if err == nil && status == statusOK {
 			goto create_dentry
+		} else if status == statusNoSpace {
+			log.LogErrorf("Create_ll status %v", status)
+			return nil, statusToErrno(status)
 		}
-		log.LogErrorf("Create_ll status %v", status)
-		return nil, statusToErrno(status)
-
 	}
 	return nil, syscall.ENOMEM
 

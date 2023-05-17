@@ -121,6 +121,8 @@ func (e *Extend) Merge(o *Extend, override bool) {
 
 func (e *Extend) Copy() btree.Item {
 	newExt := NewExtend(e.inode)
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	for k, v := range e.dataMap {
 		newExt.dataMap[k] = v
 	}
