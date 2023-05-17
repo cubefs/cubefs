@@ -563,9 +563,11 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 			}
 			spaceInfo := vol.uidSpaceManager.getSpaceOp()
 			hbReq.UidLimitInfo = append(hbReq.UidLimitInfo, spaceInfo...)
-			quotaHbInfos := vol.quotaManager.getQuotaHbInfos()
-			if len(quotaHbInfos) != 0 {
-				hbReq.QuotaHbInfos = append(hbReq.QuotaHbInfos, quotaHbInfos...)
+			if vol.quotaManager != nil {
+				quotaHbInfos := vol.quotaManager.getQuotaHbInfos()
+				if len(quotaHbInfos) != 0 {
+					hbReq.QuotaHbInfos = append(hbReq.QuotaHbInfos, quotaHbInfos...)
+				}
 			}
 		}
 		log.LogDebugf("checkMetaNodeHeartbeat start")
