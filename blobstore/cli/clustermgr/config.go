@@ -128,4 +128,5 @@ func addCmdConfig(cmd *grumble.Command) {
 			return nil
 		},
 	})
+	addCmdConfigBackground(configCommand)
 }
