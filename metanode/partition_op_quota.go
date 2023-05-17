@@ -571,7 +571,6 @@ func (mp *metaPartition) UpdateInodeQuota() {
 		e := i.(*Extend)
 		value, exist := e.Get([]byte(proto.QuotaKey))
 		if exist {
-
 			if err := json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
 				log.LogErrorf("UpdateInodeQuota Unmarshal quotaInfos fail [%v]", err)
 				return true

@@ -16,9 +16,6 @@ package fs
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/auditlog"
-	"golang.org/x/net/context"
 	"net/http"
 	"os"
 	"path"
@@ -27,6 +24,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
+	"golang.org/x/net/context"
 
 	"github.com/hashicorp/consul/api"
 
@@ -117,6 +118,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		ValidateOwner:   opt.Authenticate || opt.AccessKey == "",
 		EnableSummary:   opt.EnableSummary && opt.EnableXattr,
 		MetaSendTimeout: opt.MetaSendTimeout,
+		UpdateQuota:     true,
 		//EnableTransaction: opt.EnableTransaction,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)

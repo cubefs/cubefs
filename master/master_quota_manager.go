@@ -160,7 +160,6 @@ func (mqMgr *MasterQuotaManager) getQuota(fullPath string) (quotaInfo *proto.Quo
 	defer mqMgr.RUnlock()
 	quotaInfo, isFind := mqMgr.FullPathQuotaInfoMap[fullPath]
 	if !isFind {
-		log.LogErrorf("vol [%v] quota fullPath [%v] is not exist.", mqMgr.vol.Name, fullPath)
 		err = errors.New("quota is not exist.")
 		return nil, err
 	}
