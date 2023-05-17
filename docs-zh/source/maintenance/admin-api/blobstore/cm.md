@@ -96,7 +96,7 @@ curl "http://127.0.0.1:9998/stat"
 添加节点，指定节点类型，地址和id。
 
 ```bash
-curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1, "host": "127.0.0.1:10110","node_host": "127.0.0.1:9998", "member_type": 2}' "http://127.0.0.1:9998/member/add" 
+curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1, "host": "127.0.0.1:10110","node_host": "127.0.0.1:9998", "member_type": 2}' "http://127.0.0.1:9998/member/add"
 ```
 
 **参数列表**
@@ -275,16 +275,22 @@ curl "http://127.0.0.1:9998/volume/get?vid=1"
 
 ```bash
 curl http://127.0.0.1:9998/config/get?key=balance
+# 或者使用 blobstore-cli
+blobstore-cli cm config background status balance
 ```
 
 开启任务
 
 ```bash
 curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"true"}' --header 'Content-Type: application/json'
+# 或者使用 blobstore-cli
+blobstore-cli cm config background enable balance
 ```
 
 关闭任务
 
 ```bash
 curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'
+# 或者使用 blobstore-cli
+blobstore-cli cm config background disable balance
 ```

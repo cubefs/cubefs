@@ -96,7 +96,7 @@ curl "http://127.0.0.1:9998/stat"
 Add a node by specifying the node type, address, and ID.
 
 ```bash
-curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1, "host": "127.0.0.1:10110","node_host": "127.0.0.1:9998", "member_type": 2}' "http://127.0.0.1:9998/member/add" 
+curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 1, "host": "127.0.0.1:10110","node_host": "127.0.0.1:9998", "member_type": 2}' "http://127.0.0.1:9998/member/add"
 ```
 
 **Parameter List**
@@ -275,16 +275,22 @@ View task status
 
 ```bash
 curl http://127.0.0.1:9998/config/get?key=balance
+# or use blobstore-cli
+blobstore-cli cm config background status balance
 ```
 
 Enable task
 
 ```bash
 curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"true"}' --header 'Content-Type: application/json'
+# or use blobstore-cli
+blobstore-cli cm config background enable balance
 ```
 
 Disable task
 
 ```bash
 curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'
+# or use blobstore-cli
+blobstore-cli cm config background disable balance
 ```
