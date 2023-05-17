@@ -19,7 +19,7 @@ The term of the project lead is one year, with no term limit restriction.
 
 The project lead is elected by CubeFS maintainers according to an individual's technical merit to CubeFS project.
 
-The current project lead is identified in the top level [MAINTAINERS](MAINTAINERS) file with the string
+The current project lead is identified in the top level [MAINTAINERS](MAINTAINERS.md) file with the string
 `project lead` and the term behind the name.
 
 
@@ -32,9 +32,19 @@ participate in Pull Request reviews. Maintainers are expected to respond to assi
 in a *reasonable* time frame, either providing insights, or assign the Pull Requests to other
 maintainers.
 
-Every Maintainer is listed in the top-level [MAINTAINERS](https://github.com/cubefs/cubefs/blob/master/MAINTAINERS.md)
-file.
+Every Maintainer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
 
+## Committer
+
+Committer is an active contributor in the community who continuously makes contributions to the community by contributing codes, documentation, participating in community discussions, or helping community users answer questions, etc. 
+
+Typically, they need to have a good understanding of the project to help more community users quickly join the project. After becoming a committer, you will be responsible for reviewing relevant issues or PRs, and your opinions are also extremely important to the community.
+
+Every Committer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
+
+## Becoming a committer
+
+If you are interested in becoming a committer, please email `maintainers@cubefs.groups.io`, and you will receive an invitation letter from the community after the review is passed.
 
 ## Becoming a Maintainer
 
