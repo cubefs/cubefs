@@ -1,6 +1,6 @@
 FROM centos:7.5.1804
 
-MAINTAINER chubaofs
+MAINTAINER cubefs
 
 
 
@@ -60,8 +60,8 @@ RUN echo "export PATH=/usr/local/go/bin:/usr/local/ARM-toolchain/gcc-linaro-5.5.
 
 
 #CMD /root/buildcfs.sh
-# docker build --rm --tag arm64_gcc4_golang1_13_centos7_5_chubaofs ./build/compile/arm64/centos
+# docker build --rm --tag arm64_gcc4_golang1_13_centos7_5_cubefs ./build/compile/arm64/centos
 #  make dist-clean
-# docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc4_golang1_13_centos7_5_chubaofs /root/buildcfs.sh
+# docker run  -v /root/arm64/cubefs:/root/cubefs arm64_gcc4_golang1_13_centos7_5_cubefs /root/buildcfs.sh
 
 #ENTRYPOINT ["java","-Djava.security.egd=file:/dev/./urandom","-jar","/thymeleaf-master.jar"]

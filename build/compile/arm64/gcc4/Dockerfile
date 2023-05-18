@@ -1,7 +1,7 @@
 FROM ubuntu:14.04
 #FROM ubuntu:16.04
 
-MAINTAINER chubaofs
+MAINTAINER cubefs
 
 
 
@@ -43,5 +43,5 @@ RUN apt-get -y install ssh
 #ENTRYPOINT ["java","-Djava.security.egd=file:/dev/./urandom","-jar","/thymeleaf-master.jar"]
 
 
-# docker build --rm --tag arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs ./build/compile/arm64/gcc4
-# docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs /root/buildcfs.sh
+# docker build --rm --tag arm64_gcc4_golang1_13_ubuntu_14_04_cubefs ./build/compile/arm64/gcc4
+# docker run  -v /root/arm64/cubefs:/root/cubefs arm64_gcc4_golang1_13_ubuntu_14_04_cubefs /root/buildcfs.sh

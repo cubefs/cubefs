@@ -78,10 +78,10 @@ func createDefaultMasterServerForTest() *Server {
 		"retainLogs":"20000",
 		"tickInterval":500,
 		"electionTick":6,
-		"logDir": "/tmp/chubaofs/Logs",
+		"logDir": "/tmp/cubefs/Logs",
 		"logLevel":"DEBUG",
-		"walDir":"/tmp/chubaofs/raft",
-		"storeDir":"/tmp/chubaofs/rocksdbstore",
+		"walDir":"/tmp/cubefs/raft",
+		"storeDir":"/tmp/cubefs/rocksdbstore",
 		"clusterName":"cubefs"
 	}`
 
@@ -193,7 +193,7 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 		level = log.ErrorLevel
 	}
 	if _, err = log.InitLog(logDir, "master", level, nil); err != nil {
-		fmt.Println("Fatal: failed to start the chubaofs daemon - ", err)
+		fmt.Println("Fatal: failed to start the cubefs daemon - ", err)
 		return
 	}
 	if profPort != "" {
