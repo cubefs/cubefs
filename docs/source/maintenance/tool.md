@@ -257,14 +257,14 @@ It is recommended to use the `cmd subCmd ... --flag -- -arg` method to pass para
 
 Currently, the main functions of some modules have been implemented, as follows:
 
-| Command                 | Description                                                                                        |
-|-------------------------|----------------------------------------------------------------------------------------------------|
-| blobstore-cli config    | Manage the configuration items in the memory of the blobstore-cli.                                 |
-| blobstore-cli util      | A collection of small tools, such as parsing location, parsing time, and generating specific data. |
-| blobstore-cli access    | Upload, download, delete files, etc.                                                               |
-| blobstore-cli cm        | View and manage cluster information.                                                               |
-| blobstore-cli scheduler | Manage background tasks.                                                                           |
-| blobstore-cli \...      | In progress...                                                                                     |
+| Command                  | Description                                                                                        |
+|--------------------------|----------------------------------------------------------------------------------------------------|
+| blobstore-cli config     | Manage the configuration items in the memory of the blobstore-cli.                                 |
+| blobstore-cli util       | A collection of small tools, such as parsing location, parsing time, and generating specific data. |
+| blobstore-cli access     | Upload, download, delete files, etc.                                                               |
+| blobstore-cli cm         | View and manage cluster information, and background task switch control.                           |
+| blobstore-cli scheduler  | Manage background tasks.                                                                           |
+| blobstore-cli \...       | In progress...                                                                                     |
 
 **Config**
 
@@ -322,15 +322,46 @@ Usage:
   cm [flags]
 
 Sub Commands:
-  cluster    cluster tools
-  config     config tools
-  disk       disk tools
-  kv         kv tools
-  listAllDB  list all db tools
-  service    service tools
-  stat       show stat of clustermgr
-  volume     volume tools
-  wal        wal tools
+  background  background task switch control tools
+  cluster     cluster tools
+  config      config tools
+  disk        disk tools
+  kv          kv tools
+  listAllDB   list all db tools
+  raft        raft db tools
+  service     service tools
+  snapshot    snapshot tools
+  stat        show stat of clustermgr
+  volume      volume tools
+  wal         wal tools
+```
+
+Enable or disable `balance` background task as following:
+
+```bash
+blobstore-cli cm background
+```
+
+```text
+Background task switch control for clustermgr, currently supported: [disk_repair, balance, disk_drop, manual_migrate, volume_inspect, shard_repair, blob_delete]
+
+Usage:
+  background [flags]
+
+Flags:
+  -h, --help     display help
+
+Sub Commands:
+  disable  disable background task
+  enable   enable background task
+  status   show status of a background task switch
+
+```
+
+```bash
+blobstore-cli cm background status balance # check `balance` background task switch status
+blobstore-cli cm background enable balance # enable `balance` background task
+blobstore-cli cm background disable balance # disable `balance` background task
 ```
 
 **Scheduler**
