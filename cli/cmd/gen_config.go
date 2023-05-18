@@ -102,7 +102,7 @@ var (
 	GenClusterCfgCmd = &cobra.Command{
 		Use:   "gencfg",
 		Short: "generate cfs cluster config",
-		Long:  `Generate chubaofs cluster json config files by yaml config`,
+		Long:  `Generate cubefs cluster json config files by yaml config`,
 		Run:   genCfgCmd,
 	}
 )

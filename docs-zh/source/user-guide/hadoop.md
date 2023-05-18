@@ -181,7 +181,7 @@ cp jna-5.4.0.jar $TRINO_HOME/plugin/iceberg
 ### 缺少cfs-hadoop.jar
 
 ```java
-java.lang.RuntimeException: java.lang.ClassNotFoundException: Class io.chubaofs.CubeFSFileSystem not found 
+java.lang.RuntimeException: java.lang.ClassNotFoundException: Class io.cubefs.CubeFSFileSystem not found 
  at org.apache.hadoop.conf.Configuration.getClass(Configuration.java:2349)   
  at org.apache.hadoop.fs.FileSystem.getFileSystemClass(FileSystem.java:2790)   
  at org.apache.hadoop.fs.FileSystem.createFileSystem(FileSystem.java:2810)    

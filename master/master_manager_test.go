@@ -72,7 +72,7 @@ func snapshotTest(t *testing.T) {
 	s := &Server{}
 
 	var dbStore *raftstore.RocksDBStore
-	dbStore, err = raftstore.NewRocksDBStore("/tmp/chubaofs/raft2", LRUCacheSize, WriteBufferSize)
+	dbStore, err = raftstore.NewRocksDBStore("/tmp/cubefs/raft2", LRUCacheSize, WriteBufferSize)
 	if err != nil {
 		t.Fatalf("init rocks db store fail cause: %v", err)
 	}

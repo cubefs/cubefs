@@ -90,7 +90,7 @@ const (
 	DynamicUDSNameFormat = "/tmp/CubeFS-fdstore-%v.sock"
 	DefaultUDSName       = "/tmp/CubeFS-fdstore.sock"
 
-	DefaultLogPath = "/var/log/chubaofs"
+	DefaultLogPath = "/var/log/cubefs"
 )
 
 var (

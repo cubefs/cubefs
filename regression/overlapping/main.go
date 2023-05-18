@@ -25,7 +25,7 @@ func main() {
 	}
 
 	// Note that outPath1 and outPath2 should point to the same underlying file
-	// in ChubaoFS but through different mount point.
+	// in CubeFS but through different mount point.
 	outPath1 := os.Args[1]
 	outPath2 := os.Args[2]
 	data := "aoifjiwjefojwofoiwenfowepojpjoipgnoirngo\n"

@@ -37,7 +37,7 @@ var (
 	defaultConfigData = []byte(`
 {
   "masterAddr": [
-    "master.chubao.io"
+    "master.cube.io"
   ],
   "timeout": 60
 }

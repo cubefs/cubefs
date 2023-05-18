@@ -16,10 +16,10 @@
 
 import os
 
-MASTER = 'http://master.chubao.io'
-ENDPOINT = 'http://object.chubao.io'
+MASTER = 'http://master.cube.io'
+ENDPOINT = 'http://object.cube.io'
 ACCESS_KEY = '39bEF4RrAQgMj6RV'
 SECRET_KEY = 'TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd'
 BUCKET = os.environ.get('BUCKET')
 USE_SSL = False
-REGION = 'chubaofs01'
+REGION = 'cubefs01'
