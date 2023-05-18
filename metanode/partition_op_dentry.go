@@ -53,7 +53,7 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
-	txDentry := NewTxDentry(req.ParentID, req.Name, req.Inode, req.Mode, parIno, txInfo)
+	txDentry := NewTxDentry(req.ParentID, req.Name, req.Inode, req.Mode, inoResp.Msg, txInfo)
 
 	val, err := txDentry.Marshal()
 	if err != nil {
@@ -166,7 +166,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 	}
 
 	txDentry := &TxDentry{
-		ParInode: parIno,
+		ParInode: inoResp.Msg,
 		Dentry:   dentry,
 		TxInfo:   txInfo,
 	}
