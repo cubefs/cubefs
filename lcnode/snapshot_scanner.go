@@ -199,7 +199,7 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 			if err == syscall.ENOENT {
 				done = true
 				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
-					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), marker, err)
+					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), err)
 				break
 			}
 
@@ -319,7 +319,7 @@ func (s *SnapshotScanner) handlVerDel(dentry *proto.ScanDentry) {
 			if err == syscall.ENOENT {
 				done = true
 				log.LogErrorf("action[handlVerDel] ReadDirLimitByVer failed, parent[%v] maker[%v] limit[%v] verSeq[%v] err[%v]",
-					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), marker, err)
+					dentry.Inode, marker, uint64(snapShotRoutingNumPerTask), s.getTaskVerSeq(), err)
 				break
 			}
 

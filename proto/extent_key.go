@@ -116,7 +116,7 @@ func (k *ExtentKey) SetSplit(split bool) {
 
 func (k *ExtentKey) GenerateId() uint64 {
 	if k.PartitionId > math.MaxUint32 || k.ExtentId > math.MaxUint32 {
-		log.LogFatal("ext %v abnormal", k)
+		log.LogFatalf("ext %v abnormal", k)
 	}
 	return (k.PartitionId << 32) | k.ExtentId
 }

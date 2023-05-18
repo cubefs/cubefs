@@ -412,7 +412,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		}
 		rp.Stop()
 	}
-	log.LogDebugf("try rsp opcode %v %v", rp.replId, reply.Opcode, rp.sourceConn)
+	log.LogDebugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn)
 	if reply.Opcode == proto.OpTryWriteAppend || reply.Opcode == proto.OpSyncTryWriteAppend {
 		log.LogDebugf("try rsp opcode %v", reply.Opcode)
 	}
