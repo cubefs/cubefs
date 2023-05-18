@@ -263,14 +263,14 @@ help 可以查看所有命令及简要说明
 
 目前实现了部分模块的主要功能，如下：
 
-| 命令            | 描述                            |
-|---------------|-------------------------------|
-| blobstore-cli config    | 管理该blobstore-cli内存中的配置项                 |
+| 命令                    | 描述                                         |
+|-------------------------|---------------------------------------------|
+| blobstore-cli config    | 管理该blobstore-cli内存中的配置项              |
 | blobstore-cli util      | 小工具集合，如解析location、解析时间、生成特定数据 |
-| blobstore-cli access    | 文件的上传、下载、删除等                  |
-| blobstore-cli cm        | 集群信息查看和管理                     |
-| blobstore-cli scheduler | 后台任务管理                        |
-| blobstore-cli \...      | 补充完善中 \...\...                |
+| blobstore-cli access    | 文件的上传、下载、删除等                        |
+| blobstore-cli cm        | 集群信息查看和管理、后台任务开关管理              |
+| blobstore-cli scheduler | 后台任务管理                                  |
+| blobstore-cli \...      | 补充完善中 \...\...                          |
 
 **Config**
 
@@ -328,15 +328,46 @@ Usage:
   cm [flags]
 
 Sub Commands:
-  cluster    cluster tools
-  config     config tools
-  disk       disk tools
-  kv         kv tools
-  listAllDB  list all db tools
-  service    service tools
-  stat       show stat of clustermgr
-  volume     volume tools
-  wal        wal tools
+  background  background task switch control tools
+  cluster     cluster tools
+  config      config tools
+  disk        disk tools
+  kv          kv tools
+  listAllDB   list all db tools
+  raft        raft db tools
+  service     service tools
+  snapshot    snapshot tools
+  stat        show stat of clustermgr
+  volume      volume tools
+  wal         wal tools
+```
+
+如启用/停用后台任务：
+
+```bash
+blobstore-cli cm background
+```
+
+```text
+Background task switch control for clustermgr, currently supported: [disk_repair, balance, disk_drop, manual_migrate, volume_inspect, shard_repair, blob_delete]
+
+Usage:
+  background [flags]
+
+Flags:
+  -h, --help     display help
+
+Sub Commands:
+  disable  disable background task
+  enable   enable background task
+  status   show status of a background task switch
+
+```
+
+```bash
+blobstore-cli cm background status balance # 查看`balance`后台任务开关状态
+blobstore-cli cm background enable balance # 打开`balance`后台任务开关
+blobstore-cli cm background disable balance # 关闭`balance`后台任务开关
 ```
 
 **Scheduler**
