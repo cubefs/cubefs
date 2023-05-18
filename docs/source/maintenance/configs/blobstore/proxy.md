@@ -9,7 +9,7 @@ The configuration of the proxy is based on the [public configuration](./base.md)
 ### Key Configuration
 
 ::: tip Note
-Starting from version v3.2.2, Proxy node supports caching of volume and disk information.
+Starting from version v3.3.0, Proxy node supports caching of volume and disk information.
 :::
 
 | Configuration Item     | Description                                                                                                                | Required |

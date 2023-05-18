@@ -114,7 +114,7 @@ The configuration of the Scheduler is based on the [public configuration](./base
 
 ### balance
 
-* disk_concurrency, the maximum number of disks allowed to be balanced simultaneously, default is 1 (before v3.2.2, this value was balance_disk_cnt_limit, default is 100)
+* disk_concurrency, the maximum number of disks allowed to be balanced simultaneously, default is 1 (before v3.3.0, this value was balance_disk_cnt_limit, default is 100)
 * max_disk_free_chunk_cnt, when balancing, it will be judged whether there are disks with freechunk greater than or equal to this value in the current IDC. If not, no balance will be initiated. The default is 1024.
 * min_disk_free_chunk_cnt, disks with freechunk less than this value will be balanced, default is 20
 * prepare_queue_retry_delay_s, retry interval for the preparation queue when a task in the preparation queue fails to execute, default is 10
@@ -139,7 +139,7 @@ The configuration of the Scheduler is based on the [public configuration](./base
 ### disk_drop
 
 ::: tip Note
-Starting from version v3.2.2, concurrent disk offline is supported.
+Starting from version v3.3.0, concurrent disk offline is supported.
 :::
 
 * prepare_queue_retry_delay_s, retry interval for the preparation queue when a task in the preparation queue fails to execute, default is 10
@@ -164,7 +164,7 @@ Starting from version v3.2.2, concurrent disk offline is supported.
 ### disk_repair
 
 ::: tip Note
-Starting from version v3.2.2, concurrent disk repair is supported.
+Starting from version v3.3.0, concurrent disk repair is supported.
 :::
 
 * prepare_queue_retry_delay_s, retry interval for the preparation queue when a task in the preparation queue fails to execute, default is 10
@@ -225,7 +225,7 @@ Starting from version v3.2.2, concurrent disk repair is supported.
 ### blob_delete
 
 ::: tip Note
-Starting from version v3.2.2, it is supported to configure the data deletion time period.
+Starting from version v3.3.0, it is supported to configure the data deletion time period.
 :::
 
 * task_pool_size, concurrency of deletion tasks, default is 10
