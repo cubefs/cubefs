@@ -53,9 +53,9 @@ const (
 	// Example:
 	//		{
 	//			"masterAddr":[
-	//				"master1.chubao.io",
-	//				"master2.chubao.io",
-	//				"master3.chubao.io"
+	//				"master1.cube.io",
+	//				"master2.cube.io",
+	//				"master3.cube.io"
 	//			]
 	//		}
 	configMasterAddr = proto.MasterAddr
@@ -76,10 +76,10 @@ const (
 	// Example:
 	//		{
 	//			"domains": [
-	//				"object.chubao.io"
+	//				"object.cube.io"
 	//			]
 	//		}
-	// The configuration in the example will allow ObjectNode to automatically resolve "* .object.chubao.io".
+	// The configuration in the example will allow ObjectNode to automatically resolve "* .object.cube.io".
 	configDomains = "domains"
 
 	disabledActions               = "disabledActions"

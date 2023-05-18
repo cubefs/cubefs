@@ -19,8 +19,8 @@ import "testing"
 func TestWildcards_Parse(t *testing.T) {
 
 	var domains = []string{
-		"object.chubao.io",
-		"oss.chubao.io",
+		"object.cube.io",
+		"oss.cube.io",
 	}
 
 	type expect struct {
@@ -34,15 +34,15 @@ func TestWildcards_Parse(t *testing.T) {
 	}
 
 	var samples = []sample{
-		{h: "object.chubao.io", e: expect{wildcard: false}},
-		{h: "object.chubao.io:8080", e: expect{wildcard: false}},
-		{h: "a.object.chubao.io", e: expect{wildcard: true, bucket: "a"}},
-		{h: "a.b.object.chubao.io", e: expect{wildcard: true, bucket: "a.b"}},
-		{h: "a_b.object.chubao.io", e: expect{wildcard: true, bucket: "a_b"}},
-		{h: "a-bc.object.chubao.io", e: expect{wildcard: true, bucket: "a-bc"}},
-		{h: "ab.object.chubao.io:8080", e: expect{wildcard: true, bucket: "ab"}},
-		{h: ".oss.chubao.io:a", e: expect{wildcard: false}},
-		{h: ".b-c_d.oss.chubao.io:a", e: expect{wildcard: false}},
+		{h: "object.cube.io", e: expect{wildcard: false}},
+		{h: "object.cube.io:8080", e: expect{wildcard: false}},
+		{h: "a.object.cube.io", e: expect{wildcard: true, bucket: "a"}},
+		{h: "a.b.object.cube.io", e: expect{wildcard: true, bucket: "a.b"}},
+		{h: "a_b.object.cube.io", e: expect{wildcard: true, bucket: "a_b"}},
+		{h: "a-bc.object.cube.io", e: expect{wildcard: true, bucket: "a-bc"}},
+		{h: "ab.object.cube.io:8080", e: expect{wildcard: true, bucket: "ab"}},
+		{h: ".oss.cube.io:a", e: expect{wildcard: false}},
+		{h: ".b-c_d.oss.cube.io:a", e: expect{wildcard: false}},
 	}
 
 	var ws Wildcards

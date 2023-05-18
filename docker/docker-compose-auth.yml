@@ -6,7 +6,7 @@ networks:
 
 services:
   monitor:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     depends_on:
       - consul
       - prometheus
@@ -15,7 +15,7 @@ services:
       authnode_extnetwork:
 
   servers:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     depends_on:
       - master1
       - master2
@@ -33,7 +33,7 @@ services:
       authnode_extnetwork:
 
   master1:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "5901"
       - "5902"
@@ -52,7 +52,7 @@ services:
         ipv4_address: 192.168.0.11
 
   master2:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "5901"
       - "5902"
@@ -70,7 +70,7 @@ services:
       authnode_extnetwork:
         ipv4_address: 192.168.0.12
   master3:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "5901"
       - "5902"
@@ -89,7 +89,7 @@ services:
         ipv4_address: 192.168.0.13
 
   metanode1:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "17210"
       - "17220"
@@ -108,7 +108,7 @@ services:
         ipv4_address: 192.168.0.21
 
   metanode2:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "17210"
       - "17220"
@@ -127,7 +127,7 @@ services:
         ipv4_address: 192.168.0.22
 
   metanode3:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "17210"
       - "17220"
@@ -146,7 +146,7 @@ services:
         ipv4_address: 192.168.0.23
 
   metanode4:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "17210"
       - "17220"
@@ -165,7 +165,7 @@ services:
         ipv4_address: 192.168.0.24
 
   datanode1:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "17310"
       - "17320"
@@ -185,7 +185,7 @@ services:
         ipv4_address: 192.168.0.31
 
   datanode2:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "17310"
       - "17320"
@@ -205,7 +205,7 @@ services:
         ipv4_address: 192.168.0.32
 
   datanode3:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "17310"
       - "17320"
@@ -225,7 +225,7 @@ services:
         ipv4_address: 192.168.0.33
 
   datanode4:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "17310"
       - "17320"
@@ -245,7 +245,7 @@ services:
         ipv4_address: 192.168.0.34
 
   objectnode1:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - "80"
     volumes:
@@ -260,7 +260,7 @@ services:
         ipv4_address: 192.168.0.41
 
   client:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     ports:
       - 9500
     volumes:
@@ -316,7 +316,7 @@ services:
       authnode_extnetwork:
 
   build:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     volumes:
       - ../:/go/src/github.com/cubefs/cubefs
     command:
@@ -333,7 +333,7 @@ services:
       authnode_extnetwork:
 
   test:
-    image: chubaofs/cfs-base:1.0
+    image: cubefs/cfs-base:1.0
     volumes:
       - ../:/go/src/github.com/cubefs/cubefs
     command:

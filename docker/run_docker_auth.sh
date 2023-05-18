@@ -12,10 +12,10 @@ help() {
 Usage: ./run_docker_auth.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltptest ]
     -h, --help              show help info
     -d, --disk </disk/path>     set datanode local disk path
-    -b, --build             build chubaofs server and cliente
-    -s, --server            start chubaofs servers docker image
-    -c, --client            start chubaofs client docker image
-    -s3, --s3node           start chubaofs s3node
+    -b, --build             build cubefs server and cliente
+    -s, --server            start cubefs servers docker image
+    -c, --client            start cubefs client docker image
+    -s3, --s3node           start cubefs s3node
     -m, --monitor           start monitor web ui
     -l, --ltptest           run ltp test
     -r, --run               run servers, client and monitor

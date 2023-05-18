@@ -1,6 +1,6 @@
 FROM ubuntu:focal
 
-MAINTAINER chubaofs
+MAINTAINER cubefs
 
 
 
@@ -27,7 +27,7 @@ RUN  chmod a+x  /root/*.sh
 
 #ENTRYPOINT ["java","-Djava.security.egd=file:/dev/./urandom","-jar","/thymeleaf-master.jar"]
 
-# docker build --rm --tag arm64_gcc9_golang1_13_ubuntu_focal_chubaofs ./build/compile/arm64
-# docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc9_golang1_13_ubuntu_focal_chubaofs /root/buildcfs.sh
+# docker build --rm --tag arm64_gcc9_golang1_13_ubuntu_focal_cubefs ./build/compile/arm64
+# docker run  -v /root/arm64/cubefs:/root/cubefs arm64_gcc9_golang1_13_ubuntu_focal_cubefs /root/buildcfs.sh
 
 #

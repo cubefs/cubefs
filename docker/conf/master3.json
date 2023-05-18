@@ -1,5 +1,5 @@
 {
-  "clusterName": "chubaofs01",
+  "clusterName": "cubefs01",
   "id": "3",
   "role": "master",
   "ip": "192.168.0.13",

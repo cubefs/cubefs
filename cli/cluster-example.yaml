@@ -1,10 +1,10 @@
 version: 1.0
 
 cluster:
-    name: "chubaofs-test01"
+    name: "cubefs-test01"
     version: "2.4.0"
     config:
-        consulAddr: http://consul.chubaofs.com/register
+        consulAddr: http://consul.cubefs.com/register
         logLevel: "info"
         logDir: /var/log/cfs
         warnLogDir: /var/log/cfs-warn
@@ -60,7 +60,7 @@ cluster:
             exporterPort: 9500
             enableHTTPS: "false"
             domains:
-              - "object.chubao.io"
+              - "object.cube.io"
             signatureIgnoredActions:
               - "action:oss:GetObjectXAttr"
               - "action:oss:PutObjectXAttr"
@@ -74,7 +74,7 @@ cluster:
         - role: console
           config:
             listen: "80"
-            objectNodeDomain: "object.chubao.io"
+            objectNodeDomain: "object.cube.io"
         - role: client
           config:
             mountPoint: /cfs/mnt

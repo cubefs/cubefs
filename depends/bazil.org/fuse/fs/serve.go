@@ -415,8 +415,8 @@ const (
 	ContextHandleVersionV1 uint32 = 1
 	ContextNodeVersion     uint32 = ContextNodeVersionV1
 	ContextHandleVersion   uint32 = ContextHandleVersionV1
-	NodeListFileName       string = "/tmp/ChubaoFS-fuse-Nodes.list"
-	HandleListFileName     string = "/tmp/ChubaoFS-fuse-Handles.list"
+	NodeListFileName       string = "/tmp/CubeFS-fuse-Nodes.list"
+	HandleListFileName     string = "/tmp/CubeFS-fuse-Handles.list"
 )
 
 func WriteVersion(file *os.File, version uint32) error {
@@ -823,7 +823,7 @@ func (s *Server) LoadFuseContext(fs FS, sockaddr string) error {
 
 			sn := s.node[ch.NodeID]
 			if node, ok := sn.node.(NodeOpener); ok {
-				// create streamers for chubaofs
+				// create streamers for cubefs
 				if hdl, err = node.Open(nil, nil, nil); err != nil {
 					err = fmt.Errorf("LoadFuseContext: failed to open handle %v: %v\n", sn.inode, err)
 					return err

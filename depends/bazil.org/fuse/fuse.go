@@ -1347,7 +1347,7 @@ type Attr struct {
 	Flags     uint32      // chflags(2) flags (OS X only)
 	BlockSize uint32      // preferred blocksize for filesystem I/O
 
-	ParentIno uint64 // for chubaofs's file only
+	ParentIno uint64 // for cubefs's file only
 }
 
 func (a Attr) String() string {

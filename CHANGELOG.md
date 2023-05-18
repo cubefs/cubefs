@@ -178,7 +178,7 @@ Chinese version: https://cubefs.readthedocs.io/zh_CN/latest/
 
 ### _**UPGRAGDE NOTICE**_
 
-If your ChubaoFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
 ### Notice
 * this release mainly used to optimize datanode cpu usage 
 
