@@ -1577,12 +1577,10 @@ func (i *Inode) AppendExtentWithCheck(
 }
 
 func (i *Inode) ExtentsTruncate(length uint64, ct int64, doOnLastKey func(*proto.ExtentKey)) (delExtents []proto.ExtentKey) {
-	i.Lock()
 	delExtents = i.Extents.Truncate(length, doOnLastKey)
 	i.Size = length
 	i.ModifyTime = ct
 	i.Generation++
-	i.Unlock()
 	return
 }
 
