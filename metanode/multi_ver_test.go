@@ -62,6 +62,8 @@ func newPartition(conf *MetaPartitionConfig, manager *metadataManager) (mp *meta
 	}
 	mp.config.Cursor = 0
 	mp.config.End = 100000
+	mp.uidManager = NewUidMgr(conf.VolName, mp.config.PartitionId)
+	mp.mqMgr = NewQuotaManager(conf.VolName, mp.config.PartitionId)
 	return mp
 }
 
@@ -681,7 +683,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 		if ino.Status != proto.OpOk {
 			panic(nil)
 		}
-		rino.verSeq = verSeq
+		rino.setVer(verSeq)
 		rspDelIno = mp.fsmUnlinkInode(rino, 0)
 
 		assert.True(t, rspDelIno.Status == proto.OpOk || rspDelIno.Status == proto.OpNotExistErr)
@@ -942,7 +944,7 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 			verSeq: verSeq,
 		},
 	}
-	rino.verSeq = verSeq
+	rino.setVer(verSeq)
 	rspDelIno := mp.fsmUnlinkInode(rino, 0)
 
 	assert.True(t, rspDelIno.Status == proto.OpOk || rspDelIno.Status == proto.OpNotExistErr)

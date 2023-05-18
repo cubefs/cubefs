@@ -944,7 +944,7 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	if task == nil {
 		return
 	}
-	log.LogDebugf(fmt.Sprintf("action[handleMetaNodeTaskResponse] receive Task response:%v from %v now:%v", task.IdString(), nodeAddr), time.Now().Unix())
+	log.LogDebugf(fmt.Sprintf("action[handleMetaNodeTaskResponse] receive Task response:%v from %v now:%v", task.IdString(), nodeAddr, time.Now().Unix()))
 	var (
 		metaNode *MetaNode
 	)
