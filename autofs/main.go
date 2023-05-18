@@ -5,11 +5,10 @@ import (
 	"github.com/spf13/cobra"
 	"log"
 	"os"
-	"time"
 )
 
 var buildVersion = "DebugVersion"
-var buildDate = time.Now().String()
+var buildDate = "BuildDate"
 
 var logFile *os.File
 

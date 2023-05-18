@@ -5,7 +5,7 @@ automount tool for [cubefs](https://github.com/cubefs/cubefs)
 ## build
 
 ```bash
-go build -v -ldflags="-X main.buildVersion=1.1" -o /usr/local/bin
+go build -v -ldflags="-X main.buildVersion=1.1 -X 'main.buildDate=$(date '+%Y-%m-%d %H:%M:%S')'" -o /usr/local/bin
 ```
 
 ## quick start
@@ -22,6 +22,12 @@ cfsauto
 ### version
 
 cfsauto -V
+
+example:
+
+```bash
+Version: 1.1, BuildDate: 2023-05-18 15:08:00
+```
 
 
 ## LDAP automount example
