@@ -118,13 +118,13 @@ func TestSortedMarshal(t *testing.T) {
 	se.eks = append(se.eks, e1)
 	se.eks = append(se.eks, e2)
 
-	data, err := se.MarshalBinary()
+	data, err := se.MarshalBinary(false)
 	if err != nil {
 		t.Fail()
 	}
 
 	se2 := NewSortedExtents()
-	err = se2.UnmarshalBinary(data)
+	err, _ = se2.UnmarshalBinary(data, false)
 	if err != nil {
 		t.Fail()
 	}

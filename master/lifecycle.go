@@ -79,7 +79,7 @@ func (ns *nodesState) addTaskToNode(info lcnodeTaskInfo, nodeAddr string) {
 			}
 		}
 	default:
-		log.LogError("Unknown task type: %T", t)
+		log.LogErrorf("Unknown task type: %v", t)
 	}
 
 }
@@ -216,7 +216,7 @@ func (ns *nodesState) ReleaseTask(info lcnodeTaskInfo) {
 				}
 			}
 		default:
-			log.LogError("Unknown task type: %T", t)
+			log.LogErrorf("Unknown task type: %v", t)
 		}
 	}
 }

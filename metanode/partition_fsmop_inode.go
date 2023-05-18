@@ -536,7 +536,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		log.LogInfof("action[fsmAppendExtentsWithCheck] OpConflictExtentsErr [%v]", eks[:1])
 		mp.extDelCh <- eks[:1]
 		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, eks[:1])
-		log.LogDebugf("fsmAppendExtentsWithCheck delExtents inode(%v) ek(%v)", delExtents)
+		log.LogDebugf("fsmAppendExtentsWithCheck delExtents inode(%v) ek(%v)", ino2.Inode, delExtents)
 
 	}
 

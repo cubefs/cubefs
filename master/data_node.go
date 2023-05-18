@@ -147,7 +147,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	}
 	dataNode.ReportTime = time.Now()
 	dataNode.isActive = true
-	log.LogDebugf("updateNodeMetric. datanode %v total %v used %v avaliable %v", dataNode.ID, dataNode.Addr,
+	log.LogDebugf("updateNodeMetric. datanode id %v addr %v total %v used %v avaliable %v", dataNode.ID, dataNode.Addr,
 		dataNode.Total, dataNode.Used, dataNode.AvailableSpace)
 }
 
