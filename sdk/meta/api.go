@@ -127,6 +127,18 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 		log.LogErrorf("txCreate_ll: No parent partition, parentID(%v)", parentID)
 		return nil, syscall.ENOENT
 	}
+
+	status, info, err = mw.iget(parentMP, parentID)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+
+	quota := atomic.LoadUint32(&mw.DirChildrenNumLimit)
+	if info.Nlink >= quota {
+		log.LogErrorf("txCreate_ll: parent inode's nlink quota reached, parentID(%v)", parentID)
+		return nil, syscall.EDQUOT
+	}
+
 	quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
 	if err != nil {
 		log.LogErrorf("Create_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
@@ -217,12 +229,6 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 
 	status, info, err = mw.iget(parentMP, parentID)
 	if err != nil || status != statusOK {
-		if status == statusNoent {
-			// For NOENT error, pull the latest mp and give it another try,
-			// in case the mp view is outdated.
-			mw.triggerAndWaitForceUpdate()
-			return mw.doInodeGet(parentID)
-		}
 		return nil, statusToErrno(status)
 	}
 
@@ -793,6 +799,18 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		//return syscall.EAGAIN
 
 	} else if status == statusNoent {
+		var info *proto.InodeInfo
+		status, info, err = mw.iget(dstParentMP, dstParentID)
+		if err != nil || status != statusOK {
+			return statusToErrno(status)
+		}
+
+		quota := atomic.LoadUint32(&mw.DirChildrenNumLimit)
+		if info.Nlink >= quota {
+			log.LogErrorf("txRename_ll: dst parent inode's nlink quota reached, parentID(%v)", dstParentID)
+			return syscall.EDQUOT
+		}
+
 		err = RenameTxAddParInode(tx, dstParentMP, dstParentID)
 		if err != nil {
 			return syscall.EAGAIN
@@ -899,6 +917,17 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	dstParentMP := mw.getPartitionByInode(dstParentID)
 	if dstParentMP == nil {
 		return syscall.ENOENT
+	}
+
+	status, info, err := mw.iget(dstParentMP, dstParentID)
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+
+	quota := atomic.LoadUint32(&mw.DirChildrenNumLimit)
+	if info.Nlink >= quota {
+		log.LogErrorf("rename_ll: dst parent inode's nlink quota reached, parentID(%v)", dstParentID)
+		return syscall.EDQUOT
 	}
 
 	// look up for the src ino
@@ -1249,6 +1278,17 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64) (info *p
 		return nil, syscall.ENOENT
 	}
 
+	status, info, err = mw.iget(parentMP, parentID)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+
+	quota := atomic.LoadUint32(&mw.DirChildrenNumLimit)
+	if info.Nlink >= quota {
+		log.LogErrorf("txLink: parent inode's nlink quota reached, parentID(%v)", parentID)
+		return nil, syscall.EDQUOT
+	}
+
 	mp := mw.getPartitionByInode(ino)
 	if mp == nil {
 		log.LogErrorf("txLink: No target inode partition, ino(%v)", ino)
@@ -1296,6 +1336,17 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64) (*proto.In
 		return nil, syscall.ENOENT
 	}
 
+	status, info, err := mw.iget(parentMP, parentID)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+
+	quota := atomic.LoadUint32(&mw.DirChildrenNumLimit)
+	if info.Nlink >= quota {
+		log.LogErrorf("link: parent inode's nlink quota reached, parentID(%v)", parentID)
+		return nil, syscall.EDQUOT
+	}
+
 	mp := mw.getPartitionByInode(ino)
 	if mp == nil {
 		log.LogErrorf("Link: No target inode partition, ino(%v)", ino)
@@ -1303,7 +1354,7 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64) (*proto.In
 	}
 
 	// increase inode nlink
-	status, info, err := mw.ilink(mp, ino)
+	status, info, err = mw.ilink(mp, ino)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
