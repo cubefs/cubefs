@@ -288,7 +288,7 @@ func cleanSnapshot() (err error) {
 		parents  []proto.Dentry
 		ino      *proto.InodeInfo
 	)
-	return readSnapshot()
+	//return readSnapshot()
 
 	log.LogDebugf("action[cleanSnapshot] ReadDirLimit_ll parent root verSeq %v", VerSeq)
 	parents, err = gMetaWrapper.ReadDirLimitByVer(1, "", math.MaxUint64, VerSeq, false) // one more for nextMarker
