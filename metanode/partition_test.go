@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"github.com/cubefs/cubefs/proto"
 	"io/ioutil"
 	"os"
 	"path"
@@ -65,6 +66,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	}
 	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
 	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
+	mp.multiVersionList = &proto.VolVersionInfoList{}
 
 	err := mp.store(msg)
 	require.NoError(t, err)
