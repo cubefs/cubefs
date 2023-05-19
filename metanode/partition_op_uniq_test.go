@@ -140,7 +140,10 @@ func TestDoEvit2(t *testing.T) {
 }
 
 func mockPartitionRaft(ctrl *gomock.Controller) *metaPartition {
-	partition := NewMetaPartition(nil, nil).(*metaPartition)
+	conf := &MetaPartitionConfig{
+		VerSeq: 0,
+	}
+	partition := NewMetaPartition(conf, nil).(*metaPartition)
 	partition.uniqChecker.keepTime = 1
 	partition.uniqChecker.keepOps = 0
 	raft := raftstoremock.NewMockPartition(ctrl)
