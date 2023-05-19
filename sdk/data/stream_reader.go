@@ -59,7 +59,8 @@ type Streamer struct {
 	done    chan struct{}    // stream writer is being closed
 	wg      sync.WaitGroup
 
-	overWriteReq      []*OverWriteRequest
+	overWriteBuffer   bool
+	overWriteReq      []*ExtentRequest
 	overWriteReqMutex sync.Mutex
 
 	tinySize   int
@@ -72,7 +73,7 @@ type Streamer struct {
 }
 
 // NewStreamer returns a new streamer.
-func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStreamerMapSegment) *Streamer {
+func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStreamerMapSegment, overWriteBuffer bool) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
@@ -80,6 +81,7 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.request = make(chan interface{}, 64)
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
+	s.overWriteBuffer = overWriteBuffer
 	s.tinySize = client.tinySize
 	s.extentSize = client.extentSize
 	s.streamerMap = streamMap

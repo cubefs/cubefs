@@ -57,29 +57,10 @@ type OpenRequest struct {
 
 // WriteRequest defines a write request.
 type WriteRequest struct {
-	fileOffset      uint64
-	size            int
-	data            []byte
-	direct          bool
-	overWriteBuffer bool
-	writeBytes      int
-	isROW           bool
-	err             error
-	done            chan struct{}
-	ctx             context.Context
-}
-
-type FlushOverWriteRequest struct {
-	write []*OverWriteRequest
-	flush *FlushRequest
-}
-
-type OverWriteRequest struct {
-	direct     bool
-	oriReq     *ExtentRequest
-	fileOffset int
+	fileOffset uint64
 	size       int
 	data       []byte
+	direct     bool
 	writeBytes int
 	isROW      bool
 	err        error
@@ -138,7 +119,7 @@ func GetWriteRequestFromPool() (request *WriteRequest) {
 	return
 }
 
-func (s *Streamer) IssueWriteRequest(ctx context.Context, offset uint64, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
+func (s *Streamer) IssueWriteRequest(ctx context.Context, offset uint64, data []byte, direct bool) (write int, isROW bool, err error) {
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, false, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
@@ -150,7 +131,6 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset uint64, data []
 	request.fileOffset = offset
 	request.size = len(data)
 	request.direct = direct
-	request.overWriteBuffer = overWriteBuffer
 	request.done = make(chan struct{}, 1)
 	request.isROW = false
 	request.ctx = ctx
@@ -316,21 +296,20 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 		s.open()
 		request.done <- struct{}{}
 	case *WriteRequest:
-		request.writeBytes, request.isROW, request.err = s.write(request.ctx, request.data, request.fileOffset, request.size, request.direct, request.overWriteBuffer)
+		request.writeBytes, request.isROW, request.err = s.write(request.ctx, request.data, request.fileOffset, request.size, request.direct)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.ctx, request.size)
 		request.done <- struct{}{}
 	case *FlushRequest:
-		request.err = s.flush(request.ctx, true)
-		if len(s.overWriteReq) > 0 {
-			s.overWriteReqMutex.Lock()
-			overWriteReq := s.overWriteReq
-			s.overWriteReq = nil
-			s.overWriteReqMutex.Unlock()
-			for _, req := range overWriteReq {
-				s.doOverWriteOrROW(request.ctx, req.oriReq, req.direct)
-			}
+		var errs []error
+		err := s.flush(request.ctx, true)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		errs = append(errs, s.flushOverWriteBuffer(request.ctx)...)
+		if len(errs) > 0 {
+			request.err = errors.NewErrorf("flush error(%v)", errs)
 		}
 		request.done <- struct{}{}
 	case *ReleaseRequest:
@@ -343,7 +322,7 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 	}
 }
 
-func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size int, direct bool, overWriteBuffer bool) (total int, isROW bool, err error) {
+func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size int, direct bool) (total int, isROW bool, err error) {
 	if log.IsDebugEnabled() {
 		log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 	}
@@ -395,11 +374,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 				continue
 			}
 			if req.ExtentKey != nil {
-				if overWriteBuffer {
-					writeSize = s.appendOverWriteReq(req, direct)
-				} else {
-					writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct)
-				}
+				writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct)
 			} else {
 				writeSize, err = s.doWrite(ctx, req.Data, req.FileOffset, req.Size, direct)
 			}
@@ -770,44 +745,55 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset uint64, size
 	return
 }
 
-func (s *Streamer) appendOverWriteReq(oriReq *ExtentRequest, direct bool) (writeSize int) {
-	var (
-		req    *OverWriteRequest = &OverWriteRequest{oriReq: oriReq, direct: direct}
-		offset int
-	)
-	writeSize = oriReq.Size
+func (s *Streamer) appendOverWriteReq(inReq *ExtentRequest) (writeSize int) {
+	var offset int
+	writeSize = inReq.Size
 
-	s.overWriteReqMutex.Lock()
-	defer s.overWriteReqMutex.Unlock()
-
-	for _, curReq := range s.overWriteReq {
-		if req.oriReq.ExtentKey.PartitionId != curReq.oriReq.ExtentKey.PartitionId ||
-			req.oriReq.ExtentKey.ExtentId != curReq.oriReq.ExtentKey.ExtentId ||
-			req.oriReq.FileOffset < curReq.oriReq.FileOffset ||
-			req.oriReq.FileOffset > curReq.oriReq.FileOffset+uint64(curReq.oriReq.Size) {
+	for _, req := range s.overWriteReq {
+		if inReq.ExtentKey.PartitionId != req.ExtentKey.PartitionId ||
+			inReq.ExtentKey.ExtentId != req.ExtentKey.ExtentId ||
+			inReq.FileOffset < req.FileOffset ||
+			inReq.FileOffset > req.FileOffset+uint64(req.Size) {
 			continue
 		}
 
-		offset = int(req.oriReq.FileOffset - curReq.oriReq.FileOffset)
-		if req.oriReq.FileOffset+uint64(req.oriReq.Size) <= curReq.oriReq.FileOffset+uint64(curReq.oriReq.Size) {
-			copy(curReq.oriReq.Data[offset:offset+req.oriReq.Size], req.oriReq.Data)
-		} else if req.oriReq.FileOffset == curReq.oriReq.FileOffset+uint64(curReq.oriReq.Size) {
-			curReq.oriReq.Data = append(curReq.oriReq.Data, req.oriReq.Data...)
-			curReq.oriReq.Size = len(curReq.oriReq.Data)
+		offset = int(inReq.FileOffset - req.FileOffset)
+		if inReq.FileOffset+uint64(inReq.Size) <= req.FileOffset+uint64(req.Size) {
+			copy(req.Data[offset:offset+inReq.Size], inReq.Data)
+		} else if inReq.FileOffset == req.FileOffset+uint64(req.Size) {
+			req.Data = append(req.Data, inReq.Data...)
+			req.Size = len(req.Data)
 		} else {
-			copy(curReq.oriReq.Data[offset:], req.oriReq.Data[:curReq.oriReq.Size-offset])
-			curReq.oriReq.Data = append(curReq.oriReq.Data, req.oriReq.Data[curReq.oriReq.Size-offset:]...)
-			curReq.oriReq.Size = len(curReq.oriReq.Data)
+			copy(req.Data[offset:], inReq.Data[:req.Size-offset])
+			req.Data = append(req.Data, inReq.Data[req.Size-offset:]...)
+			req.Size = len(req.Data)
 		}
 		return
 	}
 
-	data := make([]byte, len(req.oriReq.Data))
-	copy(data, req.oriReq.Data)
-	req.oriReq.Data = data
-	s.overWriteReq = append(s.overWriteReq, req)
+	data := make([]byte, len(inReq.Data))
+	copy(data, inReq.Data)
+	inReq.Data = data
+	s.overWriteReq = append(s.overWriteReq, inReq)
 	//log.LogDebugf("appendOverWriteReq: ino(%v) req(%v)", s.inode, oriReq)
 	return
+}
+
+func (s *Streamer) updateOverWriteReq(offset uint64, size int) {
+	s.overWriteReqMutex.Lock()
+	defer s.overWriteReqMutex.Unlock()
+	var overWriteReq []*ExtentRequest
+	for _, req := range s.overWriteReq {
+		if req.FileOffset < offset+uint64(size) && req.FileOffset+uint64(req.Size) >= offset {
+			requests, _ := s.extents.PrepareRequests(req.FileOffset, req.Size, req.Data)
+			for _, req1 := range requests {
+				overWriteReq = append(overWriteReq, req1)
+			}
+		} else {
+			overWriteReq = append(overWriteReq, req)
+		}
+	}
+	s.overWriteReq = overWriteReq
 }
 
 func (s *Streamer) flush(ctx context.Context, flushPendingPacket bool) (err error) {
@@ -844,6 +830,27 @@ func (s *Streamer) flush(ctx context.Context, flushPendingPacket bool) (err erro
 		}
 		if log.IsDebugEnabled() {
 			log.LogDebugf("Streamer flush end: eh(%v)", eh)
+		}
+	}
+	return
+}
+
+func (s *Streamer) flushOverWriteBuffer(ctx context.Context) (errs []error) {
+	if len(s.overWriteReq) == 0 {
+		return
+	}
+
+	s.overWriteReqMutex.Lock()
+	overWriteReq := s.overWriteReq
+	s.overWriteReq = nil
+	s.overWriteReqMutex.Unlock()
+	for _, req := range overWriteReq {
+		_, isROW, err := s.doOverWriteOrROW(ctx, req, false)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if isROW {
+			s.updateOverWriteReq(req.FileOffset, req.Size)
 		}
 	}
 	return

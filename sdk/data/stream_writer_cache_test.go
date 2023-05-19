@@ -535,7 +535,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 			if err != nil {
 				t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)
 			}
-			streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode))
+			streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode), false)
 			streamer.refcnt++
 			fmt.Println("TestExtentHandler_PendingPacket: done create inode")
 
@@ -576,7 +576,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 					}
 					offset := rule.offset + uint64(i*size)
 					fmt.Printf("test(%v) write offset(%v) size(%v)\n", tt.name, offset, size)
-					total, isROW, err := streamer.write(context.Background(), writeData, offset, size, false, false)
+					total, isROW, err := streamer.write(context.Background(), writeData, offset, size, false)
 					if err != nil || total != size || isROW != false {
 						t.Fatalf("TestStreamer_WriteFile_Pending write: name(%v) err(%v) total(%v) isROW(%v) expect size(%v)", tt.name, err, total, isROW, size)
 					}
@@ -664,7 +664,7 @@ func TestStreamer_WriteFile_discontinuous(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TestExtentHandler_PendingPacket: creat inode failed, err(%v)", err)
 	}
-	streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode))
+	streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode), false)
 
 	localPath := "/tmp/TestStreamer_WriteFile_discontinuous"
 	localFile, _ := os.Create(localPath)
@@ -714,7 +714,7 @@ func writeLocalAndCFS(localF *os.File, streamer *Streamer, offset int64, size in
 		writeBytes[i] = byte(n)
 	}
 	localF.WriteAt(writeBytes, offset)
-	n, _, err := streamer.write(context.Background(), writeBytes, uint64(offset), size, false, false)
+	n, _, err := streamer.write(context.Background(), writeBytes, uint64(offset), size, false)
 	if err != nil || n != size {
 		return fmt.Errorf("write file err(%v) write size(%v)", err, size)
 	}

@@ -384,6 +384,7 @@ func (c *client) rebuildClientState(clientState *SDKState) {
 }
 
 func (c *client) openInodeStream(f *file) {
+	overWriteBuffer := false
 	_, name := gopath.Split(f.path)
 	nameParts := strings.Split(name, ".")
 	if nameParts[0] == fileRelaylog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
@@ -392,8 +393,11 @@ func (c *client) openInodeStream(f *file) {
 		f.fileType = fileTypeBinlog
 	} else if strings.Contains(nameParts[0], fileRedolog) {
 		f.fileType = fileTypeRedolog
+		if c.app == appMysql8 || c.app == appCoralDB {
+			overWriteBuffer = true
+		}
 	}
-	c.ec.OpenStream(f.ino)
+	c.ec.OpenStream(f.ino, overWriteBuffer)
 }
 
 func (c *client) absPath(path string) string {
@@ -642,7 +646,7 @@ func (c *client) copyFile(fd uint, newfd uint) uint {
 	newfile.fd = newfd
 	c.fdmap[newfd] = newfile
 	if proto.IsRegular(newfile.mode) {
-		c.ec.OpenStream(newfile.ino)
+		c.ec.OpenStream(newfile.ino, false)
 	}
 	return newfd
 }

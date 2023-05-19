@@ -319,7 +319,7 @@ func getStreamer(t *testing.T, file string, ec *ExtentClient, appendWriteBuffer 
 	}
 	sysStat := info.Sys().(*syscall.Stat_t)
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	return NewStreamer(ec, sysStat.Ino, streamMap)
+	return NewStreamer(ec, sysStat.Ino, streamMap, false)
 }
 
 func TestROW(t *testing.T) {
@@ -361,7 +361,7 @@ func TestROW(t *testing.T) {
 	}
 	inode := fInfo.Sys().(*syscall.Stat_t).Ino
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(inode)
-	streamer := NewStreamer(ec, inode, streamMap)
+	streamer := NewStreamer(ec, inode, streamMap, false)
 	_, _, eks, err := mw.GetExtents(ctx, inode)
 	if err != nil {
 		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, inode)
@@ -450,7 +450,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 	sysStat := fInfo.Sys().(*syscall.Stat_t)
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	streamer := NewStreamer(ec, sysStat.Ino, streamMap)
+	streamer := NewStreamer(ec, sysStat.Ino, streamMap, false)
 	if _, _, eks, err := mw.GetExtents(context.Background(), sysStat.Ino); err != nil {
 		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, sysStat.Ino)
 	} else {
@@ -511,7 +511,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length)
-	_, _, err = streamer.write(ctx, data, 0, length, false, false)
+	_, _, err = streamer.write(ctx, data, 0, length, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
@@ -528,7 +528,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 		t.Fatalf("doROW failed: err(%v)", err)
 	}
 
-	_, _, err = streamer.write(ctx, data, uint64(length), length, false, false)
+	_, _, err = streamer.write(ctx, data, uint64(length), length, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
@@ -553,7 +553,7 @@ func TestHandler_Recover(t *testing.T) {
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
-	_, _, err = streamer.write(ctx, data, 0, length, false, false)
+	_, _, err = streamer.write(ctx, data, 0, length, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
@@ -571,7 +571,7 @@ func TestHandler_Recover(t *testing.T) {
 	}
 	streamer.handler.setDebug(true)
 
-	_, _, err = streamer.write(ctx, data, uint64(length), length, false, false)
+	_, _, err = streamer.write(ctx, data, uint64(length), length, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
@@ -600,7 +600,7 @@ func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length)
-	_, _, err = streamer.write(ctx, data, 0, length, false, false)
+	_, _, err = streamer.write(ctx, data, 0, length, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
@@ -634,7 +634,7 @@ func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
-	_, _, err = streamer.write(ctx, data, 0, length*2, false, false)
+	_, _, err = streamer.write(ctx, data, 0, length*2, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
@@ -642,7 +642,7 @@ func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("truncate failed: err(%v)", err)
 	}
-	_, _, err = streamer.write(ctx, data, uint64(length)*2, length, false, false)
+	_, _, err = streamer.write(ctx, data, uint64(length)*2, length, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
@@ -668,7 +668,7 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
-	_, _, err = streamer.write(ctx, data, 0, length*2, false, false)
+	_, _, err = streamer.write(ctx, data, 0, length*2, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
@@ -677,7 +677,7 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("doROW failed: err(%v)", err)
 	}
-	_, _, err = streamer.write(ctx, data, uint64(length)*2, length, false, false)
+	_, _, err = streamer.write(ctx, data, uint64(length)*2, length, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}

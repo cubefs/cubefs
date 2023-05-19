@@ -242,12 +242,12 @@ func (client *ExtentClient) SaveDataState() *DataState {
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStream(inode uint64) error {
+func (client *ExtentClient) OpenStream(inode uint64, overWriteBuffer bool) error {
 	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
 	streamerMapSeg.Lock()
 	s, ok := streamerMapSeg.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode, streamerMapSeg)
+		s = NewStreamer(client, inode, streamerMapSeg, overWriteBuffer)
 		streamerMapSeg.streamers[inode] = s
 	}
 	return s.IssueOpenRequest()
@@ -318,7 +318,7 @@ func (client *ExtentClient) FileSize(inode uint64) (size uint64, gen uint64, val
 }
 
 // Write writes the data.
-func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint64, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
+func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint64, data []byte, direct bool) (write int, isROW bool, err error) {
 	if client.dataWrapper.VolNotExists() {
 		return 0, false, proto.ErrVolNotExists
 	}
@@ -335,24 +335,27 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 		return 0, false, proto.ErrGetExtentsFailed
 	}
 
-	if overWriteBuffer {
+	if s.overWriteBuffer {
+		// overWriteReqMutex should be locked here to prevent invalid prepared requests
+		s.overWriteReqMutex.Lock()
 		requests, _ := s.extents.PrepareRequests(offset, len(data), data)
 		hasAppendWrite := false
 		for _, req := range requests {
-			if req.ExtentKey == nil {
+			if req.ExtentKey == nil || req.ExtentKey.PartitionId == 0 {
 				hasAppendWrite = true
 				break
 			}
 		}
 		if hasAppendWrite {
-			write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
+			write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct)
 		} else {
 			for _, req := range requests {
-				write += s.appendOverWriteReq(req, direct)
+				write += s.appendOverWriteReq(req)
 			}
 		}
+		s.overWriteReqMutex.Unlock()
 	} else {
-		write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
+		write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct)
 	}
 
 	return
@@ -631,18 +634,6 @@ func (client *ExtentClient) CloseConnPool() {
 		StreamConnPool = nil
 	}
 }
-
-//func (c *ExtentClient) AlignSize() int {
-//	return int(c.alignSize)
-//}
-//
-//func (c *ExtentClient) MaxExtentNumPerAlignArea() int {
-//	return int(c.maxExtentNumPerAlignArea)
-//}
-//
-//func (c *ExtentClient) ForceAlignMerge() bool {
-//	return c.forceAlignMerge
-//}
 
 func (c *ExtentClient) SetExtentSize(size int) {
 	if size == 0 {

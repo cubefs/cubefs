@@ -3263,7 +3263,6 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 			flagBuf.WriteString("O_DSYNC|")
 		}
 	}
-	overWriteBuffer := false
 	act := ump_cfs_write
 	if f.fileType == fileTypeBinlog {
 		act = ump_cfs_write_binlog
@@ -3271,9 +3270,6 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		act = ump_cfs_write_relaylog
 	} else if f.fileType == fileTypeRedolog {
 		act = ump_cfs_write_redolog
-		if c.app == appMysql8 || c.app == appCoralDB {
-			overWriteBuffer = true
-		}
 	}
 	if off < 0 && off != C.off_t(autoOffset) {
 		return C.ssize_t(statusEINVAL)
@@ -3310,7 +3306,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		offset = f.pos
 	}
 
-	n, isROW, err := c.ec.Write(nil, f.ino, offset, buffer, false, overWriteBuffer)
+	n, isROW, err := c.ec.Write(nil, f.ino, offset, buffer, false)
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -3382,7 +3378,6 @@ func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size
 		return C.ssize_t(statusEBADFD)
 	}
 
-	overWriteBuffer := false
 	act := ump_cfs_write
 	if f.fileType == fileTypeBinlog {
 		act = ump_cfs_write_binlog
@@ -3404,7 +3399,7 @@ func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size
 
 	// off >= 0 stands for pwrite
 	offset = uint64(off)
-	n, isROW, err := c.ec.Write(nil, uint64(ino), offset, buffer, false, overWriteBuffer)
+	n, isROW, err := c.ec.Write(nil, uint64(ino), offset, buffer, false)
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}

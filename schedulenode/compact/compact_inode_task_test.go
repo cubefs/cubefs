@@ -301,10 +301,10 @@ func TestOpenFile(t *testing.T) {
 		}
 	}()
 	stat := getFileStat(t, testFilePath)
-	_ = ec.OpenStream(stat.Ino)
+	_ = ec.OpenStream(stat.Ino, false)
 
 	bytes := make([]byte, 512)
-	_, _, err := ec.Write(ctx, stat.Ino, 0, bytes, false, false)
+	_, _, err := ec.Write(ctx, stat.Ino, 0, bytes, false)
 	if err != nil {
 		t.Fatalf("ec.write failed: err(%v)", err)
 	}
@@ -532,7 +532,7 @@ func TestMetaMergeExtentsError(t *testing.T) {
 	_ = subTask.OpenFile()
 	_ = subTask.ReadAndWriteEkData()
 	// modify file
-	_, _, _ = ec.Write(ctx, stat.Ino, 0, []byte{1, 2, 3, 4, 5}, false, false)
+	_, _, _ = ec.Write(ctx, stat.Ino, 0, []byte{1, 2, 3, 4, 5}, false)
 	if err := ec.Flush(ctx, stat.Ino); err != nil {
 		t.Fatalf("Flush failed, err(%v)", err)
 	}
@@ -589,10 +589,10 @@ func writeRowFileByMountDir() (file *os.File, filePath string) {
 func writeRowFileBySdk(t *testing.T, ctx context.Context, inoId uint64, size int, ec *data.ExtentClient) {
 	bufStr := strings.Repeat("A", size)
 	bytes := []byte(bufStr)
-	if err := ec.OpenStream(inoId); err != nil {
+	if err := ec.OpenStream(inoId, false); err != nil {
 		t.Fatalf("writeRowFileBySdk OpenStream failed: inodeId(%v), err(%v)", inoId, err)
 	}
-	_, _, err := ec.Write(ctx, inoId, 0, bytes, false, false)
+	_, _, err := ec.Write(ctx, inoId, 0, bytes, false)
 	if err != nil {
 		t.Fatalf("writeRowFileBySdk SyncWrite failed: inodeId(%v), err(%v)", inoId, err)
 	}
@@ -601,7 +601,7 @@ func writeRowFileBySdk(t *testing.T, ctx context.Context, inoId uint64, size int
 	for i := 0; i < size; i++ {
 		remain := i % (1024 * 1024)
 		if remain == 0 {
-			_, _, _ = ec.Write(ctx, inoId, uint64(i), mBytes, false, false)
+			_, _, _ = ec.Write(ctx, inoId, uint64(i), mBytes, false)
 		}
 	}
 	if err = ec.Flush(ctx, inoId); err != nil {

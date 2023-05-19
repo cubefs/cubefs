@@ -146,7 +146,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	ino := f.info.Inode
 	start := time.Now()
 
-	f.super.ec.OpenStream(ino)
+	f.super.ec.OpenStream(ino, false)
 
 	f.super.ec.RefreshExtentsCache(ctx, ino)
 
@@ -262,7 +262,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	enSyncWrite = f.super.enSyncWrite
 	start := time.Now()
 
-	size, _, err := f.super.ec.Write(ctx, ino, uint64(req.Offset), req.Data, enSyncWrite, false)
+	size, _, err := f.super.ec.Write(ctx, ino, uint64(req.Offset), req.Data, enSyncWrite)
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleErrorWithGetInode("Write", msg, ino)
