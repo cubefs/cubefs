@@ -1103,7 +1103,9 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 
 	t.Logf("---------------------------------------------------------------------")
 	t.Logf("after deletion current layerr mp inode freeList len %v fileCnt %v dircnt %v", mp.freeList.Len(), fileCnt, dirCnt)
-	assert.True(t, mp.freeList.Len() == fileCnt+dirCnt)
+	assert.True(t, mp.freeList.Len() == fileCnt)
+	//base on 3.2.0 the dir will push to freelist, not count in in later release version
+	//assert.True(t, mp.freeList.Len() == fileCnt+dirCnt)
 	assert.True(t, 0 == testPrintAllDentry(t))
 	t.Logf("---------------------------------------------------------------------")
 
