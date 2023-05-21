@@ -537,6 +537,10 @@ func (mw *MetaWrapper) Delete_Ver_ll(parentID uint64, name string, isDir bool, v
 	return mw.Delete_ll_EX(parentID, name, isDir, verSeq)
 }
 
+func (mw *MetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool) (*proto.InodeInfo, error) {
+	return mw.deletewithcond_ll(parentID, cond, name, isDir)
+}
+
 func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (info *proto.InodeInfo, err error) {
 	var (
 		status int
@@ -820,6 +824,101 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 	}
 
 	if verSeq == 0 && mw.EnableSummary {
+		go func() {
+			if proto.IsDir(mode) {
+				mw.UpdateSummary_ll(parentID, 0, -1, 0)
+			} else {
+				mw.UpdateSummary_ll(parentID, -1, 0, -int64(info.Size))
+			}
+		}()
+	}
+
+	return info, nil
+}
+
+func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isDir bool) (*proto.InodeInfo, error) {
+	var (
+		status int
+		inode  uint64
+		mode   uint32
+		err    error
+		info   *proto.InodeInfo
+		mp     *MetaPartition
+	)
+
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		log.LogErrorf("delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
+		return nil, syscall.ENOENT
+	}
+
+	if isDir {
+		status, inode, mode, err = mw.lookup(parentMP, parentID, name, mw.LastVerSeq)
+		if err != nil || status != statusOK {
+			return nil, statusToErrno(status)
+		}
+		if !proto.IsDir(mode) {
+			return nil, syscall.EINVAL
+		}
+		mp = mw.getPartitionByInode(inode)
+		if mp == nil {
+			log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+			return nil, syscall.EAGAIN
+		}
+		status, info, err = mw.iget(mp, inode, mw.VerReadSeq)
+		if err != nil || status != statusOK {
+			return nil, statusToErrno(status)
+		}
+		if info == nil || info.Nlink > 2 {
+			return nil, syscall.ENOTEMPTY
+		}
+		quotaInfos, err := mw.GetInodeQuota_ll(inode)
+		if err != nil {
+			log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
+			return nil, syscall.ENOENT
+		}
+		for _, info := range quotaInfos {
+			if info.RootInode {
+				log.LogErrorf("can not remove quota Root inode equal inode [%v]", inode)
+				return nil, syscall.EACCES
+			}
+		}
+	}
+
+	dentry := []proto.Dentry{
+		{
+			Name:  name,
+			Inode: cond,
+			Type:  mode,
+		},
+	}
+	status, resp, err := mw.ddeletes(parentMP, parentID, dentry)
+	if err != nil || status != statusOK {
+		if status == statusNoent {
+			return nil, nil
+		}
+		return nil, statusToErrno(status)
+	}
+	status = parseStatus(resp.Items[0].Status)
+	if status != statusOK {
+		if status == statusNoent {
+			return nil, nil
+		}
+		return nil, statusToErrno(status)
+	}
+
+	mp = mw.getPartitionByInode(resp.Items[0].Inode)
+	if mp == nil {
+		log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+		return nil, nil
+	}
+
+	status, info, err = mw.iunlink(mp, resp.Items[0].Inode, 0, 0)
+	if err != nil || status != statusOK {
+		return nil, nil
+	}
+
+	if mw.EnableSummary {
 		go func() {
 			if proto.IsDir(mode) {
 				mw.UpdateSummary_ll(parentID, 0, -1, 0)
@@ -1772,7 +1871,8 @@ func (mw *MetaWrapper) GetMultipart_ll(path, multipartId string) (info *proto.Mu
 	return multipartInfo, nil
 }
 
-func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string, inodeInfo *proto.InodeInfo) (oldInode uint64, updated bool, err error) {
+func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string,
+	inodeInfo *proto.InodeInfo) (oldInode uint64, updated bool, err error) {
 	var (
 		mpId  uint64
 		found bool
@@ -1966,7 +2066,7 @@ func (mw *MetaWrapper) XAttrGet_ll(inode uint64, name string) (*proto.XAttrInfo,
 	}
 
 	xAttrValues := make(map[string]string)
-	xAttrValues[name] = string(value)
+	xAttrValues[name] = value
 
 	xAttr := &proto.XAttrInfo{
 		Inode:  inode,
@@ -1974,7 +2074,7 @@ func (mw *MetaWrapper) XAttrGet_ll(inode uint64, name string) (*proto.XAttrInfo,
 	}
 
 	log.LogDebugf("XAttrGet_ll: get xattr: volume(%v) inode(%v) name(%v) value(%v)",
-		mw.volname, inode, string(name), string(value))
+		mw.volname, inode, name, value)
 	return xAttr, nil
 }
 

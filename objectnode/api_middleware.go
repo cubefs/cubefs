@@ -222,15 +222,6 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 //   request → [pre-handle] → [next handler] → response
 func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			// panic recover and response specific status to client
-			p := recover()
-			if p != nil {
-				log.LogErrorf("panic(%v): requestID(%v)", p, GetRequestID(r))
-				log.LogErrorf(string(debug.Stack()))
-				w.WriteHeader(StatusServerPanic)
-			}
-		}()
 		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameXAmzDecodeContentLength))) > 0 {
 			r.Body = NewClosableChunkedReader(r.Body)
 			log.LogDebugf("contentMiddleware: chunk reader inited: requestID(%v)", GetRequestID(r))
@@ -252,6 +243,14 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 // needs to use the value of X-Forwarded-Expect.
 func (o *ObjectNode) expectMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			// panic recover and response specific status to client
+			p := recover()
+			if p != nil {
+				log.LogErrorf("panic(%v): requestID(%v) stack(%v)", p, GetRequestID(r), string(debug.Stack()))
+				w.WriteHeader(StatusServerPanic)
+			}
+		}()
 		if forwardedExpect, originExpect := r.Header.Get(HeaderNameXForwardedExpect), r.Header.Get(HeaderNameExpect); forwardedExpect != "" && originExpect == "" {
 			r.Header.Set(HeaderNameExpect, forwardedExpect)
 		}

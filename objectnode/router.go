@@ -52,11 +52,10 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Get Object Lock configuration
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLockConfiguration.html
-		// Notes: unsupported operation
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetObjectLockConfigurationAction)).
 			Methods(http.MethodGet).
 			Queries("object-lock", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.getObjectLockConfigurationHandler)
 
 		// List parts
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
@@ -108,12 +107,11 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Get object retention
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html
-		// Notes: unsupported operation
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetObjectRetentionAction)).
 			Methods(http.MethodGet).
 			Path("/{object:.+}").
 			Queries("retention", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.getObjectRetentionHandler)
 
 		// Get object torrent
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTorrent.html
@@ -304,11 +302,10 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	var registerBucketHttpPutRouters = func(r *mux.Router) {
 		// Put Object Lock configuration
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectLockConfiguration.html
-		// Notes: unsupported operation
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutObjectLockConfigurationAction)).
 			Methods(http.MethodPut).
 			Queries("object-lock", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.putObjectLockConfigurationHandler)
 
 		// Upload part copy
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html
