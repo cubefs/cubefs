@@ -212,6 +212,10 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	} else if len(fileInfo.Expires) > 0 {
 		w.Header()[HeaderNameExpires] = []string{fileInfo.Expires}
 	}
+	if len(fileInfo.RetainUntilDate) > 0 {
+		w.Header()[HeaderNameObjectLockMode] = []string{ComplianceMode}
+		w.Header()[HeaderNameObjectLockRetainUntilDate] = []string{fileInfo.RetainUntilDate}
+	}
 
 	//check request is whether contain param : partNumber
 	partNumber := r.URL.Query().Get(ParamPartNumber)
@@ -464,6 +468,10 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if len(fileInfo.Expires) > 0 {
 		w.Header()[HeaderNameExpires] = []string{fileInfo.Expires}
 	}
+	if len(fileInfo.RetainUntilDate) > 0 {
+		w.Header()[HeaderNameObjectLockMode] = []string{ComplianceMode}
+		w.Header()[HeaderNameObjectLockRetainUntilDate] = []string{fileInfo.RetainUntilDate}
+	}
 
 	// check request is whether contain param : partNumber
 	partNumber := r.URL.Query().Get(ParamPartNumber)
@@ -627,7 +635,11 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		if err = vol.DeletePath(object.Key); err != nil {
 			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
 				GetRequestID(r), vol.Name(), object.Key, err)
-			deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "InternalError", Message: err.Error()})
+			if err != AccessDenied {
+				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "InternalError", Message: err.Error()})
+			} else {
+				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "AccessDenied", Message: err.Error()})
+			}
 		} else {
 			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)",
 				GetRequestID(r), vol.Name(), object.Key)
@@ -824,6 +836,14 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ObjectLock  Config
+	objetLock, err := vol.metaLoader.loadObjectLock()
+	if err != nil {
+		log.LogErrorf("putObjectHandler: load volume objetLock: requestID(%v)  volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+
 	// parse user-defined metadata
 	metadata := ParseUserDefinedMetadata(r.Header)
 	// copy file
@@ -834,12 +854,12 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		CacheControl: cacheControl,
 		Expires:      expires,
 		ACL:          acl,
+		ObjectLock:   objetLock,
 	}
 	fsFileInfo, err := vol.CopyFile(sourceVol, sourceObject, param.Object(), metadataDirective, opt)
 	if err != nil && err != syscall.EINVAL && err != syscall.EFBIG {
 		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	if err == syscall.EINVAL {
@@ -1212,10 +1232,26 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
-		log.LogErrorf("putObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+	// Get request MD5, if request MD5 is not empty, compute and verify it.
+	requestMD5 := r.Header.Get(HeaderNameContentMD5)
+	if requestMD5 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
+		if err != nil {
+			errorCode = InvalidDigest
+			return
+		}
+		requestMD5 = hex.EncodeToString(decoded)
+	}
+
+	// ObjectLock  Config
+	objetLock, err := vol.metaLoader.loadObjectLock()
+	if err != nil {
+		log.LogErrorf("putObjectHandler: load volume objetLock: requestID(%v)  volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
+		errorCode = NoContentMd5HeaderErr
 		return
 	}
 
@@ -1235,23 +1271,19 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
+		log.LogErrorf("putObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		return
+	}
+
 	// Check ACL
 	acl, err := ParseACL(r, userInfo.UserID, false)
 	if err != nil {
 		log.LogErrorf("putObjectHandler: parse acl fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), acl, err)
 		return
-	}
-
-	// Get request MD5, if request MD5 is not empty, compute and verify it.
-	requestMD5 := r.Header.Get(HeaderNameContentMD5)
-	if requestMD5 != "" {
-		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
-		if err != nil {
-			errorCode = InvalidDigest
-			return
-		}
-		requestMD5 = hex.EncodeToString(decoded)
 	}
 
 	// Get the requested content-type.
@@ -1287,20 +1319,13 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		CacheControl: cacheControl,
 		Expires:      expires,
 		ACL:          acl,
+		ObjectLock:   objetLock,
 	}
 	var startPut = time.Now()
 	if fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt); err != nil {
 		log.LogErrorf("putObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
-		if err == syscall.EINVAL {
-			errorCode = ObjectModeConflict
-			return
-		}
-		if err == io.ErrUnexpectedEOF {
-			errorCode = EntityTooSmall
-			return
-		}
-		errorCode = InternalErrorCode(err)
+		err = handlePutObjectErr(err)
 		return
 	}
 	// check content MD5
@@ -1317,6 +1342,19 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
 	w.Header()[HeaderNameContentLength] = []string{"0"}
 	return
+}
+
+func handlePutObjectErr(err error) error {
+	if err == syscall.EINVAL {
+		return ObjectModeConflict
+	}
+	if err == syscall.EEXIST {
+		return ConflictUploadRequest
+	}
+	if err == io.ErrUnexpectedEOF {
+		return EntityTooSmall
+	}
+	return err
 }
 
 // Delete object
@@ -1355,7 +1393,6 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		log.LogErrorf("deleteObjectHandler: Volume delete file fail: "+
 			"requestID(%v) volume(%v) path(%v) err(%v)", GetRequestID(r), vol.Name(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1717,6 +1754,68 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	if _, err = w.Write(marshaled); err != nil {
 		log.LogErrorf("listObjectXAttrs: write response fail: requestID(%v) err(%v)", GetRequestID(r), err)
 	}
+	return
+}
+
+// GetObjectRetention
+// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html
+func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
+	// check args
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+	if param.Object() == "" {
+		errorCode = InvalidKey
+		return
+	}
+	var vol *Volume
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("getObjectRetentionHandler: load volume fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
+		return
+	}
+
+	// get object meta
+	_, xattrs, err := vol.ObjectMeta(param.Object())
+	if err != nil {
+		log.LogErrorf("getObjectRetentionHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+			return
+		}
+		errorCode = InternalErrorCode(err)
+		return
+	}
+	retainUntilDate := string(xattrs.Get(XAttrKeyOSSLock))
+	if retainUntilDate == "" {
+		errorCode = NoSuchObjectLockConfiguration
+		return
+	}
+	retainUntilDateInt64, err := strconv.ParseInt(retainUntilDate, 10, 64)
+	if err != nil {
+		log.LogErrorf("getObjectRetentionHandler: parse retainUntilDate fail: requestId(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), err)
+		return
+	}
+	var objectRetention ObjectRetention
+	objectRetention.Mode = ComplianceMode
+	objectRetention.RetainUntilDate = RetentionDate{Time: time.Unix(0, retainUntilDateInt64).UTC()}
+	b, err := xml.Marshal(objectRetention)
+	if err != nil {
+		return
+	}
+	w.Write(b)
 	return
 }
 

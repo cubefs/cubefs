@@ -167,8 +167,8 @@ const (
 	POSIXWriteAction Action = POSIXActionPrefix + "Write"
 
 	// Object lock actions
-	OSSPutObjectLockConfigurationAction Action = OSSActionPrefix + "PutObjectLockConfiguration" // unsupported
-	OSSGetObjectLockConfigurationAction Action = OSSActionPrefix + "GetObjectLockConfiguration" // unsupported
+	OSSPutObjectLockConfigurationAction Action = OSSActionPrefix + "PutObjectLockConfiguration"
+	OSSGetObjectLockConfigurationAction Action = OSSActionPrefix + "GetObjectLockConfiguration"
 
 	NoneAction Action = ""
 )

@@ -17,6 +17,7 @@ package objectnode
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/xml"
 	"io"
 	"io/ioutil"
@@ -425,6 +426,107 @@ func calculateAuthKey(key string) (authKey string, err error) {
 
 func (o *ObjectNode) getUserInfoByAccessKey(accessKey string) (userInfo *proto.UserInfo, err error) {
 	userInfo, err = o.userStore.LoadUser(accessKey)
+	return
+}
+
+// Put Object Lock Configuration
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectLockConfiguration.html
+func (o *ObjectNode) putObjectLockConfigurationHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+	var vol *Volume
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("putObjectLockConfigurationHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+	var body []byte
+	if body, err = ioutil.ReadAll(io.LimitReader(r.Body, MaxObjectLockSize+1)); err != nil {
+		log.LogErrorf("putObjectLockConfigurationHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), vol.Name(), err)
+		return
+	}
+	if len(body) > MaxObjectLockSize {
+		errorCode = EntityTooLarge
+		return
+	}
+	var config *ObjectLockConfig
+	if config, err = ParseObjectLockConfigFromXML(body); err != nil {
+		log.LogErrorf("putObjectLockConfigurationHandler: parse object lock config fail: requestID(%v) volume(%v) config(%v) err(%v)",
+			GetRequestID(r), vol.Name(), string(body), err)
+		return
+	}
+	if body, err = json.Marshal(config); err != nil {
+		log.LogErrorf("putObjectLockConfigurationHandler: json.Marshal object lock config fail: requestID(%v) volume(%v) config(%v) err(%v)",
+			GetRequestID(r), vol.Name(), config, err)
+		return
+	}
+	if err = storeObjectLock(body, vol); err != nil {
+		log.LogErrorf("putObjectLockConfigurationHandler: store object lock config fail: requestID(%v) volume(%v) config(%v) err(%v)",
+			GetRequestID(r), vol.Name(), string(body), err)
+		return
+	}
+	vol.metaLoader.storeObjectLock(config)
+
+	w.WriteHeader(http.StatusNoContent)
+	return
+}
+
+// Get Object Lock Configuration
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLockConfiguration.html
+func (o *ObjectNode) getObjectLockConfigurationHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+
+	var vol *Volume
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("getObjectLockConfigurationHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+
+	var config *ObjectLockConfig
+	if config, err = vol.metaLoader.loadObjectLock(); err != nil {
+		log.LogErrorf("getObjectLockConfigurationHandler: load cors fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), vol.Name(), err)
+		return
+	}
+	if config == nil || config.IsEmpty() {
+		errorCode = ObjectLockConfigurationNotFound
+		return
+	}
+	var data []byte
+	if data, err = xml.Marshal(config); err != nil {
+		log.LogErrorf("getObjectLockConfigurationHandler: xml marshal fail: requestID(%v) volume(%v) cors(%+v) err(%v)",
+			GetRequestID(r), vol.Name(), config, err)
+		return
+	}
+	if _, err = w.Write(data); err != nil {
+		log.LogErrorf("getObjectLockConfigurationHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
+			GetRequestID(r), vol.Name(), string(data), err)
+	}
 	return
 }
 
