@@ -75,6 +75,9 @@ const (
 	HeaderNameIfNoneMatch       = "If-None-Match"
 	HeaderNameIfModifiedSince   = "If-Modified-Since"
 	HeaderNameIfUnmodifiedSince = "If-Unmodified-Since"
+
+	HeaderNameObjectLockMode            = "X-Amz-Object-Lock-Mode"
+	HeaderNameObjectLockRetainUntilDate = "X-Amz-Object-Lock-Retain-Until-Date"
 )
 
 const (
@@ -127,6 +130,7 @@ const (
 
 // XAttr keys for ObjectNode compatible feature
 const (
+	XAttrKeyOSSPrefix       = "oss:"
 	XAttrKeyOSSETag         = "oss:etag"
 	XAttrKeyOSSTagging      = "oss:tagging"
 	XAttrKeyOSSPolicy       = "oss:policy"
@@ -134,6 +138,7 @@ const (
 	XAttrKeyOSSMIME         = "oss:mime"
 	XAttrKeyOSSDISPOSITION  = "oss:disposition"
 	XAttrKeyOSSCORS         = "oss:cors"
+	XAttrKeyOSSLock         = "oss:lock"
 	XAttrKeyOSSCacheControl = "oss:cache"
 	XAttrKeyOSSExpires      = "oss:expires"
 

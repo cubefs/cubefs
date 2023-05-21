@@ -930,6 +930,62 @@ func (mw *MetaWrapper) batchddelete(wg *sync.WaitGroup, mp *MetaPartition, paren
 	return
 }
 
+func (mw *MetaWrapper) ddeletes(mp *MetaPartition, parentID uint64, dentries []proto.Dentry) (status int,
+	resp *proto.BatchDeleteDentryResponse, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("ddeletes", err, bgTime, 1)
+	}()
+
+	req := &proto.BatchDeleteDentryRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		ParentID:    parentID,
+		Dens:        dentries,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchDeleteDentry
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("ddeletes: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("ddeletes: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status == statusAgain {
+		err = errors.New("conflict request")
+		log.LogErrorf("ddeletes: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("ddeletes: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp = new(proto.BatchDeleteDentryResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("ddeletes: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	log.LogDebugf("ddeletes: packet(%v) mp(%v) req(%v) (%v)", packet, mp, *req, resp.Items)
+	return statusOK, resp, nil
+}
+
 func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string, verSeq uint64) (status int, inode uint64, mode uint32, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {

@@ -247,6 +247,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 			}
 			if mp.verSeq == 0 {
 				log.LogDebugf("action[fsmDeleteDentry] volume snapshot not enabled,delete directly")
+				denFound = den
 				return mp.dentryTree.tree.Delete(den)
 			}
 			denFound, doMore, clean = den.deleteVerSnapshot(denParm.getSeqFiled(), mp.verSeq, mp.getVerList())
