@@ -296,6 +296,7 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		mr, err := mp.getMetaReplicaLeader()
 		if err != nil {
 			mp.Status = proto.Unavailable
+			log.LogErrorf("[checkStatus] getMetaReplicaLeader err:%v", err)
 		}
 
 		mp.Status = mr.Status

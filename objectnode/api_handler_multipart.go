@@ -211,6 +211,19 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 			GetRequestID(r), err)
 		return
 	}
+
+	// ObjectLock  Config
+	objetLock, err := vol.metaLoader.loadObjectLock()
+	if err != nil {
+		log.LogErrorf("putObjectHandler: load volume objetLock: requestID(%v)  volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
+		errorCode = NoContentMd5HeaderErr
+		return
+	}
+
 	var fsFileInfo *FSFileInfo
 	if fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), r.Body); err != nil {
 		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
@@ -660,7 +673,6 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 			errorCode = ObjectModeConflict
 			return
 		}
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("completeMultipartUploadHandler: complete multipart: requestID(%v) volume(%v) key(%v) uploadID(%v) fileInfo(%v)",

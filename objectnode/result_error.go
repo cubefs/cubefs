@@ -131,6 +131,9 @@ var (
 	InvalidMaxPartNumber                = &ErrorCode{"InvalidRequest", "the total part numbers exceed limit.", http.StatusBadRequest}
 	InvalidMinPartNumber                = &ErrorCode{"InvalidRequest", "you must specify at least one part.", http.StatusBadRequest}
 	DiskQuotaExceeded                   = &ErrorCode{"DiskQuotaExceeded", "Disk Quota Exceeded.", http.StatusBadRequest}
+	NoSuchObjectLockConfiguration       = &ErrorCode{"NoSuchObjectLockConfiguration", "The specified object does not have a ObjectLock configuration", http.StatusNotFound}
+	NoContentMd5HeaderErr               = &ErrorCode{"NoContentMd5Header", "Content-MD5 HTTP header is required for Upload Object/Part requests with Object Lock parameters", http.StatusBadRequest}
+	ObjectLockConfigurationNotFound     = &ErrorCode{"ObjectLockConfigurationNotFoundError", "Object Lock configuration does not exist for this bucket", http.StatusNotFound}
 )
 
 func HttpStatusErrorCode(code int) *ErrorCode {
