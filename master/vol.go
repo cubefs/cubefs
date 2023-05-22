@@ -1269,7 +1269,7 @@ func (vol *Vol) loadQuotaManager(c *Cluster) (err error) {
 		vol:                  vol,
 	}
 
-	result, err := c.fsm.store.SeekForPrefix([]byte(quotaPrefix + strconv.FormatUint(vol.ID, 10)))
+	result, err := c.fsm.store.SeekForPrefix([]byte(quotaPrefix + strconv.FormatUint(vol.ID, 10) + keySeparator))
 	if err != nil {
 		err = fmt.Errorf("loadQuotaManager get quota failed, err [%v]", err)
 		return err
