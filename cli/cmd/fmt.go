@@ -215,6 +215,14 @@ var (
 	repUsedSizeDifferPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v"
 	RepUsedSizeDifferInfoTableHeader           = fmt.Sprintf(repUsedSizeDifferPartitionInfoTablePattern,
 		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS(usedSize)")
+
+	inodeCountNotEqualInfoTablePattern = "%-8v    %-8v    %-8v     %-8v    %-24v"
+	inodeCountNotEqualInfoTableHeader  = fmt.Sprintf(inodeCountNotEqualInfoTablePattern,
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(inodeCount)")
+
+	dentryCountNotEqualInfoTablePattern = "%-8v    %-8v    %-8v     %-8v    %-24v"
+	dentryCountNotEqualInfoTableHeader  = fmt.Sprintf(dentryCountNotEqualInfoTablePattern,
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(dentryCount)")
 )
 
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
@@ -281,6 +289,50 @@ func formatReplicaSizeDiffDpInfoRow(partition *proto.DataPartitionInfo) string {
 	sb.WriteString("]")
 	return fmt.Sprintf(repUsedSizeDifferPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
 		formatDataPartitionStatus(partition.Status), sb.String())
+}
+
+func formatMetaPartitionReplicaInodeNotEqualInfoRow(partition *proto.MetaPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("[")
+	var firstItem = true
+	for _, replica := range partition.Replicas {
+		if !firstItem {
+			sb.WriteString(",")
+		}
+
+		if replica.IsLeader {
+			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.InodeCount))
+		} else {
+			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.InodeCount))
+		}
+		firstItem = false
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(inodeCountNotEqualInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), sb.String())
+
+}
+
+func formatMetaPartitionReplicaDentryNotEqualInfoRow(partition *proto.MetaPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("[")
+	var firstItem = true
+	for _, replica := range partition.Replicas {
+		if !firstItem {
+			sb.WriteString(",")
+		}
+
+		if replica.IsLeader {
+			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.DentryCount))
+		} else {
+			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.DentryCount))
+		}
+		firstItem = false
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(dentryCountNotEqualInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), sb.String())
+
 }
 
 func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {

@@ -97,6 +97,8 @@ type MetaReplicaInfo struct {
 	ReportTime int64
 	Status     int8 // unavailable, readOnly, readWrite
 	IsLeader   bool
+	InodeCount  uint64
+	DentryCount uint64
 }
 
 // ClusterView provides the view of a cluster.
@@ -261,12 +263,14 @@ type DataPartitionDiagnosis struct {
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
 type MetaPartitionDiagnosis struct {
-	InactiveMetaNodes             []string
-	CorruptMetaPartitionIDs       []uint64
-	LackReplicaMetaPartitionIDs   []uint64
-	BadMetaPartitionIDs           []BadPartitionView
-	BadReplicaMetaPartitionIDs    []uint64
-	ExcessReplicaMetaPartitionIDs []uint64
+	InactiveMetaNodes                          []string
+	CorruptMetaPartitionIDs                    []uint64
+	LackReplicaMetaPartitionIDs                []uint64
+	BadMetaPartitionIDs                        []BadPartitionView
+	BadReplicaMetaPartitionIDs                 []uint64
+	ExcessReplicaMetaPartitionIDs              []uint64
+	InodeCountNotEqualReplicaMetaPartitionIDs  []uint64
+	DentryCountNotEqualReplicaMetaPartitionIDs []uint64
 }
 
 type DecommissionProgress struct {
