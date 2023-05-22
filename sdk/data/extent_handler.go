@@ -17,6 +17,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -274,6 +275,7 @@ func (eh *ExtentHandler) sender() {
 			packet.SetupReplArg(eh.dp.GetAllHosts(), eh.stream.client.dataWrapper.quorum)
 			packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
 			packet.StartT = time.Now().UnixNano()
+			packet.CRC= crc32.ChecksumIEEE(packet.Data[:packet.Size])
 
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 			if err = eh.updateConn(); err != nil {
@@ -284,7 +286,7 @@ func (eh *ExtentHandler) sender() {
 				continue
 			}
 
-			if err = packet.WriteToConn(eh.conn, eh.stream.client.dataWrapper.connConfig.WriteTimeoutNs); err != nil {
+			if err = packet.WriteToConnNs(eh.conn, eh.stream.client.dataWrapper.connConfig.WriteTimeoutNs); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
 				eh.setRecovery()

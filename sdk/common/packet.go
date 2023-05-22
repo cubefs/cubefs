@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"math/rand"
 	"net"
@@ -240,10 +239,6 @@ func (p *Packet) IsValidReadReply(q *Packet) bool {
 	return false
 }
 
-func (p *Packet) WriteToConn(conn net.Conn, timeoutNs int64) error {
-	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
-	return p.WriteToConnNs(conn, timeoutNs)
-}
 
 func (p *Packet) ReadFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 	if deadlineTimeNs != proto.NoReadDeadlineTime {
