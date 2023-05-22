@@ -750,3 +750,13 @@ func formatQuotaInfo(info *proto.QuotaInfo) string {
 		info.RootInode, info.LimitedInfo.LimitedFiles, info.LimitedInfo.LimitedBytes, info.UsedInfo.UsedFiles, info.UsedInfo.UsedBytes,
 		info.MaxFiles, info.MaxBytes)
 }
+
+var badDiskDetailTableRowPattern = "%-18v    %-24v"
+
+func formatBadDiskTableHeader() string {
+	return fmt.Sprintf(badDiskDetailTableRowPattern, "ADDRESS", "PATH")
+}
+
+func formatBadDiskInfoRow(disk proto.BadDiskInfo) string {
+	return fmt.Sprintf(badDiskDetailTableRowPattern, disk.Address, disk.Path)
+}

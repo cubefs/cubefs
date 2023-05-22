@@ -271,3 +271,11 @@ type DecommissionProgress struct {
 	Progress  string
 	FailedDps []uint64
 }
+
+type BadDiskInfo struct {
+	Address string
+	Path    string
+}
+type BadDiskInfos struct {
+	BadDisks []BadDiskInfo
+}

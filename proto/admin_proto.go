@@ -125,6 +125,7 @@ const (
 	MarkDecoDiskFixed                  = "/disk/MarkDecommissionDiskFixed"
 	CancelDecommissionDisk             = "/disk/cancelDecommission"
 	QueryDecommissionDiskDecoFailedDps = "/disk/queryDecommissionFailedDps"
+	QueryBadDisks                      = "/disk/queryBadDisks"
 	GetDataNode                        = "/dataNode/get"
 	AddMetaNode                        = "/metaNode/add"
 	DecommissionMetaNode               = "/metaNode/decommission"

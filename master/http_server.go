@@ -425,6 +425,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.QueryDecommissionDiskDecoFailedDps).
 		HandlerFunc(m.queryDecommissionDiskDecoFailedDps)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QueryBadDisks).
+		HandlerFunc(m.queryBadDisks)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeInfo).

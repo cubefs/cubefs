@@ -4893,3 +4893,30 @@ func (m *Server) setDpDiscardHandler(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 	return
 }
+
+func (m *Server) queryBadDisks(w http.ResponseWriter, r *http.Request) {
+	var (
+		err   error
+		infos proto.BadDiskInfos
+	)
+
+	metric := exporter.NewTPCnt("req_queryBadDisks")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	m.cluster.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode, ok := node.(*DataNode)
+		if !ok {
+			return true
+		}
+		for _, badDisk := range dataNode.BadDisks {
+			info := proto.BadDiskInfo{Address: dataNode.Addr, Path: badDisk}
+			infos.BadDisks = append(infos.BadDisks, info)
+		}
+
+		return true
+	})
+
+	sendOkReply(w, r, newSuccessHTTPReply(infos))
+}
