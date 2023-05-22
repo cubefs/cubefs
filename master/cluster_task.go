@@ -279,10 +279,12 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 
 func (c *Cluster) checkReplicaMetaPartitions() (
 	lackReplicaMetaPartitions []*MetaPartition, noLeaderMetaPartitions []*MetaPartition,
-	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions []*MetaPartition, err error) {
+	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error) {
 	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
 	noLeaderMetaPartitions = make([]*MetaPartition, 0)
 	excessReplicaMetaPartitions = make([]*MetaPartition, 0)
+	inodeCountNotEqualMPs = make([]*MetaPartition, 0)
+	dentryCountNotEqualMPs = make([]*MetaPartition, 0)
 
 	vols := c.copyVols()
 	for _, vol := range vols {
@@ -299,16 +301,19 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 			if uint8(len(mp.Hosts)) > mp.ReplicaNum || uint8(len(mp.Replicas)) > mp.ReplicaNum {
 				excessReplicaMetaPartitions = append(excessReplicaMetaPartitions, mp)
 			}
-
-			for _, replica := range mp.Replicas {
-				if replica.Status == proto.Unavailable {
-					unavailableReplicaMPs = append(unavailableReplicaMPs, mp)
-					break
-				}
-			}
 		}
 		vol.mpsLock.RUnlock()
 	}
+	c.inodeCountNotEqualMP.Range(func(key, value interface{}) bool {
+		mp := value.(*MetaPartition)
+		inodeCountNotEqualMPs = append(inodeCountNotEqualMPs, mp)
+		return true
+	})
+	c.dentryCountNotEqualMP.Range(func(key, value interface{}) bool {
+		mp := value.(*MetaPartition)
+		dentryCountNotEqualMPs = append(dentryCountNotEqualMPs, mp)
+		return true
+	})
 	log.LogInfof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
 		"unavailableReplicaMPs count:[%v], excessReplicaMp count:[%v]",
 		c.Name, len(lackReplicaMetaPartitions), len(noLeaderMetaPartitions),
@@ -602,7 +607,7 @@ func (c *Cluster) doLoadMetaPartition(mp *MetaPartition) {
 		return
 	default:
 	}
-	mp.checkSnapshot(c.Name)
+	mp.checkSnapshot(c)
 }
 
 func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
