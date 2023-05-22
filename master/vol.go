@@ -1291,7 +1291,7 @@ func (vol *Vol) loadQuotaManager(c *Cluster) (err error) {
 		}
 		log.LogDebugf("loadQuotaManager info [%v]", quotaInfo)
 		if vol.Name != quotaInfo.VolName {
-			panic("vol name do not match")
+			panic(fmt.Sprintf("vol name do not match vol name [%v], quotaInfo vol name [%v]", vol.Name, quotaInfo.VolName))
 		}
 
 		// if quotaInfo.Status != proto.QuotaComplete {
