@@ -40,20 +40,36 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		}
 	}
 
+	var parIno *Inode
+	item := mp.inodeTree.CopyGet(NewInode(req.ParentID, 0))
+	if item == nil {
+		err = fmt.Errorf("parent inode not exists")
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		return
+	} else {
+		parIno = item.(*Inode)
+		quota := atomic.LoadUint32(&dirChildrenNumLimit)
+		if parIno.NLink >= quota {
+			err = fmt.Errorf("parent dir quota limitation reached")
+			p.PacketErrorWithBody(proto.OpDirQuota, []byte(err.Error()))
+			return
+		}
+	}
+
 	txInfo := req.TxInfo.GetCopy()
 
 	if !txInfo.IsInitialized() {
 		mp.initTxInfo(txInfo)
 	}
 
-	parIno := NewInode(req.ParentID, 0)
+	/*parIno := NewInode(req.ParentID, 0)
 	inoResp := mp.getInode(parIno)
 	if inoResp.Status != proto.OpOk {
 		p.PacketErrorWithBody(inoResp.Status, nil)
 		return
-	}
+	}*/
 
-	txDentry := NewTxDentry(req.ParentID, req.Name, req.Inode, req.Mode, inoResp.Msg, txInfo)
+	txDentry := NewTxDentry(req.ParentID, req.Name, req.Inode, req.Mode, parIno, txInfo)
 
 	val, err := txDentry.Marshal()
 	if err != nil {
